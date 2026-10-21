@@ -55,8 +55,8 @@ import {
 } from "./schema";
 
 /**
- * The world kept in Postgres. Same rules as the browser version
- * (src/lib/world/local.ts); the pure parts are shared in world/logic.ts.
+ * The world kept in Postgres: every rule about who sees what. The pure parts
+ * (validation, radar counting) are in world/logic.ts.
  */
 
 const CLONE_COLOR = "white" as const;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { SITE_NAME } from "@/lib/rules";
 
 export const metadata: Metadata = { title: `隐私说明 · ${SITE_NAME}` };
@@ -35,7 +36,7 @@ export default function Privacy() {
       <p>在「资料」里点「注销账号」，你的账号和所有数据（资料、蟑螂、触须、宣言、触须之交）会立即删除。</p>
 
       <p className="hint">
-        {SITE_NAME}是非官方的同人项目，与鹰角网络无关。<a href="/">回到地图</a>
+        {SITE_NAME}是非官方的同人项目，与鹰角网络无关。<Link href="/">回到地图</Link>
       </p>
     </main>
   );

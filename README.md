@@ -41,7 +41,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 - Next.js (App Router) + TypeScript, frontend and API in one project
 - Amap JS API 2.0 for mainland China, MapLibre GL JS + OpenFreeMap tiles elsewhere
 - Coordinates stored as WGS-84 and converted to GCJ-02 for Amap with `gcoord`
-- PostgreSQL + PostGIS with Drizzle (`src/lib/server`); the browser talks to it through the same data-layer interface (`src/lib/world`) the original browser-only version used, and both share the rules in `src/lib/world/logic.ts`
+- PostgreSQL + PostGIS with Drizzle; the rules live in `src/lib/server/world.ts`, and the browser reaches them through the data-layer interface in `src/lib/world`
 - Email via SMTP: Mailpit locally, any SMTP provider (e.g. Resend) in production
 - Deployed with Docker Compose on a Hong Kong VPS (planned)
 - Character names come from the BWIKI operator lists (names only)
@@ -51,7 +51,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 You need an Amap **Web (JS API)** key and its security code for the China basemap. Without them the app falls back to the OpenStreetMap basemap.
 
 ```bash
-cp .env.example .env    # fill in the Amap key and security code, and two random secrets
+cp .env.example .env    # fill in the Amap key and security code, and a random secret
 ```
 
 Start the database and the test mail inbox, then the app:
@@ -80,9 +80,12 @@ To add another picture look, cut the character out of its white background and s
 node scripts/cutout.mjs <original.png> public/avatars/<name>.png 256
 ```
 
-Run the unit tests (the rules of the data layer):
+Check the code the same way GitHub does on every push (`.github/workflows/check.yml`). The tests run the server's rules against a separate `roach_test` database, so the database container must be up:
 
 ```bash
+docker compose up -d db
+npm run typecheck
+npm run lint
 npm test
 ```
 

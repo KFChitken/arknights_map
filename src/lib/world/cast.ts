@@ -53,12 +53,6 @@ export function passerbyMoves(now: number): Move[] {
   return moves;
 }
 
-export function passerbyIndex(id: PlayerId) {
-  const m = /^n(\d+)$/.exec(id);
-  const i = m ? Number(m[1]) : -1;
-  return i >= 0 && i < passersby().length ? i : -1;
-}
-
 const NICKNAMES = [
   "摸鱼博士",
   "理智清零",

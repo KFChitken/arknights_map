@@ -25,6 +25,8 @@ export default function RoachIcon({ color, size, ...opts }: RoachOpts & { color:
   }, [key]);
 
   return src ? (
+    // a data URL drawn in the browser, so next/image has nothing to optimize
+    // eslint-disable-next-line @next/next/no-img-element
     <img src={src} width={size} height={size} alt="" />
   ) : (
     <span style={{ display: "inline-block", width: size, height: size, flexShrink: 0 }} />

@@ -18,8 +18,6 @@ export const MAX_FAVOURITES = 3;
 export const NAME_MAX = 16;
 export const UID_MAX = 20;
 
-/** Edge of the grid cell public positions are snapped to. */
-
 export const DECLARATION_RADIUS_KM = 10;
 export const DECLARATION_COOLDOWN_MIN = 1;
 export const DECLARATIONS_PER_DAY = 20;

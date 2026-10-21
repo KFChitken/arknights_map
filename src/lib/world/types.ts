@@ -3,9 +3,8 @@ import type { Profile, PublicProfile } from "../profile";
 import type { LngLat, RoachAvatar, RoachColor } from "../types";
 
 /**
- * The data layer the UI talks to. Today it is backed by the browser
- * (./local.ts); a server version only has to implement this interface with
- * the same rules, so nothing in the UI changes.
+ * The data layer the UI talks to: ./server.ts calls the API, whose rules live
+ * in src/lib/server/world.ts.
  */
 export interface World {
   /** The signed-in player with their own roaches, or null when signed out. */

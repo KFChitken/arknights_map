@@ -313,7 +313,6 @@ export default function MaplibreView(props: MapViewProps) {
     };
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(sync, [props.roaches, props.mine, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {

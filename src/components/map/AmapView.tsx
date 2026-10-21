@@ -300,7 +300,6 @@ export default function AmapView(props: MapViewProps) {
     const z = mapRef.current.getZoom();
     massRef.current.forEach((m, g) => m.setData(massData(groupsRef.current[g], [0, 0], z, styledRef.current.look)));
     heatRef.current?.setDataSet(heatData(props.roaches));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.roaches]);
 
   useEffect(() => {
@@ -326,7 +325,6 @@ export default function AmapView(props: MapViewProps) {
 
   useEffect(() => {
     placeMine();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.mine, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {
