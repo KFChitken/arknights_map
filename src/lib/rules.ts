@@ -1,5 +1,14 @@
 /** Product limits in one place so they are easy to tune. */
 
+/** The site's name as players see it. */
+export const SITE_NAME = "粥P地图";
+
+export const MIN_SIGNUP_AGE = 14;
+export const LOGIN_CODE_TTL_MIN = 10;
+export const LOGIN_CODE_COOLDOWN_S = 60;
+export const LOGIN_CODE_MAX_ATTEMPTS = 5;
+export const SESSION_DAYS = 30;
+
 /** Clones a player may place besides the main roach. */
 export const MAX_CLONES = 3;
 
@@ -10,7 +19,6 @@ export const NAME_MAX = 16;
 export const UID_MAX = 20;
 
 /** Edge of the grid cell public positions are snapped to. */
-export const FUZZ_CELL_KM = 1;
 
 export const DECLARATION_RADIUS_KM = 10;
 export const DECLARATION_COOLDOWN_MIN = 1;

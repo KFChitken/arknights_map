@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { SITE_NAME } from "@/lib/rules";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "舟p蟑螂地图",
+  title: SITE_NAME,
   description: "看看你身边有多少舟p",
 };
 

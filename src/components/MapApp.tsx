@@ -2,15 +2,18 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { deleteAccount, signOut } from "@/lib/authClient";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
 import type { Declaration } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
 import type { Profile, PublicProfile } from "@/lib/profile";
+import { SITE_NAME } from "@/lib/rules";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
-import { LocalWorld } from "@/lib/world/local";
+import { ServerWorld } from "@/lib/world/server";
 import {
+  SignInNeeded,
   WorldError,
   type Friend,
   type Identity,
@@ -25,6 +28,7 @@ import {
 import DeclareSheet from "./app/DeclareSheet";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, { FriendView, ProfileView, type InboxTab } from "./app/InboxSheet";
+import LoginSheet from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
@@ -47,7 +51,8 @@ type Panel =
   | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab }
   | { kind: "viewProfile"; profile: PublicProfile; back: Panel }
   | { kind: "friend"; friendId: string; back: Panel | null }
-  | { kind: "radar"; radar: Radar | null };
+  | { kind: "radar"; radar: Radar | null }
+  | { kind: "login"; reason?: string };
 
 type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
 
@@ -102,10 +107,16 @@ export default function MapApp() {
 
   // The world, basemap and look are read in the browser only, to keep SSR output stable
   useEffect(() => {
-    worldRef.current = new LocalWorld();
-    load().then(({ me: m, items }) => {
-      const b = guessBasemap();
-      const main = m.roaches.find((r) => r.slot === 0);
+    worldRef.current = new ServerWorld();
+    const b = guessBasemap();
+    load()
+      .catch((e) => {
+        console.error(e);
+        setToast("连不上服务器，地图先只显示底图。");
+        return { me: null, items: [] as InboxItem[] };
+      })
+      .then(({ me: m, items }) => {
+      const main = m?.roaches.find((r) => r.slot === 0);
       viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
       setLook(loadLook());
       setBasemap(b);
@@ -113,6 +124,19 @@ export default function MapApp() {
       if (items.some((i) => !i.seen)) openInbox(true);
     });
   }, [load, openInbox]);
+
+  // Other players act on other devices: catch up when the page comes back into view
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && worldRef.current) load().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", refresh);
+    const t = window.setInterval(refresh, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(t);
+    };
+  }, [load]);
 
   useEffect(() => {
     if (!toast) return;
@@ -140,7 +164,8 @@ export default function MapApp() {
       if (ok) setToast(ok);
       return result;
     } catch (e) {
-      if (e instanceof WorldError) setToast(e.message);
+      if (e instanceof SignInNeeded) setPanel({ kind: "login", reason: "登录后才能这样做。" });
+      else if (e instanceof WorldError) setToast(e.message);
       else {
         console.error(e);
         setToast("出了点问题，再试一次吧。");
@@ -176,7 +201,7 @@ export default function MapApp() {
     setToast(
       placing.target.kind === "clone"
         ? "克隆体放好啦！别人看到的是“某舟p的克隆体”，看不出它和你本体的关系。"
-        : "放好啦！别人看到的是约 1 公里外的大概位置。",
+        : "放好啦！别人能看到它在这里，但看不出是你。",
     );
   };
 
@@ -283,14 +308,37 @@ export default function MapApp() {
     setSelected(null);
     setPlacing(null);
     const { me: m, items } = await load();
-    const main = m.roaches.find((r) => r.slot === 0);
+    const main = m?.roaches.find((r) => r.slot === 0);
     if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
     if (items.some((i) => !i.seen)) openInbox(true);
     else setToast("切换好了，现在用这个身份看地图。");
   };
 
+  const signedIn = async () => {
+    setPanel(null);
+    const { me: m, items } = await load();
+    const mainRoach = m?.roaches.find((r) => r.slot === 0);
+    if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
+    if (items.some((i) => !i.seen)) openInbox(true);
+    else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
+  };
+
+  const leave = async (kind: "signOut" | "delete") => {
+    if (kind === "delete" && !window.confirm("注销账号会删除你的资料、蟑螂、消息和触须之交，无法恢复。确定吗？")) return;
+    try {
+      await (kind === "delete" ? deleteAccount() : signOut());
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "出了点问题，再试一次吧。");
+      return;
+    }
+    setPanel(null);
+    setSelected(null);
+    await load();
+    setToast(kind === "delete" ? "账号和数据都删除了。" : "已经退出登录。");
+  };
+
   const reset = async () => {
-    if (!window.confirm("清空这台设备上的所有测试数据（资料、蟑螂、消息），从头开始？")) return;
+    if (!window.confirm("清空所有测试数据（触须、宣言、触须之交、挪窝记录），测试玩家回到原位？真实玩家和他们的蟑螂会留着。")) return;
     await act((w) => w.reset(), "测试数据清空了。");
     setPanel(null);
     setSelected(null);
@@ -332,10 +380,19 @@ export default function MapApp() {
   };
 
   const renderPanel = (p: Panel) => {
+    if (p.kind === "login") return <LoginSheet reason={p.reason} onDone={signedIn} onClose={() => setPanel(null)} />;
     if (!me) return null;
     switch (p.kind) {
       case "profile":
-        return <ProfileSheet profile={me.profile} onSave={saveProfile} onClose={() => setPanel(null)} />;
+        return (
+          <ProfileSheet
+            profile={me.profile}
+            onSave={saveProfile}
+            onSignOut={() => leave("signOut")}
+            onDelete={() => leave("delete")}
+            onClose={() => setPanel(null)}
+          />
+        );
       case "mine":
         return (
           <MineSheet
@@ -406,8 +463,8 @@ export default function MapApp() {
       <header className="topbar">
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
-          <span>舟p蟑螂地图</span>
-          <span className="tag">原型 · 本地测试</span>
+          <span>{SITE_NAME}</span>
+          <span className="tag">内测版</span>
         </div>
         <div className="switches">
           <div className="basemap-switch" role="group" aria-label="蟑螂外观">
@@ -436,10 +493,12 @@ export default function MapApp() {
 
       {!placing && (
         <div className="hud">
-          <button className="who" onClick={() => setPanel({ kind: "identity" })} title="切换测试身份">
-            👤 {current?.label ?? "我"}
-            {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
-          </button>
+          {identities.length > 0 && (
+            <button className="who" onClick={() => setPanel({ kind: "identity" })} title="切换测试身份">
+              👤 {current?.label ?? "我"}
+              {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
+            </button>
+          )}
           <div className="stats">
             {visible === null ? "地图加载中…" : `这片地图里有 ${visible.toLocaleString()} 只舟p`}
             <span className="muted"> · 全球 {total.toLocaleString()} 只</span>
@@ -497,6 +556,14 @@ export default function MapApp() {
         />
       )}
 
+      {!placing && !me && (
+        <footer className="actions">
+          <button className="primary" onClick={() => setPanel({ kind: "login", reason: "登录后就能放下你的蟑螂。" })}>
+            放下我的蟑螂
+          </button>
+          <button onClick={() => setPanel({ kind: "login" })}>登录</button>
+        </footer>
+      )}
       {!placing && me && (
         <footer className="actions">
           {main ? (

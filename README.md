@@ -12,15 +12,15 @@ Players in the community jokingly call themselves "roaches" because there seem t
 |---|---|
 | World map with two basemaps behind one URL (Amap inside mainland China, MapLibre + OpenStreetMap elsewhere), auto-selected with a manual switch | Prototype |
 | Swarm view: every roach is drawn and twitches, and a dark heat layer makes crowded cities look covered in roaches; cartoon or realistic roaches | Prototype |
-| Place a main roach and up to three clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | Prototype (stored in the browser) |
-| Profile: a name with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | Prototype (stored in the browser) |
-| Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told on their next visit and can touch back | Prototype (stored in the browser) |
-| Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches (still fuzzed), declaration count and recent activity; either side can end it | Prototype (stored in the browser) |
-| Declarations: a canned shout such as "Arknights, start!" or "I'm &lt;favourite&gt;'s &lt;title&gt;" to every player with a roach within 10 km | Prototype (stored in the browser) |
-| Test identities: step into other players' shoes on one device to try touches and declarations | Development aid |
-| Email sign-in, server-side storage | Planned |
+| Place a main roach and up to three clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | MVP |
+| Profile: a name with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | MVP |
+| Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told on their next visit and can touch back | MVP |
+| Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches, declaration count and recent activity; either side can end it | MVP |
+| Declarations: a canned shout such as "Arknights, start!" or "I'm &lt;favourite&gt;'s &lt;title&gt;" to every player with a roach within 10 km | MVP |
+| Email sign-in with a 6-digit code, sign-up limited to players aged 14 and over (the birth date is not stored), account deletion | MVP |
+| Demo players and test identities: thousands of seeded players, and stepping into any of them on one device to try touches and declarations | Development aid |
 | Follow requests that need approval, block and report | Planned |
-| Ark Radar: how many roaches are within 100 km of your main roach, how many crawled in or left in the last day and week, newcomers, nearby touches and declarations | Prototype (demo movement for the passers-by) |
+| Ark Radar: how many roaches are within 100 km of your main roach, how many crawled in or left in the last day and week, newcomers, nearby touches and declarations | MVP (demo movement for the demo players) |
 | Your roach's travel trail | Planned |
 
 ## Privacy by design
@@ -28,22 +28,22 @@ Players in the community jokingly call themselves "roaches" because there seem t
 Location sharing combined with a social feature is a stalking risk, so the privacy rules come before features:
 
 - **No GPS.** Players place their roach by hand. Nothing reads the device location.
-- **Fuzzy public positions.** Only you see your exact placement. Everyone else sees a position snapped to a ~1 km grid plus a fixed per-roach offset, so refreshing or averaging cannot recover the real point. This holds even between mutual followers.
+- **Roaches show where they were placed, never who placed them.** Players are asked not to place a roach at home or anywhere else that identifies them.
 - **Anonymous by default.** Strangers only see an anonymous roach. A bold touch shows the toucher's profile to the player they touched; a sneaky touch shows nothing. Game UIDs stay hidden unless their owner chooses to show them to the players they touch boldly.
 - **Touches and declarations never carry a position.** A declaration reaches everyone with a roach within 10 km of the sender's main roach; recipients only learn "within 10 km", and the sender only gets a rough head count ("5–10 players").
-- **Friendship is opt-in on both sides.** Only two bold touches, one each way, make players friends; sneaky touches never count. Friends see each other's roaches at the same fuzzed positions as everyone else, and other players in a friend's activity stay anonymous.
+- **Friendship is opt-in on both sides.** Only two bold touches, one each way, make players friends; sneaky touches never count. Friends can tell which roaches belong to each other; other players in a friend's activity stay anonymous.
 - **Clones cannot be traced back.** Every clone looks the same, gets a new public id whenever it moves, and is listed in random order, so nobody but the owner's friends can tell which main roach it belongs to. Touching a clone reaches its owner without revealing anything about them.
 - **Blocking hides you completely** from the blocked player's map and radar.
-- **The radar shows counts, never distances or directions**, because exact distances allow trilateration. It counts from the same fuzzed positions everyone sees on the map, over a 100 km circle, so it reveals nothing the map does not.
-- **Public venues** (conventions, merch shops) are the only places that can be marked precisely.
+- **The radar shows counts, never distances or directions.** It counts over a 100 km circle from the same positions everyone sees on the map, so it reveals nothing the map does not.
 
 ## Tech stack
 
 - Next.js (App Router) + TypeScript, frontend and API in one project
 - Amap JS API 2.0 for mainland China, MapLibre GL JS + OpenFreeMap tiles elsewhere
 - Coordinates stored as WGS-84 and converted to GCJ-02 for Amap with `gcoord`
-- Player data lives in the browser for now, behind a small data-layer interface (`src/lib/world`) that already applies the privacy rules above; moving to a server means implementing the same interface over an API
-- PostgreSQL + PostGIS (planned), deployed with Docker Compose on a Hong Kong VPS
+- PostgreSQL + PostGIS with Drizzle (`src/lib/server`); the browser talks to it through the same data-layer interface (`src/lib/world`) the original browser-only version used, and both share the rules in `src/lib/world/logic.ts`
+- Email via SMTP: Mailpit locally, any SMTP provider (e.g. Resend) in production
+- Deployed with Docker Compose on a Hong Kong VPS (planned)
 - Character names come from the BWIKI operator lists (names only)
 
 ## Run locally
@@ -51,25 +51,28 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 You need an Amap **Web (JS API)** key and its security code for the China basemap. Without them the app falls back to the OpenStreetMap basemap.
 
 ```bash
-cp .env.example .env    # then fill in the Amap key and security code
+cp .env.example .env    # fill in the Amap key and security code, and two random secrets
 ```
 
-With Docker:
+Start the database and the test mail inbox, then the app:
 
 ```bash
-docker compose up --build
-```
-
-Or with Node.js 20+:
-
-```bash
+docker compose up -d db mail
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000. To try it on a phone, connect the phone to the same Wi-Fi and open `http://<your computer's IP>:3000`.
+Open http://localhost:3000. Sign-in codes land in the test inbox at http://localhost:8025. To try it on a phone, connect the phone to the same Wi-Fi and open `http://<your computer's IP>:3000` (the inbox is at port 8025 on the same address).
 
-The 👤 button at the top switches between test identities: yourself, a few test players (the Shanghai ones are within 10 km of each other) and any passer-by you touched. Switching works like signing in as that player, so touches, the next-visit notice and declarations can all be tried on one device. Everything is stored in that browser only, and the switcher can wipe it.
+The database schema is migrated and, in development, filled with demo players when the server starts. `DEMO=0` turns the demo players and test identities off; production leaves them off unless `DEMO=1`. After changing `src/lib/server/schema.ts`, run `npm run db:generate` to write a new migration.
+
+The 👤 button at the top (development only) switches between test identities: yourself, a few test players (the Shanghai ones are within 10 km of each other) and any passer-by somebody touched. Switching signs you in as that player, so touches, the next-visit notice, declarations and friends can all be tried on one device.
+
+To run everything in Docker instead (the app also needs port 3000, so stop `npm run dev` first):
+
+```bash
+docker compose up --build
+```
 
 To add another picture look, cut the character out of its white background and shrink it with:
 
@@ -77,7 +80,7 @@ To add another picture look, cut the character out of its white background and s
 node scripts/cutout.mjs <original.png> public/avatars/<name>.png 256
 ```
 
-Run the unit tests (location fuzzing and the data layer):
+Run the unit tests (the rules of the data layer):
 
 ```bash
 npm test
@@ -90,7 +93,7 @@ Append `?style=blank` to the URL to replace the OSM basemap with a plain backgro
 The project is built in daily iterations, each ending with a playable version:
 
 1. Prototype: dual basemaps, demo roaches, place your own roach
-2. MVP: email sign-in, server-side roaches, location fuzzing with tests
+2. MVP: email sign-in, server-side roaches, profiles, touches, declarations, clones, friends, radar
 3. Roach customizer and profile cards
 4. Follow, block, report, radar, travel trail, public venues
 5. Deploy, closed beta

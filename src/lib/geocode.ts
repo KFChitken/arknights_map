@@ -1,7 +1,7 @@
 import { amapPlugins, type AMapNS } from "./amap";
 import { amapConfigured } from "./basemap";
 import { fromGcj } from "./coords";
-import { distanceKm } from "./fuzz";
+import { distanceKm } from "./geo";
 import type { Basemap, LngLat } from "./types";
 
 /** A search hit, always in WGS-84. */

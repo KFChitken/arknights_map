@@ -260,7 +260,6 @@ export function FriendView({
           </div>
         </div>
       ))}
-      <p className="hint">位置和别人看到的一样，是约 1 公里外的大概位置。</p>
 
       <h3>最近 {INBOX_DAYS} 天发表了 {friend.declarations} 次独立宣言</h3>
 

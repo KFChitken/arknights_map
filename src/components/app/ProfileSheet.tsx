@@ -31,10 +31,14 @@ const COLOR_NAMES: Record<RoachColor, string> = {
 export default function ProfileSheet({
   profile,
   onSave,
+  onSignOut,
+  onDelete,
   onClose,
 }: {
   profile: Profile;
   onSave: (p: Profile) => Promise<boolean>;
+  onSignOut: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const [p, setP] = useState<Profile>(profile);
@@ -183,6 +187,17 @@ export default function ProfileSheet({
         </div>
         <p className="hint">颜色只改兜帽形象两边的灯；博士、管理员和小恶魔用的是原画，颜色不变。</p>
       </fieldset>
+      <div className="account-actions">
+        <button className="pill" onClick={onSignOut}>
+          退出登录
+        </button>
+        <button className="pill" onClick={onDelete}>
+          注销账号
+        </button>
+        <a className="pill" href="/privacy" target="_blank" rel="noreferrer">
+          隐私说明
+        </a>
+      </div>
     </Sheet>
   );
 }

@@ -105,7 +105,7 @@ export default function PlaceBar({
       )}
       {error && <p className="hint">{error}</p>}
       <p className="hint">
-        别人看到的是约 1 公里的大概位置，请不要放在家门口。
+        别人会看到你放下的位置，请不要放在家门口。
         {results?.osm && " 部分地点数据 © OpenStreetMap。"}
       </p>
     </div>

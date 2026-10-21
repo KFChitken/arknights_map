@@ -271,3 +271,21 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   border: 2px solid #e5e7eb; border-radius: 12px; background: #fff; font-size: 13px;
 }
 .avatars button.on { border-color: var(--ink); background: #fffbea; font-weight: 700; }
+
+/* ---- sign-in ---- */
+input[type="email"] {
+  width: 100%; padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px;
+  background: #fff; color: var(--ink); font: inherit; font-size: 16px;
+}
+.login { display: flex; flex-direction: column; gap: 12px; }
+.login .field { margin-top: 0; }
+.birth { display: flex; gap: 8px; }
+.login-error { margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; background: #fdecea; color: #b42318; font-size: 14px; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #eef0f2; }
+
+/* ---- text pages ---- */
+.doc { max-width: 640px; min-height: 100%; margin: 0 auto; padding: 24px 18px 48px; background: var(--paper); line-height: 1.7; font-size: 15px; }
+.doc h1 { font-size: 22px; margin: 0 0 4px; }
+.doc h2 { font-size: 16px; margin: 22px 0 6px; }
+.doc ul { padding-left: 20px; margin: 6px 0; }
+a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px; padding: 5px 11px; background: #fff; color: var(--ink); font-size: 13px; text-decoration: none; }

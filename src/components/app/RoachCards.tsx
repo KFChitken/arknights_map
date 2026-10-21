@@ -92,7 +92,7 @@ export function MyRoachCard({
         <div>
           <strong>{clone ? `你的克隆体 ${index}` : "你的蟑螂本体"}</strong>
           <p className="muted">
-            {clone ? "别人看到的是“某舟p的克隆体”，在约 1 公里外的大概位置。" : "别人看到的是约 1 公里外的大概位置。"}
+            {clone ? "别人看到的是“某舟p的克隆体”，看不出是你的。" : "别人能看到它在哪，但看不出是你。"}
           </p>
         </div>
       </div>

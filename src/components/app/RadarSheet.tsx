@@ -100,7 +100,7 @@ export default function RadarSheet({
       </ul>
 
       <p className="hint" style={{ marginTop: 14 }}>
-        雷达只报数量，不报距离和方向；数量按大家在地图上看到的模糊位置来算。路人蟑螂的来去是演示数据。
+        雷达只报数量，不报距离和方向。路人蟑螂的来去是演示数据。
       </p>
     </Sheet>
   );

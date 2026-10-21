@@ -39,7 +39,7 @@ export default function MineSheet({
           <RoachIcon color={color} size={40} avatar={avatar} mine look={look} />
           <div>
             <strong>蟑螂本体</strong>
-            <p className="muted">别人看到的是约 1 公里外的大概位置</p>
+            <p className="muted">别人能看到它在哪，但看不出是你</p>
           </div>
           <div className="row-actions">
             <button className="pill" onClick={() => onFind(main)}>

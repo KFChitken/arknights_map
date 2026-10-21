@@ -1,26 +1,29 @@
 import { declarationText, type Declaration } from "../declarations";
-import { distanceKm, fuzz } from "../fuzz";
-import { GAMES, isGame, type Game } from "../games";
-import { isOperator } from "../operators";
+import { distanceKm } from "../geo";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { hash128 } from "../prng";
 import {
   DECLARATION_COOLDOWN_MIN,
   DECLARATION_RADIUS_KM,
   DECLARATIONS_PER_DAY,
-  FUZZ_CELL_KM,
   INBOX_DAYS,
   MAX_CLONES,
-  MAX_FAVOURITES,
-  NAME_MAX,
-  RADAR_RADIUS_KM,
   TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
-  UID_MAX,
 } from "../rules";
-import { titlesFor } from "../titles";
-import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor } from "../types";
+import { ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor } from "../types";
 import { passerbyIndex, passerbyMoves, passerbyProfile, passersby, TESTERS, type Move } from "./cast";
+import {
+  buildRadar,
+  checkDeclaration,
+  checkSpot,
+  DAY,
+  HOUR,
+  MINUTE,
+  normalizeProfile,
+  publicProfileOf,
+  reachText,
+} from "./logic";
 import {
   WorldError,
   type Friend,
@@ -33,25 +36,21 @@ import {
   type PlayerId,
   type PublicRoach,
   type Radar,
-  type RadarWindow,
   type TouchResult,
   type World,
 } from "./types";
 
 /**
  * World kept in this browser's localStorage. It applies the same privacy rules
- * a server would: other players' roaches come out fuzzed and in random order,
+ * a server would: other players' roaches come out without owners and in random order,
  * a touch never tells the toucher who owns the roach, and a declaration only
  * tells the sender a rough head count. Two players who have touched each other
- * boldly become 触须之交 and can see each other's roaches (still fuzzed) and activity.
+ * boldly become 触须之交 and can see each other's roaches and activity.
  */
 
 const KEY = "zhoup.world.v1";
 const LEGACY_KEY = "zhoup.myRoach";
 const ME: PlayerId = "me";
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
 const MAX_DECLARATIONS_KEPT = 300;
 const FRIEND_HISTORY = 30;
 const CLONE_COLOR: RoachColor = "white";
@@ -92,8 +91,8 @@ type State = {
   moves: Move[];
 };
 
-/** A roach with both its true and its public position, as only this module sees it. */
-type Placed = StoredRoach & { avatar: RoachAvatar; color: RoachColor; pubLng: number; pubLat: number };
+/** A roach with its owner's look, as only this module sees it. */
+type Placed = StoredRoach & { avatar: RoachAvatar; color: RoachColor };
 
 function randomHex(bytes: number) {
   // crypto.randomUUID needs a secure context, which a phone on http://<LAN IP> is not
@@ -117,7 +116,7 @@ export class LocalWorld implements World {
   private rev = 0;
   private placedCache: { rev: number; list: Placed[]; byPub: Map<string, Placed> } | null = null;
   private publicCache: { rev: number; viewer: PlayerId; list: PublicRoach[] } | null = null;
-  private passerbyPub = new Map<string, { pub: string; pubLng: number; pubLat: number }>();
+  private passerbyPub = new Map<string, string>();
 
   constructor() {
     this.st = this.load();
@@ -212,26 +211,24 @@ export class LocalWorld implements World {
     return id === ME || TESTERS.some((t) => t.id === id) || passerbyIndex(id) >= 0;
   }
 
-  /** Every roach in the world with its public position. Passers-by are generated, the rest stored. */
+  /** Every roach in the world. Passers-by are generated, the rest stored. */
   private placed() {
     if (this.placedCache?.rev === this.rev) return this.placedCache;
     const { secret } = this.st;
     const list: Placed[] = this.st.roaches.map((r) => {
-      const pub = fuzz(r, `${r.owner}:${r.slot}`, secret, FUZZ_CELL_KM);
       const { avatar, color } = this.profileOf(r.owner);
-      return { ...r, avatar, color, pubLng: pub.lng, pubLat: pub.lat };
+      return { ...r, avatar, color };
     });
     const materialized = new Set(this.st.materialized);
     for (const p of passersby()) {
       if (materialized.has(p.id)) continue;
-      let cached = this.passerbyPub.get(p.id);
-      if (!cached) {
-        const at = fuzz(p, `${p.id}:0`, secret, FUZZ_CELL_KM);
-        cached = { pub: hashHex(`${secret}|pub|${p.id}`), pubLng: at.lng, pubLat: at.lat };
-        this.passerbyPub.set(p.id, cached);
+      let pub = this.passerbyPub.get(p.id);
+      if (!pub) {
+        pub = hashHex(`${secret}|pub|${p.id}`);
+        this.passerbyPub.set(p.id, pub);
       }
       const { avatar, color } = this.st.profiles[p.id] ?? passerbyProfile(p);
-      list.push({ lng: p.lng, lat: p.lat, id: `${p.id}-0`, owner: p.id, slot: 0, avatar, color, ...cached });
+      list.push({ lng: p.lng, lat: p.lat, id: `${p.id}-0`, owner: p.id, slot: 0, avatar, color, pub });
     }
     this.placedCache = { rev: this.rev, list, byPub: new Map(list.map((r) => [r.pub, r])) };
     return this.placedCache;
@@ -245,17 +242,7 @@ export class LocalWorld implements World {
   }
 
   private publicProfile(id: PlayerId): PublicProfile {
-    const p = this.profileOf(id);
-    const uid: Partial<Record<Game, string>> = {};
-    if (p.shareUid) for (const g of p.games) if (p.uid[g]) uid[g] = p.uid[g];
-    return {
-      displayName: displayName(p),
-      games: p.games,
-      favourites: { arknights: p.games.includes("arknights") ? p.favourites.arknights : [], endfield: p.games.includes("endfield") ? p.favourites.endfield : [] },
-      uid: Object.keys(uid).length ? uid : undefined,
-      avatar: p.avatar,
-      color: p.color,
-    };
+    return publicProfileOf(this.profileOf(id));
   }
 
   /** Before a passer-by changes their roaches, turn the generated roach into a stored one. */
@@ -339,34 +326,13 @@ export class LocalWorld implements World {
       avatar: clone ? CLONE_AVATAR : r.avatar,
       color: clone ? CLONE_COLOR : r.color,
       friend,
-      lng: r.pubLng,
-      lat: r.pubLat,
+      lng: r.lng,
+      lat: r.lat,
     };
   }
 
   async saveProfile(input: Profile): Promise<Profile> {
-    const name = input.name.trim().slice(0, NAME_MAX);
-    const games = GAMES.filter((g) => input.games.includes(g));
-    const favourites = { arknights: [] as string[], endfield: [] as string[] };
-    const uid = { arknights: "", endfield: "" };
-    for (const g of games) {
-      favourites[g] = [...new Set(input.favourites[g])].filter((n) => isOperator(g, n)).slice(0, MAX_FAVOURITES);
-      const u = input.uid[g].trim();
-      if (u.length > UID_MAX || !/^[0-9A-Za-z#_-]*$/.test(u)) throw new WorldError("UID 只能填数字、字母和 #，最多 20 个字符。");
-      uid[g] = u;
-    }
-    if (!input.anonymous && !name) throw new WorldError("想显示名字的话，先填一个名字吧。");
-    const profile: Profile = {
-      anonymous: input.anonymous,
-      name,
-      drPrefix: input.drPrefix,
-      games,
-      favourites,
-      uid,
-      shareUid: input.shareUid,
-      avatar: ROACH_AVATARS.includes(input.avatar) ? input.avatar : EMPTY_PROFILE.avatar,
-      color: ROACH_COLORS.includes(input.color) ? input.color : EMPTY_PROFILE.color,
-    };
+    const profile = normalizeProfile(input);
     this.st.profiles[this.st.current] = profile;
     this.commit();
     return profile;
@@ -374,10 +340,7 @@ export class LocalWorld implements World {
 
   async placeRoach(target: PlaceTarget, spot: LngLat): Promise<OwnRoach[]> {
     // keep only the coordinates, whatever else the caller passed along
-    const at = { lng: Number(spot.lng), lat: Number(spot.lat) };
-    if (!Number.isFinite(at.lng) || !Number.isFinite(at.lat) || Math.abs(at.lat) > 85 || Math.abs(at.lng) > 180) {
-      throw new WorldError("这个位置放不了蟑螂。");
-    }
+    const at = checkSpot(spot);
     const owner = this.st.current;
     this.materialize(owner);
     const mine = this.st.roaches.filter((r) => r.owner === owner);
@@ -539,14 +502,7 @@ export class LocalWorld implements World {
 
   async declare(d: Declaration): Promise<{ reach: string }> {
     const from = this.st.current;
-    const profile = this.profileOf(from);
-    if (d.template === "iam") {
-      const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(d.character));
-      if (!game) throw new WorldError("只能选你资料里的厨力角色。");
-      if (!titlesFor(game).includes(d.title)) throw new WorldError("这个称呼不在列表里。");
-    } else if (!isGame(d.game)) {
-      throw new WorldError("选一个游戏吧。");
-    }
+    d = checkDeclaration(this.profileOf(from), d);
     const { list } = this.placed();
     const main = list.find((r) => r.owner === from && r.slot === 0);
     if (!main) throw new WorldError("先放下蟑螂本体，才能发表独立宣言。");
@@ -618,57 +574,16 @@ export class LocalWorld implements World {
     const center = list.find((r) => r.owner === me && r.slot === 0);
     if (!center) return null;
     const now = Date.now();
-    const inside = (p: LngLat | null) => Boolean(p && distanceKm(center, p) <= RADAR_RADIUS_KM);
-
-    // Counted from the same fuzzed positions everyone sees on the map
-    const near = list.filter((r) => r.owner !== me && inside({ lng: r.pubLng, lat: r.pubLat }));
-    const nearOwners = new Set(near.map((r) => r.owner));
-
-    // Arrivals and departures across the circle's edge, by other players
-    const crossings = [...passerbyMoves(now), ...this.st.moves]
-      .filter((m) => m.owner !== me && now - m.at < 7 * DAY)
-      .flatMap((m) => {
-        const wasIn = inside(m.from);
-        const isIn = inside(m.to);
-        if (wasIn === isIn) return [];
-        return [{ at: m.at, arrived: isIn, newcomer: isIn && !m.from && m.slot === 0, clone: m.slot > 0 }];
-      });
-    const tally = (since: number): RadarWindow => {
-      const w = crossings.filter((c) => c.at > since);
-      return {
-        arrived: w.filter((c) => c.arrived).length,
-        left: w.filter((c) => !c.arrived).length,
-        newcomers: w.filter((c) => c.newcomer).length,
-        clones: w.filter((c) => c.arrived && c.clone).length,
-      };
-    };
-    const midnight = new Date(now);
-    midnight.setHours(0, 0, 0, 0);
-    const daily = Array.from({ length: 7 }, (_, i) => {
-      const start = new Date(midnight);
-      start.setDate(start.getDate() - (6 - i));
-      const from = start.getTime();
-      const to = i === 6 ? Infinity : from + DAY;
-      const w = crossings.filter((c) => c.at >= from && c.at < to);
-      return { start: from, arrived: w.filter((c) => c.arrived).length, left: w.filter((c) => !c.arrived).length };
-    });
-    const arrivals = crossings.filter((c) => c.arrived).map((c) => c.at);
-    const friends = this.friendsOf(me);
-
-    return {
-      radiusKm: RADAR_RADIUS_KM,
-      roaches: near.length,
-      clones: near.filter((r) => r.slot > 0).length,
-      players: nearOwners.size,
-      day: tally(now - DAY),
-      week: tally(now - 7 * DAY),
-      daily,
-      touches: this.st.touches.filter((t) => now - t.at < DAY && nearOwners.has(t.to)).length,
-      declarations: this.st.declarations.filter((d) => now - d.at < DAY && nearOwners.has(d.from)).length,
-      friendsNearby: [...friends].filter((f) => nearOwners.has(f)).length,
-      lastArrivalAt: arrivals.length ? Math.max(...arrivals) : null,
+    return buildRadar({
+      center,
+      now,
+      roaches: list.filter((r) => r.owner !== me).map((r) => ({ owner: r.owner, slot: r.slot, at: { lng: r.lng, lat: r.lat } })),
+      moves: [...passerbyMoves(now), ...this.st.moves].filter((m) => m.owner !== me && now - m.at < 7 * DAY),
+      touchedPlayers: this.st.touches.filter((t) => now - t.at < DAY).map((t) => t.to),
+      declaringPlayers: this.st.declarations.filter((d) => now - d.at < DAY).map((d) => d.from),
+      friends: this.friendsOf(me),
       demo: true,
-    };
+    });
   }
 
   async identities(): Promise<Identity[]> {
@@ -720,16 +635,4 @@ export class LocalWorld implements World {
   }
 }
 
-export function reachText(n: number) {
-  const km = `${DECLARATION_RADIUS_KM} 公里内`;
-  if (n === 0) return `${km}暂时没有别的舟p，宣言飘向了远方……`;
-  if (n < 5) return `${km}有不到 5 只舟p收到了你的宣言。`;
-  for (const [lo, hi] of [
-    [5, 10],
-    [10, 20],
-    [20, 50],
-  ]) {
-    if (n < hi) return `${km}有 ${lo}–${hi} 只舟p收到了你的宣言。`;
-  }
-  return `${km}有 50 多只舟p收到了你的宣言！`;
-}
+export { reachText };

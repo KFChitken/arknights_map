@@ -8,9 +8,9 @@ import type { LngLat, RoachAvatar, RoachColor } from "../types";
  * the same rules, so nothing in the UI changes.
  */
 export interface World {
-  /** The player this browser is acting as, with their own roaches at true positions. */
-  me(): Promise<Me>;
-  /** Everyone else's roaches: fuzzed positions, no owner, random order. */
+  /** The signed-in player with their own roaches, or null when signed out. */
+  me(): Promise<Me | null>;
+  /** Everyone else's roaches where they were placed: no owner, random order. */
   roaches(): Promise<PublicRoach[]>;
   saveProfile(profile: Profile): Promise<Profile>;
   /** Place or move a roach. Returns the owner's roaches afterwards. */
@@ -61,7 +61,7 @@ export type Friend = {
   id: string;
   since: number;
   profile: PublicProfile;
-  /** Their main roach and clones, fuzzed like everyone else's */
+  /** Their main roach and clones */
   roaches: PublicRoach[];
   /** Declarations in the last INBOX_DAYS */
   declarations: number;
@@ -103,6 +103,9 @@ export type Identity = {
 
 /** A refusal whose message can be shown to the player as is. */
 export class WorldError extends Error {}
+
+/** The action needs a signed-in player. */
+export class SignInNeeded extends WorldError {}
 
 /** Roaches that moved into or out of the radar circle in a time window. */
 export type RadarWindow = {

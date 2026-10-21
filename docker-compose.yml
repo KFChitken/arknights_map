@@ -1,6 +1,43 @@
 services:
+  # Postgres + PostGIS. imresamu/postgis is the multi-arch build of the
+  # official image (postgis/postgis has no arm64 build).
+  db:
+    image: imresamu/postgis:17-3.5
+    environment:
+      POSTGRES_USER: roach
+      POSTGRES_PASSWORD: roach
+      POSTGRES_DB: roach
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roach -d roach"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # Catches every outgoing email in development. Inbox UI on port 8025.
+  mail:
+    image: axllent/mailpit:v1.31
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
   web:
     build: .
     ports:
       - "3000:3000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://roach:roach@db:5432/roach
+      SMTP_URL: smtp://mail:1025
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  db-data:

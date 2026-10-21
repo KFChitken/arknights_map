@@ -23,8 +23,8 @@ export default function IdentitySheet({
   return (
     <Sheet title="切换测试身份" onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        现在所有数据都只存在这台设备的浏览器里。切换身份就像换个账号登录，一个人就能试完触须、被碰提示和独立宣言。上海的几位测试玩家彼此都在
-        10 公里内。
+        开发测试用：切换身份就像换个账号登录，一个人就能试完触须、被碰提示、独立宣言和触须之交。上海的几位测试玩家彼此都在 10
+        公里内。正式上线时这个按钮不会出现。
       </p>
       {GROUPS.map(([group, title]) => {
         const list = identities.filter((i) => i.group === group);
@@ -56,7 +56,7 @@ export default function IdentitySheet({
         );
       })}
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>
-        清空本地测试数据，从头开始
+        清空测试数据，从头开始
       </button>
     </Sheet>
   );

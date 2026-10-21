@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { distanceKm, fuzz } from "../fuzz";
 import { EMPTY_PROFILE } from "../profile";
-import { FUZZ_CELL_KM } from "../rules";
 import { passersby, TESTERS } from "./cast";
 import { LocalWorld, reachText } from "./local";
 import type { World } from "./types";
@@ -25,7 +23,7 @@ g.window = { addEventListener() {} };
 const PEOPLES_SQUARE = { lng: 121.4737, lat: 31.2304 };
 const tester = (id: string) => TESTERS.find((t) => t.id === id)!;
 
-let world: World;
+let world: LocalWorld;
 beforeEach(() => {
   g.localStorage = new MemoryStorage();
   world = new LocalWorld();
@@ -33,12 +31,10 @@ beforeEach(() => {
 
 const TOTAL = passersby().length + TESTERS.reduce((n, t) => n + t.roaches.length, 0);
 
-/** Find a roach in the public list by recomputing its fuzzed spot with the stored secret. */
-async function publicOf(w: World, owner: string, slot: number, trueAt: { lng: number; lat: number }) {
-  const { secret } = JSON.parse((g.localStorage as MemoryStorage).getItem("zhoup.world.v1")!);
-  const at = fuzz(trueAt, `${owner}:${slot}`, secret, FUZZ_CELL_KM);
+/** Find the roach placed at a spot in the public list. */
+async function publicAt(w: LocalWorld, at: { lng: number; lat: number }) {
   const hit = (await w.roaches()).find((r) => r.lng === at.lng && r.lat === at.lat);
-  if (!hit) throw new Error(`no public roach for ${owner}:${slot}`);
+  if (!hit) throw new Error(`no public roach at ${at.lng},${at.lat}`);
   return hit;
 }
 
@@ -50,21 +46,15 @@ describe("LocalWorld", () => {
     expect((await world.roaches()).length).toBe(TOTAL);
   });
 
-  it("never hands out another player's true position, owner or internal id", async () => {
+  it("shows other players' roaches where they were placed, without owner or internal id", async () => {
     const all = await world.roaches();
     for (const t of TESTERS) {
-      for (const p of t.roaches) {
-        expect(all.some((r) => r.lng === p.lng && r.lat === p.lat)).toBe(false);
-      }
+      for (const p of t.roaches) await publicAt(world, p);
     }
     for (const r of all.slice(0, 50)) expect(Object.keys(r).sort()).toEqual(["avatar", "clone", "color", "friend", "id", "lat", "lng"]);
-    const xujiahui = tester("t2").roaches[0];
-    const r = await publicOf(world, "t2", 0, xujiahui);
-    expect(distanceKm(r, xujiahui)).toBeLessThan(1.5);
-    expect(r).not.toMatchObject(xujiahui);
   });
 
-  it("shows your own roaches at their true position only to you", async () => {
+  it("lists your own roaches apart from everyone else's", async () => {
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const me = await world.me();
     expect(me.roaches[0]).toMatchObject(PEOPLES_SQUARE);
@@ -72,10 +62,9 @@ describe("LocalWorld", () => {
 
     await world.become("t1");
     const seen = await world.roaches();
-    expect(seen.some((r) => r.lng === PEOPLES_SQUARE.lng && r.lat === PEOPLES_SQUARE.lat)).toBe(false);
     // everyone else's roaches plus yours, minus t1's own two
     expect(seen.length).toBe(TOTAL + 1 - 2);
-    expect(await publicOf(world, "me", 0, PEOPLES_SQUARE)).toBeDefined();
+    expect(await publicAt(world, PEOPLES_SQUARE)).toBeDefined();
   });
 
   it("does not let clones point back at their main roach", async () => {
@@ -85,12 +74,12 @@ describe("LocalWorld", () => {
     expect(new Set(clones.map((r) => r.color))).toEqual(new Set(["white"]));
     expect(new Set(clones.map((r) => r.avatar))).toEqual(new Set(["hood"]));
     // main roaches show the look their owner picked
-    expect((await publicOf(world, "t3", 0, tester("t3").roaches[0])).avatar).toBe("imp");
+    expect((await publicAt(world, tester("t3").roaches[0])).avatar).toBe("imp");
     // touching two roaches of one owner gives no hint that they share an owner
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const kal = tester("t3");
-    const main = await publicOf(world, "t3", 0, kal.roaches[0]);
-    const beijingClone = await publicOf(world, "t3", 1, kal.roaches[1]);
+    const main = await publicAt(world, kal.roaches[0]);
+    const beijingClone = await publicAt(world, kal.roaches[1]);
     expect([main.clone, beijingClone.clone]).toEqual([false, true]);
     await world.touch(main.id, false);
     await expect(world.touch(beijingClone.id, false)).resolves.toEqual({ newFriend: null });
@@ -99,11 +88,11 @@ describe("LocalWorld", () => {
   it("delivers a bold touch with the toucher's profile, and a sneaky one without", async () => {
     await world.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", drPrefix: true, games: ["arknights"] });
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
-    const r1 = await publicOf(world, "t2", 0, tester("t2").roaches[0]);
+    const r1 = await publicAt(world, tester("t2").roaches[0]);
     await world.touch(r1.id, true);
     await expect(world.touch(r1.id, true)).rejects.toThrow("今天已经碰过");
 
-    const r2 = await publicOf(world, "t1", 0, tester("t1").roaches[0]);
+    const r2 = await publicAt(world, tester("t1").roaches[0]);
     await world.touch(r2.id, false);
 
     await world.become("t2");
@@ -121,7 +110,7 @@ describe("LocalWorld", () => {
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await world.placeRoach({ kind: "clone" }, { lng: 139.7, lat: 35.68 });
     await world.become("t1");
-    const clone = await publicOf(world, "me", 1, { lng: 139.7, lat: 35.68 });
+    const clone = await publicAt(world, { lng: 139.7, lat: 35.68 });
     await world.touch(clone.id, false);
 
     await world.become("me");
@@ -140,9 +129,9 @@ describe("LocalWorld", () => {
   it("shares a UID only when its owner opted in", async () => {
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await world.become("t3"); // shares UID
-    await world.touch((await publicOf(world, "me", 0, PEOPLES_SQUARE)).id, true);
+    await world.touch((await publicAt(world, PEOPLES_SQUARE)).id, true);
     await world.become("t1"); // does not
-    await world.touch((await publicOf(world, "me", 0, PEOPLES_SQUARE)).id, true);
+    await world.touch((await publicAt(world, PEOPLES_SQUARE)).id, true);
     await world.become("me");
     const items = await world.inbox();
     const froms = items.map((i) => (i.kind === "touch" ? i.from : null));
@@ -221,7 +210,7 @@ describe("LocalWorld", () => {
   it("lists passers-by someone touched as identities to step into", async () => {
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const k = passersby().findIndex((p) => p.city === "上海");
-    await world.touch((await publicOf(world, `n${k}`, 0, passersby()[k])).id, true);
+    await world.touch((await publicAt(world, passersby()[k])).id, true);
     const ids = await world.identities();
     expect(ids.find((i) => i.group === "passerby")).toMatchObject({ id: `n${k}`, unseen: 1, note: "上海" });
 
@@ -245,7 +234,7 @@ describe("LocalWorld", () => {
   it("makes two players 触须之交 once both have touched each other boldly", async () => {
     await world.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
-    const aBai = await publicOf(world, "t1", 0, tester("t1").roaches[0]);
+    const aBai = await publicAt(world, tester("t1").roaches[0]);
     expect(await world.touch(aBai.id, true)).toEqual({ newFriend: null });
 
     await world.become("t1");
@@ -254,8 +243,7 @@ describe("LocalWorld", () => {
     const [friend] = await world.friends();
     expect(friend.profile.displayName).toBe("Breeze");
     expect(friend.roaches).toHaveLength(1);
-    expect(friend.roaches[0]).toMatchObject({ friend: true, clone: false });
-    expect(friend.roaches[0].lng).not.toBe(PEOPLES_SQUARE.lng);
+    expect(friend.roaches[0]).toMatchObject({ friend: true, clone: false, ...PEOPLES_SQUARE });
 
     await world.become("me");
     const items = await world.inbox();
@@ -271,7 +259,7 @@ describe("LocalWorld", () => {
 
   it("does not count sneaky touches towards 触须之交", async () => {
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
-    await world.touch((await publicOf(world, "t2", 0, tester("t2").roaches[0])).id, false);
+    await world.touch((await publicAt(world, tester("t2").roaches[0])).id, false);
     await world.become("t2");
     const [item] = await world.inbox();
     expect(await world.reply(item.id, true)).toEqual({ newFriend: null });
@@ -280,12 +268,12 @@ describe("LocalWorld", () => {
 
   it("keeps third parties anonymous in a friend's history, and can be undone", async () => {
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
-    await world.touch((await publicOf(world, "t1", 0, tester("t1").roaches[0])).id, true);
+    await world.touch((await publicAt(world, tester("t1").roaches[0])).id, true);
     await world.become("t1");
     const [item] = await world.inbox();
     await world.reply(item.id, true);
     // 阿白 also touches Kal, a stranger to you
-    await world.touch((await publicOf(world, "t3", 0, tester("t3").roaches[0])).id, false);
+    await world.touch((await publicAt(world, tester("t3").roaches[0])).id, false);
 
     await world.become("me");
     const [f] = await world.friends();
@@ -299,7 +287,7 @@ describe("LocalWorld", () => {
     await world.become("t1");
     expect(await world.friends()).toEqual([]);
     // old touches no longer count; a fresh pair of bold touches is needed
-    const meRoach = await publicOf(world, "me", 0, PEOPLES_SQUARE);
+    const meRoach = await publicAt(world, PEOPLES_SQUARE);
     expect(await world.touch(meRoach.id, true)).toEqual({ newFriend: null });
   });
 
