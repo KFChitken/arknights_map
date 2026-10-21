@@ -1,4 +1,4 @@
-import type { RoachColor } from "./types";
+import type { RoachColor, RoachStyle } from "./types";
 
 // Front-facing chibi roach: round black hood with antennae, dark visor,
 // glowing side lights, white front with X straps, dark grey sleeves.
@@ -16,7 +16,10 @@ export const GLOW: Record<RoachColor, string> = {
 
 const LINE = "#0d0e10";
 
-export function roachSvg(color: RoachColor, opts: { mine?: boolean; size?: number } = {}) {
+type RoachOpts = { mine?: boolean; size?: number; look?: RoachStyle; rotate?: number };
+
+export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
+  if (opts.look === "real") return realRoachSvg(opts);
   const size = opts.size ?? 64;
   const glow = GLOW[color];
   const ground = opts.mine
@@ -42,6 +45,76 @@ ${ground}
 </svg>`;
 }
 
-export function roachDataUrl(color: RoachColor, opts: { mine?: boolean; size?: number } = {}) {
+// Top-down American cockroach (Periplaneta americana), head up: reddish-brown
+// wings over the abdomen, pale-rimmed pronotum shield with a dark centre,
+// six spiny legs, long antennae and a pair of cerci at the tail.
+const LEG = "#3d1c0b";
+const LEGS = [
+  // [hip, knee, foot] for the left side; the right side is mirrored
+  [[27.5, 21], [20, 18.5], [14, 11]],
+  [[26.5, 29], [16, 29.5], [8, 35]],
+  [[27, 37], [17.5, 44], [11, 58]],
+];
+
+function realRoachSvg({ mine, size = 64, rotate = 0 }: RoachOpts) {
+  const legPath = (flip: boolean) =>
+    LEGS.map((pts) => {
+      const [a, b, c] = pts.map(([x, y]) => [flip ? 64 - x : x, y]);
+      return `M${a[0]} ${a[1]} L${b[0]} ${b[1]} L${c[0]} ${c[1]}`;
+    }).join(" ");
+  // little spines on each lower leg
+  const spines = (flip: boolean) =>
+    LEGS.map((pts) => {
+      const [, b, c] = pts.map(([x, y]) => [flip ? 64 - x : x, y]);
+      return [0.35, 0.65]
+        .map((f) => {
+          const x = b[0] + (c[0] - b[0]) * f;
+          const y = b[1] + (c[1] - b[1]) * f;
+          const dx = flip ? 1.6 : -1.6;
+          return `M${x} ${y} l${dx} 0.8`;
+        })
+        .join(" ");
+    }).join(" ");
+  const ground = mine
+    ? `<ellipse cx="32" cy="34" rx="27" ry="29" fill="none" stroke="#ffd23f" stroke-width="3"/>`
+    : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">
+<defs>
+  <linearGradient id="w" x1="0" x2="1">
+    <stop offset="0" stop-color="#5a260c"/><stop offset="0.35" stop-color="#8f4a1f"/>
+    <stop offset="0.5" stop-color="#7a3a16"/><stop offset="0.65" stop-color="#8f4a1f"/>
+    <stop offset="1" stop-color="#4f210a"/>
+  </linearGradient>
+  <radialGradient id="p" cx="0.5" cy="0.55" r="0.6">
+    <stop offset="0" stop-color="#3a1808"/><stop offset="0.55" stop-color="#5e2a0e"/>
+    <stop offset="0.8" stop-color="#c79a52"/><stop offset="1" stop-color="#a87a3a"/>
+  </radialGradient>
+</defs>
+${ground}
+<g transform="rotate(${rotate} 32 32)">
+<ellipse cx="32" cy="38" rx="11" ry="20" fill="#000" opacity="0.18" transform="translate(1.5 1.5)"/>
+<g fill="none" stroke="${LEG}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="${legPath(false)} ${legPath(true)}"/>
+</g>
+<g fill="none" stroke="${LEG}" stroke-width="0.7" stroke-linecap="round">
+  <path d="${spines(false)} ${spines(true)}"/>
+</g>
+<g fill="none" stroke="#4a210c" stroke-width="0.8" stroke-linecap="round">
+  <path d="M30.5 12 C27 6 20 2.5 6 2"/><path d="M33.5 12 C37 6 44 2.5 58 2"/>
+  <path d="M30 55 L27.5 61"/><path d="M34 55 L36.5 61"/>
+</g>
+<path d="M32 19 C41 19 43 30 42.5 40 C42 50 37 58 32 59 C27 58 22 50 21.5 40 C21 30 23 19 32 19 Z" fill="url(#w)" stroke="#3a1707" stroke-width="0.8"/>
+<path d="M32 24 C31.4 36 31.6 48 32.6 58" fill="none" stroke="#3a1707" stroke-width="0.8"/>
+<path d="M26 27 C25 36 25.5 46 28 54" fill="none" stroke="#b5703a" stroke-width="0.6" opacity="0.6"/>
+<path d="M38 27 C39 36 38.5 46 36 54" fill="none" stroke="#b5703a" stroke-width="0.6" opacity="0.5"/>
+<ellipse cx="32" cy="12.5" rx="3.6" ry="3" fill="#2e1406"/>
+<ellipse cx="32" cy="20" rx="10" ry="7" fill="url(#p)" stroke="#3a1707" stroke-width="0.8"/>
+<path d="M28.5 19 C29.5 16.5 31 16.5 32 18.5 C33 16.5 34.5 16.5 35.5 19 C34.5 22 33 23 32 22 C31 23 29.5 22 28.5 19 Z" fill="#241005" opacity="0.9"/>
+<ellipse cx="28.5" cy="34" rx="1.6" ry="6" fill="#d39a62" opacity="0.25"/>
+</g>
+</svg>`;
+}
+
+export function roachDataUrl(color: RoachColor, opts: RoachOpts = {}) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(roachSvg(color, opts))}`;
 }

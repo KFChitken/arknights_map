@@ -4,7 +4,17 @@ import AMapLoader from "@amap/amap-jsapi-loader";
 import { useEffect, useRef } from "react";
 import { fromGcj, toGcj } from "@/lib/coords";
 import { roachDataUrl } from "@/lib/roachSvg";
-import type { MapViewProps, MyRoach, Roach } from "@/lib/types";
+import {
+  AGITATION,
+  CRAWL_GROUPS,
+  crawlOffset,
+  HEADINGS,
+  iconPx,
+  prefersReducedMotion,
+  SWARM_FADE_ZOOM,
+  SWARM_GRADIENT,
+} from "@/lib/swarm";
+import { ROACH_COLORS, type MapViewProps, type MyRoach, type Roach, type RoachStyle } from "@/lib/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the Amap JS API ships no official types */
 type AMapNS = any;
@@ -17,7 +27,10 @@ declare global {
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
-const ICON = 36;
+// The shadow sits on top of cartoon roaches so crowds go solid black, but under
+// real ones so their brown bodies stay visible
+const HEAT_Z = 125;
+const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
 
 let loading: Promise<AMapNS> | null = null;
@@ -29,7 +42,7 @@ function loadAMap(): Promise<AMapNS> {
     loading = AMapLoader.load({
       key: process.env.NEXT_PUBLIC_AMAP_KEY!,
       version: "2.0",
-      plugins: ["AMap.MarkerCluster", "AMap.Scale", "AMap.ToolBar"],
+      plugins: ["AMap.HeatMap", "AMap.Scale", "AMap.ToolBar"],
     }).catch((e: unknown) => {
       loading = null;
       throw e;
@@ -38,28 +51,66 @@ function loadAMap(): Promise<AMapNS> {
   return loading;
 }
 
-function clusterPoints(roaches: Roach[]) {
-  return roaches.map((r, i) => ({
-    lnglat: toGcj(r),
-    id: r.id,
-    color: r.color,
-    rot: ((i * 47) % 17) - 8,
+// MassMarks draws thousands of points on one canvas, unlike DOM markers.
+// Roaches are split into crawl groups; each group gets its own MassMarks.
+// Cartoon styles are indexed by color; real ones by pre-rendered heading.
+type MassPoint = { lng: number; lat: number; cos: number; id: string; color: number; heading: number };
+
+function massGroups(roaches: Roach[]): MassPoint[][] {
+  const groups: MassPoint[][] = Array.from({ length: CRAWL_GROUPS }, () => []);
+  roaches.forEach((r, i) => {
+    const [lng, lat] = toGcj(r);
+    groups[i % CRAWL_GROUPS].push({
+      lng,
+      lat,
+      cos: Math.cos((lat * Math.PI) / 180),
+      id: r.id,
+      color: ROACH_COLORS.indexOf(r.color),
+      heading: (i * 5) % HEADINGS.length,
+    });
+  });
+  return groups;
+}
+
+/** Shift a group by a screen offset in px at the given Amap zoom. */
+function massData(points: MassPoint[], [dx, dy]: [number, number], amapZoom: number, look: RoachStyle) {
+  const degPerPx = 360 / (256 * 2 ** amapZoom);
+  return points.map((p) => ({
+    lnglat: [p.lng + dx * degPerPx, p.lat - dy * degPerPx * p.cos],
+    id: p.id,
+    style: look === "real" ? p.heading : p.color,
   }));
 }
 
-function clusterHtml(count: number) {
-  const [size, bg] = count < 20 ? [32, "#f2c14e"] : count < 100 ? [44, "#f08a4b"] : [60, "#d1495b"];
-  const label = count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
+function massStyles(AMap: AMapNS, amapZoom: number, look: RoachStyle) {
+  const px = Math.round(iconPx(amapZoom - ZOOM_OFFSET));
+  const urls =
+    look === "real"
+      ? HEADINGS.map((rotate) => roachDataUrl("cyan", { look, rotate }))
+      : ROACH_COLORS.map((color) => roachDataUrl(color));
+  return urls.map((url) => ({
+    url,
+    size: new AMap.Size(px, px),
+    anchor: new AMap.Pixel(px / 2, px / 2),
+  }));
+}
+
+function heatData(roaches: Roach[]) {
   return {
-    size,
-    html: `<div class="amap-cluster" style="width:${size}px;height:${size}px;background:${bg}">${label}</div>`,
+    data: roaches.map((r) => {
+      const [lng, lat] = toGcj(r);
+      return { lng, lat, count: 1 };
+    }),
+    max: 12,
   };
 }
 
 export default function AmapView(props: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<AMapNS>(null);
-  const clusterRef = useRef<AMapNS>(null);
+  const massRef = useRef<AMapNS[]>([]);
+  const groupsRef = useRef<MassPoint[][]>([]);
+  const heatRef = useRef<AMapNS>(null);
   const mineRef = useRef<AMapNS>(null);
   const amapRef = useRef<AMapNS>(null);
   const propsRef = useRef(props);
@@ -76,7 +127,7 @@ export default function AmapView(props: MapViewProps) {
     if (!my) return;
     mineRef.current = new AMap.Marker({
       position: toGcj(my),
-      content: `<img src="${roachDataUrl(my.color, { mine: true })}" width="${MINE_ICON}" height="${MINE_ICON}" alt="我的蟑螂"/>`,
+      content: `<img src="${roachDataUrl(my.color, { mine: true, look: propsRef.current.look })}" width="${MINE_ICON}" height="${MINE_ICON}" alt="我的蟑螂"/>`,
       offset: new AMap.Pixel(-MINE_ICON / 2, -MINE_ICON / 2),
       zIndex: 300,
       bubble: true,
@@ -87,6 +138,7 @@ export default function AmapView(props: MapViewProps) {
   useEffect(() => {
     let cancelled = false;
     let map: AMapNS = null;
+    let crawlTimer = 0;
 
     loadAMap()
       .then((AMap) => {
@@ -104,36 +156,58 @@ export default function AmapView(props: MapViewProps) {
         map.addControl(new AMap.Scale());
         map.addControl(new AMap.ToolBar({ position: "RB" }));
 
-        const cluster = new AMap.MarkerCluster(map, clusterPoints(propsRef.current.roaches), {
-          gridSize: 60,
-          maxZoom: 13,
-          renderClusterMarker(ctx: AMapNS) {
-            const { size, html } = clusterHtml(ctx.count);
-            ctx.marker.setContent(html);
-            ctx.marker.setOffset(new AMap.Pixel(-size / 2, -size / 2));
-          },
-          renderMarker(ctx: AMapNS) {
-            const d = ctx.data[0];
-            ctx.marker.setContent(
-              `<img src="${roachDataUrl(d.color)}" width="${ICON}" height="${ICON}" style="transform:rotate(${d.rot}deg)" alt=""/>`,
-            );
-            ctx.marker.setOffset(new AMap.Pixel(-ICON / 2, -ICON / 2));
-          },
+        // Dark swarm under the icons so crowded cities read as covered in roaches
+        const heat = new AMap.HeatMap(map, {
+          radius: 22,
+          zIndex: HEAT_Z,
+          opacity: [0, 0.85],
+          gradient: SWARM_GRADIENT,
+          zooms: [2, SWARM_FADE_ZOOM + ZOOM_OFFSET],
         });
-        cluster.on("click", (e: AMapNS) => {
-          const data = e.clusterData ?? [];
-          if (data.length > 1) {
-            map.setZoomAndCenter(Math.min(map.getZoom() + 2, 18), e.lnglat);
-          } else if (data.length === 1) {
-            const r = propsRef.current.roaches.find((x) => x.id === data[0].id);
-            if (r) propsRef.current.onRoachClick(r);
-          }
+        heat.setDataSet(heatData(propsRef.current.roaches));
+        heatRef.current = heat;
+
+        groupsRef.current = massGroups(propsRef.current.roaches);
+        let lastHit = 0;
+        const onMassClick = (e: AMapNS) => {
+          lastHit = Date.now();
+          const r = propsRef.current.roaches.find((x) => x.id === e.data?.id);
+          // defer so a map click fired for the same tap cannot clear the selection
+          if (r) window.setTimeout(() => propsRef.current.onRoachClick(r), 0);
+        };
+        massRef.current = groupsRef.current.map((points) => {
+          const { look } = propsRef.current;
+          const mass = new AMap.MassMarks(massData(points, [0, 0], map.getZoom(), look), {
+            zIndex: massZ(look),
+            zooms: [2, 20],
+            cursor: "pointer",
+            style: massStyles(AMap, map.getZoom(), look),
+          });
+          mass.setMap(map);
+          mass.on("click", onMassClick);
+          return mass;
         });
-        clusterRef.current = cluster;
+        map.on("zoomchange", () => {
+          const style = massStyles(AMap, map.getZoom(), propsRef.current.look);
+          massRef.current.forEach((m) => m.setStyle(style));
+        });
+
+        // Redraw one group per tick, round robin, to keep each frame light
+        let tick = 0;
+        if (!prefersReducedMotion()) {
+          crawlTimer = window.setInterval(() => {
+            const g = tick++ % CRAWL_GROUPS;
+            const z = map.getZoom();
+            const { look } = propsRef.current;
+            const off = crawlOffset(g, performance.now(), iconPx(z - ZOOM_OFFSET) / 24, AGITATION[look]);
+            massRef.current[g]?.setData(massData(groupsRef.current[g], off, z, look));
+          }, 25);
+        }
 
         placeMine(propsRef.current.myRoach);
 
         map.on("click", (e: AMapNS) => {
+          if (Date.now() - lastHit < 300) return;
           propsRef.current.onMapClick(fromGcj(e.lnglat.getLng(), e.lnglat.getLat()));
         });
 
@@ -159,8 +233,10 @@ export default function AmapView(props: MapViewProps) {
 
     return () => {
       cancelled = true;
-      clusterRef.current?.setMap(null);
-      clusterRef.current = null;
+      window.clearInterval(crawlTimer);
+      massRef.current.forEach((m) => m.setMap(null));
+      massRef.current = [];
+      heatRef.current = null;
       mineRef.current = null;
       map?.destroy();
       mapRef.current = null;
@@ -168,8 +244,25 @@ export default function AmapView(props: MapViewProps) {
   }, []);
 
   useEffect(() => {
-    clusterRef.current?.setData(clusterPoints(props.roaches));
+    if (!mapRef.current) return;
+    groupsRef.current = massGroups(props.roaches);
+    const z = mapRef.current.getZoom();
+    massRef.current.forEach((m, g) => m.setData(massData(groupsRef.current[g], [0, 0], z, props.look)));
+    heatRef.current?.setDataSet(heatData(props.roaches));
   }, [props.roaches]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !amapRef.current) return;
+    const style = massStyles(amapRef.current, map.getZoom(), props.look);
+    massRef.current.forEach((m, g) => {
+      m.setzIndex(massZ(props.look));
+      m.setStyle(style);
+      m.setData(massData(groupsRef.current[g], [0, 0], map.getZoom(), props.look));
+    });
+    placeMine(propsRef.current.myRoach);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.look]);
 
   useEffect(() => {
     placeMine(props.myRoach);

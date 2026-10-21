@@ -27,6 +27,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 6px;
   background: #ffffff1f; color: #ffffffcc; white-space: nowrap;
 }
+.switches { display: flex; gap: 6px; flex-shrink: 0; }
+@media (max-width: 440px) { .brand .tag { display: none; } }
 .basemap-switch { display: flex; border: 1px solid #ffffff40; border-radius: 999px; overflow: hidden; flex-shrink: 0; }
 .basemap-switch button { border: 0; padding: 5px 12px; background: transparent; color: #fff; font-size: 13px; }
 .basemap-switch button.on { background: var(--accent); color: var(--ink); font-weight: 700; }
@@ -71,13 +73,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .disclaimer {
   position: absolute; z-index: 10; left: 0; right: 0; bottom: 8px; margin: 0;
   text-align: center; font-size: 11px; color: #00000099; pointer-events: none;
-}
-
-/* 高德聚合点 */
-.amap-cluster {
-  display: flex; align-items: center; justify-content: center; border-radius: 50%;
-  border: 3px solid #fff; color: #2b1d10; font-weight: 700; font-size: 13px;
-  box-shadow: 0 1px 4px #0004;
 }
 
 /* 把地图自带控件让到底部按钮上方 */

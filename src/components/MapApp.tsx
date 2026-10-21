@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
 import { generateFakeRoaches } from "@/lib/fakeRoaches";
+import { loadLook, saveLook } from "@/lib/look";
 import { loadMyRoach, saveMyRoach } from "@/lib/myRoach";
 import { roachDataUrl } from "@/lib/roachSvg";
 import {
@@ -15,6 +16,7 @@ import {
   type MapView,
   type MyRoach,
   type Roach,
+  type RoachStyle,
 } from "@/lib/types";
 
 const MaplibreView = dynamic(() => import("./MaplibreView"), { ssr: false });
@@ -26,6 +28,7 @@ const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 export default function MapApp() {
   const roaches = useMemo(() => generateFakeRoaches(), []);
   const [basemap, setBasemap] = useState<Basemap | null>(null);
+  const [look, setLook] = useState<RoachStyle>("cartoon");
   const [myRoach, setMyRoach] = useState<MyRoach | null>(null);
   const [placing, setPlacing] = useState(false);
   const [visible, setVisible] = useState<number | null>(null);
@@ -40,6 +43,7 @@ export default function MapApp() {
     const mine = loadMyRoach();
     viewRef.current = mine ? { lng: mine.lng, lat: mine.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
     setMyRoach(mine);
+    setLook(loadLook());
     setBasemap(b);
   }, []);
 
@@ -53,6 +57,11 @@ export default function MapApp() {
     if (b === basemap) return;
     saveBasemap(b);
     setBasemap(b);
+  };
+
+  const switchLook = (l: RoachStyle) => {
+    saveLook(l);
+    setLook(l);
   };
 
   const onViewChange = useCallback(
@@ -100,6 +109,7 @@ export default function MapApp() {
   const mapProps = {
     roaches,
     myRoach,
+    look,
     initialView: viewRef.current,
     placing,
     focus,
@@ -113,22 +123,32 @@ export default function MapApp() {
     <main className="app">
       <header className="topbar">
         <div className="brand">
-          <img src={roachDataUrl(myRoach?.color ?? "cyan")} width={28} height={28} alt="" />
+          <img src={roachDataUrl(myRoach?.color ?? "cyan", { look })} width={28} height={28} alt="" />
           <span>舟p蟑螂地图</span>
           <span className="tag">原型 · 演示数据</span>
         </div>
-        <div className="basemap-switch" role="group" aria-label="底图">
-          <button
-            className={basemap === "amap" ? "on" : ""}
-            onClick={() => switchBasemap("amap")}
-            disabled={!amapConfigured}
-            title={amapConfigured ? "国内底图" : "没有配置高德 Key"}
-          >
-            高德
-          </button>
-          <button className={basemap === "osm" ? "on" : ""} onClick={() => switchBasemap("osm")}>
-            OSM
-          </button>
+        <div className="switches">
+          <div className="basemap-switch" role="group" aria-label="蟑螂外观">
+            <button className={look === "cartoon" ? "on" : ""} onClick={() => switchLook("cartoon")}>
+              卡通
+            </button>
+            <button className={look === "real" ? "on" : ""} onClick={() => switchLook("real")}>
+              写实
+            </button>
+          </div>
+          <div className="basemap-switch" role="group" aria-label="底图">
+            <button
+              className={basemap === "amap" ? "on" : ""}
+              onClick={() => switchBasemap("amap")}
+              disabled={!amapConfigured}
+              title={amapConfigured ? "国内底图" : "没有配置高德 Key"}
+            >
+              高德
+            </button>
+            <button className={basemap === "osm" ? "on" : ""} onClick={() => switchBasemap("osm")}>
+              OSM
+            </button>
+          </div>
         </div>
       </header>
 
@@ -151,7 +171,7 @@ export default function MapApp() {
 
       {selected && (
         <div className="card" role="dialog">
-          <img src={roachDataUrl(selected.color)} width={56} height={56} alt="" />
+          <img src={roachDataUrl(selected.color, { look })} width={56} height={56} alt="" />
           <div>
             <strong>一只匿名舟p</strong>
             <p className="muted">互相关注后才能看到 TA 的游戏 ID。资料卡功能马上就来。</p>

@@ -16,6 +16,9 @@ export type MapView = LngLat & { zoom: number };
 
 export type Basemap = "amap" | "osm";
 
+/** cartoon: the chibi hood roach; real: a drawn top-down cockroach. */
+export type RoachStyle = "cartoon" | "real";
+
 /** Color of the hood side lights; every roach wears the same black hood. */
 export const ROACH_COLORS = [
   "cyan",
@@ -33,6 +36,7 @@ export type RoachColor = (typeof ROACH_COLORS)[number];
 export type MapViewProps = {
   roaches: Roach[];
   myRoach: MyRoach | null;
+  look: RoachStyle;
   initialView: MapView;
   placing: boolean;
   focus: MapFocus | null;
