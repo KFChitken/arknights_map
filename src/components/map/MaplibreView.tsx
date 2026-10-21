@@ -3,7 +3,8 @@
 import maplibregl, { type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
-import { roachDataUrl } from "@/lib/roachSvg";
+import { roachImageData } from "@/lib/roachImages";
+import type { RoachOpts } from "@/lib/roachSvg";
 import {
   AGITATION,
   CRAWL_GROUPS,
@@ -15,7 +16,7 @@ import {
   SWARM_FADE_ZOOM,
   SWARM_GRADIENT,
 } from "@/lib/swarm";
-import { ROACH_COLORS, type RoachColor, type RoachStyle } from "@/lib/types";
+import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -46,11 +47,12 @@ function roachImage(look: RoachStyle) {
       ["case", ["get", "clone"], "clone-real", "real"],
     ];
   }
+  const icon = (kind: string) => ["concat", kind, "-", ["get", "avatar"], "-", ["get", "color"]];
   return [
     "case",
     ["get", "friend"],
-    ["case", ["get", "clone"], "friendclone", ["concat", "friend-", ["get", "color"]]],
-    ["case", ["get", "clone"], "clone", ["concat", "roach-", ["get", "color"]]],
+    ["case", ["get", "clone"], "friendclone", icon("friend")],
+    ["case", ["get", "clone"], "clone", icon("roach")],
   ];
 }
 function roachRotate(look: RoachStyle) {
@@ -59,35 +61,56 @@ function roachRotate(look: RoachStyle) {
 function mineImage(look: RoachStyle) {
   return look === "real"
     ? ["case", [">", ["get", "slot"], 0], "mineclone-real", "mine-real"]
-    : ["concat", ["case", [">", ["get", "slot"], 0], "mineclone-", "mine-"], ["get", "color"]];
+    : [
+        "concat",
+        ["case", [">", ["get", "slot"], 0], "mineclone-", "mine-"],
+        ["get", "avatar"],
+        "-",
+        ["get", "color"],
+      ];
 }
 
-const IMAGES: [string, string][] = [
-  ["real", roachDataUrl("cyan", { look: "real" })],
-  ["clone-real", roachDataUrl("cyan", { look: "real", clone: true })],
-  ["mine-real", roachDataUrl("cyan", { look: "real", mine: true })],
-  ["mineclone-real", roachDataUrl("cyan", { look: "real", mine: true, clone: true })],
-  ["friend-real", roachDataUrl("cyan", { look: "real", friend: true })],
-  ["friendclone-real", roachDataUrl("cyan", { look: "real", friend: true, clone: true })],
-  ["clone", roachDataUrl("white", { clone: true })],
-  ["friendclone", roachDataUrl("white", { clone: true, friend: true })],
-  ...ROACH_COLORS.flatMap((c): [string, string][] => [
-    [`roach-${c}`, roachDataUrl(c)],
-    [`friend-${c}`, roachDataUrl(c, { friend: true })],
-    [`mine-${c}`, roachDataUrl(c, { mine: true })],
-    [`mineclone-${c}`, roachDataUrl(c, { mine: true, clone: true })],
-  ]),
-];
+/**
+ * Icon ids: real / clone-real / mine-real / ... for the realistic roach,
+ * clone and friendclone for other players' clones, and
+ * <roach|friend|mine|mineclone>-<avatar>-<color> for everything else.
+ */
+function imageSpec(id: string): [RoachColor, RoachOpts] {
+  if (id.endsWith("real")) {
+    const kind = id.slice(0, -"real".length);
+    const flags = { mine: kind.startsWith("mine"), friend: kind.startsWith("friend"), clone: kind.includes("clone") };
+    return ["cyan", { look: "real", ...flags }];
+  }
+  if (id === "clone" || id === "friendclone") return ["white", { clone: true, friend: id === "friendclone" }];
+  const [kind, avatar, color] = id.split("-") as [string, RoachAvatar, RoachColor];
+  return [color, { avatar, mine: kind.startsWith("mine"), clone: kind === "mineclone", friend: kind === "friend" }];
+}
 
-async function svgToImageData(url: string, size: number) {
-  const img = new Image();
-  img.src = url;
-  await img.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(img, 0, 0, size, size);
-  return ctx.getImageData(0, 0, size, size);
+/** The icons the current data needs, so only those get drawn. */
+function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "myAvatar" | "myColor" | "look">) {
+  const ids = new Set<string>();
+  if (p.look === "real") {
+    for (const id of ["real", "clone-real", "friend-real", "friendclone-real", "mine-real", "mineclone-real"]) ids.add(id);
+    return ids;
+  }
+  for (const r of p.roaches) {
+    if (r.clone) ids.add(r.friend ? "friendclone" : "clone");
+    else ids.add(`${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`);
+  }
+  for (const r of p.mine) ids.add(`${r.slot > 0 ? "mineclone" : "mine"}-${p.myAvatar}-${p.myColor}`);
+  return ids;
+}
+
+async function ensureImages(map: maplibregl.Map, ids: Set<string>) {
+  await Promise.all(
+    [...ids]
+      .filter((id) => !map.hasImage(id))
+      .map((id) =>
+        roachImageData(...imageSpec(id), ICON_PX).then((d) => {
+          if (!map.hasImage(id)) map.addImage(id, d, { pixelRatio: 2 });
+        }),
+      ),
+  );
 }
 
 function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
@@ -101,6 +124,7 @@ function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
         // a fixed slight tilt per roach so the crowd looks alive
         properties: {
           id: r.id,
+          avatar: r.avatar,
           color: r.color,
           clone: r.clone,
           friend: r.friend,
@@ -113,13 +137,13 @@ function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
   };
 }
 
-function mineGeoJSON(mine: OwnRoach[], color: RoachColor): GeoJSON.FeatureCollection {
+function mineGeoJSON(mine: OwnRoach[], avatar: RoachAvatar, color: RoachColor): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
     features: mine.map((r) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-      properties: { id: r.id, slot: r.slot, color },
+      properties: { id: r.id, slot: r.slot, avatar, color },
     })),
   };
 }
@@ -128,8 +152,29 @@ export default function MaplibreView(props: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
+  const syncRef = useRef<Promise<void>>(Promise.resolve());
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // Draw any icons the latest data needs, then hand the data to the map; queued so updates land in order
+  const sync = () => {
+    syncRef.current = syncRef.current
+      .then(async () => {
+        const map = mapRef.current;
+        if (!map || !readyRef.current) return;
+        const p = propsRef.current;
+        await ensureImages(map, neededImages(p));
+        if (mapRef.current !== map) return;
+        (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
+        (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.myAvatar, p.myColor));
+        for (const id of ROACH_LAYERS) {
+          map.setLayoutProperty(id, "icon-image", roachImage(p.look) as never);
+          map.setLayoutProperty(id, "icon-rotate", roachRotate(p.look) as never);
+        }
+        map.setLayoutProperty("mine", "icon-image", mineImage(p.look) as never);
+      })
+      .catch((e) => console.error(e));
+  };
 
   useEffect(() => {
     const { initialView } = propsRef.current;
@@ -176,15 +221,10 @@ export default function MaplibreView(props: MapViewProps) {
     };
 
     map.on("load", async () => {
-      await Promise.all(
-        IMAGES.map(([name, url]) =>
-          svgToImageData(url, ICON_PX).then((d) => map.addImage(name, d, { pixelRatio: 2 })),
-        ),
-      );
-
-      const { roaches, mine, myColor, look } = propsRef.current;
+      await ensureImages(map, neededImages(propsRef.current));
+      const { roaches, mine, myAvatar, myColor, look } = propsRef.current;
       map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
-      map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, myColor) });
+      map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, myAvatar, myColor) });
 
       // Dark swarm under the icons so crowded cities read as covered in roaches
       const ramp = Object.entries(SWARM_GRADIENT)
@@ -273,27 +313,8 @@ export default function MaplibreView(props: MapViewProps) {
     };
   }, []);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(props.roaches));
-  }, [props.roaches]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(props.mine, props.myColor));
-  }, [props.mine, props.myColor]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    for (const id of ROACH_LAYERS) {
-      map.setLayoutProperty(id, "icon-image", roachImage(props.look) as never);
-      map.setLayoutProperty(id, "icon-rotate", roachRotate(props.look) as never);
-    }
-    map.setLayoutProperty("mine", "icon-image", mineImage(props.look) as never);
-  }, [props.look]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(sync, [props.roaches, props.mine, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -1,5 +1,5 @@
 import type { Game } from "./games";
-import type { RoachColor } from "./types";
+import type { RoachAvatar, RoachColor } from "./types";
 
 /** Everything a player can fill in about themselves. Only the owner ever sees all of it. */
 export type Profile = {
@@ -12,6 +12,7 @@ export type Profile = {
   uid: Record<Game, string>;
   /** Show the UIDs to players this player touches boldly */
   shareUid: boolean;
+  avatar: RoachAvatar;
   color: RoachColor;
 };
 
@@ -24,6 +25,7 @@ export type PublicProfile = {
   games: Game[];
   favourites: Record<Game, string[]>;
   uid?: Partial<Record<Game, string>>;
+  avatar: RoachAvatar;
   color: RoachColor;
 };
 
@@ -35,6 +37,7 @@ export const EMPTY_PROFILE: Profile = {
   favourites: { arknights: [], endfield: [] },
   uid: { arknights: "", endfield: "" },
   shareUid: false,
+  avatar: "hood",
   color: "cyan",
 };
 

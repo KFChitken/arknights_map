@@ -57,7 +57,7 @@ describe("LocalWorld", () => {
         expect(all.some((r) => r.lng === p.lng && r.lat === p.lat)).toBe(false);
       }
     }
-    for (const r of all.slice(0, 50)) expect(Object.keys(r).sort()).toEqual(["clone", "color", "friend", "id", "lat", "lng"]);
+    for (const r of all.slice(0, 50)) expect(Object.keys(r).sort()).toEqual(["avatar", "clone", "color", "friend", "id", "lat", "lng"]);
     const xujiahui = tester("t2").roaches[0];
     const r = await publicOf(world, "t2", 0, xujiahui);
     expect(distanceKm(r, xujiahui)).toBeLessThan(1.5);
@@ -83,6 +83,9 @@ describe("LocalWorld", () => {
     const clones = all.filter((r) => r.clone);
     expect(clones.length).toBe(TESTERS.reduce((n, t) => n + t.roaches.length - 1, 0));
     expect(new Set(clones.map((r) => r.color))).toEqual(new Set(["white"]));
+    expect(new Set(clones.map((r) => r.avatar))).toEqual(new Set(["hood"]));
+    // main roaches show the look their owner picked
+    expect((await publicOf(world, "t3", 0, tester("t3").roaches[0])).avatar).toBe("imp");
     // touching two roaches of one owner gives no hint that they share an owner
     await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const kal = tester("t3");
@@ -298,6 +301,35 @@ describe("LocalWorld", () => {
     // old touches no longer count; a fresh pair of bold touches is needed
     const meRoach = await publicOf(world, "me", 0, PEOPLES_SQUARE);
     expect(await world.touch(meRoach.id, true)).toEqual({ newFriend: null });
+  });
+
+  it("runs the radar around your main roach, counting arrivals and departures across its edge", async () => {
+    expect(await world.radar()).toBeNull();
+    await world.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const before = (await world.radar())!;
+    expect(before.radiusKm).toBe(100);
+    expect(before.roaches).toBeGreaterThan(100);
+    expect(before.players).toBeLessThanOrEqual(before.roaches);
+    expect(before.daily).toHaveLength(7);
+    expect(before.week.arrived).toBeGreaterThan(0);
+    expect(before.week.arrived).toBeGreaterThanOrEqual(before.day.arrived);
+
+    // 小林 leaves Shanghai for Beijing; Dr. 夜莺厨 (Beijing) drops a clone in Shanghai
+    await world.become("t2");
+    const [xiaolin] = (await world.me()).roaches;
+    await world.placeRoach({ kind: "move", roachId: xiaolin.id }, { lng: 116.4, lat: 39.9 });
+    await world.become("t4");
+    await world.placeRoach({ kind: "clone" }, { lng: 121.45, lat: 31.22 });
+    await world.become("me");
+    const after = (await world.radar())!;
+    expect(after.day.left).toBe(before.day.left + 1);
+    expect(after.day.arrived).toBe(before.day.arrived + 1);
+    expect(after.day.clones).toBe(before.day.clones + 1);
+    expect(after.daily[6].left).toBe(before.daily[6].left + 1);
+
+    // your own moves never show up on your radar
+    await world.placeRoach({ kind: "clone" }, { lng: 121.5, lat: 31.3 });
+    expect((await world.radar())!.day).toEqual(after.day);
   });
 
   it("buckets the declaration head count", () => {

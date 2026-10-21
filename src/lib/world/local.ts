@@ -13,13 +13,14 @@ import {
   MAX_CLONES,
   MAX_FAVOURITES,
   NAME_MAX,
+  RADAR_RADIUS_KM,
   TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
   UID_MAX,
 } from "../rules";
 import { titlesFor } from "../titles";
-import { ROACH_COLORS, type LngLat, type RoachColor } from "../types";
-import { passerbyIndex, passerbyProfile, passersby, TESTERS } from "./cast";
+import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor } from "../types";
+import { passerbyIndex, passerbyMoves, passerbyProfile, passersby, TESTERS, type Move } from "./cast";
 import {
   WorldError,
   type Friend,
@@ -31,6 +32,8 @@ import {
   type PlaceTarget,
   type PlayerId,
   type PublicRoach,
+  type Radar,
+  type RadarWindow,
   type TouchResult,
   type World,
 } from "./types";
@@ -52,6 +55,7 @@ const DAY = 24 * HOUR;
 const MAX_DECLARATIONS_KEPT = 300;
 const FRIEND_HISTORY = 30;
 const CLONE_COLOR: RoachColor = "white";
+const CLONE_AVATAR: RoachAvatar = "hood";
 
 type StoredRoach = LngLat & { id: string; owner: PlayerId; slot: number; pub: string };
 type StoredTouch = {
@@ -84,10 +88,12 @@ type State = {
   friendships: StoredFriendship[];
   /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship */
   cuts: Record<string, number>;
+  /** Placements, moves and removals, for the radar */
+  moves: Move[];
 };
 
 /** A roach with both its true and its public position, as only this module sees it. */
-type Placed = StoredRoach & { color: RoachColor; pubLng: number; pubLat: number };
+type Placed = StoredRoach & { avatar: RoachAvatar; color: RoachColor; pubLng: number; pubLat: number };
 
 function randomHex(bytes: number) {
   // crypto.randomUUID needs a secure context, which a phone on http://<LAN IP> is not
@@ -134,6 +140,8 @@ export class LocalWorld implements World {
           // fields added after the first local version
           st.friendships ??= [];
           st.cuts ??= {};
+          st.moves ??= [];
+          for (const p of Object.values(st.profiles)) p.avatar ??= "hood";
           return st;
         }
       }
@@ -155,11 +163,16 @@ export class LocalWorld implements World {
       declarations: [],
       friendships: [],
       cuts: {},
+      moves: [],
     };
-    for (const t of TESTERS) {
+    const now = Date.now();
+    TESTERS.forEach((t, i) => {
       st.profiles[t.id] = t.profile;
-      t.roaches.forEach((p, slot) => st.roaches.push({ ...p, id: randomHex(8), owner: t.id, slot, pub: randomHex(8) }));
-    }
+      t.roaches.forEach((p, slot) => {
+        st.roaches.push({ ...p, id: randomHex(8), owner: t.id, slot, pub: randomHex(8) });
+        st.moves.push({ owner: t.id, slot, from: null, to: { lng: p.lng, lat: p.lat }, at: now - (i * 7 + slot + 1) * HOUR });
+      });
+    });
     // Carry over the roach placed with the first prototype, once
     try {
       const old = importLegacy && JSON.parse(localStorage.getItem(LEGACY_KEY) ?? "null");
@@ -205,7 +218,8 @@ export class LocalWorld implements World {
     const { secret } = this.st;
     const list: Placed[] = this.st.roaches.map((r) => {
       const pub = fuzz(r, `${r.owner}:${r.slot}`, secret, FUZZ_CELL_KM);
-      return { ...r, color: this.profileOf(r.owner).color, pubLng: pub.lng, pubLat: pub.lat };
+      const { avatar, color } = this.profileOf(r.owner);
+      return { ...r, avatar, color, pubLng: pub.lng, pubLat: pub.lat };
     });
     const materialized = new Set(this.st.materialized);
     for (const p of passersby()) {
@@ -216,8 +230,8 @@ export class LocalWorld implements World {
         cached = { pub: hashHex(`${secret}|pub|${p.id}`), pubLng: at.lng, pubLat: at.lat };
         this.passerbyPub.set(p.id, cached);
       }
-      const color = this.st.profiles[p.id]?.color ?? p.color;
-      list.push({ lng: p.lng, lat: p.lat, id: `${p.id}-0`, owner: p.id, slot: 0, color, ...cached });
+      const { avatar, color } = this.st.profiles[p.id] ?? passerbyProfile(p);
+      list.push({ lng: p.lng, lat: p.lat, id: `${p.id}-0`, owner: p.id, slot: 0, avatar, color, ...cached });
     }
     this.placedCache = { rev: this.rev, list, byPub: new Map(list.map((r) => [r.pub, r])) };
     return this.placedCache;
@@ -239,6 +253,7 @@ export class LocalWorld implements World {
       games: p.games,
       favourites: { arknights: p.games.includes("arknights") ? p.favourites.arknights : [], endfield: p.games.includes("endfield") ? p.favourites.endfield : [] },
       uid: Object.keys(uid).length ? uid : undefined,
+      avatar: p.avatar,
       color: p.color,
     };
   }
@@ -269,6 +284,11 @@ export class LocalWorld implements World {
     if (!bold(a, b) || !bold(b, a)) return null;
     this.st.friendships.push({ a, b, at: now, seen: [a] });
     return displayName(this.profileOf(b));
+  }
+
+  private logMove(m: Move) {
+    this.st.moves = this.st.moves.filter((x) => m.at - x.at < INBOX_DAYS * DAY);
+    this.st.moves.push(m);
   }
 
   private replied(by: PlayerId, itemId: string) {
@@ -311,9 +331,17 @@ export class LocalWorld implements World {
   }
 
   private publicRoach(r: Placed, friend: boolean): PublicRoach {
-    // clones all look alike, so a clone's color cannot point at its main roach
-    const color = r.slot > 0 ? CLONE_COLOR : r.color;
-    return { id: r.pub, clone: r.slot > 0, color, friend, lng: r.pubLng, lat: r.pubLat };
+    // clones all look alike, so a clone's look cannot point at its main roach
+    const clone = r.slot > 0;
+    return {
+      id: r.pub,
+      clone,
+      avatar: clone ? CLONE_AVATAR : r.avatar,
+      color: clone ? CLONE_COLOR : r.color,
+      friend,
+      lng: r.pubLng,
+      lat: r.pubLat,
+    };
   }
 
   async saveProfile(input: Profile): Promise<Profile> {
@@ -336,6 +364,7 @@ export class LocalWorld implements World {
       favourites,
       uid,
       shareUid: input.shareUid,
+      avatar: ROACH_AVATARS.includes(input.avatar) ? input.avatar : EMPTY_PROFILE.avatar,
       color: ROACH_COLORS.includes(input.color) ? input.color : EMPTY_PROFILE.color,
     };
     this.st.profiles[this.st.current] = profile;
@@ -372,6 +401,8 @@ export class LocalWorld implements World {
       roach = mine.find((r) => r.id === target.roachId);
       if (!roach) throw new WorldError("找不到这只蟑螂了。");
     }
+    const from = roach.pub ? { lng: roach.lng, lat: roach.lat } : null;
+    this.logMove({ owner, slot: roach.slot, from, to: at, at: Date.now() });
     roach.lng = at.lng;
     roach.lat = at.lat;
     // A fresh public id on every move, so nobody can follow a roach between spots
@@ -385,9 +416,10 @@ export class LocalWorld implements World {
     this.materialize(owner);
     const roach = this.st.roaches.find((r) => r.owner === owner && r.id === roachId);
     if (!roach) throw new WorldError("找不到这只蟑螂了。");
-    this.st.roaches = this.st.roaches.filter(
-      (r) => !(r.owner === owner && (roach.slot === 0 || r.id === roachId)),
-    );
+    const gone = this.st.roaches.filter((r) => r.owner === owner && (roach.slot === 0 || r.id === roachId));
+    const now = Date.now();
+    for (const r of gone) this.logMove({ owner, slot: r.slot, from: { lng: r.lng, lat: r.lat }, to: null, at: now });
+    this.st.roaches = this.st.roaches.filter((r) => !gone.includes(r));
     this.commit();
     return this.ownRoaches(owner);
   }
@@ -578,6 +610,65 @@ export class LocalWorld implements World {
     this.st.friendships = this.st.friendships.filter((x) => x !== f);
     this.st.cuts[pairKey(f.a, f.b)] = Date.now();
     this.commit();
+  }
+
+  async radar(): Promise<Radar | null> {
+    const me = this.st.current;
+    const { list } = this.placed();
+    const center = list.find((r) => r.owner === me && r.slot === 0);
+    if (!center) return null;
+    const now = Date.now();
+    const inside = (p: LngLat | null) => Boolean(p && distanceKm(center, p) <= RADAR_RADIUS_KM);
+
+    // Counted from the same fuzzed positions everyone sees on the map
+    const near = list.filter((r) => r.owner !== me && inside({ lng: r.pubLng, lat: r.pubLat }));
+    const nearOwners = new Set(near.map((r) => r.owner));
+
+    // Arrivals and departures across the circle's edge, by other players
+    const crossings = [...passerbyMoves(now), ...this.st.moves]
+      .filter((m) => m.owner !== me && now - m.at < 7 * DAY)
+      .flatMap((m) => {
+        const wasIn = inside(m.from);
+        const isIn = inside(m.to);
+        if (wasIn === isIn) return [];
+        return [{ at: m.at, arrived: isIn, newcomer: isIn && !m.from && m.slot === 0, clone: m.slot > 0 }];
+      });
+    const tally = (since: number): RadarWindow => {
+      const w = crossings.filter((c) => c.at > since);
+      return {
+        arrived: w.filter((c) => c.arrived).length,
+        left: w.filter((c) => !c.arrived).length,
+        newcomers: w.filter((c) => c.newcomer).length,
+        clones: w.filter((c) => c.arrived && c.clone).length,
+      };
+    };
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    const daily = Array.from({ length: 7 }, (_, i) => {
+      const start = new Date(midnight);
+      start.setDate(start.getDate() - (6 - i));
+      const from = start.getTime();
+      const to = i === 6 ? Infinity : from + DAY;
+      const w = crossings.filter((c) => c.at >= from && c.at < to);
+      return { start: from, arrived: w.filter((c) => c.arrived).length, left: w.filter((c) => !c.arrived).length };
+    });
+    const arrivals = crossings.filter((c) => c.arrived).map((c) => c.at);
+    const friends = this.friendsOf(me);
+
+    return {
+      radiusKm: RADAR_RADIUS_KM,
+      roaches: near.length,
+      clones: near.filter((r) => r.slot > 0).length,
+      players: nearOwners.size,
+      day: tally(now - DAY),
+      week: tally(now - 7 * DAY),
+      daily,
+      touches: this.st.touches.filter((t) => now - t.at < DAY && nearOwners.has(t.to)).length,
+      declarations: this.st.declarations.filter((d) => now - d.at < DAY && nearOwners.has(d.from)).length,
+      friendsNearby: [...friends].filter((f) => nearOwners.has(f)).length,
+      lastArrivalAt: arrivals.length ? Math.max(...arrivals) : null,
+      demo: true,
+    };
   }
 
   async identities(): Promise<Identity[]> {

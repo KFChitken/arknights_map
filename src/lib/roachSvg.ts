@@ -1,8 +1,9 @@
-import type { RoachColor, RoachStyle } from "./types";
+import type { RoachAvatar, RoachColor, RoachStyle } from "./types";
 
-// Front-facing chibi roach: round black hood with antennae, dark visor,
-// glowing side lights, white front with X straps, dark grey sleeves.
-// The color option only changes the side lights.
+// Front-facing chibi roach (the "hood" look): round black hood with antennae,
+// dark visor, glowing side lights, white front with X straps, dark grey sleeves.
+// The color option only changes the side lights. The other cartoon looks are
+// pictures drawn on top of the same ground (see roachImages.ts).
 export const GLOW: Record<RoachColor, string> = {
   cyan: "#3fd0d4",
   pink: "#ff7eb6",
@@ -20,7 +21,17 @@ const LINE = "#0d0e10";
  * clone: a see-through look shared by every clone, so a clone cannot be matched to its main roach.
  * friend: a pink ground and a heart, for roaches of your 触须之交.
  */
-type RoachOpts = { mine?: boolean; clone?: boolean; friend?: boolean; size?: number; look?: RoachStyle; rotate?: number };
+export type RoachOpts = {
+  avatar?: RoachAvatar;
+  /** Draw only the ground under the roach, or only what goes on top of it (the heart) */
+  part?: "ground" | "overlay";
+  mine?: boolean;
+  clone?: boolean;
+  friend?: boolean;
+  size?: number;
+  look?: RoachStyle;
+  rotate?: number;
+};
 
 const FRIEND = "#ff7eb6";
 const HEART = `<path d="M54 17 C48.5 13 47.5 8.5 50.5 7 C52.4 6.1 53.6 7.3 54 8.5 C54.4 7.3 55.6 6.1 57.5 7 C60.5 8.5 59.5 13 54 17 Z" fill="#ff4f8b" stroke="#fff" stroke-width="1.2"/>`;
@@ -46,10 +57,29 @@ export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
     : opts.clone
       ? `<ellipse cx="32" cy="59.5" rx="21" ry="3.2" fill="none" stroke="#1b1d22" stroke-width="1.5"${dash} opacity="0.6"/>`
       : `<ellipse cx="32" cy="59.5" rx="20" ry="3" fill="#000" opacity="0.18"/>`;
+  const body = BODIES[shownAvatar(opts)]?.(glow) ?? "";
+  const heart = opts.friend && !opts.mine ? HEART : "";
+  const parts =
+    opts.part === "ground"
+      ? ground
+      : opts.part === "overlay"
+        ? heart
+        : `${ground}\n<g opacity="${bodyOpacity(opts.mine, opts.clone)}">\n${body}\n</g>\n${heart}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">
-${ground}
-<g opacity="${bodyOpacity(opts.mine, opts.clone)}">
-<g fill="none" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round">
+${parts}
+</svg>`;
+}
+
+/** Clones of other players all wear the plain hood, whatever their owner picked. */
+export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine">): RoachAvatar {
+  return opts.clone && !opts.mine ? "hood" : (opts.avatar ?? "hood");
+}
+
+export const bodyOpacityFor = (opts: Pick<RoachOpts, "mine" | "clone">) => bodyOpacity(opts.mine, opts.clone);
+
+// Only the hood is drawn here; the other looks are pictures (see roachImages.ts)
+const BODIES: Partial<Record<RoachAvatar, (accent: string) => string>> = {
+  hood: (glow) => `<g fill="none" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round">
   <path d="M27 14 C24 7 17 3 8 4"/><path d="M36 13 C38 6 43 2 51 2"/>
 </g>
 <rect x="9" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"/>
@@ -63,11 +93,8 @@ ${ground}
 <ellipse cx="22.5" cy="33.5" rx="2.2" ry="1.1" fill="#ff8fa3" opacity="0.85"/>
 <ellipse cx="41.5" cy="33.5" rx="2.2" ry="1.1" fill="#ff8fa3" opacity="0.85"/>
 <rect x="11" y="35" width="6" height="4" rx="2" fill="${glow}"/>
-<rect x="47" y="35" width="6" height="4" rx="2" fill="${glow}"/>
-</g>
-${opts.friend && !opts.mine ? HEART : ""}
-</svg>`;
-}
+<rect x="47" y="35" width="6" height="4" rx="2" fill="${glow}"/>`,
+};
 
 // Top-down American cockroach (Periplaneta americana), head up: reddish-brown
 // wings over the abdomen, pale-rimmed pronotum shield with a dark centre,

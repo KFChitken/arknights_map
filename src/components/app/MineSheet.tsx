@@ -1,13 +1,14 @@
 "use client";
 
-import { roachDataUrl } from "@/lib/roachSvg";
 import { MAX_CLONES } from "@/lib/rules";
-import type { RoachColor, RoachStyle } from "@/lib/types";
+import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import Sheet from "./Sheet";
+import RoachIcon from "../RoachIcon";
 
 export default function MineSheet({
   roaches,
+  avatar,
   color,
   look,
   onFind,
@@ -18,6 +19,7 @@ export default function MineSheet({
   onClose,
 }: {
   roaches: OwnRoach[];
+  avatar: RoachAvatar;
   color: RoachColor;
   look: RoachStyle;
   onFind: (r: OwnRoach) => void;
@@ -34,7 +36,7 @@ export default function MineSheet({
     <Sheet title="我的蟑螂" onClose={onClose}>
       {main ? (
         <div className="list-row">
-          <img src={roachDataUrl(color, { mine: true, look })} width={40} height={40} alt="" />
+          <RoachIcon color={color} size={40} avatar={avatar} mine look={look} />
           <div>
             <strong>蟑螂本体</strong>
             <p className="muted">别人看到的是约 1 公里外的大概位置</p>
@@ -59,7 +61,7 @@ export default function MineSheet({
       </h3>
       {clones.map((c, i) => (
         <div className="list-row" key={c.id}>
-          <img src={roachDataUrl(color, { mine: true, clone: true, look })} width={40} height={40} alt="" />
+          <RoachIcon color={color} size={40} avatar={avatar} mine clone look={look} />
           <div>
             <strong>克隆体 {i + 1}</strong>
           </div>

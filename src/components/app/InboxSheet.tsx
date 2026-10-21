@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { GAME_NAMES } from "@/lib/games";
 import type { PublicProfile } from "@/lib/profile";
-import { roachDataUrl } from "@/lib/roachSvg";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
 import Sheet from "./Sheet";
+import RoachIcon from "../RoachIcon";
 
 export type InboxTab = "messages" | "friends";
 
@@ -159,7 +159,7 @@ export default function InboxSheet({
           )}
           {friends.map((f) => (
             <button key={f.id} className="list-row friend-row" onClick={() => onOpenFriend(f.id)}>
-              <img src={roachDataUrl(f.profile.color, { friend: true })} width={40} height={40} alt="" />
+              <RoachIcon color={f.profile.color} size={40} avatar={f.profile.avatar} friend />
               <div>
                 <strong>{f.profile.displayName}</strong>
                 <p className="muted">
@@ -194,7 +194,7 @@ export function ProfileView({ profile, onBack, onClose }: { profile: PublicProfi
   return (
     <Sheet title="TA 的资料" onBack={onBack} onClose={onClose}>
       <div className="who-card">
-        <img src={roachDataUrl(profile.color)} width={52} height={52} alt="" />
+        <RoachIcon color={profile.color} size={52} avatar={profile.avatar} />
         <strong>{profile.displayName}</strong>
       </div>
       <ProfileDetails profile={profile} />
@@ -237,7 +237,7 @@ export function FriendView({
   return (
     <Sheet title="触须之交" onBack={onBack} onClose={onClose}>
       <div className="who-card">
-        <img src={roachDataUrl(profile.color, { friend: true })} width={52} height={52} alt="" />
+        <RoachIcon color={profile.color} size={52} avatar={profile.avatar} friend />
         <div>
           <strong>{profile.displayName}</strong>
           <p className="hint">{ago(friend.since)}成为触须之交</p>
@@ -249,7 +249,7 @@ export function FriendView({
       {friend.roaches.length === 0 && <p className="hint">TA 现在没有放蟑螂。</p>}
       {friend.roaches.map((r, i) => (
         <div className="list-row" key={r.id}>
-          <img src={roachDataUrl(r.color, { friend: true, clone: r.clone })} width={36} height={36} alt="" />
+          <RoachIcon color={r.color} size={36} avatar={r.avatar} friend clone={r.clone} />
           <div>
             <strong>{r.clone ? `克隆体 ${i}` : "本体"}</strong>
           </div>

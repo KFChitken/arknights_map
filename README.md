@@ -13,14 +13,15 @@ Players in the community jokingly call themselves "roaches" because there seem t
 | World map with two basemaps behind one URL (Amap inside mainland China, MapLibre + OpenStreetMap elsewhere), auto-selected with a manual switch | Prototype |
 | Swarm view: every roach is drawn and twitches, and a dark heat layer makes crowded cities look covered in roaches; cartoon or realistic roaches | Prototype |
 | Place a main roach and up to three clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | Prototype (stored in the browser) |
-| Profile: a name with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID | Prototype (stored in the browser) |
+| Profile: a name with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | Prototype (stored in the browser) |
 | Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told on their next visit and can touch back | Prototype (stored in the browser) |
 | Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches (still fuzzed), declaration count and recent activity; either side can end it | Prototype (stored in the browser) |
 | Declarations: a canned shout such as "Arknights, start!" or "I'm &lt;favourite&gt;'s &lt;title&gt;" to every player with a roach within 10 km | Prototype (stored in the browser) |
 | Test identities: step into other players' shoes on one device to try touches and declarations | Development aid |
 | Email sign-in, server-side storage | Planned |
 | Follow requests that need approval, block and report | Planned |
-| "Ark Radar" nearby counts and your roach's travel trail | Planned |
+| Ark Radar: how many roaches are within 100 km of your main roach, how many crawled in or left in the last day and week, newcomers, nearby touches and declarations | Prototype (demo movement for the passers-by) |
+| Your roach's travel trail | Planned |
 
 ## Privacy by design
 
@@ -33,7 +34,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 - **Friendship is opt-in on both sides.** Only two bold touches, one each way, make players friends; sneaky touches never count. Friends see each other's roaches at the same fuzzed positions as everyone else, and other players in a friend's activity stay anonymous.
 - **Clones cannot be traced back.** Every clone looks the same, gets a new public id whenever it moves, and is listed in random order, so nobody but the owner's friends can tell which main roach it belongs to. Touching a clone reaches its owner without revealing anything about them.
 - **Blocking hides you completely** from the blocked player's map and radar.
-- **The radar shows ranges, never distances** ("10–20 roaches within 5 km"), because exact distances allow trilateration.
+- **The radar shows counts, never distances or directions**, because exact distances allow trilateration. It counts from the same fuzzed positions everyone sees on the map, over a 100 km circle, so it reveals nothing the map does not.
 - **Public venues** (conventions, merch shops) are the only places that can be marked precisely.
 
 ## Tech stack
@@ -69,6 +70,12 @@ npm run dev
 Open http://localhost:3000. To try it on a phone, connect the phone to the same Wi-Fi and open `http://<your computer's IP>:3000`.
 
 The 👤 button at the top switches between test identities: yourself, a few test players (the Shanghai ones are within 10 km of each other) and any passer-by you touched. Switching works like signing in as that player, so touches, the next-visit notice and declarations can all be tried on one device. Everything is stored in that browser only, and the switcher can wipe it.
+
+To add another picture look, cut the character out of its white background and shrink it with:
+
+```bash
+node scripts/cutout.mjs <original.png> public/avatars/<name>.png 256
+```
 
 Run the unit tests (location fuzzing and the data layer):
 

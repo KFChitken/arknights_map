@@ -22,3 +22,6 @@ export const TOUCH_SAME_ROACH_HOURS = 24;
 
 /** Inbox items older than this are not shown. */
 export const INBOX_DAYS = 30;
+
+/** 方舟雷达 scans this far around your main roach. */
+export const RADAR_RADIUS_KM = 100;

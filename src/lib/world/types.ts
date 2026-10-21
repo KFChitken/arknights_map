@@ -1,6 +1,6 @@
 import type { Declaration } from "../declarations";
 import type { Profile, PublicProfile } from "../profile";
-import type { LngLat, RoachColor } from "../types";
+import type { LngLat, RoachAvatar, RoachColor } from "../types";
 
 /**
  * The data layer the UI talks to. Today it is backed by the browser
@@ -28,6 +28,8 @@ export interface World {
   /** 触须之交: players you and they have both touched boldly. */
   friends(): Promise<Friend[]>;
   unfriend(friendId: string): Promise<void>;
+  /** 方舟雷达 around your main roach: counts only, never distances or directions. Null without a main roach. */
+  radar(): Promise<Radar | null>;
 
   // Local testing only: step into other players' shoes on one device
   identities(): Promise<Identity[]>;
@@ -43,7 +45,13 @@ export type PlaceTarget = { kind: "main" } | { kind: "clone" } | { kind: "move";
 export type OwnRoach = LngLat & { id: string; slot: number };
 
 /** Someone else's roach as you see it. friend: it belongs to one of your 触须之交. */
-export type PublicRoach = LngLat & { id: string; clone: boolean; color: RoachColor; friend: boolean };
+export type PublicRoach = LngLat & {
+  id: string;
+  clone: boolean;
+  avatar: RoachAvatar;
+  color: RoachColor;
+  friend: boolean;
+};
 
 /** newFriend: the other player's name when this touch made you 触须之交 */
 export type TouchResult = { newFriend: string | null };
@@ -95,3 +103,32 @@ export type Identity = {
 
 /** A refusal whose message can be shown to the player as is. */
 export class WorldError extends Error {}
+
+/** Roaches that moved into or out of the radar circle in a time window. */
+export type RadarWindow = {
+  arrived: number;
+  left: number;
+  /** Arrivals that were a player's first roach */
+  newcomers: number;
+  /** Arrivals that were clones */
+  clones: number;
+};
+
+export type Radar = {
+  radiusKm: number;
+  /** Other players' roaches inside the circle right now */
+  roaches: number;
+  clones: number;
+  players: number;
+  day: RadarWindow;
+  week: RadarWindow;
+  /** The last 7 days, oldest first; start is the local midnight of that day */
+  daily: { start: number; arrived: number; left: number }[];
+  /** In the last 24 hours, among players with a roach inside the circle */
+  touches: number;
+  declarations: number;
+  friendsNearby: number;
+  lastArrivalAt: number | null;
+  /** Part of the movement is made-up demo data */
+  demo: boolean;
+};

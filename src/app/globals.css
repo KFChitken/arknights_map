@@ -218,3 +218,56 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .friend-row .chev { color: var(--muted); font-size: 20px; }
 .event { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f0f1f3; font-size: 14px; }
 .event .muted { flex-shrink: 0; font-size: 12px; }
+
+/* ---- 方舟雷达 ---- */
+.radar-btn {
+  position: absolute; z-index: 10; top: 140px; right: 12px; display: flex; flex-direction: column; align-items: center;
+  width: 64px; padding: 7px 0 6px; border: 0; border-radius: 14px; background: var(--ink);
+  box-shadow: 0 2px 10px #0004; line-height: 1;
+}
+.radar-btn small { margin-top: 5px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.radar { display: flex; align-items: center; gap: 14px; margin: 4px 0 6px; }
+.radar-scope {
+  position: relative; display: block; flex-shrink: 0; width: 92px; height: 92px; overflow: hidden; border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 29%, #3fd0d455 30%, transparent 31%, transparent 59%, #3fd0d455 60%, transparent 61%),
+    radial-gradient(circle, #10251f 0%, #0b1512 100%);
+  box-shadow: inset 0 0 0 2px #3fd0d488;
+}
+.radar-scope::before, .radar-scope::after { content: ""; position: absolute; background: #3fd0d433; }
+.radar-scope::before { left: 50%; top: 0; bottom: 0; width: 1px; }
+.radar-scope::after { top: 50%; left: 0; right: 0; height: 1px; }
+.radar-sweep {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, #3fd0d4cc, #3fd0d400 70deg, transparent 360deg);
+  animation: radar-spin 2.4s linear infinite;
+}
+.radar-scope.mini { width: 40px; height: 40px; }
+@keyframes radar-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .radar-sweep { animation: none; } }
+.radar-count { display: flex; flex-direction: column; font-size: 13px; }
+.radar-count strong { font-size: 30px; line-height: 1.15; }
+.radar-mood { margin: 6px 0 0; padding: 9px 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.stat { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border-radius: 12px; background: #f6f7f9; }
+.stat strong { font-size: 18px; }
+.stat span { font-size: 12px; color: var(--muted); }
+.week-chart { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
+.week-chart .day { display: flex; flex-direction: column; align-items: center; font-size: 11px; }
+.week-chart .bars { display: flex; align-items: flex-end; gap: 2px; height: 70px; }
+.week-chart .bars span { width: 9px; min-height: 2px; border-radius: 3px 3px 0 0; }
+.week-chart .in, .legend .in { background: #2bb3b8; }
+.week-chart .out, .legend .out { background: #ff9f43; }
+.week-chart .n { color: var(--muted); }
+.week-chart .label { margin-top: 2px; font-weight: 600; }
+.legend i { display: inline-block; width: 10px; height: 10px; margin: 0 3px 0 8px; border-radius: 2px; vertical-align: -1px; }
+.legend i:first-child { margin-left: 0; }
+.radar-facts { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; }
+
+/* ---- avatar picker ---- */
+.avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.avatars button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px;
+  border: 2px solid #e5e7eb; border-radius: 12px; background: #fff; font-size: 13px;
+}
+.avatars button.on { border-color: var(--ink); background: #fffbea; font-weight: 700; }

@@ -3,7 +3,7 @@ import type { Game } from "../games";
 import { isOperator, OPERATORS } from "../operators";
 import { EMPTY_PROFILE, type Profile } from "../profile";
 import { mulberry32 } from "../prng";
-import type { LngLat, RoachColor } from "../types";
+import type { LngLat, RoachAvatar, RoachColor } from "../types";
 import type { PlayerId } from "./types";
 
 /**
@@ -25,6 +25,32 @@ export function passersby(): Passerby[] {
     city: r.city,
   }));
   return passers;
+}
+
+/** A roach arriving somewhere (from null: newly placed) or leaving (to null: taken back). */
+export type Move = { owner: PlayerId; slot: number; from: LngLat | null; to: LngLat | null; at: number };
+
+const HOUR = 3_600_000;
+const WEEK = 7 * 24 * HOUR;
+
+/**
+ * Made-up recent history for the demo swarm, so the radar has something to
+ * show: about a quarter of the passers-by arrived in the last week, most of
+ * them new players and the rest moved over from where another passer-by is.
+ * Times hang off the current hour, so the demo stays fresh but stable.
+ */
+export function passerbyMoves(now: number): Move[] {
+  const anchor = Math.floor(now / HOUR) * HOUR;
+  const all = passersby();
+  const moves: Move[] = [];
+  for (const p of all) {
+    const rand = mulberry32(0xbeef + p.index * 7919);
+    if (rand() > 0.25) continue;
+    const at = anchor - Math.floor(rand() * WEEK);
+    const from = rand() < 0.6 ? null : all[Math.floor(rand() * all.length)];
+    moves.push({ owner: p.id, slot: 0, from: from && { lng: from.lng, lat: from.lat }, to: { lng: p.lng, lat: p.lat }, at });
+  }
+  return moves;
 }
 
 export function passerbyIndex(id: PlayerId) {
@@ -60,8 +86,11 @@ export function passerbyProfile(p: Passerby): Profile {
   const favs = (g: Game) =>
     games.includes(g) ? [...new Set(Array.from({ length: 1 + Math.floor(rand() * 3) }, () => pick(OPERATORS[g])))] : [];
   const anonymous = rand() < 0.4;
+  const a = rand();
+  const avatar: RoachAvatar = a < 0.4 ? "hood" : a < 0.6 ? "doctor" : a < 0.8 ? "endmin" : "imp";
   return {
     ...EMPTY_PROFILE,
+    avatar,
     anonymous,
     name: pick(NICKNAMES),
     drPrefix: rand() < 0.5,
@@ -111,6 +140,7 @@ export const TESTERS: Tester[] = [
       drPrefix: true,
       games: ["arknights", "endfield"],
       favourites: { arknights: ["能天使", "德克萨斯"], endfield: ["佩丽卡"] },
+      avatar: "doctor",
       color: "pink",
     },
   ),
@@ -118,6 +148,7 @@ export const TESTERS: Tester[] = [
     name: "小林",
     games: ["endfield"],
     favourites: { endfield: ["陈千语", "管理员"] },
+    avatar: "endmin",
     color: "green",
   }),
   tester(
@@ -135,6 +166,7 @@ export const TESTERS: Tester[] = [
       favourites: { arknights: ["银灰", "史尔特尔", "W"] },
       uid: { arknights: "12345678" },
       shareUid: true,
+      avatar: "imp",
       color: "gold",
     },
   ),
@@ -158,7 +190,8 @@ export const TESTERS: Tester[] = [
       name: "Lumi",
       games: ["arknights", "endfield"],
       favourites: { arknights: ["阿米娅"], endfield: ["艾尔黛拉", "莱万汀"] },
-      color: "cyan",
+      avatar: "endmin",
+      color: "gold",
     },
   ),
 ];

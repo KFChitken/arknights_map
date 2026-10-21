@@ -8,7 +8,6 @@ import type { Declaration } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
 import type { Profile, PublicProfile } from "@/lib/profile";
-import { roachDataUrl } from "@/lib/roachSvg";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { LocalWorld } from "@/lib/world/local";
 import {
@@ -20,6 +19,7 @@ import {
   type OwnRoach,
   type PlaceTarget,
   type PublicRoach,
+  type Radar,
   type World,
 } from "@/lib/world/types";
 import DeclareSheet from "./app/DeclareSheet";
@@ -28,7 +28,9 @@ import InboxSheet, { FriendView, ProfileView, type InboxTab } from "./app/InboxS
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
+import RadarSheet from "./app/RadarSheet";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
+import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
 const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
@@ -44,7 +46,8 @@ type Panel =
   /** items is a snapshot taken on open, so new ones stay highlighted after they are marked seen */
   | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab }
   | { kind: "viewProfile"; profile: PublicProfile; back: Panel }
-  | { kind: "friend"; friendId: string; back: Panel | null };
+  | { kind: "friend"; friendId: string; back: Panel | null }
+  | { kind: "radar"; radar: Radar | null };
 
 type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
 
@@ -240,6 +243,11 @@ export default function MapApp() {
     );
   };
 
+  const openRadar = async () => {
+    setSelected(null);
+    setPanel({ kind: "radar", radar: await worldRef.current!.radar() });
+  };
+
   const findFriendRoach = (roach: PublicRoach) => {
     setPanel(null);
     setFocus({ lng: roach.lng, lat: roach.lat, zoom: 13, nonce: Date.now() });
@@ -291,6 +299,7 @@ export default function MapApp() {
   };
 
   const myColor = me?.profile.color ?? "cyan";
+  const myAvatar = me?.profile.avatar ?? "hood";
   const main = me?.roaches.find((r) => r.slot === 0);
   const unseen = inbox.filter((i) => !i.seen).length;
   const current = identities.find((i) => i.current);
@@ -309,6 +318,7 @@ export default function MapApp() {
   const mapProps = {
     roaches,
     mine: me?.roaches ?? [],
+    myAvatar,
     myColor,
     look,
     initialView: viewRef.current,
@@ -330,6 +340,7 @@ export default function MapApp() {
         return (
           <MineSheet
             roaches={me.roaches}
+            avatar={myAvatar}
             color={myColor}
             look={look}
             onFind={find}
@@ -379,6 +390,10 @@ export default function MapApp() {
       }
       case "viewProfile":
         return <ProfileView profile={p.profile} onBack={() => setPanel(p.back)} onClose={() => setPanel(null)} />;
+      case "radar":
+        return (
+          <RadarSheet radar={p.radar} onPlaceMain={() => startPlacing({ kind: "main" })} onClose={() => setPanel(null)} />
+        );
       case "identity":
         return (
           <IdentitySheet identities={identities} onBecome={become} onReset={reset} onClose={() => setPanel(null)} />
@@ -390,7 +405,7 @@ export default function MapApp() {
     <main className="app">
       <header className="topbar">
         <div className="brand">
-          <img src={roachDataUrl(myColor, { look })} width={28} height={28} alt="" />
+          <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
           <span>舟p蟑螂地图</span>
           <span className="tag">原型 · 本地测试</span>
         </div>
@@ -432,6 +447,15 @@ export default function MapApp() {
         </div>
       )}
 
+      {!placing && me && (
+        <button className="radar-btn" onClick={openRadar}>
+          <span className="radar-scope mini" aria-hidden="true">
+            <span className="radar-sweep" />
+          </span>
+          <small>方舟雷达</small>
+        </button>
+      )}
+
       <div className="map-wrap">
         {basemap === "amap" && <AmapView key="amap" {...mapProps} />}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
@@ -464,6 +488,7 @@ export default function MapApp() {
         <MyRoachCard
           roach={selected.roach}
           index={(me?.roaches.filter((r) => r.slot > 0).findIndex((r) => r.id === selected.roach.id) ?? -1) + 1}
+          avatar={myAvatar}
           color={myColor}
           look={look}
           onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}

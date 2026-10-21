@@ -1,8 +1,8 @@
 "use client";
 
-import { roachDataUrl } from "@/lib/roachSvg";
-import type { RoachColor, RoachStyle } from "@/lib/types";
+import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
+import RoachIcon from "../RoachIcon";
 
 /** Tapped someone else's roach: offer the two ways to touch it. */
 export function OtherRoachCard({
@@ -31,7 +31,7 @@ export function OtherRoachCard({
   return (
     <div className="card stack" role="dialog" aria-label="伸出触须">
       <div className="card-head">
-        <img src={roachDataUrl(roach.color, { clone: roach.clone, friend: roach.friend, look })} width={44} height={44} alt="" />
+        <RoachIcon color={roach.color} size={44} avatar={roach.avatar} clone={roach.clone} friend={roach.friend} look={look} />
         <div>
           <strong>{title}</strong>
           <p className="muted">
@@ -67,6 +67,7 @@ export function OtherRoachCard({
 export function MyRoachCard({
   roach,
   index,
+  avatar,
   color,
   look,
   onMove,
@@ -76,6 +77,7 @@ export function MyRoachCard({
   roach: OwnRoach;
   /** 1-based clone number; ignored for the main roach */
   index: number;
+  avatar: RoachAvatar;
   color: RoachColor;
   look: RoachStyle;
   onMove: () => void;
@@ -86,7 +88,7 @@ export function MyRoachCard({
   return (
     <div className="card stack" role="dialog" aria-label="我的蟑螂">
       <div className="card-head">
-        <img src={roachDataUrl(color, { mine: true, clone, look })} width={44} height={44} alt="" />
+        <RoachIcon color={color} size={44} avatar={avatar} mine clone={clone} look={look} />
         <div>
           <strong>{clone ? `你的克隆体 ${index}` : "你的蟑螂本体"}</strong>
           <p className="muted">

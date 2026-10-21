@@ -1,5 +1,5 @@
 import { hash128 } from "@/lib/prng";
-import type { LngLat, MapFocus, MapView, RoachColor, RoachStyle } from "@/lib/types";
+import type { LngLat, MapFocus, MapView, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 
 /** Shared interface implemented by both the Amap and the MapLibre view. */
@@ -8,6 +8,7 @@ export type MapViewProps = {
   roaches: PublicRoach[];
   /** Your own roaches at their true positions */
   mine: OwnRoach[];
+  myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
   initialView: MapView;

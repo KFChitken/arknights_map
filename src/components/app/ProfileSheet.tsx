@@ -4,10 +4,18 @@ import { useMemo, useState } from "react";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
 import { OPERATORS } from "@/lib/operators";
 import { displayName, type Profile } from "@/lib/profile";
-import { GLOW, roachDataUrl } from "@/lib/roachSvg";
+import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
-import { ROACH_COLORS, type RoachColor } from "@/lib/types";
+import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import Sheet from "./Sheet";
+import RoachIcon from "../RoachIcon";
+
+const AVATAR_NAMES: Record<RoachAvatar, string> = {
+  hood: "兜帽",
+  doctor: "博士",
+  endmin: "管理员",
+  imp: "小恶魔",
+};
 
 const COLOR_NAMES: Record<RoachColor, string> = {
   cyan: "青色",
@@ -54,7 +62,7 @@ export default function ProfileSheet({
       }
     >
       <div className="who-card">
-        <img src={roachDataUrl(p.color)} width={52} height={52} alt="" />
+        <RoachIcon color={p.color} size={52} avatar={p.avatar} />
         <div>
           <strong>{displayName(p)}</strong>
           <p className="hint">只有你大胆伸出触须时，对方才看得到这里的资料。位置永远不会给别人看。</p>
@@ -140,6 +148,25 @@ export default function ProfileSheet({
       )}
 
       <fieldset>
+        <legend>蟑螂形象</legend>
+        <div className="avatars" role="radiogroup" aria-label="蟑螂形象">
+          {ROACH_AVATARS.map((a) => (
+            <button
+              key={a}
+              role="radio"
+              aria-checked={p.avatar === a}
+              className={p.avatar === a ? "on" : ""}
+              onClick={() => set({ avatar: a })}
+            >
+              <RoachIcon color={p.color} size={56} avatar={a} />
+              <span>{AVATAR_NAMES[a]}</span>
+            </button>
+          ))}
+        </div>
+        <p className="hint">地图切到写实版时，大家都是一样的真蟑螂。</p>
+      </fieldset>
+
+      <fieldset>
         <legend>蟑螂颜色</legend>
         <div className="colors" role="radiogroup" aria-label="蟑螂颜色">
           {ROACH_COLORS.map((c) => (
@@ -154,6 +181,7 @@ export default function ProfileSheet({
             />
           ))}
         </div>
+        <p className="hint">颜色只改兜帽形象两边的灯；博士、管理员和小恶魔用的是原画，颜色不变。</p>
       </fieldset>
     </Sheet>
   );
