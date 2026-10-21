@@ -16,17 +16,39 @@ export const GLOW: Record<RoachColor, string> = {
 
 const LINE = "#0d0e10";
 
-type RoachOpts = { mine?: boolean; size?: number; look?: RoachStyle; rotate?: number };
+/**
+ * clone: a see-through look shared by every clone, so a clone cannot be matched to its main roach.
+ * friend: a pink ground and a heart, for roaches of your 触须之交.
+ */
+type RoachOpts = { mine?: boolean; clone?: boolean; friend?: boolean; size?: number; look?: RoachStyle; rotate?: number };
+
+const FRIEND = "#ff7eb6";
+const HEART = `<path d="M54 17 C48.5 13 47.5 8.5 50.5 7 C52.4 6.1 53.6 7.3 54 8.5 C54.4 7.3 55.6 6.1 57.5 7 C60.5 8.5 59.5 13 54 17 Z" fill="#ff4f8b" stroke="#fff" stroke-width="1.2"/>`;
+
+const CLONE_OPACITY = 0.55;
+// your own clones stay a bit more solid so you can tell them from other players' clones
+const MINE_CLONE_OPACITY = 0.75;
+const bodyOpacity = (mine?: boolean, clone?: boolean) => (clone ? (mine ? MINE_CLONE_OPACITY : CLONE_OPACITY) : 1);
 
 export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
   if (opts.look === "real") return realRoachSvg(opts);
   const size = opts.size ?? 64;
-  const glow = GLOW[color];
+  const glow = GLOW[opts.clone && !opts.mine ? "white" : color];
+  const dash = opts.clone ? ` stroke-dasharray="4 3"` : "";
   const ground = opts.mine
-    ? `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="#ffd23f" stroke="${LINE}" stroke-width="1.5"/>`
-    : `<ellipse cx="32" cy="59.5" rx="20" ry="3" fill="#000" opacity="0.18"/>`;
+    ? opts.clone
+      ? `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="#ffd23f55" stroke="#ffd23f" stroke-width="2"${dash}/>`
+      : `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="#ffd23f" stroke="${LINE}" stroke-width="1.5"/>`
+    : opts.friend
+      ? opts.clone
+        ? `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="${FRIEND}55" stroke="${FRIEND}" stroke-width="2"${dash}/>`
+        : `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="${FRIEND}" stroke="${LINE}" stroke-width="1.5"/>`
+    : opts.clone
+      ? `<ellipse cx="32" cy="59.5" rx="21" ry="3.2" fill="none" stroke="#1b1d22" stroke-width="1.5"${dash} opacity="0.6"/>`
+      : `<ellipse cx="32" cy="59.5" rx="20" ry="3" fill="#000" opacity="0.18"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">
 ${ground}
+<g opacity="${bodyOpacity(opts.mine, opts.clone)}">
 <g fill="none" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round">
   <path d="M27 14 C24 7 17 3 8 4"/><path d="M36 13 C38 6 43 2 51 2"/>
 </g>
@@ -42,6 +64,8 @@ ${ground}
 <ellipse cx="41.5" cy="33.5" rx="2.2" ry="1.1" fill="#ff8fa3" opacity="0.85"/>
 <rect x="11" y="35" width="6" height="4" rx="2" fill="${glow}"/>
 <rect x="47" y="35" width="6" height="4" rx="2" fill="${glow}"/>
+</g>
+${opts.friend && !opts.mine ? HEART : ""}
 </svg>`;
 }
 
@@ -56,7 +80,7 @@ const LEGS = [
   [[27, 37], [17.5, 44], [11, 58]],
 ];
 
-function realRoachSvg({ mine, size = 64, rotate = 0 }: RoachOpts) {
+function realRoachSvg({ mine, clone, friend, size = 64, rotate = 0 }: RoachOpts) {
   const legPath = (flip: boolean) =>
     LEGS.map((pts) => {
       const [a, b, c] = pts.map(([x, y]) => [flip ? 64 - x : x, y]);
@@ -75,8 +99,9 @@ function realRoachSvg({ mine, size = 64, rotate = 0 }: RoachOpts) {
         })
         .join(" ");
     }).join(" ");
-  const ground = mine
-    ? `<ellipse cx="32" cy="34" rx="27" ry="29" fill="none" stroke="#ffd23f" stroke-width="3"/>`
+  const ring = mine ? "#ffd23f" : friend ? FRIEND : null;
+  const ground = ring
+    ? `<ellipse cx="32" cy="34" rx="27" ry="29" fill="none" stroke="${ring}" stroke-width="3"${clone ? ` stroke-dasharray="6 4"` : ""}/>`
     : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">
 <defs>
@@ -91,7 +116,7 @@ function realRoachSvg({ mine, size = 64, rotate = 0 }: RoachOpts) {
   </radialGradient>
 </defs>
 ${ground}
-<g transform="rotate(${rotate} 32 32)">
+<g transform="rotate(${rotate} 32 32)" opacity="${bodyOpacity(mine, clone)}">
 <ellipse cx="32" cy="38" rx="11" ry="20" fill="#000" opacity="0.18" transform="translate(1.5 1.5)"/>
 <g fill="none" stroke="${LEG}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
   <path d="${legPath(false)} ${legPath(true)}"/>
@@ -112,6 +137,7 @@ ${ground}
 <path d="M28.5 19 C29.5 16.5 31 16.5 32 18.5 C33 16.5 34.5 16.5 35.5 19 C34.5 22 33 23 32 22 C31 23 29.5 22 28.5 19 Z" fill="#241005" opacity="0.9"/>
 <ellipse cx="28.5" cy="34" rx="1.6" ry="6" fill="#d39a62" opacity="0.25"/>
 </g>
+${friend && !mine ? HEART : ""}
 </svg>`;
 }
 

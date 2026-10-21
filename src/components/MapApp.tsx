@@ -1,57 +1,150 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
-import { generateFakeRoaches } from "@/lib/fakeRoaches";
+import type { Declaration } from "@/lib/declarations";
+import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
-import { loadMyRoach, saveMyRoach } from "@/lib/myRoach";
+import type { Profile, PublicProfile } from "@/lib/profile";
 import { roachDataUrl } from "@/lib/roachSvg";
+import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
+import { LocalWorld } from "@/lib/world/local";
 import {
-  ROACH_COLORS,
-  type Basemap,
-  type LngLat,
-  type MapFocus,
-  type MapView,
-  type MyRoach,
-  type Roach,
-  type RoachStyle,
-} from "@/lib/types";
+  WorldError,
+  type Friend,
+  type Identity,
+  type InboxItem,
+  type Me,
+  type OwnRoach,
+  type PlaceTarget,
+  type PublicRoach,
+  type World,
+} from "@/lib/world/types";
+import DeclareSheet from "./app/DeclareSheet";
+import IdentitySheet from "./app/IdentitySheet";
+import InboxSheet, { FriendView, ProfileView, type InboxTab } from "./app/InboxSheet";
+import MineSheet from "./app/MineSheet";
+import PlaceBar from "./app/PlaceBar";
+import ProfileSheet from "./app/ProfileSheet";
+import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 
-const MaplibreView = dynamic(() => import("./MaplibreView"), { ssr: false });
-const AmapView = dynamic(() => import("./AmapView"), { ssr: false });
+const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
+const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
 
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
 const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 
+type Panel =
+  | { kind: "profile" }
+  | { kind: "mine" }
+  | { kind: "declare" }
+  | { kind: "identity" }
+  /** items is a snapshot taken on open, so new ones stay highlighted after they are marked seen */
+  | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab }
+  | { kind: "viewProfile"; profile: PublicProfile; back: Panel }
+  | { kind: "friend"; friendId: string; back: Panel | null };
+
+type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
+
+type Placing = { target: PlaceTarget; label: string };
+
+const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
+  main: "点地图放下你的蟑螂本体",
+  clone: "点地图放一只克隆体",
+  move: "点地图给它挪个窝",
+};
+
 export default function MapApp() {
-  const roaches = useMemo(() => generateFakeRoaches(), []);
+  const worldRef = useRef<World | null>(null);
   const [basemap, setBasemap] = useState<Basemap | null>(null);
   const [look, setLook] = useState<RoachStyle>("cartoon");
-  const [myRoach, setMyRoach] = useState<MyRoach | null>(null);
-  const [placing, setPlacing] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
+  const [roaches, setRoaches] = useState<PublicRoach[]>([]);
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [identities, setIdentities] = useState<Identity[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [selected, setSelected] = useState<Selection | null>(null);
+  const [placing, setPlacing] = useState<Placing | null>(null);
   const [visible, setVisible] = useState<number | null>(null);
-  const [selected, setSelected] = useState<Roach | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const viewRef = useRef<MapView>(WORLD_VIEW);
+  const boundsRef = useRef<[LngLat, LngLat] | null>(null);
 
-  // Pick the basemap and read local data in the browser only, to keep SSR output stable
-  useEffect(() => {
-    const b = guessBasemap();
-    const mine = loadMyRoach();
-    viewRef.current = mine ? { lng: mine.lng, lat: mine.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
-    setMyRoach(mine);
-    setLook(loadLook());
-    setBasemap(b);
+  const load = useCallback(async () => {
+    const w = worldRef.current!;
+    const [m, rs, items, ids, fs] = await Promise.all([w.me(), w.roaches(), w.inbox(), w.identities(), w.friends()]);
+    setMe(m);
+    setRoaches(rs);
+    setInbox(items);
+    setIdentities(ids);
+    setFriends(fs);
+    return { me: m, items };
   }, []);
+
+  const openInbox = useCallback(async (notice: boolean, tab: InboxTab = "messages") => {
+    const w = worldRef.current!;
+    const items = await w.inbox();
+    setPanel({ kind: "inbox", notice, items, tab });
+    const unseen = items.filter((i) => !i.seen).map((i) => i.id);
+    if (unseen.length) {
+      await w.markSeen(unseen);
+      setInbox(await w.inbox());
+      setIdentities(await w.identities());
+    }
+  }, []);
+
+  // The world, basemap and look are read in the browser only, to keep SSR output stable
+  useEffect(() => {
+    worldRef.current = new LocalWorld();
+    load().then(({ me: m, items }) => {
+      const b = guessBasemap();
+      const main = m.roaches.find((r) => r.slot === 0);
+      viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
+      setLook(loadLook());
+      setBasemap(b);
+      // What arrived since the last visit
+      if (items.some((i) => !i.seen)) openInbox(true);
+    });
+  }, [load, openInbox]);
 
   useEffect(() => {
     if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), 4000);
+    const t = window.setTimeout(() => setToast(null), 4500);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  const countVisible = useCallback(
+    (bounds: [LngLat, LngLat]) => {
+      let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? 1 : 0), 0);
+      for (const r of me?.roaches ?? []) if (inBounds(r, bounds)) n += 1;
+      setVisible(n);
+    },
+    [roaches, me],
+  );
+
+  useEffect(() => {
+    if (boundsRef.current) countVisible(boundsRef.current);
+  }, [countVisible]);
+
+  /** Run a world call; refusals become a toast. Resolves to undefined on failure. */
+  async function act<T>(fn: (w: World) => Promise<T>, ok?: string): Promise<T | undefined> {
+    try {
+      const result = await fn(worldRef.current!);
+      if (ok) setToast(ok);
+      return result;
+    } catch (e) {
+      if (e instanceof WorldError) setToast(e.message);
+      else {
+        console.error(e);
+        setToast("出了点问题，再试一次吧。");
+      }
+      return undefined;
+    }
+  }
 
   const switchBasemap = (b: Basemap) => {
     if (b === basemap) return;
@@ -64,68 +157,242 @@ export default function MapApp() {
     setLook(l);
   };
 
-  const onViewChange = useCallback(
-    (v: MapView, bounds: [LngLat, LngLat]) => {
-      viewRef.current = v;
-      let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? 1 : 0), 0);
-      if (myRoach && inBounds(myRoach, bounds)) n += 1;
-      setVisible(n);
-    },
-    [roaches, myRoach],
+  const startPlacing = (target: PlaceTarget) => {
+    setPanel(null);
+    setSelected(null);
+    setPlacing({ target, label: PLACING_LABEL[target.kind] });
+  };
+
+  const placeAt = async (p: LngLat, fly: boolean) => {
+    if (!placing) return;
+    const done = await act((w) => w.placeRoach(placing.target, p));
+    if (!done) return;
+    setPlacing(null);
+    await load();
+    if (fly) setFocus({ lng: p.lng, lat: p.lat, zoom: 13, nonce: Date.now() });
+    setToast(
+      placing.target.kind === "clone"
+        ? "克隆体放好啦！别人看到的是“某舟p的克隆体”，看不出它和你本体的关系。"
+        : "放好啦！别人看到的是约 1 公里外的大概位置。",
+    );
+  };
+
+  const onMapClick = (p: LngLat) => {
+    if (placing) placeAt(p, false);
+    else setSelected(null);
+  };
+
+  const onRoachClick = (id: string) => {
+    const roach = roaches.find((r) => r.id === id);
+    if (roach) setSelected({ kind: "other", roach });
+  };
+
+  const onMineClick = (id: string) => {
+    const roach = me?.roaches.find((r) => r.id === id);
+    if (roach) setSelected({ kind: "mine", roach });
+  };
+
+  const onViewChange = (v: MapView, bounds: [LngLat, LngLat]) => {
+    viewRef.current = v;
+    boundsRef.current = bounds;
+    countVisible(bounds);
+  };
+
+  const find = (r: OwnRoach) => {
+    setPanel(null);
+    setFocus({ lng: r.lng, lat: r.lat, zoom: 12, nonce: Date.now() });
+  };
+
+  const remove = async (r: OwnRoach) => {
+    if (!window.confirm(r.slot === 0 ? "收回蟑螂本体？克隆体也会一起收回。" : "收回这只克隆体？")) return;
+    const done = await act((w) => w.removeRoach(r.id), r.slot === 0 ? "已经收回你的蟑螂和克隆体。" : "已经收回这只克隆体。");
+    if (!done) return;
+    setSelected(null);
+    await load();
+  };
+
+  const befriendedToast = (name: string) =>
+    setToast(`你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`);
+
+  const touch = async (roach: PublicRoach, bold: boolean) => {
+    const res = await act((w) => w.touch(roach.id, bold));
+    if (!res) return;
+    setSelected(null);
+    if (res.newFriend) {
+      befriendedToast(res.newFriend);
+      await load();
+    } else {
+      setToast(bold ? "大胆地伸出了触须！TA 下次打开地图时会看到你的资料。" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
+      setIdentities(await worldRef.current!.identities());
+    }
+  };
+
+  const reply = async (itemId: string, bold: boolean) => {
+    const res = await act((w) => w.reply(itemId, bold));
+    if (!res) return;
+    if (res.newFriend) befriendedToast(res.newFriend);
+    else setToast(bold ? "大胆地碰回去了！" : "偷偷碰回去了。");
+    const { items } = await load();
+    setPanel((p) =>
+      p?.kind === "inbox"
+        ? { ...p, items: items.map((i) => ({ ...i, seen: p.items.find((x) => x.id === i.id)?.seen ?? i.seen })) }
+        : p,
+    );
+  };
+
+  const findFriendRoach = (roach: PublicRoach) => {
+    setPanel(null);
+    setFocus({ lng: roach.lng, lat: roach.lat, zoom: 13, nonce: Date.now() });
+    setSelected({ kind: "other", roach });
+  };
+
+  const unfriend = async (friend: Friend) => {
+    if (!window.confirm(`解除和 ${friend.profile.displayName} 的触须之交？`)) return;
+    const done = await act((w) => w.unfriend(friend.id).then(() => true), "已经解除触须之交。");
+    if (!done) return;
+    await load();
+    await openInbox(false, "friends");
+  };
+
+  const saveProfile = async (p: Profile) => {
+    const saved = await act((w) => w.saveProfile(p), "资料存好了。");
+    if (saved) await load();
+    return Boolean(saved);
+  };
+
+  const declare = async (d: Declaration) => {
+    const res = await act((w) => w.declare(d));
+    if (!res) return false;
+    setToast(`宣言发出去了！${res.reach}`);
+    await load();
+    return true;
+  };
+
+  const become = async (id: string) => {
+    const done = await act((w) => w.become(id).then(() => true));
+    if (!done) return;
+    setPanel(null);
+    setSelected(null);
+    setPlacing(null);
+    const { me: m, items } = await load();
+    const main = m.roaches.find((r) => r.slot === 0);
+    if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
+    if (items.some((i) => !i.seen)) openInbox(true);
+    else setToast("切换好了，现在用这个身份看地图。");
+  };
+
+  const reset = async () => {
+    if (!window.confirm("清空这台设备上的所有测试数据（资料、蟑螂、消息），从头开始？")) return;
+    await act((w) => w.reset(), "测试数据清空了。");
+    setPanel(null);
+    setSelected(null);
+    setPlacing(null);
+    await load();
+  };
+
+  const myColor = me?.profile.color ?? "cyan";
+  const main = me?.roaches.find((r) => r.slot === 0);
+  const unseen = inbox.filter((i) => !i.seen).length;
+  const current = identities.find((i) => i.current);
+  const othersUnseen = identities.filter((i) => !i.current).reduce((n, i) => n + i.unseen, 0);
+  const selectedFriend =
+    selected?.kind === "other" && selected.roach.friend
+      ? friends.find((f) => f.roaches.some((r) => r.id === selected.roach.id))
+      : undefined;
+  const total = roaches.length + (me?.roaches.length ?? 0);
+  const inboxButton = (
+    <button onClick={() => openInbox(false)}>
+      消息{unseen > 0 && <span className="badge">{unseen}</span>}
+    </button>
   );
-
-  const onMapClick = useCallback(
-    (p: LngLat) => {
-      setSelected(null);
-      if (!placing) return;
-      const color = myRoach?.color ?? ROACH_COLORS[Math.floor(Math.random() * ROACH_COLORS.length)];
-      const next: MyRoach = { ...p, color, placedAt: Date.now() };
-      setMyRoach(next);
-      saveMyRoach(next);
-      setPlacing(false);
-      setToast("放好啦！别人看到的是大概位置（约 1 公里外）。");
-    },
-    [placing, myRoach],
-  );
-
-  const removeMine = () => {
-    setMyRoach(null);
-    saveMyRoach(null);
-    setToast("已收回你的蟑螂。");
-  };
-
-  const recolor = () => {
-    if (!myRoach) return;
-    const i = ROACH_COLORS.indexOf(myRoach.color);
-    const next = { ...myRoach, color: ROACH_COLORS[(i + 1) % ROACH_COLORS.length] };
-    setMyRoach(next);
-    saveMyRoach(next);
-  };
-
-  const flyToMine = () => {
-    if (myRoach) setFocus({ lng: myRoach.lng, lat: myRoach.lat, zoom: 12, nonce: Date.now() });
-  };
 
   const mapProps = {
     roaches,
-    myRoach,
+    mine: me?.roaches ?? [],
+    myColor,
     look,
     initialView: viewRef.current,
-    placing,
+    placing: Boolean(placing),
     focus,
     onMapClick,
-    onRoachClick: setSelected,
+    onRoachClick,
+    onMineClick,
     onViewChange,
     onError: setToast,
+  };
+
+  const renderPanel = (p: Panel) => {
+    if (!me) return null;
+    switch (p.kind) {
+      case "profile":
+        return <ProfileSheet profile={me.profile} onSave={saveProfile} onClose={() => setPanel(null)} />;
+      case "mine":
+        return (
+          <MineSheet
+            roaches={me.roaches}
+            color={myColor}
+            look={look}
+            onFind={find}
+            onMove={(r) => startPlacing({ kind: "move", roachId: r.id })}
+            onRemove={remove}
+            onPlaceMain={() => startPlacing({ kind: "main" })}
+            onAddClone={() => startPlacing({ kind: "clone" })}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "declare":
+        return (
+          <DeclareSheet
+            profile={me.profile}
+            hasMain={Boolean(main)}
+            onSend={declare}
+            onEditProfile={() => setPanel({ kind: "profile" })}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "inbox":
+        return (
+          <InboxSheet
+            items={p.items}
+            friends={friends}
+            tab={p.tab}
+            notice={p.notice}
+            onTab={(tab) => setPanel({ ...p, tab, notice: false })}
+            onReply={reply}
+            onViewProfile={(profile) => setPanel({ kind: "viewProfile", profile, back: p })}
+            onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "friend": {
+        const friend = friends.find((f) => f.id === p.friendId);
+        if (!friend) return null;
+        return (
+          <FriendView
+            friend={friend}
+            onFind={(i) => findFriendRoach(friend.roaches[i])}
+            onUnfriend={() => unfriend(friend)}
+            onBack={p.back ? () => setPanel(p.back) : undefined}
+            onClose={() => setPanel(null)}
+          />
+        );
+      }
+      case "viewProfile":
+        return <ProfileView profile={p.profile} onBack={() => setPanel(p.back)} onClose={() => setPanel(null)} />;
+      case "identity":
+        return (
+          <IdentitySheet identities={identities} onBecome={become} onReset={reset} onClose={() => setPanel(null)} />
+        );
+    }
   };
 
   return (
     <main className="app">
       <header className="topbar">
         <div className="brand">
-          <img src={roachDataUrl(myRoach?.color ?? "cyan", { look })} width={28} height={28} alt="" />
+          <img src={roachDataUrl(myColor, { look })} width={28} height={28} alt="" />
           <span>舟p蟑螂地图</span>
-          <span className="tag">原型 · 演示数据</span>
+          <span className="tag">原型 · 本地测试</span>
         </div>
         <div className="switches">
           <div className="basemap-switch" role="group" aria-label="蟑螂外观">
@@ -152,55 +419,83 @@ export default function MapApp() {
         </div>
       </header>
 
-      <div className="stats">
-        {visible === null ? "地图加载中…" : `这片地图里有 ${visible.toLocaleString()} 只舟p`}
-        <span className="muted"> · 全球 {(roaches.length + (myRoach ? 1 : 0)).toLocaleString()} 只</span>
-      </div>
+      {!placing && (
+        <div className="hud">
+          <button className="who" onClick={() => setPanel({ kind: "identity" })} title="切换测试身份">
+            👤 {current?.label ?? "我"}
+            {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
+          </button>
+          <div className="stats">
+            {visible === null ? "地图加载中…" : `这片地图里有 ${visible.toLocaleString()} 只舟p`}
+            <span className="muted"> · 全球 {total.toLocaleString()} 只</span>
+          </div>
+        </div>
+      )}
 
       <div className="map-wrap">
         {basemap === "amap" && <AmapView key="amap" {...mapProps} />}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
       </div>
 
-      {placing && (
-        <div className="banner">
-          点地图放下你的蟑螂。别人看到的是大概位置（约 1 公里），请不要放在家门口。
-          <button onClick={() => setPlacing(false)}>取消</button>
-        </div>
+      {placing && basemap && (
+        <PlaceBar
+          label={placing.label}
+          basemap={basemap}
+          view={viewRef.current}
+          onPick={(p: Place) => placeAt(p, true)}
+          onCancel={() => setPlacing(null)}
+        />
       )}
 
-      {selected && (
-        <div className="card" role="dialog">
-          <img src={roachDataUrl(selected.color, { look })} width={56} height={56} alt="" />
-          <div>
-            <strong>一只匿名舟p</strong>
-            <p className="muted">互相关注后才能看到 TA 的游戏 ID。资料卡功能马上就来。</p>
-          </div>
-          <button className="close" onClick={() => setSelected(null)} aria-label="关闭">
-            ×
-          </button>
-        </div>
+      {!placing && selected?.kind === "other" && (
+        <OtherRoachCard
+          roach={selected.roach}
+          look={look}
+          sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
+          friendName={selectedFriend?.profile.displayName}
+          onOpenFriend={
+            selectedFriend ? () => setPanel({ kind: "friend", friendId: selectedFriend.id, back: null }) : undefined
+          }
+          onTouch={(bold) => touch(selected.roach, bold)}
+          onClose={() => setSelected(null)}
+        />
+      )}
+      {!placing && selected?.kind === "mine" && (
+        <MyRoachCard
+          roach={selected.roach}
+          index={(me?.roaches.filter((r) => r.slot > 0).findIndex((r) => r.id === selected.roach.id) ?? -1) + 1}
+          color={myColor}
+          look={look}
+          onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}
+          onRemove={() => remove(selected.roach)}
+          onClose={() => setSelected(null)}
+        />
       )}
 
-      <footer className="actions">
-        {!myRoach ? (
-          <button className="primary" onClick={() => setPlacing(true)} disabled={placing}>
-            放下我的蟑螂
-          </button>
-        ) : (
-          <>
-            <button className="primary" onClick={flyToMine}>
-              找到我的蟑螂
-            </button>
-            <button onClick={() => setPlacing(true)} disabled={placing}>
-              挪个窝
-            </button>
-            <button onClick={recolor}>换颜色</button>
-            <button onClick={removeMine}>收回</button>
-          </>
-        )}
-      </footer>
+      {!placing && me && (
+        <footer className="actions">
+          {main ? (
+            <>
+              <button onClick={() => setPanel({ kind: "mine" })}>我的蟑螂</button>
+              <button className="primary" onClick={() => setPanel({ kind: "declare" })}>
+                独立宣言
+              </button>
+              {inboxButton}
+              <button onClick={() => setPanel({ kind: "profile" })}>资料</button>
+            </>
+          ) : (
+            <>
+              <button className="primary" onClick={() => startPlacing({ kind: "main" })}>
+                放下我的蟑螂
+              </button>
+              {inboxButton}
+              <button onClick={() => setPanel({ kind: "profile" })}>资料</button>
+            </>
+          )}
+        </footer>
+      )}
 
+      {panel && renderPanel(panel)}
       {toast && <div className="toast">{toast}</div>}
       <p className="disclaimer">非官方同人项目 · 与鹰角网络无关</p>
     </main>

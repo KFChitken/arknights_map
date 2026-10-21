@@ -6,11 +6,6 @@ export type Roach = LngLat & {
   color: RoachColor;
 };
 
-export type MyRoach = LngLat & {
-  color: RoachColor;
-  placedAt: number;
-};
-
 /** zoom uses MapLibre levels (512px tiles); Amap levels are +1. */
 export type MapView = LngLat & { zoom: number };
 
@@ -31,20 +26,6 @@ export const ROACH_COLORS = [
   "white",
 ] as const;
 export type RoachColor = (typeof ROACH_COLORS)[number];
-
-/** Shared interface implemented by both the Amap and the MapLibre view. */
-export type MapViewProps = {
-  roaches: Roach[];
-  myRoach: MyRoach | null;
-  look: RoachStyle;
-  initialView: MapView;
-  placing: boolean;
-  focus: MapFocus | null;
-  onMapClick: (p: LngLat) => void;
-  onRoachClick: (r: Roach) => void;
-  onViewChange: (v: MapView, bounds: [LngLat, LngLat]) => void;
-  onError?: (message: string) => void;
-};
 
 /** Ask the map to fly somewhere; only a new nonce triggers it. */
 export type MapFocus = MapView & { nonce: number };

@@ -1,7 +1,7 @@
 "use client";
 
-import AMapLoader from "@amap/amap-jsapi-loader";
 import { useEffect, useRef } from "react";
+import { loadAMap, type AMapNS } from "@/lib/amap";
 import { fromGcj, toGcj } from "@/lib/coords";
 import { roachDataUrl } from "@/lib/roachSvg";
 import {
@@ -14,16 +14,9 @@ import {
   SWARM_FADE_ZOOM,
   SWARM_GRADIENT,
 } from "@/lib/swarm";
-import { ROACH_COLORS, type MapViewProps, type MyRoach, type Roach, type RoachStyle } from "@/lib/types";
-
-/* eslint-disable @typescript-eslint/no-explicit-any -- the Amap JS API ships no official types */
-type AMapNS = any;
-
-declare global {
-  interface Window {
-    _AMapSecurityConfig?: { securityJsCode?: string; serviceHost?: string };
-  }
-}
+import { ROACH_COLORS, type RoachColor, type RoachStyle } from "@/lib/types";
+import type { OwnRoach, PublicRoach } from "@/lib/world/types";
+import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
@@ -33,43 +26,49 @@ const HEAT_Z = 125;
 const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
 
-let loading: Promise<AMapNS> | null = null;
-function loadAMap(): Promise<AMapNS> {
-  if (!loading) {
-    window._AMapSecurityConfig = {
-      securityJsCode: process.env.NEXT_PUBLIC_AMAP_SECURITY_CODE,
-    };
-    loading = AMapLoader.load({
-      key: process.env.NEXT_PUBLIC_AMAP_KEY!,
-      version: "2.0",
-      plugins: ["AMap.HeatMap", "AMap.Scale", "AMap.ToolBar"],
-    }).catch((e: unknown) => {
-      loading = null;
-      throw e;
-    });
-  }
-  return loading;
-}
-
 // MassMarks draws thousands of points on one canvas, unlike DOM markers.
 // Roaches are split into crawl groups; each group gets its own MassMarks.
-// Cartoon styles are indexed by color; real ones by pre-rendered heading.
-type MassPoint = { lng: number; lat: number; cos: number; id: string; color: number; heading: number };
+// Style indexes: cartoon = color index, then one shared clone look, then the
+// same again for 触须之交; real = pre-rendered heading, then see-through clone
+// headings, then both again for 触须之交.
+type MassPoint = {
+  lng: number;
+  lat: number;
+  cos: number;
+  id: string;
+  color: number;
+  heading: number;
+  clone: boolean;
+  friend: boolean;
+};
 
-function massGroups(roaches: Roach[]): MassPoint[][] {
+const CARTOON_STYLES = ROACH_COLORS.length + 1;
+const REAL_STYLES = HEADINGS.length * 2;
+
+function massGroups(roaches: PublicRoach[]): MassPoint[][] {
   const groups: MassPoint[][] = Array.from({ length: CRAWL_GROUPS }, () => []);
-  roaches.forEach((r, i) => {
+  for (const r of roaches) {
     const [lng, lat] = toGcj(r);
-    groups[i % CRAWL_GROUPS].push({
+    const t = roachTraits(r.id, CRAWL_GROUPS, HEADINGS.length);
+    groups[t.group].push({
       lng,
       lat,
       cos: Math.cos((lat * Math.PI) / 180),
       id: r.id,
       color: ROACH_COLORS.indexOf(r.color),
-      heading: (i * 5) % HEADINGS.length,
+      heading: t.headingIndex,
+      clone: r.clone,
+      friend: r.friend,
     });
-  });
+  }
+  // MassMarks paints in order, so 触须之交 go last to sit on top
+  for (const g of groups) g.sort((a, b) => Number(a.friend) - Number(b.friend));
   return groups;
+}
+
+function styleIndex(p: MassPoint, look: RoachStyle) {
+  if (look === "real") return (p.friend ? REAL_STYLES : 0) + (p.clone ? HEADINGS.length : 0) + p.heading;
+  return (p.friend ? CARTOON_STYLES : 0) + (p.clone ? ROACH_COLORS.length : p.color);
 }
 
 /** Shift a group by a screen offset in px at the given Amap zoom. */
@@ -78,16 +77,20 @@ function massData(points: MassPoint[], [dx, dy]: [number, number], amapZoom: num
   return points.map((p) => ({
     lnglat: [p.lng + dx * degPerPx, p.lat - dy * degPerPx * p.cos],
     id: p.id,
-    style: look === "real" ? p.heading : p.color,
+    style: styleIndex(p, look),
   }));
 }
 
 function massStyles(AMap: AMapNS, amapZoom: number, look: RoachStyle) {
   const px = Math.round(iconPx(amapZoom - ZOOM_OFFSET));
-  const urls =
+  const urls = [false, true].flatMap((friend) =>
     look === "real"
-      ? HEADINGS.map((rotate) => roachDataUrl("cyan", { look, rotate }))
-      : ROACH_COLORS.map((color) => roachDataUrl(color));
+      ? [
+          ...HEADINGS.map((rotate) => roachDataUrl("cyan", { look, rotate, friend })),
+          ...HEADINGS.map((rotate) => roachDataUrl("cyan", { look, rotate, friend, clone: true })),
+        ]
+      : [...ROACH_COLORS.map((color) => roachDataUrl(color, { friend })), roachDataUrl("white", { friend, clone: true })],
+  );
   return urls.map((url) => ({
     url,
     size: new AMap.Size(px, px),
@@ -95,7 +98,7 @@ function massStyles(AMap: AMapNS, amapZoom: number, look: RoachStyle) {
   }));
 }
 
-function heatData(roaches: Roach[]) {
+function heatData(roaches: PublicRoach[]) {
   return {
     data: roaches.map((r) => {
       const [lng, lat] = toGcj(r);
@@ -105,34 +108,47 @@ function heatData(roaches: Roach[]) {
   };
 }
 
+function mineIcon(r: OwnRoach, color: RoachColor, look: RoachStyle) {
+  const url = roachDataUrl(color, { mine: true, clone: r.slot > 0, look });
+  const label = r.slot > 0 ? "我的克隆体" : "我的蟑螂";
+  return `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer"/>`;
+}
+
 export default function AmapView(props: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<AMapNS>(null);
   const massRef = useRef<AMapNS[]>([]);
   const groupsRef = useRef<MassPoint[][]>([]);
   const heatRef = useRef<AMapNS>(null);
-  const mineRef = useRef<AMapNS>(null);
+  const mineRef = useRef<AMapNS[]>([]);
   const amapRef = useRef<AMapNS>(null);
+  const lastHitRef = useRef(0);
   const propsRef = useRef(props);
   propsRef.current = props;
 
-  const placeMine = (my: MyRoach | null) => {
+  const placeMine = () => {
     const AMap = amapRef.current;
     const map = mapRef.current;
     if (!AMap || !map) return;
-    if (mineRef.current) {
-      map.remove(mineRef.current);
-      mineRef.current = null;
-    }
-    if (!my) return;
-    mineRef.current = new AMap.Marker({
-      position: toGcj(my),
-      content: `<img src="${roachDataUrl(my.color, { mine: true, look: propsRef.current.look })}" width="${MINE_ICON}" height="${MINE_ICON}" alt="我的蟑螂"/>`,
-      offset: new AMap.Pixel(-MINE_ICON / 2, -MINE_ICON / 2),
-      zIndex: 300,
-      bubble: true,
+    if (mineRef.current.length) map.remove(mineRef.current);
+    const { mine, myColor, look } = propsRef.current;
+    mineRef.current = mine.map((r) => {
+      const marker = new AMap.Marker({
+        position: toGcj(r),
+        content: mineIcon(r, myColor, look),
+        offset: new AMap.Pixel(-MINE_ICON / 2, -MINE_ICON / 2),
+        zIndex: 300,
+        bubble: true,
+      });
+      marker.on("click", () => {
+        // while placing, let the tap fall through to the map
+        if (propsRef.current.placing) return;
+        lastHitRef.current = Date.now();
+        window.setTimeout(() => propsRef.current.onMineClick(r.id), 0);
+      });
+      return marker;
     });
-    map.add(mineRef.current);
+    if (mineRef.current.length) map.add(mineRef.current);
   };
 
   useEffect(() => {
@@ -168,12 +184,12 @@ export default function AmapView(props: MapViewProps) {
         heatRef.current = heat;
 
         groupsRef.current = massGroups(propsRef.current.roaches);
-        let lastHit = 0;
         const onMassClick = (e: AMapNS) => {
-          lastHit = Date.now();
-          const r = propsRef.current.roaches.find((x) => x.id === e.data?.id);
+          if (propsRef.current.placing) return;
+          lastHitRef.current = Date.now();
+          const id = e.data?.id;
           // defer so a map click fired for the same tap cannot clear the selection
-          if (r) window.setTimeout(() => propsRef.current.onRoachClick(r), 0);
+          if (id) window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
         };
         massRef.current = groupsRef.current.map((points) => {
           const { look } = propsRef.current;
@@ -204,10 +220,10 @@ export default function AmapView(props: MapViewProps) {
           }, 25);
         }
 
-        placeMine(propsRef.current.myRoach);
+        placeMine();
 
         map.on("click", (e: AMapNS) => {
-          if (Date.now() - lastHit < 300) return;
+          if (Date.now() - lastHitRef.current < 300) return;
           propsRef.current.onMapClick(fromGcj(e.lnglat.getLng(), e.lnglat.getLat()));
         });
 
@@ -237,7 +253,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current.forEach((m) => m.setMap(null));
       massRef.current = [];
       heatRef.current = null;
-      mineRef.current = null;
+      mineRef.current = [];
       map?.destroy();
       mapRef.current = null;
     };
@@ -249,6 +265,7 @@ export default function AmapView(props: MapViewProps) {
     const z = mapRef.current.getZoom();
     massRef.current.forEach((m, g) => m.setData(massData(groupsRef.current[g], [0, 0], z, props.look)));
     heatRef.current?.setDataSet(heatData(props.roaches));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.roaches]);
 
   useEffect(() => {
@@ -260,14 +277,13 @@ export default function AmapView(props: MapViewProps) {
       m.setStyle(style);
       m.setData(massData(groupsRef.current[g], [0, 0], map.getZoom(), props.look));
     });
-    placeMine(propsRef.current.myRoach);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.look]);
 
   useEffect(() => {
-    placeMine(props.myRoach);
+    placeMine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.myRoach]);
+  }, [props.mine, props.myColor, props.look]);
 
   useEffect(() => {
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");

@@ -50,12 +50,14 @@ const CITIES: [string, number, number, number][] = [
 // Scatter some small-town players around inland cities so none land in the sea
 const INLAND = ["成都", "武汉", "郑州", "西安", "长沙", "合肥"];
 
-export function generateFakeRoaches(total = 5000, seed = 20261021): Roach[] {
+export type FakeRoach = Roach & { city: string };
+
+export function generateFakeRoaches(total = 5000, seed = 20261021): FakeRoach[] {
   const rand = mulberry32(seed);
   const totalWeight = CITIES.reduce((s, c) => s + c[3], 0);
   const scattered = Math.round(total * 0.06);
   const urban = total - scattered;
-  const roaches: Roach[] = [];
+  const roaches: FakeRoach[] = [];
   const color = () => ROACH_COLORS[Math.floor(rand() * ROACH_COLORS.length)];
 
   for (const [name, lng, lat, w] of CITIES) {
@@ -67,6 +69,7 @@ export function generateFakeRoaches(total = 5000, seed = 20261021): Roach[] {
         lng: lng + gaussian(rand) * sigma * 1.2,
         lat: lat + gaussian(rand) * sigma,
         color: color(),
+        city: name,
       });
     }
   }
@@ -78,6 +81,7 @@ export function generateFakeRoaches(total = 5000, seed = 20261021): Roach[] {
       lng: city[1] + gaussian(rand) * 1.2,
       lat: city[2] + gaussian(rand) * 0.9,
       color: color(),
+      city: `${city[0]}周边`,
     });
   }
   return roaches;
