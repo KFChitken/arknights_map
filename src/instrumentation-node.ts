@@ -2,10 +2,20 @@ import { seedDemo } from "./lib/server/demo";
 import { demoEnabled } from "./lib/server/env";
 import { runMigrations } from "./lib/server/migrate";
 
-try {
-  await runMigrations();
-  if (demoEnabled) await seedDemo();
-} catch (e) {
-  // Keep the server up; API calls will report the problem
-  console.error("Database setup failed. Is `docker compose up -d db mail` running?", e);
+const TRIES = 10;
+
+// The database can still be starting (first boot, or a server restart that brought the app up first)
+for (let attempt = 1; attempt <= TRIES; attempt++) {
+  try {
+    await runMigrations();
+    if (demoEnabled) await seedDemo();
+    break;
+  } catch (e) {
+    if (attempt === TRIES) {
+      // Keep the server up; API calls will report the problem
+      console.error("Database setup failed. Is `docker compose up -d db mail` running?", e);
+    } else {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
 }
