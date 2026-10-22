@@ -1,8 +1,8 @@
 import { amapPlugins, type AMapNS } from "./amap";
 import { amapConfigured } from "./basemap";
-import { fromGcj } from "./coords";
+import { fromGcj, toGcj } from "./coords";
 import { distanceKm } from "./geo";
-import type { Basemap, LngLat } from "./types";
+import type { Basemap, LngLat, MapView } from "./types";
 
 /** A search hit, always in WGS-84. */
 export type Place = LngLat & { name: string; detail: string };
@@ -33,12 +33,14 @@ export async function suggestPlaces(query: string, basemap: Basemap, near?: LngL
  * Full search when the player presses Enter. Uses the OpenStreetMap Nominatim
  * geocoder, which also knows Chinese names of places abroad; on the Amap
  * basemap, Amap's POI search comes first and Nominatim fills in places abroad.
+ * near, when given, is the map view: places around it come first, so
+ * 人民广场 seen over Shanghai is not the one in Kuala Lumpur.
  */
-export async function searchPlaces(query: string, basemap: Basemap): Promise<PlaceResults> {
+export async function searchPlaces(query: string, basemap: Basemap, near?: MapView): Promise<PlaceResults> {
   const q = query.trim();
   if (!q) return { places: [], osm: false };
-  if (!(basemap === "amap" && amapConfigured)) return { places: await nominatimSearch(q), osm: true };
-  const [amap, osm] = await Promise.allSettled([amapSearch(q), nominatimSearch(q)]);
+  if (!(basemap === "amap" && amapConfigured)) return { places: await nominatimSearch(q, near), osm: true };
+  const [amap, osm] = await Promise.allSettled([amapSearch(q, near), nominatimSearch(q, near)]);
   if (amap.status === "rejected") console.warn("Amap search failed", amap.reason);
   if (amap.status === "rejected" && osm.status === "rejected") throw osm.reason;
   const fromAmap = amap.status === "fulfilled" ? amap.value.slice(0, 6) : [];
@@ -68,18 +70,25 @@ async function amapTips(q: string): Promise<Place[]> {
     }));
 }
 
-async function amapSearch(q: string): Promise<Place[]> {
+/** Within this many metres of the map center Amap looks first (its limit is 50 km). */
+const AMAP_NEARBY_M = 50_000;
+
+/** Run one Amap place search and hand back its POIs. */
+function amapPois(run: (callback: (status: string, result: AMapNS) => void) => void) {
+  return new Promise<AMapNS[]>((resolve, reject) =>
+    run((status, result) => {
+      if (status === "complete") resolve(result?.poiList?.pois ?? []);
+      else if (status === "no_data") resolve([]);
+      else reject(new Error(String(result)));
+    }),
+  );
+}
+
+async function amapSearch(q: string, near?: LngLat): Promise<Place[]> {
   const AMap = await amapPlugins("AMap.PlaceSearch", "AMap.Geocoder");
-  const pois = await new Promise<AMapNS[]>((resolve, reject) => {
-    new AMap.PlaceSearch({ pageSize: 8, pageIndex: 1, extensions: "base" }).search(
-      q,
-      (status: string, result: AMapNS) => {
-        if (status === "complete") resolve(result?.poiList?.pois ?? []);
-        else if (status === "no_data") resolve([]);
-        else reject(new Error(String(result)));
-      },
-    );
-  });
+  const search = new AMap.PlaceSearch({ pageSize: 8, pageIndex: 1, extensions: "base" });
+  let pois = near ? await amapPois((done) => search.searchNearBy(q, toGcj(near), AMAP_NEARBY_M, done)) : [];
+  if (!pois.length) pois = await amapPois((done) => search.search(q, done));
   const places: Place[] = pois
     .filter((p) => p.location)
     .map((p) => ({
@@ -108,17 +117,24 @@ async function amapSearch(q: string): Promise<Place[]> {
 // Nominatim's usage policy allows at most one request per second and no search-as-you-type
 let lastNominatim = 0;
 
-async function nominatimSearch(q: string): Promise<Place[]> {
+async function nominatimSearch(q: string, near?: MapView): Promise<Place[]> {
   const wait = lastNominatim + 1100 - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastNominatim = Date.now();
   const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     q,
     format: "jsonv2",
     limit: "8",
     "accept-language": "zh-CN,zh,en",
-  }).toString();
+  });
+  if (near) {
+    // a preferred box around what the map shows; places outside still come, just later
+    const half = Math.max(0.25, 90 / 2 ** near.zoom);
+    const box = [near.lng - half * 1.5, near.lat + half, near.lng + half * 1.5, near.lat - half];
+    params.set("viewbox", box.map((v) => v.toFixed(4)).join(","));
+  }
+  url.search = params.toString();
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Nominatim ${res.status}`);
   const rows = (await res.json()) as { lat: string; lon: string; name?: string; display_name: string }[];

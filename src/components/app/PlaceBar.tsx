@@ -40,7 +40,7 @@ export default function PlaceBar({
     setError(null);
     try {
       const near = view.zoom >= 5 ? view : undefined;
-      const res = await (full ? searchPlaces(query, basemap) : suggestPlaces(query, basemap, near));
+      const res = await (full ? searchPlaces(query, basemap, near) : suggestPlaces(query, basemap, near));
       if (mine === seq.current) setResults({ ...res, full });
     } catch (err) {
       console.error(err);
