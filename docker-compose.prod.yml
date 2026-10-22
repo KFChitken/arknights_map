@@ -1,0 +1,52 @@
+# The live site. Caddy serves HTTPS and is the only service reachable from
+# outside; the app and the database sit on the internal network. Run from the
+# repository root on the server: docker compose -f docker-compose.prod.yml up -d --build
+name: zhoupmap
+
+services:
+  db:
+    image: imresamu/postgis:17-3.5
+    environment:
+      POSTGRES_USER: roach
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: roach
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roach -d roach"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach
+      # never link a test inbox on the live site
+      DEV_MAILBOX_PORT: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Adds the visitor's address to X-Forwarded-For, which the login limits rely on
+  caddy:
+    image: caddy:2.10
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

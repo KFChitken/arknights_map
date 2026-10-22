@@ -1,0 +1,9 @@
+# HTTPS certificates are fetched and renewed automatically.
+zhoupmap.com {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+www.zhoupmap.com {
+	redir https://zhoupmap.com{uri} permanent
+}

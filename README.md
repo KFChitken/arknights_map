@@ -43,7 +43,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 - Coordinates stored as WGS-84 and converted to GCJ-02 for Amap with `gcoord`
 - PostgreSQL + PostGIS with Drizzle; the rules live in `src/lib/server/world.ts`, and the browser reaches them through the data-layer interface in `src/lib/world`
 - Email via SMTP: Mailpit locally, any SMTP provider (e.g. Resend) in production
-- Deployed with Docker Compose on a Hong Kong VPS (planned)
+- Deployed with Docker Compose on a Hong Kong VPS behind Caddy, which handles HTTPS
 - Character names come from the BWIKI operator lists (names only)
 
 ## Run locally
@@ -90,6 +90,24 @@ npm test
 ```
 
 Append `?style=blank` to the URL to replace the OSM basemap with a plain background when the tile server is unreachable.
+
+## Deploy
+
+The live stack is `docker-compose.prod.yml`: Caddy (`deploy/Caddyfile`) is the only service with open ports and gets HTTPS certificates by itself; the app and Postgres stay on the internal network. Login rate limits trust only the address Caddy appends to `X-Forwarded-For`, so the app port must never be published on the server.
+
+First time, with an SSH host entry named `zhoupmap` for the server:
+
+```bash
+ssh zhoupmap 'bash -s' < scripts/server-setup.sh
+```
+
+That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. After that, every update is a push to `main` followed by:
+
+```bash
+scripts/deploy.sh
+```
+
+The server pulls `main`, rebuilds and restarts; database migrations run when the app starts.
 
 ## Roadmap
 
