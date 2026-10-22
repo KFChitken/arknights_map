@@ -67,6 +67,9 @@ export const loginCodes = pgTable("login_codes", {
   sentAt: at("sent_at").notNull().defaultNow(),
   expiresAt: at("expires_at").notNull(),
   attempts: smallint("attempts").notNull().default(0),
+  /** Codes sent to this address since dayStart, for the daily cap */
+  dayStart: at("day_start").notNull().defaultNow(),
+  sentToday: smallint("sent_today").notNull().default(1),
 });
 
 /**

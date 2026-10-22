@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
@@ -26,11 +26,6 @@ function cookieBase(req: NextRequest) {
   const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
   return { httpOnly: true, sameSite: "lax" as const, secure: proto === "https", path: "/" };
 }
-
-export const newLoginCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
-export const hashLoginCode = (email: string, code: string) => sign(`code|${email}|${code}`);
-export const loginCodeMatches = (email: string, code: string, hash: string) =>
-  sameString(hashLoginCode(email, code), hash);
 
 export async function startSession(req: NextRequest, userId: string) {
   const token = randomBytes(32).toString("base64url");

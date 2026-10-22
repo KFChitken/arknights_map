@@ -48,6 +48,13 @@ export async function readJson(req: NextRequest): Promise<Record<string, unknown
   throw new HttpError(400, "请求格式不对。");
 }
 
+/**
+ * The address that reached our own reverse proxy. The proxy appends it to
+ * X-Forwarded-For, and Next.js fills in the socket address when the header is
+ * missing; anything further left came from the client and can be made up.
+ * In production the app must be reachable only through that one proxy.
+ */
 export function clientIp(req: NextRequest) {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "local";
+  const hops = req.headers.get("x-forwarded-for")?.split(",").map((h) => h.trim()).filter(Boolean);
+  return hops?.at(-1) || "local";
 }

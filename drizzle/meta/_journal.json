@@ -15,6 +15,13 @@
       "when": 1792563077911,
       "tag": "0001_drop_public_position",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792635060799,
+      "tag": "0002_login_code_daily_cap",
+      "breakpoints": true
     }
   ]
 }

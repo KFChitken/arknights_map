@@ -7,6 +7,8 @@ export const MIN_SIGNUP_AGE = 14;
 export const LOGIN_CODE_TTL_MIN = 10;
 export const LOGIN_CODE_COOLDOWN_S = 60;
 export const LOGIN_CODE_MAX_ATTEMPTS = 5;
+/** Codes one email address may receive per day, so nobody can use us to flood an inbox. */
+export const LOGIN_CODES_PER_DAY = 10;
 export const SESSION_DAYS = 30;
 
 /** Clones a player may place besides the main roach. */
