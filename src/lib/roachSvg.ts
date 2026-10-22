@@ -31,6 +31,8 @@ export type RoachOpts = {
   size?: number;
   look?: RoachStyle;
   rotate?: number;
+  /** Realistic roach only: where its legs are in the walk cycle, 0..1 */
+  step?: number;
 };
 
 const FRIEND = "#ff7eb6";
@@ -106,17 +108,45 @@ const LEGS = [
   [[26.5, 29], [16, 29.5], [8, 35]],
   [[27, 37], [17.5, 44], [11, 58]],
 ];
+// how far each pair of legs swings forward and back, in degrees
+const LEG_SWING = [22, 16, 20];
 
-function realRoachSvg({ mine, clone, friend, size = 64, rotate = 0 }: RoachOpts) {
+type Pt = [number, number];
+function turn([x, y]: Pt, [cx, cy]: Pt, deg: number): Pt {
+  const r = (deg * Math.PI) / 180;
+  const [dx, dy] = [x - cx, y - cy];
+  const round = (v: number) => Math.round(v * 100) / 100;
+  return [round(cx + dx * Math.cos(r) - dy * Math.sin(r)), round(cy + dx * Math.sin(r) + dy * Math.cos(r))];
+}
+
+/**
+ * Legs at a point of the walk cycle. Roaches walk on alternating tripods: front
+ * and hind legs of one side with the middle leg of the other move together.
+ */
+function legPoints(flip: boolean, step: number | undefined) {
+  return LEGS.map((pts, i) => {
+    const [a, b, c] = pts.map(([x, y]): Pt => [flip ? 64 - x : x, y]);
+    if (step === undefined) return [a, b, c];
+    const tripod = (i % 2 === 0) !== flip ? 0 : Math.PI;
+    // the mirrored side turns the other way for the same forward swing
+    const deg = LEG_SWING[i] * Math.sin(step * 2 * Math.PI + tripod) * (flip ? -1 : 1);
+    return [a, turn(b, a, deg), turn(c, a, deg)];
+  });
+}
+
+function realRoachSvg({ mine, clone, friend, size = 64, rotate = 0, step }: RoachOpts) {
   const legPath = (flip: boolean) =>
-    LEGS.map((pts) => {
-      const [a, b, c] = pts.map(([x, y]) => [flip ? 64 - x : x, y]);
-      return `M${a[0]} ${a[1]} L${b[0]} ${b[1]} L${c[0]} ${c[1]}`;
-    }).join(" ");
+    legPoints(flip, step)
+      .map(([a, b, c]) => `M${a[0]} ${a[1]} L${b[0]} ${b[1]} L${c[0]} ${c[1]}`)
+      .join(" ");
+  // the antennae sweep a little as it walks
+  const feel = (base: Pt, d: string, phase: number) =>
+    step === undefined
+      ? `<path d="${d}"/>`
+      : `<path d="${d}" transform="rotate(${(6 * Math.sin(step * 2 * Math.PI + phase)).toFixed(2)} ${base[0]} ${base[1]})"/>`;
   // little spines on each lower leg
   const spines = (flip: boolean) =>
-    LEGS.map((pts) => {
-      const [, b, c] = pts.map(([x, y]) => [flip ? 64 - x : x, y]);
+    legPoints(flip, step).map(([, b, c]) => {
       return [0.35, 0.65]
         .map((f) => {
           const x = b[0] + (c[0] - b[0]) * f;
@@ -152,7 +182,7 @@ ${ground}
   <path d="${spines(false)} ${spines(true)}"/>
 </g>
 <g fill="none" stroke="#4a210c" stroke-width="0.8" stroke-linecap="round">
-  <path d="M30.5 12 C27 6 20 2.5 6 2"/><path d="M33.5 12 C37 6 44 2.5 58 2"/>
+  ${feel([30.5, 12], "M30.5 12 C27 6 20 2.5 6 2", 0.9)}${feel([33.5, 12], "M33.5 12 C37 6 44 2.5 58 2", 2.3)}
   <path d="M30 55 L27.5 61"/><path d="M34 55 L36.5 61"/>
 </g>
 <path d="M32 19 C41 19 43 30 42.5 40 C42 50 37 58 32 59 C27 58 22 50 21.5 40 C21 30 23 19 32 19 Z" fill="url(#w)" stroke="#3a1707" stroke-width="0.8"/>

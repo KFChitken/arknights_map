@@ -6,11 +6,11 @@ import { fromGcj, toGcj } from "@/lib/coords";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import { roachDataUrl, type RoachOpts } from "@/lib/roachSvg";
 import {
-  AGITATION,
-  CRAWL_GROUPS,
-  crawlOffset,
+  crawl,
   HEADINGS,
   iconPx,
+  LEG_FRAMES,
+  MASS_GROUPS,
   prefersReducedMotion,
   SWARM_FADE_ZOOM,
   SWARM_GRADIENT,
@@ -28,10 +28,11 @@ const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
 
 // MassMarks draws thousands of points on one canvas, unlike DOM markers.
-// Roaches are split into crawl groups; each group gets its own MassMarks.
-// Style indexes: cartoon = one per look and color, then one shared clone
-// look, then the same again for 触须之交; real = pre-rendered heading, then
-// see-through clone headings, then both again for 触须之交.
+// Roaches are split into batches, each with its own MassMarks redrawn in turn;
+// every roach moves on its own rhythm. Style indexes: cartoon = one per look
+// and color, then one shared clone look, then the same again for 触须之交;
+// real = pre-rendered heading, then see-through clone headings, then both
+// again for 触须之交, and that whole block once per walk-cycle pose.
 type MassPoint = {
   lng: number;
   lat: number;
@@ -42,17 +43,19 @@ type MassPoint = {
   heading: number;
   clone: boolean;
   friend: boolean;
+  seed: number;
 };
 
 const LOOKS = ROACH_AVATARS.length * ROACH_COLORS.length;
 const CARTOON_STYLES = LOOKS + 1;
 const REAL_STYLES = HEADINGS.length * 2;
+const REAL_POSE = REAL_STYLES * 2;
 
 function massGroups(roaches: PublicRoach[]): MassPoint[][] {
-  const groups: MassPoint[][] = Array.from({ length: CRAWL_GROUPS }, () => []);
+  const groups: MassPoint[][] = Array.from({ length: MASS_GROUPS }, () => []);
   for (const r of roaches) {
     const [lng, lat] = toGcj(r);
-    const t = roachTraits(r.id, CRAWL_GROUPS, HEADINGS.length);
+    const t = roachTraits(r.id, MASS_GROUPS, HEADINGS.length);
     groups[t.group].push({
       lng,
       lat,
@@ -62,6 +65,7 @@ function massGroups(roaches: PublicRoach[]): MassPoint[][] {
       heading: t.headingIndex,
       clone: r.clone,
       friend: r.friend,
+      seed: t.seed,
     });
   }
   // MassMarks paints in order, so 触须之交 go last to sit on top
@@ -69,26 +73,36 @@ function massGroups(roaches: PublicRoach[]): MassPoint[][] {
   return groups;
 }
 
-function styleIndex(p: MassPoint, look: RoachStyle) {
-  if (look === "real") return (p.friend ? REAL_STYLES : 0) + (p.clone ? HEADINGS.length : 0) + p.heading;
+function styleIndex(p: MassPoint, look: RoachStyle, pose: number) {
+  if (look === "real") return pose * REAL_POSE + (p.friend ? REAL_STYLES : 0) + (p.clone ? HEADINGS.length : 0) + p.heading;
   return (p.friend ? CARTOON_STYLES : 0) + (p.clone ? LOOKS : p.color);
 }
 
-/** Shift a group by a screen offset in px at the given Amap zoom. */
-function massData(points: MassPoint[], [dx, dy]: [number, number], amapZoom: number, look: RoachStyle) {
+/** Every roach of a batch where its own crawl puts it at time t (ms), or at rest when t is null. */
+function massData(points: MassPoint[], amapZoom: number, look: RoachStyle, t: number | null) {
   const degPerPx = 360 / (256 * 2 ** amapZoom);
-  return points.map((p) => ({
-    lnglat: [p.lng + dx * degPerPx, p.lat - dy * degPerPx * p.cos],
-    id: p.id,
-    style: styleIndex(p, look),
-  }));
+  const scale = iconPx(amapZoom - ZOOM_OFFSET) / 24;
+  return points.map((p) => {
+    const c = t === null ? { dx: 0, dy: 0, frame: 0 } : crawl(p.seed, t, look, scale);
+    return {
+      lnglat: [p.lng + c.dx * degPerPx, p.lat - c.dy * degPerPx * p.cos],
+      id: p.id,
+      style: styleIndex(p, look, c.frame),
+    };
+  });
 }
 
 const ICON_URL_PX = 96;
 
-/** Icon URL for a roach; looks that are pictures get composed once into a PNG. */
+/**
+ * Icon URL for a roach. Pictures and the walking realistic roach are composed
+ * once into PNGs: the canvas redraws thousands of them many times a second,
+ * and bitmaps draw far faster than SVG.
+ */
 function iconUrl(color: RoachColor, opts: RoachOpts) {
-  return usesPicture(opts) ? roachIconUrl(color, opts, ICON_URL_PX) : Promise.resolve(roachDataUrl(color, opts));
+  return usesPicture(opts) || opts.look === "real"
+    ? roachIconUrl(color, opts, ICON_URL_PX)
+    : Promise.resolve(roachDataUrl(color, opts));
 }
 
 const styleUrlCache = new Map<RoachStyle, Promise<string[]>>();
@@ -97,19 +111,21 @@ const styleUrlCache = new Map<RoachStyle, Promise<string[]>>();
 function styleUrls(look: RoachStyle) {
   let p = styleUrlCache.get(look);
   if (!p) {
-    const specs: [RoachColor, RoachOpts][] = [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
-      look === "real"
-        ? [
-            ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend }]),
-            ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, clone: true }]),
-          ]
-        : [
-            ...ROACH_AVATARS.flatMap((avatar) =>
-              ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend }]),
-            ),
-            ["white", { friend, clone: true }],
-          ],
-    );
+    const block = (step?: number) =>
+      [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
+        look === "real"
+          ? [
+              ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, step }]),
+              ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, clone: true, step }]),
+            ]
+          : [
+              ...ROACH_AVATARS.flatMap((avatar) =>
+                ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend }]),
+              ),
+              ["white", { friend, clone: true }],
+            ],
+      );
+    const specs = look === "real" ? Array.from({ length: LEG_FRAMES }, (_, f) => block(f / LEG_FRAMES)).flat() : block();
     p = Promise.all(specs.map(([color, opts]) => iconUrl(color, opts)));
     styleUrlCache.set(look, p);
   }
@@ -228,7 +244,7 @@ export default function AmapView(props: MapViewProps) {
           if (id) window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
         };
         massRef.current = groupsRef.current.map((points) => {
-          const mass = new AMap.MassMarks(massData(points, [0, 0], map.getZoom(), look), {
+          const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
             zIndex: massZ(look),
             zooms: [2, 20],
             cursor: "pointer",
@@ -243,15 +259,13 @@ export default function AmapView(props: MapViewProps) {
           massRef.current.forEach((m) => m.setStyle(style));
         });
 
-        // Redraw one group per tick, round robin, to keep each frame light
+        // Redraw one batch per tick, round robin, to keep each frame light
         let tick = 0;
         if (!prefersReducedMotion()) {
           crawlTimer = window.setInterval(() => {
-            const g = tick++ % CRAWL_GROUPS;
-            const z = map.getZoom();
+            const g = tick++ % MASS_GROUPS;
             const { look } = styledRef.current;
-            const off = crawlOffset(g, performance.now(), iconPx(z - ZOOM_OFFSET) / 24, AGITATION[look]);
-            massRef.current[g]?.setData(massData(groupsRef.current[g], off, z, look));
+            massRef.current[g]?.setData(massData(groupsRef.current[g], map.getZoom(), look, performance.now()));
           }, 25);
         }
 
@@ -298,7 +312,7 @@ export default function AmapView(props: MapViewProps) {
     if (!mapRef.current) return;
     groupsRef.current = massGroups(props.roaches);
     const z = mapRef.current.getZoom();
-    massRef.current.forEach((m, g) => m.setData(massData(groupsRef.current[g], [0, 0], z, styledRef.current.look)));
+    massRef.current.forEach((m, g) => m.setData(massData(groupsRef.current[g], z, styledRef.current.look, null)));
     heatRef.current?.setDataSet(heatData(props.roaches));
   }, [props.roaches]);
 
@@ -315,7 +329,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current.forEach((m, g) => {
         m.setzIndex(massZ(look));
         m.setStyle(style);
-        m.setData(massData(groupsRef.current[g], [0, 0], map.getZoom(), look));
+        m.setData(massData(groupsRef.current[g], map.getZoom(), look, null));
       });
     });
     return () => {

@@ -28,5 +28,6 @@ export function roachTraits(id: string, groups: number, headings: number) {
   const heading = b % 360;
   // nearest pre-rendered heading, for maps that cannot rotate icons
   const headingIndex = Math.round((heading * headings) / 360) % headings;
-  return { rot: (a % 17) - 8, heading, headingIndex, group: c % groups };
+  // seed: drives the roach's own crawl rhythm and walk-cycle phase
+  return { rot: (a % 17) - 8, heading, headingIndex, group: c % groups, seed: a };
 }
