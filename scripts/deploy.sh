@@ -8,6 +8,11 @@ ssh "$HOST" 'set -e
 cd ~/arknights_map
 git pull --ff-only
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+# a freshly started Caddy takes a moment to accept reloads
+for i in 1 2 3 4 5 6; do
+  docker compose -f docker-compose.prod.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile && break
+  [ "$i" = 6 ] && exit 1
+  sleep 2
+done
 docker image prune -f >/dev/null'
 echo "Deployed. https://zhoupmap.com"
