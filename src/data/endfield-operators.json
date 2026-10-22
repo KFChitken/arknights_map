@@ -1,6 +1,7 @@
 {
   "source": "https://wiki.biligame.com/zmd/%E5%B9%B2%E5%91%98%E5%9B%BE%E9%89%B4",
   "fetchedAt": "2026-10-20",
+  "addedByHand": "2026-10-22: 祀, 噗切娜 and 夜明河 (code name 明河, rarity not yet known), not yet in the BWIKI list",
   "operators": [
     {
       "name": "诀",
@@ -67,6 +68,10 @@
       "rarity": 6
     },
     {
+      "name": "祀",
+      "rarity": 6
+    },
+    {
       "name": "佩丽卡",
       "rarity": 5
     },
@@ -103,6 +108,10 @@
       "rarity": 5
     },
     {
+      "name": "噗切娜",
+      "rarity": 5
+    },
+    {
       "name": "卡契尔",
       "rarity": 4
     },
@@ -121,6 +130,10 @@
     {
       "name": "萤石",
       "rarity": 4
+    },
+    {
+      "name": "夜明河",
+      "rarity": null
     }
   ]
 }
