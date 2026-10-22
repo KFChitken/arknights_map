@@ -1,8 +1,10 @@
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled } from "./lib/server/env";
 import { runMigrations } from "./lib/server/migrate";
+import { pruneOldActivity } from "./lib/server/retention";
 
 const TRIES = 10;
+const DAY_MS = 86_400_000;
 
 // The database can still be starting (first boot, or a server restart that brought the app up first)
 for (let attempt = 1; attempt <= TRIES; attempt++) {
@@ -19,3 +21,7 @@ for (let attempt = 1; attempt <= TRIES; attempt++) {
     }
   }
 }
+
+const prune = () => pruneOldActivity().catch((e) => console.error("Pruning old activity failed", e));
+prune();
+setInterval(prune, DAY_MS);

@@ -33,6 +33,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 - **Touches and declarations never carry a position.** A declaration reaches everyone with a roach within 10 km of the roaches the sender picked; recipients only learn "within 10 km", and the sender only gets a rough head count ("5–10 players"). Reactions reach the sender without saying who reacted. The one sentence that names its sender ("I'm &lt;name&gt;, I want to play …") says so before it is sent.
 - **Friendship is opt-in on both sides.** Only two bold touches, one each way, make players friends; sneaky touches never count. Friends can tell which roaches belong to each other; other players in a friend's activity stay anonymous.
 - **Clones cannot be traced back.** Every clone looks the same, gets a new public id whenever it moves, and is listed in random order, so nobody but the owner's friends can tell which main roach it belongs to. Touching a clone reaches its owner without revealing anything about them.
+- **Activity does not pile up.** Touches, declarations, reactions and roach moves are deleted after 90 days, and nightly database backups are kept for 14.
 - **Blocking hides you completely** from the blocked player's map and radar.
 - **The radar shows counts, never distances or directions.** It counts over a 100 km circle from the same positions everyone sees on the map, so it reveals nothing the map does not.
 
@@ -107,7 +108,7 @@ That installs Docker, adds swap for builds, clones the repository and writes a `
 scripts/deploy.sh
 ```
 
-The server pulls `main`, rebuilds and restarts; database migrations run when the app starts.
+The server pulls `main`, rebuilds and restarts; database migrations run when the app starts. Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days; each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac.
 
 ## Roadmap
 

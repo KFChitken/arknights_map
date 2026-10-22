@@ -15,4 +15,11 @@ for i in 1 2 3 4 5 6; do
   sleep 2
 done
 docker image prune -f >/dev/null'
+# keep a copy of the newest nightly backup off the server, for as long as the server keeps its own
+BACKUPS="$HOME/zhoupmap-backups"
+mkdir -p -m 700 "$BACKUPS"
+latest=$(ssh "$HOST" 'ls -t ~/backups/zhoupmap-*.sql.gz 2>/dev/null | head -1')
+if [ -n "$latest" ]; then scp -q "$HOST:$latest" "$BACKUPS/"; fi
+find "$BACKUPS" -name 'zhoupmap-*.sql.gz' -mtime +13 -delete
+
 echo "Deployed. https://zhoupmap.com"

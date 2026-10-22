@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # First-time setup of the Ubuntu server: Docker, a swap file for builds, the
-# code, and a .env with fresh secrets. Safe to run again.
+# code, a .env with fresh secrets and the nightly backup. Safe to run again.
 # From the Mac: ssh zhoupmap 'bash -s' < scripts/server-setup.sh
 set -euo pipefail
 
@@ -35,5 +35,10 @@ SMTP_URL=
 MAIL_FROM=粥P地图 <no-reply@zhoupmap.com>
 ENV
 fi
+
+# nightly database backup at 04:00 server time, logged next to the dumps
+mkdir -p -m 700 "$HOME/backups"
+( crontab -l 2>/dev/null | grep -v 'scripts/backup.sh' || true
+  echo "0 4 * * * $DIR/scripts/backup.sh >> \$HOME/backups/backup.log 2>&1" ) | crontab -
 
 echo "Ready. Fill in the empty values in $DIR/.env, then run scripts/deploy.sh from the Mac."

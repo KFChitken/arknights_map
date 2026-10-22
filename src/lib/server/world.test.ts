@@ -9,6 +9,7 @@ import type { PlaceTarget } from "../world/types";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
 import { listen } from "./live";
+import { pruneOldActivity } from "./retention";
 import { declarations, deliveries, friendCuts, friendships, moves, reactions, roaches, sessions, touches, users } from "./schema";
 import * as world from "./world";
 
@@ -441,6 +442,26 @@ describe("server world", () => {
     // your own moves never show up on your radar
     await me.placeRoach({ kind: "clone" }, { lng: 121.5, lat: 31.3 });
     expect((await me.radar())!.day).toEqual(after.day);
+  });
+
+  it("forgets touches, declarations and moves older than 90 days, keeping newer ones", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.touch((await publicAt(me, tester("t2").roaches[0])).id, true);
+    await me.declare({ template: "birthday" });
+    const t2 = await demo("t2");
+    expect(await t2.inbox()).toHaveLength(2);
+
+    // pretend a hundred days pass
+    await pruneOldActivity(Date.now() + 100 * 86_400_000);
+    expect(await t2.inbox()).toEqual([]);
+    expect(await db.select().from(moves)).toEqual([]);
+    expect(await db.select().from(deliveries)).toEqual([]);
+    // the roaches themselves stay
+    expect((await me.me()).roaches).toHaveLength(1);
+
+    await me.touch((await publicAt(me, tester("t1").roaches[0])).id, false);
+    await pruneOldActivity();
+    expect(await (await demo("t1")).inbox()).toHaveLength(1);
   });
 
   it("buckets the declaration head count", () => {
