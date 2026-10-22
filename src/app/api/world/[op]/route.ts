@@ -56,7 +56,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       await world.markSeen(uid(), Array.isArray(args[0]) ? (args[0] as string[]) : []);
       break;
     case "declare":
-      result = await world.declare(uid(), args[0] as Declaration);
+      result = await world.declare(uid(), args[0] as Declaration, Array.isArray(args[1]) ? args[1].map(String) : undefined);
+      break;
+    case "react":
+      await world.react(uid(), String(args[0]), String(args[1]));
       break;
     case "friends":
       result = user ? await world.friends(user.id) : [];

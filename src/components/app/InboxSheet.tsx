@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { REACTIONS, type Reaction } from "@/lib/declarations";
 import { GAME_NAMES } from "@/lib/games";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
@@ -8,7 +9,26 @@ import type { Friend, InboxItem } from "@/lib/world/types";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
-export type InboxTab = "messages" | "friends";
+export type InboxTab = "replies" | "touches" | "friends";
+
+const TABS: { tab: InboxTab; label: string }[] = [
+  { tab: "replies", label: "收到的回复" },
+  { tab: "touches", label: "收到的触碰" },
+  { tab: "friends", label: "触须之交" },
+];
+
+/** Declarations and reactions are replies; touches and new friends have their own tabs. */
+export function tabOf(item: InboxItem): InboxTab {
+  if (item.kind === "touch") return "touches";
+  if (item.kind === "friend") return "friends";
+  return "replies";
+}
+
+/** Open where the newest unseen item is (items come newest first). */
+export function firstTab(items: InboxItem[]): InboxTab {
+  const unseen = items.find((i) => !i.seen);
+  return unseen ? tabOf(unseen) : "replies";
+}
 
 export function ago(t: number, now = Date.now()) {
   const s = Math.max(0, (now - t) / 1000);
@@ -23,11 +43,13 @@ function touchText(item: Extract<InboxItem, { kind: "touch" }>) {
   if (item.bold && who) {
     if (item.target === "touch") return `${who} 大胆地碰回来了！`;
     if (item.target === "declaration") return `${who} 回应了你的独立宣言，大胆地碰了碰你！`;
+    if (item.target === "reaction") return `${who} 看到了你的回应，大胆地碰了碰你！`;
     if (item.target === "clone") return `${who} 大胆地伸出触须，碰了碰你的克隆体`;
     return `${who} 大胆地伸出触须，碰了碰你的蟑螂`;
   }
   if (item.target === "touch") return "有只蟑螂偷偷碰回来了";
   if (item.target === "declaration") return "有只蟑螂回应了你的独立宣言，偷偷碰了你一下";
+  if (item.target === "reaction") return "有只蟑螂看到了你的回应，偷偷碰了你一下";
   if (item.target === "clone") return "一只蟑螂偷偷用触须碰了你的克隆体";
   return "一只蟑螂偷偷用触须碰了你一下";
 }
@@ -37,6 +59,7 @@ export function noticeTitle(items: InboxItem[]) {
   const unseen = items.filter((i) => !i.seen);
   if (unseen.some((i) => i.kind === "friend")) return "你有了新的触须之交！";
   if (unseen.some((i) => i.kind === "touch")) return "你被蟑螂触须碰了一下！";
+  if (unseen.some((i) => i.kind === "reaction")) return "有舟p回应了你的独立宣言！";
   if (unseen.length) return "附近有舟p发表了独立宣言！";
   return "消息";
 }
@@ -48,6 +71,7 @@ export default function InboxSheet({
   notice,
   onTab,
   onReply,
+  onReact,
   onViewProfile,
   onOpenFriend,
   onClose,
@@ -59,6 +83,7 @@ export default function InboxSheet({
   notice: boolean;
   onTab: (tab: InboxTab) => void;
   onReply: (itemId: string, bold: boolean) => Promise<void>;
+  onReact: (itemId: string, reaction: Reaction) => Promise<void>;
   onViewProfile: (p: PublicProfile) => void;
   onOpenFriend: (friendId: string) => void;
   onClose: () => void;
@@ -68,7 +93,15 @@ export default function InboxSheet({
     await onReply(id, bold);
     setReplying(null);
   };
+  const [reacting, setReacting] = useState<string | null>(null);
+  const react = async (id: string, reaction: Reaction) => {
+    setReacting(id);
+    await onReact(id, reaction);
+    setReacting(null);
+  };
   const friendIds = new Set(friends.map((f) => f.id));
+  const shown = items.filter((i) => tabOf(i) === tab);
+  const unseenIn = (t: InboxTab) => items.filter((i) => !i.seen && tabOf(i) === t).length;
 
   const replyButtons = (item: InboxItem, label: string) =>
     item.replied ? (
@@ -124,33 +157,53 @@ export default function InboxSheet({
         </div>
       );
     }
+    if (item.kind === "reaction") {
+      return (
+        <div key={item.id} className={cls}>
+          <div>附近有舟p回应了你的宣言「{item.text}」：</div>
+          <div className="quote">{REACTIONS[item.reaction]}</div>
+          <div className="meta">{ago(item.at)}</div>
+          <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
+        </div>
+      );
+    }
     return (
       <div key={item.id} className={cls}>
         <div>{DECLARATION_RADIUS_KM} 公里内有舟p发表了独立宣言：</div>
         <div className="quote">「{item.text}」</div>
         <div className="meta">{ago(item.at)}</div>
+        {item.reaction ? (
+          <div className="done">你回应了：{REACTIONS[item.reaction]}</div>
+        ) : (
+          <div className="chips reactions">
+            {item.options.map((r) => (
+              <button key={r} className="chip" disabled={reacting === item.id} onClick={() => react(item.id, r)}>
+                {REACTIONS[r]}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
       </div>
     );
   };
 
   return (
-    <Sheet title={notice ? noticeTitle(items) : tab === "friends" ? "触须之交" : "消息"} onClose={onClose}>
+    <Sheet title={notice ? noticeTitle(items) : "消息"} onClose={onClose}>
       <div className="seg tabs" role="tablist">
-        <button role="tab" aria-selected={tab === "messages"} className={tab === "messages" ? "on" : ""} onClick={() => onTab("messages")}>
-          消息
-        </button>
-        <button role="tab" aria-selected={tab === "friends"} className={tab === "friends" ? "on" : ""} onClick={() => onTab("friends")}>
-          触须之交{friends.length > 0 && ` ${friends.length}`}
-        </button>
+        {TABS.map(({ tab: t, label }) => (
+          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>
+            {label}
+            {unseenIn(t) > 0 && <span className="badge">{unseenIn(t)}</span>}
+          </button>
+        ))}
       </div>
 
-      {tab === "messages" && (
-        <>
-          {items.length === 0 && <p className="hint">还没有消息。点别的蟑螂伸出触须，或者发一条独立宣言试试。</p>}
-          {items.map(message)}
-        </>
+      {tab === "replies" && shown.length === 0 && (
+        <p className="hint">还没有回复。附近的舟p发宣言、或者回应你的宣言，都会出现在这里。</p>
       )}
+      {tab === "touches" && shown.length === 0 && <p className="hint">还没有被碰过。点别的蟑螂伸出触须试试。</p>}
+      {shown.map(message)}
 
       {tab === "friends" && (
         <>

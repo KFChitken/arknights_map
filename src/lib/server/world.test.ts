@@ -8,7 +8,8 @@ import { reachText } from "../world/logic";
 import type { PlaceTarget } from "../world/types";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
-import { declarations, deliveries, friendCuts, friendships, moves, roaches, sessions, touches, users } from "./schema";
+import { listen } from "./live";
+import { declarations, deliveries, friendCuts, friendships, moves, reactions, roaches, sessions, touches, users } from "./schema";
 import * as world from "./world";
 
 // Runs against the database named in vitest.config.mts, which is wiped before every test
@@ -31,7 +32,8 @@ function as(id: string) {
     reply: (itemId: string, bold: boolean) => world.reply(id, itemId, bold),
     inbox: () => world.inbox(id),
     markSeen: (itemIds: string[]) => world.markSeen(id, itemIds),
-    declare: (d: Declaration) => world.declare(id, d),
+    declare: (d: Declaration, from?: string[]) => world.declare(id, d, from),
+    react: (itemId: string, reaction: string) => world.react(id, itemId, reaction),
     friends: () => world.friends(id),
     unfriend: (friendId: string) => world.unfriend(id, friendId),
     radar: () => world.radar(id),
@@ -63,7 +65,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${friendships}, ${friendCuts}, ${moves}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}`,
   );
   await seedDemo();
   me = await signUp("me@example.com");
@@ -172,9 +174,116 @@ describe("server world", () => {
       const items = await (await demo(key)).inbox();
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({ kind: "declaration", text: "明日方舟，启动！", seen: false });
-      expect(Object.keys(items[0]).sort()).toEqual(["at", "id", "kind", "replied", "seen", "text"]);
+      expect(Object.keys(items[0]).sort()).toEqual(["at", "id", "kind", "options", "reaction", "replied", "seen", "text"]);
     }
     expect(await (await demo("t4")).inbox()).toHaveLength(0); // Beijing
+  });
+
+  it("declares from the roaches you pick, such as a clone far from your main roach", async () => {
+    const BEIJING = tester("t4").roaches[0];
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "clone" }, BEIJING);
+    const [, clone] = (await me.me()).roaches;
+
+    await expect(me.declare({ template: "launch", game: "arknights" }, [])).rejects.toThrow("选一只蟑螂");
+    const aBaiRoach = (await (await demo("t1")).me()).roaches[0];
+    await expect(me.declare({ template: "launch", game: "arknights" }, [clone.id, aBaiRoach.id])).rejects.toThrow("找不到");
+
+    await me.declare({ template: "launch", game: "arknights" }, [clone.id]);
+    // Dr. 夜莺厨 lives in Beijing and Kal has a clone there; 小林 is only in Shanghai
+    expect(await (await demo("t4")).inbox()).toHaveLength(1);
+    expect(await (await demo("t3")).inbox()).toHaveLength(1);
+    expect(await (await demo("t2")).inbox()).toHaveLength(0);
+  });
+
+  it("reaches everyone near any picked roach once, even when near several of them", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "clone" }, tester("t4").roaches[0]);
+    const all = (await me.me()).roaches.map((r) => r.id);
+    await me.declare({ template: "welcome", game: "endfield" }, all);
+    for (const key of ["t1", "t2", "t3", "t4"]) {
+      const items = await (await demo(key)).inbox();
+      expect(items, key).toHaveLength(1);
+      expect(items[0]).toMatchObject({ kind: "declaration", text: "欢迎回家，管理员" });
+    }
+  });
+
+  it("nudges players who have the page open when something arrives for them", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t2 = await demo("t2");
+    const t4 = await demo("t4");
+    const count = { me: 0, t2: 0, t4: 0 };
+    const offs = [
+      listen(me.id, () => count.me++),
+      listen(t2.id, () => count.t2++),
+      listen(t4.id, () => count.t4++),
+    ];
+
+    await me.touch((await publicAt(me, tester("t2").roaches[0])).id, true);
+    expect(count).toEqual({ me: 0, t2: 1, t4: 0 });
+    await me.declare({ template: "launch", game: "arknights" });
+    expect(count).toEqual({ me: 0, t2: 2, t4: 0 });
+    const [touchFromMe] = (await t2.inbox()).filter((i) => i.kind === "touch");
+    await t2.reply(touchFromMe.id, false);
+    expect(count).toEqual({ me: 1, t2: 2, t4: 0 });
+
+    offs.forEach((off) => off());
+    await (await demo("t1")).touch((await publicAt(me, tester("t2").roaches[0])).id, false);
+    expect(count.t2).toBe(2);
+  });
+
+  it("lets the people who got a declaration react once each, without telling the sender who", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "birthday" });
+    let nudged = 0;
+    const off = listen(me.id, () => nudged++);
+
+    const t2 = await demo("t2");
+    const [got] = await t2.inbox();
+    expect(got).toMatchObject({ kind: "declaration", text: "祝我生日快乐", reaction: null });
+    expect(got.kind === "declaration" && got.options).toContain("birthday");
+    await t2.react(got.id, "birthday");
+    await expect(t2.react(got.id, "plusone")).rejects.toThrow("已经回应过");
+    expect((await t2.inbox())[0]).toMatchObject({ reaction: "birthday" });
+    const t1 = await demo("t1");
+    await t1.react((await t1.inbox())[0].id, "zhouli");
+    // 夜莺厨 lives in Beijing and never got it
+    const t4 = await demo("t4");
+    await expect(t4.react(got.id, "plusone")).rejects.toThrow("找不到");
+    expect(nudged).toBe(2);
+    off();
+
+    const reactions = (await me.inbox()).filter((i) => i.kind === "reaction");
+    expect(reactions.map((r) => r.kind === "reaction" && r.reaction).sort()).toEqual(["birthday", "zhouli"]);
+    expect(reactions[0]).toMatchObject({ text: "祝我生日快乐", seen: false });
+    expect(JSON.stringify(reactions)).not.toMatch(/阿白|小林|t1|t2/);
+    expect(JSON.stringify(reactions)).not.toContain(t2.id);
+
+    // the sender can touch back whoever reacted, and seeing them clears them
+    const fromT2 = reactions.find((r) => r.kind === "reaction" && r.reaction === "birthday")!;
+    await me.reply(fromT2.id, false);
+    expect((await t2.inbox()).find((i) => i.kind === "touch")).toMatchObject({ target: "reaction", bold: false });
+    await me.markSeen(reactions.map((r) => r.id));
+    expect((await me.inbox()).filter((i) => i.kind === "reaction" && !i.seen)).toEqual([]);
+  });
+
+  it("keeps 生日快乐！ for birthday declarations", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "launch", game: "arknights" });
+    const t2 = await demo("t2");
+    const [got] = await t2.inbox();
+    expect(got.kind === "declaration" && got.options).not.toContain("birthday");
+    await expect(t2.react(got.id, "birthday")).rejects.toThrow("不能这样回应");
+    await expect(t2.react(got.id, "nonsense")).rejects.toThrow("不能这样回应");
+  });
+
+  it("puts the sender's name in 「我是…，我要玩…」 as it was when they said it", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", drPrefix: true, games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "myname", game: "endfield", name: "冒充别人" } as Declaration);
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: true, games: ["arknights"] });
+    expect((await (await demo("t2")).inbox())[0]).toMatchObject({ text: "我是Dr. Breeze，我要玩终末地" });
   });
 
   it("only lets you declare with your own favourites and listed titles", async () => {

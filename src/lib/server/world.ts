@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
-import { declarationText, type Declaration } from "../declarations";
+import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
 import { isGame } from "../games";
 import { displayName, type Profile } from "../profile";
 import {
@@ -41,9 +41,11 @@ import {
 } from "../world/types";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
+import { nudge } from "./live";
 import {
   declarations,
   deliveries,
+  reactions,
   friendCuts,
   friendships,
   moves,
@@ -292,7 +294,9 @@ export async function touch(userId: string, publicId: string, bold: boolean): Pr
     toSlot: roach.slot,
     toPublicId: publicId,
   });
-  return { newFriend: bold ? await befriendIfMutual(userId, roach.userId) : null };
+  const newFriend = bold ? await befriendIfMutual(userId, roach.userId) : null;
+  nudge([roach.userId]);
+  return { newFriend };
 }
 
 async function replied(userId: string, itemIds: string[]) {
@@ -324,13 +328,23 @@ export async function reply(userId: string, itemId: string, bold: boolean): Prom
         .where(and(eq(deliveries.declarationId, id), eq(deliveries.recipientId, userId)))
         .limit(1);
       to = d?.from;
+    } else if (kind === "x") {
+      const [r] = await db
+        .select({ from: reactions.fromUserId })
+        .from(reactions)
+        .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
+        .where(and(eq(reactions.id, id), eq(declarations.senderId, userId)))
+        .limit(1);
+      to = r?.from;
     }
   }
   if (!to) throw new WorldError("找不到这条消息的主人了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
   await checkTouchQuota(userId);
   await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId });
-  return { newFriend: bold ? await befriendIfMutual(userId, to) : null };
+  const newFriend = bold ? await befriendIfMutual(userId, to) : null;
+  nudge([to]);
+  return { newFriend };
 }
 
 export async function inbox(userId: string): Promise<InboxItem[]> {
@@ -347,11 +361,27 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
     .from(deliveries)
     .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
     .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, since)));
+  const mine = ds.length
+    ? await db
+        .select({ declarationId: reactions.declarationId, reaction: reactions.reaction })
+        .from(reactions)
+        .where(and(eq(reactions.fromUserId, userId), inArray(reactions.declarationId, ds.map((x) => x.d.id))))
+    : [];
+  const myReaction = new Map(mine.map((r) => [r.declarationId, r.reaction]));
+  const rs = await db
+    .select({ r: reactions, d: declarations })
+    .from(reactions)
+    .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
+    .where(and(eq(declarations.senderId, userId), gt(reactions.createdAt, since)));
   const fs = await db
     .select()
     .from(friendships)
     .where(and(or(eq(friendships.a, userId), eq(friendships.b, userId)), gt(friendships.createdAt, since)));
-  const done = await replied(userId, [...ts.map((x) => `t:${x.t.id}`), ...ds.map((x) => `d:${x.d.id}`)]);
+  const done = await replied(userId, [
+    ...ts.map((x) => `t:${x.t.id}`),
+    ...ds.map((x) => `d:${x.d.id}`),
+    ...rs.map((x) => `x:${x.r.id}`),
+  ]);
 
   for (const { t, from } of ts) {
     const id = `t:${t.id}`;
@@ -361,19 +391,43 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       at: t.createdAt.getTime(),
       seen: Boolean(t.seenAt),
       bold: t.bold,
-      target: t.replyTo ? (t.replyTo.startsWith("d:") ? "declaration" : "touch") : t.toSlot ? "clone" : "main",
+      target: t.replyTo
+        ? t.replyTo.startsWith("d:")
+          ? "declaration"
+          : t.replyTo.startsWith("x:")
+            ? "reaction"
+            : "touch"
+        : t.toSlot
+          ? "clone"
+          : "main",
       from: t.bold ? publicProfileOf(profileOf(from)) : null,
       replied: done.has(id),
     });
   }
   for (const { d, seenAt } of ds) {
     const id = `d:${d.id}`;
+    const reacted = myReaction.get(d.id);
     items.push({
       kind: "declaration",
       id,
       at: d.createdAt.getTime(),
       seen: Boolean(seenAt),
       text: declarationText(storedDeclaration(d)),
+      replied: done.has(id),
+      reaction: isReaction(reacted) ? reacted : null,
+      options: reactionsFor(d.template),
+    });
+  }
+  for (const { r, d } of rs) {
+    if (!isReaction(r.reaction)) continue;
+    const id = `x:${r.id}`;
+    items.push({
+      kind: "reaction",
+      id,
+      at: r.createdAt.getTime(),
+      seen: Boolean(r.seenAt),
+      text: declarationText(storedDeclaration(d)),
+      reaction: r.reaction,
       replied: done.has(id),
     });
   }
@@ -395,8 +449,27 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
 }
 
 function storedDeclaration(d: typeof declarations.$inferSelect): Declaration {
-  if (d.template === "iam") return { template: "iam", character: d.character ?? "", title: d.title ?? "" };
-  return { template: d.template === "alsoplay" ? "alsoplay" : "launch", game: isGame(d.game) ? d.game : "arknights" };
+  const game = isGame(d.game) ? d.game : "arknights";
+  const character = d.character ?? "";
+  switch (d.template) {
+    case "iam":
+      return { template: "iam", character, title: d.title ?? "" };
+    case "love":
+    case "buff":
+    case "canyou":
+      return { template: d.template, character };
+    case "eat":
+      return { template: "eat", character, food: FOODS.find((f) => f === d.food) ?? (FOODS[0] as Food) };
+    case "myname":
+      return { template: "myname", game, name: d.name ?? "" };
+    case "welcome":
+    case "alsoplay":
+      return { template: d.template, game };
+    case "birthday":
+      return { template: "birthday" };
+    default:
+      return { template: "launch", game };
+  }
 }
 
 export async function markSeen(userId: string, itemIds: string[]) {
@@ -420,6 +493,14 @@ export async function markSeen(userId: string, itemIds: string[]) {
       .set({ seenAt: now })
       .where(and(inArray(deliveries.declarationId, d), eq(deliveries.recipientId, userId), isNull(deliveries.seenAt)));
   }
+  const x = ids("x:");
+  if (x.length) {
+    const myDeclarations = db.select({ id: declarations.id }).from(declarations).where(eq(declarations.senderId, userId));
+    await db
+      .update(reactions)
+      .set({ seenAt: now })
+      .where(and(inArray(reactions.id, x), inArray(reactions.declarationId, myDeclarations), isNull(reactions.seenAt)));
+  }
   for (const f of itemIds.filter((i) => typeof i === "string" && i.startsWith("f:"))) {
     const [a, b] = f.slice(2).split("~");
     if (!UUID.test(a ?? "") || !UUID.test(b ?? "")) continue;
@@ -428,16 +509,21 @@ export async function markSeen(userId: string, itemIds: string[]) {
   }
 }
 
-export async function declare(userId: string, input: Declaration): Promise<{ reach: string }> {
+/**
+ * Shout to everyone with a roach within DECLARATION_RADIUS_KM of any of the
+ * sender's chosen roaches (the main roach unless `from` says otherwise).
+ * Each player gets it once, however many of those roaches they are near.
+ */
+export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string }> {
   const u = await userById(userId);
   if (!u) throw new WorldError("请先登录。");
   const d = checkDeclaration(profileOf(u), input);
-  const [main] = await db
-    .select()
-    .from(roaches)
-    .where(and(eq(roaches.userId, userId), eq(roaches.slot, 0)))
-    .limit(1);
-  if (!main) throw new WorldError("先放下蟑螂本体，才能发表独立宣言。");
+  const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
+  if (!mine.some((r) => r.slot === 0)) throw new WorldError("先放下蟑螂本体，才能发表独立宣言。");
+  const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
+  const chosen = wanted ? mine.filter((r) => wanted.includes(r.id)) : mine.filter((r) => r.slot === 0);
+  if (wanted && chosen.length < wanted.length) throw new WorldError("有只蟑螂找不到了，刷新一下再试。");
+  if (!chosen.length) throw new WorldError("选一只蟑螂来发宣言吧。");
 
   const recent = await db
     .select({ at: declarations.createdAt })
@@ -448,25 +534,26 @@ export async function declare(userId: string, input: Declaration): Promise<{ rea
     throw new WorldError("刚刚才发过宣言，歇一会儿再发吧。");
   }
 
-  // True positions on the server; the sender only learns a rough count
+  // The sender only learns a rough count
+  const near = chosen.map(
+    (c) =>
+      sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography, ${DECLARATION_RADIUS_KM * 1000})`,
+  );
   const rows = await db
     .selectDistinct({ id: roaches.userId })
     .from(roaches)
-    .where(
-      and(
-        ne(roaches.userId, userId),
-        sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${main.lng}, ${main.lat}), 4326)::geography, ${DECLARATION_RADIUS_KM * 1000})`,
-      ),
-    );
+    .where(and(ne(roaches.userId, userId), or(...near)));
   await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(declarations)
       .values({
         senderId: userId,
         template: d.template,
-        game: d.template === "iam" ? null : d.game,
-        character: d.template === "iam" ? d.character : null,
+        game: "game" in d ? d.game : null,
+        character: "character" in d ? d.character : null,
         title: d.template === "iam" ? d.title : null,
+        food: d.template === "eat" ? d.food : null,
+        name: d.template === "myname" ? (d.name ?? null) : null,
         recipients: rows.length,
       })
       .returning({ id: declarations.id });
@@ -476,7 +563,29 @@ export async function declare(userId: string, input: Declaration): Promise<{ rea
         .values(rows.slice(i, i + 1000).map((r) => ({ declarationId: row.id, recipientId: r.id })));
     }
   });
+  nudge(rows.map((r) => r.id));
   return { reach: reachText(rows.length) };
+}
+
+/** Leave one of the fixed reactions on a declaration you received. The sender is not told who. */
+export async function react(userId: string, itemId: string, reaction: string) {
+  const [kind, id] = String(itemId).split(":");
+  if (kind !== "d" || !UUID.test(id ?? "")) throw new WorldError("找不到这条宣言了。");
+  const [row] = await db
+    .select({ senderId: declarations.senderId, template: declarations.template })
+    .from(deliveries)
+    .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
+    .where(and(eq(deliveries.declarationId, id), eq(deliveries.recipientId, userId)))
+    .limit(1);
+  if (!row) throw new WorldError("找不到这条宣言了。");
+  if (!isReaction(reaction) || !reactionsFor(row.template).includes(reaction)) throw new WorldError("这条宣言不能这样回应。");
+  const [made] = await db
+    .insert(reactions)
+    .values({ declarationId: id, fromUserId: userId, reaction })
+    .onConflictDoNothing()
+    .returning({ id: reactions.id });
+  if (!made) throw new WorldError("已经回应过这条宣言了。");
+  nudge([row.senderId]);
 }
 
 export async function friends(userId: string): Promise<Friend[]> {

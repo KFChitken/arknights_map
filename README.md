@@ -14,9 +14,9 @@ Players in the community jokingly call themselves "roaches" because there seem t
 | Swarm view: every roach is drawn and twitches, and a dark heat layer makes crowded cities look covered in roaches; cartoon or realistic roaches | Prototype |
 | Place a main roach and up to three clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | MVP |
 | Profile: a name with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | MVP |
-| Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told on their next visit and can touch back | MVP |
+| Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told at once if the page is open (a server-sent event stream), otherwise on their next visit, and can touch back | MVP |
 | Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches, declaration count and recent activity; either side can end it | MVP |
-| Declarations: a canned shout such as "Arknights, start!" or "I'm &lt;favourite&gt;'s &lt;title&gt;" to every player with a roach within 10 km | MVP |
+| Declarations: one of nine canned shouts such as "Arknights, start!", "I'll always love &lt;favourite&gt;" or "Happy birthday to me", sent to every player with a roach within 10 km of the main roach, any chosen clones, or all of them; each player hears it once and can answer with one of six fixed reactions | MVP |
 | Email sign-in with a 6-digit code, sign-up limited to players aged 14 and over (the birth date is not stored), account deletion | MVP |
 | Demo players and test identities: thousands of seeded players, and stepping into any of them on one device to try touches and declarations | Development aid |
 | Follow requests that need approval, block and report | Planned |
@@ -30,7 +30,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 - **No GPS.** Players place their roach by hand. Nothing reads the device location.
 - **Roaches show where they were placed, never who placed them.** Players are asked not to place a roach at home or anywhere else that identifies them.
 - **Anonymous by default.** Strangers only see an anonymous roach. A bold touch shows the toucher's profile to the player they touched; a sneaky touch shows nothing. Game UIDs stay hidden unless their owner chooses to show them to the players they touch boldly.
-- **Touches and declarations never carry a position.** A declaration reaches everyone with a roach within 10 km of the sender's main roach; recipients only learn "within 10 km", and the sender only gets a rough head count ("5–10 players").
+- **Touches and declarations never carry a position.** A declaration reaches everyone with a roach within 10 km of the roaches the sender picked; recipients only learn "within 10 km", and the sender only gets a rough head count ("5–10 players"). Reactions reach the sender without saying who reacted. The one sentence that names its sender ("I'm &lt;name&gt;, I want to play …") says so before it is sent.
 - **Friendship is opt-in on both sides.** Only two bold touches, one each way, make players friends; sneaky touches never count. Friends can tell which roaches belong to each other; other players in a friend's activity stay anonymous.
 - **Clones cannot be traced back.** Every clone looks the same, gets a new public id whenever it moves, and is listed in random order, so nobody but the owner's friends can tell which main roach it belongs to. Touching a clone reaches its owner without revealing anything about them.
 - **Blocking hides you completely** from the blocked player's map and radar.

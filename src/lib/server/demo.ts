@@ -5,7 +5,7 @@ import { displayName } from "../profile";
 import { passerbyProfile, passersby, TESTERS } from "../world/cast";
 import type { Identity } from "../world/types";
 import { db } from "./db";
-import { declarations, deliveries, friendCuts, friendships, moves, roaches, touches, users } from "./schema";
+import { declarations, deliveries, friendCuts, friendships, moves, reactions, roaches, touches, users } from "./schema";
 import { profileColumns, profileOf } from "./world";
 
 /**
@@ -76,6 +76,13 @@ async function unseenFor(ids: string[]) {
     .where(and(inArray(deliveries.recipientId, ids), isNull(deliveries.seenAt)))
     .groupBy(deliveries.recipientId);
   for (const r of ds) add(r.id, r.n);
+  const rs = await db
+    .select({ id: declarations.senderId, n: sql<number>`count(*)::int` })
+    .from(reactions)
+    .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
+    .where(and(inArray(declarations.senderId, ids), isNull(reactions.seenAt)))
+    .groupBy(declarations.senderId);
+  for (const r of rs) add(r.id, r.n);
   const fs = await db.select().from(friendships);
   for (const f of fs) {
     if (!f.seenByA && ids.includes(f.a)) add(f.a, 1);

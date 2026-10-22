@@ -1,4 +1,4 @@
-import type { Declaration } from "../declarations";
+import type { Declaration, Reaction } from "../declarations";
 import type { Profile, PublicProfile } from "../profile";
 import type { LngLat, RoachAvatar, RoachColor } from "../types";
 
@@ -23,7 +23,10 @@ export interface World {
   inbox(): Promise<InboxItem[]>;
   markSeen(itemIds: string[]): Promise<void>;
   /** Shout to every player with a roach within the radius of your main roach. */
-  declare(d: Declaration): Promise<{ reach: string }>;
+  /** Shout from the main roach, or from the roaches listed by id. */
+  declare(d: Declaration, from?: string[]): Promise<{ reach: string }>;
+  /** Leave a reaction on a declaration in your inbox. */
+  react(itemId: string, reaction: Reaction): Promise<void>;
   /** 触须之交: players you and they have both touched boldly. */
   friends(): Promise<Friend[]>;
   unfriend(friendId: string): Promise<void>;
@@ -82,13 +85,25 @@ export type InboxItem =
       at: number;
       seen: boolean;
       bold: boolean;
-      /** What of yours it answers: a roach, or your own earlier touch or declaration */
-      target: "main" | "clone" | "touch" | "declaration";
+      /** What of yours it answers: a roach, or your own earlier touch, declaration or reaction */
+      target: "main" | "clone" | "touch" | "declaration" | "reaction";
       /** Only for bold touches */
       from: PublicProfile | null;
       replied: boolean;
     }
-  | { kind: "declaration"; id: string; at: number; seen: boolean; text: string; replied: boolean }
+  | {
+      kind: "declaration";
+      id: string;
+      at: number;
+      seen: boolean;
+      text: string;
+      replied: boolean;
+      /** The reaction you left, and the ones you may choose from */
+      reaction: Reaction | null;
+      options: Reaction[];
+    }
+  /** Someone nearby reacted to your declaration; they stay anonymous */
+  | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reaction; replied: boolean }
   | { kind: "friend"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean };
 
 export type Identity = {

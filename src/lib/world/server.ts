@@ -1,4 +1,4 @@
-import type { Declaration } from "../declarations";
+import type { Declaration, Reaction } from "../declarations";
 import type { Profile } from "../profile";
 import type { LngLat } from "../types";
 import {
@@ -45,7 +45,8 @@ export class ServerWorld implements World {
   reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold);
   inbox = () => this.call<InboxItem[]>("inbox");
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
-  declare = (d: Declaration) => this.call<{ reach: string }>("declare", d);
+  declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);
+  react = (itemId: string, reaction: Reaction) => this.call<void>("react", itemId, reaction);
   friends = () => this.call<Friend[]>("friends");
   unfriend = (friendId: string) => this.call<void>("unfriend", friendId);
   radar = () => this.call<Radar | null>("radar");

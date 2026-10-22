@@ -1,6 +1,8 @@
 # HTTPS certificates are fetched and renewed automatically.
 zhoupmap.com {
-	encode zstd gzip
+	# the live event stream must reach the browser as it is written, so it is not compressed
+	@compressible not path /api/events
+	encode @compressible zstd gzip
 	reverse_proxy web:3000
 }
 

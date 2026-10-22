@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteAccount, signOut } from "@/lib/authClient";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
-import type { Declaration } from "@/lib/declarations";
+import type { Declaration, Reaction } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
 import type { Profile, PublicProfile } from "@/lib/profile";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/world/types";
 import DeclareSheet from "./app/DeclareSheet";
 import IdentitySheet from "./app/IdentitySheet";
-import InboxSheet, { FriendView, ProfileView, type InboxTab } from "./app/InboxSheet";
+import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, type InboxTab } from "./app/InboxSheet";
 import LoginSheet from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
@@ -93,10 +93,10 @@ export default function MapApp() {
     return { me: m, items };
   }, []);
 
-  const openInbox = useCallback(async (notice: boolean, tab: InboxTab = "messages") => {
+  const openInbox = useCallback(async (notice: boolean, tab?: InboxTab) => {
     const w = worldRef.current!;
     const items = await w.inbox();
-    setPanel({ kind: "inbox", notice, items, tab });
+    setPanel({ kind: "inbox", notice, items, tab: tab ?? firstTab(items) });
     const unseen = items.filter((i) => !i.seen).map((i) => i.id);
     if (unseen.length) {
       await w.markSeen(unseen);
@@ -137,6 +137,28 @@ export default function MapApp() {
       window.clearInterval(t);
     };
   }, [load]);
+
+  // While the page is open, the server says when something new arrives: show it unless the player is busy
+  const busyRef = useRef<{ panel: Panel | null; placing: boolean }>({ panel: null, placing: false });
+  useEffect(() => {
+    busyRef.current = { panel, placing: Boolean(placing) };
+  }, [panel, placing]);
+  const meId = me?.id;
+  useEffect(() => {
+    if (!meId) return;
+    const events = new EventSource("/api/events");
+    events.addEventListener("inbox", async () => {
+      try {
+        const { items } = await load();
+        if (!items.some((i) => !i.seen)) return;
+        const { panel: open, placing: busy } = busyRef.current;
+        if (open?.kind === "inbox") await openInbox(false, open.tab);
+        else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
+        else await openInbox(true);
+      } catch {}
+    });
+    return () => events.close();
+  }, [meId, load, openInbox]);
 
   useEffect(() => {
     if (!toast) return;
@@ -255,17 +277,26 @@ export default function MapApp() {
     }
   };
 
-  const reply = async (itemId: string, bold: boolean) => {
-    const res = await act((w) => w.reply(itemId, bold));
-    if (!res) return;
-    if (res.newFriend) befriendedToast(res.newFriend);
-    else setToast(bold ? "大胆地碰回去了！" : "偷偷碰回去了。");
-    const { items } = await load();
+  const keepSnapshot = (items: InboxItem[]) =>
     setPanel((p) =>
       p?.kind === "inbox"
         ? { ...p, items: items.map((i) => ({ ...i, seen: p.items.find((x) => x.id === i.id)?.seen ?? i.seen })) }
         : p,
     );
+
+  const react = async (itemId: string, reaction: Reaction) => {
+    const done = await act((w) => w.react(itemId, reaction).then(() => true));
+    if (!done) return;
+    setToast("回应发出去了！");
+    keepSnapshot((await load()).items);
+  };
+
+  const reply = async (itemId: string, bold: boolean) => {
+    const res = await act((w) => w.reply(itemId, bold));
+    if (!res) return;
+    if (res.newFriend) befriendedToast(res.newFriend);
+    else setToast(bold ? "大胆地碰回去了！" : "偷偷碰回去了。");
+    keepSnapshot((await load()).items);
   };
 
   const openRadar = async () => {
@@ -293,8 +324,8 @@ export default function MapApp() {
     return Boolean(saved);
   };
 
-  const declare = async (d: Declaration) => {
-    const res = await act((w) => w.declare(d));
+  const declare = async (d: Declaration, from: string[]) => {
+    const res = await act((w) => w.declare(d, from));
     if (!res) return false;
     setToast(`宣言发出去了！${res.reach}`);
     await load();
@@ -412,7 +443,7 @@ export default function MapApp() {
         return (
           <DeclareSheet
             profile={me.profile}
-            hasMain={Boolean(main)}
+            roaches={me.roaches}
             onSend={declare}
             onEditProfile={() => setPanel({ kind: "profile" })}
             onClose={() => setPanel(null)}
@@ -427,6 +458,7 @@ export default function MapApp() {
             notice={p.notice}
             onTab={(tab) => setPanel({ ...p, tab, notice: false })}
             onReply={reply}
+            onReact={react}
             onViewProfile={(profile) => setPanel({ kind: "viewProfile", profile, back: p })}
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
             onClose={() => setPanel(null)}

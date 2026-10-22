@@ -132,6 +132,9 @@ export const declarations = pgTable(
     game: text("game"),
     character: text("character"),
     title: text("title"),
+    food: text("food"),
+    /** The sender's name as it was when they declared it, for 「我是<名字>…」 */
+    name: text("name"),
     recipients: integer("recipients").notNull(),
     createdAt: createdAt(),
   },
@@ -150,6 +153,25 @@ export const deliveries = pgTable(
     seenAt: at("seen_at"),
   },
   (t) => [primaryKey({ columns: [t.declarationId, t.recipientId] }), index("deliveries_recipient_idx").on(t.recipientId)],
+);
+
+/** A recipient's one fixed reply to a declaration; the sender sees it without learning who. */
+export const reactions = pgTable(
+  "declaration_reactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    declarationId: uuid("declaration_id")
+      .notNull()
+      .references(() => declarations.id, { onDelete: "cascade" }),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reaction: text("reaction").notNull(),
+    createdAt: createdAt(),
+    /** When the declaration's sender saw it */
+    seenAt: at("seen_at"),
+  },
+  (t) => [uniqueIndex("reactions_once_idx").on(t.declarationId, t.fromUserId)],
 );
 
 /** 触须之交. The pair is stored with a < b. */

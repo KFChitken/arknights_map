@@ -1,4 +1,4 @@
-import type { Declaration } from "../declarations";
+import { FOODS, type Declaration } from "../declarations";
 import { distanceKm } from "../geo";
 import { GAMES, isGame, type Game } from "../games";
 import { isOperator } from "../operators";
@@ -9,7 +9,7 @@ import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import type { Move } from "./cast";
 import { WorldError, type PlayerId, type Radar, type RadarWindow } from "./types";
 
-/** Rules shared by every World implementation (the browser one and the server one). */
+/** Pure rules the server world applies, kept apart so they are easy to test and reuse. */
 
 export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;
@@ -65,16 +65,39 @@ export function publicProfileOf(p: Profile): PublicProfile {
   };
 }
 
-/** A declaration may only use the sender's own favourites and listed titles. */
+/** A declaration may only use the sender's own favourites, the listed titles and foods, and their own name. */
 export function checkDeclaration(profile: Profile, d: Declaration): Declaration {
-  if (d?.template === "iam") {
-    const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(d.character));
+  const favourite = (character: unknown) => {
+    const name = String(character ?? "");
+    const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
     if (!game) throw new WorldError("只能选你资料里的厨力角色。");
-    if (!titlesFor(game).includes(d.title)) throw new WorldError("这个称呼不在列表里。");
-    return { template: "iam", character: d.character, title: d.title };
-  }
-  if ((d?.template === "launch" || d?.template === "alsoplay") && isGame(d.game)) {
-    return { template: d.template, game: d.game };
+    return { game, character: name };
+  };
+  switch (d?.template) {
+    case "launch":
+    case "welcome":
+      if (isGame(d.game)) return { template: d.template, game: d.game };
+      break;
+    case "myname":
+      if (!isGame(d.game)) break;
+      if (profile.anonymous || !profile.name.trim()) throw new WorldError("这句要先在资料里填名字，并且不选匿名。");
+      return { template: "myname", game: d.game, name: displayName(profile) };
+    case "iam": {
+      const { game, character } = favourite(d.character);
+      if (!titlesFor(game).includes(d.title)) throw new WorldError("这个称呼不在列表里。");
+      return { template: "iam", character, title: d.title };
+    }
+    case "love":
+    case "buff":
+    case "canyou":
+      return { template: d.template, character: favourite(d.character).character };
+    case "eat": {
+      const { character } = favourite(d.character);
+      if (!FOODS.includes(d.food)) throw new WorldError("这个吃的不在列表里。");
+      return { template: "eat", character, food: d.food };
+    }
+    case "birthday":
+      return { template: "birthday" };
   }
   throw new WorldError("选一句宣言吧。");
 }
