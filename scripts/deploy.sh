@@ -8,5 +8,6 @@ ssh "$HOST" 'set -e
 cd ~/arknights_map
 git pull --ff-only
 docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 docker image prune -f >/dev/null'
 echo "Deployed. https://zhoupmap.com"

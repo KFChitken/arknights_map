@@ -40,7 +40,8 @@ services:
       - "443:443"
       - "443:443/udp"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # the folder, not the file: git replaces the file on pull, which a file mount would not see
+      - ./deploy:/etc/caddy:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
