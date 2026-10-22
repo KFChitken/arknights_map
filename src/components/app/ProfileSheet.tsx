@@ -69,7 +69,7 @@ export default function ProfileSheet({
         <RoachIcon color={p.color} size={52} avatar={p.avatar} />
         <div>
           <strong>{displayName(p)}</strong>
-          <p className="hint">只有你大胆伸出触须时，对方才看得到这里的资料。位置永远不会给别人看。</p>
+          <p className="hint">只有你大胆伸出触须时，对方才看得到这里的资料。地图上的本体和这里长得一样，所以看过资料的人可能认出你的本体在哪。</p>
         </div>
       </div>
 

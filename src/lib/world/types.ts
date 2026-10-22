@@ -25,6 +25,8 @@ export interface World {
   /** Shout to every player with a roach within the radius of your main roach. */
   /** Shout from the main roach, or from the roaches listed by id. */
   declare(d: Declaration, from?: string[]): Promise<{ reach: string }>;
+  /** Crawl away from a touch in your inbox without answering it. */
+  ignore(itemId: string): Promise<void>;
   /** Leave a reaction on a declaration in your inbox. */
   react(itemId: string, reaction: Reaction): Promise<void>;
   /** 触须之交: players you and they have both touched boldly. */
@@ -90,6 +92,8 @@ export type InboxItem =
       /** Only for bold touches */
       from: PublicProfile | null;
       replied: boolean;
+      /** You crawled away from it (默默爬走) */
+      ignored: boolean;
     }
   | {
       kind: "declaration";

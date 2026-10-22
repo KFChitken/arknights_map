@@ -1,11 +1,11 @@
 import "server-only";
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, count, eq, gt, lt, sql } from "drizzle-orm";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
-import { secret } from "./env";
+import { MAIL_DAILY_LIMIT, secret } from "./env";
 import { HttpError } from "./http";
-import { loginCodes } from "./schema";
+import { loginCodes, mailSends } from "./schema";
 
 /**
  * The 6-digit codes emailed for sign-in. Every limit is checked inside the
@@ -14,6 +14,8 @@ import { loginCodes } from "./schema";
  */
 
 const DAY_MS = 86_400_000;
+/** Advisory lock taken while counting the site's mail, so parallel requests are counted one at a time */
+const MAIL_LOCK = 7_316_001;
 
 const hashCode = (email: string, code: string) =>
   createHmac("sha256", secret("AUTH_SECRET")).update(`code|${email}|${code}`).digest("base64url");
@@ -24,7 +26,11 @@ function codeMatches(email: string, code: string, hash: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** A fresh code for this address, or an HttpError saying when the next one can be sent. */
+/**
+ * A fresh code for this address, or an HttpError saying when the next one can
+ * be sent. Each code counts toward the site's mail for the last 24 hours, and
+ * none is issued once that reaches MAIL_DAILY_LIMIT.
+ */
 export async function issueLoginCode(email: string): Promise<string> {
   const now = new Date();
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -40,22 +46,31 @@ export async function issueLoginCode(email: string): Promise<string> {
 
   // postgres.js wants Dates inside raw SQL as strings
   const sameDay = sql`${loginCodes.dayStart} > ${dayAgo.toISOString()}`;
-  const [issued] = await db
-    .insert(loginCodes)
-    .values({ email, ...fresh, dayStart: now, sentToday: 1 })
-    .onConflictDoUpdate({
-      target: loginCodes.email,
-      set: {
-        ...fresh,
-        dayStart: sql`case when ${sameDay} then ${loginCodes.dayStart} else ${now.toISOString()} end`,
-        sentToday: sql`case when ${sameDay} then ${loginCodes.sentToday} + 1 else 1 end`,
-      },
-      setWhere: and(
-        lt(loginCodes.sentAt, new Date(now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000)),
-        sql`not (${sameDay} and ${loginCodes.sentToday} >= ${LOGIN_CODES_PER_DAY})`,
-      ),
-    })
-    .returning({ email: loginCodes.email });
+  const issued = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
+    await tx.delete(mailSends).where(lt(mailSends.sentAt, dayAgo));
+    const [sent] = await tx.select({ n: count() }).from(mailSends);
+    if (sent.n >= MAIL_DAILY_LIMIT) throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
+
+    const [row] = await tx
+      .insert(loginCodes)
+      .values({ email, ...fresh, dayStart: now, sentToday: 1 })
+      .onConflictDoUpdate({
+        target: loginCodes.email,
+        set: {
+          ...fresh,
+          dayStart: sql`case when ${sameDay} then ${loginCodes.dayStart} else ${now.toISOString()} end`,
+          sentToday: sql`case when ${sameDay} then ${loginCodes.sentToday} + 1 else 1 end`,
+        },
+        setWhere: and(
+          lt(loginCodes.sentAt, new Date(now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000)),
+          sql`not (${sameDay} and ${loginCodes.sentToday} >= ${LOGIN_CODES_PER_DAY})`,
+        ),
+      })
+      .returning({ email: loginCodes.email });
+    if (row) await tx.insert(mailSends).values({ sentAt: now });
+    return Boolean(row);
+  });
   if (issued) return code;
 
   const [last] = await db.select().from(loginCodes).where(eq(loginCodes.email, email)).limit(1);

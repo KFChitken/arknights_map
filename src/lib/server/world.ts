@@ -315,10 +315,11 @@ export async function reply(userId: string, itemId: string, bold: boolean): Prom
   if (UUID.test(id ?? "")) {
     if (kind === "t") {
       const [t] = await db
-        .select({ from: touches.fromUserId })
+        .select({ from: touches.fromUserId, ignoredAt: touches.ignoredAt })
         .from(touches)
         .where(and(eq(touches.id, id), eq(touches.toUserId, userId)))
         .limit(1);
+      if (t?.ignoredAt) throw new WorldError("你已经默默爬走了。");
       to = t?.from;
     } else if (kind === "d") {
       const [d] = await db
@@ -402,6 +403,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
           : "main",
       from: t.bold ? publicProfileOf(profileOf(from)) : null,
       replied: done.has(id),
+      ignored: Boolean(t.ignoredAt),
     });
   }
   for (const { d, seenAt } of ds) {
@@ -565,6 +567,20 @@ export async function declare(userId: string, input: Declaration, from?: string[
   });
   nudge(rows.map((r) => r.id));
   return { reach: reachText(rows.length) };
+}
+
+/** 默默爬走: leave a touch you received unanswered for good. Only the receiver ever knows. */
+export async function ignore(userId: string, itemId: string) {
+  const [kind, id] = String(itemId).split(":");
+  if (kind !== "t" || !UUID.test(id ?? "")) throw new WorldError("找不到这条消息了。");
+  if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
+  const now = new Date();
+  const [done] = await db
+    .update(touches)
+    .set({ ignoredAt: now, seenAt: sql`coalesce(${touches.seenAt}, ${now.toISOString()})` })
+    .where(and(eq(touches.id, id), eq(touches.toUserId, userId)))
+    .returning({ id: touches.id });
+  if (!done) throw new WorldError("找不到这条消息了。");
 }
 
 /** Leave one of the fixed reactions on a declaration you received. The sender is not told who. */

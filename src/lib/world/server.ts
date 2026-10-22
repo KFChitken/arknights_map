@@ -47,6 +47,7 @@ export class ServerWorld implements World {
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
   declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);
   react = (itemId: string, reaction: Reaction) => this.call<void>("react", itemId, reaction);
+  ignore = (itemId: string) => this.call<void>("ignore", itemId);
   friends = () => this.call<Friend[]>("friends");
   unfriend = (friendId: string) => this.call<void>("unfriend", friendId);
   radar = () => this.call<Radar | null>("radar");

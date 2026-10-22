@@ -261,6 +261,19 @@ export default function MaplibreView(props: MapViewProps) {
       if (!readyRef.current) propsRef.current.onError?.("海外底图加载很慢，可以试试切换到高德底图。");
     }, 12000);
 
+    // The map credits show at first, then fold into the (i) button after five seconds or as soon
+    // as the map moves, which OpenStreetMap's attribution guidelines allow
+    let foldTimer = 0;
+    const foldCredits = () =>
+      map.getContainer().querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    const watchCredits = () => {
+      if (!map.getContainer().querySelector(".maplibregl-ctrl-attrib.maplibregl-compact")) return;
+      map.off("sourcedata", watchCredits);
+      foldTimer = window.setTimeout(foldCredits, 5000);
+      map.once("movestart", foldCredits);
+    };
+    map.on("sourcedata", watchCredits);
+
     const reportView = () => {
       const c = map.getCenter();
       const b = map.getBounds();
@@ -375,6 +388,7 @@ export default function MaplibreView(props: MapViewProps) {
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(loadTimer);
+      window.clearTimeout(foldTimer);
       readyRef.current = false;
       mapRef.current = null;
       map.remove();

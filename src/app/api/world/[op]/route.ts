@@ -58,6 +58,9 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "declare":
       result = await world.declare(uid(), args[0] as Declaration, Array.isArray(args[1]) ? args[1].map(String) : undefined);
       break;
+    case "ignore":
+      await world.ignore(uid(), String(args[0]));
+      break;
     case "react":
       await world.react(uid(), String(args[0]), String(args[1]));
       break;

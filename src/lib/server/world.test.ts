@@ -35,6 +35,7 @@ function as(id: string) {
     markSeen: (itemIds: string[]) => world.markSeen(id, itemIds),
     declare: (d: Declaration, from?: string[]) => world.declare(id, d, from),
     react: (itemId: string, reaction: string) => world.react(id, itemId, reaction),
+    ignore: (itemId: string) => world.ignore(id, itemId),
     friends: () => world.friends(id),
     unfriend: (friendId: string) => world.unfriend(id, friendId),
     radar: () => world.radar(id),
@@ -151,6 +152,21 @@ describe("server world", () => {
 
     const [back] = await t1.inbox();
     expect(back).toMatchObject({ kind: "touch", target: "touch", bold: true });
+  });
+
+  it("lets you crawl away from a touch without the toucher ever knowing", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t1 = await demo("t1");
+    await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true);
+    const [touch] = await me.inbox();
+    expect(touch).toMatchObject({ kind: "touch", ignored: false, seen: false });
+
+    await expect(t1.ignore(touch.id)).rejects.toThrow("找不到");
+    await me.ignore(touch.id);
+    expect((await me.inbox())[0]).toMatchObject({ ignored: true, seen: true, replied: false });
+    await expect(me.reply(touch.id, true)).rejects.toThrow("默默爬走");
+    // nothing reaches the toucher
+    expect(await t1.inbox()).toEqual([]);
   });
 
   it("shares a UID only when its owner opted in", async () => {

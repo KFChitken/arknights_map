@@ -1,5 +1,16 @@
 # HTTPS certificates are fetched and renewed automatically.
 zhoupmap.com {
+	request_body {
+		max_size 1MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), camera=(), microphone=()"
+		-X-Powered-By
+	}
 	# the live event stream must reach the browser as it is written, so it is not compressed
 	@compressible not path /api/events
 	encode @compressible zstd gzip

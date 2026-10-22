@@ -8,7 +8,7 @@ import { inBounds } from "@/lib/coords";
 import type { Declaration, Reaction } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
-import type { Profile, PublicProfile } from "@/lib/profile";
+import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
 import { SITE_NAME } from "@/lib/rules";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { ServerWorld } from "@/lib/world/server";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/world/types";
 import DeclareSheet from "./app/DeclareSheet";
 import IdentitySheet from "./app/IdentitySheet";
-import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, type InboxTab } from "./app/InboxSheet";
+import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
 import LoginSheet from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
@@ -48,7 +48,7 @@ type Panel =
   | { kind: "declare" }
   | { kind: "identity" }
   /** items is a snapshot taken on open, so new ones stay highlighted after they are marked seen */
-  | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab }
+  | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab; viewed: InboxTab[] }
   | { kind: "viewProfile"; profile: PublicProfile; back: Panel }
   | { kind: "friend"; friendId: string; back: Panel | null }
   | { kind: "radar"; radar: Radar | null }
@@ -78,6 +78,7 @@ export default function MapApp() {
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [visible, setVisible] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const viewRef = useRef<MapView>(WORLD_VIEW);
   const boundsRef = useRef<[LngLat, LngLat] | null>(null);
@@ -93,17 +94,25 @@ export default function MapApp() {
     return { me: m, items };
   }, []);
 
-  const openInbox = useCallback(async (notice: boolean, tab?: InboxTab) => {
+  // Opening a tab is enough to count its messages as read; the red counts go with it
+  const markTabSeen = useCallback(async (items: InboxItem[], tab: InboxTab) => {
     const w = worldRef.current!;
-    const items = await w.inbox();
-    setPanel({ kind: "inbox", notice, items, tab: tab ?? firstTab(items) });
-    const unseen = items.filter((i) => !i.seen).map((i) => i.id);
-    if (unseen.length) {
-      await w.markSeen(unseen);
-      setInbox(await w.inbox());
-      setIdentities(await w.identities());
-    }
+    const unseen = items.filter((i) => !i.seen && tabOf(i) === tab).map((i) => i.id);
+    if (!unseen.length) return;
+    await w.markSeen(unseen);
+    setInbox(await w.inbox());
+    setIdentities(await w.identities());
   }, []);
+
+  const openInbox = useCallback(
+    async (notice: boolean, tab?: InboxTab) => {
+      const items = await worldRef.current!.inbox();
+      const t = tab ?? firstTab(items);
+      setPanel({ kind: "inbox", notice, items, tab: t, viewed: [t] });
+      await markTabSeen(items, t);
+    },
+    [markTabSeen],
+  );
 
   // The world, basemap and look are read in the browser only, to keep SSR output stable
   useEffect(() => {
@@ -272,7 +281,7 @@ export default function MapApp() {
       befriendedToast(res.newFriend);
       await load();
     } else {
-      setToast(bold ? "大胆地伸出了触须！TA 下次打开地图时会看到你的资料。" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
+      setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
       setIdentities(await worldRef.current!.identities());
     }
   };
@@ -283,6 +292,13 @@ export default function MapApp() {
         ? { ...p, items: items.map((i) => ({ ...i, seen: p.items.find((x) => x.id === i.id)?.seen ?? i.seen })) }
         : p,
     );
+
+  const ignore = async (itemId: string) => {
+    const done = await act((w) => w.ignore(itemId).then(() => true));
+    if (!done) return;
+    setToast("默默爬走了，TA 不会知道。");
+    keepSnapshot((await load()).items);
+  };
 
   const react = async (itemId: string, reaction: Reaction) => {
     const done = await act((w) => w.react(itemId, reaction).then(() => true));
@@ -295,7 +311,7 @@ export default function MapApp() {
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
-    else setToast(bold ? "大胆地碰回去了！" : "偷偷碰回去了。");
+    else setToast(bold ? "大胆碰回去了！向 TA 表明你的身份" : "偷偷碰回去了。");
     keepSnapshot((await load()).items);
   };
 
@@ -388,11 +404,7 @@ export default function MapApp() {
       ? friends.find((f) => f.roaches.some((r) => r.id === selected.roach.id))
       : undefined;
   const total = roaches.length + (me?.roaches.length ?? 0);
-  const inboxButton = (
-    <button onClick={() => openInbox(false)}>
-      消息{unseen > 0 && <span className="badge">{unseen}</span>}
-    </button>
-  );
+
 
   const mapProps = {
     roaches,
@@ -456,9 +468,14 @@ export default function MapApp() {
             friends={friends}
             tab={p.tab}
             notice={p.notice}
-            onTab={(tab) => setPanel({ ...p, tab, notice: false })}
+            viewed={p.viewed}
+            onTab={(tab) => {
+              setPanel({ ...p, tab, notice: false, viewed: [...p.viewed, tab] });
+              markTabSeen(p.items, tab);
+            }}
             onReply={reply}
             onReact={react}
+            onIgnore={ignore}
             onViewProfile={(profile) => setPanel({ kind: "viewProfile", profile, back: p })}
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
             onClose={() => setPanel(null)}
@@ -604,19 +621,30 @@ export default function MapApp() {
               <button className="primary" onClick={() => setPanel({ kind: "declare" })}>
                 独立宣言
               </button>
-              {inboxButton}
-              <button onClick={() => setPanel({ kind: "profile" })}>资料</button>
             </>
           ) : (
-            <>
-              <button className="primary" onClick={() => startPlacing({ kind: "main" })}>
-                放下我的蟑螂
-              </button>
-              {inboxButton}
-              <button onClick={() => setPanel({ kind: "profile" })}>资料</button>
-            </>
+            <button className="primary" onClick={() => startPlacing({ kind: "main" })}>
+              放下我的蟑螂
+            </button>
           )}
         </footer>
+      )}
+      {/* hidden while a roach card fills the bottom of the screen */}
+      {!placing && !selected && me && (
+        <div className="me-dock">
+          {/* your own cartoon look as the profile picture, whichever style the map shows */}
+          <button className="dock-me" onClick={() => setPanel({ kind: "profile" })}>
+            <RoachIcon color={me.profile.color} size={38} avatar={me.profile.avatar} />
+            <span className="dock-name">{me.profile.anonymous || !me.profile.name.trim() ? "匿名" : displayName(me.profile)}</span>
+          </button>
+          <button className="dock-mail" aria-label={unseen ? `消息，${unseen} 条未读` : "消息"} onClick={() => openInbox(false)}>
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+              <rect x="3" y="5.5" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M4 7.5 12 13l8-5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+            </svg>
+            {unseen > 0 && <span className="badge">{unseen}</span>}
+          </button>
+        </div>
       )}
 
       {panel && renderPanel(panel)}

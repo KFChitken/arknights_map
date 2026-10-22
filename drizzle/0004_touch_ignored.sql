@@ -1,0 +1,1 @@
+ALTER TABLE "touches" ADD COLUMN "ignored_at" timestamp with time zone;

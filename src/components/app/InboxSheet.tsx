@@ -24,10 +24,12 @@ export function tabOf(item: InboxItem): InboxTab {
   return "replies";
 }
 
-/** Open where the newest unseen item is (items come newest first). */
+/** Open on the tab the notice headline talks about (see noticeTitle). */
 export function firstTab(items: InboxItem[]): InboxTab {
-  const unseen = items.find((i) => !i.seen);
-  return unseen ? tabOf(unseen) : "replies";
+  const unseen = items.filter((i) => !i.seen);
+  if (unseen.some((i) => i.kind === "friend")) return "friends";
+  if (unseen.some((i) => i.kind === "touch")) return "touches";
+  return "replies";
 }
 
 export function ago(t: number, now = Date.now()) {
@@ -68,10 +70,12 @@ export default function InboxSheet({
   items,
   friends,
   tab,
+  viewed,
   notice,
   onTab,
   onReply,
   onReact,
+  onIgnore,
   onViewProfile,
   onOpenFriend,
   onClose,
@@ -79,11 +83,14 @@ export default function InboxSheet({
   items: InboxItem[];
   friends: Friend[];
   tab: InboxTab;
+  /** Tabs opened since the inbox was; their messages count as read */
+  viewed: InboxTab[];
   /** Opened by itself because there was something new */
   notice: boolean;
   onTab: (tab: InboxTab) => void;
   onReply: (itemId: string, bold: boolean) => Promise<void>;
   onReact: (itemId: string, reaction: Reaction) => Promise<void>;
+  onIgnore: (itemId: string) => Promise<void>;
   onViewProfile: (p: PublicProfile) => void;
   onOpenFriend: (friendId: string) => void;
   onClose: () => void;
@@ -101,7 +108,8 @@ export default function InboxSheet({
   };
   const friendIds = new Set(friends.map((f) => f.id));
   const shown = items.filter((i) => tabOf(i) === tab);
-  const unseenIn = (t: InboxTab) => items.filter((i) => !i.seen && tabOf(i) === t).length;
+  // items keep their unread look while the inbox is open, but a tab's red count goes once you have looked at it
+  const unseenIn = (t: InboxTab) => (viewed.includes(t) ? 0 : items.filter((i) => !i.seen && tabOf(i) === t).length);
 
   const replyButtons = (item: InboxItem, label: string) =>
     item.replied ? (
@@ -152,8 +160,22 @@ export default function InboxSheet({
                 查看 TA 的资料
               </button>
             )}
-            {replyButtons(item, "碰回去")}
+            {item.ignored ? (
+              <span className="done">你默默爬走了</span>
+            ) : (
+              <>
+                {replyButtons(item, "碰回去")}
+                {!item.replied && replying !== item.id && (
+                  <button className="pill" onClick={() => onIgnore(item.id)}>
+                    默默爬走（不予理会）
+                  </button>
+                )}
+              </>
+            )}
           </div>
+          {replying === item.id && (item.target === "main" || item.target === "clone") && (
+            <p className="hint">大胆碰回去，TA 就会知道刚才碰的那只蟑螂是你的。</p>
+          )}
         </div>
       );
     }
@@ -252,7 +274,7 @@ export function ProfileView({ profile, onBack, onClose }: { profile: PublicProfi
       </div>
       <ProfileDetails profile={profile} />
       <p className="hint" style={{ marginTop: 16 }}>
-        TA 大胆伸出触须，所以你能看到这些。TA 的位置不会给任何人看。
+        TA 大胆伸出触须，所以你能看到这些。
       </p>
     </Sheet>
   );

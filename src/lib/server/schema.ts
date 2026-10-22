@@ -72,6 +72,12 @@ export const loginCodes = pgTable("login_codes", {
   sentToday: smallint("sent_today").notNull().default(1),
 });
 
+/** One row per login email handed to the mail provider in the last day, for the sitewide cap. No address is kept. */
+export const mailSends = pgTable("mail_sends", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  sentAt: at("sent_at").notNull().defaultNow(),
+});
+
 /**
  * slot 0 is the main roach, 1..MAX_CLONES are clones. Everyone sees a roach
  * where it was placed, but never its owner. publicId is regenerated on every
@@ -109,10 +115,12 @@ export const touches = pgTable(
     toSlot: smallint("to_slot"),
     // The public id that was touched, for the once-a-day rule
     toPublicId: uuid("to_public_id"),
-    // "t:<id>" or "d:<id>" when this answers an inbox item
+    // "t:<id>", "d:<id>" or "x:<id>" when this answers an inbox item
     replyTo: text("reply_to"),
     createdAt: createdAt(),
     seenAt: at("seen_at"),
+    /** The receiver crawled away from it (默默爬走); the toucher is never told */
+    ignoredAt: at("ignored_at"),
   },
   (t) => [
     index("touches_to_idx").on(t.toUserId, t.createdAt),

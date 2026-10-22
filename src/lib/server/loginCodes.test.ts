@@ -2,8 +2,9 @@ import { eq, sql, type AnyColumn } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
+import { MAIL_DAILY_LIMIT } from "./env";
 import { forgetLoginCodes, issueLoginCode, redeemLoginCode } from "./loginCodes";
-import { loginCodes } from "./schema";
+import { loginCodes, mailSends } from "./schema";
 
 const EMAIL = "player@example.com";
 const MINUTE = 60_000;
@@ -28,6 +29,7 @@ const wrongFor = (code: string) => (code === "000000" ? "111111" : "000000");
 
 beforeEach(async () => {
   await db.delete(loginCodes);
+  await db.delete(mailSends);
 });
 
 describe("login codes", () => {
@@ -61,6 +63,20 @@ describe("login codes", () => {
     const rs = await Promise.allSettled(Array.from({ length: 20 }, () => issueLoginCode(EMAIL)));
     expect(fulfilled(rs)).toBe(1);
     expect((await row()).sentToday).toBe(1);
+    expect(await db.$count(mailSends)).toBe(1);
+  });
+
+  it("stops sending for the whole site once a day's mail is used up", async () => {
+    await db.insert(mailSends).values(Array.from({ length: MAIL_DAILY_LIMIT - 1 }, () => ({})));
+    const rs = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => issueLoginCode(`p${i}@example.com`)));
+    expect(fulfilled(rs)).toBe(1);
+    await expect(issueLoginCode(EMAIL)).rejects.toThrow("验证码邮件发完了");
+    // a refused address keeps no cooldown and no count
+    expect(await row()).toBeUndefined();
+
+    await db.update(mailSends).set({ sentAt: sql`${mailSends.sentAt} - interval '1 day 1 minute'` });
+    await issueLoginCode(EMAIL);
+    expect(await db.$count(mailSends)).toBe(1);
   });
 
   it("allows a fixed number of tries per code, even when guesses arrive at once", async () => {

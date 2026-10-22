@@ -12,13 +12,15 @@ import { db } from "@/lib/server/db";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { users } from "@/lib/server/schema";
 
-const UNDER_AGE = "很抱歉，目前只开放给 14 岁及以上的玩家。";
+const UNDER_AGE = `很抱歉，目前只开放给 ${MIN_SIGNUP_AGE} 岁及以上的玩家。`;
+// Said when the block comes from an earlier answer, so it does not look like the new date was misread
+const GATE_CLOSED = `这个浏览器 24 小时内填过不满 ${MIN_SIGNUP_AGE} 岁的出生年月，暂时不能注册，请明天再来。`;
 
 /** Finish signing up a verified email: age check and policy consent. The birth date is not stored. */
 export const POST = route(async (req) => {
   const email = await readSignupProof();
   if (!email) throw new HttpError(400, "验证已经过期了，请重新获取验证码。");
-  if (await ageGateClosed()) throw new HttpError(403, UNDER_AGE);
+  if (await ageGateClosed()) throw new HttpError(403, GATE_CLOSED);
 
   const body = await readJson(req);
   const year = Number(body.birthYear);
