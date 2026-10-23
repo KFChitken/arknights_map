@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
 import { isGame } from "../games";
 import { displayName, type Profile } from "../profile";
@@ -10,7 +10,11 @@ import {
   DECLARATIONS_PER_DAY,
   INBOX_DAYS,
   MAX_CLONES,
+  MOVES_PER_DAY,
+  PLACEMENTS_PER_DAY,
   RADAR_RADIUS_KM,
+  RADAR_REUSE_MIN,
+  RADAR_SCANS_PER_DAY,
   TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
 } from "../rules";
@@ -35,13 +39,15 @@ import {
   type Me,
   type OwnRoach,
   type PlaceTarget,
-  type PublicRoach,
   type Radar,
+  type RadarScan,
   type TouchResult,
 } from "../world/types";
+import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
 import { nudge } from "./live";
+import { lookOf, roachesChanged } from "./roachFeed";
 import {
   declarations,
   deliveries,
@@ -49,6 +55,7 @@ import {
   friendCuts,
   friendships,
   moves,
+  radarScans,
   roaches,
   touches,
   users,
@@ -61,8 +68,6 @@ import {
  * (validation, radar counting) are in world/logic.ts.
  */
 
-const CLONE_COLOR = "white" as const;
-const CLONE_AVATAR = "hood" as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ago = (ms: number) => new Date(Date.now() - ms);
@@ -105,7 +110,7 @@ async function userById(id: string) {
 }
 
 function own(r: RoachRow): OwnRoach {
-  return { id: r.id, slot: r.slot, lng: r.lng, lat: r.lat };
+  return { id: r.id, slot: r.slot, lng: r.lng, lat: r.lat, publicId: r.publicId };
 }
 
 async function ownRoaches(userId: string) {
@@ -117,7 +122,7 @@ async function ownRoaches(userId: string) {
 
 const pair = (x: string, y: string) => (x < y ? { a: x, b: y } : { a: y, b: x });
 
-async function friendIdsOf(userId: string) {
+export async function friendIdsOf(userId: string) {
   const rows = await db
     .select({ a: friendships.a, b: friendships.b })
     .from(friendships)
@@ -125,11 +130,12 @@ async function friendIdsOf(userId: string) {
   return new Set(rows.map((r) => (r.a === userId ? r.b : r.a)));
 }
 
-const friendKey = (me: string, other: string) =>
+export const friendKey = (me: string, other: string) =>
   createHmac("sha256", secret("AUTH_SECRET")).update(`friend|${me}|${other}`).digest("base64url").slice(0, 16);
 
 /** After a bold touch from a to b: if b has also touched a boldly, they become 触须之交. */
 async function befriendIfMutual(a: string, b: string): Promise<string | null> {
+  if (await blockedBetween(a, b)) return null;
   const p = pair(a, b);
   const [existing] = await db
     .select()
@@ -148,7 +154,15 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
       await db
         .select({ id: touches.id })
         .from(touches)
-        .where(and(eq(touches.fromUserId, x), eq(touches.toUserId, y), eq(touches.bold, true), gt(touches.createdAt, since)))
+        .where(
+          and(
+            eq(touches.fromUserId, x),
+            eq(touches.toUserId, y),
+            eq(touches.bold, true),
+            eq(touches.withheld, false),
+            gt(touches.createdAt, since),
+          ),
+        )
         .limit(1)
     ).length > 0;
   if (!(await bold(a, b)) || !(await bold(b, a))) return null;
@@ -165,45 +179,26 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
 export async function me(userId: string): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
-  return { id: u.id, profile: profileOf(u), roaches: await ownRoaches(u.id) };
+  const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
+  return { id: u.id, profile: profileOf(u), roaches: await ownRoaches(u.id), movesLeft };
 }
 
-/** Everyone else's roaches where they were placed, in random order. */
-export async function publicRoaches(viewerId: string | null): Promise<PublicRoach[]> {
-  const rows = await db
-    .select({
-      userId: roaches.userId,
-      slot: roaches.slot,
-      publicId: roaches.publicId,
-      lng: roaches.lng,
-      lat: roaches.lat,
-      avatar: users.avatar,
-      color: users.color,
-    })
-    .from(roaches)
-    .innerJoin(users, eq(users.id, roaches.userId))
-    .where(viewerId ? ne(roaches.userId, viewerId) : undefined)
-    // ordering by the random public id keeps a player's roaches from sitting next to each other
-    .orderBy(asc(roaches.publicId));
-  const friends = viewerId ? await friendIdsOf(viewerId) : new Set<string>();
-  return rows.map((r) => {
-    const clone = r.slot > 0;
-    // clones all look alike, so a clone's look cannot point at its main roach
-    return {
-      id: r.publicId,
-      clone,
-      avatar: clone ? CLONE_AVATAR : (ROACH_AVATARS.find((a) => a === r.avatar) ?? "hood"),
-      color: clone ? CLONE_COLOR : (ROACH_COLORS.find((c) => c === r.color) ?? "cyan"),
-      friend: friends.has(r.userId),
-      lng: r.lng,
-      lat: r.lat,
-    };
-  });
+/** A player's moves of roaches already on the map, or new roaches put down, in the last 24 hours. */
+async function recentMoves(userId: string, kind: "move" | "place") {
+  const which =
+    kind === "move" ? and(isNotNull(moves.fromLng), isNotNull(moves.toLng)) : and(isNull(moves.fromLng), isNotNull(moves.toLng));
+  const [row] = await db
+    .select({ n: count() })
+    .from(moves)
+    .where(and(eq(moves.userId, userId), gt(moves.at, ago(DAY)), which));
+  return row.n;
 }
 
 export async function saveProfile(userId: string, input: Profile): Promise<Profile> {
   const profile = normalizeProfile(input);
   await db.update(users).set(profileColumns(profile)).where(eq(users.id, userId));
+  // the main roach wears the profile's look
+  roachesChanged();
   return profile;
 }
 
@@ -229,6 +224,13 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   } else {
     throw new WorldError("不知道要放哪只蟑螂。");
   }
+  // Each move is a row the radar reads, so they are rationed; taking a roach back and putting it down again counts too
+  if (existing && (await recentMoves(userId, "move")) >= MOVES_PER_DAY) {
+    throw new WorldError(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+  }
+  if (!existing && (await recentMoves(userId, "place")) >= PLACEMENTS_PER_DAY) {
+    throw new WorldError("今天放下的蟑螂太多了，明天再放吧。");
+  }
   // A fresh public id on every move, so nobody can follow a roach between spots
   const values = { lng: at.lng, lat: at.lat, publicId: randomUUID(), placedAt: new Date() };
   await db.transaction(async (tx) => {
@@ -243,6 +245,7 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
       toLat: at.lat,
     });
   });
+  roachesChanged();
   return ownRoaches(userId);
 }
 
@@ -257,6 +260,7 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
     await tx.delete(roaches).where(inArray(roaches.id, gone.map((r) => r.id)));
     await tx.insert(moves).values(gone.map((r) => ({ userId, slot: r.slot, fromLng: r.lng, fromLat: r.lat })));
   });
+  roachesChanged();
   return ownRoaches(userId);
 }
 
@@ -287,13 +291,17 @@ export async function touch(userId: string, publicId: string, bold: boolean): Pr
     )
     .limit(1);
   if (again) throw new WorldError("今天已经碰过这只蟑螂了，明天再来吧。");
+  // Between a blocked pair the touch looks sent, but never arrives
+  const withheld = await blockedBetween(userId, roach.userId);
   await db.insert(touches).values({
     fromUserId: userId,
     toUserId: roach.userId,
     bold: Boolean(bold),
     toSlot: roach.slot,
     toPublicId: publicId,
+    withheld,
   });
+  if (withheld) return { newFriend: null };
   const newFriend = bold ? await befriendIfMutual(userId, roach.userId) : null;
   nudge([roach.userId]);
   return { newFriend };
@@ -342,7 +350,9 @@ export async function reply(userId: string, itemId: string, bold: boolean): Prom
   if (!to) throw new WorldError("找不到这条消息的主人了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
   await checkTouchQuota(userId);
-  await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId });
+  const withheld = await blockedBetween(userId, to);
+  await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId, withheld });
+  if (withheld) return { newFriend: null };
   const newFriend = bold ? await befriendIfMutual(userId, to) : null;
   nudge([to]);
   return { newFriend };
@@ -351,17 +361,22 @@ export async function reply(userId: string, itemId: string, bold: boolean): Prom
 export async function inbox(userId: string): Promise<InboxItem[]> {
   const since = ago(INBOX_DAYS * DAY);
   const items: InboxItem[] = [];
+  const blocked = await blockedBy(userId);
 
-  const ts = await db
-    .select({ t: touches, from: users })
-    .from(touches)
-    .innerJoin(users, eq(users.id, touches.fromUserId))
-    .where(and(eq(touches.toUserId, userId), gt(touches.createdAt, since)));
-  const ds = await db
-    .select({ d: declarations, seenAt: deliveries.seenAt })
-    .from(deliveries)
-    .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
-    .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, since)));
+  const ts = (
+    await db
+      .select({ t: touches, from: users })
+      .from(touches)
+      .innerJoin(users, eq(users.id, touches.fromUserId))
+      .where(and(eq(touches.toUserId, userId), eq(touches.withheld, false), gt(touches.createdAt, since)))
+  ).filter((x) => !blocked.has(x.t.fromUserId));
+  const ds = (
+    await db
+      .select({ d: declarations, seenAt: deliveries.seenAt })
+      .from(deliveries)
+      .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
+      .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, since)))
+  ).filter((x) => !blocked.has(x.d.senderId));
   const mine = ds.length
     ? await db
         .select({ declarationId: reactions.declarationId, reaction: reactions.reaction })
@@ -369,11 +384,13 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
         .where(and(eq(reactions.fromUserId, userId), inArray(reactions.declarationId, ds.map((x) => x.d.id))))
     : [];
   const myReaction = new Map(mine.map((r) => [r.declarationId, r.reaction]));
-  const rs = await db
-    .select({ r: reactions, d: declarations })
-    .from(reactions)
-    .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
-    .where(and(eq(declarations.senderId, userId), gt(reactions.createdAt, since)));
+  const rs = (
+    await db
+      .select({ r: reactions, d: declarations })
+      .from(reactions)
+      .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
+      .where(and(eq(declarations.senderId, userId), eq(reactions.withheld, false), gt(reactions.createdAt, since)))
+  ).filter((x) => !blocked.has(x.r.fromUserId));
   const fs = await db
     .select()
     .from(friendships)
@@ -450,7 +467,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
   return items.sort((x, y) => y.at - x.at);
 }
 
-function storedDeclaration(d: typeof declarations.$inferSelect): Declaration {
+export function storedDeclaration(d: typeof declarations.$inferSelect): Declaration {
   const game = isGame(d.game) ? d.game : "arknights";
   const character = d.character ?? "";
   switch (d.template) {
@@ -541,10 +558,13 @@ export async function declare(userId: string, input: Declaration, from?: string[
     (c) =>
       sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography, ${DECLARATION_RADIUS_KM * 1000})`,
   );
-  const rows = await db
-    .selectDistinct({ id: roaches.userId })
-    .from(roaches)
-    .where(and(ne(roaches.userId, userId), or(...near)));
+  const blocked = await blockedWith(userId);
+  const rows = (
+    await db
+      .selectDistinct({ id: roaches.userId })
+      .from(roaches)
+      .where(and(ne(roaches.userId, userId), or(...near)))
+  ).filter((r) => !blocked.has(r.id));
   await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(declarations)
@@ -595,13 +615,14 @@ export async function react(userId: string, itemId: string, reaction: string) {
     .limit(1);
   if (!row) throw new WorldError("找不到这条宣言了。");
   if (!isReaction(reaction) || !reactionsFor(row.template).includes(reaction)) throw new WorldError("这条宣言不能这样回应。");
+  const withheld = await blockedBetween(userId, row.senderId);
   const [made] = await db
     .insert(reactions)
-    .values({ declarationId: id, fromUserId: userId, reaction })
+    .values({ declarationId: id, fromUserId: userId, reaction, withheld })
     .onConflictDoNothing()
     .returning({ id: reactions.id });
   if (!made) throw new WorldError("已经回应过这条宣言了。");
-  nudge([row.senderId]);
+  if (!withheld) nudge([row.senderId]);
 }
 
 export async function friends(userId: string): Promise<Friend[]> {
@@ -647,8 +668,7 @@ export async function friends(userId: string): Promise<Friend[]> {
       roaches: theirRoaches.map((r) => ({
         id: r.publicId,
         clone: r.slot > 0,
-        avatar: r.slot > 0 ? CLONE_AVATAR : (ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood"),
-        color: r.slot > 0 ? CLONE_COLOR : (ROACH_COLORS.find((c) => c === u.color) ?? "cyan"),
+        ...lookOf(r.slot, u.avatar, u.color),
         friend: true,
         lng: r.lng,
         lat: r.lat,
@@ -664,7 +684,12 @@ export async function unfriend(userId: string, friendId: string) {
   const others = await friendIdsOf(userId);
   const other = [...others].find((o) => friendKey(userId, o) === friendId);
   if (!other) throw new WorldError("你们已经不是触须之交了。");
-  const p = pair(userId, other);
+  await endFriendship(userId, other);
+}
+
+/** Stop being 触须之交; only bold touches from now on count towards becoming friends again. */
+export async function endFriendship(x: string, y: string) {
+  const p = pair(x, y);
   await db.transaction(async (tx) => {
     await tx.delete(friendships).where(and(eq(friendships.a, p.a), eq(friendships.b, p.b)));
     await tx
@@ -674,31 +699,70 @@ export async function unfriend(userId: string, friendId: string) {
   });
 }
 
+/**
+ * 方舟雷达, rationed to RADAR_SCANS_PER_DAY a day. Reopening it within
+ * RADAR_REUSE_MIN, with the main roach still in the same spot, shows the same
+ * scan for free; once the scans run out the last one is shown again with when
+ * the next frees up.
+ */
 export async function radar(userId: string): Promise<Radar | null> {
+  const now = Date.now();
   const [main] = await db
     .select()
     .from(roaches)
     .where(and(eq(roaches.userId, userId), eq(roaches.slot, 0)))
     .limit(1);
   if (!main) return null;
-  const now = Date.now();
-  // A box a little bigger than the circle; buildRadar does the exact distance
-  const dLat = (RADAR_RADIUS_KM * 1.2) / 111;
-  const dLng = dLat / Math.max(0.1, Math.cos((main.lat * Math.PI) / 180));
+  const recent = await db
+    .select()
+    .from(radarScans)
+    .where(and(eq(radarScans.userId, userId), gt(radarScans.createdAt, ago(DAY))))
+    .orderBy(desc(radarScans.createdAt));
+  const left = RADAR_SCANS_PER_DAY - recent.length;
+  const last = recent[0];
+  const sameSpot = last && last.lng === main.lng && last.lat === main.lat;
+  if (last && (left <= 0 || (sameSpot && now - last.createdAt.getTime() < RADAR_REUSE_MIN * MINUTE))) {
+    const oldest = recent[recent.length - 1];
+    return {
+      ...last.result,
+      scannedAt: last.createdAt.getTime(),
+      scansLeft: Math.max(0, left),
+      nextScanAt: left <= 0 ? oldest.createdAt.getTime() + DAY : null,
+    };
+  }
+  const scan = await scanRadar(userId, main, now);
+  await db.insert(radarScans).values({ userId, result: scan, lng: main.lng, lat: main.lat, createdAt: new Date(now) });
+  await db.delete(radarScans).where(and(eq(radarScans.userId, userId), lt(radarScans.createdAt, ago(DAY))));
+  return { ...scan, scannedAt: now, scansLeft: left - 1, nextScanAt: null };
+}
+
+/**
+ * Count what is around your main roach. Every query goes through a spatial
+ * index and reads only rows near it, so a scan costs the same however big the
+ * map gets.
+ */
+async function scanRadar(userId: string, main: RoachRow, now: number): Promise<RadarScan> {
+  const center = sql`ST_SetSRID(ST_MakePoint(${main.lng}, ${main.lat}), 4326)::geography`;
+  // a hair wider than the circle; buildRadar decides exactly who is inside
+  const reach = RADAR_RADIUS_KM * 1010;
+  const within = (geog: AnyColumn) => sql`ST_DWithin(${geog}, ${center}, ${reach})`;
   const near = await db
     .select({ owner: roaches.userId, slot: roaches.slot, lng: roaches.lng, lat: roaches.lat })
     .from(roaches)
-    .where(
-      and(
-        ne(roaches.userId, userId),
-        sql`${roaches.lat} between ${main.lat - dLat} and ${main.lat + dLat}`,
-        sql`${roaches.lng} between ${main.lng - dLng} and ${main.lng + dLng}`,
-      ),
-    );
+    .where(and(ne(roaches.userId, userId), within(roaches.geog)));
+  // a move matters only if it starts or ends inside the circle
   const moveRows = await db
-    .select()
+    .select({
+      userId: moves.userId,
+      slot: moves.slot,
+      fromLng: moves.fromLng,
+      fromLat: moves.fromLat,
+      toLng: moves.toLng,
+      toLat: moves.toLat,
+      at: moves.at,
+    })
     .from(moves)
-    .where(and(ne(moves.userId, userId), gt(moves.at, ago(7 * DAY))));
+    .where(and(ne(moves.userId, userId), gt(moves.at, ago(7 * DAY)), or(within(moves.fromGeog), within(moves.toGeog))));
   const recentMoves: Move[] = moveRows.map((m) => ({
     owner: m.userId,
     slot: m.slot,
@@ -707,11 +771,19 @@ export async function radar(userId: string): Promise<Radar | null> {
     at: m.at.getTime(),
   }));
   const demo = demoEnabled ? await demoMoves(now) : [];
+  // players with a roach nearby, for counting their touches and declarations through the per-player indexes
+  const nearPlayers = sql`(select ${roaches.userId} from ${roaches} where ${within(roaches.geog)})`;
   const touchedPlayers = (
-    await db.select({ to: touches.toUserId }).from(touches).where(gt(touches.createdAt, ago(DAY)))
+    await db
+      .select({ to: touches.toUserId })
+      .from(touches)
+      .where(and(gt(touches.createdAt, ago(DAY)), sql`${touches.toUserId} in ${nearPlayers}`))
   ).map((t) => t.to);
   const declaringPlayers = (
-    await db.select({ from: declarations.senderId }).from(declarations).where(gt(declarations.createdAt, ago(DAY)))
+    await db
+      .select({ from: declarations.senderId })
+      .from(declarations)
+      .where(and(gt(declarations.createdAt, ago(DAY)), sql`${declarations.senderId} in ${nearPlayers}`))
   ).map((d) => d.from);
   return buildRadar({
     center: { lng: main.lng, lat: main.lat },

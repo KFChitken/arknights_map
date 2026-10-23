@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { MIN_SIGNUP_AGE } from "@/lib/rules";
+import { BANNED, isBanned } from "@/lib/server/account";
 import {
   ageGateClosed,
   clearSignupProof,
@@ -21,6 +22,8 @@ export const POST = route(async (req) => {
   const email = await readSignupProof();
   if (!email) throw new HttpError(400, "验证已经过期了，请重新获取验证码。");
   if (await ageGateClosed()) throw new HttpError(403, GATE_CLOSED);
+  // a code sent just before a ban must not open a new account
+  if (await isBanned(email)) throw new HttpError(403, BANNED);
 
   const body = await readJson(req);
   const year = Number(body.birthYear);

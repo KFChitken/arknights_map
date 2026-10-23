@@ -193,6 +193,7 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .msg { margin-bottom: 8px; padding: 10px 12px; border-radius: 12px; background: #f6f7f9; font-size: 14px; line-height: 1.5; }
 .msg.new { background: #fff6cc; }
 .msg .meta { margin-top: 2px; font-size: 12px; color: var(--muted); }
+.msg .meta .link { margin-left: 10px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-decoration: underline; }
 .msg .quote { margin: 4px 0 0; font-size: 16px; font-weight: 800; }
 .msg .row-actions { align-items: center; }
 .msg .done { font-size: 12px; color: var(--muted); }
@@ -309,3 +310,11 @@ input[type="email"] {
 .doc h2 { font-size: 16px; margin: 22px 0 6px; }
 .doc ul { padding-left: 20px; margin: 6px 0; }
 a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px; padding: 5px 11px; background: #fff; color: var(--ink); font-size: 13px; text-decoration: none; }
+
+/* ---- /admin ---- */
+.admin-case { margin: 18px 0; padding: 14px 14px 4px; border: 1px solid #e6e8eb; border-radius: 16px; background: #fff; }
+.admin-case h2 { margin-top: 10px; font-size: 14px; }
+.admin-case .tag { margin-left: 8px; padding: 2px 6px; border-radius: 6px; background: #eef0f2; color: var(--muted); font-size: 11px; }
+.admin-case .account-actions { margin-bottom: 10px; }
+.admin-note { padding: 8px 12px; border-radius: 10px; background: #fff7d6; }
+button.pill.danger-pill { border-color: #f1c4bf; color: #c0392b; }

@@ -5,12 +5,31 @@ import { EMPTY_PROFILE, type Profile } from "../profile";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
-import type { PlaceTarget } from "../world/types";
+import type { PlaceTarget, PublicRoach } from "../world/types";
+import { isBanned } from "./account";
+import { openCases, resolveCase } from "./admin";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
 import { listen } from "./live";
 import { pruneOldActivity } from "./retention";
-import { declarations, deliveries, friendCuts, friendships, moves, reactions, roaches, sessions, touches, users } from "./schema";
+import { allRoaches } from "./roachFeed";
+import * as safety from "./safety";
+import {
+  bannedEmails,
+  blocks,
+  declarations,
+  deliveries,
+  friendCuts,
+  friendships,
+  moves,
+  radarScans,
+  reactions,
+  reports,
+  roaches,
+  sessions,
+  touches,
+  users,
+} from "./schema";
 import * as world from "./world";
 
 // Runs against the database named in vitest.config.mts, which is wiped before every test
@@ -25,7 +44,7 @@ function as(id: string) {
   return {
     id,
     me: async () => (await world.me(id))!,
-    roaches: () => world.publicRoaches(id),
+    roaches: () => mapOf(id),
     saveProfile: (p: Profile) => world.saveProfile(id, p),
     placeRoach: (target: PlaceTarget, spot: LngLat) => world.placeRoach(id, target, spot),
     removeRoach: (roachId: string) => world.removeRoach(id, roachId),
@@ -39,6 +58,10 @@ function as(id: string) {
     friends: () => world.friends(id),
     unfriend: (friendId: string) => world.unfriend(id, friendId),
     radar: () => world.radar(id),
+    block: (target: string) => safety.block(id, target),
+    unblock: (blockId: string) => safety.unblock(id, blockId),
+    blocks: () => safety.blockList(id),
+    report: (target: string, reason: string, note = "") => safety.report(id, target, reason, note),
     identities: () => identities(id, null),
   };
 }
@@ -57,6 +80,18 @@ async function demo(key: string) {
   return as(u.id);
 }
 
+/** What a player's map shows: the shared feed without their own roaches, friends' marked, as the browser does it. */
+async function mapOf(id: string): Promise<PublicRoach[]> {
+  const own = new Set(((await world.me(id))?.roaches ?? []).map((r) => r.publicId));
+  const friendIds = new Set((await world.friends(id)).flatMap((f) => f.roaches.map((r) => r.id)));
+  return (await allRoaches()).filter((r) => !own.has(r.id)).map((r) => ({ ...r, friend: friendIds.has(r.id) }));
+}
+
+/** Make a player's radar scans look older than the free reopening window. */
+async function rewindScans(userId: string) {
+  await db.update(radarScans).set({ createdAt: sql`${radarScans.createdAt} - interval '11 minutes'` }).where(eq(radarScans.userId, userId));
+}
+
 /** Find the roach placed at a spot in what a player sees. */
 async function publicAt(viewer: Player, at: LngLat) {
   const hit = (await viewer.roaches()).find((r) => r.lng === at.lng && r.lat === at.lat);
@@ -67,7 +102,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}`,
   );
   await seedDemo();
   me = await signUp("me@example.com");
@@ -434,10 +469,109 @@ describe("server world", () => {
     expect(await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true)).toEqual({ newFriend: null });
   });
 
+  it("hides a blocked player's messages from you, old and new, without telling them", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.touch((await publicAt(me, tester("t1").roaches[0])).id, true);
+    const t1 = await demo("t1");
+    await t1.reply((await t1.inbox())[0].id, true);
+    const [aBai] = await me.friends();
+
+    await me.block(`friend:${aBai.id}`);
+    expect(await me.friends()).toEqual([]);
+    expect(await t1.friends()).toEqual([]);
+    expect(await me.inbox()).toEqual([]);
+    expect(await me.blocks()).toEqual([{ id: expect.any(String), name: "Dr. 阿白", at: expect.any(Number) }]);
+
+    // 阿白 sees nothing change: the touch from you is still there, and touching you seems to work
+    expect(await t1.inbox()).toHaveLength(1);
+    expect(await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true)).toEqual({ newFriend: null });
+    expect(await me.inbox()).toEqual([]);
+    // declarations stop both ways
+    await me.declare({ template: "launch", game: "arknights" });
+    expect((await t1.inbox()).some((i) => i.kind === "declaration")).toBe(false);
+    expect((await (await demo("t2")).inbox()).some((i) => i.kind === "declaration")).toBe(true);
+    await t1.declare({ template: "launch", game: "endfield" });
+    expect(await me.inbox()).toEqual([]);
+
+    // unblocking brings back what came before the block, but not what was sent during it
+    await me.unblock((await me.blocks())[0].id);
+    const back = (await me.inbox()).filter((i) => i.kind === "touch");
+    expect(back).toHaveLength(1);
+    expect(back[0]).toMatchObject({ target: "touch", bold: true });
+  });
+
+  it("blocks senders you only saw anonymously, and keeps them anonymous in your list", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t2 = await demo("t2");
+    await t2.touch((await publicAt(t2, PEOPLES_SQUARE)).id, false);
+    await me.declare({ template: "launch", game: "arknights" });
+    const t3 = await demo("t3");
+    await t3.react((await t3.inbox())[0].id, "plusone");
+
+    const items = await me.inbox();
+    await me.block(items.find((i) => i.kind === "touch")!.id);
+    await me.block(items.find((i) => i.kind === "reaction")!.id);
+    expect(await me.inbox()).toEqual([]);
+    const list = await me.blocks();
+    expect(list.map((b) => b.name)).toEqual([null, null]);
+    expect(JSON.stringify(list)).not.toMatch(/小林|Kal|t2|t3/);
+    // you can only block what was sent to you
+    await expect(t2.block(items[0].id)).rejects.toThrow("找不到");
+  });
+
+  it("files reports for the admin, blocks the reported player, and hides a name three players report", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t1 = await demo("t1");
+    await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true);
+    const [touch] = await me.inbox();
+    await expect(me.report(touch.id, "nonsense")).rejects.toThrow("举报理由");
+    await me.report(touch.id, "name", "  名字在骂人  ");
+    await me.report(touch.id, "spam");
+    expect(await me.inbox()).toEqual([]);
+    const [filed] = await db.select().from(reports);
+    expect(filed).toMatchObject({ reason: "name", note: "名字在骂人", context: "大胆碰了举报人的本体", targetName: "阿白" });
+    expect(await db.$count(reports)).toBe(1);
+
+    // two more players report the same name, and it is hidden until the admin looks
+    for (const key of ["t2", "t3"]) {
+      const p = await demo(key);
+      await t1.touch((await publicAt(t1, tester(key).roaches[0])).id, true);
+      const [item] = (await p.inbox()).filter((i) => i.kind === "touch");
+      await p.report(item.id, "name");
+    }
+    const [aBai] = await db.select().from(users).where(eq(users.id, t1.id));
+    expect(aBai).toMatchObject({ anonymous: true, name: "" });
+
+    const cases = await openCases();
+    expect(cases).toHaveLength(1);
+    expect(cases[0]).toMatchObject({ targetId: t1.id, reporters: 3, name: "" });
+    expect(cases[0].reports.map((r) => r.name)).toEqual(["阿白", "阿白", "阿白"]);
+    await resolveCase(t1.id, "dismiss");
+    expect(await openCases()).toEqual([]);
+    await expect(resolveCase(t1.id, "ban")).rejects.toThrow("测试玩家");
+  });
+
+  it("bans an account: deletes it and refuses its email from then on", async () => {
+    const troll = await signUp("troll@example.com");
+    await troll.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "main" }, TOKYO);
+    await troll.touch((await publicAt(troll, TOKYO)).id, false);
+    await me.report((await me.inbox())[0].id, "spam");
+
+    await resolveCase(troll.id, "ban");
+    expect(await db.select().from(users).where(eq(users.id, troll.id))).toEqual([]);
+    expect(await db.$count(reports)).toBe(0);
+    expect(await isBanned("troll@example.com")).toBe(true);
+    expect(await isBanned("me@example.com")).toBe(false);
+    expect(JSON.stringify(await db.select().from(bannedEmails))).not.toContain("troll");
+  });
+
   it("runs the radar around your main roach, counting arrivals and departures across its edge", async () => {
     expect(await me.radar()).toBeNull();
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const before = (await me.radar())!;
+    expect(before).toMatchObject({ scansLeft: 4, nextScanAt: null });
     expect(before.radiusKm).toBe(100);
     expect(before.roaches).toBeGreaterThan(100);
     expect(before.players).toBeLessThanOrEqual(before.roaches);
@@ -449,6 +583,9 @@ describe("server world", () => {
     const t2 = await demo("t2");
     await t2.placeRoach({ kind: "move", roachId: (await t2.me()).roaches[0].id }, { lng: 116.4, lat: 39.9 });
     await (await demo("t4")).placeRoach({ kind: "clone" }, { lng: 121.45, lat: 31.22 });
+    // reopening it within a few minutes shows the same scan without using one up
+    expect(await me.radar()).toEqual(before);
+    await rewindScans(me.id);
     const after = (await me.radar())!;
     expect(after.day.left).toBe(before.day.left + 1);
     expect(after.day.arrived).toBe(before.day.arrived + 1);
@@ -457,7 +594,51 @@ describe("server world", () => {
 
     // your own moves never show up on your radar
     await me.placeRoach({ kind: "clone" }, { lng: 121.5, lat: 31.3 });
+    await rewindScans(me.id);
     expect((await me.radar())!.day).toEqual(after.day);
+  });
+
+  it("allows five radar scans a day, then shows the last one again until one frees up", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    for (let i = 4; i >= 0; i--) {
+      expect((await me.radar())!.scansLeft).toBe(i);
+      await rewindScans(me.id);
+    }
+    const [last] = await db.select().from(radarScans).where(eq(radarScans.userId, me.id)).orderBy(sql`created_at desc`).limit(1);
+    const shown = (await me.radar())!;
+    expect(shown).toMatchObject({ scansLeft: 0, scannedAt: last.createdAt.getTime(), nextScanAt: expect.any(Number) });
+    expect(shown.nextScanAt).toBeGreaterThan(Date.now());
+    // a day after the first scan, one frees up
+    await db.update(radarScans).set({ createdAt: sql`${radarScans.createdAt} - interval '1 day'` }).where(eq(radarScans.id, (await db.select().from(radarScans).orderBy(radarScans.createdAt).limit(1))[0].id));
+    expect((await me.radar())!).toMatchObject({ scansLeft: 0, nextScanAt: null });
+  });
+
+  it("scans afresh once the main roach has moved, even within the free reopening window", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    expect((await me.radar())!.scansLeft).toBe(4);
+    expect((await me.radar())!.scansLeft).toBe(4);
+    await me.placeRoach({ kind: "move", roachId: (await me.me()).roaches[0].id }, TOKYO);
+    expect((await me.radar())!.scansLeft).toBe(3);
+  });
+
+  it("allows three moves a day, and puts a cap on putting roaches down again and again", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    expect((await me.me()).movesLeft).toBe(3);
+    const main = (await me.me()).roaches[0];
+    for (let i = 1; i <= 3; i++) await me.placeRoach({ kind: "move", roachId: main.id }, { lng: 121 + i / 10, lat: 31 });
+    expect((await me.me()).movesLeft).toBe(0);
+    await expect(me.placeRoach({ kind: "move", roachId: main.id }, TOKYO)).rejects.toThrow("每天最多挪 3 次窝");
+    await expect(me.placeRoach({ kind: "main" }, TOKYO)).rejects.toThrow("每天最多挪 3 次窝");
+
+    // taking roaches back and putting them down again is capped too
+    for (let i = 0; i < 7; i++) {
+      await me.placeRoach({ kind: "clone" }, { lng: 100, lat: 20 + i });
+      await me.removeRoach((await me.me()).roaches.find((r) => r.slot > 0)!.id);
+    }
+    await expect(me.placeRoach({ kind: "clone" }, TOKYO)).rejects.toThrow("今天放下的蟑螂太多了");
+    // a day later the moves come back
+    await db.update(moves).set({ at: sql`${moves.at} - interval '1 day'` }).where(eq(moves.userId, me.id));
+    expect((await me.me()).movesLeft).toBe(3);
   });
 
   it("forgets touches, declarations and moves older than 90 days, keeping newer ones", async () => {

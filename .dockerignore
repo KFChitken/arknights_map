@@ -1,3 +1,6 @@
 node_modules
 .next
 .git
+# Server secrets reach the app at run time (env_file in docker-compose.prod.yml), never through the image
+.env
+.env.*

@@ -6,6 +6,7 @@ import { passerbyProfile, passersby, TESTERS } from "../world/cast";
 import type { Identity } from "../world/types";
 import { db } from "./db";
 import { declarations, deliveries, friendCuts, friendships, moves, reactions, roaches, touches, users } from "./schema";
+import { roachesChanged } from "./roachFeed";
 import { profileColumns, profileOf } from "./world";
 
 /**
@@ -47,6 +48,7 @@ export async function seedDemo() {
       })),
     ),
   );
+  roachesChanged();
 }
 
 /** Wipe all social activity and the demo players, then seed them again. Real players and their roaches stay. */
@@ -57,6 +59,7 @@ export async function resetDemo() {
   await db.delete(friendCuts);
   await db.delete(moves);
   await db.delete(users).where(isNotNull(users.demoKey));
+  roachesChanged();
   await seedDemo();
 }
 
@@ -67,7 +70,7 @@ async function unseenFor(ids: string[]) {
   const ts = await db
     .select({ id: touches.toUserId, n: sql<number>`count(*)::int` })
     .from(touches)
-    .where(and(inArray(touches.toUserId, ids), isNull(touches.seenAt)))
+    .where(and(inArray(touches.toUserId, ids), isNull(touches.seenAt), eq(touches.withheld, false)))
     .groupBy(touches.toUserId);
   for (const r of ts) add(r.id, r.n);
   const ds = await db
@@ -80,7 +83,7 @@ async function unseenFor(ids: string[]) {
     .select({ id: declarations.senderId, n: sql<number>`count(*)::int` })
     .from(reactions)
     .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
-    .where(and(inArray(declarations.senderId, ids), isNull(reactions.seenAt)))
+    .where(and(inArray(declarations.senderId, ids), isNull(reactions.seenAt), eq(reactions.withheld, false)))
     .groupBy(declarations.senderId);
   for (const r of rs) add(r.id, r.n);
   const fs = await db.select().from(friendships);

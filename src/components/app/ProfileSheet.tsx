@@ -7,6 +7,7 @@ import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
+import type { BlockedPlayer } from "@/lib/world/types";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
@@ -30,12 +31,16 @@ const COLOR_NAMES: Record<RoachColor, string> = {
 
 export default function ProfileSheet({
   profile,
+  blocked,
+  onUnblock,
   onSave,
   onSignOut,
   onDelete,
   onClose,
 }: {
   profile: Profile;
+  blocked: BlockedPlayer[];
+  onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
   onSignOut: () => void;
   onDelete: () => void;
@@ -187,6 +192,24 @@ export default function ProfileSheet({
         </div>
         <p className="hint">颜色只改兜帽形象两边的灯；博士、管理员和小恶魔用的是原画，颜色不变。</p>
       </fieldset>
+      <fieldset>
+        <legend>拉黑名单</legend>
+        {blocked.length === 0 && <p className="hint">还没有拉黑任何人。在消息里点「拉黑/举报」就能拉黑。</p>}
+        {blocked.map((b) => (
+          <div className="list-row" key={b.id}>
+            <div>
+              <strong>{b.name ?? "一只匿名舟p"}</strong>
+              <p className="muted">{new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}拉黑</p>
+            </div>
+            <div className="row-actions">
+              <button className="pill" onClick={() => onUnblock(b.id)}>
+                解除
+              </button>
+            </div>
+          </div>
+        ))}
+      </fieldset>
+
       <div className="account-actions">
         <button className="pill" onClick={onSignOut}>
           退出登录

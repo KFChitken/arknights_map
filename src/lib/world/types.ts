@@ -1,5 +1,6 @@
 import type { Declaration, Reaction } from "../declarations";
 import type { Profile, PublicProfile } from "../profile";
+import type { ReportReason } from "../safety";
 import type { LngLat, RoachAvatar, RoachColor } from "../types";
 
 /**
@@ -9,8 +10,11 @@ import type { LngLat, RoachAvatar, RoachColor } from "../types";
 export interface World {
   /** The signed-in player with their own roaches, or null when signed out. */
   me(): Promise<Me | null>;
-  /** Everyone else's roaches where they were placed: no owner, random order. */
-  roaches(): Promise<PublicRoach[]>;
+  /**
+   * Everyone's roaches, your own included, as one feed shared by every viewer.
+   * Pass the version you hold to get only what changed since (see RoachFeedUpdate).
+   */
+  roachFeed(since: string | null): Promise<RoachFeedUpdate>;
   saveProfile(profile: Profile): Promise<Profile>;
   /** Place or move a roach. Returns the owner's roaches afterwards. */
   placeRoach(target: PlaceTarget, at: LngLat): Promise<OwnRoach[]>;
@@ -34,6 +38,15 @@ export interface World {
   unfriend(friendId: string): Promise<void>;
   /** 方舟雷达 around your main roach: counts only, never distances or directions. Null without a main roach. */
   radar(): Promise<Radar | null>;
+  /**
+   * Block whoever sent an inbox item, or a 触须之交 ("friend:<id>"). Nothing
+   * passes between you any more; they are not told.
+   */
+  block(target: string): Promise<void>;
+  unblock(blockId: string): Promise<void>;
+  blocks(): Promise<BlockedPlayer[]>;
+  /** Report them to the admin, which also blocks them. They never learn who reported them. */
+  report(target: string, reason: ReportReason, note: string): Promise<void>;
 
   // Local testing only: step into other players' shoes on one device
   identities(): Promise<Identity[]>;
@@ -45,17 +58,26 @@ export type PlayerId = string;
 
 export type PlaceTarget = { kind: "main" } | { kind: "clone" } | { kind: "move"; roachId: string };
 
-/** One of your own roaches at its true position. Only its owner ever gets this. */
-export type OwnRoach = LngLat & { id: string; slot: number };
+/** One of your own roaches at its true position. publicId is how it appears in the shared feed. Only its owner ever gets this. */
+export type OwnRoach = LngLat & { id: string; slot: number; publicId: string };
 
-/** Someone else's roach as you see it. friend: it belongs to one of your 触须之交. */
-export type PublicRoach = LngLat & {
+/** A roach as everyone sees it in the shared feed: where it is and how it looks, never whose. */
+export type MapRoach = LngLat & {
   id: string;
   clone: boolean;
   avatar: RoachAvatar;
   color: RoachColor;
-  friend: boolean;
 };
+
+/** Someone else's roach as you see it. friend: it belongs to one of your 触须之交. */
+export type PublicRoach = MapRoach & { friend: boolean };
+
+/**
+ * The shared roach feed at version v. With no version to start from it holds
+ * every roach; otherwise only those added or changed since, and the ids gone.
+ * Nothing in it says when or in which order things changed.
+ */
+export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; changed?: MapRoach[]; removed?: string[] };
 
 /** newFriend: the other player's name when this touch made you 触须之交 */
 export type TouchResult = { newFriend: string | null };
@@ -78,7 +100,11 @@ export type FriendEvent =
   | { kind: "declared"; at: number; text: string }
   | { kind: "befriended"; at: number; you: boolean };
 
-export type Me = { id: PlayerId; profile: Profile; roaches: OwnRoach[] };
+/** movesLeft: how many more times a roach may be moved in the next 24 hours */
+export type Me = { id: PlayerId; profile: Profile; roaches: OwnRoach[]; movesLeft: number };
+
+/** Someone on your block list. name is null when you never saw who it was. */
+export type BlockedPlayer = { id: string; name: string | null; at: number };
 
 export type InboxItem =
   | {
@@ -135,7 +161,8 @@ export type RadarWindow = {
   clones: number;
 };
 
-export type Radar = {
+/** One radar scan: counts only, never distances or directions. */
+export type RadarScan = {
   radiusKm: number;
   /** Other players' roaches inside the circle right now */
   roaches: number;
@@ -152,4 +179,12 @@ export type Radar = {
   lastArrivalAt: number | null;
   /** Part of the movement is made-up demo data */
   demo: boolean;
+};
+
+/** A scan as shown: maybe an earlier one, once the day's scans are used up. */
+export type Radar = RadarScan & {
+  scannedAt: number;
+  scansLeft: number;
+  /** Set when this is an earlier scan shown again because none are left: when the next one frees up */
+  nextScanAt: number | null;
 };

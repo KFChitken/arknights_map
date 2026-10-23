@@ -7,8 +7,15 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# NEXT_PUBLIC_* values are read from .env at build time
-RUN npm run build
+# Settings the browser needs are built into the page. They are build arguments
+# because .env stays out of the image; nothing secret belongs here.
+ARG NEXT_PUBLIC_AMAP_KEY=""
+ARG NEXT_PUBLIC_AMAP_SECURITY_CODE=""
+ARG NEXT_PUBLIC_OSM_STYLE=""
+RUN NEXT_PUBLIC_AMAP_KEY="$NEXT_PUBLIC_AMAP_KEY" \
+  NEXT_PUBLIC_AMAP_SECURITY_CODE="$NEXT_PUBLIC_AMAP_SECURITY_CODE" \
+  NEXT_PUBLIC_OSM_STYLE="$NEXT_PUBLIC_OSM_STYLE" \
+  npm run build
 
 FROM node:22-alpine AS run
 WORKDIR /app

@@ -20,3 +20,8 @@ export async function sendLoginCode(to: string, code: string) {
 </div>`,
   });
 }
+
+/** A plain note to the admins; it never carries anyone's personal details. */
+export async function sendAdminMail(to: string[], subject: string, text: string) {
+  await transport.sendMail({ from: MAIL_FROM, to, subject, text });
+}

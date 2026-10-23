@@ -6,6 +6,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -14,6 +15,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { RadarScan } from "../world/types";
 
 /** PostGIS geography; only ever written through the generated column below. */
 const geography = customType<{ data: string }>({ dataType: () => "geography" });
@@ -72,10 +74,12 @@ export const loginCodes = pgTable("login_codes", {
   sentToday: smallint("sent_today").notNull().default(1),
 });
 
-/** One row per login email handed to the mail provider in the last day, for the sitewide cap. No address is kept. */
+/** One row per email handed to the mail provider in the last day, for the sitewide cap. No address is kept. */
 export const mailSends = pgTable("mail_sends", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   sentAt: at("sent_at").notNull().defaultNow(),
+  /** "login" for a code, "report" for the admin's report digest */
+  kind: text("kind").notNull().default("login"),
 });
 
 /**
@@ -121,6 +125,8 @@ export const touches = pgTable(
     seenAt: at("seen_at"),
     /** The receiver crawled away from it (默默爬走); the toucher is never told */
     ignoredAt: at("ignored_at"),
+    /** Sent between two players when one had blocked the other: kept for the sender, never shown to the receiver */
+    withheld: boolean("withheld").notNull().default(false),
   },
   (t) => [
     index("touches_to_idx").on(t.toUserId, t.createdAt),
@@ -178,6 +184,8 @@ export const reactions = pgTable(
     createdAt: createdAt(),
     /** When the declaration's sender saw it */
     seenAt: at("seen_at"),
+    /** As for touches: one of the two had blocked the other, so the sender never sees it */
+    withheld: boolean("withheld").notNull().default(false),
   },
   (t) => [uniqueIndex("reactions_once_idx").on(t.declarationId, t.fromUserId)],
 );
@@ -210,6 +218,75 @@ export const friendCuts = pgTable(
   (t) => [primaryKey({ columns: [t.a, t.b] })],
 );
 
+/**
+ * One player blocked another. From then on nothing new passes between them in
+ * either direction, and the blocker no longer sees anything the other sent
+ * before. The blocked player is never told.
+ */
+export const blocks = pgTable(
+  "blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The blocker had seen who it was (a bold touch or a 触须之交); the block list names only those */
+    known: boolean("known").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("blocks_pair_idx").on(t.blockerId, t.blockedId), index("blocks_blocked_idx").on(t.blockedId)],
+);
+
+/** A report for the admin. The reported player never learns who sent it. */
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id").references(() => users.id, { onDelete: "set null" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    note: text("note").notNull().default(""),
+    /** What the reporter was looking at, and the target's name at the time */
+    context: text("context").notNull(),
+    targetName: text("target_name").notNull(),
+    createdAt: createdAt(),
+    /** When the admin was emailed about it */
+    notifiedAt: at("notified_at"),
+    resolvedAt: at("resolved_at"),
+    /** "dismissed" or "name_cleared"; a ban deletes the reports with the account */
+    resolution: text("resolution"),
+  },
+  (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt)],
+);
+
+/** Addresses of banned accounts, kept only as an HMAC so the list holds nobody's email. */
+export const bannedEmails = pgTable("banned_emails", {
+  emailHash: text("email_hash").primaryKey(),
+  createdAt: createdAt(),
+});
+
+/** A player's radar scans of the last day (counts only), to cap them and show the last one again. */
+export const radarScans = pgTable(
+  "radar_scans",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    result: jsonb("result").$type<RadarScan>().notNull(),
+    /** Where the main roach was, so a scan is only shown again for the same spot */
+    lng: doublePrecision("lng"),
+    lat: doublePrecision("lat"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("radar_scans_user_idx").on(t.userId, t.createdAt)],
+);
+
 /** Placements, moves and removals, for the radar. */
 export const moves = pgTable(
   "moves",
@@ -224,8 +301,15 @@ export const moves = pgTable(
     toLng: doublePrecision("to_lng"),
     toLat: doublePrecision("to_lat"),
     at: at("at").notNull().defaultNow(),
+    // so the radar reads only moves that start or end near it; null where there is no point
+    fromGeog: geography("from_geog").generatedAlwaysAs(sql`(ST_SetSRID(ST_MakePoint(from_lng, from_lat), 4326))::geography`),
+    toGeog: geography("to_geog").generatedAlwaysAs(sql`(ST_SetSRID(ST_MakePoint(to_lng, to_lat), 4326))::geography`),
   },
-  (t) => [index("moves_at_idx").on(t.at)],
+  (t) => [
+    index("moves_at_idx").on(t.at),
+    index("moves_from_geog_idx").using("gist", t.fromGeog),
+    index("moves_to_geog_idx").using("gist", t.toGeog),
+  ],
 );
 
 export type UserRow = typeof users.$inferSelect;

@@ -28,7 +28,12 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_AMAP_KEY: ${NEXT_PUBLIC_AMAP_KEY:-}
+        NEXT_PUBLIC_AMAP_SECURITY_CODE: ${NEXT_PUBLIC_AMAP_SECURITY_CODE:-}
+        NEXT_PUBLIC_OSM_STYLE: ${NEXT_PUBLIC_OSM_STYLE:-}
     ports:
       - "3000:3000"
     env_file: .env

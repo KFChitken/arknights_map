@@ -1,10 +1,11 @@
 import "server-only";
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import { and, count, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
-import { MAIL_DAILY_LIMIT, secret } from "./env";
+import { secret } from "./env";
 import { HttpError } from "./http";
+import { mailRoom } from "./mailQuota";
 import { loginCodes, mailSends } from "./schema";
 
 /**
@@ -14,8 +15,6 @@ import { loginCodes, mailSends } from "./schema";
  */
 
 const DAY_MS = 86_400_000;
-/** Advisory lock taken while counting the site's mail, so parallel requests are counted one at a time */
-const MAIL_LOCK = 7_316_001;
 
 const hashCode = (email: string, code: string) =>
   createHmac("sha256", secret("AUTH_SECRET")).update(`code|${email}|${code}`).digest("base64url");
@@ -47,10 +46,7 @@ export async function issueLoginCode(email: string): Promise<string> {
   // postgres.js wants Dates inside raw SQL as strings
   const sameDay = sql`${loginCodes.dayStart} > ${dayAgo.toISOString()}`;
   const issued = await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
-    await tx.delete(mailSends).where(lt(mailSends.sentAt, dayAgo));
-    const [sent] = await tx.select({ n: count() }).from(mailSends);
-    if (sent.n >= MAIL_DAILY_LIMIT) throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
+    if (!(await mailRoom(tx, now))) throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
 
     const [row] = await tx
       .insert(loginCodes)
@@ -68,7 +64,7 @@ export async function issueLoginCode(email: string): Promise<string> {
         ),
       })
       .returning({ email: loginCodes.email });
-    if (row) await tx.insert(mailSends).values({ sentAt: now });
+    if (row) await tx.insert(mailSends).values({ sentAt: now, kind: "login" });
     return Boolean(row);
   });
   if (issued) return code;

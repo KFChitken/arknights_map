@@ -1,5 +1,6 @@
 "use client";
 
+import { RADAR_REUSE_MIN, RADAR_SCANS_PER_DAY } from "@/lib/rules";
 import type { Radar } from "@/lib/world/types";
 import { ago } from "./InboxSheet";
 import Sheet from "./Sheet";
@@ -8,6 +9,18 @@ const WEEKDAYS = "日一二三四五六";
 
 function signed(n: number) {
   return n > 0 ? `+${n}` : String(n);
+}
+
+/** When this scan was made, and how many are left today. */
+function scanNote(r: Radar, now = Date.now()) {
+  const when = ago(r.scannedAt, now);
+  const at = `这是${/^\d/.test(when) ? " " : ""}${when}的扫描结果。`;
+  if (r.nextScanAt) {
+    const hours = Math.ceil((r.nextScanAt - now) / 3_600_000);
+    return `${at}今天的 ${RADAR_SCANS_PER_DAY} 次扫描用完了，${hours <= 1 ? "1 小时内" : `${hours} 小时后`}可以再扫。`;
+  }
+  if (r.scansLeft > 0) return `${at}今天还能扫描 ${r.scansLeft} 次，${RADAR_REUSE_MIN} 分钟内再打开不算次数。`;
+  return `${at}今天的 ${RADAR_SCANS_PER_DAY} 次扫描用完了，再打开会看到这一次的结果。`;
 }
 
 function mood(r: Radar) {
@@ -57,6 +70,7 @@ export default function RadarSheet({
         </div>
       </div>
       <p className="radar-mood">{mood(radar)}</p>
+      <p className="hint">{scanNote(radar)}</p>
 
       <h3>最近 24 小时</h3>
       <div className="stat-grid">

@@ -24,9 +24,24 @@ export const DECLARATION_RADIUS_KM = 10;
 export const DECLARATION_COOLDOWN_MIN = 1;
 export const DECLARATIONS_PER_DAY = 20;
 
+/** Moves of a roach already on the map, and new roaches put down, per player in any 24 hours. */
+export const MOVES_PER_DAY = 3;
+export const PLACEMENTS_PER_DAY = 8;
+
+/** 方舟雷达 scans per player in any 24 hours; reopening it within a few minutes shows the same scan for free. */
+export const RADAR_SCANS_PER_DAY = 5;
+export const RADAR_REUSE_MIN = 10;
+
 /** Touches one player may send per day, and the wait before touching the same roach again. */
 export const TOUCHES_PER_DAY = 60;
 export const TOUCH_SAME_ROACH_HOURS = 24;
+
+/** Reports one player may file per day, and how many different players reporting a name hide it until it is reviewed. */
+export const REPORTS_PER_DAY = 10;
+export const NAME_REPORTS_TO_HIDE = 3;
+export const REPORT_NOTE_MAX = 100;
+/** Handled reports are deleted after this many days (see the privacy page). */
+export const KEEP_REPORT_DAYS = 90;
 
 /** Inbox items older than this are not shown. */
 export const INBOX_DAYS = 30;

@@ -1,6 +1,6 @@
 "use client";
 
-import { MAX_CLONES } from "@/lib/rules";
+import { MAX_CLONES, MOVES_PER_DAY } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import Sheet from "./Sheet";
@@ -8,6 +8,7 @@ import RoachIcon from "../RoachIcon";
 
 export default function MineSheet({
   roaches,
+  movesLeft,
   avatar,
   color,
   look,
@@ -19,6 +20,7 @@ export default function MineSheet({
   onClose,
 }: {
   roaches: OwnRoach[];
+  movesLeft: number;
   avatar: RoachAvatar;
   color: RoachColor;
   look: RoachStyle;
@@ -82,6 +84,11 @@ export default function MineSheet({
         <button className="pill dark" style={{ marginTop: 10 }} onClick={onAddClone}>
           ＋ 放一只克隆体
         </button>
+      )}
+      {main && (
+        <p className="hint">
+          每天能挪 {MOVES_PER_DAY} 次窝，今天还能挪 {movesLeft} 次。
+        </p>
       )}
       <p className="hint">
         克隆体可以放在你常去的别的城市。别人看到的是“某舟p的克隆体”，碰它的触须会传到你这里，但谁也看不出它和你的本体是同一只。

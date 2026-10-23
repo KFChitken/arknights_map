@@ -78,6 +78,7 @@ export default function InboxSheet({
   onIgnore,
   onViewProfile,
   onOpenFriend,
+  onSafety,
   onClose,
 }: {
   items: InboxItem[];
@@ -93,6 +94,8 @@ export default function InboxSheet({
   onIgnore: (itemId: string) => Promise<void>;
   onViewProfile: (p: PublicProfile) => void;
   onOpenFriend: (friendId: string) => void;
+  /** 拉黑或举报 the sender: an inbox item id, or "friend:<id>" */
+  onSafety: (target: string, who: string | null) => void;
   onClose: () => void;
 }) {
   const [replying, setReplying] = useState<string | null>(null);
@@ -132,13 +135,22 @@ export default function InboxSheet({
       </button>
     );
 
+  const meta = (item: InboxItem, target: string, who: string | null) => (
+    <div className="meta">
+      {ago(item.at)}
+      <button className="link" onClick={() => onSafety(target, who)}>
+        拉黑/举报
+      </button>
+    </div>
+  );
+
   const message = (item: InboxItem) => {
     const cls = `msg ${item.seen ? "" : "new"}`;
     if (item.kind === "friend") {
       return (
         <div key={item.id} className={cls}>
           <div>你和 {item.from.displayName} 互相大胆碰过，成为了触须之交！</div>
-          <div className="meta">{ago(item.at)}</div>
+          {meta(item, `friend:${item.friendId}`, item.from.displayName)}
           {friendIds.has(item.friendId) && (
             <div className="row-actions">
               <button className="pill dark" onClick={() => onOpenFriend(item.friendId)}>
@@ -153,7 +165,7 @@ export default function InboxSheet({
       return (
         <div key={item.id} className={cls}>
           <div>{touchText(item)}</div>
-          <div className="meta">{ago(item.at)}</div>
+          {meta(item, item.id, item.from?.displayName ?? null)}
           <div className="row-actions">
             {item.from && (
               <button className="pill" onClick={() => onViewProfile(item.from!)}>
@@ -184,7 +196,7 @@ export default function InboxSheet({
         <div key={item.id} className={cls}>
           <div>附近有舟p回应了你的宣言「{item.text}」：</div>
           <div className="quote">{REACTIONS[item.reaction]}</div>
-          <div className="meta">{ago(item.at)}</div>
+          {meta(item, item.id, null)}
           <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
         </div>
       );
@@ -193,7 +205,7 @@ export default function InboxSheet({
       <div key={item.id} className={cls}>
         <div>{DECLARATION_RADIUS_KM} 公里内有舟p发表了独立宣言：</div>
         <div className="quote">「{item.text}」</div>
-        <div className="meta">{ago(item.at)}</div>
+        {meta(item, item.id, null)}
         {item.reaction ? (
           <div className="done">你回应了：{REACTIONS[item.reaction]}</div>
         ) : (
@@ -299,12 +311,14 @@ export function FriendView({
   friend,
   onFind,
   onUnfriend,
+  onSafety,
   onBack,
   onClose,
 }: {
   friend: Friend;
   onFind: (roachIndex: number) => void;
   onUnfriend: () => void;
+  onSafety: () => void;
   onBack?: () => void;
   onClose: () => void;
 }) {
@@ -351,6 +365,9 @@ export function FriendView({
         解除触须之交
       </button>
       <p className="hint">解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。</p>
+      <button className="pill" style={{ marginTop: 14 }} onClick={onSafety}>
+        拉黑或举报 TA
+      </button>
     </Sheet>
   );
 }

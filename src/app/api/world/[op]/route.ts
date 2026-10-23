@@ -7,6 +7,8 @@ import { db } from "@/lib/server/db";
 import { identities, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
+import { allow } from "@/lib/server/rateLimit";
+import * as safety from "@/lib/server/safety";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import type { LngLat } from "@/lib/types";
@@ -25,14 +27,15 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   const demoOnly = () => {
     if (!demoEnabled) throw new HttpError(404, "没有这个功能。");
   };
+  // the costly reads, per player per minute; a page needs far fewer
+  const ration = (perMinute: number) => {
+    if (user && !allow(`${op}:${user.id}`, perMinute, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+  };
 
   let result: unknown;
   switch (op) {
     case "me":
       result = user ? await world.me(user.id) : null;
-      break;
-    case "roaches":
-      result = await world.publicRoaches(user?.id ?? null);
       break;
     case "saveProfile":
       result = await world.saveProfile(uid(), args[0] as Profile);
@@ -50,6 +53,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await world.reply(uid(), String(args[0]), args[1] === true);
       break;
     case "inbox":
+      ration(30);
       result = user ? await world.inbox(user.id) : [];
       break;
     case "markSeen":
@@ -65,13 +69,28 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       await world.react(uid(), String(args[0]), String(args[1]));
       break;
     case "friends":
+      ration(30);
       result = user ? await world.friends(user.id) : [];
       break;
     case "unfriend":
       await world.unfriend(uid(), String(args[0]));
       break;
     case "radar":
+      ration(6);
       result = await world.radar(uid());
+      break;
+    case "block":
+      if (!allow(`block:${uid()}`, 60, 60 * 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      await safety.block(uid(), String(args[0]));
+      break;
+    case "unblock":
+      await safety.unblock(uid(), String(args[0]));
+      break;
+    case "blocks":
+      result = await safety.blockList(uid());
+      break;
+    case "report":
+      await safety.report(uid(), String(args[0]), args[1], args[2]);
       break;
 
     // Development aids: step into demo players on one device

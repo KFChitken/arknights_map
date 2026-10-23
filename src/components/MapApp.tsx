@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deleteAccount, signOut } from "@/lib/authClient";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
@@ -9,15 +9,19 @@ import type { Declaration, Reaction } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
-import { SITE_NAME } from "@/lib/rules";
+import { MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
+import type { ReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
+import { RoachFeedCopy } from "@/lib/world/feed";
 import { ServerWorld } from "@/lib/world/server";
 import {
   SignInNeeded,
   WorldError,
+  type BlockedPlayer,
   type Friend,
   type Identity,
   type InboxItem,
+  type MapRoach,
   type Me,
   type OwnRoach,
   type PlaceTarget,
@@ -33,6 +37,7 @@ import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
+import SafetySheet from "./app/SafetySheet";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import RoachIcon from "./RoachIcon";
 
@@ -52,6 +57,7 @@ type Panel =
   | { kind: "viewProfile"; profile: PublicProfile; back: Panel }
   | { kind: "friend"; friendId: string; back: Panel | null }
   | { kind: "radar"; radar: Radar | null }
+  | { kind: "safety"; target: string; who: string | null; back: Panel | null }
   | { kind: "login"; reason?: string };
 
 type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
@@ -66,13 +72,18 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
 
 export default function MapApp() {
   const worldRef = useRef<World | null>(null);
+  const feedRef = useRef(new RoachFeedCopy());
   const [basemap, setBasemap] = useState<Basemap | null>(null);
   const [look, setLook] = useState<RoachStyle>("cartoon");
   const [me, setMe] = useState<Me | null>(null);
-  const [roaches, setRoaches] = useState<PublicRoach[]>([]);
+  const [feedRoaches, setFeedRoaches] = useState<MapRoach[]>([]);
+  // Every public id our roaches had on this page: after a move the old one stays in the feed for a moment
+  const [ownIds, setOwnIds] = useState<ReadonlySet<string>>(new Set());
+  const meIdRef = useRef<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [blocked, setBlocked] = useState<BlockedPlayer[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
@@ -82,36 +93,80 @@ export default function MapApp() {
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const viewRef = useRef<MapView>(WORLD_VIEW);
   const boundsRef = useRef<[LngLat, LngLat] | null>(null);
+  const lastMessagesRef = useRef(0);
+  // Test identities exist only in development; the live site never asks for them again
+  const demoRef = useRef(false);
 
-  const load = useCallback(async () => {
-    const w = worldRef.current!;
-    const [m, rs, items, ids, fs] = await Promise.all([w.me(), w.roaches(), w.inbox(), w.identities(), w.friends()]);
+  // The feed is the same for everyone: leave out our own roaches (drawn from me) and mark friends'
+  const friendKey = friends
+    .flatMap((f) => f.roaches.map((r) => r.id))
+    .sort()
+    .join(",");
+  const roaches = useMemo<PublicRoach[]>(() => {
+    const friendIds = new Set(friendKey.split(","));
+    return feedRoaches.filter((r) => !ownIds.has(r.id)).map((r) => ({ ...r, friend: friendIds.has(r.id) }));
+  }, [feedRoaches, ownIds, friendKey]);
+
+  const applyMe = useCallback((m: Me | null) => {
+    const sameOwner = m?.id === meIdRef.current;
+    meIdRef.current = m?.id ?? null;
     setMe(m);
-    setRoaches(rs);
-    setInbox(items);
-    setIdentities(ids);
-    setFriends(fs);
-    return { me: m, items };
+    setOwnIds((prev) => {
+      const base = sameOwner ? prev : new Set<string>();
+      const fresh = (m?.roaches ?? []).filter((r) => !base.has(r.publicId));
+      if (!fresh.length) return base;
+      const next = new Set(base);
+      for (const r of fresh) next.add(r.publicId);
+      return next;
+    });
   }, []);
+
+  // Each part of the page is refreshed on its own, only when it may have changed
+  const loadMe = useCallback(async () => {
+    const m = await worldRef.current!.me();
+    applyMe(m);
+    return m;
+  }, [applyMe]);
+  const loadRoaches = useCallback(async () => {
+    const feed = feedRef.current;
+    if (feed.apply(await worldRef.current!.roachFeed(feed.version))) setFeedRoaches(feed.roaches);
+  }, []);
+  const loadInbox = useCallback(async () => {
+    const items = await worldRef.current!.inbox();
+    lastMessagesRef.current = Date.now();
+    setInbox(items);
+    return items;
+  }, []);
+  const loadFriends = useCallback(async () => setFriends(await worldRef.current!.friends()), []);
+  const loadIdentities = useCallback(async () => {
+    const ids = await worldRef.current!.identities();
+    demoRef.current = ids.length > 0;
+    setIdentities(ids);
+  }, []);
+
+  /** Everything, for opening the page and switching who is signed in. */
+  const load = useCallback(async () => {
+    const [m, items] = await Promise.all([loadMe(), loadInbox(), loadRoaches(), loadFriends(), loadIdentities()]);
+    return { me: m, items };
+  }, [loadMe, loadInbox, loadRoaches, loadFriends, loadIdentities]);
 
   // Opening a tab is enough to count its messages as read; the red counts go with it
   const markTabSeen = useCallback(async (items: InboxItem[], tab: InboxTab) => {
-    const w = worldRef.current!;
     const unseen = items.filter((i) => !i.seen && tabOf(i) === tab).map((i) => i.id);
     if (!unseen.length) return;
-    await w.markSeen(unseen);
-    setInbox(await w.inbox());
-    setIdentities(await w.identities());
-  }, []);
+    await worldRef.current!.markSeen(unseen);
+    setInbox((all) => all.map((i) => (unseen.includes(i.id) ? { ...i, seen: true } : i)));
+    if (demoRef.current) await loadIdentities();
+  }, [loadIdentities]);
 
   const openInbox = useCallback(
-    async (notice: boolean, tab?: InboxTab) => {
-      const items = await worldRef.current!.inbox();
+    async (notice: boolean, tab?: InboxTab, fresh?: InboxItem[]) => {
+      const items = fresh ?? (await loadInbox());
       const t = tab ?? firstTab(items);
       setPanel({ kind: "inbox", notice, items, tab: t, viewed: [t] });
       await markTabSeen(items, t);
     },
-    [markTabSeen],
+    [loadInbox, markTabSeen],
   );
 
   // The world, basemap and look are read in the browser only, to keep SSR output stable
@@ -130,44 +185,82 @@ export default function MapApp() {
       setLook(loadLook());
       setBasemap(b);
       // What arrived since the last visit
-      if (items.some((i) => !i.seen)) openInbox(true);
+      if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     });
   }, [load, openInbox]);
 
-  // Other players act on other devices: catch up when the page comes back into view
+  // Roaches others placed or moved: once a minute, and when the page comes back into view, ask only what changed
   useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === "visible" && worldRef.current) load().catch(() => {});
+    let last = Date.now();
+    const poll = () => {
+      if (document.visibilityState !== "visible" || !worldRef.current || Date.now() - last < 10_000) return;
+      last = Date.now();
+      loadRoaches().catch(() => {});
     };
-    document.addEventListener("visibilitychange", refresh);
-    const t = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", poll);
+    const t = window.setInterval(poll, 60_000);
     return () => {
-      document.removeEventListener("visibilitychange", refresh);
+      document.removeEventListener("visibilitychange", poll);
       window.clearInterval(t);
     };
-  }, [load]);
+  }, [loadRoaches]);
 
   // While the page is open, the server says when something new arrives: show it unless the player is busy
   const busyRef = useRef<{ panel: Panel | null; placing: boolean }>({ panel: null, placing: false });
   useEffect(() => {
     busyRef.current = { panel, placing: Boolean(placing) };
   }, [panel, placing]);
+
+  const showNew = useCallback(async () => {
+    const [items] = await Promise.all([loadInbox(), loadFriends()]);
+    if (demoRef.current) await loadIdentities();
+    if (!items.some((i) => !i.seen)) return;
+    const { panel: open, placing: busy } = busyRef.current;
+    if (open?.kind === "inbox") await openInbox(false, open.tab, items);
+    else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
+    else await openInbox(true, undefined, items);
+  }, [loadInbox, loadFriends, loadIdentities, openInbox]);
+
   const meId = me?.id;
   useEffect(() => {
     if (!meId) return;
     const events = new EventSource("/api/events");
-    events.addEventListener("inbox", async () => {
-      try {
-        const { items } = await load();
-        if (!items.some((i) => !i.seen)) return;
-        const { panel: open, placing: busy } = busyRef.current;
-        if (open?.kind === "inbox") await openInbox(false, open.tab);
-        else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
-        else await openInbox(true);
-      } catch {}
+    let timer: number | undefined;
+    let pending = false;
+    let dropped = false;
+    const run = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+      showNew().catch(() => {});
+    };
+    // A declaration nudges a whole neighbourhood at once, so each page waits a random moment,
+    // and nudges arriving meanwhile are taken in by the same refresh
+    const later = () => {
+      if (document.hidden) pending = true;
+      else if (timer === undefined) timer = window.setTimeout(run, Math.random() * 10_000);
+    };
+    events.addEventListener("inbox", later);
+    // nudges sent while the connection was down are lost, so look once it is back
+    events.addEventListener("error", () => (dropped = true));
+    events.addEventListener("open", () => {
+      if (dropped) later();
+      dropped = false;
     });
-    return () => events.close();
-  }, [meId, load, openInbox]);
+    // a page in the background only notes that something came, and looks when it is in view again
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (pending || Date.now() - lastMessagesRef.current > 5 * 60_000) {
+        pending = false;
+        run();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      events.close();
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [meId, showNew]);
 
   useEffect(() => {
     if (!toast) return;
@@ -187,6 +280,13 @@ export default function MapApp() {
   useEffect(() => {
     if (boundsRef.current) countVisible(boundsRef.current);
   }, [countVisible]);
+
+  // The block list is only shown on the profile sheet, so it is fetched when that opens
+  const profileOpen = panel?.kind === "profile";
+  useEffect(() => {
+    if (!profileOpen || !me) return;
+    worldRef.current!.blocks().then(setBlocked, () => setBlocked([]));
+  }, [profileOpen, me]);
 
   /** Run a world call; refusals become a toast. Resolves to undefined on failure. */
   async function act<T>(fn: (w: World) => Promise<T>, ok?: string): Promise<T | undefined> {
@@ -217,6 +317,11 @@ export default function MapApp() {
   };
 
   const startPlacing = (target: PlaceTarget) => {
+    // say so before they pick a spot, not after
+    if (target.kind === "move" && me && me.movesLeft <= 0) {
+      setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+      return;
+    }
     setPanel(null);
     setSelected(null);
     setPlacing({ target, label: PLACING_LABEL[target.kind] });
@@ -227,12 +332,14 @@ export default function MapApp() {
     const done = await act((w) => w.placeRoach(placing.target, p));
     if (!done) return;
     setPlacing(null);
-    await load();
+    const m = await loadMe();
     if (fly) setFocus({ lng: p.lng, lat: p.lat, zoom: 13, nonce: Date.now() });
     setToast(
-      placing.target.kind === "clone"
-        ? "克隆体放好啦！别人看到的是“某舟p的克隆体”，看不出它和你本体的关系。"
-        : "放好啦！别人能看到它在这里，但看不出是你。",
+      placing.target.kind === "move"
+        ? `挪好啦！今天还能挪 ${m?.movesLeft ?? 0} 次。`
+        : placing.target.kind === "clone"
+          ? "克隆体放好啦！别人看到的是“某舟p的克隆体”，看不出它和你本体的关系。"
+          : "放好啦！别人能看到它在这里，但看不出是你。",
     );
   };
 
@@ -267,7 +374,7 @@ export default function MapApp() {
     const done = await act((w) => w.removeRoach(r.id), r.slot === 0 ? "已经收回你的蟑螂和克隆体。" : "已经收回这只克隆体。");
     if (!done) return;
     setSelected(null);
-    await load();
+    await loadMe();
   };
 
   const befriendedToast = (name: string) =>
@@ -279,11 +386,11 @@ export default function MapApp() {
     setSelected(null);
     if (res.newFriend) {
       befriendedToast(res.newFriend);
-      await load();
+      await Promise.all([loadFriends(), loadInbox()]);
     } else {
       setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
-      setIdentities(await worldRef.current!.identities());
     }
+    if (demoRef.current) await loadIdentities();
   };
 
   const keepSnapshot = (items: InboxItem[]) =>
@@ -297,14 +404,14 @@ export default function MapApp() {
     const done = await act((w) => w.ignore(itemId).then(() => true));
     if (!done) return;
     setToast("默默爬走了，TA 不会知道。");
-    keepSnapshot((await load()).items);
+    keepSnapshot(await loadInbox());
   };
 
   const react = async (itemId: string, reaction: Reaction) => {
     const done = await act((w) => w.react(itemId, reaction).then(() => true));
     if (!done) return;
     setToast("回应发出去了！");
-    keepSnapshot((await load()).items);
+    keepSnapshot(await loadInbox());
   };
 
   const reply = async (itemId: string, bold: boolean) => {
@@ -312,12 +419,15 @@ export default function MapApp() {
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
     else setToast(bold ? "大胆碰回去了！向 TA 表明你的身份" : "偷偷碰回去了。");
-    keepSnapshot((await load()).items);
+    const [items] = await Promise.all([loadInbox(), loadFriends()]);
+    keepSnapshot(items);
+    if (demoRef.current) await loadIdentities();
   };
 
   const openRadar = async () => {
     setSelected(null);
-    setPanel({ kind: "radar", radar: await worldRef.current!.radar() });
+    const radar = await act((w) => w.radar());
+    if (radar !== undefined) setPanel({ kind: "radar", radar });
   };
 
   const findFriendRoach = (roach: PublicRoach) => {
@@ -330,13 +440,39 @@ export default function MapApp() {
     if (!window.confirm(`解除和 ${friend.profile.displayName} 的触须之交？`)) return;
     const done = await act((w) => w.unfriend(friend.id).then(() => true), "已经解除触须之交。");
     if (!done) return;
-    await load();
+    await loadFriends();
     await openInbox(false, "friends");
+  };
+
+  // After blocking, land back in the inbox, where their messages are now gone
+  const afterBlock = async (p: Extract<Panel, { kind: "safety" }>) => {
+    await loadFriends();
+    await openInbox(false, p.back?.kind === "inbox" ? p.back.tab : "friends");
+  };
+
+  const blockSender = async (p: Extract<Panel, { kind: "safety" }>) => {
+    const done = await act((w) => w.block(p.target).then(() => true), "拉黑了。TA 不会知道。");
+    if (done) await afterBlock(p);
+  };
+
+  const reportSender = async (p: Extract<Panel, { kind: "safety" }>, reason: ReportReason, note: string) => {
+    const done = await act(
+      (w) => w.report(p.target, reason, note).then(() => true),
+      "举报收到了，管理员会尽快处理。TA 也被你拉黑了。",
+    );
+    if (done) await afterBlock(p);
+  };
+
+  const unblock = async (blockId: string) => {
+    const done = await act((w) => w.unblock(blockId).then(() => true), "解除拉黑了。");
+    if (!done) return;
+    setBlocked(await worldRef.current!.blocks());
+    await loadInbox();
   };
 
   const saveProfile = async (p: Profile) => {
     const saved = await act((w) => w.saveProfile(p), "资料存好了。");
-    if (saved) await load();
+    if (saved) await loadMe();
     return Boolean(saved);
   };
 
@@ -344,7 +480,7 @@ export default function MapApp() {
     const res = await act((w) => w.declare(d, from));
     if (!res) return false;
     setToast(`宣言发出去了！${res.reach}`);
-    await load();
+    if (demoRef.current) await loadIdentities();
     return true;
   };
 
@@ -357,7 +493,7 @@ export default function MapApp() {
     const { me: m, items } = await load();
     const main = m?.roaches.find((r) => r.slot === 0);
     if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
-    if (items.some((i) => !i.seen)) openInbox(true);
+    if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     else setToast("切换好了，现在用这个身份看地图。");
   };
 
@@ -366,7 +502,7 @@ export default function MapApp() {
     const { me: m, items } = await load();
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
-    if (items.some((i) => !i.seen)) openInbox(true);
+    if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
   };
 
@@ -380,6 +516,8 @@ export default function MapApp() {
     }
     setPanel(null);
     setSelected(null);
+    // deleted roaches leave everyone's feed on its next rebuild; leave them off this map right away
+    if (kind === "delete" && feedRef.current.forget([...ownIds])) setFeedRoaches(feedRef.current.roaches);
     await load();
     setToast(kind === "delete" ? "账号和数据都删除了。" : "已经退出登录。");
   };
@@ -430,6 +568,8 @@ export default function MapApp() {
         return (
           <ProfileSheet
             profile={me.profile}
+            blocked={blocked}
+            onUnblock={unblock}
             onSave={saveProfile}
             onSignOut={() => leave("signOut")}
             onDelete={() => leave("delete")}
@@ -440,6 +580,7 @@ export default function MapApp() {
         return (
           <MineSheet
             roaches={me.roaches}
+            movesLeft={me.movesLeft}
             avatar={myAvatar}
             color={myColor}
             look={look}
@@ -478,6 +619,17 @@ export default function MapApp() {
             onIgnore={ignore}
             onViewProfile={(profile) => setPanel({ kind: "viewProfile", profile, back: p })}
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
+            onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: p })}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "safety":
+        return (
+          <SafetySheet
+            who={p.who}
+            onBlock={() => blockSender(p)}
+            onReport={(reason, note) => reportSender(p, reason, note)}
+            onBack={p.back ? () => setPanel(p.back) : undefined}
             onClose={() => setPanel(null)}
           />
         );
@@ -489,6 +641,7 @@ export default function MapApp() {
             friend={friend}
             onFind={(i) => findFriendRoach(friend.roaches[i])}
             onUnfriend={() => unfriend(friend)}
+            onSafety={() => setPanel({ kind: "safety", target: `friend:${friend.id}`, who: friend.profile.displayName, back: p })}
             onBack={p.back ? () => setPanel(p.back) : undefined}
             onClose={() => setPanel(null)}
           />

@@ -7,7 +7,7 @@ import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_M
 import { titlesFor } from "../titles";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import type { Move } from "./cast";
-import { WorldError, type PlayerId, type Radar, type RadarWindow } from "./types";
+import { WorldError, type PlayerId, type RadarScan, type RadarWindow } from "./types";
 
 /** Pure rules the server world applies, kept apart so they are easy to test and reuse. */
 
@@ -139,7 +139,7 @@ export type RadarInput = {
   demo: boolean;
 };
 
-export function buildRadar(r: RadarInput): Radar {
+export function buildRadar(r: RadarInput): RadarScan {
   const inside = (p: LngLat | null) => Boolean(p && distanceKm(r.center, p) <= RADAR_RADIUS_KM);
   const near = r.roaches.filter((x) => inside(x.at));
   const nearOwners = new Set(near.map((x) => x.owner));
@@ -170,7 +170,9 @@ export function buildRadar(r: RadarInput): Radar {
     const w = crossings.filter((c) => c.at >= from && c.at < to);
     return { start: from, arrived: w.filter((c) => c.arrived).length, left: w.filter((c) => !c.arrived).length };
   });
-  const arrivals = crossings.filter((c) => c.arrived).map((c) => c.at);
+  // a loop, not Math.max(...): spreading a hundred thousand arguments overflows the stack
+  let lastArrivalAt: number | null = null;
+  for (const c of crossings) if (c.arrived && (lastArrivalAt === null || c.at > lastArrivalAt)) lastArrivalAt = c.at;
 
   return {
     radiusKm: RADAR_RADIUS_KM,
@@ -183,7 +185,7 @@ export function buildRadar(r: RadarInput): Radar {
     touches: r.touchedPlayers.filter((p) => nearOwners.has(p)).length,
     declarations: r.declaringPlayers.filter((p) => nearOwners.has(p)).length,
     friendsNearby: [...r.friends].filter((f) => nearOwners.has(f)).length,
-    lastArrivalAt: arrivals.length ? Math.max(...arrivals) : null,
+    lastArrivalAt,
     demo: r.demo,
   };
 }

@@ -1,6 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DECLARATION_RADIUS_KM, INBOX_DAYS, KEEP_ACTIVITY_DAYS, MIN_SIGNUP_AGE, SESSION_DAYS, SITE_NAME } from "@/lib/rules";
+import {
+  DECLARATION_RADIUS_KM,
+  INBOX_DAYS,
+  KEEP_ACTIVITY_DAYS,
+  KEEP_REPORT_DAYS,
+  MIN_SIGNUP_AGE,
+  NAME_REPORTS_TO_HIDE,
+  SESSION_DAYS,
+  SITE_NAME,
+} from "@/lib/rules";
 
 export const metadata: Metadata = { title: `隐私说明 · ${SITE_NAME}` };
 
@@ -31,7 +40,7 @@ export default function Privacy() {
           <strong>你放的蟑螂。</strong>本体和克隆体在地图上的位置，以及放下、挪窝、收回的记录（方舟雷达靠它统计附近蟑螂的来去）。位置都是你自己在地图上点的或搜的，我<strong>不会读取你设备的定位</strong>。
         </li>
         <li>
-          <strong>你在站里的互动。</strong>你伸出的触须（偷偷或大胆）、发的独立宣言、对宣言的回应，还有触须之交的建立和解除。
+          <strong>你在站里的互动。</strong>你伸出的触须（偷偷或大胆）、发的独立宣言、对宣言的回应，触须之交的建立和解除，还有你拉黑了谁、你提交的举报（理由和你写的补充）。
         </li>
         <li>
           <strong>年龄确认。</strong>注册时问的出生年月只用来确认你已满 {MIN_SIGNUP_AGE} 岁，<strong>不会保存</strong>；我只记下「已确认满 {MIN_SIGNUP_AGE} 岁」和你同意这份说明的时间。
@@ -46,7 +55,7 @@ export default function Privacy() {
 
       <h2>这些信息拿来做什么</h2>
       <p>
-        让你登录、保存你的资料和蟑螂；在地图上显示大家的蟑螂，转交触须、宣言和回应，建立触须之交；统计方舟雷达里附近蟑螂的变化；防止有人捣乱（比如限制验证码的发送次数）。我不会把你的信息用来打广告，也不会卖给或租给任何人。
+        让你登录、保存你的资料和蟑螂；在地图上显示大家的蟑螂，转交触须、宣言和回应，建立触须之交；统计方舟雷达里附近蟑螂的变化；防止有人捣乱（比如限制验证码的发送次数、处理举报）。我不会把你的信息用来打广告，也不会卖给或租给任何人。
       </p>
 
       <h2>别人能看到什么</h2>
@@ -73,6 +82,13 @@ export default function Privacy() {
         <li>
           <strong>触须之交：</strong>成为触须之交后，对方能看到你的蟑螂、宣言次数和最近的社交记录，记录里的其他人保持匿名。任何一方都可以随时解除。
         </li>
+        <li>
+          <strong>拉黑：</strong>被你拉黑的人不会知道。从拉黑起你们之间的触须、宣言和回应都不再送达，TA 以前发给你的也会从你的消息里消失。
+        </li>
+        <li>
+          <strong>举报：</strong>只有我能看到举报内容和是谁举报的，被举报的人不会知道是谁举报的。同一个名字被 {NAME_REPORTS_TO_HIDE}{" "}
+          个不同的人举报，会先自动改成匿名，等我来看。
+        </li>
       </ul>
 
       <h2>信息存在哪里，谁会经手</h2>
@@ -97,6 +113,9 @@ export default function Privacy() {
           触须、宣言、回应和蟑螂挪窝的记录：满 {KEEP_ACTIVITY_DAYS} 天自动删除（消息页本来也只显示最近 {INBOX_DAYS} 天的）。
         </li>
         <li>验证码记录：一天后自动清掉。</li>
+        <li>拉黑名单：直到你解除拉黑或注销账号。</li>
+        <li>举报：处理完 {KEEP_REPORT_DAYS} 天后删除；被举报的账号被封号时，相关的举报跟着账号一起删除。</li>
+        <li>封禁名单：被封号的邮箱只存加密后的摘要，用来挡住它再次登录，会一直保存。</li>
         <li>
           数据库备份：每天备份一次，最多留 {BACKUP_DAYS} 天。所以你注销以后，你的数据最晚 {BACKUP_DAYS} 天内也会从备份里消失。
         </li>
@@ -105,7 +124,7 @@ export default function Privacy() {
       <h2>你可以做什么</h2>
       <ul>
         <li>随时在「资料」里查看、修改你的资料，或者改成匿名。</li>
-        <li>随时收回你的蟑螂和克隆体，解除触须之交。</li>
+        <li>随时收回你的蟑螂和克隆体，解除触须之交；在「资料」里查看和解除拉黑。</li>
         <li>
           在「资料」里点「注销账号」，你的账号和所有数据（资料、蟑螂、触须、宣言、回应、触须之交）会<strong>立刻删除</strong>。
         </li>
@@ -114,6 +133,11 @@ export default function Privacy() {
           个工作日内回复你。
         </li>
       </ul>
+
+      <h2>举报和封号</h2>
+      <p>
+        在消息里可以拉黑或举报别人。名字不合适、骚扰别人或者不满 {MIN_SIGNUP_AGE} 岁的账号，我可能清掉它的名字或者封号。封号会删除这个账号和它的所有数据，这个邮箱以后不能再登录。
+      </p>
 
       <h2>未成年人</h2>
       <p>

@@ -1,6 +1,6 @@
 # The live site. Caddy serves HTTPS and is the only service reachable from
-# outside; the app and the database sit on the internal network. Run from the
-# repository root on the server: docker compose -f docker-compose.prod.yml up -d --build
+# outside; the app and the database sit on the internal network. scripts/deploy.sh
+# brings it up from the repository root on the server.
 name: zhoupmap
 
 services:
@@ -21,7 +21,15 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    # Built by GitHub for every push to main (.github/workflows/image.yml) and pulled
+    # by scripts/deploy.sh; built here instead only when that image is not available
+    image: ghcr.io/kfchitken/arknights_map:${WEB_TAG:-latest}
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_AMAP_KEY: ${NEXT_PUBLIC_AMAP_KEY:-}
+        NEXT_PUBLIC_AMAP_SECURITY_CODE: ${NEXT_PUBLIC_AMAP_SECURITY_CODE:-}
+        NEXT_PUBLIC_OSM_STYLE: ${NEXT_PUBLIC_OSM_STYLE:-}
     env_file: .env
     environment:
       DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach

@@ -4,8 +4,17 @@ export const DATABASE_URL = process.env.DATABASE_URL || "postgres://roach:roach@
 export const SMTP_URL = process.env.SMTP_URL || "smtp://localhost:1025";
 export const MAIL_FROM = process.env.MAIL_FROM || "粥P地图 <no-reply@roach.local>";
 
-/** Login emails the whole site may send in any 24 hours; kept under the mail provider's daily quota (100 on Resend's free plan). */
+/** Emails the whole site may send in any 24 hours (codes and report digests); kept under the mail provider's daily quota (100 on Resend's free plan). */
 export const MAIL_DAILY_LIMIT = Number(process.env.MAIL_DAILY_LIMIT) || 90;
+
+/** Where links in emails point. */
+export const SITE_URL = process.env.SITE_URL || (isProd ? "https://zhoupmap.com" : "http://localhost:3000");
+
+/** Accounts (by sign-in email, comma separated) that may open /admin; they also get the report digest. */
+export const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
 /** Port of a local test inbox (Mailpit) to link from the sign-in screen; unset in production. */
 export const DEV_MAILBOX_PORT = process.env.DEV_MAILBOX_PORT || "";
