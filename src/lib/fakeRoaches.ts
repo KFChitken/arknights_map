@@ -52,15 +52,17 @@ const INLAND = ["成都", "武汉", "郑州", "西安", "长沙", "合肥"];
 
 export type FakeRoach = Roach & { city: string };
 
-export function generateFakeRoaches(total = 5000, seed = 20261021): FakeRoach[] {
+/** skip: cities to leave empty; their share goes to the others. */
+export function generateFakeRoaches(total = 5000, seed = 20261021, skip: string[] = []): FakeRoach[] {
   const rand = mulberry32(seed);
-  const totalWeight = CITIES.reduce((s, c) => s + c[3], 0);
+  const cities = CITIES.filter((c) => !skip.includes(c[0]));
+  const totalWeight = cities.reduce((s, c) => s + c[3], 0);
   const scattered = Math.round(total * 0.06);
   const urban = total - scattered;
   const roaches: FakeRoach[] = [];
   const color = () => ROACH_COLORS[Math.floor(rand() * ROACH_COLORS.length)];
 
-  for (const [name, lng, lat, w] of CITIES) {
+  for (const [name, lng, lat, w] of cities) {
     const n = Math.round((urban * w) / totalWeight);
     const sigma = Math.min(0.03 + w * 0.00015, 0.12);
     for (let i = 0; i < n; i++) {

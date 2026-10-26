@@ -4,8 +4,10 @@ import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { asc, eq } from "drizzle-orm";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
+import { botRoaches } from "../world/bots";
 import type { MapRoach } from "../world/types";
 import { db } from "./db";
+import { SHOW_BOTS } from "./env";
 import { roaches, users } from "./schema";
 
 /**
@@ -90,7 +92,7 @@ export async function allRoaches(): Promise<MapRoach[]> {
 const gzipAsync = promisify(gzip);
 
 async function rebuild(now: number): Promise<Snapshot> {
-  const list = await allRoaches();
+  const list = [...(await allRoaches()), ...botRoaches(SHOW_BOTS)];
   const next = new Map(list.map((r) => [r.id, JSON.stringify(r)]));
   const prev = feed.snapshot;
   if (prev) {

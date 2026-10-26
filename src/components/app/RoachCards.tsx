@@ -23,6 +23,22 @@ export function OtherRoachCard({
   onTouch: (bold: boolean) => void;
   onClose: () => void;
 }) {
+  if (roach.bot) {
+    return (
+      <div className="card stack" role="dialog" aria-label="演示蟑螂">
+        <div className="card-head">
+          <RoachIcon color={roach.color} size={44} avatar={roach.avatar} look={look} />
+          <div>
+            <strong>一只路过的演示蟑螂</strong>
+            <p className="muted">这是网站放的演示蟑螂，不是真人，碰不到 TA。</p>
+          </div>
+        </div>
+        <button className="close" onClick={onClose} aria-label="关闭">
+          ×
+        </button>
+      </div>
+    );
+  }
   const title = friendName
     ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
     : roach.clone

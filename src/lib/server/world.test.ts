@@ -621,6 +621,10 @@ describe("server world", () => {
     expect((await me.radar())!.scansLeft).toBe(3);
   });
 
+  it("refuses touches on show roaches, which belong to nobody", async () => {
+    await expect(me.touch("bot-12", true)).rejects.toThrow("演示蟑螂");
+  });
+
   it("allows three moves a day, and puts a cap on putting roaches down again and again", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     expect((await me.me()).movesLeft).toBe(3);

@@ -67,6 +67,8 @@ export type MapRoach = LngLat & {
   clone: boolean;
   avatar: RoachAvatar;
   color: RoachColor;
+  /** A show roach that belongs to nobody (see world/bots.ts); it cannot be touched */
+  bot?: true;
 };
 
 /** Someone else's roach as you see it. friend: it belongs to one of your 触须之交. */

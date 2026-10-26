@@ -7,6 +7,9 @@ export const MAIL_FROM = process.env.MAIL_FROM || "粥P地图 <no-reply@roach.lo
 /** Emails the whole site may send in any 24 hours (codes and report digests); kept under the mail provider's daily quota (100 on Resend's free plan). */
 export const MAIL_DAILY_LIMIT = Number(process.env.MAIL_DAILY_LIMIT) || 90;
 
+/** Show roaches on the map that belong to nobody (src/lib/world/bots.ts); 0 or unset shows none. */
+export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BOTS) || 0), 0), 20_000);
+
 /** Where links in emails point. */
 export const SITE_URL = process.env.SITE_URL || (isProd ? "https://zhoupmap.com" : "http://localhost:3000");
 

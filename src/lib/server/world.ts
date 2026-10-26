@@ -19,6 +19,7 @@ import {
   TOUCHES_PER_DAY,
 } from "../rules";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
+import { isBotId } from "../world/bots";
 import { passerbyMoves, type Move } from "../world/cast";
 import {
   buildRadar,
@@ -273,6 +274,7 @@ async function checkTouchQuota(userId: string) {
 }
 
 export async function touch(userId: string, publicId: string, bold: boolean): Promise<TouchResult> {
+  if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，碰不到 TA。");
   if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
   const [roach] = await db.select().from(roaches).where(eq(roaches.publicId, publicId)).limit(1);
   if (!roach) throw new WorldError("这只蟑螂已经爬走了。");
