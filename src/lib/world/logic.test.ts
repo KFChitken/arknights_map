@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { declarationText, reactionsFor, TEMPLATES, type Declaration } from "../declarations";
+import { beijingDate } from "../beijing";
+import { activeEvents, EVENTS, untilText } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
 import { checkDeclaration } from "./logic";
 
@@ -45,5 +47,54 @@ describe("declarations", () => {
     expect(reactionsFor("birthday")).toContain("birthday");
     expect(reactionsFor("launch")).not.toContain("birthday");
     expect(reactionsFor("launch")).toEqual(["alsoplay", "zhouli", "shouwei", "plusone", "diplomat"]);
+  });
+});
+
+describe("limited-time declarations", () => {
+  const at = (iso: string) => new Date(iso).getTime();
+  const tazi: Declaration = { template: "event", line: "tazi" };
+
+  it("runs each line from its start to the minute before its end, Beijing time, with its own game's version", () => {
+    const on = (iso: string) => activeEvents(at(iso)).flatMap((e) => e.lines.map((l) => l.id));
+    expect(on("2026-10-26T23:59:59+08:00")).toEqual([]);
+    expect(on("2026-10-27T00:00:00+08:00")).toEqual(["tazi", "yuanyuan"]);
+    // Endfield's version ends first
+    expect(on("2026-11-26T03:59:59+08:00")).toEqual(["tazi", "yuanyuan"]);
+    expect(on("2026-11-26T04:00:00+08:00")).toEqual(["tazi"]);
+    expect(on("2026-11-29T03:59:59+08:00")).toEqual(["tazi"]);
+    expect(on("2026-11-29T04:00:00+08:00")).toEqual([]);
+    const [tazi, yuanyuan] = EVENTS[0].lines;
+    expect([untilText(tazi), untilText(yuanyuan)]).toEqual(["到 11/29 04:00", "到 11/26 04:00"]);
+  });
+
+  it("counts visit days in Beijing time", () => {
+    expect(beijingDate(at("2026-11-30T15:59:59Z"))).toBe("2026-11-30");
+    expect(beijingDate(at("2026-11-30T16:00:00Z"))).toBe("2026-12-01");
+  });
+
+  it("can be sent by anyone while the event is on, and only then", () => {
+    const anyone = { ...EMPTY_PROFILE };
+    expect(declarationText(checkDeclaration(anyone, tazi, at("2026-11-15T12:00:00+08:00")))).toBe("恭喜塔姐上岛！");
+    expect(() => checkDeclaration(anyone, tazi, at("2026-11-29T04:00:00+08:00"))).toThrow("已经结束");
+    expect(() => checkDeclaration(anyone, tazi, at("2026-10-26T23:59:59+08:00"))).toThrow("还没开始");
+    const yuanyuan: Declaration = { template: "event", line: "yuanyuan" };
+    expect(() => checkDeclaration(anyone, yuanyuan, at("2026-11-27T12:00:00+08:00"))).toThrow("已经结束");
+    expect(declarationText(checkDeclaration(anyone, tazi, at("2026-11-27T12:00:00+08:00")))).toBe("恭喜塔姐上岛！");
+    expect(() => checkDeclaration(anyone, { template: "event", line: "nope" }, at("2026-11-15T12:00:00+08:00"))).toThrow(
+      "选一句宣言",
+    );
+  });
+
+  it("still reads right after the event, and falls back for a line nobody knows", () => {
+    expect(declarationText({ template: "event", line: "yuanyuan" })).toBe("才...才不想和祀住进缘缘庄呢！");
+    expect(declarationText({ template: "event", line: "nope" })).toBe("（限定宣言）");
+    expect(reactionsFor("event")).not.toContain("birthday");
+  });
+
+  it("keeps line ids unique across events, since a declaration stores only the line", () => {
+    const ids = EVENTS.flatMap((e) => e.lines.map((l) => l.id));
+    expect(new Set(ids).size).toBe(ids.length);
+    // a typo in a time would quietly switch the line off
+    for (const l of EVENTS.flatMap((e) => e.lines)) expect(Date.parse(l.start)).toBeLessThan(Date.parse(l.end));
   });
 });

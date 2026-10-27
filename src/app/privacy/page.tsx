@@ -21,7 +21,7 @@ export default function Privacy() {
   return (
     <main className="doc">
       <h1>{SITE_NAME}隐私说明</h1>
-      <p className="hint">生效日期：2026 年 10 月 23 日</p>
+      <p className="hint">生效日期：2026 年 10 月 28 日</p>
 
       <p>
         各位博士、管理员们好！我是 {OPERATOR}，{SITE_NAME}（zhoupmap.com）的运营者。{SITE_NAME}
@@ -43,6 +43,9 @@ export default function Privacy() {
           <strong>你在站里的互动。</strong>你伸出的触须（偷偷或大胆）、发的独立宣言、对宣言的回应，触须之交的建立和解除，还有你拉黑了谁、你提交的举报（理由和你写的补充）。
         </li>
         <li>
+          <strong>你哪天来过，拿到了哪些称号。</strong>只记你最近一次打开{SITE_NAME}是哪一天（北京时间的日期），<strong>不记几点，也不记 IP</strong>；称号只记拿到的是哪个、什么时候拿到的。
+        </li>
+        <li>
           <strong>年龄确认。</strong>注册时问的出生年月只用来确认你已满 {MIN_SIGNUP_AGE} 岁，<strong>不会保存</strong>；我只记下「已确认满 {MIN_SIGNUP_AGE} 岁」和你同意这份说明的时间。
         </li>
         <li>
@@ -55,7 +58,7 @@ export default function Privacy() {
 
       <h2>这些信息拿来做什么</h2>
       <p>
-        让你登录、保存你的资料和蟑螂；在地图上显示大家的蟑螂，转交触须、宣言和回应，建立触须之交；统计方舟雷达里附近蟑螂的变化；防止有人捣乱（比如限制验证码的发送次数、处理举报）。我不会把你的信息用来打广告，也不会卖给或租给任何人。
+        让你登录、保存你的资料和蟑螂；在地图上显示大家的蟑螂，转交触须、宣言和回应，建立触须之交；统计方舟雷达里附近蟑螂的变化；发称号，在你隔了一阵再回来时打个招呼，统计每周来了多少人（只算总数，看不出是谁）；防止有人捣乱（比如限制验证码的发送次数、处理举报）。我不会把你的信息用来打广告，也不会卖给或租给任何人。
       </p>
 
       <h2>别人能看到什么</h2>
@@ -109,6 +112,7 @@ export default function Privacy() {
       <h2>会存多久</h2>
       <ul>
         <li>账号、资料和蟑螂：一直保存，直到你注销账号。</li>
+        <li>称号和最近一次来的日期：跟着账号走，注销就一起删。</li>
         <li>
           触须、宣言、回应和蟑螂挪窝的记录：满 {KEEP_ACTIVITY_DAYS} 天自动删除（消息页本来也只显示最近 {INBOX_DAYS} 天的）。
         </li>

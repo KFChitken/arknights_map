@@ -1,4 +1,5 @@
 import { FOODS, type Declaration } from "../declarations";
+import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAMES, isGame, type Game } from "../games";
 import { isOperator } from "../operators";
@@ -65,8 +66,11 @@ export function publicProfileOf(p: Profile): PublicProfile {
   };
 }
 
-/** A declaration may only use the sender's own favourites, the listed titles and foods, and their own name. */
-export function checkDeclaration(profile: Profile, d: Declaration): Declaration {
+/**
+ * A declaration may only use the sender's own favourites, the listed titles
+ * and foods, their own name, and limited-time lines that are on.
+ */
+export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now()): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
     const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
@@ -98,6 +102,13 @@ export function checkDeclaration(profile: Profile, d: Declaration): Declaration 
     }
     case "birthday":
       return { template: "birthday" };
+    case "event": {
+      const found = findLine(String(d.line ?? ""));
+      if (!found) break;
+      if (now < Date.parse(found.line.start)) throw new WorldError("这句限定宣言还没开始。");
+      if (now >= Date.parse(found.line.end)) throw new WorldError("这句限定宣言已经结束啦。");
+      return { template: "event", line: found.line.id };
+    }
   }
   throw new WorldError("选一句宣言吧。");
 }

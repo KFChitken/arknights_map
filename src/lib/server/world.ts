@@ -2,6 +2,8 @@ import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
+import { beijingDate } from "../beijing";
+import { findLine } from "../events";
 import { isGame } from "../games";
 import { displayName, type Profile } from "../profile";
 import {
@@ -60,6 +62,7 @@ import {
   radarScans,
   roaches,
   touches,
+  userBadges,
   users,
   type RoachRow,
   type UserRow,
@@ -181,6 +184,9 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
 export async function me(userId: string): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
+  // u still holds the day of the visit before this one
+  const today = beijingDate();
+  if (u.lastSeenOn !== today) await db.update(users).set({ lastSeenOn: today }).where(eq(users.id, u.id));
   const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
   const isNew = Date.now() - u.createdAt.getTime() < NEWCOMER_DAYS * DAY;
   // only asked for while the tutorial can still show; a young account's records are far from the 90-day clean-up
@@ -503,6 +509,8 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
       return { template: d.template, game };
     case "birthday":
       return { template: "birthday" };
+    case "event":
+      return { template: "event", line: d.line ?? "" };
     default:
       return { template: "launch", game };
   }
@@ -593,9 +601,12 @@ export async function declare(userId: string, input: Declaration, from?: string[
         title: d.template === "iam" ? d.title : null,
         food: d.template === "eat" ? d.food : null,
         name: d.template === "myname" ? (d.name ?? null) : null,
+        line: d.template === "event" ? d.line : null,
         recipients: rows.length,
       })
       .returning({ id: declarations.id });
+    const event = d.template === "event" ? findLine(d.line)?.event : null;
+    if (event) await tx.insert(userBadges).values({ userId, badge: event.badge }).onConflictDoNothing();
     for (let i = 0; i < rows.length; i += 1000) {
       await tx
         .insert(deliveries)

@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { declarationText, FOODS, WELCOME_NAMES, type Declaration, type Food, type Template } from "@/lib/declarations";
+import { activeEvents, untilText, type EventLine } from "@/lib/events";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
 import { displayName, type Profile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM } from "@/lib/rules";
@@ -34,7 +35,10 @@ export default function DeclareSheet({
 
   const favourites = profile.games.flatMap((g) => profile.favourites[g].map((name) => ({ name, game: g })));
   const named = !profile.anonymous && Boolean(profile.name.trim());
-  const [template, setTemplate] = useState<Template>("launch");
+  // while an event is on, its first line is picked to begin with
+  const [events] = useState(() => activeEvents());
+  const [line, setLine] = useState(events[0]?.lines[0]?.id ?? "");
+  const [template, setTemplate] = useState<Template>(events.length ? "event" : "launch");
   const [game, setGame] = useState<Game>(profile.games[0] ?? "arknights");
   const [character, setCharacter] = useState(favourites[0]?.name ?? "");
   const characterGame = favourites.find((f) => f.name === character)?.game ?? "arknights";
@@ -58,6 +62,8 @@ export default function DeclareSheet({
         return { template, game, name: displayName(profile) };
       case "birthday":
         return { template };
+      case "event":
+        return { template, line };
       default:
         return { template: template === "welcome" ? "welcome" : "launch", game };
     }
@@ -103,6 +109,26 @@ export default function DeclareSheet({
       {body}
     </label>
   );
+  // anyone with a main roach can send these, so they are never greyed out
+  const eventRow = (l: EventLine) => {
+    const on = template === "event" && line === l.id;
+    const choose = () => {
+      setTemplate("event");
+      setLine(l.id);
+    };
+    return (
+      <label key={l.id} className={`tpl limited ${on ? "on" : ""}`} onClick={choose}>
+        <input type="radio" name="tpl" checked={on} onChange={choose} />
+        <span className="limited-line">
+          {l.text}
+          {/* each game's line ends with that game's version */}
+          <small>
+            {GAME_NAMES[l.game]} · {untilText(l)}
+          </small>
+        </span>
+      </label>
+    );
+  };
 
   return (
     <Sheet
@@ -135,6 +161,13 @@ export default function DeclareSheet({
           </button>
         </div>
       )}
+
+      {events.map((e) => (
+        <div key={e.id} className="limited-group" role="group" aria-label={`${e.name}限定宣言`}>
+          <div className="limited-tag">限定</div>
+          {e.lines.map(eventRow)}
+        </div>
+      ))}
 
       {row("launch", <>{gameSelect("launch")}，启动！</>)}
       {row(

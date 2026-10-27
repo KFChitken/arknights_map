@@ -1,3 +1,4 @@
+import { findLine } from "./events";
 import { GAME_NAMES, type Game } from "./games";
 
 /** 我想吃<角色>的<食物> */
@@ -10,7 +11,8 @@ export const WELCOME_NAMES: Record<Game, string> = { arknights: "刀客塔", end
 /**
  * A declaration is always one of a few fixed sentences with blanks picked from
  * lists. `name` in 「我是<名字>，我要玩…」 is filled in by the server from the
- * sender's profile. "alsoplay" can no longer be sent, but older ones still show.
+ * sender's profile. "event" is a limited-time line from events.ts. "alsoplay"
+ * can no longer be sent, but older ones still show.
  */
 export type Declaration =
   | { template: "launch"; game: Game }
@@ -22,11 +24,12 @@ export type Declaration =
   | { template: "canyou"; character: string }
   | { template: "eat"; character: string; food: Food }
   | { template: "birthday" }
+  | { template: "event"; line: string }
   | { template: "alsoplay"; game: Game };
 
 export type Template = Declaration["template"];
 
-/** The ones a player can send, in the order the sheet lists them. */
+/** The ones a player can always send, in the order the sheet lists them; events come on top while they are on. */
 export const TEMPLATES = ["launch", "iam", "love", "buff", "myname", "welcome", "canyou", "eat", "birthday"] as const;
 
 export function declarationText(d: Declaration): string {
@@ -49,6 +52,8 @@ export function declarationText(d: Declaration): string {
       return `我想吃${d.character}的${d.food}`;
     case "birthday":
       return "祝我生日快乐";
+    case "event":
+      return findLine(d.line)?.line.text ?? "（限定宣言）";
     case "alsoplay":
       return `原来，你也玩${GAME_NAMES[d.game]}`;
   }

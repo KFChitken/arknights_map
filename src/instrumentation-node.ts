@@ -3,10 +3,12 @@ import { demoEnabled } from "./lib/server/env";
 import { runMigrations } from "./lib/server/migrate";
 import { pruneOldActivity } from "./lib/server/retention";
 import { sendReportDigest } from "./lib/server/safety";
+import { recordDailyTotals } from "./lib/server/totals";
 
 const TRIES = 10;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 
 // The database can still be starting (first boot, or a server restart that brought the app up first)
 for (let attempt = 1; attempt <= TRIES; attempt++) {
@@ -30,3 +32,8 @@ setInterval(prune, DAY_MS);
 
 // Reports that came in after today's digest go out once a day has passed
 setInterval(() => sendReportDigest().catch((e) => console.error("Report digest failed", e)), HOUR_MS);
+
+// Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
+const totals = () => recordDailyTotals().catch((e) => console.error("Recording daily totals failed", e));
+totals();
+setInterval(totals, 10 * MINUTE_MS);

@@ -3,6 +3,7 @@ import {
   bigserial,
   boolean,
   customType,
+  date,
   doublePrecision,
   index,
   integer,
@@ -44,6 +45,9 @@ export const users = pgTable("users", {
   shareUid: boolean("share_uid").notNull().default(false),
   avatar: text("avatar").notNull().default("hood"),
   color: text("color").notNull().default("cyan"),
+
+  /** The Beijing date of the player's latest visit; only the day, never the time */
+  lastSeenOn: date("last_seen_on", { mode: "string" }),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -149,6 +153,8 @@ export const declarations = pgTable(
     food: text("food"),
     /** The sender's name as it was when they declared it, for 「我是<名字>…」 */
     name: text("name"),
+    /** For a limited-time declaration, the id of its line in events.ts */
+    line: text("line"),
     recipients: integer("recipients").notNull(),
     createdAt: createdAt(),
   },
@@ -286,6 +292,41 @@ export const radarScans = pgTable(
   },
   (t) => [index("radar_scans_user_idx").on(t.userId, t.createdAt)],
 );
+
+/**
+ * Badges a player has earned. They are written the moment they are earned and
+ * kept even after what earned them is gone, such as a declaration past the
+ * 90-day clean-up.
+ */
+export const userBadges = pgTable(
+  "user_badges",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    badge: text("badge").notNull(),
+    earnedAt: at("earned_at").notNull().defaultNow(),
+    /** Only for 首批蟑螂: the player's number, never given to anyone else */
+    serial: smallint("serial"),
+    /** When the player was shown they had earned it */
+    seenAt: at("seen_at"),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.badge] })],
+);
+
+/**
+ * Sitewide totals, one row per Beijing day, for the admin's retention numbers.
+ * Only counts: nothing in it points at any player.
+ */
+export const dailyTotals = pgTable("daily_totals", {
+  day: date("day", { mode: "string" }).primaryKey(),
+  /** Players who came on any of the 7 days up to and including this one */
+  activeWeek: integer("active_week").notNull(),
+  /** Accounts made that day */
+  signups: integer("signups").notNull(),
+  /** Pairs who became 触须之交 that day */
+  friendships: integer("friendships").notNull(),
+});
 
 /** Placements, moves and removals, for the radar. */
 export const moves = pgTable(

@@ -1,6 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Declaration } from "../declarations";
+import { beijingDate } from "../beijing";
+import { EVENTS } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
@@ -17,6 +19,7 @@ import * as safety from "./safety";
 import {
   bannedEmails,
   blocks,
+  dailyTotals,
   declarations,
   deliveries,
   friendCuts,
@@ -28,8 +31,10 @@ import {
   roaches,
   sessions,
   touches,
+  userBadges,
   users,
 } from "./schema";
+import { recordDailyTotals } from "./totals";
 import * as world from "./world";
 
 // Runs against the database named in vitest.config.mts, which is wiped before every test
@@ -102,7 +107,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}`,
   );
   await seedDemo();
   me = await signUp("me@example.com");
@@ -346,6 +351,73 @@ describe("server world", () => {
     await me.declare({ template: "myname", game: "endfield", name: "冒充别人" } as Declaration);
     await me.saveProfile({ ...EMPTY_PROFILE, anonymous: true, games: ["arknights"] });
     expect((await (await demo("t2")).inbox())[0]).toMatchObject({ text: "我是Dr. Breeze，我要玩终末地" });
+  });
+
+  it("sends a limited-time line while its event is on, earns its badge once, and keeps it readable after", async () => {
+    const lines = EVENTS.find((e) => e.id === "half2026")!.lines;
+    const saved = lines.map((l) => ({ ...l }));
+    const hoursFromNow = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+    const moveTo = (start: number, end: number) => lines.forEach((l) => Object.assign(l, { start: hoursFromNow(start), end: hoursFromNow(end) }));
+    // the lines moved around now, so the test does not depend on when it runs
+    moveTo(-1, 1);
+    try {
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await me.declare({ template: "event", line: "tazi" });
+      const t2 = await demo("t2");
+      const [got] = await t2.inbox();
+      expect(got).toMatchObject({ kind: "declaration", text: "恭喜塔姐上岛！" });
+      await t2.react(got.id, "plusone");
+      expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({ text: "恭喜塔姐上岛！", reaction: "plusone" });
+
+      await db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - interval '2 minutes'` });
+      await me.declare({ template: "event", line: "yuanyuan" });
+      expect(await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, me.id))).toEqual([
+        { badge: "half2026" },
+      ]);
+      // nobody else earned it
+      expect(await db.select().from(userBadges)).toHaveLength(1);
+
+      moveTo(-48, -1);
+      await db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - interval '2 minutes'` });
+      await expect(me.declare({ template: "event", line: "tazi" })).rejects.toThrow("已经结束");
+      expect((await t2.inbox()).map((i) => i.kind === "declaration" && i.text)).toEqual([
+        "才...才不想和祀住进缘缘庄呢！",
+        "恭喜塔姐上岛！",
+      ]);
+    } finally {
+      lines.forEach((l, i) => Object.assign(l, saved[i]));
+    }
+  });
+
+  it("notes the day of each visit, Beijing time, and nothing finer", async () => {
+    await db.update(users).set({ lastSeenOn: "2026-01-01" }).where(eq(users.id, me.id));
+    await me.me();
+    const [u] = await db.select({ lastSeenOn: users.lastSeenOn }).from(users).where(eq(users.id, me.id));
+    expect(u.lastSeenOn).toBe(beijingDate());
+  });
+
+  it("keeps one row of sitewide counts a day, and closes yesterday's after midnight", async () => {
+    const at = (iso: string) => new Date(iso);
+    const other = await signUp("other@example.com");
+    const away = await signUp("away@example.com");
+    await db.update(users).set({ createdAt: at("2026-11-10T09:00+08:00"), lastSeenOn: "2026-11-10" }).where(eq(users.id, me.id));
+    await db.update(users).set({ createdAt: at("2026-11-09T23:59+08:00"), lastSeenOn: "2026-11-04" }).where(eq(users.id, other.id));
+    await db.update(users).set({ createdAt: at("2026-10-01T12:00+08:00"), lastSeenOn: "2026-11-03" }).where(eq(users.id, away.id));
+    const [a, b] = [me.id, other.id].sort();
+    await db.insert(friendships).values({ a, b, createdAt: at("2026-11-10T10:00+08:00") });
+
+    await recordDailyTotals(Date.parse("2026-11-10T12:00+08:00"));
+    // seen within 11/04–11/10: me and other; the demo players never count
+    expect(await db.select().from(dailyTotals)).toEqual([{ day: "2026-11-10", activeWeek: 2, signups: 1, friendships: 1 }]);
+
+    // someone signs up a minute before midnight, after the last count of the day
+    const late = await signUp("late@example.com");
+    await db.update(users).set({ createdAt: at("2026-11-10T23:59+08:00") }).where(eq(users.id, late.id));
+    await recordDailyTotals(Date.parse("2026-11-11T00:05+08:00"));
+    expect(await db.select().from(dailyTotals).orderBy(dailyTotals.day)).toEqual([
+      { day: "2026-11-10", activeWeek: 2, signups: 2, friendships: 1 },
+      { day: "2026-11-11", activeWeek: 1, signups: 0, friendships: 0 },
+    ]);
   });
 
   it("only lets you declare with your own favourites and listed titles", async () => {

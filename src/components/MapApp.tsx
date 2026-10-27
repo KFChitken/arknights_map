@@ -33,9 +33,10 @@ import {
 } from "@/lib/world/types";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
+import { keepInstallPrompt } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
-import LoginSheet from "./app/LoginSheet";
+import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
@@ -241,15 +242,20 @@ export default function MapApp() {
         return { me: null, items: [] as InboxItem[] };
       })
       .then(({ me: m, items }) => {
-      const main = m?.roaches.find((r) => r.slot === 0);
-      viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
-      setLook(loadLook());
-      setBasemap(b);
-      // What arrived since the last visit
-      if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
-      else if (!m && !welcomed()) setPanel({ kind: "welcome" });
-    });
+        const main = m?.roaches.find((r) => r.slot === 0);
+        viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
+        setLook(loadLook());
+        setBasemap(b);
+        // What arrived since the last visit
+        if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+        // the page reloaded while the player went to read their login code
+        else if (!m && pendingLogin()) setPanel({ kind: "login" });
+        else if (!m && !welcomed()) setPanel({ kind: "welcome" });
+      });
   }, [load, openInbox]);
+
+  // Android Chrome offers adding the site to the home screen once, early; 资料 keeps it for later
+  useEffect(() => keepInstallPrompt(), []);
 
   // Roaches others placed or moved: once a minute, and when the page comes back into view, ask only what changed
   useEffect(() => {
@@ -606,6 +612,8 @@ export default function MapApp() {
     if (!res) return false;
     setToast(`宣言发出去了！${res.reach}`);
     if (demoRef.current) await loadIdentities();
+    // a newcomer's greeting step is done however they sent it
+    if (me?.isNew) await loadMe();
     return true;
   };
 

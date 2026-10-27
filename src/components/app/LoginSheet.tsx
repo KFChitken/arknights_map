@@ -2,15 +2,43 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { finishSignup, requestCode, verifyCode } from "@/lib/authClient";
-import { LOGIN_CODE_COOLDOWN_S, SITE_NAME } from "@/lib/rules";
+import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_TTL_MIN, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 type Step = "email" | "code" | "signup";
 
+/**
+ * A code sent from this tab and not used yet. Phones often reload the page
+ * while the player is off reading the email, so the sheet comes back at the
+ * code step instead of starting over.
+ */
+type Pending = { email: string; sentAt: number };
+const PENDING = "zhoup.login";
+
+export function pendingLogin(): Pending | null {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(PENDING) ?? "null");
+    const fresh = typeof p?.sentAt === "number" && Date.now() - p.sentAt < LOGIN_CODE_TTL_MIN * 60_000;
+    return fresh && typeof p.email === "string" ? { email: p.email, sentAt: p.sentAt } : null;
+  } catch {
+    return null;
+  }
+}
+
+function keepPending(p: Pending | null) {
+  try {
+    if (p) sessionStorage.setItem(PENDING, JSON.stringify(p));
+    else sessionStorage.removeItem(PENDING);
+  } catch {}
+}
+
+const waitAfter = (sentAt: number) => Math.max(0, LOGIN_CODE_COOLDOWN_S - Math.floor((Date.now() - sentAt) / 1000));
+
 /** Email + 6-digit code sign-in; new players add their birth month and consent once. */
 export default function LoginSheet({ reason, onDone, onClose }: { reason?: string; onDone: () => void; onClose: () => void }) {
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+  const [resumed] = useState(pendingLogin);
+  const [step, setStep] = useState<Step>(resumed ? "code" : "email");
+  const [email, setEmail] = useState(resumed?.email ?? "");
   const [code, setCode] = useState("");
   const [year, setYear] = useState("");
   const [month, setMonth] = useState("");
@@ -18,7 +46,7 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mailbox, setMailbox] = useState<string | null>(null);
-  const [wait, setWait] = useState(0);
+  const [wait, setWait] = useState(() => (resumed ? waitAfter(resumed.sentAt) : 0));
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -43,6 +71,7 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
     run(async () => {
       const r = await requestCode(email.trim());
       setMailbox(r.devMailboxPort ? `${location.protocol}//${location.hostname}:${r.devMailboxPort}` : null);
+      keepPending({ email: email.trim(), sentAt: Date.now() });
       setWait(LOGIN_CODE_COOLDOWN_S);
       setStep("code");
     });
@@ -52,6 +81,7 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
     e.preventDefault();
     run(async () => {
       const r = await verifyCode(email.trim(), code.trim());
+      keepPending(null);
       if (r.status === "ok") onDone();
       else setStep("signup");
     });
@@ -67,8 +97,14 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
 
   const thisYear = new Date().getFullYear();
 
+  // closed on purpose, so a reload should not bring it back
+  const close = () => {
+    keepPending(null);
+    onClose();
+  };
+
   return (
-    <Sheet title={step === "signup" ? `第一次来${SITE_NAME}` : "登录"} onClose={onClose}>
+    <Sheet title={step === "signup" ? `第一次来${SITE_NAME}` : "登录"} onClose={close}>
       {step === "email" && (
         <form className="login" onSubmit={send}>
           {reason && <p className="hint" style={{ marginTop: 0 }}>{reason}</p>}
@@ -126,7 +162,14 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
             <button type="button" className="pill" disabled={busy || wait > 0} onClick={() => send()}>
               {wait > 0 ? `${wait} 秒后可重发` : "重新发送"}
             </button>
-            <button type="button" className="pill" onClick={() => setStep("email")}>
+            <button
+              type="button"
+              className="pill"
+              onClick={() => {
+                keepPending(null);
+                setStep("email");
+              }}
+            >
               换个邮箱
             </button>
           </div>
