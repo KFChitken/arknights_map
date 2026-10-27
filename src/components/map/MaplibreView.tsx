@@ -18,7 +18,7 @@ import {
   SWARM_FADE_ZOOM,
   SWARM_GRADIENT,
 } from "@/lib/swarm";
-import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
+import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -100,7 +100,7 @@ function imageSpec(id: string): [RoachColor, RoachOpts] {
 }
 
 /** The icons the current data needs, so only those get drawn. */
-function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "myAvatar" | "myColor" | "look">) {
+function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "ghost" | "myAvatar" | "myColor" | "look">) {
   const ids = new Set<string>();
   if (p.look === "real") {
     for (const id of ["real", "clone-real", "friend-real", "friendclone-real"]) {
@@ -115,6 +115,7 @@ function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "myAvatar" | "m
     else ids.add(`${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`);
   }
   for (const r of p.mine) ids.add(`${r.slot > 0 ? "mineclone" : "mine"}-${p.myAvatar}-${p.myColor}`);
+  if (p.ghost) ids.add(`mine-${p.myAvatar}-${p.myColor}`);
   return ids;
 }
 
@@ -202,13 +203,22 @@ function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
   };
 }
 
-function mineGeoJSON(mine: OwnRoach[], avatar: RoachAvatar, color: RoachColor): GeoJSON.FeatureCollection {
+function mineGeoJSON(
+  mine: OwnRoach[],
+  ghost: LngLat | null | undefined,
+  avatar: RoachAvatar,
+  color: RoachColor,
+): GeoJSON.FeatureCollection {
+  const spots = [
+    ...mine.map((r) => ({ id: r.id, slot: r.slot, at: r as LngLat, ghost: false })),
+    ...(ghost ? [{ id: "ghost", slot: 0, at: ghost, ghost: true }] : []),
+  ];
   return {
     type: "FeatureCollection",
-    features: mine.map((r) => ({
+    features: spots.map((s) => ({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-      properties: { id: r.id, slot: r.slot, avatar, color },
+      geometry: { type: "Point", coordinates: [s.at.lng, s.at.lat] },
+      properties: { id: s.id, slot: s.slot, avatar, color, ghost: s.ghost },
     })),
   };
 }
@@ -231,7 +241,7 @@ export default function MaplibreView(props: MapViewProps) {
         await ensureImages(map, neededImages(p));
         if (mapRef.current !== map) return;
         (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
-        (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.myAvatar, p.myColor));
+        (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.ghost, p.myAvatar, p.myColor));
         for (const id of ROACH_LAYERS) {
           map.setLayoutProperty(id, "icon-image", roachImage(p.look) as never);
           map.setLayoutProperty(id, "icon-rotate", roachRotate(p.look) as never);
@@ -303,9 +313,9 @@ export default function MaplibreView(props: MapViewProps) {
 
     map.on("load", async () => {
       await ensureImages(map, neededImages(propsRef.current));
-      const { roaches, mine, myAvatar, myColor, look } = propsRef.current;
+      const { roaches, mine, ghost, myAvatar, myColor, look } = propsRef.current;
       map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
-      map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, myAvatar, myColor) });
+      map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, ghost, myAvatar, myColor) });
 
       // Dark swarm under the icons so crowded cities read as covered in roaches
       const ramp = Object.entries(SWARM_GRADIENT)
@@ -358,6 +368,7 @@ export default function MaplibreView(props: MapViewProps) {
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
+        paint: { "icon-opacity": ["case", ["get", "ghost"], 0.55, 1] },
       });
 
       readyRef.current = true;
@@ -395,7 +406,7 @@ export default function MaplibreView(props: MapViewProps) {
     };
   }, []);
 
-  useEffect(sync, [props.roaches, props.mine, props.myAvatar, props.myColor, props.look]);
+  useEffect(sync, [props.roaches, props.mine, props.ghost, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {
     const map = mapRef.current;

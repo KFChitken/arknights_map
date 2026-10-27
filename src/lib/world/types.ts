@@ -71,8 +71,11 @@ export type MapRoach = LngLat & {
   bot?: true;
 };
 
-/** Someone else's roach as you see it. friend: it belongs to one of your 触须之交. */
-export type PublicRoach = MapRoach & { friend: boolean };
+/**
+ * Someone else's roach as you see it. friend: it belongs to one of your 触须之交.
+ * guide: the tutorial's practice roach, which exists only on the newcomer's own screen.
+ */
+export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
 
 /**
  * The shared roach feed at version v. With no version to start from it holds
@@ -102,8 +105,20 @@ export type FriendEvent =
   | { kind: "declared"; at: number; text: string }
   | { kind: "befriended"; at: number; you: boolean };
 
-/** movesLeft: how many more times a roach may be moved in the next 24 hours */
-export type Me = { id: PlayerId; profile: Profile; roaches: OwnRoach[]; movesLeft: number };
+/**
+ * movesLeft: how many more times a roach may be moved in the next 24 hours.
+ * isNew, hasDeclared and hasTouched drive the newcomer tutorial.
+ */
+export type Me = {
+  id: PlayerId;
+  profile: Profile;
+  roaches: OwnRoach[];
+  movesLeft: number;
+  /** Signed up within NEWCOMER_DAYS */
+  isNew: boolean;
+  hasDeclared: boolean;
+  hasTouched: boolean;
+};
 
 /** Someone on your block list. name is null when you never saw who it was. */
 export type BlockedPlayer = { id: string; name: string | null; at: number };
@@ -152,6 +167,16 @@ export class WorldError extends Error {}
 
 /** The action needs a signed-in player. */
 export class SignInNeeded extends WorldError {}
+
+/** The server is busy right now; try again after retryAfterS seconds. */
+export class TooBusy extends WorldError {
+  constructor(
+    message: string,
+    public retryAfterS: number,
+  ) {
+    super(message);
+  }
+}
 
 /** Roaches that moved into or out of the radar circle in a time window. */
 export type RadarWindow = {

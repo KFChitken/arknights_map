@@ -151,10 +151,10 @@ function heatData(roaches: PublicRoach[]) {
   };
 }
 
-async function mineIcon(r: OwnRoach, avatar: RoachAvatar, color: RoachColor, look: RoachStyle) {
+async function mineIcon(r: OwnRoach, avatar: RoachAvatar, color: RoachColor, look: RoachStyle, ghost = false) {
   const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look });
-  const label = r.slot > 0 ? "我的克隆体" : "我的蟑螂";
-  return `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer"/>`;
+  const label = ghost ? "放在这里" : r.slot > 0 ? "我的克隆体" : "我的蟑螂";
+  return `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer${ghost ? ";opacity:.55" : ""}"/>`;
 }
 
 export default function AmapView(props: MapViewProps) {
@@ -177,11 +177,13 @@ export default function AmapView(props: MapViewProps) {
     const map = mapRef.current;
     if (!AMap || !map) return;
     const seq = ++mineSeq.current;
-    const { mine, myAvatar, myColor, look } = propsRef.current;
-    const icons = await Promise.all(mine.map((r) => mineIcon(r, myAvatar, myColor, look)));
+    const { mine, ghost, myAvatar, myColor, look } = propsRef.current;
+    // a visitor's preview spot is drawn like a main roach of yours, faded
+    const spots = ghost ? [...mine, { id: "ghost", slot: 0, publicId: "", ...ghost }] : mine;
+    const icons = await Promise.all(spots.map((r) => mineIcon(r, myAvatar, myColor, look, r.id === "ghost")));
     if (seq !== mineSeq.current || mapRef.current !== map) return;
     if (mineRef.current.length) map.remove(mineRef.current);
-    mineRef.current = mine.map((r, i) => {
+    mineRef.current = spots.map((r, i) => {
       const marker = new AMap.Marker({
         position: toGcj(r),
         content: icons[i],
@@ -339,7 +341,7 @@ export default function AmapView(props: MapViewProps) {
 
   useEffect(() => {
     placeMine();
-  }, [props.mine, props.myAvatar, props.myColor, props.look]);
+  }, [props.mine, props.ghost, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");

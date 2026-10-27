@@ -32,6 +32,7 @@ const COLOR_NAMES: Record<RoachColor, string> = {
 export default function ProfileSheet({
   profile,
   blocked,
+  tutorial,
   onUnblock,
   onSave,
   onSignOut,
@@ -40,6 +41,8 @@ export default function ProfileSheet({
 }: {
   profile: Profile;
   blocked: BlockedPlayer[];
+  /** The tutorial's first card: only the basics, and a way to stay anonymous for now */
+  tutorial?: { onLater: () => void };
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
   onSignOut: () => void;
@@ -62,19 +65,30 @@ export default function ProfileSheet({
 
   return (
     <Sheet
-      title="我的资料"
-      onClose={onClose}
+      title={tutorial ? "给你的蟑螂做张名片吧" : "我的资料"}
+      onClose={tutorial?.onLater ?? onClose}
       footer={
-        <button className="primary wide" onClick={save} disabled={saving}>
-          {saving ? "保存中…" : "保存"}
-        </button>
+        <>
+          <button className="primary wide" onClick={save} disabled={saving}>
+            {saving ? "保存中…" : "保存"}
+          </button>
+          {tutorial && (
+            <button className="pill wide" style={{ marginTop: 8 }} onClick={tutorial.onLater}>
+              先匿名，以后再说
+            </button>
+          )}
+        </>
       }
     >
       <div className="who-card">
         <RoachIcon color={p.color} size={52} avatar={p.avatar} />
         <div>
           <strong>{displayName(p)}</strong>
-          <p className="hint">只有你大胆伸出触须时，对方才看得到这里的资料。地图上的本体和这里长得一样，所以看过资料的人可能认出你的本体在哪。</p>
+          <p className="hint">
+            {tutorial
+              ? "地图上没人知道哪只是你。只有你大胆碰过的人和触须之交能看到名片，他们也可能凭形象和颜色在地图上认出你的本体。"
+              : "只有你大胆伸出触须时，对方才看得到这里的资料。地图上的本体和这里长得一样，所以看过资料的人可能认出你的本体在哪。"}
+          </p>
         </div>
       </div>
 
@@ -128,22 +142,24 @@ export default function ProfileSheet({
             value={p.favourites[g]}
             onChange={(v) => set({ favourites: { ...p.favourites, [g]: v } })}
           />
-          <label className="field">
-            {GAME_NAMES[g]} UID（可选）
-            <input
-              type="text"
-              inputMode="text"
-              autoComplete="off"
-              value={p.uid[g]}
-              maxLength={UID_MAX}
-              placeholder="不填也可以"
-              onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
-            />
-          </label>
+          {!tutorial && (
+            <label className="field">
+              {GAME_NAMES[g]} UID（可选）
+              <input
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                value={p.uid[g]}
+                maxLength={UID_MAX}
+                placeholder="不填也可以"
+                onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
+              />
+            </label>
+          )}
         </fieldset>
       ))}
 
-      {hasUid && (
+      {hasUid && !tutorial && (
         <fieldset>
           <legend>UID 给谁看</legend>
           <label className="check">
@@ -192,35 +208,39 @@ export default function ProfileSheet({
         </div>
         <p className="hint">颜色只改兜帽形象两边的灯；博士、管理员和小恶魔用的是原画，颜色不变。</p>
       </fieldset>
+      {!tutorial && (
+        <>
       <fieldset>
-        <legend>拉黑名单</legend>
-        {blocked.length === 0 && <p className="hint">还没有拉黑任何人。在消息里点「拉黑/举报」就能拉黑。</p>}
-        {blocked.map((b) => (
-          <div className="list-row" key={b.id}>
-            <div>
-              <strong>{b.name ?? "一只匿名舟p"}</strong>
-              <p className="muted">{new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}拉黑</p>
+          <legend>拉黑名单</legend>
+          {blocked.length === 0 && <p className="hint">还没有拉黑任何人。在消息里点「拉黑/举报」就能拉黑。</p>}
+          {blocked.map((b) => (
+            <div className="list-row" key={b.id}>
+              <div>
+                <strong>{b.name ?? "一只匿名舟p"}</strong>
+                <p className="muted">{new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}拉黑</p>
+              </div>
+              <div className="row-actions">
+                <button className="pill" onClick={() => onUnblock(b.id)}>
+                  解除
+                </button>
+              </div>
             </div>
-            <div className="row-actions">
-              <button className="pill" onClick={() => onUnblock(b.id)}>
-                解除
-              </button>
-            </div>
-          </div>
-        ))}
-      </fieldset>
-
-      <div className="account-actions">
-        <button className="pill" onClick={onSignOut}>
-          退出登录
-        </button>
-        <button className="pill" onClick={onDelete}>
-          注销账号
-        </button>
-        <a className="pill" href="/privacy" target="_blank" rel="noreferrer">
-          隐私说明
-        </a>
-      </div>
+          ))}
+        </fieldset>
+  
+        <div className="account-actions">
+          <button className="pill" onClick={onSignOut}>
+            退出登录
+          </button>
+          <button className="pill" onClick={onDelete}>
+            注销账号
+          </button>
+          <a className="pill" href="/privacy" target="_blank" rel="noreferrer">
+            隐私说明
+          </a>
+        </div>
+        </>
+      )}
     </Sheet>
   );
 }

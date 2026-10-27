@@ -76,6 +76,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px;
   background: #000c; color: #fff; font-size: 14px; text-align: center;
 }
+.toast.high { bottom: auto; top: 110px; }
 .disclaimer {
   position: absolute; z-index: 10; left: 0; right: 0; bottom: 8px; margin: 0;
   text-align: center; font-size: 11px; color: #00000099; pointer-events: none;
@@ -134,6 +135,13 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .card-head { display: flex; align-items: center; gap: 10px; padding-right: 28px; }
 .card-head p { margin: 2px 0 0; }
 .card.stack .row-actions { margin-top: 0; }
+/* the newcomer tutorial, above the bottom buttons */
+.coach { gap: 6px; }
+.coach strong { font-size: 15px; }
+.coach p { margin: 0; line-height: 1.5; }
+.coach .chips .chip { font-size: 13px; }
+.coach-top { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.coach-top .link { padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-decoration: underline; }
 .touch-buttons { display: flex; gap: 8px; }
 .touch-buttons button {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px;

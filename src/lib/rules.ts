@@ -43,6 +43,9 @@ export const REPORT_NOTE_MAX = 100;
 /** Handled reports are deleted after this many days (see the privacy page). */
 export const KEEP_REPORT_DAYS = 90;
 
+/** Accounts this young still get the newcomer tutorial. */
+export const NEWCOMER_DAYS = 7;
+
 /** Inbox items older than this are not shown. */
 export const INBOX_DAYS = 30;
 /** Touches, declarations, reactions and roach moves older than this are deleted (see the privacy page). */

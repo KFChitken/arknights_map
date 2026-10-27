@@ -124,6 +124,16 @@ describe("server world", () => {
     expect(all.some((r) => ownIds.has(r.id))).toBe(false);
   });
 
+  it("tells a newcomer's page what the tutorial still has to show", async () => {
+    expect(await me.me()).toMatchObject({ isNew: true, hasDeclared: false, hasTouched: false });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "launch", game: "arknights" });
+    await me.touch((await publicAt(me, tester("t1").roaches[0])).id, false);
+    expect(await me.me()).toMatchObject({ isNew: true, hasDeclared: true, hasTouched: true });
+    await db.update(users).set({ createdAt: sql`now() - interval '8 days'` }).where(eq(users.id, me.id));
+    expect(await me.me()).toMatchObject({ isNew: false, hasDeclared: false, hasTouched: false });
+  });
+
   it("lists your own roaches apart from everyone else's", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     expect((await me.me()).roaches[0]).toMatchObject(PEOPLES_SQUARE);

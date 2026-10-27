@@ -13,9 +13,11 @@ import { MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { RoachFeedCopy } from "@/lib/world/feed";
+import { reachText } from "@/lib/world/logic";
 import { ServerWorld } from "@/lib/world/server";
 import {
   SignInNeeded,
+  TooBusy,
   WorldError,
   type BlockedPlayer,
   type Friend,
@@ -30,6 +32,7 @@ import {
   type World,
 } from "@/lib/world/types";
 import DeclareSheet from "./app/DeclareSheet";
+import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
 import LoginSheet from "./app/LoginSheet";
@@ -39,6 +42,17 @@ import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
+import {
+  guideRoach,
+  guideTouchBack,
+  isGuideItem,
+  loadProgress,
+  nearestReal,
+  saveProgress,
+  TutorialCoach,
+  tutorialStep,
+  type Progress,
+} from "./app/Tutorial";
 import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
@@ -58,7 +72,12 @@ type Panel =
   | { kind: "friend"; friendId: string; back: Panel | null }
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
-  | { kind: "login"; reason?: string };
+  | { kind: "login"; reason?: string }
+  // for visitors who have not signed in
+  | { kind: "welcome" }
+  | { kind: "guestRadar" }
+  // the newcomer tutorial's first step
+  | { kind: "tutorialCard" };
 
 type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
 
@@ -96,6 +115,18 @@ export default function MapApp() {
   const lastMessagesRef = useRef(0);
   // Test identities exist only in development; the live site never asks for them again
   const demoRef = useRef(false);
+  // Where a visitor tried putting their roach; kept in this page only, never sent or stored
+  const [preview, setPreview] = useState<LngLat | null>(null);
+  const [progress, setProgress] = useState<Progress>({});
+  // The guide roach's messages exist in this page only
+  const [guideItems, setGuideItemsState] = useState<InboxItem[]>([]);
+  const guideItemsRef = useRef<InboxItem[]>([]);
+  const setGuideItems = useCallback((items: InboxItem[]) => {
+    guideItemsRef.current = items;
+    setGuideItemsState(items);
+  }, []);
+  const [greeting, setGreeting] = useState(false);
+  const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
 
   // The feed is the same for everyone: leave out our own roaches (drawn from me) and mark friends'
   const friendKey = friends
@@ -129,7 +160,24 @@ export default function MapApp() {
   }, [applyMe]);
   const loadRoaches = useCallback(async () => {
     const feed = feedRef.current;
-    if (feed.apply(await worldRef.current!.roachFeed(feed.version))) setFeedRoaches(feed.roaches);
+    try {
+      if (feed.apply(await worldRef.current!.roachFeed(feed.version))) setFeedRoaches(feed.roaches);
+      retryRef.current.delay = 0;
+    } catch (e) {
+      if (!(e instanceof TooBusy)) throw e;
+      // Busy: try again shortly, a little later each time, at a slightly different moment for each page
+      const r = retryRef.current;
+      if (r.timer !== undefined) return;
+      r.delay = Math.min(60, r.delay ? r.delay * 2 : e.retryAfterS);
+      if (!feed.version) setToast(e.message);
+      r.timer = window.setTimeout(
+        () => {
+          r.timer = undefined;
+          loadRoaches().catch(() => {});
+        },
+        r.delay * (750 + Math.random() * 500),
+      );
+    }
   }, []);
   const loadInbox = useCallback(async () => {
     const items = await worldRef.current!.inbox();
@@ -146,22 +194,35 @@ export default function MapApp() {
 
   /** Everything, for opening the page and switching who is signed in. */
   const load = useCallback(async () => {
-    const [m, items] = await Promise.all([loadMe(), loadInbox(), loadRoaches(), loadFriends(), loadIdentities()]);
+    // the roaches have their own retries, so a busy roach list never holds up the rest
+    const [m, items] = await Promise.all([
+      loadMe(),
+      loadInbox(),
+      loadRoaches().catch(() => {}),
+      loadFriends(),
+      loadIdentities(),
+    ]);
     return { me: m, items };
   }, [loadMe, loadInbox, loadRoaches, loadFriends, loadIdentities]);
 
   // Opening a tab is enough to count its messages as read; the red counts go with it
-  const markTabSeen = useCallback(async (items: InboxItem[], tab: InboxTab) => {
-    const unseen = items.filter((i) => !i.seen && tabOf(i) === tab).map((i) => i.id);
-    if (!unseen.length) return;
-    await worldRef.current!.markSeen(unseen);
-    setInbox((all) => all.map((i) => (unseen.includes(i.id) ? { ...i, seen: true } : i)));
-    if (demoRef.current) await loadIdentities();
-  }, [loadIdentities]);
+  const markTabSeen = useCallback(
+    async (items: InboxItem[], tab: InboxTab) => {
+      const unseen = items.filter((i) => !i.seen && tabOf(i) === tab).map((i) => i.id);
+      if (!unseen.length) return;
+      setGuideItems(guideItemsRef.current.map((i) => (unseen.includes(i.id) ? { ...i, seen: true } : i)));
+      const real = unseen.filter((id) => !isGuideItem(id));
+      if (!real.length) return;
+      await worldRef.current!.markSeen(real);
+      setInbox((all) => all.map((i) => (real.includes(i.id) ? { ...i, seen: true } : i)));
+      if (demoRef.current) await loadIdentities();
+    },
+    [loadIdentities, setGuideItems],
+  );
 
   const openInbox = useCallback(
     async (notice: boolean, tab?: InboxTab, fresh?: InboxItem[]) => {
-      const items = fresh ?? (await loadInbox());
+      const items = [...guideItemsRef.current, ...(fresh ?? (await loadInbox()))].sort((a, b) => b.at - a.at);
       const t = tab ?? firstTab(items);
       setPanel({ kind: "inbox", notice, items, tab: t, viewed: [t] });
       await markTabSeen(items, t);
@@ -186,6 +247,7 @@ export default function MapApp() {
       setBasemap(b);
       // What arrived since the last visit
       if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+      else if (!m && !welcomed()) setPanel({ kind: "welcome" });
     });
   }, [load, openInbox]);
 
@@ -268,6 +330,28 @@ export default function MapApp() {
     return () => window.clearTimeout(t);
   }, [toast]);
 
+  // The newcomer tutorial: what is left of it comes from the server and from this browser
+  useEffect(() => {
+    setProgress(meId ? loadProgress(meId) : {});
+  }, [meId]);
+  const step = tutorialStep(me, progress);
+  const updateProgress = (patch: Progress) => {
+    if (!me) return;
+    const next = { ...progress, ...patch };
+    setProgress(next);
+    saveProgress(me.id, next);
+  };
+  const tutorialMain = me?.roaches.find((r) => r.slot === 0);
+  // the practice roach lives only on this screen, and only during the touch step
+  const guide = useMemo(
+    () => (step === "touch" && tutorialMain ? guideRoach(tutorialMain) : null),
+    [step, tutorialMain],
+  );
+  useEffect(() => {
+    if (!guide && guideItemsRef.current.length) setGuideItems([]);
+  }, [guide, setGuideItems]);
+  const mapRoaches = useMemo(() => (guide ? [...roaches, guide] : roaches), [roaches, guide]);
+
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
       let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? 1 : 0), 0);
@@ -341,15 +425,23 @@ export default function MapApp() {
           ? "克隆体放好啦！别人看到的是“某舟p的克隆体”，看不出它和你本体的关系。"
           : "放好啦！别人能看到它在这里，但看不出是你。",
     );
+    if (placing.target.kind === "main") startTutorial(m);
+  };
+
+  /** Right after a newcomer's first main roach is down, the tutorial opens on its first step. */
+  const startTutorial = (m: Me | null) => {
+    if (m && tutorialStep(m, loadProgress(m.id)) === "card") setPanel({ kind: "tutorialCard" });
   };
 
   const onMapClick = (p: LngLat) => {
-    if (placing) placeAt(p, false);
-    else setSelected(null);
+    if (placing) return placeAt(p, false);
+    setSelected(null);
+    // a visitor sees where their roach would go and who is around; nothing is sent
+    if (!me) setPreview(p);
   };
 
   const onRoachClick = (id: string) => {
-    const roach = roaches.find((r) => r.id === id);
+    const roach = mapRoaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
 
@@ -380,7 +472,11 @@ export default function MapApp() {
   const befriendedToast = (name: string) =>
     setToast(`你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`);
 
+  const touchedToast = (bold: boolean) =>
+    setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
+
   const touch = async (roach: PublicRoach, bold: boolean) => {
+    if (roach.guide) return touchGuide(bold);
     const res = await act((w) => w.touch(roach.id, bold));
     if (!res) return;
     setSelected(null);
@@ -388,10 +484,26 @@ export default function MapApp() {
       befriendedToast(res.newFriend);
       await Promise.all([loadFriends(), loadInbox()]);
     } else {
-      setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
+      touchedToast(bold);
     }
+    if (me?.isNew) await loadMe();
     if (demoRef.current) await loadIdentities();
   };
+
+  // Practice with the guide: nothing goes to the server; it touches back a moment later, in this page only
+  const touchGuide = (bold: boolean) => {
+    setSelected(null);
+    touchedToast(bold);
+    window.setTimeout(() => {
+      setGuideItems([guideTouchBack(), ...guideItemsRef.current]);
+      updateProgress({ practiced: true });
+      if (busyRef.current.panel || busyRef.current.placing) setToast("向导蟑螂碰回了你，点「消息」看看。");
+      else openInbox(true, "touches", inbox);
+    }, 1500);
+  };
+
+  /** The inbox with the guide roach's in-page messages mixed in, newest first. */
+  const withGuide = (items: InboxItem[]) => [...guideItemsRef.current, ...items].sort((a, b) => b.at - a.at);
 
   const keepSnapshot = (items: InboxItem[]) =>
     setPanel((p) =>
@@ -401,26 +513,39 @@ export default function MapApp() {
     );
 
   const ignore = async (itemId: string) => {
+    if (isGuideItem(itemId)) {
+      setGuideItems(guideItemsRef.current.map((i) => (i.id === itemId && i.kind === "touch" ? { ...i, ignored: true } : i)));
+      keepSnapshot(withGuide(inbox));
+      return setToast("默默爬走了，TA 不会知道。");
+    }
     const done = await act((w) => w.ignore(itemId).then(() => true));
     if (!done) return;
     setToast("默默爬走了，TA 不会知道。");
-    keepSnapshot(await loadInbox());
+    keepSnapshot(withGuide(await loadInbox()));
   };
 
   const react = async (itemId: string, reaction: Reaction) => {
     const done = await act((w) => w.react(itemId, reaction).then(() => true));
     if (!done) return;
     setToast("回应发出去了！");
-    keepSnapshot(await loadInbox());
+    keepSnapshot(withGuide(await loadInbox()));
   };
 
+  const repliedToast = (bold: boolean) => setToast(bold ? "大胆碰回去了！向 TA 表明你的身份" : "偷偷碰回去了。");
+
   const reply = async (itemId: string, bold: boolean) => {
+    if (isGuideItem(itemId)) {
+      setGuideItems(guideItemsRef.current.map((i) => (i.id === itemId ? { ...i, replied: true } : i)));
+      keepSnapshot(withGuide(inbox));
+      return repliedToast(bold);
+    }
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
-    else setToast(bold ? "大胆碰回去了！向 TA 表明你的身份" : "偷偷碰回去了。");
+    else repliedToast(bold);
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
-    keepSnapshot(items);
+    keepSnapshot(withGuide(items));
+    if (me?.isNew) await loadMe();
     if (demoRef.current) await loadIdentities();
   };
 
@@ -499,11 +624,46 @@ export default function MapApp() {
 
   const signedIn = async () => {
     setPanel(null);
+    const spot = preview;
+    setPreview(null);
     const { me: m, items } = await load();
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
+    // a newcomer who picked a spot before signing in puts their roach there, once they confirm
+    if (m && !mainRoach && spot) return placeAtPreview(spot);
     if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
+  };
+
+  const placeAtPreview = async (spot: LngLat) => {
+    if (!window.confirm("把蟑螂放在刚才选的地方吗？别人会看到这个位置，请不要放在家门口。")) {
+      return startPlacing({ kind: "main" });
+    }
+    const done = await act((w) => w.placeRoach({ kind: "main" }, spot));
+    if (!done) return;
+    const m = await loadMe();
+    setFocus({ lng: spot.lng, lat: spot.lat, zoom: 13, nonce: Date.now() });
+    setToast("放好啦！别人能看到它在这里，但看不出是你。");
+    startTutorial(m);
+  };
+
+  // ---- the tutorial's steps ----
+
+  const greet = async (d: Declaration) => {
+    if (!tutorialMain) return;
+    setGreeting(true);
+    const res = await act((w) => w.declare(d, [tutorialMain.id]));
+    setGreeting(false);
+    if (!res) return;
+    // nobody heard it yet, so say so plainly
+    setToast(`宣言发出去了！${res.reach}${res.reach === reachText(0) ? "等这里热闹起来再喊一声。" : ""}`);
+    await loadMe();
+  };
+
+  const showRoach = (roach: PublicRoach) => {
+    setPanel(null);
+    setFocus({ lng: roach.lng, lat: roach.lat, zoom: 14, nonce: Date.now() });
+    setSelected({ kind: "other", roach });
   };
 
   const leave = async (kind: "signOut" | "delete") => {
@@ -534,7 +694,12 @@ export default function MapApp() {
   const myColor = me?.profile.color ?? "cyan";
   const myAvatar = me?.profile.avatar ?? "hood";
   const main = me?.roaches.find((r) => r.slot === 0);
-  const unseen = inbox.filter((i) => !i.seen).length;
+  const unseen = inbox.filter((i) => !i.seen).length + guideItems.filter((i) => !i.seen).length;
+  const around = useMemo(() => (preview ? roachesAround(feedRoaches, preview) : null), [preview, feedRoaches]);
+  const nearest = useMemo(
+    () => (step === "touch" && tutorialMain ? nearestReal(roaches, tutorialMain) : null),
+    [step, tutorialMain, roaches],
+  );
   const current = identities.find((i) => i.current);
   const othersUnseen = identities.filter((i) => !i.current).reduce((n, i) => n + i.unseen, 0);
   const selectedFriend =
@@ -544,9 +709,12 @@ export default function MapApp() {
   const total = roaches.length + (me?.roaches.length ?? 0);
 
 
+  const coachShown = Boolean(!placing && !selected && !panel && me && step);
+
   const mapProps = {
-    roaches,
+    roaches: mapRoaches,
     mine: me?.roaches ?? [],
+    ghost: me ? null : preview,
     myAvatar,
     myColor,
     look,
@@ -562,8 +730,46 @@ export default function MapApp() {
 
   const renderPanel = (p: Panel) => {
     if (p.kind === "login") return <LoginSheet reason={p.reason} onDone={signedIn} onClose={() => setPanel(null)} />;
+    if (p.kind === "welcome") {
+      const close = () => {
+        markWelcomed();
+        setPanel(null);
+      };
+      return <WelcomeSheet onClose={close} />;
+    }
+    if (p.kind === "guestRadar") {
+      return (
+        <GuestRadarSheet
+          onSignIn={() => setPanel({ kind: "login", reason: "登录后就能看完整的方舟雷达。" })}
+          onClose={() => setPanel(null)}
+        />
+      );
+    }
     if (!me) return null;
     switch (p.kind) {
+      case "tutorialCard": {
+        const later = () => {
+          updateProgress({ card: true });
+          setPanel(null);
+        };
+        const save = async (profile: Profile) => {
+          const ok = await saveProfile(profile);
+          if (ok) updateProgress({ card: true });
+          return ok;
+        };
+        return (
+          <ProfileSheet
+            profile={me.profile}
+            blocked={[]}
+            tutorial={{ onLater: later }}
+            onUnblock={() => {}}
+            onSave={save}
+            onSignOut={() => {}}
+            onDelete={() => {}}
+            onClose={() => setPanel(null)}
+          />
+        );
+      }
       case "profile":
         return (
           <ProfileSheet
@@ -708,8 +914,8 @@ export default function MapApp() {
         </div>
       )}
 
-      {!placing && me && (
-        <button className="radar-btn" onClick={openRadar}>
+      {!placing && (
+        <button className="radar-btn" onClick={me ? openRadar : () => setPanel({ kind: "guestRadar" })}>
           <span className="radar-scope mini" aria-hidden="true">
             <span className="radar-sweep" />
           </span>
@@ -736,6 +942,8 @@ export default function MapApp() {
         <OtherRoachCard
           roach={selected.roach}
           look={look}
+          signedIn={Boolean(me)}
+          onSignIn={() => setPanel({ kind: "login", reason: "登录后就能伸出触须碰 TA。" })}
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
           onOpenFriend={
@@ -755,6 +963,31 @@ export default function MapApp() {
           onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}
           onRemove={() => remove(selected.roach)}
           onClose={() => setSelected(null)}
+        />
+      )}
+
+      {!placing && !selected && !panel && !me && preview && around && (
+        <PreviewCard
+          around={around}
+          onPlace={() => setPanel({ kind: "login", reason: "登录后就能把蟑螂放在这里。" })}
+          onClose={() => setPreview(null)}
+        />
+      )}
+      {coachShown && me && step && (
+        <TutorialCoach
+          step={step}
+          me={me}
+          progress={progress}
+          nearest={nearest}
+          sending={greeting}
+          onOpenCard={() => setPanel({ kind: "tutorialCard" })}
+          onCardLater={() => updateProgress({ card: true })}
+          onGreet={greet}
+          onFindGuide={() => guide && showRoach(guide)}
+          onFindNearest={() => nearest && showRoach(nearest)}
+          onSkipStep={(s) => updateProgress({ [s]: true })}
+          onFinish={() => updateProgress({ done: true })}
+          onSkipAll={() => updateProgress({ skipped: true })}
         />
       )}
 
@@ -801,7 +1034,8 @@ export default function MapApp() {
       )}
 
       {panel && renderPanel(panel)}
-      {toast && <div className="toast">{toast}</div>}
+      {/* above the tutorial card while it is showing, so the two never cover each other */}
+      {toast && <div className={`toast ${coachShown ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">非官方同人项目 · 与鹰角网络无关</p>
     </main>
   );

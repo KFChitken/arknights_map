@@ -7,6 +7,7 @@ import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
 import Sheet from "./Sheet";
+import { isGuideItem } from "./Tutorial";
 import RoachIcon from "../RoachIcon";
 
 export type InboxTab = "replies" | "touches" | "friends";
@@ -138,9 +139,12 @@ export default function InboxSheet({
   const meta = (item: InboxItem, target: string, who: string | null) => (
     <div className="meta">
       {ago(item.at)}
-      <button className="link" onClick={() => onSafety(target, who)}>
-        拉黑/举报
-      </button>
+      {/* the tutorial's guide roach is nobody, so there is nobody to block */}
+      {!isGuideItem(item.id) && (
+        <button className="link" onClick={() => onSafety(target, who)}>
+          拉黑/举报
+        </button>
+      )}
     </div>
   );
 

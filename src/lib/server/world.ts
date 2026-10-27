@@ -11,6 +11,7 @@ import {
   INBOX_DAYS,
   MAX_CLONES,
   MOVES_PER_DAY,
+  NEWCOMER_DAYS,
   PLACEMENTS_PER_DAY,
   RADAR_RADIUS_KM,
   RADAR_REUSE_MIN,
@@ -181,7 +182,21 @@ export async function me(userId: string): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
   const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
-  return { id: u.id, profile: profileOf(u), roaches: await ownRoaches(u.id), movesLeft };
+  const isNew = Date.now() - u.createdAt.getTime() < NEWCOMER_DAYS * DAY;
+  // only asked for while the tutorial can still show; a young account's records are far from the 90-day clean-up
+  const [declared] = isNew
+    ? await db.select({ id: declarations.id }).from(declarations).where(eq(declarations.senderId, u.id)).limit(1)
+    : [];
+  const [touched] = isNew ? await db.select({ id: touches.id }).from(touches).where(eq(touches.fromUserId, u.id)).limit(1) : [];
+  return {
+    id: u.id,
+    profile: profileOf(u),
+    roaches: await ownRoaches(u.id),
+    movesLeft,
+    isNew,
+    hasDeclared: Boolean(declared),
+    hasTouched: Boolean(touched),
+  };
 }
 
 /** A player's moves of roaches already on the map, or new roaches put down, in the last 24 hours. */

@@ -4,6 +4,7 @@ import type { ReportReason } from "../safety";
 import type { LngLat } from "../types";
 import {
   SignInNeeded,
+  TooBusy,
   WorldError,
   type BlockedPlayer,
   type Friend,
@@ -50,6 +51,7 @@ export class ServerWorld implements World {
       throw new WorldError("连不上服务器，检查一下网络再试。");
     }
     const body = (await res.json().catch(() => null)) as (RoachFeedUpdate & { error?: string }) | null;
+    if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body;
   };
