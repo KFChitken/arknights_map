@@ -71,6 +71,13 @@
       "when": 1793138427560,
       "tag": "0009_retention_records",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793141962778,
+      "tag": "0010_badges",
+      "breakpoints": true
     }
   ]
 }

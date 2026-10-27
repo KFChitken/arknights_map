@@ -1,11 +1,12 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql, type AnyColumn } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
-import { beijingDate } from "../beijing";
+import { AWAY_DAYS } from "../badges";
+import { beijingDate, beijingMidnight } from "../beijing";
 import { findLine } from "../events";
 import { isGame } from "../games";
-import { displayName, type Profile } from "../profile";
+import { displayName, type Profile, type PublicProfile } from "../profile";
 import {
   DECLARATION_COOLDOWN_MIN,
   DECLARATION_RADIUS_KM,
@@ -39,6 +40,7 @@ import {
   WorldError,
   type Friend,
   type FriendEvent,
+  type Homecoming,
   type InboxItem,
   type Me,
   type OwnRoach,
@@ -47,6 +49,7 @@ import {
   type RadarScan,
   type TouchResult,
 } from "../world/types";
+import { award, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges } from "./badges";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
@@ -62,7 +65,6 @@ import {
   radarScans,
   roaches,
   touches,
-  userBadges,
   users,
   type RoachRow,
   type UserRow,
@@ -107,6 +109,12 @@ export function profileColumns(p: Profile) {
     avatar: p.avatar,
     color: p.color,
   };
+}
+
+/** Profile cards as other players see them, badges included. */
+async function cardsOf(people: UserRow[]) {
+  const badges = await shownBadges(people);
+  return new Map(people.map((u): [string, PublicProfile] => [u.id, { ...publicProfileOf(profileOf(u)), ...badges.get(u.id) }]));
 }
 
 async function userById(id: string) {
@@ -171,10 +179,12 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
         .limit(1)
     ).length > 0;
   if (!(await bold(a, b)) || !(await bold(b, a))) return null;
-  await db
+  const [made] = await db
     .insert(friendships)
     .values({ ...p, seenByA: p.a === a, seenByB: p.b === a })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ a: friendships.a });
+  if (made) await friendsMade(a, b, !cut);
   const other = await userById(b);
   return other ? displayName(profileOf(other)) : null;
 }
@@ -186,7 +196,11 @@ export async function me(userId: string): Promise<Me | null> {
   if (!u) return null;
   // u still holds the day of the visit before this one
   const today = beijingDate();
+  const daysAway = u.lastSeenOn ? Math.round((beijingMidnight(today) - beijingMidnight(u.lastSeenOn)) / DAY) : 0;
   if (u.lastSeenOn !== today) await db.update(users).set({ lastSeenOn: today }).where(eq(users.id, u.id));
+  if (daysAway >= AWAY_DAYS) await award(u.id, ["survivor"]);
+  const mine = await ownRoaches(u.id);
+  const badges = await earnedBy(u.id);
   const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
   const isNew = Date.now() - u.createdAt.getTime() < NEWCOMER_DAYS * DAY;
   // only asked for while the tutorial can still show; a young account's records are far from the 90-day clean-up
@@ -197,12 +211,37 @@ export async function me(userId: string): Promise<Me | null> {
   return {
     id: u.id,
     profile: profileOf(u),
-    roaches: await ownRoaches(u.id),
+    roaches: mine,
     movesLeft,
     isNew,
     hasDeclared: Boolean(declared),
     hasTouched: Boolean(touched),
+    badges,
+    wornBadge: badges.some((b) => b.id === u.wornBadge) ? u.wornBadge : null,
+    counts: { friends: u.friendsEver, responders: await respondersOf(u.id) },
+    // a whole day or more away, so not just back the next morning
+    homecoming: u.lastSeenOn && daysAway >= 2 ? await homecoming(u.id, mine, u.lastSeenOn, daysAway) : null,
   };
+}
+
+/** 欢迎回家: roaches others put down or moved into the radar's circle around the main roach since the day of the last visit. */
+async function homecoming(userId: string, mine: OwnRoach[], lastSeenOn: string, daysAway: number): Promise<Homecoming> {
+  const main = mine.find((r) => r.slot === 0);
+  if (!main) return { daysAway, arrivals: 0 };
+  const center = sql`ST_SetSRID(ST_MakePoint(${main.lng}, ${main.lat}), 4326)::geography`;
+  const within = (geog: AnyColumn) => sql`ST_DWithin(${geog}, ${center}, ${RADAR_RADIUS_KM * 1000})`;
+  const [row] = await db
+    .select({ n: count() })
+    .from(moves)
+    .where(
+      and(
+        ne(moves.userId, userId),
+        gte(moves.at, new Date(beijingMidnight(lastSeenOn))),
+        within(moves.toGeog),
+        or(isNull(moves.fromLng), not(within(moves.fromGeog))),
+      ),
+    );
+  return { daysAway, arrivals: row.n };
 }
 
 /** A player's moves of roaches already on the map, or new roaches put down, in the last 24 hours. */
@@ -418,6 +457,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
     .select()
     .from(friendships)
     .where(and(or(eq(friendships.a, userId), eq(friendships.b, userId)), gt(friendships.createdAt, since)));
+  const cards = await cardsOf(ts.filter((x) => x.t.bold).map((x) => x.from));
   const done = await replied(userId, [
     ...ts.map((x) => `t:${x.t.id}`),
     ...ds.map((x) => `d:${x.d.id}`),
@@ -441,7 +481,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
         : t.toSlot
           ? "clone"
           : "main",
-      from: t.bold ? publicProfileOf(profileOf(from)) : null,
+      from: t.bold ? cards.get(from.id)! : null,
       replied: done.has(id),
       ignored: Boolean(t.ignoredAt),
     });
@@ -482,7 +522,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       id: `f:${f.a}~${f.b}`,
       at: f.createdAt.getTime(),
       seen: f.a === userId ? f.seenByA : f.seenByB,
-      from: publicProfileOf(profileOf(u)),
+      from: (await cardsOf([u])).get(u.id)!,
       friendId: friendKey(userId, other),
       replied: true,
     });
@@ -605,8 +645,6 @@ export async function declare(userId: string, input: Declaration, from?: string[
         recipients: rows.length,
       })
       .returning({ id: declarations.id });
-    const event = d.template === "event" ? findLine(d.line)?.event : null;
-    if (event) await tx.insert(userBadges).values({ userId, badge: event.badge }).onConflictDoNothing();
     for (let i = 0; i < rows.length; i += 1000) {
       await tx
         .insert(deliveries)
@@ -614,6 +652,8 @@ export async function declare(userId: string, input: Declaration, from?: string[
     }
   });
   nudge(rows.map((r) => r.id));
+  const event = d.template === "event" ? findLine(d.line)?.event : null;
+  if (event) await award(userId, [event.badge]);
   return { reach: reachText(rows.length) };
 }
 
@@ -650,7 +690,9 @@ export async function react(userId: string, itemId: string, reaction: string) {
     .onConflictDoNothing()
     .returning({ id: reactions.id });
   if (!made) throw new WorldError("已经回应过这条宣言了。");
-  if (!withheld) nudge([row.senderId]);
+  if (withheld) return;
+  nudge([row.senderId]);
+  await reactedTo(row.senderId);
 }
 
 export async function friends(userId: string): Promise<Friend[]> {
@@ -692,7 +734,7 @@ export async function friends(userId: string): Promise<Friend[]> {
     out.push({
       id: friendKey(userId, other),
       since: f.createdAt.getTime(),
-      profile: publicProfileOf(profileOf(u)),
+      profile: (await cardsOf([u])).get(u.id)!,
       roaches: theirRoaches.map((r) => ({
         id: r.publicId,
         clone: r.slot > 0,

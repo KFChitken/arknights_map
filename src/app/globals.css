@@ -359,3 +359,114 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
 .admin-case .account-actions { margin-bottom: 10px; }
 .admin-note { padding: 8px 12px; border-radius: 10px; background: #fff7d6; }
 button.pill.danger-pill { border-color: #f1c4bf; color: #c0392b; }
+
+/* ---- 称号 ---- */
+.badge-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 5px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; line-height: 1.2; white-space: nowrap;
+}
+.badge-pill img { display: block; flex-shrink: 0; }
+.badge-pill .serial { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; letter-spacing: 0.06em; }
+.who-card .badge-pill { margin-top: 6px; }
+.badge-grid { display: grid; gap: 8px; }
+.badge-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.badge-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.badge-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0;
+  padding: 8px 4px; border: 0; border-radius: 12px; background: #f6f7f9; color: inherit; font: inherit;
+}
+.badge-cell img { display: block; }
+.badge-cell.worn { background: #fffbea; box-shadow: inset 0 0 0 2px var(--accent); }
+.badge-name { max-width: 100%; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.badge-grid.four .badge-name { font-size: 11px; }
+.cell-note { font-size: 11px; color: var(--muted); }
+.cell-note.serial { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; }
+.cell-tag {
+  position: absolute; top: 5px; left: 5px; padding: 1px 5px; border-radius: 4px;
+  background: var(--ink); color: var(--accent); font-size: 10px; font-weight: 700;
+}
+.badge-cell.locked { background: repeating-linear-gradient(45deg, #f4f5f7 0 6px, #eceef1 6px 12px); }
+.badge-cell.locked img { filter: grayscale(1); opacity: 0.35; }
+.badge-cell.locked .badge-name { color: var(--muted); }
+.badge-cell .lock { position: absolute; top: 7px; right: 7px; }
+.cell-bar { width: 70%; height: 4px; border-radius: 2px; background: #dfe2e6; }
+.cell-bar > div { height: 4px; border-radius: 2px; background: var(--ink); }
+.badge-cell.running { background: #fff3ea; box-shadow: inset 0 0 0 1.5px #ff8a3d; }
+.badge-cell.running img { filter: grayscale(0.6); opacity: 0.6; }
+.badge-cell.running .cell-tag { background: #d9482b; color: #fff; }
+.badge-cell.running .cell-note { color: #b8432f; }
+.their-badges { margin: 16px 0 6px; }
+.their-badges-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.their-badges-head h3 { margin: 0; font-size: 14px; }
+button.link { border: 0; padding: 0; background: none; color: var(--muted); font-size: 13px; }
+.link-row-end { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+/* 我的称号 */
+.wall-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px;
+  border-radius: 14px; background: var(--ink); color: #fff;
+}
+.wall-tally { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #c9ced6; }
+.wall-label, .series-count { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; color: #9aa1ab; }
+.wall-count { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 32px; line-height: 1; color: var(--accent); }
+.wall-bar { width: 140px; height: 5px; border-radius: 3px; background: #3a3f48; }
+.wall-bar > div { height: 5px; border-radius: 3px; background: var(--accent); }
+.wall-worn { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; font-size: 11px; color: #9aa1ab; }
+.wall-worn > span:first-child { font-size: 12px; }
+.wall-none { font-size: 13px; color: #c9ced6; }
+.series-head { display: flex; align-items: center; gap: 8px; margin: 16px 0 8px; }
+.series-head h3 { margin: 0; font-size: 13px; font-weight: 800; }
+.series-head .series-count { letter-spacing: 0.16em; color: var(--muted); }
+.diamond { width: 9px; height: 9px; border: 1.5px solid var(--ink); background: var(--accent); transform: rotate(45deg); }
+.series-head.series-event .diamond { background: #ff8a3d; }
+
+/* 获得新称号 */
+.new-badge { position: fixed; inset: 0; z-index: 50; overflow-y: auto; background: rgba(12, 13, 15, 0.84); color: #fff; }
+.confetti { position: absolute; }
+.new-badge-body {
+  position: relative; display: flex; flex-direction: column; align-items: center; min-height: 100%;
+  padding: calc(56px + var(--safe-top)) 0 calc(24px + var(--safe-bottom)); justify-content: center;
+}
+.new-badge-kicker { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.34em; color: var(--accent); }
+.new-badge-sub { margin-top: 6px; font-size: 15px; font-weight: 700; letter-spacing: 0.12em; }
+.new-badge-art { position: relative; display: flex; align-items: center; justify-content: center; width: 320px; height: 252px; margin-top: 4px; }
+.new-badge-art img { position: relative; display: block; animation: badge-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.new-badge-art .rays {
+  position: absolute; left: 6px; top: -28px; width: 308px; height: 308px; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 210, 63, 0.3) 0deg 6deg, rgba(255, 210, 63, 0) 6deg 18deg);
+  -webkit-mask-image: radial-gradient(circle closest-side, #000 30%, transparent 100%);
+  mask-image: radial-gradient(circle closest-side, #000 30%, transparent 100%);
+  animation: badge-rays 24s linear infinite;
+}
+.new-badge-art .glow {
+  position: absolute; left: 60px; top: 26px; width: 200px; height: 200px; border-radius: 50%;
+  background: radial-gradient(circle closest-side, rgba(255, 210, 63, 0.38), rgba(255, 210, 63, 0));
+}
+.new-badge-banner {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; margin-top: 6px;
+  padding: 14px 64px 12px; border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); background: #111316;
+}
+.new-badge-banner::before, .new-badge-banner::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 54px;
+  background: repeating-linear-gradient(-45deg, rgba(255, 210, 63, 0.85) 0 6px, transparent 6px 13px);
+}
+.new-badge-banner::before { left: 0; }
+.new-badge-banner::after { right: 0; }
+.new-badge-banner strong { font-size: 30px; line-height: 1.2; font-weight: 900; letter-spacing: 0.04em; text-align: center; }
+.new-badge-banner span { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.24em; color: #9aa1ab; }
+.new-badge-quote { max-width: 340px; margin: 22px 16px 0; font-size: 15px; font-weight: 700; line-height: 1.5; color: #ffe48a; text-align: center; text-wrap: balance; }
+.new-badge-condition { margin: 8px 16px 0; font-size: 13px; color: #9aa1ab; text-align: center; }
+.new-badge-actions { display: flex; gap: 10px; margin-top: 26px; }
+.new-badge-actions button { height: 46px; border-radius: 12px; font-size: 15px; }
+.new-badge-actions .wear { min-width: 140px; border: 0; background: var(--accent); color: var(--ink); font-weight: 800; }
+.new-badge-actions .later { min-width: 110px; border: 1px solid rgba(255, 255, 255, 0.35); background: transparent; color: #fff; font-weight: 700; }
+@keyframes badge-pop { from { transform: scale(0.6); opacity: 0; } }
+@keyframes badge-rays { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .new-badge-art img, .new-badge-art .rays { animation: none; }
+}
+
+/* 欢迎回家 */
+.homecoming-list { margin: 6px 0 10px; padding-left: 20px; line-height: 1.8; }
+.homecoming-next { padding: 9px 12px; border-radius: 12px; background: #f6f7f9; font-size: 14px; }
+.homecoming-new { padding: 9px 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; }

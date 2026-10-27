@@ -111,7 +111,7 @@ export async function clearName(userId: string) {
   await db.update(users).set({ anonymous: true, name: "" }).where(eq(users.id, userId));
   await db
     .update(declarations)
-    .set({ name: "匿名舟p" })
+    .set({ name: "匿名舟P" })
     .where(and(eq(declarations.senderId, userId), eq(declarations.template, "myname")));
 }
 

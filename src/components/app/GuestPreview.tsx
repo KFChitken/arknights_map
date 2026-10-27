@@ -28,8 +28,8 @@ export function roachesAround(roaches: MapRoach[], spot: LngLat) {
 const about = (n: number) => (n < 100 ? `${n} 只` : `${Math.floor(n / 100) * 100} 多只`);
 
 function aroundText({ near, far }: { near: number; far: number }) {
-  if (far === 0) return "这附近还没有舟p，来当第一只吧！";
-  const close = near ? `${DECLARATION_RADIUS_KM} 公里内有 ${about(near)}舟p` : `${DECLARATION_RADIUS_KM} 公里内还没有舟p`;
+  if (far === 0) return "这附近还没有舟P，来当第一只吧！";
+  const close = near ? `${DECLARATION_RADIUS_KM} 公里内有 ${about(near)}舟P` : `${DECLARATION_RADIUS_KM} 公里内还没有舟P`;
   return `${close}，${RADAR_RADIUS_KM} 公里内有 ${about(far)}。`;
 }
 
@@ -66,7 +66,7 @@ export function PreviewCard({
 export function GuestRadarSheet({ onSignIn, onClose }: { onSignIn: () => void; onClose: () => void }) {
   return (
     <Sheet title="方舟雷达" onClose={onClose}>
-      <p style={{ marginTop: 0 }}>点地图任意一处，看看那附近有多少舟p。</p>
+      <p style={{ marginTop: 0 }}>点地图任意一处，看看那附近有多少舟P。</p>
       <p className="hint">登录后能看完整雷达：最近 24 小时谁爬进爬出、新面孔、附近的触须和宣言。</p>
       <button className="primary wide" style={{ marginTop: 14 }} onClick={onSignIn}>
         登录
@@ -86,9 +86,9 @@ export function WelcomeSheet({ onClose }: { onClose: () => void }) {
         </button>
       }
     >
-      <p style={{ marginTop: 0 }}>都说粥P像蟑螂一样多，但事实如此吗？</p>
+      <p style={{ marginTop: 0 }}>都说舟P像蟑螂一样多，但事实如此吗？</p>
       <p>地图上的每只蟑螂都有着厚厚的伪装，而伪装下面是了解其他蟑螂的渴望。</p>
-      <p>点地图任意一处，看看那附近有多少舟p。想放下自己的蟑螂，用邮箱收个验证码就能登录，不用密码。</p>
+      <p>点地图任意一处，看看那附近有多少舟P。想放下自己的蟑螂，用邮箱收个验证码就能登录，不用密码。</p>
     </Sheet>
   );
 }

@@ -3,7 +3,7 @@
 import { declarationText, type Declaration } from "@/lib/declarations";
 import { distanceKm } from "@/lib/geo";
 import type { PublicProfile } from "@/lib/profile";
-import { RADAR_RADIUS_KM } from "@/lib/rules";
+import { RADAR_RADIUS_KM, SITE_NAME } from "@/lib/rules";
 import type { InboxItem, Me, PublicRoach } from "@/lib/world/types";
 
 /**
@@ -74,7 +74,7 @@ export const GUIDE_ID = "guide";
 export const isGuideItem = (id: string) => id.startsWith("guide:");
 
 export const GUIDE_PROFILE: PublicProfile = {
-  displayName: "粥P地图向导",
+  displayName: `${SITE_NAME}向导`,
   games: ["arknights", "endfield"],
   favourites: { arknights: [], endfield: [] },
   avatar: "endmin",
@@ -168,8 +168,8 @@ export function TutorialCoach({
 
       {step === "greet" && (
         <>
-          <strong>跟附近的舟p打个招呼吧</strong>
-          <p>挑一句发给 10 公里内的舟p。他们不知道是谁发的，可以回应你。</p>
+          <strong>跟附近的舟P打个招呼吧</strong>
+          <p>挑一句发给 10 公里内的舟P。他们不知道是谁发的，可以回应你。</p>
           <div className="chips">
             {greetings(me).map((d) => (
               <button key={declarationText(d)} className="chip" disabled={sending} onClick={() => onGreet(d)}>
@@ -202,11 +202,11 @@ export function TutorialCoach({
 
       {step === "touch" && progress.practiced && (
         <>
-          <strong>{nearest ? "要不要碰碰离你最近的舟p？" : "附近还没有别的舟p"}</strong>
+          <strong>{nearest ? "要不要碰碰离你最近的舟P？" : "附近还没有别的舟P"}</strong>
           <p>
             {nearest
               ? "碰过之后 TA 会收到消息。偷偷碰不会露出你是谁。"
-              : `你的蟑螂 ${RADAR_RADIUS_KM} 公里内还没有别的舟p，等热闹起来再去碰碰 TA 们。`}
+              : `你的蟑螂 ${RADAR_RADIUS_KM} 公里内还没有别的舟P，等热闹起来再去碰碰 TA 们。`}
           </p>
           <div className="row-actions">
             {nearest && (

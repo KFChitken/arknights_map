@@ -1,15 +1,18 @@
 import "server-only";
-import { and, asc, count, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt } from "drizzle-orm";
+import { badgeById } from "../badges";
+import { beijingDate, beijingMidnight } from "../beijing";
 import { declarationText } from "../declarations";
-import { isReportReason, type AdminAction, type AdminCase } from "../safety";
+import { isReportReason, type AdminAction, type AdminCase, type RetentionStats } from "../safety";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
 import { banAccount } from "./account";
+import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
 import { clearName } from "./safety";
-import { declarations, reports, touches, users, type UserRow } from "./schema";
+import { dailyTotals, declarations, friendships, reports, touches, userBadges, users, type UserRow } from "./schema";
 import { storedDeclaration } from "./world";
 
 /** The admin page's rules: who may open it, what it shows and the three ways to settle a report. */
@@ -76,4 +79,53 @@ export async function resolveCase(targetId: string, action: AdminAction) {
     // the reports go with the account
     await banAccount(u);
   } else throw new HttpError(400, "不知道要怎么处理。");
+}
+
+/** Hand out 内测功臣, or take any badge back (from someone gaming them), by the player's login email. */
+export async function setBadge(email: string, badge: string, give: boolean) {
+  const [u] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, String(email).trim().toLowerCase()))
+    .limit(1);
+  if (!u) throw new HttpError(400, "没有用这个邮箱登录的账号。");
+  if (!badgeById(badge)) throw new HttpError(400, "没有这个称号。");
+  if (give) {
+    if (badge !== "beta") throw new HttpError(400, "这个称号只能自己拿，不能发。");
+    if (!(await award(u.id, [badge])).length) throw new HttpError(400, "TA 已经有这个称号了。");
+    return;
+  }
+  const gone = await db
+    .delete(userBadges)
+    .where(and(eq(userBadges.userId, u.id), eq(userBadges.badge, badge)))
+    .returning({ badge: userBadges.badge });
+  if (!gone.length) throw new HttpError(400, "TA 没有这个称号。");
+  if (u.wornBadge === badge) await db.update(users).set({ wornBadge: null }).where(eq(users.id, u.id));
+}
+
+/** This week against the last, from visit days and the nightly totals. */
+export async function retentionStats(now = Date.now()): Promise<RetentionStats> {
+  const daysAgo = (n: number) => beijingDate(now - n * DAY);
+  const real = isNull(users.demoKey);
+  const thisWeek = gte(users.lastSeenOn, daysAgo(6));
+  const [active] = await db.select({ n: count() }).from(users).where(and(real, thisWeek));
+  const [before] = await db.select({ n: dailyTotals.activeWeek }).from(dailyTotals).where(eq(dailyTotals.day, daysAgo(7)));
+  const joinedLastWeek = and(
+    real,
+    gte(users.createdAt, new Date(beijingMidnight(daysAgo(13)))),
+    lt(users.createdAt, new Date(beijingMidnight(daysAgo(6)))),
+  );
+  const [signups] = await db.select({ n: count() }).from(users).where(joinedLastWeek);
+  const [back] = await db.select({ n: count() }).from(users).where(and(joinedLastWeek, thisWeek));
+  const [friends] = await db
+    .select({ n: count() })
+    .from(friendships)
+    .where(gte(friendships.createdAt, new Date(beijingMidnight(daysAgo(6)))));
+  return {
+    activeWeek: active.n,
+    activeWeekBefore: before?.n ?? null,
+    lastWeekSignups: signups.n,
+    lastWeekSignupsBack: back.n,
+    friendshipsWeek: friends.n,
+  };
 }

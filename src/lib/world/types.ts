@@ -1,3 +1,4 @@
+import type { EarnedBadge } from "../badges";
 import type { Declaration, Reaction } from "../declarations";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
@@ -47,6 +48,10 @@ export interface World {
   blocks(): Promise<BlockedPlayer[]>;
   /** Report them to the admin, which also blocks them. They never learn who reported them. */
   report(target: string, reason: ReportReason, note: string): Promise<void>;
+  /** Wear one of your badges under your name on profile cards, or none (null). */
+  wearBadge(badge: string | null): Promise<void>;
+  /** You have been shown these badges, so they no longer pop up. */
+  seeBadges(badges: string[]): Promise<void>;
 
   // Local testing only: step into other players' shoes on one device
   identities(): Promise<Identity[]>;
@@ -118,6 +123,19 @@ export type Me = {
   isNew: boolean;
   hasDeclared: boolean;
   hasTouched: boolean;
+  badges: EarnedBadge[];
+  wornBadge: string | null;
+  /** The counts badges are earned by: 触须之交 ever made, and different players who reacted to their declarations */
+  counts: { friends: number; responders: number };
+  /** Only on the first visit of a day that comes after at least one whole day away */
+  homecoming: Homecoming | null;
+};
+
+/** 欢迎回家: what changed while the player was away, beyond what their inbox says */
+export type Homecoming = {
+  daysAway: number;
+  /** Roaches others put down or moved within the radar's radius of their main roach since their last visit */
+  arrivals: number;
 };
 
 /** Someone on your block list. name is null when you never saw who it was. */

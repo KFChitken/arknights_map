@@ -16,12 +16,15 @@ const WITH_CHARACTER: Template[] = ["iam", "love", "buff", "canyou", "eat"];
 export default function DeclareSheet({
   profile,
   roaches,
+  initial,
   onSend,
   onEditProfile,
   onClose,
 }: {
   profile: Profile;
   roaches: OwnRoach[];
+  /** The sentence picked to begin with, such as 欢迎回家 for a player just back */
+  initial?: Template;
   onSend: (d: Declaration, from: string[]) => Promise<boolean>;
   onEditProfile: () => void;
   onClose: () => void;
@@ -38,7 +41,7 @@ export default function DeclareSheet({
   // while an event is on, its first line is picked to begin with
   const [events] = useState(() => activeEvents());
   const [line, setLine] = useState(events[0]?.lines[0]?.id ?? "");
-  const [template, setTemplate] = useState<Template>(events.length ? "event" : "launch");
+  const [template, setTemplate] = useState<Template>(initial ?? (events.length ? "event" : "launch"));
   const [game, setGame] = useState<Game>(profile.games[0] ?? "arknights");
   const [character, setCharacter] = useState(favourites[0]?.name ?? "");
   const characterGame = favourites.find((f) => f.name === character)?.game ?? "arknights";
@@ -142,8 +145,8 @@ export default function DeclareSheet({
     >
       <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
         {clones.length
-          ? `向你选的蟑螂周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟p喊一句话。`
-          : `向你的蟑螂本体 ${DECLARATION_RADIUS_KM} 公里内的所有舟p喊一句话。`}
+          ? `向你选的蟑螂周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`
+          : `向你的蟑螂本体 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`}
       </p>
 
       {main && clones.length > 0 && (
@@ -242,8 +245,8 @@ export default function DeclareSheet({
 
       <div className="shout">「{declarationText(d)}」</div>
       <p className="hint">
-        {DECLARATION_RADIUS_KM} 公里内有蟑螂（本体或克隆体）的舟p都会收到：开着网页的马上收到，没开的下次打开时收到，同一个人只收到一次。TA
-        们只知道是 {DECLARATION_RADIUS_KM} 公里内的某只舟p，可以回应你或者碰你一下。
+        {DECLARATION_RADIUS_KM} 公里内有蟑螂（本体或克隆体）的舟P都会收到：开着网页的马上收到，没开的下次打开时收到，同一个人只收到一次。TA
+        们只知道是 {DECLARATION_RADIUS_KM} 公里内的某只舟P，可以回应你或者碰你一下。
       </p>
     </Sheet>
   );

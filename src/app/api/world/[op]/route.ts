@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { Declaration } from "@/lib/declarations";
 import type { Profile } from "@/lib/profile";
 import { currentUser, endSession, homeUserId, setHomeUserId, startSession } from "@/lib/server/auth";
+import { markBadgesSeen, wear } from "@/lib/server/badges";
 import { db } from "@/lib/server/db";
 import { identities, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
@@ -91,6 +92,12 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "report":
       await safety.report(uid(), String(args[0]), args[1], args[2]);
+      break;
+    case "wearBadge":
+      if (!(await wear(uid(), args[0] === null ? null : String(args[0])))) throw new HttpError(400, "你还没有这个称号。");
+      break;
+    case "seeBadges":
+      await markBadgesSeen(uid(), Array.isArray(args[0]) ? args[0].map(String) : []);
       break;
 
     // Development aids: step into demo players on one device

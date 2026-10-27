@@ -64,7 +64,7 @@ export default function RadarSheet({
           <span className="muted">{radar.radiusKm} 公里内现在有</span>
           <strong>{radar.roaches.toLocaleString()}</strong>
           <span className="muted">
-            只蟑螂，来自 {radar.players.toLocaleString()} 位舟p
+            只蟑螂，来自 {radar.players.toLocaleString()} 位舟P
             {radar.clones > 0 && `（${radar.clones} 只是克隆体）`}
           </span>
         </div>
@@ -106,7 +106,7 @@ export default function RadarSheet({
 
       <h3>附近的动静</h3>
       <ul className="radar-facts">
-        <li>24 小时内附近的舟p被触须碰了 {radar.touches} 次，发了 {radar.declarations} 条独立宣言</li>
+        <li>24 小时内附近的舟P被触须碰了 {radar.touches} 次，发了 {radar.declarations} 条独立宣言</li>
         <li>
           {radar.friendsNearby > 0 ? `你的触须之交里有 ${radar.friendsNearby} 位就在附近` : "附近还没有你的触须之交"}
         </li>

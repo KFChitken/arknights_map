@@ -72,6 +72,8 @@ export class ServerWorld implements World {
   unblock = (blockId: string) => this.call<void>("unblock", blockId);
   blocks = () => this.call<BlockedPlayer[]>("blocks");
   report = (target: string, reason: ReportReason, note: string) => this.call<void>("report", target, reason, note);
+  wearBadge = (badge: string | null) => this.call<void>("wearBadge", badge);
+  seeBadges = (badges: string[]) => this.call<void>("seeBadges", badges);
   identities = () => this.call<Identity[]>("identities");
   become = (id: PlayerId) => this.call<void>("become", id);
   reset = () => this.call<void>("reset");

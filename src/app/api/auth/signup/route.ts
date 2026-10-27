@@ -9,6 +9,7 @@ import {
   readSignupProof,
   startSession,
 } from "@/lib/server/auth";
+import { signedUp } from "@/lib/server/badges";
 import { db } from "@/lib/server/db";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { users } from "@/lib/server/schema";
@@ -43,14 +44,11 @@ export const POST = route(async (req) => {
   }
 
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-  const id =
-    existing?.id ??
-    (
-      await db
-        .insert(users)
-        .values({ email, ageConfirmedAt: now, policyAcceptedAt: now })
-        .returning({ id: users.id })
-    )[0].id;
+  let id = existing?.id;
+  if (!id) {
+    [{ id }] = await db.insert(users).values({ email, ageConfirmedAt: now, policyAcceptedAt: now }).returning({ id: users.id });
+    await signedUp(id);
+  }
   await clearSignupProof();
   await startSession(req, id);
   return NextResponse.json({ status: "ok" });

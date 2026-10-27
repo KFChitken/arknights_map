@@ -3,9 +3,10 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deleteAccount, signOut } from "@/lib/authClient";
+import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
-import type { Declaration, Reaction } from "@/lib/declarations";
+import type { Declaration, Reaction, Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
@@ -21,6 +22,7 @@ import {
   WorldError,
   type BlockedPlayer,
   type Friend,
+  type Homecoming,
   type Identity,
   type InboxItem,
   type MapRoach,
@@ -31,8 +33,10 @@ import {
   type Radar,
   type World,
 } from "@/lib/world/types";
+import { BadgeWall, NewBadge } from "./app/Badges";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
+import { HomecomingSheet } from "./app/Homecoming";
 import { keepInstallPrompt } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
@@ -63,9 +67,12 @@ const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
 const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 
 type Panel =
-  | { kind: "profile" }
+  /** draft: unsaved changes kept while 我的称号 was open */
+  | { kind: "profile"; draft?: Profile }
+  | { kind: "badges"; draft: Profile }
+  | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[] }
   | { kind: "mine" }
-  | { kind: "declare" }
+  | { kind: "declare"; initial?: Template }
   | { kind: "identity" }
   /** items is a snapshot taken on open, so new ones stay highlighted after they are marked seen */
   | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab; viewed: InboxTab[] }
@@ -246,8 +253,10 @@ export default function MapApp() {
         viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
         setLook(loadLook());
         setBasemap(b);
+        // Back after a day or more: a summary first, which says what is unread (not during the tutorial)
+        if (m?.homecoming && !tutorialStep(m, loadProgress(m.id))) setPanel({ kind: "homecoming", homecoming: m.homecoming, items });
         // What arrived since the last visit
-        if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+        else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
         // the page reloaded while the player went to read their login code
         else if (!m && pendingLogin()) setPanel({ kind: "login" });
         else if (!m && !welcomed()) setPanel({ kind: "welcome" });
@@ -280,14 +289,15 @@ export default function MapApp() {
   }, [panel, placing]);
 
   const showNew = useCallback(async () => {
-    const [items] = await Promise.all([loadInbox(), loadFriends()]);
+    // me too, for a badge someone else's move just earned us
+    const [items] = await Promise.all([loadInbox(), loadFriends(), loadMe()]);
     if (demoRef.current) await loadIdentities();
     if (!items.some((i) => !i.seen)) return;
     const { panel: open, placing: busy } = busyRef.current;
     if (open?.kind === "inbox") await openInbox(false, open.tab, items);
     else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
     else await openInbox(true, undefined, items);
-  }, [loadInbox, loadFriends, loadIdentities, openInbox]);
+  }, [loadInbox, loadFriends, loadMe, loadIdentities, openInbox]);
 
   const meId = me?.id;
   useEffect(() => {
@@ -428,7 +438,7 @@ export default function MapApp() {
       placing.target.kind === "move"
         ? `挪好啦！今天还能挪 ${m?.movesLeft ?? 0} 次。`
         : placing.target.kind === "clone"
-          ? "克隆体放好啦！别人看到的是“某舟p的克隆体”，看不出它和你本体的关系。"
+          ? "克隆体放好啦！别人看到的是“某舟P的克隆体”，看不出它和你本体的关系。"
           : "放好啦！别人能看到它在这里，但看不出是你。",
     );
     if (placing.target.kind === "main") startTutorial(m);
@@ -612,8 +622,8 @@ export default function MapApp() {
     if (!res) return false;
     setToast(`宣言发出去了！${res.reach}`);
     if (demoRef.current) await loadIdentities();
-    // a newcomer's greeting step is done however they sent it
-    if (me?.isNew) await loadMe();
+    // the tutorial's greeting step is done however it was sent, and a limited line earns a badge
+    await loadMe();
     return true;
   };
 
@@ -719,6 +729,29 @@ export default function MapApp() {
 
   const coachShown = Boolean(!placing && !selected && !panel && me && step);
 
+  // 获得新称号: once nothing else is on screen, up to three in a row; any more go straight to the wall
+  const [newBadges, setNewBadges] = useState<EarnedBadge[]>([]);
+  const unseenBadges = (me?.badges ?? [])
+    .filter((b) => !b.seen)
+    .map((b) => b.id)
+    .join(",");
+  const idle = Boolean(me && !placing && !selected && !panel && !step);
+  useEffect(() => {
+    if (!idle || !unseenBadges || newBadges.length || !me) return;
+    setNewBadges(me.badges.filter((b) => !b.seen).slice(0, 3));
+    worldRef.current!.seeBadges(unseenBadges.split(",")).catch(() => {});
+    // shown now, so a reload of me before the server has caught up does not queue them again
+    applyMe({ ...me, badges: me.badges.map((b) => ({ ...b, seen: true })) });
+  }, [idle, unseenBadges, newBadges.length, me, applyMe]);
+
+  // quiet from the popup, where the toast would show through
+  const wearBadge = async (badge: string | null, quiet = false) => {
+    const done = await act((w) => w.wearBadge(badge).then(() => true));
+    if (!done) return;
+    await loadMe();
+    if (!quiet) setToast(badge ? "戴上了，别人在你的资料卡上会看到它。" : "取下了。");
+  };
+
   const mapProps = {
     roaches: mapRoaches,
     mine: me?.roaches ?? [],
@@ -768,6 +801,8 @@ export default function MapApp() {
         return (
           <ProfileSheet
             profile={me.profile}
+            badges={me.badges}
+            wornBadge={me.wornBadge}
             blocked={[]}
             tutorial={{ onLater: later }}
             onUnblock={() => {}}
@@ -782,6 +817,10 @@ export default function MapApp() {
         return (
           <ProfileSheet
             profile={me.profile}
+            draft={p.draft}
+            badges={me.badges}
+            wornBadge={me.wornBadge}
+            onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
             blocked={blocked}
             onUnblock={unblock}
             onSave={saveProfile}
@@ -806,11 +845,32 @@ export default function MapApp() {
             onClose={() => setPanel(null)}
           />
         );
+      case "badges":
+        return (
+          <BadgeWall
+            me={me}
+            onWear={wearBadge}
+            onBack={() => setPanel({ kind: "profile", draft: p.draft })}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "homecoming":
+        return (
+          <HomecomingSheet
+            me={me}
+            homecoming={p.homecoming}
+            items={p.items}
+            onInbox={() => openInbox(false, undefined, p.items)}
+            onWelcome={() => setPanel({ kind: "declare", initial: "welcome" })}
+            onClose={() => setPanel(null)}
+          />
+        );
       case "declare":
         return (
           <DeclareSheet
             profile={me.profile}
             roaches={me.roaches}
+            initial={p.initial}
             onSend={declare}
             onEditProfile={() => setPanel({ kind: "profile" })}
             onClose={() => setPanel(null)}
@@ -916,7 +976,7 @@ export default function MapApp() {
             </button>
           )}
           <div className="stats">
-            {visible === null ? "地图加载中…" : `这片地图里有 ${visible.toLocaleString()} 只舟p`}
+            {visible === null ? "地图加载中…" : `这片地图里有 ${visible.toLocaleString()} 只舟P`}
             <span className="muted"> · 全球 {total.toLocaleString()} 只</span>
           </div>
         </div>
@@ -1042,6 +1102,18 @@ export default function MapApp() {
       )}
 
       {panel && renderPanel(panel)}
+      {newBadges[0] && (
+        <NewBadge
+          key={newBadges[0].id}
+          earned={newBadges[0]}
+          onWear={async () => {
+            const id = newBadges[0].id;
+            setNewBadges((q) => q.slice(1));
+            await wearBadge(id, true);
+          }}
+          onLater={() => setNewBadges((q) => q.slice(1))}
+        />
+      )}
       {/* above the tutorial card while it is showing, so the two never cover each other */}
       {toast && <div className={`toast ${coachShown ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">非官方同人项目 · 与鹰角网络无关</p>

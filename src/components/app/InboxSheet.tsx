@@ -6,6 +6,7 @@ import { GAME_NAMES } from "@/lib/games";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
+import { BadgePill, TheirBadges } from "./Badges";
 import Sheet from "./Sheet";
 import { isGuideItem } from "./Tutorial";
 import RoachIcon from "../RoachIcon";
@@ -62,8 +63,8 @@ export function noticeTitle(items: InboxItem[]) {
   const unseen = items.filter((i) => !i.seen);
   if (unseen.some((i) => i.kind === "friend")) return "你有了新的触须之交！";
   if (unseen.some((i) => i.kind === "touch")) return "你被蟑螂触须碰了一下！";
-  if (unseen.some((i) => i.kind === "reaction")) return "有舟p回应了你的独立宣言！";
-  if (unseen.length) return "附近有舟p发表了独立宣言！";
+  if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的独立宣言！";
+  if (unseen.length) return "附近有舟P发表了独立宣言！";
   return "消息";
 }
 
@@ -198,7 +199,7 @@ export default function InboxSheet({
     if (item.kind === "reaction") {
       return (
         <div key={item.id} className={cls}>
-          <div>附近有舟p回应了你的宣言「{item.text}」：</div>
+          <div>附近有舟P回应了你的宣言「{item.text}」：</div>
           <div className="quote">{REACTIONS[item.reaction]}</div>
           {meta(item, item.id, null)}
           <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
@@ -207,7 +208,7 @@ export default function InboxSheet({
     }
     return (
       <div key={item.id} className={cls}>
-        <div>{DECLARATION_RADIUS_KM} 公里内有舟p发表了独立宣言：</div>
+        <div>{DECLARATION_RADIUS_KM} 公里内有舟P发表了独立宣言：</div>
         <div className="quote">「{item.text}」</div>
         {meta(item, item.id, null)}
         {item.reaction ? (
@@ -238,7 +239,7 @@ export default function InboxSheet({
       </div>
 
       {tab === "replies" && shown.length === 0 && (
-        <p className="hint">还没有回复。附近的舟p发宣言、或者回应你的宣言，都会出现在这里。</p>
+        <p className="hint">还没有回复。附近的舟P发宣言、或者回应你的宣言，都会出现在这里。</p>
       )}
       {tab === "touches" && shown.length === 0 && <p className="hint">还没有被碰过。点别的蟑螂伸出触须试试。</p>}
       {shown.map(message)}
@@ -266,10 +267,30 @@ export default function InboxSheet({
   );
 }
 
+/** The pill of the badge someone wears, under their name. */
+function WornPill({ profile }: { profile: PublicProfile }) {
+  const worn = profile.badges?.find((b) => b.id === profile.worn);
+  return worn ? (
+    <div>
+      <BadgePill badge={worn} />
+    </div>
+  ) : null;
+}
+
 function ProfileDetails({ profile }: { profile: PublicProfile }) {
-  if (profile.games.length === 0) return <p className="hint">TA 还没填自己玩什么游戏。</p>;
+  const badges = <TheirBadges badges={profile.badges ?? []} worn={profile.worn} />;
+  if (profile.games.length === 0) {
+    return (
+      <>
+        {badges}
+        <p className="hint">TA 还没填自己玩什么游戏。</p>
+      </>
+    );
+  }
   return (
-    <dl className="pf">
+    <>
+      {badges}
+      <dl className="pf">
       {profile.games.map((g) => (
         <div key={g}>
           <dt>{GAME_NAMES[g]}</dt>
@@ -277,7 +298,8 @@ function ProfileDetails({ profile }: { profile: PublicProfile }) {
           {profile.uid?.[g] && <dd>UID：{profile.uid[g]}</dd>}
         </div>
       ))}
-    </dl>
+      </dl>
+    </>
   );
 }
 
@@ -286,7 +308,10 @@ export function ProfileView({ profile, onBack, onClose }: { profile: PublicProfi
     <Sheet title="TA 的资料" onBack={onBack} onClose={onClose}>
       <div className="who-card">
         <RoachIcon color={profile.color} size={52} avatar={profile.avatar} />
-        <strong>{profile.displayName}</strong>
+        <div>
+          <strong>{profile.displayName}</strong>
+          <WornPill profile={profile} />
+        </div>
       </div>
       <ProfileDetails profile={profile} />
       <p className="hint" style={{ marginTop: 16 }}>
@@ -307,7 +332,7 @@ function eventText(e: Friend["history"][number]) {
     case "declared":
       return `发表了独立宣言「${e.text}」`;
     case "befriended":
-      return e.you ? "和你成为了触须之交" : "和一位舟p成为了触须之交";
+      return e.you ? "和你成为了触须之交" : "和一位舟P成为了触须之交";
   }
 }
 
@@ -333,6 +358,7 @@ export function FriendView({
         <RoachIcon color={profile.color} size={52} avatar={profile.avatar} friend />
         <div>
           <strong>{profile.displayName}</strong>
+          <WornPill profile={profile} />
           <p className="hint">{ago(friend.since)}成为触须之交</p>
         </div>
       </div>

@@ -130,7 +130,7 @@ export async function identities(currentId: string, homeId: string | null): Prom
     const index = Number(u.demoKey!.slice(1));
     out.push({
       id: u.id,
-      label: `路人舟p #${index + 1}`,
+      label: `路人舟P #${index + 1}`,
       note: passersby()[index]?.city ?? "",
       unseen: unseen.get(u.id) ?? 0,
       current: currentId === u.id,

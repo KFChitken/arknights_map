@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Declaration } from "../declarations";
+import { FIRST_BATCH } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
@@ -9,7 +10,8 @@ import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
 import { isBanned } from "./account";
-import { openCases, resolveCase } from "./admin";
+import { openCases, resolveCase, retentionStats, setBadge } from "./admin";
+import { award, catchUpBadges, markBadgesSeen, signedUp, wear } from "./badges";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
 import { listen } from "./live";
@@ -96,6 +98,16 @@ async function mapOf(id: string): Promise<PublicRoach[]> {
 async function rewindScans(userId: string) {
   await db.update(radarScans).set({ createdAt: sql`${radarScans.createdAt} - interval '11 minutes'` }).where(eq(radarScans.userId, userId));
 }
+
+/** Make a player and a tester 触须之交: a bold touch on the tester's main roach, touched back boldly. */
+async function befriend(p: Player, key: string) {
+  await p.touch((await publicAt(p, tester(key).roaches[0])).id, true);
+  const t = await demo(key);
+  const touch = (await t.inbox()).find((i) => i.kind === "touch" && !i.replied)!;
+  await t.reply(touch.id, true);
+}
+
+const badgeIds = async (p: Player) => (await p.me()).badges.map((b) => b.id);
 
 /** Find the roach placed at a spot in what a player sees. */
 async function publicAt(viewer: Player, at: LngLat) {
@@ -418,6 +430,134 @@ describe("server world", () => {
       { day: "2026-11-10", activeWeek: 2, signups: 2, friendships: 1 },
       { day: "2026-11-11", activeWeek: 1, signups: 0, friendships: 0 },
     ]);
+  });
+
+  it("counts each player once towards the diplomacy badges, and gives 千里传须 for a friend far away", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await befriend(me, "t1");
+    expect(await me.me()).toMatchObject({ counts: { friends: 1 }, badges: [{ id: "trainee", seen: false }] });
+    expect(await badgeIds(await demo("t1"))).toEqual(["trainee"]);
+
+    // apart and together again: the badge stays, and 阿白 still counts once
+    await me.unfriend((await me.friends())[0].id);
+    expect(await badgeIds(me)).toEqual(["trainee"]);
+    await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
+    await befriend(me, "t1");
+    expect((await me.me()).counts.friends).toBe(1);
+
+    // 夜莺厨 lives in Beijing, about 1070 km from People's Square
+    await befriend(me, "t4");
+    expect(await me.me()).toMatchObject({ counts: { friends: 2 } });
+    expect(await badgeIds(me)).toEqual(["trainee", "farwhisker"]);
+    expect(await badgeIds(await demo("t4"))).toEqual(["trainee", "farwhisker"]);
+  });
+
+  it("gives 外交部发言人 once ten different players have reacted to your declarations", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "launch", game: "arknights" });
+    const [d] = await db.select({ id: declarations.id }).from(declarations);
+    const got = await db.select({ id: deliveries.recipientId }).from(deliveries);
+    expect(got.length).toBeGreaterThanOrEqual(10);
+    for (const r of got.slice(0, 9)) await world.react(r.id, `d:${d.id}`, "plusone");
+    expect(await me.me()).toMatchObject({ counts: { responders: 9 }, badges: [] });
+    await world.react(got[9].id, `d:${d.id}`, "zhouli");
+    expect(await badgeIds(me)).toEqual(["spokesperson"]);
+  });
+
+  it("numbers the first players to sign up, never giving a number out twice", async () => {
+    await db.execute(sql`select setval('first_batch_serial', 1, false)`);
+    await signedUp(me.id);
+    const second = await signUp("second@example.com");
+    await signedUp(second.id);
+    expect((await second.me()).badges).toMatchObject([{ id: "firstbatch", serial: 2 }]);
+    await db.execute(sql`select setval('first_batch_serial', ${FIRST_BATCH}, true)`);
+    const late = await signUp("late@example.com");
+    await signedUp(late.id);
+    expect((await late.me()).badges).toEqual([]);
+  });
+
+  it("welcomes a player back after a whole day away, and wakes 石棺里的苏醒 after 30", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await db.delete(moves);
+    const daysAgo = (n: number) => beijingDate(Date.now() - n * 86_400_000);
+    // back the next day is not away
+    await db.update(users).set({ lastSeenOn: daysAgo(1) }).where(eq(users.id, me.id));
+    expect((await me.me()).homecoming).toBeNull();
+
+    await db.update(users).set({ lastSeenOn: daysAgo(2) }).where(eq(users.id, me.id));
+    const newcomer = await signUp("new@example.com");
+    await newcomer.placeRoach({ kind: "main" }, { lng: PEOPLES_SQUARE.lng + 0.05, lat: PEOPLES_SQUARE.lat });
+    await newcomer.placeRoach({ kind: "clone" }, TOKYO);
+    const back = await me.me();
+    expect(back.homecoming).toEqual({ daysAway: 2, arrivals: 1 });
+    expect(back.badges).toEqual([]);
+    // once a day
+    expect((await me.me()).homecoming).toBeNull();
+
+    await db.update(users).set({ lastSeenOn: daysAgo(31) }).where(eq(users.id, me.id));
+    const risen = await me.me();
+    expect(risen.homecoming?.daysAway).toBe(31);
+    expect(risen.badges).toMatchObject([{ id: "survivor", seen: false }]);
+  });
+
+  it("shows badges on profile cards, the worn one first, and lets you wear only your own", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await award(me.id, ["trainee", "beta"]);
+    expect(await wear(me.id, "ambassador")).toBe(false);
+    expect(await wear(me.id, "beta")).toBe(true);
+    await me.touch((await publicAt(me, tester("t2").roaches[0])).id, true);
+    const [touch] = await (await demo("t2")).inbox();
+    expect(touch.kind === "touch" && touch.from).toMatchObject({
+      displayName: "Breeze",
+      badges: [{ id: "beta" }, { id: "trainee" }],
+      worn: "beta",
+    });
+    // never on the map
+    expect(JSON.stringify(await (await demo("t2")).roaches())).not.toContain("beta");
+
+    expect(await me.me()).toMatchObject({ wornBadge: "beta", badges: [{ seen: false }, { seen: false }] });
+    await markBadgesSeen(me.id, ["trainee", "beta"]);
+    expect((await me.me()).badges.every((b) => b.seen)).toBe(true);
+    await wear(me.id, null);
+    expect((await me.me()).wornBadge).toBeNull();
+  });
+
+  it("lets the admin hand out 内测功臣 and take any badge back, by email", async () => {
+    await setBadge(" ME@example.com", "beta", true);
+    expect(await badgeIds(me)).toEqual(["beta"]);
+    await expect(setBadge("me@example.com", "beta", true)).rejects.toThrow("已经有");
+    await expect(setBadge("me@example.com", "trainee", true)).rejects.toThrow("不能发");
+    await expect(setBadge("nobody@example.com", "beta", true)).rejects.toThrow("没有用这个邮箱");
+    await wear(me.id, "beta");
+    await setBadge("me@example.com", "beta", false);
+    expect(await me.me()).toMatchObject({ badges: [], wornBadge: null });
+    await expect(setBadge("me@example.com", "beta", false)).rejects.toThrow("没有这个称号");
+  });
+
+  it("catches up badges the counts already earned", async () => {
+    await db.update(users).set({ friendsEver: 10 }).where(eq(users.id, me.id));
+    await catchUpBadges();
+    await catchUpBadges();
+    expect(await badgeIds(me)).toEqual(["trainee", "diplomat"]);
+  });
+
+  it("gives the admin this week's totals against the last, and nothing about anyone", async () => {
+    const at = (iso: string) => new Date(iso);
+    const other = await signUp("other@example.com");
+    const old = await signUp("old@example.com");
+    await db.update(users).set({ createdAt: at("2026-11-10T09:00+08:00"), lastSeenOn: "2026-11-18" }).where(eq(users.id, me.id));
+    await db.update(users).set({ createdAt: at("2026-11-10T21:00+08:00"), lastSeenOn: "2026-11-10" }).where(eq(users.id, other.id));
+    await db.update(users).set({ createdAt: at("2026-10-01T12:00+08:00"), lastSeenOn: "2026-11-19" }).where(eq(users.id, old.id));
+    await db.insert(dailyTotals).values({ day: "2026-11-13", activeWeek: 5, signups: 0, friendships: 0 });
+    expect(await retentionStats(Date.parse("2026-11-20T12:00+08:00"))).toEqual({
+      activeWeek: 2,
+      activeWeekBefore: 5,
+      lastWeekSignups: 2,
+      lastWeekSignupsBack: 1,
+      friendshipsWeek: 0,
+    });
   });
 
   it("only lets you declare with your own favourites and listed titles", async () => {

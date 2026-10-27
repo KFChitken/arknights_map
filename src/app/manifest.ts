@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: SITE_NAME,
     short_name: SITE_NAME,
-    description: "看看你身边有多少舟p",
+    description: "看看你身边有多少舟P",
     start_url: "/",
     display: "standalone",
     lang: "zh-CN",

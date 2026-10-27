@@ -1,3 +1,4 @@
+import type { ShownBadge } from "./badges";
 import type { Game } from "./games";
 import type { RoachAvatar, RoachColor } from "./types";
 
@@ -27,6 +28,9 @@ export type PublicProfile = {
   uid?: Partial<Record<Game, string>>;
   avatar: RoachAvatar;
   color: RoachColor;
+  /** Their badges, the worn one first */
+  badges?: ShownBadge[];
+  worn?: string | null;
 };
 
 export const EMPTY_PROFILE: Profile = {
@@ -43,6 +47,6 @@ export const EMPTY_PROFILE: Profile = {
 
 export function displayName(p: Pick<Profile, "anonymous" | "name" | "drPrefix">) {
   const name = p.name.trim();
-  if (p.anonymous || !name) return "匿名舟p";
+  if (p.anonymous || !name) return "匿名舟P";
   return p.drPrefix ? `Dr. ${name}` : name;
 }

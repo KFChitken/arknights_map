@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
 import { OPERATORS } from "@/lib/operators";
 import { displayName, type Profile } from "@/lib/profile";
@@ -8,6 +9,7 @@ import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import type { BlockedPlayer } from "@/lib/world/types";
+import { MyBadgesRow } from "./Badges";
 import HomeScreenRow from "./HomeScreen";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
@@ -32,8 +34,12 @@ const COLOR_NAMES: Record<RoachColor, string> = {
 
 export default function ProfileSheet({
   profile,
+  draft,
+  badges,
+  wornBadge,
   blocked,
   tutorial,
+  onOpenBadges,
   onUnblock,
   onSave,
   onSignOut,
@@ -41,16 +47,21 @@ export default function ProfileSheet({
   onClose,
 }: {
   profile: Profile;
+  /** Unsaved changes kept while 我的称号 was open */
+  draft?: Profile;
+  badges: EarnedBadge[];
+  wornBadge: string | null;
   blocked: BlockedPlayer[];
   /** The tutorial's first card: only the basics, and a way to stay anonymous for now */
   tutorial?: { onLater: () => void };
+  onOpenBadges?: (draft: Profile) => void;
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
   onSignOut: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const [p, setP] = useState<Profile>(profile);
+  const [p, setP] = useState<Profile>(draft ?? profile);
   const [saving, setSaving] = useState(false);
   const set = (patch: Partial<Profile>) => setP((old) => ({ ...old, ...patch }));
   const toggleGame = (g: Game) =>
@@ -92,6 +103,7 @@ export default function ProfileSheet({
           </p>
         </div>
       </div>
+      {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} onOpen={() => onOpenBadges(p)} />}
       {!tutorial && <HomeScreenRow />}
 
       <fieldset>
@@ -218,7 +230,7 @@ export default function ProfileSheet({
             {blocked.map((b) => (
               <div className="list-row" key={b.id}>
                 <div>
-                  <strong>{b.name ?? "一只匿名舟p"}</strong>
+                  <strong>{b.name ?? "一只匿名舟P"}</strong>
                   <p className="muted">{new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}拉黑</p>
                 </div>
                 <div className="row-actions">

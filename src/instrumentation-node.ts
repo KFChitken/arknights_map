@@ -1,3 +1,4 @@
+import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled } from "./lib/server/env";
 import { runMigrations } from "./lib/server/migrate";
@@ -15,6 +16,7 @@ for (let attempt = 1; attempt <= TRIES; attempt++) {
   try {
     await runMigrations();
     if (demoEnabled) await seedDemo();
+    await catchUpBadges();
     break;
   } catch (e) {
     if (attempt === TRIES) {

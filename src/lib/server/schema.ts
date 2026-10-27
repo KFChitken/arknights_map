@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  pgSequence,
   pgTable,
   primaryKey,
   smallint,
@@ -48,6 +49,10 @@ export const users = pgTable("users", {
 
   /** The Beijing date of the player's latest visit; only the day, never the time */
   lastSeenOn: date("last_seen_on", { mode: "string" }),
+  /** The badge shown under their name, if they wear one */
+  wornBadge: text("worn_badge"),
+  /** Different players they have ever become 触须之交 with; never goes down, so badge progress never does */
+  friendsEver: integer("friends_ever").notNull().default(0),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -292,6 +297,9 @@ export const radarScans = pgTable(
   },
   (t) => [index("radar_scans_user_idx").on(t.userId, t.createdAt)],
 );
+
+/** 首批蟑螂 numbers; a number is never given out again, even after its owner leaves */
+export const firstBatchSerial = pgSequence("first_batch_serial");
 
 /**
  * Badges a player has earned. They are written the moment they are earned and

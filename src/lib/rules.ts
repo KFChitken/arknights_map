@@ -1,7 +1,7 @@
 /** Product limits in one place so they are easy to tune. */
 
 /** The site's name as players see it. */
-export const SITE_NAME = "粥P地图";
+export const SITE_NAME = "舟P地图";
 
 export const MIN_SIGNUP_AGE = 14;
 export const LOGIN_CODE_TTL_MIN = 10;

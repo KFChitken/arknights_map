@@ -1,5 +1,6 @@
 "use client";
 
+import { SITE_NAME } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
@@ -45,12 +46,12 @@ export function OtherRoachCard({
     );
   }
   const title = roach.guide
-    ? "粥P地图向导（不是真人）"
+    ? `${SITE_NAME}向导（不是真人）`
     : friendName
       ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
       : roach.clone
-        ? "某舟p的克隆体"
-        : "一只匿名舟p";
+        ? "某舟P的克隆体"
+        : "一只匿名舟P";
   const hint = roach.guide
     ? "跟它练练伸出触须，它会马上碰回你。只有你看得到它。"
     : !signedIn
@@ -128,7 +129,7 @@ export function MyRoachCard({
         <div>
           <strong>{clone ? `你的克隆体 ${index}` : "你的蟑螂本体"}</strong>
           <p className="muted">
-            {clone ? "别人看到的是“某舟p的克隆体”，看不出是你的。" : "别人能看到它在哪，但看不出是你。"}
+            {clone ? "别人看到的是“某舟P的克隆体”，看不出是你的。" : "别人能看到它在哪，但看不出是你。"}
           </p>
         </div>
       </div>

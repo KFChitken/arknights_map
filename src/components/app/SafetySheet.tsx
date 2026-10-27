@@ -27,7 +27,7 @@ export default function SafetySheet({
     await fn();
     setBusy(false);
   };
-  const them = who ?? "这只匿名舟p";
+  const them = who ?? "这只匿名舟P";
 
   return (
     <Sheet title="拉黑或举报" onBack={onBack} onClose={onClose}>

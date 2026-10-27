@@ -28,3 +28,15 @@ export type AdminCase = {
 };
 
 export type AdminAction = "dismiss" | "clearName" | "ban";
+
+/** The admin page's retention numbers: totals only, nothing about anyone in particular. */
+export type RetentionStats = {
+  /** Players seen in the last 7 days, and in the 7 days before those; null until a row of totals that old exists */
+  activeWeek: number;
+  activeWeekBefore: number | null;
+  /** Players who signed up 7 to 13 days ago, and how many of them came back in the last 7 days */
+  lastWeekSignups: number;
+  lastWeekSignupsBack: number;
+  /** Pairs who became 触须之交 in the last 7 days */
+  friendshipsWeek: number;
+};
