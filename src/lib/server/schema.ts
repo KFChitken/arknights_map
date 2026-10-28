@@ -46,6 +46,10 @@ export const users = pgTable("users", {
   shareUid: boolean("share_uid").notNull().default(false),
   avatar: text("avatar").notNull().default("hood"),
   color: text("color").notNull().default("cyan"),
+  /** 我的助战: Arknights operator names */
+  support: text("support").array().notNull().default(emptyArray),
+  /** The last change to it, which 触须之交 see in their history */
+  supportChangedAt: at("support_changed_at"),
 
   /** The Beijing date of the player's latest visit; only the day, never the time */
   lastSeenOn: date("last_seen_on", { mode: "string" }),

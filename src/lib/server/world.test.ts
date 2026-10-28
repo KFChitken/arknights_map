@@ -12,6 +12,7 @@ import type { PlaceTarget, PublicRoach } from "../world/types";
 import { isBanned } from "./account";
 import { openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, signedUp, wear } from "./badges";
+import { computeHotList } from "./hotList";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
 import { listen } from "./live";
@@ -558,6 +559,56 @@ describe("server world", () => {
       lastWeekSignupsBack: 1,
       friendshipsWeek: 0,
     });
+  });
+
+  it("shows 我的助战 on profile cards to Arknights players' friends, and tells them when it changes", async () => {
+    const fan = { ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights" as const] };
+    await me.saveProfile({ ...fan, support: ["能天使", "黑"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await befriend(me, "t1");
+    const t1 = await demo("t1");
+    const [friend] = await t1.friends();
+    expect(friend.profile.support).toEqual(["能天使", "黑"]);
+    expect(friend.history.filter((e) => e.kind === "support")).toHaveLength(1);
+
+    // saving the rest of the profile is not a change of 助战
+    await db.update(users).set({ supportChangedAt: sql`now() - interval '2 days'` }).where(eq(users.id, me.id));
+    await me.saveProfile({ ...fan, name: "Breeze2", support: ["能天使", "黑"] });
+    const [stale] = (await t1.friends())[0].history.filter((e) => e.kind === "support");
+    expect(Date.now() - stale.at).toBeGreaterThan(86_400_000);
+    await me.saveProfile({ ...fan, support: ["黑"] });
+    const changes = (await t1.friends())[0].history.filter((e) => e.kind === "support");
+    expect(changes).toHaveLength(1);
+    expect(Date.now() - changes[0].at).toBeLessThan(60_000);
+
+    // only for players of Arknights
+    await me.saveProfile({ ...fan, games: ["endfield"], support: ["能天使"] });
+    expect((await me.me()).profile.support).toEqual([]);
+  });
+
+  it("ranks this week's 「我永远喜欢」 and 「加强」 by different players, three or more", async () => {
+    const at = (iso: string) => new Date(iso);
+    const now = Date.parse("2026-11-04T12:00+08:00");
+    const players = [me, ...(await Promise.all(["a", "b", "c"].map((x) => signUp(`${x}@example.com`))))];
+    const shout = (p: Player, template: string, character: string, when: string) =>
+      db.insert(declarations).values({ senderId: p.id, template, character, recipients: 0, createdAt: at(when) });
+    // this week (from Monday 11/02 04:00): 能天使 by three players, one of them twice; 佩丽卡 by two
+    for (const p of players.slice(0, 3)) await shout(p, "love", "能天使", "2026-11-03T10:00+08:00");
+    await shout(players[0], "love", "能天使", "2026-11-04T10:00+08:00");
+    for (const p of players.slice(0, 2)) await shout(p, "love", "佩丽卡", "2026-11-03T10:00+08:00");
+    // demo players never count
+    await shout(await demo("t1"), "love", "能天使", "2026-11-03T10:00+08:00");
+    // last week, and just before this week began
+    for (const p of players) await shout(p, "love", "黑", "2026-11-02T03:59+08:00");
+    for (const p of players.slice(0, 3)) await shout(p, "buff", "能天使", "2026-11-02T04:00+08:00");
+
+    const list = await computeHotList(now);
+    expect(list.weekStart).toBe(Date.parse("2026-11-02T04:00+08:00"));
+    expect(list.boards.love).toEqual([{ rank: 1, character: "能天使", games: ["arknights"], players: 3 }]);
+    expect(list.boards.buff).toEqual([{ rank: 1, character: "能天使", games: ["arknights"], players: 3 }]);
+    expect(list.lastWeek).toEqual({ love: { rank: 1, character: "黑", games: ["arknights"], players: 4 }, buff: null });
+    // two players are too few to show
+    expect(JSON.stringify(list)).not.toContain("佩丽卡");
   });
 
   it("only lets you declare with your own favourites and listed titles", async () => {

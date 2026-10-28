@@ -7,6 +7,7 @@ import { OPERATORS } from "@/lib/operators";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
+import { MAX_SUPPORT } from "@/lib/support";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import type { BlockedPlayer } from "@/lib/world/types";
 import { MyBadgesRow } from "./Badges";
@@ -156,6 +157,20 @@ export default function ProfileSheet({
             value={p.favourites[g]}
             onChange={(v) => set({ favourites: { ...p.favourites, [g]: v } })}
           />
+          {g === "arknights" && !tutorial && (
+            <>
+              <div className="hint" style={{ marginTop: 12 }}>
+                我的助战（最多 {MAX_SUPPORT} 位）
+              </div>
+              <CharacterPicker
+                game="arknights"
+                value={p.support}
+                max={MAX_SUPPORT}
+                addLabel="＋ 选干员"
+                onChange={(support) => set({ support })}
+              />
+            </>
+          )}
           {!tutorial && (
             <label className="field">
               {GAME_NAMES[g]} UID（可选）
@@ -259,19 +274,54 @@ export default function ProfileSheet({
   );
 }
 
-function CharacterPicker({ game, value, onChange }: { game: Game; value: string[]; onChange: (v: string[]) => void }) {
-  const [open, setOpen] = useState(false);
+/** Search a game's characters by name and pick one. */
+function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; onPick: (name: string) => void }) {
   const [q, setQ] = useState("");
-  const full = value.length >= MAX_FAVOURITES;
   const options = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return OPERATORS[game].filter((n) => !value.includes(n) && (!needle || n.toLowerCase().includes(needle)));
-  }, [game, value, q]);
+    return OPERATORS[game].filter((n) => !taken.includes(n) && (!needle || n.toLowerCase().includes(needle)));
+  }, [game, taken, q]);
+  return (
+    <div className="picker">
+      <input type="search" placeholder="搜角色名" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="picker-list">
+        {options.map((n) => (
+          <button
+            key={n}
+            className="chip"
+            onClick={() => {
+              onPick(n);
+              setQ("");
+            }}
+          >
+            {n}
+          </button>
+        ))}
+        {options.length === 0 && <span className="hint">没有找到这个角色</span>}
+      </div>
+    </div>
+  );
+}
+
+function CharacterPicker({
+  game,
+  value,
+  max = MAX_FAVOURITES,
+  addLabel = "＋ 选角色",
+  onChange,
+}: {
+  game: Game;
+  value: string[];
+  max?: number;
+  addLabel?: string;
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const full = value.length >= max;
 
   const add = (n: string) => {
     onChange([...value, n]);
-    setQ("");
-    if (value.length + 1 >= MAX_FAVOURITES) setOpen(false);
+    if (value.length + 1 >= max) setOpen(false);
   };
 
   return (
@@ -287,23 +337,11 @@ function CharacterPicker({ game, value, onChange }: { game: Game; value: string[
         ))}
         {!full && (
           <button className="chip add" onClick={() => setOpen((o) => !o)}>
-            {open ? "收起" : "＋ 选角色"}
+            {open ? "收起" : addLabel}
           </button>
         )}
       </div>
-      {open && !full && (
-        <div className="picker">
-          <input type="search" placeholder="搜角色名" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="picker-list">
-            {options.map((n) => (
-              <button key={n} className="chip" onClick={() => add(n)}>
-                {n}
-              </button>
-            ))}
-            {options.length === 0 && <span className="hint">没有找到这个角色</span>}
-          </div>
-        </div>
-      )}
+      {open && !full && <OperatorSearch game={game} taken={value} onPick={add} />}
     </div>
   );
 }

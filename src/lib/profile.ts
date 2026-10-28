@@ -15,6 +15,8 @@ export type Profile = {
   shareUid: boolean;
   avatar: RoachAvatar;
   color: RoachColor;
+  /** 我的助战: operator names, for Arknights players only */
+  support: string[];
 };
 
 /**
@@ -28,6 +30,7 @@ export type PublicProfile = {
   uid?: Partial<Record<Game, string>>;
   avatar: RoachAvatar;
   color: RoachColor;
+  support?: string[];
   /** Their badges, the worn one first */
   badges?: ShownBadge[];
   worn?: string | null;
@@ -43,6 +46,7 @@ export const EMPTY_PROFILE: Profile = {
   shareUid: false,
   avatar: "hood",
   color: "cyan",
+  support: [],
 };
 
 export function displayName(p: Pick<Profile, "anonymous" | "name" | "drPrefix">) {

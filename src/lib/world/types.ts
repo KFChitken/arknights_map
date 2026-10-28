@@ -108,7 +108,9 @@ export type Friend = {
 export type FriendEvent =
   | { kind: "touched" | "touchedBy"; at: number; bold: boolean; you: boolean }
   | { kind: "declared"; at: number; text: string }
-  | { kind: "befriended"; at: number; you: boolean };
+  | { kind: "befriended"; at: number; you: boolean }
+  /** 换了助战: only the latest change */
+  | { kind: "support"; at: number };
 
 /**
  * movesLeft: how many more times a roach may be moved in the next 24 hours.

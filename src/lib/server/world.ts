@@ -5,6 +5,7 @@ import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, typ
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { findLine } from "../events";
+import { checkSupport } from "../support";
 import { isGame } from "../games";
 import { displayName, type Profile, type PublicProfile } from "../profile";
 import {
@@ -92,6 +93,7 @@ export function profileOf(u: UserRow): Profile {
     shareUid: u.shareUid,
     avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
     color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
+    support: checkSupport(u.support),
   };
 }
 
@@ -108,6 +110,7 @@ export function profileColumns(p: Profile) {
     shareUid: p.shareUid,
     avatar: p.avatar,
     color: p.color,
+    support: p.support,
   };
 }
 
@@ -257,7 +260,13 @@ async function recentMoves(userId: string, kind: "move" | "place") {
 
 export async function saveProfile(userId: string, input: Profile): Promise<Profile> {
   const profile = normalizeProfile(input);
-  await db.update(users).set(profileColumns(profile)).where(eq(users.id, userId));
+  const [before] = await db.select({ support: users.support }).from(users).where(eq(users.id, userId)).limit(1);
+  // 触须之交 see 「换了助战」 for the latest change only
+  const changed = (before?.support ?? []).join("|") !== profile.support.join("|");
+  await db
+    .update(users)
+    .set({ ...profileColumns(profile), ...(changed ? { supportChangedAt: new Date() } : {}) })
+    .where(eq(users.id, userId));
   // the main roach wears the profile's look
   roachesChanged();
   return profile;
@@ -730,6 +739,9 @@ export async function friends(userId: string): Promise<Friend[]> {
     for (const g of gs) {
       const third = g.a === other ? g.b : g.a;
       history.push({ kind: "befriended", at: g.createdAt.getTime(), you: third === userId });
+    }
+    if (u.supportChangedAt && u.supportChangedAt > since && u.games.includes("arknights")) {
+      history.push({ kind: "support", at: u.supportChangedAt.getTime() });
     }
     out.push({
       id: friendKey(userId, other),

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { HOT_MIN_PLAYERS } from "@/lib/hotList";
 import {
   DECLARATION_RADIUS_KM,
   INBOX_DAYS,
@@ -34,7 +35,7 @@ export default function Privacy() {
           <strong>登录用的邮箱。</strong>只用来给你发登录验证码，别人看不到。这里没有密码，每次都用邮件里的 6 位验证码登录。
         </li>
         <li>
-          <strong>你自己填的资料。</strong>名字（也可以选匿名）、要不要加「Dr.」、玩的游戏、厨力角色、游戏 UID（选填）、要不要分享 UID、蟑螂的形象和颜色。
+          <strong>你自己填的资料。</strong>名字（也可以选匿名）、要不要加「Dr.」、玩的游戏、厨力角色、游戏 UID（选填）、要不要分享 UID、蟑螂的形象和颜色，还有你选的助战干员。
         </li>
         <li>
           <strong>你放的蟑螂。</strong>本体和克隆体在地图上的位置，以及放下、挪窝、收回的记录（方舟雷达靠它统计附近蟑螂的来去）。位置都是你自己在地图上点的或搜的，我<strong>不会读取你设备的定位</strong>。
@@ -76,7 +77,10 @@ export default function Privacy() {
           <strong>游戏 UID：</strong>默认谁都看不到；只有你打开分享以后，你大胆碰过的人才看得到。
         </li>
         <li>
-          <strong>称号：</strong>跟厨力角色一样，只有被你大胆碰过的人和你的触须之交能在你的资料卡上看到，地图上看不到。
+          <strong>称号和助战：</strong>跟厨力角色一样，只有被你大胆碰过的人和你的触须之交能在你的资料卡上看到，地图上看不到。你换了助战，触须之交会在 TA 那边的记录里看到一条「换了助战」。
+        </li>
+        <li>
+          <strong>本周舟P热榜：</strong>只显示角色和喊它的人数，不显示是谁；少于 {HOT_MIN_PLAYERS} 个人喊的角色不上榜。
         </li>
         <li>
           <strong>独立宣言：</strong>收到的人只知道是附近 {DECLARATION_RADIUS_KM}{" "}

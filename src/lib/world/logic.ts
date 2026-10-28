@@ -5,6 +5,7 @@ import { GAMES, isGame, type Game } from "../games";
 import { isOperator } from "../operators";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_MAX } from "../rules";
+import { checkSupport } from "../support";
 import { titlesFor } from "../titles";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import type { Move } from "./cast";
@@ -46,6 +47,7 @@ export function normalizeProfile(input: Profile): Profile {
     shareUid: Boolean(input.shareUid),
     avatar: ROACH_AVATARS.includes(input.avatar) ? input.avatar : EMPTY_PROFILE.avatar,
     color: ROACH_COLORS.includes(input.color) ? input.color : EMPTY_PROFILE.color,
+    support: games.includes("arknights") ? checkSupport(input.support) : [],
   };
 }
 
@@ -63,6 +65,7 @@ export function publicProfileOf(p: Profile): PublicProfile {
     uid: Object.keys(uid).length ? uid : undefined,
     avatar: p.avatar,
     color: p.color,
+    support: p.games.includes("arknights") && p.support.length ? p.support : undefined,
   };
 }
 

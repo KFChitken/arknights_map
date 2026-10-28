@@ -78,6 +78,13 @@
       "when": 1793141962778,
       "tag": "0010_badges",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793160010825,
+      "tag": "0011_support",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,7 @@ import { BadgeWall, NewBadge } from "./app/Badges";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import { HomecomingSheet } from "./app/Homecoming";
+import HotSheet from "./app/HotSheet";
 import { keepInstallPrompt } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
@@ -81,6 +82,8 @@ type Panel =
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
   | { kind: "login"; reason?: string }
+  // open to everyone
+  | { kind: "hot" }
   // for visitors who have not signed in
   | { kind: "welcome" }
   | { kind: "guestRadar" }
@@ -771,6 +774,7 @@ export default function MapApp() {
 
   const renderPanel = (p: Panel) => {
     if (p.kind === "login") return <LoginSheet reason={p.reason} onDone={signedIn} onClose={() => setPanel(null)} />;
+    if (p.kind === "hot") return <HotSheet onClose={() => setPanel(null)} />;
     if (p.kind === "welcome") {
       const close = () => {
         markWelcomed();
@@ -988,6 +992,18 @@ export default function MapApp() {
             <span className="radar-sweep" />
           </span>
           <small>方舟雷达</small>
+        </button>
+      )}
+      {!placing && (
+        <button className="hot-btn" aria-label="本周舟P热榜" onClick={() => setPanel({ kind: "hot" })}>
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+            <path
+              d="M12 2.5c.8 3.2 4.6 5.4 4.6 10a4.6 4.6 0 0 1-9.2 0c0-2.3 1.1-3.8 2.4-5 .1 1.9.9 3 2 3.4-.7-2.9-.6-5.5.2-8.4Z"
+              fill="#ffd23f"
+            />
+            <path d="M12 21.6a2.6 2.6 0 0 1-2.6-2.6c0-1.6 1.3-2.4 2.1-3.6.4 1.2 1.6 1.8 2.3 2.6.5.6.8 1.1.8 1.8a2.6 2.6 0 0 1-2.6 2.6Z" fill="#ff8a3d" />
+          </svg>
+          <small>热榜</small>
         </button>
       )}
 

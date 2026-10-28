@@ -295,6 +295,7 @@ function ProfileDetails({ profile }: { profile: PublicProfile }) {
         <div key={g}>
           <dt>{GAME_NAMES[g]}</dt>
           <dd>厨力角色：{profile.favourites[g].length ? profile.favourites[g].join("、") : "还没选"}</dd>
+          {g === "arknights" && profile.support && <dd>助战：{profile.support.join("、")}</dd>}
           {profile.uid?.[g] && <dd>UID：{profile.uid[g]}</dd>}
         </div>
       ))}
@@ -333,6 +334,8 @@ function eventText(e: Friend["history"][number]) {
       return `发表了独立宣言「${e.text}」`;
     case "befriended":
       return e.you ? "和你成为了触须之交" : "和一位舟P成为了触须之交";
+    case "support":
+      return "换了助战";
   }
 }
 
