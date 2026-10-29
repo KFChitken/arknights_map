@@ -77,7 +77,8 @@ type Panel =
   | { kind: "identity" }
   /** items is a snapshot taken on open, so new ones stay highlighted after they are marked seen */
   | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab; viewed: InboxTab[] }
-  | { kind: "viewProfile"; profile: PublicProfile; back: Panel }
+  /** target: the message the profile came with, for blocking or reporting */
+  | { kind: "viewProfile"; profile: PublicProfile; target: string; back: Panel }
   | { kind: "friend"; friendId: string; back: Panel | null }
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
@@ -441,8 +442,8 @@ export default function MapApp() {
       placing.target.kind === "move"
         ? `挪好啦！今天还能挪 ${m?.movesLeft ?? 0} 次。`
         : placing.target.kind === "clone"
-          ? "克隆体放好啦！别人看到的是“某舟P的克隆体”，看不出它和你本体的关系。"
-          : "放好啦！别人能看到它在这里，但看不出是你。",
+          ? "克隆体放好啦！等待其他舟P发现中 |ω・）"
+          : "放好啦！等待其他舟P发现中 |ω・）",
     );
     if (placing.target.kind === "main") startTutorial(m);
   };
@@ -664,7 +665,7 @@ export default function MapApp() {
     if (!done) return;
     const m = await loadMe();
     setFocus({ lng: spot.lng, lat: spot.lat, zoom: 13, nonce: Date.now() });
-    setToast("放好啦！别人能看到它在这里，但看不出是你。");
+    setToast("放好啦！等待其他舟P发现中 |ω・）");
     startTutorial(m);
   };
 
@@ -895,7 +896,7 @@ export default function MapApp() {
             onReply={reply}
             onReact={react}
             onIgnore={ignore}
-            onViewProfile={(profile) => setPanel({ kind: "viewProfile", profile, back: p })}
+            onViewProfile={(profile, target) => setPanel({ kind: "viewProfile", profile, target, back: p })}
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: p })}
             onClose={() => setPanel(null)}
@@ -926,7 +927,14 @@ export default function MapApp() {
         );
       }
       case "viewProfile":
-        return <ProfileView profile={p.profile} onBack={() => setPanel(p.back)} onClose={() => setPanel(null)} />;
+        return (
+          <ProfileView
+            profile={p.profile}
+            onSafety={() => setPanel({ kind: "safety", target: p.target, who: p.profile.displayName, back: p })}
+            onBack={() => setPanel(p.back)}
+            onClose={() => setPanel(null)}
+          />
+        );
       case "radar":
         return (
           <RadarSheet radar={p.radar} onPlaceMain={() => startPlacing({ kind: "main" })} onClose={() => setPanel(null)} />
@@ -939,7 +947,7 @@ export default function MapApp() {
   };
 
   return (
-    <main className="app">
+    <main className={`app ${basemap === "amap" ? "on-amap" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />

@@ -95,7 +95,8 @@ export default function InboxSheet({
   onReply: (itemId: string, bold: boolean) => Promise<void>;
   onReact: (itemId: string, reaction: Reaction) => Promise<void>;
   onIgnore: (itemId: string) => Promise<void>;
-  onViewProfile: (p: PublicProfile) => void;
+  /** target: the message the profile came with, for blocking or reporting its sender */
+  onViewProfile: (p: PublicProfile, target: string) => void;
   onOpenFriend: (friendId: string) => void;
   /** 拉黑或举报 the sender: an inbox item id, or "friend:<id>" */
   onSafety: (target: string, who: string | null) => void;
@@ -174,7 +175,7 @@ export default function InboxSheet({
           {meta(item, item.id, item.from?.displayName ?? null)}
           <div className="row-actions">
             {item.from && (
-              <button className="pill" onClick={() => onViewProfile(item.from!)}>
+              <button className="pill" onClick={() => onViewProfile(item.from!, item.id)}>
                 查看 TA 的资料
               </button>
             )}
@@ -312,7 +313,17 @@ function ProfileDetails({ profile }: { profile: PublicProfile }) {
   );
 }
 
-export function ProfileView({ profile, onBack, onClose }: { profile: PublicProfile; onBack: () => void; onClose: () => void }) {
+export function ProfileView({
+  profile,
+  onSafety,
+  onBack,
+  onClose,
+}: {
+  profile: PublicProfile;
+  onSafety: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
   return (
     <Sheet title="TA 的资料" onBack={onBack} onClose={onClose}>
       <div className="who-card">
@@ -326,6 +337,9 @@ export function ProfileView({ profile, onBack, onClose }: { profile: PublicProfi
       <p className="hint" style={{ marginTop: 16 }}>
         TA 大胆伸出触须，所以你能看到这些。
       </p>
+      <button className="pill" style={{ marginTop: 14 }} onClick={onSafety}>
+        拉黑或举报 TA
+      </button>
     </Sheet>
   );
 }

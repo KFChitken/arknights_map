@@ -33,7 +33,7 @@ describe("badges", () => {
   it("points at the nearest badge earned by a count", () => {
     expect(nextBadge([], none)).toEqual({ name: "见习外交官", count: "friends", more: 1 });
     expect(nextBadge([{ id: "trainee" }], { friends: 8, responders: 7 })).toEqual({ name: "舟P外交官", count: "friends", more: 2 });
-    expect(nextBadge([{ id: "trainee" }], { friends: 2, responders: 9 })).toEqual({ name: "外交部发言人", count: "responders", more: 1 });
+    expect(nextBadge([{ id: "trainee" }], { friends: 2, responders: 9 })).toEqual({ name: "罗德岛外交部发言人", count: "responders", more: 1 });
     const all = ["trainee", "diplomat", "ambassador", "spokesperson"].map((id) => ({ id }));
     expect(nextBadge(all, { friends: 30, responders: 10 })).toBeNull();
   });

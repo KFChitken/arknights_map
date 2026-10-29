@@ -88,6 +88,14 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(8px + var(--safe-bottom)); margin: 0;
   text-align: center; font-size: 11px; color: #00000099; pointer-events: none;
 }
+/*
+ * Amap's terms forbid covering its logo, copyright and map approval number (审图号) in the
+ * bottom-left corner: on its map our note moves up to the right of them, the buttons above
+ * that, and the logo clears the phone's home bar
+ */
+.on-amap .disclaimer { left: auto; right: calc(10px + var(--safe-right)); bottom: calc(22px + var(--safe-bottom)); text-align: right; }
+.on-amap .actions { bottom: calc(42px + var(--safe-bottom)); }
+.map .amap-logo, .map .amap-copyright, .map .amap-scalecontrol { margin-bottom: var(--safe-bottom); }
 
 /* Lift the maps' own controls above the bottom buttons */
 .map .maplibregl-ctrl-bottom-right { bottom: calc(96px + var(--safe-bottom)); }
@@ -377,7 +385,11 @@ button.pill.danger-pill { border-color: #f1c4bf; color: #c0392b; }
 }
 .badge-cell img { display: block; }
 .badge-cell.worn { background: #fffbea; box-shadow: inset 0 0 0 2px var(--accent); }
-.badge-name { max-width: 100%; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+/* up to two lines, for the longer names such as 罗德岛外交部发言人 */
+.badge-name {
+  display: -webkit-box; max-width: 100%; overflow: hidden; font-size: 12px; font-weight: 700; line-height: 1.25;
+  text-align: center; text-wrap: balance; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
 .badge-grid.four .badge-name { font-size: 11px; }
 .cell-note { font-size: 11px; color: var(--muted); }
 .cell-note.serial { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; }
@@ -452,7 +464,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 }
 .new-badge-banner::before { left: 0; }
 .new-badge-banner::after { right: 0; }
-.new-badge-banner strong { font-size: 30px; line-height: 1.2; font-weight: 900; letter-spacing: 0.04em; text-align: center; }
+.new-badge-banner strong { font-size: min(30px, 6.8vw); line-height: 1.2; font-weight: 900; letter-spacing: 0.04em; text-align: center; }
 .new-badge-banner span { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.24em; color: #9aa1ab; }
 .new-badge-quote { max-width: 340px; margin: 22px 16px 0; font-size: 15px; font-weight: 700; line-height: 1.5; color: #ffe48a; text-align: center; text-wrap: balance; }
 .new-badge-condition { margin: 8px 16px 0; font-size: 13px; color: #9aa1ab; text-align: center; }

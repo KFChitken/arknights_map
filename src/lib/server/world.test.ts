@@ -455,7 +455,7 @@ describe("server world", () => {
     expect(await badgeIds(await demo("t4"))).toEqual(["trainee", "farwhisker"]);
   });
 
-  it("gives 外交部发言人 once ten different players have reacted to your declarations", async () => {
+  it("gives 罗德岛外交部发言人 once ten different players have reacted to your declarations", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await me.declare({ template: "launch", game: "arknights" });
     const [d] = await db.select({ id: declarations.id }).from(declarations);

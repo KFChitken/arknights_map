@@ -40,6 +40,20 @@ const CLICKABLE = [...ROACH_LAYERS, "mine"];
 
 // The cartoon roach faces the viewer and only tilts; the real one is top-down and can face any way.
 // Clones share one see-through look whatever their owner's color; 触须之交 get a pink ground and a heart.
+/**
+ * The overseas basemap shows no national borders or country names, since a map shown in
+ * China must not draw them differently from the official ones. Layers are found by what
+ * they draw, not by name, so a renamed layer in the style is still caught.
+ */
+function hideBorders(map: maplibregl.Map) {
+  for (const layer of map.getStyle().layers ?? []) {
+    const from = "source-layer" in layer ? layer["source-layer"] : undefined;
+    const filter = JSON.stringify("filter" in layer ? layer.filter : null);
+    const countryName = from === "place" && /"==",(\["get","class"\]|"class"),"country"/.test(filter);
+    if (from === "boundary" || countryName) map.setLayoutProperty(layer.id, "visibility", "none");
+  }
+}
+
 function roachImage(look: RoachStyle) {
   if (look === "real") {
     // the walking icons come in LEG_PHASES out-of-step copies, picked per roach
@@ -265,6 +279,7 @@ export default function MaplibreView(props: MapViewProps) {
     });
     map.touchZoomRotate.disableRotation();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    map.on("style.load", () => hideBorders(map));
     mapRef.current = map;
 
     const loadTimer = window.setTimeout(() => {

@@ -92,7 +92,7 @@ export const BADGES: Badge[] = [
   },
   {
     id: "spokesperson",
-    name: "外交部发言人",
+    name: "罗德岛外交部发言人",
     code: "DIP-PRESS",
     series: "diplomacy",
     condition: "你的宣言被 10 位不同的舟P回应过",
