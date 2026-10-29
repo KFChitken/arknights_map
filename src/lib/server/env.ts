@@ -12,6 +12,14 @@ export const MAIL_DAILY_LIMIT = Number(process.env.MAIL_DAILY_LIMIT) || 90;
 /** Show roaches on the map that belong to nobody (src/lib/world/bots.ts); 0 or unset shows none. */
 export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BOTS) || 0), 0), 20_000);
 
+/**
+ * Small pictures of the game characters, which belong to Hypergryph. They live in a folder
+ * outside the repository (scripts/fetch-operator-art.mjs); OPERATOR_AVATARS=off takes them
+ * all down at once, and names show alone.
+ */
+export const OPERATOR_AVATARS = process.env.OPERATOR_AVATARS !== "off";
+export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
+
 /** Where links in emails point. */
 export const SITE_URL = process.env.SITE_URL || (isProd ? "https://zhoupmap.com" : "http://localhost:3000");
 

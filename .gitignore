@@ -5,3 +5,6 @@ node_modules
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Character pictures belong to Hypergryph: kept on the server, never in the repository (scripts/fetch-operator-art.mjs)
+/operator-art

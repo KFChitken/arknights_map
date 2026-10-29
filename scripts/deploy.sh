@@ -35,10 +35,18 @@ for i in $(seq 1 45); do
   sleep 20
 done
 
+# the character pictures stay out of git, so they travel from this Mac (scripts/fetch-operator-art.mjs)
+if [ -f operator-art/index.json ]; then
+  ssh "$HOST" 'mkdir -p ~/arknights_map/operator-art'
+  rsync -a --delete operator-art/ "$HOST:arknights_map/operator-art/"
+fi
+
 ssh "$HOST" "MODE=$mode SHA=$sha bash -s" <<'REMOTE'
 set -e
 cd ~/arknights_map
 git pull --ff-only
+# made by us, not by Docker as root, should the pictures not be there yet
+mkdir -p operator-art
 IMAGE=ghcr.io/kfchitken/arknights_map
 compose() { docker compose -f docker-compose.prod.yml "$@"; }
 # :latest on the server is always the image that runs, so plain compose commands keep using it

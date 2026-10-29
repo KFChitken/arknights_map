@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Declaration } from "../declarations";
@@ -609,6 +610,12 @@ describe("server world", () => {
     expect(list.lastWeek).toEqual({ love: { rank: 1, character: "黑", games: ["arknights"], players: 4 }, buff: null });
     // two players are too few to show
     expect(JSON.stringify(list)).not.toContain("佩丽卡");
+  });
+
+  it("moves players who picked 夜明河 over to its official name 明河", async () => {
+    await db.update(users).set({ games: ["endfield"], favEndfield: ["夜明河", "佩丽卡"] }).where(eq(users.id, me.id));
+    await db.execute(sql.raw(readFileSync("drizzle/0012_rename_minghe.sql", "utf8")));
+    expect((await me.me()).profile.favourites.endfield).toEqual(["明河", "佩丽卡"]);
   });
 
   it("only lets you declare with your own favourites and listed titles", async () => {

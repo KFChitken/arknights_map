@@ -13,6 +13,15 @@ const sets: Record<Game, Set<string>> = {
   endfield: new Set(OPERATORS.endfield),
 };
 
+/** Nicknames players search by, for characters whose name they may not type */
+export const NICKNAMES: Record<string, string[]> = { 祀: ["小葱"] };
+
+/** Whether a character's name, or one of their nicknames, contains what was typed. */
+export function matchesSearch(name: string, needle: string) {
+  const q = needle.trim().toLowerCase();
+  return !q || name.toLowerCase().includes(q) || (NICKNAMES[name] ?? []).some((n) => n.includes(q));
+}
+
 export function isOperator(game: Game, name: string) {
   return sets[game].has(name);
 }

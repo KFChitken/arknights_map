@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
-import { OPERATORS } from "@/lib/operators";
+import { matchesSearch, OPERATORS } from "@/lib/operators";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
@@ -11,6 +11,7 @@ import { MAX_SUPPORT } from "@/lib/support";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import type { BlockedPlayer } from "@/lib/world/types";
 import { MyBadgesRow } from "./Badges";
+import { OperatorPic, useOperatorArt } from "./OperatorNames";
 import HomeScreenRow from "./HomeScreen";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
@@ -276,11 +277,9 @@ export default function ProfileSheet({
 
 /** Search a game's characters by name and pick one. */
 function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; onPick: (name: string) => void }) {
+  const art = useOperatorArt();
   const [q, setQ] = useState("");
-  const options = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return OPERATORS[game].filter((n) => !taken.includes(n) && (!needle || n.toLowerCase().includes(needle)));
-  }, [game, taken, q]);
+  const options = useMemo(() => OPERATORS[game].filter((n) => !taken.includes(n) && matchesSearch(n, q)), [game, taken, q]);
   return (
     <div className="picker">
       <input type="search" placeholder="搜角色名" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -288,12 +287,13 @@ function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; 
         {options.map((n) => (
           <button
             key={n}
-            className="chip"
+            className="chip with-pic"
             onClick={() => {
               onPick(n);
               setQ("");
             }}
           >
+            <OperatorPic game={game} name={n} art={art} />
             {n}
           </button>
         ))}
@@ -316,6 +316,7 @@ function CharacterPicker({
   addLabel?: string;
   onChange: (v: string[]) => void;
 }) {
+  const art = useOperatorArt();
   const [open, setOpen] = useState(false);
   const full = value.length >= max;
 
@@ -328,7 +329,8 @@ function CharacterPicker({
     <div>
       <div className="chips" style={{ marginTop: 6 }}>
         {value.map((n) => (
-          <span key={n} className="chip on">
+          <span key={n} className="chip on with-pic">
+            <OperatorPic game={game} name={n} art={art} />
             {n}
             <button className="x" aria-label={`去掉${n}`} onClick={() => onChange(value.filter((x) => x !== n))}>
               ×

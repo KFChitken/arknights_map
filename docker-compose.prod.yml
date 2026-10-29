@@ -33,8 +33,12 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach
+      OPERATOR_ART_DIR: /app/operator-art
       # never link a test inbox on the live site
       DEV_MAILBOX_PORT: ""
+    volumes:
+      # the character pictures, kept out of the repository and the image; scripts/deploy.sh copies them here
+      - ./operator-art:/app/operator-art:ro
     depends_on:
       db:
         condition: service_healthy

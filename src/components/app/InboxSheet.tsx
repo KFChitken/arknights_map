@@ -7,6 +7,7 @@ import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
 import { BadgePill, TheirBadges } from "./Badges";
+import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
 import { isGuideItem } from "./Tutorial";
 import RoachIcon from "../RoachIcon";
@@ -294,8 +295,15 @@ function ProfileDetails({ profile }: { profile: PublicProfile }) {
       {profile.games.map((g) => (
         <div key={g}>
           <dt>{GAME_NAMES[g]}</dt>
-          <dd>厨力角色：{profile.favourites[g].length ? profile.favourites[g].join("、") : "还没选"}</dd>
-          {g === "arknights" && profile.support && <dd>助战：{profile.support.join("、")}</dd>}
+          <dd>
+            厨力角色：{profile.favourites[g].length ? <OperatorNames game={g} names={profile.favourites[g]} /> : "还没选"}
+          </dd>
+          {g === "arknights" && profile.support && (
+            <dd>
+              助战：
+              <OperatorNames game="arknights" names={profile.support} />
+            </dd>
+          )}
           {profile.uid?.[g] && <dd>UID：{profile.uid[g]}</dd>}
         </div>
       ))}
