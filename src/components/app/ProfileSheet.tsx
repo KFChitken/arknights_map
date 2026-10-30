@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { EarnedBadge } from "@/lib/badges";
-import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
+import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
+import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { matchesSearch, OPERATORS } from "@/lib/operators";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
@@ -17,10 +17,10 @@ import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
 const AVATAR_NAMES: Record<RoachAvatar, string> = {
-  hood: "兜帽",
+  hood: "初始",
   doctor: "博士",
   endmin: "管理员",
-  imp: "小恶魔",
+  imp: "绝对主角",
 };
 
 const COLOR_NAMES: Record<RoachColor, string> = {
@@ -173,18 +173,31 @@ export default function ProfileSheet({
             </>
           )}
           {!tutorial && (
-            <label className="field">
-              {GAME_NAMES[g]} UID（可选）
-              <input
-                type="text"
-                inputMode="text"
-                autoComplete="off"
-                value={p.uid[g]}
-                maxLength={UID_MAX}
-                placeholder="不填也可以"
-                onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
-              />
-            </label>
+            <div className="uid-row">
+              <label className="field">
+                服务器
+                <select value={p.uidServer[g]} onChange={(e) => set({ uidServer: { ...p.uidServer, [g]: e.target.value } })}>
+                  <option value="">选服务器</option>
+                  {SERVERS[g].map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                {GAME_NAMES[g]} UID（可选）
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  value={p.uid[g]}
+                  maxLength={UID_MAX}
+                  placeholder="不填也可以"
+                  onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
+                />
+              </label>
+            </div>
           )}
         </fieldset>
       ))}
@@ -201,6 +214,17 @@ export default function ProfileSheet({
           </p>
         </fieldset>
       )}
+
+      <fieldset>
+        <legend>翻肚皮</legend>
+        <label className="check">
+          <input type="checkbox" checked={p.flipWhenAway} onChange={(e) => set({ flipWhenAway: e.target.checked })} />
+          好久没来时，蟑螂翻肚皮睡觉
+        </label>
+        <p className="hint">
+          超过 {AWAY_DAYS} 天没来，大家会看到它翻过来睡觉。关掉的话，好久没来它也照样站着。自己点「摄入酒精」不受这个开关影响。
+        </p>
+      </fieldset>
 
       <fieldset>
         <legend>蟑螂形象</legend>
@@ -236,7 +260,7 @@ export default function ProfileSheet({
             />
           ))}
         </div>
-        <p className="hint">颜色只改兜帽形象两边的灯；博士、管理员和小恶魔用的是原画，颜色不变。</p>
+        <p className="hint">颜色只改初始形象两边的灯；博士、管理员和绝对主角用的是原画，颜色不变。</p>
       </fieldset>
       {!tutorial && (
         <>

@@ -47,6 +47,9 @@ export const users = pgTable("users", {
   favEndfield: text("fav_endfield").array().notNull().default(emptyArray),
   uidArknights: text("uid_arknights").notNull().default(""),
   uidEndfield: text("uid_endfield").notNull().default(""),
+  /** The server each UID is on (games.ts SERVERS); "" until picked */
+  uidServerArknights: text("uid_server_arknights").notNull().default(""),
+  uidServerEndfield: text("uid_server_endfield").notNull().default(""),
   shareUid: boolean("share_uid").notNull().default(false),
   avatar: text("avatar").notNull().default("hood"),
   color: text("color").notNull().default("cyan"),
@@ -65,6 +68,10 @@ export const users = pgTable("users", {
   drunkUntil: at("drunk_until"),
   /** Times they really got drunk; never goes down, for the 酒神 badges */
   drinksTotal: integer("drinks_total").notNull().default(0),
+  /** 好久没来时，蟑螂翻肚皮睡觉: their main roach may flip over while they stay away */
+  flipWhenAway: boolean("flip_when_away").notNull().default(true),
+  /** The Beijing day the 04:00 batch flipped their main roach over for staying away; null while it stands */
+  sleptAwayOn: date("slept_away_on", { mode: "string" }),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),

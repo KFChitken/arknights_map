@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { REACTIONS, type Reaction } from "@/lib/declarations";
-import { GAME_NAMES } from "@/lib/games";
+import { GAME_NAMES, serverName } from "@/lib/games";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
@@ -305,7 +305,12 @@ function ProfileDetails({ profile }: { profile: PublicProfile }) {
               <OperatorNames game="arknights" names={profile.support} />
             </dd>
           )}
-          {profile.uid?.[g] && <dd>UID：{profile.uid[g]}</dd>}
+          {profile.uid?.[g] && (
+            <dd>
+              UID：{serverName(g, profile.uidServer?.[g]) ? `${serverName(g, profile.uidServer?.[g])} ` : ""}
+              {profile.uid[g]}
+            </dd>
+          )}
         </div>
       ))}
       </dl>

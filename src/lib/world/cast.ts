@@ -100,9 +100,10 @@ function tester(
   id: PlayerId,
   note: string,
   roaches: LngLat[],
-  p: Partial<Omit<Profile, "favourites" | "uid">> & {
+  p: Partial<Omit<Profile, "favourites" | "uid" | "uidServer">> & {
     favourites?: Partial<Record<Game, string[]>>;
     uid?: Partial<Record<Game, string>>;
+    uidServer?: Partial<Record<Game, string>>;
   },
 ): Tester {
   const fav = (g: Game) => (p.favourites?.[g] ?? []).filter((n) => isOperator(g, n));
@@ -115,6 +116,7 @@ function tester(
       ...p,
       favourites: { arknights: fav("arknights"), endfield: fav("endfield") },
       uid: { arknights: p.uid?.arknights ?? "", endfield: p.uid?.endfield ?? "" },
+      uidServer: { arknights: p.uidServer?.arknights ?? "", endfield: p.uidServer?.endfield ?? "" },
     },
   };
 }
@@ -159,6 +161,7 @@ export const TESTERS: Tester[] = [
       games: ["arknights"],
       favourites: { arknights: ["银灰", "史尔特尔", "W"] },
       uid: { arknights: "12345678" },
+      uidServer: { arknights: "cn" },
       shareUid: true,
       avatar: "imp",
       color: "gold",

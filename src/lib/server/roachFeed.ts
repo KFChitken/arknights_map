@@ -82,6 +82,7 @@ export async function allRoaches(): Promise<MapRoach[]> {
       avatar: users.avatar,
       color: users.color,
       drunkUntil: users.drunkUntil,
+      sleptAwayOn: users.sleptAwayOn,
     })
     .from(roaches)
     .innerJoin(users, eq(users.id, roaches.userId))
@@ -94,9 +95,9 @@ export async function allRoaches(): Promise<MapRoach[]> {
     ...lookOf(r.slot, r.avatar, r.color),
     lng: r.lng,
     lat: r.lat,
-    // only the main roach lies down, and the feed never says why or until when; a drunk one
-    // stands up again in the first rebuild after it wakes, within MAX_AGE_MS
-    ...(r.slot === 0 && r.drunkUntil && r.drunkUntil.getTime() > now ? { asleep: true as const } : {}),
+    // only the main roach lies down, drunk or away a long time, and the feed never says which or until
+    // when; a drunk one stands up again in the first rebuild after it wakes, within MAX_AGE_MS
+    ...(r.slot === 0 && ((r.drunkUntil && r.drunkUntil.getTime() > now) || r.sleptAwayOn) ? { asleep: true as const } : {}),
   }));
 }
 

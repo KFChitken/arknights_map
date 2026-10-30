@@ -148,6 +148,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [greeting, setGreeting] = useState(false);
   // 摄入酒精 / 醒酒 played out by your main roach, big, in the middle of the map
   const [acting, setActing] = useState<"drink" | "wake" | null>(null);
+  // what opens once the scene is over, so nothing pops up over it
+  const afterActing = useRef<(() => void) | null>(null);
   const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
 
@@ -271,14 +273,21 @@ export default function MapApp({ cn }: { cn: boolean }) {
         // Back after a day or more: a summary first, which says what is unread (not during the tutorial)
         const home: Panel | null =
           m?.homecoming && !tutorialStep(m, loadProgress(m.id)) ? { kind: "homecoming", homecoming: m.homecoming, items } : null;
-        // an updated privacy policy before anything else
-        if (m?.mustReconsent) setPanel({ kind: "consent", then: home });
-        else if (home) setPanel(home);
-        // What arrived since the last visit
-        else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
-        // the page reloaded while the player went to read their login code
-        else if (!m && pendingLogin()) setPanel({ kind: "login" });
-        else if (!m && !welcomed()) setPanel({ kind: "welcome" });
+        const first = () => {
+          // an updated privacy policy before anything else
+          if (m?.mustReconsent) setPanel({ kind: "consent", then: home });
+          else if (home) setPanel(home);
+          // What arrived since the last visit
+          else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+          // the page reloaded while the player went to read their login code
+          else if (!m && pendingLogin()) setPanel({ kind: "login" });
+          else if (!m && !welcomed()) setPanel({ kind: "welcome" });
+        };
+        // back after its roach flipped over for their staying away: it stands up (鲤鱼打挺) before anything opens
+        if (m?.wokeFromAway && main && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          afterActing.current = first;
+          setActing("wake");
+        } else first();
       });
   }, [load, openInbox, cn]);
 
@@ -808,7 +817,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     .filter((b) => !b.seen)
     .map((b) => b.id)
     .join(",");
-  const idle = Boolean(me && !placing && !selected && !panel && !step);
+  const idle = Boolean(me && !placing && !selected && !panel && !step && !acting);
   useEffect(() => {
     if (!idle || !unseenBadges || newBadges.length || !me) return;
     setNewBadges(me.badges.filter((b) => !b.seen).slice(0, 3));
@@ -1122,7 +1131,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
         {acting && me && (
           <div className="actor-stage">
-            <RoachActor scene={acting} avatar={myAvatar} color={myColor} look={look} onDone={() => setActing(null)} />
+            <RoachActor
+              scene={acting}
+              avatar={myAvatar}
+              color={myColor}
+              look={look}
+              onDone={() => {
+                setActing(null);
+                afterActing.current?.();
+                afterActing.current = null;
+              }}
+            />
           </div>
         )}
       </div>

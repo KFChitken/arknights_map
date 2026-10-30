@@ -139,6 +139,8 @@ export type Me = {
   counts: Record<BadgeCount, number>;
   /** 摄入酒精: their main roach sleeps until then, unless they sober up first; null when awake */
   drunkUntil: number | null;
+  /** Back for the first time since their main roach flipped over for their staying away: it stands up again (鲤鱼打挺) */
+  wokeFromAway: boolean;
   /** Only on the first visit of a day that comes after at least one whole day away */
   homecoming: Homecoming | null;
   /** Agreed to an older privacy policy: 「隐私说明更新了」 comes first, and nothing others see works until they agree */

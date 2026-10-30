@@ -53,6 +53,7 @@ import {
   type TouchResult,
 } from "../world/types";
 import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
+import { daysBetween, lastVisitOn } from "./away";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
@@ -95,7 +96,9 @@ export function profileOf(u: UserRow): Profile {
     games: u.games.filter(isGame),
     favourites: { arknights: u.favArknights, endfield: u.favEndfield },
     uid: { arknights: u.uidArknights, endfield: u.uidEndfield },
+    uidServer: { arknights: u.uidServerArknights, endfield: u.uidServerEndfield },
     shareUid: u.shareUid,
+    flipWhenAway: u.flipWhenAway,
     avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
     color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
     support: checkSupport(u.support),
@@ -112,7 +115,10 @@ export function profileColumns(p: Profile) {
     favEndfield: p.favourites.endfield,
     uidArknights: p.uid.arknights,
     uidEndfield: p.uid.endfield,
+    uidServerArknights: p.uidServer.arknights,
+    uidServerEndfield: p.uidServer.endfield,
     shareUid: p.shareUid,
+    flipWhenAway: p.flipWhenAway,
     avatar: p.avatar,
     color: p.color,
     support: p.support,
@@ -199,18 +205,13 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
 
 // ---- the world, for one player ----
 
-/** The first day visits were recorded (users.last_seen_on) */
-const VISITS_SINCE = "2026-10-28";
-
 export async function me(userId: string): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
-  // u still holds the day of the visit before this one; with none recorded, away since visits were first
-  // recorded or since signing up, whichever is later, so a brand-new account is not away at all
+  // u still holds the day of the visit before this one
   const today = beijingDate();
-  const signedUpOn = beijingDate(u.createdAt.getTime());
-  const lastSeen = u.lastSeenOn ?? (signedUpOn > VISITS_SINCE ? signedUpOn : VISITS_SINCE);
-  const daysAway = Math.round((beijingMidnight(today) - beijingMidnight(lastSeen)) / DAY);
+  const lastSeen = lastVisitOn(u);
+  const daysAway = daysBetween(lastSeen, today);
   if (u.lastSeenOn !== today) await db.update(users).set({ lastSeenOn: today }).where(eq(users.id, u.id));
   if (daysAway >= AWAY_DAYS) await wakeUp(u.id);
   const mine = await ownRoaches(u.id);
@@ -238,6 +239,8 @@ export async function me(userId: string): Promise<Me | null> {
     homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
     mustReconsent: mustReconsent(u),
     agreedPublicPlace: agreedPublicPlace(u),
+    // the first visit since the 04:00 batch flipped it over: the owner sees it stand up now, everyone else at the next batch
+    wokeFromAway: Boolean(u.sleptAwayOn && (!u.lastSeenOn || u.lastSeenOn < u.sleptAwayOn)),
   };
 }
 
@@ -326,8 +329,8 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   await db.transaction(async (tx) => {
     if (existing) await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
     else await tx.insert(roaches).values({ userId, slot, ...values });
-    // a roach has to stand up to walk: moving the main roach sobers it up
-    if (slot === 0) await tx.update(users).set({ drunkUntil: null }).where(eq(users.id, userId));
+    // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
+    if (slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
     await tx.insert(moves).values({
       userId,
       slot,
@@ -351,7 +354,7 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
   await db.transaction(async (tx) => {
     await tx.delete(roaches).where(inArray(roaches.id, gone.map((r) => r.id)));
     await tx.insert(moves).values(gone.map((r) => ({ userId, slot: r.slot, fromLng: r.lng, fromLat: r.lat })));
-    if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null }).where(eq(users.id, userId));
+    if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
   });
   roachesChanged();
   return ownRoaches(userId);

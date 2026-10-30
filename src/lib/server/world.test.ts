@@ -14,6 +14,7 @@ import type { PlaceTarget, PublicRoach } from "../world/types";
 import { isBanned } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
+import { awayExtraDays, flipTheAway } from "./away";
 import { acceptPublicPlace, agreeAgain } from "./consent";
 import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
 import { computeHotList } from "./hotList";
@@ -198,6 +199,48 @@ describe("server world", () => {
     expect((await me.me()).drunkUntil).toBeNull();
   });
 
+  it("flips the main roach of a player away 14 to 17 days at the 04:00 batch, and only that batch tells others it is back", async () => {
+    const [main] = await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "clone" }, TOKYO);
+    // the batch's day is today's, as me() records visits by today's date
+    const now = Date.now();
+    const daysBefore = (n: number) => beijingDate(now - n * 86_400_000);
+    const away = 14 + awayExtraDays(me.id);
+    const asleep = async () => (await allRoaches()).filter((r) => r.asleep).map((r) => r.id);
+
+    await db.update(users).set({ lastSeenOn: daysBefore(away - 1) }).where(eq(users.id, me.id));
+    expect(await flipTheAway(now)).toEqual({ flipped: 0, woke: 0 });
+    await db.update(users).set({ lastSeenOn: daysBefore(away) }).where(eq(users.id, me.id));
+    expect(await flipTheAway(now)).toEqual({ flipped: 1, woke: 0 });
+    // only the main roach, and the demo players never
+    expect(await asleep()).toEqual([main.publicId]);
+
+    // back: the owner sees it stand up once; the shared list waits for the next batch
+    expect((await me.me()).wokeFromAway).toBe(true);
+    expect((await me.me()).wokeFromAway).toBe(false);
+    expect(await asleep()).toEqual([main.publicId]);
+    expect((await flipTheAway()).woke).toBe(1);
+    expect(await asleep()).toEqual([]);
+
+    // with the switch off it never flips; a move stands it up at once
+    await db.update(users).set({ lastSeenOn: daysBefore(30), flipWhenAway: false }).where(eq(users.id, me.id));
+    expect((await flipTheAway(now)).flipped).toBe(0);
+    await db.update(users).set({ flipWhenAway: true }).where(eq(users.id, me.id));
+    expect((await flipTheAway(now)).flipped).toBe(1);
+    await me.placeRoach({ kind: "move", roachId: main.id }, TOKYO);
+    expect(await asleep()).toEqual([]);
+  });
+
+  it("counts a player with no recorded visit as away since 10/28 or signing up when flipping", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const now = Date.parse("2026-11-21T04:05+08:00");
+    await db.update(users).set({ lastSeenOn: null, createdAt: new Date("2026-11-20T12:00+08:00") }).where(eq(users.id, me.id));
+    expect((await flipTheAway(now)).flipped).toBe(0);
+    await db.update(users).set({ createdAt: new Date("2026-09-01T12:00+08:00") }).where(eq(users.id, me.id));
+    // 10/28 to 11/21 is 24 days, past 14 to 17
+    expect((await flipTheAway(now)).flipped).toBe(1);
+  });
+
   it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {
     const regular = await signUp("regular@example.com");
     await regular.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
@@ -354,7 +397,7 @@ describe("server world", () => {
     const aBai = await demo("t1"); // does not
     await aBai.touch((await publicAt(aBai, PEOPLES_SQUARE)).id, true);
     const froms = (await me.inbox()).map((i) => (i.kind === "touch" ? i.from : null));
-    expect(froms.find((f) => f?.displayName === "Kal")?.uid).toEqual({ arknights: "12345678" });
+    expect(froms.find((f) => f?.displayName === "Kal")).toMatchObject({ uid: { arknights: "12345678" }, uidServer: { arknights: "cn" } });
     expect(froms.find((f) => f?.displayName === "Dr. 阿白")?.uid).toBeUndefined();
   });
 
@@ -810,12 +853,18 @@ describe("server world", () => {
       games: ["endfield"],
       favourites: { arknights: ["能天使"], endfield: ["佩丽卡", "不存在", "佩丽卡", "陈千语", "管理员", "莱万汀"] },
       uid: { arknights: "123", endfield: "8899" },
+      uidServer: { arknights: "jp", endfield: "asia" },
     });
     expect(saved.name).toBe("阿米娅的狗");
     expect(saved.favourites).toEqual({ arknights: [], endfield: ["佩丽卡", "陈千语", "管理员"] });
     expect(saved.uid).toEqual({ arknights: "", endfield: "8899" });
+    expect(saved.uidServer).toEqual({ arknights: "", endfield: "asia" });
     expect((await me.me()).profile).toEqual(saved);
     await expect(me.saveProfile({ ...EMPTY_PROFILE, uid: { arknights: "", endfield: "<script>" }, games: ["endfield"] })).rejects.toThrow("UID");
+    // a UID needs its server, one of the game's own
+    const uidOnly = { ...EMPTY_PROFILE, games: ["endfield" as const], uid: { arknights: "", endfield: "8899" } };
+    await expect(me.saveProfile(uidOnly)).rejects.toThrow("服务器");
+    await expect(me.saveProfile({ ...uidOnly, uidServer: { arknights: "", endfield: "jp" } })).rejects.toThrow("服务器");
     await expect(me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: " " })).rejects.toThrow("名字");
   });
 

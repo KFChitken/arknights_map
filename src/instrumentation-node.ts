@@ -1,3 +1,5 @@
+import { beijingDate } from "./lib/beijing";
+import { flipTheAway } from "./lib/server/away";
 import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled } from "./lib/server/env";
@@ -34,6 +36,21 @@ setInterval(prune, DAY_MS);
 
 // Reports that came in after today's digest go out once a day has passed
 setInterval(() => sendReportDigest().catch((e) => console.error("Report digest failed", e)), HOUR_MS);
+
+// 好久没来自动翻: once a day, at the first look after 04:00 Beijing time (a restart may run it again, to the same end)
+let flippedOn = "";
+const flipAway = () => {
+  const now = Date.now();
+  const day = beijingDate(now);
+  if (day === flippedOn || beijingDate(now - 4 * HOUR_MS) !== day) return;
+  flippedOn = day;
+  flipTheAway(now).catch((e) => {
+    flippedOn = "";
+    console.error("Flipping roaches of players away failed", e);
+  });
+};
+flipAway();
+setInterval(flipAway, 5 * MINUTE_MS);
 
 // Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
 const totals = () => recordDailyTotals().catch((e) => console.error("Recording daily totals failed", e));

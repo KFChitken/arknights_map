@@ -615,4 +615,6 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 button.pill.wine { display: inline-flex; align-items: center; gap: 3px; border-color: #c23a5e; background: #c23a5e; color: #fff; }
 button.pill.wine svg { width: 15px; height: 15px; }
 .tally { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
-
+.homecoming-got { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* a UID goes with the server it is on */
+.uid-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 8px; align-items: end; }

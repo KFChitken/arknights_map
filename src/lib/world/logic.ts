@@ -1,7 +1,7 @@
 import { FOODS, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
-import { GAMES, isGame, type Game } from "../games";
+import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
 import { isOperator } from "../operators";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_MAX } from "../rules";
@@ -25,6 +25,7 @@ export function normalizeProfile(input: Profile): Profile {
   const games = GAMES.filter((g) => input.games?.includes(g));
   const favourites = { arknights: [] as string[], endfield: [] as string[] };
   const uid = { arknights: "", endfield: "" };
+  const uidServer = { arknights: "", endfield: "" };
   for (const g of games) {
     favourites[g] = [...new Set(input.favourites?.[g] ?? [])]
       .filter((n) => isOperator(g, n))
@@ -34,6 +35,10 @@ export function normalizeProfile(input: Profile): Profile {
       throw new WorldError("UID 只能填数字、字母和 #，最多 20 个字符。");
     }
     uid[g] = u;
+    const server = String(input.uidServer?.[g] ?? "");
+    uidServer[g] = SERVERS[g].some((s) => s.id === server) ? server : "";
+    // a UID only finds someone on its own server
+    if (u && !uidServer[g]) throw new WorldError(`选一下${GAME_NAMES[g]}的 UID 是哪个服务器的。`);
   }
   const anonymous = Boolean(input.anonymous);
   if (!anonymous && !name) throw new WorldError("想显示名字的话，先填一个名字吧。");
@@ -44,17 +49,27 @@ export function normalizeProfile(input: Profile): Profile {
     games,
     favourites,
     uid,
+    uidServer,
     shareUid: Boolean(input.shareUid),
     avatar: ROACH_AVATARS.includes(input.avatar) ? input.avatar : EMPTY_PROFILE.avatar,
     color: ROACH_COLORS.includes(input.color) ? input.color : EMPTY_PROFILE.color,
     support: games.includes("arknights") ? checkSupport(input.support) : [],
+    // on unless turned off, so a page from before the switch existed keeps it on
+    flipWhenAway: input.flipWhenAway !== false,
   };
 }
 
 /** What a player shows of themselves when they touch someone boldly or befriend them. */
 export function publicProfileOf(p: Profile): PublicProfile {
   const uid: Partial<Record<Game, string>> = {};
-  if (p.shareUid) for (const g of p.games) if (p.uid[g]) uid[g] = p.uid[g];
+  const uidServer: Partial<Record<Game, string>> = {};
+  if (p.shareUid) {
+    for (const g of p.games) {
+      if (!p.uid[g]) continue;
+      uid[g] = p.uid[g];
+      if (p.uidServer[g]) uidServer[g] = p.uidServer[g];
+    }
+  }
   return {
     displayName: displayName(p),
     games: p.games,
@@ -63,6 +78,7 @@ export function publicProfileOf(p: Profile): PublicProfile {
       endfield: p.games.includes("endfield") ? p.favourites.endfield : [],
     },
     uid: Object.keys(uid).length ? uid : undefined,
+    uidServer: Object.keys(uidServer).length ? uidServer : undefined,
     avatar: p.avatar,
     color: p.color,
     support: p.games.includes("arknights") && p.support.length ? p.support : undefined,

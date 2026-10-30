@@ -87,7 +87,7 @@ export function OtherRoachCard({
         <div>
           <strong>
             {title}
-            {asleep && <span className="zz">{friendName ? "睡着了" : "理智回复中"}</span>}
+            {asleep && <span className="zz">{friendName ? "睡着了" : "理智恢复中"}</span>}
           </strong>
           <p className="muted">{hint}</p>
         </div>
@@ -165,7 +165,7 @@ export function MyRoachCard({
         <div>
           <strong>
             {clone ? `你的克隆体 ${index}` : "你的蟑螂本体"}
-            {asleep && <span className="zz">理智回复中</span>}
+            {asleep && <span className="zz">理智恢复中</span>}
           </strong>
           <p className="muted">
             {clone

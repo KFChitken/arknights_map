@@ -11,12 +11,16 @@ export type Profile = {
   favourites: Record<Game, string[]>;
   /** "" when not filled in */
   uid: Record<Game, string>;
+  /** Which of the game's SERVERS the UID is on; "" until picked */
+  uidServer: Record<Game, string>;
   /** Show the UIDs to players this player touches boldly */
   shareUid: boolean;
   avatar: RoachAvatar;
   color: RoachColor;
   /** 我的助战: operator names, for Arknights players only */
   support: string[];
+  /** 好久没来时，蟑螂翻肚皮睡觉 */
+  flipWhenAway: boolean;
 };
 
 /**
@@ -28,6 +32,8 @@ export type PublicProfile = {
   games: Game[];
   favourites: Record<Game, string[]>;
   uid?: Partial<Record<Game, string>>;
+  /** The server of each shared UID */
+  uidServer?: Partial<Record<Game, string>>;
   avatar: RoachAvatar;
   color: RoachColor;
   support?: string[];
@@ -43,10 +49,12 @@ export const EMPTY_PROFILE: Profile = {
   games: [],
   favourites: { arknights: [], endfield: [] },
   uid: { arknights: "", endfield: "" },
+  uidServer: { arknights: "", endfield: "" },
   shareUid: false,
   avatar: "hood",
   color: "cyan",
   support: [],
+  flipWhenAway: true,
 };
 
 export function displayName(p: Pick<Profile, "anonymous" | "name" | "drPrefix">) {

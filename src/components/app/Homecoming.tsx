@@ -1,6 +1,7 @@
 "use client";
 
 import { nextBadge, type BadgeCount } from "@/lib/badges";
+import { BadgePill } from "./Badges";
 import { WELCOME_NAMES } from "@/lib/declarations";
 import { RADAR_RADIUS_KM } from "@/lib/rules";
 import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
@@ -46,6 +47,8 @@ export function HomecomingSheet({
     reactions ? `你的宣言收到 ${reactions} 个回应` : "",
   ].filter(Boolean);
   const quiet = !happened.length && !homecoming.arrivals;
+  // 石棺里的苏醒, given on coming back after a long time away
+  const awoke = me.badges.find((b) => b.id === "survivor" && !b.seen);
   const next = nextBadge(me.badges, me.counts);
   // only those who play just Endfield are 管理员
   const game = me.profile.games.length === 1 && me.profile.games[0] === "endfield" ? "endfield" : "arknights";
@@ -70,9 +73,17 @@ export function HomecomingSheet({
         )
       }
     >
+      {me.wokeFromAway && (
+        <p style={{ marginTop: 0 }}>你睡了 {homecoming.daysAway} 天，理智早就回满了。</p>
+      )}
+      {awoke && (
+        <p className="homecoming-got">
+          拿到了 <BadgePill badge={awoke} />
+        </p>
+      )}
       {happened.length > 0 && (
         <>
-          <p style={{ marginTop: 0 }}>你不在的这几天：</p>
+          <p style={{ marginTop: me.wokeFromAway || awoke ? undefined : 0 }}>你不在的这几天：</p>
           <ul className="homecoming-list">
             {happened.map((h) => (
               <li key={h}>{h}</li>
