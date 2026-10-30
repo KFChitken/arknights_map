@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { BADGES } from "@/lib/badges";
-import { REPORT_REASONS, type AdminAction, type AdminCase, type RetentionStats } from "@/lib/safety";
+import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
+import { beijingDate } from "@/lib/beijing";
+import { REPORT_REASONS, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "@/lib/safety";
 import { ago } from "./app/InboxSheet";
 import RoachIcon from "./RoachIcon";
 
 /**
  * /admin: this week's totals, open reports grouped by player with the three
- * ways to settle them, and badges by hand. The API refuses everyone but the admins.
+ * ways to settle them, the name blocklist, every account's email and name, and
+ * badges by hand. The API refuses everyone but the admins.
  */
 
 async function call<T>(op: string, ...args: unknown[]): Promise<T> {
@@ -142,6 +145,8 @@ export default function AdminApp() {
           </div>
         </section>
       ))}
+      <NameList />
+      <Players />
       <BadgeDesk />
       <p className="hint" style={{ marginTop: 24 }}>
         <Link href="/">回到地图</Link>
@@ -175,6 +180,135 @@ function Retention() {
         </li>
       </ul>
       <p className="hint">只有总数，看不出是谁。来访只记日期，按北京时间算。</p>
+    </section>
+  );
+}
+
+type NameHit = { id: string; name: string; anonymous: boolean };
+
+/**
+ * 名字黑名单: the words no name may contain (or be, marked 「=」), and the names in use
+ * that they block now, to clear by hand. The rules in src/lib/nameRules.ts apply as well.
+ */
+function NameList() {
+  const [list, setList] = useState<{ words: NameWord[]; hits: NameHit[] } | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const load = useCallback(() => {
+    call<{ words: NameWord[]; hits: NameHit[] }>("nameWords")
+      .then(setList)
+      .catch((e) => setNote(e instanceof Error ? e.message : "出了点问题。"));
+  }, []);
+  useEffect(load, [load]);
+
+  const run = async (fn: () => Promise<string>) => {
+    setBusy(true);
+    try {
+      setNote(await fn());
+      load();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "出了点问题。");
+    }
+    setBusy(false);
+  };
+  const add = () =>
+    run(async () => {
+      const n = await call<number>("addNameWords", text);
+      setText("");
+      return `加好了 ${n} 个词。`;
+    });
+  const remove = (w: NameWord) => run(async () => (await call("removeNameWord", w.word), `删掉了「${w.word}」。`));
+  const clear = (h: NameHit) => {
+    if (!window.confirm(`清掉「${h.name}」这个名字，把 TA 改成匿名？`)) return;
+    run(async () => (await call("clearName", h.id), "名字清掉了，TA 现在是匿名。"));
+  };
+
+  return (
+    <section className="admin-case">
+      <h2>名字黑名单 · {list?.words.length ?? "…"} 个词</h2>
+      <p className="hint">
+        存资料时名字里出现这些词就存不了（前面带「=」的只在整个名字就是这个词时才挡）。比对前去掉空格和符号、全角转半角、英文转小写，繁体不会自动转。
+      </p>
+      <p className="hint">
+        写在代码里、这里删不了的：
+        {CODE_WORDS.map((w) => (w.whole ? `=${w.word}` : w.word)).join("、")}
+        ；还有网址、QQ/微信号和 6 位以上的数字。
+      </p>
+      {list && (
+        <div className="word-chips">
+          {list.words.map((w) => (
+            <span key={w.word} className="word-chip">
+              {w.whole ? `=${w.word}` : w.word}
+              <button aria-label={`删掉${w.word}`} disabled={busy} onClick={() => remove(w)}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <label className="field">
+        批量添加（一行一个，前面加 = 表示整名比对）
+        <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} />
+      </label>
+      <div className="account-actions">
+        <button className="pill" disabled={busy || !text.trim()} onClick={add}>
+          添加
+        </button>
+      </div>
+      {note && <p className="admin-note">{note}</p>}
+
+      <h2>现在的名字里命中的</h2>
+      {list?.hits.length === 0 && <p className="hint">没有。</p>}
+      <ul>
+        {list?.hits.map((h) => (
+          <li key={h.id}>
+            {h.name}
+            {h.anonymous && <span className="hint">（现在是匿名，名字还留着）</span>}{" "}
+            <button className="pill" disabled={busy} onClick={() => clear(h)}>
+              清掉名字
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** 所有玩家: login email, name and signup day of every account, to find the one a letter or report is about. */
+function Players() {
+  const [players, setPlayers] = useState<AdminPlayer[] | null>(null);
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    call<AdminPlayer[]>("players")
+      .then(setPlayers)
+      .catch(() => {});
+  }, []);
+  if (!players) return null;
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? players.filter((p) => p.email.toLowerCase().includes(needle) || p.name.toLowerCase().includes(needle) || p.id.startsWith(needle))
+    : players;
+  return (
+    <section className="admin-case">
+      <h2>所有玩家 · {players.length} 人</h2>
+      <p className="hint">只用来找到要处理的人。这里不放蟑螂位置、游戏 UID 和哪天来过。</p>
+      <label className="field">
+        按邮箱、名字或账号 ID 找
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} />
+      </label>
+      <ul className="player-list">
+        {shown.map((p) => (
+          <li key={p.id}>
+            <strong>{p.name || "（没有名字）"}</strong>
+            {p.anonymous && <span className="tag">匿名</span>}
+            <br />
+            <span className="hint">
+              {p.email} · {beijingDate(p.joinedAt)} 注册 · ID {p.id.slice(0, 8)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

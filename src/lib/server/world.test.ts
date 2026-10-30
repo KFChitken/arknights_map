@@ -12,9 +12,10 @@ import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
 import { isBanned } from "./account";
-import { openCases, resolveCase, retentionStats, setBadge } from "./admin";
+import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { acceptPublicPlace, agreeAgain } from "./consent";
+import { addNameWords, forgetNameWords, namesHit, removeNameWord } from "./nameWords";
 import { computeHotList } from "./hotList";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
@@ -31,6 +32,7 @@ import {
   friendCuts,
   friendships,
   moves,
+  nameWords,
   radarScans,
   reactions,
   reports,
@@ -130,13 +132,38 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}`,
   );
+  forgetNameWords();
   await seedDemo();
   me = await signUp("me@example.com");
 });
 
 describe("server world", () => {
+  it("lists every real account's email and name for the admin, newest first, without demo players", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: true, name: "阿白" });
+    const other = await signUp("other@example.com");
+    const players = await allPlayers();
+    expect(players.map((p) => p.email)).toEqual(["other@example.com", "me@example.com"]);
+    expect(players[1]).toMatchObject({ id: me.id, name: "阿白", anonymous: true });
+    expect(Object.keys(players[0]).sort()).toEqual(["anonymous", "email", "id", "joinedAt", "name"]);
+    expect(other.id).toBe(players[0].id);
+  });
+
+  it("refuses names the rules or the admin's words block, and lists the names in use they catch", async () => {
+    const named = (name: string) => me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name });
+    await expect(named("鹰角官方")).rejects.toThrow("这个名字用不了");
+    await expect(named("管理员小王")).resolves.toMatchObject({ name: "管理员小王" });
+    // a name already in use before the word was added is listed, not changed
+    expect(await addNameWords("```\n小王\n=国家\n```")).toBe(2);
+    expect(await namesHit()).toEqual([{ id: me.id, name: "管理员小王", anonymous: false }]);
+    await expect(named("小 王 同学")).rejects.toThrow("这个名字用不了");
+    await expect(named("国家队")).resolves.toMatchObject({ name: "国家队" });
+    await expect(named("国家")).rejects.toThrow("这个名字用不了");
+    await removeNameWord("小王");
+    await expect(named("小王")).resolves.toMatchObject({ name: "小王" });
+  });
+
   it("asks before a player's first new roach that its spot is public, but not for moves", async () => {
     const shy = await signUp("shy@example.com");
     await db.update(users).set({ publicPlaceAcceptedAt: null }).where(eq(users.id, shy.id));

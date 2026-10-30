@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt } from "drizzle
 import { badgeById } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { declarationText } from "../declarations";
-import { isReportReason, type AdminAction, type AdminCase, type RetentionStats } from "../safety";
+import { isReportReason, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "../safety";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
 import { banAccount } from "./account";
@@ -101,6 +101,16 @@ export async function setBadge(email: string, badge: string, give: boolean) {
     .returning({ badge: userBadges.badge });
   if (!gone.length) throw new HttpError(400, "TA 没有这个称号。");
   if (u.wornBadge === badge) await db.update(users).set({ wornBadge: null }).where(eq(users.id, u.id));
+}
+
+/** 所有玩家: every real account's login email and name, newest first, to find someone to act on. */
+export async function allPlayers(): Promise<AdminPlayer[]> {
+  const rows = await db
+    .select({ id: users.id, email: users.email, name: users.name, anonymous: users.anonymous, createdAt: users.createdAt })
+    .from(users)
+    .where(isNull(users.demoKey))
+    .orderBy(desc(users.createdAt));
+  return rows.map((u) => ({ id: u.id, email: u.email ?? "", name: u.name, anonymous: u.anonymous, joinedAt: u.createdAt.getTime() }));
 }
 
 /** This week against the last, from visit days and the nightly totals. */

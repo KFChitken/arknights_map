@@ -29,6 +29,9 @@ export type AdminCase = {
 
 export type AdminAction = "dismiss" | "clearName" | "ban";
 
+/** A row of the admin page's 所有玩家: who an account is, never where its roaches are or when it visited. */
+export type AdminPlayer = { id: string; email: string; name: string; anonymous: boolean; joinedAt: number };
+
 /** The admin page's retention numbers: totals only, nothing about anyone in particular. */
 export type RetentionStats = {
   /** Players seen in the last 7 days, and in the 7 days before those; null until a row of totals that old exists */

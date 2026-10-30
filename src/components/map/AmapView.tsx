@@ -295,7 +295,8 @@ export default function AmapView(props: MapViewProps) {
       .catch((e: unknown) => {
         if (cancelled) return;
         console.error(e);
-        propsRef.current.onError?.("高德底图加载失败，请检查 Key 和安全密钥，或切换到 OSM 底图。");
+        if (propsRef.current.onFailed) propsRef.current.onFailed();
+        else propsRef.current.onError?.("高德底图加载失败，请检查 Key 和安全密钥，或切换到 OSM 底图。");
       });
 
     return () => {

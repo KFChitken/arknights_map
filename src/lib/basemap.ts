@@ -6,11 +6,13 @@ const CN_TIMEZONES = ["Asia/Shanghai", "Asia/Urumqi", "Asia/Chongqing", "Asia/Ha
 export const amapConfigured = Boolean(process.env.NEXT_PUBLIC_AMAP_KEY);
 
 /**
- * Guess from the time zone for now: mainland China time zones get Amap,
- * everyone else gets OSM. Server-side IP detection will replace this.
+ * Visitors from mainland China (cn, told by the server from their address) always
+ * get Amap, which has the map approval number. Everyone else keeps their own
+ * choice, or gets Amap in a mainland China time zone and OSM elsewhere.
  */
-export function guessBasemap(): Basemap {
+export function guessBasemap(cn: boolean): Basemap {
   if (!amapConfigured) return "osm";
+  if (cn) return "amap";
   try {
     const saved = localStorage.getItem(KEY);
     if (saved === "amap" || saved === "osm") return saved;

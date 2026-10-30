@@ -192,8 +192,8 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .sheet h3 { margin: 16px 0 6px; font-size: 14px; }
 .sheet fieldset { margin: 0 0 16px; padding: 0; border: 0; }
 .sheet legend { margin-bottom: 6px; padding: 0; font-size: 14px; font-weight: 700; }
-.sheet label.field { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
-.sheet label.field input { margin-top: 4px; }
+.sheet label.field, .admin label.field { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.sheet label.field input, .admin label.field input, .admin label.field select { margin-top: 4px; }
 .check { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: 14px; line-height: 1.45; }
 .check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; }
 /* the ticks at sign-up and on 隐私说明更新了 */
@@ -378,6 +378,15 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
 .admin-case .tag { margin-left: 8px; padding: 2px 6px; border-radius: 6px; background: #eef0f2; color: var(--muted); font-size: 11px; }
 .admin-case .account-actions { margin-bottom: 10px; }
 .admin-note { padding: 8px 12px; border-radius: 10px; background: #fff7d6; }
+.admin textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px;
+  font: inherit; font-size: 15px; color: var(--ink); resize: vertical;
+}
+.word-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.player-list { max-height: 420px; overflow-y: auto; padding-left: 18px; }
+.player-list .hint { overflow-wrap: anywhere; }
+.word-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 999px; background: #f0f1f3; font-size: 13px; }
+.word-chip button { border: 0; padding: 0 5px; background: none; color: var(--muted); font-size: 15px; line-height: 1; }
 button.pill.danger-pill { border-color: #f1c4bf; color: #c0392b; }
 
 /* ---- 称号 ---- */

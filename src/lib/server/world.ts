@@ -57,6 +57,7 @@ import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
 import { nudge } from "./live";
+import { checkName } from "./nameWords";
 import { lookOf, roachesChanged } from "./roachFeed";
 import {
   declarations,
@@ -270,6 +271,8 @@ async function recentMoves(userId: string, kind: "move" | "place") {
 
 export async function saveProfile(userId: string, input: Profile): Promise<Profile> {
   const profile = normalizeProfile(input);
+  // checked even while anonymous: the name is kept, and shows again once they go by it
+  await checkName(profile.name);
   const [before] = await db.select({ support: users.support }).from(users).where(eq(users.id, userId)).limit(1);
   // 触须之交 see 「换了助战」 for the latest change only
   const changed = (before?.support ?? []).join("|") !== profile.support.join("|");

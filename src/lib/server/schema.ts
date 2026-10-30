@@ -289,6 +289,14 @@ export const bannedEmails = pgTable("banned_emails", {
   createdAt: createdAt(),
 });
 
+/** Words no name may contain (or be, when whole), kept on the admin page and never in the repository (src/lib/nameRules.ts). */
+export const nameWords = pgTable("name_words", {
+  /** As cleaned by bare() */
+  word: text("word").primaryKey(),
+  whole: boolean("whole").notNull().default(false),
+  createdAt: createdAt(),
+});
+
 /** A player's radar scans of the last day (counts only), to cap them and show the last one again. */
 export const radarScans = pgTable(
   "radar_scans",

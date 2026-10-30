@@ -107,7 +107,8 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
   move: "点地图给它挪个窝",
 };
 
-export default function MapApp() {
+/** cn: the visitor is in mainland China, so the map is Amap only (OSM just when Amap cannot load). */
+export default function MapApp({ cn }: { cn: boolean }) {
   const worldRef = useRef<World | null>(null);
   const feedRef = useRef(new RoachFeedCopy());
   const [basemap, setBasemap] = useState<Basemap | null>(null);
@@ -251,7 +252,7 @@ export default function MapApp() {
   // The world, basemap and look are read in the browser only, to keep SSR output stable
   useEffect(() => {
     worldRef.current = new ServerWorld();
-    const b = guessBasemap();
+    const b = guessBasemap(cn);
     load()
       .catch((e) => {
         console.error(e);
@@ -275,7 +276,7 @@ export default function MapApp() {
         else if (!m && pendingLogin()) setPanel({ kind: "login" });
         else if (!m && !welcomed()) setPanel({ kind: "welcome" });
       });
-  }, [load, openInbox]);
+  }, [load, openInbox, cn]);
 
   // Android Chrome offers adding the site to the home screen once, early; 资料 keeps it for later
   useEffect(() => keepInstallPrompt(), []);
@@ -798,6 +799,12 @@ export default function MapApp() {
     onMineClick,
     onViewChange,
     onError: setToast,
+    onFailed: cn
+      ? () => {
+          setToast("高德底图没加载出来，先换成 OSM 底图。");
+          setBasemap("osm");
+        }
+      : undefined,
   };
 
   const renderPanel = (p: Panel) => {
@@ -1011,19 +1018,22 @@ export default function MapApp() {
               写实
             </button>
           </div>
-          <div className="basemap-switch" role="group" aria-label="底图">
-            <button
-              className={basemap === "amap" ? "on" : ""}
-              onClick={() => switchBasemap("amap")}
-              disabled={!amapConfigured}
-              title={amapConfigured ? "国内底图" : "没有配置高德 Key"}
-            >
-              高德
-            </button>
-            <button className={basemap === "osm" ? "on" : ""} onClick={() => switchBasemap("osm")}>
-              OSM
-            </button>
-          </div>
+          {/* mainland China has Amap only */}
+          {!cn && (
+            <div className="basemap-switch" role="group" aria-label="底图">
+              <button
+                className={basemap === "amap" ? "on" : ""}
+                onClick={() => switchBasemap("amap")}
+                disabled={!amapConfigured}
+                title={amapConfigured ? "国内底图" : "没有配置高德 Key"}
+              >
+                高德
+              </button>
+              <button className={basemap === "osm" ? "on" : ""} onClick={() => switchBasemap("osm")}>
+                OSM
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

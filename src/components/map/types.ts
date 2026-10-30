@@ -22,6 +22,8 @@ export type MapViewProps = {
   onMineClick: (roachId: string) => void;
   onViewChange: (v: MapView, bounds: [LngLat, LngLat]) => void;
   onError?: (message: string) => void;
+  /** The map could not load at all; without it, onError says so */
+  onFailed?: () => void;
 };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */

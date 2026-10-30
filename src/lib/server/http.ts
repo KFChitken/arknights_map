@@ -55,6 +55,11 @@ export async function readJson(req: NextRequest): Promise<Record<string, unknown
  * In production the app must be reachable only through that one proxy.
  */
 export function clientIp(req: NextRequest) {
-  const hops = req.headers.get("x-forwarded-for")?.split(",").map((h) => h.trim()).filter(Boolean);
+  return ipFrom(req.headers);
+}
+
+/** clientIp for a page, which has the request's headers but no request. */
+export function ipFrom(headers: Headers) {
+  const hops = headers.get("x-forwarded-for")?.split(",").map((h) => h.trim()).filter(Boolean);
   return hops?.at(-1) || "local";
 }

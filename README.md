@@ -10,10 +10,10 @@ Players in the community jokingly call themselves "roaches" because there seem t
 
 | Feature | Status |
 |---|---|
-| World map with two basemaps behind one URL (Amap inside mainland China, MapLibre + OpenStreetMap elsewhere), auto-selected with a manual switch | Prototype |
+| World map with two basemaps behind one URL: visitors from mainland China (told from their address against APNIC's list in `src/data/cn-ip-ranges.json`, refreshed with `node scripts/fetch-cn-ranges.mjs`; the address is never stored) get Amap only, everyone else MapLibre + OpenStreetMap with a switch to Amap | MVP |
 | Swarm view: every roach is drawn and twitches, and a dark heat layer makes crowded cities look covered in roaches; cartoon or realistic roaches | Prototype |
 | Place a main roach and up to three clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | MVP |
-| Profile: a name with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | MVP |
+| Profile: a name (checked against the rules in `src/lib/nameRules.ts` and a word list kept on the admin page) with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | MVP |
 | Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told at once if the page is open (a server-sent event stream), otherwise on their next visit, and can touch back | MVP |
 | Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches, declaration count and recent activity; either side can end it | MVP |
 | Declarations: one of nine canned shouts such as "Arknights, start!", "I'll always love &lt;favourite&gt;" or "Happy birthday to me", sent to every player with a roach within 10 km of the main roach, any chosen clones, or all of them; each player hears it once and can answer with one of six fixed reactions | MVP |
