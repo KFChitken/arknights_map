@@ -2,9 +2,10 @@ import { activeEvents } from "./events";
 import { SITE_NAME } from "./rules";
 
 /**
- * 称号: badges a player earns once and keeps. Each has its art in
- * public/badges/<id>.svg, and <id>-mini.svg for 32px and below. They only
- * ever show on profile cards, never on the map.
+ * 称号: badges a player earns once and keeps, except 石棺里的苏醒, which is
+ * held for a week at a time. Each has its art in public/badges/<id>.svg, and
+ * <id>-mini.svg for 32px and below. They only ever show on profile cards,
+ * never on the map.
  */
 
 export type BadgeSeries = "diplomacy" | "memorial" | "event";
@@ -32,14 +33,18 @@ export type Badge = {
   /** The pill under a name on profile cards */
   pill: { background: string; color: string; border: string };
   goal?: { count: BadgeCount; n: number };
+  /** Held only this many days from when it was given; the wall lists it only meanwhile, outside the tally */
+  days?: number;
 };
 
 /** 千里传须: the two main roaches this far apart when two players become 触须之交 */
 export const FAR_FRIEND_KM = 1000;
 /** 首批蟑螂: the first this many players to sign up, numbered */
 export const FIRST_BATCH = 1000;
-/** 石棺里的苏醒: back after this many days away */
-export const AWAY_DAYS = 30;
+/** 石棺里的苏醒: back after this many days away, or just signed up */
+export const AWAY_DAYS = 14;
+/** 石棺里的苏醒 is held this many days, then it goes until the next time */
+export const SURVIVOR_DAYS = 7;
 
 export const BADGES: Badge[] = [
   {
@@ -124,12 +129,13 @@ export const BADGES: Badge[] = [
   {
     id: "survivor",
     name: "石棺里的苏醒",
-    code: "MEM-30D",
+    code: "MEM-14D",
     series: "memorial",
-    condition: `离开 ${AWAY_DAYS} 天以上又回来了`,
+    condition: `刚注册，或者离开 ${AWAY_DAYS} 天以上又回来；能戴 ${SURVIVOR_DAYS} 天`,
     lockedHint: `离开 ${AWAY_DAYS} 天再回来`,
     quote: "石棺打开了，欢迎回来。",
     pill: { background: "#24a874", color: "#ffffff", border: "1.5px solid #24a874" },
+    days: SURVIVOR_DAYS,
   },
   {
     // each event brings its own badge, named in events.ts
@@ -155,8 +161,17 @@ export function badgeById(id: string) {
 /** A badge someone has, as profile cards show it */
 export type ShownBadge = { id: string; serial?: number };
 
-/** A badge the signed-in player has, with when they got it and whether they have been shown */
-export type EarnedBadge = ShownBadge & { at: number; seen: boolean };
+/** A badge the signed-in player has, with when they got it, whether they have been shown, and when a timed one goes */
+export type EarnedBadge = ShownBadge & { at: number; seen: boolean; until?: number };
+
+/** When a badge given at `at` goes, for one held only for a while. */
+export const heldUntil = (b: Badge, at: number) => (b.days ? at + b.days * 86_400_000 : undefined);
+
+/** Whether a badge given at `at` is still held: always, unless it is timed and its days are over. */
+export const stillHeld = (b: Badge, at: number, now = Date.now()) => now < (heldUntil(b, at) ?? Infinity);
+
+/** 「还剩 3 天」, counting a part of a day as a day */
+export const daysLeft = (until: number, now = Date.now()) => `还剩 ${Math.max(1, Math.ceil((until - now) / 86_400_000))} 天`;
 
 /** 「No.0042」 */
 export const serialText = (n: number) => `No.${String(n).padStart(4, "0")}`;
@@ -167,12 +182,13 @@ export const lockedText = (b: Badge, counts: Record<BadgeCount, number>) =>
   b.lockedHint.replace("{n}", String(b.goal ? Math.min(counts[b.goal.count], b.goal.n) : 0));
 
 /**
- * The badges the wall lists: every lasting one, and of the event badges only
- * those earned or on offer now. Past events nobody earned stay out of sight.
+ * The badges the wall lists: every lasting one, of the event badges only those
+ * earned or on offer now, and a timed one only while it is held. Past events
+ * nobody earned stay out of sight.
  */
 export function wallBadges(earned: Set<string>, now = Date.now()) {
   const onNow = new Set(activeEvents(now).map((e) => e.badge));
-  return BADGES.filter((b) => b.series !== "event" || earned.has(b.id) || onNow.has(b.id));
+  return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days));
 }
 
 /** The badge earned by a count that a player is the fewest steps away from. */

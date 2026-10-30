@@ -31,9 +31,13 @@ export const users = pgTable("users", {
   /** null for demo players */
   email: text("email").unique(),
   createdAt: createdAt(),
-  // Only the fact that the checks passed is kept, never the birth date
+  // Only when each tick was given (src/lib/consent.ts); no birth date is asked for
   ageConfirmedAt: at("age_confirmed_at"),
   policyAcceptedAt: at("policy_accepted_at"),
+  /** Agreed to storage on Tencent Cloud in Hong Kong and login mail sent by Resend */
+  crossBorderAcceptedAt: at("cross_border_accepted_at"),
+  /** Agreed that everyone, visitors too, sees exactly where their roaches are; asked before the first one */
+  publicPlaceAcceptedAt: at("public_place_accepted_at"),
 
   anonymous: boolean("anonymous").notNull().default(true),
   name: text("name").notNull().default(""),

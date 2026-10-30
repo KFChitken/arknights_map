@@ -1,6 +1,16 @@
 import "server-only";
 import { and, countDistinct, eq, inArray, isNull, sql } from "drizzle-orm";
-import { BADGES, badgeById, FAR_FRIEND_KM, FIRST_BATCH, type BadgeCount, type EarnedBadge, type ShownBadge } from "../badges";
+import {
+  BADGES,
+  badgeById,
+  FAR_FRIEND_KM,
+  FIRST_BATCH,
+  heldUntil,
+  stillHeld,
+  type BadgeCount,
+  type EarnedBadge,
+  type ShownBadge,
+} from "../badges";
 import { distanceKm } from "../geo";
 import { db } from "./db";
 import { nudge } from "./live";
@@ -9,7 +19,8 @@ import { declarations, reactions, roaches, userBadges, users, type UserRow } fro
 /**
  * Earning badges. Each is written down the moment it is earned, because what
  * earned it (touches, declarations, reactions) is deleted after 90 days.
- * Only an admin, or deleting the account, ever takes one away.
+ * Only an admin, or deleting the account, ever takes one away; a timed one
+ * (石棺里的苏醒) just stops counting once its days are over.
  */
 
 /** Give a player the badges they lack; a page they have open hears about it. Returns the new ones. */
@@ -64,8 +75,22 @@ export async function reactedTo(senderId: string) {
   await award(senderId, reached("responders", await respondersOf(senderId)));
 }
 
-/** A new account: the first players get 首批蟑螂 and their number, which is never given out twice. */
+/**
+ * 石棺里的苏醒 from now for SURVIVOR_DAYS: on signing up, or back after AWAY_DAYS
+ * away. Given again, it starts over and pops up again.
+ */
+export async function wakeUp(userId: string) {
+  const now = new Date();
+  await db
+    .insert(userBadges)
+    .values({ userId, badge: "survivor", earnedAt: now })
+    .onConflictDoUpdate({ target: [userBadges.userId, userBadges.badge], set: { earnedAt: now, seenAt: null } });
+  nudge([userId]);
+}
+
+/** A new account wakes up; the first players also get 首批蟑螂 and their number, which is never given out twice. */
 export async function signedUp(userId: string) {
+  await wakeUp(userId);
   const [row] = await db.execute<{ n: string }>(sql`select nextval('first_batch_serial') as n`);
   const serial = Number(row.n);
   if (serial > FIRST_BATCH) return;
@@ -93,12 +118,14 @@ export async function catchUpBadges() {
   }
 }
 
-/** The badges a player has, in the order the wall lists them; ids this code does not know are left out. */
+/** The badges a player holds, in the order the wall lists them; ids this code does not know, and timed ones run out, are left out. */
 export async function earnedBy(userId: string): Promise<EarnedBadge[]> {
   const rows = await db.select().from(userBadges).where(eq(userBadges.userId, userId));
   return BADGES.flatMap((b) => {
     const r = rows.find((x) => x.badge === b.id);
-    return r ? [{ id: b.id, serial: r.serial ?? undefined, at: r.earnedAt.getTime(), seen: Boolean(r.seenAt) }] : [];
+    if (!r || !stillHeld(b, r.earnedAt.getTime())) return [];
+    const at = r.earnedAt.getTime();
+    return [{ id: b.id, serial: r.serial ?? undefined, at, seen: Boolean(r.seenAt), until: heldUntil(b, at) }];
   });
 }
 
@@ -110,7 +137,8 @@ export async function shownBadges(people: UserRow[]) {
   for (const u of people) {
     const theirs = BADGES.flatMap((b) => {
       const r = rows.find((x) => x.userId === u.id && x.badge === b.id);
-      return r ? [r.serial ? { id: b.id, serial: r.serial } : { id: b.id }] : [];
+      if (!r || !stillHeld(b, r.earnedAt.getTime())) return [];
+      return [r.serial ? { id: b.id, serial: r.serial } : { id: b.id }];
     });
     const worn = theirs.some((b) => b.id === u.wornBadge) ? u.wornBadge : null;
     shown.set(u.id, { badges: theirs.sort((x, y) => Number(y.id === worn) - Number(x.id === worn)), worn });
@@ -122,11 +150,12 @@ export async function shownBadges(people: UserRow[]) {
 export async function wear(userId: string, badge: string | null) {
   if (badge !== null) {
     const [has] = await db
-      .select({ badge: userBadges.badge })
+      .select({ badge: userBadges.badge, earnedAt: userBadges.earnedAt })
       .from(userBadges)
       .where(and(eq(userBadges.userId, userId), eq(userBadges.badge, String(badge))))
       .limit(1);
-    if (!has || !badgeById(has.badge)) return false;
+    const b = has && badgeById(has.badge);
+    if (!b || !stillHeld(b, has.earnedAt.getTime())) return false;
   }
   await db.update(users).set({ wornBadge: badge }).where(eq(users.id, userId));
   return true;

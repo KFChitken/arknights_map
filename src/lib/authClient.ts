@@ -20,12 +20,16 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
 export const requestCode = (email: string) =>
   post<{ ok: true; devMailboxPort: string | null }>("/api/auth/request-code", { email });
 
-/** "signup" means the email is new and still needs the age check and consent. */
+/** "signup" means the email is new and still needs its ticks (src/lib/consent.ts). */
 export const verifyCode = (email: string, code: string) =>
   post<{ status: "ok" | "signup" }>("/api/auth/verify", { email, code });
 
-export const finishSignup = (birthYear: number, birthMonth: number, acceptPolicy: boolean) =>
-  post<{ status: "ok" }>("/api/auth/signup", { birthYear, birthMonth, acceptPolicy });
+export const finishSignup = (ticks: { adult: boolean; acceptPolicy: boolean; acceptCrossBorder: boolean }) =>
+  post<{ status: "ok" }>("/api/auth/signup", ticks);
+
+/** 隐私说明更新了: an older account agrees again. */
+export const reconsent = (ticks: { adult: boolean; acceptCrossBorder: boolean; acceptPublicPlace: boolean }) =>
+  post<{ ok: true }>("/api/auth/reconsent", ticks);
 
 export const signOut = () => post<{ ok: true }>("/api/auth/logout");
 

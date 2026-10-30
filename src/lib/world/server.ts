@@ -3,6 +3,7 @@ import type { Profile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { LngLat } from "../types";
 import {
+  ConsentNeeded,
   SignInNeeded,
   TooBusy,
   WorldError,
@@ -35,6 +36,7 @@ export class ServerWorld implements World {
     }
     const body = (await res.json().catch(() => null)) as { result?: T; error?: string } | null;
     if (res.status === 401) throw new SignInNeeded(body?.error ?? "请先登录。");
+    if (res.status === 428) throw new ConsentNeeded(body?.error ?? "隐私说明更新了，同意以后才能继续。");
     if (!res.ok) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body?.result as T;
   }
@@ -57,6 +59,7 @@ export class ServerWorld implements World {
   };
   saveProfile = (p: Profile) => this.call<Profile>("saveProfile", p);
   placeRoach = (target: PlaceTarget, at: LngLat) => this.call<OwnRoach[]>("placeRoach", target, at);
+  acceptPublicPlace = () => this.call<void>("acceptPublicPlace");
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);
   touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold);
   reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold);

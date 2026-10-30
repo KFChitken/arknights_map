@@ -30,7 +30,7 @@ async function askAfterRebuild(since: string | null, now: number) {
 async function player(email: string) {
   const [u] = await db
     .insert(users)
-    .values({ email, ageConfirmedAt: new Date(), policyAcceptedAt: new Date() })
+    .values({ email, policyAcceptedAt: new Date(), crossBorderAcceptedAt: new Date(), publicPlaceAcceptedAt: new Date() })
     .returning({ id: users.id });
   return u.id;
 }

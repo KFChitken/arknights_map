@@ -10,7 +10,6 @@ import { sessions, users, type UserRow } from "./schema";
 
 const SESSION_COOKIE = "sid";
 const SIGNUP_COOKIE = "signup";
-const AGE_COOKIE = "age_gate";
 const SIGNUP_MIN = 15;
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("base64url");
@@ -76,15 +75,6 @@ export async function readSignupProof(): Promise<string | null> {
 
 export async function clearSignupProof() {
   (await cookies()).delete(SIGNUP_COOKIE);
-}
-
-/** After a failed age check this browser cannot retry for a day. Nothing about the person is stored. */
-export async function ageGateClosed() {
-  return (await cookies()).get(AGE_COOKIE)?.value === sign("age-gate");
-}
-
-export async function closeAgeGate(req: NextRequest) {
-  (await cookies()).set(AGE_COOKIE, sign("age-gate"), { ...cookieBase(req), maxAge: 86_400 });
 }
 
 /** Development only: remember who you really are while stepping into demo players. */

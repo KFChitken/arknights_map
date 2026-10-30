@@ -4,7 +4,7 @@ import type { RoachAvatar, RoachColor } from "./types";
 export const REPORT_REASONS = {
   name: "名字不合适",
   spam: "骚扰刷屏",
-  minor: "可能不满 14 岁",
+  minor: "可能未成年",
   other: "其他",
 } as const;
 

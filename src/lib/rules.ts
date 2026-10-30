@@ -3,7 +3,13 @@
 /** The site's name as players see it. */
 export const SITE_NAME = "舟P地图";
 
-export const MIN_SIGNUP_AGE = 14;
+export const MIN_SIGNUP_AGE = 18;
+/**
+ * The last change to the privacy policy big enough to ask everyone again. Accounts
+ * that agreed before it see 「隐私说明更新了」 and do nothing others see until they
+ * agree (src/lib/server/consent.ts). Small wording fixes only change the page's date.
+ */
+export const POLICY_UPDATED_AT = new Date("2026-10-31T00:00+08:00");
 export const LOGIN_CODE_TTL_MIN = 10;
 export const LOGIN_CODE_COOLDOWN_S = 60;
 export const LOGIN_CODE_MAX_ATTEMPTS = 5;

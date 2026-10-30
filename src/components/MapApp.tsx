@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { deleteAccount, signOut } from "@/lib/authClient";
+import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
@@ -17,6 +17,7 @@ import { RoachFeedCopy } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
 import { ServerWorld } from "@/lib/world/server";
 import {
+  ConsentNeeded,
   SignInNeeded,
   TooBusy,
   WorldError,
@@ -34,6 +35,7 @@ import {
   type World,
 } from "@/lib/world/types";
 import { BadgeWall, NewBadge } from "./app/Badges";
+import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import { HomecomingSheet } from "./app/Homecoming";
@@ -83,6 +85,10 @@ type Panel =
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
   | { kind: "login"; reason?: string }
+  /** 隐私说明更新了; then: what was going to open first */
+  | { kind: "consent"; then?: Panel | null }
+  /** consent: the player's first roach, so the card asks them to agree its spot is public */
+  | { kind: "placeConfirm"; target: PlaceTarget; spot: LngLat; fly: boolean; consent: boolean }
   // open to everyone
   | { kind: "hot" }
   // for visitors who have not signed in
@@ -258,7 +264,11 @@ export default function MapApp() {
         setLook(loadLook());
         setBasemap(b);
         // Back after a day or more: a summary first, which says what is unread (not during the tutorial)
-        if (m?.homecoming && !tutorialStep(m, loadProgress(m.id))) setPanel({ kind: "homecoming", homecoming: m.homecoming, items });
+        const home: Panel | null =
+          m?.homecoming && !tutorialStep(m, loadProgress(m.id)) ? { kind: "homecoming", homecoming: m.homecoming, items } : null;
+        // an updated privacy policy before anything else
+        if (m?.mustReconsent) setPanel({ kind: "consent", then: home });
+        else if (home) setPanel(home);
         // What arrived since the last visit
         else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
         // the page reloaded while the player went to read their login code
@@ -400,6 +410,7 @@ export default function MapApp() {
       return result;
     } catch (e) {
       if (e instanceof SignInNeeded) setPanel({ kind: "login", reason: "登录后才能这样做。" });
+      else if (e instanceof ConsentNeeded) setPanel({ kind: "consent" });
       else if (e instanceof WorldError) setToast(e.message);
       else {
         console.error(e);
@@ -422,6 +433,7 @@ export default function MapApp() {
 
   const startPlacing = (target: PlaceTarget) => {
     // say so before they pick a spot, not after
+    if (me?.mustReconsent) return setPanel({ kind: "consent" });
     if (target.kind === "move" && me && me.movesLeft <= 0) {
       setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
       return;
@@ -433,19 +445,29 @@ export default function MapApp() {
 
   const placeAt = async (p: LngLat, fly: boolean) => {
     if (!placing) return;
-    const done = await act((w) => w.placeRoach(placing.target, p));
+    // the first new roach waits for the player to agree that its spot is public
+    if (placing.target.kind !== "move" && !me?.agreedPublicPlace) {
+      return setPanel({ kind: "placeConfirm", target: placing.target, spot: p, fly, consent: true });
+    }
+    await put(placing.target, p, fly);
+  };
+
+  /** Put a roach down (agreeing first, from the card) and say so; the first main roach opens the tutorial. */
+  const put = async (target: PlaceTarget, p: LngLat, fly: boolean, agree = false) => {
+    if (agree && !(await act((w) => w.acceptPublicPlace().then(() => true)))) return;
+    const done = await act((w) => w.placeRoach(target, p));
     if (!done) return;
     setPlacing(null);
     const m = await loadMe();
     if (fly) setFocus({ lng: p.lng, lat: p.lat, zoom: 13, nonce: Date.now() });
     setToast(
-      placing.target.kind === "move"
+      target.kind === "move"
         ? `挪好啦！今天还能挪 ${m?.movesLeft ?? 0} 次。`
-        : placing.target.kind === "clone"
+        : target.kind === "clone"
           ? "克隆体放好啦！等待其他舟P发现中 |ω・）"
           : "放好啦！等待其他舟P发现中 |ω・）",
     );
-    if (placing.target.kind === "main") startTutorial(m);
+    if (target.kind === "main") startTutorial(m);
   };
 
   /** Right after a newcomer's first main roach is down, the tutorial opens on its first step. */
@@ -640,7 +662,8 @@ export default function MapApp() {
     const { me: m, items } = await load();
     const main = m?.roaches.find((r) => r.slot === 0);
     if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
-    if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+    if (m?.mustReconsent) setPanel({ kind: "consent" });
+    else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     else setToast("切换好了，现在用这个身份看地图。");
   };
 
@@ -651,22 +674,13 @@ export default function MapApp() {
     const { me: m, items } = await load();
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
+    if (m?.mustReconsent) return setPanel({ kind: "consent" });
     // a newcomer who picked a spot before signing in puts their roach there, once they confirm
-    if (m && !mainRoach && spot) return placeAtPreview(spot);
+    if (m && !mainRoach && spot) {
+      return setPanel({ kind: "placeConfirm", target: { kind: "main" }, spot, fly: true, consent: !m.agreedPublicPlace });
+    }
     if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
-  };
-
-  const placeAtPreview = async (spot: LngLat) => {
-    if (!window.confirm("把蟑螂放在刚才选的地方吗？别人会看到这个位置，请不要放在家门口。")) {
-      return startPlacing({ kind: "main" });
-    }
-    const done = await act((w) => w.placeRoach({ kind: "main" }, spot));
-    if (!done) return;
-    const m = await loadMe();
-    setFocus({ lng: spot.lng, lat: spot.lat, zoom: 13, nonce: Date.now() });
-    setToast("放好啦！等待其他舟P发现中 |ω・）");
-    startTutorial(m);
   };
 
   // ---- the tutorial's steps ----
@@ -702,6 +716,18 @@ export default function MapApp() {
     if (kind === "delete" && feedRef.current.forget([...ownIds])) setFeedRoaches(feedRef.current.roaches);
     await load();
     setToast(kind === "delete" ? "账号和数据都删除了。" : "已经退出登录。");
+  };
+
+  const agreeAgain = async (ticks: Parameters<typeof reconsent>[0], then: Panel | null) => {
+    try {
+      await reconsent(ticks);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "出了点问题，再试一次吧。");
+      return;
+    }
+    await loadMe();
+    setPanel(then);
+    setToast("谢谢！可以继续玩啦。");
   };
 
   const reset = async () => {
@@ -759,7 +785,8 @@ export default function MapApp() {
   const mapProps = {
     roaches: mapRoaches,
     mine: me?.roaches ?? [],
-    ghost: me ? null : preview,
+    // where the roach would go: a visitor's pick, or the spot a card is asking about
+    ghost: me ? (panel?.kind === "placeConfirm" ? panel.spot : null) : preview,
     myAvatar,
     myColor,
     look,
@@ -933,6 +960,27 @@ export default function MapApp() {
             onSafety={() => setPanel({ kind: "safety", target: p.target, who: p.profile.displayName, back: p })}
             onBack={() => setPanel(p.back)}
             onClose={() => setPanel(null)}
+          />
+        );
+      case "consent":
+        return (
+          <ConsentSheet
+            onAgree={(ticks) => agreeAgain(ticks, p.then ?? null)}
+            onSignOut={() => leave("signOut")}
+            onDelete={() => leave("delete")}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "placeConfirm":
+        return (
+          <PlaceConfirm
+            consent={p.consent}
+            onConfirm={() => {
+              setPanel(null);
+              put(p.target, p.spot, p.fly, p.consent);
+            }}
+            // still placing: back to picking a spot; a visitor's spot from before signing in: start picking
+            onRethink={() => (placing ? setPanel(null) : startPlacing({ kind: "main" }))}
           />
         );
       case "radar":
@@ -1140,7 +1188,12 @@ export default function MapApp() {
       )}
       {/* above the tutorial card while it is showing, so the two never cover each other */}
       {toast && <div className={`toast ${coachShown ? "high" : ""}`}>{toast}</div>}
-      <p className="disclaimer">非官方同人项目 · 与鹰角网络无关</p>
+      <p className="disclaimer">
+        非官方同人项目 · 与鹰角网络无关 ·{" "}
+        <a href="/privacy#contact" target="_blank" rel="noreferrer">
+          联系与举报
+        </a>
+      </p>
     </main>
   );
 }

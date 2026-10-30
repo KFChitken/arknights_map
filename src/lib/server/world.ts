@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
+import { TICK_MISSING } from "../consent";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
@@ -50,8 +51,9 @@ import {
   type RadarScan,
   type TouchResult,
 } from "../world/types";
-import { award, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges } from "./badges";
+import { award, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
+import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
 import { nudge } from "./live";
@@ -194,14 +196,20 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
 
 // ---- the world, for one player ----
 
+/** The first day visits were recorded (users.last_seen_on) */
+const VISITS_SINCE = "2026-10-28";
+
 export async function me(userId: string): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
-  // u still holds the day of the visit before this one
+  // u still holds the day of the visit before this one; with none recorded, away since visits were first
+  // recorded or since signing up, whichever is later, so a brand-new account is not away at all
   const today = beijingDate();
-  const daysAway = u.lastSeenOn ? Math.round((beijingMidnight(today) - beijingMidnight(u.lastSeenOn)) / DAY) : 0;
+  const signedUpOn = beijingDate(u.createdAt.getTime());
+  const lastSeen = u.lastSeenOn ?? (signedUpOn > VISITS_SINCE ? signedUpOn : VISITS_SINCE);
+  const daysAway = Math.round((beijingMidnight(today) - beijingMidnight(lastSeen)) / DAY);
   if (u.lastSeenOn !== today) await db.update(users).set({ lastSeenOn: today }).where(eq(users.id, u.id));
-  if (daysAway >= AWAY_DAYS) await award(u.id, ["survivor"]);
+  if (daysAway >= AWAY_DAYS) await wakeUp(u.id);
   const mine = await ownRoaches(u.id);
   const badges = await earnedBy(u.id);
   const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
@@ -223,7 +231,9 @@ export async function me(userId: string): Promise<Me | null> {
     wornBadge: badges.some((b) => b.id === u.wornBadge) ? u.wornBadge : null,
     counts: { friends: u.friendsEver, responders: await respondersOf(u.id) },
     // a whole day or more away, so not just back the next morning
-    homecoming: u.lastSeenOn && daysAway >= 2 ? await homecoming(u.id, mine, u.lastSeenOn, daysAway) : null,
+    homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
+    mustReconsent: mustReconsent(u),
+    agreedPublicPlace: agreedPublicPlace(u),
   };
 }
 
@@ -274,6 +284,8 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
 
 export async function placeRoach(userId: string, target: PlaceTarget, spot: LngLat): Promise<OwnRoach[]> {
   const at = checkSpot(spot);
+  const u = await userById(userId);
+  if (!u) throw new WorldError("找不到这个账号了。");
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   const main = mine.find((r) => r.slot === 0);
   let slot: number;
@@ -294,6 +306,8 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   } else {
     throw new WorldError("不知道要放哪只蟑螂。");
   }
+  // A new roach shows its exact spot to everyone, which the player agrees to once, on a card before the first
+  if (!existing && !agreedPublicPlace(u)) throw new WorldError(TICK_MISSING.acceptPublicPlace);
   // Each move is a row the radar reads, so they are rationed; taking a roach back and putting it down again counts too
   if (existing && (await recentMoves(userId, "move")) >= MOVES_PER_DAY) {
     throw new WorldError(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);

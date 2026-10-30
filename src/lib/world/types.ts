@@ -17,8 +17,10 @@ export interface World {
    */
   roachFeed(since: string | null): Promise<RoachFeedUpdate>;
   saveProfile(profile: Profile): Promise<Profile>;
-  /** Place or move a roach. Returns the owner's roaches afterwards. */
+  /** Place or move a roach. Returns the owner's roaches afterwards. A new one needs acceptPublicPlace first. */
   placeRoach(target: PlaceTarget, at: LngLat): Promise<OwnRoach[]>;
+  /** Agree, once, that everyone sees exactly where your roaches are. */
+  acceptPublicPlace(): Promise<void>;
   /** Taking back the main roach takes back the clones too. */
   removeRoach(roachId: string): Promise<OwnRoach[]>;
   /** Touch someone else's roach by its public id. */
@@ -131,6 +133,10 @@ export type Me = {
   counts: { friends: number; responders: number };
   /** Only on the first visit of a day that comes after at least one whole day away */
   homecoming: Homecoming | null;
+  /** Agreed to an older privacy policy: 「隐私说明更新了」 comes first, and nothing others see works until they agree */
+  mustReconsent: boolean;
+  /** Agreed that everyone sees exactly where their roaches are; asked before the first one goes down */
+  agreedPublicPlace: boolean;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */
@@ -187,6 +193,9 @@ export class WorldError extends Error {}
 
 /** The action needs a signed-in player. */
 export class SignInNeeded extends WorldError {}
+
+/** The player has to agree to the updated privacy policy first. */
+export class ConsentNeeded extends WorldError {}
 
 /** The server is busy right now; try again after retryAfterS seconds. */
 export class TooBusy extends WorldError {

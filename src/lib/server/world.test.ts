@@ -1,18 +1,20 @@
 import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Declaration } from "../declarations";
-import { FIRST_BATCH } from "../badges";
+import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
+import { POLICY_UPDATED_AT } from "../rules";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
 import { isBanned } from "./account";
 import { openCases, resolveCase, retentionStats, setBadge } from "./admin";
-import { award, catchUpBadges, markBadgesSeen, signedUp, wear } from "./badges";
+import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
+import { acceptPublicPlace, agreeAgain } from "./consent";
 import { computeHotList } from "./hotList";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
@@ -76,12 +78,19 @@ function as(id: string) {
 }
 type Player = ReturnType<typeof as>;
 
+/** A player who ticked everything: at sign-up, and before their first roach. */
 async function signUp(email: string) {
+  const now = new Date();
   const [u] = await db
     .insert(users)
-    .values({ email, ageConfirmedAt: new Date(), policyAcceptedAt: new Date() })
+    .values({ email, ageConfirmedAt: now, policyAcceptedAt: now, crossBorderAcceptedAt: now, publicPlaceAcceptedAt: now })
     .returning({ id: users.id });
   return as(u.id);
+}
+
+async function userRow(id: string) {
+  const [u] = await db.select().from(users).where(eq(users.id, id));
+  return u;
 }
 
 async function demo(key: string) {
@@ -128,6 +137,39 @@ beforeEach(async () => {
 });
 
 describe("server world", () => {
+  it("asks before a player's first new roach that its spot is public, but not for moves", async () => {
+    const shy = await signUp("shy@example.com");
+    await db.update(users).set({ publicPlaceAcceptedAt: null }).where(eq(users.id, shy.id));
+    expect((await shy.me()).agreedPublicPlace).toBe(false);
+    await expect(shy.placeRoach({ kind: "main" }, PEOPLES_SQUARE)).rejects.toThrow("公开蟑螂位置");
+    const agreedAt = async () => (await db.select().from(users).where(eq(users.id, shy.id)))[0].publicPlaceAcceptedAt;
+    await acceptPublicPlace(shy.id);
+    const first = await agreedAt();
+    // agreeing again keeps the first time
+    await acceptPublicPlace(shy.id);
+    expect(await agreedAt()).toEqual(first);
+    const [main] = await shy.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    expect((await shy.me()).agreedPublicPlace).toBe(true);
+    // a move never asks; a new clone does
+    await db.update(users).set({ publicPlaceAcceptedAt: null }).where(eq(users.id, shy.id));
+    await shy.placeRoach({ kind: "move", roachId: main.id }, TOKYO);
+    await expect(shy.placeRoach({ kind: "clone" }, PEOPLES_SQUARE)).rejects.toThrow("公开蟑螂位置");
+  });
+
+  it("asks accounts that agreed to an older privacy policy to agree again, but never demo players", async () => {
+    const old = await signUp("old@example.com");
+    const before = new Date(POLICY_UPDATED_AT.getTime() - 86_400_000);
+    await db.update(users).set({ policyAcceptedAt: before, crossBorderAcceptedAt: null, publicPlaceAcceptedAt: null }).where(eq(users.id, old.id));
+    expect(await old.me()).toMatchObject({ mustReconsent: true, agreedPublicPlace: false });
+    // signed up on the old page after the date: still no separate consent, so still asked
+    await db.update(users).set({ policyAcceptedAt: new Date() }).where(eq(users.id, old.id));
+    expect((await old.me()).mustReconsent).toBe(true);
+    await agreeAgain(old.id);
+    expect(await old.me()).toMatchObject({ mustReconsent: false, agreedPublicPlace: true });
+    expect((await me.me()).mustReconsent).toBe(false);
+    expect((await (await demo("t1")).me()).mustReconsent).toBe(false);
+  });
+
   it("starts with the testers and the passers-by, and no roach of your own", async () => {
     expect((await me.me()).roaches).toEqual([]);
     expect(await me.roaches()).toHaveLength(TOTAL);
@@ -467,19 +509,40 @@ describe("server world", () => {
     expect(await badgeIds(me)).toEqual(["spokesperson"]);
   });
 
-  it("numbers the first players to sign up, never giving a number out twice", async () => {
+  it("numbers the first players to sign up, never giving a number out twice, and wakes every newcomer for a week", async () => {
     await db.execute(sql`select setval('first_batch_serial', 1, false)`);
     await signedUp(me.id);
     const second = await signUp("second@example.com");
     await signedUp(second.id);
-    expect((await second.me()).badges).toMatchObject([{ id: "firstbatch", serial: 2 }]);
+    expect((await second.me()).badges).toMatchObject([{ id: "firstbatch", serial: 2 }, { id: "survivor" }]);
     await db.execute(sql`select setval('first_batch_serial', ${FIRST_BATCH}, true)`);
     const late = await signUp("late@example.com");
     await signedUp(late.id);
-    expect((await late.me()).badges).toEqual([]);
+    expect((await late.me()).badges.map((b) => b.id)).toEqual(["survivor"]);
   });
 
-  it("welcomes a player back after a whole day away, and wakes 石棺里的苏醒 after 30", async () => {
+  it("holds 石棺里的苏醒 for a week only, then gives it again on the next return", async () => {
+    await wakeUp(me.id);
+    const [held] = (await me.me()).badges;
+    expect(held).toMatchObject({ id: "survivor", seen: false });
+    expect(held.until! - held.at).toBe(SURVIVOR_DAYS * 86_400_000);
+    expect(await wear(me.id, "survivor")).toBe(true);
+    expect((await shownBadges([await userRow(me.id)])).get(me.id)?.worn).toBe("survivor");
+    await markBadgesSeen(me.id, ["survivor"]);
+
+    // a week later it is gone: not held, not worn, not shown, not wearable
+    const weekAgo = new Date(Date.now() - SURVIVOR_DAYS * 86_400_000 - 1000);
+    await db.update(userBadges).set({ earnedAt: weekAgo }).where(eq(userBadges.userId, me.id));
+    expect(await me.me()).toMatchObject({ badges: [], wornBadge: null });
+    expect((await shownBadges([await userRow(me.id)])).get(me.id)).toEqual({ badges: [], worn: null });
+    expect(await wear(me.id, "survivor")).toBe(false);
+
+    // back after another long time away: held again, and shown as new
+    await db.update(users).set({ lastSeenOn: beijingDate(Date.now() - 20 * 86_400_000) }).where(eq(users.id, me.id));
+    expect((await me.me()).badges).toMatchObject([{ id: "survivor", seen: false }]);
+  });
+
+  it("welcomes a player back after a whole day away, and wakes 石棺里的苏醒 after 14", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await db.delete(moves);
     const daysAgo = (n: number) => beijingDate(Date.now() - n * 86_400_000);
@@ -497,10 +560,30 @@ describe("server world", () => {
     // once a day
     expect((await me.me()).homecoming).toBeNull();
 
-    await db.update(users).set({ lastSeenOn: daysAgo(31) }).where(eq(users.id, me.id));
+    await db.update(users).set({ lastSeenOn: daysAgo(13) }).where(eq(users.id, me.id));
+    expect((await me.me()).badges).toEqual([]);
+    await db.update(users).set({ lastSeenOn: daysAgo(14) }).where(eq(users.id, me.id));
     const risen = await me.me();
-    expect(risen.homecoming?.daysAway).toBe(31);
+    expect(risen.homecoming?.daysAway).toBe(14);
     expect(risen.badges).toMatchObject([{ id: "survivor", seen: false }]);
+  });
+
+  it("counts a player with no recorded visit as away since 10/28, or since signing up if that is later", async () => {
+    vi.useFakeTimers({ now: new Date("2026-11-20T12:00+08:00"), toFake: ["Date"] });
+    try {
+      await db.update(users).set({ createdAt: new Date("2026-09-01T12:00+08:00"), lastSeenOn: null }).where(eq(users.id, me.id));
+      const back = await me.me();
+      expect(back.homecoming?.daysAway).toBe(23);
+      expect(back.badges.map((b) => b.id)).toContain("survivor");
+      // signed up yesterday and back today: not away
+      const fresh = await signUp("fresh@example.com");
+      await db.update(users).set({ createdAt: new Date("2026-11-19T12:00+08:00"), lastSeenOn: null }).where(eq(users.id, fresh.id));
+      const next = await fresh.me();
+      expect(next.homecoming).toBeNull();
+      expect(next.badges.map((b) => b.id)).not.toContain("survivor");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows badges on profile cards, the worn one first, and lets you wear only your own", async () => {

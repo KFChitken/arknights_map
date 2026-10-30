@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { finishSignup, requestCode, verifyCode } from "@/lib/authClient";
+import { ADULT_TICK, CROSS_BORDER_TICK } from "@/lib/consent";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_TTL_MIN, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
@@ -34,15 +35,15 @@ function keepPending(p: Pending | null) {
 
 const waitAfter = (sentAt: number) => Math.max(0, LOGIN_CODE_COOLDOWN_S - Math.floor((Date.now() - sentAt) / 1000));
 
-/** Email + 6-digit code sign-in; new players add their birth month and consent once. */
+/** Email + 6-digit code sign-in; new players tick their age and consents once. */
 export default function LoginSheet({ reason, onDone, onClose }: { reason?: string; onDone: () => void; onClose: () => void }) {
   const [resumed] = useState(pendingLogin);
   const [step, setStep] = useState<Step>(resumed ? "code" : "email");
   const [email, setEmail] = useState(resumed?.email ?? "");
   const [code, setCode] = useState("");
-  const [year, setYear] = useState("");
-  const [month, setMonth] = useState("");
+  const [adult, setAdult] = useState(false);
   const [agree, setAgree] = useState(false);
+  const [abroad, setAbroad] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mailbox, setMailbox] = useState<string | null>(null);
@@ -90,12 +91,10 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
   const signup = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
-      await finishSignup(Number(year), Number(month), agree);
+      await finishSignup({ adult, acceptPolicy: agree, acceptCrossBorder: abroad });
       onDone();
     });
   };
-
-  const thisYear = new Date().getFullYear();
 
   // closed on purpose, so a reload should not bring it back
   const close = () => {
@@ -123,7 +122,11 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
           <button className="primary wide" disabled={busy || !email.trim()}>
             {busy ? "发送中…" : "发送验证码"}
           </button>
-          <p className="hint">不用密码，每次用邮件里的 6 位验证码登录。第一次登录会自动注册。</p>
+          <p className="hint">
+            不用密码，每次用邮件里的 6 位验证码登录。第一次登录会自动注册。
+            <br />
+            验证码邮件由 Resend USA 代发，会用到你的邮箱地址。
+          </p>
         </form>
       )}
 
@@ -179,36 +182,33 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
       {step === "signup" && (
         <form className="login" onSubmit={signup}>
           <p className="hint" style={{ marginTop: 0 }}>
-            邮箱验证好了，还差一步。出生年月只用来确认年龄，不会保存。
+            邮箱验证好了，还差一步。
           </p>
-          <div className="birth">
-            <select value={year} onChange={(e) => setYear(e.target.value)} required aria-label="出生年份">
-              <option value="">出生年份</option>
-              {Array.from({ length: 80 }, (_, i) => thisYear - i).map((y) => (
-                <option key={y} value={y}>
-                  {y} 年
-                </option>
-              ))}
-            </select>
-            <select value={month} onChange={(e) => setMonth(e.target.value)} required aria-label="出生月份">
-              <option value="">月份</option>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {m} 月
-                </option>
-              ))}
-            </select>
+          <div className="ticks">
+            <label className="check">
+              <input type="checkbox" checked={adult} onChange={(e) => setAdult(e.target.checked)} />
+              <span>{ADULT_TICK}</span>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+              <span>
+                我已阅读并同意{" "}
+                <a href="/privacy" target="_blank" rel="noreferrer">
+                  隐私说明
+                </a>
+              </span>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={abroad} onChange={(e) => setAbroad(e.target.checked)} />
+              <span>
+                {CROSS_BORDER_TICK}{" "}
+                <a href="/privacy#abroad" target="_blank" rel="noreferrer">
+                  详情
+                </a>
+              </span>
+            </label>
           </div>
-          <label className="check">
-            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>
-              我已阅读并同意{" "}
-              <a href="/privacy" target="_blank" rel="noreferrer">
-                隐私说明
-              </a>
-            </span>
-          </label>
-          <button className="primary wide" disabled={busy || !year || !month || !agree}>
+          <button className="primary wide" disabled={busy || !adult || !agree || !abroad}>
             {busy ? "注册中…" : "完成注册"}
           </button>
         </form>

@@ -4,6 +4,7 @@
 import { useState } from "react";
 import {
   badgeById,
+  daysLeft,
   lockedText,
   quoteOf,
   serialText,
@@ -66,9 +67,9 @@ export function TheirBadges({ badges, worn }: { badges: ShownBadge[]; worn?: str
   );
 }
 
-/** 「我的称号 4/9 ›」 at the top of 我的资料. */
+/** 「我的称号 4/9 ›」 at the top of 我的资料; a timed badge is not counted. */
 export function MyBadgesRow({ badges, worn, onOpen }: { badges: EarnedBadge[]; worn: string | null; onOpen: () => void }) {
-  const list = wallBadges(new Set(badges.map((b) => b.id)));
+  const list = wallBadges(new Set(badges.map((b) => b.id))).filter((b) => !b.days);
   const got = list.filter((b) => badges.some((e) => e.id === b.id)).length;
   const wearing = badges.find((b) => b.id === worn);
   return (
@@ -101,7 +102,10 @@ const LOCK = (
   </svg>
 );
 
-/** 我的称号: every badge there is to get, by series. Tap an earned one to wear it, or tap the worn one to take it off. */
+/**
+ * 我的称号: every badge there is to get, by series. Tap an earned one to wear it, or tap the worn one
+ * to take it off. A timed badge shows only while held, and is left out of the counts.
+ */
 export function BadgeWall({
   me,
   onWear,
@@ -115,7 +119,8 @@ export function BadgeWall({
 }) {
   const earned = new Map(me.badges.map((b) => [b.id, b]));
   const list = wallBadges(new Set(earned.keys()));
-  const got = list.filter((b) => earned.has(b.id)).length;
+  const tally = list.filter((b) => !b.days);
+  const got = tally.filter((b) => earned.has(b.id)).length;
   const worn = me.wornBadge ? earned.get(me.wornBadge) : undefined;
   return (
     <Sheet title="我的称号" onBack={onBack} onClose={onClose}>
@@ -123,21 +128,22 @@ export function BadgeWall({
         <div className="wall-tally">
           <span className="wall-label">COLLECTED</span>
           <span>
-            <b className="wall-count">{got}</b> / {list.length} 已获得
+            <b className="wall-count">{got}</b> / {tally.length} 已获得
           </span>
           <div className="wall-bar" aria-hidden="true">
-            <div style={{ width: `${Math.round((100 * got) / list.length)}%` }} />
+            <div style={{ width: `${Math.round((100 * got) / tally.length)}%` }} />
           </div>
         </div>
         <div className="wall-worn">
           <span>正在佩戴</span>
           {worn ? <BadgePill badge={worn} /> : <span className="wall-none">还没戴</span>}
-          <span>{got ? "点一枚已获得的换上" : "拿到称号就能戴上"}</span>
+          <span>{earned.size ? "点一枚已获得的换上" : "拿到称号就能戴上"}</span>
         </div>
       </div>
 
       {SERIES.map((series) => {
         const mine = list.filter((b) => b.series === series.id);
+        const kept = mine.filter((b) => !b.days);
         if (!mine.length) return null;
         return (
           <section key={series.id}>
@@ -145,7 +151,7 @@ export function BadgeWall({
               <span className="diamond" aria-hidden="true" />
               <h3>{series.name}</h3>
               <span className="series-count">
-                {mine.filter((b) => earned.has(b.id)).length}/{mine.length}
+                {kept.filter((b) => earned.has(b.id)).length}/{kept.length}
               </span>
             </div>
             <div className="badge-grid three">
@@ -160,11 +166,11 @@ export function BadgeWall({
                       aria-label={on ? `取下${b.name}` : `戴上${b.name}`}
                       onClick={() => onWear(on ? null : b.id)}
                     >
-                      {on && <span className="cell-tag">佩戴中</span>}
+                      {on ? <span className="cell-tag">佩戴中</span> : e.until && <span className="cell-tag timed">限时</span>}
                       <img src={art(b.id, 54)} alt="" width={54} height={54} />
                       <span className="badge-name">{b.name}</span>
                       <span className={e.serial ? "cell-note serial" : "cell-note"}>
-                        {e.serial ? serialText(e.serial) : `${day(e.at)} 获得`}
+                        {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : `${day(e.at)} 获得`}
                       </span>
                     </button>
                   );

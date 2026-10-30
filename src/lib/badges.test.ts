@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BADGES, badgeById, lockedText, nextBadge, quoteOf, serialText, wallBadges } from "./badges";
+import { BADGES, badgeById, daysLeft, heldUntil, lockedText, nextBadge, quoteOf, serialText, stillHeld, wallBadges } from "./badges";
 import { SITE_NAME } from "./rules";
 
 const none = { friends: 0, responders: 0 };
@@ -19,7 +19,20 @@ describe("badges", () => {
     expect(wallBadges(new Set(), during).map((b) => b.id)).toContain("half2026");
     expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("half2026");
     expect(wallBadges(new Set(["half2026"]), after).map((b) => b.id)).toContain("half2026");
-    expect(wallBadges(new Set(), after)).toHaveLength(8);
+    expect(wallBadges(new Set(), after)).toHaveLength(7);
+    // the timed one only while it is held
+    expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("survivor");
+    expect(wallBadges(new Set(["survivor"]), after).map((b) => b.id)).toContain("survivor");
+  });
+
+  it("holds a timed badge for its days, and counts what is left in whole days", () => {
+    const survivor = badgeById("survivor")!;
+    const at = Date.parse("2026-11-01T12:00+08:00");
+    expect(stillHeld(survivor, at, at + 6.9 * 86_400_000)).toBe(true);
+    expect(stillHeld(survivor, at, at + 7 * 86_400_000)).toBe(false);
+    expect(stillHeld(badgeById("beta")!, at, at + 999 * 86_400_000)).toBe(true);
+    expect(daysLeft(heldUntil(survivor, at)!, at)).toBe("还剩 7 天");
+    expect(daysLeft(heldUntil(survivor, at)!, at + 6.5 * 86_400_000)).toBe("还剩 1 天");
   });
 
   it("words numbers, quotes and progress", () => {
