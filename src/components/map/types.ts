@@ -8,6 +8,8 @@ export type MapViewProps = {
   roaches: PublicRoach[];
   /** Your own roaches at their true positions */
   mine: OwnRoach[];
+  /** Your main roach lies asleep (摄入酒精) */
+  mineAsleep: boolean;
   /** Where a visitor is trying out placing a roach: drawn faded in your own look, sent nowhere */
   ghost?: LngLat | null;
   myAvatar: RoachAvatar;

@@ -185,28 +185,35 @@ function Retention() {
 }
 
 type NameHit = { id: string; name: string; anonymous: boolean };
+type NameList = { total: number; found: number; words: NameWord[]; hits: NameHit[] };
 
 /**
- * 名字黑名单: the words no name may contain (or be, marked 「=」), and the names in use
- * that they block now, to clear by hand. The rules in src/lib/nameRules.ts apply as well.
+ * 名字黑名单: the words no name may contain (or be, marked 「=」), searchable since the list
+ * runs to thousands, and the names in use that they block now, to clear by hand. The
+ * rules in src/lib/nameRules.ts apply as well.
  */
 function NameList() {
-  const [list, setList] = useState<{ words: NameWord[]; hits: NameHit[] } | null>(null);
+  const [list, setList] = useState<NameList | null>(null);
+  const [search, setSearch] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const load = useCallback(() => {
-    call<{ words: NameWord[]; hits: NameHit[] }>("nameWords")
+  const load = useCallback((q: string) => {
+    call<NameList>("nameWords", q)
       .then(setList)
       .catch((e) => setNote(e instanceof Error ? e.message : "出了点问题。"));
   }, []);
-  useEffect(load, [load]);
+  // a moment after typing stops, not on every key
+  useEffect(() => {
+    const t = window.setTimeout(() => load(search), 300);
+    return () => window.clearTimeout(t);
+  }, [search, load]);
 
   const run = async (fn: () => Promise<string>) => {
     setBusy(true);
     try {
       setNote(await fn());
-      load();
+      load(search);
     } catch (e) {
       setNote(e instanceof Error ? e.message : "出了点问题。");
     }
@@ -218,6 +225,14 @@ function NameList() {
       setText("");
       return `加好了 ${n} 个词。`;
     });
+  const removeAll = () => {
+    if (!window.confirm("把框里的词都从名单上删掉？")) return;
+    run(async () => {
+      const n = await call<number>("removeNameWords", text);
+      setText("");
+      return `删掉了 ${n} 个词。`;
+    });
+  };
   const remove = (w: NameWord) => run(async () => (await call("removeNameWord", w.word), `删掉了「${w.word}」。`));
   const clear = (h: NameHit) => {
     if (!window.confirm(`清掉「${h.name}」这个名字，把 TA 改成匿名？`)) return;
@@ -226,7 +241,7 @@ function NameList() {
 
   return (
     <section className="admin-case">
-      <h2>名字黑名单 · {list?.words.length ?? "…"} 个词</h2>
+      <h2>名字黑名单 · {list?.total ?? "…"} 个词</h2>
       <p className="hint">
         存资料时名字里出现这些词就存不了（前面带「=」的只在整个名字就是这个词时才挡）。比对前去掉空格和符号、全角转半角、英文转小写，繁体不会自动转。
       </p>
@@ -235,6 +250,16 @@ function NameList() {
         {CODE_WORDS.map((w) => (w.whole ? `=${w.word}` : w.word)).join("、")}
         ；还有网址、QQ/微信号和 6 位以上的数字。
       </p>
+      <label className="field">
+        找词
+        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="输入要找的字" />
+      </label>
+      {list && (
+        <p className="hint">
+          {search.trim() ? `找到 ${list.found} 个` : "最新加的"}
+          {list.found > list.words.length ? `，下面只列出前 ${list.words.length} 个` : ""}
+        </p>
+      )}
       {list && (
         <div className="word-chips">
           {list.words.map((w) => (
@@ -248,12 +273,15 @@ function NameList() {
         </div>
       )}
       <label className="field">
-        批量添加（一行一个，前面加 = 表示整名比对）
+        批量添加或删除（一行一个，前面加 = 表示整名比对）
         <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       </label>
       <div className="account-actions">
         <button className="pill" disabled={busy || !text.trim()} onClick={add}>
-          添加
+          批量添加
+        </button>
+        <button className="pill danger-pill" disabled={busy || !text.trim()} onClick={removeAll}>
+          批量删除
         </button>
       </div>
       {note && <p className="admin-note">{note}</p>}

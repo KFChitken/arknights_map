@@ -43,6 +43,7 @@ type MassPoint = {
   heading: number;
   clone: boolean;
   friend: boolean;
+  asleep: boolean;
   seed: number;
 };
 
@@ -50,13 +51,17 @@ const LOOKS = ROACH_AVATARS.length * ROACH_COLORS.length;
 const CARTOON_STYLES = LOOKS + 1;
 const REAL_STYLES = HEADINGS.length * 2;
 const REAL_POSE = REAL_STYLES * 2;
+/** Where the sleeping icons start in each look's style list, after the awake ones */
+const asleepFrom = (look: RoachStyle) => (look === "real" ? REAL_POSE * LEG_FRAMES : CARTOON_STYLES * 2);
+/** The batch the crawl never moves: sleeping roaches lie still */
+const STILL = MASS_GROUPS;
 
 function massGroups(roaches: PublicRoach[]): MassPoint[][] {
-  const groups: MassPoint[][] = Array.from({ length: MASS_GROUPS }, () => []);
+  const groups: MassPoint[][] = Array.from({ length: MASS_GROUPS + 1 }, () => []);
   for (const r of roaches) {
     const [lng, lat] = toGcj(r);
     const t = roachTraits(r.id, MASS_GROUPS, HEADINGS.length);
-    groups[t.group].push({
+    groups[r.asleep ? STILL : t.group].push({
       lng,
       lat,
       cos: Math.cos((lat * Math.PI) / 180),
@@ -65,6 +70,7 @@ function massGroups(roaches: PublicRoach[]): MassPoint[][] {
       heading: t.headingIndex,
       clone: r.clone,
       friend: r.friend,
+      asleep: Boolean(r.asleep),
       seed: t.seed,
     });
   }
@@ -74,6 +80,7 @@ function massGroups(roaches: PublicRoach[]): MassPoint[][] {
 }
 
 function styleIndex(p: MassPoint, look: RoachStyle, pose: number) {
+  if (p.asleep) return asleepFrom(look) + (look === "real" ? (p.friend ? HEADINGS.length : 0) + p.heading : (p.friend ? LOOKS : 0) + p.color);
   if (look === "real") return pose * REAL_POSE + (p.friend ? REAL_STYLES : 0) + (p.clone ? HEADINGS.length : 0) + p.heading;
   return (p.friend ? CARTOON_STYLES : 0) + (p.clone ? LOOKS : p.color);
 }
@@ -125,8 +132,16 @@ function styleUrls(look: RoachStyle) {
               ["white", { friend, clone: true }],
             ],
       );
-    const specs = look === "real" ? Array.from({ length: LEG_FRAMES }, (_, f) => block(f / LEG_FRAMES)).flat() : block();
-    p = Promise.all(specs.map(([color, opts]) => iconUrl(color, opts)));
+    const awake = look === "real" ? Array.from({ length: LEG_FRAMES }, (_, f) => block(f / LEG_FRAMES)).flat() : block();
+    // then the sleeping main roaches (asleepFrom), still and with no clones
+    const asleep = [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
+      look === "real"
+        ? HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, asleep: true }])
+        : ROACH_AVATARS.flatMap((avatar) =>
+            ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend, asleep: true }]),
+          ),
+    );
+    p = Promise.all([...awake, ...asleep].map(([color, opts]) => iconUrl(color, opts)));
     styleUrlCache.set(look, p);
   }
   return p;
@@ -151,8 +166,8 @@ function heatData(roaches: PublicRoach[]) {
   };
 }
 
-async function mineIcon(r: OwnRoach, avatar: RoachAvatar, color: RoachColor, look: RoachStyle, ghost = false) {
-  const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look });
+async function mineIcon(r: OwnRoach, avatar: RoachAvatar, color: RoachColor, look: RoachStyle, ghost: boolean, asleep: boolean) {
+  const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look, asleep: asleep && r.slot === 0 && !ghost });
   const label = ghost ? "放在这里" : r.slot > 0 ? "我的克隆体" : "我的蟑螂";
   return `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer${ghost ? ";opacity:.55" : ""}"/>`;
 }
@@ -177,10 +192,10 @@ export default function AmapView(props: MapViewProps) {
     const map = mapRef.current;
     if (!AMap || !map) return;
     const seq = ++mineSeq.current;
-    const { mine, ghost, myAvatar, myColor, look } = propsRef.current;
+    const { mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
     // a visitor's preview spot is drawn like a main roach of yours, faded
     const spots = ghost ? [...mine, { id: "ghost", slot: 0, publicId: "", ...ghost }] : mine;
-    const icons = await Promise.all(spots.map((r) => mineIcon(r, myAvatar, myColor, look, r.id === "ghost")));
+    const icons = await Promise.all(spots.map((r) => mineIcon(r, myAvatar, myColor, look, r.id === "ghost", mineAsleep)));
     if (seq !== mineSeq.current || mapRef.current !== map) return;
     if (mineRef.current.length) map.remove(mineRef.current);
     mineRef.current = spots.map((r, i) => {
@@ -342,7 +357,7 @@ export default function AmapView(props: MapViewProps) {
 
   useEffect(() => {
     placeMine();
-  }, [props.mine, props.ghost, props.myAvatar, props.myColor, props.look]);
+  }, [props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");

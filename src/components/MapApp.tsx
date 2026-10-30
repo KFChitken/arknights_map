@@ -49,6 +49,7 @@ import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
+import RoachActor from "./app/RoachActor";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
   guideRoach,
@@ -145,6 +146,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setGuideItemsState(items);
   }, []);
   const [greeting, setGreeting] = useState(false);
+  // 摄入酒精 / 醒酒 played out by your main roach, big, in the middle of the map
+  const [acting, setActing] = useState<"drink" | "wake" | null>(null);
+  const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
 
   // The feed is the same for everyone: leave out our own roaches (drawn from me) and mark friends'
@@ -504,6 +508,44 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setFocus({ lng: r.lng, lat: r.lat, zoom: 12, nonce: Date.now() });
   };
 
+  /** Act out a scene over the main roach, unless motion is turned down. */
+  const play = (scene: "drink" | "wake") => {
+    const main = me?.roaches.find((r) => r.slot === 0);
+    if (!main || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setFocus({ lng: main.lng, lat: main.lat, zoom: viewRef.current.zoom, nonce: Date.now() });
+    setActing(scene);
+  };
+
+  const drinkUp = async () => {
+    setDrinking(true);
+    const done = await act((w) => w.drink());
+    setDrinking(false);
+    if (!done) return;
+    play("drink");
+    const m = await loadMe();
+    // the first and the fiftieth pop up as new badges; the rest are counted here
+    const drinks = m?.counts.drinks ?? 0;
+    if (drinks !== 1 && drinks !== 50) setToast(`又醉倒了，这是第 ${drinks} 次。`);
+  };
+
+  const soberUp = async () => {
+    setDrinking(true);
+    const done = await act((w) => w.sober().then(() => true));
+    setDrinking(false);
+    if (!done) return;
+    play("wake");
+    await loadMe();
+    setToast("醒酒了。");
+  };
+
+  // A drunk roach wakes at 8:00 where it lies; an open page sees it stand up then
+  const drunkUntil = me?.drunkUntil;
+  useEffect(() => {
+    if (!drunkUntil) return;
+    const t = window.setTimeout(() => loadMe().catch(() => {}), Math.max(0, drunkUntil - Date.now()) + 1000);
+    return () => window.clearTimeout(t);
+  }, [drunkUntil, loadMe]);
+
   const remove = async (r: OwnRoach) => {
     if (!window.confirm(r.slot === 0 ? "收回蟑螂本体？克隆体也会一起收回。" : "收回这只克隆体？")) return;
     const done = await act((w) => w.removeRoach(r.id), r.slot === 0 ? "已经收回你的蟑螂和克隆体。" : "已经收回这只克隆体。");
@@ -785,7 +827,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const mapProps = {
     roaches: mapRoaches,
-    mine: me?.roaches ?? [],
+    // while the main roach acts out a scene over the map, the map leaves it out
+    mine: (me?.roaches ?? []).filter((r) => !acting || r.slot > 0),
+    mineAsleep: Boolean(me?.drunkUntil),
     // where the roach would go: a visitor's pick, or the spot a card is asking about
     ghost: me ? (panel?.kind === "placeConfirm" ? panel.spot : null) : preview,
     myAvatar,
@@ -1076,6 +1120,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
       <div className="map-wrap">
         {basemap === "amap" && <AmapView key="amap" {...mapProps} />}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
+        {acting && me && (
+          <div className="actor-stage">
+            <RoachActor scene={acting} avatar={myAvatar} color={myColor} look={look} onDone={() => setActing(null)} />
+          </div>
+        )}
       </div>
 
       {placing && basemap && (
@@ -1110,8 +1159,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
           avatar={myAvatar}
           color={myColor}
           look={look}
+          drunk={Boolean(me?.drunkUntil)}
+          drinks={me?.counts.drinks ?? 0}
+          busy={drinking || Boolean(acting)}
           onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}
           onRemove={() => remove(selected.roach)}
+          onDrink={drinkUp}
+          onSober={soberUp}
           onClose={() => setSelected(null)}
         />
       )}
@@ -1196,8 +1250,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
           onLater={() => setNewBadges((q) => q.slice(1))}
         />
       )}
-      {/* above the tutorial card while it is showing, so the two never cover each other */}
-      {toast && <div className={`toast ${coachShown ? "high" : ""}`}>{toast}</div>}
+      {/* above the tutorial card or a roach card while one is showing, so the two never cover each other */}
+      {toast && <div className={`toast ${coachShown || selected ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">
         非官方同人项目 · 与鹰角网络无关 ·{" "}
         <a href="/privacy#contact" target="_blank" rel="noreferrer">

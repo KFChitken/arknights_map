@@ -60,6 +60,8 @@ export class ServerWorld implements World {
   saveProfile = (p: Profile) => this.call<Profile>("saveProfile", p);
   placeRoach = (target: PlaceTarget, at: LngLat) => this.call<OwnRoach[]>("placeRoach", target, at);
   acceptPublicPlace = () => this.call<void>("acceptPublicPlace");
+  drink = () => this.call<{ until: number }>("drink");
+  sober = () => this.call<void>("sober");
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);
   touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold);
   reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold);

@@ -1,4 +1,4 @@
-import type { EarnedBadge } from "../badges";
+import type { BadgeCount, EarnedBadge } from "../badges";
 import type { Declaration, Reaction } from "../declarations";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
@@ -21,6 +21,10 @@ export interface World {
   placeRoach(target: PlaceTarget, at: LngLat): Promise<OwnRoach[]>;
   /** Agree, once, that everyone sees exactly where your roaches are. */
   acceptPublicPlace(): Promise<void>;
+  /** 摄入酒精: your main roach falls asleep drunk until the next morning where it is. */
+  drink(): Promise<{ until: number }>;
+  /** 醒酒: your main roach stands up at once. */
+  sober(): Promise<void>;
   /** Taking back the main roach takes back the clones too. */
   removeRoach(roachId: string): Promise<OwnRoach[]>;
   /** Touch someone else's roach by its public id. */
@@ -76,6 +80,8 @@ export type MapRoach = LngLat & {
   color: RoachColor;
   /** A show roach that belongs to nobody (see world/bots.ts); it cannot be touched */
   bot?: true;
+  /** A main roach lying belly up asleep; never says why (drunk, or away a long time) */
+  asleep?: true;
 };
 
 /**
@@ -129,8 +135,10 @@ export type Me = {
   hasTouched: boolean;
   badges: EarnedBadge[];
   wornBadge: string | null;
-  /** The counts badges are earned by: 触须之交 ever made, and different players who reacted to their declarations */
-  counts: { friends: number; responders: number };
+  /** The counts badges are earned by: 触须之交 ever made, different players who reacted to their declarations, times drunk */
+  counts: Record<BadgeCount, number>;
+  /** 摄入酒精: their main roach sleeps until then, unless they sober up first; null when awake */
+  drunkUntil: number | null;
   /** Only on the first visit of a day that comes after at least one whole day away */
   homecoming: Homecoming | null;
   /** Agreed to an older privacy policy: 「隐私说明更新了」 comes first, and nothing others see works until they agree */

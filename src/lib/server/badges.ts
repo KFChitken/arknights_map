@@ -70,6 +70,11 @@ export async function friendsMade(a: string, b: string, firstTime: boolean) {
   }
 }
 
+/** A player really got drunk; total is how many times so far. */
+export async function drank(userId: string, total: number) {
+  return award(userId, reached("drinks", total));
+}
+
 /** Someone reacted to a player's declaration. */
 export async function reactedTo(senderId: string) {
   await award(senderId, reached("responders", await respondersOf(senderId)));
@@ -108,7 +113,9 @@ export async function catchUpBadges() {
     const due =
       b.goal.count === "friends"
         ? sql`select ${users.id} from ${users} where ${users.friendsEver} >= ${b.goal.n}`
-        : sql`select ${declarations.senderId} from ${reactions}
+        : b.goal.count === "drinks"
+          ? sql`select ${users.id} from ${users} where ${users.drinksTotal} >= ${b.goal.n}`
+          : sql`select ${declarations.senderId} from ${reactions}
             join ${declarations} on ${declarations.id} = ${reactions.declarationId}
             where not ${reactions.withheld}
             group by ${declarations.senderId} having count(distinct ${reactions.fromUserId}) >= ${b.goal.n}`;

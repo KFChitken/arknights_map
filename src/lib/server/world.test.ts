@@ -15,7 +15,7 @@ import { isBanned } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { acceptPublicPlace, agreeAgain } from "./consent";
-import { addNameWords, forgetNameWords, namesHit, removeNameWord } from "./nameWords";
+import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
 import { computeHotList } from "./hotList";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
@@ -162,6 +162,51 @@ describe("server world", () => {
     await expect(named("国家")).rejects.toThrow("这个名字用不了");
     await removeNameWord("小王");
     await expect(named("小王")).resolves.toMatchObject({ name: "小王" });
+
+    // the admin page searches the list and deletes many at once, cleaned like the adding
+    await addNameWords("测试一\n测 试 二\n别的");
+    expect(await listNameWords("测试")).toMatchObject({ total: 4, found: 2 });
+    expect((await listNameWords("")).words).toHaveLength(4);
+    expect(await removeNameWords("测-试一\n测试二\n不在名单上")).toBe(2);
+    expect(await listNameWords("")).toMatchObject({ total: 2 });
+    await expect(named("国家")).rejects.toThrow("这个名字用不了");
+  });
+
+  it("gets drunk until the next morning: only the main roach lies down, and nothing says why", async () => {
+    const [main] = await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "clone" }, TOKYO);
+    const { until } = await world.drink(me.id);
+    expect(until).toBeGreaterThan(Date.now());
+    expect(await me.me()).toMatchObject({ drunkUntil: until, counts: { drinks: 1 }, badges: [{ id: "tipsy", seen: false }] });
+    const mine = new Set((await me.me()).roaches.map((r) => r.publicId));
+    const shown = (await allRoaches()).filter((r) => mine.has(r.id));
+    expect(shown.find((r) => r.id === main.publicId)).toMatchObject({ asleep: true });
+    expect(shown.filter((r) => r.asleep)).toHaveLength(1);
+    expect(JSON.stringify(await allRoaches())).not.toMatch(/drunk|drink/i);
+    await expect(world.drink(me.id)).rejects.toThrow("已经醉倒了");
+
+    // 醒酒 at once; the next drink waits a few seconds
+    await world.sober(me.id);
+    expect((await me.me()).drunkUntil).toBeNull();
+    expect((await allRoaches()).some((r) => r.asleep)).toBe(false);
+    await expect(world.drink(me.id)).rejects.toThrow("缓一缓");
+    expect((await me.me()).counts.drinks).toBe(1);
+
+    // moving the main roach sobers it up
+    await db.update(users).set({ drunkUntil: new Date(Date.now() + 3_600_000) }).where(eq(users.id, me.id));
+    await me.placeRoach({ kind: "move", roachId: main.id }, TOKYO);
+    expect((await me.me()).drunkUntil).toBeNull();
+  });
+
+  it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {
+    const regular = await signUp("regular@example.com");
+    await regular.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await db.update(users).set({ drinksTotal: 49 }).where(eq(users.id, regular.id));
+    await award(regular.id, ["tipsy"]);
+    await world.drink(regular.id);
+    expect((await regular.me()).badges.map((b) => b.id)).toEqual(["tipsy", "bacchus"]);
+    expect((await regular.me()).counts.drinks).toBe(50);
+    await expect(world.drink((await demo("t1")).id)).rejects.toThrow("测试玩家");
   });
 
   it("asks before a player's first new roach that its spot is public, but not for moves", async () => {

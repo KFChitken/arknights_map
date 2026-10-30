@@ -81,12 +81,23 @@ export async function allRoaches(): Promise<MapRoach[]> {
       lat: roaches.lat,
       avatar: users.avatar,
       color: users.color,
+      drunkUntil: users.drunkUntil,
     })
     .from(roaches)
     .innerJoin(users, eq(users.id, roaches.userId))
     // ordering by the random public id keeps a player's roaches from sitting next to each other
     .orderBy(asc(roaches.publicId));
-  return rows.map((r) => ({ id: r.publicId, clone: r.slot > 0, ...lookOf(r.slot, r.avatar, r.color), lng: r.lng, lat: r.lat }));
+  const now = Date.now();
+  return rows.map((r) => ({
+    id: r.publicId,
+    clone: r.slot > 0,
+    ...lookOf(r.slot, r.avatar, r.color),
+    lng: r.lng,
+    lat: r.lat,
+    // only the main roach lies down, and the feed never says why or until when; a drunk one
+    // stands up again in the first rebuild after it wakes, within MAX_AGE_MS
+    ...(r.slot === 0 && r.drunkUntil && r.drunkUntil.getTime() > now ? { asleep: true as const } : {}),
+  }));
 }
 
 const gzipAsync = promisify(gzip);

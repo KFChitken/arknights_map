@@ -1,3 +1,4 @@
+import { pictureSleeping, type PictureFit } from "./flipArt";
 import { bodyOpacityFor, roachDataUrl, shownAvatar, type RoachOpts } from "./roachSvg";
 import type { RoachAvatar, RoachColor } from "./types";
 
@@ -11,6 +12,17 @@ export const AVATAR_PICTURES: Partial<Record<RoachAvatar, string>> = {
   endmin: "/avatars/endmin.png",
   imp: "/avatars/imp.png",
 };
+
+/** Where each figure sits in its picture, measured from the PNGs, to lay it down asleep */
+const PICTURE_FIT: Partial<Record<RoachAvatar, PictureFit>> = {
+  doctor: { left: 45, right: 211 },
+  endmin: { left: 31, right: 225 },
+  // drawn with her eyes open, so she sleeps in a mask
+  imp: { left: 13, right: 243, mask: true },
+};
+
+const svgUrl = (inner: string) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
 
 /** Whether this roach is drawn from a picture (and so needs drawRoach instead of roachDataUrl). */
 export function usesPicture(opts: RoachOpts) {
@@ -38,6 +50,29 @@ export async function drawRoach(color: RoachColor, opts: RoachOpts, px: number) 
   const picture = usesPicture(opts) ? AVATAR_PICTURES[shownAvatar(opts)] : undefined;
   if (!picture) {
     ctx.drawImage(await loadImage(roachDataUrl(color, opts)), 0, 0, px, px);
+    return canvas;
+  }
+  const fit = PICTURE_FIT[shownAvatar(opts)];
+  if (opts.asleep && !opts.clone && fit) {
+    // laid down on a pillow under a quilt, until drawn lying versions exist
+    const kind = opts.mine ? "mine" : opts.friend ? "friend" : "other";
+    const parts = pictureSleeping(fit, { ground: kind, zzz: opts.zzz });
+    const [under, body, over, mask] = await Promise.all([
+      loadImage(svgUrl(parts.under)),
+      loadImage(picture),
+      loadImage(svgUrl(parts.over)),
+      parts.mask ? loadImage(svgUrl(parts.mask)) : null,
+    ]);
+    ctx.drawImage(under, 0, 0, px, px);
+    ctx.save();
+    ctx.scale(px / 64, px / 64);
+    ctx.translate(parts.layDown.x, parts.layDown.y);
+    ctx.rotate((parts.layDown.deg * Math.PI) / 180);
+    ctx.translate(-32, -32);
+    ctx.drawImage(body, 4, 4, 56, 56);
+    if (mask) ctx.drawImage(mask, 0, 0, 64, 64);
+    ctx.restore();
+    ctx.drawImage(over, 0, 0, px, px);
     return canvas;
   }
   const [ground, body, overlay] = await Promise.all([

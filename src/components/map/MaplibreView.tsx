@@ -36,7 +36,9 @@ const BLANK_STYLE: StyleSpecification = {
 const ICON_PX = 96; // bitmap edge; pixelRatio 2 → shown at 48px at icon-size 1
 const ICON_BASE = ICON_PX / 2;
 const ROACH_LAYERS = Array.from({ length: LAYER_GROUPS }, (_, g) => `roach-${g}`);
-const CLICKABLE = [...ROACH_LAYERS, "mine"];
+/** Sleeping roaches lie still, so they get a layer the crawl never moves */
+const ASLEEP_LAYER = "roach-asleep";
+const CLICKABLE = [...ROACH_LAYERS, ASLEEP_LAYER, "mine"];
 
 // The cartoon roach faces the viewer and only tilts; the real one is top-down and can face any way.
 // Clones share one see-through look whatever their owner's color; 触须之交 get a pink ground and a heart.
@@ -80,16 +82,23 @@ function roachImage(look: RoachStyle) {
 function roachRotate(look: RoachStyle) {
   return look === "real" ? ["get", "heading"] : ["get", "rot"];
 }
-function mineImage(look: RoachStyle) {
+/** A sleeping main roach (never a clone): sleep-<roach|friend>-<avatar>-<color>, or sleep-real / sleep-friend-real */
+function sleepImage(look: RoachStyle) {
   return look === "real"
-    ? ["case", [">", ["get", "slot"], 0], "mineclone-real", "mine-real"]
-    : [
-        "concat",
-        ["case", [">", ["get", "slot"], 0], "mineclone-", "mine-"],
-        ["get", "avatar"],
-        "-",
-        ["get", "color"],
-      ];
+    ? ["case", ["get", "friend"], "sleep-friend-real", "sleep-real"]
+    : ["concat", ["case", ["get", "friend"], "sleep-friend-", "sleep-roach-"], ["get", "avatar"], "-", ["get", "color"]];
+}
+/** The cartoon one lies already tilted; the realistic one keeps facing its own way. */
+function sleepRotate(look: RoachStyle) {
+  return look === "real" ? ["get", "heading"] : 0;
+}
+function mineImage(look: RoachStyle) {
+  const awake =
+    look === "real"
+      ? ["case", [">", ["get", "slot"], 0], "mineclone-real", "mine-real"]
+      : ["concat", ["case", [">", ["get", "slot"], 0], "mineclone-", "mine-"], ["get", "avatar"], "-", ["get", "color"]];
+  const asleep = look === "real" ? "sleep-mine-real" : ["concat", "sleep-mine-", ["get", "avatar"], "-", ["get", "color"]];
+  return ["case", ["get", "asleep"], asleep, awake];
 }
 
 /**
@@ -101,6 +110,10 @@ function mineImage(look: RoachStyle) {
 const WALKING = /^(.*real)-p(\d+)$/;
 
 function imageSpec(id: string): [RoachColor, RoachOpts] {
+  if (id.startsWith("sleep-")) {
+    const [color, opts] = imageSpec(id.slice("sleep-".length));
+    return [color, { ...opts, asleep: true }];
+  }
   const walking = WALKING.exec(id);
   if (walking) return imageSpec(walking[1]);
   if (id.endsWith("real")) {
@@ -114,7 +127,7 @@ function imageSpec(id: string): [RoachColor, RoachOpts] {
 }
 
 /** The icons the current data needs, so only those get drawn. */
-function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "ghost" | "myAvatar" | "myColor" | "look">) {
+function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep" | "ghost" | "myAvatar" | "myColor" | "look">) {
   const ids = new Set<string>();
   if (p.look === "real") {
     for (const id of ["real", "clone-real", "friend-real", "friendclone-real"]) {
@@ -122,13 +135,17 @@ function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "ghost" | "myAv
     }
     ids.add("mine-real");
     ids.add("mineclone-real");
+    for (const id of ["sleep-real", "sleep-friend-real", "sleep-mine-real"]) ids.add(id);
     return ids;
   }
   for (const r of p.roaches) {
     if (r.clone) ids.add(r.friend ? "friendclone" : "clone");
-    else ids.add(`${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`);
+    else ids.add(`${r.asleep ? "sleep-" : ""}${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`);
   }
-  for (const r of p.mine) ids.add(`${r.slot > 0 ? "mineclone" : "mine"}-${p.myAvatar}-${p.myColor}`);
+  for (const r of p.mine) {
+    const sleeps = r.slot === 0 && p.mineAsleep;
+    ids.add(`${sleeps ? "sleep-" : ""}${r.slot > 0 ? "mineclone" : "mine"}-${p.myAvatar}-${p.myColor}`);
+  }
   if (p.ghost) ids.add(`mine-${p.myAvatar}-${p.myColor}`);
   return ids;
 }
@@ -207,6 +224,7 @@ function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
           color: r.color,
           clone: r.clone,
           friend: r.friend,
+          asleep: Boolean(r.asleep),
           rot: t.rot,
           heading: t.heading,
           g: t.group,
@@ -219,6 +237,7 @@ function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
 
 function mineGeoJSON(
   mine: OwnRoach[],
+  asleep: boolean,
   ghost: LngLat | null | undefined,
   avatar: RoachAvatar,
   color: RoachColor,
@@ -232,7 +251,7 @@ function mineGeoJSON(
     features: spots.map((s) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [s.at.lng, s.at.lat] },
-      properties: { id: s.id, slot: s.slot, avatar, color, ghost: s.ghost },
+      properties: { id: s.id, slot: s.slot, avatar, color, ghost: s.ghost, asleep: asleep && s.slot === 0 && !s.ghost },
     })),
   };
 }
@@ -255,11 +274,13 @@ export default function MaplibreView(props: MapViewProps) {
         await ensureImages(map, neededImages(p));
         if (mapRef.current !== map) return;
         (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
-        (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.ghost, p.myAvatar, p.myColor));
+        (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.mineAsleep, p.ghost, p.myAvatar, p.myColor));
         for (const id of ROACH_LAYERS) {
           map.setLayoutProperty(id, "icon-image", roachImage(p.look) as never);
           map.setLayoutProperty(id, "icon-rotate", roachRotate(p.look) as never);
         }
+        map.setLayoutProperty(ASLEEP_LAYER, "icon-image", sleepImage(p.look) as never);
+        map.setLayoutProperty(ASLEEP_LAYER, "icon-rotate", sleepRotate(p.look) as never);
         map.setLayoutProperty("mine", "icon-image", mineImage(p.look) as never);
       })
       .catch((e) => console.error(e));
@@ -328,9 +349,9 @@ export default function MaplibreView(props: MapViewProps) {
 
     map.on("load", async () => {
       await ensureImages(map, neededImages(propsRef.current));
-      const { roaches, mine, ghost, myAvatar, myColor, look } = propsRef.current;
+      const { roaches, mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
       map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
-      map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, ghost, myAvatar, myColor) });
+      map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, mineAsleep, ghost, myAvatar, myColor) });
 
       // Dark swarm under the icons so crowded cities read as covered in roaches
       const ramp = Object.entries(SWARM_GRADIENT)
@@ -350,21 +371,32 @@ export default function MaplibreView(props: MapViewProps) {
           "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 1, SWARM_FADE_ZOOM, 0],
         },
       });
+      const iconSize = ["interpolate", ["linear"], ["zoom"], ...ICON_STOPS.flatMap(([z, px]) => [z, px / ICON_BASE])];
+      // Sleeping roaches lie still under the crawling crowd
+      map.addLayer({
+        id: ASLEEP_LAYER,
+        type: "symbol",
+        source: "roaches",
+        filter: ["get", "asleep"],
+        layout: {
+          "icon-image": sleepImage(look) as never,
+          "icon-size": iconSize as never,
+          "icon-rotate": sleepRotate(look) as never,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "symbol-sort-key": ["case", ["get", "friend"], 1, 0],
+        },
+      });
       // One layer per crawl group so each group can be nudged with a cheap paint update
       ROACH_LAYERS.forEach((id, g) =>
         map.addLayer({
           id,
           type: "symbol",
           source: "roaches",
-          filter: ["==", ["get", "g"], g],
+          filter: ["all", ["==", ["get", "g"], g], ["!", ["get", "asleep"]]],
           layout: {
             "icon-image": roachImage(look) as never,
-            "icon-size": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              ...ICON_STOPS.flatMap(([z, px]) => [z, px / ICON_BASE]),
-            ] as never,
+            "icon-size": iconSize as never,
             "icon-rotate": roachRotate(look) as never,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
@@ -421,7 +453,7 @@ export default function MaplibreView(props: MapViewProps) {
     };
   }, []);
 
-  useEffect(sync, [props.roaches, props.mine, props.ghost, props.myAvatar, props.myColor, props.look]);
+  useEffect(sync, [props.roaches, props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
 
   useEffect(() => {
     const map = mapRef.current;

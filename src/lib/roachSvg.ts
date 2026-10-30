@@ -1,3 +1,4 @@
+import { realBelly, sleepingHood } from "./flipArt";
 import type { RoachAvatar, RoachColor, RoachStyle } from "./types";
 
 // Front-facing chibi roach (the "hood" look): round black hood with antennae,
@@ -15,7 +16,7 @@ export const GLOW: Record<RoachColor, string> = {
   white: "#e8f1ff",
 };
 
-const LINE = "#0d0e10";
+export const LINE = "#0d0e10";
 
 /**
  * clone: a see-through look shared by every clone, so a clone cannot be matched to its main roach.
@@ -33,10 +34,16 @@ export type RoachOpts = {
   rotate?: number;
   /** Realistic roach only: where its legs are in the walk cycle, 0..1 */
   step?: number;
+  /** Lying belly up asleep (a main roach only; see flipArt.ts) */
+  asleep?: boolean;
+  /** Asleep: drift Zzz above it (cards, not the map's small icons) */
+  zzz?: boolean;
+  /** Asleep: legs kick, lamps breathe and it rocks (SMIL, so it moves even inside an <img>) */
+  anim?: boolean;
 };
 
-const FRIEND = "#ff7eb6";
-const HEART = `<path d="M54 17 C48.5 13 47.5 8.5 50.5 7 C52.4 6.1 53.6 7.3 54 8.5 C54.4 7.3 55.6 6.1 57.5 7 C60.5 8.5 59.5 13 54 17 Z" fill="#ff4f8b" stroke="#fff" stroke-width="1.2"/>`;
+export const FRIEND = "#ff7eb6";
+export const HEART = `<path d="M54 17 C48.5 13 47.5 8.5 50.5 7 C52.4 6.1 53.6 7.3 54 8.5 C54.4 7.3 55.6 6.1 57.5 7 C60.5 8.5 59.5 13 54 17 Z" fill="#ff4f8b" stroke="#fff" stroke-width="1.2"/>`;
 
 const CLONE_OPACITY = 0.55;
 // your own clones stay a bit more solid so you can tell them from other players' clones
@@ -44,6 +51,7 @@ const MINE_CLONE_OPACITY = 0.75;
 const bodyOpacity = (mine?: boolean, clone?: boolean) => (clone ? (mine ? MINE_CLONE_OPACITY : CLONE_OPACITY) : 1);
 
 export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
+  if (opts.asleep && !opts.clone) return sleepingSvg(color, opts);
   if (opts.look === "real") return realRoachSvg(opts);
   const size = opts.size ?? 64;
   const glow = GLOW[opts.clone && !opts.mine ? "white" : color];
@@ -79,13 +87,14 @@ export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine">):
 
 export const bodyOpacityFor = (opts: Pick<RoachOpts, "mine" | "clone">) => bodyOpacity(opts.mine, opts.clone);
 
-// Only the hood is drawn here; the other looks are pictures (see roachImages.ts)
-const BODIES: Partial<Record<RoachAvatar, (accent: string) => string>> = {
-  hood: (glow) => `<g fill="none" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round">
+/** The standing hood; raise: its right sleeve lifted (to drink, see flipArt.ts). */
+export function hoodBody(glow: string, { raise = false } = {}) {
+  const right = raise ? ` transform="rotate(-160.5 47.5 36)"` : "";
+  return `<g fill="none" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round">
   <path d="M27 14 C24 7 17 3 8 4"/><path d="M36 13 C38 6 43 2 51 2"/>
 </g>
 <rect x="9" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"/>
-<rect x="40" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"/>
+<rect x="40" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"${right}/>
 <path d="M22 40 L42 40 L43.5 57.5 L20.5 57.5 Z" fill="#fff" stroke="${LINE}" stroke-width="2" stroke-linejoin="round"/>
 <path d="M23.5 42.5 L40.5 50 M40.5 42.5 L23.5 50" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round"/>
 <path d="M10 40 C10 22 20 12 32 12 C44 12 54 22 54 40 C54 43 51 44 48 42 L16 42 C13 44 10 43 10 40 Z" fill="#1d1f24" stroke="${LINE}" stroke-width="2"/>
@@ -95,8 +104,11 @@ const BODIES: Partial<Record<RoachAvatar, (accent: string) => string>> = {
 <ellipse cx="22.5" cy="33.5" rx="2.2" ry="1.1" fill="#ff8fa3" opacity="0.85"/>
 <ellipse cx="41.5" cy="33.5" rx="2.2" ry="1.1" fill="#ff8fa3" opacity="0.85"/>
 <rect x="11" y="35" width="6" height="4" rx="2" fill="${glow}"/>
-<rect x="47" y="35" width="6" height="4" rx="2" fill="${glow}"/>`,
-};
+<rect x="47" y="35" width="6" height="4" rx="2" fill="${glow}"/>`;
+}
+
+// Only the hood is drawn here; the other looks are pictures (see roachImages.ts)
+const BODIES: Partial<Record<RoachAvatar, (accent: string) => string>> = { hood: (glow) => hoodBody(glow) };
 
 // Top-down American cockroach (Periplaneta americana), head up: reddish-brown
 // wings over the abdomen, pale-rimmed pronotum shield with a dark centre,
@@ -196,6 +208,17 @@ ${ground}
 </g>
 ${friend && !mine ? HEART : ""}
 </svg>`;
+}
+
+/** A main roach asleep: the hood or the realistic roach belly up. Pictures are laid down in roachImages.ts. */
+function sleepingSvg(color: RoachColor, opts: RoachOpts) {
+  const ground = opts.mine ? "mine" : opts.friend ? "friend" : "other";
+  const inner =
+    opts.look === "real"
+      ? realBelly({ ground, rotate: opts.rotate, anim: opts.anim })
+      : sleepingHood(GLOW[color], { ground, anim: opts.anim, zzz: opts.zzz });
+  const size = opts.size ?? 64;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">\n${inner}\n</svg>`;
 }
 
 export function roachDataUrl(color: RoachColor, opts: RoachOpts = {}) {

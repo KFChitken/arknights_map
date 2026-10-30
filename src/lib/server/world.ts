@@ -6,6 +6,7 @@ import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, typ
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { findLine } from "../events";
+import { nextMorning } from "../morning";
 import { checkSupport } from "../support";
 import { isGame } from "../games";
 import { displayName, type Profile, type PublicProfile } from "../profile";
@@ -51,13 +52,14 @@ import {
   type RadarScan,
   type TouchResult,
 } from "../world/types";
-import { award, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
+import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
+import { allow } from "./rateLimit";
 import { lookOf, roachesChanged } from "./roachFeed";
 import {
   declarations,
@@ -230,7 +232,8 @@ export async function me(userId: string): Promise<Me | null> {
     hasTouched: Boolean(touched),
     badges,
     wornBadge: badges.some((b) => b.id === u.wornBadge) ? u.wornBadge : null,
-    counts: { friends: u.friendsEver, responders: await respondersOf(u.id) },
+    counts: { friends: u.friendsEver, responders: await respondersOf(u.id), drinks: u.drinksTotal },
+    drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
     // a whole day or more away, so not just back the next morning
     homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
     mustReconsent: mustReconsent(u),
@@ -323,6 +326,8 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   await db.transaction(async (tx) => {
     if (existing) await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
     else await tx.insert(roaches).values({ userId, slot, ...values });
+    // a roach has to stand up to walk: moving the main roach sobers it up
+    if (slot === 0) await tx.update(users).set({ drunkUntil: null }).where(eq(users.id, userId));
     await tx.insert(moves).values({
       userId,
       slot,
@@ -346,9 +351,47 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
   await db.transaction(async (tx) => {
     await tx.delete(roaches).where(inArray(roaches.id, gone.map((r) => r.id)));
     await tx.insert(moves).values(gone.map((r) => ({ userId, slot: r.slot, fromLng: r.lng, fromLat: r.lat })));
+    if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null }).where(eq(users.id, userId));
   });
   roachesChanged();
   return ownRoaches(userId);
+}
+
+/** At least this long between two drinks, so a script cannot churn the shared roach list. */
+const DRINK_GAP_MS = 10_000;
+
+/** 摄入酒精: the main roach falls asleep drunk until the next morning where it lies. Every real drink counts for the 酒神 badges. */
+export async function drink(userId: string): Promise<{ until: number }> {
+  const u = await userById(userId);
+  if (!u) throw new WorldError("找不到这个账号了。");
+  // test players never lie down
+  if (u.demoKey) throw new WorldError("测试玩家不喝酒。");
+  const [main] = await db.select().from(roaches).where(and(eq(roaches.userId, userId), eq(roaches.slot, 0))).limit(1);
+  if (!main) throw new WorldError("先放下蟑螂本体，才能摄入酒精。");
+  const now = new Date();
+  const drunk = "已经醉倒了，醒了才能再喝。";
+  if (u.drunkUntil && u.drunkUntil > now) throw new WorldError(drunk);
+  if (!allow(`drink:${userId}`, 1, DRINK_GAP_MS)) throw new WorldError("刚喝过一回，缓一缓再喝。");
+  const until = nextMorning(main, now.getTime());
+  const [row] = await db
+    .update(users)
+    .set({ drunkUntil: new Date(until), drinksTotal: sql`${users.drinksTotal} + 1` })
+    .where(and(eq(users.id, userId), or(isNull(users.drunkUntil), lt(users.drunkUntil, now))))
+    .returning({ total: users.drinksTotal });
+  if (!row) throw new WorldError(drunk);
+  await drank(userId, row.total);
+  roachesChanged();
+  return { until };
+}
+
+/** 醒酒: the main roach stands up at once. */
+export async function sober(userId: string) {
+  const woke = await db
+    .update(users)
+    .set({ drunkUntil: null })
+    .where(and(eq(users.id, userId), isNotNull(users.drunkUntil)))
+    .returning({ id: users.id });
+  if (woke.length) roachesChanged();
 }
 
 async function checkTouchQuota(userId: string) {

@@ -54,6 +54,12 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "acceptPublicPlace":
       await acceptPublicPlace(agreed());
       break;
+    case "drink":
+      result = await world.drink(agreed());
+      break;
+    case "sober":
+      await world.sober(uid());
+      break;
     case "removeRoach":
       result = await world.removeRoach(uid(), String(args[0]));
       break;

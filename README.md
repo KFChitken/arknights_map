@@ -18,6 +18,7 @@ Players in the community jokingly call themselves "roaches" because there seem t
 | Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches, declaration count and recent activity; either side can end it | MVP |
 | Declarations: one of nine canned shouts such as "Arknights, start!", "I'll always love &lt;favourite&gt;" or "Happy birthday to me", sent to every player with a roach within 10 km of the main roach, any chosen clones, or all of them; each player hears it once and can answer with one of six fixed reactions | MVP |
 | Email sign-in with a 6-digit code; sign-up is for players aged 18 and over, who tick that they are (no birth date is asked for) and give the storage-and-mail consent on its own; account deletion | MVP |
+| 摄入酒精: a player's main roach gets drunk and lies belly up on everyone's map until 8:00 where it lies (or until they sober up or move it); the feed only says it is asleep, never why; 50 drinks earn a badge | MVP |
 | Demo players and test identities: thousands of seeded players, and stepping into any of them on one device to try touches and declarations | Development aid |
 | Follow requests that need approval, block and report | Planned |
 | Ark Radar: how many roaches are within 100 km of your main roach, how many crawled in or left in the last day and week, newcomers, nearby touches and declarations | MVP (demo movement for the demo players) |

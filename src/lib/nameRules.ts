@@ -33,12 +33,26 @@ const LINK = /https?:|www\.|\.(com|cn|net|org|top|xyz|cc|vip|me|io|link|site|clu
 const CONTACT = /(qq|扣扣|q群|加群|群号)\d|(微信|威信|薇信|vx|wx|v信|加v|weixin|wechat)[a-z0-9]/;
 const LONG_NUMBER = /\d{6,}/;
 
-/** Whether a name may be used, given the words kept on the admin page. */
-export function nameAllowed(name: string, words: NameWord[]) {
-  const b = bare(name);
-  if (LINK.test(loose(name)) || CONTACT.test(b) || LONG_NUMBER.test(b)) return false;
-  return ![...CODE_WORDS, ...words].some((w) => (w.whole ? b === w.word : b.includes(w.word)));
+/**
+ * Whether a name may be used, given the words kept on the admin page. The list can
+ * run to tens of thousands, so every piece of the (short) name is looked up in a
+ * set instead of the name being searched for every word.
+ */
+export function nameChecker(words: NameWord[]) {
+  const all = [...CODE_WORDS, ...words];
+  const inside = new Set(all.filter((w) => !w.whole).map((w) => w.word));
+  const whole = new Set(all.filter((w) => w.whole).map((w) => w.word));
+  return (name: string) => {
+    const b = bare(name);
+    if (LINK.test(loose(name)) || CONTACT.test(b) || LONG_NUMBER.test(b) || whole.has(b)) return false;
+    for (let i = 0; i < b.length; i++) {
+      for (let j = i + 1; j <= b.length; j++) if (inside.has(b.slice(i, j))) return false;
+    }
+    return true;
+  };
 }
+
+export const nameAllowed = (name: string, words: NameWord[]) => nameChecker(words)(name);
 
 /**
  * The admin page's 批量添加: one word a line, 「=」 in front for the whole name only.

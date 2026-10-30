@@ -8,16 +8,17 @@ import { SITE_NAME } from "./rules";
  * never on the map.
  */
 
-export type BadgeSeries = "diplomacy" | "memorial" | "event";
+export type BadgeSeries = "diplomacy" | "memorial" | "bacchus" | "event";
 
 export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
   { id: "diplomacy", name: "外交系列", code: "DIPLOMACY" },
   { id: "memorial", name: "纪念系列", code: "MEMORIAL" },
+  { id: "bacchus", name: "酒神系列", code: "BACCHUS" },
   { id: "event", name: "活动系列", code: "EVENT" },
 ];
 
 /** A count the wall shows progress on, and the server awards by */
-export type BadgeCount = "friends" | "responders";
+export type BadgeCount = "friends" | "responders" | "drinks";
 
 export type Badge = {
   id: string;
@@ -138,6 +139,28 @@ export const BADGES: Badge[] = [
     days: SURVIVOR_DAYS,
   },
   {
+    id: "tipsy",
+    name: "当一回酒神",
+    code: "BAC-01",
+    series: "bacchus",
+    condition: "第一次主动「摄入酒精」，醉倒翻肚皮",
+    lockedHint: "摄入一次酒精",
+    quote: "咕嘟咕嘟……嗝！这回你就是酒神。",
+    pill: { background: "#c23a5e", color: "#ffffff", border: "1.5px solid #c23a5e" },
+    goal: { count: "drinks", n: 1 },
+  },
+  {
+    id: "bacchus",
+    name: "泰拉异格酒神",
+    code: "BAC-50",
+    series: "bacchus",
+    condition: "主动醉倒满 50 次，每次都算",
+    lockedHint: "{n} / 50 次",
+    quote: "醉倒 50 次，泰拉的酒馆都认识你了。",
+    pill: { background: "linear-gradient(100deg, #3b1f5c 0%, #8e2a5a 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
+    goal: { count: "drinks", n: 50 },
+  },
+  {
     // each event brings its own badge, named in events.ts
     id: "half2026",
     name: "半周年限定",
@@ -191,11 +214,11 @@ export function wallBadges(earned: Set<string>, now = Date.now()) {
   return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days));
 }
 
-/** The badge earned by a count that a player is the fewest steps away from. */
+/** The badge earned by friends or responders that a player is the fewest steps away from; drinking is never nudged. */
 export function nextBadge(earned: ShownBadge[], counts: Record<BadgeCount, number>) {
   let best: { name: string; count: BadgeCount; more: number } | null = null;
   for (const b of BADGES) {
-    if (!b.goal || earned.some((e) => e.id === b.id)) continue;
+    if (!b.goal || b.goal.count === "drinks" || earned.some((e) => e.id === b.id)) continue;
     const more = b.goal.n - counts[b.goal.count];
     if (more > 0 && (!best || more < best.more)) best = { name: b.name, count: b.goal.count, more };
   }

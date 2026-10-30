@@ -61,6 +61,10 @@ export const users = pgTable("users", {
   wornBadge: text("worn_badge"),
   /** Different players they have ever become 触须之交 with; never goes down, so badge progress never does */
   friendsEver: integer("friends_ever").notNull().default(0),
+  /** 摄入酒精: the main roach sleeps until then (the next 8:00 where it is), unless sobered up first */
+  drunkUntil: at("drunk_until"),
+  /** Times they really got drunk; never goes down, for the 酒神 badges */
+  drinksTotal: integer("drinks_total").notNull().default(0),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),

@@ -12,6 +12,8 @@ export const WHATS_NEW = "新功能：称号上线了！去「我的资料」看
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,
   responders: (n, name) => `再有 ${n} 位舟P回应你的宣言，你就是${name}了。`,
+  // never picked by nextBadge, which leaves drinking alone
+  drinks: (n, name) => `再摄入 ${n} 次酒精，你就是${name}了。`,
 };
 
 /**

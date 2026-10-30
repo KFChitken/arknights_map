@@ -3,7 +3,7 @@ import type { AdminAction } from "@/lib/safety";
 import { allPlayers, isAdmin, openCases, resolveCase, retentionStats, setBadge } from "@/lib/server/admin";
 import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { addNameWords, blockedWords, namesHit, removeNameWord } from "@/lib/server/nameWords";
+import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "@/lib/server/nameWords";
 import { clearName } from "@/lib/server/safety";
 
 /** The admin page's endpoints (src/components/AdminApp.tsx). Anyone else gets the same 404 as a missing page. */
@@ -32,10 +32,13 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await allPlayers();
       break;
     case "nameWords":
-      result = { words: await blockedWords(), hits: await namesHit() };
+      result = { ...(await listNameWords(String(args[0] ?? ""))), hits: await namesHit() };
       break;
     case "addNameWords":
       result = await addNameWords(String(args[0] ?? ""));
+      break;
+    case "removeNameWords":
+      result = await removeNameWords(String(args[0] ?? ""));
       break;
     case "removeNameWord":
       await removeNameWord(String(args[0]));

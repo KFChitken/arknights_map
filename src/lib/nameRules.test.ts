@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bare, loose, nameAllowed, parseNameWords } from "./nameRules";
+import { bare, loose, nameAllowed, nameChecker, parseNameWords } from "./nameRules";
 
 // stand-ins for the words kept on the admin page
 const WORDS = parseNameWords("台独\n=国家\n");
@@ -43,6 +43,15 @@ describe("name rules", () => {
     expect(nameAllowed("微信号是abc", [])).toBe(true);
     expect(nameAllowed("阿白123456", [])).toBe(false);
     expect(nameAllowed("阿白12345", [])).toBe(true);
+  });
+
+  it("keeps up with a list of tens of thousands of words", () => {
+    const many = Array.from({ length: 20_000 }, (_, i) => ({ word: `词${i}`, whole: false }));
+    const allowed = nameChecker([...many, { word: "台独", whole: false }]);
+    const started = performance.now();
+    for (let i = 0; i < 10_000; i++) expect(allowed("阿白的蟑螂本体")).toBe(true);
+    expect(allowed("我是台独")).toBe(false);
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 
   it("reads the bulk box: one word a line, = for the whole name, Markdown left out", () => {

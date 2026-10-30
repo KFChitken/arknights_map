@@ -542,3 +542,77 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .op-initial { display: inline-grid; place-items: center; color: var(--muted); font-size: 11px; font-weight: 700; }
 .chip.with-pic { display: inline-flex; align-items: center; gap: 5px; padding-left: 4px; }
 .chip .op-pic { width: 20px; height: 20px; }
+
+/* ---- 翻肚皮: your own roach acting out 摄入酒精 and 醒酒 (from the 翻肚皮 design) ---- */
+.actor-stage {
+  position: absolute; z-index: 15; left: 50%; top: 50%; width: 120px; height: 120px;
+  transform: translate(-50%, -62%); pointer-events: none;
+}
+.actor { position: relative; width: 100%; height: 100%; }
+.actor .lay { position: absolute; inset: 0; transform-origin: 50% 62%; }
+.actor .lay svg, .actor .lay img { display: block; width: 100%; height: 100%; }
+.actor .awake, .actor .base, .actor .bottle, .actor .sip, .actor .drunk { opacity: 0; }
+.actor .bottle { transform-origin: 79.7% 68.75%; }
+.actor .sip, .actor .drunk { transform-origin: 50% 91%; }
+/* later steps use forwards, not both: with both they would cover the earlier ones while waiting */
+.actor[data-state="waking"] .asleep { animation: fa-rock 0.9s ease-in-out both, fa-flip-out 0.42s ease-in 0.9s forwards; }
+.actor[data-state="waking"] .awake { animation: fa-flip-in 0.42s ease-out 0.9s both, fa-land 0.36s ease-out 1.32s forwards; }
+.actor[data-state="waking"] .dust { animation: fa-dust 0.6s ease-out 1.3s forwards; }
+.actor[data-state="waking"] .pop { animation: fa-pop 1.2s ease-out 1.38s both; }
+.actor[data-state="drinking"] .awake { opacity: 1; animation: fa-d-awake 2.8s linear both; }
+.actor[data-state="drinking"] .bottle { animation: fa-d-bottle 2.8s ease-out both; }
+.actor[data-state="drinking"] .sip { animation: fa-d-sip 2.8s ease-in-out both; }
+.actor[data-state="drinking"] .base { animation: fa-d-base 2.8s linear both; }
+.actor[data-state="drinking"] .drunk { animation: fa-d-drunk 2.8s ease-in-out both; }
+.actor[data-state="drinking"] .asleep { animation: fa-d-asleep 2.8s ease-out both; }
+.actor[data-state="drinking"] .dust { animation: fa-dust 0.6s ease-out 2.42s forwards; }
+.actor[data-state="drinking"] .glug { animation: fa-d-glug 2.8s ease-out both; }
+.actor[data-state="drinking"] .hic { animation: fa-d-hic 2.8s ease-out both; }
+/* the realistic roach and the pictures hold no bottle: they wobble, then tip over */
+.actor.plain[data-state="drinking"] .awake { animation: none; opacity: 0; }
+.actor.plain[data-state="drinking"] .drunk { animation: fa-plain-drunk 2.8s ease-in-out both; }
+@keyframes fa-rock { 0% { transform: rotate(0); } 20% { transform: rotate(-10deg); } 42% { transform: rotate(12deg); } 66% { transform: rotate(-17deg); } 88%, 100% { transform: rotate(19deg); } }
+@keyframes fa-flip-out { 0% { opacity: 1; transform: translateY(0) rotate(19deg); } 49% { opacity: 1; } 50% { opacity: 0; transform: translateY(-30%) rotate(100deg); } 100% { opacity: 0; transform: translateY(0) rotate(180deg); } }
+@keyframes fa-flip-in { 0% { opacity: 0; transform: translateY(0) rotate(-160deg); } 49% { opacity: 0; } 50% { opacity: 1; transform: translateY(-30%) rotate(-80deg); } 100% { opacity: 1; transform: translateY(0) rotate(0deg); } }
+@keyframes fa-land { 0% { opacity: 1; transform: scale(1.06, 0.86); } 45% { transform: scale(0.97, 1.05); } 100% { opacity: 1; transform: scale(1, 1); } }
+@keyframes fa-dust { 0% { opacity: 0.9; transform: scale(0.3); } 100% { opacity: 0; transform: scale(1.6) translateY(-20%); } }
+@keyframes fa-pop { 0% { opacity: 0; transform: translateX(-50%) scale(0); } 18% { opacity: 1; transform: translateX(-50%) scale(1.2); } 30% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1); } }
+@keyframes fa-d-awake { 0%, 12% { opacity: 1; } 12.5%, 100% { opacity: 0; } }
+@keyframes fa-d-bottle { 0% { opacity: 0; transform: scale(0.3); } 6% { opacity: 1; transform: scale(1.15); } 10% { opacity: 1; transform: scale(1) rotate(-4deg); } 12% { opacity: 1; transform: rotate(-10deg); } 12.5%, 100% { opacity: 0; } }
+@keyframes fa-d-sip { 0%, 12% { opacity: 0; transform: none; } 12.5% { opacity: 1; transform: translateY(0) rotate(0); } 20% { transform: translateY(-2%) rotate(-2deg); } 27% { transform: translateY(0) rotate(0); } 34% { transform: translateY(-2%) rotate(-2deg); } 39% { opacity: 1; transform: translateY(0) rotate(0); } 39.5%, 100% { opacity: 0; } }
+@keyframes fa-d-base { 0%, 12% { opacity: 0; } 12.5%, 84% { opacity: 1; } 84.5%, 100% { opacity: 0; } }
+@keyframes fa-d-drunk {
+  0%, 39% { opacity: 0; transform: rotate(0); } 39.5% { opacity: 1; transform: rotate(0); }
+  46% { transform: rotate(-9deg); } 53% { transform: rotate(10deg); } 60% { transform: rotate(-13deg); } 67% { transform: rotate(15deg); }
+  74% { opacity: 1; transform: rotate(5deg); animation-timing-function: ease-in; } 84% { opacity: 1; transform: rotate(92deg); }
+  84.5%, 100% { opacity: 0; transform: rotate(92deg); }
+}
+@keyframes fa-plain-drunk {
+  0% { opacity: 1; transform: rotate(0); } 20% { transform: rotate(-9deg); } 34% { transform: rotate(10deg); } 48% { transform: rotate(-13deg); } 62% { transform: rotate(15deg); }
+  74% { opacity: 1; transform: rotate(5deg); animation-timing-function: ease-in; } 84% { opacity: 1; transform: rotate(92deg); }
+  84.5%, 100% { opacity: 0; transform: rotate(92deg); }
+}
+@keyframes fa-d-asleep { 0%, 84% { opacity: 0; transform: rotate(-88deg); } 84.5% { opacity: 1; transform: rotate(-88deg); } 93% { transform: rotate(12deg); } 97% { transform: rotate(-4deg); } 100% { opacity: 1; transform: rotate(0); } }
+@keyframes fa-d-glug { 0%, 13% { opacity: 0; transform: translateY(6px); } 17% { opacity: 1; transform: translateY(0); } 36% { opacity: 1; transform: translateY(-6px); } 40%, 100% { opacity: 0; transform: translateY(-8px); } }
+@keyframes fa-d-hic { 0%, 47% { opacity: 0; transform: scale(0); } 50% { opacity: 1; transform: scale(1.2); } 53% { opacity: 1; transform: scale(1); } 68% { opacity: 1; transform: scale(1); } 73%, 100% { opacity: 0; transform: scale(1); } }
+.actor .dust { position: absolute; bottom: 4%; width: 18%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, rgba(150, 140, 125, 0.65), transparent); opacity: 0; }
+.actor .dust.l { left: 14%; }
+.actor .dust.r { right: 14%; }
+.actor .pop {
+  position: absolute; left: 50%; top: -4%; min-width: 30%; padding: 2% 5%; border: 2px solid var(--ink); border-radius: 10px;
+  background: var(--accent); color: var(--ink); font-size: 20px; font-weight: 800; line-height: 1.1; text-align: center;
+  opacity: 0; transform: translateX(-50%) scale(0);
+}
+.actor .glug, .actor .hic { position: absolute; opacity: 0; color: var(--ink); font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.actor .glug { left: -12%; top: 4%; font-size: 15px; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
+.actor .hic { right: -10%; top: -4%; padding: 2% 6%; border: 2px solid var(--ink); border-radius: 10px; background: #fff; font-size: 15px; transform-origin: 20% 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .actor * { animation: none !important; }
+}
+
+/* the cards of a sleeping main roach */
+.zz { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #e8edf9; color: #2b3a67; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+button.pill.wine { display: inline-flex; align-items: center; gap: 3px; border-color: #c23a5e; background: #c23a5e; color: #fff; }
+button.pill.wine svg { width: 15px; height: 15px; }
+.tally { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
+
