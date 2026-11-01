@@ -170,6 +170,13 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .touch-buttons small { font-size: 11px; font-weight: 400; color: var(--muted); }
 .touch-buttons .bold { border-color: var(--ink); background: var(--ink); color: #fff; }
 .touch-buttons .bold small { color: #ffffffb3; }
+.poke-btn {
+  display: flex; flex-direction: column; align-items: center; width: 100%; padding: 9px 8px;
+  border: 0; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 800; font-size: 15px;
+}
+.poke-btn small { font-size: 11px; font-weight: 400; color: #ffffffb8; }
+.poke-btn:disabled { background: #e9ebee; color: var(--muted); cursor: default; }
+.poke-btn:disabled small { color: var(--muted); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
 .sheet-backdrop {
@@ -606,6 +613,23 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .actor .glug, .actor .hic { position: absolute; opacity: 0; color: var(--ink); font-weight: 800; line-height: 1.1; white-space: nowrap; }
 .actor .glug { left: -12%; top: 4%; font-size: 15px; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
 .actor .hic { right: -10%; top: -4%; padding: 2% 6%; border: 2px solid var(--ink); border-radius: 10px; background: #fff; font-size: 15px; transform-origin: 20% 100%; }
+/* 戳一戳: the design's 64px roach scaled to the stage, so its steps are in percent */
+.actor.poke .finger { position: absolute; left: 58%; top: -2%; width: 68.75%; aspect-ratio: 1; opacity: 0; animation: fa-finger 1.3s ease-in-out both; }
+.actor.poke .bang { position: absolute; left: 62%; top: -22%; width: 100%; aspect-ratio: 70 / 52; opacity: 0; animation: fa-bang 1.3s ease-out both; }
+.actor.poke .finger svg, .actor.poke .bang svg { display: block; width: 100%; height: 100%; }
+.actor.poke .body { transform-origin: 50% 50%; animation: fa-jolt 1.3s ease-out both; }
+.actor.poke .zs { animation: fa-scatter 1.3s ease-out both; }
+@keyframes fa-finger {
+  0% { opacity: 0; transform: translate(77%, -82%) rotate(10deg); }
+  18% { opacity: 1; }
+  40% { transform: translate(0, 0) rotate(0deg); }
+  48% { transform: translate(-9%, 11%) rotate(-4deg); }
+  56% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+  100% { opacity: 0; transform: translate(68%, -68%) rotate(8deg); }
+}
+@keyframes fa-bang { 0%, 44% { opacity: 0; transform: scale(0.2); } 52% { opacity: 1; transform: scale(1.25); } 62% { transform: scale(1); } 88% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+@keyframes fa-jolt { 0%, 46% { transform: none; } 52% { transform: translateY(-6%) rotate(-7deg); } 60% { transform: translateY(0) rotate(5deg); } 68% { transform: rotate(-3deg); } 76%, 100% { transform: none; } }
+@keyframes fa-scatter { 0%, 46% { opacity: 1; } 52%, 80% { opacity: 0; } 100% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .actor * { animation: none !important; }
 }

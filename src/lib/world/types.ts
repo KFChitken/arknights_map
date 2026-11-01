@@ -31,6 +31,8 @@ export interface World {
   touch(publicId: string, bold: boolean): Promise<TouchResult>;
   /** Touch back whoever sent an inbox item. */
   reply(itemId: string, bold: boolean): Promise<TouchResult>;
+  /** 戳一戳 a 触须之交's sleeping main roach by its public id. It sleeps on; returns when you may poke TA again. */
+  poke(publicId: string): Promise<{ againAt: number }>;
   inbox(): Promise<InboxItem[]>;
   markSeen(itemIds: string[]): Promise<void>;
   /** Shout to every player with a roach within the radius of your main roach. */
@@ -111,6 +113,8 @@ export type Friend = {
   declarations: number;
   /** Their recent activity, newest first. Other players in it stay anonymous unless it is you. */
   history: FriendEvent[];
+  /** You poked TA lately: when you may again. Null when you may now */
+  pokeAgainAt: number | null;
 };
 
 export type FriendEvent =
@@ -187,7 +191,11 @@ export type InboxItem =
     }
   /** Someone nearby reacted to your declaration; they stay anonymous */
   | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reaction; replied: boolean }
-  | { kind: "friend"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean };
+  | { kind: "friend"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
+  /** A 触须之交 poked your main roach while it slept; shown once you are awake */
+  | { kind: "poke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
+  /** A 触须之交 you poked is up again, as the 04:00 batch found */
+  | { kind: "pokeWoke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean };
 
 export type Identity = {
   id: PlayerId;

@@ -19,6 +19,7 @@ import {
   MOVES_PER_DAY,
   NEWCOMER_DAYS,
   PLACEMENTS_PER_DAY,
+  POKE_EVERY_DAYS,
   RADAR_RADIUS_KM,
   RADAR_REUSE_MIN,
   RADAR_SCANS_PER_DAY,
@@ -61,7 +62,7 @@ import { demoEnabled, secret } from "./env";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { allow } from "./rateLimit";
-import { lookOf, roachesChanged } from "./roachFeed";
+import { lookOf, roachesChanged, sleeping } from "./roachFeed";
 import {
   declarations,
   deliveries,
@@ -69,6 +70,7 @@ import {
   friendCuts,
   friendships,
   moves,
+  pokes,
   radarScans,
   roaches,
   touches,
@@ -492,6 +494,51 @@ export async function reply(userId: string, itemId: string, bold: boolean): Prom
   return { newFriend };
 }
 
+/** The latest poke from one player to another that still keeps them waiting, if any. */
+async function lastPoke(from: string, to: string) {
+  const [p] = await db
+    .select({ at: pokes.createdAt })
+    .from(pokes)
+    .where(and(eq(pokes.fromUserId, from), eq(pokes.toUserId, to), gt(pokes.createdAt, ago(POKE_EVERY_DAYS * DAY))))
+    .orderBy(desc(pokes.createdAt))
+    .limit(1);
+  return p ? p.at.getTime() + POKE_EVERY_DAYS * DAY : null;
+}
+
+/**
+ * 戳一戳: a 触须之交 pokes your sleeping main roach, once a week each. It sleeps on,
+ * so a poke can never tell drunk from away. You see who once you are awake.
+ */
+export async function poke(userId: string, publicId: string): Promise<{ againAt: number }> {
+  if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，戳不到 TA。");
+  if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
+  const [row] = await db
+    .select({ slot: roaches.slot, owner: users })
+    .from(roaches)
+    .innerJoin(users, eq(users.id, roaches.userId))
+    .where(eq(roaches.publicId, publicId))
+    .limit(1);
+  if (!row) throw new WorldError("这只蟑螂已经爬走了。");
+  const { owner } = row;
+  if (owner.id === userId) throw new WorldError("这是你自己的蟑螂。");
+  if (!(await friendIdsOf(userId)).has(owner.id) || (await blockedBetween(userId, owner.id))) {
+    throw new WorldError("只有触须之交能戳一戳。");
+  }
+  const now = Date.now();
+  if (row.slot !== 0 || !sleeping(owner, now)) throw new WorldError("TA 醒着呢，碰碰 TA 吧。");
+  const again = await lastPoke(userId, owner.id);
+  if (again) throw new WorldError(`戳过 TA 了，${Math.ceil((again - now) / DAY)} 天后可以再戳。`);
+  const [made] = await db
+    .insert(pokes)
+    .values({ fromUserId: userId, toUserId: owner.id, day: beijingDate(now), createdAt: new Date(now) })
+    .onConflictDoNothing()
+    .returning({ id: pokes.id });
+  if (!made) throw new WorldError("今天已经戳过 TA 了。");
+  // an awake owner sees it now; a sleeping one's inbox keeps it until they wake
+  nudge([owner.id]);
+  return { againAt: now + POKE_EVERY_DAYS * DAY };
+}
+
 export async function inbox(userId: string): Promise<InboxItem[]> {
   const since = ago(INBOX_DAYS * DAY);
   const items: InboxItem[] = [];
@@ -529,6 +576,26 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
     .select()
     .from(friendships)
     .where(and(or(eq(friendships.a, userId), eq(friendships.b, userId)), gt(friendships.createdAt, since)));
+  // who poked you stays hidden while you sleep it off, and shows once you are up
+  const self = await userById(userId);
+  const drunk = Boolean(self?.drunkUntil && self.drunkUntil.getTime() > Date.now());
+  const ps = (
+    await db
+      .select({ p: pokes, from: users })
+      .from(pokes)
+      .innerJoin(users, eq(users.id, pokes.fromUserId))
+      .where(and(eq(pokes.toUserId, userId), gt(pokes.createdAt, since)))
+  ).filter((x) => !blocked.has(x.p.fromUserId) && !(drunk && !x.p.seenAt));
+  // 「醒啦」 only while you are still 触须之交
+  const friendIds = await friendIdsOf(userId);
+  const ws = (
+    await db
+      .select({ p: pokes, to: users })
+      .from(pokes)
+      .innerJoin(users, eq(users.id, pokes.toUserId))
+      .where(and(eq(pokes.fromUserId, userId), gt(pokes.wokeToldAt, since)))
+  ).filter((x) => friendIds.has(x.p.toUserId));
+  const pokers = await cardsOf([...ps.map((x) => x.from), ...ws.map((x) => x.to)]);
   const cards = await cardsOf(ts.filter((x) => x.t.bold).map((x) => x.from));
   const done = await replied(userId, [
     ...ts.map((x) => `t:${x.t.id}`),
@@ -599,6 +666,28 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: true,
     });
   }
+  for (const { p, from } of ps) {
+    items.push({
+      kind: "poke",
+      id: `p:${p.id}`,
+      at: p.createdAt.getTime(),
+      seen: Boolean(p.seenAt),
+      from: pokers.get(from.id)!,
+      friendId: friendKey(userId, from.id),
+      replied: true,
+    });
+  }
+  for (const { p, to } of ws) {
+    items.push({
+      kind: "pokeWoke",
+      id: `w:${p.id}`,
+      at: p.wokeToldAt!.getTime(),
+      seen: Boolean(p.wokeSeenAt),
+      from: pokers.get(to.id)!,
+      friendId: friendKey(userId, to.id),
+      replied: true,
+    });
+  }
   return items.sort((x, y) => y.at - x.at);
 }
 
@@ -656,6 +745,20 @@ export async function markSeen(userId: string, itemIds: string[]) {
       .update(reactions)
       .set({ seenAt: now })
       .where(and(inArray(reactions.id, x), inArray(reactions.declarationId, myDeclarations), isNull(reactions.seenAt)));
+  }
+  const p = ids("p:");
+  if (p.length) {
+    await db
+      .update(pokes)
+      .set({ seenAt: now })
+      .where(and(inArray(pokes.id, p), eq(pokes.toUserId, userId), isNull(pokes.seenAt)));
+  }
+  const w = ids("w:");
+  if (w.length) {
+    await db
+      .update(pokes)
+      .set({ wokeSeenAt: now })
+      .where(and(inArray(pokes.id, w), eq(pokes.fromUserId, userId), isNotNull(pokes.wokeToldAt), isNull(pokes.wokeSeenAt)));
   }
   for (const f of itemIds.filter((i) => typeof i === "string" && i.startsWith("f:"))) {
     const [a, b] = f.slice(2).split("~");
@@ -820,6 +923,7 @@ export async function friends(userId: string): Promise<Friend[]> {
       })),
       declarations: ds.length,
       history: history.sort((x, y) => y.at - x.at).slice(0, 30),
+      pokeAgainAt: await lastPoke(userId, other),
     });
   }
   return out;

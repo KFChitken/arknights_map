@@ -42,14 +42,14 @@ import { HomecomingSheet } from "./app/Homecoming";
 import HotSheet from "./app/HotSheet";
 import { keepInstallPrompt } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
-import InboxSheet, { firstTab, FriendView, noticeTitle, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
+import InboxSheet, { firstTab, FriendView, noticeTitle, pokedBy, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
-import RoachActor from "./app/RoachActor";
+import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
   guideRoach,
@@ -150,6 +150,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [acting, setActing] = useState<"drink" | "wake" | null>(null);
   // what opens once the scene is over, so nothing pops up over it
   const afterActing = useRef<(() => void) | null>(null);
+  // 戳一戳 under way: the 触须之交's roach it plays over, left off the map meanwhile
+  const [poking, setPoking] = useState<PublicRoach | null>(null);
+  const [pokeSent, setPokeSent] = useState(false);
   const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
 
@@ -395,6 +398,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (!guide && guideItemsRef.current.length) setGuideItems([]);
   }, [guide, setGuideItems]);
   const mapRoaches = useMemo(() => (guide ? [...roaches, guide] : roaches), [roaches, guide]);
+  const shownRoaches = useMemo(() => (poking ? mapRoaches.filter((r) => r.id !== poking.id) : mapRoaches), [mapRoaches, poking]);
 
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
@@ -537,23 +541,34 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (drinks !== 1 && drinks !== 50) setToast(`又醉倒了，这是第 ${drinks} 次。`);
   };
 
+  // up again: whoever poked it while it slept shows now
+  const pokedToast = (items: InboxItem[]) => {
+    const who = pokedBy(items);
+    return who ? `${who} 趁你睡着戳了戳你，点「消息」看看。` : "";
+  };
+
   const soberUp = async () => {
     setDrinking(true);
     const done = await act((w) => w.sober().then(() => true));
     setDrinking(false);
     if (!done) return;
     play("wake");
-    await loadMe();
-    setToast("醒酒了。");
+    const [, items] = await Promise.all([loadMe(), loadInbox()]);
+    setToast(`醒酒了。${pokedToast(items)}`);
   };
 
   // A drunk roach wakes at 8:00 where it lies; an open page sees it stand up then
   const drunkUntil = me?.drunkUntil;
   useEffect(() => {
     if (!drunkUntil) return;
-    const t = window.setTimeout(() => loadMe().catch(() => {}), Math.max(0, drunkUntil - Date.now()) + 1000);
+    const woke = async () => {
+      const [, items] = await Promise.all([loadMe(), loadInbox()]);
+      const poked = pokedToast(items);
+      if (poked) setToast(`你的蟑螂睡醒了。${poked}`);
+    };
+    const t = window.setTimeout(() => woke().catch(() => {}), Math.max(0, drunkUntil - Date.now()) + 1000);
     return () => window.clearTimeout(t);
-  }, [drunkUntil, loadMe]);
+  }, [drunkUntil, loadMe, loadInbox]);
 
   const remove = async (r: OwnRoach) => {
     if (!window.confirm(r.slot === 0 ? "收回蟑螂本体？克隆体也会一起收回。" : "收回这只克隆体？")) return;
@@ -582,6 +597,22 @@ export default function MapApp({ cn }: { cn: boolean }) {
     }
     if (me?.isNew) await loadMe();
     if (demoRef.current) await loadIdentities();
+  };
+
+  /** 戳一戳 a 触须之交's sleeping roach: the card stays open, and its button turns to 「戳过了」. */
+  const poke = async (roach: PublicRoach) => {
+    setPokeSent(true);
+    const done = await act((w) => w.poke(roach.id));
+    setPokeSent(false);
+    if (!done) return;
+    const landed = () => setToast("戳到了！TA 的腿抖了一下，又睡过去了。");
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) landed();
+    else {
+      setFocus({ lng: roach.lng, lat: roach.lat, zoom: viewRef.current.zoom, nonce: Date.now() });
+      setPoking(roach);
+      window.setTimeout(landed, POKE_LANDS_MS);
+    }
+    await loadFriends();
   };
 
   // Practice with the guide: nothing goes to the server; it touches back a moment later, in this page only
@@ -835,7 +866,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const mapProps = {
-    roaches: mapRoaches,
+    roaches: shownRoaches,
     // while the main roach acts out a scene over the map, the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => !acting || r.slot > 0),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -1129,6 +1160,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
       <div className="map-wrap">
         {basemap === "amap" && <AmapView key="amap" {...mapProps} />}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
+        {poking && (
+          <div className="actor-stage">
+            <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
+          </div>
+        )}
         {acting && me && (
           <div className="actor-stage">
             <RoachActor
@@ -1164,10 +1200,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
           onSignIn={() => setPanel({ kind: "login", reason: "登录后就能伸出触须碰 TA。" })}
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
+          pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
+          busy={pokeSent || Boolean(poking)}
           onOpenFriend={
             selectedFriend ? () => setPanel({ kind: "friend", friendId: selectedFriend.id, back: null }) : undefined
           }
           onTouch={(bold) => touch(selected.roach, bold)}
+          onPoke={() => poke(selected.roach)}
           onClose={() => setSelected(null)}
         />
       )}

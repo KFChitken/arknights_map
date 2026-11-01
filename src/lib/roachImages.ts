@@ -1,4 +1,4 @@
-import { pictureSleeping, type PictureFit } from "./flipArt";
+import { pictureSleeping, pictureZzz, zzz, type PictureFit } from "./flipArt";
 import { bodyOpacityFor, roachDataUrl, shownAvatar, type RoachOpts } from "./roachSvg";
 import type { RoachAvatar, RoachColor } from "./types";
 
@@ -27,6 +27,13 @@ const svgUrl = (inner: string) =>
 /** Whether this roach is drawn from a picture (and so needs drawRoach instead of roachDataUrl). */
 export function usesPicture(opts: RoachOpts) {
   return opts.look !== "real" && Boolean(AVATAR_PICTURES[shownAvatar(opts)]);
+}
+
+/** The Zzz of a sleeping roach on its own, for a scene that moves it apart; the realistic roach has none. */
+export function sleepingZzz(opts: RoachOpts) {
+  if (opts.look === "real") return "";
+  const fit = usesPicture(opts) ? PICTURE_FIT[shownAvatar(opts)] : undefined;
+  return fit ? pictureZzz(fit, { anim: true }) : zzz({ anim: true });
 }
 
 const images = new Map<string, Promise<HTMLImageElement>>();

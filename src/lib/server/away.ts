@@ -1,17 +1,19 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { db } from "./db";
+import { nudge } from "./live";
 import { roachesChanged } from "./roachFeed";
-import { roaches, users, type UserRow } from "./schema";
+import { pokes, roaches, users, type UserRow } from "./schema";
 
 /**
  * 好久没来自动翻: once a day at 04:00 Beijing time, the main roach of a player who
  * has stayed away flips belly up, and that of one who has come back stands up
  * again. Only this batch changes it, so the shared roach list never tells the
  * hour anyone left or came back. The owner sees their own stand up at once.
+ * The same batch tells pokers 「醒啦」.
  */
 
 const DAY_MS = 86_400_000;
@@ -33,8 +35,28 @@ export const daysBetween = (from: string, to: string) => Math.round((beijingMidn
 /** A fixed 0–3 more days per player, so the day a roach flips does not give away the day its owner left. */
 export const awayExtraDays = (userId: string) => createHash("sha256").update(userId).digest()[0] % 4;
 
-/** The 04:00 batch. Returns how many flipped and how many stood up. */
+/**
+ * 「你戳过的 TA 醒啦」 for every poke whose roach stands again in everyone's eyes. Run
+ * before this batch wakes anyone, so those it wakes are told at the next: the poker
+ * always hears at the first batch after it stood up, drunk or away alike.
+ */
+async function tellPokers(now: number) {
+  const awake = db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(or(isNull(users.drunkUntil), lte(users.drunkUntil, new Date(now))), isNull(users.sleptAwayOn)));
+  const told = await db
+    .update(pokes)
+    .set({ wokeToldAt: new Date(now) })
+    .where(and(isNull(pokes.wokeToldAt), inArray(pokes.toUserId, awake)))
+    .returning({ from: pokes.fromUserId });
+  if (told.length) nudge([...new Set(told.map((t) => t.from))]);
+  return told.length;
+}
+
+/** The 04:00 batch. Returns how many flipped and how many stood up, and how many pokers were told. */
 export async function flipTheAway(now = Date.now()) {
+  const told = await tellPokers(now);
   const today = beijingDate(now);
   const rows = await db
     .select({
@@ -61,5 +83,5 @@ export async function flipTheAway(now = Date.now()) {
   if (flip.length) await db.update(users).set({ sleptAwayOn: today }).where(inArray(users.id, flip));
   if (wake.length) await db.update(users).set({ sleptAwayOn: null }).where(inArray(users.id, wake));
   if (flip.length || wake.length) roachesChanged();
-  return { flipped: flip.length, woke: wake.length };
+  return { flipped: flip.length, woke: wake.length, told };
 }

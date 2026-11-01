@@ -5,7 +5,7 @@ import { displayName } from "../profile";
 import { passerbyProfile, passersby, TESTERS } from "../world/cast";
 import type { Identity } from "../world/types";
 import { db } from "./db";
-import { declarations, deliveries, friendCuts, friendships, moves, reactions, roaches, touches, users } from "./schema";
+import { declarations, deliveries, friendCuts, friendships, moves, pokes, reactions, roaches, touches, users } from "./schema";
 import { roachesChanged } from "./roachFeed";
 import { profileColumns, profileOf } from "./world";
 
@@ -54,6 +54,7 @@ export async function seedDemo() {
 /** Wipe all social activity and the demo players, then seed them again. Real players and their roaches stay. */
 export async function resetDemo() {
   await db.delete(touches);
+  await db.delete(pokes);
   await db.delete(declarations);
   await db.delete(friendships);
   await db.delete(friendCuts);

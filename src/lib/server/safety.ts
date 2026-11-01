@@ -10,7 +10,7 @@ import { db } from "./db";
 import { ADMIN_EMAILS, SITE_URL } from "./env";
 import { sendAdminMail } from "./mail";
 import { mailRoom } from "./mailQuota";
-import { blocks, declarations, deliveries, mailSends, reactions, reports, touches, users } from "./schema";
+import { blocks, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users } from "./schema";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
 
 /**
@@ -23,7 +23,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Sender = { other: string; known: boolean; context: string };
 
-/** Who sent an inbox item ("t:", "d:", "x:" ids) or who a friend is ("friend:<id>"), as far as this player may ask. */
+/** Who sent an inbox item ("t:", "d:", "x:", "p:" ids) or who a friend is ("friend:<id>"), as far as this player may ask. */
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
   if (target.startsWith("friend:")) {
     const key = target.slice("friend:".length);
@@ -42,6 +42,15 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
     const how = t.bold ? "大胆" : "偷偷";
     const what = t.replyTo ? "碰回了举报人" : t.toSlot ? "碰了举报人的克隆体" : "碰了举报人的本体";
     return { other: t.fromUserId, known: t.bold, context: `${how}${what}` };
+  }
+  if (kind === "p") {
+    const [p] = await db
+      .select({ from: pokes.fromUserId })
+      .from(pokes)
+      .where(and(eq(pokes.id, id), eq(pokes.toUserId, userId)))
+      .limit(1);
+    // only 触须之交 poke, so the poked player knew who it was
+    return p ? { other: p.from, known: true, context: "趁举报人的蟑螂睡着时戳了戳它" } : null;
   }
   if (kind === "d") {
     const [row] = await db

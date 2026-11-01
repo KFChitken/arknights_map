@@ -237,6 +237,37 @@ export const friendships = pgTable(
   (t) => [primaryKey({ columns: [t.a, t.b] }), index("friendships_b_idx").on(t.b)],
 );
 
+/**
+ * 戳一戳: a 触须之交 poked someone's sleeping main roach. It never wakes it. The
+ * poked player sees who once they are awake; the poker is told 「醒啦」 by the
+ * first 04:00 batch that finds it standing again.
+ */
+export const pokes = pgTable(
+  "pokes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The Beijing day; one a day per pair even if two pokes race (the rule is one a week) */
+    day: date("day", { mode: "string" }).notNull(),
+    createdAt: createdAt(),
+    /** When the poked player saw it */
+    seenAt: at("seen_at"),
+    /** When the batch told the poker it was up again, and when they saw that */
+    wokeToldAt: at("woke_told_at"),
+    wokeSeenAt: at("woke_seen_at"),
+  },
+  (t) => [
+    uniqueIndex("pokes_pair_day_idx").on(t.fromUserId, t.toUserId, t.day),
+    index("pokes_to_idx").on(t.toUserId, t.createdAt),
+    index("pokes_from_idx").on(t.fromUserId, t.createdAt),
+  ],
+);
+
 /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship. */
 export const friendCuts = pgTable(
   "friend_cuts",

@@ -71,6 +71,10 @@ export function roachesChanged() {
   feed.dirty = true;
 }
 
+/** Whether a player's main roach lies asleep: drunk, or flipped over for their staying away. Nothing says which. */
+export const sleeping = (u: { drunkUntil: Date | null; sleptAwayOn: string | null }, now = Date.now()) =>
+  Boolean((u.drunkUntil && u.drunkUntil.getTime() > now) || u.sleptAwayOn);
+
 /** Every roach on the map, the same for every viewer. */
 export async function allRoaches(): Promise<MapRoach[]> {
   const rows = await db
@@ -97,7 +101,7 @@ export async function allRoaches(): Promise<MapRoach[]> {
     lat: r.lat,
     // only the main roach lies down, drunk or away a long time, and the feed never says which or until
     // when; a drunk one stands up again in the first rebuild after it wakes, within MAX_AGE_MS
-    ...(r.slot === 0 && ((r.drunkUntil && r.drunkUntil.getTime() > now) || r.sleptAwayOn) ? { asleep: true as const } : {}),
+    ...(r.slot === 0 && sleeping(r, now) ? { asleep: true as const } : {}),
   }));
 }
 

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { drinkingHood, groundOnly, bottle } from "@/lib/flipArt";
+import { drinkingHood, groundOnly, bottle, POKE_BANG, POKE_FINGER } from "@/lib/flipArt";
+import { sleepingZzz } from "@/lib/roachImages";
 import { GLOW } from "@/lib/roachSvg";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
@@ -65,6 +66,44 @@ export default function RoachActor({
           <span className="hic">嗝！</span>
         </>
       ) : null}
+    </div>
+  );
+}
+
+/** How long 戳一戳 runs (.actor.poke in globals.css), and when the finger lands */
+const POKE_MS = 1300;
+export const POKE_LANDS_MS = 700;
+
+/**
+ * 戳一戳 on a 触须之交's sleeping roach: a finger comes down, 「戳!」, the roach
+ * jolts and its Zzz scatter, then it sleeps on. Seen only by the one who poked.
+ */
+export function PokeActor({
+  avatar,
+  color,
+  look,
+  onDone,
+}: {
+  avatar: RoachAvatar;
+  color: RoachColor;
+  look: RoachStyle;
+  onDone: () => void;
+}) {
+  useEffect(() => {
+    const t = window.setTimeout(onDone, POKE_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const opts = { avatar, look, friend: true, asleep: true };
+  return (
+    <div className="actor poke" aria-hidden="true">
+      <div className="lay body">
+        <RoachIcon color={color} size={120} {...opts} anim />
+      </div>
+      <div className="lay zs" dangerouslySetInnerHTML={{ __html: svg(sleepingZzz(opts)) }} />
+      <div className="finger" dangerouslySetInnerHTML={{ __html: POKE_FINGER }} />
+      <div className="bang" dangerouslySetInnerHTML={{ __html: POKE_BANG }} />
     </div>
   );
 }

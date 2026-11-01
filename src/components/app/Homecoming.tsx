@@ -2,6 +2,7 @@
 
 import { nextBadge, type BadgeCount } from "@/lib/badges";
 import { BadgePill } from "./Badges";
+import { pokedBy } from "./InboxSheet";
 import { WELCOME_NAMES } from "@/lib/declarations";
 import { RADAR_RADIUS_KM } from "@/lib/rules";
 import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
@@ -19,7 +20,8 @@ const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
 
 /**
  * 欢迎回家: for a player back after at least a whole day away. Numbers only,
- * all their own: what is unread in their inbox, and who moved in nearby.
+ * all their own: what is unread in their inbox, and who moved in nearby. The one
+ * exception is who poked their sleeping roach: 触须之交, whose names they know.
  */
 export function HomecomingSheet({
   me,
@@ -41,7 +43,9 @@ export function HomecomingSheet({
   const bold = touches.filter((i) => i.kind === "touch" && i.bold).length;
   const friends = unseen.filter((i) => i.kind === "friend").length;
   const reactions = unseen.filter((i) => i.kind === "reaction").length;
+  const pokers = pokedBy(unseen);
   const happened = [
+    pokers ? `${pokers} 趁你睡着戳了戳你` : "",
     touches.length ? `被碰了 ${touches.length} 次${bold ? `，其中 ${bold} 次是大胆碰` : ""}` : "",
     friends ? `新增 ${friends} 位触须之交` : "",
     reactions ? `你的宣言收到 ${reactions} 个回应` : "",

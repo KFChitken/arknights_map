@@ -65,6 +65,7 @@ export class ServerWorld implements World {
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);
   touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold);
   reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold);
+  poke = (publicId: string) => this.call<{ againAt: number }>("poke", publicId);
   inbox = () => this.call<InboxItem[]>("inbox");
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
   declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);

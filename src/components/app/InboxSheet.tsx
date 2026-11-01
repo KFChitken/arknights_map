@@ -20,17 +20,20 @@ const TABS: { tab: InboxTab; label: string }[] = [
   { tab: "friends", label: "触须之交" },
 ];
 
-/** Declarations and reactions are replies; touches and new friends have their own tabs. */
+/** What happens between 触须之交: new friends, and 戳一戳 both ways */
+const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke"];
+
+/** Declarations and reactions are replies; touches and what happens between 触须之交 have their own tabs. */
 export function tabOf(item: InboxItem): InboxTab {
   if (item.kind === "touch") return "touches";
-  if (item.kind === "friend") return "friends";
+  if (BETWEEN_FRIENDS.includes(item.kind)) return "friends";
   return "replies";
 }
 
 /** Open on the tab the notice headline talks about (see noticeTitle). */
 export function firstTab(items: InboxItem[]): InboxTab {
   const unseen = items.filter((i) => !i.seen);
-  if (unseen.some((i) => i.kind === "friend")) return "friends";
+  if (unseen.some((i) => BETWEEN_FRIENDS.includes(i.kind))) return "friends";
   if (unseen.some((i) => i.kind === "touch")) return "touches";
   return "replies";
 }
@@ -59,10 +62,19 @@ function touchText(item: Extract<InboxItem, { kind: "touch" }>) {
   return "一只蟑螂偷偷用触须碰了你一下";
 }
 
+/** Who poked you while you slept, among the pokes you have not seen: 「A」, 「A 和 B」 or 「A、B 等 N 位触须之交」; "" for nobody. */
+export function pokedBy(items: InboxItem[]) {
+  const names = [...new Set(items.flatMap((i) => (i.kind === "poke" && !i.seen ? [i.from.displayName] : [])))];
+  if (names.length <= 2) return names.join(" 和 ");
+  return `${names.slice(0, 2).join("、")} 等 ${names.length} 位触须之交`;
+}
+
 /** Headline for the notice shown when a player opens the map with unseen items. */
 export function noticeTitle(items: InboxItem[]) {
   const unseen = items.filter((i) => !i.seen);
   if (unseen.some((i) => i.kind === "friend")) return "你有了新的触须之交！";
+  if (unseen.some((i) => i.kind === "poke")) return "有触须之交趁你睡着戳了戳你！";
+  if (unseen.some((i) => i.kind === "pokeWoke")) return "你戳过的触须之交醒啦！";
   if (unseen.some((i) => i.kind === "touch")) return "你被蟑螂触须碰了一下！";
   if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的独立宣言！";
   if (unseen.length) return "附近有舟P发表了独立宣言！";
@@ -158,6 +170,22 @@ export default function InboxSheet({
         <div key={item.id} className={cls}>
           <div>你和 {item.from.displayName} 互相大胆碰过，成为了触须之交！</div>
           {meta(item, `friend:${item.friendId}`, item.from.displayName)}
+          {friendIds.has(item.friendId) && (
+            <div className="row-actions">
+              <button className="pill dark" onClick={() => onOpenFriend(item.friendId)}>
+                看看 TA
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    if (item.kind === "poke" || item.kind === "pokeWoke") {
+      const who = item.from.displayName;
+      return (
+        <div key={item.id} className={cls}>
+          <div>{item.kind === "poke" ? `${who} 趁你睡着戳了戳你！` : `你戳过的 ${who} 醒啦！`}</div>
+          {meta(item, item.kind === "poke" ? item.id : `friend:${item.friendId}`, who)}
           {friendIds.has(item.friendId) && (
             <div className="row-actions">
               <button className="pill dark" onClick={() => onOpenFriend(item.friendId)}>

@@ -69,6 +69,9 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "reply":
       result = await world.reply(agreed(), String(args[0]), args[1] === true);
       break;
+    case "poke":
+      result = await world.poke(agreed(), String(args[0]));
+      break;
     case "inbox":
       ration(30);
       result = user ? await world.inbox(user.id) : [];

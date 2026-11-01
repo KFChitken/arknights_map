@@ -176,9 +176,7 @@ export type PictureFit = { left: number; right: number; mask?: boolean };
  * picture (drawn at 4,4 56×56) down; mask is drawn in the picture's own frame.
  */
 export function pictureSleeping(fit: PictureFit, { ground: kind = "other", zzz: z = false }: { ground?: Ground; zzz?: boolean } = {}) {
-  const half = (((fit.right - fit.left) / 256) * 56) / 2;
-  const cy = 56.4 - half;
-  const top = cy - half;
+  const { cy, top } = laidDown(fit);
   const q = Math.max(top + 9, 31);
   const shadow = kind === "other" ? `<ellipse cx="32" cy="59.5" rx="27" ry="3" fill="#000" opacity="0.18"/>` : ground(kind, true);
   const pillow = `<path d="M1.4 58.6 C1 53.4 2.8 51 7.6 50.6 L19 50.2 C23 50.2 24.6 52.6 24.4 56.4 L24.2 59.2 Z" fill="#fff" stroke="${LINE}" stroke-width="1.8" stroke-linejoin="round"/>`;
@@ -192,9 +190,20 @@ export function pictureSleeping(fit: PictureFit, { ground: kind = "other", zzz: 
     ? `<path d="M20 29.5 C20 25.8 23 25 26 25.6 C28 26 29.5 26.8 30.8 26.8 C32.1 26.8 33.6 26 35.6 25.6 C38.6 25 41.6 25.8 41.6 29.5 C41.6 33 39 34.4 35.6 34 C33.6 33.8 32.2 32.6 30.8 32.6 C29.4 32.6 28 33.8 26 34 C22.6 34.4 20 33 20 29.5 Z" fill="#ffb3cf" stroke="${LINE}" stroke-width="1.3"/>
 <path d="M23 29.4 Q25.4 31.8 27.8 29.4 M33.8 29.4 Q36.2 31.8 38.6 29.4" fill="none" stroke="${LINE}" stroke-width="1.1" stroke-linecap="round"/>`
     : "";
-  const over = `${quilt}${z ? `<g transform="translate(41 ${Math.max(top - 17, -3)})">${zzz()}</g>` : ""}${kind === "friend" ? HEART : ""}`;
+  const over = `${quilt}${z ? pictureZzz(fit) : ""}${kind === "friend" ? HEART : ""}`;
   return { under: `${shadow}${pillow}`, over, mask, layDown: { x: 32, y: cy, deg: -86 } };
 }
+
+/** A picture laid down: the figure's middle and the top of it, on the 64 grid */
+function laidDown(fit: PictureFit) {
+  const half = (((fit.right - fit.left) / 256) * 56) / 2;
+  const cy = 56.4 - half;
+  return { cy, top: cy - half };
+}
+
+/** The Zzz over a laid-down picture, at its head */
+export const pictureZzz = (fit: PictureFit, { anim = false } = {}) =>
+  `<g transform="translate(41 ${Math.max(laidDown(fit).top - 17, -3)})">${zzz({ anim })}</g>`;
 
 /** A green bottle: "rest" held in the hanging right sleeve, "pour" tipped into the visor from the raised one. */
 export function bottle(pose: "rest" | "pour" = "rest") {
@@ -228,3 +237,14 @@ export function drinkingHood(glow: string, { pour = false, drunk = false }: { po
 
 /** Just the ground: a still layer under the swaying ones. */
 export const groundOnly = (kind: Ground) => ground(kind);
+
+/** 戳一戳: the finger that pokes, drawn on a 44×44 grid, and the 「戳!」 burst on 70×52. Whole <svg>s. */
+export const POKE_FINGER = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44"><g transform="rotate(-38 22 22)" stroke="${LINE}" stroke-width="2.2" stroke-linejoin="round" fill="#fff">
+  <rect x="3" y="18" width="21" height="8" rx="4"/><rect x="18" y="12" width="20" height="19" rx="7"/>
+  <path d="M22 12 C22 7 29 7 30 12"/><path d="M24 31 L24 25 M30 31 L30 25" fill="none"/>
+</g></svg>`;
+
+export const POKE_BANG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 52">
+  <path d="M35 2 L42 13 L56 6 L53 19 L68 22 L56 30 L64 43 L49 40 L44 51 L35 41 L25 50 L22 38 L6 42 L14 29 L2 21 L17 18 L14 5 L28 12 Z" fill="#ffd23f" stroke="${LINE}" stroke-width="2.2" stroke-linejoin="round"/>
+  <text x="35" y="33" text-anchor="middle" font-size="19" font-weight="700" font-family="ZCOOL KuaiLe, PingFang SC, sans-serif" fill="${LINE}">戳!</text>
+</svg>`;

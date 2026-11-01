@@ -1,21 +1,24 @@
 "use client";
 
 import { bottleIcon } from "@/lib/flipArt";
-import { SITE_NAME } from "@/lib/rules";
+import { POKE_EVERY_DAYS, SITE_NAME } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 
-/** Tapped someone else's roach: offer the two ways to touch it. */
+/** Tapped someone else's roach: offer the two ways to touch it, or 戳一戳 a 触须之交's sleeping one. */
 export function OtherRoachCard({
   roach,
   look,
   signedIn,
   sharesUid,
   friendName,
+  pokeAgainAt,
+  busy,
   onOpenFriend,
   onSignIn,
   onTouch,
+  onPoke,
   onClose,
 }: {
   roach: PublicRoach;
@@ -25,9 +28,14 @@ export function OtherRoachCard({
   sharesUid: boolean;
   /** Set when the roach belongs to one of your 触须之交 */
   friendName?: string;
+  /** You poked this 触须之交 lately: when you may again */
+  pokeAgainAt: number | null;
+  /** A poke is under way */
+  busy: boolean;
   onOpenFriend?: () => void;
   onSignIn: () => void;
   onTouch: (bold: boolean) => void;
+  onPoke: () => void;
   onClose: () => void;
 }) {
   if (roach.bot) {
@@ -48,6 +56,9 @@ export function OtherRoachCard({
   }
   // asleep: drunk or away a long time; nobody can tell which
   const asleep = Boolean(roach.asleep) && !roach.clone;
+  // 触须之交 poke a sleeping roach instead of touching it
+  const pokeable = asleep && Boolean(friendName);
+  const daysToWait = pokeAgainAt ? Math.ceil((pokeAgainAt - Date.now()) / 86_400_000) : 0;
   const title = roach.guide
     ? `${SITE_NAME}向导（不是真人）`
     : friendName
@@ -61,7 +72,7 @@ export function OtherRoachCard({
     ? "跟它练练伸出触须，它会马上碰回你。只有你看得到它。"
     : asleep
       ? friendName
-        ? "TA 四脚朝天睡着了。"
+        ? "TA 四脚朝天睡着了。戳一戳，TA 醒来就知道你来过。"
         : "它四脚朝天睡着了。是喝多了还是好久没来，谁也说不准。"
       : !signedIn
         ? "登录后就能伸出触须碰 TA。"
@@ -102,6 +113,11 @@ export function OtherRoachCard({
       {!signedIn ? (
         <button className="primary wide" onClick={onSignIn}>
           登录
+        </button>
+      ) : pokeable ? (
+        <button className="poke-btn" disabled={busy || daysToWait > 0} onClick={onPoke}>
+          {daysToWait > 0 ? "戳过了" : "戳一戳"}
+          <small>{daysToWait > 0 ? `${daysToWait} 天后可以再戳` : `每 ${POKE_EVERY_DAYS} 天能戳一次`}</small>
         </button>
       ) : (
         <div className="touch-buttons">

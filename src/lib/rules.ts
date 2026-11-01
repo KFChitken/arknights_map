@@ -41,6 +41,8 @@ export const RADAR_REUSE_MIN = 10;
 /** Touches one player may send per day, and the wait before touching the same roach again. */
 export const TOUCHES_PER_DAY = 60;
 export const TOUCH_SAME_ROACH_HOURS = 24;
+/** 戳一戳: how often one player may poke the same 触须之交's sleeping roach. */
+export const POKE_EVERY_DAYS = 7;
 
 /** Reports one player may file per day, and how many different players reporting a name hide it until it is reviewed. */
 export const REPORTS_PER_DAY = 10;
@@ -54,7 +56,7 @@ export const NEWCOMER_DAYS = 7;
 
 /** Inbox items older than this are not shown. */
 export const INBOX_DAYS = 30;
-/** Touches, declarations, reactions and roach moves older than this are deleted (see the privacy page). */
+/** Touches, pokes, declarations, reactions and roach moves older than this are deleted (see the privacy page). */
 export const KEEP_ACTIVITY_DAYS = 90;
 
 /** 方舟雷达 scans this far around your main roach. */

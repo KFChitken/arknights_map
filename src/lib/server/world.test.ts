@@ -34,6 +34,7 @@ import {
   friendships,
   moves,
   nameWords,
+  pokes,
   radarScans,
   reactions,
   reports,
@@ -121,6 +122,15 @@ async function befriend(p: Player, key: string) {
   await t.reply(touch.id, true);
 }
 
+/** Two real players, each with a main roach, who touched each other boldly. Returns their main roaches' public ids. */
+async function realFriends(a: Player, b: Player) {
+  const [aMain] = await a.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+  const [bMain] = await b.placeRoach({ kind: "main" }, TOKYO);
+  await a.touch(bMain.publicId, true);
+  await b.touch(aMain.publicId, true);
+  return { a: aMain.publicId, b: bMain.publicId };
+}
+
 const badgeIds = async (p: Player) => (await p.me()).badges.map((b) => b.id);
 
 /** Find the roach placed at a spot in what a player sees. */
@@ -133,7 +143,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}`,
   );
   forgetNameWords();
   await seedDemo();
@@ -209,9 +219,9 @@ describe("server world", () => {
     const asleep = async () => (await allRoaches()).filter((r) => r.asleep).map((r) => r.id);
 
     await db.update(users).set({ lastSeenOn: daysBefore(away - 1) }).where(eq(users.id, me.id));
-    expect(await flipTheAway(now)).toEqual({ flipped: 0, woke: 0 });
+    expect(await flipTheAway(now)).toEqual({ flipped: 0, woke: 0, told: 0 });
     await db.update(users).set({ lastSeenOn: daysBefore(away) }).where(eq(users.id, me.id));
-    expect(await flipTheAway(now)).toEqual({ flipped: 1, woke: 0 });
+    expect(await flipTheAway(now)).toEqual({ flipped: 1, woke: 0, told: 0 });
     // only the main roach, and the demo players never
     expect(await asleep()).toEqual([main.publicId]);
 
@@ -239,6 +249,80 @@ describe("server world", () => {
     await db.update(users).set({ createdAt: new Date("2026-09-01T12:00+08:00") }).where(eq(users.id, me.id));
     // 10/28 to 11/21 is 24 days, past 14 to 17
     expect((await flipTheAway(now)).flipped).toBe(1);
+  });
+
+  it("lets only 触须之交 poke a sleeping main roach, once a week, and it sleeps on", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze" });
+    const pal = await signUp("pal@example.com");
+    const ids = await realFriends(me, pal);
+    await pal.placeRoach({ kind: "clone" }, PEOPLES_SQUARE);
+    const stranger = await signUp("stranger@example.com");
+    await expect(world.poke(me.id, ids.b)).rejects.toThrow("醒着呢");
+
+    await world.drink(pal.id);
+    await expect(world.poke(stranger.id, ids.b)).rejects.toThrow("只有触须之交");
+    await expect(world.poke(me.id, ids.a)).rejects.toThrow("你自己的蟑螂");
+    const clone = (await pal.me()).roaches.find((r) => r.slot === 1)!;
+    await expect(world.poke(me.id, clone.publicId)).rejects.toThrow("醒着呢");
+    const { againAt } = await world.poke(me.id, ids.b);
+    expect(againAt - Date.now()).toBeGreaterThan(6.9 * 86_400_000);
+    await expect(world.poke(me.id, ids.b)).rejects.toThrow("7 天后可以再戳");
+    expect((await me.friends())[0].pokeAgainAt).toBe(againAt);
+    expect((await pal.friends())[0].pokeAgainAt).toBeNull();
+    // still asleep, and still drunk
+    expect((await allRoaches()).find((r) => r.id === ids.b)).toMatchObject({ asleep: true });
+    expect((await pal.me()).drunkUntil).not.toBeNull();
+
+    // hidden while it sleeps it off; once up, pal sees who
+    expect((await pal.inbox()).some((i) => i.kind === "poke")).toBe(false);
+    await world.sober(pal.id);
+    const poked = (await pal.inbox()).find((i) => i.kind === "poke")!;
+    expect(poked).toMatchObject({ seen: false, from: { displayName: "Breeze" } });
+    await pal.markSeen([poked.id]);
+    expect((await pal.inbox()).find((i) => i.kind === "poke")).toMatchObject({ seen: true });
+    // a later drink keeps seen pokes in view
+    await db.update(users).set({ drunkUntil: new Date(Date.now() + 3_600_000) }).where(eq(users.id, pal.id));
+    expect((await pal.inbox()).some((i) => i.kind === "poke")).toBe(true);
+
+    // blocking from the poke ends the friendship, and hides it
+    await pal.block(poked.id);
+    expect(await me.friends()).toEqual([]);
+    expect((await pal.inbox()).some((i) => i.kind === "poke")).toBe(false);
+  });
+
+  it("tells the poker 「醒啦」 at the first 04:00 batch after the roach stands up, drunk or away alike", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze" });
+    const pal = await signUp("pal@example.com");
+    await pal.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "摸鱼" });
+    const ids = await realFriends(me, pal);
+    const now = Date.now();
+    const daysBefore = (n: number) => beijingDate(now - n * 86_400_000);
+    const woke = async () => (await me.inbox()).filter((i) => i.kind === "pokeWoke");
+
+    // drunk: told at the first batch that finds it awake
+    await world.drink(pal.id);
+    await world.poke(me.id, ids.b);
+    expect((await flipTheAway(now)).told).toBe(0);
+    await world.sober(pal.id);
+    expect((await flipTheAway(now)).told).toBe(1);
+    expect(await woke()).toMatchObject([{ seen: false, from: { displayName: "摸鱼" } }]);
+    expect((await flipTheAway(now)).told).toBe(0);
+    await me.markSeen([(await woke())[0].id]);
+    expect(await woke()).toMatchObject([{ seen: true }]);
+
+    // away: the batch that stands it up again tells nobody yet; the one after does
+    await db.delete(pokes);
+    await db.update(users).set({ lastSeenOn: daysBefore(20), sleptAwayOn: daysBefore(3) }).where(eq(users.id, pal.id));
+    await world.poke(me.id, ids.b);
+    expect((await pal.me()).wokeFromAway).toBe(true);
+    expect((await pal.inbox()).find((i) => i.kind === "poke")).toMatchObject({ from: { displayName: "Breeze" } });
+    expect(await flipTheAway(now)).toMatchObject({ woke: 1, told: 0 });
+    expect(await woke()).toEqual([]);
+    expect((await flipTheAway(now + 86_400_000)).told).toBe(1);
+    expect(await woke()).toHaveLength(1);
+
+    // nothing about it in the shared roach list
+    expect(JSON.stringify(await allRoaches())).not.toMatch(/poke/i);
   });
 
   it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {
@@ -1129,16 +1213,23 @@ describe("server world", () => {
     expect((await me.me()).movesLeft).toBe(3);
   });
 
-  it("forgets touches, declarations and moves older than 90 days, keeping newer ones", async () => {
+  it("forgets touches, pokes, declarations and moves older than 90 days, keeping newer ones", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await me.touch((await publicAt(me, tester("t2").roaches[0])).id, true);
     await me.declare({ template: "birthday" });
     const t2 = await demo("t2");
     expect(await t2.inbox()).toHaveLength(2);
 
+    const poker = await signUp("poker@example.com");
+    const pal = await signUp("pal@example.com");
+    const ids = await realFriends(poker, pal);
+    await db.update(users).set({ sleptAwayOn: beijingDate() }).where(eq(users.id, pal.id));
+    await world.poke(poker.id, ids.b);
+
     // pretend a hundred days pass
     await pruneOldActivity(Date.now() + 100 * 86_400_000);
     expect(await t2.inbox()).toEqual([]);
+    expect(await db.select().from(pokes)).toEqual([]);
     expect(await db.select().from(moves)).toEqual([]);
     expect(await db.select().from(deliveries)).toEqual([]);
     // the roaches themselves stay
