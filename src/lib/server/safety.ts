@@ -1,5 +1,6 @@
 import "server-only";
 import { and, count, countDistinct, eq, gt, inArray, isNull } from "drizzle-orm";
+import { AMIYA_ID, isAmiyaItem } from "../amiya";
 import { declarationText, isReaction, REACTIONS } from "../declarations";
 import { displayName } from "../profile";
 import { NAME_REPORTS_TO_HIDE, REPORT_NOTE_MAX, REPORTS_PER_DAY, SITE_NAME } from "../rules";
@@ -25,6 +26,8 @@ type Sender = { other: string; known: boolean; context: string };
 
 /** Who sent an inbox item ("t:", "d:", "x:", "p:" ids) or who a friend is ("friend:<id>"), as far as this player may ask. */
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
+  // the page offers neither on her; this is the backstop
+  if (target === `friend:${AMIYA_ID}` || isAmiyaItem(target)) throw new WorldError("阿米娅向导不是真人，不用拉黑。");
   if (target.startsWith("friend:")) {
     const key = target.slice("friend:".length);
     const other = [...(await friendIdsOf(userId))].find((o) => friendKey(userId, o) === key);

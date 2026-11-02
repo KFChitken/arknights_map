@@ -41,7 +41,8 @@ export class ServerWorld implements World {
     return body?.result as T;
   }
 
-  me = () => this.call<Me | null>("me");
+  // the zone only works out which day it is for 阿米娅向导's greeting; the server keeps none of it
+  me = () => this.call<Me | null>("me", new Date().getTimezoneOffset());
   // A GET, so a browser that already holds the whole snapshot gets a 304 for it
   roachFeed = async (since: string | null): Promise<RoachFeedUpdate> => {
     let res: Response;
@@ -83,4 +84,5 @@ export class ServerWorld implements World {
   identities = () => this.call<Identity[]>("identities");
   become = (id: PlayerId) => this.call<void>("become", id);
   reset = () => this.call<void>("reset");
+  pretend = (what: "day" | "away") => this.call<void>("pretend", what);
 }

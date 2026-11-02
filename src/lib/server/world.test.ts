@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import type { Declaration } from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
@@ -11,9 +12,10 @@ import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
-import { isBanned } from "./account";
+import { deleteAccount, isBanned } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
+import { greetAmiya } from "./amiya";
 import { awayExtraDays, flipTheAway } from "./away";
 import { acceptPublicPlace, agreeAgain } from "./consent";
 import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
@@ -25,6 +27,7 @@ import { pruneOldActivity } from "./retention";
 import { allRoaches } from "./roachFeed";
 import * as safety from "./safety";
 import {
+  amiyaTouches,
   bannedEmails,
   blocks,
   dailyTotals,
@@ -143,7 +146,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}`,
   );
   forgetNameWords();
   await seedDemo();
@@ -323,6 +326,125 @@ describe("server world", () => {
 
     // nothing about it in the shared roach list
     expect(JSON.stringify(await allRoaches())).not.toMatch(/poke/i);
+  });
+
+  it("lets anyone touch 阿米娅向导, who touches back the same way, apart from everything between players", async () => {
+    expect(await me.touch(AMIYA_ID, false)).toMatchObject({ newFriend: null, amiya: { bold: false } });
+    expect(await me.touch(AMIYA_ID, true)).toMatchObject({ newFriend: "阿米娅向导", amiya: { bold: true } });
+    expect((await me.touch(AMIYA_ID, true)).newFriend).toBeNull();
+    const rows = await db.select().from(amiyaTouches).where(eq(amiyaTouches.userId, me.id));
+    const bolds = (direction: string) =>
+      rows
+        .filter((r) => r.direction === direction)
+        .map((r) => r.bold)
+        .sort();
+    expect(bolds("to_amiya")).toEqual([false, true, true]);
+    expect(bolds("from_amiya")).toEqual([false, true, true]);
+
+    // her touches are her own kind of message; nothing reaches the tables between players
+    const inbox = await me.inbox();
+    expect(inbox.filter((i) => i.kind === "amiya")).toHaveLength(3);
+    expect(inbox.some((i) => i.kind === "touch")).toBe(false);
+    expect(await db.select().from(touches)).toEqual([]);
+    expect(await db.select().from(friendships)).toEqual([]);
+    expect((await userRow(me.id)).friendsEver).toBe(0);
+    expect(await badgeIds(me)).not.toContain("trainee");
+    expect(await badgeIds(me)).not.toContain("farwhisker");
+
+    // first among 触须之交, with nothing to block or report
+    const [first] = await me.friends();
+    expect(first).toMatchObject({ id: AMIYA_ID, profile: { displayName: "阿米娅向导" }, history: [], pokeAgainAt: null });
+    expect(first.roaches).toEqual([expect.objectContaining({ id: AMIYA_ID, friend: true, guide: true, ...AMIYA_AT })]);
+    await expect(me.block(`friend:${AMIYA_ID}`)).rejects.toThrow("不是真人");
+    await expect(me.report(inbox[0].id, "spam")).rejects.toThrow("不是真人");
+    await expect(world.poke(me.id, AMIYA_ID)).rejects.toThrow("一直醒着");
+    expect((await me.me()).amiya).toEqual({ friend: true, greeting: null });
+
+    // the 60 touches a day between players stay untouched, and she has her own 20
+    for (let i = 3; i < 20; i++) await me.touch(AMIYA_ID, false);
+    await expect(me.touch(AMIYA_ID, false)).rejects.toThrow("今天跟阿米娅碰得够多啦");
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+    // the inbox keeps only her latest five
+    expect((await me.inbox()).filter((i) => i.kind === "amiya")).toHaveLength(5);
+
+    await me.unfriend(AMIYA_ID);
+    expect((await me.friends()).some((f) => f.id === AMIYA_ID)).toBe(false);
+    expect((await me.me()).amiya.friend).toBe(false);
+  });
+
+  it("lets you touch back or crawl away from her touches once each, and only your own", async () => {
+    const { amiya } = await me.touch(AMIYA_ID, false);
+    const item = amiya!.itemId;
+    const other = await signUp("other@example.com");
+    await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
+    await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
+    await other.markSeen([item]);
+    expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: false });
+
+    const back = await me.reply(item, true);
+    expect(back).toMatchObject({ newFriend: "阿米娅向导", amiya: { bold: true } });
+    await expect(me.reply(item, false)).rejects.toThrow("已经碰过 TA 了");
+    await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
+    expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ replied: true });
+
+    await me.ignore(back.amiya!.itemId);
+    expect((await me.inbox()).find((i) => i.id === back.amiya!.itemId)).toMatchObject({ ignored: true, seen: true });
+    await expect(me.reply(back.amiya!.itemId, false)).rejects.toThrow("默默爬走");
+    await me.markSeen([item]);
+    expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: true });
+  });
+
+  it("greets 阿米娅向导's 触须之交 once a day by their own clock, from the day after", async () => {
+    const at = (iso: string) => Date.parse(iso);
+    await db.update(users).set({ amiyaFriendSince: new Date(at("2026-11-02T10:00+08:00")) }).where(eq(users.id, me.id));
+    const greet = async (offset: number, iso: string) => greetAmiya(await userRow(me.id), offset, at(iso));
+    const greetings = async () =>
+      (await db.select().from(amiyaTouches).where(eq(amiyaTouches.userId, me.id))).filter((r) => r.kind === "greet").length;
+
+    // Beijing: not the day they became friends, nor before 04:00 the next morning
+    expect(await greet(-480, "2026-11-02T23:00+08:00")).toBeNull();
+    expect(await greet(-480, "2026-11-03T03:59+08:00")).toBeNull();
+    const first = await greet(-480, "2026-11-03T04:01+08:00");
+    expect(first).toMatchObject({ kind: "amiya", greet: true, seen: false, replied: false });
+    expect((await greet(-480, "2026-11-03T20:00+08:00"))?.id).toBe(first!.id);
+    await me.markSeen([first!.id]);
+    expect(await greet(-480, "2026-11-03T21:00+08:00")).toBeNull();
+    expect(await greetings()).toBe(1);
+
+    // Nashville in winter (CST): 03:30 there is still the day already greeted; 04:30 is a new one
+    expect(await greet(360, "2026-11-04T03:30-06:00")).toBeNull();
+    expect(await greet(360, "2026-11-04T04:30-06:00")).toMatchObject({ greet: true });
+    // and in summer (CDT); two pages opening at once still get one greeting
+    const [summer] = await Promise.all([greet(300, "2027-06-01T04:30-05:00"), greet(300, "2027-06-01T04:30-05:00")]);
+    expect(await greetings()).toBe(3);
+    // flying to Beijing the same day brings back that greeting, not a new one
+    expect((await greet(-480, "2027-06-01T16:00+08:00"))?.id).toBe(summer!.id);
+    expect(await greetings()).toBe(3);
+
+    await me.unfriend(AMIYA_ID);
+    expect(await greet(-480, "2027-06-03T10:00+08:00")).toBeNull();
+    expect(await greetings()).toBe(3);
+  });
+
+  it("forgets touches with 阿米娅向导 after 90 days, and all of them with the account", async () => {
+    await me.touch(AMIYA_ID, true);
+    await db.insert(amiyaTouches).values({
+      userId: me.id,
+      direction: "from_amiya",
+      bold: false,
+      createdAt: new Date(Date.now() - 91 * 86_400_000),
+    });
+    await pruneOldActivity();
+    expect(await db.select().from(amiyaTouches)).toHaveLength(2);
+    await deleteAccount(await userRow(me.id));
+    expect(await db.select().from(amiyaTouches)).toEqual([]);
+  });
+
+  it("never counts 阿米娅向导 on the radar", async () => {
+    await me.placeRoach({ kind: "main" }, { lng: AMIYA_AT.lng + 0.01, lat: AMIYA_AT.lat });
+    await me.touch(AMIYA_ID, true);
+    expect(await me.radar()).toMatchObject({ roaches: 0, players: 0, friendsNearby: 0 });
   });
 
   it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {

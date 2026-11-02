@@ -8,3 +8,5 @@ next-env.d.ts
 
 # Character pictures belong to Hypergryph: kept on the server, never in the repository (scripts/fetch-operator-art.mjs)
 /operator-art
+# and so does the guide's picture (src/lib/amiya.ts), cut out with scripts/cutout.mjs
+/guide-art

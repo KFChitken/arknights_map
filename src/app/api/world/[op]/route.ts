@@ -6,7 +6,7 @@ import { currentUser, endSession, homeUserId, setHomeUserId, startSession } from
 import { markBadgesSeen, wear } from "@/lib/server/badges";
 import { acceptPublicPlace, mustReconsent, RECONSENT_NEEDED } from "@/lib/server/consent";
 import { db } from "@/lib/server/db";
-import { identities, resetDemo } from "@/lib/server/demo";
+import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
@@ -43,7 +43,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   let result: unknown;
   switch (op) {
     case "me":
-      result = user ? await world.me(user.id) : null;
+      result = user ? await world.me(user.id, args[0]) : null;
       break;
     case "saveProfile":
       result = await world.saveProfile(agreed(), args[0] as Profile);
@@ -139,6 +139,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       demoOnly();
       uid();
       await resetDemo();
+      break;
+    case "pretend":
+      demoOnly();
+      await pretend(uid(), args[0] === "away" ? "away" : "day");
       break;
     default:
       throw new HttpError(404, "没有这个功能。");

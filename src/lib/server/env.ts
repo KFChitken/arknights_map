@@ -20,6 +20,14 @@ export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BO
 export const OPERATOR_AVATARS = process.env.OPERATOR_AVATARS !== "off";
 export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
 
+/**
+ * 阿米娅向导's picture is not ours to publish either: it lives in its own folder outside
+ * the repository (cut out with scripts/cutout.mjs). AMIYA_PICTURE=off takes it down, and
+ * she shows as a pink-lit hood instead.
+ */
+export const AMIYA_PICTURE = process.env.AMIYA_PICTURE !== "off";
+export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
+
 /** Where links in emails point. */
 export const SITE_URL = process.env.SITE_URL || (isProd ? "https://zhoupmap.com" : "http://localhost:3000");
 

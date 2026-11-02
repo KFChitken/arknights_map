@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, AMIYA_NAME, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
@@ -34,6 +35,7 @@ import {
   type Radar,
   type World,
 } from "@/lib/world/types";
+import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
@@ -42,7 +44,16 @@ import { HomecomingSheet } from "./app/Homecoming";
 import HotSheet from "./app/HotSheet";
 import { keepInstallPrompt } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
-import InboxSheet, { firstTab, FriendView, noticeTitle, pokedBy, ProfileView, tabOf, type InboxTab } from "./app/InboxSheet";
+import InboxSheet, {
+  AMIYA_UNFRIEND,
+  firstTab,
+  FriendView,
+  noticeTitle,
+  pokedBy,
+  ProfileView,
+  tabOf,
+  type InboxTab,
+} from "./app/InboxSheet";
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import PlaceBar from "./app/PlaceBar";
@@ -52,9 +63,6 @@ import SafetySheet from "./app/SafetySheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
-  guideRoach,
-  guideTouchBack,
-  isGuideItem,
   loadProgress,
   nearestReal,
   saveProgress,
@@ -74,7 +82,12 @@ type Panel =
   /** draft: unsaved changes kept while 我的称号 was open */
   | { kind: "profile"; draft?: Profile }
   | { kind: "badges"; draft: Profile }
-  | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[] }
+  /** greeting: 阿米娅向导's of the day, which this card then carries */
+  | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null }
+  /** 阿米娅向导's greeting of the day, on a day without 欢迎回家 */
+  | { kind: "amiyaGreeting"; item: AmiyaItem }
+  /** 阿米娅向导 introduces herself, once */
+  | { kind: "amiyaIntro" }
   | { kind: "mine" }
   | { kind: "declare"; initial?: Template }
   | { kind: "identity" }
@@ -99,6 +112,8 @@ type Panel =
   | { kind: "tutorialCard" };
 
 type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
+
+type AmiyaItem = Extract<InboxItem, { kind: "amiya" }>;
 
 type Placing = { target: PlaceTarget; label: string };
 
@@ -138,14 +153,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
   // Where a visitor tried putting their roach; kept in this page only, never sent or stored
   const [preview, setPreview] = useState<LngLat | null>(null);
   const [progress, setProgress] = useState<Progress>({});
-  // The guide roach's messages exist in this page only
-  const [guideItems, setGuideItemsState] = useState<InboxItem[]>([]);
-  const guideItemsRef = useRef<InboxItem[]>([]);
-  const setGuideItems = useCallback((items: InboxItem[]) => {
-    guideItemsRef.current = items;
-    setGuideItemsState(items);
-  }, []);
   const [greeting, setGreeting] = useState(false);
+  // what 阿米娅向导 is saying over her head, for a few seconds
+  const [amiyaSays, setAmiyaSays] = useState<string | null>(null);
+  const sayTimer = useRef(0);
+  // the first panels of the visit have had their turn, so her introduction can wait behind them
+  const [settled, setSettled] = useState(false);
   // 摄入酒精 / 醒酒 played out by your main roach, big, in the middle of the map
   const [acting, setActing] = useState<"drink" | "wake" | null>(null);
   // what opens once the scene is over, so nothing pops up over it
@@ -238,19 +251,16 @@ export default function MapApp({ cn }: { cn: boolean }) {
     async (items: InboxItem[], tab: InboxTab) => {
       const unseen = items.filter((i) => !i.seen && tabOf(i) === tab).map((i) => i.id);
       if (!unseen.length) return;
-      setGuideItems(guideItemsRef.current.map((i) => (unseen.includes(i.id) ? { ...i, seen: true } : i)));
-      const real = unseen.filter((id) => !isGuideItem(id));
-      if (!real.length) return;
-      await worldRef.current!.markSeen(real);
-      setInbox((all) => all.map((i) => (real.includes(i.id) ? { ...i, seen: true } : i)));
+      await worldRef.current!.markSeen(unseen);
+      setInbox((all) => all.map((i) => (unseen.includes(i.id) ? { ...i, seen: true } : i)));
       if (demoRef.current) await loadIdentities();
     },
-    [loadIdentities, setGuideItems],
+    [loadIdentities],
   );
 
   const openInbox = useCallback(
     async (notice: boolean, tab?: InboxTab, fresh?: InboxItem[]) => {
-      const items = [...guideItemsRef.current, ...(fresh ?? (await loadInbox()))].sort((a, b) => b.at - a.at);
+      const items = fresh ?? (await loadInbox());
       const t = tab ?? firstTab(items);
       setPanel({ kind: "inbox", notice, items, tab: t, viewed: [t] });
       await markTabSeen(items, t);
@@ -273,13 +283,24 @@ export default function MapApp({ cn }: { cn: boolean }) {
         viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
         setLook(loadLook());
         setBasemap(b);
-        // Back after a day or more: a summary first, which says what is unread (not during the tutorial)
+        // Back after a day or more: a summary first, which says what is unread (not during the tutorial);
+        // 阿米娅向导's greeting rides on it, or comes on its own
+        const greeting = m?.amiya.greeting ?? null;
         const home: Panel | null =
-          m?.homecoming && !tutorialStep(m, loadProgress(m.id)) ? { kind: "homecoming", homecoming: m.homecoming, items } : null;
+          m?.homecoming && !tutorialStep(m, loadProgress(m.id))
+            ? {
+                kind: "homecoming",
+                homecoming: m.homecoming,
+                items: items.map((i) => (i.id === greeting?.id ? { ...i, seen: true } : i)),
+                greeting,
+              }
+            : null;
+        const opening = home ?? (greeting ? ({ kind: "amiyaGreeting", item: greeting } as const) : null);
         const first = () => {
+          setSettled(true);
           // an updated privacy policy before anything else
-          if (m?.mustReconsent) setPanel({ kind: "consent", then: home });
-          else if (home) setPanel(home);
+          if (m?.mustReconsent) setPanel({ kind: "consent", then: opening });
+          else if (opening) setPanel(opening);
           // What arrived since the last visit
           else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
           // the page reloaded while the player went to read their login code
@@ -389,16 +410,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
     saveProgress(me.id, next);
   };
   const tutorialMain = me?.roaches.find((r) => r.slot === 0);
-  // the practice roach lives only on this screen, and only during the touch step
-  const guide = useMemo(
-    () => (step === "touch" && tutorialMain ? guideRoach(tutorialMain) : null),
-    [step, tutorialMain],
-  );
-  useEffect(() => {
-    if (!guide && guideItemsRef.current.length) setGuideItems([]);
-  }, [guide, setGuideItems]);
-  const mapRoaches = useMemo(() => (guide ? [...roaches, guide] : roaches), [roaches, guide]);
-  const shownRoaches = useMemo(() => (poking ? mapRoaches.filter((r) => r.id !== poking.id) : mapRoaches), [mapRoaches, poking]);
+  /** Back from 阿米娅向导 on Rhode Island to your own roach */
+  const flyHome = () => {
+    if (tutorialMain) setFocus({ lng: tutorialMain.lng, lat: tutorialMain.lat, zoom: 11, nonce: Date.now() });
+  };
+  const shownRoaches = useMemo(() => (poking ? roaches.filter((r) => r.id !== poking.id) : roaches), [roaches, poking]);
 
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
@@ -477,6 +493,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (!done) return;
     setPlacing(null);
     const m = await loadMe();
+    // the tutorial's clone step is done for good once one is down, even if it is taken back later
+    if (target.kind === "clone" && step === "clone") updateProgress({ clone: true });
     if (fly) setFocus({ lng: p.lng, lat: p.lat, zoom: 13, nonce: Date.now() });
     setToast(
       target.kind === "move"
@@ -485,12 +503,6 @@ export default function MapApp({ cn }: { cn: boolean }) {
           ? "克隆体放好啦！等待其他舟P发现中 |ω・）"
           : "放好啦！等待其他舟P发现中 |ω・）",
     );
-    if (target.kind === "main") startTutorial(m);
-  };
-
-  /** Right after a newcomer's first main roach is down, the tutorial opens on its first step. */
-  const startTutorial = (m: Me | null) => {
-    if (m && tutorialStep(m, loadProgress(m.id)) === "card") setPanel({ kind: "tutorialCard" });
   };
 
   const onMapClick = (p: LngLat) => {
@@ -501,7 +513,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const onRoachClick = (id: string) => {
-    const roach = mapRoaches.find((r) => r.id === id);
+    if (id === AMIYA_ID) return setSelected({ kind: "other", roach: amiyaRoach(Boolean(me?.amiya.friend)) });
+    const roach = roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
 
@@ -579,13 +592,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const befriendedToast = (name: string) =>
-    setToast(`你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`);
+    setToast(
+      name === AMIYA_NAME
+        ? "你和阿米娅向导成为了触须之交！在「消息 → 触须之交」里能看到她。"
+        : `你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`,
+    );
 
   const touchedToast = (bold: boolean) =>
     setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
 
   const touch = async (roach: PublicRoach, bold: boolean) => {
-    if (roach.guide) return touchGuide(bold);
+    if (roach.id === AMIYA_ID) return touchAmiya(bold);
     const res = await act((w) => w.touch(roach.id, bold));
     if (!res) return;
     setSelected(null);
@@ -615,20 +632,55 @@ export default function MapApp({ cn }: { cn: boolean }) {
     await loadFriends();
   };
 
-  // Practice with the guide: nothing goes to the server; it touches back a moment later, in this page only
-  const touchGuide = (bold: boolean) => {
+  /** What 阿米娅向导 says pops up over her head for a few seconds. */
+  const say = (line: string) => {
+    setAmiyaSays(line);
+    window.clearTimeout(sayTimer.current);
+    sayTimer.current = window.setTimeout(() => setAmiyaSays(null), 4000);
+  };
+
+  /** Touch 阿米娅向导 on the map: she touches back at once, and says so over her head a moment later. */
+  const touchAmiya = async (bold: boolean) => {
+    const res = await act((w) => w.touch(AMIYA_ID, bold));
+    if (!res?.amiya) return;
     setSelected(null);
-    touchedToast(bold);
-    window.setTimeout(() => {
-      setGuideItems([guideTouchBack(), ...guideItemsRef.current]);
-      updateProgress({ practiced: true });
-      if (busyRef.current.panel || busyRef.current.placing) setToast("向导蟑螂碰回了你，点「消息」看看。");
-      else openInbox(true, "touches", inbox);
+    if (res.newFriend) befriendedToast(res.newFriend);
+    else touchedToast(bold);
+    if (step === "touch") updateProgress({ practiced: true });
+    if (res.newFriend) await Promise.all([loadFriends(), loadMe()]);
+    const { itemId } = res.amiya;
+    const line = amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []);
+    window.setTimeout(async () => {
+      say(line);
+      // heard on the spot while she is on screen; otherwise it waits in 消息
+      const bounds = boundsRef.current;
+      if (bounds && inBounds(AMIYA_AT, bounds) && !busyRef.current.panel) {
+        await worldRef.current!.markSeen([itemId]).catch(() => {});
+      } else {
+        setToast("阿米娅向导碰回了你，点「消息」看看。");
+      }
+      await loadInbox();
     }, 1500);
   };
 
-  /** The inbox with the guide roach's in-page messages mixed in, newest first. */
-  const withGuide = (items: InboxItem[]) => [...guideItemsRef.current, ...items].sort((a, b) => b.at - a.at);
+  /** Touch back one of her touches from a card, where her answer shows at once and so counts as seen. Resolves to her line. */
+  const touchBackAmiya = async (item: AmiyaItem, bold: boolean) => {
+    const res = await act((w) => w.reply(item.id, bold));
+    if (!res?.amiya) return null;
+    await worldRef.current!.markSeen([item.id, res.amiya.itemId]).catch(() => {});
+    if (res.newFriend) befriendedToast(res.newFriend);
+    say(amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []));
+    await Promise.all([loadInbox(), loadFriends(), loadMe()]);
+    return amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []);
+  };
+
+  /** Done with her greeting: seen; then whatever else is unread opens, as on any visit. */
+  const closeGreeting = async (item: AmiyaItem) => {
+    setPanel(null);
+    await worldRef.current!.markSeen([item.id]).catch(() => {});
+    const [items] = await Promise.all([loadInbox(), loadMe()]);
+    if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+  };
 
   const keepSnapshot = (items: InboxItem[]) =>
     setPanel((p) =>
@@ -638,39 +690,32 @@ export default function MapApp({ cn }: { cn: boolean }) {
     );
 
   const ignore = async (itemId: string) => {
-    if (isGuideItem(itemId)) {
-      setGuideItems(guideItemsRef.current.map((i) => (i.id === itemId && i.kind === "touch" ? { ...i, ignored: true } : i)));
-      keepSnapshot(withGuide(inbox));
-      return setToast("默默爬走了，TA 不会知道。");
-    }
     const done = await act((w) => w.ignore(itemId).then(() => true));
     if (!done) return;
     setToast("默默爬走了，TA 不会知道。");
-    keepSnapshot(withGuide(await loadInbox()));
+    keepSnapshot(await loadInbox());
   };
 
   const react = async (itemId: string, reaction: Reaction) => {
     const done = await act((w) => w.react(itemId, reaction).then(() => true));
     if (!done) return;
     setToast("回应发出去了！");
-    keepSnapshot(withGuide(await loadInbox()));
+    keepSnapshot(await loadInbox());
   };
 
   const repliedToast = (bold: boolean) => setToast(bold ? "大胆碰回去了！向 TA 表明你的身份" : "偷偷碰回去了。");
 
   const reply = async (itemId: string, bold: boolean) => {
-    if (isGuideItem(itemId)) {
-      setGuideItems(guideItemsRef.current.map((i) => (i.id === itemId ? { ...i, replied: true } : i)));
-      keepSnapshot(withGuide(inbox));
-      return repliedToast(bold);
-    }
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
+    // 阿米娅向导 answers at once: her touch is now at the top of 收到的触碰
+    else if (res.amiya) setToast("阿米娅向导碰回了你。");
     else repliedToast(bold);
+    if (res.amiya) say(amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []));
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
-    keepSnapshot(withGuide(items));
-    if (me?.isNew) await loadMe();
+    keepSnapshot(items);
+    if (me?.isNew || res.newFriend) await loadMe();
     if (demoRef.current) await loadIdentities();
   };
 
@@ -680,17 +725,22 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (radar !== undefined) setPanel({ kind: "radar", radar });
   };
 
+  /** How close to fly to a roach: Amap draws nothing abroad close in, so 阿米娅向导 is shown from further out there. */
+  const zoomFor = (roach: PublicRoach, zoom: number) =>
+    roach.id === AMIYA_ID && basemap === "amap" ? Math.min(zoom, AMIYA_AMAP_ZOOM) : zoom;
+
   const findFriendRoach = (roach: PublicRoach) => {
     setPanel(null);
-    setFocus({ lng: roach.lng, lat: roach.lat, zoom: 13, nonce: Date.now() });
+    setFocus({ lng: roach.lng, lat: roach.lat, zoom: zoomFor(roach, 13), nonce: Date.now() });
     setSelected({ kind: "other", roach });
   };
 
   const unfriend = async (friend: Friend) => {
-    if (!window.confirm(`解除和 ${friend.profile.displayName} 的触须之交？`)) return;
+    const guide = friend.id === AMIYA_ID;
+    if (!window.confirm(guide ? AMIYA_UNFRIEND : `解除和 ${friend.profile.displayName} 的触须之交？`)) return;
     const done = await act((w) => w.unfriend(friend.id).then(() => true), "已经解除触须之交。");
     if (!done) return;
-    await loadFriends();
+    await Promise.all([loadFriends(), guide ? loadMe() : null]);
     await openInbox(false, "friends");
   };
 
@@ -781,7 +831,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const showRoach = (roach: PublicRoach) => {
     setPanel(null);
-    setFocus({ lng: roach.lng, lat: roach.lat, zoom: 14, nonce: Date.now() });
+    setFocus({ lng: roach.lng, lat: roach.lat, zoom: zoomFor(roach, 14), nonce: Date.now() });
     setSelected({ kind: "other", roach });
   };
 
@@ -813,6 +863,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setToast("谢谢！可以继续玩啦。");
   };
 
+  /** 假装过了一天 / 假装离开两天, then open the page afresh as a new visit would */
+  const pretend = async (what: "day" | "away") => {
+    const done = await act((w) => w.pretend(what).then(() => true));
+    if (done) window.location.reload();
+  };
+
   const reset = async () => {
     if (!window.confirm("清空所有测试数据（触须、宣言、触须之交、挪窝记录），测试玩家回到原位？真实玩家和他们的蟑螂会留着。")) return;
     await act((w) => w.reset(), "测试数据清空了。");
@@ -825,7 +881,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const myColor = me?.profile.color ?? "cyan";
   const myAvatar = me?.profile.avatar ?? "hood";
   const main = me?.roaches.find((r) => r.slot === 0);
-  const unseen = inbox.filter((i) => !i.seen).length + guideItems.filter((i) => !i.seen).length;
+  const unseen = inbox.filter((i) => !i.seen).length;
   const around = useMemo(() => (preview ? roachesAround(feedRoaches, preview) : null), [preview, feedRoaches]);
   const nearest = useMemo(
     () => (step === "touch" && tutorialMain ? nearestReal(roaches, tutorialMain) : null),
@@ -857,6 +913,42 @@ export default function MapApp({ cn }: { cn: boolean }) {
     applyMe({ ...me, badges: me.badges.map((b) => ({ ...b, seen: true })) });
   }, [idle, unseenBadges, newBadges.length, me, applyMe]);
 
+  // The tutorial's touch step happens on Rhode Island: the map goes to 阿米娅向导 as it begins
+  const touchLesson = step === "touch" && !progress.practiced && basemap !== null;
+  useEffect(() => {
+    if (!touchLesson) return;
+    const amiya = amiyaRoach(false);
+    setFocus({ lng: amiya.lng, lat: amiya.lat, zoom: zoomFor(amiya, 13), nonce: Date.now() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touchLesson]);
+
+  // 阿米娅向导 introduces herself once to players with a roach who have not met her, after everything else
+  const introDue = Boolean(settled && idle && main && me && !me.amiya.friend && !newBadges.length && !unseenBadges);
+  const meIdForIntro = me?.id;
+  useEffect(() => {
+    if (!introDue || !meIdForIntro || introShown(meIdForIntro)) return;
+    markIntroShown(meIdForIntro);
+    setPanel({ kind: "amiyaIntro" });
+  }, [introDue, meIdForIntro]);
+
+  // Back to the page on a new day (from 04:00 on this device): 阿米娅向导 may be greeting
+  const dayRef = useRef(localDay());
+  useEffect(() => {
+    if (!meId) return;
+    const onVisible = async () => {
+      if (document.visibilityState !== "visible" || localDay() === dayRef.current) return;
+      dayRef.current = localDay();
+      const m = await loadMe();
+      const item = m?.amiya.greeting;
+      if (!item) return;
+      const { panel: open, placing: busy } = busyRef.current;
+      if (open || busy) setToast("阿米娅向导跟你打了个招呼，点「消息」看看。");
+      else setPanel({ kind: "amiyaGreeting", item });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [meId, loadMe]);
+
   // quiet from the popup, where the toast would show through
   const wearBadge = async (badge: string | null, quiet = false) => {
     const done = await act((w) => w.wearBadge(badge).then(() => true));
@@ -867,6 +959,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const mapProps = {
     roaches: shownRoaches,
+    amiya: { friend: Boolean(me?.amiya.friend), bubble: amiyaSays },
     // while the main roach acts out a scene over the map, the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => !acting || r.slot > 0),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -977,17 +1070,37 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onClose={() => setPanel(null)}
           />
         );
-      case "homecoming":
+      case "homecoming": {
+        // her greeting counts as seen however this card is left
+        const seen = () => (p.greeting ? worldRef.current!.markSeen([p.greeting.id]).catch(() => {}) : Promise.resolve());
         return (
           <HomecomingSheet
             me={me}
             homecoming={p.homecoming}
             items={p.items}
-            onInbox={() => openInbox(false, undefined, p.items)}
-            onWelcome={() => setPanel({ kind: "declare", initial: "welcome" })}
-            onClose={() => setPanel(null)}
+            amiya={p.greeting ? { onTouchBack: (bold) => touchBackAmiya(p.greeting!, bold) } : undefined}
+            onInbox={() => seen().then(() => openInbox(false))}
+            onWelcome={() => {
+              seen();
+              setPanel({ kind: "declare", initial: "welcome" });
+            }}
+            onClose={() => {
+              seen().then(() => loadInbox());
+              setPanel(null);
+            }}
           />
         );
+      }
+      case "amiyaGreeting":
+        return (
+          <AmiyaGreetingSheet
+            games={me.profile.games}
+            onTouchBack={(bold) => touchBackAmiya(p.item, bold)}
+            onClose={() => closeGreeting(p.item)}
+          />
+        );
+      case "amiyaIntro":
+        return <AmiyaIntroSheet onFind={() => showRoach(amiyaRoach(me.amiya.friend))} onLater={() => setPanel(null)} />;
       case "declare":
         return (
           <DeclareSheet
@@ -1004,6 +1117,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           <InboxSheet
             items={p.items}
             friends={friends}
+            games={me.profile.games}
             tab={p.tab}
             notice={p.notice}
             viewed={p.viewed}
@@ -1080,7 +1194,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
         );
       case "identity":
         return (
-          <IdentitySheet identities={identities} onBecome={become} onReset={reset} onClose={() => setPanel(null)} />
+          <IdentitySheet
+            identities={identities}
+            onBecome={become}
+            onReset={reset}
+            onPretend={pretend}
+            onClose={() => setPanel(null)}
+          />
         );
     }
   };
@@ -1197,7 +1317,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
           roach={selected.roach}
           look={look}
           signedIn={Boolean(me)}
-          onSignIn={() => setPanel({ kind: "login", reason: "登录后就能伸出触须碰 TA。" })}
+          onSignIn={() =>
+            setPanel({ kind: "login", reason: selected.roach.id === AMIYA_ID ? "登录后就能碰她。" : "登录后就能伸出触须碰 TA。" })
+          }
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
@@ -1242,12 +1364,21 @@ export default function MapApp({ cn }: { cn: boolean }) {
           progress={progress}
           nearest={nearest}
           sending={greeting}
+          onPlaceMain={() => startPlacing({ kind: "main" })}
+          onPlaceClone={() => startPlacing({ kind: "clone" })}
           onOpenCard={() => setPanel({ kind: "tutorialCard" })}
           onCardLater={() => updateProgress({ card: true })}
           onGreet={greet}
-          onFindGuide={() => guide && showRoach(guide)}
+          onFindGuide={() => showRoach(amiyaRoach(me.amiya.friend))}
           onFindNearest={() => nearest && showRoach(nearest)}
-          onSkipStep={(s) => updateProgress({ [s]: true })}
+          onBackHome={() => {
+            updateProgress({ touch: true });
+            flyHome();
+          }}
+          onSkipStep={(s) => {
+            updateProgress({ [s]: true });
+            if (s === "touch") flyHome();
+          }}
           onFinish={() => updateProgress({ done: true })}
           onSkipAll={() => updateProgress({ skipped: true })}
         />

@@ -3,6 +3,7 @@
 import maplibregl, { type GeoJSONSource, type StyleImageInterface, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
+import { AMIYA_AT, AMIYA_ID } from "@/lib/amiya";
 import { roachImageData } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import {
@@ -20,6 +21,7 @@ import {
 } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
+import { amiyaElement, updateAmiya } from "./amiyaMarker";
 import { roachTraits, type MapViewProps } from "./types";
 
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -261,6 +263,7 @@ export default function MaplibreView(props: MapViewProps) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
   const syncRef = useRef<Promise<void>>(Promise.resolve());
+  const amiyaRef = useRef<HTMLElement | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -302,6 +305,19 @@ export default function MaplibreView(props: MapViewProps) {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("style.load", () => hideBorders(map));
     mapRef.current = map;
+
+    // 阿米娅向导: a page element over the map, so taps on her never reach the roaches below
+    const amiya = amiyaElement();
+    amiya.addEventListener("click", (e) => {
+      // while placing, the tap is a spot on the map like any other
+      if (propsRef.current.placing) return;
+      e.stopPropagation();
+      propsRef.current.onRoachClick(AMIYA_ID);
+    });
+    new maplibregl.Marker({ element: amiya, anchor: "center" }).setLngLat([AMIYA_AT.lng, AMIYA_AT.lat]).addTo(map);
+    amiyaRef.current = amiya;
+    updateAmiya(amiya, map.getZoom(), propsRef.current.amiya);
+    map.on("zoom", () => updateAmiya(amiya, map.getZoom(), propsRef.current.amiya));
 
     const loadTimer = window.setTimeout(() => {
       if (!readyRef.current) propsRef.current.onError?.("海外底图加载很慢，可以试试切换到高德底图。");
@@ -449,11 +465,18 @@ export default function MaplibreView(props: MapViewProps) {
       window.clearTimeout(foldTimer);
       readyRef.current = false;
       mapRef.current = null;
+      amiyaRef.current = null;
       map.remove();
     };
   }, []);
 
   useEffect(sync, [props.roaches, props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
+
+  const { friend, bubble } = props.amiya;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && amiyaRef.current) updateAmiya(amiyaRef.current, map.getZoom(), { friend, bubble });
+  }, [friend, bubble]);
 
   useEffect(() => {
     const map = mapRef.current;

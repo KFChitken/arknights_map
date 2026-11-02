@@ -1,7 +1,8 @@
 "use client";
 
+import { AMIYA_NAME } from "@/lib/amiya";
 import { bottleIcon } from "@/lib/flipArt";
-import { POKE_EVERY_DAYS, SITE_NAME } from "@/lib/rules";
+import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
@@ -60,7 +61,7 @@ export function OtherRoachCard({
   const pokeable = asleep && Boolean(friendName);
   const daysToWait = pokeAgainAt ? Math.ceil((pokeAgainAt - Date.now()) / 86_400_000) : 0;
   const title = roach.guide
-    ? `${SITE_NAME}向导（不是真人）`
+    ? `${AMIYA_NAME}（不是真人）`
     : friendName
       ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
       : roach.clone
@@ -69,7 +70,11 @@ export function OtherRoachCard({
           ? "一只翻肚皮的匿名舟P"
           : "一只匿名舟P";
   const hint = roach.guide
-    ? "跟它练练伸出触须，它会马上碰回你。只有你看得到它。"
+    ? !signedIn
+      ? "登录后就能碰她。"
+      : friendName
+        ? "你们是触须之交，她每天会跟你打招呼。"
+        : "她会用一样的方式碰回你。"
     : asleep
       ? friendName
         ? "TA 四脚朝天睡着了。戳一戳，TA 醒来就知道你来过。"

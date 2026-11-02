@@ -30,6 +30,10 @@ export type RoachColor = (typeof ROACH_COLORS)[number];
 /** Cartoon looks a player can pick; the realistic roach is the same for everyone. */
 export const ROACH_AVATARS = ["hood", "doctor", "endmin", "imp"] as const;
 export type RoachAvatar = (typeof ROACH_AVATARS)[number];
+/** The guide's own look (src/lib/amiya.ts): drawn like the others, never offered to players */
+export const GUIDE_AVATAR = "amiya";
+/** Every look the map can draw */
+export type DrawnAvatar = RoachAvatar | typeof GUIDE_AVATAR;
 
 /** Ask the map to fly somewhere; only a new nonce triggers it. */
 export type MapFocus = MapView & { nonce: number };

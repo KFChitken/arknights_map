@@ -12,6 +12,8 @@ export type MapViewProps = {
   mineAsleep: boolean;
   /** Where a visitor is trying out placing a roach: drawn faded in your own look, sent nowhere */
   ghost?: LngLat | null;
+  /** 阿米娅向导 (src/lib/amiya.ts), on every map: whether she is your 触须之交, and what she is saying */
+  amiya: { friend: boolean; bubble: string | null };
   myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
@@ -20,6 +22,7 @@ export type MapViewProps = {
   placing: boolean;
   focus: MapFocus | null;
   onMapClick: (p: LngLat) => void;
+  /** A roach of someone else, or 阿米娅向导 (AMIYA_ID) */
   onRoachClick: (publicId: string) => void;
   onMineClick: (roachId: string) => void;
   onViewChange: (v: MapView, bounds: [LngLat, LngLat]) => void;

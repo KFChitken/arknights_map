@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { AMIYA_AT, AMIYA_ID } from "@/lib/amiya";
 import { loadAMap, type AMapNS } from "@/lib/amap";
 import { fromGcj, toGcj } from "@/lib/coords";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
@@ -17,6 +18,7 @@ import {
 } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
+import { amiyaElement, amiyaSize, updateAmiya } from "./amiyaMarker";
 import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
@@ -26,6 +28,8 @@ const ZOOM_OFFSET = 1;
 const HEAT_Z = 125;
 const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
+/** Above your own roaches (300) */
+const AMIYA_Z = 320;
 
 // MassMarks draws thousands of points on one canvas, unlike DOM markers.
 // Roaches are split into batches, each with its own MassMarks redrawn in turn;
@@ -66,7 +70,8 @@ function massGroups(roaches: PublicRoach[]): MassPoint[][] {
       lat,
       cos: Math.cos((lat * Math.PI) / 180),
       id: r.id,
-      color: ROACH_AVATARS.indexOf(r.avatar) * ROACH_COLORS.length + ROACH_COLORS.indexOf(r.color),
+      // the shared list only ever holds the looks players pick
+      color: ROACH_AVATARS.indexOf(r.avatar as RoachAvatar) * ROACH_COLORS.length + ROACH_COLORS.indexOf(r.color),
       heading: t.headingIndex,
       clone: r.clone,
       friend: r.friend,
@@ -184,6 +189,7 @@ export default function AmapView(props: MapViewProps) {
   // The look whose icons the MassMarks currently use, so style indexes always match them
   const styledRef = useRef<{ look: RoachStyle; urls: string[] }>({ look: props.look, urls: [] });
   const mineSeq = useRef(0);
+  const amiyaRef = useRef<{ el: HTMLElement; marker: AMapNS } | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -288,6 +294,30 @@ export default function AmapView(props: MapViewProps) {
 
         placeMine();
 
+        // 阿米娅向导: a page element marker, on top of everything and in her picture whatever the look
+        const zoomNow = () => map.getZoom() - ZOOM_OFFSET;
+        const amiya = amiyaElement();
+        const amiyaMarker = new AMap.Marker({
+          position: toGcj(AMIYA_AT),
+          content: amiya,
+          zIndex: AMIYA_Z,
+          bubble: true,
+        });
+        const fitAmiya = () => {
+          const size = amiyaSize(zoomNow());
+          amiyaMarker.setOffset(new AMap.Pixel(-size / 2, -size / 2));
+          updateAmiya(amiya, zoomNow(), propsRef.current.amiya);
+        };
+        fitAmiya();
+        amiyaMarker.on("click", () => {
+          if (propsRef.current.placing) return;
+          lastHitRef.current = Date.now();
+          window.setTimeout(() => propsRef.current.onRoachClick(AMIYA_ID), 0);
+        });
+        map.add(amiyaMarker);
+        map.on("zoomchange", fitAmiya);
+        amiyaRef.current = { el: amiya, marker: amiyaMarker };
+
         map.on("click", (e: AMapNS) => {
           if (Date.now() - lastHitRef.current < 300) return;
           propsRef.current.onMapClick(fromGcj(e.lnglat.getLng(), e.lnglat.getLat()));
@@ -321,6 +351,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current = [];
       heatRef.current = null;
       mineRef.current = [];
+      amiyaRef.current = null;
       map?.destroy();
       mapRef.current = null;
     };
@@ -358,6 +389,12 @@ export default function AmapView(props: MapViewProps) {
   useEffect(() => {
     placeMine();
   }, [props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
+
+  const { friend, bubble } = props.amiya;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && amiyaRef.current) updateAmiya(amiyaRef.current.el, map.getZoom() - ZOOM_OFFSET, { friend, bubble });
+  }, [friend, bubble]);
 
   useEffect(() => {
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");

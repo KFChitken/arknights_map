@@ -2,14 +2,14 @@ import type { BadgeCount, EarnedBadge } from "../badges";
 import type { Declaration, Reaction } from "../declarations";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
-import type { LngLat, RoachAvatar, RoachColor } from "../types";
+import type { DrawnAvatar, LngLat, RoachColor } from "../types";
 
 /**
  * The data layer the UI talks to: ./server.ts calls the API, whose rules live
  * in src/lib/server/world.ts.
  */
 export interface World {
-  /** The signed-in player with their own roaches, or null when signed out. */
+  /** The signed-in player with their own roaches, or null when signed out. Sends the device's time zone for 阿米娅向导's greeting. */
   me(): Promise<Me | null>;
   /**
    * Everyone's roaches, your own included, as one feed shared by every viewer.
@@ -65,6 +65,8 @@ export interface World {
   identities(): Promise<Identity[]>;
   become(id: PlayerId): Promise<void>;
   reset(): Promise<void>;
+  /** 假装过了一天 (阿米娅向导 greets again) or 假装离开两天 (欢迎回家) */
+  pretend(what: "day" | "away"): Promise<void>;
 }
 
 export type PlayerId = string;
@@ -78,7 +80,7 @@ export type OwnRoach = LngLat & { id: string; slot: number; publicId: string };
 export type MapRoach = LngLat & {
   id: string;
   clone: boolean;
-  avatar: RoachAvatar;
+  avatar: DrawnAvatar;
   color: RoachColor;
   /** A show roach that belongs to nobody (see world/bots.ts); it cannot be touched */
   bot?: true;
@@ -88,7 +90,7 @@ export type MapRoach = LngLat & {
 
 /**
  * Someone else's roach as you see it. friend: it belongs to one of your 触须之交.
- * guide: the tutorial's practice roach, which exists only on the newcomer's own screen.
+ * guide: 阿米娅向导 (src/lib/amiya.ts), whom every page draws for itself.
  */
 export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
 
@@ -99,8 +101,11 @@ export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
  */
 export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; changed?: MapRoach[]; removed?: string[] };
 
-/** newFriend: the other player's name when this touch made you 触须之交 */
-export type TouchResult = { newFriend: string | null };
+/**
+ * newFriend: the other player's name when this touch made you 触须之交.
+ * amiya: when you touched 阿米娅向导, her touch back, which she gives at once.
+ */
+export type TouchResult = { newFriend: string | null; amiya?: { itemId: string; bold: boolean } };
 
 export type Friend = {
   /** Opaque; only good for unfriending */
@@ -151,6 +156,8 @@ export type Me = {
   mustReconsent: boolean;
   /** Agreed that everyone sees exactly where their roaches are; asked before the first one goes down */
   agreedPublicPlace: boolean;
+  /** 阿米娅向导: whether you are 触须之交, and today's greeting while you have not seen it */
+  amiya: { friend: boolean; greeting: Extract<InboxItem, { kind: "amiya" }> | null };
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */
@@ -195,7 +202,9 @@ export type InboxItem =
   /** A 触须之交 poked your main roach while it slept; shown once you are awake */
   | { kind: "poke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** A 触须之交 you poked is up again, as the 04:00 batch found */
-  | { kind: "pokeWoke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean };
+  | { kind: "pokeWoke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
+  /** 阿米娅向导 touching you: back after your touch, or her daily greeting (greet) */
+  | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean };
 
 export type Identity = {
   id: PlayerId;

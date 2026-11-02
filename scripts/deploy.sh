@@ -40,13 +40,18 @@ if [ -f operator-art/index.json ]; then
   ssh "$HOST" 'mkdir -p ~/arknights_map/operator-art'
   rsync -a --delete operator-art/ "$HOST:arknights_map/operator-art/"
 fi
+# and so does 阿米娅向导's picture
+if [ -f guide-art/amiya.png ]; then
+  ssh "$HOST" 'mkdir -p ~/arknights_map/guide-art'
+  rsync -a --delete guide-art/ "$HOST:arknights_map/guide-art/"
+fi
 
 ssh "$HOST" "MODE=$mode SHA=$sha bash -s" <<'REMOTE'
 set -e
 cd ~/arknights_map
 git pull --ff-only
 # made by us, not by Docker as root, should the pictures not be there yet
-mkdir -p operator-art
+mkdir -p operator-art guide-art
 IMAGE=ghcr.io/kfchitken/arknights_map
 compose() { docker compose -f docker-compose.prod.yml "$@"; }
 # :latest on the server is always the image that runs, so plain compose commands keep using it

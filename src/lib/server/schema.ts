@@ -72,6 +72,9 @@ export const users = pgTable("users", {
   flipWhenAway: boolean("flip_when_away").notNull().default(true),
   /** The Beijing day the 04:00 batch flipped their main roach over for staying away; null while it stands */
   sleptAwayOn: date("slept_away_on", { mode: "string" }),
+  /** 阿米娅向导 (src/lib/amiya.ts): when they became 触须之交, and the day (by their device, from 04:00) she last greeted them */
+  amiyaFriendSince: at("amiya_friend_since"),
+  amiyaGreetedOn: date("amiya_greeted_on", { mode: "string" }),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -266,6 +269,32 @@ export const pokes = pgTable(
     index("pokes_to_idx").on(t.toUserId, t.createdAt),
     index("pokes_from_idx").on(t.fromUserId, t.createdAt),
   ],
+);
+
+/**
+ * 阿米娅向导 and one player: their touches both ways and her daily greeting. Only
+ * that player ever sees them; she is no account (src/lib/amiya.ts).
+ */
+export const amiyaTouches = pgTable(
+  "amiya_touches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "to_amiya": the player touched her; "from_amiya": she touched them */
+    direction: text("direction").notNull(),
+    /** "touch", or "greet" for her greeting of the day */
+    kind: text("kind").notNull().default("touch"),
+    bold: boolean("bold").notNull(),
+    /** On the player's touch: which of hers it answers, once each */
+    replyTo: uuid("reply_to"),
+    createdAt: createdAt(),
+    seenAt: at("seen_at"),
+    /** The player crawled away from it (默默爬走) */
+    ignoredAt: at("ignored_at"),
+  },
+  (t) => [index("amiya_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("amiya_touches_reply_idx").on(t.replyTo)],
 );
 
 /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship. */

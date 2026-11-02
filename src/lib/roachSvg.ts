@@ -1,5 +1,5 @@
 import { realBelly, sleepingHood } from "./flipArt";
-import type { RoachAvatar, RoachColor, RoachStyle } from "./types";
+import type { DrawnAvatar, RoachColor, RoachStyle } from "./types";
 
 // Front-facing chibi roach (the "hood" look): round black hood with antennae,
 // dark visor, glowing side lights, white front with X straps, dark grey sleeves.
@@ -23,7 +23,7 @@ export const LINE = "#0d0e10";
  * friend: a pink ground and a heart, for roaches of your 触须之交.
  */
 export type RoachOpts = {
-  avatar?: RoachAvatar;
+  avatar?: DrawnAvatar;
   /** Draw only the ground under the roach, or only what goes on top of it (the heart) */
   part?: "ground" | "overlay";
   mine?: boolean;
@@ -81,7 +81,7 @@ ${parts}
 }
 
 /** Clones of other players all wear the plain hood, whatever their owner picked. */
-export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine">): RoachAvatar {
+export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine">): DrawnAvatar {
   return opts.clone && !opts.mine ? "hood" : (opts.avatar ?? "hood");
 }
 
@@ -108,7 +108,7 @@ export function hoodBody(glow: string, { raise = false } = {}) {
 }
 
 // Only the hood is drawn here; the other looks are pictures (see roachImages.ts)
-const BODIES: Partial<Record<RoachAvatar, (accent: string) => string>> = { hood: (glow) => hoodBody(glow) };
+const BODIES: Partial<Record<DrawnAvatar, (accent: string) => string>> = { hood: (glow) => hoodBody(glow) };
 
 // Top-down American cockroach (Periplaneta americana), head up: reddish-brown
 // wings over the abdomen, pale-rimmed pronotum shield with a dark centre,

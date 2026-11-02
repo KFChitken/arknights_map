@@ -1,6 +1,9 @@
 "use client";
 
+import { amiyaLine } from "@/lib/amiya";
 import { nextBadge, type BadgeCount } from "@/lib/badges";
+import { homeGame } from "@/lib/games";
+import { AmiyaPicture, AmiyaTouchBack } from "./Amiya";
 import { BadgePill } from "./Badges";
 import { pokedBy } from "./InboxSheet";
 import { WELCOME_NAMES } from "@/lib/declarations";
@@ -9,7 +12,7 @@ import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 /** One line about what is new on the site, for players coming back; "" when there is nothing to tell. */
-export const WHATS_NEW = "新功能：称号上线了！去「我的资料」看看你拿到了哪些，挑一枚戴上。";
+export const WHATS_NEW = "新功能：阿米娅向导住进了罗德岛！去找她碰一碰。";
 
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,
@@ -22,11 +25,13 @@ const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
  * 欢迎回家: for a player back after at least a whole day away. Numbers only,
  * all their own: what is unread in their inbox, and who moved in nearby. The one
  * exception is who poked their sleeping roach: 触须之交, whose names they know.
+ * On a day 阿米娅向导 greets them too, hers is the welcome, on this one card.
  */
 export function HomecomingSheet({
   me,
   homecoming,
   items,
+  amiya,
   onInbox,
   onWelcome,
   onClose,
@@ -34,6 +39,8 @@ export function HomecomingSheet({
   me: Me;
   homecoming: Homecoming;
   items: InboxItem[];
+  /** 阿米娅向导's greeting of the day, to touch back from here */
+  amiya?: { onTouchBack: (bold: boolean) => Promise<string | null> };
   onInbox: () => void;
   onWelcome: () => void;
   onClose: () => void;
@@ -54,12 +61,10 @@ export function HomecomingSheet({
   // 石棺里的苏醒, given on coming back after a long time away
   const awoke = me.badges.find((b) => b.id === "survivor" && !b.seen);
   const next = nextBadge(me.badges, me.counts);
-  // only those who play just Endfield are 管理员
-  const game = me.profile.games.length === 1 && me.profile.games[0] === "endfield" ? "endfield" : "arknights";
-
   return (
     <Sheet
-      title={`欢迎回家，${WELCOME_NAMES[game]}`}
+      // only those who play just Endfield are 管理员
+      title={amiya ? amiyaLine("greet", me.profile.games) : `欢迎回家，${WELCOME_NAMES[homeGame(me.profile.games)]}`}
       onClose={onClose}
       footer={
         quiet ? (
@@ -77,8 +82,17 @@ export function HomecomingSheet({
         )
       }
     >
+      {amiya && (
+        <>
+          <div className="amiya-greet small">
+            <AmiyaPicture size={64} />
+            <p>阿米娅向导碰了碰你</p>
+          </div>
+          <AmiyaTouchBack onTouchBack={amiya.onTouchBack} />
+        </>
+      )}
       {me.wokeFromAway && (
-        <p style={{ marginTop: 0 }}>你睡了 {homecoming.daysAway} 天，理智早就回满了。</p>
+        <p style={{ marginTop: amiya ? undefined : 0 }}>你睡了 {homecoming.daysAway} 天，理智早就回满了。</p>
       )}
       {awoke && (
         <p className="homecoming-got">
@@ -87,7 +101,7 @@ export function HomecomingSheet({
       )}
       {happened.length > 0 && (
         <>
-          <p style={{ marginTop: me.wokeFromAway || awoke ? undefined : 0 }}>你不在的这几天：</p>
+          <p style={{ marginTop: me.wokeFromAway || awoke || amiya ? undefined : 0 }}>你不在的这几天：</p>
           <ul className="homecoming-list">
             {happened.map((h) => (
               <li key={h}>{h}</li>
@@ -96,11 +110,13 @@ export function HomecomingSheet({
         </>
       )}
       {homecoming.arrivals > 0 && (
-        <p style={happened.length ? undefined : { marginTop: 0 }}>
+        <p style={happened.length || amiya ? undefined : { marginTop: 0 }}>
           附近 {RADAR_RADIUS_KM} 公里新来了 {homecoming.arrivals} 只蟑螂。
         </p>
       )}
-      {quiet && <p style={{ marginTop: 0 }}>附近静悄悄的。发一条「欢迎回家」宣言，让附近的舟P知道你回来了。</p>}
+      {quiet && (
+        <p style={amiya ? undefined : { marginTop: 0 }}>附近静悄悄的。发一条「欢迎回家」宣言，让附近的舟P知道你回来了。</p>
+      )}
       {next && <p className="homecoming-next">{NEXT[next.count](next.more, next.name)}</p>}
       {WHATS_NEW && <p className="homecoming-new">{WHATS_NEW}</p>}
     </Sheet>

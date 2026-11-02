@@ -1,11 +1,24 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
+import { beijingDate } from "../beijing";
 import { displayName } from "../profile";
 import { passerbyProfile, passersby, TESTERS } from "../world/cast";
 import type { Identity } from "../world/types";
 import { db } from "./db";
-import { declarations, deliveries, friendCuts, friendships, moves, pokes, reactions, roaches, touches, users } from "./schema";
+import {
+  amiyaTouches,
+  declarations,
+  deliveries,
+  friendCuts,
+  friendships,
+  moves,
+  pokes,
+  reactions,
+  roaches,
+  touches,
+  users,
+} from "./schema";
 import { roachesChanged } from "./roachFeed";
 import { profileColumns, profileOf } from "./world";
 
@@ -55,6 +68,7 @@ export async function seedDemo() {
 export async function resetDemo() {
   await db.delete(touches);
   await db.delete(pokes);
+  await db.delete(amiyaTouches);
   await db.delete(declarations);
   await db.delete(friendships);
   await db.delete(friendCuts);
@@ -139,4 +153,26 @@ export async function identities(currentId: string, homeId: string | null): Prom
     });
   }
   return out;
+}
+
+/**
+ * For trying things out locally (the identity sheet): 假装过了一天 moves 阿米娅向导's
+ * last greeting and the friendship back a day, so the next visit is greeted again;
+ * 假装离开两天 moves the last visit back two days, so the next one gets 欢迎回家.
+ */
+export async function pretend(userId: string, what: "day" | "away") {
+  if (what === "away") {
+    await db
+      .update(users)
+      .set({ lastSeenOn: beijingDate(Date.now() - 2 * 86_400_000) })
+      .where(eq(users.id, userId));
+    return;
+  }
+  await db
+    .update(users)
+    .set({
+      amiyaGreetedOn: sql`${users.amiyaGreetedOn} - 1`,
+      amiyaFriendSince: sql`${users.amiyaFriendSince} - interval '1 day'`,
+    })
+    .where(eq(users.id, userId));
 }

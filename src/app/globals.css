@@ -156,7 +156,11 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .card-head p { margin: 2px 0 0; }
 .card.stack .row-actions { margin-top: 0; }
 /* the newcomer tutorial, above the bottom buttons */
-.coach { gap: 6px; }
+/* the tutorial, told by 阿米娅向导: her picture beside what she says */
+.card.coach { align-items: flex-start; gap: 10px; padding: 12px; }
+.coach-amiya { flex-shrink: 0; margin-top: 2px; }
+.coach-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.coach .row-actions { margin-top: 2px; }
 .coach strong { font-size: 15px; }
 .coach p { margin: 0; line-height: 1.5; }
 .coach .chips .chip { font-size: 13px; }
@@ -170,6 +174,37 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .touch-buttons small { font-size: 11px; font-weight: 400; color: var(--muted); }
 .touch-buttons .bold { border-color: var(--ink); background: var(--ink); color: #fff; }
 .touch-buttons .bold small { color: #ffffffb3; }
+/* 阿米娅向导 (src/lib/amiya.ts): her marker on both maps, and her cards */
+.amiya-marker { position: relative; width: var(--amiya-size, 24px); height: var(--amiya-size, 24px); cursor: pointer; }
+.amiya-marker img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; user-select: none; }
+.amiya-name {
+  display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 1px;
+  padding: 1px 7px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px #0003;
+  color: var(--ink); font-size: 11px; font-weight: 700; white-space: nowrap; pointer-events: none;
+}
+.amiya-marker.named .amiya-name { display: block; }
+.amiya-bubble {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); margin: 0;
+  padding: 5px 11px; border: 2px solid var(--ink); border-radius: 12px; background: #fff;
+  color: var(--ink); font-size: 14px; font-weight: 800; line-height: 1.3; white-space: nowrap; pointer-events: none;
+  animation: amiya-say 0.25s ease-out;
+}
+.amiya-bubble::after {
+  content: ""; position: absolute; top: 100%; left: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  border: solid var(--ink); border-width: 0 2px 2px 0; background: #fff; transform: rotate(45deg);
+}
+.amiya-bubble[hidden] { display: none; }
+@keyframes amiya-say { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.7); } }
+@media (prefers-reduced-motion: reduce) {
+  .amiya-bubble { animation: none; }
+}
+.amiya-greet { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.amiya-greet.small { flex-direction: row; justify-content: center; gap: 10px; margin: 0 0 4px; }
+.amiya-greet.small p { margin: 0; font-weight: 700; }
+.amiya-line { margin: 0; font-size: 22px; font-weight: 800; }
+.amiya-back { justify-content: center; }
+.amiya-answer { margin: 8px 0 0; text-align: center; font-weight: 700; }
+
 .poke-btn {
   display: flex; flex-direction: column; align-items: center; width: 100%; padding: 9px 8px;
   border: 0; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 800; font-size: 15px;

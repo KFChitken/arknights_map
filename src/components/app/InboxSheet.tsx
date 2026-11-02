@@ -1,18 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { AMIYA_ID, AMIYA_NAME, amiyaLine, isAmiyaItem } from "@/lib/amiya";
 import { REACTIONS, type Reaction } from "@/lib/declarations";
-import { GAME_NAMES, serverName } from "@/lib/games";
+import { GAME_NAMES, serverName, type Game } from "@/lib/games";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
 import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
-import { isGuideItem } from "./Tutorial";
 import RoachIcon from "../RoachIcon";
 
 export type InboxTab = "replies" | "touches" | "friends";
+
+/** Who 阿米娅向导 is, on her card in place of a player's details */
+const GUIDE_NOTE = "舟P地图的向导，不是真人";
+/** What ending it with her means; also the question before it */
+export const AMIYA_UNFRIEND = "解除后阿米娅不会再每天跟你打招呼，她还在罗德岛等你。";
 
 const TABS: { tab: InboxTab; label: string }[] = [
   { tab: "replies", label: "收到的回复" },
@@ -23,9 +28,9 @@ const TABS: { tab: InboxTab; label: string }[] = [
 /** What happens between 触须之交: new friends, and 戳一戳 both ways */
 const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke"];
 
-/** Declarations and reactions are replies; touches and what happens between 触须之交 have their own tabs. */
+/** Declarations and reactions are replies; touches (阿米娅向导's too) and what happens between 触须之交 have their own tabs. */
 export function tabOf(item: InboxItem): InboxTab {
-  if (item.kind === "touch") return "touches";
+  if (item.kind === "touch" || item.kind === "amiya") return "touches";
   if (BETWEEN_FRIENDS.includes(item.kind)) return "friends";
   return "replies";
 }
@@ -34,7 +39,7 @@ export function tabOf(item: InboxItem): InboxTab {
 export function firstTab(items: InboxItem[]): InboxTab {
   const unseen = items.filter((i) => !i.seen);
   if (unseen.some((i) => BETWEEN_FRIENDS.includes(i.kind))) return "friends";
-  if (unseen.some((i) => i.kind === "touch")) return "touches";
+  if (unseen.some((i) => i.kind === "touch" || i.kind === "amiya")) return "touches";
   return "replies";
 }
 
@@ -76,14 +81,24 @@ export function noticeTitle(items: InboxItem[]) {
   if (unseen.some((i) => i.kind === "poke")) return "有触须之交趁你睡着戳了戳你！";
   if (unseen.some((i) => i.kind === "pokeWoke")) return "你戳过的触须之交醒啦！";
   if (unseen.some((i) => i.kind === "touch")) return "你被蟑螂触须碰了一下！";
+  if (unseen.some((i) => i.kind === "amiya")) return "阿米娅向导碰了碰你！";
   if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的独立宣言！";
   if (unseen.length) return "附近有舟P发表了独立宣言！";
   return "消息";
 }
 
+/** What one of 阿米娅向导's touches says, in her own words. */
+function amiyaText(item: Extract<InboxItem, { kind: "amiya" }>, games: Game[]) {
+  if (item.greet) return `${AMIYA_NAME}碰了碰你：「${amiyaLine("greet", games)}」`;
+  return item.bold
+    ? `${AMIYA_NAME}大胆地碰回来了：「${amiyaLine("bold", games)}」`
+    : `${AMIYA_NAME}偷偷碰回来了：「${amiyaLine("sneaky", games)}」`;
+}
+
 export default function InboxSheet({
   items,
   friends,
+  games,
   tab,
   viewed,
   notice,
@@ -98,6 +113,8 @@ export default function InboxSheet({
 }: {
   items: InboxItem[];
   friends: Friend[];
+  /** Your games, for whether 阿米娅向导 calls you 博士 or 管理员 */
+  games: Game[];
   tab: InboxTab;
   /** Tabs opened since the inbox was; their messages count as read */
   viewed: InboxTab[];
@@ -154,8 +171,8 @@ export default function InboxSheet({
   const meta = (item: InboxItem, target: string, who: string | null) => (
     <div className="meta">
       {ago(item.at)}
-      {/* the tutorial's guide roach is nobody, so there is nobody to block */}
-      {!isGuideItem(item.id) && (
+      {/* 阿米娅向导 is nobody, so there is nobody to block */}
+      {!isAmiyaItem(item.id) && (
         <button className="link" onClick={() => onSafety(target, who)}>
           拉黑/举报
         </button>
@@ -193,6 +210,39 @@ export default function InboxSheet({
               </button>
             </div>
           )}
+        </div>
+      );
+    }
+    if (item.kind === "amiya") {
+      return (
+        <div key={item.id} className={cls}>
+          <div>{amiyaText(item, games)}</div>
+          {meta(item, item.id, null)}
+          <div className="row-actions">
+            {item.ignored ? (
+              <span className="done">你默默爬走了</span>
+            ) : item.replied ? (
+              <span className="done">已经碰过她了</span>
+            ) : (
+              <>
+                <button className="pill" disabled={replying === item.id} onClick={() => {
+                  setReplying(item.id);
+                  reply(item.id, false);
+                }}>
+                  偷偷碰回去
+                </button>
+                <button className="pill dark" disabled={replying === item.id} onClick={() => {
+                  setReplying(item.id);
+                  reply(item.id, true);
+                }}>
+                  大胆碰回去
+                </button>
+                <button className="pill" onClick={() => onIgnore(item.id)}>
+                  默默爬走
+                </button>
+              </>
+            )}
+          </div>
         </div>
       );
     }
@@ -285,7 +335,9 @@ export default function InboxSheet({
               <div>
                 <strong>{f.profile.displayName}</strong>
                 <p className="muted">
-                  {ago(f.since)}成为触须之交 · {f.roaches.length} 只蟑螂 · 宣言 {f.declarations} 次
+                  {f.id === AMIYA_ID
+                    ? `${ago(f.since)}成为触须之交 · ${GUIDE_NOTE}`
+                    : `${ago(f.since)}成为触须之交 · ${f.roaches.length} 只蟑螂 · 宣言 ${f.declarations} 次`}
                 </p>
               </div>
               <span className="chev">›</span>
@@ -410,6 +462,8 @@ export function FriendView({
   onClose: () => void;
 }) {
   const { profile } = friend;
+  // 阿米娅向导: no games or history to show, and nobody to block
+  const guide = friend.id === AMIYA_ID;
   return (
     <Sheet title="触须之交" onBack={onBack} onClose={onClose}>
       <div className="who-card">
@@ -420,7 +474,7 @@ export function FriendView({
           <p className="hint">{ago(friend.since)}成为触须之交</p>
         </div>
       </div>
-      <ProfileDetails profile={profile} />
+      {guide ? <p className="hint">{GUIDE_NOTE}</p> : <ProfileDetails profile={profile} />}
 
       <h3>TA 的蟑螂</h3>
       {friend.roaches.length === 0 && <p className="hint">TA 现在没有放蟑螂。</p>}
@@ -438,24 +492,32 @@ export function FriendView({
         </div>
       ))}
 
-      <h3>最近 {INBOX_DAYS} 天发表了 {friend.declarations} 次独立宣言</h3>
+      {!guide && (
+        <>
+          <h3>最近 {INBOX_DAYS} 天发表了 {friend.declarations} 次独立宣言</h3>
 
-      <h3>社交记录</h3>
-      {friend.history.length === 0 && <p className="hint">最近还没有动静。</p>}
-      {friend.history.map((e, i) => (
-        <div className="event" key={i}>
-          <span>{eventText(e)}</span>
-          <span className="muted">{ago(e.at)}</span>
-        </div>
-      ))}
+          <h3>社交记录</h3>
+          {friend.history.length === 0 && <p className="hint">最近还没有动静。</p>}
+          {friend.history.map((e, i) => (
+            <div className="event" key={i}>
+              <span>{eventText(e)}</span>
+              <span className="muted">{ago(e.at)}</span>
+            </div>
+          ))}
+        </>
+      )}
 
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onUnfriend}>
         解除触须之交
       </button>
-      <p className="hint">解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。</p>
-      <button className="pill" style={{ marginTop: 14 }} onClick={onSafety}>
-        拉黑或举报 TA
-      </button>
+      <p className="hint">
+        {guide ? AMIYA_UNFRIEND : "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。"}
+      </p>
+      {!guide && (
+        <button className="pill" style={{ marginTop: 14 }} onClick={onSafety}>
+          拉黑或举报 TA
+        </button>
+      )}
     </Sheet>
   );
 }

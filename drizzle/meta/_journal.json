@@ -141,6 +141,13 @@
       "when": 1793389769016,
       "tag": "0019_pokes",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793579510144,
+      "tag": "0020_amiya",
+      "breakpoints": true
     }
   ]
 }

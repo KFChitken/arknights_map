@@ -32,6 +32,10 @@ describe("name rules", () => {
     expect(nameAllowed("舟P地图客服", [])).toBe(false);
     expect(nameAllowed("匿名舟P", [])).toBe(false);
     expect(nameAllowed("塔露拉厨", [])).toBe(true);
+    // the site's guide, but not the character herself
+    expect(nameAllowed("阿米娅向导", [])).toBe(false);
+    expect(nameAllowed("我是阿米娅 向导", [])).toBe(false);
+    expect(nameAllowed("阿米娅", [])).toBe(true);
   });
 
   it("stops links, contacts and long numbers", () => {

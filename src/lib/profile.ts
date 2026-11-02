@@ -1,6 +1,6 @@
 import type { ShownBadge } from "./badges";
 import type { Game } from "./games";
-import type { RoachAvatar, RoachColor } from "./types";
+import type { DrawnAvatar, RoachAvatar, RoachColor } from "./types";
 
 /** Everything a player can fill in about themselves. Only the owner ever sees all of it. */
 export type Profile = {
@@ -34,7 +34,7 @@ export type PublicProfile = {
   uid?: Partial<Record<Game, string>>;
   /** The server of each shared UID */
   uidServer?: Partial<Record<Game, string>>;
-  avatar: RoachAvatar;
+  avatar: DrawnAvatar;
   color: RoachColor;
   support?: string[];
   /** Their badges, the worn one first */

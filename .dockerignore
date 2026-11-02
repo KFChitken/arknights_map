@@ -6,3 +6,4 @@ node_modules
 .env.*
 # and the character pictures, which the server mounts instead
 operator-art
+guide-art

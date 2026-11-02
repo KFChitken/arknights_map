@@ -13,11 +13,14 @@ export default function IdentitySheet({
   identities,
   onBecome,
   onReset,
+  onPretend,
   onClose,
 }: {
   identities: Identity[];
   onBecome: (id: string) => void;
   onReset: () => void;
+  /** Move this identity's days back, then reload: 阿米娅向导 greets again, or 欢迎回家 shows */
+  onPretend: (what: "day" | "away") => void;
   onClose: () => void;
 }) {
   return (
@@ -55,6 +58,18 @@ export default function IdentitySheet({
           </div>
         );
       })}
+      <h3>假装时间过去了</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        给当前身份用，点完页面会自己刷新。「过了一天」：阿米娅向导会再打一次招呼（要先和她成为触须之交）；「离开两天」：弹「欢迎回家」小结。
+      </p>
+      <div className="row-actions">
+        <button className="pill" onClick={() => onPretend("day")}>
+          假装过了一天
+        </button>
+        <button className="pill" onClick={() => onPretend("away")}>
+          假装离开两天
+        </button>
+      </div>
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>
         清空测试数据，从头开始
       </button>

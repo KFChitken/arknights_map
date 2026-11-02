@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { drinkingHood, groundOnly, bottle, POKE_BANG, POKE_FINGER } from "@/lib/flipArt";
 import { sleepingZzz } from "@/lib/roachImages";
 import { GLOW } from "@/lib/roachSvg";
-import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
+import type { DrawnAvatar, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
 
 /** How long each scene runs; the steps inside are timed in globals.css (.actor). */
@@ -84,7 +84,7 @@ export function PokeActor({
   look,
   onDone,
 }: {
-  avatar: RoachAvatar;
+  avatar: DrawnAvatar;
   color: RoachColor;
   look: RoachStyle;
   onDone: () => void;

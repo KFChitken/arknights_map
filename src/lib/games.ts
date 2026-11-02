@@ -29,6 +29,9 @@ export const SERVERS: Record<Game, { id: string; name: string }[]> = {
 
 export const serverName = (game: Game, id: string | undefined) => SERVERS[game].find((s) => s.id === id)?.name;
 
+/** The game a player is greeted as a player of: Endfield for those who play only Endfield, else Arknights (博士). */
+export const homeGame = (games: Game[]): Game => (games.length === 1 && games[0] === "endfield" ? "endfield" : "arknights");
+
 export function isGame(v: unknown): v is Game {
   return v === "arknights" || v === "endfield";
 }
