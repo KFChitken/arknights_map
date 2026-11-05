@@ -1,0 +1,24 @@
+name: 内地访问检查
+
+# Every morning, can people in mainland China open the site? scripts/check-mainland.mjs asks
+# Globalping to fetch it from probes there and in Hong Kong, and fails when most cannot.
+# GitHub emails whoever last changed this schedule about a failed run.
+on:
+  schedule:
+    # 09:00 Beijing time
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-mainland.mjs zhoupmap.com

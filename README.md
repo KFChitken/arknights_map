@@ -112,6 +112,8 @@ scripts/deploy.sh
 
 GitHub builds the app image for every push to `main` (`.github/workflows/image.yml`, which needs the `AMAP_KEY` and `AMAP_SECURITY_CODE` repository secrets) and publishes it as `ghcr.io/kfchitken/arknights_map`. The deploy script waits for that build, then the server pulls `main`, downloads the image and restarts; if the build failed or the image cannot be downloaded, the server builds it itself. Images never contain `.env`: the server's secrets are read when the container starts. Database migrations run when the app starts.
 
+Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it from probes in mainland China and in Hong Kong, and the run fails when most of either cannot, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
+
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac.
 
 ## Roadmap
