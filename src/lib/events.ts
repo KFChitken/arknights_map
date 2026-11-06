@@ -43,6 +43,8 @@ export const EVENTS: SiteEvent[] = [
         start: "2026-10-27T00:00+08:00",
         end: "2026-11-26T04:00+08:00",
       },
+      // 明河's banner runs to the next version too; until its date is out, it ends with 缘缘庄's line
+      { id: "minghe", game: "endfield", text: "明河，带我一程！", start: "2026-11-06T00:00+08:00", end: "2026-11-26T04:00+08:00" },
     ],
   },
 ];
