@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, AMIYA_NAME, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
+import { loadAMap } from "@/lib/amap";
 import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
@@ -272,6 +273,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
   useEffect(() => {
     worldRef.current = new ServerWorld();
     const b = guessBasemap(cn);
+    // The map's code downloads while the first API calls are in flight; the map itself waits for where to start.
+    // A failed Amap load is forgotten, so AmapView tries again and falls back to OSM as before.
+    if (b === "amap") {
+      void import("./map/AmapView");
+      loadAMap().catch(() => {});
+    } else void import("./map/MaplibreView");
     load()
       .catch((e) => {
         console.error(e);
