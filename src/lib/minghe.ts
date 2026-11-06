@@ -24,7 +24,7 @@ export const MINGHE_NAME = MINGHE.name;
 export const isMingheItem = (id: string) => id.startsWith(MINGHE.prefix);
 
 /** The Beijing date he sets out from 张家界·武陵源, the first station: the day he went live */
-export const MINGHE_FIRST_DAY = "2026-11-06";
+export const MINGHE_FIRST_DAY = "2026-11-07";
 /** A clone rides along this many stations, then he sees it home */
 export const RIDE_STOPS = 7;
 /** Stations in the trail of stars, his own included */
