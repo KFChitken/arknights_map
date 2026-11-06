@@ -12,7 +12,7 @@ import { inBounds } from "@/lib/shapes";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
 import type { Declaration, Reaction, Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
-import { loadLook, saveLook } from "@/lib/look";
+import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
 import {
   anniversaryLine,
   awaySentence,
@@ -2104,14 +2104,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
           <span className="tag">内测版</span>
         </div>
         <div className="switches">
-          <div className="basemap-switch" role="group" aria-label="蟑螂外观">
-            <button className={look === "cartoon" ? "on" : ""} onClick={() => switchLook("cartoon")}>
-              卡通
-            </button>
-            <button className={look === "real" ? "on" : ""} onClick={() => switchLook("real")}>
-              写实
-            </button>
-          </div>
+          {/* 写实 is off for now (src/lib/look.ts) */}
+          {REAL_LOOK_OFFERED && (
+            <div className="basemap-switch" role="group" aria-label="蟑螂外观">
+              <button className={look === "cartoon" ? "on" : ""} onClick={() => switchLook("cartoon")}>
+                卡通
+              </button>
+              <button className={look === "real" ? "on" : ""} onClick={() => switchLook("real")}>
+                写实
+              </button>
+            </div>
+          )}
           {/* mainland China has Amap only */}
           {!cn && (
             <div className="basemap-switch" role="group" aria-label="底图">

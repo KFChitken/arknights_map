@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
+import { REAL_LOOK_OFFERED } from "@/lib/look";
 import { matchesSearch, OPERATORS } from "@/lib/operators";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
@@ -264,7 +265,7 @@ export default function ProfileSheet({
             </button>
           ))}
         </div>
-        <p className="hint">地图切到写实版时，大家都是一样的真蟑螂。</p>
+        {REAL_LOOK_OFFERED && <p className="hint">地图切到写实版时，大家都是一样的真蟑螂。</p>}
       </fieldset>
 
       <fieldset>
