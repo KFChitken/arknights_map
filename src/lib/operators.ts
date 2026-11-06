@@ -14,7 +14,7 @@ const sets: Record<Game, Set<string>> = {
 };
 
 /** Nicknames players search by, for characters whose name they may not type */
-export const NICKNAMES: Record<string, string[]> = { 祀: ["小葱"] };
+export const NICKNAMES: Record<string, string[]> = { 祀: ["小葱"], 塔露拉: ["塔姐"] };
 
 /** Whether a character's name, or one of their nicknames, contains what was typed. */
 export function matchesSearch(name: string, needle: string) {
