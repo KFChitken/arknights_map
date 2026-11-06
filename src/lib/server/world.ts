@@ -123,7 +123,7 @@ import {
 
 /**
  * What the world asks of each guide (src/lib/guides.ts), each in their own module.
- * offsetMin is the device's time zone, which only 佩丽卡监督 uses (her count of the day).
+ * offsetMin is the device's time zone, for which day it is (佩丽卡监督's count of the day, and her asides).
  */
 type GuideWorld = {
   touch: (userId: string, bold: boolean, offsetMin: unknown) => Promise<TouchResult>;
@@ -137,8 +137,8 @@ type GuideWorld = {
 
 const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
   amiya: {
-    touch: (userId, bold) => touchAmiya(userId, bold),
-    reply: (userId, itemId, bold) => replyAmiya(userId, itemId, bold),
+    touch: touchAmiya,
+    reply: replyAmiya,
     ignore: ignoreAmiya,
     see: seeAmiya,
     inbox: amiyaInbox,
@@ -304,7 +304,7 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
 
 // ---- the world, for one player ----
 
-/** offsetMin: the device's Date.getTimezoneOffset(), only to work out 阿米娅向导's greeting day; never stored */
+/** offsetMin: the device's Date.getTimezoneOffset(), only to work out 阿米娅向导's greeting day and 佩丽卡监督's week; never stored */
 export async function me(userId: string, offsetMin?: unknown): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
@@ -342,7 +342,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     // the first visit since the 04:00 batch flipped it over: the owner sees it stand up now, everyone else at the next batch
     wokeFromAway: Boolean(u.sleptAwayOn && (!u.lastSeenOn || u.lastSeenOn < u.sleptAwayOn)),
     amiya: { friend: Boolean(u.amiyaFriendSince), greeting: await greetAmiya(u, offsetMin) },
-    perlica: perlicaOf(u),
+    perlica: await perlicaOf(u, offsetMin),
     talulah: talulahOf(u),
     minghe: await mingheOf(u),
   };
@@ -1016,7 +1016,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   // 塔露拉干员 answers her 触须之交's birthday, never among the recipients
   if (d.template === "birthday") await birthdayDeclared(userId);
   const event = d.template === "event" ? findLine(d.line)?.event : null;
-  if (event) await award(userId, [event.badge]);
+  if (event?.badge) await award(userId, [event.badge]);
   return { reach: reachText(rows.length) };
 }
 

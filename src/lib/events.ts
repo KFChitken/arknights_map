@@ -21,10 +21,23 @@ export type EventLine = {
 export type SiteEvent = {
   id: string;
   name: string;
-  /** Earned by sending any of the lines while it is on */
-  badge: string;
+  /** Earned by sending any of the lines while it is on; some events have none */
+  badge?: string;
   lines: EventLine[];
 };
+
+/** 佩丽卡's birthday, 3 月 16 日 each year: from midnight until 04:00 the next morning, Beijing time */
+const perlicaBirthdays = (from: number, to: number): EventLine[] =>
+  Array.from({ length: to - from + 1 }, (_, i) => {
+    const y = from + i;
+    return {
+      id: `perlica-bday-${y}`,
+      game: "endfield",
+      text: "祝佩丽卡生日快乐！",
+      start: `${y}-03-16T00:00+08:00`,
+      end: `${y}-03-17T04:00+08:00`,
+    };
+  });
 
 export const EVENTS: SiteEvent[] = [
   {
@@ -47,6 +60,8 @@ export const EVENTS: SiteEvent[] = [
       { id: "minghe", game: "endfield", text: "明河，带我一程！", start: "2026-11-06T00:00+08:00", end: "2026-11-26T04:00+08:00" },
     ],
   },
+  // no badge of its own, every year
+  { id: "perlica-birthday", name: "佩丽卡生日", lines: perlicaBirthdays(2027, 2036) },
 ];
 
 export function lineIsOn(line: EventLine, now = Date.now()) {

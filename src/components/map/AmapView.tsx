@@ -18,7 +18,19 @@ import {
 } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { belowGuide, besideMain, guideBox, guideElement, guideShift, updateGuide } from "./guideMarker";
+import {
+  belowGuide,
+  besideMain,
+  besideRight,
+  BIKE_MS,
+  freshRide,
+  guideBox,
+  guideElement,
+  guideShift,
+  rideIn,
+  rideStart,
+  updateGuide,
+} from "./guideMarker";
 import { amapTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -236,10 +248,19 @@ export default function AmapView(props: MapViewProps) {
       updateGuide(g.el, zoom, mark);
       const box = guideBox(mark, zoom);
       const [sx, sy] = guideShift(mark, box);
-      // she stays by her fire; the others step aside from your main roach
+      // she stays by her fire, 佩丽卡监督 sits right beside your drunk main roach; the others step aside from it
       const at = onScreen(mark.at);
-      const [dx, dy] = mark.fire ? [0, 0] : besideMain({ x: at.x + sx, y: at.y + sy }, mainAt, box, belowGuide(zoom));
+      const [dx, dy] = mark.fire
+        ? [0, 0]
+        : mark.beside
+          ? besideRight(box)
+          : besideMain({ x: at.x + sx, y: at.y + sy }, mainAt, box, belowGuide(zoom));
       g.marker.setOffset(new AMap.Pixel(-box / 2 + sx + dx, -box / 2 + sy + dy));
+      if (freshRide(mark, g.el)) {
+        const from = mark.arrive!.from ? onScreen(mark.arrive!.from) : null;
+        const c = el.current!;
+        rideIn(g.el, rideStart({ x: at.x + sx + dx, y: at.y + sy + dy }, from, c.clientWidth, c.clientHeight), BIKE_MS);
+      }
     }
   };
 

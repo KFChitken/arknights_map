@@ -30,6 +30,7 @@ export default function IdentitySheet({
   onMingheDay,
   onFakeRiders,
   onForgetMinghe,
+  onPerlicaMore,
   onClose,
 }: {
   identities: Identity[];
@@ -51,6 +52,8 @@ export default function IdentitySheet({
   onFakeRiders: (n: number) => void;
   /** 清掉我和明河的记录, then reload */
   onForgetMinghe: () => void;
+  /** 佩丽卡监督's second step: 假装喝了 7 小时, 假装触须之交第 30 天, 假装今天是佩丽卡生日, 假装过了一周 */
+  onPerlicaMore: (what: "drank" | "days" | "birthday" | "week") => void;
   onClose: () => void;
 }) {
   return (
@@ -112,6 +115,24 @@ export default function IdentitySheet({
         ))}
         <button className="pill" onClick={onAskAgain}>
           让佩丽卡重新问一次
+        </button>
+      </div>
+      <h3>佩丽卡第二步</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        「喝了 7 小时」只改这个网页里记的喝酒时间，先「摄入酒精」再点，点完醒酒；「触须之交第 30 天」要先是她的触须之交；「今天是她生日」管一小时，重启开发服务器就没了；「过了一周」把这周当成上周来出周报。
+      </p>
+      <div className="row-actions" style={{ flexWrap: "wrap" }}>
+        <button className="pill" onClick={() => onPerlicaMore("drank")}>
+          假装喝了 7 小时
+        </button>
+        <button className="pill" onClick={() => onPerlicaMore("days")}>
+          假装触须之交第 30 天
+        </button>
+        <button className="pill" onClick={() => onPerlicaMore("birthday")}>
+          假装今天是她生日
+        </button>
+        <button className="pill" onClick={() => onPerlicaMore("week")}>
+          假装过了一周
         </button>
       </div>
       <h3>塔露拉的篝火</h3>

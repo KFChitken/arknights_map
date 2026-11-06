@@ -95,6 +95,20 @@ describe("limited-time declarations", () => {
     expect(reactionsFor("event")).not.toContain("birthday");
   });
 
+  it("opens 「祝佩丽卡生日快乐！」 on her birthday every year, Beijing time, with no badge of its own", () => {
+    const bday: Declaration = { template: "event", line: "perlica-bday-2027" };
+    const anyone = { ...EMPTY_PROFILE };
+    const on = (iso: string) => activeEvents(at(iso)).flatMap((e) => e.lines.map((l) => l.id));
+    expect(on("2027-03-15T23:59:59+08:00")).toEqual([]);
+    expect(on("2027-03-16T00:00:00+08:00")).toEqual(["perlica-bday-2027"]);
+    expect(on("2027-03-17T03:59:59+08:00")).toEqual(["perlica-bday-2027"]);
+    expect(on("2027-03-17T04:00:00+08:00")).toEqual([]);
+    expect(on("2036-03-16T12:00:00+08:00")).toEqual(["perlica-bday-2036"]);
+    expect(declarationText(checkDeclaration(anyone, bday, at("2027-03-16T12:00:00+08:00")))).toBe("祝佩丽卡生日快乐！");
+    expect(() => checkDeclaration(anyone, bday, at("2027-03-17T04:00:00+08:00"))).toThrow("已经结束");
+    expect(EVENTS.find((e) => e.id === "perlica-birthday")?.badge).toBeUndefined();
+  });
+
   it("keeps line ids unique across events, since a declaration stores only the line", () => {
     const ids = EVENTS.flatMap((e) => e.lines.map((l) => l.id));
     expect(new Set(ids).size).toBe(ids.length);

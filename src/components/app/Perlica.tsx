@@ -44,11 +44,13 @@ export function PerlicaIntroSheet({ onYes, onNo }: { onYes: () => void; onNo: ()
 }
 
 /**
- * Her report of how long the player was away, along the top of the map. It never
- * stops the map being used, goes by itself after a few seconds (the page times
- * it), and can be closed or swiped away; tapping it goes to her.
+ * A note of hers along the top of the map, a line or two: how long the player was
+ * away and the weight of it, how long they slept, the day they became 触须之交 again,
+ * her weekly report, or 「罗德岛那位……」. It never stops the map being used, goes by
+ * itself after a few seconds (the page times it), and can be closed or swiped away;
+ * tapping it goes to her.
  */
-export function PerlicaBanner({ text, onOpen, onClose }: { text: string; onOpen: () => void; onClose: () => void }) {
+export function PerlicaBanner({ lines, onOpen, onClose }: { lines: string[]; onOpen: () => void; onClose: () => void }) {
   const start = useRef<{ x: number; y: number } | null>(null);
   return (
     <div
@@ -70,7 +72,14 @@ export function PerlicaBanner({ text, onOpen, onClose }: { text: string; onOpen:
       <button className="perlica-banner-body" onClick={onOpen}>
         <PerlicaPicture size={36} />
         <span>
-          {PERLICA_NAME}：「{text}」
+          {PERLICA_NAME}：「{lines[0]}
+          {lines.slice(1).map((l) => (
+            <span key={l}>
+              <br />
+              {l}
+            </span>
+          ))}
+          」
         </span>
       </button>
       <button className="close" aria-label="关闭" onClick={onClose}>
@@ -130,4 +139,57 @@ export function lookedAt(userId: string, now = Date.now()) {
 export function rewindSpot(userId: string, seconds: number) {
   const s = readSpot(userId);
   if (s) writeSpot(userId, { ...s, at: s.at - seconds * 1000 });
+}
+
+// ---- the second step's notes, kept in this browser only ----
+
+/** When the player drank, and until when their main roach sleeps: for her 「你睡了 …」, never sent anywhere */
+type Drank = { at: number; until: number };
+const drankKey = (userId: string) => `zhoup.perlica.drank.${userId}`;
+
+export function readDrank(userId: string, now = Date.now()): Drank | null {
+  try {
+    const d = JSON.parse(localStorage.getItem(drankKey(userId)) ?? "null") as Drank | null;
+    if (d && Number.isFinite(d.at) && Number.isFinite(d.until) && d.at <= now && d.at < d.until) return d;
+    if (d) forgetDrank(userId);
+  } catch {}
+  return null;
+}
+export function rememberDrank(userId: string, d: Drank) {
+  try {
+    localStorage.setItem(drankKey(userId), JSON.stringify(d));
+  } catch {}
+}
+export function forgetDrank(userId: string) {
+  try {
+    localStorage.removeItem(drankKey(userId));
+  } catch {}
+}
+/** 假装喝了 7 小时 (local testing only): the drink this many hours earlier */
+export function rewindDrank(userId: string, hours: number) {
+  const d = readDrank(userId);
+  if (!d) return false;
+  rememberDrank(userId, { at: d.at - hours * 3_600_000, until: d.until });
+  return true;
+}
+
+/** The anniversary she last marked: of which friendship (since) and which day of it */
+const annivKey = (userId: string) => `zhoup.perlica.anniv.${userId}`;
+
+/** Whether she marked this day of this friendship already; marks it if not */
+export function markAnniversary(userId: string, since: number, day: number) {
+  try {
+    const a = JSON.parse(localStorage.getItem(annivKey(userId)) ?? "null") as { since: number; day: number } | null;
+    if (a?.since === since && a.day === day) return false;
+    localStorage.setItem(annivKey(userId), JSON.stringify({ since, day }));
+    return true;
+  } catch {
+    // without storage, rather miss it than say it on every visit
+    return false;
+  }
+}
+export function forgetAnniversary(userId: string) {
+  try {
+    localStorage.removeItem(annivKey(userId));
+  } catch {}
 }

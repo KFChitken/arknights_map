@@ -4,6 +4,7 @@ import { AMIYA, amiyaRoach } from "../amiya";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { db } from "./db";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, type GuideRow } from "./guides";
+import { asideFromAmiya } from "./perlica";
 import { amiyaTouches, users, type UserRow } from "./schema";
 
 /**
@@ -18,12 +19,21 @@ type AmiyaItem = Extract<InboxItem, { kind: "amiya" }>;
 
 const her = guideTouches(AMIYA, amiyaTouches);
 
-/** The player touches her, maybe answering one of her touches: she touches back the same way at once, and bold makes them 触须之交. */
-async function touchBack(userId: string, bold: boolean, replyTo: string | null): Promise<TouchResult> {
+/**
+ * The player touches her, maybe answering one of her touches: she touches back the same
+ * way at once, and bold makes them 触须之交. When they touched 佩丽卡监督 today too, she
+ * may say something as well (offsetMin: the device's time zone, for which day it is).
+ */
+async function touchBack(userId: string, bold: boolean, replyTo: string | null, offsetMin: unknown): Promise<TouchResult> {
   await her.allow(userId);
   let answer: { id: string };
+  let aside: TouchResult["aside"] | null = null;
   try {
-    answer = await db.transaction((tx) => her.pair(tx, userId, bold, replyTo));
+    answer = await db.transaction(async (tx) => {
+      const row = await her.pair(tx, userId, bold, replyTo);
+      aside = await asideFromAmiya(tx, userId, offsetMin);
+      return row;
+    });
   } catch (e) {
     // two answers to the same touch of hers at once: reply_to is unique, so one fails
     if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
@@ -38,16 +48,17 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
     : [];
   return {
     newFriend: made.length ? AMIYA.name : null,
-    guide: { id: AMIYA.id, itemId: her.itemId(answer.id), bold, kind: "touch", times: null },
+    guide: { id: AMIYA.id, itemId: her.itemId(answer.id), bold, kind: "touch", times: null, others: null, line: null },
+    ...(aside ? { aside } : {}),
   };
 }
 
-export const touchAmiya = (userId: string, bold: boolean) => touchBack(userId, bold, null);
+export const touchAmiya = (userId: string, bold: boolean, offsetMin?: unknown) => touchBack(userId, bold, null, offsetMin);
 
 /** Touch back one of her touches, once. */
-export async function replyAmiya(userId: string, itemId: string, bold: boolean) {
+export async function replyAmiya(userId: string, itemId: string, bold: boolean, offsetMin?: unknown) {
   const item = await her.toAnswer(userId, itemId);
-  return touchBack(userId, bold, item.id);
+  return touchBack(userId, bold, item.id, offsetMin);
 }
 
 /** 默默爬走 from one of her touches. */

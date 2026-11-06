@@ -169,6 +169,13 @@
       "when": 1793950183301,
       "tag": "0023_minghe",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793960035062,
+      "tag": "0024_perlica_more",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,23 @@ import { GUIDES, guideById, type GuideId } from "@/lib/guides";
 import type { Declaration, Reaction, Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
-import { awaySentence, PERLICA_ID, PERLICA_LINES, PERLICA_NAME, PERLICA_UNFRIEND, perlicaRoach, touchBackLine } from "@/lib/perlica";
+import {
+  anniversaryLine,
+  awaySentence,
+  awayWithWeight,
+  friendDay,
+  isAnniversary,
+  PERLICA_ID,
+  PERLICA_LINES,
+  PERLICA_MORE,
+  PERLICA_NAME,
+  PERLICA_UNFRIEND,
+  perlicaRoach,
+  sleptSentence,
+  touchBackLine,
+  weekLine,
+  weightSentence,
+} from "@/lib/perlica";
 import {
   FIRE_AT,
   FIRE_ZOOM,
@@ -95,7 +111,19 @@ import InboxSheet, {
 } from "./app/InboxSheet";
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
-import { lookedAt, PerlicaBanner, PerlicaIntroSheet, perlicaSpot, rewindSpot } from "./app/Perlica";
+import {
+  forgetAnniversary,
+  forgetDrank,
+  lookedAt,
+  markAnniversary,
+  PerlicaBanner,
+  PerlicaIntroSheet,
+  perlicaSpot,
+  readDrank,
+  rememberDrank,
+  rewindDrank,
+  rewindSpot,
+} from "./app/Perlica";
 import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroShown } from "./app/Minghe";
 import {
   forgetTalulahHere,
@@ -119,6 +147,7 @@ import {
   tutorialStep,
   type Progress,
 } from "./app/Tutorial";
+import { BIKE_MS } from "./map/guideMarker";
 import type { GuideMark } from "./map/types";
 import RoachIcon from "./RoachIcon";
 
@@ -126,8 +155,42 @@ const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false })
 const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
 
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
-/** How long 佩丽卡监督's report of the time away stays along the top */
-const REPORT_MS = 6000;
+/** How long one of 佩丽卡监督's notes stays along the top: a line, or two */
+const NOTE_MS = [6000, 8000];
+/** One of her notes along the top (src/components/app/Perlica.tsx) */
+type PerlicaNote = { lines: string[] };
+/** Her report of a time away, with its weight */
+const awayNote = (item: PerlicaItem): PerlicaNote => ({
+  lines: [awaySentence(item.seconds ?? 0, item.line ?? 0), weightSentence(item.seconds ?? 0)],
+});
+const pickOf = (n: number) => Math.floor(Math.random() * n);
+
+/**
+ * Her notes on opening the page, after her report of the time away: how long they slept
+ * (6.2), the day they became 触须之交 again (6.4) and her weekly report (6.5).
+ */
+function openingNotes(m: Me | null, list: Friend[]): PerlicaNote[] {
+  if (!m) return [];
+  const out: PerlicaNote[] = [];
+  const drank = readDrank(m.id);
+  if (drank && m.perlica.timer !== "on") forgetDrank(m.id);
+  else if (drank && !m.drunkUntil) {
+    forgetDrank(m.id);
+    // woke up by the morning; woken earlier means on another device, where she was not watching
+    if (Date.now() >= drank.until) queueSleep(out, (drank.until - drank.at) / 1000);
+  }
+  const since = list.find((f) => f.id === PERLICA_ID)?.since;
+  if (m.perlica.friend && since) {
+    const day = friendDay(since, new Date().getTimezoneOffset());
+    if (isAnniversary(day) && markAnniversary(m.id, since, day)) out.push({ lines: [anniversaryLine(day)] });
+  }
+  const week = m.perlica.week;
+  if (week) out.push({ lines: [weekLine(week.others ?? 0, week.times ?? 0, week.line ?? 0)] });
+  return out;
+}
+function queueSleep(out: PerlicaNote[], seconds: number) {
+  if (seconds > 0) out.push({ lines: [sleptSentence(seconds, pickOf(PERLICA_MORE.slept.length))] });
+}
 const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 
 type Panel =
@@ -235,11 +298,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const sayTimers = useRef<Partial<Record<GuideId, number>>>({});
   // where 佩丽卡监督 stands on this page: near the main roach, for this player only, never sent anywhere
   const [perlicaAt, setPerlicaAt] = useState<LngLat | null>(null);
-  // her report of the time away along the top; one waiting while the player is busy (only the latest)
-  const [report, setReport] = useState<PerlicaItem | null>(null);
-  const [waiting, setWaiting] = useState<PerlicaItem | null>(null);
-  // what opens once her report has had its turn (the inbox, on opening the page)
+  // her notes along the top, one at a time: the one showing, and those waiting their turn while the player is busy
+  const [note, setNote] = useState<PerlicaNote | null>(null);
+  const [notes, setNotes] = useState<PerlicaNote[]>([]);
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const queueNote = (n: PerlicaNote) => setNotes((q) => [...q, n]);
+  // what opens once her notes have had their turn (the inbox, on opening the page)
   const afterReport = useRef<(() => void) | null>(null);
+  // where she rode her 鬼火 from, as the main roach moved on this page, until she is there
+  const bikeFrom = useRef<LngLat | null | undefined>(undefined);
+  const [perlicaArrive, setPerlicaArrive] = useState<{ from: LngLat | null; nonce: number } | null>(null);
   // 假装离开 reloads the page, whose 「走了」 would undo what was just pretended
   const skipLeave = useRef(false);
   // an introduction card showed on this visit already, so the next one waits for another
@@ -255,9 +324,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
   // the day of his journey, and today's station, where he is
   const day = mingheDay(mingheClock, me?.minghe.dayShift ?? 0);
   const mingheAt = stationOf(day).at;
-  // her report is showing or waiting its turn, for what runs after it
+  // one of her notes is showing or waiting its turn, for what runs after them
+  const perlicaBusy = Boolean(note || notes.length);
   const reportDue = useRef(false);
-  reportDue.current = Boolean(report || waiting);
+  reportDue.current = perlicaBusy;
   // the first panels of the visit have had their turn, so her introduction can wait behind them
   const [settled, setSettled] = useState(false);
   // 摄入酒精 / 醒酒 played out by your main roach, big, in the middle of the map
@@ -327,7 +397,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setInbox(items);
     return items;
   }, []);
-  const loadFriends = useCallback(async () => setFriends(await worldRef.current!.friends()), []);
+  const loadFriends = useCallback(async () => {
+    const list = await worldRef.current!.friends();
+    setFriends(list);
+    return list;
+  }, []);
   const loadIdentities = useCallback(async () => {
     const ids = await worldRef.current!.identities();
     demoRef.current = ids.length > 0;
@@ -337,7 +411,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   /** Everything, for opening the page and switching who is signed in; away: 佩丽卡监督's report of the time away, if she has one. */
   const load = useCallback(async () => {
     // the roaches have their own retries, so a busy roach list never holds up the rest
-    const [m, items, , , , away] = await Promise.all([
+    const [m, items, , list, , away] = await Promise.all([
       loadMe(),
       loadInbox(),
       loadRoaches().catch(() => {}),
@@ -346,7 +420,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       // 「还在」, sent along before anyone knows who is signed in; nobody's answer is null
       worldRef.current!.here().catch(() => null),
     ]);
-    return { me: m, items, away };
+    return { me: m, items, away, friends: list };
   }, [loadMe, loadInbox, loadRoaches, loadFriends, loadIdentities]);
 
   // Opening a tab is enough to count its messages as read; the red counts go with it
@@ -389,9 +463,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
       .catch((e) => {
         console.error(e);
         setToast("连不上服务器，地图先只显示底图。");
-        return { me: null, items: [] as InboxItem[], away: null };
+        return { me: null, items: [] as InboxItem[], away: null, friends: [] as Friend[] };
       })
-      .then(async ({ me: m, items, away }) => {
+      .then(async ({ me: m, items, away, friends: list }) => {
         const main = m?.roaches.find((r) => r.slot === 0);
         viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
         const kit = await abroadKit;
@@ -426,9 +500,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
         const opening = home ?? (greeting ? ({ kind: "amiyaGreeting", item: greeting } as const) : null);
         const first = () => {
           setSettled(true);
-          if (away && !home) {
-            setWaiting(away);
-            // what arrived since the last visit opens once her report has had its turn
+          // her notes: the time away (unless 欢迎回家 carries it), then the rest of what she has to say on opening
+          const pending = [...(away && !home ? [awayNote(away)] : []), ...openingNotes(m, list)];
+          if (pending.length) {
+            setNotes(pending);
+            // what arrived since the last visit opens once her notes have had their turn
             if (!opening && !m?.mustReconsent && items.some((i) => !i.seen)) {
               afterReport.current = () => openInbox(true, undefined, items);
             }
@@ -436,7 +512,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           // an updated privacy policy before anything else
           if (m?.mustReconsent) setPanel({ kind: "consent", then: opening });
           else if (opening) setPanel(opening);
-          else if (away) return;
+          else if (pending.length) return;
           // What arrived since the last visit
           else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
           // the page reloaded while the player went to read their login code
@@ -633,8 +709,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const put = async (target: PlaceTarget, p: LngLat, fly: boolean, agree = false) => {
     if (agree && !(await act((w) => w.acceptPublicPlace().then(() => true)))) return;
     const before = me?.talulah.visited;
+    // the main roach moving: 佩丽卡监督 rides over from where she stands now
+    const mainMoves = Boolean(main && (target.kind === "main" || (target.kind === "move" && target.roachId === main.id)));
+    const from = perlicaShown;
     const done = await act((w) => w.placeRoach(target, p));
     if (!done) return;
+    if (mainMoves && perlicaAt) bikeFrom.current = from;
     setPlacing(null);
     const m = await loadMe();
     welcomeAtFire(before, m, false);
@@ -660,7 +740,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const onRoachClick = (id: string) => {
     if (id === AMIYA_ID) return setSelected({ kind: "other", roach: amiyaRoach(Boolean(me?.amiya.friend)) });
     if (id === PERLICA_ID) {
-      if (perlicaAt) setSelected({ kind: "other", roach: perlicaRoach(perlicaAt, Boolean(me?.perlica.friend)) });
+      if (perlicaShown) setSelected({ kind: "other", roach: perlicaRoach(perlicaShown, Boolean(me?.perlica.friend)) });
       return;
     }
     if (id === TALULAH_ID) return openTalulah();
@@ -745,6 +825,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const done = await act((w) => w.drink());
     setDrinking(false);
     if (!done) return;
+    // for 佩丽卡监督 to say how long they slept, in this browser only
+    if (me?.perlica.timer === "on") rememberDrank(me.id, { at: Date.now(), until: done.until });
     play("drink");
     const m = await loadMe();
     // the first and the fiftieth pop up as new badges; the rest are counted here
@@ -844,14 +926,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
   /** What a guide says as she touches back, as far as a speech bubble has room: 塔露拉干员's handshake only begins there. */
   const guideLine = (g: NonNullable<TouchResult["guide"]>) => {
     const games = me?.profile.games ?? [];
-    if (g.id === PERLICA_ID) return touchBackLine(g.kind, g.bold, g.times);
-    if (g.id === TALULAH_ID) return g.kind === "friend" ? TALULAH_LINES.hello : talulahTouchLine(g.kind, g.bold, games);
-    if (g.id === MINGHE_ID) return mingheTouchLine(g.kind, g.bold);
+    if (g.id === PERLICA_ID) return touchBackLine(g.kind, g.bold, g.times, g.others, g.line);
+    if (g.id === TALULAH_ID) return g.kind === "friend" ? TALULAH_LINES.hello : talulahTouchLine("touch", g.bold, games);
+    if (g.id === MINGHE_ID) return mingheTouchLine(g.kind === "friend" ? "friend" : "touch", g.bold);
     return amiyaLine(g.bold ? "bold" : "sneaky", games);
   };
 
-  /** Whatever waited for 佩丽卡监督's report of the time away to have its turn. */
+  /** Whatever waited for 佩丽卡监督's notes to have their turn, once the last of them has. */
   const runAfterReport = () => {
+    if (notesRef.current.length) return;
     const then = afterReport.current;
     afterReport.current = null;
     then?.();
@@ -868,9 +951,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (res.newFriend) await Promise.all([loadFriends(), loadMe()]);
     const { itemId } = res.guide;
     const line = guideLine(res.guide);
-    const at = id === PERLICA_ID ? perlicaAt : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : AMIYA_AT;
+    const at = id === PERLICA_ID ? perlicaShown : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : AMIYA_AT;
     window.setTimeout(async () => {
       say(id, line);
+      // touching 阿米娅向导 got 佩丽卡监督 to speak up too, along the top
+      if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
       // heard on the spot while she is on screen; otherwise it waits in 消息
       const bounds = boundsRef.current;
       if (bounds && at && inBounds(at, bounds) && !busyRef.current.panel) {
@@ -891,6 +976,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (res.newFriend) befriendedToast(res.newFriend);
     const line = guideLine(res.guide);
     say(AMIYA_ID, line);
+    if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
     await Promise.all([loadInbox(), loadFriends(), loadMe()]);
     return line;
   };
@@ -938,6 +1024,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     else if (res.guide) setToast(`${GUIDES[res.guide.id].name}碰回了你。`);
     else repliedToast(bold);
     if (res.guide) say(res.guide.id, guideLine(res.guide));
+    if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
     keepSnapshot(items);
     if (me?.isNew || res.newFriend) await loadMe();
@@ -1042,8 +1129,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setPanel(null);
     setSelected(null);
     setPlacing(null);
-    const { me: m, items, away } = await load();
-    if (away) setWaiting(away);
+    const { me: m, items, away, friends: list } = await load();
+    setNotes([...(away ? [awayNote(away)] : []), ...openingNotes(m, list)]);
     const main = m?.roaches.find((r) => r.slot === 0);
     if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
     if (m?.mustReconsent) setPanel({ kind: "consent" });
@@ -1055,8 +1142,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setPanel(null);
     const spot = preview;
     setPreview(null);
-    const { me: m, items, away } = await load();
-    if (away) setWaiting(away);
+    const { me: m, items, away, friends: list } = await load();
+    setNotes([...(away ? [awayNote(away)] : []), ...openingNotes(m, list)]);
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
     if (m?.mustReconsent) return setPanel({ kind: "consent" });
@@ -1130,6 +1217,24 @@ export default function MapApp({ cn }: { cn: boolean }) {
     window.location.reload();
   };
 
+  /** 佩丽卡监督's second step, development only: what the identity sheet pretends */
+  const perlicaMore = async (what: "drank" | "days" | "birthday" | "week") => {
+    if (!me) return;
+    if (what === "drank") {
+      setPanel(null);
+      return setToast(rewindDrank(me.id, 7) ? "喝酒时间往前挪了 7 小时，现在醒酒试试。" : "先打开离开计时，再「摄入酒精」。");
+    }
+    if (what === "birthday") {
+      const done = await act((w) => w.pretend("perlicaBirthday").then(() => true));
+      if (done) setToast("这一小时里碰她，都按她的生日算。");
+      return;
+    }
+    const done = await act((w) => w.pretend(what === "days" ? "perlicaDays" : "perlicaWeek").then(() => true));
+    if (!done) return;
+    if (what === "days") forgetAnniversary(me.id);
+    window.location.reload();
+  };
+
   /** 让佩丽卡重新问一次 */
   const askAgain = async () => {
     const done = await act((w) => w.pretend("ask").then(() => true));
@@ -1152,6 +1257,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   /** Her timer switched in 资料, after the rest of it saved. */
   const switchPerlicaTimer = async (on: boolean) => {
     const done = await act((w) => w.setPerlicaTimer(on).then(() => true));
+    if (done && !on && me) forgetDrank(me.id);
     if (done) await loadMe();
     return Boolean(done);
   };
@@ -1168,6 +1274,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const myColor = me?.profile.color ?? "cyan";
   const myAvatar = me?.profile.avatar ?? "hood";
   const main = me?.roaches.find((r) => r.slot === 0);
+  // 佩丽卡监督 keeps watch beside the drunk main roach (the map sets her just to its right), then goes back to her spot
+  const guarding = Boolean(me?.drunkUntil && main && perlicaAt);
+  const perlicaShown = guarding && main ? { lng: main.lng, lat: main.lat } : perlicaAt;
   const unseen = inbox.filter((i) => !i.seen).length;
   const around = useMemo(() => (preview ? roachesAround(feedRoaches, preview) : null), [preview, feedRoaches]);
   const nearest = useMemo(
@@ -1177,9 +1286,16 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const current = identities.find((i) => i.current);
   const othersUnseen = identities.filter((i) => !i.current).reduce((n, i) => n + i.unseen, 0);
   // 佩丽卡监督 stands wherever this page put her, which the server never knows
+  const shownLng = perlicaShown?.lng;
+  const shownLat = perlicaShown?.lat;
   const shownFriends = useMemo(
-    () => friends.map((f) => (f.id === PERLICA_ID ? { ...f, roaches: perlicaAt ? [perlicaRoach(perlicaAt, true)] : [] } : f)),
-    [friends, perlicaAt],
+    () =>
+      friends.map((f) =>
+        f.id === PERLICA_ID
+          ? { ...f, roaches: shownLng !== undefined && shownLat !== undefined ? [perlicaRoach({ lng: shownLng, lat: shownLat }, true)] : [] }
+          : f,
+      ),
+    [friends, shownLng, shownLat],
   );
   const selectedFriend =
     selected?.kind === "other" && selected.roach.friend
@@ -1208,7 +1324,37 @@ export default function MapApp({ cn }: { cn: boolean }) {
   homeRef.current = meId && mainLng !== undefined && mainLat !== undefined && !step ? { lng: mainLng, lat: mainLat } : null;
   useEffect(() => {
     setPerlicaAt(meId && homeRef.current ? perlicaSpot(meId, homeRef.current) : null);
+    // the main roach moved on this page: she rides her 鬼火 over from where she stood, and says so as she stops
+    const from = bikeFrom.current;
+    if (from === undefined || !homeRef.current) return;
+    bikeFrom.current = undefined;
+    setPerlicaArrive({ from, nonce: Date.now() });
+    const line = PERLICA_MORE.bike[pickOf(PERLICA_MORE.bike.length)];
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.setTimeout(() => say(PERLICA_ID, line), still ? 0 : BIKE_MS);
   }, [meId, mainLng, mainLat, step]);
+
+  // She tells the player how long they slept when they wake on this page (醒酒, moving or taking back
+  // the main roach, or the morning coming), while her 离开计时 is on; opening the page tells the rest
+  const drunkNow = Boolean(me?.drunkUntil);
+  const drunkSeen = useRef<{ id: string; drunk: boolean } | null>(null);
+  useEffect(() => {
+    if (!me) {
+      drunkSeen.current = null;
+      return;
+    }
+    const was = drunkSeen.current?.id === me.id ? drunkSeen.current.drunk : null;
+    drunkSeen.current = { id: me.id, drunk: drunkNow };
+    if (!was || drunkNow) return;
+    const drank = readDrank(me.id);
+    if (!drank) return;
+    forgetDrank(me.id);
+    if (me.perlica.timer !== "on") return;
+    const out: PerlicaNote[] = [];
+    queueSleep(out, (Math.min(Date.now(), drank.until) - drank.at) / 1000);
+    out.forEach(queueNote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meId, drunkNow]);
 
   // Her 离开计时 while it is on: 「还在」 every minute the page is looked at and on coming back into view,
   // 「走了」 as it goes out of sight, closes or leaves the map. Her spot is kept on this page meanwhile.
@@ -1220,7 +1366,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const here = () => {
       lookedAt(meId);
       last = Date.now();
-      if (timerOn) worldRef.current!.here().then((item) => item && setWaiting(item), () => {});
+      if (timerOn) worldRef.current!.here().then((item) => item && queueNote(awayNote(item)), () => {});
     };
     const tick = () => {
       if (document.visibilityState === "visible") here();
@@ -1248,39 +1394,42 @@ export default function MapApp({ cn }: { cn: boolean }) {
     };
   }, [meId, timerOn]);
 
-  // Her report along the top once nothing else is on screen, her bubble saying the same, for a few seconds
+  // Her notes along the top once nothing else is on screen, one at a time, her bubble saying the first line
   useEffect(() => {
-    if (!idle || !waiting || report) return;
-    setReport(waiting);
-    setWaiting(null);
-  }, [idle, waiting, report]);
-  const endReport = () => {
-    setReport(null);
+    if (!idle || note || !notes.length) return;
+    setNote(notes[0]);
+    setNotes((q) => q.slice(1));
+  }, [idle, note, notes]);
+  const endNote = () => {
+    setNote(null);
     say(PERLICA_ID, null);
     runAfterReport();
   };
   useEffect(() => {
-    if (!report) return;
-    say(PERLICA_ID, awaySentence(report.seconds ?? 0, report.line ?? 0), REPORT_MS);
-    const t = window.setTimeout(endReport, REPORT_MS);
+    if (!note) return;
+    const ms = NOTE_MS[note.lines.length > 1 ? 1 : 0];
+    say(PERLICA_ID, note.lines[0], ms);
+    const t = window.setTimeout(endNote, ms);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report]);
-  /** Tapped her report: to her, with her card open; what waited for the report comes once the card closes */
-  const openReport = () => {
-    setReport(null);
-    if (!perlicaAt) return runAfterReport();
-    setFocus({ lng: perlicaAt.lng, lat: perlicaAt.lat, zoom: 13, nonce: Date.now() });
-    setSelected({ kind: "other", roach: perlicaRoach(perlicaAt, Boolean(me?.perlica.friend)) });
+  }, [note]);
+  /** Tapped one of her notes: to her, with her card open; what waited for the notes comes once the card closes */
+  const openNote = () => {
+    setNote(null);
+    if (!perlicaShown) return runAfterReport();
+    setFocus({ lng: perlicaShown.lng, lat: perlicaShown.lat, zoom: 13, nonce: Date.now() });
+    setSelected({ kind: "other", roach: perlicaRoach(perlicaShown, Boolean(me?.perlica.friend)) });
   };
 
+
+
   useEffect(() => {
-    if (!idle || report || waiting || !unseenBadges || newBadges.length || !me) return;
+    if (!idle || perlicaBusy || !unseenBadges || newBadges.length || !me) return;
     setNewBadges(me.badges.filter((b) => !b.seen).slice(0, 3));
     worldRef.current!.seeBadges(unseenBadges.split(",")).catch(() => {});
     // shown now, so a reload of me before the server has caught up does not queue them again
     applyMe({ ...me, badges: me.badges.map((b) => ({ ...b, seen: true })) });
-  }, [idle, report, waiting, unseenBadges, newBadges.length, me, applyMe]);
+  }, [idle, perlicaBusy, unseenBadges, newBadges.length, me, applyMe]);
 
   // The tutorial's touch step happens on Rhode Island: the map goes to 阿米娅向导 as it begins
   const touchLesson = step === "touch" && !progress.practiced && basemap !== null;
@@ -1293,7 +1442,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   // 阿米娅向导 introduces herself once to players with a roach who have not met her, after everything else
   const introDue = Boolean(
-    settled && idle && !report && !waiting && main && me && !me.amiya.friend && !newBadges.length && !unseenBadges,
+    settled && idle && !perlicaBusy && main && me && !me.amiya.friend && !newBadges.length && !unseenBadges,
   );
   const meIdForIntro = me?.id;
   useEffect(() => {
@@ -1381,8 +1530,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const perlicaAsks = Boolean(
     settled &&
       idle &&
-      !report &&
-      !waiting &&
+      !perlicaBusy &&
       main &&
       me?.perlica.timer === null &&
       !me.mustReconsent &&
@@ -1399,8 +1547,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const talulahTells = Boolean(
     settled &&
       idle &&
-      !report &&
-      !waiting &&
+      !perlicaBusy &&
       main &&
       me &&
       !me.talulah.visited &&
@@ -1516,8 +1663,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const mingheTells = Boolean(
     settled &&
       idle &&
-      !report &&
-      !waiting &&
+      !perlicaBusy &&
       main &&
       me &&
       !me.minghe.friend &&
@@ -1570,7 +1716,18 @@ export default function MapApp({ cn }: { cn: boolean }) {
       bubble: says.minghe ?? null,
       ride: { ahead: (queueBearing(day) + 180) % 360 },
     },
-    ...(perlicaAt && me ? [{ id: PERLICA_ID, at: perlicaAt, friend: me.perlica.friend, bubble: says.perlica ?? null }] : []),
+    ...(perlicaShown && me
+      ? [
+          {
+            id: PERLICA_ID,
+            at: perlicaShown,
+            friend: me.perlica.friend,
+            bubble: says.perlica ?? null,
+            ...(guarding ? { beside: true } : {}),
+            ...(perlicaArrive ? { arrive: perlicaArrive } : {}),
+          },
+        ]
+      : []),
   ];
   const mapProps = {
     roaches: fakeQueue.length ? [...shownRoaches, ...fakeQueue] : shownRoaches,
@@ -1704,7 +1861,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             homecoming={p.homecoming}
             items={p.items}
             amiya={p.greeting ? { onTouchBack: (bold) => touchBackAmiya(p.greeting!, bold) } : undefined}
-            perlica={p.away ? awaySentence(p.away.seconds ?? 0, p.away.line ?? 0) : undefined}
+            perlica={p.away ? awayWithWeight(p.away.seconds ?? 0, p.away.line ?? 0) : undefined}
             onInbox={() => seen().then(() => openInbox(false))}
             onWelcome={() => {
               seen();
@@ -1877,6 +2034,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
               setFocus({ lng: mingheAt.lng, lat: mingheAt.lat, zoom: MINGHE_ZOOM, nonce: Date.now() });
             }}
             onForgetMinghe={forgetMinghe}
+            onPerlicaMore={perlicaMore}
             onClose={() => setPanel(null)}
           />
         );
@@ -1992,8 +2150,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
           </div>
         )}
-        {report && (
-          <PerlicaBanner text={awaySentence(report.seconds ?? 0, report.line ?? 0)} onOpen={openReport} onClose={endReport} />
+        {note && (
+          <PerlicaBanner lines={note.lines} onOpen={openNote} onClose={endNote} />
         )}
         {acting && me && (
           <div className="actor-stage">
@@ -2039,6 +2197,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
           perlicaTimer={me?.perlica.timer === "on"}
+          perlicaGuarding={guarding}
           fire={
             selected.roach.id === TALULAH_ID
               ? {

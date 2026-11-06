@@ -52,6 +52,8 @@ export type MapViewProps = {
  * A guide on the map: where, whether she is your 触须之交, and what she is saying over
  * her head. fire: how big 塔露拉干员's fire burns; it then sits on that spot, with her beside it.
  * ride: 明河都尉 on his horse, facing ahead (degrees clockwise from north), away from his riders.
+ * beside: 佩丽卡监督 keeping watch right beside your drunk main roach, which is at `at`.
+ * arrive: 佩丽卡监督 riding her 鬼火 in from where she stood (null: unknown), once per nonce.
  */
 export type GuideMark = {
   id: GuideId;
@@ -60,6 +62,8 @@ export type GuideMark = {
   bubble: string | null;
   fire?: FireLevel;
   ride?: { ahead: number };
+  beside?: boolean;
+  arrive?: { from: LngLat | null; nonce: number };
 };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */

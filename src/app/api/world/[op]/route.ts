@@ -162,7 +162,18 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "pretend": {
       demoOnly();
-      const kinds: PretendWhat[] = ["day", "away", "left", "ask", "talulah", "mingheDay", "minghe"];
+      const kinds: PretendWhat[] = [
+        "day",
+        "away",
+        "left",
+        "ask",
+        "talulah",
+        "mingheDay",
+        "minghe",
+        "perlicaDays",
+        "perlicaBirthday",
+        "perlicaWeek",
+      ];
       const what = kinds.find((k) => k === args[0]) ?? "day";
       await pretend(uid(), what, Number(args[1]) || 0);
       break;

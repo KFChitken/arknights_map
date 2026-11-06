@@ -89,7 +89,15 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
   }
   return {
     newFriend: done.friend ? MINGHE.name : null,
-    guide: { id: MINGHE.id, itemId: him.itemId(done.id), bold, kind: done.friend ? "friend" : "touch", times: null },
+    guide: {
+      id: MINGHE.id,
+      itemId: him.itemId(done.id),
+      bold,
+      kind: done.friend ? "friend" : "touch",
+      times: null,
+      others: null,
+      line: null,
+    },
   };
 }
 

@@ -85,12 +85,23 @@ export interface World {
   /**
    * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
    * seconds (佩丽卡监督 says how long), 让佩丽卡重新问一次 (ask), 清掉我和塔露拉的记录 (talulah),
-   * 明河快进一天 (mingheDay) or 清掉我和明河的记录 (minghe)
+   * 明河快进一天 (mingheDay), 清掉我和明河的记录 (minghe), 假装触须之交第 30 天 (perlicaDays),
+   * 假装今天是佩丽卡生日 (perlicaBirthday) or 假装过了一周 (perlicaWeek)
    */
   pretend(what: PretendWhat, seconds?: number): Promise<void>;
 }
 
-export type PretendWhat = "day" | "away" | "left" | "ask" | "talulah" | "mingheDay" | "minghe";
+export type PretendWhat =
+  | "day"
+  | "away"
+  | "left"
+  | "ask"
+  | "talulah"
+  | "mingheDay"
+  | "minghe"
+  | "perlicaDays"
+  | "perlicaBirthday"
+  | "perlicaWeek";
 
 export type PlayerId = string;
 
@@ -138,7 +149,19 @@ export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; changed?: MapRo
  */
 export type TouchResult = {
   newFriend: string | null;
-  guide?: { id: GuideId; itemId: string; bold: boolean; kind: "touch" | "friend"; times: number | null };
+  guide?: {
+    id: GuideId;
+    itemId: string;
+    bold: boolean;
+    /** 佩丽卡监督 also answers jealous, visiting (aside) or on her birthday */
+    kind: "touch" | "friend" | "jealous" | "aside" | "birthday";
+    times: number | null;
+    /** 佩丽卡监督's jealous answer: how many others you touched today first, and which of her lines */
+    others: number | null;
+    line: number | null;
+  };
+  /** Touching 阿米娅向导 got 佩丽卡监督 to say something too (her 「罗德岛那位……」), a new item of hers */
+  aside?: { id: "perlica"; itemId: string };
 };
 
 export type Friend = {
@@ -192,8 +215,11 @@ export type Me = {
   agreedPublicPlace: boolean;
   /** 阿米娅向导: whether you are 触须之交, and today's greeting while you have not seen it */
   amiya: { friend: boolean; greeting: Extract<InboxItem, { kind: "amiya" }> | null };
-  /** 佩丽卡监督: whether you are 触须之交, and her 离开计时: on, off, or null while she has not asked yet */
-  perlica: { friend: boolean; timer: "on" | "off" | null };
+  /**
+   * 佩丽卡监督: whether you are 触须之交, her 离开计时: on, off, or null while she has not asked yet,
+   * and her weekly report, only from the visit that made it
+   */
+  perlica: { friend: boolean; timer: "on" | "off" | null; week: PerlicaItem | null };
   /** 塔露拉干员: whether you are 触须之交, and whether a roach of yours ever sat by her fire */
   talulah: { friend: boolean; visited: boolean };
   /**
@@ -288,20 +314,25 @@ export type TalulahItem = {
 
 /**
  * 佩丽卡监督 touching you: back after your touch (what "touch", or "friend" when it
- * made you 触须之交; times: your how-manieth touch that day, on her bold ones), or
- * telling you how long you were away (what "away": seconds, and which of that
- * band's lines she said). Her reports are seen as soon as they are made.
+ * made you 触须之交; times: your how-manieth touch that day, on her bold ones),
+ * jealous ("jealous": others, how many you touched first that day; line 1 when that
+ * was only 阿米娅向导), visiting ("aside": line 0 as she touched back, 1 as you
+ * touched 阿米娅向导) or on her birthday ("birthday"); telling you how long you were
+ * away ("away": seconds, and which of that band's lines she said); or her weekly
+ * report ("week": others and times for last week, line for how it ends). Her
+ * reports, weekly ones and asides are seen as soon as they are made.
  */
 export type PerlicaItem = {
   kind: "perlica";
   id: string;
   at: number;
   seen: boolean;
-  what: "touch" | "friend" | "away";
+  what: "touch" | "friend" | "away" | "jealous" | "aside" | "birthday" | "week";
   bold: boolean;
   seconds: number | null;
   line: number | null;
   times: number | null;
+  others: number | null;
   replied: boolean;
   ignored: boolean;
 };

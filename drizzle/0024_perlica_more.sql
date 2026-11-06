@@ -1,0 +1,2 @@
+ALTER TABLE "perlica_touches" ADD COLUMN "others" smallint;--> statement-breakpoint
+CREATE UNIQUE INDEX "perlica_touches_week_idx" ON "perlica_touches" USING btree ("user_id","created_at") WHERE "perlica_touches"."kind" = 'week';

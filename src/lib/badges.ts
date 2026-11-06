@@ -210,7 +210,7 @@ export const lockedText = (b: Badge, counts: Record<BadgeCount, number>) =>
  * nobody earned stay out of sight.
  */
 export function wallBadges(earned: Set<string>, now = Date.now()) {
-  const onNow = new Set(activeEvents(now).map((e) => e.badge));
+  const onNow = new Set(activeEvents(now).flatMap((e) => (e.badge ? [e.badge] : [])));
   return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days));
 }
 

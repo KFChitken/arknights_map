@@ -19,7 +19,7 @@ import { deleteAccount, isBanned } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
-import { deviceDay } from "./guides";
+import { deviceDay, deviceWeek } from "./guides";
 import * as perlica from "./perlica";
 import * as talulah from "./talulah";
 import * as minghe from "./minghe";
@@ -475,7 +475,7 @@ describe("server world", () => {
     });
 
     it("keeps no time until the player says yes, and says nothing right after", async () => {
-      expect((await me.me()).perlica).toEqual({ friend: false, timer: null });
+      expect((await me.me()).perlica).toEqual({ friend: false, timer: null, week: null });
       expect(await perlica.here(me.id)).toBeNull();
       await perlica.leave(me.id);
       expect(await lastActive(me)).toBeNull();
@@ -492,7 +492,7 @@ describe("server world", () => {
       expect(on).toMatchObject({ perlicaTimer: "on" });
       expect(on.lastActiveAt).toBeInstanceOf(Date);
       expect(on.perlicaTimerAt!.getTime()).toBeGreaterThanOrEqual(off.perlicaTimerAt!.getTime());
-      expect((await me.me()).perlica).toEqual({ friend: false, timer: "on" });
+      expect((await me.me()).perlica).toEqual({ friend: false, timer: "on", week: null });
       expect(await perlica.here(me.id)).toBeNull();
 
       // saving the profile never touches it, and someone never asked stays never asked
@@ -600,7 +600,7 @@ describe("server world", () => {
     await expect(me.block(`friend:${PERLICA_ID}`)).rejects.toThrow("佩丽卡监督不是真人");
     await expect(me.report(first.guide!.itemId, "spam")).rejects.toThrow("不是真人");
     await expect(world.poke(me.id, PERLICA_ID)).rejects.toThrow("佩丽卡监督一直醒着");
-    expect((await me.me()).perlica).toEqual({ friend: true, timer: null });
+    expect((await me.me()).perlica).toEqual({ friend: true, timer: null, week: null });
 
     // her own 20 a day, apart from 阿米娅向导's and the 60 between players
     for (let i = 3; i < 20; i++) await me.touch(PERLICA_ID, false);
@@ -613,7 +613,7 @@ describe("server world", () => {
     // 解除 leaves the timer alone; a bold touch makes them 触须之交 again
     await perlica.setTimer(me.id, true);
     await me.unfriend(PERLICA_ID);
-    expect((await me.me()).perlica).toEqual({ friend: false, timer: "on" });
+    expect((await me.me()).perlica).toEqual({ friend: false, timer: "on", week: null });
     expect((await me.friends()).map((f) => f.id)).toEqual([AMIYA_ID]);
   });
 
@@ -832,6 +832,166 @@ describe("server world", () => {
     await rewindScans(me.id);
     expect(await me.radar()).toMatchObject({ roaches: before.roaches, players: before.players, friendsNearby: 0 });
     expect(JSON.stringify(await allRoaches())).not.toMatch(/talulah/i);
+  });
+
+  describe("佩丽卡监督's second step", () => {
+    const HOUR_MS = 3_600_000;
+    /** Their touches with her a day back, so the next one is the first of today */
+    const herYesterday = (p: Player) =>
+      db
+        .update(perlicaTouches)
+        .set({ createdAt: sql`${perlicaTouches.createdAt} - interval '1 day'` })
+        .where(eq(perlicaTouches.userId, p.id));
+    /** 触须之交 since yesterday: a bold touch, a day back */
+    const befriendHer = async (p: Player) => {
+      await p.touch(PERLICA_ID, true);
+      await herYesterday(p);
+    };
+    const roachOf = async (p: Player, key: string, i = 0) => (await publicAt(p, tester(key).roaches[i])).id;
+
+    it("is jealous on the first touch of her in a day, when a 触须之交 touched others first", async () => {
+      await befriendHer(me);
+      await me.touch(await roachOf(me, "t1"), false);
+      // the same player's other roach counts once
+      await me.touch(await roachOf(me, "t1", 1), false);
+      await me.touch(await roachOf(me, "t2"), true);
+      await me.touch(AMIYA_ID, false);
+      const jealous = await me.touch(PERLICA_ID, true);
+      expect(jealous.guide).toMatchObject({ kind: "jealous", others: 3, line: 0, times: 1 });
+      expect((await me.inbox()).find((i) => i.id === jealous.guide!.itemId)).toMatchObject({
+        what: "jealous",
+        others: 3,
+        line: 0,
+        times: 1,
+      });
+      // once a day: next comes the usual, and she has spoken up today, so no 罗德岛那位 either
+      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "touch", times: 2 });
+
+      // touching 塔露拉干员 counts too; only 阿米娅向导 is her other line
+      const other = await signUp("other@example.com");
+      await befriendHer(other);
+      await other.touch(TALULAH_ID, false);
+      expect((await other.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "jealous", others: 1, line: 0 });
+      const third = await signUp("third@example.com");
+      await befriendHer(third);
+      await third.touch(AMIYA_ID, true);
+      expect((await third.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "jealous", others: 1, line: 1 });
+
+      // not her 触须之交: never jealous
+      const stranger = await signUp("stranger@example.com");
+      await stranger.placeRoach({ kind: "main" }, TOKYO);
+      await stranger.touch(await roachOf(stranger, "t2"), false);
+      expect((await stranger.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "touch" });
+    });
+
+    it("counts the day by the device's clock", async () => {
+      const bj = deviceDay(-480).start;
+      const ny = deviceDay(300).start;
+      // a touch of another player that falls in one zone's today but not the other's
+      const at = new Date(Math.max(bj, ny) - 60_000);
+      const inBeijing = at.getTime() >= bj;
+      const players = await Promise.all(["a@example.com", "b@example.com"].map(signUp));
+      for (const p of players) {
+        await befriendHer(p);
+        await p.placeRoach({ kind: "main" }, TOKYO);
+        await p.touch(await roachOf(p, "t2"), false);
+        await db.update(touches).set({ createdAt: at }).where(eq(touches.fromUserId, p.id));
+      }
+      const [bjAnswer, nyAnswer] = await Promise.all([
+        world.touch(players[0].id, PERLICA_ID, false, -480),
+        world.touch(players[1].id, PERLICA_ID, false, 300),
+      ]);
+      expect(bjAnswer.guide!.kind).toBe(inBeijing ? "jealous" : "touch");
+      expect(nyAnswer.guide!.kind).toBe(inBeijing ? "touch" : "jealous");
+    });
+
+    it("says 「罗德岛那位……」 once a day when 阿米娅向导 was touched too, either way round, never on a jealous day", async () => {
+      await me.touch(AMIYA_ID, false);
+      expect((await me.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "aside", line: 0 });
+      expect((await me.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "touch" });
+      expect((await me.touch(AMIYA_ID, true)).aside).toBeUndefined();
+
+      // the other way round: she speaks up as 阿米娅向导 is touched, a note of hers already read
+      const other = await signUp("other@example.com");
+      await other.touch(PERLICA_ID, false);
+      const amiya = await other.touch(AMIYA_ID, false);
+      expect(amiya.aside).toEqual({ id: "perlica", itemId: expect.stringMatching(/^e:/) });
+      expect((await other.inbox()).find((i) => i.id === amiya.aside!.itemId)).toMatchObject({
+        kind: "perlica",
+        what: "aside",
+        line: 1,
+        seen: true,
+      });
+      expect((await other.touch(AMIYA_ID, false)).aside).toBeUndefined();
+      expect((await other.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "touch" });
+
+      // a jealous day has no aside
+      const third = await signUp("third@example.com");
+      await befriendHer(third);
+      await third.touch(AMIYA_ID, false);
+      expect((await third.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "jealous", line: 1 });
+      expect((await third.touch(AMIYA_ID, false)).aside).toBeUndefined();
+    });
+
+    it("answers on her birthday before anything but a first bold touch", async () => {
+      perlica.pretendBirthday(me.id);
+      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "friend" });
+      await herYesterday(me);
+      await me.touch(AMIYA_ID, false);
+      expect((await me.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "birthday" });
+      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "birthday", times: 2 });
+    });
+
+    it("is jealous once however many touches come at once", async () => {
+      await befriendHer(me);
+      await me.touch(AMIYA_ID, false);
+      const both = await Promise.all([me.touch(PERLICA_ID, false), me.touch(PERLICA_ID, false)]);
+      expect(both.map((r) => r.guide!.kind).sort()).toEqual(["jealous", "touch"]);
+    });
+
+    it("sends a 触须之交 with her 离开计时 on her weekly report, once a week, dated the start of it", async () => {
+      const { start, prevStart } = deviceWeek(-480);
+      const lastWeek = new Date(prevStart + HOUR_MS);
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await me.touch(PERLICA_ID, true);
+      await me.touch(PERLICA_ID, false);
+      await me.touch(PERLICA_ID, true);
+      await me.touch(await roachOf(me, "t1"), false);
+      await me.touch(await roachOf(me, "t2"), false);
+      await db.update(touches).set({ createdAt: lastWeek }).where(eq(touches.fromUserId, me.id));
+      await db.update(perlicaTouches).set({ createdAt: lastWeek }).where(eq(perlicaTouches.userId, me.id));
+      // not yet: the timer is off
+      expect((await me.me()).perlica.week).toBeNull();
+      await perlica.setTimer(me.id, true);
+      const week = (await me.me()).perlica.week;
+      expect(week).toMatchObject({ kind: "perlica", what: "week", others: 2, times: 3, seen: true });
+      expect(week!.at).toBe(start);
+      expect([0, 1, 2]).toContain(week!.line);
+      expect((await me.me()).perlica.week).toBeNull();
+      // switching the timer off takes it away with her reports
+      await perlica.setTimer(me.id, false);
+      expect((await db.select().from(perlicaTouches).where(eq(perlicaTouches.userId, me.id))).some((r) => r.kind === "week")).toBe(false);
+
+      // one a week, however many visits ask at once
+      const other = await signUp("other@example.com");
+      await other.touch(PERLICA_ID, true);
+      await db.update(perlicaTouches).set({ createdAt: lastWeek }).where(eq(perlicaTouches.userId, other.id));
+      await perlica.setTimer(other.id, true);
+      const both = await Promise.all([world.me(other.id), world.me(other.id)]);
+      expect(both.filter((m) => m!.perlica.week)).toHaveLength(1);
+
+      // nothing touched last week, or not her 触须之交: nothing
+      const quiet = await signUp("quiet@example.com");
+      await quiet.touch(PERLICA_ID, true);
+      await perlica.setTimer(quiet.id, true);
+      expect((await quiet.me()).perlica.week).toBeNull();
+      const stranger = await signUp("stranger@example.com");
+      await stranger.placeRoach({ kind: "main" }, TOKYO);
+      await stranger.touch(await roachOf(stranger, "t2"), false);
+      await db.update(touches).set({ createdAt: lastWeek }).where(eq(touches.fromUserId, stranger.id));
+      await perlica.setTimer(stranger.id, true);
+      expect((await stranger.me()).perlica.week).toBeNull();
+    });
   });
 
   describe("明河都尉", () => {

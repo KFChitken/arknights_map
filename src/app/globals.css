@@ -272,6 +272,21 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .minghe-route li.past { color: var(--muted); }
 .minghe-route li.today { font-weight: 800; color: var(--ink); background: #eef4ff; border-radius: 6px; }
 .minghe-trip { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+/* 佩丽卡监督's 鬼火 under her as she rides up (guideMarker.ts), fading once she stops */
+.guide-bike { position: absolute; z-index: -1; left: -25%; bottom: -16%; width: 150%; height: 70%; opacity: 0; transition: opacity 0.6s; pointer-events: none; }
+.guide-bike svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.guide-marker.riding .guide-bike { opacity: 1; transition: none; }
+.guide-bike .bike-lights { animation: bike-lights 0.9s linear infinite; }
+@keyframes bike-lights {
+  0% { stroke: #ff4fd8; }
+  25% { stroke: #4fd1ff; }
+  50% { stroke: #7bff6b; }
+  75% { stroke: #ffd84f; }
+  100% { stroke: #ff4fd8; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-bike .bike-lights { animation: none; }
+}
 .fire-note { margin: 2px 0 0; }
 .fire-send { margin-top: 10px; }
 .fire-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-weight: 700; }

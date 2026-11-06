@@ -1,3 +1,4 @@
+import { daysFromTo, deviceDay } from "./deviceDay";
 import { GUIDES, guideProfile } from "./guides";
 import type { LngLat } from "./types";
 import type { PerlicaItem, PublicRoach } from "./world/types";
@@ -76,16 +77,129 @@ export function awaySentence(seconds: number, line: number) {
   return `${formatAway(seconds)}。${lines[Math.min(Math.max(0, Math.floor(line)), lines.length - 1)]}`;
 }
 
-/** What she says when she touches back: as a new 触须之交, boldly (the how-manieth today), or sneakily */
-export function touchBackLine(what: "touch" | "friend", bold: boolean, times: number | null) {
-  if (what === "friend") return PERLICA_LINES.friend;
-  return bold ? PERLICA_LINES.bold(times ?? 1) : PERLICA_LINES.sneaky;
+// ---- her second step: jealousy, visiting, her birthday, the weight of missing you, anniversaries, the weekly report ----
+
+/** Her lines from the second step, word for word as Breeze approved them */
+export const PERLICA_MORE = {
+  /** Jealous, when the only one touched before her today was 阿米娅向导 */
+  onlyAmiya: "……先去罗德岛了啊。没关系，我排第二也会等。",
+  /** When you touched 阿米娅向导 today too, once a day either way round */
+  aside: "罗德岛那位……我知道。",
+  birthdaySneaky: "……今天是我的生日。管理员偷偷来，我也认得出来。",
+  birthdayBold: "今天是我的生日。……管理员来了，我很高兴。",
+  /** On her card while she keeps watch by your drunk main roach */
+  guarding: "你醉倒了，她在旁边守着，等你醒。",
+  /** After 「你睡了 …。」, one picked at random */
+  slept: ["我一直在旁边，没走开。", "你睡着的时候我一直数着，一秒都没漏。", "……下次喝之前，先跟我说一声。"],
+  /** As she rides her 鬼火 up to where your main roach moved, one picked at random */
+  bike: ["油门拧到底，总算追上了。", "管理员搬家也不说一声。……还好我车快。", "新地方有点远，不过对我的车来说不算什么。"],
+  /** How the weekly report ends, by the line kept with it */
+  weekEnds: ["……数据我都核对过了。", "……这周也拜托了，管理员。", "……下周的，我也会好好记着。"],
+};
+
+/** Jealous: you touched n others today before her */
+export const jealousLine = (n: number) => `今天你碰了 ${n} 只蟑螂，我是第 ${n + 1} 个。`;
+
+/** 3 月 16 日, Beijing time, until 04:00 the next morning, every year */
+export function perlicaBirthday(now = Date.now()) {
+  const d = new Date(now + 8 * 3_600_000);
+  const [month, day, hour] = [d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCHours()];
+  return month === 3 && (day === 16 || (day === 17 && hour < 4));
+}
+
+/** What she says as she touches back: one line, the first that fits of new 触须之交, birthday, jealous, visiting, then the usual */
+export function touchBackLine(
+  what: "touch" | "friend" | "jealous" | "aside" | "birthday",
+  bold: boolean,
+  times: number | null,
+  others: number | null = null,
+  line: number | null = null,
+) {
+  switch (what) {
+    case "friend":
+      return PERLICA_LINES.friend;
+    case "birthday":
+      return bold ? PERLICA_MORE.birthdayBold : PERLICA_MORE.birthdaySneaky;
+    case "jealous":
+      return line === 1 ? PERLICA_MORE.onlyAmiya : jealousLine(others ?? 1);
+    case "aside":
+      return PERLICA_MORE.aside;
+    default:
+      return bold ? PERLICA_LINES.bold(times ?? 1) : PERLICA_LINES.sneaky;
+  }
+}
+
+/** The weight of missing you: a kilogram every five hours, to 0.1 kg, never less than 0.1 kg */
+export const missKg = (seconds: number) => Math.max(0.1, Math.round(seconds / 1800) / 10);
+
+/** 「4.7 kg」, or 「1.04 吨」 from a tonne on */
+export const formatKg = (kg: number) => (kg >= 1000 ? `${(kg / 1000).toFixed(2)} 吨` : `${kg.toFixed(1)} kg`);
+
+/** Her lines about it, three to a band of time away as with her reports; {w} is the weight */
+const WEIGHT_LINES: [string, string, string][] = [
+  ["这次只攒了 {w} 的思念，轻轻的，一点也不重。", "{w}。这点思念不算重。……真的不算。", "才 {w}。这么轻的思念，我一只手就拿得动。"],
+  ["这次攒了 {w} 重重的思念，你终于回来了。", "{w} 的思念，开始有点重了。我先替你收着。", "攒到 {w} 了。……不重，我还拿得动。"],
+  [
+    "这次攒了 {w} 的思念，重得我一个人抱不动，你来了正好。",
+    "{w} 重的思念，压得帝江号都往下沉了一点。",
+    "思念攒到 {w}，有点重。……不过你回来了，就轻多了。",
+  ],
+  ["这次攒了 {w} 的思念。很重，可我一直没放下。", "{w}。思念太重的时候，我就去你的蟑螂附近坐一会儿。", "{w} 重的思念，我每天都抱着它等你。"],
+  [
+    "这次攒了 {w} 的思念。上次攒了十年，比这重得多，我也扛过来了。",
+    "{w} 的思念，重到秤都快放不下了。……没关系，你回来就好。",
+    "思念有 {w} 重了。不过你一回来，就一点都不重了。",
+  ],
+];
+
+/** What she says about the weight of a time away: the same line every time for the same seconds */
+export function weightSentence(seconds: number) {
+  const s = Math.max(0, Math.floor(seconds));
+  const w = formatKg(missKg(s));
+  // 「1.04 吨的思念」: no space after 吨, as after kg
+  return WEIGHT_LINES[awayBand(s)][s % 3].replace("{w}", w).replace("吨 ", "吨");
+}
+
+/** Her report of a time away, then its weight */
+export const awayWithWeight = (seconds: number, line: number) => `${awaySentence(seconds, line)}${weightSentence(seconds)}`;
+
+/** 「你睡了 7 小时 3 分 2 秒。」 and one of her lines about it */
+export const sleptSentence = (seconds: number, pick: number) =>
+  `你睡了 ${formatAway(seconds)}。${PERLICA_MORE.slept[Math.abs(Math.floor(pick)) % PERLICA_MORE.slept.length]}`;
+
+/** Which day of being 触须之交 again it is, by the device's clock from 04:00: the day they became so is day 1 */
+export function friendDay(since: number, offsetMin: number, now = Date.now()) {
+  return daysFromTo(deviceDay(offsetMin, since).day, deviceDay(offsetMin, now).day) + 1;
+}
+
+/** Days she marks: the 7th, 30th and 100th, and every whole year */
+export const isAnniversary = (day: number) => day === 7 || day === 30 || day === 100 || (day > 0 && day % 365 === 0);
+
+const YEARS = ["一", "两", "三", "四", "五", "六", "七", "八", "九", "十"];
+
+/** What she says on one of those days */
+export function anniversaryLine(day: number) {
+  if (day < 365) return `今天是我们再次相遇的第 ${day} 天。……我没有特意记，是日历提醒的。`;
+  const years = Math.floor(day / 365);
+  const n = years <= 10 ? YEARS[years - 1] : ` ${years} `;
+  return `今天是我们再次相遇的第 ${day} 天。……上次我等了十年，这次我们一起过了${n}年。`;
+}
+
+/** Her weekly report: n others touched last week, m touches of her, and how it ends */
+export function weekLine(n: number, m: number, line: number) {
+  const end = PERLICA_MORE.weekEnds[Math.abs(Math.floor(line)) % PERLICA_MORE.weekEnds.length];
+  if (n && !m) return `监督周报：上周你碰了 ${n} 只蟑螂。……碰我的次数是 0。这一项，下周记得补上。`;
+  if (!n) return `监督周报：上周你谁都没碰，只碰了我，一共 ${m} 次。${end}`;
+  return `监督周报：上周你碰了 ${n} 只蟑螂，碰了我 ${m} 次。${end}`;
 }
 
 /** What one of hers in the inbox says, in her own words. */
-export function perlicaText(item: Pick<PerlicaItem, "what" | "bold" | "seconds" | "line" | "times">) {
-  if (item.what === "away") return `${PERLICA_NAME}：「${awaySentence(item.seconds ?? AWAY_REPORT_S, item.line ?? 0)}」`;
-  const line = touchBackLine(item.what, item.bold, item.times);
+export function perlicaText(item: Pick<PerlicaItem, "what" | "bold" | "seconds" | "line" | "times" | "others">) {
+  if (item.what === "away") return `${PERLICA_NAME}：「${awayWithWeight(item.seconds ?? AWAY_REPORT_S, item.line ?? 0)}」`;
+  if (item.what === "week") return `${PERLICA_NAME}：「${weekLine(item.others ?? 0, item.times ?? 0, item.line ?? 0)}」`;
+  // what she said as you touched 阿米娅向导: not an answer to a touch of yours
+  if (item.what === "aside" && item.line === 1) return `${PERLICA_NAME}：「${PERLICA_MORE.aside}」`;
+  const line = touchBackLine(item.what, item.bold, item.times, item.others, item.line);
   return item.bold ? `${PERLICA_NAME}大胆地碰回来了：「${line}」` : `${PERLICA_NAME}偷偷碰回来了：「${line}」`;
 }
 

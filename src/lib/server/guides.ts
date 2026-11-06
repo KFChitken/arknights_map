@@ -2,7 +2,7 @@ import "server-only";
 import { and, count, desc, eq, gt, gte, inArray, isNull } from "drizzle-orm";
 import { GUIDE_INBOX_SHOWN, GUIDE_TOUCHES_PER_DAY, guideProfile, type Guide } from "../guides";
 import { INBOX_DAYS } from "../rules";
-import { DAY, HOUR } from "../world/logic";
+import { DAY } from "../world/logic";
 import { WorldError, type Friend, type PublicRoach } from "../world/types";
 import { db } from "./db";
 import type { amiyaTouches } from "./schema";
@@ -23,20 +23,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Exec = typeof db | Tx;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_OFFSET_MIN = 14 * 60;
 
-/**
- * The player's day by their device's clock, turning at 04:00 like the games' daily
- * reset: its date, and the moment it began. offsetMin is the device's
- * Date.getTimezoneOffset(), kept within ±14 hours and never stored; Beijing time without one.
- */
-export function deviceDay(offsetMin: unknown, now = Date.now()) {
-  const n = Number(offsetMin);
-  const offset = Number.isFinite(n) ? Math.max(-MAX_OFFSET_MIN, Math.min(MAX_OFFSET_MIN, Math.round(n))) : -480;
-  const shift = -offset * 60_000;
-  const day = new Date(now + shift - 4 * HOUR).toISOString().slice(0, 10);
-  return { day, start: Date.parse(`${day}T04:00:00Z`) - shift };
-}
+export { deviceDay, deviceWeek } from "../deviceDay";
 
 export const isUniqueViolation = (e: unknown): boolean => {
   const err = e as { code?: string; cause?: unknown } | null;

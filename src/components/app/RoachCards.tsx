@@ -2,7 +2,7 @@
 
 import { AMIYA_NAME } from "@/lib/amiya";
 import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
-import { PERLICA_ID, PERLICA_NAME } from "@/lib/perlica";
+import { PERLICA_ID, PERLICA_MORE, PERLICA_NAME } from "@/lib/perlica";
 import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talulah";
 import { bottleIcon } from "@/lib/flipArt";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
@@ -20,6 +20,7 @@ export function OtherRoachCard({
   friendName,
   pokeAgainAt,
   perlicaTimer = false,
+  perlicaGuarding = false,
   fire,
   minghe,
   busy,
@@ -40,6 +41,8 @@ export function OtherRoachCard({
   pokeAgainAt: number | null;
   /** 佩丽卡监督's 离开计时 is on, which her card mentions */
   perlicaTimer?: boolean;
+  /** 佩丽卡监督 is keeping watch beside your drunk main roach */
+  perlicaGuarding?: boolean;
   /**
    * 塔露拉干员's fire, on her card: how many roaches sit by it and how big it burns,
    * whether one of yours is there, her line to 初始 hoods (once), and sending a clone over
@@ -168,6 +171,7 @@ export function OtherRoachCard({
             {asleep && <span className="zz">{friendName ? "睡着了" : "理智恢复中"}</span>}
           </strong>
           {about && <p className="muted">{about}</p>}
+          {perlica && perlicaGuarding && <p className="muted">{PERLICA_MORE.guarding}</p>}
           <p className="muted">{hint}</p>
           {talulah && (
             <>

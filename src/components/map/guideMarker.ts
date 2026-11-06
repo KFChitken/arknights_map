@@ -95,6 +95,73 @@ export function guideShift(mark: GuideMark, box: number): [number, number] {
 const drawn = new WeakMap<HTMLElement, number>();
 let seq = 0;
 
+/** How long 佩丽卡监督 rides her 鬼火 to where the main roach moved */
+export const BIKE_MS = 1200;
+
+/** Where she sits while keeping watch beside your drunk main roach: just to its right, in screen pixels */
+export const besideRight = (box: number): [number, number] => [Math.round(MINE_PX / 2 + box / 2 - 4), 0];
+
+/** A ride whose nonce is older than this was started for a map that is gone, and is not played again */
+const RIDE_FRESH_MS = 3000;
+export const freshRide = (mark: GuideMark, el: HTMLElement) => {
+  if (!mark.arrive || el.dataset.arrived === String(mark.arrive.nonce)) return false;
+  el.dataset.arrived = String(mark.arrive.nonce);
+  return Date.now() - mark.arrive.nonce < RIDE_FRESH_MS;
+};
+
+/** 佩丽卡监督's 鬼火: a little motorbike drawn in code, a strip of lights along it running through colours */
+const BIKE_SVG = `<svg viewBox="0 0 64 30" aria-hidden="true">
+<circle cx="13" cy="21" r="7" fill="#1d1f24" stroke="#0d0e10" stroke-width="2"/><circle cx="13" cy="21" r="2.6" fill="#9aa3b2"/>
+<circle cx="51" cy="21" r="7" fill="#1d1f24" stroke="#0d0e10" stroke-width="2"/><circle cx="51" cy="21" r="2.6" fill="#9aa3b2"/>
+<path d="M10 17 L22 9 L44 9 L54 17 L46 19 L18 19 Z" fill="#2c3140" stroke="#0d0e10" stroke-width="2" stroke-linejoin="round"/>
+<path class="bike-lights" d="M18 15 L46 15" stroke="#ff4fd8" stroke-width="3" stroke-linecap="round"/>
+<path d="M44 9 L50 3 L55 3" fill="none" stroke="#0d0e10" stroke-width="2.4" stroke-linecap="round"/>
+</svg>`;
+
+/**
+ * Where 佩丽卡监督's ride starts, as an offset from where she stops (to, on screen):
+ * just past the screen's edge in the direction of where she stood before (from), or
+ * the left edge when that is unknown. w and h: the map's size on screen.
+ */
+export function rideStart(to: { x: number; y: number }, from: { x: number; y: number } | null, w: number, h: number, margin = 40) {
+  if (!from || Math.hypot(from.x - to.x, from.y - to.y) < 1) return [-margin - to.x, 0] as [number, number];
+  const ux = (from.x - to.x) / Math.hypot(from.x - to.x, from.y - to.y);
+  const uy = (from.y - to.y) / Math.hypot(from.x - to.x, from.y - to.y);
+  // how far along that way to the edge of the screen, widened by the margin
+  const along = (p: number, u: number, size: number) => (u > 0 ? (size + margin - p) / u : u < 0 ? (-margin - p) / u : Infinity);
+  const t = Math.max(0, Math.min(along(to.x, ux, w), along(to.y, uy, h)));
+  return [Math.round(ux * t), Math.round(uy * t)] as [number, number];
+}
+
+const riding = new WeakMap<HTMLElement, number>();
+
+/**
+ * 佩丽卡监督 rides her 鬼火 in from offset (screen pixels) to her spot, slowing down,
+ * and the bike stays a moment after she stops, then fades. Nothing moves, and no
+ * bike shows, when motion is turned down.
+ */
+export function rideIn(el: HTMLElement, offset: [number, number], ms: number) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (!el.querySelector(".guide-bike")) {
+    const bike = document.createElement("span");
+    bike.className = "guide-bike";
+    bike.innerHTML = BIKE_SVG;
+    el.append(bike);
+  }
+  el.classList.add("riding");
+  el.style.transition = "none";
+  el.style.translate = `${offset[0]}px ${offset[1]}px`;
+  // the start takes effect before the ride does
+  void el.offsetWidth;
+  el.style.transition = `translate ${ms}ms cubic-bezier(0.15, 0.65, 0.3, 1)`;
+  el.style.translate = "0px 0px";
+  window.clearTimeout(riding.get(el));
+  riding.set(
+    el,
+    window.setTimeout(() => el.classList.remove("riding"), ms + 2000),
+  );
+}
+
 /** Bring her element up to date for this zoom (MapLibre levels) and what the page says about her. */
 export function updateGuide(el: HTMLElement, zoom: number, mark: GuideMark) {
   const guide = GUIDES[mark.id];

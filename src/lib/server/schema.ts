@@ -331,8 +331,9 @@ export const amiyaTouches = pgTable("amiya_touches", guideTouchColumns(), (t) =>
 
 /**
  * 佩丽卡监督 (src/lib/perlica.ts). kind "friend" is her touch back as a new
- * 触须之交, "away" her report of how long the player was gone (only the latest
- * AWAY_KEPT stay, and they go when the 离开计时 is switched off).
+ * 触须之交, "jealous", "aside" and "birthday" her other ways of touching back,
+ * "away" her report of how long the player was gone (only the latest AWAY_KEPT
+ * stay) and "week" her weekly report; both go when the 离开计时 is switched off.
  */
 export const perlicaTouches = pgTable(
   "perlica_touches",
@@ -341,10 +342,17 @@ export const perlicaTouches = pgTable(
     /** "away": how many seconds they were gone, and which of the band's lines she said */
     awaySeconds: integer("away_seconds"),
     line: smallint("line"),
-    /** Her bold touch back: the how-manieth touch of theirs today (from 04:00 on their device) */
+    /** Her bold touch back: the how-manieth touch of theirs today (from 04:00 on their device); "week": her touches last week */
     times: smallint("times"),
+    /** "jealous": others touched that day before her; "week": others touched last week */
+    others: smallint("others"),
   },
-  (t) => [index("perlica_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("perlica_touches_reply_idx").on(t.replyTo)],
+  (t) => [
+    index("perlica_touches_user_idx").on(t.userId, t.createdAt),
+    uniqueIndex("perlica_touches_reply_idx").on(t.replyTo),
+    // one weekly report a player, however many pages ask at once; it is dated the start of its week
+    uniqueIndex("perlica_touches_week_idx").on(t.userId, t.createdAt).where(sql`${t.kind} = 'week'`),
+  ],
 );
 
 /**

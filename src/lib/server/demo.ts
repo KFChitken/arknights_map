@@ -7,7 +7,7 @@ import { passerbyProfile, passersby, TESTERS } from "../world/cast";
 import type { Identity, PretendWhat } from "../world/types";
 import { db } from "./db";
 import { fastForward, forgetMinghe, moveMingheRiders } from "./minghe";
-import { askAgain, pretendAway } from "./perlica";
+import { askAgain, pretendAway, pretendBirthday, pretendFriendDays, pretendWeek } from "./perlica";
 import { forgetTalulah } from "./talulah";
 import {
   amiyaTouches,
@@ -169,11 +169,15 @@ export async function identities(currentId: string, homeId: string | null): Prom
  * last greeting and the friendship back a day, so the next visit is greeted again;
  * 假装离开两天 moves the last visit back two days, so the next one gets 欢迎回家;
  * 假装离开 and 让佩丽卡重新问一次 are 佩丽卡监督's (perlica.ts); 清掉我和塔露拉的记录, 塔露拉干员's;
- * 明河快进一天 (his journey a day on, and his riders moved along at once) and 清掉我和明河的记录, 明河都尉's.
+ * 明河快进一天 (his journey a day on, and his riders moved along at once) and 清掉我和明河的记录, 明河都尉's;
+ * 假装触须之交第 30 天, 假装今天是佩丽卡生日 and 假装过了一周, 佩丽卡监督's second step.
  */
 export async function pretend(userId: string, what: PretendWhat, seconds = 0) {
   if (what === "left") return pretendAway(userId, seconds);
   if (what === "ask") return askAgain(userId);
+  if (what === "perlicaDays") return pretendFriendDays(userId);
+  if (what === "perlicaBirthday") return pretendBirthday(userId);
+  if (what === "perlicaWeek") return pretendWeek(userId);
   if (what === "talulah") return forgetTalulah(userId);
   if (what === "minghe") return forgetMinghe(userId);
   if (what === "mingheDay") {
