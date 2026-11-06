@@ -148,6 +148,13 @@
       "when": 1793579510144,
       "tag": "0020_amiya",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793937598847,
+      "tag": "0021_perlica",
+      "breakpoints": true
     }
   ]
 }

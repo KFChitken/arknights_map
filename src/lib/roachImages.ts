@@ -1,6 +1,6 @@
 import { pictureSleeping, pictureZzz, zzz, type PictureFit } from "./flipArt";
 import { bodyOpacityFor, roachDataUrl, shownAvatar, type RoachOpts } from "./roachSvg";
-import { GUIDE_AVATAR, type DrawnAvatar, type RoachColor } from "./types";
+import { GUIDE_AVATARS, type DrawnAvatar, type RoachColor } from "./types";
 
 /**
  * Cartoon looks that are pictures rather than code-drawn SVG. Each is a
@@ -11,8 +11,10 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   doctor: "/avatars/doctor.png",
   endmin: "/avatars/endmin.png",
   imp: "/avatars/imp.png",
-  // not ours to publish, so served from the server's own folder (src/app/guide-art) and kept out of the repository
-  [GUIDE_AVATAR]: "/guide-art/amiya.png",
+  // the guides' (src/lib/guides.ts): not ours to publish, so served from the server's own folder
+  // (src/app/guide-art) and kept out of the repository
+  amiya: "/guide-art/amiya.png",
+  perlica: "/guide-art/perlica.png",
 };
 
 /** Where each figure sits in its picture, measured from the PNGs, to lay it down asleep */
@@ -26,9 +28,11 @@ const PICTURE_FIT: Partial<Record<DrawnAvatar, PictureFit>> = {
 const svgUrl = (inner: string) =>
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
 
-/** The guide keeps her picture in 写实 too, and never sleeps */
+const isGuide = (avatar: DrawnAvatar) => (GUIDE_AVATARS as readonly DrawnAvatar[]).includes(avatar);
+
+/** A guide keeps her picture in 写实 too, and never sleeps */
 const asDrawn = (opts: RoachOpts): RoachOpts =>
-  shownAvatar(opts) === GUIDE_AVATAR ? { ...opts, look: "cartoon", asleep: false } : opts;
+  isGuide(shownAvatar(opts)) ? { ...opts, look: "cartoon", asleep: false } : opts;
 
 /** Whether this roach is drawn from a picture (and so needs drawRoach instead of roachDataUrl). */
 export function usesPicture(opts: RoachOpts) {

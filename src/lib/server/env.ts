@@ -21,11 +21,12 @@ export const OPERATOR_AVATARS = process.env.OPERATOR_AVATARS !== "off";
 export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
 
 /**
- * 阿米娅向导's picture is not ours to publish either: it lives in its own folder outside
- * the repository (cut out with scripts/cutout.mjs). AMIYA_PICTURE=off takes it down, and
- * she shows as a pink-lit hood instead.
+ * The guides' pictures are not ours to publish either: they live in their own folder outside
+ * the repository (cut out with scripts/cutout.mjs). AMIYA_PICTURE=off takes 阿米娅向导's down,
+ * and she shows as a pink-lit hood instead; PERLICA_PICTURE=off, 佩丽卡监督's (a cyan-lit hood).
  */
 export const AMIYA_PICTURE = process.env.AMIYA_PICTURE !== "off";
+export const PERLICA_PICTURE = process.env.PERLICA_PICTURE !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
 
 /** Where links in emails point. */

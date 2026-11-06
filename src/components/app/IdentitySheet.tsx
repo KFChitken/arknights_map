@@ -9,11 +9,22 @@ const GROUPS: [Identity["group"], string][] = [
   ["passerby", "被碰过的路人蟑螂"],
 ];
 
+/** 假装离开 this long: one of each of her five bands */
+const LEFT: [string, number][] = [
+  ["20 分钟", 20 * 60],
+  ["5 小时", 5 * 3600],
+  ["2 天", 2 * 86400],
+  ["9 天", 9 * 86400],
+  ["20 天", 20 * 86400],
+];
+
 export default function IdentitySheet({
   identities,
   onBecome,
   onReset,
   onPretend,
+  onPretendLeft,
+  onAskAgain,
   onClose,
 }: {
   identities: Identity[];
@@ -21,6 +32,10 @@ export default function IdentitySheet({
   onReset: () => void;
   /** Move this identity's days back, then reload: 阿米娅向导 greets again, or 欢迎回家 shows */
   onPretend: (what: "day" | "away") => void;
+  /** 假装离开 that many seconds, then reload: 佩丽卡监督 says how long */
+  onPretendLeft: (seconds: number) => void;
+  /** 让佩丽卡重新问一次: forget the answer to her question */
+  onAskAgain: () => void;
   onClose: () => void;
 }) {
   return (
@@ -68,6 +83,20 @@ export default function IdentitySheet({
         </button>
         <button className="pill" onClick={() => onPretend("away")}>
           假装离开两天
+        </button>
+      </div>
+      <h3>假装离开</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        佩丽卡监督的离开计时，要先让她开始记时间。20 分钟、5 小时：顶上冒横幅；2 天以上：她那句在「欢迎回家」小结里。
+      </p>
+      <div className="row-actions" style={{ flexWrap: "wrap" }}>
+        {LEFT.map(([label, seconds]) => (
+          <button key={label} className="pill" onClick={() => onPretendLeft(seconds)}>
+            {label}
+          </button>
+        ))}
+        <button className="pill" onClick={onAskAgain}>
+          让佩丽卡重新问一次
         </button>
       </div>
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>

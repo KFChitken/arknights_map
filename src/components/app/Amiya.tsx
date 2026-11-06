@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { amiyaLine } from "@/lib/amiya";
+import { AMIYA, amiyaLine } from "@/lib/amiya";
 import type { Game } from "@/lib/games";
-import { GUIDE_AVATAR } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
 /** 阿米娅向导 (src/lib/amiya.ts) on cards: her greeting, her introduction, and touching her back. */
 
 export const AmiyaPicture = ({ size, friend = true }: { size: number; friend?: boolean }) => (
-  <RoachIcon color="pink" size={size} avatar={GUIDE_AVATAR} friend={friend} />
+  <RoachIcon color={AMIYA.color} size={size} avatar={AMIYA.avatar} friend={friend} />
 );
 
 /**

@@ -75,6 +75,13 @@ export const users = pgTable("users", {
   /** 阿米娅向导 (src/lib/amiya.ts): when they became 触须之交, and the day (by their device, from 04:00) she last greeted them */
   amiyaFriendSince: at("amiya_friend_since"),
   amiyaGreetedOn: date("amiya_greeted_on", { mode: "string" }),
+  /** 佩丽卡监督 (src/lib/perlica.ts): when they became 触须之交 */
+  perlicaFriendSince: at("perlica_friend_since"),
+  /** Her 离开计时: "on" or "off" once they answered her or changed it in 资料, null while never asked; and when that was, as consent */
+  perlicaTimer: text("perlica_timer"),
+  perlicaTimerAt: at("perlica_timer_at"),
+  /** The last moment they were looking at the site, to the second, overwritten each time; kept only while perlicaTimer is "on". No index: it changes every minute */
+  lastActiveAt: at("last_active_at"),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -272,29 +279,51 @@ export const pokes = pgTable(
 );
 
 /**
- * 阿米娅向导 and one player: their touches both ways and her daily greeting. Only
- * that player ever sees them; she is no account (src/lib/amiya.ts).
+ * A guide (src/lib/guides.ts) and one player: their touches both ways, and
+ * whatever else she sends them. Only that player ever sees these; she is no
+ * account. Every guide's table starts with these columns, so the code she
+ * shares with the others works on any of them (src/lib/server/guides.ts).
  */
-export const amiyaTouches = pgTable(
-  "amiya_touches",
+const guideTouchColumns = () => ({
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** "to_<guide>": the player touched her; "from_<guide>": she touched them */
+  direction: text("direction").notNull(),
+  /** "touch", or what else of hers it is */
+  kind: text("kind").notNull().default("touch"),
+  bold: boolean("bold").notNull(),
+  /** On the player's touch: which of hers it answers, once each */
+  replyTo: uuid("reply_to"),
+  createdAt: createdAt(),
+  seenAt: at("seen_at"),
+  /** The player crawled away from it (默默爬走) */
+  ignoredAt: at("ignored_at"),
+});
+
+/** 阿米娅向导 (src/lib/amiya.ts); kind "greet" is her greeting of the day */
+export const amiyaTouches = pgTable("amiya_touches", guideTouchColumns(), (t) => [
+  index("amiya_touches_user_idx").on(t.userId, t.createdAt),
+  uniqueIndex("amiya_touches_reply_idx").on(t.replyTo),
+]);
+
+/**
+ * 佩丽卡监督 (src/lib/perlica.ts). kind "friend" is her touch back as a new
+ * 触须之交, "away" her report of how long the player was gone (only the latest
+ * AWAY_KEPT stay, and they go when the 离开计时 is switched off).
+ */
+export const perlicaTouches = pgTable(
+  "perlica_touches",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** "to_amiya": the player touched her; "from_amiya": she touched them */
-    direction: text("direction").notNull(),
-    /** "touch", or "greet" for her greeting of the day */
-    kind: text("kind").notNull().default("touch"),
-    bold: boolean("bold").notNull(),
-    /** On the player's touch: which of hers it answers, once each */
-    replyTo: uuid("reply_to"),
-    createdAt: createdAt(),
-    seenAt: at("seen_at"),
-    /** The player crawled away from it (默默爬走) */
-    ignoredAt: at("ignored_at"),
+    ...guideTouchColumns(),
+    /** "away": how many seconds they were gone, and which of the band's lines she said */
+    awaySeconds: integer("away_seconds"),
+    line: smallint("line"),
+    /** Her bold touch back: the how-manieth touch of theirs today (from 04:00 on their device) */
+    times: smallint("times"),
   },
-  (t) => [index("amiya_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("amiya_touches_reply_idx").on(t.replyTo)],
+  (t) => [index("perlica_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("perlica_touches_reply_idx").on(t.replyTo)],
 );
 
 /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship. */

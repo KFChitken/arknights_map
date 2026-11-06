@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
 import { AMIYA_ID, isAmiyaItem } from "../amiya";
+import { isPerlicaItem, PERLICA_ID } from "../perlica";
 import { TICK_MISSING } from "../consent";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
@@ -55,6 +56,16 @@ import {
   type TouchResult,
 } from "../world/types";
 import { amiyaFriend, amiyaInbox, greetAmiya, ignoreAmiya, replyAmiya, seeAmiya, touchAmiya, unfriendAmiya } from "./amiya";
+import {
+  ignorePerlica,
+  perlicaFriend,
+  perlicaInbox,
+  perlicaOf,
+  replyPerlica,
+  seePerlica,
+  touchPerlica,
+  unfriendPerlica,
+} from "./perlica";
 import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
 import { daysBetween, lastVisitOn } from "./away";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
@@ -209,7 +220,7 @@ async function befriendIfMutual(a: string, b: string): Promise<string | null> {
 
 // ---- the world, for one player ----
 
-/** offsetMin: the device's Date.getTimezoneOffset(), only to work out 阿米娅向导's greeting day */
+/** offsetMin: the device's Date.getTimezoneOffset(), only to work out 阿米娅向导's greeting day; never stored */
 export async function me(userId: string, offsetMin?: unknown): Promise<Me | null> {
   const u = await userById(userId);
   if (!u) return null;
@@ -247,6 +258,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     // the first visit since the 04:00 batch flipped it over: the owner sees it stand up now, everyone else at the next batch
     wokeFromAway: Boolean(u.sleptAwayOn && (!u.lastSeenOn || u.lastSeenOn < u.sleptAwayOn)),
     amiya: { friend: Boolean(u.amiyaFriendSince), greeting: await greetAmiya(u, offsetMin) },
+    perlica: perlicaOf(u),
   };
 }
 
@@ -411,8 +423,10 @@ async function checkTouchQuota(userId: string) {
   if (n >= TOUCHES_PER_DAY) throw new WorldError("今天的触须用完啦，明天再来吧。");
 }
 
-export async function touch(userId: string, publicId: string, bold: boolean): Promise<TouchResult> {
+/** offsetMin: the device's Date.getTimezoneOffset(), only for 佩丽卡监督's count of the day; never stored */
+export async function touch(userId: string, publicId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
   if (publicId === AMIYA_ID) return touchAmiya(userId, Boolean(bold));
+  if (publicId === PERLICA_ID) return touchPerlica(userId, Boolean(bold), offsetMin);
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，碰不到 TA。");
   if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
   const [roach] = await db.select().from(roaches).where(eq(roaches.publicId, publicId)).limit(1);
@@ -458,8 +472,9 @@ async function replied(userId: string, itemIds: string[]) {
 }
 
 /** Touch back whoever sent an inbox item. */
-export async function reply(userId: string, itemId: string, bold: boolean): Promise<TouchResult> {
+export async function reply(userId: string, itemId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
   if (isAmiyaItem(String(itemId))) return replyAmiya(userId, String(itemId), Boolean(bold));
+  if (isPerlicaItem(String(itemId))) return replyPerlica(userId, String(itemId), Boolean(bold), offsetMin);
   const [kind, id] = String(itemId).split(":");
   let to: string | undefined;
   if (UUID.test(id ?? "")) {
@@ -517,6 +532,7 @@ async function lastPoke(from: string, to: string) {
  */
 export async function poke(userId: string, publicId: string): Promise<{ againAt: number }> {
   if (publicId === AMIYA_ID) throw new WorldError("阿米娅向导一直醒着，碰碰她吧。");
+  if (publicId === PERLICA_ID) throw new WorldError("佩丽卡监督一直醒着，碰碰她吧。");
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，戳不到 TA。");
   if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
   const [row] = await db
@@ -695,7 +711,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: true,
     });
   }
-  items.push(...(await amiyaInbox(userId)));
+  items.push(...(await amiyaInbox(userId)), ...(await perlicaInbox(userId)));
   return items.sort((x, y) => y.at - x.at);
 }
 
@@ -755,6 +771,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
       .where(and(inArray(reactions.id, x), inArray(reactions.declarationId, myDeclarations), isNull(reactions.seenAt)));
   }
   await seeAmiya(userId, itemIds);
+  await seePerlica(userId, itemIds);
   const p = ids("p:");
   if (p.length) {
     await db
@@ -844,6 +861,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
 /** 默默爬走: leave a touch you received unanswered for good. Only the receiver ever knows. */
 export async function ignore(userId: string, itemId: string) {
   if (isAmiyaItem(String(itemId))) return ignoreAmiya(userId, String(itemId));
+  if (isPerlicaItem(String(itemId))) return ignorePerlica(userId, String(itemId));
   const [kind, id] = String(itemId).split(":");
   if (kind !== "t" || !UUID.test(id ?? "")) throw new WorldError("找不到这条消息了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
@@ -937,12 +955,17 @@ export async function friends(userId: string): Promise<Friend[]> {
       pokeAgainAt: await lastPoke(userId, other),
     });
   }
-  // 阿米娅向导 always comes first
-  return self?.amiyaFriendSince ? [amiyaFriend(self.amiyaFriendSince), ...out] : out;
+  // the guides always come first: 阿米娅向导, then 佩丽卡监督
+  const guides = [
+    ...(self?.amiyaFriendSince ? [amiyaFriend(self.amiyaFriendSince)] : []),
+    ...(self?.perlicaFriendSince ? [perlicaFriend(self.perlicaFriendSince)] : []),
+  ];
+  return [...guides, ...out];
 }
 
 export async function unfriend(userId: string, friendId: string) {
   if (friendId === AMIYA_ID) return unfriendAmiya(userId);
+  if (friendId === PERLICA_ID) return unfriendPerlica(userId);
   const others = await friendIdsOf(userId);
   const other = [...others].find((o) => friendKey(userId, o) === friendId);
   if (!other) throw new WorldError("你们已经不是触须之交了。");

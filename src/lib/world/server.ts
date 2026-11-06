@@ -13,6 +13,7 @@ import {
   type InboxItem,
   type Me,
   type OwnRoach,
+  type PerlicaItem,
   type PlaceTarget,
   type PlayerId,
   type Radar,
@@ -43,6 +44,18 @@ export class ServerWorld implements World {
 
   // the zone only works out which day it is for 阿米娅向导's greeting; the server keeps none of it
   me = () => this.call<Me | null>("me", new Date().getTimezoneOffset());
+  here = () => this.call<PerlicaItem | null>("here");
+  // as the page goes, so a beacon: it outlives the page, and nobody waits for an answer
+  leave = () => {
+    const body = JSON.stringify({ args: [] });
+    try {
+      if (navigator.sendBeacon?.("/api/world/leave", body)) return;
+    } catch {}
+    fetch("/api/world/leave", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(
+      () => {},
+    );
+  };
+  setPerlicaTimer = (on: boolean) => this.call<void>("setPerlicaTimer", on);
   // A GET, so a browser that already holds the whole snapshot gets a 304 for it
   roachFeed = async (since: string | null): Promise<RoachFeedUpdate> => {
     let res: Response;
@@ -64,8 +77,9 @@ export class ServerWorld implements World {
   drink = () => this.call<{ until: number }>("drink");
   sober = () => this.call<void>("sober");
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);
-  touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold);
-  reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold);
+  // the zone only says which day it is for 佩丽卡监督's count of the day
+  touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold, new Date().getTimezoneOffset());
+  reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold, new Date().getTimezoneOffset());
   poke = (publicId: string) => this.call<{ againAt: number }>("poke", publicId);
   inbox = () => this.call<InboxItem[]>("inbox");
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
@@ -84,5 +98,5 @@ export class ServerWorld implements World {
   identities = () => this.call<Identity[]>("identities");
   become = (id: PlayerId) => this.call<void>("become", id);
   reset = () => this.call<void>("reset");
-  pretend = (what: "day" | "away") => this.call<void>("pretend", what);
+  pretend = (what: "day" | "away" | "left" | "ask", seconds?: number) => this.call<void>("pretend", what, seconds);
 }

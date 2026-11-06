@@ -174,30 +174,53 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .touch-buttons small { font-size: 11px; font-weight: 400; color: var(--muted); }
 .touch-buttons .bold { border-color: var(--ink); background: var(--ink); color: #fff; }
 .touch-buttons .bold small { color: #ffffffb3; }
-/* 阿米娅向导 (src/lib/amiya.ts): her marker on both maps, and her cards */
-.amiya-marker { position: relative; width: var(--amiya-size, 24px); height: var(--amiya-size, 24px); cursor: pointer; }
-.amiya-marker img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; user-select: none; }
-.amiya-name {
+/* The guides (src/lib/guides.ts): their markers on both maps, and their cards */
+.guide-marker { position: relative; width: var(--guide-size, 24px); height: var(--guide-size, 24px); cursor: pointer; }
+.guide-marker img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; user-select: none; }
+.guide-name {
   display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 1px;
   padding: 1px 7px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px #0003;
   color: var(--ink); font-size: 11px; font-weight: 700; white-space: nowrap; pointer-events: none;
 }
-.amiya-marker.named .amiya-name { display: block; }
-.amiya-bubble {
+.guide-marker.named .guide-name { display: block; }
+.guide-bubble {
   position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); margin: 0;
   padding: 5px 11px; border: 2px solid var(--ink); border-radius: 12px; background: #fff;
-  color: var(--ink); font-size: 14px; font-weight: 800; line-height: 1.3; white-space: nowrap; pointer-events: none;
-  animation: amiya-say 0.25s ease-out;
+  color: var(--ink); font-size: 14px; font-weight: 800; line-height: 1.3; pointer-events: none;
+  /* one line when short; 佩丽卡监督's reports of time away wrap */
+  width: max-content; max-width: 220px; text-align: center;
+  animation: guide-say 0.25s ease-out;
 }
-.amiya-bubble::after {
+.guide-bubble::after {
   content: ""; position: absolute; top: 100%; left: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
   border: solid var(--ink); border-width: 0 2px 2px 0; background: #fff; transform: rotate(45deg);
 }
-.amiya-bubble[hidden] { display: none; }
-@keyframes amiya-say { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.7); } }
+.guide-bubble[hidden] { display: none; }
+@keyframes guide-say { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.7); } }
 @media (prefers-reduced-motion: reduce) {
-  .amiya-bubble { animation: none; }
+  .guide-bubble { animation: none; }
 }
+/* 佩丽卡监督 (src/lib/perlica.ts): her report of the time away along the top, and her line on the 欢迎回家 card */
+.perlica-banner {
+  position: absolute; z-index: 30; top: calc(58px + var(--safe-top)); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: flex-start; gap: 2px; width: min(440px, calc(100% - 24px));
+  padding: 8px 4px 8px 10px; border-radius: 14px; background: #fff; box-shadow: 0 4px 18px #0003;
+  animation: perlica-in 0.25s ease-out;
+}
+.perlica-banner-body {
+  flex: 1; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none;
+  color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; line-height: 1.45; text-align: left; cursor: pointer;
+}
+.perlica-banner-body img { flex-shrink: 0; }
+.perlica-banner .close { padding: 0 8px; border: 0; background: none; font-size: 22px; line-height: 1; color: var(--muted); }
+@keyframes perlica-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+@media (prefers-reduced-motion: reduce) {
+  .perlica-banner { animation: none; }
+}
+.perlica-said { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
+.perlica-said img { flex-shrink: 0; }
+.perlica-said p { margin: 0; font-weight: 700; line-height: 1.5; }
+.perlica-ask { margin: 10px 0 6px; line-height: 1.4; text-align: center; }
 .amiya-greet { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 4px 0 8px; }
 .amiya-greet.small { flex-direction: row; justify-content: center; gap: 10px; margin: 0 0 4px; }
 .amiya-greet.small p { margin: 0; font-weight: 700; }

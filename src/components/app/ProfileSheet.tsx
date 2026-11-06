@@ -41,9 +41,11 @@ export default function ProfileSheet({
   wornBadge,
   blocked,
   tutorial,
+  perlicaTimer,
   onOpenBadges,
   onUnblock,
   onSave,
+  onPerlicaTimer,
   onSignOut,
   onDelete,
   onClose,
@@ -56,15 +58,21 @@ export default function ProfileSheet({
   blocked: BlockedPlayer[];
   /** The tutorial's first card: only the basics, and a way to stay anonymous for now */
   tutorial?: { onLater: () => void };
+  /** 佩丽卡监督's 离开计时 (null: she has not asked yet); left out while the tutorial runs */
+  perlicaTimer?: "on" | "off" | null;
   onOpenBadges?: (draft: Profile) => void;
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
+  /** Switch her timer; only called when the box was changed and the rest saved */
+  onPerlicaTimer?: (on: boolean) => Promise<boolean>;
   onSignOut: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
   const [p, setP] = useState<Profile>(draft ?? profile);
   const [saving, setSaving] = useState(false);
+  // not asked yet shows unticked, and stays not asked unless the box is ticked
+  const [timerOn, setTimerOn] = useState(perlicaTimer === "on");
   const set = (patch: Partial<Profile>) => setP((old) => ({ ...old, ...patch }));
   const toggleGame = (g: Game) =>
     set({ games: p.games.includes(g) ? p.games.filter((x) => x !== g) : GAMES.filter((x) => x === g || p.games.includes(x)) });
@@ -72,7 +80,8 @@ export default function ProfileSheet({
 
   const save = async () => {
     setSaving(true);
-    const ok = await onSave(p);
+    let ok = await onSave(p);
+    if (ok && perlicaTimer !== undefined && timerOn !== (perlicaTimer === "on")) ok = Boolean(await onPerlicaTimer?.(timerOn));
     setSaving(false);
     if (ok) onClose();
   };
@@ -225,6 +234,19 @@ export default function ProfileSheet({
           超过 {AWAY_DAYS} 天没来，大家会看到它翻过来睡觉。关掉的话，好久没来它也照样站着。自己点「摄入酒精」不受这个开关影响。
         </p>
       </fieldset>
+
+      {perlicaTimer !== undefined && (
+        <fieldset>
+          <legend>佩丽卡的离开计时</legend>
+          <label className="check">
+            <input type="checkbox" checked={timerOn} onChange={(e) => setTimerOn(e.target.checked)} />
+            让佩丽卡监督记下我每次离开多久
+          </label>
+          <p className="hint">
+            打开以后，网站会记下你最后一次在看网站的时间（精确到秒，每次覆盖旧的），只用来让她告诉你离开了多久，别人看不到。关掉就不再记，已经存的时间和她报时的消息也一起删掉。
+          </p>
+        </fieldset>
+      )}
 
       <fieldset>
         <legend>蟑螂形象</legend>

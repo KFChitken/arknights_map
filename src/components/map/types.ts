@@ -1,3 +1,4 @@
+import type { GuideId } from "@/lib/guides";
 import { hash128 } from "@/lib/prng";
 import type { LngLat, MapFocus, MapView, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
@@ -12,8 +13,8 @@ export type MapViewProps = {
   mineAsleep: boolean;
   /** Where a visitor is trying out placing a roach: drawn faded in your own look, sent nowhere */
   ghost?: LngLat | null;
-  /** 阿米娅向导 (src/lib/amiya.ts), on every map: whether she is your 触须之交, and what she is saying */
-  amiya: { friend: boolean; bubble: string | null };
+  /** The guides this page shows (src/lib/guides.ts): 阿米娅向导 on every map, 佩丽卡监督 near your main roach */
+  guides: GuideMark[];
   myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
@@ -22,7 +23,7 @@ export type MapViewProps = {
   placing: boolean;
   focus: MapFocus | null;
   onMapClick: (p: LngLat) => void;
-  /** A roach of someone else, or 阿米娅向导 (AMIYA_ID) */
+  /** A roach of someone else, or a guide (by her id) */
   onRoachClick: (publicId: string) => void;
   onMineClick: (roachId: string) => void;
   onViewChange: (v: MapView, bounds: [LngLat, LngLat]) => void;
@@ -30,6 +31,9 @@ export type MapViewProps = {
   /** The map could not load at all; without it, onError says so */
   onFailed?: () => void;
 };
+
+/** A guide on the map: where, whether she is your 触须之交, and what she is saying over her head */
+export type GuideMark = { id: GuideId; at: LngLat; friend: boolean; bubble: string | null };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */
 export function roachTraits(id: string, groups: number, headings: number) {

@@ -4,15 +4,17 @@ import { amiyaLine } from "@/lib/amiya";
 import { nextBadge, type BadgeCount } from "@/lib/badges";
 import { homeGame } from "@/lib/games";
 import { AmiyaPicture, AmiyaTouchBack } from "./Amiya";
+import { PerlicaPicture } from "./Perlica";
 import { BadgePill } from "./Badges";
 import { pokedBy } from "./InboxSheet";
 import { WELCOME_NAMES } from "@/lib/declarations";
+import { PERLICA_NAME } from "@/lib/perlica";
 import { RADAR_RADIUS_KM } from "@/lib/rules";
 import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 /** One line about what is new on the site, for players coming back; "" when there is nothing to tell. */
-export const WHATS_NEW = "新功能：阿米娅向导住进了罗德岛！去找她碰一碰。";
+export const WHATS_NEW = "新功能：佩丽卡监督来了，她就在你的本体附近。";
 
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,
@@ -25,13 +27,15 @@ const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
  * 欢迎回家: for a player back after at least a whole day away. Numbers only,
  * all their own: what is unread in their inbox, and who moved in nearby. The one
  * exception is who poked their sleeping roach: 触须之交, whose names they know.
- * On a day 阿米娅向导 greets them too, hers is the welcome, on this one card.
+ * On a day 阿米娅向导 greets them too, hers is the welcome, on this one card;
+ * 佩丽卡监督's word on how long they were gone comes here too, under hers.
  */
 export function HomecomingSheet({
   me,
   homecoming,
   items,
   amiya,
+  perlica,
   onInbox,
   onWelcome,
   onClose,
@@ -41,6 +45,8 @@ export function HomecomingSheet({
   items: InboxItem[];
   /** 阿米娅向导's greeting of the day, to touch back from here */
   amiya?: { onTouchBack: (bold: boolean) => Promise<string | null> };
+  /** 佩丽卡监督's report of how long they were away, word for word */
+  perlica?: string;
   onInbox: () => void;
   onWelcome: () => void;
   onClose: () => void;
@@ -91,8 +97,16 @@ export function HomecomingSheet({
           <AmiyaTouchBack onTouchBack={amiya.onTouchBack} />
         </>
       )}
+      {perlica && (
+        <div className="perlica-said" style={amiya ? undefined : { marginTop: 0 }}>
+          <PerlicaPicture size={40} />
+          <p>
+            {PERLICA_NAME}：「{perlica}」
+          </p>
+        </div>
+      )}
       {me.wokeFromAway && (
-        <p style={{ marginTop: amiya ? undefined : 0 }}>你睡了 {homecoming.daysAway} 天，理智早就回满了。</p>
+        <p style={{ marginTop: amiya || perlica ? undefined : 0 }}>你睡了 {homecoming.daysAway} 天，理智早就回满了。</p>
       )}
       {awoke && (
         <p className="homecoming-got">
@@ -101,7 +115,7 @@ export function HomecomingSheet({
       )}
       {happened.length > 0 && (
         <>
-          <p style={{ marginTop: me.wokeFromAway || awoke || amiya ? undefined : 0 }}>你不在的这几天：</p>
+          <p style={{ marginTop: me.wokeFromAway || awoke || amiya || perlica ? undefined : 0 }}>你不在的这几天：</p>
           <ul className="homecoming-list">
             {happened.map((h) => (
               <li key={h}>{h}</li>
@@ -110,12 +124,12 @@ export function HomecomingSheet({
         </>
       )}
       {homecoming.arrivals > 0 && (
-        <p style={happened.length || amiya ? undefined : { marginTop: 0 }}>
+        <p style={happened.length || amiya || perlica ? undefined : { marginTop: 0 }}>
           附近 {RADAR_RADIUS_KM} 公里新来了 {homecoming.arrivals} 只蟑螂。
         </p>
       )}
       {quiet && (
-        <p style={amiya ? undefined : { marginTop: 0 }}>附近静悄悄的。发一条「欢迎回家」宣言，让附近的舟P知道你回来了。</p>
+        <p style={amiya || perlica ? undefined : { marginTop: 0 }}>附近静悄悄的。发一条「欢迎回家」宣言，让附近的舟P知道你回来了。</p>
       )}
       {next && <p className="homecoming-next">{NEXT[next.count](next.more, next.name)}</p>}
       {WHATS_NEW && <p className="homecoming-new">{WHATS_NEW}</p>}

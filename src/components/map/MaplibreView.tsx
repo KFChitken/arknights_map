@@ -3,7 +3,7 @@
 import maplibregl, { type GeoJSONSource, type StyleImageInterface, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
-import { AMIYA_AT, AMIYA_ID } from "@/lib/amiya";
+import type { GuideId } from "@/lib/guides";
 import { roachImageData } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import {
@@ -21,7 +21,7 @@ import {
 } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { amiyaElement, updateAmiya } from "./amiyaMarker";
+import { belowGuide, besideMain, guideElement, guideSize, updateGuide } from "./guideMarker";
 import { roachTraits, type MapViewProps } from "./types";
 
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -263,9 +263,43 @@ export default function MaplibreView(props: MapViewProps) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
   const syncRef = useRef<Promise<void>>(Promise.resolve());
-  const amiyaRef = useRef<HTMLElement | null>(null);
+  const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: maplibregl.Marker }>());
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // The guides: page elements over the map, so taps on them never reach the roaches below.
+  // Added, moved and taken away as the page says; each kept beside your main roach, never on it.
+  const syncGuides = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const p = propsRef.current;
+    const shown = guidesRef.current;
+    const want = new Set(p.guides.map((g) => g.id));
+    for (const [id, g] of shown) {
+      if (want.has(id)) continue;
+      g.marker.remove();
+      shown.delete(id);
+    }
+    const zoom = map.getZoom();
+    const main = p.mine.find((r) => r.slot === 0);
+    const mainAt = main ? map.project([main.lng, main.lat]) : null;
+    for (const mark of p.guides) {
+      let g = shown.get(mark.id);
+      if (!g) {
+        const el = guideElement(mark.id);
+        el.addEventListener("click", (e) => {
+          // while placing, the tap is a spot on the map like any other
+          if (propsRef.current.placing) return;
+          e.stopPropagation();
+          propsRef.current.onRoachClick(mark.id);
+        });
+        g = { el, marker: new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([mark.at.lng, mark.at.lat]).addTo(map) };
+        shown.set(mark.id, g);
+      } else g.marker.setLngLat([mark.at.lng, mark.at.lat]);
+      updateGuide(g.el, zoom, mark);
+      g.marker.setOffset(besideMain(map.project([mark.at.lng, mark.at.lat]), mainAt, guideSize(zoom), belowGuide(zoom)));
+    }
+  };
 
   // Draw any icons the latest data needs, then hand the data to the map; queued so updates land in order
   const sync = () => {
@@ -291,6 +325,7 @@ export default function MaplibreView(props: MapViewProps) {
 
   useEffect(() => {
     const { initialView } = propsRef.current;
+    const guideMarkers = guidesRef.current;
     const blank = new URLSearchParams(location.search).get("style") === "blank";
     const map = new maplibregl.Map({
       container: el.current!,
@@ -306,18 +341,8 @@ export default function MaplibreView(props: MapViewProps) {
     map.on("style.load", () => hideBorders(map));
     mapRef.current = map;
 
-    // 阿米娅向导: a page element over the map, so taps on her never reach the roaches below
-    const amiya = amiyaElement();
-    amiya.addEventListener("click", (e) => {
-      // while placing, the tap is a spot on the map like any other
-      if (propsRef.current.placing) return;
-      e.stopPropagation();
-      propsRef.current.onRoachClick(AMIYA_ID);
-    });
-    new maplibregl.Marker({ element: amiya, anchor: "center" }).setLngLat([AMIYA_AT.lng, AMIYA_AT.lat]).addTo(map);
-    amiyaRef.current = amiya;
-    updateAmiya(amiya, map.getZoom(), propsRef.current.amiya);
-    map.on("zoom", () => updateAmiya(amiya, map.getZoom(), propsRef.current.amiya));
+    syncGuides();
+    map.on("zoom", syncGuides);
 
     const loadTimer = window.setTimeout(() => {
       if (!readyRef.current) propsRef.current.onError?.("海外底图加载很慢，可以试试切换到高德底图。");
@@ -465,18 +490,16 @@ export default function MaplibreView(props: MapViewProps) {
       window.clearTimeout(foldTimer);
       readyRef.current = false;
       mapRef.current = null;
-      amiyaRef.current = null;
+      guideMarkers.clear();
       map.remove();
     };
   }, []);
 
   useEffect(sync, [props.roaches, props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
 
-  const { friend, bubble } = props.amiya;
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map && amiyaRef.current) updateAmiya(amiyaRef.current, map.getZoom(), { friend, bubble });
-  }, [friend, bubble]);
+  const main = props.mine.find((r) => r.slot === 0);
+  const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;
+  useEffect(syncGuides, [guidesKey]);
 
   useEffect(() => {
     const map = mapRef.current;

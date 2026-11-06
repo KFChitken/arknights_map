@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AMIYA_AT, AMIYA_ID } from "@/lib/amiya";
+import type { GuideId } from "@/lib/guides";
 import { loadAMap, type AMapNS } from "@/lib/amap";
 import { fromGcj, toGcj } from "@/lib/coords";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
@@ -16,9 +16,9 @@ import {
   SWARM_FADE_ZOOM,
   SWARM_GRADIENT,
 } from "@/lib/swarm";
-import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
+import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { amiyaElement, amiyaSize, updateAmiya } from "./amiyaMarker";
+import { belowGuide, besideMain, guideElement, guideSize, updateGuide } from "./guideMarker";
 import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
@@ -28,8 +28,8 @@ const ZOOM_OFFSET = 1;
 const HEAT_Z = 125;
 const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
-/** Above your own roaches (300) */
-const AMIYA_Z = 320;
+/** The guides: above your own roaches (300) */
+const GUIDE_Z = 320;
 
 // MassMarks draws thousands of points on one canvas, unlike DOM markers.
 // Roaches are split into batches, each with its own MassMarks redrawn in turn;
@@ -189,9 +189,51 @@ export default function AmapView(props: MapViewProps) {
   // The look whose icons the MassMarks currently use, so style indexes always match them
   const styledRef = useRef<{ look: RoachStyle; urls: string[] }>({ look: props.look, urls: [] });
   const mineSeq = useRef(0);
-  const amiyaRef = useRef<{ el: HTMLElement; marker: AMapNS } | null>(null);
+  const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: AMapNS }>());
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // The guides: page element markers on top of everything, in their pictures whatever the look.
+  // Added, moved and taken away as the page says; each kept beside your main roach, never on it.
+  const syncGuides = () => {
+    const AMap = amapRef.current;
+    const map = mapRef.current;
+    if (!AMap || !map) return;
+    const p = propsRef.current;
+    const shown = guidesRef.current;
+    const want = new Set(p.guides.map((g) => g.id));
+    for (const [id, g] of shown) {
+      if (want.has(id)) continue;
+      map.remove(g.marker);
+      shown.delete(id);
+    }
+    const zoom = map.getZoom() - ZOOM_OFFSET;
+    const size = guideSize(zoom);
+    const onScreen = (at: LngLat) => {
+      const px = map.lngLatToContainer(toGcj(at));
+      return { x: px.getX(), y: px.getY() };
+    };
+    const main = p.mine.find((r) => r.slot === 0);
+    const mainAt = main ? onScreen(main) : null;
+    for (const mark of p.guides) {
+      let g = shown.get(mark.id);
+      if (!g) {
+        const el = guideElement(mark.id);
+        const marker = new AMap.Marker({ position: toGcj(mark.at), content: el, zIndex: GUIDE_Z, bubble: true });
+        marker.on("click", () => {
+          if (propsRef.current.placing) return;
+          lastHitRef.current = Date.now();
+          window.setTimeout(() => propsRef.current.onRoachClick(mark.id), 0);
+        });
+        map.add(marker);
+        g = { el, marker };
+        shown.set(mark.id, g);
+      } else g.marker.setPosition(toGcj(mark.at));
+      updateGuide(g.el, zoom, mark);
+      const [dx, dy] = besideMain(onScreen(mark.at), mainAt, size, belowGuide(zoom));
+      g.marker.setOffset(new AMap.Pixel(-size / 2 + dx, -size / 2 + dy));
+    }
+  };
 
   const placeMine = async () => {
     const AMap = amapRef.current;
@@ -227,6 +269,7 @@ export default function AmapView(props: MapViewProps) {
     let cancelled = false;
     let map: AMapNS = null;
     let crawlTimer = 0;
+    const guideMarkers = guidesRef.current;
 
     loadAMap()
       .then(async (AMap) => {
@@ -294,29 +337,8 @@ export default function AmapView(props: MapViewProps) {
 
         placeMine();
 
-        // 阿米娅向导: a page element marker, on top of everything and in her picture whatever the look
-        const zoomNow = () => map.getZoom() - ZOOM_OFFSET;
-        const amiya = amiyaElement();
-        const amiyaMarker = new AMap.Marker({
-          position: toGcj(AMIYA_AT),
-          content: amiya,
-          zIndex: AMIYA_Z,
-          bubble: true,
-        });
-        const fitAmiya = () => {
-          const size = amiyaSize(zoomNow());
-          amiyaMarker.setOffset(new AMap.Pixel(-size / 2, -size / 2));
-          updateAmiya(amiya, zoomNow(), propsRef.current.amiya);
-        };
-        fitAmiya();
-        amiyaMarker.on("click", () => {
-          if (propsRef.current.placing) return;
-          lastHitRef.current = Date.now();
-          window.setTimeout(() => propsRef.current.onRoachClick(AMIYA_ID), 0);
-        });
-        map.add(amiyaMarker);
-        map.on("zoomchange", fitAmiya);
-        amiyaRef.current = { el: amiya, marker: amiyaMarker };
+        syncGuides();
+        map.on("zoomchange", syncGuides);
 
         map.on("click", (e: AMapNS) => {
           if (Date.now() - lastHitRef.current < 300) return;
@@ -351,7 +373,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current = [];
       heatRef.current = null;
       mineRef.current = [];
-      amiyaRef.current = null;
+      guideMarkers.clear();
       map?.destroy();
       mapRef.current = null;
     };
@@ -390,11 +412,9 @@ export default function AmapView(props: MapViewProps) {
     placeMine();
   }, [props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
 
-  const { friend, bubble } = props.amiya;
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map && amiyaRef.current) updateAmiya(amiyaRef.current.el, map.getZoom() - ZOOM_OFFSET, { friend, bubble });
-  }, [friend, bubble]);
+  const main = props.mine.find((r) => r.slot === 0);
+  const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;
+  useEffect(syncGuides, [guidesKey]);
 
   useEffect(() => {
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");

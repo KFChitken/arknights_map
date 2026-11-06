@@ -1,5 +1,6 @@
 import type { BadgeCount, EarnedBadge } from "../badges";
 import type { Declaration, Reaction } from "../declarations";
+import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachColor } from "../types";
@@ -11,6 +12,15 @@ import type { DrawnAvatar, LngLat, RoachColor } from "../types";
 export interface World {
   /** The signed-in player with their own roaches, or null when signed out. Sends the device's time zone for 阿米娅向导's greeting. */
   me(): Promise<Me | null>;
+  /**
+   * 「还在」 for 佩丽卡监督's 离开计时: the page is open and looked at. When the player was
+   * away long enough, her report of how long; null otherwise, for visitors, and while the timer is off.
+   */
+  here(): Promise<PerlicaItem | null>;
+  /** 「走了」: the page goes out of sight or closes. Sent on its way and never answered. */
+  leave(): void;
+  /** Her 离开计时 on or off, from her card or 资料; off forgets the time kept and her reports of it. */
+  setPerlicaTimer(on: boolean): Promise<void>;
   /**
    * Everyone's roaches, your own included, as one feed shared by every viewer.
    * Pass the version you hold to get only what changed since (see RoachFeedUpdate).
@@ -27,7 +37,7 @@ export interface World {
   sober(): Promise<void>;
   /** Taking back the main roach takes back the clones too. */
   removeRoach(roachId: string): Promise<OwnRoach[]>;
-  /** Touch someone else's roach by its public id. */
+  /** Touch someone else's roach by its public id. Sends the device's time zone for 佩丽卡监督's count of the day. */
   touch(publicId: string, bold: boolean): Promise<TouchResult>;
   /** Touch back whoever sent an inbox item. */
   reply(itemId: string, bold: boolean): Promise<TouchResult>;
@@ -65,8 +75,11 @@ export interface World {
   identities(): Promise<Identity[]>;
   become(id: PlayerId): Promise<void>;
   reset(): Promise<void>;
-  /** 假装过了一天 (阿米娅向导 greets again) or 假装离开两天 (欢迎回家) */
-  pretend(what: "day" | "away"): Promise<void>;
+  /**
+   * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
+   * seconds (佩丽卡监督 says how long), or 让佩丽卡重新问一次 (ask)
+   */
+  pretend(what: "day" | "away" | "left" | "ask", seconds?: number): Promise<void>;
 }
 
 export type PlayerId = string;
@@ -90,7 +103,7 @@ export type MapRoach = LngLat & {
 
 /**
  * Someone else's roach as you see it. friend: it belongs to one of your 触须之交.
- * guide: 阿米娅向导 (src/lib/amiya.ts), whom every page draws for itself.
+ * guide: one of the site's guides (src/lib/guides.ts), whom every page draws for itself.
  */
 export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
 
@@ -103,9 +116,14 @@ export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; changed?: MapRo
 
 /**
  * newFriend: the other player's name when this touch made you 触须之交.
- * amiya: when you touched 阿米娅向导, her touch back, which she gives at once.
+ * guide: when you touched one of the guides (src/lib/guides.ts), her touch back,
+ * which she gives at once: "friend" when it made you 触须之交 (佩丽卡监督 only),
+ * and for 佩丽卡监督's bold touch back the how-manieth touch of yours today.
  */
-export type TouchResult = { newFriend: string | null; amiya?: { itemId: string; bold: boolean } };
+export type TouchResult = {
+  newFriend: string | null;
+  guide?: { id: GuideId; itemId: string; bold: boolean; kind: "touch" | "friend"; times: number | null };
+};
 
 export type Friend = {
   /** Opaque; only good for unfriending */
@@ -158,6 +176,8 @@ export type Me = {
   agreedPublicPlace: boolean;
   /** 阿米娅向导: whether you are 触须之交, and today's greeting while you have not seen it */
   amiya: { friend: boolean; greeting: Extract<InboxItem, { kind: "amiya" }> | null };
+  /** 佩丽卡监督: whether you are 触须之交, and her 离开计时: on, off, or null while she has not asked yet */
+  perlica: { friend: boolean; timer: "on" | "off" | null };
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */
@@ -204,7 +224,28 @@ export type InboxItem =
   /** A 触须之交 you poked is up again, as the 04:00 batch found */
   | { kind: "pokeWoke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** 阿米娅向导 touching you: back after your touch, or her daily greeting (greet) */
-  | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean };
+  | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean }
+  | PerlicaItem;
+
+/**
+ * 佩丽卡监督 touching you: back after your touch (what "touch", or "friend" when it
+ * made you 触须之交; times: your how-manieth touch that day, on her bold ones), or
+ * telling you how long you were away (what "away": seconds, and which of that
+ * band's lines she said). Her reports are seen as soon as they are made.
+ */
+export type PerlicaItem = {
+  kind: "perlica";
+  id: string;
+  at: number;
+  seen: boolean;
+  what: "touch" | "friend" | "away";
+  bold: boolean;
+  seconds: number | null;
+  line: number | null;
+  times: number | null;
+  replied: boolean;
+  ignored: boolean;
+};
 
 export type Identity = {
   id: PlayerId;

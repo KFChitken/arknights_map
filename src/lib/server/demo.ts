@@ -6,6 +6,7 @@ import { displayName } from "../profile";
 import { passerbyProfile, passersby, TESTERS } from "../world/cast";
 import type { Identity } from "../world/types";
 import { db } from "./db";
+import { askAgain, pretendAway } from "./perlica";
 import {
   amiyaTouches,
   declarations,
@@ -13,6 +14,7 @@ import {
   friendCuts,
   friendships,
   moves,
+  perlicaTouches,
   pokes,
   reactions,
   roaches,
@@ -69,6 +71,7 @@ export async function resetDemo() {
   await db.delete(touches);
   await db.delete(pokes);
   await db.delete(amiyaTouches);
+  await db.delete(perlicaTouches);
   await db.delete(declarations);
   await db.delete(friendships);
   await db.delete(friendCuts);
@@ -158,9 +161,12 @@ export async function identities(currentId: string, homeId: string | null): Prom
 /**
  * For trying things out locally (the identity sheet): 假装过了一天 moves 阿米娅向导's
  * last greeting and the friendship back a day, so the next visit is greeted again;
- * 假装离开两天 moves the last visit back two days, so the next one gets 欢迎回家.
+ * 假装离开两天 moves the last visit back two days, so the next one gets 欢迎回家;
+ * 假装离开 and 让佩丽卡重新问一次 are 佩丽卡监督's (perlica.ts).
  */
-export async function pretend(userId: string, what: "day" | "away") {
+export async function pretend(userId: string, what: "day" | "away" | "left" | "ask", seconds = 0) {
+  if (what === "left") return pretendAway(userId, seconds);
+  if (what === "ask") return askAgain(userId);
   if (what === "away") {
     await db
       .update(users)

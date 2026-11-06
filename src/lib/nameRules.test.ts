@@ -36,6 +36,9 @@ describe("name rules", () => {
     expect(nameAllowed("阿米娅向导", [])).toBe(false);
     expect(nameAllowed("我是阿米娅 向导", [])).toBe(false);
     expect(nameAllowed("阿米娅", [])).toBe(true);
+    expect(nameAllowed("佩丽卡监督", [])).toBe(false);
+    expect(nameAllowed("我是佩丽卡监督", [])).toBe(false);
+    expect(nameAllowed("佩丽卡", [])).toBe(true);
   });
 
   it("stops links, contacts and long numbers", () => {

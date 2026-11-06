@@ -2,15 +2,17 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, AMIYA_NAME, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
+import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
 import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/coords";
+import { GUIDES, guideById, type GuideId } from "@/lib/guides";
 import type { Declaration, Reaction, Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
+import { awaySentence, PERLICA_ID, PERLICA_LINES, PERLICA_NAME, PERLICA_UNFRIEND, perlicaRoach, touchBackLine } from "@/lib/perlica";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
 import { MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason } from "@/lib/safety";
@@ -31,9 +33,11 @@ import {
   type MapRoach,
   type Me,
   type OwnRoach,
+  type PerlicaItem,
   type PlaceTarget,
   type PublicRoach,
   type Radar,
+  type TouchResult,
   type World,
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
@@ -57,6 +61,7 @@ import InboxSheet, {
 } from "./app/InboxSheet";
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
+import { lookedAt, PerlicaBanner, PerlicaIntroSheet, perlicaSpot, rewindSpot } from "./app/Perlica";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
@@ -71,24 +76,29 @@ import {
   tutorialStep,
   type Progress,
 } from "./app/Tutorial";
+import type { GuideMark } from "./map/types";
 import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
 const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
 
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
+/** How long 佩丽卡监督's report of the time away stays along the top */
+const REPORT_MS = 6000;
 const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 
 type Panel =
   /** draft: unsaved changes kept while 我的称号 was open */
   | { kind: "profile"; draft?: Profile }
   | { kind: "badges"; draft: Profile }
-  /** greeting: 阿米娅向导's of the day, which this card then carries */
-  | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null }
+  /** greeting: 阿米娅向导's of the day, and away: 佩丽卡监督's report of the time away, which this card then carries */
+  | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null; away: PerlicaItem | null }
   /** 阿米娅向导's greeting of the day, on a day without 欢迎回家 */
   | { kind: "amiyaGreeting"; item: AmiyaItem }
   /** 阿米娅向导 introduces herself, once */
   | { kind: "amiyaIntro" }
+  /** 佩丽卡监督 shows up and asks whether she may keep the time, once */
+  | { kind: "perlicaIntro" }
   | { kind: "mine" }
   | { kind: "declare"; initial?: Template }
   | { kind: "identity" }
@@ -155,9 +165,23 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [preview, setPreview] = useState<LngLat | null>(null);
   const [progress, setProgress] = useState<Progress>({});
   const [greeting, setGreeting] = useState(false);
-  // what 阿米娅向导 is saying over her head, for a few seconds
-  const [amiyaSays, setAmiyaSays] = useState<string | null>(null);
-  const sayTimer = useRef(0);
+  // what each guide is saying over her head, for a few seconds
+  const [says, setSays] = useState<Partial<Record<GuideId, string>>>({});
+  const sayTimers = useRef<Partial<Record<GuideId, number>>>({});
+  // where 佩丽卡监督 stands on this page: near the main roach, for this player only, never sent anywhere
+  const [perlicaAt, setPerlicaAt] = useState<LngLat | null>(null);
+  // her report of the time away along the top; one waiting while the player is busy (only the latest)
+  const [report, setReport] = useState<PerlicaItem | null>(null);
+  const [waiting, setWaiting] = useState<PerlicaItem | null>(null);
+  // what opens once her report has had its turn (the inbox, on opening the page)
+  const afterReport = useRef<(() => void) | null>(null);
+  // 假装离开 reloads the page, whose 「走了」 would undo what was just pretended
+  const skipLeave = useRef(false);
+  // an introduction card showed on this visit already, so the next one waits for another
+  const introduced = useRef(false);
+  // her report is showing or waiting its turn, for what runs after it
+  const reportDue = useRef(false);
+  reportDue.current = Boolean(report || waiting);
   // the first panels of the visit have had their turn, so her introduction can wait behind them
   const [settled, setSettled] = useState(false);
   // 摄入酒精 / 醒酒 played out by your main roach, big, in the middle of the map
@@ -234,17 +258,19 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setIdentities(ids);
   }, []);
 
-  /** Everything, for opening the page and switching who is signed in. */
+  /** Everything, for opening the page and switching who is signed in; away: 佩丽卡监督's report of the time away, if she has one. */
   const load = useCallback(async () => {
     // the roaches have their own retries, so a busy roach list never holds up the rest
-    const [m, items] = await Promise.all([
+    const [m, items, , , , away] = await Promise.all([
       loadMe(),
       loadInbox(),
       loadRoaches().catch(() => {}),
       loadFriends(),
       loadIdentities(),
+      // 「还在」, sent along before anyone knows who is signed in; nobody's answer is null
+      worldRef.current!.here().catch(() => null),
     ]);
-    return { me: m, items };
+    return { me: m, items, away };
   }, [loadMe, loadInbox, loadRoaches, loadFriends, loadIdentities]);
 
   // Opening a tab is enough to count its messages as read; the red counts go with it
@@ -283,15 +309,16 @@ export default function MapApp({ cn }: { cn: boolean }) {
       .catch((e) => {
         console.error(e);
         setToast("连不上服务器，地图先只显示底图。");
-        return { me: null, items: [] as InboxItem[] };
+        return { me: null, items: [] as InboxItem[], away: null };
       })
-      .then(({ me: m, items }) => {
+      .then(({ me: m, items, away }) => {
         const main = m?.roaches.find((r) => r.slot === 0);
         viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
         setLook(loadLook());
         setBasemap(b);
         // Back after a day or more: a summary first, which says what is unread (not during the tutorial);
-        // 阿米娅向导's greeting rides on it, or comes on its own
+        // 阿米娅向导's greeting and 佩丽卡监督's report of the time away ride on it.
+        // Otherwise her greeting comes on its own card, and the report along the top once it is closed.
         const greeting = m?.amiya.greeting ?? null;
         const home: Panel | null =
           m?.homecoming && !tutorialStep(m, loadProgress(m.id))
@@ -300,14 +327,23 @@ export default function MapApp({ cn }: { cn: boolean }) {
                 homecoming: m.homecoming,
                 items: items.map((i) => (i.id === greeting?.id ? { ...i, seen: true } : i)),
                 greeting,
+                away,
               }
             : null;
         const opening = home ?? (greeting ? ({ kind: "amiyaGreeting", item: greeting } as const) : null);
         const first = () => {
           setSettled(true);
+          if (away && !home) {
+            setWaiting(away);
+            // what arrived since the last visit opens once her report has had its turn
+            if (!opening && !m?.mustReconsent && items.some((i) => !i.seen)) {
+              afterReport.current = () => openInbox(true, undefined, items);
+            }
+          }
           // an updated privacy policy before anything else
           if (m?.mustReconsent) setPanel({ kind: "consent", then: opening });
           else if (opening) setPanel(opening);
+          else if (away) return;
           // What arrived since the last visit
           else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
           // the page reloaded while the player went to read their login code
@@ -521,6 +557,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const onRoachClick = (id: string) => {
     if (id === AMIYA_ID) return setSelected({ kind: "other", roach: amiyaRoach(Boolean(me?.amiya.friend)) });
+    if (id === PERLICA_ID) {
+      if (perlicaAt) setSelected({ kind: "other", roach: perlicaRoach(perlicaAt, Boolean(me?.perlica.friend)) });
+      return;
+    }
     const roach = roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
@@ -600,8 +640,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const befriendedToast = (name: string) =>
     setToast(
-      name === AMIYA_NAME
-        ? "你和阿米娅向导成为了触须之交！在「消息 → 触须之交」里能看到她。"
+      Object.values(GUIDES).some((g) => g.name === name)
+        ? `你和${name}成为了触须之交！在「消息 → 触须之交」里能看到她。`
         : `你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`,
     );
 
@@ -609,7 +649,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
 
   const touch = async (roach: PublicRoach, bold: boolean) => {
-    if (roach.id === AMIYA_ID) return touchAmiya(bold);
+    if (roach.guide) return touchGuide(roach.id as GuideId, bold);
     const res = await act((w) => w.touch(roach.id, bold));
     if (!res) return;
     setSelected(null);
@@ -639,54 +679,72 @@ export default function MapApp({ cn }: { cn: boolean }) {
     await loadFriends();
   };
 
-  /** What 阿米娅向导 says pops up over her head for a few seconds. */
-  const say = (line: string) => {
-    setAmiyaSays(line);
-    window.clearTimeout(sayTimer.current);
-    sayTimer.current = window.setTimeout(() => setAmiyaSays(null), 4000);
+  /** What a guide says pops up over her head for a few seconds (null: she stops). */
+  const say = (id: GuideId, line: string | null, ms = 4000) => {
+    window.clearTimeout(sayTimers.current[id]);
+    setSays((all) => ({ ...all, [id]: line ?? undefined }));
+    if (line) sayTimers.current[id] = window.setTimeout(() => setSays((all) => ({ ...all, [id]: undefined })), ms);
   };
 
-  /** Touch 阿米娅向导 on the map: she touches back at once, and says so over her head a moment later. */
-  const touchAmiya = async (bold: boolean) => {
-    const res = await act((w) => w.touch(AMIYA_ID, bold));
-    if (!res?.amiya) return;
+  /** What a guide says as she touches back. */
+  const guideLine = (g: NonNullable<TouchResult["guide"]>) =>
+    g.id === PERLICA_ID ? touchBackLine(g.kind, g.bold, g.times) : amiyaLine(g.bold ? "bold" : "sneaky", me?.profile.games ?? []);
+
+  /** Whatever waited for 佩丽卡监督's report of the time away to have its turn. */
+  const runAfterReport = () => {
+    const then = afterReport.current;
+    afterReport.current = null;
+    then?.();
+  };
+
+  /** Touch a guide on the map: she touches back at once, and says so over her head a moment later. */
+  const touchGuide = async (id: GuideId, bold: boolean) => {
+    const res = await act((w) => w.touch(id, bold));
+    if (!res?.guide) return;
     setSelected(null);
     if (res.newFriend) befriendedToast(res.newFriend);
     else touchedToast(bold);
-    if (step === "touch") updateProgress({ practiced: true });
+    if (id === AMIYA_ID && step === "touch") updateProgress({ practiced: true });
     if (res.newFriend) await Promise.all([loadFriends(), loadMe()]);
-    const { itemId } = res.amiya;
-    const line = amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []);
+    const { itemId } = res.guide;
+    const line = guideLine(res.guide);
+    const at = id === PERLICA_ID ? perlicaAt : AMIYA_AT;
     window.setTimeout(async () => {
-      say(line);
+      say(id, line);
       // heard on the spot while she is on screen; otherwise it waits in 消息
       const bounds = boundsRef.current;
-      if (bounds && inBounds(AMIYA_AT, bounds) && !busyRef.current.panel) {
+      if (bounds && at && inBounds(at, bounds) && !busyRef.current.panel) {
         await worldRef.current!.markSeen([itemId]).catch(() => {});
       } else {
-        setToast("阿米娅向导碰回了你，点「消息」看看。");
+        setToast(`${GUIDES[id].name}碰回了你，点「消息」看看。`);
       }
       await loadInbox();
+      runAfterReport();
     }, 1500);
   };
 
-  /** Touch back one of her touches from a card, where her answer shows at once and so counts as seen. Resolves to her line. */
+  /** Touch back one of 阿米娅向导's touches from a card, where her answer shows at once and so counts as seen. Resolves to her line. */
   const touchBackAmiya = async (item: AmiyaItem, bold: boolean) => {
     const res = await act((w) => w.reply(item.id, bold));
-    if (!res?.amiya) return null;
-    await worldRef.current!.markSeen([item.id, res.amiya.itemId]).catch(() => {});
+    if (!res?.guide) return null;
+    await worldRef.current!.markSeen([item.id, res.guide.itemId]).catch(() => {});
     if (res.newFriend) befriendedToast(res.newFriend);
-    say(amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []));
+    const line = guideLine(res.guide);
+    say(AMIYA_ID, line);
     await Promise.all([loadInbox(), loadFriends(), loadMe()]);
-    return amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []);
+    return line;
   };
 
-  /** Done with her greeting: seen; then whatever else is unread opens, as on any visit. */
+  /** Done with her greeting: seen; then 佩丽卡监督's report, if one waits, and whatever else is unread opens, as on any visit. */
   const closeGreeting = async (item: AmiyaItem) => {
     setPanel(null);
     await worldRef.current!.markSeen([item.id]).catch(() => {});
     const [items] = await Promise.all([loadInbox(), loadMe()]);
-    if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+    const unread = () => {
+      if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+    };
+    if (reportDue.current) afterReport.current = unread;
+    else unread();
   };
 
   const keepSnapshot = (items: InboxItem[]) =>
@@ -716,10 +774,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
-    // 阿米娅向导 answers at once: her touch is now at the top of 收到的触碰
-    else if (res.amiya) setToast("阿米娅向导碰回了你。");
+    // a guide answers at once: her touch is now at the top of 收到的触碰
+    else if (res.guide) setToast(`${GUIDES[res.guide.id].name}碰回了你。`);
     else repliedToast(bold);
-    if (res.amiya) say(amiyaLine(res.amiya.bold ? "bold" : "sneaky", me?.profile.games ?? []));
+    if (res.guide) say(res.guide.id, guideLine(res.guide));
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
     keepSnapshot(items);
     if (me?.isNew || res.newFriend) await loadMe();
@@ -743,9 +801,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const unfriend = async (friend: Friend) => {
-    const guide = friend.id === AMIYA_ID;
-    if (!window.confirm(guide ? AMIYA_UNFRIEND : `解除和 ${friend.profile.displayName} 的触须之交？`)) return;
-    const done = await act((w) => w.unfriend(friend.id).then(() => true), "已经解除触须之交。");
+    const guide = guideById(friend.id);
+    const question = guide
+      ? guide.id === AMIYA_ID
+        ? AMIYA_UNFRIEND
+        : PERLICA_UNFRIEND
+      : `解除和 ${friend.profile.displayName} 的触须之交？`;
+    if (!window.confirm(question)) return;
+    const done = await act(
+      (w) => w.unfriend(friend.id).then(() => true),
+      guide?.id === PERLICA_ID ? `${PERLICA_NAME}：「${PERLICA_LINES.unfriend}」` : "已经解除触须之交。",
+    );
     if (!done) return;
     await Promise.all([loadFriends(), guide ? loadMe() : null]);
     await openInbox(false, "friends");
@@ -799,7 +865,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setPanel(null);
     setSelected(null);
     setPlacing(null);
-    const { me: m, items } = await load();
+    const { me: m, items, away } = await load();
+    if (away) setWaiting(away);
     const main = m?.roaches.find((r) => r.slot === 0);
     if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
     if (m?.mustReconsent) setPanel({ kind: "consent" });
@@ -811,7 +878,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setPanel(null);
     const spot = preview;
     setPreview(null);
-    const { me: m, items } = await load();
+    const { me: m, items, away } = await load();
+    if (away) setWaiting(away);
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
     if (m?.mustReconsent) return setPanel({ kind: "consent" });
@@ -876,6 +944,41 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (done) window.location.reload();
   };
 
+  /** 假装离开 for 佩丽卡监督: the time kept goes back, and so does this page's, then a fresh visit without its 「走了」 */
+  const pretendLeft = async (seconds: number) => {
+    const done = await act((w) => w.pretend("left", seconds).then(() => true));
+    if (!done || !me) return;
+    skipLeave.current = true;
+    rewindSpot(me.id, seconds);
+    window.location.reload();
+  };
+
+  /** 让佩丽卡重新问一次 */
+  const askAgain = async () => {
+    const done = await act((w) => w.pretend("ask").then(() => true));
+    if (done) window.location.reload();
+  };
+
+  /** Her question answered on her card: yes starts her 离开计时; no (or closing it) leaves it off, and she says so. */
+  const answerPerlica = async (on: boolean) => {
+    setPanel(null);
+    const done = await act((w) => w.setPerlicaTimer(on).then(() => true));
+    if (!done) return;
+    await loadMe();
+    if (on) setToast("佩丽卡监督开始记了。下次你离开满 10 分钟再回来，她会告诉你离开了多久。");
+    else {
+      setToast(`${PERLICA_NAME}：「${PERLICA_LINES.declined}」`);
+      say(PERLICA_ID, PERLICA_LINES.declined);
+    }
+  };
+
+  /** Her timer switched in 资料, after the rest of it saved. */
+  const switchPerlicaTimer = async (on: boolean) => {
+    const done = await act((w) => w.setPerlicaTimer(on).then(() => true));
+    if (done) await loadMe();
+    return Boolean(done);
+  };
+
   const reset = async () => {
     if (!window.confirm("清空所有测试数据（触须、宣言、触须之交、挪窝记录），测试玩家回到原位？真实玩家和他们的蟑螂会留着。")) return;
     await act((w) => w.reset(), "测试数据清空了。");
@@ -896,9 +999,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
   );
   const current = identities.find((i) => i.current);
   const othersUnseen = identities.filter((i) => !i.current).reduce((n, i) => n + i.unseen, 0);
+  // 佩丽卡监督 stands wherever this page put her, which the server never knows
+  const shownFriends = useMemo(
+    () => friends.map((f) => (f.id === PERLICA_ID ? { ...f, roaches: perlicaAt ? [perlicaRoach(perlicaAt, true)] : [] } : f)),
+    [friends, perlicaAt],
+  );
   const selectedFriend =
     selected?.kind === "other" && selected.roach.friend
-      ? friends.find((f) => f.roaches.some((r) => r.id === selected.roach.id))
+      ? shownFriends.find((f) => f.roaches.some((r) => r.id === selected.roach.id))
       : undefined;
   const total = roaches.length + (me?.roaches.length ?? 0);
 
@@ -912,13 +1020,90 @@ export default function MapApp({ cn }: { cn: boolean }) {
     .map((b) => b.id)
     .join(",");
   const idle = Boolean(me && !placing && !selected && !panel && !step && !acting);
+
+  // ---- 佩丽卡监督 ----
+
+  // Where she stands: near the main roach, once the tutorial is over; the same spot until the player
+  // comes back after ten minutes away or moves the main roach (Perlica.tsx)
+  const mainLng = main?.lng;
+  const mainLat = main?.lat;
+  const homeRef = useRef<LngLat | null>(null);
+  homeRef.current = meId && mainLng !== undefined && mainLat !== undefined && !step ? { lng: mainLng, lat: mainLat } : null;
   useEffect(() => {
-    if (!idle || !unseenBadges || newBadges.length || !me) return;
+    setPerlicaAt(meId && homeRef.current ? perlicaSpot(meId, homeRef.current) : null);
+  }, [meId, mainLng, mainLat, step]);
+
+  // Her 离开计时 while it is on: 「还在」 every minute the page is looked at and on coming back into view,
+  // 「走了」 as it goes out of sight, closes or leaves the map. Her spot is kept on this page meanwhile.
+  const timerOn = me?.perlica.timer === "on";
+  useEffect(() => {
+    if (!meId) return;
+    // load() said 「还在」 a moment ago
+    let last = Date.now();
+    const here = () => {
+      lookedAt(meId);
+      last = Date.now();
+      if (timerOn) worldRef.current!.here().then((item) => item && setWaiting(item), () => {});
+    };
+    const tick = () => {
+      if (document.visibilityState === "visible") here();
+    };
+    const gone = () => {
+      if (skipLeave.current) return;
+      lookedAt(meId);
+      if (timerOn) worldRef.current!.leave();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return gone();
+      if (Date.now() - last < 10_000) return;
+      // back after a while: she may be standing somewhere new
+      if (homeRef.current) setPerlicaAt(perlicaSpot(meId, homeRef.current));
+      here();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", gone);
+    const t = window.setInterval(tick, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", gone);
+      window.clearInterval(t);
+      gone();
+    };
+  }, [meId, timerOn]);
+
+  // Her report along the top once nothing else is on screen, her bubble saying the same, for a few seconds
+  useEffect(() => {
+    if (!idle || !waiting || report) return;
+    setReport(waiting);
+    setWaiting(null);
+  }, [idle, waiting, report]);
+  const endReport = () => {
+    setReport(null);
+    say(PERLICA_ID, null);
+    runAfterReport();
+  };
+  useEffect(() => {
+    if (!report) return;
+    say(PERLICA_ID, awaySentence(report.seconds ?? 0, report.line ?? 0), REPORT_MS);
+    const t = window.setTimeout(endReport, REPORT_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report]);
+  /** Tapped her report: to her, with her card open; what waited for the report comes once the card closes */
+  const openReport = () => {
+    setReport(null);
+    if (!perlicaAt) return runAfterReport();
+    setFocus({ lng: perlicaAt.lng, lat: perlicaAt.lat, zoom: 13, nonce: Date.now() });
+    setSelected({ kind: "other", roach: perlicaRoach(perlicaAt, Boolean(me?.perlica.friend)) });
+  };
+
+  useEffect(() => {
+    if (!idle || report || waiting || !unseenBadges || newBadges.length || !me) return;
     setNewBadges(me.badges.filter((b) => !b.seen).slice(0, 3));
     worldRef.current!.seeBadges(unseenBadges.split(",")).catch(() => {});
     // shown now, so a reload of me before the server has caught up does not queue them again
     applyMe({ ...me, badges: me.badges.map((b) => ({ ...b, seen: true })) });
-  }, [idle, unseenBadges, newBadges.length, me, applyMe]);
+  }, [idle, report, waiting, unseenBadges, newBadges.length, me, applyMe]);
 
   // The tutorial's touch step happens on Rhode Island: the map goes to 阿米娅向导 as it begins
   const touchLesson = step === "touch" && !progress.practiced && basemap !== null;
@@ -930,13 +1115,35 @@ export default function MapApp({ cn }: { cn: boolean }) {
   }, [touchLesson]);
 
   // 阿米娅向导 introduces herself once to players with a roach who have not met her, after everything else
-  const introDue = Boolean(settled && idle && main && me && !me.amiya.friend && !newBadges.length && !unseenBadges);
+  const introDue = Boolean(
+    settled && idle && !report && !waiting && main && me && !me.amiya.friend && !newBadges.length && !unseenBadges,
+  );
   const meIdForIntro = me?.id;
   useEffect(() => {
-    if (!introDue || !meIdForIntro || introShown(meIdForIntro)) return;
+    if (!introDue || !meIdForIntro || introduced.current || introShown(meIdForIntro)) return;
     markIntroShown(meIdForIntro);
+    introduced.current = true;
     setPanel({ kind: "amiyaIntro" });
   }, [introDue, meIdForIntro]);
+
+  // 佩丽卡监督 shows up and asks her question once (the server keeps the answer), never on a visit
+  // another introduction already had, and never before the updated privacy policy is agreed to
+  const perlicaAsks = Boolean(
+    settled &&
+      idle &&
+      !report &&
+      !waiting &&
+      main &&
+      me?.perlica.timer === null &&
+      !me.mustReconsent &&
+      !newBadges.length &&
+      !unseenBadges,
+  );
+  useEffect(() => {
+    if (!perlicaAsks || introduced.current) return;
+    introduced.current = true;
+    setPanel({ kind: "perlicaIntro" });
+  }, [perlicaAsks]);
 
   // Back to the page on a new day (from 04:00 on this device): 阿米娅向导 may be greeting
   const dayRef = useRef(localDay());
@@ -964,9 +1171,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (!quiet) setToast(badge ? "戴上了，别人在你的资料卡上会看到它。" : "取下了。");
   };
 
+  const guides: GuideMark[] = [
+    { id: AMIYA_ID, at: AMIYA_AT, friend: Boolean(me?.amiya.friend), bubble: says.amiya ?? null },
+    ...(perlicaAt && me ? [{ id: PERLICA_ID, at: perlicaAt, friend: me.perlica.friend, bubble: says.perlica ?? null }] : []),
+  ];
   const mapProps = {
     roaches: shownRoaches,
-    amiya: { friend: Boolean(me?.amiya.friend), bubble: amiyaSays },
+    guides,
     // while the main roach acts out a scene over the map, the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => !acting || r.slot > 0),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -1045,6 +1256,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
             wornBadge={me.wornBadge}
             onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
             blocked={blocked}
+            // not while the tutorial runs, as she does not show up before it is over
+            perlicaTimer={step ? undefined : me.perlica.timer}
+            onPerlicaTimer={switchPerlicaTimer}
             onUnblock={unblock}
             onSave={saveProfile}
             onSignOut={() => leave("signOut")}
@@ -1086,6 +1300,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             homecoming={p.homecoming}
             items={p.items}
             amiya={p.greeting ? { onTouchBack: (bold) => touchBackAmiya(p.greeting!, bold) } : undefined}
+            perlica={p.away ? awaySentence(p.away.seconds ?? 0, p.away.line ?? 0) : undefined}
             onInbox={() => seen().then(() => openInbox(false))}
             onWelcome={() => {
               seen();
@@ -1108,6 +1323,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
         );
       case "amiyaIntro":
         return <AmiyaIntroSheet onFind={() => showRoach(amiyaRoach(me.amiya.friend))} onLater={() => setPanel(null)} />;
+      case "perlicaIntro":
+        return <PerlicaIntroSheet onYes={() => answerPerlica(true)} onNo={() => answerPerlica(false)} />;
       case "declare":
         return (
           <DeclareSheet
@@ -1123,7 +1340,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
         return (
           <InboxSheet
             items={p.items}
-            friends={friends}
+            friends={shownFriends}
             games={me.profile.games}
             tab={p.tab}
             notice={p.notice}
@@ -1152,7 +1369,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           />
         );
       case "friend": {
-        const friend = friends.find((f) => f.id === p.friendId);
+        const friend = shownFriends.find((f) => f.id === p.friendId);
         if (!friend) return null;
         return (
           <FriendView
@@ -1206,6 +1423,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onBecome={become}
             onReset={reset}
             onPretend={pretend}
+            onPretendLeft={pretendLeft}
+            onAskAgain={askAgain}
             onClose={() => setPanel(null)}
           />
         );
@@ -1292,6 +1511,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
           </div>
         )}
+        {report && (
+          <PerlicaBanner text={awaySentence(report.seconds ?? 0, report.line ?? 0)} onOpen={openReport} onClose={endReport} />
+        )}
         {acting && me && (
           <div className="actor-stage">
             <RoachActor
@@ -1330,13 +1552,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
+          perlicaTimer={me?.perlica.timer === "on"}
           busy={pokeSent || Boolean(poking)}
           onOpenFriend={
             selectedFriend ? () => setPanel({ kind: "friend", friendId: selectedFriend.id, back: null }) : undefined
           }
           onTouch={(bold) => touch(selected.roach, bold)}
           onPoke={() => poke(selected.roach)}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null);
+            runAfterReport();
+          }}
         />
       )}
       {!placing && selected?.kind === "mine" && (

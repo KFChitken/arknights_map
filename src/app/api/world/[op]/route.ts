@@ -10,6 +10,7 @@ import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
+import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
@@ -45,6 +46,19 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "me":
       result = user ? await world.me(user.id, args[0]) : null;
       break;
+    // 佩丽卡监督's 离开计时: sent with me() on opening, before anyone knows who is signed in, and only
+    // ever about the player themselves, so neither asks for a session or the updated privacy policy
+    case "here":
+      ration(10);
+      result = user ? await perlica.here(user.id) : null;
+      break;
+    case "leave":
+      ration(10);
+      if (user) await perlica.leave(user.id);
+      break;
+    case "setPerlicaTimer":
+      await perlica.setTimer(uid(), args[0] === true);
+      break;
     case "saveProfile":
       result = await world.saveProfile(agreed(), args[0] as Profile);
       break;
@@ -64,10 +78,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await world.removeRoach(uid(), String(args[0]));
       break;
     case "touch":
-      result = await world.touch(agreed(), String(args[0]), args[1] === true);
+      result = await world.touch(agreed(), String(args[0]), args[1] === true, args[2]);
       break;
     case "reply":
-      result = await world.reply(agreed(), String(args[0]), args[1] === true);
+      result = await world.reply(agreed(), String(args[0]), args[1] === true, args[2]);
       break;
     case "poke":
       result = await world.poke(agreed(), String(args[0]));
@@ -140,10 +154,12 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       uid();
       await resetDemo();
       break;
-    case "pretend":
+    case "pretend": {
       demoOnly();
-      await pretend(uid(), args[0] === "away" ? "away" : "day");
+      const what = args[0] === "away" || args[0] === "left" || args[0] === "ask" ? args[0] : "day";
+      await pretend(uid(), what, Number(args[1]) || 0);
       break;
+    }
     default:
       throw new HttpError(404, "没有这个功能。");
   }

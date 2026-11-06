@@ -1,6 +1,7 @@
 "use client";
 
 import { AMIYA_NAME } from "@/lib/amiya";
+import { PERLICA_ID, PERLICA_NAME } from "@/lib/perlica";
 import { bottleIcon } from "@/lib/flipArt";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
@@ -15,6 +16,7 @@ export function OtherRoachCard({
   sharesUid,
   friendName,
   pokeAgainAt,
+  perlicaTimer = false,
   busy,
   onOpenFriend,
   onSignIn,
@@ -31,6 +33,8 @@ export function OtherRoachCard({
   friendName?: string;
   /** You poked this 触须之交 lately: when you may again */
   pokeAgainAt: number | null;
+  /** 佩丽卡监督's 离开计时 is on, which her card mentions */
+  perlicaTimer?: boolean;
   /** A poke is under way */
   busy: boolean;
   onOpenFriend?: () => void;
@@ -60,8 +64,9 @@ export function OtherRoachCard({
   // 触须之交 poke a sleeping roach instead of touching it
   const pokeable = asleep && Boolean(friendName);
   const daysToWait = pokeAgainAt ? Math.ceil((pokeAgainAt - Date.now()) / 86_400_000) : 0;
+  const perlica = roach.guide && roach.id === PERLICA_ID;
   const title = roach.guide
-    ? `${AMIYA_NAME}（不是真人）`
+    ? `${perlica ? PERLICA_NAME : AMIYA_NAME}（不是真人）`
     : friendName
       ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
       : roach.clone
@@ -69,7 +74,21 @@ export function OtherRoachCard({
         : asleep
           ? "一只翻肚皮的匿名舟P"
           : "一只匿名舟P";
-  const hint = roach.guide
+  // who she is, above what she does
+  const about = perlica
+    ? perlicaTimer
+      ? "终末地工业监督。负责协议源石技术、帝江号，还有记住管理员离开了多久。"
+      : "终末地工业监督。负责协议源石技术和帝江号。"
+    : null;
+  const hint = perlica
+    ? friendName
+      ? perlicaTimer
+        ? "你们是触须之交。你每次离开多久，她都记着。"
+        : "你们是触须之交。"
+      : perlicaTimer
+        ? "她会用一样的方式碰回你，也会记着你每次离开多久。"
+        : "她会用一样的方式碰回你。"
+    : roach.guide
     ? !signedIn
       ? "登录后就能碰她。"
       : friendName
@@ -105,6 +124,7 @@ export function OtherRoachCard({
             {title}
             {asleep && <span className="zz">{friendName ? "睡着了" : "理智恢复中"}</span>}
           </strong>
+          {about && <p className="muted">{about}</p>}
           <p className="muted">{hint}</p>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AMIYA_AT, AMIYA_ID } from "../amiya";
+import { PERLICA_ID } from "../perlica";
 import type { Declaration } from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
@@ -16,6 +17,8 @@ import { deleteAccount, isBanned } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
+import { deviceDay } from "./guides";
+import * as perlica from "./perlica";
 import { awayExtraDays, flipTheAway } from "./away";
 import { acceptPublicPlace, agreeAgain } from "./consent";
 import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
@@ -37,6 +40,7 @@ import {
   friendships,
   moves,
   nameWords,
+  perlicaTouches,
   pokes,
   radarScans,
   reactions,
@@ -146,7 +150,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}`,
   );
   forgetNameWords();
   await seedDemo();
@@ -329,8 +333,8 @@ describe("server world", () => {
   });
 
   it("lets anyone touch 阿米娅向导, who touches back the same way, apart from everything between players", async () => {
-    expect(await me.touch(AMIYA_ID, false)).toMatchObject({ newFriend: null, amiya: { bold: false } });
-    expect(await me.touch(AMIYA_ID, true)).toMatchObject({ newFriend: "阿米娅向导", amiya: { bold: true } });
+    expect(await me.touch(AMIYA_ID, false)).toMatchObject({ newFriend: null, guide: { id: "amiya", bold: false } });
+    expect(await me.touch(AMIYA_ID, true)).toMatchObject({ newFriend: "阿米娅向导", guide: { id: "amiya", bold: true } });
     expect((await me.touch(AMIYA_ID, true)).newFriend).toBeNull();
     const rows = await db.select().from(amiyaTouches).where(eq(amiyaTouches.userId, me.id));
     const bolds = (direction: string) =>
@@ -374,8 +378,8 @@ describe("server world", () => {
   });
 
   it("lets you touch back or crawl away from her touches once each, and only your own", async () => {
-    const { amiya } = await me.touch(AMIYA_ID, false);
-    const item = amiya!.itemId;
+    const { guide } = await me.touch(AMIYA_ID, false);
+    const item = guide!.itemId;
     const other = await signUp("other@example.com");
     await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
     await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
@@ -383,14 +387,14 @@ describe("server world", () => {
     expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: false });
 
     const back = await me.reply(item, true);
-    expect(back).toMatchObject({ newFriend: "阿米娅向导", amiya: { bold: true } });
+    expect(back).toMatchObject({ newFriend: "阿米娅向导", guide: { id: "amiya", bold: true } });
     await expect(me.reply(item, false)).rejects.toThrow("已经碰过 TA 了");
     await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
     expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ replied: true });
 
-    await me.ignore(back.amiya!.itemId);
-    expect((await me.inbox()).find((i) => i.id === back.amiya!.itemId)).toMatchObject({ ignored: true, seen: true });
-    await expect(me.reply(back.amiya!.itemId, false)).rejects.toThrow("默默爬走");
+    await me.ignore(back.guide!.itemId);
+    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ ignored: true, seen: true });
+    await expect(me.reply(back.guide!.itemId, false)).rejects.toThrow("默默爬走");
     await me.markSeen([item]);
     expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: true });
   });
@@ -445,6 +449,236 @@ describe("server world", () => {
     await me.placeRoach({ kind: "main" }, { lng: AMIYA_AT.lng + 0.01, lat: AMIYA_AT.lat });
     await me.touch(AMIYA_ID, true);
     expect(await me.radar()).toMatchObject({ roaches: 0, players: 0, friendsNearby: 0 });
+  });
+
+  describe("佩丽卡监督's 离开计时", () => {
+    const lastActive = async (p: Player) => (await userRow(p.id)).lastActiveAt;
+    /** As if the page last said 「还在」 that many seconds ago */
+    const awayFor = (p: Player, seconds: number) =>
+      db
+        .update(users)
+        .set({ lastActiveAt: new Date(Date.now() - seconds * 1000) })
+        .where(eq(users.id, p.id));
+    const reports = async (p: Player) =>
+      (await db.select().from(perlicaTouches).where(eq(perlicaTouches.userId, p.id))).filter((r) => r.kind === "away");
+
+    beforeEach(async () => {
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    });
+
+    it("keeps no time until the player says yes, and says nothing right after", async () => {
+      expect((await me.me()).perlica).toEqual({ friend: false, timer: null });
+      expect(await perlica.here(me.id)).toBeNull();
+      await perlica.leave(me.id);
+      expect(await lastActive(me)).toBeNull();
+
+      await perlica.setTimer(me.id, false);
+      expect(await perlica.here(me.id)).toBeNull();
+      expect(await lastActive(me)).toBeNull();
+      const off = await userRow(me.id);
+      expect(off).toMatchObject({ perlicaTimer: "off" });
+      expect(off.perlicaTimerAt).toBeInstanceOf(Date);
+
+      await perlica.setTimer(me.id, true);
+      const on = await userRow(me.id);
+      expect(on).toMatchObject({ perlicaTimer: "on" });
+      expect(on.lastActiveAt).toBeInstanceOf(Date);
+      expect(on.perlicaTimerAt!.getTime()).toBeGreaterThanOrEqual(off.perlicaTimerAt!.getTime());
+      expect((await me.me()).perlica).toEqual({ friend: false, timer: "on" });
+      expect(await perlica.here(me.id)).toBeNull();
+
+      // saving the profile never touches it, and someone never asked stays never asked
+      await me.saveProfile({ ...EMPTY_PROFILE, name: "阿白" });
+      expect((await userRow(me.id)).perlicaTimer).toBe("on");
+      const other = await signUp("other@example.com");
+      await other.saveProfile({ ...EMPTY_PROFILE, name: "阿黑" });
+      expect((await userRow(other.id)).perlicaTimer).toBeNull();
+    });
+
+    it("says how long the player was gone from ten minutes on, to the second, seen at once", async () => {
+      await perlica.setTimer(me.id, true);
+      await awayFor(me, 599);
+      expect(await perlica.here(me.id)).toBeNull();
+      await awayFor(me, 600);
+      const said = await perlica.here(me.id);
+      expect(said).toMatchObject({ kind: "perlica", what: "away", seen: true, bold: false, replied: false });
+      expect(said!.seconds).toBeGreaterThanOrEqual(600);
+      expect(said!.seconds).toBeLessThan(605);
+      expect([0, 1, 2]).toContain(said!.line);
+      // the time kept is now, so straight after there is nothing more to say
+      expect(Date.now() - (await lastActive(me))!.getTime()).toBeLessThan(5000);
+      expect(await perlica.here(me.id)).toBeNull();
+      // in the inbox, already read, and nothing for 欢迎回家 to count
+      const inbox = await me.inbox();
+      expect(inbox.find((i) => i.id === said!.id)).toMatchObject({ what: "away", seen: true });
+      expect(inbox.some((i) => i.kind === "touch")).toBe(false);
+
+      // 「走了」 moves the time too
+      await awayFor(me, 3000);
+      await perlica.leave(me.id);
+      expect(Date.now() - (await lastActive(me))!.getTime()).toBeLessThan(5000);
+    });
+
+    it("makes one report when two pages say 「还在」 at once, and keeps only the latest five", async () => {
+      await perlica.setTimer(me.id, true);
+      await awayFor(me, 7200);
+      const both = await Promise.all([perlica.here(me.id), perlica.here(me.id)]);
+      expect(both.filter(Boolean)).toHaveLength(1);
+      expect(await reports(me)).toHaveLength(1);
+      for (let i = 0; i < 6; i++) {
+        await awayFor(me, 700 + i);
+        expect(await perlica.here(me.id)).not.toBeNull();
+      }
+      const kept = await reports(me);
+      expect(kept).toHaveLength(5);
+      // the five latest: the first two are gone
+      expect(kept.map((r) => r.awaySeconds).sort()).toEqual([701, 702, 703, 704, 705]);
+    });
+
+    it("says nothing to a player without a main roach, though the time moves on", async () => {
+      const bare = await signUp("bare@example.com");
+      await perlica.setTimer(bare.id, true);
+      await awayFor(bare, 5000);
+      expect(await perlica.here(bare.id)).toBeNull();
+      expect(Date.now() - (await lastActive(bare))!.getTime()).toBeLessThan(5000);
+      expect(await reports(bare)).toEqual([]);
+    });
+
+    it("forgets the time and her reports when switched off, and keeps the touches", async () => {
+      await perlica.setTimer(me.id, true);
+      await awayFor(me, 1000);
+      await perlica.here(me.id);
+      await me.touch(PERLICA_ID, false);
+      await perlica.setTimer(me.id, false);
+      expect(await lastActive(me)).toBeNull();
+      expect(await reports(me)).toEqual([]);
+      expect(await db.select().from(perlicaTouches).where(eq(perlicaTouches.userId, me.id))).toHaveLength(2);
+      // off, 「走了」 keeps nothing
+      await perlica.leave(me.id);
+      expect(await lastActive(me)).toBeNull();
+    });
+
+    it("is never shown to the admin", async () => {
+      await perlica.setTimer(me.id, true);
+      expect(JSON.stringify(await allPlayers())).not.toMatch(/lastActive|last_active|perlica/i);
+    });
+  });
+
+  it("lets anyone touch 佩丽卡监督, who touches back and counts the day's touches, apart from everything between players", async () => {
+    const sneaky = await me.touch(PERLICA_ID, false);
+    expect(sneaky).toMatchObject({ newFriend: null, guide: { id: "perlica", bold: false, kind: "touch", times: null } });
+    const first = await me.touch(PERLICA_ID, true);
+    expect(first).toMatchObject({ newFriend: "佩丽卡监督", guide: { id: "perlica", bold: true, kind: "friend", times: null } });
+    // sneaky and bold both count, this one included
+    expect(await me.touch(PERLICA_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch", times: 3 } });
+    const rows = await db.select().from(perlicaTouches).where(eq(perlicaTouches.userId, me.id));
+    expect(rows.filter((r) => r.direction === "to_perlica")).toHaveLength(3);
+    expect(rows.filter((r) => r.direction === "from_perlica").map((r) => r.kind).sort()).toEqual(["friend", "touch", "touch"]);
+
+    const inbox = await me.inbox();
+    expect(inbox.filter((i) => i.kind === "perlica")).toHaveLength(3);
+    expect(inbox.find((i) => i.id === first.guide!.itemId)).toMatchObject({ what: "friend", bold: true, seen: false });
+    expect(await db.select().from(touches)).toEqual([]);
+    expect(await db.select().from(friendships)).toEqual([]);
+    expect((await userRow(me.id)).friendsEver).toBe(0);
+    expect(await badgeIds(me)).not.toContain("trainee");
+    expect(await badgeIds(me)).not.toContain("farwhisker");
+
+    // 阿米娅向导 first, then her; nothing to block, report or poke
+    await me.touch(AMIYA_ID, true);
+    const list = await me.friends();
+    expect(list.map((f) => f.id)).toEqual([AMIYA_ID, PERLICA_ID]);
+    expect(list[1]).toMatchObject({ profile: { displayName: "佩丽卡监督" }, roaches: [], history: [], pokeAgainAt: null });
+    await expect(me.block(`friend:${PERLICA_ID}`)).rejects.toThrow("佩丽卡监督不是真人");
+    await expect(me.report(first.guide!.itemId, "spam")).rejects.toThrow("不是真人");
+    await expect(world.poke(me.id, PERLICA_ID)).rejects.toThrow("佩丽卡监督一直醒着");
+    expect((await me.me()).perlica).toEqual({ friend: true, timer: null });
+
+    // her own 20 a day, apart from 阿米娅向导's and the 60 between players
+    for (let i = 3; i < 20; i++) await me.touch(PERLICA_ID, false);
+    await expect(me.touch(PERLICA_ID, false)).rejects.toThrow("今天跟佩丽卡碰得够多啦");
+    await expect(me.touch(AMIYA_ID, false)).resolves.toBeTruthy();
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+    expect((await me.inbox()).filter((i) => i.kind === "perlica")).toHaveLength(5);
+
+    // 解除 leaves the timer alone; a bold touch makes them 触须之交 again
+    await perlica.setTimer(me.id, true);
+    await me.unfriend(PERLICA_ID);
+    expect((await me.me()).perlica).toEqual({ friend: false, timer: "on" });
+    expect((await me.friends()).map((f) => f.id)).toEqual([AMIYA_ID]);
+  });
+
+  it("counts 佩丽卡监督's touches of the day by the player's own clock from 04:00", async () => {
+    await db.update(users).set({ perlicaFriendSince: new Date() }).where(eq(users.id, me.id));
+    // the latest 04:00 in Beijing and in Nashville: never the same moment, so one day holds more than the other
+    const beijing = deviceDay(-480).start;
+    const nashville = deviceDay(360).start;
+    expect(beijing).not.toBe(nashville);
+    for (const [offset, start] of [
+      [-480, beijing],
+      [360, nashville],
+    ]) {
+      await db.delete(perlicaTouches).where(eq(perlicaTouches.userId, me.id));
+      const earlier = [beijing + 1000, nashville + 1000, Math.min(beijing, nashville) - 60_000];
+      await db
+        .insert(perlicaTouches)
+        .values(earlier.map((t) => ({ userId: me.id, direction: "to_perlica", bold: false, createdAt: new Date(t) })));
+      const today = earlier.filter((t) => t >= start).length + 1;
+      expect((await world.touch(me.id, PERLICA_ID, true, offset)).guide!.times).toBe(today);
+    }
+  });
+
+  it("lets you touch back or crawl away from 佩丽卡监督's once each, her reports included, and only your own", async () => {
+    await perlica.setTimer(me.id, true);
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await db.update(users).set({ lastActiveAt: new Date(Date.now() - 4000 * 1000) }).where(eq(users.id, me.id));
+    const report = (await perlica.here(me.id))!;
+    const { guide } = await me.touch(PERLICA_ID, false);
+    const item = guide!.itemId;
+    const amiya = (await me.touch(AMIYA_ID, false)).guide!.itemId;
+
+    const other = await signUp("other@example.com");
+    await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
+    await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
+    await other.markSeen([item]);
+    expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: false });
+    // an Amiya id with Perlica's prefix, and the other way round, finds nothing
+    await expect(me.reply(`e:${amiya.slice(2)}`, false)).rejects.toThrow("找不到这条消息了");
+    await expect(me.reply(`a:${item.slice(2)}`, false)).rejects.toThrow("找不到这条消息了");
+
+    const back = await me.reply(report.id, true);
+    expect(back).toMatchObject({ newFriend: "佩丽卡监督", guide: { id: "perlica", kind: "friend" } });
+    await expect(me.reply(report.id, false)).rejects.toThrow("已经碰过 TA 了");
+    await expect(me.ignore(report.id)).rejects.toThrow("已经碰过 TA 了");
+    expect((await me.inbox()).find((i) => i.id === report.id)).toMatchObject({ replied: true });
+
+    await me.ignore(item);
+    expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ ignored: true, seen: true });
+    await expect(me.reply(item, false)).rejects.toThrow("默默爬走");
+    await me.markSeen([back.guide!.itemId]);
+    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ seen: true });
+  });
+
+  it("forgets touches with 佩丽卡监督 after 90 days, and all of them with the account", async () => {
+    await me.touch(PERLICA_ID, true);
+    await db.insert(perlicaTouches).values({
+      userId: me.id,
+      direction: "from_perlica",
+      bold: false,
+      createdAt: new Date(Date.now() - 91 * 86_400_000),
+    });
+    await pruneOldActivity();
+    expect(await db.select().from(perlicaTouches)).toHaveLength(2);
+    await deleteAccount(await userRow(me.id));
+    expect(await db.select().from(perlicaTouches)).toEqual([]);
+  });
+
+  it("never counts 佩丽卡监督 on the radar or in the shared roach list", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.touch(PERLICA_ID, true);
+    expect(await me.radar()).toMatchObject({ friendsNearby: 0 });
+    expect(JSON.stringify(await allRoaches())).not.toMatch(/perlica/i);
   });
 
   it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {
