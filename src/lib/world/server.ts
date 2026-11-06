@@ -98,5 +98,5 @@ export class ServerWorld implements World {
   identities = () => this.call<Identity[]>("identities");
   become = (id: PlayerId) => this.call<void>("become", id);
   reset = () => this.call<void>("reset");
-  pretend = (what: "day" | "away" | "left" | "ask", seconds?: number) => this.call<void>("pretend", what, seconds);
+  pretend = (what: "day" | "away" | "left" | "ask" | "talulah", seconds?: number) => this.call<void>("pretend", what, seconds);
 }

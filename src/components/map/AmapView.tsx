@@ -18,7 +18,7 @@ import {
 } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { belowGuide, besideMain, guideElement, guideSize, updateGuide } from "./guideMarker";
+import { belowGuide, besideMain, guideElement, guideShift, guideSize, updateGuide } from "./guideMarker";
 import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
@@ -230,8 +230,10 @@ export default function AmapView(props: MapViewProps) {
         shown.set(mark.id, g);
       } else g.marker.setPosition(toGcj(mark.at));
       updateGuide(g.el, zoom, mark);
-      const [dx, dy] = besideMain(onScreen(mark.at), mainAt, size, belowGuide(zoom));
-      g.marker.setOffset(new AMap.Pixel(-size / 2 + dx, -size / 2 + dy));
+      const [sx, sy] = guideShift(mark, size);
+      // she stays by her fire; the others step aside from your main roach
+      const [dx, dy] = mark.fire ? [0, 0] : besideMain(onScreen(mark.at), mainAt, size, belowGuide(zoom));
+      g.marker.setOffset(new AMap.Pixel(-size / 2 + sx + dx, -size / 2 + sy + dy));
     }
   };
 

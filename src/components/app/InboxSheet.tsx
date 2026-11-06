@@ -4,8 +4,9 @@ import { useState } from "react";
 import { AMIYA_ID, AMIYA_NAME, amiyaLine } from "@/lib/amiya";
 import { REACTIONS, type Reaction } from "@/lib/declarations";
 import { GAME_NAMES, serverName, type Game } from "@/lib/games";
-import { GUIDE_NOTE, guideById, isGuideItem } from "@/lib/guides";
-import { PERLICA_UNFRIEND, perlicaText } from "@/lib/perlica";
+import { guideById, isGuideItem } from "@/lib/guides";
+import { PERLICA_ID, PERLICA_UNFRIEND, perlicaText } from "@/lib/perlica";
+import { talulahText } from "@/lib/talulah";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import type { Friend, InboxItem } from "@/lib/world/types";
@@ -29,7 +30,7 @@ const TABS: { tab: InboxTab; label: string }[] = [
 const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke"];
 
 /** Touches, the guides' included */
-const TOUCHES: InboxItem["kind"][] = ["touch", "amiya", "perlica"];
+const TOUCHES: InboxItem["kind"][] = ["touch", "amiya", "perlica", "talulah"];
 
 /** Declarations and reactions are replies; touches (the guides' too) and what happens between 触须之交 have their own tabs. */
 export function tabOf(item: InboxItem): InboxTab {
@@ -86,6 +87,7 @@ export function noticeTitle(items: InboxItem[]) {
   if (unseen.some((i) => i.kind === "touch")) return "你被蟑螂触须碰了一下！";
   if (unseen.some((i) => i.kind === "amiya")) return "阿米娅向导碰了碰你！";
   if (unseen.some((i) => i.kind === "perlica")) return "佩丽卡监督碰了碰你！";
+  if (unseen.some((i) => i.kind === "talulah")) return "塔露拉干员回了你！";
   if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的独立宣言！";
   if (unseen.length) return "附近有舟P发表了独立宣言！";
   return "消息";
@@ -217,10 +219,12 @@ export default function InboxSheet({
         </div>
       );
     }
-    if (item.kind === "amiya" || item.kind === "perlica") {
+    if (item.kind === "amiya" || item.kind === "perlica" || item.kind === "talulah") {
+      const text =
+        item.kind === "amiya" ? amiyaText(item, games) : item.kind === "perlica" ? perlicaText(item) : talulahText(item, games);
       return (
         <div key={item.id} className={cls}>
-          <div>{item.kind === "amiya" ? amiyaText(item, games) : perlicaText(item)}</div>
+          <div>{text}</div>
           {meta(item, item.id, null)}
           <div className="row-actions">
             {item.ignored ? (
@@ -340,7 +344,7 @@ export default function InboxSheet({
                 <strong>{f.profile.displayName}</strong>
                 <p className="muted">
                   {guideById(f.id)
-                    ? `${ago(f.since)}成为触须之交 · ${GUIDE_NOTE}`
+                    ? `${ago(f.since)}成为触须之交 · ${guideById(f.id)!.note}`
                     : `${ago(f.since)}成为触须之交 · ${f.roaches.length} 只蟑螂 · 宣言 ${f.declarations} 次`}
                 </p>
               </div>
@@ -467,7 +471,8 @@ export function FriendView({
 }) {
   const { profile } = friend;
   // a guide: no games or history to show, and nobody to block
-  const guide = Boolean(guideById(friend.id));
+  const guideOf = guideById(friend.id);
+  const guide = Boolean(guideOf);
   return (
     <Sheet title="触须之交" onBack={onBack} onClose={onClose}>
       <div className="who-card">
@@ -478,7 +483,7 @@ export function FriendView({
           <p className="hint">{ago(friend.since)}成为触须之交</p>
         </div>
       </div>
-      {guide ? <p className="hint">{GUIDE_NOTE}</p> : <ProfileDetails profile={profile} />}
+      {guideOf ? <p className="hint">{guideOf.note}</p> : <ProfileDetails profile={profile} />}
 
       <h3>TA 的蟑螂</h3>
       {friend.roaches.length === 0 && <p className="hint">TA 现在没有放蟑螂。</p>}
@@ -517,9 +522,11 @@ export function FriendView({
       <p className="hint">
         {friend.id === AMIYA_ID
           ? AMIYA_UNFRIEND
-          : guide
+          : friend.id === PERLICA_ID
             ? PERLICA_UNFRIEND
-            : "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。"}
+            : guide
+              ? "解除后她还在太阳岛守着火，大胆碰她一下就能再握一次手。"
+              : "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。"}
       </p>
       {!guide && (
         <button className="pill" style={{ marginTop: 14 }} onClick={onSafety}>

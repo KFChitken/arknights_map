@@ -1,7 +1,8 @@
 import { generateFakeRoaches } from "../fakeRoaches";
 import { distanceKm } from "../geo";
 import { mulberry32 } from "../prng";
-import type { RoachAvatar } from "../types";
+import { FIRE_AT, FIRE_BOT_FREE_KM } from "../talulah";
+import type { LngLat, RoachAvatar } from "../types";
 import type { MapRoach } from "./types";
 
 /**
@@ -17,6 +18,11 @@ const PREFIX = "bot-";
 /** Breeze asked for none in Beijing, so testers there can find the real players. */
 const BEIJING = { lng: 116.4, lat: 39.9 };
 export const BOT_FREE_KM = 60;
+/** None by 塔露拉干员's fire either, where they would look like players sitting by it (src/lib/talulah.ts) */
+const NO_BOTS: [LngLat, number][] = [
+  [BEIJING, BOT_FREE_KM],
+  [FIRE_AT, FIRE_BOT_FREE_KM],
+];
 
 export const isBotId = (id: string) => id.startsWith(PREFIX);
 
@@ -29,7 +35,7 @@ export function botRoaches(n: number): MapRoach[] {
   if (!bots) {
     // a few spare, since rounding each city's share and the gap around Beijing can leave it short
     bots = generateFakeRoaches(n + 50, 20261026, ["北京"])
-      .filter((r) => distanceKm(r, BEIJING) > BOT_FREE_KM)
+      .filter((r) => NO_BOTS.every(([at, km]) => distanceKm(r, at) > km))
       .slice(0, n)
       .map((r, i) => {
         const a = mulberry32(0xb07 + i * 7919)();

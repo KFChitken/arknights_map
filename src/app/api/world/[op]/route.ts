@@ -156,7 +156,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "pretend": {
       demoOnly();
-      const what = args[0] === "away" || args[0] === "left" || args[0] === "ask" ? args[0] : "day";
+      const what = args[0] === "away" || args[0] === "left" || args[0] === "ask" || args[0] === "talulah" ? args[0] : "day";
       await pretend(uid(), what, Number(args[1]) || 0);
       break;
     }

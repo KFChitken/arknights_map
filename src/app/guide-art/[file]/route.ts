@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { AMIYA_PICTURE, GUIDE_ART_DIR, PERLICA_PICTURE } from "@/lib/server/env";
+import { AMIYA_PICTURE, GUIDE_ART_DIR, PERLICA_PICTURE, TALULAH_PICTURE } from "@/lib/server/env";
 
 /** The guides' pictures (src/lib/guides.ts) and whether each is switched on; only these files are ever served */
-const PICTURES: Record<string, boolean> = { "amiya.png": AMIYA_PICTURE, "perlica.png": PERLICA_PICTURE };
+const PICTURES: Record<string, boolean> = {
+  "amiya.png": AMIYA_PICTURE,
+  "perlica.png": PERLICA_PICTURE,
+  "talulah.png": TALULAH_PICTURE,
+};
 
 /** GET /guide-art/<guide>.png: a guide's picture, from the server's own folder; 404 while switched off. */
 export async function GET(_req: Request, { params }: { params: Promise<{ file: string }> }) {

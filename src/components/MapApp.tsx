@@ -13,8 +13,21 @@ import type { Declaration, Reaction, Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, saveLook } from "@/lib/look";
 import { awaySentence, PERLICA_ID, PERLICA_LINES, PERLICA_NAME, PERLICA_UNFRIEND, perlicaRoach, touchBackLine } from "@/lib/perlica";
+import {
+  FIRE_AT,
+  FIRE_ZOOM,
+  fireCount,
+  fireLevel,
+  isNearFire,
+  pickSeat,
+  TALULAH_ID,
+  TALULAH_LINES,
+  TALULAH_NAME,
+  talulahRoach,
+  talulahTouchLine,
+} from "@/lib/talulah";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
-import { MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
+import { MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { RoachFeedCopy } from "@/lib/world/feed";
@@ -62,6 +75,15 @@ import InboxSheet, {
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import { lookedAt, PerlicaBanner, PerlicaIntroSheet, perlicaSpot, rewindSpot } from "./app/Perlica";
+import {
+  FireMoveSheet,
+  forgetTalulahHere,
+  hoodSaid,
+  markHoodSaid,
+  markTalulahIntroShown,
+  TalulahIntroSheet,
+  talulahIntroShown,
+} from "./app/Talulah";
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
@@ -99,6 +121,10 @@ type Panel =
   | { kind: "amiyaIntro" }
   /** 佩丽卡监督 shows up and asks whether she may keep the time, once */
   | { kind: "perlicaIntro" }
+  /** 塔露拉干员 lit a fire on Sun Island, said once */
+  | { kind: "talulahIntro" }
+  /** Every clone is out: which one goes to sit by 塔露拉干员's fire */
+  | { kind: "fireMove" }
   | { kind: "mine" }
   | { kind: "declare"; initial?: Template }
   | { kind: "identity" }
@@ -179,6 +205,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const skipLeave = useRef(false);
   // an introduction card showed on this visit already, so the next one waits for another
   const introduced = useRef(false);
+  // 塔露拉干员's fire: a clone on its way there, the count pretended in development, and her line to 初始 hoods while her card shows it
+  const [sendingToFire, setSendingToFire] = useState(false);
+  const [fakeFire, setFakeFire] = useState<number | null>(null);
+  const [hoodLine, setHoodLine] = useState<string | null>(null);
   // her report is showing or waiting its turn, for what runs after it
   const reportDue = useRef(false);
   reportDue.current = Boolean(report || waiting);
@@ -532,10 +562,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
   /** Put a roach down (agreeing first, from the card) and say so; the first main roach opens the tutorial. */
   const put = async (target: PlaceTarget, p: LngLat, fly: boolean, agree = false) => {
     if (agree && !(await act((w) => w.acceptPublicPlace().then(() => true)))) return;
+    const before = me?.talulah.visited;
     const done = await act((w) => w.placeRoach(target, p));
     if (!done) return;
     setPlacing(null);
     const m = await loadMe();
+    welcomeAtFire(before, m, false);
     // the tutorial's clone step is done for good once one is down, even if it is taken back later
     if (target.kind === "clone" && step === "clone") updateProgress({ clone: true });
     if (fly) setFocus({ lng: p.lng, lat: p.lat, zoom: 13, nonce: Date.now() });
@@ -561,6 +593,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       if (perlicaAt) setSelected({ kind: "other", roach: perlicaRoach(perlicaAt, Boolean(me?.perlica.friend)) });
       return;
     }
+    if (id === TALULAH_ID) return openTalulah();
     const roach = roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
@@ -640,7 +673,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const befriendedToast = (name: string) =>
     setToast(
-      Object.values(GUIDES).some((g) => g.name === name)
+      name === TALULAH_NAME
+        ? "你和塔露拉干员握了手，成为了触须之交！在「消息 → 触须之交」里能看到她。"
+        : Object.values(GUIDES).some((g) => g.name === name)
         ? `你和${name}成为了触须之交！在「消息 → 触须之交」里能看到她。`
         : `你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`,
     );
@@ -686,9 +721,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (line) sayTimers.current[id] = window.setTimeout(() => setSays((all) => ({ ...all, [id]: undefined })), ms);
   };
 
-  /** What a guide says as she touches back. */
-  const guideLine = (g: NonNullable<TouchResult["guide"]>) =>
-    g.id === PERLICA_ID ? touchBackLine(g.kind, g.bold, g.times) : amiyaLine(g.bold ? "bold" : "sneaky", me?.profile.games ?? []);
+  /** What a guide says as she touches back, as far as a speech bubble has room: 塔露拉干员's handshake only begins there. */
+  const guideLine = (g: NonNullable<TouchResult["guide"]>) => {
+    const games = me?.profile.games ?? [];
+    if (g.id === PERLICA_ID) return touchBackLine(g.kind, g.bold, g.times);
+    if (g.id === TALULAH_ID) return g.kind === "friend" ? TALULAH_LINES.hello : talulahTouchLine(g.kind, g.bold, games);
+    return amiyaLine(g.bold ? "bold" : "sneaky", games);
+  };
 
   /** Whatever waited for 佩丽卡监督's report of the time away to have its turn. */
   const runAfterReport = () => {
@@ -708,7 +747,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (res.newFriend) await Promise.all([loadFriends(), loadMe()]);
     const { itemId } = res.guide;
     const line = guideLine(res.guide);
-    const at = id === PERLICA_ID ? perlicaAt : AMIYA_AT;
+    const at = id === PERLICA_ID ? perlicaAt : id === TALULAH_ID ? FIRE_AT : AMIYA_AT;
     window.setTimeout(async () => {
       say(id, line);
       // heard on the spot while she is on screen; otherwise it waits in 消息
@@ -792,7 +831,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   /** How close to fly to a roach: Amap draws nothing abroad close in, so 阿米娅向导 is shown from further out there. */
   const zoomFor = (roach: PublicRoach, zoom: number) =>
-    roach.id === AMIYA_ID && basemap === "amap" ? Math.min(zoom, AMIYA_AMAP_ZOOM) : zoom;
+    roach.id === TALULAH_ID
+      ? FIRE_ZOOM
+      : roach.id === AMIYA_ID && basemap === "amap"
+        ? Math.min(zoom, AMIYA_AMAP_ZOOM)
+        : zoom;
 
   const findFriendRoach = (roach: PublicRoach) => {
     setPanel(null);
@@ -805,12 +848,18 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const question = guide
       ? guide.id === AMIYA_ID
         ? AMIYA_UNFRIEND
-        : PERLICA_UNFRIEND
+        : guide.id === PERLICA_ID
+          ? PERLICA_UNFRIEND
+          : TALULAH_LINES.unfriendAsk
       : `解除和 ${friend.profile.displayName} 的触须之交？`;
     if (!window.confirm(question)) return;
     const done = await act(
       (w) => w.unfriend(friend.id).then(() => true),
-      guide?.id === PERLICA_ID ? `${PERLICA_NAME}：「${PERLICA_LINES.unfriend}」` : "已经解除触须之交。",
+      guide?.id === PERLICA_ID
+        ? `${PERLICA_NAME}：「${PERLICA_LINES.unfriend}」`
+        : guide?.id === TALULAH_ID
+          ? `${TALULAH_NAME}：${TALULAH_LINES.unfriend}`
+          : "已经解除触须之交。",
     );
     if (!done) return;
     await Promise.all([loadFriends(), guide ? loadMe() : null]);
@@ -1126,6 +1175,79 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setPanel({ kind: "amiyaIntro" });
   }, [introDue, meIdForIntro]);
 
+  // ---- 塔露拉干员 ----
+
+  // Everyone's roaches, yours from me (the shared list may not have caught up with your latest move yet)
+  const everyRoach = useMemo(
+    () => [...feedRoaches.filter((r) => !ownIds.has(r.id)), ...(me?.roaches ?? [])],
+    [feedRoaches, ownIds, me],
+  );
+  const byFire = fakeFire ?? fireCount(everyRoach);
+  const fire = fireLevel(byFire);
+  const seatedAtFire = me?.roaches.find((r) => isNearFire(r)) ?? null;
+
+  /** Her card; to players in the 初始 hood she says her line about it once, on the card and over her head */
+  const openTalulah = () => {
+    setSelected({ kind: "other", roach: talulahRoach(Boolean(me?.talulah.friend)) });
+    if (me && me.profile.avatar === "hood" && !hoodSaid(me.id)) {
+      markHoodSaid(me.id);
+      setHoodLine(TALULAH_LINES.hood);
+      say(TALULAH_ID, TALULAH_LINES.hood);
+    } else setHoodLine(null);
+  };
+
+  /** Her welcome as your first roach sits by her fire: over her head, and seen at once while she is on screen */
+  const welcomeAtFire = async (before: boolean | undefined, m: Me | null, flewThere: boolean) => {
+    if (before !== false || !m?.talulah.visited) return;
+    say(TALULAH_ID, TALULAH_LINES.welcome);
+    const items = await loadInbox();
+    const item = items.find((i) => i.kind === "talulah" && i.line === "welcome" && !i.seen);
+    const bounds = boundsRef.current;
+    if (item && (flewThere || (bounds && inBounds(FIRE_AT, bounds)))) {
+      await worldRef.current!.markSeen([item.id]).catch(() => {});
+      await loadInbox();
+    }
+  };
+
+  /** A clone to a free seat by the fire: a new one, or a move once all of them are out */
+  const seatAtFire = async (target: PlaceTarget) => {
+    const before = me?.talulah.visited;
+    setSendingToFire(true);
+    const done = await act((w) => w.placeRoach(target, pickSeat(everyRoach)));
+    setSendingToFire(false);
+    if (!done) return;
+    setPanel(null);
+    setSelected(null);
+    const m = await loadMe();
+    setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+    setToast("你的克隆体在火边坐下了。");
+    await welcomeAtFire(before, m, true);
+  };
+
+  /** 派一只克隆体去烤火 */
+  const sendToFire = async () => {
+    if (!me) return setPanel({ kind: "login", reason: "登录后就能过来烤火。" });
+    if (me.roaches.filter((r) => r.slot > 0).length < MAX_CLONES) return seatAtFire({ kind: "clone" });
+    if (me.movesLeft <= 0) return setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+    setSelected(null);
+    setPanel({ kind: "fireMove" });
+  };
+
+  /** 过去看看: to your roach that already sits by the fire */
+  const visitSeated = () => {
+    if (!seatedAtFire) return;
+    setSelected(null);
+    setFocus({ lng: seatedAtFire.lng, lat: seatedAtFire.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+  };
+
+  /** 清掉我和塔露拉的记录 (development only), then a fresh visit */
+  const forgetTalulah = async () => {
+    const done = await act((w) => w.pretend("talulah").then(() => true));
+    if (!done || !me) return;
+    forgetTalulahHere(me.id);
+    window.location.reload();
+  };
+
   // 佩丽卡监督 shows up and asks her question once (the server keeps the answer), never on a visit
   // another introduction already had, and never before the updated privacy policy is agreed to
   const perlicaAsks = Boolean(
@@ -1144,6 +1266,26 @@ export default function MapApp({ cn }: { cn: boolean }) {
     introduced.current = true;
     setPanel({ kind: "perlicaIntro" });
   }, [perlicaAsks]);
+
+  // 塔露拉干员's fire, told once in this browser to players with a roach who never sat by it, after the others
+  const talulahTells = Boolean(
+    settled &&
+      idle &&
+      !report &&
+      !waiting &&
+      main &&
+      me &&
+      !me.talulah.visited &&
+      !me.mustReconsent &&
+      !newBadges.length &&
+      !unseenBadges,
+  );
+  useEffect(() => {
+    if (!talulahTells || !meIdForIntro || introduced.current || talulahIntroShown(meIdForIntro)) return;
+    markTalulahIntroShown(meIdForIntro);
+    introduced.current = true;
+    setPanel({ kind: "talulahIntro" });
+  }, [talulahTells, meIdForIntro]);
 
   // Back to the page on a new day (from 04:00 on this device): 阿米娅向导 may be greeting
   const dayRef = useRef(localDay());
@@ -1173,6 +1315,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const guides: GuideMark[] = [
     { id: AMIYA_ID, at: AMIYA_AT, friend: Boolean(me?.amiya.friend), bubble: says.amiya ?? null },
+    { id: TALULAH_ID, at: FIRE_AT, friend: Boolean(me?.talulah.friend), bubble: says.talulah ?? null, fire },
     ...(perlicaAt && me ? [{ id: PERLICA_ID, at: perlicaAt, friend: me.perlica.friend, bubble: says.perlica ?? null }] : []),
   ];
   const mapProps = {
@@ -1325,6 +1468,26 @@ export default function MapApp({ cn }: { cn: boolean }) {
         return <AmiyaIntroSheet onFind={() => showRoach(amiyaRoach(me.amiya.friend))} onLater={() => setPanel(null)} />;
       case "perlicaIntro":
         return <PerlicaIntroSheet onYes={() => answerPerlica(true)} onNo={() => answerPerlica(false)} />;
+      case "talulahIntro":
+        return (
+          <TalulahIntroSheet
+            onGo={() => {
+              setPanel(null);
+              setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+              openTalulah();
+            }}
+            onLater={() => setPanel(null)}
+          />
+        );
+      case "fireMove":
+        return (
+          <FireMoveSheet
+            clones={me.roaches.filter((r) => r.slot > 0)}
+            movesLeft={me.movesLeft}
+            onPick={(r) => seatAtFire({ kind: "move", roachId: r.id })}
+            onClose={() => setPanel(null)}
+          />
+        );
       case "declare":
         return (
           <DeclareSheet
@@ -1425,6 +1588,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onPretend={pretend}
             onPretendLeft={pretendLeft}
             onAskAgain={askAgain}
+            onFakeFire={(n) => {
+              setFakeFire(n);
+              setPanel(null);
+              setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+            }}
+            onForgetTalulah={forgetTalulah}
             onClose={() => setPanel(null)}
           />
         );
@@ -1547,12 +1716,25 @@ export default function MapApp({ cn }: { cn: boolean }) {
           look={look}
           signedIn={Boolean(me)}
           onSignIn={() =>
-            setPanel({ kind: "login", reason: selected.roach.id === AMIYA_ID ? "登录后就能碰她。" : "登录后就能伸出触须碰 TA。" })
+            setPanel({ kind: "login", reason: selected.roach.guide ? "登录后就能碰她。" : "登录后就能伸出触须碰 TA。" })
           }
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
           perlicaTimer={me?.perlica.timer === "on"}
+          fire={
+            selected.roach.id === TALULAH_ID
+              ? {
+                  count: byFire,
+                  level: fire,
+                  seated: Boolean(seatedAtFire),
+                  hood: hoodLine,
+                  sending: sendingToFire,
+                  onSend: sendToFire,
+                  onVisit: visitSeated,
+                }
+              : undefined
+          }
           busy={pokeSent || Boolean(poking)}
           onOpenFriend={
             selectedFriend ? () => setPanel({ kind: "friend", friendId: selectedFriend.id, back: null }) : undefined

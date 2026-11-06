@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
+import { FIRE_AT, TALULAH_ID } from "../talulah";
 import type { Declaration } from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
@@ -19,6 +20,7 @@ import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, we
 import { greetAmiya } from "./amiya";
 import { deviceDay } from "./guides";
 import * as perlica from "./perlica";
+import * as talulah from "./talulah";
 import { awayExtraDays, flipTheAway } from "./away";
 import { acceptPublicPlace, agreeAgain } from "./consent";
 import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
@@ -47,6 +49,7 @@ import {
   reports,
   roaches,
   sessions,
+  talulahTouches,
   touches,
   userBadges,
   users,
@@ -150,7 +153,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}`,
   );
   forgetNameWords();
   await seedDemo();
@@ -679,6 +682,151 @@ describe("server world", () => {
     await me.touch(PERLICA_ID, true);
     expect(await me.radar()).toMatchObject({ friendsNearby: 0 });
     expect(JSON.stringify(await allRoaches())).not.toMatch(/perlica/i);
+  });
+
+  it("lets anyone touch 塔露拉干员, who answers openly and shakes hands on the first bold touch, apart from everything between players", async () => {
+    expect(await me.touch(TALULAH_ID, false)).toMatchObject({ newFriend: null, guide: { id: "talulah", bold: false, kind: "touch" } });
+    const shake = await me.touch(TALULAH_ID, true);
+    expect(shake).toMatchObject({ newFriend: "塔露拉干员", guide: { id: "talulah", bold: true, kind: "friend" } });
+    expect(await me.touch(TALULAH_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch" } });
+    const rows = await db.select().from(talulahTouches).where(eq(talulahTouches.userId, me.id));
+    expect(rows.filter((r) => r.direction === "to_talulah").map((r) => r.bold).sort()).toEqual([false, true, true]);
+    expect(rows.filter((r) => r.direction === "from_talulah").map((r) => r.kind).sort()).toEqual(["handshake", "touch", "touch"]);
+
+    const inbox = await me.inbox();
+    expect(inbox.find((i) => i.id === shake.guide!.itemId)).toMatchObject({ kind: "talulah", line: "handshake", seen: false });
+    expect(inbox.some((i) => i.kind === "touch")).toBe(false);
+    expect(await db.select().from(touches)).toEqual([]);
+    expect(await db.select().from(friendships)).toEqual([]);
+    expect((await userRow(me.id)).friendsEver).toBe(0);
+    expect(await badgeIds(me)).not.toContain("trainee");
+    expect(await badgeIds(me)).not.toContain("farwhisker");
+
+    // after 阿米娅向导 and 佩丽卡监督; nothing to block, report or poke
+    await me.touch(PERLICA_ID, true);
+    await me.touch(AMIYA_ID, true);
+    const list = await me.friends();
+    expect(list.map((f) => f.id)).toEqual([AMIYA_ID, PERLICA_ID, TALULAH_ID]);
+    expect(list[2]).toMatchObject({ profile: { displayName: "塔露拉干员" }, history: [], pokeAgainAt: null });
+    expect(list[2].roaches).toEqual([expect.objectContaining({ id: TALULAH_ID, friend: true, guide: true, ...FIRE_AT })]);
+    await expect(me.block(`friend:${TALULAH_ID}`)).rejects.toThrow("塔露拉干员不是真人，不用拉黑。");
+    await expect(me.report(shake.guide!.itemId, "spam")).rejects.toThrow("不是真人");
+    await expect(world.poke(me.id, TALULAH_ID)).rejects.toThrow("塔露拉干员一直醒着，碰碰她吧。");
+    expect((await me.me()).talulah).toEqual({ friend: true, visited: false });
+
+    // her own 20 a day, apart from the other guides' and the 60 between players
+    for (let i = 3; i < 20; i++) await me.touch(TALULAH_ID, false);
+    await expect(me.touch(TALULAH_ID, false)).rejects.toThrow("今天跟塔露拉碰得够多啦，明天再来吧。");
+    await expect(me.touch(PERLICA_ID, false)).resolves.toBeTruthy();
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+    expect((await me.inbox()).filter((i) => i.kind === "talulah")).toHaveLength(5);
+
+    // 解除: she stays; the next bold touch shakes hands again
+    await db.delete(talulahTouches).where(eq(talulahTouches.userId, me.id));
+    await me.unfriend(TALULAH_ID);
+    expect((await me.friends()).map((f) => f.id)).toEqual([AMIYA_ID, PERLICA_ID]);
+    expect((await me.touch(TALULAH_ID, true)).newFriend).toBe("塔露拉干员");
+  });
+
+  it("lets you answer or crawl away from 塔露拉干员's once each, and only your own", async () => {
+    const item = (await me.touch(TALULAH_ID, false)).guide!.itemId;
+    const other = await signUp("other@example.com");
+    await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
+    await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
+    await other.markSeen([item]);
+    expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: false });
+    await expect(me.reply(`e:${item.slice(2)}`, false)).rejects.toThrow("找不到这条消息了");
+
+    const back = await me.reply(item, true);
+    expect(back).toMatchObject({ newFriend: "塔露拉干员", guide: { kind: "friend" } });
+    await expect(me.reply(item, false)).rejects.toThrow("已经碰过 TA 了");
+    await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
+    await me.ignore(back.guide!.itemId);
+    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ ignored: true, seen: true });
+    await expect(me.reply(back.guide!.itemId, false)).rejects.toThrow("默默爬走");
+  });
+
+  it("welcomes a player's first roach by 塔露拉干员's fire, within 300 m, once for good", async () => {
+    // metres north of the fire, as distanceKm measures them
+    const north = (m: number) => ({ lng: FIRE_AT.lng, lat: FIRE_AT.lat + (m / 1000 / 6371.0088) * (180 / Math.PI) });
+    const welcomes = async (p: Player) =>
+      (await db.select().from(talulahTouches).where(eq(talulahTouches.userId, p.id))).filter((r) => r.kind === "welcome");
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const [, far] = await me.placeRoach({ kind: "clone" }, north(301));
+    expect(await welcomes(me)).toEqual([]);
+    expect((await me.me()).talulah.visited).toBe(false);
+    await me.placeRoach({ kind: "move", roachId: far.id }, north(299));
+    expect(await welcomes(me)).toHaveLength(1);
+    expect((await me.me()).talulah.visited).toBe(true);
+    expect((await me.inbox()).find((i) => i.kind === "talulah")).toMatchObject({ line: "welcome", seen: false });
+    // away and back again: no second welcome
+    await me.placeRoach({ kind: "move", roachId: far.id }, TOKYO);
+    await me.placeRoach({ kind: "move", roachId: far.id }, north(10));
+    expect(await welcomes(me)).toHaveLength(1);
+
+    // a main roach counts too, and two arriving at once bring one welcome
+    const other = await signUp("other@example.com");
+    await other.placeRoach({ kind: "main" }, north(50));
+    expect(await welcomes(other)).toHaveLength(1);
+    const third = await signUp("third@example.com");
+    await Promise.all([talulah.arrivedAt(third.id, north(20)), talulah.arrivedAt(third.id, north(30))]);
+    expect(await welcomes(third)).toHaveLength(1);
+  });
+
+  it("answers a 触须之交's birthday declaration once a year, and nothing else", async () => {
+    const birthdays = async (p: Player) =>
+      (await db.select().from(talulahTouches).where(eq(talulahTouches.userId, p.id))).filter((r) => r.kind === "birthday");
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    // not her 触须之交 yet
+    await me.declare({ template: "birthday" });
+    expect(await birthdays(me)).toEqual([]);
+    await me.touch(TALULAH_ID, true);
+    await db.update(declarations).set({ createdAt: new Date(Date.now() - 3_600_000) }).where(eq(declarations.senderId, me.id));
+    const { reach } = await me.declare({ template: "birthday" });
+    expect(reach).toBeTruthy();
+    expect(await birthdays(me)).toHaveLength(1);
+    expect((await me.inbox()).find((i) => i.kind === "talulah" && i.line === "birthday")).toMatchObject({ seen: false });
+    // she is never among the recipients
+    expect(JSON.stringify(await db.select().from(deliveries))).not.toMatch(/talulah/i);
+    // within a year: no second answer; a year on: another
+    await db.update(users).set({ talulahBirthdayAt: new Date(Date.now() - 364 * 86_400_000) }).where(eq(users.id, me.id));
+    await talulah.birthdayDeclared(me.id);
+    expect(await birthdays(me)).toHaveLength(1);
+    await db.update(users).set({ talulahBirthdayAt: new Date(Date.now() - 366 * 86_400_000) }).where(eq(users.id, me.id));
+    await talulah.birthdayDeclared(me.id);
+    expect(await birthdays(me)).toHaveLength(2);
+
+    // other declarations bring nothing
+    const friend = await signUp("friend@example.com");
+    await friend.placeRoach({ kind: "main" }, TOKYO);
+    await friend.touch(TALULAH_ID, true);
+    await friend.declare({ template: "launch", game: "arknights" });
+    expect(await birthdays(friend)).toEqual([]);
+  });
+
+  it("forgets touches with 塔露拉干员 after 90 days, and all of them with the account", async () => {
+    await me.touch(TALULAH_ID, true);
+    await db.insert(talulahTouches).values({
+      userId: me.id,
+      direction: "from_talulah",
+      bold: false,
+      createdAt: new Date(Date.now() - 91 * 86_400_000),
+    });
+    await pruneOldActivity();
+    expect(await db.select().from(talulahTouches)).toHaveLength(2);
+    await deleteAccount(await userRow(me.id));
+    expect(await db.select().from(talulahTouches)).toEqual([]);
+  });
+
+  it("never counts 塔露拉干员 on the radar or in the shared roach list", async () => {
+    // test players live in Harbin too: she adds nobody to what the radar finds there
+    await me.placeRoach({ kind: "main" }, { lng: FIRE_AT.lng + 0.001, lat: FIRE_AT.lat });
+    const before = (await me.radar())!;
+    await me.touch(TALULAH_ID, true);
+    await rewindScans(me.id);
+    expect(await me.radar()).toMatchObject({ roaches: before.roaches, players: before.players, friendsNearby: 0 });
+    expect(JSON.stringify(await allRoaches())).not.toMatch(/talulah/i);
   });
 
   it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {

@@ -200,6 +200,38 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 @media (prefers-reduced-motion: reduce) {
   .guide-bubble { animation: none; }
 }
+/* 塔露拉干员 (src/lib/talulah.ts): her fire beside her on the map, four sizes, still when motion is turned down */
+.guide-fire { position: absolute; left: 78%; bottom: -4%; width: 90%; height: 90%; pointer-events: none; }
+.guide-fire svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.guide-fire .flames { transform-origin: 32px 56px; transform: scale(var(--fire-scale, 1)); }
+.guide-fire.fire-1 { --fire-scale: 0.68; }
+.guide-fire.fire-2 { --fire-scale: 0.84; }
+.guide-fire.fire-3 { --fire-scale: 1; }
+.guide-fire.fire-4 { --fire-scale: 1.22; }
+.guide-fire .flame { transform-origin: 32px 54px; animation: fire-flicker 1.1s ease-in-out infinite alternate; }
+.guide-fire .f-mid { animation-duration: 0.8s; animation-delay: -0.3s; }
+.guide-fire .f-core { animation-duration: 0.6s; animation-delay: -0.5s; }
+.guide-fire .spark { display: none; animation: fire-spark 1.6s ease-out infinite; }
+.guide-fire .sp2 { animation-delay: -0.5s; }
+.guide-fire .sp3 { animation-delay: -1s; }
+.guide-fire .sp4 { animation-delay: -0.25s; }
+.guide-fire .sp5 { animation-delay: -0.75s; }
+.guide-fire .sp6 { animation-delay: -1.25s; }
+.guide-fire.fire-2 :is(.sp1, .sp2),
+.guide-fire.fire-3 :is(.sp1, .sp2, .sp3, .sp4),
+.guide-fire.fire-4 .spark { display: inline; }
+@keyframes fire-flicker {
+  0% { transform: scale(1, 1) skewX(0deg); }
+  50% { transform: scale(0.94, 1.08) skewX(2deg); }
+  100% { transform: scale(1.04, 0.95) skewX(-2deg); }
+}
+@keyframes fire-spark { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-14px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .guide-fire .flame, .guide-fire .spark { animation: none; }
+}
+.fire-note { margin: 2px 0 0; }
+.fire-send { margin-top: 10px; }
+.fire-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-weight: 700; }
 /* 佩丽卡监督 (src/lib/perlica.ts): her report of the time away along the top, and her line on the 欢迎回家 card */
 .perlica-banner {
   position: absolute; z-index: 30; top: calc(58px + var(--safe-top)); left: 50%; transform: translateX(-50%);

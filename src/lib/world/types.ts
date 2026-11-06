@@ -77,9 +77,9 @@ export interface World {
   reset(): Promise<void>;
   /**
    * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
-   * seconds (佩丽卡监督 says how long), or 让佩丽卡重新问一次 (ask)
+   * seconds (佩丽卡监督 says how long), 让佩丽卡重新问一次 (ask), or 清掉我和塔露拉的记录 (talulah)
    */
-  pretend(what: "day" | "away" | "left" | "ask", seconds?: number): Promise<void>;
+  pretend(what: "day" | "away" | "left" | "ask" | "talulah", seconds?: number): Promise<void>;
 }
 
 export type PlayerId = string;
@@ -117,8 +117,9 @@ export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; changed?: MapRo
 /**
  * newFriend: the other player's name when this touch made you 触须之交.
  * guide: when you touched one of the guides (src/lib/guides.ts), her touch back,
- * which she gives at once: "friend" when it made you 触须之交 (佩丽卡监督 only),
- * and for 佩丽卡监督's bold touch back the how-manieth touch of yours today.
+ * which she gives at once: "friend" when it made you 触须之交 (佩丽卡监督's and
+ * 塔露拉干员's own answer to that), and for 佩丽卡监督's bold touch back the
+ * how-manieth touch of yours today.
  */
 export type TouchResult = {
   newFriend: string | null;
@@ -178,6 +179,8 @@ export type Me = {
   amiya: { friend: boolean; greeting: Extract<InboxItem, { kind: "amiya" }> | null };
   /** 佩丽卡监督: whether you are 触须之交, and her 离开计时: on, off, or null while she has not asked yet */
   perlica: { friend: boolean; timer: "on" | "off" | null };
+  /** 塔露拉干员: whether you are 触须之交, and whether a roach of yours ever sat by her fire */
+  talulah: { friend: boolean; visited: boolean };
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */
@@ -225,7 +228,24 @@ export type InboxItem =
   | { kind: "pokeWoke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** 阿米娅向导 touching you: back after your touch, or her daily greeting (greet) */
   | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean }
-  | PerlicaItem;
+  | PerlicaItem
+  | TalulahItem;
+
+/**
+ * 塔露拉干员 answering your touch ("touch"; bold: how you touched her, which picks
+ * her line), shaking hands as you became 触须之交 ("handshake"), welcoming your
+ * first roach at her fire ("welcome"), or answering your birthday declaration ("birthday").
+ */
+export type TalulahItem = {
+  kind: "talulah";
+  id: string;
+  at: number;
+  seen: boolean;
+  line: "touch" | "handshake" | "welcome" | "birthday";
+  bold: boolean;
+  replied: boolean;
+  ignored: boolean;
+};
 
 /**
  * 佩丽卡监督 touching you: back after your touch (what "touch", or "friend" when it

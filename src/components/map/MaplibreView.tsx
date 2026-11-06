@@ -21,7 +21,7 @@ import {
 } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { belowGuide, besideMain, guideElement, guideSize, updateGuide } from "./guideMarker";
+import { belowGuide, besideMain, guideElement, guideShift, guideSize, updateGuide } from "./guideMarker";
 import { roachTraits, type MapViewProps } from "./types";
 
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -297,7 +297,11 @@ export default function MaplibreView(props: MapViewProps) {
         shown.set(mark.id, g);
       } else g.marker.setLngLat([mark.at.lng, mark.at.lat]);
       updateGuide(g.el, zoom, mark);
-      g.marker.setOffset(besideMain(map.project([mark.at.lng, mark.at.lat]), mainAt, guideSize(zoom), belowGuide(zoom)));
+      const size = guideSize(zoom);
+      const [sx, sy] = guideShift(mark, size);
+      // she stays by her fire; the others step aside from your main roach
+      const [dx, dy] = mark.fire ? [0, 0] : besideMain(map.project([mark.at.lng, mark.at.lat]), mainAt, size, belowGuide(zoom));
+      g.marker.setOffset([sx + dx, sy + dy]);
     }
   };
 

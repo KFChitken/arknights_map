@@ -25,6 +25,8 @@ export default function IdentitySheet({
   onPretend,
   onPretendLeft,
   onAskAgain,
+  onFakeFire,
+  onForgetTalulah,
   onClose,
 }: {
   identities: Identity[];
@@ -36,6 +38,10 @@ export default function IdentitySheet({
   onPretendLeft: (seconds: number) => void;
   /** 让佩丽卡重新问一次: forget the answer to her question */
   onAskAgain: () => void;
+  /** 假装火边有 N 只: this page's count of roaches by 塔露拉干员's fire only */
+  onFakeFire: (n: number) => void;
+  /** 清掉我和塔露拉的记录, then reload */
+  onForgetTalulah: () => void;
   onClose: () => void;
 }) {
   return (
@@ -97,6 +103,20 @@ export default function IdentitySheet({
         ))}
         <button className="pill" onClick={onAskAgain}>
           让佩丽卡重新问一次
+        </button>
+      </div>
+      <h3>塔露拉的篝火</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        「假装火边有 N 只」只改这个网页里的数，看四档火和卡片上那句话，刷新就恢复；「清掉记录」以后可以重新试握手、欢迎、生日和兜帽那句。
+      </p>
+      <div className="row-actions" style={{ flexWrap: "wrap" }}>
+        {[10, 50, 200].map((n) => (
+          <button key={n} className="pill" onClick={() => onFakeFire(n)}>
+            假装火边有 {n} 只
+          </button>
+        ))}
+        <button className="pill" onClick={onForgetTalulah}>
+          清掉我和塔露拉的记录
         </button>
       </div>
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>

@@ -1,4 +1,5 @@
 import type { GuideId } from "@/lib/guides";
+import type { FireLevel } from "@/lib/talulah";
 import { hash128 } from "@/lib/prng";
 import type { LngLat, MapFocus, MapView, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
@@ -32,8 +33,11 @@ export type MapViewProps = {
   onFailed?: () => void;
 };
 
-/** A guide on the map: where, whether she is your 触须之交, and what she is saying over her head */
-export type GuideMark = { id: GuideId; at: LngLat; friend: boolean; bubble: string | null };
+/**
+ * A guide on the map: where, whether she is your 触须之交, and what she is saying over
+ * her head. fire: how big 塔露拉干员's fire burns; it then sits on that spot, with her beside it.
+ */
+export type GuideMark = { id: GuideId; at: LngLat; friend: boolean; bubble: string | null; fire?: FireLevel };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */
 export function roachTraits(id: string, groups: number, headings: number) {

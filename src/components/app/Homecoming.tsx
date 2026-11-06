@@ -14,7 +14,7 @@ import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 /** One line about what is new on the site, for players coming back; "" when there is nothing to tell. */
-export const WHATS_NEW = "新功能：佩丽卡监督来了，她就在你的本体附近。";
+export const WHATS_NEW = "新功能：塔露拉在哈尔滨太阳岛点了一堆篝火，派克隆体去坐坐吧。";
 
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,

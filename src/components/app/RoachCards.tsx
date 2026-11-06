@@ -2,6 +2,7 @@
 
 import { AMIYA_NAME } from "@/lib/amiya";
 import { PERLICA_ID, PERLICA_NAME } from "@/lib/perlica";
+import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talulah";
 import { bottleIcon } from "@/lib/flipArt";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
@@ -17,6 +18,7 @@ export function OtherRoachCard({
   friendName,
   pokeAgainAt,
   perlicaTimer = false,
+  fire,
   busy,
   onOpenFriend,
   onSignIn,
@@ -35,6 +37,19 @@ export function OtherRoachCard({
   pokeAgainAt: number | null;
   /** 佩丽卡监督's 离开计时 is on, which her card mentions */
   perlicaTimer?: boolean;
+  /**
+   * 塔露拉干员's fire, on her card: how many roaches sit by it and how big it burns,
+   * whether one of yours is there, her line to 初始 hoods (once), and sending a clone over
+   */
+  fire?: {
+    count: number;
+    level: FireLevel;
+    seated: boolean;
+    hood: string | null;
+    sending: boolean;
+    onSend: () => void;
+    onVisit: () => void;
+  };
   /** A poke is under way */
   busy: boolean;
   onOpenFriend?: () => void;
@@ -65,8 +80,9 @@ export function OtherRoachCard({
   const pokeable = asleep && Boolean(friendName);
   const daysToWait = pokeAgainAt ? Math.ceil((pokeAgainAt - Date.now()) / 86_400_000) : 0;
   const perlica = roach.guide && roach.id === PERLICA_ID;
+  const talulah = roach.guide && roach.id === TALULAH_ID && fire;
   const title = roach.guide
-    ? `${perlica ? PERLICA_NAME : AMIYA_NAME}（不是真人）`
+    ? `${perlica ? PERLICA_NAME : talulah ? TALULAH_NAME : AMIYA_NAME}（不是真人）`
     : friendName
       ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
       : roach.clone
@@ -79,8 +95,12 @@ export function OtherRoachCard({
     ? perlicaTimer
       ? "终末地工业监督。负责协议源石技术、帝江号，还有记住管理员离开了多久。"
       : "终末地工业监督。负责协议源石技术和帝江号。"
-    : null;
-  const hint = perlica
+    : talulah
+      ? (talulah.hood ?? "整合运动的创始人，刚上岛的罗德岛干员。现在在太阳岛守着一堆火。")
+      : null;
+  const hint = talulah
+    ? `现在火边坐着 ${talulah.count.toLocaleString()} 只蟑螂`
+    : perlica
     ? friendName
       ? perlicaTimer
         ? "你们是触须之交。你每次离开多久，她都记着。"
@@ -126,6 +146,12 @@ export function OtherRoachCard({
           </strong>
           {about && <p className="muted">{about}</p>}
           <p className="muted">{hint}</p>
+          {talulah && (
+            <>
+              <p className="muted">{FIRE_LINES[talulah.level]}</p>
+              <p className="hint fire-note">派的是克隆体，不用真去哈尔滨。</p>
+            </>
+          )}
         </div>
       </div>
       {onOpenFriend && (
@@ -135,7 +161,32 @@ export function OtherRoachCard({
           </button>
         </div>
       )}
-      {!signedIn ? (
+      {talulah ? (
+        <>
+          <div className="touch-buttons">
+            <button onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
+              偷偷伸出触须
+              <small>TA 只知道被碰了一下</small>
+            </button>
+            <button className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
+              大胆伸出触须
+              <small>{sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
+            </button>
+          </div>
+          {signedIn && talulah.seated ? (
+            <div className="fire-row">
+              <span>你的蟑螂已经在火边了</span>
+              <button className="pill dark" onClick={talulah.onVisit}>
+                过去看看
+              </button>
+            </div>
+          ) : (
+            <button className="primary wide fire-send" disabled={talulah.sending} onClick={talulah.onSend}>
+              {signedIn ? "派一只克隆体去烤火" : "登录后就能过来烤火"}
+            </button>
+          )}
+        </>
+      ) : !signedIn ? (
         <button className="primary wide" onClick={onSignIn}>
           登录
         </button>

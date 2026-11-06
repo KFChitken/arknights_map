@@ -1,8 +1,7 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
-import { AMIYA_ID, isAmiyaItem } from "../amiya";
-import { isPerlicaItem, PERLICA_ID } from "../perlica";
+import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
@@ -66,6 +65,18 @@ import {
   touchPerlica,
   unfriendPerlica,
 } from "./perlica";
+import {
+  arrivedAt,
+  birthdayDeclared,
+  ignoreTalulah,
+  replyTalulah,
+  seeTalulah,
+  talulahFriend,
+  talulahInbox,
+  talulahOf,
+  touchTalulah,
+  unfriendTalulah,
+} from "./talulah";
 import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
 import { daysBetween, lastVisitOn } from "./away";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
@@ -91,6 +102,52 @@ import {
   type RoachRow,
   type UserRow,
 } from "./schema";
+
+/**
+ * What the world asks of each guide (src/lib/guides.ts), each in her own module.
+ * offsetMin is the device's time zone, which only 佩丽卡监督 uses (her count of the day).
+ */
+type GuideWorld = {
+  touch: (userId: string, bold: boolean, offsetMin: unknown) => Promise<TouchResult>;
+  reply: (userId: string, itemId: string, bold: boolean, offsetMin: unknown) => Promise<TouchResult>;
+  ignore: (userId: string, itemId: string) => Promise<void>;
+  see: (userId: string, itemIds: string[]) => Promise<void>;
+  inbox: (userId: string) => Promise<InboxItem[]>;
+  friend: (u: UserRow) => Friend | null;
+  unfriend: (userId: string) => Promise<void>;
+};
+
+const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
+  amiya: {
+    touch: (userId, bold) => touchAmiya(userId, bold),
+    reply: (userId, itemId, bold) => replyAmiya(userId, itemId, bold),
+    ignore: ignoreAmiya,
+    see: seeAmiya,
+    inbox: amiyaInbox,
+    friend: (u) => (u.amiyaFriendSince ? amiyaFriend(u.amiyaFriendSince) : null),
+    unfriend: unfriendAmiya,
+  },
+  perlica: {
+    touch: touchPerlica,
+    reply: replyPerlica,
+    ignore: ignorePerlica,
+    see: seePerlica,
+    inbox: perlicaInbox,
+    friend: (u) => (u.perlicaFriendSince ? perlicaFriend(u.perlicaFriendSince) : null),
+    unfriend: unfriendPerlica,
+  },
+  talulah: {
+    touch: (userId, bold) => touchTalulah(userId, bold),
+    reply: (userId, itemId, bold) => replyTalulah(userId, itemId, bold),
+    ignore: ignoreTalulah,
+    see: seeTalulah,
+    inbox: talulahInbox,
+    friend: (u) => (u.talulahFriendSince ? talulahFriend(u.talulahFriendSince) : null),
+    unfriend: unfriendTalulah,
+  },
+};
+/** In the order they are listed */
+const GUIDE_IDS = Object.keys(GUIDES) as GuideId[];
 
 /**
  * The world kept in Postgres: every rule about who sees what. The pure parts
@@ -259,6 +316,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     wokeFromAway: Boolean(u.sleptAwayOn && (!u.lastSeenOn || u.lastSeenOn < u.sleptAwayOn)),
     amiya: { friend: Boolean(u.amiyaFriendSince), greeting: await greetAmiya(u, offsetMin) },
     perlica: perlicaOf(u),
+    talulah: talulahOf(u),
   };
 }
 
@@ -359,6 +417,8 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
     });
   });
   roachesChanged();
+  // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
+  await arrivedAt(userId, at);
   return ownRoaches(userId);
 }
 
@@ -425,8 +485,8 @@ async function checkTouchQuota(userId: string) {
 
 /** offsetMin: the device's Date.getTimezoneOffset(), only for 佩丽卡监督's count of the day; never stored */
 export async function touch(userId: string, publicId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
-  if (publicId === AMIYA_ID) return touchAmiya(userId, Boolean(bold));
-  if (publicId === PERLICA_ID) return touchPerlica(userId, Boolean(bold), offsetMin);
+  const guide = guideById(String(publicId));
+  if (guide) return GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，碰不到 TA。");
   if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
   const [roach] = await db.select().from(roaches).where(eq(roaches.publicId, publicId)).limit(1);
@@ -473,8 +533,8 @@ async function replied(userId: string, itemIds: string[]) {
 
 /** Touch back whoever sent an inbox item. */
 export async function reply(userId: string, itemId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
-  if (isAmiyaItem(String(itemId))) return replyAmiya(userId, String(itemId), Boolean(bold));
-  if (isPerlicaItem(String(itemId))) return replyPerlica(userId, String(itemId), Boolean(bold), offsetMin);
+  const guide = guideOfItem(String(itemId));
+  if (guide) return GUIDE_WORLD[guide.id].reply(userId, String(itemId), Boolean(bold), offsetMin);
   const [kind, id] = String(itemId).split(":");
   let to: string | undefined;
   if (UUID.test(id ?? "")) {
@@ -531,8 +591,8 @@ async function lastPoke(from: string, to: string) {
  * so a poke can never tell drunk from away. You see who once you are awake.
  */
 export async function poke(userId: string, publicId: string): Promise<{ againAt: number }> {
-  if (publicId === AMIYA_ID) throw new WorldError("阿米娅向导一直醒着，碰碰她吧。");
-  if (publicId === PERLICA_ID) throw new WorldError("佩丽卡监督一直醒着，碰碰她吧。");
+  const guide = guideById(String(publicId));
+  if (guide) throw new WorldError(`${guide.name}一直醒着，碰碰她吧。`);
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，戳不到 TA。");
   if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
   const [row] = await db
@@ -711,7 +771,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: true,
     });
   }
-  items.push(...(await amiyaInbox(userId)), ...(await perlicaInbox(userId)));
+  for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
   return items.sort((x, y) => y.at - x.at);
 }
 
@@ -770,8 +830,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
       .set({ seenAt: now })
       .where(and(inArray(reactions.id, x), inArray(reactions.declarationId, myDeclarations), isNull(reactions.seenAt)));
   }
-  await seeAmiya(userId, itemIds);
-  await seePerlica(userId, itemIds);
+  for (const id of GUIDE_IDS) await GUIDE_WORLD[id].see(userId, itemIds);
   const p = ids("p:");
   if (p.length) {
     await db
@@ -853,6 +912,8 @@ export async function declare(userId: string, input: Declaration, from?: string[
     }
   });
   nudge(rows.map((r) => r.id));
+  // 塔露拉干员 answers her 触须之交's birthday, never among the recipients
+  if (d.template === "birthday") await birthdayDeclared(userId);
   const event = d.template === "event" ? findLine(d.line)?.event : null;
   if (event) await award(userId, [event.badge]);
   return { reach: reachText(rows.length) };
@@ -860,8 +921,8 @@ export async function declare(userId: string, input: Declaration, from?: string[
 
 /** 默默爬走: leave a touch you received unanswered for good. Only the receiver ever knows. */
 export async function ignore(userId: string, itemId: string) {
-  if (isAmiyaItem(String(itemId))) return ignoreAmiya(userId, String(itemId));
-  if (isPerlicaItem(String(itemId))) return ignorePerlica(userId, String(itemId));
+  const guide = guideOfItem(String(itemId));
+  if (guide) return GUIDE_WORLD[guide.id].ignore(userId, String(itemId));
   const [kind, id] = String(itemId).split(":");
   if (kind !== "t" || !UUID.test(id ?? "")) throw new WorldError("找不到这条消息了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
@@ -955,17 +1016,14 @@ export async function friends(userId: string): Promise<Friend[]> {
       pokeAgainAt: await lastPoke(userId, other),
     });
   }
-  // the guides always come first: 阿米娅向导, then 佩丽卡监督
-  const guides = [
-    ...(self?.amiyaFriendSince ? [amiyaFriend(self.amiyaFriendSince)] : []),
-    ...(self?.perlicaFriendSince ? [perlicaFriend(self.perlicaFriendSince)] : []),
-  ];
+  // the guides always come first, in their order
+  const guides = self ? GUIDE_IDS.flatMap((id) => GUIDE_WORLD[id].friend(self) ?? []) : [];
   return [...guides, ...out];
 }
 
 export async function unfriend(userId: string, friendId: string) {
-  if (friendId === AMIYA_ID) return unfriendAmiya(userId);
-  if (friendId === PERLICA_ID) return unfriendPerlica(userId);
+  const guide = guideById(String(friendId));
+  if (guide) return GUIDE_WORLD[guide.id].unfriend(userId);
   const others = await friendIdsOf(userId);
   const other = [...others].find((o) => friendKey(userId, o) === friendId);
   if (!other) throw new WorldError("你们已经不是触须之交了。");

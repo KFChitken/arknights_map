@@ -15,6 +15,7 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   // (src/app/guide-art) and kept out of the repository
   amiya: "/guide-art/amiya.png",
   perlica: "/guide-art/perlica.png",
+  talulah: "/guide-art/talulah.png",
 };
 
 /** Where each figure sits in its picture, measured from the PNGs, to lay it down asleep */

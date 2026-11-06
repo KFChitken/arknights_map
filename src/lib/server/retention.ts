@@ -2,7 +2,18 @@ import "server-only";
 import { and, isNotNull, lt } from "drizzle-orm";
 import { KEEP_ACTIVITY_DAYS, KEEP_REPORT_DAYS } from "../rules";
 import { db } from "./db";
-import { amiyaTouches, declarations, friendCuts, moves, perlicaTouches, pokes, radarScans, reports, touches } from "./schema";
+import {
+  amiyaTouches,
+  declarations,
+  friendCuts,
+  moves,
+  perlicaTouches,
+  pokes,
+  radarScans,
+  reports,
+  talulahTouches,
+  touches,
+} from "./schema";
 
 const DAY_MS = 86_400_000;
 
@@ -17,6 +28,7 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(pokes).where(lt(pokes.createdAt, cutoff));
   await db.delete(amiyaTouches).where(lt(amiyaTouches.createdAt, cutoff));
   await db.delete(perlicaTouches).where(lt(perlicaTouches.createdAt, cutoff));
+  await db.delete(talulahTouches).where(lt(talulahTouches.createdAt, cutoff));
   await db.delete(declarations).where(lt(declarations.createdAt, cutoff));
   await db.delete(moves).where(lt(moves.at, cutoff));
   // a cut only matters for touches made before it, which are gone by now

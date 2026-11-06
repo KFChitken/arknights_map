@@ -155,6 +155,13 @@
       "when": 1793937598847,
       "tag": "0021_perlica",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793942154196,
+      "tag": "0022_talulah",
+      "breakpoints": true
     }
   ]
 }

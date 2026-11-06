@@ -82,6 +82,10 @@ export const users = pgTable("users", {
   perlicaTimerAt: at("perlica_timer_at"),
   /** The last moment they were looking at the site, to the second, overwritten each time; kept only while perlicaTimer is "on". No index: it changes every minute */
   lastActiveAt: at("last_active_at"),
+  /** 塔露拉干员 (src/lib/talulah.ts): when they became 触须之交, when a roach of theirs first sat by her fire, and when she last answered their birthday declaration */
+  talulahFriendSince: at("talulah_friend_since"),
+  talulahWelcomedAt: at("talulah_welcomed_at"),
+  talulahBirthdayAt: at("talulah_birthday_at"),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -325,6 +329,16 @@ export const perlicaTouches = pgTable(
   },
   (t) => [index("perlica_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("perlica_touches_reply_idx").on(t.replyTo)],
 );
+
+/**
+ * 塔露拉干员 (src/lib/talulah.ts). Her kinds: "touch" (her answer), "handshake"
+ * (her answer that made them 触须之交), "welcome" (their first roach at her fire)
+ * and "birthday" (her answer to their birthday declaration).
+ */
+export const talulahTouches = pgTable("talulah_touches", guideTouchColumns(), (t) => [
+  index("talulah_touches_user_idx").on(t.userId, t.createdAt),
+  uniqueIndex("talulah_touches_reply_idx").on(t.replyTo),
+]);
 
 /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship. */
 export const friendCuts = pgTable(
