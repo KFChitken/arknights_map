@@ -1,5 +1,6 @@
 import type { GuideId } from "@/lib/guides";
 import type { FireLevel } from "@/lib/talulah";
+import type { StyleSpecification } from "maplibre-gl";
 import { hash128 } from "@/lib/prng";
 import type { LngLat, MapFocus, MapView, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
@@ -31,6 +32,18 @@ export type MapViewProps = {
   onError?: (message: string) => void;
   /** The map could not load at all; without it, onError says so */
   onFailed?: () => void;
+  /** Shown, or kept hidden behind the other map (mainland visitors abroad); hidden, its roaches stop crawling */
+  active?: boolean;
+  /** Jump here at once, without flying, as the other map hands over; only a new nonce triggers it */
+  jump?: MapFocus | null;
+  /** The map has drawn itself for the first time */
+  onReady?: () => void;
+  /** MapLibre only: a style of its own (our overseas map) instead of OpenFreeMap's */
+  style?: StyleSpecification;
+  /** MapLibre only: drawn over the map's own land and names, under the roaches (China, on our overseas map) */
+  cover?: GeoJSON.FeatureCollection | null;
+  /** MapLibre only: what to say when the map is slow to load */
+  slowNote?: string;
 };
 
 /**

@@ -56,6 +56,8 @@ services:
     volumes:
       # the folder, not the file: git replaces the file on pull, which a file mount would not see
       - ./deploy:/etc/caddy:ro
+      # our own overseas map, put on the server by hand (see the README) and served by Caddy
+      - ./tiles:/srv/tiles:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

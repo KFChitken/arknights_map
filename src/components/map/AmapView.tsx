@@ -190,6 +190,8 @@ export default function AmapView(props: MapViewProps) {
   const styledRef = useRef<{ look: RoachStyle; urls: string[] }>({ look: props.look, urls: [] });
   const mineSeq = useRef(0);
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: AMapNS }>());
+  // the roaches' crawl, which a hidden map stops
+  const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -329,13 +331,21 @@ export default function AmapView(props: MapViewProps) {
 
         // Redraw one batch per tick, round robin, to keep each frame light
         let tick = 0;
-        if (!prefersReducedMotion()) {
-          crawlTimer = window.setInterval(() => {
-            const g = tick++ % MASS_GROUPS;
-            const { look } = styledRef.current;
-            massRef.current[g]?.setData(massData(groupsRef.current[g], map.getZoom(), look, performance.now()));
-          }, 25);
-        }
+        crawlRef.current = {
+          start: () => {
+            if (crawlTimer || propsRef.current.active === false || prefersReducedMotion()) return;
+            crawlTimer = window.setInterval(() => {
+              const g = tick++ % MASS_GROUPS;
+              const { look } = styledRef.current;
+              massRef.current[g]?.setData(massData(groupsRef.current[g], map.getZoom(), look, performance.now()));
+            }, 25);
+          },
+          stop: () => {
+            window.clearInterval(crawlTimer);
+            crawlTimer = 0;
+          },
+        };
+        crawlRef.current.start();
 
         placeMine();
 
@@ -360,6 +370,7 @@ export default function AmapView(props: MapViewProps) {
         map.on("moveend", reportView);
         map.on("zoomend", reportView);
         map.on("complete", reportView);
+        map.on("complete", () => propsRef.current.onReady?.());
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -371,6 +382,7 @@ export default function AmapView(props: MapViewProps) {
     return () => {
       cancelled = true;
       window.clearInterval(crawlTimer);
+      crawlRef.current = null;
       massRef.current.forEach((m) => m.setMap(null));
       massRef.current = [];
       heatRef.current = null;
@@ -424,8 +436,19 @@ export default function AmapView(props: MapViewProps) {
 
   useEffect(() => {
     const f = props.focus;
-    if (f && mapRef.current) mapRef.current.setZoomAndCenter(f.zoom + ZOOM_OFFSET, toGcj(f));
+    // a hidden map leaves the flying to the one on show
+    if (f && mapRef.current && propsRef.current.active !== false) mapRef.current.setZoomAndCenter(f.zoom + ZOOM_OFFSET, toGcj(f));
   }, [props.focus]);
+
+  useEffect(() => {
+    const j = props.jump;
+    if (j && mapRef.current) mapRef.current.setZoomAndCenter(j.zoom + ZOOM_OFFSET, toGcj(j), true);
+  }, [props.jump]);
+
+  useEffect(() => {
+    if (props.active === false) crawlRef.current?.stop();
+    else crawlRef.current?.start();
+  }, [props.active]);
 
   return <div ref={el} className="map" data-basemap="amap" />;
 }

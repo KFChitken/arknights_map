@@ -14,11 +14,13 @@
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
+    "@protomaps/basemaps": "^5.7.2",
     "drizzle-orm": "^0.45.4",
     "gcoord": "^1.0.7",
     "maplibre-gl": "^5.24.0",
     "next": "^15.5.28",
     "nodemailer": "^10.1.7",
+    "pmtiles": "^4.5.0",
     "postgres": "^3.4.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

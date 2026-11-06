@@ -31,6 +31,9 @@ export const PERLICA_PICTURE = process.env.PERLICA_PICTURE !== "off";
 export const TALULAH_PICTURE = process.env.TALULAH_PICTURE !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
 
+/** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
+export const TILES_DIR = process.env.TILES_DIR || "tiles";
+
 /** Where links in emails point. */
 export const SITE_URL = process.env.SITE_URL || (isProd ? "https://zhoupmap.com" : "http://localhost:3000");
 

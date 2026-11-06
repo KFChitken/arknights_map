@@ -10,7 +10,7 @@ Players in the community jokingly call themselves "roaches" because there seem t
 
 | Feature | Status |
 |---|---|
-| World map with two basemaps behind one URL: visitors from mainland China (told from their address against APNIC's list in `src/data/cn-ip-ranges.json`, refreshed with `node scripts/fetch-cn-ranges.mjs`; the address is never stored) get Amap only, everyone else MapLibre + OpenStreetMap with a switch to Amap | MVP |
+| World map with two basemaps behind one URL: visitors from mainland China (told from their address against APNIC's list in `src/data/cn-ip-ranges.json`, refreshed with `node scripts/fetch-cn-ranges.mjs`; the address is never stored) get Amap wherever China is in view and our own OpenStreetMap map abroad (`src/lib/chinaView.ts`), everyone else MapLibre + OpenStreetMap with a switch to Amap | MVP |
 | Swarm view: every roach is drawn and twitches, and a dark heat layer makes crowded cities look covered in roaches; cartoon or realistic roaches | Prototype |
 | Place a main roach and up to three clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | MVP |
 | Profile: a name (checked against the rules in `src/lib/nameRules.ts` and a word list kept on the admin page) with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | MVP |
@@ -42,7 +42,8 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 ## Tech stack
 
 - Next.js (App Router) + TypeScript, frontend and API in one project
-- Amap JS API 2.0 for mainland China, MapLibre GL JS + OpenFreeMap tiles elsewhere
+- Amap JS API 2.0 for mainland China, MapLibre GL JS + OpenFreeMap tiles elsewhere, and for mainland visitors abroad a [Protomaps](https://protomaps.com) build of OpenStreetMap served from our own server
+- Amap shifts coordinates in mainland China, Hong Kong, Macau and Taiwan only (`src/lib/coords.ts`); the outlines behind that and behind where Amap must show come from Natural Earth (`node scripts/build-china-areas.mjs <folder>`)
 - Coordinates stored as WGS-84 and converted to GCJ-02 for Amap with `gcoord`
 - PostgreSQL + PostGIS with Drizzle; the rules live in `src/lib/server/world.ts`, and the browser reaches them through the data-layer interface in `src/lib/world`
 - Email via SMTP: Mailpit locally, any SMTP provider (e.g. Resend) in production
@@ -111,6 +112,14 @@ scripts/deploy.sh
 ```
 
 GitHub builds the app image for every push to `main` (`.github/workflows/image.yml`, which needs the `AMAP_KEY` and `AMAP_SECURITY_CODE` repository secrets) and publishes it as `ghcr.io/kfchitken/arknights_map`. The deploy script waits for that build, then the server pulls `main`, downloads the image and restarts; if the build failed or the image cannot be downloaded, the server builds it itself. Images never contain `.env`: the server's secrets are read when the container starts. Database migrations run when the app starts.
+
+Our own overseas map lives in `~/arknights_map/tiles` on the server, outside git, and Caddy serves it at `/tiles`. The map file is a cut of one Protomaps build down to zoom 12 (about 18 GB), fetched by the server itself with [go-pmtiles](https://github.com/protomaps/go-pmtiles):
+
+```bash
+pmtiles extract https://build.protomaps.com/20261105.pmtiles ~/arknights_map/tiles/world-20261105.pmtiles --maxzoom=12 --download-threads=4
+```
+
+A newer build goes in under its own date, with `OVERSEAS_TILES` in `src/lib/overseas.ts` changed to match. The fonts (Noto Sans Regular, Medium and Italic) and the `light` icons of `sprites/v4` come from [basemaps-assets](https://github.com/protomaps/basemaps-assets) into `tiles/fonts` and `tiles/sprites` on the Mac, and each deploy copies them over. For local development put a small cut (`--bbox=...`) under the same name in `tiles/`, and open `localhost:3000/?mainland=1` to see the site as a visitor from mainland China would.
 
 Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it from probes in mainland China and in Hong Kong, and the run fails when most of either cannot, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
 

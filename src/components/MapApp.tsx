@@ -1,13 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
 import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
-import { inBounds } from "@/lib/coords";
+import { inBounds } from "@/lib/shapes";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
 import type { Declaration, Reaction, Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
@@ -165,6 +166,20 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const worldRef = useRef<World | null>(null);
   const feedRef = useRef(new RoachFeedCopy());
   const [basemap, setBasemap] = useState<Basemap | null>(null);
+  // Visitors from mainland China: Amap wherever China is in view, our own map abroad (src/lib/chinaView.ts).
+  // Both maps stay made once made, and only the one on show is used; Amap is made when first needed.
+  const chinaRef = useRef<typeof import("@/lib/chinaView") | null>(null);
+  const [overseas, setOverseas] = useState<{ style: StyleSpecification; cover: GeoJSON.FeatureCollection } | null>(null);
+  const [abroad, setAbroad] = useState(false);
+  const [amapMade, setAmapMade] = useState(true);
+  const [overseasMade, setOverseasMade] = useState(false);
+  const [amapFailed, setAmapFailed] = useState(false);
+  const [amapJump, setAmapJump] = useState<MapFocus | null>(null);
+  const [overseasJump, setOverseasJump] = useState<MapFocus | null>(null);
+  const amapReady = useRef(false);
+  const overseasReady = useRef(false);
+  // a change waiting for the other map to finish drawing itself
+  const wanted = useRef<"abroad" | "home" | null>(null);
   const [look, setLook] = useState<RoachStyle>("cartoon");
   const [me, setMe] = useState<Me | null>(null);
   const [feedRoaches, setFeedRoaches] = useState<MapRoach[]>([]);
@@ -335,15 +350,32 @@ export default function MapApp({ cn }: { cn: boolean }) {
       void import("./map/AmapView");
       loadAMap().catch(() => {});
     } else void import("./map/MaplibreView");
+    // visitors from mainland China: our own map for abroad, and the outline of where Amap must show
+    const abroadKit = cn
+      ? Promise.all([import("@/lib/overseas"), import("@/lib/chinaView"), import("./map/MaplibreView")]).catch(() => null)
+      : Promise.resolve(null);
     load()
       .catch((e) => {
         console.error(e);
         setToast("连不上服务器，地图先只显示底图。");
         return { me: null, items: [] as InboxItem[], away: null };
       })
-      .then(({ me: m, items, away }) => {
+      .then(async ({ me: m, items, away }) => {
         const main = m?.roaches.find((r) => r.slot === 0);
         viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
+        const kit = await abroadKit;
+        if (kit) {
+          const [{ overseasStyle }, china] = kit;
+          chinaRef.current = china;
+          setOverseas({ style: overseasStyle(window.location.origin), cover: china.chinaCover() });
+          // a visit that starts abroad opens our own map at once; Amap waits until China comes into view
+          const v = viewRef.current;
+          if (b === "amap" && china.clearOfChina(china.viewAround(v, v.zoom, window.innerWidth, window.innerHeight))) {
+            setAbroad(true);
+            setOverseasMade(true);
+            setAmapMade(false);
+          }
+        }
         setLook(loadLook());
         setBasemap(b);
         // Back after a day or more: a summary first, which says what is unread (not during the tutorial);
@@ -390,6 +422,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   // Android Chrome offers adding the site to the home screen once, early; 资料 keeps it for later
   useEffect(() => keepInstallPrompt(), []);
+
+  // Development only: zhoupFly(lng, lat, zoom) in the console flies the map anywhere, to try out the map changes
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as { zhoupFly?: unknown }).zhoupFly = (lng: number, lat: number, zoom = 11) =>
+      setFocus({ lng, lat, zoom, nonce: Date.now() });
+  }, []);
 
   // Roaches others placed or moved: once a minute, and when the page comes back into view, ask only what changed
   useEffect(() => {
@@ -607,6 +646,53 @@ export default function MapApp({ cn }: { cn: boolean }) {
     viewRef.current = v;
     boundsRef.current = bounds;
     countVisible(bounds);
+  };
+
+  // ---- visitors from mainland China: changing between Amap and our own map ----
+
+  const twoMaps = cn && basemap === "amap" && !amapFailed && Boolean(overseas);
+  const ignoreView = () => {};
+  // the other map jumps to where this one is, without flying, and takes over
+  const showAbroad = () => {
+    wanted.current = null;
+    setOverseasJump({ ...viewRef.current, nonce: Date.now() });
+    setAbroad(true);
+  };
+  const showHome = () => {
+    wanted.current = null;
+    setAmapJump({ ...viewRef.current, nonce: Date.now() });
+    setAbroad(false);
+  };
+  /** Amap came to rest: once even a wider view would not show China, our own map takes over */
+  const onAmapView = (v: MapView, bounds: [LngLat, LngLat]) => {
+    onViewChange(v, bounds);
+    if (!chinaRef.current?.clearOfChina(bounds)) {
+      wanted.current = null;
+      return;
+    }
+    if (overseasReady.current) return showAbroad();
+    // made out of sight first and shown once drawn, so the screen never goes blank
+    wanted.current = "abroad";
+    setOverseasMade(true);
+  };
+  /** Our own map came to rest: as soon as China is in view, back to Amap */
+  const onOverseasView = (v: MapView, bounds: [LngLat, LngLat]) => {
+    onViewChange(v, bounds);
+    if (!chinaRef.current?.seesChina(bounds)) {
+      wanted.current = null;
+      return;
+    }
+    if (amapReady.current) return showHome();
+    wanted.current = "home";
+    setAmapMade(true);
+  };
+  const onAmapReady = () => {
+    amapReady.current = true;
+    if (wanted.current === "home") showHome();
+  };
+  const onOverseasReady = () => {
+    overseasReady.current = true;
+    if (wanted.current === "abroad") showAbroad();
   };
 
   const find = (r: OwnRoach) => {
@@ -833,7 +919,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const zoomFor = (roach: PublicRoach, zoom: number) =>
     roach.id === TALULAH_ID
       ? FIRE_ZOOM
-      : roach.id === AMIYA_ID && basemap === "amap"
+      : // abroad, visitors from mainland China see our own map, which draws Rhode Island close up
+        roach.id === AMIYA_ID && basemap === "amap" && !cn
         ? Math.min(zoom, AMIYA_AMAP_ZOOM)
         : zoom;
 
@@ -1337,10 +1424,16 @@ export default function MapApp({ cn }: { cn: boolean }) {
     onMineClick,
     onViewChange,
     onError: setToast,
+    // mainland China: our own map instead, without the cover, if it is there to fall back on
     onFailed: cn
       ? () => {
-          setToast("高德底图没加载出来，先换成 OSM 底图。");
-          setBasemap("osm");
+          if (overseas) {
+            setToast("高德底图没加载出来，先换成我们自己的底图。");
+            setAmapFailed(true);
+          } else {
+            setToast("高德底图没加载出来，先换成 OSM 底图。");
+            setBasemap("osm");
+          }
         }
       : undefined,
   };
@@ -1601,7 +1694,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   return (
-    <main className={`app ${basemap === "amap" ? "on-amap" : ""}`}>
+    <main className={`app ${basemap === "amap" && !amapFailed && !(twoMaps && abroad) ? "on-amap" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
@@ -1673,7 +1766,36 @@ export default function MapApp({ cn }: { cn: boolean }) {
       )}
 
       <div className="map-wrap">
-        {basemap === "amap" && <AmapView key="amap" {...mapProps} />}
+        {basemap === "amap" && !amapFailed && amapMade && (
+          <div className={`map-slot ${twoMaps && abroad ? "map-hidden" : ""}`}>
+            <AmapView
+              key="amap"
+              {...mapProps}
+              active={!(twoMaps && abroad)}
+              jump={amapJump}
+              onViewChange={twoMaps ? (abroad ? ignoreView : onAmapView) : onViewChange}
+              onReady={onAmapReady}
+            />
+          </div>
+        )}
+        {twoMaps && overseas && overseasMade && (
+          <div className={`map-slot ${abroad ? "" : "map-hidden"}`}>
+            <MaplibreView
+              key="overseas"
+              {...mapProps}
+              style={overseas.style}
+              cover={overseas.cover}
+              slowNote="地图加载很慢，稍等一下。"
+              active={abroad}
+              jump={overseasJump}
+              onViewChange={abroad ? onOverseasView : ignoreView}
+              onReady={onOverseasReady}
+            />
+          </div>
+        )}
+        {basemap === "amap" && amapFailed && overseas && (
+          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote="地图加载很慢，稍等一下。" />
+        )}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
         {poking && (
           <div className="actor-stage">

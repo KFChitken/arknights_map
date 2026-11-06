@@ -264,6 +264,8 @@ export default function MaplibreView(props: MapViewProps) {
   const readyRef = useRef(false);
   const syncRef = useRef<Promise<void>>(Promise.resolve());
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: maplibregl.Marker }>());
+  // the roaches' crawl, which a hidden map stops
+  const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -333,7 +335,7 @@ export default function MaplibreView(props: MapViewProps) {
     const blank = new URLSearchParams(location.search).get("style") === "blank";
     const map = new maplibregl.Map({
       container: el.current!,
-      style: blank ? BLANK_STYLE : process.env.NEXT_PUBLIC_OSM_STYLE || DEFAULT_STYLE,
+      style: blank ? BLANK_STYLE : (propsRef.current.style ?? (process.env.NEXT_PUBLIC_OSM_STYLE || DEFAULT_STYLE)),
       center: [initialView.lng, initialView.lat],
       zoom: initialView.zoom,
       attributionControl: { compact: true },
@@ -349,7 +351,7 @@ export default function MaplibreView(props: MapViewProps) {
     map.on("zoom", syncGuides);
 
     const loadTimer = window.setTimeout(() => {
-      if (!readyRef.current) propsRef.current.onError?.("海外底图加载很慢，可以试试切换到高德底图。");
+      if (!readyRef.current) propsRef.current.onError?.(propsRef.current.slowNote ?? "海外底图加载很慢，可以试试切换到高德底图。");
     }, 12000);
 
     // The map credits show at first, then fold into the (i) button after five seconds or as soon
@@ -393,6 +395,12 @@ export default function MaplibreView(props: MapViewProps) {
     };
 
     map.on("load", async () => {
+      // a cover over the land and names, under the roaches added next
+      const { cover } = propsRef.current;
+      if (cover) {
+        map.addSource("cover", { type: "geojson", data: cover });
+        map.addLayer({ id: "cover", type: "fill", source: "cover", paint: { "fill-color": "#ede9e1" } });
+      }
       await ensureImages(map, neededImages(propsRef.current));
       const { roaches, mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
       map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
@@ -465,9 +473,19 @@ export default function MaplibreView(props: MapViewProps) {
 
       readyRef.current = true;
       window.clearTimeout(loadTimer);
-      if (!prefersReducedMotion()) animate();
+      crawlRef.current?.start();
       reportView();
+      map.once("idle", () => propsRef.current.onReady?.());
     });
+    crawlRef.current = {
+      start: () => {
+        if (!frame && readyRef.current && propsRef.current.active !== false && !prefersReducedMotion()) animate();
+      },
+      stop: () => {
+        cancelAnimationFrame(frame);
+        frame = 0;
+      },
+    };
 
     map.on("click", (e) => {
       if (!readyRef.current) return;
@@ -490,6 +508,7 @@ export default function MaplibreView(props: MapViewProps) {
 
     return () => {
       cancelAnimationFrame(frame);
+      crawlRef.current = null;
       window.clearTimeout(loadTimer);
       window.clearTimeout(foldTimer);
       readyRef.current = false;
@@ -510,10 +529,21 @@ export default function MaplibreView(props: MapViewProps) {
     if (map) map.getCanvas().style.cursor = props.placing ? "crosshair" : "";
   }, [props.placing]);
 
+  // a hidden map leaves the flying to the one on show
   useEffect(() => {
     const f = props.focus;
-    if (f && mapRef.current) mapRef.current.flyTo({ center: [f.lng, f.lat], zoom: f.zoom });
+    if (f && mapRef.current && propsRef.current.active !== false) mapRef.current.flyTo({ center: [f.lng, f.lat], zoom: f.zoom });
   }, [props.focus]);
+
+  useEffect(() => {
+    const j = props.jump;
+    if (j && mapRef.current) mapRef.current.jumpTo({ center: [j.lng, j.lat], zoom: j.zoom });
+  }, [props.jump]);
+
+  useEffect(() => {
+    if (props.active === false) crawlRef.current?.stop();
+    else crawlRef.current?.start();
+  }, [props.active]);
 
   return <div ref={el} className="map" data-basemap="osm" />;
 }

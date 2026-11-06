@@ -1,6 +1,7 @@
 import { amapPlugins, type AMapNS } from "./amap";
 import { amapConfigured } from "./basemap";
-import { fromGcj, toGcj } from "./coords";
+// the conversion carries the outlines of China's neighbours, so it loads only when Amap is searched
+const coords = () => import("./coords");
 import { distanceKm } from "./geo";
 import type { Basemap, LngLat, MapView } from "./types";
 
@@ -52,7 +53,7 @@ export async function searchPlaces(query: string, basemap: Basemap, near?: MapVi
 }
 
 async function amapTips(q: string): Promise<Place[]> {
-  const AMap = await amapPlugins("AMap.AutoComplete");
+  const [AMap, { fromGcj }] = await Promise.all([amapPlugins("AMap.AutoComplete"), coords()]);
   const tips = await new Promise<AMapNS[]>((resolve, reject) => {
     new AMap.AutoComplete().search(q, (status: string, result: AMapNS) => {
       if (status === "complete") resolve(result?.tips ?? []);
@@ -85,7 +86,7 @@ function amapPois(run: (callback: (status: string, result: AMapNS) => void) => v
 }
 
 async function amapSearch(q: string, near?: LngLat): Promise<Place[]> {
-  const AMap = await amapPlugins("AMap.PlaceSearch", "AMap.Geocoder");
+  const [AMap, { fromGcj, toGcj }] = await Promise.all([amapPlugins("AMap.PlaceSearch", "AMap.Geocoder"), coords()]);
   const search = new AMap.PlaceSearch({ pageSize: 8, pageIndex: 1, extensions: "base" });
   let pois = near ? await amapPois((done) => search.searchNearBy(q, toGcj(near), AMAP_NEARBY_M, done)) : [];
   if (!pois.length) pois = await amapPois((done) => search.search(q, done));

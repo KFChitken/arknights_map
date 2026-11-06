@@ -10,3 +10,5 @@ next-env.d.ts
 /operator-art
 # and so does the guide's picture (src/lib/amiya.ts), cut out with scripts/cutout.mjs
 /guide-art
+# Our own overseas map: tens of GB, kept on the server (see the README)
+/tiles

@@ -11,10 +11,19 @@ zhoupmap.com {
 		Permissions-Policy "geolocation=(), camera=(), microphone=()"
 		-X-Powered-By
 	}
-	# the live event stream must reach the browser as it is written, so it is not compressed
-	@compressible not path /api/events
+	# the live event stream must reach the browser as it is written, and the map tiles come compressed already
+	@compressible not path /api/events /tiles/*
 	encode @compressible zstd gzip
-	reverse_proxy web:3000
+	# our own overseas map (src/lib/overseas.ts): the map file, fonts and icons, straight from the
+	# server's folder in ranges as asked; a file never changes under its name, a new one gets a new name
+	handle /tiles/* {
+		root * /srv
+		header Cache-Control "public, max-age=604800, immutable"
+		file_server
+	}
+	handle {
+		reverse_proxy web:3000
+	}
 }
 
 www.zhoupmap.com {
