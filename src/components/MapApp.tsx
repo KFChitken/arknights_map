@@ -90,6 +90,7 @@ import {
   type World,
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
+import { musicOn, playMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
 import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
@@ -164,6 +165,8 @@ const awayNote = (item: PerlicaItem): PerlicaNote => ({
   lines: [awaySentence(item.seconds ?? 0, item.line ?? 0), weightSentence(item.seconds ?? 0)],
 });
 const pickOf = (n: number) => Math.floor(Math.random() * n);
+/** 阿米娅向导 dances two rounds of her 6.9-second dance when tapped */
+const DANCE_MS = 2 * 6900;
 
 /**
  * Her notes on opening the page, after her report of the time away: how long they slept
@@ -321,6 +324,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [mingheClock, setMingheClock] = useState(() => Date.now());
   const [riding, setRiding] = useState(false);
   const [fakeRiders, setFakeRiders] = useState<number | null>(null);
+  // 阿米娅向导 dancing since then, after a tap on her: as long as her music, or two rounds of her dance without it
+  const [amiyaDance, setAmiyaDance] = useState<number | null>(null);
+  const danceTimer = useRef<number | undefined>(undefined);
+  const [music, setMusic] = useState(true);
   // the day of his journey, and today's station, where he is
   const day = mingheDay(mingheClock, me?.minghe.dayShift ?? 0);
   const mingheAt = stationOf(day).at;
@@ -738,7 +745,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const onRoachClick = (id: string) => {
-    if (id === AMIYA_ID) return setSelected({ kind: "other", roach: amiyaRoach(Boolean(me?.amiya.friend)) });
+    if (id === AMIYA_ID) {
+      danceAmiya();
+      return setSelected({ kind: "other", roach: amiyaRoach(Boolean(me?.amiya.friend)) });
+    }
     if (id === PERLICA_ID) {
       if (perlicaShown) setSelected({ kind: "other", roach: perlicaRoach(perlicaShown, Boolean(me?.perlica.friend)) });
       return;
@@ -915,6 +925,44 @@ export default function MapApp({ cn }: { cn: boolean }) {
     }
     await loadFriends();
   };
+
+  /** Tapping 阿米娅向导 sets her dancing to her music (not while motion is turned down); a tap meanwhile starts her over */
+  const danceAmiya = () => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const started = Date.now();
+    const until = (ms: number) => {
+      window.clearTimeout(danceTimer.current);
+      danceTimer.current = window.setTimeout(stopDance, ms);
+    };
+    setAmiyaDance(started);
+    until(DANCE_MS);
+    // with the music on, she dances as long as it plays
+    playMusic().then((ms) => {
+      if (ms !== null && danceStarted.current === started) until(ms);
+    });
+    danceStarted.current = started;
+  };
+  const danceStarted = useRef(0);
+  const stopDance = () => {
+    window.clearTimeout(danceTimer.current);
+    setAmiyaDance(null);
+    stopMusic();
+  };
+  /** Her music on or off, from her card; off stops it at once */
+  const switchMusic = () => {
+    const on = !musicOn();
+    setMusicOn(on);
+    setMusic(on);
+  };
+  // the music stops as the page goes out of sight
+  useEffect(() => {
+    setMusic(musicOn());
+    const hide = () => {
+      if (document.visibilityState !== "visible") stopDance();
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
 
   /** What a guide says pops up over her head for a few seconds (null: she stops). */
   const say = (id: GuideId, line: string | null, ms = 4000) => {
@@ -1707,7 +1755,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const guides: GuideMark[] = [
-    { id: AMIYA_ID, at: AMIYA_AT, friend: Boolean(me?.amiya.friend), bubble: says.amiya ?? null },
+    {
+      id: AMIYA_ID,
+      at: AMIYA_AT,
+      friend: Boolean(me?.amiya.friend),
+      bubble: says.amiya ?? null,
+      ...(amiyaDance ? { dance: amiyaDance } : {}),
+    },
     { id: TALULAH_ID, at: FIRE_AT, friend: Boolean(me?.talulah.friend), bubble: says.talulah ?? null, fire },
     {
       id: MINGHE_ID,
@@ -2197,6 +2251,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
           perlicaTimer={me?.perlica.timer === "on"}
+          amiyaMusic={selected.roach.id === AMIYA_ID ? { on: music, onToggle: switchMusic } : undefined}
           perlicaGuarding={guarding}
           fire={
             selected.roach.id === TALULAH_ID

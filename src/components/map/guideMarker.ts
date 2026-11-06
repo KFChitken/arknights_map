@@ -162,6 +162,55 @@ export function rideIn(el: HTMLElement, offset: [number, number], ms: number) {
   );
 }
 
+/** 阿米娅向导's dance (an animation by 疾刃 on bilibili), fetched once when she is first tapped; null where it is switched off */
+const DANCE_URL = "/guide-art/amiya-dance.webp";
+let dance: Promise<Blob | null> | null = null;
+const danceBlob = () =>
+  (dance ??= fetch(DANCE_URL)
+    .then((r) => (r.ok ? r.blob() : null))
+    .catch(() => {
+      dance = null;
+      return null;
+    }));
+const dancing = new WeakMap<HTMLElement, string>();
+
+/**
+ * She dances in place of her picture, bigger, from the first step (a fresh copy of the
+ * animation each time, so it starts over), and stands still again when the page says so.
+ */
+function updateDance(el: HTMLElement, mark: GuideMark) {
+  let img = el.querySelector<HTMLImageElement>(".guide-dance");
+  const want = mark.dance ? String(mark.dance) : "";
+  if (!want) {
+    if (!img) return;
+    el.classList.remove("dancing");
+    const url = dancing.get(el);
+    if (url) URL.revokeObjectURL(url);
+    dancing.delete(el);
+    img.remove();
+    return;
+  }
+  if (img?.dataset.dance === want) return;
+  if (!img) {
+    img = document.createElement("img");
+    img.className = "guide-dance";
+    img.alt = "";
+    img.draggable = false;
+    el.append(img);
+  }
+  img.dataset.dance = want;
+  const shown = img;
+  danceBlob().then((blob) => {
+    if (!blob || shown.dataset.dance !== want || !shown.isConnected) return;
+    const old = dancing.get(el);
+    if (old) URL.revokeObjectURL(old);
+    const url = URL.createObjectURL(blob);
+    dancing.set(el, url);
+    shown.src = url;
+    el.classList.add("dancing");
+  });
+}
+
 /** Bring her element up to date for this zoom (MapLibre levels) and what the page says about her. */
 export function updateGuide(el: HTMLElement, zoom: number, mark: GuideMark) {
   const guide = GUIDES[mark.id];
@@ -170,6 +219,7 @@ export function updateGuide(el: HTMLElement, zoom: number, mark: GuideMark) {
   const bubble = el.querySelector<HTMLElement>(".guide-bubble")!;
   bubble.textContent = mark.bubble ?? "";
   bubble.hidden = !mark.bubble;
+  if (mark.dance || el.classList.contains("dancing") || el.querySelector(".guide-dance")) updateDance(el, mark);
   if (mark.fire) {
     let fire = el.querySelector<HTMLElement>(".guide-fire");
     if (!fire) {

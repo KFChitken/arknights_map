@@ -203,6 +203,11 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 @media (prefers-reduced-motion: reduce) {
   .guide-bubble { animation: none; }
 }
+/* 阿米娅向导 dancing in place of her picture, three times as tall, feet where hers are (guideMarker.ts) */
+.guide-marker img.guide-dance { position: absolute; left: 50%; bottom: 0; width: auto; height: 300%; transform: translateX(-50%); pointer-events: none; }
+.guide-marker.dancing > img:not(.guide-dance) { visibility: hidden; }
+.guide-marker.dancing .guide-bubble { bottom: calc(300% + 8px); }
+.amiya-music { display: block; margin-top: 4px; padding: 0; font-size: 12px; }
 /* 塔露拉干员 (src/lib/talulah.ts): her fire beside her on the map, four sizes, still when motion is turned down */
 .guide-fire { position: absolute; left: 78%; bottom: -4%; width: 90%; height: 90%; pointer-events: none; }
 .guide-fire svg { display: block; width: 100%; height: 100%; overflow: visible; }

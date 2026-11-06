@@ -1,6 +1,6 @@
 "use client";
 
-import { AMIYA_NAME } from "@/lib/amiya";
+import { AMIYA_ID, AMIYA_NAME } from "@/lib/amiya";
 import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
 import { PERLICA_ID, PERLICA_MORE, PERLICA_NAME } from "@/lib/perlica";
 import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talulah";
@@ -21,6 +21,7 @@ export function OtherRoachCard({
   pokeAgainAt,
   perlicaTimer = false,
   perlicaGuarding = false,
+  amiyaMusic,
   fire,
   minghe,
   busy,
@@ -43,6 +44,8 @@ export function OtherRoachCard({
   perlicaTimer?: boolean;
   /** 佩丽卡监督 is keeping watch beside your drunk main roach */
   perlicaGuarding?: boolean;
+  /** 阿米娅向导's dance music: on or off in this browser, and switching it */
+  amiyaMusic?: { on: boolean; onToggle: () => void };
   /**
    * 塔露拉干员's fire, on her card: how many roaches sit by it and how big it burns,
    * whether one of yours is there, her line to 初始 hoods (once), and sending a clone over
@@ -178,6 +181,16 @@ export function OtherRoachCard({
               <p className="muted">{FIRE_LINES[talulah.level]}</p>
               <p className="hint fire-note">派的是克隆体，不用真去哈尔滨。</p>
             </>
+          )}
+          {roach.guide && roach.id === AMIYA_ID && (
+            <p className="hint fire-note">
+              舞蹈和音乐：疾刃（bilibili）的视频
+              {amiyaMusic && (
+                <button className="link amiya-music" onClick={amiyaMusic.onToggle}>
+                  {amiyaMusic.on ? "🔊 跳舞时放音乐" : "🔇 跳舞时不放音乐"}
+                </button>
+              )}
+            </p>
           )}
           {ride && (
             <>

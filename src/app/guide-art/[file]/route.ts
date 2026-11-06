@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { AMIYA_PICTURE, GUIDE_ART_DIR, MINGHE_PICTURE, PERLICA_PICTURE, TALULAH_PICTURE } from "@/lib/server/env";
+import { AMIYA_DANCE, AMIYA_PICTURE, GUIDE_ART_DIR, MINGHE_PICTURE, PERLICA_PICTURE, TALULAH_PICTURE } from "@/lib/server/env";
 
 /** The guides' pictures (src/lib/guides.ts) and whether each is switched on; only these files are ever served */
 const PICTURES: Record<string, { on: boolean; type: string }> = {
@@ -8,6 +8,9 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   "perlica.png": { on: PERLICA_PICTURE, type: "image/png" },
   "talulah.png": { on: TALULAH_PICTURE, type: "image/png" },
   "minghe.png": { on: MINGHE_PICTURE, type: "image/png" },
+  // 阿米娅向导's dance: one 6.9-second loop, played when she is tapped, and the music of the video it comes from
+  "amiya-dance.webp": { on: AMIYA_DANCE, type: "image/webp" },
+  "amiya-dance.m4a": { on: AMIYA_DANCE, type: "audio/mp4" },
 };
 
 /** GET /guide-art/<guide>.png: a guide's picture, from the server's own folder; 404 while switched off. */

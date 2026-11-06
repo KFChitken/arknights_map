@@ -14,7 +14,8 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   imp: "/avatars/imp.png",
   // the guides' (src/lib/guides.ts): not ours to publish, so served from the server's own folder
   // (src/app/guide-art) and kept out of the repository
-  amiya: "/guide-art/amiya.png",
+  // ?v: another picture of her was briefly served at this address while trying out her dance; browsers keep pictures a day
+  amiya: "/guide-art/amiya.png?v=3",
   perlica: "/guide-art/perlica.png",
   talulah: "/guide-art/talulah.png",
   minghe: "/guide-art/minghe.png",
