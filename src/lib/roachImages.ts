@@ -1,4 +1,5 @@
 import { pictureSleeping, pictureZzz, zzz, type PictureFit } from "./flipArt";
+import { hoodOnHorseUrl } from "./horseArt";
 import { bodyOpacityFor, roachDataUrl, shownAvatar, type RoachOpts } from "./roachSvg";
 import { GUIDE_AVATARS, type DrawnAvatar, type RoachColor } from "./types";
 
@@ -16,7 +17,11 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   amiya: "/guide-art/amiya.png",
   perlica: "/guide-art/perlica.png",
   talulah: "/guide-art/talulah.png",
+  minghe: "/guide-art/minghe.png",
 };
+
+/** What a picture that will not load gives way to, instead of the plain hood: 明河都尉 keeps his horse */
+const PICTURE_FALLBACKS: Partial<Record<DrawnAvatar, () => string>> = { minghe: hoodOnHorseUrl };
 
 /** Where each figure sits in its picture, measured from the PNGs, to lay it down asleep */
 const PICTURE_FIT: Partial<Record<DrawnAvatar, PictureFit>> = {
@@ -68,8 +73,9 @@ export async function drawRoach(color: RoachColor, given: RoachOpts, px: number)
   const ctx = canvas.getContext("2d")!;
   const opts = asDrawn(given);
   const picture = usesPicture(opts) ? AVATAR_PICTURES[shownAvatar(opts)] : undefined;
-  // a picture that will not load (the guide's can be switched off) leaves the hood in the roach's colour
-  const body = picture ? await loadImage(picture).catch(() => null) : null;
+  // a picture that will not load (the guide's can be switched off) leaves the hood in the roach's colour, or its own fallback
+  const fallback = PICTURE_FALLBACKS[shownAvatar(opts)];
+  const body = picture ? await loadImage(picture).catch(() => (fallback ? loadImage(fallback()) : null)) : null;
   if (!body) {
     ctx.drawImage(await loadImage(roachDataUrl(color, { ...opts, avatar: picture ? "hood" : opts.avatar })), 0, 0, px, px);
     return canvas;

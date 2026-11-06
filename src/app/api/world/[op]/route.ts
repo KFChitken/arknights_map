@@ -15,7 +15,7 @@ import * as safety from "@/lib/server/safety";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import type { LngLat } from "@/lib/types";
-import type { PlaceTarget } from "@/lib/world/types";
+import type { PlaceTarget, PretendWhat, RideTarget } from "@/lib/world/types";
 
 /** One endpoint per World method; the browser side is src/lib/world/server.ts. */
 export const POST = route(async (req, { params }: { params: Promise<{ op: string }> }) => {
@@ -64,6 +64,12 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "placeRoach":
       result = await world.placeRoach(agreed(), args[0] as PlaceTarget, args[1] as LngLat);
+      break;
+    case "rideMinghe":
+      result = await world.rideMinghe(agreed(), args[0] as RideTarget);
+      break;
+    case "dismountMinghe":
+      result = await world.dismountMinghe(uid());
       break;
     case "acceptPublicPlace":
       await acceptPublicPlace(agreed());
@@ -156,7 +162,8 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "pretend": {
       demoOnly();
-      const what = args[0] === "away" || args[0] === "left" || args[0] === "ask" || args[0] === "talulah" ? args[0] : "day";
+      const kinds: PretendWhat[] = ["day", "away", "left", "ask", "talulah", "mingheDay", "minghe"];
+      const what = kinds.find((k) => k === args[0]) ?? "day";
       await pretend(uid(), what, Number(args[1]) || 0);
       break;
     }

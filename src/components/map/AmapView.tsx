@@ -18,7 +18,8 @@ import {
 } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { belowGuide, besideMain, guideElement, guideShift, guideSize, updateGuide } from "./guideMarker";
+import { belowGuide, besideMain, guideBox, guideElement, guideShift, updateGuide } from "./guideMarker";
+import { amapTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
@@ -190,6 +191,8 @@ export default function AmapView(props: MapViewProps) {
   const styledRef = useRef<{ look: RoachStyle; urls: string[] }>({ look: props.look, urls: [] });
   const mineSeq = useRef(0);
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: AMapNS }>());
+  // 明河都尉's trail of stars
+  const trailRef = useRef<AMapNS[]>([]);
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const propsRef = useRef(props);
@@ -210,7 +213,6 @@ export default function AmapView(props: MapViewProps) {
       shown.delete(id);
     }
     const zoom = map.getZoom() - ZOOM_OFFSET;
-    const size = guideSize(zoom);
     const onScreen = (at: LngLat) => {
       const px = map.lngLatToContainer(toGcj(at));
       return { x: px.getX(), y: px.getY() };
@@ -232,11 +234,22 @@ export default function AmapView(props: MapViewProps) {
         shown.set(mark.id, g);
       } else g.marker.setPosition(toGcj(mark.at));
       updateGuide(g.el, zoom, mark);
-      const [sx, sy] = guideShift(mark, size);
+      const box = guideBox(mark, zoom);
+      const [sx, sy] = guideShift(mark, box);
       // she stays by her fire; the others step aside from your main roach
-      const [dx, dy] = mark.fire ? [0, 0] : besideMain(onScreen(mark.at), mainAt, size, belowGuide(zoom));
-      g.marker.setOffset(new AMap.Pixel(-size / 2 + sx + dx, -size / 2 + sy + dy));
+      const at = onScreen(mark.at);
+      const [dx, dy] = mark.fire ? [0, 0] : besideMain({ x: at.x + sx, y: at.y + sy }, mainAt, box, belowGuide(zoom));
+      g.marker.setOffset(new AMap.Pixel(-box / 2 + sx + dx, -box / 2 + sy + dy));
     }
+  };
+
+  const drawTrail = () => {
+    const AMap = amapRef.current;
+    const map = mapRef.current;
+    if (!AMap || !map) return;
+    if (trailRef.current.length) map.remove(trailRef.current);
+    trailRef.current = amapTrail(AMap, propsRef.current.trail);
+    if (trailRef.current.length) map.add(trailRef.current);
   };
 
   const placeMine = async () => {
@@ -348,6 +361,7 @@ export default function AmapView(props: MapViewProps) {
         crawlRef.current.start();
 
         placeMine();
+        drawTrail();
 
         syncGuides();
         map.on("zoomchange", syncGuides);
@@ -387,6 +401,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current = [];
       heatRef.current = null;
       mineRef.current = [];
+      trailRef.current = [];
       guideMarkers.clear();
       map?.destroy();
       mapRef.current = null;
@@ -429,6 +444,9 @@ export default function AmapView(props: MapViewProps) {
   const main = props.mine.find((r) => r.slot === 0);
   const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;
   useEffect(syncGuides, [guidesKey]);
+
+  const trailKey = JSON.stringify(props.trail);
+  useEffect(drawTrail, [trailKey]);
 
   useEffect(() => {
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");

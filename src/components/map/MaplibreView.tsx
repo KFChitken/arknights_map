@@ -21,7 +21,8 @@ import {
 } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
-import { belowGuide, besideMain, guideElement, guideShift, guideSize, updateGuide } from "./guideMarker";
+import { belowGuide, besideMain, guideBox, guideElement, guideShift, updateGuide } from "./guideMarker";
+import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -299,10 +300,11 @@ export default function MaplibreView(props: MapViewProps) {
         shown.set(mark.id, g);
       } else g.marker.setLngLat([mark.at.lng, mark.at.lat]);
       updateGuide(g.el, zoom, mark);
-      const size = guideSize(zoom);
-      const [sx, sy] = guideShift(mark, size);
+      const box = guideBox(mark, zoom);
+      const [sx, sy] = guideShift(mark, box);
       // she stays by her fire; the others step aside from your main roach
-      const [dx, dy] = mark.fire ? [0, 0] : besideMain(map.project([mark.at.lng, mark.at.lat]), mainAt, size, belowGuide(zoom));
+      const at = map.project([mark.at.lng, mark.at.lat]);
+      const [dx, dy] = mark.fire ? [0, 0] : besideMain({ x: at.x + sx, y: at.y + sy }, mainAt, box, belowGuide(zoom));
       g.marker.setOffset([sx + dx, sy + dy]);
     }
   };
@@ -401,6 +403,8 @@ export default function MaplibreView(props: MapViewProps) {
         map.addSource("cover", { type: "geojson", data: cover });
         map.addLayer({ id: "cover", type: "fill", source: "cover", paint: { "fill-color": "#ede9e1" } });
       }
+      // 明河都尉's trail of stars, under all the roaches
+      addMaplibreTrail(map, propsRef.current.trail);
       await ensureImages(map, neededImages(propsRef.current));
       const { roaches, mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
       map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
@@ -519,6 +523,12 @@ export default function MaplibreView(props: MapViewProps) {
   }, []);
 
   useEffect(sync, [props.roaches, props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
+
+  const trailKey = JSON.stringify(props.trail);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current) setMaplibreTrail(map, propsRef.current.trail);
+  }, [trailKey]);
 
   const main = props.mine.find((r) => r.slot === 0);
   const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;

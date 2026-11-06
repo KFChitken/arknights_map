@@ -27,6 +27,9 @@ export default function IdentitySheet({
   onAskAgain,
   onFakeFire,
   onForgetTalulah,
+  onMingheDay,
+  onFakeRiders,
+  onForgetMinghe,
   onClose,
 }: {
   identities: Identity[];
@@ -42,6 +45,12 @@ export default function IdentitySheet({
   onFakeFire: (n: number) => void;
   /** 清掉我和塔露拉的记录, then reload */
   onForgetTalulah: () => void;
+  /** 明河快进一天: his journey (here and on the server) a day on, his riders moved along, then reload */
+  onMingheDay: () => void;
+  /** 假装有 N 只跟着他: drawn in this page only, to see the queue */
+  onFakeRiders: (n: number) => void;
+  /** 清掉我和明河的记录, then reload */
+  onForgetMinghe: () => void;
   onClose: () => void;
 }) {
   return (
@@ -117,6 +126,23 @@ export default function IdentitySheet({
         ))}
         <button className="pill" onClick={onForgetTalulah}>
           清掉我和塔露拉的记录
+        </button>
+      </div>
+      <h3>明河都尉</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        「快进一天」：他到下一站，跟着他的克隆体也跟过去（满 7 站的回家），重启开发服务器后回到今天；「假装有 N 只」只在这个网页里画，看队伍排不排得开，刷新就恢复；「清掉记录」以后可以重新试触须之交、随行和介绍卡。
+      </p>
+      <div className="row-actions" style={{ flexWrap: "wrap" }}>
+        <button className="pill" onClick={onMingheDay}>
+          明河快进一天
+        </button>
+        {[10, 50].map((n) => (
+          <button key={n} className="pill" onClick={() => onFakeRiders(n)}>
+            假装有 {n} 只跟着他
+          </button>
+        ))}
+        <button className="pill" onClick={onForgetMinghe}>
+          清掉我和明河的记录
         </button>
       </div>
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>

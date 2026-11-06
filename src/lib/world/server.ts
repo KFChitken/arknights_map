@@ -12,11 +12,14 @@ import {
   type Identity,
   type InboxItem,
   type Me,
+  type MingheItem,
   type OwnRoach,
   type PerlicaItem,
   type PlaceTarget,
   type PlayerId,
+  type PretendWhat,
   type Radar,
+  type RideTarget,
   type RoachFeedUpdate,
   type TouchResult,
   type World,
@@ -74,6 +77,8 @@ export class ServerWorld implements World {
   saveProfile = (p: Profile) => this.call<Profile>("saveProfile", p);
   placeRoach = (target: PlaceTarget, at: LngLat) => this.call<OwnRoach[]>("placeRoach", target, at);
   acceptPublicPlace = () => this.call<void>("acceptPublicPlace");
+  rideMinghe = (target: RideTarget) => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("rideMinghe", target);
+  dismountMinghe = () => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("dismountMinghe");
   drink = () => this.call<{ until: number }>("drink");
   sober = () => this.call<void>("sober");
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);
@@ -98,5 +103,5 @@ export class ServerWorld implements World {
   identities = () => this.call<Identity[]>("identities");
   become = (id: PlayerId) => this.call<void>("become", id);
   reset = () => this.call<void>("reset");
-  pretend = (what: "day" | "away" | "left" | "ask" | "talulah", seconds?: number) => this.call<void>("pretend", what, seconds);
+  pretend = (what: PretendWhat, seconds?: number) => this.call<void>("pretend", what, seconds);
 }

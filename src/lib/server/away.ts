@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { AWAY_DAYS } from "../badges";
-import { beijingDate, beijingMidnight } from "../beijing";
+import { beijingDate, daysBetween } from "../beijing";
 import { db } from "./db";
 import { nudge } from "./live";
 import { roachesChanged } from "./roachFeed";
@@ -16,7 +16,6 @@ import { pokes, roaches, users, type UserRow } from "./schema";
  * The same batch tells pokers 「醒啦」.
  */
 
-const DAY_MS = 86_400_000;
 /** The first day visits were recorded (users.last_seen_on) */
 const VISITS_SINCE = "2026-10-28";
 
@@ -29,8 +28,6 @@ export function lastVisitOn(u: Pick<UserRow, "lastSeenOn" | "createdAt">) {
   const signedUpOn = beijingDate(u.createdAt.getTime());
   return signedUpOn > VISITS_SINCE ? signedUpOn : VISITS_SINCE;
 }
-
-export const daysBetween = (from: string, to: string) => Math.round((beijingMidnight(to) - beijingMidnight(from)) / DAY_MS);
 
 /** A fixed 0–3 more days per player, so the day a roach flips does not give away the day its owner left. */
 export const awayExtraDays = (userId: string) => createHash("sha256").update(userId).digest()[0] % 4;

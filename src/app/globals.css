@@ -232,6 +232,46 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 @media (prefers-reduced-motion: reduce) {
   .guide-fire .flame, .guide-fire .spark { animation: none; }
 }
+/* 明河都尉 (src/lib/minghe.ts) riding 怒骊: his picture, or a white-lit hood on the horse drawn in code, facing the way he goes */
+.minghe-flip, .guide-marker img.minghe-pic, .minghe-plain, .minghe-sparks { position: absolute; inset: 0; width: 100%; height: 100%; }
+.minghe-plain { display: none; }
+.minghe-marker.plain .minghe-plain { display: block; }
+.minghe-marker.plain :is(img.minghe-pic, .minghe-sparks) { display: none; }
+.minghe-plain svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.minghe-sparks { overflow: visible; }
+.minghe-marker.left .minghe-flip { transform: scaleX(-1); }
+.minghe-ground { position: absolute; left: 4%; bottom: -3%; width: 92%; height: 11%; overflow: visible; }
+.minghe-ground .mh-ground { fill: #000; opacity: 0.18; }
+.minghe-marker.friend .mh-ground { fill: #ff7eb6; opacity: 1; stroke: #0d0e10; stroke-width: 1; }
+.minghe-heart { display: none; position: absolute; right: 0; top: 2%; width: 20%; height: 20%; overflow: visible; }
+.minghe-marker.friend .minghe-heart { display: block; }
+.minghe-plain .mh-tail { transform-box: view-box; transform-origin: 26px 33px; animation: minghe-tail 7s ease-in-out infinite; }
+.minghe-marker .mh-bolt { opacity: 0; animation: minghe-bolt 5.3s linear infinite; }
+.minghe-marker .mh-bolt.b2 { animation-duration: 6.1s; animation-delay: -2.6s; }
+.minghe-marker .mh-bolt.b3 { animation-duration: 7.3s; animation-delay: -4.4s; }
+@keyframes minghe-tail {
+  0%, 82%, 100% { transform: rotate(0deg); }
+  86% { transform: rotate(12deg); }
+  90% { transform: rotate(-7deg); }
+  94% { transform: rotate(9deg); }
+}
+@keyframes minghe-bolt {
+  0%, 88%, 100% { opacity: 0; }
+  89% { opacity: 1; }
+  91% { opacity: 0.15; }
+  92.5% { opacity: 1; }
+  95% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .minghe-plain .mh-tail, .minghe-marker .mh-bolt { animation: none; }
+}
+.minghe-route { margin: 8px 0 0; }
+.minghe-route summary { cursor: pointer; font-weight: 700; }
+.minghe-route ol { margin: 6px 0 0; padding: 0; list-style: none; max-height: 220px; overflow-y: auto; }
+.minghe-route li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 2px; border-bottom: 1px solid #eef0f3; font-size: 13px; }
+.minghe-route li.past { color: var(--muted); }
+.minghe-route li.today { font-weight: 800; color: var(--ink); background: #eef4ff; border-radius: 6px; }
+.minghe-trip { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 .fire-note { margin: 2px 0 0; }
 .fire-send { margin-top: 10px; }
 .fire-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-weight: 700; }

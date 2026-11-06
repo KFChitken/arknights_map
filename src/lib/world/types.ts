@@ -76,15 +76,28 @@ export interface World {
   become(id: PlayerId): Promise<void>;
   reset(): Promise<void>;
   /**
-   * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
-   * seconds (佩丽卡监督 says how long), 让佩丽卡重新问一次 (ask), or 清掉我和塔露拉的记录 (talulah)
+   * 派一只克隆体跟他走: a new clone (a placement) or one already out (a move) joins
+   * 明河都尉's riders at today's station. Returns the owner's roaches afterwards and his answer.
    */
-  pretend(what: "day" | "away" | "left" | "ask" | "talulah", seconds?: number): Promise<void>;
+  rideMinghe(target: RideTarget): Promise<{ roaches: OwnRoach[]; item: MingheItem }>;
+  /** 在这一站下马: the riding clone stays where it is; his answer */
+  dismountMinghe(): Promise<{ roaches: OwnRoach[]; item: MingheItem }>;
+  /**
+   * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
+   * seconds (佩丽卡监督 says how long), 让佩丽卡重新问一次 (ask), 清掉我和塔露拉的记录 (talulah),
+   * 明河快进一天 (mingheDay) or 清掉我和明河的记录 (minghe)
+   */
+  pretend(what: PretendWhat, seconds?: number): Promise<void>;
 }
+
+export type PretendWhat = "day" | "away" | "left" | "ask" | "talulah" | "mingheDay" | "minghe";
 
 export type PlayerId = string;
 
 export type PlaceTarget = { kind: "main" } | { kind: "clone" } | { kind: "move"; roachId: string };
+
+/** Who rides with 明河都尉: a new clone, or a clone already out; never the main roach */
+export type RideTarget = Exclude<PlaceTarget, { kind: "main" }>;
 
 /** One of your own roaches at its true position. publicId is how it appears in the shared feed. Only its owner ever gets this. */
 export type OwnRoach = LngLat & { id: string; slot: number; publicId: string };
@@ -99,6 +112,8 @@ export type MapRoach = LngLat & {
   bot?: true;
   /** A main roach lying belly up asleep; never says why (drunk, or away a long time) */
   asleep?: true;
+  /** A clone riding along with 明河都尉 (src/lib/minghe.ts), for counting them; never whose */
+  ride?: true;
 };
 
 /**
@@ -181,6 +196,11 @@ export type Me = {
   perlica: { friend: boolean; timer: "on" | "off" | null };
   /** 塔露拉干员: whether you are 触须之交, and whether a roach of yours ever sat by her fire */
   talulah: { friend: boolean; visited: boolean };
+  /**
+   * 明河都尉: whether you are 触须之交, and your clone riding with him, if any (stops: the
+   * how-manieth station it is at, 1–7). dayShift: days added by 明河快进一天, 0 but in development.
+   */
+  minghe: { friend: boolean; riding: { roachId: string; since: number; stops: number } | null; dayShift: number };
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */
@@ -229,7 +249,26 @@ export type InboxItem =
   /** 阿米娅向导 touching you: back after your touch, or her daily greeting (greet) */
   | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean }
   | PerlicaItem
-  | TalulahItem;
+  | TalulahItem
+  | MingheItem;
+
+/**
+ * 明河都尉 answering your touch ("touch"; bold: how you touched him), as you became
+ * 触须之交 ("friend"), as your clone got on ("ride") or off ("dismount") at a station
+ * (stop, 0–29), or seeing it home after 7 stations ("trip": from stop, touched times on the way).
+ */
+export type MingheItem = {
+  kind: "minghe";
+  id: string;
+  at: number;
+  seen: boolean;
+  line: "touch" | "friend" | "ride" | "dismount" | "trip";
+  bold: boolean;
+  stop: number | null;
+  times: number | null;
+  replied: boolean;
+  ignored: boolean;
+};
 
 /**
  * 塔露拉干员 answering your touch ("touch"; bold: how you touched her, which picks

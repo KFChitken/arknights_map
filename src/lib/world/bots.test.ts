@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { distanceKm } from "../geo";
+import { MINGHE_BOT_FREE_KM, ROUTE } from "../minghe";
 import { FIRE_AT, FIRE_BOT_FREE_KM } from "../talulah";
 import { BOT_FREE_KM, botRoaches, isBotId } from "./bots";
 
@@ -17,5 +18,7 @@ describe("show roaches", () => {
     expect(bots.filter((b) => distanceKm(b, { lng: 116.4, lat: 39.9 }) <= BOT_FREE_KM)).toEqual([]);
     // and none by 塔露拉干员's fire, where they would look like players sitting by it
     expect(botRoaches(5000).filter((b) => distanceKm(b, FIRE_AT) <= FIRE_BOT_FREE_KM)).toEqual([]);
+    // nor at 明河都尉's stations, where they would look like his riders
+    expect(botRoaches(5000).filter((b) => ROUTE.some((s) => distanceKm(b, s.at) <= MINGHE_BOT_FREE_KM))).toEqual([]);
   });
 });

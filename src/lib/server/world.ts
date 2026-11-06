@@ -5,7 +5,7 @@ import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
 import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
-import { beijingDate, beijingMidnight } from "../beijing";
+import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
 import { nextMorning } from "../morning";
 import { checkSupport } from "../support";
@@ -27,6 +27,7 @@ import {
   TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
 } from "../rules";
+import { queueSpots, stopOf } from "../minghe";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import { isBotId } from "../world/bots";
 import { passerbyMoves, type Move } from "../world/cast";
@@ -48,10 +49,12 @@ import {
   type Homecoming,
   type InboxItem,
   type Me,
+  type MingheItem,
   type OwnRoach,
   type PlaceTarget,
   type Radar,
   type RadarScan,
+  type RideTarget,
   type TouchResult,
 } from "../world/types";
 import { amiyaFriend, amiyaInbox, greetAmiya, ignoreAmiya, replyAmiya, seeAmiya, touchAmiya, unfriendAmiya } from "./amiya";
@@ -66,6 +69,20 @@ import {
   unfriendPerlica,
 } from "./perlica";
 import {
+  ignoreMinghe,
+  mingheFriend,
+  mingheInbox,
+  mingheOf,
+  mingheToday,
+  OFF_HORSE,
+  replyMinghe,
+  sayAboutRide,
+  seeMinghe,
+  standingNear,
+  touchMinghe,
+  unfriendMinghe,
+} from "./minghe";
+import {
   arrivedAt,
   birthdayDeclared,
   ignoreTalulah,
@@ -78,11 +95,12 @@ import {
   unfriendTalulah,
 } from "./talulah";
 import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
-import { daysBetween, lastVisitOn } from "./away";
+import { lastVisitOn } from "./away";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
+import type { Exec } from "./guides";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { allow } from "./rateLimit";
@@ -104,7 +122,7 @@ import {
 } from "./schema";
 
 /**
- * What the world asks of each guide (src/lib/guides.ts), each in her own module.
+ * What the world asks of each guide (src/lib/guides.ts), each in their own module.
  * offsetMin is the device's time zone, which only 佩丽卡监督 uses (her count of the day).
  */
 type GuideWorld = {
@@ -144,6 +162,15 @@ const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
     inbox: talulahInbox,
     friend: (u) => (u.talulahFriendSince ? talulahFriend(u.talulahFriendSince) : null),
     unfriend: unfriendTalulah,
+  },
+  minghe: {
+    touch: (userId, bold) => touchMinghe(userId, bold),
+    reply: (userId, itemId, bold) => replyMinghe(userId, itemId, bold),
+    ignore: ignoreMinghe,
+    see: seeMinghe,
+    inbox: mingheInbox,
+    friend: (u) => (u.mingheFriendSince ? mingheFriend(u.mingheFriendSince) : null),
+    unfriend: unfriendMinghe,
   },
 };
 /** In the order they are listed */
@@ -317,6 +344,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     amiya: { friend: Boolean(u.amiyaFriendSince), greeting: await greetAmiya(u, offsetMin) },
     perlica: perlicaOf(u),
     talulah: talulahOf(u),
+    minghe: await mingheOf(u),
   };
 }
 
@@ -367,8 +395,12 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
   return profile;
 }
 
-export async function placeRoach(userId: string, target: PlaceTarget, spot: LngLat): Promise<OwnRoach[]> {
-  const at = checkSpot(spot);
+/**
+ * Whether a roach may go down (or move) for this target: the slot it takes, and the
+ * roach it moves if any. Agreeing that spots are public comes before a new one, and
+ * new roaches and moves are rationed per day.
+ */
+async function checkPlacement(userId: string, target: PlaceTarget) {
   const u = await userById(userId);
   if (!u) throw new WorldError("找不到这个账号了。");
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
@@ -400,26 +432,95 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   if (!existing && (await recentMoves(userId, "place")) >= PLACEMENTS_PER_DAY) {
     throw new WorldError("今天放下的蟑螂太多了，明天再放吧。");
   }
-  // A fresh public id on every move, so nobody can follow a roach between spots
-  const values = { lng: at.lng, lat: at.lat, publicId: randomUUID(), placedAt: new Date() };
-  await db.transaction(async (tx) => {
-    if (existing) await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
-    else await tx.insert(roaches).values({ userId, slot, ...values });
-    // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
-    if (slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
-    await tx.insert(moves).values({
-      userId,
-      slot,
-      fromLng: existing?.lng ?? null,
-      fromLat: existing?.lat ?? null,
-      toLng: at.lng,
-      toLat: at.lat,
-    });
+  return { slot, existing };
+}
+
+type RideColumns = Pick<RoachRow, "rideSince" | "rideStartDay" | "rideDay" | "rideFromLng" | "rideFromLat">;
+
+/**
+ * Put the roach down (or move it) with the move the radar reads. A fresh public id on
+ * every move, so nobody can follow a roach between spots. ride: whether it rides with
+ * 明河都尉 from here; any other move of a riding clone gets it off quietly.
+ */
+async function writePlacement(
+  tx: Exec,
+  userId: string,
+  { slot, existing }: { slot: number; existing?: RoachRow },
+  at: LngLat,
+  ride: RideColumns = OFF_HORSE,
+) {
+  const values = { lng: at.lng, lat: at.lat, publicId: randomUUID(), placedAt: new Date(), ...ride };
+  if (existing) await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
+  else await tx.insert(roaches).values({ userId, slot, ...values });
+  // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
+  if (slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
+  await tx.insert(moves).values({
+    userId,
+    slot,
+    fromLng: existing?.lng ?? null,
+    fromLat: existing?.lat ?? null,
+    toLng: at.lng,
+    toLat: at.lat,
   });
+}
+
+export async function placeRoach(userId: string, target: PlaceTarget, spot: LngLat): Promise<OwnRoach[]> {
+  const at = checkSpot(spot);
+  const placement = await checkPlacement(userId, target);
+  await db.transaction((tx) => writePlacement(tx, userId, placement, at));
   roachesChanged();
   // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
   await arrivedAt(userId, at);
   return ownRoaches(userId);
+}
+
+const riderOf = async (exec: Exec, userId: string) =>
+  (
+    await exec
+      .select()
+      .from(roaches)
+      .where(and(eq(roaches.userId, userId), isNotNull(roaches.rideSince)))
+      .limit(1)
+  )[0];
+
+/**
+ * 派一只克隆体跟他走: a new clone (a placement), or one already out (a move), takes the
+ * next free spot in 明河都尉's queue at today's station and rides with him for 7 stations
+ * (the 04:00 batch, src/lib/server/minghe.ts). One clone at a time, never the main roach.
+ */
+export async function rideMinghe(userId: string, target: RideTarget): Promise<{ roaches: OwnRoach[]; item: MingheItem }> {
+  if (target?.kind !== "clone" && target?.kind !== "move") throw new WorldError("派一只克隆体跟他走吧。");
+  const placement = await checkPlacement(userId, target);
+  if (placement.slot === 0) throw new WorldError("本体不能跟他走，派一只克隆体吧。");
+  const day = mingheToday();
+  const item = await db.transaction(async (tx) => {
+    // one ride at a time across the site, so two clones never take the same spot, nor one player two
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('minghe-queue'))`);
+    if (await riderOf(tx, userId)) throw new WorldError("你已经有一只克隆体在跟明河走了。");
+    const [spot] = queueSpots(day, 1, await standingNear(tx, day, placement.existing ? [placement.existing.id] : []));
+    await writePlacement(tx, userId, placement, spot, {
+      rideSince: new Date(),
+      rideStartDay: day,
+      rideDay: day,
+      rideFromLng: placement.existing?.lng ?? null,
+      rideFromLat: placement.existing?.lat ?? null,
+    });
+    return sayAboutRide(tx, userId, "ride", stopOf(day));
+  });
+  roachesChanged();
+  return { roaches: await ownRoaches(userId), item };
+}
+
+/** 在这一站下马: the clone stays where it stands, off his horse, and he says so. */
+export async function dismountMinghe(userId: string): Promise<{ roaches: OwnRoach[]; item: MingheItem }> {
+  const item = await db.transaction(async (tx) => {
+    const rider = await riderOf(tx, userId);
+    if (!rider) throw new WorldError("你没有克隆体在跟明河走。");
+    await tx.update(roaches).set(OFF_HORSE).where(eq(roaches.id, rider.id));
+    return sayAboutRide(tx, userId, "dismount", stopOf(rider.rideDay ?? mingheToday()));
+  });
+  roachesChanged();
+  return { roaches: await ownRoaches(userId), item };
 }
 
 /** Taking back the main roach takes back the clones too. */
@@ -592,7 +693,7 @@ async function lastPoke(from: string, to: string) {
  */
 export async function poke(userId: string, publicId: string): Promise<{ againAt: number }> {
   const guide = guideById(String(publicId));
-  if (guide) throw new WorldError(`${guide.name}一直醒着，碰碰她吧。`);
+  if (guide) throw new WorldError(`${guide.name}一直醒着，碰碰${guide.pronoun}吧。`);
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，戳不到 TA。");
   if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
   const [row] = await db

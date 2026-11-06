@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
 import { FIRE_AT, TALULAH_ID } from "../talulah";
+import { metresApart, MINGHE_ID, queueSpot, stationOf, stopOf } from "../minghe";
 import type { Declaration } from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
@@ -21,6 +22,7 @@ import { greetAmiya } from "./amiya";
 import { deviceDay } from "./guides";
 import * as perlica from "./perlica";
 import * as talulah from "./talulah";
+import * as minghe from "./minghe";
 import { awayExtraDays, flipTheAway } from "./away";
 import { acceptPublicPlace, agreeAgain } from "./consent";
 import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
@@ -40,6 +42,7 @@ import {
   deliveries,
   friendCuts,
   friendships,
+  mingheTouches,
   moves,
   nameWords,
   perlicaTouches,
@@ -153,8 +156,10 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}`,
   );
+  // no 明河快进一天 left over
+  (globalThis as { __mingheShift?: number }).__mingheShift = 0;
   forgetNameWords();
   await seedDemo();
   me = await signUp("me@example.com");
@@ -827,6 +832,248 @@ describe("server world", () => {
     await rewindScans(me.id);
     expect(await me.radar()).toMatchObject({ roaches: before.roaches, players: before.players, friendsNearby: 0 });
     expect(JSON.stringify(await allRoaches())).not.toMatch(/talulah/i);
+  });
+
+  describe("明河都尉", () => {
+    const DAY_MS = 86_400_000;
+    const today = () => minghe.mingheToday();
+    const ridersNow = async () =>
+      (await db.select().from(roaches).where(isNotNull(roaches.rideSince))).sort(
+        (x, y) => x.rideSince!.getTime() - y.rideSince!.getTime(),
+      );
+
+    it("lets anyone touch him, who answers the same way and is 触须之交 from the first bold touch, apart from everything between players", async () => {
+      expect(await me.touch(MINGHE_ID, false)).toMatchObject({ newFriend: null, guide: { id: "minghe", bold: false, kind: "touch" } });
+      const first = await me.touch(MINGHE_ID, true);
+      expect(first).toMatchObject({ newFriend: "明河都尉", guide: { id: "minghe", bold: true, kind: "friend" } });
+      expect(await me.touch(MINGHE_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch" } });
+      const rows = await db.select().from(mingheTouches).where(eq(mingheTouches.userId, me.id));
+      expect(rows.filter((r) => r.direction === "to_minghe").map((r) => r.bold).sort()).toEqual([false, true, true]);
+      expect(rows.filter((r) => r.direction === "from_minghe").map((r) => `${r.kind}:${r.bold}`).sort()).toEqual([
+        "friend:true",
+        "touch:false",
+        "touch:true",
+      ]);
+      const inbox = await me.inbox();
+      expect(inbox.find((i) => i.id === first.guide!.itemId)).toMatchObject({ kind: "minghe", line: "friend", seen: false, stop: null });
+      expect(inbox.some((i) => i.kind === "touch")).toBe(false);
+      expect(await db.select().from(touches)).toEqual([]);
+      expect(await db.select().from(friendships)).toEqual([]);
+      expect((await userRow(me.id)).friendsEver).toBe(0);
+      expect(await badgeIds(me)).not.toContain("trainee");
+      expect(await badgeIds(me)).not.toContain("farwhisker");
+
+      // fourth among the 触须之交, where he is today; nothing to block, report or poke
+      await me.touch(TALULAH_ID, true);
+      await me.touch(PERLICA_ID, true);
+      await me.touch(AMIYA_ID, true);
+      const list = await me.friends();
+      expect(list.map((f) => f.id)).toEqual([AMIYA_ID, PERLICA_ID, TALULAH_ID, MINGHE_ID]);
+      expect(list[3]).toMatchObject({ profile: { displayName: "明河都尉" }, history: [], pokeAgainAt: null });
+      expect(list[3].roaches).toEqual([
+        expect.objectContaining({ id: MINGHE_ID, friend: true, guide: true, ...stationOf(today()).at }),
+      ]);
+      await expect(me.block(`friend:${MINGHE_ID}`)).rejects.toThrow("明河都尉不是真人，不用拉黑。");
+      await expect(me.report(first.guide!.itemId, "spam")).rejects.toThrow("不是真人");
+      await expect(world.poke(me.id, MINGHE_ID)).rejects.toThrow("明河都尉一直醒着，碰碰他吧。");
+      expect((await me.me()).minghe).toEqual({ friend: true, riding: null, dayShift: 0 });
+
+      // his own 20 a day, apart from the other guides' and the 60 between players
+      for (let i = 3; i < 20; i++) await me.touch(MINGHE_ID, false);
+      await expect(me.touch(MINGHE_ID, false)).rejects.toThrow("今天跟明河碰得够多啦，明天再来吧。");
+      await expect(me.touch(TALULAH_ID, false)).resolves.toBeTruthy();
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+      expect((await me.inbox()).filter((i) => i.kind === "minghe")).toHaveLength(5);
+
+      // 解除: he rides on; the next bold touch makes them 触须之交 again
+      await me.unfriend(MINGHE_ID);
+      expect((await me.friends()).map((f) => f.id)).toEqual([AMIYA_ID, PERLICA_ID, TALULAH_ID]);
+      await db.delete(mingheTouches).where(eq(mingheTouches.userId, me.id));
+      expect((await me.touch(MINGHE_ID, true)).newFriend).toBe("明河都尉");
+    });
+
+    it("lets you answer or crawl away from his once each, and only your own", async () => {
+      const item = (await me.touch(MINGHE_ID, false)).guide!.itemId;
+      expect(item.startsWith("m:")).toBe(true);
+      const other = await signUp("other@example.com");
+      await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
+      await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
+      await other.markSeen([item]);
+      expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: false });
+      await expect(me.reply(`h:${item.slice(2)}`, false)).rejects.toThrow("找不到这条消息了");
+
+      const back = await me.reply(item, true);
+      expect(back).toMatchObject({ newFriend: "明河都尉", guide: { id: "minghe", kind: "friend" } });
+      await expect(me.reply(item, false)).rejects.toThrow("已经碰过 TA 了");
+      await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
+      await me.ignore(back.guide!.itemId);
+      expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ ignored: true, seen: true });
+      await expect(me.reply(back.guide!.itemId, false)).rejects.toThrow("默默爬走");
+      // answering him counts towards his 20 like any touch
+      const mine = await db
+        .select()
+        .from(mingheTouches)
+        .where(and(eq(mingheTouches.userId, me.id), eq(mingheTouches.direction, "to_minghe")));
+      expect(mine).toHaveLength(2);
+    });
+
+    it("sends a clone to ride with him, a new one as a placement or one already out as a move, into today's queue", async () => {
+      const day = today();
+      const [main] = await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await expect(world.rideMinghe(me.id, { kind: "move", roachId: main.id })).rejects.toThrow("本体不能跟他走");
+      await expect(world.rideMinghe(me.id, { kind: "main" } as never)).rejects.toThrow("派一只克隆体跟他走吧");
+      const movesBefore = (await db.select().from(moves)).length;
+      const { roaches: mine, item } = await world.rideMinghe(me.id, { kind: "clone" });
+      expect(item).toMatchObject({ kind: "minghe", line: "ride", stop: stopOf(day), seen: false });
+      const rider = mine.find((r) => r.slot === 1)!;
+      expect(metresApart(rider, queueSpot(day, 0))).toBeLessThan(0.01);
+      expect((await db.select().from(moves)).length).toBe(movesBefore + 1);
+      expect((await me.me()).minghe.riding).toEqual({ roachId: rider.id, since: expect.any(Number), stops: 1 });
+      // everyone sees a clone riding along, never whose
+      expect((await allRoaches()).filter((r) => r.ride)).toEqual([expect.objectContaining({ id: rider.publicId, clone: true })]);
+      await expect(world.rideMinghe(me.id, { kind: "clone" })).rejects.toThrow("你已经有一只克隆体在跟明河走了。");
+
+      // all three clones out: one of them moves over, which counts as a move, and he keeps where it stood
+      const other = await signUp("other@example.com");
+      await other.placeRoach({ kind: "main" }, TOKYO);
+      for (let i = 1; i <= 3; i++) await other.placeRoach({ kind: "clone" }, { lng: TOKYO.lng + 0.01 * i, lat: TOKYO.lat });
+      const out = (await other.me()).roaches.find((r) => r.slot === 2)!;
+      const left = (await other.me()).movesLeft;
+      const moved = (await world.rideMinghe(other.id, { kind: "move", roachId: out.id })).roaches.find((r) => r.id === out.id)!;
+      expect(metresApart(moved, queueSpot(day, 1))).toBeLessThan(0.01);
+      expect(moved.publicId).not.toBe(out.publicId);
+      expect((await other.me()).movesLeft).toBe(left - 1);
+      const [row] = await db.select().from(roaches).where(eq(roaches.id, moved.id));
+      expect(row).toMatchObject({ rideStartDay: day, rideDay: day, rideFromLng: out.lng, rideFromLat: out.lat });
+    });
+
+    it("moves his riders to the next station at 04:00, once a day, and sees them home after 7", async () => {
+      const day = today();
+      const now = Date.now();
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      const fresh = (await world.rideMinghe(me.id, { kind: "clone" })).roaches.find((r) => r.slot === 1)!;
+      const other = await signUp("other@example.com");
+      await other.placeRoach({ kind: "main" }, TOKYO);
+      const stay = (await other.placeRoach({ kind: "clone" }, { lng: TOKYO.lng + 0.01, lat: TOKYO.lat })).find((r) => r.slot === 1)!;
+      // a touch before it rides is no part of the trip
+      const toucher = await signUp("toucher@example.com");
+      await toucher.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await toucher.touch(stay.publicId, false);
+      const ridden = (await world.rideMinghe(other.id, { kind: "move", roachId: stay.id })).roaches.find((r) => r.id === stay.id)!;
+      await toucher.touch(ridden.publicId, true);
+      await toucher.touch(fresh.publicId, false);
+      const moveRows = (await db.select().from(moves)).length;
+      const left = (await other.me()).movesLeft;
+
+      // the next day: both to the next station, in the order they got on, under new public ids
+      expect(await minghe.moveMingheRiders(now + DAY_MS)).toEqual({ moved: 2, home: 0 });
+      let [a, b] = await ridersNow();
+      expect([a.id, b.id]).toEqual([fresh.id, stay.id]);
+      expect(metresApart(a, queueSpot(day + 1, 0))).toBeLessThan(0.01);
+      expect(metresApart(b, queueSpot(day + 1, 1))).toBeLessThan(0.01);
+      expect([a.rideDay, b.rideDay]).toEqual([day + 1, day + 1]);
+      expect(a.publicId).not.toBe(fresh.publicId);
+      // not the players' own moves: no rows for the radar or 欢迎回家, nothing off the day's three
+      expect((await db.select().from(moves)).length).toBe(moveRows);
+      expect((await other.me()).movesLeft).toBe(left);
+      expect((await me.me()).minghe.riding).toMatchObject({ roachId: fresh.id, stops: 2 });
+      // again the same day: nothing moves
+      expect(await minghe.moveMingheRiders(now + DAY_MS)).toEqual({ moved: 0, home: 0 });
+      expect((await ridersNow())[0].publicId).toBe(a.publicId);
+
+      // three days without it: straight to that day's station
+      await minghe.moveMingheRiders(now + 4 * DAY_MS);
+      [a, b] = await ridersNow();
+      expect(a.rideDay).toBe(day + 4);
+      expect(metresApart(a, queueSpot(day + 4, 0))).toBeLessThan(0.01);
+      await toucher.touch(a.publicId, true);
+
+      // 7 stations on: the new clone is taken back, the moved one goes back where it stood, and he says how it went
+      expect(await minghe.moveMingheRiders(now + 7 * DAY_MS)).toEqual({ moved: 0, home: 2 });
+      expect(await ridersNow()).toEqual([]);
+      expect((await me.me()).roaches.map((r) => r.slot)).toEqual([0]);
+      const [back] = await db.select().from(roaches).where(eq(roaches.id, stay.id));
+      expect(back).toMatchObject({ lng: stay.lng, lat: stay.lat, rideSince: null, rideStartDay: null, rideDay: null, rideFromLng: null });
+      expect((await me.inbox()).find((i) => i.kind === "minghe" && i.line === "trip")).toMatchObject({
+        stop: stopOf(day),
+        times: 2,
+        seen: false,
+      });
+      expect((await other.inbox()).find((i) => i.kind === "minghe" && i.line === "trip")).toMatchObject({ times: 1 });
+    });
+
+    it("lets a rider get off at a station, where it stays, and quietly when moved or taken back by hand", async () => {
+      const day = today();
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await expect(world.dismountMinghe(me.id)).rejects.toThrow("你没有克隆体在跟明河走。");
+      const rider = (await world.rideMinghe(me.id, { kind: "clone" })).roaches.find((r) => r.slot === 1)!;
+      const { item, roaches: after } = await world.dismountMinghe(me.id);
+      expect(item).toMatchObject({ kind: "minghe", line: "dismount", stop: stopOf(day) });
+      expect(after.find((r) => r.id === rider.id)).toMatchObject({ lng: rider.lng, lat: rider.lat });
+      expect((await me.me()).minghe.riding).toBeNull();
+      expect((await allRoaches()).some((r) => r.ride)).toBe(false);
+      expect(await minghe.moveMingheRiders(Date.now() + DAY_MS)).toEqual({ moved: 0, home: 0 });
+
+      // moved by hand: off without a word
+      await world.rideMinghe(me.id, { kind: "move", roachId: rider.id });
+      await me.placeRoach({ kind: "move", roachId: rider.id }, TOKYO);
+      expect((await me.me()).minghe.riding).toBeNull();
+      // taken back: gone with it
+      const again = (await world.rideMinghe(me.id, { kind: "clone" })).roaches.find((r) => r.slot === 2)!;
+      await me.removeRoach(again.id);
+      expect((await me.me()).minghe.riding).toBeNull();
+      const lines = (await db.select().from(mingheTouches).where(eq(mingheTouches.userId, me.id))).map((r) => r.kind).sort();
+      expect(lines).toEqual(["dismount", "ride", "ride", "ride"]);
+    });
+
+    it("never counts him on the radar, nor his riders' daily moves as arrivals", async () => {
+      const next = stationOf(today() + 1).at;
+      await me.placeRoach({ kind: "main" }, { lng: next.lng + 0.002, lat: next.lat });
+      const before = (await me.radar())!;
+      await me.touch(MINGHE_ID, true);
+      const other = await signUp("other@example.com");
+      await other.placeRoach({ kind: "main" }, TOKYO);
+      await world.rideMinghe(other.id, { kind: "clone" });
+      await minghe.moveMingheRiders(Date.now() + DAY_MS);
+      await rewindScans(me.id);
+      const after = (await me.radar())!;
+      // his rider is there now, but it did not arrive as anyone's move
+      expect(after.roaches).toBe(before.roaches + 1);
+      expect(after.week.arrived).toBe(before.week.arrived);
+      expect(after.friendsNearby).toBe(0);
+      expect(JSON.stringify(await allRoaches())).not.toMatch(/minghe/i);
+    });
+
+    it("forgets his messages after 90 days, and everything of his with the account", async () => {
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await me.touch(MINGHE_ID, true);
+      await world.rideMinghe(me.id, { kind: "clone" });
+      await db.insert(mingheTouches).values({
+        userId: me.id,
+        direction: "from_minghe",
+        kind: "trip",
+        bold: false,
+        stop: 3,
+        times: 2,
+        createdAt: new Date(Date.now() - 91 * DAY_MS),
+      });
+      await pruneOldActivity();
+      expect(await db.select().from(mingheTouches)).toHaveLength(3);
+      await deleteAccount(await userRow(me.id));
+      expect(await db.select().from(mingheTouches)).toEqual([]);
+      expect(await ridersNow()).toEqual([]);
+    });
+
+    it("forgets a player's records with him when testing locally", async () => {
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await me.touch(MINGHE_ID, true);
+      await world.rideMinghe(me.id, { kind: "clone" });
+      await minghe.forgetMinghe(me.id);
+      expect((await me.me()).minghe).toEqual({ friend: false, riding: null, dayShift: 0 });
+      expect(await db.select().from(mingheTouches)).toEqual([]);
+      expect((await me.me()).roaches).toHaveLength(2);
+    });
   });
 
   it("gives 泰拉异格酒神 on the 50th drink, counting every one, and never lets test players drink", async () => {

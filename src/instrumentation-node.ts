@@ -1,5 +1,6 @@
 import { beijingDate } from "./lib/beijing";
 import { flipTheAway } from "./lib/server/away";
+import { moveMingheRiders } from "./lib/server/minghe";
 import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled } from "./lib/server/env";
@@ -51,6 +52,21 @@ const flipAway = () => {
 };
 flipAway();
 setInterval(flipAway, 5 * MINUTE_MS);
+
+// 明河都尉 moves on at 04:00 Beijing time: his riders follow him to the next station, the same way (src/lib/server/minghe.ts)
+let rodeOn = "";
+const ride = () => {
+  const now = Date.now();
+  const day = beijingDate(now);
+  if (day === rodeOn || beijingDate(now - 4 * HOUR_MS) !== day) return;
+  rodeOn = day;
+  moveMingheRiders(now).catch((e) => {
+    rodeOn = "";
+    console.error("Moving 明河都尉's riders failed", e);
+  });
+};
+ride();
+setInterval(ride, 5 * MINUTE_MS);
 
 // Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
 const totals = () => recordDailyTotals().catch((e) => console.error("Recording daily totals failed", e));

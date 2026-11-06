@@ -87,6 +87,7 @@ export async function allRoaches(): Promise<MapRoach[]> {
       color: users.color,
       drunkUntil: users.drunkUntil,
       sleptAwayOn: users.sleptAwayOn,
+      rideSince: roaches.rideSince,
     })
     .from(roaches)
     .innerJoin(users, eq(users.id, roaches.userId))
@@ -102,6 +103,8 @@ export async function allRoaches(): Promise<MapRoach[]> {
     // only the main roach lies down, drunk or away a long time, and the feed never says which or until
     // when; a drunk one stands up again in the first rebuild after it wakes, within MAX_AGE_MS
     ...(r.slot === 0 && sleeping(r, now) ? { asleep: true as const } : {}),
+    // riding with 明河都尉, which only clones do; never since when
+    ...(r.rideSince ? { ride: true as const } : {}),
   }));
 }
 

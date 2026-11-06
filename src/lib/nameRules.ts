@@ -20,8 +20,8 @@ export type NameWord = { word: string; whole: boolean };
 
 /** Passing for the site or its staff. 鹰角 is not here: 「鹰角厨」 is a fine name, and 「鹰角官方」 is caught by 官方. */
 export const CODE_WORDS: NameWord[] = [
-  // 阿米娅向导, 佩丽卡监督 and 塔露拉干员 are the site's own guides (src/lib/guides.ts); the characters' names alone are any fan's
-  ...["官方", "客服", "站长", "舟p地图", "阿米娅向导", "佩丽卡监督", "塔露拉干员"].map((word) => ({ word, whole: false })),
+  // 阿米娅向导, 佩丽卡监督, 塔露拉干员 and 明河都尉 are the site's own guides (src/lib/guides.ts); the characters' names alone are any fan's
+  ...["官方", "客服", "站长", "舟p地图", "阿米娅向导", "佩丽卡监督", "塔露拉干员", "明河都尉"].map((word) => ({ word, whole: false })),
   // fine inside a longer name; 管理员 is not here at all, since it is what Endfield calls its main character
   ...["管理组", "系统", "系统消息", "系统通知", "admin", "administrator", "舟p", "匿名舟p"].map((word) => ({
     word,

@@ -41,6 +41,10 @@ describe("name rules", () => {
     expect(nameAllowed("佩丽卡", [])).toBe(true);
     expect(nameAllowed("塔露拉干员", [])).toBe(false);
     expect(nameAllowed("塔露拉", [])).toBe(true);
+    expect(nameAllowed("明河都尉", [])).toBe(false);
+    expect(nameAllowed("我是明河都尉呀", [])).toBe(false);
+    expect(nameAllowed("明河", [])).toBe(true);
+    expect(nameAllowed("明河厨", [])).toBe(true);
   });
 
   it("stops links, contacts and long numbers", () => {

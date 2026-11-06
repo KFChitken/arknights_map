@@ -86,6 +86,8 @@ export const users = pgTable("users", {
   talulahFriendSince: at("talulah_friend_since"),
   talulahWelcomedAt: at("talulah_welcomed_at"),
   talulahBirthdayAt: at("talulah_birthday_at"),
+  /** 明河都尉 (src/lib/minghe.ts): when they became 触须之交 */
+  mingheFriendSince: at("minghe_friend_since"),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -142,8 +144,23 @@ export const roaches = pgTable(
     geog: geography("geog").generatedAlwaysAs(sql`(ST_SetSRID(ST_MakePoint(lng, lat), 4326))::geography`),
     publicId: uuid("public_id").notNull().unique().defaultRandom(),
     placedAt: at("placed_at").notNull().defaultNow(),
+    /**
+     * A clone riding with 明河都尉 (src/lib/minghe.ts), and only while it rides: since when,
+     * the day of his journey it got on and the day whose station it stands at (so the 04:00
+     * batch moves it once a day), and where it stood before (empty for a clone put down to ride).
+     */
+    rideSince: at("ride_since"),
+    rideStartDay: integer("ride_start_day"),
+    rideDay: integer("ride_day"),
+    rideFromLng: doublePrecision("ride_from_lng"),
+    rideFromLat: doublePrecision("ride_from_lat"),
   },
-  (t) => [uniqueIndex("roaches_user_slot_idx").on(t.userId, t.slot), index("roaches_geog_idx").using("gist", t.geog)],
+  (t) => [
+    uniqueIndex("roaches_user_slot_idx").on(t.userId, t.slot),
+    index("roaches_geog_idx").using("gist", t.geog),
+    // the 04:00 batch reads only the riders
+    index("roaches_ride_idx").on(t.rideSince).where(sql`${t.rideSince} is not null`),
+  ],
 );
 
 export const touches = pgTable(
@@ -339,6 +356,23 @@ export const talulahTouches = pgTable("talulah_touches", guideTouchColumns(), (t
   index("talulah_touches_user_idx").on(t.userId, t.createdAt),
   uniqueIndex("talulah_touches_reply_idx").on(t.replyTo),
 ]);
+
+/**
+ * 明河都尉 (src/lib/minghe.ts). His kinds: "touch" (his answer), "friend" (his answer
+ * that made them 触须之交), "ride" and "dismount" (a clone of theirs got on or off), and
+ * "trip" (he saw it home after 7 stations).
+ */
+export const mingheTouches = pgTable(
+  "minghe_touches",
+  {
+    ...guideTouchColumns(),
+    /** The station (0–29) the line is about: where it got on or off, or where the trip set out from */
+    stop: smallint("stop"),
+    /** "trip": how many times the clone was touched on the way */
+    times: smallint("times"),
+  },
+  (t) => [index("minghe_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("minghe_touches_reply_idx").on(t.replyTo)],
+);
 
 /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship. */
 export const friendCuts = pgTable(

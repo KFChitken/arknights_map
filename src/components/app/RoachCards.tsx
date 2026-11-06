@@ -1,6 +1,7 @@
 "use client";
 
 import { AMIYA_NAME } from "@/lib/amiya";
+import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
 import { PERLICA_ID, PERLICA_NAME } from "@/lib/perlica";
 import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talulah";
 import { bottleIcon } from "@/lib/flipArt";
@@ -8,6 +9,7 @@ import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
+import { MingheRoute } from "./Minghe";
 
 /** Tapped someone else's roach: offer the two ways to touch it, or 戳一戳 a 触须之交's sleeping one. */
 export function OtherRoachCard({
@@ -19,6 +21,7 @@ export function OtherRoachCard({
   pokeAgainAt,
   perlicaTimer = false,
   fire,
+  minghe,
   busy,
   onOpenFriend,
   onSignIn,
@@ -49,6 +52,21 @@ export function OtherRoachCard({
     sending: boolean;
     onSend: () => void;
     onVisit: () => void;
+  };
+  /**
+   * 明河都尉, on his card: today's day of his journey, where he is and goes next, his line
+   * about the place, how many roaches ride with him, and your clone riding along or getting on
+   */
+  minghe?: {
+    day: number;
+    today: string;
+    tomorrow: string;
+    line: string;
+    riders: number;
+    riding: boolean;
+    sending: boolean;
+    onRide: () => void;
+    onDismount: () => void;
   };
   /** A poke is under way */
   busy: boolean;
@@ -81,8 +99,9 @@ export function OtherRoachCard({
   const daysToWait = pokeAgainAt ? Math.ceil((pokeAgainAt - Date.now()) / 86_400_000) : 0;
   const perlica = roach.guide && roach.id === PERLICA_ID;
   const talulah = roach.guide && roach.id === TALULAH_ID && fire;
+  const ride = roach.guide && roach.id === MINGHE_ID && minghe;
   const title = roach.guide
-    ? `${perlica ? PERLICA_NAME : talulah ? TALULAH_NAME : AMIYA_NAME}（不是真人）`
+    ? `${perlica ? PERLICA_NAME : talulah ? TALULAH_NAME : ride ? MINGHE_NAME : AMIYA_NAME}（不是真人）`
     : friendName
       ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
       : roach.clone
@@ -97,9 +116,13 @@ export function OtherRoachCard({
       : "终末地工业监督。负责协议源石技术和帝江号。"
     : talulah
       ? (talulah.hood ?? "整合运动的创始人，刚上岛的罗德岛干员。现在在太阳岛守着一堆火。")
-      : null;
+      : ride
+        ? MINGHE_LINES.intro
+        : null;
   const hint = talulah
     ? `现在火边坐着 ${talulah.count.toLocaleString()} 只蟑螂`
+    : ride
+    ? `今天在：${ride.today}。明天去：${ride.tomorrow}。`
     : perlica
     ? friendName
       ? perlicaTimer
@@ -152,6 +175,14 @@ export function OtherRoachCard({
               <p className="hint fire-note">派的是克隆体，不用真去哈尔滨。</p>
             </>
           )}
+          {ride && (
+            <>
+              <p className="muted">「{ride.line}」</p>
+              <p className="muted">现在有 {ride.riders.toLocaleString()} 只蟑螂跟着他</p>
+              <MingheRoute day={ride.day} />
+              <p className="hint fire-note">跟他走的是克隆体，不用真去。</p>
+            </>
+          )}
         </div>
       </div>
       {onOpenFriend && (
@@ -161,7 +192,29 @@ export function OtherRoachCard({
           </button>
         </div>
       )}
-      {talulah ? (
+      {ride ? (
+        <>
+          <div className="touch-buttons">
+            <button onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
+              偷偷伸出触须
+              <small>他只知道被碰了一下</small>
+            </button>
+            <button className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
+              大胆伸出触须
+              <small>{sharesUid ? "他能看到你的资料和 UID" : "他能看到你的资料"}</small>
+            </button>
+          </div>
+          {signedIn && ride.riding ? (
+            <button className="primary wide fire-send" disabled={ride.sending} onClick={ride.onDismount}>
+              在这一站下马
+            </button>
+          ) : (
+            <button className="primary wide fire-send" disabled={ride.sending} onClick={ride.onRide}>
+              {signedIn ? "派一只克隆体跟他走" : "登录后就能跟他走"}
+            </button>
+          )}
+        </>
+      ) : talulah ? (
         <>
           <div className="touch-buttons">
             <button onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
@@ -224,6 +277,7 @@ export function MyRoachCard({
   drunk,
   drinks,
   busy,
+  riding,
   onMove,
   onRemove,
   onDrink,
@@ -242,6 +296,8 @@ export function MyRoachCard({
   drinks: number;
   /** A drink or 醒酒 is under way */
   busy: boolean;
+  /** This clone rides with 明河都尉: the how-manieth station it is at (1–7), and getting it off */
+  riding?: { stops: number; onDismount: () => void };
   onMove: () => void;
   onRemove: () => void;
   onDrink: () => void;
@@ -268,6 +324,16 @@ export function MyRoachCard({
           </p>
         </div>
       </div>
+      {riding && (
+        <div className="fire-row">
+          <span>
+            正在跟明河走：第 {riding.stops} / {RIDE_STOPS} 站
+          </span>
+          <button className="pill dark" disabled={busy} onClick={riding.onDismount}>
+            在这一站下马
+          </button>
+        </div>
+      )}
       <div className="row-actions">
         <button className="pill" onClick={onMove}>
           挪个窝

@@ -27,6 +27,24 @@ import {
   talulahRoach,
   talulahTouchLine,
 } from "@/lib/talulah";
+import {
+  dismountLine,
+  MINGHE_ID,
+  MINGHE_LINES,
+  MINGHE_NAME,
+  MINGHE_ZOOM,
+  mingheDay,
+  mingheRoach,
+  mingheTouchLine,
+  nextStationAt,
+  queueBearing,
+  queueSpots,
+  rideLine,
+  stationLine,
+  stationOf,
+  stopOf,
+  trailOf,
+} from "@/lib/minghe";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
 import { MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason } from "@/lib/safety";
@@ -51,11 +69,13 @@ import {
   type PlaceTarget,
   type PublicRoach,
   type Radar,
+  type RideTarget,
   type TouchResult,
   type World,
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
 import { BadgeWall, NewBadge } from "./app/Badges";
+import CloneMoveSheet from "./app/CloneMoveSheet";
 import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
@@ -76,8 +96,8 @@ import InboxSheet, {
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import { lookedAt, PerlicaBanner, PerlicaIntroSheet, perlicaSpot, rewindSpot } from "./app/Perlica";
+import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroShown } from "./app/Minghe";
 import {
-  FireMoveSheet,
   forgetTalulahHere,
   hoodSaid,
   markHoodSaid,
@@ -126,6 +146,10 @@ type Panel =
   | { kind: "talulahIntro" }
   /** Every clone is out: which one goes to sit by 塔露拉干员's fire */
   | { kind: "fireMove" }
+  /** 明河都尉 rides around the country, said once */
+  | { kind: "mingheIntro" }
+  /** Every clone is out: which one rides with 明河都尉 */
+  | { kind: "mingheMove" }
   | { kind: "mine" }
   | { kind: "declare"; initial?: Template }
   | { kind: "identity" }
@@ -224,6 +248,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [sendingToFire, setSendingToFire] = useState(false);
   const [fakeFire, setFakeFire] = useState<number | null>(null);
   const [hoodLine, setHoodLine] = useState<string | null>(null);
+  // 明河都尉: the time his day is worked out from (again as he moves on at 04:00), a clone getting on or off, riders pretended in development
+  const [mingheClock, setMingheClock] = useState(() => Date.now());
+  const [riding, setRiding] = useState(false);
+  const [fakeRiders, setFakeRiders] = useState<number | null>(null);
+  // the day of his journey, and today's station, where he is
+  const day = mingheDay(mingheClock, me?.minghe.dayShift ?? 0);
+  const mingheAt = stationOf(day).at;
   // her report is showing or waiting its turn, for what runs after it
   const reportDue = useRef(false);
   reportDue.current = Boolean(report || waiting);
@@ -633,6 +664,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       return;
     }
     if (id === TALULAH_ID) return openTalulah();
+    if (id === MINGHE_ID) return setSelected({ kind: "other", roach: mingheRoach(day, Boolean(me?.minghe.friend)) });
     const roach = roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
@@ -757,14 +789,16 @@ export default function MapApp({ cn }: { cn: boolean }) {
     await loadMe();
   };
 
-  const befriendedToast = (name: string) =>
+  const befriendedToast = (name: string) => {
+    const guide = Object.values(GUIDES).find((g) => g.name === name);
     setToast(
       name === TALULAH_NAME
         ? "你和塔露拉干员握了手，成为了触须之交！在「消息 → 触须之交」里能看到她。"
-        : Object.values(GUIDES).some((g) => g.name === name)
-        ? `你和${name}成为了触须之交！在「消息 → 触须之交」里能看到她。`
-        : `你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`,
+        : guide
+          ? `你和${name}成为了触须之交！在「消息 → 触须之交」里能看到${guide.pronoun}。`
+          : `你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`,
     );
+  };
 
   const touchedToast = (bold: boolean) =>
     setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
@@ -812,6 +846,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const games = me?.profile.games ?? [];
     if (g.id === PERLICA_ID) return touchBackLine(g.kind, g.bold, g.times);
     if (g.id === TALULAH_ID) return g.kind === "friend" ? TALULAH_LINES.hello : talulahTouchLine(g.kind, g.bold, games);
+    if (g.id === MINGHE_ID) return mingheTouchLine(g.kind, g.bold);
     return amiyaLine(g.bold ? "bold" : "sneaky", games);
   };
 
@@ -833,7 +868,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (res.newFriend) await Promise.all([loadFriends(), loadMe()]);
     const { itemId } = res.guide;
     const line = guideLine(res.guide);
-    const at = id === PERLICA_ID ? perlicaAt : id === TALULAH_ID ? FIRE_AT : AMIYA_AT;
+    const at = id === PERLICA_ID ? perlicaAt : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : AMIYA_AT;
     window.setTimeout(async () => {
       say(id, line);
       // heard on the spot while she is on screen; otherwise it waits in 消息
@@ -919,7 +954,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const zoomFor = (roach: PublicRoach, zoom: number) =>
     roach.id === TALULAH_ID
       ? FIRE_ZOOM
-      : // abroad, visitors from mainland China see our own map, which draws Rhode Island close up
+      : roach.id === MINGHE_ID
+        ? MINGHE_ZOOM
+        : // abroad, visitors from mainland China see our own map, which draws Rhode Island close up
         roach.id === AMIYA_ID && basemap === "amap" && !cn
         ? Math.min(zoom, AMIYA_AMAP_ZOOM)
         : zoom;
@@ -937,7 +974,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
         ? AMIYA_UNFRIEND
         : guide.id === PERLICA_ID
           ? PERLICA_UNFRIEND
-          : TALULAH_LINES.unfriendAsk
+          : guide.id === MINGHE_ID
+            ? MINGHE_LINES.unfriendAsk
+            : TALULAH_LINES.unfriendAsk
       : `解除和 ${friend.profile.displayName} 的触须之交？`;
     if (!window.confirm(question)) return;
     const done = await act(
@@ -946,7 +985,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
         ? `${PERLICA_NAME}：「${PERLICA_LINES.unfriend}」`
         : guide?.id === TALULAH_ID
           ? `${TALULAH_NAME}：${TALULAH_LINES.unfriend}`
-          : "已经解除触须之交。",
+          : guide?.id === MINGHE_ID
+            ? `${MINGHE_NAME}：${MINGHE_LINES.unfriend}`
+            : "已经解除触须之交。",
     );
     if (!done) return;
     await Promise.all([loadFriends(), guide ? loadMe() : null]);
@@ -1374,6 +1415,125 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setPanel({ kind: "talulahIntro" });
   }, [talulahTells, meIdForIntro]);
 
+  // ---- 明河都尉 ----
+
+  // He moves on at 04:00 Beijing time, which an open page sees then, or on coming back to it
+  useEffect(() => {
+    const t = window.setTimeout(() => setMingheClock(Date.now()), Math.max(1000, nextStationAt(mingheClock) - Date.now() + 2000));
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && mingheDay(Date.now()) !== mingheDay(mingheClock)) setMingheClock(Date.now());
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [mingheClock]);
+  const trail = useMemo(() => trailOf(day), [day]);
+  const myRider = me?.minghe.riding ?? null;
+  // riders others sent (the shared list says which, never whose), yours, and those pretended in development
+  const fakeQueue = useMemo<PublicRoach[]>(
+    () =>
+      (fakeRiders ? queueSpots(day, fakeRiders, everyRoach) : []).map((at, i) => ({
+        id: `fake-rider-${i}`,
+        clone: true,
+        avatar: "hood",
+        color: "white",
+        friend: false,
+        ride: true,
+        ...at,
+      })),
+    [fakeRiders, day, everyRoach],
+  );
+  const riders = roaches.filter((r) => r.ride).length + (myRider ? 1 : 0) + fakeQueue.length;
+
+  /** A clone into his queue (a new one, or a move once all of them are out), then to him, where he says so */
+  const rideWith = async (target: RideTarget) => {
+    setRiding(true);
+    const res = await act((w) => w.rideMinghe(target));
+    setRiding(false);
+    if (!res) return;
+    setPanel(null);
+    setSelected(null);
+    // heard on the spot, as the map flies to him
+    await worldRef.current!.markSeen([res.item.id]).catch(() => {});
+    await Promise.all([loadMe(), loadInbox()]);
+    setFocus({ lng: mingheAt.lng, lat: mingheAt.lat, zoom: MINGHE_ZOOM, nonce: Date.now() });
+    say(MINGHE_ID, rideLine(res.item.stop ?? stopOf(day)));
+    setToast("你的克隆体跟上了明河，7 站以后回来。");
+  };
+
+  /** 派一只克隆体跟他走 */
+  const sendRider = () => {
+    if (!me) return setPanel({ kind: "login", reason: "登录后就能跟他走。" });
+    if (me.roaches.filter((r) => r.slot > 0).length < MAX_CLONES) return rideWith({ kind: "clone" });
+    if (me.movesLeft <= 0) return setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+    setSelected(null);
+    setPanel({ kind: "mingheMove" });
+  };
+
+  /** 在这一站下马: the clone stays where it is, and he says so */
+  const dismount = async () => {
+    setRiding(true);
+    const res = await act((w) => w.dismountMinghe());
+    setRiding(false);
+    if (!res) return;
+    setSelected(null);
+    await worldRef.current!.markSeen([res.item.id]).catch(() => {});
+    await Promise.all([loadMe(), loadInbox()]);
+    const stop = res.item.stop ?? stopOf(day);
+    say(MINGHE_ID, dismountLine(stop));
+    setToast(`你的克隆体在${stationOf(stop).name}下了马。`);
+  };
+
+  /** To him, with his card open */
+  const showMinghe = () => {
+    setPanel(null);
+    setFocus({ lng: mingheAt.lng, lat: mingheAt.lat, zoom: MINGHE_ZOOM, nonce: Date.now() });
+    setSelected({ kind: "other", roach: mingheRoach(day, Boolean(me?.minghe.friend)) });
+  };
+
+  /** 明河快进一天 / 清掉我和明河的记录 (development only), then a fresh visit */
+  const mingheDayOn = async () => {
+    const done = await act((w) => w.pretend("mingheDay").then(() => true));
+    if (done) window.location.reload();
+  };
+  const forgetMinghe = async () => {
+    const done = await act((w) => w.pretend("minghe").then(() => true));
+    if (!done || !me) return;
+    forgetMingheHere(me.id);
+    window.location.reload();
+  };
+
+  // He rides out, told once in this browser to players with a roach who are not his 触须之交 and have no clone with
+  // him, on a visit after 阿米娅向导, 佩丽卡监督 and 塔露拉干员 each had their turn (and never during the tutorial)
+  const othersIntroduced = Boolean(
+    me &&
+      (me.amiya.friend || introShown(me.id)) &&
+      me.perlica.timer !== null &&
+      (me.talulah.visited || talulahIntroShown(me.id)),
+  );
+  const mingheTells = Boolean(
+    settled &&
+      idle &&
+      !report &&
+      !waiting &&
+      main &&
+      me &&
+      !me.minghe.friend &&
+      !myRider &&
+      !me.mustReconsent &&
+      !newBadges.length &&
+      !unseenBadges &&
+      othersIntroduced,
+  );
+  useEffect(() => {
+    if (!mingheTells || !meIdForIntro || introduced.current || mingheIntroShown(meIdForIntro)) return;
+    markMingheIntroShown(meIdForIntro);
+    introduced.current = true;
+    setPanel({ kind: "mingheIntro" });
+  }, [mingheTells, meIdForIntro]);
+
   // Back to the page on a new day (from 04:00 on this device): 阿米娅向导 may be greeting
   const dayRef = useRef(localDay());
   useEffect(() => {
@@ -1403,11 +1563,19 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const guides: GuideMark[] = [
     { id: AMIYA_ID, at: AMIYA_AT, friend: Boolean(me?.amiya.friend), bubble: says.amiya ?? null },
     { id: TALULAH_ID, at: FIRE_AT, friend: Boolean(me?.talulah.friend), bubble: says.talulah ?? null, fire },
+    {
+      id: MINGHE_ID,
+      at: mingheAt,
+      friend: Boolean(me?.minghe.friend),
+      bubble: says.minghe ?? null,
+      ride: { ahead: (queueBearing(day) + 180) % 360 },
+    },
     ...(perlicaAt && me ? [{ id: PERLICA_ID, at: perlicaAt, friend: me.perlica.friend, bubble: says.perlica ?? null }] : []),
   ];
   const mapProps = {
-    roaches: shownRoaches,
+    roaches: fakeQueue.length ? [...shownRoaches, ...fakeQueue] : shownRoaches,
     guides,
+    trail,
     // while the main roach acts out a scene over the map, the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => !acting || r.slot > 0),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -1574,10 +1742,25 @@ export default function MapApp({ cn }: { cn: boolean }) {
         );
       case "fireMove":
         return (
-          <FireMoveSheet
+          <CloneMoveSheet
             clones={me.roaches.filter((r) => r.slot > 0)}
             movesLeft={me.movesLeft}
+            to={FIRE_AT}
+            from="离火"
             onPick={(r) => seatAtFire({ kind: "move", roachId: r.id })}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "mingheIntro":
+        return <MingheIntroSheet station={stationOf(day).name} onGo={showMinghe} onLater={() => setPanel(null)} />;
+      case "mingheMove":
+        return (
+          <CloneMoveSheet
+            clones={me.roaches.filter((r) => r.slot > 0)}
+            movesLeft={me.movesLeft}
+            to={mingheAt}
+            from="离他"
+            onPick={(r) => rideWith({ kind: "move", roachId: r.id })}
             onClose={() => setPanel(null)}
           />
         );
@@ -1687,6 +1870,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
               setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
             }}
             onForgetTalulah={forgetTalulah}
+            onMingheDay={mingheDayOn}
+            onFakeRiders={(n) => {
+              setFakeRiders(n);
+              setPanel(null);
+              setFocus({ lng: mingheAt.lng, lat: mingheAt.lat, zoom: MINGHE_ZOOM, nonce: Date.now() });
+            }}
+            onForgetMinghe={forgetMinghe}
             onClose={() => setPanel(null)}
           />
         );
@@ -1838,7 +2028,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
           look={look}
           signedIn={Boolean(me)}
           onSignIn={() =>
-            setPanel({ kind: "login", reason: selected.roach.guide ? "登录后就能碰她。" : "登录后就能伸出触须碰 TA。" })
+            setPanel({
+              kind: "login",
+              reason: selected.roach.guide
+                ? `登录后就能碰${guideById(selected.roach.id)?.pronoun ?? "她"}。`
+                : "登录后就能伸出触须碰 TA。",
+            })
           }
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
@@ -1854,6 +2049,21 @@ export default function MapApp({ cn }: { cn: boolean }) {
                   sending: sendingToFire,
                   onSend: sendToFire,
                   onVisit: visitSeated,
+                }
+              : undefined
+          }
+          minghe={
+            selected.roach.id === MINGHE_ID
+              ? {
+                  day,
+                  today: stationOf(day).name,
+                  tomorrow: stationOf(day + 1).name,
+                  line: stationLine(day),
+                  riders,
+                  riding: Boolean(myRider),
+                  sending: riding,
+                  onRide: sendRider,
+                  onDismount: dismount,
                 }
               : undefined
           }
@@ -1878,7 +2088,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
           look={look}
           drunk={Boolean(me?.drunkUntil)}
           drinks={me?.counts.drinks ?? 0}
-          busy={drinking || Boolean(acting)}
+          busy={drinking || Boolean(acting) || riding}
+          riding={myRider?.roachId === selected.roach.id ? { stops: myRider.stops, onDismount: dismount } : undefined}
           onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}
           onRemove={() => remove(selected.roach)}
           onDrink={drinkUp}

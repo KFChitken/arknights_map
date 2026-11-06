@@ -11,6 +11,12 @@ export function beijingMidnight(date: string) {
   return Date.parse(`${date}T00:00:00+08:00`);
 }
 
+/** Whole days from one Beijing date (YYYY-MM-DD) to another; negative when to comes first. */
+export const daysBetween = (from: string, to: string) => Math.round((beijingMidnight(to) - beijingMidnight(from)) / 86_400_000);
+
+/** A Beijing date some days after another (YYYY-MM-DD both). */
+export const addDays = (date: string, days: number) => beijingDate(beijingMidnight(date) + days * 86_400_000);
+
 /** A moment as Beijing wall-clock time, like 「11/29 04:00」. */
 export function beijingShort(t: number) {
   const s = new Date(t + OFFSET_MS).toISOString();

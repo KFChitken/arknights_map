@@ -1,13 +1,10 @@
 "use client";
 
-import { distanceKm } from "@/lib/geo";
-import { MOVES_PER_DAY } from "@/lib/rules";
-import { FIRE_AT, TALULAH, TALULAH_NAME } from "@/lib/talulah";
-import type { OwnRoach } from "@/lib/world/types";
+import { TALULAH, TALULAH_NAME } from "@/lib/talulah";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
-/** 塔露拉干员 (src/lib/talulah.ts) on the page: her picture, her introduction, and picking a clone for the fire. */
+/** 塔露拉干员 (src/lib/talulah.ts) on the page: her picture and her introduction (CloneMoveSheet picks a clone for the fire). */
 
 export const TalulahPicture = ({ size, friend = false }: { size: number; friend?: boolean }) => (
   <RoachIcon color={TALULAH.color} size={size} avatar={TALULAH.avatar} friend={friend} />
@@ -29,45 +26,6 @@ export function TalulahIntroSheet({ onGo, onLater }: { onGo: () => void; onLater
           以后再说
         </button>
       </div>
-    </Sheet>
-  );
-}
-
-const km = (r: OwnRoach) => {
-  const d = distanceKm(r, FIRE_AT);
-  return d < 1 ? `离火 ${Math.round(d * 1000)} 米` : `离火 ${Math.round(d).toLocaleString()} 公里`;
-};
-
-/** All clones are out: which one goes to sit by the fire, as a move. */
-export function FireMoveSheet({
-  clones,
-  movesLeft,
-  onPick,
-  onClose,
-}: {
-  clones: OwnRoach[];
-  movesLeft: number;
-  onPick: (roach: OwnRoach) => void;
-  onClose: () => void;
-}) {
-  return (
-    <Sheet title="挪哪只克隆体过去？" onClose={onClose}>
-      <p className="hint" style={{ marginTop: 0 }}>
-        算一次挪窝，今天还能挪 {movesLeft} 次（每天 {MOVES_PER_DAY} 次）。
-      </p>
-      {clones.map((r, i) => (
-        <div className="list-row" key={r.id}>
-          <div>
-            <strong>克隆体 {i + 1}</strong>
-            <p className="muted">{km(r)}</p>
-          </div>
-          <div className="row-actions">
-            <button className="pill dark" disabled={movesLeft <= 0} onClick={() => onPick(r)}>
-              挪过去
-            </button>
-          </div>
-        </div>
-      ))}
     </Sheet>
   );
 }

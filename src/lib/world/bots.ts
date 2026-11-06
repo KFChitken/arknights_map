@@ -1,6 +1,7 @@
 import { generateFakeRoaches } from "../fakeRoaches";
 import { distanceKm } from "../geo";
 import { mulberry32 } from "../prng";
+import { MINGHE_BOT_FREE_KM, ROUTE } from "../minghe";
 import { FIRE_AT, FIRE_BOT_FREE_KM } from "../talulah";
 import type { LngLat, RoachAvatar } from "../types";
 import type { MapRoach } from "./types";
@@ -18,10 +19,14 @@ const PREFIX = "bot-";
 /** Breeze asked for none in Beijing, so testers there can find the real players. */
 const BEIJING = { lng: 116.4, lat: 39.9 };
 export const BOT_FREE_KM = 60;
-/** None by 塔露拉干员's fire either, where they would look like players sitting by it (src/lib/talulah.ts) */
+/**
+ * None by 塔露拉干员's fire either, where they would look like players sitting by it
+ * (src/lib/talulah.ts), nor at 明河都尉's stations, where they would look like his riders (src/lib/minghe.ts)
+ */
 const NO_BOTS: [LngLat, number][] = [
   [BEIJING, BOT_FREE_KM],
   [FIRE_AT, FIRE_BOT_FREE_KM],
+  ...ROUTE.map((s): [LngLat, number] => [s.at, MINGHE_BOT_FREE_KM]),
 ];
 
 export const isBotId = (id: string) => id.startsWith(PREFIX);

@@ -7,6 +7,7 @@ import {
   declarations,
   friendCuts,
   moves,
+  mingheTouches,
   perlicaTouches,
   pokes,
   radarScans,
@@ -29,6 +30,7 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(amiyaTouches).where(lt(amiyaTouches.createdAt, cutoff));
   await db.delete(perlicaTouches).where(lt(perlicaTouches.createdAt, cutoff));
   await db.delete(talulahTouches).where(lt(talulahTouches.createdAt, cutoff));
+  await db.delete(mingheTouches).where(lt(mingheTouches.createdAt, cutoff));
   await db.delete(declarations).where(lt(declarations.createdAt, cutoff));
   await db.delete(moves).where(lt(moves.at, cutoff));
   // a cut only matters for touches made before it, which are gone by now

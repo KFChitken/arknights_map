@@ -25,10 +25,12 @@ export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
  * the repository (cut out with scripts/cutout.mjs). AMIYA_PICTURE=off takes 阿米娅向导's down,
  * and she shows as a pink-lit hood instead; PERLICA_PICTURE=off, 佩丽卡监督's (a cyan-lit hood);
  * TALULAH_PICTURE=off, 塔露拉干员's (an orange-lit hood, her fire still burning).
+ * MINGHE_PICTURE=off, 明河都尉's (a white-lit hood riding his horse, which is drawn in code).
  */
 export const AMIYA_PICTURE = process.env.AMIYA_PICTURE !== "off";
 export const PERLICA_PICTURE = process.env.PERLICA_PICTURE !== "off";
 export const TALULAH_PICTURE = process.env.TALULAH_PICTURE !== "off";
+export const MINGHE_PICTURE = process.env.MINGHE_PICTURE !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
 
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */

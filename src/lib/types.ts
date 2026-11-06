@@ -31,7 +31,7 @@ export type RoachColor = (typeof ROACH_COLORS)[number];
 export const ROACH_AVATARS = ["hood", "doctor", "endmin", "imp"] as const;
 export type RoachAvatar = (typeof ROACH_AVATARS)[number];
 /** The guides' own looks (src/lib/guides.ts): drawn like the others, never offered to players */
-export const GUIDE_AVATARS = ["amiya", "perlica", "talulah"] as const;
+export const GUIDE_AVATARS = ["amiya", "perlica", "talulah", "minghe"] as const;
 export type GuideAvatar = (typeof GUIDE_AVATARS)[number];
 /** Every look the map can draw */
 export type DrawnAvatar = RoachAvatar | GuideAvatar;

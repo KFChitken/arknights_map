@@ -17,6 +17,8 @@ export type MapViewProps = {
   ghost?: LngLat | null;
   /** The guides this page shows (src/lib/guides.ts): 阿米娅向导 on every map, 佩丽卡监督 near your main roach */
   guides: GuideMark[];
+  /** 明河都尉's trail of stars: his last stations, oldest first, his own last */
+  trail: LngLat[];
   myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
@@ -49,8 +51,16 @@ export type MapViewProps = {
 /**
  * A guide on the map: where, whether she is your 触须之交, and what she is saying over
  * her head. fire: how big 塔露拉干员's fire burns; it then sits on that spot, with her beside it.
+ * ride: 明河都尉 on his horse, facing ahead (degrees clockwise from north), away from his riders.
  */
-export type GuideMark = { id: GuideId; at: LngLat; friend: boolean; bubble: string | null; fire?: FireLevel };
+export type GuideMark = {
+  id: GuideId;
+  at: LngLat;
+  friend: boolean;
+  bubble: string | null;
+  fire?: FireLevel;
+  ride?: { ahead: number };
+};
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */
 export function roachTraits(id: string, groups: number, headings: number) {
