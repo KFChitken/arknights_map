@@ -34,6 +34,7 @@ import {
   rideStart,
   updateGuide,
 } from "./guideMarker";
+import { addMaplibreSandwich } from "./sandwich";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -424,7 +425,8 @@ export default function MaplibreView(props: MapViewProps) {
         map.addSource("cover", { type: "geojson", data: cover });
         map.addLayer({ id: "cover", type: "fill", source: "cover", paint: { "fill-color": "#ede9e1" } });
       }
-      // 明河都尉's trail of stars, under all the roaches
+      // 两面包夹芝士 around Japan, and 明河都尉's trail of stars, under all the roaches
+      addMaplibreSandwich(map);
       addMaplibreTrail(map, propsRef.current.trail);
       await ensureImages(map, neededImages(propsRef.current));
       const { roaches, mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;

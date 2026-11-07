@@ -31,6 +31,7 @@ import {
   rideStart,
   updateGuide,
 } from "./guideMarker";
+import { amapSandwich } from "./sandwich";
 import { amapTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -383,6 +384,8 @@ export default function AmapView(props: MapViewProps) {
 
         placeMine();
         drawTrail();
+        // 两面包夹芝士 around Japan, under the roaches
+        amapSandwich(AMap, map, ZOOM_OFFSET);
 
         syncGuides();
         map.on("zoomchange", syncGuides);
