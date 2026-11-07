@@ -162,7 +162,7 @@ export function rideIn(el: HTMLElement, offset: [number, number], ms: number) {
   );
 }
 
-/** 阿米娅向导's dance (an animation by 疾刃 on bilibili), fetched once when she is first tapped; null where it is switched off */
+/** 阿米娅向导's dance (an animation by 疚刃 on bilibili), fetched once when she is first tapped; null where it is switched off */
 const DANCE_URL = "/guide-art/amiya-dance.webp";
 let dance: Promise<Blob | null> | null = null;
 const danceBlob = () =>
@@ -174,6 +174,9 @@ const danceBlob = () =>
     }));
 const dancing = new WeakMap<HTMLElement, string>();
 
+/** Fetch her dance ahead of a tap (once she is on screen), so the first tap starts it at once */
+export const preloadDance = () => void danceBlob();
+
 /**
  * She dances in place of her picture, bigger, from the first step (a fresh copy of the
  * animation each time, so it starts over), and stands still again when the page says so.
@@ -182,6 +185,7 @@ function updateDance(el: HTMLElement, mark: GuideMark) {
   let img = el.querySelector<HTMLImageElement>(".guide-dance");
   const want = mark.dance ? String(mark.dance) : "";
   if (!want) {
+    el.classList.remove("dance-wait");
     if (!img) return;
     el.classList.remove("dancing");
     const url = dancing.get(el);
@@ -200,8 +204,12 @@ function updateDance(el: HTMLElement, mark: GuideMark) {
   }
   img.dataset.dance = want;
   const shown = img;
+  // a hop on the spot while the dance is still on its way
+  el.classList.add("dance-wait");
   danceBlob().then((blob) => {
-    if (!blob || shown.dataset.dance !== want || !shown.isConnected) return;
+    if (shown.dataset.dance !== want || !shown.isConnected) return;
+    el.classList.remove("dance-wait");
+    if (!blob) return;
     const old = dancing.get(el);
     if (old) URL.revokeObjectURL(old);
     const url = URL.createObjectURL(blob);

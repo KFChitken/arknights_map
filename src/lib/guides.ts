@@ -30,7 +30,7 @@ export type Guide = {
 };
 
 /** Who the guides are, on their cards in place of a player's details */
-export const GUIDE_NOTE = "舟P地图的向导，不是真人";
+export const GUIDE_NOTE = "舟P地图的向导";
 
 // in this order everywhere they are listed together, as among the 触须之交
 export const GUIDES: Record<GuideId, Guide> = {
@@ -52,7 +52,7 @@ export const GUIDES: Record<GuideId, Guide> = {
     avatar: "talulah",
     color: "orange",
     prefix: "h:",
-    note: "在太阳岛守着一堆篝火，不是真人",
+    note: "在太阳岛守着一堆篝火",
     pronoun: "她",
   },
   // white, for the Milky Way his name means
@@ -63,7 +63,7 @@ export const GUIDES: Record<GuideId, Guide> = {
     avatar: "minghe",
     color: "white",
     prefix: "m:",
-    note: "骑着怒骊在各地走，不是真人",
+    note: "骑着怒骊在各地走",
     pronoun: "他",
   },
 };

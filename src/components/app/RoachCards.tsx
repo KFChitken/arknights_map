@@ -107,7 +107,13 @@ export function OtherRoachCard({
   const talulah = roach.guide && roach.id === TALULAH_ID && fire;
   const ride = roach.guide && roach.id === MINGHE_ID && minghe;
   const title = roach.guide
-    ? `${perlica ? PERLICA_NAME : talulah ? TALULAH_NAME : ride ? MINGHE_NAME : AMIYA_NAME}（不是真人）`
+    ? perlica
+      ? PERLICA_NAME
+      : talulah
+        ? TALULAH_NAME
+        : ride
+          ? MINGHE_NAME
+          : AMIYA_NAME
     : friendName
       ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
       : roach.clone
@@ -184,7 +190,7 @@ export function OtherRoachCard({
           )}
           {roach.guide && roach.id === AMIYA_ID && (
             <p className="hint fire-note">
-              舞蹈和音乐：疾刃（bilibili）的视频
+              舞蹈和音乐：疚刃（bilibili）的视频
               {amiyaMusic && (
                 <button className="link amiya-music" onClick={amiyaMusic.onToggle}>
                   {amiyaMusic.on ? "🔊 跳舞时放音乐" : "🔇 跳舞时不放音乐"}

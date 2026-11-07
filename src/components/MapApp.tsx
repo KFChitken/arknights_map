@@ -90,9 +90,10 @@ import {
   type World,
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
-import { musicOn, playMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
+import { musicOn, playMusic, preloadMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
+import { GuideDock, GuideSheet } from "./app/GuideDock";
 import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
@@ -148,7 +149,7 @@ import {
   tutorialStep,
   type Progress,
 } from "./app/Tutorial";
-import { BIKE_MS } from "./map/guideMarker";
+import { BIKE_MS, preloadDance } from "./map/guideMarker";
 import type { GuideMark } from "./map/types";
 import RoachIcon from "./RoachIcon";
 
@@ -233,6 +234,8 @@ type Panel =
   | { kind: "placeConfirm"; target: PlaceTarget; spot: LngLat; fly: boolean; consent: boolean }
   // open to everyone
   | { kind: "hot" }
+  /** One of the guides, from the column under 方舟雷达 */
+  | { kind: "guide"; id: GuideId }
   // for visitors who have not signed in
   | { kind: "welcome" }
   | { kind: "guestRadar" }
@@ -768,7 +771,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
     viewRef.current = v;
     boundsRef.current = bounds;
     countVisible(bounds);
+    // 阿米娅向导 close enough on screen to be tapped: her dance and music on their way, so a tap starts them at once
+    if (!amiyaNear.current && v.zoom >= 6 && inBounds(AMIYA_AT, bounds) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      amiyaNear.current = true;
+      preloadDance();
+      preloadMusic();
+    }
   };
+  const amiyaNear = useRef(false);
 
   // ---- visitors from mainland China: changing between Amap and our own map ----
 
@@ -1681,6 +1691,29 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setToast(`你的克隆体在${stationOf(stop).name}下了马。`);
   };
 
+  /** From the column of guides: to one of them, with their card open */
+  const findGuide = (id: GuideId) => {
+    setPanel(null);
+    if (id === AMIYA_ID) return showRoach(amiyaRoach(Boolean(me?.amiya.friend)));
+    if (id === TALULAH_ID) {
+      setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+      return openTalulah();
+    }
+    if (id === MINGHE_ID) return showMinghe();
+    if (!perlicaShown) return;
+    setFocus({ lng: perlicaShown.lng, lat: perlicaShown.lat, zoom: 13, nonce: Date.now() });
+    setSelected({ kind: "other", roach: perlicaRoach(perlicaShown, Boolean(me?.perlica.friend)) });
+  };
+  /** Why the map cannot show one of them now: only 佩丽卡监督, who lives by your main roach once the tutorial is over */
+  const guideAway = (id: GuideId) =>
+    id !== PERLICA_ID || perlicaShown
+      ? null
+      : !me
+        ? "登录并放下蟑螂本体以后，她会住到你附近。"
+        : !main
+          ? "放下蟑螂本体以后，她会住到你附近。"
+          : "做完新手教程以后，她会住到你附近。";
+
   /** To him, with his card open */
   const showMinghe = () => {
     setPanel(null);
@@ -1820,6 +1853,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const renderPanel = (p: Panel) => {
     if (p.kind === "login") return <LoginSheet reason={p.reason} onDone={signedIn} onClose={() => setPanel(null)} />;
     if (p.kind === "hot") return <HotSheet onClose={() => setPanel(null)} />;
+    if (p.kind === "guide") {
+      return <GuideSheet id={p.id} away={guideAway(p.id)} onFind={() => findGuide(p.id)} onClose={() => setPanel(null)} />;
+    }
     if (p.kind === "welcome") {
       const close = () => {
         markWelcomed();
@@ -2156,6 +2192,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
           </span>
           <small>方舟雷达</small>
         </button>
+      )}
+      {!placing && (
+        <GuideDock
+          onOpen={(id) => {
+            setSelected(null);
+            setPanel({ kind: "guide", id });
+          }}
+        />
       )}
       {!placing && (
         <button className="hot-btn" aria-label="本周舟P热榜" onClick={() => setPanel({ kind: "hot" })}>

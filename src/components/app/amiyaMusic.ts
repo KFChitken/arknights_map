@@ -1,5 +1,5 @@
 /**
- * 阿米娅向导's dance music (from the video by 疾刃 her dance comes from), played
+ * 阿米娅向导's dance music (from the video by 疚刃 her dance comes from), played
  * quietly through Web Audio when she is tapped, never on its own. Whether it plays
  * at all is kept in this browser, switched on her card.
  */
@@ -10,8 +10,22 @@ const VOLUME = 0.3;
 const OFF_KEY = "zhoup.amiyaMusic";
 
 let ctx: AudioContext | null = null;
+let bytes: Promise<ArrayBuffer | null> | null = null;
 let buffer: Promise<AudioBuffer | null> | null = null;
 let playing: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
+
+const fetchBytes = () =>
+  (bytes ??= fetch(MUSIC_URL)
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .catch(() => {
+      bytes = null;
+      return null;
+    }));
+
+/** Fetch the music ahead of a tap (once she is on screen), unless it is switched off here */
+export function preloadMusic() {
+  if (musicOn()) void fetchBytes();
+}
 
 export function musicOn() {
   try {
@@ -53,11 +67,12 @@ export function playMusic(): Promise<number | null> {
   const c = ctx;
   // within the tap: a browser only lets sound start from one
   void c.resume();
-  buffer ??= fetch(MUSIC_URL)
-    .then((r) => (r.ok ? r.arrayBuffer() : null))
-    .then((bytes) => (bytes ? c.decodeAudioData(bytes) : null))
+  buffer ??= fetchBytes()
+    // decoding takes the bytes over, so they are fetched once and decoded once
+    .then((b) => (b ? c.decodeAudioData(b) : null))
     .catch(() => {
       buffer = null;
+      bytes = null;
       return null;
     });
   stopMusic();
