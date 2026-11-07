@@ -18,7 +18,7 @@ export const LOGIN_CODES_PER_DAY = 10;
 export const SESSION_DAYS = 30;
 
 /** Clones a player may place besides the main roach. */
-export const MAX_CLONES = 3;
+export const MAX_CLONES = 5;
 
 /** Favourite characters per game. */
 export const MAX_FAVOURITES = 3;

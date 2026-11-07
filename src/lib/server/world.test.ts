@@ -10,7 +10,7 @@ import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
-import { POLICY_UPDATED_AT } from "../rules";
+import { MAX_CLONES, POLICY_UPDATED_AT } from "../rules";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
@@ -1824,8 +1824,8 @@ describe("server world", () => {
   it("caps clones, rotates public ids on moves, and takes clones back with the main roach", async () => {
     await expect(me.placeRoach({ kind: "clone" }, PEOPLES_SQUARE)).rejects.toThrow("先放下蟑螂本体");
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
-    for (let i = 0; i < 3; i++) await me.placeRoach({ kind: "clone" }, { lng: 100 + i, lat: 20 });
-    await expect(me.placeRoach({ kind: "clone" }, { lng: 110, lat: 20 })).rejects.toThrow("最多只能放 3 只");
+    for (let i = 0; i < MAX_CLONES; i++) await me.placeRoach({ kind: "clone" }, { lng: 100 + i, lat: 20 });
+    await expect(me.placeRoach({ kind: "clone" }, { lng: 110, lat: 20 })).rejects.toThrow(`最多只能放 ${MAX_CLONES} 只`);
 
     const t1 = await demo("t1");
     const before = new Set((await t1.roaches()).map((r) => r.id));
