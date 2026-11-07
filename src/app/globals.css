@@ -810,6 +810,336 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
   .actor * { animation: none !important; }
 }
 
+/* ---- 伸出触须: the toucher's own little scene over the spot touched (TouchStage.tsx, lib/touchArt.ts),
+   from the design for the touch and declaration animations. A scene is a 240 × 160 stage, placed
+   and scaled from its top left (.ta-place); every piece runs for the scene's whole --dur. ---- */
+.ta-place { position: absolute; z-index: 15; width: 240px; height: 160px; transform-origin: 0 0; pointer-events: none; }
+.ta-skip { position: absolute; inset: 0; z-index: 14; padding: 0; border: 0; background: transparent; cursor: default; }
+.ta-stage {
+  --ta-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  position: relative; width: 240px; height: 160px; pointer-events: none;
+  color: #1b1d22; font-family: var(--ta-font); line-height: 1.2;
+}
+.ta-stage > * { position: absolute; }
+.ta-stage svg { display: block; overflow: visible; }
+.ta-stage * { animation-duration: var(--dur); animation-fill-mode: both; animation-timing-function: ease-out; }
+.ta-you, .ta-them, .ta-me { top: 66px; width: 88px; height: 88px; }
+.ta-you { left: 0; }
+.ta-them { left: 150px; }
+.ta-me { left: 76px; }
+.ta-body, .ta-jump, .ta-look, .ta-a, .ta-b, .ta-calm, .ta-up, .ta-shoutlines { position: absolute; inset: 0; }
+.ta-body, .ta-jump, .ta-look, .ta-b { transform-origin: 50% 92%; }
+.ta-you svg, .ta-them svg, .ta-me svg { width: 100%; height: 100%; }
+.ta-lines { left: 0; top: 0; width: 240px; height: 160px; }
+.ta-line { fill: none; stroke: #0d0e10; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 1 1.2; stroke-dashoffset: 1.05; }
+.ta-fx { transform: translate(-50%, -50%); }
+.ta-mark { transform-origin: 20% 100%; }
+.ta-b { opacity: 0; }
+
+/* ---- 偷偷伸出触须 (1.6s): a shadow tiptoes over, taps low, runs off ---- */
+.ta-sneaky .ta-you .ta-body { animation-name: ta-sn-you; }
+.ta-sneaky .ta-line { animation-name: ta-sn-line; }
+.ta-sneaky .ta-tap { animation-name: ta-sn-tap; }
+.ta-sneaky .ta-jump { animation-name: ta-sn-jump; }
+.ta-sneaky .ta-look { animation-name: ta-sn-look; }
+.ta-sneaky .ta-mark { animation-name: ta-mark-q; }
+@keyframes ta-sn-you {
+  0% { opacity: 0; transform: translate(-36px, 0) scale(1, 0.9); }
+  5% { opacity: 1; transform: translate(-25px, -3px) scale(1, 0.9); }
+  9% { transform: translate(-14px, 0) scale(1, 0.9); }
+  13% { transform: translate(-5px, -2px) scale(1, 0.9); }
+  17% { transform: translate(0, 0) scale(1, 0.9); }
+  64% { opacity: 1; transform: translate(0, 0) scale(1, 0.9); }
+  69% { transform: translate(3px, 0) scale(1.05, 0.86); }
+  84%, 100% { opacity: 0; transform: translate(-52px, 0) scale(1, 0.9); }
+}
+@keyframes ta-sn-line {
+  0%, 17% { opacity: 0; stroke-dashoffset: 1.05; }
+  18% { opacity: 0.8; stroke-dashoffset: 1.05; }
+  44% { stroke-dashoffset: 0; }
+  58% { opacity: 0.8; stroke-dashoffset: 0; }
+  70%, 100% { opacity: 0.8; stroke-dashoffset: 1.05; }
+}
+@keyframes ta-sn-tap {
+  0%, 43% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  47% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  52% { transform: translate(-50%, -50%) scale(1); }
+  66% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  74%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes ta-sn-jump {
+  0%, 45% { transform: none; }
+  50% { transform: translateY(-13px) rotate(-5deg); }
+  56% { transform: translateY(0) scale(1.05, 0.93); }
+  60%, 100% { transform: none; }
+}
+@keyframes ta-sn-look {
+  0%, 62% { transform: none; }
+  66%, 72% { transform: rotate(-9deg); }
+  78%, 84% { transform: rotate(9deg); }
+  90%, 100% { transform: none; }
+}
+@keyframes ta-mark-q {
+  0%, 50% { opacity: 0; transform: scale(0); }
+  55% { opacity: 1; transform: scale(1.25); }
+  59% { transform: scale(1); }
+  92% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* ---- 大胆伸出触须 (1.6s): hop in, feeler onto theirs, 啵!, the name card slides over ---- */
+.ta-bold .ta-you .ta-body { animation-name: ta-bo-you; }
+.ta-bold .ta-line { animation-name: ta-bo-line; }
+.ta-bold .ta-boop { animation-name: ta-bo-boop; }
+.ta-bold .ta-cardway { animation-name: ta-bo-card; animation-timing-function: ease-in-out; }
+.ta-bold .ta-jump { animation-name: ta-bo-jump; }
+.ta-bold .ta-mark { animation-name: ta-mark-ex; }
+.ta-cardway { left: 0; top: 0; offset-anchor: 50% 50%; offset-rotate: 0deg; offset-distance: 0%; opacity: 0; }
+.ta-card {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px 2px 2px;
+  border: 1.5px solid #1b1d22; border-radius: 8px; background: #fff; color: #1b1d22;
+  font-size: 11px; font-weight: 700; line-height: 1.3; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.ta-card-pic { display: block; width: 20px; height: 20px; }
+.ta-card-pic svg { width: 100%; height: 100%; }
+.ta-card.pink { background: #ffe0ee; border-color: #1b1d22; }
+@keyframes ta-bo-you {
+  0% { opacity: 0; transform: translate(-34px, 0); }
+  6% { opacity: 1; transform: translate(-20px, -13px); }
+  12% { transform: translate(-4px, 0) scale(1.05, 0.93); }
+  16% { transform: none; }
+  86% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translate(-12px, 0); }
+}
+@keyframes ta-bo-line {
+  0%, 15% { opacity: 0; stroke-dashoffset: 1.05; }
+  16% { opacity: 1; stroke-dashoffset: 1.05; }
+  42% { stroke-dashoffset: 0; }
+  80% { opacity: 1; stroke-dashoffset: 0; }
+  94%, 100% { opacity: 1; stroke-dashoffset: 1.05; }
+}
+@keyframes ta-bo-boop {
+  0%, 41% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-14deg); }
+  46% { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(5deg); }
+  51% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  63% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  71%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); }
+}
+@keyframes ta-bo-card {
+  0%, 44% { opacity: 0; offset-distance: 0%; transform: scale(0.6); }
+  49% { opacity: 1; offset-distance: 4%; transform: scale(1); }
+  74% { opacity: 1; offset-distance: 100%; transform: scale(1); }
+  80%, 100% { opacity: 0; offset-distance: 100%; transform: scale(0.3); }
+}
+@keyframes ta-bo-jump {
+  0%, 42% { transform: none; }
+  46% { transform: translateY(-5px) rotate(6deg); }
+  51% { transform: rotate(-4deg); }
+  56%, 74% { transform: none; }
+  79% { transform: translateY(-11px); }
+  84% { transform: translateY(0) scale(1.05, 0.93); }
+  88%, 100% { transform: none; }
+}
+@keyframes ta-mark-ex {
+  0%, 76% { opacity: 0; transform: scale(0); }
+  80% { opacity: 1; transform: scale(1.25); }
+  84% { transform: scale(1); }
+  95% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* ---- 成为触须之交 (2.4s): both feelers meet and turn pink, a heart, their ground turns pink ---- */
+.ta-friend .ta-you .ta-body { animation-name: ta-fr-you; }
+.ta-friend .ta-line { animation-name: ta-fr-line; }
+.ta-friend .ta-heart { animation-name: ta-fr-heart; }
+.ta-friend .ta-a { animation-name: ta-fr-a; }
+.ta-friend .ta-b { animation-name: ta-fr-b; }
+.ta-friend .ta-jump { animation-name: ta-fr-jump; }
+.ta-friend .ta-mini.m1 { animation-name: ta-fr-mini1; }
+.ta-friend .ta-mini.m2 { animation-name: ta-fr-mini2; }
+.ta-friend .ta-mini.m3 { animation-name: ta-fr-mini3; }
+.ta-friend .ta-ribbon { animation-name: ta-fr-ribbon; }
+.ta-ribbon {
+  transform: translate(-50%, 0); padding: 3px 12px; border: 2px solid #1b1d22; border-radius: 999px;
+  background: #ff7eb6; color: #1b1d22; font-size: 13px; font-weight: 800; white-space: nowrap;
+  box-shadow: 0 2px 0 #1b1d22;
+}
+@keyframes ta-fr-you {
+  0% { opacity: 0; transform: translate(-34px, 0); }
+  4% { opacity: 1; transform: translate(-20px, -13px); }
+  8% { transform: translate(-4px, 0) scale(1.05, 0.93); }
+  11%, 52% { transform: none; }
+  56% { transform: translateY(-10px); }
+  60% { transform: translateY(0) scale(1.05, 0.93); }
+  63% { transform: translateY(-7px); }
+  67%, 92% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translate(-12px, 0); }
+}
+@keyframes ta-fr-line {
+  0%, 11% { opacity: 0; stroke-dashoffset: 1.05; stroke: #0d0e10; }
+  12% { opacity: 1; stroke-dashoffset: 1.05; stroke: #0d0e10; }
+  34% { stroke-dashoffset: 0; stroke: #0d0e10; }
+  40% { stroke-dashoffset: 0; stroke: #ff4f8b; }
+  80% { opacity: 1; stroke-dashoffset: 0; stroke: #ff4f8b; }
+  92%, 100% { opacity: 1; stroke-dashoffset: 1.05; stroke: #ff4f8b; }
+}
+@keyframes ta-fr-heart {
+  0%, 35% { opacity: 0; transform: translate(-50%, -50%) scale(0); }
+  41% { opacity: 1; transform: translate(-50%, -50%) scale(1.35); }
+  45% { transform: translate(-50%, -50%) scale(0.92); }
+  49% { transform: translate(-50%, -50%) scale(1.06); }
+  53% { transform: translate(-50%, -50%) scale(1); }
+  62% { transform: translate(-50%, -50%) scale(1.1); }
+  67% { transform: translate(-50%, -50%) scale(1); }
+  74% { transform: translate(-50%, -50%) scale(1.1); }
+  79% { transform: translate(-50%, -50%) scale(1); }
+  86% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  96%, 100% { opacity: 0; transform: translate(-50%, -70%) scale(0.9); }
+}
+@keyframes ta-fr-a { 0%, 46% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes ta-fr-b {
+  0%, 46% { opacity: 0; transform: none; }
+  50% { opacity: 1; transform: scale(1.1); }
+  55%, 100% { opacity: 1; transform: none; }
+}
+@keyframes ta-fr-jump {
+  0%, 54% { transform: none; }
+  58% { transform: translateY(-10px); }
+  62% { transform: translateY(0) scale(1.05, 0.93); }
+  65% { transform: translateY(-7px); }
+  69%, 100% { transform: none; }
+}
+@keyframes ta-fr-mini1 {
+  0%, 50% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  55% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  88%, 100% { opacity: 0; transform: translate(-50%, -280%) scale(1); }
+}
+@keyframes ta-fr-mini2 {
+  0%, 54% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  59% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  92%, 100% { opacity: 0; transform: translate(-50%, -280%) scale(1); }
+}
+@keyframes ta-fr-mini3 {
+  0%, 58% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  63% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  96%, 100% { opacity: 0; transform: translate(-50%, -260%) scale(1); }
+}
+@keyframes ta-fr-ribbon {
+  0%, 52% { opacity: 0; transform: translate(-50%, 8px) scale(0.6); }
+  58% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  62% { transform: translate(-50%, 0) scale(1); }
+  92% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -4px) scale(1); }
+}
+.ta-you img, .ta-them img, .ta-card-pic img { display: block; width: 100%; height: 100%; }
+
+/* ---- the last moment of every scene ----
+   Whoever stays on the map shrinks back to its icon size, so swapping back to the map icon
+   is seamless (the shout's bubble drops with it onto the icon's head).
+   Set --end on the stage: icon px on the map / (88 x stage scale). Unset, nothing shrinks. */
+.ta-them, .ta-me { transform-origin: 50% 50%; }
+.ta-sneaky .ta-them, .ta-bold .ta-them, .ta-friend .ta-them, .ta-shout .ta-me { animation-name: ta-settle; }
+@keyframes ta-settle { 0%, 90% { transform: none; } 100% { transform: scale(var(--end, 1)); } }
+@media (prefers-reduced-motion: reduce) {
+  .ta-stage * { animation: none !important; }
+}
+/* ---- 独立宣言: the sender's own shout over the map (ShoutStage in TouchStage.tsx), from the same design ---- */
+/* ---- 独立宣言 (3.2s): breathe in, arms up, the line pops out, rings run out to 10 km ----
+   After the scene the bubble moves onto the map as a marker on the roach for 6s, then fades. */
+.ta-shout .ta-me .ta-body { animation-name: ta-sh-breath; }
+.ta-shout .ta-calm { animation-name: ta-sh-calm; }
+.ta-shout .ta-up { animation-name: ta-sh-up; }
+.ta-shout.ta-pic .ta-calm { animation-name: none; }
+.ta-shout .ta-shoutlines { animation-name: ta-sh-lines; }
+.ta-shout .ta-bubble { animation-name: ta-sh-bubble; }
+.ta-shout .ta-ring.r1 { animation-name: ta-sh-ring1; }
+.ta-shout .ta-ring.r2 { animation-name: ta-sh-ring2; }
+.ta-shout .ta-ring.r3 { animation-name: ta-sh-ring3; }
+.ta-shout .ta-r10 { animation-name: ta-sh-r10; }
+.ta-up, .ta-shoutlines { opacity: 0; }
+.ta-bubble {
+  left: 120px; top: 60px; transform: translate(-50%, -100%); transform-origin: 50% 100%;
+  width: max-content; max-width: 210px; padding: 7px 12px; border-radius: 12px;
+  background: #1b1d22; color: #ffd23f; font-size: 15px; font-weight: 800; line-height: 1.35; text-align: center;
+  box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.ta-bubble::after {
+  content: ""; position: absolute; left: 50%; top: 100%; width: 10px; height: 10px;
+  background: #1b1d22; transform: translate(-50%, -50%) rotate(45deg); box-shadow: 2px 2px 0 #fff;
+}
+.ta-tag {
+  display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px;
+  background: #ffd23f; color: #1b1d22; font-size: 10px; font-weight: 800; line-height: 15px; vertical-align: 2px;
+}
+.ta-ring {
+  left: calc(120px - var(--R)); top: calc(110px - var(--R)); width: calc(var(--R) * 2); height: calc(var(--R) * 2);
+  border-radius: 50%; border: 2px solid rgba(27, 29, 34, 0.55); opacity: 0;
+}
+.ta-ring.r3 { border: 2px dashed #1b1d22; background: rgba(255, 210, 63, 0.18); }
+.ta-r10 {
+  left: calc(120px + var(--R) * 0.7071); top: calc(110px + var(--R) * 0.7071); transform: translate(-50%, -50%); opacity: 0;
+  padding: 1px 8px; border: 1.5px solid #1b1d22; border-radius: 999px; background: #fff;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+@keyframes ta-sh-breath {
+  0% { transform: none; }
+  10% { transform: scale(1.07, 0.88); }
+  16% { transform: translateY(-7px) scale(0.94, 1.1); }
+  22% { transform: scale(1.02, 0.98); }
+  26% { transform: none; }
+  30% { transform: scale(1.03, 0.97); }
+  34% { transform: scale(0.98, 1.02); }
+  38% { transform: scale(1.03, 0.97); }
+  42% { transform: scale(0.98, 1.02); }
+  46%, 100% { transform: none; }
+}
+@keyframes ta-sh-calm { 0%, 14% { opacity: 1; } 15%, 62% { opacity: 0; } 63%, 100% { opacity: 1; } }
+@keyframes ta-sh-up { 0%, 14% { opacity: 0; } 15%, 62% { opacity: 1; } 63%, 100% { opacity: 0; } }
+@keyframes ta-sh-lines {
+  0%, 15% { opacity: 0; transform: scale(0.7); }
+  19% { opacity: 1; transform: scale(1.12); }
+  24% { transform: scale(1); }
+  28% { transform: scale(1.08); }
+  32% { transform: scale(1); }
+  36% { transform: scale(1.08); }
+  40% { transform: scale(1); }
+  56% { opacity: 1; transform: scale(1); }
+  62%, 100% { opacity: 0; transform: scale(1); }
+}
+@keyframes ta-sh-bubble {
+  0%, 17% { opacity: 0; transform: translate(-50%, -100%) scale(0.3); }
+  23% { opacity: 1; transform: translate(-50%, -100%) scale(1.08); }
+  27%, 90% { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+  100% { opacity: 1; transform: translate(-50%, calc(-100% + (1 - var(--end, 1)) * 44px)) scale(1); }
+}
+@keyframes ta-sh-ring1 { 0%, 20% { opacity: 0; transform: scale(0.08); } 22% { opacity: 1; } 56%, 100% { opacity: 0; transform: scale(0.6); } }
+@keyframes ta-sh-ring2 { 0%, 30% { opacity: 0; transform: scale(0.08); } 32% { opacity: 1; } 68%, 100% { opacity: 0; transform: scale(0.85); } }
+@keyframes ta-sh-ring3 {
+  0%, 40% { opacity: 0; transform: scale(0.08); }
+  42% { opacity: 1; }
+  78%, 93% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes ta-sh-r10 { 0%, 78% { opacity: 0; } 83%, 93% { opacity: 1; } 100% { opacity: 0; } }
+.ta-me img { display: block; width: 100%; height: 100%; }
+/* then the line stays over the roach on the map for 6 s and fades out (map/shoutMarker.ts) */
+.shout-mark { pointer-events: none; animation: shout-fade 6.6s linear forwards; }
+.shout-bubble {
+  position: relative; width: max-content; max-width: 210px; margin-bottom: 8px; padding: 7px 12px; border-radius: 12px;
+  background: #1b1d22; color: #ffd23f; font-size: 15px; font-weight: 800; line-height: 1.35; text-align: center;
+  box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.shout-bubble::after {
+  content: ""; position: absolute; left: 50%; top: 100%; width: 10px; height: 10px;
+  background: #1b1d22; transform: translate(-50%, -50%) rotate(45deg); box-shadow: 2px 2px 0 #fff;
+}
+@keyframes shout-fade { 0%, 90.9% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .shout-mark { animation: none; }
+}
+/* a guide acting out a scene over the map steps off it meanwhile; 塔露拉干员's fire burns on */
+.guide-marker.acting > img, .guide-marker.acting .guide-name, .guide-marker.acting .guide-bubble, .guide-marker.acting.minghe-marker > * { visibility: hidden; }
+
 /* the cards of a sleeping main roach */
 .zz { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #e8edf9; color: #2b3a67; font-size: 11px; font-weight: 700; vertical-align: 2px; }
 button.pill.wine { display: inline-flex; align-items: center; gap: 3px; border-color: #c23a5e; background: #c23a5e; color: #fff; }

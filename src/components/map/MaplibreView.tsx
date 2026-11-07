@@ -35,6 +35,7 @@ import {
   updateGuide,
 } from "./guideMarker";
 import { addMaplibreSandwich } from "./sandwich";
+import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -278,6 +279,7 @@ export default function MaplibreView(props: MapViewProps) {
   const readyRef = useRef(false);
   const syncRef = useRef<Promise<void>>(Promise.resolve());
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: maplibregl.Marker }>());
+  const shoutsRef = useRef(new Map<string, maplibregl.Marker>());
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const propsRef = useRef(props);
@@ -331,6 +333,24 @@ export default function MaplibreView(props: MapViewProps) {
     }
   };
 
+  // Your shouts: a bubble over each roach a declaration just went out from, taken away as the page says
+  const syncShouts = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const shown = shoutsRef.current;
+    const want = new Set(propsRef.current.shouts.map((s) => s.id));
+    for (const [id, marker] of shown) {
+      if (want.has(id)) continue;
+      marker.remove();
+      shown.delete(id);
+    }
+    for (const s of propsRef.current.shouts) {
+      if (shown.has(s.id)) continue;
+      const marker = new maplibregl.Marker({ element: shoutElement(s.text, s.limited), anchor: "bottom", offset: [0, -SHOUT_LIFT] });
+      shown.set(s.id, marker.setLngLat([s.at.lng, s.at.lat]).addTo(map));
+    }
+  };
+
   // Draw any icons the latest data needs, then hand the data to the map; queued so updates land in order
   const sync = () => {
     syncRef.current = syncRef.current
@@ -355,6 +375,7 @@ export default function MaplibreView(props: MapViewProps) {
 
   useEffect(() => {
     const { initialView } = propsRef.current;
+    const shoutMarkers = shoutsRef.current;
     const guideMarkers = guidesRef.current;
     const blank = new URLSearchParams(location.search).get("style") === "blank";
     const map = new maplibregl.Map({
@@ -373,6 +394,7 @@ export default function MaplibreView(props: MapViewProps) {
 
     syncGuides();
     map.on("zoom", syncGuides);
+    syncShouts();
 
     const loadTimer = window.setTimeout(() => {
       if (!readyRef.current) propsRef.current.onError?.(propsRef.current.slowNote ?? "海外底图加载很慢，可以试试切换到高德底图。");
@@ -541,6 +563,7 @@ export default function MaplibreView(props: MapViewProps) {
       readyRef.current = false;
       mapRef.current = null;
       guideMarkers.clear();
+      shoutMarkers.clear();
       map.remove();
     };
   }, []);
@@ -556,6 +579,9 @@ export default function MaplibreView(props: MapViewProps) {
   const main = props.mine.find((r) => r.slot === 0);
   const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;
   useEffect(syncGuides, [guidesKey]);
+  const shoutsKey = props.shouts.map((s) => s.id).join("|");
+  useEffect(syncShouts, [shoutsKey]);
+
 
   useEffect(() => {
     const map = mapRef.current;

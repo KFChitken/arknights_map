@@ -19,6 +19,8 @@ export type MapViewProps = {
   guides: GuideMark[];
   /** 明河都尉's trail of stars: his last stations, oldest first, his own last */
   trail: LngLat[];
+  /** Your own declarations, each over the roach it went out from, for a few seconds after the shout */
+  shouts: ShoutMark[];
   myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
@@ -55,6 +57,7 @@ export type MapViewProps = {
  * beside: 佩丽卡监督 keeping watch right beside your drunk main roach, which is at `at`.
  * arrive: 佩丽卡监督 riding her 鬼火 in from where she stood (null: unknown), once per nonce.
  * dance: 阿米娅向导 dancing, from the moment given (a new one starts her dance again).
+ * acting: she is in a touch scene over the map (TouchStage), so her figure steps off it meanwhile.
  */
 export type GuideMark = {
   id: GuideId;
@@ -66,7 +69,11 @@ export type GuideMark = {
   beside?: boolean;
   arrive?: { from: LngLat | null; nonce: number };
   dance?: number;
+  acting?: boolean;
 };
+
+/** A line just shouted over one of your own roaches (at), on your screen only; limited: a 限定 line */
+export type ShoutMark = { id: string; at: LngLat; text: string; limited: boolean };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */
 export function roachTraits(id: string, groups: number, headings: number) {

@@ -32,6 +32,7 @@ import {
   updateGuide,
 } from "./guideMarker";
 import { amapSandwich } from "./sandwich";
+import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -44,6 +45,8 @@ const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
 /** The guides: above your own roaches (300) */
 const GUIDE_Z = 320;
+/** A shout's bubble: over the guides too, as it is the latest thing you did */
+const SHOUT_Z = 330;
 
 // MassMarks draws thousands of points on one canvas, unlike DOM markers.
 // Roaches are split into batches, each with its own MassMarks redrawn in turn;
@@ -204,6 +207,7 @@ export default function AmapView(props: MapViewProps) {
   const styledRef = useRef<{ look: RoachStyle; urls: string[] }>({ look: props.look, urls: [] });
   const mineSeq = useRef(0);
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: AMapNS }>());
+  const shoutsRef = useRef(new Map<string, AMapNS>());
   // 明河都尉's trail of stars
   const trailRef = useRef<AMapNS[]>([]);
   // the roaches' crawl, which a hidden map stops
@@ -265,6 +269,33 @@ export default function AmapView(props: MapViewProps) {
     }
   };
 
+  // Your shouts: a bubble over each roach a declaration just went out from, taken away as the page says
+  const syncShouts = () => {
+    const AMap = amapRef.current;
+    const map = mapRef.current;
+    if (!AMap || !map) return;
+    const shown = shoutsRef.current;
+    const want = new Set(propsRef.current.shouts.map((s) => s.id));
+    for (const [id, marker] of shown) {
+      if (want.has(id)) continue;
+      map.remove(marker);
+      shown.delete(id);
+    }
+    for (const s of propsRef.current.shouts) {
+      if (shown.has(s.id)) continue;
+      const marker = new AMap.Marker({
+        position: toGcj(s.at),
+        content: shoutElement(s.text, s.limited),
+        anchor: "bottom-center",
+        offset: new AMap.Pixel(0, -SHOUT_LIFT),
+        zIndex: SHOUT_Z,
+        bubble: true,
+      });
+      map.add(marker);
+      shown.set(s.id, marker);
+    }
+  };
+
   const drawTrail = () => {
     const AMap = amapRef.current;
     const map = mapRef.current;
@@ -308,6 +339,7 @@ export default function AmapView(props: MapViewProps) {
     let cancelled = false;
     let map: AMapNS = null;
     let crawlTimer = 0;
+    const shoutMarkers = shoutsRef.current;
     const guideMarkers = guidesRef.current;
 
     loadAMap()
@@ -389,6 +421,7 @@ export default function AmapView(props: MapViewProps) {
 
         syncGuides();
         map.on("zoomchange", syncGuides);
+        syncShouts();
 
         map.on("click", (e: AMapNS) => {
           if (Date.now() - lastHitRef.current < 300) return;
@@ -427,6 +460,7 @@ export default function AmapView(props: MapViewProps) {
       mineRef.current = [];
       trailRef.current = [];
       guideMarkers.clear();
+      shoutMarkers.clear();
       map?.destroy();
       mapRef.current = null;
     };
@@ -468,6 +502,9 @@ export default function AmapView(props: MapViewProps) {
   const main = props.mine.find((r) => r.slot === 0);
   const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;
   useEffect(syncGuides, [guidesKey]);
+  const shoutsKey = props.shouts.map((s) => s.id).join("|");
+  useEffect(syncShouts, [shoutsKey]);
+
 
   const trailKey = JSON.stringify(props.trail);
   useEffect(drawTrail, [trailKey]);

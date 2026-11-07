@@ -224,6 +224,7 @@ export function updateGuide(el: HTMLElement, zoom: number, mark: GuideMark) {
   const guide = GUIDES[mark.id];
   el.style.setProperty("--guide-size", `${guideBox(mark, zoom)}px`);
   el.classList.toggle("named", zoom >= NAMED_FROM);
+  el.classList.toggle("acting", Boolean(mark.acting));
   const bubble = el.querySelector<HTMLElement>(".guide-bubble")!;
   bubble.textContent = mark.bubble ?? "";
   bubble.hidden = !mark.bubble;

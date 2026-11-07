@@ -77,16 +77,21 @@ export const POKE_LANDS_MS = 700;
 /**
  * 戳一戳 on a 触须之交's sleeping roach: a finger comes down, 「戳!」, the roach
  * jolts and its Zzz scatter, then it sleeps on. Seen only by the one who poked.
+ * Without the finger (finger false) it is a sleeping roach touched: it only jolts.
  */
 export function PokeActor({
   avatar,
   color,
   look,
+  friend = true,
+  finger = true,
   onDone,
 }: {
   avatar: DrawnAvatar;
   color: RoachColor;
   look: RoachStyle;
+  friend?: boolean;
+  finger?: boolean;
   onDone: () => void;
 }) {
   useEffect(() => {
@@ -95,15 +100,15 @@ export function PokeActor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const opts = { avatar, look, friend: true, asleep: true };
+  const opts = { avatar, look, friend, asleep: true };
   return (
     <div className="actor poke" aria-hidden="true">
       <div className="lay body">
         <RoachIcon color={color} size={120} {...opts} anim />
       </div>
       <div className="lay zs" dangerouslySetInnerHTML={{ __html: svg(sleepingZzz(opts)) }} />
-      <div className="finger" dangerouslySetInnerHTML={{ __html: POKE_FINGER }} />
-      <div className="bang" dangerouslySetInnerHTML={{ __html: POKE_BANG }} />
+      {finger && <div className="finger" dangerouslySetInnerHTML={{ __html: POKE_FINGER }} />}
+      {finger && <div className="bang" dangerouslySetInnerHTML={{ __html: POKE_BANG }} />}
     </div>
   );
 }

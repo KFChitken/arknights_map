@@ -10,7 +10,7 @@ import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/shapes";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
-import type { Declaration, Reaction, Template } from "@/lib/declarations";
+import { declarationText, type Declaration, type Reaction, type Template } from "@/lib/declarations";
 import type { Place } from "@/lib/geocode";
 import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
 import {
@@ -62,6 +62,10 @@ import {
   trailOf,
 } from "@/lib/minghe";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
+import { roachIconUrl, usesPicture } from "@/lib/roachImages";
+import type { RoachOpts } from "@/lib/roachSvg";
+import { iconPx } from "@/lib/swarm";
+import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
 import { MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
@@ -140,6 +144,7 @@ import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
+import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
   loadProgress,
@@ -149,8 +154,8 @@ import {
   tutorialStep,
   type Progress,
 } from "./app/Tutorial";
-import { BIKE_MS, preloadDance } from "./map/guideMarker";
-import type { GuideMark } from "./map/types";
+import { belowGuide, besideMain, besideRight, BIKE_MS, guideBox, guideShift, MINE_PX, preloadDance } from "./map/guideMarker";
+import type { GuideMark, ShoutMark } from "./map/types";
 import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
@@ -346,6 +351,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const afterActing = useRef<(() => void) | null>(null);
   // 戳一戳 under way: the 触须之交's roach it plays over, left off the map meanwhile
   const [poking, setPoking] = useState<PublicRoach | null>(null);
+  /** A touch acted out over the map (TouchStage), and what to do once it is over */
+  const [touchScene, setTouchScene] = useState<{ kind: TouchKind; cast: TouchCast; place: StagePlace; target: string; done: () => void } | null>(null);
+  /** A sleeping roach touched: it only jolts in its sleep */
+  const [jolting, setJolting] = useState<{ roach: PublicRoach; done: () => void } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  /** A declaration shouted over the map (ShoutStage) from one of your roaches */
+  const [shouting, setShouting] = useState<{ roach: string; text: string; limited: boolean; place: ShoutPlace; toast: () => void; done: () => void } | null>(null);
+  /** The lines just shouted, each over a roach it went out from, for a few seconds */
+  const [shouts, setShouts] = useState<ShoutMark[]>([]);
   const [pokeSent, setPokeSent] = useState(false);
   const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
@@ -643,7 +657,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const flyHome = () => {
     if (tutorialMain) setFocus({ lng: tutorialMain.lng, lat: tutorialMain.lat, zoom: 11, nonce: Date.now() });
   };
-  const shownRoaches = useMemo(() => (poking ? roaches.filter((r) => r.id !== poking.id) : roaches), [roaches, poking]);
+  // whoever acts out a scene over the map is left out of it meanwhile
+  const offStage = poking?.id ?? jolting?.roach.id ?? touchScene?.target;
+  const shownRoaches = useMemo(() => (offStage ? roaches.filter((r) => r.id !== offStage) : roaches), [roaches, offStage]);
 
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
@@ -905,17 +921,64 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const touchedToast = (bold: boolean) =>
     setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
 
+  /**
+   * Act out a touch over the map, on this screen only (TouchStage), and resolve once it is
+   * over, to whether it played: not when motion is turned down or roaches look 写实. The
+   * map goes to the roach touched and leaves it out meanwhile; a sleeping one only jolts
+   * in its sleep, and stays asleep.
+   */
+  const playTouch = (roach: PublicRoach, kind: TouchKind) =>
+    new Promise<boolean>((resolve) => {
+      if (!me || look === "real" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return resolve(false);
+      const zoom = viewRef.current.zoom;
+      setFocus({ lng: roach.lng, lat: roach.lat, zoom, nonce: Date.now() });
+      if (roach.asleep && !roach.guide) {
+        setJolting({ roach, done: () => (setJolting(null), resolve(true)) });
+        return;
+      }
+      const wrap = wrapRef.current;
+      // a guide is as big as her marker, and stands where the map draws her: 塔露拉干员 by her fire, the
+      // others stepped aside from your main roach when it is close (as the maps work it out)
+      const guide = roach.guide ? guides.find((g) => g.id === roach.id) : undefined;
+      const box = guide ? guideBox(guide, zoom) : iconPx(zoom);
+      const [sx, sy] = guide ? guideShift(guide, box) : [0, 0];
+      const main = me.roaches.find((r) => r.slot === 0);
+      const [bx, by] = !guide || guide.fire
+        ? [0, 0]
+        : guide.beside
+          ? besideRight(box)
+          : besideMain({ x: sx, y: sy }, main ? screenDelta(guide.at, main, zoom) : null, box, belowGuide(zoom));
+      const place = stagePlace(wrap?.clientWidth ?? window.innerWidth, wrap?.clientHeight ?? window.innerHeight, box, [sx + bx, sy + by]);
+      const cast: TouchCast = {
+        you: { avatar: myAvatar, color: myColor, name: me.profile.anonymous || !me.profile.name.trim() ? "匿名" : displayName(me.profile) },
+        them: { avatar: roach.avatar, color: roach.color, clone: roach.clone, friend: roach.friend },
+      };
+      // looks that are pictures are drawn on a canvas first: have them ready as the scene starts (as RoachIcon asks for them)
+      const warm = (color: TouchCast["you"]["color"], opts: RoachOpts, size: number) =>
+        usesPicture(opts) ? roachIconUrl(color, opts, size * 2).catch(() => "") : Promise.resolve("");
+      const { you, them } = cast;
+      const ready = Promise.all([
+        warm(you.color, { avatar: you.avatar, mine: true }, 88),
+        warm(you.color, { avatar: you.avatar }, 20),
+        warm(them.color, { avatar: them.avatar, clone: them.clone, friend: them.friend }, 88),
+        warm(them.color, { avatar: them.avatar, clone: them.clone, friend: true }, 88),
+      ]);
+      Promise.race([ready, new Promise((r) => window.setTimeout(r, 600))]).then(() =>
+        setTouchScene({ kind, cast, place, target: roach.id, done: () => (setTouchScene(null), resolve(true)) }),
+      );
+    });
+
   const touch = async (roach: PublicRoach, bold: boolean) => {
-    if (roach.guide) return touchGuide(roach.id as GuideId, bold);
+    if (roach.guide) return touchGuide(roach, bold);
     const res = await act((w) => w.touch(roach.id, bold));
     if (!res) return;
     setSelected(null);
-    if (res.newFriend) {
-      befriendedToast(res.newFriend);
-      await Promise.all([loadFriends(), loadInbox()]);
-    } else {
-      touchedToast(bold);
-    }
+    // the scene plays first, then today's toast
+    const loading = res.newFriend ? Promise.all([loadFriends(), loadInbox()]) : null;
+    await playTouch(roach, res.newFriend ? "friend" : bold ? "bold" : "sneaky");
+    if (res.newFriend) befriendedToast(res.newFriend);
+    else touchedToast(bold);
+    await loading;
     if (me?.isNew) await loadMe();
     if (demoRef.current) await loadIdentities();
   };
@@ -998,15 +1061,18 @@ export default function MapApp({ cn }: { cn: boolean }) {
     then?.();
   };
 
-  /** Touch a guide on the map: she touches back at once, and says so over her head a moment later. */
-  const touchGuide = async (id: GuideId, bold: boolean) => {
+  /** Touch a guide on the map: she touches back at once, and says so over her head once the scene is over. */
+  const touchGuide = async (roach: PublicRoach, bold: boolean) => {
+    const id = roach.id as GuideId;
     const res = await act((w) => w.touch(id, bold));
     if (!res?.guide) return;
     setSelected(null);
+    const loading = res.newFriend ? Promise.all([loadFriends(), loadMe()]) : null;
+    const played = await playTouch(roach, res.newFriend ? "friend" : bold ? "bold" : "sneaky");
     if (res.newFriend) befriendedToast(res.newFriend);
     else touchedToast(bold);
     if (id === AMIYA_ID && step === "touch") updateProgress({ practiced: true });
-    if (res.newFriend) await Promise.all([loadFriends(), loadMe()]);
+    await loading;
     const { itemId } = res.guide;
     const line = guideLine(res.guide);
     const at = id === PERLICA_ID ? perlicaShown : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : AMIYA_AT;
@@ -1023,7 +1089,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       }
       await loadInbox();
       runAfterReport();
-    }, 1500);
+    }, played ? 0 : 1500);
   };
 
   /** Touch back one of 阿米娅向导's touches from a card, where her answer shows at once and so counts as seen. Resolves to her line. */
@@ -1171,10 +1237,52 @@ export default function MapApp({ cn }: { cn: boolean }) {
     return Boolean(saved);
   };
 
+  /**
+   * Shout a declaration over the map, on this screen only (ShoutStage): the map goes to the
+   * first roach it went out from (the main one when it is among them), close enough for its
+   * 10 km to show, and leaves that roach out meanwhile; toast comes as the rings reach 10 km.
+   * Then the line stays over each of those roaches in view for a few seconds. Without the
+   * scene (motion turned down, roaches 写实) only the toast.
+   */
+  const playShout = (d: Declaration, from: string[], toast: () => void) => {
+    const sent = (me?.roaches ?? []).filter((r) => from.includes(r.id));
+    const first = sent.find((r) => r.slot === 0) ?? sent[0];
+    if (!first || look === "real" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return toast();
+    const wrap = wrapRef.current;
+    const w = wrap?.clientWidth ?? window.innerWidth;
+    const h = wrap?.clientHeight ?? window.innerHeight;
+    const zoom = shoutZoom(first.lat, w, h, viewRef.current.zoom);
+    setFocus({ lng: first.lng, lat: first.lat, zoom, nonce: Date.now() });
+    const text = declarationText(d);
+    const limited = d.template === "event";
+    const bubbles = () => {
+      const bounds = boundsRef.current;
+      const at = Date.now();
+      const marks = sent
+        .filter((r) => r === first || (bounds && inBounds(r, bounds)))
+        .map((r) => ({ id: `${r.id}:${at}`, at: { lng: r.lng, lat: r.lat }, text, limited }));
+      setShouts((all) => [...all, ...marks]);
+      window.setTimeout(() => setShouts((all) => all.filter((s) => !marks.includes(s))), BUBBLE_MS + BUBBLE_FADE_MS);
+    };
+    setShouting({
+      roach: first.id,
+      text,
+      limited,
+      place: shoutPlace(w, h, first.lat, zoom, MINE_PX),
+      toast,
+      done: () => {
+        setShouting(null);
+        bubbles();
+      },
+    });
+  };
+
   const declare = async (d: Declaration, from: string[]) => {
     const res = await act((w) => w.declare(d, from));
     if (!res) return false;
-    setToast(`宣言发出去了！${res.reach}`);
+    // the card goes first, then the shout plays over the map
+    setPanel(null);
+    playShout(d, from, () => setToast(`宣言发出去了！${res.reach}`));
     if (demoRef.current) await loadIdentities();
     // the tutorial's greeting step is done however it was sent, and a limited line earns a badge
     await loadMe();
@@ -1794,14 +1902,23 @@ export default function MapApp({ cn }: { cn: boolean }) {
       friend: Boolean(me?.amiya.friend),
       bubble: says.amiya ?? null,
       ...(amiyaDance ? { dance: amiyaDance } : {}),
+      ...(offStage === AMIYA_ID ? { acting: true } : {}),
     },
-    { id: TALULAH_ID, at: FIRE_AT, friend: Boolean(me?.talulah.friend), bubble: says.talulah ?? null, fire },
+    {
+      id: TALULAH_ID,
+      at: FIRE_AT,
+      friend: Boolean(me?.talulah.friend),
+      bubble: says.talulah ?? null,
+      fire,
+      ...(offStage === TALULAH_ID ? { acting: true } : {}),
+    },
     {
       id: MINGHE_ID,
       at: mingheAt,
       friend: Boolean(me?.minghe.friend),
       bubble: says.minghe ?? null,
       ride: { ahead: (queueBearing(day) + 180) % 360 },
+      ...(offStage === MINGHE_ID ? { acting: true } : {}),
     },
     ...(perlicaShown && me
       ? [
@@ -1812,6 +1929,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             bubble: says.perlica ?? null,
             ...(guarding ? { beside: true } : {}),
             ...(perlicaArrive ? { arrive: perlicaArrive } : {}),
+            ...(offStage === PERLICA_ID ? { acting: true } : {}),
           },
         ]
       : []),
@@ -1820,8 +1938,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
     roaches: fakeQueue.length ? [...shownRoaches, ...fakeQueue] : shownRoaches,
     guides,
     trail,
-    // while the main roach acts out a scene over the map, the map leaves it out
-    mine: (me?.roaches ?? []).filter((r) => !acting || r.slot > 0),
+    shouts,
+    // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out
+    mine: (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
     mineAsleep: Boolean(me?.drunkUntil),
     // where the roach would go: a visitor's pick, or the spot a card is asking about
     ghost: me ? (panel?.kind === "placeConfirm" ? panel.spot : null) : preview,
@@ -2214,7 +2333,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
         </button>
       )}
 
-      <div className="map-wrap">
+      <div className="map-wrap" ref={wrapRef}>
         {basemap === "amap" && !amapFailed && amapMade && (
           <div className={`map-slot ${twoMaps && abroad ? "map-hidden" : ""}`}>
             <AmapView
@@ -2250,6 +2369,29 @@ export default function MapApp({ cn }: { cn: boolean }) {
           <div className="actor-stage">
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
           </div>
+        )}
+        {jolting && (
+          <div className="actor-stage">
+            <PokeActor
+              avatar={jolting.roach.avatar}
+              color={jolting.roach.color}
+              look={look}
+              friend={jolting.roach.friend}
+              finger={false}
+              onDone={jolting.done}
+            />
+          </div>
+        )}
+        {touchScene && <TouchStage kind={touchScene.kind} cast={touchScene.cast} place={touchScene.place} onDone={touchScene.done} />}
+        {shouting && (
+          <ShoutStage
+            me={{ avatar: myAvatar, color: myColor }}
+            text={shouting.text}
+            limited={shouting.limited}
+            place={shouting.place}
+            onToast={shouting.toast}
+            onDone={shouting.done}
+          />
         )}
         {note && (
           <PerlicaBanner lines={note.lines} onOpen={openNote} onClose={endNote} />
