@@ -1241,8 +1241,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
    * Shout a declaration over the map, on this screen only (ShoutStage): the map goes to the
    * first roach it went out from (the main one when it is among them), close enough for its
    * 10 km to show, and leaves that roach out meanwhile; toast comes as the rings reach 10 km.
-   * Then the line stays over each of those roaches in view for a few seconds. Without the
-   * scene (motion turned down, roaches 写实) only the toast.
+   * Then the line stays over each of those roaches for a few seconds, off screen too, so
+   * pulling the map out shows it in every place it went out from. Without the scene (motion
+   * turned down, roaches 写实) only the toast.
    */
   const playShout = (d: Declaration, from: string[], toast: () => void) => {
     const sent = (me?.roaches ?? []).filter((r) => from.includes(r.id));
@@ -1256,11 +1257,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const text = declarationText(d);
     const limited = d.template === "event";
     const bubbles = () => {
-      const bounds = boundsRef.current;
       const at = Date.now();
-      const marks = sent
-        .filter((r) => r === first || (bounds && inBounds(r, bounds)))
-        .map((r) => ({ id: `${r.id}:${at}`, at: { lng: r.lng, lat: r.lat }, text, limited }));
+      const marks = sent.map((r) => ({ id: `${r.id}:${at}`, at: { lng: r.lng, lat: r.lat }, text, limited }));
       setShouts((all) => [...all, ...marks]);
       window.setTimeout(() => setShouts((all) => all.filter((s) => !marks.includes(s))), BUBBLE_MS + BUBBLE_FADE_MS);
     };
