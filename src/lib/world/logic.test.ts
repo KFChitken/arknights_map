@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { declarationText, reactionsFor, TEMPLATES, type Declaration } from "../declarations";
+import { declarationText, DRUNK_TEMPLATES, reactionsFor, TEMPLATES, type Declaration } from "../declarations";
 import { beijingDate } from "../beijing";
 import { activeEvents, EVENTS, untilText } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
@@ -47,6 +47,33 @@ describe("declarations", () => {
     expect(reactionsFor("birthday")).toContain("birthday");
     expect(reactionsFor("launch")).not.toContain("birthday");
     expect(reactionsFor("launch")).toEqual(["alsoplay", "zhouli", "shouwei", "plusone", "diplomat"]);
+  });
+});
+
+describe("drunk declarations", () => {
+  const drunk = (d: Declaration, p: Profile = fan) => declarationText(checkDeclaration(p, d, Date.now(), true));
+
+  it("says each of the seven lines while the main roach lies drunk", () => {
+    expect(drunk({ template: "water" })).toBe("这白开水怎么没味啊？");
+    expect(drunk({ template: "drunklove", character: "能天使" })).toBe("我永远喜欢能天使！");
+    expect(drunk({ template: "kr168", character: "佩丽卡", spouse: "老婆" })).toBe("氪了168，佩丽卡老婆回家家");
+    expect(drunk({ template: "kr168", character: "能天使", spouse: "老公" })).toBe("氪了168，能天使老公回家家");
+    expect(drunk({ template: "radar" })).toBe("我的方舟雷达💡的一下响了");
+    expect(drunk({ template: "roguelike" })).toBe("我要打集成战略！");
+    expect(drunk({ template: "xianshu" })).toBe("我要看仙术杯！");
+    expect(drunk({ template: "rental" })).toBe("我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个");
+    expect(DRUNK_TEMPLATES).toHaveLength(7);
+  });
+
+  it("refuses them sober, and takes only your own favourites and 老婆 or 老公", () => {
+    for (const template of DRUNK_TEMPLATES) {
+      expect(() => say({ template, character: "能天使", spouse: "老婆" } as Declaration)).toThrow("醉倒以后");
+    }
+    expect(() => drunk({ template: "drunklove", character: "陈" })).toThrow("厨力角色");
+    // @ts-expect-error neither 老婆 nor 老公
+    expect(() => drunk({ template: "kr168", character: "能天使", spouse: "对象" })).toThrow("老婆还是老公");
+    // the sober ones still go out drunk
+    expect(drunk({ template: "launch", game: "arknights" })).toBe("明日方舟，启动！");
   });
 });
 

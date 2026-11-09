@@ -280,6 +280,7 @@ export default function MaplibreView(props: MapViewProps) {
   const syncRef = useRef<Promise<void>>(Promise.resolve());
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: maplibregl.Marker }>());
   const shoutsRef = useRef(new Map<string, maplibregl.Marker>());
+  const overlaysRef = useRef(new Map<string, maplibregl.Marker>());
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const propsRef = useRef(props);
@@ -351,6 +352,24 @@ export default function MaplibreView(props: MapViewProps) {
     }
   };
 
+  // Elements the page places on the map (⚡舟友的酒⚡'s dance floor), moved with it
+  const syncOverlays = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const shown = overlaysRef.current;
+    const want = new Set((propsRef.current.overlays ?? []).map((o) => o.id));
+    for (const [id, marker] of shown) {
+      if (want.has(id)) continue;
+      marker.remove();
+      shown.delete(id);
+    }
+    for (const o of propsRef.current.overlays ?? []) {
+      if (shown.has(o.id)) continue;
+      o.el.style.pointerEvents = "none";
+      shown.set(o.id, new maplibregl.Marker({ element: o.el, anchor: "center" }).setLngLat([o.at.lng, o.at.lat]).addTo(map));
+    }
+  };
+
   // Draw any icons the latest data needs, then hand the data to the map; queued so updates land in order
   const sync = () => {
     syncRef.current = syncRef.current
@@ -376,6 +395,7 @@ export default function MaplibreView(props: MapViewProps) {
   useEffect(() => {
     const { initialView } = propsRef.current;
     const shoutMarkers = shoutsRef.current;
+    const overlayMarkers = overlaysRef.current;
     const guideMarkers = guidesRef.current;
     const blank = new URLSearchParams(location.search).get("style") === "blank";
     const map = new maplibregl.Map({
@@ -395,6 +415,7 @@ export default function MaplibreView(props: MapViewProps) {
     syncGuides();
     map.on("zoom", syncGuides);
     syncShouts();
+    syncOverlays();
 
     const loadTimer = window.setTimeout(() => {
       if (!readyRef.current) propsRef.current.onError?.(propsRef.current.slowNote ?? "海外底图加载很慢，可以试试切换到高德底图。");
@@ -564,6 +585,7 @@ export default function MaplibreView(props: MapViewProps) {
       mapRef.current = null;
       guideMarkers.clear();
       shoutMarkers.clear();
+      overlayMarkers.clear();
       map.remove();
     };
   }, []);
@@ -581,7 +603,8 @@ export default function MaplibreView(props: MapViewProps) {
   useEffect(syncGuides, [guidesKey]);
   const shoutsKey = props.shouts.map((s) => s.id).join("|");
   useEffect(syncShouts, [shoutsKey]);
-
+  const overlaysKey = (props.overlays ?? []).map((o) => o.id).join("|");
+  useEffect(syncOverlays, [overlaysKey]);
 
   useEffect(() => {
     const map = mapRef.current;

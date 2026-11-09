@@ -208,6 +208,7 @@ export default function AmapView(props: MapViewProps) {
   const mineSeq = useRef(0);
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: AMapNS }>());
   const shoutsRef = useRef(new Map<string, AMapNS>());
+  const overlaysRef = useRef(new Map<string, AMapNS>());
   // 明河都尉's trail of stars
   const trailRef = useRef<AMapNS[]>([]);
   // the roaches' crawl, which a hidden map stops
@@ -296,6 +297,27 @@ export default function AmapView(props: MapViewProps) {
     }
   };
 
+  // Elements the page places on the map (⚡舟友的酒⚡'s dance floor), moved with it
+  const syncOverlays = () => {
+    const AMap = amapRef.current;
+    const map = mapRef.current;
+    if (!AMap || !map) return;
+    const shown = overlaysRef.current;
+    const want = new Set((propsRef.current.overlays ?? []).map((o) => o.id));
+    for (const [id, marker] of shown) {
+      if (want.has(id)) continue;
+      map.remove(marker);
+      shown.delete(id);
+    }
+    for (const o of propsRef.current.overlays ?? []) {
+      if (shown.has(o.id)) continue;
+      o.el.style.pointerEvents = "none";
+      const marker = new AMap.Marker({ position: toGcj(o.at), content: o.el, anchor: "center", zIndex: SHOUT_Z - 5, bubble: true });
+      map.add(marker);
+      shown.set(o.id, marker);
+    }
+  };
+
   const drawTrail = () => {
     const AMap = amapRef.current;
     const map = mapRef.current;
@@ -339,6 +361,7 @@ export default function AmapView(props: MapViewProps) {
     let cancelled = false;
     let map: AMapNS = null;
     let crawlTimer = 0;
+    const overlayMarkers = overlaysRef.current;
     const shoutMarkers = shoutsRef.current;
     const guideMarkers = guidesRef.current;
 
@@ -422,6 +445,7 @@ export default function AmapView(props: MapViewProps) {
         syncGuides();
         map.on("zoomchange", syncGuides);
         syncShouts();
+        syncOverlays();
 
         map.on("click", (e: AMapNS) => {
           if (Date.now() - lastHitRef.current < 300) return;
@@ -461,6 +485,7 @@ export default function AmapView(props: MapViewProps) {
       trailRef.current = [];
       guideMarkers.clear();
       shoutMarkers.clear();
+      overlayMarkers.clear();
       map?.destroy();
       mapRef.current = null;
     };
@@ -504,7 +529,8 @@ export default function AmapView(props: MapViewProps) {
   useEffect(syncGuides, [guidesKey]);
   const shoutsKey = props.shouts.map((s) => s.id).join("|");
   useEffect(syncShouts, [shoutsKey]);
-
+  const overlaysKey = (props.overlays ?? []).map((o) => o.id).join("|");
+  useEffect(syncOverlays, [overlaysKey]);
 
   const trailKey = JSON.stringify(props.trail);
   useEffect(drawTrail, [trailKey]);

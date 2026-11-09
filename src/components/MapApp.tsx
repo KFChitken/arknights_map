@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -147,6 +148,9 @@ import SafetySheet from "./app/SafetySheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
 import { DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import PartyScene from "./app/PartyScene";
+import { playPartyMusic, preloadPartyMusic, stopPartyMusic, type PartyMusic } from "./app/partyMusic";
+import { PARTY_ZOOM } from "@/lib/party";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
   loadProgress,
@@ -157,7 +161,7 @@ import {
   type Progress,
 } from "./app/Tutorial";
 import { belowGuide, besideMain, besideRight, BIKE_MS, guideBox, guideShift, MINE_PX, preloadDance } from "./map/guideMarker";
-import type { GuideMark, ShoutMark } from "./map/types";
+import type { GuideMark, MapOverlay, ShoutMark } from "./map/types";
 import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
@@ -367,6 +371,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [settled, setSettled] = useState(false);
   // 摄入酒精 / 醒酒 played out by your main roach, big, in the middle of the map
   const [acting, setActing] = useState<"drink" | "wake" | null>(null);
+  /** ⚡舟友的酒⚡: the dance round your drunk main roach (PartyScene), on the map at its spot, and its music */
+  const [party, setParty] = useState<{ key: number; el: HTMLDivElement; at: LngLat; music: Promise<PartyMusic | null> } | null>(null);
   // what opens once the scene is over, so nothing pops up over it
   const afterActing = useRef<(() => void) | null>(null);
   // 戳一戳 under way: the 触须之交's roach it plays over, left off the map meanwhile
@@ -981,6 +987,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const soberUp = async () => {
+    endParty();
     setDrinking(true);
     const done = await act((w) => w.sober().then(() => true));
     setDrinking(false);
@@ -989,6 +996,20 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const [, items] = await Promise.all([loadMe(), loadInbox()]);
     setToast(`醒酒了。${pokedToast(items)}`);
   };
+
+  /** ⚡舟友的酒⚡ on, within the tap (so its music may play): the map goes to the drunk main roach */
+  const startParty = () => {
+    const main = me?.roaches.find((r) => r.slot === 0);
+    if (!main || !me?.drunkUntil) return;
+    const music = playPartyMusic();
+    setSelected(null);
+    setFocus({ lng: main.lng, lat: main.lat, zoom: Math.max(viewRef.current.zoom, PARTY_ZOOM), nonce: Date.now() });
+    setParty({ key: Date.now(), el: document.createElement("div"), at: { lng: main.lng, lat: main.lat }, music });
+  };
+  const endParty = useCallback(() => {
+    stopPartyMusic();
+    setParty(null);
+  }, []);
 
   // A drunk roach wakes at 8:00 where it lies; an open page sees it stand up then
   const drunkUntil = me?.drunkUntil;
@@ -1607,6 +1628,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
   // She tells the player how long they slept when they wake on this page (醒酒, moving or taking back
   // the main roach, or the morning coming), while her 离开计时 is on; opening the page tells the rest
   const drunkNow = Boolean(me?.drunkUntil);
+  // ⚡舟友的酒⚡: its music fetched once the main roach lies drunk; over when it wakes, or moves
+  useEffect(() => {
+    if (drunkNow) preloadPartyMusic();
+    else endParty();
+  }, [drunkNow, endParty]);
+  const mainSpot = main ? `${main.lng},${main.lat}` : "";
+  const partySpot = party ? `${party.at.lng},${party.at.lat}` : "";
+  useEffect(() => {
+    if (partySpot && partySpot !== mainSpot) endParty();
+  }, [partySpot, mainSpot, endParty]);
+  const partyOverlays = useMemo<MapOverlay[]>(() => (party ? [{ id: `party-${party.key}`, at: party.at, el: party.el }] : []), [party]);
   const drunkSeen = useRef<{ id: string; drunk: boolean } | null>(null);
   useEffect(() => {
     if (!me) {
@@ -2033,7 +2065,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
             bubble: says.perlica ?? null,
             ...(guarding ? { beside: true } : {}),
             ...(perlicaArrive ? { arrive: perlicaArrive } : {}),
-            ...(offStage === PERLICA_ID ? { acting: true } : {}),
+            // she steps off while ⚡舟友的酒⚡'s phantoms dance where she stands
+            ...(offStage === PERLICA_ID || party ? { acting: true } : {}),
           },
         ]
       : []),
@@ -2043,6 +2076,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     guides,
     trail,
     shouts,
+    overlays: partyOverlays,
     // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -2240,6 +2274,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             profile={me.profile}
             roaches={me.roaches}
             initial={p.initial}
+            drunk={Boolean(me.drunkUntil)}
             onSend={declare}
             onEditProfile={() => setPanel({ kind: "profile" })}
             onClose={() => setPanel(null)}
@@ -2597,6 +2632,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           drinks={me?.counts.drinks ?? 0}
           busy={drinking || Boolean(acting) || riding}
           riding={myRider?.roachId === selected.roach.id ? { stops: myRider.stops, onDismount: dismount } : undefined}
+          party={selected.roach.slot === 0 && me?.drunkUntil ? { on: Boolean(party), onToggle: party ? endParty : startParty } : undefined}
           onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}
           onRemove={() => remove(selected.roach)}
           onDrink={drinkUp}
@@ -2684,6 +2720,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       )}
       {dockScene && <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} onDone={dockScene.done} />}
       {arcs && <DockArcs key={arcs.nonce} at={arcs.at} />}
+      {party && createPortal(<PartyScene key={party.key} avatar={myAvatar} color={myColor} music={party.music} onDone={endParty} />, party.el)}
       {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}
 
       {panel && renderPanel(panel)}

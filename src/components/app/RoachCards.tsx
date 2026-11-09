@@ -290,7 +290,7 @@ export function OtherRoachCard({
   );
 }
 
-/** Tapped one of your own roaches. The main roach can 摄入酒精, and 醒酒 while drunk. */
+/** Tapped one of your own roaches. The main roach can 摄入酒精, and 醒酒 or ⚡舟友的酒⚡ while drunk. */
 export function MyRoachCard({
   roach,
   index,
@@ -301,6 +301,7 @@ export function MyRoachCard({
   drinks,
   busy,
   riding,
+  party,
   onMove,
   onRemove,
   onDrink,
@@ -321,6 +322,8 @@ export function MyRoachCard({
   busy: boolean;
   /** This clone rides with 明河都尉: the how-manieth station it is at (1–7), and getting it off */
   riding?: { stops: number; onDismount: () => void };
+  /** ⚡舟友的酒⚡ while the main roach lies drunk (PartyScene): whether it is on, and starting or stopping it */
+  party?: { on: boolean; onToggle: () => void };
   onMove: () => void;
   onRemove: () => void;
   onDrink: () => void;
@@ -363,9 +366,16 @@ export function MyRoachCard({
         </button>
         {!clone &&
           (asleep ? (
-            <button className="pill" disabled={busy} onClick={onSober}>
-              醒酒
-            </button>
+            <>
+              <button className="pill" disabled={busy} onClick={onSober}>
+                醒酒
+              </button>
+              {party && (
+                <button className={`pill ${party.on ? "" : "party-btn"}`} disabled={busy} onClick={party.onToggle}>
+                  {party.on ? "停下来" : "⚡舟友的酒⚡"}
+                </button>
+              )}
+            </>
           ) : (
             <button className="pill wine" disabled={busy} onClick={onDrink}>
               <span dangerouslySetInnerHTML={{ __html: bottleIcon(15) }} />
@@ -376,6 +386,7 @@ export function MyRoachCard({
           {clone ? "收回" : "收回（连同克隆体）"}
         </button>
       </div>
+      {asleep && party && <p className="tally">⚡舟友的酒⚡只在你自己的屏幕上放。音乐：活跃黑江乐（bilibili）的视频</p>}
       {!clone && (
         <p className="tally">
           {drinks >= 50 ? `已醉倒 ${drinks} 次，「泰拉异格酒神」到手了` : `已醉倒 ${drinks}/50 次，满了解锁「泰拉异格酒神」`}

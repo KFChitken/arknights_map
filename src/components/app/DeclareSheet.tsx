@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { declarationText, FOODS, WELCOME_NAMES, type Declaration, type Food, type Template } from "@/lib/declarations";
+import { declarationText, FOODS, SPOUSES, WELCOME_NAMES, type Declaration, type Food, type Spouse, type Template } from "@/lib/declarations";
 import { activeEvents, untilText, type EventLine } from "@/lib/events";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
 import { displayName, type Profile } from "@/lib/profile";
@@ -11,12 +11,13 @@ import type { OwnRoach } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 /** Sentences whose blank is one of the sender's favourite characters */
-const WITH_CHARACTER: Template[] = ["iam", "love", "buff", "canyou", "eat"];
+const WITH_CHARACTER: Template[] = ["iam", "love", "buff", "canyou", "eat", "drunklove", "kr168"];
 
 export default function DeclareSheet({
   profile,
   roaches,
   initial,
+  drunk = false,
   onSend,
   onEditProfile,
   onClose,
@@ -25,6 +26,8 @@ export default function DeclareSheet({
   roaches: OwnRoach[];
   /** The sentence picked to begin with, such as 欢迎回家 for a player just back */
   initial?: Template;
+  /** The main roach lies drunk: its own lines come first */
+  drunk?: boolean;
   onSend: (d: Declaration, from: string[]) => Promise<boolean>;
   onEditProfile: () => void;
   onClose: () => void;
@@ -41,7 +44,7 @@ export default function DeclareSheet({
   // while an event is on, its first line is picked to begin with
   const [events] = useState(() => activeEvents());
   const [line, setLine] = useState(events[0]?.lines[0]?.id ?? "");
-  const [template, setTemplate] = useState<Template>(initial ?? (events.length ? "event" : "launch"));
+  const [template, setTemplate] = useState<Template>(initial ?? (drunk ? "water" : events.length ? "event" : "launch"));
   const [game, setGame] = useState<Game>(profile.games[0] ?? "arknights");
   const [character, setCharacter] = useState(favourites[0]?.name ?? "");
   const characterGame = favourites.find((f) => f.name === character)?.game ?? "arknights";
@@ -49,6 +52,7 @@ export default function DeclareSheet({
   const [pickedTitle, setTitle] = useState(titles[0]);
   const title = titles.includes(pickedTitle) ? pickedTitle : titles[0];
   const [food, setFood] = useState<Food>(FOODS[0]);
+  const [spouse, setSpouse] = useState<Spouse>(SPOUSES[0]);
   const [sending, setSending] = useState(false);
 
   const d: Declaration = (() => {
@@ -67,6 +71,16 @@ export default function DeclareSheet({
         return { template };
       case "event":
         return { template, line };
+      case "drunklove":
+        return { template, character };
+      case "kr168":
+        return { template, character, spouse };
+      case "water":
+      case "radar":
+      case "roguelike":
+      case "xianshu":
+      case "rental":
+        return { template };
       default:
         return { template: template === "welcome" ? "welcome" : "launch", game };
     }
@@ -162,6 +176,36 @@ export default function DeclareSheet({
           <button className={`chip ${allOn ? "on" : ""}`} onClick={() => setFrom(allOn ? [main.id] : all)}>
             全部
           </button>
+        </div>
+      )}
+
+      {drunk && (
+        <div className="drunk-group" role="group" aria-label="醉酒限定宣言">
+          <div className="drunk-tag">醉酒限定</div>
+          {row("water", <>这白开水怎么没味啊？</>)}
+          {row("drunklove", <>我永远喜欢{characterSelect("drunklove")}！</>)}
+          {row(
+            "kr168",
+            <>
+              氪了168，{characterSelect("kr168")}
+              {blank(
+                "kr168",
+                <select value={spouse} onChange={(e) => setSpouse(e.target.value as Spouse)} aria-label="老婆还是老公">
+                  {SPOUSES.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>,
+              )}
+              回家家
+            </>,
+          )}
+          {row("radar", <>我的方舟雷达💡的一下响了</>)}
+          {row("roguelike", <>我要打集成战略！</>)}
+          {row("xianshu", <>我要看仙术杯！</>)}
+          {/* one span, so the long line wraps beside its button rather than under it */}
+          {row("rental", <span className="tpl-long">我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个</span>)}
         </div>
       )}
 

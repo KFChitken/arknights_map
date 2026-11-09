@@ -5,6 +5,10 @@ import { GAME_NAMES, type Game } from "./games";
 export const FOODS = ["靴子泡面", "玉族配饭", "脚夹馍"] as const;
 export type Food = (typeof FOODS)[number];
 
+/** 氪了168，<角色>老婆/老公回家家 */
+export const SPOUSES = ["老婆", "老公"] as const;
+export type Spouse = (typeof SPOUSES)[number];
+
 /** What players call themselves in 欢迎回家，<称呼> */
 export const WELCOME_NAMES: Record<Game, string> = { arknights: "刀客塔", endfield: "管理员" };
 
@@ -12,7 +16,8 @@ export const WELCOME_NAMES: Record<Game, string> = { arknights: "刀客塔", end
  * A declaration is always one of a few fixed sentences with blanks picked from
  * lists. `name` in 「我是<名字>，我要玩…」 is filled in by the server from the
  * sender's profile. "event" is a limited-time line from events.ts. "alsoplay"
- * can no longer be sent, but older ones still show.
+ * can no longer be sent, but older ones still show. The DRUNK_TEMPLATES can only be
+ * sent while your main roach lies drunk (摄入酒精).
  */
 export type Declaration =
   | { template: "launch"; game: Game }
@@ -25,12 +30,23 @@ export type Declaration =
   | { template: "eat"; character: string; food: Food }
   | { template: "birthday" }
   | { template: "event"; line: string }
-  | { template: "alsoplay"; game: Game };
+  | { template: "alsoplay"; game: Game }
+  | { template: "water" }
+  | { template: "drunklove"; character: string }
+  | { template: "kr168"; character: string; spouse: Spouse }
+  | { template: "radar" }
+  | { template: "roguelike" }
+  | { template: "xianshu" }
+  | { template: "rental" };
 
 export type Template = Declaration["template"];
 
 /** The ones a player can always send, in the order the sheet lists them; events come on top while they are on. */
 export const TEMPLATES = ["launch", "iam", "love", "buff", "myname", "welcome", "canyou", "eat", "birthday"] as const;
+
+/** What a drunk roach says on top of those, in the order the sheet lists them */
+export const DRUNK_TEMPLATES = ["water", "drunklove", "kr168", "radar", "roguelike", "xianshu", "rental"] as const;
+export const isDrunkTemplate = (t: unknown) => (DRUNK_TEMPLATES as readonly unknown[]).includes(t);
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
@@ -56,6 +72,20 @@ export function declarationText(d: Declaration): string {
       return findLine(d.line)?.line.text ?? "（限定宣言）";
     case "alsoplay":
       return `原来，你也玩${GAME_NAMES[d.game]}`;
+    case "water":
+      return "这白开水怎么没味啊？";
+    case "drunklove":
+      return `我永远喜欢${d.character}！`;
+    case "kr168":
+      return `氪了168，${d.character}${d.spouse}回家家`;
+    case "radar":
+      return "我的方舟雷达💡的一下响了";
+    case "roguelike":
+      return "我要打集成战略！";
+    case "xianshu":
+      return "我要看仙术杯！";
+    case "rental":
+      return "我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个";
   }
 }
 

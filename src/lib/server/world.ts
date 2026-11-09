@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
-import { declarationText, FOODS, isReaction, reactionsFor, type Declaration, type Food } from "../declarations";
+import { declarationText, FOODS, isReaction, reactionsFor, SPOUSES, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
@@ -897,6 +897,16 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
       return { template: "birthday" };
     case "event":
       return { template: "event", line: d.line ?? "" };
+    case "water":
+    case "radar":
+    case "roguelike":
+    case "xianshu":
+    case "rental":
+      return { template: d.template };
+    case "drunklove":
+      return { template: "drunklove", character };
+    case "kr168":
+      return { template: "kr168", character, spouse: SPOUSES.find((s) => s === d.title) ?? SPOUSES[0] };
     default:
       return { template: "launch", game };
   }
@@ -962,7 +972,8 @@ export async function markSeen(userId: string, itemIds: string[]) {
 export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string }> {
   const u = await userById(userId);
   if (!u) throw new WorldError("请先登录。");
-  const d = checkDeclaration(profileOf(u), input);
+  const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
+  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   if (!mine.some((r) => r.slot === 0)) throw new WorldError("先放下蟑螂本体，才能发表独立宣言。");
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
@@ -999,7 +1010,8 @@ export async function declare(userId: string, input: Declaration, from?: string[
         template: d.template,
         game: "game" in d ? d.game : null,
         character: "character" in d ? d.character : null,
-        title: d.template === "iam" ? d.title : null,
+        // the title column also keeps 老婆/老公 of 氪了168
+        title: d.template === "iam" ? d.title : d.template === "kr168" ? d.spouse : null,
         food: d.template === "eat" ? d.food : null,
         name: d.template === "myname" ? (d.name ?? null) : null,
         line: d.template === "event" ? d.line : null,

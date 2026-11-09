@@ -1,4 +1,4 @@
-import { FOODS, type Declaration } from "../declarations";
+import { FOODS, isDrunkTemplate, SPOUSES, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
@@ -89,13 +89,15 @@ export function publicProfileOf(p: Profile): PublicProfile {
  * A declaration may only use the sender's own favourites, the listed titles
  * and foods, their own name, and limited-time lines that are on.
  */
-export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now()): Declaration {
+/** drunk: the sender's main roach lies drunk, which the drunk lines need */
+export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now(), drunk = false): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
     const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
     if (!game) throw new WorldError("只能选你资料里的厨力角色。");
     return { game, character: name };
   };
+  if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError("醉倒以后才说得出这句，先摄入酒精吧。");
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -121,6 +123,19 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
     }
     case "birthday":
       return { template: "birthday" };
+    case "water":
+    case "radar":
+    case "roguelike":
+    case "xianshu":
+    case "rental":
+      return { template: d.template };
+    case "drunklove":
+      return { template: "drunklove", character: favourite(d.character).character };
+    case "kr168": {
+      const { character } = favourite(d.character);
+      if (!SPOUSES.includes(d.spouse)) throw new WorldError("选老婆还是老公吧。");
+      return { template: "kr168", character, spouse: d.spouse };
+    }
     case "event": {
       const found = findLine(String(d.line ?? ""));
       if (!found) break;

@@ -27,13 +27,15 @@ export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
  * TALULAH_PICTURE=off, 塔露拉干员's (an orange-lit hood, her fire still burning).
  * MINGHE_PICTURE=off, 明河都尉's (a white-lit hood riding his horse, which is drawn in code).
  * AMIYA_DANCE=off takes down 阿米娅向导's dance and its music (from a video by a bilibili
- * artist, 疚刃), and tapping her only opens her card again.
+ * artist, 疚刃), and tapping her only opens her card again. PARTY_MUSIC=off takes down
+ * ⚡舟友的酒⚡'s music (by 活跃黑江乐 on bilibili); the phantoms then dance in silence.
  */
 export const AMIYA_PICTURE = process.env.AMIYA_PICTURE !== "off";
 export const PERLICA_PICTURE = process.env.PERLICA_PICTURE !== "off";
 export const TALULAH_PICTURE = process.env.TALULAH_PICTURE !== "off";
 export const MINGHE_PICTURE = process.env.MINGHE_PICTURE !== "off";
 export const AMIYA_DANCE = AMIYA_PICTURE && process.env.AMIYA_DANCE !== "off";
+export const PARTY_MUSIC = process.env.PARTY_MUSIC !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
 
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
