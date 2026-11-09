@@ -26,6 +26,7 @@ export default function Sheet({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [close]);
+  useEffect(fitToScreen, []);
 
   return (
     <div className="sheet-backdrop" onClick={close}>
@@ -41,4 +42,30 @@ export default function Sheet({
       </section>
     </div>
   );
+}
+
+/**
+ * What is really on screen, for every open sheet (globals.css): below Safari's address bar and
+ * above the keyboard, which the window's own height does not leave out. Returns the undo.
+ */
+function fitToScreen() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement.style;
+  const fit = () => {
+    root.setProperty("--vv-top", `${Math.round(vv.offsetTop)}px`);
+    root.setProperty("--vv-h", `${Math.round(vv.height)}px`);
+  };
+  fit();
+  vv.addEventListener("resize", fit);
+  vv.addEventListener("scroll", fit);
+  return () => {
+    vv.removeEventListener("resize", fit);
+    vv.removeEventListener("scroll", fit);
+    // the last sheet to close leaves the page as it was; one opened in its place has set them again
+    if (!document.querySelector(".sheet-backdrop")) {
+      root.removeProperty("--vv-top");
+      root.removeProperty("--vv-h");
+    }
+  };
 }

@@ -360,16 +360,24 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .poke-btn:disabled small { color: var(--muted); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
+/*
+ * A sheet keeps within what is really on screen. On phones 100vh is the height with the browser's
+ * bars tucked away, so with Safari's address bar showing, a sheet 88vh tall ran up under it; and
+ * the keyboard covers the bottom. Sheet.tsx sets --vv-top and --vv-h from window.visualViewport
+ * while a sheet is open; svh (the height with the bars showing) stands in before that.
+ */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: #0007;
+  top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%);
 }
 .sheet {
   display: flex; flex-direction: column; width: 100%; max-width: 460px; max-height: 88vh;
+  max-height: calc(var(--vv-h, 100svh) * 0.88);
   border-radius: 18px 18px 0 0; background: var(--paper); box-shadow: 0 -4px 24px #0004;
 }
 @media (min-width: 720px) {
   .sheet-backdrop { align-items: center; }
-  .sheet { border-radius: 18px; max-height: 82vh; }
+  .sheet { border-radius: 18px; max-height: 82vh; max-height: calc(var(--vv-h, 100svh) * 0.82); }
 }
 .sheet-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 6px; }
 .sheet-head h2 { flex: 1; margin: 0; font-size: 17px; }
@@ -494,7 +502,7 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .placebar form { display: flex; gap: 6px; margin-top: 8px; }
 .placebar form button { flex-shrink: 0; border: 0; border-radius: 10px; padding: 0 14px; background: var(--ink); color: #fff; }
 .placebar .hint { color: #4b4b3a; }
-.results { max-height: 38vh; margin: 8px 0 0; padding: 0; overflow-y: auto; border-radius: 10px; background: #fff; list-style: none; }
+.results { max-height: 38vh; max-height: 38svh; margin: 8px 0 0; padding: 0; overflow-y: auto; border-radius: 10px; background: #fff; list-style: none; }
 .results li + li { border-top: 1px solid #f0f1f3; }
 .results button { display: flex; flex-direction: column; width: 100%; padding: 8px 10px; border: 0; background: none; text-align: left; }
 .results small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
