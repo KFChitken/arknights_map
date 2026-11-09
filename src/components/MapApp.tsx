@@ -105,6 +105,7 @@ import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import { HomecomingSheet } from "./app/Homecoming";
+import NoticeSheet from "./app/NoticeSheet";
 import HotSheet from "./app/HotSheet";
 import { keepInstallPrompt } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
@@ -158,6 +159,7 @@ import VisitSheet from "./app/VisitSheet";
 import FriendsSheet, { FriendsMark } from "./app/FriendsSheet";
 import PartyScene from "./app/PartyScene";
 import { playPartyMusic, preloadPartyMusic, stopPartyMusic, type PartyMusic } from "./app/partyMusic";
+import { markNoticeSeen, noticeSeen } from "@/lib/notice";
 import { PARTY_ZOOM } from "@/lib/party";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
@@ -337,6 +339,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [blocked, setBlocked] = useState<BlockedPlayer[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
+  /** The notice for everyone signed in (src/lib/notice.ts), and what opens once it is closed */
+  const [notice, setNotice] = useState<{ userId: string; then: () => void } | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [visible, setVisible] = useState<number | null>(null);
@@ -646,10 +650,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
           else if (!m && !welcomed()) setPanel({ kind: "welcome" });
         };
         // back after its roach flipped over for their staying away: it stands up (鲤鱼打挺) before anything opens
-        if (m?.wokeFromAway && main && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-          afterActing.current = first;
-          setActing("wake");
-        } else first();
+        const go = () => {
+          if (m?.wokeFromAway && main && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            afterActing.current = first;
+            setActing("wake");
+          } else first();
+        };
+        // the notice for everyone signed in comes before all of that, once
+        if (m && !noticeSeen(m.id)) setNotice({ userId: m.id, then: go });
+        else go();
       });
     return () => window.clearTimeout(waiting);
   }, [load, openInbox, cn]);
@@ -1888,7 +1897,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const total = roaches.length + (me?.roaches.length ?? 0);
 
 
-  const coachShown = Boolean(!placing && !selected && !panel && me && step);
+  const coachShown = Boolean(!placing && !selected && !panel && !notice && me && step);
 
   // 获得新称号: once nothing else is on screen, up to three in a row; any more go straight to the wall
   const [newBadges, setNewBadges] = useState<EarnedBadge[]>([]);
@@ -3109,6 +3118,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
         />
       )}
       {/* above the tutorial card or a roach card while one is showing, so the two never cover each other */}
+      {notice && (
+        <NoticeSheet
+          onClose={() => {
+            markNoticeSeen(notice.userId);
+            setNotice(null);
+            notice.then();
+          }}
+        />
+      )}
       {toast && <div className={`toast ${coachShown || selected || heard.length ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">
         非官方同人项目 · 与鹰角网络无关 ·{" "}
