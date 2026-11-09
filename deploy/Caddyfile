@@ -1,4 +1,13 @@
 # HTTPS certificates are fetched and renewed automatically.
+
+# HTTP/1.1 and HTTP/2 only (2026-11-09): HTTP/3 runs over UDP, which networks in mainland China
+# often slow down in the evening, and a browser does not leave a slow HTTP/3 for HTTPS over TCP.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 zhoupmap.com {
 	request_body {
 		max_size 1MB
@@ -10,6 +19,8 @@ zhoupmap.com {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "geolocation=(), camera=(), microphone=()"
 		-X-Powered-By
+		# browsers that learned HTTP/3 here before forget it (take this out if HTTP/3 comes back)
+		Alt-Svc "clear"
 	}
 	# the live event stream must reach the browser as it is written, and the map tiles come compressed already
 	@compressible not path /api/events /tiles/*
