@@ -2,11 +2,31 @@ import nodemailer from "nodemailer";
 import { LOGIN_CODE_TTL_MIN, SITE_NAME } from "../rules";
 import { MAIL_FROM, SMTP_URL } from "./env";
 
-// Mailpit in development; any SMTP provider (e.g. Resend's SMTP relay) in production
-const transport = nodemailer.createTransport(SMTP_URL);
+// Mailpit in development; any SMTP provider (e.g. Resend's SMTP relay) in production. A mail server
+// that cannot be reached is given up on after 15 seconds rather than nodemailer's two minutes.
+const transport = nodemailer.createTransport({ url: SMTP_URL, connectionTimeout: 15_000, greetingTimeout: 10_000 });
+
+/**
+ * Whether the mail server was never reached (it could not be found, connected to or did not greet),
+ * so nothing was handed over: sending again cannot make two, and a code in it never arrived.
+ */
+export function neverReached(e: unknown) {
+  const x = e as { code?: unknown; timeoutType?: unknown } | null;
+  return x?.code === "EDNS" || (x?.code === "ETIMEDOUT" && ["CONNECT_TIMEOUT", "GREETING_TIMEOUT", "UPGRADE_TIMEOUT"].includes(String(x.timeoutType)));
+}
+
+/** Send, once more when the mail server could not be reached the first time */
+async function send(mail: Parameters<typeof transport.sendMail>[0]) {
+  try {
+    await transport.sendMail(mail);
+  } catch (e) {
+    if (!neverReached(e)) throw e;
+    await transport.sendMail(mail);
+  }
+}
 
 export async function sendLoginCode(to: string, code: string) {
-  await transport.sendMail({
+  await send({
     from: MAIL_FROM,
     to,
     subject: `${code} 是你的${SITE_NAME}登录验证码`,
@@ -23,5 +43,5 @@ export async function sendLoginCode(to: string, code: string) {
 
 /** A plain note to the admins; it never carries anyone's personal details. */
 export async function sendAdminMail(to: string[], subject: string, text: string) {
-  await transport.sendMail({ from: MAIL_FROM, to, subject, text });
+  await send({ from: MAIL_FROM, to, subject, text });
 }

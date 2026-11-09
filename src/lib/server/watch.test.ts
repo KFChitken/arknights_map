@@ -6,7 +6,7 @@ import { POST as reportMap } from "@/app/api/health/map/route";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { mailSends, watchAlerts, watchState } from "./schema";
-import { forgetSignals, note, recent } from "./signals";
+import { errorCode, forgetSignals, note, recent } from "./signals";
 import { CHECKS, forgetWatch, healthy, REMIND_AFTER, runWatch, WATCH_MAILS_PER_DAY, type Check, type Finding } from "./watch";
 
 const MINUTE = 60_000;
@@ -259,5 +259,15 @@ describe("POST /api/health/map", () => {
     await post({ map: "elsewhere", what: "key" });
     await post({ map: "osm", what: "explode" });
     expect(recent("map", HOUR).map((s) => s.code)).toEqual(["amap:key:USER_DAILY_QUERY_OVER_LIMIT", "amap:load:scriptmeexample.com"]);
+  });
+});
+
+describe("errorCode", () => {
+  it("names the database's own error inside a query's, and never the query or its values", async () => {
+    const e = await db.execute(sql`select ${"not-a-uuid"}::uuid`).catch((x: unknown) => x);
+    expect(errorCode(e)).toBe("DrizzleQueryError caused by PostgresError 22P02");
+    const timeout = Object.assign(new Error("Connection timeout"), { code: "ETIMEDOUT", command: "CONN", timeoutType: "CONNECT_TIMEOUT" });
+    expect(errorCode(timeout)).toBe("Error ETIMEDOUT CONNECT_TIMEOUT");
+    expect(errorCode(new TypeError("x of undefined"))).toBe("TypeError");
   });
 });

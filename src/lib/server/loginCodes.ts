@@ -80,6 +80,30 @@ export async function issueLoginCode(email: string): Promise<string> {
   throw new HttpError(429, `这个邮箱今天已经收了 ${LOGIN_CODES_PER_DAY} 次验证码，明天再试吧。`);
 }
 
+/**
+ * The code just issued never reached the address (neverReached in mail.ts), so it counts as never
+ * sent: the address may ask again at once, and neither its day nor the site's mail for the day
+ * counts it. The code itself is void.
+ */
+export async function withdrawLoginCode(email: string, code: string) {
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ sentAt: loginCodes.sentAt })
+      .from(loginCodes)
+      .where(and(eq(loginCodes.email, email), eq(loginCodes.codeHash, hashCode(email, code))))
+      .for("update");
+    if (!row) return;
+    await tx
+      .update(loginCodes)
+      .set({ codeHash: "", expiresAt: row.sentAt, sentAt: new Date(0), sentToday: sql`greatest(${loginCodes.sentToday} - 1, 0)` })
+      .where(eq(loginCodes.email, email));
+    // the one row it added to the site's count, written at the same moment
+    await tx.execute(
+      sql`delete from ${mailSends} where ${mailSends.id} = (select ${mailSends.id} from ${mailSends} where ${mailSends.kind} = 'login' and ${mailSends.sentAt} = ${row.sentAt.toISOString()}::timestamptz order by ${mailSends.id} desc limit 1)`,
+    );
+  });
+}
+
 /** Spend one try on the code sent to this address. Resolves only for the right code, which is then used up. */
 export async function redeemLoginCode(email: string, code: string): Promise<void> {
   const now = new Date();

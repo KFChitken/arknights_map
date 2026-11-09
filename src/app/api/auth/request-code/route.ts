@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { BANNED, isBanned } from "@/lib/server/account";
 import { DEV_MAILBOX_PORT } from "@/lib/server/env";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
-import { issueLoginCode } from "@/lib/server/loginCodes";
-import { sendLoginCode } from "@/lib/server/mail";
+import { issueLoginCode, withdrawLoginCode } from "@/lib/server/loginCodes";
+import { neverReached, sendLoginCode } from "@/lib/server/mail";
 import { allow } from "@/lib/server/rateLimit";
 import { errorCode, note } from "@/lib/server/signals";
 
@@ -34,6 +34,11 @@ export const POST = route(async (req) => {
   } catch (e) {
     console.error(e);
     note("mailFailed", errorCode(e));
+    // nothing went out, so asking again right away is not held up by the 60 seconds between codes
+    if (neverReached(e)) {
+      await withdrawLoginCode(email, code).catch((w) => console.error("could not withdraw the code", errorCode(w)));
+      throw new HttpError(503, "验证码邮件暂时发不出去，过一会儿再点一次试试。");
+    }
     throw new HttpError(503, "验证码邮件暂时发不出去，请过几分钟再试。");
   }
   return NextResponse.json({ ok: true, devMailboxPort: DEV_MAILBOX_PORT || null });

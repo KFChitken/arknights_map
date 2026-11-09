@@ -55,10 +55,26 @@ export function forgetSignals(now = Date.now()) {
   g.zhoupStartedAt = now;
 }
 
-/** The short code of an error, without its message (which may hold a query's values, such as an email). */
-export function errorCode(e: unknown): string {
+/**
+ * The short code of an error, without its message (which may hold a query's values, such as an email),
+ * then its cause's: a query error from drizzle has no code of its own, and the database's error inside
+ * it says what went wrong (40P01 a deadlock, 23505 and the unique index a duplicate). A mail error adds
+ * how it timed out (CONNECT_TIMEOUT: the mail server could not be reached).
+ */
+export function errorCode(e: unknown, depth = 0): string {
   if (!e || typeof e !== "object") return typeof e;
-  const x = e as { code?: unknown; responseCode?: unknown; name?: unknown; constructor?: { name?: string } };
-  const parts = [x.name ?? x.constructor?.name ?? "Error", x.code, x.responseCode].filter((p) => p !== undefined && p !== "");
-  return parts.map(String).join(" ");
+  const x = e as {
+    code?: unknown;
+    responseCode?: unknown;
+    timeoutType?: unknown;
+    constraint_name?: unknown;
+    name?: unknown;
+    constructor?: { name?: string };
+    cause?: unknown;
+  };
+  // a class that leaves its name as Error is known by its own (DrizzleQueryError)
+  const name = typeof x.name === "string" && x.name !== "Error" ? x.name : (x.constructor?.name ?? "Error");
+  const parts = [name, x.code, x.responseCode, x.timeoutType, x.constraint_name].filter((p) => p !== undefined && p !== null && p !== "");
+  const own = parts.map(String).join(" ");
+  return x.cause && typeof x.cause === "object" && depth < 3 ? `${own} caused by ${errorCode(x.cause, depth + 1)}` : own;
 }

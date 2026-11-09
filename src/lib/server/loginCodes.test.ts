@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
-import { forgetLoginCodes, issueLoginCode, redeemLoginCode } from "./loginCodes";
+import { forgetLoginCodes, issueLoginCode, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
+import { neverReached } from "./mail";
 import { loginCodes, mailSends } from "./schema";
 
 const EMAIL = "player@example.com";
@@ -42,6 +43,35 @@ describe("login codes", () => {
     await expect(redeemLoginCode(EMAIL, code)).rejects.toThrow("过期");
     // signing in does not lift the cooldown
     await expect(issueLoginCode(EMAIL)).rejects.toThrow("秒后可以再发");
+  });
+
+  it("takes back a code that never went out: it is void, and asking again is held up by nothing", async () => {
+    const lost = await issueLoginCode(EMAIL);
+    expect(await db.select().from(mailSends)).toHaveLength(1);
+    await withdrawLoginCode(EMAIL, lost);
+    expect(await row()).toMatchObject({ codeHash: "", sentToday: 0 });
+    expect(await db.select().from(mailSends)).toHaveLength(0);
+    await expect(redeemLoginCode(EMAIL, lost)).rejects.toThrow("过期");
+
+    // asked again at once: a new code, counted once
+    const code = await issueLoginCode(EMAIL);
+    expect((await row()).sentToday).toBe(1);
+    expect(await db.select().from(mailSends)).toHaveLength(1);
+    // an old code takes back nothing
+    await withdrawLoginCode(EMAIL, lost);
+    expect((await row()).sentToday).toBe(1);
+    await redeemLoginCode(EMAIL, code);
+  });
+
+  it("calls a mail server never reached only when nothing can have been handed over", () => {
+    const timeout = (timeoutType: string) => Object.assign(new Error("x"), { code: "ETIMEDOUT", command: "CONN", timeoutType });
+    expect(neverReached(timeout("CONNECT_TIMEOUT"))).toBe(true);
+    expect(neverReached(timeout("GREETING_TIMEOUT"))).toBe(true);
+    expect(neverReached(Object.assign(new Error("x"), { code: "EDNS" }))).toBe(true);
+    // the connection went quiet partway: the mail may have gone out
+    expect(neverReached(timeout("SOCKET_TIMEOUT"))).toBe(false);
+    expect(neverReached(Object.assign(new Error("x"), { code: "EAUTH" }))).toBe(false);
+    expect(neverReached(null)).toBe(false);
   });
 
   it("caps the codes one address receives in a day, sign-ins included", async () => {
