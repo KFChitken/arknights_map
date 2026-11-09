@@ -47,6 +47,15 @@ export const EVENTS: SiteEvent[] = [
     lines: [
       // Arknights' 7.5th anniversary, 「时间啊，向前！」: until its shop and outfits go
       { id: "tazi", game: "arknights", text: "恭喜塔姐上岛！", start: "2026-10-27T00:00+08:00", end: "2026-11-29T04:00+08:00" },
+      // 塔露拉's own words in its story: her letter to 晖洁 (TL-ST-4), and after TL-7
+      {
+        id: "talulah-spring",
+        game: "arknights",
+        text: "推开窗看看吧，春天已经到了。",
+        start: "2026-10-27T00:00+08:00",
+        end: "2026-11-29T04:00+08:00",
+      },
+      { id: "talulah-flame", game: "arknights", text: "我，就是火焰。", start: "2026-10-27T00:00+08:00", end: "2026-11-29T04:00+08:00" },
       // Endfield 1.6, 「丹青渡」: its notice ends it at the next version's maintenance without a date yet;
       // its 理智补给 runs to 11/26 04:00
       {

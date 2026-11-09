@@ -84,18 +84,24 @@ describe("limited-time declarations", () => {
   it("runs each line from its start to the minute before its end, Beijing time, with its own game's version", () => {
     const on = (iso: string) => activeEvents(at(iso)).flatMap((e) => e.lines.map((l) => l.id));
     expect(on("2026-10-26T23:59:59+08:00")).toEqual([]);
-    expect(on("2026-10-27T00:00:00+08:00")).toEqual(["tazi", "yuanyuan"]);
+    const arknights = ["tazi", "talulah-spring", "talulah-flame"];
+    expect(on("2026-10-27T00:00:00+08:00")).toEqual([...arknights, "yuanyuan"]);
     // 明河 joins later
-    expect(on("2026-11-05T23:59:59+08:00")).toEqual(["tazi", "yuanyuan"]);
-    expect(on("2026-11-06T00:00:00+08:00")).toEqual(["tazi", "yuanyuan", "minghe"]);
+    expect(on("2026-11-05T23:59:59+08:00")).toEqual([...arknights, "yuanyuan"]);
+    expect(on("2026-11-06T00:00:00+08:00")).toEqual([...arknights, "yuanyuan", "minghe"]);
     // Endfield's version ends first
-    expect(on("2026-11-26T03:59:59+08:00")).toEqual(["tazi", "yuanyuan", "minghe"]);
-    expect(on("2026-11-26T04:00:00+08:00")).toEqual(["tazi"]);
-    expect(on("2026-11-29T03:59:59+08:00")).toEqual(["tazi"]);
+    expect(on("2026-11-26T03:59:59+08:00")).toEqual([...arknights, "yuanyuan", "minghe"]);
+    expect(on("2026-11-26T04:00:00+08:00")).toEqual(arknights);
+    expect(on("2026-11-29T03:59:59+08:00")).toEqual(arknights);
     expect(on("2026-11-29T04:00:00+08:00")).toEqual([]);
-    const [tazi, yuanyuan, minghe] = EVENTS[0].lines;
-    expect([untilText(tazi), untilText(yuanyuan), untilText(minghe)]).toEqual(["到 11/29 04:00", "到 11/26 04:00", "到 11/26 04:00"]);
+    const [tazi, spring, flame, yuanyuan, minghe] = EVENTS[0].lines;
+    expect([tazi, spring, flame, yuanyuan, minghe].map(untilText)).toEqual(["到 11/29 04:00", "到 11/29 04:00", "到 11/29 04:00", "到 11/26 04:00", "到 11/26 04:00"]);
     expect(minghe).toMatchObject({ game: "endfield", text: "明河，带我一程！" });
+    // 塔露拉's own words, in Breeze's punctuation
+    expect([spring, flame]).toMatchObject([
+      { game: "arknights", text: "推开窗看看吧，春天已经到了。" },
+      { game: "arknights", text: "我，就是火焰。" },
+    ]);
   });
 
   it("counts visit days in Beijing time", () => {
