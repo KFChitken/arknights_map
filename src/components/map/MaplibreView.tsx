@@ -372,7 +372,8 @@ export default function MaplibreView(props: MapViewProps) {
   };
 
   // Draw any icons the latest data needs, then hand the data to the map; queued so updates land in order
-  const sync = () => {
+  /** The whole crowd and the look ("all"), or only your own roaches ("mine"), drawn from the latest props */
+  const sync = (what: "all" | "mine") => {
     syncRef.current = syncRef.current
       .then(async () => {
         const map = mapRef.current;
@@ -380,8 +381,9 @@ export default function MaplibreView(props: MapViewProps) {
         const p = propsRef.current;
         await ensureImages(map, neededImages(p));
         if (mapRef.current !== map) return;
-        (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
         (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.mineAsleep, p.ghost, p.myAvatar, p.myColor));
+        if (what === "mine") return;
+        (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
         for (const id of ROACH_LAYERS) {
           map.setLayoutProperty(id, "icon-image", roachImage(p.look) as never);
           map.setLayoutProperty(id, "icon-rotate", roachRotate(p.look) as never);
@@ -392,6 +394,8 @@ export default function MaplibreView(props: MapViewProps) {
       })
       .catch((e) => console.error(e));
   };
+  const syncAll = () => sync("all");
+  const syncMine = () => sync("mine");
 
   useEffect(() => {
     const { initialView } = propsRef.current;
@@ -604,7 +608,11 @@ export default function MaplibreView(props: MapViewProps) {
     };
   }, []);
 
-  useEffect(sync, [props.roaches, props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
+  // the whole crowd again only when it (kept as one list by the page) or the look changes; your own
+  // roaches only when they really change, since the page hands over a new list of them each time it draws
+  useEffect(syncAll, [props.roaches, props.look]);
+  const mineKey = JSON.stringify([props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor]);
+  useEffect(syncMine, [mineKey]);
 
   const trailKey = JSON.stringify(props.trail);
   useEffect(() => {

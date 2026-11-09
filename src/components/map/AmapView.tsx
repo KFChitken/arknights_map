@@ -39,6 +39,10 @@ import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
+/** The crawl waits this long after the last sign of a move, if the end of it is never told */
+const MOVE_QUIET_MS = 1500;
+/** And this long after the map says it stopped, in case another move follows at once */
+const MOVE_SETTLE_MS = 150;
 /** A refusal of the key this soon after the map is made means its tiles never come (see the start-up below) */
 const REFUSED_WITHIN_MS = 30_000;
 // The shadow sits on top of cartoon roaches so crowds go solid black, but under
@@ -172,8 +176,11 @@ function styleUrls(look: RoachStyle) {
   return p;
 }
 
+/** The roaches' icon size at this 高德 zoom, in whole pixels */
+const massPx = (amapZoom: number) => Math.round(iconPx(amapZoom - ZOOM_OFFSET));
+
 function massStyles(AMap: AMapNS, amapZoom: number, urls: string[]) {
-  const px = Math.round(iconPx(amapZoom - ZOOM_OFFSET));
+  const px = massPx(amapZoom);
   return urls.map((url) => ({
     url,
     size: new AMap.Size(px, px),
@@ -216,6 +223,8 @@ export default function AmapView(props: MapViewProps) {
   const trailRef = useRef<AMapNS[]>([]);
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
+  /** The icon size the roach layers were last styled for */
+  const styledPxRef = useRef(0);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -364,6 +373,7 @@ export default function AmapView(props: MapViewProps) {
     let cancelled = false;
     let map: AMapNS = null;
     let crawlTimer = 0;
+    let resumeTimer = 0;
     // 高德 tells of a bad or used-up key only in the console; a map that never finishes drawing is told too.
     // It refuses the key as the new map asks for its first tiles, after the map's complete event, so a
     // refusal within REFUSED_WITHIN_MS of making the map means it stays blank: the page's other map
@@ -421,6 +431,7 @@ export default function AmapView(props: MapViewProps) {
           // defer so a map click fired for the same tap cannot clear the selection
           if (id) window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
         };
+        styledPxRef.current = massPx(map.getZoom());
         massRef.current = groupsRef.current.map((points) => {
           const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
             zIndex: massZ(look),
@@ -432,16 +443,46 @@ export default function AmapView(props: MapViewProps) {
           mass.on("click", onMassClick);
           return mass;
         });
+        // a new style for the 7 layers only when the icons' size changes (it stops changing past city level)
         map.on("zoomchange", () => {
+          const px = massPx(map.getZoom());
+          if (px === styledPxRef.current) return;
+          styledPxRef.current = px;
           const style = massStyles(AMap, map.getZoom(), styledRef.current.urls);
           massRef.current.forEach((m) => m.setStyle(style));
         });
 
-        // Redraw one batch per tick, round robin, to keep each frame light
+        // Redraw one batch per tick, round robin, to keep each frame light. Not while the map moves: each
+        // batch has 高德 draw the whole map again, on top of what a drag or a zoom asks of it, and on a
+        // phone that is what makes dragging stutter. They crawl on as soon as the map stands still.
         let tick = 0;
+        let moving = false;
+        const resumeIn = (ms: number) => {
+          window.clearTimeout(resumeTimer);
+          resumeTimer = window.setTimeout(() => {
+            moving = false;
+            crawlRef.current?.start();
+          }, ms);
+        };
+        const halt = () => {
+          moving = true;
+          crawlRef.current?.stop();
+          resumeIn(MOVE_QUIET_MS);
+        };
+        // still moving: put off the crawl again (in case the end of the move is never told)
+        const still = () => moving && resumeIn(MOVE_QUIET_MS);
+        // a drag let go slides on until moveend
+        const ended = () => moving && resumeIn(MOVE_SETTLE_MS);
+        map.on("movestart", halt);
+        map.on("dragstart", halt);
+        map.on("zoomstart", halt);
+        map.on("mapmove", still);
+        map.on("zoomchange", still);
+        map.on("moveend", ended);
+        map.on("zoomend", ended);
         crawlRef.current = {
           start: () => {
-            if (crawlTimer || propsRef.current.active === false || prefersReducedMotion()) return;
+            if (crawlTimer || moving || propsRef.current.active === false || prefersReducedMotion()) return;
             crawlTimer = window.setInterval(() => {
               const g = tick++ % MASS_GROUPS;
               const { look } = styledRef.current;
@@ -501,6 +542,7 @@ export default function AmapView(props: MapViewProps) {
       stopListening();
       window.clearTimeout(slowTimer);
       window.clearInterval(crawlTimer);
+      window.clearTimeout(resumeTimer);
       crawlRef.current = null;
       massRef.current.forEach((m) => m.setMap(null));
       massRef.current = [];
@@ -532,6 +574,7 @@ export default function AmapView(props: MapViewProps) {
     styleUrls(look).then((urls) => {
       if (stale || mapRef.current !== map) return;
       styledRef.current = { look, urls };
+      styledPxRef.current = massPx(map.getZoom());
       const style = massStyles(AMap, map.getZoom(), urls);
       massRef.current.forEach((m, g) => {
         m.setzIndex(massZ(look));
@@ -544,9 +587,12 @@ export default function AmapView(props: MapViewProps) {
     };
   }, [props.look]);
 
+  // your own roaches are put down again only when they really change: the page hands over a new list
+  // each time it draws, and 高德 redraws the map for each marker taken off and put back
+  const mineKey = JSON.stringify([props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
   useEffect(() => {
     placeMine();
-  }, [props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
+  }, [mineKey]);
 
   const main = props.mine.find((r) => r.slot === 0);
   const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;

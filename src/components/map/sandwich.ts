@@ -56,16 +56,21 @@ export function addMaplibreSandwich(map: MaplibreMap) {
 export function amapSandwich(AMap: AMapNS, map: AMapNS, zoomOffset: number): AMapNS | null {
   if (!SANDWICH_ON) return null;
   const urls = KINDS.map((kind) => drawSandwichPart(kind, IMAGE_PX).toDataURL("image/png"));
-  const styles = () =>
-    KINDS.map((kind, i) => {
-      const px = Math.round(sandwichPx(map.getZoom() - zoomOffset, kind));
-      return { url: urls[i], size: new AMap.Size(px, px), anchor: new AMap.Pixel(px / 2, px / 2) };
-    });
+  const sizes = () => KINDS.map((kind) => Math.round(sandwichPx(map.getZoom() - zoomOffset, kind)));
+  const styles = (px: number[]) =>
+    KINDS.map((_, i) => ({ url: urls[i], size: new AMap.Size(px[i], px[i]), anchor: new AMap.Pixel(px[i] / 2, px[i] / 2) }));
+  let shown = sizes();
   const mass = new AMap.MassMarks(
     SANDWICH.map((p) => ({ lnglat: toGcj(p.at), style: KINDS.indexOf(p.kind) })),
-    { zIndex: 110, zooms: [2, 20], cursor: "default", style: styles() },
+    { zIndex: 110, zooms: [2, 20], cursor: "default", style: styles(shown) },
   );
   mass.setMap(map);
-  map.on("zoomchange", () => mass.setStyle(styles()));
+  // restyled only when a size changes
+  map.on("zoomchange", () => {
+    const px = sizes();
+    if (px.every((p, i) => p === shown[i])) return;
+    shown = px;
+    mass.setStyle(styles(px));
+  });
   return mass;
 }
