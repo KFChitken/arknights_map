@@ -15,6 +15,7 @@ import { declarationText, type Declaration, type Template } from "@/lib/declarat
 import { EVENTS } from "@/lib/events";
 import type { Place } from "@/lib/geocode";
 import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
+import { loadHome, saveHome } from "@/lib/lastHome";
 import {
   anniversaryLine,
   awaySentence,
@@ -200,6 +201,10 @@ function dockSceneFor(fresh: InboxItem[]): { kind: DockKind; from: DockFrom | nu
 const isLimitedLine = (text: string) => EVENTS.some((e) => e.lines.some((l) => l.text === text));
 
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
+/** How long the map waits for the account's data before it starts anyway, when this browser has no home to start at */
+const MAP_WAIT_MS = 1500;
+/** Whether a view has moved away from another (more than about 100 m, or half a zoom level) */
+const movedFrom = (a: MapView, b: MapView) => Math.abs(a.lng - b.lng) > 1e-3 || Math.abs(a.lat - b.lat) > 1e-3 || Math.abs(a.zoom - b.zoom) > 0.5;
 /** How long one of 佩丽卡监督's notes stays along the top: a line, or two */
 const NOTE_MS = [6000, 8000];
 /** One of her notes along the top (src/components/app/Perlica.tsx) */
@@ -557,30 +562,53 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const abroadKit = cn
       ? Promise.all([import("@/lib/overseas"), import("@/lib/chinaView"), import("./map/MaplibreView")]).catch(() => null)
       : Promise.resolve(null);
+    // The map does not wait for the account's data, which a slow line can hold up for many seconds: it
+    // starts at once where this browser last saw the main roach, or after a moment at the usual view,
+    // and flies to the main roach when the data comes, unless the player has moved the map meanwhile.
+    let started: MapView | null = null;
+    const startMap = async (m: Me | null) => {
+      if (started) return;
+      const main = m?.roaches.find((r) => r.slot === 0);
+      const home = main ?? loadHome();
+      viewRef.current = home ? { lng: home.lng, lat: home.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
+      started = viewRef.current;
+      const kit = await abroadKit;
+      if (kit) {
+        const [{ overseasStyle }, china] = kit;
+        chinaRef.current = china;
+        setOverseas({ style: overseasStyle(window.location.origin), cover: china.chinaCover() });
+        // a visit that starts abroad opens our own map at once; Amap waits until China comes into view
+        const v = viewRef.current;
+        if (b === "amap" && china.clearOfChina(china.viewAround(v, v.zoom, window.innerWidth, window.innerHeight))) {
+          setAbroad(true);
+          setOverseasMade(true);
+          setAmapMade(false);
+        }
+      }
+      setLook(loadLook());
+      setBasemap(b);
+    };
+    const waiting = window.setTimeout(() => void startMap(null), loadHome() ? 0 : MAP_WAIT_MS);
+    let failed = false;
     load()
       .catch((e) => {
         console.error(e);
+        failed = true;
         setToast("连不上服务器，地图先只显示底图。");
         return { me: null, items: [] as InboxItem[], away: null, friends: [] as Friend[] };
       })
       .then(async ({ me: m, items, away, friends: list }) => {
+        window.clearTimeout(waiting);
+        const early = started;
+        await startMap(m);
         const main = m?.roaches.find((r) => r.slot === 0);
-        viewRef.current = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : b === "amap" ? CHINA_VIEW : WORLD_VIEW;
-        const kit = await abroadKit;
-        if (kit) {
-          const [{ overseasStyle }, china] = kit;
-          chinaRef.current = china;
-          setOverseas({ style: overseasStyle(window.location.origin), cover: china.chinaCover() });
-          // a visit that starts abroad opens our own map at once; Amap waits until China comes into view
-          const v = viewRef.current;
-          if (b === "amap" && china.clearOfChina(china.viewAround(v, v.zoom, window.innerWidth, window.innerHeight))) {
-            setAbroad(true);
-            setOverseasMade(true);
-            setAmapMade(false);
-          }
+        if (!failed) saveHome(main ?? null);
+        // started before the data came: on to the main roach, if the map is still where it started
+        const there: MapView | null = main ? { lng: main.lng, lat: main.lat, zoom: 11 } : null;
+        if (early && there && !movedFrom(early, viewRef.current) && movedFrom(early, there)) {
+          viewRef.current = there;
+          setFocus({ ...there, nonce: Date.now() });
         }
-        setLook(loadLook());
-        setBasemap(b);
         // Back after a day or more: a summary first, which says what is unread (not during the tutorial);
         // 阿米娅向导's greeting and 佩丽卡监督's report of the time away ride on it.
         // Otherwise her greeting comes on its own card, and the report along the top once it is closed.
@@ -623,6 +651,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
           setActing("wake");
         } else first();
       });
+    return () => window.clearTimeout(waiting);
   }, [load, openInbox, cn]);
 
   // Android Chrome offers adding the site to the home screen once, early; 资料 keeps it for later
@@ -1738,6 +1767,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     }
     setPanel(null);
     setSelected(null);
+    saveHome(null);
     // deleted roaches leave everyone's feed on its next rebuild; leave them off this map right away
     if (kind === "delete" && feedRef.current.forget([...ownIds])) setFeedRoaches(feedRef.current.roaches);
     await load();
