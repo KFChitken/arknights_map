@@ -457,10 +457,12 @@ export default function AmapView(props: MapViewProps) {
         // phone that is what makes dragging stutter. They crawl on as soon as the map stands still.
         let tick = 0;
         let moving = false;
+        let dragging = false;
         const resumeIn = (ms: number) => {
           window.clearTimeout(resumeTimer);
           resumeTimer = window.setTimeout(() => {
             moving = false;
+            dragging = false;
             crawlRef.current?.start();
           }, ms);
         };
@@ -471,10 +473,20 @@ export default function AmapView(props: MapViewProps) {
         };
         // still moving: put off the crawl again (in case the end of the move is never told)
         const still = () => moving && resumeIn(MOVE_QUIET_MS);
-        // a drag let go slides on until moveend
-        const ended = () => moving && resumeIn(MOVE_SETTLE_MS);
+        // A busy phone hears of a drag mostly as dragging: 高德 then says the map stopped (moveend)
+        // between two steps of the finger, so only the end of the drag counts. Let go, the map may
+        // slide on (movestart … moveend) before they crawl again.
+        const ended = () => moving && !dragging && resumeIn(MOVE_SETTLE_MS);
+        map.on("dragstart", () => {
+          dragging = true;
+          halt();
+        });
+        map.on("dragging", still);
+        map.on("dragend", () => {
+          dragging = false;
+          ended();
+        });
         map.on("movestart", halt);
-        map.on("dragstart", halt);
         map.on("zoomstart", halt);
         map.on("mapmove", still);
         map.on("zoomchange", still);
