@@ -27,6 +27,7 @@ export function OtherRoachCard({
   minghe,
   friendRow,
   busy,
+  touching = false,
   onOpenFriend,
   onSignIn,
   onTouch,
@@ -80,6 +81,8 @@ export function OtherRoachCard({
   friendRow?: ReactNode;
   /** A poke is under way */
   busy: boolean;
+  /** A touch is on its way: the touch buttons wait, so a second tap is not the same touch twice */
+  touching?: boolean;
   onOpenFriend?: () => void;
   onSignIn: () => void;
   onTouch: (bold: boolean) => void;
@@ -222,11 +225,11 @@ export function OtherRoachCard({
       {ride ? (
         <>
           <div className="touch-buttons">
-            <button onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
+            <button disabled={touching} onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
               偷偷伸出触须
               <small>他只知道被碰了一下</small>
             </button>
-            <button className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
+            <button disabled={touching} className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
               大胆伸出触须
               <small>{sharesUid ? "他能看到你的资料和 UID" : "他能看到你的资料"}</small>
             </button>
@@ -244,11 +247,11 @@ export function OtherRoachCard({
       ) : talulah ? (
         <>
           <div className="touch-buttons">
-            <button onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
+            <button disabled={touching} onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
               偷偷伸出触须
               <small>TA 只知道被碰了一下</small>
             </button>
-            <button className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
+            <button disabled={touching} className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
               大胆伸出触须
               <small>{sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
             </button>
@@ -277,11 +280,11 @@ export function OtherRoachCard({
         </button>
       ) : (
         <div className="touch-buttons">
-          <button onClick={() => onTouch(false)}>
+          <button disabled={touching} onClick={() => onTouch(false)}>
             偷偷伸出触须
             <small>TA 只知道被碰了一下</small>
           </button>
-          <button className="bold" onClick={() => onTouch(true)}>
+          <button disabled={touching} className="bold" onClick={() => onTouch(true)}>
             大胆伸出触须
             <small>{sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
           </button>

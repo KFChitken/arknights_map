@@ -585,6 +585,37 @@ describe("server world", () => {
     });
   });
 
+  it("takes taps on a guide arriving together one at a time: each goes through, and she answers the day's first once", async () => {
+    // 阿米娅向导's touch used to write first and lock the player last, so two at once deadlocked and one failed
+    for (const id of [AMIYA_ID, PERLICA_ID, TALULAH_ID, MINGHE_ID]) {
+      const taps = await Promise.all(Array.from({ length: 4 }, () => me.touch(id, false)));
+      expect(taps.filter((t) => t.guide?.itemId)).toHaveLength(1);
+    }
+    // touching two of them at once as well
+    await expect(Promise.all([me.touch(AMIYA_ID, true), me.touch(PERLICA_ID, true), me.touch(AMIYA_ID, false)])).resolves.toHaveLength(3);
+  });
+
+  it("tells a second tap that came with the first that it is done already, instead of failing", async () => {
+    const reasons = (results: PromiseSettledResult<unknown>[]) =>
+      results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => (r.reason as Error).message);
+    // putting a roach down: both pick the same free slot, and one of them is down already
+    for (const target of [{ kind: "main" }, { kind: "clone" }] as PlaceTarget[]) {
+      const taps = await Promise.allSettled([me.placeRoach(target, PEOPLES_SQUARE), me.placeRoach(target, TOKYO)]);
+      for (const why of reasons(taps)) expect(why).toBe("刚才那只已经放好了。");
+    }
+    const slots = (await me.me()).roaches.map((r) => r.slot);
+    expect(new Set(slots).size).toBe(slots.length);
+    expect(slots).toContain(0);
+
+    // touching back the same touch: answered once
+    const pal = await signUp("pal@example.com");
+    await pal.touch((await me.me()).roaches.find((r) => r.slot === 0)!.publicId, false);
+    const item = (await me.inbox()).find((i) => i.kind === "touch")!.id;
+    const back = await Promise.allSettled([me.reply(item, false), me.reply(item, false), me.reply(item, true)]);
+    expect(back.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(reasons(back)).toEqual(["已经碰过 TA 了。", "已经碰过 TA 了。"]);
+  });
+
   it("lets anyone touch 佩丽卡监督, who touches back and counts the day's touches, apart from everything between players", async () => {
     const sneaky = await me.touch(PERLICA_ID, false);
     expect(sneaky).toMatchObject({ newFriend: null, guide: { id: "perlica", bold: false, kind: "touch", times: null } });

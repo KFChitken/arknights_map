@@ -5,7 +5,7 @@ import { INBOX_DAYS } from "../rules";
 import { DAY } from "../world/logic";
 import { WorldError, type Friend, type PublicRoach } from "../world/types";
 import { db } from "./db";
-import type { amiyaTouches } from "./schema";
+import { users, type amiyaTouches } from "./schema";
 
 /**
  * What every guide (src/lib/guides.ts) does the same way on the server: her own
@@ -31,6 +31,16 @@ export const isUniqueViolation = (e: unknown): boolean => {
   const err = e as { code?: string; cause?: unknown } | null;
   return err?.code === "23505" || (err?.cause !== undefined && isUniqueViolation(err.cause));
 };
+
+/**
+ * The player's row, locked until the transaction ends: every guide's touch takes it first, so one
+ * player's touches of the guides are decided one at a time and a double tap is answered once.
+ * First, before writing anything: a touch row written first takes a lighter lock on the same row
+ * (for its foreign key), and two touches each holding that while asking for this one wait on each
+ * other until the database cancels one (a deadlock).
+ */
+export const lockPlayer = (exec: Exec, userId: string) =>
+  exec.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
 
 /** Her place among the 触须之交 (after any guide before her): no history, no badges, nothing to report. */
 export function guideFriend(guide: Guide, since: Date, roaches: PublicRoach[]): Friend {

@@ -3,7 +3,7 @@ import { and, desc, eq, gte, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { AMIYA, amiyaRoach } from "../amiya";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { db } from "./db";
-import { deviceDay, guideFriend, guideTouches, isUniqueViolation, type GuideRow } from "./guides";
+import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type GuideRow } from "./guides";
 import { asideFromAmiya } from "./perlica";
 import { amiyaTouches, users, type UserRow } from "./schema";
 
@@ -31,6 +31,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
   let aside: TouchResult["aside"] | null = null;
   try {
     done = await db.transaction(async (tx) => {
+      await lockPlayer(tx, userId);
       // the first bold touch makes them 触须之交, which she always answers
       const made = bold
         ? await tx

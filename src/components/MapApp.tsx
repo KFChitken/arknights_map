@@ -367,6 +367,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const skipLeave = useRef(false);
   // an introduction card showed on this visit already, so the next one waits for another
   const introduced = useRef(false);
+  // a touch, or a roach being put down, on its way to the server: a second tap meanwhile is not sent (it would be the same one twice)
+  const [touching, setTouching] = useState(false);
+  const inFlight = useRef({ touch: false, put: false });
   // 塔露拉干员's fire: a clone on its way there, the count pretended in development, and her line to 初始 hoods while her card shows it
   const [sendingToFire, setSendingToFire] = useState(false);
   const [fakeFire, setFakeFire] = useState<number | null>(null);
@@ -871,14 +874,30 @@ export default function MapApp({ cn }: { cn: boolean }) {
     await put(placing.target, p, fly);
   };
 
+  /** One touch, or one roach put down, at a time: a second tap while the first is on its way is dropped. */
+  const once = async <T,>(kind: "touch" | "put", go: () => Promise<T | undefined>): Promise<T | undefined> => {
+    if (inFlight.current[kind]) return undefined;
+    inFlight.current[kind] = true;
+    if (kind === "touch") setTouching(true);
+    try {
+      return await go();
+    } finally {
+      inFlight.current[kind] = false;
+      if (kind === "touch") setTouching(false);
+    }
+  };
+
   /** Put a roach down (agreeing first, from the card) and say so; the first main roach opens the tutorial. */
   const put = async (target: PlaceTarget, p: LngLat, fly: boolean, agree = false) => {
-    if (agree && !(await act((w) => w.acceptPublicPlace().then(() => true)))) return;
     const before = me?.talulah.visited;
     // the main roach moving: 佩丽卡监督 rides over from where she stands now
     const mainMoves = Boolean(main && (target.kind === "main" || (target.kind === "move" && target.roachId === main.id)));
     const from = perlicaShown;
-    const done = await act((w) => w.placeRoach(target, p));
+    // a second tap on the map, or on the card, while this one is on its way is dropped
+    const done = await once("put", async () => {
+      if (agree && !(await act((w) => w.acceptPublicPlace().then(() => true)))) return undefined;
+      return act((w) => w.placeRoach(target, p));
+    });
     if (!done) return;
     if (mainMoves && perlicaAt) bikeFrom.current = from;
     setPlacing(null);
@@ -1128,7 +1147,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const touch = async (roach: PublicRoach, bold: boolean) => {
     if (roach.guide) return touchGuide(roach, bold);
-    const res = await act((w) => w.touch(roach.id, bold));
+    const res = await once("touch", () => act((w) => w.touch(roach.id, bold)));
     if (!res) return;
     setSelected(null);
     // the scene plays first, then today's toast
@@ -1420,7 +1439,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   /** Touch a guide on the map: she touches back at once, and says so over her head once the scene is over. */
   const touchGuide = async (roach: PublicRoach, bold: boolean) => {
     const id = roach.id as GuideId;
-    const res = await act((w) => w.touch(id, bold));
+    const res = await once("touch", () => act((w) => w.touch(id, bold)));
     if (!res?.guide) return;
     setSelected(null);
     const loading = res.newFriend ? Promise.all([loadFriends(), loadMe()]) : null;
@@ -2904,6 +2923,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
               : undefined
           }
           busy={pokeSent || Boolean(poking)}
+          touching={touching}
           friendRow={
             selectedFriend?.between && (
               <FriendActions

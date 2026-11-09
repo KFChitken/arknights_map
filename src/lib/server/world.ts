@@ -112,7 +112,7 @@ import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
-import type { Exec } from "./guides";
+import { isUniqueViolation, type Exec } from "./guides";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { allow } from "./rateLimit";
@@ -488,10 +488,25 @@ export async function writePlacement(
   });
 }
 
+/** What a second tap that came with the first is told when both picked the same free slot (slotTaken) */
+const SLOT_TAKEN = "刚才那只已经放好了。";
+
+/** Whether a new roach's slot was taken a moment ago by another request of the player's (a double tap): its unique index says so */
+function slotTaken(e: unknown): boolean {
+  const err = e as { code?: string; constraint_name?: string; cause?: unknown } | null;
+  if (!err || typeof err !== "object") return false;
+  return (err.code === "23505" && err.constraint_name === "roaches_user_slot_idx") || slotTaken(err.cause);
+}
+
 export async function placeRoach(userId: string, target: PlaceTarget, spot: LngLat): Promise<OwnRoach[]> {
   const at = checkSpot(spot);
   const placement = await checkPlacement(userId, target);
-  await db.transaction((tx) => writePlacement(tx, userId, placement, at));
+  try {
+    await db.transaction((tx) => writePlacement(tx, userId, placement, at));
+  } catch (e) {
+    if (slotTaken(e)) throw new WorldError(SLOT_TAKEN);
+    throw e;
+  }
   roachesChanged();
   // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
   await arrivedAt(userId, at);
@@ -517,20 +532,24 @@ export async function rideMinghe(userId: string, target: RideTarget): Promise<{ 
   const placement = await checkPlacement(userId, target);
   if (placement.slot === 0) throw new WorldError("本体不能跟他走，派一只克隆体吧。");
   const day = mingheToday();
-  const item = await db.transaction(async (tx) => {
-    // one ride at a time across the site, so two clones never take the same spot, nor one player two
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('minghe-queue'))`);
-    if (await riderOf(tx, userId)) throw new WorldError("你已经有一只克隆体在跟明河走了。");
-    const [spot] = queueSpots(day, 1, await standingNear(tx, day, placement.existing ? [placement.existing.id] : []));
-    await writePlacement(tx, userId, placement, spot, {
-      rideSince: new Date(),
-      rideStartDay: day,
-      rideDay: day,
-      rideFromLng: placement.existing?.lng ?? null,
-      rideFromLat: placement.existing?.lat ?? null,
+  const item = await db
+    .transaction(async (tx) => {
+      // one ride at a time across the site, so two clones never take the same spot, nor one player two
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('minghe-queue'))`);
+      if (await riderOf(tx, userId)) throw new WorldError("你已经有一只克隆体在跟明河走了。");
+      const [spot] = queueSpots(day, 1, await standingNear(tx, day, placement.existing ? [placement.existing.id] : []));
+      await writePlacement(tx, userId, placement, spot, {
+        rideSince: new Date(),
+        rideStartDay: day,
+        rideDay: day,
+        rideFromLng: placement.existing?.lng ?? null,
+        rideFromLat: placement.existing?.lat ?? null,
+      });
+      return sayAboutRide(tx, userId, "ride", stopOf(day));
+    })
+    .catch((e) => {
+      throw slotTaken(e) ? new WorldError(SLOT_TAKEN) : e;
     });
-    return sayAboutRide(tx, userId, "ride", stopOf(day));
-  });
   roachesChanged();
   return { roaches: await ownRoaches(userId), item };
 }
@@ -722,7 +741,13 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   }
   await checkTouchQuota(userId);
   const withheld = await blockedBetween(userId, to);
-  await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId, withheld });
+  try {
+    await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId, withheld });
+  } catch (e) {
+    // two taps at once: reply_to is unique for each player, so the second is the same answer again
+    if (isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
+    throw e;
+  }
   if (withheld) return { newFriend: null };
   const newFriend = bold ? await befriendIfMutual(userId, to) : null;
   nudge([to]);

@@ -12,6 +12,7 @@ import {
   guideFriend,
   guideTouches,
   isUniqueViolation,
+  lockPlayer,
   type Exec,
   type GuideRow,
   type GuideTable,
@@ -177,8 +178,8 @@ async function spokeUpToday(exec: Exec, userId: string, since: Date) {
   return Boolean(row);
 }
 
-/** One player's touches of the guides are decided one at a time, so a double tap never makes her jealous twice */
-const lockPlayer = (exec: Exec, userId: string) =>
+/** lockPlayer (guides.ts), with since when they are her 触须之交: a double tap never makes her jealous twice */
+const lockWithHer = (exec: Exec, userId: string) =>
   exec.select({ friendSince: users.perlicaFriendSince }).from(users).where(eq(users.id, userId)).for("update");
 
 // 假装今天是佩丽卡生日 (development only): players for whom it is her birthday until then, in this server's memory
@@ -203,7 +204,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
   let done: { id: string | null; kind: Answer; times: number | null; others: number | null; line: number | null };
   try {
     done = await db.transaction(async (tx) => {
-      const [u] = await lockPlayer(tx, userId);
+      const [u] = await lockWithHer(tx, userId);
       const wasFriend = Boolean(u?.friendSince);
       const firstToday = (await her.touchesSince(tx, userId, since)) === 0;
       const made =

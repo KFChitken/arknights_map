@@ -6,7 +6,7 @@ import type { LngLat } from "../types";
 import { WorldError, type MingheItem, type TouchResult } from "../world/types";
 import { db } from "./db";
 import { isProd } from "./env";
-import { deviceDay, guideFriend, guideTouches, isUniqueViolation, type Exec, type GuideRow, type GuideTable } from "./guides";
+import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type Exec, type GuideRow, type GuideTable } from "./guides";
 import { roachesChanged } from "./roachFeed";
 import { mingheTouches, roaches, touches, users } from "./schema";
 
@@ -72,6 +72,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
   let done: { id: string | null; friend: boolean };
   try {
     done = await db.transaction(async (tx) => {
+      await lockPlayer(tx, userId);
       const made = bold
         ? await tx
             .update(users)

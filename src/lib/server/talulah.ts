@@ -4,7 +4,7 @@ import { isNearFire, TALULAH, talulahRoach } from "../talulah";
 import type { LngLat } from "../types";
 import { WorldError, type TalulahItem, type TouchResult } from "../world/types";
 import { db } from "./db";
-import { deviceDay, guideFriend, guideTouches, isUniqueViolation, type GuideRow, type GuideTable } from "./guides";
+import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type GuideRow, type GuideTable } from "./guides";
 import { talulahTouches, users } from "./schema";
 
 /**
@@ -44,6 +44,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
   let done: { id: string | null; friend: boolean };
   try {
     done = await db.transaction(async (tx) => {
+      await lockPlayer(tx, userId);
       const made = bold
         ? await tx
             .update(users)
