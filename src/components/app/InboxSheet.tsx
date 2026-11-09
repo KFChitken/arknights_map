@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { AMIYA_ID, AMIYA_NAME, amiyaLine } from "@/lib/amiya";
-import { REACTIONS, type Reaction } from "@/lib/declarations";
+import type { Reply } from "@/lib/declarations";
 import {
   anniversaryText,
   GESTURE_BACK,
@@ -188,7 +188,7 @@ export default function InboxSheet({
   notice: boolean;
   onTab: (tab: InboxTab) => void;
   onReply: (itemId: string, bold: boolean) => Promise<void>;
-  onReact: (itemId: string, reaction: Reaction) => Promise<void>;
+  onReact: (itemId: string, reaction: string) => Promise<void>;
   onIgnore: (itemId: string) => Promise<void>;
   /** target: the message the profile came with, for blocking or reporting its sender */
   onViewProfile: (p: PublicProfile, target: string) => void;
@@ -214,7 +214,7 @@ export default function InboxSheet({
     setReplying(null);
   };
   const [reacting, setReacting] = useState<string | null>(null);
-  const react = async (id: string, reaction: Reaction) => {
+  const react = async (id: string, reaction: string) => {
     setReacting(id);
     await onReact(id, reaction);
     setReacting(null);
@@ -485,7 +485,7 @@ export default function InboxSheet({
         const who = item.from.displayName;
         return (
           <div key={item.id} className={cls}>
-            <div>{item.reaction === "birthday" ? `${who} 祝你生日快乐！` : `${who} 回应了你的生日宣言：「${REACTIONS[item.reaction]}」`}</div>
+            <div>{item.reaction.id === "birthday" ? `${who} 祝你生日快乐！` : `${who} 回应了你的生日宣言：「${item.reaction.text}」`}</div>
             {meta(item, item.id, who)}
             <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
           </div>
@@ -494,7 +494,7 @@ export default function InboxSheet({
       return (
         <div key={item.id} className={cls}>
           <div>附近有舟P回应了你的宣言「{item.text}」：</div>
-          <div className="quote">{REACTIONS[item.reaction]}</div>
+          <div className="quote">{item.reaction.text}</div>
           {meta(item, item.id, null)}
           <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
         </div>
@@ -508,15 +508,23 @@ export default function InboxSheet({
         <div className="quote">「{item.text}」</div>
         {meta(item, item.id, item.from?.displayName ?? null)}
         {item.reaction ? (
-          <div className="done">你回应了：{REACTIONS[item.reaction]}</div>
+          <div className="done">你回应了：{item.reaction.text}</div>
         ) : (
-          <div className="chips reactions">
-            {item.options.map((r) => (
-              <button key={r} className="chip" disabled={reacting === item.id} onClick={() => react(item.id, r)}>
-                {REACTIONS[r]}
-              </button>
-            ))}
-          </div>
+          <>
+            {/* this sentence's own four first, then the five every declaration has, on a line of their own */}
+            {[item.options.filter((r) => r.own), item.options.filter((r) => !r.own)].map(
+              (row: Reply[], i) =>
+                row.length > 0 && (
+                  <div key={i} className={`chips reactions${i ? " generic" : ""}`}>
+                    {row.map((r) => (
+                      <button key={r.id} className="chip" disabled={reacting === item.id} onClick={() => react(item.id, r.id)}>
+                        {r.text}
+                      </button>
+                    ))}
+                  </div>
+                ),
+            )}
+          </>
         )}
         {item.from && !item.reaction && <p className="hint">TA 能看到是你。</p>}
         <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>

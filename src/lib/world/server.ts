@@ -1,4 +1,4 @@
-import type { Declaration, Reaction } from "../declarations";
+import type { Declaration } from "../declarations";
 import type { Gesture } from "../friendly";
 import type { Game } from "../games";
 import type { Profile } from "../profile";
@@ -102,7 +102,7 @@ export class ServerWorld implements World {
   inbox = () => this.call<InboxItem[]>("inbox");
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
   declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);
-  react = (itemId: string, reaction: Reaction) => this.call<void>("react", itemId, reaction);
+  react = (itemId: string, reaction: string) => this.call<void>("react", itemId, reaction);
   ignore = (itemId: string) => this.call<void>("ignore", itemId);
   friends = () => this.call<Friend[]>("friends");
   unfriend = (friendId: string) => this.call<void>("unfriend", friendId);

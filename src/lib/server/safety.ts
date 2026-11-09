@@ -1,6 +1,6 @@
 import "server-only";
 import { and, count, countDistinct, eq, gt, inArray, isNull } from "drizzle-orm";
-import { declarationText, isReaction, REACTIONS } from "../declarations";
+import { declarationText, replyOf } from "../declarations";
 import { guideById, guideOfItem } from "../guides";
 import { displayName } from "../profile";
 import { NAME_REPORTS_TO_HIDE, REPORT_NOTE_MAX, REPORTS_PER_DAY, SITE_NAME } from "../rules";
@@ -75,7 +75,7 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
       .where(and(eq(reactions.id, id), eq(declarations.senderId, userId)))
       .limit(1);
     if (!row) return null;
-    const reaction = isReaction(row.r.reaction) ? REACTIONS[row.r.reaction] : row.r.reaction;
+    const reaction = replyOf(storedDeclaration(row.d), row.r.reaction)?.text ?? row.r.reaction;
     return {
       other: row.r.fromUserId,
       known: false,

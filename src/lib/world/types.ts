@@ -1,5 +1,5 @@
 import type { BadgeCount, EarnedBadge } from "../badges";
-import type { Declaration, Reaction } from "../declarations";
+import type { Declaration, Reply } from "../declarations";
 import type { Gesture } from "../friendly";
 import type { Game } from "../games";
 import type { GuideId } from "../guides";
@@ -75,7 +75,7 @@ export interface World {
   /** Crawl away from a touch in your inbox without answering it. */
   ignore(itemId: string): Promise<void>;
   /** Leave a reaction on a declaration in your inbox. */
-  react(itemId: string, reaction: Reaction): Promise<void>;
+  react(itemId: string, reaction: string): Promise<void>;
   /** 触须之交: players you and they have both touched boldly. */
   friends(): Promise<Friend[]>;
   unfriend(friendId: string): Promise<void>;
@@ -323,15 +323,15 @@ export type InboxItem =
       seen: boolean;
       text: string;
       replied: boolean;
-      /** The reaction you left, and the ones you may choose from */
-      reaction: Reaction | null;
-      options: Reaction[];
+      /** The reply you left, and the ones you may choose from: its own four first, then the five every one has */
+      reaction: Reply | null;
+      options: Reply[];
       /** A 触须之交's 「祝我生日快乐」, sent to you as one: who, and how to open them (they see who reacts) */
       from?: PublicProfile;
       friendId?: string;
     }
   /** Someone nearby reacted to your declaration; they stay anonymous, unless a 触须之交 reacting to your birthday */
-  | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reaction; replied: boolean; from?: PublicProfile; friendId?: string }
+  | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reply; replied: boolean; from?: PublicProfile; friendId?: string }
   | { kind: "friend"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** A 触须之交 poked your main roach while it slept; shown once you are awake */
   | { kind: "poke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }

@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { declarationText, DRUNK_TEMPLATES, reactionsFor, TEMPLATES, type Declaration } from "../declarations";
+import {
+  canReply,
+  declarationText,
+  DRUNK_TEMPLATES,
+  GENERIC_REACTIONS,
+  REACTIONS,
+  repliesFor,
+  replyOf,
+  TEMPLATES,
+  type Declaration,
+} from "../declarations";
 import { beijingDate } from "../beijing";
 import { activeEvents, EVENTS, untilText } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
@@ -43,10 +53,83 @@ describe("declarations", () => {
     expect(() => say({ template: "alsoplay", game: "arknights" })).toThrow("选一句宣言");
   });
 
-  it("offers 生日快乐！ only under a birthday declaration", () => {
-    expect(reactionsFor("birthday")).toContain("birthday");
-    expect(reactionsFor("launch")).not.toContain("birthday");
-    expect(reactionsFor("launch")).toEqual(["alsoplay", "zhouli", "shouwei", "plusone", "diplomat"]);
+  it("offers 生日快乐！ only under a birthday declaration, as its own first", () => {
+    expect(repliesFor({ template: "birthday" })[0]).toEqual({ id: "birthday", text: "生日快乐！", own: true });
+    expect(repliesFor({ template: "launch", game: "arknights" }).map((r) => r.id)).not.toContain("birthday");
+  });
+
+  /** One of each sentence, its blanks filled */
+  const everySentence: Declaration[] = [
+    { template: "launch", game: "arknights" },
+    { template: "iam", character: "阿米娅", title: "狗" },
+    { template: "love", character: "阿米娅" },
+    { template: "buff", character: "阿米娅" },
+    { template: "myname", game: "endfield", name: "Dr. Breeze" },
+    { template: "welcome", game: "arknights" },
+    { template: "canyou", character: "阿米娅" },
+    { template: "eat", character: "阿米娅", food: "脚夹馍" },
+    { template: "birthday" },
+    { template: "water" },
+    { template: "drunklove", character: "阿米娅" },
+    { template: "kr168", character: "阿米娅", spouse: "老婆" },
+    { template: "radar" },
+    { template: "roguelike" },
+    { template: "xianshu" },
+    { template: "rental" },
+    ...EVENTS.flatMap((e) => e.lines.map((l): Declaration => ({ template: "event", line: l.id }))),
+  ];
+
+  it("gives every sentence its own four replies, the fourth asking for a touch, then the five every one has", () => {
+    expect(new Set(everySentence.map((d) => d.template))).toEqual(new Set([...TEMPLATES, ...DRUNK_TEMPLATES, "event"]));
+    for (const d of everySentence) {
+      const replies = repliesFor(d);
+      const own = replies.filter((r) => r.own);
+      expect(own, declarationText(d)).toHaveLength(4);
+      expect(own[3].text).toContain("碰我一下");
+      expect(replies.filter((r) => !r.own).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
+      expect(replies.slice(0, 4)).toEqual(own);
+      expect(new Set(replies.map((r) => r.text)).size).toBe(9);
+      expect(new Set(replies.map((r) => r.id)).size).toBe(9);
+      for (const r of replies) expect(r.text).not.toMatch(/^\s*$|undefined|[{}【】]/);
+    }
+    // every sentence's own ids are its own
+    const owns = everySentence.filter((d) => !(d.template === "event" && d.line.startsWith("perlica-bday"))).flatMap((d) => repliesFor(d).filter((r) => r.own).map((r) => r.id));
+    expect(new Set(owns).size).toBe(owns.length);
+  });
+
+  it("fills a reply in from the declaration, and 喵～ for a 猫", () => {
+    expect(repliesFor({ template: "love", character: "阿米娅" }).slice(0, 4).map((r) => r.text)).toEqual([
+      "我也永远喜欢阿米娅！",
+      "阿米娅是我的！",
+      "你上次也是这么说的",
+      "同担！碰我一下",
+    ]);
+    expect(repliesFor({ template: "iam", character: "阿米娅", title: "猫" })[0].text).toBe("喵～");
+    expect(repliesFor({ template: "iam", character: "阿米娅", title: "佩洛" })[0].text).toBe("汪汪！");
+    expect(repliesFor({ template: "iam", character: "阿米娅", title: "狗" })[1].text).toBe("我也是阿米娅的狗");
+    expect(repliesFor({ template: "myname", game: "endfield", name: "Dr. Breeze" }).slice(1, 4).map((r) => r.text)).toEqual([
+      "我也要玩终末地！",
+      "准了！",
+      "Dr. Breeze你好，碰我一下",
+    ]);
+    // 佩丽卡's birthday is the same every year
+    const p27 = repliesFor({ template: "event", line: "perlica-bday-2027" });
+    expect(repliesFor({ template: "event", line: "perlica-bday-2036" })).toEqual(p27);
+    expect(p27[0]).toEqual({ id: "perlica-bday.1", text: "佩丽卡生日快乐！", own: true });
+  });
+
+  it("refuses another sentence's own reply, keeps the old ones readable, and has only the five where a sentence has none", () => {
+    const love: Declaration = { template: "love", character: "阿米娅" };
+    expect(canReply(love, "love.4")).toBe(true);
+    expect(canReply(love, "plusone")).toBe(true);
+    expect(canReply(love, "launch.1")).toBe(false);
+    expect(canReply(love, "birthday")).toBe(false);
+    expect(canReply(love, "love.5")).toBe(false);
+    // what was left before each sentence had its own still reads
+    for (const id of Object.keys(REACTIONS)) expect(replyOf(love, id)?.text).toBe(REACTIONS[id as keyof typeof REACTIONS]);
+    expect(replyOf(love, "nonsense")).toBeNull();
+    expect(repliesFor({ template: "alsoplay", game: "arknights" }).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
+    expect(repliesFor({ template: "event", line: "nope" }).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
   });
 });
 
@@ -135,7 +218,7 @@ describe("limited-time declarations", () => {
   it("still reads right after the event, and falls back for a line nobody knows", () => {
     expect(declarationText({ template: "event", line: "yuanyuan" })).toBe("才...才不想和祀住进缘缘庄呢！");
     expect(declarationText({ template: "event", line: "nope" })).toBe("（限定宣言）");
-    expect(reactionsFor("event")).not.toContain("birthday");
+    expect(repliesFor({ template: "event", line: "yuanyuan" }).map((r) => r.id)).not.toContain("birthday");
   });
 
   it("opens 「祝佩丽卡生日快乐！」 on her birthday every year, Beijing time, with no badge of its own", () => {

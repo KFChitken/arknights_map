@@ -420,7 +420,7 @@ describe("生日祝福送到所有触须之交", () => {
     await b.react(far.id, "birthday");
     await c.react(stranger.id, "birthday");
     const answers = of(await a.inbox(), "reaction");
-    expect(answers.find((r) => r.from)).toMatchObject({ from: { displayName: "Dr. B" }, reaction: "birthday" });
+    expect(answers.find((r) => r.from)).toMatchObject({ from: { displayName: "Dr. B" }, reaction: { id: "birthday", text: "生日快乐！" } });
     expect(answers.filter((r) => !r.from)).toHaveLength(1);
 
     // within 30 days: only those nearby hear it, as anyone's

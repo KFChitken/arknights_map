@@ -11,7 +11,7 @@ import type { EarnedBadge } from "@/lib/badges";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/shapes";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
-import { declarationText, type Declaration, type Reaction, type Template } from "@/lib/declarations";
+import { declarationText, type Declaration, type Template } from "@/lib/declarations";
 import { EVENTS } from "@/lib/events";
 import type { Place } from "@/lib/geocode";
 import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
@@ -189,7 +189,7 @@ function dockSceneFor(fresh: InboxItem[]): { kind: DockKind; from: DockFrom | nu
   const gesture = fresh.find((i) => i.kind === "gesture" && isAwakeGesture(i.gesture));
   if (gesture?.kind === "gesture" && isAwakeGesture(gesture.gesture)) return { kind: gesture.gesture, from: null };
   if (fresh.some((i) => i.kind === "anniversary")) return { kind: "hearts", from: null };
-  if (fresh.some((i) => i.kind === "reaction" && i.from && i.reaction === "birthday")) return { kind: "cake", from: null };
+  if (fresh.some((i) => i.kind === "reaction" && i.from && i.reaction.id === "birthday")) return { kind: "cake", from: null };
   const bold = fresh.find((i) => i.kind === "touch" && i.bold);
   if (bold?.kind === "touch") return { kind: "bold", from: bold.from ? card(bold.from) : null };
   if (fresh.some((i) => i.kind === "touch")) return { kind: "sneaky", from: null };
@@ -1501,7 +1501,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     keepSnapshot(await loadInbox());
   };
 
-  const react = async (itemId: string, reaction: Reaction) => {
+  const react = async (itemId: string, reaction: string) => {
     const done = await act((w) => w.react(itemId, reaction).then(() => true));
     if (!done) return;
     setToast("回应发出去了！");

@@ -89,7 +89,10 @@ export function declarationText(d: Declaration): string {
   }
 }
 
-/** Fixed replies a player can leave on a declaration they received, one per declaration. */
+/**
+ * The fixed replies of before, which still show on the messages that have them. All but
+ * 生日快乐！ are the five every declaration has (GENERIC_REACTIONS), after its own four.
+ */
 export const REACTIONS = {
   alsoplay: "原来，你也玩舟？",
   birthday: "生日快乐！",
@@ -104,9 +107,77 @@ export function isReaction(v: unknown): v is Reaction {
   return typeof v === "string" && Object.hasOwn(REACTIONS, v);
 }
 
-/** 生日快乐！ only fits a birthday declaration */
-export function reactionsFor(template: string): Reaction[] {
-  const others = (Object.keys(REACTIONS) as Reaction[]).filter((r) => r !== "birthday");
-  // a birthday declaration has 生日快乐！ first
-  return template === "birthday" ? ["birthday", ...others] : others;
+/** The five every declaration can get, on a line of their own after its own four */
+export const GENERIC_REACTIONS = ["alsoplay", "zhouli", "shouwei", "plusone", "diplomat"] as const;
+
+/** One reply a declaration can get: its id (what is stored), its words filled in, and whether it is one of that sentence's own four */
+export type Reply = { id: string; text: string; own: boolean };
+
+/**
+ * Each sentence's own four replies, stored as "<template>.<n>" (the birthday one's first is
+ * the old 生日快乐！, "birthday"); the fourth always asks for a touch. {角色} {游戏} {名字}
+ * {称呼} are filled in from the declaration, {汪汪} is 汪汪！, or 喵～ for a 猫. Limited
+ * lines keep theirs in events.ts. Short: about 12 characters besides a character's name.
+ */
+const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, string]>> = {
+  launch: ["上号！", "先把理智清了", "现在还不能休息哦", "一起启动，碰我一下"],
+  iam: ["{汪汪}", "我也是{角色}的{称呼}", "{角色}知道吗？", "同一窝的！碰我一下"],
+  love: ["我也永远喜欢{角色}！", "{角色}是我的！", "你上次也是这么说的", "同担！碰我一下"],
+  buff: ["{角色}值得更好的！", "鹰角，听到了吗！", "不是{角色}弱，是练度不够", "同求加强，碰我一下"],
+  myname: ["好名字！", "我也要玩{游戏}！", "准了！", "{名字}你好，碰我一下"],
+  welcome: ["我回来了！", "回来就好", "这次真的不退坑了", "我也刚回来，碰我一下"],
+  canyou: ["{角色}当然做得到！", "你在质疑{角色}？", "做不到也没关系，喜欢就够了", "我也厨{角色}，碰我一下"],
+  eat: ["给我也来一份", "这边建议去医疗部挂个号", "{角色}：？", "同道中人？碰我一下"],
+  birthday: ["生日快乐！", "生日快乐，十连双黄！", "今天寿星最大", "寿星碰我一下，沾沾喜气"],
+  water: ["那是白酒！", "别喝了别喝了", "我给你倒杯真的", "醒了碰我一下"],
+  drunklove: ["酒后吐真言", "醒了还算数吗？", "敬{角色}，干杯！", "同担干杯，碰我一下"],
+  kr168: ["恭喜接{角色}回家！", "168 就出了？我 648 都没出", "醒醒，你还没抽", "欧皇碰我一下，分点欧气"],
+  radar: ["我的也响了！", "响的就是我", "喝多了吧，雷达在乱响", "碰我一下，看看准不准"],
+  roguelike: ["这把必出好藏品！", "喝成这样还打肉鸽？", "醉拳流，一层就寄", "打完碰我一下，比比分"],
+  xianshu: ["我也要看！", "看会了，手没会", "喝醉了看，更像仙术了", "看完碰我一下"],
+  rental: ["现在认识一个了", "那些蟑螂也玩舟吗？", "所以你来对地方了", "碰我一下，这就多一个"],
+};
+
+/** A reply's blanks, filled in from the declaration it answers */
+function fillReply(text: string, d: Declaration) {
+  const character = ("character" in d && d.character) || "TA";
+  return text
+    .replaceAll("{角色}", character)
+    .replaceAll("{游戏}", "game" in d ? GAME_NAMES[d.game] : "舟")
+    .replaceAll("{名字}", d.template === "myname" ? (d.name ?? "") : "")
+    .replaceAll("{称呼}", d.template === "iam" ? d.title : "")
+    .replaceAll("{汪汪}", d.template === "iam" && d.title === "猫" ? "喵～" : "汪汪！");
 }
+
+/** A sentence's own four, filled in; none for one without them (an older sentence, a limited line written without) */
+function ownReplies(d: Declaration): Reply[] {
+  if (d.template === "event") {
+    const line = findLine(d.line)?.line;
+    if (!line?.replies) return [];
+    const key = line.replyKey ?? line.id;
+    return line.replies.map((text, i) => ({ id: `${key}.${i + 1}`, text, own: true }));
+  }
+  const own = OWN_REPLIES[d.template];
+  if (!own) return [];
+  return own.map((text, i) => ({
+    id: d.template === "birthday" && i === 0 ? "birthday" : `${d.template}.${i + 1}`,
+    text: fillReply(text, d),
+    own: true,
+  }));
+}
+
+/** What a declaration can be answered with: its own four, then the five every one has */
+export function repliesFor(d: Declaration): Reply[] {
+  return [...ownReplies(d), ...GENERIC_REACTIONS.map((id) => ({ id, text: REACTIONS[id], own: false }))];
+}
+
+/** A reply someone left on this declaration, its words filled in; the fixed ones of before still read; null when unknown */
+export function replyOf(d: Declaration, id: unknown): Reply | null {
+  if (typeof id !== "string") return null;
+  const found = repliesFor(d).find((r) => r.id === id);
+  if (found) return found;
+  return isReaction(id) ? { id, text: REACTIONS[id], own: id === "birthday" } : null;
+}
+
+/** Whether a reply may be left on this declaration now */
+export const canReply = (d: Declaration, id: unknown) => repliesFor(d).some((r) => r.id === id);

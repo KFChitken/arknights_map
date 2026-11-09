@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
-import { declarationText, FOODS, isReaction, reactionsFor, SPOUSES, type Declaration, type Food } from "../declarations";
+import { canReply, declarationText, FOODS, repliesFor, replyOf, SPOUSES, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
@@ -878,21 +878,23 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       seen: Boolean(seenAt),
       text: declarationText(storedDeclaration(d)),
       replied: done.has(id),
-      reaction: isReaction(reacted) ? reacted : null,
-      options: reactionsFor(d.template),
+      reaction: replyOf(storedDeclaration(d), reacted),
+      options: repliesFor(storedDeclaration(d)),
       ...asFriend.sender(d.senderId, toFriend),
     });
   }
   for (const { r, d } of rs) {
-    if (!isReaction(r.reaction)) continue;
+    const declared = storedDeclaration(d);
+    const reply = replyOf(declared, r.reaction);
+    if (!reply) continue;
     const id = `x:${r.id}`;
     items.push({
       kind: "reaction",
       id,
       at: r.createdAt.getTime(),
       seen: Boolean(r.seenAt),
-      text: declarationText(storedDeclaration(d)),
-      reaction: r.reaction,
+      text: declarationText(declared),
+      reaction: reply,
       replied: done.has(id),
       ...asFriend.reactor(r.declarationId, r.fromUserId),
     });
@@ -1120,14 +1122,16 @@ export async function ignore(userId: string, itemId: string) {
 export async function react(userId: string, itemId: string, reaction: string) {
   const [kind, id] = String(itemId).split(":");
   if (kind !== "d" || !UUID.test(id ?? "")) throw new WorldError("找不到这条宣言了。");
-  const [row] = await db
-    .select({ senderId: declarations.senderId, template: declarations.template })
+  const [found] = await db
+    .select({ d: declarations })
     .from(deliveries)
     .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
     .where(and(eq(deliveries.declarationId, id), eq(deliveries.recipientId, userId)))
     .limit(1);
-  if (!row) throw new WorldError("找不到这条宣言了。");
-  if (!isReaction(reaction) || !reactionsFor(row.template).includes(reaction)) throw new WorldError("这条宣言不能这样回应。");
+  if (!found) throw new WorldError("找不到这条宣言了。");
+  const row = found.d;
+  // its own four or the five every declaration has, never another sentence's
+  if (!canReply(storedDeclaration(row), reaction)) throw new WorldError("这条宣言不能这样回应。");
   const withheld = await blockedBetween(userId, row.senderId);
   const [made] = await db
     .insert(reactions)

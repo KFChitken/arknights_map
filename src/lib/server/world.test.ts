@@ -1535,10 +1535,10 @@ describe("server world", () => {
     const t2 = await demo("t2");
     const [got] = await t2.inbox();
     expect(got).toMatchObject({ kind: "declaration", text: "祝我生日快乐", reaction: null });
-    expect(got.kind === "declaration" && got.options).toContain("birthday");
+    expect(got.kind === "declaration" && got.options.map((o) => o.id)).toContain("birthday");
     await t2.react(got.id, "birthday");
     await expect(t2.react(got.id, "plusone")).rejects.toThrow("已经回应过");
-    expect((await t2.inbox())[0]).toMatchObject({ reaction: "birthday" });
+    expect((await t2.inbox())[0]).toMatchObject({ reaction: { id: "birthday", text: "生日快乐！" } });
     const t1 = await demo("t1");
     await t1.react((await t1.inbox())[0].id, "zhouli");
     // 夜莺厨 lives in Beijing and never got it
@@ -1548,13 +1548,14 @@ describe("server world", () => {
     off();
 
     const reactions = (await me.inbox()).filter((i) => i.kind === "reaction");
-    expect(reactions.map((r) => r.kind === "reaction" && r.reaction).sort()).toEqual(["birthday", "zhouli"]);
+    expect(reactions.map((r) => r.kind === "reaction" && r.reaction.id).sort()).toEqual(["birthday", "zhouli"]);
+    expect(reactions.map((r) => r.kind === "reaction" && r.reaction.text).sort()).toEqual(["合乎粥礼", "生日快乐！"]);
     expect(reactions[0]).toMatchObject({ text: "祝我生日快乐", seen: false });
     expect(JSON.stringify(reactions)).not.toMatch(/阿白|小林|t1|t2/);
     expect(JSON.stringify(reactions)).not.toContain(t2.id);
 
     // the sender can touch back whoever reacted, and seeing them clears them
-    const fromT2 = reactions.find((r) => r.kind === "reaction" && r.reaction === "birthday")!;
+    const fromT2 = reactions.find((r) => r.kind === "reaction" && r.reaction.id === "birthday")!;
     await me.reply(fromT2.id, false);
     expect((await t2.inbox()).find((i) => i.kind === "touch")).toMatchObject({ target: "reaction", bold: false });
     await me.markSeen(reactions.map((r) => r.id));
@@ -1566,9 +1567,38 @@ describe("server world", () => {
     await me.declare({ template: "launch", game: "arknights" });
     const t2 = await demo("t2");
     const [got] = await t2.inbox();
-    expect(got.kind === "declaration" && got.options).not.toContain("birthday");
+    expect(got.kind === "declaration" && got.options.map((o) => o.id)).not.toContain("birthday");
     await expect(t2.react(got.id, "birthday")).rejects.toThrow("不能这样回应");
     await expect(t2.react(got.id, "nonsense")).rejects.toThrow("不能这样回应");
+  });
+
+  it("offers each declaration its own four replies, filled in, then the five every one has", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, games: ["arknights"], favourites: { arknights: ["阿米娅"], endfield: [] } });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "love", character: "阿米娅" });
+    const t2 = await demo("t2");
+    const [got] = await t2.inbox();
+    expect(got.kind === "declaration" && got.options.map((o) => [o.text, o.own])).toEqual([
+      ["我也永远喜欢阿米娅！", true],
+      ["阿米娅是我的！", true],
+      ["你上次也是这么说的", true],
+      ["同担！碰我一下", true],
+      ["原来，你也玩舟？", false],
+      ["合乎粥礼", false],
+      ["舟P收收味", false],
+      ["+1", false],
+      ["这种已经是外交官级别的了", false],
+    ]);
+    await expect(t2.react(got.id, "launch.4")).rejects.toThrow("不能这样回应");
+    await t2.react(got.id, "love.4");
+    expect((await t2.inbox())[0]).toMatchObject({ reaction: { id: "love.4", text: "同担！碰我一下" } });
+    const [back] = (await me.inbox()).filter((i) => i.kind === "reaction");
+    expect(back).toMatchObject({ text: "我永远喜欢阿米娅", reaction: { text: "同担！碰我一下" } });
+    expect(back.kind === "reaction" && back.from).toBeUndefined();
+
+    // one left before the sentences had their own still reads
+    await db.update(reactions).set({ reaction: "zhouli" });
+    expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({ reaction: { id: "zhouli", text: "合乎粥礼" } });
   });
 
   it("puts the sender's name in 「我是…，我要玩…」 as it was when they said it", async () => {
@@ -1592,8 +1622,13 @@ describe("server world", () => {
       const t2 = await demo("t2");
       const [got] = await t2.inbox();
       expect(got).toMatchObject({ kind: "declaration", text: "恭喜塔姐上岛！" });
-      await t2.react(got.id, "plusone");
-      expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({ text: "恭喜塔姐上岛！", reaction: "plusone" });
+      // its own four, then the five
+      expect(got.kind === "declaration" && got.options.slice(0, 4).map((o) => o.id)).toEqual(["tazi.1", "tazi.2", "tazi.3", "tazi.4"]);
+      await t2.react(got.id, "tazi.1");
+      expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({
+        text: "恭喜塔姐上岛！",
+        reaction: { id: "tazi.1", text: "塔姐，欢迎上岛！" },
+      });
 
       await db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - interval '2 minutes'` });
       await me.declare({ template: "event", line: "yuanyuan" });
