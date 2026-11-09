@@ -13,7 +13,8 @@ zhoupmap.com {
 		max_size 1MB
 	}
 	header {
-		Strict-Transport-Security "max-age=31536000"
+		# HTTPS only, for two years, subdomains too, and on the browsers' built-in list (hstspreload.org)
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
@@ -46,5 +47,6 @@ zhoupmap.com {
 }
 
 www.zhoupmap.com {
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 	redir https://zhoupmap.com{uri} permanent
 }
