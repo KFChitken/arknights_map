@@ -11,6 +11,7 @@ import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/shapes";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
 import { declarationText, type Declaration, type Reaction, type Template } from "@/lib/declarations";
+import { EVENTS } from "@/lib/events";
 import type { Place } from "@/lib/geocode";
 import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
 import {
@@ -145,6 +146,7 @@ import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
+import { DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
   loadProgress,
@@ -160,6 +162,24 @@ import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
 const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
+
+/**
+ * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
+ * else a bold touch (with the toucher's card), else a sneaky one. Touching back your touch,
+ * declaration or reaction counts the same; null when no touch came.
+ */
+function dockSceneFor(fresh: InboxItem[]): { kind: DockKind; from: DockFrom | null } | null {
+  const card = (p: PublicProfile) => ({ name: p.displayName, avatar: p.avatar, color: p.color });
+  const friend = fresh.find((i) => i.kind === "friend");
+  if (friend?.kind === "friend") return { kind: "friend", from: card(friend.from) };
+  const bold = fresh.find((i) => i.kind === "touch" && i.bold);
+  if (bold?.kind === "touch") return { kind: "bold", from: bold.from ? card(bold.from) : null };
+  if (fresh.some((i) => i.kind === "touch")) return { kind: "sneaky", from: null };
+  return null;
+}
+
+/** A heard line that is one of the limited ones gets the 限定 tag */
+const isLimitedLine = (text: string) => EVENTS.some((e) => e.lines.some((l) => l.text === text));
 
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
 /** How long one of 佩丽卡监督's notes stays along the top: a line, or two */
@@ -360,6 +380,18 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [shouting, setShouting] = useState<{ roach: string; text: string; limited: boolean; place: ShoutPlace; toast: () => void; done: () => void } | null>(null);
   /** The lines just shouted, each over a roach it went out from, for a few seconds */
   const [shouts, setShouts] = useState<ShoutMark[]>([]);
+  /** The touched side: your dock avatar's scene as a touch comes in, and sound coming in with a declaration */
+  const [dockScene, setDockScene] = useState<{ kind: DockKind; from: DockFrom | null; at: DockAt; done: () => void } | null>(null);
+  const [dockAnim, setDockAnim] = useState<string | null>(null);
+  const [badgePop, setBadgePop] = useState(false);
+  const [arcs, setArcs] = useState<{ at: DockAt; nonce: number } | null>(null);
+  /** Declarations heard nearby, floating over the dock, newest last */
+  const [heard, setHeard] = useState<Heard[]>([]);
+  const dockAvRef = useRef<HTMLSpanElement>(null);
+  const dockMailRef = useRef<HTMLButtonElement>(null);
+  /** What the inbox held at the last look, and what came since */
+  const inboxIdsRef = useRef<Set<string> | null>(null);
+  const freshRef = useRef<InboxItem[]>([]);
   const [pokeSent, setPokeSent] = useState(false);
   const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
@@ -418,6 +450,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const loadInbox = useCallback(async () => {
     const items = await worldRef.current!.inbox();
     lastMessagesRef.current = Date.now();
+    const before = inboxIdsRef.current;
+    freshRef.current = before ? items.filter((i) => !before.has(i.id)) : [];
+    inboxIdsRef.current = new Set(items.map((i) => i.id));
     setInbox(items);
     return items;
   }, []);
@@ -588,11 +623,80 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const [items] = await Promise.all([loadInbox(), loadFriends(), loadMe()]);
     if (demoRef.current) await loadIdentities();
     if (!items.some((i) => !i.seen)) return;
+    const fresh = freshRef.current.filter((i) => !i.seen);
     const { panel: open, placing: busy } = busyRef.current;
+    // only declarations came: they float down over the dock, and 消息 stays shut
+    if (fresh.length && fresh.every((i) => i.kind === "declaration") && open?.kind !== "inbox") {
+      hearRef.current(fresh);
+      return;
+    }
+    // a touch: your dock avatar reacts first (never pointing anywhere, never saying which roach)
+    const scene = dockSceneFor(fresh);
+    if (scene && !busy) await playDockRef.current(scene.kind, scene.from);
     if (open?.kind === "inbox") await openInbox(false, open.tab, items);
     else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
     else await openInbox(true, undefined, items);
   }, [loadInbox, loadFriends, loadMe, loadIdentities, openInbox]);
+
+  /** Where your dock is on screen now; null while it is hidden (moving a roach, a card open) */
+  const dockAt = (): DockAt | null => {
+    const av = dockAvRef.current?.getBoundingClientRect();
+    const mail = dockMailRef.current?.getBoundingClientRect();
+    if (!av?.width || !mail) return null;
+    const top = document.querySelector("header.topbar")?.getBoundingClientRect().bottom ?? 0;
+    return { av: { x: av.left, y: av.top, w: av.width, h: av.height }, mail: { x: mail.left, y: mail.top, w: mail.width, h: mail.height }, top };
+  };
+  const motionOff = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /** Your dock avatar's scene for a touch that came; resolves when it is over (at once without it) */
+  const playDock = (kind: DockKind, from: DockFrom | null) =>
+    new Promise<void>((resolve) => {
+      const at = dockAt();
+      if (!at || motionOff() || look === "real") return resolve();
+      setDockAnim(kind === "sneaky" ? "ta-dshiver" : "ta-dhop");
+      setBadgePop(kind !== "sneaky");
+      setDockScene({
+        kind,
+        from,
+        at,
+        done: () => {
+          setDockScene(null);
+          setDockAnim(null);
+          setBadgePop(false);
+          resolve();
+        },
+      });
+    });
+  const playDockRef = useRef(playDock);
+  playDockRef.current = playDock;
+
+  /** Declarations heard: each floats down over the dock (three at most), sound comes into the avatar */
+  const hear = (items: InboxItem[]) => {
+    const lines = items.flatMap((i) => (i.kind === "declaration" ? [{ id: i.id, text: i.text, limited: isLimitedLine(i.text) }] : []));
+    if (!lines.length) return;
+    setHeard((all) => [...all, ...lines].slice(-3));
+    // left alone, each goes after 15 s and stays unread in 消息
+    for (const l of lines) window.setTimeout(() => setHeard((all) => all.filter((h) => h.id !== l.id)), 15_000);
+    const at = dockAt();
+    if (!at || motionOff()) return;
+    setArcs({ at, nonce: Date.now() });
+    setDockAnim("ta-dlisten");
+    window.setTimeout(() => {
+      setArcs(null);
+      setDockAnim((a) => (a === "ta-dlisten" ? null : a));
+    }, 1650);
+  };
+  const hearRef = useRef(hear);
+  hearRef.current = hear;
+  const heardReply = async (id: string) => {
+    setHeard((all) => all.filter((h) => h.id !== id));
+    await openInbox(false, "replies");
+  };
+  const heardOk = async (id: string) => {
+    setHeard((all) => all.filter((h) => h.id !== id));
+    await worldRef.current!.markSeen([id]).catch(() => {});
+    await loadInbox();
+  };
 
   const meId = me?.id;
   useEffect(() => {
@@ -1085,7 +1189,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
       if (bounds && at && inBounds(at, bounds) && !busyRef.current.panel) {
         await worldRef.current!.markSeen([itemId]).catch(() => {});
       } else {
-        setToast(`${GUIDES[id].name}碰回了你，点「消息」看看。`);
+        const g = GUIDES[id];
+        await playDockRef.current("bold", { name: g.name, avatar: g.avatar, color: g.color });
+        setToast(`${g.name}碰回了你，点「消息」看看。`);
       }
       await loadInbox();
       runAfterReport();
@@ -2562,18 +2668,23 @@ export default function MapApp({ cn }: { cn: boolean }) {
         <div className="me-dock">
           {/* your own cartoon look as the profile picture, whichever style the map shows */}
           <button className="dock-me" onClick={() => setPanel({ kind: "profile" })}>
-            <RoachIcon color={me.profile.color} size={38} avatar={me.profile.avatar} />
+            <span ref={dockAvRef} className={`dock-av ${dockAnim ?? ""}`}>
+              <RoachIcon color={me.profile.color} size={38} avatar={me.profile.avatar} />
+            </span>
             <span className="dock-name">{me.profile.anonymous || !me.profile.name.trim() ? "匿名" : displayName(me.profile)}</span>
           </button>
-          <button className="dock-mail" aria-label={unseen ? `消息，${unseen} 条未读` : "消息"} onClick={() => openInbox(false)}>
+          <button ref={dockMailRef} className="dock-mail" aria-label={unseen ? `消息，${unseen} 条未读` : "消息"} onClick={() => openInbox(false)}>
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
               <rect x="3" y="5.5" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
               <path d="M4 7.5 12 13l8-5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
             </svg>
-            {unseen > 0 && <span className="badge">{unseen}</span>}
+            {unseen > 0 && <span className={`badge ${badgePop ? "ta-dbadge" : ""}`}>{unseen}</span>}
           </button>
         </div>
       )}
+      {dockScene && <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} onDone={dockScene.done} />}
+      {arcs && <DockArcs key={arcs.nonce} at={arcs.at} />}
+      {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}
 
       {panel && renderPanel(panel)}
       {newBadges[0] && (
@@ -2589,7 +2700,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
         />
       )}
       {/* above the tutorial card or a roach card while one is showing, so the two never cover each other */}
-      {toast && <div className={`toast ${coachShown || selected ? "high" : ""}`}>{toast}</div>}
+      {toast && <div className={`toast ${coachShown || selected || heard.length ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">
         非官方同人项目 · 与鹰角网络无关 ·{" "}
         <a href="/privacy#contact" target="_blank" rel="noreferrer">

@@ -1137,6 +1137,118 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 @media (prefers-reduced-motion: reduce) {
   .shout-mark { animation: none; }
 }
+/* ---- the touched side (DockFx.tsx): your dock avatar reacts; heard declarations float down over the dock ----
+   Someone touched you: only your own dock avatar (bottom left) reacts, 1.6s, then 消息
+   opens. Nothing on the map moves and nothing points anywhere. */
+.ta-dline { fill: none; stroke: #0d0e10; stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 1 1.2; stroke-dashoffset: 1.05; animation: ta-dline 1.6s ease-out both; }
+@keyframes ta-dline { 0% { stroke-dashoffset: 1.05; } 34%, 56% { stroke-dashoffset: 0; } 74%, 100% { stroke-dashoffset: 1.05; } }
+.ta-dtap { animation: ta-dtap 1.6s ease-out both; }
+@keyframes ta-dtap {
+  0%, 32% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  36% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  41% { transform: translate(-50%, -50%) scale(1); }
+  58% { opacity: 1; }
+  66%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+.ta-dshiver { animation: ta-dshiver 1.6s ease-out both; transform-origin: 50% 90%; }
+@keyframes ta-dshiver {
+  0%, 35% { transform: none; }
+  38% { transform: rotate(-7deg); }
+  41% { transform: rotate(6deg); }
+  44% { transform: rotate(-5deg); }
+  47% { transform: rotate(4deg); }
+  50% { transform: rotate(-2deg); }
+  53%, 100% { transform: none; }
+}
+.ta-dhop { animation: ta-dhop 1.6s ease-out both; transform-origin: 50% 90%; }
+@keyframes ta-dhop {
+  0%, 48% { transform: none; }
+  54% { transform: translateY(-10px); }
+  60% { transform: translateY(0) scale(1.06, 0.93); }
+  64%, 100% { transform: none; }
+}
+.ta-dmark { animation: ta-dmark 1.6s ease-out both; transform-origin: 20% 100%; }
+@keyframes ta-dmark {
+  0%, 40% { opacity: 0; transform: scale(0); }
+  45% { opacity: 1; transform: scale(1.25); }
+  49% { transform: scale(1); }
+  92% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+/* a bold touch: a name card drops into the envelope, the red dot counts up */
+.ta-dcard { animation: ta-dcard 1.6s ease-in both; }
+@keyframes ta-dcard {
+  0% { opacity: 0; transform: translate(-50%, -330px) rotate(-10deg); }
+  8% { opacity: 1; }
+  30% { transform: translate(-50%, -140px) rotate(6deg); }
+  40% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+  48%, 100% { opacity: 0; transform: translate(-50%, -30%) scale(0.25); }
+}
+.ta-dbadge { animation: ta-dbadge 1.6s ease-out both; }
+@keyframes ta-dbadge { 0%, 46% { transform: scale(1); } 52% { transform: scale(1.6); } 58%, 100% { transform: scale(1); } }
+.ta-dhearts { animation: ta-dhearts 1.6s ease-out both; }
+@keyframes ta-dhearts {
+  0%, 50% { opacity: 0; transform: translate(-50%, 0) scale(0.5); }
+  56% { opacity: 1; transform: translate(-50%, -6px) scale(1.1); }
+  86% { opacity: 1; transform: translate(-50%, -22px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -30px) scale(1); }
+}
+
+/* Someone shouted within 10 km: a bubble floats down above the dock and the sound
+   goes into your avatar. The bubble has no tail: it comes from nowhere in particular. */
+.ta-heard {
+  display: grid; gap: 4px; width: max-content; min-width: 168px; max-width: 232px; padding: 8px 10px 9px;
+  border-radius: 14px; background: #1b1d22; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  box-shadow: 0 0 0 2px #fff, 0 6px 18px rgba(0, 0, 0, 0.3);
+  animation: ta-heard-in 1.6s ease-out both;
+}
+.ta-heard-k { display: flex; align-items: center; gap: 4px; color: #b9bfca; font-size: 11px; font-weight: 600; }
+.ta-heard-line { margin: 0; color: #ffd23f; font-size: 15px; font-weight: 800; line-height: 1.4; }
+.ta-heard-acts { display: flex; gap: 6px; margin-top: 2px; }
+.ta-heard-acts button {
+  flex: 1; padding: 4px 8px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.35); background: transparent; color: #fff;
+}
+.ta-heard-acts .ta-reply { border-color: #ffd23f; background: #ffd23f; color: #1b1d22; }
+@keyframes ta-heard-in {
+  0% { opacity: 0; transform: translateY(-260px) rotate(-3deg); }
+  12% { opacity: 1; }
+  30% { transform: translateY(-120px) rotate(2.5deg); }
+  46% { transform: translateY(-30px) rotate(-1.5deg); }
+  58% { transform: translateY(4px) rotate(0deg); }
+  66%, 100% { opacity: 1; transform: none; }
+}
+.ta-arcs .ta-arc { opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation: ta-arc 1.6s ease-in both; }
+.ta-arcs .a2 { animation-name: ta-arc2; }
+.ta-arcs .a3 { animation-name: ta-arc3; }
+@keyframes ta-arc { 0%, 40% { opacity: 0; transform: translateY(-14px) scale(1.5); } 50% { opacity: 1; } 66%, 100% { opacity: 0; transform: translateY(6px) scale(0.6); } }
+@keyframes ta-arc2 { 0%, 46% { opacity: 0; transform: translateY(-14px) scale(1.5); } 56% { opacity: 1; } 72%, 100% { opacity: 0; transform: translateY(6px) scale(0.6); } }
+@keyframes ta-arc3 { 0%, 52% { opacity: 0; transform: translateY(-14px) scale(1.5); } 62% { opacity: 1; } 78%, 100% { opacity: 0; transform: translateY(6px) scale(0.6); } }
+.ta-dlisten { animation: ta-dlisten 1.6s ease-in-out both; transform-origin: 50% 90%; }
+@keyframes ta-dlisten {
+  0%, 54% { transform: none; }
+  62% { transform: rotate(-8deg); }
+  74% { transform: rotate(6deg); }
+  84%, 100% { transform: none; }
+}
+
+/* Turned down in the system settings: the page mounts no scene and no dock reaction at
+   all (check matchMedia in JS) and shows only the toast; the heard bubble still
+   appears, without floating. This rule is the safety net for anything left over. */
+@media (prefers-reduced-motion: reduce) {
+  .ta-dline, .ta-dtap, .ta-dshiver, .ta-dhop, .ta-dmark, .ta-dcard, .ta-dbadge, .ta-dhearts, .ta-heard, .ta-arcs .ta-arc, .ta-dlisten { animation: none !important; }
+}
+.dock-fx { position: fixed; z-index: 12; pointer-events: none; line-height: 0; }
+.dock-fx svg { display: block; overflow: visible; }
+.dock-hearts { display: flex; gap: 6px; }
+.dock-av { display: block; transform-origin: 50% 90%; }
+.heard-stack {
+  position: absolute; z-index: 12; left: calc(12px + var(--safe-left)); bottom: calc(112px + var(--safe-bottom));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+}
+.heard-stack .ta-heard { transition: transform 0.3s, opacity 0.3s; }
+.heard-stack .ta-heard.landed { animation: none; }
+.heard-stack .ta-heard.older { transform: scale(0.94); transform-origin: 0 100%; opacity: 0.8; }
 /* a guide acting out a scene over the map steps off it meanwhile; 塔露拉干员's fire burns on */
 .guide-marker.acting > img, .guide-marker.acting .guide-name, .guide-marker.acting .guide-bubble, .guide-marker.acting.minghe-marker > * { visibility: hidden; }
 

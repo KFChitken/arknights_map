@@ -194,5 +194,25 @@ export const shoutLines = () =>
 export const shoutingHood = (glow: string) =>
   svg(`<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="${ACCENT}" stroke="#0d0e10" stroke-width="1.5"/>${hoodBody(glow, { raise: "both" })}`);
 
+/**
+ * The touched side: a feeler hanging straight down from the top of the map onto your dock
+ * avatar, h px long. Straight down on purpose: it must never point to where the toucher is.
+ */
+export const dockFeeler = (h: number) =>
+  svg(`<path class="ta-dline" d="M7 0 C2 ${r1(h * 0.3)} 12 ${r1(h * 0.62)} 7 ${h}" pathLength="1"/>`, `0 0 14 ${h}`, 14, h);
+
+/** A declaration heard: sound coming down into your dock avatar, three arcs, the smallest nearest it */
+export const soundArcs = () =>
+  svg(
+    `<g fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round">
+  <path class="ta-arc a1" d="M-7 0 A7 7 0 0 1 7 0"/>
+  <path class="ta-arc a2" d="M-12 -1 A12 12 0 0 1 12 -1"/>
+  <path class="ta-arc a3" d="M-17 -2 A17 17 0 0 1 17 -2"/>
+</g>`,
+    "-19 -21 38 23",
+    38,
+    23,
+  );
+
 export const miniHeart = (w = 12) =>
   svg(`<path d="${HEART_D}" fill="${HEART_RED}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>`, "0 0 24 23", w, r1((w * 23) / 24));
