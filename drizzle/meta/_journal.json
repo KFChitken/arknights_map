@@ -183,6 +183,13 @@
       "when": 1794209946376,
       "tag": "0025_watch",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794211260238,
+      "tag": "0026_friendly",
+      "breakpoints": true
     }
   ]
 }

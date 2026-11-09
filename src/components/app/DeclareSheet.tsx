@@ -35,7 +35,8 @@ export default function DeclareSheet({
   const main = roaches.find((r) => r.slot === 0);
   const clones = roaches.filter((r) => r.slot > 0);
   const all = roaches.map((r) => r.id);
-  const [from, setFrom] = useState<string[]>(main ? [main.id] : []);
+  // nothing picked to begin with: you choose which of your roaches it goes out from each time
+  const [from, setFrom] = useState<string[]>([]);
   const allOn = all.length > 0 && all.every((id) => from.includes(id));
   const toggle = (id: string) => setFrom((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
@@ -159,11 +160,11 @@ export default function DeclareSheet({
     >
       <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
         {clones.length
-          ? `向你选的蟑螂周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`
-          : `向你的蟑螂本体 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`}
+          ? `先选从哪几只蟑螂发，会向它们周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`
+          : `先选从本体发，会向它周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`}
       </p>
 
-      {main && clones.length > 0 && (
+      {main && (
         <div className="chips" style={{ marginBottom: 12 }} role="group" aria-label="从哪只蟑螂发">
           <button className={`chip ${from.includes(main.id) ? "on" : ""}`} onClick={() => toggle(main.id)}>
             本体
@@ -173,9 +174,11 @@ export default function DeclareSheet({
               克隆体 {i + 1}
             </button>
           ))}
-          <button className={`chip ${allOn ? "on" : ""}`} onClick={() => setFrom(allOn ? [main.id] : all)}>
-            全部
-          </button>
+          {clones.length > 0 && (
+            <button className={`chip ${allOn ? "on" : ""}`} onClick={() => setFrom(allOn ? [] : all)}>
+              全部
+            </button>
+          )}
         </div>
       )}
 
@@ -286,6 +289,7 @@ export default function DeclareSheet({
         </p>
       )}
       {template === "myname" && <p className="hint">这句会让收到的人看到你的名字。</p>}
+      {template === "birthday" && <p className="hint">这句你所有的触须之交都会收到，不管离多远，而且知道是你发的。</p>}
 
       <div className="shout">「{declarationText(d)}」</div>
       <p className="hint">

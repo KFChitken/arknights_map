@@ -1,4 +1,6 @@
 import type { Declaration, Reaction } from "../declarations";
+import type { Gesture } from "../friendly";
+import type { Game } from "../games";
 import type { Profile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { LngLat } from "../types";
@@ -86,6 +88,17 @@ export class ServerWorld implements World {
   touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold, new Date().getTimezoneOffset());
   reply = (itemId: string, bold: boolean) => this.call<TouchResult>("reply", itemId, bold, new Date().getTimezoneOffset());
   poke = (publicId: string) => this.call<{ againAt: number }>("poke", publicId);
+  remindSanity = (friendId: string) => this.call<void>("remindSanity", friendId);
+  answerSanity = (itemId: string, answer: "done" | "ok") => this.call<void>("answerSanity", itemId, answer);
+  gesture = (friendId: string, gesture: Gesture, replyTo?: string) => this.call<void>("gesture", friendId, gesture, replyTo ?? null);
+  visit = (friendId: string, publicId: string, cloneId?: string) =>
+    this.call<{ roaches: OwnRoach[]; seat: LngLat }>("visit", friendId, publicId, cloneId ?? null);
+  goHome = (cloneId: string) => this.call<OwnRoach[]>("goHome", cloneId);
+  followHost = (cloneId: string) => this.call<{ roaches: OwnRoach[]; seat: LngLat }>("followHost", cloneId);
+  sendHome = (friendId: string) => this.call<void>("sendHome", friendId);
+  gameAsk = (friendId: string, game: Game) => this.call<void>("gameAsk", friendId, game);
+  gameAdded = (itemId: string) => this.call<void>("gameAdded", itemId);
+  gameWant = (friendId: string, game: Game) => this.call<void>("gameWant", friendId, game);
   inbox = () => this.call<InboxItem[]>("inbox");
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
   declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);

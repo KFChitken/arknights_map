@@ -56,6 +56,8 @@ export function normalizeProfile(input: Profile): Profile {
     support: games.includes("arknights") ? checkSupport(input.support) : [],
     // on unless turned off, so a page from before the switch existed keeps it on
     flipWhenAway: input.flipWhenAway !== false,
+    // on unless switched off, so a page from before it existed never turns it off
+    welcomeGuests: input.welcomeGuests !== false,
   };
 }
 

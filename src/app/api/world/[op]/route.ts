@@ -10,6 +10,7 @@ import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
+import * as friendly from "@/lib/server/friendly";
 import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
 import { users } from "@/lib/server/schema";
@@ -92,6 +93,31 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "poke":
       result = await world.poke(agreed(), String(args[0]));
       break;
+    // between 触须之交 (src/lib/server/friendly.ts): each has its own daily rule; this keeps a script from hammering them
+    case "remindSanity":
+    case "answerSanity":
+    case "gesture":
+    case "visit":
+    case "goHome":
+    case "followHost":
+    case "sendHome":
+    case "gameAsk":
+    case "gameAdded":
+    case "gameWant": {
+      const id = agreed();
+      if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (op === "remindSanity") await friendly.remindSanity(id, args[0]);
+      else if (op === "answerSanity") await friendly.answerSanity(id, args[0], args[1]);
+      else if (op === "gesture") await friendly.gesture(id, args[0], args[1], args[2]);
+      else if (op === "visit") result = await friendly.visit(id, args[0], args[1], args[2]);
+      else if (op === "goHome") result = await friendly.goHome(id, args[0]);
+      else if (op === "followHost") result = await friendly.followHost(id, args[0]);
+      else if (op === "sendHome") await friendly.sendHome(id, args[0]);
+      else if (op === "gameAsk") await friendly.gameAsk(id, args[0], args[1]);
+      else if (op === "gameAdded") await friendly.gameAdded(id, args[0]);
+      else await friendly.gameWant(id, args[0], args[1]);
+      break;
+    }
     case "inbox":
       ration(30);
       result = user ? await world.inbox(user.id) : [];

@@ -1,5 +1,7 @@
 import type { BadgeCount, EarnedBadge } from "../badges";
 import type { Declaration, Reaction } from "../declarations";
+import type { Gesture } from "../friendly";
+import type { Game } from "../games";
 import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
@@ -43,6 +45,28 @@ export interface World {
   reply(itemId: string, bold: boolean): Promise<TouchResult>;
   /** 戳一戳 a 触须之交's sleeping main roach by its public id. It sleeps on; returns when you may poke TA again. */
   poke(publicId: string): Promise<{ againAt: number }>;
+  /** 催理智: once a day per 触须之交 (friendId: Friend.id) */
+  remindSanity(friendId: string): Promise<void>;
+  /** Answer a 催理智: 「清完了！」 ("done", which they hear about) or 「知道啦」 ("ok") */
+  answerSanity(itemId: string, answer: "done" | "ok"): Promise<void>;
+  /** A gesture for a 触须之交, once a day each (blanket and water once a sleep); replyTo: the inbox item it returns */
+  gesture(friendId: string, gesture: Gesture, replyTo?: string): Promise<void>;
+  /**
+   * 串门: a clone to sit by one of a 触须之交's roaches (by its public id): a new one, or cloneId (one of yours)
+   * moved there. Resolves to your roaches and where it sits.
+   */
+  visit(friendId: string, publicId: string, cloneId?: string): Promise<{ roaches: OwnRoach[]; seat: LngLat }>;
+  /** A visiting clone of yours goes back where it was (or is taken back if it was new); no move is counted */
+  goHome(cloneId: string): Promise<OwnRoach[]>;
+  /** Your clone left behind when its host moved: to a seat by that roach again (a move) */
+  followHost(cloneId: string): Promise<{ roaches: OwnRoach[]; seat: LngLat }>;
+  /** 请 TA 回家: the clone of this 触须之交 visiting you goes home, and may not come back for VISIT_BAN_DAYS */
+  sendHome(friendId: string): Promise<void>;
+  /** 我在游戏里申请了 (ask), and 我也加了 on one of theirs (gameAdded) */
+  gameAsk(friendId: string, game: Game): Promise<void>;
+  gameAdded(itemId: string): Promise<void>;
+  /** 想在游戏里加 TA, when they share no UID for the game */
+  gameWant(friendId: string, game: Game): Promise<void>;
   inbox(): Promise<InboxItem[]>;
   markSeen(itemIds: string[]): Promise<void>;
   /** Shout to every player with a roach within the radius of your main roach. */
@@ -110,8 +134,18 @@ export type PlaceTarget = { kind: "main" } | { kind: "clone" } | { kind: "move";
 /** Who rides with 明河都尉: a new clone, or a clone already out; never the main roach */
 export type RideTarget = Exclude<PlaceTarget, { kind: "main" }>;
 
-/** One of your own roaches at its true position. publicId is how it appears in the shared feed. Only its owner ever gets this. */
-export type OwnRoach = LngLat & { id: string; slot: number; publicId: string };
+/**
+ * One of your own roaches at its true position. publicId is how it appears in the shared feed. Only its owner ever gets this.
+ * guests: 触须之交 whose clones visit this roach (串门); visit: this clone visiting a 触须之交, who may have moved away
+ * from it ("moved") or taken that roach back ("removed").
+ */
+export type OwnRoach = LngLat & {
+  id: string;
+  slot: number;
+  publicId: string;
+  guests?: { friendId: string; name: string }[];
+  visit?: { friendId: string; name: string; left: "moved" | "removed" | null };
+};
 
 /** A roach as everyone sees it in the shared feed: where it is and how it looks, never whose. */
 export type MapRoach = LngLat & {
@@ -166,7 +200,7 @@ export type TouchResult = {
 };
 
 export type Friend = {
-  /** Opaque; only good for unfriending */
+  /** Opaque; good for unfriending and everything 触须之交 do for each other */
   id: string;
   since: number;
   profile: PublicProfile;
@@ -178,7 +212,34 @@ export type Friend = {
   history: FriendEvent[];
   /** You poked TA lately: when you may again. Null when you may now */
   pokeAgainAt: number | null;
+  /** What you two can do for each other (src/lib/friendly.ts); none with the guides */
+  between?: FriendBetween;
 };
+
+/** Between you and one 触须之交 (src/lib/friendly.ts) */
+export type FriendBetween = {
+  /** Their main roach's public id, for 戳一戳 from any card of theirs; null without one */
+  mainId: string | null;
+  /** Their main roach sleeps, drunk or away: the gestures change, and 戳一戳 comes in */
+  asleep: boolean;
+  /** Used up today (a Beijing date), or for this sleep of theirs (blanket, water) */
+  done: Record<"sanity" | Gesture, boolean>;
+  /** They welcome guests (让触须之交来串门) */
+  welcome: boolean;
+  /** They sent your clone home (请 TA 回家): when you may visit again */
+  visitAgainAt: number | null;
+  /** Your clone visiting them: its id, and whether they moved away from it */
+  visiting: { cloneId: string; left: boolean } | null;
+  /** 游戏里也加个好友, for each game they play: also friends there, or when you may say 「我在游戏里申请了」 again */
+  games: Partial<Record<Game, { added: boolean; askAgainAt: number | null }>>;
+  /** 想在游戏里加 TA: when you may again */
+  wantAgainAt: number | null;
+  /** Today's day of being 触须之交, on one of the anniversaries (7, 30, 100, every year) */
+  anniversary: number | null;
+};
+
+/** What happened with a visiting clone (串门), as the inbox tells it */
+export type VisitEvent = "came" | "sentHome" | "hostMoved" | "hostRemoved" | "closed";
 
 export type FriendEvent =
   | { kind: "touched" | "touchedBy"; at: number; bold: boolean; you: boolean }
@@ -265,14 +326,70 @@ export type InboxItem =
       /** The reaction you left, and the ones you may choose from */
       reaction: Reaction | null;
       options: Reaction[];
+      /** A 触须之交's 「祝我生日快乐」, sent to you as one: who, and how to open them (they see who reacts) */
+      from?: PublicProfile;
+      friendId?: string;
     }
-  /** Someone nearby reacted to your declaration; they stay anonymous */
-  | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reaction; replied: boolean }
+  /** Someone nearby reacted to your declaration; they stay anonymous, unless a 触须之交 reacting to your birthday */
+  | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reaction; replied: boolean; from?: PublicProfile; friendId?: string }
   | { kind: "friend"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** A 触须之交 poked your main roach while it slept; shown once you are awake */
   | { kind: "poke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** A 触须之交 you poked is up again, as the 04:00 batch found */
   | { kind: "pokeWoke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
+  /** 催理智 from a 触须之交 (asleep: sent while you slept), and how you answered */
+  | {
+      kind: "sanity";
+      id: string;
+      at: number;
+      seen: boolean;
+      from: PublicProfile;
+      friendId: string;
+      asleep: boolean;
+      answer: "done" | "ok" | null;
+      replied: boolean;
+    }
+  /** The one you reminded says 「清完了！」 */
+  | { kind: "sanityThanks"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
+  /** A gesture from a 触须之交; returned: you sent one back */
+  | { kind: "gesture"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; gesture: Gesture; returned: boolean; replied: boolean }
+  /**
+   * 串门 news. To the host: a guest came ("came"; tip: the first time, with a word about the main roach; spot:
+   * where the guest sits while it still does). To the guest: sent home, the host moved or took the roach back, or
+   * stopped taking guests (cloneId: your clone still left where it was, for 跟过去 or 回家)
+   */
+  | {
+      kind: "visit";
+      id: string;
+      at: number;
+      seen: boolean;
+      from: PublicProfile;
+      friendId: string;
+      event: VisitEvent;
+      tip: boolean;
+      spot: LngLat | null;
+      cloneId: string | null;
+      replied: boolean;
+    }
+  /**
+   * 游戏里也加个好友: they asked you in the game ("ask", on server: your server there), want to add you
+   * ("want"), or said they added you back ("added"); answered: you said 「我也加了」
+   */
+  | {
+      kind: "game";
+      id: string;
+      at: number;
+      seen: boolean;
+      from: PublicProfile;
+      friendId: string;
+      event: "ask" | "want" | "added";
+      game: Game;
+      server: string;
+      answered: boolean;
+      replied: boolean;
+    }
+  /** 触须之交纪念日: the day-th day of being 触须之交 (at: the start of that day) */
+  | { kind: "anniversary"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; day: number; replied: boolean }
   /** 阿米娅向导 touching you: back after your touch, or her daily greeting (greet) */
   | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean }
   | PerlicaItem

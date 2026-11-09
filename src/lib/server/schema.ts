@@ -72,6 +72,10 @@ export const users = pgTable("users", {
   flipWhenAway: boolean("flip_when_away").notNull().default(true),
   /** The Beijing day the 04:00 batch flipped their main roach over for staying away; null while it stands */
   sleptAwayOn: date("slept_away_on", { mode: "string" }),
+  /** 让触须之交来串门 (src/lib/server/friendly.ts): on unless they switched it off */
+  welcomeGuests: boolean("welcome_guests").notNull().default(true),
+  /** They were told once, with their first guest, not to keep the main roach by their door */
+  visitTipShown: boolean("visit_tip_shown").notNull().default(false),
   /** 阿米娅向导 (src/lib/amiya.ts): when they became 触须之交, and the day (by their device, from 04:00) she last greeted them */
   amiyaFriendSince: at("amiya_friend_since"),
   amiyaGreetedOn: date("amiya_greeted_on", { mode: "string" }),
@@ -248,6 +252,8 @@ export const deliveries = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     seenAt: at("seen_at"),
+    /** Sent to a 触须之交 of the sender as one (a 「祝我生日快乐」, however far): both sides see who */
+    toFriend: boolean("to_friend").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.declarationId, t.recipientId] }), index("deliveries_recipient_idx").on(t.recipientId)],
 );
@@ -286,8 +292,93 @@ export const friendships = pgTable(
     createdAt: createdAt(),
     seenByA: boolean("seen_by_a").notNull().default(false),
     seenByB: boolean("seen_by_b").notNull().default(false),
+    /** The latest 触须之交纪念日 (its day number) each of them has seen */
+    anniversarySeenA: integer("anniversary_seen_a").notNull().default(0),
+    anniversarySeenB: integer("anniversary_seen_b").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.a, t.b] }), index("friendships_b_idx").on(t.b)],
+);
+
+/**
+ * What 触须之交 do for each other (src/lib/server/friendly.ts): 催理智 ("sanity"), the
+ * gestures ("hug", "highfive", "luck"; "blanket", "water" while the other sleeps), news of a
+ * visiting clone ("visit", "sentHome", "hostMoved", "hostRemoved", "closed"), and adding each
+ * other in a game ("gameAsk", "gameWant"). period makes each once per its day (a Beijing date),
+ * sleep, game or visit; the unique index keeps two pages tapping at once to one.
+ */
+export const friendNotes = pgTable(
+  "friend_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    period: text("period").notNull(),
+    /** For gameAsk and gameWant */
+    game: text("game"),
+    /** Sent while the other slept: hidden from them while they are drunk */
+    asleep: boolean("asleep").notNull().default(false),
+    /** A gesture sent back: the note it answers */
+    replyTo: uuid("reply_to"),
+    /** How the other answered: "done" or "ok" (sanity), "back" (a gesture returned), "added" (gameAsk) */
+    answer: text("answer"),
+    answeredAt: at("answered_at"),
+    /** When the sender saw the answer ("done", "added") */
+    answerSeenAt: at("answer_seen_at"),
+    createdAt: createdAt(),
+    seenAt: at("seen_at"),
+  },
+  (t) => [
+    uniqueIndex("friend_notes_once_idx").on(t.fromUserId, t.toUserId, t.kind, t.period),
+    index("friend_notes_to_idx").on(t.toUserId, t.createdAt),
+    index("friend_notes_from_idx").on(t.fromUserId, t.createdAt),
+  ],
+);
+
+/**
+ * 串门: a clone of the guest sitting by a roach of a 触须之交 (the host), at most one per
+ * guest and host. hostRoachId is the host roach's row id, which stays through moves; from:
+ * where the clone stood before (empty when it was put down for the visit). leftAt: the host
+ * moved or took back that roach, and the guest stayed where it was.
+ */
+export const visits = pgTable(
+  "visits",
+  {
+    roachId: uuid("roach_id")
+      .primaryKey()
+      .references(() => roaches.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hostId: uuid("host_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hostRoachId: uuid("host_roach_id").notNull(),
+    since: at("since").notNull().defaultNow(),
+    fromLng: doublePrecision("from_lng"),
+    fromLat: doublePrecision("from_lat"),
+    leftAt: at("left_at"),
+  },
+  (t) => [uniqueIndex("visits_guest_host_idx").on(t.guestId, t.hostId), index("visits_host_idx").on(t.hostId), index("visits_host_roach_idx").on(t.hostRoachId)],
+);
+
+/** 请 TA 回家: the guest may not visit this host again until VISIT_BAN_DAYS after at */
+export const visitBans = pgTable(
+  "visit_bans",
+  {
+    hostId: uuid("host_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    guestId: uuid("guest_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    at: at("at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.hostId, t.guestId] })],
 );
 
 /**

@@ -2,6 +2,7 @@ import "server-only";
 import { and, isNotNull, lt } from "drizzle-orm";
 import { KEEP_ACTIVITY_DAYS, KEEP_REPORT_DAYS } from "../rules";
 import { db } from "./db";
+import { pruneFriendly } from "./friendly";
 import {
   amiyaTouches,
   declarations,
@@ -35,6 +36,7 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(moves).where(lt(moves.at, cutoff));
   // a cut only matters for touches made before it, which are gone by now
   await db.delete(friendCuts).where(lt(friendCuts.cutAt, cutoff));
+  await pruneFriendly(cutoff, now);
   // only the last day of radar scans is ever used
   await db.delete(radarScans).where(lt(radarScans.createdAt, new Date(now - DAY_MS)));
   const reportCutoff = new Date(now - KEEP_REPORT_DAYS * DAY_MS);

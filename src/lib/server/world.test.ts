@@ -41,6 +41,7 @@ import {
   declarations,
   deliveries,
   friendCuts,
+  friendNotes,
   friendships,
   mingheTouches,
   moves,
@@ -56,6 +57,8 @@ import {
   touches,
   userBadges,
   users,
+  visitBans,
+  visits,
 } from "./schema";
 import { recordDailyTotals } from "./totals";
 import * as world from "./world";
@@ -161,7 +164,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}`,
   );
   // no 明河快进一天 left over
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;

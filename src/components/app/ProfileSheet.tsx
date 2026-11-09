@@ -237,6 +237,15 @@ export default function ProfileSheet({
         </p>
       </fieldset>
 
+      <fieldset>
+        <legend>串门</legend>
+        <label className="check">
+          <input type="checkbox" checked={p.welcomeGuests} onChange={(e) => set({ welcomeGuests: e.target.checked })} />
+          让触须之交来串门
+        </label>
+        <p className="hint">触须之交可以派一只克隆体坐到你的蟑螂旁边做客。关掉以后，在你这里做客的克隆体都会回家，触须之交的「做客」会变灰。</p>
+      </fieldset>
+
       {perlicaTimer !== undefined && (
         <fieldset>
           <legend>佩丽卡的离开计时</legend>

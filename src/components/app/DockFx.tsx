@@ -13,7 +13,27 @@ import RoachIcon from "../RoachIcon";
  * it hops, !. 成为触须之交: the card is pink and two hearts rise.
  */
 
-export type DockKind = "sneaky" | "bold" | "friend";
+/**
+ * Between 触须之交 (src/lib/friendly.ts) the avatar has more: 咚咚 for a clone come to visit
+ * (knock), a little bottle of 理智 dropping on it (sanity), a heart as it leans for 贴贴 (hug),
+ * 啪！ for 击掌 (highfive), gold stars leaving it for 吸欧气 (luck), a cake for a birthday wish
+ * (cake), and two hearts on an anniversary (hearts).
+ */
+export type DockKind = "sneaky" | "bold" | "friend" | "knock" | "sanity" | "hug" | "highfive" | "luck" | "cake" | "hearts";
+
+/** The class the dock avatar itself plays for each */
+export const DOCK_ANIM: Record<DockKind, string> = {
+  sneaky: "ta-dshiver",
+  bold: "ta-dhop",
+  friend: "ta-dhop",
+  knock: "ta-dknock",
+  sanity: "ta-dhop",
+  hug: "ta-dlean",
+  highfive: "ta-dhop",
+  luck: "ta-dshiver",
+  cake: "ta-dhop",
+  hearts: "ta-dhop",
+};
 /** Who touched, for the card of a bold touch or a new 触须之交 */
 export type DockFrom = { name: string; avatar: DrawnAvatar; color: RoachColor };
 /** Where the dock is on screen when the scene starts */
@@ -23,6 +43,25 @@ export type DockAt = { av: { x: number; y: number; w: number; h: number }; mail:
 export const DOCK_MS = 1600;
 
 const html = (markup: string) => ({ dangerouslySetInnerHTML: { __html: markup } });
+
+/** A little bottle of 理智 (催理智) */
+export const vial = (size: number) =>
+  `<svg viewBox="0 0 20 26" width="${size}" height="${(size * 26) / 20}" aria-hidden="true">` +
+  `<path d="M7 1.5h6M8 1.5v5L3.4 15a5.6 5.6 0 0 0 4.9 8.5h3.4a5.6 5.6 0 0 0 4.9-8.5L12 6.5v-5" fill="#fff" stroke="#1b1d22" stroke-width="1.6" stroke-linejoin="round"/>` +
+  `<path d="M4.6 16h10.8a4.3 4.3 0 0 1-3.8 6.2H8.4A4.3 4.3 0 0 1 4.6 16z" fill="#3fb6e8"/>` +
+  `<circle cx="8.5" cy="18.5" r="1" fill="#fff" opacity=".8"/></svg>`;
+
+/** A gold star (吸欧气) */
+export const star = (size: number) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 2.5l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.4l-5.6 3.1 1.3-6.2L3 9l6.3-.7z" fill="#ffc83d" stroke="#b07d00" stroke-width="1"/></svg>`;
+
+/** A birthday cake (a 触须之交's 生日快乐！) */
+export const cake = (size: number) =>
+  `<svg viewBox="0 0 26 26" width="${size}" height="${size}" aria-hidden="true">` +
+  `<path d="M13 3.5c1.2 1.4 1.2 2.6 0 3.4-1.2-.8-1.2-2 0-3.4z" fill="#ff9f1c"/><rect x="12.2" y="7" width="1.6" height="4" fill="#ff4f8b"/>` +
+  `<rect x="4" y="11" width="18" height="6" rx="2" fill="#fff0f6" stroke="#1b1d22" stroke-width="1.4"/>` +
+  `<rect x="2.5" y="16.5" width="21" height="7" rx="2" fill="#ffd5e6" stroke="#1b1d22" stroke-width="1.4"/>` +
+  `<path d="M4 14c1.5 1.4 3 1.4 4.5 0s3-1.4 4.5 0 3 1.4 4.5 0 3-1.4 4.5 0" fill="none" stroke="#ff4f8b" stroke-width="1.4"/></svg>`;
 
 export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockFrom | null; at: DockAt; onDone: () => void }) {
   useEffect(() => {
@@ -42,6 +81,41 @@ export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockF
       </>
     );
   }
+  const word = (text: string, cls = "") => (
+    <div className={`dock-fx ta-dword ${cls}`} style={{ left: av.x + av.w + 2, top: av.y - 6 }}>
+      {text}
+    </div>
+  );
+  if (kind === "knock") {
+    return (
+      <>
+        {word("咚", "w1")}
+        {word("咚", "w2")}
+      </>
+    );
+  }
+  if (kind === "sanity") {
+    return (
+      <>
+        <div className="dock-fx ta-dvial" style={{ left: cx - 9, top: av.y - 12 }} {...html(vial(18))} />
+        {word("清理智！", "late")}
+      </>
+    );
+  }
+  if (kind === "hug" || kind === "hearts") {
+    return <div className="dock-fx ta-dhearts dock-hearts" style={{ left: cx, top: av.y - 8 }} {...html(kind === "hug" ? miniHeart(16) : miniHeart(14) + miniHeart(11))} />;
+  }
+  if (kind === "highfive") return word("啪！");
+  if (kind === "luck") {
+    return (
+      <div className="dock-fx ta-dstars" style={{ left: cx - 20, top: av.y - 4 }}>
+        <span {...html(star(17))} />
+        <span {...html(star(12))} />
+        <span {...html(star(15))} />
+      </div>
+    );
+  }
+  if (kind === "cake") return <div className="dock-fx ta-dcake" style={{ left: cx - 13, top: av.y - 30 }} {...html(cake(26))} />;
   const friend = kind === "friend";
   return (
     <>

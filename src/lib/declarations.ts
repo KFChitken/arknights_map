@@ -106,6 +106,7 @@ export function isReaction(v: unknown): v is Reaction {
 
 /** 生日快乐！ only fits a birthday declaration */
 export function reactionsFor(template: string): Reaction[] {
-  const all = Object.keys(REACTIONS) as Reaction[];
-  return template === "birthday" ? all : all.filter((r) => r !== "birthday");
+  const others = (Object.keys(REACTIONS) as Reaction[]).filter((r) => r !== "birthday");
+  // a birthday declaration has 生日快乐！ first
+  return template === "birthday" ? ["birthday", ...others] : others;
 }

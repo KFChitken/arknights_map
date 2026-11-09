@@ -101,15 +101,15 @@ export const FIRE_LINES: Record<FireLevel, string> = {
 };
 
 const M_PER_DEG = 111_320;
-/** Metres east and north of the fire */
-function offsetOf(p: LngLat) {
+/** Metres east and north of a centre (the fire unless said otherwise) */
+function offsetOf(p: LngLat, c: LngLat = FIRE_AT) {
   return {
-    x: (p.lng - FIRE_AT.lng) * M_PER_DEG * Math.cos((FIRE_AT.lat * Math.PI) / 180),
-    y: (p.lat - FIRE_AT.lat) * M_PER_DEG,
+    x: (p.lng - c.lng) * M_PER_DEG * Math.cos((c.lat * Math.PI) / 180),
+    y: (p.lat - c.lat) * M_PER_DEG,
   };
 }
-function pointAt(x: number, y: number): LngLat {
-  return { lng: FIRE_AT.lng + x / (M_PER_DEG * Math.cos((FIRE_AT.lat * Math.PI) / 180)), lat: FIRE_AT.lat + y / M_PER_DEG };
+function pointAt(x: number, y: number, c: LngLat = FIRE_AT): LngLat {
+  return { lng: c.lng + x / (M_PER_DEG * Math.cos((c.lat * Math.PI) / 180)), lat: c.lat + y / M_PER_DEG };
 }
 
 /** Ring k of seats around the fire: its radius in metres, and how many seats it has, 15 m apart */
@@ -141,24 +141,43 @@ export function ringSpots(k: number) {
  * behind her) picked at random in the innermost ring that has one, nudged up to a metre either way so
  * two pages picking at once rarely land on the same spot. Beyond FIRE_RADIUS_M
  * the rings go on, though roaches there no longer count towards the fire.
+ *
+ * The same rings serve 串门 (src/lib/server/friendly.ts): center, the rings around a 触须之交's
+ * roach instead of the fire; nearest, the free seat among the fire's own rings closest to that
+ * spot (a roach by the fire has its guests sit by the fire too).
  */
-export function pickSeat(roaches: { lng: number; lat: number }[], random: () => number = Math.random): LngLat {
+export function pickSeat(
+  roaches: { lng: number; lat: number }[],
+  random: () => number = Math.random,
+  { center = FIRE_AT, nearest }: { center?: LngLat; nearest?: LngLat } = {},
+): LngLat {
+  const fire = center.lng === FIRE_AT.lng && center.lat === FIRE_AT.lat;
   const reach = FIRE_RADIUS_M * 2;
-  const near = roaches.map(offsetOf).filter((p) => Math.abs(p.x) < reach && Math.abs(p.y) < reach);
-  for (let k = 0; k < MAX_RINGS; k++) {
+  const near = roaches.map((p) => offsetOf(p, center)).filter((p) => Math.abs(p.x) < reach && Math.abs(p.y) < reach);
+  const freeOf = (k: number) => {
     const r = ringRadius(k);
     // only roaches near this ring can take one of its seats
     const close = near.filter((p) => Math.abs(Math.hypot(p.x, p.y) - r) <= SEAT_TAKEN_M);
-    const free = ringSpots(k).filter(
+    return ringSpots(k).filter(
       (s) =>
-        Math.hypot(s.x - HER_SPOT_M.x, s.y - HER_SPOT_M.y) >= HER_SPOT_M.r &&
+        (!fire || Math.hypot(s.x - HER_SPOT_M.x, s.y - HER_SPOT_M.y) >= HER_SPOT_M.r) &&
         !close.some((p) => Math.hypot(p.x - s.x, p.y - s.y) < SEAT_TAKEN_M),
     );
-    if (!free.length) continue;
-    const s = free[Math.floor(random() * free.length)];
-    return pointAt(s.x + (random() * 2 - 1), s.y + (random() * 2 - 1));
+  };
+  const nudged = (s: { x: number; y: number }) => pointAt(s.x + (random() * 2 - 1), s.y + (random() * 2 - 1), center);
+  if (nearest) {
+    const to = offsetOf(nearest, center);
+    const seats = Array.from({ length: MAX_RINGS }, (_, k) => k)
+      .filter((k) => ringRadius(k) <= FIRE_RADIUS_M)
+      .flatMap(freeOf);
+    if (seats.length) return nudged(seats.reduce((a, b) => (Math.hypot(b.x - to.x, b.y - to.y) < Math.hypot(a.x - to.x, a.y - to.y) ? b : a)));
   }
-  return pointAt(ringRadius(MAX_RINGS), 0);
+  for (let k = 0; k < MAX_RINGS; k++) {
+    const free = freeOf(k);
+    if (!free.length) continue;
+    return nudged(free[Math.floor(random() * free.length)]);
+  }
+  return pointAt(ringRadius(MAX_RINGS), 0, center);
 }
 
 /** Her card for anyone who opens it: no games, UID, favourites or badges */

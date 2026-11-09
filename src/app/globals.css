@@ -1314,3 +1314,131 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
 .party-ball { left: -22px; top: -353px; will-change: transform; }
 .party-ball svg { display: block; overflow: visible; }
 .party-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ---- 触须之交专属 (FriendActions.tsx): what only 触须之交 do, on their roach's card and their page ---- */
+.friend-acts { display: grid; gap: 6px; padding-top: 10px; border-top: 1px dashed #f3cadb; }
+.friend-acts-label { font-size: 12px; font-weight: 700; color: #c9336a; }
+.friend-acts-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.friend-act {
+  display: grid; justify-items: center; gap: 3px; min-width: 0; padding: 2px 0 0; border: 0; background: none;
+  color: #1b1d22; font-size: 11.5px; font-weight: 600; line-height: 1.2;
+}
+.friend-act .fa-ico {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+  background: #fff0f6; border: 1.5px solid #ffc2d9; color: #c9336a;
+}
+.friend-act .fa-ico svg { width: 20px; height: 20px; }
+.friend-act .fa-t { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.friend-act:disabled { color: #9aa0aa; cursor: default; }
+.friend-act:disabled .fa-ico { background: #f1f2f4; border-color: #e3e5e9; color: #b4b9c2; }
+.friend-act:not(:disabled):active .fa-ico { transform: scale(0.94); }
+.friend-acts-note { margin: 0; }
+.msg.anniversary { background: #fff7fb; }
+.uid { user-select: all; -webkit-user-select: all; }
+.game-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.game-tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: #dff6f6; color: #0a7f85; font-size: 12px; font-weight: 700; }
+.visit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.visit-row strong { font-weight: 600; }
+
+/* ---- what only 触须之交 do, on the sender's screen (GestureStage.tsx), 2s ---- */
+.gs-hug .ta-you .ta-body { animation-name: gs-lean-in; }
+.gs-hug .ta-them .ta-jump { animation-name: gs-lean-back; }
+@keyframes gs-lean-in { 0%, 10% { transform: none; } 40%, 82% { transform: translateX(34px) rotate(10deg); } 100% { transform: translateX(28px) rotate(6deg); } }
+@keyframes gs-lean-back { 0%, 10% { transform: none; } 40%, 82% { transform: translateX(-28px) rotate(-10deg); } 100% { transform: translateX(-22px) rotate(-6deg); } }
+.gs-heart { animation-name: gs-pop; }
+@keyframes gs-pop {
+  0%, 36% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  46% { opacity: 1; transform: translate(-50%, -50%) scale(1.25); }
+  54% { transform: translate(-50%, -50%) scale(1); }
+  88% { opacity: 1; transform: translate(-50%, -70%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
+}
+.gs-highfive .ta-you .ta-body { animation-name: gs-hop-in; }
+.gs-highfive .ta-them .ta-jump { animation-name: gs-hop-back; }
+@keyframes gs-hop-in { 0%, 12% { transform: none; } 30% { transform: translate(26px, -26px); } 40% { transform: translate(30px, -18px); } 52% { transform: translate(30px, 0) scale(1.05, 0.95); } 62%, 100% { transform: translateX(24px); } }
+@keyframes gs-hop-back { 0%, 12% { transform: none; } 30% { transform: translate(-26px, -26px); } 40% { transform: translate(-30px, -18px); } 52% { transform: translate(-30px, 0) scale(1.05, 0.95); } 62%, 100% { transform: translateX(-24px); } }
+.gs-pa {
+  font-size: 30px; font-weight: 900; letter-spacing: 0.05em; color: #1b1d22;
+  text-shadow: 0 0 4px #fff, 0 0 4px #fff, 0 0 8px #fff; animation-name: gs-pop;
+}
+.gs-star { animation-name: gs-star; animation-timing-function: ease-in-out; }
+.gs-star.s1 { animation-delay: 0.18s; }
+.gs-star.s2 { animation-delay: 0.36s; }
+.gs-star.s3 { animation-delay: 0.54s; }
+@keyframes gs-star {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  12% { opacity: 1; }
+  50% { transform: translate(-72px, -52px) scale(1.15) rotate(-40deg); }
+  80% { opacity: 1; }
+  92%, 100% { opacity: 0; transform: translate(-146px, -2px) scale(0.7) rotate(-80deg); }
+}
+.gs-luck-label { font-size: 15px; font-weight: 800; color: #b07d00; text-shadow: 0 0 4px #fff, 0 0 4px #fff; animation-name: gs-luck-label; }
+@keyframes gs-luck-label { 0%, 72% { opacity: 0; transform: translateY(6px); } 80%, 94% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.gs-blanket { transform-origin: 50% 0; animation-name: gs-blanket; }
+@keyframes gs-blanket {
+  0%, 10% { opacity: 0; transform: translateY(-46px) scaleY(0.6); }
+  30% { opacity: 1; }
+  56% { transform: translateY(2px) scaleY(1.06); }
+  66%, 100% { opacity: 1; transform: none; }
+}
+.gs-glass { animation-name: gs-slide; }
+@keyframes gs-slide {
+  0%, 12% { opacity: 0; transform: translateX(46px) rotate(10deg); }
+  50% { opacity: 1; transform: translateX(-4px) rotate(-3deg); }
+  62%, 100% { opacity: 1; transform: none; }
+}
+
+/* the sender of 催理智: the bottle flies up off the button, 叮！ */
+.gs-vial { animation: gs-vial 1.2s cubic-bezier(0.3, 0.5, 0.4, 1) both; }
+@keyframes gs-vial {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.7) rotate(0); }
+  12% { opacity: 1; }
+  60% { transform: translate(12px, -48px) scale(1.15) rotate(-20deg); }
+  90% { opacity: 1; }
+  100% { opacity: 0; transform: translate(26px, -78px) scale(0.9) rotate(-35deg); }
+}
+.gs-ding { animation: ta-dword 1.2s ease-out 0.5s both; }
+
+/* the receiver's dock avatar, as 触须之交 do things for them (DockFx.tsx) */
+.ta-dword {
+  padding: 2px 8px; border-radius: 10px; background: #fff; border: 1.5px solid #1b1d22;
+  color: #1b1d22; font-size: 12px; font-weight: 800; line-height: 18px; white-space: nowrap;
+  transform-origin: 0 100%; animation: ta-dword 1.6s ease-out both;
+}
+.ta-dword.w2 { margin-left: 22px; margin-top: 10px; animation-delay: 0.35s; }
+.ta-dword.late { animation-delay: 0.5s; }
+@keyframes ta-dword {
+  0% { opacity: 0; transform: scale(0.3); }
+  12% { opacity: 1; transform: scale(1.15); }
+  20% { transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+.ta-dknock { animation: ta-dknock 1.6s ease-out both; transform-origin: 50% 90%; }
+@keyframes ta-dknock {
+  0%, 8% { transform: none; }
+  12% { transform: translateX(-3px) rotate(-3deg); }
+  18% { transform: translateX(3px) rotate(3deg); }
+  24%, 30% { transform: none; }
+  34% { transform: translateX(-3px) rotate(-3deg); }
+  40% { transform: translateX(3px) rotate(3deg); }
+  46%, 100% { transform: none; }
+}
+.ta-dlean { animation: ta-dlean 1.6s ease-out both; transform-origin: 50% 90%; }
+@keyframes ta-dlean { 0%, 20% { transform: none; } 40%, 76% { transform: rotate(-9deg) translateX(-2px); } 100% { transform: none; } }
+.ta-dvial { animation: ta-dvial 1.6s cubic-bezier(0.5, 0, 0.8, 0.6) both; }
+@keyframes ta-dvial {
+  0% { opacity: 0; transform: translateY(-140px); }
+  10% { opacity: 1; }
+  44% { opacity: 1; transform: none; }
+  56%, 100% { opacity: 0; transform: none; }
+}
+.ta-dstars { display: flex; gap: 4px; }
+.ta-dstars span { display: block; animation: ta-dstar 1.6s ease-out both; }
+.ta-dstars span:nth-child(2) { animation-delay: 0.15s; }
+.ta-dstars span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ta-dstar { 0% { opacity: 0; transform: none; } 15% { opacity: 1; } 80% { opacity: 1; transform: translate(10px, -46px) rotate(40deg); } 100% { opacity: 0; transform: translate(14px, -60px) rotate(60deg); } }
+.ta-dcake { animation: ta-dmark 1.6s ease-out both; transform-origin: 50% 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .ta-dword, .ta-dknock, .ta-dlean, .ta-dvial, .ta-dstars span, .ta-dcake, .gs-vial, .gs-ding { animation: none !important; }
+}

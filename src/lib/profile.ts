@@ -21,6 +21,8 @@ export type Profile = {
   support: string[];
   /** 好久没来时，蟑螂翻肚皮睡觉 */
   flipWhenAway: boolean;
+  /** 让触须之交来串门: their clones may come and sit by your roaches */
+  welcomeGuests: boolean;
 };
 
 /**
@@ -55,6 +57,7 @@ export const EMPTY_PROFILE: Profile = {
   color: "cyan",
   support: [],
   flipWhenAway: true,
+  welcomeGuests: true,
 };
 
 export function displayName(p: Pick<Profile, "anonymous" | "name" | "drPrefix">) {

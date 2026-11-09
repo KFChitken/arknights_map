@@ -7,6 +7,7 @@ import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talu
 import { bottleIcon } from "@/lib/flipArt";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
+import type { ReactNode } from "react";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 import { MingheRoute } from "./Minghe";
@@ -24,6 +25,7 @@ export function OtherRoachCard({
   amiyaMusic,
   fire,
   minghe,
+  friendRow,
   busy,
   onOpenFriend,
   onSignIn,
@@ -74,6 +76,8 @@ export function OtherRoachCard({
     onRide: () => void;
     onDismount: () => void;
   };
+  /** 触须之交专属 (FriendActions), on a roach of a 触须之交: 戳一戳 is in it while they sleep */
+  friendRow?: ReactNode;
   /** A poke is under way */
   busy: boolean;
   onOpenFriend?: () => void;
@@ -266,7 +270,7 @@ export function OtherRoachCard({
         <button className="primary wide" onClick={onSignIn}>
           登录
         </button>
-      ) : pokeable ? (
+      ) : pokeable && friendRow ? null : pokeable ? (
         <button className="poke-btn" disabled={busy || daysToWait > 0} onClick={onPoke}>
           {daysToWait > 0 ? "戳过了" : "戳一戳"}
           <small>{daysToWait > 0 ? `${daysToWait} 天后可以再戳` : `每 ${POKE_EVERY_DAYS} 天能戳一次`}</small>
@@ -283,6 +287,7 @@ export function OtherRoachCard({
           </button>
         </div>
       )}
+      {signedIn && friendRow}
       <button className="close" onClick={onClose} aria-label="关闭">
         ×
       </button>
@@ -302,6 +307,7 @@ export function MyRoachCard({
   busy,
   riding,
   party,
+  visits,
   onMove,
   onRemove,
   onDrink,
@@ -324,6 +330,8 @@ export function MyRoachCard({
   riding?: { stops: number; onDismount: () => void };
   /** ⚡舟友的酒⚡ while the main roach lies drunk (PartyScene): whether it is on, and starting or stopping it */
   party?: { on: boolean; onToggle: () => void };
+  /** 串门: sending a guest home, and this clone going home or following its host who moved */
+  visits?: { onSendHome: (friendId: string) => void; onGoHome: () => void; onFollow: () => void };
   onMove: () => void;
   onRemove: () => void;
   onDrink: () => void;
@@ -350,6 +358,38 @@ export function MyRoachCard({
           </p>
         </div>
       </div>
+      {visits && roach.guests && (
+        <div className="visit-guests">
+          <p className="muted">家里有 {roach.guests.length} 位客人</p>
+          {roach.guests.map((g) => (
+            <div className="visit-row" key={g.friendId}>
+              <strong>{g.name}</strong>
+              <button className="pill" disabled={busy} onClick={() => visits.onSendHome(g.friendId)}>
+                请 TA 回家
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {visits && roach.visit && (
+        <div className="fire-row">
+          <span>
+            {roach.visit.left === "moved"
+              ? `${roach.visit.name} 搬家了，你的克隆体还在老地方`
+              : roach.visit.left === "removed"
+                ? `${roach.visit.name} 收回了那只蟑螂，你的克隆体还在老地方`
+                : `在 ${roach.visit.name} 家做客`}
+          </span>
+          {roach.visit.left === "moved" && (
+            <button className="pill dark" disabled={busy} onClick={visits.onFollow}>
+              跟过去
+            </button>
+          )}
+          <button className="pill" disabled={busy} onClick={visits.onGoHome}>
+            回家
+          </button>
+        </div>
+      )}
       {riding && (
         <div className="fire-row">
           <span>

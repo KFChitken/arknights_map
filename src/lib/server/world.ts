@@ -97,6 +97,17 @@ import {
 } from "./talulah";
 import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
 import { lastVisitOn } from "./away";
+import {
+  betweenOf,
+  birthdayFriends,
+  birthdayNames,
+  closeHouse,
+  friendlyInbox,
+  friendshipEnded,
+  roachMoved,
+  seeFriendly,
+  withVisits,
+} from "./friendly";
 import { blockedBetween, blockedBy, blockedWith } from "./blocks";
 import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
@@ -199,6 +210,7 @@ export function profileOf(u: UserRow): Profile {
     uidServer: { arknights: u.uidServerArknights, endfield: u.uidServerEndfield },
     shareUid: u.shareUid,
     flipWhenAway: u.flipWhenAway,
+    welcomeGuests: u.welcomeGuests,
     avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
     color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
     support: checkSupport(u.support),
@@ -219,6 +231,7 @@ export function profileColumns(p: Profile) {
     uidServerEndfield: p.uidServer.endfield,
     shareUid: p.shareUid,
     flipWhenAway: p.flipWhenAway,
+    welcomeGuests: p.welcomeGuests,
     avatar: p.avatar,
     color: p.color,
     support: p.support,
@@ -226,12 +239,12 @@ export function profileColumns(p: Profile) {
 }
 
 /** Profile cards as other players see them, badges included. */
-async function cardsOf(people: UserRow[]) {
+export async function cardsOf(people: UserRow[]) {
   const badges = await shownBadges(people);
   return new Map(people.map((u): [string, PublicProfile] => [u.id, { ...publicProfileOf(profileOf(u)), ...badges.get(u.id) }]));
 }
 
-async function userById(id: string) {
+export async function userById(id: string) {
   const [u] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return u ?? null;
 }
@@ -240,9 +253,10 @@ function own(r: RoachRow): OwnRoach {
   return { id: r.id, slot: r.slot, lng: r.lng, lat: r.lat, publicId: r.publicId };
 }
 
-async function ownRoaches(userId: string) {
+/** Your roaches, with who visits them and whom your clones visit (串门) */
+export async function ownRoaches(userId: string) {
   const rows = await db.select().from(roaches).where(eq(roaches.userId, userId)).orderBy(asc(roaches.slot));
-  return rows.map(own);
+  return withVisits(userId, rows.map(own));
 }
 
 // ---- friendships ----
@@ -384,13 +398,19 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
   const profile = normalizeProfile(input);
   // checked even while anonymous: the name is kept, and shows again once they go by it
   await checkName(profile.name);
-  const [before] = await db.select({ support: users.support }).from(users).where(eq(users.id, userId)).limit(1);
+  const [before] = await db
+    .select({ support: users.support, welcomeGuests: users.welcomeGuests })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
   // 触须之交 see 「换了助战」 for the latest change only
   const changed = (before?.support ?? []).join("|") !== profile.support.join("|");
   await db
     .update(users)
     .set({ ...profileColumns(profile), ...(changed ? { supportChangedAt: new Date() } : {}) })
     .where(eq(users.id, userId));
+  // no more guests: those sitting by your roaches go home, and are told why
+  if (before?.welcomeGuests && !profile.welcomeGuests) await closeHouse(userId);
   // the main roach wears the profile's look
   roachesChanged();
   return profile;
@@ -401,7 +421,7 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
  * roach it moves if any. Agreeing that spots are public comes before a new one, and
  * new roaches and moves are rationed per day.
  */
-async function checkPlacement(userId: string, target: PlaceTarget) {
+export async function checkPlacement(userId: string, target: PlaceTarget) {
   const u = await userById(userId);
   if (!u) throw new WorldError("找不到这个账号了。");
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
@@ -443,7 +463,7 @@ type RideColumns = Pick<RoachRow, "rideSince" | "rideStartDay" | "rideDay" | "ri
  * every move, so nobody can follow a roach between spots. ride: whether it rides with
  * 明河都尉 from here; any other move of a riding clone gets it off quietly.
  */
-async function writePlacement(
+export async function writePlacement(
   tx: Exec,
   userId: string,
   { slot, existing }: { slot: number; existing?: RoachRow },
@@ -451,8 +471,11 @@ async function writePlacement(
   ride: RideColumns = OFF_HORSE,
 ) {
   const values = { lng: at.lng, lat: at.lat, publicId: randomUUID(), placedAt: new Date(), ...ride };
-  if (existing) await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
-  else await tx.insert(roaches).values({ userId, slot, ...values });
+  if (existing) {
+    await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
+    // a visiting clone moved on ends its visit; guests of a roach that moved stay where they sit
+    await roachMoved(tx, existing.id, "moved");
+  } else await tx.insert(roaches).values({ userId, slot, ...values });
   // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
   if (slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
   await tx.insert(moves).values({
@@ -532,6 +555,7 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
   if (!roach) throw new WorldError("找不到这只蟑螂了。");
   const gone = roach.slot === 0 ? mine : [roach];
   await db.transaction(async (tx) => {
+    for (const r of gone) await roachMoved(tx, r.id, "removed");
     await tx.delete(roaches).where(inArray(roaches.id, gone.map((r) => r.id)));
     await tx.insert(moves).values(gone.map((r) => ({ userId, slot: r.slot, fromLng: r.lng, fromLat: r.lat })));
     if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
@@ -766,7 +790,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
   ).filter((x) => !blocked.has(x.t.fromUserId));
   const ds = (
     await db
-      .select({ d: declarations, seenAt: deliveries.seenAt })
+      .select({ d: declarations, seenAt: deliveries.seenAt, toFriend: deliveries.toFriend })
       .from(deliveries)
       .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
       .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, since)))
@@ -809,6 +833,12 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       .where(and(eq(pokes.fromUserId, userId), gt(pokes.wokeToldAt, since)))
   ).filter((x) => friendIds.has(x.p.toUserId));
   const pokers = await cardsOf([...ps.map((x) => x.from), ...ws.map((x) => x.to)]);
+  // a 触须之交's birthday sent to you as one says who; their reactions to yours say who too
+  const asFriend = await birthdayNames(
+    userId,
+    ds.filter((x) => x.toFriend).map((x) => x.d.senderId),
+    rs.map((x) => ({ declarationId: x.r.declarationId, from: x.r.fromUserId })),
+  );
   const cards = await cardsOf(ts.filter((x) => x.t.bold).map((x) => x.from));
   const done = await replied(userId, [
     ...ts.map((x) => `t:${x.t.id}`),
@@ -838,7 +868,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       ignored: Boolean(t.ignoredAt),
     });
   }
-  for (const { d, seenAt } of ds) {
+  for (const { d, seenAt, toFriend } of ds) {
     const id = `d:${d.id}`;
     const reacted = myReaction.get(d.id);
     items.push({
@@ -850,6 +880,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: done.has(id),
       reaction: isReaction(reacted) ? reacted : null,
       options: reactionsFor(d.template),
+      ...asFriend.sender(d.senderId, toFriend),
     });
   }
   for (const { r, d } of rs) {
@@ -863,6 +894,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       text: declarationText(storedDeclaration(d)),
       reaction: r.reaction,
       replied: done.has(id),
+      ...asFriend.reactor(r.declarationId, r.fromUserId),
     });
   }
   for (const f of fs) {
@@ -901,6 +933,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: true,
     });
   }
+  if (self) items.push(...(await friendlyInbox(self, blocked)));
   for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
   return items.sort((x, y) => y.at - x.at);
 }
@@ -971,6 +1004,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
       .where(and(inArray(reactions.id, x), inArray(reactions.declarationId, myDeclarations), isNull(reactions.seenAt)));
   }
   for (const id of GUIDE_IDS) await GUIDE_WORLD[id].see(userId, itemIds);
+  await seeFriendly(userId, itemIds);
   const p = ids("p:");
   if (p.length) {
     await db
@@ -1031,6 +1065,10 @@ export async function declare(userId: string, input: Declaration, from?: string[
       .from(roaches)
       .where(and(ne(roaches.userId, userId), or(...near)))
   ).filter((r) => !blocked.has(r.id));
+  // 「祝我生日快乐」 also reaches every 触须之交 however far, as theirs (once in FRIEND_BIRTHDAY_DAYS); one each
+  const friendsToo = new Set(d.template === "birthday" ? await birthdayFriends(userId, blocked) : []);
+  const nearby = new Set(rows.map((r) => r.id));
+  const everyone = [...rows.map((r) => r.id), ...[...friendsToo].filter((f) => !nearby.has(f))];
   await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(declarations)
@@ -1044,21 +1082,22 @@ export async function declare(userId: string, input: Declaration, from?: string[
         food: d.template === "eat" ? d.food : null,
         name: d.template === "myname" ? (d.name ?? null) : null,
         line: d.template === "event" ? d.line : null,
-        recipients: rows.length,
+        recipients: everyone.length,
       })
       .returning({ id: declarations.id });
-    for (let i = 0; i < rows.length; i += 1000) {
+    for (let i = 0; i < everyone.length; i += 1000) {
       await tx
         .insert(deliveries)
-        .values(rows.slice(i, i + 1000).map((r) => ({ declarationId: row.id, recipientId: r.id })));
+        .values(everyone.slice(i, i + 1000).map((id) => ({ declarationId: row.id, recipientId: id, toFriend: friendsToo.has(id) })));
     }
   });
-  nudge(rows.map((r) => r.id));
+  nudge(everyone);
   // 塔露拉干员 answers her 触须之交's birthday, never among the recipients
   if (d.template === "birthday") await birthdayDeclared(userId);
   const event = d.template === "event" ? findLine(d.line)?.event : null;
   if (event?.badge) await award(userId, [event.badge]);
-  return { reach: reachText(rows.length) };
+  const told = friendsToo.size ? `你的 ${friendsToo.size} 位触须之交也都收到了。` : "";
+  return { reach: reachText(rows.length) + told };
 }
 
 /** 默默爬走: leave a touch you received unanswered for good. Only the receiver ever knows. */
@@ -1110,6 +1149,7 @@ export async function friends(userId: string): Promise<Friend[]> {
     .where(or(eq(friendships.a, userId), eq(friendships.b, userId)))
     .orderBy(desc(friendships.createdAt));
   const out: Friend[] = [];
+  const met: { user: UserRow; since: Date; at: number }[] = [];
   for (const f of fs) {
     const other = f.a === userId ? f.b : f.a;
     const u = await userById(other);
@@ -1157,6 +1197,12 @@ export async function friends(userId: string): Promise<Friend[]> {
       history: history.sort((x, y) => y.at - x.at).slice(0, 30),
       pokeAgainAt: await lastPoke(userId, other),
     });
+    met.push({ user: u, since: f.createdAt, at: out.length - 1 });
+  }
+  // what the two of you can do for each other, all of them at once
+  if (self) {
+    const between = await betweenOf(self, met);
+    for (const m of met) out[m.at].between = between.get(m.user.id);
   }
   // the guides always come first, in their order
   const guides = self ? GUIDE_IDS.flatMap((id) => GUIDE_WORLD[id].friend(self) ?? []) : [];
@@ -1181,7 +1227,10 @@ export async function endFriendship(x: string, y: string) {
       .insert(friendCuts)
       .values({ ...p, cutAt: new Date() })
       .onConflictDoUpdate({ target: [friendCuts.a, friendCuts.b], set: { cutAt: new Date() } });
+    // visiting clones both ways go home, quietly
+    await friendshipEnded(tx, x, y);
   });
+  roachesChanged();
 }
 
 /**

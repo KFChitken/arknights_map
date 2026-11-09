@@ -175,7 +175,8 @@ export function friendDay(since: number, offsetMin: number, now = Date.now()) {
 /** Days she marks: the 7th, 30th and 100th, and every whole year */
 export const isAnniversary = (day: number) => day === 7 || day === 30 || day === 100 || (day > 0 && day % 365 === 0);
 
-const YEARS = ["一", "两", "三", "四", "五", "六", "七", "八", "九", "十"];
+/** 一年, 两年 … 十年; bigger numbers are written as digits */
+export const YEARS = ["一", "两", "三", "四", "五", "六", "七", "八", "九", "十"];
 
 /** What she says on one of those days */
 export function anniversaryLine(day: number) {

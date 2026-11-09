@@ -115,8 +115,11 @@ import InboxSheet, {
   pokedBy,
   ProfileView,
   tabOf,
+  type InboxFriendly,
   type InboxTab,
 } from "./app/InboxSheet";
+import { gestureSent, isAwakeGesture, isGesture, type Gesture } from "@/lib/friendly";
+import type { Game } from "@/lib/games";
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
 import {
@@ -147,7 +150,10 @@ import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
-import { DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import FriendActions, { type FriendAct } from "./app/FriendActions";
+import GestureStage, { SanityFly } from "./app/GestureStage";
+import VisitSheet from "./app/VisitSheet";
 import FriendsSheet, { FriendsMark } from "./app/FriendsSheet";
 import PartyScene from "./app/PartyScene";
 import { playPartyMusic, preloadPartyMusic, stopPartyMusic, type PartyMusic } from "./app/partyMusic";
@@ -177,6 +183,13 @@ function dockSceneFor(fresh: InboxItem[]): { kind: DockKind; from: DockFrom | nu
   const card = (p: PublicProfile) => ({ name: p.displayName, avatar: p.avatar, color: p.color });
   const friend = fresh.find((i) => i.kind === "friend");
   if (friend?.kind === "friend") return { kind: "friend", from: card(friend.from) };
+  // what 触须之交 do for each other (src/lib/friendly.ts)
+  if (fresh.some((i) => i.kind === "visit" && i.event === "came")) return { kind: "knock", from: null };
+  if (fresh.some((i) => i.kind === "sanity")) return { kind: "sanity", from: null };
+  const gesture = fresh.find((i) => i.kind === "gesture" && isAwakeGesture(i.gesture));
+  if (gesture?.kind === "gesture" && isAwakeGesture(gesture.gesture)) return { kind: gesture.gesture, from: null };
+  if (fresh.some((i) => i.kind === "anniversary")) return { kind: "hearts", from: null };
+  if (fresh.some((i) => i.kind === "reaction" && i.from && i.reaction === "birthday")) return { kind: "cake", from: null };
   const bold = fresh.find((i) => i.kind === "touch" && i.bold);
   if (bold?.kind === "touch") return { kind: "bold", from: bold.from ? card(bold.from) : null };
   if (fresh.some((i) => i.kind === "touch")) return { kind: "sneaky", from: null };
@@ -257,6 +270,9 @@ type Panel =
   | { kind: "friend"; friendId: string; back: Panel | null }
   /** Everyone you are 触须之交 with, as a grid (from the dock) */
   | { kind: "friends" }
+  /** 做客 at one of a 触须之交's roaches: asked first, then (every clone out) which clone goes */
+  | { kind: "visitConfirm"; friendId: string; roach: PublicRoach }
+  | { kind: "visitMove"; friendId: string; roach: PublicRoach }
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
   | { kind: "login"; reason?: string }
@@ -381,7 +397,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
   // 戳一戳 under way: the 触须之交's roach it plays over, left off the map meanwhile
   const [poking, setPoking] = useState<PublicRoach | null>(null);
   /** A touch acted out over the map (TouchStage), and what to do once it is over */
-  const [touchScene, setTouchScene] = useState<{ kind: TouchKind; cast: TouchCast; place: StagePlace; target: string; done: () => void } | null>(null);
+  /** gesture: one of 触须之交's own (GestureStage) instead of a touch */
+  const [touchScene, setTouchScene] = useState<{
+    kind: TouchKind;
+    gesture?: Gesture;
+    cast: TouchCast;
+    place: StagePlace;
+    target: string;
+    done: () => void;
+  } | null>(null);
   /** A sleeping roach touched: it only jolts in its sleep */
   const [jolting, setJolting] = useState<{ roach: PublicRoach; done: () => void } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -402,6 +426,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const inboxIdsRef = useRef<Set<string> | null>(null);
   const freshRef = useRef<InboxItem[]>([]);
   const [pokeSent, setPokeSent] = useState(false);
+  /** Something between 触须之交 is under way; and 催理智's bottle flying off its button */
+  const [friendBusy, setFriendBusy] = useState(false);
+  const [vialAt, setVialAt] = useState<{ x: number; y: number } | null>(null);
   const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
 
@@ -662,7 +689,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     new Promise<void>((resolve) => {
       const at = dockAt();
       if (!at || motionOff() || look === "real") return resolve();
-      setDockAnim(kind === "sneaky" ? "ta-dshiver" : "ta-dhop");
+      setDockAnim(DOCK_ANIM[kind]);
       setBadgePop(kind !== "sneaky");
       setDockScene({
         kind,
@@ -1058,12 +1085,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
    * map goes to the roach touched and leaves it out meanwhile; a sleeping one only jolts
    * in its sleep, and stays asleep.
    */
-  const playTouch = (roach: PublicRoach, kind: TouchKind) =>
+  const playTouch = (roach: PublicRoach, kind: TouchKind, gesture?: Gesture) =>
     new Promise<boolean>((resolve) => {
       if (!me || look === "real" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return resolve(false);
       const zoom = viewRef.current.zoom;
       setFocus({ lng: roach.lng, lat: roach.lat, zoom, nonce: Date.now() });
-      if (roach.asleep && !roach.guide) {
+      if (roach.asleep && !roach.guide && !gesture) {
         setJolting({ roach, done: () => (setJolting(null), resolve(true)) });
         return;
       }
@@ -1095,7 +1122,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
         warm(them.color, { avatar: them.avatar, clone: them.clone, friend: true }, 88),
       ]);
       Promise.race([ready, new Promise((r) => window.setTimeout(r, 600))]).then(() =>
-        setTouchScene({ kind, cast, place, target: roach.id, done: () => (setTouchScene(null), resolve(true)) }),
+        setTouchScene({ kind, gesture, cast, place, target: roach.id, done: () => (setTouchScene(null), resolve(true)) }),
       );
     });
 
@@ -1129,6 +1156,204 @@ export default function MapApp({ cn }: { cn: boolean }) {
     }
     await loadFriends();
   };
+
+  // ---- between 触须之交 (src/lib/friendly.ts) ----
+
+  /** Run one, with the row's buttons off meanwhile; true once it went through */
+  const friendly = async (go: (w: World) => Promise<unknown>) => {
+    setFriendBusy(true);
+    const ok = await act(async (w) => {
+      await go(w);
+      return true;
+    });
+    setFriendBusy(false);
+    return Boolean(ok);
+  };
+  /** Their main roach, where things done from their page (not a card on the map) are acted out */
+  const mainRoachOf = (friend: Friend) => friend.roaches.find((r) => !r.clone) ?? null;
+  const refreshInbox = async () => keepSnapshot(await loadInbox());
+
+  /** 催理智: a bottle flies off the button, 叮！ */
+  const remindSanity = async (friend: Friend, at: { x: number; y: number } | null) => {
+    if (!(await friendly((w) => w.remindSanity(friend.id)))) return;
+    if (at && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) setVialAt(at);
+    setToast(`已经催 ${friend.profile.displayName} 清理智啦`);
+    await loadFriends();
+  };
+
+  /** 贴贴 and the others: acted out over their roach on your screen, then the toast; replyTo returns one of theirs */
+  const doGesture = async (friend: Friend, gesture: Gesture, roach: PublicRoach | null, replyTo?: string) => {
+    if (!(await friendly((w) => w.gesture(friend.id, gesture, replyTo)))) return;
+    setPanel(null);
+    setSelected(null);
+    const loading = Promise.all([loadFriends(), replyTo ? refreshInbox() : null]);
+    if (roach) await playTouch(roach, "bold", gesture);
+    setToast(gestureSent(gesture, friend.profile.displayName));
+    await loading;
+  };
+
+  /** 来串门啦！ over your clone as it sits down */
+  const sayOver = (at: LngLat, text: string) => {
+    const mark = { id: `visit:${Date.now()}`, at, text, limited: false };
+    setShouts((all) => [...all, mark]);
+    window.setTimeout(() => setShouts((all) => all.filter((s) => s !== mark)), BUBBLE_MS + BUBBLE_FADE_MS);
+  };
+
+  /** 做客: asked first; your clone already there is only looked at */
+  const askVisit = (friend: Friend, roach: PublicRoach) => {
+    const visiting = friend.between?.visiting;
+    if (visiting) {
+      const mine = me?.roaches.find((r) => r.id === visiting.cloneId);
+      setPanel(null);
+      setSelected(null);
+      if (mine) setFocus({ lng: mine.lng, lat: mine.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+      return;
+    }
+    if (!me?.roaches.some((r) => r.slot === 0)) return setToast("先放下蟑螂本体，才能派克隆体去做客。");
+    setSelected(null);
+    setPanel({ kind: "visitConfirm", friendId: friend.id, roach });
+  };
+
+  const visitFriend = async (friendId: string, roach: PublicRoach, cloneId?: string) => {
+    const friend = shownFriends.find((f) => f.id === friendId);
+    if (!friend) return;
+    setFriendBusy(true);
+    const res = await act((w) => w.visit(friendId, roach.id, cloneId));
+    setFriendBusy(false);
+    if (!res) return;
+    setPanel(null);
+    setSelected(null);
+    setFocus({ lng: res.seat.lng, lat: res.seat.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+    await Promise.all([loadMe(), loadRoaches(), loadFriends()]);
+    sayOver(res.seat, "来串门啦！");
+    setToast(`你的克隆体在 ${friend.profile.displayName} 家坐下了`);
+  };
+
+  /** 去看看: a guest sitting by your roach */
+  const lookAt = (spot: LngLat) => {
+    setPanel(null);
+    setSelected(null);
+    setFocus({ lng: spot.lng, lat: spot.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+  };
+
+  const afterVisitChange = () => Promise.all([loadMe(), loadRoaches(), loadFriends(), refreshInbox()]);
+
+  /** 请 TA 回家 */
+  const sendHome = async (friendId: string) => {
+    if (!(await friendly((w) => w.sendHome(friendId)))) return;
+    setSelected(null);
+    setToast("已经请 TA 的克隆体回家了，3 天内 TA 不会再来。");
+    await afterVisitChange();
+  };
+
+  /** 回家: your visiting clone goes back */
+  const goHome = async (cloneId: string) => {
+    if (!(await friendly((w) => w.goHome(cloneId)))) return;
+    setSelected(null);
+    setToast("你的克隆体回家了");
+    await afterVisitChange();
+  };
+
+  /** 跟过去: your clone left behind sits down by its host's roach again */
+  const followHost = async (cloneId: string) => {
+    setFriendBusy(true);
+    const res = await act((w) => w.followHost(cloneId));
+    setFriendBusy(false);
+    if (!res) return;
+    setPanel(null);
+    setSelected(null);
+    setFocus({ lng: res.seat.lng, lat: res.seat.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
+    await afterVisitChange();
+    sayOver(res.seat, "来串门啦！");
+    setToast("你的克隆体跟过去了");
+  };
+
+  /** 复制 a UID they share; where the browser will not write the clipboard (QQ, WeChat), long-press it instead */
+  const copyUid = (uid: string) =>
+    navigator.clipboard
+      ?.writeText(uid)
+      .then(() => setToast("复制好了"))
+      .catch(() => setToast("长按 UID 就能复制")) ?? setToast("长按 UID 就能复制");
+
+  const gameAsk = async (friend: Friend, game: Game) => {
+    if (!(await friendly((w) => w.gameAsk(friend.id, game)))) return;
+    setToast(`已经告诉 ${friend.profile.displayName}，等 TA 在游戏里通过`);
+    await loadFriends();
+  };
+  const gameWant = async (friend: Friend, game: Game) => {
+    if (!(await friendly((w) => w.gameWant(friend.id, game)))) return;
+    setToast(`已经告诉 ${friend.profile.displayName} 你想在游戏里加 TA`);
+    await loadFriends();
+  };
+
+  /** One of the row's buttons (FriendActions), on their roach's card (roach) or their page */
+  const friendAct = (friend: Friend, act: FriendAct, at: { x: number; y: number }, roach: PublicRoach | null) => {
+    const on = roach ?? mainRoachOf(friend);
+    if (act === "sanity") return remindSanity(friend, at);
+    if (act === "visit") return on ? askVisit(friend, on) : setToast("TA 现在没有放蟑螂。");
+    if (act === "poke") {
+      const main = friend.between?.mainId ? friend.roaches.find((r) => r.id === friend.between!.mainId) : null;
+      if (!main) return setToast("TA 现在没有放蟑螂。");
+      setPanel(null);
+      return poke({ ...main, asleep: true });
+    }
+    if (isGesture(act)) return doGesture(friend, act, on);
+  };
+
+  /** What the inbox's 触须之交 messages can do */
+  const inboxFriendly: InboxFriendly = {
+    answerSanity: async (itemId, answer) => {
+      if (!(await friendly((w) => w.answerSanity(itemId, answer)))) return;
+      if (answer === "done") setToast("已经告诉 TA 了");
+      await refreshInbox();
+    },
+    gestureBack: async (friendId, gesture, itemId) => {
+      const friend = shownFriends.find((f) => f.id === friendId);
+      if (friend) await doGesture(friend, gesture, mainRoachOf(friend), itemId);
+    },
+    look: lookAt,
+    sendHome,
+    follow: followHost,
+    goHome,
+    gameAdded: async (itemId) => {
+      if (!(await friendly((w) => w.gameAdded(itemId)))) return;
+      setToast("已经告诉 TA 了，你们在游戏里也是好友啦");
+      await Promise.all([refreshInbox(), loadFriends()]);
+    },
+  };
+
+  /** Their games on their page: 复制, 我在游戏里申请了, 想在游戏里加 TA, 游戏里也是好友 */
+  const gameExtra = (friend: Friend) =>
+    function gameRow(game: Game) {
+      const b = friend.between;
+      if (!b || !me) return null;
+      const uid = friend.profile.uid?.[game];
+      const state = b.games[game];
+      const theirs = friend.profile.uidServer?.[game];
+      const mine = me.profile.uidServer[game];
+      const apart = Boolean(uid && theirs && mine && theirs !== mine);
+      return (
+        <dd className="game-extra">
+          {state?.added && <span className="game-tag">游戏里也是好友</span>}
+          {uid && (
+            <button className="pill" onClick={() => copyUid(uid)}>
+              复制
+            </button>
+          )}
+          {uid && !state?.added && apart && <span className="muted">你们不在一个服务器，游戏里加不了</span>}
+          {uid && !state?.added && !apart && (
+            <button className="pill dark" disabled={friendBusy || Boolean(state?.askAgainAt)} onClick={() => gameAsk(friend, game)}>
+              {state?.askAgainAt ? "已经告诉 TA 了" : "我在游戏里申请了"}
+            </button>
+          )}
+          {!uid && (
+            <button className="pill" disabled={friendBusy || Boolean(b.wantAgainAt)} onClick={() => gameWant(friend, game)}>
+              {b.wantAgainAt ? "已经告诉 TA 了" : "想在游戏里加 TA"}
+            </button>
+          )}
+        </dd>
+      );
+    };
 
   /** Tapping 阿米娅向导 sets her dancing to her music (not while motion is turned down); a tap meanwhile starts her over */
   const danceAmiya = () => {
@@ -2318,6 +2543,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onViewProfile={(profile, target) => setPanel({ kind: "viewProfile", profile, target, back: p })}
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: p })}
+            friendly={inboxFriendly}
             onClose={() => setPanel(null)}
           />
         );
@@ -2345,10 +2571,46 @@ export default function MapApp({ cn }: { cn: boolean }) {
         return (
           <FriendView
             friend={friend}
+            actions={
+              friend.between && (
+                <FriendActions
+                  between={friend.between}
+                  pokeAgainAt={friend.pokeAgainAt}
+                  busy={friendBusy || pokeSent}
+                  onAct={(a, at) => friendAct(friend, a, at, null)}
+                />
+              )
+            }
+            gameExtra={gameExtra(friend)}
             onFind={(i) => findFriendRoach(friend.roaches[i])}
             onUnfriend={() => unfriend(friend)}
             onSafety={() => setPanel({ kind: "safety", target: `friend:${friend.id}`, who: friend.profile.displayName, back: p })}
             onBack={p.back ? () => setPanel(p.back) : undefined}
+            onClose={() => setPanel(null)}
+          />
+        );
+      }
+      case "visitConfirm":
+      case "visitMove": {
+        const friend = shownFriends.find((f) => f.id === p.friendId);
+        if (!friend || !me) return null;
+        const clones = me.roaches.filter((r) => r.slot > 0);
+        return p.kind === "visitConfirm" ? (
+          <VisitSheet
+            name={friend.profile.displayName}
+            clones={clones.length}
+            busy={friendBusy}
+            onNew={() => visitFriend(friend.id, p.roach)}
+            onPick={() => setPanel({ kind: "visitMove", friendId: friend.id, roach: p.roach })}
+            onClose={() => setPanel(null)}
+          />
+        ) : (
+          <CloneMoveSheet
+            clones={clones}
+            movesLeft={me.movesLeft}
+            to={p.roach}
+            from="离 TA"
+            onPick={(r) => visitFriend(friend.id, p.roach, r.id)}
             onClose={() => setPanel(null)}
           />
         );
@@ -2548,7 +2810,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
             />
           </div>
         )}
-        {touchScene && <TouchStage kind={touchScene.kind} cast={touchScene.cast} place={touchScene.place} onDone={touchScene.done} />}
+        {touchScene &&
+          (touchScene.gesture ? (
+            <GestureStage gesture={touchScene.gesture} cast={touchScene.cast} place={touchScene.place} onDone={touchScene.done} />
+          ) : (
+            <TouchStage kind={touchScene.kind} cast={touchScene.cast} place={touchScene.place} onDone={touchScene.done} />
+          ))}
         {shouting && (
           <ShoutStage
             me={{ avatar: myAvatar, color: myColor }}
@@ -2637,6 +2904,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
               : undefined
           }
           busy={pokeSent || Boolean(poking)}
+          friendRow={
+            selectedFriend?.between && (
+              <FriendActions
+                between={selectedFriend.between}
+                pokeAgainAt={selectedFriend.pokeAgainAt}
+                riding={Boolean(selected.roach.ride)}
+                busy={friendBusy || pokeSent || Boolean(poking)}
+                onAct={(a, at) => friendAct(selectedFriend, a, at, selected.roach)}
+              />
+            )
+          }
           onOpenFriend={
             selectedFriend ? () => setPanel({ kind: "friend", friendId: selectedFriend.id, back: null }) : undefined
           }
@@ -2660,6 +2938,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
           busy={drinking || Boolean(acting) || riding}
           riding={myRider?.roachId === selected.roach.id ? { stops: myRider.stops, onDismount: dismount } : undefined}
           party={selected.roach.slot === 0 && me?.drunkUntil ? { on: Boolean(party), onToggle: party ? endParty : startParty } : undefined}
+          visits={{
+            onSendHome: sendHome,
+            onGoHome: () => goHome(selected.roach.id),
+            onFollow: () => followHost(selected.roach.id),
+          }}
           onMove={() => startPlacing({ kind: "move", roachId: selected.roach.id })}
           onRemove={() => remove(selected.roach)}
           onDrink={drinkUp}
@@ -2757,6 +3040,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
         </div>
       )}
       {dockScene && <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} onDone={dockScene.done} />}
+      {vialAt && <SanityFly from={vialAt} onDone={() => setVialAt(null)} />}
       {arcs && <DockArcs key={arcs.nonce} at={arcs.at} />}
       {party && createPortal(<PartyScene key={party.key} avatar={myAvatar} color={myColor} music={party.music} onDone={endParty} />, party.el)}
       {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}

@@ -1,8 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AMIYA_ID, AMIYA_NAME, amiyaLine } from "@/lib/amiya";
 import { REACTIONS, type Reaction } from "@/lib/declarations";
+import {
+  anniversaryText,
+  GESTURE_BACK,
+  GESTURE_DONE,
+  gestureText,
+  isAwakeGesture,
+  sanityText,
+  sanityThanks,
+  type AwakeGesture,
+} from "@/lib/friendly";
 import { GAME_NAMES, serverName, type Game } from "@/lib/games";
 import { guideById, isGuideItem } from "@/lib/guides";
 import { PERLICA_ID, PERLICA_UNFRIEND, perlicaText } from "@/lib/perlica";
@@ -10,6 +20,7 @@ import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
 import { talulahText } from "@/lib/talulah";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
+import type { LngLat } from "@/lib/types";
 import type { Friend, InboxItem } from "@/lib/world/types";
 import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
@@ -27,8 +38,8 @@ const TABS: { tab: InboxTab; label: string }[] = [
   { tab: "friends", label: "触须之交" },
 ];
 
-/** What happens between 触须之交: new friends, and 戳一戳 both ways */
-const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke"];
+/** What happens between 触须之交: new friends, 戳一戳 both ways, and all they do for each other (src/lib/friendly.ts) */
+const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke", "sanity", "sanityThanks", "gesture", "visit", "game", "anniversary"];
 
 /** Touches, the guides' included */
 const TOUCHES: InboxItem["kind"][] = ["touch", "amiya", "perlica", "talulah", "minghe"];
@@ -85,6 +96,12 @@ export function noticeTitle(items: InboxItem[]) {
   if (unseen.some((i) => i.kind === "friend")) return "你有了新的触须之交！";
   if (unseen.some((i) => i.kind === "poke")) return "有触须之交趁你睡着戳了戳你！";
   if (unseen.some((i) => i.kind === "pokeWoke")) return "你戳过的触须之交醒啦！";
+  if (unseen.some((i) => i.kind === "anniversary")) return "今天是触须之交纪念日！";
+  if (unseen.some((i) => i.kind === "visit" && i.event === "came")) return "有触须之交来你家串门了！";
+  if (unseen.some((i) => i.kind === "visit")) return "你的克隆体有新消息！";
+  if (unseen.some((i) => i.kind === "sanity")) return "触须之交催你清理智啦！";
+  if (unseen.some((i) => i.kind === "gesture")) return "触须之交和你互动了！";
+  if (unseen.some((i) => i.kind === "sanityThanks" || i.kind === "game")) return "触须之交回你了！";
   if (unseen.some((i) => i.kind === "touch")) return "你被蟑螂触须碰了一下！";
   if (unseen.some((i) => i.kind === "amiya")) return "阿米娅向导碰了碰你！";
   if (unseen.some((i) => i.kind === "perlica")) return "佩丽卡监督碰了碰你！";
@@ -95,6 +112,45 @@ export function noticeTitle(items: InboxItem[]) {
   if (unseen.length) return "附近有舟P发表了独立宣言！";
   return "消息";
 }
+
+/** What happened with a visiting clone (串门), by who did it */
+function visitText(item: Extract<InboxItem, { kind: "visit" }>) {
+  const who = item.from.displayName;
+  switch (item.event) {
+    case "came":
+      return `${who} 的克隆体来你家串门了`;
+    case "sentHome":
+      return `${who} 请你的克隆体先回家休息啦`;
+    case "hostMoved":
+      return `${who} 搬家了，你的克隆体还在老地方`;
+    case "hostRemoved":
+      return `${who} 收回了那只蟑螂，你的克隆体还在老地方`;
+    case "closed":
+      return `${who} 现在不接待客人，你的克隆体先回家了`;
+  }
+}
+
+/** 游戏里也加个好友, by who */
+function gameText(item: Extract<InboxItem, { kind: "game" }>) {
+  const who = item.from.displayName;
+  const game = GAME_NAMES[item.game];
+  if (item.event === "added") return `${who}：${game}里也加上了！`;
+  if (item.event === "want") return `${who} 想在游戏里加你。愿意的话，在「我的资料」里填 UID 并打开分享。`;
+  return `${who} 说已经在${game}${item.server ? `（${item.server}）` : ""}向你发了好友申请，去游戏里通过一下吧。`;
+}
+
+/** What you can do from a 触须之交's message (src/lib/friendly.ts) */
+export type InboxFriendly = {
+  answerSanity: (itemId: string, answer: "done" | "ok") => Promise<void>;
+  /** 贴回去, 击回去, 吸回来 */
+  gestureBack: (friendId: string, gesture: AwakeGesture, itemId: string) => Promise<void>;
+  /** 去看看: to a guest sitting by your roach */
+  look: (spot: LngLat) => void;
+  sendHome: (friendId: string) => Promise<void>;
+  follow: (cloneId: string) => Promise<void>;
+  goHome: (cloneId: string) => Promise<void>;
+  gameAdded: (itemId: string) => Promise<void>;
+};
 
 /** What one of 阿米娅向导's touches says, in her own words. */
 function amiyaText(item: Extract<InboxItem, { kind: "amiya" }>, games: Game[]) {
@@ -118,6 +174,7 @@ export default function InboxSheet({
   onViewProfile,
   onOpenFriend,
   onSafety,
+  friendly,
   onClose,
 }: {
   items: InboxItem[];
@@ -138,9 +195,20 @@ export default function InboxSheet({
   onOpenFriend: (friendId: string) => void;
   /** 拉黑或举报 the sender: an inbox item id, or "friend:<id>" */
   onSafety: (target: string, who: string | null) => void;
+  friendly: InboxFriendly;
   onClose: () => void;
 }) {
   const [replying, setReplying] = useState<string | null>(null);
+  // one 触须之交 message at a time is being acted on
+  const [acting, setActing] = useState<string | null>(null);
+  const act = async (id: string, go: () => Promise<void>) => {
+    setActing(id);
+    try {
+      await go();
+    } finally {
+      setActing(null);
+    }
+  };
   const reply = async (id: string, bold: boolean) => {
     await onReply(id, bold);
     setReplying(null);
@@ -152,6 +220,7 @@ export default function InboxSheet({
     setReacting(null);
   };
   const friendIds = new Set(friends.map((f) => f.id));
+  const betweenOf = (friendId: string) => friends.find((f) => f.id === friendId)?.between;
   const shown = items.filter((i) => tabOf(i) === tab);
   // items keep their unread look while the inbox is open, but a tab's red count goes once you have looked at it
   const unseenIn = (t: InboxTab) => (viewed.includes(t) ? 0 : items.filter((i) => !i.seen && tabOf(i) === t).length);
@@ -219,6 +288,119 @@ export default function InboxSheet({
               </button>
             </div>
           )}
+        </div>
+      );
+    }
+    if (
+      item.kind === "sanity" ||
+      item.kind === "sanityThanks" ||
+      item.kind === "gesture" ||
+      item.kind === "visit" ||
+      item.kind === "game" ||
+      item.kind === "anniversary"
+    ) {
+      const who = item.from.displayName;
+      const busy = acting === item.id;
+      const friend = friendIds.has(item.friendId);
+      let text: string;
+      let actions: ReactNode = null;
+      let note: ReactNode = null;
+      if (item.kind === "sanity") {
+        text = sanityText(who, item.asleep);
+        actions =
+          item.answer === "done" ? (
+            <span className="done">已告诉 TA：清完了</span>
+          ) : item.answer === "ok" ? (
+            <span className="done">知道啦</span>
+          ) : (
+            <>
+              <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.answerSanity(item.id, "done"))}>
+                清完了！
+              </button>
+              <button className="pill" disabled={busy} onClick={() => act(item.id, () => friendly.answerSanity(item.id, "ok"))}>
+                知道啦
+              </button>
+            </>
+          );
+      } else if (item.kind === "sanityThanks") {
+        text = sanityThanks(who);
+      } else if (item.kind === "gesture") {
+        text = gestureText(item.gesture, who);
+        const g = item.gesture;
+        if (isAwakeGesture(g) && friend) {
+          const doneToday = betweenOf(item.friendId)?.done[g];
+          actions = item.returned ? (
+            <span className="done">{GESTURE_DONE[g]}</span>
+          ) : (
+            <button
+              className="pill dark"
+              disabled={busy || doneToday || betweenOf(item.friendId)?.asleep}
+              onClick={() => act(item.id, () => friendly.gestureBack(item.friendId, g, item.id))}
+            >
+              {doneToday ? GESTURE_DONE[g] : GESTURE_BACK[g]}
+            </button>
+          );
+        }
+      } else if (item.kind === "visit") {
+        text = visitText(item);
+        if (item.tip) note = <p className="hint">提醒一下：别把本体放在家门口。</p>;
+        if (item.event === "came" && item.spot) {
+          const spot = item.spot;
+          actions = (
+            <>
+              <button className="pill dark" onClick={() => friendly.look(spot)}>
+                去看看
+              </button>
+              {friend && (
+                <button className="pill" disabled={busy} onClick={() => act(item.id, () => friendly.sendHome(item.friendId))}>
+                  请 TA 回家
+                </button>
+              )}
+            </>
+          );
+        } else if (item.cloneId) {
+          const clone = item.cloneId;
+          actions = (
+            <>
+              {item.event === "hostMoved" && friend && (
+                <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.follow(clone))}>
+                  跟过去
+                </button>
+              )}
+              <button className="pill" disabled={busy} onClick={() => act(item.id, () => friendly.goHome(clone))}>
+                回家
+              </button>
+            </>
+          );
+          if (item.event === "hostMoved") note = <p className="hint">跟过去算一次挪窝，回家不算。</p>;
+        }
+      } else if (item.kind === "game") {
+        text = gameText(item);
+        if (item.event === "ask") {
+          actions = item.answered ? (
+            <span className="done">已告诉 TA：我也加了</span>
+          ) : friend ? (
+            <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.gameAdded(item.id))}>
+              我也加了
+            </button>
+          ) : null;
+        }
+      } else {
+        text = anniversaryText(item.day, who);
+      }
+      return (
+        <div key={item.id} className={`${cls}${item.kind === "anniversary" ? " anniversary" : ""}`}>
+          <div>{text}</div>
+          {note}
+          {meta(item, `friend:${item.friendId}`, who)}
+          <div className="row-actions">
+            {actions}
+            {friend && (
+              <button className="pill" onClick={() => onOpenFriend(item.friendId)}>
+                看看 TA
+              </button>
+            )}
+          </div>
         </div>
       );
     }
@@ -298,6 +480,17 @@ export default function InboxSheet({
       );
     }
     if (item.kind === "reaction") {
+      // a 触须之交 answering your birthday, which reached them as theirs: by name
+      if (item.from) {
+        const who = item.from.displayName;
+        return (
+          <div key={item.id} className={cls}>
+            <div>{item.reaction === "birthday" ? `${who} 祝你生日快乐！` : `${who} 回应了你的生日宣言：「${REACTIONS[item.reaction]}」`}</div>
+            {meta(item, item.id, who)}
+            <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
+          </div>
+        );
+      }
       return (
         <div key={item.id} className={cls}>
           <div>附近有舟P回应了你的宣言「{item.text}」：</div>
@@ -309,9 +502,11 @@ export default function InboxSheet({
     }
     return (
       <div key={item.id} className={cls}>
-        <div>{DECLARATION_RADIUS_KM} 公里内有舟P发表了独立宣言：</div>
+        <div>
+          {item.from ? `你的触须之交 ${item.from.displayName} 发表了独立宣言：` : `${DECLARATION_RADIUS_KM} 公里内有舟P发表了独立宣言：`}
+        </div>
         <div className="quote">「{item.text}」</div>
-        {meta(item, item.id, null)}
+        {meta(item, item.id, item.from?.displayName ?? null)}
         {item.reaction ? (
           <div className="done">你回应了：{REACTIONS[item.reaction]}</div>
         ) : (
@@ -323,6 +518,7 @@ export default function InboxSheet({
             ))}
           </div>
         )}
+        {item.from && !item.reaction && <p className="hint">TA 能看到是你。</p>}
         <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
       </div>
     );
@@ -380,7 +576,8 @@ function WornPill({ profile }: { profile: PublicProfile }) {
   ) : null;
 }
 
-function ProfileDetails({ profile }: { profile: PublicProfile }) {
+/** gameExtra: more under each game, on a 触须之交's page (游戏里也加个好友) */
+function ProfileDetails({ profile, gameExtra }: { profile: PublicProfile; gameExtra?: (game: Game) => ReactNode }) {
   const badges = <TheirBadges badges={profile.badges ?? []} worn={profile.worn} />;
   if (profile.games.length === 0) {
     return (
@@ -409,9 +606,10 @@ function ProfileDetails({ profile }: { profile: PublicProfile }) {
           {profile.uid?.[g] && (
             <dd>
               UID：{serverName(g, profile.uidServer?.[g]) ? `${serverName(g, profile.uidServer?.[g])} ` : ""}
-              {profile.uid[g]}
+              <span className="uid">{profile.uid[g]}</span>
             </dd>
           )}
+          {gameExtra?.(g)}
         </div>
       ))}
       </dl>
@@ -469,6 +667,8 @@ function eventText(e: Friend["history"][number]) {
 
 export function FriendView({
   friend,
+  actions,
+  gameExtra,
   onFind,
   onUnfriend,
   onSafety,
@@ -476,6 +676,10 @@ export function FriendView({
   onClose,
 }: {
   friend: Friend;
+  /** 触须之交专属: the row of what only 触须之交 do (FriendActions) */
+  actions?: ReactNode;
+  /** 游戏里也加个好友, under each of their games */
+  gameExtra?: (game: Game) => ReactNode;
   onFind: (roachIndex: number) => void;
   onUnfriend: () => void;
   onSafety: () => void;
@@ -496,7 +700,8 @@ export function FriendView({
           <p className="hint">{ago(friend.since)}成为触须之交</p>
         </div>
       </div>
-      {guideOf ? <p className="hint">{guideOf.note}</p> : <ProfileDetails profile={profile} />}
+      {guideOf ? <p className="hint">{guideOf.note}</p> : <ProfileDetails profile={profile} gameExtra={gameExtra} />}
+      {actions}
 
       <h3>TA 的蟑螂</h3>
       {friend.roaches.length === 0 && <p className="hint">TA 现在没有放蟑螂。</p>}
