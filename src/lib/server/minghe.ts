@@ -7,6 +7,7 @@ import { WorldError, type MingheItem, type TouchResult } from "../world/types";
 import { db } from "./db";
 import { isProd } from "./env";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type Exec, type GuideRow, type GuideTable } from "./guides";
+import { award, guideFriendMade } from "./badges";
 import { roachesChanged } from "./roachFeed";
 import { mingheTouches, roaches, touches, users } from "./schema";
 
@@ -90,6 +91,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过他了。");
     throw e;
   }
+  if (done.friend) await guideFriendMade(userId, "minghe");
   return {
     newFriend: done.friend ? MINGHE.name : null,
     guide: {
@@ -192,7 +194,7 @@ export async function moveMingheRiders(now = Date.now()) {
           gte(touches.createdAt, r.rideSince!),
         ),
       );
-    await db.transaction(async (tx) => {
+    const home = await db.transaction(async (tx) => {
       const back = r.rideFromLng !== null && r.rideFromLat !== null;
       const [still] = back
         ? await tx
@@ -206,7 +208,10 @@ export async function moveMingheRiders(now = Date.now()) {
             .returning({ id: roaches.id });
       // gone or got off meanwhile: nothing to say
       if (still) await sayAboutRide(tx, r.userId, "trip", stopOf(r.rideStartDay ?? day), n);
+      return Boolean(still);
     });
+    // 七站星河: all seven stations, never off the horse on the way
+    if (home) await award(r.userId, ["sevenstops"]);
   }
 
   if (going.length) {

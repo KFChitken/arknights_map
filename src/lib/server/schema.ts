@@ -68,6 +68,21 @@ export const users = pgTable("users", {
   drunkUntil: at("drunk_until"),
   /** Times they really got drunk; never goes down, for the 酒神 badges */
   drinksTotal: integer("drinks_total").notNull().default(0),
+  /**
+   * The 宣言 and 回应 badges: Beijing days they declared, and responded to a declaration, on (twenty in
+   * a day count once, and they never go down, as the records themselves go after 90 days), the day
+   * last counted, and the everyday sentences (FLUENT_TEMPLATES) they ever sent
+   */
+  declareDays: integer("declare_days").notNull().default(0),
+  declaredOn: date("declared_on", { mode: "string" }),
+  declaredLines: text("declared_lines").array().notNull().default(emptyArray),
+  reactDays: integer("react_days").notNull().default(0),
+  reactedOn: date("reacted_on", { mode: "string" }),
+  /** Beijing days they touched 阿米娅向导 and 佩丽卡监督 on, for the 30-day badges, and the day last counted */
+  amiyaDays: integer("amiya_days").notNull().default(0),
+  amiyaTouchedOn: date("amiya_touched_on", { mode: "string" }),
+  perlicaDays: integer("perlica_days").notNull().default(0),
+  perlicaTouchedOn: date("perlica_touched_on", { mode: "string" }),
   /** 好久没来时，蟑螂翻肚皮睡觉: their main roach may flip over while they stay away */
   flipWhenAway: boolean("flip_when_away").notNull().default(true),
   /** The Beijing day the 04:00 batch flipped their main roach over for staying away; null while it stands */

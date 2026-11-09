@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +18,7 @@ import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
 import { deleteAccount, isBanned } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
-import { award, catchUpBadges, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
+import { award, catchUpBadges, fireSongs, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
 import { deviceDay, deviceWeek } from "./guides";
 import * as perlica from "./perlica";
@@ -1216,6 +1217,9 @@ describe("server world", () => {
       // 7 stations on: the new clone is taken back, the moved one goes back where it stood, and he says how it went
       expect(await minghe.moveMingheRiders(now + 7 * DAY_MS)).toEqual({ moved: 0, home: 2 });
       expect(await ridersNow()).toEqual([]);
+      // 七站星河: both rode all seven stations
+      expect(await badgeIds(me)).toContain("sevenstops");
+      expect(await badgeIds(other)).toContain("sevenstops");
       expect((await me.me()).roaches.map((r) => r.slot)).toEqual([0]);
       const [back] = await db.select().from(roaches).where(eq(roaches.id, stay.id));
       expect(back).toMatchObject({ lng: stay.lng, lat: stay.lat, rideSince: null, rideStartDay: null, rideDay: null, rideFromLng: null });
@@ -1536,6 +1540,8 @@ describe("server world", () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const t2 = await demo("t2");
     const t4 = await demo("t4");
+    // 全体目光向我看齐！ is theirs already, so declaring brings no badge (and no nudge) of its own
+    await award(me.id, ["lookatme"]);
     const count = { me: 0, t2: 0, t4: 0 };
     const offs = [
       listen(me.id, () => count.me++),
@@ -1663,11 +1669,11 @@ describe("server world", () => {
 
       await db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - interval '2 minutes'` });
       await me.declare({ template: "event", line: "yuanyuan" });
-      expect(await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, me.id))).toEqual([
-        { badge: "half2026" },
-      ]);
-      // nobody else earned it
-      expect(await db.select().from(userBadges)).toHaveLength(1);
+      expect(await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, me.id))).toEqual(
+        expect.arrayContaining([{ badge: "half2026" }]),
+      );
+      // once, and nobody else earned it
+      expect(await db.select().from(userBadges).where(eq(userBadges.badge, "half2026"))).toHaveLength(1);
 
       moveTo(-48, -1);
       await db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - interval '2 minutes'` });
@@ -1740,9 +1746,114 @@ describe("server world", () => {
     const got = await db.select({ id: deliveries.recipientId }).from(deliveries);
     expect(got.length).toBeGreaterThanOrEqual(10);
     for (const r of got.slice(0, 9)) await world.react(r.id, `d:${d.id}`, "plusone");
-    expect(await me.me()).toMatchObject({ counts: { responders: 9 }, badges: [] });
+    expect(await me.me()).toMatchObject({ counts: { responders: 9 } });
+    expect(await badgeIds(me)).toEqual(["lookatme"]);
     await world.react(got[9].id, `d:${d.id}`, "zhouli");
-    expect(await badgeIds(me)).toEqual(["spokesperson"]);
+    // ten on the one declaration: 一呼百舟应 too
+    expect(await badgeIds(me)).toEqual(["spokesperson", "lookatme", "echo"]);
+  });
+
+  describe("the second round of badges", () => {
+    const yesterday = () => beijingDate(Date.now() - 86_400_000);
+    const nextDeclaration = () => db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - interval '2 minutes'` });
+
+    it("counts Beijing days of declaring, once a day, and the everyday sentences sent", async () => {
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await me.declare({ template: "launch", game: "arknights" });
+      expect(await badgeIds(me)).toEqual(["lookatme"]);
+      await nextDeclaration();
+      await me.declare({ template: "welcome", game: "arknights" });
+      // twenty in a day are one day
+      expect((await me.me()).counts).toMatchObject({ declareDays: 1, declareLines: 2 });
+
+      await db
+        .update(users)
+        .set({ declareDays: 9, declaredOn: yesterday(), declaredLines: ["iam", "love", "buff", "myname", "welcome", "canyou", "eat"] })
+        .where(eq(users.id, me.id));
+      await nextDeclaration();
+      // 祝我生日快乐 is not one of the eight, but a new day of declaring
+      await me.declare({ template: "birthday" });
+      expect((await me.me()).counts).toMatchObject({ declareDays: 10, declareLines: 7 });
+      expect(await badgeIds(me)).toEqual(["lookatme", "declarer"]);
+      await nextDeclaration();
+      await me.declare({ template: "launch", game: "endfield" });
+      expect(await badgeIds(me)).toEqual(["lookatme", "declarer", "fluent"]);
+    });
+
+    it("counts Beijing days of responding, and never who was answered", async () => {
+      const t2 = await demo("t2");
+      const t3 = await demo("t3");
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      for (const t of [t2, t3]) {
+        await t.declare({ template: "launch", game: "arknights" });
+        const item = (await me.inbox()).find((i) => i.kind === "declaration" && !i.reaction)!;
+        await me.react(item.id, "plusone");
+      }
+      expect((await me.me()).counts).toMatchObject({ reactDays: 1 });
+      expect(await badgeIds(me)).toEqual(["courtesy"]);
+      await db.update(users).set({ reactDays: 9, reactedOn: yesterday() }).where(eq(users.id, me.id));
+      await nextDeclaration();
+      await t2.declare({ template: "welcome", game: "endfield" });
+      await me.react((await me.inbox()).find((i) => i.kind === "declaration" && !i.reaction)!.id, "zhouli");
+      expect(await badgeIds(me)).toEqual(["courtesy", "hype"]);
+    });
+
+    it("gives each guide's badge as she becomes 触须之交, 满编小队 with all four, and counts days of touching 阿米娅 and 佩丽卡", async () => {
+      for (const id of [AMIYA_ID, PERLICA_ID, TALULAH_ID]) await me.touch(id, true);
+      expect(await badgeIds(me)).toEqual(["amiya", "perlica", "talulah"]);
+      expect((await me.me()).counts).toMatchObject({ guideFriends: 3, amiyaDays: 1, perlicaDays: 1 });
+      await me.touch(MINGHE_ID, true);
+      expect(await badgeIds(me)).toEqual(["amiya", "perlica", "talulah", "minghe", "fullsquad"]);
+
+      await db.update(users).set({ amiyaDays: 29, amiyaTouchedOn: yesterday() }).where(eq(users.id, me.id));
+      await me.touch(AMIYA_ID, false);
+      await me.touch(AMIYA_ID, false);
+      expect((await me.me()).counts).toMatchObject({ amiyaDays: 30 });
+      expect(await badgeIds(me)).toContain("amiya30");
+      expect(await badgeIds(me)).not.toContain("perlica30");
+    });
+
+    it("gives 以宣会友 to both when a back-and-forth that began with a declaration makes them 触须之交", async () => {
+      const pal = await signUp("pal@example.com");
+      const stranger = await signUp("stranger@example.com");
+      await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+      await pal.placeRoach({ kind: "main" }, { lng: PEOPLES_SQUARE.lng + 0.01, lat: PEOPLES_SQUARE.lat });
+      await stranger.placeRoach({ kind: "main" }, { lng: PEOPLES_SQUARE.lng - 0.01, lat: PEOPLES_SQUARE.lat });
+      await me.declare({ template: "launch", game: "arknights" });
+      // pal answers the declaration boldly, and me touches back boldly
+      const heard = (await pal.inbox()).find((i) => i.kind === "declaration")!;
+      await pal.reply(heard.id, true);
+      const back = (await me.inbox()).find((i) => i.kind === "touch")!;
+      expect((await me.reply(back.id, true)).newFriend).toBeTruthy();
+      expect(await badgeIds(me)).toContain("declfriend");
+      expect(await badgeIds(pal)).toContain("declfriend");
+      // touched on the map instead: not this one
+      const roachOf = async (p: Player) => (await p.me()).roaches.find((r) => r.slot === 0)!.publicId;
+      await stranger.touch(await roachOf(me), true);
+      await me.touch(await roachOf(stranger), true);
+      expect(await badgeIds(stranger)).not.toContain("declfriend");
+    });
+
+    it("gives 火边的歌声 to everyone by 塔露拉's fire once 50 roaches sit there, test players aside", async () => {
+      const near = (i: number) => ({ lng: FIRE_AT.lng + 0.0003 * Math.cos(i), lat: FIRE_AT.lat + 0.0003 * Math.sin(i) });
+      const players = await Promise.all(Array.from({ length: 49 }, (_, i) => signUp(`fire${i}@example.com`)));
+      await db.insert(roaches).values(players.map((p, i) => ({ userId: p.id, slot: 0, ...near(i), publicId: randomUUID() })));
+      await fireSongs();
+      expect(await db.select().from(userBadges).where(eq(userBadges.badge, "fireside"))).toEqual([]);
+      // the fiftieth arrives the usual way
+      await me.placeRoach({ kind: "main" }, near(50));
+      expect(await badgeIds(me)).toContain("fireside");
+      expect(await db.select().from(userBadges).where(eq(userBadges.badge, "fireside"))).toHaveLength(50);
+    });
+
+    it("catches up what players already did, as kept, at every start", async () => {
+      await db
+        .update(users)
+        .set({ declareDays: 30, reactDays: 10, amiyaFriendSince: new Date(), perlicaDays: 30, declaredLines: ["launch"] })
+        .where(eq(users.id, me.id));
+      await catchUpBadges();
+      expect(await badgeIds(me)).toEqual(["lookatme", "declarer", "chief", "courtesy", "hype", "amiya", "perlica30"]);
+    });
   });
 
   it("numbers the first players to sign up, never giving a number out twice, and wakes every newcomer for a week", async () => {

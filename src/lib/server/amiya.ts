@@ -4,6 +4,7 @@ import { AMIYA, amiyaRoach } from "../amiya";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { db } from "./db";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type GuideRow } from "./guides";
+import { guideFriendMade, guideTouched } from "./badges";
 import { asideFromAmiya } from "./perlica";
 import { amiyaTouches, users, type UserRow } from "./schema";
 
@@ -50,6 +51,8 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
     throw e;
   }
+  await guideTouched(userId, "amiya");
+  if (done.friend) await guideFriendMade(userId, "amiya");
   return {
     newFriend: done.friend ? AMIYA.name : null,
     guide: { id: AMIYA.id, itemId: done.answer && her.itemId(done.answer.id), bold, kind: "touch", times: null, others: null, line: null },

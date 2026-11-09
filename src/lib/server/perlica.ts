@@ -4,6 +4,7 @@ import { and, count, countDistinct, desc, eq, gte, inArray, isNull, lt, notInArr
 import { beijingDate } from "../beijing";
 import { AWAY_KEPT, AWAY_LINES, AWAY_REPORT_S, PERLICA, PERLICA_MORE, perlicaBirthday } from "../perlica";
 import { WorldError, type PerlicaItem, type TouchResult } from "../world/types";
+import { guideFriendMade, guideTouched } from "./badges";
 import { db } from "./db";
 import { isProd } from "./env";
 import {
@@ -244,6 +245,8 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
     throw e;
   }
+  await guideTouched(userId, "perlica");
+  if (done.kind === "friend") await guideFriendMade(userId, "perlica");
   return {
     newFriend: done.kind === "friend" ? PERLICA.name : null,
     guide: {

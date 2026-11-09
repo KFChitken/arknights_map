@@ -95,7 +95,7 @@ import {
   touchTalulah,
   unfriendTalulah,
 } from "./talulah";
-import { award, drank, earnedBy, friendsMade, reactedTo, respondersOf, shownBadges, wakeUp } from "./badges";
+import { award, declared, drank, earnedBy, friendsMade, reactedTo, respondersOf, responded, shownBadges, wakeUp } from "./badges";
 import { lastVisitOn } from "./away";
 import {
   betweenOf,
@@ -348,7 +348,17 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     hasTouched: Boolean(touched),
     badges,
     wornBadge: badges.some((b) => b.id === u.wornBadge) ? u.wornBadge : null,
-    counts: { friends: u.friendsEver, responders: await respondersOf(u.id), drinks: u.drinksTotal },
+    counts: {
+      friends: u.friendsEver,
+      responders: await respondersOf(u.id),
+      drinks: u.drinksTotal,
+      declareDays: u.declareDays,
+      reactDays: u.reactDays,
+      declareLines: u.declaredLines.length,
+      amiyaDays: u.amiyaDays,
+      perlicaDays: u.perlicaDays,
+      guideFriends: [u.amiyaFriendSince, u.perlicaFriendSince, u.talulahFriendSince, u.mingheFriendSince].filter(Boolean).length,
+    },
     drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
     // a whole day or more away, so not just back the next morning
     homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
@@ -1123,6 +1133,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   if (d.template === "birthday") await birthdayDeclared(userId);
   const event = d.template === "event" ? findLine(d.line)?.event : null;
   if (event?.badge) await award(userId, [event.badge]);
+  await declared(userId, d.template);
   const told = friendsToo.size ? `你的 ${friendsToo.size} 位触须之交也都收到了。` : "";
   return { reach: reachText(rows.length) + told };
 }
@@ -1167,6 +1178,7 @@ export async function react(userId: string, itemId: string, reaction: string) {
   if (withheld) return;
   nudge([row.senderId]);
   await reactedTo(row.senderId);
+  await responded(userId, id, row.senderId);
 }
 
 export async function friends(userId: string): Promise<Friend[]> {

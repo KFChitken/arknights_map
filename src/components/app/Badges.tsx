@@ -24,13 +24,24 @@ import Sheet from "./Sheet";
 
 const art = (id: string, size: number) => `/badges/${id}${size <= 32 ? "-mini" : ""}.svg`;
 
+/**
+ * A badge's art. The 向导 ones are drawn with the guide's own picture too, which the server gives
+ * only while that guide's picture is switched on; otherwise (404) the drawn one stands in.
+ */
+function BadgeImg({ id, size, alt }: { id: string; size: number; alt: string }) {
+  const picture = badgeById(id)?.pictureArt;
+  const drawn = art(id, size);
+  const [src, setSrc] = useState(picture ? `/guide-art/${picture}${size <= 32 ? "-mini" : ""}.svg` : drawn);
+  return <img src={src} alt={alt} width={size} height={size} onError={() => setSrc(drawn)} />;
+}
+
 /** The pill under a name on profile cards. */
 export function BadgePill({ badge }: { badge: ShownBadge }) {
   const b = badgeById(badge.id);
   if (!b) return null;
   return (
     <span className="badge-pill" style={b.pill}>
-      <img src={art(b.id, 22)} alt="" width={22} height={22} />
+      <BadgeImg id={b.id} size={22} alt="" />
       {b.name}
       {badge.serial && <span className="serial">{serialText(badge.serial)}</span>}
     </span>
@@ -57,7 +68,7 @@ export function TheirBadges({ badges, worn }: { badges: ShownBadge[]; worn?: str
           const b = badgeById(s.id)!;
           return (
             <div key={s.id} className={`badge-cell ${s.id === worn ? "worn" : ""}`}>
-              <img src={art(b.id, 58)} alt={`${b.name}徽章`} width={58} height={58} />
+              <BadgeImg id={b.id} size={58} alt={`${b.name}徽章`} />
               <span className="badge-name">{b.name}</span>
             </div>
           );
@@ -167,7 +178,7 @@ export function BadgeWall({
                       onClick={() => onWear(on ? null : b.id)}
                     >
                       {on ? <span className="cell-tag">佩戴中</span> : e.until && <span className="cell-tag timed">限时</span>}
-                      <img src={art(b.id, 54)} alt="" width={54} height={54} />
+                      <BadgeImg id={b.id} size={54} alt="" />
                       <span className="badge-name">{b.name}</span>
                       <span className={e.serial ? "cell-note serial" : "cell-note"}>
                         {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : `${day(e.at)} 获得`}
@@ -180,7 +191,7 @@ export function BadgeWall({
                   return (
                     <div key={b.id} className="badge-cell running">
                       <span className="cell-tag">进行中</span>
-                      <img src={art(b.id, 54)} alt={`${b.name}徽章，未获得`} width={54} height={54} />
+                      <BadgeImg id={b.id} size={54} alt={`${b.name}徽章，未获得`} />
                       <span className="badge-name">{b.name}</span>
                       <span className="cell-note">{b.lockedHint}</span>
                     </div>
@@ -190,7 +201,7 @@ export function BadgeWall({
                 return (
                   <div key={b.id} className="badge-cell locked">
                     {LOCK}
-                    <img src={art(b.id, 54)} alt={`${b.name}徽章，未获得`} width={54} height={54} />
+                    <BadgeImg id={b.id} size={54} alt={`${b.name}徽章，未获得`} />
                     <span className="badge-name">{b.name}</span>
                     <span className="cell-note">{lockedText(b, me.counts)}</span>
                     {share !== null && (
@@ -253,7 +264,7 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
         <div className="new-badge-art">
           <div className="rays" aria-hidden="true" />
           <div className="glow" aria-hidden="true" />
-          <img src={art(b.id, 212)} alt={`${b.name}徽章`} width={212} height={212} />
+          <BadgeImg id={b.id} size={212} alt={`${b.name}徽章`} />
         </div>
         <div className="new-badge-banner">
           <strong>{b.name}</strong>

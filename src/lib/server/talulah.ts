@@ -5,6 +5,7 @@ import type { LngLat } from "../types";
 import { WorldError, type TalulahItem, type TouchResult } from "../world/types";
 import { db } from "./db";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type GuideRow, type GuideTable } from "./guides";
+import { fireSongs, guideFriendMade } from "./badges";
 import { talulahTouches, users } from "./schema";
 
 /**
@@ -62,6 +63,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
     throw e;
   }
+  if (done.friend) await guideFriendMade(userId, "talulah");
   return {
     newFriend: done.friend ? TALULAH.name : null,
     guide: {
@@ -107,6 +109,7 @@ export async function arrivedAt(userId: string, spot: LngLat) {
     .where(and(eq(users.id, userId), isNull(users.talulahWelcomedAt)))
     .returning({ id: users.id });
   if (first) await db.insert(talulahTouches).values({ userId, direction: her.from, kind: "welcome", bold: false });
+  await fireSongs();
 }
 
 /**

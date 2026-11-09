@@ -1,5 +1,6 @@
 import { beijingDate } from "./lib/beijing";
 import { flipTheAway } from "./lib/server/away";
+import { fireSongs } from "./lib/server/badges";
 import { moveMingheRiders } from "./lib/server/minghe";
 import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
@@ -72,6 +73,8 @@ const ride = () => {
     rodeOn = "";
     failed("ride", "Moving 明河都尉's riders failed")(e);
   });
+  // 火边的歌声: who sits by 塔露拉干员's fire when it is big enough, counted each morning too
+  fireSongs().catch(failed("ride", "Counting 塔露拉干员's fire failed"));
 };
 ride();
 setInterval(ride, 5 * MINUTE_MS);

@@ -13,9 +13,21 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   "amiya-dance.m4a": { on: AMIYA_DANCE, type: "audio/mp4" },
   // ⚡舟友的酒⚡'s minute of 「⚡邦友の酒⚡」 (src/lib/party.ts)
   "zhouyou-jiu.m4a": { on: PARTY_MUSIC, type: "audio/mp4" },
+  // the 向导 badges drawn with the guides' own pictures (src/lib/badges.ts pictureArt), full and mini; 满编小队 has all four
+  ...badgeArt(["amiya", "amiya30"], AMIYA_PICTURE),
+  ...badgeArt(["perlica", "perlica30"], PERLICA_PICTURE),
+  ...badgeArt(["talulah", "fireside"], TALULAH_PICTURE),
+  ...badgeArt(["minghe", "sevenstops"], MINGHE_PICTURE),
+  ...badgeArt(["fullsquad"], AMIYA_PICTURE && PERLICA_PICTURE && TALULAH_PICTURE && MINGHE_PICTURE),
 };
 
-/** GET /guide-art/<guide>.png: a guide's picture, from the server's own folder; 404 while switched off. */
+function badgeArt(ids: string[], on: boolean) {
+  return Object.fromEntries(
+    ids.flatMap((id) => [`badge-${id}.svg`, `badge-${id}-mini.svg`].map((file) => [file, { on, type: "image/svg+xml" }])),
+  );
+}
+
+/** GET /guide-art/<file>: a guide's picture (or a badge drawn with it), from the server's own folder; 404 while switched off. */
 export async function GET(_req: Request, { params }: { params: Promise<{ file: string }> }) {
   const file = (await params).file;
   const picture = Object.prototype.hasOwnProperty.call(PICTURES, file) ? PICTURES[file] : null;
@@ -25,6 +37,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ file: s
     headers: {
       "content-type": picture.type,
       "cache-control": "public, max-age=86400",
+      // a picture, nothing more, even opened on its own
+      ...(picture.type === "image/svg+xml" ? { "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'" } : {}),
     },
   });
 }
