@@ -22,6 +22,7 @@ const AVATAR_NAMES: Record<RoachAvatar, string> = {
   doctor: "博士",
   endmin: "管理员",
   imp: "绝对主角",
+  gugu: "咕咕嘎嘎",
 };
 
 const COLOR_NAMES: Record<RoachColor, string> = {
@@ -260,7 +261,7 @@ export default function ProfileSheet({
               className={p.avatar === a ? "on" : ""}
               onClick={() => set({ avatar: a })}
             >
-              <RoachIcon color={p.color} size={56} avatar={a} />
+              <RoachIcon color={p.color} size={48} avatar={a} />
               <span>{AVATAR_NAMES[a]}</span>
             </button>
           ))}
@@ -283,7 +284,7 @@ export default function ProfileSheet({
             />
           ))}
         </div>
-        <p className="hint">颜色只改初始形象两边的灯；博士、管理员和绝对主角用的是原画，颜色不变。</p>
+        <p className="hint">颜色只改初始形象两边的灯；其他形象用的是原画，颜色不变。</p>
       </fieldset>
       {!tutorial && (
         <>

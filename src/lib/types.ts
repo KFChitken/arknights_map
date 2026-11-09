@@ -28,7 +28,8 @@ export const ROACH_COLORS = [
 export type RoachColor = (typeof ROACH_COLORS)[number];
 
 /** Cartoon looks a player can pick; the realistic roach is the same for everyone. */
-export const ROACH_AVATARS = ["hood", "doctor", "endmin", "imp"] as const;
+// new looks go at the end: the map lists its icons by position here
+export const ROACH_AVATARS = ["hood", "doctor", "endmin", "imp", "gugu"] as const;
 export type RoachAvatar = (typeof ROACH_AVATARS)[number];
 /** The guides' own looks (src/lib/guides.ts): drawn like the others, never offered to players */
 export const GUIDE_AVATARS = ["amiya", "perlica", "talulah", "minghe"] as const;

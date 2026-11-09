@@ -48,6 +48,7 @@ const TIPS: Partial<Record<DrawnAvatar, { left: [number, number]; right: [number
   doctor: { left: [16, 5.4], right: [48.8, 5.8] },
   endmin: { left: [22.6, 5.5], right: [44, 6.2] },
   imp: { left: [36.8, 6.6], right: [36.8, 6.6] },
+  gugu: { left: [9.8, 1.8], right: [53, 1.8] },
   amiya: { left: [16, 8], right: [48, 8] },
   perlica: { left: [16, 8], right: [48, 8] },
   talulah: { left: [16, 8], right: [48, 8] },

@@ -3,7 +3,7 @@ import { declarationText, DRUNK_TEMPLATES, reactionsFor, TEMPLATES, type Declara
 import { beijingDate } from "../beijing";
 import { activeEvents, EVENTS, untilText } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
-import { checkDeclaration } from "./logic";
+import { checkDeclaration, normalizeProfile } from "./logic";
 
 const fan: Profile = {
   ...EMPTY_PROFILE,
@@ -47,6 +47,16 @@ describe("declarations", () => {
     expect(reactionsFor("birthday")).toContain("birthday");
     expect(reactionsFor("launch")).not.toContain("birthday");
     expect(reactionsFor("launch")).toEqual(["alsoplay", "zhouli", "shouwei", "plusone", "diplomat"]);
+  });
+});
+
+describe("looks", () => {
+  it("keeps every look on the list, 咕咕嘎嘎 too, and puts anything else back to the hood", () => {
+    for (const avatar of ["hood", "doctor", "endmin", "imp", "gugu"] as const) {
+      expect(normalizeProfile({ ...EMPTY_PROFILE, avatar }).avatar).toBe(avatar);
+    }
+    // @ts-expect-error not a look
+    expect(normalizeProfile({ ...EMPTY_PROFILE, avatar: "penguin" }).avatar).toBe("hood");
   });
 });
 

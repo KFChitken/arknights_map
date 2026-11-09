@@ -12,6 +12,7 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   doctor: "/avatars/doctor.png",
   endmin: "/avatars/endmin.png",
   imp: "/avatars/imp.png",
+  gugu: "/avatars/gugu.png",
   // the guides' (src/lib/guides.ts): not ours to publish, so served from the server's own folder
   // (src/app/guide-art) and kept out of the repository
   // ?v: another picture of her was briefly served at this address while trying out her dance; browsers keep pictures a day
@@ -30,6 +31,8 @@ const PICTURE_FIT: Partial<Record<DrawnAvatar, PictureFit>> = {
   endmin: { left: 31, right: 225 },
   // drawn with her eyes open, so she sleeps in a mask
   imp: { left: 13, right: 243, mask: true },
+  // eyes open too
+  gugu: { left: 39, right: 216, mask: true },
 };
 
 const svgUrl = (inner: string) =>

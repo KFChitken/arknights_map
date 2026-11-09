@@ -527,10 +527,10 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .radar-facts { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.7; }
 
 /* ---- avatar picker ---- */
-.avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.avatars { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .avatars button {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px;
-  border: 2px solid #e5e7eb; border-radius: 12px; background: #fff; font-size: 13px;
+  border: 2px solid #e5e7eb; border-radius: 12px; background: #fff; font-size: 12px; white-space: nowrap;
 }
 .avatars button.on { border-color: var(--ink); background: #fffbea; font-weight: 700; }
 
