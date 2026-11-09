@@ -1,30 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { searchPlaces, suggestPlaces, type Place, type PlaceResults } from "@/lib/geocode";
-import type { Basemap, MapView } from "@/lib/types";
+import { SearchBusy, searchPlaces, suggestPlaces, type Place, type PlaceResults } from "@/lib/geocode";
+import type { MapView } from "@/lib/types";
 
-const SUGGEST_DELAY_MS = 350;
+/** How long typing pauses before suggestions are asked for */
+const SUGGEST_DELAY_MS = 500;
 
-// One CJK character is already a useful query; Latin needs two
-const longEnough = (q: string) => q.length >= (/^[\x00-\x7f]*$/.test(q) ? 2 : 1);
+// Two CJK characters make a useful query (one, such as 静 or 上, finds nothing in particular); Latin needs three
+const longEnough = (q: string) => q.length >= (/^[\x00-\x7f]*$/.test(q) ? 3 : 2);
 
 /** Shown while placing a roach: tap the map, or search for a place by name. */
 export default function PlaceBar({
   label,
-  basemap,
   view,
+  cn,
   onPick,
   onCancel,
 }: {
   label: string;
-  basemap: Basemap;
+  /** A visitor from mainland China: places are searched through our server, and its errors say to tap the map */
+  cn: boolean;
   /** Map view when placing started; suggestions near its center come first once zoomed in */
   view: MapView;
   onPick: (p: Place) => void;
   onCancel: () => void;
 }) {
   const [q, setQ] = useState("");
+  // pinyin still being typed into the box (an input method composing): nothing is asked until a word is chosen
+  const [composing, setComposing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<(PlaceResults & { full: boolean }) | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,20 +44,26 @@ export default function PlaceBar({
     setError(null);
     try {
       const near = view.zoom >= 5 ? view : undefined;
-      const res = await (full ? searchPlaces(query, basemap, near) : suggestPlaces(query, basemap, near));
+      const res = await (full ? searchPlaces(query, near, cn) : suggestPlaces(query, near, cn));
       if (mine === seq.current) setResults({ ...res, full });
     } catch (err) {
       console.error(err);
       if (mine === seq.current) {
         setResults(null);
-        setError("搜索没有连上，检查一下网络，或者直接点地图。");
+        setError(
+          err instanceof SearchBusy
+            ? "搜的人有点多，过几秒再试，或者直接点地图。"
+            : cn
+              ? "地点搜索暂时用不了，可以直接在地图上点一下放。"
+              : "搜索没有连上，检查一下网络，或者直接点地图。",
+        );
       }
     } finally {
       if (full) setBusy(false);
     }
   };
 
-  // Suggest places as the player types
+  // Suggest places as the player types, once a word is chosen and typing pauses
   useEffect(() => {
     const query = q.trim();
     if (!longEnough(query)) {
@@ -61,14 +71,16 @@ export default function PlaceBar({
       setResults(null);
       return;
     }
+    if (composing) return;
     timer.current = window.setTimeout(() => run(false), SUGGEST_DELAY_MS);
     return () => window.clearTimeout(timer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, basemap]);
+  }, [q, composing]);
 
   const search = (e: FormEvent) => {
     e.preventDefault();
-    if (q.trim() && !busy) run(true);
+    // Enter that picks a word in the input method is not a search for the pinyin
+    if (q.trim() && !busy && !composing) run(true);
   };
 
   return (
@@ -84,6 +96,13 @@ export default function PlaceBar({
           placeholder="或者输入地点，比如：静安寺、秋叶原"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          // state, not a ref: browsers differ in whether the last input event comes before or after compositionend,
+          // and when the text did not change only composing changing runs the suggestions again
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={(e) => {
+            setComposing(false);
+            setQ(e.currentTarget.value);
+          }}
         />
         <button type="submit" disabled={busy}>
           {busy ? "…" : "搜索"}

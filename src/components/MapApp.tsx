@@ -2898,8 +2898,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
       {placing && basemap && (
         <PlaceBar
           label={placing.label}
-          basemap={basemap}
           view={viewRef.current}
+          cn={cn}
           onPick={(p: Place) => placeAt(p, true)}
           onCancel={() => setPlacing(null)}
         />

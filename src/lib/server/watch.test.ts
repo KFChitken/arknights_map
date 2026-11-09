@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as reportMap } from "@/app/api/health/map/route";
+import { beijingDate } from "../beijing";
 import { db } from "./db";
+import { forgetGeo, geoSearch } from "./geo";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { mailSends, watchAlerts, watchState } from "./schema";
 import { errorCode, forgetSignals, note, recent } from "./signals";
@@ -143,6 +145,28 @@ describe("the site's own checks", () => {
     note("map", "overseas:tiles:tiles-404", t0 - MINUTE);
     expect(await check("map").run(t0)).toMatchObject([{ detail: "30 分钟内有 10 次：高德·一直没画出来 ×9；我们自己的海外底图·图块加载失败（tiles-404） ×1。" }]);
     expect(await check("map").run(t0 + 11 * MINUTE)).toEqual([]);
+  });
+
+  it("tells of 高德 turning the server's place search away for the rest of the day, apart from the map failing", async () => {
+    vi.stubEnv("AMAP_WEBSERVICE_KEY", "test-key");
+    forgetGeo();
+    try {
+      expect(await check("map").run(t0)).toEqual([]);
+      const used = (async (url: string) =>
+        Response.json(String(url).includes("amap") ? { status: "0", info: "USER_DAILY_QUERY_OVER_LIMIT", infocode: "10044" } : [])) as unknown as typeof fetch;
+      await geoSearch("202.96.128.86", { kind: "search", q: "静安寺" }, used);
+      // eight slow maps beside it are not ten failed maps
+      for (let i = 0; i < 8; i++) note("map", "amap:slow:", t0 - 5 * MINUTE);
+      expect(await check("map").run(t0)).toMatchObject([
+        { key: "search", title: "高德搜地点额度用完了", detail: expect.stringContaining("USER_DAILY_QUERY_OVER_LIMIT") },
+      ]);
+      // still so an hour on: it lasts the day (Beijing's), however late the tests run
+      const later = beijingDate(t0 + 60 * MINUTE) === beijingDate(t0) ? t0 + 60 * MINUTE : t0 + 1;
+      expect(await check("map").run(later)).toMatchObject([{ key: "search" }]);
+    } finally {
+      vi.unstubAllEnvs();
+      forgetGeo();
+    }
   });
 
   it("counts sign-in code emails against MAIL_DAILY_LIMIT: a warning at 80%, another when used up", async () => {

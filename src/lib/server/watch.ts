@@ -8,6 +8,7 @@ import { beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
 import { db } from "./db";
 import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
+import { amapSearchToday } from "./geo";
 import { sendAdminMail } from "./mail";
 import { mailSends, watchAlerts, watchState } from "./schema";
 import { errorCode, recent, startedAt, type Signal } from "./signals";
@@ -252,20 +253,32 @@ function mapTrouble(code: string) {
 /**
  * 高德 saying its key is wrong or used up is clear enough three times in ten minutes; other
  * trouble (a slow phone network, a tile now and then) only when it adds up to ten in half an hour.
+ * The server's own place search being told by 高德 that its allowance is used up is told on its
+ * own, for as long as the day lasts: the map itself is fine.
  */
 async function checkMaps(now: number): Promise<Finding[]> {
-  const list = recent("map", 30 * MINUTE, now);
+  const findings: Finding[] = [];
+  const search = amapSearchToday(now);
+  if (search.out) {
+    findings.push({
+      key: "search",
+      title: "高德搜地点额度用完了",
+      detail: `今天服务器向高德搜地点时被拒（${search.out}），今天不再用高德搜；明天 0 点（北京时间）再试。今天用了 ${search.used} 次，每天最多 ${search.daily} 次。`,
+      advice: "地图和点地图放蟑螂不受影响；内地玩家搜地名会改用 OpenStreetMap，下个月 1 日高德额度恢复。个人账号买不了更多。",
+    });
+  }
+  const list = recent("map", 30 * MINUTE, now).filter((s) => !s.code.startsWith("amap:search:"));
   const keys = list.filter((s) => s.code.startsWith("amap:key:") && now - s.at < 10 * MINUTE);
-  if (keys.length < 3 && list.length < 10) return [];
-  return [
-    {
+  if (keys.length >= 3 || list.length >= 10) {
+    findings.push({
       key: "failing",
       title: "地图在访客那里加载失败",
       detail: `30 分钟内有 ${list.length} 次：${tally(list.map((s) => s.code), mapTrouble)}。`,
       advice:
         "访客那边会自动换成别的底图，但内地访客看到的就不是高德了。高德的话多半是 Key 当天的调用量用完或 Key 设置有问题，登录高德开放平台控制台看看。这类报告谁都能发，偶尔几次也可能是访客自己的网络问题。",
-    },
-  ];
+    });
+  }
+  return findings;
 }
 
 const JOBS: Record<string, string> = {

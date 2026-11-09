@@ -31,10 +31,3 @@ export function loadAMap(): Promise<AMapNS> {
   }
   return loading;
 }
-
-/** Load extra Amap plugins on demand. */
-export async function amapPlugins(...names: string[]): Promise<AMapNS> {
-  const AMap = await loadAMap();
-  await new Promise<void>((resolve) => AMap.plugin(names, () => resolve()));
-  return AMap;
-}
