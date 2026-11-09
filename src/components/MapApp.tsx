@@ -1905,7 +1905,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     .filter((b) => !b.seen)
     .map((b) => b.id)
     .join(",");
-  const idle = Boolean(me && !placing && !selected && !panel && !step && !acting);
+  // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
+  const idle = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene);
 
   // ---- 佩丽卡监督 ----
 
