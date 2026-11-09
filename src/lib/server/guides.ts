@@ -9,10 +9,11 @@ import type { amiyaTouches } from "./schema";
 
 /**
  * What every guide (src/lib/guides.ts) does the same way on the server: her own
- * 20 touches a day, the player's touch and hers back written together, touching
- * back or crawling away from hers once each, marking them seen, the latest few
- * for the inbox, and her place among the 触须之交. Each guide's own module
- * (amiya.ts, perlica.ts) adds what only she does.
+ * 20 touches a day, the player's touch and hers back written together (she touches
+ * back once a day, and always when it makes them 触须之交), touching back or crawling
+ * away from hers once each, marking them seen, the latest few for the inbox, and her
+ * place among the 触须之交. Each guide's own module (amiya.ts, perlica.ts) adds what
+ * only she does.
  */
 
 /** Every guide's table starts with the same columns (guideTouchColumns in schema.ts); the shared code is typed by Amiya's. */
@@ -44,6 +45,12 @@ export function guideFriend(guide: Guide, since: Date, roaches: PublicRoach[]): 
   };
 }
 
+/** Answers she gives however often she has touched back today: the one that makes them 触须之交 */
+const ALWAYS_ANSWERED = ["friend", "handshake"];
+
+/** A touch of hers by the player, and what she answers: kind, and whether she answers it even after one already today */
+type Pairing = { bold: boolean; replyTo: string | null; dayStart: Date; kind?: string; always?: boolean };
+
 /** The shared part of one guide, working on her own table. */
 export function guideTouches(guide: Guide, table: GuideTable) {
   const t = table;
@@ -63,6 +70,15 @@ export function guideTouches(guide: Guide, table: GuideTable) {
         : [];
     if (!row) throw new WorldError("找不到这条消息了。");
     return row;
+  }
+
+  /** The player's touches of her since a moment */
+  async function touchesSince(exec: Exec, userId: string, since: Date) {
+    const [{ n }] = await exec
+      .select({ n: count() })
+      .from(t)
+      .where(and(eq(t.userId, userId), eq(t.direction, to), gte(t.createdAt, since)));
+    return n;
   }
 
   /** Which of hers the player has answered. */
@@ -91,21 +107,26 @@ export function guideTouches(guide: Guide, table: GuideTable) {
       if (n >= GUIDE_TOUCHES_PER_DAY) throw new WorldError(`今天跟${guide.short}碰得够多啦，明天再来吧。`);
     },
 
-    /** The player's touch (answering one of hers, or not) and hers back the same way. replyTo is unique, so a touch answers once. */
-    async pair(exec: Exec, userId: string, bold: boolean, replyTo: string | null, kind = "touch") {
+    /**
+     * The player's touch (answering one of hers, or not) and hers back the same way. replyTo is
+     * unique, so a touch answers once. She touches back only the player's first touch of the day
+     * (dayStart: their 04:00, deviceDay), null for the others, but always the one that makes them
+     * 触须之交 (always; ALWAYS_ANSWERED kinds).
+     */
+    async pair(
+      exec: Exec,
+      userId: string,
+      { bold, replyTo, dayStart, kind = "touch", always = ALWAYS_ANSWERED.includes(kind) }: Pairing,
+    ) {
+      const first = (await touchesSince(exec, userId, dayStart)) === 0;
       await exec.insert(t).values({ userId, direction: to, bold, replyTo });
+      if (!first && !always) return null;
       const [row] = await exec.insert(t).values({ userId, direction: from, kind, bold }).returning({ id: t.id });
       return row;
     },
 
     /** The player's touches of her since a moment, this one included. */
-    async touchesSince(exec: Exec, userId: string, since: Date) {
-      const [{ n }] = await exec
-        .select({ n: count() })
-        .from(t)
-        .where(and(eq(t.userId, userId), eq(t.direction, to), gte(t.createdAt, since)));
-      return n;
-    },
+    touchesSince,
 
     item,
 

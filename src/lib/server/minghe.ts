@@ -6,7 +6,7 @@ import type { LngLat } from "../types";
 import { WorldError, type MingheItem, type TouchResult } from "../world/types";
 import { db } from "./db";
 import { isProd } from "./env";
-import { guideFriend, guideTouches, isUniqueViolation, type Exec, type GuideRow, type GuideTable } from "./guides";
+import { deviceDay, guideFriend, guideTouches, isUniqueViolation, type Exec, type GuideRow, type GuideTable } from "./guides";
 import { roachesChanged } from "./roachFeed";
 import { mingheTouches, roaches, touches, users } from "./schema";
 
@@ -63,12 +63,13 @@ export async function sayAboutRide(exec: Exec, userId: string, line: "ride" | "d
 }
 
 /**
- * The player touches him, maybe answering one of his: he answers at once, the same way
- * they touched him. Their first bold touch makes them 触须之交.
+ * The player touches him, maybe answering one of his: the first touch of their day he
+ * answers at once, the same way they touched him, the rest of the day not. Their first
+ * bold touch makes them 触须之交, answered whenever it comes.
  */
-async function touchBack(userId: string, bold: boolean, replyTo: string | null): Promise<TouchResult> {
+async function touchBack(userId: string, bold: boolean, replyTo: string | null, offsetMin?: unknown): Promise<TouchResult> {
   await him.allow(userId);
-  let done: { id: string; friend: boolean };
+  let done: { id: string | null; friend: boolean };
   try {
     done = await db.transaction(async (tx) => {
       const made = bold
@@ -79,8 +80,9 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
             .returning({ id: users.id })
         : [];
       const friend = made.length > 0;
-      const answer = await him.pair(tx, userId, bold, replyTo, friend ? "friend" : "touch");
-      return { id: answer.id, friend };
+      const dayStart = new Date(deviceDay(offsetMin).start);
+      const answer = await him.pair(tx, userId, { bold, replyTo, dayStart, kind: friend ? "friend" : "touch" });
+      return { id: answer?.id ?? null, friend };
     });
   } catch (e) {
     // two answers to the same one of his at once: reply_to is unique, so one fails
@@ -91,7 +93,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
     newFriend: done.friend ? MINGHE.name : null,
     guide: {
       id: MINGHE.id,
-      itemId: him.itemId(done.id),
+      itemId: done.id && him.itemId(done.id),
       bold,
       kind: done.friend ? "friend" : "touch",
       times: null,
@@ -101,12 +103,12 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
   };
 }
 
-export const touchMinghe = (userId: string, bold: boolean) => touchBack(userId, bold, null);
+export const touchMinghe = (userId: string, bold: boolean, offsetMin?: unknown) => touchBack(userId, bold, null, offsetMin);
 
 /** Touch back one of his, once; it counts towards his 20 like any touch. */
-export async function replyMinghe(userId: string, itemId: string, bold: boolean) {
+export async function replyMinghe(userId: string, itemId: string, bold: boolean, offsetMin?: unknown) {
   const item = await him.toAnswer(userId, itemId);
-  return touchBack(userId, bold, item.id);
+  return touchBack(userId, bold, item.id, offsetMin);
 }
 
 export const ignoreMinghe = (userId: string, itemId: string) => him.ignore(userId, itemId);

@@ -15,7 +15,7 @@ const ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe"];
 const ABOUT: Record<GuideId, string[]> = {
   amiya: [
     "住在罗德岛，所有舟P共用一只。",
-    "碰她，她会用一样的方式碰回你；大胆碰她就成为触须之交，以后她每天跟你打招呼。",
+    "碰她，她每天会用一样的方式碰回你一次；大胆碰她就成为触须之交，以后她每天跟你打招呼。",
     "点她，她还会跳舞。",
   ],
   perlica: [

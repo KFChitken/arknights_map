@@ -122,6 +122,11 @@ async function mapOf(id: string): Promise<PublicRoach[]> {
   return (await allRoaches()).filter((r) => !own.has(r.id)).map((r) => ({ ...r, friend: friendIds.has(r.id) }));
 }
 
+/** Move all of a player's touches with one guide a day further back: their next touch is a new day's. */
+async function dayBefore(t: typeof amiyaTouches | typeof perlicaTouches | typeof talulahTouches | typeof mingheTouches, p: Player) {
+  await db.update(t).set({ createdAt: sql`${t.createdAt} - interval '25 hours'` }).where(eq(t.userId, p.id));
+}
+
 /** Make a player's radar scans look older than the free reopening window. */
 async function rewindScans(userId: string) {
   await db.update(radarScans).set({ createdAt: sql`${radarScans.createdAt} - interval '11 minutes'` }).where(eq(radarScans.userId, userId));
@@ -343,7 +348,8 @@ describe("server world", () => {
   it("lets anyone touch 阿米娅向导, who touches back the same way, apart from everything between players", async () => {
     expect(await me.touch(AMIYA_ID, false)).toMatchObject({ newFriend: null, guide: { id: "amiya", bold: false } });
     expect(await me.touch(AMIYA_ID, true)).toMatchObject({ newFriend: "阿米娅向导", guide: { id: "amiya", bold: true } });
-    expect((await me.touch(AMIYA_ID, true)).newFriend).toBeNull();
+    // she has touched back once today: nothing more from her until the player's next day
+    expect(await me.touch(AMIYA_ID, true)).toMatchObject({ newFriend: null, guide: { id: "amiya", itemId: null } });
     const rows = await db.select().from(amiyaTouches).where(eq(amiyaTouches.userId, me.id));
     const bolds = (direction: string) =>
       rows
@@ -351,11 +357,11 @@ describe("server world", () => {
         .map((r) => r.bold)
         .sort();
     expect(bolds("to_amiya")).toEqual([false, true, true]);
-    expect(bolds("from_amiya")).toEqual([false, true, true]);
+    expect(bolds("from_amiya")).toEqual([false, true]);
 
     // her touches are her own kind of message; nothing reaches the tables between players
     const inbox = await me.inbox();
-    expect(inbox.filter((i) => i.kind === "amiya")).toHaveLength(3);
+    expect(inbox.filter((i) => i.kind === "amiya")).toHaveLength(2);
     expect(inbox.some((i) => i.kind === "touch")).toBe(false);
     expect(await db.select().from(touches)).toEqual([]);
     expect(await db.select().from(friendships)).toEqual([]);
@@ -377,7 +383,11 @@ describe("server world", () => {
     await expect(me.touch(AMIYA_ID, false)).rejects.toThrow("今天跟阿米娅碰得够多啦");
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
-    // the inbox keeps only her latest five
+    // a new day, a new touch back; the inbox keeps only her latest five
+    for (let day = 0; day < 4; day++) {
+      await dayBefore(amiyaTouches, me);
+      expect((await me.touch(AMIYA_ID, false)).guide!.itemId).toBeTruthy();
+    }
     expect((await me.inbox()).filter((i) => i.kind === "amiya")).toHaveLength(5);
 
     await me.unfriend(AMIYA_ID);
@@ -387,7 +397,7 @@ describe("server world", () => {
 
   it("lets you touch back or crawl away from her touches once each, and only your own", async () => {
     const { guide } = await me.touch(AMIYA_ID, false);
-    const item = guide!.itemId;
+    const item = guide!.itemId!;
     const other = await signUp("other@example.com");
     await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
     await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
@@ -400,9 +410,9 @@ describe("server world", () => {
     await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
     expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ replied: true });
 
-    await me.ignore(back.guide!.itemId);
-    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ ignored: true, seen: true });
-    await expect(me.reply(back.guide!.itemId, false)).rejects.toThrow("默默爬走");
+    await me.ignore(back.guide!.itemId!);
+    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId!)).toMatchObject({ ignored: true, seen: true });
+    await expect(me.reply(back.guide!.itemId!, false)).rejects.toThrow("默默爬走");
     await me.markSeen([item]);
     expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ seen: true });
   });
@@ -577,15 +587,15 @@ describe("server world", () => {
     expect(sneaky).toMatchObject({ newFriend: null, guide: { id: "perlica", bold: false, kind: "touch", times: null } });
     const first = await me.touch(PERLICA_ID, true);
     expect(first).toMatchObject({ newFriend: "佩丽卡监督", guide: { id: "perlica", bold: true, kind: "friend", times: null } });
-    // sneaky and bold both count, this one included
-    expect(await me.touch(PERLICA_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch", times: 3 } });
+    // she has touched back once today: nothing more from her until the player's next day
+    expect(await me.touch(PERLICA_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch", itemId: null, times: null } });
     const rows = await db.select().from(perlicaTouches).where(eq(perlicaTouches.userId, me.id));
     expect(rows.filter((r) => r.direction === "to_perlica")).toHaveLength(3);
-    expect(rows.filter((r) => r.direction === "from_perlica").map((r) => r.kind).sort()).toEqual(["friend", "touch", "touch"]);
+    expect(rows.filter((r) => r.direction === "from_perlica").map((r) => r.kind).sort()).toEqual(["friend", "touch"]);
 
     const inbox = await me.inbox();
-    expect(inbox.filter((i) => i.kind === "perlica")).toHaveLength(3);
-    expect(inbox.find((i) => i.id === first.guide!.itemId)).toMatchObject({ what: "friend", bold: true, seen: false });
+    expect(inbox.filter((i) => i.kind === "perlica")).toHaveLength(2);
+    expect(inbox.find((i) => i.id === first.guide!.itemId!)).toMatchObject({ what: "friend", bold: true, seen: false });
     expect(await db.select().from(touches)).toEqual([]);
     expect(await db.select().from(friendships)).toEqual([]);
     expect((await userRow(me.id)).friendsEver).toBe(0);
@@ -598,7 +608,7 @@ describe("server world", () => {
     expect(list.map((f) => f.id)).toEqual([AMIYA_ID, PERLICA_ID]);
     expect(list[1]).toMatchObject({ profile: { displayName: "佩丽卡监督" }, roaches: [], history: [], pokeAgainAt: null });
     await expect(me.block(`friend:${PERLICA_ID}`)).rejects.toThrow("佩丽卡监督不是真人");
-    await expect(me.report(first.guide!.itemId, "spam")).rejects.toThrow("不是真人");
+    await expect(me.report(first.guide!.itemId!, "spam")).rejects.toThrow("不是真人");
     await expect(world.poke(me.id, PERLICA_ID)).rejects.toThrow("佩丽卡监督一直醒着");
     expect((await me.me()).perlica).toEqual({ friend: true, timer: null, week: null });
 
@@ -608,6 +618,10 @@ describe("server world", () => {
     await expect(me.touch(AMIYA_ID, false)).resolves.toBeTruthy();
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+    for (let day = 0; day < 4; day++) {
+      await dayBefore(perlicaTouches, me);
+      expect((await me.touch(PERLICA_ID, false)).guide!.itemId).toBeTruthy();
+    }
     expect((await me.inbox()).filter((i) => i.kind === "perlica")).toHaveLength(5);
 
     // 解除 leaves the timer alone; a bold touch makes them 触须之交 again
@@ -617,23 +631,27 @@ describe("server world", () => {
     expect((await me.friends()).map((f) => f.id)).toEqual([AMIYA_ID]);
   });
 
-  it("counts 佩丽卡监督's touches of the day by the player's own clock from 04:00", async () => {
+  it("touches back once a day by the player's own clock from 04:00, as 佩丽卡监督 does, counting a bold first touch", async () => {
     await db.update(users).set({ perlicaFriendSince: new Date() }).where(eq(users.id, me.id));
-    // the latest 04:00 in Beijing and in Nashville: never the same moment, so one day holds more than the other
+    // the latest 04:00 in Beijing and in Nashville: hours apart
     const beijing = deviceDay(-480).start;
     const nashville = deviceDay(360).start;
-    expect(beijing).not.toBe(nashville);
+    expect(Math.abs(beijing - nashville)).toBeGreaterThan(3_600_000);
     for (const [offset, start] of [
       [-480, beijing],
       [360, nashville],
     ]) {
-      await db.delete(perlicaTouches).where(eq(perlicaTouches.userId, me.id));
-      const earlier = [beijing + 1000, nashville + 1000, Math.min(beijing, nashville) - 60_000];
-      await db
-        .insert(perlicaTouches)
-        .values(earlier.map((t) => ({ userId: me.id, direction: "to_perlica", bold: false, createdAt: new Date(t) })));
-      const today = earlier.filter((t) => t >= start).length + 1;
-      expect((await world.touch(me.id, PERLICA_ID, true, offset)).guide!.times).toBe(today);
+      const after = async (touchedAt: number) => {
+        await db.delete(perlicaTouches).where(eq(perlicaTouches.userId, me.id));
+        await db.insert(perlicaTouches).values({ userId: me.id, direction: "to_perlica", bold: false, createdAt: new Date(touchedAt) });
+        return (await world.touch(me.id, PERLICA_ID, true, offset)).guide!;
+      };
+      // a touch a minute before their 04:00 was yesterday's: she answers this one
+      const answered = await after(start - 60_000);
+      expect(answered.itemId).toBeTruthy();
+      expect(answered.times).toBe(1);
+      // one just after it was today's: she has answered today already
+      expect(await after(start + 1000)).toMatchObject({ itemId: null, times: null });
     }
   });
 
@@ -643,8 +661,8 @@ describe("server world", () => {
     await db.update(users).set({ lastActiveAt: new Date(Date.now() - 4000 * 1000) }).where(eq(users.id, me.id));
     const report = (await perlica.here(me.id))!;
     const { guide } = await me.touch(PERLICA_ID, false);
-    const item = guide!.itemId;
-    const amiya = (await me.touch(AMIYA_ID, false)).guide!.itemId;
+    const item = guide!.itemId!;
+    const amiya = (await me.touch(AMIYA_ID, false)).guide!.itemId!;
 
     const other = await signUp("other@example.com");
     await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
@@ -664,8 +682,8 @@ describe("server world", () => {
     await me.ignore(item);
     expect((await me.inbox()).find((i) => i.id === item)).toMatchObject({ ignored: true, seen: true });
     await expect(me.reply(item, false)).rejects.toThrow("默默爬走");
-    await me.markSeen([back.guide!.itemId]);
-    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ seen: true });
+    await me.markSeen([back.guide!.itemId!]);
+    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId!)).toMatchObject({ seen: true });
   });
 
   it("forgets touches with 佩丽卡监督 after 90 days, and all of them with the account", async () => {
@@ -693,13 +711,14 @@ describe("server world", () => {
     expect(await me.touch(TALULAH_ID, false)).toMatchObject({ newFriend: null, guide: { id: "talulah", bold: false, kind: "touch" } });
     const shake = await me.touch(TALULAH_ID, true);
     expect(shake).toMatchObject({ newFriend: "塔露拉干员", guide: { id: "talulah", bold: true, kind: "friend" } });
-    expect(await me.touch(TALULAH_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch" } });
+    // she has touched back once today: nothing more from her until the player's next day
+    expect(await me.touch(TALULAH_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch", itemId: null } });
     const rows = await db.select().from(talulahTouches).where(eq(talulahTouches.userId, me.id));
     expect(rows.filter((r) => r.direction === "to_talulah").map((r) => r.bold).sort()).toEqual([false, true, true]);
-    expect(rows.filter((r) => r.direction === "from_talulah").map((r) => r.kind).sort()).toEqual(["handshake", "touch", "touch"]);
+    expect(rows.filter((r) => r.direction === "from_talulah").map((r) => r.kind).sort()).toEqual(["handshake", "touch"]);
 
     const inbox = await me.inbox();
-    expect(inbox.find((i) => i.id === shake.guide!.itemId)).toMatchObject({ kind: "talulah", line: "handshake", seen: false });
+    expect(inbox.find((i) => i.id === shake.guide!.itemId!)).toMatchObject({ kind: "talulah", line: "handshake", seen: false });
     expect(inbox.some((i) => i.kind === "touch")).toBe(false);
     expect(await db.select().from(touches)).toEqual([]);
     expect(await db.select().from(friendships)).toEqual([]);
@@ -715,7 +734,7 @@ describe("server world", () => {
     expect(list[2]).toMatchObject({ profile: { displayName: "塔露拉干员" }, history: [], pokeAgainAt: null });
     expect(list[2].roaches).toEqual([expect.objectContaining({ id: TALULAH_ID, friend: true, guide: true, ...FIRE_AT })]);
     await expect(me.block(`friend:${TALULAH_ID}`)).rejects.toThrow("塔露拉干员不是真人，不用拉黑。");
-    await expect(me.report(shake.guide!.itemId, "spam")).rejects.toThrow("不是真人");
+    await expect(me.report(shake.guide!.itemId!, "spam")).rejects.toThrow("不是真人");
     await expect(world.poke(me.id, TALULAH_ID)).rejects.toThrow("塔露拉干员一直醒着，碰碰她吧。");
     expect((await me.me()).talulah).toEqual({ friend: true, visited: false });
 
@@ -725,6 +744,10 @@ describe("server world", () => {
     await expect(me.touch(PERLICA_ID, false)).resolves.toBeTruthy();
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+    for (let day = 0; day < 4; day++) {
+      await dayBefore(talulahTouches, me);
+      expect((await me.touch(TALULAH_ID, false)).guide!.itemId).toBeTruthy();
+    }
     expect((await me.inbox()).filter((i) => i.kind === "talulah")).toHaveLength(5);
 
     // 解除: she stays; the next bold touch shakes hands again
@@ -735,7 +758,7 @@ describe("server world", () => {
   });
 
   it("lets you answer or crawl away from 塔露拉干员's once each, and only your own", async () => {
-    const item = (await me.touch(TALULAH_ID, false)).guide!.itemId;
+    const item = (await me.touch(TALULAH_ID, false)).guide!.itemId!;
     const other = await signUp("other@example.com");
     await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
     await expect(other.ignore(item)).rejects.toThrow("找不到这条消息了");
@@ -747,9 +770,9 @@ describe("server world", () => {
     expect(back).toMatchObject({ newFriend: "塔露拉干员", guide: { kind: "friend" } });
     await expect(me.reply(item, false)).rejects.toThrow("已经碰过 TA 了");
     await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
-    await me.ignore(back.guide!.itemId);
-    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ ignored: true, seen: true });
-    await expect(me.reply(back.guide!.itemId, false)).rejects.toThrow("默默爬走");
+    await me.ignore(back.guide!.itemId!);
+    expect((await me.inbox()).find((i) => i.id === back.guide!.itemId!)).toMatchObject({ ignored: true, seen: true });
+    await expect(me.reply(back.guide!.itemId!, false)).rejects.toThrow("默默爬走");
   });
 
   it("welcomes a player's first roach by 塔露拉干员's fire, within 300 m, once for good", async () => {
@@ -858,14 +881,14 @@ describe("server world", () => {
       await me.touch(AMIYA_ID, false);
       const jealous = await me.touch(PERLICA_ID, true);
       expect(jealous.guide).toMatchObject({ kind: "jealous", others: 3, line: 0, times: 1 });
-      expect((await me.inbox()).find((i) => i.id === jealous.guide!.itemId)).toMatchObject({
+      expect((await me.inbox()).find((i) => i.id === jealous.guide!.itemId!)).toMatchObject({
         what: "jealous",
         others: 3,
         line: 0,
         times: 1,
       });
-      // once a day: next comes the usual, and she has spoken up today, so no 罗德岛那位 either
-      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "touch", times: 2 });
+      // she answers once a day, so nothing more today: no 罗德岛那位 either
+      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "touch", itemId: null, times: null });
 
       // touching 塔露拉干员 counts too; only 阿米娅向导 is her other line
       const other = await signUp("other@example.com");
@@ -939,7 +962,10 @@ describe("server world", () => {
       await herYesterday(me);
       await me.touch(AMIYA_ID, false);
       expect((await me.touch(PERLICA_ID, false)).guide).toMatchObject({ kind: "birthday" });
-      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "birthday", times: 2 });
+      // once a day, birthday or not; a bold first touch the next day is counted
+      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "touch", itemId: null });
+      await herYesterday(me);
+      expect((await me.touch(PERLICA_ID, true)).guide).toMatchObject({ kind: "birthday", times: 1 });
     });
 
     it("is jealous once however many touches come at once", async () => {
@@ -1006,16 +1032,16 @@ describe("server world", () => {
       expect(await me.touch(MINGHE_ID, false)).toMatchObject({ newFriend: null, guide: { id: "minghe", bold: false, kind: "touch" } });
       const first = await me.touch(MINGHE_ID, true);
       expect(first).toMatchObject({ newFriend: "明河都尉", guide: { id: "minghe", bold: true, kind: "friend" } });
-      expect(await me.touch(MINGHE_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch" } });
+      // he has touched back once today: nothing more from him until the player's next day
+      expect(await me.touch(MINGHE_ID, true)).toMatchObject({ newFriend: null, guide: { kind: "touch", itemId: null } });
       const rows = await db.select().from(mingheTouches).where(eq(mingheTouches.userId, me.id));
       expect(rows.filter((r) => r.direction === "to_minghe").map((r) => r.bold).sort()).toEqual([false, true, true]);
       expect(rows.filter((r) => r.direction === "from_minghe").map((r) => `${r.kind}:${r.bold}`).sort()).toEqual([
         "friend:true",
         "touch:false",
-        "touch:true",
       ]);
       const inbox = await me.inbox();
-      expect(inbox.find((i) => i.id === first.guide!.itemId)).toMatchObject({ kind: "minghe", line: "friend", seen: false, stop: null });
+      expect(inbox.find((i) => i.id === first.guide!.itemId!)).toMatchObject({ kind: "minghe", line: "friend", seen: false, stop: null });
       expect(inbox.some((i) => i.kind === "touch")).toBe(false);
       expect(await db.select().from(touches)).toEqual([]);
       expect(await db.select().from(friendships)).toEqual([]);
@@ -1034,7 +1060,7 @@ describe("server world", () => {
         expect.objectContaining({ id: MINGHE_ID, friend: true, guide: true, ...stationOf(today()).at }),
       ]);
       await expect(me.block(`friend:${MINGHE_ID}`)).rejects.toThrow("明河都尉不是真人，不用拉黑。");
-      await expect(me.report(first.guide!.itemId, "spam")).rejects.toThrow("不是真人");
+      await expect(me.report(first.guide!.itemId!, "spam")).rejects.toThrow("不是真人");
       await expect(world.poke(me.id, MINGHE_ID)).rejects.toThrow("明河都尉一直醒着，碰碰他吧。");
       expect((await me.me()).minghe).toEqual({ friend: true, riding: null, dayShift: 0 });
 
@@ -1044,6 +1070,10 @@ describe("server world", () => {
       await expect(me.touch(TALULAH_ID, false)).resolves.toBeTruthy();
       await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
       await expect(me.touch((await publicAt(me, tester("t1").roaches[0])).id, false)).resolves.toBeTruthy();
+      for (let day = 0; day < 4; day++) {
+        await dayBefore(mingheTouches, me);
+        expect((await me.touch(MINGHE_ID, false)).guide!.itemId).toBeTruthy();
+      }
       expect((await me.inbox()).filter((i) => i.kind === "minghe")).toHaveLength(5);
 
       // 解除: he rides on; the next bold touch makes them 触须之交 again
@@ -1054,7 +1084,7 @@ describe("server world", () => {
     });
 
     it("lets you answer or crawl away from his once each, and only your own", async () => {
-      const item = (await me.touch(MINGHE_ID, false)).guide!.itemId;
+      const item = (await me.touch(MINGHE_ID, false)).guide!.itemId!;
       expect(item.startsWith("m:")).toBe(true);
       const other = await signUp("other@example.com");
       await expect(other.reply(item, true)).rejects.toThrow("找不到这条消息了");
@@ -1067,9 +1097,9 @@ describe("server world", () => {
       expect(back).toMatchObject({ newFriend: "明河都尉", guide: { id: "minghe", kind: "friend" } });
       await expect(me.reply(item, false)).rejects.toThrow("已经碰过 TA 了");
       await expect(me.ignore(item)).rejects.toThrow("已经碰过 TA 了");
-      await me.ignore(back.guide!.itemId);
-      expect((await me.inbox()).find((i) => i.id === back.guide!.itemId)).toMatchObject({ ignored: true, seen: true });
-      await expect(me.reply(back.guide!.itemId, false)).rejects.toThrow("默默爬走");
+      await me.ignore(back.guide!.itemId!);
+      expect((await me.inbox()).find((i) => i.id === back.guide!.itemId!)).toMatchObject({ ignored: true, seen: true });
+      await expect(me.reply(back.guide!.itemId!, false)).rejects.toThrow("默默爬走");
       // answering him counts towards his 20 like any touch
       const mine = await db
         .select()
@@ -1368,6 +1398,33 @@ describe("server world", () => {
 
     const [back] = await t1.inbox();
     expect(back).toMatchObject({ kind: "touch", target: "touch", bold: true });
+  });
+
+  it("lets two players touch back and forth three times each a day, counted along the answers", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "clone" }, TOKYO);
+    const t1 = await demo("t1");
+    const waiting = async (p: Player) => (await p.inbox()).find((i) => i.kind === "touch" && !i.replied && !i.ignored)!.id;
+    await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, false);
+    for (let i = 0; i < 2; i++) {
+      await me.reply(await waiting(me), false);
+      await t1.reply(await waiting(t1), i === 1);
+    }
+    await me.reply(await waiting(me), false);
+    // three each: the touch on the map and two touch-backs, then one more from me
+    const fourth = await waiting(t1);
+    await expect(t1.reply(fourth, false)).rejects.toThrow("今天已经碰过这只蟑螂 3 次了，明天再来吧。");
+    expect((await db.select().from(touches)).map((t) => t.fromUserId === me.id).sort()).toEqual([false, false, false, true, true, true]);
+
+    // a touch on another roach of mine starts its own back-and-forth: counted apart, never by owner
+    await t1.touch((await publicAt(t1, TOKYO)).id, false);
+    await expect(me.reply(await waiting(me), false)).resolves.toEqual({ newFriend: null });
+
+    // a day on, the first one goes on; however its id is spelled, an item is answered once
+    await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
+    await expect(t1.reply(fourth, false)).resolves.toEqual({ newFriend: null });
+    await expect(t1.reply(`t:${fourth.slice(2).toUpperCase()}`, false)).rejects.toThrow("已经碰过 TA 了");
+    await expect(t1.reply(`${fourth}:again`, false)).rejects.toThrow("已经碰过 TA 了");
   });
 
   it("lets you crawl away from a touch without the toucher ever knowing", async () => {
@@ -1753,6 +1810,23 @@ describe("server world", () => {
       lastWeekSignupsBack: 1,
       friendshipsWeek: 0,
     });
+  });
+
+  it("shows a 触须之交 the UID only once its owner fills it in and ticks 把 UID 一起给对方看", async () => {
+    const fan = { ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights" as const] };
+    await me.saveProfile(fan);
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await befriend(me, "t1");
+    const t1 = await demo("t1");
+    // no UID yet
+    expect((await t1.friends())[0].profile.uid).toBeUndefined();
+    // filled in, but not shared: still nothing
+    const withUid = { ...fan, uid: { arknights: "12345678", endfield: "" }, uidServer: { arknights: "bili", endfield: "" } };
+    await me.saveProfile(withUid);
+    expect((await t1.friends())[0].profile.uid).toBeUndefined();
+    // shared: the friend sees it, with its server
+    await me.saveProfile({ ...withUid, shareUid: true });
+    expect((await t1.friends())[0].profile).toMatchObject({ uid: { arknights: "12345678" }, uidServer: { arknights: "bili" } });
   });
 
   it("shows 我的助战 on profile cards to Arknights players' friends, and tells them when it changes", async () => {

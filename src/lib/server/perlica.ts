@@ -187,19 +187,20 @@ const birthdays = (g.__perlicaBirthday ??= new Map());
 const isBirthday = (userId: string, now: number) => perlicaBirthday(now) || (birthdays.get(userId) ?? 0) > now;
 
 /**
- * The player touches her, maybe answering one of hers: she touches back the same
- * way at once, with one line, the first that fits of: their first bold touch,
+ * The player touches her, maybe answering one of hers: the first touch of their day
+ * (and the one making them 触须之交, whenever it comes) she touches back the same
+ * way at once, the rest of the day not, with one line, the first that fits of: their first bold touch,
  * which makes them 触须之交 ("friend"); her birthday; jealous, on the first touch of
  * her today by a 触须之交 who touched others first ("jealous"); 「罗德岛那位……」 when
  * they touched 阿米娅向导 today ("aside", once a day, and never on a jealous day);
  * or the usual. On bold ones that do not make them 触须之交 she counts their touches
- * of the day. The day is theirs, by their device's clock from 04:00 (offsetMin, never stored).
+ * of the day (so far, 1). The day is theirs, by their device's clock from 04:00 (offsetMin, never stored).
  */
 async function touchBack(userId: string, bold: boolean, replyTo: string | null, offsetMin: unknown): Promise<TouchResult> {
   await her.allow(userId);
   const now = Date.now();
   const since = new Date(deviceDay(offsetMin, now).start);
-  let done: { id: string; kind: Answer; times: number | null; others: number | null; line: number | null };
+  let done: { id: string | null; kind: Answer; times: number | null; others: number | null; line: number | null };
   try {
     done = await db.transaction(async (tx) => {
       const [u] = await lockPlayer(tx, userId);
@@ -228,7 +229,9 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
           line = 0;
         }
       }
-      const answer = await her.pair(tx, userId, bold, replyTo, kind);
+      const answer = await her.pair(tx, userId, { bold, replyTo, dayStart: since, kind });
+      // she has touched back once already today: nothing more from her
+      if (!answer) return { id: null, kind: "touch" as const, times: null, others: null, line: null };
       const times = bold && kind !== "friend" ? await her.touchesSince(tx, userId, since) : null;
       if (times !== null || others !== null || line !== null) {
         await tx.update(perlicaTouches).set({ times, others, line }).where(eq(perlicaTouches.id, answer.id));
@@ -244,7 +247,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     newFriend: done.kind === "friend" ? PERLICA.name : null,
     guide: {
       id: PERLICA.id,
-      itemId: her.itemId(done.id),
+      itemId: done.id && her.itemId(done.id),
       bold,
       kind: done.kind,
       times: done.times,

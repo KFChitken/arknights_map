@@ -148,6 +148,7 @@ import SafetySheet from "./app/SafetySheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
 import { DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import FriendsSheet, { FriendsMark } from "./app/FriendsSheet";
 import PartyScene from "./app/PartyScene";
 import { playPartyMusic, preloadPartyMusic, stopPartyMusic, type PartyMusic } from "./app/partyMusic";
 import { PARTY_ZOOM } from "@/lib/party";
@@ -254,6 +255,8 @@ type Panel =
   /** target: the message the profile came with, for blocking or reporting */
   | { kind: "viewProfile"; profile: PublicProfile; target: string; back: Panel }
   | { kind: "friend"; friendId: string; back: Panel | null }
+  /** Everyone you are 触须之交 with, as a grid (from the dock) */
+  | { kind: "friends" }
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
   | { kind: "login"; reason?: string }
@@ -1045,6 +1048,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   const touchedToast = (bold: boolean) =>
     setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
+  /** A guide touches back once a day (src/lib/server/guides.ts); this touch got nothing back */
+  const quietGuideToast = (id: GuideId) =>
+    setToast(`${GUIDES[id].name}今天已经碰回过你了，明天再碰碰${GUIDES[id].pronoun}吧。`);
 
   /**
    * Act out a touch over the map, on this screen only (TouchStage), and resolve once it is
@@ -1194,11 +1200,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setSelected(null);
     const loading = res.newFriend ? Promise.all([loadFriends(), loadMe()]) : null;
     const played = await playTouch(roach, res.newFriend ? "friend" : bold ? "bold" : "sneaky");
+    const { itemId } = res.guide;
     if (res.newFriend) befriendedToast(res.newFriend);
-    else touchedToast(bold);
+    else if (itemId) touchedToast(bold);
+    else quietGuideToast(id);
     if (id === AMIYA_ID && step === "touch") updateProgress({ practiced: true });
     await loading;
-    const { itemId } = res.guide;
+    // she touched back once already today: nothing more from her
+    if (!itemId) return;
     const line = guideLine(res.guide);
     const at = id === PERLICA_ID ? perlicaShown : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : AMIYA_AT;
     window.setTimeout(async () => {
@@ -1219,12 +1228,21 @@ export default function MapApp({ cn }: { cn: boolean }) {
     }, played ? 0 : 1500);
   };
 
-  /** Touch back one of 阿米娅向导's touches from a card, where her answer shows at once and so counts as seen. Resolves to her line. */
+  /**
+   * Touch back one of 阿米娅向导's touches from a card, where her answer shows at once and so counts as
+   * seen. Resolves to her line, "" when she touched back once already today, null when it did not go.
+   */
   const touchBackAmiya = async (item: AmiyaItem, bold: boolean) => {
     const res = await act((w) => w.reply(item.id, bold));
     if (!res?.guide) return null;
-    await worldRef.current!.markSeen([item.id, res.guide.itemId]).catch(() => {});
+    const answer = res.guide.itemId;
+    await worldRef.current!.markSeen(answer ? [item.id, answer] : [item.id]).catch(() => {});
     if (res.newFriend) befriendedToast(res.newFriend);
+    // she touched back once already today: the card says so
+    if (!answer) {
+      await Promise.all([loadInbox(), loadMe()]);
+      return "";
+    }
     const line = guideLine(res.guide);
     say(AMIYA_ID, line);
     if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
@@ -1271,10 +1289,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
-    // a guide answers at once: her touch is now at the top of 收到的触碰
-    else if (res.guide) setToast(`${GUIDES[res.guide.id].name}碰回了你。`);
+    // a guide answers at once: her touch is now at the top of 收到的触碰 (once a day)
+    else if (res.guide?.itemId) setToast(`${GUIDES[res.guide.id].name}碰回了你。`);
+    else if (res.guide) quietGuideToast(res.guide.id);
     else repliedToast(bold);
-    if (res.guide) say(res.guide.id, guideLine(res.guide));
+    if (res.guide?.itemId) say(res.guide.id, guideLine(res.guide));
     if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
     keepSnapshot(items);
@@ -2312,6 +2331,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onClose={() => setPanel(null)}
           />
         );
+      case "friends":
+        return (
+          <FriendsSheet
+            friends={shownFriends}
+            onOpen={(friendId) => setPanel({ kind: "friend", friendId, back: p })}
+            onClose={() => setPanel(null)}
+          />
+        );
       case "friend": {
         const friend = shownFriends.find((f) => f.id === p.friendId);
         if (!friend) return null;
@@ -2684,7 +2711,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
         </footer>
       )}
       {!placing && me && (
-        <footer className="actions">
+        <footer className={`actions${selected ? "" : " beside-dock"}`}>
           {main ? (
             <>
               <button onClick={() => setPanel({ kind: "mine" })}>我的蟑螂</button>
@@ -2715,6 +2742,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
               <path d="M4 7.5 12 13l8-5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
             </svg>
             {unseen > 0 && <span className={`badge ${badgePop ? "ta-dbadge" : ""}`}>{unseen}</span>}
+          </button>
+          <button
+            className="dock-friends"
+            onClick={() => {
+              setSelected(null);
+              setPanel({ kind: "friends" });
+              loadFriends().catch(() => {});
+            }}
+          >
+            <FriendsMark size={28} />
+            <span className="dock-name">触须之交</span>
           </button>
         </div>
       )}

@@ -41,6 +41,12 @@ export const RADAR_REUSE_MIN = 10;
 /** Touches one player may send per day, and the wait before touching the same roach again. */
 export const TOUCHES_PER_DAY = 60;
 export const TOUCH_SAME_ROACH_HOURS = 24;
+/**
+ * Touching back and forth: how many times a day each of the two may touch within one
+ * back-and-forth (a touch on the map, or an answer to a declaration or reaction, and the
+ * touch-backs that follow it), the first touch included.
+ */
+export const SAME_ROACH_TOUCHES_PER_DAY = 3;
 /** 戳一戳: how often one player may poke the same 触须之交's sleeping roach. */
 export const POKE_EVERY_DAYS = 7;
 

@@ -4,7 +4,7 @@ import { isNearFire, TALULAH, talulahRoach } from "../talulah";
 import type { LngLat } from "../types";
 import { WorldError, type TalulahItem, type TouchResult } from "../world/types";
 import { db } from "./db";
-import { guideFriend, guideTouches, isUniqueViolation, type GuideRow, type GuideTable } from "./guides";
+import { deviceDay, guideFriend, guideTouches, isUniqueViolation, type GuideRow, type GuideTable } from "./guides";
 import { talulahTouches, users } from "./schema";
 
 /**
@@ -34,13 +34,14 @@ function toItem(r: GuideRow, replied: boolean): TalulahItem {
 }
 
 /**
- * The player touches her, maybe answering one of hers: she answers at once, openly
- * whichever way they touched (bold keeps how they did, which picks her line). Their
- * first bold touch is a handshake that makes them 触须之交.
+ * The player touches her, maybe answering one of hers: the first touch of their day she
+ * answers at once, openly whichever way they touched (bold keeps how they did, which picks
+ * her line), the rest of the day not. Their first bold touch is a handshake that makes them
+ * 触须之交, answered whenever it comes.
  */
-async function touchBack(userId: string, bold: boolean, replyTo: string | null): Promise<TouchResult> {
+async function touchBack(userId: string, bold: boolean, replyTo: string | null, offsetMin?: unknown): Promise<TouchResult> {
   await her.allow(userId);
-  let done: { id: string; friend: boolean };
+  let done: { id: string | null; friend: boolean };
   try {
     done = await db.transaction(async (tx) => {
       const made = bold
@@ -51,8 +52,9 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
             .returning({ id: users.id })
         : [];
       const friend = made.length > 0;
-      const answer = await her.pair(tx, userId, bold, replyTo, friend ? "handshake" : "touch");
-      return { id: answer.id, friend };
+      const dayStart = new Date(deviceDay(offsetMin).start);
+      const answer = await her.pair(tx, userId, { bold, replyTo, dayStart, kind: friend ? "handshake" : "touch" });
+      return { id: answer?.id ?? null, friend };
     });
   } catch (e) {
     // two answers to the same one of hers at once: reply_to is unique, so one fails
@@ -63,7 +65,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
     newFriend: done.friend ? TALULAH.name : null,
     guide: {
       id: TALULAH.id,
-      itemId: her.itemId(done.id),
+      itemId: done.id && her.itemId(done.id),
       bold,
       kind: done.friend ? "friend" : "touch",
       times: null,
@@ -73,12 +75,12 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null):
   };
 }
 
-export const touchTalulah = (userId: string, bold: boolean) => touchBack(userId, bold, null);
+export const touchTalulah = (userId: string, bold: boolean, offsetMin?: unknown) => touchBack(userId, bold, null, offsetMin);
 
 /** Touch back one of hers, once; it counts towards her 20 like any touch. */
-export async function replyTalulah(userId: string, itemId: string, bold: boolean) {
+export async function replyTalulah(userId: string, itemId: string, bold: boolean, offsetMin?: unknown) {
   const item = await her.toAnswer(userId, itemId);
-  return touchBack(userId, bold, item.id);
+  return touchBack(userId, bold, item.id, offsetMin);
 }
 
 export const ignoreTalulah = (userId: string, itemId: string) => her.ignore(userId, itemId);

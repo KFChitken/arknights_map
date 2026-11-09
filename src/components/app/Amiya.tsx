@@ -14,12 +14,14 @@ export const AmiyaPicture = ({ size, friend = true }: { size: number; friend?: b
 
 /**
  * 偷偷碰回去 / 大胆碰回去 on one of her touches; once answered, what she said back.
- * onTouchBack resolves to her line, or null when the touch did not go through.
+ * onTouchBack resolves to her line, "" when she has touched back once already today (she
+ * does once a day), or null when the touch did not go through.
  */
 export function AmiyaTouchBack({ onTouchBack }: { onTouchBack: (bold: boolean) => Promise<string | null> }) {
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   if (answer) return <p className="amiya-answer">她碰回来了：「{answer}」</p>;
+  if (answer === "") return <p className="amiya-answer">她今天已经碰回过你了，明天再碰碰她吧。</p>;
   const go = async (bold: boolean) => {
     setBusy(true);
     setAnswer(await onTouchBack(bold));

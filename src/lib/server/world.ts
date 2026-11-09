@@ -24,6 +24,7 @@ import {
   RADAR_RADIUS_KM,
   RADAR_REUSE_MIN,
   RADAR_SCANS_PER_DAY,
+  SAME_ROACH_TOUCHES_PER_DAY,
   TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
 } from "../rules";
@@ -155,8 +156,8 @@ const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
     unfriend: unfriendPerlica,
   },
   talulah: {
-    touch: (userId, bold) => touchTalulah(userId, bold),
-    reply: (userId, itemId, bold) => replyTalulah(userId, itemId, bold),
+    touch: (userId, bold, offsetMin) => touchTalulah(userId, bold, offsetMin),
+    reply: (userId, itemId, bold, offsetMin) => replyTalulah(userId, itemId, bold, offsetMin),
     ignore: ignoreTalulah,
     see: seeTalulah,
     inbox: talulahInbox,
@@ -164,8 +165,8 @@ const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
     unfriend: unfriendTalulah,
   },
   minghe: {
-    touch: (userId, bold) => touchMinghe(userId, bold),
-    reply: (userId, itemId, bold) => replyMinghe(userId, itemId, bold),
+    touch: (userId, bold, offsetMin) => touchMinghe(userId, bold, offsetMin),
+    reply: (userId, itemId, bold, offsetMin) => replyMinghe(userId, itemId, bold, offsetMin),
     ignore: ignoreMinghe,
     see: seeMinghe,
     inbox: mingheInbox,
@@ -632,13 +633,38 @@ async function replied(userId: string, itemIds: string[]) {
   return new Set(rows.map((r) => r.re));
 }
 
+/**
+ * How many times a player touched within one back-and-forth in the last day: the touch they
+ * would answer, the one it answered, and so on back to where it began (a touch on the map, or
+ * an answer to a declaration or reaction). Followed along the answers only, never by who owns
+ * which roach, so reaching the limit cannot tell anyone that two roaches share an owner.
+ */
+async function touchesInChain(userId: string, touchId: string) {
+  const since = ago(DAY).toISOString();
+  const [row] = await db.execute<{ n: number }>(sql`
+    with recursive chain as (
+      select id, from_user_id, reply_to from touches where id = ${touchId} and created_at > ${since}::timestamptz
+      union all
+      select t.id, t.from_user_id, t.reply_to
+      from chain c
+      join touches t
+        on t.id = case when c.reply_to ~ '^t:[0-9a-f-]{36}$' then substring(c.reply_to from 3)::uuid end
+      where t.created_at > ${since}::timestamptz
+    )
+    select count(*)::int as n from chain where from_user_id = ${userId}`);
+  return Number(row?.n ?? 0);
+}
+
 /** Touch back whoever sent an inbox item. */
 export async function reply(userId: string, itemId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
   const guide = guideOfItem(String(itemId));
   if (guide) return GUIDE_WORLD[guide.id].reply(userId, String(itemId), Boolean(bold), offsetMin);
-  const [kind, id] = String(itemId).split(":");
+  const [kind, raw] = String(itemId).split(":");
+  // one spelling per item, so an item is answered once however its id is written
+  const id = (raw ?? "").toLowerCase();
+  itemId = `${kind}:${id}`;
   let to: string | undefined;
-  if (UUID.test(id ?? "")) {
+  if (UUID.test(id)) {
     if (kind === "t") {
       const [t] = await db
         .select({ from: touches.fromUserId, ignoredAt: touches.ignoredAt })
@@ -667,6 +693,9 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   }
   if (!to) throw new WorldError("找不到这条消息的主人了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
+  if (kind === "t" && (await touchesInChain(userId, id)) >= SAME_ROACH_TOUCHES_PER_DAY) {
+    throw new WorldError(`今天已经碰过这只蟑螂 ${SAME_ROACH_TOUCHES_PER_DAY} 次了，明天再来吧。`);
+  }
   await checkTouchQuota(userId);
   const withheld = await blockedBetween(userId, to);
   await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId, withheld });

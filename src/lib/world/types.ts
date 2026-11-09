@@ -151,7 +151,8 @@ export type TouchResult = {
   newFriend: string | null;
   guide?: {
     id: GuideId;
-    itemId: string;
+    /** Her touch back; null when she has touched back once already today (src/lib/server/guides.ts) */
+    itemId: string | null;
     bold: boolean;
     /** 佩丽卡监督 also answers jealous, visiting (aside) or on her birthday */
     kind: "touch" | "friend" | "jealous" | "aside" | "birthday";

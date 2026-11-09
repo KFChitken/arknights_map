@@ -20,35 +20,38 @@ type AmiyaItem = Extract<InboxItem, { kind: "amiya" }>;
 const her = guideTouches(AMIYA, amiyaTouches);
 
 /**
- * The player touches her, maybe answering one of her touches: she touches back the same
- * way at once, and bold makes them 触须之交. When they touched 佩丽卡监督 today too, she
- * may say something as well (offsetMin: the device's time zone, for which day it is).
+ * The player touches her, maybe answering one of her touches: the first touch of their day
+ * she touches back the same way at once, the rest of the day not, and bold makes them
+ * 触须之交 (always answered). When they touched 佩丽卡监督 today too, she may say
+ * something as well (offsetMin: the device's time zone, for which day it is).
  */
 async function touchBack(userId: string, bold: boolean, replyTo: string | null, offsetMin: unknown): Promise<TouchResult> {
   await her.allow(userId);
-  let answer: { id: string };
+  let done: { answer: { id: string } | null; friend: boolean };
   let aside: TouchResult["aside"] | null = null;
   try {
-    answer = await db.transaction(async (tx) => {
-      const row = await her.pair(tx, userId, bold, replyTo);
+    done = await db.transaction(async (tx) => {
+      // the first bold touch makes them 触须之交, which she always answers
+      const made = bold
+        ? await tx
+            .update(users)
+            .set({ amiyaFriendSince: new Date() })
+            .where(and(eq(users.id, userId), isNull(users.amiyaFriendSince)))
+            .returning({ id: users.id })
+        : [];
+      const dayStart = new Date(deviceDay(offsetMin).start);
+      const answer = await her.pair(tx, userId, { bold, replyTo, dayStart, always: made.length > 0 });
       aside = await asideFromAmiya(tx, userId, offsetMin);
-      return row;
+      return { answer, friend: made.length > 0 };
     });
   } catch (e) {
     // two answers to the same touch of hers at once: reply_to is unique, so one fails
     if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
     throw e;
   }
-  const made = bold
-    ? await db
-        .update(users)
-        .set({ amiyaFriendSince: new Date() })
-        .where(and(eq(users.id, userId), isNull(users.amiyaFriendSince)))
-        .returning({ id: users.id })
-    : [];
   return {
-    newFriend: made.length ? AMIYA.name : null,
-    guide: { id: AMIYA.id, itemId: her.itemId(answer.id), bold, kind: "touch", times: null, others: null, line: null },
+    newFriend: done.friend ? AMIYA.name : null,
+    guide: { id: AMIYA.id, itemId: done.answer && her.itemId(done.answer.id), bold, kind: "touch", times: null, others: null, line: null },
     ...(aside ? { aside } : {}),
   };
 }
