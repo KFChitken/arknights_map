@@ -236,6 +236,19 @@ async function checkCodes(now: number): Promise<Finding[]> {
 }
 
 const MAPS: Record<string, string> = { amap: "高德", osm: "OSM 底图", overseas: "我们自己的海外底图" };
+
+/** What 腾讯位置服务's status means, when it turns away the key of the place suggestions */
+const TENCENT_SAYS: Record<string, string> = {
+  "110": "这个网站不在 Key 的域名白名单里",
+  "111": "签名验证失败",
+  "112": "IP 未被授权",
+  "113": "Key 没开这个功能",
+  "121": "Key 今天的调用量用完了",
+  "190": "Key 无效",
+  "199": "Key 没开 WebServiceAPI",
+  "301": "页面里没有 Key",
+  "311": "Key 格式不对",
+};
 const MAP_TROUBLE: Record<string, string> = {
   load: "没加载出来",
   key: "Key 异常",
@@ -254,7 +267,8 @@ function mapTrouble(code: string) {
  * 高德 saying its key is wrong or used up is clear enough three times in ten minutes; other
  * trouble (a slow phone network, a tile now and then) only when it adds up to ten in half an hour.
  * The server's own place search being told by 高德 that its allowance is used up is told on its
- * own, for as long as the day lasts: the map itself is fine.
+ * own, for as long as the day lasts: the map itself is fine. So are pages saying 腾讯位置服务
+ * turned away the key of their place suggestions, three times in half an hour.
  */
 async function checkMaps(now: number): Promise<Finding[]> {
   const findings: Finding[] = [];
@@ -267,7 +281,21 @@ async function checkMaps(now: number): Promise<Finding[]> {
       advice: "地图和点地图放蟑螂不受影响；内地玩家搜地名会改用 OpenStreetMap，下个月 1 日高德额度恢复。个人账号买不了更多。",
     });
   }
-  const list = recent("map", 30 * MINUTE, now).filter((s) => !s.code.startsWith("amap:search:"));
+  const tencent = recent("map", 30 * MINUTE, now)
+    .filter((s) => s.code.startsWith("tencent:search:"))
+    .map((s) => s.code.slice("tencent:search:".length));
+  if (tencent.length >= 3) {
+    const usedUp = tencent.filter((c) => c === "121").length * 2 > tencent.length;
+    findings.push({
+      key: "tencent",
+      title: usedUp ? "腾讯打字提示今天的额度用完了" : "腾讯打字提示的 Key 被拒了",
+      detail: `30 分钟内有 ${tencent.length} 个页面说腾讯位置服务不给打字提示：${tally(tencent, (c) => `${c}（${TENCENT_SAYS[c] ?? "其他"}）`)}。`,
+      advice: usedUp
+        ? "地图和搜地点不受影响：内地玩家打字时的提示改用 OpenStreetMap，明天 0 点（北京时间）腾讯的额度恢复。每天用了多少、这把 Key 分到多少，在腾讯位置服务控制台（https://lbs.qq.com/dev/console）的配额管理里看。"
+        : "地图和搜地点不受影响：内地玩家打字时的提示改用 OpenStreetMap。到腾讯位置服务控制台（https://lbs.qq.com/dev/console）看这把 Key：要开 WebServiceAPI，域名白名单要有 zhoupmap.com，配额管理里要给它分「关键词输入提示」的额度。这类报告谁都能发，偶尔几次也可能是有人乱发。",
+    });
+  }
+  const list = recent("map", 30 * MINUTE, now).filter((s) => !s.code.startsWith("amap:search:") && !s.code.startsWith("tencent:"));
   const keys = list.filter((s) => s.code.startsWith("amap:key:") && now - s.at < 10 * MINUTE);
   if (keys.length >= 3 || list.length >= 10) {
     findings.push({

@@ -1,20 +1,23 @@
+import { reportMapTrouble } from "@/components/map/report";
 import { nominatimPlaces, nominatimUrl, photonPlaces, photonUrl } from "./osm";
+import { tencentTips } from "./tencent";
 import type { LngLat, MapView } from "./types";
 
 /** A search hit, always in WGS-84. */
 export type Place = LngLat & { name: string; detail: string };
 
-/** osm: some places came from OpenStreetMap, which then needs crediting */
-export type PlaceResults = { places: Place[]; osm: boolean };
+/** osm, tencent: some places came from OpenStreetMap or from 腾讯位置服务, which then need crediting */
+export type PlaceResults = { places: Place[]; osm: boolean; tencent?: boolean };
 
 /** Our server's place search (/api/geo) has too many waiting: the player can try again in a moment */
 export class SearchBusy extends Error {}
 
 /*
- * Place search while putting a roach down. cn, a visitor from mainland China: everything goes
- * through our server (src/app/api/geo/route.ts), which reaches OpenStreetMap's searches (they
- * cannot from there) and, on 搜索, 高德's within its daily share of the monthly allowance.
- * Everyone else asks OpenStreetMap from the browser. A page never asks twice for the same thing:
+ * Place search while putting a roach down. cn, a visitor from mainland China: suggestions while
+ * typing come from 腾讯位置服务 (src/lib/tencent.ts), and everything else goes through our server
+ * (src/app/api/geo/route.ts), which reaches OpenStreetMap's searches (they cannot from there) and,
+ * on 搜索, 高德's within its daily share of the monthly allowance. Everyone else asks
+ * OpenStreetMap from the browser. A page never asks twice for the same thing:
  * what it found is kept here, for this page only.
  */
 
@@ -35,16 +38,19 @@ async function keep(key: (string | number)[], look: () => Promise<PlaceResults>)
 const around = (near?: LngLat) => (near ? `${near.lng.toFixed(1)},${near.lat.toFixed(1)}` : "");
 
 /**
- * Suggestions while typing, from Photon (an OSM geocoder built for search-as-you-type). near, when
- * given, ranks places around that point first.
+ * Suggestions while typing, from Photon (an OSM geocoder built for search-as-you-type); from
+ * mainland China first from Tencent, and from Photon through our server when Tencent has nothing,
+ * is slow or says no. near, when given, ranks places around that point first.
  */
 export async function suggestPlaces(query: string, near?: LngLat, cn = false): Promise<PlaceResults> {
   const q = query.trim();
   if (!q) return { places: [], osm: false };
-  return keep(["tips", cn ? "cn" : "", q, around(near)], async () => ({
-    places: cn ? (await throughServer("suggest", q, near)).places : await photonSearch(q, near),
-    osm: true,
-  }));
+  return keep(["tips", cn ? "cn" : "", q, around(near)], async () => {
+    if (!cn) return { places: await photonSearch(q, near), osm: true };
+    const tips = await tencentTips(q, near, (status) => reportMapTrouble("tencent", "search", String(status)));
+    if (tips?.length) return { places: tips, osm: false, tencent: true };
+    return { places: (await throughServer("suggest", q, near)).places, osm: true };
+  });
 }
 
 /**

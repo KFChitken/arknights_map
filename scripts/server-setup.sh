@@ -31,6 +31,7 @@ AUTH_SECRET=$(openssl rand -base64 32)
 DB_PASSWORD=$(openssl rand -hex 24)
 NEXT_PUBLIC_AMAP_KEY=
 NEXT_PUBLIC_AMAP_SECURITY_CODE=
+NEXT_PUBLIC_TENCENT_KEY=
 SMTP_URL=
 MAIL_FROM=舟P地图 <no-reply@zhoupmap.com>
 ENV

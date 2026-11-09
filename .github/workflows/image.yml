@@ -19,6 +19,7 @@ jobs:
     env:
       NEXT_PUBLIC_AMAP_KEY: ${{ secrets.AMAP_KEY }}
       NEXT_PUBLIC_AMAP_SECURITY_CODE: ${{ secrets.AMAP_SECURITY_CODE }}
+      NEXT_PUBLIC_TENCENT_KEY: ${{ secrets.TENCENT_KEY }}
     steps:
       - uses: actions/checkout@v4
       - name: Name the image
@@ -26,6 +27,9 @@ jobs:
           if [ -z "$NEXT_PUBLIC_AMAP_KEY" ] || [ -z "$NEXT_PUBLIC_AMAP_SECURITY_CODE" ]; then
             echo "::error::Add the AMAP_KEY and AMAP_SECURITY_CODE repository secrets; without them the China basemap would not load"
             exit 1
+          fi
+          if [ -z "$NEXT_PUBLIC_TENCENT_KEY" ]; then
+            echo "::warning::No TENCENT_KEY repository secret: typing suggestions in mainland China will come from OpenStreetMap only"
           fi
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - uses: docker/setup-buildx-action@v3
@@ -43,6 +47,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_AMAP_KEY=${{ env.NEXT_PUBLIC_AMAP_KEY }}
             NEXT_PUBLIC_AMAP_SECURITY_CODE=${{ env.NEXT_PUBLIC_AMAP_SECURITY_CODE }}
+            NEXT_PUBLIC_TENCENT_KEY=${{ env.NEXT_PUBLIC_TENCENT_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Make sure no server secret is in the image

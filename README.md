@@ -12,7 +12,7 @@ Players in the community jokingly call themselves "roaches" because there seem t
 |---|---|
 | World map with two basemaps behind one URL: visitors from mainland China (told from their address against APNIC's list in `src/data/cn-ip-ranges.json`, refreshed with `node scripts/fetch-cn-ranges.mjs`; the address is never stored) get Amap wherever China is in view and our own OpenStreetMap map abroad (`src/lib/chinaView.ts`), everyone else MapLibre + OpenStreetMap with a switch to Amap | MVP |
 | Swarm view: every roach is drawn and twitches, and a dark heat layer makes crowded cities look covered in roaches; cartoon or realistic roaches | Prototype |
-| Place a main roach and up to five clones by tapping the map or searching for a place (Amap POI search in China, OpenStreetMap Nominatim elsewhere) | MVP |
+| Place a main roach and up to five clones by tapping the map or searching for a place (from mainland China: Tencent Location Service suggestions while typing, and through our server (`/api/geo`) OpenStreetMap plus a daily share of Amap's searches; elsewhere OpenStreetMap's Photon and Nominatim, asked by the browser) | MVP |
 | Profile: a name (checked against the rules in `src/lib/nameRules.ts` and a word list kept on the admin page) with an optional "Dr." prefix or stay anonymous, games played, up to three favourite characters per game, an optional game UID, and one of four cartoon roach looks (the hood is drawn in code with a color option; the other three are original artwork in `public/avatars`) | MVP |
 | Antenna touches: touch another roach sneakily (they only learn they were touched) or boldly (they can see your profile); they are told at once if the page is open (a server-sent event stream), otherwise on their next visit, and can touch back | MVP |
 | Antenna friends: two players who have touched each other boldly become friends, and can see each other's roaches, declaration count and recent activity; either side can end it | MVP |
@@ -111,7 +111,7 @@ That installs Docker, adds swap for builds, clones the repository and writes a `
 scripts/deploy.sh
 ```
 
-GitHub builds the app image for every push to `main` (`.github/workflows/image.yml`, which needs the `AMAP_KEY` and `AMAP_SECURITY_CODE` repository secrets) and publishes it as `ghcr.io/kfchitken/arknights_map`. The deploy script waits for that build, then the server pulls `main`, downloads the image and restarts; if the build failed or the image cannot be downloaded, the server builds it itself. Images never contain `.env`: the server's secrets are read when the container starts. Database migrations run when the app starts.
+GitHub builds the app image for every push to `main` (`.github/workflows/image.yml`, which needs the `AMAP_KEY` and `AMAP_SECURITY_CODE` repository secrets, and builds in the Tencent Location Service key from an optional `TENCENT_KEY` secret) and publishes it as `ghcr.io/kfchitken/arknights_map`. The deploy script waits for that build, then the server pulls `main`, downloads the image and restarts; if the build failed or the image cannot be downloaded, the server builds it itself. Images never contain `.env`: the server's secrets are read when the container starts. Database migrations run when the app starts.
 
 Our own overseas map lives in `~/arknights_map/tiles` on the server, outside git, and Caddy serves it at `/tiles`. The map file is a cut of one Protomaps build down to zoom 12 (about 18 GB), fetched by the server itself with [go-pmtiles](https://github.com/protomaps/go-pmtiles):
 

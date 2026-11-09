@@ -30,6 +30,7 @@ services:
         NEXT_PUBLIC_AMAP_KEY: ${NEXT_PUBLIC_AMAP_KEY:-}
         NEXT_PUBLIC_AMAP_SECURITY_CODE: ${NEXT_PUBLIC_AMAP_SECURITY_CODE:-}
         NEXT_PUBLIC_OSM_STYLE: ${NEXT_PUBLIC_OSM_STYLE:-}
+        NEXT_PUBLIC_TENCENT_KEY: ${NEXT_PUBLIC_TENCENT_KEY:-}
     env_file: .env
     environment:
       DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach

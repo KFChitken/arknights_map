@@ -126,6 +126,7 @@ export default function PlaceBar({
       <p className="hint">
         别人会看到你放下的位置，请不要放在家门口。
         {results?.osm && " 部分地点数据 © OpenStreetMap。"}
+        {results?.tencent && " 部分地点数据 © 腾讯位置服务。"}
       </p>
     </div>
   );

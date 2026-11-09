@@ -5,6 +5,8 @@ import { note } from "@/lib/server/signals";
 
 const MAPS = new Set(["amap", "osm", "overseas"]);
 const TROUBLES = new Set(["load", "key", "slow", "style", "tiles"]);
+/** Besides the maps: 腾讯位置服务 turning away the key of the place suggestions (src/lib/tencent.ts) */
+const SEARCH = "tencent:search";
 
 /**
  * POST /api/health/map: a page could not load a map (src/components/map/report.ts). Only which
@@ -19,6 +21,7 @@ export const POST = route(async (req) => {
     .replace(/[^\w.-]/g, "")
     .slice(0, 40);
   // anyone can send these: a cap for the whole site keeps a flood from filling memory
-  if (MAPS.has(map) && TROUBLES.has(what) && allow("map-trouble", 300, 10 * 60_000)) note("map", `${map}:${what}:${detail}`);
+  const known = (MAPS.has(map) && TROUBLES.has(what)) || `${map}:${what}` === SEARCH;
+  if (known && allow("map-trouble", 300, 10 * 60_000)) note("map", `${map}:${what}:${detail}`);
   return new NextResponse(null, { status: 204 });
 });

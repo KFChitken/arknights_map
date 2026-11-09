@@ -147,6 +147,27 @@ describe("the site's own checks", () => {
     expect(await check("map").run(t0 + 11 * MINUTE)).toEqual([]);
   });
 
+  it("tells of 腾讯位置服务 turning away the key of the place suggestions, apart from the map failing", async () => {
+    forgetSignals(t0);
+    for (let i = 0; i < 2; i++) note("map", "tencent:search:121", t0 - MINUTE);
+    expect(await check("map").run(t0)).toEqual([]);
+    note("map", "tencent:search:121", t0);
+    // nine other kinds of map trouble beside them are not ten
+    for (let i = 0; i < 9; i++) note("map", "amap:slow:", t0);
+    expect(await check("map").run(t0)).toEqual([
+      expect.objectContaining({
+        key: "tencent",
+        title: "腾讯打字提示今天的额度用完了",
+        detail: "30 分钟内有 3 个页面说腾讯位置服务不给打字提示：121（Key 今天的调用量用完了） ×3。",
+      }),
+    ]);
+    for (let i = 0; i < 4; i++) note("map", "tencent:search:110", t0);
+    expect(await check("map").run(t0)).toMatchObject([
+      { key: "tencent", title: "腾讯打字提示的 Key 被拒了", detail: expect.stringContaining("110（这个网站不在 Key 的域名白名单里） ×4；121（Key 今天的调用量用完了） ×3") },
+    ]);
+    expect(await check("map").run(t0 + 31 * MINUTE)).toEqual([]);
+  });
+
   it("tells of 高德 turning the server's place search away for the rest of the day, apart from the map failing", async () => {
     vi.stubEnv("AMAP_WEBSERVICE_KEY", "test-key");
     forgetGeo();
@@ -282,7 +303,11 @@ describe("POST /api/health/map", () => {
     await post({ map: "amap", what: "load", detail: "<script>me@example.com 你好" });
     await post({ map: "elsewhere", what: "key" });
     await post({ map: "osm", what: "explode" });
-    expect(recent("map", HOUR).map((s) => s.code)).toEqual(["amap:key:USER_DAILY_QUERY_OVER_LIMIT", "amap:load:scriptmeexample.com"]);
+    // 腾讯位置服务 only says its suggestions' key was turned away
+    await post({ map: "tencent", what: "search", detail: "121" });
+    await post({ map: "tencent", what: "key", detail: "121" });
+    await post({ map: "amap", what: "search", detail: "121" });
+    expect(recent("map", HOUR).map((s) => s.code)).toEqual(["amap:key:USER_DAILY_QUERY_OVER_LIMIT", "amap:load:scriptmeexample.com", "tencent:search:121"]);
   });
 });
 
