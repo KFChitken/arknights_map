@@ -39,6 +39,8 @@ import { roachTraits, type MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
+/** A refusal of the key this soon after the map is made means its tiles never come (see the start-up below) */
+const REFUSED_WITHIN_MS = 30_000;
 // The shadow sits on top of cartoon roaches so crowds go solid black, but under
 // real ones so their brown bodies stay visible
 const HEAT_Z = 125;
@@ -362,8 +364,19 @@ export default function AmapView(props: MapViewProps) {
     let cancelled = false;
     let map: AMapNS = null;
     let crawlTimer = 0;
-    // 高德 tells of a bad or used-up key only in the console; a map that never finishes drawing is told too
-    const stopListening = listenToAmapConsole();
+    // 高德 tells of a bad or used-up key only in the console; a map that never finishes drawing is told too.
+    // It refuses the key as the new map asks for its first tiles, after the map's complete event, so a
+    // refusal within REFUSED_WITHIN_MS of making the map means it stays blank: the page's other map
+    // instead, once. A later one leaves the map as it is (高德 counts a load when a map is made, and a
+    // map drawn goes on working), so nobody in the middle of something is moved to another map.
+    let madeAt = 0;
+    let gaveUp = false;
+    const stopListening = listenToAmapConsole(() => {
+      if (gaveUp || cancelled || (madeAt && Date.now() - madeAt > REFUSED_WITHIN_MS)) return;
+      gaveUp = true;
+      if (propsRef.current.onFailed) propsRef.current.onFailed();
+      else propsRef.current.onError?.("高德底图加载失败，请检查 Key 和安全密钥，或切换到 OSM 底图。");
+    });
     let slowTimer = 0;
     const overlayMarkers = overlaysRef.current;
     const shoutMarkers = shoutsRef.current;
@@ -384,6 +397,7 @@ export default function AmapView(props: MapViewProps) {
           viewMode: "2D",
           lang: "zh_cn",
         });
+        madeAt = Date.now();
         mapRef.current = map;
         map.addControl(new AMap.Scale());
         map.addControl(new AMap.ToolBar({ position: "RB" }));
@@ -474,7 +488,8 @@ export default function AmapView(props: MapViewProps) {
         map.on("complete", () => window.clearTimeout(slowTimer));
       })
       .catch((e: unknown) => {
-        if (cancelled) return;
+        if (cancelled || gaveUp) return;
+        gaveUp = true;
         console.error(e);
         reportMapTrouble("amap", "load", e instanceof Error ? e.name : typeof e === "string" ? e : "");
         if (propsRef.current.onFailed) propsRef.current.onFailed();

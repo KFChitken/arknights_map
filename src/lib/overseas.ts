@@ -16,6 +16,24 @@ export const OVERSEAS_TILES = "/tiles/world-20261105.pmtiles";
 /** Borders of any kind, and country names */
 const HIDDEN_LAYERS = new Set(["boundaries", "boundaries_country", "places_country"]);
 
+/**
+ * Military areas, which OpenStreetMap has and public maps of China may not show: mainland visitors
+ * see China on this map when 高德's does not draw. Left out of the land drawn and of the names.
+ */
+const MILITARY = ["military", "naval_base", "airfield"];
+const withoutMilitary = (f: unknown): unknown =>
+  Array.isArray(f) ? f.filter((x) => !(typeof x === "string" && MILITARY.includes(x))).map(withoutMilitary) : f;
+
+type Layer = ReturnType<typeof layers>[number];
+function noMilitary(l: Layer): Layer {
+  if (!("source-layer" in l) || (l["source-layer"] !== "landuse" && l["source-layer"] !== "pois")) return l;
+  // the land's layers list the kinds they draw (as in 「["in", "kind", …]」): the military ones taken out
+  const filter = withoutMilitary(l.filter);
+  // the names (an expression): any military kind left out besides
+  const named = l["source-layer"] === "pois" ? ["all", filter, ["!", ["in", ["get", "kind"], ["literal", MILITARY]]]] : filter;
+  return { ...l, filter: named } as Layer;
+}
+
 export const OVERSEAS_CREDIT =
   '<a href="https://protomaps.com" target="_blank" rel="noreferrer">Protomaps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
 
@@ -35,8 +53,8 @@ export function overseasStyle(origin: string): StyleSpecification {
     sources: {
       protomaps: { type: "vector", url: `pmtiles://${origin}${OVERSEAS_TILES}`, attribution: OVERSEAS_CREDIT },
     },
-    layers: layers("protomaps", namedFlavor("light"), { lang: "zh-Hans" }).filter(
-      (l) => !HIDDEN_LAYERS.has(l.id) && !("source-layer" in l && l["source-layer"] === "boundaries"),
-    ),
+    layers: layers("protomaps", namedFlavor("light"), { lang: "zh-Hans" })
+      .filter((l) => !HIDDEN_LAYERS.has(l.id) && !("source-layer" in l && l["source-layer"] === "boundaries"))
+      .map(noMilitary),
   };
 }

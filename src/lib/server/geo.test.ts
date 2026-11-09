@@ -144,13 +144,28 @@ describe("place search through our server (/api/geo)", () => {
     expect(s.amap()).toHaveLength(0);
   });
 
-  it("keeps what it found for a day: the same ask again goes nowhere, from anyone", async () => {
+  it("keeps what OpenStreetMap found for a day, from anyone, but never 高德's places (its terms, 3.5)", async () => {
     const s = services();
-    await run(() => geoSearch(MAINLAND, { kind: "search", q: "人民广场" }, s.fetcher));
+    const first = await run(() => geoSearch(MAINLAND, { kind: "search", q: "人民广场" }, s.fetcher));
+    expect(first.amap).toBe(true);
     await run(() => geoSearch("202.96.128.87", { kind: "search", q: "人民广场" }, s.fetcher));
-    expect(s.amap()).toHaveLength(1);
+    // 高德 asked again; Nominatim's answer kept
+    expect(s.amap()).toHaveLength(2);
+    expect(s.nominatim()).toHaveLength(1);
+    // typing is OpenStreetMap's alone: kept whole
     await run(() => geoSearch(MAINLAND, { kind: "suggest", q: "人民广场", near: SHANGHAI }, s.fetcher));
-    expect(s.asked).toHaveLength(3);
+    await run(() => geoSearch("202.96.128.87", { kind: "suggest", q: "人民广场", near: SHANGHAI }, s.fetcher));
+    expect(s.asked.filter((a) => a.url.includes("photon.komoot.io"))).toHaveLength(1);
+  });
+
+  it("keeps a search whole when 高德 had nothing in it", async () => {
+    vi.stubEnv("AMAP_WEBSERVICE_KEY", "");
+    const s = services();
+    const first = await run(() => geoSearch(MAINLAND, { kind: "search", q: "外滩" }, s.fetcher));
+    const again = await run(() => geoSearch("202.96.128.88", { kind: "search", q: "外滩" }, s.fetcher));
+    expect(again).toEqual(first);
+    expect(first.amap).toBe(false);
+    expect(s.asked).toHaveLength(1);
   });
 
   it(`takes ${GEO_PER_ADDRESS} asks a minute from one address`, async () => {

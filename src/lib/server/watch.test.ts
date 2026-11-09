@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as reportMap } from "@/app/api/health/map/route";
 import { beijingDate } from "../beijing";
 import { db } from "./db";
+import { countAmapLoad, forgetAmapLoads, saveAmapLoads } from "./amapLoads";
 import { forgetGeo, geoSearch } from "./geo";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { mailSends, watchAlerts, watchState } from "./schema";
@@ -29,6 +30,7 @@ beforeEach(async () => {
   // a process that has been running for two days, so every check sees far enough back
   forgetSignals(t0 - 48 * HOUR);
   forgetWatch();
+  forgetAmapLoads();
   sent = [];
 });
 
@@ -145,6 +147,48 @@ describe("the site's own checks", () => {
     note("map", "overseas:tiles:tiles-404", t0 - MINUTE);
     expect(await check("map").run(t0)).toMatchObject([{ detail: "30 分钟内有 10 次：高德·一直没画出来 ×9；我们自己的海外底图·图块加载失败（tiles-404） ×1。" }]);
     expect(await check("map").run(t0 + 11 * MINUTE)).toEqual([]);
+  });
+
+  it("counts 高德's map loads across restarts and tells once a month when 80% is gone", async () => {
+    vi.stubEnv("AMAP_MAP_LOADS", "100");
+    try {
+      // the 15th of a Beijing month: a pace means something by then
+      const mid = Date.parse("2026-11-15T04:00:00Z");
+      const loads = [check("amapLoads")];
+      for (let i = 0; i < 30; i++) countAmapLoad();
+      await runWatch({ now: mid, checks: loads, send });
+      expect(sent).toHaveLength(0);
+      // a restart loses only what was not saved yet
+      forgetWatch();
+      for (let i = 0; i < 50; i++) countAmapLoad();
+      expect(await saveAmapLoads(mid + 10 * MINUTE)).toEqual({ month: "2026-11", count: 80 });
+      await runWatch({ now: mid + 20 * MINUTE, checks: loads, send });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].subject).toBe("【舟P地图】出问题了：高德地图加载这个月快用完了");
+      expect(sent[0].text).toContain("这个月到现在，内地访客大约打开了 80 次高德地图（估算）");
+      // once a month, and no 「已解决」 after it
+      for (let i = 0; i < 30; i++) countAmapLoad();
+      for (const later of [40, 60, 6 * 60 + 30]) await runWatch({ now: mid + later * MINUTE, checks: loads, send });
+      expect(sent).toHaveLength(1);
+      // a new month starts from nothing
+      expect(await saveAmapLoads(Date.parse("2026-12-01T00:00:00Z"))).toEqual({ month: "2026-12", count: 0 });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("tells when this month's pace would use up 高德's map loads before the month is out", async () => {
+    vi.stubEnv("AMAP_MAP_LOADS", "100");
+    try {
+      // on the 1st a pace means nothing yet; on the 4th, 40 loads are about 340 by the month's end, though not 80% yet
+      const fourth = Date.parse("2026-11-04T04:00:00Z");
+      for (let i = 0; i < 20; i++) countAmapLoad();
+      expect(await check("amapLoads").run(Date.parse("2026-11-01T06:00:00Z"))).toEqual([]);
+      for (let i = 0; i < 20; i++) countAmapLoad();
+      expect(await check("amapLoads").run(fourth)).toMatchObject([{ key: "loads", detail: expect.stringContaining("到月底大约") }]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("tells of 腾讯位置服务 turning away the key of the place suggestions, apart from the map failing", async () => {

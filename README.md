@@ -133,6 +133,7 @@ The site checks itself every 5 minutes (`src/lib/server/watch.ts`) and emails `W
 - a restart that was not a deploy (the same build as before), and requests failing with errors (5 or more in 10 minutes);
 - sign-in code emails: 80% of `MAIL_DAILY_LIMIT` used in 24 hours, all of it used, sends failing, and 30 or more code requests refused by the limits in an hour;
 - maps failing in visitors' browsers (Amap's key errors 3 times in 10 minutes, or 10 reports of any kind in 30 minutes): pages report a map that did not load, Amap's key errors from its console messages, a map still blank after a while, and repeated tile errors to `POST /api/health/map`, which keeps only the map, the kind of trouble and the service's short code, in memory;
+- 高德's map loads running out: each visit from mainland China counts as one (an estimate, kept per Beijing month in `watch_state`), and once a month an email says when 80% of `AMAP_MAP_LOADS` is gone or the month's pace would use it up;
 - background jobs failing (the 04:00 jobs, pruning, daily totals, the report digest, migrations at start);
 - the server: disk 85% full, under 10% memory available, a 15-minute load above 1.5 per core;
 - the nightly backup: failed, missing for more than 26 hours, or not uploaded;

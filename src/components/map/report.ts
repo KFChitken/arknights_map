@@ -27,9 +27,14 @@ export function reportMapTrouble(map: MapKind, what: MapTrouble, detail = "") {
 
 /**
  * 高德 says a key is wrong or used up only in the console (「<AMap JSAPI> KEY异常，错误信息：
- * USER_DAILY_QUERY_OVER_LIMIT」): pass that on while its map is shown. Returns the undo.
+ * USER_DAILY_QUERY_OVER_LIMIT」): pass that on while its map is shown, and to onKeyTrouble with
+ * 高德's code. Returns the undo.
  */
-export function listenToAmapConsole(): () => void {
+/** 高德's codes for a key it will not serve, as they appear in its console messages */
+const AMAP_KEY_CODES =
+  /\b(USER_DAILY_QUERY_OVER_LIMIT|DAILY_QUERY_OVER_LIMIT|CUQPS_HAS_EXCEEDED_THE_LIMIT|ACCESS_TOO_FREQUENT|INVALID_USER_KEY|INVALID_USER_SCODE|INVALID_USER_DOMAIN|USERKEY_PLAT_NOMATCH|INSUFFICIENT_PRIVILEGES|USER_KEY_RECYCLED|SERVICE_NOT_AVAILABLE)\b/;
+
+export function listenToAmapConsole(onKeyTrouble?: (code: string) => void): () => void {
   const c = console as unknown as Record<"error" | "warn", (...args: unknown[]) => void>;
   const before = { error: c.error, warn: c.warn };
   for (const level of ["error", "warn"] as const) {
@@ -37,8 +42,16 @@ export function listenToAmapConsole(): () => void {
     c[level] = (...args: unknown[]) => {
       try {
         const text = args.map(String).join(" ");
-        if (text.includes("KEY异常") || /AMap[\s\S]*(LIMIT|INVALID|NOMATCH)/.test(text)) {
-          reportMapTrouble("amap", "key", text.match(/[A-Z][A-Z_]{5,}/)?.[0] ?? "");
+        // used up (…LIMIT), too many a second (ACCESS_TOO_FREQUENT, CUQPS_…LIMIT), a wrong or stopped key
+        // (INVALID…, INSUFFICIENT_PRIVILEGES, USER_KEY_RECYCLED), or the service down (SERVICE_NOT_AVAILABLE);
+        // 「KEY异常，错误信息：…」 from the loader, 「FlyDataAuthTask error: …」 from the map itself
+        const known = text.match(AMAP_KEY_CODES)?.[0];
+        const refused = Boolean(known) || text.includes("KEY异常");
+        if (refused || /AMap[\s\S]*(LIMIT|INVALID|NOMATCH|TOO_FREQUENT|PRIVILEGES|RECYCLED|NOT_AVAILABLE)/.test(text)) {
+          const code = known ?? text.match(/[A-Z][A-Z_]{5,}/)?.[0] ?? "";
+          reportMapTrouble("amap", "key", code);
+          // only a plain refusal of the key, and not inside 高德's own call
+          if (refused && onKeyTrouble) window.setTimeout(() => onKeyTrouble(code), 0);
         }
       } catch {
         // never in the way of the message itself

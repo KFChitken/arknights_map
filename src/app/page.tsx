@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { preconnect } from "react-dom";
 import MapApp from "@/components/MapApp";
+import { countAmapLoad } from "@/lib/server/amapLoads";
 import { isProd } from "@/lib/server/env";
 import { ipFrom } from "@/lib/server/http";
 import { inMainland } from "@/lib/server/region";
@@ -16,5 +17,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
   const cn = pretend || inMainland(ipFrom(await headers()));
   // Mainland visitors load Amap's map code next: its connection opens while our page is still downloading
   if (cn) preconnect("https://webapi.amap.com");
+  // and make one of 高德's map loads, counted for the site's checks (nothing about the visitor)
+  if (cn) countAmapLoad();
   return <MapApp cn={cn} />;
 }

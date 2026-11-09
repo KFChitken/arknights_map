@@ -6,8 +6,11 @@ import type { LngLat, MapView } from "./types";
 /** A search hit, always in WGS-84. */
 export type Place = LngLat & { name: string; detail: string };
 
-/** osm, tencent: some places came from OpenStreetMap or from 腾讯位置服务, which then need crediting */
-export type PlaceResults = { places: Place[]; osm: boolean; tencent?: boolean };
+/**
+ * osm, tencent: some places came from OpenStreetMap or from 腾讯位置服务, which then need crediting;
+ * amap: some came from 高德, whose terms let nobody keep them, so they are not kept even on the page
+ */
+export type PlaceResults = { places: Place[]; osm: boolean; tencent?: boolean; amap?: boolean };
 
 /** Our server's place search (/api/geo) has too many waiting: the player can try again in a moment */
 export class SearchBusy extends Error {}
@@ -30,6 +33,7 @@ async function keep(key: (string | number)[], look: () => Promise<PlaceResults>)
   const hit = kept.get(k);
   if (hit) return hit;
   const found = await look();
+  if (found.amap) return found;
   kept.set(k, found);
   if (kept.size > KEPT) kept.delete(kept.keys().next().value as string);
   return found;

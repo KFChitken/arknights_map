@@ -6,6 +6,7 @@ import tls from "node:tls";
 import { count, eq, gt, sql } from "drizzle-orm";
 import { beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
+import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
 import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
 import { amapSearchToday } from "./geo";
@@ -309,6 +310,31 @@ async function checkMaps(now: number): Promise<Finding[]> {
   return findings;
 }
 
+/**
+ * 高德's map loads this month (src/lib/server/amapLoads.ts), told once a month: when 80% of the
+ * allowance is gone, or when this month's pace so far would use it up before the month ends.
+ */
+async function checkAmapLoads(now: number): Promise<Finding[]> {
+  const { month, count } = await saveAmapLoads(now);
+  const limit = amapMapLoads();
+  const { gone, days } = monthProgress(now);
+  // a pace means something once a couple of days have gone by
+  const projected = gone >= 2 ? Math.round((count / gone) * days) : count;
+  if (count < limit * 0.8 && projected <= limit) return [];
+  if ((await getState("amapLoadsTold"))?.value === month) return [];
+  await setState("amapLoadsTold", month, now);
+  const n = (x: number) => x.toLocaleString("en-US");
+  return [
+    {
+      key: "loads",
+      title: "高德地图加载这个月快用完了",
+      detail: `这个月到现在，内地访客大约打开了 ${n(count)} 次高德地图（估算）；照这个速度，到月底大约 ${n(projected)} 次。个人账号每月 ${n(limit)} 次。`,
+      advice:
+        "以高德控制台为准：https://console.amap.com/dev/flow/manage 的用量详情。真用完了，内地访客打开网站会自动换成我们自己的地图（没有审图号，只能临时顶一下），下个月 1 日恢复。",
+    },
+  ];
+}
+
 const JOBS: Record<string, string> = {
   setup: "启动时升级数据库",
   prune: "清理 90 天前的记录",
@@ -448,6 +474,7 @@ export const CHECKS: Check[] = [
   { name: "mail", window: 30 * MINUTE, run: checkMail },
   { name: "codes", window: HOUR, run: checkCodes },
   { name: "map", window: 30 * MINUTE, run: checkMaps },
+  { name: "amapLoads", events: true, every: 10 * MINUTE, run: checkAmapLoads },
   { name: "jobs", window: DAY, run: checkJobs },
   { name: "machine", run: checkMachine },
   { name: "backup", every: 30 * MINUTE, run: checkBackup },

@@ -16,8 +16,8 @@ import { errorCode, note } from "./signals";
  * searches a month and no way to buy more, so the server spends at most AMAP_SEARCH_DAILY of them
  * a day (Beijing time), three a second at most, and none for the rest of the day once 高德 says
  * the allowance is used up. The words searched say roughly where a player lives, so they are never
- * logged or stored; only kept in memory with the places found, for a day, which Nominatim's usage
- * policy asks for too, and which spares 高德's allowance when someone else searches the same.
+ * logged or stored; only kept in memory with what OpenStreetMap found, for a day, which Nominatim's
+ * usage policy asks for too. 高德's places are never kept (its terms, 3.5): asked again, it is asked again.
  */
 
 /** Asks from one address in a minute */
@@ -67,29 +67,46 @@ export async function geoSearch(address: string, ask: GeoAsk, fetcher: typeof fe
   if (!allow(`geo:${address}`, GEO_PER_ADDRESS, 60_000)) throw new HttpError(429, GEO_BUSY);
   const near = ask.near ? `${ask.near.lng.toFixed(2)},${ask.near.lat.toFixed(2)},${Math.round(ask.near.zoom)}` : "";
   const key = `${ask.kind}|${ask.q}|${near}`;
-  const hit = kept.get(key);
-  if (hit && Date.now() - hit.at < KEEP_MS) return hit.found;
+  const hit = keptFor(key);
+  if (hit) return hit;
 
   let found: PlaceResults;
   if (ask.kind === "suggest") {
     if (!allow("geo-photon", PHOTON_PER_MINUTE, 60_000)) throw new HttpError(429, GEO_BUSY);
     found = { places: photonPlaces(await ask_(fetcher, "Photon", photonUrl(ask.q, ask.near))), osm: true };
   } else {
+    // 高德's terms (3.5) let nobody keep its data, so only what OpenStreetMap found is kept for next time
+    const osmKey = `osm|${ask.q}|${near}`;
+    const keptOsm = keptFor(osmKey);
     const [amap, osm] = await Promise.allSettled([
       amapSearch(fetcher, ask.q, ask.near),
-      nominatimTurn().then(async () => nominatimPlaces(await ask_(fetcher, "Nominatim", nominatimUrl(ask.q, ask.near)))),
+      keptOsm
+        ? Promise.resolve(keptOsm.places)
+        : nominatimTurn().then(async () => nominatimPlaces(await ask_(fetcher, "Nominatim", nominatimUrl(ask.q, ask.near)))),
     ]);
+    if (osm.status === "fulfilled" && !keptOsm) keep(osmKey, { places: osm.value, osm: true });
     const fromAmap = amap.status === "fulfilled" ? amap.value.slice(0, 6) : [];
     if (!fromAmap.length && osm.status === "rejected") throw osm.reason;
     // skip OSM hits that are the same place 高德 already found
     const fromOsm = (osm.status === "fulfilled" ? osm.value : [])
       .filter((o) => !fromAmap.some((a) => a.name === o.name && distanceKm(a, o) < 0.5))
       .slice(0, fromAmap.length ? 4 : 8);
-    found = { places: [...fromAmap, ...fromOsm], osm: fromOsm.length > 0 };
+    found = { places: [...fromAmap, ...fromOsm], osm: fromOsm.length > 0, amap: fromAmap.length > 0 };
+    if (found.amap) return found;
   }
+  keep(key, found);
+  return found;
+}
+
+/** What was found for this ask within KEEP_MS, if anything */
+function keptFor(key: string): PlaceResults | null {
+  const hit = kept.get(key);
+  return hit && Date.now() - hit.at < KEEP_MS ? hit.found : null;
+}
+
+function keep(key: string, found: PlaceResults) {
   kept.set(key, { at: Date.now(), found });
   if (kept.size > KEEP) kept.delete(kept.keys().next().value as string);
-  return found;
 }
 
 /** One ask of an OpenStreetMap search, as JSON */
