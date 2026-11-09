@@ -30,6 +30,14 @@ zhoupmap.com {
 	handle /tiles/* {
 		root * /srv
 		header Cache-Control "public, max-age=604800, immutable"
+		# the map file (17.8 GB) goes out a piece at a time, as the map asks for it; a download of the
+		# whole file, which would tie up the server's bandwidth, is refused
+		@whole {
+			path *.pmtiles
+			method GET
+			not header Range *
+		}
+		respond @whole "The map file is only served in ranges." 403
 		file_server
 	}
 	handle {
