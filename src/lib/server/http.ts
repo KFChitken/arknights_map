@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { WorldError } from "../world/types";
+import { errorCode, note } from "./signals";
 
 /** An error whose message is safe to show to the player. */
 export class HttpError extends Error {
@@ -24,6 +25,7 @@ export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
       if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
       if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
       console.error(e);
+      note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
       return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
     }
   };

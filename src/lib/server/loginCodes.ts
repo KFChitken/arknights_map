@@ -6,6 +6,7 @@ import { db } from "./db";
 import { secret } from "./env";
 import { HttpError } from "./http";
 import { mailRoom } from "./mailQuota";
+import { note } from "./signals";
 import { loginCodes, mailSends } from "./schema";
 
 /**
@@ -46,7 +47,10 @@ export async function issueLoginCode(email: string): Promise<string> {
   // postgres.js wants Dates inside raw SQL as strings
   const sameDay = sql`${loginCodes.dayStart} > ${dayAgo.toISOString()}`;
   const issued = await db.transaction(async (tx) => {
-    if (!(await mailRoom(tx, now))) throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
+    if (!(await mailRoom(tx, now))) {
+      note("codeRefused", "quota");
+      throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
+    }
 
     const [row] = await tx
       .insert(loginCodes)
@@ -71,6 +75,7 @@ export async function issueLoginCode(email: string): Promise<string> {
 
   const [last] = await db.select().from(loginCodes).where(eq(loginCodes.email, email)).limit(1);
   const wait = last ? LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - last.sentAt.getTime()) / 1000) : 0;
+  note("codeRefused", wait > 0 ? "cooldown" : "address-day");
   if (wait > 0) throw new HttpError(429, `验证码刚发过，${wait} 秒后可以再发。`);
   throw new HttpError(429, `这个邮箱今天已经收了 ${LOGIN_CODES_PER_DAY} 次验证码，明天再试吧。`);
 }

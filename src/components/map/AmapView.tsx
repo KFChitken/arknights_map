@@ -31,6 +31,7 @@ import {
   rideStart,
   updateGuide,
 } from "./guideMarker";
+import { listenToAmapConsole, reportMapTrouble } from "./report";
 import { amapSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
@@ -361,6 +362,9 @@ export default function AmapView(props: MapViewProps) {
     let cancelled = false;
     let map: AMapNS = null;
     let crawlTimer = 0;
+    // 高德 tells of a bad or used-up key only in the console; a map that never finishes drawing is told too
+    const stopListening = listenToAmapConsole();
+    let slowTimer = 0;
     const overlayMarkers = overlaysRef.current;
     const shoutMarkers = shoutsRef.current;
     const guideMarkers = guidesRef.current;
@@ -466,16 +470,21 @@ export default function AmapView(props: MapViewProps) {
         map.on("zoomend", reportView);
         map.on("complete", reportView);
         map.on("complete", () => propsRef.current.onReady?.());
+        slowTimer = window.setTimeout(() => reportMapTrouble("amap", "slow"), 20000);
+        map.on("complete", () => window.clearTimeout(slowTimer));
       })
       .catch((e: unknown) => {
         if (cancelled) return;
         console.error(e);
+        reportMapTrouble("amap", "load", e instanceof Error ? e.name : typeof e === "string" ? e : "");
         if (propsRef.current.onFailed) propsRef.current.onFailed();
         else propsRef.current.onError?.("高德底图加载失败，请检查 Key 和安全密钥，或切换到 OSM 底图。");
       });
 
     return () => {
       cancelled = true;
+      stopListening();
+      window.clearTimeout(slowTimer);
       window.clearInterval(crawlTimer);
       crawlRef.current = null;
       massRef.current.forEach((m) => m.setMap(null));

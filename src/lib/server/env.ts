@@ -50,6 +50,20 @@ export const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+/**
+ * The site's own checks (src/lib/server/watch.ts), which email WATCH_EMAILS (comma separated;
+ * ADMIN_EMAILS when unset) about problems: on in production unless WATCH=off, off in
+ * development unless WATCH=1. WATCH_TLS_HOST: where to ask for the HTTPS certificate
+ * (Caddy, "caddy" on the live site's network; none in development unless set).
+ */
+export const watchEnabled = process.env.WATCH ? !["off", "0"].includes(process.env.WATCH) : isProd;
+export const WATCH_EMAILS = process.env.WATCH_EMAILS
+  ? process.env.WATCH_EMAILS.split(",")
+      .map((e) => e.trim())
+      .filter(Boolean)
+  : ADMIN_EMAILS;
+export const WATCH_TLS_HOST = process.env.WATCH_TLS_HOST || "";
+
 /** Port of a local test inbox (Mailpit) to link from the sign-in screen; unset in production. */
 export const DEV_MAILBOX_PORT = process.env.DEV_MAILBOX_PORT || "";
 

@@ -127,6 +127,28 @@ export const mailSends = pgTable("mail_sends", {
 });
 
 /**
+ * The site's own checks (src/lib/server/watch.ts): each problem seen and not yet over, and
+ * when it was last emailed about, so a restart neither forgets nor repeats them.
+ */
+export const watchAlerts = pgTable("watch_alerts", {
+  key: text("key").primaryKey(),
+  title: text("title").notNull(),
+  detail: text("detail").notNull().default(""),
+  since: at("since").notNull(),
+  mailedAt: at("mailed_at"),
+});
+
+/**
+ * Small facts for the same checks: the build last seen running, when the checks began, and the
+ * nightly backup's result, which scripts/backup.sh writes here itself.
+ */
+export const watchState = pgTable("watch_state", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: at("updated_at").notNull().defaultNow(),
+});
+
+/**
  * slot 0 is the main roach, 1..MAX_CLONES are clones. Everyone sees a roach
  * where it was placed, but never its owner. publicId is regenerated on every
  * move so a roach cannot be followed from one spot to the next.

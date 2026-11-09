@@ -12,6 +12,7 @@ import { ADMIN_EMAILS, SITE_URL } from "./env";
 import { sendAdminMail } from "./mail";
 import { mailRoom } from "./mailQuota";
 import { blocks, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users } from "./schema";
+import { note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
 
 /**
@@ -168,7 +169,10 @@ export async function report(userId: string, target: string, reason: unknown, no
       .where(and(eq(reports.targetId, who.other), eq(reports.reason, "name"), isNull(reports.resolvedAt)));
     if (reporters.n >= NAME_REPORTS_TO_HIDE) await clearName(who.other);
   }
-  sendReportDigest().catch((e) => console.error("Report digest failed", e));
+  sendReportDigest().catch((e) => {
+    console.error("Report digest failed", e);
+    noteSignal("job", "digest");
+  });
 }
 
 /**

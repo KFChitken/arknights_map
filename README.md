@@ -123,7 +123,22 @@ A newer build goes in under its own date, with `OVERSEAS_TILES` in `src/lib/over
 
 Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it from probes in mainland China and in Hong Kong, and the run fails when most of either cannot, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
 
-Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac.
+Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.
+
+### Checks and alerts
+
+The site checks itself every 5 minutes (`src/lib/server/watch.ts`) and emails `WATCH_EMAILS` (by default `ADMIN_EMAILS`) through the same mail service as the sign-in codes, outside `MAIL_DAILY_LIMIT` and at most 24 emails a day. One email tells what is new, what is still wrong six hours after the last email about it, and what is over. It looks at:
+
+- the database: unreachable, or slow to answer;
+- a restart that was not a deploy (the same build as before), and requests failing with errors (5 or more in 10 minutes);
+- sign-in code emails: 80% of `MAIL_DAILY_LIMIT` used in 24 hours, all of it used, sends failing, and 30 or more code requests refused by the limits in an hour;
+- maps failing in visitors' browsers (Amap's key errors 3 times in 10 minutes, or 10 reports of any kind in 30 minutes): pages report a map that did not load, Amap's key errors from its console messages, a map still blank after a while, and repeated tile errors to `POST /api/health/map`, which keeps only the map, the kind of trouble and the service's short code, in memory;
+- background jobs failing (the 04:00 jobs, pruning, daily totals, the report digest, migrations at start);
+- the server: disk 85% full, under 10% memory available, a 15-minute load above 1.5 per core;
+- the nightly backup: failed, missing for more than 26 hours, or not uploaded;
+- the HTTPS certificate, asked of Caddy inside the server's network, with less than 14 days left.
+
+A site that is down cannot email anyone, so GitHub also asks `GET /api/health` from outside every 10 minutes (`.github/workflows/uptime.yml`), three tries a minute apart, and emails the repository owner when it fails. The endpoint answers 503 when the database is unreachable or the site's emails fail. GitHub pauses scheduled workflows after 60 days without a push. `WATCH=off` turns the checks off; `WATCH=1` turns them on in development, where they print instead of emailing unless `WATCH_EMAILS` or `ADMIN_EMAILS` is set.
 
 ## Roadmap
 

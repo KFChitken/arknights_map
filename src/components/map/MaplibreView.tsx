@@ -34,6 +34,7 @@ import {
   rideStart,
   updateGuide,
 } from "./guideMarker";
+import { reportMapTrouble } from "./report";
 import { addMaplibreSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
@@ -417,9 +418,22 @@ export default function MaplibreView(props: MapViewProps) {
     syncShouts();
     syncOverlays();
 
+    // our own overseas map (a style of its own) or OpenStreetMap's, for reports of trouble
+    const kind = propsRef.current.style ? "overseas" : "osm";
     const loadTimer = window.setTimeout(() => {
-      if (!readyRef.current) propsRef.current.onError?.(propsRef.current.slowNote ?? "海外底图加载很慢，可以试试切换到高德底图。");
+      if (readyRef.current) return;
+      reportMapTrouble(kind, "slow");
+      propsRef.current.onError?.(propsRef.current.slowNote ?? "海外底图加载很慢，可以试试切换到高德底图。");
     }, 12000);
+    // a style that never loads, or tiles failing again and again, is told to the server once
+    let tileErrors = 0;
+    map.on("error", (e: { error?: { status?: number; message?: string }; sourceId?: string }) => {
+      console.error(e.error ?? e);
+      const status = e.error?.status ? String(e.error.status) : "";
+      if (!e.sourceId) {
+        if (!readyRef.current) reportMapTrouble(kind, "style", status);
+      } else if (++tileErrors === 5) reportMapTrouble(kind, "tiles", [e.sourceId, status].filter(Boolean).join("-"));
+    });
 
     // The map credits show at first, then fold into the (i) button after five seconds or as soon
     // as the map moves, which OpenStreetMap's attribution guidelines allow
