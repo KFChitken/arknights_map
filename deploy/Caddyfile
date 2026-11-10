@@ -42,6 +42,10 @@ zhoupmap.com {
 		header Cache-Control "public, max-age=31536000, immutable"
 		file_server
 	}
+	# the looks' pictures and the site's icons, which every new page asks for: a week in the browser
+	# (2026-11-11: with the guides' pictures, a third of what the site sent). A changed one gets a new name.
+	@looks path /avatars/* /favicon.ico /icon.svg /apple-icon.png
+	header @looks >Cache-Control "public, max-age=604800"
 	# our own overseas map (src/lib/overseas.ts): the map file, fonts and icons, straight from the
 	# server's folder in ranges as asked; a file never changes under its name, a new one gets a new name
 	handle /tiles/* {

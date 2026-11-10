@@ -9,17 +9,18 @@ import { GUIDE_AVATARS, type DrawnAvatar, type RoachColor } from "./types";
  * made from the artist's original with scripts/cutout.mjs.
  */
 export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
-  doctor: "/avatars/doctor.png",
-  endmin: "/avatars/endmin.png",
-  imp: "/avatars/imp.png",
-  gugu: "/avatars/gugu.png",
+  // WebP, a quarter of the PNGs' size (2026-11-11: these and the guides' were a third of what the site sent)
+  doctor: "/avatars/doctor.webp",
+  endmin: "/avatars/endmin.webp",
+  imp: "/avatars/imp.webp",
+  gugu: "/avatars/gugu.webp",
   // the guides' (src/lib/guides.ts): not ours to publish, so served from the server's own folder
-  // (src/app/guide-art) and kept out of the repository
-  // ?v: another picture of her was briefly served at this address while trying out her dance; browsers keep pictures a day
-  amiya: "/guide-art/amiya.png?v=3",
-  perlica: "/guide-art/perlica.png",
-  talulah: "/guide-art/talulah.png",
-  minghe: "/guide-art/minghe.png",
+  // (src/app/guide-art) and kept out of the repository; browsers keep them a month, so a new
+  // picture gets a new ?v
+  amiya: "/guide-art/amiya.webp?v=1",
+  perlica: "/guide-art/perlica.webp?v=1",
+  talulah: "/guide-art/talulah.webp?v=1",
+  minghe: "/guide-art/minghe.webp?v=1",
 };
 
 /** What a picture that will not load gives way to, instead of the plain hood: 明河都尉 keeps his horse */

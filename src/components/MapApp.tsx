@@ -618,10 +618,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
       void import("./map/AmapView");
       loadAMap().catch(() => {});
     } else void import("./map/MaplibreView");
-    // visitors from mainland China: our own map for abroad, and the outline of where Amap must show
-    const abroadKit = cn
-      ? Promise.all([import("@/lib/overseas"), import("@/lib/chinaView"), import("./map/MaplibreView")]).catch(() => null)
-      : Promise.resolve(null);
+    // visitors from mainland China: the outline of where Amap must show, and our own map's style for abroad.
+    // Our own map's code (MapLibre, the biggest download of the page) comes only once it is made, when the
+    // view goes abroad: Amap waited for it before, and most never leave China (2026-11-11, a slow line)
+    const abroadKit = cn ? Promise.all([import("@/lib/overseas"), import("@/lib/chinaView")]).catch(() => null) : Promise.resolve(null);
     // The map does not wait for the account's data, which a slow line can hold up for many seconds: it
     // starts at once where this browser last saw the main roach, or after a moment at the usual view,
     // and flies to the main roach when the data comes, unless the player has moved the map meanwhile.

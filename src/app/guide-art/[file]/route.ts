@@ -4,6 +4,11 @@ import { AMIYA_DANCE, AMIYA_PICTURE, GUIDE_ART_DIR, MINGHE_PICTURE, PARTY_MUSIC,
 
 /** The guides' pictures (src/lib/guides.ts) and whether each is switched on; only these files are ever served */
 const PICTURES: Record<string, { on: boolean; type: string }> = {
+  // WebP for pages now, PNG still for pages from before
+  "amiya.webp": { on: AMIYA_PICTURE, type: "image/webp" },
+  "perlica.webp": { on: PERLICA_PICTURE, type: "image/webp" },
+  "talulah.webp": { on: TALULAH_PICTURE, type: "image/webp" },
+  "minghe.webp": { on: MINGHE_PICTURE, type: "image/webp" },
   "amiya.png": { on: AMIYA_PICTURE, type: "image/png" },
   "perlica.png": { on: PERLICA_PICTURE, type: "image/png" },
   "talulah.png": { on: TALULAH_PICTURE, type: "image/png" },
@@ -36,7 +41,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ file: s
   return new Response(new Uint8Array(bytes), {
     headers: {
       "content-type": picture.type,
-      "cache-control": "public, max-age=86400",
+      // a month: a new picture comes under a new ?v (src/lib/roachImages.ts)
+      "cache-control": "public, max-age=2592000",
       // a picture, nothing more, even opened on its own
       ...(picture.type === "image/svg+xml" ? { "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'" } : {}),
     },
