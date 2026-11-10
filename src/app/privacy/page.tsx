@@ -29,7 +29,7 @@ export default function Privacy() {
   return (
     <main className="doc">
       <h1>{SITE_NAME}隐私说明</h1>
-      <p className="hint">生效日期：2026 年 11 月 12 日</p>
+      <p className="hint">生效日期：2026 年 11 月 11 日</p>
 
       <p>
         各位博士、管理员们好！我是 {OPERATOR}，{SITE_NAME}（zhoupmap.com）的运营者。{SITE_NAME}
