@@ -32,6 +32,8 @@ import {
   updateGuide,
 } from "./guideMarker";
 import { listenToAmapConsole, reportMapTrouble } from "./report";
+import { roachGl, type GlRoach, type RoachGl } from "./roachGl";
+import { swarmGl } from "./swarmGl";
 import { amapSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
@@ -48,6 +50,14 @@ const REFUSED_WITHIN_MS = 30_000;
 // The shadow sits on top of cartoon roaches so crowds go solid black, but under
 // real ones so their brown bodies stay visible
 const HEAT_Z = 125;
+/** The dark swarm: each roach a dark spot this many px across, this many on one another full dark */
+const SWARM = {
+  radius: 22,
+  max: 12,
+  opacity: [0, 0.85] as [number, number],
+  gradient: SWARM_GRADIENT,
+  zooms: [2, SWARM_FADE_ZOOM + ZOOM_OFFSET] as [number, number],
+};
 const massZ = (look: RoachStyle) => (look === "real" ? 130 : 120);
 const MINE_ICON = 48;
 /** The guides: above your own roaches (300) */
@@ -169,6 +179,26 @@ function thinned(groups: MassPoint[][], amapZoom: number): MassPoint[][] {
 /** What 高德 gets of each batch: the roaches near the screen, and far out only one of each pile */
 const shownOf = (map: AMapNS, groups: MassPoint[][]) => thinned(nearOnly(nearBox(map), groups), map.getZoom());
 
+/**
+ * The GPU layer stays off on this page with ?gl=0 in its address: for a phone it draws wrongly on, and to
+ * compare with the MassMarks it replaced.
+ */
+const glOff = () => {
+  try {
+    return new URLSearchParams(window.location.search).get("gl") === "0";
+  } catch {
+    return false;
+  }
+};
+
+/** Every roach for the GPU layer (the cartoon look, roachGl.ts), 触须之交 last so they are drawn on top */
+function glRoaches(groups: MassPoint[][]): GlRoach[] {
+  return groups
+    .flat()
+    .sort((a, b) => Number(a.friend) - Number(b.friend))
+    .map((p) => ({ id: p.id, lng: p.lng, lat: p.lat, style: styleIndex(p, "cartoon", 0), still: p.asleep, seed: p.seed }));
+}
+
 /** Every roach of a batch where its own crawl puts it at time t (ms), or at rest when t is null. */
 function massData(points: MassPoint[], amapZoom: number, look: RoachStyle, t: number | null) {
   const degPerPx = 360 / (256 * 2 ** amapZoom);
@@ -249,9 +279,12 @@ function heatData(roaches: PublicRoach[]) {
       const [lng, lat] = toGcj(r);
       return { lng, lat, count: 1 };
     }),
-    max: 12,
+    max: SWARM.max,
   };
 }
+
+/** The dark swarm, drawn by the GPU (swarmGl.ts) or by 高德's HeatMap */
+type Swarm = { set: (roaches: PublicRoach[]) => void; destroy: () => void };
 
 async function mineIcon(r: OwnRoach, avatar: RoachAvatar, color: RoachColor, look: RoachStyle, ghost: boolean, asleep: boolean) {
   const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look, asleep: asleep && r.slot === 0 && !ghost });
@@ -263,12 +296,18 @@ export default function AmapView(props: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<AMapNS>(null);
   const massRef = useRef<AMapNS[]>([]);
+  // the GPU layer, which draws the roaches instead of the MassMarks in the cartoon look
+  const glRef = useRef<RoachGl | null>(null);
+  // the roaches' layers made again for the look in use (set up with the map)
+  const layRef = useRef<() => void>(() => {});
+  // the pointer is over a roach of the GPU layer (it has no cursor of its own)
+  const overRef = useRef(false);
   const groupsRef = useRef<MassPoint[][]>([]);
   // the batches as 高德 gets them: only the roaches near the screen (nearBox)
   const shownRef = useRef<MassPoint[][]>([]);
   // pick them again for where the map is now, and hand them over
   const reshowRef = useRef<() => void>(() => {});
-  const heatRef = useRef<AMapNS>(null);
+  const heatRef = useRef<Swarm | null>(null);
   const mineRef = useRef<AMapNS[]>([]);
   const amapRef = useRef<AMapNS>(null);
   const lastHitRef = useRef(0);
@@ -471,19 +510,33 @@ export default function AmapView(props: MapViewProps) {
         map.addControl(new AMap.Scale());
         map.addControl(new AMap.ToolBar({ position: "RB" }));
 
-        // Dark swarm under the icons so crowded cities read as covered in roaches
-        const heat = new AMap.HeatMap(map, {
-          radius: 22,
-          zIndex: HEAT_Z,
-          opacity: [0, 0.85],
-          gradient: SWARM_GRADIENT,
-          zooms: [2, SWARM_FADE_ZOOM + ZOOM_OFFSET],
-        });
-        heat.setDataSet(heatData(propsRef.current.roaches));
-        heatRef.current = heat;
+        // Dark swarm over the cartoon icons so crowded cities read as covered in roaches: drawn by the GPU,
+        // or by 高德's HeatMap where it cannot be (that one costs the phone dearly when zoomed far out)
+        const amapHeat = () => {
+          const heat = new AMap.HeatMap(map, { ...SWARM, zIndex: HEAT_Z });
+          heat.setDataSet(heatData(propsRef.current.roaches));
+          heatRef.current = { set: (roaches) => heat.setDataSet(heatData(roaches)), destroy: () => heat.setMap(null) };
+        };
+        const swarm = glOff()
+          ? null
+          : swarmGl(AMap, map, {
+              ...SWARM,
+              zIndex: HEAT_Z,
+              onFail: (why) =>
+                window.setTimeout(() => {
+                  if (cancelled || heatRef.current !== gpuSwarm) return;
+                  console.warn("swarm layer:", why);
+                  gpuSwarm?.destroy();
+                  amapHeat();
+                }, 0),
+            });
+        const gpuSwarm: Swarm | null = swarm && { set: (roaches) => swarm.setPoints(roaches.map((r) => toGcj(r))), destroy: swarm.destroy };
+        if (gpuSwarm) {
+          heatRef.current = gpuSwarm;
+          gpuSwarm.set(propsRef.current.roaches);
+        } else amapHeat();
 
         groupsRef.current = massGroups(propsRef.current.roaches);
-        shownRef.current = shownOf(map, groupsRef.current);
         const onMassClick = (e: AMapNS) => {
           if (propsRef.current.placing) return;
           lastHitRef.current = Date.now();
@@ -491,20 +544,78 @@ export default function AmapView(props: MapViewProps) {
           // defer so a map click fired for the same tap cannot clear the selection
           if (id) window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
         };
-        styledPxRef.current = massPx(map.getZoom());
-        massRef.current = shownRef.current.map((points) => {
-          const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
-            zIndex: massZ(look),
-            zooms: [2, 20],
-            cursor: "pointer",
-            style: massStyles(AMap, map.getZoom(), styledRef.current.urls),
+        // The roaches on 高德's MassMarks: the realistic look, and wherever the GPU layer cannot run
+        const startMass = () => {
+          const { look, urls } = styledRef.current;
+          shownRef.current = shownOf(map, groupsRef.current);
+          styledPxRef.current = massPx(map.getZoom());
+          massRef.current = shownRef.current.map((points) => {
+            const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
+              zIndex: massZ(look),
+              zooms: [2, 20],
+              cursor: "pointer",
+              style: massStyles(AMap, map.getZoom(), urls),
+            });
+            mass.setMap(map);
+            mass.on("click", onMassClick);
+            return mass;
           });
-          mass.setMap(map);
-          mass.on("click", onMassClick);
-          return mass;
-        });
+        };
+        const stopMass = () => {
+          massRef.current.forEach((m) => m.setMap(null));
+          massRef.current = [];
+        };
+        // The cartoon look's roaches all drawn by the GPU, every one of them at no cost per roach
+        // (roachGl.ts); MassMarks once more if this phone or 高德 cannot
+        let glBroke = glOff();
+        const startGl = () => {
+          const gl = roachGl(AMap, map, {
+            zIndex: massZ("cartoon"),
+            thinZoom: THIN_ZOOM,
+            // not in the middle of 高德's own drawing
+            onFail: (why) =>
+              window.setTimeout(() => {
+                if (glRef.current !== gl || cancelled) return;
+                glBroke = true;
+                console.warn("roach layer:", why);
+                layRef.current();
+              }, 0),
+          });
+          if (!gl) {
+            glBroke = true;
+            return false;
+          }
+          glRef.current = gl;
+          gl.setCrawl(!prefersReducedMotion());
+          gl.setRoaches(glRoaches(groupsRef.current));
+          return true;
+        };
+        layRef.current = () => {
+          const { look, urls } = styledRef.current;
+          crawlRef.current?.stop();
+          if (look === "cartoon" && !glBroke && (glRef.current || startGl())) {
+            stopMass();
+            void glRef.current!.setIcons(urls);
+          } else {
+            glRef.current?.destroy();
+            glRef.current = null;
+            overRef.current = false;
+            if (!massRef.current.length) startMass();
+            else {
+              styledPxRef.current = massPx(map.getZoom());
+              const style = massStyles(AMap, map.getZoom(), urls);
+              massRef.current.forEach((m, g) => {
+                m.setzIndex(massZ(look));
+                m.setStyle(style);
+                m.setData(massData(shownRef.current[g], map.getZoom(), look, null));
+              });
+            }
+          }
+          crawlRef.current?.start();
+        };
         // a new style for the 7 layers only when the icons' size changes (it stops changing past city level)
         map.on("zoomchange", () => {
+          if (!massRef.current.length) return;
           const px = massPx(map.getZoom());
           if (px === styledPxRef.current) return;
           styledPxRef.current = px;
@@ -515,11 +626,14 @@ export default function AmapView(props: MapViewProps) {
         // Redraw one batch per tick, round robin, to keep each frame light. Not while the map moves: each
         // batch has 高德 draw the whole map again, on top of what a drag or a zoom asks of it, and on a
         // phone that is what makes dragging stutter. They crawl on as soon as the map stands still.
+        // The GPU layer crawls by itself on every frame 高德 draws; standing still, it asks for frames.
         let tick = 0;
         let moving = false;
         let dragging = false;
-        // the roaches near where the map stands now, each where its crawl has it (sleeping ones lie still)
+        // the roaches near where the map stands now, each where its crawl has it (sleeping ones lie still);
+        // the GPU layer has all of them already
         reshowRef.current = () => {
+          if (glRef.current || !massRef.current.length) return;
           shownRef.current = shownOf(map, groupsRef.current);
           const crawling = propsRef.current.active !== false && !prefersReducedMotion();
           const now = performance.now();
@@ -564,7 +678,9 @@ export default function AmapView(props: MapViewProps) {
         map.on("zoomend", ended);
         crawlRef.current = {
           start: () => {
-            if (crawlTimer || moving || propsRef.current.active === false || prefersReducedMotion()) return;
+            if (moving || propsRef.current.active === false || prefersReducedMotion()) return;
+            if (glRef.current) return glRef.current.tick(true);
+            if (crawlTimer) return;
             crawlTimer = window.setInterval(() => {
               const g = tick++ % MASS_GROUPS;
               const { look } = styledRef.current;
@@ -572,11 +688,12 @@ export default function AmapView(props: MapViewProps) {
             }, 25);
           },
           stop: () => {
+            glRef.current?.tick(false);
             window.clearInterval(crawlTimer);
             crawlTimer = 0;
           },
         };
-        crawlRef.current.start();
+        layRef.current();
 
         placeMine();
         drawTrail();
@@ -590,7 +707,26 @@ export default function AmapView(props: MapViewProps) {
 
         map.on("click", (e: AMapNS) => {
           if (Date.now() - lastHitRef.current < 300) return;
+          // the GPU layer's roaches are found here, being no markers of 高德's
+          const gl = glRef.current;
+          const id = gl && !propsRef.current.placing ? gl.hit(e.pixel.getX(), e.pixel.getY()) : null;
+          if (id) {
+            lastHitRef.current = Date.now();
+            window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
+            return;
+          }
           propsRef.current.onMapClick(fromGcj(e.lnglat.getLng(), e.lnglat.getLat()));
+        });
+        // with a mouse, the hand over a roach as MassMarks showed it
+        let hoverAt = 0;
+        map.on("mousemove", (e: AMapNS) => {
+          const gl = glRef.current;
+          if (!gl || propsRef.current.placing || Date.now() - hoverAt < 80) return;
+          hoverAt = Date.now();
+          const over = gl.hit(e.pixel.getX(), e.pixel.getY()) !== null;
+          if (over === overRef.current) return;
+          overRef.current = over;
+          map.setDefaultCursor(over ? "pointer" : "default");
         });
 
         const reportView = () => {
@@ -629,8 +765,12 @@ export default function AmapView(props: MapViewProps) {
       window.clearInterval(crawlTimer);
       window.clearTimeout(resumeTimer);
       crawlRef.current = null;
+      layRef.current = () => {};
+      glRef.current?.destroy();
+      glRef.current = null;
       massRef.current.forEach((m) => m.setMap(null));
       massRef.current = [];
+      heatRef.current?.destroy();
       heatRef.current = null;
       mineRef.current = [];
       trailRef.current = [];
@@ -646,28 +786,24 @@ export default function AmapView(props: MapViewProps) {
     const map = mapRef.current;
     if (!map) return;
     groupsRef.current = massGroups(props.roaches);
-    shownRef.current = shownOf(map, groupsRef.current);
-    const z = map.getZoom();
-    massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
-    heatRef.current?.setDataSet(heatData(props.roaches));
+    if (glRef.current) glRef.current.setRoaches(glRoaches(groupsRef.current));
+    else {
+      shownRef.current = shownOf(map, groupsRef.current);
+      const z = map.getZoom();
+      massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
+    }
+    heatRef.current?.set(props.roaches);
   }, [props.roaches]);
 
   useEffect(() => {
     const map = mapRef.current;
-    const AMap = amapRef.current;
-    if (!map || !AMap) return;
+    if (!map) return;
     let stale = false;
     const look = props.look;
     styleUrls(look).then((urls) => {
       if (stale || mapRef.current !== map) return;
       styledRef.current = { look, urls };
-      styledPxRef.current = massPx(map.getZoom());
-      const style = massStyles(AMap, map.getZoom(), urls);
-      massRef.current.forEach((m, g) => {
-        m.setzIndex(massZ(look));
-        m.setStyle(style);
-        m.setData(massData(shownRef.current[g], map.getZoom(), look, null));
-      });
+      layRef.current();
     });
     return () => {
       stale = true;
@@ -693,6 +829,7 @@ export default function AmapView(props: MapViewProps) {
   useEffect(drawTrail, [trailKey]);
 
   useEffect(() => {
+    overRef.current = false;
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");
   }, [props.placing]);
 

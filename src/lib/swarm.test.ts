@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crawl, LEG_FRAMES, legFrame } from "./swarm";
+import { cartoonCrawl, crawl, LEG_FRAMES, legFrame } from "./swarm";
 
 const track = (seed: number, look: "real" | "cartoon", ms = 20_000, every = 50) =>
   Array.from({ length: ms / every }, (_, i) => crawl(seed, i * every, look));
@@ -28,5 +28,35 @@ describe("crawl", () => {
     expect([...frames].every((f) => f >= 0 && f < LEG_FRAMES)).toBe(true);
     const poses = new Set(Array.from({ length: 200 }, (_, i) => legFrame(1, i * 17)));
     expect([...poses].sort()).toEqual(Array.from({ length: LEG_FRAMES }, (_, i) => i));
+  });
+});
+
+describe("cartoonCrawl", () => {
+  // the vertex shader of components/map/roachGl.ts, step by step: the clock's part of each angle wrapped first
+  const TAU = 6.2831853;
+  const mod = (x: number, y: number) => x - y * Math.floor(x / y);
+  const onGpu = (seed: number, t: number, scale: number) => {
+    const [phase, speed, period, reach, yMul] = cartoonCrawl(seed);
+    const k = t * speed;
+    const slowX = mod(k / 1400, TAU) + phase;
+    const slowY = mod((k * yMul) / 1400, TAU) + phase * yMul;
+    const fastX = mod(k / period, TAU) + phase * 3;
+    const fastY = mod((k * 1.1) / period, TAU) + phase * 3.3;
+    return {
+      dx: (Math.cos(slowX) * 2.2 * reach + Math.sin(fastX) * 0.5) * scale,
+      dy: (Math.sin(slowY) * 1.6 * reach + Math.cos(fastY) * 0.5) * scale,
+    };
+  };
+
+  it("moves each cartoon roach on the GPU as crawl() does", () => {
+    for (let seed = 1; seed < 60; seed += 7)
+      for (const t of [0, 16, 1234, 98_765, 2 ** 23 - 1])
+        for (const scale of [0.5, 1.5]) {
+          const cpu = crawl(seed * 7919, t, "cartoon", scale);
+          const gpu = onGpu(seed * 7919, t, scale);
+          // TAU is 2π to 8 digits: after a clock of hours, still far below a pixel
+          expect(Math.abs(gpu.dx - cpu.dx)).toBeLessThan(0.01);
+          expect(Math.abs(gpu.dy - cpu.dy)).toBeLessThan(0.01);
+        }
   });
 });

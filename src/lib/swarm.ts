@@ -68,6 +68,16 @@ function noise(seed: number, lane: number, t: number, every: number) {
   return a + (b - a) * f * f * (3 - 2 * f);
 }
 
+/**
+ * The cartoon crawl's numbers for one roach, worked out once: the GPU layer on the 高德 map
+ * (components/map/roachGl.ts) moves each roach as crawl() would, but a WebGL 1 shader cannot do
+ * rand()'s 32-bit integer hashing. [phase, speed, fast period ms, reach, slow y multiplier]
+ */
+export function cartoonCrawl(seed: number): [number, number, number, number, number] {
+  const r = (n: number) => rand(seed, n);
+  return [r(1) * Math.PI * 2, 0.7 + r(2) * 0.8, 130 + r(3) * 80, 0.6 + r(4) * 0.8, 1.1 + r(5) * 0.5];
+}
+
 export type Crawl = {
   /** Screen offset in px */
   dx: number;
