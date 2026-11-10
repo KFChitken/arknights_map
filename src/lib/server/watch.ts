@@ -1,25 +1,43 @@
 import "server-only";
-import { readFileSync, statfsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import tls from "node:tls";
-import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
-import { beijingShort } from "../beijing";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { beijingDate, beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
+import { levelRank, type Level } from "../siteStatus";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
-import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_DOORS, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
+import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_DIGEST_HOUR, WATCH_DOORS, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
 import { amapSearchToday } from "./geo";
 import { sendAdminMail } from "./mail";
 import { LOGIN_KINDS } from "./mailQuota";
-import { mailSends, watchAlerts, watchState } from "./schema";
+import { mailSends, reports, watchIncidents, watchMails, watchState } from "./schema";
 import { errorCode, recent, startedAt, type Signal } from "./signals";
+import {
+  BACKUP_STEPS,
+  beijingClock,
+  digestLetter,
+  disk,
+  gb,
+  getState,
+  mb,
+  memory,
+  pct,
+  setState,
+  type Incident,
+} from "./watchReport";
 
 /**
- * The site's own checks: every few minutes (startWatch, from instrumentation-node.ts) each
- * check says what is wrong right now, and the admins get one email about what is new, what
- * is still wrong six hours after they were told, and what is over. A whole site that is down
+ * The site's own checks: every few minutes (startWatch, from instrumentation-node.ts) each check
+ * says what is wrong right now, at one of three levels. A problem counts once it has been seen for
+ * long enough, and is over once it has been gone for long enough, so a figure hovering at a line
+ * makes one incident, not a mail each way (watch_incidents). Only urgent problems email the admins
+ * at once (WATCH_EMAILS), and again when they are over; daily ones go into the morning's digest,
+ * quiet ones are only kept for 网站状态 on the admin page (watchReport.ts). The same problem back
+ * within an hour of its end is the same incident, and emails nobody. A whole site that is down
  * cannot email anyone, so .github/workflows/uptime.yml looks at /api/health from outside too.
  */
 
@@ -28,15 +46,33 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 /** How often the checks run */
 export const WATCH_EVERY = 5 * MINUTE;
-/** A problem still there is mentioned again this long after the last email about it */
-export const REMIND_AFTER = 6 * HOUR;
-/** Emails the checks may send in any 24 hours, apart from MAIL_DAILY_LIMIT (they never use it up) */
-export const WATCH_MAILS_PER_DAY = 24;
+/** Emails about urgent problems and their end the checks may send in any 24 hours; the digest is apart, and none uses MAIL_DAILY_LIMIT */
+export const WATCH_MAILS_PER_DAY = 10;
+/** The same problem back within this long of its end opens its incident again, and emails nobody */
+export const REOPEN_WITHIN = HOUR;
+/** How long a problem must be gone before it is over, unless its check says otherwise */
+const CLOSE_AFTER = 15 * MINUTE;
+/** /api/health says no once the checks' own emails have not gone out for this long */
+const MAIL_BROKEN_FOR = 30 * MINUTE;
 
 const LOGS = "docker compose -f docker-compose.prod.yml logs";
 
-/** A problem one check sees now; key is unique within the check */
-export type Finding = { key: string; title: string; detail?: string; advice?: string };
+/**
+ * A problem one check sees now; key is unique within the check. urgent: emailed at once; daily: in the
+ * morning's digest; quiet: only on the admin page. openAfter: rounds in a row it must be seen before it
+ * counts (1 unless set); closeAfter: how long it must be gone before it is over; worst: how bad it got,
+ * in words, and a figure that is higher when worse.
+ */
+export type Finding = {
+  key: string;
+  title: string;
+  detail?: string;
+  advice?: string;
+  level: Level;
+  openAfter?: number;
+  closeAfter?: number;
+  worst?: { text: string; score: number };
+};
 
 export type Check = {
   name: string;
@@ -44,21 +80,29 @@ export type Check = {
   window?: number;
   /** Run at most this often; in between, its problems stand as they were */
   every?: number;
-  /** Its findings are things that happened (a restart): told once, then dropped quietly after REMIND_AFTER, never "over" */
+  /** Its findings are things that happened (a restart): never told as over */
   events?: boolean;
-  run: (now: number) => Promise<Finding[]>;
+  /** How long its problems must be gone before they are over, unless a finding says otherwise */
+  closeAfter?: number;
+  /** open: whether one of its problems counts now, for a check that holds on to it until it is well clear of the line */
+  run: (now: number, open: (key: string) => boolean) => Promise<Finding[]>;
 };
 
-type Alert = { key: string; title: string; detail: string; advice: string; since: number; mailedAt: number | null };
+/** A start of one of the app's processes */
+type Start = { at: number; name: string; build: string };
 
 type WatchState = {
-  alerts: Map<string, Alert>;
-  loaded: boolean;
+  /** Problems seen in the last rounds that do not count yet: rounds in a row, and when first seen */
+  pending: Map<string, { seen: number; first: number }>;
+  /** How long each problem must be gone before it is over, as its check last said */
+  closeAfter: Map<string, number>;
   lastRun: Map<string, number>;
-  mails: number[];
-  /** The last time an email of the checks could not be sent */
-  mailBrokenAt: number;
-  buildChecked: boolean;
+  loaded: boolean;
+  /** This process's start is in the record; the other processes' starts heard since the last round */
+  started: boolean;
+  heard: Start[];
+  /** Since when the checks' emails have not gone out; 0 while they do */
+  mailBrokenSince: number;
   running: boolean;
   timer?: ReturnType<typeof setInterval>;
 };
@@ -66,12 +110,13 @@ type WatchState = {
 // on globalThis like signals.ts: /api/health (a route) reads what the checks (started at boot) found
 const g = globalThis as unknown as { zhoupWatch?: WatchState };
 const fresh = (): WatchState => ({
-  alerts: new Map(),
-  loaded: false,
+  pending: new Map(),
+  closeAfter: new Map(),
   lastRun: new Map(),
-  mails: [],
-  mailBrokenAt: 0,
-  buildChecked: false,
+  loaded: false,
+  started: false,
+  heard: [],
+  mailBrokenSince: 0,
   running: false,
 });
 const state = () => (g.zhoupWatch ??= fresh());
@@ -103,19 +148,8 @@ function tally(codes: string[], name: (code: string) => string = (c) => c, top =
     .join("；");
 }
 
-const pct = (x: number) => `${Math.round(x * 100)}%`;
-const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-const mb = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`;
-
-async function getState(key: string) {
-  const [row] = await db.select().from(watchState).where(eq(watchState.key, key)).limit(1);
-  return row;
-}
-
-async function setState(key: string, value: string, now: number) {
-  const at = new Date(now);
-  await db.insert(watchState).values({ key, value, updatedAt: at }).onConflictDoUpdate({ target: watchState.key, set: { value, updatedAt: at } });
-}
+/** The Beijing hour of a moment, 0–23 */
+const beijingHour = (t: number) => Number(new Date(t + 8 * HOUR).toISOString().slice(11, 13));
 
 // ---- the checks ----
 
@@ -127,18 +161,30 @@ async function checkDb(): Promise<Finding[]> {
     return [
       {
         key: "down",
+        level: "urgent",
+        openAfter: 2,
         title: "数据库连不上",
-        detail: `错误：${errorCode(e)}。`,
-        advice: `网站上几乎所有操作都会失败。在服务器上看看：docker compose -f docker-compose.prod.yml ps，和 ${LOGS} --since 30m db`,
+        detail: `错误：${errorCode(e)}。网站上几乎所有操作都会失败。`,
+        advice: `在服务器上看看：docker compose -f docker-compose.prod.yml ps，和 ${LOGS} --since 30m db`,
       },
     ];
   }
   const s = (Date.now() - t) / 1000;
   if (s < 2) return [];
-  return [{ key: "slow", title: "数据库反应很慢", detail: `一次最简单的查询用了 ${s.toFixed(1)} 秒。`, advice: "网站会跟着变慢。看看服务器的 CPU 和内存（docker stats --no-stream）。" }];
+  return [
+    {
+      key: "slow",
+      level: "quiet",
+      closeAfter: 30 * MINUTE,
+      title: "数据库反应很慢",
+      detail: `一次最简单的查询用了 ${s.toFixed(1)} 秒。`,
+      advice: "网站会跟着变慢。看看服务器的 CPU 和内存（docker stats --no-stream）。",
+      worst: { text: `最慢一次 ${s.toFixed(1)} 秒`, score: s },
+    },
+  ];
 }
 
-function buildId() {
+export function buildId() {
   try {
     return readFileSync(path.join(process.cwd(), ".next", "BUILD_ID"), "utf8").trim();
   } catch {
@@ -146,74 +192,208 @@ function buildId() {
   }
 }
 
-/** Once per process: the same build as last time means a restart that was not a deploy. */
+/** Which of the app's processes this is: web, web2 or web3 on the live site (from where it keeps its roach list) */
+export function processName() {
+  return process.env.WEB_NAME || path.basename(process.env.FEED_STATE || "", ".json") || (process.env.WEB_ROLE === "helper" ? os.hostname() : "web");
+}
+
+/** Another process said it started (watchSignals.ts); the next round puts it in the record */
+export function heardStart(s: Start) {
+  state().heard.push(s);
+}
+
+/** A few processes starting again within this long of one another (a setting changed, the server restarted) are one restart */
+const TOGETHER = 2 * MINUTE;
+
+/**
+ * Restarts that were not deploys: a process starting with the build it ran before. Each process says
+ * when it starts (this one by itself, the others through watchSignals.ts), and the record of the last
+ * day's starts lives in watch_state. Three restarts in an hour (the app crashing again and again) are
+ * urgent; one is for the digest.
+ */
 async function checkRestart(now: number): Promise<Finding[]> {
   const w = state();
-  if (w.buildChecked) return [];
-  const build = buildId();
-  const last = await getState("build");
-  await setState("build", build, now);
-  w.buildChecked = true;
-  if (last?.value !== build) return [];
+  const news: Start[] = w.heard.splice(0);
+  if (!w.started) {
+    w.started = true;
+    news.push({ at: startedAt(), name: processName(), build: buildId() });
+  }
+  if (!news.length) return [];
+  const kept = await getState("starts");
+  let starts: (Start & { again: boolean })[] = kept ? JSON.parse(kept.value) : [];
+  // before the record of starts, the build last seen running was kept alone, for the main process
+  const lastBuild = (await getState("build"))?.value;
+  const again: Start[] = [];
+  for (const s of news) {
+    const before = starts.findLast((x) => x.name === s.name)?.build ?? (s.name === "web" ? lastBuild : undefined);
+    starts.push({ ...s, again: before === s.build });
+    if (before === s.build) again.push(s);
+  }
+  starts = starts.filter((s) => now - s.at < DAY);
+  await setState("starts", JSON.stringify(starts), now);
+  const web = news.find((s) => s.name === "web");
+  if (web) await setState("build", web.build, now);
+  if (!again.length) return [];
+
+  let restarts = 0;
+  let last = -Infinity;
+  for (const s of starts.filter((x) => x.again && now - x.at < HOUR).sort((a, b) => a.at - b.at)) {
+    if (s.at - last > TOGETHER) restarts++;
+    last = s.at;
+  }
+  const names = [...new Set(again.map((s) => s.name))].join("、");
+  const when = beijingShort(Math.max(...again.map((s) => s.at)));
+  const advice = `可能是程序崩溃后被 Docker 自动拉起，也可能是服务器重启了；如果是你自己重启或改了设置，可以不用管。查原因：${LOGS} --since 2h web web2 web3`;
   return [
-    {
-      key: "again",
-      title: "网站程序重启过",
-      detail: `${beijingShort(startedAt())} 重新启动，版本没变，不是部署新版本引起的。`,
-      advice: `可能是程序崩溃后被 Docker 自动拉起，也可能是服务器重启了；如果是你自己重启或重新部署的，可以不用管。查原因：${LOGS} --since 2h web`,
-    },
+    restarts >= 3
+      ? {
+          key: "again",
+          level: "urgent",
+          title: `网站程序 1 小时里重启了 ${restarts} 次`,
+          detail: `最近一次是 ${when}（${names}），版本都没变，不是部署新版本引起的。程序可能在反复崩溃。`,
+          advice,
+        }
+      : {
+          key: "again",
+          level: "daily",
+          title: "网站程序重启过",
+          detail: `${when} ${names} 重新启动，版本没变，不是部署新版本引起的。`,
+          advice,
+        },
   ];
 }
 
+/**
+ * Errors of all three processes (the helpers send theirs here, watchSignals.ts): a flood (100 in ten
+ * minutes, or 10 in each of the last three ten minutes) is urgent; 20 in a day is for the digest,
+ * with the three paths it came from most; a few at once only for the admin page.
+ */
 async function checkErrors(now: number): Promise<Finding[]> {
-  const list = recent("error", 10 * MINUTE, now);
-  if (list.length < 5) return [];
-  return [
-    {
-      key: "many",
-      title: "网站程序频繁出错",
-      detail: `10 分钟内出错 ${list.length} 次，最多的是：${tally(list.map((s) => s.code), undefined, 3)}。`,
-      advice: `访客会看到「服务器出了点问题」。看日志：${LOGS} --since 30m web`,
-    },
-  ];
-}
-
-async function checkQuota(now: number): Promise<Finding[]> {
-  // the admin's report reminders are not counted against the limit (src/lib/server/mailQuota.ts)
-  const [{ n }] = await db
-    .select({ n: count() })
-    .from(mailSends)
-    .where(and(inArray(mailSends.kind, LOGIN_KINDS), gt(mailSends.sentAt, new Date(now - DAY))));
-  const said = `过去 24 小时发了 ${n} 封，上限是 ${MAIL_DAILY_LIMIT} 封（服务器 .env 里的 MAIL_DAILY_LIMIT）。`;
-  if (n >= MAIL_DAILY_LIMIT) {
+  const ten = recent("error", 10 * MINUTE, now);
+  const day = recent("error", DAY, now);
+  const window = (from: number) => day.filter((s) => s.at >= now - from - 10 * MINUTE && s.at < now - from).length;
+  const flood = ten.length >= 100 || [0, 10 * MINUTE, 20 * MINUTE].every((from) => window(from) >= 10);
+  const worst = { text: `10 分钟里最多 ${ten.length} 次`, score: ten.length };
+  const advice = `访客会看到「服务器出了点问题」。看日志：${LOGS} --since 30m web web2 web3`;
+  if (flood) {
     return [
       {
-        key: "full",
-        title: "验证码邮件用完了",
-        detail: said,
-        advice: "新来的人现在收不到验证码，登录不了，要等最早发的那些满 24 小时不再算进去才会恢复。要放宽就调大 MAIL_DAILY_LIMIT 再重新部署；Resend 自己的额度在 resend.com 上看。",
+        key: "many",
+        level: "urgent",
+        title: "网站程序大面积出错",
+        detail: `10 分钟内出错 ${ten.length} 次（三个程序合计），最多的是：${tally(ten.map((s) => s.code), undefined, 3)}。很多访客现在用不了网站，可能是新版本有问题。`,
+        advice,
+        worst,
       },
     ];
   }
-  if (n >= 0.8 * MAIL_DAILY_LIMIT) {
-    return [{ key: "high", title: "验证码邮件快用完了", detail: said, advice: "用完以后新来的人就收不到验证码了。要放宽就调大 MAIL_DAILY_LIMIT 再重新部署。" }];
+  if (day.length >= 20) {
+    return [
+      {
+        key: "many",
+        level: "daily",
+        title: "网站程序这一天出错比较多",
+        detail: `过去 24 小时出错 ${day.length} 次（三个程序合计），最多的是：${tally(day.map((s) => s.code), undefined, 3)}。`,
+        advice,
+        worst,
+      },
+    ];
+  }
+  if (ten.length >= 5) {
+    return [
+      {
+        key: "many",
+        level: "quiet",
+        title: "网站程序频繁出错",
+        detail: `10 分钟内出错 ${ten.length} 次，最多的是：${tally(ten.map((s) => s.code), undefined, 3)}。`,
+        advice,
+        worst,
+      },
+    ];
   }
   return [];
 }
 
-async function checkMail(now: number): Promise<Finding[]> {
-  const failed = recent("mailFailed", 30 * MINUTE, now);
-  if (!failed.length) return [];
+/**
+ * Sign-in code emails against MAIL_DAILY_LIMIT: used up is urgent, and so is a pace that would use
+ * it up within six hours (once a day); 80% is for the digest. Each holds until the count is well
+ * below its line (95%, 75%), so a count going back and forth across it is one incident.
+ */
+async function checkQuota(now: number, open: (key: string) => boolean): Promise<Finding[]> {
+  // the admin's report reminders are not counted against the limit (src/lib/server/mailQuota.ts)
+  const sent = (since: number) =>
+    db
+      .select({ n: count() })
+      .from(mailSends)
+      .where(and(inArray(mailSends.kind, LOGIN_KINDS), gt(mailSends.sentAt, new Date(now - since))));
+  const [{ n }] = await sent(DAY);
+  const said = `过去 24 小时发了 ${n} 封，上限是 ${MAIL_DAILY_LIMIT} 封（服务器 .env 里的 MAIL_DAILY_LIMIT）。`;
+  if (n >= MAIL_DAILY_LIMIT || (open("full") && n >= 0.95 * MAIL_DAILY_LIMIT)) {
+    return [
+      {
+        key: "full",
+        level: "urgent",
+        title: "验证码邮件用完了",
+        detail: `${said}新来的人现在收不到验证码，登录不了。`,
+        advice: "要等最早发的那些满 24 小时不再算进去才会恢复。要放宽就调大 MAIL_DAILY_LIMIT 再重新部署；Resend 自己的额度在 resend.com 上看。",
+      },
+    ];
+  }
+  const [{ n: lastHour }] = await sent(HOUR);
+  const hoursLeft = lastHour ? (MAIL_DAILY_LIMIT - n) / lastHour : Infinity;
+  const rush = hoursLeft <= 6;
+  const high = n >= 0.8 * MAIL_DAILY_LIMIT || (open("high") && n >= 0.75 * MAIL_DAILY_LIMIT);
+  if (!rush && !high) return [];
+  // the rush is emailed once a day at most; after that it is for the digest
+  const today = beijingDate(now);
+  const urgent = rush && (await getState("quotaRush"))?.value !== today;
+  if (urgent) await setState("quotaRush", today, now);
+  return [
+    {
+      key: "high",
+      level: urgent ? "urgent" : "daily",
+      title: rush ? "验证码邮件照现在的速度很快会用完" : "验证码邮件快用完了",
+      detail: rush ? `${said}最近一小时发了 ${lastHour} 封，照这个速度大约 ${Math.max(1, Math.round(hoursLeft))} 小时后用完。` : said,
+      advice: "用完以后新来的人就收不到验证码了。要放宽就调大 MAIL_DAILY_LIMIT 再重新部署。",
+      worst: { text: `最多发到 ${n} 封`, score: n },
+    },
+  ];
+}
+
+/**
+ * Sign-in code emails failing: urgent when ten or more failed in a quarter of an hour and failures
+ * outnumber what went out, until for a quarter of an hour what went out outnumbers the failures;
+ * one now and then, with nothing gone out since, only for the admin page.
+ */
+async function checkMail(now: number, open: (key: string) => boolean): Promise<Finding[]> {
+  const failed = recent("mailFailed", 15 * MINUTE, now);
+  const went = recent("mailSent", 15 * MINUTE, now);
+  const advice =
+    "多半是 Resend 那边：Key 失效、额度用完或被限流，登录 resend.com 看看。这封邮件也经 Resend 发，它要是也发不出去，外面的在线检查会提醒你。";
+  if (failed.length > went.length && (failed.length >= 10 || open("failing"))) {
+    return [
+      {
+        key: "failing",
+        level: "urgent",
+        title: "验证码邮件发不出去",
+        detail: `最近 15 分钟失败 ${failed.length} 次（${tally(failed.map((s) => s.code))}），发出去 ${went.length} 封。新来的人收不到验证码。`,
+        advice,
+        worst: { text: `15 分钟里最多失败 ${failed.length} 次`, score: failed.length },
+      },
+    ];
+  }
+  const lately = recent("mailFailed", 30 * MINUTE, now);
+  if (!lately.length) return [];
   // a code that went out after the last failure: mail works again
-  const lastFailed = failed[failed.length - 1].at;
+  const lastFailed = lately[lately.length - 1].at;
   if (recent("mailSent", 30 * MINUTE, now).some((s) => s.at > lastFailed)) return [];
   return [
     {
       key: "failing",
-      title: "验证码邮件发不出去",
-      detail: `30 分钟内失败 ${failed.length} 次（${tally(failed.map((s) => s.code))}）。`,
-      advice:
-        "新来的人收不到验证码。多半是 Resend 那边：Key 失效、额度用完或被限流，登录 resend.com 看看。这封邮件也经 Resend 发，它要是也发不出去，GitHub 的在线检查会提醒你。",
+      level: "quiet",
+      title: "验证码邮件偶尔发不出去",
+      detail: `30 分钟内失败 ${lately.length} 次（${tally(lately.map((s) => s.code))}），之后还没有发出去过。`,
+      advice,
     },
   ];
 }
@@ -235,9 +415,11 @@ async function checkCodes(now: number): Promise<Finding[]> {
   return [
     {
       key: "flood",
+      level: "quiet",
       title: "有人在频繁要验证码",
       detail: `一小时内有 ${list.length} 次要验证码被拦下（${tally(list.map((s) => s.code), (c) => REFUSED[c] ?? c)}）。`,
       advice: "被拦下的不会发邮件，不花钱，也不影响其他人登录；一直这样的话可能有人在刷。",
+      worst: { text: `一小时最多 ${list.length} 次`, score: list.length },
     },
   ];
 }
@@ -271,11 +453,12 @@ function mapTrouble(code: string) {
 }
 
 /**
- * 高德 saying its key is wrong or used up is clear enough three times in ten minutes; other
- * trouble (a slow phone network, a tile now and then) only when it adds up to ten in half an hour.
- * The server's own place search being told by 高德 that its allowance is used up is told on its
- * own, for as long as the day lasts: the map itself is fine. So are pages saying 腾讯位置服务
- * turned away the key of their place suggestions, three times in half an hour.
+ * 高德 saying its key is wrong or used up three times in ten minutes is for the digest; other trouble
+ * (a slow phone network, a tile now and then) only for the admin page, once it adds up to ten in half
+ * an hour. The server's own place search being told by 高德 that its allowance is used up is told on
+ * its own, for as long as the day lasts: the map itself is fine. So are pages saying 腾讯位置服务
+ * turned away the key of their place suggestions, three times in half an hour: for the digest when the
+ * key is set up wrong, only for the admin page when the day's allowance ran out.
  */
 async function checkMaps(now: number): Promise<Finding[]> {
   const findings: Finding[] = [];
@@ -283,6 +466,7 @@ async function checkMaps(now: number): Promise<Finding[]> {
   if (search.out) {
     findings.push({
       key: "search",
+      level: "quiet",
       title: "高德搜地点额度用完了",
       detail: `今天服务器向高德搜地点时被拒（${search.out}），今天不再用高德搜；明天 0 点（北京时间）再试。今天用了 ${search.used} 次，每天最多 ${search.daily} 次。`,
       advice: "地图和点地图放蟑螂不受影响；内地玩家搜地名会改用 OpenStreetMap，下个月 1 日高德额度恢复。个人账号买不了更多。",
@@ -295,6 +479,7 @@ async function checkMaps(now: number): Promise<Finding[]> {
     const usedUp = tencent.filter((c) => c === "121").length * 2 > tencent.length;
     findings.push({
       key: "tencent",
+      level: usedUp ? "quiet" : "daily",
       title: usedUp ? "腾讯打字提示今天的额度用完了" : "腾讯打字提示的 Key 被拒了",
       detail: `30 分钟内有 ${tencent.length} 个页面说腾讯位置服务不给打字提示：${tally(tencent, (c) => `${c}（${TENCENT_SAYS[c] ?? "其他"}）`)}。`,
       advice: usedUp
@@ -307,18 +492,20 @@ async function checkMaps(now: number): Promise<Finding[]> {
   if (keys.length >= 3 || list.length >= 10) {
     findings.push({
       key: "failing",
+      level: keys.length >= 3 ? "daily" : "quiet",
       title: "地图在访客那里加载失败",
       detail: `30 分钟内有 ${list.length} 次：${tally(list.map((s) => s.code), mapTrouble)}。`,
       advice:
         "访客那边会自动换成别的底图，但内地访客看到的就不是高德了。高德的话多半是 Key 当天的调用量用完或 Key 设置有问题，登录高德开放平台控制台看看。这类报告谁都能发，偶尔几次也可能是访客自己的网络问题。",
+      worst: { text: `半小时最多 ${list.length} 次`, score: list.length },
     });
   }
   return findings;
 }
 
 /**
- * 高德's map loads this month (src/lib/server/amapLoads.ts), told once a month: when 80% of the
- * allowance is gone, or when this month's pace so far would use it up before the month ends.
+ * 高德's map loads this month (src/lib/server/amapLoads.ts), told once a month in the digest: when 80%
+ * of the allowance is gone, or when this month's pace so far would use it up before the month ends.
  */
 async function checkAmapLoads(now: number): Promise<Finding[]> {
   const { month, count } = await saveAmapLoads(now);
@@ -333,6 +520,7 @@ async function checkAmapLoads(now: number): Promise<Finding[]> {
   return [
     {
       key: "loads",
+      level: "daily",
       title: "高德地图加载这个月快用完了",
       detail: `这个月到现在，内地访客大约打开了 ${n(count)} 次高德地图（估算）；照这个速度，到月底大约 ${n(projected)} 次。个人账号每月 ${n(limit)} 次。`,
       advice:
@@ -344,56 +532,61 @@ async function checkAmapLoads(now: number): Promise<Finding[]> {
 const JOBS: Record<string, string> = {
   setup: "启动时升级数据库",
   prune: "清理 90 天前的记录",
-  digest: "举报日报邮件",
+  digest: "举报提醒邮件",
   flip: "好久没来自动翻",
   ride: "明河都尉换站",
   totals: "全站每日统计",
+  live: "收听另外两个程序的消息提醒",
+  signals: "收听另外两个程序的出错次数",
+  loads: "保存高德地图加载次数",
 };
 
+/** Background jobs that failed in the last day: the database not brought up to date at start is urgent */
 async function checkJobs(now: number): Promise<Finding[]> {
   const byJob = new Map<string, Signal[]>();
   for (const s of recent("job", DAY, now)) byJob.set(s.code, [...(byJob.get(s.code) ?? []), s]);
   return [...byJob].map(([job, list]) => ({
     key: job,
+    level: job === "setup" ? "urgent" : "daily",
     title: `定时任务「${JOBS[job] ?? job}」出错了`,
     detail: `过去 24 小时出错 ${list.length} 次，最近一次在 ${beijingShort(list[list.length - 1].at)}。`,
     advice: `看日志：${LOGS} --since 24h web`,
   }));
 }
 
-function memory() {
-  try {
-    const info = readFileSync("/proc/meminfo", "utf8");
-    const kb = (name: string) => Number(info.match(new RegExp(`^${name}:\\s+(\\d+)`, "m"))?.[1] ?? NaN) * 1024;
-    const total = kb("MemTotal");
-    const available = kb("MemAvailable");
-    return Number.isFinite(total) && Number.isFinite(available) ? { total, available } : null;
-  } catch {
-    // not Linux (a Mac in development): no such file
-    return null;
-  }
-}
-
-/** Disk, memory and processor of the machine; inside Docker these read the host's own. */
-async function checkMachine(): Promise<Finding[]> {
+/**
+ * Disk, memory and processor of the machine; inside Docker these read the host's own. The disk:
+ * urgent at 90% or when the last three days' growth fills it within three days, for the digest at
+ * 85% or within a week (a reading a day is kept to tell). Memory: urgent under 3% available for
+ * two rounds, under 10% for three rounds only for the admin page; a busy processor too.
+ */
+async function checkMachine(now: number): Promise<Finding[]> {
   const out: Finding[] = [];
-  const disk = statfsSync("/");
-  const used = (disk.blocks - disk.bfree) / (disk.blocks - disk.bfree + disk.bavail);
-  if (used >= 0.85) {
+  const d = disk();
+  const daysToFull = await diskDaysLeft(d.usedBytes, d.free, now);
+  const soon = (days: number) => daysToFull !== null && daysToFull <= days;
+  if (d.used >= 0.85 || soon(7)) {
+    const urgent = d.used >= 0.9 || soon(3);
     out.push({
       key: "disk",
+      level: urgent ? "urgent" : "daily",
       title: "硬盘快满了",
-      detail: `已用 ${pct(used)}，还剩 ${gb(disk.bavail * disk.bsize)}。`,
+      detail: `已用 ${pct(d.used)}，还剩 ${gb(d.free)}${daysToFull !== null ? `；照最近三天的涨法，大约 ${Math.max(1, Math.round(daysToFull))} 天后满` : ""}。`,
       advice: "满了以后数据库写不进去，网站会出错。可以在服务器上 docker image prune -f 清掉旧镜像，再看看 ~/backups。",
+      worst: { text: `最多用到 ${pct(d.used)}`, score: d.used },
     });
   }
   const mem = memory();
   if (mem && mem.available < 0.1 * mem.total) {
+    const urgent = mem.available < 0.03 * mem.total;
     out.push({
       key: "memory",
-      title: "内存快满了",
+      level: urgent ? "urgent" : "quiet",
+      openAfter: urgent ? 2 : 3,
+      title: urgent ? "内存要用光了" : "内存紧张",
       detail: `只剩 ${mb(mem.available)} 可用（一共 ${gb(mem.total)}）。`,
       advice: "再满下去程序可能被系统强行停掉。看看是谁在占：docker stats --no-stream",
+      worst: { text: `最少剩 ${mb(mem.available)}`, score: -mem.available },
     });
   }
   const cores = os.cpus().length || 1;
@@ -401,38 +594,80 @@ async function checkMachine(): Promise<Finding[]> {
   if (fifteen > 1.5 * cores) {
     out.push({
       key: "cpu",
+      level: "quiet",
+      openAfter: 3,
       title: "CPU 一直很忙",
       detail: `最近 15 分钟平均负载 ${fifteen.toFixed(1)}（${cores} 核）。`,
       advice: "网站可能变慢。看看是谁在占：docker stats --no-stream",
+      worst: { text: `负载最高 ${fifteen.toFixed(1)}`, score: fifteen },
     });
   }
   return out;
 }
 
-const BACKUP_STEPS: Record<string, string> = { dump: "导出数据库", upload: "上传到腾讯云 COS", tidy: "清理旧备份" };
+/** Days until the disk is full at the last three days' growth, from a reading a day kept in watch_state; null when it is not growing */
+async function diskDaysLeft(usedBytes: number, free: number, now: number) {
+  const row = await getState("diskDays");
+  const days: Record<string, number> = row ? JSON.parse(row.value) : {};
+  const today = beijingDate(now);
+  if (days[today] === undefined) {
+    days[today] = usedBytes;
+    for (const day of Object.keys(days).sort().slice(0, -8)) delete days[day];
+    await setState("diskDays", JSON.stringify(days), now);
+  }
+  const then = beijingDate(now - 3 * DAY);
+  const from = Object.keys(days)
+    .sort()
+    .find((day) => day >= then);
+  if (!from || from === today) return null;
+  const spanDays = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY;
+  const growth = (usedBytes - days[from]) / spanDays;
+  return growth > 0 ? free / growth : null;
+}
 
-/** The nightly backup (scripts/backup.sh) writes how it went into watch_state, key 'backup'. */
+/**
+ * The nightly backup (scripts/backup.sh) writes how it went into watch_state, key 'backup'. Each
+ * trouble is for the digest; two nights without a backup that worked are urgent.
+ */
 async function checkBackup(now: number): Promise<Finding[]> {
   const row = await getState("backup");
   const how = "手动再备份一次：在服务器上运行 ~/arknights_map/scripts/backup.sh，它会把结果写进来。";
+  // when a backup last worked, kept beside the latest record (which may be a failure)
+  let okAt = Number((await getState("backupOk"))?.value ?? 0);
+  if (row?.value.startsWith("ok ") && row.updatedAt.getTime() > okAt) {
+    okAt = row.updatedAt.getTime();
+    await setState("backupOk", String(okAt), now);
+  }
+  const since = await getState("since");
+  const twoNights = now - (okAt || since?.updatedAt.getTime() || now) > 50 * HOUR;
+  const level: Level = twoNights ? "urgent" : "daily";
+  const none = twoNights ? `超过两天没有成功的数据库备份了${okAt ? `，最近一次成功是 ${beijingShort(okAt)}` : ""}。` : "";
   if (!row) {
     // the checks are newer than the backup script's record: give it a night first
-    const since = await getState("since");
     if (!since || now - since.updatedAt.getTime() < 30 * HOUR) return [];
-    return [{ key: "missing", title: "没看到数据库备份的记录", detail: "检查开始 30 多个小时了，凌晨 4 点的备份一次也没记下来。", advice: `看看服务器上的定时任务（crontab -l）和 ~/backups 里有没有新文件。${how}` }];
+    return [
+      {
+        key: "missing",
+        level,
+        title: "没看到数据库备份的记录",
+        detail: `${none}检查开始 30 多个小时了，凌晨 4 点的备份一次也没记下来。`,
+        advice: `看看服务器上的定时任务（crontab -l）和 ~/backups 里有没有新文件。${how}`,
+      },
+    ];
   }
   const [result, ...rest] = row.value.split(" ");
   const when = beijingShort(row.updatedAt.getTime());
   if (result === "failed") {
-    return [{ key: "failed", title: "数据库备份失败了", detail: `${when} 的备份停在了「${BACKUP_STEPS[rest[0]] ?? rest[0]}」这一步。`, advice: how }];
+    return [{ key: "failed", level, title: "数据库备份失败了", detail: `${none}${when} 的备份停在了「${BACKUP_STEPS[rest[0]] ?? rest[0]}」这一步。`, advice: how }];
   }
   if (now - row.updatedAt.getTime() > 26 * HOUR) {
-    return [{ key: "stale", title: "超过一天没有新的数据库备份", detail: `最近一次是 ${when}。`, advice: `看看服务器上的定时任务（crontab -l）。${how}` }];
+    return [{ key: "stale", level, title: "超过一天没有新的数据库备份", detail: `${none}最近一次是 ${when}。`, advice: `看看服务器上的定时任务（crontab -l）。${how}` }];
   }
   if (rest[2] === "local") {
     return [
       {
         key: "local",
+        level: "daily",
         title: "数据库备份没传到腾讯云",
         detail: `${when} 的备份只存在服务器上（${rest[0]}）。`,
         advice: "备份脚本没找到 ~/.zhoupmap-cos，服务器坏了的话这份备份也会一起没。",
@@ -442,7 +677,7 @@ async function checkBackup(now: number): Promise<Finding[]> {
   return [];
 }
 
-/** Days left on the HTTPS certificate, asked of Caddy inside the server's own network. */
+/** Days left on the HTTPS certificate, asked of Caddy inside the server's own network: under 5 urgent, under 14 for the digest. */
 async function checkTls(now: number): Promise<Finding[]> {
   const host = WATCH_TLS_HOST || (isProd ? "caddy" : "");
   if (!host) return [];
@@ -461,10 +696,13 @@ async function checkTls(now: number): Promise<Finding[]> {
     });
   });
   const days = Math.floor((validTo - now) / DAY);
+  // for the digest's figures
+  await setState("tlsDays", String(days), now);
   if (!(days < 14)) return [];
   return [
     {
       key: "expiring",
+      level: days < 5 ? "urgent" : "daily",
       title: days < 0 ? "HTTPS 证书过期了" : "HTTPS 证书快过期了",
       detail: days < 0 ? "浏览器会拦住访客，说网站不安全。" : `还有 ${days} 天到期。`,
       advice: `Caddy 平时会在到期前一个月左右自动续期，到现在还没续上说明续期一直失败。看日志：${LOGS} --since 24h caddy`,
@@ -504,7 +742,7 @@ function askThrough(door: string, servername: string): Promise<string> {
 
 /**
  * The other ways in (WATCH_DOORS: the second server, deploy/relay): a way in is broken when the
- * site does not answer through it three times running. Exported for the tests.
+ * site does not answer through it three times running, which is urgent. Exported for the tests.
  */
 export async function doorFindings(doors: string[], servername: string, pauseMs = 2_000): Promise<Finding[]> {
   const why = await Promise.all(
@@ -518,11 +756,12 @@ export async function doorFindings(doors: string[], servername: string, pauseMs 
       return trouble;
     }),
   );
-  return doors.flatMap((door, i) =>
+  return doors.flatMap((door, i): Finding[] =>
     why[i]
       ? [
           {
             key: `down:${door}`,
+            level: "urgent",
             title: "经第二台服务器打不开网站了",
             detail: `从这台经 ${door} 打开网站，连试 ${DOOR_TRIES} 次都不行：${why[i]}。从那台进来的访客现在打不开网站。`,
             advice:
@@ -537,15 +776,16 @@ const checkDoors = () => doorFindings(WATCH_DOORS, new URL(SITE_URL).hostname);
 
 export const CHECKS: Check[] = [
   { name: "db", run: checkDb },
-  { name: "restart", events: true, run: checkRestart },
-  { name: "errors", window: 10 * MINUTE, run: checkErrors },
-  { name: "quota", run: checkQuota },
+  { name: "restart", events: true, closeAfter: HOUR, run: checkRestart },
+  { name: "errors", window: 10 * MINUTE, closeAfter: HOUR, run: checkErrors },
+  { name: "quota", closeAfter: 30 * MINUTE, run: checkQuota },
   { name: "mail", window: 30 * MINUTE, run: checkMail },
   { name: "codes", window: HOUR, run: checkCodes },
   { name: "map", window: 30 * MINUTE, run: checkMaps },
-  { name: "amapLoads", events: true, every: 10 * MINUTE, run: checkAmapLoads },
+  // once a month: open for a day, so the next digest has it
+  { name: "amapLoads", events: true, every: 10 * MINUTE, closeAfter: DAY, run: checkAmapLoads },
   { name: "jobs", window: DAY, run: checkJobs },
-  { name: "machine", run: checkMachine },
+  { name: "machine", closeAfter: 30 * MINUTE, run: checkMachine },
   { name: "backup", every: 30 * MINUTE, run: checkBackup },
   { name: "tls", every: 6 * HOUR, run: checkTls },
   { name: "doors", run: checkDoors },
@@ -553,59 +793,7 @@ export const CHECKS: Check[] = [
 
 // ---- the run ----
 
-/** The alerts as the database last had them, merged under what this process already knows. */
-async function load(w: WatchState) {
-  const rows = await db.select().from(watchAlerts);
-  for (const r of rows) {
-    const mine = w.alerts.get(r.key);
-    const mailedAt = r.mailedAt?.getTime() ?? null;
-    if (!mine) w.alerts.set(r.key, { key: r.key, title: r.title, detail: r.detail, advice: "", since: r.since.getTime(), mailedAt });
-    else if (mailedAt && (mine.mailedAt ?? 0) < mailedAt) mine.mailedAt = mailedAt;
-  }
-  const mails = await getState("mails");
-  if (mails) for (const t of mails.value.split(",").map(Number)) if (t && !w.mails.includes(t)) w.mails.push(t);
-  w.loaded = true;
-}
-
-async function save(w: WatchState, now: number) {
-  await db.transaction(async (tx) => {
-    await tx.delete(watchAlerts);
-    const rows = [...w.alerts.values()].map((a) => ({
-      key: a.key,
-      title: a.title,
-      detail: a.detail,
-      since: new Date(a.since),
-      mailedAt: a.mailedAt ? new Date(a.mailedAt) : null,
-    }));
-    if (rows.length) await tx.insert(watchAlerts).values(rows);
-  });
-  await setState("mails", w.mails.join(","), now);
-}
-
-type Told = Alert & { what: "new" | "still" | "over" };
-
-function letter(now: number, told: Told[], others: Alert[]) {
-  const problems = told.filter((t) => t.what !== "over");
-  const over = told.filter((t) => t.what === "over");
-  const lead = problems[0] ?? over[0];
-  const n = problems.length || over.length;
-  const subject = `【${SITE_NAME}】${problems.length ? "出问题了" : "已解决"}：${lead.title}${n > 1 ? ` 等 ${n} 项` : ""}`;
-  const lines = [`北京时间 ${beijingShort(now)} 的自动检查：`, ""];
-  for (const t of problems) {
-    lines.push(t.what === "new" ? `⚠️ ${t.title}` : `⚠️ 还没好：${t.title}（从 ${beijingShort(t.since)} 开始）`);
-    if (t.detail) lines.push(`   ${t.detail}`);
-    if (t.advice) lines.push(`   ${t.advice}`);
-    lines.push("");
-  }
-  for (const t of over) lines.push(`✅ 已解决：${t.title}（${beijingShort(t.since)} 到 ${beijingShort(now)}）`, "");
-  if (others.length) {
-    lines.push("之前提醒过、还没好的：");
-    for (const a of others) lines.push(`· ${a.title}（从 ${beijingShort(a.since)} 开始）`);
-    lines.push("");
-  }
-  lines.push(`—— ${SITE_NAME}每 5 分钟自己检查一次；同一个问题 6 小时内只提醒一次，解决了会再说一声。`);
-  return { subject, text: lines.join("\n") };
-}
+type Send = (subject: string, text: string) => Promise<void>;
 
 /** To WATCH_EMAILS; with nobody to email (development), into the log instead */
 async function mailAdmins(subject: string, text: string) {
@@ -614,121 +802,279 @@ async function mailAdmins(subject: string, text: string) {
 }
 
 /**
- * One round of checks, and the email it calls for. checks and send can be swapped in tests.
- * A check that fails (say, the database is down) leaves its problems as they were.
+ * One round of checks, the urgent email it calls for, and the morning's digest when it is due.
+ * checks and send can be swapped in tests, and the digest left out. A check that fails (say, the
+ * database is down) leaves its problems as they were.
  */
 export async function runWatch({
   now = Date.now(),
   checks = CHECKS,
   send = mailAdmins,
-}: { now?: number; checks?: Check[]; send?: (subject: string, text: string) => Promise<void> } = {}) {
+  digest = true,
+}: { now?: number; checks?: Check[]; send?: Send; digest?: boolean } = {}) {
   const w = state();
   // a round still going (a slow database) is not doubled
-  if (w.running) return [];
+  if (w.running) return;
   w.running = true;
   try {
-    return await round(w, now, checks, send);
+    await round(w, now, checks, send, digest);
   } finally {
     w.running = false;
   }
 }
 
-async function round(w: WatchState, now: number, checks: Check[], send: (subject: string, text: string) => Promise<void>) {
+async function round(w: WatchState, now: number, checks: Check[], send: Send, digest: boolean) {
   if (!w.loaded) {
     try {
-      await load(w);
       await db.insert(watchState).values({ key: "since", value: "", updatedAt: new Date(now) }).onConflictDoNothing();
+      w.loaded = true;
     } catch (e) {
-      console.error("Watch: could not read its alerts", errorCode(e));
+      console.error("Watch: could not note when it began", errorCode(e));
     }
   }
+  let open: Map<string, Incident>;
+  try {
+    open = new Map((await db.select().from(watchIncidents).where(isNull(watchIncidents.endedAt))).map((i) => [i.key, i]));
+  } catch (e) {
+    console.error("Watch: could not read its incidents", errorCode(e));
+    return;
+  }
 
-  const told: Told[] = [];
   for (const check of checks) {
     if (check.every && now - (w.lastRun.get(check.name) ?? -Infinity) < check.every) continue;
     let found: Finding[];
     try {
-      found = await withTimeout(check.run(now), 20_000);
+      found = await withTimeout(
+        check.run(now, (key) => open.has(`${check.name}.${key}`)),
+        20_000,
+      );
     } catch (e) {
       console.error(`Watch: the ${check.name} check failed`, errorCode(e));
       continue;
     }
     w.lastRun.set(check.name, now);
-    const seen = new Set<string>();
-    for (const f of found) {
-      const key = `${check.name}.${f.key}`;
-      seen.add(key);
-      const had = w.alerts.get(key);
-      if (!had) {
-        const a: Alert = { key, title: f.title, detail: f.detail ?? "", advice: f.advice ?? "", since: now, mailedAt: null };
-        w.alerts.set(key, a);
-        told.push({ ...a, what: "new" });
-        continue;
-      }
-      Object.assign(had, { title: f.title, detail: f.detail ?? "", advice: f.advice ?? "" });
-      if (had.mailedAt === null) told.push({ ...had, what: "new" });
-      else if (!check.events && now - had.mailedAt >= REMIND_AFTER) told.push({ ...had, what: "still" });
-    }
-    // what this check no longer sees is over, once it can see far enough back to be sure
-    const sure = !check.window || now - startedAt() >= check.window;
-    for (const a of [...w.alerts.values()]) {
-      if (!a.key.startsWith(`${check.name}.`) || seen.has(a.key)) continue;
-      if (check.events) {
-        // kept a while, so the same thing happening again soon is not told twice; told late if the email failed
-        if (now - (a.mailedAt ?? a.since) >= REMIND_AFTER) w.alerts.delete(a.key);
-        else if (a.mailedAt === null) told.push({ ...a, what: "new" });
-      } else if (sure) {
-        w.alerts.delete(a.key);
-        if (a.mailedAt !== null) told.push({ ...a, what: "over" });
-      }
+    try {
+      await settle(w, check, found, open, now);
+    } catch (e) {
+      console.error(`Watch: could not keep what the ${check.name} check found`, errorCode(e));
     }
   }
 
-  if (told.length) {
-    w.mails = w.mails.filter((t) => now - t < DAY);
-    if (w.mails.length >= WATCH_MAILS_PER_DAY) {
-      console.error("Watch: today's emails are used up; not sending", told.map((t) => t.key).join(", "));
-    } else {
-      const toldKeys = new Set(told.map((t) => t.key));
-      const events = new Set(checks.filter((c) => c.events).map((c) => c.name));
-      const others = [...w.alerts.values()].filter(
-        (a) => !toldKeys.has(a.key) && a.mailedAt !== null && !events.has(a.key.split(".")[0]),
-      );
-      const { subject, text } = letter(now, told, others);
-      try {
-        await send(subject, text);
-        w.mails.push(now);
-        for (const t of told) {
-          const a = w.alerts.get(t.key);
-          if (a) a.mailedAt = now;
-        }
-      } catch (e) {
-        w.mailBrokenAt = now;
-        console.error("Watch: could not email the admins", errorCode(e));
-      }
-    }
-  }
+  const events = new Set(checks.filter((c) => c.events).map((c) => c.name));
+  await mailUrgent(w, now, send, events).catch((e) => console.error("Watch: could not deal with its urgent emails", errorCode(e)));
+  if (digest) await mailDigest(w, now, send).catch((e) => console.error("Watch: could not deal with the digest", errorCode(e)));
+  await setState("round", String(now), now).catch((e) => console.error("Watch: could not note the round", errorCode(e)));
+}
 
-  try {
-    await save(w, now);
-  } catch (e) {
-    console.error("Watch: could not save its alerts", errorCode(e));
+/** What one check found this round, into the incidents: refreshed, counted once seen long enough, over once gone long enough */
+async function settle(w: WatchState, check: Check, found: Finding[], open: Map<string, Incident>, now: number) {
+  const prefix = `${check.name}.`;
+  const seen = new Set<string>();
+  for (const f of found) {
+    const key = prefix + f.key;
+    seen.add(key);
+    w.closeAfter.set(key, f.closeAfter ?? check.closeAfter ?? CLOSE_AFTER);
+    const had = open.get(key);
+    if (had) {
+      open.set(key, await refresh(had, f, now));
+      continue;
+    }
+    const p = w.pending.get(key) ?? { seen: 0, first: now };
+    p.seen++;
+    if (p.seen < (f.openAfter ?? 1)) {
+      w.pending.set(key, p);
+      continue;
+    }
+    w.pending.delete(key);
+    open.set(key, await openIncident(key, f, p.first, now));
   }
-  return told;
+  // seen in a row, or not at all
+  for (const key of w.pending.keys()) if (key.startsWith(prefix) && !seen.has(key)) w.pending.delete(key);
+  // what this check no longer sees is over once gone long enough, and once it can see far enough back to be sure
+  if (check.window && now - startedAt() < check.window) return;
+  for (const [key, inc] of open) {
+    if (!key.startsWith(prefix) || seen.has(key)) continue;
+    if (now - inc.lastSeenAt.getTime() < (w.closeAfter.get(key) ?? check.closeAfter ?? CLOSE_AFTER)) continue;
+    await db.update(watchIncidents).set({ endedAt: new Date(now) }).where(eq(watchIncidents.id, inc.id));
+    open.delete(key);
+  }
+}
+
+/** The latest of a problem still there: its words, the highest level it reached, and the worst it got */
+function changes(had: Pick<Incident, "level" | "worstScore">, f: Finding, now: number) {
+  const worse = f.worst && (had.worstScore === null || f.worst.score > had.worstScore);
+  return {
+    title: f.title,
+    detail: f.detail ?? "",
+    advice: f.advice ?? "",
+    level: levelRank(f.level) > levelRank(had.level) ? f.level : had.level,
+    lastSeenAt: new Date(now),
+    ...(worse ? { worst: f.worst!.text, worstScore: f.worst!.score } : {}),
+  };
+}
+
+async function refresh(had: Incident, f: Finding, now: number) {
+  const [row] = await db.update(watchIncidents).set(changes(had, f, now)).where(eq(watchIncidents.id, had.id)).returning();
+  return row ?? had;
+}
+
+/** A problem that now counts: the same one again when it ended within REOPEN_WITHIN (one more time, no email), else a new one */
+async function openIncident(key: string, f: Finding, first: number, now: number) {
+  const [back] = await db
+    .select()
+    .from(watchIncidents)
+    .where(and(eq(watchIncidents.key, key), gt(watchIncidents.endedAt, new Date(now - REOPEN_WITHIN))))
+    .orderBy(desc(watchIncidents.endedAt))
+    .limit(1);
+  if (back) {
+    const [row] = await db
+      .update(watchIncidents)
+      .set({ ...changes(back, f, now), endedAt: null, times: sql`${watchIncidents.times} + 1` })
+      .where(eq(watchIncidents.id, back.id))
+      .returning();
+    return row;
+  }
+  const [row] = await db
+    .insert(watchIncidents)
+    .values({
+      key,
+      level: f.level,
+      title: f.title,
+      detail: f.detail ?? "",
+      advice: f.advice ?? "",
+      worst: f.worst?.text ?? null,
+      worstScore: f.worst?.score ?? null,
+      startedAt: new Date(first),
+      lastSeenAt: new Date(now),
+    })
+    .returning();
+  return row;
 }
 
 /**
- * For /api/health, which GitHub looks at from outside: false when the database cannot be
- * reached, or the checks' own emails (and the sign-in codes) cannot go out.
+ * The one email of a round: urgent problems that now count and nobody was told of, and urgent ones
+ * told of that are over (but not things that happened, like a restart), none the admin said they
+ * know of. At most WATCH_MAILS_PER_DAY a day; one over that is noted on the admin page and in the
+ * digest, and never sent later. A send that fails is tried again the next round.
+ */
+async function mailUrgent(w: WatchState, now: number, send: Send, events: Set<string>) {
+  const urgent = and(eq(watchIncidents.level, "urgent"), isNull(watchIncidents.ackedAt), isNull(watchIncidents.skippedAt));
+  const told = await db
+    .select()
+    .from(watchIncidents)
+    .where(and(urgent, isNull(watchIncidents.endedAt), isNull(watchIncidents.mailedAt)))
+    .orderBy(asc(watchIncidents.startedAt));
+  const over = (
+    await db
+      .select()
+      .from(watchIncidents)
+      .where(
+        and(
+          urgent,
+          gt(watchIncidents.endedAt, new Date(now - DAY)),
+          isNotNull(watchIncidents.mailedAt),
+          isNull(watchIncidents.recoveredMailedAt),
+        ),
+      )
+      .orderBy(asc(watchIncidents.endedAt))
+  ).filter((i) => !events.has(i.key.split(".")[0]));
+  if (!told.length && !over.length) return;
+
+  const { subject, text } = urgentLetter(now, told, over);
+  const at = new Date(now);
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(watchMails)
+    .where(and(inArray(watchMails.kind, ["urgent", "recovered"]), gt(watchMails.at, new Date(now - DAY))));
+  if (n >= WATCH_MAILS_PER_DAY) {
+    console.error("Watch: today's urgent emails are used up; not sending", [...told, ...over].map((i) => i.key).join(", "));
+    await db
+      .update(watchIncidents)
+      .set({ skippedAt: at })
+      .where(inArray(watchIncidents.id, [...told, ...over].map((i) => i.id)));
+    await db.insert(watchMails).values({ at, subject, kind: "skipped" });
+    return;
+  }
+  try {
+    await send(subject, text);
+  } catch (e) {
+    w.mailBrokenSince ||= now;
+    console.error("Watch: could not email the admins", errorCode(e));
+    return;
+  }
+  w.mailBrokenSince = 0;
+  if (told.length) await db.update(watchIncidents).set({ mailedAt: at }).where(inArray(watchIncidents.id, told.map((i) => i.id)));
+  if (over.length) await db.update(watchIncidents).set({ recoveredMailedAt: at }).where(inArray(watchIncidents.id, over.map((i) => i.id)));
+  await db.insert(watchMails).values({ at, subject, kind: told.length ? "urgent" : "recovered" });
+}
+
+/** Short: when it began, the figures and who it hurts, what to do, and where the rest is */
+function urgentLetter(now: number, told: Incident[], over: Incident[]) {
+  const more = (list: Incident[]) => (list.length > 1 ? ` 等 ${list.length} 项` : "");
+  const span = (i: Incident) => `${beijingClock(i.startedAt.getTime())}–${beijingClock(i.endedAt!.getTime())}`;
+  const subject = told.length
+    ? `【${SITE_NAME}】要你看：${told[0].title}${more(told)}`
+    : `【${SITE_NAME}】已恢复：${over[0].title}（${span(over[0])}）${more(over)}`;
+  const lines = [`北京时间 ${beijingShort(now)}：`, ""];
+  for (const i of told) {
+    lines.push(`🔴 ${i.title}`, `   从 ${beijingShort(i.startedAt.getTime())} 开始。${i.detail}`);
+    if (i.advice) lines.push(`   怎么办：${i.advice}`);
+    lines.push("");
+  }
+  for (const i of over) lines.push(`✅ 已恢复：${i.title}（${beijingShort(i.startedAt.getTime())} 到 ${beijingShort(i.endedAt!.getTime())}）`, "");
+  lines.push(
+    `处理和完整记录：${SITE_URL}/admin`,
+    `只有要你动手的事才马上发；好了会再说一声。不急的事在每天早上 ${WATCH_DIGEST_HOUR} 点的汇总里。`,
+  );
+  return { subject, text: lines.join("\n") };
+}
+
+/**
+ * The morning's digest (watchReport.ts), once a Beijing day, at the first round from WATCH_DIGEST_HOUR:
+ * a server that was away then sends it when it is back, a restart does not send it again, and a send
+ * that fails is tried again the next round. Reports in it count as told (src/lib/server/safety.ts).
+ */
+async function mailDigest(w: WatchState, now: number, send: Send) {
+  const today = beijingDate(now);
+  if (beijingHour(now) < WATCH_DIGEST_HOUR || (await getState("digestDay"))?.value === today) return;
+  const { subject, text } = await digestLetter(now);
+  try {
+    await send(subject, text);
+  } catch (e) {
+    w.mailBrokenSince ||= now;
+    console.error("Watch: could not email the digest", errorCode(e));
+    return;
+  }
+  w.mailBrokenSince = 0;
+  await setState("digestDay", today, now);
+  await db.insert(watchMails).values({ at: new Date(now), subject, kind: "digest" });
+  await db
+    .update(reports)
+    .set({ notifiedAt: new Date(now) })
+    .where(and(isNull(reports.notifiedAt), isNull(reports.resolvedAt)));
+}
+
+/**
+ * For /api/health, which the checks from outside look at: false when the database cannot be reached,
+ * when the sign-in code emails are failing (the urgent mail.failing is open), or when the checks' own
+ * emails have not gone out for half an hour.
  */
 export async function healthy(now = Date.now()) {
   try {
     await withTimeout(db.execute(sql`select 1`), 3000);
+    const [failing] = await withTimeout(
+      db
+        .select({ id: watchIncidents.id })
+        .from(watchIncidents)
+        .where(and(eq(watchIncidents.key, "mail.failing"), eq(watchIncidents.level, "urgent"), isNull(watchIncidents.endedAt)))
+        .limit(1),
+      3000,
+    );
+    const broken = state().mailBrokenSince;
+    if (failing || (broken && now - broken >= MAIL_BROKEN_FOR)) return { ok: false, why: "mail" };
   } catch {
     return { ok: false, why: "database" };
   }
-  const w = state();
-  if (now - w.mailBrokenAt < HOUR || w.alerts.has("mail.failing")) return { ok: false, why: "mail" };
   return { ok: true };
 }
 

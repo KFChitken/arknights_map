@@ -5,16 +5,18 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { BADGES } from "@/lib/badges";
 import { GAME_NAMES } from "@/lib/games";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
-import { beijingDate } from "@/lib/beijing";
+import { beijingDate, beijingShort } from "@/lib/beijing";
 import { PROFILE_REPORTS_TO_HOLD } from "@/lib/rules";
 import { REPORT_REASONS, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "@/lib/safety";
+import { lasted, LEVEL_MARK, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
 import { ago } from "./app/InboxSheet";
 import RoachIcon from "./RoachIcon";
 
 /**
- * /admin: this week's totals, open reports grouped by player with the ways to
- * settle them, the name blocklist, every account's email and name, and badges
- * by hand. The API refuses everyone but the admins.
+ * /admin: what the site's own checks found (网站状态), this week's totals, open
+ * reports grouped by player with the ways to settle them, the name blocklist,
+ * every account's email and name, and badges by hand. The API refuses everyone
+ * but the admins.
  */
 
 async function call<T>(op: string, ...args: unknown[]): Promise<T> {
@@ -101,6 +103,7 @@ export default function AdminApp() {
   return (
     <main className="doc admin">
       <h1>管理</h1>
+      <SiteStatusBox />
       <Retention />
 
       <h2>举报处理</h2>
@@ -243,6 +246,183 @@ export default function AdminApp() {
         <Link href="/">回到地图</Link>
       </p>
     </main>
+  );
+}
+
+const clock = (t: number) => beijingShort(t).split(" ")[1];
+const percent = (x: number) => `${Math.round(x * 100)}%`;
+const gigabytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+const megabytes = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`;
+
+const MAIL_KINDS: Record<string, string> = { urgent: "要你看", recovered: "已恢复", digest: "每日汇总", report: "举报", skipped: "超上限没发" };
+
+/** Whether and how the admin was told of an incident */
+function toldWords(i: IncidentView) {
+  if (i.mailedAt) return `${beijingShort(i.mailedAt)} 发过邮件${i.recoveredMailedAt ? `，${beijingShort(i.recoveredMailedAt)} 发过「已恢复」` : ""}`;
+  if (i.skippedAt) return "超过当天的上限，没发邮件";
+  if (i.level === "urgent") return i.ackedAt ? "你点了知道了，不发邮件" : "邮件还没发出去";
+  return i.level === "daily" ? "只进每天的汇总" : "只记在这里";
+}
+
+function outcome(i: IncidentView) {
+  if (i.endedAt) return i.ackedAt ? "你点了知道了，后来好了" : "自己好了";
+  return i.ackedAt ? "你点了知道了，还没好" : "还没好";
+}
+
+/**
+ * 网站状态: whether anything is wrong now, what wants the admin first, the last seven days, a few
+ * figures and the alert emails sent; read again every minute. 「知道了」 stops the emails about one.
+ */
+function SiteStatusBox() {
+  const [s, setS] = useState<SiteStatus | null>(null);
+  const [all, setAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const load = useCallback(() => {
+    call<SiteStatus>("status")
+      .then((x) => {
+        setS(x);
+        setNote(null);
+      })
+      .catch((e) => setNote(e instanceof Error ? e.message : "出了点问题。"));
+  }, []);
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 60_000);
+    return () => window.clearInterval(t);
+  }, [load]);
+  const ack = async (id: string) => {
+    setBusy(true);
+    try {
+      await call("ack", id);
+      load();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "出了点问题。");
+    }
+    setBusy(false);
+  };
+  if (!s) return note ? <p className="admin-note">网站状态读不出来：{note}</p> : null;
+
+  const pressing = s.open.filter((i) => i.level !== "quiet").length;
+  const stale = s.lastRound === null || s.now - s.lastRound > 15 * 60_000;
+  const days = new Map<string, IncidentView[]>();
+  for (const i of s.week.filter((x) => all || x.level !== "quiet")) {
+    const day = beijingShort(i.startedAt).split(" ")[0];
+    days.set(day, [...(days.get(day) ?? []), i]);
+  }
+  const doors = s.open.find((i) => i.key.startsWith("doors."));
+  const n = s.numbers;
+  return (
+    <section className="admin-case site-status">
+      <h2>网站状态</h2>
+      <p className="status-line">
+        <strong>{s.open.length ? `现在有 ${s.open.length} 个问题，其中 ${pressing} 个要你处理` : "现在一切正常 ✅"}</strong>
+        <span className={stale ? "stale" : "hint"}>
+          {s.lastRound === null ? "自查还没跑过" : stale ? `自查停了：上次是 ${ago(s.lastRound, s.now)}` : `自查：${ago(s.lastRound, s.now)}`}
+        </span>
+      </p>
+      {note && <p className="admin-note">{note}</p>}
+      {s.open.length > 0 && (
+        <ul className="incidents">
+          {s.open.map((i) => (
+            <li key={i.id}>
+              <strong>
+                {LEVEL_MARK[i.level]} {i.title}
+              </strong>
+              {i.times > 1 && <span className="hint">（合并了 {i.times} 次）</span>}
+              <p className="hint">
+                从 {beijingShort(i.startedAt)} 开始，已经 {lasted(s.now - i.startedAt)} · {toldWords(i)}
+              </p>
+              {i.detail && <p>{i.detail}</p>}
+              {i.advice && <p className="hint">怎么办：{i.advice}</p>}
+              {i.level !== "quiet" &&
+                (i.ackedAt ? (
+                  <p className="hint">你 {beijingShort(i.ackedAt)} 已经知道了，不再为它发邮件。</p>
+                ) : (
+                  <button className="pill" disabled={busy} onClick={() => ack(i.id)}>
+                    知道了
+                  </button>
+                ))}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h2>最近 7 天</h2>
+      <label className="check">
+        <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+        也看只记录的（⚪）
+      </label>
+      {days.size === 0 && <p className="hint">没有。</p>}
+      {[...days].map(([day, list]) => (
+        <Fragment key={day}>
+          <h3>{day}</h3>
+          <ul className="incidents week">
+            {list.map((i) => (
+              <li key={i.id}>
+                {LEVEL_MARK[i.level]} {clock(i.startedAt)}–{i.endedAt ? clock(i.endedAt) : "现在"} {i.title}
+                <span className="hint">
+                  {" "}
+                  · {outcome(i)}
+                  {i.times > 1 && ` · 合并了 ${i.times} 次`}
+                  {i.worst && ` · ${i.worst}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Fragment>
+      ))}
+
+      <h2>几个数</h2>
+      <ul>
+        <li>
+          验证码邮件：过去 24 小时 {n.loginMails} 封，上限 {n.mailLimit} 封
+        </li>
+        {n.disk && (
+          <li>
+            硬盘：用了 {percent(n.disk.used)}，还剩 {gigabytes(n.disk.free)}
+          </li>
+        )}
+        <li>{n.memory ? `内存：还有 ${megabytes(n.memory.available)} 可用（一共 ${gigabytes(n.memory.total)}）` : "内存：这里读不到（只在服务器上有）"}</li>
+        <li>
+          CPU：最近 15 分钟平均负载 {n.load.fifteen.toFixed(1)}（{n.load.cores} 核）
+        </li>
+        <li>第二台服务器：{doors ? `打不开（从 ${beijingShort(doors.startedAt)} 开始）` : "没有打不开的报警"}</li>
+        <li>备份：{n.backup}</li>
+        <li>证书：{n.tlsDays === null ? "这里不查（只在服务器上查）" : n.tlsDays < 0 ? "已经过期" : `还有 ${n.tlsDays} 天`}</li>
+        <li>
+          高德地图：这个月大约打开了 {n.amap.count.toLocaleString("en-US")} 次，上限 {n.amap.limit.toLocaleString("en-US")} 次
+        </li>
+        {n.yesterday && (
+          <li>
+            昨天：新来 {n.yesterday.signups} 人，新结成 {n.yesterday.friendships} 对触须之交
+          </li>
+        )}
+      </ul>
+
+      <h2>发过的报警邮件</h2>
+      {s.mails.length === 0 && <p className="hint">还没有。</p>}
+      <ul className="incidents week">
+        {s.mails.map((m, k) => (
+          <li key={k}>
+            <span className="hint">
+              {beijingShort(m.at)} · {MAIL_KINDS[m.kind] ?? m.kind}
+            </span>{" "}
+            {m.subject}
+          </li>
+        ))}
+      </ul>
+      <p className="hint">
+        外面的检查：
+        <a href="https://github.com/KFChitken/arknights_map/actions/workflows/uptime.yml" target="_blank" rel="noreferrer">
+          每 10 分钟的在线检查
+        </a>
+        {" · "}
+        <a href="https://github.com/KFChitken/arknights_map/actions/workflows/mainland-check.yml" target="_blank" rel="noreferrer">
+          每天的内地访问检查
+        </a>
+      </p>
+    </section>
   );
 }
 

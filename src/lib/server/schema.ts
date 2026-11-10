@@ -163,6 +163,53 @@ export const mailSends = pgTable("mail_sends", {
  * The site's own checks (src/lib/server/watch.ts): each problem seen and not yet over, and
  * when it was last emailed about, so a restart neither forgets nor repeats them.
  */
+/**
+ * What the site's own checks found (src/lib/server/watch.ts), one row per problem from the moment it
+ * counted until it was over: urgent ones are emailed at once and again when over, daily ones go into
+ * the morning's digest, quiet ones are only kept for the admin page. The same problem back within an
+ * hour of its end opens its row again (times). Kept 90 days after they end.
+ */
+export const watchIncidents = pgTable(
+  "watch_incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** <check>.<key>, as machine.memory */
+    key: text("key").notNull(),
+    /** "urgent", "daily" or "quiet": the highest it reached */
+    level: text("level").notNull(),
+    title: text("title").notNull(),
+    detail: text("detail").notNull().default(""),
+    advice: text("advice").notNull().default(""),
+    /** The worst it got, in words (「最少剩 423 MB」), and the figure that orders it */
+    worst: text("worst"),
+    worstScore: doublePrecision("worst_score"),
+    startedAt: at("started_at").notNull(),
+    lastSeenAt: at("last_seen_at").notNull(),
+    endedAt: at("ended_at"),
+    times: integer("times").notNull().default(1),
+    mailedAt: at("mailed_at"),
+    recoveredMailedAt: at("recovered_mailed_at"),
+    /** An email about it was due when the day's were used up (WATCH_MAILS_PER_DAY): it is never sent later */
+    skippedAt: at("skipped_at"),
+    /** The admin's 「知道了」: no more emails about it */
+    ackedAt: at("acked_at"),
+  },
+  (t) => [index("watch_incidents_key_idx").on(t.key, t.endedAt), index("watch_incidents_started_idx").on(t.startedAt)],
+);
+
+/** Emails the checks sent (urgent, recovered, digest), urgent ones not sent for the day's cap (skipped), and urgent report reminders (report), for the admin page. Kept 90 days. */
+export const watchMails = pgTable(
+  "watch_mails",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    at: at("at").notNull(),
+    subject: text("subject").notNull(),
+    kind: text("kind").notNull(),
+  },
+  (t) => [index("watch_mails_at_idx").on(t.at)],
+);
+
+/** The checks' open problems before watch_incidents (2026-11); read once into it, and no longer written. */
 export const watchAlerts = pgTable("watch_alerts", {
   key: text("key").primaryKey(),
   title: text("title").notNull(),

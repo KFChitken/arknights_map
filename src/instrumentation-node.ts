@@ -12,7 +12,8 @@ import { pruneOldActivity } from "./lib/server/retention";
 import { sendReportDigest } from "./lib/server/safety";
 import { note } from "./lib/server/signals";
 import { recordDailyTotals } from "./lib/server/totals";
-import { startWatch } from "./lib/server/watch";
+import { buildId, heardStart, processName, startWatch } from "./lib/server/watch";
+import { hearSignals, shareSignals } from "./lib/server/watchSignals";
 
 const TRIES = 10;
 
@@ -56,6 +57,9 @@ await hearOthers().catch(failed("live", "Listening for the other processes' nudg
 
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);
+
+// the helpers tell the main's checks what they noted, and when they started (src/lib/server/watchSignals.ts)
+if (helper && watchEnabled) shareSignals(processName(), buildId());
 
 if (!helper) {
 
@@ -106,6 +110,10 @@ if (!helper) {
   totals();
   setInterval(totals, 10 * MINUTE_MS);
 
-  // The site's own checks, which email the admins when something is wrong (on in production unless WATCH=off)
-  if (watchEnabled) startWatch();
+  // The site's own checks, which email the admins when something urgent is wrong and send a digest each morning
+  // (on in production unless WATCH=off), counting what the helpers noted too
+  if (watchEnabled) {
+    await hearSignals(heardStart).catch(failed("signals", "Listening for the helpers' signals failed"));
+    startWatch();
+  }
 }

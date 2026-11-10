@@ -11,7 +11,7 @@ import { WorldError, type BlockedPlayer } from "../world/types";
 import { db } from "./db";
 import { ADMIN_EMAILS, SITE_URL } from "./env";
 import { sendAdminMail } from "./mail";
-import { blocks, clearedValues, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users } from "./schema";
+import { blocks, clearedValues, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users, watchMails } from "./schema";
 import { note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
 
@@ -260,7 +260,7 @@ export async function report(userId: string, target: string, reason: unknown, no
 
 // ---- telling the admin ----
 
-/** Advisory lock taken while deciding on a report reminder; the login codes' is mailQuota.ts's */
+/** Advisory lock taken while deciding on an urgent report reminder; the login codes' is mailQuota.ts's */
 const REPORT_MAIL_LOCK = 7_316_002;
 /** Urgent reminders go at least this far apart, and at most this many in a day */
 const URGENT_GAP = 30 * MINUTE;
@@ -268,8 +268,8 @@ const URGENT_PER_DAY = 12;
 
 const isUrgent = (reason: string) => (URGENT_REASONS as readonly string[]).includes(reason);
 
-/** 「名字不合适 2 条、骚扰刷屏 1 条」, the reasons in the order given */
-function byReason(rows: { reason: string }[], order: readonly ReportReason[]) {
+/** 「名字不合适 2 条、骚扰刷屏 1 条」, the reasons in the order given (the report sheet's unless told) */
+export function byReason(rows: { reason: string }[], order: readonly ReportReason[] = Object.keys(REPORT_REASONS) as ReportReason[]) {
   const tally = new Map<ReportReason, number>();
   for (const r of rows) {
     const reason = isReportReason(r.reason) ? r.reason : "other";
@@ -279,12 +279,12 @@ function byReason(rows: { reason: string }[], order: readonly ReportReason[]) {
 }
 
 /**
- * Email the admins about reports they have not been told of: a reminder once a day, and on top of it
- * an urgent one whenever a new report is for URGENT_REASONS, at least half an hour after the last
- * urgent one and at most 12 a day. Either tells of every report waiting, and the first of a day is
- * also that day's reminder. Runs after every report and every 10 minutes, so an urgent report
- * reaches the admin within about 40 minutes and any other within a day. Report mail is not counted
- * against MAIL_DAILY_LIMIT, so a day the login codes used it up still gets its reminders.
+ * Email the admins at once when a report they have not heard of is for URGENT_REASONS, at least half
+ * an hour after the last such email and at most 12 a day; it tells of every report waiting. The others
+ * wait for the morning's digest of the site's checks (watch.ts), which tells of the day's reports and
+ * marks them told. Neither counts against MAIL_DAILY_LIMIT, so a day the login codes used it up still
+ * gets them. Runs after every report and every 10 minutes, so an urgent report reaches the admin within
+ * about 40 minutes.
  */
 export async function sendReportDigest(now = new Date()) {
   if (!ADMIN_EMAILS.length) return;
@@ -294,57 +294,45 @@ export async function sendReportDigest(now = new Date()) {
       .select({ id: reports.id, reason: reports.reason })
       .from(reports)
       .where(and(isNull(reports.resolvedAt), isNull(reports.notifiedAt)));
-    if (!fresh.length) return null;
+    if (!fresh.some((f) => isUrgent(f.reason))) return null;
     // only the last day counts, whatever older rows the login codes' clean-up has not got to yet
     const sent = await tx
-      .select({ kind: mailSends.kind, at: mailSends.sentAt })
+      .select({ at: mailSends.sentAt })
       .from(mailSends)
-      .where(and(inArray(mailSends.kind, ["report", "report-urgent"]), gt(mailSends.sentAt, new Date(now.getTime() - DAY))));
-    const urgentSent = sent.filter((m) => m.kind === "report-urgent");
-    const urgent =
-      fresh.some((f) => isUrgent(f.reason)) &&
-      urgentSent.length < URGENT_PER_DAY &&
-      urgentSent.every((m) => now.getTime() - m.at.getTime() >= URGENT_GAP);
-    const daily = !sent.some((m) => m.kind === "report");
-    if (!urgent && !daily) return null;
-    const kinds = [...(urgent ? ["report-urgent"] : []), ...(daily ? ["report"] : [])];
-    const rows = await tx
-      .insert(mailSends)
-      .values(kinds.map((kind) => ({ sentAt: now, kind })))
-      .returning({ id: mailSends.id });
+      .where(and(eq(mailSends.kind, "report-urgent"), gt(mailSends.sentAt, new Date(now.getTime() - DAY))));
+    if (sent.length >= URGENT_PER_DAY || sent.some((m) => now.getTime() - m.at.getTime() < URGENT_GAP)) return null;
+    const [row] = await tx.insert(mailSends).values({ sentAt: now, kind: "report-urgent" }).returning({ id: mailSends.id });
     const ids = fresh.map((f) => f.id);
     await tx.update(reports).set({ notifiedAt: now }).where(inArray(reports.id, ids));
-    return { fresh, ids, rows: rows.map((r) => r.id) };
+    return { fresh, ids, row: row.id };
   });
   if (!due) return;
 
   const [open] = await db.select({ n: count() }).from(reports).where(isNull(reports.resolvedAt));
   const pressing = due.fresh.filter((f) => isUrgent(f.reason));
   const rest = due.fresh.filter((f) => !isUrgent(f.reason));
-  const order = Object.keys(REPORT_REASONS) as ReportReason[];
-  const link = `打开 ${SITE_URL}/admin 查看。`;
-  const [subject, lines] = pressing.length
-    ? [
-        `${SITE_NAME}：有 ${pressing.length} 条举报要尽快看`,
-        [
-          byReason(pressing, URGENT_REASONS),
-          ...(rest.length ? [`另外还有 ${rest.length} 条新举报：${byReason(rest, order)}`] : []),
-          `一共 ${open.n} 条没处理。`,
-        ],
-      ]
-    : [
-        `${SITE_NAME}有 ${due.fresh.length} 条新举报`,
-        [`有 ${due.fresh.length} 条新举报等你处理（一共 ${open.n} 条没处理）。`, byReason(due.fresh, order)],
-      ];
+  const subject = `${SITE_NAME}：有 ${pressing.length} 条举报要尽快看`;
+  const lines = [
+    byReason(pressing, URGENT_REASONS),
+    ...(rest.length ? [`另外还有 ${rest.length} 条新举报：${byReason(rest)}`] : []),
+    `一共 ${open.n} 条没处理。`,
+    "",
+    `打开 ${SITE_URL}/admin 查看。`,
+  ];
   try {
-    await sendAdminMail(ADMIN_EMAILS, subject, [...lines, "", link].join("\n"));
+    await sendAdminMail(ADMIN_EMAILS, subject, lines.join("\n"));
   } catch (e) {
     // it never went: forget that it did, so the next run tries again
-    await db.delete(mailSends).where(inArray(mailSends.id, due.rows));
+    await db.delete(mailSends).where(eq(mailSends.id, due.row));
     await db
       .update(reports)
       .set({ notifiedAt: null })
       .where(and(inArray(reports.id, due.ids), eq(reports.notifiedAt, now)));
     throw e;
   }
+  // listed with the checks' emails on the admin page
+  await db
+    .insert(watchMails)
+    .values({ at: now, subject, kind: "report" })
+    .catch((e) => console.error("Could not list the report email", e));
 }

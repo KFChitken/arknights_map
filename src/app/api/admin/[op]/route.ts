@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "@/lib/server/nameWords";
 import { clearName } from "@/lib/server/safety";
+import { ackIncident, siteStatus } from "@/lib/server/watchReport";
 
 /** The admin page's endpoints (src/components/AdminApp.tsx). Anyone else gets the same 404 as a missing page. */
 export const POST = route(async (req, { params }: { params: Promise<{ op: string }> }) => {
@@ -15,6 +16,12 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
 
   let result: unknown;
   switch (op) {
+    case "status":
+      result = await siteStatus();
+      break;
+    case "ack":
+      await ackIncident(String(args[0]));
+      break;
     case "cases":
       result = await openCases();
       break;

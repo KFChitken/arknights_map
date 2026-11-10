@@ -32,9 +32,16 @@ const g = globalThis as unknown as { zhoupSignals?: Map<SignalKind, Signal[]>; z
 const store = (g.zhoupSignals ??= new Map<SignalKind, Signal[]>());
 g.zhoupStartedAt ??= Date.now();
 
-export function note(kind: SignalKind, code: string, now = Date.now()) {
+/**
+ * times: as many at once, for what another process noted (src/lib/server/watchSignals.ts), which may
+ * come a little after newer ones of this process's: the list stays in time order.
+ */
+export function note(kind: SignalKind, code: string, now = Date.now(), times = 1) {
   const list = store.get(kind) ?? [];
-  list.push({ at: now, code: code.slice(0, 120) });
+  const added = Array.from({ length: Math.min(times, MAX_PER_KIND) }, () => ({ at: now, code: code.slice(0, 120) }));
+  let i = list.length;
+  while (i > 0 && list[i - 1].at > now) i--;
+  list.splice(i, 0, ...added);
   const keep = list.filter((s) => now - s.at < KEEP_MS);
   store.set(kind, keep.length > MAX_PER_KIND ? keep.slice(-MAX_PER_KIND) : keep);
 }

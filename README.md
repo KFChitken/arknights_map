@@ -106,7 +106,7 @@ First time, with an SSH host entry named `zhoupmap` for the server:
 ssh zhoupmap 'bash -s' < scripts/server-setup.sh
 ```
 
-That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. Set `ADMIN_EMAILS` to the sign-in email of whoever handles reports: that account can open `/admin`, sees how many reports wait in a corner of the map, and gets one email a day when new reports come in, plus one within the hour for a report of a minor or of contact details (report emails are not counted against `MAIL_DAILY_LIMIT`). `MAIL_DAILY_LIMIT` caps the sign-in code emails in any 24 hours, and `MAIL_SLOW_DOMAINS` (say `gmail.com,googlemail.com`) tells addresses at a mail service slow to take the site's mail, once their code is sent, that it may take long and that QQ or 163 is quicker for a new account; empty says nothing. After that, every update is a push to `main` followed by:
+That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. Set `ADMIN_EMAILS` to the sign-in email of whoever handles reports: that account can open `/admin`, sees how many reports wait in a corner of the map, reads the day's new reports in the morning digest (see Checks and alerts), and gets an email within the hour for a report of a minor or of contact details (report emails are not counted against `MAIL_DAILY_LIMIT`). `MAIL_DAILY_LIMIT` caps the sign-in code emails in any 24 hours, and `MAIL_SLOW_DOMAINS` (say `gmail.com,googlemail.com`) tells addresses at a mail service slow to take the site's mail, once their code is sent, that it may take long and that QQ or 163 is quicker for a new account; empty says nothing. After that, every update is a push to `main` followed by:
 
 ```bash
 scripts/deploy.sh
@@ -139,20 +139,27 @@ with the main server's private address. The main server's cloud firewall lets TC
 
 ### Checks and alerts
 
-The site checks itself every 5 minutes (`src/lib/server/watch.ts`) and emails `WATCH_EMAILS` (by default `ADMIN_EMAILS`) through the same mail service as the sign-in codes, outside `MAIL_DAILY_LIMIT` and at most 24 emails a day. One email tells what is new, what is still wrong six hours after the last email about it, and what is over. It looks at:
+The site checks itself every 5 minutes (`src/lib/server/watch.ts`), and each problem it finds is urgent, for the daily digest, or quiet. A problem counts once it has been seen for long enough (memory, for instance, three rounds in a row) and is over once it has been gone for long enough (15 minutes to an hour, a day for things that happened), so a figure hovering at its line makes one incident rather than an email each way. The same problem back within an hour of its end is the same incident again. Incidents are kept 90 days (`watch_incidents`).
 
-- the database: unreachable, or slow to answer;
-- a restart that was not a deploy (the same build as before), and requests failing with errors (5 or more in 10 minutes);
-- sign-in code emails: 80% of `MAIL_DAILY_LIMIT` used in 24 hours, all of it used, sends failing, and 30 or more code requests refused by the limits in an hour;
-- maps failing in visitors' browsers (Amap's key errors 3 times in 10 minutes, or 10 reports of any kind in 30 minutes): pages report a map that did not load, Amap's key errors from its console messages, a map still blank after a while, and repeated tile errors to `POST /api/health/map`, which keeps only the map, the kind of trouble and the service's short code, in memory;
-- 高德's map loads running out: each visit from mainland China counts as one (an estimate, kept per Beijing month in `watch_state`), and once a month an email says when 80% of `AMAP_MAP_LOADS` is gone or the month's pace would use it up;
-- background jobs failing (the 04:00 jobs, pruning, daily totals, the report digest, migrations at start);
-- the server: disk 85% full, under 10% memory available, a 15-minute load above 1.5 per core;
-- the nightly backup: failed, missing for more than 26 hours, or not uploaded;
-- the second way in (`WATCH_DOORS`: the second server's private address): the site not answering through it three times running;
-- the HTTPS certificate, asked of Caddy inside the server's network, with less than 14 days left.
+Only urgent problems are emailed at once, to `WATCH_EMAILS` (by default `ADMIN_EMAILS`), through the same mail service as the sign-in codes but outside `MAIL_DAILY_LIMIT`; one more email says when one is over. At most 10 such emails go out a day: one over that is noted on the admin page and in the next digest, and never sent later. A problem the admin marks 「知道了」 on the admin page gets no more emails. Every morning at `WATCH_DIGEST_HOUR` Beijing time (9 by default) one digest goes out even when all is well, so a missing one says the site or its mail is broken: what still wants the admin, what was over by itself in the last day (a line a kind), the day's reports, and a few figures (sign-in codes sent, disk, last night's backup, the certificate, 高德's map loads this month, yesterday's new players and 触须之交). A server that was down at that hour sends it when it is back. 网站状态 at the top of `/admin` shows what is open, the last seven days, the same figures and the alert emails sent, and reads them again every minute.
 
-A site that is down cannot email anyone, so GitHub also asks `GET /api/health` from outside every 10 minutes (`.github/workflows/uptime.yml`), through each server by its address, three tries a minute apart, and emails the repository owner when it fails. The endpoint answers 503 when the database is unreachable or the site's emails fail. GitHub pauses scheduled workflows after 60 days without a push. `WATCH=off` turns the checks off; `WATCH=1` turns them on in development, where they print instead of emailing unless `WATCH_EMAILS` or `ADMIN_EMAILS` is set.
+The checks, with what makes each urgent; the rest go into the digest or are only kept on the page:
+
+- the database: unreachable for two rounds (urgent), or slow to answer;
+- the app restarting with the same build as before, which a deploy does not: three times in an hour is urgent, once is for the digest. Each of the app's processes says when it starts;
+- requests failing with errors, counted over all three processes (the helpers pass on what they noted through Postgres NOTIFY, `src/lib/server/watchSignals.ts`): 100 in ten minutes, or 10 in each of the last three ten minutes, is urgent; 20 in a day is for the digest;
+- sign-in code emails: all of `MAIL_DAILY_LIMIT` used in 24 hours, or a pace that would use it up within six hours (once a day), is urgent; 80% is for the digest; most of them failing in a quarter of an hour is urgent; and 30 or more code requests refused by the limits in an hour;
+- maps failing in visitors' browsers (Amap's key errors 3 times in 10 minutes for the digest, or 10 reports of any kind in 30 minutes): pages report a map that did not load, Amap's key errors from its console messages, a map still blank after a while, and repeated tile errors to `POST /api/health/map`, which keeps only the map, the kind of trouble and the service's short code, in memory;
+- 高德's map loads running out: each visit from mainland China counts as one (an estimate, kept per Beijing month in `watch_state`), and once a month the digest says when 80% of `AMAP_MAP_LOADS` is gone or the month's pace would use it up;
+- background jobs failing (the 04:00 jobs, pruning, daily totals, the report reminders; migrations at start are urgent);
+- the server: disk 90% full or full within three days at the last three days' pace (urgent), 85% or within a week; under 3% memory available (urgent) or under 10%; a 15-minute load above 1.5 per core;
+- the nightly backup: failed, missing for more than 26 hours, or not uploaded; two nights without one that worked is urgent;
+- the second way in (`WATCH_DOORS`: the second server's private address): the site not answering through it three times running (urgent);
+- the HTTPS certificate, asked of Caddy inside the server's network: under 5 days left is urgent, under 14 for the digest.
+
+Reports of a minor or of contact details are emailed to `ADMIN_EMAILS` within the hour; the other reports wait for the digest.
+
+A site that is down cannot email anyone, so GitHub also asks `GET /api/health` from outside every 10 minutes (`.github/workflows/uptime.yml`), through each server by its address, three tries a minute apart, and emails the repository owner when it fails. The endpoint answers 503 when the database is unreachable, when sign-in code emails are failing (the urgent problem is open), or when the checks' own emails have not gone out for half an hour. GitHub pauses scheduled workflows after 60 days without a push. `WATCH=off` turns the checks off; `WATCH=1` turns them on in development, where they print instead of emailing unless `WATCH_EMAILS` or `ADMIN_EMAILS` is set.
 
 ## Roadmap
 

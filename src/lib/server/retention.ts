@@ -17,6 +17,8 @@ import {
   reports,
   talulahTouches,
   touches,
+  watchIncidents,
+  watchMails,
 } from "./schema";
 
 const DAY_MS = 86_400_000;
@@ -27,7 +29,7 @@ const DELIVERY_PAUSE_MS = 200;
 /**
  * Delete activity older than KEEP_ACTIVITY_DAYS and handled reports older than
  * KEEP_REPORT_DAYS, as the privacy page promises. Deliveries and reactions go
- * with their declaration.
+ * with their declaration. The site's own checks keep as long.
  */
 export async function pruneOldActivity(now = Date.now()) {
   const cutoff = new Date(now - KEEP_ACTIVITY_DAYS * DAY_MS);
@@ -48,6 +50,9 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(radarScans).where(lt(radarScans.createdAt, new Date(now - DAY_MS)));
   const reportCutoff = new Date(now - KEEP_REPORT_DAYS * DAY_MS);
   await db.delete(reports).where(and(isNotNull(reports.resolvedAt), lt(reports.resolvedAt, reportCutoff)));
+  // the site's own checks: what they found and emailed, for 网站状态
+  await db.delete(watchIncidents).where(lt(watchIncidents.endedAt, cutoff));
+  await db.delete(watchMails).where(lt(watchMails.at, cutoff));
 }
 
 /**

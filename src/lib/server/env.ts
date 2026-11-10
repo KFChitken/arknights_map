@@ -88,6 +88,10 @@ export const WATCH_DOORS = (process.env.WATCH_DOORS || "")
   .map((d) => d.trim())
   .filter(Boolean);
 
+/** The Beijing hour from which the checks' daily digest goes out (the first round at or after it), 9 unless set to 0–23 */
+const digestHour = Number(process.env.WATCH_DIGEST_HOUR || 9);
+export const WATCH_DIGEST_HOUR = Number.isInteger(digestHour) && digestHour >= 0 && digestHour <= 23 ? digestHour : 9;
+
 /** Port of a local test inbox (Mailpit) to link from the sign-in screen; unset in production. */
 export const DEV_MAILBOX_PORT = process.env.DEV_MAILBOX_PORT || "";
 

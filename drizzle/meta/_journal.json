@@ -211,6 +211,13 @@
       "when": 1794346756958,
       "tag": "0029_report_hold",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794348655228,
+      "tag": "0030_watch_incidents",
+      "breakpoints": true
     }
   ]
 }
