@@ -69,7 +69,7 @@ import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
-import { MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
+import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { RoachFeedCopy } from "@/lib/world/feed";
@@ -536,6 +536,28 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setInbox(items);
     return items;
   }, []);
+  // When only declarations came, only they are asked for (the whole inbox, a hundred declarations with all
+  // their replies, went out again for each one, to a whole neighbourhood) and put in with the rest
+  const inboxNowRef = useRef<InboxItem[]>([]);
+  useEffect(() => {
+    inboxNowRef.current = inbox;
+  }, [inbox]);
+  const loadNewDeclarations = useCallback(async () => {
+    const known = inboxIdsRef.current;
+    const after = inboxNowRef.current.reduce((t, i) => (i.kind === "declaration" && i.at > t ? i.at : t), 0);
+    if (!known || !after) return loadInbox();
+    const got = await worldRef.current!.newDeclarations(after);
+    lastMessagesRef.current = Date.now();
+    const added = got.filter((i) => !known.has(i.id));
+    freshRef.current = added;
+    for (const i of added) known.add(i.id);
+    const merge = (all: InboxItem[]) => {
+      let n = 0;
+      return [...added, ...all].sort((x, y) => y.at - x.at).filter((i) => i.kind !== "declaration" || ++n <= INBOX_DECLARATIONS);
+    };
+    if (added.length) setInbox(merge);
+    return merge(inboxNowRef.current);
+  }, [loadInbox]);
   const loadFriends = useCallback(async () => {
     const list = await worldRef.current!.friends();
     setFriends(list);
@@ -731,8 +753,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     busyRef.current = { panel, placing: Boolean(placing) };
   }, [panel, placing]);
 
-  const showNew = useCallback(async () => {
-    const items = await loadInbox();
+  const showNew = useCallback(async (onlyDeclarations = false) => {
+    const items = onlyDeclarations ? await loadNewDeclarations() : await loadInbox();
     const fresh = freshRef.current.filter((i) => !i.seen);
     // A declaration nudges a whole neighbourhood, and then nothing but the inbox has changed; for anything
     // else friends and me too (a new 触须之交, a badge someone else's move just earned us). Asking for all
@@ -752,7 +774,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (open?.kind === "inbox") await openInbox(false, open.tab, items);
     else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
     else await openInbox(true, undefined, items);
-  }, [loadInbox, loadFriends, loadMe, loadIdentities, openInbox]);
+  }, [loadInbox, loadNewDeclarations, loadFriends, loadMe, loadIdentities, openInbox]);
 
   /** Where your dock is on screen now; null while it is hidden (moving a roach, a card open) */
   const dockAt = (): DockAt | null => {
@@ -830,16 +852,21 @@ export default function MapApp({ cn }: { cn: boolean }) {
     let due = Infinity;
     let pending = false;
     let dropped = false;
+    // nothing but declarations since the last look: only they are asked for
+    let onlyDeclarations = true;
     const run = () => {
       window.clearTimeout(timer);
       timer = undefined;
       due = Infinity;
-      showNew().catch(() => {});
+      const only = onlyDeclarations;
+      onlyDeclarations = true;
+      showNew(only).catch(() => {});
     };
     // Each page waits a random moment, so a crowd nudged together does not ask all at once, and nudges
     // arriving meanwhile are taken in by the same look: within 10 s for what is the player's own, within
     // a minute for declarations, which reach a whole neighbourhood (2026-11-10: some 400,000 an hour)
-    const later = (within = 10_000) => {
+    const later = (within = 10_000, declarations = false) => {
+      if (!declarations) onlyDeclarations = false;
       if (document.hidden) {
         pending = true;
         return;
@@ -851,7 +878,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       timer = window.setTimeout(run, at - Date.now());
     };
     events.addEventListener("inbox", () => later());
-    events.addEventListener("declare", () => later(60_000));
+    events.addEventListener("declare", () => later(60_000, true));
     events.addEventListener("help", () => helpNudgeRef.current());
     // nudges sent while the connection was down are lost, so look once it is back
     events.addEventListener("error", () => (dropped = true));
@@ -864,6 +891,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
       if (document.visibilityState !== "visible") return;
       if (pending || Date.now() - lastMessagesRef.current > 5 * 60_000) {
         pending = false;
+        // back after a while: everything
+        onlyDeclarations = false;
         run();
       }
     };

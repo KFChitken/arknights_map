@@ -109,6 +109,7 @@ export class ServerWorld implements World {
   closeHelp = (requestId: string) => this.call<void>("closeHelp", requestId);
   answerHelp = (requestId: string, clues?: number[]) => this.call<void>("answerHelp", requestId, clues ?? null);
   inbox = () => this.call<InboxItem[]>("inbox");
+  newDeclarations = (after: number) => this.call<InboxItem[]>("newDeclarations", after);
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
   declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);
   react = (itemId: string, reaction: string) => this.call<void>("react", itemId, reaction);

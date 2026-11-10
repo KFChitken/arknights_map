@@ -2131,6 +2131,35 @@ describe("server world", () => {
     expect((await me.me()).profile.support).toEqual([]);
   });
 
+  it("keeps the newest hundred declarations in the inbox, and gives a page only the ones after those it holds", async () => {
+    const shouter = await signUp("shout@example.com");
+    const sent = async (minutesAgo: number) => {
+      const [d] = await db
+        .insert(declarations)
+        .values({ senderId: shouter.id, template: "launch", game: "arknights", recipients: 1, createdAt: new Date(Date.now() - minutesAgo * 60_000) })
+        .returning({ id: declarations.id });
+      await db.insert(deliveries).values({ declarationId: d.id, recipientId: me.id });
+      return `d:${d.id}`;
+    };
+    const ids: string[] = [];
+    for (let i = 0; i < 105; i++) ids.push(await sent(300 - i));
+    const box = (await me.inbox()).filter((i) => i.kind === "declaration");
+    expect(box).toHaveLength(100);
+    // the newest hundred, newest first: the five oldest are left out
+    expect(box.map((i) => i.id)).toEqual(ids.slice(5).reverse());
+
+    // a page holding them gets only what came after the newest (and that one again, from a second's overlap)
+    const newest = box[0].at;
+    expect((await world.newDeclarations(me.id, newest)).map((i) => i.id)).toEqual([ids[104]]);
+    const fresh = await sent(0);
+    const got = await world.newDeclarations(me.id, newest);
+    expect(got.map((i) => i.id)).toEqual([fresh, ids[104]]);
+    // each just as the whole inbox gives it
+    expect(got[0]).toEqual((await me.inbox()).find((i) => i.id === fresh));
+    // nonsense asks for the whole inbox's worth
+    expect(await world.newDeclarations(me.id, "soon")).toHaveLength(100);
+  });
+
   it("ranks this week's 「我永远喜欢」, 「加强」 and 「我想吃」 (合乎粥礼) by different players, three or more", async () => {
     const at = (iso: string) => new Date(iso);
     const now = Date.parse("2026-11-04T12:00+08:00");
@@ -2551,6 +2580,29 @@ describe("server world", () => {
     await me.touch((await publicAt(me, tester("t1").roaches[0])).id, false);
     await pruneOldActivity();
     expect(await (await demo("t1")).inbox()).toHaveLength(1);
+  });
+
+  it("lets who a declaration reached go once it is older than the inbox shows, but not a birthday's to 触须之交", async () => {
+    const shouter = await signUp("shout@example.com");
+    const sent = async (daysAgo: number, toFriend = false) => {
+      const [d] = await db
+        .insert(declarations)
+        .values({ senderId: shouter.id, template: "launch", game: "arknights", recipients: 1, createdAt: new Date(Date.now() - daysAgo * 86_400_000) })
+        .returning({ id: declarations.id });
+      await db.insert(deliveries).values({ declarationId: d.id, recipientId: me.id, toFriend });
+      return d.id;
+    };
+    const old = await sent(32);
+    const oldBirthday = await sent(33, true);
+    const fresh = await sent(29);
+    const ancient = await sent(45);
+    await pruneOldActivity();
+    const left = (await db.select({ id: deliveries.declarationId }).from(deliveries)).map((d) => d.id).sort();
+    // the one from 45 days ago is older than the week looked at (an earlier day took it on the live site)
+    expect(left).toEqual([oldBirthday, fresh, ancient].sort());
+    expect(left).not.toContain(old);
+    // the declarations themselves stay
+    expect(await db.$count(declarations)).toBe(4);
   });
 
   it("buckets the declaration head count", () => {

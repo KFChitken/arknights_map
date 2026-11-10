@@ -62,6 +62,11 @@ export const NEWCOMER_DAYS = 7;
 
 /** Inbox items older than this are not shown. */
 export const INBOX_DAYS = 30;
+/**
+ * And of the declarations that reached you, and of the replies to yours, only this many of the
+ * newest: a busy neighbourhood sends hundreds a day.
+ */
+export const INBOX_DECLARATIONS = 100;
 /** Touches, pokes, declarations, reactions and roach moves older than this are deleted (see the privacy page). */
 export const KEEP_ACTIVITY_DAYS = 90;
 

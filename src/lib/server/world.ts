@@ -16,6 +16,7 @@ import {
   DECLARATION_RADIUS_KM,
   DECLARATIONS_PER_DAY,
   INBOX_DAYS,
+  INBOX_DECLARATIONS,
   MAX_CLONES,
   MOVES_PER_DAY,
   NEWCOMER_DAYS,
@@ -848,6 +849,71 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
   return { againAt: now + POKE_EVERY_DAYS * DAY };
 }
 
+/** Of the replies to your declarations too, only the newest (rules.ts INBOX_DECLARATIONS) */
+const INBOX_REACTIONS = INBOX_DECLARATIONS;
+
+/** The newest declarations that reached a player after `after`, from players they have not blocked */
+async function declarationsTo(userId: string, after: Date, blocked: Set<string>) {
+  return (
+    await db
+      .select({ d: declarations, seenAt: deliveries.seenAt, toFriend: deliveries.toFriend })
+      .from(deliveries)
+      .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
+      .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, after)))
+      .orderBy(desc(declarations.createdAt))
+      // a few more than kept, for the ones from players blocked
+      .limit(INBOX_DECLARATIONS + 20)
+  )
+    .filter((x) => !blocked.has(x.d.senderId))
+    .slice(0, INBOX_DECLARATIONS);
+}
+
+/** Those declarations as the inbox shows them */
+async function declarationItems(userId: string, ds: Awaited<ReturnType<typeof declarationsTo>>): Promise<InboxItem[]> {
+  if (!ds.length) return [];
+  const mine = await db
+    .select({ declarationId: reactions.declarationId, reaction: reactions.reaction })
+    .from(reactions)
+    .where(and(eq(reactions.fromUserId, userId), inArray(reactions.declarationId, ds.map((x) => x.d.id))));
+  const myReaction = new Map(mine.map((r) => [r.declarationId, r.reaction]));
+  // a 触须之交's birthday sent to you as one says who
+  const asFriend = await birthdayNames(
+    userId,
+    ds.filter((x) => x.toFriend).map((x) => x.d.senderId),
+    [],
+  );
+  const done = await replied(userId, ds.map((x) => `d:${x.d.id}`));
+  // touching back waits for whoever you touched in the last day (reply())
+  const waits = await touchBackWaits(userId, ds.filter((x) => !done.has(`d:${x.d.id}`)).map((x) => x.d.senderId));
+  return ds.map(({ d, seenAt, toFriend }) => {
+    const id = `d:${d.id}`;
+    const stored = storedDeclaration(d);
+    return {
+      kind: "declaration",
+      id,
+      at: d.createdAt.getTime(),
+      seen: Boolean(seenAt),
+      text: declarationText(stored),
+      replied: done.has(id),
+      reaction: replyOf(stored, myReaction.get(d.id)),
+      options: repliesFor(stored),
+      ...asFriend.sender(d.senderId, toFriend),
+      ...(!done.has(id) && waits.has(d.senderId) ? { waits: waits.get(d.senderId)! } : {}),
+    };
+  });
+}
+
+/**
+ * Only the declarations that reached a player after `after` (the newest declaration's `at` in the
+ * inbox a page holds), as the inbox gives them: what the page asks when declarations alone came in.
+ */
+export async function newDeclarations(userId: string, after: unknown): Promise<InboxItem[]> {
+  const since = ago(INBOX_DAYS * DAY);
+  // a second's overlap for two declared in the same moment; the page leaves out the ones it has
+  const from = typeof after === "number" && Number.isFinite(after) && after - 1000 > since.getTime() ? new Date(after - 1000) : since;
+  return declarationItems(userId, await declarationsTo(userId, from, await blockedBy(userId)));
+}
+
 export async function inbox(userId: string): Promise<InboxItem[]> {
   const since = ago(INBOX_DAYS * DAY);
   const items: InboxItem[] = [];
@@ -860,27 +926,18 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       .innerJoin(users, eq(users.id, touches.fromUserId))
       .where(and(eq(touches.toUserId, userId), eq(touches.withheld, false), gt(touches.createdAt, since)))
   ).filter((x) => !blocked.has(x.t.fromUserId));
-  const ds = (
-    await db
-      .select({ d: declarations, seenAt: deliveries.seenAt, toFriend: deliveries.toFriend })
-      .from(deliveries)
-      .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
-      .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, since)))
-  ).filter((x) => !blocked.has(x.d.senderId));
-  const mine = ds.length
-    ? await db
-        .select({ declarationId: reactions.declarationId, reaction: reactions.reaction })
-        .from(reactions)
-        .where(and(eq(reactions.fromUserId, userId), inArray(reactions.declarationId, ds.map((x) => x.d.id))))
-    : [];
-  const myReaction = new Map(mine.map((r) => [r.declarationId, r.reaction]));
+  const ds = await declarationsTo(userId, since, blocked);
   const rs = (
     await db
       .select({ r: reactions, d: declarations })
       .from(reactions)
       .innerJoin(declarations, eq(declarations.id, reactions.declarationId))
       .where(and(eq(declarations.senderId, userId), eq(reactions.withheld, false), gt(reactions.createdAt, since)))
-  ).filter((x) => !blocked.has(x.r.fromUserId));
+      .orderBy(desc(reactions.createdAt))
+      .limit(INBOX_REACTIONS + 20)
+  )
+    .filter((x) => !blocked.has(x.r.fromUserId))
+    .slice(0, INBOX_REACTIONS);
   const fs = await db
     .select()
     .from(friendships)
@@ -905,22 +962,17 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       .where(and(eq(pokes.fromUserId, userId), gt(pokes.wokeToldAt, since)))
   ).filter((x) => friendIds.has(x.p.toUserId));
   const pokers = await cardsOf([...ps.map((x) => x.from), ...ws.map((x) => x.to)]);
-  // a 触须之交's birthday sent to you as one says who; their reactions to yours say who too
+  // a 触须之交's reactions to your birthday say who
   const asFriend = await birthdayNames(
     userId,
-    ds.filter((x) => x.toFriend).map((x) => x.d.senderId),
+    [],
     rs.map((x) => ({ declarationId: x.r.declarationId, from: x.r.fromUserId })),
   );
   const cards = await cardsOf(ts.filter((x) => x.t.bold).map((x) => x.from));
-  const done = await replied(userId, [
-    ...ts.map((x) => `t:${x.t.id}`),
-    ...ds.map((x) => `d:${x.d.id}`),
-    ...rs.map((x) => `x:${x.r.id}`),
-  ]);
+  const done = await replied(userId, [...ts.map((x) => `t:${x.t.id}`), ...rs.map((x) => `x:${x.r.id}`)]);
   // touching back waits for whoever you touched in the last day (reply())
   const waits = await touchBackWaits(userId, [
     ...ts.filter((x) => !done.has(`t:${x.t.id}`)).map((x) => x.t.fromUserId),
-    ...ds.filter((x) => !done.has(`d:${x.d.id}`)).map((x) => x.d.senderId),
     ...rs.filter((x) => !done.has(`x:${x.r.id}`)).map((x) => x.r.fromUserId),
   ]);
   const waitsFor = (id: string, from: string) => (!done.has(id) && waits.has(from) ? { waits: waits.get(from)! } : {});
@@ -948,22 +1000,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       ...waitsFor(id, t.fromUserId),
     });
   }
-  for (const { d, seenAt, toFriend } of ds) {
-    const id = `d:${d.id}`;
-    const reacted = myReaction.get(d.id);
-    items.push({
-      kind: "declaration",
-      id,
-      at: d.createdAt.getTime(),
-      seen: Boolean(seenAt),
-      text: declarationText(storedDeclaration(d)),
-      replied: done.has(id),
-      reaction: replyOf(storedDeclaration(d), reacted),
-      options: repliesFor(storedDeclaration(d)),
-      ...asFriend.sender(d.senderId, toFriend),
-      ...waitsFor(id, d.senderId),
-    });
-  }
+  items.push(...(await declarationItems(userId, ds)));
   for (const { r, d } of rs) {
     const declared = storedDeclaration(d);
     const reply = replyOf(declared, r.reaction);

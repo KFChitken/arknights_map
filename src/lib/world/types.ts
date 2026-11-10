@@ -82,6 +82,8 @@ export interface World {
   /** clues: for 缺线索, which of them you sent */
   answerHelp(requestId: string, clues?: number[]): Promise<void>;
   inbox(): Promise<InboxItem[]>;
+  /** Only the declarations that came after `after` (the newest declaration's `at` in the inbox held) */
+  newDeclarations(after: number): Promise<InboxItem[]>;
   markSeen(itemIds: string[]): Promise<void>;
   /** Shout to every player with a roach within the radius of your main roach. */
   /** Shout from the main roach, or from the roaches listed by id. */

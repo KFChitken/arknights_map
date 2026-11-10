@@ -156,6 +156,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       ration(30);
       result = user ? await world.inbox(user.id) : [];
       break;
+    case "newDeclarations":
+      ration(30);
+      result = user ? await world.newDeclarations(user.id, args[0]) : [];
+      break;
     case "markSeen":
       await world.markSeen(uid(), Array.isArray(args[0]) ? (args[0] as string[]) : []);
       break;
