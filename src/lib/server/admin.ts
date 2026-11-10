@@ -1,8 +1,9 @@
 import "server-only";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { badgeById } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { declarationText } from "../declarations";
+import { serverName } from "../games";
 import { isReportReason, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "../safety";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
@@ -12,8 +13,8 @@ import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
 import { clearName } from "./safety";
-import { dailyTotals, declarations, friendships, reports, touches, userBadges, users, type UserRow } from "./schema";
-import { storedDeclaration } from "./world";
+import { blocks, dailyTotals, declarations, friendships, reports, roaches, touches, userBadges, users, type UserRow } from "./schema";
+import { profileOf, storedDeclaration } from "./world";
 
 /** The admin page's rules: who may open it, what it shows and the three ways to settle a report. */
 
@@ -39,13 +40,45 @@ export async function openCases(): Promise<AdminCase[]> {
       .select({ n: count() })
       .from(touches)
       .where(and(eq(touches.fromUserId, u.id), gt(touches.createdAt, since)));
+    const slots = await db.select({ slot: roaches.slot }).from(roaches).where(eq(roaches.userId, u.id));
+    const [friends] = await db
+      .select({ n: count() })
+      .from(friendships)
+      .where(or(eq(friendships.a, u.id), eq(friendships.b, u.id)));
+    const [blockers] = await db.select({ n: count() }).from(blocks).where(eq(blocks.blockedId, u.id));
+    const held = await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, u.id));
+    const before = await db
+      .select({ resolution: reports.resolution, n: count() })
+      .from(reports)
+      .where(and(eq(reports.targetId, u.id), isNotNull(reports.resolvedAt)))
+      .groupBy(reports.resolution);
+    const profile = profileOf(u);
     cases.push({
       targetId: u.id,
       name: u.name,
       anonymous: u.anonymous,
+      drPrefix: u.drPrefix,
       avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
       color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
       joinedAt: u.createdAt.getTime(),
+      email: u.email ?? "",
+      games: profile.games.map((game) => ({
+        game,
+        uid: profile.uid[game],
+        server: serverName(game, profile.uidServer[game]) ?? "",
+        favourites: profile.favourites[game],
+      })),
+      shareUid: profile.shareUid,
+      support: profile.support,
+      badges: held.flatMap((b) => badgeById(b.badge)?.name ?? []),
+      worn: (u.wornBadge && badgeById(u.wornBadge)?.name) || null,
+      roaches: { main: slots.some((r) => r.slot === 0), clones: slots.filter((r) => r.slot > 0).length },
+      friends: friends.n,
+      blockedBy: blockers.n,
+      settled: {
+        dismissed: before.find((r) => r.resolution === "dismissed")?.n ?? 0,
+        nameCleared: before.find((r) => r.resolution === "name_cleared")?.n ?? 0,
+      },
       last24h: { touches: sentTouches.n, declarations: recent.filter((d) => d.createdAt > since).length },
       declarations: recent.map((d) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
       reporters: new Set(theirs.map((r) => r.reporterId)).size,

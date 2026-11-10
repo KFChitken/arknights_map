@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { BADGES } from "@/lib/badges";
+import { GAME_NAMES } from "@/lib/games";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { beijingDate } from "@/lib/beijing";
 import { REPORT_REASONS, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "@/lib/safety";
@@ -93,13 +94,63 @@ export default function AdminApp() {
           <div className="who-card">
             <RoachIcon color={c.color} size={44} avatar={c.avatar} />
             <div>
-              <strong>{c.name || "（没有名字）"}</strong>
+              <strong>{c.name ? `${c.drPrefix ? "Dr. " : ""}${c.name}` : "（没有名字）"}</strong>
               {c.anonymous && <span className="tag">现在是匿名</span>}
               <p className="hint">
                 {ago(c.joinedAt)}注册 · 最近 24 小时碰了 {c.last24h.touches} 次、发了 {c.last24h.declarations} 条宣言
               </p>
             </div>
           </div>
+          <dl className="admin-facts">
+            <dt>邮箱</dt>
+            <dd>{c.email || "（没有）"}</dd>
+            {c.games.length === 0 && (
+              <>
+                <dt>游戏</dt>
+                <dd>没填</dd>
+              </>
+            )}
+            {c.games.map((g) => (
+              <Fragment key={g.game}>
+                <dt>{GAME_NAMES[g.game]}</dt>
+                <dd>
+                  UID {g.uid ? <code>{g.uid}</code> : "没填"}
+                  {g.server && `（${g.server}）`}
+                  {g.favourites.length > 0 && <> · 喜欢 {g.favourites.join("、")}</>}
+                </dd>
+              </Fragment>
+            ))}
+            <dt>UID 给谁看</dt>
+            <dd>{c.shareUid ? "大胆碰过的人能看到" : "只有自己"}</dd>
+            {c.support.length > 0 && (
+              <>
+                <dt>我的助战</dt>
+                <dd>{c.support.join("、")}</dd>
+              </>
+            )}
+            <dt>称号</dt>
+            <dd>
+              {c.badges.length ? `${c.badges.length} 个：${c.badges.join("、")}` : "没有"}
+              {c.worn && `；戴着「${c.worn}」`}
+            </dd>
+            <dt>蟑螂</dt>
+            <dd>
+              {c.roaches.main ? "放了本体" : "没放本体"}
+              {c.roaches.clones > 0 && `，${c.roaches.clones} 只克隆体`}
+            </dd>
+            <dt>触须之交</dt>
+            <dd>{c.friends} 个</dd>
+            <dt>被拉黑</dt>
+            <dd>{c.blockedBy} 个人</dd>
+            <dt>以前的举报</dt>
+            <dd>
+              {c.settled.dismissed + c.settled.nameCleared === 0
+                ? "没有"
+                : [c.settled.dismissed && `关掉过 ${c.settled.dismissed} 条`, c.settled.nameCleared && `清过名字的 ${c.settled.nameCleared} 条`]
+                    .filter(Boolean)
+                    .join("，")}
+            </dd>
+          </dl>
 
           <h2>被 {c.reporters} 个人举报</h2>
           <ul>

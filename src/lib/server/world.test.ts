@@ -2386,6 +2386,53 @@ describe("server world", () => {
     await expect(resolveCase(t1.id, "ban")).rejects.toThrow("测试玩家");
   });
 
+  it("shows the admin what a reported player wrote about themselves, UIDs included, and what came of reports before", async () => {
+    const troll = await signUp("troll@example.com");
+    await troll.saveProfile({
+      ...EMPTY_PROFILE,
+      anonymous: false,
+      name: "小坏",
+      drPrefix: true,
+      games: ["arknights", "endfield"],
+      uid: { arknights: "12345678", endfield: "" },
+      uidServer: { arknights: "bili", endfield: "" },
+      shareUid: true,
+    });
+    await troll.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await troll.placeRoach({ kind: "clone" }, TOKYO);
+    await me.placeRoach({ kind: "main" }, { lng: 121.5, lat: 31.25 });
+    await troll.touch((await publicAt(troll, { lng: 121.5, lat: 31.25 })).id, true);
+    await me.report((await me.inbox())[0].id, "spam");
+
+    const [c] = await openCases();
+    expect(c).toMatchObject({
+      name: "小坏",
+      drPrefix: true,
+      email: "troll@example.com",
+      games: [
+        { game: "arknights", uid: "12345678", server: "B服", favourites: [] },
+        { game: "endfield", uid: "", server: "", favourites: [] },
+      ],
+      shareUid: true,
+      badges: [],
+      worn: null,
+      roaches: { main: true, clones: 1 },
+      friends: 0,
+      blockedBy: 1,
+      settled: { dismissed: 0, nameCleared: 0 },
+    });
+    // never where its roaches are
+    expect(JSON.stringify(c)).not.toMatch(/121\.47|139\.7|lng|lat/);
+
+    // dismissed, then reported again by someone else: the admin sees the dismissal
+    await resolveCase(troll.id, "dismiss");
+    const t2 = await demo("t2");
+    await troll.touch((await publicAt(troll, tester("t2").roaches[0])).id, false);
+    await t2.report((await t2.inbox()).find((i) => i.kind === "touch")!.id, "other", "一直碰我");
+    const [again] = await openCases();
+    expect(again).toMatchObject({ reporters: 1, blockedBy: 2, settled: { dismissed: 1, nameCleared: 0 } });
+  });
+
   it("bans an account: deletes it and refuses its email from then on", async () => {
     const troll = await signUp("troll@example.com");
     await troll.placeRoach({ kind: "main" }, PEOPLES_SQUARE);

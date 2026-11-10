@@ -1,3 +1,4 @@
+import type { Game } from "./games";
 import type { RoachAvatar, RoachColor } from "./types";
 
 /** Why one player may report another, worded as the reporter picks it. */
@@ -12,15 +13,38 @@ export type ReportReason = keyof typeof REPORT_REASONS;
 
 export const isReportReason = (r: unknown): r is ReportReason => typeof r === "string" && Object.hasOwn(REPORT_REASONS, r);
 
-/** What the admin page shows about one reported player: their open reports and what they did lately. */
+/**
+ * What the admin page shows about one reported player: their open reports, what they did lately,
+ * and everything they wrote about themselves (UIDs included). Never where their roaches are or
+ * when they came by.
+ */
 export type AdminCase = {
   targetId: string;
   /** The name as saved, even while they are anonymous */
   name: string;
   anonymous: boolean;
+  drPrefix: boolean;
   avatar: RoachAvatar;
   color: RoachColor;
   joinedAt: number;
+  /** Their login email, as 所有玩家 shows it */
+  email: string;
+  /** Each game they say they play: the UID and its server as they filled them in, and the operators they like */
+  games: { game: Game; uid: string; server: string; favourites: string[] }[];
+  /** Whether their UIDs go along with a bold touch */
+  shareUid: boolean;
+  /** 我的助战 */
+  support: string[];
+  /** Their badges by name, and the one they wear */
+  badges: string[];
+  worn: string | null;
+  /** How many roaches they have out (never where) */
+  roaches: { main: boolean; clones: number };
+  friends: number;
+  /** How many players have blocked them */
+  blockedBy: number;
+  /** Reports about them settled before, by how */
+  settled: { dismissed: number; nameCleared: number };
   last24h: { touches: number; declarations: number };
   declarations: { text: string; at: number }[];
   reporters: number;
