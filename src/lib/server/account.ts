@@ -5,7 +5,7 @@ import { db } from "./db";
 import { secret } from "./env";
 import { forgetLoginCodes } from "./loginCodes";
 import { roachesChanged } from "./roachFeed";
-import { bannedEmails, friendCuts, users, type UserRow } from "./schema";
+import { bannedEmails, friendCuts, friendStars, users, type UserRow } from "./schema";
 import { guestsLeave } from "./friendly";
 
 /** Delete a player and everything tied to them (roaches, touches, declarations, friends, blocks, reports about them). */
@@ -14,8 +14,9 @@ export async function deleteAccount(user: UserRow) {
   await guestsLeave(user.id);
   await db.delete(users).where(eq(users.id, user.id));
   if (user.email) await forgetLoginCodes(user.email);
-  // the one table that names players without a foreign key
+  // the tables that name players without a foreign key
   await db.delete(friendCuts).where(or(eq(friendCuts.a, user.id), eq(friendCuts.b, user.id)));
+  await db.delete(friendStars).where(eq(friendStars.other, user.id));
   roachesChanged();
 }
 

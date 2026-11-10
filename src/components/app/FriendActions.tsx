@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { GESTURE_DONE, GESTURE_NAMES, type Gesture } from "@/lib/friendly";
+import { FRIEND_ACTS_PER_DAY, GESTURE_DONE, GESTURE_NAMES, isAwakeGesture, type Gesture } from "@/lib/friendly";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { FriendBetween } from "@/lib/world/types";
 
@@ -64,7 +64,8 @@ const NAMES: Record<FriendAct, string> = { visit: "做客", sanity: "催理智",
 /**
  * 触须之交专属: the row of what only 触须之交 do, on their roach's card and their page. Awake:
  * 做客 · 催理智 · 贴贴 · 击掌 · 吸欧气; their main roach asleep: 做客 · 催理智 · 戳一戳 ·
- * 盖被子 · 放杯白开水. Each turns grey once used for today (or for this sleep).
+ * 盖被子 · 放杯白开水. 催理智 and the gestures share FRIEND_ACTS_PER_DAY a day and all turn grey
+ * once those are used; 催理智 once a day, 盖被子 and 放杯白开水 once a sleep.
  */
 export default function FriendActions({
   between,
@@ -99,19 +100,25 @@ export default function FriendActions({
         : riding
           ? "这只在跟明河走，去不了。想一起走，就也派一只跟明河。"
           : null;
+  const full = between.actsLeft <= 0;
   const state = (act: FriendAct): { label: string; off: boolean } => {
     if (act === "visit") {
       if (visiting) return { label: "过去看看", off: false };
       return { label: NAMES.visit, off: Boolean(visitNote) };
     }
-    if (act === "sanity") return between.done.sanity ? { label: "催过了", off: true } : { label: NAMES.sanity, off: false };
     if (act === "poke") return pokeAgainAt ? { label: "戳过了", off: true } : { label: NAMES.poke, off: false };
-    return between.done[act] ? { label: GESTURE_DONE[act], off: true } : { label: NAMES[act], off: false };
+    if (act === "sanity") return between.done.sanity ? { label: "催过了", off: true } : { label: NAMES.sanity, off: full };
+    if (!isAwakeGesture(act) && between.done[act]) return { label: GESTURE_DONE[act], off: true };
+    return { label: NAMES[act], off: full };
   };
-  const notes = [visitNote, pokeAgainAt && between.asleep ? `${days(pokeAgainAt)} 天后可以再戳（每 ${POKE_EVERY_DAYS} 天一次）` : null].filter(Boolean);
+  const notes = [
+    full ? `今天和 TA 互动满 ${FRIEND_ACTS_PER_DAY} 次了，明天再来吧` : null,
+    visitNote,
+    pokeAgainAt && between.asleep ? `${days(pokeAgainAt)} 天后可以再戳（每 ${POKE_EVERY_DAYS} 天一次）` : null,
+  ].filter(Boolean);
   return (
     <div className="friend-acts">
-      <span className="friend-acts-label">触须之交专属</span>
+      <span className="friend-acts-label">触须之交专属{full ? "" : ` · 今天还能 ${between.actsLeft} 次`}</span>
       <div className="friend-acts-row">
         {acts.map((act) => {
           const { label, off } = state(act);

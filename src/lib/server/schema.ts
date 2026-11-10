@@ -91,6 +91,8 @@ export const users = pgTable("users", {
   welcomeGuests: boolean("welcome_guests").notNull().default(true),
   /** They were told once, with their first guest, not to keep the main roach by their door */
   visitTipShown: boolean("visit_tip_shown").notNull().default(false),
+  /** 求助 (src/lib/server/help.ts): when they last looked at their 触须之交's requests, for the dot on the 触须之交 card */
+  helpSeenAt: at("help_seen_at"),
   /** 阿米娅向导 (src/lib/amiya.ts): when they became 触须之交, and the day (by their device, from 04:00) she last greeted them */
   amiyaFriendSince: at("amiya_friend_since"),
   amiyaGreetedOn: date("amiya_greeted_on", { mode: "string" }),
@@ -394,6 +396,64 @@ export const visitBans = pgTable(
     at: at("at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.hostId, t.guestId] })],
+);
+
+/**
+ * 特别关注: the 触须之交 a player keeps at the front of their list. Only they know: nothing
+ * reaches the other. other is the other player's id, or a guide's id; gone with the friendship.
+ */
+export const friendStars = pgTable(
+  "friend_stars",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    other: text("other").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.other] })],
+);
+
+/**
+ * 求助 among 触须之交 (src/lib/server/help.ts): 缺线索 (clues: which, 1–7), 来线索交流
+ * (exchange) or 借助战 (support: an operator, and its skill, 0 for any). Seen only by the
+ * asker's 触须之交 who play that game; up for HELP_HOURS unless closed; kept HELP_KEEP_DAYS.
+ */
+export const helpRequests = pgTable(
+  "help_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    game: text("game").notNull(),
+    clues: smallint("clues").array(),
+    operator: text("operator"),
+    skill: smallint("skill"),
+    createdAt: createdAt(),
+    expiresAt: at("expires_at").notNull(),
+    closedAt: at("closed_at"),
+  },
+  (t) => [index("help_requests_user_idx").on(t.userId, t.createdAt), index("help_requests_expires_idx").on(t.expiresAt)],
+);
+
+/** A 触须之交's answer to a request (送了哪几号, 去拜访了, 我挂上了), once each; seenAt: when the asker saw it */
+export const helpAnswers = pgTable(
+  "help_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => helpRequests.id, { onDelete: "cascade" }),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clues: smallint("clues").array(),
+    createdAt: createdAt(),
+    seenAt: at("seen_at"),
+  },
+  (t) => [uniqueIndex("help_answers_once_idx").on(t.requestId, t.fromUserId), index("help_answers_from_idx").on(t.fromUserId)],
 );
 
 /**

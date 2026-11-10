@@ -1,11 +1,12 @@
 import type { BadgeCount, EarnedBadge } from "../badges";
 import type { Declaration, Reply } from "../declarations";
-import type { Gesture } from "../friendly";
+import type { BatchAct, Gesture, SleepGesture } from "../friendly";
 import type { Game } from "../games";
 import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachColor } from "../types";
+import type { HelpAsk } from "../help";
 import type { PackedRoaches } from "./packed";
 
 /**
@@ -68,6 +69,18 @@ export interface World {
   gameAdded(itemId: string): Promise<void>;
   /** 想在游戏里加 TA, when they share no UID for the game */
   gameWant(friendId: string, game: Game): Promise<void>;
+  /** 一键: one act for many 触须之交 at once; how it went for each */
+  friendsAct(act: BatchAct, friendIds: string[]): Promise<{ id: string; ok: boolean; why?: string }[]>;
+  /** 特别关注 a 触须之交, or not; only you know */
+  starFriend(friendId: string, on: boolean): Promise<void>;
+  /** 求助: what is up, yours and your 触须之交's */
+  helpBoard(): Promise<HelpBoard>;
+  /** You looked at 求助: the dot on 触须之交 goes */
+  seeHelp(): Promise<void>;
+  askHelp(ask: HelpAsk): Promise<void>;
+  closeHelp(requestId: string): Promise<void>;
+  /** clues: for 缺线索, which of them you sent */
+  answerHelp(requestId: string, clues?: number[]): Promise<void>;
   inbox(): Promise<InboxItem[]>;
   markSeen(itemIds: string[]): Promise<void>;
   /** Shout to every player with a roach within the radius of your main roach. */
@@ -216,6 +229,8 @@ export type Friend = {
   pokeAgainAt: number | null;
   /** What you two can do for each other (src/lib/friendly.ts); none with the guides */
   between?: FriendBetween;
+  /** 特别关注: when you starred TA, or null. Only you know; the starred come first, in that order */
+  star: number | null;
 };
 
 /** Between you and one 触须之交 (src/lib/friendly.ts) */
@@ -224,8 +239,10 @@ export type FriendBetween = {
   mainId: string | null;
   /** Their main roach sleeps, drunk or away: the gestures change, and 戳一戳 comes in */
   asleep: boolean;
-  /** Used up today (a Beijing date), or for this sleep of theirs (blanket, water) */
-  done: Record<"sanity" | Gesture, boolean>;
+  /** How many more of 催理智 and the gestures you may do for TA today (FRIEND_ACTS_PER_DAY, Beijing date) */
+  actsLeft: number;
+  /** Used today (催理智), or for this sleep of theirs (blanket, water) */
+  done: Record<"sanity" | SleepGesture, boolean>;
   /** They welcome guests (让触须之交来串门) */
   welcome: boolean;
   /** They sent your clone home (请 TA 回家): when you may visit again */
@@ -239,6 +256,24 @@ export type FriendBetween = {
   /** Today's day of being 触须之交, on one of the anniversaries (7, 30, 100, every year) */
   anniversary: number | null;
 };
+
+/**
+ * 求助 (src/lib/help.ts) as you see it. Theirs: from a 触须之交 in a game you play, with what you
+ * answered. Yours: who answered what. fresh: theirs came since you last looked; yours has answers
+ * you have not seen.
+ */
+export type HelpItem = HelpAsk & {
+  id: string;
+  at: number;
+  /** When it comes down by itself */
+  until: number;
+  fresh: boolean;
+  from?: PublicProfile;
+  friendId?: string;
+  answered?: { clues?: number[] } | null;
+  answers?: { friendId: string; name: string; clues?: number[]; at: number; fresh: boolean }[];
+};
+export type HelpBoard = { mine: HelpItem[]; theirs: HelpItem[] };
 
 /** What happened with a visiting clone (串门), as the inbox tells it */
 export type VisitEvent = "came" | "sentHome" | "hostMoved" | "hostRemoved" | "closed";
@@ -291,6 +326,8 @@ export type Me = {
    * how-manieth station it is at, 1–7). dayShift: days added by 明河快进一天, 0 but in development.
    */
   minghe: { friend: boolean; riding: { roachId: string; since: number; stops: number } | null; dayShift: number };
+  /** 求助: your 触须之交's requests up since you last looked, and answers to yours you have not seen (the dot on 触须之交) */
+  help: { asks: number; answers: number };
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

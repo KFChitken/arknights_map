@@ -22,7 +22,7 @@ export async function GET(req: Request) {
           stop();
         }
       };
-      const off = listen(user.id, () => send("event: inbox\ndata: {}\n\n"));
+      const off = listen(user.id, (event) => send(`event: ${event}\ndata: {}\n\n`));
       const ping = setInterval(() => send(": ping\n\n"), PING_MS);
       stop = () => {
         clearInterval(ping);

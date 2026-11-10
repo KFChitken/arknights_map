@@ -82,6 +82,7 @@ import {
   WorldError,
   type BlockedPlayer,
   type Friend,
+  type HelpBoard,
   type Homecoming,
   type Identity,
   type InboxItem,
@@ -120,7 +121,8 @@ import InboxSheet, {
   type InboxFriendly,
   type InboxTab,
 } from "./app/InboxSheet";
-import { gestureSent, isAwakeGesture, isGesture, type Gesture } from "@/lib/friendly";
+import { batchSent, gestureSent, isAwakeGesture, isGesture, type BatchAct, type Gesture } from "@/lib/friendly";
+import type { HelpAsk } from "@/lib/help";
 import type { Game } from "@/lib/games";
 import LoginSheet, { pendingLogin } from "./app/LoginSheet";
 import MineSheet from "./app/MineSheet";
@@ -155,6 +157,9 @@ import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCas
 import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
 import FriendActions, { type FriendAct } from "./app/FriendActions";
 import GestureStage, { SanityFly } from "./app/GestureStage";
+import BatchStage from "./app/BatchStage";
+import HelpAskSheet from "./app/HelpAskSheet";
+import { TheirHelp } from "./app/HelpRows";
 import VisitSheet from "./app/VisitSheet";
 import FriendsSheet, { FriendsMark } from "./app/FriendsSheet";
 import PartyScene from "./app/PartyScene";
@@ -277,6 +282,8 @@ type Panel =
   | { kind: "friend"; friendId: string; back: Panel | null }
   /** Everyone you are 触须之交 with, as a grid (from the dock) */
   | { kind: "friends" }
+  /** 发求助, from the 触须之交 page */
+  | { kind: "helpAsk"; back: Panel | null }
   /** 做客 at one of a 触须之交's roaches: asked first, then (every clone out) which clone goes */
   | { kind: "visitConfirm"; friendId: string; roach: PublicRoach }
   | { kind: "visitMove"; friendId: string; roach: PublicRoach }
@@ -442,6 +449,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [pokeSent, setPokeSent] = useState(false);
   /** Something between 触须之交 is under way; and 催理智's bottle flying off its button */
   const [friendBusy, setFriendBusy] = useState(false);
+  // 求助 (src/lib/help.ts), loaded when the 触须之交 page opens
+  const [helpBoard, setHelpBoard] = useState<HelpBoard | null>(null);
+  // 一键, acted out once over the map
+  const [batchScene, setBatchScene] = useState<{ act: BatchAct; them: Friend[]; done: () => void } | null>(null);
   const [vialAt, setVialAt] = useState<{ x: number; y: number } | null>(null);
   const [drinking, setDrinking] = useState(false);
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
@@ -786,6 +797,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
     await loadInbox();
   };
 
+  // 求助 changed: the dot on the 触须之交 card, and the page if it is open; nothing pops up
+  const helpNudgeRef = useRef(() => {});
+  helpNudgeRef.current = () => {
+    if (document.hidden) return;
+    loadMe().catch(() => {});
+    const open = busyRef.current.panel?.kind;
+    if (open === "friends" || open === "friend") loadHelp().catch(() => {});
+  };
   const meId = me?.id;
   useEffect(() => {
     if (!meId) return;
@@ -805,6 +824,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       else if (timer === undefined) timer = window.setTimeout(run, Math.random() * 10_000);
     };
     events.addEventListener("inbox", later);
+    events.addEventListener("help", () => helpNudgeRef.current());
     // nudges sent while the connection was down are lost, so look once it is back
     events.addEventListener("error", () => (dropped = true));
     events.addEventListener("open", () => {
@@ -1258,6 +1278,75 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (roach) await playTouch(roach, "bold", gesture);
     setToast(gestureSent(gesture, friend.profile.displayName));
     await loading;
+  };
+
+  /** 一键: one act for many at once, acted out once over the map, then the toast */
+  const batch = async (act: BatchAct, friendIds: string[]) => {
+    setFriendBusy(true);
+    const res = await (async () => {
+      try {
+        return await worldRef.current!.friendsAct(act, friendIds);
+      } catch (e) {
+        setToast(e instanceof WorldError ? e.message : "出了点问题，再试一次吧。");
+        return null;
+      }
+    })();
+    setFriendBusy(false);
+    if (!res) return;
+    const went = res.filter((r) => r.ok).map((r) => shownFriends.find((f) => f.id === r.id)).filter((f): f is Friend => Boolean(f));
+    const missed = res.filter((r) => !r.ok);
+    const loading = loadFriends();
+    if (!went.length) {
+      setToast(missed[0]?.why ?? "没有送出去。");
+      return loading;
+    }
+    setPanel(null);
+    setSelected(null);
+    if (!motionOff()) await new Promise<void>((resolve) => setBatchScene({ act, them: went, done: () => (setBatchScene(null), resolve()) }));
+    setToast(missed.length ? `${batchSent(act, went.length)}（${missed.length} 位没送到：${missed[0].why}）` : batchSent(act, went.length));
+    await loading;
+  };
+
+  /** 特别关注 TA, or not: only you know */
+  const toggleStar = async (friend: Friend) => {
+    const on = friend.star === null;
+    if (!(await friendly((w) => w.starFriend(friend.id, on)))) return;
+    setToast(on ? `把 ${friend.profile.displayName} 设为特别关注了，TA 会排在最前面` : "取消特别关注了");
+    await loadFriends();
+  };
+
+  // ---- 求助 (src/lib/help.ts) ----
+
+  const loadHelp = useCallback(async () => {
+    const board = await worldRef.current!.helpBoard().catch(() => null);
+    if (board) setHelpBoard(board);
+    return board;
+  }, []);
+  /** The 触须之交 page: the list and 求助, which then count as seen (the dot goes) */
+  const openFriends = async () => {
+    setSelected(null);
+    setPanel({ kind: "friends" });
+    loadFriends().catch(() => {});
+    const board = await loadHelp();
+    if (board && (board.theirs.some((r) => r.fresh) || board.mine.some((r) => r.fresh) || (me && me.help.asks + me.help.answers > 0))) {
+      await worldRef.current!.seeHelp().catch(() => {});
+      await loadMe().catch(() => {});
+    }
+  };
+  const askHelp = async (ask: HelpAsk) => {
+    if (!(await friendly((w) => w.askHelp(ask)))) return;
+    setPanel({ kind: "friends" });
+    setToast("求助发出去了，玩这个游戏的触须之交都看得到");
+    await loadHelp();
+  };
+  const answerHelp = async (requestId: string, clues?: number[]) => {
+    if (!(await friendly((w) => w.answerHelp(requestId, clues)))) return;
+    setToast("已经告诉 TA 了");
+    await loadHelp();
+  };
+  const closeHelp = async (requestId: string) => {
+    if (!(await friendly((w) => w.closeHelp(requestId)))) return;
+    await loadHelp();
   };
 
   /** 来串门啦！ over your clone as it sits down */
@@ -1917,7 +2006,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     .map((b) => b.id)
     .join(",");
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
-  const idle = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene);
+  const idle = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
 
   // ---- 佩丽卡监督 ----
 
@@ -2631,7 +2720,24 @@ export default function MapApp({ cn }: { cn: boolean }) {
         return (
           <FriendsSheet
             friends={shownFriends}
+            help={helpBoard}
+            busy={friendBusy}
             onOpen={(friendId) => setPanel({ kind: "friend", friendId, back: p })}
+            onBatch={batch}
+            onAskHelp={() => setPanel({ kind: "helpAsk", back: p })}
+            onAnswerHelp={answerHelp}
+            onCloseHelp={closeHelp}
+            onCopyUid={copyUid}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "helpAsk":
+        return (
+          <HelpAskSheet
+            games={me?.profile.games ?? []}
+            busy={friendBusy}
+            onSend={askHelp}
+            onBack={() => setPanel(p.back ?? { kind: "friends" })}
             onClose={() => setPanel(null)}
           />
         );
@@ -2641,6 +2747,20 @@ export default function MapApp({ cn }: { cn: boolean }) {
         return (
           <FriendView
             friend={friend}
+            onStar={() => toggleStar(friend)}
+            help={(() => {
+              const asks = (helpBoard?.theirs ?? []).filter((r) => r.friendId === friend.id);
+              return asks.length ? (
+                <section className="help-box">
+                  <div className="help-head static">
+                    <span>TA 在求助</span>
+                  </div>
+                  {asks.map((r) => (
+                    <TheirHelp key={r.id} item={r} who={false} busy={friendBusy} onAnswer={answerHelp} onCopyUid={copyUid} />
+                  ))}
+                </section>
+              ) : null;
+            })()}
             actions={
               friend.between && (
                 <FriendActions
@@ -3097,21 +3217,24 @@ export default function MapApp({ cn }: { cn: boolean }) {
             </svg>
             {unseen > 0 && <span className={`badge ${badgePop ? "ta-dbadge" : ""}`}>{unseen}</span>}
           </button>
-          <button
-            className="dock-friends"
-            onClick={() => {
-              setSelected(null);
-              setPanel({ kind: "friends" });
-              loadFriends().catch(() => {});
-            }}
-          >
+          <button className="dock-friends" onClick={() => void openFriends()}>
             <FriendsMark size={28} />
             <span className="dock-name">触须之交</span>
+            {/* 求助: someone asks, or answered yours; a quiet dot, never a red count */}
+            {me && me.help.asks + me.help.answers > 0 && <span className="help-dot" aria-label="触须之交那里有求助" />}
           </button>
         </div>
       )}
       {dockScene && <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} onDone={dockScene.done} />}
       {vialAt && <SanityFly from={vialAt} onDone={() => setVialAt(null)} />}
+      {batchScene && (
+        <BatchStage
+          act={batchScene.act}
+          you={{ color: myColor, avatar: myAvatar }}
+          them={batchScene.them.map((f) => ({ color: f.profile.color, avatar: f.profile.avatar }))}
+          onDone={batchScene.done}
+        />
+      )}
       {arcs && <DockArcs key={arcs.nonce} at={arcs.at} />}
       {party && createPortal(<PartyScene key={party.key} avatar={myAvatar} color={myColor} music={party.music} onDone={endParty} />, party.el)}
       {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}

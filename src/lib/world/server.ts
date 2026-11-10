@@ -1,6 +1,7 @@
 import type { Declaration } from "../declarations";
-import type { Gesture } from "../friendly";
+import type { BatchAct, Gesture } from "../friendly";
 import type { Game } from "../games";
+import type { HelpAsk } from "../help";
 import type { Profile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { LngLat } from "../types";
@@ -11,6 +12,7 @@ import {
   WorldError,
   type BlockedPlayer,
   type Friend,
+  type HelpBoard,
   type Identity,
   type InboxItem,
   type Me,
@@ -99,6 +101,13 @@ export class ServerWorld implements World {
   gameAsk = (friendId: string, game: Game) => this.call<void>("gameAsk", friendId, game);
   gameAdded = (itemId: string) => this.call<void>("gameAdded", itemId);
   gameWant = (friendId: string, game: Game) => this.call<void>("gameWant", friendId, game);
+  friendsAct = (act: BatchAct, friendIds: string[]) => this.call<{ id: string; ok: boolean; why?: string }[]>("friendsAct", act, friendIds);
+  starFriend = (friendId: string, on: boolean) => this.call<void>("starFriend", friendId, on);
+  helpBoard = () => this.call<HelpBoard>("helpBoard");
+  seeHelp = () => this.call<void>("seeHelp");
+  askHelp = (ask: HelpAsk) => this.call<void>("askHelp", ask);
+  closeHelp = (requestId: string) => this.call<void>("closeHelp", requestId);
+  answerHelp = (requestId: string, clues?: number[]) => this.call<void>("answerHelp", requestId, clues ?? null);
   inbox = () => this.call<InboxItem[]>("inbox");
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
   declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);

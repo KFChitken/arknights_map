@@ -6,7 +6,8 @@ import type { Reply } from "@/lib/declarations";
 import {
   anniversaryText,
   GESTURE_BACK,
-  GESTURE_DONE,
+  FRIEND_ACTS_PER_DAY,
+  GESTURE_RETURNED,
   gestureText,
   isAwakeGesture,
   sanityText,
@@ -333,16 +334,17 @@ export default function InboxSheet({
         text = gestureText(item.gesture, who);
         const g = item.gesture;
         if (isAwakeGesture(g) && friend) {
-          const doneToday = betweenOf(item.friendId)?.done[g];
+          // the day's FRIEND_ACTS_PER_DAY for TA used up: answering waits till tomorrow
+          const full = betweenOf(item.friendId)?.actsLeft === 0;
           actions = item.returned ? (
-            <span className="done">{GESTURE_DONE[g]}</span>
+            <span className="done">{GESTURE_RETURNED[g]}</span>
           ) : (
             <button
               className="pill dark"
-              disabled={busy || doneToday || betweenOf(item.friendId)?.asleep}
+              disabled={busy || full || betweenOf(item.friendId)?.asleep}
               onClick={() => act(item.id, () => friendly.gestureBack(item.friendId, g, item.id))}
             >
-              {doneToday ? GESTURE_DONE[g] : GESTURE_BACK[g]}
+              {full ? `今天满 ${FRIEND_ACTS_PER_DAY} 次了` : GESTURE_BACK[g]}
             </button>
           );
         }
@@ -684,6 +686,8 @@ function eventText(e: Friend["history"][number]) {
 export function FriendView({
   friend,
   actions,
+  help,
+  onStar,
   gameExtra,
   onFind,
   onUnfriend,
@@ -694,6 +698,10 @@ export function FriendView({
   friend: Friend;
   /** 触须之交专属: the row of what only 触须之交 do (FriendActions) */
   actions?: ReactNode;
+  /** 求助: what TA asks for now (HelpRows) */
+  help?: ReactNode;
+  /** 特别关注 TA, or not */
+  onStar?: () => void;
   /** 游戏里也加个好友, under each of their games */
   gameExtra?: (game: Game) => ReactNode;
   onFind: (roachIndex: number) => void;
@@ -715,8 +723,14 @@ export function FriendView({
           <WornPill profile={profile} />
           <p className="hint">{ago(friend.since)}成为触须之交</p>
         </div>
+        {onStar && (
+          <button type="button" className={`star-btn${friend.star !== null ? " on" : ""}`} onClick={onStar} aria-pressed={friend.star !== null}>
+            {friend.star !== null ? "★ 已特别关注" : "☆ 特别关注"}
+          </button>
+        )}
       </div>
       {guideOf ? <p className="hint">{guideOf.note}</p> : <ProfileDetails profile={profile} gameExtra={gameExtra} />}
+      {help}
       {actions}
 
       <h3>TA 的蟑螂</h3>

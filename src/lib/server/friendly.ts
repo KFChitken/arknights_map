@@ -1,8 +1,18 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { addDays, beijingDate, beijingMidnight, daysBetween } from "../beijing";
-import { FRIEND_BIRTHDAY_DAYS, GAME_ASK_DAYS, isAwakeGesture, isFriendAnniversary, isGesture, VISIT_BAN_DAYS, type Gesture } from "../friendly";
+import {
+  FRIEND_ACTS_PER_DAY,
+  FRIEND_BIRTHDAY_DAYS,
+  GAME_ASK_DAYS,
+  isAwakeGesture,
+  isBatchAct,
+  isFriendAnniversary,
+  isGesture,
+  VISIT_BAN_DAYS,
+  type BatchAct,
+} from "../friendly";
 import { isGame, serverName, type Game } from "../games";
 import { displayName } from "../profile";
 import { INBOX_DAYS } from "../rules";
@@ -12,10 +22,10 @@ import { DAY } from "../world/logic";
 import type { PublicProfile } from "../profile";
 import { WorldError, type FriendBetween, type InboxItem, type OwnRoach, type PlaceTarget, type VisitEvent } from "../world/types";
 import { db } from "./db";
-import { isUniqueViolation, type Exec } from "./guides";
+import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { nudge } from "./live";
 import { roachesChanged, sleeping } from "./roachFeed";
-import { declarations, deliveries, friendNotes, friendships, roaches, users, visitBans, visits, type UserRow } from "./schema";
+import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, users, visitBans, visits, type UserRow } from "./schema";
 import { arrivedAt } from "./talulah";
 import { cardsOf, checkPlacement, friendIdsOf, friendKey, ownRoaches, profileOf, userById, writePlacement } from "./world";
 
@@ -64,18 +74,49 @@ const nudgeSoon = (ids: string[]) => {
   if (ids.length) setTimeout(() => nudge(ids), 200);
 };
 
+// ---- what you do for one 触须之交 a day ----
+
+/** The kinds counted against FRIEND_ACTS_PER_DAY: 催理智 and every gesture, answers included */
+const COUNTED = ["sanity", "hug", "highfive", "luck", "blanket", "water"];
+const FULL = `今天和 TA 互动满 ${FRIEND_ACTS_PER_DAY} 次了，明天再来吧。`;
+
+/** How many of them you did for TA today (Beijing date) */
+async function actsToday(exec: Exec, from: string, to: string, now: number) {
+  const [row] = await exec
+    .select({ n: sql<number>`count(*)::int` })
+    .from(friendNotes)
+    .where(
+      and(
+        eq(friendNotes.fromUserId, from),
+        eq(friendNotes.toUserId, to),
+        inArray(friendNotes.kind, COUNTED),
+        gte(friendNotes.createdAt, new Date(beijingMidnight(beijingDate(now)))),
+      ),
+    );
+  return Number(row?.n ?? 0);
+}
+
 // ---- 催理智 ----
 
-/** 催理智: one a day (Beijing date) for each 触须之交; it reaches them asleep too, and drunk ones see it once up */
+/** 催理智: one a day (Beijing date) for each 触须之交, one of the day's three; it reaches them asleep too, and drunk ones see it once up */
 export async function remindSanity(userId: string, friendId: unknown) {
   const other = await friendOf(userId, friendId);
   const now = Date.now();
-  const [made] = await db
-    .insert(friendNotes)
-    .values({ fromUserId: userId, toUserId: other.id, kind: "sanity", period: beijingDate(now), asleep: sleeping(other, now), createdAt: new Date(now) })
-    .onConflictDoNothing()
-    .returning({ id: friendNotes.id });
-  if (!made) throw new WorldError("今天已经催过 TA 了，明天再催吧。");
+  const today = beijingDate(now);
+  await db.transaction(async (tx) => {
+    // one at a time for each player, so two taps cannot both find room for a third
+    await lockPlayer(tx, userId);
+    const [again] = await tx
+      .select({ id: friendNotes.id })
+      .from(friendNotes)
+      .where(and(eq(friendNotes.fromUserId, userId), eq(friendNotes.toUserId, other.id), eq(friendNotes.kind, "sanity"), eq(friendNotes.period, today)))
+      .limit(1);
+    if (again) throw new WorldError("今天已经催过 TA 了，明天再催吧。");
+    if ((await actsToday(tx, userId, other.id, now)) >= FRIEND_ACTS_PER_DAY) throw new WorldError(FULL);
+    await tx
+      .insert(friendNotes)
+      .values({ fromUserId: userId, toUserId: other.id, kind: "sanity", period: today, asleep: sleeping(other, now), createdAt: new Date(now) });
+  });
   nudge([other.id]);
 }
 
@@ -103,17 +144,15 @@ export async function answerSanity(userId: string, itemId: unknown, answer: unkn
 
 // ---- gestures ----
 
-const AGAIN: Record<Gesture, string> = {
-  hug: "今天已经和 TA 贴贴过了，明天再来吧。",
-  highfive: "今天已经和 TA 击过掌了，明天再来吧。",
-  luck: "今天已经吸过 TA 的欧气了，明天再来吧。",
+const AGAIN: Record<"blanket" | "water", string> = {
   blanket: "已经给 TA 盖过被子了。",
   water: "已经给 TA 放过白开水了。",
 };
 
 /**
- * 贴贴, 击掌, 吸欧气 while they are awake, once a day each; 盖被子, 放杯白开水 while they sleep,
- * once a sleep each. Returning one of theirs (replyTo) is your one of that kind for today.
+ * 贴贴, 击掌, 吸欧气 while they are awake, as often as the day's FRIEND_ACTS_PER_DAY allow;
+ * 盖被子, 放杯白开水 while they sleep, once a sleep each, within the day's too. Returning one of
+ * theirs (replyTo) is one of yours, and each of theirs is returned once.
  */
 export async function gesture(userId: string, friendId: unknown, kind: unknown, replyTo?: unknown) {
   if (!isGesture(kind)) throw new WorldError("没有这个动作。");
@@ -131,30 +170,64 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
       .where(and(eq(friendNotes.id, noteId(replyTo)), eq(friendNotes.toUserId, userId), eq(friendNotes.fromUserId, other.id), eq(friendNotes.kind, kind)))
       .limit(1);
     if (!n || !awake) throw new WorldError("找不到这条消息了。");
+    if (n.answer) throw new WorldError("已经回过了。");
     answering = n.id;
   }
   const made = await db.transaction(async (tx) => {
+    await lockPlayer(tx, userId);
+    const done = await actsToday(tx, userId, other.id, now);
+    if (done >= FRIEND_ACTS_PER_DAY) throw new WorldError(FULL);
+    if (answering) {
+      const [open] = await tx
+        .update(friendNotes)
+        .set({ answer: "back", answeredAt: new Date(now) })
+        .where(and(eq(friendNotes.id, answering), isNull(friendNotes.answer)))
+        .returning({ id: friendNotes.id });
+      if (!open) throw new WorldError("已经回过了。");
+    }
     const rows = await tx
       .insert(friendNotes)
       .values({
         fromUserId: userId,
         toUserId: other.id,
         kind,
-        period: awake ? beijingDate(now) : sleep!,
+        // awake ones may come again the same day: which of the day's it was keeps each its own
+        period: awake ? `${beijingDate(now)}#${done + 1}` : sleep!,
         asleep: !awake,
         replyTo: answering,
         createdAt: new Date(now),
       })
       .onConflictDoNothing()
       .returning({ id: friendNotes.id });
-    if (rows.length && answering) {
-      await tx.update(friendNotes).set({ answer: "back", answeredAt: new Date(now) }).where(eq(friendNotes.id, answering));
-    }
+    if (!rows.length && answering) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? "已经回过了。");
     return rows.length > 0;
   });
-  if (!made) throw new WorldError(AGAIN[kind]);
+  if (!made) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? FULL);
   nudge([other.id]);
 }
+
+/** 一键 (src/lib/friendly.ts): one act for many 触须之交 at once, each by the rules for one; says how it went for each */
+export async function friendsAct(userId: string, act: unknown, friendIds: unknown): Promise<BatchResult[]> {
+  if (!isBatchAct(act)) throw new WorldError("没有这个动作。");
+  if (!Array.isArray(friendIds) || !friendIds.length) throw new WorldError("先选几位触须之交。");
+  const out: BatchResult[] = [];
+  for (const id of [...new Set(friendIds.map(String))].slice(0, MAX_BATCH)) {
+    try {
+      if (act === "sanity") await remindSanity(userId, id);
+      else await gesture(userId, id, act satisfies Exclude<BatchAct, "sanity">);
+      out.push({ id, ok: true });
+    } catch (e) {
+      if (!(e instanceof WorldError)) throw e;
+      out.push({ id, ok: false, why: e.message });
+    }
+  }
+  return out;
+}
+
+/** How one of a 一键 went: why not, when it did not */
+export type BatchResult = { id: string; ok: boolean; why?: string };
+/** More 触须之交 than anyone has */
+const MAX_BATCH = 300;
 
 // ---- 游戏里也加个好友 ----
 
@@ -480,6 +553,10 @@ export async function friendshipEnded(tx: Exec, x: string, y: string) {
     .where(or(and(eq(visits.guestId, x), eq(visits.hostId, y)), and(eq(visits.guestId, y), eq(visits.hostId, x))));
   for (const v of vs) await sendBack(tx, v);
   await tx.delete(friendNotes).where(and(inArray(friendNotes.kind, ["gameAsk", "gameWant"]), bothWays(x, y)));
+  // 特别关注 goes with it: becoming 触须之交 again starts without the star
+  await tx
+    .delete(friendStars)
+    .where(or(and(eq(friendStars.userId, x), eq(friendStars.other, y)), and(eq(friendStars.userId, y), eq(friendStars.other, x))));
 }
 
 /** An account going: its guests go home quietly first (its own visiting clones go with its roaches) */
@@ -535,6 +612,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
   const userId = self.id;
   const ids = others.map((o) => o.user.id);
   const today = beijingDate(now);
+  const dayStart = beijingMidnight(today);
   const recent = new Date(now - 90 * DAY);
   const mine = await db
     .select({ to: friendNotes.toUserId, kind: friendNotes.kind, period: friendNotes.period, game: friendNotes.game, answer: friendNotes.answer, at: friendNotes.createdAt })
@@ -574,14 +652,13 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
     const banUntil = ban ? ban.at.getTime() + VISIT_BAN_DAYS * DAY : 0;
     const v = mineVisiting.find((x) => x.hostId === o.id);
     const day = friendDayOf(since, now);
+    const used = to.filter((n) => COUNTED.includes(n.kind) && n.at.getTime() >= dayStart).length;
     out.set(o.id, {
       mainId: mains.find((m) => m.user === o.id)?.publicId ?? null,
       asleep: sleeping(o, now),
+      actsLeft: Math.max(0, FRIEND_ACTS_PER_DAY - used),
       done: {
         sanity: did("sanity", today),
-        hug: did("hug", today),
-        highfive: did("highfive", today),
-        luck: did("luck", today),
         blanket: did("blanket", sleep),
         water: did("water", sleep),
       },

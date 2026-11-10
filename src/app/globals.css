@@ -179,6 +179,47 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 .friend-tile small { color: var(--muted); font-size: 11px; }
+.friend-tile { position: relative; }
+.friend-tile.picking { cursor: pointer; }
+.friend-tile.picking.on { border-color: #ff4f8b; background: #ffe3ef; }
+.friend-tile.off { opacity: 0.45; }
+.friend-tile.off small { color: var(--ink); }
+/* 特别关注, someone asking for help, and the tick while picking for 一键 */
+.tile-star { position: absolute; top: 4px; left: 7px; color: #f5a400; font-size: 14px; line-height: 1; }
+.tile-help { position: absolute; top: 7px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: #ffc400; box-shadow: 0 0 0 2px #fff; }
+.tile-tick {
+  position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border: 2px solid #c9ccd2; border-radius: 50%; background: #fff;
+}
+.tile-tick.on { border-color: #ff4f8b; background: #ff4f8b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; }
+/* 一键 */
+.batch-row, .batch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 12px; }
+.batch-label { margin-right: 2px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.batch-head { justify-content: space-between; font-size: 14px; font-weight: 600; }
+.batch-bar { display: flex; gap: 8px; align-items: center; }
+.batch-bar .primary { flex: 1; }
+/* 求助 */
+.help-box { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #f1dfa0; border-radius: 14px; background: #fffbea; }
+.help-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 0; border: 0; background: none;
+  font-size: 14px; font-weight: 700; text-align: left;
+}
+.help-head .muted { font-size: 12px; font-weight: 400; }
+.help-row { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ecd88e; }
+.help-row.fresh .help-text::after { content: "新"; margin-left: 6px; padding: 0 5px; border-radius: 6px; background: #ffc400; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+.help-who { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; font-size: 13px; }
+.help-text { margin-top: 4px; font-size: 14.5px; font-weight: 600; }
+.help-meta { margin-top: 2px; font-size: 12px; }
+.help-uid { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; }
+.help-answer { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 13.5px; }
+.help-answer.fresh span:first-child { font-weight: 700; }
+.help-hint { margin: 6px 0 0; }
+.help-row .row-actions { flex-wrap: wrap; margin-top: 8px; }
+.help-preview { margin: 14px 0 0; padding: 8px 10px; border-radius: 10px; background: #fffbea; font-size: 14px; }
+.dock-friends { position: relative; }
+.help-dot { position: absolute; top: 4px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: #ffc400; box-shadow: 0 0 0 2px var(--paper); }
+/* 特别关注 on a 触须之交's page */
+.who-card .star-btn { margin-left: auto; align-self: flex-start; padding: 5px 10px; border: 1px solid #f1d27a; border-radius: 999px; background: #fff; color: #9a6b00; font-size: 13px; white-space: nowrap; }
+.who-card .star-btn.on { border-color: #f5a400; background: #fff3c4; font-weight: 700; }
 
 .card.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; }
 .card-head { display: flex; align-items: center; gap: 10px; padding-right: 28px; }
@@ -1417,6 +1458,62 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
   100% { opacity: 0; transform: translate(26px, -78px) scale(0.9) rotate(-35deg); }
 }
 .gs-ding { animation: ta-dword 1.2s ease-out 0.5s both; }
+
+/* 一键 (BatchStage): your roach in the middle, a ring of theirs, the act flying between */
+.bs-stage { position: fixed; left: 50%; top: 42%; z-index: 40; width: 0; height: 0; pointer-events: none; }
+.bs-you { position: absolute; left: -42px; top: -42px; animation: bs-you var(--dur) ease-out both; }
+/* a soft light disc behind the ring, so it reads over a crowded map */
+.bs-stage::before {
+  content: ""; position: absolute; left: -175px; top: -175px; width: 350px; height: 350px; border-radius: 50%;
+  background: radial-gradient(circle, #fffffff2 0%, #ffffffd9 55%, #fff0 72%); animation: bs-you var(--dur) ease-out both;
+}
+.bs-friend, .bs-more, .bs-fly, .bs-pa, .bs-label { position: absolute; }
+.bs-friend { left: -23px; top: -23px; animation: bs-ring var(--dur) ease-out both; }
+.bs-more {
+  left: -20px; top: -13px; min-width: 40px; padding: 4px 8px; border-radius: 13px; background: var(--ink); color: #fff;
+  font-size: 13px; font-weight: 800; text-align: center; animation: bs-ring var(--dur) ease-out both;
+}
+.bs-hop { animation: bs-hop 0.45s ease-out both; }
+.bs-fly { left: -11px; top: -11px; animation: bs-out 1.1s cubic-bezier(0.3, 0.6, 0.4, 1) both; }
+.bs-fly.in { animation-name: bs-in; }
+.bs-pa {
+  left: -18px; top: -46px; color: #ff4f8b; font-size: 17px; font-weight: 900; -webkit-text-stroke: 0.6px #fff;
+  animation: bs-pa 0.7s ease-out both;
+}
+.bs-label {
+  left: -60px; top: 52px; width: 120px; color: #b07800; font-size: 15px; font-weight: 800; text-align: center;
+  text-shadow: 0 1px 0 #fff, 0 0 6px #fff; animation: bs-label var(--dur) ease-out both;
+}
+.bs-label.bs-ding { top: -84px; color: #2f6fbb; }
+@keyframes bs-you { 0% { opacity: 0; transform: scale(0.6); } 12%, 88% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes bs-ring {
+  0% { opacity: 0; transform: translate(calc(var(--x) * 0.5), calc(var(--y) * 0.5)) scale(0.4); }
+  16%, 86% { opacity: 1; transform: translate(var(--x), var(--y)); }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(0.9); }
+}
+@keyframes bs-hop { 0% { transform: none; } 40% { transform: translateY(-14px); } 70% { transform: scale(1.06, 0.94); } 100% { transform: none; } }
+@keyframes bs-out {
+  0% { opacity: 0; transform: scale(0.6); }
+  15% { opacity: 1; }
+  80% { opacity: 1; transform: translate(var(--x), var(--y)); }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1.25); }
+}
+@keyframes bs-in {
+  0% { opacity: 0; transform: translate(var(--x), var(--y)) scale(0.8); }
+  15% { opacity: 1; }
+  85% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: scale(0.6); }
+}
+@keyframes bs-pa {
+  0% { opacity: 0; transform: translate(var(--x), var(--y)) scale(0.5); }
+  30% { opacity: 1; transform: translate(var(--x), var(--y)) scale(1.15); }
+  75% { opacity: 1; transform: translate(var(--x), var(--y)); }
+  100% { opacity: 0; transform: translate(var(--x), calc(var(--y) - 8px)); }
+}
+@keyframes bs-label { 0%, 45% { opacity: 0; transform: translateY(6px); } 60%, 88% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .bs-stage * { animation: none !important; }
+}
 
 /* the receiver's dock avatar, as 触须之交 do things for them (DockFx.tsx) */
 .ta-dword {

@@ -52,6 +52,7 @@ export function guideFriend(guide: Guide, since: Date, roaches: PublicRoach[]): 
     declarations: 0,
     history: [],
     pokeAgainAt: null,
+    star: null,
   };
 }
 

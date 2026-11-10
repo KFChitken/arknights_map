@@ -360,7 +360,7 @@ function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; 
   );
 }
 
-function CharacterPicker({
+export function CharacterPicker({
   game,
   value,
   max = MAX_FAVOURITES,

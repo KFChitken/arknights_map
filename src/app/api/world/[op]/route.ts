@@ -11,6 +11,7 @@ import { demoEnabled } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import * as friendly from "@/lib/server/friendly";
+import * as help from "@/lib/server/help";
 import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
 import { users } from "@/lib/server/schema";
@@ -116,6 +117,39 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       else if (op === "gameAsk") await friendly.gameAsk(id, args[0], args[1]);
       else if (op === "gameAdded") await friendly.gameAdded(id, args[0]);
       else await friendly.gameWant(id, args[0], args[1]);
+      break;
+    }
+    // 一键 (src/lib/friendly.ts): many at once, each checked as one, so its own limit
+    case "friendsAct": {
+      const id = agreed();
+      if (!allow(`friendsAct:${id}`, 10, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      result = await friendly.friendsAct(id, args[0], args[1]);
+      break;
+    }
+    // 特别关注: only the player sees it
+    case "starFriend": {
+      const id = uid();
+      if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      await world.starFriend(id, args[0], args[1]);
+      break;
+    }
+    // 求助 (src/lib/server/help.ts)
+    case "helpBoard":
+      ration(30);
+      result = user ? await help.helpBoard(user.id) : { mine: [], theirs: [] };
+      break;
+    case "seeHelp":
+      ration(30);
+      await help.seeHelp(uid());
+      break;
+    case "askHelp":
+    case "closeHelp":
+    case "answerHelp": {
+      const id = agreed();
+      if (!allow(`help:${id}`, 20, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (op === "askHelp") await help.askHelp(id, args[0]);
+      else if (op === "closeHelp") await help.closeHelp(id, args[0]);
+      else await help.answerHelp(id, args[0], args[1]);
       break;
     }
     case "inbox":

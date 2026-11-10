@@ -113,6 +113,7 @@ import { agreedPublicPlace, mustReconsent } from "./consent";
 import { db } from "./db";
 import { demoEnabled, secret } from "./env";
 import { isUniqueViolation, type Exec } from "./guides";
+import { helpCounts } from "./help";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { allow } from "./rateLimit";
@@ -123,6 +124,7 @@ import {
   reactions,
   friendCuts,
   friendships,
+  friendStars,
   moves,
   pokes,
   radarScans,
@@ -370,6 +372,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     perlica: await perlicaOf(u, offsetMin),
     talulah: talulahOf(u),
     minghe: await mingheOf(u),
+    help: await helpCounts(u),
   };
 }
 
@@ -1278,6 +1281,7 @@ export async function friends(userId: string): Promise<Friend[]> {
       declarations: ds.length,
       history: history.sort((x, y) => y.at - x.at).slice(0, 30),
       pokeAgainAt: await lastPoke(userId, other),
+      star: null,
     });
     met.push({ user: u, since: f.createdAt, at: out.length - 1 });
   }
@@ -1286,14 +1290,38 @@ export async function friends(userId: string): Promise<Friend[]> {
     const between = await betweenOf(self, met);
     for (const m of met) out[m.at].between = between.get(m.user.id);
   }
-  // the guides always come first, in their order
-  const guides = self ? GUIDE_IDS.flatMap((id) => GUIDE_WORLD[id].friend(self) ?? []) : [];
-  return [...guides, ...out];
+  // 特别关注 first, in the order starred; then the guides, in their order; then everyone else, newest first
+  const stars = new Map(
+    (await db.select().from(friendStars).where(eq(friendStars.userId, userId))).map((s) => [s.other, s.createdAt.getTime()]),
+  );
+  for (const m of met) out[m.at].star = stars.get(m.user.id) ?? null;
+  const guides = self ? GUIDE_IDS.flatMap((id) => GUIDE_WORLD[id].friend(self) ?? []).map((g) => ({ ...g, star: stars.get(g.id) ?? null })) : [];
+  const all = [...guides, ...out];
+  const starred = all.filter((f) => f.star !== null).sort((x, y) => x.star! - y.star!);
+  return [...starred, ...all.filter((f) => f.star === null)];
+}
+
+/** 特别关注 one of your 触须之交 (a guide too), or not; only you know */
+export async function starFriend(userId: string, friendId: unknown, on: unknown) {
+  const self = await userById(userId);
+  const id = String(friendId);
+  const guide = guideById(id);
+  const other = guide
+    ? self && GUIDE_WORLD[guide.id].friend(self)
+      ? guide.id
+      : null
+    : ([...(await friendIdsOf(userId))].find((o) => friendKey(userId, o) === id) ?? null);
+  if (!other) throw new WorldError("你们已经不是触须之交了。");
+  if (on === true) await db.insert(friendStars).values({ userId, other }).onConflictDoNothing();
+  else await db.delete(friendStars).where(and(eq(friendStars.userId, userId), eq(friendStars.other, other)));
 }
 
 export async function unfriend(userId: string, friendId: string) {
   const guide = guideById(String(friendId));
-  if (guide) return GUIDE_WORLD[guide.id].unfriend(userId);
+  if (guide) {
+    await db.delete(friendStars).where(and(eq(friendStars.userId, userId), eq(friendStars.other, guide.id)));
+    return GUIDE_WORLD[guide.id].unfriend(userId);
+  }
   const others = await friendIdsOf(userId);
   const other = [...others].find((o) => friendKey(userId, o) === friendId);
   if (!other) throw new WorldError("你们已经不是触须之交了。");

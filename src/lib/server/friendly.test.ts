@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { addDays, beijingDate, beijingMidnight } from "../beijing";
 import type { Declaration } from "../declarations";
 import { anniversaryText, type Gesture } from "../friendly";
+import { helpAnswerText, helpText } from "../help";
+import { OPERATORS } from "../operators";
 import { EMPTY_PROFILE, type Profile } from "../profile";
 import { FIRE_AT, isNearFire } from "../talulah";
 import type { LngLat } from "../types";
@@ -11,7 +13,8 @@ import type { InboxItem, PlaceTarget, RideTarget } from "../world/types";
 import { deleteAccount } from "./account";
 import { db } from "./db";
 import * as friendly from "./friendly";
-import { declarations, friendNotes, friendships, moves, roaches, touches, users, visits } from "./schema";
+import * as help from "./help";
+import { declarations, friendNotes, friendships, helpRequests, moves, roaches, touches, users, visits } from "./schema";
 import * as safety from "./safety";
 import * as world from "./world";
 
@@ -134,26 +137,56 @@ describe("催理智", () => {
 });
 
 describe("小动作", () => {
-  it("lets each be done once a day while TA is awake, and returned once as your own", async () => {
+  it("lets 催理智 and the gestures add up to three a day for one 触须之交, each of theirs returned once as one of yours", async () => {
     await a.gesture(key(a, b), "hug");
-    await expect(a.gesture(key(a, b), "hug")).rejects.toThrow("今天已经和 TA 贴贴过了");
-    await a.gesture(key(a, b), "luck");
+    await a.gesture(key(a, b), "hug");
+    expect((await between(a, b)).actsLeft).toBe(1);
+    await a.remindSanity(key(a, b));
+    await expect(a.gesture(key(a, b), "luck")).rejects.toThrow("今天和 TA 互动满 3 次了，明天再来吧。");
+    await expect(a.remindSanity(key(a, b))).rejects.toThrow("今天已经催过 TA 了");
     await expect(a.gesture(key(a, b), "blanket")).rejects.toThrow("TA 醒着呢");
     await expect(a.gesture(key(a, b), "dance")).rejects.toThrow("没有这个动作");
-    expect((await between(a, b)).done).toMatchObject({ hug: true, highfive: false, luck: true, blanket: false });
+    expect(await between(a, b)).toMatchObject({ actsLeft: 0, done: { sanity: true, blanket: false } });
 
-    const hug = of(await b.inbox(), "gesture").find((g) => g.gesture === "hug")!;
-    expect(hug).toMatchObject({ from: { displayName: "Dr. A" }, returned: false });
-    await b.gesture(key(b, a), "hug", hug.id);
-    expect(of(await b.inbox(), "gesture").find((g) => g.gesture === "hug")).toMatchObject({ returned: true });
+    const hugs = of(await b.inbox(), "gesture").filter((g) => g.gesture === "hug");
+    expect(hugs).toHaveLength(2);
+    expect(hugs[0]).toMatchObject({ from: { displayName: "Dr. A" }, returned: false });
+    await b.gesture(key(b, a), "hug", hugs[0].id);
+    await expect(b.gesture(key(b, a), "hug", hugs[0].id)).rejects.toThrow("已经回过了");
+    expect(of(await b.inbox(), "gesture").filter((g) => g.returned)).toHaveLength(1);
     expect(of(await a.inbox(), "gesture")).toMatchObject([{ gesture: "hug", from: { displayName: "Dr. B" } }]);
-    // returning it was their one for today
-    await expect(b.gesture(key(b, a), "hug")).rejects.toThrow("今天已经和 TA 贴贴过了");
-    const luck = of(await b.inbox(), "gesture").find((g) => g.gesture === "luck")!;
-    await expect(b.gesture(key(b, a), "hug", luck.id)).rejects.toThrow("找不到这条消息了");
+    // the other way round counts apart: B's answer and two more of B's own
+    await b.gesture(key(b, a), "highfive");
+    await b.gesture(key(b, a), "hug", hugs[1].id);
+    await expect(b.gesture(key(b, a), "luck")).rejects.toThrow("今天和 TA 互动满 3 次了");
+    expect(of(await b.inbox(), "gesture").some((g) => g.gesture === "hug" && !g.returned)).toBe(false);
+
+    // a new Beijing day, three more
+    await db.update(friendNotes).set({ createdAt: sql`${friendNotes.createdAt} - interval '1 day'` });
+    await a.gesture(key(a, b), "luck");
+    expect((await between(a, b)).actsLeft).toBe(2);
 
     // no limit on touching meanwhile
     await expect(a.touch((await mainOf(b)).publicId, false)).rejects.toThrow("今天已经碰过这只蟑螂了");
+  });
+
+  it("does one of them for many 触须之交 at once, each by the rules for one", async () => {
+    const c = await player("c@example.com", "C", NEAR_SQUARE);
+    await befriend(a, c);
+    await b.drink();
+    expect(await friendly.friendsAct(a.id, "hug", [key(a, b), key(a, c), "nobody", key(a, c)])).toEqual([
+      { id: key(a, b), ok: false, why: "TA 睡着了，等 TA 醒了再来吧。" },
+      { id: key(a, c), ok: true },
+      { id: "nobody", ok: false, why: "你们已经不是触须之交了。" },
+    ]);
+    expect(of(await c.inbox(), "gesture")).toMatchObject([{ gesture: "hug", from: { displayName: "Dr. A" }, returned: false }]);
+    // 催理智 reaches the sleeping one too; each is one of the day's three
+    expect((await friendly.friendsAct(a.id, "sanity", [key(a, b), key(a, c)])).every((r) => r.ok)).toBe(true);
+    expect((await between(a, c)).actsLeft).toBe(1);
+    expect(await friendly.friendsAct(a.id, "highfive", [key(a, c)])).toEqual([{ id: key(a, c), ok: true }]);
+    expect(await friendly.friendsAct(a.id, "luck", [key(a, c)])).toEqual([{ id: key(a, c), ok: false, why: "今天和 TA 互动满 3 次了，明天再来吧。" }]);
+    await expect(friendly.friendsAct(a.id, "poke", [key(a, c)])).rejects.toThrow("没有这个动作");
+    await expect(friendly.friendsAct(a.id, "hug", [])).rejects.toThrow("先选几位触须之交");
   });
 
   it("covers a sleeping 触须之交 once a sleep, seen on waking up", async () => {
@@ -447,5 +480,115 @@ describe("kept between the two of them", () => {
     await b.block(`friend:${key(b, a)}`);
     expect((await a.me()).roaches.filter((r) => r.slot > 0)).toEqual([]);
     expect(await db.select().from(roaches).where(eq(roaches.userId, a.id))).toHaveLength(1);
+  });
+});
+
+describe("特别关注", () => {
+  it("puts the starred first, in the order starred, for nobody but you, gone with the friendship", async () => {
+    const c = await player("c@example.com", "C", NEAR_SQUARE);
+    await befriend(a, c);
+    // newest first before any star
+    expect((await a.friends()).map((f) => f.profile.displayName)).toEqual(["Dr. C", "Dr. B"]);
+    await world.starFriend(a.id, key(a, b), true);
+    await world.starFriend(a.id, key(a, b), true);
+    const starred = await a.friends();
+    expect(starred[0]).toMatchObject({ id: key(a, b), star: expect.any(Number) });
+    expect(starred.find((f) => f.id === key(a, c))!.star).toBeNull();
+    // B sees nothing of it
+    expect((await b.friends()).find((f) => f.id === key(b, a))!.star).toBeNull();
+    await world.starFriend(a.id, key(a, b), false);
+    expect((await a.friends()).find((f) => f.id === key(a, b))!.star).toBeNull();
+
+    await world.starFriend(a.id, key(a, c), true);
+    await a.unfriend(key(a, c));
+    await expect(world.starFriend(a.id, key(a, c), true)).rejects.toThrow("你们已经不是触须之交了");
+    await befriendAgain(a, c);
+    expect((await a.friends()).find((f) => f.id === key(a, c))!.star).toBeNull();
+  });
+});
+
+describe("求助", () => {
+  const plays = async (p: Player, games: ("arknights" | "endfield")[]) => {
+    const { profile } = await p.me();
+    await p.saveProfile({ ...profile, games });
+  };
+  const board = (p: Player) => help.helpBoard(p.id);
+  const OPERATOR = OPERATORS.arknights[0];
+
+  it("shows a request only to 触须之交 who play that game, as a dot until they look, and tells the asker who answered", async () => {
+    const c = await player("c@example.com", "C", NEAR_SQUARE);
+    await befriend(a, c);
+    await plays(a, ["arknights"]);
+    await plays(b, ["arknights", "endfield"]);
+    await plays(c, ["endfield"]);
+    const inboxBefore = await b.inbox();
+    await help.askHelp(a.id, { kind: "clues", game: "arknights", clues: [5, 3, 3, 9] });
+
+    const [theirs] = (await board(b)).theirs;
+    expect(theirs).toMatchObject({ kind: "clues", game: "arknights", clues: [3, 5], fresh: true, friendId: key(b, a), answered: null, from: { displayName: "Dr. A" } });
+    expect(helpText(theirs)).toBe("明日方舟 · 缺 3、5 号线索");
+    expect(theirs.until - theirs.at).toBe(24 * 3_600_000);
+    expect((await board(c)).theirs).toEqual([]);
+    expect((await b.me()).help).toEqual({ asks: 1, answers: 0 });
+    // nothing in 消息
+    expect(await b.inbox()).toEqual(inboxBefore);
+    await help.seeHelp(b.id);
+    expect((await b.me()).help).toEqual({ asks: 0, answers: 0 });
+    expect((await board(b)).theirs[0].fresh).toBe(false);
+
+    await expect(help.answerHelp(b.id, theirs.id, [4])).rejects.toThrow("选一下送了哪几号");
+    await help.answerHelp(b.id, theirs.id, [3, 4]);
+    await expect(help.answerHelp(b.id, theirs.id, [5])).rejects.toThrow("已经回应过了");
+    await expect(help.answerHelp(c.id, theirs.id, [5])).rejects.toThrow("你没有在玩这个游戏");
+    await expect(help.answerHelp(a.id, theirs.id, [5])).rejects.toThrow("这是你自己的求助");
+    expect((await board(b)).theirs[0].answered).toEqual({ clues: [3] });
+
+    expect((await a.me()).help).toEqual({ asks: 0, answers: 1 });
+    const [mine] = (await board(a)).mine;
+    expect(mine).toMatchObject({ fresh: true, answers: [{ friendId: key(a, b), name: "Dr. B", clues: [3], fresh: true }] });
+    expect(helpAnswerText(mine, mine.answers![0].name, mine.answers![0].clues)).toBe("Dr. B 送了你 3 号线索");
+    await help.seeHelp(a.id);
+    expect((await a.me()).help.answers).toBe(0);
+  });
+
+  it("keeps one of each kind for each game, three a day, up for a day unless closed, and only among 触须之交", async () => {
+    await plays(a, ["arknights", "endfield"]);
+    await plays(b, ["arknights", "endfield"]);
+    await help.askHelp(a.id, { kind: "exchange", game: "endfield" });
+    await help.askHelp(a.id, { kind: "support", game: "arknights", operator: OPERATOR, skill: 3 });
+    await help.askHelp(a.id, { kind: "support", game: "arknights", operator: OPERATOR, skill: 0 });
+    const shown = (await board(b)).theirs;
+    expect(shown.map((r) => helpText(r))).toEqual([`明日方舟 · 想借 ${OPERATOR} 当助战`, "终末地 · 开了线索交流，来我帝江号拜访吧"]);
+    await help.askHelp(a.id, { kind: "support", game: "arknights", operator: OPERATOR, skill: 1 });
+    await expect(help.askHelp(a.id, { kind: "support", game: "arknights", operator: OPERATOR, skill: 2 })).rejects.toThrow("今天这种求助已经发了 3 次");
+    await expect(help.askHelp(a.id, { kind: "support", game: "endfield", operator: OPERATOR, skill: 1 })).rejects.toThrow("这个游戏没有这种求助");
+    await expect(help.askHelp(a.id, { kind: "support", game: "arknights", operator: "不是干员", skill: 1 })).rejects.toThrow("选一位干员");
+    await expect(help.askHelp(a.id, { kind: "clues", game: "arknights", clues: [] })).rejects.toThrow("选一下缺几号线索");
+    await expect(help.askHelp(a.id, { kind: "wish", game: "arknights" })).rejects.toThrow("没有这种求助");
+
+    const [support, exchange] = (await board(b)).theirs;
+    expect(support).toMatchObject({ kind: "support", operator: OPERATOR, skill: 1 });
+    await help.answerHelp(b.id, support.id);
+    expect(helpAnswerText((await board(a)).mine[0], "Dr. B")).toBe(`Dr. B 挂上了 ${OPERATOR}`);
+
+    // closed early, or a day on: gone
+    await help.closeHelp(a.id, exchange.id);
+    await expect(help.closeHelp(a.id, exchange.id)).rejects.toThrow("这条求助已经结束了");
+    await expect(help.answerHelp(b.id, exchange.id)).rejects.toThrow("这条求助已经结束了");
+    await db.update(helpRequests).set({ expiresAt: new Date(Date.now() - 1000) });
+    expect(await board(b)).toEqual({ mine: [], theirs: [] });
+    expect(await board(a)).toEqual({ mine: [], theirs: [] });
+
+    // no longer 触须之交: nothing either way
+    await help.askHelp(a.id, { kind: "exchange", game: "arknights" });
+    const [up] = (await board(b)).theirs;
+    await b.unfriend(key(b, a));
+    expect((await board(b)).theirs).toEqual([]);
+    await expect(help.answerHelp(b.id, up.id)).rejects.toThrow("你们已经不是触须之交了");
+
+    // a week on, deleted
+    await db.update(helpRequests).set({ createdAt: sql`${helpRequests.createdAt} - interval '8 days'` });
+    await help.pruneHelp();
+    expect(await db.select().from(helpRequests)).toEqual([]);
   });
 });

@@ -17,10 +17,12 @@ export const isAwakeGesture = (x: unknown): x is AwakeGesture => (AWAKE_GESTURES
 export const isGesture = (x: unknown): x is Gesture => isAwakeGesture(x) || (SLEEP_GESTURES as readonly unknown[]).includes(x);
 
 export const GESTURE_NAMES: Record<Gesture, string> = { hug: "贴贴", highfive: "击掌", luck: "吸欧气", blanket: "盖被子", water: "放杯白开水" };
-/** The button once it is used up for today (or for this sleep) */
-export const GESTURE_DONE: Record<Gesture, string> = { hug: "贴过了", highfive: "击过了", luck: "吸过了", blanket: "盖过了", water: "放过了" };
+/** The button once used for this sleep of theirs; the awake ones may come again, within the day's FRIEND_ACTS_PER_DAY */
+export const GESTURE_DONE: Record<SleepGesture, string> = { blanket: "盖过了", water: "放过了" };
 /** Answering one */
 export const GESTURE_BACK: Record<AwakeGesture, string> = { hug: "贴回去", highfive: "击回去", luck: "吸回来" };
+/** One of theirs you answered */
+export const GESTURE_RETURNED: Record<AwakeGesture, string> = { hug: "贴回去了", highfive: "击回去了", luck: "吸回来了" };
 
 /** What TA reads, by your name */
 export function gestureText(g: Gesture, who: string) {
@@ -59,6 +61,33 @@ export const sanityText = (who: string, asleep: boolean) =>
   asleep ? `${who} 趁你睡着催你清理智啦！理智要溢出了。` : `${who} 催你清理智啦！理智要溢出了。`;
 /** What you get back when TA says 「清完了！」 */
 export const sanityThanks = (who: string) => `${who}：清完了，谢谢提醒！`;
+
+/**
+ * What you may do for one 触须之交 a day (Beijing date), of any kinds together: 催理智 and the
+ * gestures, returning one of theirs included. 催理智 stays once a day, 盖被子 and 放杯白开水
+ * once a sleep. Touches, 戳一戳, 串门 and 游戏里加好友 have their own rules (Breeze, 2026-11-10).
+ */
+export const FRIEND_ACTS_PER_DAY = 3;
+
+/** 一键: what may go to many 触须之交 at once */
+export const BATCH_ACTS = ["hug", "highfive", "luck", "sanity"] as const;
+export type BatchAct = (typeof BATCH_ACTS)[number];
+export const isBatchAct = (x: unknown): x is BatchAct => (BATCH_ACTS as readonly unknown[]).includes(x);
+export const BATCH_NAMES: Record<BatchAct, string> = { hug: "贴贴", highfive: "击掌", luck: "吸欧气", sanity: "催理智" };
+
+/** The toast once a batch went out to n of them */
+export function batchSent(act: BatchAct, n: number) {
+  switch (act) {
+    case "hug":
+      return `和 ${n} 位触须之交贴贴了！`;
+    case "highfive":
+      return `和 ${n} 位触须之交击了掌！`;
+    case "luck":
+      return `从 ${n} 位触须之交那里吸了欧气，抽卡去吧！`;
+    case "sanity":
+      return `已经催 ${n} 位触须之交清理智啦`;
+  }
+}
 
 /** 串门: after 请 TA 回家, the guest may not visit that host again for this long */
 export const VISIT_BAN_DAYS = 3;
