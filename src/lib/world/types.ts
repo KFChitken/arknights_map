@@ -303,6 +303,12 @@ export type Homecoming = {
 /** Someone on your block list. name is null when you never saw who it was. */
 export type BlockedPlayer = { id: string; name: string | null; at: number };
 
+/**
+ * You touched whoever sent this in the last day, so touching TA back waits till tomorrow: "all", or
+ * "sneaky" when a bold touch back still goes, since it makes you 触须之交.
+ */
+export type TouchBackWaits = "all" | "sneaky";
+
 export type InboxItem =
   | {
       kind: "touch";
@@ -317,6 +323,7 @@ export type InboxItem =
       replied: boolean;
       /** You crawled away from it (默默爬走) */
       ignored: boolean;
+      waits?: TouchBackWaits;
     }
   | {
       kind: "declaration";
@@ -331,9 +338,21 @@ export type InboxItem =
       /** A 触须之交's 「祝我生日快乐」, sent to you as one: who, and how to open them (they see who reacts) */
       from?: PublicProfile;
       friendId?: string;
+      waits?: TouchBackWaits;
     }
   /** Someone nearby reacted to your declaration; they stay anonymous, unless a 触须之交 reacting to your birthday */
-  | { kind: "reaction"; id: string; at: number; seen: boolean; text: string; reaction: Reply; replied: boolean; from?: PublicProfile; friendId?: string }
+  | {
+      kind: "reaction";
+      id: string;
+      at: number;
+      seen: boolean;
+      text: string;
+      reaction: Reply;
+      replied: boolean;
+      from?: PublicProfile;
+      friendId?: string;
+      waits?: TouchBackWaits;
+    }
   | { kind: "friend"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }
   /** A 触须之交 poked your main roach while it slept; shown once you are awake */
   | { kind: "poke"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; replied: boolean }

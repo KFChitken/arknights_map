@@ -24,9 +24,9 @@ import {
   RADAR_RADIUS_KM,
   RADAR_REUSE_MIN,
   RADAR_SCANS_PER_DAY,
-  SAME_ROACH_TOUCHES_PER_DAY,
   TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
+  TOUCHES_PER_PERSON_PER_DAY,
 } from "../rules";
 import { queueSpots, stopOf } from "../minghe";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
@@ -661,6 +661,12 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
     )
     .limit(1);
   if (again) throw new WorldError("今天已经碰过这只蟑螂了，明天再来吧。");
+  // a few touches a day on one player's roaches, main and clones together, touching back included; saying so
+  // may tell that two roaches share an owner, which Breeze accepted. The bold touch that makes the two
+  // 触须之交 always goes: it comes once.
+  if ((await touchesBetween(userId, roach.userId)) >= TOUCHES_PER_PERSON_PER_DAY && !(bold && (await wouldBefriend(userId, roach.userId)))) {
+    throw new WorldError(`今天已经碰过这只蟑螂的主人 ${TOUCHES_PER_PERSON_PER_DAY} 次了，明天再来吧。`);
+  }
   // Between a blocked pair the touch looks sent, but never arrives
   const withheld = await blockedBetween(userId, roach.userId);
   await db.insert(touches).values({
@@ -677,6 +683,51 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   return { newFriend };
 }
 
+/**
+ * Touches from a to b in the last day: on b's roaches on the map, main and clones together, and
+ * touching back; the ones that never arrived too, so that a blocked player sees what anyone would.
+ */
+async function touchesBetween(a: string, b: string) {
+  const [sent] = await db
+    .select({ n: count() })
+    .from(touches)
+    .where(and(eq(touches.fromUserId, a), eq(touches.toUserId, b), gt(touches.createdAt, ago(DAY))));
+  return sent?.n ?? 0;
+}
+
+/**
+ * Whether a bold touch from a to b now makes them 触须之交: they are not, and b touched a boldly
+ * since they last stopped being 触须之交 (or ever).
+ */
+async function wouldBefriend(a: string, b: string) {
+  const p = pair(a, b);
+  const [friends] = await db.select({ a: friendships.a }).from(friendships).where(and(eq(friendships.a, p.a), eq(friendships.b, p.b))).limit(1);
+  if (friends) return false;
+  const [cut] = await db.select({ at: friendCuts.cutAt }).from(friendCuts).where(and(eq(friendCuts.a, p.a), eq(friendCuts.b, p.b))).limit(1);
+  const [bold] = await db
+    .select({ id: touches.id })
+    .from(touches)
+    .where(and(eq(touches.fromUserId, b), eq(touches.toUserId, a), eq(touches.bold, true), eq(touches.withheld, false), gt(touches.createdAt, cut?.at ?? new Date(0))))
+    .limit(1);
+  return Boolean(bold);
+}
+
+/**
+ * The players among these you touched in the last day, for whom touching back waits till tomorrow:
+ * "all", or "sneaky" when a bold touch back would still go, as it makes you 触须之交 (reply()).
+ */
+async function touchBackWaits(userId: string, others: string[]) {
+  const waits = new Map<string, "all" | "sneaky">();
+  const ids = [...new Set(others)];
+  if (!ids.length) return waits;
+  const touched = await db
+    .selectDistinct({ to: touches.toUserId })
+    .from(touches)
+    .where(and(eq(touches.fromUserId, userId), inArray(touches.toUserId, ids), gt(touches.createdAt, ago(DAY))));
+  for (const { to } of touched) waits.set(to, (await wouldBefriend(userId, to)) ? "sneaky" : "all");
+  return waits;
+}
+
 async function replied(userId: string, itemIds: string[]) {
   if (!itemIds.length) return new Set<string>();
   const rows = await db
@@ -684,28 +735,6 @@ async function replied(userId: string, itemIds: string[]) {
     .from(touches)
     .where(and(eq(touches.fromUserId, userId), inArray(touches.replyTo, itemIds)));
   return new Set(rows.map((r) => r.re));
-}
-
-/**
- * How many times a player touched within one back-and-forth in the last day: the touch they
- * would answer, the one it answered, and so on back to where it began (a touch on the map, or
- * an answer to a declaration or reaction). Followed along the answers only, never by who owns
- * which roach, so reaching the limit cannot tell anyone that two roaches share an owner.
- */
-async function touchesInChain(userId: string, touchId: string) {
-  const since = ago(DAY).toISOString();
-  const [row] = await db.execute<{ n: number }>(sql`
-    with recursive chain as (
-      select id, from_user_id, reply_to from touches where id = ${touchId} and created_at > ${since}::timestamptz
-      union all
-      select t.id, t.from_user_id, t.reply_to
-      from chain c
-      join touches t
-        on t.id = case when c.reply_to ~ '^t:[0-9a-f-]{36}$' then substring(c.reply_to from 3)::uuid end
-      where t.created_at > ${since}::timestamptz
-    )
-    select count(*)::int as n from chain where from_user_id = ${userId}`);
-  return Number(row?.n ?? 0);
 }
 
 /** Touch back whoever sent an inbox item. */
@@ -746,8 +775,10 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   }
   if (!to) throw new WorldError("找不到这条消息的主人了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
-  if (kind === "t" && (await touchesInChain(userId, id)) >= SAME_ROACH_TOUCHES_PER_DAY) {
-    throw new WorldError(`今天已经碰过这只蟑螂 ${SAME_ROACH_TOUCHES_PER_DAY} 次了，明天再来吧。`);
+  // no touching back and forth: whoever touched TA in the last day waits till tomorrow to touch back,
+  // except with the bold touch that makes them 触须之交
+  if ((await touchesBetween(userId, to)) > 0 && !(bold && (await wouldBefriend(userId, to)))) {
+    throw new WorldError("今天已经碰过 TA 了，明天再碰回去吧。");
   }
   await checkTouchQuota(userId);
   const withheld = await blockedBetween(userId, to);
@@ -880,6 +911,13 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
     ...ds.map((x) => `d:${x.d.id}`),
     ...rs.map((x) => `x:${x.r.id}`),
   ]);
+  // touching back waits for whoever you touched in the last day (reply())
+  const waits = await touchBackWaits(userId, [
+    ...ts.filter((x) => !done.has(`t:${x.t.id}`)).map((x) => x.t.fromUserId),
+    ...ds.filter((x) => !done.has(`d:${x.d.id}`)).map((x) => x.d.senderId),
+    ...rs.filter((x) => !done.has(`x:${x.r.id}`)).map((x) => x.r.fromUserId),
+  ]);
+  const waitsFor = (id: string, from: string) => (!done.has(id) && waits.has(from) ? { waits: waits.get(from)! } : {});
 
   for (const { t, from } of ts) {
     const id = `t:${t.id}`;
@@ -901,6 +939,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       from: t.bold ? cards.get(from.id)! : null,
       replied: done.has(id),
       ignored: Boolean(t.ignoredAt),
+      ...waitsFor(id, t.fromUserId),
     });
   }
   for (const { d, seenAt, toFriend } of ds) {
@@ -916,6 +955,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       reaction: replyOf(storedDeclaration(d), reacted),
       options: repliesFor(storedDeclaration(d)),
       ...asFriend.sender(d.senderId, toFriend),
+      ...waitsFor(id, d.senderId),
     });
   }
   for (const { r, d } of rs) {
@@ -932,6 +972,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       reaction: reply,
       replied: done.has(id),
       ...asFriend.reactor(r.declarationId, r.fromUserId),
+      ...waitsFor(id, r.fromUserId),
     });
   }
   for (const f of fs) {

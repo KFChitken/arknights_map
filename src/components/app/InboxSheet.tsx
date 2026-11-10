@@ -225,14 +225,19 @@ export default function InboxSheet({
   // items keep their unread look while the inbox is open, but a tab's red count goes once you have looked at it
   const unseenIn = (t: InboxTab) => (viewed.includes(t) ? 0 : items.filter((i) => !i.seen && tabOf(i) === t).length);
 
-  const replyButtons = (item: InboxItem, label: string) =>
+  const replyButtons = (item: Extract<InboxItem, { kind: "touch" | "declaration" | "reaction" }>, label: string) =>
     item.replied ? (
       <span className="done">已经碰过 TA 了</span>
+    ) : item.waits === "all" ? (
+      // you touched TA in the last day: touching back waits, so touches never go back and forth
+      <span className="done">今天碰过 TA 了，明天再碰回去吧</span>
     ) : replying === item.id ? (
       <>
-        <button className="pill" onClick={() => reply(item.id, false)}>
-          偷偷碰
-        </button>
+        {item.waits !== "sneaky" && (
+          <button className="pill" onClick={() => reply(item.id, false)}>
+            偷偷碰
+          </button>
+        )}
         <button className="pill dark" onClick={() => reply(item.id, true)}>
           大胆碰
         </button>
@@ -473,7 +478,10 @@ export default function InboxSheet({
               </>
             )}
           </div>
-          {replying === item.id && (item.target === "main" || item.target === "clone") && (
+          {replying === item.id && item.waits === "sneaky" && (
+            <p className="hint">今天你碰过 TA 了，偷偷碰回去要等明天；大胆碰回去，你们就结成触须之交。</p>
+          )}
+          {replying === item.id && item.waits !== "sneaky" && (item.target === "main" || item.target === "clone") && (
             <p className="hint">大胆碰回去，TA 就会知道刚才碰的那只蟑螂是你的。</p>
           )}
         </div>
