@@ -3,9 +3,10 @@ name: 网站在线检查
 # Every 10 minutes, from outside: does https://zhoupmap.com/api/health answer? It says no when
 # the site's database is down or its emails cannot go out (src/lib/server/watch.ts), and gives
 # no answer at all when the server or the site is down: all times the site cannot email anyone
-# itself. Three tries a minute apart, so one slow moment is not a failure. GitHub emails whoever
-# last changed this schedule about a failed run, and pauses schedules after 60 days without a
-# push to the repository.
+# itself. Asked through each way in by its address, the main server and the second one (deploy/relay),
+# since DNS sends each visitor to either. Three tries a minute apart, so one slow moment is not a
+# failure. GitHub emails whoever last changed this schedule about a failed run, and pauses schedules
+# after 60 days without a push to the repository.
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -18,18 +19,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ask /api/health
+      - name: Ask /api/health through each way in
         run: |
-          for try in 1 2 3; do
-            code=$(curl -sS -o body.json -w '%{http_code}' --max-time 20 https://zhoupmap.com/api/health || true)
-            if [ "$code" = "200" ]; then echo "ok"; exit 0; fi
-            echo "try $try: HTTP ${code:-none} $(cat body.json 2>/dev/null)"
-            [ "$try" = 3 ] || sleep 60
-          done
-          why=$(sed -n 's/.*"why":"\([a-z]*\)".*/\1/p' body.json 2>/dev/null)
-          case "$why" in
-            mail) echo "::error::网站能打开，但邮件发不出去（验证码和网站自己的提醒都发不了）" ;;
-            database) echo "::error::网站能打开，但数据库连不上" ;;
-            *) echo "::error::网站打不开（HTTP ${code:-没有回应}）" ;;
-          esac
-          exit 1
+          ask() {
+            for try in 1 2 3; do
+              code=$(curl -sS -o "body-$2.json" -w '%{http_code}' --max-time 20 --resolve "zhoupmap.com:443:$2" https://zhoupmap.com/api/health || true)
+              if [ "$code" = "200" ]; then echo "$1: ok"; return 0; fi
+              echo "$1, try $try: HTTP ${code:-none} $(cat "body-$2.json" 2>/dev/null)"
+              [ "$try" = 3 ] || sleep 60
+            done
+            why=$(sed -n 's/.*"why":"\([a-z]*\)".*/\1/p' "body-$2.json" 2>/dev/null)
+            case "$why" in
+              mail) echo "::error::网站能打开，但邮件发不出去（验证码和网站自己的提醒都发不了）" ;;
+              database) echo "::error::网站能打开，但数据库连不上" ;;
+              *) echo "::error::经$1打不开网站（HTTP ${code:-没有回应}）" ;;
+            esac
+            return 1
+          }
+          ask 主服务器 43.161.203.189 & main=$!
+          ask 第二台服务器 43.161.232.95 & second=$!
+          failed=0
+          wait $main || failed=1
+          wait $second || failed=1
+          exit $failed

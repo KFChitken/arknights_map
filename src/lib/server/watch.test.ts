@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import net, { type AddressInfo } from "node:net";
 import { sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +11,7 @@ import { forgetGeo, geoSearch } from "./geo";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { mailSends, watchAlerts, watchState } from "./schema";
 import { errorCode, forgetSignals, note, recent } from "./signals";
-import { CHECKS, forgetWatch, healthy, REMIND_AFTER, runWatch, WATCH_MAILS_PER_DAY, type Check, type Finding } from "./watch";
+import { CHECKS, doorFindings, forgetWatch, healthy, REMIND_AFTER, runWatch, WATCH_MAILS_PER_DAY, type Check, type Finding } from "./watch";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -327,6 +328,22 @@ describe("the site's own checks", () => {
     await expect(check("machine").run(t0)).resolves.toBeInstanceOf(Array);
     // no certificate to look at in development
     expect(await check("tls").run(t0)).toEqual([]);
+    // and no other way in to ask through
+    expect(await check("doors").run(t0)).toEqual([]);
+  });
+
+  it("tells when the site does not answer through another way in", async () => {
+    // a port nothing listens on, so every try is refused at once
+    const port = await new Promise<number>((resolve) => {
+      const s = net.createServer().listen(0, "127.0.0.1", () => {
+        const { port } = s.address() as AddressInfo;
+        s.close(() => resolve(port));
+      });
+    });
+    const found = await doorFindings([`127.0.0.1:${port}`], "zhoupmap.com", 0);
+    expect(found.map((f) => f.key)).toEqual([`down:127.0.0.1:${port}`]);
+    expect(found[0].detail).toContain("连接被拒绝");
+    expect(found[0].advice).toContain("DNSPod");
   });
 });
 

@@ -2,13 +2,14 @@ import "server-only";
 import { readFileSync, statfsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import https from "node:https";
 import tls from "node:tls";
 import { count, eq, gt, sql } from "drizzle-orm";
 import { beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
-import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
+import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_DOORS, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
 import { amapSearchToday } from "./geo";
 import { sendAdminMail } from "./mail";
 import { mailSends, watchAlerts, watchState } from "./schema";
@@ -466,6 +467,69 @@ async function checkTls(now: number): Promise<Finding[]> {
   ];
 }
 
+const DOOR_TRIES = 3;
+const DOOR_TIMEOUT_MS = 4_000;
+
+/** Why a way in did not answer, in words, from what Node calls it */
+function doorTrouble(code: string) {
+  if (code === "ECONNREFUSED") return "连接被拒绝";
+  if (code === "ECONNRESET" || code === "EPIPE") return "连接被断开";
+  if (code === "timeout" || code === "ETIMEDOUT") return `${DOOR_TIMEOUT_MS / 1000} 秒没有回应`;
+  if (/CERT|SSL|TLS|SELF_SIGNED|ALTNAME/i.test(code)) return `证书不对（${code}）`;
+  return code;
+}
+
+/** The site's /api/health asked through one way in, as a visitor coming that way: "" when the site answered */
+function askThrough(door: string, servername: string): Promise<string> {
+  const [host, port = "443"] = door.split(":");
+  return new Promise((resolve) => {
+    const req = https.request(
+      { host, port: Number(port), servername, path: "/api/health", headers: { host: servername }, agent: false, timeout: DOOR_TIMEOUT_MS },
+      (res) => {
+        res.resume();
+        // its 503 is the site's own answer (the database or the emails), which other checks tell of
+        resolve(res.statusCode === 200 || res.statusCode === 503 ? "" : `HTTP ${res.statusCode}`);
+      },
+    );
+    req.on("timeout", () => req.destroy(Object.assign(new Error("timeout"), { code: "timeout" })));
+    req.on("error", (e: NodeJS.ErrnoException) => resolve(doorTrouble(e.code ?? e.message)));
+    req.end();
+  });
+}
+
+/**
+ * The other ways in (WATCH_DOORS: the second server, deploy/relay): a way in is broken when the
+ * site does not answer through it three times running. Exported for the tests.
+ */
+export async function doorFindings(doors: string[], servername: string, pauseMs = 2_000): Promise<Finding[]> {
+  const why = await Promise.all(
+    doors.map(async (door) => {
+      let trouble = "";
+      for (let i = 0; i < DOOR_TRIES; i++) {
+        if (i) await new Promise((r) => setTimeout(r, pauseMs));
+        trouble = await askThrough(door, servername);
+        if (!trouble) break;
+      }
+      return trouble;
+    }),
+  );
+  return doors.flatMap((door, i) =>
+    why[i]
+      ? [
+          {
+            key: `down:${door}`,
+            title: "经第二台服务器打不开网站了",
+            detail: `从这台经 ${door} 打开网站，连试 ${DOOR_TRIES} 次都不行：${why[i]}。从那台进来的访客现在打不开网站。`,
+            advice:
+              "先在 DNSPod 暂停第二台服务器的两条解析（@ 和 www），十分钟内访客都会回到这台。再看那台：腾讯云控制台里是不是还开着机，ssh zhoupmap2 'systemctl status nginx' 看转发在不在跑。",
+          },
+        ]
+      : [],
+  );
+}
+
+const checkDoors = () => doorFindings(WATCH_DOORS, new URL(SITE_URL).hostname);
+
 export const CHECKS: Check[] = [
   { name: "db", run: checkDb },
   { name: "restart", events: true, run: checkRestart },
@@ -479,6 +543,7 @@ export const CHECKS: Check[] = [
   { name: "machine", run: checkMachine },
   { name: "backup", every: 30 * MINUTE, run: checkBackup },
   { name: "tls", every: 6 * HOUR, run: checkTls },
+  { name: "doors", run: checkDoors },
 ];
 
 // ---- the run ----

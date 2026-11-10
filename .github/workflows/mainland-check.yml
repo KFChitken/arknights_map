@@ -21,4 +21,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/check-mainland.mjs zhoupmap.com
+      # through each server DNS sends visitors to: the main one and the second (deploy/relay)
+      - run: node scripts/check-mainland.mjs zhoupmap.com 主服务器=43.161.203.189 第二台服务器=43.161.232.95

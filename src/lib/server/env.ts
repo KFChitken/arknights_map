@@ -54,7 +54,9 @@ export const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
  * The site's own checks (src/lib/server/watch.ts), which email WATCH_EMAILS (comma separated;
  * ADMIN_EMAILS when unset) about problems: on in production unless WATCH=off, off in
  * development unless WATCH=1. WATCH_TLS_HOST: where to ask for the HTTPS certificate
- * (Caddy, "caddy" on the live site's network; none in development unless set).
+ * (Caddy, "caddy" on the live site's network; none in development unless set). WATCH_DOORS:
+ * the other ways in to ask the site through (comma separated addresses, with :port when it is
+ * not 443): the second server's private address on the live site (deploy/relay).
  */
 export const watchEnabled = process.env.WATCH ? !["off", "0"].includes(process.env.WATCH) : isProd;
 export const WATCH_EMAILS = process.env.WATCH_EMAILS
@@ -63,6 +65,10 @@ export const WATCH_EMAILS = process.env.WATCH_EMAILS
       .filter(Boolean)
   : ADMIN_EMAILS;
 export const WATCH_TLS_HOST = process.env.WATCH_TLS_HOST || "";
+export const WATCH_DOORS = (process.env.WATCH_DOORS || "")
+  .split(",")
+  .map((d) => d.trim())
+  .filter(Boolean);
 
 /** Port of a local test inbox (Mailpit) to link from the sign-in screen; unset in production. */
 export const DEV_MAILBOX_PORT = process.env.DEV_MAILBOX_PORT || "";

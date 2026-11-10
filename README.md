@@ -121,7 +121,7 @@ pmtiles extract https://build.protomaps.com/20261105.pmtiles ~/arknights_map/til
 
 A newer build goes in under its own date, with `OVERSEAS_TILES` in `src/lib/overseas.ts` changed to match. The fonts (Noto Sans Regular, Medium and Italic) and the `light` icons of `sprites/v4` come from [basemaps-assets](https://github.com/protomaps/basemaps-assets) into `tiles/fonts` and `tiles/sprites` on the Mac, and each deploy copies them over. For local development put a small cut (`--bbox=...`) under the same name in `tiles/`, and open `localhost:3000/?mainland=1` to see the site as a visitor from mainland China would.
 
-Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it from probes in mainland China and in Hong Kong, and the run fails when most of either cannot, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
+Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it through each server's address from probes in mainland China and in Hong Kong, and the run fails when most of either cannot through either server, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
 
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.
 
@@ -148,9 +148,10 @@ The site checks itself every 5 minutes (`src/lib/server/watch.ts`) and emails `W
 - background jobs failing (the 04:00 jobs, pruning, daily totals, the report digest, migrations at start);
 - the server: disk 85% full, under 10% memory available, a 15-minute load above 1.5 per core;
 - the nightly backup: failed, missing for more than 26 hours, or not uploaded;
+- the second way in (`WATCH_DOORS`: the second server's private address): the site not answering through it three times running;
 - the HTTPS certificate, asked of Caddy inside the server's network, with less than 14 days left.
 
-A site that is down cannot email anyone, so GitHub also asks `GET /api/health` from outside every 10 minutes (`.github/workflows/uptime.yml`), three tries a minute apart, and emails the repository owner when it fails. The endpoint answers 503 when the database is unreachable or the site's emails fail. GitHub pauses scheduled workflows after 60 days without a push. `WATCH=off` turns the checks off; `WATCH=1` turns them on in development, where they print instead of emailing unless `WATCH_EMAILS` or `ADMIN_EMAILS` is set.
+A site that is down cannot email anyone, so GitHub also asks `GET /api/health` from outside every 10 minutes (`.github/workflows/uptime.yml`), through each server by its address, three tries a minute apart, and emails the repository owner when it fails. The endpoint answers 503 when the database is unreachable or the site's emails fail. GitHub pauses scheduled workflows after 60 days without a push. `WATCH=off` turns the checks off; `WATCH=1` turns them on in development, where they print instead of emailing unless `WATCH_EMAILS` or `ADMIN_EMAILS` is set.
 
 ## Roadmap
 
