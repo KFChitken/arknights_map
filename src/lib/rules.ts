@@ -59,6 +59,23 @@ export const PROFILE_REPORTS_TO_HOLD = 3;
 export const REPORT_NOTE_MAX = 100;
 /** A report for 「其他」 says what happened in at least this many characters */
 export const OTHER_NOTE_MIN = 2;
+/**
+ * A reporter the automatic steps count: an account this many days old, and not one whose reports the
+ * admin often found nothing in (at least UNRELIABLE_DISMISSED_MIN of them, and twice as many as upheld).
+ */
+export const RELIABLE_AFTER_DAYS = 3;
+export const UNRELIABLE_DISMISSED_MIN = 3;
+export const UNRELIABLE_DISMISSED_RATIO = 2;
+/** 暂停互动 lasts this many days */
+export const SUSPEND_DAYS = 7;
+/** Yellow cards count over this many days, and this many may well end in a ban (the admin decides) */
+export const YELLOW_DAYS = 90;
+export const YELLOWS_TO_WORRY = 3;
+/** Blocked by this many different players within BLOCKS_WINDOW_DAYS makes a case of its own for the admin */
+export const BLOCKS_TO_REVIEW = 10;
+export const BLOCKS_WINDOW_DAYS = 7;
+/** What the admin did about players is kept this long (see the privacy page) */
+export const KEEP_MOD_ACTION_DAYS = 365;
 /** Handled reports are deleted after this many days (see the privacy page). */
 export const KEEP_REPORT_DAYS = 90;
 

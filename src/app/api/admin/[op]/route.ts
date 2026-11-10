@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { AdminAction } from "@/lib/safety";
-import { allPlayers, isAdmin, openCases, resolveCase, retentionStats, setBadge } from "@/lib/server/admin";
+import { allPlayers, isAdmin, openCases, retentionStats, setBadge, settleCase, settleCases } from "@/lib/server/admin";
 import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "@/lib/server/nameWords";
@@ -26,7 +26,11 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await openCases();
       break;
     case "resolve":
-      await resolveCase(String(args[0]), String(args[1]) as AdminAction);
+      // args[2]: the community rule the admin picked, or the one picked ahead
+      await settleCase(String(args[0]), String(args[1]) as AdminAction, { rule: args[2] });
+      break;
+    case "resolveMany":
+      result = await settleCases(args[0], String(args[1]) as AdminAction);
       break;
     case "giveBadge":
     case "takeBadge":

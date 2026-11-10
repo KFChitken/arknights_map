@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, eq, gt, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
-import { INBOX_DAYS, KEEP_ACTIVITY_DAYS, KEEP_REPORT_DAYS } from "../rules";
+import { INBOX_DAYS, KEEP_ACTIVITY_DAYS, KEEP_MOD_ACTION_DAYS, KEEP_REPORT_DAYS } from "../rules";
 import { db } from "./db";
 import { pruneFriendly } from "./friendly";
 import { pruneHelp } from "./help";
@@ -11,10 +11,12 @@ import {
   friendCuts,
   moves,
   mingheTouches,
+  modActions,
   perlicaTouches,
   pokes,
   radarScans,
   reports,
+  staffNotes,
   talulahTouches,
   touches,
   watchIncidents,
@@ -50,6 +52,9 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(radarScans).where(lt(radarScans.createdAt, new Date(now - DAY_MS)));
   const reportCutoff = new Date(now - KEEP_REPORT_DAYS * DAY_MS);
   await db.delete(reports).where(and(isNotNull(reports.resolvedAt), lt(reports.resolvedAt, reportCutoff)));
+  // 站长通知 like any message; what the admin did, a year
+  await db.delete(staffNotes).where(lt(staffNotes.createdAt, cutoff));
+  await db.delete(modActions).where(lt(modActions.createdAt, new Date(now - KEEP_MOD_ACTION_DAYS * DAY_MS)));
   // the site's own checks: what they found and emailed, for 网站状态
   await db.delete(watchIncidents).where(lt(watchIncidents.endedAt, cutoff));
   await db.delete(watchMails).where(lt(watchMails.at, cutoff));

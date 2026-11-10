@@ -20,3 +20,6 @@ export const TICK_MISSING: Record<Tick, string> = {
   acceptCrossBorder: "需要先同意信息存放和发信的说明。",
   acceptPublicPlace: "需要先同意公开蟑螂位置的说明。",
 };
+
+/** The refusal (HTTP 428) while the admin waits for a player to say again they are 18 or older; the page shows its card on it */
+export const AGE_CHECK_NEEDED = "先确认一下你满 18 岁了。";

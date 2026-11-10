@@ -129,6 +129,8 @@ export interface World {
    * 假装今天是佩丽卡生日 (perlicaBirthday) or 假装过了一周 (perlicaWeek)
    */
   pretend(what: PretendWhat, seconds?: number): Promise<void>;
+  /** 「我已满 18 岁」 on the card the admin asked for */
+  confirmAge(): Promise<void>;
 }
 
 export type PretendWhat =
@@ -332,6 +334,10 @@ export type Me = {
   help: { asks: number; answers: number };
   /** Reports held their name and UIDs until the admin looks: hidden from others, and locked in 资料 */
   profileHeld: boolean;
+  /** 暂停互动 until then: the map and 消息 stay open, touching, declaring, reacting, poking and visiting do not */
+  suspendedUntil: number | null;
+  /** The admin asked them to say again they are 18 or older: a card stands in front of the map until they do */
+  ageCheck: boolean;
   /** Only for the admin: reports waiting, shown in a corner of the map */
   admin?: ReportCounts;
 };
@@ -353,6 +359,19 @@ export type BlockedPlayer = { id: string; name: string | null; at: number };
 export type TouchBackWaits = "all" | "sneaky";
 
 export type InboxItem =
+  /**
+   * 站长通知: what came of a report, or what the admin did about the player and why, worded on the server.
+   * appeal: whether the player may still appeal the action it tells of, and has
+   */
+  | {
+      kind: "staff";
+      id: string;
+      at: number;
+      seen: boolean;
+      text: string;
+      appeal?: { actionId: string; done: boolean };
+      replied: true;
+    }
   | {
       kind: "touch";
       id: string;
@@ -536,6 +555,8 @@ export class SignInNeeded extends WorldError {}
 
 /** The player has to agree to the updated privacy policy first. */
 export class ConsentNeeded extends WorldError {}
+/** The admin asked the player to say again they are 18 or older */
+export class AgeCheckNeeded extends WorldError {}
 
 /** The server is busy right now; try again after retryAfterS seconds. */
 export class TooBusy extends WorldError {

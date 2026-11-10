@@ -658,6 +658,24 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
   font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; box-shadow: 0 2px 10px #0003;
 }
 .admin-pill.urgent { background: #d93025; }
+/* 举报处理: one row a case, its colour first; the row under the keys' cursor; several picked at once */
+.admin .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; vertical-align: 0; }
+.admin .dot.red { background: #d93025; }
+.admin .dot.yellow { background: #f2b200; }
+.admin .dot.green { background: #2e9e5b; }
+.case-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.case-filters .seg button { display: inline-flex; align-items: center; gap: 4px; }
+.case-rows { margin: 0; padding: 0; list-style: none; }
+.case-rows > li { border-bottom: 1px solid #eef0f2; }
+.case-rows > li.cursor > .case-row { background: #f3f6fb; }
+.case-row { display: flex; align-items: flex-start; gap: 8px; padding: 10px 6px; cursor: pointer; }
+.case-row input { margin-top: 3px; }
+.case-row .dot { margin-top: 5px; }
+.case-row-text { min-width: 0; overflow-wrap: anywhere; }
+.case-row-text .tag { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #eef0f2; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.batch-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; padding: 8px 10px; border-radius: 12px; background: #fff7d6; }
+.quick-names label.check { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; }
+.admin .warn-text { color: #d93025; font-weight: 700; }
 /* 网站状态 at the top of /admin */
 .site-status .status-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0 10px; }
 .site-status .stale { color: #d93025; font-size: 13px; font-weight: 700; }
@@ -667,6 +685,10 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
 .site-status .incidents li p { margin: 4px 0 0; }
 .site-status .incidents.week li { margin-bottom: 6px; font-size: 14px; }
 .site-status .incidents .pill { margin-top: 6px; }
+/* 站长 in 消息: what came of a report, or what the admin did; and the line while interactions are paused */
+.msg.staff { border-left: 3px solid var(--ink); }
+.msg.staff .staff-from { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
+.suspended-banner { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: #fdecea; color: #a12a1f; font-size: 13px; }
 /* 资料 while reports hold the name and UIDs: the note, and the fields locked meanwhile look it */
 .held-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: #fff7d6; font-size: 13px; line-height: 1.55; }
 .sheet input:disabled, .sheet select:disabled { background: #f1f3f5; color: var(--muted); opacity: 1; cursor: not-allowed; }

@@ -1,3 +1,4 @@
+import { AGE_CHECK_NEEDED } from "../consent";
 import type { Declaration } from "../declarations";
 import type { BatchAct, Gesture } from "../friendly";
 import type { Game } from "../games";
@@ -6,6 +7,7 @@ import type { Profile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { LngLat } from "../types";
 import {
+  AgeCheckNeeded,
   ConsentNeeded,
   SignInNeeded,
   TooBusy,
@@ -44,6 +46,7 @@ export class ServerWorld implements World {
     }
     const body = (await res.json().catch(() => null)) as { result?: T; error?: string } | null;
     if (res.status === 401) throw new SignInNeeded(body?.error ?? "请先登录。");
+    if (res.status === 428 && body?.error === AGE_CHECK_NEEDED) throw new AgeCheckNeeded(AGE_CHECK_NEEDED);
     if (res.status === 428) throw new ConsentNeeded(body?.error ?? "隐私说明更新了，同意以后才能继续。");
     if (!res.ok) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body?.result as T;
@@ -127,4 +130,5 @@ export class ServerWorld implements World {
   become = (id: PlayerId) => this.call<void>("become", id);
   reset = () => this.call<void>("reset");
   pretend = (what: PretendWhat, seconds?: number) => this.call<void>("pretend", what, seconds);
+  confirmAge = () => this.call<void>("confirmAge");
 }

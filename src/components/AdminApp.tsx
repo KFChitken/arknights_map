@@ -5,9 +5,21 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { BADGES } from "@/lib/badges";
 import { GAME_NAMES } from "@/lib/games";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
-import { beijingDate, beijingShort } from "@/lib/beijing";
-import { PROFILE_REPORTS_TO_HOLD } from "@/lib/rules";
-import { REPORT_REASONS, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "@/lib/safety";
+import { beijingDate, beijingDayWords, beijingShort } from "@/lib/beijing";
+import { BLOCKS_TO_REVIEW, BLOCKS_WINDOW_DAYS, PROFILE_REPORTS_TO_HOLD, SUSPEND_DAYS, YELLOW_DAYS, YELLOWS_TO_WORRY } from "@/lib/rules";
+import {
+  CASE_LEVELS,
+  REPORT_REASONS,
+  RULES,
+  type AdminAction,
+  type AdminCase,
+  type AdminPlayer,
+  type CaseLevel,
+  type ReporterInfo,
+  type ReportReason,
+  type RetentionStats,
+  type RuleCode,
+} from "@/lib/safety";
 import { lasted, LEVEL_MARK, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
 import { ago } from "./app/InboxSheet";
 import RoachIcon from "./RoachIcon";
@@ -32,20 +44,64 @@ async function call<T>(op: string, ...args: unknown[]): Promise<T> {
 }
 
 const DONE: Record<AdminAction, string> = {
-  dismiss: "关掉了这些举报。",
+  dismiss: "关掉了这些举报，举报的人收到了「这次没发现违规」。",
   clearName: "名字清掉了，TA 现在是匿名，以后也不能再用这个名字。",
   clearUid: "UID 清掉了，TA 以后也不能再填这个 UID。",
   clearBoth: "名字和 UID 都清掉了，TA 以后也不能再用。",
+  warn: "提醒了 TA 一次，记一张黄牌。",
+  suspend: `暂停了 TA 的互动 ${SUSPEND_DAYS} 天。`,
+  ageCheck: "请 TA 重新确认满 18 岁了：TA 下次打开网站会先看到这件事。",
   ban: "封号了：账号和数据都删了，这个邮箱（连同它的其他写法）不能再登录。",
 };
+
+/** The keys of the queue: only while typing nowhere; a ban always needs its button and a confirm */
+const KEYS: Record<string, AdminAction> = { d: "dismiss", n: "clearName", u: "clearUid", w: "warn", s: "suspend" };
+
+const LEVEL_NAMES: Record<CaseLevel, string> = { red: "红", yellow: "黄", green: "绿" };
 
 /** Whether a reported player filled in a UID for a game they play */
 const hasUid = (c: AdminCase) => c.games.some((g) => g.uid);
 
+/** 「骚扰刷屏 2、名字不合适 1」, or why a case without reports is one */
+function reasonsOf(c: AdminCase) {
+  if (!c.reports.length) return `${BLOCKS_WINDOW_DAYS} 天内被 ${c.blockedRecently} 个人拉黑`;
+  const n = new Map<string, number>();
+  for (const r of c.reports) n.set(REPORT_REASONS[r.reason], (n.get(REPORT_REASONS[r.reason]) ?? 0) + 1);
+  return [...n].map(([reason, k]) => `${reason} ${k}`).join("、");
+}
+
+/** 「关掉过 3 次，警告过 1 次……」 */
+function settledWords(s: AdminCase["settled"]) {
+  const parts = [
+    s.dismissed && `关掉过 ${s.dismissed} 次`,
+    s.warned && `警告过 ${s.warned} 次`,
+    s.suspended && `暂停过 ${s.suspended} 次`,
+    s.nameCleared && `清过名字 ${s.nameCleared} 次`,
+    s.uidCleared && `清过 UID ${s.uidCleared} 次`,
+    s.ageChecks && `请 TA 确认过 ${s.ageChecks} 次年龄`,
+  ].filter(Boolean);
+  return parts.length ? parts.join("，") : "没有";
+}
+
+/** How a reporter's reports went before, never who they are */
+function reporterWords(r: ReporterInfo | null) {
+  if (!r) return "举报人已注销";
+  const before = r.upheld + r.dismissed ? `以前举报 ${r.upheld + r.dismissed} 次，${r.dismissed} 次判了没问题` : "以前没举报过";
+  return `注册 ${r.days} 天 · ${before}${r.reliable ? "" : " · 不算进自动处理"}`;
+}
+
+function tagsOf(c: AdminCase) {
+  return [
+    c.heldAt ? "先藏起来了" : c.anonymous ? "现在是匿名" : null,
+    c.suspendedAuto ? "自动暂停中" : c.suspendedUntil ? "暂停中" : null,
+    c.brigade ? "可能是一起来刷的" : null,
+    c.ageCheckAt ? "等 TA 确认年龄" : null,
+  ].filter((t): t is string => Boolean(t));
+}
+
 export default function AdminApp() {
   const [cases, setCases] = useState<AdminCase[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // bumped when a case card adds to the name list, so the list below reads it again
   const [wordsAdded, setWordsAdded] = useState(0);
@@ -61,32 +117,6 @@ export default function AdminApp() {
   useEffect(() => {
     load();
   }, [load]);
-
-  const resolve = async (c: AdminCase, action: AdminAction) => {
-    if (action === "ban" && !window.confirm("封号会删除这个账号和 TA 的所有数据，这个邮箱以后不能再登录。确定吗？")) return;
-    setBusy(c.targetId);
-    try {
-      await call("resolve", c.targetId, action);
-      setNote(action === "dismiss" && c.heldAt ? "关掉了这些举报，TA 的名字和 UID 恢复了。" : DONE[action]);
-      await load();
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : "出了点问题。");
-    }
-    setBusy(null);
-  };
-
-  // the whole name, for everyone; the report stays open
-  const blockName = async (c: AdminCase) => {
-    setBusy(c.targetId);
-    try {
-      await call("addNameWords", `=${c.name}`);
-      setNote("加好了：以后谁都不能叫这个名字。要挡名字里的某个词，到下面「名字黑名单」里加。");
-      setWordsAdded((n) => n + 1);
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : "出了点问题。");
-    }
-    setBusy(null);
-  };
 
   if (forbidden) {
     return (
@@ -105,88 +135,388 @@ export default function AdminApp() {
       <h1>管理</h1>
       <SiteStatusBox />
       <Retention />
+      <Cases cases={cases} note={note} setNote={setNote} reload={load} onWordsAdded={() => setWordsAdded((n) => n + 1)} />
+      <NameList added={wordsAdded} />
+      <Players />
+      <BadgeDesk />
+      <p className="hint" style={{ marginTop: 24 }}>
+        <Link href="/">回到地图</Link>
+      </p>
+    </main>
+  );
+}
 
+/**
+ * 举报处理: one row a case, the most pressing first, opened to its card; filters by colour and reason,
+ * 名字快审 for cases only about a name, several at once, and keys for going through them quickly.
+ */
+function Cases({
+  cases,
+  note,
+  setNote,
+  reload,
+  onWordsAdded,
+}: {
+  cases: AdminCase[] | null;
+  note: string | null;
+  setNote: (n: string | null) => void;
+  reload: () => Promise<void>;
+  onWordsAdded: () => void;
+}) {
+  const [level, setLevel] = useState<CaseLevel | "all">("all");
+  const [reason, setReason] = useState<ReportReason | "blocks" | "all">("all");
+  const [open, setOpen] = useState<string | null>(null);
+  const [cursor, setCursor] = useState(0);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [quick, setQuick] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const now = Date.now();
+
+  const shown = (cases ?? []).filter(
+    (c) =>
+      (level === "all" || c.level === level) &&
+      (reason === "all" || (reason === "blocks" ? !c.reports.length : c.reports.some((r) => r.reason === reason))),
+  );
+  const nameOnly = (cases ?? []).filter((c) => c.reports.length > 0 && c.reports.every((r) => r.reason === "name"));
+
+  const run = useCallback(
+    async (fn: () => Promise<string>) => {
+      setBusy(true);
+      try {
+        setNote(await fn());
+        await reload();
+      } catch (e) {
+        setNote(e instanceof Error ? e.message : "出了点问题。");
+      }
+      setBusy(false);
+    },
+    [reload, setNote],
+  );
+
+  const settle = useCallback(
+    (c: AdminCase, action: AdminAction, rule?: RuleCode) => {
+      if (action === "ban" && !window.confirm("封号会删除这个账号和 TA 的所有数据，这个邮箱以后不能再登录。确定吗？")) return;
+      return run(async () => {
+        await call("resolve", c.targetId, action, rule);
+        return action === "dismiss" && c.heldAt ? "关掉了这些举报，TA 的名字和 UID 恢复了。" : DONE[action];
+      });
+    },
+    [run],
+  );
+
+  const settleMany = (ids: string[], action: AdminAction, done: string) =>
+    run(async () => {
+      const n = await call<number>("resolveMany", ids, action);
+      setPicked(new Set());
+      return `${done}（${n} 个）`;
+    });
+
+  // the whole name, for everyone; the report stays open
+  const blockName = (c: AdminCase) =>
+    run(async () => {
+      await call("addNameWords", `=${c.name}`);
+      onWordsAdded();
+      return "加好了：以后谁都不能叫这个名字。要挡名字里的某个词，到下面「名字黑名单」里加。";
+    });
+
+  // j/k move, Enter or o opens, d n u w s settle the case under the cursor; the next one moves up into its place
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || busy) return;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      const c = shown[Math.min(cursor, shown.length - 1)];
+      if (e.key === "j") setCursor((i) => Math.min(i + 1, shown.length - 1));
+      else if (e.key === "k") setCursor((i) => Math.max(i - 1, 0));
+      else if ((e.key === "Enter" || e.key === "o") && c) setOpen((o) => (o === c.targetId ? null : c.targetId));
+      else if (KEYS[e.key] && c) {
+        if (KEYS[e.key] === "clearName" && !c.name) return;
+        if (KEYS[e.key] === "clearUid" && !hasUid(c)) return;
+        void settle(c, KEYS[e.key]);
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shown, cursor, busy, settle]);
+
+  const counts = CASE_LEVELS.map((l) => [l, (cases ?? []).filter((c) => c.level === l).length] as const);
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <>
       <h2>举报处理</h2>
       <p className="hint">
-        同一个人的举报放在一起。名字不合适、留了联系方式、冒充这三类举报凑满 {PROFILE_REPORTS_TO_HOLD} 个人，TA
-        的名字和 UID 会先藏起来、暂时改不了，等你来看。「没问题」关掉举报，藏起来的也恢复；「清掉名字」「只清 UID」「名字和 UID
-        都清」清掉以后，TA 不能再用同样的；「加进名字黑名单」让谁都不能再叫这个名字，不关掉举报；「封号」删掉账号和所有数据，这个邮箱以后不能再登录。
+        红的（可能未成年、留了联系方式）先看，再黄的、绿的；同一色里可靠的举报人多的在前。名字、联系方式、冒充这三类凑满 {PROFILE_REPORTS_TO_HOLD}{" "}
+        个可靠的人，TA 的名字和 UID 会先藏起来。点开一行看详细；快捷键（不在输入框里时）：j、k 上下，Enter 或 o 点开，d 没问题，n 清名字，u 只清
+        UID，w 警告，s 暂停 {SUSPEND_DAYS} 天。封号只能点按钮。
       </p>
       {note && <p className="admin-note">{note}</p>}
       {cases === null && !note && <p>正在读取…</p>}
       {cases?.length === 0 && <p>没有待处理的举报。</p>}
-      {cases?.map((c) => (
-        <section key={c.targetId} className="admin-case">
-          <div className="who-card">
-            <RoachIcon color={c.color} size={44} avatar={c.avatar} />
-            <div>
-              <strong>{c.name ? `${c.drPrefix ? "Dr. " : ""}${c.name}` : "（没有名字）"}</strong>
-              {c.heldAt ? <span className="tag">先藏起来了</span> : c.anonymous && <span className="tag">现在是匿名</span>}
-              <p className="hint">
-                {ago(c.joinedAt)}注册 · 最近 24 小时碰了 {c.last24h.touches} 次、发了 {c.last24h.declarations} 条宣言
-              </p>
-              {c.heldAt && <p className="hint">名字和 UID 先藏起来了（{ago(c.heldAt)}）</p>}
+      {cases && cases.length > 0 && (
+        <>
+          <div className="case-filters">
+            <div className="seg" role="group" aria-label="按轻重筛">
+              <button className={level === "all" ? "on" : ""} onClick={() => setLevel("all")}>
+                全部 {cases.length}
+              </button>
+              {counts.map(([l, n]) => (
+                <button key={l} className={level === l ? "on" : ""} onClick={() => setLevel(l)}>
+                  <span className={`dot ${l}`} /> {LEVEL_NAMES[l]} {n}
+                </button>
+              ))}
             </div>
+            <select value={reason} onChange={(e) => setReason(e.target.value as ReportReason | "blocks" | "all")} aria-label="按理由筛">
+              <option value="all">所有理由</option>
+              {(Object.keys(REPORT_REASONS) as ReportReason[]).map((r) => (
+                <option key={r} value={r}>
+                  {REPORT_REASONS[r]}
+                </option>
+              ))}
+              <option value="blocks">被很多人拉黑</option>
+            </select>
+            {nameOnly.length > 0 && (
+              <button className="pill" onClick={() => setQuick((q) => !q)}>
+                名字快审（{nameOnly.length}）
+              </button>
+            )}
           </div>
-          <dl className="admin-facts">
-            <dt>邮箱</dt>
-            <dd>{c.email || "（没有）"}</dd>
-            {c.games.length === 0 && (
-              <>
-                <dt>游戏</dt>
-                <dd>没填</dd>
-              </>
-            )}
-            {c.games.map((g) => (
-              <Fragment key={g.game}>
-                <dt>{GAME_NAMES[g.game]}</dt>
-                <dd>
-                  UID {g.uid ? <code>{g.uid}</code> : "没填"}
-                  {g.server && `（${g.server}）`}
-                  {g.favourites.length > 0 && <> · 喜欢 {g.favourites.join("、")}</>}
-                </dd>
-              </Fragment>
-            ))}
-            <dt>UID 给谁看</dt>
-            <dd>
-              {c.shareUid ? "大胆碰过的人能看到" : "只有自己"}
-              {c.heldAt && c.shareUid && "（现在先藏起来了）"}
-            </dd>
-            {c.support.length > 0 && (
-              <>
-                <dt>我的助战</dt>
-                <dd>{c.support.join("、")}</dd>
-              </>
-            )}
-            <dt>称号</dt>
-            <dd>
-              {c.badges.length ? `${c.badges.length} 个：${c.badges.join("、")}` : "没有"}
-              {c.worn && `；戴着「${c.worn}」`}
-            </dd>
-            <dt>蟑螂</dt>
-            <dd>
-              {c.roaches.main ? "放了本体" : "没放本体"}
-              {c.roaches.clones > 0 && `，${c.roaches.clones} 只克隆体`}
-            </dd>
-            <dt>触须之交</dt>
-            <dd>{c.friends} 个</dd>
-            <dt>被拉黑</dt>
-            <dd>{c.blockedBy} 个人</dd>
-            <dt>以前的举报</dt>
-            <dd>
-              {c.settled.dismissed + c.settled.nameCleared + c.settled.uidCleared === 0
-                ? "没有"
-                : [
-                    c.settled.dismissed && `关掉过 ${c.settled.dismissed} 条`,
-                    c.settled.nameCleared && `清过名字的 ${c.settled.nameCleared} 条`,
-                    c.settled.uidCleared && `清过 UID 的 ${c.settled.uidCleared} 条`,
-                  ]
-                    .filter(Boolean)
-                    .join("，")}
-            </dd>
-          </dl>
 
-          <h2>被 {c.reporters} 个人举报</h2>
+          {quick && <QuickNames cases={nameOnly} busy={busy} onSettle={settleMany} onClose={() => setQuick(false)} />}
+
+          {picked.size > 0 && (
+            <div className="batch-bar">
+              选了 {picked.size} 个：
+              <button className="pill" disabled={busy} onClick={() => settleMany([...picked], "dismiss", DONE.dismiss)}>
+                没问题
+              </button>
+              <button className="pill" disabled={busy} onClick={() => settleMany([...picked], "clearName", "名字清掉了")}>
+                清掉名字
+              </button>
+              <button className="pill" disabled={busy} onClick={() => settleMany([...picked], "warn", "警告了，各记一张黄牌")}>
+                警告
+              </button>
+              <button className="link" onClick={() => setPicked(new Set())}>
+                不选了
+              </button>
+            </div>
+          )}
+
+          <ul className="case-rows">
+            {shown.map((c, i) => (
+              <li key={c.targetId} className={i === Math.min(cursor, shown.length - 1) ? "cursor" : ""}>
+                <div className="case-row" onClick={() => {
+                  setCursor(i);
+                  setOpen((o) => (o === c.targetId ? null : c.targetId));
+                }}>
+                  <input
+                    type="checkbox"
+                    aria-label="选中这一个"
+                    checked={picked.has(c.targetId)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggle(c.targetId)}
+                  />
+                  <span className={`dot ${c.level}`} aria-label={LEVEL_NAMES[c.level]} />
+                  <div className="case-row-text">
+                    <strong>{c.name && !c.anonymous ? `${c.drPrefix ? "Dr. " : ""}${c.name}` : "匿名"}</strong>{" "}
+                    <span className="hint">
+                      {reasonsOf(c)}
+                      {c.reports.length > 0 && ` · ${c.reporters} 人举报（${c.reliable} 个可靠）`} · 等了 {lasted(now - c.since)}
+                    </span>
+                    {tagsOf(c).map((t) => (
+                      <span key={t} className="tag">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {open === c.targetId && <CaseCard c={c} busy={busy} onSettle={settle} onBlockName={blockName} />}
+              </li>
+            ))}
+          </ul>
+          {shown.length === 0 && <p className="hint">这一类没有。</p>}
+        </>
+      )}
+    </>
+  );
+}
+
+/** 名字快审: every case only about a name in one list; tick the names to clear, the rest are fine */
+function QuickNames({
+  cases,
+  busy,
+  onSettle,
+  onClose,
+}: {
+  cases: AdminCase[];
+  busy: boolean;
+  onSettle: (ids: string[], action: AdminAction, done: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [bad, setBad] = useState<Set<string>>(new Set());
+  const rest = cases.filter((c) => !bad.has(c.targetId)).map((c) => c.targetId);
+  return (
+    <section className="admin-case quick-names">
+      <h2>名字快审 · {cases.length} 个</h2>
+      <p className="hint">勾上要清掉的名字，再点下面的按钮；没勾的就是没问题。</p>
+      <ul className="case-rows">
+        {cases.map((c) => (
+          <li key={c.targetId}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={bad.has(c.targetId)}
+                onChange={(e) =>
+                  setBad((b) => {
+                    const next = new Set(b);
+                    if (e.target.checked) next.add(c.targetId);
+                    else next.delete(c.targetId);
+                    return next;
+                  })
+                }
+              />
+              <strong>{c.name || "（没有名字）"}</strong>
+              <span className="hint">
+                {c.reporters} 人举报（{c.reliable} 个可靠）
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="account-actions">
+        <button className="pill" disabled={busy || bad.size === 0} onClick={() => onSettle([...bad], "clearName", "名字清掉了").then(() => setBad(new Set()))}>
+          清掉勾选的名字（{bad.size}）
+        </button>
+        <button className="pill" disabled={busy || rest.length === 0} onClick={() => onSettle(rest, "dismiss", "这些名字都没问题")}>
+          其余都没问题（{rest.length}）
+        </button>
+        <button className="link" onClick={onClose}>
+          收起
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** One case opened: who it is, what they did, the reports with their reporters' record, and the ways to settle it */
+function CaseCard({
+  c,
+  busy,
+  onSettle,
+  onBlockName,
+}: {
+  c: AdminCase;
+  busy: boolean;
+  onSettle: (c: AdminCase, action: AdminAction, rule?: RuleCode) => Promise<void> | undefined;
+  onBlockName: (c: AdminCase) => Promise<void>;
+}) {
+  const [rule, setRule] = useState<RuleCode | null>(null);
+  const settle = (action: AdminAction) => onSettle(c, action, rule ?? undefined);
+  return (
+    <section className="admin-case">
+      <div className="who-card">
+        <RoachIcon color={c.color} size={44} avatar={c.avatar} />
+        <div>
+          <strong>{c.name ? `${c.drPrefix ? "Dr. " : ""}${c.name}` : "（没有名字）"}</strong>
+          {tagsOf(c).map((t) => (
+            <span key={t} className="tag">
+              {t}
+            </span>
+          ))}
+          <p className="hint">
+            {ago(c.joinedAt)}注册 · 最近 24 小时碰了 {c.last24h.touches} 次、发了 {c.last24h.declarations} 条宣言
+          </p>
+          {c.heldAt && <p className="hint">名字和 UID 先藏起来了（{ago(c.heldAt)}）</p>}
+        </div>
+      </div>
+      <dl className="admin-facts">
+        <dt>邮箱</dt>
+        <dd>{c.email || "（没有）"}</dd>
+        {c.games.length === 0 && (
+          <>
+            <dt>游戏</dt>
+            <dd>没填</dd>
+          </>
+        )}
+        {c.games.map((g) => (
+          <Fragment key={g.game}>
+            <dt>{GAME_NAMES[g.game]}</dt>
+            <dd>
+              UID {g.uid ? <code>{g.uid}</code> : "没填"}
+              {g.server && `（${g.server}）`}
+              {g.favourites.length > 0 && <> · 喜欢 {g.favourites.join("、")}</>}
+            </dd>
+          </Fragment>
+        ))}
+        <dt>UID 给谁看</dt>
+        <dd>
+          {c.shareUid ? "大胆碰过的人能看到" : "只有自己"}
+          {c.heldAt && c.shareUid && "（现在先藏起来了）"}
+        </dd>
+        {c.support.length > 0 && (
+          <>
+            <dt>我的助战</dt>
+            <dd>{c.support.join("、")}</dd>
+          </>
+        )}
+        <dt>称号</dt>
+        <dd>
+          {c.badges.length ? `${c.badges.length} 个：${c.badges.join("、")}` : "没有"}
+          {c.worn && `；戴着「${c.worn}」`}
+        </dd>
+        <dt>蟑螂</dt>
+        <dd>
+          {c.roaches.main ? "放了本体" : "没放本体"}
+          {c.roaches.clones > 0 && `，${c.roaches.clones} 只克隆体`}
+        </dd>
+        <dt>触须之交</dt>
+        <dd>{c.friends} 个</dd>
+        <dt>被拉黑</dt>
+        <dd>
+          一共 {c.blockedBy} 个人
+          {c.blockedRecently > 0 && `；${BLOCKS_WINDOW_DAYS} 天内被 ${c.blockedRecently} 个人拉黑`}
+        </dd>
+        <dt>黄牌</dt>
+        <dd className={c.yellow >= YELLOWS_TO_WORRY ? "warn-text" : ""}>
+          {c.yellow >= YELLOWS_TO_WORRY ? `${YELLOW_DAYS} 天内已经 ${c.yellow} 张黄牌，可以考虑封号` : `${YELLOW_DAYS} 天内 ${c.yellow} 张`}
+        </dd>
+        {c.suspendedUntil && (
+          <>
+            <dt>暂停互动</dt>
+            <dd>
+              到 {beijingDayWords(c.suspendedUntil)}
+              {c.suspendedAuto && "（是举报自动暂停的，你处理时会先解除）"}
+            </dd>
+          </>
+        )}
+        {(c.ageCheckAt || c.settled.ageChecks > 0) && (
+          <>
+            <dt>年龄</dt>
+            <dd>
+              {c.ageCheckAt
+                ? `等 TA 确认年龄（${ago(c.ageCheckAt)}请的）`
+                : c.ageConfirmedAt
+                  ? `${ago(c.ageConfirmedAt)}确认过满 18 岁`
+                  : "确认过"}
+            </dd>
+          </>
+        )}
+        <dt>以前的处理</dt>
+        <dd>{settledWords(c.settled)}</dd>
+      </dl>
+
+      {c.reports.length > 0 ? (
+        <>
+          <h2>
+            被 {c.reporters} 个人举报（{c.reliable} 个可靠）
+          </h2>
           <ul>
             {c.reports.map((r, i) => (
               <li key={i}>
@@ -196,56 +526,70 @@ export default function AdminApp() {
                 <span className="hint">
                   {ago(r.at)} · {r.context} · 当时的名字：{r.name}
                 </span>
+                <br />
+                <span className="hint">举报人：{reporterWords(r.reporter)}</span>
               </li>
             ))}
           </ul>
+        </>
+      ) : (
+        <p className="hint">没有举报：{BLOCKS_WINDOW_DAYS} 天内被 {c.blockedRecently} 个不同的人拉黑了。处理以后，再被拉黑 {BLOCKS_TO_REVIEW} 次才会再列出来。</p>
+      )}
 
-          {c.declarations.length > 0 && (
-            <>
-              <h2>最近的宣言</h2>
-              <ul>
-                {c.declarations.map((d, i) => (
-                  <li key={i}>
-                    「{d.text}」<span className="hint"> {ago(d.at)}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+      {c.declarations.length > 0 && (
+        <>
+          <h2>最近的宣言</h2>
+          <ul>
+            {c.declarations.map((d, i) => (
+              <li key={i}>
+                「{d.text}」<span className="hint"> {ago(d.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
-          <div className="account-actions">
-            <button className="pill" disabled={busy === c.targetId} onClick={() => resolve(c, "dismiss")}>
-              {c.heldAt ? "没问题，恢复" : "没问题"}
-            </button>
-            <button className="pill" disabled={busy === c.targetId || !c.name} onClick={() => resolve(c, "clearName")}>
-              清掉名字
-            </button>
-            <button className="pill" disabled={busy === c.targetId || !hasUid(c)} onClick={() => resolve(c, "clearUid")}>
-              只清 UID
-            </button>
-            <button
-              className="pill"
-              disabled={busy === c.targetId || !c.name || !hasUid(c)}
-              onClick={() => resolve(c, "clearBoth")}
-            >
-              名字和 UID 都清
-            </button>
-            <button className="pill" disabled={busy === c.targetId || !c.name} onClick={() => blockName(c)}>
-              加进名字黑名单
-            </button>
-            <button className="pill danger-pill" disabled={busy === c.targetId} onClick={() => resolve(c, "ban")}>
-              封号
-            </button>
-          </div>
-        </section>
-      ))}
-      <NameList added={wordsAdded} />
-      <Players />
-      <BadgeDesk />
-      <p className="hint" style={{ marginTop: 24 }}>
-        <Link href="/">回到地图</Link>
-      </p>
-    </main>
+      <label className="field">
+        按哪条守则（会写在给 TA 的通知里）
+        <select value={rule ?? c.rule} onChange={(e) => setRule(e.target.value as RuleCode)}>
+          {(Object.keys(RULES) as RuleCode[]).map((r) => (
+            <option key={r} value={r}>
+              {RULES[r]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="hint">没改的话：清名字按「{RULES.name}」，只清 UID 按「{RULES.contact}」，确认年龄按「{RULES.age}」，别的按举报最多的理由。</p>
+      <div className="account-actions">
+        <button className="pill" disabled={busy} onClick={() => settle("dismiss")}>
+          {c.heldAt ? "没问题，恢复" : "没问题"}
+        </button>
+        <button className="pill" disabled={busy} onClick={() => settle("warn")}>
+          警告
+        </button>
+        <button className="pill" disabled={busy} onClick={() => settle("suspend")}>
+          暂停 {SUSPEND_DAYS} 天
+        </button>
+        <button className="pill" disabled={busy || !c.name} onClick={() => settle("clearName")}>
+          清掉名字
+        </button>
+        <button className="pill" disabled={busy || !hasUid(c)} onClick={() => settle("clearUid")}>
+          只清 UID
+        </button>
+        <button className="pill" disabled={busy || !c.name || !hasUid(c)} onClick={() => settle("clearBoth")}>
+          名字和 UID 都清
+        </button>
+        <button className="pill" disabled={busy || Boolean(c.ageCheckAt)} onClick={() => settle("ageCheck")}>
+          请 TA 确认年龄
+        </button>
+        <button className="pill" disabled={busy || !c.name} onClick={() => onBlockName(c)}>
+          加进名字黑名单
+        </button>
+        <button className="pill danger-pill" disabled={busy} onClick={() => settle("ban")}>
+          封号
+        </button>
+      </div>
+    </section>
   );
 }
 

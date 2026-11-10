@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
@@ -17,7 +17,7 @@ import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
 import { deleteAccount, isBanned, mailboxForms } from "./account";
-import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
+import { allPlayers, openCases, retentionStats, setBadge, settleCase, settleCases } from "./admin";
 import { award, catchUpBadges, fireSongs, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
 import { deviceDay, deviceWeek } from "./guides";
@@ -25,7 +25,7 @@ import * as perlica from "./perlica";
 import * as talulah from "./talulah";
 import * as minghe from "./minghe";
 import { awayExtraDays, flipTheAway } from "./away";
-import { acceptPublicPlace, agreeAgain } from "./consent";
+import { acceptPublicPlace, agreeAgain, confirmAge } from "./consent";
 import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
 import { computeHotList } from "./hotList";
 import { db } from "./db";
@@ -46,6 +46,7 @@ import {
   friendNotes,
   friendships,
   mingheTouches,
+  modActions,
   moves,
   nameWords,
   perlicaTouches,
@@ -55,6 +56,7 @@ import {
   reports,
   roaches,
   sessions,
+  staffNotes,
   talulahTouches,
   touches,
   userBadges,
@@ -113,6 +115,11 @@ async function signUp(email: string) {
   return as(u.id);
 }
 
+/** Accounts old enough for their reports to count towards the automatic steps */
+async function aged(...ids: string[]) {
+  await db.update(users).set({ createdAt: sql`now() - interval '4 days'` }).where(inArray(users.id, ids));
+}
+
 async function userRow(id: string) {
   const [u] = await db.select().from(users).where(eq(users.id, id));
   return u;
@@ -169,7 +176,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}`,
   );
   // no 明河快进一天 left over
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;
@@ -2387,6 +2394,7 @@ describe("server world", () => {
   it("files reports for the admin, blocks the reported player, and holds a profile three players report", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const t1 = await demo("t1");
+    await aged(me.id, (await demo("t2")).id, (await demo("t3")).id);
     await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true);
     const [touch] = await me.inbox();
     await expect(me.report(touch.id, "nonsense")).rejects.toThrow("举报理由");
@@ -2418,11 +2426,11 @@ describe("server world", () => {
     expect(cases[0]).toMatchObject({ targetId: t1.id, reporters: 3, name: "阿白", anonymous: false, heldAt: expect.any(Number) });
     expect(cases[0].reports.map((r) => r.reason)).toEqual(["name", "contact", "impersonate"]);
     expect(cases[0].reports.map((r) => r.name)).toEqual(["阿白", "阿白", "阿白"]);
-    await resolveCase(t1.id, "dismiss");
+    await settleCase(t1.id, "dismiss");
     expect(await openCases()).toEqual([]);
     expect(await userRow(t1.id)).toMatchObject({ anonymous: false, name: "阿白", profileHeldAt: null, heldAnonymous: null });
     expect((await t1.me()).profileHeld).toBe(false);
-    await expect(resolveCase(t1.id, "ban")).rejects.toThrow("测试玩家");
+    await expect(settleCase(t1.id, "ban")).rejects.toThrow("测试玩家");
   });
 
   it("holds a profile for three different players reporting what it says, never counting spam, minors or 其他", async () => {
@@ -2430,6 +2438,7 @@ describe("server world", () => {
     await troll.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "小坏", games: ["arknights"] });
     await troll.placeRoach({ kind: "main" }, TOKYO);
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await aged(me.id, ...(await Promise.all(["t1", "t2", "t3", "t4", "t5"].map(async (k) => (await demo(k)).id))));
     const reportBy = async (p: Player, at: LngLat, reason: string, note = "") => {
       await troll.touch((await publicAt(troll, at)).id, true);
       const [item] = (await p.inbox()).filter((i) => i.kind === "touch");
@@ -2498,7 +2507,7 @@ describe("server world", () => {
     await expect(troll.declare({ template: "myname", game: "arknights" } as Declaration)).rejects.toThrow("站长看过之前先发不了这句");
 
     // nothing wrong after all: everything as it was, and editable again
-    await resolveCase(troll.id, "dismiss");
+    await settleCase(troll.id, "dismiss");
     expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我是小坏，我要玩明日方舟" });
     const back = await troll.me();
     expect(back.profileHeld).toBe(false);
@@ -2520,7 +2529,7 @@ describe("server world", () => {
     await troll.placeRoach({ kind: "main" }, TOKYO);
     await troll.declare({ template: "myname", game: "arknights" } as Declaration);
     await safety.holdProfile(troll.id);
-    await resolveCase(troll.id, "clearName");
+    await settleCase(troll.id, "clearName");
 
     const after = await troll.me();
     // the UID was never the problem, so sharing it comes back
@@ -2550,7 +2559,7 @@ describe("server world", () => {
     };
     await troll.saveProfile(before);
     await safety.holdProfile(troll.id);
-    await resolveCase(troll.id, "clearUid");
+    await settleCase(troll.id, "clearUid");
     const after = (await troll.me()).profile;
     // the name was never the problem: it shows again, and the servers stay picked
     expect(after).toMatchObject({
@@ -2567,7 +2576,7 @@ describe("server world", () => {
     await me.saveProfile({ ...before, name: "我" });
 
     await safety.holdProfile(troll.id);
-    await resolveCase(troll.id, "clearBoth");
+    await settleCase(troll.id, "clearBoth");
     const both = (await troll.me()).profile;
     expect(both).toMatchObject({ name: "", anonymous: true, uid: { arknights: "", endfield: "" } });
     await expect(troll.saveProfile({ ...both, anonymous: false, name: "小坏" })).rejects.toThrow("这个名字被站长清掉过");
@@ -2632,7 +2641,7 @@ describe("server world", () => {
     expect(JSON.stringify(c)).not.toMatch(/121\.47|139\.7|lng|lat/);
 
     // dismissed, then reported again by someone else: the admin sees the dismissal
-    await resolveCase(troll.id, "dismiss");
+    await settleCase(troll.id, "dismiss");
     const t2 = await demo("t2");
     await troll.touch((await publicAt(troll, tester("t2").roaches[0])).id, false);
     await t2.report((await t2.inbox()).find((i) => i.kind === "touch")!.id, "other", "一直碰我");
@@ -2645,7 +2654,7 @@ describe("server world", () => {
       "a.b+x@gmail.com": ["ab@gmail.com", "a.b@googlemail.com", "AB+y@Gmail.com", " a.b+x@gmail.com "],
       "c+1@example.com": ["c@example.com", "c+2@example.com"],
     };
-    for (const email of Object.keys(banned)) await resolveCase((await signUp(email)).id, "ban");
+    for (const email of Object.keys(banned)) await settleCase((await signUp(email)).id, "ban");
     for (const email of Object.values(banned).flat()) expect(await isBanned(email), email).toBe(true);
     for (const email of ["a.b@example.com", "c@gmail.com", "abc@gmail.com", "me@example.com"]) expect(await isBanned(email), email).toBe(false);
     expect(mailboxForms(" A.B+x@GoogleMail.com ")).toEqual(["a.b+x@googlemail.com", "ab@gmail.com"]);
@@ -2661,12 +2670,202 @@ describe("server world", () => {
     await troll.touch((await publicAt(troll, TOKYO)).id, false);
     await me.report((await me.inbox())[0].id, "spam");
 
-    await resolveCase(troll.id, "ban");
+    await settleCase(troll.id, "ban");
     expect(await db.select().from(users).where(eq(users.id, troll.id))).toEqual([]);
     expect(await db.$count(reports)).toBe(0);
     expect(await isBanned("troll@example.com")).toBe(true);
     expect(await isBanned("me@example.com")).toBe(false);
     expect(JSON.stringify(await db.select().from(bannedEmails))).not.toContain("troll");
+  });
+
+  // ---- report handling: settling, telling both sides, reliable reporters ----
+
+  /** n players of their own, each with a main roach at a spot nobody else's is on, for the reported to touch */
+  let spots = 0;
+  async function players(n: number, prefix = "r") {
+    const out: { p: Player; at: LngLat }[] = [];
+    for (let i = 0; i < n; i++) {
+      const p = await signUp(`${prefix}${i}@example.com`);
+      const at = { lng: 100 + (spots % 40) * 0.5, lat: 20 + Math.floor(spots / 40) * 0.5 };
+      spots++;
+      await p.placeRoach({ kind: "main" }, at);
+      out.push({ p, at });
+    }
+    return out;
+  }
+
+  /** A reporter's report of someone, by the bold touch that someone gave them */
+  async function reportedBy(target: Player, reporter: { p: Player; at: LngLat }, reason: string, note = "") {
+    await target.touch((await publicAt(target, reporter.at)).id, true);
+    const [item] = (await reporter.p.inbox()).filter((i) => i.kind === "touch");
+    await reporter.p.report(item.id, reason, note);
+  }
+
+  /** A player who touches others: named, with a main roach */
+  async function troll(email = "troll@example.com") {
+    const t = await signUp(email);
+    await t.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "小坏", games: ["arknights"] });
+    await t.placeRoach({ kind: "main" }, TOKYO);
+    return t;
+  }
+
+  const staffTexts = async (p: Player) => (await p.inbox()).flatMap((i) => (i.kind === "staff" ? [i.text] : []));
+  const monthDay = (t: number) => beijingDate(t).slice(5).replace(/^0/, "").replace("-0", "/").replace("-", "/");
+
+  it("tells both sides how a case was settled, once to each reporter, never who reported or how many", async () => {
+    const bad = await troll();
+    const [a, b] = await players(2);
+    await reportedBy(bad, a, "spam");
+    await reportedBy(bad, b, "spam");
+    // the same reporter twice in one case (as before reports were kept to one an open case) hears once
+    const [first] = await db.select().from(reports).where(eq(reports.reporterId, a.p.id));
+    await db.insert(reports).values({ ...first, id: undefined, reason: "other", note: "又来了", createdAt: new Date(first.createdAt.getTime() + 1000) });
+    await settleCase(bad.id, "warn");
+
+    const day = monthDay(first.createdAt.getTime());
+    expect(await staffTexts(a.p)).toEqual([`站长看过你 ${day} 举报的那位舟P（骚扰刷屏）了：已经处理了，谢谢你。`]);
+    expect(await staffTexts(b.p)).toHaveLength(1);
+    expect(await staffTexts(bad)).toEqual(["因为社区守则里「不能骚扰别人」这一条，站长提醒你一次，记一张黄牌。90 天内 3 张黄牌可能会被封号。"]);
+    for (const p of [a.p, b.p, bad]) expect(JSON.stringify(await p.inbox())).not.toMatch(/小坏|r0@|r1@|2 个人|两个人/);
+    expect(await userRow(a.p.id)).toMatchObject({ reportsUpheld: 1, reportsDismissed: 0 });
+    expect(await userRow(b.p.id)).toMatchObject({ reportsUpheld: 1, reportsDismissed: 0 });
+    expect(await db.select({ action: modActions.action, rule: modActions.rule, yellow: modActions.yellow }).from(modActions)).toEqual([
+      { action: "warn", rule: "harass", yellow: true },
+    ]);
+
+    // read: no longer counted as new
+    const [note] = (await bad.inbox()).filter((i) => i.kind === "staff");
+    expect(note.seen).toBe(false);
+    await bad.markSeen([note.id]);
+    expect((await bad.inbox()).find((i) => i.kind === "staff")!.seen).toBe(true);
+  });
+
+  it("tells the reporters nothing was wrong when dismissed, and the reported player only of a hold let out", async () => {
+    const bad = await troll();
+    const [a] = await players(1);
+    await reportedBy(bad, a, "name");
+    await settleCase(bad.id, "dismiss");
+    expect(await staffTexts(a.p)).toEqual([expect.stringMatching(/了：这次没发现违规。TA 已经被你拉黑了，不会再打扰你。$/)]);
+    expect(await staffTexts(bad)).toEqual([]);
+    expect(await userRow(a.p.id)).toMatchObject({ reportsUpheld: 0, reportsDismissed: 1 });
+
+    await safety.holdProfile(bad.id);
+    expect(await staffTexts(bad)).toEqual(["有人举报了你的名字或 UID，站长看过之前先藏起来了，也暂时改不了。没问题的话会恢复。"]);
+    await settleCase(bad.id, "dismiss");
+    expect(await staffTexts(bad)).toContain("站长看过了，你的名字和 UID 没问题，已经恢复。");
+  });
+
+  it("counts yellow cards over 90 days, and says so on the case at three", async () => {
+    const bad = await troll();
+    const reporters = await players(4);
+    for (const r of reporters.slice(0, 3)) {
+      await reportedBy(bad, r, "spam");
+      await settleCase(bad.id, "warn");
+    }
+    await reportedBy(bad, reporters[3], "spam");
+    expect((await openCases())[0]).toMatchObject({ yellow: 3, settled: { warned: 3, dismissed: 0 } });
+    await db.execute(sql`update ${modActions} set ${sql.identifier("created_at")} = now() - interval '91 days' where ${modActions.id} = (select min(${modActions.id}::text)::uuid from ${modActions})`);
+    expect((await openCases())[0].yellow).toBe(2);
+  });
+
+  it("pauses a player for seven days, and lets the reports' own pause go when the admin looks", async () => {
+    const bad = await troll();
+    const [a, b] = await players(2);
+    await reportedBy(bad, a, "spam");
+    await settleCase(bad.id, "suspend");
+    const until = (await userRow(bad.id)).suspendedUntil!.getTime();
+    expect(until).toBeGreaterThan(Date.now() + 7 * 86_400_000 - 60_000);
+    expect((await bad.me()).suspendedUntil).toBe(until);
+    expect(await staffTexts(bad)).toEqual([
+      expect.stringMatching(/^因为社区守则里「不能骚扰别人」这一条，站长暂停了你的互动，到 \d+ 月 \d+ 日。这期间你还能看地图和消息，但不能碰人、发宣言、回应、戳一戳和做客。$/),
+    ]);
+
+    // a new account two reliable players report for spam: paused by the reports, until the admin looks
+    const fresh = await signUp("new@example.com");
+    await fresh.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const [c, d] = await players(2, "s");
+    await aged(c.p.id, d.p.id);
+    await reportedBy(fresh, c, "spam");
+    expect((await userRow(fresh.id)).suspendedUntil).toBeNull();
+    await reportedBy(fresh, d, "spam");
+    expect(await userRow(fresh.id)).toMatchObject({ suspendedAuto: true });
+    expect(await staffTexts(fresh)).toEqual(["有人举报你骚扰，站长看过之前先暂停你的互动，最长 7 天。"]);
+    expect((await openCases()).find((x) => x.targetId === fresh.id)).toMatchObject({ suspendedAuto: true });
+    await settleCase(fresh.id, "dismiss");
+    expect(await userRow(fresh.id)).toMatchObject({ suspendedUntil: null, suspendedAuto: false });
+    expect(await staffTexts(fresh)).toContain("站长看过了，没发现问题，你的互动恢复了。");
+    // the auto pause is in the record, apart from the admin's own doings
+    expect((await db.select().from(modActions).where(eq(modActions.userId, fresh.id))).map((m) => [m.action, m.auto])).toEqual([
+      ["suspend", true],
+      ["dismiss", false],
+    ]);
+    void b;
+  });
+
+  it("asks a player to say again they are 18 or older, without telling them in 消息", async () => {
+    const bad = await troll();
+    const [a] = await players(1);
+    await reportedBy(bad, a, "minor");
+    await settleCase(bad.id, "ageCheck");
+    expect((await bad.me()).ageCheck).toBe(true);
+    expect(await staffTexts(bad)).toEqual([]);
+    expect(await db.select({ rule: modActions.rule }).from(modActions)).toEqual([{ rule: "age" }]);
+    await reportedBy(bad, (await players(1, "q"))[0], "spam");
+    expect((await openCases())[0].ageCheckAt).toEqual(expect.any(Number));
+    await confirmAge(bad.id);
+    expect((await bad.me()).ageCheck).toBe(false);
+    expect((await openCases())[0]).toMatchObject({ ageCheckAt: null, settled: { ageChecks: 1 } });
+  });
+
+  it("counts only reliable reporters: new accounts and those often found wrong hold nothing", async () => {
+    const bad = await troll();
+    const rs = await players(7);
+    for (const r of rs.slice(0, 3)) await reportedBy(bad, r, "name");
+    expect((await userRow(bad.id)).profileHeldAt).toBeNull();
+    // several new accounts within the hour: maybe a pile-on
+    expect((await openCases())[0]).toMatchObject({ reporters: 3, reliable: 0, brigade: true });
+
+    await aged(...rs.slice(3).map((r) => r.p.id));
+    await db.update(users).set({ reportsDismissed: 3, reportsUpheld: 1 }).where(eq(users.id, rs[5].p.id));
+    for (const r of rs.slice(3, 6)) await reportedBy(bad, r, "contact");
+    expect((await userRow(bad.id)).profileHeldAt).toBeNull();
+    expect((await openCases())[0]).toMatchObject({ reporters: 6, reliable: 2 });
+    expect((await openCases())[0].reports.map((r) => r.reporter?.reliable)).toEqual([false, false, false, true, true, false]);
+    await reportedBy(bad, rs[6], "impersonate");
+    expect((await userRow(bad.id)).profileHeldAt).not.toBeNull();
+  });
+
+  it("puts red cases first, then yellow, then green, and lists one blocked by many until the admin looks", async () => {
+    const [red, yellow, green] = [await troll("red@example.com"), await troll("yellow@example.com"), await troll("green@example.com")];
+    const rs = await players(3);
+    await reportedBy(green, rs[0], "name");
+    await reportedBy(yellow, rs[1], "spam");
+    await reportedBy(red, rs[2], "minor");
+    expect((await openCases()).map((c) => [c.targetId, c.level])).toEqual([
+      [red.id, "red"],
+      [yellow.id, "yellow"],
+      [green.id, "green"],
+    ]);
+    await settleCases([red.id, yellow.id, green.id], "dismiss");
+    await expect(settleCases([red.id], "ban")).rejects.toThrow("不能批量");
+    expect(await openCases()).toEqual([]);
+    // each one settled on its own, and each reporter told
+    for (const r of rs) expect(await staffTexts(r.p)).toEqual([expect.stringContaining("这次没发现违规")]);
+
+    // blocked by ten different players in a week, with no report: a case of its own
+    const lonely = await signUp("lonely@example.com");
+    const blockers = await Promise.all(Array.from({ length: 12 }, (_, i) => signUp(`b${i}@example.com`)));
+    const block = (from: Player[], at = new Date()) => db.insert(blocks).values(from.map((b) => ({ blockerId: b.id, blockedId: lonely.id, createdAt: at })));
+    await block(blockers.slice(0, 10));
+    expect(await openCases()).toMatchObject([{ targetId: lonely.id, level: "yellow", reports: [], blockedRecently: 10 }]);
+    await settleCase(lonely.id, "dismiss");
+    expect(await openCases()).toEqual([]);
+    // again only after ten more since the admin looked
+    await db.delete(blocks).where(eq(blocks.blockedId, lonely.id));
+    await block(blockers.slice(0, 9), new Date(Date.now() + 1000));
+    expect(await openCases()).toEqual([]);
+    await block(blockers.slice(9, 10), new Date(Date.now() + 1000));
+    expect(await openCases()).toMatchObject([{ targetId: lonely.id, blockedRecently: 10 }]);
   });
 
   it("runs the radar around your main roach, counting arrivals and departures across its edge", async () => {

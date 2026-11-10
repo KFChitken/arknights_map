@@ -1,17 +1,41 @@
 import "server-only";
-import { and, count, countDistinct, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { declarationText, replyOf } from "../declarations";
 import { guideById, guideOfItem } from "../guides";
 import { bare } from "../nameRules";
 import { displayName } from "../profile";
-import { PROFILE_REPORTS_TO_HOLD, REPORT_NOTE_MAX, REPORTS_PER_DAY, SITE_NAME } from "../rules";
+import {
+  PROFILE_REPORTS_TO_HOLD,
+  RELIABLE_AFTER_DAYS,
+  REPORT_NOTE_MAX,
+  REPORTS_PER_DAY,
+  SITE_NAME,
+  SUSPEND_DAYS,
+  UNRELIABLE_DISMISSED_MIN,
+  UNRELIABLE_DISMISSED_RATIO,
+} from "../rules";
 import { isReportReason, noteMissing, PROFILE_REASONS, REPORT_REASONS, URGENT_REASONS, type ReportReason } from "../safety";
 import { DAY, MINUTE } from "../world/logic";
 import { WorldError, type BlockedPlayer } from "../world/types";
 import { db } from "./db";
 import { ADMIN_EMAILS, SITE_URL } from "./env";
 import { sendAdminMail } from "./mail";
-import { blocks, clearedValues, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users, watchMails } from "./schema";
+import {
+  blocks,
+  clearedValues,
+  declarations,
+  deliveries,
+  mailSends,
+  modActions,
+  pokes,
+  reactions,
+  reports,
+  touches,
+  users,
+  watchMails,
+  type UserRow,
+} from "./schema";
+import { addNotes } from "./staffNotes";
 import { note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
 
@@ -150,6 +174,8 @@ export async function holdProfile(userId: string) {
       .update(declarations)
       .set({ heldName: sql`${declarations.name}`, name: NO_NAME })
       .where(and(eq(declarations.senderId, userId), eq(declarations.template, "myname"), isNull(declarations.heldName)));
+    // told why, never by whom or how many
+    await addNotes([{ userId, kind: "held" }], tx);
   });
 }
 
@@ -208,6 +234,46 @@ export const clearName = (userId: string) => settleProfile(userId, { name: true,
 export const clearUid = (userId: string) => settleProfile(userId, { name: false, uid: true });
 export const clearBoth = (userId: string) => settleProfile(userId, { name: true, uid: true });
 
+/**
+ * A reporter the automatic steps (holding a profile, suspending a new account) count: an account
+ * RELIABLE_AFTER_DAYS old or more, whose reports the admin did not often find nothing in.
+ */
+export function reliableReporter(u: Pick<UserRow, "createdAt" | "reportsUpheld" | "reportsDismissed">, now = Date.now()) {
+  const old = now - u.createdAt.getTime() >= RELIABLE_AFTER_DAYS * DAY;
+  const doubtful = u.reportsDismissed >= UNRELIABLE_DISMISSED_MIN && u.reportsDismissed >= UNRELIABLE_DISMISSED_RATIO * u.reportsUpheld;
+  return old && !doubtful;
+}
+
+/** Different reliable players with open reports about someone, for any of these reasons */
+async function reliableReporters(targetId: string, reasons: readonly string[], now: number) {
+  const rows = await db
+    .selectDistinct({ id: users.id, createdAt: users.createdAt, reportsUpheld: users.reportsUpheld, reportsDismissed: users.reportsDismissed })
+    .from(reports)
+    .innerJoin(users, eq(users.id, reports.reporterId))
+    .where(and(eq(reports.targetId, targetId), inArray(reports.reason, [...reasons]), isNull(reports.resolvedAt)));
+  return rows.filter((r) => reliableReporter(r, now)).length;
+}
+
+/**
+ * A new account (under RELIABLE_AFTER_DAYS) reported for spam by two different reliable players: its
+ * interactions stop for SUSPEND_DAYS until the admin looks. Someone back under a new address is
+ * most likely a new account. Never cuts short a longer suspension.
+ */
+async function suspendIfNew(target: UserRow, now: number) {
+  if (now - target.createdAt.getTime() >= RELIABLE_AFTER_DAYS * DAY) return;
+  if (target.suspendedUntil && target.suspendedUntil.getTime() > now) return;
+  if ((await reliableReporters(target.id, ["spam"], now)) < 2) return;
+  const until = new Date(now + SUSPEND_DAYS * DAY);
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ suspendedUntil: until, suspendedAuto: true }).where(eq(users.id, target.id));
+    const [action] = await tx
+      .insert(modActions)
+      .values({ userId: target.id, action: "suspend", rule: "harass", until, auto: true })
+      .returning({ id: modActions.id });
+    await addNotes([{ userId: target.id, kind: "autoSuspended", actionId: action.id, until }], tx);
+  });
+}
+
 /** Report whoever sent an inbox item (or a friend). Reporting also blocks them. */
 export async function report(userId: string, target: string, reason: unknown, note: unknown) {
   if (!isReportReason(reason)) throw new WorldError("选一个举报理由吧。");
@@ -245,13 +311,12 @@ export async function report(userId: string, target: string, reason: unknown, no
     targetName: u.name ? `${u.name}${anonymous ? "（当时是匿名）" : ""}` : "（没有名字）",
   });
 
-  if (PROFILE_REASONS.includes(reason)) {
-    const [reporters] = await db
-      .select({ n: countDistinct(reports.reporterId) })
-      .from(reports)
-      .where(and(eq(reports.targetId, who.other), inArray(reports.reason, [...PROFILE_REASONS]), isNull(reports.resolvedAt)));
-    if (reporters.n >= PROFILE_REPORTS_TO_HOLD) await holdProfile(who.other);
+  const now = Date.now();
+  // only reliable reporters count towards the automatic steps; every report still reaches the admin
+  if (PROFILE_REASONS.includes(reason) && (await reliableReporters(who.other, PROFILE_REASONS, now)) >= PROFILE_REPORTS_TO_HOLD) {
+    await holdProfile(who.other);
   }
+  if (reason === "spam") await suspendIfNew(u, now);
   sendReportDigest().catch((e) => {
     console.error("Report digest failed", e);
     noteSignal("job", "digest");

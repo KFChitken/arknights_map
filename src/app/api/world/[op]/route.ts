@@ -5,7 +5,7 @@ import type { Profile } from "@/lib/profile";
 import { adminCounts } from "@/lib/server/admin";
 import { currentUser, endSession, homeUserId, setHomeUserId, startSession } from "@/lib/server/auth";
 import { markBadgesSeen, wear } from "@/lib/server/badges";
-import { acceptPublicPlace, mustReconsent, RECONSENT_NEEDED } from "@/lib/server/consent";
+import { acceptPublicPlace, AGE_CHECK_NEEDED, confirmAge, mustReconsent, RECONSENT_NEEDED } from "@/lib/server/consent";
 import { db } from "@/lib/server/db";
 import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
@@ -15,6 +15,7 @@ import * as friendly from "@/lib/server/friendly";
 import * as help from "@/lib/server/help";
 import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
+import { dayWords, SUSPENDED_MEANS } from "@/lib/server/staffNotes";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import type { LngLat } from "@/lib/types";
@@ -30,10 +31,20 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     if (!user) throw new HttpError(401, "请先登录。");
     return user.id;
   };
-  // Nothing others see happens until an older account agrees to the updated privacy policy; blocking, reporting and leaving still do
+  // Nothing others see happens until an older account agrees to the updated privacy policy, or says again it is 18 or older
+  // when the admin asked; blocking, reporting and leaving still do
   const agreed = () => {
     const id = uid();
+    if (user!.ageCheckAt) throw new HttpError(428, AGE_CHECK_NEEDED);
     if (mustReconsent(user!)) throw new HttpError(428, RECONSENT_NEEDED);
+    return id;
+  };
+  // 暂停互动 (the admin's, or the reports' own for a new account): the map and 消息 stay open, reaching others does not
+  const talking = () => {
+    const id = agreed();
+    if (user!.suspendedUntil && user!.suspendedUntil.getTime() > Date.now()) {
+      throw new HttpError(403, `你的互动被站长暂停到 ${dayWords(user!.suspendedUntil.getTime())}，${SUSPENDED_MEANS}`);
+    }
     return id;
   };
   const demoOnly = () => {
@@ -91,13 +102,13 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await world.removeRoach(uid(), String(args[0]));
       break;
     case "touch":
-      result = await world.touch(agreed(), String(args[0]), args[1] === true, args[2]);
+      result = await world.touch(talking(), String(args[0]), args[1] === true, args[2]);
       break;
     case "reply":
-      result = await world.reply(agreed(), String(args[0]), args[1] === true, args[2]);
+      result = await world.reply(talking(), String(args[0]), args[1] === true, args[2]);
       break;
     case "poke":
-      result = await world.poke(agreed(), String(args[0]));
+      result = await world.poke(talking(), String(args[0]));
       break;
     // between 触须之交 (src/lib/server/friendly.ts): each has its own daily rule; this keeps a script from hammering them
     case "remindSanity":
@@ -110,7 +121,8 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "gameAsk":
     case "gameAdded":
     case "gameWant": {
-      const id = agreed();
+      // calling a clone home and sending a guest home stay open to a suspended player
+      const id = op === "goHome" || op === "sendHome" ? agreed() : talking();
       if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
       if (op === "remindSanity") await friendly.remindSanity(id, args[0]);
       else if (op === "answerSanity") await friendly.answerSanity(id, args[0], args[1]);
@@ -126,7 +138,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     }
     // 一键 (src/lib/friendly.ts): many at once, each checked as one, so its own limit
     case "friendsAct": {
-      const id = agreed();
+      const id = talking();
       if (!allow(`friendsAct:${id}`, 10, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
       result = await friendly.friendsAct(id, args[0], args[1]);
       break;
@@ -150,7 +162,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "askHelp":
     case "closeHelp":
     case "answerHelp": {
-      const id = agreed();
+      const id = op === "closeHelp" ? agreed() : talking();
       if (!allow(`help:${id}`, 20, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
       if (op === "askHelp") await help.askHelp(id, args[0]);
       else if (op === "closeHelp") await help.closeHelp(id, args[0]);
@@ -169,13 +181,17 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       await world.markSeen(uid(), Array.isArray(args[0]) ? (args[0] as string[]) : []);
       break;
     case "declare":
-      result = await world.declare(agreed(), args[0] as Declaration, Array.isArray(args[1]) ? args[1].map(String) : undefined);
+      result = await world.declare(talking(), args[0] as Declaration, Array.isArray(args[1]) ? args[1].map(String) : undefined);
       break;
     case "ignore":
       await world.ignore(uid(), String(args[0]));
       break;
     case "react":
-      await world.react(agreed(), String(args[0]), String(args[1]));
+      await world.react(talking(), String(args[0]), String(args[1]));
+      break;
+    // the admin asked them to say again they are 18 or older (src/lib/server/admin.ts)
+    case "confirmAge":
+      await confirmAge(uid());
       break;
     case "friends":
       ration(30);

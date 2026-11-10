@@ -118,6 +118,7 @@ import { isUniqueViolation, type Exec } from "./guides";
 import { helpCounts } from "./help";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
+import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import {
@@ -377,6 +378,8 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     minghe: await mingheOf(u),
     help: await helpCounts(u),
     profileHeld: Boolean(u.profileHeldAt),
+    suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > Date.now() ? u.suspendedUntil.getTime() : null,
+    ageCheck: Boolean(u.ageCheckAt),
   };
 }
 
@@ -1089,6 +1092,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
   }
   if (self) items.push(...(await friendlyInbox(self, blocked)));
   for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
+  items.push(...(await staffItems(userId, since)));
   return items.sort((x, y) => y.at - x.at);
 }
 
@@ -1159,6 +1163,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
   }
   for (const id of GUIDE_IDS) await GUIDE_WORLD[id].see(userId, itemIds);
   await seeFriendly(userId, itemIds);
+  await seeStaff(userId, itemIds);
   const p = ids("p:");
   if (p.length) {
     await db

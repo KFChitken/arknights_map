@@ -65,6 +65,16 @@ export const users = pgTable("users", {
   profileHeldAt: at("profile_held_at"),
   heldAnonymous: boolean("held_anonymous"),
   heldShareUid: boolean("held_share_uid"),
+  /** 暂停互动: until when they may not touch, declare, react, poke or visit; auto when the reports did it, before the admin looked */
+  suspendedUntil: at("suspended_until"),
+  suspendedAuto: boolean("suspended_auto").notNull().default(false),
+  /** The admin asked them to say again that they are 18 or older; null once they did (ageConfirmedAt moves on) */
+  ageCheckAt: at("age_check_at"),
+  /** Cases they reported that the admin upheld, and that the admin found nothing in: only counted, to tell a reliable reporter */
+  reportsUpheld: integer("reports_upheld").notNull().default(0),
+  reportsDismissed: integer("reports_dismissed").notNull().default(0),
+  /** When the admin last looked at their being blocked by many (src/lib/server/admin.ts); blocks before it no longer count */
+  blocksReviewedAt: at("blocks_reviewed_at"),
 
   /** The Beijing date of the player's latest visit; only the day, never the time */
   lastSeenOn: date("last_seen_on", { mode: "string" }),
@@ -686,6 +696,63 @@ export const reports = pgTable(
     resolution: text("resolution"),
   },
   (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt)],
+);
+
+/**
+ * What the admin did about a player (src/lib/server/admin.ts settleCase), or what the reports did by
+ * themselves (auto): never who reported them. A warning is a yellow card. Kept a year
+ * (KEEP_MOD_ACTION_DAYS) and deleted with the account; a ban is kept with the banned address instead.
+ * The appeal columns are for the player's one appeal.
+ */
+export const modActions = pgTable(
+  "mod_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** dismiss, clearName, clearUid, clearBoth, warn, suspend or ageCheck */
+    action: text("action").notNull(),
+    /** The community rule it was for (src/lib/safety.ts RULES) */
+    rule: text("rule"),
+    yellow: boolean("yellow").notNull().default(false),
+    /** A suspension's end */
+    until: at("until"),
+    auto: boolean("auto").notNull().default(false),
+    createdAt: createdAt(),
+    appeal: text("appeal"),
+    appealedAt: at("appealed_at"),
+    /** "kept" or "reverted" */
+    appealResult: text("appeal_result"),
+    answeredAt: at("answered_at"),
+  },
+  (t) => [index("mod_actions_user_idx").on(t.userId, t.createdAt)],
+);
+
+/**
+ * 站长通知 in a player's 消息 (src/lib/server/staffNotes.ts): what came of a report they made, or what
+ * was done about them and under which rule. Never who reported, nor how many. Deleted after
+ * KEEP_ACTIVITY_DAYS, and with the account.
+ */
+export const staffNotes = pgTable(
+  "staff_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** reportUpheld, reportDismissed, action, held, released, autoSuspended, unsuspended, appealKept or appealReverted */
+    kind: text("kind").notNull(),
+    actionId: uuid("action_id").references(() => modActions.id, { onDelete: "cascade" }),
+    /** For a reporter: the reason they gave, and the Beijing day they reported */
+    reason: text("reason"),
+    rule: text("rule"),
+    reportedOn: date("reported_on", { mode: "string" }),
+    until: at("until"),
+    createdAt: createdAt(),
+    seenAt: at("seen_at"),
+  },
+  (t) => [index("staff_notes_user_idx").on(t.userId, t.createdAt)],
 );
 
 /** Addresses of banned accounts, kept only as an HMAC so the list holds nobody's email. */

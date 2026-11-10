@@ -22,3 +22,9 @@ export function beijingShort(t: number) {
   const s = new Date(t + OFFSET_MS).toISOString();
   return `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))} ${s.slice(11, 16)}`;
 }
+
+/** A moment's Beijing date in words, like 「11 月 17 日」. */
+export function beijingDayWords(t: number) {
+  const [, m, d] = beijingDate(t).split("-");
+  return `${Number(m)} 月 ${Number(d)} 日`;
+}

@@ -77,6 +77,7 @@ import { reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach } from "@/lib/world/packed";
 import { ServerWorld } from "@/lib/world/server";
 import {
+  AgeCheckNeeded,
   ConsentNeeded,
   SignInNeeded,
   TooBusy,
@@ -153,6 +154,7 @@ import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import SafetySheet from "./app/SafetySheet";
+import AgeCheckSheet from "./app/AgeCheckSheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
 import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
@@ -293,6 +295,7 @@ type Panel =
   | { kind: "login"; reason?: string }
   /** 隐私说明更新了; then: what was going to open first */
   | { kind: "consent"; then?: Panel | null }
+  | { kind: "ageCheck" }
   /** consent: the player's first roach, so the card asks them to agree its spot is public */
   | { kind: "placeConfirm"; target: PlaceTarget; spot: LngLat; fly: boolean; consent: boolean }
   // open to everyone
@@ -696,8 +699,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
               afterReport.current = () => openInbox(true, undefined, items);
             }
           }
-          // an updated privacy policy before anything else
-          if (m?.mustReconsent) setPanel({ kind: "consent", then: opening });
+          // the admin's age question, then an updated privacy policy, before anything else
+          if (m?.ageCheck) setPanel({ kind: "ageCheck" });
+          else if (m?.mustReconsent) setPanel({ kind: "consent", then: opening });
           else if (opening) setPanel(opening);
           else if (pending.length) return;
           // What arrived since the last visit
@@ -958,6 +962,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       return result;
     } catch (e) {
       if (e instanceof SignInNeeded) setPanel({ kind: "login", reason: "登录后才能这样做。" });
+      else if (e instanceof AgeCheckNeeded) setPanel({ kind: "ageCheck" });
       else if (e instanceof ConsentNeeded) setPanel({ kind: "consent" });
       else if (e instanceof WorldError) setToast(e.message);
       else {
@@ -1882,7 +1887,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setNotes([...(away ? [awayNote(away)] : []), ...openingNotes(m, list)]);
     const main = m?.roaches.find((r) => r.slot === 0);
     if (main) setFocus({ lng: main.lng, lat: main.lat, zoom: 11, nonce: Date.now() });
-    if (m?.mustReconsent) setPanel({ kind: "consent" });
+    if (m?.ageCheck) setPanel({ kind: "ageCheck" });
+    else if (m?.mustReconsent) setPanel({ kind: "consent" });
     else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
     else setToast("切换好了，现在用这个身份看地图。");
   };
@@ -1895,6 +1901,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     setNotes([...(away ? [awayNote(away)] : []), ...openingNotes(m, list)]);
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
+    if (m?.ageCheck) return setPanel({ kind: "ageCheck" });
     if (m?.mustReconsent) return setPanel({ kind: "consent" });
     // a newcomer who picked a spot before signing in puts their roach there, once they confirm
     if (m && !mainRoach && spot) {
@@ -1938,6 +1945,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (kind === "delete" && feedRef.current.forget([...ownIds])) setFeedRoaches(feedRef.current.roaches);
     await load();
     setToast(kind === "delete" ? "账号和数据都删除了。" : "已经退出登录。");
+  };
+
+  /** 「我已满 18 岁」 on the card the admin asked for */
+  const confirmAge = async () => {
+    const done = await act((w) => w.confirmAge().then(() => true));
+    if (!done) return;
+    await loadMe();
+    setPanel(null);
+    setToast("谢谢！可以继续玩啦。");
   };
 
   const agreeAgain = async (ticks: Parameters<typeof reconsent>[0], then: Panel | null) => {
@@ -2762,6 +2778,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: p })}
             friendly={inboxFriendly}
+            suspendedUntil={me.suspendedUntil}
             onClose={() => setPanel(null)}
           />
         );
@@ -2873,6 +2890,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onClose={() => setPanel(null)}
           />
         );
+      case "ageCheck":
+        return <AgeCheckSheet onConfirm={confirmAge} onDelete={() => leave("delete")} onClose={() => setPanel(null)} />;
       case "consent":
         return (
           <ConsentSheet

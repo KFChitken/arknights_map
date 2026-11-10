@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { AMIYA_ID, AMIYA_NAME, amiyaLine } from "@/lib/amiya";
+import { beijingDayWords } from "@/lib/beijing";
 import type { Reply } from "@/lib/declarations";
 import {
   anniversaryText,
@@ -94,6 +95,7 @@ export function pokedBy(items: InboxItem[]) {
 /** Headline for the notice shown when a player opens the map with unseen items. */
 export function noticeTitle(items: InboxItem[]) {
   const unseen = items.filter((i) => !i.seen);
+  if (unseen.some((i) => i.kind === "staff")) return "站长给你发了通知";
   if (unseen.some((i) => i.kind === "friend")) return "你有了新的触须之交！";
   if (unseen.some((i) => i.kind === "poke")) return "有触须之交趁你睡着戳了戳你！";
   if (unseen.some((i) => i.kind === "pokeWoke")) return "你戳过的触须之交醒啦！";
@@ -176,6 +178,7 @@ export default function InboxSheet({
   onOpenFriend,
   onSafety,
   friendly,
+  suspendedUntil = null,
   onClose,
 }: {
   items: InboxItem[];
@@ -197,6 +200,8 @@ export default function InboxSheet({
   /** 拉黑或举报 the sender: an inbox item id, or "friend:<id>" */
   onSafety: (target: string, who: string | null) => void;
   friendly: InboxFriendly;
+  /** 暂停互动 until then, said at the top */
+  suspendedUntil?: number | null;
   onClose: () => void;
 }) {
   const [replying, setReplying] = useState<string | null>(null);
@@ -266,6 +271,16 @@ export default function InboxSheet({
 
   const message = (item: InboxItem) => {
     const cls = `msg ${item.seen ? "" : "new"}`;
+    // 站长: no picture, nobody to touch back or block
+    if (item.kind === "staff") {
+      return (
+        <div key={item.id} className={`${cls} staff`}>
+          <div className="staff-from">站长</div>
+          <div>{item.text}</div>
+          <div className="meta">{ago(item.at)}</div>
+        </div>
+      );
+    }
     if (item.kind === "friend") {
       return (
         <div key={item.id} className={cls}>
@@ -544,6 +559,7 @@ export default function InboxSheet({
 
   return (
     <Sheet title={notice ? noticeTitle(items) : "消息"} onClose={onClose}>
+      {suspendedUntil && <p className="suspended-banner">你的互动暂停到 {beijingDayWords(suspendedUntil)}。</p>}
       <div className="seg tabs" role="tablist">
         {TABS.map(({ tab: t, label }) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>

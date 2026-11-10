@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
-import { TICK_MISSING, type Tick } from "../consent";
+import { AGE_CHECK_NEEDED, TICK_MISSING, type Tick } from "../consent";
 import { POLICY_UPDATED_AT } from "../rules";
 import { db } from "./db";
 import { HttpError } from "./http";
@@ -8,6 +8,12 @@ import { users, type UserRow } from "./schema";
 
 /** The fixed refusal the map answers with 「隐私说明更新了」 (HTTP 428). */
 export const RECONSENT_NEEDED = "隐私说明更新了，同意以后才能继续。";
+export { AGE_CHECK_NEEDED };
+
+/** The admin asked them to say again they are 18 or older (src/lib/server/admin.ts): they did, and the time is kept */
+export async function confirmAge(userId: string) {
+  await db.update(users).set({ ageConfirmedAt: new Date(), ageCheckAt: null }).where(eq(users.id, userId));
+}
 
 /**
  * Accounts that agreed to an older privacy policy, or signed up before the separate
