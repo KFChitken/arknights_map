@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
@@ -10,15 +10,29 @@ import { note } from "./signals";
 import { loginCodes, mailSends } from "./schema";
 
 /**
- * The 6-digit codes emailed for sign-in. Every limit is checked inside the
- * same statement that changes the row, so a burst of parallel requests cannot
- * slip past the cooldown, the daily cap or the number of tries.
+ * The 6-digit codes emailed for sign-in. Codes are issued one at a time under the
+ * site's mail lock (mailQuota.ts), and every try is counted inside the statement
+ * that checks it, so a burst of parallel requests cannot slip past the cooldown,
+ * the daily cap or the number of tries.
  */
 
 const DAY_MS = 86_400_000;
 
 const hashCode = (email: string, code: string) =>
   createHmac("sha256", secret("AUTH_SECRET")).update(`code|${email}|${code}`).digest("base64url");
+
+/**
+ * The code for an address and the moment it runs out. It is worked out again rather than stored, so
+ * a code asked for again while it still works goes out as the same code: whichever of the emails
+ * arrives first signs in (2026-11-11, Gmail holding some back for minutes). Only AUTH_SECRET makes it.
+ */
+const codeFor = (email: string, expiresAt: Date) =>
+  String(
+    createHmac("sha256", secret("AUTH_SECRET")).update(`code-of|${email}|${expiresAt.toISOString()}`).digest().readUInt32BE(0) % 1_000_000,
+  ).padStart(6, "0");
+
+/** A code on its way: again when it is one already sent, still working, sent once more */
+export type IssuedCode = { code: string; again: boolean; expiresAt: Date };
 
 function codeMatches(email: string, code: string, hash: string) {
   const a = Buffer.from(hashCode(email, code));
@@ -27,75 +41,78 @@ function codeMatches(email: string, code: string, hash: string) {
 }
 
 /**
- * A fresh code for this address, or an HttpError saying when the next one can
- * be sent. Each code counts toward the site's mail for the last 24 hours, and
- * none is issued once that reaches MAIL_DAILY_LIMIT.
+ * A code for this address, or an HttpError saying when the next one can be sent. A code still
+ * working (not used, run out or tried too often) goes out again as it is, its tries and its time
+ * unchanged; otherwise a new one. Each email counts toward the address's day and the site's mail for
+ * the last 24 hours, and none goes out once that reaches MAIL_DAILY_LIMIT.
  */
-export async function issueLoginCode(email: string): Promise<string> {
+export async function issueLoginCode(email: string): Promise<IssuedCode> {
   const now = new Date();
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  const fresh = {
-    codeHash: hashCode(email, code),
-    sentAt: now,
-    expiresAt: new Date(now.getTime() + LOGIN_CODE_TTL_MIN * 60_000),
-    attempts: 0,
-  };
   const dayAgo = new Date(now.getTime() - DAY_MS);
   // Rows past both the cooldown and their day only hold an address, so drop them
   await db.delete(loginCodes).where(and(lt(loginCodes.dayStart, dayAgo), lt(loginCodes.expiresAt, now)));
 
-  // postgres.js wants Dates inside raw SQL as strings
-  const sameDay = sql`${loginCodes.dayStart} > ${dayAgo.toISOString()}`;
-  const issued = await db.transaction(async (tx) => {
+  // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up
+  const issued = await db.transaction(async (tx): Promise<IssuedCode | number> => {
+    // holds the mail lock until the end: codes are issued one at a time, site-wide
     if (!(await mailRoom(tx, now))) {
       note("codeRefused", "quota");
       throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
     }
+    // locked against a try being counted meanwhile
+    const [row] = await tx.select().from(loginCodes).where(eq(loginCodes.email, email)).for("update");
+    const sameDay = Boolean(row && row.dayStart > dayAgo);
+    if (row && row.sentAt.getTime() > now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000) {
+      return Math.max(1, LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - row.sentAt.getTime()) / 1000));
+    }
+    if (row && sameDay && row.sentToday >= LOGIN_CODES_PER_DAY) return 0;
 
-    const [row] = await tx
-      .insert(loginCodes)
-      .values({ email, ...fresh, dayStart: now, sentToday: 1 })
-      .onConflictDoUpdate({
-        target: loginCodes.email,
-        set: {
-          ...fresh,
-          dayStart: sql`case when ${sameDay} then ${loginCodes.dayStart} else ${now.toISOString()} end`,
-          sentToday: sql`case when ${sameDay} then ${loginCodes.sentToday} + 1 else 1 end`,
-        },
-        setWhere: and(
-          lt(loginCodes.sentAt, new Date(now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000)),
-          sql`not (${sameDay} and ${loginCodes.sentToday} >= ${LOGIN_CODES_PER_DAY})`,
-        ),
-      })
-      .returning({ email: loginCodes.email });
-    if (row) await tx.insert(mailSends).values({ sentAt: now, kind: "login" });
-    return Boolean(row);
+    // a code made before codes were worked out (or by another secret) is not sent again: it could not be
+    const again = Boolean(
+      row &&
+        row.codeHash &&
+        row.expiresAt > now &&
+        row.attempts < LOGIN_CODE_MAX_ATTEMPTS &&
+        row.codeHash === hashCode(email, codeFor(email, row.expiresAt)),
+    );
+    const expiresAt = again && row ? row.expiresAt : new Date(now.getTime() + LOGIN_CODE_TTL_MIN * 60_000);
+    const code = codeFor(email, expiresAt);
+    const day = { dayStart: sameDay && row ? row.dayStart : now, sentToday: sameDay && row ? row.sentToday + 1 : 1 };
+    if (row) {
+      await tx
+        .update(loginCodes)
+        .set(again ? { sentAt: now, ...day } : { codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, ...day })
+        .where(eq(loginCodes.email, email));
+    } else {
+      await tx.insert(loginCodes).values({ email, codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, ...day });
+    }
+    await tx.insert(mailSends).values({ sentAt: now, kind: "login" });
+    return { code, again, expiresAt };
   });
-  if (issued) return code;
+  if (typeof issued !== "number") return issued;
 
-  const [last] = await db.select().from(loginCodes).where(eq(loginCodes.email, email)).limit(1);
-  const wait = last ? LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - last.sentAt.getTime()) / 1000) : 0;
-  note("codeRefused", wait > 0 ? "cooldown" : "address-day");
-  if (wait > 0) throw new HttpError(429, `验证码刚发过，${wait} 秒后可以再发。`);
+  note("codeRefused", issued > 0 ? "cooldown" : "address-day");
+  if (issued > 0) throw new HttpError(429, `验证码刚发过，${issued} 秒后可以再发。`);
   throw new HttpError(429, `这个邮箱今天已经收了 ${LOGIN_CODES_PER_DAY} 次验证码，明天再试吧。`);
 }
 
 /**
- * The code just issued never reached the address (neverReached in mail.ts), so it counts as never
+ * The email just made never reached the address (neverReached in mail.ts), so it counts as never
  * sent: the address may ask again at once, and neither its day nor the site's mail for the day
- * counts it. The code itself is void.
+ * counts it. A new code is void with it; a code sent before stays, as the earlier email carries it.
  */
-export async function withdrawLoginCode(email: string, code: string) {
+export async function withdrawLoginCode(email: string, issued: IssuedCode) {
   await db.transaction(async (tx) => {
     const [row] = await tx
       .select({ sentAt: loginCodes.sentAt })
       .from(loginCodes)
-      .where(and(eq(loginCodes.email, email), eq(loginCodes.codeHash, hashCode(email, code))))
+      .where(and(eq(loginCodes.email, email), eq(loginCodes.codeHash, hashCode(email, issued.code))))
       .for("update");
     if (!row) return;
+    const uncount = { sentAt: new Date(0), sentToday: sql`greatest(${loginCodes.sentToday} - 1, 0)` };
     await tx
       .update(loginCodes)
-      .set({ codeHash: "", expiresAt: row.sentAt, sentAt: new Date(0), sentToday: sql`greatest(${loginCodes.sentToday} - 1, 0)` })
+      .set(issued.again ? uncount : { ...uncount, codeHash: "", expiresAt: row.sentAt })
       .where(eq(loginCodes.email, email));
     // the one row it added to the site's count, written at the same moment
     await tx.execute(

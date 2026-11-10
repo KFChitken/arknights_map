@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { finishSignup, requestCode, verifyCode } from "@/lib/authClient";
 import { ADULT_TICK, CROSS_BORDER_TICK } from "@/lib/consent";
+import { suggestEmail } from "@/lib/emailTypos";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_TTL_MIN, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
@@ -48,6 +49,10 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
   const [error, setError] = useState<string | null>(null);
   const [mailbox, setMailbox] = useState<string | null>(null);
   const [wait, setWait] = useState(() => (resumed ? waitAfter(resumed.sentAt) : 0));
+  // when the code sent stops working, and whether the last email carried the code sent before
+  const [sent, setSent] = useState<{ expiresAt: number; again: boolean; slow: boolean } | null>(null);
+  // a likely typo in the address's domain, offered and never applied by itself
+  const fix = suggestEmail(email);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -73,6 +78,7 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
       const r = await requestCode(email.trim());
       setMailbox(r.devMailboxPort ? `${location.protocol}//${location.hostname}:${r.devMailboxPort}` : null);
       keepPending({ email: email.trim(), sentAt: Date.now() });
+      setSent({ expiresAt: r.expiresAt, again: r.again, slow: r.slow });
       setWait(LOGIN_CODE_COOLDOWN_S);
       setStep("code");
     });
@@ -119,6 +125,20 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
               onChange={(e) => setEmail(e.target.value)}
             />
           </label>
+          {fix && (
+            <p className="hint" style={{ marginTop: 0 }}>
+              是不是{" "}
+              <button
+                type="button"
+                className="link"
+                style={{ fontSize: "inherit", color: "var(--ink)", textDecoration: "underline" }}
+                onClick={() => setEmail(fix)}
+              >
+                {fix}
+              </button>
+              ？
+            </p>
+          )}
           <button className="primary wide" disabled={busy || !email.trim()}>
             {busy ? "发送中…" : "发送验证码"}
           </button>
@@ -133,7 +153,16 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
       {step === "code" && (
         <form className="login" onSubmit={verify}>
           <p className="hint" style={{ marginTop: 0 }}>
-            验证码发到了 {email}，10 分钟内有效。
+            {sent?.again ? "又发了一次" : "验证码发到了"} {email}，
+            {sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN} 分钟内有效。
+          </p>
+          {sent?.slow && (
+            <p className="hint" style={{ color: "var(--ink)", fontWeight: 600 }}>
+              Gmail 最近收我们的信比较慢，可能要等很久。还没注册的话，用 QQ 或 163 邮箱更快。
+            </p>
+          )}
+          <p className="hint">
+            邮件有时要几分钟才到，Gmail 可能更慢，先看看「垃圾邮件」和「所有邮件」。有效期内重新发送的还是同一个验证码，哪封先到都能用。
           </p>
           {mailbox && (
             <p className="hint">

@@ -11,7 +11,7 @@ export const MIN_SIGNUP_AGE = 18;
  */
 export const POLICY_UPDATED_AT = new Date("2026-10-31T00:00+08:00");
 export const LOGIN_CODE_TTL_MIN = 10;
-export const LOGIN_CODE_COOLDOWN_S = 60;
+export const LOGIN_CODE_COOLDOWN_S = 120;
 export const LOGIN_CODE_MAX_ATTEMPTS = 5;
 /** Codes one email address may receive per day, so nobody can use us to flood an inbox. */
 export const LOGIN_CODES_PER_DAY = 10;

@@ -106,7 +106,7 @@ First time, with an SSH host entry named `zhoupmap` for the server:
 ssh zhoupmap 'bash -s' < scripts/server-setup.sh
 ```
 
-That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. Set `ADMIN_EMAILS` to the sign-in email of whoever handles reports: that account can open `/admin`, sees how many reports wait in a corner of the map, and gets one email a day when new reports come in, plus one within the hour for a report of a minor or of contact details (report emails are not counted against `MAIL_DAILY_LIMIT`). After that, every update is a push to `main` followed by:
+That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. Set `ADMIN_EMAILS` to the sign-in email of whoever handles reports: that account can open `/admin`, sees how many reports wait in a corner of the map, and gets one email a day when new reports come in, plus one within the hour for a report of a minor or of contact details (report emails are not counted against `MAIL_DAILY_LIMIT`). `MAIL_DAILY_LIMIT` caps the sign-in code emails in any 24 hours, and `MAIL_SLOW_DOMAINS` (say `gmail.com,googlemail.com`) tells addresses at a mail service slow to take the site's mail, once their code is sent, that it may take long and that QQ or 163 is quicker for a new account; empty says nothing. After that, every update is a push to `main` followed by:
 
 ```bash
 scripts/deploy.sh

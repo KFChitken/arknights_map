@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { BANNED, isBanned } from "@/lib/server/account";
-import { DEV_MAILBOX_PORT } from "@/lib/server/env";
+import { DEV_MAILBOX_PORT, MAIL_SLOW_DOMAINS } from "@/lib/server/env";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
 import { issueLoginCode, withdrawLoginCode } from "@/lib/server/loginCodes";
 import { neverReached, sendLoginCode } from "@/lib/server/mail";
@@ -27,19 +27,21 @@ export const POST = route(async (req) => {
     throw new HttpError(429, "这个网络今天发的验证码太多了，明天再试吧。");
   }
 
-  const code = await issueLoginCode(email);
+  const issued = await issueLoginCode(email);
   try {
-    await sendLoginCode(email, code);
+    await sendLoginCode(email, issued.code, issued.expiresAt);
     note("mailSent", "login");
   } catch (e) {
     console.error(e);
     note("mailFailed", errorCode(e));
-    // nothing went out, so asking again right away is not held up by the 60 seconds between codes
+    // nothing went out, so asking again right away is not held up by the wait between codes
     if (neverReached(e)) {
-      await withdrawLoginCode(email, code).catch((w) => console.error("could not withdraw the code", errorCode(w)));
+      await withdrawLoginCode(email, issued).catch((w) => console.error("could not withdraw the code", errorCode(w)));
       throw new HttpError(503, "验证码邮件暂时发不出去，过一会儿再点一次试试。");
     }
     throw new HttpError(503, "验证码邮件暂时发不出去，请过几分钟再试。");
   }
-  return NextResponse.json({ ok: true, devMailboxPort: DEV_MAILBOX_PORT || null });
+  // a mail service slow to take our mail just now: the page says so (MAIL_SLOW_DOMAINS)
+  const slow = MAIL_SLOW_DOMAINS.includes(email.slice(email.lastIndexOf("@") + 1));
+  return NextResponse.json({ ok: true, again: issued.again, expiresAt: issued.expiresAt.getTime(), slow, devMailboxPort: DEV_MAILBOX_PORT || null });
 });

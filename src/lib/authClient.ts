@@ -18,7 +18,9 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
 
 /** devMailboxPort is set when codes go to a local test inbox (development). */
 export const requestCode = (email: string) =>
-  post<{ ok: true; devMailboxPort: string | null }>("/api/auth/request-code", { email });
+  // again: the code already sent, still working, sent once more; expiresAt: when it stops working;
+  // slow: the address's mail service is slow to take our mail just now
+  post<{ ok: true; again: boolean; expiresAt: number; slow: boolean; devMailboxPort: string | null }>("/api/auth/request-code", { email });
 
 /** "signup" means the email is new and still needs its ticks (src/lib/consent.ts). */
 export const verifyCode = (email: string, code: string) =>

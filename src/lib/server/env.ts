@@ -6,8 +6,18 @@ export const DATABASE_URL = process.env.DATABASE_URL || "postgres://roach:roach@
 export const SMTP_URL = process.env.SMTP_URL || "smtp://localhost:1025";
 export const MAIL_FROM = process.env.MAIL_FROM || `${SITE_NAME} <no-reply@roach.local>`;
 
-/** Emails the whole site may send in any 24 hours (codes and report digests); kept under the mail provider's daily quota (100 on Resend's free plan). */
+/** Sign-in code emails the whole site may send in any 24 hours (report reminders have rules of their own, src/lib/server/safety.ts); kept within the mail provider's quota. */
 export const MAIL_DAILY_LIMIT = Number(process.env.MAIL_DAILY_LIMIT) || 90;
+
+/**
+ * Mail services slow to take our mail just now (comma separated, e.g. gmail.com,googlemail.com): an
+ * address there is told after its code is sent that it may take long, and that QQ or 163 is quicker
+ * for a new account. A switch on the server: empty or unset says nothing (2026-11-11, for Gmail).
+ */
+export const MAIL_SLOW_DOMAINS = (process.env.MAIL_SLOW_DOMAINS || "")
+  .split(",")
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
 
 /** Show roaches on the map that belong to nobody (src/lib/world/bots.ts); 0 or unset shows none. */
 export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BOTS) || 0), 0), 20_000);
