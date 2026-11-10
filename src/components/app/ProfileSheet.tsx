@@ -42,6 +42,7 @@ export default function ProfileSheet({
   badges,
   wornBadge,
   blocked,
+  held = false,
   tutorial,
   perlicaTimer,
   onOpenBadges,
@@ -58,6 +59,8 @@ export default function ProfileSheet({
   badges: EarnedBadge[];
   wornBadge: string | null;
   blocked: BlockedPlayer[];
+  /** Reports held the name and UIDs until the admin looks: they show greyed out, and cannot change */
+  held?: boolean;
   /** The tutorial's first card: only the basics, and a way to stay anonymous for now */
   tutorial?: { onLater: () => void };
   /** 佩丽卡监督's 离开计时 (null: she has not asked yet); left out while the tutorial runs */
@@ -119,13 +122,14 @@ export default function ProfileSheet({
       {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} onOpen={() => onOpenBadges(p)} />}
       {!tutorial && <HomeScreenRow />}
 
+      {held && <p className="held-note">有人举报了你的名字或 UID，站长看过之前先藏起来了，也暂时改不了。没问题的话会恢复。</p>}
       <fieldset>
         <legend>名字</legend>
         <div className="seg" role="group" aria-label="名字">
-          <button className={p.anonymous ? "on" : ""} onClick={() => set({ anonymous: true })}>
+          <button className={p.anonymous ? "on" : ""} disabled={held} onClick={() => set({ anonymous: true })}>
             保持匿名
           </button>
-          <button className={p.anonymous ? "" : "on"} onClick={() => set({ anonymous: false })}>
+          <button className={p.anonymous ? "" : "on"} disabled={held} onClick={() => set({ anonymous: false })}>
             显示名字
           </button>
         </div>
@@ -138,11 +142,12 @@ export default function ProfileSheet({
                 value={p.name}
                 maxLength={NAME_MAX}
                 placeholder="别人看到的名字"
+                disabled={held}
                 onChange={(e) => set({ name: e.target.value })}
               />
             </label>
             <label className="check">
-              <input type="checkbox" checked={p.drPrefix} onChange={(e) => set({ drPrefix: e.target.checked })} />
+              <input type="checkbox" checked={p.drPrefix} disabled={held} onChange={(e) => set({ drPrefix: e.target.checked })} />
               加上 Dr. 前缀
             </label>
           </>
@@ -187,7 +192,11 @@ export default function ProfileSheet({
             <div className="uid-row">
               <label className="field">
                 服务器
-                <select value={p.uidServer[g]} onChange={(e) => set({ uidServer: { ...p.uidServer, [g]: e.target.value } })}>
+                <select
+                  value={p.uidServer[g]}
+                  disabled={held}
+                  onChange={(e) => set({ uidServer: { ...p.uidServer, [g]: e.target.value } })}
+                >
                   <option value="">选服务器</option>
                   {SERVERS[g].map((s) => (
                     <option key={s.id} value={s.id}>
@@ -205,6 +214,7 @@ export default function ProfileSheet({
                   value={p.uid[g]}
                   maxLength={UID_MAX}
                   placeholder="不填也可以"
+                  disabled={held}
                   onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
                 />
               </label>
@@ -217,7 +227,7 @@ export default function ProfileSheet({
         <fieldset>
           <legend>UID 给谁看</legend>
           <label className="check">
-            <input type="checkbox" checked={p.shareUid} onChange={(e) => set({ shareUid: e.target.checked })} />
+            <input type="checkbox" checked={p.shareUid} disabled={held} onChange={(e) => set({ shareUid: e.target.checked })} />
             我大胆伸出触须时，把 UID 一起给对方看
           </label>
           <p className="hint">

@@ -652,6 +652,16 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
 .admin-facts code { padding: 1px 5px; border-radius: 5px; background: #f1f3f5; font-size: 13px; }
 .admin-case .account-actions { margin-bottom: 10px; }
 .admin-note { padding: 8px 12px; border-radius: 10px; background: #fff7d6; }
+/* The admin's own corner of the map: reports waiting, red when some are urgent */
+.admin-pill {
+  padding: 6px 12px; border-radius: 999px; background: var(--ink); color: #fff;
+  font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; box-shadow: 0 2px 10px #0003;
+}
+.admin-pill.urgent { background: #d93025; }
+/* 资料 while reports hold the name and UIDs: the note, and the fields locked meanwhile look it */
+.held-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: #fff7d6; font-size: 13px; line-height: 1.55; }
+.sheet input:disabled, .sheet select:disabled { background: #f1f3f5; color: var(--muted); opacity: 1; cursor: not-allowed; }
+.sheet label.check:has(input:disabled) { color: var(--muted); }
 .admin textarea {
   display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px;
   font: inherit; font-size: 15px; color: var(--ink); resize: vertical;

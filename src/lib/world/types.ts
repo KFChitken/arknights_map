@@ -4,7 +4,7 @@ import type { BatchAct, Gesture, SleepGesture } from "../friendly";
 import type { Game } from "../games";
 import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
-import type { ReportReason } from "../safety";
+import type { ReportCounts, ReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { PackedRoaches } from "./packed";
@@ -330,6 +330,10 @@ export type Me = {
   minghe: { friend: boolean; riding: { roachId: string; since: number; stops: number } | null; dayShift: number };
   /** 求助: your 触须之交's requests up since you last looked, and answers to yours you have not seen (the dot on 触须之交) */
   help: { asks: number; answers: number };
+  /** Reports held their name and UIDs until the admin looks: hidden from others, and locked in 资料 */
+  profileHeld: boolean;
+  /** Only for the admin: reports waiting, shown in a corner of the map */
+  admin?: ReportCounts;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

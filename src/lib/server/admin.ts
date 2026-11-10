@@ -1,10 +1,18 @@
 import "server-only";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { badgeById } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { declarationText } from "../declarations";
 import { serverName } from "../games";
-import { isReportReason, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "../safety";
+import {
+  isReportReason,
+  URGENT_REASONS,
+  type AdminAction,
+  type AdminCase,
+  type AdminPlayer,
+  type ReportCounts,
+  type RetentionStats,
+} from "../safety";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
 import { banAccount } from "./account";
@@ -12,13 +20,28 @@ import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
-import { clearName } from "./safety";
+import { clearBoth, clearName, clearUid, releaseProfile } from "./safety";
 import { blocks, dailyTotals, declarations, friendships, reports, roaches, touches, userBadges, users, type UserRow } from "./schema";
 import { profileOf, storedDeclaration } from "./world";
 
-/** The admin page's rules: who may open it, what it shows and the three ways to settle a report. */
+/** The admin page's rules: who may open it, what it shows and the ways to settle a report. */
 
 export const isAdmin = (u: UserRow | null) => Boolean(u?.email && ADMIN_EMAILS.includes(u.email));
+
+/** Open reports, and how many of them are for URGENT_REASONS: the admin's corner of the map. */
+export async function reportCounts(): Promise<ReportCounts> {
+  const [row] = await db
+    .select({
+      open: count(),
+      urgent: sql<number>`count(*) filter (where ${inArray(reports.reason, [...URGENT_REASONS])})`.mapWith(Number),
+    })
+    .from(reports)
+    .where(isNull(reports.resolvedAt));
+  return { open: row.open, urgent: row.urgent };
+}
+
+/** What the map adds to an admin's me(); nothing for anyone else. */
+export const adminCounts = async (u: UserRow | null) => (isAdmin(u) ? await reportCounts() : undefined);
 
 /** Every player with open reports, the most reported first. */
 export async function openCases(): Promise<AdminCase[]> {
@@ -53,10 +76,13 @@ export async function openCases(): Promise<AdminCase[]> {
       .where(and(eq(reports.targetId, u.id), isNotNull(reports.resolvedAt)))
       .groupBy(reports.resolution);
     const profile = profileOf(u);
+    // while held, anonymous and shareUid are the hold's doing; the admin sees what the player had chosen
+    const heldAt = u.profileHeldAt;
     cases.push({
       targetId: u.id,
       name: u.name,
-      anonymous: u.anonymous,
+      anonymous: heldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous,
+      heldAt: heldAt?.getTime() ?? null,
       drPrefix: u.drPrefix,
       avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
       color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
@@ -68,7 +94,7 @@ export async function openCases(): Promise<AdminCase[]> {
         server: serverName(game, profile.uidServer[game]) ?? "",
         favourites: profile.favourites[game],
       })),
-      shareUid: profile.shareUid,
+      shareUid: heldAt ? (u.heldShareUid ?? u.shareUid) : u.shareUid,
       support: profile.support,
       badges: held.flatMap((b) => badgeById(b.badge)?.name ?? []),
       worn: (u.wornBadge && badgeById(u.wornBadge)?.name) || null,
@@ -76,8 +102,9 @@ export async function openCases(): Promise<AdminCase[]> {
       friends: friends.n,
       blockedBy: blockers.n,
       settled: {
-        dismissed: before.find((r) => r.resolution === "dismissed")?.n ?? 0,
-        nameCleared: before.find((r) => r.resolution === "name_cleared")?.n ?? 0,
+        dismissed: settledAs(before, "dismissed"),
+        nameCleared: settledAs(before, "name_cleared", "both_cleared"),
+        uidCleared: settledAs(before, "uid_cleared", "both_cleared"),
       },
       last24h: { touches: sentTouches.n, declarations: recent.filter((d) => d.createdAt > since).length },
       declarations: recent.map((d) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
@@ -94,24 +121,36 @@ export async function openCases(): Promise<AdminCase[]> {
   return cases.sort((x, y) => y.reporters - x.reporters || x.reports[0].at - y.reports[0].at);
 }
 
+/** How many reports of before were settled in any of these ways */
+const settledAs = (before: { resolution: string | null; n: number }[], ...ways: string[]) =>
+  before.filter((r) => r.resolution && ways.includes(r.resolution)).reduce((n, r) => n + r.n, 0);
+
+/** Each way to settle a report, and what it does to the reported player first */
+const SETTLE: Record<Exclude<AdminAction, "ban">, { resolution: string; act: (userId: string) => Promise<void> }> = {
+  // a held name and UIDs show again
+  dismiss: { resolution: "dismissed", act: releaseProfile },
+  clearName: { resolution: "name_cleared", act: clearName },
+  clearUid: { resolution: "uid_cleared", act: clearUid },
+  clearBoth: { resolution: "both_cleared", act: clearBoth },
+};
+
 /** Settle every open report about one player. */
 export async function resolveCase(targetId: string, action: AdminAction) {
   const [u] = await db.select().from(users).where(eq(users.id, String(targetId))).limit(1);
   if (!u) throw new HttpError(400, "这个账号已经不在了。");
-  const settle = (resolution: string) =>
-    db
-      .update(reports)
-      .set({ resolvedAt: new Date(), resolution })
-      .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt)));
-  if (action === "dismiss") await settle("dismissed");
-  else if (action === "clearName") {
-    await clearName(u.id);
-    await settle("name_cleared");
-  } else if (action === "ban") {
+  if (action === "ban") {
     if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
     // the reports go with the account
     await banAccount(u);
-  } else throw new HttpError(400, "不知道要怎么处理。");
+    return;
+  }
+  const way = Object.hasOwn(SETTLE, action) ? SETTLE[action] : null;
+  if (!way) throw new HttpError(400, "不知道要怎么处理。");
+  await way.act(u.id);
+  await db
+    .update(reports)
+    .set({ resolvedAt: new Date(), resolution: way.resolution })
+    .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt)));
 }
 
 /** Hand out 内测功臣, or take any badge back (from someone gaming them), by the player's login email. */

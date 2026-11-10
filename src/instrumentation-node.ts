@@ -63,8 +63,9 @@ if (!helper) {
   prune();
   setInterval(prune, DAY_MS);
 
-  // Reports that came in after today's digest go out once a day has passed
-  setInterval(() => sendReportDigest().catch(failed("digest", "Report digest failed")), HOUR_MS);
+  // Reports the admin has not heard of: an urgent one within half an hour of the last urgent reminder, the rest once a day
+  // has passed since the day's reminder. Cheap: it only looks at open reports nobody was told of.
+  setInterval(() => sendReportDigest().catch(failed("digest", "Report digest failed")), 10 * MINUTE_MS);
 
   // 好久没来自动翻: once a day, at the first look after 04:00 Beijing time (a restart may run it again, to the same end)
   let flippedOn = "";

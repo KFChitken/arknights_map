@@ -6,14 +6,15 @@ import { BADGES } from "@/lib/badges";
 import { GAME_NAMES } from "@/lib/games";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { beijingDate } from "@/lib/beijing";
+import { PROFILE_REPORTS_TO_HOLD } from "@/lib/rules";
 import { REPORT_REASONS, type AdminAction, type AdminCase, type AdminPlayer, type RetentionStats } from "@/lib/safety";
 import { ago } from "./app/InboxSheet";
 import RoachIcon from "./RoachIcon";
 
 /**
- * /admin: this week's totals, open reports grouped by player with the three
- * ways to settle them, the name blocklist, every account's email and name, and
- * badges by hand. The API refuses everyone but the admins.
+ * /admin: this week's totals, open reports grouped by player with the ways to
+ * settle them, the name blocklist, every account's email and name, and badges
+ * by hand. The API refuses everyone but the admins.
  */
 
 async function call<T>(op: string, ...args: unknown[]): Promise<T> {
@@ -30,15 +31,22 @@ async function call<T>(op: string, ...args: unknown[]): Promise<T> {
 
 const DONE: Record<AdminAction, string> = {
   dismiss: "关掉了这些举报。",
-  clearName: "名字清掉了，TA 现在是匿名。",
-  ban: "封号了：账号和数据都删了，这个邮箱不能再登录。",
+  clearName: "名字清掉了，TA 现在是匿名，以后也不能再用这个名字。",
+  clearUid: "UID 清掉了，TA 以后也不能再填这个 UID。",
+  clearBoth: "名字和 UID 都清掉了，TA 以后也不能再用。",
+  ban: "封号了：账号和数据都删了，这个邮箱（连同它的其他写法）不能再登录。",
 };
+
+/** Whether a reported player filled in a UID for a game they play */
+const hasUid = (c: AdminCase) => c.games.some((g) => g.uid);
 
 export default function AdminApp() {
   const [cases, setCases] = useState<AdminCase[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // bumped when a case card adds to the name list, so the list below reads it again
+  const [wordsAdded, setWordsAdded] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -57,8 +65,21 @@ export default function AdminApp() {
     setBusy(c.targetId);
     try {
       await call("resolve", c.targetId, action);
-      setNote(DONE[action]);
+      setNote(action === "dismiss" && c.heldAt ? "关掉了这些举报，TA 的名字和 UID 恢复了。" : DONE[action]);
       await load();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "出了点问题。");
+    }
+    setBusy(null);
+  };
+
+  // the whole name, for everyone; the report stays open
+  const blockName = async (c: AdminCase) => {
+    setBusy(c.targetId);
+    try {
+      await call("addNameWords", `=${c.name}`);
+      setNote("加好了：以后谁都不能叫这个名字。要挡名字里的某个词，到下面「名字黑名单」里加。");
+      setWordsAdded((n) => n + 1);
     } catch (e) {
       setNote(e instanceof Error ? e.message : "出了点问题。");
     }
@@ -69,7 +90,7 @@ export default function AdminApp() {
     return (
       <main className="doc">
         <h1>管理</h1>
-        <p>这个页面只有管理员能打开。请先在地图上用管理员的邮箱登录。</p>
+        <p>这个页面只有站长能打开。请先在地图上用站长的邮箱登录。</p>
         <p>
           <Link href="/">回到地图</Link>
         </p>
@@ -84,7 +105,9 @@ export default function AdminApp() {
 
       <h2>举报处理</h2>
       <p className="hint">
-        同一个人的举报放在一起。「没问题」只关掉举报；「清掉名字」把 TA 改成匿名；「封号」删掉账号和所有数据，这个邮箱以后不能再登录。
+        同一个人的举报放在一起。名字不合适、留了联系方式、冒充这三类举报凑满 {PROFILE_REPORTS_TO_HOLD} 个人，TA
+        的名字和 UID 会先藏起来、暂时改不了，等你来看。「没问题」关掉举报，藏起来的也恢复；「清掉名字」「只清 UID」「名字和 UID
+        都清」清掉以后，TA 不能再用同样的；「加进名字黑名单」让谁都不能再叫这个名字，不关掉举报；「封号」删掉账号和所有数据，这个邮箱以后不能再登录。
       </p>
       {note && <p className="admin-note">{note}</p>}
       {cases === null && !note && <p>正在读取…</p>}
@@ -95,10 +118,11 @@ export default function AdminApp() {
             <RoachIcon color={c.color} size={44} avatar={c.avatar} />
             <div>
               <strong>{c.name ? `${c.drPrefix ? "Dr. " : ""}${c.name}` : "（没有名字）"}</strong>
-              {c.anonymous && <span className="tag">现在是匿名</span>}
+              {c.heldAt ? <span className="tag">先藏起来了</span> : c.anonymous && <span className="tag">现在是匿名</span>}
               <p className="hint">
                 {ago(c.joinedAt)}注册 · 最近 24 小时碰了 {c.last24h.touches} 次、发了 {c.last24h.declarations} 条宣言
               </p>
+              {c.heldAt && <p className="hint">名字和 UID 先藏起来了（{ago(c.heldAt)}）</p>}
             </div>
           </div>
           <dl className="admin-facts">
@@ -121,7 +145,10 @@ export default function AdminApp() {
               </Fragment>
             ))}
             <dt>UID 给谁看</dt>
-            <dd>{c.shareUid ? "大胆碰过的人能看到" : "只有自己"}</dd>
+            <dd>
+              {c.shareUid ? "大胆碰过的人能看到" : "只有自己"}
+              {c.heldAt && c.shareUid && "（现在先藏起来了）"}
+            </dd>
             {c.support.length > 0 && (
               <>
                 <dt>我的助战</dt>
@@ -144,9 +171,13 @@ export default function AdminApp() {
             <dd>{c.blockedBy} 个人</dd>
             <dt>以前的举报</dt>
             <dd>
-              {c.settled.dismissed + c.settled.nameCleared === 0
+              {c.settled.dismissed + c.settled.nameCleared + c.settled.uidCleared === 0
                 ? "没有"
-                : [c.settled.dismissed && `关掉过 ${c.settled.dismissed} 条`, c.settled.nameCleared && `清过名字的 ${c.settled.nameCleared} 条`]
+                : [
+                    c.settled.dismissed && `关掉过 ${c.settled.dismissed} 条`,
+                    c.settled.nameCleared && `清过名字的 ${c.settled.nameCleared} 条`,
+                    c.settled.uidCleared && `清过 UID 的 ${c.settled.uidCleared} 条`,
+                  ]
                     .filter(Boolean)
                     .join("，")}
             </dd>
@@ -181,14 +212,23 @@ export default function AdminApp() {
 
           <div className="account-actions">
             <button className="pill" disabled={busy === c.targetId} onClick={() => resolve(c, "dismiss")}>
-              没问题
+              {c.heldAt ? "没问题，恢复" : "没问题"}
+            </button>
+            <button className="pill" disabled={busy === c.targetId || !c.name} onClick={() => resolve(c, "clearName")}>
+              清掉名字
+            </button>
+            <button className="pill" disabled={busy === c.targetId || !hasUid(c)} onClick={() => resolve(c, "clearUid")}>
+              只清 UID
             </button>
             <button
               className="pill"
-              disabled={busy === c.targetId || (c.anonymous && !c.name)}
-              onClick={() => resolve(c, "clearName")}
+              disabled={busy === c.targetId || !c.name || !hasUid(c)}
+              onClick={() => resolve(c, "clearBoth")}
             >
-              清掉名字
+              名字和 UID 都清
+            </button>
+            <button className="pill" disabled={busy === c.targetId || !c.name} onClick={() => blockName(c)}>
+              加进名字黑名单
             </button>
             <button className="pill danger-pill" disabled={busy === c.targetId} onClick={() => resolve(c, "ban")}>
               封号
@@ -196,7 +236,7 @@ export default function AdminApp() {
           </div>
         </section>
       ))}
-      <NameList />
+      <NameList added={wordsAdded} />
       <Players />
       <BadgeDesk />
       <p className="hint" style={{ marginTop: 24 }}>
@@ -243,7 +283,7 @@ type NameList = { total: number; found: number; words: NameWord[]; hits: NameHit
  * runs to thousands, and the names in use that they block now, to clear by hand. The
  * rules in src/lib/nameRules.ts apply as well.
  */
-function NameList() {
+function NameList({ added }: { added: number }) {
   const [list, setList] = useState<NameList | null>(null);
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
@@ -254,11 +294,11 @@ function NameList() {
       .then(setList)
       .catch((e) => setNote(e instanceof Error ? e.message : "出了点问题。"));
   }, []);
-  // a moment after typing stops, not on every key
+  // a moment after typing stops, not on every key; and again when a case card added a name
   useEffect(() => {
     const t = window.setTimeout(() => load(search), 300);
     return () => window.clearTimeout(t);
-  }, [search, load]);
+  }, [search, load, added]);
 
   const run = async (fn: () => Promise<string>) => {
     setBusy(true);
@@ -287,7 +327,7 @@ function NameList() {
   const remove = (w: NameWord) => run(async () => (await call("removeNameWord", w.word), `删掉了「${w.word}」。`));
   const clear = (h: NameHit) => {
     if (!window.confirm(`清掉「${h.name}」这个名字，把 TA 改成匿名？`)) return;
-    run(async () => (await call("clearName", h.id), "名字清掉了，TA 现在是匿名。"));
+    run(async () => (await call("clearName", h.id), DONE.clearName));
   };
 
   return (

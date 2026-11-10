@@ -10,6 +10,7 @@ import { findLine } from "../events";
 import { nextMorning } from "../morning";
 import { checkSupport } from "../support";
 import { isGame } from "../games";
+import { bare } from "../nameRules";
 import { displayName, type Profile, type PublicProfile } from "../profile";
 import {
   DECLARATION_COOLDOWN_MIN,
@@ -120,6 +121,7 @@ import { checkName } from "./nameWords";
 import { allow } from "./rateLimit";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import {
+  clearedValues,
   declarations,
   deliveries,
   reactions,
@@ -374,6 +376,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     talulah: talulahOf(u),
     minghe: await mingheOf(u),
     help: await helpCounts(u),
+    profileHeld: Boolean(u.profileHeldAt),
   };
 }
 
@@ -408,15 +411,45 @@ async function recentMoves(userId: string, kind: "move" | "place") {
   return row.n;
 }
 
+/**
+ * While reports hold a player's profile (src/lib/server/safety.ts holdProfile), the name, how it shows
+ * and the UIDs and who sees them stay as they are until the admin looks; the rest saves as usual. A
+ * game left out meanwhile keeps its UID, for the admin to see.
+ */
+function keepHeld(p: Profile, stored: Profile): Profile {
+  const same =
+    p.name === stored.name &&
+    p.anonymous === stored.anonymous &&
+    p.drPrefix === stored.drPrefix &&
+    p.shareUid === stored.shareUid &&
+    p.games.every((g) => p.uid[g] === stored.uid[g] && p.uidServer[g] === stored.uidServer[g]);
+  if (!same) throw new WorldError("你的名字和 UID 被举报了，站长看过之前先改不了。");
+  return { ...p, uid: stored.uid, uidServer: stored.uidServer };
+}
+
+/** A name or UID the admin cleared from this account stays gone from it (anyone else may still use it) */
+async function checkCleared(userId: string, p: Profile) {
+  const gone = await db
+    .select({ kind: clearedValues.kind, value: clearedValues.value })
+    .from(clearedValues)
+    .where(eq(clearedValues.userId, userId));
+  if (!gone.length) return;
+  const name = bare(p.name);
+  if (name && gone.some((g) => g.kind === "name" && g.value === name)) throw new WorldError("这个名字被站长清掉过，换一个吧。");
+  const uids = Object.values(p.uid).map((u) => u.toLowerCase());
+  if (gone.some((g) => g.kind === "uid" && uids.includes(g.value.toLowerCase()))) {
+    throw new WorldError("这个 UID 被站长清掉过，换一个吧。");
+  }
+}
+
 export async function saveProfile(userId: string, input: Profile): Promise<Profile> {
-  const profile = normalizeProfile(input);
+  let profile = normalizeProfile(input);
+  const [before] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  // held, the name cannot change, so it is not checked again (the admin may have just put it on the list)
+  if (before?.profileHeldAt) profile = keepHeld(profile, profileOf(before));
   // checked even while anonymous: the name is kept, and shows again once they go by it
-  await checkName(profile.name);
-  const [before] = await db
-    .select({ support: users.support, welcomeGuests: users.welcomeGuests })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  else await checkName(profile.name);
+  await checkCleared(userId, profile);
   // 触须之交 see 「换了助战」 for the latest change only
   const changed = (before?.support ?? []).join("|") !== profile.support.join("|");
   await db
@@ -1156,6 +1189,8 @@ export async function markSeen(userId: string, itemIds: string[]) {
 export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string }> {
   const u = await userById(userId);
   if (!u) throw new WorldError("请先登录。");
+  // held, a player is anonymous, which checkDeclaration refuses 「我是…」 for; this says why
+  if (u.profileHeldAt && input?.template === "myname") throw new WorldError("你的名字被举报了，站长看过之前先发不了这句。");
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   const d = checkDeclaration(profileOf(u), input, Date.now(), drunk);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));

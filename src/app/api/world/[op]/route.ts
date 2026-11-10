@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import type { Declaration } from "@/lib/declarations";
 import type { Profile } from "@/lib/profile";
+import { adminCounts } from "@/lib/server/admin";
 import { currentUser, endSession, homeUserId, setHomeUserId, startSession } from "@/lib/server/auth";
 import { markBadgesSeen, wear } from "@/lib/server/badges";
 import { acceptPublicPlace, mustReconsent, RECONSENT_NEEDED } from "@/lib/server/consent";
@@ -45,9 +46,13 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
 
   let result: unknown;
   switch (op) {
-    case "me":
-      result = user ? await world.me(user.id, args[0]) : null;
+    case "me": {
+      const m = user ? await world.me(user.id, args[0]) : null;
+      // the admin also sees how many reports wait, in a corner of the map
+      const admin = m ? await adminCounts(user) : undefined;
+      result = m && admin ? { ...m, admin } : m;
       break;
+    }
     // 佩丽卡监督's 离开计时: sent with me() on opening, before anyone knows who is signed in, and only
     // ever about the player themselves, so neither asks for a session or the updated privacy policy
     case "here":

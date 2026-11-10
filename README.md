@@ -20,7 +20,8 @@ Players in the community jokingly call themselves "roaches" because there seem t
 | Email sign-in with a 6-digit code; sign-up is for players aged 18 and over, who tick that they are (no birth date is asked for) and give the storage-and-mail consent on its own; account deletion | MVP |
 | 摄入酒精: a player's main roach gets drunk and lies belly up on everyone's map until 8:00 where it lies (or until they sober up or move it); the feed only says it is asleep, never why; 50 drinks earn a badge | MVP |
 | Demo players and test identities: thousands of seeded players, and stepping into any of them on one device to try touches and declarations | Development aid |
-| Follow requests that need approval, block and report | Planned |
+| Block and report: reporting also blocks; when three different players report what someone wrote about themselves (the name, contact details, passing for someone else), that player's name and UIDs are hidden and locked until the admin looks; the admin can let them out again, clear the name or the UIDs for good on that account, or ban the mailbox however it is written | MVP |
+| Follow requests that need approval | Planned |
 | Ark Radar: how many roaches are within 100 km of your main roach, how many crawled in or left in the last day and week, newcomers, nearby touches and declarations | MVP (demo movement for the demo players) |
 | Your roach's travel trail | Planned |
 
@@ -105,7 +106,7 @@ First time, with an SSH host entry named `zhoupmap` for the server:
 ssh zhoupmap 'bash -s' < scripts/server-setup.sh
 ```
 
-That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. Set `ADMIN_EMAILS` to the sign-in email of whoever handles reports: that account can open `/admin`, and gets one email a day when new reports come in. After that, every update is a push to `main` followed by:
+That installs Docker, adds swap for builds, clones the repository and writes a `.env` with fresh secrets. Fill in the Amap key and the SMTP settings of the mail service there. Set `ADMIN_EMAILS` to the sign-in email of whoever handles reports: that account can open `/admin`, sees how many reports wait in a corner of the map, and gets one email a day when new reports come in, plus one within the hour for a report of a minor or of contact details (report emails are not counted against `MAIL_DAILY_LIMIT`). After that, every update is a push to `main` followed by:
 
 ```bash
 scripts/deploy.sh

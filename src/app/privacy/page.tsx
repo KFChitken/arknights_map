@@ -8,8 +8,8 @@ import {
   KEEP_ACTIVITY_DAYS,
   KEEP_REPORT_DAYS,
   MIN_SIGNUP_AGE,
-  NAME_REPORTS_TO_HIDE,
   POKE_EVERY_DAYS,
+  PROFILE_REPORTS_TO_HOLD,
   SESSION_DAYS,
   SITE_NAME,
 } from "@/lib/rules";
@@ -24,7 +24,7 @@ export default function Privacy() {
   return (
     <main className="doc">
       <h1>{SITE_NAME}隐私说明</h1>
-      <p className="hint">生效日期：2026 年 11 月 9 日</p>
+      <p className="hint">生效日期：2026 年 11 月 11 日</p>
 
       <p>
         各位博士、管理员们好！我是 {OPERATOR}，{SITE_NAME}（zhoupmap.com）的运营者。{SITE_NAME}
@@ -110,8 +110,9 @@ export default function Privacy() {
           <strong>拉黑：</strong>被你拉黑的人不会知道。从拉黑起你们之间的触须、戳一戳、宣言和回应都不再送达，TA 以前发给你的也会从你的消息里消失；在对方那里做客的克隆体也会回家。
         </li>
         <li>
-          <strong>举报：</strong>只有我能看到举报内容和是谁举报的，被举报的人不会知道是谁举报的。同一个名字被 {NAME_REPORTS_TO_HIDE}{" "}
-          个不同的人举报，会先自动改成匿名，等我来看。
+          <strong>举报：</strong>只有我能看到举报内容和是谁举报的，被举报的人不会知道是谁举报的。名字不合适、留了联系方式或个人信息、冒充官方或别人，这三类举报合起来有{" "}
+          {PROFILE_REPORTS_TO_HOLD} 个不同的人举报同一个人时，会先把 TA 的名字和 UID 藏起来、暂时不能改，等我来看：没问题就恢复，有问题就清掉，清掉的名字和 UID
+          这个账号以后不能再用。
         </li>
       </ul>
 
@@ -155,7 +156,10 @@ export default function Privacy() {
         <li>验证码记录：一天后自动清掉。</li>
         <li>拉黑名单：直到你解除拉黑或注销账号。</li>
         <li>举报：处理完 {KEEP_REPORT_DAYS} 天后删除；被举报的账号被封号时，相关的举报跟着账号一起删除。</li>
-        <li>封禁名单：被封号的邮箱只存加密后的摘要，用来挡住它再次登录，会一直保存。</li>
+        <li>被清掉的名字和 UID：记下来不让这个账号再用，注销账号就删。</li>
+        <li>
+          封禁名单：被封号的邮箱只存加密后的摘要（Gmail 地址去掉点、任何邮箱去掉「+」后面那段的写法也一起存），用来挡住它再次登录，会一直保存。
+        </li>
         <li>
           数据库备份：每天备份一次，服务器上留 3 天，腾讯云对象存储里留 {BACKUP_DAYS} 天。所以你注销以后，你的数据最晚 {BACKUP_DAYS} 天内也会从备份里消失。
         </li>
@@ -185,7 +189,7 @@ export default function Privacy() {
       <h2>举报和封号</h2>
       <p>
         违反社区守则（比如名字不合适、骚扰别人）或者不满 {MIN_SIGNUP_AGE}{" "}
-        岁的账号，我可能清掉它的名字或者封号。封号会删除这个账号和它的所有数据，这个邮箱以后不能再登录。
+        岁的账号，我可能清掉它的名字或 UID，或者封号。封号会删除这个账号和它的所有数据，这个邮箱以后不能再登录。
       </p>
 
       <h2 id="contact">联系与举报</h2>

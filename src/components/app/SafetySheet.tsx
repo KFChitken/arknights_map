@@ -2,8 +2,14 @@
 
 import { useState } from "react";
 import { REPORT_NOTE_MAX } from "@/lib/rules";
-import { REPORT_REASONS, type ReportReason } from "@/lib/safety";
+import { noteMissing, REPORT_REASONS, type ReportReason } from "@/lib/safety";
 import Sheet from "./Sheet";
+
+/** What the note box asks for, by reason: 「其他」 must say what happened */
+const NOTE_ASKS: Partial<Record<ReportReason, string>> = {
+  other: "说说是什么事（必填）",
+  contact: "在哪看到的？比如名字里、UID 里（选填）",
+};
 
 /** 拉黑或举报 whoever sent an inbox item, or a 触须之交. who is null when you never saw who it was. */
 export default function SafetySheet({
@@ -28,6 +34,7 @@ export default function SafetySheet({
     setBusy(false);
   };
   const them = who ?? "这只匿名舟P";
+  const missing = reason !== null && noteMissing(reason, note);
 
   return (
     <Sheet title="拉黑或举报" onBack={onBack} onClose={onClose}>
@@ -41,7 +48,7 @@ export default function SafetySheet({
 
       <h3 style={{ marginTop: 22 }}>举报 {them}</h3>
       <p className="hint" style={{ marginBottom: 10 }}>
-        举报只有管理员能看到，TA 不会知道是谁举报的。举报的同时也会拉黑 TA。
+        举报只有站长能看到，TA 不会知道是谁举报的。举报的同时也会拉黑 TA。
       </p>
       <div className="chips" role="radiogroup" aria-label="举报理由" style={{ marginBottom: 10 }}>
         {(Object.keys(REPORT_REASONS) as ReportReason[]).map((r) => (
@@ -54,17 +61,17 @@ export default function SafetySheet({
         type="text"
         value={note}
         maxLength={REPORT_NOTE_MAX}
-        placeholder="想补充的话（选填）"
+        placeholder={(reason && NOTE_ASKS[reason]) || "想补充的话（选填）"}
         aria-label="补充说明"
         onChange={(e) => setNote(e.target.value)}
       />
       <button
         className="primary wide"
         style={{ marginTop: 10 }}
-        disabled={!reason || busy}
-        onClick={() => reason && run(() => onReport(reason, note))}
+        disabled={!reason || missing || busy}
+        onClick={() => reason && !missing && run(() => onReport(reason, note))}
       >
-        {reason ? "举报并拉黑" : "先选一个理由"}
+        {!reason ? "先选一个理由" : missing ? "先写一句是什么事" : "举报并拉黑"}
       </button>
     </Sheet>
   );

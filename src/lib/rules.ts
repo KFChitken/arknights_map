@@ -50,10 +50,15 @@ export const TOUCHES_PER_PERSON_PER_DAY = 3;
 /** 戳一戳: how often one player may poke the same 触须之交's sleeping roach. */
 export const POKE_EVERY_DAYS = 7;
 
-/** Reports one player may file per day, and how many different players reporting a name hide it until it is reviewed. */
+/**
+ * Reports one player may file per day, and how many different players reporting what someone wrote
+ * about themselves (src/lib/safety.ts PROFILE_REASONS) hold their name and UIDs until the admin looks.
+ */
 export const REPORTS_PER_DAY = 10;
-export const NAME_REPORTS_TO_HIDE = 3;
+export const PROFILE_REPORTS_TO_HOLD = 3;
 export const REPORT_NOTE_MAX = 100;
+/** A report for 「其他」 says what happened in at least this many characters */
+export const OTHER_NOTE_MIN = 2;
 /** Handled reports are deleted after this many days (see the privacy page). */
 export const KEEP_REPORT_DAYS = 90;
 

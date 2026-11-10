@@ -1,17 +1,17 @@
 import "server-only";
-import { and, count, countDistinct, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, count, countDistinct, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { declarationText, replyOf } from "../declarations";
 import { guideById, guideOfItem } from "../guides";
+import { bare } from "../nameRules";
 import { displayName } from "../profile";
-import { NAME_REPORTS_TO_HIDE, REPORT_NOTE_MAX, REPORTS_PER_DAY, SITE_NAME } from "../rules";
-import { isReportReason } from "../safety";
-import { DAY } from "../world/logic";
+import { PROFILE_REPORTS_TO_HOLD, REPORT_NOTE_MAX, REPORTS_PER_DAY, SITE_NAME } from "../rules";
+import { isReportReason, noteMissing, PROFILE_REASONS, REPORT_REASONS, URGENT_REASONS, type ReportReason } from "../safety";
+import { DAY, MINUTE } from "../world/logic";
 import { WorldError, type BlockedPlayer } from "../world/types";
 import { db } from "./db";
 import { ADMIN_EMAILS, SITE_URL } from "./env";
 import { sendAdminMail } from "./mail";
-import { mailRoom } from "./mailQuota";
-import { blocks, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users } from "./schema";
+import { blocks, clearedValues, declarations, deliveries, mailSends, pokes, reactions, reports, touches, users } from "./schema";
 import { note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
 
@@ -120,18 +120,101 @@ export async function blockList(userId: string): Promise<BlockedPlayer[]> {
     .sort((x, y) => y.at - x.at);
 }
 
-/** Make a player anonymous and take their name off the 「我是…」 declarations they already sent. */
-export async function clearName(userId: string) {
-  await db.update(users).set({ anonymous: true, name: "" }).where(eq(users.id, userId));
-  await db
-    .update(declarations)
-    .set({ name: "匿名舟P" })
-    .where(and(eq(declarations.senderId, userId), eq(declarations.template, "myname")));
+// ---- holding and clearing what a player wrote about themselves ----
+
+/** What a held 「我是…」 declaration says instead of its sender's name, and what a cleared one says for good */
+const NO_NAME = "匿名舟P";
+
+/**
+ * 先藏起来: hide a reported player's name and UIDs from everyone until the admin looks. Every place
+ * that shows a player goes through anonymous and shareUid, so switching the one on and the other off
+ * hides both; what the player had chosen is kept to put back, and saveProfile locks them meanwhile.
+ * Holding someone already held changes nothing, so two reports at once cannot lose their choice.
+ */
+export async function holdProfile(userId: string) {
+  await db.transaction(async (tx) => {
+    const held = await tx
+      .update(users)
+      .set({
+        // the old row's values, as every expression of an update reads them
+        heldAnonymous: sql`${users.anonymous}`,
+        heldShareUid: sql`${users.shareUid}`,
+        anonymous: true,
+        shareUid: false,
+        profileHeldAt: new Date(),
+      })
+      .where(and(eq(users.id, userId), isNull(users.profileHeldAt)))
+      .returning({ id: users.id });
+    if (!held.length) return;
+    await tx
+      .update(declarations)
+      .set({ heldName: sql`${declarations.name}`, name: NO_NAME })
+      .where(and(eq(declarations.senderId, userId), eq(declarations.template, "myname"), isNull(declarations.heldName)));
+  });
 }
+
+/**
+ * The admin's verdict on what a player wrote about themselves: clear the name, the UIDs, both or
+ * neither, and let whatever was not cleared out of a hold as it was. A cleared name (as bare() cleans
+ * it) or UID goes into cleared_values, so this account cannot take it again.
+ */
+async function settleProfile(userId: string, clear: { name: boolean; uid: boolean }) {
+  await db.transaction(async (tx) => {
+    const [u] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
+    if (!u) return;
+    await tx
+      .update(users)
+      .set({
+        ...(clear.name ? { name: "", anonymous: true } : { anonymous: u.heldAnonymous ?? u.anonymous }),
+        ...(clear.uid ? { uidArknights: "", uidEndfield: "" } : {}),
+        // sharing UIDs was never the problem
+        shareUid: u.heldShareUid ?? u.shareUid,
+        profileHeldAt: null,
+        heldAnonymous: null,
+        heldShareUid: null,
+      })
+      .where(eq(users.id, userId));
+    const theirs = eq(declarations.senderId, userId);
+    if (clear.name) {
+      await tx
+        .update(declarations)
+        .set({ name: NO_NAME, heldName: null })
+        .where(and(theirs, eq(declarations.template, "myname")));
+    } else {
+      await tx
+        .update(declarations)
+        .set({ name: sql`${declarations.heldName}`, heldName: null })
+        .where(and(theirs, isNotNull(declarations.heldName)));
+    }
+    const gone = new Map<string, { kind: string; value: string }>();
+    if (clear.name && bare(u.name)) gone.set(`name|${bare(u.name)}`, { kind: "name", value: bare(u.name) });
+    for (const uid of clear.uid ? [u.uidArknights, u.uidEndfield] : []) {
+      if (uid.trim()) gone.set(`uid|${uid.trim()}`, { kind: "uid", value: uid.trim() });
+    }
+    if (gone.size) {
+      await tx
+        .insert(clearedValues)
+        .values([...gone.values()].map((g) => ({ userId, ...g })))
+        .onConflictDoNothing();
+    }
+  });
+}
+
+/** Nothing wrong after all: a held name and UIDs show again, and the 「我是…」 declarations say the name again */
+export const releaseProfile = (userId: string) => settleProfile(userId, { name: false, uid: false });
+/** Make a player anonymous for good, and take their name off the 「我是…」 declarations they already sent */
+export const clearName = (userId: string) => settleProfile(userId, { name: true, uid: false });
+/** Take a player's UIDs away (the servers they picked stay) */
+export const clearUid = (userId: string) => settleProfile(userId, { name: false, uid: true });
+export const clearBoth = (userId: string) => settleProfile(userId, { name: true, uid: true });
 
 /** Report whoever sent an inbox item (or a friend). Reporting also blocks them. */
 export async function report(userId: string, target: string, reason: unknown, note: unknown) {
   if (!isReportReason(reason)) throw new WorldError("选一个举报理由吧。");
+  const said = String(note ?? "")
+    .trim()
+    .slice(0, REPORT_NOTE_MAX);
+  if (noteMissing(reason, said)) throw new WorldError("选了「其他」的话，写一句是什么事吧。");
   const who = await whoSent(userId, String(target));
   if (!who) throw new WorldError("找不到这条消息了。");
   const [today] = await db
@@ -151,23 +234,23 @@ export async function report(userId: string, target: string, reason: unknown, no
 
   const [u] = await db.select().from(users).where(eq(users.id, who.other)).limit(1);
   if (!u) return;
+  // while held, anonymous is the hold's doing; what they had chosen is kept beside it
+  const anonymous = u.profileHeldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous;
   await db.insert(reports).values({
     reporterId: userId,
     targetId: who.other,
     reason,
-    note: String(note ?? "")
-      .trim()
-      .slice(0, REPORT_NOTE_MAX),
+    note: said,
     context: who.context,
-    targetName: u.name ? `${u.name}${u.anonymous ? "（当时是匿名）" : ""}` : "（没有名字）",
+    targetName: u.name ? `${u.name}${anonymous ? "（当时是匿名）" : ""}` : "（没有名字）",
   });
 
-  if (reason === "name") {
+  if (PROFILE_REASONS.includes(reason)) {
     const [reporters] = await db
       .select({ n: countDistinct(reports.reporterId) })
       .from(reports)
-      .where(and(eq(reports.targetId, who.other), eq(reports.reason, "name"), isNull(reports.resolvedAt)));
-    if (reporters.n >= NAME_REPORTS_TO_HIDE) await clearName(who.other);
+      .where(and(eq(reports.targetId, who.other), inArray(reports.reason, [...PROFILE_REASONS]), isNull(reports.resolvedAt)));
+    if (reporters.n >= PROFILE_REPORTS_TO_HOLD) await holdProfile(who.other);
   }
   sendReportDigest().catch((e) => {
     console.error("Report digest failed", e);
@@ -175,33 +258,93 @@ export async function report(userId: string, target: string, reason: unknown, no
   });
 }
 
+// ---- telling the admin ----
+
+/** Advisory lock taken while deciding on a report reminder; the login codes' is mailQuota.ts's */
+const REPORT_MAIL_LOCK = 7_316_002;
+/** Urgent reminders go at least this far apart, and at most this many in a day */
+const URGENT_GAP = 30 * MINUTE;
+const URGENT_PER_DAY = 12;
+
+const isUrgent = (reason: string) => (URGENT_REASONS as readonly string[]).includes(reason);
+
+/** 「名字不合适 2 条、骚扰刷屏 1 条」, the reasons in the order given */
+function byReason(rows: { reason: string }[], order: readonly ReportReason[]) {
+  const tally = new Map<ReportReason, number>();
+  for (const r of rows) {
+    const reason = isReportReason(r.reason) ? r.reason : "other";
+    tally.set(reason, (tally.get(reason) ?? 0) + 1);
+  }
+  return order.flatMap((r) => (tally.has(r) ? [`${REPORT_REASONS[r]} ${tally.get(r)} 条`] : [])).join("、");
+}
+
 /**
- * Email the admins about reports they have not been told of, at most once a
- * day. Runs after every report and hourly, so a report never waits more than
- * a day plus an hour.
+ * Email the admins about reports they have not been told of: a reminder once a day, and on top of it
+ * an urgent one whenever a new report is for URGENT_REASONS, at least half an hour after the last
+ * urgent one and at most 12 a day. Either tells of every report waiting, and the first of a day is
+ * also that day's reminder. Runs after every report and every 10 minutes, so an urgent report
+ * reaches the admin within about 40 minutes and any other within a day. Report mail is not counted
+ * against MAIL_DAILY_LIMIT, so a day the login codes used it up still gets its reminders.
  */
 export async function sendReportDigest(now = new Date()) {
   if (!ADMIN_EMAILS.length) return;
-  const fresh = await db
-    .select({ id: reports.id })
-    .from(reports)
-    .where(and(isNull(reports.resolvedAt), isNull(reports.notifiedAt)));
-  if (!fresh.length) return;
-  const go = await db.transaction(async (tx) => {
-    if (!(await mailRoom(tx, now))) return false;
-    // mailRoom keeps only the last day's sends, so any digest row left means one went out today
-    const [recent] = await tx.select({ id: mailSends.id }).from(mailSends).where(eq(mailSends.kind, "report")).limit(1);
-    if (recent) return false;
-    await tx.insert(mailSends).values({ sentAt: now, kind: "report" });
+  const due = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${REPORT_MAIL_LOCK})`);
+    const fresh = await tx
+      .select({ id: reports.id, reason: reports.reason })
+      .from(reports)
+      .where(and(isNull(reports.resolvedAt), isNull(reports.notifiedAt)));
+    if (!fresh.length) return null;
+    // only the last day counts, whatever older rows the login codes' clean-up has not got to yet
+    const sent = await tx
+      .select({ kind: mailSends.kind, at: mailSends.sentAt })
+      .from(mailSends)
+      .where(and(inArray(mailSends.kind, ["report", "report-urgent"]), gt(mailSends.sentAt, new Date(now.getTime() - DAY))));
+    const urgentSent = sent.filter((m) => m.kind === "report-urgent");
+    const urgent =
+      fresh.some((f) => isUrgent(f.reason)) &&
+      urgentSent.length < URGENT_PER_DAY &&
+      urgentSent.every((m) => now.getTime() - m.at.getTime() >= URGENT_GAP);
+    const daily = !sent.some((m) => m.kind === "report");
+    if (!urgent && !daily) return null;
+    const kinds = [...(urgent ? ["report-urgent"] : []), ...(daily ? ["report"] : [])];
+    const rows = await tx
+      .insert(mailSends)
+      .values(kinds.map((kind) => ({ sentAt: now, kind })))
+      .returning({ id: mailSends.id });
     const ids = fresh.map((f) => f.id);
     await tx.update(reports).set({ notifiedAt: now }).where(inArray(reports.id, ids));
-    return true;
+    return { fresh, ids, rows: rows.map((r) => r.id) };
   });
-  if (!go) return;
+  if (!due) return;
+
   const [open] = await db.select({ n: count() }).from(reports).where(isNull(reports.resolvedAt));
-  await sendAdminMail(
-    ADMIN_EMAILS,
-    `${SITE_NAME}有 ${fresh.length} 条新举报`,
-    [`有 ${fresh.length} 条新举报等你处理（一共 ${open.n} 条没处理）。`, "", `打开 ${SITE_URL}/admin 查看。`].join("\n"),
-  );
+  const pressing = due.fresh.filter((f) => isUrgent(f.reason));
+  const rest = due.fresh.filter((f) => !isUrgent(f.reason));
+  const order = Object.keys(REPORT_REASONS) as ReportReason[];
+  const link = `打开 ${SITE_URL}/admin 查看。`;
+  const [subject, lines] = pressing.length
+    ? [
+        `${SITE_NAME}：有 ${pressing.length} 条举报要尽快看`,
+        [
+          byReason(pressing, URGENT_REASONS),
+          ...(rest.length ? [`另外还有 ${rest.length} 条新举报：${byReason(rest, order)}`] : []),
+          `一共 ${open.n} 条没处理。`,
+        ],
+      ]
+    : [
+        `${SITE_NAME}有 ${due.fresh.length} 条新举报`,
+        [`有 ${due.fresh.length} 条新举报等你处理（一共 ${open.n} 条没处理）。`, byReason(due.fresh, order)],
+      ];
+  try {
+    await sendAdminMail(ADMIN_EMAILS, subject, [...lines, "", link].join("\n"));
+  } catch (e) {
+    // it never went: forget that it did, so the next run tries again
+    await db.delete(mailSends).where(inArray(mailSends.id, due.rows));
+    await db
+      .update(reports)
+      .set({ notifiedAt: null })
+      .where(and(inArray(reports.id, due.ids), eq(reports.notifiedAt, now)));
+    throw e;
+  }
 }

@@ -1804,7 +1804,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const reportSender = async (p: Extract<Panel, { kind: "safety" }>, reason: ReportReason, note: string) => {
     const done = await act(
       (w) => w.report(p.target, reason, note).then(() => true),
-      "举报收到了，管理员会尽快处理。TA 也被你拉黑了。",
+      "举报收到了，站长会尽快处理。TA 也被你拉黑了。",
     );
     if (done) await afterBlock(p);
   };
@@ -2606,6 +2606,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             badges={me.badges}
             wornBadge={me.wornBadge}
             blocked={[]}
+            held={me.profileHeld}
             tutorial={{ onLater: later }}
             onUnblock={() => {}}
             onSave={save}
@@ -2624,6 +2625,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             wornBadge={me.wornBadge}
             onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
             blocked={blocked}
+            held={me.profileHeld}
             // not while the tutorial runs, as she does not show up before it is over
             perlicaTimer={step ? undefined : me.perlica.timer}
             onPerlicaTimer={switchPerlicaTimer}
@@ -2976,6 +2978,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
             {visible === null ? "地图加载中…" : !feedIn ? "舟P们正在赶来…" : `这片地图里有 ${visible.toLocaleString()} 只舟P`}
             {feedIn && <span className="muted"> · 全球 {total.toLocaleString()} 只</span>}
           </div>
+          {/* only the admin's me() carries the counts */}
+          {me?.admin && me.admin.open > 0 && (
+            <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
+              {me.admin.open} 条举报待处理
+              {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条要尽快看`}
+            </a>
+          )}
         </div>
       )}
 

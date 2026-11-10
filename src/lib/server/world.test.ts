@@ -16,7 +16,7 @@ import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
 import type { PlaceTarget, PublicRoach } from "../world/types";
-import { deleteAccount, isBanned } from "./account";
+import { deleteAccount, isBanned, mailboxForms } from "./account";
 import { allPlayers, openCases, resolveCase, retentionStats, setBadge } from "./admin";
 import { award, catchUpBadges, fireSongs, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
@@ -38,6 +38,7 @@ import {
   amiyaTouches,
   bannedEmails,
   blocks,
+  clearedValues,
   dailyTotals,
   declarations,
   deliveries,
@@ -168,7 +169,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}`,
   );
   // no 明河快进一天 left over
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;
@@ -2383,7 +2384,7 @@ describe("server world", () => {
     await expect(t2.block(items[0].id)).rejects.toThrow("找不到");
   });
 
-  it("files reports for the admin, blocks the reported player, and hides a name three players report", async () => {
+  it("files reports for the admin, blocks the reported player, and holds a profile three players report", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const t1 = await demo("t1");
     await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true);
@@ -2396,23 +2397,199 @@ describe("server world", () => {
     expect(filed).toMatchObject({ reason: "name", note: "名字在骂人", context: "大胆碰了举报人的本体", targetName: "阿白" });
     expect(await db.$count(reports)).toBe(1);
 
-    // two more players report the same name, and it is hidden until the admin looks
-    for (const key of ["t2", "t3"]) {
+    // two more players report what 阿白 wrote about themselves, for the other reasons of that kind: held until the admin looks
+    for (const [key, reason] of [
+      ["t2", "contact"],
+      ["t3", "impersonate"],
+    ]) {
       const p = await demo(key);
       await t1.touch((await publicAt(t1, tester(key).roaches[0])).id, true);
       const [item] = (await p.inbox()).filter((i) => i.kind === "touch");
-      await p.report(item.id, "name");
+      await p.report(item.id, reason);
     }
-    const [aBai] = await db.select().from(users).where(eq(users.id, t1.id));
-    expect(aBai).toMatchObject({ anonymous: true, name: "" });
+    const aBai = await userRow(t1.id);
+    expect(aBai).toMatchObject({ anonymous: true, name: "阿白", heldAnonymous: false, heldShareUid: false });
+    expect(aBai.profileHeldAt).not.toBeNull();
+    expect((await t1.me()).profileHeld).toBe(true);
 
     const cases = await openCases();
     expect(cases).toHaveLength(1);
-    expect(cases[0]).toMatchObject({ targetId: t1.id, reporters: 3, name: "" });
+    // the admin sees what 阿白 had chosen, and that it is held
+    expect(cases[0]).toMatchObject({ targetId: t1.id, reporters: 3, name: "阿白", anonymous: false, heldAt: expect.any(Number) });
+    expect(cases[0].reports.map((r) => r.reason)).toEqual(["name", "contact", "impersonate"]);
     expect(cases[0].reports.map((r) => r.name)).toEqual(["阿白", "阿白", "阿白"]);
     await resolveCase(t1.id, "dismiss");
     expect(await openCases()).toEqual([]);
+    expect(await userRow(t1.id)).toMatchObject({ anonymous: false, name: "阿白", profileHeldAt: null, heldAnonymous: null });
+    expect((await t1.me()).profileHeld).toBe(false);
     await expect(resolveCase(t1.id, "ban")).rejects.toThrow("测试玩家");
+  });
+
+  it("holds a profile for three different players reporting what it says, never counting spam, minors or 其他", async () => {
+    const troll = await signUp("troll@example.com");
+    await troll.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "小坏", games: ["arknights"] });
+    await troll.placeRoach({ kind: "main" }, TOKYO);
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const reportBy = async (p: Player, at: LngLat, reason: string, note = "") => {
+      await troll.touch((await publicAt(troll, at)).id, true);
+      const [item] = (await p.inbox()).filter((i) => i.kind === "touch");
+      await p.report(item.id, reason, note);
+    };
+    const held = async () => Boolean((await userRow(troll.id)).profileHeldAt);
+    await reportBy(me, PEOPLES_SQUARE, "name");
+    await reportBy(await demo("t2"), tester("t2").roaches[0], "spam");
+    await reportBy(await demo("t3"), tester("t3").roaches[0], "minor");
+    await reportBy(await demo("t4"), tester("t4").roaches[0], "other", "一直碰我");
+    await reportBy(await demo("t5"), tester("t5").roaches[0], "contact");
+    expect(await held()).toBe(false);
+    await reportBy(await demo("t1"), tester("t1").roaches[0], "impersonate");
+    expect(await held()).toBe(true);
+    expect(await userRow(troll.id)).toMatchObject({ anonymous: true, name: "小坏", heldAnonymous: false });
+  });
+
+  it("hides a held name and UIDs from everyone and locks them in 资料, until the admin lets them out", async () => {
+    const troll = await signUp("troll@example.com");
+    await troll.saveProfile({
+      ...EMPTY_PROFILE,
+      anonymous: false,
+      name: "小坏",
+      games: ["arknights"],
+      uid: { arknights: "12345678", endfield: "" },
+      uidServer: { arknights: "cn", endfield: "" },
+      shareUid: true,
+    });
+    await troll.placeRoach({ kind: "main" }, TOKYO);
+    await troll.declare({ template: "myname", game: "arknights" } as Declaration);
+    // 阿白 has a clone in Tokyo: touched boldly by 小坏, and in reach of 小坏's declaration
+    const t1 = await demo("t1");
+    await troll.touch((await publicAt(troll, tester("t1").roaches[1])).id, true);
+    const seen = async () => {
+      const items = await t1.inbox();
+      const touch = items.find((i) => i.kind === "touch");
+      const said = items.find((i) => i.kind === "declaration" && i.text.endsWith("我要玩明日方舟"));
+      return {
+        name: touch?.kind === "touch" ? touch.from?.displayName : null,
+        uid: touch?.kind === "touch" ? touch.from?.uid : null,
+        said: said?.kind === "declaration" ? said.text : null,
+      };
+    };
+    expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我是小坏，我要玩明日方舟" });
+
+    await safety.holdProfile(troll.id);
+    expect(await seen()).toEqual({ name: "匿名舟P", uid: undefined, said: "我是匿名舟P，我要玩明日方舟" });
+    // holding again keeps what they had chosen
+    await safety.holdProfile(troll.id);
+    expect(await userRow(troll.id)).toMatchObject({ heldAnonymous: false, heldShareUid: true });
+
+    const held = (await troll.me()).profile;
+    expect(held).toMatchObject({ anonymous: true, name: "小坏", shareUid: false, uid: { arknights: "12345678" } });
+    const locked = "站长看过之前先改不了";
+    await expect(troll.saveProfile({ ...held, name: "小好" })).rejects.toThrow(locked);
+    await expect(troll.saveProfile({ ...held, anonymous: false })).rejects.toThrow(locked);
+    await expect(troll.saveProfile({ ...held, drPrefix: true })).rejects.toThrow(locked);
+    await expect(troll.saveProfile({ ...held, uid: { arknights: "87654321", endfield: "" } })).rejects.toThrow(locked);
+    await expect(troll.saveProfile({ ...held, uidServer: { arknights: "bili", endfield: "" } })).rejects.toThrow(locked);
+    await expect(troll.saveProfile({ ...held, shareUid: true })).rejects.toThrow(locked);
+    await troll.saveProfile({ ...held, avatar: "imp", color: "red" });
+    // a game left out meanwhile keeps its UID for the admin
+    await troll.saveProfile({ ...held, avatar: "imp", color: "red", games: ["endfield"] });
+    expect((await troll.me()).profile).toMatchObject({ avatar: "imp", color: "red", games: ["endfield"], uid: { arknights: "12345678" } });
+    await troll.saveProfile({ ...held, avatar: "imp", color: "red" });
+    await expect(troll.declare({ template: "myname", game: "arknights" } as Declaration)).rejects.toThrow("站长看过之前先发不了这句");
+
+    // nothing wrong after all: everything as it was, and editable again
+    await resolveCase(troll.id, "dismiss");
+    expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我是小坏，我要玩明日方舟" });
+    const back = await troll.me();
+    expect(back.profileHeld).toBe(false);
+    expect(back.profile).toMatchObject({ anonymous: false, name: "小坏", shareUid: true, avatar: "imp" });
+    await troll.saveProfile({ ...back.profile, name: "小好" });
+  });
+
+  it("clears a name for good: that player cannot take it again however it is spelt, anyone else can", async () => {
+    const troll = await signUp("troll@example.com");
+    await troll.saveProfile({
+      ...EMPTY_PROFILE,
+      anonymous: false,
+      name: "小坏",
+      games: ["arknights"],
+      uid: { arknights: "12345678", endfield: "" },
+      uidServer: { arknights: "cn", endfield: "" },
+      shareUid: true,
+    });
+    await troll.placeRoach({ kind: "main" }, TOKYO);
+    await troll.declare({ template: "myname", game: "arknights" } as Declaration);
+    await safety.holdProfile(troll.id);
+    await resolveCase(troll.id, "clearName");
+
+    const after = await troll.me();
+    // the UID was never the problem, so sharing it comes back
+    expect(after.profile).toMatchObject({ name: "", anonymous: true, shareUid: true, uid: { arknights: "12345678" } });
+    expect(after.profileHeld).toBe(false);
+    const said = (await (await demo("t1")).inbox()).find((i) => i.kind === "declaration");
+    expect(said).toMatchObject({ text: "我是匿名舟P，我要玩明日方舟" });
+    for (const name of ["小坏", " 小 坏 ", "小-坏!"]) {
+      await expect(troll.saveProfile({ ...after.profile, anonymous: false, name })).rejects.toThrow("这个名字被站长清掉过");
+    }
+    // kept behind 匿名 too, as the name is kept
+    await expect(troll.saveProfile({ ...after.profile, anonymous: true, name: "小坏" })).rejects.toThrow("这个名字被站长清掉过");
+    await troll.saveProfile({ ...after.profile, anonymous: false, name: "小好" });
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "小坏" });
+  });
+
+  it("clears the UIDs alone or the name and UIDs both, and keeps cleared UIDs off that account", async () => {
+    const troll = await signUp("troll@example.com");
+    const before: Profile = {
+      ...EMPTY_PROFILE,
+      anonymous: false,
+      name: "小坏",
+      games: ["arknights", "endfield"],
+      uid: { arknights: "12345678", endfield: "998877" },
+      uidServer: { arknights: "cn", endfield: "cn" },
+      shareUid: true,
+    };
+    await troll.saveProfile(before);
+    await safety.holdProfile(troll.id);
+    await resolveCase(troll.id, "clearUid");
+    const after = (await troll.me()).profile;
+    // the name was never the problem: it shows again, and the servers stay picked
+    expect(after).toMatchObject({
+      name: "小坏",
+      anonymous: false,
+      shareUid: true,
+      uid: { arknights: "", endfield: "" },
+      uidServer: { arknights: "cn", endfield: "cn" },
+    });
+    const gone = "这个 UID 被站长清掉过";
+    await expect(troll.saveProfile({ ...after, uid: { arknights: "12345678", endfield: "" } })).rejects.toThrow(gone);
+    await expect(troll.saveProfile({ ...after, uid: { arknights: "", endfield: "998877" } })).rejects.toThrow(gone);
+    await troll.saveProfile({ ...after, uid: { arknights: "11112222", endfield: "" } });
+    await me.saveProfile({ ...before, name: "我" });
+
+    await safety.holdProfile(troll.id);
+    await resolveCase(troll.id, "clearBoth");
+    const both = (await troll.me()).profile;
+    expect(both).toMatchObject({ name: "", anonymous: true, uid: { arknights: "", endfield: "" } });
+    await expect(troll.saveProfile({ ...both, anonymous: false, name: "小坏" })).rejects.toThrow("这个名字被站长清掉过");
+    await expect(troll.saveProfile({ ...both, uid: { arknights: "11112222", endfield: "" } })).rejects.toThrow(gone);
+    const kept = await db.select({ kind: clearedValues.kind, value: clearedValues.value }).from(clearedValues);
+    expect(kept.map((k) => `${k.kind}:${k.value}`).sort()).toEqual(["name:小坏", "uid:11112222", "uid:12345678", "uid:998877"]);
+    // they go with the account
+    await deleteAccount((await userRow(troll.id))!);
+    expect(await db.$count(clearedValues)).toBe(0);
+  });
+
+  it("asks a report for 其他 to say what happened, before anything is filed or blocked", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t1 = await demo("t1");
+    await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true);
+    const [touch] = await me.inbox();
+    await expect(me.report(touch.id, "other")).rejects.toThrow("写一句是什么事");
+    await expect(me.report(touch.id, "other", " 啊 ")).rejects.toThrow("写一句是什么事");
+    expect(await db.$count(reports)).toBe(0);
+    expect(await me.blocks()).toEqual([]);
+    await me.report(touch.id, "other", "一直跟着");
+    expect(await db.$count(reports)).toBe(1);
   });
 
   it("shows the admin what a reported player wrote about themselves, UIDs included, and what came of reports before", async () => {
@@ -2448,7 +2625,8 @@ describe("server world", () => {
       roaches: { main: true, clones: 1 },
       friends: 0,
       blockedBy: 1,
-      settled: { dismissed: 0, nameCleared: 0 },
+      heldAt: null,
+      settled: { dismissed: 0, nameCleared: 0, uidCleared: 0 },
     });
     // never where its roaches are
     expect(JSON.stringify(c)).not.toMatch(/121\.47|139\.7|lng|lat/);
@@ -2459,7 +2637,21 @@ describe("server world", () => {
     await troll.touch((await publicAt(troll, tester("t2").roaches[0])).id, false);
     await t2.report((await t2.inbox()).find((i) => i.kind === "touch")!.id, "other", "一直碰我");
     const [again] = await openCases();
-    expect(again).toMatchObject({ reporters: 1, blockedBy: 2, settled: { dismissed: 1, nameCleared: 0 } });
+    expect(again).toMatchObject({ reporters: 1, blockedBy: 2, settled: { dismissed: 1, nameCleared: 0, uidCleared: 0 } });
+  });
+
+  it("bans every way of writing the banned mailbox", async () => {
+    const banned = {
+      "a.b+x@gmail.com": ["ab@gmail.com", "a.b@googlemail.com", "AB+y@Gmail.com", " a.b+x@gmail.com "],
+      "c+1@example.com": ["c@example.com", "c+2@example.com"],
+    };
+    for (const email of Object.keys(banned)) await resolveCase((await signUp(email)).id, "ban");
+    for (const email of Object.values(banned).flat()) expect(await isBanned(email), email).toBe(true);
+    for (const email of ["a.b@example.com", "c@gmail.com", "abc@gmail.com", "me@example.com"]) expect(await isBanned(email), email).toBe(false);
+    expect(mailboxForms(" A.B+x@GoogleMail.com ")).toEqual(["a.b+x@googlemail.com", "ab@gmail.com"]);
+    expect(mailboxForms("+x@example.com")).toEqual(["+x@example.com"]);
+    expect(mailboxForms("c@example.com")).toEqual(["c@example.com"]);
+    expect(JSON.stringify(await db.select().from(bannedEmails))).not.toMatch(/gmail|example/);
   });
 
   it("bans an account: deletes it and refuses its email from then on", async () => {

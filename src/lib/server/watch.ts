@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import tls from "node:tls";
-import { count, eq, gt, sql } from "drizzle-orm";
+import { and, count, eq, gt, sql } from "drizzle-orm";
 import { beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
@@ -178,10 +178,11 @@ async function checkErrors(now: number): Promise<Finding[]> {
 }
 
 async function checkQuota(now: number): Promise<Finding[]> {
+  // the admin's report reminders are not counted against the limit (src/lib/server/mailQuota.ts)
   const [{ n }] = await db
     .select({ n: count() })
     .from(mailSends)
-    .where(gt(mailSends.sentAt, new Date(now - DAY)));
+    .where(and(eq(mailSends.kind, "login"), gt(mailSends.sentAt, new Date(now - DAY))));
   const said = `过去 24 小时发了 ${n} 封，上限是 ${MAIL_DAILY_LIMIT} 封（服务器 .env 里的 MAIL_DAILY_LIMIT）。`;
   if (n >= MAIL_DAILY_LIMIT) {
     return [

@@ -57,6 +57,14 @@ export const users = pgTable("users", {
   support: text("support").array().notNull().default(emptyArray),
   /** The last change to it, which 触须之交 see in their history */
   supportChangedAt: at("support_changed_at"),
+  /**
+   * 先藏起来: enough players reported what they wrote about themselves (src/lib/server/safety.ts holdProfile),
+   * so their name and UIDs are hidden and locked until the admin looks; null when not held. While held,
+   * anonymous and shareUid are forced on and off, and these keep what the player had chosen.
+   */
+  profileHeldAt: at("profile_held_at"),
+  heldAnonymous: boolean("held_anonymous"),
+  heldShareUid: boolean("held_share_uid"),
 
   /** The Beijing date of the player's latest visit; only the day, never the time */
   lastSeenOn: date("last_seen_on", { mode: "string" }),
@@ -143,7 +151,10 @@ export const loginCodes = pgTable("login_codes", {
 export const mailSends = pgTable("mail_sends", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   sentAt: at("sent_at").notNull().defaultNow(),
-  /** "login" for a code, "report" for the admin's report digest */
+  /**
+   * "login" for a code, the only kind counted against MAIL_DAILY_LIMIT; "report" for the admin's daily
+   * report reminder and "report-urgent" for one about URGENT_REASONS (src/lib/server/safety.ts)
+   */
   kind: text("kind").notNull().default("login"),
 });
 
@@ -251,6 +262,8 @@ export const declarations = pgTable(
     food: text("food"),
     /** The sender's name as it was when they declared it, for 「我是<名字>…」 */
     name: text("name"),
+    /** While the sender's profile is held: the name the declaration had, put back if the admin finds nothing wrong */
+    heldName: text("held_name"),
     /** For a limited-time declaration, the id of its line in events.ts */
     line: text("line"),
     recipients: integer("recipients").notNull(),
@@ -621,7 +634,7 @@ export const reports = pgTable(
     /** When the admin was emailed about it */
     notifiedAt: at("notified_at"),
     resolvedAt: at("resolved_at"),
-    /** "dismissed" or "name_cleared"; a ban deletes the reports with the account */
+    /** "dismissed", "name_cleared", "uid_cleared" or "both_cleared"; a ban deletes the reports with the account */
     resolution: text("resolution"),
   },
   (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt)],
@@ -632,6 +645,24 @@ export const bannedEmails = pgTable("banned_emails", {
   emailHash: text("email_hash").primaryKey(),
   createdAt: createdAt(),
 });
+
+/**
+ * Names and UIDs the admin cleared from an account, which that account may not take again (others may).
+ * A name is kept as cleaned by bare(), a UID trimmed; deleting the account deletes them.
+ */
+export const clearedValues = pgTable(
+  "cleared_values",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "name" or "uid" */
+    kind: text("kind").notNull(),
+    value: text("value").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.kind, t.value] })],
+);
 
 /** Words no name may contain (or be, when whole), kept on the admin page and never in the repository (src/lib/nameRules.ts). */
 export const nameWords = pgTable("name_words", {

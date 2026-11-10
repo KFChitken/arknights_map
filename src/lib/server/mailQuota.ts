@@ -1,5 +1,5 @@
 import "server-only";
-import { count, lt, sql } from "drizzle-orm";
+import { count, eq, lt, sql } from "drizzle-orm";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { mailSends } from "./schema";
@@ -12,12 +12,14 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * Inside a transaction: hold the mail lock until it ends, forget sends older
- * than a day, and say whether one more email fits under MAIL_DAILY_LIMIT. The
- * caller records its send in mail_sends before committing.
+ * than a day, and say whether one more login code fits under MAIL_DAILY_LIMIT.
+ * Only login codes count: the admin's report reminders have rules of their own
+ * (src/lib/server/safety.ts). The caller records its send in mail_sends before
+ * committing.
  */
 export async function mailRoom(tx: Tx, now: Date) {
   await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
   await tx.delete(mailSends).where(lt(mailSends.sentAt, new Date(now.getTime() - DAY_MS)));
-  const [sent] = await tx.select({ n: count() }).from(mailSends);
+  const [sent] = await tx.select({ n: count() }).from(mailSends).where(eq(mailSends.kind, "login"));
   return sent.n < MAIL_DAILY_LIMIT;
 }

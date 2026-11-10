@@ -44,7 +44,7 @@ describe("badges", () => {
     expect(lockedText(badgeById("chief")!, { ...none, declareDays: 12 })).toBe("12 / 30 天");
     expect(lockedText(badgeById("fluent")!, { ...none, declareLines: 9 })).toBe("8 / 8 句");
     expect(lockedText(badgeById("fullsquad")!, { ...none, guideFriends: 3 })).toBe("3 / 4 位向导");
-    expect(lockedText(badgeById("beta")!, none)).toBe("管理员颁发");
+    expect(lockedText(badgeById("beta")!, none)).toBe("站长颁发");
   });
 
   it("points at the nearest badge earned by a count, by friends, responders or days of declaring and responding", () => {
