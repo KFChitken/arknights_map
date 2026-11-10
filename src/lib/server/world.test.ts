@@ -15,9 +15,10 @@ import { MAX_CLONES, POLICY_UPDATED_AT } from "../rules";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { reachText } from "../world/logic";
-import type { PlaceTarget, PublicRoach } from "../world/types";
+import type { InboxItem, PlaceTarget, PublicRoach } from "../world/types";
+import type { AdminAction } from "../safety";
 import { deleteAccount, isBanned, mailboxForms } from "./account";
-import { allPlayers, openCases, retentionStats, setBadge, settleCase, settleCases } from "./admin";
+import { answerAppeal, banInfo, findPlayers, openAppeals, openCases, reportCounts, retentionStats, setBadge, settleCase, settleCases } from "./admin";
 import { award, catchUpBadges, fireSongs, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
 import { deviceDay, deviceWeek } from "./guides";
@@ -32,6 +33,8 @@ import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
 import { listen } from "./live";
 import { pruneOldActivity } from "./retention";
+import { appeal } from "./staffNotes";
+import { distanceKm } from "../geo";
 import { allRoaches } from "./roachFeed";
 import * as safety from "./safety";
 import {
@@ -100,6 +103,8 @@ function as(id: string) {
     unblock: (blockId: string) => safety.unblock(id, blockId),
     blocks: () => safety.blockList(id),
     report: (target: string, reason: string, note = "") => safety.report(id, target, reason, note),
+    reportRoach: (roachId: string, reason: string, note = "") => safety.reportRoach(id, roachId, reason, note),
+    appeal: (actionId: string, text: string) => appeal(id, actionId, text),
     identities: () => identities(id, null),
   };
 }
@@ -186,14 +191,28 @@ beforeEach(async () => {
 });
 
 describe("server world", () => {
-  it("lists every real account's email and name for the admin, newest first, without demo players", async () => {
+  it("finds accounts for the admin by email, name or the start of their id, newest first, never demo players, nobody without a search", async () => {
     await me.saveProfile({ ...EMPTY_PROFILE, anonymous: true, name: "阿白" });
     const other = await signUp("other@example.com");
-    const players = await allPlayers();
+    for (const q of ["", "   ", null]) expect(await findPlayers(q)).toEqual({ players: [], total: 0 });
+    const { players, total } = await findPlayers("EXAMPLE.com");
     expect(players.map((p) => p.email)).toEqual(["other@example.com", "me@example.com"]);
+    expect(total).toBe(2);
     expect(players[1]).toMatchObject({ id: me.id, name: "阿白", anonymous: true });
     expect(Object.keys(players[0]).sort()).toEqual(["anonymous", "email", "id", "joinedAt", "name"]);
-    expect(other.id).toBe(players[0].id);
+    expect((await findPlayers("白")).players.map((p) => p.id)).toEqual([me.id]);
+    expect((await findPlayers(other.id.slice(0, 8))).players.map((p) => p.id)).toEqual([other.id]);
+    // an id matches only at its start, and % and _ stand for themselves
+    expect((await findPlayers(other.id.slice(4, 12))).total).toBe(0);
+    for (const q of ["%", "_", "me%", "o_her"]) expect((await findPlayers(q)).total, q).toBe(0);
+    // the demo players have addresses too
+    expect((await findPlayers("t1")).total).toBe(0);
+    // at most 50, the newest
+    await db.insert(users).values(Array.from({ length: 60 }, (_, i) => ({ email: `many${i}@example.com`, createdAt: new Date(Date.now() - i * 1000) })));
+    const many = await findPlayers("many");
+    expect(many.total).toBe(60);
+    expect(many.players).toHaveLength(50);
+    expect(many.players[0].email).toBe("many0@example.com");
   });
 
   it("refuses names the rules or the admin's words block, and lists the names in use they catch", async () => {
@@ -593,7 +612,7 @@ describe("server world", () => {
 
     it("is never shown to the admin", async () => {
       await perlica.setTimer(me.id, true);
-      expect(JSON.stringify(await allPlayers())).not.toMatch(/lastActive|last_active|perlica/i);
+      expect(JSON.stringify(await findPlayers("example"))).not.toMatch(/lastActive|last_active|perlica/i);
     });
   });
 
@@ -2420,14 +2439,14 @@ describe("server world", () => {
     expect(aBai.profileHeldAt).not.toBeNull();
     expect((await t1.me()).profileHeld).toBe(true);
 
-    const cases = await openCases();
+    const cases = (await openCases()).cases;
     expect(cases).toHaveLength(1);
     // the admin sees what 阿白 had chosen, and that it is held
     expect(cases[0]).toMatchObject({ targetId: t1.id, reporters: 3, name: "阿白", anonymous: false, heldAt: expect.any(Number) });
     expect(cases[0].reports.map((r) => r.reason)).toEqual(["name", "contact", "impersonate"]);
     expect(cases[0].reports.map((r) => r.name)).toEqual(["阿白", "阿白", "阿白"]);
     await settleCase(t1.id, "dismiss");
-    expect(await openCases()).toEqual([]);
+    expect((await openCases()).cases).toEqual([]);
     expect(await userRow(t1.id)).toMatchObject({ anonymous: false, name: "阿白", profileHeldAt: null, heldAnonymous: null });
     expect((await t1.me()).profileHeld).toBe(false);
     await expect(settleCase(t1.id, "ban")).rejects.toThrow("测试玩家");
@@ -2619,7 +2638,7 @@ describe("server world", () => {
     await troll.touch((await publicAt(troll, { lng: 121.5, lat: 31.25 })).id, true);
     await me.report((await me.inbox())[0].id, "spam");
 
-    const [c] = await openCases();
+    const [c] = (await openCases()).cases;
     expect(c).toMatchObject({
       name: "小坏",
       drPrefix: true,
@@ -2645,7 +2664,7 @@ describe("server world", () => {
     const t2 = await demo("t2");
     await troll.touch((await publicAt(troll, tester("t2").roaches[0])).id, false);
     await t2.report((await t2.inbox()).find((i) => i.kind === "touch")!.id, "other", "一直碰我");
-    const [again] = await openCases();
+    const [again] = (await openCases()).cases;
     expect(again).toMatchObject({ reporters: 1, blockedBy: 2, settled: { dismissed: 1, nameCleared: 0, uidCleared: 0 } });
   });
 
@@ -2763,9 +2782,9 @@ describe("server world", () => {
       await settleCase(bad.id, "warn");
     }
     await reportedBy(bad, reporters[3], "spam");
-    expect((await openCases())[0]).toMatchObject({ yellow: 3, settled: { warned: 3, dismissed: 0 } });
+    expect(((await openCases()).cases)[0]).toMatchObject({ yellow: 3, settled: { warned: 3, dismissed: 0 } });
     await db.execute(sql`update ${modActions} set ${sql.identifier("created_at")} = now() - interval '91 days' where ${modActions.id} = (select min(${modActions.id}::text)::uuid from ${modActions})`);
-    expect((await openCases())[0].yellow).toBe(2);
+    expect(((await openCases()).cases)[0].yellow).toBe(2);
   });
 
   it("pauses a player for seven days, and lets the reports' own pause go when the admin looks", async () => {
@@ -2790,7 +2809,7 @@ describe("server world", () => {
     await reportedBy(fresh, d, "spam");
     expect(await userRow(fresh.id)).toMatchObject({ suspendedAuto: true });
     expect(await staffTexts(fresh)).toEqual(["有人举报你骚扰，站长看过之前先暂停你的互动，最长 7 天。"]);
-    expect((await openCases()).find((x) => x.targetId === fresh.id)).toMatchObject({ suspendedAuto: true });
+    expect(((await openCases()).cases).find((x) => x.targetId === fresh.id)).toMatchObject({ suspendedAuto: true });
     await settleCase(fresh.id, "dismiss");
     expect(await userRow(fresh.id)).toMatchObject({ suspendedUntil: null, suspendedAuto: false });
     expect(await staffTexts(fresh)).toContain("站长看过了，没发现问题，你的互动恢复了。");
@@ -2811,10 +2830,10 @@ describe("server world", () => {
     expect(await staffTexts(bad)).toEqual([]);
     expect(await db.select({ rule: modActions.rule }).from(modActions)).toEqual([{ rule: "age" }]);
     await reportedBy(bad, (await players(1, "q"))[0], "spam");
-    expect((await openCases())[0].ageCheckAt).toEqual(expect.any(Number));
+    expect(((await openCases()).cases)[0].ageCheckAt).toEqual(expect.any(Number));
     await confirmAge(bad.id);
     expect((await bad.me()).ageCheck).toBe(false);
-    expect((await openCases())[0]).toMatchObject({ ageCheckAt: null, settled: { ageChecks: 1 } });
+    expect(((await openCases()).cases)[0]).toMatchObject({ ageCheckAt: null, settled: { ageChecks: 1 } });
   });
 
   it("counts only reliable reporters: new accounts and those often found wrong hold nothing", async () => {
@@ -2823,14 +2842,14 @@ describe("server world", () => {
     for (const r of rs.slice(0, 3)) await reportedBy(bad, r, "name");
     expect((await userRow(bad.id)).profileHeldAt).toBeNull();
     // several new accounts within the hour: maybe a pile-on
-    expect((await openCases())[0]).toMatchObject({ reporters: 3, reliable: 0, brigade: true });
+    expect(((await openCases()).cases)[0]).toMatchObject({ reporters: 3, reliable: 0, brigade: true });
 
     await aged(...rs.slice(3).map((r) => r.p.id));
     await db.update(users).set({ reportsDismissed: 3, reportsUpheld: 1 }).where(eq(users.id, rs[5].p.id));
     for (const r of rs.slice(3, 6)) await reportedBy(bad, r, "contact");
     expect((await userRow(bad.id)).profileHeldAt).toBeNull();
-    expect((await openCases())[0]).toMatchObject({ reporters: 6, reliable: 2 });
-    expect((await openCases())[0].reports.map((r) => r.reporter?.reliable)).toEqual([false, false, false, true, true, false]);
+    expect(((await openCases()).cases)[0]).toMatchObject({ reporters: 6, reliable: 2 });
+    expect(((await openCases()).cases)[0].reports.map((r) => r.reporter?.reliable)).toEqual([false, false, false, true, true, false]);
     await reportedBy(bad, rs[6], "impersonate");
     expect((await userRow(bad.id)).profileHeldAt).not.toBeNull();
   });
@@ -2841,14 +2860,14 @@ describe("server world", () => {
     await reportedBy(green, rs[0], "name");
     await reportedBy(yellow, rs[1], "spam");
     await reportedBy(red, rs[2], "minor");
-    expect((await openCases()).map((c) => [c.targetId, c.level])).toEqual([
+    expect(((await openCases()).cases).map((c) => [c.targetId, c.level])).toEqual([
       [red.id, "red"],
       [yellow.id, "yellow"],
       [green.id, "green"],
     ]);
     await settleCases([red.id, yellow.id, green.id], "dismiss");
     await expect(settleCases([red.id], "ban")).rejects.toThrow("不能批量");
-    expect(await openCases()).toEqual([]);
+    expect((await openCases()).cases).toEqual([]);
     // each one settled on its own, and each reporter told
     for (const r of rs) expect(await staffTexts(r.p)).toEqual([expect.stringContaining("这次没发现违规")]);
 
@@ -2857,15 +2876,341 @@ describe("server world", () => {
     const blockers = await Promise.all(Array.from({ length: 12 }, (_, i) => signUp(`b${i}@example.com`)));
     const block = (from: Player[], at = new Date()) => db.insert(blocks).values(from.map((b) => ({ blockerId: b.id, blockedId: lonely.id, createdAt: at })));
     await block(blockers.slice(0, 10));
-    expect(await openCases()).toMatchObject([{ targetId: lonely.id, level: "yellow", reports: [], blockedRecently: 10 }]);
+    expect((await openCases()).cases).toMatchObject([{ targetId: lonely.id, level: "yellow", reports: [], blockedRecently: 10 }]);
     await settleCase(lonely.id, "dismiss");
-    expect(await openCases()).toEqual([]);
+    expect((await openCases()).cases).toEqual([]);
     // again only after ten more since the admin looked
     await db.delete(blocks).where(eq(blocks.blockedId, lonely.id));
     await block(blockers.slice(0, 9), new Date(Date.now() + 1000));
-    expect(await openCases()).toEqual([]);
+    expect((await openCases()).cases).toEqual([]);
     await block(blockers.slice(9, 10), new Date(Date.now() + 1000));
-    expect(await openCases()).toMatchObject([{ targetId: lonely.id, blockedRecently: 10 }]);
+    expect((await openCases()).cases).toMatchObject([{ targetId: lonely.id, blockedRecently: 10 }]);
+  });
+
+  // ---- reports of a roach's spot on the map, the queue a page at a time, appeals ----
+
+  /** The roach the viewer's map shows at a spot, by the id the feed gave it */
+  const feedId = async (viewer: Player, at: LngLat) => (await publicAt(viewer, at)).id;
+  const OSAKA = { lng: 135.5, lat: 34.69 };
+
+  it("files a roach's spot without blocking anyone, once a roach while open, within the day's ten reports", async () => {
+    const owner = await troll();
+    const [a] = await players(1);
+    await owner.touch(await feedId(owner, a.at), true);
+    const before = { owner: await owner.inbox(), a: await a.p.inbox() };
+    const id = await feedId(a.p, TOKYO);
+    await expect(a.p.reportRoach(id, "spam")).rejects.toThrow("举报理由");
+    await a.p.reportRoach(id, "place", "  学校门口  ");
+    const [main] = await db.select().from(roaches).where(eq(roaches.userId, owner.id));
+    expect(await db.select().from(reports)).toMatchObject([
+      {
+        reporterId: a.p.id,
+        targetId: owner.id,
+        reason: "place",
+        note: "学校门口",
+        context: "地图上的蟑螂（本体）",
+        targetName: "小坏",
+        roachId: main.id,
+        placeLng: TOKYO.lng,
+        placeLat: TOKYO.lat,
+        roachSlot: 0,
+        nearM: null,
+      },
+    ]);
+    // nobody blocked: both still see all they saw, and the touch can still be answered
+    expect(await db.$count(blocks)).toBe(0);
+    expect(await owner.inbox()).toEqual(before.owner);
+    expect(await a.p.inbox()).toEqual(before.a);
+
+    // once a roach while its report is open, even after it moved (a new id on the map)
+    await a.p.reportRoach(id, "pattern");
+    await owner.placeRoach({ kind: "move", roachId: main.id }, OSAKA);
+    await expect(a.p.reportRoach(id, "place")).rejects.toThrow("这只蟑螂已经挪走了。");
+    await a.p.reportRoach(await feedId(a.p, OSAKA), "stalk");
+    expect(await db.$count(reports)).toBe(1);
+
+    // nobody's own roach, nor a guide, nor a show roach
+    await expect(owner.reportRoach(await feedId(a.p, OSAKA), "place")).rejects.toThrow("这是你自己的蟑螂。");
+    await expect(a.p.reportRoach(AMIYA_ID, "place")).rejects.toThrow("是站里的向导，不用举报。");
+
+    // the day's ten are shared with reports of players
+    await db.insert(reports).values(
+      Array.from({ length: 9 }, () => ({ reporterId: a.p.id, targetId: owner.id, reason: "spam", context: "x", targetName: "x" })),
+    );
+    const other = await signUp("other@example.com");
+    await other.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await expect(a.p.reportRoach(await feedId(a.p, PEOPLES_SQUARE), "place")).rejects.toThrow("今天举报得够多了");
+    await other.touch(await feedId(other, a.at), true);
+    const [touch] = (await a.p.inbox()).filter((i) => i.kind === "touch" && i.id !== before.a[0]?.id);
+    await expect(a.p.report(touch.id, "spam")).rejects.toThrow("今天举报得够多了");
+  });
+
+  it("keeps how far a 「一直贴着我放」 roach was from the reporter's nearest one, never where that is", async () => {
+    const owner = await troll();
+    const near = { lng: 116.4, lat: 39.9 };
+    const far = { lng: 116.4, lat: 30 };
+    const reporter = await signUp("near@example.com");
+    await reporter.placeRoach({ kind: "main" }, far);
+    await reporter.placeRoach({ kind: "clone" }, { lng: 116.4, lat: 39.9009 });
+    await owner.placeRoach({ kind: "clone" }, near);
+    await reporter.reportRoach(await feedId(reporter, near), "stalk");
+    const nobody = await signUp("nobody@example.com");
+    await nobody.reportRoach(await feedId(nobody, near), "stalk");
+    const rows = await db.select().from(reports).orderBy(reports.createdAt);
+    expect(rows.map((r) => [r.nearM, r.roachSlot, r.context])).toEqual([
+      [Math.round(distanceKm(near, { lng: 116.4, lat: 39.9009 }) * 1000), 1, "地图上的蟑螂（克隆体）"],
+      [null, 1, "地图上的蟑螂（克隆体）"],
+    ]);
+    expect(rows[0].nearM).toBe(100);
+    expect(JSON.stringify(rows)).not.toContain("39.9009");
+  });
+
+  it("keeps a roach's case apart from its owner's, so settling one never settles or tells of the other", async () => {
+    const bad = await troll();
+    const [a, b] = await players(2);
+    await reportedBy(bad, a, "spam");
+    await b.p.reportRoach(await feedId(b.p, TOKYO), "place");
+    const [main] = await db.select().from(roaches).where(eq(roaches.userId, bad.id));
+    expect(await reportCounts()).toEqual({ open: 2, urgent: 1, appeals: 0 });
+
+    let cases = (await openCases()).cases;
+    expect(cases.map((c) => [c.kind, c.caseId, c.level])).toEqual([
+      ["roach", `roach:${main.id}`, "red"],
+      ["person", bad.id, "yellow"],
+    ]);
+    expect(cases[0]).toMatchObject({
+      targetId: bad.id,
+      name: "小坏",
+      rule: "roach",
+      reporters: 1,
+      roach: { main: true, lng: TOKYO.lng, lat: TOKYO.lat, state: "here" },
+      reports: [{ reason: "place", context: "地图上的蟑螂（本体）", place: TOKYO, nearM: null }],
+    });
+    // the owner's info box, as in their own case, and never where their other roaches are
+    expect(cases[0].roaches).toEqual({ main: true, clones: 0 });
+    expect(cases[1].reports).toHaveLength(1);
+
+    // the roach first: the player's case stays open, its reporter hears nothing
+    await settleCase(cases[0].caseId, "warn");
+    cases = (await openCases()).cases;
+    expect(cases.map((c) => c.kind)).toEqual(["person"]);
+    const day = monthDay(Date.now());
+    expect(await staffTexts(b.p)).toEqual([`站长看过你 ${day} 举报的那只蟑螂（放在学校、别人家门口等不合适的地方）了：已经处理了，谢谢你。`]);
+    expect(await staffTexts(a.p)).toEqual([]);
+    expect(await staffTexts(bad)).toEqual(["因为社区守则里「蟑螂不能放在不合适的地方」这一条，站长提醒你一次，记一张黄牌。90 天内 3 张黄牌可能会被封号。"]);
+
+    // then the player's: the roach's reporter is not told again
+    await b.p.reportRoach(await feedId(b.p, TOKYO), "pattern");
+    await settleCase(bad.id, "dismiss");
+    expect((await openCases()).cases.map((c) => c.kind)).toEqual(["roach"]);
+    expect(await staffTexts(b.p)).toHaveLength(1);
+    expect(await staffTexts(a.p)).toEqual([expect.stringContaining("那位舟P（骚扰刷屏）了：这次没发现违规")]);
+
+    // moved since, then gone: the case goes on per report, and there is nothing left to take back
+    await bad.placeRoach({ kind: "move", roachId: main.id }, OSAKA);
+    expect((await openCases()).cases[0].roach).toMatchObject({ state: "moved", lng: TOKYO.lng });
+    await bad.removeRoach(main.id);
+    const [gone] = (await openCases()).cases;
+    const [report] = await db.select().from(reports).where(eq(reports.reason, "pattern"));
+    expect(gone).toMatchObject({ kind: "roach", caseId: `report:${report.id}`, roach: { state: "gone" } });
+    await expect(settleCase(gone.caseId, "removeRoach")).rejects.toThrow("已经收回了");
+    await expect(settleCase(gone.caseId, "suspend")).rejects.toThrow("蟑螂的举报只能");
+    await expect(settleCase(bad.id, "removeRoach")).rejects.toThrow("只用在地图上蟑螂的举报");
+    await settleCase(gone.caseId, "dismiss");
+    expect(await staffTexts(b.p)).toEqual([expect.stringContaining("（好几只摆成字或图案）了：这次没发现问题。"), expect.stringContaining("已经处理了")]);
+    expect((await openCases()).cases).toEqual([]);
+    expect(await userRow(b.p.id)).toMatchObject({ reportsUpheld: 1, reportsDismissed: 1 });
+  });
+
+  it("takes a reported roach back as its owner would: a clone alone, the main roach with its clones, a yellow card each", async () => {
+    const bad = await troll();
+    await bad.placeRoach({ kind: "clone" }, OSAKA);
+    await bad.placeRoach({ kind: "clone" }, PEOPLES_SQUARE);
+    const [a] = await players(1);
+    await a.p.reportRoach(await feedId(a.p, OSAKA), "pattern");
+    const [clone] = (await openCases()).cases;
+    expect(clone.roach?.main).toBe(false);
+    await settleCase(clone.caseId, "removeRoach");
+    const left = await db.select({ slot: roaches.slot, lng: roaches.lng }).from(roaches).where(eq(roaches.userId, bad.id));
+    expect(left.map((r) => r.lng).sort()).toEqual([PEOPLES_SQUARE.lng, TOKYO.lng].sort());
+    expect(await staffTexts(bad)).toEqual(["因为社区守则里「蟑螂不能放在不合适的地方」这一条，站长把你的一只克隆体收回到你手里了，记一张黄牌。"]);
+    expect(await db.select({ resolution: reports.resolution }).from(reports)).toEqual([{ resolution: "roach_removed" }]);
+    expect(await db.select({ action: modActions.action, yellow: modActions.yellow, rule: modActions.rule }).from(modActions)).toEqual([
+      { action: "removeRoach", yellow: true, rule: "roach" },
+    ]);
+
+    await a.p.reportRoach(await feedId(a.p, TOKYO), "place");
+    const [main] = (await openCases()).cases;
+    expect(main.roach?.main).toBe(true);
+    await settleCase(main.caseId, "removeRoach");
+    expect(await db.$count(roaches, eq(roaches.userId, bad.id))).toBe(0);
+    expect((await staffTexts(bad))[0]).toBe("因为社区守则里「蟑螂不能放在不合适的地方」这一条，站长把你的一只本体收回到你手里了，记一张黄牌。");
+    expect((await bad.me()).roaches).toEqual([]);
+    // two yellow cards on the next case about them
+    await db.insert(reports).values({ reporterId: a.p.id, targetId: bad.id, reason: "spam", context: "x", targetName: "x" });
+    expect((await openCases()).cases[0]).toMatchObject({ yellow: 2, settled: { roachesRemoved: 2 } });
+  });
+
+  it("pages the queue fifty at a time in order of colour, with how many there are of each", async () => {
+    const targets = await db
+      .insert(users)
+      .values(Array.from({ length: 120 }, (_, i) => ({ email: `t${i}@example.com` })))
+      .returning({ id: users.id });
+    const reasons = ["name", "spam", "minor"];
+    await db.insert(reports).values(
+      targets.map((t, i) => ({
+        reporterId: me.id,
+        targetId: t.id,
+        reason: reasons[i % 3],
+        context: "x",
+        targetName: "x",
+        createdAt: new Date(Date.now() - (200 - i) * 60_000),
+      })),
+    );
+    const pages = await Promise.all([1, 2, 3, 4].map((page) => openCases({ page })));
+    expect(pages.map((p) => p.cases.length)).toEqual([50, 50, 20, 0]);
+    expect(pages[0]).toMatchObject({ total: 120, levels: { red: 40, yellow: 40, green: 40 }, nameOnly: 40, page: 1 });
+    const all = pages.flatMap((p) => p.cases);
+    expect(all.map((c) => c.level)).toEqual([...Array(40).fill("red"), ...Array(40).fill("yellow"), ...Array(40).fill("green")]);
+    expect(new Set(all.map((c) => c.caseId)).size).toBe(120);
+    // within a colour, the one waiting longest first
+    for (const level of ["red", "yellow", "green"]) {
+      const since = all.filter((c) => c.level === level).map((c) => c.since);
+      expect(since).toEqual([...since].sort((x, y) => x - y));
+    }
+    // filtered on the server
+    expect(await openCases({ level: "yellow" })).toMatchObject({ total: 40, levels: { red: 40 } });
+    expect((await openCases({ level: "yellow" })).cases.every((c) => c.level === "yellow")).toBe(true);
+    expect((await openCases({ reason: "minor", page: 1 })).total).toBe(40);
+    expect((await openCases({ nameOnly: true })).cases.every((c) => c.reports.every((r) => r.reason === "name"))).toBe(true);
+    expect((await openCases({ reason: "blocks" })).total).toBe(0);
+  });
+
+  it("keeps why an account was banned, finds the ban however the address is written, and lets actions go after a year", async () => {
+    const bad = await signUp("a.b+x@gmail.com");
+    await settleCase(bad.id, "ban", { rule: "contact" });
+    expect(await banInfo(" AB@gmail.com ")).toEqual({ banned: { at: expect.any(Number), reason: "contact" }, accounts: [] });
+    expect(await banInfo("me@example.com")).toEqual({
+      banned: null,
+      accounts: [{ id: me.id, email: "me@example.com", name: "", anonymous: expect.any(Boolean), joinedAt: expect.any(Number) }],
+    });
+    await expect(banInfo("me")).rejects.toThrow("完整的邮箱");
+
+    const other = await troll();
+    const DAY_MS = 86_400_000;
+    await db.insert(modActions).values([
+      { userId: other.id, action: "warn", yellow: true, createdAt: new Date(Date.now() - 366 * DAY_MS) },
+      { userId: other.id, action: "warn", yellow: true, createdAt: new Date(Date.now() - 364 * DAY_MS) },
+    ]);
+    await pruneOldActivity();
+    expect((await db.select({ at: modActions.createdAt }).from(modActions)).map((a) => Math.round((Date.now() - a.at.getTime()) / DAY_MS))).toEqual([364]);
+  });
+
+  it("lets a player appeal what the admin did once, within 30 days, and tells them the answer", async () => {
+    const bad = await troll();
+    const [a] = await players(1);
+    await reportedBy(bad, a, "spam");
+    await settleCase(bad.id, "warn");
+    const staffNote = async () => (await bad.inbox()).find((i) => i.kind === "staff" && i.appeal)! as Extract<InboxItem, { kind: "staff" }>;
+    const { appeal: open } = await staffNote();
+    expect(open).toEqual({ actionId: expect.any(String), state: "open" });
+    const actionId = open!.actionId;
+    await expect(bad.appeal(actionId, "嗯")).rejects.toThrow("写一句");
+    await expect(bad.appeal(actionId, "长".repeat(101))).rejects.toThrow("最多写 100 个字");
+    await expect(a.p.appeal(actionId, "不是我的处理")).rejects.toThrow("找不到这次处理了");
+    await expect(bad.appeal("nonsense", "我没有刷屏")).rejects.toThrow("找不到这次处理了");
+    // the reporter's note has nothing to appeal
+    expect((await a.p.inbox()).find((i) => i.kind === "staff")).not.toHaveProperty("appeal");
+
+    await bad.appeal(actionId, "  我没有刷屏，是误会  ");
+    await expect(bad.appeal(actionId, "再申诉一次")).rejects.toThrow("已经申诉过了");
+    expect((await staffNote()).appeal).toEqual({ actionId, state: "sent" });
+    expect(await reportCounts()).toMatchObject({ appeals: 1 });
+    const [waiting] = await openAppeals();
+    expect(waiting).toMatchObject({ actionId, action: "warn", rule: "harass", appeal: "我没有刷屏，是误会", who: { targetId: bad.id, yellow: 1, name: "小坏" } });
+
+    await answerAppeal(actionId, true);
+    await expect(answerAppeal(actionId, false)).rejects.toThrow("已经处理过了");
+    expect(await openAppeals()).toEqual([]);
+    expect(await reportCounts()).toMatchObject({ appeals: 0 });
+    expect((await staffNote()).appeal).toEqual({ actionId, state: "answered" });
+    expect(await staffTexts(bad)).toContain("站长看了你的申诉：维持原来的处理。");
+
+    // 30 days on, there is no appealing it
+    const [b] = await players(1, "late");
+    await reportedBy(bad, b, "spam");
+    await settleCase(bad.id, "suspend");
+    const [late] = await db.select().from(modActions).where(eq(modActions.action, "suspend"));
+    await db.update(modActions).set({ createdAt: new Date(Date.now() - 31 * 86_400_000) }).where(eq(modActions.id, late.id));
+    await expect(bad.appeal(late.id, "太久以前了")).rejects.toThrow("不能再申诉了");
+    // nor the reports' own pause, nor asking for their age
+    const auto = await db.insert(modActions).values({ userId: bad.id, action: "suspend", auto: true }).returning();
+    const age = await db.insert(modActions).values({ userId: bad.id, action: "ageCheck" }).returning();
+    for (const x of [auto[0], age[0]]) await expect(bad.appeal(x.id, "我要申诉")).rejects.toThrow("找不到这次处理了");
+  });
+
+  it("undoes each kind of action on appeal as far as it can", async () => {
+    const bad = await signUp("bad@example.com");
+    const profile: Profile = {
+      ...EMPTY_PROFILE,
+      anonymous: false,
+      name: "小坏",
+      games: ["arknights"],
+      uid: { ...EMPTY_PROFILE.uid, arknights: "12345678" },
+      uidServer: { ...EMPTY_PROFILE.uidServer, arknights: "cn" },
+    };
+    await bad.saveProfile(profile);
+    await bad.placeRoach({ kind: "main" }, TOKYO);
+    const reporters = await players(5);
+    const undo = async (action: AdminAction, reason: string) => {
+      const r = reporters.shift()!;
+      await reportedBy(bad, r, reason);
+      await settleCase(bad.id, action);
+      const [a] = await db.select().from(modActions).where(and(eq(modActions.userId, bad.id), eq(modActions.action, action)));
+      await bad.appeal(a.id, "处理错了");
+      await answerAppeal(a.id, false);
+      expect((await db.select().from(modActions).where(eq(modActions.id, a.id)))[0]).toMatchObject({ appealResult: "reverted" });
+      return (await staffTexts(bad))[0];
+    };
+
+    expect(await undo("warn", "spam")).toBe("站长看了你的申诉：撤销了这次处理，黄牌不算了。");
+    expect(await undo("suspend", "spam")).toBe("站长看了你的申诉：撤销了这次处理，互动恢复了。");
+    expect((await userRow(bad.id)).suspendedUntil).toBeNull();
+
+    expect(await undo("clearName", "name")).toBe("站长看了你的申诉：撤销了这次处理，可以再用原来的名字了（要在「我的资料」里重新填上）。");
+    expect(await userRow(bad.id)).toMatchObject({ name: "", anonymous: true });
+    await bad.saveProfile(profile);
+    expect((await userRow(bad.id)).name).toBe("小坏");
+
+    expect(await undo("clearUid", "contact")).toBe("站长看了你的申诉：撤销了这次处理，可以再填原来的 UID 了（要在「我的资料」里重新填上）。");
+    await bad.saveProfile(profile);
+    expect((await userRow(bad.id)).uidArknights).toBe("12345678");
+    expect(await db.$count(clearedValues)).toBe(0);
+
+    // a roach taken back stays taken back; its yellow card goes
+    const r = reporters.shift()!;
+    await r.p.reportRoach(await feedId(r.p, TOKYO), "place");
+    const [roachCase] = (await openCases()).cases;
+    await settleCase(roachCase.caseId, "removeRoach");
+    const [removed] = await db.select().from(modActions).where(eq(modActions.action, "removeRoach"));
+    await bad.appeal(removed.id, "那里不是学校");
+    await answerAppeal(removed.id, false);
+    expect((await staffTexts(bad))[0]).toBe("站长看了你的申诉：撤销了这次处理，黄牌不算了。");
+    expect(await db.$count(roaches, eq(roaches.userId, bad.id))).toBe(0);
+    await db.insert(reports).values({ reporterId: r.p.id, targetId: bad.id, reason: "spam", context: "x", targetName: "x" });
+    expect((await openCases()).cases[0].yellow).toBe(0);
+
+    // a pause the admin gave later stays when an earlier one is undone; an age question goes
+    await db.update(users).set({ suspendedUntil: new Date(Date.now() + 86_400_000), ageCheckAt: new Date() }).where(eq(users.id, bad.id));
+    const [old] = await db
+      .insert(modActions)
+      .values({ userId: bad.id, action: "suspend", until: new Date(Date.now() + 3600_000), appeal: "x", appealedAt: new Date() })
+      .returning();
+    await answerAppeal(old.id, false);
+    expect((await userRow(bad.id)).suspendedUntil).not.toBeNull();
+    const [age] = await db.insert(modActions).values({ userId: bad.id, action: "ageCheck", appeal: "x", appealedAt: new Date() }).returning();
+    await answerAppeal(age.id, false);
+    expect((await userRow(bad.id)).ageCheckAt).toBeNull();
   });
 
   it("runs the radar around your main roach, counting arrivals and departures across its edge", async () => {

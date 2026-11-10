@@ -1,6 +1,7 @@
 import "server-only";
-import { and, count, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { declarationText, replyOf } from "../declarations";
+import { distanceKm } from "../geo";
 import { guideById, guideOfItem } from "../guides";
 import { bare } from "../nameRules";
 import { displayName } from "../profile";
@@ -14,7 +15,19 @@ import {
   UNRELIABLE_DISMISSED_MIN,
   UNRELIABLE_DISMISSED_RATIO,
 } from "../rules";
-import { isReportReason, noteMissing, PROFILE_REASONS, REPORT_REASONS, URGENT_REASONS, type ReportReason } from "../safety";
+import {
+  ALL_REASONS,
+  asReason,
+  isReportReason,
+  isRoachReportReason,
+  noteMissing,
+  PROFILE_REASONS,
+  reasonWords,
+  ROACH_REPORT_REASONS,
+  URGENT_REASONS,
+  type AnyReason,
+} from "../safety";
+import { isBotId } from "../world/bots";
 import { DAY, MINUTE } from "../world/logic";
 import { WorldError, type BlockedPlayer } from "../world/types";
 import { db } from "./db";
@@ -30,11 +43,13 @@ import {
   pokes,
   reactions,
   reports,
+  roaches,
   touches,
   users,
   watchMails,
   type UserRow,
 } from "./schema";
+import { roachByFeedId } from "./roachFeed";
 import { addNotes } from "./staffNotes";
 import { note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
@@ -182,9 +197,10 @@ export async function holdProfile(userId: string) {
 /**
  * The admin's verdict on what a player wrote about themselves: clear the name, the UIDs, both or
  * neither, and let whatever was not cleared out of a hold as it was. A cleared name (as bare() cleans
- * it) or UID goes into cleared_values, so this account cannot take it again.
+ * it) or UID goes into cleared_values, so this account cannot take it again, with the admin's action
+ * that cleared it (actionId) for undoing it on appeal; what an earlier action cleared stays that one's.
  */
-async function settleProfile(userId: string, clear: { name: boolean; uid: boolean }) {
+async function settleProfile(userId: string, clear: { name: boolean; uid: boolean }, actionId: string | null = null) {
   await db.transaction(async (tx) => {
     const [u] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
     if (!u) return;
@@ -220,7 +236,7 @@ async function settleProfile(userId: string, clear: { name: boolean; uid: boolea
     if (gone.size) {
       await tx
         .insert(clearedValues)
-        .values([...gone.values()].map((g) => ({ userId, ...g })))
+        .values([...gone.values()].map((g) => ({ userId, ...g, actionId })))
         .onConflictDoNothing();
     }
   });
@@ -229,10 +245,10 @@ async function settleProfile(userId: string, clear: { name: boolean; uid: boolea
 /** Nothing wrong after all: a held name and UIDs show again, and the 「我是…」 declarations say the name again */
 export const releaseProfile = (userId: string) => settleProfile(userId, { name: false, uid: false });
 /** Make a player anonymous for good, and take their name off the 「我是…」 declarations they already sent */
-export const clearName = (userId: string) => settleProfile(userId, { name: true, uid: false });
+export const clearName = (userId: string, actionId?: string) => settleProfile(userId, { name: true, uid: false }, actionId);
 /** Take a player's UIDs away (the servers they picked stay) */
-export const clearUid = (userId: string) => settleProfile(userId, { name: false, uid: true });
-export const clearBoth = (userId: string) => settleProfile(userId, { name: true, uid: true });
+export const clearUid = (userId: string, actionId?: string) => settleProfile(userId, { name: false, uid: true }, actionId);
+export const clearBoth = (userId: string, actionId?: string) => settleProfile(userId, { name: true, uid: true }, actionId);
 
 /**
  * A reporter the automatic steps (holding a profile, suspending a new account) count: an account
@@ -274,6 +290,30 @@ async function suspendIfNew(target: UserRow, now: number) {
   });
 }
 
+/** The reasons of reports about a roach on the map, which are cases of their own (src/lib/server/admin.ts) */
+export const ROACH_KEYS = Object.keys(ROACH_REPORT_REASONS) as (keyof typeof ROACH_REPORT_REASONS)[];
+
+/** The reported player's name as a report keeps it: while held, anonymous is the hold's doing, and what they had chosen is kept beside it */
+function nameThen(u: UserRow) {
+  const anonymous = u.profileHeldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous;
+  return u.name ? `${u.name}${anonymous ? "（当时是匿名）" : ""}` : "（没有名字）";
+}
+
+/** Reports made in the last day, of players and roaches alike, against REPORTS_PER_DAY */
+async function reportedToday(userId: string) {
+  const [today] = await db
+    .select({ n: count() })
+    .from(reports)
+    .where(and(eq(reports.reporterId, userId), gt(reports.createdAt, new Date(Date.now() - DAY))));
+  return today.n;
+}
+
+const tellAdmin = () =>
+  sendReportDigest().catch((e) => {
+    console.error("Report digest failed", e);
+    noteSignal("job", "digest");
+  });
+
 /** Report whoever sent an inbox item (or a friend). Reporting also blocks them. */
 export async function report(userId: string, target: string, reason: unknown, note: unknown) {
   if (!isReportReason(reason)) throw new WorldError("选一个举报理由吧。");
@@ -283,32 +323,26 @@ export async function report(userId: string, target: string, reason: unknown, no
   if (noteMissing(reason, said)) throw new WorldError("选了「其他」的话，写一句是什么事吧。");
   const who = await whoSent(userId, String(target));
   if (!who) throw new WorldError("找不到这条消息了。");
-  const [today] = await db
-    .select({ n: count() })
-    .from(reports)
-    .where(and(eq(reports.reporterId, userId), gt(reports.createdAt, new Date(Date.now() - DAY))));
-  if (today.n >= REPORTS_PER_DAY) throw new WorldError("今天举报得够多了，明天再来吧。");
+  if ((await reportedToday(userId)) >= REPORTS_PER_DAY) throw new WorldError("今天举报得够多了，明天再来吧。");
 
   await blockSender(userId, who);
-  // A second report of the same player while the first is still open adds nothing
+  // A second report of the same player while the first is still open adds nothing (one of their roaches is a case apart)
   const [open] = await db
     .select({ id: reports.id })
     .from(reports)
-    .where(and(eq(reports.reporterId, userId), eq(reports.targetId, who.other), isNull(reports.resolvedAt)))
+    .where(and(eq(reports.reporterId, userId), eq(reports.targetId, who.other), isNull(reports.resolvedAt), notInArray(reports.reason, ROACH_KEYS)))
     .limit(1);
   if (open) return;
 
   const [u] = await db.select().from(users).where(eq(users.id, who.other)).limit(1);
   if (!u) return;
-  // while held, anonymous is the hold's doing; what they had chosen is kept beside it
-  const anonymous = u.profileHeldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous;
   await db.insert(reports).values({
     reporterId: userId,
     targetId: who.other,
     reason,
     note: said,
     context: who.context,
-    targetName: u.name ? `${u.name}${anonymous ? "（当时是匿名）" : ""}` : "（没有名字）",
+    targetName: nameThen(u),
   });
 
   const now = Date.now();
@@ -317,10 +351,60 @@ export async function report(userId: string, target: string, reason: unknown, no
     await holdProfile(who.other);
   }
   if (reason === "spam") await suspendIfNew(u, now);
-  sendReportDigest().catch((e) => {
-    console.error("Report digest failed", e);
-    noteSignal("job", "digest");
+  tellAdmin();
+}
+
+/**
+ * 举报这只蟑螂: report where a roach on the map was put, by the id the feed gave the page (it changes
+ * with every move). Unlike reporting a player it blocks nobody, so nothing the owner sees changes and
+ * the reporter cannot find out whose roach it was; nor does it count towards holding a name or pausing
+ * an account. The admin sees the roach's spot (public anyway), never the owner's other roaches; for
+ * 「一直贴着我放」 how far it was from the reporter's nearest roach, never where that is.
+ */
+export async function reportRoach(userId: string, publicId: string, reason: unknown, note: unknown) {
+  if (!isRoachReportReason(reason)) throw new WorldError("选一个举报理由吧。");
+  const said = String(note ?? "")
+    .trim()
+    .slice(0, REPORT_NOTE_MAX);
+  const id = String(publicId);
+  // the card offers none of these; this is the backstop
+  const guide = guideById(id);
+  if (guide) throw new WorldError(`${guide.name}是站里的向导，不用举报。`);
+  if (isBotId(id)) throw new WorldError("这是网站放的演示蟑螂，不用举报。");
+  const roach = await roachByFeedId(id);
+  if (!roach) throw new WorldError("这只蟑螂已经挪走了。");
+  if (roach.userId === userId) throw new WorldError("这是你自己的蟑螂。");
+  if ((await reportedToday(userId)) >= REPORTS_PER_DAY) throw new WorldError("今天举报得够多了，明天再来吧。");
+
+  // once a roach while its reports are open, wherever it moved meanwhile
+  const [open] = await db
+    .select({ id: reports.id })
+    .from(reports)
+    .where(and(eq(reports.reporterId, userId), eq(reports.roachId, roach.id), isNull(reports.resolvedAt), inArray(reports.reason, ROACH_KEYS)))
+    .limit(1);
+  if (open) return;
+  const [u] = await db.select().from(users).where(eq(users.id, roach.userId)).limit(1);
+  if (!u) return;
+
+  let nearM: number | null = null;
+  if (reason === "stalk") {
+    const mine = await db.select({ lng: roaches.lng, lat: roaches.lat }).from(roaches).where(eq(roaches.userId, userId));
+    if (mine.length) nearM = Math.round(Math.min(...mine.map((m) => distanceKm(m, roach))) * 1000);
+  }
+  await db.insert(reports).values({
+    reporterId: userId,
+    targetId: roach.userId,
+    reason,
+    note: said,
+    context: roach.slot === 0 ? "地图上的蟑螂（本体）" : "地图上的蟑螂（克隆体）",
+    targetName: nameThen(u),
+    roachId: roach.id,
+    placeLng: roach.lng,
+    placeLat: roach.lat,
+    roachSlot: roach.slot,
+    nearM,
   });
+  tellAdmin();
 }
 
 // ---- telling the admin ----
@@ -333,14 +417,14 @@ const URGENT_PER_DAY = 12;
 
 const isUrgent = (reason: string) => (URGENT_REASONS as readonly string[]).includes(reason);
 
-/** 「名字不合适 2 条、骚扰刷屏 1 条」, the reasons in the order given (the report sheet's unless told) */
-export function byReason(rows: { reason: string }[], order: readonly ReportReason[] = Object.keys(REPORT_REASONS) as ReportReason[]) {
-  const tally = new Map<ReportReason, number>();
+/** 「名字不合适 2 条、骚扰刷屏 1 条」, the reasons in the order given (the report sheets' unless told) */
+export function byReason(rows: { reason: string }[], order: readonly AnyReason[] = ALL_REASONS) {
+  const tally = new Map<AnyReason, number>();
   for (const r of rows) {
-    const reason = isReportReason(r.reason) ? r.reason : "other";
+    const reason = asReason(r.reason);
     tally.set(reason, (tally.get(reason) ?? 0) + 1);
   }
-  return order.flatMap((r) => (tally.has(r) ? [`${REPORT_REASONS[r]} ${tally.get(r)} 条`] : [])).join("、");
+  return order.flatMap((r) => (tally.has(r) ? [`${reasonWords(r)} ${tally.get(r)} 条`] : [])).join("、");
 }
 
 /**

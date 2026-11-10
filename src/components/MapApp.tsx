@@ -70,7 +70,7 @@ import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
-import type { ReportReason } from "@/lib/safety";
+import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { RoachFeedCopy } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
@@ -153,6 +153,7 @@ import {
 import PlaceBar from "./app/PlaceBar";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
+import RoachReportSheet from "./app/RoachReportSheet";
 import SafetySheet from "./app/SafetySheet";
 import AgeCheckSheet from "./app/AgeCheckSheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
@@ -292,6 +293,8 @@ type Panel =
   | { kind: "visitMove"; friendId: string; roach: PublicRoach }
   | { kind: "radar"; radar: Radar | null }
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
+  /** 举报这只蟑螂, from its card on the map */
+  | { kind: "roachReport"; roach: PublicRoach }
   | { kind: "login"; reason?: string }
   /** 隐私说明更新了; then: what was going to open first */
   | { kind: "consent"; then?: Panel | null }
@@ -1814,6 +1817,22 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (done) await afterBlock(p);
   };
 
+  /** 我觉得处理错了: once sent, the note says so, in the open inbox and the list it was opened from */
+  const appeal = async (itemId: string, actionId: string, text: string) => {
+    const sent = await act((w) => w.appeal(actionId, text).then(() => true), "申诉交上去了，站长会再看一次。");
+    if (!sent) return false;
+    const mark = (i: InboxItem): InboxItem => (i.kind === "staff" && i.id === itemId && i.appeal ? { ...i, appeal: { ...i.appeal, state: "sent" } } : i);
+    setInbox((all) => all.map(mark));
+    setPanel((p) => (p?.kind === "inbox" ? { ...p, items: p.items.map(mark) } : p));
+    return true;
+  };
+
+  /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
+  const reportRoach = async (roach: PublicRoach, reason: RoachReportReason, note: string) => {
+    const done = await act((w) => w.reportRoach(roach.id, reason, note).then(() => true), "收到了，站长会看看这只蟑螂放的位置。");
+    if (done) setPanel(null);
+  };
+
   const unblock = async (blockId: string) => {
     const done = await act((w) => w.unblock(blockId).then(() => true), "解除拉黑了。");
     if (!done) return;
@@ -2777,8 +2796,17 @@ export default function MapApp({ cn }: { cn: boolean }) {
             onViewProfile={(profile, target) => setPanel({ kind: "viewProfile", profile, target, back: p })}
             onOpenFriend={(friendId) => setPanel({ kind: "friend", friendId, back: { ...p, tab: "friends" } })}
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: p })}
+            onAppeal={appeal}
             friendly={inboxFriendly}
             suspendedUntil={me.suspendedUntil}
+            onClose={() => setPanel(null)}
+          />
+        );
+      case "roachReport":
+        return (
+          <RoachReportSheet
+            clone={p.roach.clone}
+            onReport={(reason, note) => reportRoach(p.roach, reason, note)}
             onClose={() => setPanel(null)}
           />
         );
@@ -2998,10 +3026,10 @@ export default function MapApp({ cn }: { cn: boolean }) {
             {feedIn && <span className="muted"> · 全球 {total.toLocaleString()} 只</span>}
           </div>
           {/* only the admin's me() carries the counts */}
-          {me?.admin && me.admin.open > 0 && (
+          {me?.admin && (me.admin.open > 0 || me.admin.appeals > 0) && (
             <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
-              {me.admin.open} 条举报待处理
-              {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条要尽快看`}
+              {[me.admin.open > 0 && `${me.admin.open} 条举报`, me.admin.appeals > 0 && `${me.admin.appeals} 条申诉`].filter(Boolean).join("、")}待处理
+              {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
             </a>
           )}
         </div>
@@ -3199,6 +3227,15 @@ export default function MapApp({ cn }: { cn: boolean }) {
           }
           onTouch={(bold) => touch(selected.roach, bold)}
           onPoke={() => poke(selected.roach)}
+          onReport={
+            selected.roach.guide
+              ? undefined
+              : () => {
+                  setPanel({ kind: "roachReport", roach: selected.roach });
+                  setSelected(null);
+                  runAfterReport();
+                }
+          }
           onClose={() => {
             setSelected(null);
             runAfterReport();

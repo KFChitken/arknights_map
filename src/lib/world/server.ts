@@ -4,7 +4,7 @@ import type { BatchAct, Gesture } from "../friendly";
 import type { Game } from "../games";
 import type { HelpAsk } from "../help";
 import type { Profile } from "../profile";
-import type { ReportReason } from "../safety";
+import type { ReportReason, RoachReportReason } from "../safety";
 import type { LngLat } from "../types";
 import {
   AgeCheckNeeded,
@@ -124,6 +124,8 @@ export class ServerWorld implements World {
   unblock = (blockId: string) => this.call<void>("unblock", blockId);
   blocks = () => this.call<BlockedPlayer[]>("blocks");
   report = (target: string, reason: ReportReason, note: string) => this.call<void>("report", target, reason, note);
+  reportRoach = (roachId: string, reason: RoachReportReason, note: string) => this.call<void>("reportRoach", roachId, reason, note);
+  appeal = (actionId: string, text: string) => this.call<void>("appeal", actionId, text);
   wearBadge = (badge: string | null) => this.call<void>("wearBadge", badge);
   seeBadges = (badges: string[]) => this.call<void>("seeBadges", badges);
   identities = () => this.call<Identity[]>("identities");

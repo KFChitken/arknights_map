@@ -49,7 +49,7 @@ describe("a paused player", () => {
       expect([op, res.status], op).toEqual([op, 403]);
       expect(res.error).toMatch(/^你的互动被站长暂停到 \d+ 月 \d+ 日，这期间你还能看地图和消息，但不能碰人、发宣言、回应、戳一戳和做客。$/);
     }
-    for (const op of ["goHome", "sendHome", "closeHelp", "report", "block", "inbox", "blocks", "saveProfile"]) {
+    for (const op of ["goHome", "sendHome", "closeHelp", "report", "reportRoach", "appeal", "block", "inbox", "blocks", "saveProfile"]) {
       const res = await call(op, op === "saveProfile" ? EMPTY_PROFILE : "x", "y");
       expect([op, res.error.includes("暂停")], op).toEqual([op, false]);
     }
@@ -66,8 +66,8 @@ describe("a player the admin asked to say again they are 18", () => {
     await refresh();
     expect(await call("saveProfile", EMPTY_PROFILE)).toEqual({ status: 428, error: AGE_CHECK_NEEDED });
     expect(await call("touch", "x", true)).toEqual({ status: 428, error: AGE_CHECK_NEEDED });
-    // reporting and blocking stay open
-    expect((await call("report", "x", "spam")).status).not.toBe(428);
+    // reporting, blocking and appealing stay open
+    for (const op of ["report", "reportRoach", "appeal"]) expect((await call(op, "x", "spam")).status, op).not.toBe(428);
 
     expect((await call("confirmAge")).status).toBe(200);
     await refresh();

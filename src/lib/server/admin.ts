@@ -1,22 +1,42 @@
 import "server-only";
-import { and, asc, count, countDistinct, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, count, countDistinct, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { badgeById } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { declarationText } from "../declarations";
 import { serverName } from "../games";
-import { BLOCKS_TO_REVIEW, BLOCKS_WINDOW_DAYS, RELIABLE_AFTER_DAYS, SUSPEND_DAYS, YELLOW_DAYS } from "../rules";
 import {
+  BLOCKS_TO_REVIEW,
+  BLOCKS_WINDOW_DAYS,
+  RELIABLE_AFTER_DAYS,
+  SUSPEND_DAYS,
+  UNRELIABLE_DISMISSED_MIN,
+  UNRELIABLE_DISMISSED_RATIO,
+  YELLOW_DAYS,
+} from "../rules";
+import {
+  ALL_REASONS,
+  asReason,
   BATCH_ACTIONS,
   BLOCKS_LEVEL,
   CASE_LEVELS,
-  isReportReason,
+  CASES_PER_PAGE,
+  FIND_PLAYERS_MAX,
+  isRoachReportReason,
   isRuleCode,
   REPORT_LEVEL,
   RULE_OF_REASON,
   URGENT_REASONS,
   type AdminAction,
+  type AdminAppeal,
   type AdminCase,
+  type AdminPerson,
   type AdminPlayer,
+  type BanInfo,
+  type CaseLevel,
+  type CasePage,
+  type CaseQuery,
+  type FoundPlayers,
   type ReportCounts,
   type ReporterInfo,
   type RetentionStats,
@@ -24,37 +44,56 @@ import {
 } from "../safety";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
-import { banAccount } from "./account";
+import { banAccount, banOf } from "./account";
 import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
 import { roachesChanged } from "./roachFeed";
-import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter } from "./safety";
-import { blocks, dailyTotals, declarations, friendships, modActions, reports, roaches, touches, userBadges, users, type UserRow } from "./schema";
+import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter, ROACH_KEYS } from "./safety";
+import {
+  blocks,
+  clearedValues,
+  dailyTotals,
+  declarations,
+  friendships,
+  modActions,
+  reports,
+  roaches,
+  touches,
+  userBadges,
+  users,
+  type UserRow,
+} from "./schema";
 import { addNotes, type NewNote } from "./staffNotes";
-import { profileOf, storedDeclaration } from "./world";
+import { profileOf, removeRoach, storedDeclaration } from "./world";
 
 /** The admin page's rules: who may open it, what it shows and the ways to settle a report. */
 
 export const isAdmin = (u: UserRow | null) => Boolean(u?.email && ADMIN_EMAILS.includes(u.email));
 
-/** Open reports, and how many of them are for URGENT_REASONS: the admin's corner of the map. */
+const waitingAppeal = and(isNotNull(modActions.appealedAt), isNull(modActions.answeredAt));
+
+/** Open reports (of players and roaches), how many of them are for URGENT_REASONS, and appeals waiting: the admin's corner of the map */
 export async function reportCounts(): Promise<ReportCounts> {
-  const [row] = await db
-    .select({
-      open: count(),
-      urgent: sql<number>`count(*) filter (where ${inArray(reports.reason, [...URGENT_REASONS])})`.mapWith(Number),
-    })
-    .from(reports)
-    .where(isNull(reports.resolvedAt));
-  return { open: row.open, urgent: row.urgent };
+  const [[row], [appeals]] = await Promise.all([
+    db
+      .select({
+        open: count(),
+        urgent: sql<number>`count(*) filter (where ${inArray(reports.reason, [...URGENT_REASONS])})`.mapWith(Number),
+      })
+      .from(reports)
+      .where(isNull(reports.resolvedAt)),
+    db.select({ n: count() }).from(modActions).where(waitingAppeal),
+  ]);
+  return { open: row.open, urgent: row.urgent, appeals: appeals.n };
 }
 
 /** What the map adds to an admin's me(); nothing for anyone else. */
 export const adminCounts = async (u: UserRow | null) => (isAdmin(u) ? await reportCounts() : undefined);
 
 const MS_DAY = 86_400_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The resolution each way of settling writes on the reports it closes */
 const RESOLUTION: Record<Exclude<AdminAction, "ban">, string> = {
@@ -65,21 +104,22 @@ const RESOLUTION: Record<Exclude<AdminAction, "ban">, string> = {
   warn: "warned",
   suspend: "suspended",
   ageCheck: "age_check",
+  removeRoach: "roach_removed",
 };
 
-/** Before mod_actions (2026-11), a case's settling was only on its reports: once per moment it was settled */
-const LEGACY: Record<string, keyof AdminCase["settled"]> = { dismissed: "dismissed", name_cleared: "nameCleared", uid_cleared: "uidCleared" };
+/** The ways of settling a roach's case */
+const ROACH_ACTIONS: readonly AdminAction[] = ["dismiss", "warn", "removeRoach", "ban"];
 
-/** Players blocked by different players in the last BLOCKS_WINDOW_DAYS, since the admin last looked at them */
-async function blockedByMany(now: number) {
-  const since = new Date(now - BLOCKS_WINDOW_DAYS * MS_DAY);
-  const rows = await db
-    .select({ id: blocks.blockedId, n: countDistinct(blocks.blockerId) })
-    .from(blocks)
-    .innerJoin(users, eq(users.id, blocks.blockedId))
-    .where(and(gt(blocks.createdAt, since), or(isNull(users.blocksReviewedAt), gt(blocks.createdAt, users.blocksReviewedAt))))
-    .groupBy(blocks.blockedId);
-  return new Map(rows.map((r) => [r.id, r.n]));
+/** Before mod_actions (2026-11), a case's settling was only on its reports: once per moment it was settled */
+const LEGACY: Record<string, keyof AdminPerson["settled"]> = { dismissed: "dismissed", name_cleared: "nameCleared", uid_cleared: "uidCleared" };
+
+/** Whether a case id names a roach's case rather than a player's */
+const isRoachCase = (caseId: string) => caseId.startsWith("roach:") || caseId.startsWith("report:");
+
+/** The case an open report is part of, as the queue's SQL (caseTable) works it out */
+function caseOf(r: typeof reports.$inferSelect) {
+  if (!isRoachReportReason(r.reason)) return r.targetId;
+  return r.roachId ? `roach:${r.roachId}` : `report:${r.id}`;
 }
 
 /** The rule an action goes under unless the admin picks another: the name's or the UID's, else the case's most frequent reason's */
@@ -89,65 +129,159 @@ function autoRule(action: AdminAction | null, reasons: string[]): RuleCode {
   if (action === "ageCheck") return "age";
   const tally = new Map<RuleCode, number>();
   for (const r of reasons) {
-    const rule = RULE_OF_REASON[isReportReason(r) ? r : "other"];
+    const rule = RULE_OF_REASON[asReason(r)];
     tally.set(rule, (tally.get(rule) ?? 0) + 1);
   }
   return [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "harass";
 }
 
+const rank = (l: CaseLevel) => CASE_LEVELS.indexOf(l);
+const reasonsOfLevel = (l: CaseLevel) => ALL_REASONS.filter((r) => REPORT_LEVEL[r] === l);
+
 /**
- * Every player with open reports, or blocked by many lately: red cases first, then yellow, then green;
- * within a colour, the more reliable reporters first, then the one waiting longest. Never where their
- * roaches are or when they came by, nor who reported them.
+ * Every case open now, worked out in SQL so the queue pages at any size: one per player with open reports
+ * about them (or blocked by BLOCKS_TO_REVIEW different players lately, since the admin last looked), and
+ * one per roach with open reports about it (per report once the roach is gone). For each: its most
+ * pressing level (0 red, 1 yellow, 2 green), how many reporters and how many reliable ones (as
+ * reliableReporter() has it), the oldest open report, whether it is only about a name, and its reasons.
  */
-export async function openCases(now = Date.now()): Promise<AdminCase[]> {
-  const open = await db.select().from(reports).where(isNull(reports.resolvedAt)).orderBy(asc(reports.createdAt));
-  const many = await blockedByMany(now);
-  const flagged = [...many].filter(([, n]) => n >= BLOCKS_TO_REVIEW).map(([id]) => id);
-  const targets = [...new Set([...open.map((r) => r.targetId), ...flagged])];
-  if (!targets.length) return [];
-  const since = new Date(now - MS_DAY);
-  const people = await db.select().from(users).where(inArray(users.id, targets));
-  const reporterIds = [...new Set(open.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
-  const reporters = new Map(
-    (reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((u) => [u.id, u]),
-  );
-  const cases: AdminCase[] = [];
-  for (const u of people) {
-    const theirs = open.filter((r) => r.targetId === u.id);
-    const recent = await db
-      .select()
+function caseTable(now: number) {
+  const oldEnough = new Date(now - RELIABLE_AFTER_DAYS * MS_DAY).toISOString();
+  const lately = new Date(now - BLOCKS_WINDOW_DAYS * MS_DAY).toISOString();
+  const roachy = inArray(reports.reason, ROACH_KEYS);
+  return sql`
+    with r as (
+      select
+        case when ${roachy} then coalesce('roach:' || ${reports.roachId}::text, 'report:' || ${reports.id}::text)
+          else ${reports.targetId}::text end as key,
+        ${reports.targetId}::text as target,
+        ${roachy} as roachy,
+        ${reports.reporterId} as reporter,
+        ${reports.reason} as reason,
+        ${reports.createdAt} as at,
+        case when ${inArray(reports.reason, reasonsOfLevel("red"))} then 0
+          when ${inArray(reports.reason, reasonsOfLevel("yellow"))} then 1 else 2 end as lvl,
+        coalesce(
+          ${users.createdAt} <= ${oldEnough}::timestamptz
+          and not (${users.reportsDismissed} >= ${UNRELIABLE_DISMISSED_MIN}::int
+            and ${users.reportsDismissed} >= ${UNRELIABLE_DISMISSED_RATIO}::int * ${users.reportsUpheld}),
+          false
+        ) as reliable
+      from ${reports} left join ${users} on ${users.id} = ${reports.reporterId}
+      where ${reports.resolvedAt} is null
+    ),
+    many as (
+      select ${blocks.blockedId}::text as target
+      from ${blocks} join ${users} on ${users.id} = ${blocks.blockedId}
+      where ${blocks.createdAt} > ${lately}::timestamptz
+        and (${users.blocksReviewedAt} is null or ${blocks.createdAt} > ${users.blocksReviewedAt})
+      group by ${blocks.blockedId}
+      having count(distinct ${blocks.blockerId}) >= ${BLOCKS_TO_REVIEW}::int
+    ),
+    c as (
+      select key, min(target) as target, bool_or(roachy) as roachy, min(lvl) as lvl,
+        count(distinct reporter)::int as reporters,
+        (count(distinct reporter) filter (where reliable))::int as reliable,
+        min(at) as since,
+        bool_and(reason = 'name') and not bool_or(roachy) as name_only,
+        array_agg(distinct reason) as reasons
+      from r group by key
+      union all
+      select target, target, false, ${rank(BLOCKS_LEVEL)}::int, 0, 0, null::timestamptz, false, '{}'::text[]
+      from many where not exists (select 1 from r where r.key = many.target)
+    )`;
+}
+
+/** The query's filters on caseTable's rows */
+function caseFilter(q: CaseQuery): SQL {
+  const parts: SQL[] = [];
+  if (q.level && q.level !== "all" && CASE_LEVELS.includes(q.level)) parts.push(sql`lvl = ${rank(q.level)}::int`);
+  if (q.reason === "blocks") parts.push(sql`cardinality(reasons) = 0`);
+  else if (q.reason && q.reason !== "all" && ALL_REASONS.includes(q.reason)) parts.push(sql`${q.reason}::text = any(reasons)`);
+  if (q.nameOnly) parts.push(sql`name_only`);
+  return parts.length ? sql.join(parts, sql` and `) : sql`true`;
+}
+
+/**
+ * The info box of each of these players, read for all of them at once: who they are, what they wrote
+ * about themselves, what they did in the last day, how cases about them went before. Never where their
+ * roaches are or when they came by.
+ */
+async function people(ids: string[], now: number): Promise<Map<string, AdminPerson>> {
+  if (!ids.length) return new Map();
+  const dayAgo = new Date(now - MS_DAY);
+  const lately = new Date(now - BLOCKS_WINDOW_DAYS * MS_DAY);
+  const ranked = db
+    .select({
+      id: declarations.id,
+      n: sql<number>`row_number() over (partition by ${declarations.senderId} order by ${declarations.createdAt} desc)`.as("n"),
+    })
+    .from(declarations)
+    .where(inArray(declarations.senderId, ids))
+    .as("ranked");
+  const [rows, recent, declared, sent, slots, friendsA, friendsB, blockers, blockedLately, badges, actions, legacy] = await Promise.all([
+    db.select().from(users).where(inArray(users.id, ids)),
+    db
+      .select({ d: declarations })
       .from(declarations)
-      .where(eq(declarations.senderId, u.id))
-      .orderBy(desc(declarations.createdAt))
-      .limit(5);
-    const [sentTouches] = await db
-      .select({ n: count() })
+      .innerJoin(ranked, eq(ranked.id, declarations.id))
+      .where(lte(ranked.n, 5))
+      .orderBy(desc(declarations.createdAt)),
+    db
+      .select({ id: declarations.senderId, n: count() })
+      .from(declarations)
+      .where(and(inArray(declarations.senderId, ids), gt(declarations.createdAt, dayAgo)))
+      .groupBy(declarations.senderId),
+    db
+      .select({ id: touches.fromUserId, n: count() })
       .from(touches)
-      .where(and(eq(touches.fromUserId, u.id), gt(touches.createdAt, since)));
-    const slots = await db.select({ slot: roaches.slot }).from(roaches).where(eq(roaches.userId, u.id));
-    const [friends] = await db
-      .select({ n: count() })
-      .from(friendships)
-      .where(or(eq(friendships.a, u.id), eq(friendships.b, u.id)));
-    const [blockers] = await db.select({ n: count() }).from(blocks).where(eq(blocks.blockedId, u.id));
-    const held = await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, u.id));
-    const actions = await db.select().from(modActions).where(eq(modActions.userId, u.id));
-    const firstAction = Math.min(...actions.map((a) => a.createdAt.getTime()));
-    const legacy = await db
-      .selectDistinct({ resolution: reports.resolution, at: reports.resolvedAt })
+      .where(and(inArray(touches.fromUserId, ids), gt(touches.createdAt, dayAgo)))
+      .groupBy(touches.fromUserId),
+    db.select({ id: roaches.userId, slot: roaches.slot }).from(roaches).where(inArray(roaches.userId, ids)),
+    db.select({ id: friendships.a, n: count() }).from(friendships).where(inArray(friendships.a, ids)).groupBy(friendships.a),
+    db.select({ id: friendships.b, n: count() }).from(friendships).where(inArray(friendships.b, ids)).groupBy(friendships.b),
+    db.select({ id: blocks.blockedId, n: count() }).from(blocks).where(inArray(blocks.blockedId, ids)).groupBy(blocks.blockedId),
+    db
+      .select({ id: blocks.blockedId, n: countDistinct(blocks.blockerId) })
+      .from(blocks)
+      .innerJoin(users, eq(users.id, blocks.blockedId))
+      .where(
+        and(
+          inArray(blocks.blockedId, ids),
+          gt(blocks.createdAt, lately),
+          or(isNull(users.blocksReviewedAt), gt(blocks.createdAt, users.blocksReviewedAt)),
+        ),
+      )
+      .groupBy(blocks.blockedId),
+    db.select({ id: userBadges.userId, badge: userBadges.badge }).from(userBadges).where(inArray(userBadges.userId, ids)),
+    db.select().from(modActions).where(inArray(modActions.userId, ids)),
+    db
+      .selectDistinct({ id: reports.targetId, resolution: reports.resolution, at: reports.resolvedAt })
       .from(reports)
-      .where(and(eq(reports.targetId, u.id), isNotNull(reports.resolvedAt)));
-    const settled = { dismissed: 0, nameCleared: 0, uidCleared: 0, warned: 0, suspended: 0, ageChecks: 0 };
-    for (const a of actions.filter((x) => !x.auto)) {
+      .where(and(inArray(reports.targetId, ids), isNotNull(reports.resolvedAt))),
+  ]);
+  const tally = (list: { id: string; n: number }[]) => new Map(list.map((x) => [x.id, x.n]));
+  const declaredBy = tally(declared);
+  const sentBy = tally(sent);
+  const blockersOf = tally(blockers);
+  const lateBlockersOf = tally(blockedLately);
+  const friendsOf = (id: string) => (tally(friendsA).get(id) ?? 0) + (tally(friendsB).get(id) ?? 0);
+
+  const out = new Map<string, AdminPerson>();
+  for (const u of rows) {
+    const theirActions = actions.filter((a) => a.userId === u.id);
+    const firstAction = Math.min(...theirActions.map((a) => a.createdAt.getTime()));
+    const settled = { dismissed: 0, nameCleared: 0, uidCleared: 0, warned: 0, suspended: 0, ageChecks: 0, roachesRemoved: 0 };
+    for (const a of theirActions.filter((x) => !x.auto)) {
       if (a.action === "dismiss") settled.dismissed++;
       if (a.action === "clearName" || a.action === "clearBoth") settled.nameCleared++;
       if (a.action === "clearUid" || a.action === "clearBoth") settled.uidCleared++;
       if (a.action === "warn") settled.warned++;
       if (a.action === "suspend") settled.suspended++;
       if (a.action === "ageCheck") settled.ageChecks++;
+      if (a.action === "removeRoach") settled.roachesRemoved++;
     }
-    for (const l of legacy) {
+    for (const l of legacy.filter((x) => x.id === u.id)) {
       if (!l.at || l.at.getTime() >= firstAction) continue;
       const kind = l.resolution ? LEGACY[l.resolution] : undefined;
       if (kind) settled[kind]++;
@@ -156,34 +290,11 @@ export async function openCases(now = Date.now()): Promise<AdminCase[]> {
         settled.uidCleared++;
       }
     }
-    const yellow = actions.filter((a) => a.yellow && a.appealResult !== "reverted" && now - a.createdAt.getTime() < YELLOW_DAYS * MS_DAY).length;
-    const reporterOf = (id: string | null): ReporterInfo | null => {
-      const r = id ? reporters.get(id) : undefined;
-      if (!r) return null;
-      return {
-        days: Math.floor((now - r.createdAt.getTime()) / MS_DAY),
-        upheld: r.reportsUpheld,
-        dismissed: r.reportsDismissed,
-        reliable: reliableReporter(r, now),
-      };
-    };
-    const distinct = [...new Set(theirs.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
-    // two or more new accounts reporting them within any hour: a pile-on, maybe
-    const young = theirs.filter((r) => {
-      const who = r.reporterId ? reporters.get(r.reporterId) : undefined;
-      return who && r.createdAt.getTime() - who.createdAt.getTime() < RELIABLE_AFTER_DAYS * MS_DAY;
-    });
-    const brigade = young.some(
-      (r) => new Set(young.filter((x) => x.createdAt.getTime() >= r.createdAt.getTime() && x.createdAt.getTime() - r.createdAt.getTime() <= 60 * 60_000).map((x) => x.reporterId)).size >= 2,
-    );
-    const level =
-      theirs.length === 0
-        ? BLOCKS_LEVEL
-        : CASE_LEVELS.find((l) => theirs.some((r) => REPORT_LEVEL[isReportReason(r.reason) ? r.reason : "other"] === l))!;
+    const theirSlots = slots.filter((r) => r.id === u.id);
     const profile = profileOf(u);
     // while held, anonymous and shareUid are the hold's doing; the admin sees what the player had chosen
     const heldAt = u.profileHeldAt;
-    cases.push({
+    out.set(u.id, {
       targetId: u.id,
       name: u.name,
       anonymous: heldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous,
@@ -201,73 +312,202 @@ export async function openCases(now = Date.now()): Promise<AdminCase[]> {
       })),
       shareUid: heldAt ? (u.heldShareUid ?? u.shareUid) : u.shareUid,
       support: profile.support,
-      badges: held.flatMap((b) => badgeById(b.badge)?.name ?? []),
+      badges: badges.filter((b) => b.id === u.id).flatMap((b) => badgeById(b.badge)?.name ?? []),
       worn: (u.wornBadge && badgeById(u.wornBadge)?.name) || null,
-      roaches: { main: slots.some((r) => r.slot === 0), clones: slots.filter((r) => r.slot > 0).length },
-      friends: friends.n,
-      blockedBy: blockers.n,
+      roaches: { main: theirSlots.some((r) => r.slot === 0), clones: theirSlots.filter((r) => r.slot > 0).length },
+      friends: friendsOf(u.id),
+      blockedBy: blockersOf.get(u.id) ?? 0,
       settled,
-      yellow,
+      yellow: theirActions.filter((a) => a.yellow && a.appealResult !== "reverted" && now - a.createdAt.getTime() < YELLOW_DAYS * MS_DAY).length,
       suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > now ? u.suspendedUntil.getTime() : null,
       suspendedAuto: Boolean(u.suspendedAuto && u.suspendedUntil && u.suspendedUntil.getTime() > now),
       ageCheckAt: u.ageCheckAt?.getTime() ?? null,
       ageConfirmedAt: u.ageConfirmedAt?.getTime() ?? null,
-      blockedRecently: many.get(u.id) ?? 0,
-      last24h: { touches: sentTouches.n, declarations: recent.filter((d) => d.createdAt > since).length },
-      declarations: recent.map((d) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
-      level,
-      reporters: distinct.length,
-      reliable: distinct.filter((id) => reporterOf(id)?.reliable).length,
-      brigade,
-      rule: theirs.length ? autoRule(null, theirs.map((r) => r.reason)) : "harass",
-      since: theirs[0]?.createdAt.getTime() ?? now,
-      reports: theirs.map((r) => ({
-        reason: isReportReason(r.reason) ? r.reason : "other",
-        note: r.note,
-        context: r.context,
-        name: r.targetName,
-        at: r.createdAt.getTime(),
-        reporter: reporterOf(r.reporterId),
-      })),
+      blockedRecently: lateBlockersOf.get(u.id) ?? 0,
+      last24h: { touches: sentBy.get(u.id) ?? 0, declarations: declaredBy.get(u.id) ?? 0 },
+      declarations: recent
+        .filter(({ d }) => d.senderId === u.id)
+        .map(({ d }) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
     });
   }
-  const order = (c: AdminCase) => CASE_LEVELS.indexOf(c.level);
-  return cases.sort((x, y) => order(x) - order(y) || y.reliable - x.reliable || x.since - y.since);
+  return out;
+}
+
+type CaseRow = { key: string; target: string; roachy: boolean; lvl: number; reporters: number; reliable: number; since: Date | string | null };
+
+/**
+ * A page of the admin's queue: red cases first, then yellow, then green; within a colour, the more
+ * reliable reporters first, then the one waiting longest. The grouping and order are SQL's (caseTable);
+ * only the page's cases are read in full, all at once. Never where a player's roaches are or when they
+ * came by, nor who reported them; a roach's case shows only that roach's spot, which is public anyway.
+ */
+export async function openCases(query: CaseQuery = {}, now = Date.now()): Promise<CasePage> {
+  const page = Math.max(1, Math.floor(Number(query.page) || 1));
+  const filter = caseFilter(query);
+  const table = caseTable(now);
+  const [[sum], rows] = await Promise.all([
+    db.execute<{ red: number; yellow: number; green: number; name_only: number; total: number }>(sql`${table}
+      select (count(*) filter (where lvl = 0))::int as red, (count(*) filter (where lvl = 1))::int as yellow,
+        (count(*) filter (where lvl = 2))::int as green, (count(*) filter (where name_only))::int as name_only,
+        (count(*) filter (where ${filter}))::int as total
+      from c`),
+    db.execute<CaseRow>(sql`${table}
+      select key, target, roachy, lvl, reporters, reliable, since from c where ${filter}
+      order by lvl, reliable desc, since asc nulls last, key
+      limit ${CASES_PER_PAGE}::int offset ${(page - 1) * CASES_PER_PAGE}::int`),
+  ]);
+  const summary = { cases: [] as AdminCase[], total: sum.total, levels: { red: sum.red, yellow: sum.yellow, green: sum.green }, nameOnly: sum.name_only, page };
+  if (!rows.length) return summary;
+
+  const targets = [...new Set(rows.map((r) => r.target))];
+  const keys = new Set(rows.map((r) => r.key));
+  const roachIds = rows.filter((r) => r.key.startsWith("roach:")).map((r) => r.key.slice("roach:".length));
+  const [who, open, spots] = await Promise.all([
+    people(targets, now),
+    db
+      .select()
+      .from(reports)
+      .where(and(isNull(reports.resolvedAt), inArray(reports.targetId, targets)))
+      .orderBy(asc(reports.createdAt)),
+    roachIds.length ? db.select({ id: roaches.id, lng: roaches.lng, lat: roaches.lat }).from(roaches).where(inArray(roaches.id, roachIds)) : [],
+  ]);
+  const inPage = open.filter((r) => keys.has(caseOf(r)));
+  const reporterIds = [...new Set(inPage.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
+  const reporters = new Map(
+    (reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((u) => [u.id, u]),
+  );
+  const reporterOf = (id: string | null): ReporterInfo | null => {
+    const r = id ? reporters.get(id) : undefined;
+    if (!r) return null;
+    return {
+      days: Math.floor((now - r.createdAt.getTime()) / MS_DAY),
+      upheld: r.reportsUpheld,
+      dismissed: r.reportsDismissed,
+      reliable: reliableReporter(r, now),
+    };
+  };
+
+  summary.cases = rows.flatMap((row): AdminCase[] => {
+    const person = who.get(row.target);
+    if (!person) return [];
+    const theirs = inPage.filter((r) => caseOf(r) === row.key);
+    // two or more new accounts reporting within any hour: a pile-on, maybe
+    const young = theirs.filter((r) => {
+      const by = r.reporterId ? reporters.get(r.reporterId) : undefined;
+      return by && r.createdAt.getTime() - by.createdAt.getTime() < RELIABLE_AFTER_DAYS * MS_DAY;
+    });
+    const brigade = young.some(
+      (r) =>
+        new Set(
+          young
+            .filter((x) => x.createdAt.getTime() >= r.createdAt.getTime() && x.createdAt.getTime() - r.createdAt.getTime() <= 60 * 60_000)
+            .map((x) => x.reporterId),
+        ).size >= 2,
+    );
+    const latest = theirs.at(-1);
+    let roach: AdminCase["roach"];
+    if (row.roachy && latest && latest.placeLng !== null && latest.placeLat !== null) {
+      const current = spots.find((s) => s.id === latest.roachId);
+      roach = {
+        main: latest.roachSlot === 0,
+        lng: latest.placeLng,
+        lat: latest.placeLat,
+        state: !current ? "gone" : current.lng !== latest.placeLng || current.lat !== latest.placeLat ? "moved" : "here",
+      };
+    }
+    return [
+      {
+        ...person,
+        kind: row.roachy ? "roach" : "person",
+        caseId: row.key,
+        level: CASE_LEVELS[row.lvl] ?? "green",
+        reporters: row.reporters,
+        reliable: row.reliable,
+        brigade,
+        rule: row.roachy ? "roach" : theirs.length ? autoRule(null, theirs.map((r) => r.reason)) : "harass",
+        since: row.since ? new Date(row.since).getTime() : now,
+        reports: theirs.map((r) => ({
+          reason: asReason(r.reason),
+          note: r.note,
+          context: r.context,
+          name: r.targetName,
+          at: r.createdAt.getTime(),
+          reporter: reporterOf(r.reporterId),
+          ...(r.placeLng !== null && r.placeLat !== null ? { place: { lng: r.placeLng, lat: r.placeLat }, nearM: r.nearM } : {}),
+        })),
+        ...(roach ? { roach } : {}),
+      },
+    ];
+  });
+  return summary;
+}
+
+/** Count a case once to each of its reporters, upheld or dismissed, and tell each what came of their own earliest report in it */
+async function tellReporters(tx: Pick<typeof db, "update" | "insert">, open: (typeof reports.$inferSelect)[], dismissed: boolean) {
+  const first = new Map<string, (typeof open)[number]>();
+  for (const r of open) if (r.reporterId && !first.has(r.reporterId)) first.set(r.reporterId, r);
+  const reporterIds = [...first.keys()];
+  if (reporterIds.length) {
+    await tx
+      .update(users)
+      .set(dismissed ? { reportsDismissed: sql`${users.reportsDismissed} + 1` } : { reportsUpheld: sql`${users.reportsUpheld} + 1` })
+      .where(inArray(users.id, reporterIds));
+  }
+  return [...first.values()].map(
+    (r): NewNote => ({
+      userId: r.reporterId!,
+      kind: dismissed ? "reportDismissed" : "reportUpheld",
+      reason: r.reason,
+      reportedOn: beijingDate(r.createdAt.getTime()),
+    }),
+  );
 }
 
 /**
- * Settle every open report about one player in one of the admin's ways, all in one place: do it, keep it
- * in mod_actions (never who reported), close the reports, count it to each reporter once (upheld or
- * dismissed, for telling reliable reporters), and tell both sides (staffNotes.ts). A suspension the
- * reports made by themselves is lifted first, then the admin's choice applies. A ban deletes the
- * account, its reports with it.
+ * Settle a case in one of the admin's ways, all in one place: do it, keep it in mod_actions (never who
+ * reported), close the case's reports, count it to each reporter once (upheld or dismissed, for telling
+ * reliable reporters), and tell both sides (staffNotes.ts). A player's case and a roach's are settled
+ * apart, so a reporter is never told of both at once and cannot tell whose roach it was. A ban deletes
+ * the account, all its reports with it, and keeps why with the banned address.
  */
-export async function settleCase(targetId: string, action: AdminAction, opts: { rule?: unknown } = {}, now = Date.now()) {
-  const [u] = await db.select().from(users).where(eq(users.id, String(targetId))).limit(1);
+export async function settleCase(caseId: string, action: AdminAction, opts: { rule?: unknown } = {}, now = Date.now()) {
+  const id = String(caseId);
+  return isRoachCase(id) ? settleRoach(id, action, opts, now) : settlePerson(id, action, opts, now);
+}
+
+/**
+ * A player's case: every open report about them but their roaches'. A suspension the reports made by
+ * themselves is lifted first, then the admin's choice applies.
+ */
+async function settlePerson(targetId: string, action: AdminAction, opts: { rule?: unknown }, now: number) {
+  const [u] = UUID.test(targetId) ? await db.select().from(users).where(eq(users.id, targetId)).limit(1) : [];
   if (!u) throw new HttpError(400, "这个账号已经不在了。");
-  if (action === "ban") {
-    if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
-    await banAccount(u);
-    return;
-  }
-  if (!Object.hasOwn(RESOLUTION, action)) throw new HttpError(400, "不知道要怎么处理。");
+  if (action !== "ban" && !Object.hasOwn(RESOLUTION, action)) throw new HttpError(400, "不知道要怎么处理。");
+  if (action === "removeRoach") throw new HttpError(400, "移走蟑螂只用在地图上蟑螂的举报。");
   const open = await db
     .select()
     .from(reports)
-    .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt)))
+    .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt), notInArray(reports.reason, ROACH_KEYS)))
     .orderBy(asc(reports.createdAt));
   const rule = isRuleCode(opts.rule) ? opts.rule : autoRule(action, open.map((r) => r.reason));
+  if (action === "ban") {
+    if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
+    await banAccount(u, rule);
+    return;
+  }
   const at = new Date(now);
   const autoSuspended = Boolean(u.suspendedAuto && u.suspendedUntil && u.suspendedUntil.getTime() > now);
   const wasHeld = Boolean(u.profileHeldAt);
+  // known ahead, so what a clearing clears remembers it (for undoing it on appeal)
+  const actionId = randomUUID();
 
   // 1. the action itself (clearing and letting out also end a hold)
   if (autoSuspended) await db.update(users).set({ suspendedUntil: null, suspendedAuto: false }).where(eq(users.id, u.id));
   const until = action === "suspend" ? new Date(now + SUSPEND_DAYS * MS_DAY) : null;
   if (action === "dismiss") await releaseProfile(u.id);
-  else if (action === "clearName") await clearName(u.id);
-  else if (action === "clearUid") await clearUid(u.id);
-  else if (action === "clearBoth") await clearBoth(u.id);
+  else if (action === "clearName") await clearName(u.id, actionId);
+  else if (action === "clearUid") await clearUid(u.id, actionId);
+  else if (action === "clearBoth") await clearBoth(u.id, actionId);
   else if (action === "suspend") await db.update(users).set({ suspendedUntil: until, suspendedAuto: false }).where(eq(users.id, u.id));
   else if (action === "ageCheck") await db.update(users).set({ ageCheckAt: at }).where(eq(users.id, u.id));
   // the admin has looked at their being blocked by many, whatever was done
@@ -275,34 +515,18 @@ export async function settleCase(targetId: string, action: AdminAction, opts: { 
 
   await db.transaction(async (tx) => {
     // 2. the record
-    const [record] = await tx
-      .insert(modActions)
-      .values({ userId: u.id, action, rule, yellow: action === "warn", until, createdAt: at })
-      .returning({ id: modActions.id });
+    await tx.insert(modActions).values({ id: actionId, userId: u.id, action, rule, yellow: action === "warn", until, createdAt: at });
     // 3. the reports
-    await tx
-      .update(reports)
-      .set({ resolvedAt: at, resolution: RESOLUTION[action] })
-      .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt)));
-    // 4. once to each reporter, whose own earliest report in the case their note speaks of
-    const first = new Map<string, (typeof open)[number]>();
-    for (const r of open) if (r.reporterId && !first.has(r.reporterId)) first.set(r.reporterId, r);
-    const reporterIds = [...first.keys()];
-    if (reporterIds.length) {
+    if (open.length) {
       await tx
-        .update(users)
-        .set(action === "dismiss" ? { reportsDismissed: sql`${users.reportsDismissed} + 1` } : { reportsUpheld: sql`${users.reportsUpheld} + 1` })
-        .where(inArray(users.id, reporterIds));
+        .update(reports)
+        .set({ resolvedAt: at, resolution: RESOLUTION[action] })
+        .where(inArray(reports.id, open.map((r) => r.id)));
     }
-    // 5. both sides
-    const notes: NewNote[] = [...first.values()].map((r) => ({
-      userId: r.reporterId!,
-      kind: action === "dismiss" ? "reportDismissed" : "reportUpheld",
-      reason: r.reason,
-      reportedOn: beijingDate(r.createdAt.getTime()),
-    }));
+    // 4. once to each reporter, and 5. both sides
+    const notes = await tellReporters(tx, open, action === "dismiss");
     if (action === "warn" || action === "suspend" || action === "clearName" || action === "clearUid" || action === "clearBoth") {
-      notes.push({ userId: u.id, kind: "action", actionId: record.id, rule, until });
+      notes.push({ userId: u.id, kind: "action", actionId, rule, until });
     } else if (action === "dismiss") {
       if (wasHeld) notes.push({ userId: u.id, kind: "released" });
       if (autoSuspended) notes.push({ userId: u.id, kind: "unsuspended" });
@@ -313,12 +537,134 @@ export async function settleCase(targetId: string, action: AdminAction, opts: { 
   roachesChanged();
 }
 
-/** Several players at once, each settled on its own; never a ban */
-export async function settleCases(targetIds: unknown, action: AdminAction) {
+/**
+ * A roach's case (roach:<id>, or report:<id> once the roach is gone): nothing wrong, a warning, taking
+ * it back (as its owner would: the main roach takes its clones with it; a yellow card), or a ban. Its
+ * owner hears only of a warning or the roach taken back; a dismissal leaves them none the wiser.
+ */
+async function settleRoach(caseId: string, action: AdminAction, opts: { rule?: unknown }, now: number) {
+  const [kind, id] = caseId.split(":");
+  if (!UUID.test(id ?? "")) throw new HttpError(400, "找不到这个案子了。");
+  if (!ROACH_ACTIONS.includes(action)) throw new HttpError(400, "蟑螂的举报只能：没问题、警告、移走这只蟑螂或者封号。");
+  const open = await db
+    .select()
+    .from(reports)
+    .where(and(isNull(reports.resolvedAt), inArray(reports.reason, ROACH_KEYS), kind === "roach" ? eq(reports.roachId, id) : eq(reports.id, id)))
+    .orderBy(asc(reports.createdAt));
+  if (!open.length) throw new HttpError(400, "这些举报已经处理过了。");
+  const [u] = await db.select().from(users).where(eq(users.id, open[0].targetId)).limit(1);
+  if (!u) throw new HttpError(400, "这个账号已经不在了。");
+  const rule = isRuleCode(opts.rule) ? opts.rule : "roach";
+  if (action === "ban") {
+    if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
+    await banAccount(u, rule);
+    return;
+  }
+  let slot: number | null = null;
+  if (action === "removeRoach") {
+    const [roach] =
+      kind === "roach"
+        ? await db
+            .select()
+            .from(roaches)
+            .where(and(eq(roaches.id, id), eq(roaches.userId, u.id)))
+            .limit(1)
+        : [];
+    if (!roach) throw new HttpError(400, "这只蟑螂已经收回了。");
+    slot = roach.slot;
+    // the very code its owner's 收回 runs
+    await removeRoach(u.id, roach.id);
+  }
+  const at = new Date(now);
+  await db.transaction(async (tx) => {
+    const [record] = await tx
+      .insert(modActions)
+      .values({ userId: u.id, action, rule, yellow: action !== "dismiss", roachSlot: slot, createdAt: at })
+      .returning({ id: modActions.id });
+    // by id: taking the roach back emptied their roach_id
+    await tx
+      .update(reports)
+      .set({ resolvedAt: at, resolution: RESOLUTION[action] })
+      .where(inArray(reports.id, open.map((r) => r.id)));
+    const notes = await tellReporters(tx, open, action === "dismiss");
+    if (action !== "dismiss") notes.push({ userId: u.id, kind: "action", actionId: record.id, rule });
+    await addNotes(notes, tx);
+  });
+}
+
+/** Several cases at once, each settled on its own; never a ban. A way that does not fit a case (清名字 on a roach) passes it by. */
+export async function settleCases(caseIds: unknown, action: AdminAction) {
   if (!BATCH_ACTIONS.includes(action)) throw new HttpError(400, "这个处理不能批量做。");
-  const ids = Array.isArray(targetIds) ? [...new Set(targetIds.map(String))].slice(0, 200) : [];
-  for (const id of ids) await settleCase(id, action);
-  return ids.length;
+  const ids = Array.isArray(caseIds) ? [...new Set(caseIds.map(String))].slice(0, 200) : [];
+  let done = 0;
+  for (const id of ids) {
+    if (isRoachCase(id) && !ROACH_ACTIONS.includes(action)) continue;
+    try {
+      await settleCase(id, action);
+      done++;
+    } catch (e) {
+      // settled meanwhile (another tab), or gone: the rest still go
+      if (!(e instanceof HttpError)) throw e;
+    }
+  }
+  return done;
+}
+
+/** 申诉: appeals waiting for the admin, the oldest first, each with the player's info box as it is now */
+export async function openAppeals(now = Date.now()): Promise<AdminAppeal[]> {
+  const rows = await db.select().from(modActions).where(waitingAppeal).orderBy(asc(modActions.appealedAt)).limit(100);
+  const who = await people([...new Set(rows.map((a) => a.userId))], now);
+  return rows.flatMap((a): AdminAppeal[] => {
+    const person = who.get(a.userId);
+    if (!person || !a.appealedAt) return [];
+    return [
+      {
+        actionId: a.id,
+        action: a.action as AdminAction,
+        rule: isRuleCode(a.rule) ? a.rule : null,
+        at: a.createdAt.getTime(),
+        until: a.until?.getTime() ?? null,
+        main: a.roachSlot === 0,
+        appeal: a.appeal ?? "",
+        appealedAt: a.appealedAt.getTime(),
+        who: person,
+      },
+    ];
+  });
+}
+
+/**
+ * The admin's answer to an appeal: keep the action, or undo it as far as it can be: a yellow card
+ * (a warning, a roach taken back) stops counting, a pause still on ends, what a clearing cleared may be
+ * taken again (the old name itself is gone: the player fills it in again), an age question goes. The
+ * player is told either way.
+ */
+export async function answerAppeal(actionId: unknown, keep: boolean, now = Date.now()) {
+  const id = String(actionId);
+  if (!UUID.test(id)) throw new HttpError(400, "找不到这条申诉了。");
+  await db.transaction(async (tx) => {
+    const [a] = await tx.select().from(modActions).where(eq(modActions.id, id)).for("update");
+    if (!a?.appealedAt) throw new HttpError(400, "找不到这条申诉了。");
+    if (a.answeredAt) throw new HttpError(400, "这条申诉已经处理过了。");
+    if (!keep) {
+      if (a.action === "suspend" && a.until) {
+        // only this pause: a later one of its own stays
+        await tx
+          .update(users)
+          .set({ suspendedUntil: null, suspendedAuto: false })
+          .where(and(eq(users.id, a.userId), eq(users.suspendedUntil, a.until)));
+      }
+      if (a.action === "clearName" || a.action === "clearUid" || a.action === "clearBoth") {
+        await tx.delete(clearedValues).where(and(eq(clearedValues.userId, a.userId), eq(clearedValues.actionId, a.id)));
+      }
+      if (a.action === "ageCheck") await tx.update(users).set({ ageCheckAt: null }).where(eq(users.id, a.userId));
+    }
+    await tx
+      .update(modActions)
+      .set({ appealResult: keep ? "kept" : "reverted", answeredAt: new Date(now) })
+      .where(eq(modActions.id, a.id));
+    await addNotes([{ userId: a.userId, kind: keep ? "appealKept" : "appealReverted", actionId: a.id }], tx);
+  });
 }
 
 /** Hand out 内测功臣, or take any badge back (from someone gaming them), by the player's login email. */
@@ -343,14 +689,54 @@ export async function setBadge(email: string, badge: string, give: boolean) {
   if (u.wornBadge === badge) await db.update(users).set({ wornBadge: null }).where(eq(users.id, u.id));
 }
 
-/** 所有玩家: every real account's login email and name, newest first, to find someone to act on. */
-export async function allPlayers(): Promise<AdminPlayer[]> {
-  const rows = await db
-    .select({ id: users.id, email: users.email, name: users.name, anonymous: users.anonymous, createdAt: users.createdAt })
-    .from(users)
-    .where(isNull(users.demoKey))
-    .orderBy(desc(users.createdAt));
-  return rows.map((u) => ({ id: u.id, email: u.email ?? "", name: u.name, anonymous: u.anonymous, joinedAt: u.createdAt.getTime() }));
+const playerOf = (u: Pick<UserRow, "id" | "email" | "name" | "anonymous" | "createdAt">): AdminPlayer => ({
+  id: u.id,
+  email: u.email ?? "",
+  name: u.name,
+  anonymous: u.anonymous,
+  joinedAt: u.createdAt.getTime(),
+});
+
+/** In a LIKE pattern, what stands for itself */
+const literal = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
+ * 所有玩家, searched: real accounts whose login email or name contains q, or whose id starts with it,
+ * newest first, at most FIND_PLAYERS_MAX of them, and how many matched. Nothing without a q.
+ */
+export async function findPlayers(q: unknown): Promise<FoundPlayers> {
+  const needle = String(q ?? "")
+    .trim()
+    .toLowerCase()
+    .slice(0, 100);
+  if (!needle) return { players: [], total: 0 };
+  const like = literal(needle);
+  const match = and(
+    isNull(users.demoKey),
+    or(ilike(users.email, `%${like}%`), ilike(users.name, `%${like}%`), sql`${users.id}::text like ${`${like}%`}`),
+  );
+  const columns = { id: users.id, email: users.email, name: users.name, anonymous: users.anonymous, createdAt: users.createdAt };
+  const [rows, [n]] = await Promise.all([
+    db.select(columns).from(users).where(match).orderBy(desc(users.createdAt)).limit(FIND_PLAYERS_MAX),
+    db.select({ n: count() }).from(users).where(match),
+  ]);
+  return { players: rows.map(playerOf), total: n.n };
+}
+
+/** 查邮箱: whether this mailbox was banned, however it is written, when and why; and the accounts signed in with this very address */
+export async function banInfo(email: unknown): Promise<BanInfo> {
+  const given = String(email ?? "")
+    .trim()
+    .toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+$/.test(given)) throw new HttpError(400, "输入一个完整的邮箱。");
+  const [banned, rows] = await Promise.all([
+    banOf(given),
+    db
+      .select({ id: users.id, email: users.email, name: users.name, anonymous: users.anonymous, createdAt: users.createdAt })
+      .from(users)
+      .where(eq(users.email, given)),
+  ]);
+  return { banned, accounts: rows.map(playerOf) };
 }
 
 /** This week against the last, from visit days and the nightly totals. */

@@ -4,7 +4,7 @@ import type { BatchAct, Gesture, SleepGesture } from "../friendly";
 import type { Game } from "../games";
 import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
-import type { ReportCounts, ReportReason } from "../safety";
+import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { PackedRoaches } from "./packed";
@@ -106,6 +106,10 @@ export interface World {
   blocks(): Promise<BlockedPlayer[]>;
   /** Report them to the admin, which also blocks them. They never learn who reported them. */
   report(target: string, reason: ReportReason, note: string): Promise<void>;
+  /** 举报这只蟑螂: where someone's roach was put, by its id on the map. Blocks nobody, and its owner is never told who. */
+  reportRoach(roachId: string, reason: RoachReportReason, note: string): Promise<void>;
+  /** 我觉得处理错了: the one appeal of an action told in 站长通知 */
+  appeal(actionId: string, text: string): Promise<void>;
   /** Wear one of your badges under your name on profile cards, or none (null). */
   wearBadge(badge: string | null): Promise<void>;
   /** You have been shown these badges, so they no longer pop up. */
@@ -358,10 +362,13 @@ export type BlockedPlayer = { id: string; name: string | null; at: number };
  */
 export type TouchBackWaits = "all" | "sneaky";
 
+/** 我觉得处理错了: open to send, sent and waiting for the admin, or answered (in a note of its own) */
+export type StaffAppeal = { actionId: string; state: "open" | "sent" | "answered" };
+
 export type InboxItem =
   /**
    * 站长通知: what came of a report, or what the admin did about the player and why, worded on the server.
-   * appeal: whether the player may still appeal the action it tells of, and has
+   * appeal: on a note about an action the player may appeal (once, within INBOX_DAYS), how far it went
    */
   | {
       kind: "staff";
@@ -369,7 +376,7 @@ export type InboxItem =
       at: number;
       seen: boolean;
       text: string;
-      appeal?: { actionId: string; done: boolean };
+      appeal?: StaffAppeal;
       replied: true;
     }
   | {

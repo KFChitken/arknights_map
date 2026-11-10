@@ -692,10 +692,23 @@ export const reports = pgTable(
     /** When the admin was emailed about it */
     notifiedAt: at("notified_at"),
     resolvedAt: at("resolved_at"),
-    /** "dismissed", "name_cleared", "uid_cleared" or "both_cleared"; a ban deletes the reports with the account */
+    /**
+     * dismissed, name_cleared, uid_cleared, both_cleared, warned, suspended, age_check or roach_removed;
+     * a ban deletes the reports with the account
+     */
     resolution: text("resolution"),
+    /**
+     * A report of a roach on the map (src/lib/safety.ts ROACH_REPORT_REASONS): which one (null once it is
+     * gone), where it was and whether it was the main roach, and for 「一直贴着我放」 how far it was from the
+     * reporter's nearest roach, in metres (never where the reporter's roaches are)
+     */
+    roachId: uuid("roach_id").references(() => roaches.id, { onDelete: "set null" }),
+    placeLng: doublePrecision("place_lng"),
+    placeLat: doublePrecision("place_lat"),
+    roachSlot: smallint("roach_slot"),
+    nearM: integer("near_m"),
   },
-  (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt)],
+  (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt), index("reports_roach_idx").on(t.roachId)],
 );
 
 /**
@@ -711,7 +724,7 @@ export const modActions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** dismiss, clearName, clearUid, clearBoth, warn, suspend or ageCheck */
+    /** dismiss, clearName, clearUid, clearBoth, warn, suspend, ageCheck or removeRoach */
     action: text("action").notNull(),
     /** The community rule it was for (src/lib/safety.ts RULES) */
     rule: text("rule"),
@@ -725,8 +738,10 @@ export const modActions = pgTable(
     /** "kept" or "reverted" */
     appealResult: text("appeal_result"),
     answeredAt: at("answered_at"),
+    /** For removeRoach: the roach taken back, 0 for the main one (its clones went with it) */
+    roachSlot: smallint("roach_slot"),
   },
-  (t) => [index("mod_actions_user_idx").on(t.userId, t.createdAt)],
+  (t) => [index("mod_actions_user_idx").on(t.userId, t.createdAt), index("mod_actions_appeal_idx").on(t.appealedAt)],
 );
 
 /**
@@ -759,6 +774,8 @@ export const staffNotes = pgTable(
 export const bannedEmails = pgTable("banned_emails", {
   emailHash: text("email_hash").primaryKey(),
   createdAt: createdAt(),
+  /** The rule or reason the account was banned for, for 查邮箱 on the admin page */
+  reason: text("reason"),
 });
 
 /**
@@ -775,6 +792,11 @@ export const clearedValues = pgTable(
     kind: text("kind").notNull(),
     value: text("value").notNull(),
     createdAt: createdAt(),
+    /**
+     * The admin's action that cleared it, for undoing it on appeal. No foreign key: the actions go after
+     * KEEP_MOD_ACTION_DAYS, what they cleared stays.
+     */
+    actionId: uuid("action_id"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.kind, t.value] })],
 );

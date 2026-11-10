@@ -6,7 +6,7 @@ import { MAIL_DAILY_LIMIT } from "./env";
 import { sendAdminMail } from "./mail";
 import { mailRoom } from "./mailQuota";
 import { sendReportDigest } from "./safety";
-import { mailSends, reports, users, watchMails } from "./schema";
+import { mailSends, modActions, reports, users, watchMails } from "./schema";
 
 vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env")>()), ADMIN_EMAILS: ["admin@example.com"] }));
 vi.mock("./mail", () => ({ sendAdminMail: vi.fn(), sendLoginCode: vi.fn() }));
@@ -94,15 +94,21 @@ describe("report reminders", () => {
 });
 
 describe("the admin's corner of the map", () => {
-  it("counts open reports and the urgent ones for the admin only", async () => {
+  it("counts open reports, the urgent ones and appeals waiting, for the admin only", async () => {
     const [admin] = await db.insert(users).values({ email: "admin@example.com" }).returning();
     const [player] = await db.insert(users).values({ email: "player@example.com" }).returning();
-    expect(await adminCounts(admin)).toEqual({ open: 0, urgent: 0 });
+    expect(await adminCounts(admin)).toEqual({ open: 0, urgent: 0, appeals: 0 });
     await fileReport();
     await fileReport("minor");
     await fileReport("contact");
     await db.update(reports).set({ resolvedAt: new Date() }).where(eq(reports.reason, "contact"));
-    expect(await adminCounts(admin)).toEqual({ open: 2, urgent: 1 });
+    // a roach's spot reported: urgent too
+    await fileReport("place");
+    await db.insert(modActions).values([
+      { userId: player.id, action: "warn", appeal: "错了", appealedAt: new Date() },
+      { userId: player.id, action: "warn", appeal: "也错了", appealedAt: new Date(), answeredAt: new Date() },
+    ]);
+    expect(await adminCounts(admin)).toEqual({ open: 3, urgent: 2, appeals: 1 });
     expect(await adminCounts(player)).toBeUndefined();
     expect(await adminCounts(null)).toBeUndefined();
   });

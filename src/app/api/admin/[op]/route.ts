@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
-import type { AdminAction } from "@/lib/safety";
-import { allPlayers, isAdmin, openCases, retentionStats, setBadge, settleCase, settleCases } from "@/lib/server/admin";
+import type { AdminAction, CaseQuery } from "@/lib/safety";
+import {
+  answerAppeal,
+  banInfo,
+  findPlayers,
+  isAdmin,
+  openAppeals,
+  openCases,
+  retentionStats,
+  setBadge,
+  settleCase,
+  settleCases,
+} from "@/lib/server/admin";
 import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "@/lib/server/nameWords";
@@ -22,12 +33,32 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "ack":
       await ackIncident(String(args[0]));
       break;
-    case "cases":
-      result = await openCases();
+    // a page of the queue: args[0] { page, level, reason, nameOnly }
+    case "cases": {
+      const q = (args[0] && typeof args[0] === "object" ? args[0] : {}) as Record<string, unknown>;
+      result = await openCases({
+        page: Number(q.page) || 1,
+        level: String(q.level ?? "all") as CaseQuery["level"],
+        reason: String(q.reason ?? "all") as CaseQuery["reason"],
+        nameOnly: q.nameOnly === true,
+      });
       break;
+    }
     case "resolve":
-      // args[2]: the community rule the admin picked, or the one picked ahead
+      // args[0]: the case (a player's id, or roach:/report: for a roach's); args[2]: the community rule the admin picked, or the one picked ahead
       await settleCase(String(args[0]), String(args[1]) as AdminAction, { rule: args[2] });
+      break;
+    case "appeals":
+      result = await openAppeals();
+      break;
+    case "answerAppeal":
+      await answerAppeal(args[0], args[1] === true);
+      break;
+    case "findPlayers":
+      result = await findPlayers(args[0]);
+      break;
+    case "banInfo":
+      result = await banInfo(args[0]);
       break;
     case "resolveMany":
       result = await settleCases(args[0], String(args[1]) as AdminAction);
@@ -38,9 +69,6 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "retention":
       result = await retentionStats();
-      break;
-    case "players":
-      result = await allPlayers();
       break;
     case "nameWords":
       result = { ...(await listNameWords(String(args[0] ?? ""))), hits: await namesHit() };

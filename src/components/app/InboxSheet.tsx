@@ -22,8 +22,9 @@ import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
 import { talulahText } from "@/lib/talulah";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
+import { APPEAL_MAX, APPEAL_MIN } from "@/lib/safety";
 import type { LngLat } from "@/lib/types";
-import type { Friend, InboxItem } from "@/lib/world/types";
+import type { Friend, InboxItem, StaffAppeal } from "@/lib/world/types";
 import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
@@ -155,6 +156,55 @@ export type InboxFriendly = {
   gameAdded: (itemId: string) => Promise<void>;
 };
 
+/**
+ * 我觉得处理错了, under a 站长通知 about something the admin did: a box for why, sent once; then that it
+ * was, until the admin's answer comes as a note of its own.
+ */
+function AppealRow({ appeal, onAppeal }: { appeal: StaffAppeal; onAppeal: (actionId: string, text: string) => Promise<boolean> }) {
+  const [writing, setWriting] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (appeal.state === "sent") return <p className="hint appeal-done">已经申诉了，站长会再看一次。</p>;
+  if (appeal.state === "answered") return null;
+  if (!writing) {
+    return (
+      <div className="row-actions">
+        <button className="pill" onClick={() => setWriting(true)}>
+          我觉得处理错了
+        </button>
+      </div>
+    );
+  }
+  const length = [...text.trim()].length;
+  const send = async () => {
+    setBusy(true);
+    const sent = await onAppeal(appeal.actionId, text);
+    setBusy(false);
+    if (sent) setWriting(false);
+  };
+  return (
+    <div className="appeal-box">
+      <textarea
+        value={text}
+        maxLength={APPEAL_MAX}
+        rows={3}
+        placeholder={`说说为什么觉得处理错了（${APPEAL_MIN} 到 ${APPEAL_MAX} 个字）`}
+        aria-label="申诉理由"
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div className="row-actions">
+        <button className="pill dark" disabled={busy || length < APPEAL_MIN} onClick={send}>
+          提交申诉
+        </button>
+        <button className="pill" disabled={busy} onClick={() => setWriting(false)}>
+          算了
+        </button>
+      </div>
+      <p className="hint">只能申诉一次，站长看了会在这里告诉你结果。</p>
+    </div>
+  );
+}
+
 /** What one of 阿米娅向导's touches says, in her own words. */
 function amiyaText(item: Extract<InboxItem, { kind: "amiya" }>, games: Game[]) {
   if (item.greet) return `${AMIYA_NAME}碰了碰你：「${amiyaLine("greet", games)}」`;
@@ -177,6 +227,7 @@ export default function InboxSheet({
   onViewProfile,
   onOpenFriend,
   onSafety,
+  onAppeal,
   friendly,
   suspendedUntil = null,
   onClose,
@@ -199,6 +250,8 @@ export default function InboxSheet({
   onOpenFriend: (friendId: string) => void;
   /** 拉黑或举报 the sender: an inbox item id, or "friend:<id>" */
   onSafety: (target: string, who: string | null) => void;
+  /** 我觉得处理错了 on a 站长通知: whether it went */
+  onAppeal: (itemId: string, actionId: string, text: string) => Promise<boolean>;
   friendly: InboxFriendly;
   /** 暂停互动 until then, said at the top */
   suspendedUntil?: number | null;
@@ -277,6 +330,7 @@ export default function InboxSheet({
         <div key={item.id} className={`${cls} staff`}>
           <div className="staff-from">站长</div>
           <div>{item.text}</div>
+          {item.appeal && <AppealRow appeal={item.appeal} onAppeal={(actionId, text) => onAppeal(item.id, actionId, text)} />}
           <div className="meta">{ago(item.at)}</div>
         </div>
       );

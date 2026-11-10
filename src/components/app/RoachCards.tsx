@@ -33,6 +33,7 @@ export function OtherRoachCard({
   onSignIn,
   onTouch,
   onPoke,
+  onReport,
   onClose,
 }: {
   roach: PublicRoach;
@@ -90,6 +91,8 @@ export function OtherRoachCard({
   onSignIn: () => void;
   onTouch: (bold: boolean) => void;
   onPoke: () => void;
+  /** 举报这只蟑螂: where a player put it; never offered on the guides */
+  onReport?: () => void;
   onClose: () => void;
 }) {
   if (roach.bot) {
@@ -298,6 +301,11 @@ export function OtherRoachCard({
         </div>
       )}
       {signedIn && friendRow}
+      {signedIn && !roach.guide && onReport && (
+        <button className="link report-roach" onClick={onReport}>
+          举报这只蟑螂
+        </button>
+      )}
       <button className="close" onClick={onClose} aria-label="关闭">
         ×
       </button>

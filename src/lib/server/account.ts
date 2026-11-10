@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac } from "node:crypto";
-import { eq, inArray, or } from "drizzle-orm";
+import { asc, eq, inArray, or } from "drizzle-orm";
 import { db } from "./db";
 import { secret } from "./env";
 import { forgetLoginCodes } from "./loginCodes";
@@ -45,10 +45,13 @@ export function mailboxForms(email: string): string[] {
   return plain === given ? [given] : [given, plain];
 }
 
-/** Delete the account and refuse its email from now on, however it is written. Only HMACs are kept, never the address. */
-export async function banAccount(user: UserRow) {
+/**
+ * Delete the account and refuse its email from now on, however it is written, keeping why (a community
+ * rule's code, src/lib/safety.ts RULES). Only HMACs are kept, never the address.
+ */
+export async function banAccount(user: UserRow, reason: string | null = null) {
   if (user.email) {
-    const hashes = mailboxForms(user.email).map((f) => ({ emailHash: banHash(f) }));
+    const hashes = mailboxForms(user.email).map((f) => ({ emailHash: banHash(f), reason }));
     await db.insert(bannedEmails).values(hashes).onConflictDoNothing();
   }
   await deleteAccount(user);
@@ -56,9 +59,14 @@ export async function banAccount(user: UserRow) {
 
 export const BANNED = "这个邮箱的账号被封了，不能再登录。";
 
+/** The ban of a mailbox, however it is written: when and why (the first, if more than one form was banned), or null */
+export async function banOf(email: string) {
+  const hashes = mailboxForms(email).map(banHash);
+  const [row] = await db.select().from(bannedEmails).where(inArray(bannedEmails.emailHash, hashes)).orderBy(asc(bannedEmails.createdAt)).limit(1);
+  return row ? { at: row.createdAt.getTime(), reason: row.reason } : null;
+}
+
 /** Bans before 2026-11 kept only the address as it was written, so only that one finds them. */
 export async function isBanned(email: string) {
-  const hashes = mailboxForms(email).map(banHash);
-  const [row] = await db.select().from(bannedEmails).where(inArray(bannedEmails.emailHash, hashes)).limit(1);
-  return Boolean(row);
+  return Boolean(await banOf(email));
 }

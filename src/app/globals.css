@@ -689,6 +689,25 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
 .msg.staff { border-left: 3px solid var(--ink); }
 .msg.staff .staff-from { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 .suspended-banner { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: #fdecea; color: #a12a1f; font-size: 13px; }
+/* 我觉得处理错了 under a 站长通知: the box for why, and the line once it went */
+.msg.staff .appeal-box { margin-top: 8px; }
+.msg.staff .appeal-box textarea {
+  display: block; width: 100%; padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px;
+  font: inherit; font-size: 15px; color: var(--ink); resize: vertical;
+}
+.msg.staff .appeal-box .hint { margin: 6px 0 0; font-size: 12px; }
+.msg.staff .appeal-done { margin: 6px 0 0; font-size: 12px; }
+/* 举报这只蟑螂, small at the bottom of someone else's roach card */
+.card .report-roach { align-self: flex-end; margin-top: 2px; font-size: 12px; text-decoration: underline; }
+/* /admin: a roach's case (its spot, the map tag on its row), pages of the queue, appeals, 查邮箱 */
+.case-row-text .tag.map-tag { margin: 0 6px 0 0; background: #e3effd; color: #1a5fb4; }
+.roach-spot { padding: 8px 10px; border-radius: 12px; background: #f3f8ff; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0; }
+.appeals .appeal-text { margin: 6px 0 0; }
+.appeals .case-rows > li { padding-bottom: 6px; }
+.appeals .account-actions { align-items: center; }
+.inline-form { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.inline-form input { flex: 1; min-width: 0; }
 /* 资料 while reports hold the name and UIDs: the note, and the fields locked meanwhile look it */
 .held-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: #fff7d6; font-size: 13px; line-height: 1.55; }
 .sheet input:disabled, .sheet select:disabled { background: #f1f3f5; color: var(--muted); opacity: 1; cursor: not-allowed; }

@@ -15,7 +15,7 @@ import * as friendly from "@/lib/server/friendly";
 import * as help from "@/lib/server/help";
 import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
-import { dayWords, SUSPENDED_MEANS } from "@/lib/server/staffNotes";
+import { appeal, dayWords, SUSPENDED_MEANS } from "@/lib/server/staffNotes";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import type { LngLat } from "@/lib/types";
@@ -216,6 +216,15 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "report":
       await safety.report(uid(), String(args[0]), args[1], args[2]);
+      break;
+    // a roach's spot on the map; like a report, open while paused or before agreeing again
+    case "reportRoach":
+      await safety.reportRoach(uid(), String(args[0]), args[1], args[2]);
+      break;
+    // 我觉得处理错了, on a 站长通知
+    case "appeal":
+      if (!allow(`appeal:${uid()}`, 10, 60 * 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      await appeal(uid(), args[0], args[1]);
       break;
     case "wearBadge":
       if (!(await wear(agreed(), args[0] === null ? null : String(args[0])))) throw new HttpError(400, "你还没有这个称号。");
