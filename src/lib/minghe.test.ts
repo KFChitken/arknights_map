@@ -106,6 +106,25 @@ describe("明河都尉's riders", () => {
     // a roach in another city takes nothing here
     expect(queueSpots(5, 1, [stationOf(6).at])).toEqual([queueSpot(5, 0)]);
   });
+
+  it("give each rider a spot of their own however long the queue, past 2 km too", () => {
+    // 1500 riders already queued: 500 rows, some 6 km back from him
+    const taken = Array.from({ length: 1500 }, (_, k) => queueSpot(5, k));
+    expect(metresApart(taken[1499], stationOf(5).at)).toBeGreaterThan(5000);
+    const next = queueSpots(5, 20, taken);
+    expect(next).toEqual(Array.from({ length: 20 }, (_, k) => queueSpot(5, 1500 + k)));
+    for (const s of next) expect(taken.every((t) => metresApart(t, s) >= 9.9)).toBe(true);
+    // never two on one spot, thousands at once
+    const many = queueSpots(5, 4000);
+    expect(new Set(many.map((s) => `${s.lng.toFixed(6)},${s.lat.toFixed(6)}`)).size).toBe(4000);
+  });
+
+  it("lay out a long queue at once", () => {
+    const taken = Array.from({ length: 5000 }, (_, k) => queueSpot(9, k * 2));
+    const t0 = performance.now();
+    expect(queueSpots(9, 200, taken)).toHaveLength(200);
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
 });
 
 describe("明河都尉's lines", () => {

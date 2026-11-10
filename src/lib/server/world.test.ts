@@ -1176,6 +1176,24 @@ describe("server world", () => {
       expect(row).toMatchObject({ rideStartDay: day, rideDay: day, rideFromLng: out.lng, rideFromLat: out.lat });
     });
 
+    it("gives riders stacked on one spot (the queue used to end at 2 km) a spot each, in the order they got on", async () => {
+      const day = today();
+      const riders: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const p = await signUp(`rider${i}@example.com`);
+        await p.placeRoach({ kind: "main" }, TOKYO);
+        riders.push((await world.rideMinghe(p.id, { kind: "clone" })).roaches.find((r) => r.slot === 1)!.id);
+      }
+      // the last three all on the first one's spot, as the old queue left them past 2 km
+      const first = queueSpot(day, 0);
+      await db.update(roaches).set({ lng: first.lng, lat: first.lat }).where(isNotNull(roaches.rideSince));
+      expect(await minghe.spreadStackedRiders()).toBe(3);
+      const spots = await Promise.all(riders.map(async (id) => (await db.select().from(roaches).where(eq(roaches.id, id)))[0]));
+      expect(spots.map((r) => [0, 1, 2, 3].findIndex((k) => metresApart(r, queueSpot(day, k)) < 0.01))).toEqual([0, 1, 2, 3]);
+      // nobody stacked: nothing moves
+      expect(await minghe.spreadStackedRiders()).toBe(0);
+    });
+
     it("moves his riders to the next station at 04:00, once a day, and sees them home after 7", async () => {
       const day = today();
       const now = Date.now();

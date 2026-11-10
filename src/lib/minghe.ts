@@ -162,8 +162,6 @@ function offset(from: LngLat, deg: number, ahead: number, right: number): LngLat
 export const QUEUE = { across: 10, first: 14, apart: 12, abreast: 3 };
 /** A spot with a roach this close is taken */
 export const SPOT_TAKEN_M = 5;
-/** Never looks further back than this many spots */
-const MAX_SPOTS = 3000;
 
 /** The k-th spot in a station's queue (from 0): row floor(k / 3), the middle one first */
 export function queueSpot(stop: number, k: number): LngLat {
@@ -183,13 +181,35 @@ export function metresApart(a: LngLat, b: LngLat) {
 /**
  * The first n free spots of a station's queue, in order: a spot is taken when one of
  * `taken` (roaches already standing there, not those being laid out) is within SPOT_TAKEN_M.
+ * The queue has no end (Breeze, 2026-11-10): once it reached 2 km, which was as far as it
+ * looked, every rider after landed on the same spot. The taken roaches go into squares of
+ * SPOT_TAKEN_M by where they stand, so a queue of thousands is laid out at once.
  */
 export function queueSpots(stop: number, n: number, taken: LngLat[] = []): LngLat[] {
+  const at = stationOf(stop).at;
+  const cos = Math.cos(rad(at.lat));
+  const cellOf = (p: LngLat) => [Math.floor(((p.lng - at.lng) * M_PER_DEG * cos) / SPOT_TAKEN_M), Math.floor(((p.lat - at.lat) * M_PER_DEG) / SPOT_TAKEN_M)];
+  const cells = new Map<string, LngLat[]>();
+  for (const t of taken) {
+    const [x, y] = cellOf(t);
+    const key = `${x},${y}`;
+    const list = cells.get(key);
+    if (list) list.push(t);
+    else cells.set(key, [t]);
+  }
+  const isTaken = (spot: LngLat) => {
+    const [x, y] = cellOf(spot);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++) {
+        if (cells.get(`${x + dx},${y + dy}`)?.some((t) => metresApart(t, spot) < SPOT_TAKEN_M)) return true;
+      }
+    return false;
+  };
   const out: LngLat[] = [];
-  const near = taken.filter((t) => metresApart(t, stationOf(stop).at) < 2_000);
-  for (let k = 0; out.length < n && k < MAX_SPOTS; k++) {
+  // each taken roach blocks at most one spot (spots are 10 m apart), so this always finds n
+  for (let k = 0; out.length < n && k < taken.length + n; k++) {
     const spot = queueSpot(stop, k);
-    if (!near.some((t) => metresApart(t, spot) < SPOT_TAKEN_M)) out.push(spot);
+    if (!isTaken(spot)) out.push(spot);
   }
   return out;
 }

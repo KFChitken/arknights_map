@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, asc, count, eq, gte, isNotNull, isNull, lt, notInArray, sql } from "drizzle-orm";
-import { MINGHE, mingheDay, mingheRoach, queueSpots, RIDE_STOPS, stationOf, stopOf } from "../minghe";
+import { and, asc, count, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { metresApart, MINGHE, mingheDay, mingheRoach, queueSpots, RIDE_STOPS, SPOT_TAKEN_M, stationOf, stopOf } from "../minghe";
 import type { LngLat } from "../types";
 import { WorldError, type MingheItem, type TouchResult } from "../world/types";
 import { db } from "./db";
@@ -151,14 +151,54 @@ export async function mingheOf(u: { id: string; mingheFriendSince: Date | null }
 /** No longer riding: what a clone's ride columns go back to */
 export const OFF_HORSE = { rideSince: null, rideStartDay: null, rideDay: null, rideFromLng: null, rideFromLat: null };
 
-/** Where the roaches already standing near a day's station are, but for those listed. */
+/**
+ * Where the roaches already standing on a day's queue are, but for those listed: every roach near
+ * the station, and the day's riders wherever the queue has taken them (it has no end).
+ */
 export async function standingNear(exec: Exec, day: number, except: string[] = []): Promise<LngLat[]> {
   const at = stationOf(day).at;
   const center = sql`ST_SetSRID(ST_MakePoint(${at.lng}, ${at.lat}), 4326)::geography`;
   return exec
     .select({ lng: roaches.lng, lat: roaches.lat })
     .from(roaches)
-    .where(and(sql`ST_DWithin(${roaches.geog}, ${center}, 2000)`, except.length ? notInArray(roaches.id, except) : undefined));
+    .where(
+      and(
+        or(sql`ST_DWithin(${roaches.geog}, ${center}, 2000)`, and(isNotNull(roaches.rideSince), eq(roaches.rideDay, day))),
+        except.length ? notInArray(roaches.id, except) : undefined,
+      ),
+    );
+}
+
+/**
+ * Riders that stand on one another at today's station (before the queue had no end, every rider
+ * past 2 km got the same spot): the later ones each move to a free spot of their own, in the order
+ * they got on. Run once as the server starts; with nobody stacked it changes nothing.
+ */
+export async function spreadStackedRiders(now = Date.now()) {
+  const day = mingheToday(now);
+  const moved = await db.transaction(async (tx) => {
+    // as rideMinghe: one at a time with anyone getting on
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('minghe-queue'))`);
+    const riders = await tx
+      .select({ id: roaches.id, lng: roaches.lng, lat: roaches.lat })
+      .from(roaches)
+      .where(and(isNotNull(roaches.rideSince), eq(roaches.rideDay, day)))
+      .orderBy(asc(roaches.rideSince), asc(roaches.id));
+    const kept: LngLat[] = [];
+    const stacked: string[] = [];
+    for (const r of riders) {
+      if (kept.some((k) => metresApart(k, r) < SPOT_TAKEN_M)) stacked.push(r.id);
+      else kept.push(r);
+    }
+    if (!stacked.length) return 0;
+    const spots = queueSpots(day, stacked.length, await standingNear(tx, day, stacked));
+    for (const [i, id] of stacked.entries()) {
+      await tx.update(roaches).set({ lng: spots[i].lng, lat: spots[i].lat }).where(eq(roaches.id, id));
+    }
+    return stacked.length;
+  });
+  if (moved) roachesChanged();
+  return moved;
 }
 
 /**

@@ -2,7 +2,7 @@ import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
 import { flipTheAway } from "./lib/server/away";
 import { fireSongs } from "./lib/server/badges";
-import { moveMingheRiders } from "./lib/server/minghe";
+import { moveMingheRiders, spreadStackedRiders } from "./lib/server/minghe";
 import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled, watchEnabled } from "./lib/server/env";
@@ -97,6 +97,8 @@ if (!helper) {
   };
   ride();
   setInterval(ride, 5 * MINUTE_MS);
+  // riders that stood on one another when the queue still ended at 2 km each get a spot of their own
+  spreadStackedRiders().catch(failed("ride", "Spreading 明河都尉's stacked riders failed"));
 
   // Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
   const totals = () => recordDailyTotals().catch(failed("totals", "Recording daily totals failed"));
