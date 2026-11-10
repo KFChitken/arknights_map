@@ -706,7 +706,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
       setFocus({ lng, lat, zoom, nonce: Date.now() });
   }, []);
 
-  // Roaches others placed or moved: once a minute, and when the page comes back into view, ask only what changed
+  // Roaches others placed or moved: every two minutes (once a minute from some 20,000 pages was more than the
+  // server could keep up with), and when the page comes back into view, ask only what changed
   useEffect(() => {
     let last = Date.now();
     const poll = () => {
@@ -715,7 +716,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       loadRoaches().catch(() => {});
     };
     document.addEventListener("visibilitychange", poll);
-    const t = window.setInterval(poll, 60_000);
+    const t = window.setInterval(poll, 120_000);
     return () => {
       document.removeEventListener("visibilitychange", poll);
       window.clearInterval(t);

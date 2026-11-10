@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/geo/route";
 import { fromGcj } from "../coords";
-import { amapSearchToday, forgetGeo, GEO_BUSY, GEO_PER_ADDRESS, geoSearch, NOMINATIM_WAITING } from "./geo";
+import { amapSearchToday, forgetGeo, GEO_BUSY, GEO_PER_ADDRESS, geoSearch, NOMINATIM_WAITING, PHOTON_FAILS, PHOTON_REST_MS } from "./geo";
 import { inMainland } from "./region";
 import { forgetSignals, recent } from "./signals";
 
@@ -90,6 +90,28 @@ describe("place search through our server (/api/geo)", () => {
     expect(asked[0].url).toContain("photon.komoot.io");
     expect(asked[0].agent).toBe("zhoupmap.com place search (+https://zhoupmap.com)");
     expect((await post(MAINLAND, { kind: "lookup", q: "静安寺" })).status).toBe(400);
+  });
+
+  it("leaves Photon alone for a while after it fails again and again, typing then getting no suggestions at once", async () => {
+    let asks = 0;
+    let up = false;
+    const fetcher = (async () => {
+      asks++;
+      if (!up) throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+      return Response.json(photonBody("静安寺"));
+    }) as unknown as typeof fetch;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // each a different word, from a different address: nothing kept, no address limit
+    for (let i = 0; i < PHOTON_FAILS; i++) await expect(geoSearch(`10.0.0.${i}`, { kind: "suggest", q: `词${i}` }, fetcher)).rejects.toThrow();
+    expect(asks).toBe(PHOTON_FAILS);
+    // resting: an empty answer straight away, Photon not asked
+    expect(await geoSearch("10.0.1.1", { kind: "suggest", q: "静安寺" }, fetcher)).toEqual({ places: [], osm: false });
+    expect(asks).toBe(PHOTON_FAILS);
+    // after the rest it is asked again, and what it finds is answered
+    up = true;
+    vi.advanceTimersByTime(PHOTON_REST_MS + 1);
+    expect((await geoSearch("10.0.1.2", { kind: "suggest", q: "静安寺" }, fetcher)).places).toHaveLength(1);
+    expect(asks).toBe(PHOTON_FAILS + 1);
   });
 
   it("on 搜索 puts 高德's places first, around the map's center in China, then Nominatim's", async () => {

@@ -59,6 +59,8 @@ services:
       - ./deploy:/etc/caddy:ro
       # our own overseas map, put on the server by hand (see the README) and served by Caddy
       - ./tiles:/srv/tiles:ro
+      # the characters' pictures, which scripts/deploy.sh copies here, served by Caddy too (deploy/Caddyfile)
+      - ./operator-art:/srv/operator-art:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

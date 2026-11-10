@@ -22,8 +22,15 @@ import { errorCode, note } from "./signals";
 
 /** Asks from one address in a minute */
 export const GEO_PER_ADDRESS = 30;
-/** Photon asks from the whole site in a minute */
-export const PHOTON_PER_MINUTE = 300;
+/** Photon asks from the whole site in a minute: one a second, the public service is free and shared */
+export const PHOTON_PER_MINUTE = 60;
+/**
+ * After this many Photon failures in a row it is left alone for PHOTON_REST_MS, typing then getting no
+ * suggestions at once instead of waiting for nothing. 2026-11-10: once Tencent's 6000 a day were gone,
+ * every mainland keystroke came here, and Photon refused our server's connections for hours.
+ */
+export const PHOTON_FAILS = 5;
+export const PHOTON_REST_MS = 15 * 60_000;
 /** Nominatim asks waiting their turn (one a second for the whole site, its rule) before the next is turned away */
 export const NOMINATIM_WAITING = 5;
 export const GEO_BUSY = "搜的人有点多，过几秒再试，或者直接点地图。";
@@ -36,6 +43,8 @@ const KEEP_MS = 24 * 3600_000;
 const kept = new Map<string, { at: number; found: PlaceResults }>();
 let nominatimNext = 0;
 let waiting = 0;
+let photonFails = 0;
+let photonRestUntil = 0;
 let amapNext = 0;
 /** 高德 searches spent today, and what 高德 said when it turned the server away today */
 let amapDay = { date: "", used: 0, out: null as string | null };
@@ -47,6 +56,8 @@ export function forgetGeo() {
   kept.clear();
   nominatimNext = 0;
   waiting = 0;
+  photonFails = 0;
+  photonRestUntil = 0;
   amapNext = 0;
   amapDay = { date: "", used: 0, out: null };
 }
@@ -72,8 +83,20 @@ export async function geoSearch(address: string, ask: GeoAsk, fetcher: typeof fe
 
   let found: PlaceResults;
   if (ask.kind === "suggest") {
+    // resting: no suggestions, and nothing kept, so the words are asked again once Photon is back
+    if (Date.now() < photonRestUntil) return { places: [], osm: false };
     if (!allow("geo-photon", PHOTON_PER_MINUTE, 60_000)) throw new HttpError(429, GEO_BUSY);
-    found = { places: photonPlaces(await ask_(fetcher, "Photon", photonUrl(ask.q, ask.near))), osm: true };
+    try {
+      found = { places: photonPlaces(await ask_(fetcher, "Photon", photonUrl(ask.q, ask.near))), osm: true };
+      photonFails = 0;
+    } catch (e) {
+      if (++photonFails >= PHOTON_FAILS) {
+        photonFails = 0;
+        photonRestUntil = Date.now() + PHOTON_REST_MS;
+        console.error("geo: Photon left alone for a while");
+      }
+      throw e;
+    }
   } else {
     // 高德's terms (3.5) let nobody keep its data, so only what OpenStreetMap found is kept for next time
     const osmKey = `osm|${ask.q}|${near}`;

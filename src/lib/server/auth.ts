@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { SESSION_DAYS } from "../rules";
@@ -40,15 +40,20 @@ export async function endSession() {
   jar.delete(SESSION_COOKIE);
 }
 
+// Every request asks who sent it: the statement is put together once, not by drizzle on each request
+// (on 2026-11-10 putting queries together was the biggest single use of the site's CPU)
+const currentUserQuery = db
+  .select({ user: users })
+  .from(sessions)
+  .innerJoin(users, eq(users.id, sessions.userId))
+  .where(and(eq(sessions.id, sql.placeholder("id")), gt(sessions.expiresAt, sql`now()`)))
+  .limit(1)
+  .prepare("current_user");
+
 export async function currentUser(): Promise<UserRow | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const [row] = await db
-    .select({ user: users })
-    .from(sessions)
-    .innerJoin(users, eq(users.id, sessions.userId))
-    .where(and(eq(sessions.id, sha256(token)), gt(sessions.expiresAt, new Date())))
-    .limit(1);
+  const [row] = await currentUserQuery.execute({ id: sha256(token) });
   return row?.user ?? null;
 }
 
