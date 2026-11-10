@@ -3,9 +3,9 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
-import { secret } from "./env";
+import { MAIL_SLOW_PER_ADDRESS, secret } from "./env";
 import { HttpError } from "./http";
-import { mailRoom } from "./mailQuota";
+import { isSlowMail, mailRoom, slowRoomFull } from "./mailQuota";
 import { note } from "./signals";
 import { loginCodes, mailSends } from "./schema";
 
@@ -48,12 +48,16 @@ function codeMatches(email: string, code: string, hash: string) {
  */
 export async function issueLoginCode(email: string): Promise<IssuedCode> {
   const now = new Date();
+  // a mail service slow to take our mail just now has caps of its own (mailQuota.ts), and fewer codes per address
+  const slow = isSlowMail(email);
+  const perDay = slow ? MAIL_SLOW_PER_ADDRESS : LOGIN_CODES_PER_DAY;
   const dayAgo = new Date(now.getTime() - DAY_MS);
   // Rows past both the cooldown and their day only hold an address, so drop them
   await db.delete(loginCodes).where(and(lt(loginCodes.dayStart, dayAgo), lt(loginCodes.expiresAt, now)));
 
-  // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up
-  const issued = await db.transaction(async (tx): Promise<IssuedCode | number> => {
+  // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up,
+  // or which of the slow service's caps it would pass
+  const issued = await db.transaction(async (tx): Promise<IssuedCode | number | "day" | "hour"> => {
     // holds the mail lock until the end: codes are issued one at a time, site-wide
     if (!(await mailRoom(tx, now))) {
       note("codeRefused", "quota");
@@ -65,7 +69,11 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
     if (row && row.sentAt.getTime() > now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000) {
       return Math.max(1, LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - row.sentAt.getTime()) / 1000));
     }
-    if (row && sameDay && row.sentToday >= LOGIN_CODES_PER_DAY) return 0;
+    if (row && sameDay && row.sentToday >= perDay) return 0;
+    if (slow) {
+      const full = await slowRoomFull(tx, now);
+      if (full) return full;
+    }
 
     // a code made before codes were worked out (or by another secret) is not sent again: it could not be
     const again = Boolean(
@@ -86,14 +94,25 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
     } else {
       await tx.insert(loginCodes).values({ email, codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, ...day });
     }
-    await tx.insert(mailSends).values({ sentAt: now, kind: "login" });
+    await tx.insert(mailSends).values({ sentAt: now, kind: slow ? "login-slow" : "login" });
     return { code, again, expiresAt };
   });
-  if (typeof issued !== "number") return issued;
+  if (typeof issued === "object") return issued;
 
+  if (issued === "day" || issued === "hour") {
+    note("codeRefused", `slow-${issued}`);
+    const domain = email.slice(email.lastIndexOf("@") + 1);
+    const service = /^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain;
+    throw new HttpError(
+      429,
+      issued === "day"
+        ? `${service} 现在限制我们的发信，今天发往 ${service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。`
+        : `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`,
+    );
+  }
   note("codeRefused", issued > 0 ? "cooldown" : "address-day");
   if (issued > 0) throw new HttpError(429, `验证码刚发过，${issued} 秒后可以再发。`);
-  throw new HttpError(429, `这个邮箱今天已经收了 ${LOGIN_CODES_PER_DAY} 次验证码，明天再试吧。`);
+  throw new HttpError(429, `这个邮箱今天已经收了 ${perDay} 次验证码，明天再试吧。`);
 }
 
 /**
@@ -116,7 +135,7 @@ export async function withdrawLoginCode(email: string, issued: IssuedCode) {
       .where(eq(loginCodes.email, email));
     // the one row it added to the site's count, written at the same moment
     await tx.execute(
-      sql`delete from ${mailSends} where ${mailSends.id} = (select ${mailSends.id} from ${mailSends} where ${mailSends.kind} = 'login' and ${mailSends.sentAt} = ${row.sentAt.toISOString()}::timestamptz order by ${mailSends.id} desc limit 1)`,
+      sql`delete from ${mailSends} where ${mailSends.id} = (select ${mailSends.id} from ${mailSends} where ${mailSends.kind} in ('login', 'login-slow') and ${mailSends.sentAt} = ${row.sentAt.toISOString()}::timestamptz order by ${mailSends.id} desc limit 1)`,
     );
   });
 }

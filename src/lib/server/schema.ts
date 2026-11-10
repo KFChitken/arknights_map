@@ -152,7 +152,8 @@ export const mailSends = pgTable("mail_sends", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   sentAt: at("sent_at").notNull().defaultNow(),
   /**
-   * "login" for a code, the only kind counted against MAIL_DAILY_LIMIT; "report" for the admin's daily
+   * "login" for a code and "login-slow" for one to a slow mail service (MAIL_SLOW_DOMAINS), the only
+   * kinds counted against MAIL_DAILY_LIMIT; "report" for the admin's daily
    * report reminder and "report-urgent" for one about URGENT_REASONS (src/lib/server/safety.ts)
    */
   kind: text("kind").notNull().default("login"),

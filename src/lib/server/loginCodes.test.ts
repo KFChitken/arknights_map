@@ -1,11 +1,20 @@
 import { eq, sql, type AnyColumn } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { forgetLoginCodes, issueLoginCode, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
 import { neverReached } from "./mail";
 import { loginCodes, mailSends } from "./schema";
+
+// Gmail slow to take our mail, with small caps to reach in a test (other addresses are not affected)
+vi.mock("./env", async (original) => ({
+  ...(await original<typeof import("./env")>()),
+  MAIL_SLOW_DOMAINS: ["gmail.com", "googlemail.com"],
+  MAIL_SLOW_DAILY_LIMIT: 6,
+  MAIL_SLOW_HOURLY_LIMIT: 4,
+  MAIL_SLOW_PER_ADDRESS: 3,
+}));
 
 const EMAIL = "player@example.com";
 const MINUTE = 60_000;
@@ -191,5 +200,40 @@ describe("login codes", () => {
 
     await forgetLoginCodes(EMAIL);
     expect(await row()).toBeUndefined();
+  });
+});
+
+describe("codes to a mail service slow to take our mail", () => {
+  it("sends one address there 3 codes a day, and any other address its 10", async () => {
+    const G = "doctor@gmail.com";
+    for (let i = 0; i < 3; i++) {
+      await issueLoginCode(G);
+      await rewind({ sent: 2 * MINUTE + 1000 }, G);
+    }
+    await expect(issueLoginCode(G)).rejects.toThrow("今天已经收了 3 次");
+    for (let i = 0; i < 4; i++) {
+      await issueLoginCode(EMAIL);
+      await rewind({ sent: 2 * MINUTE + 1000 });
+    }
+  });
+
+  it("caps the codes to slow services together, by the hour and by the day, and leaves the rest alone", async () => {
+    for (let i = 0; i < 4; i++) await issueLoginCode(`g${i}@gmail.com`);
+    await expect(issueLoginCode("g4@googlemail.com")).rejects.toThrow("这一小时发往 Gmail 的验证码名额用完了");
+    await issueLoginCode(EMAIL);
+
+    // an hour on, room again until the day's 6
+    await db.update(mailSends).set({ sentAt: sql`${mailSends.sentAt} - interval '61 minutes'` });
+    await issueLoginCode("g4@gmail.com");
+    await issueLoginCode("g5@gmail.com");
+    await expect(issueLoginCode("g6@gmail.com")).rejects.toThrow("今天发往 Gmail 的验证码名额用完了");
+    // counted in the database, so every process sees the same number
+    expect(await db.$count(mailSends, eq(mailSends.kind, "login-slow"))).toBe(6);
+  });
+
+  it("counts codes to slow services against the whole site's cap as well", async () => {
+    await db.insert(mailSends).values(Array.from({ length: MAIL_DAILY_LIMIT - 1 }, () => ({ kind: "login-slow" })));
+    await issueLoginCode(EMAIL);
+    await expect(issueLoginCode("other@example.com")).rejects.toThrow("验证码邮件发完了");
   });
 });

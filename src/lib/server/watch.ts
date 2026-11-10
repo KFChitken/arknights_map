@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import tls from "node:tls";
-import { and, count, eq, gt, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
 import { beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
@@ -12,6 +12,7 @@ import { db } from "./db";
 import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_DOORS, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
 import { amapSearchToday } from "./geo";
 import { sendAdminMail } from "./mail";
+import { LOGIN_KINDS } from "./mailQuota";
 import { mailSends, watchAlerts, watchState } from "./schema";
 import { errorCode, recent, startedAt, type Signal } from "./signals";
 
@@ -182,7 +183,7 @@ async function checkQuota(now: number): Promise<Finding[]> {
   const [{ n }] = await db
     .select({ n: count() })
     .from(mailSends)
-    .where(and(eq(mailSends.kind, "login"), gt(mailSends.sentAt, new Date(now - DAY))));
+    .where(and(inArray(mailSends.kind, LOGIN_KINDS), gt(mailSends.sentAt, new Date(now - DAY))));
   const said = `过去 24 小时发了 ${n} 封，上限是 ${MAIL_DAILY_LIMIT} 封（服务器 .env 里的 MAIL_DAILY_LIMIT）。`;
   if (n >= MAIL_DAILY_LIMIT) {
     return [
@@ -220,9 +221,12 @@ async function checkMail(now: number): Promise<Finding[]> {
 const REFUSED: Record<string, string> = {
   "ip-10min": "同一网络 10 分钟内太频繁",
   "ip-day": "同一网络一天内太多",
-  cooldown: "同一邮箱一分钟内重复",
+  cooldown: "同一邮箱两分钟内重复",
   "address-day": "同一邮箱一天内超过次数",
   quota: "全站邮件额度用完",
+  // MAIL_SLOW_DOMAINS' own caps (src/lib/server/mailQuota.ts)
+  "slow-day": "发往 Gmail 等慢邮箱的当天名额用完",
+  "slow-hour": "发往 Gmail 等慢邮箱的这一小时名额用完",
 };
 
 async function checkCodes(now: number): Promise<Finding[]> {

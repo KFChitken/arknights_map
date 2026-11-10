@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { BANNED, isBanned } from "@/lib/server/account";
-import { DEV_MAILBOX_PORT, MAIL_SLOW_DOMAINS } from "@/lib/server/env";
+import { DEV_MAILBOX_PORT } from "@/lib/server/env";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
 import { issueLoginCode, withdrawLoginCode } from "@/lib/server/loginCodes";
 import { neverReached, sendLoginCode } from "@/lib/server/mail";
+import { isSlowMail } from "@/lib/server/mailQuota";
 import { allow } from "@/lib/server/rateLimit";
 import { errorCode, note } from "@/lib/server/signals";
 
@@ -42,6 +43,6 @@ export const POST = route(async (req) => {
     throw new HttpError(503, "验证码邮件暂时发不出去，请过几分钟再试。");
   }
   // a mail service slow to take our mail just now: the page says so (MAIL_SLOW_DOMAINS)
-  const slow = MAIL_SLOW_DOMAINS.includes(email.slice(email.lastIndexOf("@") + 1));
+  const slow = isSlowMail(email);
   return NextResponse.json({ ok: true, again: issued.again, expiresAt: issued.expiresAt.getTime(), slow, devMailboxPort: DEV_MAILBOX_PORT || null });
 });

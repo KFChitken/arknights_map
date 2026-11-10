@@ -18,6 +18,14 @@ export const MAIL_SLOW_DOMAINS = (process.env.MAIL_SLOW_DOMAINS || "")
   .split(",")
   .map((d) => d.trim().toLowerCase())
   .filter(Boolean);
+/**
+ * While a service is slow (MAIL_SLOW_DOMAINS), codes to it have caps of their own, for every address
+ * there together: in any 24 hours, in any hour, and to one address in a day (2026-11-11: Gmail limits
+ * a sending domain whose mail grew too fast; Resend's advice is to send it less and raise it slowly).
+ */
+export const MAIL_SLOW_DAILY_LIMIT = Number(process.env.MAIL_SLOW_DAILY_LIMIT) || 500;
+export const MAIL_SLOW_HOURLY_LIMIT = Number(process.env.MAIL_SLOW_HOURLY_LIMIT) || 30;
+export const MAIL_SLOW_PER_ADDRESS = Number(process.env.MAIL_SLOW_PER_ADDRESS) || 3;
 
 /** Show roaches on the map that belong to nobody (src/lib/world/bots.ts); 0 or unset shows none. */
 export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BOTS) || 0), 0), 20_000);
