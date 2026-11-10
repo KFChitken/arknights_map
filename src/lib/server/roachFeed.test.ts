@@ -2,7 +2,8 @@ import { gunzipSync } from "node:zlib";
 import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EMPTY_PROFILE } from "../profile";
-import type { MapRoach } from "../world/types";
+import { unpackRoaches } from "../world/packed";
+import type { MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
 import { resetRoachFeed, roachFeed, roachFeedSettled } from "./roachFeed";
 import { users } from "./schema";
@@ -57,6 +58,26 @@ describe("roach feed", () => {
     expect(snap.roaches!.find((r) => r.clone)).toMatchObject({ avatar: "hood", color: "white" });
     // nothing new
     expect(await ask(snap.v, T0 + 1000)).toEqual({ v: snap.v });
+  });
+
+  it("packs the whole snapshot for pages that ask, to the same roaches, places to about a metre", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, { lng: 121.473712345, lat: 31.230416789 });
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+
+    const list = await roachFeed(null, T0);
+    const packed = await roachFeed(null, T0, true);
+    expect(packed.kind).toBe("full");
+    expect(packed.kind === "full" && gunzipSync(packed.gzip).toString()).toBe(packed.json);
+    const snap: Answer = JSON.parse(list.json);
+    const pack: RoachFeedUpdate = JSON.parse(packed.json);
+    expect(pack.v).toBe(snap.v);
+    expect(pack.roaches).toBeUndefined();
+    const back = unpackRoaches(pack.packed!).sort((x, y) => (x.id < y.id ? -1 : 1));
+    expect(back).toEqual(snap.roaches);
+    expect(snap.roaches!.find((r) => !r.clone)).toMatchObject({ lng: 121.47371, lat: 31.23042 });
+    // a page holding the version still gets only what changed, the same either way
+    expect(await roachFeed(snap.v, T0 + 1000, true)).toEqual(await roachFeed(snap.v, T0 + 1000));
   });
 
   it("sends only what changed since the version a page holds", async () => {

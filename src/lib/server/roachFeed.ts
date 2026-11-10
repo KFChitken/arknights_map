@@ -5,6 +5,7 @@ import { gzip } from "node:zlib";
 import { asc, eq } from "drizzle-orm";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { botRoaches } from "../world/bots";
+import { nearMetre, packRoaches } from "../world/packed";
 import type { MapRoach } from "../world/types";
 import { db } from "./db";
 import { SHOW_BOTS } from "./env";
@@ -19,6 +20,9 @@ import { roaches, users } from "./schema";
  * The snapshot is rebuilt after roaches are placed, moved or removed, or a
  * look changes, at most every REBUILD_MS; and every MAX_AGE_MS anyway, in case
  * a change slipped past roachesChanged().
+ *
+ * Places are given to about a metre. The whole snapshot also comes packed
+ * (world/packed.ts), a third of the size, for pages that ask for it (?f=2).
  */
 
 const REBUILD_MS = 10_000;
@@ -40,6 +44,8 @@ type Snapshot = {
   roaches: Map<string, string>;
   json: string;
   gzip: Buffer;
+  /** The same snapshot packed (world/packed.ts) */
+  packed: { json: string; gzip: Buffer };
   builtAt: number;
   /** Answers already worked out for pages at an older version, by that version */
   diffs: Map<number, string>;
@@ -111,7 +117,7 @@ export async function allRoaches(): Promise<MapRoach[]> {
 const gzipAsync = promisify(gzip);
 
 async function rebuild(now: number): Promise<Snapshot> {
-  const list = [...(await allRoaches()), ...botRoaches(SHOW_BOTS)];
+  const list = [...(await allRoaches()), ...botRoaches(SHOW_BOTS)].map((r) => ({ ...r, lng: nearMetre(r.lng), lat: nearMetre(r.lat) }));
   const next = new Map(list.map((r) => [r.id, JSON.stringify(r)]));
   const prev = feed.snapshot;
   if (prev) {
@@ -127,7 +133,9 @@ async function rebuild(now: number): Promise<Snapshot> {
   const n = (prev?.n ?? 0) + 1;
   const v = `${feed.epoch}.${n}`;
   const json = `{"v":"${v}","roaches":[${[...next.values()].join(",")}]}`;
-  return { n, v, roaches: next, json, gzip: await gzipAsync(json), builtAt: now, diffs: new Map() };
+  const packed = `{"v":"${v}","packed":${JSON.stringify(packRoaches(list))}}`;
+  const [gz, packedGz] = await Promise.all([gzipAsync(json, { level: 9 }), gzipAsync(packed, { level: 9 })]);
+  return { n, v, roaches: next, json, gzip: gz, packed: { json: packed, gzip: packedGz }, builtAt: now, diffs: new Map() };
 }
 
 /**
@@ -159,11 +167,12 @@ export type FeedAnswer =
 /**
  * What a page holding version `since` needs: nothing new, the roaches changed
  * since (sorted by id, with no times or order of changes), or the whole
- * snapshot when it has no version or one too old or from before a restart.
+ * snapshot when it has no version or one too old or from before a restart;
+ * packed (world/packed.ts) when the page can read it.
  */
-export async function roachFeed(since: string | null, now = Date.now()): Promise<FeedAnswer> {
+export async function roachFeed(since: string | null, now = Date.now(), packed = false): Promise<FeedAnswer> {
   const s = await current(now);
-  const full = { kind: "full" as const, v: s.v, json: s.json, gzip: s.gzip };
+  const full = { kind: "full" as const, v: s.v, ...(packed ? s.packed : { json: s.json, gzip: s.gzip }) };
   const [epoch, nText] = (since ?? "").split(".");
   const from = Number(nText);
   if (epoch !== feed.epoch || !Number.isInteger(from) || from > s.n) return full;

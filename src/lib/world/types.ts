@@ -6,6 +6,7 @@ import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachColor } from "../types";
+import type { PackedRoaches } from "./packed";
 
 /**
  * The data layer the UI talks to: ./server.ts calls the API, whose rules live
@@ -169,10 +170,11 @@ export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
 
 /**
  * The shared roach feed at version v. With no version to start from it holds
- * every roach; otherwise only those added or changed since, and the ids gone.
- * Nothing in it says when or in which order things changed.
+ * every roach (as a list, or packed: world/packed.ts); otherwise only those
+ * added or changed since, and the ids gone. Nothing in it says when or in
+ * which order things changed.
  */
-export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; changed?: MapRoach[]; removed?: string[] };
+export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; packed?: PackedRoaches; changed?: MapRoach[]; removed?: string[] };
 
 /**
  * newFriend: the other player's name when this touch made you 触须之交.

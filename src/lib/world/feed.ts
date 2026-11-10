@@ -1,3 +1,4 @@
+import { unpackRoaches } from "./packed";
 import type { MapRoach, RoachFeedUpdate } from "./types";
 
 /** The browser's copy of the shared roach feed, kept current by applying only what changed. */
@@ -19,8 +20,9 @@ export class RoachFeedCopy {
   /** Take in an answer from the server. True when the roaches changed. */
   apply(u: RoachFeedUpdate): boolean {
     let changed = false;
-    if (u.roaches) {
-      this.byId = new Map(u.roaches.map((r) => [r.id, r]));
+    const all = u.packed ? unpackRoaches(u.packed) : u.roaches;
+    if (all) {
+      this.byId = new Map(all.map((r) => [r.id, r]));
       changed = true;
     } else {
       for (const r of u.changed ?? []) {

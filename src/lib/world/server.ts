@@ -61,11 +61,11 @@ export class ServerWorld implements World {
     );
   };
   setPerlicaTimer = (on: boolean) => this.call<void>("setPerlicaTimer", on);
-  // A GET, so a browser that already holds the whole snapshot gets a 304 for it
+  // A GET, so a browser that already holds the whole snapshot gets a 304 for it; f=2: a whole one comes packed
   roachFeed = async (since: string | null): Promise<RoachFeedUpdate> => {
     let res: Response;
     try {
-      res = await fetch(since ? `/api/roaches?since=${encodeURIComponent(since)}` : "/api/roaches", {
+      res = await fetch(since ? `/api/roaches?since=${encodeURIComponent(since)}&f=2` : "/api/roaches?f=2", {
         cache: since ? "no-store" : "no-cache",
       });
     } catch {

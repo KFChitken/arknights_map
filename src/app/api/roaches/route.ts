@@ -9,13 +9,16 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 /**
  * GET /api/roaches?since=<version>: the shared roach feed (src/lib/server/roachFeed.ts).
  * A page asks once a minute; most answers say nothing changed. Whole snapshots
- * carry an ETag, so a browser that already has one gets 304 back.
+ * carry an ETag, so a browser that already has one gets 304 back. With f=2 a
+ * whole snapshot comes packed (src/lib/world/packed.ts); pages from before
+ * that still get it as a list.
  */
 export async function GET(req: NextRequest) {
   const since = req.nextUrl.searchParams.get("since");
+  const packed = req.nextUrl.searchParams.get("f") === "2";
   try {
-    const answer = await roachFeed(since);
-    const etag = `"${answer.v}"`;
+    const answer = await roachFeed(since, Date.now(), packed);
+    const etag = `"${answer.v}${packed ? "p" : ""}"`;
     const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding" };
     // a browser that already holds this snapshot costs nothing, so it is not counted
     if (answer.kind === "full" && req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });

@@ -331,6 +331,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [look, setLook] = useState<RoachStyle>("cartoon");
   const [me, setMe] = useState<Me | null>(null);
   const [feedRoaches, setFeedRoaches] = useState<MapRoach[]>([]);
+  // the shared roach list has come at least once: till then the counts would say 0
+  const [feedIn, setFeedIn] = useState(false);
   // Every public id our roaches had on this page: after a move the old one stays in the feed for a moment
   const [ownIds, setOwnIds] = useState<ReadonlySet<string>>(new Set());
   const meIdRef = useRef<string | null>(null);
@@ -474,26 +476,34 @@ export default function MapApp({ cn }: { cn: boolean }) {
     applyMe(m);
     return m;
   }, [applyMe]);
-  const loadRoaches = useCallback(async () => {
+  const wholeFeed = useRef<Promise<void> | null>(null);
+  const loadRoaches = useCallback(async (): Promise<void> => {
     const feed = feedRef.current;
-    try {
-      if (feed.apply(await worldRef.current!.roachFeed(feed.version))) setFeedRoaches(feed.roaches);
-      retryRef.current.delay = 0;
-    } catch (e) {
-      if (!(e instanceof TooBusy)) throw e;
-      // Busy: try again shortly, a little later each time, at a slightly different moment for each page
-      const r = retryRef.current;
-      if (r.timer !== undefined) return;
-      r.delay = Math.min(60, r.delay ? r.delay * 2 : e.retryAfterS);
-      if (!feed.version) setToast(e.message);
-      r.timer = window.setTimeout(
-        () => {
-          r.timer = undefined;
-          loadRoaches().catch(() => {});
-        },
-        r.delay * (750 + Math.random() * 500),
-      );
-    }
+    const ask = async () => {
+      try {
+        if (feed.apply(await worldRef.current!.roachFeed(feed.version))) setFeedRoaches(feed.roaches);
+        setFeedIn(true);
+        retryRef.current.delay = 0;
+      } catch (e) {
+        if (!(e instanceof TooBusy)) throw e;
+        // Busy: try again shortly, a little later each time, at a slightly different moment for each page
+        const r = retryRef.current;
+        if (r.timer !== undefined) return;
+        r.delay = Math.min(60, r.delay ? r.delay * 2 : e.retryAfterS);
+        if (!feed.version) setToast(e.message);
+        r.timer = window.setTimeout(
+          () => {
+            r.timer = undefined;
+            loadRoaches().catch(() => {});
+          },
+          r.delay * (750 + Math.random() * 500),
+        );
+      }
+    };
+    if (feed.version) return ask();
+    // the first, whole list is big: one download of it at a time, and whoever asks meanwhile waits for that one
+    wholeFeed.current ??= ask().finally(() => (wholeFeed.current = null));
+    return wholeFeed.current;
   }, []);
   const loadInbox = useCallback(async () => {
     const items = await worldRef.current!.inbox();
@@ -517,11 +527,12 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   /** Everything, for opening the page and switching who is signed in; away: 佩丽卡监督's report of the time away, if she has one. */
   const load = useCallback(async () => {
-    // the roaches have their own retries, so a busy roach list never holds up the rest
-    const [m, items, , list, , away] = await Promise.all([
+    // the roaches have their own retries and come when they come: on a slow line the whole list can
+    // take a minute, and nothing else waits for it
+    loadRoaches().catch(() => {});
+    const [m, items, list, , away] = await Promise.all([
       loadMe(),
       loadInbox(),
-      loadRoaches().catch(() => {}),
       loadFriends(),
       loadIdentities(),
       // 「还在」, sent along before anyone knows who is signed in; nobody's answer is null
@@ -2785,8 +2796,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
             </button>
           )}
           <div className="stats">
-            {visible === null ? "地图加载中…" : `这片地图里有 ${visible.toLocaleString()} 只舟P`}
-            <span className="muted"> · 全球 {total.toLocaleString()} 只</span>
+            {visible === null ? "地图加载中…" : !feedIn ? "舟P们正在赶来…" : `这片地图里有 ${visible.toLocaleString()} 只舟P`}
+            {feedIn && <span className="muted"> · 全球 {total.toLocaleString()} 只</span>}
           </div>
         </div>
       )}
