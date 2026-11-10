@@ -72,6 +72,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   box-shadow: 0 2px 10px #0003; font-size: 14px; white-space: nowrap;
 }
 .actions button.primary { background: var(--ink); color: #fff; font-weight: 700; padding: 12px 20px; font-size: 15px; }
+/* who is signed in has not come yet: said plainly, not greyed out to near nothing */
+.actions button.waiting:disabled { opacity: 1; cursor: default; color: #555; }
 
 .card {
   position: absolute; z-index: 11; left: 12px; right: 12px; bottom: calc(96px + var(--safe-bottom)); margin: 0 auto; max-width: 420px;

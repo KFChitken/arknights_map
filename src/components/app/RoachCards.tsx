@@ -17,6 +17,7 @@ export function OtherRoachCard({
   roach,
   look,
   signedIn,
+  waiting = false,
   sharesUid,
   friendName,
   pokeAgainAt,
@@ -38,6 +39,8 @@ export function OtherRoachCard({
   look: RoachStyle;
   /** Visitors who have not signed in are asked to, instead of being offered the two touches */
   signedIn: boolean;
+  /** Signed in on this browser before, and who it is has not come yet: no 「登录」 meanwhile */
+  waiting?: boolean;
   sharesUid: boolean;
   /** Set when the roach belongs to one of your 触须之交 */
   friendName?: string;
@@ -152,7 +155,9 @@ export function OtherRoachCard({
         : "她每天会用一样的方式碰回你一次。"
     : roach.guide
     ? !signedIn
-      ? "登录后就能碰她。"
+      ? waiting
+        ? "正在读取你的账号…"
+        : "登录后就能碰她。"
       : friendName
         ? "你们是触须之交，她每天会跟你打招呼。"
         : "她每天会用一样的方式碰回你一次。"
@@ -161,7 +166,9 @@ export function OtherRoachCard({
         ? "TA 四脚朝天睡着了。戳一戳，TA 醒来就知道你来过。"
         : "它四脚朝天睡着了。是喝多了还是好久没来，谁也说不准。"
       : !signedIn
-        ? "登录后就能伸出触须碰 TA。"
+        ? waiting
+          ? "正在读取你的账号…"
+          : "登录后就能伸出触须碰 TA。"
         : friendName
           ? "你们是触须之交，随时可以再碰碰 TA。"
           : roach.clone
@@ -270,8 +277,8 @@ export function OtherRoachCard({
           )}
         </>
       ) : !signedIn ? (
-        <button className="primary wide" onClick={onSignIn}>
-          登录
+        <button className="primary wide" disabled={waiting} onClick={onSignIn}>
+          {waiting ? "稍等…" : "登录"}
         </button>
       ) : pokeable && friendRow ? null : pokeable ? (
         <button className="poke-btn" disabled={busy || daysToWait > 0} onClick={onPoke}>

@@ -337,6 +337,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const wanted = useRef<"abroad" | "home" | null>(null);
   const [look, setLook] = useState<RoachStyle>("cartoon");
   const [me, setMe] = useState<Me | null>(null);
+  // Who is signed in comes a moment after the map on a slow line. A browser that was signed in last time
+  // (it remembers the main roach, lib/lastHome) is not shown 「登录」 meanwhile: on every refresh that
+  // looked like being signed out, and players asked for a new login code each time.
+  const [meKnown, setMeKnown] = useState(false);
+  const [wasIn, setWasIn] = useState<boolean | null>(null);
+  const [meFailed, setMeFailed] = useState(false);
+  const visitorShown = !me && (meKnown || wasIn === false);
+  const waitingMe = !me && !meKnown && wasIn === true;
   const [feedRoaches, setFeedRoaches] = useState<MapRoach[]>([]);
   // the shared roach list has come at least once: till then the counts would say 0
   const [feedIn, setFeedIn] = useState(false);
@@ -485,6 +493,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const loadMe = useCallback(async () => {
     const m = await worldRef.current!.me();
     applyMe(m);
+    setMeKnown(true);
     return m;
   }, [applyMe]);
   const wholeFeed = useRef<Promise<void> | null>(null);
@@ -577,6 +586,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   // The world, basemap and look are read in the browser only, to keep SSR output stable
   useEffect(() => {
     worldRef.current = new ServerWorld();
+    setWasIn(loadHome() !== null);
     const b = guessBasemap(cn);
     // The map's code downloads while the first API calls are in flight; the map itself waits for where to start.
     // A failed Amap load is forgotten, so AmapView tries again and falls back to OSM as before.
@@ -620,6 +630,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       .catch((e) => {
         console.error(e);
         failed = true;
+        setMeFailed(true);
         setToast("连不上服务器，地图先只显示底图。");
         return { me: null, items: [] as InboxItem[], away: null, friends: [] as Friend[] };
       })
@@ -988,7 +999,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (placing) return placeAt(p, false);
     setSelected(null);
     // a visitor sees where their roach would go and who is around; nothing is sent
-    if (!me) setPreview(p);
+    if (visitorShown) setPreview(p);
   };
 
   const onRoachClick = (id: string) => {
@@ -3051,13 +3062,16 @@ export default function MapApp({ cn }: { cn: boolean }) {
           roach={selected.roach}
           look={look}
           signedIn={Boolean(me)}
+          waiting={waitingMe}
           onSignIn={() =>
-            setPanel({
-              kind: "login",
-              reason: selected.roach.guide
-                ? `登录后就能碰${guideById(selected.roach.id)?.pronoun ?? "她"}。`
-                : "登录后就能伸出触须碰 TA。",
-            })
+            waitingMe
+              ? setToast("正在读取你的账号，稍等一下。")
+              : setPanel({
+                  kind: "login",
+                  reason: selected.roach.guide
+                    ? `登录后就能碰${guideById(selected.roach.id)?.pronoun ?? "她"}。`
+                    : "登录后就能伸出触须碰 TA。",
+                })
           }
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
@@ -3176,12 +3190,19 @@ export default function MapApp({ cn }: { cn: boolean }) {
         />
       )}
 
-      {!placing && !me && (
+      {!placing && visitorShown && (
         <footer className="actions">
           <button className="primary" onClick={() => setPanel({ kind: "login", reason: "登录后就能放下你的蟑螂。" })}>
             放下我的蟑螂
           </button>
           <button onClick={() => setPanel({ kind: "login" })}>登录</button>
+        </footer>
+      )}
+      {!placing && waitingMe && (
+        <footer className="actions">
+          <button className="waiting" disabled={!meFailed} onClick={() => window.location.reload()}>
+            {meFailed ? "连不上服务器，点这里重试" : "正在读取你的蟑螂…"}
+          </button>
         </footer>
       )}
       {!placing && me && (
