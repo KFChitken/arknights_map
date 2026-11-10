@@ -1617,9 +1617,13 @@ describe("server world", () => {
     // 全体目光向我看齐！ is theirs already, so declaring brings no badge (and no nudge) of its own
     await award(me.id, ["lookatme"]);
     const count = { me: 0, t2: 0, t4: 0 };
+    const heard: string[] = [];
     const offs = [
       listen(me.id, () => count.me++),
-      listen(t2.id, () => count.t2++),
+      listen(t2.id, (event) => {
+        count.t2++;
+        heard.push(event);
+      }),
       listen(t4.id, () => count.t4++),
     ];
 
@@ -1627,6 +1631,8 @@ describe("server world", () => {
     expect(count).toEqual({ me: 0, t2: 1, t4: 0 });
     await me.declare({ template: "launch", game: "arknights" });
     expect(count).toEqual({ me: 0, t2: 2, t4: 0 });
+    // a declaration says so: pages take their time with those
+    expect(heard).toEqual(["inbox", "declare"]);
     const [touchFromMe] = (await t2.inbox()).filter((i) => i.kind === "touch");
     await t2.reply(touchFromMe.id, false);
     expect(count).toEqual({ me: 1, t2: 2, t4: 0 });

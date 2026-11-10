@@ -730,11 +730,14 @@ export default function MapApp({ cn }: { cn: boolean }) {
   }, [panel, placing]);
 
   const showNew = useCallback(async () => {
-    // me too, for a badge someone else's move just earned us
-    const [items] = await Promise.all([loadInbox(), loadFriends(), loadMe()]);
+    const items = await loadInbox();
+    const fresh = freshRef.current.filter((i) => !i.seen);
+    // A declaration nudges a whole neighbourhood, and then nothing but the inbox has changed; for anything
+    // else friends and me too (a new 触须之交, a badge someone else's move just earned us). Asking for all
+    // three on every declaration was much of what kept the server busy (2026-11-10, some 25,000 roaches).
+    if (!fresh.length || fresh.some((i) => i.kind !== "declaration")) await Promise.all([loadFriends(), loadMe()]);
     if (demoRef.current) await loadIdentities();
     if (!items.some((i) => !i.seen)) return;
-    const fresh = freshRef.current.filter((i) => !i.seen);
     const { panel: open, placing: busy } = busyRef.current;
     // only declarations came: they float down over the dock, and 消息 stays shut
     if (fresh.length && fresh.every((i) => i.kind === "declaration") && open?.kind !== "inbox") {
@@ -822,20 +825,31 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (!meId) return;
     const events = new EventSource("/api/events");
     let timer: number | undefined;
+    let due = Infinity;
     let pending = false;
     let dropped = false;
     const run = () => {
       window.clearTimeout(timer);
       timer = undefined;
+      due = Infinity;
       showNew().catch(() => {});
     };
-    // A declaration nudges a whole neighbourhood at once, so each page waits a random moment,
-    // and nudges arriving meanwhile are taken in by the same refresh
-    const later = () => {
-      if (document.hidden) pending = true;
-      else if (timer === undefined) timer = window.setTimeout(run, Math.random() * 10_000);
+    // Each page waits a random moment, so a crowd nudged together does not ask all at once, and nudges
+    // arriving meanwhile are taken in by the same look: within 10 s for what is the player's own, within
+    // a minute for declarations, which reach a whole neighbourhood (2026-11-10: some 400,000 an hour)
+    const later = (within = 10_000) => {
+      if (document.hidden) {
+        pending = true;
+        return;
+      }
+      const at = Date.now() + Math.random() * within;
+      if (at >= due) return;
+      window.clearTimeout(timer);
+      due = at;
+      timer = window.setTimeout(run, at - Date.now());
     };
-    events.addEventListener("inbox", later);
+    events.addEventListener("inbox", () => later());
+    events.addEventListener("declare", () => later(60_000));
     events.addEventListener("help", () => helpNudgeRef.current());
     // nudges sent while the connection was down are lost, so look once it is back
     events.addEventListener("error", () => (dropped = true));

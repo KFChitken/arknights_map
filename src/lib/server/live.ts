@@ -12,8 +12,12 @@ import { errorCode } from "./signals";
  * route bundle.
  */
 
-/** inbox: something new in 消息; help: only the 求助 dot on the 触须之交 card, which never opens anything */
-export type LiveEvent = "inbox" | "help";
+/**
+ * inbox: something new in 消息; declare: only declarations, which reach a whole neighbourhood at once,
+ * so pages take their time (and several in one look); help: only the 求助 dot on the 触须之交 card,
+ * which never opens anything
+ */
+export type LiveEvent = "inbox" | "declare" | "help";
 type Listener = (event: LiveEvent) => void;
 
 const g = globalThis as unknown as { inboxListeners?: Map<string, Set<Listener>>; liveSelf?: string; liveHeard?: boolean };
@@ -64,7 +68,7 @@ export async function hearOthers() {
     try {
       const { p, e, ids } = JSON.parse(payload) as { p?: string; e?: string; ids?: unknown[] };
       if (p === self || !Array.isArray(ids)) return;
-      deliver(ids.map(String), e === "help" ? "help" : "inbox");
+      deliver(ids.map(String), e === "help" || e === "declare" ? e : "inbox");
     } catch {
       // not ours to read
     }

@@ -1172,7 +1172,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
         .values(everyone.slice(i, i + 1000).map((id) => ({ declarationId: row.id, recipientId: id, toFriend: friendsToo.has(id) })));
     }
   });
-  nudge(everyone);
+  nudge(everyone, "declare");
   // 塔露拉干员 answers her 触须之交's birthday, never among the recipients
   if (d.template === "birthday") await birthdayDeclared(userId);
   const event = d.template === "event" ? findLine(d.line)?.event : null;
