@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { db } from "./db";
 import { watchState } from "./schema";
@@ -25,19 +25,33 @@ export function countAmapLoad() {
 /** The Beijing month a moment falls in, as 2026-11 */
 export const beijingMonth = (now: number) => beijingDate(now).slice(0, 7);
 
-/** This month's count so far, the visits counted since last time added in */
+/**
+ * This month's count so far, the visits counted since last time added in. One statement, as every
+ * process of the live site adds its own visits (src/instrumentation-node.ts) and the checks read it.
+ */
 export async function saveAmapLoads(now = Date.now()): Promise<{ month: string; count: number }> {
   const month = beijingMonth(now);
   const add = g.__amapLoadsPending ?? 0;
   g.__amapLoadsPending = 0;
   try {
-    const [row] = await db.select().from(watchState).where(eq(watchState.key, KEY)).limit(1);
-    const kept = row ? (JSON.parse(row.value) as { month: string; count: number }) : null;
-    const count = (kept?.month === month ? kept.count : 0) + add;
-    const value = JSON.stringify({ month, count });
     const at = new Date(now);
-    await db.insert(watchState).values({ key: KEY, value, updatedAt: at }).onConflictDoUpdate({ target: watchState.key, set: { value, updatedAt: at } });
-    return { month, count };
+    const fresh = JSON.stringify({ month, count: add });
+    const rows = await db
+      .insert(watchState)
+      .values({ key: KEY, value: fresh, updatedAt: at })
+      .onConflictDoUpdate({
+        target: watchState.key,
+        set: {
+          // the same month: add to it; a new month: start again from this process's visits
+          value: sql`case when (${watchState.value}::json->>'month') = ${month}
+            then json_build_object('month', ${month}::text, 'count', coalesce((${watchState.value}::json->>'count')::bigint, 0) + ${add})::text
+            else ${fresh} end`,
+          updatedAt: at,
+        },
+      })
+      .returning({ value: watchState.value });
+    const kept = JSON.parse(rows[0]?.value ?? fresh) as { month: string; count: number };
+    return { month: kept.month, count: Number(kept.count) };
   } catch (e) {
     // counted again next time
     g.__amapLoadsPending = (g.__amapLoadsPending ?? 0) + add;

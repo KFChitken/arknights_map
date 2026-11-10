@@ -9,4 +9,6 @@ const client = g.pg ?? postgres(DATABASE_URL, { max: 10, onnotice: () => {} });
 if (!isProd) g.pg = client;
 
 export const db = drizzle(client, { schema });
+/** The driver itself, for what drizzle does not do (LISTEN/NOTIFY in live.ts) */
+export const pg = client;
 export type Db = typeof db;

@@ -3,6 +3,25 @@
 # brings it up from the repository root on the server.
 name: zhoupmap
 
+# What the app's three processes share (services web, web2 and web3 below)
+x-web: &web
+  image: ghcr.io/kfchitken/arknights_map:${WEB_TAG:-latest}
+  env_file: .env
+  volumes:
+    # the character pictures, kept out of the repository and the image; scripts/deploy.sh copies them here
+    - ./operator-art:/app/operator-art:ro
+    - ./guide-art:/app/guide-art:ro
+  restart: unless-stopped
+
+x-web-env: &web-env
+  DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach
+  OPERATOR_ART_DIR: /app/operator-art
+  GUIDE_ART_DIR: /app/guide-art
+  # never link a test inbox on the live site
+  DEV_MAILBOX_PORT: ""
+  # nudges go between the processes through the database
+  LIVE_ACROSS: "1"
+
 services:
   db:
     image: imresamu/postgis:17-3.5
@@ -20,10 +39,14 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # The app, as three processes so it uses more than one core (each runs its JavaScript on one):
+  # web brings the database up to date and runs the jobs; web2 and web3 only answer requests
+  # (src/instrumentation-node.ts). Caddy shares visitors among them (deploy/Caddyfile), and a nudge
+  # for a page reaches whichever of them it is connected to (src/lib/server/live.ts).
   web:
+    <<: *web
     # Built by GitHub for every push to main (.github/workflows/image.yml) and pulled
     # by scripts/deploy.sh; built here instead only when that image is not available
-    image: ghcr.io/kfchitken/arknights_map:${WEB_TAG:-latest}
     build:
       context: .
       args:
@@ -31,21 +54,33 @@ services:
         NEXT_PUBLIC_AMAP_SECURITY_CODE: ${NEXT_PUBLIC_AMAP_SECURITY_CODE:-}
         NEXT_PUBLIC_OSM_STYLE: ${NEXT_PUBLIC_OSM_STYLE:-}
         NEXT_PUBLIC_TENCENT_KEY: ${NEXT_PUBLIC_TENCENT_KEY:-}
-    env_file: .env
     environment:
-      DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach
-      OPERATOR_ART_DIR: /app/operator-art
-      GUIDE_ART_DIR: /app/guide-art
-      # never link a test inbox on the live site
-      DEV_MAILBOX_PORT: ""
-    volumes:
-      # the character pictures, kept out of the repository and the image; scripts/deploy.sh copies them here
-      - ./operator-art:/app/operator-art:ro
-      - ./guide-art:/app/guide-art:ro
+      <<: *web-env
     depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped
+
+  web2:
+    <<: *web
+    environment:
+      <<: *web-env
+      WEB_ROLE: helper
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  web3:
+    <<: *web
+    environment:
+      <<: *web-env
+      WEB_ROLE: helper
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
 
   # Adds the visitor's address to X-Forwarded-For, which the login limits rely on
   caddy:
@@ -65,6 +100,8 @@ services:
       - caddy-config:/config
     depends_on:
       - web
+      - web2
+      - web3
     restart: unless-stopped
 
 volumes:

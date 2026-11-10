@@ -57,8 +57,21 @@ zhoupmap.com {
 		respond @whole "The map file is only served in ranges." 403
 		file_server
 	}
-	handle {
+	# the place search, the map trouble reports and the health check go to the main process: their limits
+	# (one ask a second to Nominatim, three to 高德) and counts are kept in its memory
+	@main path /api/geo /api/health /api/health/map
+	handle @main {
 		reverse_proxy web:3000
+	}
+	handle {
+		# the app's three processes (docker-compose.prod.yml), so it uses more than one core. Each visitor
+		# stays with one of them, by address: their event stream and their limits are in one place. One
+		# that does not answer is skipped for a while, and the request tried on another.
+		reverse_proxy web:3000 web2:3000 web3:3000 {
+			lb_policy ip_hash
+			lb_try_duration 5s
+			fail_duration 30s
+		}
 	}
 }
 
