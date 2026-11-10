@@ -125,6 +125,17 @@ Every morning at 09:00 Beijing time GitHub checks that the site opens from mainl
 
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.
 
+### The second server
+
+A second server in the same cloud region gives the site a second way in, and a second share of outgoing bandwidth. It only passes visitors' connections on to the main server over the cloud's private network, still encrypted: port 443 with the PROXY protocol to Caddy's `:8443`, which takes the visitor's address from that line only when it comes from the second server's private address (`deploy/Caddyfile`), and port 80 as it is. Certificates, `.env`, data and every route stay on the main server, and the second server keeps no logs, so a broken one is replaced rather than repaired: a fresh Ubuntu server with an SSH host entry named `zhoupmap2`, password and root logins turned off, and its cloud firewall open for TCP 22, 80 and 443, then
+
+```bash
+scp deploy/relay/nginx.conf scripts/relay-setup.sh zhoupmap2:
+ssh zhoupmap2 'bash relay-setup.sh 10.5.0.6'
+```
+
+with the main server's private address. The main server's cloud firewall lets TCP 8443 in from the second server's private address only; a new second server with a new private address needs that rule and the `allow` line in `deploy/Caddyfile` changed. In DNS both servers' public addresses are A records for `zhoupmap.com` and `www`: pausing one server's two records sends every visitor to the other within ten minutes.
+
 ### Checks and alerts
 
 The site checks itself every 5 minutes (`src/lib/server/watch.ts`) and emails `WATCH_EMAILS` (by default `ADMIN_EMAILS`) through the same mail service as the sign-in codes, outside `MAIL_DAILY_LIMIT` and at most 24 emails a day. One email tells what is new, what is still wrong six hours after the last email about it, and what is over. It looks at:

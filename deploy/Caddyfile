@@ -6,9 +6,33 @@
 	servers {
 		protocols h1 h2
 	}
+	# The second server (deploy/relay, 2026-11-11) passes visitors' connections on to this one over the
+	# cloud's private network, to :8443, still encrypted, after a first line with the visitor's address
+	# (the PROXY protocol), so the site still sees who they are. That line is believed only from the
+	# second server's private address; from anywhere else it is ignored. The port is published on this
+	# server's private address only (docker-compose.prod.yml), and the cloud firewall lets only the
+	# second server reach it. The site blocks below serve the same site on it.
+	servers :8443 {
+		listener_wrappers {
+			proxy_protocol {
+				timeout 5s
+				allow 10.5.0.15/32
+			}
+			tls
+		}
+		protocols h1 h2
+	}
 }
 
-zhoupmap.com {
+# Plain HTTP goes to HTTPS on the same name, as Caddy does by itself. Written out because with the
+# second server's entrance (:8443) Caddy would send zhoupmap.com to https://zhoupmap.com:8443,
+# which only the second server can reach. Certificate checks on port 80 are still answered first.
+http:// {
+	header Connection close
+	redir https://{host}{uri} 308
+}
+
+zhoupmap.com, zhoupmap.com:8443 {
 	request_body {
 		max_size 1MB
 	}
@@ -83,7 +107,7 @@ zhoupmap.com {
 	}
 }
 
-www.zhoupmap.com {
+www.zhoupmap.com, www.zhoupmap.com:8443 {
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 	redir https://zhoupmap.com{uri} permanent
 }

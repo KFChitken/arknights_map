@@ -99,6 +99,9 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+      # the second server's entrance (deploy/Caddyfile), on this server's private address only:
+      # Docker's published ports go around the system's own firewall
+      - "10.5.0.6:8443:8443"
     volumes:
       # the folder, not the file: git replaces the file on pull, which a file mount would not see
       - ./deploy:/etc/caddy:ro
