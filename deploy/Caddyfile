@@ -66,11 +66,15 @@ zhoupmap.com {
 	handle {
 		# the app's three processes (docker-compose.prod.yml), so it uses more than one core. Each visitor
 		# stays with one of them, by address: their event stream and their limits are in one place. One
-		# that does not answer is skipped for a while, and the request tried on another.
+		# whose icon has not come three times in a row (restarting, or gone) is left out until it does;
+		# a single slow or broken request never is (2026-11-10: that left out all three at once under load)
 		reverse_proxy web:3000 web2:3000 web3:3000 {
 			lb_policy ip_hash
 			lb_try_duration 5s
-			fail_duration 30s
+			health_uri /icon.svg
+			health_interval 10s
+			health_timeout 10s
+			health_fails 3
 		}
 	}
 }
