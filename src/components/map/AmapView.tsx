@@ -114,6 +114,61 @@ function styleIndex(p: MassPoint, look: RoachStyle, pose: number) {
   return (p.friend ? CARTOON_STYLES : 0) + (p.clone ? LOOKS : p.color);
 }
 
+/**
+ * Only the roaches near the screen go to 高德: those within the view's box grown by its own width and
+ * height on every side (3×3 screens). 高德 works through every point of its layers on each frame of a
+ * drag, so with 14,000 roaches a city view dragged at 5 frames a second, and at about 60 with these
+ * few hundred (measured 2026-11-10). Zoomed out far enough that the box would cross ±180° or span half
+ * the world, every roach goes, as before. The roach count and the dark swarm still use them all.
+ */
+function nearBox(map: AMapNS): [number, number, number, number] | null {
+  try {
+    const b = map.getBounds();
+    const sw = b.getSouthWest();
+    const ne = b.getNorthEast();
+    const w = ne.getLng() - sw.getLng();
+    const h = ne.getLat() - sw.getLat();
+    if (!(w > 0) || !(h > 0) || w * 3 > 180) return null;
+    return [sw.getLng() - w, sw.getLat() - h, ne.getLng() + w, ne.getLat() + h];
+  } catch {
+    return null;
+  }
+}
+
+/** Each batch's roaches within the box (all of them without one) */
+const nearOnly = (box: [number, number, number, number] | null, groups: MassPoint[][]) =>
+  box ? groups.map((g) => g.filter((p) => p.lng >= box[0] && p.lng <= box[2] && p.lat >= box[1] && p.lat <= box[3])) : groups;
+
+/** 高德 zoom at and below which roaches piled on one another are drawn once (Breeze, 2026-11-10: 做) */
+const THIN_ZOOM = 7;
+
+/**
+ * Zoomed out that far, one roach for each square of the screen half an icon wide, a 触须之交 first:
+ * the rest would only be drawn under it. A whole country dragged at 3 frames a second with them all,
+ * at 10 like this, and looked the same (measured 2026-11-10). The dark swarm still shows how many.
+ */
+function thinned(groups: MassPoint[][], amapZoom: number): MassPoint[][] {
+  if (amapZoom > THIN_ZOOM) return groups;
+  const cell = Math.max(4, iconPx(amapZoom - ZOOM_OFFSET) / 2);
+  const world = 256 * 2 ** amapZoom;
+  const taken = new Set<string>();
+  const kept = new Set<MassPoint>();
+  const all = groups.flat().sort((a, b) => Number(b.friend) - Number(a.friend));
+  for (const p of all) {
+    const sin = Math.sin((p.lat * Math.PI) / 180);
+    const x = Math.floor((((p.lng + 180) / 360) * world) / cell);
+    const y = Math.floor(((0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * world) / cell);
+    const key = `${x},${y}`;
+    if (taken.has(key)) continue;
+    taken.add(key);
+    kept.add(p);
+  }
+  return groups.map((g) => g.filter((p) => kept.has(p)));
+}
+
+/** What 高德 gets of each batch: the roaches near the screen, and far out only one of each pile */
+const shownOf = (map: AMapNS, groups: MassPoint[][]) => thinned(nearOnly(nearBox(map), groups), map.getZoom());
+
 /** Every roach of a batch where its own crawl puts it at time t (ms), or at rest when t is null. */
 function massData(points: MassPoint[], amapZoom: number, look: RoachStyle, t: number | null) {
   const degPerPx = 360 / (256 * 2 ** amapZoom);
@@ -209,6 +264,10 @@ export default function AmapView(props: MapViewProps) {
   const mapRef = useRef<AMapNS>(null);
   const massRef = useRef<AMapNS[]>([]);
   const groupsRef = useRef<MassPoint[][]>([]);
+  // the batches as 高德 gets them: only the roaches near the screen (nearBox)
+  const shownRef = useRef<MassPoint[][]>([]);
+  // pick them again for where the map is now, and hand them over
+  const reshowRef = useRef<() => void>(() => {});
   const heatRef = useRef<AMapNS>(null);
   const mineRef = useRef<AMapNS[]>([]);
   const amapRef = useRef<AMapNS>(null);
@@ -424,6 +483,7 @@ export default function AmapView(props: MapViewProps) {
         heatRef.current = heat;
 
         groupsRef.current = massGroups(propsRef.current.roaches);
+        shownRef.current = shownOf(map, groupsRef.current);
         const onMassClick = (e: AMapNS) => {
           if (propsRef.current.placing) return;
           lastHitRef.current = Date.now();
@@ -432,7 +492,7 @@ export default function AmapView(props: MapViewProps) {
           if (id) window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
         };
         styledPxRef.current = massPx(map.getZoom());
-        massRef.current = groupsRef.current.map((points) => {
+        massRef.current = shownRef.current.map((points) => {
           const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
             zIndex: massZ(look),
             zooms: [2, 20],
@@ -458,11 +518,21 @@ export default function AmapView(props: MapViewProps) {
         let tick = 0;
         let moving = false;
         let dragging = false;
+        // the roaches near where the map stands now, each where its crawl has it (sleeping ones lie still)
+        reshowRef.current = () => {
+          shownRef.current = shownOf(map, groupsRef.current);
+          const crawling = propsRef.current.active !== false && !prefersReducedMotion();
+          const now = performance.now();
+          const { look } = styledRef.current;
+          massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], map.getZoom(), look, crawling && g !== STILL ? now : null)));
+        };
         const resumeIn = (ms: number) => {
           window.clearTimeout(resumeTimer);
           resumeTimer = window.setTimeout(() => {
             moving = false;
             dragging = false;
+            // only once the map stands still: a busy phone hears moveend in the middle of a drag too
+            reshowRef.current();
             crawlRef.current?.start();
           }, ms);
         };
@@ -498,7 +568,7 @@ export default function AmapView(props: MapViewProps) {
             crawlTimer = window.setInterval(() => {
               const g = tick++ % MASS_GROUPS;
               const { look } = styledRef.current;
-              massRef.current[g]?.setData(massData(groupsRef.current[g], map.getZoom(), look, performance.now()));
+              massRef.current[g]?.setData(massData(shownRef.current[g], map.getZoom(), look, performance.now()));
             }, 25);
           },
           stop: () => {
@@ -536,6 +606,9 @@ export default function AmapView(props: MapViewProps) {
         map.on("moveend", reportView);
         map.on("zoomend", reportView);
         map.on("complete", reportView);
+        // drawn for the first time, and turned or resized (a phone on its side): the roaches near the view now
+        map.on("complete", () => reshowRef.current());
+        map.on("resize", () => reshowRef.current());
         map.on("complete", () => propsRef.current.onReady?.());
         slowTimer = window.setTimeout(() => reportMapTrouble("amap", "slow"), 20000);
         map.on("complete", () => window.clearTimeout(slowTimer));
@@ -570,10 +643,12 @@ export default function AmapView(props: MapViewProps) {
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
     groupsRef.current = massGroups(props.roaches);
-    const z = mapRef.current.getZoom();
-    massRef.current.forEach((m, g) => m.setData(massData(groupsRef.current[g], z, styledRef.current.look, null)));
+    shownRef.current = shownOf(map, groupsRef.current);
+    const z = map.getZoom();
+    massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
     heatRef.current?.setDataSet(heatData(props.roaches));
   }, [props.roaches]);
 
@@ -591,7 +666,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current.forEach((m, g) => {
         m.setzIndex(massZ(look));
         m.setStyle(style);
-        m.setData(massData(groupsRef.current[g], map.getZoom(), look, null));
+        m.setData(massData(shownRef.current[g], map.getZoom(), look, null));
       });
     });
     return () => {
@@ -629,12 +704,18 @@ export default function AmapView(props: MapViewProps) {
 
   useEffect(() => {
     const j = props.jump;
-    if (j && mapRef.current) mapRef.current.setZoomAndCenter(j.zoom + ZOOM_OFFSET, toGcj(j), true);
+    if (!j || !mapRef.current) return;
+    mapRef.current.setZoomAndCenter(j.zoom + ZOOM_OFFSET, toGcj(j), true);
+    // a jump need not say that the map moved: the roaches of the new place, all the same
+    reshowRef.current();
   }, [props.jump]);
 
   useEffect(() => {
     if (props.active === false) crawlRef.current?.stop();
-    else crawlRef.current?.start();
+    else {
+      reshowRef.current();
+      crawlRef.current?.start();
+    }
   }, [props.active]);
 
   return <div ref={el} className="map" data-basemap="amap" />;
