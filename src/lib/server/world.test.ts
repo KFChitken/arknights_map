@@ -2090,7 +2090,7 @@ describe("server world", () => {
     expect((await me.me()).profile.support).toEqual([]);
   });
 
-  it("ranks this week's 「我永远喜欢」 and 「加强」 by different players, three or more", async () => {
+  it("ranks this week's 「我永远喜欢」, 「加强」 and 「我想吃」 (合乎粥礼) by different players, three or more", async () => {
     const at = (iso: string) => new Date(iso);
     const now = Date.parse("2026-11-04T12:00+08:00");
     const players = [me, ...(await Promise.all(["a", "b", "c"].map((x) => signUp(`${x}@example.com`))))];
@@ -2105,12 +2105,16 @@ describe("server world", () => {
     // last week, and just before this week began
     for (const p of players) await shout(p, "love", "黑", "2026-11-02T03:59+08:00");
     for (const p of players.slice(0, 3)) await shout(p, "buff", "能天使", "2026-11-02T04:00+08:00");
+    // 我想吃银灰的… by four, 我想吃能天使的… by two
+    for (const p of players) await shout(p, "eat", "银灰", "2026-11-03T12:00+08:00");
+    for (const p of players.slice(0, 2)) await shout(p, "eat", "能天使", "2026-11-03T12:00+08:00");
 
     const list = await computeHotList(now);
     expect(list.weekStart).toBe(Date.parse("2026-11-02T04:00+08:00"));
     expect(list.boards.love).toEqual([{ rank: 1, character: "能天使", games: ["arknights"], players: 3 }]);
     expect(list.boards.buff).toEqual([{ rank: 1, character: "能天使", games: ["arknights"], players: 3 }]);
-    expect(list.lastWeek).toEqual({ love: { rank: 1, character: "黑", games: ["arknights"], players: 4 }, buff: null });
+    expect(list.boards.eat).toEqual([{ rank: 1, character: "银灰", games: ["arknights"], players: 4 }]);
+    expect(list.lastWeek).toEqual({ love: { rank: 1, character: "黑", games: ["arknights"], players: 4 }, buff: null, eat: null });
     // two players are too few to show
     expect(JSON.stringify(list)).not.toContain("佩丽卡");
   });

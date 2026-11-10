@@ -35,7 +35,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
       .catch((e) => setError(e instanceof Error ? e.message : "热榜暂时打不开，稍后再试试。"));
   }, []);
 
-  const name = HOT_BOARDS.find((b) => b.id === board)!.name;
+  const shout = HOT_BOARDS.find((b) => b.id === board)!.shout;
   const rows = list?.boards[board] ?? [];
   const last = list?.lastWeek[board];
 
@@ -64,7 +64,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
         {!list && !error && <p className="hot-empty">正在统计…</p>}
         {list && rows.length === 0 && (
           <p className="hot-empty">
-            这周还没有角色被 {HOT_MIN_PLAYERS} 位以上的舟P喊过。发一句「{name}…」，给你的厨力角色打榜吧！
+            这周还没有角色被 {HOT_MIN_PLAYERS} 位以上的舟P喊过。发一句「{shout}…」，给你的厨力角色打榜吧！
           </p>
         )}
         {rows.map((r) => (
@@ -88,7 +88,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       <p className="hint" style={{ marginTop: 12 }}>
-        按这周发「{name}…」宣言的人数排，同一个人对同一个角色只算一次；少于 {HOT_MIN_PLAYERS} 个人喊的角色不上榜，看不出是谁喊的。
+        按这周发「{shout}…」宣言的人数排，同一个人对同一个角色只算一次；少于 {HOT_MIN_PLAYERS} 个人喊的角色不上榜，看不出是谁喊的。
       </p>
     </Sheet>
   );

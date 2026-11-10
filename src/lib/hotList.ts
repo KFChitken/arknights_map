@@ -1,14 +1,15 @@
 import type { Game } from "./games";
 
 /**
- * 本周舟P热榜: the characters most shouted in 「我永远喜欢」 and 「加强」
- * declarations this week, ranked by how many different players shouted them.
- * Only characters and counts, never who.
+ * 本周舟P热榜: the characters most shouted in 「我永远喜欢」, 「加强」 and 「我想吃…的…」
+ * (合乎粥礼榜, Breeze 2026-11-10) declarations this week, ranked by how many different players
+ * shouted them. Only characters and counts, never who. shout: how the declaration begins.
  */
 
 export const HOT_BOARDS = [
-  { id: "love", name: "我永远喜欢" },
-  { id: "buff", name: "加强" },
+  { id: "love", name: "我永远喜欢", shout: "我永远喜欢" },
+  { id: "buff", name: "加强", shout: "加强" },
+  { id: "eat", name: "合乎粥礼", shout: "我想吃" },
 ] as const;
 export type HotBoard = (typeof HOT_BOARDS)[number]["id"];
 
