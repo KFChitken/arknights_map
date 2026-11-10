@@ -1,7 +1,10 @@
-import { unpackRoaches } from "./packed";
+import { feedIdsOf, unpackRoaches } from "./packed";
 import type { MapRoach, RoachFeedUpdate } from "./types";
 
-/** The browser's copy of the shared roach feed, kept current by applying only what changed. */
+/**
+ * The browser's copy of the shared roach feed, kept current by applying only what changed. Its
+ * roaches go by short ids (world/packed.ts): compare them with public ids through sameRoach or feedIdsOf.
+ */
 export class RoachFeedCopy {
   private v: string | null = null;
   private byId = new Map<string, MapRoach>();
@@ -36,10 +39,10 @@ export class RoachFeedCopy {
     return changed;
   }
 
-  /** Drop roaches we know are gone before the server says so, such as our own after deleting the account. */
+  /** Drop roaches we know are gone before the server says so, such as our own after deleting the account; by public id. */
   forget(ids: string[]): boolean {
     let changed = false;
-    for (const id of ids) changed = this.byId.delete(id) || changed;
+    for (const id of ids) for (const k of feedIdsOf(id)) changed = this.byId.delete(k) || changed;
     if (changed) this.sort();
     return changed;
   }

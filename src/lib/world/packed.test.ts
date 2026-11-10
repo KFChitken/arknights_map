@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nearMetre, packRoaches, unpackRoaches } from "./packed";
+import { feedIdsOf, nearMetre, packRoaches, sameRoach, shortIds, shortOf, unpackRoaches } from "./packed";
 import type { MapRoach } from "./types";
 
 const roach = (id: string, lng: number, lat: number, more: Partial<MapRoach> = {}): MapRoach => ({
@@ -51,11 +51,50 @@ describe("packed roaches", () => {
     expect(unpackRoaches(packRoaches([]))).toEqual([]);
   });
 
+  it("in the short form keep four bytes of each id, and the rest as they are", () => {
+    const list = [
+      roach("0f6b2a52", 121.473712345, 31.230416789),
+      roach("ffffffff", -73.98551, 40.75797, { clone: true, color: "white", ride: true }),
+      roach("aaaaaaaa-0000-4000-8000-000000000001", 139.6917, 35.6895, { asleep: true }),
+      roach("bot-7", 116.4, 39.9, { bot: true }),
+    ];
+    const p = packRoaches(list, 4);
+    expect(p.w).toBe(4);
+    expect(atob(p.ids)).toHaveLength(8);
+    expect(p.rest!.map((r) => r.id)).toEqual(["aaaaaaaa-0000-4000-8000-000000000001", "bot-7"]);
+    expect(byId(unpackRoaches(p))).toEqual(byId(list));
+  });
+
+  it("give each roach a short id of its own, its whole public id where two start alike", () => {
+    const ids = shortIds([
+      "0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b",
+      "aaaaaaaa-0000-4000-8000-000000000001",
+      "aaaaaaaa-ffff-4000-8000-000000000002",
+      "bot-7",
+    ]);
+    expect([...ids.values()]).toEqual([
+      "0f6b2a52",
+      "aaaaaaaa-0000-4000-8000-000000000001",
+      "aaaaaaaa-ffff-4000-8000-000000000002",
+      "bot-7",
+    ]);
+    expect(shortOf("0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b")).toBe("0f6b2a52");
+    expect(shortOf("bot-7")).toBe("bot-7");
+    expect(feedIdsOf("0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b")).toEqual(["0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b", "0f6b2a52"]);
+    expect(feedIdsOf("amiya")).toEqual(["amiya"]);
+    expect(sameRoach("0f6b2a52", "0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b")).toBe(true);
+    expect(sameRoach("0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b", "0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b")).toBe(true);
+    expect(sameRoach("0f6b2a53", "0f6b2a52-3c1d-4e0f-9a8b-7c6d5e4f3a2b")).toBe(false);
+    expect(sameRoach("amiya", "amiya")).toBe(true);
+  });
+
   it("take up far less room than the list", () => {
     const list = Array.from({ length: 2000 }, (_, i) =>
       roach(crypto.randomUUID(), 73 + ((i * 7919) % 6000) / 100, 18 + ((i * 104729) % 3500) / 100, { clone: i % 3 === 0 }),
     );
     const packed = JSON.stringify(packRoaches(list)).length;
     expect(packed).toBeLessThan(JSON.stringify(list).length * 0.4);
+    const short = JSON.stringify(packRoaches(list.map((r) => ({ ...r, id: r.id.slice(0, 8) })), 4)).length;
+    expect(short).toBeLessThan(packed * 0.6);
   });
 });

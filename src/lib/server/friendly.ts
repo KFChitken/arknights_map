@@ -24,7 +24,7 @@ import { WorldError, type FriendBetween, type InboxItem, type OwnRoach, type Pla
 import { db } from "./db";
 import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { nudge } from "./live";
-import { roachesChanged, sleeping } from "./roachFeed";
+import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, users, visitBans, visits, type UserRow } from "./schema";
 import { arrivedAt } from "./talulah";
 import { cardsOf, checkPlacement, friendIdsOf, friendKey, ownRoaches, profileOf, userById, writePlacement } from "./world";
@@ -396,12 +396,8 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
   const now = Date.now();
   const banned = await bannedUntil(host.id, userId, now);
   if (banned) throw new WorldError(`${nameOf(host)} 请你的克隆体回家休息了，${Math.ceil((banned - now) / DAY)} 天后才能再去。`);
-  if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
-  const [hostRoach] = await db
-    .select()
-    .from(roaches)
-    .where(and(eq(roaches.publicId, String(publicId)), eq(roaches.userId, host.id)))
-    .limit(1);
+  // by the id the feed gave the page, short or whole
+  const hostRoach = await roachByFeedId(String(publicId), host.id);
   if (!hostRoach) throw new WorldError("这只蟑螂已经爬走了。");
   if (hostRoach.rideSince) throw new WorldError("这只在跟明河走，去不了。想一起走，就也派一只跟明河。");
   const [already] = await db

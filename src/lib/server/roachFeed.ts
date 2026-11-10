@@ -1,11 +1,13 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { rename, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { gzip } from "node:zlib";
-import { asc, eq } from "drizzle-orm";
+import { brotliCompress, constants as zlib, gzip } from "node:zlib";
+import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { botRoaches } from "../world/bots";
-import { nearMetre, packRoaches } from "../world/packed";
+import { nearMetre, packRoaches, SHORT_ID, shortIds } from "../world/packed";
 import type { MapRoach } from "../world/types";
 import { db } from "./db";
 import { SHOW_BOTS } from "./env";
@@ -21,14 +23,48 @@ import { roaches, users } from "./schema";
  * look changes, at most every REBUILD_MS; and every MAX_AGE_MS anyway, in case
  * a change slipped past roachesChanged().
  *
- * Places are given to about a metre. The whole snapshot also comes packed
- * (world/packed.ts), a third of the size, for pages that ask for it (?f=2).
+ * Places are given to about a metre. A page asks for the whole snapshot in one
+ * of three forms (?f=): the list (pages from before the packed form), packed
+ * with whole public ids (2), or packed with short ids (3: the first four bytes
+ * of each public id, world/packed.ts), which is what pages ask for now; what
+ * changed since a version comes with the same ids as the form asked. Only the
+ * short form is made at every rebuild, the other two when a page asks.
+ *
+ * Restarts. With FEED_STATE set to a file, the feed writes down where it is
+ * (its epoch and version, a hash of each roach, the recent changes) every
+ * SAVE_MS and when the process is told to stop, and takes up from there when
+ * it starts again: the pages open across a deploy then download only what
+ * changed meanwhile. A page whose version the feed does not know (no saved
+ * state, or one from another process) still gets the whole snapshot, but in
+ * the first SPREAD_MS after a start (OLD_SPREAD_MS for the older forms) not all
+ * at once: each such page asks again later with a chance that grows over that time.
  */
 
 const REBUILD_MS = 10_000;
 const MAX_AGE_MS = 5 * 60_000;
 /** Changes are kept this long; a page further behind gets the whole snapshot again. */
-const KEEP_CHANGES_MS = 15 * 60_000;
+const KEEP_CHANGES_MS = 3 * 60 * 60_000;
+/** So does a page whose changes would be more than this share of all the roaches (and more than MIN_DIFF), which the snapshot holds in less room. */
+const MAX_DIFF_SHARE = 0.2;
+const MIN_DIFF = 500;
+/** How many worked-out answers for older versions a snapshot keeps */
+const DIFF_CACHE = 64;
+const SAVE_MS = 60_000;
+/**
+ * After a restart from a saved state, versions go on this far past the saved one: a page may hold
+ * a version made after the last save (when the process ended without saving), which then means
+ * nothing here, so every version between is taken as unknown.
+ */
+const SKIP = 1000;
+const SPREAD_MS = 10 * 60_000;
+/**
+ * Pages still running code from before the short form (f=1, f=2) wait longer: an hour. Each needs
+ * the old, bigger snapshot once, and most of them are reloaded meanwhile, after which they ask for
+ * the short form anyway.
+ */
+const OLD_SPREAD_MS = 60 * 60_000;
+/** A version as pages hold it: the epoch (random hex) and a number */
+const VERSION = /^[0-9a-f]{8}\.\d{1,12}$/;
 
 /** How a roach looks to others: its owner's look, except that clones all look alike, so a clone cannot point at its main roach. */
 export function lookOf(slot: number, avatar: string, color: string) {
@@ -37,40 +73,77 @@ export function lookOf(slot: number, avatar: string, color: string) {
     : { avatar: ROACH_AVATARS.find((a) => a === avatar) ?? "hood", color: ROACH_COLORS.find((c) => c === color) ?? "cyan" };
 }
 
+/** The forms a page can ask for (?f=): 1 the list, 2 packed with public ids, 3 packed with short ids */
+export type FeedForm = 1 | 2 | 3;
+/** Which ids a form gives: the whole public ids, or the short ones */
+type View = "long" | "short";
+const viewOf = (form: FeedForm): View => (form === 3 ? "short" : "long");
+
+type Whole = { json: string; gzip: Buffer; br?: Buffer };
+
 type Snapshot = {
   n: number;
   v: string;
-  /** Each roach as JSON, by public id */
-  roaches: Map<string, string>;
-  json: string;
-  gzip: Buffer;
-  /** The same snapshot packed (world/packed.ts) */
-  packed: { json: string; gzip: Buffer };
   builtAt: number;
-  /** Answers already worked out for pages at an older version, by that version */
-  diffs: Map<number, string>;
+  /** Every roach as the feed gives it, places to the metre, with its public id */
+  list: MapRoach[];
+  /** A hash of each roach's look and place (hashOf), by public id: what the next rebuild compares */
+  hashes: Map<string, number>;
+  /** Each roach's short id (world/packed.ts shortIds), by public id */
+  short: Map<string, string>;
+  /** Each roach as JSON, by the id it goes by in each view */
+  json: Record<View, Map<string, string>>;
+  /** The whole snapshot in each form, made when first wanted */
+  whole: Partial<Record<FeedForm, Promise<Whole>>>;
+  /** Answers already worked out for pages at an older version, by view and that version */
+  diffs: Map<string, string>;
 };
 
-type Change = { n: number; at: number; changed: string[]; removed: string[] };
+/** The ids, in one view, of the roaches that changed or went in one rebuild */
+type Touched = { changed: string[]; removed: string[] };
+/** One rebuild's changes: from version `from` to `n` (one more, except across a restart) */
+type Change = { n: number; from: number; at: number; long: Touched; short: Touched };
+
+/** Where the process before this one left off (FEED_STATE): what the first rebuild compares with */
+type Before = { n: number; hashes: Map<string, number>; short: Map<string, string> };
 
 type Feed = {
-  /** Differs on every server start, so a version from before a restart is never mistaken for a current one */
+  /** Differs on every start without a saved state, so a version from before is never mistaken for a current one */
   epoch: string;
   snapshot: Snapshot | null;
+  before: Before | null;
+  /** Versions in (from, to) mean nothing here: made after the last save by the process before */
+  unknown: { from: number; to: number } | null;
   changes: Change[];
   dirty: boolean;
   building: Promise<Snapshot> | null;
+  startedAt: number;
+  /** The saved state has been looked for (once per process) */
+  started: boolean;
+  /** No more rebuilds: the process has been told to stop, and its last state is saved */
+  stopping: boolean;
+  savedAt: number;
+  saving: Promise<void> | null;
 };
 
-// Kept on globalThis so development reloads of this module share one feed
-const g = globalThis as typeof globalThis & { __roachFeed?: Feed };
-const feed: Feed = (g.__roachFeed ??= {
+const fresh = (): Feed => ({
   epoch: randomBytes(4).toString("hex"),
   snapshot: null,
+  before: null,
+  unknown: null,
   changes: [],
   dirty: true,
   building: null,
+  startedAt: Date.now(),
+  started: false,
+  stopping: false,
+  savedAt: 0,
+  saving: null,
 });
+
+// Kept on globalThis so development reloads of this module share one feed
+const g = globalThis as typeof globalThis & { __roachFeed?: Feed };
+const feed: Feed = (g.__roachFeed ??= fresh());
 
 /** Call after roaches are placed, moved or removed, or someone's look changes. */
 export function roachesChanged() {
@@ -114,28 +187,110 @@ export async function allRoaches(): Promise<MapRoach[]> {
   }));
 }
 
+const PUBLIC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The roach a page names by the id the feed gave it: its public id, or the short form of it
+ * (world/packed.ts), which stands for the one roach whose public id starts with it. Null when there
+ * is none, and also in the moment before pages hear that two roaches have come to share a short id.
+ * ownerId: only among that player's roaches.
+ */
+export async function roachByFeedId(id: string, ownerId?: string) {
+  const which = PUBLIC_ID.test(id)
+    ? eq(roaches.publicId, id)
+    : SHORT_ID.test(id)
+      ? and(gte(roaches.publicId, `${id}-0000-0000-0000-000000000000`), lte(roaches.publicId, `${id}-ffff-ffff-ffff-ffffffffffff`))
+      : null;
+  if (!which) return null;
+  const rows = await db
+    .select()
+    .from(roaches)
+    .where(ownerId ? and(which, eq(roaches.userId, ownerId)) : which)
+    .limit(2);
+  return rows.length === 1 ? rows[0] : null;
+}
+
+/** FNV-1a over everything the feed says of a roach but its id */
+function hashOf(r: MapRoach) {
+  const s = `${r.clone ? 1 : 0}|${r.avatar}|${r.color}|${r.lng}|${r.lat}|${r.asleep ? 1 : 0}|${r.ride ? 1 : 0}|${r.bot ? 1 : 0}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
+
 const gzipAsync = promisify(gzip);
+const brotliAsync = promisify(brotliCompress);
+
+/** The whole snapshot in one form, compressed once for every page that asks */
+async function makeWhole(s: Snapshot, form: FeedForm): Promise<Whole> {
+  const json =
+    form === 1
+      ? `{"v":"${s.v}","roaches":[${[...s.json.long.values()].join(",")}]}`
+      : form === 2
+        ? `{"v":"${s.v}","packed":${JSON.stringify(packRoaches(s.list))}}`
+        : `{"v":"${s.v}","packed":${JSON.stringify(packRoaches(s.list.map((r) => ({ ...r, id: s.short.get(r.id)! })), 4))}}`;
+  const [gz, br] = await Promise.all([
+    gzipAsync(json, { level: 9 }),
+    // the form every page asks for now: brotli at its best takes a third of a second, once per snapshot, and saves a tenth
+    form === 3 ? brotliAsync(json, { params: { [zlib.BROTLI_PARAM_QUALITY]: 11, [zlib.BROTLI_PARAM_SIZE_HINT]: json.length } }) : undefined,
+  ]);
+  return { json, gzip: gz, br };
+}
+
+const wholeOf = (s: Snapshot, form: FeedForm) => (s.whole[form] ??= makeWhole(s, form));
 
 async function rebuild(now: number): Promise<Snapshot> {
   const list = [...(await allRoaches()), ...botRoaches(SHOW_BOTS)].map((r) => ({ ...r, lng: nearMetre(r.lng), lat: nearMetre(r.lat) }));
-  const next = new Map(list.map((r) => [r.id, JSON.stringify(r)]));
-  const prev = feed.snapshot;
+  const hashes = new Map(list.map((r) => [r.id, hashOf(r)]));
+  const short = shortIds(hashes.keys());
+  const prev = feed.snapshot ?? feed.before;
+  let n = 1;
   if (prev) {
-    const changed = [...next].filter(([id, json]) => prev.roaches.get(id) !== json).map(([id]) => id);
-    const removed = [...prev.roaches.keys()].filter((id) => !next.has(id));
-    if (!changed.length && !removed.length) {
-      prev.builtAt = now;
-      return prev;
+    const long: Touched = { changed: [], removed: [] };
+    for (const [id, h] of hashes) if (prev.hashes.get(id) !== h) long.changed.push(id);
+    for (const id of prev.hashes.keys()) if (!hashes.has(id)) long.removed.push(id);
+    // In the short view a roach also changes when its short id does (its first four bytes have
+    // come to be shared with another roach's, or no longer are): gone under the old, there under the new
+    const touched = new Set<string>();
+    for (const id of long.changed) {
+      touched.add(short.get(id)!);
+      const was = prev.short.get(id);
+      if (was !== undefined) touched.add(was);
     }
-    feed.changes.push({ n: prev.n + 1, at: now, changed, removed });
+    for (const id of long.removed) touched.add(prev.short.get(id)!);
+    for (const [id, is] of short) {
+      const was = prev.short.get(id);
+      if (was !== undefined && was !== is) touched.add(was).add(is);
+    }
+    const shown = new Set(short.values());
+    const shortTouched: Touched = { changed: [], removed: [] };
+    for (const id of touched) (shown.has(id) ? shortTouched.changed : shortTouched.removed).push(id);
+    if (feed.snapshot && !long.changed.length && !long.removed.length && !touched.size) {
+      feed.snapshot.builtAt = now;
+      return feed.snapshot;
+    }
+    n = feed.snapshot ? feed.snapshot.n + 1 : prev.n + SKIP;
+    feed.changes.push({ n, from: prev.n, at: now, long, short: shortTouched });
     feed.changes = feed.changes.filter((c) => now - c.at < KEEP_CHANGES_MS);
   }
-  const n = (prev?.n ?? 0) + 1;
   const v = `${feed.epoch}.${n}`;
-  const json = `{"v":"${v}","roaches":[${[...next.values()].join(",")}]}`;
-  const packed = `{"v":"${v}","packed":${JSON.stringify(packRoaches(list))}}`;
-  const [gz, packedGz] = await Promise.all([gzipAsync(json, { level: 9 }), gzipAsync(packed, { level: 9 })]);
-  return { n, v, roaches: next, json, gzip: gz, packed: { json: packed, gzip: packedGz }, builtAt: now, diffs: new Map() };
+  const s: Snapshot = {
+    n,
+    v,
+    builtAt: now,
+    list,
+    hashes,
+    short,
+    json: {
+      long: new Map(list.map((r) => [r.id, JSON.stringify(r)])),
+      short: new Map(list.map((r) => [short.get(r.id)!, JSON.stringify({ ...r, id: short.get(r.id)! })])),
+    },
+    whole: {},
+    diffs: new Map(),
+  };
+  // the form pages ask for is ready before anyone gets this snapshot
+  await wholeOf(s, 3);
+  return s;
 }
 
 /**
@@ -144,11 +299,19 @@ async function rebuild(now: number): Promise<Snapshot> {
  * moment ago, so nobody waits for it. Only the very first one is waited for.
  */
 async function current(now = Date.now()): Promise<Snapshot> {
+  if (!feed.started) start();
   const s = feed.snapshot;
   const due = !s || (feed.dirty && now - s.builtAt >= REBUILD_MS) || now - s.builtAt >= MAX_AGE_MS;
-  if (due && !feed.building) {
+  if (due && !feed.building && !(s && feed.stopping)) {
     feed.dirty = false;
-    const building = rebuild(now).then((snap) => (feed.snapshot = snap));
+    const building = rebuild(now).then((snap) => {
+      if (snap !== feed.snapshot) {
+        feed.snapshot = snap;
+        feed.before = null;
+        if (now - feed.savedAt >= SAVE_MS) save(now);
+      }
+      return snap;
+    });
     feed.building = building;
     building
       .catch((e) => {
@@ -161,52 +324,145 @@ async function current(now = Date.now()): Promise<Snapshot> {
 }
 
 export type FeedAnswer =
-  | { kind: "full"; v: string; json: string; gzip: Buffer }
+  | { kind: "full"; v: string; json: string; gzip: Buffer; br?: Buffer }
   | { kind: "diff"; v: string; json: string };
 
 /**
  * What a page holding version `since` needs: nothing new, the roaches changed
  * since (sorted by id, with no times or order of changes), or the whole
- * snapshot when it has no version or one too old or from before a restart;
- * packed (world/packed.ts) when the page can read it.
+ * snapshot when it has no version or one too old or unknown here; in the form
+ * it asked for (FeedForm).
  */
-export async function roachFeed(since: string | null, now = Date.now(), packed = false): Promise<FeedAnswer> {
+export async function roachFeed(since: string | null, now = Date.now(), form: FeedForm = 1): Promise<FeedAnswer> {
   const s = await current(now);
-  const full = { kind: "full" as const, v: s.v, ...(packed ? s.packed : { json: s.json, gzip: s.gzip }) };
-  const [epoch, nText] = (since ?? "").split(".");
+  const full = async (): Promise<FeedAnswer> => ({ kind: "full", v: s.v, ...(await wholeOf(s, form)) });
+  if (since === null || !VERSION.test(since)) return full();
+  const [epoch, nText] = since.split(".");
   const from = Number(nText);
-  if (epoch !== feed.epoch || !Number.isInteger(from) || from > s.n) return full;
+  const known = epoch === feed.epoch && !(feed.unknown && from > feed.unknown.from && from < feed.unknown.to) && from <= s.n;
+  if (!known) {
+    // Just after a start, many pages at once may hold a version from before it: not all of them
+    // get the whole snapshot at once. Each keeps what it has and asks again later.
+    const age = now - feed.startedAt;
+    const spread = form === 3 ? SPREAD_MS : OLD_SPREAD_MS;
+    if (age < spread && Math.random() * spread > age) return { kind: "diff", v: since, json: `{"v":"${since}"}` };
+    return full();
+  }
   if (from === s.n) return { kind: "diff", v: s.v, json: `{"v":"${s.v}"}` };
-  const missing = feed.changes.length === 0 || feed.changes[0].n > from + 1;
-  if (missing) return full;
+  const missing = feed.changes.length === 0 || feed.changes[0].from > from;
+  if (missing) return full();
 
-  let json = s.diffs.get(from);
+  const view = viewOf(form);
+  const key = `${view}:${from}`;
+  let json = s.diffs.get(key);
   if (!json) {
     const touched = new Set<string>();
     for (const c of feed.changes) {
       if (c.n <= from || c.n > s.n) continue;
-      for (const id of c.changed) touched.add(id);
-      for (const id of c.removed) touched.add(id);
+      for (const id of c[view].changed) touched.add(id);
+      for (const id of c[view].removed) touched.add(id);
     }
+    if (touched.size > Math.max(MIN_DIFF, s.list.length * MAX_DIFF_SHARE)) return full();
     const ids = [...touched].sort();
-    const changed = ids.flatMap((id) => s.roaches.get(id) ?? []);
-    const removed = ids.filter((id) => !s.roaches.has(id));
+    const map = s.json[view];
+    const changed = ids.flatMap((id) => map.get(id) ?? []);
+    const removed = ids.filter((id) => !map.has(id));
     json = `{"v":"${s.v}","changed":[${changed.join(",")}],"removed":${JSON.stringify(removed)}}`;
-    s.diffs.set(from, json);
+    if (s.diffs.size >= DIFF_CACHE) s.diffs.clear();
+    s.diffs.set(key, json);
   }
   return { kind: "diff", v: s.v, json };
+}
+
+/** What FEED_STATE holds; format says which code wrote it */
+type Saved = { format: 1; epoch: string; n: number; at: number; ids: string[]; hashes: number[]; changes: Change[] };
+
+function stateNow(s: Snapshot, now: number): string {
+  const saved: Saved = {
+    format: 1,
+    epoch: feed.epoch,
+    n: s.n,
+    at: now,
+    ids: [...s.hashes.keys()],
+    hashes: [...s.hashes.values()],
+    changes: feed.changes,
+  };
+  return JSON.stringify(saved);
+}
+
+/** Write down where the feed is, in the background (a temporary file, then renamed, so a reader never sees half of one) */
+function save(now: number) {
+  const file = process.env.FEED_STATE;
+  const s = feed.snapshot;
+  if (!file || !s || feed.saving) return;
+  feed.savedAt = now;
+  feed.saving = writeFile(`${file}.tmp`, stateNow(s, now))
+    .then(() => rename(`${file}.tmp`, file))
+    .catch((e) => console.error("Saving the roach feed's state failed", e))
+    .finally(() => (feed.saving = null));
+}
+
+/** The process has been told to stop: no more versions, and the last one written down before it goes */
+function stop() {
+  const file = process.env.FEED_STATE;
+  feed.stopping = true;
+  const s = feed.snapshot;
+  if (!file || !s) return;
+  try {
+    writeFileSync(`${file}.tmp`, stateNow(s, Date.now()));
+    renameSync(`${file}.tmp`, file);
+  } catch (e) {
+    console.error("Saving the roach feed's state failed", e);
+  }
+}
+
+/** Once per process: take up where the process before left off, if it wrote that down */
+function start() {
+  feed.started = true;
+  const file = process.env.FEED_STATE;
+  if (!file) return;
+  const gs = globalThis as typeof globalThis & { __roachFeedStop?: true };
+  if (!gs.__roachFeedStop) {
+    gs.__roachFeedStop = true;
+    process.once("SIGTERM", stop);
+  }
+  let saved: Saved;
+  try {
+    saved = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return;
+  }
+  if (
+    saved?.format !== 1 ||
+    !/^[0-9a-f]{8}$/.test(saved.epoch) ||
+    !Number.isInteger(saved.n) ||
+    !Array.isArray(saved.ids) ||
+    !Array.isArray(saved.hashes) ||
+    saved.ids.length !== saved.hashes.length ||
+    !Array.isArray(saved.changes) ||
+    !saved.changes.every((c) => Number.isInteger(c?.n) && Number.isInteger(c?.from) && c.long && c.short)
+  ) {
+    return;
+  }
+  feed.epoch = saved.epoch;
+  feed.changes = saved.changes.filter((c) => Date.now() - c.at < KEEP_CHANGES_MS);
+  feed.before = { n: saved.n, hashes: new Map(saved.ids.map((id, i) => [id, saved.hashes[i]])), short: shortIds(saved.ids) };
+  feed.unknown = { from: saved.n, to: saved.n + SKIP };
 }
 
 /** Tests only: wait for a rebuild in progress. */
 export async function roachFeedSettled() {
   await feed.building?.catch(() => {});
+  await feed.saving;
 }
 
-/** Tests only: forget everything, as after a restart. */
-export function resetRoachFeed() {
-  feed.epoch = randomBytes(4).toString("hex");
-  feed.snapshot = null;
-  feed.changes = [];
-  feed.dirty = true;
-  feed.building = null;
+/**
+ * Tests only: forget everything, as after a restart; with no spreading of
+ * unknown versions unless startedAt says when the process started.
+ */
+export function resetRoachFeed(startedAt = -Infinity) {
+  Object.assign(feed, fresh(), { startedAt });
 }
+
+/** Tests only: what the process does when told to stop */
+export const stopRoachFeed = stop;

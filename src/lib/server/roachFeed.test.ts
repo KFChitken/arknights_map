@@ -1,11 +1,14 @@
-import { gunzipSync } from "node:zlib";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PROFILE } from "../profile";
 import { unpackRoaches } from "../world/packed";
 import type { MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
-import { resetRoachFeed, roachFeed, roachFeedSettled } from "./roachFeed";
+import { resetRoachFeed, roachByFeedId, roachFeed, roachFeedSettled, stopRoachFeed, type FeedForm } from "./roachFeed";
 import { users } from "./schema";
 import * as world from "./world";
 
@@ -17,15 +20,20 @@ const MINUTE = 60_000;
 
 type Answer = { v: string; roaches?: MapRoach[]; changed?: MapRoach[]; removed?: string[] };
 
-async function ask(since: string | null, now: number): Promise<Answer> {
-  return JSON.parse((await roachFeed(since, now)).json);
+async function ask(since: string | null, now: number, form: FeedForm = 1): Promise<Answer> {
+  return JSON.parse((await roachFeed(since, now, form)).json);
 }
 
 /** Ask once to start a rebuild that is due, let it finish, then ask again. */
-async function askAfterRebuild(since: string | null, now: number) {
-  await roachFeed(since, now);
+async function askAfterRebuild(since: string | null, now: number, form: FeedForm = 1) {
+  await roachFeed(since, now, form);
   await roachFeedSettled();
-  return ask(since, now);
+  return ask(since, now, form);
+}
+
+/** A roach put straight into the table, with the public id given */
+async function roachWithId(userId: string, slot: number, publicId: string, at = SHANGHAI) {
+  await db.execute(sql`insert into roaches (user_id, slot, lng, lat, public_id) values (${userId}, ${slot}, ${at.lng}, ${at.lat}, ${publicId})`);
 }
 
 async function player(email: string) {
@@ -66,7 +74,7 @@ describe("roach feed", () => {
     await world.placeRoach(a, { kind: "clone" }, TOKYO);
 
     const list = await roachFeed(null, T0);
-    const packed = await roachFeed(null, T0, true);
+    const packed = await roachFeed(null, T0, 2);
     expect(packed.kind).toBe("full");
     expect(packed.kind === "full" && gunzipSync(packed.gzip).toString()).toBe(packed.json);
     const snap: Answer = JSON.parse(list.json);
@@ -77,7 +85,72 @@ describe("roach feed", () => {
     expect(back).toEqual(snap.roaches);
     expect(snap.roaches!.find((r) => !r.clone)).toMatchObject({ lng: 121.47371, lat: 31.23042 });
     // a page holding the version still gets only what changed, the same either way
-    expect(await roachFeed(snap.v, T0 + 1000, true)).toEqual(await roachFeed(snap.v, T0 + 1000));
+    expect(await roachFeed(snap.v, T0 + 1000, 2)).toEqual(await roachFeed(snap.v, T0 + 1000));
+  });
+
+  it("gives the short form with each roach under the first four bytes of its public id, in brotli too", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, { lng: 121.473712345, lat: 31.230416789 });
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+
+    const list: Answer = JSON.parse((await roachFeed(null, T0)).json);
+    const short = await roachFeed(null, T0, 3);
+    expect(short.kind === "full" && brotliDecompressSync(short.br!).toString()).toBe(short.json);
+    expect(short.kind === "full" && gunzipSync(short.gzip).toString()).toBe(short.json);
+    const pack: RoachFeedUpdate = JSON.parse(short.json);
+    expect(pack.v).toBe(list.v);
+    expect(pack.packed!.w).toBe(4);
+    const back = unpackRoaches(pack.packed!).sort((x, y) => (x.id < y.id ? -1 : 1));
+    expect(back).toEqual(list.roaches!.map((r) => ({ ...r, id: r.id.slice(0, 8) })));
+    // the old forms are only made when asked for, and the short one comes in about a quarter of the room
+    expect(short.json.length).toBeLessThan((await roachFeed(null, T0, 2)).json.length);
+  });
+
+  it("sends what changed in short ids to a page of the short form", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    const start = await ask(null, T0, 3);
+    const [main] = (await world.me(a))!.roaches;
+    await world.placeRoach(a, { kind: "move", roachId: main.id }, TOKYO);
+    const moved = await askAfterRebuild(start.v, T0 + 11_000, 3);
+    const [now] = (await world.me(a))!.roaches;
+    expect(moved.removed).toEqual([main.publicId.slice(0, 8)]);
+    expect(moved.changed).toMatchObject([{ id: now.publicId.slice(0, 8), ...TOKYO }]);
+    // the same change, in whole ids, for a page of an older form
+    expect(await ask(start.v, T0 + 11_000)).toMatchObject({ removed: [main.publicId], changed: [{ id: now.publicId }] });
+  });
+
+  it("gives two roaches whose public ids start alike their whole ids, also when that comes about later", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    await roachWithId(a, 0, "aaaaaaaa-0000-4000-8000-000000000001");
+    await roachWithId(a, 1, "bbbbbbbb-0000-4000-8000-000000000001", TOKYO);
+    const start = await ask(null, T0, 3);
+    const ids = (s: Answer) => s.roaches ?? unpackRoaches((s as RoachFeedUpdate).packed!).map((r) => r.id).sort();
+    expect(ids(start)).toEqual(["aaaaaaaa", "bbbbbbbb"]);
+
+    // b's roach starts like a's: both go by their whole ids, under which a page finds them again
+    await roachWithId(b, 0, "aaaaaaaa-ffff-4000-8000-000000000002", BEIJING);
+    const later = await askAfterRebuild(start.v, T0 + 6 * MINUTE, 3);
+    expect(later.removed).toEqual(["aaaaaaaa"]);
+    expect(later.changed!.map((r) => r.id)).toEqual(["aaaaaaaa-0000-4000-8000-000000000001", "aaaaaaaa-ffff-4000-8000-000000000002"]);
+    expect(ids(await ask(null, T0 + 6 * MINUTE, 3)).sort()).toEqual([
+      "aaaaaaaa-0000-4000-8000-000000000001",
+      "aaaaaaaa-ffff-4000-8000-000000000002",
+      "bbbbbbbb",
+    ]);
+    // a page that still says "aaaaaaaa" names two roaches: none, until it hears; a whole id still names one
+    expect(await roachByFeedId("aaaaaaaa")).toBeNull();
+    expect((await roachByFeedId("bbbbbbbb"))?.publicId).toBe("bbbbbbbb-0000-4000-8000-000000000001");
+    expect((await roachByFeedId("aaaaaaaa-ffff-4000-8000-000000000002"))?.userId).toBe(b);
+    expect((await roachByFeedId("aaaaaaaa", b))?.userId).toBe(b);
+    expect(await roachByFeedId("aaaa")).toBeNull();
+
+    // and once b's roach is gone, a's goes by its short id again
+    await db.execute(sql`delete from roaches where user_id = ${b}`);
+    const after = await askAfterRebuild(later.v, T0 + 12 * MINUTE, 3);
+    expect(after.removed).toEqual(["aaaaaaaa-0000-4000-8000-000000000001", "aaaaaaaa-ffff-4000-8000-000000000002"]);
+    expect(after.changed!.map((r) => r.id)).toEqual(["aaaaaaaa"]);
   });
 
   it("sends only what changed since the version a page holds", async () => {
@@ -119,12 +192,95 @@ describe("roach feed", () => {
     const [main] = (await world.me(a))!.roaches;
     await world.placeRoach(a, { kind: "move", roachId: main.id }, TOKYO);
     await askAfterRebuild(start.v, T0 + 11_000);
-    // twenty minutes later the change log no longer reaches back to the start
+    // an hour later the changes still reach back to the start
     const later = (await world.me(a))!.roaches[0];
     await world.placeRoach(a, { kind: "move", roachId: later.id }, BEIJING);
-    const far = await askAfterRebuild(start.v, T0 + 20 * MINUTE);
+    expect((await askAfterRebuild(start.v, T0 + 60 * MINUTE)).changed).toMatchObject([BEIJING]);
+    // four hours later they no longer do
+    const last = (await world.me(a))!.roaches[0];
+    await world.placeRoach(a, { kind: "move", roachId: last.id }, SHANGHAI);
+    const far = await askAfterRebuild(start.v, T0 + 4 * 60 * MINUTE);
     expect(far.roaches).toHaveLength(1);
-    expect(far.roaches![0]).toMatchObject(BEIJING);
+    expect(far.roaches![0]).toMatchObject(SHANGHAI);
+  });
+
+  describe("across a restart", () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), "feed-"));
+      process.env.FEED_STATE = join(dir, "web.json");
+      resetRoachFeed();
+    });
+    afterEach(() => {
+      delete process.env.FEED_STATE;
+      rmSync(dir, { recursive: true, force: true });
+      vi.restoreAllMocks();
+    });
+
+    it("takes up where the process before left off, so its pages get only what changed meanwhile", async () => {
+      const a = await player("a@example.com");
+      await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+      const start = await ask(null, T0, 3);
+      const [main] = (await world.me(a))!.roaches;
+      await world.placeRoach(a, { kind: "move", roachId: main.id }, TOKYO);
+      const moved = await askAfterRebuild(start.v, T0 + 11_000, 3);
+      // told to stop: written down, and no new versions meanwhile
+      stopRoachFeed();
+      const b = await player("b@example.com");
+      await world.placeRoach(b, { kind: "main" }, BEIJING);
+      expect(await askAfterRebuild(moved.v, T0 + 22_000, 3)).toEqual({ v: moved.v });
+
+      // the next process, with a change made while none was running
+      resetRoachFeed(T0 + 30_000);
+      const [now] = (await world.me(a))!.roaches;
+      await world.placeRoach(a, { kind: "move", roachId: now.id }, SHANGHAI);
+      const back = await ask(moved.v, T0 + 40_000, 3);
+      expect(back.v.split(".")[0]).toBe(moved.v.split(".")[0]);
+      expect(back.removed).toEqual([now.publicId.slice(0, 8)]);
+      expect(back.changed!.map((r) => [r.lng, r.lat]).sort()).toEqual([
+        [BEIJING.lng, BEIJING.lat],
+        [SHANGHAI.lng, SHANGHAI.lat],
+      ]);
+      // a page from further back gets the changes from there, the older form too
+      expect((await ask(start.v, T0 + 40_000, 3)).changed).toHaveLength(2);
+      expect((await ask(start.v, T0 + 40_000)).removed).toEqual([main.publicId, now.publicId].sort());
+      // and one with a version made after the last save, which means nothing here, the whole snapshot
+      const after = `${moved.v.split(".")[0]}.${Number(moved.v.split(".")[1]) + 1}`;
+      expect((await roachFeed(after, T0 + 11 * MINUTE, 3)).kind).toBe("full");
+    });
+
+    it("writes down where it is every minute too, for a process that ends without being told", async () => {
+      const a = await player("a@example.com");
+      await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+      const start = await ask(null, T0, 3);
+      await roachFeedSettled();
+      // ended at once: the next one takes up from the last save
+      resetRoachFeed(T0 + 30_000);
+      const [main] = (await world.me(a))!.roaches;
+      await world.placeRoach(a, { kind: "move", roachId: main.id }, TOKYO);
+      expect((await ask(start.v, T0 + 40_000, 3)).changed).toMatchObject([TOKYO]);
+    });
+
+    it("spreads the whole snapshot over the first minutes for pages it does not know, so they do not all come at once", async () => {
+      const a = await player("a@example.com");
+      await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+      resetRoachFeed(T0);
+      const random = vi.spyOn(Math, "random");
+      // a page from a process that wrote nothing down: most wait at first, keeping what they have
+      random.mockReturnValue(0.5);
+      expect(await ask("0123abcd.42", T0 + MINUTE, 3)).toEqual({ v: "0123abcd.42" });
+      // later more of them get it, and after ten minutes every one
+      expect((await roachFeed("0123abcd.42", T0 + 6 * MINUTE, 3)).kind).toBe("full");
+      random.mockReturnValue(0.999);
+      expect((await roachFeed("0123abcd.42", T0 + 9 * MINUTE, 3)).kind).toBe("diff");
+      expect((await roachFeed("0123abcd.42", T0 + 10 * MINUTE, 3)).kind).toBe("full");
+      // a page with nothing yet never waits
+      random.mockReturnValue(0.5);
+      expect((await roachFeed(null, T0 + MINUTE, 3)).kind).toBe("full");
+      // one still running the code from before the short form waits up to an hour
+      expect((await roachFeed("0123abcd.42", T0 + 20 * MINUTE, 2)).kind).toBe("diff");
+      expect((await roachFeed("0123abcd.42", T0 + 40 * MINUTE, 2)).kind).toBe("full");
+    });
   });
 
   it("rebuilds every few minutes even if no change was reported", async () => {

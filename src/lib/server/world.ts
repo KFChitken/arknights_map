@@ -117,7 +117,7 @@ import { helpCounts } from "./help";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { allow } from "./rateLimit";
-import { lookOf, roachesChanged, sleeping } from "./roachFeed";
+import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import {
   declarations,
   deliveries,
@@ -646,8 +646,8 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   const guide = guideById(String(publicId));
   if (guide) return GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，碰不到 TA。");
-  if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
-  const [roach] = await db.select().from(roaches).where(eq(roaches.publicId, publicId)).limit(1);
+  // by the id the feed gave the page, short or whole
+  const roach = await roachByFeedId(String(publicId));
   if (!roach) throw new WorldError("这只蟑螂已经爬走了。");
   if (roach.userId === userId) throw new WorldError("这是你自己的蟑螂。");
   await checkTouchQuota(userId);
@@ -658,7 +658,7 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
     .where(
       and(
         eq(touches.fromUserId, userId),
-        eq(touches.toPublicId, publicId),
+        eq(touches.toPublicId, roach.publicId),
         gt(touches.createdAt, ago(TOUCH_SAME_ROACH_HOURS * HOUR)),
       ),
     )
@@ -677,7 +677,7 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
     toUserId: roach.userId,
     bold: Boolean(bold),
     toSlot: roach.slot,
-    toPublicId: publicId,
+    toPublicId: roach.publicId,
     withheld,
   });
   if (withheld) return { newFriend: null };
@@ -817,13 +817,16 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
   const guide = guideById(String(publicId));
   if (guide) throw new WorldError(`${guide.name}一直醒着，碰碰${guide.pronoun}吧。`);
   if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，戳不到 TA。");
-  if (!UUID.test(String(publicId))) throw new WorldError("这只蟑螂已经爬走了。");
-  const [row] = await db
-    .select({ slot: roaches.slot, owner: users })
-    .from(roaches)
-    .innerJoin(users, eq(users.id, roaches.userId))
-    .where(eq(roaches.publicId, publicId))
-    .limit(1);
+  // by the id the feed gave the page, short or whole
+  const roach = await roachByFeedId(String(publicId));
+  const [row] = roach
+    ? await db
+        .select({ slot: roaches.slot, owner: users })
+        .from(roaches)
+        .innerJoin(users, eq(users.id, roaches.userId))
+        .where(eq(roaches.id, roach.id))
+        .limit(1)
+    : [];
   if (!row) throw new WorldError("这只蟑螂已经爬走了。");
   const { owner } = row;
   if (owner.id === userId) throw new WorldError("这是你自己的蟑螂。");

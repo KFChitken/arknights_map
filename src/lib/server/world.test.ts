@@ -1442,6 +1442,23 @@ describe("server world", () => {
     expect(inbox1[0]).toMatchObject({ kind: "touch", bold: false, from: null });
   });
 
+  it("finds a roach by the short id the feed gives it, as long as no other roach's public id starts the same", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const target = await publicAt(me, tester("t2").roaches[0]);
+    const other = await publicAt(me, tester("t1").roaches[0]);
+    await me.touch(target.id.slice(0, 8), false);
+    expect((await (await demo("t2")).inbox())[0]).toMatchObject({ kind: "touch", target: "main" });
+    // the same roach under its whole id: already touched today
+    await expect(me.touch(target.id, false)).rejects.toThrow("今天已经碰过");
+
+    // another roach comes to start like this one, before the page hears: the short id names neither
+    const shared = `${other.id.slice(0, 8)}-0000-4000-8000-000000000000`;
+    await db.update(roaches).set({ publicId: shared }).where(eq(roaches.publicId, target.id));
+    await expect(me.touch(other.id.slice(0, 8), false)).rejects.toThrow("已经爬走了");
+    await me.touch(other.id, false);
+    await expect(me.touch("0f6b2a5", false)).rejects.toThrow("已经爬走了");
+  });
+
   it("says which of your roaches was touched, and lets you touch back once", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await me.placeRoach({ kind: "clone" }, TOKYO);

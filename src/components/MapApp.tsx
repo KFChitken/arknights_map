@@ -74,6 +74,7 @@ import type { ReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { RoachFeedCopy } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
+import { feedIdsOf, sameRoach } from "@/lib/world/packed";
 import { ServerWorld } from "@/lib/world/server";
 import {
   ConsentNeeded,
@@ -466,8 +467,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const retryRef = useRef<{ timer?: number; delay: number }>({ delay: 0 });
 
   // The feed is the same for everyone: leave out our own roaches (drawn from me) and mark friends'
+  // (its short ids, world/packed.ts, matched through feedIdsOf)
   const friendKey = friends
-    .flatMap((f) => f.roaches.map((r) => r.id))
+    .flatMap((f) => f.roaches.flatMap((r) => feedIdsOf(r.id)))
     .sort()
     .join(",");
   const roaches = useMemo<PublicRoach[]>(() => {
@@ -484,7 +486,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
       const fresh = (m?.roaches ?? []).filter((r) => !base.has(r.publicId));
       if (!fresh.length) return base;
       const next = new Set(base);
-      for (const r of fresh) next.add(r.publicId);
+      for (const r of fresh) for (const id of feedIdsOf(r.publicId)) next.add(id);
       return next;
     });
   }, []);
@@ -2018,7 +2020,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   );
   const selectedFriend =
     selected?.kind === "other" && selected.roach.friend
-      ? shownFriends.find((f) => f.roaches.some((r) => r.id === selected.roach.id))
+      ? shownFriends.find((f) => f.roaches.some((r) => sameRoach(selected.roach.id, r.id)))
       : undefined;
   const total = roaches.length + (me?.roaches.length ?? 0);
 
