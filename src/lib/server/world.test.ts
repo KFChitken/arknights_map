@@ -472,7 +472,8 @@ describe("server world", () => {
     expect(await greet(360, "2026-11-04T03:30-06:00")).toBeNull();
     expect(await greet(360, "2026-11-04T04:30-06:00")).toMatchObject({ greet: true });
     // and in summer (CDT); two pages opening at once still get one greeting
-    const [summer] = await Promise.all([greet(300, "2027-06-01T04:30-05:00"), greet(300, "2027-06-01T04:30-05:00")]);
+    // either page may be the one that greets: the other gets the same greeting back, or nothing
+    const summer = (await Promise.all([greet(300, "2027-06-01T04:30-05:00"), greet(300, "2027-06-01T04:30-05:00")])).find(Boolean);
     expect(await greetings()).toBe(3);
     // flying to Beijing the same day brings back that greeting, not a new one
     expect((await greet(-480, "2027-06-01T16:00+08:00"))?.id).toBe(summer!.id);
