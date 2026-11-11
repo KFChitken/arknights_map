@@ -391,10 +391,14 @@ export type Homecoming = {
 export type BlockedPlayer = { id: string; name: string | null; at: number };
 
 /**
- * You touched whoever sent this in the last day, so touching TA back waits till tomorrow: "all", or
- * "sneaky" when a bold touch back still goes, since it makes you 触须之交.
+ * You touched whoever sent this in the last day, so touching TA back waits till tomorrow: "all"; or only
+ * the sneaky touch back waits, as a bold one still goes: "sneaky" since it makes you 触须之交, "reveal"
+ * since you touched TA only sneakily so far, and it says who that was.
  */
-export type TouchBackWaits = "all" | "sneaky";
+export type TouchBackWaits = "all" | "sneaky" | "reveal";
+
+/** Whether only a bold touch back goes now, with nothing for a sneaky one till tomorrow */
+export const boldOnly = (waits: TouchBackWaits | undefined) => waits === "sneaky" || waits === "reveal";
 
 /** 我觉得处理错了: open to send, sent and waiting for the admin, or answered (in a note of its own) */
 export type StaffAppeal = { actionId: string; state: "open" | "sent" | "answered" };

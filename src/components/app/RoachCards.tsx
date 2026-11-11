@@ -21,6 +21,7 @@ export function OtherRoachCard({
   sharesUid,
   friendName,
   pokeAgainAt,
+  touched,
   perlicaTimer = false,
   perlicaGuarding = false,
   amiyaMusic,
@@ -48,6 +49,11 @@ export function OtherRoachCard({
   friendName?: string;
   /** You poked this 触须之交 lately: when you may again */
   pokeAgainAt: number | null;
+  /**
+   * You touched this roach from this page within the day: sneakily, when a bold touch still goes and
+   * says who that was, or boldly, when nothing more goes till tomorrow (src/lib/server/world.ts touch())
+   */
+  touched?: "sneaky" | "bold";
   /** 佩丽卡监督's 离开计时 is on, which her card mentions */
   perlicaTimer?: boolean;
   /** 佩丽卡监督 is keeping watch beside your drunk main roach */
@@ -175,11 +181,15 @@ export function OtherRoachCard({
         ? waiting
           ? "正在读取你的账号…"
           : "登录后就能伸出触须碰 TA。"
-        : friendName
-          ? "你们是触须之交，随时可以再碰碰 TA。"
-          : roach.clone
-            ? "碰它，触须会传给它的主人。"
-            : "伸出触须碰一下 TA：";
+        : touched === "sneaky"
+          ? "今天偷偷碰过 TA 了。想让 TA 知道是你，就大胆碰一下："
+          : touched === "bold"
+            ? "今天大胆碰过 TA 了，明天再来吧。"
+            : friendName
+              ? "你们是触须之交，随时可以再碰碰 TA。"
+              : roach.clone
+                ? "碰它，触须会传给它的主人。"
+                : "伸出触须碰一下 TA：";
   return (
     <div className="card stack" role="dialog" aria-label="伸出触须">
       <div className="card-head">
@@ -293,13 +303,13 @@ export function OtherRoachCard({
         </button>
       ) : (
         <div className="touch-buttons">
-          <button disabled={touching} onClick={() => onTouch(false)}>
+          <button disabled={touching || Boolean(touched)} onClick={() => onTouch(false)}>
             偷偷伸出触须
-            <small>TA 只知道被碰了一下</small>
+            <small>{touched ? "今天碰过了" : "TA 只知道被碰了一下"}</small>
           </button>
-          <button disabled={touching} className="bold" onClick={() => onTouch(true)}>
+          <button disabled={touching || touched === "bold"} className="bold" onClick={() => onTouch(true)}>
             大胆伸出触须
-            <small>{sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
+            <small>{touched === "bold" ? "今天碰过了" : sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
           </button>
         </div>
       )}

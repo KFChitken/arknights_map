@@ -58,6 +58,7 @@ import {
   type Radar,
   type RadarScan,
   type RideTarget,
+  type TouchBackWaits,
   type TouchResult,
 } from "../world/types";
 import { amiyaFriend, amiyaInbox, greetAmiya, ignoreAmiya, replyAmiya, seeAmiya, touchAmiya, unfriendAmiya } from "./amiya";
@@ -690,9 +691,10 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   if (!roach) throw new WorldError("这只蟑螂已经爬走了。");
   if (roach.userId === userId) throw new WorldError("这是你自己的蟑螂。");
   await checkTouchQuota(userId);
-  // keyed by the public id, not the owner, so the answer cannot tell you two roaches share an owner
-  const [again] = await db
-    .select({ id: touches.id })
+  // One roach once a day, keyed by the public id, not the owner, so the answer cannot tell you two roaches
+  // share an owner; but a sneaky touch may be followed by a bold one, to say who it was (Breeze, 2026-11-12).
+  const earlier = await db
+    .select({ bold: touches.bold })
     .from(touches)
     .where(
       and(
@@ -700,13 +702,13 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
         eq(touches.toPublicId, roach.publicId),
         gt(touches.createdAt, ago(TOUCH_SAME_ROACH_HOURS * HOUR)),
       ),
-    )
-    .limit(1);
-  if (again) throw new WorldError("今天已经碰过这只蟑螂了，明天再来吧。");
+    );
+  if (earlier.some((t) => t.bold)) throw new WorldError("今天已经碰过这只蟑螂了，明天再来吧。");
+  if (earlier.length && !bold) throw new WorldError("今天已经偷偷碰过这只蟑螂了。想让 TA 知道是你，可以大胆碰一下。");
   // a few touches a day on one player's roaches, main and clones together, touching back included; saying so
   // may tell that two roaches share an owner, which Breeze accepted. The bold touch that makes the two
   // 触须之交 always goes: it comes once.
-  if ((await touchesBetween(userId, roach.userId)) >= TOUCHES_PER_PERSON_PER_DAY && !(bold && (await wouldBefriend(userId, roach.userId)))) {
+  if ((await touchedToday(userId, roach.userId)).n >= TOUCHES_PER_PERSON_PER_DAY && !(bold && (await wouldBefriend(userId, roach.userId)))) {
     throw new WorldError(`今天已经碰过这只蟑螂的主人 ${TOUCHES_PER_PERSON_PER_DAY} 次了，明天再来吧。`);
   }
   // Between a blocked pair the touch looks sent, but never arrives
@@ -725,16 +727,19 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   return { newFriend };
 }
 
+/** How many touches one player made on another in the last day, and whether any was bold */
+type TouchedToday = { n: number; bold: boolean };
+
 /**
  * Touches from a to b in the last day: on b's roaches on the map, main and clones together, and
  * touching back; the ones that never arrived too, so that a blocked player sees what anyone would.
  */
-async function touchesBetween(a: string, b: string) {
+async function touchedToday(a: string, b: string): Promise<TouchedToday> {
   const [sent] = await db
-    .select({ n: count() })
+    .select({ n: count(), bold: sql<boolean | null>`bool_or(${touches.bold})` })
     .from(touches)
     .where(and(eq(touches.fromUserId, a), eq(touches.toUserId, b), gt(touches.createdAt, ago(DAY))));
-  return sent?.n ?? 0;
+  return { n: sent?.n ?? 0, bold: Boolean(sent?.bold) };
 }
 
 /**
@@ -755,18 +760,31 @@ async function wouldBefriend(a: string, b: string) {
 }
 
 /**
- * The players among these you touched in the last day, for whom touching back waits till tomorrow:
- * "all", or "sneaky" when a bold touch back would still go, as it makes you 触须之交 (reply()).
+ * No touching back and forth: what of touching TA back waits till tomorrow, after your touches on TA in
+ * the last day; null when you made none. A bold touch back still goes while it makes you 触须之交
+ * ("sneaky"), or while you touched TA only sneakily so far, fewer than the day's few times, so that it
+ * says who that was ("reveal", Breeze 2026-11-12); otherwise "all" waits.
  */
+async function touchBackWait(from: string, to: string, today: TouchedToday): Promise<TouchBackWaits | null> {
+  if (!today.n) return null;
+  if (await wouldBefriend(from, to)) return "sneaky";
+  return !today.bold && today.n < TOUCHES_PER_PERSON_PER_DAY ? "reveal" : "all";
+}
+
+/** The players among these you touched in the last day, with what of touching them back waits (touchBackWait()) */
 async function touchBackWaits(userId: string, others: string[]) {
-  const waits = new Map<string, "all" | "sneaky">();
+  const waits = new Map<string, TouchBackWaits>();
   const ids = [...new Set(others)];
   if (!ids.length) return waits;
   const touched = await db
-    .selectDistinct({ to: touches.toUserId })
+    .select({ to: touches.toUserId, n: count(), bold: sql<boolean | null>`bool_or(${touches.bold})` })
     .from(touches)
-    .where(and(eq(touches.fromUserId, userId), inArray(touches.toUserId, ids), gt(touches.createdAt, ago(DAY))));
-  for (const { to } of touched) waits.set(to, (await wouldBefriend(userId, to)) ? "sneaky" : "all");
+    .where(and(eq(touches.fromUserId, userId), inArray(touches.toUserId, ids), gt(touches.createdAt, ago(DAY))))
+    .groupBy(touches.toUserId);
+  for (const { to, n, bold } of touched) {
+    const wait = await touchBackWait(userId, to, { n, bold: Boolean(bold) });
+    if (wait) waits.set(to, wait);
+  }
   return waits;
 }
 
@@ -812,11 +830,11 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   }
   if (!to) throw new WorldError("找不到这条消息的主人了。");
   if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
-  // no touching back and forth: whoever touched TA in the last day waits till tomorrow to touch back,
-  // except with the bold touch that makes them 触须之交
-  if ((await touchesBetween(userId, to)) > 0 && !(bold && (await wouldBefriend(userId, to)))) {
-    throw new WorldError("今天已经碰过 TA 了，明天再碰回去吧。");
-  }
+  // no touching back and forth: whoever touched TA in the last day waits till tomorrow to touch back, but
+  // for a bold touch back that makes them 触须之交, or says who touched TA sneakily (touchBackWait())
+  const wait = await touchBackWait(userId, to, await touchedToday(userId, to));
+  if (wait === "all") throw new WorldError("今天已经碰过 TA 了，明天再碰回去吧。");
+  if (wait && !bold) throw new WorldError("今天已经碰过 TA 了，偷偷碰回去要等明天，大胆碰回去现在就行。");
   await checkTouchQuota(userId);
   const withheld = await blockedBetween(userId, to);
   try {

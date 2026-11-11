@@ -24,13 +24,16 @@ import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import { APPEAL_MAX, APPEAL_MIN } from "@/lib/safety";
 import type { LngLat } from "@/lib/types";
-import type { Friend, InboxItem, StaffAppeal } from "@/lib/world/types";
+import { boldOnly, type Friend, type InboxItem, type StaffAppeal } from "@/lib/world/types";
 import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
 export type InboxTab = "replies" | "touches" | "friends";
+
+/** What can be touched back from 消息: a touch, a declaration, or a reaction to yours */
+type Answerable = Extract<InboxItem, { kind: "touch" | "declaration" | "reaction" }>;
 
 /** What ending it with 阿米娅向导 means; also the question before it */
 export const AMIYA_UNFRIEND = "解除后阿米娅不会再每天跟你打招呼，她还在罗德岛等你。";
@@ -284,7 +287,7 @@ export default function InboxSheet({
   // items keep their unread look while the inbox is open, but a tab's red count goes once you have looked at it
   const unseenIn = (t: InboxTab) => (viewed.includes(t) ? 0 : items.filter((i) => !i.seen && tabOf(i) === t).length);
 
-  const replyButtons = (item: Extract<InboxItem, { kind: "touch" | "declaration" | "reaction" }>, label: string) =>
+  const replyButtons = (item: Answerable, label: string) =>
     item.replied ? (
       <span className="done">已经碰过 TA 了</span>
     ) : item.waits === "all" ? (
@@ -292,7 +295,7 @@ export default function InboxSheet({
       <span className="done">今天碰过 TA 了，明天再碰回去吧</span>
     ) : replying === item.id ? (
       <>
-        {item.waits !== "sneaky" && (
+        {!boldOnly(item.waits) && (
           <button className="pill" onClick={() => reply(item.id, false)}>
             偷偷碰
           </button>
@@ -309,6 +312,27 @@ export default function InboxSheet({
         {label}
       </button>
     );
+  /**
+   * Under the buttons while answering: why only 「大胆碰」 is there, or what a bold touch back tells TA. That it
+   * makes you 触须之交 is said on touches only, as before: under a declaration or a reaction it would say
+   * more about who sent it.
+   */
+  const replyNote = (item: Answerable) => {
+    if (replying !== item.id) return null;
+    // TA touched one of your roaches on the map
+    const yours = item.kind === "touch" && (item.target === "main" || item.target === "clone");
+    const text =
+      item.waits === "reveal"
+        ? `今天你偷偷碰过 TA 了，再偷偷碰要等明天；大胆碰回去，TA 就知道是你${yours ? "，也知道刚才碰的那只蟑螂是你的" : ""}。`
+        : item.kind !== "touch"
+          ? null
+          : item.waits === "sneaky"
+            ? "今天你碰过 TA 了，偷偷碰回去要等明天；大胆碰回去，你们就结成触须之交。"
+            : yours
+              ? "大胆碰回去，TA 就会知道刚才碰的那只蟑螂是你的。"
+              : null;
+    return text && <p className="hint">{text}</p>;
+  };
 
   const meta = (item: InboxItem, target: string, who: string | null) => (
     <div className="meta">
@@ -549,12 +573,7 @@ export default function InboxSheet({
               </>
             )}
           </div>
-          {replying === item.id && item.waits === "sneaky" && (
-            <p className="hint">今天你碰过 TA 了，偷偷碰回去要等明天；大胆碰回去，你们就结成触须之交。</p>
-          )}
-          {replying === item.id && item.waits !== "sneaky" && (item.target === "main" || item.target === "clone") && (
-            <p className="hint">大胆碰回去，TA 就会知道刚才碰的那只蟑螂是你的。</p>
-          )}
+          {replyNote(item)}
         </div>
       );
     }
@@ -567,6 +586,7 @@ export default function InboxSheet({
             <div>{item.reaction.id === "birthday" ? `${who} 祝你生日快乐！` : `${who} 回应了你的生日宣言：「${item.reaction.text}」`}</div>
             {meta(item, item.id, who)}
             <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
+            {replyNote(item)}
           </div>
         );
       }
@@ -576,6 +596,7 @@ export default function InboxSheet({
           <div className="quote">{item.reaction.text}</div>
           {meta(item, item.id, null)}
           <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
+          {replyNote(item)}
         </div>
       );
     }
@@ -607,6 +628,7 @@ export default function InboxSheet({
         )}
         {item.from && !item.reaction && <p className="hint">TA 能看到是你。</p>}
         <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
+        {replyNote(item)}
       </div>
     );
   };

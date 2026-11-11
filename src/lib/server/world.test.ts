@@ -1495,7 +1495,7 @@ describe("server world", () => {
     await me.touch(target.id.slice(0, 8), false);
     expect((await (await demo("t2")).inbox())[0]).toMatchObject({ kind: "touch", target: "main" });
     // the same roach under its whole id: already touched today
-    await expect(me.touch(target.id, false)).rejects.toThrow("今天已经碰过");
+    await expect(me.touch(target.id, false)).rejects.toThrow("今天已经偷偷碰过这只蟑螂了");
 
     // another roach comes to start like this one, before the page hears: the short id names neither
     const shared = `${other.id.slice(0, 8)}-0000-4000-8000-000000000000`;
@@ -1527,32 +1527,32 @@ describe("server world", () => {
     await me.placeRoach({ kind: "clone" }, TOKYO);
     const t1 = await demo("t1");
     const waiting = async (p: Player) => (await p.inbox()).find((i) => i.kind === "touch" && !i.replied && !i.ignored)!;
-    await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, false);
-    // I have not touched 阿白 today: I may touch back
-    expect(await waiting(me)).not.toHaveProperty("waits");
-    await me.reply((await waiting(me)).id, false);
-    // 阿白 has: their touch back waits till tomorrow, and the inbox says so before they try
-    const mine = await waiting(t1);
+    await me.touch((await publicAt(me, tester("t1").roaches[0])).id, true);
+    // 阿白 has not touched me today: TA may touch back
+    expect(await waiting(t1)).not.toHaveProperty("waits");
+    await t1.reply((await waiting(t1)).id, false);
+    // I have, boldly: my touch back waits till tomorrow, either way, and the inbox says so before I try
+    const mine = await waiting(me);
     expect(mine).toMatchObject({ target: "touch", waits: "all" });
-    await expect(t1.reply(mine.id, false)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
-    await expect(t1.reply(mine.id, true)).rejects.toThrow("今天已经碰过 TA 了");
+    await expect(me.reply(mine.id, false)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
+    await expect(me.reply(mine.id, true)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
 
     // the same for a touch on another of my roaches, and for touching back from a declaration
     await t1.touch((await publicAt(t1, TOKYO)).id, false);
     const other = (await me.inbox()).find((i) => i.kind === "touch" && i.target === "clone")!;
     expect(other).toMatchObject({ waits: "all", replied: false });
     await expect(me.reply(other.id, false)).rejects.toThrow("今天已经碰过 TA 了");
-    await me.declare({ template: "launch", game: "arknights" });
-    const heard = (await t1.inbox()).find((i) => i.kind === "declaration")!;
+    await t1.declare({ template: "launch", game: "arknights" });
+    const heard = (await me.inbox()).find((i) => i.kind === "declaration")!;
     expect(heard).toMatchObject({ waits: "all" });
-    await expect(t1.reply(heard.id, false)).rejects.toThrow("今天已经碰过 TA 了");
+    await expect(me.reply(heard.id, true)).rejects.toThrow("今天已经碰过 TA 了");
 
     // a day on, they go; however its id is spelled, an item is answered once
     await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
-    expect(await waiting(t1)).not.toHaveProperty("waits");
-    await expect(t1.reply(mine.id, false)).resolves.toEqual({ newFriend: null });
-    await expect(t1.reply(`t:${mine.id.slice(2).toUpperCase()}`, false)).rejects.toThrow("已经碰过 TA 了");
-    await expect(t1.reply(`${mine.id}:again`, false)).rejects.toThrow("已经碰过 TA 了");
+    expect(await waiting(me)).not.toHaveProperty("waits");
+    await expect(me.reply(mine.id, false)).resolves.toEqual({ newFriend: null });
+    await expect(me.reply(`t:${mine.id.slice(2).toUpperCase()}`, false)).rejects.toThrow("已经碰过 TA 了");
+    await expect(me.reply(`${mine.id}:again`, false)).rejects.toThrow("已经碰过 TA 了");
   });
 
   it("lets one player touch another's roaches three times a day, main and clones together, touching back included", async () => {
@@ -1600,6 +1600,77 @@ describe("server world", () => {
     expect(bold).toMatchObject({ waits: "sneaky" });
     await expect(me.reply(bold.id, false)).rejects.toThrow("今天已经碰过 TA 了");
     await expect(me.reply(bold.id, true)).resolves.toMatchObject({ newFriend: expect.any(String) });
+  });
+
+  it("lets a sneaky touch on a roach be followed by a bold one the same day, to say who it was, and nothing after", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const r = await publicAt(me, tester("t2").roaches[0]);
+    await me.touch(r.id, false);
+    // sneakily again: not today, and the answer says what still goes
+    await expect(me.touch(r.id, false)).rejects.toThrow("今天已经偷偷碰过这只蟑螂了。想让 TA 知道是你，可以大胆碰一下。");
+    // boldly: it goes, and 小林 sees who, besides the sneaky one
+    await expect(me.touch(r.id, true)).resolves.toEqual({ newFriend: null });
+    const theirs = (await (await demo("t2")).inbox()).filter((i) => i.kind === "touch");
+    expect(theirs.map((i) => i.kind === "touch" && [i.bold, i.from?.displayName ?? null, i.target]).sort()).toEqual([
+      [false, null, "main"],
+      [true, "Breeze", "main"],
+    ]);
+    // after the bold one, nothing more on that roach today, either way
+    await expect(me.touch(r.id, true)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
+    await expect(me.touch(r.id, false)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
+    // nor after a bold one first
+    const other = await publicAt(me, tester("t1").roaches[0]);
+    await me.touch(other.id, true);
+    await expect(me.touch(other.id, false)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
+
+    // the bold one makes 触须之交 when TA touched you boldly before
+    const t3 = await demo("t3");
+    await t3.touch((await publicAt(t3, PEOPLES_SQUARE)).id, true);
+    const kal = await publicAt(me, tester("t3").roaches[0]);
+    await me.touch(kal.id, false);
+    await expect(me.touch(kal.id, true)).resolves.toEqual({ newFriend: "Kal" });
+  });
+
+  it("keeps the day's three touches on one player when a bold touch follows sneaky ones", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    // all three of Kal's roaches, sneakily: a bold one now on the first is a fourth
+    const kal = await Promise.all(tester("t3").roaches.map((at) => publicAt(me, at)));
+    for (const r of kal) await me.touch(r.id, false);
+    await expect(me.touch(kal[0].id, true)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，明天再来吧。");
+    // nor from 消息, when Kal touches me
+    const t3 = await demo("t3");
+    await t3.touch((await publicAt(t3, PEOPLES_SQUARE)).id, false);
+    const item = (await me.inbox()).find((i) => i.kind === "touch")!;
+    expect(item).toMatchObject({ waits: "all" });
+    await expect(me.reply(item.id, true)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
+  });
+
+  it("lets you touch back boldly, to say who it was, someone you touched only sneakily today, and nothing more after", async () => {
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t1 = await demo("t1");
+    const waiting = async (p: Player) => (await p.inbox()).find((i) => i.kind === "touch" && !i.replied && !i.ignored)!;
+    // I touch 阿白 sneakily, and 阿白 touches me back sneakily
+    await me.touch((await publicAt(me, tester("t1").roaches[0])).id, false);
+    await t1.reply((await waiting(t1)).id, false);
+    // a sneaky touch back waits till tomorrow, a bold one goes now, and the inbox says so before I try
+    const back = await waiting(me);
+    expect(back).toMatchObject({ target: "touch", bold: false, waits: "reveal" });
+    await expect(me.reply(back.id, false)).rejects.toThrow("今天已经碰过 TA 了，偷偷碰回去要等明天，大胆碰回去现在就行。");
+    // the same for a declaration of theirs
+    await t1.declare({ template: "launch", game: "arknights" });
+    const heard = () => me.inbox().then((items) => items.find((i) => i.kind === "declaration")!);
+    expect(await heard()).toMatchObject({ waits: "reveal" });
+    await expect(me.reply(back.id, true)).resolves.toEqual({ newFriend: null });
+
+    // 阿白 sees who it was, and may touch back boldly to become 触须之交
+    const told = (await t1.inbox()).find((i) => i.kind === "touch" && i.bold)!;
+    expect(told).toMatchObject({ target: "touch", from: { displayName: "Breeze" }, waits: "sneaky" });
+    // after my bold touch, nothing more from me today
+    expect(await heard()).toMatchObject({ waits: "all" });
+    await expect(me.reply((await heard()).id, true)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
+    await expect(t1.reply(told.id, true)).resolves.toEqual({ newFriend: "Breeze" });
   });
 
   it("lets you crawl away from a touch without the toucher ever knowing", async () => {

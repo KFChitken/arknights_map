@@ -70,12 +70,12 @@ import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
-import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
+import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
 import { RoachAreaCopy, RoachFeedCopy } from "@/lib/world/feed";
-import { reachText } from "@/lib/world/logic";
+import { HOUR, reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach, unpackRoaches } from "@/lib/world/packed";
 import {
   DEFAULT_MAP_STYLE,
@@ -514,6 +514,9 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   // a touch, or a roach being put down, on its way to the server: a second tap meanwhile is not sent (it would be the same one twice)
   const [touching, setTouching] = useState(false);
   const inFlight = useRef({ touch: false, put: false });
+  // other players' roaches touched from this page, by account and the feed's id, and when: within the day
+  // their card says what still goes, as a sneaky touch may be followed by a bold one (OtherRoachCard touched)
+  const [touchedHere, setTouchedHere] = useState<Record<string, { bold: boolean; at: number }>>({});
   // 塔露拉干员's fire: a clone on its way there, the count pretended in development, and her line to 初始 hoods while her card shows it
   const [sendingToFire, setSendingToFire] = useState(false);
   const [fakeFire, setFakeFire] = useState<number | null>(null);
@@ -1633,6 +1636,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     if (roach.guide) return touchGuide(roach, bold);
     const res = await once("touch", () => act((w) => w.touch(roach.id, bold)));
     if (!res) return;
+    setTouchedHere((t) => ({ ...t, [`${me?.id}:${roach.id}`]: { bold, at: Date.now() } }));
     setSelected(null);
     // the scene plays first, then today's toast
     const loading = res.newFriend ? Promise.all([loadFriends(), loadInbox()]) : null;
@@ -1642,6 +1646,13 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     await loading;
     if (me?.isNew) await loadMe();
     if (demoRef.current) await loadIdentities();
+  };
+
+  /** How you touched this roach from this page within the day, if you did (the server's once a day, touch()) */
+  const touchedOn = (roach: PublicRoach) => {
+    const t = roach.guide ? undefined : touchedHere[`${me?.id}:${roach.id}`];
+    if (!t || Date.now() - t.at >= TOUCH_SAME_ROACH_HOURS * HOUR) return undefined;
+    return t.bold ? "bold" : "sneaky";
   };
 
   /** 戳一戳 a 触须之交's sleeping roach: the card stays open, and its button turns to 「戳过了」. */
@@ -3743,6 +3754,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
+          touched={touchedOn(selected.roach)}
           perlicaTimer={me?.perlica.timer === "on"}
           amiyaMusic={selected.roach.id === AMIYA_ID ? { on: music, onToggle: switchMusic } : undefined}
           perlicaGuarding={guarding}
