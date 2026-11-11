@@ -37,7 +37,6 @@ import {
   blocks,
   clearedValues,
   declarations,
-  deliveries,
   mailSends,
   modActions,
   pokes,
@@ -50,6 +49,7 @@ import {
   type UserRow,
 } from "./schema";
 import { roachByFeedId } from "./roachFeed";
+import { canSeeDeclaration } from "./declarationInbox";
 import { addNotes } from "./staffNotes";
 import { note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
@@ -97,14 +97,10 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
     return p ? { other: p.from, known: true, context: "趁举报人的蟑螂睡着时戳了戳它" } : null;
   }
   if (kind === "d") {
-    const [row] = await db
-      .select({ d: declarations })
-      .from(deliveries)
-      .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
-      .where(and(eq(deliveries.declarationId, id), eq(deliveries.recipientId, userId)))
-      .limit(1);
-    if (!row) return null;
-    return { other: row.d.senderId, known: false, context: `独立宣言「${declarationText(storedDeclaration(row.d))}」` };
+    // one the reporter sees now (src/lib/server/declarationInbox.ts)
+    const d = await canSeeDeclaration(userId, id);
+    if (!d) return null;
+    return { other: d.senderId, known: false, context: `独立宣言「${declarationText(storedDeclaration(d))}」` };
   }
   if (kind === "x") {
     const [row] = await db

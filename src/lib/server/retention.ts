@@ -23,6 +23,7 @@ import {
   watchIncidents,
   watchMails,
 } from "./schema";
+import { forgetOldSpots } from "./declarationInbox";
 import { pruneDeskCodes } from "./deskCodes";
 
 const DAY_MS = 86_400_000;
@@ -50,6 +51,8 @@ export async function pruneOldActivity(now = Date.now()) {
   await pruneFriendly(cutoff, now);
   await pruneHelp(now);
   await pruneDeliveries(now);
+  // where a declaration was sent from, once it shows to nobody (DECLARATION_DAYS)
+  await forgetOldSpots(now);
   // only the last day of radar scans is ever used
   await db.delete(radarScans).where(lt(radarScans.createdAt, new Date(now - DAY_MS)));
   const reportCutoff = new Date(now - KEEP_REPORT_DAYS * DAY_MS);

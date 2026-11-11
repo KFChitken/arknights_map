@@ -41,6 +41,8 @@ export const NAME_MAX = 16;
 export const UID_MAX = 20;
 
 export const DECLARATION_RADIUS_KM = 10;
+/** A declaration stays where it was sent this long: anyone whose roach is near it then sees it in 消息 */
+export const DECLARATION_DAYS = 7;
 export const DECLARATION_COOLDOWN_MIN = 1;
 export const DECLARATIONS_PER_DAY = 20;
 

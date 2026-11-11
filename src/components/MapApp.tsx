@@ -1245,6 +1245,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     if (mainMoves && perlicaAt) bikeFrom.current = from;
     setPlacing(null);
     const m = await loadMe();
+    // declarations show by where the roaches are: a move can bring old ones in and take others away
+    void loadInbox().catch(() => {});
     welcomeAtFire(before, m, false);
     // the tutorial's clone step is done for good once one is down, even if it is taken back later
     if (target.kind === "clone" && step === "clone") updateProgress({ clone: true });
@@ -1422,6 +1424,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     if (!done) return;
     setSelected(null);
     await loadMe();
+    void loadInbox().catch(() => {});
   };
 
   const befriendedToast = (name: string) => {
@@ -1655,7 +1658,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     setPanel(null);
     setSelected(null);
     setFocus({ lng: res.seat.lng, lat: res.seat.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
-    await Promise.all([loadMe(), loadRoaches(), loadFriends()]);
+    await Promise.all([loadMe(), loadRoaches(), loadFriends(), loadInbox()]);
     sayOver(res.seat, "来串门啦！");
     setToast(`你的克隆体在 ${friend.profile.displayName} 家坐下了`);
   };
@@ -2591,6 +2594,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     setPanel(null);
     setSelected(null);
     const m = await loadMe();
+    void loadInbox().catch(() => {});
     setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
     setToast("你的克隆体在火边坐下了。");
     await welcomeAtFire(before, m, true);

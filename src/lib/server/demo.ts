@@ -12,7 +12,6 @@ import { forgetTalulah } from "./talulah";
 import {
   amiyaTouches,
   declarations,
-  deliveries,
   friendCuts,
   friendships,
   moves,
@@ -27,6 +26,7 @@ import {
 } from "./schema";
 import { resetRoachFeed, roachesChanged } from "./roachFeed";
 import { profileColumns, profileOf } from "./world";
+import { visibleDeclarations } from "./declarationInbox";
 
 /**
  * Demo players for development and testing: the named testers and the
@@ -97,12 +97,8 @@ async function unseenFor(ids: string[]) {
     .where(and(inArray(touches.toUserId, ids), isNull(touches.seenAt), eq(touches.withheld, false)))
     .groupBy(touches.toUserId);
   for (const r of ts) add(r.id, r.n);
-  const ds = await db
-    .select({ id: deliveries.recipientId, n: sql<number>`count(*)::int` })
-    .from(deliveries)
-    .where(and(inArray(deliveries.recipientId, ids), isNull(deliveries.seenAt)))
-    .groupBy(deliveries.recipientId);
-  for (const r of ds) add(r.id, r.n);
+  // declarations by where their roaches are, as 消息 shows them (src/lib/server/declarationInbox.ts)
+  for (const id of ids) add(id, (await visibleDeclarations(id)).filter((d) => !d.seen).length);
   const rs = await db
     .select({ id: declarations.senderId, n: sql<number>`count(*)::int` })
     .from(reactions)

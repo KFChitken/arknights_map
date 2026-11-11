@@ -120,10 +120,12 @@ import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
+import { canSeeDeclaration, seeDeclarations, spotRows, visibleDeclarations, type SeenDeclaration } from "./declarationInbox";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import {
   clearedValues,
   declarations,
+  declarationSpots,
   deliveries,
   reactions,
   friendCuts,
@@ -796,13 +798,8 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
       if (t?.ignoredAt) throw new WorldError("你已经默默爬走了。");
       to = t?.from;
     } else if (kind === "d") {
-      const [d] = await db
-        .select({ from: declarations.senderId })
-        .from(deliveries)
-        .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
-        .where(and(eq(deliveries.declarationId, id), eq(deliveries.recipientId, userId)))
-        .limit(1);
-      to = d?.from;
+      // one the player sees now (src/lib/server/declarationInbox.ts)
+      to = (await canSeeDeclaration(userId, id))?.senderId;
     } else if (kind === "x") {
       const [r] = await db
         .select({ from: reactions.fromUserId })
@@ -888,24 +885,8 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
 /** Of the replies to your declarations too, only the newest (rules.ts INBOX_DECLARATIONS) */
 const INBOX_REACTIONS = INBOX_DECLARATIONS;
 
-/** The newest declarations that reached a player after `after`, from players they have not blocked */
-async function declarationsTo(userId: string, after: Date, blocked: Set<string>) {
-  return (
-    await db
-      .select({ d: declarations, seenAt: deliveries.seenAt, toFriend: deliveries.toFriend })
-      .from(deliveries)
-      .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
-      .where(and(eq(deliveries.recipientId, userId), gt(declarations.createdAt, after)))
-      .orderBy(desc(declarations.createdAt))
-      // a few more than kept, for the ones from players blocked
-      .limit(INBOX_DECLARATIONS + 20)
-  )
-    .filter((x) => !blocked.has(x.d.senderId))
-    .slice(0, INBOX_DECLARATIONS);
-}
-
-/** Those declarations as the inbox shows them */
-async function declarationItems(userId: string, ds: Awaited<ReturnType<typeof declarationsTo>>): Promise<InboxItem[]> {
+/** Declarations as the inbox shows them (which ones: src/lib/server/declarationInbox.ts) */
+async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<InboxItem[]> {
   if (!ds.length) return [];
   const mine = await db
     .select({ declarationId: reactions.declarationId, reaction: reactions.reaction })
@@ -921,14 +902,14 @@ async function declarationItems(userId: string, ds: Awaited<ReturnType<typeof de
   const done = await replied(userId, ds.map((x) => `d:${x.d.id}`));
   // touching back waits for whoever you touched in the last day (reply())
   const waits = await touchBackWaits(userId, ds.filter((x) => !done.has(`d:${x.d.id}`)).map((x) => x.d.senderId));
-  return ds.map(({ d, seenAt, toFriend }) => {
+  return ds.map(({ d, seen, toFriend }) => {
     const id = `d:${d.id}`;
     const stored = storedDeclaration(d);
     return {
       kind: "declaration",
       id,
       at: d.createdAt.getTime(),
-      seen: Boolean(seenAt),
+      seen,
       text: declarationText(stored),
       replied: done.has(id),
       reaction: replyOf(stored, myReaction.get(d.id)),
@@ -940,14 +921,14 @@ async function declarationItems(userId: string, ds: Awaited<ReturnType<typeof de
 }
 
 /**
- * Only the declarations that reached a player after `after` (the newest declaration's `at` in the
- * inbox a page holds), as the inbox gives them: what the page asks when declarations alone came in.
+ * Only the declarations sent after `after` (the newest declaration's `at` in the inbox a page holds),
+ * as the inbox gives them: what the page asks when declarations alone came in.
  */
 export async function newDeclarations(userId: string, after: unknown): Promise<InboxItem[]> {
   const since = ago(INBOX_DAYS * DAY);
   // a second's overlap for two declared in the same moment; the page leaves out the ones it has
   const from = typeof after === "number" && Number.isFinite(after) && after - 1000 > since.getTime() ? new Date(after - 1000) : since;
-  return declarationItems(userId, await declarationsTo(userId, from, await blockedBy(userId)));
+  return declarationItems(userId, await visibleDeclarations(userId, { after: from }));
 }
 
 export async function inbox(userId: string): Promise<InboxItem[]> {
@@ -962,7 +943,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       .innerJoin(users, eq(users.id, touches.fromUserId))
       .where(and(eq(touches.toUserId, userId), eq(touches.withheld, false), gt(touches.createdAt, since)))
   ).filter((x) => !blocked.has(x.t.fromUserId));
-  const ds = await declarationsTo(userId, since, blocked);
+  const ds = await visibleDeclarations(userId);
   const rs = (
     await db
       .select({ r: reactions, d: declarations })
@@ -1147,12 +1128,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
       .where(and(inArray(touches.id, t), eq(touches.toUserId, userId), isNull(touches.seenAt)));
   }
   const d = ids("d:");
-  if (d.length) {
-    await db
-      .update(deliveries)
-      .set({ seenAt: now })
-      .where(and(inArray(deliveries.declarationId, d), eq(deliveries.recipientId, userId), isNull(deliveries.seenAt)));
-  }
+  if (d.length) await seeDeclarations(userId, d, now.getTime());
   const x = ids("x:");
   if (x.length) {
     const myDeclarations = db.select({ id: declarations.id }).from(declarations).where(eq(declarations.senderId, userId));
@@ -1187,9 +1163,10 @@ export async function markSeen(userId: string, itemIds: string[]) {
 }
 
 /**
- * Shout to everyone with a roach within DECLARATION_RADIUS_KM of any of the
- * sender's chosen roaches (the main roach unless `from` says otherwise).
- * Each player gets it once, however many of those roaches they are near.
+ * Shout from the sender's chosen roaches (the main roach unless `from` says otherwise): kept once, with
+ * their spots, it shows to everyone with a roach within DECLARATION_RADIUS_KM of any of them for
+ * DECLARATION_DAYS (src/lib/server/declarationInbox.ts). Those near now are nudged and counted, for the
+ * sender's rough count; a 「祝我生日快乐」 also goes to every 触须之交 as theirs, one row each.
  */
 export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string }> {
   const u = await userById(userId);
@@ -1245,11 +1222,15 @@ export async function declare(userId: string, input: Declaration, from?: string[
         line: d.template === "event" ? d.line : null,
         recipients: everyone.length,
       })
-      .returning({ id: declarations.id });
-    for (let i = 0; i < everyone.length; i += 1000) {
+      .returning({ id: declarations.id, createdAt: declarations.createdAt });
+    // where it was sent from, by which it is found (src/lib/server/declarationInbox.ts)
+    await tx.insert(declarationSpots).values(spotRows({ id: row.id, senderId: userId, createdAt: row.createdAt }, chosen));
+    // only a birthday's 触须之交 are written down: they see who sent it (the rest find it by its spots)
+    const friends = [...friendsToo];
+    for (let i = 0; i < friends.length; i += 1000) {
       await tx
         .insert(deliveries)
-        .values(everyone.slice(i, i + 1000).map((id) => ({ declarationId: row.id, recipientId: id, toFriend: friendsToo.has(id) })));
+        .values(friends.slice(i, i + 1000).map((id) => ({ declarationId: row.id, recipientId: id, toFriend: true })));
     }
   });
   nudge(everyone, "declare");
@@ -1282,14 +1263,9 @@ export async function ignore(userId: string, itemId: string) {
 export async function react(userId: string, itemId: string, reaction: string) {
   const [kind, id] = String(itemId).split(":");
   if (kind !== "d" || !UUID.test(id ?? "")) throw new WorldError("找不到这条宣言了。");
-  const [found] = await db
-    .select({ d: declarations })
-    .from(deliveries)
-    .innerJoin(declarations, eq(declarations.id, deliveries.declarationId))
-    .where(and(eq(deliveries.declarationId, id), eq(deliveries.recipientId, userId)))
-    .limit(1);
-  if (!found) throw new WorldError("找不到这条宣言了。");
-  const row = found.d;
+  // one the player sees now: near one of their roaches, or answered before
+  const row = await canSeeDeclaration(userId, id);
+  if (!row) throw new WorldError("找不到这条宣言了。");
   // its own four or the five every declaration has, never another sentence's
   if (!canReply(storedDeclaration(row), reaction)) throw new WorldError("这条宣言不能这样回应。");
   const withheld = await blockedBetween(userId, row.senderId);

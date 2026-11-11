@@ -78,6 +78,8 @@ export const users = pgTable("users", {
 
   /** The Beijing date of the player's latest visit; only the day, never the time */
   lastSeenOn: date("last_seen_on", { mode: "string" }),
+  /** Declarations shown to them by where their roaches are count as read up to this one's time (src/lib/server/declarationInbox.ts) */
+  declarationsSeenAt: at("declarations_seen_at"),
   /** The badge shown under their name, if they wear one */
   wornBadge: text("worn_badge"),
   /** Different players they have ever become 触须之交 with; never goes down, so badge progress never does */
@@ -361,7 +363,36 @@ export const declarations = pgTable(
     recipients: integer("recipients").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("declarations_sender_idx").on(t.senderId, t.createdAt)],
+  (t) => [index("declarations_sender_idx").on(t.senderId, t.createdAt), index("declarations_created_idx").on(t.createdAt)],
+);
+
+/**
+ * Where each declaration was sent from, one row for each roach it was sent from, kept DECLARATION_DAYS: it
+ * shows to everyone with a roach within DECLARATION_RADIUS_KM of one of them (src/lib/server/declarationInbox.ts).
+ * By square of the map and time, so a look around a player's roaches reads a few squares, newest first,
+ * and stops once it has enough; the sender and time are copied from the declaration for that.
+ */
+export const declarationSpots = pgTable(
+  "declaration_spots",
+  {
+    declarationId: uuid("declaration_id")
+      .notNull()
+      .references(() => declarations.id, { onDelete: "cascade" }),
+    /** Which of the roaches it was sent from, from 0 */
+    spot: smallint("spot").notNull(),
+    /** The square of the map it is in (spotCell: 0.1° of latitude and of longitude) */
+    cell: integer("cell").notNull(),
+    lng: doublePrecision("lng").notNull(),
+    lat: doublePrecision("lat").notNull(),
+    senderId: uuid("sender_id").notNull(),
+    createdAt: at("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.declarationId, t.spot] }),
+    index("declaration_spots_cell_idx").on(t.cell, t.createdAt),
+    // the oldest kept (when spots began, or a week ago), and the daily clear-out
+    index("declaration_spots_created_idx").on(t.createdAt),
+  ],
 );
 
 export const deliveries = pgTable(
@@ -398,7 +429,7 @@ export const reactions = pgTable(
     /** As for touches: one of the two had blocked the other, so the sender never sees it */
     withheld: boolean("withheld").notNull().default(false),
   },
-  (t) => [uniqueIndex("reactions_once_idx").on(t.declarationId, t.fromUserId)],
+  (t) => [uniqueIndex("reactions_once_idx").on(t.declarationId, t.fromUserId), index("reactions_from_idx").on(t.fromUserId, t.createdAt)],
 );
 
 /** 触须之交. The pair is stored with a < b. */

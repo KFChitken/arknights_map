@@ -48,6 +48,7 @@ import { identities, resetDemo, seedDemo } from "./demo";
 import { listen } from "./live";
 import { pruneOldActivity } from "./retention";
 import { appeal } from "./staffNotes";
+import { spotRows } from "./declarationInbox";
 import { distanceKm } from "../geo";
 import { allRoaches } from "./roachFeed";
 import * as safety from "./safety";
@@ -58,6 +59,7 @@ import {
   clearedValues,
   dailyTotals,
   declarations,
+  declarationSpots,
   deskCodes,
   deliveries,
   friendCuts,
@@ -196,7 +198,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}, ${declarationSpots}`,
   );
   // no 明河快进一天 left over
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;
@@ -1883,7 +1885,11 @@ describe("server world", () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await me.declare({ template: "launch", game: "arknights" });
     const [d] = await db.select({ id: declarations.id }).from(declarations);
-    const got = await db.select({ id: deliveries.recipientId }).from(deliveries);
+    // the players near enough to see it
+    const got = await db.execute<{ id: string }>(
+      sql`select distinct user_id as id from roaches where user_id <> ${me.id}
+        and ST_DWithin(geog, ST_SetSRID(ST_MakePoint(${PEOPLES_SQUARE.lng}, ${PEOPLES_SQUARE.lat}), 4326)::geography, 10000)`,
+    );
     expect(got.length).toBeGreaterThanOrEqual(10);
     for (const r of got.slice(0, 9)) await world.react(r.id, `d:${d.id}`, "plusone");
     expect(await me.me()).toMatchObject({ counts: { responders: 9 } });
@@ -3424,5 +3430,251 @@ describe("server world", () => {
     expect(reachText(7)).toContain("5–10 只");
     expect(reachText(49)).toContain("20–50 只");
     expect(reachText(500)).toContain("50 多只");
+  });
+});
+
+describe("declarations by where the roaches are", () => {
+  const DAY_MS = 86_400_000;
+  // north of People's Square: about 5 km, 15 km and 30 km off, and 5 km on from the last
+  const NEAR = { lng: 121.4737, lat: 31.2754 };
+  const FAR = { lng: 121.4737, lat: 31.3654 };
+  const ELSEWHERE = { lng: 121.4737, lat: 31.5004 };
+  const ELSEWHERE_NEAR = { lng: 121.4737, lat: 31.5454 };
+
+  const declarationItems = async (p: Player) => (await p.inbox()).filter((i) => i.kind === "declaration");
+  const declarationIds = async (p: Player) => (await declarationItems(p)).map((i) => i.id);
+  const unseen = async (p: Player) => (await declarationItems(p)).filter((i) => !i.seen).map((i) => i.id);
+  /** The id of the player's newest declaration, as 消息 names it */
+  const latest = async (p: Player) => {
+    const mine = await db.select().from(declarations).where(eq(declarations.senderId, p.id));
+    return `d:${mine.sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime())[0].id}`;
+  };
+  /** Move one of a player's roaches, past the day's limit on moves */
+  const moveTo = (p: Player, slot: number, at: LngLat) =>
+    db.update(roaches).set({ lng: at.lng, lat: at.lat }).where(and(eq(roaches.userId, p.id), eq(roaches.slot, slot)));
+  /** Declarations sent before now, so another can be sent past the minute between them (their spots keep the same time) */
+  const earlier = async (minutes: number) => {
+    await db.update(declarations).set({ createdAt: sql`${declarations.createdAt} - make_interval(mins => ${minutes})` });
+    await db.update(declarationSpots).set({ createdAt: sql`${declarationSpots.createdAt} - make_interval(mins => ${minutes})` });
+  };
+  /** A declaration by the sender from these spots, sent this long ago, as declare() keeps it */
+  const sentFrom = async (sender: Player, from: LngLat[], ago: number) => {
+    const [d] = await db
+      .insert(declarations)
+      .values({ senderId: sender.id, template: "launch", game: "arknights", recipients: 0, createdAt: new Date(Date.now() - ago) })
+      .returning();
+    await db.insert(declarationSpots).values(spotRows(d, from));
+    return `d:${d.id}`;
+  };
+
+  it("shows one for seven days to every roach within 10 km of where it was sent, kept once with its spot", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const near = await signUp("near@example.com");
+    await near.placeRoach({ kind: "main" }, NEAR);
+    const far = await signUp("far@example.com");
+    await far.placeRoach({ kind: "main" }, FAR);
+    await me.declare({ template: "launch", game: "arknights" });
+    const id = await latest(me);
+    expect(await declarationIds(near)).toContain(id);
+    expect(await declarationIds(far)).not.toContain(id);
+    expect(await declarationIds(me)).not.toContain(id);
+    expect((await world.newDeclarations(near.id, Date.now() - 60_000)).map((i) => i.id)).toContain(id);
+    expect(await world.newDeclarations(near.id, Date.now() + 5_000)).toEqual([]);
+    // one row, with the spot it was sent from, and no row for each player it reaches
+    expect(await db.$count(deliveries)).toBe(0);
+    expect(await db.select({ spot: declarationSpots.spot, lng: declarationSpots.lng, lat: declarationSpots.lat }).from(declarationSpots)).toEqual([
+      { spot: 0, lng: PEOPLES_SQUARE.lng, lat: PEOPLES_SQUARE.lat },
+    ]);
+
+    // the eighth day: gone, and there is nothing more to do with it
+    await db.update(declarations).set({ createdAt: new Date(Date.now() - 8 * DAY_MS) });
+    await db.update(declarationSpots).set({ createdAt: new Date(Date.now() - 8 * DAY_MS) });
+    expect(await declarationIds(near)).not.toContain(id);
+    await expect(near.react(id, "plusone")).rejects.toThrow("找不到这条宣言了");
+    await expect(near.reply(id, false)).rejects.toThrow("找不到这条消息的主人了");
+    await expect(near.report(id, "spam")).rejects.toThrow("找不到这条消息了");
+    // and where it was sent from is forgotten; the declaration stays for 热榜
+    await pruneOldActivity();
+    expect(await db.$count(declarationSpots)).toBe(0);
+    expect(await db.$count(declarations)).toBe(1);
+  });
+
+  it("counts every roach of the player, never one between players who blocked each other, and shows the newest hundred", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "launch", game: "arknights" });
+    const id = await latest(me);
+    const other = await signUp("other@example.com");
+    await other.placeRoach({ kind: "main" }, ELSEWHERE);
+    expect(await declarationIds(other)).not.toContain(id);
+    await other.placeRoach({ kind: "clone" }, NEAR);
+    expect(await declarationIds(other)).toContain(id);
+    for (const [blockerId, blockedId] of [
+      [other.id, me.id],
+      [me.id, other.id],
+    ]) {
+      await db.insert(blocks).values({ blockerId, blockedId });
+      expect(await declarationIds(other)).not.toContain(id);
+      await db.delete(blocks);
+    }
+
+    // a hundred and ten near it, all older: the newest hundred, newest first
+    const now = Date.now();
+    const older = await db
+      .insert(declarations)
+      .values(
+        Array.from({ length: 110 }, (_, i) => ({
+          senderId: me.id,
+          template: "launch",
+          game: "arknights",
+          recipients: 0,
+          createdAt: new Date(now - (i + 2) * 60_000),
+        })),
+      )
+      .returning();
+    await db.insert(declarationSpots).values(older.flatMap((d) => spotRows(d, [PEOPLES_SQUARE])));
+    const shown = await declarationItems(other);
+    expect(shown).toHaveLength(100);
+    expect(shown[0].id).toBe(id);
+    expect(shown.map((i) => i.at)).toEqual([...shown.map((i) => i.at)].sort((x, y) => y - x));
+  });
+
+  it("shows what a roach moved near finds, hides it once moved away, and keeps what was answered wherever the roaches go", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "launch", game: "arknights" });
+    const id = await latest(me);
+    const c = await signUp("c@example.com");
+    await c.placeRoach({ kind: "main" }, ELSEWHERE);
+    await c.placeRoach({ kind: "clone" }, ELSEWHERE_NEAR);
+    expect(await declarationIds(c)).not.toContain(id);
+    await moveTo(c, 1, NEAR);
+    expect(await declarationIds(c)).toContain(id);
+    await moveTo(c, 1, ELSEWHERE_NEAR);
+    expect(await declarationIds(c)).not.toContain(id);
+
+    // reacted to: stays when the roach moves away
+    await moveTo(c, 1, NEAR);
+    await c.react(id, "plusone");
+    await moveTo(c, 1, ELSEWHERE_NEAR);
+    expect(await declarationItems(c)).toMatchObject([{ id, reaction: { id: "plusone" } }]);
+    // touched back: the same
+    const d = await signUp("d@example.com");
+    await d.placeRoach({ kind: "main" }, NEAR);
+    await d.reply(id, false);
+    await moveTo(d, 0, ELSEWHERE);
+    expect(await declarationItems(d)).toMatchObject([{ id, replied: true }]);
+    // past the inbox's 30 days not even those
+    await db.update(declarations).set({ createdAt: new Date(Date.now() - 31 * DAY_MS) });
+    expect(await declarationIds(c)).toEqual([]);
+    expect(await declarationIds(d)).toEqual([]);
+  });
+
+  it("sends a birthday to every 触须之交 by name, once when they are near too, and to the rest nearby as anyone's", async () => {
+    const friend = await signUp("friend@example.com");
+    await realFriends(me, friend);
+    const near = await signUp("near@example.com");
+    await near.placeRoach({ kind: "main" }, NEAR);
+    await me.declare({ template: "birthday" });
+    const id = await latest(me);
+    expect(await declarationItems(friend)).toMatchObject([{ id, from: { displayName: expect.any(String) } }]);
+    expect((await declarationItems(near)).find((i) => i.id === id)).not.toHaveProperty("from");
+    expect(await db.select({ id: deliveries.recipientId, toFriend: deliveries.toFriend }).from(deliveries)).toEqual([{ id: friend.id, toFriend: true }]);
+    // a 触须之交 near it too: one item, by name
+    await moveTo(friend, 0, NEAR);
+    const theirs = (await declarationItems(friend)).filter((i) => i.id === id);
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0]).toHaveProperty("from");
+    // theirs for 30 days, wherever they are
+    await moveTo(friend, 0, TOKYO);
+    await db.update(declarations).set({ createdAt: new Date(Date.now() - 20 * DAY_MS) });
+    expect(await declarationIds(friend)).toEqual([id]);
+    expect(await declarationIds(near)).not.toContain(id);
+  });
+
+  it("counts what was read up to the newest one seen, so older ones a move brings in come read", async () => {
+    const other = await signUp("other@example.com");
+    await other.placeRoach({ kind: "main" }, ELSEWHERE);
+    await other.declare({ template: "launch", game: "arknights" });
+    const old = await latest(other);
+    await earlier(2 * 24 * 60);
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.declare({ template: "launch", game: "arknights" });
+    const mine = await latest(me);
+    const c = await signUp("c@example.com");
+    await c.placeRoach({ kind: "main" }, NEAR);
+    await c.placeRoach({ kind: "clone" }, FAR);
+    expect(await unseen(c)).toEqual([mine]);
+    await c.markSeen([mine]);
+    expect(await unseen(c)).toEqual([]);
+    // the clone moves near the older one: shown, and read already
+    await moveTo(c, 1, ELSEWHERE_NEAR);
+    expect(await declarationIds(c)).toEqual([mine, old]);
+    expect(await unseen(c)).toEqual([]);
+    // a new one is not
+    await earlier(2);
+    await me.declare({ template: "welcome", game: "arknights" });
+    const next = await latest(me);
+    expect(await unseen(c)).toEqual([next]);
+    // marking one the player does not see marks nothing
+    await c.markSeen([`d:${randomUUID()}`]);
+    expect(await unseen(c)).toEqual([next]);
+  });
+
+  it("still shows, the week after, declarations delivered the old way, read as they were", async () => {
+    const sender = await signUp("sender@example.com");
+    const [d] = await db.insert(declarations).values({ senderId: sender.id, template: "launch", game: "arknights", recipients: 1 }).returning();
+    await db.insert(deliveries).values({ declarationId: d.id, recipientId: me.id });
+    expect(await declarationItems(me)).toMatchObject([{ id: `d:${d.id}`, seen: false }]);
+    await me.markSeen([`d:${d.id}`]);
+    expect(await declarationItems(me)).toMatchObject([{ id: `d:${d.id}`, seen: true }]);
+    await me.react(`d:${d.id}`, "plusone");
+    await db.update(declarations).set({ createdAt: new Date(Date.now() - 8 * DAY_MS) });
+    // reacted to, so kept; another one delivered the old way and older than a week is not
+    const [e] = await db.insert(declarations).values({ senderId: sender.id, template: "welcome", game: "arknights", recipients: 1, createdAt: new Date(Date.now() - 8 * DAY_MS) }).returning();
+    await db.insert(deliveries).values({ declarationId: e.id, recipientId: me.id });
+    expect(await declarationIds(me)).toEqual([`d:${d.id}`]);
+  });
+
+  it("reaches exactly 10 km, across squares of the map and across ±180°", async () => {
+    const sender = await signUp("sender@example.com");
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    // due east and due north, just inside and just outside 10 km (a degree of latitude is 111.195 km)
+    const kmEast = (km: number) => ({ lng: PEOPLES_SQUARE.lng + km / (111.195 * Math.cos((PEOPLES_SQUARE.lat * Math.PI) / 180)), lat: PEOPLES_SQUARE.lat });
+    const kmNorth = (km: number) => ({ lng: PEOPLES_SQUARE.lng, lat: PEOPLES_SQUARE.lat + km / 111.195 });
+    const inside = [await sentFrom(sender, [kmEast(9.95)], 60_000), await sentFrom(sender, [kmNorth(9.95)], 120_000)];
+    const outside = [await sentFrom(sender, [kmEast(10.05)], 180_000), await sentFrom(sender, [kmNorth(10.05)], 240_000)];
+    const ids = await declarationIds(me);
+    expect(ids).toEqual(inside);
+    for (const id of outside) expect(ids).not.toContain(id);
+    // one sent from two places counts once, near by either
+    const both = await sentFrom(sender, [kmEast(30), kmNorth(3)], 30_000);
+    expect((await declarationIds(me)).filter((id) => id === both)).toHaveLength(1);
+
+    // over the date line: 179.95°E and 179.97°W are about 7 km apart on the equator
+    const pacific = await signUp("pacific@example.com");
+    await pacific.placeRoach({ kind: "main" }, { lng: 179.95, lat: 0 });
+    const across = await sentFrom(sender, [{ lng: -179.97, lat: 0 }], 10_000);
+    expect(await declarationIds(pacific)).toEqual([across]);
+  });
+
+  it("finds the newest hundred however far back they go within the week, and none older", async () => {
+    const sender = await signUp("sender@example.com");
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const HOUR = 3_600_000;
+    // a few in the last hour, more over the last day, most days ago, one past the week
+    const recent = [await sentFrom(sender, [NEAR], 10 * 60_000), await sentFrom(sender, [NEAR], 50 * 60_000)];
+    const today = [];
+    for (let i = 0; i < 20; i++) today.push(await sentFrom(sender, [NEAR], 2 * HOUR + i * HOUR));
+    const days = [];
+    for (let i = 0; i < 90; i++) days.push(await sentFrom(sender, [PEOPLES_SQUARE], 2 * DAY_MS + i * HOUR));
+    const tooOld = await sentFrom(sender, [NEAR], 8 * DAY_MS);
+    const ids = await declarationIds(me);
+    expect(ids).toEqual([...recent, ...today, ...days].slice(0, 100));
+    expect(ids).not.toContain(tooOld);
+    // and a quiet place: the two there, from days ago
+    const quiet = { lng: 87.6, lat: 43.8 };
+    const far = [await sentFrom(sender, [quiet], 3 * DAY_MS), await sentFrom(sender, [quiet], 6 * DAY_MS)];
+    const there = await signUp("there@example.com");
+    await there.placeRoach({ kind: "main" }, quiet);
+    expect(await declarationIds(there)).toEqual(far);
   });
 });
