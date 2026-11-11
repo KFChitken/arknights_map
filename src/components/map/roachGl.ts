@@ -2,7 +2,7 @@ import type { AMapNS } from "@/lib/amap";
 import { cartoonCrawl, crawl, heartRhythm, iconPx } from "@/lib/swarm";
 import { HEART_D } from "@/lib/touchArt";
 import { coordsOf, layerState, mvpOf, offFrom, onScreen, program, restoreState, saveState, type Vao, vaoOf } from "./glCommon";
-import { BADGE_AT, countBadgeText, PILE_MAX_PX, pileMul, type PileItem } from "./piles";
+import { BADGE_AT, countBadgeText, drawBadge, PILE_MAX_PX, pileMul, type PileItem } from "./piles";
 
 /**
  * Every roach on the 高德 map drawn by the GPU in one go, the way the OSM map's MapLibre draws them:
@@ -162,7 +162,6 @@ const BADGES_W = 2048;
 const BADGES_H = 1024;
 const BADGE_COLS = Math.floor(BADGES_W / BADGE_W);
 const BADGE_CELLS = BADGE_COLS * Math.floor(BADGES_H / BADGE_H);
-const BADGE_FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
 
 /** 轻量: a pile or a lone roach, standing still, as big as its pile (aMul below 0: the one off stage) */
 const LITE_VERT = `
@@ -217,33 +216,6 @@ void main() {
   if (c.a < 0.02) discard;
   gl_FragColor = c;
 }`;
-
-/** A pile's count: a dark pill with white figures and a white rim, h tall, centred on (cx, cy) */
-function drawBadge(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, h: number) {
-  ctx.save();
-  ctx.font = `800 ${Math.round(h * 0.7)}px ${BADGE_FONT}`;
-  const w = Math.max(h * 1.2, ctx.measureText(text).width + h * 0.66);
-  const x = cx - w / 2;
-  const y = cy - h / 2;
-  const r = h / 2;
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
-  ctx.lineTo(x + r, y + h);
-  ctx.arc(x + r, y + r, r, Math.PI / 2, (Math.PI * 3) / 2);
-  ctx.closePath();
-  ctx.fillStyle = "#1b1d22";
-  ctx.fill();
-  ctx.lineWidth = Math.max(1.5, h * 0.12);
-  ctx.strokeStyle = "#ffffff";
-  ctx.stroke();
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, cx, cy + h * 0.04);
-  ctx.restore();
-}
 
 /**
  * The counts' picture: a cell drawn for each count the first time it is wanted, all of it started again once

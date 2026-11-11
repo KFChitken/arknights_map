@@ -1,4 +1,5 @@
 import { HEADINGS, LAYER_GROUPS, LEG_PHASES } from "@/lib/swarm";
+import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar } from "@/lib/types";
 import type { PublicRoach } from "@/lib/world/types";
 import { sameRoach } from "./massPoints";
 import { roachTraits } from "./types";
@@ -37,6 +38,39 @@ export function roachFeature(r: PublicRoach, t = roachTraits(r.id, LAYER_GROUPS,
   };
 }
 
+type Traits = ReturnType<typeof roachTraits>;
+
+/**
+ * 轻量's icons on this map, by number: every look awake (avatar × colour), a clone, then every look asleep.
+ * A pile shows the icon numbered in the lowest bits of its lowest key (liteFeature).
+ */
+export const LITE_LOOKS: string[] = [
+  ...ROACH_AVATARS.flatMap((a) => ROACH_COLORS.map((c) => `roach-${a}-${c}`)),
+  "clone",
+  ...ROACH_AVATARS.flatMap((a) => ROACH_COLORS.map((c) => `sleep-roach-${a}-${c}`)),
+];
+
+/** A roach's icon in LITE_LOOKS */
+export function liteLook(r: Pick<PublicRoach, "avatar" | "color" | "clone" | "asleep">) {
+  if (r.clone) return ROACH_AVATARS.length * ROACH_COLORS.length;
+  const look = ROACH_AVATARS.indexOf(r.avatar as RoachAvatar) * ROACH_COLORS.length + ROACH_COLORS.indexOf(r.color);
+  return r.asleep ? ROACH_AVATARS.length * ROACH_COLORS.length + 1 + look : look;
+}
+
+/**
+ * One roach as 轻量's piles take it: where, and its key, the lowest of which picks the roach a pile shows:
+ * awake and no clone first, then clones, then those asleep (× 2^40); within one, the lowest seed (× 2^8);
+ * and in the lowest bits, its icon (liteLook). Below 2^53, so exact.
+ */
+export function liteFeature(r: PublicRoach, t: Traits): GeoJSON.Feature {
+  const tier = r.asleep ? 2 : r.clone ? 1 : 0;
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [r.lng, r.lat] },
+    properties: { id: r.id, key: tier * 2 ** 40 + t.seed * 2 ** 8 + liteLook(r) },
+  };
+}
+
 /**
  * What to hand the map after the list changed. all: every feature, when the map's data must be set
  * from scratch (after reset, or past MAX_DIFF changes); otherwise null, and diff says what changed: features put down or changed
@@ -61,6 +95,9 @@ export class FeatureCache {
   private byId = new Map<string, Entry>();
   private round = 0;
   private lost = true;
+
+  /** make: each roach's feature (roachFeature, or liteFeature for 轻量's piles) */
+  constructor(private make: (r: PublicRoach, t: Traits) => GeoJSON.Feature = roachFeature) {}
 
   /** Every roach's feature, for the map's data from scratch */
   collection(roaches: readonly PublicRoach[]): GeoJSON.FeatureCollection {
@@ -99,7 +136,7 @@ export class FeatureCache {
       let e = this.byId.get(r.id);
       if (!e) {
         const t = roachTraits(r.id, LAYER_GROUPS, HEADINGS.length);
-        e = { src: r, f: roachFeature(r, t), seed: t.seed, group: t.group, seen: round };
+        e = { src: r, f: this.make(r, t), seed: t.seed, group: t.group, seen: round };
         this.byId.set(r.id, e);
         add.push(e.f);
         fresh.push(r);
@@ -109,7 +146,7 @@ export class FeatureCache {
         if (e.src !== r) {
           // a new feature (one handed out is never changed); seed and group come from the id alone
           if (!sameRoach(e.src, r)) {
-            e.f = roachFeature(r);
+            e.f = this.make(r, roachTraits(r.id, LAYER_GROUPS, HEADINGS.length));
             add.push(e.f);
             fresh.push(r);
           }

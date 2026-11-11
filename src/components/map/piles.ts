@@ -32,6 +32,35 @@ export const BADGE_AT: [number, number] = [0.34, -0.36];
 /** A pile's count: as it is up to 9999, then in 万 to one place (1.3万) */
 export const countBadgeText = (n: number) => (n < 10_000 ? String(n) : `${Math.round(n / 1000) / 10}万`);
 
+const BADGE_FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+
+/** A pile's count: a dark pill with white figures and a white rim, h tall, centred on (cx, cy) */
+export function drawBadge(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, h: number) {
+  ctx.save();
+  ctx.font = `800 ${Math.round(h * 0.7)}px ${BADGE_FONT}`;
+  const w = Math.max(h * 1.2, ctx.measureText(text).width + h * 0.66);
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(x + r, y + h);
+  ctx.arc(x + r, y + r, r, Math.PI / 2, (Math.PI * 3) / 2);
+  ctx.closePath();
+  ctx.fillStyle = "#1b1d22";
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, h * 0.12);
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, cx, cy + h * 0.04);
+  ctx.restore();
+}
+
 /** West, south, east, north, in degrees */
 export type Box = [number, number, number, number];
 

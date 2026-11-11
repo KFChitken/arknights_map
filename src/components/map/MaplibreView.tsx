@@ -41,7 +41,9 @@ import { heartsLayer, type HeartDot, type HeartsLayer } from "./heartsGl";
 import type { HeartMode } from "./roachGl";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
-import { FeatureCache } from "./features";
+import { FeatureCache, LITE_LOOKS, liteFeature, roachFeature } from "./features";
+import { BADGE_AT, drawBadge, PILE_MAX_PX } from "./piles";
+import { PILE_MAX_ZOOM, PILE_RADIUS } from "./pileWork";
 
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
@@ -60,6 +62,65 @@ const ROACH_LAYERS = Array.from({ length: LAYER_GROUPS }, (_, g) => `roach-${g}`
 /** Sleeping roaches lie still, so they get a layer the crawl never moves */
 const ASLEEP_LAYER = "roach-asleep";
 const CLICKABLE = [...ROACH_LAYERS, ASLEEP_LAYER, "mine"];
+const ICON_SIZE = ["interpolate", ["linear"], ["zoom"], ...ICON_STOPS.flatMap(([z, px]) => [z, px / ICON_BASE])];
+
+// 轻量 (src/lib/mapStyle.ts): the crowd in piles by MapLibre's own clustering, made only while it is on;
+// 触须之交 on their own above them, then the piles' counts. The roaches' own source waits meanwhile.
+const LITE_SOURCE = "roaches-lite";
+const FRIENDS_SOURCE = "friends-lite";
+const LITE_PILES = "lite-piles";
+const LITE_FRIENDS = "lite-friends";
+const LITE_COUNTS = "lite-counts";
+const LITE_LAYERS = [LITE_PILES, LITE_FRIENDS, LITE_COUNTS];
+const NO_FEATURES: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+/** How much bigger than one roach a pile is, by its count (piles.ts pileMul) */
+const PILE_MUL = ["min", 2.2, ["+", 1, ["*", 0.18, ["log2", ["coalesce", ["get", "point_count"], 1]]]]];
+const PILE_SIZE = ["interpolate", ["linear"], ["zoom"], ...ICON_STOPS.flatMap(([z, px]) => [z, ["/", ["min", ["*", px, PILE_MUL], PILE_MAX_PX], ICON_BASE]])];
+/** The icon a pile shows: the lowest bits of its lowest key (features.ts liteFeature) */
+const PILE_ICON = ["match", ["%", ["coalesce", ["get", "rep"], ["get", "key"]], 256], ...LITE_LOOKS.flatMap((id, i) => [i, id]), LITE_LOOKS[0]];
+/** A pile's count: as it is up to 9999, then in 万 to one place (piles.ts countBadgeText) */
+const COUNT_TEXT = [
+  "case",
+  ["<", ["get", "point_count"], 10000],
+  ["to-string", ["get", "point_count"]],
+  ["concat", ["to-string", ["/", ["round", ["/", ["get", "point_count"], 1000]], 10]], "万"],
+];
+/** A count right of and above its pile, by the pile's width at each icon size */
+const COUNT_OFFSET = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  ...ICON_STOPS.flatMap(([z, px]) => {
+    const at = (mul: number) => {
+      const width = Math.min(px * mul, PILE_MAX_PX);
+      return ["literal", [BADGE_AT[0] * width, BADGE_AT[1] * width]];
+    };
+    const cap = PILE_MAX_PX / px;
+    return [z, ["interpolate", ["linear"], PILE_MUL, ...(cap < 2.2 ? [1, at(1), cap, at(cap), 2.2, at(2.2)] : [1, at(1), 2.2, at(2.2)])]];
+  }),
+];
+/** A count's badge as a picture, drawn the first time the map asks for it: 18 CSS px tall */
+function badgeImage(text: string) {
+  const h = 36;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  canvas.width = Math.ceil(Math.max(h * 1.2, text.length * h * 0.62 + h * 0.66) + 6);
+  canvas.height = h + 6;
+  drawBadge(ctx, text, canvas.width / 2, canvas.height / 2, h);
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+/** The roach off stage (by its feature state) in every source that has it, the one before (was) back on stage */
+function offStageOn(map: maplibregl.Map, was: string | null, id: string | null) {
+  for (const source of ["roaches", LITE_SOURCE, FRIENDS_SOURCE]) {
+    if (!map.getSource(source)) continue;
+    if (was && was !== id) map.setFeatureState({ source, id: was }, { off: false });
+    if (id) map.setFeatureState({ source, id }, { off: true });
+  }
+}
+
+/** How the crowd is drawn in a style: every roach, piles (轻量), or none (全员隐匿) */
+const crowdModeOf = (style: MapViewProps["mapStyle"]) => (style === "hidden" ? "off" : style === "lite" ? "lite" : "all");
 
 // The cartoon roach faces the viewer and only tilts; the real one is top-down and can face any way.
 // Clones share one see-through look whatever their owner's color; 触须之交 get a pink ground and a heart.
@@ -288,12 +349,11 @@ export default function MaplibreView(props: MapViewProps) {
   const iconsLookRef = useRef<RoachStyle | null>(null);
   // the roach marked off stage on the map, by its feature state
   const offStageRef = useRef<string | null>(null);
-  /** Mark the roach off stage (none: null), and the one before back on stage */
+  // 轻量's piles' features, kept across updates of the list while it is on (null: off)
+  const liteRef = useRef<FeatureCache | null>(null);
+  /** Mark the roach off stage (none: null), and the one before back on stage, wherever it is drawn */
   const markOffStage = (map: maplibregl.Map, id: string | null) => {
-    const was = offStageRef.current;
-    if (was === id) return;
-    if (was) map.setFeatureState({ source: "roaches", id: was }, { off: false });
-    if (id) map.setFeatureState({ source: "roaches", id }, { off: true });
+    offStageOn(map, offStageRef.current, id);
     offStageRef.current = id;
   };
   const syncRef = useRef<Promise<void>>(Promise.resolve());
@@ -401,16 +461,26 @@ export default function MaplibreView(props: MapViewProps) {
         if (!map || !readyRef.current) return;
         const p = propsRef.current;
         // what changed in the crowd since the map last had it, and whether every roach's icons are needed
-        // again (a new look), or only those of roaches new or changed; in 全员隐匿 the crowd waits as it is
-        const crowd = what === "all" && p.mapStyle !== "hidden";
-        const update = crowd ? featuresRef.current.update(p.roaches) : null;
-        const allIcons = crowd && p.look !== iconsLookRef.current;
+        // again (a new look), or only those of roaches new or changed. In 轻量 the crowd goes to the piles'
+        // source instead, 触须之交 apart; in 全员隐匿 it waits as it is.
+        const mode = what === "all" ? crowdModeOf(p.mapStyle) : "off";
+        const update = mode === "all" ? featuresRef.current.update(p.roaches) : null;
+        const lite = mode === "lite" ? liteRef.current : null;
+        const piled = lite ? lite.update(p.roaches.filter((r) => !r.friend)) : null;
+        const friends = lite ? p.roaches.filter((r) => r.friend) : [];
+        const allIcons = mode !== "off" && p.look !== iconsLookRef.current;
         try {
-          await ensureImages(map, neededImages(p, allIcons ? p.roaches : (update?.fresh ?? [])));
+          await ensureImages(map, neededImages(p, allIcons ? p.roaches : [...(update?.fresh ?? piled?.fresh ?? []), ...friends]));
           if (allIcons) iconsLookRef.current = p.look;
           if (mapRef.current !== map) return;
           (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.mineAsleep, p.ghost, p.myAvatar, p.myColor));
           if (heartModeOf(p.mapStyle) !== "off") heartsRef.current?.setDots(heartDots(p, featuresRef.current));
+          if (piled && lite === liteRef.current && map.getSource(LITE_SOURCE)) {
+            const piles = map.getSource(LITE_SOURCE) as GeoJSONSource;
+            if (piled.all) piles.setData(piled.all);
+            else if (piled.diff.add.length || piled.diff.remove.length) piles.updateData(piled.diff);
+            (map.getSource(FRIENDS_SOURCE) as GeoJSONSource).setData({ type: "FeatureCollection", features: friends.map((r) => roachFeature(r)) });
+          }
           if (!update) return;
           const roaches = map.getSource("roaches") as GeoJSONSource;
           if (update.all) roaches.setData(update.all);
@@ -418,6 +488,7 @@ export default function MaplibreView(props: MapViewProps) {
         } catch (e) {
           // the map did not get these changes: the next update hands it everything
           if (update) featuresRef.current.reset();
+          lite?.reset();
           throw e;
         }
         for (const id of ROACH_LAYERS) {
@@ -432,6 +503,82 @@ export default function MaplibreView(props: MapViewProps) {
   };
   const syncAll = () => sync("all");
   const syncMine = () => sync("mine");
+
+  /** 轻量 on: the piles' and 触须之交's sources and layers (empty: the next sync fills them), under your own */
+  const addLite = (map: maplibregl.Map) => {
+    if (map.getSource(LITE_SOURCE)) return;
+    liteRef.current = new FeatureCache(liteFeature);
+    map.addSource(LITE_SOURCE, {
+      type: "geojson",
+      data: NO_FEATURES,
+      cluster: true,
+      clusterRadius: PILE_RADIUS,
+      clusterMaxZoom: PILE_MAX_ZOOM,
+      clusterMinPoints: 2,
+      clusterProperties: { rep: ["min", ["get", "key"]] },
+      promoteId: "id",
+    });
+    map.addSource(FRIENDS_SOURCE, { type: "geojson", data: NO_FEATURES, promoteId: "id" });
+    const look = propsRef.current.look;
+    map.addLayer(
+      {
+        id: LITE_PILES,
+        type: "symbol",
+        source: LITE_SOURCE,
+        layout: {
+          "icon-image": PILE_ICON as never,
+          "icon-size": PILE_SIZE as never,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          // the southern ones in front
+          "symbol-z-order": "viewport-y",
+        },
+        paint: OFF_STAGE as never,
+      },
+      "mine",
+    );
+    map.addLayer(
+      {
+        id: LITE_FRIENDS,
+        type: "symbol",
+        source: FRIENDS_SOURCE,
+        layout: {
+          "icon-image": ["case", ["get", "asleep"], sleepImage(look), roachImage(look)] as never,
+          "icon-size": ICON_SIZE as never,
+          "icon-rotate": ["case", ["get", "asleep"], sleepRotate(look), roachRotate(look)] as never,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: OFF_STAGE as never,
+      },
+      "mine",
+    );
+    map.addLayer(
+      {
+        id: LITE_COUNTS,
+        type: "symbol",
+        source: LITE_SOURCE,
+        filter: ["has", "point_count"],
+        layout: {
+          "icon-image": ["concat", "count-", COUNT_TEXT] as never,
+          "icon-offset": COUNT_OFFSET as never,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          // the bigger counts on top where two meet
+          "symbol-sort-key": ["get", "point_count"],
+        },
+      },
+      "mine",
+    );
+    // the one off stage now, in these sources too
+    offStageOn(map, null, offStageRef.current);
+  };
+  /** 轻量 off: its layers and sources gone */
+  const dropLite = (map: maplibregl.Map) => {
+    for (const id of LITE_LAYERS) if (map.getLayer(id)) map.removeLayer(id);
+    for (const id of [LITE_SOURCE, FRIENDS_SOURCE]) if (map.getSource(id)) map.removeSource(id);
+    liteRef.current = null;
+  };
 
   /** 舟u本色: the hearts' layer made (on top of everything) the first time they are wanted, then on or off */
   const showHearts = () => {
@@ -550,8 +697,8 @@ export default function MaplibreView(props: MapViewProps) {
       // 两面包夹芝士 around Japan, and 明河都尉's trail of stars, under all the roaches
       addMaplibreSandwich(map);
       addMaplibreTrail(map, propsRef.current.trail);
-      // 全员隐匿: none of the crowd's data or icons yet, made on the way out of it
-      const crowdOff = propsRef.current.mapStyle === "hidden";
+      // 全员隐匿 and 轻量: none of the crowd's data or icons yet in the roaches' own source, made on the way out of them
+      const crowdOff = crowdModeOf(propsRef.current.mapStyle) !== "all";
       const crowd = crowdOff ? [] : propsRef.current.roaches;
       await ensureImages(map, neededImages(propsRef.current, crowd));
       const { mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
@@ -633,7 +780,10 @@ export default function MaplibreView(props: MapViewProps) {
 
       readyRef.current = true;
       offStageRef.current = null;
+      const lite = crowdModeOf(propsRef.current.mapStyle) === "lite";
+      if (lite) addLite(map);
       markOffStage(map, propsRef.current.hiddenId ?? null);
+      if (lite) sync("all");
       showHearts();
       window.clearTimeout(loadTimer);
       crawlRef.current?.start();
@@ -643,7 +793,7 @@ export default function MaplibreView(props: MapViewProps) {
     crawlRef.current = {
       start: () => {
         const p = propsRef.current;
-        if (!frame && readyRef.current && p.active !== false && p.mapStyle !== "hidden" && !prefersReducedMotion()) animate();
+        if (!frame && readyRef.current && p.active !== false && crowdModeOf(p.mapStyle) === "all" && !prefersReducedMotion()) animate();
       },
       stop: () => {
         cancelAnimationFrame(frame);
@@ -656,18 +806,34 @@ export default function MaplibreView(props: MapViewProps) {
       const p = propsRef.current;
       if (!p.placing) {
         // the one off stage is still there, see-through: a tap goes to whatever is under it
-        const hit = map.queryRenderedFeatures(e.point, { layers: CLICKABLE }).find((f) => f.layer.id === "mine" || f.properties.id !== p.hiddenId);
+        const layers = [...CLICKABLE, ...LITE_LAYERS].filter((id) => map.getLayer(id));
+        const hit = map.queryRenderedFeatures(e.point, { layers }).find((f) => f.layer.id === "mine" || f.properties.id !== p.hiddenId);
         if (hit?.layer.id === "mine") return p.onMineClick(hit.properties.id);
+        // 轻量: a pile opens up, the map easing in to where it comes apart
+        if (hit?.properties.cluster) {
+          const at = (hit.geometry as GeoJSON.Point).coordinates as [number, number];
+          (map.getSource(LITE_SOURCE) as GeoJSONSource | undefined)
+            ?.getClusterExpansionZoom(hit.properties.cluster_id)
+            .then((z) => map.easeTo({ center: at, zoom: Math.max(map.getZoom() + 0.5, z + 0.05), duration: 650 }))
+            .catch(() => {});
+          return;
+        }
         if (hit) return p.onRoachClick(hit.properties.id);
       }
       p.onMapClick({ lng: e.lngLat.lng, lat: e.lngLat.lat });
     });
 
-    map.on("mouseenter", CLICKABLE, () => {
+    map.on("mouseenter", [...CLICKABLE, ...LITE_LAYERS], () => {
       if (!propsRef.current.placing) map.getCanvas().style.cursor = "pointer";
     });
-    map.on("mouseleave", CLICKABLE, () => {
+    map.on("mouseleave", [...CLICKABLE, ...LITE_LAYERS], () => {
       map.getCanvas().style.cursor = propsRef.current.placing ? "crosshair" : "";
+    });
+    // 轻量's counts, each drawn the first time the map asks for it
+    map.on("styleimagemissing", (e: { id: string }) => {
+      if (!e.id.startsWith("count-") || map.hasImage(e.id)) return;
+      const img = badgeImage(e.id.slice("count-".length));
+      if (img) map.addImage(e.id, img, { pixelRatio: 2 });
     });
     map.on("moveend", reportView);
 
@@ -726,18 +892,19 @@ export default function MaplibreView(props: MapViewProps) {
     showHearts();
   }, [props.mapStyle]);
   // 全员隐匿: the crowd's layers hidden and its crawl stopped; on the way out, the crowd as it is now
-  const crowdHidden = props.mapStyle === "hidden";
+  // 轻量: its piles made, the roaches' own layers hidden and their source waiting; back from it, they are dropped
+  const crowdMode = crowdModeOf(props.mapStyle);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !readyRef.current || !map.getLayer(ASLEEP_LAYER)) return;
-    const visibility = crowdHidden ? "none" : "visible";
+    const visibility = crowdMode === "all" ? "visible" : "none";
     for (const id of [...ROACH_LAYERS, ASLEEP_LAYER]) map.setLayoutProperty(id, "visibility", visibility);
-    if (crowdHidden) crawlRef.current?.stop();
-    else {
-      sync("all");
-      crawlRef.current?.start();
-    }
-  }, [crowdHidden]);
+    if (crowdMode === "lite") addLite(map);
+    else dropLite(map);
+    if (crowdMode !== "off") sync("all");
+    if (crowdMode === "all") crawlRef.current?.start();
+    else crawlRef.current?.stop();
+  }, [crowdMode]);
 
   // a hidden map leaves the flying to the one on show
   useEffect(() => {
