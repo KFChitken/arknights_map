@@ -30,6 +30,9 @@ x-web-env: &web-env
   DEV_MAILBOX_PORT: ""
   # nudges go between the processes through the database
   LIVE_ACROSS: "1"
+  # Photon (the overseas place search) is asked through the second server's private address: it refused this
+  # server's own (src/lib/server/geo.ts, deploy/relay/nginx.conf)
+  PHOTON_VIA: "10.5.0.15:4443"
 
 services:
   db:

@@ -135,7 +135,7 @@ scp deploy/relay/nginx.conf scripts/relay-setup.sh zhoupmap2:
 ssh zhoupmap2 'bash relay-setup.sh 10.5.0.6'
 ```
 
-with the main server's private address. The main server's cloud firewall lets TCP 8443 in from the second server's private address only; a new second server with a new private address needs that rule and the `allow` line in `deploy/Caddyfile` changed. In DNS both servers' public addresses are A records for `zhoupmap.com` and `www`: pausing one server's two records sends every visitor to the other within ten minutes.
+with the main server's private address. The main server's cloud firewall lets TCP 8443 in from the second server's private address only; a new second server with a new private address needs that rule and the `allow` line in `deploy/Caddyfile` changed. The second server also passes the main server's requests to Photon (the overseas place search, which refused the main server's own address) on port 4443, for the main server's private address only (its cloud firewall too), and `PHOTON_VIA` in `docker-compose.prod.yml` sends them there. In DNS both servers' public addresses are A records for `zhoupmap.com` and `www`: pausing one server's two records sends every visitor to the other within ten minutes.
 
 ### Checks and alerts
 

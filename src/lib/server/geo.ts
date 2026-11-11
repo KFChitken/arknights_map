@@ -5,6 +5,7 @@ import { distanceKm } from "../geo";
 import type { Place, PlaceResults } from "../geocode";
 import { nominatimPlaces, nominatimUrl, photonPlaces, photonUrl } from "../osm";
 import type { MapView } from "../types";
+import { fetchVia } from "./fetchVia";
 import { HttpError } from "./http";
 import { allow } from "./rateLimit";
 import { errorCode, note } from "./signals";
@@ -62,6 +63,12 @@ export function forgetGeo() {
   amapDay = { date: "", used: 0, out: null };
 }
 
+/**
+ * Where Photon is asked from (host:port, PHOTON_VIA): the second server's private address on the
+ * live site, since Photon refused the main server's own (2026-11-11); unset, straight from here.
+ */
+const photonVia = () => process.env.PHOTON_VIA || "";
+
 /** 高德's web service key (server .env); without it, OpenStreetMap only */
 const amapKey = () => process.env.AMAP_WEBSERVICE_KEY || "";
 /** 高德 searches a day: the monthly 5000 spread over the month, with a little to spare */
@@ -87,7 +94,9 @@ export async function geoSearch(address: string, ask: GeoAsk, fetcher: typeof fe
     if (Date.now() < photonRestUntil) return { places: [], osm: false };
     if (!allow("geo-photon", PHOTON_PER_MINUTE, 60_000)) throw new HttpError(429, GEO_BUSY);
     try {
-      found = { places: photonPlaces(await ask_(fetcher, "Photon", photonUrl(ask.q, ask.near))), osm: true };
+      // through the second server on the live site (the tests' own fetchers are asked as they are)
+      const viaPhoton = photonVia() && fetcher === fetch ? fetchVia(photonVia()) : fetcher;
+      found = { places: photonPlaces(await ask_(viaPhoton, "Photon", photonUrl(ask.q, ask.near))), osm: true };
       photonFails = 0;
     } catch (e) {
       if (++photonFails >= PHOTON_FAILS) {
