@@ -85,8 +85,12 @@ import {
   markMapStyleSeen,
   saveMapStyle,
   SIGN_IN_FOR_STYLES,
+  liteHintSeen,
+  markLiteHintSeen,
+  storedMapStyle,
   type MapStyle,
 } from "@/lib/mapStyle";
+import { lagWatch, type LagWatch } from "@/lib/lag";
 import { countText } from "@/lib/counts";
 import MapStylePicker from "./app/MapStylePicker";
 import { ServerWorld } from "@/lib/world/server";
@@ -407,6 +411,12 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const [mapStyle, setMapStyle] = useState<MapStyle>(DEFAULT_MAP_STYLE);
   // a map here cannot draw 舟u本色's hearts (no GPU layer)
   const [heartsOff, setHeartsOff] = useState(false);
+  // 高德's GPU roach layer cannot run here; whether this device ever picked a style (read in the browser)
+  const [noGpu, setNoGpu] = useState(false);
+  const [styleStored, setStyleStored] = useState(true);
+  // 卡了提醒一次: the hint to try 轻量 is up, and whether this device has had it (read in the browser)
+  const [liteHint, setLiteHint] = useState(false);
+  const [liteHintDone, setLiteHintDone] = useState(true);
   // once per device: say the style can be changed
   const [styleHint, setStyleHint] = useState(false);
   // 存到桌面: offered unless opened from the desktop icon or installed here; its bubble, once per device
@@ -767,6 +777,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       }
       setLook(loadLook());
       setMapStyle(loadMapStyle());
+      setStyleStored(storedMapStyle() !== null);
+      setLiteHintDone(liteHintSeen());
       setStyleHint(!mapStyleSeen());
       setBasemap(b);
     };
@@ -1151,9 +1163,10 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   };
 
   const switchMapStyle = (s: MapStyle) => {
-    if (s === mapStyle) return;
+    if (s === shownStyle) return;
     saveMapStyle(s);
     setMapStyle(s);
+    setStyleStored(true);
     setToast(`已换成「${MAP_STYLE_NAMES[s]}」`);
   };
   const styleHintDone = useCallback(() => {
@@ -1178,8 +1191,10 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   // pick waits for the sign-in. 舟u本色 where its hearts cannot be drawn (yet, or on this device) is drawn as
   // 默认, the pick kept.
   const guest = meKnown && !me;
-  const shownStyle: MapStyle = guest ? "hidden" : mapStyle;
-  const drawnStyle: MapStyle = guest ? "hidden" : mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
+  // where 高德's GPU layer cannot run, a device that never picked a style has 轻量, not saved
+  const autoLite = noGpu && !styleStored;
+  const shownStyle: MapStyle = guest ? "hidden" : autoLite ? "lite" : mapStyle;
+  const drawnStyle: MapStyle = guest ? "hidden" : autoLite ? "lite" : mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
 
   const startPlacing = (target: PlaceTarget) => {
     // say so before they pick a spot, not after
@@ -2851,6 +2866,38 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         ]
       : []),
   ];
+  // 卡了提醒一次 (src/lib/lag.ts): whether the map feels slow, measured where 轻量 would help, until the hint has
+  // been up once on this device; not while the player is busy (a card, placing, the tutorial, a touch scene)
+  const quietRef = useRef(false);
+  useEffect(() => {
+    quietRef.current = Boolean(panel || placing || step || selected || offStage);
+  });
+  const lagRef = useRef<LagWatch | null>(null);
+  const watchLag = Boolean(me) && !liteHintDone && drawnStyle !== "lite" && drawnStyle !== "hidden";
+  useEffect(() => {
+    if (!watchLag) return;
+    const w = lagWatch(
+      () => {
+        markLiteHintSeen();
+        setLiteHintDone(true);
+        setLiteHint(true);
+      },
+      () => quietRef.current,
+    );
+    lagRef.current = w;
+    return () => {
+      w.stop();
+      lagRef.current = null;
+    };
+  }, [watchLag]);
+  const onMoving = useCallback((moving: boolean) => lagRef.current?.moving(moving), []);
+  // the hint goes by itself after 8 seconds
+  useEffect(() => {
+    if (!liteHint) return;
+    const t = window.setTimeout(() => setLiteHint(false), 8000);
+    return () => window.clearTimeout(t);
+  }, [liteHint]);
+
   const mapProps = {
     roaches: mapRoaches,
     // whoever acts out a scene over the map is left out of it meanwhile, the list itself kept as it is
@@ -2869,6 +2916,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     look,
     mapStyle: drawnStyle,
     onHeartsUnavailable: () => setHeartsOff(true),
+    onNoGpuLayer: () => setNoGpu(true),
+    onMoving,
     initialView: viewRef.current,
     placing: Boolean(placing),
     focus,
@@ -3727,6 +3776,25 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
             notice.then();
           }}
         />
+      )}
+      {liteHint && (
+        <div className="lite-hint" role="status">
+          <p>地图有点卡？试试「轻量」画风，挤在一起的小强合成一只，会顺很多。</p>
+          <div className="row">
+            <button
+              className="go"
+              onClick={() => {
+                setLiteHint(false);
+                switchMapStyle("lite");
+              }}
+            >
+              换成轻量
+            </button>
+            <button className="no" onClick={() => setLiteHint(false)}>
+              不用了
+            </button>
+          </div>
+        </div>
       )}
       {toast && <div className={`toast ${coachShown || selected || heard.length ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">

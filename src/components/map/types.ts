@@ -36,6 +36,10 @@ export type MapViewProps = {
   mapStyle: MapStyle;
   /** This map cannot draw 舟u本色's hearts (no GPU layer); it then draws 默认 */
   onHeartsUnavailable?: () => void;
+  /** 高德 only: its GPU roach layer cannot run on this device (轻量 is then the style of a device that never picked one) */
+  onNoGpuLayer?: () => void;
+  /** The map starts or stops moving (a drag, a zoom, a fly): for telling whether it feels slow (src/lib/lag.ts) */
+  onMoving?: (moving: boolean) => void;
   initialView: MapView;
   /** While placing, every tap is a spot on the map, even on top of a roach */
   placing: boolean;

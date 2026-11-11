@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_MAP_STYLE, loadMapStyle, mapStyleSeen, markMapStyleSeen, saveMapStyle } from "./mapStyle";
+import { DEFAULT_MAP_STYLE, liteHintSeen, loadMapStyle, mapStyleSeen, markLiteHintSeen, markMapStyleSeen, saveMapStyle, storedMapStyle } from "./mapStyle";
 
 const g = globalThis as { localStorage?: Storage };
 
@@ -39,6 +39,20 @@ describe("地图画风", () => {
     expect(loadMapStyle()).toBe("lite");
     saveMapStyle("hidden");
     expect(loadMapStyle()).toBe("hidden");
+  });
+
+  it("tells a device that never picked a style from one that picked 默认", () => {
+    fakeStorage();
+    expect(storedMapStyle()).toBeNull();
+    saveMapStyle("plain");
+    expect(storedMapStyle()).toBe("plain");
+  });
+
+  it("offers 轻量 once when the map is slow", () => {
+    fakeStorage();
+    expect(liteHintSeen()).toBe(false);
+    markLiteHintSeen();
+    expect(liteHintSeen()).toBe(true);
   });
 
   it("says once that the style can change", () => {

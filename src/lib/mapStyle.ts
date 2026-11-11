@@ -40,11 +40,34 @@ const isMapStyle = (s: unknown): s is MapStyle =>
   typeof s === "string" && (MAP_STYLES as string[]).includes(s);
 
 export function loadMapStyle(): MapStyle {
+  return storedMapStyle() ?? DEFAULT_MAP_STYLE;
+}
+
+/** The style this device picked, or null if it never picked one */
+export function storedMapStyle(): MapStyle | null {
   try {
     const s = localStorage.getItem(KEY);
     if (isMapStyle(s)) return s;
   } catch {}
-  return DEFAULT_MAP_STYLE;
+  return null;
+}
+
+/** 卡了提醒一次: the hint to try 轻量 has been shown on this device (whatever the answer, or none) */
+const LITE_HINT = "zhoup.liteHintSeen";
+
+export function liteHintSeen(): boolean {
+  try {
+    return localStorage.getItem(LITE_HINT) === "1";
+  } catch {
+    // nowhere to remember it: never shown
+    return true;
+  }
+}
+
+export function markLiteHintSeen() {
+  try {
+    localStorage.setItem(LITE_HINT, "1");
+  } catch {}
 }
 
 export function saveMapStyle(style: MapStyle) {

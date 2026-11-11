@@ -836,6 +836,9 @@ export default function MaplibreView(props: MapViewProps) {
       if (img) map.addImage(e.id, img, { pixelRatio: 2 });
     });
     map.on("moveend", reportView);
+    // whether the map feels slow is told by its frames while it moves (src/lib/lag.ts)
+    map.on("movestart", () => propsRef.current.onMoving?.(true));
+    map.on("moveend", () => propsRef.current.onMoving?.(false));
 
     return () => {
       cancelAnimationFrame(frame);

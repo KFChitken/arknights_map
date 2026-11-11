@@ -39,7 +39,7 @@ import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
 import { MassCache, STILL, styleIndex, type MassPoint } from "./massPoints";
 import { PILE_MAX_ZOOM } from "./pileWork";
-import { Piles, type Box } from "./piles";
+import { BADGE_AT, countBadgeText, PILE_MAX_PX, pileMul, Piles, type Box, type PileItem } from "./piles";
 import type { MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
@@ -285,16 +285,24 @@ export default function AmapView(props: MapViewProps) {
   const crowdWasRef = useRef<"all" | "lite" | "off">("all");
   // 轻量: the piles, worked out in the background (piles.ts), while it is on the GPU layer
   const pilesRef = useRef<Piles | null>(null);
-  /** 轻量 on the GPU layer: the list as it is put into the piles; the roaches stay drawn, still, until the first piles come */
+  // 轻量's piles as they came, and where they go: the GPU layer, or 高德's own LabelMarkers where it cannot run
+  // (set up with the map)
+  const pileItemsRef = useRef<PileItem[]>([]);
+  const showPilesRef = useRef<(items: PileItem[] | null) => void>(() => {});
+  /** 轻量: the list as it is put into the piles; what is drawn now stays, still, until the first piles come */
   const startPiles = () => {
-    pilesRef.current ??= new Piles((items) => glRef.current?.setPiles(items));
+    pilesRef.current ??= new Piles((items) => {
+      pileItemsRef.current = items;
+      showPilesRef.current(items);
+    });
     pilesRef.current.load(groupsRef.current);
     askPiles(mapRef.current, pilesRef.current);
   };
   const stopPiles = () => {
     pilesRef.current?.stop();
     pilesRef.current = null;
-    glRef.current?.setPiles(null);
+    pileItemsRef.current = [];
+    showPilesRef.current(null);
   };
   // the batches as 高德 gets them: only the roaches near the screen (nearBox)
   const shownRef = useRef<MassPoint[][]>([]);
@@ -565,7 +573,8 @@ export default function AmapView(props: MapViewProps) {
         // The roaches on 高德's MassMarks: the realistic look, and wherever the GPU layer cannot run
         const startMass = () => {
           const { look, urls } = styledRef.current;
-          shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
+          // in 轻量 the piles stand in for them
+          shownRef.current = propsRef.current.mapStyle === "lite" ? noGroups() : shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
           styledPxRef.current = massPx(map.getZoom());
           massRef.current = shownRef.current.map((points) => {
             const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
@@ -587,7 +596,10 @@ export default function AmapView(props: MapViewProps) {
         // (roachGl.ts); MassMarks once more if this phone or 高德 cannot
         let glBroke = glOff();
         // 舟u本色's hearts are drawn by the GPU layer, so without it this map cannot draw them
-        if (glBroke) propsRef.current.onHeartsUnavailable?.();
+        if (glBroke) {
+          propsRef.current.onHeartsUnavailable?.();
+          propsRef.current.onNoGpuLayer?.();
+        }
         const startGl = () => {
           const gl = roachGl(AMap, map, {
             zIndex: massZ("cartoon"),
@@ -603,13 +615,17 @@ export default function AmapView(props: MapViewProps) {
                 if (glRef.current !== gl || cancelled) return;
                 glBroke = true;
                 propsRef.current.onHeartsUnavailable?.();
+                propsRef.current.onNoGpuLayer?.();
                 console.warn("roach layer:", why);
                 layRef.current();
+                // 轻量's piles, as 高德's own markers from now on
+                if (pilesRef.current) showPilesRef.current(pileItemsRef.current);
               }, 0),
           });
           if (!gl) {
             glBroke = true;
             propsRef.current.onHeartsUnavailable?.();
+            propsRef.current.onNoGpuLayer?.();
             return false;
           }
           glRef.current = gl;
@@ -663,7 +679,8 @@ export default function AmapView(props: MapViewProps) {
         // the GPU layer has all of them already
         reshowRef.current = () => {
           if (glRef.current || !massRef.current.length) return;
-          shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
+          // in 轻量 the piles stand in for them
+          shownRef.current = propsRef.current.mapStyle === "lite" ? noGroups() : shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
           const crawling = propsRef.current.active !== false && !prefersReducedMotion();
           const now = performance.now();
           const { look } = styledRef.current;
@@ -701,6 +718,10 @@ export default function AmapView(props: MapViewProps) {
         });
         map.on("movestart", halt);
         map.on("zoomstart", halt);
+        // whether the map feels slow is told by its frames while it moves (src/lib/lag.ts)
+        for (const [event, on] of [["movestart", true], ["zoomstart", true], ["moveend", false], ["zoomend", false]] as const) {
+          map.on(event, () => propsRef.current.onMoving?.(on));
+        }
         map.on("mapmove", still);
         map.on("zoomchange", still);
         map.on("moveend", ended);
@@ -726,9 +747,76 @@ export default function AmapView(props: MapViewProps) {
         };
         layRef.current();
         // 轻量 from the start: piles once the GPU layer has the roaches
-        const mode = propsRef.current.mapStyle === "hidden" ? "off" : propsRef.current.mapStyle === "lite" && glRef.current ? "lite" : "all";
+        // 轻量's piles where the GPU layer cannot run: 高德's own LabelMarkers, a few hundred at most, each a
+        // pile's icon at its size with its count beside it
+        let pileLayer: AMapNS | null = null;
+        const tapPile = (it: PileItem) => {
+          lastHitRef.current = Date.now();
+          if (typeof it.ref === "string") {
+            const id = it.ref;
+            window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
+            return;
+          }
+          void pilesRef.current?.expand(it.ref).then((z) => {
+            if (mapRef.current !== map) return;
+            map.setZoomAndCenter(Math.min(20, Math.max(map.getZoom() + 0.5, z + 0.05 + ZOOM_OFFSET)), [it.lng, it.lat], false, 650);
+          });
+        };
+        const pileMarkers = (items: PileItem[]) => {
+          if (!pileLayer) {
+            pileLayer = new AMap.LabelsLayer({ zooms: [2, 20], zIndex: massZ("cartoon"), collision: false, allowCollision: true });
+            map.add(pileLayer);
+          }
+          pileLayer.clear();
+          const { urls } = styledRef.current;
+          const size = iconPx(map.getZoom() - ZOOM_OFFSET);
+          const hidden = propsRef.current.hiddenId ?? null;
+          const markers: AMapNS[] = [];
+          items.forEach((it, i) => {
+            if (it.ref === hidden || !urls[it.style]) return;
+            const w = Math.round(Math.min(size * pileMul(it.n), Math.max(size, PILE_MAX_PX)));
+            const marker = new AMap.LabelMarker({
+              position: [it.lng, it.lat],
+              // drawn in the order they came: the southern ones, then 触须之交, on top
+              zIndex: i,
+              icon: { type: "image", image: urls[it.style], size: [w, w], anchor: "center" },
+              ...(it.n > 1
+                ? {
+                    text: {
+                      content: countBadgeText(it.n),
+                      direction: "center",
+                      offset: [Math.round(BADGE_AT[0] * w), Math.round(BADGE_AT[1] * w)],
+                      style: { fontSize: 11, fontWeight: "bold", fillColor: "#ffffff", backgroundColor: "#1b1d22", borderColor: "#ffffff", borderWidth: 1, padding: [1, 5] },
+                    },
+                  }
+                : {}),
+            });
+            marker.on("click", () => !propsRef.current.placing && tapPile(it));
+            markers.push(marker);
+          });
+          pileLayer.add(markers);
+        };
+        showPilesRef.current = (items) => {
+          if (glRef.current) {
+            glRef.current.setPiles(items);
+            return;
+          }
+          if (items) pileMarkers(items);
+          else pileLayer?.clear();
+        };
+        // a pile's size follows the zoom
+        map.on("zoomend", () => {
+          if (pilesRef.current && !glRef.current) pileMarkers(pileItemsRef.current);
+        });
+        const mode = propsRef.current.mapStyle === "hidden" ? "off" : propsRef.current.mapStyle === "lite" ? "lite" : "all";
         crowdWasRef.current = mode;
-        if (mode === "lite") startPiles();
+        if (mode === "lite") {
+          if (!glRef.current) {
+            shownRef.current = noGroups();
+            massRef.current.forEach((m) => m.setData([]));
+          }
+          startPiles();
+        }
         // 轻量's piles asked for again as the view moves: as it ends, and every 150 ms meanwhile
         let pilesAskedAt = 0;
         const pilesMeanwhile = () => {
@@ -851,10 +939,16 @@ export default function AmapView(props: MapViewProps) {
     if (crowdMode === "off" && was === "off") return;
     regroup();
     const gl = glRef.current;
-    const mode = crowdMode === "lite" && !gl ? "all" : crowdMode;
+    const mode = crowdMode;
     crowdWasRef.current = mode;
-    if (mode === "lite") startPiles();
-    else {
+    if (mode === "lite") {
+      // where the GPU layer cannot run, the piles stand in for MassMarks
+      if (!gl && was !== "lite") {
+        shownRef.current = noGroups();
+        massRef.current.forEach((m) => m.setData([]));
+      }
+      startPiles();
+    } else {
       if (was === "lite") stopPiles();
       if (gl) gl.setRoaches(glList());
       else {
@@ -879,6 +973,8 @@ export default function AmapView(props: MapViewProps) {
     hiddenWasRef.current = hiddenId;
     if (!map) return;
     if (glRef.current) return glRef.current.setHidden(hiddenId);
+    // 轻量 as 高德's own markers: drawn again without it
+    if (pilesRef.current) return showPilesRef.current(pileItemsRef.current);
     if (!massRef.current.length) return;
     // MassMarks: only the batches it and the one before are in are handed over again
     const touched = new Set(
