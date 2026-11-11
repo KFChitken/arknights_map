@@ -624,6 +624,8 @@ describe("the site's own checks", () => {
     expect(found.map((f) => [f.key, f.level])).toEqual([[`down:127.0.0.1:${port}`, "urgent"]]);
     expect(found[0].detail).toContain("连接被拒绝");
     expect(found[0].advice).toContain("DNSPod");
+    // asked straight too and not answered either: the site itself is slow or down, not the door
+    expect(await doorFindings([`127.0.0.1:${port}`], "zhoupmap.com", 0, `127.0.0.1:${port}`)).toEqual([]);
   });
 });
 

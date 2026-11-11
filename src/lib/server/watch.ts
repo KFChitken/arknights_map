@@ -744,7 +744,7 @@ function askThrough(door: string, servername: string): Promise<string> {
  * The other ways in (WATCH_DOORS: the second server, deploy/relay): a way in is broken when the
  * site does not answer through it three times running, which is urgent. Exported for the tests.
  */
-export async function doorFindings(doors: string[], servername: string, pauseMs = 2_000): Promise<Finding[]> {
+export async function doorFindings(doors: string[], servername: string, pauseMs = 1_000, direct = ""): Promise<Finding[]> {
   const why = await Promise.all(
     doors.map(async (door) => {
       let trouble = "";
@@ -756,6 +756,9 @@ export async function doorFindings(doors: string[], servername: string, pauseMs 
       return trouble;
     }),
   );
+  // the site itself too busy to answer in time, not the door (2026-11-11 11:00, a load of 18): asked
+  // straight through this server's own gateway as well, and then the other checks tell of it
+  if (direct && why.some(Boolean) && (await askThrough(direct, servername))) return [];
   return doors.flatMap((door, i): Finding[] =>
     why[i]
       ? [
@@ -772,7 +775,10 @@ export async function doorFindings(doors: string[], servername: string, pauseMs 
   );
 }
 
-const checkDoors = () => doorFindings(WATCH_DOORS, new URL(SITE_URL).hostname);
+const checkDoors = () => {
+  const gateway = WATCH_TLS_HOST || (isProd ? "caddy" : "");
+  return doorFindings(WATCH_DOORS, new URL(SITE_URL).hostname, 1_000, gateway && `${gateway}:443`);
+};
 
 export const CHECKS: Check[] = [
   { name: "db", run: checkDb },
