@@ -80,11 +80,14 @@ import {
   HEARTS_READY,
   loadMapStyle,
   MAP_STYLE_NAMES,
+  MAP_STYLES,
   mapStyleSeen,
   markMapStyleSeen,
   saveMapStyle,
+  SIGN_IN_FOR_STYLES,
   type MapStyle,
 } from "@/lib/mapStyle";
+import { countText } from "@/lib/counts";
 import MapStylePicker from "./app/MapStylePicker";
 import { ServerWorld } from "@/lib/world/server";
 import {
@@ -375,6 +378,11 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * cn: the visitor is in mainland China, so the map is Amap only (OSM just when Amap cannot load).
  * mailPaused: mail domains no sign-in code goes to just now, which the sign-in sheet says.
  */
+/** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
+const GUEST_STYLES: Partial<Record<MapStyle, string>> = Object.fromEntries(
+  MAP_STYLES.filter((s) => s !== "hidden").map((s) => [s, SIGN_IN_FOR_STYLES]),
+);
+
 export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPaused?: string[] }) {
   const worldRef = useRef<World | null>(null);
   const feedRef = useRef(new RoachFeedCopy());
@@ -1142,8 +1150,12 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       setPanel({ kind: "homeScreen" });
     } else if (r === "installed") setToast("存好了，以后点桌面上的舟P图标就能直接打开地图。");
   };
-  // 舟u本色 where its hearts cannot be drawn (yet, or on this device) is drawn as 默认; the pick is kept
-  const drawnStyle: MapStyle = mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
+  // A visitor who has not signed in has 全员隐匿 only (the server sends them nobody's roaches); this device's
+  // pick waits for the sign-in. 舟u本色 where its hearts cannot be drawn (yet, or on this device) is drawn as
+  // 默认, the pick kept.
+  const guest = meKnown && !me;
+  const shownStyle: MapStyle = guest ? "hidden" : mapStyle;
+  const drawnStyle: MapStyle = guest ? "hidden" : mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
 
   const startPlacing = (target: PlaceTarget) => {
     // say so before they pick a spot, not after
@@ -3224,11 +3236,11 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         </div>
         <div className={`switches${cn ? "" : " with-basemap"}`}>
           <MapStylePicker
-            style={mapStyle}
+            style={shownStyle}
             onPick={switchMapStyle}
-            unavailable={!HEARTS_READY ? { hearts: "很快就有" } : heartsOff ? { hearts: "这台设备画不了爱心" } : {}}
-            // once the map is up (a slow line can take a while), not while placing or in the tutorial
-            hint={styleHint && visible !== null && !placing && !step}
+            unavailable={guest ? GUEST_STYLES : !HEARTS_READY ? { hearts: "很快就有" } : heartsOff ? { hearts: "这台设备画不了爱心" } : {}}
+            // once the map is up (a slow line can take a while), not while placing or in the tutorial, nor to visitors
+            hint={styleHint && !guest && visible !== null && !placing && !step}
             onHintDone={styleHintDone}
             onRaise={setTopRaised}
           />
@@ -3271,8 +3283,23 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
             </button>
           )}
           <div className="stats">
-            {visible === null ? "地图加载中…" : !feedIn ? "舟P们正在赶来…" : `这片地图里有 ${visible.toLocaleString()} 只舟P`}
-            {feedIn && <span className="muted"> · 全球 {total.toLocaleString()} 只</span>}
+            {visible === null ? (
+              "地图加载中…"
+            ) : !feedIn ? (
+              "舟P们正在赶来…"
+            ) : guest ? (
+              <>
+                全球 {countText(total)}舟P<span className="muted"> · 登录后就能看到 TA 们</span>
+              </>
+            ) : drawnStyle === "hidden" ? (
+              <>
+                全员隐匿中<span className="muted"> · 全球 {countText(total)}舟P</span>
+              </>
+            ) : (
+              <>
+                这片地图里有 {visible.toLocaleString()} 只舟P<span className="muted"> · 全球 {total.toLocaleString()} 只</span>
+              </>
+            )}
           </div>
           {/* only the admin's me() carries the counts */}
           {me?.admin && (me.admin.open > 0 || me.admin.appeals > 0) && (

@@ -211,6 +211,9 @@ function massStyles(AMap: AMapNS, amapZoom: number, urls: string[]) {
   }));
 }
 
+/** No batches at all: 全员隐匿 draws nobody's roaches */
+const noGroups = (): MassPoint[][] => Array.from({ length: MASS_GROUPS + 1 }, () => []);
+
 /** The dark swarm's points: every roach where 高德 has it (worked out once, MassCache) */
 const swarmPoints = (groups: MassPoint[][]) => groups.flatMap((g) => g.map((p) => p.at));
 
@@ -255,6 +258,16 @@ export default function AmapView(props: MapViewProps) {
   const groupsRef = useRef<MassPoint[][]>([]);
   // each roach worked out once (massPoints.ts), kept across updates of the list
   const cacheRef = useRef(new MassCache());
+  // 全员隐匿 draws none of the crowd and works none of it out; the cache keeps what it has for the way back
+  /** The batches drawn now: everyone's roaches, or none of them */
+  const regroup = () => {
+    const p = propsRef.current;
+    groupsRef.current = p.mapStyle === "hidden" ? noGroups() : cacheRef.current.groups(p.roaches);
+  };
+  /** The GPU layer's roaches, for the batches regroup() made */
+  const glList = () => (propsRef.current.mapStyle === "hidden" ? [] : cacheRef.current.gl());
+  // the crowd is off the map (全员隐匿) as far as the map was last told
+  const crowdWasOffRef = useRef(false);
   // the batches as 高德 gets them: only the roaches near the screen (nearBox)
   const shownRef = useRef<MassPoint[][]>([]);
   // pick them again for where the map is now, and hand them over
@@ -511,7 +524,8 @@ export default function AmapView(props: MapViewProps) {
           heatRef.current = null;
         };
         swarmRef.current = { start: startSwarm, stop: stopSwarm };
-        groupsRef.current = cacheRef.current.groups(propsRef.current.roaches);
+        regroup();
+        crowdWasOffRef.current = propsRef.current.mapStyle === "hidden";
         if (propsRef.current.mapStyle === "nation") startSwarm();
 
         const onMassClick = (e: AMapNS) => {
@@ -574,7 +588,7 @@ export default function AmapView(props: MapViewProps) {
           glRef.current = gl;
           gl.setCrawl(!prefersReducedMotion());
           gl.setHearts(heartModeOf(propsRef.current.mapStyle));
-          gl.setRoaches(cacheRef.current.gl());
+          gl.setRoaches(glList());
           gl.setHidden(propsRef.current.hiddenId ?? null);
           return true;
         };
@@ -666,7 +680,7 @@ export default function AmapView(props: MapViewProps) {
         map.on("zoomend", ended);
         crawlRef.current = {
           start: () => {
-            if (moving || propsRef.current.active === false || prefersReducedMotion()) return;
+            if (moving || propsRef.current.active === false || prefersReducedMotion() || propsRef.current.mapStyle === "hidden") return;
             if (glRef.current) return glRef.current.tick(true);
             if (crawlTimer) return;
             crawlTimer = window.setInterval(() => {
@@ -771,19 +785,28 @@ export default function AmapView(props: MapViewProps) {
     };
   }, []);
 
-  // An update of the list: only the roaches that changed are worked out again (MassCache)
+  // An update of the list: only the roaches that changed are worked out again (MassCache). 全员隐匿 on or off:
+  // the crowd taken off the map, or put back as it is now; while it is off, updates wait for the way back.
+  const crowdHidden = props.mapStyle === "hidden";
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    groupsRef.current = cacheRef.current.groups(props.roaches);
-    if (glRef.current) glRef.current.setRoaches(cacheRef.current.gl());
+    const was = crowdWasOffRef.current;
+    if (crowdHidden && was) return;
+    crowdWasOffRef.current = crowdHidden;
+    regroup();
+    if (glRef.current) glRef.current.setRoaches(glList());
     else {
       shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
       const z = map.getZoom();
       massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
     }
     heatRef.current?.set(swarmPoints(groupsRef.current));
-  }, [props.roaches]);
+    if (crowdHidden !== was) {
+      if (crowdHidden) crawlRef.current?.stop();
+      else crawlRef.current?.start();
+    }
+  }, [props.roaches, crowdHidden]);
 
   // One roach off stage while a touch scene plays over the map: left out where it is drawn, nothing worked out again
   const hiddenId = props.hiddenId ?? null;

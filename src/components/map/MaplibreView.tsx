@@ -401,9 +401,10 @@ export default function MaplibreView(props: MapViewProps) {
         if (!map || !readyRef.current) return;
         const p = propsRef.current;
         // what changed in the crowd since the map last had it, and whether every roach's icons are needed
-        // again (a new look), or only those of roaches new or changed
-        const update = what === "all" ? featuresRef.current.update(p.roaches) : null;
-        const allIcons = what === "all" && p.look !== iconsLookRef.current;
+        // again (a new look), or only those of roaches new or changed; in 全员隐匿 the crowd waits as it is
+        const crowd = what === "all" && p.mapStyle !== "hidden";
+        const update = crowd ? featuresRef.current.update(p.roaches) : null;
+        const allIcons = crowd && p.look !== iconsLookRef.current;
         try {
           await ensureImages(map, neededImages(p, allIcons ? p.roaches : (update?.fresh ?? [])));
           if (allIcons) iconsLookRef.current = p.look;
@@ -549,11 +550,14 @@ export default function MaplibreView(props: MapViewProps) {
       // 两面包夹芝士 around Japan, and 明河都尉's trail of stars, under all the roaches
       addMaplibreSandwich(map);
       addMaplibreTrail(map, propsRef.current.trail);
-      await ensureImages(map, neededImages(propsRef.current, propsRef.current.roaches));
-      const { roaches, mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
-      iconsLookRef.current = look;
+      // 全员隐匿: none of the crowd's data or icons yet, made on the way out of it
+      const crowdOff = propsRef.current.mapStyle === "hidden";
+      const crowd = crowdOff ? [] : propsRef.current.roaches;
+      await ensureImages(map, neededImages(propsRef.current, crowd));
+      const { mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
+      iconsLookRef.current = crowdOff ? null : look;
       // each roach's id is its feature's, so updates can name what changed and touches can mark one
-      map.addSource("roaches", { type: "geojson", data: featuresRef.current.collection(roaches), promoteId: "id" });
+      map.addSource("roaches", { type: "geojson", data: featuresRef.current.collection(crowd), promoteId: "id" });
       map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, mineAsleep, ghost, myAvatar, myColor) });
 
       // Dark swarm under the icons so crowded cities read as covered in roaches, in 国度版 only (地图画风):
@@ -584,6 +588,7 @@ export default function MaplibreView(props: MapViewProps) {
         source: "roaches",
         filter: ["get", "asleep"],
         layout: {
+          visibility: crowdOff ? "none" : "visible",
           "icon-image": sleepImage(look) as never,
           "icon-size": iconSize as never,
           "icon-rotate": sleepRotate(look) as never,
@@ -601,6 +606,7 @@ export default function MaplibreView(props: MapViewProps) {
           source: "roaches",
           filter: ["all", ["==", ["get", "g"], g], ["!", ["get", "asleep"]]],
           layout: {
+            visibility: crowdOff ? "none" : "visible",
             "icon-image": roachImage(look) as never,
             "icon-size": iconSize as never,
             "icon-rotate": roachRotate(look) as never,
@@ -636,7 +642,8 @@ export default function MaplibreView(props: MapViewProps) {
     });
     crawlRef.current = {
       start: () => {
-        if (!frame && readyRef.current && propsRef.current.active !== false && !prefersReducedMotion()) animate();
+        const p = propsRef.current;
+        if (!frame && readyRef.current && p.active !== false && p.mapStyle !== "hidden" && !prefersReducedMotion()) animate();
       },
       stop: () => {
         cancelAnimationFrame(frame);
@@ -718,6 +725,19 @@ export default function MaplibreView(props: MapViewProps) {
     if (map && readyRef.current && map.getLayer("swarm")) map.setLayoutProperty("swarm", "visibility", props.mapStyle === "nation" ? "visible" : "none");
     showHearts();
   }, [props.mapStyle]);
+  // 全员隐匿: the crowd's layers hidden and its crawl stopped; on the way out, the crowd as it is now
+  const crowdHidden = props.mapStyle === "hidden";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current || !map.getLayer(ASLEEP_LAYER)) return;
+    const visibility = crowdHidden ? "none" : "visible";
+    for (const id of [...ROACH_LAYERS, ASLEEP_LAYER]) map.setLayoutProperty(id, "visibility", visibility);
+    if (crowdHidden) crawlRef.current?.stop();
+    else {
+      sync("all");
+      crawlRef.current?.start();
+    }
+  }, [crowdHidden]);
 
   // a hidden map leaves the flying to the one on show
   useEffect(() => {

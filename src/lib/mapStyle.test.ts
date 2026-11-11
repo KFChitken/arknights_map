@@ -33,6 +33,12 @@ describe("地图画风", () => {
     expect(loadMapStyle()).toBe("plain");
   });
 
+  it("keeps 全员隐匿 like any other style", () => {
+    fakeStorage();
+    saveMapStyle("hidden");
+    expect(loadMapStyle()).toBe("hidden");
+  });
+
   it("says once that the style can change", () => {
     fakeStorage();
     expect(mapStyleSeen()).toBe(false);

@@ -9,8 +9,25 @@ import {
 } from "@/lib/mapStyle";
 import { HEART_D } from "@/lib/touchArt";
 
-/** 地图画风's small pictures: a radial dark patch (国度版), a roach (默认), a heart (舟u本色) */
+/** 地图画风's small pictures: a radial dark patch (国度版), a roach (默认), a heart (舟u本色), a roach struck through (全员隐匿) */
 function StyleIcon({ style }: { style: MapStyle }) {
+  if (style === "hidden") {
+    return (
+      <svg className="ic" viewBox="0 0 16 16" aria-hidden="true">
+        <g opacity="0.45">
+          <path d="M3 11 C3 6 5.5 3.5 8 3.5 C10.5 3.5 13 6 13 11 Z" fill="#fff" />
+          <path
+            d="M6.5 4.2 C6 2.6 4.6 1.6 3 1.6 M9.5 4.2 C10 2.6 11.4 1.6 13 1.6"
+            stroke="#fff"
+            strokeWidth="1.2"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </g>
+        <path d="M2.5 14 L13.5 2.5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (style === "nation") {
     return (
       <svg className="ic" viewBox="0 0 16 16" aria-hidden="true">
@@ -62,7 +79,7 @@ function StyleIcon({ style }: { style: MapStyle }) {
 }
 
 /**
- * 地图画风 in the top bar: a button with the style in use, and a card of the three to pick from, each
+ * 地图画风 in the top bar: a button with the style in use, and a card of them all to pick from, each
  * with a small picture (fetched only when the card opens). Picking one changes the map at once.
  * unavailable: styles that cannot be picked here, with why. hint: show once that the style can change.
  */
@@ -167,7 +184,7 @@ export default function MapStylePicker({
                 onPick(s);
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- three small pictures, only once the card opens */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- small pictures, only once the card opens */}
               <img alt="" src={`/map-style-${s}.png`} width={64} height={40} />
               <span>
                 <b>{MAP_STYLE_NAMES[s]}</b>
