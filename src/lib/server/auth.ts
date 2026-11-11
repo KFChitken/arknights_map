@@ -71,6 +71,7 @@ export async function endSessionsExcept(userId: string, keepId: string) {
     .delete(sessions)
     .where(and(eq(sessions.userId, userId), ne(sessions.id, keepId)))
     .returning({ id: sessions.id });
+  for (const { id } of gone) checked.delete(id);
   return gone.length;
 }
 
@@ -83,8 +84,55 @@ export async function endOtherSessions(userId: string) {
 export async function endSession() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await db.delete(sessions).where(eq(sessions.id, sha256(token)));
+  if (token) {
+    await db.delete(sessions).where(eq(sessions.id, sha256(token)));
+    checked.delete(sha256(token));
+  }
   jar.delete(SESSION_COOKIE);
+}
+
+/**
+ * How long this process believes a session is signed in once it has looked (sessionAlive). One ended
+ * meanwhile on another device, or in another process, still gets the roach list until then: what any
+ * signed-in player sees anyway.
+ */
+export const SESSION_CHECK_MS = 10 * 60_000;
+/** How long a token found to sign nobody in is believed so: made-up cookies cost a lookup a minute each */
+const SIGNED_OUT_MS = 60_000;
+const CHECKS_KEPT = 100_000;
+// by session id: until when the answer holds, and whether it signs someone in
+const checked = new Map<string, { until: number; alive: boolean }>();
+
+const aliveQuery = db
+  .select({ expiresAt: sessions.expiresAt })
+  .from(sessions)
+  .where(and(eq(sessions.id, sql.placeholder("id")), gt(sessions.expiresAt, sql`now()`)))
+  .limit(1)
+  .prepare("session_alive");
+
+/**
+ * Whether a session token signs someone in, for the roach list every signed-in page asks for every two
+ * minutes: kept for SESSION_CHECK_MS (never past the session's end), so the sessions table is read about
+ * once per page per ten minutes, and the player's own row not at all.
+ */
+export async function sessionAlive(token: string, now = Date.now()): Promise<boolean> {
+  const id = sha256(token);
+  const known = checked.get(id);
+  if (known && known.until > now) return known.alive;
+  const [row] = await aliveQuery.execute({ id });
+  if (checked.size >= CHECKS_KEPT) {
+    for (const [k, c] of checked) if (c.until <= now) checked.delete(k);
+    // still full, of made-up tokens: start again
+    if (checked.size >= CHECKS_KEPT) checked.clear();
+  }
+  const until = row ? Math.min(now + SESSION_CHECK_MS, row.expiresAt.getTime()) : now + SIGNED_OUT_MS;
+  checked.set(id, { until, alive: Boolean(row) });
+  return Boolean(row);
+}
+
+/** Tests: nothing believed about any session */
+export function forgetSessionChecks() {
+  checked.clear();
 }
 
 // Every request asks who sent it: the statement is put together once, not by drizzle on each request

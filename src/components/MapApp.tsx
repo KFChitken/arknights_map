@@ -111,6 +111,7 @@ import {
   type Radar,
   type RideTarget,
   type TouchResult,
+  type VisitorFeed,
   type World,
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
@@ -120,7 +121,7 @@ import CloneMoveSheet from "./app/CloneMoveSheet";
 import { GuideDock, GuideSheet } from "./app/GuideDock";
 import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
-import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet, welcomed } from "./app/GuestPreview";
+import { GuestRadarSheet, markWelcomed, PreviewCard, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import { HomecomingSheet } from "./app/Homecoming";
 import NoticeSheet from "./app/NoticeSheet";
 import HotSheet from "./app/HotSheet";
@@ -424,6 +425,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const [feedRoaches, setFeedRoaches] = useState<MapRoach[]>([]);
   // the shared roach list has come at least once: till then the counts would say 0
   const [feedIn, setFeedIn] = useState(false);
+  // not signed in, as the server sees it: how many roaches there are, instead of them (VisitorFeed)
+  const [visitorCounts, setVisitorCounts] = useState<Omit<VisitorFeed, "v" | "hidden"> | null>(null);
   // Every public id our roaches had on this page: after a move the old one stays in the feed for a moment
   const [ownIds, setOwnIds] = useState<ReadonlySet<string>>(new Set());
   const meIdRef = useRef<string | null>(null);
@@ -595,11 +598,27 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     return m;
   }, [applyMe]);
   const wholeFeed = useRef<Promise<void> | null>(null);
+  /** Signed in or out: the roaches held are dropped, and the next ask is for all of them, with the new cookie */
+  const forgetRoaches = useCallback(() => {
+    feedRef.current = new RoachFeedCopy();
+    wholeFeed.current = null;
+    setFeedRoaches([]);
+  }, []);
   const loadRoaches = useCallback(async (): Promise<void> => {
     const feed = feedRef.current;
     const ask = async () => {
       try {
-        if (feed.apply(await worldRef.current!.roachFeed(feed.version))) setFeedRoaches(feed.roaches);
+        const u = await worldRef.current!.roachFeed(feed.version);
+        // signed in or out meanwhile: the new copy asks for itself
+        if (feedRef.current !== feed) return;
+        if ("hidden" in u) {
+          // not signed in (any more): no roaches, only how many there are
+          setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
+          if (feed.version) forgetRoaches();
+        } else {
+          setVisitorCounts(null);
+          if (feed.apply(u)) setFeedRoaches(feed.roaches);
+        }
         setFeedIn(true);
         retryRef.current.delay = 0;
       } catch (e) {
@@ -620,9 +639,14 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     };
     if (feed.version) return ask();
     // the first, whole list is big: one download of it at a time, and whoever asks meanwhile waits for that one
-    wholeFeed.current ??= ask().finally(() => (wholeFeed.current = null));
+    if (!wholeFeed.current) {
+      const asking = ask().finally(() => {
+        if (wholeFeed.current === asking) wholeFeed.current = null;
+      });
+      wholeFeed.current = asking;
+    }
     return wholeFeed.current;
-  }, []);
+  }, [forgetRoaches]);
   const loadInbox = useCallback(async () => {
     const items = await worldRef.current!.inbox();
     lastMessagesRef.current = Date.now();
@@ -1222,7 +1246,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const onMapClick = (p: LngLat) => {
     if (placing) return placeAt(p, false);
     setSelected(null);
-    // a visitor sees where their roach would go and who is around; nothing is sent
+    // a visitor sees where their roach would go and about how many are around, counted by the server
     if (visitorShown) setPreview(p);
   };
 
@@ -2134,6 +2158,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     setPanel(null);
     const spot = preview;
     setPreview(null);
+    // the whole list at once, now that the server gives it
+    forgetRoaches();
     const { me: m, items, away, friends: list } = await load();
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
@@ -2184,8 +2210,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     setPanel(null);
     setSelected(null);
     saveHome(null);
-    // deleted roaches leave everyone's feed on its next rebuild; leave them off this map right away
-    if (kind === "delete" && feedRef.current.forget([...ownIds])) setFeedRoaches(feedRef.current.roaches);
+    // signed out, the map is 全员隐匿 again and the roaches held go (a visitor gets none)
+    forgetRoaches();
     await load();
     setToast(kind === "delete" ? "账号和数据都删除了。" : "已经退出登录。");
   };
@@ -2287,7 +2313,23 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const guarding = Boolean(me?.drunkUntil && main && perlicaAt);
   const perlicaShown = guarding && main ? { lng: main.lng, lat: main.lat } : perlicaAt;
   const unseen = inbox.filter((i) => !i.seen).length;
-  const around = useMemo(() => (preview ? roachesAround(feedRoaches, preview) : null), [preview, feedRoaches]);
+  // what is near the spot a visitor tapped, counted by the server (a visitor has no list): only the last of
+  // quick taps is asked about
+  const [around, setAround] = useState<{ near: number; far: number } | "failed" | null>(null);
+  useEffect(() => {
+    setAround(null);
+    if (!preview) return;
+    const asking = new AbortController();
+    const t = window.setTimeout(() => {
+      worldRef.current!.around(preview, asking.signal).then(setAround, () => {
+        if (!asking.signal.aborted) setAround("failed");
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(t);
+      asking.abort();
+    };
+  }, [preview]);
   const nearest = useMemo(
     () => (step === "touch" && tutorialMain ? nearestReal(roaches, tutorialMain) : null),
     [step, tutorialMain, roaches],
@@ -2310,7 +2352,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     selected?.kind === "other" && selected.roach.friend
       ? shownFriends.find((f) => f.roaches.some((r) => sameRoach(selected.roach.id, r.id)))
       : undefined;
-  const total = roaches.length + (me?.roaches.length ?? 0);
+  // the server's count until there is a list to count (a visitor never has one)
+  const total = visitorCounts && !feedRoaches.length ? visitorCounts.total : roaches.length + (me?.roaches.length ?? 0);
 
 
   const coachShown = Boolean(!placing && !selected && !panel && !notice && me && step);
@@ -2493,7 +2536,10 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     () => [...feedRoaches.filter((r) => !ownIds.has(r.id)), ...(me?.roaches ?? [])],
     [feedRoaches, ownIds, me],
   );
-  const byFire = useMemo(() => fakeFire ?? fireCount(everyRoach), [fakeFire, everyRoach]);
+  const byFire = useMemo(
+    () => fakeFire ?? (visitorCounts && !feedRoaches.length ? visitorCounts.fire : fireCount(everyRoach)),
+    [fakeFire, visitorCounts, feedRoaches, everyRoach],
+  );
   const fire = fireLevel(byFire);
   const seatedAtFire = me?.roaches.find((r) => isNearFire(r)) ?? null;
 
@@ -2627,7 +2673,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     [fakeRiders, day, everyRoach],
   );
   const othersRiding = useMemo(() => roaches.reduce((n, r) => n + (r.ride ? 1 : 0), 0), [roaches]);
-  const riders = othersRiding + (myRider ? 1 : 0) + fakeQueue.length;
+  const riders = (visitorCounts && !feedRoaches.length ? visitorCounts.riders : othersRiding + (myRider ? 1 : 0)) + fakeQueue.length;
   const mapRoaches = useMemo(() => (fakeQueue.length ? [...roaches, ...fakeQueue] : roaches), [roaches, fakeQueue]);
 
   /** A clone into his queue (a new one, or a move once all of them are out), then to him, where he says so */
@@ -3555,7 +3601,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         />
       )}
 
-      {!placing && !selected && !panel && !me && preview && around && (
+      {!placing && !selected && !panel && !me && preview && (
         <PreviewCard
           around={around}
           onPlace={() => setPanel({ kind: "login", reason: "登录后就能把蟑螂放在这里。" })}

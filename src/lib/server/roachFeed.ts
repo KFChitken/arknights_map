@@ -5,12 +5,14 @@ import { rename, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import { and, asc, eq, gte, lte } from "drizzle-orm";
-import { ROACH_AVATARS, ROACH_COLORS } from "../types";
+import { fireCount } from "../talulah";
+import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import { botRoaches } from "../world/bots";
 import { nearMetre, packRoaches, SHORT_ID, shortIds } from "../world/packed";
 import type { MapRoach } from "../world/types";
 import { db } from "./db";
 import { SHOW_BOTS } from "./env";
+import { countNear, gridOf, snapSpot, type Grid } from "./nearby";
 import { roaches, users } from "./schema";
 
 /**
@@ -81,10 +83,19 @@ const viewOf = (form: FeedForm): View => (form === 3 ? "short" : "long");
 
 type Whole = { json: string; gzip: Buffer; br?: Buffer };
 
+/** What a visitor who has not signed in gets instead of the roaches (src/app/api/roaches): how many there are, by 塔露拉干员's fire, and riding with 明河都尉 */
+export type FeedCounts = { total: number; fire: number; riders: number };
+
 type Snapshot = {
   n: number;
   v: string;
   builtAt: number;
+  /** For visitors (FeedCounts), worked out when one first asks */
+  counts?: FeedCounts;
+  /** The roaches by degree (nearby.ts), made when a visitor first asks what is near a spot */
+  grid?: Grid;
+  /** Answers about spots already asked about, by the snapped spot */
+  around?: Map<string, { near: number; far: number }>;
   /** Every roach as the feed gives it, places to the metre, with its public id */
   list: MapRoach[];
   /** A hash of each roach's look and place (hashOf), by public id: what the next rebuild compares */
@@ -375,6 +386,30 @@ export async function roachFeed(since: string | null, now = Date.now(), form: Fe
     s.diffs.set(key, json);
   }
   return { kind: "diff", v: s.v, json };
+}
+
+/** The counts a visitor who has not signed in gets in place of the roaches, at the snapshot's version */
+export async function roachCounts(now = Date.now()): Promise<{ v: string } & FeedCounts> {
+  const s = await current(now);
+  s.counts ??= { total: s.list.length, fire: fireCount(s.list), riders: s.list.reduce((k, r) => k + (r.ride ? 1 : 0), 0) };
+  return { v: s.v, ...s.counts };
+}
+
+const AROUND_KEPT = 5000;
+
+/** Roaches near a spot, roughly (nearby.ts), for a visitor who has not signed in; the same spot is counted once per snapshot */
+export async function roachesNear(spot: LngLat, now = Date.now()): Promise<{ near: number; far: number }> {
+  const s = await current(now);
+  const at = snapSpot(spot);
+  const key = `${at.lng},${at.lat}`;
+  const asked = (s.around ??= new Map());
+  let counts = asked.get(key);
+  if (!counts) {
+    counts = countNear((s.grid ??= gridOf(s.list)), at);
+    if (asked.size >= AROUND_KEPT) asked.clear();
+    asked.set(key, counts);
+  }
+  return counts;
 }
 
 /** What FEED_STATE holds; format says which code wrote it */

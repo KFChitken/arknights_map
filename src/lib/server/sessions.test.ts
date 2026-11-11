@@ -1,6 +1,7 @@
+import { createHash, randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { endSessionsExcept, renewSessionById } from "./auth";
+import { endSessionsExcept, forgetSessionChecks, renewSessionById, SESSION_CHECK_MS, sessionAlive } from "./auth";
 import { db } from "./db";
 import { pruneOldActivity } from "./retention";
 import { sessions, users } from "./schema";
@@ -21,7 +22,14 @@ const endOf = async (id: string) => (await db.select({ at: sessions.expiresAt })
 
 beforeEach(async () => {
   await db.execute(sql`truncate ${users} cascade`);
+  forgetSessionChecks();
 });
+
+/** A cookie token and the id its session is kept under */
+function token() {
+  const t = randomBytes(32).toString("base64url");
+  return { t, id: createHash("sha256").update(t).digest("base64url") };
+}
 
 describe("sessions", () => {
   it("runs a session in use 30 days from now again, at most once a day, and never one that ran out", async () => {
@@ -53,6 +61,41 @@ describe("sessions", () => {
     expect(await endSessionsExcept(u, "this")).toBe(2);
     const left = (await db.select({ id: sessions.id }).from(sessions)).map((s) => s.id).sort();
     expect(left).toEqual(["theirs", "this"]);
+  });
+
+  it("believes a session is signed in for ten minutes, and looks again after", async () => {
+    const u = await player("p@example.com");
+    const { t, id } = token();
+    await session(u, id, 20);
+    const now = Date.now();
+    expect(await sessionAlive(t, now)).toBe(true);
+    // ended where this process does not hear of it: still believed until the ten minutes are up
+    await db.delete(sessions).where(eq(sessions.id, id));
+    expect(await sessionAlive(t, now + 60_000)).toBe(true);
+    expect(await sessionAlive(t, now + SESSION_CHECK_MS + 1)).toBe(false);
+  });
+
+  it("believes a token that signs nobody in for a minute only", async () => {
+    const u = await player("p@example.com");
+    const { t, id } = token();
+    const now = Date.now();
+    expect(await sessionAlive(t, now)).toBe(false);
+    await session(u, id, 20);
+    expect(await sessionAlive(t, now + 30_000)).toBe(false);
+    expect(await sessionAlive(t, now + 61_000)).toBe(true);
+  });
+
+  it("stops believing the sessions it ends itself at once", async () => {
+    const u = await player("p@example.com");
+    const phone = token();
+    const laptop = token();
+    await session(u, phone.id, 20);
+    await session(u, laptop.id, 20);
+    const now = Date.now();
+    expect(await sessionAlive(phone.t, now)).toBe(true);
+    await endSessionsExcept(u, laptop.id);
+    expect(await sessionAlive(phone.t, now + 1000)).toBe(false);
+    expect(await sessionAlive(laptop.t, now + 1000)).toBe(true);
   });
 
   it("forgets sessions that ran out more than a day ago", async () => {

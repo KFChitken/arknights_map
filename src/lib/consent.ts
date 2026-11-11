@@ -7,9 +7,9 @@ import { MIN_SIGNUP_AGE } from "./rules";
  */
 export const ADULT_TICK = `我已满 ${MIN_SIGNUP_AGE} 岁`;
 export const CROSS_BORDER_TICK = "我同意把我的信息存到腾讯云香港服务器，并由 Resend USA 发送验证码邮件";
-export const PUBLIC_PLACE_TICK = "我同意注册舟P和网站游客看到我放下的蟑螂的确切位置";
+export const PUBLIC_PLACE_TICK = "我同意注册舟P看到我放下的蟑螂的确切位置";
 /** Said once, before the first roach a player puts down */
-export const PUBLIC_PLACE_NOTE = "放下以后，注册舟P和网站游客都能看到这只蟑螂的确切位置。请不要放在家门口。";
+export const PUBLIC_PLACE_NOTE = "放下以后，登录的舟P都能看到这只蟑螂的确切位置。请不要放在家门口。";
 
 export type Tick = "adult" | "acceptPolicy" | "acceptCrossBorder" | "acceptPublicPlace";
 

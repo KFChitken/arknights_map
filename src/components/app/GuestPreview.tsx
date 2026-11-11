@@ -1,36 +1,20 @@
 "use client";
 
-import { distanceKm } from "@/lib/geo";
+import { roughText } from "@/lib/counts";
 import { DECLARATION_RADIUS_KM, RADAR_RADIUS_KM, SITE_NAME } from "@/lib/rules";
-import type { LngLat } from "@/lib/types";
-import type { MapRoach } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 /**
- * What a visitor who has not signed in can try: tap the map to see where their
- * roach would go and who is around, counted in the browser from the public
- * roach list. Nothing of it is sent to the server or kept.
+ * What a visitor who has not signed in can try: tap the map to see where their roach would go and
+ * about how many are around. They get nobody's roaches (their map is 全员隐匿), so the server counts,
+ * from the spot to about a kilometre (src/app/api/around), and keeps nothing of it.
  */
 
-/** Roaches within the declaration and radar radii of a spot, as the map shows them. */
-export function roachesAround(roaches: MapRoach[], spot: LngLat) {
-  let near = 0;
-  let far = 0;
-  for (const r of roaches) {
-    const d = distanceKm(spot, r);
-    if (d > RADAR_RADIUS_KM) continue;
-    far += 1;
-    if (d <= DECLARATION_RADIUS_KM) near += 1;
-  }
-  return { near, far };
-}
-
-const about = (n: number) => (n < 100 ? `${n} 只` : `${Math.floor(n / 100) * 100} 多只`);
-
+/** Counts rounded down by the server (counts.ts rough), in words */
 function aroundText({ near, far }: { near: number; far: number }) {
   if (far === 0) return "这附近还没有舟P，来当第一只吧！";
-  const close = near ? `${DECLARATION_RADIUS_KM} 公里内有 ${about(near)}舟P` : `${DECLARATION_RADIUS_KM} 公里内还没有舟P`;
-  return `${close}，${RADAR_RADIUS_KM} 公里内有 ${about(far)}。`;
+  const close = near ? `${DECLARATION_RADIUS_KM} 公里内有 ${roughText(near)}舟P` : `${DECLARATION_RADIUS_KM} 公里内还没有舟P`;
+  return `${close}，${RADAR_RADIUS_KM} 公里内有 ${roughText(far)}。`;
 }
 
 export function PreviewCard({
@@ -38,7 +22,8 @@ export function PreviewCard({
   onPlace,
   onClose,
 }: {
-  around: { near: number; far: number };
+  /** null while the server counts; failed: it could not */
+  around: { near: number; far: number } | "failed" | null;
   onPlace: () => void;
   onClose: () => void;
 }) {
@@ -47,7 +32,7 @@ export function PreviewCard({
       <div className="card-head">
         <div>
           <strong>如果你把蟑螂放在这里</strong>
-          <p className="muted">{aroundText(around)}</p>
+          <p className="muted">{around === "failed" ? "现在数不了，等一下再点点看。" : around ? aroundText(around) : "数一下……"}</p>
         </div>
       </div>
       <button className="primary wide" onClick={onPlace}>
@@ -88,7 +73,7 @@ export function WelcomeSheet({ onClose }: { onClose: () => void }) {
     >
       <p style={{ marginTop: 0 }}>都说舟P像蟑螂一样多，但事实如此吗？</p>
       <p>地图上的每只蟑螂都有着厚厚的伪装，而伪装下面是了解其他蟑螂的渴望。</p>
-      <p>点地图任意一处，看看那附近有多少舟P。想放下自己的蟑螂，用邮箱收个验证码就能登录，不用密码。</p>
+      <p>点地图任意一处，看看那附近大约有多少舟P；登录后就能看到大家在哪。想放下自己的蟑螂，用邮箱收个验证码就能登录，不用密码。</p>
     </Sheet>
   );
 }

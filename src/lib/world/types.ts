@@ -26,10 +26,13 @@ export interface World {
   /** Her 离开计时 on or off, from her card or 资料; off forgets the time kept and her reports of it. */
   setPerlicaTimer(on: boolean): Promise<void>;
   /**
-   * Everyone's roaches, your own included, as one feed shared by every viewer.
+   * Everyone's roaches, your own included, as one feed shared by every signed-in viewer.
    * Pass the version you hold to get only what changed since (see RoachFeedUpdate).
+   * Not signed in: no roaches, only how many there are (VisitorFeed).
    */
-  roachFeed(since: string | null): Promise<RoachFeedUpdate>;
+  roachFeed(since: string | null): Promise<RoachFeedUpdate | VisitorFeed>;
+  /** For a visitor who has not signed in: about how many roaches are near a spot (counts.ts rough), counted by the server */
+  around(spot: LngLat, signal?: AbortSignal): Promise<{ near: number; far: number }>;
   saveProfile(profile: Profile): Promise<Profile>;
   /** Place or move a roach. Returns the owner's roaches afterwards. A new one needs acceptPublicPlace first. */
   placeRoach(target: PlaceTarget, at: LngLat): Promise<OwnRoach[]>;
@@ -196,6 +199,12 @@ export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
  * which order things changed.
  */
 export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; packed?: PackedRoaches; changed?: MapRoach[]; removed?: string[] };
+
+/**
+ * What the feed gives someone not signed in, whose map is 全员隐匿: how many roaches there are in all, by
+ * 塔露拉干员's fire, and riding with 明河都尉, at version v. No roaches at all.
+ */
+export type VisitorFeed = { v: string; hidden: true; total: number; fire: number; riders: number };
 
 /**
  * newFriend: the other player's name when this touch made you 触须之交.

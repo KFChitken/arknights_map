@@ -27,6 +27,7 @@ import {
   type Radar,
   type RideTarget,
   type RoachFeedUpdate,
+  type VisitorFeed,
   type TouchResult,
   type World,
 } from "./types";
@@ -67,7 +68,7 @@ export class ServerWorld implements World {
   };
   setPerlicaTimer = (on: boolean) => this.call<void>("setPerlicaTimer", on);
   // A GET, so a browser that already holds the whole snapshot gets a 304 for it; f=3: packed, and with short ids
-  roachFeed = async (since: string | null): Promise<RoachFeedUpdate> => {
+  roachFeed = async (since: string | null): Promise<RoachFeedUpdate | VisitorFeed> => {
     let res: Response;
     try {
       res = await fetch(since ? `/api/roaches?since=${encodeURIComponent(since)}&f=3` : "/api/roaches?f=3", {
@@ -76,10 +77,17 @@ export class ServerWorld implements World {
     } catch {
       throw new WorldError("连不上服务器，检查一下网络再试。");
     }
-    const body = (await res.json().catch(() => null)) as (RoachFeedUpdate & { error?: string }) | null;
+    const body = (await res.json().catch(() => null)) as ((RoachFeedUpdate | VisitorFeed) & { error?: string }) | null;
     if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body;
+  };
+  // the spot to two places of a degree: the server counts no finer, so nothing finer is sent
+  around = async (spot: LngLat, signal?: AbortSignal) => {
+    const res = await fetch(`/api/around?lng=${spot.lng.toFixed(2)}&lat=${spot.lat.toFixed(2)}`, { signal, cache: "no-store" });
+    const body = (await res.json().catch(() => null)) as { near: number; far: number; error?: string } | null;
+    if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    return { near: body.near, far: body.far };
   };
   saveProfile = (p: Profile) => this.call<Profile>("saveProfile", p);
   placeRoach = (target: PlaceTarget, at: LngLat) => this.call<OwnRoach[]>("placeRoach", target, at);
