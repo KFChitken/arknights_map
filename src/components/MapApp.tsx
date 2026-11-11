@@ -790,6 +790,42 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       setFocus({ lng, lat, zoom, nonce: Date.now() });
   }, []);
 
+  // Development only, to measure the map with a crowd the size of the live site's: zhoupFakeFeed(n) puts n made-up
+  // roaches in the feed as a whole list (as on opening), zhoupFeedTick(k) moves k of them as an update does (every
+  // two minutes), and zhoupOffStage(id) takes one off the map as a touch scene does (null puts it back). The next
+  // update from the server replaces them.
+  const [devOffStage, setDevOffStage] = useState<string | null>(null);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    let fake: MapRoach[] = [];
+    let v = 0;
+    const w = window as { zhoupFakeFeed?: unknown; zhoupFeedTick?: unknown; zhoupOffStage?: unknown };
+    w.zhoupFakeFeed = async (n: number) => {
+      const { generateFakeRoaches } = await import("@/lib/fakeRoaches");
+      const looks = ["hood", "doctor", "endmin", "imp"] as const;
+      fake = generateFakeRoaches(n, 20261111).map((r, i) => ({
+        id: `fake${String(i).padStart(6, "0")}`,
+        clone: i % 5 === 0,
+        avatar: looks[i % looks.length],
+        color: r.color,
+        lng: r.lng,
+        lat: r.lat,
+        ...(i % 97 === 0 ? { asleep: true as const } : {}),
+      }));
+      feedRef.current.apply({ v: `fake-${++v}`, roaches: fake });
+      setFeedRoaches(feedRef.current.roaches);
+    };
+    w.zhoupFeedTick = (k = 150) => {
+      const changed = Array.from({ length: k }, () => {
+        const i = Math.floor(Math.random() * fake.length);
+        fake[i] = { ...fake[i], lng: fake[i].lng + 0.002, lat: fake[i].lat + 0.002 };
+        return fake[i];
+      });
+      if (feedRef.current.apply({ v: `fake-${++v}`, changed })) setFeedRoaches(feedRef.current.roaches);
+    };
+    w.zhoupOffStage = (id: string | null) => setDevOffStage(id);
+  }, []);
+
   // Roaches others placed or moved: every two minutes (once a minute from some 20,000 pages was more than the
   // server could keep up with), and when the page comes back into view, ask only what changed
   useEffect(() => {
@@ -988,7 +1024,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     if (tutorialMain) setFocus({ lng: tutorialMain.lng, lat: tutorialMain.lat, zoom: 11, nonce: Date.now() });
   };
   // whoever acts out a scene over the map is left out of it meanwhile
-  const offStage = poking?.id ?? jolting?.roach.id ?? touchScene?.target;
+  const offStage = poking?.id ?? jolting?.roach.id ?? touchScene?.target ?? devOffStage ?? undefined;
   const shownRoaches = useMemo(() => (offStage ? roaches.filter((r) => r.id !== offStage) : roaches), [roaches, offStage]);
 
   const countVisible = useCallback(
