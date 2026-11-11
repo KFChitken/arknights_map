@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { iconPx } from "@/lib/swarm";
-import { thinMasks } from "./roachGl";
+import { crowdOf, thinMasks } from "./roachGl";
 
 // 高德 zoom 2..7: which square of the screen half an icon wide a roach is in
 const cellOf = (r: { lng: number; lat: number }, zoom: number) => {
@@ -43,5 +43,20 @@ describe("thinMasks", () => {
 
   it("leaves a lone roach at every zoom", () => {
     for (const i of [400, 401, 402]) expect(masks[i]).toBe(2 ** 6 - 1);
+  });
+});
+
+describe("crowdOf", () => {
+  it("counts the roaches in the 3×3 cells around each, a kilometre or so across at Shanghai", () => {
+    const here = { lng: 121.47, lat: 31.23 };
+    const list = [
+      ...Array.from({ length: 9 }, (_, i) => ({ lng: here.lng + i * 1e-5, lat: here.lat })),
+      { lng: 116.4, lat: 39.9 },
+    ];
+    const c = crowdOf(list);
+    // nine together: 9 / 9 for each of them; the one in Beijing alone: 1 / 9
+    expect([...c.slice(0, 9)].every((v) => Math.abs(v - 1) < 1e-6)).toBe(true);
+    expect(c[9]).toBeCloseTo(1 / 9);
+    expect(crowdOf([])).toHaveLength(0);
   });
 });

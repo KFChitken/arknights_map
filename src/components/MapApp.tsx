@@ -75,6 +75,17 @@ import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types
 import { RoachFeedCopy } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach } from "@/lib/world/packed";
+import {
+  DEFAULT_MAP_STYLE,
+  HEARTS_READY,
+  loadMapStyle,
+  MAP_STYLE_NAMES,
+  mapStyleSeen,
+  markMapStyleSeen,
+  saveMapStyle,
+  type MapStyle,
+} from "@/lib/mapStyle";
+import MapStylePicker from "./app/MapStylePicker";
 import { ServerWorld } from "@/lib/world/server";
 import {
   AgeCheckNeeded,
@@ -343,6 +354,13 @@ export default function MapApp({ cn }: { cn: boolean }) {
   // a change waiting for the other map to finish drawing itself
   const wanted = useRef<"abroad" | "home" | null>(null);
   const [look, setLook] = useState<RoachStyle>("cartoon");
+  // 地图画风 (src/lib/mapStyle.ts): this device's pick; 默认 until it is read in the browser
+  const [mapStyle, setMapStyle] = useState<MapStyle>(DEFAULT_MAP_STYLE);
+  // a map here cannot draw 舟u本色's hearts (no GPU layer)
+  const [heartsOff, setHeartsOff] = useState(false);
+  // once per device: say the style can be changed
+  const [styleHint, setStyleHint] = useState(false);
+  const [topRaised, setTopRaised] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   // Who is signed in comes a moment after the map on a slow line. A browser that was signed in last time
   // (it remembers the main roach, lib/lastHome) is not shown 「登录」 meanwhile: on every refresh that
@@ -652,6 +670,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
         }
       }
       setLook(loadLook());
+      setMapStyle(loadMapStyle());
+      setStyleHint(!mapStyleSeen());
       setBasemap(b);
     };
     const waiting = window.setTimeout(() => void startMap(null), loadHome() ? 0 : MAP_WAIT_MS);
@@ -986,6 +1006,19 @@ export default function MapApp({ cn }: { cn: boolean }) {
     saveLook(l);
     setLook(l);
   };
+
+  const switchMapStyle = (s: MapStyle) => {
+    if (s === mapStyle) return;
+    saveMapStyle(s);
+    setMapStyle(s);
+    setToast(`已换成「${MAP_STYLE_NAMES[s]}」`);
+  };
+  const styleHintDone = useCallback(() => {
+    setStyleHint(false);
+    markMapStyleSeen();
+  }, []);
+  // 舟u本色 where its hearts cannot be drawn (yet, or on this device) is drawn as 默认; the pick is kept
+  const drawnStyle: MapStyle = mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
 
   const startPlacing = (target: PlaceTarget) => {
     // say so before they pick a spot, not after
@@ -2580,6 +2613,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     myAvatar,
     myColor,
     look,
+    mapStyle: drawnStyle,
+    onHeartsUnavailable: () => setHeartsOff(true),
     initialView: viewRef.current,
     placing: Boolean(placing),
     focus,
@@ -2976,13 +3011,22 @@ export default function MapApp({ cn }: { cn: boolean }) {
 
   return (
     <main className={`app ${basemap === "amap" && !amapFailed && !(twoMaps && abroad) ? "on-amap" : ""}`}>
-      <header className="topbar">
+      <header className={`topbar${topRaised ? " raised" : ""}`}>
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
           <span>{SITE_NAME}</span>
           <span className="tag">内测版</span>
         </div>
-        <div className="switches">
+        <div className={`switches${cn ? "" : " with-basemap"}`}>
+          <MapStylePicker
+            style={mapStyle}
+            onPick={switchMapStyle}
+            unavailable={!HEARTS_READY ? { hearts: "很快就有" } : heartsOff ? { hearts: "这台设备画不了爱心" } : {}}
+            // once the map is up (a slow line can take a while), not while placing or in the tutorial
+            hint={styleHint && visible !== null && !placing && !step}
+            onHintDone={styleHintDone}
+            onRaise={setTopRaised}
+          />
           {/* 写实 is off for now (src/lib/look.ts) */}
           {REAL_LOOK_OFFERED && (
             <div className="basemap-switch" role="group" aria-label="蟑螂外观">

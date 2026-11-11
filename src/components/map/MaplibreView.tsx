@@ -37,6 +37,8 @@ import {
 import { reportMapTrouble } from "./report";
 import { addMaplibreSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
+import { heartsLayer, type HeartDot, type HeartsLayer } from "./heartsGl";
+import type { HeartMode } from "./roachGl";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
 
@@ -227,6 +229,24 @@ async function ensureImages(map: maplibregl.Map, ids: Set<string>) {
   );
 }
 
+/** 舟u本色's hearts: rising, or still with motion turned down; none in the other styles */
+const heartModeOf = (style: MapViewProps["mapStyle"]): HeartMode => (style === "hearts" ? (prefersReducedMotion() ? "still" : "float") : "off");
+
+/** The roaches with hearts: everyone's awake ones, in their crawl group, and yours, awake, that keep still */
+function heartDots(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep">): HeartDot[] {
+  const dots: HeartDot[] = [];
+  for (const r of p.roaches) {
+    if (r.asleep) continue;
+    const t = roachTraits(r.id, LAYER_GROUPS, HEADINGS.length);
+    dots.push({ lng: r.lng, lat: r.lat, seed: t.seed, group: t.group, kind: r.friend ? 2 : r.clone ? 1 : 0 });
+  }
+  for (const r of p.mine) {
+    if (p.mineAsleep && r.slot === 0) continue;
+    dots.push({ lng: r.lng, lat: r.lat, seed: roachTraits(r.id, LAYER_GROUPS, HEADINGS.length).seed, group: -1, kind: 3 });
+  }
+  return dots;
+}
+
 function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
@@ -284,6 +304,9 @@ export default function MaplibreView(props: MapViewProps) {
   const overlaysRef = useRef(new Map<string, maplibregl.Marker>());
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
+  // 舟u本色: the hearts' layer, made the first time they are wanted, and the crawl groups' last offsets it follows
+  const heartsRef = useRef<HeartsLayer | null>(null);
+  const offsetsRef = useRef<[number, number][] | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -382,6 +405,7 @@ export default function MaplibreView(props: MapViewProps) {
         await ensureImages(map, neededImages(p));
         if (mapRef.current !== map) return;
         (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.mineAsleep, p.ghost, p.myAvatar, p.myColor));
+        if (heartModeOf(p.mapStyle) !== "off") heartsRef.current?.setDots(heartDots(p));
         if (what === "mine") return;
         (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
         for (const id of ROACH_LAYERS) {
@@ -396,6 +420,26 @@ export default function MaplibreView(props: MapViewProps) {
   };
   const syncAll = () => sync("all");
   const syncMine = () => sync("mine");
+
+  /** 舟u本色: the hearts' layer made (on top of everything) the first time they are wanted, then on or off */
+  const showHearts = () => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const p = propsRef.current;
+    const mode = heartModeOf(p.mapStyle);
+    if (mode !== "off" && !heartsRef.current) {
+      heartsRef.current = heartsLayer({
+        offsets: () => offsetsRef.current,
+        onFail: (why) => {
+          console.warn("hearts:", why);
+          propsRef.current.onHeartsUnavailable?.();
+        },
+      });
+      map.addLayer(heartsRef.current);
+    }
+    if (mode !== "off") heartsRef.current?.setDots(heartDots(p));
+    heartsRef.current?.setMode(mode);
+  };
 
   useEffect(() => {
     const { initialView } = propsRef.current;
@@ -473,10 +517,13 @@ export default function MaplibreView(props: MapViewProps) {
       last = t;
       const scale = iconPx(map.getZoom()) / 24;
       const { look } = propsRef.current;
+      const offsets: [number, number][] = [];
       ROACH_LAYERS.forEach((id, g) => {
         const c = crawl(g + 1, t, look, scale);
         map.setPaintProperty(id, "icon-translate", [c.dx, c.dy]);
+        offsets.push([c.dx, c.dy]);
       });
+      offsetsRef.current = offsets;
     };
 
     map.on("load", async () => {
@@ -494,7 +541,8 @@ export default function MaplibreView(props: MapViewProps) {
       map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
       map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, mineAsleep, ghost, myAvatar, myColor) });
 
-      // Dark swarm under the icons so crowded cities read as covered in roaches
+      // Dark swarm under the icons so crowded cities read as covered in roaches, in 国度版 only (地图画风):
+      // hidden otherwise, which costs next to nothing, as MapLibre leaves a hidden layer alone
       const ramp = Object.entries(SWARM_GRADIENT)
         .map(([k, v]) => [Number(k), v] as const)
         .sort((a, b) => a[0] - b[0])
@@ -504,6 +552,7 @@ export default function MaplibreView(props: MapViewProps) {
         type: "heatmap",
         source: "roaches",
         maxzoom: SWARM_FADE_ZOOM + 1,
+        layout: { visibility: propsRef.current.mapStyle === "nation" ? "visible" : "none" },
         paint: {
           "heatmap-weight": 1,
           "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 6, 1.2, SWARM_FADE_ZOOM, 2],
@@ -560,6 +609,7 @@ export default function MaplibreView(props: MapViewProps) {
       });
 
       readyRef.current = true;
+      showHearts();
       window.clearTimeout(loadTimer);
       crawlRef.current?.start();
       reportView();
@@ -632,6 +682,13 @@ export default function MaplibreView(props: MapViewProps) {
     const map = mapRef.current;
     if (map) map.getCanvas().style.cursor = props.placing ? "crosshair" : "";
   }, [props.placing]);
+
+  // 地图画风: the dark swarm shown in 国度版 only, and 舟u本色's hearts
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current && map.getLayer("swarm")) map.setLayoutProperty("swarm", "visibility", props.mapStyle === "nation" ? "visible" : "none");
+    showHearts();
+  }, [props.mapStyle]);
 
   // a hidden map leaves the flying to the one on show
   useEffect(() => {

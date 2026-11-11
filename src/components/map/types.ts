@@ -2,6 +2,7 @@ import type { GuideId } from "@/lib/guides";
 import type { FireLevel } from "@/lib/talulah";
 import type { StyleSpecification } from "maplibre-gl";
 import { hash128 } from "@/lib/prng";
+import type { MapStyle } from "@/lib/mapStyle";
 import type { LngLat, MapFocus, MapView, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 
@@ -26,6 +27,10 @@ export type MapViewProps = {
   myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
+  /** 地图画风 (src/lib/mapStyle.ts): the dark swarm only in 国度版, and nothing heavy built for the others */
+  mapStyle: MapStyle;
+  /** This map cannot draw 舟u本色's hearts (no GPU layer); it then draws 默认 */
+  onHeartsUnavailable?: () => void;
   initialView: MapView;
   /** While placing, every tap is a spot on the map, even on top of a roach */
   placing: boolean;

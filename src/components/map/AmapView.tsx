@@ -32,7 +32,7 @@ import {
   updateGuide,
 } from "./guideMarker";
 import { listenToAmapConsole, reportMapTrouble } from "./report";
-import { roachGl, type GlRoach, type RoachGl } from "./roachGl";
+import { roachGl, type GlRoach, type HeartMode, type RoachGl } from "./roachGl";
 import { swarmGl } from "./swarmGl";
 import { amapSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
@@ -196,7 +196,7 @@ function glRoaches(groups: MassPoint[][]): GlRoach[] {
   return groups
     .flat()
     .sort((a, b) => Number(a.friend) - Number(b.friend))
-    .map((p) => ({ id: p.id, lng: p.lng, lat: p.lat, style: styleIndex(p, "cartoon", 0), still: p.asleep, seed: p.seed }));
+    .map((p) => ({ id: p.id, lng: p.lng, lat: p.lat, style: styleIndex(p, "cartoon", 0), still: p.asleep, seed: p.seed, friend: p.friend, clone: p.clone }));
 }
 
 /** Every roach of a batch where its own crawl puts it at time t (ms), or at rest when t is null. */
@@ -283,13 +283,28 @@ function heatData(roaches: PublicRoach[]) {
   };
 }
 
+/** 舟u本色's hearts: rising, or still with motion turned down; none in the other styles */
+const heartModeOf = (style: MapViewProps["mapStyle"]): HeartMode => (style === "hearts" ? (prefersReducedMotion() ? "still" : "float") : "off");
+
 /** The dark swarm, drawn by the GPU (swarmGl.ts) or by 高德's HeatMap */
 type Swarm = { set: (roaches: PublicRoach[]) => void; destroy: () => void };
 
-async function mineIcon(r: OwnRoach, avatar: RoachAvatar, color: RoachColor, look: RoachStyle, ghost: boolean, asleep: boolean) {
-  const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look, asleep: asleep && r.slot === 0 && !ghost });
+async function mineIcon(
+  r: OwnRoach,
+  avatar: RoachAvatar,
+  color: RoachColor,
+  look: RoachStyle,
+  ghost: boolean,
+  asleep: boolean,
+  hearts: HeartMode,
+) {
+  const lying = asleep && r.slot === 0 && !ghost;
+  const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look, asleep: lying });
   const label = ghost ? "放在这里" : r.slot > 0 ? "我的克隆体" : "我的蟑螂";
-  return `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer${ghost ? ";opacity:.55" : ""}"/>`;
+  const img = `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer;display:block${ghost ? ";opacity:.55" : ""}"/>`;
+  // 舟u本色: your own roaches have hearts too (globals.css .mine-hearts), but not one lying drunk, nor the preview
+  if (hearts === "off" || ghost || lying) return img;
+  return `<span class="mine-hearts${hearts === "still" ? " still" : ""}">${img}<i></i><i></i></span>`;
 }
 
 export default function AmapView(props: MapViewProps) {
@@ -308,6 +323,8 @@ export default function AmapView(props: MapViewProps) {
   // pick them again for where the map is now, and hand them over
   const reshowRef = useRef<() => void>(() => {});
   const heatRef = useRef<Swarm | null>(null);
+  // the dark swarm is made only for 国度版 (props.mapStyle): how to make it and drop it as the style changes
+  const swarmRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const mineRef = useRef<AMapNS[]>([]);
   const amapRef = useRef<AMapNS>(null);
   const lastHitRef = useRef(0);
@@ -445,7 +462,8 @@ export default function AmapView(props: MapViewProps) {
     const { mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
     // a visitor's preview spot is drawn like a main roach of yours, faded
     const spots = ghost ? [...mine, { id: "ghost", slot: 0, publicId: "", ...ghost }] : mine;
-    const icons = await Promise.all(spots.map((r) => mineIcon(r, myAvatar, myColor, look, r.id === "ghost", mineAsleep)));
+    const hearts = heartModeOf(propsRef.current.mapStyle);
+    const icons = await Promise.all(spots.map((r) => mineIcon(r, myAvatar, myColor, look, r.id === "ghost", mineAsleep, hearts)));
     if (seq !== mineSeq.current || mapRef.current !== map) return;
     if (mineRef.current.length) map.remove(mineRef.current);
     mineRef.current = spots.map((r, i) => {
@@ -510,31 +528,53 @@ export default function AmapView(props: MapViewProps) {
         map.addControl(new AMap.Scale());
         map.addControl(new AMap.ToolBar({ position: "RB" }));
 
-        // Dark swarm over the cartoon icons so crowded cities read as covered in roaches: drawn by the GPU,
-        // or by 高德's HeatMap where it cannot be (that one costs the phone dearly when zoomed far out)
-        const amapHeat = () => {
-          const heat = new AMap.HeatMap(map, { ...SWARM, zIndex: HEAT_Z });
-          heat.setDataSet(heatData(propsRef.current.roaches));
-          heatRef.current = { set: (roaches) => heat.setDataSet(heatData(roaches)), destroy: () => heat.setMap(null) };
+        // Dark swarm over the cartoon icons so crowded cities read as covered in roaches, in 国度版 only: drawn
+        // by the GPU, or by 高德's HeatMap where it cannot be (that one costs the phone dearly when zoomed far
+        // out). The other styles build none of it, which is what makes 默认 the lightest to open.
+        let swarmOn = false;
+        // a new one for every start and stop, so a heat map plugin arriving late is not drawn after a stop
+        let swarmSeq = 0;
+        const amapHeat = (seq: number) =>
+          // the plugin only comes when it is needed: 国度版 on a phone whose GPU layer cannot run
+          AMap.plugin("AMap.HeatMap", () => {
+            if (cancelled || seq !== swarmSeq) return;
+            const heat = new AMap.HeatMap(map, { ...SWARM, zIndex: HEAT_Z });
+            heat.setDataSet(heatData(propsRef.current.roaches));
+            heatRef.current = { set: (roaches) => heat.setDataSet(heatData(roaches)), destroy: () => heat.setMap(null) };
+          });
+        const startSwarm = () => {
+          if (swarmOn) return;
+          swarmOn = true;
+          const seq = ++swarmSeq;
+          const swarm = glOff()
+            ? null
+            : swarmGl(AMap, map, {
+                ...SWARM,
+                zIndex: HEAT_Z,
+                onFail: (why) =>
+                  window.setTimeout(() => {
+                    if (cancelled || seq !== swarmSeq || heatRef.current !== gpuSwarm) return;
+                    console.warn("swarm layer:", why);
+                    gpuSwarm?.destroy();
+                    heatRef.current = null;
+                    amapHeat(seq);
+                  }, 0),
+              });
+          const gpuSwarm: Swarm | null = swarm && { set: (roaches) => swarm.setPoints(roaches.map((r) => toGcj(r))), destroy: swarm.destroy };
+          if (gpuSwarm) {
+            heatRef.current = gpuSwarm;
+            gpuSwarm.set(propsRef.current.roaches);
+          } else amapHeat(seq);
         };
-        const swarm = glOff()
-          ? null
-          : swarmGl(AMap, map, {
-              ...SWARM,
-              zIndex: HEAT_Z,
-              onFail: (why) =>
-                window.setTimeout(() => {
-                  if (cancelled || heatRef.current !== gpuSwarm) return;
-                  console.warn("swarm layer:", why);
-                  gpuSwarm?.destroy();
-                  amapHeat();
-                }, 0),
-            });
-        const gpuSwarm: Swarm | null = swarm && { set: (roaches) => swarm.setPoints(roaches.map((r) => toGcj(r))), destroy: swarm.destroy };
-        if (gpuSwarm) {
-          heatRef.current = gpuSwarm;
-          gpuSwarm.set(propsRef.current.roaches);
-        } else amapHeat();
+        const stopSwarm = () => {
+          if (!swarmOn) return;
+          swarmOn = false;
+          swarmSeq++;
+          heatRef.current?.destroy();
+          heatRef.current = null;
+        };
+        swarmRef.current = { start: startSwarm, stop: stopSwarm };
+        if (propsRef.current.mapStyle === "nation") startSwarm();
 
         groupsRef.current = massGroups(propsRef.current.roaches);
         const onMassClick = (e: AMapNS) => {
@@ -568,25 +608,35 @@ export default function AmapView(props: MapViewProps) {
         // The cartoon look's roaches all drawn by the GPU, every one of them at no cost per roach
         // (roachGl.ts); MassMarks once more if this phone or 高德 cannot
         let glBroke = glOff();
+        // 舟u本色's hearts are drawn by the GPU layer, so without it this map cannot draw them
+        if (glBroke) propsRef.current.onHeartsUnavailable?.();
         const startGl = () => {
           const gl = roachGl(AMap, map, {
             zIndex: massZ("cartoon"),
             thinZoom: THIN_ZOOM,
+            // the roaches drawn, but not their hearts: 舟u本色 is drawn as 默认 on this phone
+            onHeartsFail: (why) => {
+              console.warn("hearts:", why);
+              propsRef.current.onHeartsUnavailable?.();
+            },
             // not in the middle of 高德's own drawing
             onFail: (why) =>
               window.setTimeout(() => {
                 if (glRef.current !== gl || cancelled) return;
                 glBroke = true;
+                propsRef.current.onHeartsUnavailable?.();
                 console.warn("roach layer:", why);
                 layRef.current();
               }, 0),
           });
           if (!gl) {
             glBroke = true;
+            propsRef.current.onHeartsUnavailable?.();
             return false;
           }
           glRef.current = gl;
           gl.setCrawl(!prefersReducedMotion());
+          gl.setHearts(heartModeOf(propsRef.current.mapStyle));
           gl.setRoaches(glRoaches(groupsRef.current));
           return true;
         };
@@ -772,6 +822,7 @@ export default function AmapView(props: MapViewProps) {
       massRef.current = [];
       heatRef.current?.destroy();
       heatRef.current = null;
+      swarmRef.current = null;
       mineRef.current = [];
       trailRef.current = [];
       guideMarkers.clear();
@@ -795,6 +846,13 @@ export default function AmapView(props: MapViewProps) {
     heatRef.current?.set(props.roaches);
   }, [props.roaches]);
 
+  // 地图画风: the dark swarm made or dropped, and the hearts, as the style changes, without a reload
+  useEffect(() => {
+    if (props.mapStyle === "nation") swarmRef.current?.start();
+    else swarmRef.current?.stop();
+    glRef.current?.setHearts(heartModeOf(props.mapStyle));
+  }, [props.mapStyle]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -812,7 +870,7 @@ export default function AmapView(props: MapViewProps) {
 
   // your own roaches are put down again only when they really change: the page hands over a new list
   // each time it draws, and 高德 redraws the map for each marker taken off and put back
-  const mineKey = JSON.stringify([props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look]);
+  const mineKey = JSON.stringify([props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor, props.look, props.mapStyle === "hearts"]);
   useEffect(() => {
     placeMine();
   }, [mineKey]);

@@ -21,7 +21,8 @@ export function loadAMap(): Promise<AMapNS> {
         AMapLoader.load({
           key: process.env.NEXT_PUBLIC_AMAP_KEY!,
           version: "2.0",
-          plugins: ["AMap.HeatMap", "AMap.Scale", "AMap.ToolBar"],
+          // AMap.HeatMap is loaded only when a map needs it (AmapView's dark swarm, where the GPU cannot draw it)
+          plugins: ["AMap.Scale", "AMap.ToolBar"],
         }),
       )
       .catch((e: unknown) => {

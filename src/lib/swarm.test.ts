@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cartoonCrawl, crawl, LEG_FRAMES, legFrame } from "./swarm";
+import { cartoonCrawl, crawl, heartRhythm, LEG_FRAMES, legFrame } from "./swarm";
 
 const track = (seed: number, look: "real" | "cartoon", ms = 20_000, every = 50) =>
   Array.from({ length: ms / every }, (_, i) => crawl(seed, i * every, look));
@@ -58,5 +58,20 @@ describe("cartoonCrawl", () => {
           expect(Math.abs(gpu.dx - cpu.dx)).toBeLessThan(0.01);
           expect(Math.abs(gpu.dy - cpu.dy)).toBeLessThan(0.01);
         }
+  });
+});
+
+describe("heartRhythm", () => {
+  it("gives each roach its own steady beat: where in its cycle, a cycle of 2.4–3.3 s, left or right", () => {
+    const beats = Array.from({ length: 200 }, (_, i) => heartRhythm(i * 7919 + 1));
+    for (const [phase, period, side] of beats) {
+      expect(phase).toBeGreaterThanOrEqual(0);
+      expect(phase).toBeLessThan(1);
+      expect(period).toBeGreaterThanOrEqual(2400);
+      expect(period).toBeLessThan(3300);
+      expect(Math.abs(side)).toBeLessThanOrEqual(1);
+    }
+    expect(heartRhythm(42)).toEqual(heartRhythm(42));
+    expect(new Set(beats.map((b) => b[1].toFixed(1))).size).toBeGreaterThan(150);
   });
 });

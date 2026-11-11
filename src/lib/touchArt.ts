@@ -173,7 +173,8 @@ export const mark = (ch: "?" | "!") =>
     24,
   );
 
-const HEART_D =
+/** The site's heart, in a 24×23 box */
+export const HEART_D =
   "M12 21.4 C4.4 16 1.4 11.8 1.4 7.6 C1.4 4.3 4 1.8 7.1 1.8 C9.1 1.8 10.9 2.9 12 4.6 C13.1 2.9 14.9 1.8 16.9 1.8 C20 1.8 22.6 4.3 22.6 7.6 C22.6 11.8 19.6 16 12 21.4 Z";
 
 export const bigHeart = (w = 30) =>

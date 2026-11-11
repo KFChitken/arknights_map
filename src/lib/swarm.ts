@@ -78,6 +78,14 @@ export function cartoonCrawl(seed: number): [number, number, number, number, num
   return [r(1) * Math.PI * 2, 0.7 + r(2) * 0.8, 130 + r(3) * 80, 0.6 + r(4) * 0.8, 1.1 + r(5) * 0.5];
 }
 
+/**
+ * 舟u本色: when one roach's hearts rise, worked out once, like its crawl (roachGl.ts draws them).
+ * [where in its cycle it starts (0..1), its cycle in ms, how far left or right of it they rise (-1..1)]
+ */
+export function heartRhythm(seed: number): [number, number, number] {
+  return [rand(seed, 11), 2400 + rand(seed, 12) * 900, rand(seed, 13) * 2 - 1];
+}
+
 export type Crawl = {
   /** Screen offset in px */
   dx: number;
