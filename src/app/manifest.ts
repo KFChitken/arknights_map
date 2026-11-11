@@ -3,8 +3,9 @@ import { SITE_NAME } from "@/lib/rules";
 
 /**
  * Lets players put the site on their desktop or home screen and open it without the browser bars
- * (存到桌面, src/components/app/HomeScreen.tsx). The icons come from one picture (scripts/make-icons.mjs);
- * the screenshots are what Chrome's install window shows.
+ * (存到桌面, src/components/app/HomeScreen.tsx). The icons are a day map with the roach on it, the maskable
+ * one a little smaller so all of it sits inside the circle Android crops to; the screenshots are what
+ * Chrome's install window shows.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
