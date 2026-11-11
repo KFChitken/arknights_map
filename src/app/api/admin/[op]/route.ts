@@ -3,6 +3,7 @@ import type { AdminAction, CaseQuery } from "@/lib/safety";
 import {
   answerAppeal,
   banInfo,
+  clearBlockedNames,
   findPlayers,
   isAdmin,
   openAppeals,
@@ -18,8 +19,7 @@ import {
 import { appCountDays } from "@/lib/server/appCounts";
 import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "@/lib/server/nameWords";
-import { clearName } from "@/lib/server/safety";
+import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
 import { ackIncident, siteStatus } from "@/lib/server/watchReport";
 
 /** The admin page's endpoints (src/components/AdminApp.tsx). Anyone else gets the same 404 as a missing page. */
@@ -91,7 +91,14 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await appCountDays();
       break;
     case "nameWords":
-      result = { ...(await listNameWords(String(args[0] ?? ""))), hits: await namesHit() };
+      result = await listNameWords(String(args[0] ?? ""));
+      break;
+    // every named player is read for this, so only when the page asks, not on each search
+    case "nameHits":
+      result = await namesHit();
+      break;
+    case "testName":
+      result = await testName(args[0]);
       break;
     case "addNameWords":
       result = await addNameWords(String(args[0] ?? ""));
@@ -102,12 +109,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "removeNameWord":
       await removeNameWord(String(args[0]));
       break;
-    case "clearName": {
-      const id = String(args[0]);
-      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(400, "没有这个账号。");
-      await clearName(id);
+    // names the list blocks, cleared with a 站长通知: args[0] the accounts' ids
+    case "clearNames":
+      result = await clearBlockedNames(args[0]);
       break;
-    }
     default:
       throw new HttpError(404, "没有这个功能。");
   }

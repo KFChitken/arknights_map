@@ -51,6 +51,7 @@ import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
+import { nameJudgeNow } from "./nameWords";
 import { roachByFeedId, roachesChanged } from "./roachFeed";
 import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter, ROACH_KEYS } from "./safety";
 import {
@@ -610,6 +611,39 @@ export async function settleCases(caseIds: unknown, action: AdminAction) {
     }
   }
   return done;
+}
+
+/** Names 名字黑名单 clears at once, at most */
+export const CLEAR_NAMES_MAX = 500;
+
+/**
+ * 名字黑名单's 清掉: names the list blocks now, cleared the way a case's 清名字 clears one (the account is
+ * anonymous, its 「我是…」 declarations lose the name, and it cannot take the name again), under the rule on
+ * names, with a 站长通知 that says so and lets them appeal. No yellow card, and reports about them stay open
+ * for the queue. Left alone: a name changed meanwhile to one the list lets through, and one held while a
+ * report waits (clearing would end the hold on the UIDs too; the case settles it). Returns how many.
+ */
+export async function clearBlockedNames(ids: unknown, now = Date.now()) {
+  const list = Array.isArray(ids) ? [...new Set(ids.map(String))].filter((id) => UUID.test(id)).slice(0, CLEAR_NAMES_MAX) : [];
+  if (!list.length) return 0;
+  const judge = await nameJudgeNow();
+  const named = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(inArray(users.id, list), isNull(users.demoKey), isNull(users.profileHeldAt)));
+  let cleared = 0;
+  for (const u of named) {
+    if (!u.name.trim() || !judge(u.name)) continue;
+    const actionId = randomUUID();
+    await clearName(u.id, actionId);
+    await db.transaction(async (tx) => {
+      await tx.insert(modActions).values({ id: actionId, userId: u.id, action: "clearName", rule: "name", createdAt: new Date(now) });
+      await addNotes([{ userId: u.id, kind: "action", actionId, rule: "name" }], tx);
+    });
+    cleared++;
+  }
+  if (cleared) roachesChanged();
+  return cleared;
 }
 
 /** 申诉: appeals waiting for the admin, the oldest first, each with the player's info box as it is now */

@@ -21,6 +21,7 @@ import { deleteAccount, isBanned, mailboxForms } from "./account";
 import {
   answerAppeal,
   banInfo,
+  clearBlockedNames,
   findPlayers,
   openAppeals,
   openCases,
@@ -41,7 +42,7 @@ import * as talulah from "./talulah";
 import * as minghe from "./minghe";
 import { awayExtraDays, flipTheAway } from "./away";
 import { acceptPublicPlace, agreeAgain, confirmAge } from "./consent";
-import { addNameWords, forgetNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "./nameWords";
+import { addNameWords, checkName, forgetNameWords, listNameWords, nameJudgeNow, namesHit, removeNameWord, removeNameWords, testName } from "./nameWords";
 import { computeHotList } from "./hotList";
 import { db } from "./db";
 import { identities, resetDemo, seedDemo } from "./demo";
@@ -239,7 +240,7 @@ describe("server world", () => {
     await expect(named("管理员小王")).resolves.toMatchObject({ name: "管理员小王" });
     // a name already in use before the word was added is listed, not changed
     expect(await addNameWords("```\n小王\n=国家\n```")).toBe(2);
-    expect(await namesHit()).toEqual([{ id: me.id, name: "管理员小王", anonymous: false }]);
+    expect(await namesHit()).toEqual({ checked: 1, count: 1, hits: [{ id: me.id, name: "管理员小王", anonymous: false, held: false, word: "小王" }] });
     await expect(named("小 王 同学")).rejects.toThrow("这个名字用不了");
     await expect(named("国家队")).resolves.toMatchObject({ name: "国家队" });
     await expect(named("国家")).rejects.toThrow("这个名字用不了");
@@ -253,6 +254,90 @@ describe("server world", () => {
     expect(await removeNameWords("测-试一\n测试二\n不在名单上")).toBe(2);
     expect(await listNameWords("")).toMatchObject({ total: 2 });
     await expect(named("国家")).rejects.toThrow("这个名字用不了");
+  });
+
+  it("refuses a listed word however it is written, and by its sound too when it is marked ~", async () => {
+    const named = (name: string) => me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name });
+    await addNameWords("台独\n~张三丰");
+    for (const name of ["臺獨", "台 獨", "台\u200d独", "台a独", "我是臺獨", "張三豐", "章三峰", "zhangsanfeng", "Zhāng Sān Fēng", "张san丰"]) {
+      await expect(named(name), name).rejects.toThrow("这个名字用不了");
+    }
+    await expect(named("张三")).resolves.toMatchObject({ name: "张三" });
+    // the admin page's 试一个名字, and its search finding a word by another way of writing it
+    expect(await testName("臺獨")).toEqual({ word: "台独" });
+    expect(await testName("章三峰")).toEqual({ word: "~张三丰" });
+    expect(await testName("阿米娅")).toEqual({ word: null });
+    expect((await listNameWords("獨")).words).toEqual([{ word: "台独", whole: false }]);
+  });
+
+  it("clears the names in use that the words block now, with a 站长通知 to appeal and no yellow card", async () => {
+    const shown = await signUp("shown@example.com");
+    await shown.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "臺獨小王", games: ["arknights"] });
+    await shown.placeRoach({ kind: "main" }, TOKYO);
+    await shown.declare({ template: "myname", game: "arknights" } as Declaration);
+    const hidden = await signUp("hidden@example.com");
+    await hidden.saveProfile({ ...EMPTY_PROFILE, anonymous: true, name: "章三峰" });
+    const held = await signUp("held@example.com");
+    await held.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "台独迷" });
+    await safety.holdProfile(held.id);
+    await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "阿米娅" });
+
+    await addNameWords("台独\n~张三丰");
+    const { checked, count, hits } = await namesHit();
+    expect({ checked, count }).toEqual({ checked: 4, count: 3 });
+    // the names others can see first; one held for a report is settled with its case
+    expect(hits[0]).toEqual({ id: shown.id, name: "臺獨小王", anonymous: false, held: false, word: "台独" });
+    expect(hits.slice(1).sort((a, b) => a.name.localeCompare(b.name))).toEqual(
+      [
+        { id: hidden.id, name: "章三峰", anonymous: true, held: false, word: "~张三丰" },
+        { id: held.id, name: "台独迷", anonymous: true, held: true, word: "台独" },
+      ].sort((a, b) => a.name.localeCompare(b.name)),
+    );
+
+    // ticked a while ago: one has changed their name since, one is held, one is fine, one is no account
+    await hidden.saveProfile({ ...EMPTY_PROFILE, anonymous: true, name: "阿白" });
+    expect(await clearBlockedNames([shown.id, hidden.id, held.id, me.id, "nope", shown.id])).toBe(1);
+
+    const after = await shown.me();
+    expect(after.profile).toMatchObject({ name: "", anonymous: true });
+    const said = (await (await demo("t1")).inbox()).find((i) => i.kind === "declaration");
+    expect(said).toMatchObject({ text: "我是匿名舟P，我要玩明日方舟" });
+    const notes = (await shown.inbox()).filter((i): i is Extract<InboxItem, { kind: "staff" }> => i.kind === "staff");
+    expect(notes.map((n) => n.text)).toEqual(["因为社区守则里「名字和资料里不能有违法、涉政、色情、赌博、广告引流的内容」这一条，站长清掉了你的名字。这个名字以后不能再用了。"]);
+    expect(notes[0].appeal).toMatchObject({ state: "open" });
+    expect(await db.select({ userId: modActions.userId, action: modActions.action, rule: modActions.rule, yellow: modActions.yellow }).from(modActions)).toEqual([
+      { userId: shown.id, action: "clearName", rule: "name", yellow: false },
+    ]);
+    expect((await hidden.me()).profile).toMatchObject({ name: "阿白" });
+    expect((await held.me()).profileHeld).toBe(true);
+    expect((await namesHit()).hits.map((h) => h.id)).toEqual([held.id]);
+
+    // and that account cannot take the name back however it is written, even once the word is off the list
+    await removeNameWord("台独");
+    for (const name of ["臺獨小王", "台独小王", "台 独 小 王"]) {
+      await expect(shown.saveProfile({ ...after.profile, anonymous: false, name }), name).rejects.toThrow("这个名字被站长清掉过");
+    }
+  });
+
+  it("hears within a minute of words another process added, and builds the list again only when it changed", async () => {
+    const first = await nameJudgeNow();
+    // as the admin's change on another process would come: this one is not told
+    await db.insert(nameWords).values({ word: "小王", whole: false });
+    expect(await nameJudgeNow()).toBe(first);
+    await expect(checkName("小王")).resolves.toBeUndefined();
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now");
+    try {
+      clock.mockReturnValue(now + 61_000);
+      const second = await nameJudgeNow();
+      expect(second).not.toBe(first);
+      await expect(checkName("小王")).rejects.toThrow("这个名字用不了");
+      // another minute with nothing changed: looked again, the same list kept
+      clock.mockReturnValue(now + 122_000);
+      expect(await nameJudgeNow()).toBe(second);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("gets drunk until the next morning: only the main roach lies down, and nothing says why", async () => {

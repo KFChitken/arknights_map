@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bare, loose, nameAllowed, nameChecker, parseNameWords } from "./nameRules";
+import { nameAllowed, nameChecker } from "./nameCheck";
+import { bare, loose, parseNameWords } from "./nameRules";
 
 // stand-ins for the words kept on the admin page
 const WORDS = parseNameWords("台独\n=国家\n");
@@ -67,9 +68,15 @@ describe("name rules", () => {
     expect(performance.now() - started).toBeLessThan(2000);
   });
 
-  it("reads the bulk box: one word a line, = for the whole name, Markdown left out", () => {
+  it("reads the bulk box: one word a line, = for the whole name, ~ for its sound too, Markdown left out", () => {
     expect(parseNameWords("```\n# 标题\n台 独\n=国家\n\n台独\n```")).toEqual([
       { word: "台独", whole: false },
+      { word: "国家", whole: true },
+    ]);
+    // the 「~」 stays on the word; as typed in Chinese, full width marks do too
+    expect(parseNameWords("~张 三 丰\n～李四光\n＝国家\n~\n")).toEqual([
+      { word: "~张三丰", whole: false },
+      { word: "~李四光", whole: false },
       { word: "国家", whole: true },
     ]);
   });

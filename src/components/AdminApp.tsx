@@ -1086,18 +1086,25 @@ function DeskStats() {
   );
 }
 
-type NameHit = { id: string; name: string; anonymous: boolean };
-type NameList = { total: number; found: number; words: NameWord[]; hits: NameHit[] };
+type NameHit = { id: string; name: string; anonymous: boolean; held: boolean; word: string };
+type NameList = { total: number; found: number; words: NameWord[] };
+type NameHits = { checked: number; count: number; hits: NameHit[] };
 
 /**
- * 名字黑名单: the words no name may contain (or be, marked 「=」), searchable since the list
- * runs to thousands, and the names in use that they block now, to clear by hand. The
- * rules in src/lib/nameRules.ts apply as well.
+ * 名字黑名单: the words no name may contain (or be, marked 「=」; 「~」 for its sound too), searchable since
+ * the list runs to thousands; a box to try a name on it; and the names in use that it blocks now, to
+ * clear with a 站长通知. The rules in src/lib/nameRules.ts apply as well, and both are folded first
+ * (src/lib/nameFold.ts). Reading every name takes a moment, so the hits load apart from the words.
  */
 function NameList({ added }: { added: number }) {
   const [list, setList] = useState<NameList | null>(null);
+  const [hits, setHits] = useState<NameHits | null>(null);
+  // the hits not to clear: everything is picked until unticked
+  const [kept, setKept] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
+  const [trial, setTrial] = useState("");
+  const [verdict, setVerdict] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const load = useCallback((q: string) => {
@@ -1105,17 +1112,41 @@ function NameList({ added }: { added: number }) {
       .then(setList)
       .catch((e) => setNote(e instanceof Error ? e.message : "出了点问题。"));
   }, []);
+  const loadHits = useCallback(() => {
+    setHits(null);
+    call<NameHits>("nameHits")
+      .then((h) => {
+        setHits(h);
+        setKept(new Set());
+      })
+      .catch((e) => setNote(e instanceof Error ? e.message : "出了点问题。"));
+  }, []);
   // a moment after typing stops, not on every key; and again when a case card added a name
   useEffect(() => {
     const t = window.setTimeout(() => load(search), 300);
     return () => window.clearTimeout(t);
   }, [search, load, added]);
+  useEffect(() => loadHits(), [loadHits, added]);
+  // 试一个名字, a moment after typing stops
+  useEffect(() => {
+    if (!trial.trim()) {
+      setVerdict(null);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      call<{ word: string | null }>("testName", trial)
+        .then((r) => setVerdict(r.word ? `挡住了，命中「${r.word}」。` : "能用。"))
+        .catch((e) => setVerdict(e instanceof Error ? e.message : "出了点问题。"));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [trial]);
 
-  const run = async (fn: () => Promise<string>) => {
+  const run = async (fn: () => Promise<string>, reloadHits = true) => {
     setBusy(true);
     try {
       setNote(await fn());
       load(search);
+      if (reloadHits) loadHits();
     } catch (e) {
       setNote(e instanceof Error ? e.message : "出了点问题。");
     }
@@ -1136,22 +1167,38 @@ function NameList({ added }: { added: number }) {
     });
   };
   const remove = (w: NameWord) => run(async () => (await call("removeNameWord", w.word), `删掉了「${w.word}」。`));
-  const clear = (h: NameHit) => {
-    if (!window.confirm(`清掉「${h.name}」这个名字，把 TA 改成匿名？`)) return;
-    run(async () => (await call("clearName", h.id), DONE.clearName));
+  const picked = (hits?.hits ?? []).filter((h) => !h.held && !kept.has(h.id));
+  const clear = (ids: string[], what: string) => {
+    if (!window.confirm(`清掉${what}，把 TA 们改成匿名？每人会在消息里收到站长通知，可以申诉；不记黄牌。`)) return;
+    run(async () => `清掉了 ${await call<number>("clearNames", ids)} 个名字，都发了站长通知。`);
   };
+  const toggle = (id: string, on: boolean) =>
+    setKept((k) => {
+      const next = new Set(k);
+      if (on) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
-    <section className="admin-case">
+    <section className="admin-case quick-names">
       <h2>名字黑名单 · {list?.total ?? "…"} 个词</h2>
       <p className="hint">
-        存资料时名字里出现这些词就存不了（前面带「=」的只在整个名字就是这个词时才挡）。比对前去掉空格和符号、全角转半角、英文转小写，繁体不会自动转。
+        存资料时名字里出现这些词就存不了（前面带「=」的只在整个名字就是这个词时才挡）。比对前名字和词都会洗一遍：去掉空格、符号和表情，全角转半角，英文转小写，去掉拼音声调，繁体和异体字转成简体，长得像英文字母的外文字母换成英文；词的几个字中间夹了字母或数字也挡。所以只加简体就够了。
+      </p>
+      <p className="hint">
+        前面带「~」的词连读音一样的字和拼音也挡，比如「~张三丰」也挡「章三峰」「zhang三丰」「zhangsanfeng」。只对三个字以上的词有用；常见人名读音撞得多，别给人名随便加。
       </p>
       <p className="hint">
         写在代码里、这里删不了的：
         {CODE_WORDS.map((w) => (w.whole ? `=${w.word}` : w.word)).join("、")}
         ；还有网址、QQ/微信号和 6 位以上的数字。
       </p>
+      <label className="field">
+        试一个名字
+        <input type="search" value={trial} onChange={(e) => setTrial(e.target.value)} placeholder="比如 臺獨" />
+      </label>
+      {verdict && <p className="hint">{verdict}</p>}
       <label className="field">
         找词
         <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="输入要找的字" />
@@ -1175,7 +1222,7 @@ function NameList({ added }: { added: number }) {
         </div>
       )}
       <label className="field">
-        批量添加或删除（一行一个，前面加 = 表示整名比对）
+        批量添加或删除（一行一个，前面加 = 表示整名比对，加 ~ 表示连读音一起挡）
         <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       </label>
       <div className="account-actions">
@@ -1188,19 +1235,51 @@ function NameList({ added }: { added: number }) {
       </div>
       {note && <p className="admin-note">{note}</p>}
 
-      <h2>现在的名字里命中的</h2>
-      {list?.hits.length === 0 && <p className="hint">没有。</p>}
-      <ul>
-        {list?.hits.map((h) => (
-          <li key={h.id}>
-            {h.name}
-            {h.anonymous && <span className="hint">（现在是匿名，名字还留着）</span>}{" "}
-            <button className="pill" disabled={busy} onClick={() => clear(h)}>
-              清掉名字
+      <h2>
+        现在的名字里命中的
+        {hits && ` · ${hits.count} 个（查了 ${hits.checked} 个名字）`}
+      </h2>
+      {!hits && <p className="hint">正在查所有人的名字……</p>}
+      {hits?.count === 0 && <p className="hint">没有。</p>}
+      {hits && hits.count > hits.hits.length && <p className="hint">先列出前 {hits.hits.length} 个（别人看得到的排前面），清掉以后会接着列。</p>}
+      {hits && hits.hits.length > 0 && (
+        <>
+          <p className="hint">默认全选；觉得没问题的取消勾选。清掉后 TA 变成匿名，发过的「我是…」宣言也不再显示这个名字，消息里会收到站长通知（按「{RULES.name}」这一条），可以申诉。</p>
+          <ul className="case-rows">
+            {hits.hits.map((h) => (
+              <li key={h.id}>
+                <label className="check">
+                  <input type="checkbox" disabled={h.held} checked={!h.held && !kept.has(h.id)} onChange={(e) => toggle(h.id, e.target.checked)} />
+                  <strong>{h.name}</strong>
+                  <span className="hint">
+                    命中「{h.word}」
+                    {h.held ? "（被举报了，名字先藏起来了，到「举报处理」里处理）" : h.anonymous && "（现在是匿名，别人看不到这个名字）"}
+                  </span>
+                  <button
+                    className="pill"
+                    disabled={busy || h.held}
+                    onClick={(e) => {
+                      // not the label's tick
+                      e.preventDefault();
+                      clear([h.id], `「${h.name}」这个名字`);
+                    }}
+                  >
+                    清掉
+                  </button>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="account-actions">
+            <button className="pill danger-pill" disabled={busy || !picked.length} onClick={() => clear(picked.map((h) => h.id), `勾选的 ${picked.length} 个名字`)}>
+              清掉勾选的 {picked.length} 个名字
             </button>
-          </li>
-        ))}
-      </ul>
+            <button className="pill" disabled={busy} onClick={loadHits}>
+              再查一遍
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }

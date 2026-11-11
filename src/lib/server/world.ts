@@ -10,7 +10,7 @@ import { findLine } from "../events";
 import { nextMorning } from "../morning";
 import { checkSupport } from "../support";
 import { isGame } from "../games";
-import { bare } from "../nameRules";
+import { fold } from "../nameFold";
 import { displayName, type Profile, type PublicProfile } from "../profile";
 import {
   DECLARATION_COOLDOWN_MIN,
@@ -433,15 +433,18 @@ function keepHeld(p: Profile, stored: Profile): Profile {
   return { ...p, uid: stored.uid, uidServer: stored.uidServer };
 }
 
-/** A name or UID the admin cleared from this account stays gone from it (anyone else may still use it) */
+/**
+ * A name or UID the admin cleared from this account stays gone from it (anyone else may still use it);
+ * a name written another way too, in traditional characters or with symbols between (src/lib/nameFold.ts)
+ */
 async function checkCleared(userId: string, p: Profile) {
   const gone = await db
     .select({ kind: clearedValues.kind, value: clearedValues.value })
     .from(clearedValues)
     .where(eq(clearedValues.userId, userId));
   if (!gone.length) return;
-  const name = bare(p.name);
-  if (name && gone.some((g) => g.kind === "name" && g.value === name)) throw new WorldError("这个名字被站长清掉过，换一个吧。");
+  const name = fold(p.name);
+  if (name && gone.some((g) => g.kind === "name" && fold(g.value) === name)) throw new WorldError("这个名字被站长清掉过，换一个吧。");
   const uids = Object.values(p.uid).map((u) => u.toLowerCase());
   if (gone.some((g) => g.kind === "uid" && uids.includes(g.value.toLowerCase()))) {
     throw new WorldError("这个 UID 被站长清掉过，换一个吧。");

@@ -75,7 +75,7 @@ export const BLOCKS_LEVEL: CaseLevel = "yellow";
  * about them can find which rule it was under.
  */
 export const RULES = {
-  name: "名字和资料里不能有违法、色情、赌博、广告引流的内容",
+  name: "名字和资料里不能有违法、涉政、色情、赌博、广告引流的内容",
   contact: "不能留联系方式或个人信息",
   impersonate: "不能冒充官方或他人",
   harass: "不能骚扰别人",
