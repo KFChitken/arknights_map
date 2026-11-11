@@ -242,6 +242,10 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   .actions.beside-dock button { padding: 10px; }
   .actions.beside-dock button.primary { padding: 12px; font-size: 14px; }
 }
+/* at full size, centred, the pair (231px) clears the dock only from 543px: till then it keeps to its right too */
+@media (min-width: 520px) and (max-width: 542px) {
+  .actions.beside-dock { left: calc(156px + var(--safe-left)); }
+}
 @media (max-width: 374px) {
   .actions.beside-dock button { padding: 9px 8px; font-size: 12.5px; }
   .actions.beside-dock button.primary { padding: 11px 10px; font-size: 13px; }
