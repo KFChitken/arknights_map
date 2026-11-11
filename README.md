@@ -51,7 +51,7 @@ Location sharing combined with a social feature is a stalking risk, so the priva
 - Email via SMTP: Mailpit locally, any SMTP provider (e.g. Resend) in production
 - Deployed with Docker Compose on a Hong Kong VPS behind Caddy, which handles HTTPS
 - Character names come from the BWIKI operator lists (names only)
-- Name folding tables (`node scripts/build-name-fold.mjs` writes `src/data/name-fold.json`): traditional and variant characters from [OpenCC](https://github.com/BYVoid/OpenCC) (Apache-2.0), radicals and look-alike letters from [Unicode's data](https://www.unicode.org/terms_of_use.html), readings from [pinyin-data](https://github.com/mozillazg/pinyin-data) (MIT)
+- Name folding tables (`node scripts/build-name-fold.mjs` writes `src/data/name-fold.json`): traditional and variant characters from [OpenCC](https://github.com/BYVoid/OpenCC) (Apache-2.0), radicals and look-alike letters from [Unicode's data](https://www.unicode.org/terms_of_use.html), readings from [pinyin-data](https://github.com/mozillazg/pinyin-data) (MIT); their licenses are in `src/data/name-fold-licenses.txt`
 
 ## Run locally
 

@@ -15,6 +15,9 @@
 //   (confusables, Cyrillic, Greek and the like only).
 // - pinyin-data (MIT, https://github.com/mozillazg/pinyin-data): the readings of each character,
 //   those of 通用规范汉字字典 (kTGHZ2013) where it has the character.
+//
+// Their licenses are in src/data/name-fold-licenses.txt; a source moved to another commit or license
+// needs it changed too.
 import { writeFileSync } from "node:fs";
 
 const OUT = "src/data/name-fold.json";
