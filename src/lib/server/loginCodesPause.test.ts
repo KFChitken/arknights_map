@@ -22,7 +22,7 @@ describe("codes to a slow mail service that is paused", () => {
     await db.transaction(async (tx) => {
       // another ask holding the lock: were the paused one to wait for it, the two would wait for each other
       await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
-      await expect(issueLoginCode("doctor@gmail.com")).rejects.toThrow("今天发往 Gmail 的验证码名额用完了");
+      await expect(issueLoginCode("doctor@gmail.com")).rejects.toThrow("我们先暂停了发往 Gmail 的验证码");
     });
     expect(await db.$count(loginCodes)).toBe(0);
     expect((await issueLoginCode("doctor@example.com")).code).toMatch(/^\d{6}$/);

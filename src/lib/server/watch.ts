@@ -409,6 +409,7 @@ const REFUSED: Record<string, string> = {
   // MAIL_SLOW_DOMAINS' own caps (src/lib/server/mailQuota.ts)
   "slow-day": "发往 Gmail 等慢邮箱的当天名额用完",
   "slow-hour": "发往 Gmail 等慢邮箱的这一小时名额用完",
+  "slow-paused": "发往 Gmail 等慢邮箱的验证码暂停中",
 };
 
 async function checkCodes(now: number): Promise<Finding[]> {

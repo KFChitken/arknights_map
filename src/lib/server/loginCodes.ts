@@ -55,7 +55,7 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
 
   // a slow service paused altogether (MAIL_SLOW_DAILY_LIMIT below 1, e.g. -1: 0 reads as the default) gets
   // no code, and the ask does not wait for the lock only to hear so
-  if (slow && MAIL_SLOW_DAILY_LIMIT < 1) refuse("day", email, perDay);
+  if (slow && MAIL_SLOW_DAILY_LIMIT < 1) refuse("paused", email, perDay);
 
   // The address's own limits first, outside the site-wide lock, so an ask its cooldown or its day refuses
   // never waits in that queue (11/11: some 20 asks were waiting for the lock at a time, holding the
@@ -120,17 +120,24 @@ function addressWait(row: { sentAt: Date; dayStart: Date; sentToday: number }, n
   return null;
 }
 
-/** No code: the address's cooldown (seconds to wait), its day used up (0), or a slow service's cap for the day or the hour */
-function refuse(why: number | "day" | "hour", email: string, perDay: number): never {
-  if (why === "day" || why === "hour") {
+/** What a slow mail service is called to the player: Gmail for both of its domains, else the domain */
+const mailServiceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain);
+
+/**
+ * No code: the address's cooldown (seconds to wait), its day used up (0), a slow service's cap for the day
+ * or the hour, or that service paused altogether
+ */
+function refuse(why: number | "day" | "hour" | "paused", email: string, perDay: number): never {
+  if (why === "day" || why === "hour" || why === "paused") {
     note("codeRefused", `slow-${why}`);
-    const domain = email.slice(email.lastIndexOf("@") + 1);
-    const service = /^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain;
+    const service = mailServiceName(email.slice(email.lastIndexOf("@") + 1));
     throw new HttpError(
       429,
-      why === "day"
-        ? `${service} 现在限制我们的发信，今天发往 ${service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。`
-        : `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`,
+      why === "paused"
+        ? `${service} 最近收不到我们的验证码邮件，我们先暂停了发往 ${service} 的验证码，恢复后会再开。这段时间请换 QQ、163 或 Outlook 邮箱登录。`
+        : why === "day"
+          ? `${service} 现在限制我们的发信，今天发往 ${service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。`
+          : `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`,
     );
   }
   note("codeRefused", why > 0 ? "cooldown" : "address-day");

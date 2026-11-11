@@ -36,8 +36,24 @@ function keepPending(p: Pending | null) {
 
 const waitAfter = (sentAt: number) => Math.max(0, LOGIN_CODE_COOLDOWN_S - Math.floor((Date.now() - sentAt) / 1000));
 
-/** Email + 6-digit code sign-in; new players tick their age and consents once. */
-export default function LoginSheet({ reason, onDone, onClose }: { reason?: string; onDone: () => void; onClose: () => void }) {
+/** What a mail service is called to the player: Gmail for both of its domains, else the domain itself */
+const serviceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain);
+
+/**
+ * Email + 6-digit code sign-in; new players tick their age and consents once. paused: the mail domains no
+ * code goes to just now (MAIL_SLOW_DAILY_LIMIT below 1 on the server), said before anyone types one in.
+ */
+export default function LoginSheet({
+  reason,
+  paused = [],
+  onDone,
+  onClose,
+}: {
+  reason?: string;
+  paused?: string[];
+  onDone: () => void;
+  onClose: () => void;
+}) {
   const [resumed] = useState(pendingLogin);
   const [step, setStep] = useState<Step>(resumed ? "code" : "email");
   const [email, setEmail] = useState(resumed?.email ?? "");
@@ -53,6 +69,10 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
   const [sent, setSent] = useState<{ expiresAt: number; again: boolean; slow: boolean } | null>(null);
   // a likely typo in the address's domain, offered and never applied by itself
   const fix = suggestEmail(email);
+  // the services codes are paused to, by name, and whether the address typed is at one of them
+  const pausedNames = [...new Set(paused.map(serviceName))];
+  const typedDomain = email.trim().toLowerCase().slice(email.trim().lastIndexOf("@") + 1);
+  const pausedHere = email.includes("@") && paused.includes(typedDomain);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -113,6 +133,12 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
       {step === "email" && (
         <form className="login" onSubmit={send}>
           {reason && <p className="hint" style={{ marginTop: 0 }}>{reason}</p>}
+          {pausedNames.length > 0 && (
+            <p className="hint" style={{ marginTop: 0, color: "var(--ink)", fontWeight: 600 }}>
+              {pausedNames.join("、")} 最近收不到我们的验证码邮件，发往 {pausedNames.join("、")} 的验证码先暂停了。请用 QQ、163 或
+              Outlook 等邮箱登录；已经登录的不受影响。
+            </p>
+          )}
           <label className="field">
             邮箱
             <input
@@ -139,7 +165,12 @@ export default function LoginSheet({ reason, onDone, onClose }: { reason?: strin
               ？
             </p>
           )}
-          <button className="primary wide" disabled={busy || !email.trim()}>
+          {pausedHere && (
+            <p className="hint" style={{ marginTop: 0, color: "var(--ink)" }}>
+              这是 {serviceName(typedDomain)} 邮箱，现在收不到验证码，请换一个邮箱。
+            </p>
+          )}
+          <button className="primary wide" disabled={busy || !email.trim() || pausedHere}>
             {busy ? "发送中…" : "发送验证码"}
           </button>
           <p className="hint">

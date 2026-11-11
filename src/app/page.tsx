@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { preconnect } from "react-dom";
 import MapApp from "@/components/MapApp";
 import { countAmapLoad } from "@/lib/server/amapLoads";
-import { isProd } from "@/lib/server/env";
+import { isProd, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_DOMAINS } from "@/lib/server/env";
 import { ipFrom } from "@/lib/server/http";
 import { inMainland } from "@/lib/server/region";
 
@@ -19,5 +19,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
   if (cn) preconnect("https://webapi.amap.com");
   // and make one of 高德's map loads, counted for the site's checks (nothing about the visitor)
   if (cn) countAmapLoad();
-  return <MapApp cn={cn} />;
+  // mail services no sign-in code goes to just now (MAIL_SLOW_DAILY_LIMIT below 1), for the sign-in sheet to say so
+  const mailPaused = MAIL_SLOW_DAILY_LIMIT < 1 ? MAIL_SLOW_DOMAINS : [];
+  return <MapApp cn={cn} mailPaused={mailPaused} />;
 }

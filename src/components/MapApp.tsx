@@ -359,8 +359,11 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
   move: "点地图给它挪个窝",
 };
 
-/** cn: the visitor is in mainland China, so the map is Amap only (OSM just when Amap cannot load). */
-export default function MapApp({ cn }: { cn: boolean }) {
+/**
+ * cn: the visitor is in mainland China, so the map is Amap only (OSM just when Amap cannot load).
+ * mailPaused: mail domains no sign-in code goes to just now, which the sign-in sheet says.
+ */
+export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPaused?: string[] }) {
   const worldRef = useRef<World | null>(null);
   const feedRef = useRef(new RoachFeedCopy());
   const [basemap, setBasemap] = useState<Basemap | null>(null);
@@ -2725,7 +2728,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
   };
 
   const renderPanel = (p: Panel) => {
-    if (p.kind === "login") return <LoginSheet reason={p.reason} onDone={signedIn} onClose={() => setPanel(null)} />;
+    if (p.kind === "login") return <LoginSheet reason={p.reason} paused={mailPaused} onDone={signedIn} onClose={() => setPanel(null)} />;
     if (p.kind === "hot") return <HotSheet onClose={() => setPanel(null)} />;
     if (p.kind === "guide") {
       return <GuideSheet id={p.id} away={guideAway(p.id)} onFind={() => findGuide(p.id)} onClose={() => setPanel(null)} />;
