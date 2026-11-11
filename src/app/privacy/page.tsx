@@ -30,7 +30,7 @@ export default function Privacy() {
   return (
     <main className="doc">
       <h1>{SITE_NAME}隐私说明</h1>
-      <p className="hint">生效日期：2026 年 11 月 11 日</p>
+      <p className="hint">生效日期：2026 年 11 月 12 日</p>
 
       <p>
         各位博士、管理员们好！我是 {OPERATOR}，{SITE_NAME}（zhoupmap.com）的运营者。{SITE_NAME}
@@ -41,7 +41,7 @@ export default function Privacy() {
       <h2>我会收集哪些信息</h2>
       <ul>
         <li>
-          <strong>登录用的邮箱。</strong>用来给你发登录验证码，别人看不到；我在管理页能看到每个账号的邮箱和名字，只用来处理举报和封号。这里没有密码，每次都用邮件里的 6 位验证码登录。
+          <strong>登录用的邮箱。</strong>用来给你发登录验证码，别人看不到；我在管理页能看到每个账号的邮箱和名字，只用来处理举报和封号。可以用邮件里的 6 位验证码登录，设了密码的也可以用密码登录。
         </li>
         <li>
           <strong>你自己填的资料。</strong>名字（也可以选匿名）、要不要加「Dr.」、玩的游戏、厨力角色、游戏 UID（选填）、要不要分享 UID、蟑螂的形象和颜色，还有你选的助战干员。
