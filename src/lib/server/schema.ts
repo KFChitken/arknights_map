@@ -159,6 +159,36 @@ export const loginCodes = pgTable("login_codes", {
   sends: smallint("sends").notNull().default(1),
 });
 
+/**
+ * 桌面登录码 (src/lib/server/deskCodes.ts): a code a signed-in player takes in Safari to sign in once from
+ * the home-screen icon, which keeps its own cookies on iPhone. One per account: taking a new one replaces
+ * the old. Only an HMAC of the code is kept, for DESK_CODE_TTL_MIN; pruned after it runs out.
+ */
+export const deskCodes = pgTable("desk_codes", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull().unique(),
+  createdAt: createdAt(),
+  expiresAt: at("expires_at").notNull(),
+  usedAt: at("used_at"),
+});
+
+/**
+ * 存到桌面's counts (src/lib/server/appCounts.ts), one row per Beijing day and name: opens from the
+ * home-screen icon and in the browser (once a device a day), taps on 存到桌面, installs, and desk codes
+ * taken and used. Only totals: nothing in it points at a player or a device.
+ */
+export const appCounts = pgTable(
+  "app_counts",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    name: text("name").notNull(),
+    n: integer("n").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.name] })],
+);
+
 /** One row per email handed to the mail provider in the last day, for the sitewide cap. No address is kept. */
 export const mailSends = pgTable("mail_sends", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

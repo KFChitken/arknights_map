@@ -410,6 +410,9 @@ const REFUSED: Record<string, string> = {
   "slow-day": "发往 Gmail 等慢邮箱的当天名额用完",
   "slow-hour": "发往 Gmail 等慢邮箱的这一小时名额用完",
   "slow-paused": "发往 Gmail 等慢邮箱的验证码暂停中",
+  // 桌面登录码 (src/app/api/auth/desk-code/redeem)
+  "desk-wrong": "桌面登录码不对或者过期",
+  "desk-ip": "同一网络试桌面登录码太多次",
 };
 
 async function checkCodes(now: number): Promise<Finding[]> {
@@ -542,6 +545,7 @@ const JOBS: Record<string, string> = {
   live: "收听另外两个程序的消息提醒",
   signals: "收听另外两个程序的出错次数",
   loads: "保存高德地图加载次数",
+  counts: "保存「存到桌面」的统计",
 };
 
 /** Background jobs that failed in the last day: the database not brought up to date at start is urgent */

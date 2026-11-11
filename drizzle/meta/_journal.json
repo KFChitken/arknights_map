@@ -246,6 +246,13 @@
       "when": 1794377660691,
       "tag": "0034_login_code_sends",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794379214191,
+      "tag": "0035_home_screen",
+      "breakpoints": true
     }
   ]
 }

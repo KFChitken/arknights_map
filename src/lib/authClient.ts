@@ -38,6 +38,12 @@ export const finishSignup = (ticks: { adult: boolean; acceptPolicy: boolean; acc
 export const reconsent = (ticks: { adult: boolean; acceptCrossBorder: boolean; acceptPublicPlace: boolean }) =>
   post<{ ok: true }>("/api/auth/reconsent", ticks);
 
+/** 拿桌面登录码 (src/lib/deskCode.ts): ABCD-EFGH, and when it stops working */
+export const takeDeskCode = () => post<{ code: string; expiresAt: number }>("/api/auth/desk-code");
+
+/** Sign in with a 桌面登录码, on the site opened from the home-screen icon */
+export const redeemDeskCode = (code: string) => post<{ status: "ok" }>("/api/auth/desk-code/redeem", { code });
+
 export const signOut = () => post<{ ok: true }>("/api/auth/logout");
 
 export const deleteAccount = () => post<{ ok: true }>("/api/auth/delete");

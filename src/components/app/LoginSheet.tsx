@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { finishSignup, requestCode, verifyCode } from "@/lib/authClient";
+import { finishSignup, redeemDeskCode, requestCode, verifyCode } from "@/lib/authClient";
 import { ADULT_TICK, CROSS_BORDER_TICK } from "@/lib/consent";
+import { DESK_CODE_LENGTH, normalizeDeskCode } from "@/lib/deskCode";
 import { suggestEmail } from "@/lib/emailTypos";
 import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, SITE_NAME, waitText } from "@/lib/rules";
+import { isStandalone } from "./HomeScreen";
 import Sheet from "./Sheet";
 
-type Step = "email" | "code" | "signup";
+/** desk: a 桌面登录码 (src/lib/deskCode.ts), for the site opened from the home-screen icon */
+type Step = "email" | "code" | "signup" | "desk";
 
 /**
  * A code sent from this tab and not used yet. Phones often reload the page
@@ -45,6 +48,8 @@ const serviceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain
 /**
  * Email + 6-digit code sign-in; new players tick their age and consents once. paused: the mail domains no
  * code goes to just now (MAIL_SLOW_DAILY_LIMIT below 1 on the server), said before anyone types one in.
+ * Opened from the home-screen icon (which on iPhone keeps cookies of its own), a 桌面登录码 taken in Safari
+ * signs in without an email.
  */
 export default function LoginSheet({
   reason,
@@ -70,6 +75,9 @@ export default function LoginSheet({
   const [wait, setWait] = useState(() => (resumed ? waitUntil(resumed.nextAt) : 0));
   // when the code sent stops working, and whether the last email carried the code sent before
   const [sent, setSent] = useState<{ expiresAt: number; again: boolean; slow: boolean } | null>(null);
+  const [standalone, setStandalone] = useState(false);
+  const [desk, setDesk] = useState("");
+  useEffect(() => setStandalone(isStandalone()), []);
   // a likely typo in the address's domain, offered and never applied by itself
   const fix = suggestEmail(email);
   // the services codes are paused to, by name, and whether the address typed is at one of them
@@ -125,6 +133,15 @@ export default function LoginSheet({
     });
   };
 
+  const redeem = (e: FormEvent) => {
+    e.preventDefault();
+    run(async () => {
+      await redeemDeskCode(desk);
+      keepPending(null);
+      onDone();
+    });
+  };
+
   // closed on purpose, so a reload should not bring it back
   const close = () => {
     keepPending(null);
@@ -132,7 +149,15 @@ export default function LoginSheet({
   };
 
   return (
-    <Sheet title={step === "signup" ? `第一次来${SITE_NAME}` : "登录"} onClose={close}>
+    <Sheet title={step === "signup" ? `第一次来${SITE_NAME}` : step === "desk" ? "用桌面登录码登录" : "登录"} onClose={close}>
+      {step === "email" && standalone && (
+        <div className="desk-login">
+          <p>从桌面图标打开的？用在 Safari 里拿的桌面登录码登录，不用再收验证码邮件。</p>
+          <button type="button" className="primary wide" onClick={() => setStep("desk")}>
+            输入桌面登录码
+          </button>
+        </div>
+      )}
       {step === "email" && (
         <form className="login" onSubmit={send}>
           {reason && <p className="hint" style={{ marginTop: 0 }}>{reason}</p>}
@@ -237,6 +262,37 @@ export default function LoginSheet({
               }}
             >
               换个邮箱
+            </button>
+          </div>
+        </form>
+      )}
+
+      {step === "desk" && (
+        <form className="login" onSubmit={redeem}>
+          <p className="hint" style={{ marginTop: 0 }}>
+            在 Safari 里打开{SITE_NAME}，点「存到桌面」，在第 ③ 步拿桌面登录码，把那 {DESK_CODE_LENGTH} 位码填在这里。
+          </p>
+          <label className="field">
+            桌面登录码
+            <input
+              type="text"
+              autoCapitalize="characters"
+              autoComplete="one-time-code"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={14}
+              required
+              placeholder="ABCD-EFGH"
+              value={desk}
+              onChange={(e) => setDesk(e.target.value.toUpperCase())}
+            />
+          </label>
+          <button className="primary wide" disabled={busy || normalizeDeskCode(desk).length !== DESK_CODE_LENGTH}>
+            {busy ? "登录中…" : "登录"}
+          </button>
+          <div className="row-actions">
+            <button type="button" className="pill" onClick={() => setStep("email")}>
+              用邮箱登录
             </button>
           </div>
         </form>

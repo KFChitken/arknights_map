@@ -121,7 +121,17 @@ import { GuestRadarSheet, markWelcomed, PreviewCard, roachesAround, WelcomeSheet
 import { HomecomingSheet } from "./app/Homecoming";
 import NoticeSheet from "./app/NoticeSheet";
 import HotSheet from "./app/HotSheet";
-import { keepInstallPrompt } from "./app/HomeScreen";
+import {
+  countOpen,
+  DeskButton,
+  deskHintSeen,
+  deskOffered,
+  HomeScreenSheet,
+  installOrGuide,
+  keepInstallPrompt,
+  markDeskHintSeen,
+  watchHomeScreen,
+} from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, {
   AMIYA_UNFRIEND,
@@ -339,6 +349,8 @@ type Panel =
   | { kind: "placeConfirm"; target: PlaceTarget; spot: LngLat; fly: boolean; consent: boolean }
   // open to everyone
   | { kind: "hot" }
+  /** 存到桌面, where the browser offers no install prompt of its own: how to do it here */
+  | { kind: "homeScreen" }
   /** One of the guides, from the column under 方舟雷达 */
   | { kind: "guide"; id: GuideId }
   // for visitors who have not signed in
@@ -388,6 +400,9 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const [heartsOff, setHeartsOff] = useState(false);
   // once per device: say the style can be changed
   const [styleHint, setStyleHint] = useState(false);
+  // 存到桌面: offered unless opened from the desktop icon or installed here; its bubble, once per device
+  const [deskOffer, setDeskOffer] = useState(false);
+  const [deskHint, setDeskHint] = useState(false);
   const [topRaised, setTopRaised] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   // Who is signed in comes a moment after the map on a slow line. A browser that was signed in last time
@@ -796,8 +811,19 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     return () => window.clearTimeout(waiting);
   }, [load, openInbox, cn]);
 
-  // Android Chrome offers adding the site to the home screen once, early; 资料 keeps it for later
-  useEffect(() => keepInstallPrompt(), []);
+  // Chrome and Edge offer installing the site once, early; 存到桌面 keeps it for when the player taps it.
+  // Opens from the desktop icon and in the browser are counted once a device a day, nothing else about them.
+  useEffect(() => {
+    const stop = keepInstallPrompt();
+    countOpen();
+    const offer = () => setDeskOffer(deskOffered());
+    offer();
+    const unwatch = watchHomeScreen(offer);
+    return () => {
+      stop();
+      unwatch();
+    };
+  }, []);
 
   // Development only: zhoupFly(lng, lat, zoom) in the console flies the map anywhere, to try out the map changes
   useEffect(() => {
@@ -1102,6 +1128,20 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     setStyleHint(false);
     markMapStyleSeen();
   }, []);
+  const deskHintDone = useCallback(() => {
+    setDeskHint(false);
+    markDeskHintSeen();
+  }, []);
+
+  /** 存到桌面: the browser's own install prompt where it offered one, else how to do it here */
+  const tapDesk = async () => {
+    deskHintDone();
+    const r = await installOrGuide();
+    if (r === "guide") {
+      setSelected(null);
+      setPanel({ kind: "homeScreen" });
+    } else if (r === "installed") setToast("存好了，以后点桌面上的舟P图标就能直接打开地图。");
+  };
   // 舟u本色 where its hearts cannot be drawn (yet, or on this device) is drawn as 默认; the pick is kept
   const drawnStyle: MapStyle = mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
 
@@ -2271,6 +2311,17 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     .join(",");
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
   const idle = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
+  // 存到桌面's bubble, once per device: after about 20 seconds on the map with nothing else going on, the tutorial
+  // and the style hint over (a new player's first roach starts the tutorial, so it comes after)
+  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !notice && !styleHint);
+  useEffect(() => {
+    if (!deskHintNow || deskHint || deskHintSeen()) return;
+    const t = window.setTimeout(() => {
+      setDeskHint(true);
+      markDeskHintSeen();
+    }, 20_000);
+    return () => window.clearTimeout(t);
+  }, [deskHintNow, deskHint]);
 
   // ---- 佩丽卡监督 ----
 
@@ -2785,6 +2836,15 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const renderPanel = (p: Panel) => {
     if (p.kind === "login") return <LoginSheet reason={p.reason} paused={mailPaused} onDone={signedIn} onClose={() => setPanel(null)} />;
     if (p.kind === "hot") return <HotSheet onClose={() => setPanel(null)} />;
+    if (p.kind === "homeScreen") {
+      return (
+        <HomeScreenSheet
+          signedIn={Boolean(me)}
+          onSignIn={() => setPanel({ kind: "login", reason: "登录以后才能拿桌面登录码。" })}
+          onClose={() => setPanel(null)}
+        />
+      );
+    }
     if (p.kind === "guide") {
       return <GuideSheet id={p.id} away={guideAway(p.id)} onFind={() => findGuide(p.id)} onClose={() => setPanel(null)} />;
     }
@@ -3257,6 +3317,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
           <small>热榜</small>
         </button>
       )}
+      {/* not while placing or in the tutorial, like the guides; not from the desktop icon or once installed here */}
+      {!placing && !step && deskOffer && <DeskButton hint={deskHint && deskHintNow} onTap={tapDesk} onHintDone={deskHintDone} />}
 
       <div className="map-wrap" ref={wrapRef}>
         {basemap === "amap" && !amapFailed && amapMade && (

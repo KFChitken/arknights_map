@@ -1,5 +1,6 @@
 import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
+import { saveAppCounts } from "./lib/server/appCounts";
 import { flipTheAway } from "./lib/server/away";
 import { fireSongs } from "./lib/server/badges";
 import { moveMingheRiders, spreadStackedRiders } from "./lib/server/minghe";
@@ -58,6 +59,12 @@ await hearOthers().catch(failed("live", "Listening for the other processes' nudg
 
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);
+
+// 存到桌面's counts, kept in memory by every process: added to the day's rows once a minute, and once more when it is
+// told to stop (Next.js then waits for the requests under way before it goes, src/lib/server/appCounts.ts)
+const saveCounts = () => saveAppCounts().catch(failed("counts", "Saving 存到桌面's counts failed"));
+setInterval(saveCounts, MINUTE_MS);
+process.once("SIGTERM", () => void saveCounts());
 
 // the helpers tell the main's checks what they noted, and when they started (src/lib/server/watchSignals.ts)
 if (helper && watchEnabled) shareSignals(processName(), buildId());

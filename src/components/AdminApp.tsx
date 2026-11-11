@@ -30,6 +30,7 @@ import {
   type RoachReportReason,
   type RuleCode,
 } from "@/lib/safety";
+import { DEVICES, type AppCountDay, type Device, type PageCount } from "@/lib/appCounts";
 import { lasted, LEVEL_MARK, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
 import { ago } from "./app/InboxSheet";
 import RoachIcon from "./RoachIcon";
@@ -170,6 +171,7 @@ export default function AdminApp() {
       <h1>管理</h1>
       <SiteStatusBox />
       <Retention />
+      <DeskStats />
       <Appeals />
       <Cases onForbidden={onForbidden} onWordsAdded={() => setWordsAdded((n) => n + 1)} />
       <NameList added={wordsAdded} />
@@ -1014,6 +1016,72 @@ function Retention() {
         </li>
       </ul>
       <p className="hint">只有总数，看不出是谁。来访只记日期，按北京时间算。</p>
+    </section>
+  );
+}
+
+const DEVICE_NAMES: Record<Device, string> = { iphone: "iPhone", android: "安卓", harmony: "鸿蒙", desktop: "电脑" };
+
+/** One of 存到桌面's counts on a day: the total, and by kind of device when there are any */
+function DeskCell({ day, kind }: { day: AppCountDay; kind: PageCount }) {
+  const by = DEVICES.map((d) => [d, day.counts[`${kind}:${d}`] ?? 0] as const).filter(([, n]) => n > 0);
+  const total = by.reduce((sum, [, n]) => sum + n, 0);
+  return (
+    <td>
+      <strong>{total}</strong>
+      {by.length > 0 && <small>{by.map(([d, n]) => `${DEVICE_NAMES[d]} ${n}`).join(" · ")}</small>}
+    </td>
+  );
+}
+
+/**
+ * 存到桌面, the last 14 days: devices that opened the site from the desktop icon and in the browser (once a
+ * device a day), taps on 存到桌面, installs the browser reported, and 桌面登录码 taken and used. Totals only.
+ */
+function DeskStats() {
+  const [days, setDays] = useState<AppCountDay[] | null>(null);
+  useEffect(() => {
+    call<AppCountDay[]>("appCounts")
+      .then(setDays)
+      .catch(() => {});
+  }, []);
+  if (!days) return null;
+  return (
+    <section className="admin-case">
+      <h2>存到桌面</h2>
+      {days.length === 0 ? (
+        <p className="hint">最近 14 天还没有数。</p>
+      ) : (
+        <div className="desk-stats">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>从桌面图标打开</th>
+                <th>在浏览器里打开</th>
+                <th>点了「存到桌面」</th>
+                <th>装好了</th>
+                <th>桌面登录码 拿/用</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.map((d) => (
+                <tr key={d.day}>
+                  <td>{d.day.slice(5)}</td>
+                  <DeskCell day={d} kind="standalone" />
+                  <DeskCell day={d} kind="browser" />
+                  <DeskCell day={d} kind="tap" />
+                  <DeskCell day={d} kind="installed" />
+                  <td>
+                    {d.counts["code-issued"] ?? 0} / {d.counts["code-redeemed"] ?? 0}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="hint">打开的次数每台设备每天只算一次；「装好了」只有 Chrome 和 Edge 会告诉我们。只有总数，看不出是谁，也不记设备。</p>
     </section>
   );
 }

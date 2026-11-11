@@ -15,6 +15,7 @@ import {
   settleCases,
   takeBackRoaches,
 } from "@/lib/server/admin";
+import { appCountDays } from "@/lib/server/appCounts";
 import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords } from "@/lib/server/nameWords";
@@ -84,6 +85,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "retention":
       result = await retentionStats();
+      break;
+    // 存到桌面's counts, the last 14 days
+    case "appCounts":
+      result = await appCountDays();
       break;
     case "nameWords":
       result = { ...(await listNameWords(String(args[0] ?? ""))), hits: await namesHit() };

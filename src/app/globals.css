@@ -779,6 +779,12 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
   font: inherit; font-size: 15px; color: var(--ink); resize: vertical;
 }
 .word-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+/* 存到桌面's counts on /admin */
+.desk-stats { overflow-x: auto; }
+.desk-stats table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.desk-stats th { padding: 4px 6px; color: var(--muted); font-weight: 600; text-align: left; white-space: nowrap; }
+.desk-stats td { padding: 5px 6px; border-top: 1px solid #eef0f2; vertical-align: top; white-space: nowrap; }
+.desk-stats td small { display: block; color: var(--muted); font-size: 11px; }
 .player-list { max-height: 420px; overflow-y: auto; padding-left: 18px; }
 .player-list .hint { overflow-wrap: anywhere; }
 .word-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 999px; background: #f0f1f3; font-size: 13px; }
@@ -917,6 +923,49 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .guide-dock button { display: flex; flex-direction: column; align-items: center; padding: 0; border: 0; background: none; line-height: 1; cursor: pointer; }
 .guide-dock small { margin-top: 2px; color: #fff; font-size: 10px; font-weight: 600; white-space: nowrap; }
 .guide-note { margin-top: 0; text-align: center; }
+/*
+ * 存到桌面 under the four guides (they start at 282px and take 210px), with the icon the desktop will
+ * show, and its bubble once per device (HomeScreen.tsx). Where that would run into the map's zoom
+ * buttons (they start 154px above the bottom), it moves to the left, under the counts.
+ */
+.desk-anchor { position: absolute; z-index: 10; top: calc(500px + var(--safe-top)); right: calc(12px + var(--safe-right)); }
+.desk-btn {
+  display: flex; flex-direction: column; align-items: center; width: 64px; padding: 7px 0 6px;
+  border: 0; border-radius: 14px; background: var(--ink); box-shadow: 0 2px 10px #0004; line-height: 1; cursor: pointer;
+}
+.desk-btn img { display: block; width: 34px; height: 34px; border-radius: 9px; }
+.desk-btn small { margin-top: 4px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.desk-hint {
+  position: absolute; top: 12px; right: calc(100% + 10px); width: max-content; max-width: 190px; padding: 7px 11px;
+  border: 0; border-radius: 10px; background: var(--accent); color: var(--ink); font-size: 13px; font-weight: 600;
+  text-align: left; box-shadow: 0 3px 12px #0004;
+}
+.desk-hint::after { content: ""; position: absolute; top: 10px; right: -6px; border: 6px solid transparent; border-right: 0; border-left-color: var(--accent); }
+@media (max-height: 730px) {
+  .desk-anchor { top: calc(140px + var(--safe-top)); right: auto; left: calc(12px + var(--safe-left)); }
+  .desk-hint { right: auto; left: calc(100% + 10px); }
+  .desk-hint::after { right: auto; left: -6px; border-left: 0; border-right: 6px solid var(--accent); }
+}
+/* how to do it here: at most three steps, the same in the panel and in 资料 */
+.desk-guide { font-size: 15px; line-height: 1.6; }
+.desk-guide > p { margin: 0 0 6px; }
+.desk-guide > .primary { margin-bottom: 12px; }
+.desk-steps { margin: 4px 0 8px; padding-left: 22px; }
+.desk-steps li { margin: 6px 0; }
+.desk-end { margin: 12px 0 4px !important; padding: 9px 12px; border-radius: 12px; background: #f6f7f9; font-size: 14px; }
+.desk-code { margin: 8px 0 2px; }
+.desk-code-text {
+  padding: 10px 12px; border-radius: 12px; background: var(--ink); color: #fff; text-align: center; user-select: all;
+  font: 700 24px/1.2 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.12em;
+}
+.desk-code .row-actions { margin-top: 8px; }
+.desk-code .hint { margin: 8px 0 0; font-size: 13px; }
+.desk-copy { margin-top: 6px; }
+.desk-url { margin: 6px 0 0; padding: 8px 10px; border-radius: 10px; background: #f6f7f9; font-size: 14px; user-select: all; overflow-wrap: anywhere; }
+button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration: underline; }
+/* the login sheet opened from the desktop icon: the 桌面登录码 first */
+.desk-login { margin: 0 0 16px; padding: 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; line-height: 1.6; }
+.desk-login p { margin: 0 0 8px; }
 .guide-about { margin: 8px 0 0; line-height: 1.6; }
 .hot-card { overflow: hidden; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px #e6e8eb; }
 .hot-head { position: relative; padding: 14px 16px 16px; background: var(--ink); color: #fff; }
