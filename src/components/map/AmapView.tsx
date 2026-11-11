@@ -38,6 +38,8 @@ import { amapSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
 import { MassCache, STILL, styleIndex, type MassPoint } from "./massPoints";
+import { PILE_MAX_ZOOM } from "./pileWork";
+import { Piles, type Box } from "./piles";
 import type { MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
@@ -211,6 +213,19 @@ function massStyles(AMap: AMapNS, amapZoom: number, urls: string[]) {
   }));
 }
 
+/** 轻量's piles for the view as it is now (as 高德 has it), at MapLibre's zoom */
+function askPiles(map: AMapNS | null, piles: Piles | null) {
+  if (!map || !piles) return;
+  try {
+    const b = map.getBounds();
+    const sw = b.getSouthWest();
+    const ne = b.getNorthEast();
+    // across the 180° meridian: the whole width
+    const view: Box = ne.getLng() > sw.getLng() ? [sw.getLng(), sw.getLat(), ne.getLng(), ne.getLat()] : [-180, sw.getLat(), 180, ne.getLat()];
+    piles.view(view, Math.min(PILE_MAX_ZOOM + 1, Math.max(0, Math.floor(map.getZoom() - ZOOM_OFFSET))));
+  } catch {}
+}
+
 /** No batches at all: 全员隐匿 draws nobody's roaches */
 const noGroups = (): MassPoint[][] => Array.from({ length: MASS_GROUPS + 1 }, () => []);
 
@@ -266,8 +281,21 @@ export default function AmapView(props: MapViewProps) {
   };
   /** The GPU layer's roaches, for the batches regroup() made */
   const glList = () => (propsRef.current.mapStyle === "hidden" ? [] : cacheRef.current.gl());
-  // the crowd is off the map (全员隐匿) as far as the map was last told
-  const crowdWasOffRef = useRef(false);
+  // how the crowd was last drawn: every roach, in piles (轻量), or none (全员隐匿)
+  const crowdWasRef = useRef<"all" | "lite" | "off">("all");
+  // 轻量: the piles, worked out in the background (piles.ts), while it is on the GPU layer
+  const pilesRef = useRef<Piles | null>(null);
+  /** 轻量 on the GPU layer: the list as it is put into the piles; the roaches stay drawn, still, until the first piles come */
+  const startPiles = () => {
+    pilesRef.current ??= new Piles((items) => glRef.current?.setPiles(items));
+    pilesRef.current.load(groupsRef.current);
+    askPiles(mapRef.current, pilesRef.current);
+  };
+  const stopPiles = () => {
+    pilesRef.current?.stop();
+    pilesRef.current = null;
+    glRef.current?.setPiles(null);
+  };
   // the batches as 高德 gets them: only the roaches near the screen (nearBox)
   const shownRef = useRef<MassPoint[][]>([]);
   // pick them again for where the map is now, and hand them over
@@ -525,7 +553,6 @@ export default function AmapView(props: MapViewProps) {
         };
         swarmRef.current = { start: startSwarm, stop: stopSwarm };
         regroup();
-        crowdWasOffRef.current = propsRef.current.mapStyle === "hidden";
         if (propsRef.current.mapStyle === "nation") startSwarm();
 
         const onMassClick = (e: AMapNS) => {
@@ -680,7 +707,9 @@ export default function AmapView(props: MapViewProps) {
         map.on("zoomend", ended);
         crawlRef.current = {
           start: () => {
-            if (moving || propsRef.current.active === false || prefersReducedMotion() || propsRef.current.mapStyle === "hidden") return;
+            // nothing crawls in 全员隐匿 or 轻量
+            const style = propsRef.current.mapStyle;
+            if (moving || propsRef.current.active === false || prefersReducedMotion() || style === "hidden" || style === "lite") return;
             if (glRef.current) return glRef.current.tick(true);
             if (crawlTimer) return;
             crawlTimer = window.setInterval(() => {
@@ -696,6 +725,22 @@ export default function AmapView(props: MapViewProps) {
           },
         };
         layRef.current();
+        // 轻量 from the start: piles once the GPU layer has the roaches
+        const mode = propsRef.current.mapStyle === "hidden" ? "off" : propsRef.current.mapStyle === "lite" && glRef.current ? "lite" : "all";
+        crowdWasRef.current = mode;
+        if (mode === "lite") startPiles();
+        // 轻量's piles asked for again as the view moves: as it ends, and every 150 ms meanwhile
+        let pilesAskedAt = 0;
+        const pilesMeanwhile = () => {
+          if (!pilesRef.current || performance.now() - pilesAskedAt < 150) return;
+          pilesAskedAt = performance.now();
+          askPiles(map, pilesRef.current);
+        };
+        const pilesNow = () => askPiles(map, pilesRef.current);
+        map.on("mapmove", pilesMeanwhile);
+        map.on("zoomchange", pilesMeanwhile);
+        map.on("moveend", pilesNow);
+        map.on("zoomend", pilesNow);
 
         placeMine();
         drawTrail();
@@ -711,10 +756,20 @@ export default function AmapView(props: MapViewProps) {
           if (Date.now() - lastHitRef.current < 300) return;
           // the GPU layer's roaches are found here, being no markers of 高德's
           const gl = glRef.current;
-          const id = gl && !propsRef.current.placing ? gl.hit(e.pixel.getX(), e.pixel.getY()) : null;
-          if (id) {
+          const hit = gl && !propsRef.current.placing ? gl.hit(e.pixel.getX(), e.pixel.getY()) : null;
+          if (typeof hit === "string") {
             lastHitRef.current = Date.now();
-            window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
+            window.setTimeout(() => propsRef.current.onRoachClick(hit), 0);
+            return;
+          }
+          // 轻量: a pile opens up, the map zooming in on it to where it comes apart
+          if (hit && pilesRef.current) {
+            lastHitRef.current = Date.now();
+            void pilesRef.current.expand(hit.pile).then((z) => {
+              const m = mapRef.current;
+              if (!m) return;
+              m.setZoomAndCenter(Math.min(20, Math.max(m.getZoom() + 0.5, z + 0.05 + ZOOM_OFFSET)), [hit.lng, hit.lat], false, 650);
+            });
             return;
           }
           propsRef.current.onMapClick(fromGcj(e.lnglat.getLng(), e.lnglat.getLat()));
@@ -785,28 +840,35 @@ export default function AmapView(props: MapViewProps) {
     };
   }, []);
 
-  // An update of the list: only the roaches that changed are worked out again (MassCache). 全员隐匿 on or off:
-  // the crowd taken off the map, or put back as it is now; while it is off, updates wait for the way back.
-  const crowdHidden = props.mapStyle === "hidden";
+  // An update of the list: only the roaches that changed are worked out again (MassCache). The way the crowd is
+  // drawn: every roach; 轻量's piles (on the GPU layer), put together again in the background as the list
+  // changes, the full list for the GPU then not made at all; or 全员隐匿, none, the updates waiting for the way back.
+  const crowdMode = props.mapStyle === "hidden" ? "off" : props.mapStyle === "lite" ? "lite" : "all";
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const was = crowdWasOffRef.current;
-    if (crowdHidden && was) return;
-    crowdWasOffRef.current = crowdHidden;
+    const was = crowdWasRef.current;
+    if (crowdMode === "off" && was === "off") return;
     regroup();
-    if (glRef.current) glRef.current.setRoaches(glList());
+    const gl = glRef.current;
+    const mode = crowdMode === "lite" && !gl ? "all" : crowdMode;
+    crowdWasRef.current = mode;
+    if (mode === "lite") startPiles();
     else {
-      shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
-      const z = map.getZoom();
-      massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
+      if (was === "lite") stopPiles();
+      if (gl) gl.setRoaches(glList());
+      else {
+        shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
+        const z = map.getZoom();
+        massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
+      }
     }
     heatRef.current?.set(swarmPoints(groupsRef.current));
-    if (crowdHidden !== was) {
-      if (crowdHidden) crawlRef.current?.stop();
-      else crawlRef.current?.start();
+    if (mode !== was) {
+      if (mode === "all") crawlRef.current?.start();
+      else crawlRef.current?.stop();
     }
-  }, [props.roaches, crowdHidden]);
+  }, [props.roaches, crowdMode]);
 
   // One roach off stage while a touch scene plays over the map: left out where it is drawn, nothing worked out again
   const hiddenId = props.hiddenId ?? null;

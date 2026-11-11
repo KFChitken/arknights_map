@@ -9,8 +9,31 @@ import {
 } from "@/lib/mapStyle";
 import { HEART_D } from "@/lib/touchArt";
 
-/** 地图画风's small pictures: a radial dark patch (国度版), a roach (默认), a heart (舟u本色), a roach struck through (全员隐匿) */
+/** The roach of 默认's small picture, also inside 轻量's */
+const ROACH = (
+  <>
+    <path d="M3 11 C3 6 5.5 3.5 8 3.5 C10.5 3.5 13 6 13 11 Z" fill="#fff" />
+    <path d="M6.5 4.2 C6 2.6 4.6 1.6 3 1.6 M9.5 4.2 C10 2.6 11.4 1.6 13 1.6" stroke="#fff" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+    <rect x="4.2" y="11.5" width="7.6" height="2.6" rx="1.2" fill="#fff" opacity="0.7" />
+  </>
+);
+
+/** Styles new enough to say so beside their name */
+const NEW_STYLES: MapStyle[] = ["lite"];
+
+/**
+ * 地图画风's small pictures: a radial dark patch (国度版), a roach (默认), a heart (舟u本色), a roach with a
+ * teal dot, as a pile's count (轻量), a roach struck through (全员隐匿)
+ */
 function StyleIcon({ style }: { style: MapStyle }) {
+  if (style === "lite") {
+    return (
+      <svg className="ic" viewBox="0 0 16 16" aria-hidden="true">
+        <g transform="translate(-1.2 1.4) scale(0.9)">{ROACH}</g>
+        <circle cx="12.4" cy="4" r="3.4" fill="#5cc8cc" stroke="#1b1d22" strokeWidth="1.2" />
+      </svg>
+    );
+  }
   if (style === "hidden") {
     return (
       <svg className="ic" viewBox="0 0 16 16" aria-hidden="true">
@@ -187,7 +210,10 @@ export default function MapStylePicker({
               {/* eslint-disable-next-line @next/next/no-img-element -- small pictures, only once the card opens */}
               <img alt="" src={`/map-style-${s}.png`} width={64} height={40} />
               <span>
-                <b>{MAP_STYLE_NAMES[s]}</b>
+                <b>
+                  {MAP_STYLE_NAMES[s]}
+                  {NEW_STYLES.includes(s) && <i>新</i>}
+                </b>
                 <small>{unavailable[s] ?? MAP_STYLE_NOTES[s]}</small>
               </span>
               <svg className="tick" viewBox="0 0 18 18" aria-hidden="true">

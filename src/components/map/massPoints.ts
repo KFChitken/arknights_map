@@ -33,6 +33,10 @@ export type MassPoint = {
   asleep: boolean;
   seed: number;
   group: number;
+  /** The cartoon look's icon (styleIndex), as the GPU layer and 轻量 draw it */
+  look: number;
+  /** 轻量: which roach a pile shows, the lowest key winning (piles.ts) */
+  key: number;
 };
 
 export const LOOKS = ROACH_AVATARS.length * ROACH_COLORS.length;
@@ -54,7 +58,7 @@ export function styleIndex(p: MassPoint, look: RoachStyle, pose: number) {
 export function massPointOf(r: PublicRoach): MassPoint {
   const [lng, lat] = toGcj(r);
   const t = roachTraits(r.id, MASS_GROUPS, HEADINGS.length);
-  return {
+  const p: MassPoint = {
     lng,
     lat,
     at: [lng, lat],
@@ -68,7 +72,12 @@ export function massPointOf(r: PublicRoach): MassPoint {
     asleep: Boolean(r.asleep),
     seed: t.seed,
     group: r.asleep ? STILL : t.group,
+    look: 0,
+    // awake and no clone first, then clones, then those asleep; within one, the lowest seed
+    key: (r.asleep ? 2 : r.clone ? 1 : 0) * 2 ** 32 + t.seed,
   };
+  p.look = styleIndex(p, "cartoon", 0);
+  return p;
 }
 
 /** Whether a roach is drawn the same as before: the same object, or the same where and how */
@@ -87,7 +96,7 @@ const glOf = (p: MassPoint): GlRoach => ({
   id: p.id,
   lng: p.lng,
   lat: p.lat,
-  style: styleIndex(p, "cartoon", 0),
+  style: p.look,
   still: p.asleep,
   seed: p.seed,
   friend: p.friend,

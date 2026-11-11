@@ -2,6 +2,7 @@ import type { AMapNS } from "@/lib/amap";
 import { cartoonCrawl, crawl, heartRhythm, iconPx } from "@/lib/swarm";
 import { HEART_D } from "@/lib/touchArt";
 import { coordsOf, layerState, mvpOf, offFrom, onScreen, program, restoreState, saveState, type Vao, vaoOf } from "./glCommon";
+import { BADGE_AT, countBadgeText, PILE_MAX_PX, pileMul, type PileItem } from "./piles";
 
 /**
  * Every roach on the 高德 map drawn by the GPU in one go, the way the OSM map's MapLibre draws them:
@@ -45,10 +46,18 @@ export type RoachGl = {
   tick: (on: boolean) => void;
   /** 舟u本色: hearts over the roaches, drawn with them (nothing of them is built until first asked for) */
   setHearts: (mode: HeartMode) => void;
-  /** The roach drawn at a point of the map's container (CSS px), the top one, or null */
-  hit: (x: number, y: number) => string | null;
+  /**
+   * 轻量 (src/lib/mapStyle.ts): only these piles and lone roaches drawn, standing still, each pile with its
+   * count; null: every roach again (setRoaches' list, which 轻量 leaves as it was)
+   */
+  setPiles: (items: PileItem[] | null) => void;
+  /** What is drawn at a point of the map's container (CSS px), the top one: a roach's id, a pile, or null */
+  hit: (x: number, y: number) => string | PileHit | null;
   destroy: () => void;
 };
+
+/** A pile tapped: its cluster id, and where it is (as the map has it) */
+export type PileHit = { pile: number; lng: number; lat: number };
 
 // The icons, one cell each in a picture that the GPU can shrink smoothly (a power of two, with mipmaps)
 const CELL = 96;
@@ -145,6 +154,153 @@ void main() {
   if (c.a < 0.02) discard;
   gl_FragColor = c;
 }`;
+
+// 轻量's counts, one cell each in a picture of their own, drawn the first time each is wanted
+const BADGE_W = 96;
+const BADGE_H = 36;
+const BADGES_W = 2048;
+const BADGES_H = 1024;
+const BADGE_COLS = Math.floor(BADGES_W / BADGE_W);
+const BADGE_CELLS = BADGE_COLS * Math.floor(BADGES_H / BADGE_H);
+const BADGE_FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+
+/** 轻量: a pile or a lone roach, standing still, as big as its pile (aMul below 0: the one off stage) */
+const LITE_VERT = `
+precision highp float;
+attribute vec2 aPos;
+attribute float aStyle;
+attribute float aMul;
+uniform mat4 uMvp;
+uniform float uDpr;
+uniform float uSize;
+uniform float uMaxPx;
+varying float vStyle;
+void main() {
+  vStyle = aStyle;
+  if (aMul < 0.0) { ${HIDE} return; }
+  gl_Position = uMvp * vec4(aPos, 0.0, 1.0);
+  gl_PointSize = min(uSize * aMul, max(uSize, uMaxPx)) * uDpr * ${(CELL / INNER).toFixed(4)};
+}`;
+
+/** 轻量's counts: one square point each, right of and above its pile, the badge in a band across its middle */
+const LABEL_VERT = `
+precision highp float;
+attribute vec2 aPos;
+attribute float aMul;
+attribute float aCell;
+uniform mat4 uMvp;
+uniform vec2 uViewport;
+uniform float uDpr;
+uniform float uSize;
+uniform float uMaxPx;
+varying vec2 vCell;
+void main() {
+  float s = min(uSize * aMul, max(uSize, uMaxPx));
+  vec4 p = uMvp * vec4(aPos, 0.0, 1.0);
+  // CSS px (y down) to clip space
+  p.xy += vec2(${BADGE_AT[0].toFixed(3)}, ${(-BADGE_AT[1]).toFixed(3)}) * s * uDpr * 2.0 / uViewport * p.w;
+  gl_Position = p;
+  gl_PointSize = clamp(s * 1.2, 46.0, 58.0) * uDpr;
+  vCell = vec2(mod(aCell, ${BADGE_COLS.toFixed(1)}), floor(aCell / ${BADGE_COLS.toFixed(1)}));
+}`;
+
+const LABEL_FRAG = `
+precision mediump float;
+uniform sampler2D uLab;
+varying vec2 vCell;
+void main() {
+  vec2 pc = gl_PointCoord;
+  float y = (pc.y - 0.5) / ${(BADGE_H / BADGE_W).toFixed(5)} + 0.5;
+  if (y < 0.0 || y > 1.0) discard;
+  vec2 uv = (vCell + vec2(pc.x, y)) * vec2(${(BADGE_W / BADGES_W).toFixed(8)}, ${(BADGE_H / BADGES_H).toFixed(8)});
+  vec4 c = texture2D(uLab, uv);
+  if (c.a < 0.02) discard;
+  gl_FragColor = c;
+}`;
+
+/** A pile's count: a dark pill with white figures and a white rim, h tall, centred on (cx, cy) */
+function drawBadge(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, h: number) {
+  ctx.save();
+  ctx.font = `800 ${Math.round(h * 0.7)}px ${BADGE_FONT}`;
+  const w = Math.max(h * 1.2, ctx.measureText(text).width + h * 0.66);
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(x + r, y + h);
+  ctx.arc(x + r, y + r, r, Math.PI / 2, (Math.PI * 3) / 2);
+  ctx.closePath();
+  ctx.fillStyle = "#1b1d22";
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, h * 0.12);
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, cx, cy + h * 0.04);
+  ctx.restore();
+}
+
+/**
+ * The counts' picture: a cell drawn for each count the first time it is wanted, all of it started again once
+ * full. Only the cells drawn since go to the GPU (the whole picture is 8 MB, and counts change with updates).
+ */
+function badgeAtlas() {
+  const canvas = document.createElement("canvas");
+  canvas.width = BADGES_W;
+  canvas.height = BADGES_H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let cells = new Map<string, number>();
+  /** The whole picture must go up again (started again); else the cells drawn since it last went up */
+  let whole = true;
+  let fresh: number[] = [];
+  const at = (i: number) => [(i % BADGE_COLS) * BADGE_W, Math.floor(i / BADGE_COLS) * BADGE_H] as const;
+  return {
+    /** Room for these counts, the picture started again if they do not all fit with those already in it */
+    makeRoom(texts: string[]) {
+      const wanted = new Set(texts.filter((t) => !cells.has(t)));
+      if (cells.size + wanted.size <= BADGE_CELLS) return;
+      ctx?.clearRect(0, 0, BADGES_W, BADGES_H);
+      cells = new Map();
+      whole = true;
+      fresh = [];
+    },
+    cell(text: string) {
+      let i = cells.get(text);
+      if (i !== undefined) return i;
+      if (!ctx || cells.size >= BADGE_CELLS) return 0;
+      i = cells.size;
+      cells.set(text, i);
+      const [x, y] = at(i);
+      drawBadge(ctx, text, x + BADGE_W / 2, y + BADGE_H / 2, BADGE_H - 4);
+      fresh.push(i);
+      return i;
+    },
+    /** What changed onto the bound texture: all of it once, then the new cells only */
+    upload(g: WebGLRenderingContext) {
+      if (!ctx || (!whole && !fresh.length)) return;
+      if (whole) {
+        g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, canvas);
+      } else {
+        for (const i of fresh) {
+          const [x, y] = at(i);
+          g.texSubImage2D(g.TEXTURE_2D, 0, x, y, g.RGBA, g.UNSIGNED_BYTE, ctx.getImageData(x, y, BADGE_W, BADGE_H));
+        }
+      }
+      whole = false;
+      fresh = [];
+    },
+    /** A new GPU context: everything up again */
+    lost() {
+      whole = true;
+      fresh = [];
+    },
+  };
+}
 
 /**
  * The hearts: the roaches' own buffer drawn again, once for each of a roach's hearts (uSlot), each point
@@ -377,7 +533,26 @@ export function roachGl(
   let atlasSeq = 0;
   let iconsReady = false;
   /** What the last frame drew with, for hits */
-  let last: { mvp: Float32Array; size: number; thinPow: number } | null = null;
+  let last: { mvp: Float32Array; size: number; thinPow: number; maxPx: number } | null = null;
+  // 轻量: the piles drawn instead of every roach (setPiles), their positions from the origin, and the counts'
+  // own programs, buffers and picture; made the first time 轻量 is drawn
+  let piles: PileItem[] | null = null;
+  let pileXY = new Float64Array(0);
+  let pilesDirty = false;
+  let pileCount = 0;
+  let labelCount = 0;
+  let liteProg: WebGLProgram | null = null;
+  let liteVao: unknown = null;
+  let liteBuf: WebGLBuffer | null = null;
+  let liteLoc: Record<string, WebGLUniformLocation | null> = {};
+  let labelProg: WebGLProgram | null = null;
+  let labelVao: unknown = null;
+  let labelBuf: WebGLBuffer | null = null;
+  let labelTex: WebGLTexture | null = null;
+  let labelLoc: Record<string, WebGLUniformLocation | null> = {};
+  let badges: ReturnType<typeof badgeAtlas> | null = null;
+  /** The largest point this GPU draws, in device px */
+  let maxPoint = 0;
   const t0 = performance.now();
   let crawling = false;
   let timer = 0;
@@ -400,6 +575,16 @@ export function roachGl(
       roaches.map((r) => [r.lng, r.lat]),
     );
     dirty = true;
+    placePiles();
+  };
+  const placePiles = () => {
+    if (!piles) return;
+    pileXY = coordsOf(
+      cc,
+      origin,
+      piles.map((p) => [p.lng, p.lat]),
+    );
+    pilesDirty = true;
   };
 
   /** Hand the GPU every roach (STRIDE floats each) */
@@ -465,7 +650,7 @@ export function roachGl(
     try {
       gl = g;
       const range = g.getParameter(g.ALIASED_POINT_SIZE_RANGE) as Float32Array;
-      const maxPoint = range?.[1] ?? 0;
+      maxPoint = range?.[1] ?? 0;
       // the largest icon (36 px at 12 and up) on this screen, with its cell's margin
       const dpr = g.drawingBufferWidth / Math.max(1, map.getContainer().clientWidth);
       if (maxPoint < iconPx(12) * dpr * (CELL / INNER)) throw new Error(`points up to ${maxPoint}px`);
@@ -496,9 +681,12 @@ export function roachGl(
       vao.bind(vaoWas);
       g.bindBuffer(g.ARRAY_BUFFER, bufWas);
       tex = g.createTexture();
-      // the hearts' program is made again when next wanted
+      // the hearts' and 轻量's programs are made again when next wanted
       heartProg = null;
       heartVao = null;
+      liteProg = null;
+      labelProg = null;
+      pilesDirty = true;
       // everything goes up again with a new context
       dirty = true;
       iconsReady = false;
@@ -573,6 +761,140 @@ export function roachGl(
     draw(2, firstFriend);
   };
 
+  /** 轻量's two programs, buffers, vertex arrays and the counts' picture, made the first time 轻量 is drawn */
+  const makeLite = (g: WebGLRenderingContext, v: Vao) => {
+    const lp = program(g, LITE_VERT, FRAG);
+    const bp = program(g, LABEL_VERT, LABEL_FRAG);
+    liteLoc = Object.fromEntries(["uMvp", "uDpr", "uSize", "uMaxPx", "uTex"].map((n) => [n, g.getUniformLocation(lp, n)]));
+    labelLoc = Object.fromEntries(["uMvp", "uViewport", "uDpr", "uSize", "uMaxPx", "uLab"].map((n) => [n, g.getUniformLocation(bp, n)]));
+    const vaoWas = v.current();
+    const bufWas = g.getParameter(g.ARRAY_BUFFER_BINDING);
+    const attrs = (pr: WebGLProgram, list: [string, number, number][]) => {
+      for (const [name, size, offset] of list) {
+        const a = g.getAttribLocation(pr, name);
+        if (a < 0) continue;
+        g.enableVertexAttribArray(a);
+        g.vertexAttribPointer(a, size, g.FLOAT, false, 16, offset * 4);
+      }
+    };
+    liteVao = v.create();
+    v.bind(liteVao);
+    liteBuf = g.createBuffer();
+    g.bindBuffer(g.ARRAY_BUFFER, liteBuf);
+    attrs(lp, [
+      ["aPos", 2, 0],
+      ["aStyle", 1, 2],
+      ["aMul", 1, 3],
+    ]);
+    labelVao = v.create();
+    v.bind(labelVao);
+    labelBuf = g.createBuffer();
+    g.bindBuffer(g.ARRAY_BUFFER, labelBuf);
+    attrs(bp, [
+      ["aPos", 2, 0],
+      ["aMul", 1, 2],
+      ["aCell", 1, 3],
+    ]);
+    v.bind(vaoWas);
+    g.bindBuffer(g.ARRAY_BUFFER, bufWas);
+    labelTex = g.createTexture();
+    badges ??= badgeAtlas();
+    badges.lost();
+    liteProg = lp;
+    labelProg = bp;
+    pilesDirty = true;
+  };
+
+  /** The piles onto the GPU (four floats each), and their counts, the bigger counts drawn last where two meet */
+  const uploadPiles = (g: WebGLRenderingContext, v: Vao) => {
+    const items = piles ?? [];
+    const pd = new Float32Array(items.length * 4);
+    items.forEach((it, i) => {
+      const o = i * 4;
+      pd[o] = pileXY[i * 2];
+      pd[o + 1] = pileXY[i * 2 + 1];
+      pd[o + 2] = it.style;
+      pd[o + 3] = it.ref === hiddenId ? -1 : pileMul(it.n);
+    });
+    const counted = items.map((it, i) => ({ it, i })).filter(({ it }) => it.n > 1);
+    counted.sort((a, b) => a.it.n - b.it.n);
+    const atlas = badges!;
+    atlas.makeRoom(counted.map(({ it }) => countBadgeText(it.n)));
+    const ld = new Float32Array(counted.length * 4);
+    counted.forEach(({ it, i }, j) => {
+      const o = j * 4;
+      ld[o] = pileXY[i * 2];
+      ld[o + 1] = pileXY[i * 2 + 1];
+      ld[o + 2] = pileMul(it.n);
+      ld[o + 3] = atlas.cell(countBadgeText(it.n));
+    });
+    const bufWas = g.getParameter(g.ARRAY_BUFFER_BINDING);
+    v.bind(liteVao);
+    g.bindBuffer(g.ARRAY_BUFFER, liteBuf);
+    g.bufferData(g.ARRAY_BUFFER, pd, g.DYNAMIC_DRAW);
+    v.bind(labelVao);
+    g.bindBuffer(g.ARRAY_BUFFER, labelBuf);
+    g.bufferData(g.ARRAY_BUFFER, ld, g.DYNAMIC_DRAW);
+    g.bindBuffer(g.ARRAY_BUFFER, bufWas);
+    g.bindTexture(g.TEXTURE_2D, labelTex);
+    const premultiply = g.getParameter(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL);
+    const flip = g.getParameter(g.UNPACK_FLIP_Y_WEBGL);
+    g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false);
+    atlas.upload(g);
+    g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, premultiply);
+    g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, flip);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+    g.bindTexture(g.TEXTURE_2D, tex);
+    pileCount = items.length;
+    labelCount = counted.length;
+    pilesDirty = false;
+  };
+
+  /** 轻量's frame: the piles, then their counts, each in one go */
+  const drawLite = (g: WebGLRenderingContext, v: Vao, was: ReturnType<typeof saveState>) => {
+    if (!liteProg) makeLite(g, v);
+    if (pilesDirty) uploadPiles(g, v);
+    if (!iconsReady || !pileCount) return;
+    cc.setCenter(origin);
+    const zoom = map.getZoom();
+    const size = iconPx(zoom - ZOOM_OFFSET);
+    const mvp = mvpOf(cc.getCameraParams());
+    const w = g.drawingBufferWidth;
+    const h = g.drawingBufferHeight;
+    const dpr = w / Math.max(1, map.getContainer().clientWidth);
+    // the biggest pile as this GPU can draw a point, with its cell's margin
+    const maxPx = Math.max(size, Math.min(PILE_MAX_PX, maxPoint / (dpr * (CELL / INNER))));
+    last = { mvp, size, thinPow: 0, maxPx };
+    layerState(g, was);
+    g.viewport(0, 0, w, h);
+    g.useProgram(liteProg);
+    g.uniformMatrix4fv(liteLoc.uMvp, false, mvp);
+    g.uniform1f(liteLoc.uDpr, dpr);
+    g.uniform1f(liteLoc.uSize, size);
+    g.uniform1f(liteLoc.uMaxPx, maxPx);
+    g.uniform1i(liteLoc.uTex, 0);
+    v.bind(liteVao);
+    g.drawArrays(g.POINTS, 0, pileCount);
+    if (labelCount) {
+      g.bindTexture(g.TEXTURE_2D, labelTex);
+      g.useProgram(labelProg);
+      g.uniformMatrix4fv(labelLoc.uMvp, false, mvp);
+      g.uniform2f(labelLoc.uViewport, w, h);
+      g.uniform1f(labelLoc.uDpr, dpr);
+      g.uniform1f(labelLoc.uSize, size);
+      g.uniform1f(labelLoc.uMaxPx, maxPx);
+      g.uniform1i(labelLoc.uLab, 0);
+      v.bind(labelVao);
+      g.drawArrays(g.POINTS, 0, labelCount);
+      g.bindTexture(g.TEXTURE_2D, tex);
+    }
+    frames++;
+  };
+
   const render = () => {
     const g = gl;
     if (failed || !g || !prog || !vao || g.isContextLost()) return;
@@ -581,6 +903,11 @@ export function roachGl(
       const was = saveState(g, vao);
       g.bindTexture(g.TEXTURE_2D, tex);
       if (!iconsReady) uploadIcons(g);
+      if (piles) {
+        drawLite(g, vao, was);
+        restoreState(g, vao, was);
+        return;
+      }
       vao.bind(vaoObj);
       if (dirty) upload(g);
       else if (patch.length) patchThin(g);
@@ -592,7 +919,7 @@ export function roachGl(
         const level = Math.max(2, Math.ceil(zoom - 1e-6));
         const thinPow = level <= opts.thinZoom ? 2 ** (level - 2) : 0;
         const mvp = mvpOf(params);
-        last = { mvp, size, thinPow };
+        last = { mvp, size, thinPow, maxPx: PILE_MAX_PX };
         const w = g.drawingBufferWidth;
         const h = g.drawingBufferHeight;
         g.useProgram(prog);
@@ -688,6 +1015,22 @@ export function roachGl(
       hiddenId = id;
       hiddenIndex = id === null ? -1 : roaches.findIndex((r) => r.id === id);
       patch.push(was, hiddenIndex);
+      // in 轻量 the piles go up again: a hundred or two
+      if (piles) pilesDirty = true;
+      map.render();
+    },
+    setPiles: (items) => {
+      piles = items;
+      if (items) {
+        // nothing moves: no frames asked for while the map stands still
+        window.clearInterval(timer);
+        timer = 0;
+        placePiles();
+      } else {
+        pileXY = new Float64Array(0);
+        pileCount = 0;
+        labelCount = 0;
+      }
       map.render();
     },
     setHearts: (mode) => {
@@ -715,13 +1058,26 @@ export function roachGl(
     tick: (on) => {
       window.clearInterval(timer);
       timer = 0;
-      if (on && crawling && !failed) timer = window.setInterval(() => map.render(), CRAWL_FRAME_MS);
+      if (on && crawling && !failed && !piles) timer = window.setInterval(() => map.render(), CRAWL_FRAME_MS);
     },
     hit: (x, y) => {
       if (!last || !iconsReady) return null;
       const el = map.getContainer();
       const W = el.clientWidth;
       const H = el.clientHeight;
+      if (piles) {
+        const { mvp: m, size, maxPx } = last;
+        // the last drawn (on top) wins
+        for (let i = piles.length - 1; i >= 0; i--) {
+          const it = piles[i];
+          if (it.ref === hiddenId || i * 2 + 1 >= pileXY.length) continue;
+          const { x: sx, y: sy } = onScreen(m, pileXY[i * 2], pileXY[i * 2 + 1], W, H);
+          const width = Math.min(size * pileMul(it.n), Math.max(size, maxPx));
+          if (Math.hypot(sx - x, sy - y) > Math.max(width / 2, 16)) continue;
+          return typeof it.ref === "string" ? it.ref : { pile: it.ref, lng: it.lng, lat: it.lat };
+        }
+        return null;
+      }
       const { mvp: m, size, thinPow } = last;
       const radius = Math.max(size / 2, 14);
       const now = (performance.now() - t0) % CLOCK_WRAP;
@@ -745,8 +1101,15 @@ export function roachGl(
         if (tex) gl.deleteTexture(tex);
         if (prog) gl.deleteProgram(prog);
         if (heartProg) gl.deleteProgram(heartProg);
+        if (liteProg) gl.deleteProgram(liteProg);
+        if (labelProg) gl.deleteProgram(labelProg);
+        if (liteBuf) gl.deleteBuffer(liteBuf);
+        if (labelBuf) gl.deleteBuffer(labelBuf);
+        if (labelTex) gl.deleteTexture(labelTex);
         if (vao && vaoObj) vao.remove(vaoObj);
         if (vao && heartVao) vao.remove(heartVao);
+        if (vao && liteVao) vao.remove(liteVao);
+        if (vao && labelVao) vao.remove(labelVao);
       }
       gl = null;
       map.render();
