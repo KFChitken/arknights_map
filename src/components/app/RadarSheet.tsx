@@ -106,7 +106,7 @@ export default function RadarSheet({
 
       <h3>附近的动静</h3>
       <ul className="radar-facts">
-        <li>24 小时内附近的舟P被触须碰了 {radar.touches} 次，发了 {radar.declarations} 条独立宣言</li>
+        <li>24 小时内附近的舟P被触须碰了 {radar.touches} 次，发了 {radar.declarations} 条宣言</li>
         <li>
           {radar.friendsNearby > 0 ? `你的触须之交里有 ${radar.friendsNearby} 位就在附近` : "附近还没有你的触须之交"}
         </li>

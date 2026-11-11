@@ -1197,7 +1197,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   const d = checkDeclaration(profileOf(u), input, Date.now(), drunk);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
-  if (!mine.some((r) => r.slot === 0)) throw new WorldError("先放下蟑螂本体，才能发表独立宣言。");
+  if (!mine.some((r) => r.slot === 0)) throw new WorldError("先放下蟑螂本体，才能发宣言。");
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
   const chosen = wanted ? mine.filter((r) => wanted.includes(r.id)) : mine.filter((r) => r.slot === 0);
   if (wanted && chosen.length < wanted.length) throw new WorldError("有只蟑螂找不到了，刷新一下再试。");

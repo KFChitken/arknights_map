@@ -3904,7 +3904,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
             <>
               <button onClick={() => setPanel({ kind: "mine" })}>我的蟑螂</button>
               <button className="primary" onClick={() => setPanel({ kind: "declare" })}>
-                独立宣言
+                我宣布个事儿！
               </button>
             </>
           ) : (

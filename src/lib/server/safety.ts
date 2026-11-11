@@ -100,7 +100,7 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
     // one the reporter sees now (src/lib/server/declarationInbox.ts)
     const d = await canSeeDeclaration(userId, id);
     if (!d) return null;
-    return { other: d.senderId, known: false, context: `独立宣言「${declarationText(storedDeclaration(d))}」` };
+    return { other: d.senderId, known: false, context: `宣言「${declarationText(storedDeclaration(d))}」` };
   }
   if (kind === "x") {
     const [row] = await db

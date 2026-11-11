@@ -59,7 +59,7 @@ export default function IdentitySheet({
   return (
     <Sheet title="切换测试身份" onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        开发测试用：切换身份就像换个账号登录，一个人就能试完触须、被碰提示、独立宣言和触须之交。上海的几位测试玩家彼此都在 10
+        开发测试用：切换身份就像换个账号登录，一个人就能试完触须、被碰提示、「我宣布个事儿！」和触须之交。上海的几位测试玩家彼此都在 10
         公里内。正式上线时这个按钮不会出现。
       </p>
       {GROUPS.map(([group, title]) => {

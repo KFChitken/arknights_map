@@ -77,13 +77,13 @@ function touchText(item: Extract<InboxItem, { kind: "touch" }>) {
   const who = item.from?.displayName;
   if (item.bold && who) {
     if (item.target === "touch") return `${who} 大胆地碰回来了！`;
-    if (item.target === "declaration") return `${who} 回应了你的独立宣言，大胆地碰了碰你！`;
+    if (item.target === "declaration") return `${who} 回应了你的宣言，大胆地碰了碰你！`;
     if (item.target === "reaction") return `${who} 看到了你的回应，大胆地碰了碰你！`;
     if (item.target === "clone") return `${who} 大胆地伸出触须，碰了碰你的克隆体`;
     return `${who} 大胆地伸出触须，碰了碰你的蟑螂`;
   }
   if (item.target === "touch") return "有只蟑螂偷偷碰回来了";
-  if (item.target === "declaration") return "有只蟑螂回应了你的独立宣言，偷偷碰了你一下";
+  if (item.target === "declaration") return "有只蟑螂回应了你的宣言，偷偷碰了你一下";
   if (item.target === "reaction") return "有只蟑螂看到了你的回应，偷偷碰了你一下";
   if (item.target === "clone") return "一只蟑螂偷偷用触须碰了你的克隆体";
   return "一只蟑螂偷偷用触须碰了你一下";
@@ -115,8 +115,8 @@ export function noticeTitle(items: InboxItem[]) {
   if (unseen.some((i) => i.kind === "talulah")) return "塔露拉干员回了你！";
   if (unseen.some((i) => i.kind === "minghe" && i.line === "trip")) return "明河都尉送你的克隆体回来了！";
   if (unseen.some((i) => i.kind === "minghe")) return "明河都尉回了你！";
-  if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的独立宣言！";
-  if (unseen.length) return "附近有舟P发表了独立宣言！";
+  if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的宣言！";
+  if (unseen.length) return "附近有舟P发了宣言！";
   return "消息";
 }
 
@@ -603,7 +603,7 @@ export default function InboxSheet({
     return (
       <div key={item.id} className={cls}>
         <div>
-          {item.from ? `你的触须之交 ${item.from.displayName} 发表了独立宣言：` : `${DECLARATION_RADIUS_KM} 公里内有舟P发表了独立宣言：`}
+          {item.from ? `你的触须之交 ${item.from.displayName} 发了宣言：` : `${DECLARATION_RADIUS_KM} 公里内有舟P发了宣言：`}
         </div>
         <div className="quote">「{item.text}」</div>
         {meta(item, item.id, item.from?.displayName ?? null)}
@@ -767,7 +767,7 @@ function eventText(e: Friend["history"][number]) {
       if (e.you) return e.bold ? "被你大胆地碰了" : "被你偷偷碰了";
       return e.bold ? "被一只蟑螂大胆地碰了" : "被一只蟑螂偷偷碰了";
     case "declared":
-      return `发表了独立宣言「${e.text}」`;
+      return `发了宣言「${e.text}」`;
     case "befriended":
       return e.you ? "和你成为了触须之交" : "和一位舟P成为了触须之交";
     case "support":
@@ -843,7 +843,7 @@ export function FriendView({
 
       {!guide && (
         <>
-          <h3>最近 {INBOX_DAYS} 天发表了 {friend.declarations} 次独立宣言</h3>
+          <h3>最近 {INBOX_DAYS} 天发了 {friend.declarations} 次宣言</h3>
 
           <h3>社交记录</h3>
           {friend.history.length === 0 && <p className="hint">最近还没有动静。</p>}

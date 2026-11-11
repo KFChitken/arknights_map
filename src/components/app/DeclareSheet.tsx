@@ -150,7 +150,7 @@ export default function DeclareSheet({
 
   return (
     <Sheet
-      title="独立宣言"
+      title="我宣布个事儿！"
       onClose={onClose}
       footer={
         <button className="primary wide" onClick={send} disabled={!canSend || sending}>

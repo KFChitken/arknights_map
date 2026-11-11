@@ -19,7 +19,7 @@ export const WHATS_NEW = "新功能：明河骑着怒骊在各地走，派一只
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,
   responders: (n, name) => `再有 ${n} 位舟P回应你的宣言，你就是${name}了。`,
-  declareDays: (n, name) => `再有 ${n} 天发独立宣言，你就是${name}了。`,
+  declareDays: (n, name) => `再有 ${n} 天发宣言，你就是${name}了。`,
   reactDays: (n, name) => `再有 ${n} 天回应别人的宣言，你就是${name}了。`,
   // never picked by nextBadge, which leaves drinking, the sentences and the guides alone
   drinks: (n, name) => `再摄入 ${n} 次酒精，你就是${name}了。`,
