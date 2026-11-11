@@ -1,24 +1,26 @@
 /**
- * The notice every signed-in player sees once, before anything else, on coming back to the map or on
- * signing in, a newcomer's first sign-in too (src/components/app/NoticeSheet.tsx). A new notice gets a
- * new id, so everyone sees that one too. Remembered in this browser.
+ * The notice every signed-in player sees before anything else (src/components/app/NoticeSheet.tsx), each
+ * time they come (Breeze, 11/11): on every sign-in, a newcomer's first too, and on opening the map once per
+ * visit. A visit is this tab until it is closed, so reloading the page does not bring it back, while a new
+ * tab, or opening the site again after closing it, does.
  */
 export const NOTICE_ID = "2026-11-11";
 
 const key = (userId: string) => `zhoup.notice.${NOTICE_ID}.${userId}`;
 
+/** Closed already during this visit */
 export function noticeSeen(userId: string) {
   try {
-    return localStorage.getItem(key(userId)) === "1";
+    return sessionStorage.getItem(key(userId)) === "1";
   } catch {
-    // storage blocked: shown each visit rather than never
+    // storage blocked: shown on every load rather than never
     return false;
   }
 }
 
 export function markNoticeSeen(userId: string) {
   try {
-    localStorage.setItem(key(userId), "1");
+    sessionStorage.setItem(key(userId), "1");
   } catch {
     // storage blocked: nothing to remember it in
   }

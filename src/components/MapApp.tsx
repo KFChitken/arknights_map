@@ -770,7 +770,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
             setActing("wake");
           } else first();
         };
-        // the notice for everyone signed in comes before all of that, once
+        // the notice for everyone signed in comes before all of that, once a visit
         if (m && !noticeSeen(m.id)) setNotice({ userId: m.id, then: go });
         else go();
       });
@@ -2041,8 +2041,9 @@ export default function MapApp({ cn }: { cn: boolean }) {
       if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
       else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
     };
-    // the notice comes first, as on opening the map: for a newcomer, the first thing after signing up
-    if (m && !noticeSeen(m.id)) setNotice({ userId: m.id, then: next });
+    // the notice comes first on every sign-in, even one seen earlier in this visit: for a newcomer, the first
+    // thing after signing up
+    if (m) setNotice({ userId: m.id, then: next });
     else next();
   };
 
