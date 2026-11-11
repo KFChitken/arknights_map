@@ -10,6 +10,11 @@ import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 export type MapViewProps = {
   /** Everyone else's roaches */
   roaches: PublicRoach[];
+  /**
+   * The one of them off stage while a touch scene plays it out over the map: left out where it is drawn, the
+   * list itself unchanged so nothing has to be worked out again (none: null or left out)
+   */
+  hiddenId?: string | null;
   /** Your own roaches at their true positions */
   mine: OwnRoach[];
   /** Your main roach lies asleep (摄入酒精) */

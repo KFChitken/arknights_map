@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { area, boxMeetsArea, inArea, inRing, viewBoxes, widen, type Ring } from "./shapes";
+import data from "@/data/china-gcj.json";
+import { mulberry32 } from "./prng";
+import { area, boxMeetsArea, inArea, inRing, viewBoxes, widen, type Box, type Ring } from "./shapes";
 
 const square: Ring = [
   [0, 0],
@@ -17,7 +19,35 @@ const ell: Ring = [
   [0, 10],
 ];
 
+/** The ray cast as first written, unpacking each point, to hold the faster one to */
+function plainInRing(x: number, y: number, ring: Ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 describe("shapes", () => {
+  it("says the same as the plain ray cast for 10,000 spots around China, on the real outlines", () => {
+    const rings = data.foreign as Ring[];
+    const foreign = area(rings);
+    const [w, s, e, n] = data.box as Box;
+    const rand = mulberry32(20261111);
+    let inside = 0;
+    for (let k = 0; k < 10_000; k++) {
+      const p = { lng: w + rand() * (e - w), lat: s + rand() * (n - s) };
+      const plain = rings.some((r) => plainInRing(p.lng, p.lat, r));
+      expect(inArea(p, foreign)).toBe(plain);
+      if (plain) inside++;
+    }
+    // both answers turn up plenty, so the comparison means something
+    expect(inside).toBeGreaterThan(1000);
+    expect(inside).toBeLessThan(9000);
+  });
+
   it("tells points inside a ring from those outside", () => {
     expect(inRing(5, 5, square)).toBe(true);
     expect(inRing(11, 5, square)).toBe(false);

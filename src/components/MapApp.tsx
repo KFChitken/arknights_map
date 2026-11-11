@@ -529,9 +529,25 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     .flatMap((f) => f.roaches.flatMap((r) => feedIdsOf(r.id)))
     .sort()
     .join(",");
+  // Each roach stays the same object while the feed's own stays and its friend mark is unchanged, so the
+  // maps can tell at once which ones changed: an update of the list changes a few hundred of tens of thousands
+  // (the feed keeps its own object for each roach that did not change, and those gone are let go with it)
+  const keptRef = useRef(new WeakMap<MapRoach, PublicRoach>());
   const roaches = useMemo<PublicRoach[]>(() => {
     const friendIds = new Set(friendKey.split(","));
-    return feedRoaches.filter((r) => !ownIds.has(r.id)).map((r) => ({ ...r, friend: friendIds.has(r.id) }));
+    const kept = keptRef.current;
+    const out: PublicRoach[] = [];
+    for (const r of feedRoaches) {
+      if (ownIds.has(r.id)) continue;
+      const friend = friendIds.has(r.id);
+      let o = kept.get(r);
+      if (!o || o.friend !== friend) {
+        o = { ...r, friend };
+        kept.set(r, o);
+      }
+      out.push(o);
+    }
+    return out;
   }, [feedRoaches, ownIds, friendKey]);
 
   const applyMe = useCallback((m: Me | null) => {
@@ -1025,7 +1041,6 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   };
   // whoever acts out a scene over the map is left out of it meanwhile
   const offStage = poking?.id ?? jolting?.roach.id ?? touchScene?.target ?? devOffStage ?? undefined;
-  const shownRoaches = useMemo(() => (offStage ? roaches.filter((r) => r.id !== offStage) : roaches), [roaches, offStage]);
 
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
@@ -2415,7 +2430,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     () => [...feedRoaches.filter((r) => !ownIds.has(r.id)), ...(me?.roaches ?? [])],
     [feedRoaches, ownIds, me],
   );
-  const byFire = fakeFire ?? fireCount(everyRoach);
+  const byFire = useMemo(() => fakeFire ?? fireCount(everyRoach), [fakeFire, everyRoach]);
   const fire = fireLevel(byFire);
   const seatedAtFire = me?.roaches.find((r) => isNearFire(r)) ?? null;
 
@@ -2548,7 +2563,9 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       })),
     [fakeRiders, day, everyRoach],
   );
-  const riders = roaches.filter((r) => r.ride).length + (myRider ? 1 : 0) + fakeQueue.length;
+  const othersRiding = useMemo(() => roaches.reduce((n, r) => n + (r.ride ? 1 : 0), 0), [roaches]);
+  const riders = othersRiding + (myRider ? 1 : 0) + fakeQueue.length;
+  const mapRoaches = useMemo(() => (fakeQueue.length ? [...roaches, ...fakeQueue] : roaches), [roaches, fakeQueue]);
 
   /** A clone into his queue (a new one, or a move once all of them are out), then to him, where he says so */
   const rideWith = async (target: RideTarget) => {
@@ -2726,7 +2743,9 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       : []),
   ];
   const mapProps = {
-    roaches: fakeQueue.length ? [...shownRoaches, ...fakeQueue] : shownRoaches,
+    roaches: mapRoaches,
+    // whoever acts out a scene over the map is left out of it meanwhile, the list itself kept as it is
+    hiddenId: offStage ?? null,
     guides,
     trail,
     shouts,

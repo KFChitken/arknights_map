@@ -41,6 +41,7 @@ import { heartsLayer, type HeartDot, type HeartsLayer } from "./heartsGl";
 import type { HeartMode } from "./roachGl";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { roachTraits, type MapViewProps } from "./types";
+import { FeatureCache } from "./features";
 
 const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
@@ -146,8 +147,11 @@ function imageSpec(id: string): [RoachColor, RoachOpts] {
   return [color, { avatar, mine: kind.startsWith("mine"), clone: kind === "mineclone", friend: kind === "friend" }];
 }
 
-/** The icons the current data needs, so only those get drawn. */
-function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep" | "ghost" | "myAvatar" | "myColor" | "look">) {
+/**
+ * The icons the current data needs, so only those get drawn: those of your own roaches, and of the crowd
+ * given (all of it, or only its roaches new since the map last had it, whose icons may be new).
+ */
+function neededImages(p: Pick<MapViewProps, "mine" | "mineAsleep" | "ghost" | "myAvatar" | "myColor" | "look">, crowd: readonly PublicRoach[]) {
   const ids = new Set<string>();
   if (p.look === "real") {
     for (const id of ["real", "clone-real", "friend-real", "friendclone-real"]) {
@@ -158,7 +162,7 @@ function neededImages(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep" | 
     for (const id of ["sleep-real", "sleep-friend-real", "sleep-mine-real"]) ids.add(id);
     return ids;
   }
-  for (const r of p.roaches) {
+  for (const r of crowd) {
     if (r.clone) ids.add(r.friend ? "friendclone" : "clone");
     else ids.add(`${r.asleep ? "sleep-" : ""}${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`);
   }
@@ -233,11 +237,11 @@ async function ensureImages(map: maplibregl.Map, ids: Set<string>) {
 const heartModeOf = (style: MapViewProps["mapStyle"]): HeartMode => (style === "hearts" ? (prefersReducedMotion() ? "still" : "float") : "off");
 
 /** The roaches with hearts: everyone's awake ones, in their crawl group, and yours, awake, that keep still */
-function heartDots(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep">): HeartDot[] {
+function heartDots(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep" | "hiddenId">, features: FeatureCache): HeartDot[] {
   const dots: HeartDot[] = [];
   for (const r of p.roaches) {
-    if (r.asleep) continue;
-    const t = roachTraits(r.id, LAYER_GROUPS, HEADINGS.length);
+    if (r.asleep || r.id === p.hiddenId) continue;
+    const t = features.traits(r.id) ?? roachTraits(r.id, LAYER_GROUPS, HEADINGS.length);
     dots.push({ lng: r.lng, lat: r.lat, seed: t.seed, group: t.group, kind: r.friend ? 2 : r.clone ? 1 : 0 });
   }
   for (const r of p.mine) {
@@ -247,31 +251,11 @@ function heartDots(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep">): He
   return dots;
 }
 
-function roachesGeoJSON(roaches: PublicRoach[]): GeoJSON.FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: roaches.map((r) => {
-      const t = roachTraits(r.id, LAYER_GROUPS, HEADINGS.length);
-      return {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-        // a fixed slight tilt per roach so the crowd looks alive
-        properties: {
-          id: r.id,
-          avatar: r.avatar,
-          color: r.color,
-          clone: r.clone,
-          friend: r.friend,
-          asleep: Boolean(r.asleep),
-          rot: t.rot,
-          heading: t.heading,
-          g: t.group,
-          lp: t.seed % LEG_PHASES,
-        },
-      };
-    }),
-  };
-}
+/**
+ * The roach off stage during a touch scene (props.hiddenId) is marked by its feature state and drawn see-through:
+ * neither the data nor a filter changes, which would have the map cut all of its roaches into tiles again
+ */
+const OFF_STAGE = { "icon-opacity": ["case", ["boolean", ["feature-state", "off"], false], 0, 1] };
 
 function mineGeoJSON(
   mine: OwnRoach[],
@@ -298,6 +282,20 @@ export default function MaplibreView(props: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
+  // each roach's feature, kept across updates of the list
+  const featuresRef = useRef(new FeatureCache());
+  // the look the whole crowd's icons are drawn in, so an update draws only the new roaches' icons
+  const iconsLookRef = useRef<RoachStyle | null>(null);
+  // the roach marked off stage on the map, by its feature state
+  const offStageRef = useRef<string | null>(null);
+  /** Mark the roach off stage (none: null), and the one before back on stage */
+  const markOffStage = (map: maplibregl.Map, id: string | null) => {
+    const was = offStageRef.current;
+    if (was === id) return;
+    if (was) map.setFeatureState({ source: "roaches", id: was }, { off: false });
+    if (id) map.setFeatureState({ source: "roaches", id }, { off: true });
+    offStageRef.current = id;
+  };
   const syncRef = useRef<Promise<void>>(Promise.resolve());
   const guidesRef = useRef(new Map<GuideId, { el: HTMLElement; marker: maplibregl.Marker }>());
   const shoutsRef = useRef(new Map<string, maplibregl.Marker>());
@@ -402,12 +400,25 @@ export default function MaplibreView(props: MapViewProps) {
         const map = mapRef.current;
         if (!map || !readyRef.current) return;
         const p = propsRef.current;
-        await ensureImages(map, neededImages(p));
-        if (mapRef.current !== map) return;
-        (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.mineAsleep, p.ghost, p.myAvatar, p.myColor));
-        if (heartModeOf(p.mapStyle) !== "off") heartsRef.current?.setDots(heartDots(p));
-        if (what === "mine") return;
-        (map.getSource("roaches") as GeoJSONSource).setData(roachesGeoJSON(p.roaches));
+        // what changed in the crowd since the map last had it, and whether every roach's icons are needed
+        // again (a new look), or only those of roaches new or changed
+        const update = what === "all" ? featuresRef.current.update(p.roaches) : null;
+        const allIcons = what === "all" && p.look !== iconsLookRef.current;
+        try {
+          await ensureImages(map, neededImages(p, allIcons ? p.roaches : (update?.fresh ?? [])));
+          if (allIcons) iconsLookRef.current = p.look;
+          if (mapRef.current !== map) return;
+          (map.getSource("mine") as GeoJSONSource).setData(mineGeoJSON(p.mine, p.mineAsleep, p.ghost, p.myAvatar, p.myColor));
+          if (heartModeOf(p.mapStyle) !== "off") heartsRef.current?.setDots(heartDots(p, featuresRef.current));
+          if (!update) return;
+          const roaches = map.getSource("roaches") as GeoJSONSource;
+          if (update.all) roaches.setData(update.all);
+          else if (update.diff.add.length || update.diff.remove.length) roaches.updateData(update.diff);
+        } catch (e) {
+          // the map did not get these changes: the next update hands it everything
+          if (update) featuresRef.current.reset();
+          throw e;
+        }
         for (const id of ROACH_LAYERS) {
           map.setLayoutProperty(id, "icon-image", roachImage(p.look) as never);
           map.setLayoutProperty(id, "icon-rotate", roachRotate(p.look) as never);
@@ -437,7 +448,7 @@ export default function MaplibreView(props: MapViewProps) {
       });
       map.addLayer(heartsRef.current);
     }
-    if (mode !== "off") heartsRef.current?.setDots(heartDots(p));
+    if (mode !== "off") heartsRef.current?.setDots(heartDots(p, featuresRef.current));
     heartsRef.current?.setMode(mode);
   };
 
@@ -477,6 +488,8 @@ export default function MaplibreView(props: MapViewProps) {
     let tileErrors = 0;
     map.on("error", (e: { error?: { status?: number; message?: string }; sourceId?: string }) => {
       console.error(e.error ?? e);
+      // the roaches' data may not have taken the last changes: the next update hands it all of them
+      if (e.sourceId === "roaches") featuresRef.current.reset();
       const status = e.error?.status ? String(e.error.status) : "";
       if (!e.sourceId) {
         if (!readyRef.current) reportMapTrouble(kind, "style", status);
@@ -536,9 +549,11 @@ export default function MaplibreView(props: MapViewProps) {
       // 两面包夹芝士 around Japan, and 明河都尉's trail of stars, under all the roaches
       addMaplibreSandwich(map);
       addMaplibreTrail(map, propsRef.current.trail);
-      await ensureImages(map, neededImages(propsRef.current));
+      await ensureImages(map, neededImages(propsRef.current, propsRef.current.roaches));
       const { roaches, mine, mineAsleep, ghost, myAvatar, myColor, look } = propsRef.current;
-      map.addSource("roaches", { type: "geojson", data: roachesGeoJSON(roaches) });
+      iconsLookRef.current = look;
+      // each roach's id is its feature's, so updates can name what changed and touches can mark one
+      map.addSource("roaches", { type: "geojson", data: featuresRef.current.collection(roaches), promoteId: "id" });
       map.addSource("mine", { type: "geojson", data: mineGeoJSON(mine, mineAsleep, ghost, myAvatar, myColor) });
 
       // Dark swarm under the icons so crowded cities read as covered in roaches, in 国度版 only (地图画风):
@@ -576,6 +591,7 @@ export default function MaplibreView(props: MapViewProps) {
           "icon-ignore-placement": true,
           "symbol-sort-key": ["case", ["get", "friend"], 1, 0],
         },
+        paint: OFF_STAGE as never,
       });
       // One layer per crawl group so each group can be nudged with a cheap paint update
       ROACH_LAYERS.forEach((id, g) =>
@@ -593,6 +609,7 @@ export default function MaplibreView(props: MapViewProps) {
             // 触须之交 drawn on top of the crowd
             "symbol-sort-key": ["case", ["get", "friend"], 1, 0],
           },
+          paint: OFF_STAGE as never,
         }),
       );
       map.addLayer({
@@ -609,6 +626,8 @@ export default function MaplibreView(props: MapViewProps) {
       });
 
       readyRef.current = true;
+      offStageRef.current = null;
+      markOffStage(map, propsRef.current.hiddenId ?? null);
       showHearts();
       window.clearTimeout(loadTimer);
       crawlRef.current?.start();
@@ -629,7 +648,8 @@ export default function MaplibreView(props: MapViewProps) {
       if (!readyRef.current) return;
       const p = propsRef.current;
       if (!p.placing) {
-        const hit = map.queryRenderedFeatures(e.point, { layers: CLICKABLE })[0];
+        // the one off stage is still there, see-through: a tap goes to whatever is under it
+        const hit = map.queryRenderedFeatures(e.point, { layers: CLICKABLE }).find((f) => f.layer.id === "mine" || f.properties.id !== p.hiddenId);
         if (hit?.layer.id === "mine") return p.onMineClick(hit.properties.id);
         if (hit) return p.onRoachClick(hit.properties.id);
       }
@@ -661,6 +681,15 @@ export default function MaplibreView(props: MapViewProps) {
   // the whole crowd again only when it (kept as one list by the page) or the look changes; your own
   // roaches only when they really change, since the page hands over a new list of them each time it draws
   useEffect(syncAll, [props.roaches, props.look]);
+
+  // the roach off stage during a touch scene: only its feature state changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    markOffStage(map, props.hiddenId ?? null);
+    const p = propsRef.current;
+    if (heartModeOf(p.mapStyle) !== "off") heartsRef.current?.setDots(heartDots(p, featuresRef.current));
+  }, [props.hiddenId]);
   const mineKey = JSON.stringify([props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor]);
   useEffect(syncMine, [mineKey]);
 

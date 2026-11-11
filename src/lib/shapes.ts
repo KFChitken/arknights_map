@@ -28,16 +28,19 @@ export function boxOf(rings: Ring[]): Box {
   return [w, s, e, n];
 }
 
-const inBox = (x: number, y: number, [w, s, e, n]: Box) => x >= w && x <= e && y >= s && y <= n;
+// by index, not destructured: these run for every roach the GCJ shift looks at (coords.ts), and unpacking is slower
+const inBox = (x: number, y: number, b: Box) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3];
 const boxesMeet = (a: Box, b: Box) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
 
 /** Ray casting: whether a point lies inside one ring. */
 export function inRing(x: number, y: number, ring: Ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    const a = ring[i];
+    const b = ring[j];
+    const yi = a[1];
+    const yj = b[1];
+    if (yi > y !== yj > y && x < ((b[0] - a[0]) * (y - yi)) / (yj - yi) + a[0]) inside = !inside;
   }
   return inside;
 }
@@ -67,8 +70,11 @@ export function area(rings: Ring[]): Area {
 }
 
 export function inArea(p: LngLat, a: Area) {
-  if (!inBox(p.lng, p.lat, a.box)) return false;
-  return a.rings.some((r, i) => inBox(p.lng, p.lat, a.boxes[i]) && inRing(p.lng, p.lat, r));
+  const x = p.lng;
+  const y = p.lat;
+  if (!inBox(x, y, a.box)) return false;
+  for (let i = 0; i < a.rings.length; i++) if (inBox(x, y, a.boxes[i]) && inRing(x, y, a.rings[i])) return true;
+  return false;
 }
 
 /** Whether a box and an area overlap at all: a corner of one inside the other, or edges crossing. */

@@ -35,6 +35,8 @@ export type HeartMode = "off" | "float" | "still";
 export type RoachGl = {
   /** All the roaches, 触须之交 last so they are drawn on top */
   setRoaches: (roaches: GlRoach[]) => void;
+  /** One roach (by id) not drawn, nor hit, until another or none (null): the one a touch scene plays out */
+  setHidden: (id: string | null) => void;
   /** One icon URL per style index */
   setIcons: (urls: string[]) => Promise<void>;
   /** The roaches crawl, or all stand still (motion turned down) */
@@ -106,8 +108,8 @@ varying float vStyle;
 const float TAU = 6.2831853;
 void main() {
   vStyle = aStyle;
-  // far out, only one roach of each pile: the bit of this zoom (thinMasks)
-  if (uThinPow > 0.0 && mod(floor(aThin / uThinPow), 2.0) < 0.5) {
+  // below 0: the one off stage (setHidden); far out, only one roach of each pile: the bit of this zoom (thinMasks)
+  if (aThin < 0.0 || (uThinPow > 0.0 && mod(floor(aThin / uThinPow), 2.0) < 0.5)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     gl_PointSize = 1.0;
     return;
@@ -174,8 +176,8 @@ varying vec2 vRot;
 const float TAU = 6.2831853;
 const float LIFE = ${LIFE.toFixed(3)};
 void main() {
-  // no hearts over one lying asleep; far out, only over the roach drawn of each pile
-  if (aCrawlY < 0.0 || (uThinPow > 0.0 && mod(floor(aThin / uThinPow), 2.0) < 0.5)) { ${HIDE} return; }
+  // no hearts over one lying asleep, nor the one off stage; far out, only over the roach drawn of each pile
+  if (aCrawlY < 0.0 || aThin < 0.0 || (uThinPow > 0.0 && mod(floor(aThin / uThinPow), 2.0) < 0.5)) { ${HIDE} return; }
   // aHeart: where in its cycle, the cycle (ms), left or right, kind (0 a roach, 1 a clone, 2 a 触须之交's)
   float kind = aHeart.w;
   float friend = step(1.5, kind);
@@ -350,6 +352,10 @@ export function roachGl(
   let xy = new Float64Array(0);
   let crawlOf: [number, number, number, number, number][] = [];
   let thin = new Float32Array(0);
+  /** The roach off stage (setHidden), where it is in the list (-1: none there), and the roaches whose aThin is to be written again */
+  let hiddenId: string | null = null;
+  let hiddenIndex = -1;
+  let patch: number[] = [];
   // 舟u本色: built only once first asked for; crowding only worked out while they are on
   let hearts: HeartMode = "off";
   let heartsBroken = false;
@@ -410,7 +416,7 @@ export function roachGl(
       data[o + 5] = k[2];
       data[o + 6] = k[3];
       data[o + 7] = r.still ? -1 : k[4];
-      data[o + 8] = thin[i];
+      data[o + 8] = i === hiddenIndex ? -1 : thin[i];
       const [phase, period, side] = heartRhythm(r.seed);
       data[o + 9] = phase;
       data[o + 10] = period;
@@ -422,6 +428,16 @@ export function roachGl(
     g.bufferData(g.ARRAY_BUFFER, data, g.DYNAMIC_DRAW);
     count = roaches.length;
     dirty = false;
+    patch = [];
+  };
+
+  /** Only the aThin of the roaches going off or back on stage, four bytes each, instead of every roach again */
+  const patchThin = (g: WebGLRenderingContext) => {
+    g.bindBuffer(g.ARRAY_BUFFER, buf);
+    for (const i of patch) {
+      if (i >= 0 && i < count) g.bufferSubData(g.ARRAY_BUFFER, (i * STRIDE + 8) * 4, new Float32Array([i === hiddenIndex ? -1 : thin[i]]));
+    }
+    patch = [];
   };
 
   /** The icons onto the GPU (texture unit 0 is bound to this layer's texture by the caller) */
@@ -567,6 +583,7 @@ export function roachGl(
       if (!iconsReady) uploadIcons(g);
       vao.bind(vaoObj);
       if (dirty) upload(g);
+      else if (patch.length) patchThin(g);
       if (iconsReady && count) {
         cc.setCenter(origin);
         const params = cc.getCameraParams();
@@ -654,6 +671,8 @@ export function roachGl(
   return {
     setRoaches: (list) => {
       roaches = list;
+      // still off stage in the new list, wherever it now is (uploaded with it)
+      hiddenIndex = hiddenId === null ? -1 : list.findIndex((r) => r.id === hiddenId);
       crawlOf = list.map((r) => cartoonCrawl(r.seed));
       thin = thinMasks(list, opts.thinZoom);
       const f = list.findIndex((r) => r.friend);
@@ -661,6 +680,14 @@ export function roachGl(
       // counting the crowds takes a moment with many roaches: only while the hearts are on
       crowd = hearts === "off" ? null : crowdOf(list);
       place();
+      map.render();
+    },
+    setHidden: (id) => {
+      if (id === hiddenId) return;
+      const was = hiddenIndex;
+      hiddenId = id;
+      hiddenIndex = id === null ? -1 : roaches.findIndex((r) => r.id === id);
+      patch.push(was, hiddenIndex);
       map.render();
     },
     setHearts: (mode) => {
@@ -700,7 +727,7 @@ export function roachGl(
       const now = (performance.now() - t0) % CLOCK_WRAP;
       // the last drawn (on top) wins: 触须之交 are at the end
       for (let i = roaches.length - 1; i >= 0; i--) {
-        if (thinPow && Math.floor(thin[i] / thinPow) % 2 === 0) continue;
+        if (i === hiddenIndex || (thinPow && Math.floor(thin[i] / thinPow) % 2 === 0)) continue;
         const { x: sx, y: sy } = onScreen(m, xy[i * 2], xy[i * 2 + 1], W, H);
         if (Math.abs(sx - x) > radius + 8 || Math.abs(sy - y) > radius + 8) continue;
         const c = crawling && !roaches[i].still ? crawl(roaches[i].seed, now, "cartoon", size / 24) : { dx: 0, dy: 0 };

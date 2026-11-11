@@ -17,7 +17,7 @@ import {
   SWARM_GRADIENT,
 } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
-import type { OwnRoach, PublicRoach } from "@/lib/world/types";
+import type { OwnRoach } from "@/lib/world/types";
 import {
   belowGuide,
   besideMain,
@@ -32,12 +32,13 @@ import {
   updateGuide,
 } from "./guideMarker";
 import { listenToAmapConsole, reportMapTrouble } from "./report";
-import { roachGl, type GlRoach, type HeartMode, type RoachGl } from "./roachGl";
+import { roachGl, type HeartMode, type RoachGl } from "./roachGl";
 import { swarmGl } from "./swarmGl";
 import { amapSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
-import { roachTraits, type MapViewProps } from "./types";
+import { MassCache, STILL, styleIndex, type MassPoint } from "./massPoints";
+import type { MapViewProps } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
@@ -65,65 +66,6 @@ const GUIDE_Z = 320;
 /** A shout's bubble: over the guides too, as it is the latest thing you did */
 const SHOUT_Z = 330;
 
-// MassMarks draws thousands of points on one canvas, unlike DOM markers.
-// Roaches are split into batches, each with its own MassMarks redrawn in turn;
-// every roach moves on its own rhythm. Style indexes: cartoon = one per look
-// and color, then one shared clone look, then the same again for 触须之交;
-// real = pre-rendered heading, then see-through clone headings, then both
-// again for 触须之交, and that whole block once per walk-cycle pose.
-type MassPoint = {
-  lng: number;
-  lat: number;
-  cos: number;
-  id: string;
-  /** index into the cartoon looks: avatar * colors + color */
-  color: number;
-  heading: number;
-  clone: boolean;
-  friend: boolean;
-  asleep: boolean;
-  seed: number;
-};
-
-const LOOKS = ROACH_AVATARS.length * ROACH_COLORS.length;
-const CARTOON_STYLES = LOOKS + 1;
-const REAL_STYLES = HEADINGS.length * 2;
-const REAL_POSE = REAL_STYLES * 2;
-/** Where the sleeping icons start in each look's style list, after the awake ones */
-const asleepFrom = (look: RoachStyle) => (look === "real" ? REAL_POSE * LEG_FRAMES : CARTOON_STYLES * 2);
-/** The batch the crawl never moves: sleeping roaches lie still */
-const STILL = MASS_GROUPS;
-
-function massGroups(roaches: PublicRoach[]): MassPoint[][] {
-  const groups: MassPoint[][] = Array.from({ length: MASS_GROUPS + 1 }, () => []);
-  for (const r of roaches) {
-    const [lng, lat] = toGcj(r);
-    const t = roachTraits(r.id, MASS_GROUPS, HEADINGS.length);
-    groups[r.asleep ? STILL : t.group].push({
-      lng,
-      lat,
-      cos: Math.cos((lat * Math.PI) / 180),
-      id: r.id,
-      // the shared list only ever holds the looks players pick
-      color: ROACH_AVATARS.indexOf(r.avatar as RoachAvatar) * ROACH_COLORS.length + ROACH_COLORS.indexOf(r.color),
-      heading: t.headingIndex,
-      clone: r.clone,
-      friend: r.friend,
-      asleep: Boolean(r.asleep),
-      seed: t.seed,
-    });
-  }
-  // MassMarks paints in order, so 触须之交 go last to sit on top
-  for (const g of groups) g.sort((a, b) => Number(a.friend) - Number(b.friend));
-  return groups;
-}
-
-function styleIndex(p: MassPoint, look: RoachStyle, pose: number) {
-  if (p.asleep) return asleepFrom(look) + (look === "real" ? (p.friend ? HEADINGS.length : 0) + p.heading : (p.friend ? LOOKS : 0) + p.color);
-  if (look === "real") return pose * REAL_POSE + (p.friend ? REAL_STYLES : 0) + (p.clone ? HEADINGS.length : 0) + p.heading;
-  return (p.friend ? CARTOON_STYLES : 0) + (p.clone ? LOOKS : p.color);
-}
-
 /**
  * Only the roaches near the screen go to 高德: those within the view's box grown by its own width and
  * height on every side (3×3 screens). 高德 works through every point of its layers on each frame of a
@@ -145,9 +87,13 @@ function nearBox(map: AMapNS): [number, number, number, number] | null {
   }
 }
 
-/** Each batch's roaches within the box (all of them without one) */
-const nearOnly = (box: [number, number, number, number] | null, groups: MassPoint[][]) =>
-  box ? groups.map((g) => g.filter((p) => p.lng >= box[0] && p.lng <= box[2] && p.lat >= box[1] && p.lat <= box[3])) : groups;
+/** Each batch's roaches within the box (all of them without one), but the one off stage (props.hiddenId) */
+const nearOnly = (box: [number, number, number, number] | null, groups: MassPoint[][], hidden: string | null) =>
+  box || hidden
+    ? groups.map((g) =>
+        g.filter((p) => p.id !== hidden && (!box || (p.lng >= box[0] && p.lng <= box[2] && p.lat >= box[1] && p.lat <= box[3]))),
+      )
+    : groups;
 
 /** 高德 zoom at and below which roaches piled on one another are drawn once (Breeze, 2026-11-10: 做) */
 const THIN_ZOOM = 7;
@@ -176,8 +122,8 @@ function thinned(groups: MassPoint[][], amapZoom: number): MassPoint[][] {
   return groups.map((g) => g.filter((p) => kept.has(p)));
 }
 
-/** What 高德 gets of each batch: the roaches near the screen, and far out only one of each pile */
-const shownOf = (map: AMapNS, groups: MassPoint[][]) => thinned(nearOnly(nearBox(map), groups), map.getZoom());
+/** What 高德 gets of each batch: the roaches near the screen, and far out only one of each pile; never the one off stage */
+const shownOf = (map: AMapNS, groups: MassPoint[][], hidden: string | null) => thinned(nearOnly(nearBox(map), groups, hidden), map.getZoom());
 
 /**
  * The GPU layer stays off on this page with ?gl=0 in its address: for a phone it draws wrongly on, and to
@@ -190,14 +136,6 @@ const glOff = () => {
     return false;
   }
 };
-
-/** Every roach for the GPU layer (the cartoon look, roachGl.ts), 触须之交 last so they are drawn on top */
-function glRoaches(groups: MassPoint[][]): GlRoach[] {
-  return groups
-    .flat()
-    .sort((a, b) => Number(a.friend) - Number(b.friend))
-    .map((p) => ({ id: p.id, lng: p.lng, lat: p.lat, style: styleIndex(p, "cartoon", 0), still: p.asleep, seed: p.seed, friend: p.friend, clone: p.clone }));
-}
 
 /** Every roach of a batch where its own crawl puts it at time t (ms), or at rest when t is null. */
 function massData(points: MassPoint[], amapZoom: number, look: RoachStyle, t: number | null) {
@@ -273,21 +211,18 @@ function massStyles(AMap: AMapNS, amapZoom: number, urls: string[]) {
   }));
 }
 
-function heatData(roaches: PublicRoach[]) {
-  return {
-    data: roaches.map((r) => {
-      const [lng, lat] = toGcj(r);
-      return { lng, lat, count: 1 };
-    }),
-    max: SWARM.max,
-  };
+/** The dark swarm's points: every roach where 高德 has it (worked out once, MassCache) */
+const swarmPoints = (groups: MassPoint[][]) => groups.flatMap((g) => g.map((p) => p.at));
+
+function heatData(points: [number, number][]) {
+  return { data: points.map(([lng, lat]) => ({ lng, lat, count: 1 })), max: SWARM.max };
 }
 
 /** 舟u本色's hearts: rising, or still with motion turned down; none in the other styles */
 const heartModeOf = (style: MapViewProps["mapStyle"]): HeartMode => (style === "hearts" ? (prefersReducedMotion() ? "still" : "float") : "off");
 
 /** The dark swarm, drawn by the GPU (swarmGl.ts) or by 高德's HeatMap */
-type Swarm = { set: (roaches: PublicRoach[]) => void; destroy: () => void };
+type Swarm = { set: (points: [number, number][]) => void; destroy: () => void };
 
 async function mineIcon(
   r: OwnRoach,
@@ -318,6 +253,8 @@ export default function AmapView(props: MapViewProps) {
   // the pointer is over a roach of the GPU layer (it has no cursor of its own)
   const overRef = useRef(false);
   const groupsRef = useRef<MassPoint[][]>([]);
+  // each roach worked out once (massPoints.ts), kept across updates of the list
+  const cacheRef = useRef(new MassCache());
   // the batches as 高德 gets them: only the roaches near the screen (nearBox)
   const shownRef = useRef<MassPoint[][]>([]);
   // pick them again for where the map is now, and hand them over
@@ -539,8 +476,8 @@ export default function AmapView(props: MapViewProps) {
           AMap.plugin("AMap.HeatMap", () => {
             if (cancelled || seq !== swarmSeq) return;
             const heat = new AMap.HeatMap(map, { ...SWARM, zIndex: HEAT_Z });
-            heat.setDataSet(heatData(propsRef.current.roaches));
-            heatRef.current = { set: (roaches) => heat.setDataSet(heatData(roaches)), destroy: () => heat.setMap(null) };
+            heat.setDataSet(heatData(swarmPoints(groupsRef.current)));
+            heatRef.current = { set: (points) => heat.setDataSet(heatData(points)), destroy: () => heat.setMap(null) };
           });
         const startSwarm = () => {
           if (swarmOn) return;
@@ -560,10 +497,10 @@ export default function AmapView(props: MapViewProps) {
                     amapHeat(seq);
                   }, 0),
               });
-          const gpuSwarm: Swarm | null = swarm && { set: (roaches) => swarm.setPoints(roaches.map((r) => toGcj(r))), destroy: swarm.destroy };
+          const gpuSwarm: Swarm | null = swarm && { set: (points) => swarm.setPoints(points), destroy: swarm.destroy };
           if (gpuSwarm) {
             heatRef.current = gpuSwarm;
-            gpuSwarm.set(propsRef.current.roaches);
+            gpuSwarm.set(swarmPoints(groupsRef.current));
           } else amapHeat(seq);
         };
         const stopSwarm = () => {
@@ -574,9 +511,9 @@ export default function AmapView(props: MapViewProps) {
           heatRef.current = null;
         };
         swarmRef.current = { start: startSwarm, stop: stopSwarm };
+        groupsRef.current = cacheRef.current.groups(propsRef.current.roaches);
         if (propsRef.current.mapStyle === "nation") startSwarm();
 
-        groupsRef.current = massGroups(propsRef.current.roaches);
         const onMassClick = (e: AMapNS) => {
           if (propsRef.current.placing) return;
           lastHitRef.current = Date.now();
@@ -587,7 +524,7 @@ export default function AmapView(props: MapViewProps) {
         // The roaches on 高德's MassMarks: the realistic look, and wherever the GPU layer cannot run
         const startMass = () => {
           const { look, urls } = styledRef.current;
-          shownRef.current = shownOf(map, groupsRef.current);
+          shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
           styledPxRef.current = massPx(map.getZoom());
           massRef.current = shownRef.current.map((points) => {
             const mass = new AMap.MassMarks(massData(points, map.getZoom(), look, null), {
@@ -637,7 +574,8 @@ export default function AmapView(props: MapViewProps) {
           glRef.current = gl;
           gl.setCrawl(!prefersReducedMotion());
           gl.setHearts(heartModeOf(propsRef.current.mapStyle));
-          gl.setRoaches(glRoaches(groupsRef.current));
+          gl.setRoaches(cacheRef.current.gl());
+          gl.setHidden(propsRef.current.hiddenId ?? null);
           return true;
         };
         layRef.current = () => {
@@ -684,7 +622,7 @@ export default function AmapView(props: MapViewProps) {
         // the GPU layer has all of them already
         reshowRef.current = () => {
           if (glRef.current || !massRef.current.length) return;
-          shownRef.current = shownOf(map, groupsRef.current);
+          shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
           const crawling = propsRef.current.active !== false && !prefersReducedMotion();
           const now = performance.now();
           const { look } = styledRef.current;
@@ -833,18 +771,39 @@ export default function AmapView(props: MapViewProps) {
     };
   }, []);
 
+  // An update of the list: only the roaches that changed are worked out again (MassCache)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    groupsRef.current = massGroups(props.roaches);
-    if (glRef.current) glRef.current.setRoaches(glRoaches(groupsRef.current));
+    groupsRef.current = cacheRef.current.groups(props.roaches);
+    if (glRef.current) glRef.current.setRoaches(cacheRef.current.gl());
     else {
-      shownRef.current = shownOf(map, groupsRef.current);
+      shownRef.current = shownOf(map, groupsRef.current, propsRef.current.hiddenId ?? null);
       const z = map.getZoom();
       massRef.current.forEach((m, g) => m.setData(massData(shownRef.current[g], z, styledRef.current.look, null)));
     }
-    heatRef.current?.set(props.roaches);
+    heatRef.current?.set(swarmPoints(groupsRef.current));
   }, [props.roaches]);
+
+  // One roach off stage while a touch scene plays over the map: left out where it is drawn, nothing worked out again
+  const hiddenId = props.hiddenId ?? null;
+  const hiddenWasRef = useRef<string | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    const was = hiddenWasRef.current;
+    hiddenWasRef.current = hiddenId;
+    if (!map) return;
+    if (glRef.current) return glRef.current.setHidden(hiddenId);
+    if (!massRef.current.length) return;
+    // MassMarks: only the batches it and the one before are in are handed over again
+    const touched = new Set(
+      [was, hiddenId].flatMap((id) => (id ? [groupsRef.current.findIndex((g) => g.some((p) => p.id === id))] : [])).filter((g) => g >= 0),
+    );
+    if (!touched.size) return;
+    shownRef.current = shownOf(map, groupsRef.current, hiddenId);
+    const z = map.getZoom();
+    for (const g of touched) massRef.current[g]?.setData(massData(shownRef.current[g], z, styledRef.current.look, null));
+  }, [hiddenId]);
 
   // 地图画风: the dark swarm made or dropped, and the hearts, as the style changes, without a reload
   useEffect(() => {
