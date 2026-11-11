@@ -2028,17 +2028,22 @@ export default function MapApp({ cn }: { cn: boolean }) {
     const spot = preview;
     setPreview(null);
     const { me: m, items, away, friends: list } = await load();
-    setNotes([...(away ? [awayNote(away)] : []), ...openingNotes(m, list)]);
     const mainRoach = m?.roaches.find((r) => r.slot === 0);
     if (mainRoach) setFocus({ lng: mainRoach.lng, lat: mainRoach.lat, zoom: 11, nonce: Date.now() });
-    if (m?.ageCheck) return setPanel({ kind: "ageCheck" });
-    if (m?.mustReconsent) return setPanel({ kind: "consent" });
-    // a newcomer who picked a spot before signing in puts their roach there, once they confirm
-    if (m && !mainRoach && spot) {
-      return setPanel({ kind: "placeConfirm", target: { kind: "main" }, spot, fly: true, consent: !m.agreedPublicPlace });
-    }
-    if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
-    else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
+    const next = () => {
+      setNotes([...(away ? [awayNote(away)] : []), ...openingNotes(m, list)]);
+      if (m?.ageCheck) return setPanel({ kind: "ageCheck" });
+      if (m?.mustReconsent) return setPanel({ kind: "consent" });
+      // a newcomer who picked a spot before signing in puts their roach there, once they confirm
+      if (m && !mainRoach && spot) {
+        return setPanel({ kind: "placeConfirm", target: { kind: "main" }, spot, fly: true, consent: !m.agreedPublicPlace });
+      }
+      if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
+      else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
+    };
+    // the notice comes first, as on opening the map: for a newcomer, the first thing after signing up
+    if (m && !noticeSeen(m.id)) setNotice({ userId: m.id, then: next });
+    else next();
   };
 
   // ---- the tutorial's steps ----

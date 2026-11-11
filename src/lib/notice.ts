@@ -1,9 +1,9 @@
 /**
- * The notice every signed-in player sees once, before anything else, on coming back to the map
- * (src/components/app/NoticeSheet.tsx). A new notice gets a new id, so everyone sees that one too.
- * Remembered in this browser.
+ * The notice every signed-in player sees once, before anything else, on coming back to the map or on
+ * signing in, a newcomer's first sign-in too (src/components/app/NoticeSheet.tsx). A new notice gets a
+ * new id, so everyone sees that one too. Remembered in this browser.
  */
-export const NOTICE_ID = "2026-11-09";
+export const NOTICE_ID = "2026-11-11";
 
 const key = (userId: string) => `zhoup.notice.${NOTICE_ID}.${userId}`;
 
