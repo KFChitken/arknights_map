@@ -65,6 +65,9 @@ const asPerlicaRow = (r: GuideRow) => r as unknown as PerlicaRow;
  * is locked meanwhile, so two pages saying it at once make one report at most.
  */
 export async function here(userId: string, now = Date.now()): Promise<PerlicaItem | null> {
+  // most have her timer off: they are answered without locking their row (every open page asks each minute)
+  const [peek] = await db.select({ timer: users.perlicaTimer }).from(users).where(eq(users.id, userId)).limit(1);
+  if (peek?.timer !== "on") return null;
   return db.transaction(async (tx) => {
     const [u] = await tx
       .select({ timer: users.perlicaTimer, last: users.lastActiveAt })

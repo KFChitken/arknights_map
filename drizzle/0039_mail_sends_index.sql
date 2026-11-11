@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "mail_sends_kind_sent_idx" ON "mail_sends" USING btree ("kind","sent_at");

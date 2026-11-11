@@ -4,7 +4,7 @@ import { adminCounts } from "./admin";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { sendAdminMail } from "./mail";
-import { mailRoom } from "./mailQuota";
+import { forgetMailCount, mailRoom } from "./mailQuota";
 import { sendReportDigest } from "./safety";
 import { mailSends, modActions, reports, users, watchMails } from "./schema";
 
@@ -55,7 +55,8 @@ describe("report reminders", () => {
 
     // one login code fewer: room for one more, the reminder's row notwithstanding
     await db.execute(sql`delete from ${mailSends} where ${mailSends.id} = (select min(${mailSends.id}) from ${mailSends} where ${mailSends.kind} = 'login')`);
-    expect(await db.transaction((tx) => mailRoom(tx, new Date()))).toBe(true);
+    forgetMailCount();
+    expect(await mailRoom(new Date())).toBe(true);
   });
 
   it("go half an hour apart at least, and 12 a day at most", async () => {

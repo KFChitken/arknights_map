@@ -219,7 +219,10 @@ export const mailSends = pgTable("mail_sends", {
    * report reminder and "report-urgent" for one about URGENT_REASONS (src/lib/server/safety.ts)
    */
   kind: text("kind").notNull().default("login"),
-});
+},
+  // the day's sign-in mail counted by kind (mailQuota.ts every 15 seconds, watch.ts)
+  (t) => [index("mail_sends_kind_sent_idx").on(t.kind, t.sentAt)],
+);
 
 /**
  * The site's own checks (src/lib/server/watch.ts): each problem seen and not yet over, and

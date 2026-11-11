@@ -5,15 +5,16 @@ import { cooldownAfter, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES
 import { db } from "./db";
 import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
 import { HttpError } from "./http";
-import { isSlowMail, mailRoom, slowRoomFull } from "./mailQuota";
+import { isSlowMail, MAIL_SLOW_LOCK, mailRoom, mailRoomBack, slowRoomFull } from "./mailQuota";
 import { note } from "./signals";
 import { loginCodes, mailSends } from "./schema";
 
 /**
- * The 6-digit codes emailed for sign-in. Codes are issued one at a time under the
- * site's mail lock (mailQuota.ts), and every try is counted inside the statement
- * that checks it, so a burst of parallel requests cannot slip past the cooldown,
- * the daily cap or the number of tries.
+ * The 6-digit codes emailed for sign-in. An address's row is locked while its code is issued (a first ask
+ * makes one to lock), codes to the slow services are issued one at a time under their own lock
+ * (mailQuota.ts), and every try is counted inside the statement that checks it, so a burst of parallel
+ * requests cannot slip past an address's cooldown or day, the slow services' caps or the number of tries.
+ * The site's own daily limit is a fuse, counted by each process (mailQuota.ts mailRoom).
  */
 
 const DAY_MS = 86_400_000;
@@ -75,36 +76,48 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
   const early = seen ? addressWait(seen, now, dayAgo, perDay) : null;
   if (early !== null) refuse(early, email, perDay);
 
-  // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up,
-  // or which of the slow service's caps it would pass
-  const issued = await db.transaction(async (tx): Promise<IssuedCode | number | "day" | "hour"> => {
-    // holds the mail lock until the end: codes are issued one at a time, site-wide
-    if (!(await mailRoom(tx, now))) {
-      note("codeRefused", "quota");
-      throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
-    }
-    // locked against a try being counted meanwhile
-    const [row] = await tx.select().from(loginCodes).where(eq(loginCodes.email, email)).for("update");
-    const sameDay = Boolean(row && row.dayStart > dayAgo);
-    const wait = row ? addressWait(row, now, dayAgo, perDay) : null;
-    if (wait !== null) return wait;
-    if (slow) {
-      const full = await slowRoomFull(tx, now);
-      if (full) return full;
-    }
+  if (!(await mailRoom(now))) {
+    note("codeRefused", "quota");
+    throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
+  }
+  let sending = false;
+  try {
+    // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up,
+    // or which of the slow service's caps it would pass
+    const issued = await db.transaction(async (tx): Promise<IssuedCode | number | "day" | "hour"> => {
+      // the slow services' caps hold to the code: their asks are counted one at a time, until the end
+      if (slow) await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_SLOW_LOCK})`);
+      // An address asking for the first time has no row to lock yet: one saying nothing was sent, so two asks
+      // at once wait for each other on it. Taken out again below if no code goes.
+      await tx
+        .insert(loginCodes)
+        .values({ email, codeHash: "", expiresAt: new Date(0), attempts: 0, sentAt: new Date(0), sends: 0, dayStart: new Date(0), sentToday: 0 })
+        .onConflictDoNothing({ target: loginCodes.email });
+      // locked against a try being counted meanwhile
+      const [row] = await tx.select().from(loginCodes).where(eq(loginCodes.email, email)).for("update");
+      const blank = row.sentAt.getTime() === 0 && row.sends === 0;
+      const refused = async <T>(why: T) => {
+        if (blank) await tx.delete(loginCodes).where(eq(loginCodes.email, email));
+        return why;
+      };
+      const sameDay = row.dayStart > dayAgo;
+      const wait = addressWait(row, now, dayAgo, perDay);
+      if (wait !== null) return refused(wait);
+      if (slow) {
+        const full = await slowRoomFull(tx, now);
+        if (full) return refused(full);
+      }
 
-    // a code made before codes were worked out (or by another secret) is not sent again: it could not be
-    const again = Boolean(
-      row &&
+      // a code made before codes were worked out (or by another secret) is not sent again: it could not be
+      const again = Boolean(
         row.codeHash &&
-        row.expiresAt > now &&
-        row.attempts < LOGIN_CODE_MAX_ATTEMPTS &&
-        row.codeHash === hashCode(email, codeFor(email, row.expiresAt)),
-    );
-    const expiresAt = again && row ? row.expiresAt : new Date(now.getTime() + LOGIN_CODE_TTL_MIN * 60_000);
-    const code = codeFor(email, expiresAt);
-    const day = { dayStart: sameDay && row ? row.dayStart : now, sentToday: sameDay && row ? row.sentToday + 1 : 1 };
-    if (row) {
+          row.expiresAt > now &&
+          row.attempts < LOGIN_CODE_MAX_ATTEMPTS &&
+          row.codeHash === hashCode(email, codeFor(email, row.expiresAt)),
+      );
+      const expiresAt = again ? row.expiresAt : new Date(now.getTime() + LOGIN_CODE_TTL_MIN * 60_000);
+      const code = codeFor(email, expiresAt);
+      const day = { dayStart: sameDay ? row.dayStart : now, sentToday: sameDay ? row.sentToday + 1 : 1 };
       await tx
         .update(loginCodes)
         .set(
@@ -113,14 +126,17 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
             : { codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, sends: 1, ...day },
         )
         .where(eq(loginCodes.email, email));
-    } else {
-      await tx.insert(loginCodes).values({ email, codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, sends: 1, ...day });
+      await tx.insert(mailSends).values({ sentAt: now, kind: slow ? "login-slow" : "login" });
+      return { code, again, expiresAt, waitS: cooldownAfter(again ? row.sends + 1 : 1) };
+    });
+    if (typeof issued === "object") {
+      sending = true;
+      return issued;
     }
-    await tx.insert(mailSends).values({ sentAt: now, kind: slow ? "login-slow" : "login" });
-    return { code, again, expiresAt, waitS: cooldownAfter(again && row ? row.sends + 1 : 1) };
-  });
-  if (typeof issued === "object") return issued;
-  refuse(issued, email, perDay);
+    return refuse(issued, email, perDay);
+  } finally {
+    if (!sending) mailRoomBack();
+  }
 }
 
 /** Seconds until this address may have its next code (its cooldown), 0 when its day's codes are used up, or null when one may go now */
@@ -183,6 +199,7 @@ export async function pruneSignInMail(now = new Date()) {
  * counts it. A new code is void with it; a code sent before stays, as the earlier email carries it.
  */
 export async function withdrawLoginCode(email: string, issued: IssuedCode) {
+  mailRoomBack();
   await db.transaction(async (tx) => {
     const [row] = await tx
       .select({ sentAt: loginCodes.sentAt })

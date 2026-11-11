@@ -24,15 +24,45 @@ export function neverReached(e: unknown) {
   return x?.code === "EDNS" || (x?.code === "ETIMEDOUT" && ["CONNECT_TIMEOUT", "GREETING_TIMEOUT", "UPGRADE_TIMEOUT"].includes(String(x.timeoutType)));
 }
 
-/** Send, once more when the mail server could not be reached the first time */
-async function send(mail: Parameters<typeof transport.sendMail>[0]) {
-  try {
-    await transport.sendMail(mail);
-  } catch (e) {
-    if (!neverReached(e)) throw e;
-    await transport.sendMail(mail);
+/**
+ * Resend turning a mail away for coming too fast (it takes 10 a second for a team): it took nothing, so
+ * sending again cannot make two. Any other 550 (an address it will not send to) is final.
+ */
+export function rateLimited(e: unknown) {
+  const x = e as { responseCode?: unknown; response?: unknown } | null;
+  return x?.responseCode === 550 && /too many requests/i.test(String(x.response ?? ""));
+}
+
+/** Times a mail turned away for coming too fast is sent again, each a second or two later */
+const BUSY_TRIES = 2;
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Send: once more when the mail server could not be reached the first time, and up to BUSY_TRIES more,
+ * 1 to 2 seconds apart, when it said too many came at once (11/11 peak: 16 codes lost to that in 89 minutes)
+ */
+export async function sendWith(
+  t: { sendMail: (mail: Parameters<typeof transport.sendMail>[0]) => Promise<unknown> },
+  mail: Parameters<typeof transport.sendMail>[0],
+  wait: (ms: number) => Promise<unknown> = pause,
+) {
+  let unreached = 0;
+  let busy = 0;
+  for (;;) {
+    try {
+      await t.sendMail(mail);
+      return;
+    } catch (e) {
+      if (neverReached(e) && unreached < 1) unreached++;
+      else if (rateLimited(e) && busy < BUSY_TRIES) {
+        busy++;
+        await wait(1000 + Math.random() * 1000);
+      } else throw e;
+    }
   }
 }
+
+const send = (mail: Parameters<typeof transport.sendMail>[0]) => sendWith(transport, mail);
 
 /** A code that works until expiresAt (an earlier code sent again has less left) */
 export async function sendLoginCode(to: string, code: string, expiresAt: Date) {

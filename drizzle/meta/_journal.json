@@ -274,6 +274,13 @@
       "when": 1794395057969,
       "tag": "0038_user_passwords",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794406237212,
+      "tag": "0039_mail_sends_index",
+      "breakpoints": true
     }
   ]
 }

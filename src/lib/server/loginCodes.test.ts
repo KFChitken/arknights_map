@@ -4,8 +4,8 @@ import { LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
 import { forgetLoginCodes, issueLoginCode, pruneSignInMail, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
-import { neverReached } from "./mail";
-import { MAIL_LOCK } from "./mailQuota";
+import { neverReached, rateLimited, sendWith } from "./mail";
+import { forgetMailCount, MAIL_SLOW_LOCK } from "./mailQuota";
 import { loginCodes, mailSends } from "./schema";
 
 // Gmail slow to take our mail, with small caps to reach in a test (other addresses are not affected)
@@ -43,6 +43,7 @@ const wrongFor = (code: string) => (code === "000000" ? "111111" : "000000");
 beforeEach(async () => {
   await db.delete(loginCodes);
   await db.delete(mailSends);
+  forgetMailCount();
 });
 
 describe("login codes", () => {
@@ -197,21 +198,72 @@ describe("login codes", () => {
     await expect(issueLoginCode(EMAIL)).rejects.toThrow("验证码邮件发完了");
     // a refused address keeps no cooldown and no count
     expect(await row()).toBeUndefined();
+    // one refused by its own cooldown gives its room back
+    const [ok] = rs.flatMap((r, i) => (r.status === "fulfilled" ? [i] : []));
+    await expect(issueLoginCode(`p${ok}@example.com`)).rejects.toThrow("后可以再发");
+    await db.delete(mailSends).where(sql`${mailSends.id} = (select min(${mailSends.id}) from ${mailSends})`);
+    forgetMailCount();
+    expect((await issueLoginCode(EMAIL)).code).toMatch(/^\d{6}$/);
 
     // sends older than a day count no more, and the timed job drops them
     await db.update(mailSends).set({ sentAt: sql`${mailSends.sentAt} - interval '1 day 1 minute'` });
+    forgetMailCount();
+    await rewind({ sent: PAST_ANY_WAIT });
     await issueLoginCode(EMAIL);
     await pruneSignInMail();
     expect(await db.$count(mailSends)).toBe(1);
   });
 
-  it("refuses an address in its cooldown without waiting for the site's mail lock", async () => {
-    await issueLoginCode(EMAIL);
-    // another ask holding the lock (were this one to wait for it, the two would wait for each other)
+  it("queues only codes to the slow services, one at a time, and never ordinary ones", async () => {
+    let slowDone = false;
     await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
+      // a code to Gmail being issued meanwhile
+      await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_SLOW_LOCK})`);
+      // an ordinary address goes straight through
+      expect((await issueLoginCode(EMAIL)).code).toMatch(/^\d{6}$/);
+      // one in its cooldown is told so at once
       await expect(issueLoginCode(EMAIL)).rejects.toThrow("后可以再发");
+      // a Gmail one waits for the other
+      const slow = issueLoginCode("doctor@gmail.com").then(() => (slowDone = true));
+      await new Promise((r) => setTimeout(r, 400));
+      expect(slowDone).toBe(false);
+      void slow;
     });
+    // once the other is done, it goes
+    for (let i = 0; i < 40 && !slowDone; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(slowDone).toBe(true);
+  });
+
+  it("sends one code to a new address however many ask at once", async () => {
+    const rs = await Promise.allSettled(Array.from({ length: 20 }, () => issueLoginCode("new@example.com")));
+    expect(fulfilled(rs)).toBe(1);
+    expect(await db.$count(mailSends)).toBe(1);
+    expect((await row("new@example.com")).sends).toBe(1);
+  });
+
+  it("sends again a mail turned away for coming too fast, and nothing else", async () => {
+    const busy = Object.assign(new Error("x"), { responseCode: 550, response: "550 Too many requests. Please try again later." });
+    const invalid = Object.assign(new Error("x"), { responseCode: 550, response: "550 Invalid `to` field." });
+    expect(rateLimited(busy)).toBe(true);
+    expect(rateLimited(invalid)).toBe(false);
+    const waits: number[] = [];
+    const wait = async (ms: number) => void waits.push(ms);
+    // turned away once, then taken: one mail
+    const sent: string[] = [];
+    let first = true;
+    await sendWith({ sendMail: async (m) => (first ? ((first = false), Promise.reject(busy)) : sent.push(String(m.to))) }, { to: "a@example.com" }, wait);
+    expect(sent).toEqual(["a@example.com"]);
+    expect(waits).toHaveLength(1);
+    expect(waits[0]).toBeGreaterThanOrEqual(1000);
+    expect(waits[0]).toBeLessThan(2000);
+    // turned away every time: three tries, then it says so
+    let tries = 0;
+    await expect(sendWith({ sendMail: async () => (tries++, Promise.reject(busy)) }, { to: "b@example.com" }, wait)).rejects.toBe(busy);
+    expect(tries).toBe(3);
+    // an address it will not send to: once, no more
+    tries = 0;
+    await expect(sendWith({ sendMail: async () => (tries++, Promise.reject(invalid)) }, { to: "c@example.com" }, wait)).rejects.toBe(invalid);
+    expect(tries).toBe(1);
   });
 
   it("allows a fixed number of tries per code, even when guesses arrive at once", async () => {
