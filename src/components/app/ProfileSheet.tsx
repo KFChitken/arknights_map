@@ -146,6 +146,7 @@ export default function ProfileSheet({
                 onChange={(e) => set({ name: e.target.value })}
               />
             </label>
+            <p className="hint">别写 QQ、微信、手机号或真名。</p>
             <label className="check">
               <input type="checkbox" checked={p.drPrefix} disabled={held} onChange={(e) => set({ drPrefix: e.target.checked })} />
               加上 Dr. 前缀
@@ -213,7 +214,7 @@ export default function ProfileSheet({
                   autoComplete="off"
                   value={p.uid[g]}
                   maxLength={UID_MAX}
-                  placeholder="不填也可以"
+                  placeholder="游戏 UID，别填 QQ 号"
                   disabled={held}
                   onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
                 />
