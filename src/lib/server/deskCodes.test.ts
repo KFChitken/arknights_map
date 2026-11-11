@@ -39,7 +39,7 @@ beforeEach(async () => {
   forgetAppCounts();
 });
 
-describe("桌面登录码", () => {
+describe("登录码", () => {
   it("gives eight easy-to-read characters, keeps only their HMAC, and signs in once with them however typed", async () => {
     const me = await player("me@example.com");
     const { code, expiresAt } = await issueDeskCode(me);

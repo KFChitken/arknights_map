@@ -253,6 +253,13 @@
       "when": 1794379214191,
       "tag": "0035_home_screen",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794384656245,
+      "tag": "0036_session_method",
+      "breakpoints": true
     }
   ]
 }

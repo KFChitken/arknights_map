@@ -26,7 +26,7 @@ export const LOGIN_CODE_MAX_ATTEMPTS = 5;
 /** Codes one email address may receive per day, so nobody can use us to flood an inbox. */
 export const LOGIN_CODES_PER_DAY = 10;
 export const SESSION_DAYS = 30;
-/** 桌面登录码 (src/lib/deskCode.ts): how long one works, how many an account may take an hour, and tries per network per 10 minutes */
+/** 登录码 (src/lib/deskCode.ts): how long one works, how many an account may take an hour, and tries per network per 10 minutes */
 export const DESK_CODE_TTL_MIN = 10;
 export const DESK_CODES_PER_HOUR = 5;
 export const DESK_CODE_TRIES = 10;

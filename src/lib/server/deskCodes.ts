@@ -11,8 +11,8 @@ import { allow } from "./rateLimit";
 import { deskCodes } from "./schema";
 
 /**
- * 桌面登录码 (src/lib/deskCode.ts). A signed-in player takes one in the browser; typed into the site
- * opened from the home-screen icon, it starts a session there once. One code per account (a new one
+ * 登录码 (src/lib/deskCode.ts). A signed-in player takes one in the browser; typed into the site on another
+ * device (or opened from the iPhone home-screen icon), it starts a session there once. One code per account (a new one
  * replaces the old), working DESK_CODE_TTL_MIN, used once; only its HMAC is kept.
  */
 

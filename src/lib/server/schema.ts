@@ -142,6 +142,8 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
     expiresAt: at("expires_at").notNull(),
+    // how it signed in (auth.ts SessionMethod): code, desk (a 登录码), password or dev (test identities)
+    method: text("method").notNull().default("code"),
   },
   (t) => [index("sessions_user_idx").on(t.userId)],
 );
@@ -160,8 +162,8 @@ export const loginCodes = pgTable("login_codes", {
 });
 
 /**
- * 桌面登录码 (src/lib/server/deskCodes.ts): a code a signed-in player takes in Safari to sign in once from
- * the home-screen icon, which keeps its own cookies on iPhone. One per account: taking a new one replaces
+ * 登录码 (src/lib/server/deskCodes.ts): a code a signed-in player takes to sign in once on another device, or
+ * from the iPhone home-screen icon, which keeps its own cookies. One per account: taking a new one replaces
  * the old. Only an HMAC of the code is kept, for DESK_CODE_TTL_MIN; pruned after it runs out.
  */
 export const deskCodes = pgTable("desk_codes", {

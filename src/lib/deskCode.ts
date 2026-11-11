@@ -1,6 +1,6 @@
 /**
- * 桌面登录码: a code a signed-in player takes in Safari and types into the site opened from the
- * home-screen icon, which on iPhone keeps cookies of its own (src/lib/server/deskCodes.ts). Eight
+ * 登录码: a code a signed-in player takes (in 我的资料, or in Safari for the iPhone home-screen icon, which keeps
+ * cookies of its own) and types into the site on another device to sign in there once (src/lib/server/deskCodes.ts). Eight
  * characters with nothing easy to misread (no 0 O 1 I L), shown as ABCD-EFGH; typed in any case,
  * with or without spaces and the dash.
  */

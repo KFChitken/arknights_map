@@ -62,7 +62,7 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(watchMails).where(lt(watchMails.at, cutoff));
   // sign-ins that ran out (nothing removed them before 11/11)
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date(now - DAY_MS)));
-  // 桌面登录码 that ran out sign nobody in
+  // 登录码 that ran out sign nobody in
   await pruneDeskCodes(now);
 }
 

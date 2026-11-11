@@ -26,10 +26,13 @@ function cookieBase(req: NextRequest) {
   return { httpOnly: true, sameSite: "lax" as const, secure: proto === "https", path: "/" };
 }
 
-export async function startSession(req: NextRequest, userId: string) {
+/** How a session signed in: an emailed code, a 登录码 taken on another device, a password, or a test identity */
+export type SessionMethod = "code" | "desk" | "password" | "dev";
+
+export async function startSession(req: NextRequest, userId: string, method: SessionMethod = "code") {
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000);
-  await db.insert(sessions).values({ id: sha256(token), userId, expiresAt: expires });
+  await db.insert(sessions).values({ id: sha256(token), userId, expiresAt: expires, method });
   (await cookies()).set(SESSION_COOKIE, token, { ...cookieBase(req), expires });
 }
 

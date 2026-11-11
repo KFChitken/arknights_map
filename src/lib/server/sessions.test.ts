@@ -98,6 +98,14 @@ describe("sessions", () => {
     expect(await sessionAlive(laptop.t, now + 1000)).toBe(true);
   });
 
+  it("says how a session signed in, an emailed code unless told otherwise", async () => {
+    const u = await player("p@example.com");
+    await session(u, "by-code", 20);
+    await db.insert(sessions).values({ id: "by-desk", userId: u, expiresAt: new Date(Date.now() + 20 * DAY_MS), method: "desk" });
+    const rows = await db.select({ id: sessions.id, method: sessions.method }).from(sessions);
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.method]))).toEqual({ "by-code": "code", "by-desk": "desk" });
+  });
+
   it("forgets sessions that ran out more than a day ago", async () => {
     const u = await player("p@example.com");
     await session(u, "long-gone", -2);

@@ -13,7 +13,7 @@ import { users } from "@/lib/server/schema";
 import { note } from "@/lib/server/signals";
 
 /**
- * Sign in with a 桌面登录码. Every failure says the same, whatever it was; failures and networks trying
+ * Sign in with a 登录码 (the session's method: desk). Every failure says the same, whatever it was; failures and networks trying
  * too often are noted for the site's checks (src/lib/server/watch.ts), to see anyone guessing.
  */
 export const POST = route(async (req) => {
@@ -28,7 +28,7 @@ export const POST = route(async (req) => {
     note("codeRefused", "desk-wrong");
     throw new HttpError(400, DESK_CODE_WRONG);
   }
-  await startSession(req, user.id);
+  await startSession(req, user.id, "desk");
   countApp("code-redeemed");
   return NextResponse.json({ status: "ok" });
 });

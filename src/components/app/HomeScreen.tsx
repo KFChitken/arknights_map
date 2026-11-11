@@ -11,7 +11,7 @@ import Sheet from "./Sheet";
 /**
  * 存到桌面: putting the site on the desktop or home screen. Where the browser offers its own install
  * prompt (Chrome, Edge) a tap asks it at once; elsewhere a panel says how, by device and browser
- * (src/lib/homeScreen.ts), with a 桌面登录码 on iPhone, whose home-screen icon keeps cookies of its own.
+ * (src/lib/homeScreen.ts), with a 登录码 on iPhone, whose home-screen icon keeps cookies of its own.
  * Not offered on the site opened from the icon, nor once this device installed it through the prompt.
  */
 
@@ -175,8 +175,11 @@ async function copy(text: string) {
   }
 }
 
-/** ③ on iPhone: a code taken here, typed into the site opened from the home-screen icon (src/lib/deskCode.ts) */
-function DeskCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSignIn?: () => void }) {
+/**
+ * A 登录码 (src/lib/deskCode.ts): taken here, typed in on another device (or into the site opened from the iPhone
+ * home-screen icon) to sign in there once. In 我的资料 for everyone, and in ③ on iPhone.
+ */
+export function LoginCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSignIn?: () => void }) {
   const [code, setCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -209,7 +212,7 @@ function DeskCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSignIn?: () 
     <div className="desk-code">
       {code ? (
         <>
-          <div className="desk-code-text" aria-label="桌面登录码">
+          <div className="desk-code-text" aria-label="登录码">
             {code}
           </div>
           <div className="row-actions">
@@ -223,7 +226,7 @@ function DeskCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSignIn?: () 
         </>
       ) : (
         <button className="primary wide" disabled={busy} onClick={take}>
-          {busy ? "正在拿…" : "拿桌面登录码"}
+          {busy ? "正在拿…" : "拿登录码"}
         </button>
       )}
       <p className="hint">这个码等于你的登录，{DESK_CODE_TTL_MIN} 分钟内有效，只能用一次，不要发给别人。</p>
@@ -285,8 +288,8 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
             <li>点 Safari 的分享按钮（方框加向上的箭头；iOS 26 在底栏的「···」里）</li>
             <li>往下翻，选「添加到主屏幕」。iOS 26 会有「作为网页 App 打开」的开关，保持打开</li>
             <li>
-              从桌面图标打开时要再登录一次：在这里拿一个桌面登录码，打开后输入就行，不用再收验证码邮件。
-              <DeskCodeBox signedIn={signedIn} onSignIn={onSignIn} />
+              从桌面图标打开时要再登录一次：在这里拿一个登录码，打开后点「有登录码？」输入就行，不用再收验证码邮件。
+              <LoginCodeBox signedIn={signedIn} onSignIn={onSignIn} />
             </li>
           </Steps>
           <p className="hint">iPhone 上的 Chrome 和 Edge 也能这样存：在分享里找「添加到主屏幕」。</p>

@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "method" text DEFAULT 'code' NOT NULL;

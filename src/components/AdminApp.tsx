@@ -1036,7 +1036,7 @@ function DeskCell({ day, kind }: { day: AppCountDay; kind: PageCount }) {
 
 /**
  * 存到桌面, the last 14 days: devices that opened the site from the desktop icon and in the browser (once a
- * device a day), taps on 存到桌面, installs the browser reported, and 桌面登录码 taken and used. Totals only.
+ * device a day), taps on 存到桌面, installs the browser reported, and 登录码 taken and used. Totals only.
  */
 function DeskStats() {
   const [days, setDays] = useState<AppCountDay[] | null>(null);
@@ -1061,7 +1061,7 @@ function DeskStats() {
                 <th>在浏览器里打开</th>
                 <th>点了「存到桌面」</th>
                 <th>装好了</th>
-                <th>桌面登录码 拿/用</th>
+                <th>登录码 拿/用</th>
               </tr>
             </thead>
             <tbody>

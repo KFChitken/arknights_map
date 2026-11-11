@@ -2947,7 +2947,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       return (
         <HomeScreenSheet
           signedIn={Boolean(me)}
-          onSignIn={() => setPanel({ kind: "login", reason: "登录以后才能拿桌面登录码。" })}
+          onSignIn={() => setPanel({ kind: "login", reason: "登录以后才能拿登录码。" })}
           onClose={() => setPanel(null)}
         />
       );

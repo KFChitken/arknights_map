@@ -14,7 +14,7 @@ import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "
 import type { BlockedPlayer } from "@/lib/world/types";
 import { MyBadgesRow } from "./Badges";
 import { OperatorPic, useOperatorArt } from "./OperatorNames";
-import HomeScreenRow from "./HomeScreen";
+import HomeScreenRow, { LoginCodeBox } from "./HomeScreen";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
@@ -336,6 +336,12 @@ export default function ProfileSheet({
                 </div>
               </div>
             ))}
+          </fieldset>
+
+          <fieldset>
+            <legend>在另一台设备上登录</legend>
+            <p className="hint">在要登录的那台设备上点「登录」→「有登录码？」，输入这里拿的登录码，不用再收验证码邮件。</p>
+            <LoginCodeBox signedIn />
           </fieldset>
 
           <div className="account-actions">

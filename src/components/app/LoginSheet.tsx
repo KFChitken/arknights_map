@@ -9,7 +9,7 @@ import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, SITE_NAME, waitText } from 
 import { isStandalone } from "./HomeScreen";
 import Sheet from "./Sheet";
 
-/** desk: a 桌面登录码 (src/lib/deskCode.ts), for the site opened from the home-screen icon */
+/** desk: a 登录码 (src/lib/deskCode.ts) taken on a device already signed in, the iPhone home-screen icon's way in above all */
 type Step = "email" | "code" | "signup" | "desk";
 
 /**
@@ -48,7 +48,7 @@ const serviceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain
 /**
  * Email + 6-digit code sign-in; new players tick their age and consents once. paused: the mail domains no
  * code goes to just now (MAIL_SLOW_DAILY_LIMIT below 1 on the server), said before anyone types one in.
- * Opened from the home-screen icon (which on iPhone keeps cookies of its own), a 桌面登录码 taken in Safari
+ * Opened from the home-screen icon (which on iPhone keeps cookies of its own), or on any device, a 登录码 taken where one is signed in
  * signs in without an email.
  */
 export default function LoginSheet({
@@ -149,12 +149,12 @@ export default function LoginSheet({
   };
 
   return (
-    <Sheet title={step === "signup" ? `第一次来${SITE_NAME}` : step === "desk" ? "用桌面登录码登录" : "登录"} onClose={close}>
+    <Sheet title={step === "signup" ? `第一次来${SITE_NAME}` : step === "desk" ? "用登录码登录" : "登录"} onClose={close}>
       {step === "email" && standalone && (
         <div className="desk-login">
-          <p>从桌面图标打开的？用在 Safari 里拿的桌面登录码登录，不用再收验证码邮件。</p>
+          <p>从桌面图标打开的？用在 Safari 里拿的登录码登录，不用再收验证码邮件。</p>
           <button type="button" className="primary wide" onClick={() => setStep("desk")}>
-            输入桌面登录码
+            输入登录码
           </button>
         </div>
       )}
@@ -201,6 +201,14 @@ export default function LoginSheet({
           <button className="primary wide" disabled={busy || !email.trim() || pausedHere}>
             {busy ? "发送中…" : "发送验证码"}
           </button>
+          {/* a 登录码 from a device already signed in; opened from the iPhone home-screen icon, it is offered above */}
+          {!standalone && (
+            <div className="row-actions">
+              <button type="button" className="pill" onClick={() => setStep("desk")}>
+                有登录码？
+              </button>
+            </div>
+          )}
           <p className="hint">
             不用密码，每次用邮件里的 6 位验证码登录。第一次登录会自动注册。
             <br />
@@ -270,10 +278,10 @@ export default function LoginSheet({
       {step === "desk" && (
         <form className="login" onSubmit={redeem}>
           <p className="hint" style={{ marginTop: 0 }}>
-            在 Safari 里打开{SITE_NAME}，点「存到桌面」，在第 ③ 步拿桌面登录码，把那 {DESK_CODE_LENGTH} 位码填在这里。
+            在已经登录的手机或电脑上打开{SITE_NAME}，在「我的资料」里拿一个登录码，把那 {DESK_CODE_LENGTH} 位码填在这里。
           </p>
           <label className="field">
-            桌面登录码
+            登录码
             <input
               type="text"
               autoCapitalize="characters"

@@ -247,7 +247,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       const [t] = await db.select().from(users).where(eq(users.id, target)).limit(1);
       if (!t || (!t.demoKey && t.id !== home)) throw new HttpError(400, "没有这个测试身份。");
       await endSession();
-      await startSession(req, t.id);
+      await startSession(req, t.id, "dev");
       await setHomeUserId(req, t.id === home ? null : home);
       break;
     }

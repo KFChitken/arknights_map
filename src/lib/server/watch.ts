@@ -410,9 +410,9 @@ const REFUSED: Record<string, string> = {
   "slow-day": "发往 Gmail 等慢邮箱的当天名额用完",
   "slow-hour": "发往 Gmail 等慢邮箱的这一小时名额用完",
   "slow-paused": "发往 Gmail 等慢邮箱的验证码暂停中",
-  // 桌面登录码 (src/app/api/auth/desk-code/redeem)
-  "desk-wrong": "桌面登录码不对或者过期",
-  "desk-ip": "同一网络试桌面登录码太多次",
+  // 登录码 (src/app/api/auth/desk-code/redeem)
+  "desk-wrong": "登录码不对或者过期",
+  "desk-ip": "同一网络试登录码太多次",
 };
 
 async function checkCodes(now: number): Promise<Finding[]> {

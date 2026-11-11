@@ -975,7 +975,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .desk-copy { margin-top: 6px; }
 .desk-url { margin: 6px 0 0; padding: 8px 10px; border-radius: 10px; background: #f6f7f9; font-size: 14px; user-select: all; overflow-wrap: anywhere; }
 button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration: underline; }
-/* the login sheet opened from the desktop icon: the 桌面登录码 first */
+/* the login sheet opened from the desktop icon: the 登录码 first */
 .desk-login { margin: 0 0 16px; padding: 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; line-height: 1.6; }
 .desk-login p { margin: 0 0 8px; }
 .guide-about { margin: 8px 0 0; line-height: 1.6; }

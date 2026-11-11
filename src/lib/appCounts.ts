@@ -1,7 +1,7 @@
 /**
  * 存到桌面's counts (src/lib/server/appCounts.ts), by the kind of device: opens from the home-screen
  * icon and in the browser (each once a device a day), taps on 存到桌面, and installs the browser
- * reported; and, counted by the server itself, 桌面登录码 taken and used. Totals only.
+ * reported; and, counted by the server itself, 登录码 taken and used. Totals only.
  */
 
 export const DEVICES = ["iphone", "android", "harmony", "desktop"] as const;
