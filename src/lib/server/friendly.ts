@@ -15,6 +15,7 @@ import {
 } from "../friendly";
 import { isGame, serverName, type Game } from "../games";
 import { displayName } from "../profile";
+import { outsideOffLimits } from "../offLimits";
 import { INBOX_DAYS } from "../rules";
 import { FIRE_AT, FIRE_RADIUS_M, isNearFire, pickSeat } from "../talulah";
 import type { LngLat } from "../types";
@@ -350,16 +351,20 @@ async function bannedUntil(hostId: string, guestId: string, now: number) {
   return until > now ? until : null;
 }
 
-/** A visiting clone goes back where it stood, or is taken back if it was put down for the visit. No move is counted. */
-async function sendBack(tx: Exec, v: Visit) {
+/**
+ * A visiting clone goes back where it stood (just outside, if that is now where no roach may
+ * stand, src/lib/offLimits.ts), or is taken back if it was put down for the visit. No move is counted.
+ */
+export async function sendBack(tx: Exec, v: Visit) {
   // anyone visiting this clone in turn sees it go
   await roachMoved(tx, v.roachId, v.fromLng === null ? "removed" : "moved");
   if (v.fromLng === null || v.fromLat === null) {
     await tx.delete(roaches).where(eq(roaches.id, v.roachId));
   } else {
+    const home = outsideOffLimits({ lng: v.fromLng, lat: v.fromLat });
     await tx
       .update(roaches)
-      .set({ lng: v.fromLng, lat: v.fromLat, publicId: randomUUID(), placedAt: new Date() })
+      .set({ lng: home.lng, lat: home.lat, publicId: randomUUID(), placedAt: new Date() })
       .where(eq(roaches.id, v.roachId));
   }
   await tx.delete(visits).where(eq(visits.roachId, v.roachId));

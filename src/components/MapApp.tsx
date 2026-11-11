@@ -64,6 +64,7 @@ import {
   stopOf,
   trailOf,
 } from "@/lib/minghe";
+import { isOffLimits, OFF_LIMITS_MESSAGE } from "@/lib/offLimits";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
@@ -1210,6 +1211,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
 
   const placeAt = async (p: LngLat, fly: boolean) => {
     if (!placing) return;
+    // said at once, before any card; the server refuses it too
+    if (isOffLimits(p)) return setToast(OFF_LIMITS_MESSAGE);
     // the first new roach waits for the player to agree that its spot is public
     if (placing.target.kind !== "move" && !me?.agreedPublicPlace) {
       return setPanel({ kind: "placeConfirm", target: placing.target, spot: p, fly, consent: true });
@@ -1264,7 +1267,13 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     if (placing) return placeAt(p, false);
     setSelected(null);
     // a visitor sees where their roach would go and about how many are around, counted by the server
-    if (visitorShown) setPreview(p);
+    if (visitorShown) {
+      if (isOffLimits(p)) {
+        setPreview(null);
+        return setToast(OFF_LIMITS_MESSAGE);
+      }
+      setPreview(p);
+    }
   };
 
   const onRoachClick = (id: string) => {

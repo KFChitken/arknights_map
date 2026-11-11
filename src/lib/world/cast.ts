@@ -167,7 +167,7 @@ export const TESTERS: Tester[] = [
       color: "gold",
     },
   ),
-  tester("t4", "北京", [{ lng: 116.3912, lat: 39.9065 }], {
+  tester("t4", "北京", [{ lng: 116.4035, lat: 39.909 }], {
     anonymous: false,
     name: "夜莺厨",
     drPrefix: true,

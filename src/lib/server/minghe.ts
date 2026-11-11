@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, asc, count, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { metresApart, MINGHE, mingheDay, mingheRoach, queueSpots, RIDE_STOPS, SPOT_TAKEN_M, stationOf, stopOf } from "../minghe";
+import { outsideOffLimits } from "../offLimits";
 import type { LngLat } from "../types";
 import { WorldError, type MingheItem, type TouchResult } from "../world/types";
 import { db } from "./db";
@@ -205,11 +206,12 @@ export async function spreadStackedRiders(now = Date.now()) {
  * The 04:00 batch, once a day: every clone riding with him that is not at today's
  * station yet moves there, into his queue in the order they got on, under a new
  * public id, so nobody can follow it from city to city; those that rode RIDE_STOPS
- * stations go home instead (back where they stood, or taken back if they were put
- * down to ride), and he tells their owners how many times they were touched on the
- * way. None of these moves count as the player's own, so no moves rows (the radar
- * and 欢迎回家 never see them). Running it again the same day changes nothing; after
- * days without it, everyone goes straight to today's station.
+ * stations go home instead (back where they stood, or just outside it if no roach may
+ * stand there now, or taken back if they were put down to ride), and he tells their
+ * owners how many times they were touched on the way. None of these moves count as
+ * the player's own, so no moves rows (the radar and 欢迎回家 never see them). Running
+ * it again the same day changes nothing; after days without it, everyone goes straight
+ * to today's station.
  */
 export async function moveMingheRiders(now = Date.now()) {
   const day = mingheToday(now);
@@ -235,11 +237,12 @@ export async function moveMingheRiders(now = Date.now()) {
         ),
       );
     const home = await db.transaction(async (tx) => {
-      const back = r.rideFromLng !== null && r.rideFromLat !== null;
-      const [still] = back
+      // where it stood, or just outside if no roach may stand there now (src/lib/offLimits.ts)
+      const to = r.rideFromLng !== null && r.rideFromLat !== null ? outsideOffLimits({ lng: r.rideFromLng, lat: r.rideFromLat }) : null;
+      const [still] = to
         ? await tx
             .update(roaches)
-            .set({ lng: r.rideFromLng!, lat: r.rideFromLat!, publicId: randomUUID(), ...OFF_HORSE })
+            .set({ lng: to.lng, lat: to.lat, publicId: randomUUID(), ...OFF_HORSE })
             .where(and(eq(roaches.id, r.id), lt(roaches.rideDay, day)))
             .returning({ id: roaches.id })
         : await tx

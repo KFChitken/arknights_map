@@ -2,6 +2,7 @@ import { generateFakeRoaches } from "../fakeRoaches";
 import { distanceKm } from "../geo";
 import { mulberry32 } from "../prng";
 import { MINGHE_BOT_FREE_KM, ROUTE } from "../minghe";
+import { isOffLimits } from "../offLimits";
 import { FIRE_AT, FIRE_BOT_FREE_KM } from "../talulah";
 import type { LngLat, RoachAvatar } from "../types";
 import type { MapRoach } from "./types";
@@ -21,7 +22,8 @@ const BEIJING = { lng: 116.4, lat: 39.9 };
 export const BOT_FREE_KM = 60;
 /**
  * None by 塔露拉干员's fire either, where they would look like players sitting by it
- * (src/lib/talulah.ts), nor at 明河都尉's stations, where they would look like his riders (src/lib/minghe.ts)
+ * (src/lib/talulah.ts), nor at 明河都尉's stations, where they would look like his riders (src/lib/minghe.ts),
+ * nor where no roach may stand (src/lib/offLimits.ts)
  */
 const NO_BOTS: [LngLat, number][] = [
   [BEIJING, BOT_FREE_KM],
@@ -40,7 +42,7 @@ export function botRoaches(n: number): MapRoach[] {
   if (!bots) {
     // a few spare, since rounding each city's share and the gap around Beijing can leave it short
     bots = generateFakeRoaches(n + 50, 20261026, ["北京"])
-      .filter((r) => NO_BOTS.every(([at, km]) => distanceKm(r, at) > km))
+      .filter((r) => NO_BOTS.every(([at, km]) => distanceKm(r, at) > km) && !isOffLimits(r))
       .slice(0, n)
       .map((r, i) => {
         const a = mulberry32(0xb07 + i * 7919)();

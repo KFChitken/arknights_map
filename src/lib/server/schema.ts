@@ -821,10 +821,10 @@ export const staffNotes = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** reportUpheld, reportDismissed, action, held, released, autoSuspended, unsuspended, appealKept or appealReverted */
+    /** reportUpheld, reportDismissed, action, held, released, autoSuspended, unsuspended, appealKept, appealReverted or offLimits */
     kind: text("kind").notNull(),
     actionId: uuid("action_id").references(() => modActions.id, { onDelete: "cascade" }),
-    /** For a reporter: the reason they gave, and the Beijing day they reported */
+    /** For a reporter: the reason they gave, and the Beijing day they reported; for offLimits, moved or home */
     reason: text("reason"),
     rule: text("rule"),
     reportedOn: date("reported_on", { mode: "string" }),

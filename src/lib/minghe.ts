@@ -1,5 +1,6 @@
 import { addDays, beijingDate, beijingMidnight, daysBetween } from "./beijing";
 import { GUIDES, guideProfile } from "./guides";
+import { isOffLimits } from "./offLimits";
 import type { LngLat } from "./types";
 import type { MingheItem, PublicRoach } from "./world/types";
 
@@ -180,7 +181,8 @@ export function metresApart(a: LngLat, b: LngLat) {
 
 /**
  * The first n free spots of a station's queue, in order: a spot is taken when one of
- * `taken` (roaches already standing there, not those being laid out) is within SPOT_TAKEN_M.
+ * `taken` (roaches already standing there, not those being laid out) is within SPOT_TAKEN_M,
+ * and skipped where no roach may stand (src/lib/offLimits.ts).
  * The queue has no end (Breeze, 2026-11-10): once it reached 2 km, which was as far as it
  * looked, every rider after landed on the same spot. The taken roaches go into squares of
  * SPOT_TAKEN_M by where they stand, so a queue of thousands is laid out at once.
@@ -206,10 +208,11 @@ export function queueSpots(stop: number, n: number, taken: LngLat[] = []): LngLa
     return false;
   };
   const out: LngLat[] = [];
-  // each taken roach blocks at most one spot (spots are 10 m apart), so this always finds n
-  for (let k = 0; out.length < n && k < taken.length + n; k++) {
+  // each taken roach blocks at most one spot (spots are 10 m apart), and each skipped spot is made up for, so this always finds n
+  for (let k = 0, skipped = 0; out.length < n && k < taken.length + n + skipped; k++) {
     const spot = queueSpot(stop, k);
-    if (!isTaken(spot)) out.push(spot);
+    if (isOffLimits(spot)) skipped++;
+    else if (!isTaken(spot)) out.push(spot);
   }
   return out;
 }

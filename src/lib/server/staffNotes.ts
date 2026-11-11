@@ -22,12 +22,14 @@ export type NoteKind =
   | "autoSuspended"
   | "unsuspended"
   | "appealKept"
-  | "appealReverted";
+  | "appealReverted"
+  | "offLimits";
 
 export type NewNote = {
   userId: string;
   kind: NoteKind;
   actionId?: string | null;
+  /** For a reporter, the reason they gave; for offLimits, what came of their roaches (OFF_LIMITS_WORDS) */
   reason?: string | null;
   rule?: string | null;
   reportedOn?: string | null;
@@ -86,6 +88,15 @@ const REVERTED: Partial<Record<AdminAction, string>> = {
   ageCheck: "不用再确认年龄了",
 };
 
+/**
+ * What came of a player's roaches that stood where no roach may (src/lib/server/offLimits.ts):
+ * moved just outside, or, visiting there, sent home. No yellow card: it is not their doing.
+ */
+export const OFF_LIMITS_WORDS = {
+  moved: "有些地方不能放蟑螂。你有蟑螂放在了这样的地方，站长已经帮你挪到旁边了。这不算违规，不用做什么。",
+  home: "有些地方不能放蟑螂。你有克隆体在这样的地方做客，站长已经把它送回家了。这不算违规，不用做什么。",
+};
+
 /** The words of one note */
 export function noteText(n: typeof staffNotes.$inferSelect, action?: typeof modActions.$inferSelect | null) {
   const when = n.reportedOn ? ` ${shortDay(n.reportedOn)} ` : "";
@@ -111,6 +122,8 @@ export function noteText(n: typeof staffNotes.$inferSelect, action?: typeof modA
       return `有人举报你骚扰，站长看过之前先暂停你的互动，最长 ${SUSPEND_DAYS} 天。`;
     case "unsuspended":
       return "站长看过了，没发现问题，你的互动恢复了。";
+    case "offLimits":
+      return n.reason === "home" ? OFF_LIMITS_WORDS.home : OFF_LIMITS_WORDS.moved;
     default:
       return "站长给你发了一条通知。";
   }

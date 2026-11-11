@@ -2,6 +2,7 @@ import { FOODS, isDrunkTemplate, SPOUSES, type Declaration } from "../declaratio
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
+import { isOffLimits, OFF_LIMITS_MESSAGE } from "../offLimits";
 import { isOperator } from "../operators";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_MAX } from "../rules";
@@ -149,11 +150,13 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
   throw new WorldError("选一句宣言吧。");
 }
 
+/** Where a player may put a roach down or move it: on the map, and not where none may stand (src/lib/offLimits.ts) */
 export function checkSpot(spot: LngLat): LngLat {
   const at = { lng: Number(spot?.lng), lat: Number(spot?.lat) };
   if (!Number.isFinite(at.lng) || !Number.isFinite(at.lat) || Math.abs(at.lat) > 85 || Math.abs(at.lng) > 180) {
     throw new WorldError("这个位置放不了蟑螂。");
   }
+  if (isOffLimits(at)) throw new WorldError(OFF_LIMITS_MESSAGE);
   return at;
 }
 

@@ -1,6 +1,7 @@
 import { homeGame, type Game } from "./games";
 import { distanceKm } from "./geo";
 import { GUIDES, guideProfile } from "./guides";
+import { isOffLimits } from "./offLimits";
 import type { LngLat } from "./types";
 import type { PublicRoach, TalulahItem } from "./world/types";
 
@@ -137,10 +138,11 @@ export function ringSpots(k: number) {
 }
 
 /**
- * Where the next roach sits: a free seat (no roach within SEAT_TAKEN_M, and not
- * behind her) picked at random in the innermost ring that has one, nudged up to a metre either way so
- * two pages picking at once rarely land on the same spot. Beyond FIRE_RADIUS_M
- * the rings go on, though roaches there no longer count towards the fire.
+ * Where the next roach sits: a free seat (no roach within SEAT_TAKEN_M, not behind her,
+ * and not where no roach may stand, src/lib/offLimits.ts) picked at random in the innermost
+ * ring that has one, nudged up to a metre either way so two pages picking at once rarely land
+ * on the same spot. Beyond FIRE_RADIUS_M the rings go on, though roaches there no longer count
+ * towards the fire.
  *
  * The same rings serve 串门 (src/lib/server/friendly.ts): center, the rings around a 触须之交's
  * roach instead of the fire; nearest, the free seat among the fire's own rings closest to that
@@ -161,10 +163,15 @@ export function pickSeat(
     return ringSpots(k).filter(
       (s) =>
         (!fire || Math.hypot(s.x - HER_SPOT_M.x, s.y - HER_SPOT_M.y) >= HER_SPOT_M.r) &&
-        !close.some((p) => Math.hypot(p.x - s.x, p.y - s.y) < SEAT_TAKEN_M),
+        !close.some((p) => Math.hypot(p.x - s.x, p.y - s.y) < SEAT_TAKEN_M) &&
+        !isOffLimits(pointAt(s.x, s.y, center)),
     );
   };
-  const nudged = (s: { x: number; y: number }) => pointAt(s.x + (random() * 2 - 1), s.y + (random() * 2 - 1), center);
+  const nudged = (s: { x: number; y: number }) => {
+    const p = pointAt(s.x + (random() * 2 - 1), s.y + (random() * 2 - 1), center);
+    // a seat right on the edge of a place no roach may stand is taken as it is
+    return isOffLimits(p) ? pointAt(s.x, s.y, center) : p;
+  };
   if (nearest) {
     const to = offsetOf(nearest, center);
     const seats = Array.from({ length: MAX_RINGS }, (_, k) => k)

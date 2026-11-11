@@ -10,6 +10,7 @@ import { demoEnabled, watchEnabled } from "./lib/server/env";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
+import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { pruneOldActivity } from "./lib/server/retention";
 import { sendReportDigest } from "./lib/server/safety";
 import { note } from "./lib/server/signals";
@@ -117,6 +118,8 @@ if (!helper) {
   setInterval(ride, 5 * MINUTE_MS);
   // riders that stood on one another when the queue still ended at 2 km each get a spot of their own
   spreadStackedRiders().catch(failed("ride", "Spreading 明河都尉's stacked riders failed"));
+  // roaches standing where none may (src/lib/offLimits.ts), from before the place was listed, move out
+  moveOutOfOffLimits().catch(failed("offLimits", "Moving roaches out of the off-limits places failed"));
 
   // Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
   const totals = () => recordDailyTotals().catch(failed("totals", "Recording daily totals failed"));
