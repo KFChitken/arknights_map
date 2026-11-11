@@ -13,17 +13,18 @@ import Sheet from "./Sheet";
 type Step = "email" | "code" | "signup" | "desk";
 
 /**
- * A code sent from this tab and not used yet. Phones often reload the page
- * while the player is off reading the email, so the sheet comes back at the
- * code step instead of starting over.
+ * A code sent from this browser and not used yet. Phones often reload the page, or start the site from
+ * its desktop icon afresh, while the player is off reading the email, so the sheet comes back at the code
+ * step instead of starting over. In localStorage, not sessionStorage: a desktop icon on iPhone and some
+ * in-app browsers start a new session on coming back (11/11: players got the code and found no box for it).
+ * nextAt: when another code may be asked for, as the server said (the wait grows with each sending).
  */
-/** nextAt: when another code may be asked for, as the server said (the wait grows with each sending) */
 type Pending = { email: string; sentAt: number; nextAt: number };
 const PENDING = "zhoup.login";
 
 export function pendingLogin(): Pending | null {
   try {
-    const p = JSON.parse(sessionStorage.getItem(PENDING) ?? "null");
+    const p = JSON.parse(localStorage.getItem(PENDING) ?? sessionStorage.getItem(PENDING) ?? "null");
     const fresh = typeof p?.sentAt === "number" && Date.now() - p.sentAt < LOGIN_CODE_TTL_MIN * 60_000;
     // one kept before nextAt was: the shortest wait after its sending
     const nextAt = typeof p?.nextAt === "number" ? p.nextAt : p?.sentAt + LOGIN_CODE_COOLDOWNS_S[0] * 1000;
@@ -35,8 +36,9 @@ export function pendingLogin(): Pending | null {
 
 function keepPending(p: Pending | null) {
   try {
-    if (p) sessionStorage.setItem(PENDING, JSON.stringify(p));
-    else sessionStorage.removeItem(PENDING);
+    sessionStorage.removeItem(PENDING);
+    if (p) localStorage.setItem(PENDING, JSON.stringify(p));
+    else localStorage.removeItem(PENDING);
   } catch {}
 }
 
@@ -103,6 +105,19 @@ export default function LoginSheet({
     }
   };
 
+  // a code asked for earlier, from this page or another: straight to the box for it, nothing sent
+  const [typedIn, setTypedIn] = useState(false);
+  const haveCode = () => {
+    const to = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return setError("先在上面填好收到验证码的那个邮箱。");
+    setError(null);
+    setSent(null);
+    setWait(0);
+    setTypedIn(true);
+    keepPending({ email: to, sentAt: Date.now(), nextAt: Date.now() });
+    setStep("code");
+  };
+
   const send = (e?: FormEvent) => {
     e?.preventDefault();
     run(async () => {
@@ -110,6 +125,7 @@ export default function LoginSheet({
       setMailbox(r.devMailboxPort ? `${location.protocol}//${location.hostname}:${r.devMailboxPort}` : null);
       keepPending({ email: email.trim(), sentAt: Date.now(), nextAt: Date.now() + r.waitS * 1000 });
       setSent({ expiresAt: r.expiresAt, again: r.again, slow: r.slow });
+      setTypedIn(false);
       setWait(r.waitS);
       setStep("code");
     });
@@ -201,14 +217,18 @@ export default function LoginSheet({
           <button className="primary wide" disabled={busy || !email.trim() || pausedHere}>
             {busy ? "发送中…" : "发送验证码"}
           </button>
-          {/* a 登录码 from a device already signed in; opened from the iPhone home-screen icon, it is offered above */}
-          {!standalone && (
-            <div className="row-actions">
+          <div className="row-actions">
+            {/* the email came, but this page no longer knows a code went out: another tab, or the desktop icon started afresh */}
+            <button type="button" className="pill" onClick={haveCode}>
+              已经收到验证码？
+            </button>
+            {/* a 登录码 from a device already signed in; opened from the iPhone home-screen icon, it is offered above */}
+            {!standalone && (
               <button type="button" className="pill" onClick={() => setStep("desk")}>
                 有登录码？
               </button>
-            </div>
-          )}
+            )}
+          </div>
           <p className="hint">
             不用密码，每次用邮件里的 6 位验证码登录。第一次登录会自动注册。
             <br />
@@ -220,8 +240,14 @@ export default function LoginSheet({
       {step === "code" && (
         <form className="login" onSubmit={verify}>
           <p className="hint" style={{ marginTop: 0 }}>
-            {sent?.again ? "又发了一次" : "验证码发到了"} {email}，
-            {sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN} 分钟内有效。
+            {typedIn ? (
+              <>填 {email} 收到的 6 位验证码。</>
+            ) : (
+              <>
+                {sent?.again ? "又发了一次" : "验证码发到了"} {email}，
+                {sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN} 分钟内有效。
+              </>
+            )}
           </p>
           {sent?.slow && (
             <p className="hint" style={{ color: "var(--ink)", fontWeight: 600 }}>
