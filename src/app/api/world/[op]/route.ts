@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { Declaration } from "@/lib/declarations";
 import type { Profile } from "@/lib/profile";
 import { adminCounts } from "@/lib/server/admin";
-import { currentUser, endSession, homeUserId, setHomeUserId, startSession } from "@/lib/server/auth";
+import { currentUser, endSession, homeUserId, renewSession, setHomeUserId, startSession } from "@/lib/server/auth";
 import { markBadgesSeen, wear } from "@/lib/server/badges";
 import { acceptPublicPlace, AGE_CHECK_NEEDED, confirmAge, mustReconsent, RECONSENT_NEEDED } from "@/lib/server/consent";
 import { db } from "@/lib/server/db";
@@ -58,6 +58,8 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   let result: unknown;
   switch (op) {
     case "me": {
+      // every page asks this on opening: a session in use runs SESSION_DAYS from now again (once a day at most)
+      if (user) await renewSession(req);
       const m = user ? await world.me(user.id, args[0]) : null;
       // the admin also sees how many reports wait, in a corner of the map
       const admin = m ? await adminCounts(user) : undefined;

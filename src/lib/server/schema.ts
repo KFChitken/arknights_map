@@ -155,6 +155,8 @@ export const loginCodes = pgTable("login_codes", {
   /** Codes sent to this address since dayStart, for the daily cap */
   dayStart: at("day_start").notNull().defaultNow(),
   sentToday: smallint("sent_today").notNull().default(1),
+  /** How many times the code now held went out, for the wait before the next (rules.ts cooldownAfter) */
+  sends: smallint("sends").notNull().default(1),
 });
 
 /** One row per email handed to the mail provider in the last day, for the sitewide cap. No address is kept. */

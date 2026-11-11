@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, lt, sql } from "drizzle-orm";
-import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY } from "../rules";
+import { cooldownAfter, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY, waitText } from "../rules";
 import { db } from "./db";
 import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
 import { HttpError } from "./http";
@@ -31,8 +31,8 @@ const codeFor = (email: string, expiresAt: Date) =>
     createHmac("sha256", secret("AUTH_SECRET")).update(`code-of|${email}|${expiresAt.toISOString()}`).digest().readUInt32BE(0) % 1_000_000,
   ).padStart(6, "0");
 
-/** A code on its way: again when it is one already sent, still working, sent once more */
-export type IssuedCode = { code: string; again: boolean; expiresAt: Date };
+/** A code on its way: again when it is one already sent, still working, sent once more; waitS: seconds before the address may have another */
+export type IssuedCode = { code: string; again: boolean; expiresAt: Date; waitS: number };
 
 function codeMatches(email: string, code: string, hash: string) {
   const a = Buffer.from(hashCode(email, code));
@@ -61,7 +61,15 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
   // never waits in that queue (11/11: some 20 asks were waiting for the lock at a time, holding the
   // database's connections). Asked again under the lock below, which decides.
   const [seen] = await db
-    .select({ sentAt: loginCodes.sentAt, dayStart: loginCodes.dayStart, sentToday: loginCodes.sentToday })
+    .select({
+      sentAt: loginCodes.sentAt,
+      dayStart: loginCodes.dayStart,
+      sentToday: loginCodes.sentToday,
+      sends: loginCodes.sends,
+      codeHash: loginCodes.codeHash,
+      expiresAt: loginCodes.expiresAt,
+      attempts: loginCodes.attempts,
+    })
     .from(loginCodes)
     .where(eq(loginCodes.email, email));
   const early = seen ? addressWait(seen, now, dayAgo, perDay) : null;
@@ -99,22 +107,35 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
     if (row) {
       await tx
         .update(loginCodes)
-        .set(again ? { sentAt: now, ...day } : { codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, ...day })
+        .set(
+          again
+            ? { sentAt: now, sends: sql`${loginCodes.sends} + 1`, ...day }
+            : { codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, sends: 1, ...day },
+        )
         .where(eq(loginCodes.email, email));
     } else {
-      await tx.insert(loginCodes).values({ email, codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, ...day });
+      await tx.insert(loginCodes).values({ email, codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, sends: 1, ...day });
     }
     await tx.insert(mailSends).values({ sentAt: now, kind: slow ? "login-slow" : "login" });
-    return { code, again, expiresAt };
+    return { code, again, expiresAt, waitS: cooldownAfter(again && row ? row.sends + 1 : 1) };
   });
   if (typeof issued === "object") return issued;
   refuse(issued, email, perDay);
 }
 
 /** Seconds until this address may have its next code (its cooldown), 0 when its day's codes are used up, or null when one may go now */
-function addressWait(row: { sentAt: Date; dayStart: Date; sentToday: number }, now: Date, dayAgo: Date, perDay: number): number | null {
-  if (row.sentAt.getTime() > now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000) {
-    return Math.max(1, LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - row.sentAt.getTime()) / 1000));
+function addressWait(
+  row: { sentAt: Date; dayStart: Date; sentToday: number; sends: number; codeHash: string; expiresAt: Date; attempts: number },
+  now: Date,
+  dayAgo: Date,
+  perDay: number,
+): number | null {
+  // the wait grows with each sending of a code still working (rules.ts LOGIN_CODE_COOLDOWNS_S); once it is
+  // used, run out or tried too often, the next is a new code, after the shortest wait
+  const working = row.codeHash !== "" && row.expiresAt > now && row.attempts < LOGIN_CODE_MAX_ATTEMPTS;
+  const cooldown = cooldownAfter(working ? row.sends : 1);
+  if (row.sentAt.getTime() > now.getTime() - cooldown * 1000) {
+    return Math.max(1, cooldown - Math.floor((now.getTime() - row.sentAt.getTime()) / 1000));
   }
   if (row.dayStart > dayAgo && row.sentToday >= perDay) return 0;
   return null;
@@ -141,7 +162,7 @@ function refuse(why: number | "day" | "hour" | "paused", email: string, perDay: 
     );
   }
   note("codeRefused", why > 0 ? "cooldown" : "address-day");
-  if (why > 0) throw new HttpError(429, `验证码刚发过，${why} 秒后可以再发。`);
+  if (why > 0) throw new HttpError(429, `验证码刚发过，${waitText(why)}后可以再发。`);
   throw new HttpError(429, `这个邮箱今天已经收了 ${perDay} 次验证码，明天再试吧。`);
 }
 
@@ -169,7 +190,11 @@ export async function withdrawLoginCode(email: string, issued: IssuedCode) {
       .where(and(eq(loginCodes.email, email), eq(loginCodes.codeHash, hashCode(email, issued.code))))
       .for("update");
     if (!row) return;
-    const uncount = { sentAt: new Date(0), sentToday: sql`greatest(${loginCodes.sentToday} - 1, 0)` };
+    const uncount = {
+      sentAt: new Date(0),
+      sentToday: sql`greatest(${loginCodes.sentToday} - 1, 0)`,
+      sends: sql`greatest(${loginCodes.sends} - 1, 0)`,
+    };
     await tx
       .update(loginCodes)
       .set(issued.again ? uncount : { ...uncount, codeHash: "", expiresAt: row.sentAt })

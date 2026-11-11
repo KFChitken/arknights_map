@@ -20,6 +20,8 @@ vi.mock("./env", async (original) => ({
 const EMAIL = "player@example.com";
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
+/** Past the longest wait between codes (rules.ts LOGIN_CODE_COOLDOWNS_S) */
+const PAST_ANY_WAIT = 10 * MINUTE + 1000;
 
 /** Pretend the code for an address was sent, and its day started, this much earlier. */
 async function rewind(ms: { sent?: number; day?: number; expiry?: number }, email = EMAIL) {
@@ -47,12 +49,41 @@ describe("login codes", () => {
   it("sends one code a minute to an address, and a code works once", async () => {
     const { code } = await issueLoginCode(EMAIL);
     expect(code).toMatch(/^\d{6}$/);
-    await expect(issueLoginCode(EMAIL)).rejects.toThrow("秒后可以再发");
+    await expect(issueLoginCode(EMAIL)).rejects.toThrow("后可以再发");
 
     await redeemLoginCode(EMAIL, code);
     await expect(redeemLoginCode(EMAIL, code)).rejects.toThrow("过期");
     // signing in does not lift the cooldown
-    await expect(issueLoginCode(EMAIL)).rejects.toThrow("秒后可以再发");
+    await expect(issueLoginCode(EMAIL)).rejects.toThrow("后可以再发");
+  });
+
+  it("waits longer before each sending of the same code: 2 minutes, then 5, then 10", async () => {
+    const first = await issueLoginCode(EMAIL);
+    expect(first.waitS).toBe(120);
+    await rewind({ sent: 2 * MINUTE + 1000 });
+    expect(await issueLoginCode(EMAIL)).toMatchObject({ code: first.code, again: true, waitS: 300 });
+    await rewind({ sent: 2 * MINUTE + 1000 });
+    await expect(issueLoginCode(EMAIL)).rejects.toThrow("2 分 59 秒后可以再发");
+    await rewind({ sent: 3 * MINUTE });
+    expect(await issueLoginCode(EMAIL)).toMatchObject({ again: true, waitS: 600 });
+    await rewind({ sent: 5 * MINUTE + 1000 });
+    await expect(issueLoginCode(EMAIL)).rejects.toThrow("4 分 59 秒后可以再发");
+    expect((await row()).sends).toBe(3);
+  });
+
+  it("starts again at 2 minutes with a new code, and an email that never went out takes its sending back", async () => {
+    const first = await issueLoginCode(EMAIL);
+    await rewind({ sent: 2 * MINUTE + 1000 });
+    const again = await issueLoginCode(EMAIL);
+    await withdrawLoginCode(EMAIL, again);
+    expect((await row()).sends).toBe(1);
+    // at once, as the second sending once more
+    expect(await issueLoginCode(EMAIL)).toMatchObject({ again: true, waitS: 300 });
+    // used: the next is a new code, after the shortest wait
+    await redeemLoginCode(EMAIL, first.code);
+    await rewind({ sent: 2 * MINUTE + 1000 });
+    expect(await issueLoginCode(EMAIL)).toMatchObject({ again: false, waitS: 120 });
+    expect((await row()).sends).toBe(1);
   });
 
   it("takes back a new code that never went out: it is void, and asking again is held up by nothing", async () => {
@@ -141,7 +172,7 @@ describe("login codes", () => {
     let last = "";
     for (let i = 0; i < LOGIN_CODES_PER_DAY; i++) {
       last = (await issueLoginCode(EMAIL)).code;
-      await rewind({ sent: 2 * MINUTE });
+      await rewind({ sent: PAST_ANY_WAIT });
     }
     await expect(issueLoginCode(EMAIL)).rejects.toThrow(`今天已经收了 ${LOGIN_CODES_PER_DAY} 次`);
     await redeemLoginCode(EMAIL, last);
@@ -179,7 +210,7 @@ describe("login codes", () => {
     // another ask holding the lock (were this one to wait for it, the two would wait for each other)
     await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
-      await expect(issueLoginCode(EMAIL)).rejects.toThrow("秒后可以再发");
+      await expect(issueLoginCode(EMAIL)).rejects.toThrow("后可以再发");
     });
   });
 
@@ -223,12 +254,12 @@ describe("codes to a mail service slow to take our mail", () => {
     const G = "doctor@gmail.com";
     for (let i = 0; i < 3; i++) {
       await issueLoginCode(G);
-      await rewind({ sent: 2 * MINUTE + 1000 }, G);
+      await rewind({ sent: PAST_ANY_WAIT }, G);
     }
     await expect(issueLoginCode(G)).rejects.toThrow("今天已经收了 3 次");
     for (let i = 0; i < 4; i++) {
       await issueLoginCode(EMAIL);
-      await rewind({ sent: 2 * MINUTE + 1000 });
+      await rewind({ sent: PAST_ANY_WAIT });
     }
   });
 

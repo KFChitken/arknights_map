@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { SESSION_DAYS } from "../rules";
@@ -31,6 +31,53 @@ export async function startSession(req: NextRequest, userId: string) {
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000);
   await db.insert(sessions).values({ id: sha256(token), userId, expiresAt: expires });
   (await cookies()).set(SESSION_COOKIE, token, { ...cookieBase(req), expires });
+}
+
+// Renewed at most once a day: only a session with less than SESSION_DAYS - 1 days left is written
+const renewQuery = db
+  .update(sessions)
+  .set({ expiresAt: sql`now() + interval '${sql.raw(String(SESSION_DAYS))} days'` })
+  .where(
+    and(
+      eq(sessions.id, sql.placeholder("id")),
+      gt(sessions.expiresAt, sql`now()`),
+      lt(sessions.expiresAt, sql`now() + interval '${sql.raw(String(SESSION_DAYS - 1))} days'`),
+    ),
+  )
+  .returning({ expiresAt: sessions.expiresAt })
+  .prepare("renew_session");
+
+/** A session (by its stored id) running SESSION_DAYS from now, at most once a day: its new end, or null when nothing changed */
+export async function renewSessionById(id: string): Promise<Date | null> {
+  const [row] = await renewQuery.execute({ id });
+  return row?.expiresAt ?? null;
+}
+
+/**
+ * Coming back keeps a player signed in: SESSION_DAYS are days without opening the site, not since signing
+ * in. From the world route's "me", which every page asks on opening (only a route handler sets cookies).
+ */
+export async function renewSession(req: NextRequest) {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  const expires = await renewSessionById(sha256(token));
+  if (expires) jar.set(SESSION_COOKIE, token, { ...cookieBase(req), expires });
+}
+
+/** Every session of this player but the one kept ends; how many did */
+export async function endSessionsExcept(userId: string, keepId: string) {
+  const gone = await db
+    .delete(sessions)
+    .where(and(eq(sessions.userId, userId), ne(sessions.id, keepId)))
+    .returning({ id: sessions.id });
+  return gone.length;
+}
+
+/** 退出其他设备: the player's sessions on other phones and computers end, this one stays */
+export async function endOtherSessions(userId: string) {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? endSessionsExcept(userId, sha256(token)) : 0;
 }
 
 export async function endSession() {

@@ -44,5 +44,13 @@ export const POST = route(async (req) => {
   }
   // a mail service slow to take our mail just now: the page says so (MAIL_SLOW_DOMAINS)
   const slow = isSlowMail(email);
-  return NextResponse.json({ ok: true, again: issued.again, expiresAt: issued.expiresAt.getTime(), slow, devMailboxPort: DEV_MAILBOX_PORT || null });
+  // waitS: seconds before this address may ask again, which grows with each sending of the same code
+  return NextResponse.json({
+    ok: true,
+    again: issued.again,
+    expiresAt: issued.expiresAt.getTime(),
+    waitS: issued.waitS,
+    slow,
+    devMailboxPort: DEV_MAILBOX_PORT || null,
+  });
 });

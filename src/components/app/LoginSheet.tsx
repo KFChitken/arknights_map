@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { finishSignup, requestCode, verifyCode } from "@/lib/authClient";
 import { ADULT_TICK, CROSS_BORDER_TICK } from "@/lib/consent";
 import { suggestEmail } from "@/lib/emailTypos";
-import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_TTL_MIN, SITE_NAME } from "@/lib/rules";
+import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, SITE_NAME, waitText } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 type Step = "email" | "code" | "signup";
@@ -14,14 +14,17 @@ type Step = "email" | "code" | "signup";
  * while the player is off reading the email, so the sheet comes back at the
  * code step instead of starting over.
  */
-type Pending = { email: string; sentAt: number };
+/** nextAt: when another code may be asked for, as the server said (the wait grows with each sending) */
+type Pending = { email: string; sentAt: number; nextAt: number };
 const PENDING = "zhoup.login";
 
 export function pendingLogin(): Pending | null {
   try {
     const p = JSON.parse(sessionStorage.getItem(PENDING) ?? "null");
     const fresh = typeof p?.sentAt === "number" && Date.now() - p.sentAt < LOGIN_CODE_TTL_MIN * 60_000;
-    return fresh && typeof p.email === "string" ? { email: p.email, sentAt: p.sentAt } : null;
+    // one kept before nextAt was: the shortest wait after its sending
+    const nextAt = typeof p?.nextAt === "number" ? p.nextAt : p?.sentAt + LOGIN_CODE_COOLDOWNS_S[0] * 1000;
+    return fresh && typeof p.email === "string" ? { email: p.email, sentAt: p.sentAt, nextAt } : null;
   } catch {
     return null;
   }
@@ -34,7 +37,7 @@ function keepPending(p: Pending | null) {
   } catch {}
 }
 
-const waitAfter = (sentAt: number) => Math.max(0, LOGIN_CODE_COOLDOWN_S - Math.floor((Date.now() - sentAt) / 1000));
+const waitUntil = (nextAt: number) => Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
 
 /** What a mail service is called to the player: Gmail for both of its domains, else the domain itself */
 const serviceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain);
@@ -64,7 +67,7 @@ export default function LoginSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mailbox, setMailbox] = useState<string | null>(null);
-  const [wait, setWait] = useState(() => (resumed ? waitAfter(resumed.sentAt) : 0));
+  const [wait, setWait] = useState(() => (resumed ? waitUntil(resumed.nextAt) : 0));
   // when the code sent stops working, and whether the last email carried the code sent before
   const [sent, setSent] = useState<{ expiresAt: number; again: boolean; slow: boolean } | null>(null);
   // a likely typo in the address's domain, offered and never applied by itself
@@ -97,9 +100,9 @@ export default function LoginSheet({
     run(async () => {
       const r = await requestCode(email.trim());
       setMailbox(r.devMailboxPort ? `${location.protocol}//${location.hostname}:${r.devMailboxPort}` : null);
-      keepPending({ email: email.trim(), sentAt: Date.now() });
+      keepPending({ email: email.trim(), sentAt: Date.now(), nextAt: Date.now() + r.waitS * 1000 });
       setSent({ expiresAt: r.expiresAt, again: r.again, slow: r.slow });
-      setWait(LOGIN_CODE_COOLDOWN_S);
+      setWait(r.waitS);
       setStep("code");
     });
   };
@@ -193,7 +196,7 @@ export default function LoginSheet({
             </p>
           )}
           <p className="hint">
-            邮件有时要几分钟才到，Gmail 可能更慢，先看看「垃圾邮件」和「所有邮件」。有效期内重新发送的还是同一个验证码，哪封先到都能用。
+            邮件在路上，一般 1–3 分钟到。先翻一下「垃圾邮件」和「所有邮件」。有效期内重新发送的还是同一个验证码，哪封先到都能用。
           </p>
           {mailbox && (
             <p className="hint">
@@ -223,7 +226,7 @@ export default function LoginSheet({
           </button>
           <div className="row-actions">
             <button type="button" className="pill" disabled={busy || wait > 0} onClick={() => send()}>
-              {wait > 0 ? `${wait} 秒后可重发` : "重新发送"}
+              {wait > 0 ? `${waitText(wait)}后可重发` : "重新发送"}
             </button>
             <button
               type="button"

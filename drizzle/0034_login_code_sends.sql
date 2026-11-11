@@ -1,0 +1,1 @@
+ALTER TABLE "login_codes" ADD COLUMN "sends" smallint DEFAULT 1 NOT NULL;

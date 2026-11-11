@@ -16,6 +16,7 @@ import {
   pokes,
   radarScans,
   reports,
+  sessions,
   staffNotes,
   talulahTouches,
   touches,
@@ -58,6 +59,8 @@ export async function pruneOldActivity(now = Date.now()) {
   // the site's own checks: what they found and emailed, for 网站状态
   await db.delete(watchIncidents).where(lt(watchIncidents.endedAt, cutoff));
   await db.delete(watchMails).where(lt(watchMails.at, cutoff));
+  // sign-ins that ran out (nothing removed them before 11/11)
+  await db.delete(sessions).where(lt(sessions.expiresAt, new Date(now - DAY_MS)));
 }
 
 /**

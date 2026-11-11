@@ -5,6 +5,7 @@ import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
 import { matchesSearch, OPERATORS } from "@/lib/operators";
+import { logoutOthers } from "@/lib/authClient";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
@@ -78,6 +79,17 @@ export default function ProfileSheet({
   const [saving, setSaving] = useState(false);
   // not asked yet shows unticked, and stays not asked unless the box is ticked
   const [timerOn, setTimerOn] = useState(perlicaTimer === "on");
+  // 退出其他设备: what happened, once asked
+  const [othersOut, setOthersOut] = useState<string | null>(null);
+  const signOutOthers = async () => {
+    if (!window.confirm("其他手机和电脑上的登录都会失效，这台不受影响。")) return;
+    try {
+      const r = await logoutOthers();
+      setOthersOut(r.ended > 0 ? `其他设备上的 ${r.ended} 个登录都退出了。` : "没有别的设备登录着。");
+    } catch (e) {
+      setOthersOut(e instanceof Error ? e.message : String(e));
+    }
+  };
   const set = (patch: Partial<Profile>) => setP((old) => ({ ...old, ...patch }));
   const toggleGame = (g: Game) =>
     set({ games: p.games.includes(g) ? p.games.filter((x) => x !== g) : GAMES.filter((x) => x === g || p.games.includes(x)) });
@@ -330,6 +342,9 @@ export default function ProfileSheet({
             <button className="pill" onClick={onSignOut}>
               退出登录
             </button>
+            <button className="pill" onClick={signOutOthers}>
+              退出其他设备
+            </button>
             <button className="pill" onClick={onDelete}>
               注销账号
             </button>
@@ -337,6 +352,7 @@ export default function ProfileSheet({
               隐私说明
             </a>
           </div>
+          {othersOut && <p className="hint">{othersOut}</p>}
         </>
       )}
     </Sheet>

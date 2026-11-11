@@ -11,7 +11,17 @@ export const MIN_SIGNUP_AGE = 18;
  */
 export const POLICY_UPDATED_AT = new Date("2026-10-31T00:00+08:00");
 export const LOGIN_CODE_TTL_MIN = 10;
-export const LOGIN_CODE_COOLDOWN_S = 120;
+/**
+ * How long one address waits for another code: 2 minutes after a code's first sending, 5 after its second,
+ * 10 after its third and later (11/11: a sign-in took 1.4 emails, most of the extra ones resends while
+ * the first was still on its way, which held Gmail up further). A new code starts at 2 minutes again.
+ */
+export const LOGIN_CODE_COOLDOWNS_S = [120, 300, 600];
+/** The wait once a code has gone out `sends` times */
+export const cooldownAfter = (sends: number) =>
+  LOGIN_CODE_COOLDOWNS_S[Math.min(Math.max(sends, 1), LOGIN_CODE_COOLDOWNS_S.length) - 1];
+/** A wait in words: 「45 秒」, 「2 分钟」, 「4 分 30 秒」 */
+export const waitText = (s: number) => (s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分${s % 60 ? ` ${s % 60} 秒` : "钟"}`);
 export const LOGIN_CODE_MAX_ATTEMPTS = 5;
 /** Codes one email address may receive per day, so nobody can use us to flood an inbox. */
 export const LOGIN_CODES_PER_DAY = 10;
