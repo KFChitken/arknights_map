@@ -80,6 +80,7 @@ import {
   talulahTouches,
   touches,
   userBadges,
+  userPasswords,
   users,
   visitBans,
   friendStars,
@@ -198,7 +199,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}, ${declarationSpots}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}, ${declarationSpots}, ${userPasswords}`,
   );
   // no 明河快进一天 left over
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;

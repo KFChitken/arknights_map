@@ -1,8 +1,8 @@
 import "server-only";
 import { readFileSync, statfsSync } from "node:fs";
 import os from "node:os";
-import { and, count, desc, eq, gt, isNull, or } from "drizzle-orm";
-import { beijingDate, beijingShort } from "../beijing";
+import { and, count, desc, eq, gt, gte, isNull, lt, or } from "drizzle-orm";
+import { beijingDate, beijingMidnight, beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
 import { asLevel, lasted, LEVEL_MARK, levelRank, type IncidentView, type SiteNumbers, type SiteStatus } from "../siteStatus";
 import { amapMapLoads, saveAmapLoads } from "./amapLoads";
@@ -10,7 +10,7 @@ import { db } from "./db";
 import { MAIL_DAILY_LIMIT, SITE_URL } from "./env";
 import { HttpError } from "./http";
 import { byReason } from "./safety";
-import { dailyTotals, mailSends, reports, watchIncidents, watchMails, watchState } from "./schema";
+import { dailyTotals, mailSends, reports, sessions, watchIncidents, watchMails, watchState } from "./schema";
 
 /**
  * What the site's own checks (watch.ts) have to say beyond an urgent email: the morning's digest,
@@ -87,7 +87,14 @@ export async function siteNumbers(now = Date.now()): Promise<SiteNumbers> {
   const tls = await getState("tlsDays");
   const { count: loads } = await saveAmapLoads(now);
   const [yesterday] = await db.select().from(dailyTotals).where(eq(dailyTotals.day, beijingDate(now - DAY))).limit(1);
+  // yesterday's sign-ins by how, to see what passwords and 登录码 save in mail (one ended since is not counted)
+  const logins = await db
+    .select({ method: sessions.method, n: count() })
+    .from(sessions)
+    .where(and(gte(sessions.createdAt, new Date(beijingMidnight(beijingDate(now - DAY)))), lt(sessions.createdAt, new Date(beijingMidnight(beijingDate(now))))))
+    .groupBy(sessions.method);
   return {
+    logins: Object.fromEntries(logins.map((r) => [r.method, r.n])),
     loginMails: n,
     mailLimit: MAIL_DAILY_LIMIT,
     disk: space,
@@ -187,6 +194,10 @@ function numberLines(n: SiteNumbers) {
   lines.push(`· 证书：${n.tlsDays === null ? "这里不查（只在服务器上查）" : n.tlsDays < 0 ? "已经过期" : `还有 ${n.tlsDays} 天`}`);
   lines.push(`· 高德地图：这个月大约打开了 ${n.amap.count.toLocaleString("en-US")} 次，上限 ${n.amap.limit.toLocaleString("en-US")} 次`);
   if (n.yesterday) lines.push(`· 昨天：新来 ${n.yesterday.signups} 人，新结成 ${n.yesterday.friendships} 对触须之交`);
+  if (n.logins) {
+    const l = n.logins;
+    lines.push(`· 昨天登录：验证码 ${l.code ?? 0} 次、密码 ${l.password ?? 0} 次、登录码 ${l.desk ?? 0} 次`);
+  }
   return lines;
 }
 

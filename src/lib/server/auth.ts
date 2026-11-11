@@ -30,10 +30,18 @@ function cookieBase(req: NextRequest) {
 export type SessionMethod = "code" | "desk" | "password" | "dev";
 
 export async function startSession(req: NextRequest, userId: string, method: SessionMethod = "code") {
+  const jar = await cookies();
+  // the session this browser was signed in with till now (signing in again, say to confirm it is the player
+  // by code) ends with it: nothing could use it once its cookie is gone
+  const old = jar.get(SESSION_COOKIE)?.value;
+  if (old) {
+    await db.delete(sessions).where(eq(sessions.id, sha256(old)));
+    checked.delete(sha256(old));
+  }
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000);
   await db.insert(sessions).values({ id: sha256(token), userId, expiresAt: expires, method });
-  (await cookies()).set(SESSION_COOKIE, token, { ...cookieBase(req), expires });
+  jar.set(SESSION_COOKIE, token, { ...cookieBase(req), expires });
 }
 
 // Renewed at most once a day: only a session with less than SESSION_DAYS - 1 days left is written
@@ -136,6 +144,21 @@ export async function sessionAlive(token: string, now = Date.now()): Promise<boo
 /** Tests: nothing believed about any session */
 export function forgetSessionChecks() {
   checked.clear();
+}
+
+/**
+ * The session this request is signed in with, as stored (how and when it signed in): whether it signed
+ * in by code a moment ago decides what it may do to a password (src/lib/server/passwords.ts)
+ */
+export async function currentSession(): Promise<{ id: string; userId: string; method: string; createdAt: Date } | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  const [row] = await db
+    .select({ id: sessions.id, userId: sessions.userId, method: sessions.method, createdAt: sessions.createdAt })
+    .from(sessions)
+    .where(and(eq(sessions.id, sha256(token)), gt(sessions.expiresAt, sql`now()`)))
+    .limit(1);
+  return row ?? null;
 }
 
 // Every request asks who sent it: the statement is put together once, not by drizzle on each request

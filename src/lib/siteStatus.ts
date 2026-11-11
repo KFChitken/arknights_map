@@ -53,6 +53,8 @@ export type SiteNumbers = {
   tlsDays: number | null;
   /** 高德's map loads this Beijing month (an estimate) */
   amap: { count: number; limit: number };
+  /** Sign-ins on yesterday's Beijing date, by how (auth.ts SessionMethod): code, password, desk, dev */
+  logins?: Record<string, number>;
   /** Signups and new 触须之交 pairs on yesterday's Beijing date; null before the totals have such a row */
   yesterday: { signups: number; friendships: number } | null;
 };

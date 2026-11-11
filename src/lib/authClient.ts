@@ -27,12 +27,56 @@ export const requestCode = (email: string) =>
 /** 退出其他设备: the other phones' and computers' sign-ins end; ended: how many */
 export const logoutOthers = () => post<{ ok: true; ended: number }>("/api/auth/logout-others", {});
 
-/** "signup" means the email is new and still needs its ticks (src/lib/consent.ts). */
+/** "signup" means the email is new and still needs its ticks (src/lib/consent.ts); hasPassword: a known player has one */
 export const verifyCode = (email: string, code: string) =>
-  post<{ status: "ok" | "signup" }>("/api/auth/verify", { email, code });
+  post<{ status: "ok" | "signup"; hasPassword?: boolean }>("/api/auth/verify", { email, code });
 
-export const finishSignup = (ticks: { adult: boolean; acceptPolicy: boolean; acceptCrossBorder: boolean }) =>
+/** password: one to sign in with from now on, if given (src/lib/passwordRules.ts) */
+export const finishSignup = (ticks: { adult: boolean; acceptPolicy: boolean; acceptCrossBorder: boolean; password?: string }) =>
   post<{ status: "ok" }>("/api/auth/signup", ticks);
+
+/** 密码登录 (src/lib/server/passwords.ts) */
+export const passwordLogin = (email: string, password: string) => post<{ status: "ok" }>("/api/auth/password-login", { email, password });
+
+/**
+ * When the signed-in player set their password (null: none), their email, and until when (on this device's
+ * clock) this sign-in counts as one by code moments ago, when no current password is asked for (0: not)
+ */
+export async function passwordStatus(): Promise<{ setAt: number | null; email: string | null; freshUntil: number }> {
+  let res: Response;
+  try {
+    res = await fetch("/api/auth/password", { cache: "no-store" });
+  } catch {
+    throw new Error("连不上服务器，检查一下网络再试。");
+  }
+  const json = (await res.json().catch(() => null)) as { setAt: number | null; email: string | null; freshForMs: number; error?: string } | null;
+  if (!res.ok || !json) throw new Error(json?.error ?? "服务器出了点问题，稍后再试试。");
+  return { setAt: json.setAt, email: json.email, freshUntil: json.freshForMs > 0 ? Date.now() + json.freshForMs : 0 };
+}
+
+/**
+ * Set the password, or change it (current: the one now). needsCode: the server wants a sign-in by code
+ * moments ago first, to be sure it is the player themself.
+ */
+export async function savePassword(password: string, current?: string): Promise<{ changed: boolean } | { needsCode: true }> {
+  let res: Response;
+  try {
+    res = await fetch("/api/auth/password", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password, current }),
+    });
+  } catch {
+    throw new Error("连不上服务器，检查一下网络再试。");
+  }
+  const json = (await res.json().catch(() => null)) as { changed?: boolean; needsCode?: boolean; error?: string } | null;
+  if (res.status === 403 && json?.needsCode) return { needsCode: true };
+  if (!res.ok) throw new Error(json?.error ?? "服务器出了点问题，稍后再试试。");
+  return { changed: Boolean(json?.changed) };
+}
+
+/** 取消密码: with the current one, or none after a sign-in by code moments ago */
+export const removePassword = (current: string) => post<{ ok: true }>("/api/auth/password/remove", { current });
 
 /** 隐私说明更新了: an older account agrees again. */
 export const reconsent = (ticks: { adult: boolean; acceptCrossBorder: boolean; acceptPublicPlace: boolean }) =>

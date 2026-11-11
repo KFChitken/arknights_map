@@ -17,6 +17,8 @@ export type SignalKind =
   | "mailSent"
   /** a sign-in code request was refused by a limit; code: which limit */
   | "codeRefused"
+  /** a sign-in with a password failed (src/lib/server/passwords.ts); code: none, paused, wrong or banned */
+  | "passwordFail"
   /** a visitor's page could not load a map; code: "<map>:<what>:<detail>" */
   | "map"
   /** a background job failed; code: the job's name */

@@ -697,12 +697,27 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .avatars button.on { border-color: var(--ink); background: #fffbea; font-weight: 700; }
 
 /* ---- sign-in ---- */
-input[type="email"] {
+input[type="email"], input[type="password"] {
   width: 100%; padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px;
   background: #fff; color: var(--ink); font: inherit; font-size: 16px;
 }
+input[type="email"]:read-only { background: #f1f3f5; color: var(--muted); }
 .login { display: flex; flex-direction: column; gap: 12px; }
 .login .field { margin-top: 0; }
+/* 验证码 | 密码 */
+.seg.login-with { display: flex; }
+.seg.login-with button { flex: 1; }
+/* a password box and its 显示 switch */
+.pw-box { position: relative; display: block; margin-top: 4px; }
+.sheet label.field .pw-box input { margin-top: 0; padding-right: 58px; }
+.pw-eye {
+  position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
+  border: 0; border-radius: 8px; padding: 6px 10px; background: transparent; color: var(--muted); font-size: 13px;
+}
+.login .pw-box + .hint, .login div > .hint { margin-top: 6px; }
+/* 登录密码 in 我的资料 */
+.pw-form { margin-top: 10px; }
+.pw-form .row-actions { align-items: center; }
 .login-error { margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; background: #fdecea; color: #b42318; font-size: 14px; }
 .account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #eef0f2; }
 

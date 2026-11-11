@@ -15,6 +15,7 @@ import type { BlockedPlayer } from "@/lib/world/types";
 import { MyBadgesRow } from "./Badges";
 import { OperatorPic, useOperatorArt } from "./OperatorNames";
 import HomeScreenRow, { LoginCodeBox } from "./HomeScreen";
+import PasswordBox, { type PasswordForm } from "./PasswordBox";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
@@ -50,6 +51,8 @@ export default function ProfileSheet({
   onUnblock,
   onSave,
   onPerlicaTimer,
+  passwordForm,
+  onConfirmByCode,
   onSignOut,
   onDelete,
   onClose,
@@ -71,6 +74,10 @@ export default function ProfileSheet({
   onSave: (p: Profile) => Promise<boolean>;
   /** Switch her timer; only called when the box was changed and the rest saved */
   onPerlicaTimer?: (on: boolean) => Promise<boolean>;
+  /** Back from confirming it is the player by code: what they were doing with their password */
+  passwordForm?: PasswordForm;
+  /** A sign-in by code to confirm it is the player, for their password; the unsaved changes are kept */
+  onConfirmByCode?: (email: string, form: PasswordForm, draft: Profile) => void;
   onSignOut: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -337,6 +344,13 @@ export default function ProfileSheet({
               </div>
             ))}
           </fieldset>
+
+          {onConfirmByCode && (
+            <fieldset>
+              <legend>登录密码</legend>
+              <PasswordBox startOpen={passwordForm} onConfirmByCode={(email, form) => onConfirmByCode(email, form, p)} />
+            </fieldset>
+          )}
 
           <fieldset>
             <legend>在另一台设备上登录</legend>

@@ -267,6 +267,13 @@
       "when": 1794392318869,
       "tag": "0037_declaration_spots",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794395057969,
+      "tag": "0038_user_passwords",
+      "breakpoints": true
     }
   ]
 }

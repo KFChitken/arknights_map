@@ -181,6 +181,7 @@ import {
   talulahIntroShown,
 } from "./app/Talulah";
 import PlaceBar from "./app/PlaceBar";
+import { CONFIRM_REASON, type PasswordForm } from "./app/PasswordBox";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import RoachReportSheet from "./app/RoachReportSheet";
@@ -313,7 +314,7 @@ const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 
 type Panel =
   /** draft: unsaved changes kept while 我的称号 was open */
-  | { kind: "profile"; draft?: Profile }
+  | { kind: "profile"; draft?: Profile; password?: PasswordForm }
   | { kind: "badges"; draft: Profile }
   /** greeting: 阿米娅向导's of the day, and away: 佩丽卡监督's report of the time away, which this card then carries */
   | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null; away: PerlicaItem | null }
@@ -350,7 +351,8 @@ type Panel =
   | { kind: "safety"; target: string; who: string | null; back: Panel | null }
   /** 举报这只蟑螂, from its card on the map */
   | { kind: "roachReport"; roach: PublicRoach }
-  | { kind: "login"; reason?: string }
+  /** confirm: a signed-in player confirming it is them by code, for their password, then back to 我的资料 */
+  | { kind: "login"; reason?: string; confirm?: { email: string; form: PasswordForm; draft: Profile } }
   /** 隐私说明更新了; then: what was going to open first */
   | { kind: "consent"; then?: Panel | null }
   | { kind: "ageCheck" }
@@ -2954,6 +2956,18 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   };
 
   const renderPanel = (p: Panel) => {
+    if (p.kind === "login" && p.confirm) {
+      const { email, form, draft } = p.confirm;
+      return (
+        <LoginSheet
+          reason={p.reason}
+          paused={mailPaused}
+          fixedEmail={email}
+          onDone={() => setPanel({ kind: "profile", draft, password: form })}
+          onClose={() => setPanel({ kind: "profile", draft })}
+        />
+      );
+    }
     if (p.kind === "login") return <LoginSheet reason={p.reason} paused={mailPaused} onDone={signedIn} onClose={() => setPanel(null)} />;
     if (p.kind === "hot") return <HotSheet onClose={() => setPanel(null)} />;
     if (p.kind === "homeScreen") {
@@ -3024,6 +3038,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
             // not while the tutorial runs, as she does not show up before it is over
             perlicaTimer={step ? undefined : me.perlica.timer}
             onPerlicaTimer={switchPerlicaTimer}
+            passwordForm={p.password}
+            onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
             onUnblock={unblock}
             onSave={saveProfile}
             onSignOut={() => leave("signOut")}

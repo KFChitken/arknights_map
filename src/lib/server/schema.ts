@@ -150,6 +150,22 @@ export const sessions = pgTable(
   (t) => [index("sessions_user_idx").on(t.userId)],
 );
 
+/**
+ * A player's password (密码登录, src/lib/server/passwords.ts), apart from users so that nothing reading a whole
+ * users row (every request's currentUser, the admin page) ever carries it: only an scrypt digest
+ * (passwordHash.ts), when it was set, and the wrong tries since the last right one, which pause it
+ * (paused_until). Gone with the account.
+ */
+export const userPasswords = pgTable("user_passwords", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  hash: text("hash").notNull(),
+  setAt: at("set_at").notNull(),
+  fails: smallint("fails").notNull().default(0),
+  pausedUntil: at("paused_until"),
+});
+
 export const loginCodes = pgTable("login_codes", {
   email: text("email").primaryKey(),
   codeHash: text("code_hash").notNull(),

@@ -430,6 +430,29 @@ async function checkCodes(now: number): Promise<Finding[]> {
   ];
 }
 
+const PASSWORD_FAILS: Record<string, string> = {
+  none: "没有这个账号或没设密码",
+  paused: "暂停中还在试",
+  wrong: "密码不对",
+  banned: "被封的账号",
+};
+
+/** Sign-ins with a password failing (src/lib/server/passwords.ts): over 300 in an hour for the digest, over 3,000 at once */
+async function checkPasswords(now: number): Promise<Finding[]> {
+  const list = recent("passwordFail", HOUR, now);
+  if (list.length <= 300) return [];
+  return [
+    {
+      key: "guessing",
+      level: list.length > 3000 ? "urgent" : "daily",
+      title: "有人在大量试密码",
+      detail: `一小时内用密码登录失败 ${list.length} 次（${tally(list.map((s) => s.code), (c) => PASSWORD_FAILS[c] ?? c)}）。`,
+      advice: "每个网络 10 分钟最多试 20 次，一个账号错 5 次就暂停一阵；一直这样多，可能有人拿着别处泄露的密码在试。",
+      worst: { text: `一小时最多 ${list.length} 次`, score: list.length },
+    },
+  ];
+}
+
 const MAPS: Record<string, string> = { amap: "高德", osm: "OSM 底图", overseas: "我们自己的海外底图" };
 
 /** What 腾讯位置服务's status means, when it turns away the key of the place suggestions */
@@ -794,6 +817,7 @@ export const CHECKS: Check[] = [
   { name: "quota", closeAfter: 30 * MINUTE, run: checkQuota },
   { name: "mail", window: 30 * MINUTE, run: checkMail },
   { name: "codes", window: HOUR, run: checkCodes },
+  { name: "passwords", window: HOUR, run: checkPasswords },
   { name: "map", window: 30 * MINUTE, run: checkMaps },
   // once a month: open for a day, so the next digest has it
   { name: "amapLoads", events: true, every: 10 * MINUTE, closeAfter: DAY, run: checkAmapLoads },

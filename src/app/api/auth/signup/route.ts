@@ -6,18 +6,26 @@ import { signedUp } from "@/lib/server/badges";
 import { requireTicks } from "@/lib/server/consent";
 import { db } from "@/lib/server/db";
 import { HttpError, readJson, route } from "@/lib/server/http";
+import { firstPassword } from "@/lib/server/passwords";
 import { users } from "@/lib/server/schema";
+import { passwordProblem } from "@/lib/passwordRules";
 
 /**
  * Finish signing up a verified email: the player ticks that they are old enough,
  * the privacy policy and the separate storage-and-mail consent. Only the times are kept.
+ * password: one to sign in with from now on, if they gave one (src/lib/server/passwords.ts).
  */
 export const POST = route(async (req) => {
   const email = await readSignupProof();
   if (!email) throw new HttpError(400, "验证已经过期了，请重新获取验证码。");
   // a code sent just before a ban must not open a new account
   if (await isBanned(email)) throw new HttpError(403, BANNED);
-  requireTicks(await readJson(req), ["adult", "acceptPolicy", "acceptCrossBorder"]);
+  const body = await readJson(req);
+  requireTicks(body, ["adult", "acceptPolicy", "acceptCrossBorder"]);
+  // a password that will not do turns the sign-up back before any account is made
+  const password = typeof body.password === "string" && body.password ? body.password : null;
+  const problem = password && passwordProblem(password, email);
+  if (problem) throw new HttpError(400, problem);
 
   const now = new Date();
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
@@ -29,6 +37,7 @@ export const POST = route(async (req) => {
       .returning({ id: users.id });
     await signedUp(id);
   }
+  if (password) await firstPassword({ id, email }, password);
   await clearSignupProof();
   await startSession(req, id);
   return NextResponse.json({ status: "ok" });
