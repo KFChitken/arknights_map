@@ -11,6 +11,7 @@ import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
 import {
   compressedArea,
+  pruneRoachChanges,
   resetRoachFeed,
   roachArea,
   roachByFeedId,
@@ -35,7 +36,7 @@ async function ask(since: string | null, now: number, form: FeedForm = 1): Promi
   return JSON.parse((await roachFeed(since, now, form)).json);
 }
 
-/** Ask once to start a rebuild that is due, let it finish, then ask again. */
+/** Ask once to start a round that is due, let it finish, then ask again. */
 async function askAfterRebuild(since: string | null, now: number, form: FeedForm = 1) {
   await roachFeed(since, now, form);
   await roachFeedSettled();
@@ -170,7 +171,7 @@ describe("roach feed", () => {
     const start = await ask(null, T0);
     const [main] = (await world.me(a))!.roaches;
 
-    // a move gives the roach a new public id; the snapshot catches up within the rebuild window
+    // a move gives the roach a new public id; the snapshot catches up at its next round
     await world.placeRoach(a, { kind: "move", roachId: main.id }, TOKYO);
     expect(await ask(start.v, T0 + 2000)).toEqual({ v: start.v });
     const moved = await askAfterRebuild(start.v, T0 + 11_000);
@@ -294,14 +295,132 @@ describe("roach feed", () => {
     });
   });
 
-  it("rebuilds every few minutes even if no change was reported", async () => {
+  it("sees a change written behind its back (by another process) at its next round, a few seconds on", async () => {
     const a = await player("a@example.com");
     const start = await ask(null, T0);
     expect(start.roaches).toEqual([]);
-    // written behind the feed's back
+    // written behind the feed's back: the database notes it all the same
     await db.execute(sql`insert into roaches (user_id, slot, lng, lat) values (${a}, 0, 121.47, 31.23)`);
-    expect(await askAfterRebuild(start.v, T0 + 2 * MINUTE)).toEqual({ v: start.v });
-    expect((await askAfterRebuild(start.v, T0 + 6 * MINUTE)).changed).toHaveLength(1);
+    expect(await askAfterRebuild(start.v, T0 + 1000)).toEqual({ v: start.v });
+    const seen = await askAfterRebuild(start.v, T0 + 4000);
+    expect(seen.changed).toHaveLength(1);
+    // and a look changed behind its back shows on every roach of that player
+    await db.execute(sql`insert into roaches (user_id, slot, lng, lat) values (${a}, 1, 139.7, 35.68)`);
+    await db.execute(sql`update users set avatar = 'imp', color = 'red' where id = ${a}`);
+    const restyled = await askAfterRebuild(seen.v, T0 + 8000);
+    expect(restyled.changed!.map((r) => [r.clone, r.avatar, r.color]).sort()).toEqual([
+      [false, "imp", "red"],
+      [true, "hood", "white"],
+    ]);
+  });
+
+  describe("kept up to date a few roaches at a time", () => {
+    /** Everything the feed would give for these, as it has them now */
+    async function everything(now: number) {
+      const whole = JSON.parse((await roachFeed(null, now, 3)).json) as Answer & { packed: Parameters<typeof unpackRoaches>[0] };
+      const box = JSON.parse(((await roachArea([100, 20, 140, 45], null, now)) as { whole: { json: string } }).whole.json);
+      const over = JSON.parse(((await roachArea("overview", null, now)) as { whole: { json: string } }).whole.json);
+      const byId = (rs: MapRoach[]) => rs.sort((x, y) => (x.id < y.id ? -1 : 1));
+      return {
+        whole: byId(unpackRoaches(whole.packed)),
+        box: byId(unpackRoaches(box.packed)),
+        overview: byId(unpackRoaches(over.packed)),
+        t: box.t,
+      };
+    }
+    /** What the feed holds after its rounds, and what a fresh start reading everything would hold: the same */
+    async function sameAsFresh(now: number) {
+      await roachFeed(null, now, 3);
+      await roachFeedSettled();
+      const kept = await everything(now);
+      resetRoachFeed();
+      const fromScratch = await everything(now);
+      expect(kept).toEqual(fromScratch);
+      return kept;
+    }
+
+    it("comes out as a fresh start would, after roaches come, move, go, change look, fall asleep, ride and share short ids", async () => {
+      const a = await player("a@example.com");
+      const b = await player("b@example.com");
+      await roachWithId(a, 0, "aaaaaaaa-0000-4000-8000-000000000001");
+      await roachWithId(a, 1, "bbbbbbbb-0000-4000-8000-000000000001", TOKYO);
+      await ask(null, T0, 3);
+      let t = T0;
+      const round = async () => {
+        t += 4000;
+        return sameAsFresh(t);
+      };
+      // a new roach sharing the first four bytes of another's id: both by their whole ids
+      await roachWithId(b, 0, "aaaaaaaa-ffff-4000-8000-000000000002", BEIJING);
+      const shared = await round();
+      expect(shared.whole.map((r) => r.id)).toContain("aaaaaaaa-0000-4000-8000-000000000001");
+      // moved, and a new public id as moves give (two numbers in the log)
+      await db.execute(sql`update roaches set lng = 121.5, lat = 31.3, public_id = 'cccccccc-0000-4000-8000-000000000003' where public_id = 'bbbbbbbb-0000-4000-8000-000000000001'`);
+      await round();
+      // the one sharing goes: the other goes by its short id again
+      await db.execute(sql`delete from roaches where user_id = ${b}`);
+      expect((await round()).whole.map((r) => r.id)).toContain("aaaaaaaa");
+      // a new look, drunk, away (flipped over), riding with 明河都尉
+      await db.execute(sql`update users set avatar = 'gugu', color = 'gold' where id = ${a}`);
+      await round();
+      await db.execute(sql`update users set drunk_until = now() + interval '8 hours' where id = ${a}`);
+      expect((await round()).whole.find((r) => !r.clone)).toMatchObject({ asleep: true });
+      await db.execute(sql`update users set drunk_until = null, slept_away_on = '2026-11-10' where id = ${a}`);
+      expect((await round()).whole.find((r) => !r.clone)).toMatchObject({ asleep: true });
+      await db.execute(sql`update users set slept_away_on = null where id = ${a}`);
+      await db.execute(sql`update roaches set ride_since = now() where slot = 1 and user_id = ${a}`);
+      const riding = await round();
+      expect(riding.whole.find((r) => r.clone)).toMatchObject({ ride: true });
+      // two roaches, none by the fire, one riding, one player
+      expect(riding.t).toEqual([2, 0, 1, 1]);
+      // a whole player gone
+      await db.execute(sql`delete from users where id = ${a}`);
+      const gone = await round();
+      expect(gone.whole).toEqual([]);
+      expect(gone.t).toEqual([0, 0, 0, 0]);
+    });
+
+    it("wakes a drunk roach when its time comes, with nothing written", async () => {
+      const a = await player("a@example.com");
+      await roachWithId(a, 0, "dddddddd-0000-4000-8000-000000000004");
+      await db.execute(sql`update users set drunk_until = now() + interval '1500 milliseconds' where id = ${a}`);
+      const start = await ask(null, T0, 3);
+      expect(unpackRoaches((start as unknown as { packed: Parameters<typeof unpackRoaches>[0] }).packed)[0]).toMatchObject({ asleep: true });
+      await new Promise((r) => setTimeout(r, 1700));
+      const woke = await askAfterRebuild(start.v, T0 + 4000, 3);
+      expect(woke.changed).toEqual([expect.not.objectContaining({ asleep: true })]);
+    });
+
+    it("keeps the change log three hours", async () => {
+      const a = await player("a@example.com");
+      await roachWithId(a, 0, "ffffffff-0000-4000-8000-000000000006");
+      await db.execute(sql`update roach_changes set created_at = now() - interval '3 hours 1 minute' where public_id = 'ffffffff-0000-4000-8000-000000000006'`);
+      await roachWithId(a, 1, "ffffffff-1111-4000-8000-000000000007", TOKYO);
+      await pruneRoachChanges();
+      const left = await db.execute<{ public_id: string }>(sql`select public_id from roach_changes where public_id::text like 'ffffffff%'`);
+      expect(left.map((r) => r.public_id)).toEqual(["ffffffff-1111-4000-8000-000000000007"]);
+    });
+
+    it("puts right at its half-hourly check whatever the rounds missed, and says so", async () => {
+      const a = await player("a@example.com");
+      await roachWithId(a, 0, "eeeeeeee-0000-4000-8000-000000000005");
+      const start = await ask(null, T0, 3);
+      // the first round (which reads the last changes again, from before the start) done
+      expect(await askAfterRebuild(start.v, T0 + 4000, 3)).toEqual({ v: start.v });
+      // a change the log never got (as if its row were lost)
+      await db.execute(sql`alter table roaches disable trigger roach_changes_upd`);
+      try {
+        await db.execute(sql`update roaches set lng = 120, lat = 30 where user_id = ${a}`);
+      } finally {
+        await db.execute(sql`alter table roaches enable trigger roach_changes_upd`);
+      }
+      expect(await askAfterRebuild(start.v, T0 + 8000, 3)).toEqual({ v: start.v });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const fixed = await askAfterRebuild(start.v, T0 + 31 * MINUTE, 3);
+      expect(fixed.changed).toMatchObject([{ lng: 120, lat: 30 }]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("missed"));
+      warn.mockRestore();
+    });
   });
 });
 
