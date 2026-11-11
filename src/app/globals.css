@@ -246,6 +246,15 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   .actions.beside-dock button { padding: 9px 8px; font-size: 12.5px; }
   .actions.beside-dock button.primary { padding: 11px 10px; font-size: 13px; }
 }
+/* narrower still (an iPhone SE, a mini set to 放大显示, a phone with a larger 显示大小) the pair would run
+   into 触须之交 and off the screen: there 「我宣布个事儿！」 shows its label's two-line copy, 我宣布 over
+   个事儿！ (MapApp.tsx), in the height of one line, so nothing above the pair comes nearer */
+.actions button.announce .two-lines { display: none; }
+@media (max-width: 349px) {
+  .actions.beside-dock button.announce { padding: 5.5px 10px; line-height: 15px; }
+  .actions.beside-dock button.announce .one-line { display: none; }
+  .actions.beside-dock button.announce .two-lines, .actions.beside-dock button.announce .two-lines > span { display: block; }
+}
 .friend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
 .friend-tile {
   display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 10px 6px 8px;
