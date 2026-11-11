@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
-import { forgetLoginCodes, issueLoginCode, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
+import { forgetLoginCodes, issueLoginCode, pruneSignInMail, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
 import { neverReached } from "./mail";
+import { MAIL_LOCK } from "./mailQuota";
 import { loginCodes, mailSends } from "./schema";
 
 // Gmail slow to take our mail, with small caps to reach in a test (other addresses are not affected)
@@ -166,9 +167,20 @@ describe("login codes", () => {
     // a refused address keeps no cooldown and no count
     expect(await row()).toBeUndefined();
 
+    // sends older than a day count no more, and the timed job drops them
     await db.update(mailSends).set({ sentAt: sql`${mailSends.sentAt} - interval '1 day 1 minute'` });
     await issueLoginCode(EMAIL);
+    await pruneSignInMail();
     expect(await db.$count(mailSends)).toBe(1);
+  });
+
+  it("refuses an address in its cooldown without waiting for the site's mail lock", async () => {
+    await issueLoginCode(EMAIL);
+    // another ask holding the lock (were this one to wait for it, the two would wait for each other)
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_LOCK})`);
+      await expect(issueLoginCode(EMAIL)).rejects.toThrow("秒后可以再发");
+    });
   });
 
   it("allows a fixed number of tries per code, even when guesses arrive at once", async () => {
@@ -196,7 +208,10 @@ describe("login codes", () => {
     await issueLoginCode("old@example.com");
     await rewind({ sent: DAY + MINUTE, day: DAY + MINUTE, expiry: DAY + MINUTE }, "old@example.com");
     await issueLoginCode(EMAIL);
+    // the timed job, which keeps a row still in its day
+    await pruneSignInMail();
     expect(await row("old@example.com")).toBeUndefined();
+    expect(await row()).toBeDefined();
 
     await forgetLoginCodes(EMAIL);
     expect(await row()).toBeUndefined();

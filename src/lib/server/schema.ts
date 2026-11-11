@@ -884,6 +884,9 @@ export const moves = pgTable(
   },
   (t) => [
     index("moves_at_idx").on(t.at),
+    // a player's own moves and placements of the last day (world.ts recentMoves), counted at every visit:
+    // without it each count walked the whole day's moves of everyone (11/11: some 3 of the database's cores)
+    index("moves_user_at_idx").on(t.userId, t.at),
     index("moves_from_geog_idx").using("gist", t.fromGeog),
     index("moves_to_geog_idx").using("gist", t.toGeog),
   ],

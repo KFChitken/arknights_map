@@ -232,6 +232,13 @@
       "when": 1794352176003,
       "tag": "0032_roach_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794374258437,
+      "tag": "0033_moves_user_at",
+      "breakpoints": true
     }
   ]
 }

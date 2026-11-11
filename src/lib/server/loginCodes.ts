@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { LOGIN_CODE_COOLDOWN_S, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY } from "../rules";
 import { db } from "./db";
-import { MAIL_SLOW_PER_ADDRESS, secret } from "./env";
+import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
 import { HttpError } from "./http";
 import { isSlowMail, mailRoom, slowRoomFull } from "./mailQuota";
 import { note } from "./signals";
@@ -52,8 +52,20 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
   const slow = isSlowMail(email);
   const perDay = slow ? MAIL_SLOW_PER_ADDRESS : LOGIN_CODES_PER_DAY;
   const dayAgo = new Date(now.getTime() - DAY_MS);
-  // Rows past both the cooldown and their day only hold an address, so drop them
-  await db.delete(loginCodes).where(and(lt(loginCodes.dayStart, dayAgo), lt(loginCodes.expiresAt, now)));
+
+  // a slow service paused altogether (MAIL_SLOW_DAILY_LIMIT below 1, e.g. -1: 0 reads as the default) gets
+  // no code, and the ask does not wait for the lock only to hear so
+  if (slow && MAIL_SLOW_DAILY_LIMIT < 1) refuse("day", email, perDay);
+
+  // The address's own limits first, outside the site-wide lock, so an ask its cooldown or its day refuses
+  // never waits in that queue (11/11: some 20 asks were waiting for the lock at a time, holding the
+  // database's connections). Asked again under the lock below, which decides.
+  const [seen] = await db
+    .select({ sentAt: loginCodes.sentAt, dayStart: loginCodes.dayStart, sentToday: loginCodes.sentToday })
+    .from(loginCodes)
+    .where(eq(loginCodes.email, email));
+  const early = seen ? addressWait(seen, now, dayAgo, perDay) : null;
+  if (early !== null) refuse(early, email, perDay);
 
   // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up,
   // or which of the slow service's caps it would pass
@@ -66,10 +78,8 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
     // locked against a try being counted meanwhile
     const [row] = await tx.select().from(loginCodes).where(eq(loginCodes.email, email)).for("update");
     const sameDay = Boolean(row && row.dayStart > dayAgo);
-    if (row && row.sentAt.getTime() > now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000) {
-      return Math.max(1, LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - row.sentAt.getTime()) / 1000));
-    }
-    if (row && sameDay && row.sentToday >= perDay) return 0;
+    const wait = row ? addressWait(row, now, dayAgo, perDay) : null;
+    if (wait !== null) return wait;
     if (slow) {
       const full = await slowRoomFull(tx, now);
       if (full) return full;
@@ -98,21 +108,45 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
     return { code, again, expiresAt };
   });
   if (typeof issued === "object") return issued;
+  refuse(issued, email, perDay);
+}
 
-  if (issued === "day" || issued === "hour") {
-    note("codeRefused", `slow-${issued}`);
+/** Seconds until this address may have its next code (its cooldown), 0 when its day's codes are used up, or null when one may go now */
+function addressWait(row: { sentAt: Date; dayStart: Date; sentToday: number }, now: Date, dayAgo: Date, perDay: number): number | null {
+  if (row.sentAt.getTime() > now.getTime() - LOGIN_CODE_COOLDOWN_S * 1000) {
+    return Math.max(1, LOGIN_CODE_COOLDOWN_S - Math.floor((now.getTime() - row.sentAt.getTime()) / 1000));
+  }
+  if (row.dayStart > dayAgo && row.sentToday >= perDay) return 0;
+  return null;
+}
+
+/** No code: the address's cooldown (seconds to wait), its day used up (0), or a slow service's cap for the day or the hour */
+function refuse(why: number | "day" | "hour", email: string, perDay: number): never {
+  if (why === "day" || why === "hour") {
+    note("codeRefused", `slow-${why}`);
     const domain = email.slice(email.lastIndexOf("@") + 1);
     const service = /^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain;
     throw new HttpError(
       429,
-      issued === "day"
+      why === "day"
         ? `${service} 现在限制我们的发信，今天发往 ${service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。`
         : `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`,
     );
   }
-  note("codeRefused", issued > 0 ? "cooldown" : "address-day");
-  if (issued > 0) throw new HttpError(429, `验证码刚发过，${issued} 秒后可以再发。`);
+  note("codeRefused", why > 0 ? "cooldown" : "address-day");
+  if (why > 0) throw new HttpError(429, `验证码刚发过，${why} 秒后可以再发。`);
   throw new HttpError(429, `这个邮箱今天已经收了 ${perDay} 次验证码，明天再试吧。`);
+}
+
+/**
+ * Every few minutes from the main process (src/instrumentation-node.ts), not on every ask: rows past both
+ * their cooldown and their day only hold an address, and sends counted for more than a day count no more
+ * (mailQuota.ts counts the last 24 hours itself).
+ */
+export async function pruneSignInMail(now = new Date()) {
+  const dayAgo = new Date(now.getTime() - DAY_MS);
+  await db.delete(loginCodes).where(and(lt(loginCodes.dayStart, dayAgo), lt(loginCodes.expiresAt, now)));
+  await db.delete(mailSends).where(lt(mailSends.sentAt, dayAgo));
 }
 
 /**

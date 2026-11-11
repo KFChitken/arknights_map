@@ -7,6 +7,7 @@ import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled, watchEnabled } from "./lib/server/env";
 import { hearOthers } from "./lib/server/live";
+import { pruneSignInMail } from "./lib/server/loginCodes";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
 import { pruneOldActivity } from "./lib/server/retention";
 import { sendReportDigest } from "./lib/server/safety";
@@ -66,6 +67,11 @@ if (!helper) {
   const prune = () => pruneOldActivity().catch(failed("prune", "Pruning old activity failed"));
   prune();
   setInterval(prune, DAY_MS);
+
+  // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
+  const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));
+  pruneMail();
+  setInterval(pruneMail, 5 * MINUTE_MS);
 
   // Reports the admin has not heard of: an urgent one within half an hour of the last urgent reminder, the rest once a day
   // has passed since the day's reminder. Cheap: it only looks at open reports nobody was told of.
