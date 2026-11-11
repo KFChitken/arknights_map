@@ -18,7 +18,21 @@ import { reachText } from "../world/logic";
 import type { InboxItem, PlaceTarget, PublicRoach } from "../world/types";
 import type { AdminAction } from "../safety";
 import { deleteAccount, isBanned, mailboxForms } from "./account";
-import { answerAppeal, banInfo, findPlayers, openAppeals, openCases, reportCounts, retentionStats, setBadge, settleCase, settleCases } from "./admin";
+import {
+  answerAppeal,
+  banInfo,
+  findPlayers,
+  openAppeals,
+  openCases,
+  reportCounts,
+  reportedRoaches,
+  retentionStats,
+  roachesNear,
+  setBadge,
+  settleCase,
+  settleCases,
+  takeBackRoaches,
+} from "./admin";
 import { award, catchUpBadges, fireSongs, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
 import { deviceDay, deviceWeek } from "./guides";
@@ -3050,6 +3064,67 @@ describe("server world", () => {
     // two yellow cards on the next case about them
     await db.insert(reports).values({ reporterId: a.p.id, targetId: bad.id, reason: "spam", context: "x", targetName: "x" });
     expect((await openCases()).cases[0]).toMatchObject({ yellow: 2, settled: { roachesRemoved: 2 } });
+  });
+
+  it("lets the admin take back roaches straight from the map, one or every other one near a spot, with one card each", async () => {
+    // two players spelling something out by 人民广场 (main roaches in Tokyo), and the admin's own roach among them
+    const step = (i: number) => ({ lng: PEOPLES_SQUARE.lng + i * 0.0005, lat: PEOPLES_SQUARE.lat });
+    const bad = await troll();
+    const worse = await troll("worse@example.com");
+    await bad.placeRoach({ kind: "clone" }, step(1));
+    await bad.placeRoach({ kind: "clone" }, step(2));
+    await worse.placeRoach({ kind: "clone" }, step(3));
+    const admin = await signUp("admin-map@example.com");
+    await admin.placeRoach({ kind: "main" }, step(4));
+
+    // one: a clone alone goes, the owner told once
+    expect(await takeBackRoaches(admin.id, [await feedId(admin, step(1))], "roach")).toEqual({ roaches: 1, players: 1 });
+    expect(await staffTexts(bad)).toEqual(["因为社区守则里「蟑螂不能放在不合适的地方」这一条，站长把你的一只克隆体收回到你手里了，记一张黄牌。"]);
+
+    // near a spot: everyone's but the admin's own, nearest first, at most 3000 m
+    const all = await roachesNear(admin.id, PEOPLES_SQUARE.lng, PEOPLES_SQUARE.lat, 500);
+    expect(all.map((r) => r.ownerId)).not.toContain(admin.id);
+    expect(all.every((r, i) => r.meters <= 500 && (i === 0 || all[i - 1].meters <= r.meters))).toBe(true);
+    // (others of the tests' own players stand by 人民广场 too)
+    const near = all.filter((r) => r.ownerId === bad.id || r.ownerId === worse.id);
+    expect(near.map((r) => r.ownerId)).toEqual([bad.id, worse.id]);
+    expect(await takeBackRoaches(admin.id, near.map((r) => r.id), "roach")).toEqual({ roaches: 2, players: 2 });
+    expect(await db.$count(roaches, eq(roaches.userId, admin.id))).toBe(1);
+    // the clones only: their main roaches stay in Tokyo
+    expect(await db.$count(roaches, eq(roaches.userId, bad.id))).toBe(1);
+    expect(await db.$count(roaches, eq(roaches.userId, worse.id))).toBe(1);
+    // one yellow card and one notice for each cleaning they were in, never for the admin
+    expect(await db.$count(modActions, and(eq(modActions.userId, bad.id), eq(modActions.yellow, true)))).toBe(2);
+    expect(await db.$count(modActions, eq(modActions.userId, worse.id))).toBe(1);
+    expect(await db.$count(modActions, eq(modActions.userId, admin.id))).toBe(0);
+    expect(await staffTexts(worse)).toHaveLength(1);
+    // a main roach takes its clones with it, as when its owner takes it back
+    await worse.placeRoach({ kind: "clone" }, step(5));
+    const worseMain = (await worse.me()).roaches.find((r) => r.slot === 0)!;
+    expect(await takeBackRoaches(admin.id, [worseMain.publicId], "roach")).toEqual({ roaches: 2, players: 1 });
+    expect(await db.$count(roaches, eq(roaches.userId, worse.id))).toBe(0);
+    expect(await db.$count(roaches, eq(roaches.userId, bad.id))).toBe(1);
+    // already gone: nothing, and nobody told again
+    expect(await takeBackRoaches(admin.id, near.map((r) => r.id), "roach")).toEqual({ roaches: 0, players: 0 });
+    await expect(roachesNear(admin.id, 500, 0, 100)).rejects.toThrow("位置不对");
+  });
+
+  it("marks every roach of the players with open reports on the admin's map, main and clones, and none once settled", async () => {
+    const bad = await troll();
+    await bad.placeRoach({ kind: "clone" }, PEOPLES_SQUARE);
+    const [a] = await players(1);
+    expect(await reportedRoaches()).toEqual([]);
+    await reportedBy(bad, a, "name");
+    const marks = await reportedRoaches();
+    expect(marks.map((m) => [m.main, m.lng]).sort()).toEqual([
+      [false, PEOPLES_SQUARE.lng],
+      [true, TOKYO.lng],
+    ]);
+    expect(marks[0]).toMatchObject({ owner: "小坏", reasons: ["名字不合适"] });
+    // nobody else's: the reporter's own roach is not marked
+    expect(marks.some((m) => m.lng === a.at.lng)).toBe(false);
+    await settleCase(bad.id, "dismiss");
+    expect(await reportedRoaches()).toEqual([]);
   });
 
   it("pages the queue fifty at a time in order of colour, with how many there are of each", async () => {

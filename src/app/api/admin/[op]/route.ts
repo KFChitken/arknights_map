@@ -7,10 +7,13 @@ import {
   isAdmin,
   openAppeals,
   openCases,
+  reportedRoaches,
   retentionStats,
+  roachesNear,
   setBadge,
   settleCase,
   settleCases,
+  takeBackRoaches,
 } from "@/lib/server/admin";
 import { currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
@@ -23,7 +26,8 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   const { op } = await params;
   const body = await readJson(req);
   const args = Array.isArray(body.args) ? body.args : [];
-  if (!isAdmin(await currentUser())) throw new HttpError(404, "没有这个功能。");
+  const user = await currentUser();
+  if (!user || !isAdmin(user)) throw new HttpError(404, "没有这个功能。");
 
   let result: unknown;
   switch (op) {
@@ -62,6 +66,17 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "resolveMany":
       result = await settleCases(args[0], String(args[1]) as AdminAction);
+      break;
+    // 站长清理 on the map: the roaches near a point, then taking them (or one) back
+    case "roachesNear":
+      result = await roachesNear(user.id, args[0], args[1], args[2]);
+      break;
+    case "takeBackRoaches":
+      result = await takeBackRoaches(user.id, args[0], args[1]);
+      break;
+    // 站长地图: where the roaches of players with open reports are
+    case "reportedRoaches":
+      result = await reportedRoaches();
       break;
     case "giveBadge":
     case "takeBadge":

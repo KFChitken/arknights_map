@@ -236,6 +236,31 @@ const awayNote = (item: PerlicaItem): PerlicaNote => ({
   lines: [awaySentence(item.seconds ?? 0, item.line ?? 0), weightSentence(item.seconds ?? 0)],
 });
 const pickOf = (n: number) => Math.floor(Math.random() * n);
+
+/** The admin's own endpoints (src/app/api/admin/[op]/route.ts), from the map: 站长清理 and the reported players' roaches */
+async function adminCall<T>(op: string, ...args: unknown[]): Promise<T> {
+  const res = await fetch(`/api/admin/${op}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ args }),
+  });
+  const body = (await res.json().catch(() => null)) as { result?: T; error?: string } | null;
+  if (!res.ok) throw new Error(body?.error ?? "没成功，再试一次。");
+  return body?.result as T;
+}
+
+/** A roach of a player with open reports, as the admin's map marks it (src/lib/server/admin.ts reportedRoaches) */
+type ReportedRoachMark = { id: string; lng: number; lat: number; main: boolean; owner: string; reasons: string[] };
+
+/** A red ring over a reported player's roach: 本 for the main roach, 克 for a clone; taps go through to the roach */
+function reportedMark(r: ReportedRoachMark) {
+  const el = document.createElement("div");
+  el.textContent = r.main ? "本" : "克";
+  el.title = `${r.owner} · ${r.main ? "本体" : "克隆体"} · ${r.reasons.join("、")}`;
+  el.style.cssText =
+    "width:30px;height:30px;box-sizing:border-box;border:3px solid #d93025;border-radius:50%;background:#d930251f;color:#d93025;font:700 12px/24px sans-serif;text-align:center;pointer-events:none";
+  return el;
+}
 /** 阿米娅向导 dances two rounds of her 6.9-second dance when tapped */
 const DANCE_MS = 2 * 6900;
 
@@ -387,6 +412,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [visible, setVisible] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 站长清理 under way (takeBack below)
+  const [cleaning, setCleaning] = useState(false);
+  // the admin's map: the reported players' roaches marked (null: not shown), and their fetch under way
+  const [reportedMarks, setReportedMarks] = useState<MapOverlay[] | null>(null);
+  const [markingReported, setMarkingReported] = useState(false);
 
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const viewRef = useRef<MapView>(WORLD_VIEW);
@@ -1860,6 +1890,54 @@ export default function MapApp({ cn }: { cn: boolean }) {
     return true;
   };
 
+  /**
+   * 站长清理, on an admin's map (src/lib/server/admin.ts): take back a roach, or every other player's roach
+   * near it, at once; what would go is counted and shown first. Its owners get a yellow card and a 站长通知.
+   */
+  const takeBack = async (roach: PublicRoach, near: boolean) => {
+    setCleaning(true);
+    try {
+      let ids = [roach.id];
+      if (near) {
+        const said = window.prompt("收回以这只为中心多少米以内的蟑螂？（最多 3000 米）", "300");
+        if (!said) return;
+        const meters = Math.min(3000, Math.max(1, Math.round(Number(said) || 0)));
+        const list = await adminCall<{ id: string; ownerId: string }[]>("roachesNear", roach.lng, roach.lat, meters);
+        if (!list.length) return setToast("这附近没有别人的蟑螂。");
+        const players = new Set(list.map((r) => r.ownerId)).size;
+        const sure = window.confirm(
+          `${meters} 米内有 ${list.length} 只别人的蟑螂，属于 ${players} 个人。全部收回吗？\n本体会连同它的克隆体一起收回；每人记一张黄牌，收到一条站长通知。`,
+        );
+        if (!sure) return;
+        ids = list.map((r) => r.id);
+      } else if (!window.confirm("收回这只蟑螂吗？\n是本体的话会连同它的克隆体一起收回；给主人记一张黄牌，发一条站长通知。")) {
+        return;
+      }
+      const done = await adminCall<{ roaches: number; players: number }>("takeBackRoaches", ids, "roach");
+      setSelected(null);
+      setToast(done.roaches ? `收回了 ${done.roaches} 只，涉及 ${done.players} 个人。地图过几秒就更新。` : "没有收回什么，可能已经被收回了。");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  /** The admin's map: mark (or stop marking) every roach of the players with open reports, main and clones */
+  const toggleReported = async () => {
+    if (reportedMarks) return setReportedMarks(null);
+    setMarkingReported(true);
+    try {
+      const list = await adminCall<ReportedRoachMark[]>("reportedRoaches");
+      setReportedMarks(list.map((r) => ({ id: `reported-${r.id}`, at: { lng: r.lng, lat: r.lat }, el: reportedMark(r) })));
+      setToast(list.length ? `红圈标出了被举报的人的 ${list.length} 只蟑螂：本是本体，克是克隆体。点下面的蟑螂可以收回。` : "被举报的人现在都没在地图上放蟑螂。");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMarkingReported(false);
+    }
+  };
+
   /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
   const reportRoach = async (roach: PublicRoach, reason: RoachReportReason, note: string) => {
     const done = await act((w) => w.reportRoach(roach.id, reason, note).then(() => true), "收到了，站长会看看这只蟑螂放的位置。");
@@ -2167,6 +2245,8 @@ export default function MapApp({ cn }: { cn: boolean }) {
     if (partySpot && partySpot !== mainSpot) endParty();
   }, [partySpot, mainSpot, endParty]);
   const partyOverlays = useMemo<MapOverlay[]>(() => (party ? [{ id: `party-${party.key}`, at: party.at, el: party.el }] : []), [party]);
+  // with the admin's marks on the reported players' roaches, when shown
+  const mapOverlays = useMemo(() => (reportedMarks ? [...partyOverlays, ...reportedMarks] : partyOverlays), [partyOverlays, reportedMarks]);
   const drunkSeen = useRef<{ id: string; drunk: boolean } | null>(null);
   useEffect(() => {
     if (!me) {
@@ -2604,7 +2684,7 @@ export default function MapApp({ cn }: { cn: boolean }) {
     guides,
     trail,
     shouts,
-    overlays: partyOverlays,
+    overlays: mapOverlays,
     // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -3076,6 +3156,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
               {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
             </a>
           )}
+          {me?.admin && (me.admin.open > 0 || reportedMarks) && (
+            <button className="admin-pill" disabled={markingReported} onClick={toggleReported}>
+              {reportedMarks ? `收起被举报者的蟑螂（${reportedMarks.length} 只）` : "看被举报者的蟑螂"}
+            </button>
+          )}
         </div>
       )}
 
@@ -3279,6 +3364,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
                   setSelected(null);
                   runAfterReport();
                 }
+          }
+          admin={
+            me?.admin && !selected.roach.guide
+              ? { busy: cleaning, onTakeBack: () => takeBack(selected.roach, false), onTakeBackNear: () => takeBack(selected.roach, true) }
+              : undefined
           }
           onClose={() => {
             setSelected(null);

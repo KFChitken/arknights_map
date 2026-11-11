@@ -25,6 +25,8 @@ import {
   isRoachReportReason,
   isRuleCode,
   REPORT_LEVEL,
+  REPORT_REASONS,
+  ROACH_REPORT_REASONS,
   RULE_OF_REASON,
   URGENT_REASONS,
   type AdminAction,
@@ -49,7 +51,7 @@ import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
-import { roachesChanged } from "./roachFeed";
+import { roachByFeedId, roachesChanged } from "./roachFeed";
 import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter, ROACH_KEYS } from "./safety";
 import {
   blocks,
@@ -765,3 +767,113 @@ export async function retentionStats(now = Date.now()): Promise<RetentionStats> 
     friendshipsWeek: friends.n,
   };
 }
+
+// ---- 站长清理: taking roaches back straight from the map ----
+
+/** A roach near a point, for the admin's 「收回附近一片」 */
+export type NearRoach = { id: string; slot: number; ownerId: string; meters: number };
+
+/** How far 「收回附近一片」 may reach, and how many roaches one cleaning takes back at most */
+const NEAR_MAX_M = 3000;
+const TAKE_BACK_MAX = 300;
+
+/**
+ * The roaches within radiusM of a point (the map's own coordinates), the nearest first and at most
+ * TAKE_BACK_MAX, never the admin's own: what 「收回附近一片」 would take back, shown before it does.
+ */
+export async function roachesNear(adminId: string, lng: unknown, lat: unknown, radiusM: unknown): Promise<NearRoach[]> {
+  const x = Number(lng);
+  const y = Number(lat);
+  const r = Math.min(Math.max(Math.round(Number(radiusM) || 0), 1), NEAR_MAX_M);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 180 || Math.abs(y) > 90) throw new HttpError(400, "位置不对。");
+  const point = sql`ST_SetSRID(ST_MakePoint(${x}, ${y}), 4326)::geography`;
+  const meters = sql<number>`ST_Distance(${roaches.geog}, ${point})`.mapWith(Number);
+  const rows = await db
+    .select({ id: roaches.publicId, slot: roaches.slot, ownerId: roaches.userId, meters })
+    .from(roaches)
+    .where(and(sql`ST_DWithin(${roaches.geog}, ${point}, ${r})`, sql`${roaches.userId} <> ${adminId}`))
+    .orderBy(meters)
+    .limit(TAKE_BACK_MAX);
+  return rows.map((row) => ({ ...row, meters: Math.round(row.meters) }));
+}
+
+/**
+ * 站长收回: take these roaches back (the map's ids) as their owners would, a main roach with its clones,
+ * and give each owner one yellow card and one 站长通知 for the rule (roach: 摆成字或图案、贴着别人放…),
+ * however many of theirs went. Never the admin's own. Returns how many roaches went, of how many players.
+ */
+export async function takeBackRoaches(adminId: string, ids: unknown, rule: unknown, now = Date.now()) {
+  const list = Array.isArray(ids) ? [...new Set(ids.map(String))].slice(0, TAKE_BACK_MAX) : [];
+  const code = isRuleCode(rule) ? rule : "roach";
+  const whole = list.filter((id) => UUID.test(id));
+  const found = whole.length ? await db.select().from(roaches).where(inArray(roaches.publicId, whole)) : [];
+  for (const id of list.filter((id) => !UUID.test(id))) {
+    const r = await roachByFeedId(id);
+    if (r) found.push(r);
+  }
+  const byOwner = new Map<string, (typeof found)[number][]>();
+  for (const r of found) if (r.userId !== adminId) byOwner.set(r.userId, [...(byOwner.get(r.userId) ?? []), r]);
+
+  let gone = 0;
+  let players = 0;
+  for (const [userId, theirs] of byOwner) {
+    const [before] = await db.select({ n: count() }).from(roaches).where(eq(roaches.userId, userId));
+    // the main roach takes its clones with it, as when its owner takes it back
+    const main = theirs.find((r) => r.slot === 0);
+    for (const r of main ? [main] : theirs) {
+      try {
+        await removeRoach(userId, r.id);
+      } catch {
+        // taken back meanwhile, by its owner or another tab
+      }
+    }
+    const [after] = await db.select({ n: count() }).from(roaches).where(eq(roaches.userId, userId));
+    if (after.n >= before.n) continue;
+    gone += before.n - after.n;
+    players++;
+    const at = new Date(now);
+    await db.transaction(async (tx) => {
+      const [record] = await tx
+        .insert(modActions)
+        .values({ userId, action: "removeRoach", rule: code, yellow: true, roachSlot: Math.min(...theirs.map((r) => r.slot)), createdAt: at })
+        .returning({ id: modActions.id });
+      await addNotes([{ userId, kind: "action", actionId: record.id, rule: code }], tx);
+    });
+  }
+  return { roaches: gone, players };
+}
+
+/** A roach of a player with open reports, for the admin's map: where, main or clone, whose and why */
+export type ReportedRoach = { id: string; lng: number; lat: number; main: boolean; owner: string; reasons: string[] };
+
+/** How many reported players' roaches the admin's map marks at most */
+const REPORTED_MAX = 3000;
+
+/**
+ * 站长地图: every roach of the players with open reports (any reason, a roach of theirs reported
+ * included), each with its owner's name as the admin sees it and the reasons reported. Breeze asked for
+ * it (2026-11-11): the one place the admin sees where someone's roaches are, only while reports are open.
+ */
+export async function reportedRoaches(): Promise<ReportedRoach[]> {
+  const open = await db.select({ targetId: reports.targetId, reason: reports.reason }).from(reports).where(isNull(reports.resolvedAt));
+  const why = new Map<string, Set<string>>();
+  for (const r of open) why.set(r.targetId, (why.get(r.targetId) ?? new Set()).add(r.reason));
+  if (!why.size) return [];
+  const label = (reason: string) =>
+    (REPORT_REASONS as Record<string, string>)[reason] ?? (ROACH_REPORT_REASONS as Record<string, string>)[reason] ?? reason;
+  const rows = await db
+    .select({ id: roaches.publicId, lng: roaches.lng, lat: roaches.lat, slot: roaches.slot, userId: roaches.userId, name: users.name, anonymous: users.anonymous })
+    .from(roaches)
+    .innerJoin(users, eq(users.id, roaches.userId))
+    .where(inArray(roaches.userId, [...why.keys()]))
+    .limit(REPORTED_MAX);
+  return rows.map((r) => ({
+    id: r.id,
+    lng: r.lng,
+    lat: r.lat,
+    main: r.slot === 0,
+    owner: r.name ? `${r.name}${r.anonymous ? "（匿名）" : ""}` : "（没有名字）",
+    reasons: [...(why.get(r.userId) ?? [])].map(label),
+  }));
+}
+

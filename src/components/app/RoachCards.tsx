@@ -34,6 +34,7 @@ export function OtherRoachCard({
   onTouch,
   onPoke,
   onReport,
+  admin,
   onClose,
 }: {
   roach: PublicRoach;
@@ -93,6 +94,8 @@ export function OtherRoachCard({
   onPoke: () => void;
   /** 举报这只蟑螂: where a player put it; never offered on the guides */
   onReport?: () => void;
+  /** 站长清理, only on an admin's map: take this roach back, or every roach near it, at once */
+  admin?: { busy: boolean; onTakeBack: () => void; onTakeBackNear: () => void };
   onClose: () => void;
 }) {
   if (roach.bot) {
@@ -305,6 +308,16 @@ export function OtherRoachCard({
         <button className="link report-roach" onClick={onReport}>
           举报这只蟑螂
         </button>
+      )}
+      {admin && !roach.guide && (
+        <div className="row-actions">
+          <button className="danger" disabled={admin.busy} onClick={admin.onTakeBack}>
+            站长：收回这只
+          </button>
+          <button className="danger" disabled={admin.busy} onClick={admin.onTakeBackNear}>
+            站长：收回附近一片
+          </button>
+        </div>
       )}
       <button className="close" onClick={onClose} aria-label="关闭">
         ×
