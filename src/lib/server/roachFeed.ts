@@ -229,10 +229,13 @@ async function makeWhole(s: Snapshot, form: FeedForm): Promise<Whole> {
       : form === 2
         ? `{"v":"${s.v}","packed":${JSON.stringify(packRoaches(s.list))}}`
         : `{"v":"${s.v}","packed":${JSON.stringify(packRoaches(s.list.map((r) => ({ ...r, id: s.short.get(r.id)! })), 4))}}`;
+  // Every process makes these for every snapshot (every ~10 s while roaches move), so the levels are picked
+  // for time. On the live list of 11/11 (1.5 MB, ~78k roaches), on a fast Mac: brotli 11 took 1.2 s for
+  // 652 KB, brotli 5 19 ms for 701 KB; gzip 9 250 ms, gzip 6 64 ms for 0.7% more. The server is slower still.
   const [gz, br] = await Promise.all([
-    gzipAsync(json, { level: 9 }),
-    // the form every page asks for now: brotli at its best takes a third of a second, once per snapshot, and saves a tenth
-    form === 3 ? brotliAsync(json, { params: { [zlib.BROTLI_PARAM_QUALITY]: 11, [zlib.BROTLI_PARAM_SIZE_HINT]: json.length } }) : undefined,
+    gzipAsync(json, { level: 6 }),
+    // the form every page asks for now
+    form === 3 ? brotliAsync(json, { params: { [zlib.BROTLI_PARAM_QUALITY]: 5, [zlib.BROTLI_PARAM_SIZE_HINT]: json.length } }) : undefined,
   ]);
   return { json, gzip: gz, br };
 }

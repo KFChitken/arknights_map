@@ -937,10 +937,11 @@ export default function MapApp({ cn }: { cn: boolean }) {
     events.addEventListener("inbox", () => later());
     events.addEventListener("declare", () => later(60_000, true));
     events.addEventListener("help", () => helpNudgeRef.current());
-    // nudges sent while the connection was down are lost, so look once it is back
+    // nudges sent while the connection was down are lost, so look once it is back: spread over a minute, as
+    // after a restart every page comes back at once
     events.addEventListener("error", () => (dropped = true));
     events.addEventListener("open", () => {
-      if (dropped) later();
+      if (dropped) later(60_000);
       dropped = false;
     });
     // a page in the background only notes that something came, and looks when it is in view again
