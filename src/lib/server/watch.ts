@@ -56,6 +56,8 @@ const CLOSE_AFTER = 15 * MINUTE;
 const MAIL_BROKEN_FOR = 30 * MINUTE;
 
 const LOGS = "docker compose -f docker-compose.prod.yml logs";
+/** web2 and web3 run on the second server (docker-compose.second.yml), with their own logs */
+const LOGS_B = "cd ~/zhoupmap-b && docker compose logs";
 
 /**
  * A problem one check sees now; key is unique within the check. urgent: emailed at once; daily: in the
@@ -243,7 +245,7 @@ async function checkRestart(now: number): Promise<Finding[]> {
   }
   const names = [...new Set(again.map((s) => s.name))].join("、");
   const when = beijingShort(Math.max(...again.map((s) => s.at)));
-  const advice = `可能是程序崩溃后被 Docker 自动拉起，也可能是服务器重启了；如果是你自己重启或改了设置，可以不用管。查原因：${LOGS} --since 2h web web2 web3`;
+  const advice = `可能是程序崩溃后被 Docker 自动拉起，也可能是服务器重启了；如果是你自己重启或改了设置，可以不用管。查原因：${LOGS} --since 2h web；第二台上的 web2、web3：${LOGS_B} --since 2h`;
   return [
     restarts >= 3
       ? {
@@ -274,7 +276,7 @@ async function checkErrors(now: number): Promise<Finding[]> {
   const window = (from: number) => day.filter((s) => s.at >= now - from - 10 * MINUTE && s.at < now - from).length;
   const flood = ten.length >= 100 || [0, 10 * MINUTE, 20 * MINUTE].every((from) => window(from) >= 10);
   const worst = { text: `10 分钟里最多 ${ten.length} 次`, score: ten.length };
-  const advice = `访客会看到「服务器出了点问题」。看日志：${LOGS} --since 30m web web2 web3`;
+  const advice = `访客会看到「服务器出了点问题」。看日志：${LOGS} --since 30m web；第二台上的 web2、web3：${LOGS_B} --since 30m`;
   if (flood) {
     return [
       {

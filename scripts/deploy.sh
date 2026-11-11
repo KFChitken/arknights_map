@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Update the live site to the latest main branch on GitHub. Push first, then run
-# from the Mac. The server is reached through the `zhoupmap` entry in ~/.ssh/config.
+# from the Mac. The servers are reached through the `zhoupmap` (main) and `zhoupmap2`
+# (second) entries in ~/.ssh/config.
 #
 # GitHub builds the app image for every push (.github/workflows/image.yml). This
 # waits for that build and has the server download the image. If GitHub's build
 # failed or the server cannot download it, the server builds the image itself.
+# The second server runs web2 and web3 (docker-compose.second.yml) from the same
+# image, which it always downloads; they restart after the main server's web, one
+# at a time, so open pages never all lose their process at once.
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:-zhoupmap}"
+HOST2="${DEPLOY_HOST2:-zhoupmap2}"
 REPO="KFChitken/arknights_map"
 sha=$(git ls-remote origin refs/heads/main | cut -f1)
 
@@ -35,15 +40,20 @@ for i in $(seq 1 45); do
   sleep 20
 done
 
-# the character pictures stay out of git, so they travel from this Mac (scripts/fetch-operator-art.mjs)
+# the character pictures stay out of git, so they travel from this Mac (scripts/fetch-operator-art.mjs),
+# to both servers: the app's processes on the second server read them too
 if [ -f operator-art/index.json ]; then
   ssh "$HOST" 'mkdir -p ~/arknights_map/operator-art'
   rsync -a --delete operator-art/ "$HOST:arknights_map/operator-art/"
+  ssh "$HOST2" 'mkdir -p ~/zhoupmap-b/operator-art'
+  rsync -a --delete operator-art/ "$HOST2:zhoupmap-b/operator-art/"
 fi
 # and so do the guides' pictures
 if [ -f guide-art/amiya.png ]; then
   ssh "$HOST" 'mkdir -p ~/arknights_map/guide-art'
   rsync -a --delete guide-art/ "$HOST:arknights_map/guide-art/"
+  ssh "$HOST2" 'mkdir -p ~/zhoupmap-b/guide-art'
+  rsync -a --delete guide-art/ "$HOST2:zhoupmap-b/guide-art/"
 fi
 # the overseas map's fonts and icons; never the map file itself, which the server fetches on its own
 for d in fonts sprites; do
@@ -68,7 +78,7 @@ else
   [ "$MODE" = pull ] && echo "Could not download the image from GitHub; building it here."
   compose build web
 fi
-compose up -d --no-build
+compose up -d --no-build --remove-orphans
 # a freshly started Caddy takes a moment to accept reloads
 for i in 1 2 3 4 5 6; do
   compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile && break
@@ -80,6 +90,35 @@ docker images "$IMAGE" --format '{{.Tag}}' | grep -vxE "latest|$SHA" | xargs -r 
 docker rmi zhoupmap-web >/dev/null 2>&1 || true
 docker image prune -f >/dev/null
 REMOTE
+
+# The second server: its compose file and the main server's settings (.env is edited on the main server
+# only; it goes from one server straight to the other and is never written down here), then web2 and
+# web3 on the new image, one at a time, each answering again before the next restarts.
+ssh "$HOST2" 'mkdir -p -m 700 ~/zhoupmap-b'
+scp -q docker-compose.second.yml "$HOST2:zhoupmap-b/docker-compose.yml"
+ssh "$HOST" 'cat ~/arknights_map/.env' | ssh "$HOST2" 'umask 077 && cat > ~/zhoupmap-b/.env.new && mv ~/zhoupmap-b/.env.new ~/zhoupmap-b/.env'
+ssh "$HOST2" "SHA=$sha bash -s" <<'REMOTE2'
+set -e
+cd ~/zhoupmap-b
+mkdir -p operator-art guide-art
+IMAGE=ghcr.io/kfchitken/arknights_map
+if ! docker pull -q "$IMAGE:$SHA" >/dev/null; then
+  echo "The second server could not download ${SHA:0:7}: web2 and web3 keep running the version before."
+  exit 0
+fi
+docker tag "$IMAGE:$SHA" "$IMAGE:latest"
+for s in web2 web3; do
+  docker compose up -d --no-build "$s"
+  n=0
+  until docker compose exec -T "$s" node -e "fetch('http://127.0.0.1:3000/icon.svg').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" 2>/dev/null; do
+    n=$((n+1)); [ "$n" -ge 90 ] && { echo "$s on the second server is not answering"; exit 1; }
+    sleep 2
+  done
+  [ "$s" = web3 ] || sleep 20
+done
+docker images "$IMAGE" --format '{{.Tag}}' | grep -vxE "latest|$SHA" | xargs -r -I{} docker rmi -f "$IMAGE:{}" >/dev/null
+docker image prune -f >/dev/null
+REMOTE2
 
 # keep a copy of the newest nightly backup off the server, for as long as the server keeps its own
 BACKUPS="$HOME/zhoupmap-backups"

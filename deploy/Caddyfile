@@ -92,11 +92,12 @@ zhoupmap.com, zhoupmap.com:8443 {
 		reverse_proxy web:3000
 	}
 	handle {
-		# the app's three processes (docker-compose.prod.yml), so it uses more than one core. Each visitor
+		# the app's three processes, so it uses more than one core: web here (docker-compose.prod.yml), web2
+		# and web3 on the second server, over the private network (docker-compose.second.yml). Each visitor
 		# stays with one of them, by address: their event stream and their limits are in one place. One
 		# whose icon has not come three times in a row (restarting, or gone) is left out until it does;
 		# a single slow or broken request never is (2026-11-10: that left out all three at once under load)
-		reverse_proxy web:3000 web2:3000 web3:3000 {
+		reverse_proxy web:3000 10.5.0.15:3001 10.5.0.15:3002 {
 			lb_policy ip_hash
 			lb_try_duration 5s
 			health_uri /icon.svg

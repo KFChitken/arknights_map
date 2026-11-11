@@ -128,7 +128,7 @@ Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on 
 
 ### The second server
 
-A second server in the same cloud region gives the site a second way in, and a second share of outgoing bandwidth. It only passes visitors' connections on to the main server over the cloud's private network, still encrypted: port 443 with the PROXY protocol to Caddy's `:8443`, which takes the visitor's address from that line only when it comes from the second server's private address (`deploy/Caddyfile`), and port 80 as it is. Certificates, `.env`, data and every route stay on the main server, and the second server keeps no logs, so a broken one is replaced rather than repaired: a fresh Ubuntu server with an SSH host entry named `zhoupmap2`, password and root logins turned off, and its cloud firewall open for TCP 22, 80 and 443, then
+A second server in the same cloud region gives the site a second way in, a second share of outgoing bandwidth, and more cores. As the way in, it only passes visitors' connections on to the main server over the cloud's private network, still encrypted: port 443 with the PROXY protocol to Caddy's `:8443`, which takes the visitor's address from that line only when it comes from the second server's private address (`deploy/Caddyfile`), and port 80 as it is. Certificates, the database and Caddy stay on the main server, and this part keeps no logs, so a broken one is replaced rather than repaired: a fresh Ubuntu server with an SSH host entry named `zhoupmap2`, password and root logins turned off, and its cloud firewall open for TCP 22, 80 and 443, then
 
 ```bash
 scp deploy/relay/nginx.conf scripts/relay-setup.sh zhoupmap2:
@@ -136,6 +136,8 @@ ssh zhoupmap2 'bash relay-setup.sh 10.5.0.6'
 ```
 
 with the main server's private address. The main server's cloud firewall lets TCP 8443 in from the second server's private address only; a new second server with a new private address needs that rule and the `allow` line in `deploy/Caddyfile` changed. The second server also passes the main server's requests to Photon (the overseas place search, which refused the main server's own address) on port 4443, for the main server's private address only (its cloud firewall too), and `PHOTON_VIA` in `docker-compose.prod.yml` sends them there. In DNS both servers' public addresses are A records for `zhoupmap.com` and `www`: pausing one server's two records sends every visitor to the other within ten minutes.
+
+Since 11/11, when the main server's four cores were full, the second server also runs two of the app's three processes, web2 and web3 (`docker-compose.second.yml`, in `~/zhoupmap-b` there). They use the main server's database over the private network: the main server publishes Postgres on its private address only, and its cloud firewall lets TCP 5432 in from the second server only. The main server's Caddy sends their share of visitors to ports 3001 and 3002 on the second server's private address, which its cloud firewall lets in from the main server only. `scripts/deploy.sh` keeps them up to date after the main server's web: the pictures, the compose file, a copy of the main server's `.env` (edit it there only; the next deploy copies it), and the new image. A new second server needs `sudo apt-get install -y docker.io docker-compose-v2` and `sudo usermod -aG docker ubuntu` for them, then a deploy, and the two private addresses in `docker-compose.second.yml`, `docker-compose.prod.yml` and `deploy/Caddyfile` changed if they changed.
 
 ### Checks and alerts
 

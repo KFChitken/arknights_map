@@ -1,0 +1,57 @@
+# Two of the app's processes, web2 and web3, on the second server (10.5.0.15 on the private network), which
+# besides passing visitors through to the main server (deploy/relay) has the cores the main server ran out
+# of. They only answer requests, like web2 and web3 always did; the main server's Caddy sends visitors to
+# them over the private network (deploy/Caddyfile), and they use the main server's database. Lives in
+# ~/zhoupmap-b on the second server with a copy of the main server's .env and the pictures' folders, all
+# of which scripts/deploy.sh brings there.
+name: zhoupmap-b
+
+# Docker keeps everything a container prints unless told otherwise: at most five files of 20 MB each
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+x-web: &web
+  image: ghcr.io/kfchitken/arknights_map:${WEB_TAG:-latest}
+  logging: *logging
+  env_file: .env
+  volumes:
+    - ./operator-art:/app/operator-art:ro
+    - ./guide-art:/app/guide-art:ro
+    # how far each process's roach list has got, as on the main server (docker-compose.prod.yml)
+    - feed-state:/app/feed-state
+  restart: unless-stopped
+
+x-web-env: &web-env
+  # the main server's database, which it publishes on its private address only
+  DATABASE_URL: postgres://roach:${DB_PASSWORD:?set DB_PASSWORD in .env}@10.5.0.6:5432/roach
+  OPERATOR_ART_DIR: /app/operator-art
+  GUIDE_ART_DIR: /app/guide-art
+  # never link a test inbox on the live site
+  DEV_MAILBOX_PORT: ""
+  # nudges go between the processes through the database
+  LIVE_ACROSS: "1"
+  # answers requests only: the main server's web brings the database up to date and runs the jobs
+  WEB_ROLE: helper
+
+services:
+  # each on this server's private address only, for the main server's Caddy: Docker's published ports go
+  # around the system's own firewall, and the cloud firewall lets in only the main server (10.5.0.6)
+  web2:
+    <<: *web
+    environment:
+      <<: *web-env
+      FEED_STATE: /app/feed-state/web2.json
+    ports:
+      - "10.5.0.15:3001:3000"
+
+  web3:
+    <<: *web
+    environment:
+      <<: *web-env
+      FEED_STATE: /app/feed-state/web3.json
+    ports:
+      - "10.5.0.15:3002:3000"
+
+volumes:
+  feed-state:

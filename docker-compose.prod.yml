@@ -8,7 +8,7 @@ x-logging: &logging
   driver: json-file
   options: { max-size: "20m", max-file: "5" }
 
-# What the app's three processes share (services web, web2 and web3 below)
+# The app's process here (web below; web2 and web3 run on the second server, docker-compose.second.yml)
 x-web: &web
   image: ghcr.io/kfchitken/arknights_map:${WEB_TAG:-latest}
   logging: *logging
@@ -56,6 +56,11 @@ services:
     # shared memory for parallel queries, past Docker's 64 MB
     shm_size: 512mb
     logging: *logging
+    # for the app's two processes on the second server (docker-compose.second.yml), on this server's
+    # private address only. Docker's published ports go around the system's own firewall: the cloud
+    # firewall rule (TCP 5432 from the second server's 10.5.0.15 only) is what keeps everyone else out.
+    ports:
+      - "10.5.0.6:5432:5432"
     environment:
       POSTGRES_USER: roach
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
@@ -70,10 +75,11 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # The app, as three processes so it uses more than one core (each runs its JavaScript on one):
-  # web brings the database up to date and runs the jobs; web2 and web3 only answer requests
-  # (src/instrumentation-node.ts). Caddy shares visitors among them (deploy/Caddyfile), and a nudge
-  # for a page reaches whichever of them it is connected to (src/lib/server/live.ts).
+  # The app runs as three processes so it uses more than one core (each runs its JavaScript on one): web
+  # here, which brings the database up to date and runs the jobs, and web2 and web3 on the second server,
+  # which only answer requests (docker-compose.second.yml, src/instrumentation-node.ts; moved there on
+  # 11/11, when this server's four cores were full). Caddy shares visitors among them (deploy/Caddyfile),
+  # and a nudge for a page reaches whichever of them it is connected to (src/lib/server/live.ts).
   web:
     <<: *web
     # Built by GitHub for every push to main (.github/workflows/image.yml) and pulled
@@ -93,30 +99,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  web2:
-    <<: *web
-    environment:
-      <<: *web-env
-      WEB_ROLE: helper
-      FEED_STATE: /app/feed-state/web2.json
-    depends_on:
-      db:
-        condition: service_healthy
-      web:
-        condition: service_started
-
-  web3:
-    <<: *web
-    environment:
-      <<: *web-env
-      WEB_ROLE: helper
-      FEED_STATE: /app/feed-state/web3.json
-    depends_on:
-      db:
-        condition: service_healthy
-      web:
-        condition: service_started
 
   # Adds the visitor's address to X-Forwarded-For, which the login limits rely on
   caddy:
@@ -144,8 +126,6 @@ services:
       - caddy-config:/config
     depends_on:
       - web
-      - web2
-      - web3
     restart: unless-stopped
 
 volumes:
