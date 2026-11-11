@@ -229,8 +229,15 @@ function askPiles(map: AMapNS | null, piles: Piles | null) {
 /** No batches at all: 全员隐匿 draws nobody's roaches */
 const noGroups = (): MassPoint[][] => Array.from({ length: MASS_GROUPS + 1 }, () => []);
 
-/** The dark swarm's points: every roach where 高德 has it (worked out once, MassCache) */
-const swarmPoints = (groups: MassPoint[][]) => groups.flatMap((g) => g.map((p) => p.at));
+/**
+ * The dark swarm's points: every roach where 高德 has it (worked out once, MassCache); one of the overview
+ * (world/area.ts) as many times as the roaches it stands for, so the swarm is as dark as with them all
+ */
+const swarmPoints = (groups: MassPoint[][]) => {
+  const out: [number, number][] = [];
+  for (const g of groups) for (const p of g) for (let i = 0; i < p.n; i++) out.push(p.at);
+  return out;
+};
 
 function heatData(points: [number, number][]) {
   return { data: points.map(([lng, lat]) => ({ lng, lat, count: 1 })), max: SWARM.max };

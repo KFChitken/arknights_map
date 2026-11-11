@@ -5,10 +5,11 @@ import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PROFILE } from "../profile";
+import { overviewCell, type Area } from "../world/area";
 import { unpackRoaches } from "../world/packed";
-import type { MapRoach, RoachFeedUpdate } from "../world/types";
+import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
-import { resetRoachFeed, roachByFeedId, roachFeed, roachFeedSettled, stopRoachFeed, type FeedForm } from "./roachFeed";
+import { compressedArea, resetRoachFeed, roachArea, roachByFeedId, roachFeed, roachFeedSettled, stopRoachFeed, type FeedForm } from "./roachFeed";
 import { users } from "./schema";
 import * as world from "./world";
 
@@ -291,5 +292,92 @@ describe("roach feed", () => {
     await db.execute(sql`insert into roaches (user_id, slot, lng, lat) values (${a}, 0, 121.47, 31.23)`);
     expect(await askAfterRebuild(start.v, T0 + 2 * MINUTE)).toEqual({ v: start.v });
     expect((await askAfterRebuild(start.v, T0 + 6 * MINUTE)).changed).toHaveLength(1);
+  });
+});
+
+describe("only the area a page shows (f=4)", () => {
+  type AreaAnswer = AreaUpdate & { changed?: MapRoach[] };
+  const askArea = async (area: Area, since: string | null, now: number): Promise<AreaAnswer> => {
+    const a = await roachArea(area, since, now);
+    return JSON.parse(a.kind === "full" ? a.whole.json : a.json);
+  };
+  const areaAfterRebuild = async (area: Area, since: string | null, now: number) => {
+    await roachArea(area, since, now);
+    await roachFeedSettled();
+    return askArea(area, since, now);
+  };
+  const SHANGHAI_BOX: Area = [121, 31, 122, 31.5];
+
+  it("gives the roaches in a box, edges included, with how many there are in all", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+    await world.placeRoach(a, { kind: "clone" }, { lng: 122, lat: 31.25 });
+    const box = await askArea(SHANGHAI_BOX, null, T0);
+    const got = unpackRoaches(box.packed!);
+    expect(got.map((r) => [r.lng, r.lat]).sort()).toEqual([
+      [121.47, 31.23],
+      [122, 31.25],
+    ]);
+    // short ids, and nothing about whose they are
+    expect(got.every((r) => /^[0-9a-f]{8}$/.test(r.id) && !("owner" in r))).toBe(true);
+    expect(box.box).toEqual(SHANGHAI_BOX);
+    expect(box.t).toEqual([3, 0, 0]);
+    // made once, compressed when asked
+    const full = await roachArea(SHANGHAI_BOX, null, T0);
+    expect(full.kind === "full" && brotliDecompressSync(await compressedArea(full.whole, "br")).toString()).toBe(
+      full.kind === "full" && full.whole.json,
+    );
+  });
+
+  it("tells a page holding a box what changed in it: moved in, moved out, gone, and nothing about elsewhere", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    const [main] = (await world.me(a))!.roaches;
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+    const clone = (await world.me(a))!.roaches.find((r) => r.slot === 1)!;
+    const start = await askArea(SHANGHAI_BOX, null, T0);
+    expect(unpackRoaches(start.packed!)).toHaveLength(1);
+    const shortOfMain = unpackRoaches(start.packed!)[0].id;
+
+    // the clone comes into the box, the main roach leaves it
+    await world.placeRoach(a, { kind: "move", roachId: clone.id }, { lng: 121.3, lat: 31.1 });
+    await world.placeRoach(a, { kind: "move", roachId: main.id }, BEIJING);
+    const moved = await areaAfterRebuild(SHANGHAI_BOX, start.v, T0 + MINUTE);
+    expect(moved.changed!.map((r) => [r.lng, r.lat])).toEqual([[121.3, 31.1]]);
+    expect(moved.removed).toContain(shortOfMain);
+    expect(moved.t).toEqual([2, 0, 0]);
+
+    // a change far away: the box hears only that some ids it may hold changed or went (a moved roach
+    // goes by a new id, so its old one and its new one)
+    await world.placeRoach(a, { kind: "move", roachId: (await world.me(a))!.roaches.find((r) => r.slot === 0)!.id }, TOKYO);
+    const far = await areaAfterRebuild(SHANGHAI_BOX, moved.v, T0 + 2 * MINUTE);
+    expect(far.changed).toEqual([]);
+    expect(far.removed).toHaveLength(2);
+    expect(far.removed).not.toContain(moved.changed![0].id);
+    // up to date: only the version and the counts
+    expect(await askArea(SHANGHAI_BOX, far.v, T0 + 2 * MINUTE)).toEqual({ v: far.v, t: [2, 0, 0] });
+  });
+
+  it("gives the overview: one roach for each small square, the same one while it stays, counting all there", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    // three in one square of the overview, one in Tokyo
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    await world.placeRoach(a, { kind: "clone" }, { lng: 121.471, lat: 31.231 });
+    await world.placeRoach(b, { kind: "main" }, { lng: 121.472, lat: 31.229 });
+    await world.placeRoach(b, { kind: "clone" }, TOKYO);
+    expect(overviewCell(SHANGHAI)).toBe(overviewCell({ lng: 121.472, lat: 31.229 }));
+    const o = await askArea("overview", null, T0);
+    expect(o.overview).toBe(true);
+    const got = unpackRoaches(o.packed!);
+    expect(got.map((r) => r.n ?? 1).sort()).toEqual([1, 3]);
+    expect(got.reduce((n, r) => n + (r.n ?? 1), 0)).toBe(4);
+    // the square's roach is the one with the lowest short id, so it stays the same
+    const shanghai = got.find((r) => r.n === 3)!;
+    const all = unpackRoaches((await askArea([121, 31, 122, 31.5], null, T0)).packed!);
+    expect(shanghai.id).toBe(all.map((r) => r.id).sort()[0]);
+    // a page holding the overview gets it whole again, never what changed
+    expect((await roachArea("overview", o.v, T0)).kind).toBe("full");
   });
 });

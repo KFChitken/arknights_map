@@ -24,6 +24,8 @@ export type PackedRoaches = {
   y: number[];
   /** Look number × 8, plus 1 for a clone, 2 for asleep, 4 for riding with 明河都尉 */
   k: number[];
+  /** In the overview (world/area.ts): how many roaches each stands for, itself included; left out when all are 1 */
+  n?: number[];
   /** Roaches whose ids are not of that form (the show roaches, world/bots.ts, and in the short form the rare few whose first four bytes are shared), as they are */
   rest?: MapRoach[];
 };
@@ -76,9 +78,11 @@ export function packRoaches(list: MapRoach[], width: 4 | 16 = 16): PackedRoaches
   const x: number[] = [];
   const y: number[] = [];
   const k: number[] = [];
+  const n: number[] = [];
   let bytes = "";
   let lastX = 0;
   for (const { r, x: rx, y: ry } of packable) {
+    n.push(r.n ?? 1);
     const key = `${r.avatar} ${r.color}`;
     let no = lookNo.get(key);
     if (no === undefined) {
@@ -94,7 +98,8 @@ export function packRoaches(list: MapRoach[], width: 4 | 16 = 16): PackedRoaches
     for (let i = 0; i < width * 2; i += 2) bytes += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
   }
   const rest = list.filter((r) => !form.test(r.id));
-  return { looks, ...(width === 4 ? { w: 4 as const } : {}), ids: btoa(bytes), x, y, k, ...(rest.length ? { rest } : {}) };
+  const weighed = n.some((c) => c !== 1);
+  return { looks, ...(width === 4 ? { w: 4 as const } : {}), ids: btoa(bytes), x, y, k, ...(weighed ? { n } : {}), ...(rest.length ? { rest } : {}) };
 }
 
 const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
@@ -121,6 +126,7 @@ export function unpackRoaches(p: PackedRoaches): MapRoach[] {
     };
     if (k & ASLEEP) r.asleep = true;
     if (k & RIDE) r.ride = true;
+    if (p.n && p.n[i] !== 1) r.n = p.n[i];
     out.push(r);
   }
   return p.rest ? out.concat(p.rest) : out;

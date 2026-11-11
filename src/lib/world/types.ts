@@ -7,6 +7,7 @@ import type { Profile, PublicProfile } from "../profile";
 import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
+import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
 
 /**
@@ -31,6 +32,11 @@ export interface World {
    * Not signed in: no roaches, only how many there are (VisitorFeed).
    */
   roachFeed(since: string | null): Promise<RoachFeedUpdate | VisitorFeed>;
+  /**
+   * 只发看得到的 (world/area.ts): the roaches of an area only, a box or the overview, at a version; pass
+   * the version of the same box held to get only what changed in it. Not signed in: as roachFeed.
+   */
+  roachArea(area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed>;
   /** For a visitor who has not signed in: about how many roaches are near a spot (counts.ts rough), counted by the server */
   around(spot: LngLat, signal?: AbortSignal): Promise<{ near: number; far: number }>;
   saveProfile(profile: Profile): Promise<Profile>;
@@ -184,6 +190,8 @@ export type MapRoach = LngLat & {
   asleep?: true;
   /** A clone riding along with 明河都尉 (src/lib/minghe.ts), for counting them; never whose */
   ride?: true;
+  /** In the overview (world/area.ts): how many roaches it stands for, itself included; 1 when left out */
+  n?: number;
 };
 
 /**
@@ -199,6 +207,23 @@ export type PublicRoach = MapRoach & { friend: boolean; guide?: true };
  * which order things changed.
  */
 export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; packed?: PackedRoaches; changed?: MapRoach[]; removed?: string[] };
+
+/**
+ * An area of the feed (world/area.ts): whole (packed, with the box or overview it is of), or what changed
+ * in the box held since its version; t: how many roaches there are in all, by the fire and riding with
+ * 明河都尉. Just {v} where the server has nothing to say yet (just after a start).
+ */
+export type AreaUpdate = {
+  /** Areas switched off on the server (AREA_FEED=off): ask for the whole list (roachFeed) instead */
+  whole?: true;
+  v: string;
+  t?: [number, number, number];
+  box?: Box;
+  overview?: true;
+  packed?: PackedRoaches;
+  changed?: MapRoach[];
+  removed?: string[];
+};
 
 /**
  * What the feed gives someone not signed in, whose map is 全员隐匿: how many roaches there are in all, by

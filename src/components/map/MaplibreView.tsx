@@ -73,17 +73,22 @@ const LITE_FRIENDS = "lite-friends";
 const LITE_COUNTS = "lite-counts";
 const LITE_LAYERS = [LITE_PILES, LITE_FRIENDS, LITE_COUNTS];
 const NO_FEATURES: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+/**
+ * How many roaches a pile (or a lone one) is: the sum of what its roaches stand for (features.ts liteFeature n;
+ * one of the overview, world/area.ts, stands for its whole square), or with no n, how many it holds
+ */
+const PILE_COUNT = ["coalesce", ["get", "n"], ["get", "point_count"], 1];
 /** How much bigger than one roach a pile is, by its count (piles.ts pileMul) */
-const PILE_MUL = ["min", 2.2, ["+", 1, ["*", 0.18, ["log2", ["coalesce", ["get", "point_count"], 1]]]]];
+const PILE_MUL = ["min", 2.2, ["+", 1, ["*", 0.18, ["log2", ["max", 1, PILE_COUNT]]]]];
 const PILE_SIZE = ["interpolate", ["linear"], ["zoom"], ...ICON_STOPS.flatMap(([z, px]) => [z, ["/", ["min", ["*", px, PILE_MUL], PILE_MAX_PX], ICON_BASE]])];
 /** The icon a pile shows: the lowest bits of its lowest key (features.ts liteFeature) */
 const PILE_ICON = ["match", ["%", ["coalesce", ["get", "rep"], ["get", "key"]], 256], ...LITE_LOOKS.flatMap((id, i) => [i, id]), LITE_LOOKS[0]];
 /** A pile's count: as it is up to 9999, then in 万 to one place (piles.ts countBadgeText) */
 const COUNT_TEXT = [
   "case",
-  ["<", ["get", "point_count"], 10000],
-  ["to-string", ["get", "point_count"]],
-  ["concat", ["to-string", ["/", ["round", ["/", ["get", "point_count"], 1000]], 10]], "万"],
+  ["<", PILE_COUNT, 10000],
+  ["to-string", PILE_COUNT],
+  ["concat", ["to-string", ["/", ["round", ["/", PILE_COUNT, 1000]], 10]], "万"],
 ];
 /** A count right of and above its pile, by the pile's width at each icon size */
 const COUNT_OFFSET = [
@@ -515,7 +520,7 @@ export default function MaplibreView(props: MapViewProps) {
       clusterRadius: PILE_RADIUS,
       clusterMaxZoom: PILE_MAX_ZOOM,
       clusterMinPoints: 2,
-      clusterProperties: { rep: ["min", ["get", "key"]] },
+      clusterProperties: { rep: ["min", ["get", "key"]], n: ["+", ["get", "n"]] },
       promoteId: "id",
     });
     map.addSource(FRIENDS_SOURCE, { type: "geojson", data: NO_FEATURES, promoteId: "id" });
@@ -558,14 +563,15 @@ export default function MaplibreView(props: MapViewProps) {
         id: LITE_COUNTS,
         type: "symbol",
         source: LITE_SOURCE,
-        filter: ["has", "point_count"],
+        // piles, and a lone roach of the overview standing for more than itself
+        filter: [">", PILE_COUNT, 1] as never,
         layout: {
           "icon-image": ["concat", "count-", COUNT_TEXT] as never,
           "icon-offset": COUNT_OFFSET as never,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
           // the bigger counts on top where two meet
-          "symbol-sort-key": ["get", "point_count"],
+          "symbol-sort-key": PILE_COUNT as never,
         },
       },
       "mine",
@@ -720,7 +726,8 @@ export default function MaplibreView(props: MapViewProps) {
         maxzoom: SWARM_FADE_ZOOM + 1,
         layout: { visibility: propsRef.current.mapStyle === "nation" ? "visible" : "none" },
         paint: {
-          "heatmap-weight": 1,
+          // one of the overview (world/area.ts) as dark as all the roaches it stands for
+          "heatmap-weight": ["coalesce", ["get", "n"], 1],
           "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 6, 1.2, SWARM_FADE_ZOOM, 2],
           "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 1, 10, 4, 18, 8, 30, SWARM_FADE_ZOOM, 40],
           "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], ...ramp] as never,

@@ -6,6 +6,7 @@ import type { HelpAsk } from "../help";
 import type { Profile } from "../profile";
 import type { ReportReason, RoachReportReason } from "../safety";
 import type { LngLat } from "../types";
+import { boxText, type Area } from "./area";
 import {
   AgeCheckNeeded,
   ConsentNeeded,
@@ -26,6 +27,7 @@ import {
   type PretendWhat,
   type Radar,
   type RideTarget,
+  type AreaUpdate,
   type RoachFeedUpdate,
   type VisitorFeed,
   type TouchResult,
@@ -78,6 +80,23 @@ export class ServerWorld implements World {
       throw new WorldError("连不上服务器，检查一下网络再试。");
     }
     const body = (await res.json().catch(() => null)) as ((RoachFeedUpdate | VisitorFeed) & { error?: string }) | null;
+    if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
+    if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    return body;
+  };
+  // f=4: an area only (world/area.ts); a whole one by ETag, so the same one again costs a 304
+  // "counts": how many there are only (t), for 全员隐匿, which draws nobody's roaches
+  roachArea = async (area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed> => {
+    const where = area === "counts" ? "c=1" : area === "overview" ? "o=1" : `box=${boxText(area)}`;
+    let res: Response;
+    try {
+      res = await fetch(`/api/roaches?f=4&${where}${since ? `&since=${encodeURIComponent(since)}` : ""}`, {
+        cache: since ? "no-store" : "no-cache",
+      });
+    } catch {
+      throw new WorldError("连不上服务器，检查一下网络再试。");
+    }
+    const body = (await res.json().catch(() => null)) as ((AreaUpdate | VisitorFeed) & { error?: string }) | null;
     if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body;

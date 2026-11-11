@@ -17,7 +17,7 @@ export type PileAsk =
    * look of a pile: tier × 2^32 + seed, the lowest winning (awake and no clone first, then clones, then
    * those asleep; within one, the lowest seed), so a pile shows the same roach of its own every time
    */
-  | { type: "load"; seq: number; lng: Float64Array; lat: Float64Array; look: Uint8Array; key: Float64Array }
+  | { type: "load"; seq: number; lng: Float64Array; lat: Float64Array; look: Uint8Array; key: Float64Array; w: Float64Array }
   /** The piles and lone roaches in a box (west, south, east, north, in degrees) at a MapLibre zoom */
   | { type: "query"; seq: number; bbox: [number, number, number, number]; z: number }
   /** The zoom at which a pile comes apart */
@@ -26,31 +26,37 @@ export type PileAsk =
 export type PileAnswer =
   | { type: "loaded"; seq: number; ms: number }
   /**
-   * data: five numbers for each pile or lone roach: lng, lat, how many, its look, and which: a pile's
+   * data: five numbers for each pile or lone roach: lng, lat, how many (each roach counting as many as it
+   * stands for: one of the overview, world/area.ts, for its whole square), its look, and which: a pile's
    * cluster id, or -(i + 1) for the i-th roach loaded
    */
   | { type: "piles"; seq: number; z: number; bbox: [number, number, number, number]; data: Float64Array; ms: number }
   | { type: "expand"; seq: number; z: number };
 
-type Props = { s: number; k: number; i: number };
+type Props = { s: number; k: number; i: number; n: number };
 
 /** The work itself, the same in the worker and on the page */
 export function pileWork() {
-  let index: Supercluster<Props, { s: number; k: number }> | null = null;
+  let index: Supercluster<Props, { s: number; k: number; n: number }> | null = null;
   return (m: PileAsk): PileAnswer => {
     if (m.type === "load") {
       const t0 = performance.now();
       const n = m.lng.length;
       const points = new Array<Supercluster.PointFeature<Props>>(n);
       for (let i = 0; i < n; i++) {
-        points[i] = { type: "Feature", properties: { s: m.look[i], k: m.key[i], i }, geometry: { type: "Point", coordinates: [m.lng[i], m.lat[i]] } };
+        points[i] = {
+          type: "Feature",
+          properties: { s: m.look[i], k: m.key[i], i, n: m.w[i] },
+          geometry: { type: "Point", coordinates: [m.lng[i], m.lat[i]] },
+        };
       }
-      index = new Supercluster<Props, { s: number; k: number }>({
+      index = new Supercluster<Props, { s: number; k: number; n: number }>({
         radius: PILE_RADIUS,
         maxZoom: PILE_MAX_ZOOM,
         minPoints: 2,
-        map: (p) => ({ s: p.s, k: p.k }),
+        map: (p) => ({ s: p.s, k: p.k, n: p.n }),
         reduce: (a, b) => {
+          a.n += b.n;
           if (b.k < a.k) {
             a.k = b.k;
             a.s = b.s;
@@ -67,16 +73,10 @@ export function pileWork() {
         const o = j * 5;
         data[o] = c.geometry.coordinates[0];
         data[o + 1] = c.geometry.coordinates[1];
-        const p = c.properties as Partial<Supercluster.ClusterProperties> & { s: number; i?: number };
-        if (p.cluster) {
-          data[o + 2] = p.point_count!;
-          data[o + 3] = p.s;
-          data[o + 4] = p.cluster_id!;
-        } else {
-          data[o + 2] = 1;
-          data[o + 3] = p.s;
-          data[o + 4] = -((p.i ?? 0) + 1);
-        }
+        const p = c.properties as Partial<Supercluster.ClusterProperties> & { s: number; i?: number; n: number };
+        data[o + 2] = p.n;
+        data[o + 3] = p.s;
+        data[o + 4] = p.cluster ? p.cluster_id! : -((p.i ?? 0) + 1);
       });
       return { type: "piles", seq: m.seq, z: m.z, bbox: m.bbox, data, ms: performance.now() - t0 };
     }

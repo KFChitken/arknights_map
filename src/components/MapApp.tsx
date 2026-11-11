@@ -73,9 +73,10 @@ import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePla
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
-import { RoachFeedCopy } from "@/lib/world/feed";
+import { areaFor, boxFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
+import { RoachAreaCopy, RoachFeedCopy } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
-import { feedIdsOf, sameRoach } from "@/lib/world/packed";
+import { feedIdsOf, sameRoach, unpackRoaches } from "@/lib/world/packed";
 import {
   DEFAULT_MAP_STYLE,
   HEARTS_READY,
@@ -245,6 +246,10 @@ const isLimitedLine = (text: string) => EVENTS.some((e) => e.lines.some((l) => l
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
 /** How long the map waits for the account's data before it starts anyway, when this browser has no home to start at */
 const MAP_WAIT_MS = 1500;
+/** The map's view settles this long before a new area of roaches is asked for (world/area.ts) */
+const AREA_SETTLE_MS = 250;
+/** The overview is asked for again, while the map shows it, once this old */
+const OVERVIEW_AGAIN_MS = 5 * 60_000;
 /** Whether a view has moved away from another (more than about 100 m, or half a zoom level) */
 const movedFrom = (a: MapView, b: MapView) => Math.abs(a.lng - b.lng) > 1e-3 || Math.abs(a.lat - b.lat) > 1e-3 || Math.abs(a.zoom - b.zoom) > 0.5;
 /** How long one of 佩丽卡监督's notes stays along the top: a line, or two */
@@ -393,7 +398,18 @@ const GUEST_STYLES: Partial<Record<MapStyle, string>> = Object.fromEntries(
 
 export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPaused?: string[] }) {
   const worldRef = useRef<World | null>(null);
+  // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
   const feedRef = useRef(new RoachFeedCopy());
+  /** 只发看得到的 (world/area.ts): the roaches of the area the map shows, a box or the overview */
+  const areaRef = useRef(new RoachAreaCopy());
+  // the made-up crowd is on: no area from the server takes its place
+  const fakeFeedRef = useRef(false);
+  // the whole list as before, not areas: ?whole=1 in the address (to compare), or the server says so (AREA_FEED=off)
+  const wholeRef = useRef<boolean | null>(null);
+  // 全员隐匿 is drawn: nobody's roaches are, so only how many there are is asked for (and have come)
+  const hiddenRef = useRef(false);
+  const countsInRef = useRef(false);
+  const [fakeFeed, setFakeFeed] = useState(false);
   const [basemap, setBasemap] = useState<Basemap | null>(null);
   // Visitors from mainland China: Amap wherever China is in view, our own map abroad (src/lib/chinaView.ts).
   // Both maps stay made once made, and only the one on show is used; Amap is made when first needed.
@@ -440,6 +456,11 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const [feedIn, setFeedIn] = useState(false);
   // not signed in, as the server sees it: how many roaches there are, instead of them (VisitorFeed)
   const [visitorCounts, setVisitorCounts] = useState<Omit<VisitorFeed, "v" | "hidden"> | null>(null);
+  // signed in: how many there are in all, by the fire and riding with 明河都尉, as the server says with each area,
+  // as the page no longer holds every roach to count them (world/area.ts)
+  const [areaTotals, setAreaTotals] = useState<{ total: number; fire: number; riders: number } | null>(null);
+  // the map shows the overview: one roach for each small square, standing for all of them there
+  const [overview, setOverview] = useState(false);
   // Every public id our roaches had on this page: after a move the old one stays in the feed for a moment
   const [ownIds, setOwnIds] = useState<ReadonlySet<string>>(new Set());
   const meIdRef = useRef<string | null>(null);
@@ -586,8 +607,16 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       }
       out.push(o);
     }
+    // The overview has one roach for each small square (world/area.ts): a 触须之交's roaches are drawn
+    // all the same, standing for nobody more (n 0: their square's roach counts them already)
+    if (overview) {
+      const shown = new Set(out.map((r) => r.id));
+      for (const f of friends) {
+        for (const r of f.roaches) if (!feedIdsOf(r.id).some((id) => shown.has(id))) out.push({ ...r, friend: true, n: 0 });
+      }
+    }
     return out;
-  }, [feedRoaches, ownIds, friendKey]);
+  }, [feedRoaches, ownIds, friendKey, overview, friends]);
 
   const applyMe = useCallback((m: Me | null) => {
     const sameOwner = m?.id === meIdRef.current;
@@ -610,56 +639,143 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     setMeKnown(true);
     return m;
   }, [applyMe]);
-  const wholeFeed = useRef<Promise<void> | null>(null);
+  /** The ask for an area on its way, by what it asks, so the same one is never asked twice at once */
+  const askingRef = useRef<{ key: string; done: Promise<void> } | null>(null);
   /** Signed in or out: the roaches held are dropped, and the next ask is for all of them, with the new cookie */
   const forgetRoaches = useCallback(() => {
     feedRef.current = new RoachFeedCopy();
-    wholeFeed.current = null;
+    areaRef.current = new RoachAreaCopy();
+    askingRef.current = null;
+    countsInRef.current = false;
     setFeedRoaches([]);
+    setAreaTotals(null);
+    setOverview(false);
   }, []);
-  const loadRoaches = useCallback(async (): Promise<void> => {
+  /** The whole list, as pages asked for it before areas: kept for ?whole=1 and AREA_FEED=off */
+  const wholeFeed = useRef<Promise<void> | null>(null);
+  const loadWhole = useCallback(async (): Promise<void> => {
     const feed = feedRef.current;
     const ask = async () => {
       try {
         const u = await worldRef.current!.roachFeed(feed.version);
-        // signed in or out meanwhile: the new copy asks for itself
         if (feedRef.current !== feed) return;
         if ("hidden" in u) {
-          // not signed in (any more): no roaches, only how many there are
           setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
-          if (feed.version) forgetRoaches();
+          if (feed.version) feedRef.current = new RoachFeedCopy();
+          setFeedRoaches([]);
         } else {
           setVisitorCounts(null);
           if (feed.apply(u)) setFeedRoaches(feed.roaches);
         }
         setFeedIn(true);
-        retryRef.current.delay = 0;
       } catch (e) {
         if (!(e instanceof TooBusy)) throw e;
-        // Busy: try again shortly, a little later each time, at a slightly different moment for each page
-        const r = retryRef.current;
-        if (r.timer !== undefined) return;
-        r.delay = Math.min(60, r.delay ? r.delay * 2 : e.retryAfterS);
         if (!feed.version) setToast(e.message);
-        r.timer = window.setTimeout(
-          () => {
-            r.timer = undefined;
-            loadRoaches().catch(() => {});
-          },
-          r.delay * (750 + Math.random() * 500),
-        );
       }
     };
     if (feed.version) return ask();
-    // the first, whole list is big: one download of it at a time, and whoever asks meanwhile waits for that one
-    if (!wholeFeed.current) {
-      const asking = ask().finally(() => {
-        if (wholeFeed.current === asking) wholeFeed.current = null;
-      });
-      wholeFeed.current = asking;
-    }
+    wholeFeed.current ??= ask().finally(() => (wholeFeed.current = null));
     return wholeFeed.current;
-  }, [forgetRoaches]);
+  }, []);
+  /**
+   * The roaches of the area the map shows (world/area.ts). "view": the map moved, so a new area only if
+   * the one held no longer covers the view; "poll": also what changed in the box held, and the overview
+   * again once OVERVIEW_AGAIN_MS old. Nothing before the map has said where it is: its first report asks.
+   */
+  const loadRoaches = useCallback(
+    async (why: "poll" | "view" = "poll"): Promise<void> => {
+      wholeRef.current ??= new URLSearchParams(window.location.search).has("whole");
+      if (wholeRef.current) return why === "poll" && !fakeFeedRef.current && worldRef.current ? loadWhole() : undefined;
+      const copy = areaRef.current;
+      if (fakeFeedRef.current || !worldRef.current) return;
+      if (hiddenRef.current) {
+        // the counts only, wherever the map is: at first, then on the two minutes' ask; the area held waits as
+        // it is for the way back
+        if (why === "view" && countsInRef.current) return;
+        const u = await worldRef.current.roachArea("counts", null).catch(() => null);
+        if (!u || areaRef.current !== copy) return;
+        if ("hidden" in u) setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
+        else if (u.t) setAreaTotals({ total: u.t[0], fire: u.t[1], riders: u.t[2] });
+        countsInRef.current = true;
+        setFeedIn(true);
+        return;
+      }
+      const v = viewRef.current;
+      const bounds = boundsRef.current;
+      if (!v || !bounds) return;
+      const want = areaFor(v.zoom, bounds);
+      const held = copy.area;
+      let area: Area = want;
+      let since: string | null = null;
+      if (want !== "overview" && held && held !== "overview" && boxHolds(held, bounds)) {
+        // the box held still covers the view: what changed in it, when it is time to ask
+        if (why === "view") return;
+        area = held;
+        since = copy.version;
+      } else if (want === "overview" && held === "overview" && (why === "view" || Date.now() - copy.heldAt < OVERVIEW_AGAIN_MS)) {
+        return;
+      }
+      const key = `${area === "overview" ? "o" : boxText(area)}:${since ?? ""}`;
+      if (askingRef.current?.key === key) return askingRef.current.done;
+      const ask = async () => {
+        try {
+          const u = await worldRef.current!.roachArea(area, since);
+          // signed in or out meanwhile, or another area asked for since: that one counts
+          if (areaRef.current !== copy || askingRef.current?.key !== key) return;
+          if ("whole" in u && u.whole) {
+            wholeRef.current = true;
+            setAreaTotals(null);
+            setOverview(false);
+            return void loadWhole().catch(() => {});
+          }
+          if ("hidden" in u) {
+            // not signed in (any more): no roaches, only how many there are
+            setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
+            if (copy.version) forgetRoaches();
+          } else {
+            setVisitorCounts(null);
+            if (copy.apply(u)) {
+              setFeedRoaches(copy.roaches);
+              setOverview(copy.area === "overview");
+            }
+            if (copy.totals) setAreaTotals(copy.totals);
+          }
+          setFeedIn(true);
+          retryRef.current.delay = 0;
+        } catch (e) {
+          if (!(e instanceof TooBusy)) throw e;
+          // Busy: try again shortly, a little later each time, at a slightly different moment for each page
+          const r = retryRef.current;
+          if (r.timer !== undefined) return;
+          r.delay = Math.min(60, r.delay ? r.delay * 2 : e.retryAfterS);
+          if (!copy.version) setToast(e.message);
+          r.timer = window.setTimeout(
+            () => {
+              r.timer = undefined;
+              loadRoaches().catch(() => {});
+            },
+            r.delay * (750 + Math.random() * 500),
+          );
+        }
+      };
+      const done = ask().finally(() => {
+        if (askingRef.current?.key === key) askingRef.current = null;
+      });
+      askingRef.current = { key, done };
+      return done;
+    },
+    [forgetRoaches, loadWhole],
+  );
+  // the map moved: a new area once the view settles, if the one held does not cover it (a fly sets it off again on landing)
+  const areaTimerRef = useRef<number | undefined>(undefined);
+  const askAreaSoon = useCallback(() => {
+    window.clearTimeout(areaTimerRef.current);
+    areaTimerRef.current = window.setTimeout(() => void loadRoaches("view").catch(() => {}), AREA_SETTLE_MS);
+  }, [loadRoaches]);
+  // a fly somewhere starts: the area is asked for where it lands, not where it set off from
+  useEffect(() => {
+    window.clearTimeout(areaTimerRef.current);
+  }, [focus]);
   const loadInbox = useCallback(async () => {
     const items = await worldRef.current!.inbox();
     lastMessagesRef.current = Date.now();
@@ -890,6 +1006,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     let v = 0;
     const w = window as { zhoupFakeFeed?: unknown; zhoupFeedTick?: unknown; zhoupOffStage?: unknown };
     w.zhoupFakeFeed = async (n: number) => {
+      fakeFeedRef.current = true;
+      setFakeFeed(true);
       const { generateFakeRoaches } = await import("@/lib/fakeRoaches");
       const looks = ["hood", "doctor", "endmin", "imp"] as const;
       fake = generateFakeRoaches(n, 20261111).map((r, i) => ({
@@ -1117,11 +1235,12 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
 
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
-      let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? 1 : 0), 0);
-      for (const r of me?.roaches ?? []) if (inBounds(r, bounds)) n += 1;
+      // each roach of the overview counts as all those in its square, yours among them
+      let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? weightOf(r) : 0), 0);
+      if (!overview) for (const r of me?.roaches ?? []) if (inBounds(r, bounds)) n += 1;
       setVisible(n);
     },
-    [roaches, me],
+    [roaches, me, overview],
   );
 
   useEffect(() => {
@@ -1198,6 +1317,12 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const autoLite = noGpu && !styleStored;
   const shownStyle: MapStyle = guest ? "hidden" : autoLite ? "lite" : mapStyle;
   const drawnStyle: MapStyle = guest ? "hidden" : autoLite ? "lite" : mapStyle === "hearts" && (!HEARTS_READY || heartsOff) ? "plain" : mapStyle;
+  // 全员隐匿 asks for the counts only; on the way out of it, the roaches of the area shown come again
+  const hidden = drawnStyle === "hidden";
+  useEffect(() => {
+    hiddenRef.current = hidden;
+    void loadRoaches(hidden ? "view" : "poll").catch(() => {});
+  }, [hidden, loadRoaches]);
 
   const startPlacing = (target: PlaceTarget) => {
     // say so before they pick a spot, not after
@@ -1302,6 +1427,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     viewRef.current = v;
     boundsRef.current = bounds;
     countVisible(bounds);
+    // the roaches of the area the map shows now, if the ones held do not cover it
+    askAreaSoon();
     // 阿米娅向导 close enough on screen to be tapped: her dance and music on their way, so a tap starts them at once
     if (!amiyaNear.current && v.zoom >= 6 && inBounds(AMIYA_AT, bounds) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       amiyaNear.current = true;
@@ -2382,7 +2509,13 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       ? shownFriends.find((f) => f.roaches.some((r) => sameRoach(selected.roach.id, r.id)))
       : undefined;
   // the server's count until there is a list to count (a visitor never has one)
-  const total = visitorCounts && !feedRoaches.length ? visitorCounts.total : roaches.length + (me?.roaches.length ?? 0);
+  // signed in, the server's count: the page holds only the roaches of the area it shows
+  const total =
+    visitorCounts && !feedRoaches.length
+      ? visitorCounts.total
+      : areaTotals && !fakeFeed
+        ? areaTotals.total
+        : roaches.length + (me?.roaches.length ?? 0);
 
 
   const coachShown = Boolean(!placing && !selected && !panel && !notice && me && step);
@@ -2566,8 +2699,10 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     [feedRoaches, ownIds, me],
   );
   const byFire = useMemo(
-    () => fakeFire ?? (visitorCounts && !feedRoaches.length ? visitorCounts.fire : fireCount(everyRoach)),
-    [fakeFire, visitorCounts, feedRoaches, everyRoach],
+    () =>
+      fakeFire ??
+      (visitorCounts && !feedRoaches.length ? visitorCounts.fire : areaTotals && !fakeFeed ? areaTotals.fire : fireCount(everyRoach)),
+    [fakeFire, visitorCounts, feedRoaches, areaTotals, fakeFeed, everyRoach],
   );
   const fire = fireLevel(byFire);
   const seatedAtFire = me?.roaches.find((r) => isNearFire(r)) ?? null;
@@ -2595,11 +2730,29 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     }
   };
 
+  /** The roaches round the fire, for a free seat: the area held has them if it reaches that far, else they are asked for */
+  const roachesByFire = async (): Promise<LngLat[]> => {
+    const held = areaRef.current.area;
+    const around: [LngLat, LngLat] = [
+      { lng: FIRE_AT.lng - 0.01, lat: FIRE_AT.lat - 0.01 },
+      { lng: FIRE_AT.lng + 0.01, lat: FIRE_AT.lat + 0.01 },
+    ];
+    if (fakeFeedRef.current || (held && held !== "overview" && boxHolds(held, around))) return everyRoach;
+    const box = boxFor(around);
+    if (!box || !worldRef.current) return everyRoach;
+    try {
+      const u = await worldRef.current.roachArea(box, null);
+      return "packed" in u && u.packed ? [...unpackRoaches(u.packed), ...(me?.roaches ?? [])] : everyRoach;
+    } catch {
+      return everyRoach;
+    }
+  };
+
   /** A clone to a free seat by the fire: a new one, or a move once all of them are out */
   const seatAtFire = async (target: PlaceTarget) => {
     const before = me?.talulah.visited;
     setSendingToFire(true);
-    const done = await act((w) => w.placeRoach(target, pickSeat(everyRoach)));
+    const done = await act((w) => roachesByFire().then((near) => w.placeRoach(target, pickSeat(near))));
     setSendingToFire(false);
     if (!done) return;
     setPanel(null);
@@ -2703,7 +2856,12 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     [fakeRiders, day, everyRoach],
   );
   const othersRiding = useMemo(() => roaches.reduce((n, r) => n + (r.ride ? 1 : 0), 0), [roaches]);
-  const riders = (visitorCounts && !feedRoaches.length ? visitorCounts.riders : othersRiding + (myRider ? 1 : 0)) + fakeQueue.length;
+  const riders =
+    (visitorCounts && !feedRoaches.length
+      ? visitorCounts.riders
+      : areaTotals && !fakeFeed
+        ? areaTotals.riders
+        : othersRiding + (myRider ? 1 : 0)) + fakeQueue.length;
   const mapRoaches = useMemo(() => (fakeQueue.length ? [...roaches, ...fakeQueue] : roaches), [roaches, fakeQueue]);
 
   /** A clone into his queue (a new one, or a move once all of them are out), then to him, where he says so */

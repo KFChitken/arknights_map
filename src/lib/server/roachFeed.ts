@@ -7,6 +7,7 @@ import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { fireCount } from "../talulah";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
+import { boxText, inBox, overviewCell, type Area, type Box } from "../world/area";
 import { botRoaches } from "../world/bots";
 import { nearMetre, packRoaches, SHORT_ID, shortIds } from "../world/packed";
 import type { MapRoach } from "../world/types";
@@ -108,7 +109,16 @@ type Snapshot = {
   whole: Partial<Record<FeedForm, Promise<Whole>>>;
   /** Answers already worked out for pages at an older version, by view and that version */
   diffs: Map<string, string>;
+  /** f=4 (world/area.ts): the roaches by whole degree of longitude and latitude, as indices into list, made when a box is first asked for */
+  buckets?: Map<number, number[]>;
+  /** f=4: each roach by its short id, made when a page first asks what changed in its box */
+  byShort?: Map<string, MapRoach>;
+  /** f=4: the answers for boxes asked for whole, by box, and the overview */
+  areas?: Map<string, AreaWhole>;
 };
+
+/** An f=4 answer as JSON, compressed each way when first asked for that way */
+type AreaWhole = { json: string; br?: Promise<Buffer>; gzip?: Promise<Buffer> };
 
 /** The ids, in one view, of the roaches that changed or went in one rebuild */
 type Touched = { changed: string[]; removed: string[] };
@@ -302,8 +312,7 @@ async function rebuild(now: number): Promise<Snapshot> {
     whole: {},
     diffs: new Map(),
   };
-  // the form pages ask for is ready before anyone gets this snapshot
-  await wholeOf(s, 3);
+  // the whole list is made when a page asks for it (the pages opened before f=4, world/area.ts): most ask for areas
   return s;
 }
 
@@ -388,11 +397,152 @@ export async function roachFeed(since: string | null, now = Date.now(), form: Fe
   return { kind: "diff", v: s.v, json };
 }
 
+const countsOf = (s: Snapshot) =>
+  (s.counts ??= { total: s.list.length, fire: fireCount(s.list), riders: s.list.reduce((k, r) => k + (r.ride ? 1 : 0), 0) });
+
 /** The counts a visitor who has not signed in gets in place of the roaches, at the snapshot's version */
 export async function roachCounts(now = Date.now()): Promise<{ v: string } & FeedCounts> {
   const s = await current(now);
-  s.counts ??= { total: s.list.length, fire: fireCount(s.list), riders: s.list.reduce((k, r) => k + (r.ride ? 1 : 0), 0) };
-  return { v: s.v, ...s.counts };
+  return { v: s.v, ...countsOf(s) };
+}
+
+// ---- f=4, 只发看得到的 (world/area.ts) ----
+
+/**
+ * Whole answers for areas kept per snapshot (about 10 s); past this many, they start again. Boxes rarely
+ * repeat within one, but for the overview and views many pages share; each is up to a few hundred KB.
+ */
+const AREAS_KEPT = 64;
+
+export type AreaAnswer =
+  | { kind: "full"; v: string; key: string; whole: AreaWhole }
+  | { kind: "diff"; v: string; json: string };
+
+/** total, by the fire, riding with 明河都尉: every f=4 answer says them, as pages no longer hold every roach to count */
+const totalsJson = (s: Snapshot) => {
+  const c = countsOf(s);
+  return `[${c.total},${c.fire},${c.riders}]`;
+};
+
+const bucketKey = (lngDeg: number, latDeg: number) => (latDeg + 90) * 361 + (lngDeg + 180);
+
+function bucketsOf(s: Snapshot) {
+  if (s.buckets) return s.buckets;
+  const buckets = new Map<number, number[]>();
+  s.list.forEach((r, i) => {
+    const k = bucketKey(Math.floor(r.lng), Math.floor(r.lat));
+    const at = buckets.get(k);
+    if (at) at.push(i);
+    else buckets.set(k, [i]);
+  });
+  return (s.buckets = buckets);
+}
+
+/** The roaches in a box, edges included, by their short ids */
+function roachesIn(s: Snapshot, b: Box): MapRoach[] {
+  const buckets = bucketsOf(s);
+  const out: MapRoach[] = [];
+  for (let lat = Math.floor(b[1]); lat <= Math.floor(b[3]); lat++) {
+    for (let lng = Math.floor(b[0]); lng <= Math.floor(b[2]); lng++) {
+      for (const i of buckets.get(bucketKey(lng, lat)) ?? []) {
+        const r = s.list[i];
+        if (inBox(r, b)) out.push({ ...r, id: s.short.get(r.id)! });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The overview: for each square of the world (overviewCell) with roaches in it, the one with the lowest
+ * short id, so the same one while it stays there, carrying how many there are (n)
+ */
+function overviewList(s: Snapshot): MapRoach[] {
+  const cells = new Map<number, { r: MapRoach; id: string; n: number }>();
+  for (const r of s.list) {
+    const cell = overviewCell(r);
+    const id = s.short.get(r.id)!;
+    const c = cells.get(cell);
+    if (!c) cells.set(cell, { r, id, n: 1 });
+    else {
+      c.n++;
+      if (id < c.id) {
+        c.r = r;
+        c.id = id;
+      }
+    }
+  }
+  return [...cells.values()].map((c) => ({ ...c.r, id: c.id, ...(c.n > 1 ? { n: c.n } : {}) }));
+}
+
+/** The whole answer for an area at a snapshot, made once and kept for every page that asks */
+function areaWhole(s: Snapshot, area: Area): { key: string; whole: AreaWhole } {
+  const key = area === "overview" ? "o" : boxText(area);
+  const kept = (s.areas ??= new Map());
+  let whole = kept.get(key);
+  if (!whole) {
+    const list = area === "overview" ? overviewList(s) : roachesIn(s, area);
+    const where = area === "overview" ? `"overview":true` : `"box":[${key}]`;
+    whole = { json: `{"v":"${s.v}",${where},"t":${totalsJson(s)},"packed":${JSON.stringify(packRoaches(list, 4))}}` };
+    if (kept.size >= AREAS_KEPT) kept.clear();
+    kept.set(key, whole);
+  }
+  return { key, whole };
+}
+
+/** An area's answer compressed the way asked, once per snapshot (brotli 5 and gzip 6, as for the whole list) */
+export function compressedArea(whole: AreaWhole, how: "br" | "gzip"): Promise<Buffer> {
+  if (how === "br") {
+    return (whole.br ??= brotliAsync(whole.json, {
+      params: { [zlib.BROTLI_PARAM_QUALITY]: 5, [zlib.BROTLI_PARAM_SIZE_HINT]: whole.json.length },
+    }));
+  }
+  return (whole.gzip ??= gzipAsync(whole.json, { level: 6 }));
+}
+
+/**
+ * f=4: what a signed-in page needs for the area it shows (world/area.ts). The overview always whole; a
+ * box whole, or, to a page holding that box at version `since`, the roaches changed in it since (with
+ * the ids of any changed or gone elsewhere, which it drops if it holds them). As for roachFeed, a
+ * version unknown here gets the whole box, spread out just after a start.
+ */
+export async function roachArea(area: Area, since: string | null, now = Date.now()): Promise<AreaAnswer> {
+  const s = await current(now);
+  const full = (): AreaAnswer => ({ kind: "full", v: s.v, ...areaWhole(s, area) });
+  if (area === "overview" || since === null || !VERSION.test(since)) return full();
+  const [epoch, nText] = since.split(".");
+  const from = Number(nText);
+  const known = epoch === feed.epoch && !(feed.unknown && from > feed.unknown.from && from < feed.unknown.to) && from <= s.n;
+  if (!known) {
+    const age = now - feed.startedAt;
+    if (age < SPREAD_MS && Math.random() * SPREAD_MS > age) return { kind: "diff", v: since, json: `{"v":"${since}"}` };
+    return full();
+  }
+  if (from === s.n) return { kind: "diff", v: s.v, json: `{"v":"${s.v}","t":${totalsJson(s)}}` };
+  if (feed.changes.length === 0 || feed.changes[0].from > from) return full();
+  const key = `area:${boxText(area)}:${from}`;
+  let json = s.diffs.get(key);
+  if (!json) {
+    const touched = new Set<string>();
+    for (const c of feed.changes) {
+      if (c.n <= from || c.n > s.n) continue;
+      for (const id of c.short.changed) touched.add(id);
+      for (const id of c.short.removed) touched.add(id);
+    }
+    if (touched.size > Math.max(MIN_DIFF, s.list.length * MAX_DIFF_SHARE)) return full();
+    s.byShort ??= new Map(s.list.map((r) => [s.short.get(r.id)!, r]));
+    const changed: string[] = [];
+    const removed: string[] = [];
+    for (const id of [...touched].sort()) {
+      const r = s.byShort.get(id);
+      if (r && inBox(r, area)) changed.push(s.json.short.get(id)!);
+      else removed.push(id);
+    }
+    json = `{"v":"${s.v}","t":${totalsJson(s)},"changed":[${changed.join(",")}],"removed":${JSON.stringify(removed)}}`;
+    if (s.diffs.size >= DIFF_CACHE) s.diffs.clear();
+    s.diffs.set(key, json);
+  }
+  return { kind: "diff", v: s.v, json };
 }
 
 const AROUND_KEPT = 5000;

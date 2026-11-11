@@ -1,6 +1,7 @@
 import { toGcj } from "@/lib/coords";
 import { HEADINGS, LEG_FRAMES, MASS_GROUPS } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachStyle } from "@/lib/types";
+import { weightOf } from "@/lib/world/area";
 import type { PublicRoach } from "@/lib/world/types";
 import type { GlRoach } from "./roachGl";
 import { roachTraits } from "./types";
@@ -37,6 +38,8 @@ export type MassPoint = {
   look: number;
   /** 轻量: which roach a pile shows, the lowest key winning (piles.ts) */
   key: number;
+  /** How many roaches it stands for: in the overview (world/area.ts), all those in its square */
+  n: number;
 };
 
 export const LOOKS = ROACH_AVATARS.length * ROACH_COLORS.length;
@@ -75,6 +78,7 @@ export function massPointOf(r: PublicRoach): MassPoint {
     look: 0,
     // awake and no clone first, then clones, then those asleep; within one, the lowest seed
     key: (r.asleep ? 2 : r.clone ? 1 : 0) * 2 ** 32 + t.seed,
+    n: weightOf(r),
   };
   p.look = styleIndex(p, "cartoon", 0);
   return p;
@@ -89,7 +93,8 @@ export const sameRoach = (a: PublicRoach, b: PublicRoach) =>
     a.clone === b.clone &&
     a.friend === b.friend &&
     a.avatar === b.avatar &&
-    a.color === b.color);
+    a.color === b.color &&
+    weightOf(a) === weightOf(b));
 
 /** The roach as the GPU layer takes it (roachGl.ts), the cartoon look's icon */
 const glOf = (p: MassPoint): GlRoach => ({

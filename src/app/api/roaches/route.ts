@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sessionAlive } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
-import { roachCounts, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
+import { compressedArea, roachArea, roachCounts, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
+import { parseBox, type Area } from "@/lib/world/area";
 
 /** The shape of a session token (auth.ts). Made-up cookies gain nothing: the per-address limit counts every request. */
 const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -14,6 +15,9 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * short ids, as pages ask now (src/lib/world/packed.ts); f=2: packed with whole
  * public ids, and nothing: the list, for pages from before each.
  *
+ * f=4 (只发看得到的, src/lib/world/area.ts): only an area, &box=west,south,east,north or &o=1 for the
+ * overview, what pages ask now; the whole list stays for pages opened before.
+ *
  * Only to someone signed in: a visitor gets how many roaches there are, by the fire and riding with
  * 明河都尉 (FeedCounts), and hidden: true, a few hundred bytes (their map is 全员隐匿). The answer depends
  * on the cookie, so no cache may hand one person's to another.
@@ -22,6 +26,12 @@ export async function GET(req: NextRequest) {
   const since = req.nextUrl.searchParams.get("since");
   const f = req.nextUrl.searchParams.get("f");
   const form: FeedForm = f === "3" ? 3 : f === "2" ? 2 : 1;
+  let area: Area | "counts" | null = null;
+  if (f === "4") {
+    const q = req.nextUrl.searchParams;
+    area = q.get("c") === "1" ? "counts" : q.get("o") === "1" ? "overview" : parseBox(q.get("box"));
+    if (!area) return NextResponse.json({ error: "请求的范围不对。" }, { status: 400 });
+  }
   try {
     const sid = req.cookies.get("sid")?.value;
     // no cookie, or one of the wrong shape, is nobody, without asking the database
@@ -32,6 +42,15 @@ export async function GET(req: NextRequest) {
       const counts = await roachCounts();
       return NextResponse.json({ ...counts, hidden: true }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
+    // f=4 switched off (AREA_FEED=off): the page asks for the whole list instead, as before
+    if (area && process.env.AREA_FEED === "off") return NextResponse.json({ whole: true }, { headers: { "cache-control": "no-store", vary: "cookie" } });
+    // 全员隐匿 signed in: only how many there are, as a visitor gets them
+    if (area === "counts") {
+      if (!allow(`area:counts:sid:${sid}`, 20, 60_000)) return BUSY();
+      const c = await roachCounts();
+      return NextResponse.json({ v: c.v, t: [c.total, c.fire, c.riders] }, { headers: { "cache-control": "no-store", vary: "cookie" } });
+    }
+    if (area) return await areaAnswer(req, sid, area, since);
     const answer = await roachFeed(since, Date.now(), form);
     const etag = `"${answer.v}${form === 3 ? "s" : form === 2 ? "p" : ""}"`;
     const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie" };
@@ -65,4 +84,26 @@ export async function GET(req: NextRequest) {
     console.error(e);
     return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
   }
+}
+
+const BUSY = () => NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
+
+/**
+ * f=4: an area for a signed-in page. A page asks for a new box each time its view leaves the one it holds,
+ * and what changed in it every two minutes, so the limits per page are looser than for the whole list.
+ */
+async function areaAnswer(req: NextRequest, sid: string, area: Area, since: string | null) {
+  const answer = await roachArea(area, since);
+  if (answer.kind === "diff") {
+    if (!allow(`area:diff:ip:${clientIp(req)}`, 600, 60_000) || !allow(`area:diff:sid:${sid}`, 20, 60_000)) return BUSY();
+    return new Response(answer.json, { headers: { "content-type": "application/json", "cache-control": "no-store", vary: "cookie" } });
+  }
+  const etag = `"${answer.v}:${answer.key}"`;
+  const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie", "content-type": "application/json" };
+  if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+  if (!allow(`area:full:ip:${clientIp(req)}`, 240, 60_000) || !allow(`area:full:sid:${sid}`, 40, 60_000)) return BUSY();
+  const accepts = req.headers.get("accept-encoding") ?? "";
+  const how = /\bbr\b/.test(accepts) ? "br" : /\bgzip\b/.test(accepts) ? "gzip" : null;
+  if (!how) return new Response(answer.whole.json, { headers });
+  return new Response(new Uint8Array(await compressedArea(answer.whole, how)), { headers: { ...headers, "content-encoding": how } });
 }

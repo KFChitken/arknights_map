@@ -161,6 +161,7 @@ export class Piles {
     const lat = new Float64Array(n);
     const look = new Uint8Array(n);
     const key = new Float64Array(n);
+    const w = new Float64Array(n);
     const ids = new Array<string>(n);
     const friends: MassPoint[] = [];
     let i = 0;
@@ -174,6 +175,7 @@ export class Piles {
         lat[i] = p.lat;
         look[i] = p.look;
         key[i] = p.key;
+        w[i] = p.n;
         ids[i] = p.id;
         i++;
       }
@@ -183,7 +185,7 @@ export class Piles {
     // an answer on its way is about the index before: dropped
     this.asking = false;
     this.askSeq++;
-    this.piler.post({ type: "load", seq: ++this.loadSeq, lng, lat, look, key });
+    this.piler.post({ type: "load", seq: ++this.loadSeq, lng, lat, look, key, w });
   }
 
   /** The view as it is now (as the map has it) at a MapLibre zoom: asked about unless the last answer covers it */
@@ -247,6 +249,7 @@ export class Piles {
     // the southern ones in front, as things stand on a map, then the 触须之交 on top of them all
     items.sort((p, q) => q.lat - p.lat);
     for (const f of this.friends) {
+      // a 触须之交's roach added to the overview (n 0: its square's own roach counts it) is still one roach
       if (inBox(f, a.bbox)) items.push({ lng: f.lng, lat: f.lat, n: 1, style: f.look, ref: f.id, kind: 2 });
     }
     this.held = { z: a.z, bbox: a.bbox };

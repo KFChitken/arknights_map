@@ -1,5 +1,6 @@
 import { HEADINGS, LAYER_GROUPS, LEG_PHASES } from "@/lib/swarm";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar } from "@/lib/types";
+import { weightOf } from "@/lib/world/area";
 import type { PublicRoach } from "@/lib/world/types";
 import { sameRoach } from "./massPoints";
 import { roachTraits } from "./types";
@@ -34,6 +35,8 @@ export function roachFeature(r: PublicRoach, t = roachTraits(r.id, LAYER_GROUPS,
       heading: t.heading,
       g: t.group,
       lp: t.seed % LEG_PHASES,
+      // in the overview (world/area.ts): how many roaches it stands for, for the dark swarm
+      ...(weightOf(r) !== 1 ? { n: weightOf(r) } : {}),
     },
   };
 }
@@ -67,7 +70,8 @@ export function liteFeature(r: PublicRoach, t: Traits): GeoJSON.Feature {
   return {
     type: "Feature",
     geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-    properties: { id: r.id, key: tier * 2 ** 40 + t.seed * 2 ** 8 + liteLook(r) },
+    // n: how many roaches it stands for (the overview's, world/area.ts), summed into each pile's count
+    properties: { id: r.id, key: tier * 2 ** 40 + t.seed * 2 ** 8 + liteLook(r), n: weightOf(r) },
   };
 }
 
