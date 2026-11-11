@@ -3,9 +3,15 @@
 # brings it up from the repository root on the server.
 name: zhoupmap
 
+# Docker keeps everything a container prints unless told otherwise: at most five files of 20 MB each
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
 # What the app's three processes share (services web, web2 and web3 below)
 x-web: &web
   image: ghcr.io/kfchitken/arknights_map:${WEB_TAG:-latest}
+  logging: *logging
   env_file: .env
   volumes:
     # the character pictures, kept out of the repository and the image; scripts/deploy.sh copies them here
@@ -28,6 +34,25 @@ x-web-env: &web-env
 services:
   db:
     image: imresamu/postgis:17-3.5
+    # Postgres's own defaults are for a small machine (shared_buffers 128 MB); these are for this one, 8 GB
+    # shared with Caddy and three app processes. Memory is tight (2.3 GB available at noon on 11/11, with
+    # the app processes at 1 GB each), so shared_buffers starts at 512 MB: raise it once some of the app
+    # runs on the second server. pg_stat_statements keeps which queries take the time
+    # (`create extension if not exists pg_stat_statements;` once, then select from pg_stat_statements).
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c effective_cache_size=3GB
+      -c work_mem=8MB
+      -c maintenance_work_mem=128MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_wal_size=2GB
+      -c wal_compression=on
+      -c shared_preload_libraries=pg_stat_statements
+    # shared memory for parallel queries, past Docker's 64 MB
+    shm_size: 512mb
+    logging: *logging
     environment:
       POSTGRES_USER: roach
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
@@ -93,6 +118,7 @@ services:
   # Adds the visitor's address to X-Forwarded-For, which the login limits rely on
   caddy:
     image: caddy:2.10
+    # (no log rotation yet: it prints little, and changing it restarts the gateway, which drops every visitor)
     environment:
       # Go collects harder as the gateway nears this, instead of growing until the system kills it
       # (it was, at 3.9 GB, with some 2,400 slow connections open)
