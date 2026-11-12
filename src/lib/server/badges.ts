@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, countDistinct, eq, inArray, isNull, sql, type AnyColumn } from "drizzle-orm";
+import { and, count, countDistinct, eq, inArray, isNull, lt, sql, type AnyColumn } from "drizzle-orm";
 import {
   BADGES,
   badgeById,
@@ -203,17 +203,27 @@ export async function reactedTo(senderId: string) {
   await award(senderId, reached("responders", await respondersOf(senderId)));
 }
 
+/** 石棺里的苏醒 given again within this long stays as it was given */
+const WOKE_AGAIN_MS = 86_400_000;
+
 /**
  * 石棺里的苏醒 from now for SURVIVOR_DAYS: on signing up, or back after AWAY_DAYS
- * away. Given again, it starts over and pops up again.
+ * away. Given again, it starts over and pops up again; but not within a day of the
+ * last time (two pages opening at once both find the player back), so once seen it
+ * stays seen.
  */
 export async function wakeUp(userId: string) {
   const now = new Date();
-  await db
+  const woke = await db
     .insert(userBadges)
     .values({ userId, badge: "survivor", earnedAt: now })
-    .onConflictDoUpdate({ target: [userBadges.userId, userBadges.badge], set: { earnedAt: now, seenAt: null } });
-  nudge([userId]);
+    .onConflictDoUpdate({
+      target: [userBadges.userId, userBadges.badge],
+      set: { earnedAt: now, seenAt: null },
+      setWhere: lt(userBadges.earnedAt, new Date(now.getTime() - WOKE_AGAIN_MS)),
+    })
+    .returning({ badge: userBadges.badge });
+  if (woke.length) nudge([userId]);
 }
 
 /** A new account wakes up; the first players also get 首批蟑螂 and their number, which is never given out twice. */

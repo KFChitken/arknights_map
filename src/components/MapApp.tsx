@@ -9,6 +9,7 @@ import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } 
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
 import type { EarnedBadge } from "@/lib/badges";
+import { alonePopping, markBadgesPopped, poppedBadges, poppedKey, poppedStorageKey } from "@/lib/badgesPopped";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/shapes";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
@@ -2759,12 +2760,38 @@ export default function MapApp({
   const noticeDotOn = settled && noticeDot(notices.notices, noticeMem, noticeNow);
   const strip = settled && !panel && !board && !step ? stripNotice(notices.notices, noticeMem, noticeNow) : null;
 
-  // 获得新称号: once nothing else is on screen, up to three in a row; any more go straight to the wall
+  // 获得新称号: once nothing else is on screen and the page is looked at, up to three in a row; any more go
+  // straight to the wall. Once on each device (src/lib/badgesPopped.ts): one this browser showed before, in
+  // another tab too, never pops up again, though the server still having it unseen is told again
   const [newBadges, setNewBadges] = useState<EarnedBadge[]>([]);
+  const meIdForBadges = me?.id;
+  const [badgesPopped, setBadgesPopped] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!meIdForBadges) {
+      setBadgesPopped(new Set());
+      return;
+    }
+    const read = () => setBadgesPopped(poppedBadges(meIdForBadges));
+    read();
+    // another tab showed some
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === poppedStorageKey(meIdForBadges)) read();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [meIdForBadges]);
   const unseenBadges = (me?.badges ?? [])
-    .filter((b) => !b.seen)
+    .filter((b) => !b.seen && !badgesPopped.has(poppedKey(b)))
     .map((b) => b.id)
     .join(",");
+  // the page in a background tab: what would pop up waits until it is looked at
+  const [pageShown, setPageShown] = useState(true);
+  useEffect(() => {
+    const look = () => setPageShown(document.visibilityState === "visible");
+    look();
+    document.addEventListener("visibilitychange", look);
+    return () => document.removeEventListener("visibilitychange", look);
+  }, []);
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
   // nothing on the map but the map, the ask to set a password aside
   const mapClear = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
@@ -2910,13 +2937,58 @@ export default function MapApp({
 
   // 祀掌柜's answer and her line about 缘缘庄 come first, then the badge the inn brought
   const siTalking = Boolean(says.si) || siAboutToSay;
+
+  /** 「看过了」 for these badges, tried again a few times, quietly, when it does not get through (a restart, the network gone) */
+  const seeBadgesSurely = useCallback((userId: string, ids: string[]) => {
+    const again = [2_000, 10_000, 60_000];
+    const tell = (i: number) => {
+      // signed out, or in as someone else, meanwhile: theirs are not these
+      if (meIdRef.current !== userId || !worldRef.current) return;
+      worldRef.current.seeBadges(ids).catch((e) => {
+        if (i < again.length && !(e instanceof SignInNeeded)) window.setTimeout(() => tell(i + 1), again[i]);
+      });
+    };
+    tell(0);
+  }, []);
+
   useEffect(() => {
-    if (!idle || perlicaBusy || siTalking || !unseenBadges || newBadges.length || !me) return;
-    setNewBadges(me.badges.filter((b) => !b.seen).slice(0, 3));
-    worldRef.current!.seeBadges(unseenBadges.split(",")).catch(() => {});
-    // shown now, so a reload of me before the server has caught up does not queue them again
-    applyMe({ ...me, badges: me.badges.map((b) => ({ ...b, seen: true })) });
-  }, [idle, perlicaBusy, siTalking, unseenBadges, newBadges.length, me, applyMe]);
+    if (!idle || perlicaBusy || siTalking || !unseenBadges || newBadges.length || !me || !pageShown) return;
+    const userId = me.id;
+    const unseen = me.badges.filter((b) => !b.seen);
+    const ids = unseen.map((b) => b.id);
+    let current = true;
+    // read, kept as shown and shown, alone among this browser's tabs
+    void alonePopping(userId, () => {
+      if (!current || document.visibilityState !== "visible") return;
+      // another tab may have just shown some
+      const before = poppedBadges(userId);
+      markBadgesPopped(userId, unseen);
+      setBadgesPopped(poppedBadges(userId));
+      setNewBadges(unseen.filter((b) => !before.has(poppedKey(b))).slice(0, 3));
+      seeBadgesSurely(userId, ids);
+      // seen on this page too, as the welcome back reads it; me as it is now, should it have been reloaded meanwhile
+      const keys = new Set(unseen.map(poppedKey));
+      setMe((m) => (m?.id === userId ? { ...m, badges: m.badges.map((b) => (keys.has(poppedKey(b)) ? { ...b, seen: true } : b)) } : m));
+    });
+    return () => {
+      current = false;
+    };
+  }, [idle, perlicaBusy, siTalking, unseenBadges, newBadges.length, me, pageShown, seeBadgesSurely]);
+
+  // Shown on this device (in another tab, maybe), though the server still has them unseen (its 「看过了」 never
+  // got through): seen on this page as well, and the server told again, quietly, once a visit for each, so that
+  // other devices do not show them again either
+  const toldAgain = useRef(new Set<string>());
+  useEffect(() => {
+    if (!me) return;
+    const userId = me.id;
+    const again = new Set(me.badges.filter((b) => !b.seen && badgesPopped.has(poppedKey(b))).map(poppedKey));
+    if (!again.size) return;
+    const tell = me.badges.filter((b) => again.has(poppedKey(b)) && !toldAgain.current.has(`${userId}:${poppedKey(b)}`));
+    for (const b of tell) toldAgain.current.add(`${userId}:${poppedKey(b)}`);
+    if (tell.length) worldRef.current?.seeBadges(tell.map((b) => b.id)).catch(() => {});
+    setMe((m) => (m?.id === userId ? { ...m, badges: m.badges.map((b) => (again.has(poppedKey(b)) ? { ...b, seen: true } : b)) } : m));
+  }, [me, badgesPopped]);
 
   // The tutorial's touch step happens on Rhode Island: the map goes to 阿米娅向导 as it begins
   const touchLesson = step === "touch" && !progress.practiced && basemap !== null;

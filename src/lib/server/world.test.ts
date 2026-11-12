@@ -2200,6 +2200,25 @@ describe("server world", () => {
     expect((await me.me()).badges).toMatchObject([{ id: "survivor", seen: false }]);
   });
 
+  it("wakes 石棺里的苏醒 once for two pages that both found the player back, and again on the next return", async () => {
+    const away = () => db.update(users).set({ lastSeenOn: beijingDate(Date.now() - 20 * 86_400_000) }).where(eq(users.id, me.id));
+    await away();
+    expect((await me.me()).badges).toMatchObject([{ id: "survivor", seen: false }]);
+    await markBadgesSeen(me.id, ["survivor"]);
+    // a second page opened at the same moment read the visit before, and finds the player back as well
+    await away();
+    await Promise.all([me.me(), me.me()]);
+    expect((await me.me()).badges).toMatchObject([{ id: "survivor", seen: true }]);
+    await wakeUp(me.id);
+    expect((await me.me()).badges).toMatchObject([{ id: "survivor", seen: true }]);
+    // given more than a day ago, as on the next return after a long time away: new again
+    await db.update(userBadges).set({ earnedAt: new Date(Date.now() - 86_400_000 - 60_000) }).where(eq(userBadges.userId, me.id));
+    await wakeUp(me.id);
+    const [again] = (await me.me()).badges;
+    expect(again).toMatchObject({ id: "survivor", seen: false });
+    expect(Date.now() - again.at).toBeLessThan(60_000);
+  });
+
   it("welcomes a player back after a whole day away, and wakes 石棺里的苏醒 after 14", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await db.delete(moves);
