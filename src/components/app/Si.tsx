@@ -13,6 +13,7 @@ import {
   stampAt,
   stayLine,
 } from "@/lib/si";
+import { SITE_NAME } from "@/lib/rules";
 import { inkNow, innNumbers, queueTailLine } from "@/lib/siInn";
 import type { SiMe, SiState } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
@@ -167,10 +168,10 @@ export function SiCard({
   );
 }
 
-/** Once, for signed-in players with a main roach who are not her 触须之交, after the other guides had their turn. */
+/** Once in each browser, for every signed-in player with a main roach (her 触须之交 too), before the other guides' cards. */
 export function SiIntroSheet({ onGo, onLater }: { onGo: () => void; onLater: () => void }) {
   return (
-    <Sheet title={SI_NAME} onClose={onLater}>
+    <Sheet title={`祀来${SITE_NAME}啦`} onClose={onLater}>
       <div className="amiya-greet">
         <SiPicture size={96} />
       </div>

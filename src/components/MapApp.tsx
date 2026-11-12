@@ -3042,11 +3042,24 @@ export default function MapApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touchLesson]);
 
+  // 祀来舟P地图啦: told once in this browser to every player with a roach, her 触须之交 too, never during the tutorial.
+  // Her effect comes before the other four's, so on a visit where several are due hers is the one shown (one card a
+  // visit: introduced); theirs take their turns on the visits after, as before
+  const meIdForIntro = me?.id;
+  const siTells = Boolean(
+    settled && idle && !perlicaBusy && main && me && !me.mustReconsent && !newBadges.length && !unseenBadges,
+  );
+  useEffect(() => {
+    if (!siTells || !meIdForIntro || introduced.current || siIntroShown(meIdForIntro)) return;
+    markSiIntroShown(meIdForIntro);
+    introduced.current = true;
+    setPanel({ kind: "siIntro" });
+  }, [siTells, meIdForIntro]);
+
   // 阿米娅向导 introduces herself once to players with a roach who have not met her, after everything else
   const introDue = Boolean(
     settled && idle && !perlicaBusy && main && me && !me.amiya.friend && !newBadges.length && !unseenBadges,
   );
-  const meIdForIntro = me?.id;
   useEffect(() => {
     if (!introDue || !meIdForIntro || introduced.current || introShown(meIdForIntro)) return;
     markIntroShown(meIdForIntro);
@@ -3443,28 +3456,6 @@ export default function MapApp({
     if (what === "si") forgetSiHere(me.id);
     window.location.reload();
   };
-
-  // She opened 缘缘庄, told once in this browser to players with a roach who are not her 触须之交, on a visit after
-  // the other four had their turn (明河都尉's card last), and never during the tutorial
-  const siTells = Boolean(
-    settled &&
-      idle &&
-      !perlicaBusy &&
-      main &&
-      me &&
-      !me.si.friend &&
-      !me.mustReconsent &&
-      !newBadges.length &&
-      !unseenBadges &&
-      othersIntroduced &&
-      (me.minghe.friend || myRider || mingheIntroShown(me.id)),
-  );
-  useEffect(() => {
-    if (!siTells || !meIdForIntro || introduced.current || siIntroShown(meIdForIntro)) return;
-    markSiIntroShown(meIdForIntro);
-    introduced.current = true;
-    setPanel({ kind: "siIntro" });
-  }, [siTells, meIdForIntro]);
 
   // Back to the page on a new day (from 04:00 on this device): 阿米娅向导 may be greeting
   const dayRef = useRef(localDay());
