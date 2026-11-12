@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OVERVIEW_CELLS, overviewCell } from "./area";
-import { feedIdsOf, nearMetre, packRoaches, sameRoach, shortIds, shortOf, squareMiddle, unpackRoaches } from "./packed";
+import { feedIdsOf, nearMetre, packRoaches, sameRoach, shortIds, shortOf, squareMiddle, squareSpot, unpackRoaches } from "./packed";
 import type { MapRoach } from "./types";
 
 const roach = (id: string, lng: number, lat: number, more: Partial<MapRoach> = {}): MapRoach => ({
@@ -117,5 +117,32 @@ describe("the overview's tiles, each roach as its square", () => {
       expect(overviewCell(got)).toBe(cell);
       expect(got).toEqual({ ...r, ...squareMiddle(cell % OVERVIEW_CELLS, Math.floor(cell / OVERVIEW_CELLS)) });
     }
+  });
+
+  it("scattered for the map: each roach at a spot of its own in its square, the same every time, not in rows", () => {
+    // a crowded square's worth of neighbours, one roach a square, side by side
+    const list: MapRoach[] = Array.from({ length: 400 }, (_, i) => ({
+      id: `b${String(i).padStart(7, "0")}`,
+      clone: false,
+      avatar: "hood",
+      color: "cyan",
+      lng: 121.4 + (i % 20) * 0.022,
+      lat: 31.1 + Math.floor(i / 20) * 0.019,
+    }));
+    const p = packRoaches(list, 4, true);
+    const middles = unpackRoaches(p);
+    const spots = unpackRoaches(p, true);
+    expect(unpackRoaches(p, true)).toEqual(spots);
+    for (const [i, r] of spots.entries()) {
+      const cell = overviewCell(middles[i]);
+      expect(overviewCell(r)).toBe(cell);
+      expect(r).toEqual({ ...middles[i], ...squareSpot(cell % OVERVIEW_CELLS, Math.floor(cell / OVERVIEW_CELLS), r.id) });
+    }
+    // no longer on a lattice: where in its square each one stands differs from roach to roach
+    const across = new Set(spots.map((r, i) => Math.round((r.lng - middles[i].lng) * 1e4)));
+    expect(across.size).toBeGreaterThan(50);
+    // and only the squares' form moves: places as they are stay as they are
+    const exact = packRoaches(list, 4);
+    expect(unpackRoaches(exact, true)).toEqual(unpackRoaches(exact));
   });
 });

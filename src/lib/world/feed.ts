@@ -95,7 +95,8 @@ export class RoachAreaCopy {
     if (u.t) this.totals = totalsOf(u.t);
     let changed = false;
     if (u.packed) {
-      this.byId = new Map(unpackRoaches(u.packed).map((r) => [r.id, r]));
+      // the overview's roaches each at a spot of its own in its square, not in rows at the middles
+      this.byId = new Map(unpackRoaches(u.packed, true).map((r) => [r.id, r]));
       this.held = u.overview ? "overview" : (u.box ?? null);
       this.heldAt = Date.now();
       changed = true;

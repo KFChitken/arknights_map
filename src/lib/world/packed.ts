@@ -73,9 +73,27 @@ export const nearMetre = (deg: number) => Math.round(deg * STEP) / STEP;
 
 /** The middle of a square of the overview (world/area.ts overviewCell), to the metre */
 export function squareMiddle(column: number, row: number): { lng: number; lat: number } {
-  const lng = ((column + 0.5) / OVERVIEW_CELLS) * 360 - 180;
-  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (row + 0.5)) / OVERVIEW_CELLS))) * 180) / Math.PI;
+  return squareAt(column, row, 0.5, 0.5);
+}
+
+/** A point of a square of the overview, fx and fy of the way across and down it, to the metre */
+function squareAt(column: number, row: number, fx: number, fy: number): { lng: number; lat: number } {
+  const lng = ((column + fx) / OVERVIEW_CELLS) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (row + fy)) / OVERVIEW_CELLS))) * 180) / Math.PI;
   return { lng: nearMetre(lng), lat: nearMetre(lat) };
+}
+
+/**
+ * Where a roach of the overview is drawn in its square: a spot of its own, the same every time (from its id), not
+ * nearer an edge than a tenth of the square. At their squares' middles the roaches of a crowded city stood in rows
+ * and columns, which showed zoomed in to a province, and for the moment after zooming in further, until the
+ * roaches of the place came.
+ */
+export function squareSpot(column: number, row: number, id: string): { lng: number; lat: number } {
+  // FNV-1a: the id's own bits, spread over 32
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
+  return squareAt(column, row, 0.1 + (0.8 * (h & 0xffff)) / 0x10000, 0.1 + (0.8 * (h >>> 16)) / 0x10000);
 }
 
 /**
@@ -172,8 +190,12 @@ function packSquares(list: MapRoach[], form: RegExp, width: 4 | 16): PackedRoach
 
 const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
 
-/** The roaches back from a packed snapshot, each just as the feed describes it elsewhere. */
-export function unpackRoaches(p: PackedRoaches): MapRoach[] {
+/**
+ * The roaches back from a packed snapshot, each just as the feed describes it elsewhere. scatter: the overview's
+ * roaches given as squares (sx, sy) each at a spot of its own in its square (squareSpot), as the map draws them,
+ * not all at the middles.
+ */
+export function unpackRoaches(p: PackedRoaches, scatter = false): MapRoach[] {
   const bytes = atob(p.ids);
   const w = p.w ?? 16;
   const out: MapRoach[] = [];
@@ -182,16 +204,16 @@ export function unpackRoaches(p: PackedRoaches): MapRoach[] {
   let cy = 0;
   for (let i = 0; i < p.k.length; i++) {
     let at: { lng: number; lat: number };
+    let h = "";
+    for (let j = i * w; j < i * w + w; j++) h += HEX[bytes.charCodeAt(j)];
     if (p.sx && p.sy) {
       cx += p.sx[i];
       cy += p.sy[i];
-      at = squareMiddle(cx, cy);
+      at = scatter ? squareSpot(cx, cy, h) : squareMiddle(cx, cy);
     } else {
       x += p.x[i];
       at = { lng: x / STEP, lat: p.y[i] / STEP };
     }
-    let h = "";
-    for (let j = i * w; j < i * w + w; j++) h += HEX[bytes.charCodeAt(j)];
     const k = p.k[i];
     const [avatar, color] = p.looks[k >> 3];
     const r: MapRoach = {
