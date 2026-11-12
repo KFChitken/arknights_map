@@ -181,8 +181,9 @@ describe("the code", () => {
       // 「1.04 吨的思念」: no space after 吨 (moves with 佩丽卡监督's words)
       "src/lib/perlica.ts 吨 ",
     ]);
-    // what players type, whatever the page's language: full-width dashes in a 登录码, 。 for a dot and contact details in a name
-    const typed = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts"]);
+    // what people type, whatever the page's language: full-width dashes in a 登录码, 。 for a dot and contact
+    // details in a name, the Chinese punctuation that ends a bare address in a 公告
+    const typed = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts", "src/lib/noticeText.ts"]);
     const found = scanTree(ROOT)
       .filter((h) => !h.kept && h.logic && !(h.kind === "regex" && typed.has(h.file)))
       .map((h) => `${h.file} ${h.text}`);
