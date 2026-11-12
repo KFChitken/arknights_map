@@ -9,5 +9,7 @@ describe("我的助战", () => {
       "安洁莉娜",
     ]);
     expect(checkSupport("nonsense")).toEqual([]);
+    // 厨力 may hold characters of the story, whom nobody can field
+    expect(checkSupport(["普瑞赛斯", "能天使"])).toEqual(["能天使"]);
   });
 });

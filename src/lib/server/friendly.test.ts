@@ -569,6 +569,8 @@ describe("求助", () => {
     await expect(help.askHelp(a.id, { kind: "support", game: "arknights", operator: OPERATOR, skill: 2 })).rejects.toThrow("今天这种求助已经发了 3 次");
     await expect(help.askHelp(a.id, { kind: "support", game: "endfield", operator: OPERATOR, skill: 1 })).rejects.toThrow("这个游戏没有这种求助");
     await expect(help.askHelp(a.id, { kind: "support", game: "arknights", operator: "不是干员", skill: 1 })).rejects.toThrow("选一位干员");
+    // a character of the story, whom nobody can lend
+    await expect(help.askHelp(a.id, { kind: "support", game: "arknights", operator: "普瑞赛斯", skill: 1 })).rejects.toThrow("选一位干员");
     await expect(help.askHelp(a.id, { kind: "clues", game: "arknights", clues: [] })).rejects.toThrow("选一下缺几号线索");
     await expect(help.askHelp(a.id, { kind: "wish", game: "arknights" })).rejects.toThrow("没有这种求助");
 

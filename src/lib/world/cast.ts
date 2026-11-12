@@ -1,6 +1,6 @@
 import { generateFakeRoaches } from "../fakeRoaches";
 import type { Game } from "../games";
-import { isOperator, OPERATORS } from "../operators";
+import { isCharacter, OPERATORS } from "../operators";
 import { EMPTY_PROFILE, type Profile } from "../profile";
 import { mulberry32 } from "../prng";
 import type { LngLat, RoachAvatar, RoachColor } from "../types";
@@ -106,7 +106,7 @@ function tester(
     uidServer?: Partial<Record<Game, string>>;
   },
 ): Tester {
-  const fav = (g: Game) => (p.favourites?.[g] ?? []).filter((n) => isOperator(g, n));
+  const fav = (g: Game) => (p.favourites?.[g] ?? []).filter((n) => isCharacter(g, n));
   return {
     id,
     note,

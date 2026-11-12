@@ -1,6 +1,7 @@
 {
   "source": "https://wiki.biligame.com/arknights/%E5%B9%B2%E5%91%98%E6%95%B0%E6%8D%AE%E8%A1%A8",
   "fetchedAt": "2026-11-06",
+  "addedByHand": "2026-11-12: 普瑞赛斯, after the 6-star operators. A character of the story whom no player can field (playable: false), so she may be among a player's 厨力 but not their 助战",
   "operators": [
     {
       "name": "能天使",
@@ -565,6 +566,10 @@
     {
       "name": "塔露拉",
       "rarity": 6
+    },
+    {
+      "name": "普瑞赛斯",
+      "playable": false
     },
     {
       "name": "狮蝎",

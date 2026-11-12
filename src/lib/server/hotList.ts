@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { GAMES } from "../games";
 import { HOT_BOARDS, HOT_MIN_PLAYERS, HOT_SIZE, WEEK, weekStartOf, type HotBoard, type HotList, type HotRow } from "../hotList";
-import { isOperator } from "../operators";
+import { isCharacter } from "../operators";
 import { db } from "./db";
 import { declarations, users } from "./schema";
 
@@ -30,7 +30,7 @@ async function board(template: HotBoard, from: number, to: number): Promise<HotR
     rank: rows.findIndex((x) => x.players === r.players) + 1,
     character: r.character ?? "",
     // a declaration keeps only the name, so the game comes from the lists; a name in both gets both
-    games: GAMES.filter((g) => isOperator(g, r.character ?? "")),
+    games: GAMES.filter((g) => isCharacter(g, r.character ?? "")),
     players: r.players,
   }));
 }

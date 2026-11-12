@@ -4,7 +4,7 @@ import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
 import { isOffLimits, OFF_LIMITS_MESSAGE } from "../offLimits";
-import { isOperator } from "../operators";
+import { isCharacter } from "../operators";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_MAX } from "../rules";
 import { checkSupport } from "../support";
@@ -30,7 +30,7 @@ export function normalizeProfile(input: Profile): Profile {
   const uidServer = { arknights: "", endfield: "" };
   for (const g of games) {
     favourites[g] = [...new Set(input.favourites?.[g] ?? [])]
-      .filter((n) => isOperator(g, n))
+      .filter((n) => isCharacter(g, n))
       .slice(0, MAX_FAVOURITES);
     const u = String(input.uid?.[g] ?? "").trim();
     if (u.length > UID_MAX || !/^[0-9A-Za-z#_-]*$/.test(u)) {

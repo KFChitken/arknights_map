@@ -5,7 +5,7 @@ import { fmt, fmtParts, T } from "@/i18n";
 import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
-import { matchesSearch, OPERATORS } from "@/lib/operators";
+import { CHARACTERS, matchesSearch, OPERATORS } from "@/lib/operators";
 import { logoutOthers } from "@/lib/authClient";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
@@ -223,6 +223,7 @@ export default function ProfileSheet({
             game={g}
             value={p.favourites[g]}
             onChange={(v) => set({ favourites: { ...p.favourites, [g]: v } })}
+            names={CHARACTERS[g]}
           />
           {g === "arknights" && !tutorial && (
             <>
@@ -413,11 +414,11 @@ export default function ProfileSheet({
   );
 }
 
-/** Search a game's characters by name and pick one. */
-function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; onPick: (name: string) => void }) {
+/** Search some of a game's characters by name and pick one. */
+function OperatorSearch({ game, names, taken, onPick }: { game: Game; names: string[]; taken: string[]; onPick: (name: string) => void }) {
   const art = useOperatorArt();
   const [q, setQ] = useState("");
-  const options = useMemo(() => OPERATORS[game].filter((n) => !taken.includes(n) && matchesSearch(n, q)), [game, taken, q]);
+  const options = useMemo(() => names.filter((n) => !taken.includes(n) && matchesSearch(n, q)), [names, taken, q]);
   return (
     <div className="picker">
       <input type="search" placeholder={T.profile.search.placeholder} value={q} onChange={(e) => setQ(e.target.value)} />
@@ -441,18 +442,21 @@ function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; 
   );
 }
 
+/** Pick up to max of a game's characters: the playable ones unless names says whom (厨力 may hold characters of the story too). */
 export function CharacterPicker({
   game,
   value,
   max = MAX_FAVOURITES,
   addLabel = T.profile.pickCharacter,
   onChange,
+  names = OPERATORS[game],
 }: {
   game: Game;
   value: string[];
   max?: number;
   addLabel?: string;
   onChange: (v: string[]) => void;
+  names?: string[];
 }) {
   const art = useOperatorArt();
   const [open, setOpen] = useState(false);
@@ -481,7 +485,7 @@ export function CharacterPicker({
           </button>
         )}
       </div>
-      {open && !full && <OperatorSearch game={game} taken={value} onPick={add} />}
+      {open && !full && <OperatorSearch game={game} names={names} taken={value} onPick={add} />}
     </div>
   );
 }

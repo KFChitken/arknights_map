@@ -146,6 +146,19 @@ describe("looks", () => {
   });
 });
 
+describe("characters of the story", () => {
+  it("keeps 普瑞赛斯 among a player's Arknights 厨力, to declare with, but not as their 助战", () => {
+    const p = normalizeProfile({
+      ...fan,
+      favourites: { arknights: ["普瑞赛斯", "能天使"], endfield: ["普瑞赛斯", "佩丽卡"] },
+      support: ["普瑞赛斯", "能天使"],
+    });
+    expect(p.favourites).toEqual({ arknights: ["普瑞赛斯", "能天使"], endfield: ["佩丽卡"] });
+    expect(p.support).toEqual(["能天使"]);
+    expect(say({ template: "love", character: "普瑞赛斯" }, p)).toBe("我永远喜欢普瑞赛斯");
+  });
+});
+
 describe("drunk declarations", () => {
   const drunk = (d: Declaration, p: Profile = fan) => declarationText(checkDeclaration(p, d, Date.now(), true));
 

@@ -2429,6 +2429,15 @@ describe("server world", () => {
     expect(JSON.stringify(list)).not.toContain("佩丽卡");
   });
 
+  it("gives a character of the story her game on the hot list, as any other", async () => {
+    const now = Date.parse("2026-11-04T12:00+08:00");
+    const players = [me, ...(await Promise.all(["a", "b"].map((x) => signUp(`${x}@example.com`))))];
+    for (const p of players) {
+      await db.insert(declarations).values({ senderId: p.id, template: "love", character: "普瑞赛斯", recipients: 0, createdAt: new Date("2026-11-03T10:00+08:00") });
+    }
+    expect((await computeHotList(now)).boards.love).toEqual([{ rank: 1, character: "普瑞赛斯", games: ["arknights"], players: 3 }]);
+  });
+
   it("moves players who picked 夜明河 over to its official name 明河", async () => {
     await db.update(users).set({ games: ["endfield"], favEndfield: ["夜明河", "佩丽卡"] }).where(eq(users.id, me.id));
     await db.execute(sql.raw(readFileSync("drizzle/0012_rename_minghe.sql", "utf8")));
