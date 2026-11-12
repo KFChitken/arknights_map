@@ -3,6 +3,7 @@
 import maplibregl, { type GeoJSONSource, type StyleImageInterface, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
+import { T } from "@/i18n";
 import type { GuideId } from "@/lib/guides";
 import { roachImageData } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
@@ -90,7 +91,7 @@ const pileCountText = () => [
   "case",
   ["<", PILE_COUNT, 10000],
   ["to-string", PILE_COUNT],
-  ["concat", ["to-string", ["/", ["round", ["/", PILE_COUNT, 1000]], 10]], "万"],
+  ["concat", ["to-string", ["/", ["round", ["/", PILE_COUNT, 1000]], 10]], T.map.view.tenThousand],
 ];
 /** A count right of and above its pile, by the pile's width at each icon size */
 const COUNT_OFFSET = [
@@ -646,7 +647,7 @@ export default function MaplibreView(props: MapViewProps) {
     const loadTimer = window.setTimeout(() => {
       if (readyRef.current) return;
       reportMapTrouble(kind, "slow");
-      propsRef.current.onError?.(propsRef.current.slowNote ?? "海外底图加载很慢，可以试试切换到高德底图。");
+      propsRef.current.onError?.(propsRef.current.slowNote ?? T.map.view.overseasSlow);
     }, 12000);
     // a style that never loads, or tiles failing again and again, is told to the server once
     let tileErrors = 0;

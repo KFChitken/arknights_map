@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import { MINE_PX } from "./guideMarker";
 
 /**
@@ -13,7 +14,7 @@ export function shoutElement(text: string, limited: boolean) {
   if (limited) {
     const tag = document.createElement("span");
     tag.className = "ta-tag";
-    tag.textContent = "限定";
+    tag.textContent = T.map.declare.limited;
     bubble.append(tag);
   }
   bubble.append(document.createTextNode(text));

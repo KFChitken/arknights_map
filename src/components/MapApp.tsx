@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { fmtParts, T } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -402,9 +402,15 @@ type AmiyaItem = Extract<InboxItem, { kind: "amiya" }>;
 type Placing = { target: PlaceTarget; label: string };
 
 const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
-  main: "点地图放下你的蟑螂本体",
-  clone: "点地图放一只克隆体",
-  move: "点地图给它挪个窝",
+  get main() {
+    return T.map.place.main;
+  },
+  get clone() {
+    return T.map.place.clone;
+  },
+  get move() {
+    return T.map.place.move;
+  },
 };
 
 /**
@@ -877,7 +883,7 @@ export default function MapApp({
           const r = retryRef.current;
           if (r.timer !== undefined) return;
           r.delay = fresh ? Math.min(30, r.delay ? r.delay * 2 : 3) : Math.min(60, r.delay ? r.delay * 2 : (e as TooBusy).retryAfterS);
-          if (fresh || !copy.version) setToast(e instanceof WorldError ? e.message : "连不上服务器，几秒后自动重试。");
+          if (fresh || !copy.version) setToast(e instanceof WorldError ? e.message : T.requests.offlineRetrying);
           r.timer = window.setTimeout(
             () => {
               r.timer = undefined;
@@ -1037,7 +1043,7 @@ export default function MapApp({
         console.error(e);
         failed = true;
         setMeFailed(true);
-        setToast("连不上服务器，地图先只显示底图。");
+        setToast(T.map.common.serverDown);
         return { me: null, items: [] as InboxItem[], away: null, friends: [] as Friend[] };
       })
       .then(async ({ me: m, items, away, friends: list }) => {
@@ -1208,7 +1214,7 @@ export default function MapApp({
     const scene = dockSceneFor(fresh);
     if (scene && !busy) await playDockRef.current(scene.kind, scene.from);
     if (open?.kind === "inbox") await openInbox(false, open.tab, items);
-    else if (open || busy) setToast(`${noticeTitle(items)}点「消息」看看。`);
+    else if (open || busy) setToast(fmt(T.map.inbox.lookAtNew, { title: noticeTitle(items) }));
     else await openInbox(true, undefined, items);
   }, [loadInbox, loadNewDeclarations, loadFriends, loadMe, loadIdentities, openInbox]);
 
@@ -1408,13 +1414,13 @@ export default function MapApp({
       if (ok) setToast(ok);
       return result;
     } catch (e) {
-      if (e instanceof SignInNeeded) setPanel({ kind: "login", reason: "登录后才能这样做。" });
+      if (e instanceof SignInNeeded) setPanel({ kind: "login", reason: T.map.common.signInFirst });
       else if (e instanceof AgeCheckNeeded) setPanel({ kind: "ageCheck" });
       else if (e instanceof ConsentNeeded) setPanel({ kind: "consent" });
       else if (e instanceof WorldError) setToast(e.message);
       else {
         console.error(e);
-        setToast("出了点问题，再试一次吧。");
+        setToast(T.map.common.tryAgain);
       }
       return undefined;
     }
@@ -1436,7 +1442,7 @@ export default function MapApp({
     saveMapStyle(s);
     setMapStyle(s);
     setStyleStored(true);
-    setToast(`已换成「${MAP_STYLE_NAMES[s]}」`);
+    setToast(fmt(T.map.style.switched, { style: MAP_STYLE_NAMES[s] }));
   };
   const styleHintDone = useCallback(() => {
     setStyleHint(false);
@@ -1454,7 +1460,7 @@ export default function MapApp({
     if (r === "guide") {
       setSelected(null);
       setPanel({ kind: "homeScreen" });
-    } else if (r === "installed") setToast("存好了，以后点桌面上的舟P图标就能直接打开地图。");
+    } else if (r === "installed") setToast(T.map.account.installed);
   };
   // A visitor who has not signed in has 全员隐匿 only (the server sends them nobody's roaches); this device's
   // pick waits for the sign-in. 舟u本色 where its hearts cannot be drawn (yet, or on this device) is drawn as
@@ -1475,7 +1481,7 @@ export default function MapApp({
     // say so before they pick a spot, not after
     if (me?.mustReconsent) return setPanel({ kind: "consent" });
     if (target.kind === "move" && me && me.movesLeft <= 0) {
-      setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+      setToast(fmt(T.map.place.movesUsedUp, { n: MOVES_PER_DAY }));
       return;
     }
     setPanel(null);
@@ -1530,10 +1536,10 @@ export default function MapApp({
     if (fly) setFocus({ lng: p.lng, lat: p.lat, zoom: 13, nonce: Date.now() });
     setToast(
       target.kind === "move"
-        ? `挪好啦！今天还能挪 ${m?.movesLeft ?? 0} 次。`
+        ? fmt(T.map.place.moved, { n: m?.movesLeft ?? 0 })
         : target.kind === "clone"
-          ? "克隆体放好啦！等待其他舟P发现中 |ω・）"
-          : "放好啦！等待其他舟P发现中 |ω・）",
+          ? T.map.place.clonePlaced
+          : T.map.place.placed,
     );
   };
 
@@ -1673,13 +1679,13 @@ export default function MapApp({
     const m = await loadMe();
     // the first and the fiftieth pop up as new badges; the rest are counted here
     const drinks = m?.counts.drinks ?? 0;
-    if (drinks !== 1 && drinks !== 50) setToast(`又醉倒了，这是第 ${drinks} 次。`);
+    if (drinks !== 1 && drinks !== 50) setToast(fmt(T.map.sleep.drunkAgain, { n: drinks }));
   };
 
   // up again: whoever poked it while it slept shows now
   const pokedToast = (items: InboxItem[]) => {
     const who = pokedBy(items);
-    return who ? `${who} 趁你睡着戳了戳你，点「消息」看看。` : "";
+    return who ? fmt(T.map.sleep.pokedAsleep, { who }) : "";
   };
 
   const soberUp = async () => {
@@ -1690,7 +1696,7 @@ export default function MapApp({
     if (!done) return;
     play("wake");
     const [, items] = await Promise.all([loadMe(), loadInbox()]);
-    setToast(`醒酒了。${pokedToast(items)}`);
+    setToast(fmt(T.map.sleep.sobered, { poked: pokedToast(items) }));
   };
 
   /** ⚡舟友的酒⚡ on, within the tap (so its music may play): the map goes to the drunk main roach */
@@ -1714,15 +1720,15 @@ export default function MapApp({
     const woke = async () => {
       const [, items] = await Promise.all([loadMe(), loadInbox()]);
       const poked = pokedToast(items);
-      if (poked) setToast(`你的蟑螂睡醒了。${poked}`);
+      if (poked) setToast(fmt(T.map.sleep.woke, { poked }));
     };
     const t = window.setTimeout(() => woke().catch(() => {}), Math.max(0, drunkUntil - Date.now()) + 1000);
     return () => window.clearTimeout(t);
   }, [drunkUntil, loadMe, loadInbox]);
 
   const remove = async (r: OwnRoach) => {
-    if (!window.confirm(r.slot === 0 ? "收回蟑螂本体？克隆体也会一起收回。" : "收回这只克隆体？")) return;
-    const done = await act((w) => w.removeRoach(r.id), r.slot === 0 ? "已经收回你的蟑螂和克隆体。" : "已经收回这只克隆体。");
+    if (!window.confirm(r.slot === 0 ? T.map.place.removeMain : T.map.place.removeClone)) return;
+    const done = await act((w) => w.removeRoach(r.id), r.slot === 0 ? T.map.place.removedMain : T.map.place.removedClone);
     if (!done) return;
     setSelected(null);
     await loadMe();
@@ -1733,18 +1739,18 @@ export default function MapApp({
     const guide = Object.values(GUIDES).find((g) => g.name === name);
     setToast(
       name === TALULAH_NAME
-        ? "你和塔露拉干员握了手，成为了触须之交！在「消息 → 触须之交」里能看到她。"
+        ? T.map.touch.talulahFriends
         : guide
-          ? `你和${name}成为了触须之交！在「消息 → 触须之交」里能看到${guide.pronoun}。`
-          : `你们互相大胆碰过了，和 ${name} 成为了触须之交！在「消息 → 触须之交」里能看到 TA。`,
+          ? fmt(T.map.touch.guideFriends, { name, them: guide.pronoun })
+          : fmt(T.map.touch.friends, { name }),
     );
   };
 
   const touchedToast = (bold: boolean) =>
-    setToast(bold ? "大胆地伸出了触须！TA 将能看到你的资料" : "偷偷碰了一下！TA 只会知道被一只蟑螂碰了。");
+    setToast(bold ? T.map.touch.bold : T.map.touch.sneaky);
   /** A guide touches back once a day (src/lib/server/guides.ts); this touch got nothing back */
   const quietGuideToast = (id: GuideId) =>
-    setToast(`${GUIDES[id].name}今天已经碰回过你了，明天再碰碰${GUIDES[id].pronoun}吧。`);
+    setToast(fmt(T.map.touch.guideQuiet, { name: GUIDES[id].name, them: GUIDES[id].pronoun }));
 
   /**
    * Act out a touch over the map, on this screen only (TouchStage), and resolve once it is
@@ -1775,7 +1781,7 @@ export default function MapApp({
           : besideMain({ x: sx, y: sy }, main ? screenDelta(guide.at, main, zoom) : null, box, belowGuide(zoom));
       const place = stagePlace(wrap?.clientWidth ?? window.innerWidth, wrap?.clientHeight ?? window.innerHeight, box, [sx + bx, sy + by]);
       const cast: TouchCast = {
-        you: { avatar: myAvatar, color: myColor, name: me.profile.anonymous || !me.profile.name.trim() ? "匿名" : displayName(me.profile) },
+        you: { avatar: myAvatar, color: myColor, name: me.profile.anonymous || !me.profile.name.trim() ? T.map.common.anonymous : displayName(me.profile) },
         them: { avatar: roach.avatar, color: roach.color, clone: roach.clone, friend: roach.friend },
       };
       // looks that are pictures are drawn on a canvas first: have them ready as the scene starts (as RoachIcon asks for them)
@@ -1822,7 +1828,7 @@ export default function MapApp({
     const done = await act((w) => w.poke(roach.id));
     setPokeSent(false);
     if (!done) return;
-    const landed = () => setToast("戳到了！TA 的腿抖了一下，又睡过去了。");
+    const landed = () => setToast(T.map.touch.poked);
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) landed();
     else {
       setFocus({ lng: roach.lng, lat: roach.lat, zoom: viewRef.current.zoom, nonce: Date.now() });
@@ -1852,7 +1858,7 @@ export default function MapApp({
   const remindSanity = async (friend: Friend, at: { x: number; y: number } | null) => {
     if (!(await friendly((w) => w.remindSanity(friend.id)))) return;
     if (at && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) setVialAt(at);
-    setToast(`已经催 ${friend.profile.displayName} 清理智啦`);
+    setToast(fmt(T.map.friends.sanityNudged, { name: friend.profile.displayName }));
     await loadFriends();
   };
 
@@ -1874,7 +1880,7 @@ export default function MapApp({
       try {
         return await worldRef.current!.friendsAct(act, friendIds);
       } catch (e) {
-        setToast(e instanceof WorldError ? e.message : "出了点问题，再试一次吧。");
+        setToast(e instanceof WorldError ? e.message : T.map.common.tryAgain);
         return null;
       }
     })();
@@ -1884,13 +1890,13 @@ export default function MapApp({
     const missed = res.filter((r) => !r.ok);
     const loading = loadFriends();
     if (!went.length) {
-      setToast(missed[0]?.why ?? "没有送出去。");
+      setToast(missed[0]?.why ?? T.map.friends.notSent);
       return loading;
     }
     setPanel(null);
     setSelected(null);
     if (!motionOff()) await new Promise<void>((resolve) => setBatchScene({ act, them: went, done: () => (setBatchScene(null), resolve()) }));
-    setToast(missed.length ? `${batchSent(act, went.length)}（${missed.length} 位没送到：${missed[0].why}）` : batchSent(act, went.length));
+    setToast(missed.length ? fmt(T.map.friends.someMissed, { sent: batchSent(act, went.length), n: missed.length, why: missed[0].why }) : batchSent(act, went.length));
     await loading;
   };
 
@@ -1898,7 +1904,7 @@ export default function MapApp({
   const toggleStar = async (friend: Friend) => {
     const on = friend.star === null;
     if (!(await friendly((w) => w.starFriend(friend.id, on)))) return;
-    setToast(on ? `把 ${friend.profile.displayName} 设为特别关注了，TA 会排在最前面` : "取消特别关注了");
+    setToast(on ? fmt(T.map.friends.starred, { name: friend.profile.displayName }) : T.map.friends.unstarred);
     await loadFriends();
   };
 
@@ -1923,12 +1929,12 @@ export default function MapApp({
   const askHelp = async (ask: HelpAsk) => {
     if (!(await friendly((w) => w.askHelp(ask)))) return;
     setPanel({ kind: "friends" });
-    setToast("求助发出去了，玩这个游戏的触须之交都看得到");
+    setToast(T.map.friends.helpAsked);
     await loadHelp();
   };
   const answerHelp = async (requestId: string, clues?: number[]) => {
     if (!(await friendly((w) => w.answerHelp(requestId, clues)))) return;
-    setToast("已经告诉 TA 了");
+    setToast(T.map.common.toldThem);
     await loadHelp();
   };
   const closeHelp = async (requestId: string) => {
@@ -1953,7 +1959,7 @@ export default function MapApp({
       if (mine) setFocus({ lng: mine.lng, lat: mine.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
       return;
     }
-    if (!me?.roaches.some((r) => r.slot === 0)) return setToast("先放下蟑螂本体，才能派克隆体去做客。");
+    if (!me?.roaches.some((r) => r.slot === 0)) return setToast(T.map.visit.placeMainFirst);
     setSelected(null);
     setPanel({ kind: "visitConfirm", friendId: friend.id, roach });
   };
@@ -1969,8 +1975,8 @@ export default function MapApp({
     setSelected(null);
     setFocus({ lng: res.seat.lng, lat: res.seat.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
     await Promise.all([loadMe(), loadRoaches(), loadFriends(), loadInbox()]);
-    sayOver(res.seat, "来串门啦！");
-    setToast(`你的克隆体在 ${friend.profile.displayName} 家坐下了`);
+    sayOver(res.seat, T.map.visit.visiting);
+    setToast(fmt(T.map.visit.sat, { name: friend.profile.displayName }));
   };
 
   /** 去看看: a guest sitting by your roach */
@@ -1986,7 +1992,7 @@ export default function MapApp({
   const sendHome = async (friendId: string) => {
     if (!(await friendly((w) => w.sendHome(friendId)))) return;
     setSelected(null);
-    setToast("已经请 TA 的克隆体回家了，3 天内 TA 不会再来。");
+    setToast(T.map.visit.sentHome);
     await afterVisitChange();
   };
 
@@ -1994,7 +2000,7 @@ export default function MapApp({
   const goHome = async (cloneId: string) => {
     if (!(await friendly((w) => w.goHome(cloneId)))) return;
     setSelected(null);
-    setToast("你的克隆体回家了");
+    setToast(T.map.visit.cameHome);
     await afterVisitChange();
   };
 
@@ -2008,25 +2014,25 @@ export default function MapApp({
     setSelected(null);
     setFocus({ lng: res.seat.lng, lat: res.seat.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
     await afterVisitChange();
-    sayOver(res.seat, "来串门啦！");
-    setToast("你的克隆体跟过去了");
+    sayOver(res.seat, T.map.visit.visiting);
+    setToast(T.map.visit.followed);
   };
 
   /** 复制 a UID they share; where the browser will not write the clipboard (QQ, WeChat), long-press it instead */
   const copyUid = (uid: string) =>
     navigator.clipboard
       ?.writeText(uid)
-      .then(() => setToast("复制好了"))
-      .catch(() => setToast("长按 UID 就能复制")) ?? setToast("长按 UID 就能复制");
+      .then(() => setToast(T.map.game.copied))
+      .catch(() => setToast(T.map.game.holdToCopy)) ?? setToast(T.map.game.holdToCopy);
 
   const gameAsk = async (friend: Friend, game: Game) => {
     if (!(await friendly((w) => w.gameAsk(friend.id, game)))) return;
-    setToast(`已经告诉 ${friend.profile.displayName}，等 TA 在游戏里通过`);
+    setToast(fmt(T.map.game.asked, { name: friend.profile.displayName }));
     await loadFriends();
   };
   const gameWant = async (friend: Friend, game: Game) => {
     if (!(await friendly((w) => w.gameWant(friend.id, game)))) return;
-    setToast(`已经告诉 ${friend.profile.displayName} 你想在游戏里加 TA`);
+    setToast(fmt(T.map.game.wanted, { name: friend.profile.displayName }));
     await loadFriends();
   };
 
@@ -2034,10 +2040,10 @@ export default function MapApp({
   const friendAct = (friend: Friend, act: FriendAct, at: { x: number; y: number }, roach: PublicRoach | null) => {
     const on = roach ?? mainRoachOf(friend);
     if (act === "sanity") return remindSanity(friend, at);
-    if (act === "visit") return on ? askVisit(friend, on) : setToast("TA 现在没有放蟑螂。");
+    if (act === "visit") return on ? askVisit(friend, on) : setToast(T.map.visit.noRoach);
     if (act === "poke") {
       const main = friend.between?.mainId ? friend.roaches.find((r) => r.id === friend.between!.mainId) : null;
-      if (!main) return setToast("TA 现在没有放蟑螂。");
+      if (!main) return setToast(T.map.visit.noRoach);
       setPanel(null);
       return poke({ ...main, asleep: true });
     }
@@ -2048,7 +2054,7 @@ export default function MapApp({
   const inboxFriendly: InboxFriendly = {
     answerSanity: async (itemId, answer) => {
       if (!(await friendly((w) => w.answerSanity(itemId, answer)))) return;
-      if (answer === "done") setToast("已经告诉 TA 了");
+      if (answer === "done") setToast(T.map.common.toldThem);
       await refreshInbox();
     },
     gestureBack: async (friendId, gesture, itemId) => {
@@ -2061,7 +2067,7 @@ export default function MapApp({
     goHome,
     gameAdded: async (itemId) => {
       if (!(await friendly((w) => w.gameAdded(itemId)))) return;
-      setToast("已经告诉 TA 了，你们在游戏里也是好友啦");
+      setToast(T.map.game.friendsToo);
       await Promise.all([refreshInbox(), loadFriends()]);
     },
   };
@@ -2078,21 +2084,21 @@ export default function MapApp({
       const apart = Boolean(uid && theirs && mine && theirs !== mine);
       return (
         <dd className="game-extra">
-          {state?.added && <span className="game-tag">游戏里也是好友</span>}
+          {state?.added && <span className="game-tag">{T.map.game.inGameToo}</span>}
           {uid && (
             <button className="pill" onClick={() => copyUid(uid)}>
-              复制
+              {T.map.game.copy}
             </button>
           )}
-          {uid && !state?.added && apart && <span className="muted">你们不在一个服务器，游戏里加不了</span>}
+          {uid && !state?.added && apart && <span className="muted">{T.map.game.otherServer}</span>}
           {uid && !state?.added && !apart && (
             <button className="pill dark" disabled={friendBusy || Boolean(state?.askAgainAt)} onClick={() => gameAsk(friend, game)}>
-              {state?.askAgainAt ? "已经告诉 TA 了" : "我在游戏里申请了"}
+              {state?.askAgainAt ? T.map.common.toldThem : T.map.game.askedInGame}
             </button>
           )}
           {!uid && (
             <button className="pill" disabled={friendBusy || Boolean(b.wantAgainAt)} onClick={() => gameWant(friend, game)}>
-              {b.wantAgainAt ? "已经告诉 TA 了" : "想在游戏里加 TA"}
+              {b.wantAgainAt ? T.map.common.toldThem : T.map.game.wantInGame}
             </button>
           )}
         </dd>
@@ -2226,7 +2232,7 @@ export default function MapApp({
       } else {
         const g = GUIDES[id];
         await playDockRef.current("bold", { name: g.name, avatar: g.avatar, color: g.color });
-        setToast(`${g.name}碰回了你，点「消息」看看。`);
+        setToast(fmt(T.map.inbox.guideTouchedBack, { name: g.name }));
       }
       await loadInbox();
       runAfterReport();
@@ -2277,25 +2283,25 @@ export default function MapApp({
   const ignore = async (itemId: string) => {
     const done = await act((w) => w.ignore(itemId).then(() => true));
     if (!done) return;
-    setToast("默默爬走了，TA 不会知道。");
+    setToast(T.map.inbox.crawledAway);
     keepSnapshot(await loadInbox());
   };
 
   const react = async (itemId: string, reaction: string) => {
     const done = await act((w) => w.react(itemId, reaction).then(() => true));
     if (!done) return;
-    setToast("回应发出去了！");
+    setToast(T.map.inbox.reacted);
     keepSnapshot(await loadInbox());
   };
 
-  const repliedToast = (bold: boolean) => setToast(bold ? "大胆碰回去了！向 TA 表明你的身份" : "偷偷碰回去了。");
+  const repliedToast = (bold: boolean) => setToast(bold ? T.map.inbox.repliedBold : T.map.inbox.repliedSneaky);
 
   const reply = async (itemId: string, bold: boolean) => {
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
     if (res.newFriend) befriendedToast(res.newFriend);
     // a guide answers at once: her touch is now at the top of 收到的触碰 (once a day)
-    else if (res.guide?.itemId) setToast(`${GUIDES[res.guide.id].name}碰回了你。`);
+    else if (res.guide?.itemId) setToast(fmt(T.map.inbox.guideReplied, { name: GUIDES[res.guide.id].name }));
     else if (res.guide) quietGuideToast(res.guide.id);
     else repliedToast(bold);
     if (res.guide?.itemId) say(res.guide.id, guideLine(res.guide, res.si));
@@ -2348,19 +2354,19 @@ export default function MapApp({
             : guide.id === SI_ID
               ? SI_LINES.unfriendAsk
               : TALULAH_LINES.unfriendAsk
-      : `解除和 ${friend.profile.displayName} 的触须之交？`;
+      : fmt(T.map.safety.unfriendAsk, { name: friend.profile.displayName });
     if (!window.confirm(question)) return;
     const done = await act(
       (w) => w.unfriend(friend.id).then(() => true),
       guide?.id === PERLICA_ID
-        ? `${PERLICA_NAME}：「${PERLICA_LINES.unfriend}」`
+        ? fmt(T.map.guides.saysQuoted, { name: PERLICA_NAME, line: PERLICA_LINES.unfriend })
         : guide?.id === TALULAH_ID
-          ? `${TALULAH_NAME}：${TALULAH_LINES.unfriend}`
+          ? fmt(T.map.guides.says, { name: TALULAH_NAME, line: TALULAH_LINES.unfriend })
           : guide?.id === MINGHE_ID
-            ? `${MINGHE_NAME}：${MINGHE_LINES.unfriend}`
+            ? fmt(T.map.guides.says, { name: MINGHE_NAME, line: MINGHE_LINES.unfriend })
             : guide?.id === SI_ID
-              ? `${SI_NAME}：${SI_LINES.unfriend}`
-              : "已经解除触须之交。",
+              ? fmt(T.map.guides.says, { name: SI_NAME, line: SI_LINES.unfriend })
+              : T.map.safety.unfriended,
     );
     if (!done) return;
     await Promise.all([loadFriends(), guide ? loadMe() : null]);
@@ -2374,21 +2380,21 @@ export default function MapApp({
   };
 
   const blockSender = async (p: Extract<Panel, { kind: "safety" }>) => {
-    const done = await act((w) => w.block(p.target).then(() => true), "拉黑了。TA 不会知道。");
+    const done = await act((w) => w.block(p.target).then(() => true), T.map.safety.blocked);
     if (done) await afterBlock(p);
   };
 
   const reportSender = async (p: Extract<Panel, { kind: "safety" }>, reason: ReportReason, note: string) => {
     const done = await act(
       (w) => w.report(p.target, reason, note).then(() => true),
-      "举报收到了，站长会尽快处理。TA 也被你拉黑了。",
+      T.map.safety.reported,
     );
     if (done) await afterBlock(p);
   };
 
   /** 我觉得处理错了: once sent, the note says so, in the open inbox and the list it was opened from */
   const appeal = async (itemId: string, actionId: string, text: string) => {
-    const sent = await act((w) => w.appeal(actionId, text).then(() => true), "申诉交上去了，站长会再看一次。");
+    const sent = await act((w) => w.appeal(actionId, text).then(() => true), T.map.safety.appealed);
     if (!sent) return false;
     const mark = (i: InboxItem): InboxItem => (i.kind === "staff" && i.id === itemId && i.appeal ? { ...i, appeal: { ...i.appeal, state: "sent" } } : i);
     setInbox((all) => all.map(mark));
@@ -2405,29 +2411,29 @@ export default function MapApp({
     try {
       let ids = [roach.id];
       if (near) {
-        const said = window.prompt("收回以这只为中心多少米以内的蟑螂？（最多 3000 米）", "300");
+        const said = window.prompt(T.map.admin.takeBackAsk, "300");
         if (!said) return;
         const meters = Math.min(3000, Math.max(1, Math.round(Number(said) || 0)));
         const list = await adminCall<{ id: string; ownerId: string }[]>("roachesNear", [roach.lng, roach.lat, meters]);
-        if (!list.length) return setToast("这附近没有别人的蟑螂。");
+        if (!list.length) return setToast(T.map.admin.noneNear);
         const players = new Set(list.map((r) => r.ownerId)).size;
         const sure = window.confirm(
-          `${meters} 米内有 ${list.length} 只别人的蟑螂，属于 ${players} 个人。全部收回吗？\n本体会连同它的克隆体一起收回；每人记一张黄牌，收到一条站长通知。`,
+          fmt(T.map.admin.takeBackMany, { meters, n: list.length, players }),
         );
         if (!sure) return;
         ids = list.map((r) => r.id);
-      } else if (!window.confirm("收回这只蟑螂吗？\n是本体的话会连同它的克隆体一起收回；给主人记一张黄牌，发一条站长通知。")) {
+      } else if (!window.confirm(T.map.admin.takeBackOne)) {
         return;
       }
       const done = await adminCall<{ roaches: number; players: number }>("takeBackRoaches", [ids, "roach"]);
       setSelected(null);
       setAdminShut(false);
-      setToast(done.roaches ? `收回了 ${done.roaches} 只，涉及 ${done.players} 个人。地图过几秒就更新。` : "没有收回什么，可能已经被收回了。");
+      setToast(done.roaches ? fmt(T.map.admin.tookBack, { roaches: done.roaches, players: done.players }) : T.map.admin.tookNone);
     } catch (e) {
       // the 管理台 locked on this device (its hours passed, or it was never opened here): a code there first
       if (e instanceof AdminError && e.gate) {
         setAdminShut(true);
-        setToast("先去管理台输验证码，再回来收回。");
+        setToast(T.map.admin.unlockFirst);
       } else setToast(e instanceof Error ? e.message : String(e));
     } finally {
       setCleaning(false);
@@ -2488,19 +2494,19 @@ export default function MapApp({
 
   /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
   const reportRoach = async (roach: PublicRoach, reason: RoachReportReason, note: string) => {
-    const done = await act((w) => w.reportRoach(roach.id, reason, note).then(() => true), "收到了，站长会看看这只蟑螂放的位置。");
+    const done = await act((w) => w.reportRoach(roach.id, reason, note).then(() => true), T.map.safety.roachReported);
     if (done) setPanel(null);
   };
 
   const unblock = async (blockId: string) => {
-    const done = await act((w) => w.unblock(blockId).then(() => true), "解除拉黑了。");
+    const done = await act((w) => w.unblock(blockId).then(() => true), T.map.safety.unblocked);
     if (!done) return;
     setBlocked(await worldRef.current!.blocks());
     await loadInbox();
   };
 
   const saveProfile = async (p: Profile) => {
-    const saved = await act((w) => w.saveProfile(p), "资料存好了。");
+    const saved = await act((w) => w.saveProfile(p), T.map.account.saved);
     if (saved) await loadMe();
     return Boolean(saved);
   };
@@ -2548,7 +2554,7 @@ export default function MapApp({
     if (!res) return false;
     // the card goes first, then the shout plays over the map
     setPanel(null);
-    playShout(d, from, () => setToast(`宣言发出去了！${res.reach}`));
+    playShout(d, from, () => setToast(fmt(T.map.declare.sent, { reach: res.reach })));
     if (demoRef.current) await loadIdentities();
     // the tutorial's greeting step is done however it was sent, and a limited line earns a badge
     await loadMe();
@@ -2568,7 +2574,7 @@ export default function MapApp({
     if (m?.ageCheck) setPanel({ kind: "ageCheck" });
     else if (m?.mustReconsent) setPanel({ kind: "consent" });
     else if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
-    else setToast("切换好了，现在用这个身份看地图。");
+    else setToast(T.map.demo.switched);
   };
 
   const signedIn = async () => {
@@ -2589,7 +2595,7 @@ export default function MapApp({
         return setPanel({ kind: "placeConfirm", target: { kind: "main" }, spot, fly: true, consent: !m.agreedPublicPlace });
       }
       if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
-      else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
+      else setToast(m && !mainRoach ? T.map.account.signedInPlace : T.map.account.signedIn);
     };
     // the notice due comes first on every sign-in, even after one popped up earlier in this visit: for a
     // newcomer, the first thing after signing up
@@ -2606,7 +2612,7 @@ export default function MapApp({
     setGreeting(false);
     if (!res) return;
     // nobody heard it yet, so say so plainly
-    setToast(`宣言发出去了！${res.reach}${res.reach === reachText(0) ? "等这里热闹起来再喊一声。" : ""}`);
+    setToast(fmt(T.map.declare.greeted, { reach: res.reach, more: res.reach === reachText(0) ? T.map.declare.quiet : "" }));
     await loadMe();
   };
 
@@ -2617,11 +2623,11 @@ export default function MapApp({
   };
 
   const leave = async (kind: "signOut" | "delete") => {
-    if (kind === "delete" && !window.confirm("注销账号会删除你的资料、蟑螂、消息和触须之交，无法恢复。确定吗？")) return;
+    if (kind === "delete" && !window.confirm(T.map.account.deleteAsk)) return;
     try {
       await (kind === "delete" ? deleteAccount() : signOut());
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "出了点问题，再试一次吧。");
+      setToast(e instanceof Error ? e.message : T.map.common.tryAgain);
       return;
     }
     setPanel(null);
@@ -2630,7 +2636,7 @@ export default function MapApp({
     // signed out, the map is 全员隐匿 again and the roaches held go (a visitor gets none)
     forgetRoaches();
     await load();
-    setToast(kind === "delete" ? "账号和数据都删除了。" : "已经退出登录。");
+    setToast(kind === "delete" ? T.map.account.deleted : T.map.account.signedOut);
   };
 
   /** 「我已满 18 岁」 on the card the admin asked for */
@@ -2639,19 +2645,19 @@ export default function MapApp({
     if (!done) return;
     await loadMe();
     setPanel(null);
-    setToast("谢谢！可以继续玩啦。");
+    setToast(T.map.account.thanks);
   };
 
   const agreeAgain = async (ticks: Parameters<typeof reconsent>[0], then: Panel | null) => {
     try {
       await reconsent(ticks);
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "出了点问题，再试一次吧。");
+      setToast(e instanceof Error ? e.message : T.map.common.tryAgain);
       return;
     }
     await loadMe();
     setPanel(then);
-    setToast("谢谢！可以继续玩啦。");
+    setToast(T.map.account.thanks);
   };
 
   /** 假装过了一天 / 假装离开两天, then open the page afresh as a new visit would */
@@ -2674,11 +2680,11 @@ export default function MapApp({
     if (!me) return;
     if (what === "drank") {
       setPanel(null);
-      return setToast(rewindDrank(me.id, 7) ? "喝酒时间往前挪了 7 小时，现在醒酒试试。" : "先打开离开计时，再「摄入酒精」。");
+      return setToast(rewindDrank(me.id, 7) ? T.map.demo.drankRewound : T.map.demo.timerFirst);
     }
     if (what === "birthday") {
       const done = await act((w) => w.pretend("perlicaBirthday").then(() => true));
-      if (done) setToast("这一小时里碰她，都按她的生日算。");
+      if (done) setToast(T.map.demo.birthday);
       return;
     }
     const done = await act((w) => w.pretend(what === "days" ? "perlicaDays" : "perlicaWeek").then(() => true));
@@ -2699,9 +2705,9 @@ export default function MapApp({
     const done = await act((w) => w.setPerlicaTimer(on).then(() => true));
     if (!done) return;
     await loadMe();
-    if (on) setToast("佩丽卡监督开始记了。下次你离开满 10 分钟再回来，她会告诉你离开了多久。");
+    if (on) setToast(T.map.guides.perlicaOn);
     else {
-      setToast(`${PERLICA_NAME}：「${PERLICA_LINES.declined}」`);
+      setToast(fmt(T.map.guides.saysQuoted, { name: PERLICA_NAME, line: PERLICA_LINES.declined }));
       say(PERLICA_ID, PERLICA_LINES.declined);
     }
   };
@@ -2715,8 +2721,8 @@ export default function MapApp({
   };
 
   const reset = async () => {
-    if (!window.confirm("清空所有测试数据（触须、宣言、触须之交、挪窝记录），测试玩家回到原位？真实玩家和他们的蟑螂会留着。")) return;
-    await act((w) => w.reset(), "测试数据清空了。");
+    if (!window.confirm(T.map.demo.resetAsk)) return;
+    await act((w) => w.reset(), T.map.demo.reset);
     setPanel(null);
     setSelected(null);
     setPlacing(null);
@@ -3144,15 +3150,15 @@ export default function MapApp({
     const m = await loadMe();
     void loadInbox().catch(() => {});
     setFocus({ lng: FIRE_AT.lng, lat: FIRE_AT.lat, zoom: FIRE_ZOOM, nonce: Date.now() });
-    setToast("你的克隆体在火边坐下了。");
+    setToast(T.map.fire.seated);
     await welcomeAtFire(before, m, true);
   };
 
   /** 派一只克隆体去烤火 */
   const sendToFire = async () => {
-    if (!me) return setPanel({ kind: "login", reason: "登录后就能过来烤火。" });
+    if (!me) return setPanel({ kind: "login", reason: T.map.fire.signIn });
     if (me.roaches.filter((r) => r.slot > 0).length < MAX_CLONES) return seatAtFire({ kind: "clone" });
-    if (me.movesLeft <= 0) return setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+    if (me.movesLeft <= 0) return setToast(fmt(T.map.place.movesUsedUp, { n: MOVES_PER_DAY }));
     setSelected(null);
     setPanel({ kind: "fireMove" });
   };
@@ -3261,14 +3267,14 @@ export default function MapApp({
     await Promise.all([loadMe(), loadInbox()]);
     setFocus({ lng: mingheAt.lng, lat: mingheAt.lat, zoom: MINGHE_ZOOM, nonce: Date.now() });
     say(MINGHE_ID, rideLine(res.item.stop ?? stopOf(day)));
-    setToast("你的克隆体跟上了明河，7 站以后回来。");
+    setToast(T.map.minghe.riding);
   };
 
   /** 派一只克隆体跟他走 */
   const sendRider = () => {
-    if (!me) return setPanel({ kind: "login", reason: "登录后就能跟他走。" });
+    if (!me) return setPanel({ kind: "login", reason: T.map.minghe.signIn });
     if (me.roaches.filter((r) => r.slot > 0).length < MAX_CLONES) return rideWith({ kind: "clone" });
-    if (me.movesLeft <= 0) return setToast(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+    if (me.movesLeft <= 0) return setToast(fmt(T.map.place.movesUsedUp, { n: MOVES_PER_DAY }));
     setSelected(null);
     setPanel({ kind: "mingheMove" });
   };
@@ -3284,7 +3290,7 @@ export default function MapApp({
     await Promise.all([loadMe(), loadInbox()]);
     const stop = res.item.stop ?? stopOf(day);
     say(MINGHE_ID, dismountLine(stop));
-    setToast(`你的克隆体在${stationOf(stop).name}下了马。`);
+    setToast(fmt(T.map.minghe.off, { station: stationOf(stop).name }));
   };
 
   /** From the column of guides: to one of them, with their card open */
@@ -3306,10 +3312,10 @@ export default function MapApp({
     id !== PERLICA_ID || perlicaShown
       ? null
       : !me
-        ? "登录并放下蟑螂本体以后，她会住到你附近。"
+        ? T.map.guides.awaySignIn
         : !main
-          ? "放下蟑螂本体以后，她会住到你附近。"
-          : "做完新手教程以后，她会住到你附近。";
+          ? T.map.guides.awayPlace
+          : T.map.guides.awayTutorial;
 
   /** To him, with his card open */
   const showMinghe = () => {
@@ -3428,9 +3434,9 @@ export default function MapApp({
   };
   /** A visitor reaches for her: she says so, then the sign-in */
   const siSignIn = () => {
-    if (waitingMe) return setToast("正在读取你的账号，稍等一下。");
+    if (waitingMe) return setToast(T.map.common.readingAccount);
     say(SI_ID, SI_LINES.visitor);
-    window.setTimeout(() => setPanel({ kind: "login", reason: "登录后就能碰她。" }), 1200);
+    window.setTimeout(() => setPanel({ kind: "login", reason: T.map.si.signIn }), 1200);
   };
   /**
    * 看看我在哪: her card makes way and the map flies to your ink roach, close enough to tell it from the others,
@@ -3446,7 +3452,7 @@ export default function MapApp({
     say(SI_ID, SI_LINES.find);
     const [x, y] = toXY(at);
     const [sx, sy] = toXY(SI_AT);
-    if (Math.abs(x - sx) > 25 || Math.abs(y - sy) > 50) setToast(`${SI_NAME}：${SI_LINES.find}`);
+    if (Math.abs(x - sx) > 25 || Math.abs(y - sy) > 50) setToast(fmt(T.map.guides.says, { name: SI_NAME, line: SI_LINES.find }));
   };
 
   /** 祀掌柜's tools in development: her clock on, pretend crowds and visitors, clear the inn or yourself; then a fresh visit */
@@ -3468,7 +3474,7 @@ export default function MapApp({
       const item = m?.amiya.greeting;
       if (!item) return;
       const { panel: open, placing: busy } = busyRef.current;
-      if (open || busy) setToast("阿米娅向导跟你打了个招呼，点「消息」看看。");
+      if (open || busy) setToast(T.map.inbox.amiyaHello);
       else setPanel({ kind: "amiyaGreeting", item });
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -3480,7 +3486,7 @@ export default function MapApp({
     const done = await act((w) => w.wearBadge(badge).then(() => true));
     if (!done) return;
     await loadMe();
-    if (!quiet) setToast(badge ? "戴上了，别人在你的资料卡上会看到它。" : "取下了。");
+    if (!quiet) setToast(badge ? T.map.badge.worn : T.map.badge.off);
   };
 
   const guides: GuideMark[] = [
@@ -3654,10 +3660,10 @@ export default function MapApp({
     onFailed: cn
       ? () => {
           if (overseas) {
-            setToast("高德底图没加载出来，先换成我们自己的底图。");
+            setToast(T.map.style.amapFailedOwn);
             setAmapFailed(true);
           } else {
-            setToast("高德底图没加载出来，先换成 OSM 底图。");
+            setToast(T.map.style.amapFailedOsm);
             setBasemap("osm");
           }
         }
@@ -3683,7 +3689,7 @@ export default function MapApp({
       return (
         <HomeScreenSheet
           signedIn={Boolean(me)}
-          onSignIn={() => setPanel({ kind: "login", reason: "登录以后才能拿登录码。" })}
+          onSignIn={() => setPanel({ kind: "login", reason: T.map.account.signInDeskCode })}
           onClose={() => setPanel(null)}
         />
       );
@@ -3701,7 +3707,7 @@ export default function MapApp({
     if (p.kind === "guestRadar") {
       return (
         <GuestRadarSheet
-          onSignIn={() => setPanel({ kind: "login", reason: "登录后就能看完整的方舟雷达。" })}
+          onSignIn={() => setPanel({ kind: "login", reason: T.map.account.signInRadar })}
           onClose={() => setPanel(null)}
         />
       );
@@ -3834,7 +3840,7 @@ export default function MapApp({
             clones={me.roaches.filter((r) => r.slot > 0)}
             movesLeft={me.movesLeft}
             to={FIRE_AT}
-            from="离火"
+            from={T.map.fire.from}
             onPick={(r) => seatAtFire({ kind: "move", roachId: r.id })}
             onClose={() => setPanel(null)}
           />
@@ -3861,7 +3867,7 @@ export default function MapApp({
             clones={me.roaches.filter((r) => r.slot > 0)}
             movesLeft={me.movesLeft}
             to={mingheAt}
-            from="离他"
+            from={T.map.minghe.from}
             onPick={(r) => rideWith({ kind: "move", roachId: r.id })}
             onClose={() => setPanel(null)}
           />
@@ -3959,7 +3965,7 @@ export default function MapApp({
               return asks.length ? (
                 <section className="help-box">
                   <div className="help-head static">
-                    <span>TA 在求助</span>
+                    <span>{T.map.friends.asking}</span>
                   </div>
                   {asks.map((r) => (
                     <TheirHelp key={r.id} item={r} who={false} busy={friendBusy} onAnswer={answerHelp} onCopyUid={copyUid} />
@@ -4005,7 +4011,7 @@ export default function MapApp({
             clones={clones}
             movesLeft={me.movesLeft}
             to={p.roach}
-            from="离 TA"
+            from={T.map.visit.fromThem}
             onPick={(r) => visitFriend(friend.id, p.roach, r.id)}
             onClose={() => setPanel(null)}
           />
@@ -4082,8 +4088,8 @@ export default function MapApp({
     <>
       {me?.admin && (me.admin.open > 0 || me.admin.appeals > 0) && (
         <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
-          {[me.admin.open > 0 && `${me.admin.open} 条举报`, me.admin.appeals > 0 && `${me.admin.appeals} 条申诉`].filter(Boolean).join("、")}待处理
-          {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
+          {[me.admin.open > 0 && fmt(T.map.admin.reports, { n: me.admin.open }), me.admin.appeals > 0 && fmt(T.map.admin.appeals, { n: me.admin.appeals })].filter(Boolean).join(T.map.admin.and)}{T.map.admin.toHandle}
+          {me.admin.urgent > 0 && fmt(T.map.admin.urgent, { n: me.admin.urgent })}
         </a>
       )}
       {!reported && (
@@ -4094,12 +4100,12 @@ export default function MapApp({
             setReported({ start: null });
           }}
         >
-          看被举报的蟑螂
+          {T.map.admin.showReported}
         </button>
       )}
       {adminShut && (
         <a className="admin-pill urgent" href="/admin">
-          先去管理台输验证码
+          {T.map.admin.unlock}
         </a>
       )}
     </>
@@ -4118,32 +4124,32 @@ export default function MapApp({
           <MapStylePicker
             style={shownStyle}
             onPick={switchMapStyle}
-            unavailable={guest ? GUEST_STYLES : !HEARTS_READY ? { hearts: "很快就有" } : heartsOff ? { hearts: "这台设备画不了爱心" } : {}}
+            unavailable={guest ? GUEST_STYLES : !HEARTS_READY ? { hearts: T.map.style.heartsSoon } : heartsOff ? { hearts: T.map.style.noHearts } : {}}
             hint={styleHintNow}
             onHintDone={styleHintDone}
             onRaise={setTopRaised}
           />
           {/* 写实 is off for now (src/lib/look.ts) */}
           {REAL_LOOK_OFFERED && (
-            <div className="basemap-switch" role="group" aria-label="蟑螂外观">
+            <div className="basemap-switch" role="group" aria-label={T.map.style.look}>
               <button className={look === "cartoon" ? "on" : ""} onClick={() => switchLook("cartoon")}>
-                卡通
+                {T.map.style.cartoon}
               </button>
               <button className={look === "real" ? "on" : ""} onClick={() => switchLook("real")}>
-                写实
+                {T.map.style.real}
               </button>
             </div>
           )}
           {/* mainland China has Amap only */}
           {!cn && (
-            <div className="basemap-switch" role="group" aria-label="底图">
+            <div className="basemap-switch" role="group" aria-label={T.map.style.basemap}>
               <button
                 className={basemap === "amap" ? "on" : ""}
                 onClick={() => switchBasemap("amap")}
                 disabled={!amapConfigured}
-                title={amapConfigured ? "国内底图" : "没有配置高德 Key"}
+                title={amapConfigured ? T.map.style.amapTitle : T.map.style.noAmapKey}
               >
-                高德
+                {T.map.style.amap}
               </button>
               <button className={basemap === "osm" ? "on" : ""} onClick={() => switchBasemap("osm")}>
                 OSM
@@ -4156,8 +4162,8 @@ export default function MapApp({
       {!placing && (
         <div className="hud">
           {identities.length > 0 && (
-            <button className="who" onClick={() => setPanel({ kind: "identity" })} title="切换测试身份">
-              👤 {current?.label ?? "我"}
+            <button className="who" onClick={() => setPanel({ kind: "identity" })} title={T.map.demo.identity}>
+              👤 {current?.label ?? T.map.demo.me}
               {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
             </button>
           )}
@@ -4166,35 +4172,35 @@ export default function MapApp({
             {visible === null ? (
               T.map.loading
             ) : !feedIn ? (
-              "舟P们正在赶来…"
+              T.map.count.arriving
             ) : guest ? (
               <>
-                {fmtParts("全球 {count}舟P", { count: countText(total) })}
-                <span className="muted"> · 登录后就能看到 TA 们</span>
-                {players !== undefined && <span className="l2">{fmtParts("不算克隆体 {players}", { players: countText(players, "位") })}</span>}
+                {fmtParts(T.map.count.world, { count: countText(total) })}
+                <span className="muted">{T.map.count.signInToSee}</span>
+                {players !== undefined && <span className="l2">{fmtParts(T.map.count.withoutClones, { players: countText(players, "位") })}</span>}
               </>
             ) : drawnStyle === "hidden" ? (
               players !== undefined ? (
                 <>
-                  {fmtParts("全员隐匿中 · 全球 {count}舟P", { count: countText(total) })}
-                  <span className="l2">{fmtParts("不算克隆体 {players}", { players: countText(players, "位") })}</span>
+                  {fmtParts(T.map.count.hiddenWorld, { count: countText(total) })}
+                  <span className="l2">{fmtParts(T.map.count.withoutClones, { players: countText(players, "位") })}</span>
                 </>
               ) : (
                 <>
-                  全员隐匿中<span className="muted">{fmtParts(" · 全球 {count}舟P", { count: countText(total) })}</span>
+                  {T.map.count.hidden}<span className="muted">{fmtParts(T.map.count.andWorld, { count: countText(total) })}</span>
                 </>
               )
             ) : players !== undefined ? (
               <>
-                {fmtParts("这片地图里有 {n} 只舟P", { n: visible.toLocaleString() })}
+                {fmtParts(T.map.count.here, { n: visible.toLocaleString() })}
                 <span className="l2">
-                  {fmtParts("全球 {total} 只 · 不算克隆体 {players} 位", { total: total.toLocaleString(), players: players.toLocaleString() })}
+                  {fmtParts(T.map.count.worldAndPlayers, { total: total.toLocaleString(), players: players.toLocaleString() })}
                 </span>
               </>
             ) : (
               <>
-                {fmtParts("这片地图里有 {n} 只舟P", { n: visible.toLocaleString() })}
-                <span className="muted">{fmtParts(" · 全球 {total} 只", { total: total.toLocaleString() })}</span>
+                {fmtParts(T.map.count.here, { n: visible.toLocaleString() })}
+                <span className="muted">{fmtParts(T.map.count.andWorldTotal, { total: total.toLocaleString() })}</span>
               </>
             )}
           </div>
@@ -4229,7 +4235,7 @@ export default function MapApp({
         />
       )}
       {!placing && !reported && (
-        <button className="hot-btn" aria-label="本周舟P热榜" onClick={() => setPanel({ kind: "hot" })}>
+        <button className="hot-btn" aria-label={T.map.bar.hot} onClick={() => setPanel({ kind: "hot" })}>
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
             <path
               d="M12 2.5c.8 3.2 4.6 5.4 4.6 10a4.6 4.6 0 0 1-9.2 0c0-2.3 1.1-3.8 2.4-5 .1 1.9.9 3 2 3.4-.7-2.9-.6-5.5.2-8.4Z"
@@ -4237,7 +4243,7 @@ export default function MapApp({
             />
             <path d="M12 21.6a2.6 2.6 0 0 1-2.6-2.6c0-1.6 1.3-2.4 2.1-3.6.4 1.2 1.6 1.8 2.3 2.6.5.6.8 1.1.8 1.8a2.6 2.6 0 0 1-2.6 2.6Z" fill="#ff8a3d" />
           </svg>
-          <small>热榜</small>
+          <small>{T.map.bar.hotShort}</small>
         </button>
       )}
       {/* not while placing or in the tutorial, like the guides; not from the desktop icon or once installed here */}
@@ -4263,7 +4269,7 @@ export default function MapApp({
               {...mapProps}
               style={overseas.style}
               cover={overseas.cover}
-              slowNote="地图加载很慢，稍等一下。"
+              slowNote={T.map.style.slow}
               active={abroad}
               jump={overseasJump}
               onViewChange={abroad ? onOverseasView : ignoreView}
@@ -4272,7 +4278,7 @@ export default function MapApp({
           </div>
         )}
         {basemap === "amap" && amapFailed && overseas && (
-          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote="地图加载很慢，稍等一下。" />
+          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} />
         )}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
         {poking && (
@@ -4388,12 +4394,12 @@ export default function MapApp({
           waiting={waitingMe}
           onSignIn={() =>
             waitingMe
-              ? setToast("正在读取你的账号，稍等一下。")
+              ? setToast(T.map.common.readingAccount)
               : setPanel({
                   kind: "login",
                   reason: selected.roach.guide
-                    ? `登录后就能碰${guideById(selected.roach.id)?.pronoun ?? "她"}。`
-                    : "登录后就能伸出触须碰 TA。",
+                    ? fmt(T.map.touch.signInGuide, { them: guideById(selected.roach.id)?.pronoun ?? T.map.touch.her })
+                    : T.map.touch.signIn,
                 })
           }
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
@@ -4502,7 +4508,7 @@ export default function MapApp({
       {!placing && !selected && !panel && !me && preview && (
         <PreviewCard
           around={around}
-          onPlace={() => setPanel({ kind: "login", reason: "登录后就能把蟑螂放在这里。" })}
+          onPlace={() => setPanel({ kind: "login", reason: T.map.place.signInHere })}
           onClose={() => setPreview(null)}
         />
       )}
@@ -4535,16 +4541,16 @@ export default function MapApp({
 
       {!placing && visitorShown && (
         <footer className="actions">
-          <button className="primary" onClick={() => setPanel({ kind: "login", reason: "登录后就能放下你的蟑螂。" })}>
-            放下我的蟑螂
+          <button className="primary" onClick={() => setPanel({ kind: "login", reason: T.map.place.signInToPlace })}>
+            {T.map.bar.placeMine}
           </button>
-          <button onClick={() => setPanel({ kind: "login" })}>登录</button>
+          <button onClick={() => setPanel({ kind: "login" })}>{T.map.bar.signIn}</button>
         </footer>
       )}
       {!placing && waitingMe && (
         <footer className="actions">
           <button className="waiting" disabled={!meFailed} onClick={() => window.location.reload()}>
-            {meFailed ? "连不上服务器，点这里重试" : "正在读取你的蟑螂…"}
+            {meFailed ? T.map.bar.retry : T.map.bar.loadingMine}
           </button>
         </footer>
       )}
@@ -4552,19 +4558,19 @@ export default function MapApp({
         <footer className={`actions${selected ? "" : " beside-dock"}`}>
           {main ? (
             <>
-              <button onClick={() => setPanel({ kind: "mine" })}>我的蟑螂</button>
+              <button onClick={() => setPanel({ kind: "mine" })}>{T.map.bar.mine}</button>
               {/* on one line, or on two where the narrowest phones have no room for it (globals.css) */}
               <button className="primary announce" onClick={() => setPanel({ kind: "declare" })}>
-                <span className="one-line">我宣布个事儿</span>
+                <span className="one-line">{T.map.bar.announce}</span>
                 <span className="two-lines">
-                  <span>我宣布</span>
-                  <span>个事儿</span>
+                  <span>{T.map.bar.announceTop}</span>
+                  <span>{T.map.bar.announceBottom}</span>
                 </span>
               </button>
             </>
           ) : (
             <button className="primary" onClick={() => startPlacing({ kind: "main" })}>
-              放下我的蟑螂
+              {T.map.bar.placeMine}
             </button>
           )}
         </footer>
@@ -4577,9 +4583,9 @@ export default function MapApp({
             <span ref={dockAvRef} className={`dock-av ${dockAnim ?? ""}`}>
               <RoachIcon color={me.profile.color} size={38} avatar={me.profile.avatar} />
             </span>
-            <span className="dock-name">{me.profile.anonymous || !me.profile.name.trim() ? "匿名" : displayName(me.profile)}</span>
+            <span className="dock-name">{me.profile.anonymous || !me.profile.name.trim() ? T.map.common.anonymous : displayName(me.profile)}</span>
           </button>
-          <button ref={dockMailRef} className="dock-mail" aria-label={unseen ? `消息，${unseen} 条未读` : "消息"} onClick={() => openInbox(false)}>
+          <button ref={dockMailRef} className="dock-mail" aria-label={unseen ? fmt(T.map.bar.messagesUnread, { n: unseen }) : T.map.bar.messages} onClick={() => openInbox(false)}>
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
               <rect x="3" y="5.5" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
               <path d="M4 7.5 12 13l8-5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
@@ -4588,9 +4594,9 @@ export default function MapApp({
           </button>
           <button className="dock-friends" onClick={() => void openFriends()}>
             <FriendsMark size={28} />
-            <span className="dock-name">触须之交</span>
+            <span className="dock-name">{T.map.bar.friends}</span>
             {/* 求助: someone asks, or answered yours; a quiet dot, never a red count */}
-            {me && me.help.asks + me.help.answers > 0 && <span className="help-dot" aria-label="触须之交那里有求助" />}
+            {me && me.help.asks + me.help.answers > 0 && <span className="help-dot" aria-label={T.map.bar.friendsHelp} />}
           </button>
         </div>
       )}
@@ -4646,10 +4652,10 @@ export default function MapApp({
       )}
       {liteHint && (
         <div className="lite-hint" role="status">
-          <p>地图有点卡，已经换成「轻量」画风：挤在一起的小强合成一只，会顺很多。</p>
+          <p>{T.map.style.switchedToLite}</p>
           <div className="row">
             <button className="go" onClick={() => setLiteHint(false)}>
-              好的
+              {T.map.style.liteOk}
             </button>
             {liteFrom && liteFrom !== "lite" && (
               <button
@@ -4659,7 +4665,7 @@ export default function MapApp({
                   switchMapStyle(liteFrom);
                 }}
               >
-                {fmtParts("换回「{style}」", { style: MAP_STYLE_NAMES[liteFrom] })}
+                {fmtParts(T.map.style.backTo, { style: MAP_STYLE_NAMES[liteFrom] })}
               </button>
             )}
           </div>

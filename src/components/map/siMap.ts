@@ -1,4 +1,5 @@
 import type { GeoJSONSource, LayerSpecification, Map as MaplibreMap, SourceSpecification } from "maplibre-gl";
+import { T } from "@/i18n";
 import { SI_AT } from "@/lib/si";
 import { homeDots } from "@/lib/siHomes";
 import { INN_CENTER, innDrawing, queueLine } from "@/lib/siInn";
@@ -343,8 +344,8 @@ async function addScrollImages(map: MaplibreMap, tier: SiMapData["tier"]) {
 /** MapLibre: 缘缘庄's sources and layers, under whatever is added after them (the roaches) */
 export function addMaplibreSi(map: MaplibreMap, si: SiMapData | undefined) {
   if (!map.hasImage("si-tree")) putImage(map, "si-tree", treeCanvas(INK_PX * 2));
-  if (!map.hasImage("si-sign-full")) putImage(map, "si-sign-full", signCanvas("客满", INK_PX * 1.5, true));
-  if (!map.hasImage("si-sign")) putImage(map, "si-sign", signCanvas("缘缘庄", INK_PX * 1.5));
+  if (!map.hasImage("si-sign-full")) putImage(map, "si-sign-full", signCanvas(T.map.si.full, INK_PX * 1.5, true));
+  if (!map.hasImage("si-sign")) putImage(map, "si-sign", signCanvas(T.map.si.inn, INK_PX * 1.5));
   for (const f of [0, 1] as const) if (!map.hasImage(`si-fly-${f}`)) putImage(map, `si-fly-${f}`, butterflyCanvas(f, BUTTERFLY_PX * 2));
   for (const [id, source] of Object.entries(siSources(si))) map.addSource(id, source);
   for (const layer of siLayers(Boolean(si?.inn?.full))) map.addLayer(layer);

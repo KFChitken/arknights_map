@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { AMapNS } from "@/lib/amap";
 import { toGcj } from "@/lib/coords";
 import { SI_AT, type PaintingTier } from "@/lib/si";
@@ -156,8 +157,8 @@ function atlas() {
     c.width = c.height = CELL * GRID;
     const put = (cell: number, pic: HTMLCanvasElement | null, bottom: boolean) => putCell(c, cell, pic, bottom);
     put(C_TREE, treeCanvas(CELL), true);
-    put(C_SIGN, signCanvas("缘缘庄", CELL / 2), true);
-    put(C_SIGN_FULL, signCanvas("客满", CELL / 2, true), true);
+    put(C_SIGN, signCanvas(T.map.si.inn, CELL / 2), true);
+    put(C_SIGN_FULL, signCanvas(T.map.si.full, CELL / 2, true), true);
     put(C_ROLLED, await rolledCanvas(CELL).catch(() => null), false);
     const tiers = await Promise.all(([0, 1, 2, 3, 4] as const).map((t) => scrollCanvas(t, CELL).catch(() => null)));
     tiers.forEach((pic, t) => put(C_SCROLL + t, pic, false));

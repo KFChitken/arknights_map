@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import type { MassPoint } from "./massPoints";
 import { pileWork, type PileAnswer, type PileAsk } from "./pileWork";
 
@@ -30,7 +31,7 @@ export const PILE_MAX_PX = 64;
 /** A pile's count sits right of and above its middle, by these fractions of its size (y down) */
 export const BADGE_AT: [number, number] = [0.34, -0.36];
 /** A pile's count: as it is up to 9999, then in 万 to one place (1.3万) */
-export const countBadgeText = (n: number) => (n < 10_000 ? String(n) : `${Math.round(n / 1000) / 10}万`);
+export const countBadgeText = (n: number) => (n < 10_000 ? String(n) : fmt(T.map.view.tenThousands, { count: Math.round(n / 1000) / 10 }));
 
 const BADGE_FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
 

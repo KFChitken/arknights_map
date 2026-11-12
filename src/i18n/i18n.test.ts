@@ -189,38 +189,55 @@ const MOVED: string[] = [
   "src/lib/server/si.ts",
   "src/lib/server/talulah.ts",
   "src/lib/world/server.ts",
+  // B2: the map page
+  "src/components/MapApp.tsx",
+  "src/components/map/",
 ];
+
+/** The Chinese code decides by, where it must: what it compares, looks for or names a property with */
+const DECIDED_BY = new Set([
+  // 高德's own error message: its words, not ours
+  "src/components/map/report.ts KEY异常",
+  // a reply's blanks, and the title (a code, as stored) that barks 喵～ instead
+  "src/lib/declarations.ts {角色}",
+  "src/lib/declarations.ts {游戏}",
+  "src/lib/declarations.ts {名字}",
+  "src/lib/declarations.ts {称呼}",
+  "src/lib/declarations.ts {汪汪}",
+  "src/lib/declarations.ts 猫",
+  // characters' names (codes, as stored) with the nicknames players search them by
+  "src/lib/operators.ts 祀",
+  "src/lib/operators.ts 塔露拉",
+  // 「1.04 吨的思念」: no space after 吨 (moves with 佩丽卡监督's words)
+  "src/lib/perlica.ts 吨 ",
+]);
+
+/** Chinese that stays in a file whose words have moved, as a code another function takes, not words */
+const CODES = new Set([
+  // the measure word countText (src/lib/counts.ts) counts players with
+  "src/components/MapApp.tsx 位",
+]);
 
 describe("the code", () => {
   it("writes no Chinese of its own where the words have been moved (they go into src/i18n/zh.ts)", () => {
-    const left = scanTree(ROOT).filter((h) => !h.kept && MOVED.some((m) => (m.endsWith("/") ? h.file.startsWith(m) : h.file === m)));
+    const left = scanTree(ROOT).filter(
+      (h) =>
+        !h.kept &&
+        MOVED.some((m) => (m.endsWith("/") ? h.file.startsWith(m) : h.file === m)) &&
+        !(h.logic && DECIDED_BY.has(`${h.file} ${h.text}`)) &&
+        !CODES.has(`${h.file} ${h.text}`),
+    );
     expect(left.map((h) => `${h.file}:${h.line} ${h.text}`)).toEqual([]);
   });
 
   it("decides nothing by Chinese words but the places that must", () => {
-    const known = new Set([
-      // 高德's own error message: its words, not ours
-      "src/components/map/report.ts KEY异常",
-      // a reply's blanks, and the title (a code, as stored) that barks 喵～ instead
-      "src/lib/declarations.ts {角色}",
-      "src/lib/declarations.ts {游戏}",
-      "src/lib/declarations.ts {名字}",
-      "src/lib/declarations.ts {称呼}",
-      "src/lib/declarations.ts {汪汪}",
-      "src/lib/declarations.ts 猫",
-      // characters' names (codes, as stored) with the nicknames players search them by
-      "src/lib/operators.ts 祀",
-      "src/lib/operators.ts 塔露拉",
-      // 「1.04 吨的思念」: no space after 吨 (moves with 佩丽卡监督's words)
-      "src/lib/perlica.ts 吨 ",
-    ]);
     // what people type, whatever the page's language: full-width dashes in a 登录码, 。 for a dot and contact
     // details in a name, the Chinese punctuation that ends a bare address in a 公告
     const typed = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts", "src/lib/noticeText.ts"]);
     const found = scanTree(ROOT)
       .filter((h) => !h.kept && h.logic && !(h.kind === "regex" && typed.has(h.file)))
       .map((h) => `${h.file} ${h.text}`);
-    expect(found.filter((f) => !known.has(f))).toEqual([]);
+    expect(found.filter((f) => !DECIDED_BY.has(f))).toEqual([]);
   });
 
   it("never reads T at the top of a module, which a server shares between languages", () => {

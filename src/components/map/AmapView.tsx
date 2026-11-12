@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { T } from "@/i18n";
 import type { GuideId } from "@/lib/guides";
 import { loadAMap, type AMapNS } from "@/lib/amap";
 import { fromGcj, toGcj } from "@/lib/coords";
@@ -262,7 +263,7 @@ async function mineIcon(
 ) {
   const lying = asleep && r.slot === 0 && !ghost;
   const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look, asleep: lying });
-  const label = ghost ? "放在这里" : r.slot > 0 ? "我的克隆体" : "我的蟑螂";
+  const label = ghost ? T.map.view.placeHere : r.slot > 0 ? T.map.view.myClone : T.map.view.myRoach;
   const img = `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer;display:block${ghost ? ";opacity:.55" : ""}"/>`;
   // 舟u本色: your own roaches have hearts too (globals.css .mine-hearts), but not one lying drunk, nor the preview
   if (hearts === "off" || ghost || lying) return img;
@@ -518,7 +519,7 @@ export default function AmapView(props: MapViewProps) {
       if (gaveUp || cancelled || (madeAt && Date.now() - madeAt > REFUSED_WITHIN_MS)) return;
       gaveUp = true;
       if (propsRef.current.onFailed) propsRef.current.onFailed();
-      else propsRef.current.onError?.("高德底图加载失败，请检查 Key 和安全密钥，或切换到 OSM 底图。");
+      else propsRef.current.onError?.(T.map.view.amapFailed);
     });
     let slowTimer = 0;
     const overlayMarkers = overlaysRef.current;
@@ -935,7 +936,7 @@ export default function AmapView(props: MapViewProps) {
         console.error(e);
         reportMapTrouble("amap", "load", e instanceof Error ? e.name : typeof e === "string" ? e : "");
         if (propsRef.current.onFailed) propsRef.current.onFailed();
-        else propsRef.current.onError?.("高德底图加载失败，请检查 Key 和安全密钥，或切换到 OSM 底图。");
+        else propsRef.current.onError?.(T.map.view.amapFailed);
       });
 
     return () => {
