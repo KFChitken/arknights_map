@@ -10,8 +10,10 @@
  * template's ${…} and a dictionary's {name} both count as a blank, in order.
  * Every word in zh.ts must also have been in the code at <base>, or be a whole
  * sentence put together from pieces that were (scripts/i18n/joins.json), so
- * nothing new is said. It checks only what was said, not how the code says it:
- * the tests and the screenshots (screens.mjs) check the rest.
+ * nothing new is said. A piece cut by hand into several words is listed in
+ * scripts/i18n/splits.json with the test that shows it still comes out the same.
+ * It checks only what was said, not how the code says it: the tests and the
+ * screenshots (screens.mjs) check the rest.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -85,6 +87,16 @@ const isWords = (h: Hit) => !h.kept && h.kind !== "regex" && h.kind !== "name";
  */
 type Join = { key: string; file: string; pieces: string[] };
 
+/**
+ * A piece of text at base cut by hand into words that are read one by one (the login email's HTML,
+ * whose words the plain text shares): each word must be in it, the file must read or say every one,
+ * and a test (proof) checks that what they make is still the same, character for character.
+ */
+type Split = { file: string; text: string; words: string[]; proof: string };
+
+/** Whether a word is part of a longer text, blanks of any name matching blanks */
+const within = (word: string, text: string) => text.replace(/\{[^{}]+\}/g, "{}").includes(word.replace(/\{[^{}]+\}/g, "{}"));
+
 export type Report = {
   base: string;
   /** Pieces of text at base, and where each is now */
@@ -99,6 +111,8 @@ export type Report = {
   dangling: { file: string; key: string }[];
   /** Base pieces found moved into another file's reads (allowed, listed) */
   elsewhere: { file: string; line: number; text: string; now: string }[];
+  /** Base pieces cut into several words, by splits.json (allowed, listed with the test that checks them) */
+  split: { file: string; line: number; text: string; proof: string }[];
 };
 
 function filesAt(base: string, root: string) {
@@ -115,8 +129,10 @@ export async function verify(root: string, base: string): Promise<Report> {
   const { zh } = (await import(pathToFileURL(join(root, "src/i18n/zh.ts")).href)) as { zh: Value };
   const joinsPath = join(root, "scripts/i18n/joins.json");
   const joins: Join[] = existsSync(joinsPath) ? JSON.parse(readFileSync(joinsPath, "utf8")) : [];
+  const splitsPath = join(root, "scripts/i18n/splits.json");
+  const splits: Split[] = existsSync(splitsPath) ? JSON.parse(readFileSync(splitsPath, "utf8")) : [];
 
-  const report: Report = { base, pieces: before.length, unchanged: 0, moved: 0, lost: [], added: [], dangling: [], elsewhere: [] };
+  const report: Report = { base, pieces: before.length, unchanged: 0, moved: 0, lost: [], added: [], dangling: [], elsewhere: [], split: [] };
 
   // what each file still says itself, and what it reads from zh.ts, as counts of normalized text
   const bag = () => new Map<string, number>();
@@ -145,11 +161,28 @@ export async function verify(root: string, base: string): Promise<Report> {
   // a joined sentence stands for its pieces, in the file they came from
   for (const j of joins) for (const p of j.pieces) put(reads.get(j.file) ?? reads.set(j.file, bag()).get(j.file)!, normalize(p), 1000);
 
+  // what each file says or reads now, however many base pieces have been matched to it
+  const sayNow = new Set(now.map((h) => `${h.file}\0${normalize(h.text)}`));
+  const has = (file: string, word: string) => sayNow.has(`${file}\0${normalize(word)}`) || (reads.get(file)?.get(normalize(word)) ?? 0) > 0;
+  const splitOf = (h: Hit) =>
+    splits.find(
+      (s) =>
+        s.file === h.file &&
+        normalize(s.text) === normalize(h.text) &&
+        s.words.length > 1 &&
+        s.words.every((w) => within(w, h.text) && has(h.file, w)) &&
+        existsSync(join(root, s.proof)),
+    );
+  const cut = new Set<string>();
   for (const h of before) {
     const text = normalize(h.text);
+    const split = splitOf(h);
     if (take(own.get(h.file) ?? bag(), text)) report.unchanged++;
     else if ((reads.get(h.file)?.get(text) ?? 0) > 0) report.moved++;
-    else {
+    else if (split) {
+      report.split.push({ file: h.file, line: h.line, text: h.text, proof: split.proof });
+      for (const w of split.words) cut.add(normalize(w));
+    } else {
       const other = [...reads].find(([, m]) => (m.get(text) ?? 0) > 0)?.[0];
       if (other) {
         report.moved++;
@@ -159,7 +192,7 @@ export async function verify(root: string, base: string): Promise<Report> {
   }
 
   // nothing new: every word in zh.ts was in the code at base, or is a sentence joined from pieces that were
-  const said = new Set(before.map((h) => normalize(h.text)));
+  const said = new Set([...before.map((h) => normalize(h.text)), ...cut]);
   const joined = new Map(joins.map((j) => [j.key, j]));
   const walk = (v: Value, path: string[]) => {
     if (typeof v === "string") {
@@ -185,8 +218,13 @@ async function main(argv: string[]) {
   const reportAt = argv.indexOf("--report");
   const report = await verify(process.cwd(), base);
   if (reportAt >= 0) writeFileSync(argv[reportAt + 1], JSON.stringify(report, null, 1));
-  console.log(`Against ${base}: ${report.pieces} pieces of text; ${report.unchanged} still in the code as they were, ${report.moved} in zh.ts word for word.`);
+  console.log(
+    `Against ${base}: ${report.pieces} pieces of text; ${report.unchanged} still in the code as they were, ${report.moved} in zh.ts word for word` +
+      (report.split.length ? `, ${report.split.length} cut into words (below).` : "."),
+  );
   if (report.elsewhere.length) console.log(`${report.elsewhere.length} read from another file now (allowed):\n  ${report.elsewhere.map((e) => `${e.file}:${e.line} → ${e.now}  ${e.text}`).join("\n  ")}`);
+  if (report.split.length)
+    console.log(`${report.split.length} cut into several words (allowed, checked by a test):\n  ${report.split.map((e) => `${e.file}:${e.line} (${e.proof})  ${e.text.replace(/\n/g, "⏎")}`).join("\n  ")}`);
   const bad = report.lost.length + report.added.length + report.dangling.length;
   for (const l of report.lost) console.log(`LOST    ${l.file}:${l.line}  ${l.text}`);
   for (const a of report.added) console.log(`NEW     zh.${a.key}  ${a.text}`);

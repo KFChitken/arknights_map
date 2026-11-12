@@ -1,7 +1,8 @@
 /**
  * Finds every piece of text in the code that holds Chinese (or other CJK)
  * characters: string literals, template literals and JSX text. Comments are
- * never seen, as the TypeScript parser drops them; import paths are skipped.
+ * never seen, as the TypeScript parser drops them; import paths are skipped,
+ * and what console.log and sql`…` say is kept as it is.
  *
  *   node scripts/i18n/scan.mts                 totals and the files with the most text
  *   node scripts/i18n/scan.mts --all           every file
@@ -49,13 +50,15 @@ export const CJK = /[⺀-⿿　-〿぀-ヿ㄀-ㇿ㐀-䶿一-鿿가-힯豈-﫿︰
 
 /**
  * Files whose text stays Chinese: the admin page, the site's own checks and
- * alert emails, and the tests. Paths from the repository root; a folder ends in /.
+ * alert emails, the test players of a development copy (DEMO), and the tests.
+ * Paths from the repository root; a folder ends in /.
  */
 export const KEPT: [prefix: string, why: string][] = [
   ["src/app/admin/", "admin"],
   ["src/app/api/admin/", "admin"],
   ["src/components/AdminApp.tsx", "admin"],
   ["src/lib/server/admin.ts", "admin"],
+  ["src/lib/server/demo.ts", "demo"],
   ["src/lib/server/watch.ts", "watch"],
   ["src/lib/server/watchReport.ts", "watch"],
   ["src/lib/server/watchSignals.ts", "watch"],
@@ -86,6 +89,13 @@ export function jsxTextValue(raw: string) {
   });
   return kept.join(" ");
 }
+
+/** What React shows for HTML entities in JSX text and attributes: &amp; is & */
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+export const jsxEntities = (s: string) =>
+  s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) =>
+    e[0] === "#" ? String.fromCodePoint(/^#x/i.test(e) ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e] ?? m),
+  );
 
 const SEARCHES = new Set(["includes", "startsWith", "endsWith", "indexOf", "lastIndexOf", "replace", "replaceAll", "split", "match", "matchAll", "search"]);
 const COMPARISONS = new Set([
@@ -124,6 +134,9 @@ function inConsoleCall(node: ts.Node): boolean {
   return false;
 }
 
+/** sql`…` (drizzle): the database's words, its comments among them, not the player's */
+const inSql = (node: ts.Node) => ts.isTaggedTemplateExpression(node.parent) && ts.isIdentifier(node.parent.tag) && node.parent.tag.text === "sql";
+
 function isModuleSpecifier(node: ts.Node) {
   const p = node.parent;
   return (
@@ -138,7 +151,7 @@ export function scanSource(file: string, source: string): Hit[] {
   const add = (node: ts.Node, kind: HitKind, text: string, args: string[] = []) => {
     const start = node.getStart(sf);
     const { line, character } = sf.getLineAndCharacterOfPosition(start);
-    const kept = fileKept ?? (inConsoleCall(node) ? "console" : null);
+    const kept = fileKept ?? (inConsoleCall(node) ? "console" : inSql(node) ? "sql" : null);
     const logic = kind === "regex" || kind === "name" || decidesBy(node);
     hits.push({ file, line: line + 1, col: character + 1, kind, text, args, start, end: node.getEnd(), kept, logic });
   };
@@ -148,7 +161,7 @@ export function scanSource(file: string, source: string): Hit[] {
       if (ts.isLiteralTypeNode(node.parent)) return;
       if (hasCjk(node.text) && !isModuleSpecifier(node)) {
         const kind = ts.isJsxAttribute(node.parent) ? "jsx-attr" : ts.isStringLiteral(node) ? "string" : "template";
-        add(node, kind, node.text);
+        add(node, kind, kind === "jsx-attr" ? jsxEntities(node.text) : node.text);
       }
       return;
     }
@@ -164,7 +177,7 @@ export function scanSource(file: string, source: string): Hit[] {
       return;
     }
     if (ts.isJsxText(node)) {
-      const value = jsxTextValue(node.text);
+      const value = jsxEntities(jsxTextValue(node.text));
       if (hasCjk(value)) add(node, "jsx-text", value);
       return;
     }

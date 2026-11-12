@@ -1,0 +1,16 @@
+{
+  "about": "A: the first words, on the map (moved by hand before the script)",
+  "files": {
+    "src/components/MapApp.tsx": {
+      "group": "map",
+      "only": "named",
+      "words": {
+        "beta": "内测版",
+        "loading": "地图加载中…",
+        "radar": "方舟雷达",
+        "disclaimer": "非官方同人项目 · 与鹰角网络无关 ·",
+        "contact": "联系与举报"
+      }
+    }
+  }
+}
