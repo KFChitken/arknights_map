@@ -37,6 +37,8 @@ export interface World {
    * the version of the same box held to get only what changed in it. Not signed in: as roachFeed.
    */
   roachArea(area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed>;
+  /** Exactly how many roaches there are in a view (west, south, east, north), for a map showing the overview */
+  roachesInView(view: Box): Promise<{ n: number } | VisitorFeed | { whole: true }>;
   /** For a visitor who has not signed in: about how many roaches are near a spot (counts.ts rough), counted by the server */
   around(spot: LngLat, signal?: AbortSignal): Promise<{ near: number; far: number }>;
   saveProfile(profile: Profile): Promise<Profile>;

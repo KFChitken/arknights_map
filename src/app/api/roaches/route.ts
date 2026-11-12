@@ -4,8 +4,8 @@ import { clientIp } from "@/lib/server/http";
 import { noticeList } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
 import { note } from "@/lib/server/signals";
-import { compressedArea, roachArea, roachCounts, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
-import { parseBox, type Area } from "@/lib/world/area";
+import { compressedArea, roachArea, roachCounts, roachesInView, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
+import { parseBox, parseView, type Area, type Box } from "@/lib/world/area";
 
 /** The shape of a session token (auth.ts). Made-up cookies gain nothing: the per-address limit counts every request. */
 const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -17,8 +17,10 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * short ids, as pages ask now (src/lib/world/packed.ts); f=2: packed with whole
  * public ids, and nothing: the list, for pages from before each.
  *
- * f=4 (只发看得到的, src/lib/world/area.ts): only an area, &box=west,south,east,north or &o=1 for the
- * overview, what pages ask now; the whole list stays for pages opened before.
+ * f=4 (只发看得到的, src/lib/world/area.ts): only an area, &box=west,south,east,north or the overview,
+ * &o=2 with each roach as its square of the overview (world/packed.ts), as pages ask now (&o=1 as it was, for
+ * pages from before); &n=<view> exactly how many roaches there are in a view, which a page showing the overview
+ * counts by. The whole list stays for pages opened before.
  *
  * Only to someone signed in: a visitor gets how many roaches there are, by the fire and riding with
  * 明河都尉, and how many players they belong to (FeedCounts), and hidden: true, a few hundred bytes (their
@@ -36,10 +38,15 @@ async function answer(req: NextRequest): Promise<Response> {
   const since = req.nextUrl.searchParams.get("since");
   const f = req.nextUrl.searchParams.get("f");
   const form: FeedForm = f === "3" ? 3 : f === "2" ? 2 : 1;
-  let area: Area | "counts" | null = null;
-  if (f === "4") {
+  let area: Area | "counts" | { view: Box } | null = null;
+  const squares = f === "4" && req.nextUrl.searchParams.get("o") === "2";
+  if (f === "4" && req.nextUrl.searchParams.has("n")) {
+    const view = parseView(req.nextUrl.searchParams.get("n"));
+    if (!view) return NextResponse.json({ error: "请求的范围不对。" }, { status: 400 });
+    area = { view };
+  } else if (f === "4") {
     const q = req.nextUrl.searchParams;
-    area = q.get("c") === "1" ? "counts" : q.get("o") === "1" ? "overview" : parseBox(q.get("box"));
+    area = q.get("c") === "1" ? "counts" : q.get("o") === "1" || squares ? "overview" : parseBox(q.get("box"));
     if (!area) return NextResponse.json({ error: "请求的范围不对。" }, { status: 400 });
   }
   try {
@@ -58,7 +65,12 @@ async function answer(req: NextRequest): Promise<Response> {
       const c = await roachCounts();
       return NextResponse.json({ v: c.v, t: [c.total, c.fire, c.riders, c.players] }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
-    if (area) return await areaAnswer(req, sid, area, since);
+    if (area && typeof area === "object" && "view" in area) {
+      if (!allow(`area:count:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:count:ip");
+      if (!allow(`area:count:sid:${sid}`, 120, 60_000)) return BUSY("area:count:sid");
+      return NextResponse.json({ n: await roachesInView(area.view) }, { headers: { "cache-control": "no-store", vary: "cookie" } });
+    }
+    if (area) return await areaAnswer(req, sid, area, since, squares);
     const answer = await roachFeed(since, Date.now(), form);
     const etag = `"${answer.v}${form === 3 ? "s" : form === 2 ? "p" : ""}"`;
     const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie" };
@@ -105,8 +117,8 @@ const BUSY = (limit: string) => {
  * still: a phone network puts thousands of players behind one, and these answers cost no database (a box is
  * made once per version for every page that asks; a page's own limit holds back one that asks too much).
  */
-async function areaAnswer(req: NextRequest, sid: string, area: Area, since: string | null) {
-  const answer = await roachArea(area, since);
+async function areaAnswer(req: NextRequest, sid: string, area: Area, since: string | null, squares: boolean) {
+  const answer = await roachArea(area, since, Date.now(), squares);
   if (answer.kind === "diff") {
     if (!allow(`area:diff:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:diff:ip");
     if (!allow(`area:diff:sid:${sid}`, 20, 60_000)) return BUSY("area:diff:sid");

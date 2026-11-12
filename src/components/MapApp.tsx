@@ -1371,12 +1371,26 @@ export default function MapApp({
   // whoever acts out a scene over the map is left out of it meanwhile
   const offStage = poking?.id ?? jolting?.roach.id ?? touchScene?.target ?? devOffStage ?? undefined;
 
+  /** The exact count asked for, by the view it was asked for: a newer ask makes an older answer moot */
+  const exactRef = useRef<{ timer?: number; asked: string }>({ asked: "" });
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
       // each roach of the overview counts as all those in its square, yours among them
       let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? weightOf(r) : 0), 0);
       if (!overview) for (const r of me?.roaches ?? []) if (inBounds(r, bounds)) n += 1;
       setVisible(n);
+      // The overview's roaches stand at the middle of their squares, each for all in it, so counted by them the
+      // view's edges cut squares in two: once the view settles, the server counts it exactly (every roach, yours too)
+      const e = exactRef.current;
+      window.clearTimeout(e.timer);
+      if (!overview || !worldRef.current) return;
+      const view: [number, number, number, number] = [bounds[0].lng, bounds[0].lat, bounds[1].lng, bounds[1].lat];
+      const asked = view.join(",");
+      e.asked = asked;
+      e.timer = window.setTimeout(async () => {
+        const u = await worldRef.current?.roachesInView(view).catch(() => null);
+        if (u && "n" in u && exactRef.current.asked === asked) setVisible(u.n);
+      }, AREA_SETTLE_MS + 150);
     },
     [roaches, me, overview],
   );

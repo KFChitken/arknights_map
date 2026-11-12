@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { feedIdsOf, nearMetre, packRoaches, sameRoach, shortIds, shortOf, unpackRoaches } from "./packed";
+import { OVERVIEW_CELLS, overviewCell } from "./area";
+import { feedIdsOf, nearMetre, packRoaches, sameRoach, shortIds, shortOf, squareMiddle, unpackRoaches } from "./packed";
 import type { MapRoach } from "./types";
 
 const roach = (id: string, lng: number, lat: number, more: Partial<MapRoach> = {}): MapRoach => ({
@@ -96,5 +97,25 @@ describe("packed roaches", () => {
     expect(packed).toBeLessThan(JSON.stringify(list).length * 0.4);
     const short = JSON.stringify(packRoaches(list.map((r) => ({ ...r, id: r.id.slice(0, 8) })), 4)).length;
     expect(short).toBeLessThan(packed * 0.6);
+  });
+});
+
+describe("the overview's tiles, each roach as its square", () => {
+  it("gives every roach back at the middle of its square, with its id, look and weight, in a tenth of the bytes for places", () => {
+    const list: MapRoach[] = [
+      { id: "aaaa0001", clone: false, avatar: "hood", color: "cyan", lng: 121.4737, lat: 31.2304, n: 5 },
+      { id: "aaaa0002", clone: true, avatar: "doctor", color: "pink", lng: 116.40741, lat: 39.90421 },
+      { id: "aaaa0003", clone: false, avatar: "hood", color: "cyan", lng: -73.98, lat: 40.75, asleep: true },
+      { id: "dddddddd-0000-4000-8000-000000000001", clone: false, avatar: "imp", color: "gold", lng: 139.7, lat: 35.68 },
+    ];
+    const p = packRoaches(list, 4, true);
+    expect(p.x).toEqual([]);
+    const back = unpackRoaches(p);
+    for (const r of list) {
+      const got = back.find((b) => b.id === r.id)!;
+      const cell = overviewCell(r);
+      expect(overviewCell(got)).toBe(cell);
+      expect(got).toEqual({ ...r, ...squareMiddle(cell % OVERVIEW_CELLS, Math.floor(cell / OVERVIEW_CELLS)) });
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { OVERVIEW_CELLS, overviewCell } from "./area";
 import type { MapRoach } from "./types";
 
 /**
@@ -22,6 +23,13 @@ export type PackedRoaches = {
   x: number[];
   /** Latitudes in hundred-thousandths of a degree */
   y: number[];
+  /**
+   * Instead of x and y, for the overview's tiles: each roach at the middle of its square of the overview
+   * (world/area.ts overviewCell), the squares' columns and rows each as the step from the roach before,
+   * the roaches in rows from the north, west to east
+   */
+  sx?: number[];
+  sy?: number[];
   /** Look number × 8, plus 1 for a clone, 2 for asleep, 4 for riding with 明河都尉 */
   k: number[];
   /** In the overview (world/area.ts): how many roaches each stands for, itself included; left out when all are 1 */
@@ -63,12 +71,22 @@ const RIDE = 4;
 /** A place to about a metre (1e-5°), as everyone's copy of the feed holds it */
 export const nearMetre = (deg: number) => Math.round(deg * STEP) / STEP;
 
+/** The middle of a square of the overview (world/area.ts overviewCell), to the metre */
+export function squareMiddle(column: number, row: number): { lng: number; lat: number } {
+  const lng = ((column + 0.5) / OVERVIEW_CELLS) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (row + 0.5)) / OVERVIEW_CELLS))) * 180) / Math.PI;
+  return { lng: nearMetre(lng), lat: nearMetre(lat) };
+}
+
 /**
  * Pack the roaches; their places should already be to the metre (nearMetre), or they come back so.
  * width 4: the short form, for a list whose ids already are short ids (shortIds) where they can be.
+ * squares: each at the middle of its square of the overview instead (one roach a square, as the
+ * overview's tiles have them): a tenth of the bytes for the places, and none of them where it is.
  */
-export function packRoaches(list: MapRoach[], width: 4 | 16 = 16): PackedRoaches {
+export function packRoaches(list: MapRoach[], width: 4 | 16 = 16, squares = false): PackedRoaches {
   const form = width === 4 ? SHORT_ID : UUID;
+  if (squares) return packSquares(list, form, width);
   const packable = list
     .filter((r) => form.test(r.id))
     .map((r) => ({ r, x: Math.round(r.lng * STEP), y: Math.round(r.lat * STEP) }))
@@ -102,6 +120,56 @@ export function packRoaches(list: MapRoach[], width: 4 | 16 = 16): PackedRoaches
   return { looks, ...(width === 4 ? { w: 4 as const } : {}), ids: btoa(bytes), x, y, k, ...(weighed ? { n } : {}), ...(rest.length ? { rest } : {}) };
 }
 
+function packSquares(list: MapRoach[], form: RegExp, width: 4 | 16): PackedRoaches {
+  const at = list.map((r) => {
+    const cell = overviewCell(r);
+    return { r, cx: cell % OVERVIEW_CELLS, cy: Math.floor(cell / OVERVIEW_CELLS) };
+  });
+  const packable = at
+    .filter((a) => form.test(a.r.id))
+    .sort((a, b) => a.cy - b.cy || a.cx - b.cx || (a.r.id < b.r.id ? -1 : a.r.id > b.r.id ? 1 : 0));
+  const looks: PackedRoaches["looks"] = [];
+  const lookNo = new Map<string, number>();
+  const sx: number[] = [];
+  const sy: number[] = [];
+  const k: number[] = [];
+  const n: number[] = [];
+  let bytes = "";
+  let lastX = 0;
+  let lastY = 0;
+  for (const { r, cx, cy } of packable) {
+    n.push(r.n ?? 1);
+    const key = `${r.avatar} ${r.color}`;
+    let no = lookNo.get(key);
+    if (no === undefined) {
+      no = looks.length;
+      lookNo.set(key, no);
+      looks.push([r.avatar, r.color]);
+    }
+    k.push(no * 8 + (r.clone ? CLONE : 0) + (r.asleep ? ASLEEP : 0) + (r.ride ? RIDE : 0));
+    sx.push(cx - lastX);
+    sy.push(cy - lastY);
+    lastX = cx;
+    lastY = cy;
+    const hex = r.id.replace(/-/g, "");
+    for (let i = 0; i < width * 2; i += 2) bytes += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  }
+  const rest = at.filter((a) => !form.test(a.r.id)).map(({ r, cx, cy }) => ({ ...r, ...squareMiddle(cx, cy) }));
+  const weighed = n.some((c) => c !== 1);
+  return {
+    looks,
+    ...(width === 4 ? { w: 4 as const } : {}),
+    ids: btoa(bytes),
+    x: [],
+    y: [],
+    sx,
+    sy,
+    k,
+    ...(weighed ? { n } : {}),
+    ...(rest.length ? { rest } : {}),
+  };
+}
+
 const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
 
 /** The roaches back from a packed snapshot, each just as the feed describes it elsewhere. */
@@ -110,8 +178,18 @@ export function unpackRoaches(p: PackedRoaches): MapRoach[] {
   const w = p.w ?? 16;
   const out: MapRoach[] = [];
   let x = 0;
+  let cx = 0;
+  let cy = 0;
   for (let i = 0; i < p.k.length; i++) {
-    x += p.x[i];
+    let at: { lng: number; lat: number };
+    if (p.sx && p.sy) {
+      cx += p.sx[i];
+      cy += p.sy[i];
+      at = squareMiddle(cx, cy);
+    } else {
+      x += p.x[i];
+      at = { lng: x / STEP, lat: p.y[i] / STEP };
+    }
     let h = "";
     for (let j = i * w; j < i * w + w; j++) h += HEX[bytes.charCodeAt(j)];
     const k = p.k[i];
@@ -121,8 +199,8 @@ export function unpackRoaches(p: PackedRoaches): MapRoach[] {
       clone: Boolean(k & CLONE),
       avatar,
       color,
-      lng: x / STEP,
-      lat: p.y[i] / STEP,
+      lng: at.lng,
+      lat: at.lat,
     };
     if (k & ASLEEP) r.asleep = true;
     if (k & RIDE) r.ride = true;

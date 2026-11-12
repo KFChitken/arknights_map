@@ -930,14 +930,19 @@ function overviewList(s: Snapshot): MapRoach[] {
   return (s.overview = out);
 }
 
-/** The whole answer for an area, made once for every page that asks and kept a while (OVERVIEW_KEPT_MS, BOX_KEPT_MS), at its own version */
-function areaWhole(s: Snapshot, area: Area, now: number): { v: string; key: string; whole: AreaWhole } {
-  const key = area === "overview" ? "o" : boxText(area);
+/**
+ * The whole answer for an area, made once for every page that asks and kept a while (OVERVIEW_KEPT_MS, BOX_KEPT_MS),
+ * at its own version. squares: the overview with each roach as its square (world/packed.ts squares), drawn at the
+ * square's middle, for the pages that ask for it so (o=2): the places take a tenth of the bytes. Pages from before
+ * ask for the overview as it was (o=1).
+ */
+function areaWhole(s: Snapshot, area: Area, now: number, squares = false): { v: string; key: string; whole: AreaWhole } {
+  const key = area === "overview" ? (squares ? "o2" : "o") : boxText(area);
   const kept = s.areas.get(key);
   if (kept && now >= kept.at && now - kept.at < (area === "overview" ? OVERVIEW_KEPT_MS : BOX_KEPT_MS)) return { v: kept.v, key, whole: kept.whole };
   const list = area === "overview" ? overviewList(s) : roachesIn(s, area);
   const where = area === "overview" ? `"overview":true` : `"box":[${key}]`;
-  const whole = { json: `{"v":"${s.v}",${where},"t":${totalsJson(s)},"packed":${JSON.stringify(packRoaches(list, 4))}}` };
+  const whole = { json: `{"v":"${s.v}",${where},"t":${totalsJson(s)},"packed":${JSON.stringify(packRoaches(list, 4, area === "overview" && squares))}}` };
   s.areas.delete(key);
   s.areas.set(key, { v: s.v, at: now, whole });
   if (s.areas.size > AREAS_KEPT) s.areas.delete(s.areas.keys().next().value!);
@@ -955,14 +960,37 @@ export function compressedArea(whole: AreaWhole, how: "br" | "gzip"): Promise<Bu
 }
 
 /**
+ * f=4: exactly how many roaches there are in a view, edges in (shapes.ts inBounds; across the 180° meridian its
+ * west edge is east of its east one), for a page whose map shows the overview: its roaches stand for all those in
+ * their squares, drawn at a square's middle, so counted by them the view's edges cut squares in two. Whole degrees
+ * inside the view count by how many they hold; only those on its edges are gone through.
+ */
+export async function roachesInView(view: Box, now = Date.now()): Promise<number> {
+  const s = await current(now);
+  const parts: Box[] = view[0] <= view[2] ? [view] : [[view[0], view[1], 180, view[3]], [-180, view[1], view[2], view[3]]];
+  let n = 0;
+  for (const b of parts) {
+    for (let lat = Math.floor(b[1]); lat <= Math.floor(b[3]); lat++) {
+      for (let lng = Math.floor(b[0]); lng <= Math.floor(b[2]); lng++) {
+        const bucket = s.buckets.get(bucketKey(lng, lat));
+        if (!bucket) continue;
+        if (lng >= b[0] && lng + 1 <= b[2] && lat >= b[1] && lat + 1 <= b[3]) n += bucket.size;
+        else for (const r of bucket) if (inBox(r, b)) n++;
+      }
+    }
+  }
+  return n;
+}
+
+/**
  * f=4: what a signed-in page needs for the area it shows (world/area.ts). The overview always whole; a
  * box whole, or, to a page holding that box at version `since`, the roaches changed in it since (with
  * the ids of any changed or gone elsewhere, which it drops if it holds them). As for roachFeed, a
  * version unknown here gets the whole box, spread out just after a start.
  */
-export async function roachArea(area: Area, since: string | null, now = Date.now()): Promise<AreaAnswer> {
+export async function roachArea(area: Area, since: string | null, now = Date.now(), squares = false): Promise<AreaAnswer> {
   const s = await current(now);
-  const full = (): AreaAnswer => ({ kind: "full", ...areaWhole(s, area, now) });
+  const full = (): AreaAnswer => ({ kind: "full", ...areaWhole(s, area, now, squares) });
   if (area === "overview" || since === null || !VERSION.test(since)) return full();
   const [epoch, nText] = since.split(".");
   const from = Number(nText);

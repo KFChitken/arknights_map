@@ -5,8 +5,8 @@ import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PROFILE } from "../profile";
-import { overviewCell, type Area } from "../world/area";
-import { unpackRoaches } from "../world/packed";
+import { OVERVIEW_CELLS, overviewCell, type Area, type Box } from "../world/area";
+import { squareMiddle, unpackRoaches } from "../world/packed";
 import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
 import {
@@ -17,6 +17,7 @@ import {
   roachArea,
   roachByFeedId,
   roachCounts,
+  roachesInView,
   roachFeed,
   roachFeedSettled,
   statePieces,
@@ -647,5 +648,63 @@ describe("an area's whole answer, kept a while (f=4)", () => {
     const later = await askArea("overview", null, T0 + 30 * MINUTE);
     expect(later.v).not.toBe(overview.v);
     expect(later.body.packed && unpackRoaches(later.body.packed).find((r) => r.id === "a1000000")).toMatchObject({ lng: 121.6 });
+  });
+});
+
+describe("the overview with each roach as its square (f=4&o=2)", () => {
+  const overview = async (squares: boolean, now: number) => {
+    const a = await roachArea("overview", null, now, squares);
+    return { ...a, body: JSON.parse((a as { whole: { json: string } }).whole.json) as AreaUpdate };
+  };
+
+  it("has the overview's roaches at the middle of their squares, in fewer bytes, kept as the overview is", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    const at = [SHANGHAI, TOKYO, BEIJING, { lng: 121.4701, lat: 31.2301 }, { lng: -73.99, lat: 40.73 }];
+    for (const [i, p] of at.entries()) await roachWithId(i < 3 ? a : b, i % 3, `ab${i}00000-0000-4000-8000-00000000000${i}`, p);
+    const exact = await overview(false, T0);
+    const squared = await overview(true, T0);
+    expect(squared.body.overview).toBe(true);
+    expect(squared.body.t).toEqual(exact.body.t);
+    const middle = (r: MapRoach) => {
+      const cell = overviewCell(r);
+      return { ...r, ...squareMiddle(cell % OVERVIEW_CELLS, Math.floor(cell / OVERVIEW_CELLS)) };
+    };
+    const byId = (rs: MapRoach[]) => [...rs].sort((p, q) => (p.id < q.id ? -1 : 1));
+    expect(byId(unpackRoaches(squared.body.packed!))).toEqual(byId(unpackRoaches(exact.body.packed!).map(middle)));
+    // Shanghai's two in one square: one roach standing for both
+    expect(unpackRoaches(squared.body.packed!).find((r) => r.n === 2)).toBeDefined();
+    // kept, as the overview is: the same answer a moment later, a new one half an hour on
+    await db.execute(sql`update roaches set lng = 121.6 where user_id = ${a} and slot = 0`);
+    await roachFeed(null, T0 + 4000, 3);
+    await roachFeedSettled();
+    const again = await overview(true, T0 + 4000);
+    expect(again.kind === "full" && squared.kind === "full" && again.whole === squared.whole).toBe(true);
+    const later = await overview(true, T0 + 30 * MINUTE);
+    expect(later.v).not.toBe(squared.v);
+  });
+
+  it("counts a view exactly, its edges in, whole degrees by how many they hold, across the 180° meridian too", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    const at = [
+      { lng: 121.47, lat: 31.23 },
+      { lng: 121, lat: 31 },
+      { lng: 122.5, lat: 31.5 },
+      { lng: 120.99, lat: 31.2 },
+      { lng: 179.9, lat: -16.5 },
+      { lng: -179.9, lat: -16.4 },
+    ];
+    for (const [i, p] of at.entries()) await roachWithId(i < 3 ? a : b, i % 3, `f${i}000000-0000-4000-8000-00000000000${i}`, p);
+    const inView = (v: Box) => at.filter((p) => p.lat >= v[1] && p.lat <= v[3] && (v[0] <= v[2] ? p.lng >= v[0] && p.lng <= v[2] : p.lng >= v[0] || p.lng <= v[2])).length;
+    for (const view of [
+      [121, 31, 122.5, 32],
+      [120.995, 30.5, 121.471, 31.5],
+      [100, 0, 140, 50],
+      [121.47, 31.23, 121.47001, 31.23001],
+      [179.5, -17, -179.5, -16],
+    ] as Box[]) {
+      expect(await roachesInView(view, T0), view.join(",")).toBe(inView(view));
+    }
   });
 });

@@ -7,7 +7,7 @@ import { heardNoticeStamp } from "../notices";
 import type { Profile } from "../profile";
 import type { ReportReason, RoachReportReason } from "../safety";
 import type { LngLat } from "../types";
-import { boxText, type Area } from "./area";
+import { boxText, type Area, type Box } from "./area";
 import {
   AgeCheckNeeded,
   ConsentNeeded,
@@ -90,7 +90,8 @@ export class ServerWorld implements World {
   // f=4: an area only (world/area.ts); a whole one by ETag, so the same one again costs a 304
   // "counts": how many there are only (t), for 全员隐匿, which draws nobody's roaches
   roachArea = async (area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed> => {
-    const where = area === "counts" ? "c=1" : area === "overview" ? "o=1" : `box=${boxText(area)}`;
+    // the overview with each roach as its square (o=2: a fraction of the bytes, drawn at the square's middle)
+    const where = area === "counts" ? "c=1" : area === "overview" ? "o=2" : `box=${boxText(area)}`;
     const url = `/api/roaches?f=4&${where}${since ? `&since=${encodeURIComponent(since)}` : ""}`;
     const ask = async (cache: RequestCache) => {
       try {
@@ -107,6 +108,15 @@ export class ServerWorld implements World {
     if (!since && (res.status === 304 || (res.ok && !body))) ({ res, body } = await ask("reload"));
     if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    return body;
+  };
+  // Exactly how many roaches there are in a view, for a map showing the overview (its roaches stand at the middle
+  // of their squares, each for all in it, so counted by them the view's edges cut squares in two)
+  roachesInView = async (view: Box): Promise<{ n: number } | VisitorFeed | { whole: true }> => {
+    const res = await fetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}`, { cache: "no-store" });
+    heardNoticeStamp(res.headers.get("x-notices"));
+    const body = (await res.json().catch(() => null)) as ({ n: number } | VisitorFeed | { whole: true }) | null;
+    if (!res.ok || !body) throw new WorldError("服务器出了点问题，稍后再试试。");
     return body;
   };
   // the spot to two places of a degree: the server counts no finer, so nothing finer is sent

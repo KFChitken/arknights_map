@@ -162,3 +162,27 @@ describe("only an area (f=4)", () => {
     }
   });
 });
+
+describe("the overview as squares, and a view counted exactly (f=4)", () => {
+  const ask = (query: string, cookie?: string, headers: Record<string, string> = {}) =>
+    GET(new NextRequest(`http://localhost/api/roaches?${query}`, { headers: { ...headers, ...(cookie ? { cookie } : {}) } }));
+
+  it("gives the overview with each roach as its square by ETag, the old form still, and counts a view", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+    const cookie = `sid=${await signIn(a)}`;
+    const res = await ask("f=4&o=2", cookie, { "accept-encoding": "br" });
+    expect(res.headers.get("content-encoding")).toBe("br");
+    expect((await ask("f=4&o=2", cookie, { "if-none-match": res.headers.get("etag")! })).status).toBe(304);
+    const squared = await (await ask("f=4&o=2", cookie)).json();
+    expect(squared.packed.sx).toHaveLength(2);
+    const old = await (await ask("f=4&o=1", cookie)).json();
+    expect(old.packed.sx).toBeUndefined();
+    expect(unpackRoaches(old.packed)).toHaveLength(2);
+    expect(await (await ask("f=4&n=120.5,30.5,122.5,32", cookie)).json()).toEqual({ n: 1 });
+    expect(await (await ask("f=4&n=100,20,150,40", cookie)).json()).toEqual({ n: 2 });
+    expect(await (await ask("f=4&n=100,20,150,40")).json()).toMatchObject({ hidden: true });
+    for (const q of ["f=4&n=1,2,3", "f=4&n=120,40,121,30", "f=4&n=120,30,190,32"]) expect((await ask(q, cookie)).status, q).toBe(400);
+  });
+});

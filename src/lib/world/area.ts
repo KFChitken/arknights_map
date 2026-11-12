@@ -83,5 +83,13 @@ export function overviewCell(p: LngLat): number {
   return y * OVERVIEW_CELLS + x;
 }
 
+/** A view as a page sends it to be counted: west, south, east, north to 7 places, a centimetre (west may be east of east, across 180°) */
+export function parseView(text: string | null): Box | null {
+  const parts = (text ?? "").split(",");
+  if (parts.length !== 4 || parts.some((p) => !/^-?\d{1,3}(\.\d{1,7})?$/.test(p))) return null;
+  const b = parts.map(Number) as Box;
+  return b[0] >= -180 && b[0] <= 180 && b[2] >= -180 && b[2] <= 180 && b[1] >= -90 && b[3] <= 90 && b[3] > b[1] && b[0] !== b[2] ? b : null;
+}
+
 /** How many roaches a roach of the feed stands for: in the overview, all those in its square */
 export const weightOf = (r: { n?: number }) => r.n ?? 1;
