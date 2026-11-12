@@ -14,7 +14,7 @@ import { deleteAccount } from "./account";
 import { db } from "./db";
 import * as friendly from "./friendly";
 import * as help from "./help";
-import { declarations, friendNotes, friendships, helpRequests, moves, roaches, touches, users, visits } from "./schema";
+import { declarations, friendCuts, friendNotes, friendships, helpRequests, moves, roaches, touches, users, visits } from "./schema";
 import * as safety from "./safety";
 import * as world from "./world";
 
@@ -80,9 +80,15 @@ async function befriend(a: Player, b: Player) {
   await b.touch((await mainOf(a)).publicId, true);
 }
 
-/** 触须之交 again a day later, after they stopped being so */
+/**
+ * 触须之交 again a day later, after they stopped being so: the touches and the moment they stopped both go a
+ * day back. Only touches after that moment count, and the two come from different clocks (this process's for
+ * the moment, the database's for the touches), which can be some milliseconds apart where the database runs
+ * in a VM; a day back, the new touches come after it whichever clock is ahead.
+ */
 async function befriendAgain(a: Player, b: Player) {
   await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
+  await db.update(friendCuts).set({ cutAt: sql`${friendCuts.cutAt} - interval '25 hours'` });
   await befriend(a, b);
 }
 
