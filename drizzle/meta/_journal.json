@@ -281,13 +281,6 @@
       "when": 1794406237212,
       "tag": "0039_mail_sends_index",
       "breakpoints": true
-    },
-    {
-      "idx": 40,
-      "version": "7",
-      "when": 1794432926014,
-      "tag": "0040_roach_changes",
-      "breakpoints": true
     }
   ]
 }

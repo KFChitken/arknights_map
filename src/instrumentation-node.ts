@@ -12,7 +12,6 @@ import { pruneSignInMail } from "./lib/server/loginCodes";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { pruneOldActivity } from "./lib/server/retention";
-import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { sendReportDigest } from "./lib/server/safety";
 import { note } from "./lib/server/signals";
 import { recordDailyTotals } from "./lib/server/totals";
@@ -76,11 +75,6 @@ if (!helper) {
   const prune = () => pruneOldActivity().catch(failed("prune", "Pruning old activity failed"));
   prune();
   setInterval(prune, DAY_MS);
-
-  // the roach change log (src/lib/server/roachFeed.ts) only needs its last few hours
-  const pruneChanges = () => pruneRoachChanges().catch(failed("prune", "Pruning the roach change log failed"));
-  pruneChanges();
-  setInterval(pruneChanges, 10 * MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
   const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));

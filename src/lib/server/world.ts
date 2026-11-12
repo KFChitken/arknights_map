@@ -117,7 +117,6 @@ import { db } from "./db";
 import { demoEnabled, secret } from "./env";
 import { isUniqueViolation, type Exec } from "./guides";
 import { helpCounts } from "./help";
-import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { seeStaff, staffItems } from "./staffNotes";
@@ -1459,21 +1458,61 @@ export async function radar(userId: string): Promise<Radar | null> {
 }
 
 /**
- * Count what is around your main roach, from the radar's squares (radarBlocks.ts): what each square holds is
- * read from the database at most every few minutes for everyone scanning near it, and counted here round
- * the main roach's exact place, the scanner's own roaches and moves left out.
+ * Count what is around your main roach. Every query goes through a spatial
+ * index and reads only rows near it, so a scan costs the same however big the
+ * map gets.
  */
 async function scanRadar(userId: string, main: RoachRow, now: number): Promise<RadarScan> {
-  const center = { lng: main.lng, lat: main.lat };
-  const raw = await radarRaw(center, userId, now);
+  const center = sql`ST_SetSRID(ST_MakePoint(${main.lng}, ${main.lat}), 4326)::geography`;
+  // a hair wider than the circle; buildRadar decides exactly who is inside
+  const reach = RADAR_RADIUS_KM * 1010;
+  const within = (geog: AnyColumn) => sql`ST_DWithin(${geog}, ${center}, ${reach})`;
+  const near = await db
+    .select({ owner: roaches.userId, slot: roaches.slot, lng: roaches.lng, lat: roaches.lat })
+    .from(roaches)
+    .where(and(ne(roaches.userId, userId), within(roaches.geog)));
+  // a move matters only if it starts or ends inside the circle
+  const moveRows = await db
+    .select({
+      userId: moves.userId,
+      slot: moves.slot,
+      fromLng: moves.fromLng,
+      fromLat: moves.fromLat,
+      toLng: moves.toLng,
+      toLat: moves.toLat,
+      at: moves.at,
+    })
+    .from(moves)
+    .where(and(ne(moves.userId, userId), gt(moves.at, ago(7 * DAY)), or(within(moves.fromGeog), within(moves.toGeog))));
+  const recentMoves: Move[] = moveRows.map((m) => ({
+    owner: m.userId,
+    slot: m.slot,
+    from: m.fromLng === null || m.fromLat === null ? null : { lng: m.fromLng, lat: m.fromLat },
+    to: m.toLng === null || m.toLat === null ? null : { lng: m.toLng, lat: m.toLat },
+    at: m.at.getTime(),
+  }));
   const demo = demoEnabled ? await demoMoves(now) : [];
+  // players with a roach nearby, for counting their touches and declarations through the per-player indexes
+  const nearPlayers = sql`(select ${roaches.userId} from ${roaches} where ${within(roaches.geog)})`;
+  const touchedPlayers = (
+    await db
+      .select({ to: touches.toUserId })
+      .from(touches)
+      .where(and(gt(touches.createdAt, ago(DAY)), sql`${touches.toUserId} in ${nearPlayers}`))
+  ).map((t) => t.to);
+  const declaringPlayers = (
+    await db
+      .select({ from: declarations.senderId })
+      .from(declarations)
+      .where(and(gt(declarations.createdAt, ago(DAY)), sql`${declarations.senderId} in ${nearPlayers}`))
+  ).map((d) => d.from);
   return buildRadar({
-    center,
+    center: { lng: main.lng, lat: main.lat },
     now,
-    roaches: raw.roaches,
-    moves: [...demo.filter((m) => m.owner !== userId), ...raw.moves],
-    touchedPlayers: raw.touchedPlayers,
-    declaringPlayers: raw.declaringPlayers,
+    roaches: near.map((r) => ({ owner: r.owner, slot: r.slot, at: { lng: r.lng, lat: r.lat } })),
+    moves: [...demo.filter((m) => m.owner !== userId), ...recentMoves],
+    touchedPlayers,
+    declaringPlayers,
     friends: await friendIdsOf(userId),
     demo: demo.length > 0,
   });

@@ -91,7 +91,6 @@ import {
 } from "./schema";
 import { recordDailyTotals } from "./totals";
 import * as world from "./world";
-import { forgetRadarBlocks } from "./radarBlocks";
 
 // Runs against the database named in vitest.config.mts, which is wiped before every test
 
@@ -203,9 +202,8 @@ beforeEach(async () => {
   await db.execute(
     sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}, ${declarationSpots}, ${userPasswords}`,
   );
-  // no 明河快进一天 left over, and nothing the radar read for the test before
+  // no 明河快进一天 left over
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;
-  forgetRadarBlocks();
   forgetNameWords();
   await seedDemo();
   me = await signUp("me@example.com");
@@ -1419,8 +1417,6 @@ describe("server world", () => {
       await world.rideMinghe(other.id, { kind: "clone" });
       await minghe.moveMingheRiders(Date.now() + DAY_MS);
       await rewindScans(me.id);
-      // what the radar read is kept a few minutes: as if they had passed
-      forgetRadarBlocks();
       const after = (await me.radar())!;
       // his rider is there now, but it did not arrive as anyone's move
       expect(after.roaches).toBe(before.roaches + 1);
@@ -3476,8 +3472,6 @@ describe("server world", () => {
     // reopening it within a few minutes shows the same scan without using one up
     expect(await me.radar()).toEqual(before);
     await rewindScans(me.id);
-    // what the radar read is kept a few minutes: as if they had passed
-    forgetRadarBlocks();
     const after = (await me.radar())!;
     expect(after.day.left).toBe(before.day.left + 1);
     expect(after.day.arrived).toBe(before.day.arrived + 1);
@@ -3487,7 +3481,6 @@ describe("server world", () => {
     // your own moves never show up on your radar
     await me.placeRoach({ kind: "clone" }, { lng: 121.5, lat: 31.3 });
     await rewindScans(me.id);
-    forgetRadarBlocks();
     expect((await me.radar())!.day).toEqual(after.day);
   });
 

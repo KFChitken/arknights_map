@@ -330,23 +330,6 @@ export const roaches = pgTable(
   ],
 );
 
-/**
- * Roaches whose place or look on the shared map changed, by public id, in the order they were written:
- * a trigger in the database adds a row as a roach is put down, moved, taken back, gets a new public id,
- * starts or stops riding with 明河都尉, or its owner changes look, colour, or falls asleep or wakes (drunk,
- * or flipped over for staying away). Each web process reads what came since it last looked, every few
- * seconds, and changes only those roaches in its copy of the map (src/lib/server/roachFeed.ts). Kept 3 hours.
- */
-export const roachChanges = pgTable(
-  "roach_changes",
-  {
-    n: bigserial("n", { mode: "number" }).primaryKey(),
-    publicId: uuid("public_id").notNull(),
-    at: createdAt(),
-  },
-  (t) => [index("roach_changes_at_idx").on(t.at)],
-);
-
 export const touches = pgTable(
   "touches",
   {
