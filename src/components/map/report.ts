@@ -2,7 +2,8 @@
  * Tell the server a map could not load on this page (POST /api/health/map), so the site's own
  * checks notice when a map service fails for many visitors, such as 高德 running out of its
  * daily quota. Only which map, what went wrong and the service's own short code; once per kind
- * per page. tencent:search is 腾讯位置服务 turning away the place suggestions' key.
+ * per page. tencent is 腾讯's map (TencentView), but tencent:search 腾讯位置服务 turning away the place
+ * suggestions' key.
  */
 export type MapKind = "amap" | "osm" | "overseas" | "tencent";
 export type MapTrouble = "load" | "key" | "slow" | "style" | "tiles" | "search";

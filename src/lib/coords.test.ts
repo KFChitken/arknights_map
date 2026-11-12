@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromGcj, shifted, toGcj } from "./coords";
+import { fromGcj, fromTencent, shifted, tencentShifted, toGcj, toTencent } from "./coords";
 import { distanceKm } from "./geo";
 
 const metresMoved = (p: { lng: number; lat: number }) => {
@@ -52,6 +52,50 @@ describe("Amap's coordinates", () => {
     for (const p of [PLACES.beijing, PLACES.hongKong, PLACES.xiamen]) {
       const [lng, lat] = toGcj(p);
       expect(distanceKm(p, fromGcj(lng, lat)) * 1000).toBeLessThan(1);
+    }
+  });
+});
+
+describe("Tencent's coordinates", () => {
+  // the county halls of Penghu, Kinmen and Lienchiang (Matsu), and Wuqiu
+  const ISLANDS = [
+    PLACES.taipei,
+    PLACES.kinmen,
+    { lng: 119.5664, lat: 23.5697 },
+    { lng: 118.3187, lat: 24.4369 },
+    { lng: 119.9231, lat: 26.1598 },
+    { lng: 119.4519, lat: 24.9887 },
+  ];
+  // the mainland across the straits from them: Xiamen's island, Dadeng (the new airport), Huangqi, Fuzhou
+  const COAST = [PLACES.xiamen, { lng: 118.335, lat: 24.556 }, { lng: 119.893, lat: 26.331 }, { lng: 119.2965, lat: 26.0745 }];
+
+  it("shifts mainland China, Hong Kong and Macau as Amap does", () => {
+    for (const p of [PLACES.beijing, PLACES.hongKong, PLACES.macau, PLACES.dandong, PLACES.heihe, ...COAST]) {
+      expect(tencentShifted(p)).toBe(true);
+      expect(toTencent(p)).toEqual(toGcj(p));
+    }
+  });
+
+  it("leaves Taiwan and its islands where they are, unlike Amap", () => {
+    for (const p of ISLANDS) {
+      expect(shifted(p)).toBe(true);
+      expect(tencentShifted(p)).toBe(false);
+      expect(toTencent(p)).toEqual([p.lng, p.lat]);
+      expect(fromTencent(p.lng, p.lat)).toEqual(p);
+    }
+  });
+
+  it("leaves every other country where it is", () => {
+    for (const p of [PLACES.seoul, PLACES.osaka, PLACES.sinuiju, PLACES.hanoi, PLACES.tokyo, PLACES.newYork]) {
+      expect(tencentShifted(p)).toBe(false);
+      expect(toTencent(p)).toEqual([p.lng, p.lat]);
+    }
+  });
+
+  it("comes back to within a metre of where it started", () => {
+    for (const p of [PLACES.beijing, PLACES.hongKong, PLACES.xiamen, ...ISLANDS]) {
+      const [lng, lat] = toTencent(p);
+      expect(distanceKm(p, fromTencent(lng, lat)) * 1000).toBeLessThan(1);
     }
   });
 });

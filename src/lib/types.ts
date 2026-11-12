@@ -11,6 +11,12 @@ export type MapView = LngLat & { zoom: number };
 
 export type Basemap = "amap" | "osm";
 
+/**
+ * What visitors from mainland China see in China (abroad, our own map): 高德's map, 腾讯's when 高德's cannot
+ * be used, or our own when neither can
+ */
+export type MainlandMap = "amap" | "tencent" | "own";
+
 /** cartoon: the chibi hood roach; real: a drawn top-down cockroach. */
 export type RoachStyle = "cartoon" | "real";
 

@@ -8,6 +8,7 @@ import { fmt, fmtParts, T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
+import { tencentConfigured } from "@/lib/tencentMap";
 import type { EarnedBadge } from "@/lib/badges";
 import { alonePopping, markBadgesPopped, poppedBadges, poppedKey, poppedStorageKey } from "@/lib/badgesPopped";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
@@ -78,7 +79,7 @@ import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
-import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
+import type { Basemap, LngLat, MainlandMap, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
 import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
 import { HOUR, reachText } from "@/lib/world/logic";
@@ -253,6 +254,7 @@ import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
 const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
+const TencentView = dynamic(() => import("./map/TencentView"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -446,17 +448,18 @@ export default function MapApp({
   const countsInRef = useRef(false);
   const [fakeFeed, setFakeFeed] = useState(false);
   const [basemap, setBasemap] = useState<Basemap | null>(null);
-  // Visitors from mainland China: Amap wherever China is in view, our own map abroad (src/lib/chinaView.ts).
-  // Both maps stay made once made, and only the one on show is used; Amap is made when first needed.
+  // Visitors from mainland China: the home map wherever China is in view, our own map abroad (src/lib/chinaView.ts).
+  // Both maps stay made once made, and only the one on show is used; the home map is made when first needed.
+  // The home map is 高德's; 腾讯's when 高德's cannot load; our own, the whole way, when neither can.
   const chinaRef = useRef<typeof import("@/lib/chinaView") | null>(null);
   const [overseas, setOverseas] = useState<{ style: StyleSpecification; cover: GeoJSON.FeatureCollection } | null>(null);
   const [abroad, setAbroad] = useState(false);
-  const [amapMade, setAmapMade] = useState(true);
+  const [homeMap, setHomeMap] = useState<MainlandMap>("amap");
+  const [homeMade, setHomeMade] = useState(true);
   const [overseasMade, setOverseasMade] = useState(false);
-  const [amapFailed, setAmapFailed] = useState(false);
-  const [amapJump, setAmapJump] = useState<MapFocus | null>(null);
+  const [homeJump, setHomeJump] = useState<MapFocus | null>(null);
   const [overseasJump, setOverseasJump] = useState<MapFocus | null>(null);
-  const amapReady = useRef(false);
+  const homeReady = useRef(false);
   const overseasReady = useRef(false);
   // a change waiting for the other map to finish drawing itself
   const wanted = useRef<"abroad" | "home" | null>(null);
@@ -1021,12 +1024,12 @@ export default function MapApp({
         const [{ overseasStyle }, china] = kit;
         chinaRef.current = china;
         setOverseas({ style: overseasStyle(window.location.origin), cover: china.chinaCover() });
-        // a visit that starts abroad opens our own map at once; Amap waits until China comes into view
+        // a visit that starts abroad opens our own map at once; the home map waits until China comes into view
         const v = viewRef.current;
         if (b === "amap" && china.clearOfChina(china.viewAround(v, v.zoom, window.innerWidth, window.innerHeight))) {
           setAbroad(true);
           setOverseasMade(true);
-          setAmapMade(false);
+          setHomeMade(false);
         }
       }
       setLook(loadLook());
@@ -1608,9 +1611,11 @@ export default function MapApp({
   };
   const amiyaNear = useRef(false);
 
-  // ---- visitors from mainland China: changing between Amap and our own map ----
+  // ---- visitors from mainland China: changing between the home map (高德's or 腾讯's) and our own map ----
 
-  const twoMaps = cn && basemap === "amap" && !amapFailed && Boolean(overseas);
+  // a map of China's own (高德's or 腾讯's), with its logo and 审图号 bottom left
+  const homeOn = basemap === "amap" && homeMap !== "own";
+  const twoMaps = cn && homeOn && Boolean(overseas);
   const ignoreView = () => {};
   // the other map jumps to where this one is, without flying, and takes over
   const showAbroad = () => {
@@ -1620,11 +1625,11 @@ export default function MapApp({
   };
   const showHome = () => {
     wanted.current = null;
-    setAmapJump({ ...viewRef.current, nonce: Date.now() });
+    setHomeJump({ ...viewRef.current, nonce: Date.now() });
     setAbroad(false);
   };
-  /** Amap came to rest: once even a wider view would not show China, our own map takes over */
-  const onAmapView = (v: MapView, bounds: [LngLat, LngLat]) => {
+  /** The home map came to rest: once even a wider view would not show China, our own map takes over */
+  const onHomeView = (v: MapView, bounds: [LngLat, LngLat]) => {
     onViewChange(v, bounds);
     if (!chinaRef.current?.clearOfChina(bounds)) {
       wanted.current = null;
@@ -1635,24 +1640,40 @@ export default function MapApp({
     wanted.current = "abroad";
     setOverseasMade(true);
   };
-  /** Our own map came to rest: as soon as China is in view, back to Amap */
+  /** Our own map came to rest: as soon as China is in view, back to the home map */
   const onOverseasView = (v: MapView, bounds: [LngLat, LngLat]) => {
     onViewChange(v, bounds);
     if (!chinaRef.current?.seesChina(bounds)) {
       wanted.current = null;
       return;
     }
-    if (amapReady.current) return showHome();
+    if (homeReady.current) return showHome();
     wanted.current = "home";
-    setAmapMade(true);
+    setHomeMade(true);
   };
-  const onAmapReady = () => {
-    amapReady.current = true;
+  const onHomeReady = () => {
+    homeReady.current = true;
     if (wanted.current === "home") showHome();
   };
   const onOverseasReady = () => {
     overseasReady.current = true;
     if (wanted.current === "abroad") showAbroad();
+  };
+  /** Mainland China: our own map instead, without the cover, if it is there to fall back on */
+  const ownMap = () => {
+    if (overseas) {
+      setToast(T.map.style.amapFailedOwn);
+      setHomeMap("own");
+    } else {
+      setToast(T.map.style.amapFailedOsm);
+      setBasemap("osm");
+    }
+  };
+  /** 高德's map could not load: 腾讯's in its place, made where the view is now, as the home map (the visitor need not hear of it) */
+  const amapFailed = () => {
+    if (!tencentConfigured) return ownMap();
+    homeReady.current = false;
+    setHomeMap("tencent");
   };
 
   const find = (r: OwnRoach) => {
@@ -3658,18 +3679,8 @@ export default function MapApp({
     onMineClick: zoneTool?.kind === "draw" ? ignoreTap : onMineClick,
     onViewChange,
     onError: setToast,
-    // mainland China: our own map instead, without the cover, if it is there to fall back on
-    onFailed: cn
-      ? () => {
-          if (overseas) {
-            setToast(T.map.style.amapFailedOwn);
-            setAmapFailed(true);
-          } else {
-            setToast(T.map.style.amapFailedOsm);
-            setBasemap("osm");
-          }
-        }
-      : undefined,
+    // mainland China: 腾讯's map instead, without a word (TencentView's own onFailed is ownMap)
+    onFailed: cn ? amapFailed : undefined,
   };
 
   const renderPanel = (p: Panel) => {
@@ -4114,7 +4125,7 @@ export default function MapApp({
   );
 
   return (
-    <main className={`app ${basemap === "amap" && !amapFailed && !(twoMaps && abroad) ? "on-amap" : ""}${zoneTool ? " zone-tool" : ""}`}>
+    <main className={`app ${homeOn && !(twoMaps && abroad) ? "on-amap" : ""}${zoneTool ? " zone-tool" : ""}`}>
       <header className={`topbar${topRaised ? " raised" : ""}`}>
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
@@ -4252,15 +4263,28 @@ export default function MapApp({
       {!placing && !reported && !step && deskOffer && <DeskButton hint={deskHint && deskHintNow} onTap={tapDesk} onHintDone={deskHintDone} />}
 
       <div className="map-wrap" ref={wrapRef}>
-        {basemap === "amap" && !amapFailed && amapMade && (
+        {basemap === "amap" && homeMap === "amap" && homeMade && (
           <div className={`map-slot ${twoMaps && abroad ? "map-hidden" : ""}`}>
             <AmapView
               key="amap"
               {...mapProps}
               active={!(twoMaps && abroad)}
-              jump={amapJump}
-              onViewChange={twoMaps ? (abroad ? ignoreView : onAmapView) : onViewChange}
-              onReady={onAmapReady}
+              jump={homeJump}
+              onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
+              onReady={onHomeReady}
+            />
+          </div>
+        )}
+        {basemap === "amap" && homeMap === "tencent" && homeMade && (
+          <div className={`map-slot ${twoMaps && abroad ? "map-hidden" : ""}`}>
+            <TencentView
+              key="tencent"
+              {...mapProps}
+              onFailed={ownMap}
+              active={!(twoMaps && abroad)}
+              jump={homeJump}
+              onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
+              onReady={onHomeReady}
             />
           </div>
         )}
@@ -4279,7 +4303,7 @@ export default function MapApp({
             />
           </div>
         )}
-        {basemap === "amap" && amapFailed && overseas && (
+        {basemap === "amap" && homeMap === "own" && overseas && (
           <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} />
         )}
         {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}

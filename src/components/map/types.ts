@@ -71,6 +71,30 @@ export type MapViewProps = {
   cover?: GeoJSON.FeatureCollection | null;
   /** MapLibre only: what to say when the map is slow to load */
   slowNote?: string;
+  /** MapLibre only: a map under it that draws the land and takes the gestures (BaseMap); MapLibre then draws only what is ours */
+  base?: BaseMap;
+};
+
+/**
+ * A map drawn under MapLibre's (腾讯's, TencentView): it shows the land and takes the taps and gestures, and MapLibre
+ * draws the roaches over it on a see-through map whose view follows it frame by frame. Views as MapLibre has them:
+ * WGS-84 and MapLibre's zoom. Each on…() returns its undo.
+ */
+export type BaseMap = {
+  /** Where it shows now */
+  view(): MapView;
+  /** f as the base map starts drawing a frame, or comes to rest: the time to follow its view */
+  onFrame(f: () => void): () => void;
+  /** A tap (not the end of a drag) at a point of the map, in pixels from its top left corner */
+  onTap(f: (x: number, y: number) => void): () => void;
+  /** The mouse moving over it, for the cursor */
+  onPointer(f: (x: number, y: number) => void): () => void;
+  /** It starts or stops moving: a drag, a zoom, a glide */
+  onMoving(f: (moving: boolean) => void): () => void;
+  /** Glide to a view (ms long), or go there at once */
+  easeTo(v: MapView, ms?: number): void;
+  jumpTo(v: MapView): void;
+  setCursor(cursor: string): void;
 };
 
 /**

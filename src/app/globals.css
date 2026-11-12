@@ -207,6 +207,20 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .map .maplibregl-ctrl-bottom-right { bottom: calc(96px + var(--safe-bottom)); }
 .map .amap-toolbar { bottom: calc(100px + var(--safe-bottom)) !important; }
 
+/*
+ * 腾讯's map (TencentView): its land below, ours see-through over it, and its logo, 审图号 and buttons over both,
+ * by the same rules as 高德's (.on-amap above). Tencent lays them in a box over the whole map: taps go through it
+ * to the map, all but those on its own buttons, and through ours too, all but those on the guides and the like.
+ */
+.tmap { position: relative; isolation: isolate; }
+.tmap-base { position: absolute; inset: 0; }
+.tmap .map-over { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.tmap .map-over:not(.placing) .guide-marker, .tmap .map-over:not(.placing) .map-tap { pointer-events: auto; }
+.tmap-base > div { pointer-events: none; }
+.tmap-base > div > div { pointer-events: auto; }
+.map .tmap-corner-left { margin-bottom: var(--safe-bottom); }
+.map .tmap-corner-right { margin-bottom: calc(86px + var(--safe-bottom)); }
+
 /* ---- profiles, touches, declarations ---- */
 input[type="text"], input[type="search"], select {
   width: 100%; padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px;

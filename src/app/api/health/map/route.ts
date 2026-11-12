@@ -3,7 +3,7 @@ import { readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { note } from "@/lib/server/signals";
 
-const MAPS = new Set(["amap", "osm", "overseas"]);
+const MAPS = new Set(["amap", "tencent", "osm", "overseas"]);
 const TROUBLES = new Set(["load", "key", "slow", "style", "tiles"]);
 /** Besides the maps: 腾讯位置服务 turning away the key of the place suggestions (src/lib/tencent.ts) */
 const SEARCH = "tencent:search";

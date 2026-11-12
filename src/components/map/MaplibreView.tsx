@@ -58,6 +58,8 @@ const BLANK_STYLE: StyleSpecification = {
   sources: {},
   layers: [{ id: "bg", type: "background", paint: { "background-color": "#dde5ea" } }],
 };
+// Over a base map (props.base): nothing but what is ours, on a see-through map
+const OVER_STYLE: StyleSpecification = { version: 8, glyphs: GLYPHS, sources: {}, layers: [] };
 
 const ICON_PX = 96; // bitmap edge; pixelRatio 2 → shown at 48px at icon-size 1
 const ICON_BASE = ICON_PX / 2;
@@ -373,6 +375,8 @@ export default function MaplibreView(props: MapViewProps) {
   // 舟u本色: the hearts' layer, made the first time they are wanted, and the crawl groups' last offsets it follows
   const heartsRef = useRef<HeartsLayer | null>(null);
   const offsetsRef = useRef<[number, number][] | null>(null);
+  // over a base map: whether the pointer is over something to tap, by the last time it moved
+  const overRef = useRef(false);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -463,6 +467,8 @@ export default function MaplibreView(props: MapViewProps) {
           e.stopPropagation();
           tap();
         });
+        // over a base map, this map lets taps through to it, all but those of the guides and these (globals.css)
+        if (propsRef.current.base) o.el.classList.add("map-tap");
       } else o.el.style.pointerEvents = "none";
       shown.set(o.id, new maplibregl.Marker({ element: o.el, anchor: "center" }).setLngLat([o.at.lng, o.at.lat]).addTo(map));
     }
@@ -622,20 +628,39 @@ export default function MaplibreView(props: MapViewProps) {
     const shoutMarkers = shoutsRef.current;
     const overlayMarkers = overlaysRef.current;
     const guideMarkers = guidesRef.current;
+    // Over a base map (腾讯's): it draws the land, takes the gestures and tells of its own trouble; this map
+    // follows its view, takes no gestures of its own and shows no controls or credits, the base map's being there
+    const base = propsRef.current.base ?? null;
+    const undo: (() => void)[] = [];
+    const start = base ? base.view() : initialView;
     const blank = new URLSearchParams(location.search).get("style") === "blank";
     const map = new maplibregl.Map({
       container: el.current!,
-      style: blank ? BLANK_STYLE : (propsRef.current.style ?? (process.env.NEXT_PUBLIC_OSM_STYLE || DEFAULT_STYLE)),
-      center: [initialView.lng, initialView.lat],
-      zoom: initialView.zoom,
-      attributionControl: { compact: true },
+      style: base ? OVER_STYLE : blank ? BLANK_STYLE : (propsRef.current.style ?? (process.env.NEXT_PUBLIC_OSM_STYLE || DEFAULT_STYLE)),
+      center: [start.lng, start.lat],
+      zoom: start.zoom,
+      attributionControl: base ? false : { compact: true },
+      interactive: !base,
       dragRotate: false,
       pitchWithRotate: false,
     });
     map.touchZoomRotate.disableRotation();
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    if (!base) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("style.load", () => hideBorders(map));
     mapRef.current = map;
+
+    // The base map's view, followed as it starts drawing each frame, so both show the same frame together
+    let followed = "";
+    const follow = () => {
+      if (!base) return;
+      const v = base.view();
+      const key = `${v.lng},${v.lat},${v.zoom}`;
+      if (key === followed) return;
+      followed = key;
+      map.jumpTo({ center: [v.lng, v.lat], zoom: v.zoom });
+      map.redraw();
+    };
+    if (base) undo.push(base.onFrame(follow));
 
     syncGuides();
     map.on("zoom", syncGuides);
@@ -644,17 +669,20 @@ export default function MaplibreView(props: MapViewProps) {
 
     // our own overseas map (a style of its own) or OpenStreetMap's, for reports of trouble
     const kind = propsRef.current.style ? "overseas" : "osm";
-    const loadTimer = window.setTimeout(() => {
-      if (readyRef.current) return;
-      reportMapTrouble(kind, "slow");
-      propsRef.current.onError?.(propsRef.current.slowNote ?? T.map.view.overseasSlow);
-    }, 12000);
+    const loadTimer = base
+      ? 0
+      : window.setTimeout(() => {
+          if (readyRef.current) return;
+          reportMapTrouble(kind, "slow");
+          propsRef.current.onError?.(propsRef.current.slowNote ?? T.map.view.overseasSlow);
+        }, 12000);
     // a style that never loads, or tiles failing again and again, is told to the server once
     let tileErrors = 0;
     map.on("error", (e: { error?: { status?: number; message?: string }; sourceId?: string }) => {
       console.error(e.error ?? e);
       // the roaches' data may not have taken the last changes: the next update hands it all of them
       if (e.sourceId === "roaches") featuresRef.current.reset();
+      if (base) return;
       const status = e.error?.status ? String(e.error.status) : "";
       if (!e.sourceId) {
         if (!readyRef.current) reportMapTrouble(kind, "style", status);
@@ -672,7 +700,7 @@ export default function MaplibreView(props: MapViewProps) {
       foldTimer = window.setTimeout(foldCredits, 5000);
       map.once("movestart", foldCredits);
     };
-    map.on("sourcedata", watchCredits);
+    if (!base) map.on("sourcedata", watchCredits);
 
     const reportView = () => {
       const c = map.getCenter();
@@ -825,46 +853,84 @@ export default function MaplibreView(props: MapViewProps) {
       },
     };
 
-    map.on("click", (e) => {
+    const tappable = () => [...CLICKABLE, ...LITE_LAYERS].filter((id) => map.getLayer(id));
+    const tap = (point: [number, number], at: LngLat) => {
       if (!readyRef.current) return;
       const p = propsRef.current;
       if (!p.placing) {
         // the one off stage is still there, see-through: a tap goes to whatever is under it
-        const layers = [...CLICKABLE, ...LITE_LAYERS].filter((id) => map.getLayer(id));
-        const hit = map.queryRenderedFeatures(e.point, { layers }).find((f) => f.layer.id === "mine" || f.properties.id !== p.hiddenId);
+        const hit = map.queryRenderedFeatures(point, { layers: tappable() }).find((f) => f.layer.id === "mine" || f.properties.id !== p.hiddenId);
         if (hit?.layer.id === "mine") return p.onMineClick(hit.properties.id);
         // 轻量: a pile opens up, the map easing in to where it comes apart
         if (hit?.properties.cluster) {
-          const at = (hit.geometry as GeoJSON.Point).coordinates as [number, number];
+          const [lng, lat] = (hit.geometry as GeoJSON.Point).coordinates;
           (map.getSource(LITE_SOURCE) as GeoJSONSource | undefined)
             ?.getClusterExpansionZoom(hit.properties.cluster_id)
-            .then((z) => map.easeTo({ center: at, zoom: Math.max(map.getZoom() + 0.5, z + 0.05), duration: 650 }))
+            .then((z) => {
+              const zoom = Math.max(map.getZoom() + 0.5, z + 0.05);
+              if (base) base.easeTo({ lng, lat, zoom }, 650);
+              else map.easeTo({ center: [lng, lat], zoom, duration: 650 });
+            })
             .catch(() => {});
           return;
         }
         if (hit) return p.onRoachClick(hit.properties.id);
       }
-      p.onMapClick({ lng: e.lngLat.lng, lat: e.lngLat.lat });
-    });
+      p.onMapClick({ lng: at.lng, lat: at.lat });
+    };
 
-    map.on("mouseenter", [...CLICKABLE, ...LITE_LAYERS], () => {
-      if (!propsRef.current.placing) map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", [...CLICKABLE, ...LITE_LAYERS], () => {
-      map.getCanvas().style.cursor = propsRef.current.placing ? "crosshair" : "";
-    });
+    if (base) {
+      // where the base map was tapped, by this map's own view of it (WGS-84, as everything here)
+      undo.push(
+        base.onTap((x, y) => {
+          follow();
+          const at = map.unproject([x, y]);
+          tap([x, y], { lng: at.lng, lat: at.lat });
+        }),
+      );
+      undo.push(
+        base.onPointer((x, y) => {
+          if (!readyRef.current || propsRef.current.placing) return;
+          const over = map.queryRenderedFeatures([x, y], { layers: tappable() }).length > 0;
+          if (over === overRef.current) return;
+          overRef.current = over;
+          base.setCursor(over ? "pointer" : "");
+        }),
+      );
+    } else {
+      map.on("click", (e) => tap([e.point.x, e.point.y], e.lngLat));
+      map.on("mouseenter", [...CLICKABLE, ...LITE_LAYERS], () => {
+        if (!propsRef.current.placing) map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", [...CLICKABLE, ...LITE_LAYERS], () => {
+        map.getCanvas().style.cursor = propsRef.current.placing ? "crosshair" : "";
+      });
+    }
     // 轻量's counts, each drawn the first time the map asks for it
     map.on("styleimagemissing", (e: { id: string }) => {
       if (!e.id.startsWith("count-") || map.hasImage(e.id)) return;
       const img = badgeImage(e.id.slice("count-".length));
       if (img) map.addImage(e.id, img, { pixelRatio: 2 });
     });
-    map.on("moveend", reportView);
     // whether the map feels slow is told by its frames while it moves (src/lib/lag.ts)
-    map.on("movestart", () => propsRef.current.onMoving?.(true));
-    map.on("moveend", () => propsRef.current.onMoving?.(false));
+    if (base) {
+      // this map moves with every frame of the base map's: only the base map says when a move begins and ends
+      undo.push(
+        base.onMoving((moving) => {
+          propsRef.current.onMoving?.(moving);
+          if (moving) return;
+          follow();
+          if (readyRef.current) reportView();
+        }),
+      );
+    } else {
+      map.on("moveend", reportView);
+      map.on("movestart", () => propsRef.current.onMoving?.(true));
+      map.on("moveend", () => propsRef.current.onMoving?.(false));
+    }
 
     return () => {
+      undo.forEach((f) => f());
       cancelAnimationFrame(frame);
       stopFlight();
       crawlRef.current = null;
@@ -935,7 +1001,14 @@ export default function MaplibreView(props: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map) map.getCanvas().style.cursor = props.placing ? "crosshair" : "";
+    if (!map) return;
+    const base = propsRef.current.base;
+    overRef.current = false;
+    if (base) {
+      base.setCursor(props.placing ? "crosshair" : "");
+      // while placing, a tap on a guide too goes through to the base map, as a spot like any other (globals.css)
+      el.current?.classList.toggle("placing", props.placing);
+    } else map.getCanvas().style.cursor = props.placing ? "crosshair" : "";
   }, [props.placing]);
 
   // 地图画风: the dark swarm shown in 国度版 only, and 舟u本色's hearts
@@ -959,15 +1032,21 @@ export default function MaplibreView(props: MapViewProps) {
     else crawlRef.current?.stop();
   }, [crowdMode]);
 
-  // a hidden map leaves the flying to the one on show
+  // a hidden map leaves the flying to the one on show; over a base map, the base map flies and this one follows
   useEffect(() => {
     const f = props.focus;
-    if (f && mapRef.current && propsRef.current.active !== false) mapRef.current.flyTo({ center: [f.lng, f.lat], zoom: f.zoom });
+    if (!f || !mapRef.current || propsRef.current.active === false) return;
+    const base = propsRef.current.base;
+    if (base) base.easeTo(f);
+    else mapRef.current.flyTo({ center: [f.lng, f.lat], zoom: f.zoom });
   }, [props.focus]);
 
   useEffect(() => {
     const j = props.jump;
-    if (j && mapRef.current) mapRef.current.jumpTo({ center: [j.lng, j.lat], zoom: j.zoom });
+    if (!j || !mapRef.current) return;
+    const base = propsRef.current.base;
+    if (base) base.jumpTo(j);
+    else mapRef.current.jumpTo({ center: [j.lng, j.lat], zoom: j.zoom });
   }, [props.jump]);
 
   useEffect(() => {
@@ -975,5 +1054,7 @@ export default function MaplibreView(props: MapViewProps) {
     else crawlRef.current?.start();
   }, [props.active]);
 
+  // over a base map: see-through, the taps going through to the base map below (TencentView)
+  if (props.base) return <div ref={el} className="map-over" />;
   return <div ref={el} className="map" data-basemap="osm" />;
 }

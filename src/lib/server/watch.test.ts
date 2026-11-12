@@ -429,6 +429,15 @@ describe("the site's own checks", () => {
     expect((await incidents())[0].endedAt).not.toBeNull();
   });
 
+  it("tells 腾讯's map turning away its key apart from its place suggestions", async () => {
+    for (let i = 0; i < 3; i++) note("map", "tencent:key:-301", t0 - MINUTE);
+    for (let i = 0; i < 3; i++) note("map", "tencent:search:110", t0 - MINUTE);
+    expect(await look("map", t0)).toMatchObject([
+      { key: "tencent", level: "daily", detail: "30 分钟内有 3 个页面说腾讯位置服务不给打字提示：110（这个网站不在 Key 的域名白名单里） ×3。" },
+      { key: "failing", level: "daily", detail: "30 分钟内有 3 次：腾讯地图·Key 异常（-301） ×3。" },
+    ]);
+  });
+
   it("needs ten of the other kinds of map trouble in half an hour, and keeps them off the digest", async () => {
     for (let i = 0; i < 9; i++) note("map", "amap:slow:", t0 - 20 * MINUTE);
     expect(await look("map", t0)).toEqual([]);
@@ -666,11 +675,16 @@ describe("POST /api/health/map", () => {
     await post({ map: "amap", what: "load", detail: "<script>me@example.com 你好" });
     await post({ map: "elsewhere", what: "key" });
     await post({ map: "osm", what: "explode" });
-    // 腾讯位置服务 only says its suggestions' key was turned away
+    // 腾讯's map, and 腾讯位置服务 turning away the key of the place suggestions; 高德's never says that
     await post({ map: "tencent", what: "search", detail: "121" });
-    await post({ map: "tencent", what: "key", detail: "121" });
+    await post({ map: "tencent", what: "key", detail: "-301" });
     await post({ map: "amap", what: "search", detail: "121" });
-    expect(recent("map", HOUR).map((s) => s.code)).toEqual(["amap:key:USER_DAILY_QUERY_OVER_LIMIT", "amap:load:scriptmeexample.com", "tencent:search:121"]);
+    expect(recent("map", HOUR).map((s) => s.code)).toEqual([
+      "amap:key:USER_DAILY_QUERY_OVER_LIMIT",
+      "amap:load:scriptmeexample.com",
+      "tencent:search:121",
+      "tencent:key:-301",
+    ]);
   });
 });
 

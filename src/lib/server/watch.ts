@@ -508,7 +508,7 @@ async function checkPasswords(now: number): Promise<Finding[]> {
   return found;
 }
 
-const MAPS: Record<string, string> = { amap: "高德", osm: "OSM 底图", overseas: "我们自己的海外底图" };
+const MAPS: Record<string, string> = { amap: "高德", tencent: "腾讯地图", osm: "OSM 底图", overseas: "我们自己的海外底图" };
 
 /** What 腾讯位置服务's status means, when it turns away the key of the place suggestions */
 const TENCENT_SAYS: Record<string, string> = {
@@ -537,8 +537,8 @@ function mapTrouble(code: string) {
 }
 
 /**
- * 高德 saying its key is wrong or used up three times in ten minutes is for the digest; other trouble
- * (a slow phone network, a tile now and then) only for the admin page, once it adds up to ten in half
+ * 高德 or 腾讯's map saying its key is wrong or used up three times in ten minutes is for the digest; other
+ * trouble (a slow phone network, a tile now and then) only for the admin page, once it adds up to ten in half
  * an hour. The server's own place search being told by 高德 that its allowance is used up is told on
  * its own, for as long as the day lasts: the map itself is fine. So are pages saying 腾讯位置服务
  * turned away the key of their place suggestions, three times in half an hour: for the digest when the
@@ -571,8 +571,8 @@ async function checkMaps(now: number): Promise<Finding[]> {
         : "地图和搜地点不受影响：内地玩家打字时的提示改用 OpenStreetMap。到腾讯位置服务控制台（https://lbs.qq.com/dev/console）看这把 Key：要开 WebServiceAPI，域名白名单要有 zhoupmap.com，配额管理里要给它分「关键词输入提示」的额度。这类报告谁都能发，偶尔几次也可能是有人乱发。",
     });
   }
-  const list = recent("map", 30 * MINUTE, now).filter((s) => !s.code.startsWith("amap:search:") && !s.code.startsWith("tencent:"));
-  const keys = list.filter((s) => s.code.startsWith("amap:key:") && now - s.at < 10 * MINUTE);
+  const list = recent("map", 30 * MINUTE, now).filter((s) => !s.code.startsWith("amap:search:") && !s.code.startsWith("tencent:search:"));
+  const keys = list.filter((s) => /^(amap|tencent):key:/.test(s.code) && now - s.at < 10 * MINUTE);
   if (keys.length >= 3 || list.length >= 10) {
     findings.push({
       key: "failing",
@@ -580,7 +580,7 @@ async function checkMaps(now: number): Promise<Finding[]> {
       title: "地图在访客那里加载失败",
       detail: `30 分钟内有 ${list.length} 次：${tally(list.map((s) => s.code), mapTrouble)}。`,
       advice:
-        "访客那边会自动换成别的底图，但内地访客看到的就不是高德了。高德的话多半是 Key 当天的调用量用完或 Key 设置有问题，登录高德开放平台控制台看看。这类报告谁都能发，偶尔几次也可能是访客自己的网络问题。",
+        "访客那边会自动换成别的底图：内地访客高德不行先换腾讯地图，腾讯也不行才换成我们自己的图（没有审图号）。高德的话多半是 Key 的调用量用完或 Key 设置有问题，登录高德开放平台控制台看看；腾讯的话到腾讯位置服务控制台（https://lbs.qq.com/dev/console）看这把 Key（域名白名单要有 zhoupmap.com）。这类报告谁都能发，偶尔几次也可能是访客自己的网络问题。",
       worst: { text: `半小时最多 ${list.length} 次`, score: list.length },
     });
   }
@@ -608,7 +608,7 @@ async function checkAmapLoads(now: number): Promise<Finding[]> {
       title: "高德地图加载这个月快用完了",
       detail: `这个月到现在，内地访客大约打开了 ${n(count)} 次高德地图（估算）；照这个速度，到月底大约 ${n(projected)} 次。个人账号每月 ${n(limit)} 次。`,
       advice:
-        "以高德控制台为准：https://console.amap.com/dev/flow/manage 的用量详情。真用完了，内地访客打开网站会自动换成我们自己的地图（没有审图号，只能临时顶一下），下个月 1 日恢复。",
+        "以高德控制台为准：https://console.amap.com/dev/flow/manage 的用量详情。真用完了，内地访客打开网站会自动换成腾讯地图（腾讯也不行才换成我们自己的图，没有审图号），下个月 1 日高德恢复。",
     },
   ];
 }
