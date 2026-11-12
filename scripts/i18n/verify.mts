@@ -86,14 +86,20 @@ const isWords = (h: Hit) => !h.kept && h.kind !== "regex" && h.kind !== "name";
  * by name in zh.ts: the pieces, in order, a value or tag between them being a blank
  * (an empty piece first or last for a sentence that starts or ends with one). A piece
  * with no Chinese in it (「 / 」 between two numbers) is no piece of text the scan finds,
- * so it must be JSX text of its own in that file at base.
+ * so it must be JSX text of its own in that file at base, or a {" "} there. A list in place
+ * of a piece is pieces that follow each other with no blank between: a space written {" "}
+ * where a line of JSX text broke, and the words after it. With fill, a blank is filled with
+ * the piece the code put in it, the blanks numbered in order through the sentence:
+ * 「{0} 分{1}」 with 「钟」 in its {1} is 「{0} 分钟」.
  */
-type Join = { key: string; file: string; pieces: string[] };
+type Join = { key: string; file: string; pieces: (string | string[])[]; fill?: Record<string, string> };
 
 /**
  * A piece of text at base cut by hand into words that are read one by one (the login email's HTML,
- * whose words the plain text shares): each word must be in it, the file must read or say every one,
- * and a test (proof) checks that what they make is still the same, character for character.
+ * whose words the plain text shares), or a word taken out of a picture's markup into a constant of
+ * its own (the 戳! drawn in its burst): each word must be in it and shorter than it, the file must
+ * read or say every one, and a test (proof) checks that what they make is still the same, character
+ * for character.
  */
 type Split = { file: string; text: string; words: string[]; proof: string };
 
@@ -118,12 +124,13 @@ export type Report = {
   split: { file: string; line: number; text: string; proof: string }[];
 };
 
-/** What every piece of JSX text in a file shows, Chinese or not */
+/** What every piece of JSX text in a file shows, Chinese or not, a {" "} included */
 function jsxTexts(file: string, source: string): Set<string> {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const out = new Set<string>();
   const visit = (n: ts.Node) => {
     if (ts.isJsxText(n)) out.add(jsxEntities(jsxTextValue(n.text)));
+    else if (ts.isJsxExpression(n) && n.expression && ts.isStringLiteral(n.expression) && (ts.isJsxElement(n.parent) || ts.isJsxFragment(n.parent))) out.add(n.expression.text);
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -175,7 +182,7 @@ export async function verify(root: string, base: string): Promise<Report> {
     }
   }
   // a joined sentence stands for its pieces, in the file they came from
-  for (const j of joins) for (const p of j.pieces) if (p) put(reads.get(j.file) ?? reads.set(j.file, bag()).get(j.file)!, normalize(p), 1000);
+  for (const j of joins) for (const p of piecesOf(j)) if (p) put(reads.get(j.file) ?? reads.set(j.file, bag()).get(j.file)!, normalize(p), 1000);
 
   // what each file says or reads now, however many base pieces have been matched to it
   const sayNow = new Set(now.map((h) => `${h.file}\0${normalize(h.text)}`));
@@ -185,8 +192,8 @@ export async function verify(root: string, base: string): Promise<Report> {
       (s) =>
         s.file === h.file &&
         normalize(s.text) === normalize(h.text) &&
-        s.words.length > 1 &&
-        s.words.every((w) => within(w, h.text) && has(h.file, w)) &&
+        s.words.length > 0 &&
+        s.words.every((w) => within(w, h.text) && normalize(w) !== normalize(h.text) && has(h.file, w)) &&
         existsSync(join(root, s.proof)),
     );
   const cut = new Set<string>();
@@ -225,7 +232,7 @@ export async function verify(root: string, base: string): Promise<Report> {
     if (typeof v === "string") {
       const key = path.join(".");
       const js = joined.get(key) ?? joined.get(path.slice(0, -1).join(".")) ?? [];
-      const fromPieces = (x: Join) => x.pieces.every((p) => p === "" || said.has(normalize(p)) || plainAtBase(x.file, p));
+      const fromPieces = (x: Join) => piecesOf(x).every((p) => p === "" || said.has(normalize(p)) || plainAtBase(x.file, p));
       if (!said.has(normalize(v)) && !js.some((j) => fromPieces(j) && joinedText(j) === normalize(v)))
         report.added.push({ key, text: v });
     } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, [...path, String(i)]));
@@ -235,9 +242,14 @@ export async function verify(root: string, base: string): Promise<Report> {
   return report;
 }
 
-/** A joined sentence as its pieces make it: each piece, a blank between each two */
+/** Every piece a joined sentence is made of, those that fill a blank too */
+const piecesOf = (j: Join) => [...j.pieces.flat(), ...Object.values(j.fill ?? {})];
+
+/** A joined sentence as its pieces make it: each piece, a blank between each two, and a blank filled where it says */
 function joinedText(j: Join) {
-  return normalize(j.pieces.join("{_}"));
+  const text = j.pieces.map((p) => (Array.isArray(p) ? p.join("") : p)).join("{_}");
+  let i = 0;
+  return normalize(j.fill ? text.replace(/\{[^{}]+\}/g, (blank) => j.fill?.[String(i++)] ?? blank) : text);
 }
 
 async function main(argv: string[]) {
@@ -252,7 +264,7 @@ async function main(argv: string[]) {
   );
   if (report.elsewhere.length) console.log(`${report.elsewhere.length} read from another file now (allowed):\n  ${report.elsewhere.map((e) => `${e.file}:${e.line} → ${e.now}  ${e.text}`).join("\n  ")}`);
   if (report.split.length)
-    console.log(`${report.split.length} cut into several words (allowed, checked by a test):\n  ${report.split.map((e) => `${e.file}:${e.line} (${e.proof})  ${e.text.replace(/\n/g, "⏎")}`).join("\n  ")}`);
+    console.log(`${report.split.length} cut into words (allowed, checked by a test):\n  ${report.split.map((e) => `${e.file}:${e.line} (${e.proof})  ${e.text.replace(/\n/g, "⏎")}`).join("\n  ")}`);
   const bad = report.lost.length + report.added.length + report.dangling.length;
   for (const l of report.lost) console.log(`LOST    ${l.file}:${l.line}  ${l.text}`);
   for (const a of report.added) console.log(`NEW     zh.${a.key}  ${a.text}`);

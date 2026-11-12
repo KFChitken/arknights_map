@@ -51,7 +51,9 @@ export const CJK = /[⺀-⿿　-〿぀-ヿ㄀-ㇿ㐀-䶿一-鿿가-힯豈-﫿︰
 
 /**
  * Files whose text stays Chinese: the admin page, the site's own checks and
- * alert emails, the test players of a development copy (DEMO), and the tests.
+ * alert emails, the test players of a development copy (DEMO) and the show
+ * roaches, what the server only logs, the words a name may not have (what
+ * players type, not what they read), and the tests.
  * Paths from the repository root; a folder ends in /.
  */
 export const KEPT: [prefix: string, why: string][] = [
@@ -59,19 +61,27 @@ export const KEPT: [prefix: string, why: string][] = [
   ["src/app/api/admin/", "admin"],
   ["src/components/admin/", "admin"],
   ["src/components/app/IdentitySheet.tsx", "demo"],
+  ["src/instrumentation-node.ts", "console"],
   ["src/lib/adminConsole.ts", "admin"],
+  ["src/lib/fakeRoaches.ts", "demo"],
+  ["src/lib/nameRules.ts", "typed"],
   ["src/lib/server/admin.ts", "admin"],
   ["src/lib/server/admins.ts", "admin"],
   ["src/lib/server/adminRequests.ts", "admin"],
   ["src/lib/server/adminTeam.ts", "admin"],
   ["src/lib/memorials.ts", "admin"],
+  // what the admin reads of a case, and the name a held declaration is stored with (a code, as fakeRoaches' cities are)
+  ["src/lib/server/safety.ts", "admin"],
   ["src/lib/server/siteSettings.ts", "admin"],
+  ["src/lib/server/totp.ts", "admin"],
   ["src/lib/server/zones.ts", "admin"],
   ["src/lib/server/demo.ts", "demo"],
   ["src/lib/server/watch.ts", "watch"],
   ["src/lib/server/watchReport.ts", "watch"],
   ["src/lib/server/watchSignals.ts", "watch"],
   ["src/lib/siteStatus.ts", "watch"],
+  ["src/lib/world/bots.ts", "demo"],
+  ["src/lib/world/cast.ts", "demo"],
 ];
 
 export function keptFile(file: string): string | null {

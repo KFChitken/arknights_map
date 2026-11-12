@@ -108,18 +108,29 @@ function findNode(sf: ts.SourceFile, h: Hit): ts.Node | undefined {
   return found;
 }
 
-/** The expression that reads a word: T.a.b, or fmt(T.a.b, { … }) with its blanks filled by the template's expressions */
-function reading(path: string, word: string, args: string[], where: string): { expr: string; fmt: boolean } {
+/**
+ * The expression that reads a word: T.a.b, or fmt(T.a.b, { … }) with its blanks filled by the template's expressions.
+ * text is the piece as the scan reads it, a ${…} as {0}, {1} …; a blank written {name} in the code itself (「第 {serial} 只」)
+ * the code fills later, as it did, so fmt leaves it as it is.
+ */
+function reading(path: string, word: string, text: string, args: string[], where: string): { expr: string; fmt: boolean } {
   const names = blanks(word);
-  if (names.length !== args.length) throw new Error(`${where}: 「${word}」 has ${names.length} blanks, the code ${args.length}`);
-  if (!names.length) return { expr: `T.${path}`, fmt: false };
+  const inCode = blanks(text);
+  if (names.length !== inCode.length) throw new Error(`${where}: 「${word}」 has ${names.length} blanks, the code ${inCode.length}`);
   const given = new Map<string, string>();
   for (const [i, n] of names.entries()) {
     if (!NAME.test(n)) throw new Error(`${where}: blank {${n}} in 「${word}」 is not a name`);
+    const c = inCode[i];
+    if (!/^\d+$/.test(c)) {
+      if (c !== n) throw new Error(`${where}: blank {${n}} in 「${word}」 is {${c}} in the code`);
+      continue;
+    }
+    const a = args[Number(c)];
     const prev = given.get(n);
-    if (prev !== undefined && prev !== args[i]) throw new Error(`${where}: blank {${n}} stands for both ${prev} and ${args[i]}`);
-    given.set(n, args[i]);
+    if (prev !== undefined && prev !== a) throw new Error(`${where}: blank {${n}} stands for both ${prev} and ${a}`);
+    given.set(n, a);
   }
+  if (!given.size) return { expr: `T.${path}`, fmt: false };
   const fields = [...given].map(([n, a]) => (a === n ? n : `${n}: ${a}`)).join(", ");
   return { expr: `fmt(T.${path}, { ${fields} })`, fmt: true };
 }
@@ -199,6 +210,13 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
     const holdsAnother = (h: Hit) => planned.some((o) => o !== h && o.start >= h.start && o.end <= h.end);
     const changes: Change[] = [];
     const inlined = new Map<string, { decl: ts.VariableStatement; expr: string; fmt: boolean; moved: Moved }>();
+    const lists = new Map<ts.PropertyAssignment, { start: number; end: number; expr: string; fmt: boolean; moved: Moved }[]>();
+    // the getters of a one-line object, which is then written out a property a line (below)
+    const objects = new Map<ts.ObjectLiteralExpression, Map<ts.ObjectLiteralElementLike, string>>();
+    const getterIn = (obj: ts.ObjectLiteralExpression) => objects.get(obj) ?? objects.set(obj, new Map()).get(obj)!;
+    const oneLine = (obj: ts.Node): obj is ts.ObjectLiteralExpression =>
+      ts.isObjectLiteralExpression(obj) && !source.slice(obj.getStart(sf), obj.end).includes("\n");
+    const later: { moved: Moved; fmt: boolean }[] = [];
 
     for (const h of hits) {
       const text = h.text;
@@ -225,7 +243,7 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
         read = { expr: `T.${path}`, fmt: false };
       } else
         try {
-          read = reading(path, word, h.args, `${file}:${h.line}`);
+          read = reading(path, word, text, h.args, `${file}:${h.line}`);
         } catch (e) {
           problem((e as Error).message);
           continue;
@@ -245,9 +263,22 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
         while (ts.isParenthesizedExpression(n.parent) || ts.isAsExpression(n.parent) || ts.isSatisfiesExpression(n.parent)) n = n.parent;
         const p = n.parent;
         const isConst = ts.isVariableDeclaration(p) && p.initializer === n && ts.isIdentifier(p.name) && ts.isVariableDeclarationList(p.parent) && ts.isVariableStatement(p.parent.parent);
+        const listOf = listProperty(n);
         if (ts.isPropertyAssignment(p) && p.initializer === n) {
+          if (oneLine(p.parent)) {
+            getterIn(p.parent).set(p, read.expr);
+            later.push({ moved: { file, line: h.line, path, text: h.text }, fmt: read.fmt });
+            continue;
+          }
           const indent = indentOf(source, p.getStart(sf));
           changes.push({ start: p.getStart(sf), end: p.end, text: `get ${p.name.getText(sf)}() {\n${indent}  return ${read.expr};\n${indent}}` });
+        } else if (listOf) {
+          // … a piece of a list (or a list of lists) that is a property's value: the property becomes a
+          // getter of the list, each of its pieces read there (below, once all of them are known)
+          const pieces = lists.get(listOf) ?? [];
+          pieces.push({ start: h.start, end: h.end, expr: read.expr, fmt: read.fmt, moved: { file, line: h.line, path, text: h.text } });
+          lists.set(listOf, pieces);
+          continue;
         } else if (
           // … and a constant only this file uses goes where it is used
           isConst &&
@@ -266,6 +297,37 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
       found.add(path);
       usesFmt ||= read.fmt;
       report.moved.push({ file, line: h.line, path, text: h.text });
+    }
+
+    // the lists that are a property's value: the property a getter of its list, with its pieces read in it
+    for (const [prop, pieces] of lists) {
+      const from = prop.initializer.getStart(sf);
+      let list = source.slice(from, prop.initializer.end);
+      for (const pc of [...pieces].sort((a, b) => b.start - a.start)) list = list.slice(0, pc.start - from) + pc.expr + list.slice(pc.end - from);
+      for (const pc of pieces) later.push({ moved: pc.moved, fmt: pc.fmt });
+      if (oneLine(prop.parent)) {
+        getterIn(prop.parent).set(prop, list);
+        continue;
+      }
+      const indent = indentOf(source, prop.getStart(sf));
+      // the list's own lines one step further in, as the getter's body is
+      list = list.replace(/\n/g, "\n  ");
+      changes.push({ start: prop.getStart(sf), end: prop.end, text: `get ${prop.name.getText(sf)}() {\n${indent}  return ${list};\n${indent}}` });
+    }
+
+    // a one-line object with a getter in it: written out a property a line, as the code writes a longer one
+    for (const [obj, getters] of objects) {
+      const indent = indentOf(source, obj.getStart(sf));
+      const props = obj.properties.map((q) => {
+        const read = getters.get(q);
+        return read === undefined ? q.getText(sf) : `get ${q.name!.getText(sf)}() {\n${indent}    return ${read};\n${indent}  }`;
+      });
+      changes.push({ start: obj.getStart(sf), end: obj.end, text: `{\n${props.map((t) => `${indent}  ${t},`).join("\n")}\n${indent}}` });
+    }
+    for (const { moved, fmt: f } of later) {
+      found.add(moved.path);
+      usesFmt ||= f;
+      report.moved.push(moved);
     }
 
     // the constants put where they are used: every other mention of the name in the file
@@ -324,6 +386,17 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
   }
   if (changed && found.size) source = withImports(source, file, usesFmt ? ["T", "fmt"] : ["T"]);
   return { source, found };
+}
+
+/** The property whose value is the list (or list of lists) a piece of text is in, if it is one */
+function listProperty(n: ts.Node): ts.PropertyAssignment | undefined {
+  let inList = false;
+  for (let m = n; ; m = m.parent) {
+    const q = m.parent;
+    if (ts.isArrayLiteralExpression(q)) inList = true;
+    else if (!(ts.isParenthesizedExpression(q) || ts.isAsExpression(q) || ts.isSatisfiesExpression(q)))
+      return inList && ts.isPropertyAssignment(q) && q.initializer === m ? q : undefined;
+  }
 }
 
 /** The whitespace at the start of the line that offset is on */
