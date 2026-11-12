@@ -39,6 +39,8 @@ async function signUp(email: string, avatar = "hood") {
 }
 /** A touch at 14:00 on the device unless said otherwise */
 const touch = (id: string, bold: boolean, offsetMin: number = offsetFor(14)) => world.touch(id, SI_ID, bold, offsetMin);
+/** Her part of me(), asked as the page asks it: from the device the touches came from, 14:00 there */
+const herCard = async (id: string) => (await world.me(id, offsetFor(14)))!.si;
 const rows = (id: string) => db.select().from(siTouches).where(eq(siTouches.userId, id)).orderBy(siTouches.createdAt);
 const hers = async (id: string) => (await rows(id)).filter((r) => r.direction === "from_si");
 /** Her answers to touches, without what she says about 缘缘庄 */
@@ -86,7 +88,7 @@ describe("祀掌柜", () => {
     expect(made).toMatchObject({ newFriend: "祀掌柜", guide: { kind: "friend" }, si: { portrait: "wrong", stamp: null } });
     expect(made.guide!.itemId).not.toBeNull();
     expect((await answers(me)).map((r) => r.kind)).toEqual(["touch", "friend"]);
-    expect((await world.me(me))!.si).toMatchObject({ friend: true, portrait: { state: "wrong" }, stamps: 1, stampedToday: true });
+    expect(await herCard(me)).toMatchObject({ friend: true, portrait: { state: "wrong" }, stamps: 1, stampedToday: true });
     // then she answers as usual, once a day
     expect(await touch(me, true)).toMatchObject({ newFriend: null, guide: { itemId: null }, si: { portrait: null } });
 
@@ -177,11 +179,11 @@ describe("祀掌柜", () => {
     expect(new Set(all.slice(0, 30)).size).toBe(30);
     expect(STAMPS[all[29]]).toBe("祀");
     expect(all[30]).toBe(all[0]);
-    const m = (await world.me(me))!.si;
+    const m = await herCard(me);
     expect(m).toMatchObject({ stamps: 31, stampedToday: true });
     // the next day by the device, not yet
     at((day + 1) * DAY);
-    expect((await world.me(me))!.si.stampedToday).toBe(false);
+    expect((await herCard(me)).stampedToday).toBe(false);
   });
 
   it("draws one ink roach in the player's look the first time, for good, whatever they change later", async () => {
