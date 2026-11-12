@@ -85,8 +85,8 @@ const PILE_MUL = ["min", 2.2, ["+", 1, ["*", 0.18, ["log2", ["max", 1, PILE_COUN
 const PILE_SIZE = ["interpolate", ["linear"], ["zoom"], ...ICON_STOPS.flatMap(([z, px]) => [z, ["/", ["min", ["*", px, PILE_MUL], PILE_MAX_PX], ICON_BASE]])];
 /** The icon a pile shows: the lowest bits of its lowest key (features.ts liteFeature) */
 const PILE_ICON = ["match", ["%", ["coalesce", ["get", "rep"], ["get", "key"]], 256], ...LITE_LOOKS.flatMap((id, i) => [i, id]), LITE_LOOKS[0]];
-/** A pile's count: as it is up to 9999, then in 万 to one place (piles.ts countBadgeText) */
-const COUNT_TEXT = [
+/** A pile's count: as it is up to 9999, then in 万 to one place (piles.ts countBadgeText); made with its layer, in the page's words */
+const pileCountText = () => [
   "case",
   ["<", PILE_COUNT, 10000],
   ["to-string", PILE_COUNT],
@@ -576,7 +576,7 @@ export default function MaplibreView(props: MapViewProps) {
         // piles, and a lone roach of the overview standing for more than itself
         filter: [">", PILE_COUNT, 1] as never,
         layout: {
-          "icon-image": ["concat", "count-", COUNT_TEXT] as never,
+          "icon-image": ["concat", "count-", pileCountText()] as never,
           "icon-offset": COUNT_OFFSET as never,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,

@@ -45,6 +45,24 @@ export function fmt(text: string, params: Params): string {
   return text.replace(/\{([^{}]+)\}/g, (all, name: string) => (Object.hasOwn(params, name) ? String(params[name]) : all));
 }
 
+/**
+ * fmt, for a sentence shown as JSX text: the words and each value as pieces of their own, which
+ * React shows as text nodes of their own, as it did JSX text around {values} (a browser can draw
+ * a line a hair apart by where its text nodes break). Empty pieces are left out, as React leaves
+ * out empty text.
+ */
+export function fmtParts(text: string, params: Params): string[] {
+  const out: string[] = [];
+  let at = 0;
+  for (const m of text.matchAll(/\{([^{}]+)\}/g)) {
+    if (!Object.hasOwn(params, m[1])) continue;
+    out.push(text.slice(at, m.index), String(params[m[1]]));
+    at = m.index + m[0].length;
+  }
+  out.push(text.slice(at));
+  return out.filter((p) => p !== "");
+}
+
 /** The form of a Counted for n, with {n} and any other blanks filled in */
 export function count(text: string | Counted, n: number, params: Params = {}): string {
   const form = typeof text === "string" ? text : n === 1 && text.one !== undefined ? text.one : text.other;

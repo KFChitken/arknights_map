@@ -1,0 +1,10 @@
+[
+  { "key": "map.count.world", "file": "src/components/MapApp.tsx", "pieces": ["全球 ", "舟P"] },
+  { "key": "map.count.withoutClones", "file": "src/components/MapApp.tsx", "pieces": ["不算克隆体 ", ""] },
+  { "key": "map.count.hiddenWorld", "file": "src/components/MapApp.tsx", "pieces": ["全员隐匿中 · 全球 ", "舟P"] },
+  { "key": "map.count.andWorld", "file": "src/components/MapApp.tsx", "pieces": [" · 全球 ", "舟P"] },
+  { "key": "map.count.here", "file": "src/components/MapApp.tsx", "pieces": ["这片地图里有 ", " 只舟P"] },
+  { "key": "map.count.worldAndPlayers", "file": "src/components/MapApp.tsx", "pieces": ["全球 ", " 只 · 不算克隆体 ", " 位"] },
+  { "key": "map.count.andWorldTotal", "file": "src/components/MapApp.tsx", "pieces": [" · 全球 ", " 只"] },
+  { "key": "map.style.backTo", "file": "src/components/MapApp.tsx", "pieces": ["换回「", "」"] }
+]

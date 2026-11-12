@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { T } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -4169,29 +4169,32 @@ export default function MapApp({
               "舟P们正在赶来…"
             ) : guest ? (
               <>
-                全球 {countText(total)}舟P<span className="muted"> · 登录后就能看到 TA 们</span>
-                {players !== undefined && <span className="l2">不算克隆体 {countText(players, "位")}</span>}
+                {fmtParts("全球 {count}舟P", { count: countText(total) })}
+                <span className="muted"> · 登录后就能看到 TA 们</span>
+                {players !== undefined && <span className="l2">{fmtParts("不算克隆体 {players}", { players: countText(players, "位") })}</span>}
               </>
             ) : drawnStyle === "hidden" ? (
               players !== undefined ? (
                 <>
-                  全员隐匿中 · 全球 {countText(total)}舟P<span className="l2">不算克隆体 {countText(players, "位")}</span>
+                  {fmtParts("全员隐匿中 · 全球 {count}舟P", { count: countText(total) })}
+                  <span className="l2">{fmtParts("不算克隆体 {players}", { players: countText(players, "位") })}</span>
                 </>
               ) : (
                 <>
-                  全员隐匿中<span className="muted"> · 全球 {countText(total)}舟P</span>
+                  全员隐匿中<span className="muted">{fmtParts(" · 全球 {count}舟P", { count: countText(total) })}</span>
                 </>
               )
             ) : players !== undefined ? (
               <>
-                这片地图里有 {visible.toLocaleString()} 只舟P
+                {fmtParts("这片地图里有 {n} 只舟P", { n: visible.toLocaleString() })}
                 <span className="l2">
-                  全球 {total.toLocaleString()} 只 · 不算克隆体 {players.toLocaleString()} 位
+                  {fmtParts("全球 {total} 只 · 不算克隆体 {players} 位", { total: total.toLocaleString(), players: players.toLocaleString() })}
                 </span>
               </>
             ) : (
               <>
-                这片地图里有 {visible.toLocaleString()} 只舟P<span className="muted"> · 全球 {total.toLocaleString()} 只</span>
+                {fmtParts("这片地图里有 {n} 只舟P", { n: visible.toLocaleString() })}
+                <span className="muted">{fmtParts(" · 全球 {total} 只", { total: total.toLocaleString() })}</span>
               </>
             )}
           </div>
@@ -4656,7 +4659,7 @@ export default function MapApp({
                   switchMapStyle(liteFrom);
                 }}
               >
-                换回「{MAP_STYLE_NAMES[liteFrom]}」
+                {fmtParts("换回「{style}」", { style: MAP_STYLE_NAMES[liteFrom] })}
               </button>
             )}
           </div>

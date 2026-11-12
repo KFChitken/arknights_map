@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { scanSource, scanTree, sourceFiles } from "../../scripts/i18n/scan.mts";
-import { count, type Counted, fill, fmt, isCounted, LANGS, missing, type Messages } from "./core";
+import { count, type Counted, fill, fmt, fmtParts, isCounted, LANGS, missing, type Messages } from "./core";
 import { en } from "./en";
 import { lang, T } from "./index";
 import { firstLanguage, pickLang } from "./lang";
@@ -20,6 +20,16 @@ describe("filling in blanks", () => {
     // a value is never read again for blanks
     expect(fmt("{a}{b}", { a: "{b}", b: "!" })).toBe("{b}!");
     expect(fmt("{n} 只", { n: 1.5 })).toBe(`${1.5} 只`);
+  });
+
+  it("fills a sentence shown as JSX text in pieces, each value a text node of its own", () => {
+    const text = "全球 {total} 只 · 不算克隆体 {players} 位";
+    const params = { total: "5,011", players: "5,007" };
+    expect(fmtParts(text, params)).toEqual(["全球 ", "5,011", " 只 · 不算克隆体 ", "5,007", " 位"]);
+    expect(fmtParts(text, params).join("")).toBe(fmt(text, params));
+    expect(fmtParts("不算克隆体 {players}", { players: "9.1 万位" })).toEqual(["不算克隆体 ", "9.1 万位"]);
+    expect(fmtParts("{a}和{b}", { a: "x" })).toEqual(["x", "和{b}"]);
+    expect(fmtParts("{a}{b}", { a: "", b: 2 })).toEqual(["2"]);
   });
 
   it("picks the form for a count", () => {

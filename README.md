@@ -102,7 +102,7 @@ Append `?style=blank` to the URL to replace the OSM basemap with a plain backgro
 
 The words the site shows are moving into `src/i18n`: Chinese in `zh.ts`, English in `en.ts` (what English lacks shows in Chinese). Code reads them through `T`, as in `T.map.loading` (blanks are filled with `fmt`, counts with `count`), and only where the text is used, never at the top of a module: the server answers each request in its own language (`src/i18n/server.ts`). A page loads only its own language's words, from `/i18n/<lang>-<hash>.js`. English stays off (`ENGLISH_ON` in `src/i18n/lang.ts`) until it is ready.
 
-Text moves by plans: `scripts/i18n/plans/<step>.json` names, file by file, the words to move and the name each gets, and `scripts/i18n/extract.mts` rewrites the code to read them and writes `zh.ts` from the plans. On a newer main, run it again rather than merging by hand. A piece of text cut into several words by hand is listed in `scripts/i18n/splits.json` with the test that shows it still comes out the same.
+Text moves by plans: `scripts/i18n/plans/<step>.json` names, file by file, the words to move and the name each gets, and `scripts/i18n/extract.mts` rewrites the code to read them and writes `zh.ts` from the plans. On a newer main, run it again rather than merging by hand. A sentence the code put together from pieces (JSX text around values) is first written whole by hand, with `fmtParts` so its values stay text nodes of their own, and its pieces listed in `scripts/i18n/joins.json`; a piece of text cut into several words by hand is listed in `scripts/i18n/splits.json` with the test that shows it still comes out the same.
 
 Moving text must not change a word or a pixel of the Chinese site. The tools that move and check it:
 
