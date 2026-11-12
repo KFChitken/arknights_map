@@ -19,8 +19,10 @@ import {
   roachCounts,
   roachFeed,
   roachFeedSettled,
+  statePieces,
   stopRoachFeed,
   type FeedForm,
+  type Saved,
 } from "./roachFeed";
 import { roachChanges, users } from "./schema";
 import * as world from "./world";
@@ -225,7 +227,9 @@ describe("roach feed", () => {
       process.env.FEED_STATE = join(dir, "web.json");
       resetRoachFeed();
     });
-    afterEach(() => {
+    afterEach(async () => {
+      // a save still under way finishes before its folder goes
+      await roachFeedSettled();
       delete process.env.FEED_STATE;
       rmSync(dir, { recursive: true, force: true });
       vi.restoreAllMocks();
@@ -263,7 +267,7 @@ describe("roach feed", () => {
       expect((await roachFeed(after, T0 + 11 * MINUTE, 3)).kind).toBe("full");
     });
 
-    it("writes down where it is every minute too, for a process that ends without being told", async () => {
+    it("writes down where it is every few minutes too, for a process that ends without being told", async () => {
       const a = await player("a@example.com");
       await world.placeRoach(a, { kind: "main" }, SHANGHAI);
       const start = await ask(null, T0, 3);
@@ -273,6 +277,25 @@ describe("roach feed", () => {
       const [main] = (await world.me(a))!.roaches;
       await world.placeRoach(a, { kind: "move", roachId: main.id }, TOKYO);
       expect((await ask(start.v, T0 + 40_000, 3)).changed).toMatchObject([TOKYO]);
+    });
+
+    it("writes the state down a piece at a time, exactly as one string would have it", () => {
+      const change = (n: number) => ({ n, from: n - 1, at: T0 + n, long: { changed: [`id-${n}`], removed: [] }, short: { changed: [`s${n}`], removed: [`r"${n}`] } });
+      const saved: Saved = {
+        format: 1,
+        epoch: "0123abcd",
+        n: 42,
+        at: T0,
+        ids: Array.from({ length: 10 }, (_, i) => (i === 3 ? 'odd "id"\\' : `a${i}000000-0000-4000-8000-00000000000${i}`)),
+        hashes: Array.from({ length: 10 }, (_, i) => (i % 2 ? -i * 977 : i * 2_147_483_647)),
+        changes: [1, 2, 3, 4, 5].map(change),
+      };
+      for (const piece of [1, 3, 10, 20_000]) {
+        const pieces = [...statePieces(saved, piece)];
+        expect(pieces.join("")).toBe(JSON.stringify(saved));
+        if (piece === 3) expect(pieces.length).toBeGreaterThan(8);
+      }
+      expect([...statePieces({ ...saved, ids: [], hashes: [], changes: [] })].join("")).toBe(JSON.stringify({ ...saved, ids: [], hashes: [], changes: [] }));
     });
 
     it("spreads the whole snapshot over the first minutes for pages it does not know, so they do not all come at once", async () => {

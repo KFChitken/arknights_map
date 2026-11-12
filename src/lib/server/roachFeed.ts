@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
+import { open, rename } from "node:fs/promises";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import { and, asc, eq, gt, gte, inArray, lt, lte, max, or, sql } from "drizzle-orm";
@@ -68,7 +68,14 @@ const MAX_DIFF_SHARE = 0.2;
 const MIN_DIFF = 500;
 /** How many worked-out answers for older versions a snapshot keeps */
 const DIFF_CACHE = 64;
-const SAVE_MS = 60_000;
+/**
+ * How often the state is written down (and when the process is told to stop, at once). Each write is a second
+ * or more of work with a few hundred thousand roaches, done a piece at a time (writeState): only for a process
+ * that ends without being told, whose pages then download a little more after its restart.
+ */
+const SAVE_MS = 5 * 60_000;
+/** Ids or hashes written down at a time by a save in the background (changes: a tenth of this) */
+const SAVE_PIECE = 20_000;
 /**
  * After a restart from a saved state, versions go on this far past the saved one: a page may hold
  * a version made after the last save (when the process ended without saving), which then means
@@ -1009,7 +1016,7 @@ export async function roachesNear(spot: LngLat, now = Date.now()): Promise<{ nea
 }
 
 /** What FEED_STATE holds; format says which code wrote it */
-type Saved = { format: 1; epoch: string; n: number; at: number; ids: string[]; hashes: number[]; changes: Change[] };
+export type Saved = { format: 1; epoch: string; n: number; at: number; ids: string[]; hashes: number[]; changes: Change[] };
 
 function stateNow(s: Snapshot, now: number): string {
   const saved: Saved = {
@@ -1030,10 +1037,57 @@ function save(now: number) {
   const s = feed.snapshot;
   if (!file || !s || feed.saving) return;
   feed.savedAt = now;
-  feed.saving = writeFile(`${file}.tmp`, stateNow(s, now))
-    .then(() => rename(`${file}.tmp`, file))
+  feed.saving = writeState(file, s, now)
     .catch((e) => console.error("Saving the roach feed's state failed", e))
     .finally(() => (feed.saving = null));
+}
+
+/**
+ * What stateNow says, written a piece at a time, each piece's write leaving the process free for everything else
+ * until it is done: made as one string it held the process for a second or more each time (2026-11-12, the live
+ * site's main process, with every roach's id and hash). As at one moment: the ids, hashes, version and changes
+ * are taken first, so the rounds that go on meanwhile change nothing in it. Not put in place if the process was
+ * told to stop meanwhile, which writes down the latest itself (stop, into a file of its own).
+ */
+async function writeState(file: string, s: Snapshot, now: number) {
+  const saved: Saved = { format: 1, epoch: feed.epoch, n: s.n, at: now, ids: [...s.hashes.keys()], hashes: [...s.hashes.values()], changes: feed.changes.slice() };
+  const writing = `${file}.saving`;
+  const out = await open(writing, "w");
+  try {
+    for (const piece of statePieces(saved)) await out.write(piece);
+  } finally {
+    await out.close();
+  }
+  if (!feed.stopping) await rename(writing, file);
+}
+
+/** JSON.stringify(saved), in pieces of about `piece` ids or hashes at a time (changes: as many ids as that between them) */
+export function* statePieces(saved: Saved, piece = SAVE_PIECE) {
+  const list = function* <T>(items: T[], size: number) {
+    for (let i = 0; i < items.length; i += size) yield (i ? "," : "") + items.slice(i, i + size).map((x) => JSON.stringify(x)).join(",");
+  };
+  yield `{"format":${saved.format},"epoch":${JSON.stringify(saved.epoch)},"n":${saved.n},"at":${saved.at},"ids":[`;
+  yield* list(saved.ids, piece);
+  yield '],"hashes":[';
+  yield* list(saved.hashes, piece);
+  yield '],"changes":[';
+  // a change may name up to APPLY_CHUNK roaches twice over: grouped by how many ids they name, not how many they are
+  const ids = (c: Change) => c.long.changed.length + c.long.removed.length + c.short.changed.length + c.short.removed.length;
+  let group: string[] = [];
+  let named = 0;
+  let first = true;
+  for (const c of saved.changes) {
+    group.push(JSON.stringify(c));
+    named += ids(c) + 1;
+    if (named >= piece) {
+      yield (first ? "" : ",") + group.join(",");
+      first = false;
+      group = [];
+      named = 0;
+    }
+  }
+  if (group.length) yield (first ? "" : ",") + group.join(",");
+  yield "]}";
 }
 
 /** The process has been told to stop: no more versions, and the last one written down before it goes */
