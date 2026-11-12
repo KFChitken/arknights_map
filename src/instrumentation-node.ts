@@ -5,7 +5,7 @@ import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
 import { saveAppCounts } from "./lib/server/appCounts";
 import { flipTheAway } from "./lib/server/away";
-import { fireSongs } from "./lib/server/badges";
+import { comrades, fireSongs, nightByTheFire, sleptItOff } from "./lib/server/badges";
 import { moveMingheRiders, spreadStackedRiders } from "./lib/server/minghe";
 import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
@@ -142,6 +142,9 @@ if (!helper) {
     });
     // 火边的歌声: who sits by 塔露拉干员's fire when it is big enough, counted each morning too
     fireSongs().catch(failed("ride", "Counting 塔露拉干员's fire failed"));
+    // 温暖你的战友: a night by the fire for each player with a roach there; 共患难的战友 for 30 days together
+    nightByTheFire(now).catch(failed("badges", "Counting the nights by 塔露拉干员's fire failed"));
+    comrades(now).catch(failed("badges", "Giving 共患难的战友 failed"));
   };
   ride();
   setInterval(ride, 5 * MINUTE_MS);
@@ -175,6 +178,10 @@ if (!helper) {
   };
   inn();
   setInterval(inn, MINUTE_MS);
+
+  // 二次呼吸: drunk and left to sleep until the morning, given within minutes of waking
+  const sleptOff = () => sleptItOff().catch(failed("badges", "Giving 二次呼吸 failed"));
+  setInterval(sleptOff, 5 * MINUTE_MS);
 
   // Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
   const totals = () => recordDailyTotals().catch(failed("totals", "Recording daily totals failed"));

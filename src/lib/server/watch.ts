@@ -621,6 +621,7 @@ const JOBS: Record<string, string> = {
   ride: "明河都尉换站",
   inn: "缘缘庄入住退房",
   fire: "散开塔露拉火边叠着的蟑螂",
+  badges: "徽章（篝火夜数、共患难的战友、二次呼吸）",
   totals: "全站每日统计",
   live: "收听另外两个程序的消息提醒",
   signals: "收听另外两个程序的出错次数",

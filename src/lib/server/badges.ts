@@ -1,14 +1,22 @@
 import "server-only";
-import { and, count, countDistinct, eq, inArray, isNull, lt, sql, type AnyColumn } from "drizzle-orm";
+import { and, count, countDistinct, eq, inArray, isNotNull, isNull, lt, lte, sql, type AnyColumn } from "drizzle-orm";
 import {
   BADGES,
   badgeById,
+  badgesOwned,
+  COMRADE_DAYS,
   ECHO_REACTIONS,
+  ELITE_SERIES,
   FAR_FRIEND_KM,
   FIRE_SONG_ROACHES,
   FIRST_BATCH,
   FLUENT_TEMPLATES,
   heldUntil,
+  LOUDHORN_CLONES,
+  MOVING_CITY_KM,
+  NO_MORE_SECONDS,
+  ROWDY_REACTIONS,
+  seriesCovered,
   stillHeld,
   type BadgeCount,
   type EarnedBadge,
@@ -19,7 +27,7 @@ import { distanceKm } from "../geo";
 import { FIRE_AT, FIRE_RADIUS_M } from "../talulah";
 import { db } from "./db";
 import { nudge } from "./live";
-import { declarations, reactions, roaches, touches, userBadges, users, type UserRow } from "./schema";
+import { declarations, friendNotes, friendships, moves, reactions, roaches, touches, userBadges, users, visits, type UserRow } from "./schema";
 
 /**
  * Earning badges. Each is written down the moment it is earned, because what
@@ -37,7 +45,20 @@ export async function award(userId: string, badges: string[]) {
     .onConflictDoNothing()
     .returning({ badge: userBadges.badge });
   if (made.length) nudge([userId]);
+  // 罗德岛正式干员 and 精英干员 go by what they hold, so they are looked at after anything else is given
+  if (made.some((m) => !MEMORIAL_BY_HELD.includes(m.badge))) await memorialBadges(userId);
   return made.map((m) => m.badge);
+}
+
+/** The two given by the badges a player holds */
+const MEMORIAL_BY_HELD = ["regular", "elite"];
+
+/** 罗德岛正式干员 with five others held, 精英干员 with one of each of ELITE_SERIES */
+async function memorialBadges(userId: string) {
+  const held = await earnedBy(userId);
+  const due = [...reached("badgesOwned", badgesOwned(held)), ...reached("seriesCovered", seriesCovered(held))];
+  const missing = due.filter((id) => !held.some((h) => h.id === id));
+  if (missing.length) await award(userId, missing);
 }
 
 const reached = (count: BadgeCount, n: number) => BADGES.filter((b) => b.goal?.count === count && n >= b.goal.n).map((b) => b.id);
@@ -141,6 +162,7 @@ export async function responded(userId: string, declarationId: string, senderId:
     .from(reactions)
     .where(and(eq(reactions.declarationId, declarationId), eq(reactions.withheld, false)));
   if (n >= ECHO_REACTIONS) await award(senderId, ["echo"]);
+  if (n >= ROWDY_REACTIONS) await award(senderId, ["rowdy"]);
 }
 
 export type GuideBadge = "amiya" | "perlica" | "talulah" | "minghe";
@@ -191,6 +213,153 @@ export async function fireSongs() {
     );
   if (by.length < FIRE_SONG_ROACHES) return;
   for (const id of new Set(by.map((r) => r.userId))) await award(id, ["fireside"]);
+}
+
+// ---- the third round (2026-11-12) ----
+
+/** 狂响的声筒: a declaration sent from the main roach (slot 0) and at least LOUDHORN_CLONES clones at once */
+export async function declaredFrom(userId: string, slots: number[]) {
+  if (slots.includes(0) && slots.filter((s) => s > 0).length >= LOUDHORN_CLONES) await award(userId, ["loudhorn"]);
+}
+
+/** 罗德岛信使: 生日快乐！ to a 触须之交's birthday declaration; each friend counts once */
+export async function wishedHappyBirthday(userId: string, friendId: string) {
+  const [u] = await db
+    .update(users)
+    .set({
+      birthdayWished: sql`case when ${friendId}::uuid = any(${users.birthdayWished}) then ${users.birthdayWished} else array_append(${users.birthdayWished}, ${friendId}::uuid) end`,
+    })
+    .where(eq(users.id, userId))
+    .returning({ n: sql<number>`cardinality(${users.birthdayWished})` });
+  if (u) await award(userId, reached("birthdayWishes", Number(u.n)));
+}
+
+/** 眠于树影之中: a 触须之交 covered a sleeping player with a quilt; each one counts once */
+export async function quilted(userId: string, byId: string) {
+  const [u] = await db
+    .update(users)
+    .set({ quiltedBy: sql`case when ${byId}::uuid = any(${users.quiltedBy}) then ${users.quiltedBy} else array_append(${users.quiltedBy}, ${byId}::uuid) end` })
+    .where(eq(users.id, userId))
+    .returning({ n: sql<number>`cardinality(${users.quiltedBy})` });
+  if (u) await award(userId, reached("quilters", Number(u.n)));
+}
+
+/** 相见欢: two 触须之交 added each other in a game; both get it */
+export async function addedInGame(a: string, b: string) {
+  await award(a, ["ingame"]);
+  await award(b, ["ingame"]);
+}
+
+/**
+ * A roach was put down or moved (after the move is written): 异卵同生 for a clone put out the first time;
+ * 移动城市 counts a main roach's move of MOVING_CITY_KM or more, which only compares its own two places
+ */
+export async function placed(userId: string, slot: number, from: { lng: number; lat: number } | null, to: { lng: number; lat: number }) {
+  if (slot > 0 && !from) await award(userId, ["twins"]);
+  if (slot === 0 && from && distanceKm(from, to) >= MOVING_CITY_KM) {
+    const [u] = await db
+      .update(users)
+      .set({ farMoves: sql`${users.farMoves} + 1` })
+      .where(eq(users.id, userId))
+      .returning({ n: users.farMoves });
+    if (u) await award(userId, reached("farMoves", u.n));
+  }
+}
+
+/** 天灾信使: a day of scanning the radar */
+export async function scannedRadar(userId: string) {
+  const today = beijingDate();
+  const [u] = await db
+    .update(users)
+    .set({ radarDays: oncePerDay(users.radarDays, users.radarOn, today), radarOn: today })
+    .where(eq(users.id, userId))
+    .returning({ days: users.radarDays });
+  if (u) await award(userId, reached("radarDays", u.days));
+}
+
+/** 惊霆无声: a day of touching a player's roach sneakily (the guides do not count) */
+export async function touchedSneakily(userId: string) {
+  const today = beijingDate();
+  const [u] = await db
+    .update(users)
+    .set({ sneakDays: oncePerDay(users.sneakDays, users.sneakOn, today), sneakOn: today })
+    .where(eq(users.id, userId))
+    .returning({ days: users.sneakDays });
+  if (u) await award(userId, reached("sneakDays", u.days));
+}
+
+/** 我真的不能再喝了: 醒酒 within NO_MORE_SECONDS of getting drunk (drunkAt: when the drinking began) */
+export async function soberedUp(userId: string, drunkAt: Date | null, now = Date.now()) {
+  if (drunkAt && now - drunkAt.getTime() < NO_MORE_SECONDS * 1000) await award(userId, ["nomore"]);
+}
+
+/** 将进酒: ⚡舟友的酒⚡ opened while their main roach lies drunk */
+export async function partied(userId: string, now = Date.now()) {
+  const [u] = await db.select({ drunkUntil: users.drunkUntil }).from(users).where(eq(users.id, userId));
+  if (u?.drunkUntil && u.drunkUntil.getTime() > now) await award(userId, ["drinkup"]);
+}
+
+/**
+ * 二次呼吸: drunk and left to sleep until the morning: for everyone whose drinking (drunkAt) has run out by
+ * itself, never sobered up (which clears drunkAt), and drunkAt cleared so it is given once a sleep. Every few
+ * minutes, and as someone drinks again.
+ */
+export async function sleptItOff(now = Date.now()) {
+  const woke = await db
+    .update(users)
+    .set({ drunkAt: null })
+    .where(and(isNotNull(users.drunkAt), isNotNull(users.drunkUntil), lte(users.drunkUntil, new Date(now))))
+    .returning({ id: users.id });
+  for (const w of woke) await award(w.id, ["secondwind"]);
+  return woke.length;
+}
+
+/**
+ * 温暖你的战友: at 04:00, a night by 塔露拉干员's fire for everyone with a roach there (test players' do not count),
+ * once a day each
+ */
+export async function nightByTheFire(now = Date.now()) {
+  const today = beijingDate(now);
+  const by = await db
+    .selectDistinct({ userId: roaches.userId })
+    .from(roaches)
+    .innerJoin(users, eq(users.id, roaches.userId))
+    .where(
+      and(
+        isNull(users.demoKey),
+        sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${FIRE_AT.lng}, ${FIRE_AT.lat}), 4326)::geography, ${FIRE_RADIUS_M})`,
+      ),
+    );
+  if (!by.length) return 0;
+  const counted = await db
+    .update(users)
+    .set({ fireNights: oncePerDay(users.fireNights, users.fireNightOn, today), fireNightOn: today })
+    .where(inArray(users.id, by.map((b) => b.userId)))
+    .returning({ id: users.id, nights: users.fireNights });
+  for (const c of counted) await award(c.id, reached("fireNights", c.nights));
+  return counted.length;
+}
+
+/**
+ * 共患难的战友: 触须之交 COMRADE_DAYS days or more without a break (a 解除 deletes the pair); both get it. At 04:00,
+ * in one statement however many pairs there are; only those just given it are told, and looked at for the two
+ * that go by the badges held.
+ */
+export async function comrades(now = Date.now(), memorial = true) {
+  const since = new Date(now - COMRADE_DAYS * 86_400_000).toISOString();
+  const given = await db.execute<{ user_id: string }>(sql`
+    insert into ${userBadges} (user_id, badge)
+    select p.id, 'comrade' from (
+      select ${friendships.a} as id from ${friendships} where ${friendships.createdAt} <= ${since}::timestamptz
+      union select ${friendships.b} from ${friendships} where ${friendships.createdAt} <= ${since}::timestamptz
+    ) p
+    on conflict do nothing
+    returning user_id`);
+  const ids = given.map((g) => g.user_id);
+  if (ids.length) nudge(ids);
+  // at start (catchUpBadges) the two come for everyone at once, after
+  if (memorial) for (const id of ids) await memorialBadges(id);
+  return ids.length;
 }
 
 /** A player really got drunk; total is how many times so far. */
@@ -253,9 +422,16 @@ export async function catchUpBadges() {
     perlicaDays: sql`${users.perlicaDays}`,
     guideFriends: sql`((${users.amiyaFriendSince} is not null)::int + (${users.perlicaFriendSince} is not null)::int
       + (${users.talulahFriendSince} is not null)::int + (${users.mingheFriendSince} is not null)::int)`,
+    radarDays: sql`${users.radarDays}`,
+    fireNights: sql`${users.fireNights}`,
+    sneakDays: sql`${users.sneakDays}`,
+    birthdayWishes: sql`cardinality(${users.birthdayWished})`,
+    quilters: sql`cardinality(${users.quiltedBy})`,
+    farMoves: sql`${users.farMoves}`,
   };
   for (const b of BADGES) {
-    if (!b.goal) continue;
+    // the two that go by the badges held come last, below
+    if (!b.goal || b.goal.count === "badgesOwned" || b.goal.count === "seriesCovered") continue;
     const n = column[b.goal.count];
     await give(
       b.id,
@@ -278,6 +454,40 @@ export async function catchUpBadges() {
       join ${declarations} on ${declarations.id} = ${reactions.declarationId}
       where not ${reactions.withheld}
       group by ${reactions.declarationId}, ${declarations.senderId} having count(*) >= ${ECHO_REACTIONS}`,
+  );
+  // the third round, from what is still on record: 喧闹法则 from the reactions kept, 异卵同生 from clones out now or
+  // moved in the moves kept, 相见欢 from the game friends' notes, 使命必达 from the visits, and 共患难的战友
+  await give(
+    "rowdy",
+    sql`select ${declarations.senderId} from ${reactions}
+      join ${declarations} on ${declarations.id} = ${reactions.declarationId}
+      where not ${reactions.withheld}
+      group by ${reactions.declarationId}, ${declarations.senderId} having count(*) >= ${ROWDY_REACTIONS}`,
+  );
+  await give("twins", sql`select ${roaches.userId} from ${roaches} where ${roaches.slot} > 0 union select ${moves.userId} from ${moves} where ${moves.slot} > 0`);
+  await give(
+    "ingame",
+    sql`select ${friendNotes.fromUserId} from ${friendNotes} where ${friendNotes.kind} = 'gameAsk' and ${friendNotes.answer} = 'added'
+      union select ${friendNotes.toUserId} from ${friendNotes} where ${friendNotes.kind} = 'gameAsk' and ${friendNotes.answer} = 'added'`,
+  );
+  await give("delivery", sql`select ${visits.guestId} from ${visits}`);
+  await comrades(Date.now(), false);
+  // last, by the badges held now: five besides 罗德岛正式干员 itself (石棺里的苏醒 left out, as it may have run out),
+  // and one of each of ELITE_SERIES
+  await give(
+    "regular",
+    sql`select ${userBadges.userId} from ${userBadges} where ${userBadges.badge} not in ('regular', 'survivor')
+      group by ${userBadges.userId} having count(*) >= 5`,
+  );
+  const series = BADGES.filter((b) => ELITE_SERIES.includes(b.series));
+  await give(
+    "elite",
+    sql`select ${userBadges.userId} from ${userBadges}
+      join (values ${sql.join(
+        series.map((b) => sql`(${b.id}::text, ${b.series}::text)`),
+        sql`, `,
+      )}) as s(badge, series) on s.badge = ${userBadges.badge}
+      group by ${userBadges.userId} having count(distinct s.series) >= ${ELITE_SERIES.length}`,
   );
 }
 

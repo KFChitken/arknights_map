@@ -1,9 +1,27 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BADGES, badgeById, daysLeft, heldUntil, lockedText, nextBadge, quoteOf, serialText, stillHeld, wallBadges } from "./badges";
+import { BADGES, badgeById, badgesOwned, daysLeft, heldUntil, lockedText, nextBadge, quoteOf, serialText, seriesCovered, stillHeld, wallBadges } from "./badges";
 import { SITE_NAME } from "./rules";
 
-const none = { friends: 0, responders: 0, drinks: 0, declareDays: 0, reactDays: 0, declareLines: 0, amiyaDays: 0, perlicaDays: 0, guideFriends: 0 };
+const none = {
+  friends: 0,
+  responders: 0,
+  drinks: 0,
+  declareDays: 0,
+  reactDays: 0,
+  declareLines: 0,
+  amiyaDays: 0,
+  perlicaDays: 0,
+  guideFriends: 0,
+  radarDays: 0,
+  fireNights: 0,
+  sneakDays: 0,
+  birthdayWishes: 0,
+  quilters: 0,
+  farMoves: 0,
+  badgesOwned: 0,
+  seriesCovered: 0,
+};
 
 describe("badges", () => {
   it("has the art for every badge, full and mini", () => {
@@ -19,8 +37,8 @@ describe("badges", () => {
     expect(wallBadges(new Set(), during).map((b) => b.id)).toContain("half2026");
     expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("half2026");
     expect(wallBadges(new Set(["half2026"]), after).map((b) => b.id)).toContain("half2026");
-    // the nine lasting ones of the first round and the twenty of the second
-    expect(wallBadges(new Set(), after)).toHaveLength(31);
+    // the lasting ones of the first two rounds and 祀掌柜's, and the twenty-three of the third
+    expect(wallBadges(new Set(), after)).toHaveLength(54);
     // the timed one only while it is held
     expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("survivor");
     expect(wallBadges(new Set(["survivor"]), after).map((b) => b.id)).toContain("survivor");
@@ -58,8 +76,25 @@ describe("badges", () => {
       count: "declareDays",
       more: 2,
     });
-    expect(nextBadge(all, { ...busy, friends: 30, responders: 10 })).toBeNull();
-    // never the drinks, the sentences or the guides
-    expect(nextBadge(all, { ...busy, friends: 30, responders: 10, drinks: 49, declareLines: 7, amiyaDays: 29, guideFriends: 3 })).toBeNull();
+    // the third round's days: the radar, nights by the fire, touching sneakily
+    expect(nextBadge(all, { ...busy, friends: 30, responders: 10 })).toEqual({ name: "天灾信使", count: "radarDays", more: 10 });
+    const days = { ...busy, friends: 30, responders: 10, radarDays: 10, fireNights: 9, sneakDays: 7 };
+    expect(nextBadge(all, days)).toEqual({ name: "温暖你的战友", count: "fireNights", more: 1 });
+    // of the drinks only 人称千杯 and 人称万两, never the first drink; never the sentences or the guides
+    const gotten = [...all, "stormchaser", "warmth", "silentbolt", "summit", "globetrotter"].map((b) => (typeof b === "string" ? { id: b } : b));
+    const rest = { ...days, drinks: 0, declareLines: 7, amiyaDays: 29, guideFriends: 3, quilters: 2, farMoves: 2, birthdayWishes: 4 };
+    expect(nextBadge(gotten, rest)).toEqual({ name: "人称千杯", count: "drinks", more: 10 });
+    expect(nextBadge([...gotten, { id: "thousandcups" }], { ...rest, drinks: 99 })).toEqual({ name: "人称万两", count: "drinks", more: 1 });
+    expect(nextBadge([...gotten, { id: "thousandcups" }, { id: "bigjar" }], { ...rest, drinks: 99 })).toBeNull();
+  });
+
+  it("counts the badges held besides 罗德岛正式干员, and the series of 精英干员", () => {
+    const held = ["trainee", "tipsy", "regular", "lookatme"].map((id) => ({ id }));
+    expect(badgesOwned(held)).toBe(3);
+    expect(seriesCovered(held)).toBe(3);
+    expect(seriesCovered([...held, { id: "courtesy" }, { id: "amiya" }, { id: "twins" }])).toBe(5);
+    expect(lockedText(badgeById("regular")!, { ...none, badgesOwned: 3 })).toBe("3 / 5 枚");
+    expect(lockedText(badgeById("elite")!, { ...none, seriesCovered: 4 })).toBe("4 / 5 个系列");
+    expect(lockedText(badgeById("stormchaser")!, { ...none, radarDays: 12 })).toBe("10 / 10 天");
   });
 });

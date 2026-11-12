@@ -109,6 +109,9 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "sober":
       await world.sober(uid());
       break;
+    case "partied":
+      await world.partied(uid());
+      break;
     case "removeRoach":
       result = await world.removeRoach(uid(), String(args[0]));
       break;

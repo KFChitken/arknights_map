@@ -23,6 +23,7 @@ import type { LngLat } from "../types";
 import { DAY } from "../world/logic";
 import type { PublicProfile } from "../profile";
 import { WorldError, type FriendBetween, type InboxItem, type OwnRoach, type PlaceTarget, type VisitEvent } from "../world/types";
+import { addedInGame, award, placed, quilted } from "./badges";
 import { db } from "./db";
 import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { nudge } from "./live";
@@ -209,6 +210,8 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
   });
   if (!made) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? fmt(T.server.friendly.actsUsedUp, { max: FRIEND_ACTS_PER_DAY }));
   nudge([other.id]);
+  // 眠于树影之中: covered with a quilt while asleep, by this 触须之交
+  if (kind === "blanket") await quilted(other.id, userId);
 }
 
 /** 一键 (src/lib/friendly.ts): one act for many 触须之交 at once, each by the rules for one; says how it went for each */
@@ -306,6 +309,7 @@ export async function gameAdded(userId: string, itemId: unknown) {
     .set({ answer: "added", answeredAt: now, seenAt: note.seenAt ?? now })
     .where(and(eq(friendNotes.id, id), isNull(friendNotes.answer)));
   nudge([note.fromUserId]);
+  await addedInGame(userId, note.fromUserId);
 }
 
 /** 想在游戏里加 TA, for a game whose UID they keep to themselves: nothing is given out, once a week per pair */
@@ -470,6 +474,9 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
   roachesChanged();
   await arrivedAt(userId, seat);
   nudge([host.id]);
+  // 使命必达, and 异卵同生 for a clone put out the first time
+  await award(userId, ["delivery"]);
+  await placed(userId, placement.slot, placement.existing ?? null, seat);
   return { roaches: await ownRoaches(userId), seat };
 }
 

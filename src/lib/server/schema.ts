@@ -27,6 +27,7 @@ const geography = customType<{ data: string }>({ dataType: () => "geography" });
 const at = (name: string) => timestamp(name, { withTimezone: true });
 const createdAt = () => at("created_at").notNull().defaultNow();
 const emptyArray = sql`'{}'::text[]`;
+const emptyIds = sql`'{}'::uuid[]`;
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -105,6 +106,24 @@ export const users = pgTable("users", {
   amiyaTouchedOn: date("amiya_touched_on", { mode: "string" }),
   perlicaDays: integer("perlica_days").notNull().default(0),
   perlicaTouchedOn: date("perlica_touched_on", { mode: "string" }),
+  /**
+   * The third round of badges (src/lib/badges.ts), each written down as it happens and never going down, as the
+   * records behind them go after a day (radar scans) or 90 days: Beijing days they scanned the radar, a roach of
+   * theirs spent the night by 塔露拉干员's fire (counted at 04:00), and they touched a player sneakily, with the day
+   * last counted; the 触须之交 they wished 生日快乐！ on a birthday declaration, and who covered them with a quilt
+   * while they slept (ids, each once); how often their main roach moved 100 km or more; and when the drinking
+   * they are asleep from began, for 我真的不能再喝了 and 二次呼吸
+   */
+  radarDays: integer("radar_days").notNull().default(0),
+  radarOn: date("radar_on", { mode: "string" }),
+  fireNights: integer("fire_nights").notNull().default(0),
+  fireNightOn: date("fire_night_on", { mode: "string" }),
+  sneakDays: integer("sneak_days").notNull().default(0),
+  sneakOn: date("sneak_on", { mode: "string" }),
+  birthdayWished: uuid("birthday_wished").array().notNull().default(emptyIds),
+  quiltedBy: uuid("quilted_by").array().notNull().default(emptyIds),
+  farMoves: integer("far_moves").notNull().default(0),
+  drunkAt: at("drunk_at"),
   /** 好久没来时，蟑螂翻肚皮睡觉: their main roach may flip over while they stay away */
   flipWhenAway: boolean("flip_when_away").notNull().default(true),
   /** The Beijing day the 04:00 batch flipped their main roach over for staying away; null while it stands */

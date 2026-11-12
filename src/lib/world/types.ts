@@ -55,6 +55,8 @@ export interface World {
   drink(): Promise<{ until: number }>;
   /** 醒酒: your main roach stands up at once. */
   sober(): Promise<void>;
+  /** ⚡舟友的酒⚡ opened while your main roach lies drunk, for 将进酒 (the server checks it does). */
+  partied(): Promise<void>;
   /** Taking back the main roach takes back the clones too. */
   removeRoach(roachId: string): Promise<OwnRoach[]>;
   /** Touch someone else's roach by its public id. Sends the device's time zone for 佩丽卡监督's count of the day. */

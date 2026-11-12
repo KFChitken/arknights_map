@@ -141,6 +141,7 @@ export class ServerWorld implements World {
   siPortrait = (choice: "return" | "keep") => this.call<{ line: string }>("siPortrait", choice);
   drink = () => this.call<{ until: number }>("drink");
   sober = () => this.call<void>("sober");
+  partied = () => this.call<void>("partied");
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);
   // the zone only says which day it is for 佩丽卡监督's count of the day
   touch = (publicId: string, bold: boolean) => this.call<TouchResult>("touch", publicId, bold, new Date().getTimezoneOffset());

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, daysBetween } from "../beijing";
+import { award } from "./badges";
 import { db } from "./db";
 import { nudge } from "./live";
 import { roachesChanged } from "./roachFeed";
@@ -47,7 +48,10 @@ async function tellPokers(now: number) {
     .set({ wokeToldAt: new Date(now) })
     .where(and(isNull(pokes.wokeToldAt), inArray(pokes.toUserId, awake)))
     .returning({ from: pokes.fromUserId });
-  if (told.length) nudge([...new Set(told.map((t) => t.from))]);
+  const pokers = [...new Set(told.map((t) => t.from))];
+  if (pokers.length) nudge(pokers);
+  // 好久不见: the first time someone they poked is up again
+  for (const p of pokers) await award(p, ["longtime"]);
   return told.length;
 }
 

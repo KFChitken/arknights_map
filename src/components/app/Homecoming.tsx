@@ -20,12 +20,21 @@ const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   responders: (n, name) => fmt(T.homecoming.next.responders, { n, name }),
   declareDays: (n, name) => fmt(T.homecoming.next.declareDays, { n, name }),
   reactDays: (n, name) => fmt(T.homecoming.next.reactDays, { n, name }),
-  // never picked by nextBadge, which leaves drinking, the sentences and the guides alone
+  // of drinking only 人称千杯 and 人称万两 are picked by nextBadge; the sentences and the guides never are
   drinks: (n, name) => fmt(T.homecoming.next.drinks, { n, name }),
   declareLines: (n, name) => fmt(T.homecoming.next.declareLines, { n, name }),
   amiyaDays: (n, name) => fmt(T.homecoming.next.amiyaDays, { n, name }),
   perlicaDays: (n, name) => fmt(T.homecoming.next.perlicaDays, { n, name }),
   guideFriends: (n, name) => fmt(T.homecoming.next.guideFriends, { n, name }),
+  radarDays: (n, name) => fmt(T.homecoming.next.radarDays, { n, name }),
+  fireNights: (n, name) => fmt(T.homecoming.next.fireNights, { n, name }),
+  sneakDays: (n, name) => fmt(T.homecoming.next.sneakDays, { n, name }),
+  // never picked by nextBadge, like the guides
+  birthdayWishes: (n, name) => fmt(T.homecoming.next.birthdayWishes, { n, name }),
+  quilters: (n, name) => fmt(T.homecoming.next.quilters, { n, name }),
+  farMoves: (n, name) => fmt(T.homecoming.next.farMoves, { n, name }),
+  badgesOwned: (n, name) => fmt(T.homecoming.next.badgesOwned, { n, name }),
+  seriesCovered: (n, name) => fmt(T.homecoming.next.seriesCovered, { n, name }),
 };
 
 /**

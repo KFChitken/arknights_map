@@ -5,7 +5,7 @@ import { fmt, T } from "@/i18n";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
 import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food } from "../declarations";
-import { AWAY_DAYS } from "../badges";
+import { AWAY_DAYS, badgesOwned, seriesCovered } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
 import { nextMorning } from "../morning";
@@ -102,7 +102,26 @@ import {
   unfriendTalulah,
 } from "./talulah";
 import { hasStayed, ignoreSi, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
-import { award, declared, drank, earnedBy, friendsMade, reactedTo, respondersOf, responded, shownBadges, wakeUp } from "./badges";
+import {
+  award,
+  declared,
+  declaredFrom,
+  drank,
+  earnedBy,
+  friendsMade,
+  partied as partiedBadge,
+  placed,
+  reactedTo,
+  respondersOf,
+  responded,
+  scannedRadar,
+  shownBadges,
+  sleptItOff,
+  soberedUp,
+  touchedSneakily,
+  wakeUp,
+  wishedHappyBirthday,
+} from "./badges";
 import { lastVisitOn } from "./away";
 import {
   betweenOf,
@@ -382,6 +401,14 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
       amiyaDays: u.amiyaDays,
       perlicaDays: u.perlicaDays,
       guideFriends: [u.amiyaFriendSince, u.perlicaFriendSince, u.talulahFriendSince, u.mingheFriendSince].filter(Boolean).length,
+      radarDays: u.radarDays,
+      fireNights: u.fireNights,
+      sneakDays: u.sneakDays,
+      birthdayWishes: u.birthdayWished.length,
+      quilters: u.quiltedBy.length,
+      farMoves: u.farMoves,
+      badgesOwned: badgesOwned(badges),
+      seriesCovered: seriesCovered(badges),
     },
     drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
     // a whole day or more away, so not just back the next morning
@@ -550,7 +577,7 @@ export async function writePlacement(
     await roachMoved(tx, existing.id, "moved");
   } else await tx.insert(roaches).values({ userId, slot, ...values });
   // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
-  if (slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
+  if (slot === 0) await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
   await tx.insert(moves).values({
     userId,
     slot,
@@ -580,6 +607,7 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   roachesChanged();
   // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
   await arrivedAt(userId, at);
+  await placed(userId, placement.slot, placement.existing ?? null, at);
   return ownRoaches(userId);
 }
 
@@ -604,6 +632,7 @@ export async function sitByFire(userId: string, target: PlaceTarget): Promise<{ 
   roachesChanged();
   // the first roach of theirs to sit by her fire is welcomed, and the songs counted
   await arrivedAt(userId, seat);
+  await placed(userId, placement.slot, placement.existing ?? null, seat);
   return { roaches: await ownRoaches(userId), seat };
 }
 
@@ -639,13 +668,14 @@ export async function rideMinghe(userId: string, target: RideTarget): Promise<{ 
         rideFromLng: placement.existing?.lng ?? null,
         rideFromLat: placement.existing?.lat ?? null,
       });
-      return sayAboutRide(tx, userId, "ride", stopOf(day));
+      return { said: await sayAboutRide(tx, userId, "ride", stopOf(day)), spot };
     })
     .catch((e) => {
       throw slotTaken(e) ? new WorldError(T.server.world.slotTaken) : e;
     });
   roachesChanged();
-  return { roaches: await ownRoaches(userId), item };
+  await placed(userId, placement.slot, placement.existing ?? null, item.spot);
+  return { roaches: await ownRoaches(userId), item: item.said };
 }
 
 /** 在这一站下马: the clone stays where it stands, off his horse, and he says so. */
@@ -671,7 +701,7 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
     for (const r of gone) await roachMoved(tx, r.id, "removed");
     await tx.delete(roaches).where(inArray(roaches.id, gone.map((r) => r.id)));
     await tx.insert(moves).values(gone.map((r) => ({ userId, slot: r.slot, fromLng: r.lng, fromLat: r.lat })));
-    if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null, sleptAwayOn: null }).where(eq(users.id, userId));
+    if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
   });
   roachesChanged();
   return ownRoaches(userId);
@@ -693,9 +723,11 @@ export async function drink(userId: string): Promise<{ until: number }> {
   if (u.drunkUntil && u.drunkUntil > now) throw new WorldError(drunk);
   if (!allow(`drink:${userId}`, 1, DRINK_GAP_MS)) throw new WorldError(T.server.world.justDrank);
   const until = nextMorning(main, now.getTime());
+  // the last sleep ran out by itself before 二次呼吸's round came by: given now, before drunkAt is the new one's
+  if (u.drunkAt) await sleptItOff(now.getTime());
   const [row] = await db
     .update(users)
-    .set({ drunkUntil: new Date(until), drinksTotal: sql`${users.drinksTotal} + 1` })
+    .set({ drunkUntil: new Date(until), drunkAt: now, drinksTotal: sql`${users.drinksTotal} + 1` })
     .where(and(eq(users.id, userId), or(isNull(users.drunkUntil), lt(users.drunkUntil, now))))
     .returning({ total: users.drinksTotal });
   if (!row) throw new WorldError(drunk);
@@ -704,14 +736,22 @@ export async function drink(userId: string): Promise<{ until: number }> {
   return { until };
 }
 
+/** ⚡舟友的酒⚡ opened: 将进酒 if their main roach really lies drunk */
+export async function partied(userId: string) {
+  await partiedBadge(userId);
+}
+
 /** 醒酒: the main roach stands up at once. */
 export async function sober(userId: string) {
+  const [before] = await db.select({ drunkAt: users.drunkAt }).from(users).where(eq(users.id, userId));
   const woke = await db
     .update(users)
-    .set({ drunkUntil: null })
+    .set({ drunkUntil: null, drunkAt: null })
     .where(and(eq(users.id, userId), isNotNull(users.drunkUntil)))
     .returning({ id: users.id });
-  if (woke.length) roachesChanged();
+  if (!woke.length) return;
+  roachesChanged();
+  await soberedUp(userId, before?.drunkAt ?? null);
 }
 
 async function checkTouchQuota(userId: string) {
@@ -762,6 +802,8 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
     toPublicId: roach.publicId,
     withheld,
   });
+  // 惊霆无声 is the toucher's own, so it counts whether or not the touch arrives
+  if (!bold) await touchedSneakily(userId);
   if (withheld) return { newFriend: null };
   const newFriend = bold ? await befriendIfMutual(userId, roach.userId) : null;
   nudge([roach.userId]);
@@ -1300,6 +1342,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   const event = d.template === "event" ? findLine(d.line)?.event : null;
   if (event?.badge) await award(userId, [event.badge]);
   await declared(userId, d.template);
+  await declaredFrom(userId, chosen.map((r) => r.slot));
   const told = friendsToo.size ? `你的 ${friendsToo.size} 位触须之交也都收到了。` : "";
   return { reach: reachText(rows.length) + told };
 }
@@ -1340,6 +1383,10 @@ export async function react(userId: string, itemId: string, reaction: string) {
   nudge([row.senderId]);
   await reactedTo(row.senderId);
   await responded(userId, id, row.senderId);
+  // 罗德岛信使: 生日快乐！ to a 触须之交's birthday
+  if (reaction === "birthday" && row.template === "birthday" && (await friendIdsOf(userId)).has(row.senderId)) {
+    await wishedHappyBirthday(userId, row.senderId);
+  }
 }
 
 export async function friends(userId: string): Promise<Friend[]> {
@@ -1494,6 +1541,7 @@ export async function radar(userId: string): Promise<Radar | null> {
   const scan = await scanRadar(userId, main, now);
   await db.insert(radarScans).values({ userId, result: scan, lng: main.lng, lat: main.lat, createdAt: new Date(now) });
   await db.delete(radarScans).where(and(eq(radarScans.userId, userId), lt(radarScans.createdAt, ago(DAY))));
+  await scannedRadar(userId);
   return { ...scan, scannedAt: now, scansLeft: left - 1, nextScanAt: null };
 }
 

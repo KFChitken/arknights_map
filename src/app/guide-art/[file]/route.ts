@@ -32,7 +32,7 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   // the 向导 badges drawn with the guides' own pictures (src/lib/badges.ts pictureArt), full and mini; 满编小队 has all four
   ...badgeArt(["amiya", "amiya30"], AMIYA_PICTURE),
   ...badgeArt(["perlica", "perlica30"], PERLICA_PICTURE),
-  ...badgeArt(["talulah", "fireside"], TALULAH_PICTURE),
+  ...badgeArt(["talulah", "fireside", "warmth"], TALULAH_PICTURE),
   ...badgeArt(["minghe", "sevenstops"], MINGHE_PICTURE),
   ...badgeArt(["siqueue", "siinn"], SI_PICTURE),
   ...badgeArt(["fullsquad"], AMIYA_PICTURE && PERLICA_PICTURE && TALULAH_PICTURE && MINGHE_PICTURE),

@@ -1707,6 +1707,8 @@ export default function MapApp({
     setSelected(null);
     setFocus({ lng: main.lng, lat: main.lat, zoom: Math.max(viewRef.current.zoom, PARTY_ZOOM), nonce: Date.now() });
     setParty({ key: Date.now(), el: document.createElement("div"), at: { lng: main.lng, lat: main.lat }, music });
+    // 将进酒 (the server checks they are drunk); nothing is said if it does not go
+    void worldRef.current?.partied().catch(() => {});
   };
   const endParty = useCallback(() => {
     stopPartyMusic();

@@ -8,10 +8,11 @@ import { SITE_NAME } from "./rules";
  * never on the map.
  */
 
-export type BadgeSeries = "diplomacy" | "memorial" | "bacchus" | "event" | "declare" | "response" | "guides";
+export type BadgeSeries = "diplomacy" | "daily" | "memorial" | "bacchus" | "event" | "declare" | "response" | "guides";
 
 export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
   { id: "diplomacy", name: "外交系列", code: "DIPLOMACY" },
+  { id: "daily", name: "日常系列", code: "DAILY" },
   { id: "memorial", name: "纪念系列", code: "MEMORIAL" },
   { id: "bacchus", name: "酒神系列", code: "BACCHUS" },
   { id: "event", name: "活动系列", code: "EVENT" },
@@ -23,7 +24,10 @@ export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
 /**
  * A count the wall shows progress on, and the server awards by. The day counts are Beijing days
  * (twenty in a day is one day; they need not be in a row); declareLines is how many of the
- * everyday sentences (not 祝我生日快乐) they ever sent; guideFriends how many guides are 触须之交.
+ * everyday sentences (not 祝我生日快乐) they ever sent; guideFriends how many guides are 触须之交. The third
+ * round's: days they scanned the radar, a roach of theirs spent the night by 塔露拉干员's fire, and they touched a
+ * player sneakily; 触须之交 they wished 生日快乐！, and who covered them with a quilt; main roach moves of
+ * MOVING_CITY_KM or more; badges held besides 罗德岛正式干员; and how many of ELITE_SERIES they hold one of.
  */
 export type BadgeCount =
   | "friends"
@@ -34,7 +38,15 @@ export type BadgeCount =
   | "declareLines"
   | "amiyaDays"
   | "perlicaDays"
-  | "guideFriends";
+  | "guideFriends"
+  | "radarDays"
+  | "fireNights"
+  | "sneakDays"
+  | "birthdayWishes"
+  | "quilters"
+  | "farMoves"
+  | "badgesOwned"
+  | "seriesCovered";
 
 /** 一呼百舟应: this many responses to one declaration */
 export const ECHO_REACTIONS = 10;
@@ -75,6 +87,18 @@ export const FIRST_BATCH = 1000;
 export const AWAY_DAYS = 14;
 /** 石棺里的苏醒 is held this many days, then it goes until the next time */
 export const SURVIVOR_DAYS = 7;
+/** 狂响的声筒: the main roach and at least this many clones in one declaration */
+export const LOUDHORN_CLONES = 2;
+/** 喧闹法则: this many responses to one declaration */
+export const ROWDY_REACTIONS = 30;
+/** 共患难的战友: 触须之交 this many days without a break */
+export const COMRADE_DAYS = 30;
+/** 移动城市: a move of the main roach this far counts */
+export const MOVING_CITY_KM = 100;
+/** 我真的不能再喝了: 醒酒 within this many seconds of getting drunk */
+export const NO_MORE_SECONDS = 60;
+/** 罗德岛精英干员: one of each of these series */
+export const ELITE_SERIES: BadgeSeries[] = ["diplomacy", "declare", "response", "guides", "bacchus"];
 
 export const BADGES: Badge[] = [
   {
@@ -137,6 +161,122 @@ export const BADGES: Badge[] = [
     goal: { count: "responders", n: 10 },
   },
   {
+    id: "ingame",
+    name: "相见欢",
+    code: "DIP-GAME",
+    series: "diplomacy",
+    condition: "第一次和触须之交在游戏里也成了好友（一方点「我在游戏里申请了」，另一方点「我也加了」），两人都拿",
+    lockedHint: "和触须之交在游戏里也加个好友",
+    quote: "地图上碰过触须，游戏里也见着了。",
+    pill: { background: "#c8352f", color: "#ffe08a", border: "1.5px solid #c8352f" },
+  },
+  {
+    id: "comrade",
+    name: "共患难的战友",
+    code: "DIP-30D",
+    series: "diplomacy",
+    condition: "和同一位触须之交做满 30 天，中间没解除，两人都拿",
+    lockedHint: "和同一位触须之交做满 30 天",
+    quote: "别那么拘谨，我们可已经是共患难的战友了。",
+    pill: { background: "#55642a", color: "#ffffff", border: "1.5px solid #36401a" },
+  },
+  {
+    id: "summit",
+    name: "万国峰会",
+    code: "DIP-100",
+    series: "diplomacy",
+    condition: "和 100 位不同的舟P成为过触须之交",
+    lockedHint: "{n} / 100 位",
+    quote: "一百位触须之交，各国的代表都到齐了。",
+    pill: { background: "#136148", color: "#ffe08a", border: "1.5px solid #f6c343" },
+    goal: { count: "friends", n: 100 },
+  },
+  {
+    id: "postman",
+    name: "罗德岛信使",
+    code: "DAY-BDAY",
+    series: "daily",
+    condition: "给 5 位不同的触须之交的生日宣言回过「生日快乐！」",
+    lockedHint: "{n} / 5 位",
+    quote: "有你的信——五份生日祝福，都是你送到的。",
+    pill: { background: "#e7f2ff", color: "#1f5fb8", border: "1.5px solid #3d8ef0" },
+    goal: { count: "birthdayWishes", n: 5 },
+  },
+  {
+    id: "delivery",
+    name: "使命必达",
+    code: "DAY-VISIT",
+    series: "daily",
+    condition: "第一次派克隆体去触须之交家串门",
+    lockedHint: "派克隆体去触须之交家串个门",
+    quote: "咚咚！打扰了，有人在吗？送货上门——",
+    pill: { background: "#fff3dc", color: "#7a4a25", border: "1.5px solid #b0703f" },
+  },
+  {
+    id: "longtime",
+    name: "好久不见",
+    code: "DAY-WAKE",
+    series: "daily",
+    condition: "你戳过的触须之交睡醒回来了（第一次）",
+    lockedHint: "戳一戳睡着的触须之交，等 TA 醒来",
+    quote: "你戳过的那位醒了。好久不见！",
+    pill: { background: "#fff4dc", color: "#9a5a00", border: "1.5px solid #f0a019" },
+  },
+  {
+    id: "twins",
+    name: "异卵同生",
+    code: "DAY-CLONE",
+    series: "daily",
+    condition: "第一次放出克隆体",
+    lockedHint: "放出一只克隆体",
+    quote: "又一只你，出门去了。",
+    pill: { background: "#eef7ff", color: "#1f5fb8", border: "1.5px dashed #3d8ef0" },
+  },
+  {
+    id: "stormchaser",
+    name: "天灾信使",
+    code: "DAY-RADAR",
+    series: "daily",
+    condition: "累计 10 天用过方舟雷达",
+    lockedHint: "{n} / 10 天",
+    quote: "十天的雷达，附近有多少舟P，你心里有数。",
+    pill: { background: "#10251f", color: "#3fd0d4", border: "1.5px solid #3fd0d4" },
+    goal: { count: "radarDays", n: 10 },
+  },
+  {
+    id: "treeshade",
+    name: "眠于树影之中",
+    code: "DAY-NAP",
+    series: "daily",
+    condition: "睡着的时候被 3 位不同的触须之交盖过被子",
+    lockedHint: "{n} / 3 位",
+    quote: "睡着的时候，三位触须之交给你盖过被子。",
+    pill: { background: "#e6f6e9", color: "#2f7d4a", border: "1.5px solid #4caf6a" },
+    goal: { count: "quilters", n: 3 },
+  },
+  {
+    id: "movingcity",
+    name: "移动城市",
+    code: "DAY-MOVE",
+    series: "daily",
+    condition: "本体搬过 3 次家，每次相隔 100 公里以上",
+    lockedHint: "{n} / 3 次",
+    quote: "搬了三次家，你的城市一直在路上。",
+    pill: { background: "#f3dca6", color: "#123e80", border: "1.5px solid #3d8ef0" },
+    goal: { count: "farMoves", n: 3 },
+  },
+  {
+    id: "silentbolt",
+    name: "惊霆无声",
+    code: "DAY-SNEAK",
+    series: "daily",
+    condition: "累计 10 天偷偷碰过人",
+    lockedHint: "{n} / 10 天",
+    quote: "十天，悄悄碰过去，一点声响都没有。",
+    pill: { background: "#1b2046", color: "#ffd23f", border: "1.5px solid #3d8ef0" },
+    goal: { count: "sneakDays", n: 10 },
+  },
+  {
     id: "firstbatch",
     name: "首批蟑螂",
     code: "MEM-1000",
@@ -168,6 +308,28 @@ export const BADGES: Badge[] = [
     days: SURVIVOR_DAYS,
   },
   {
+    id: "regular",
+    name: "罗德岛正式干员",
+    code: "MEM-5",
+    series: "memorial",
+    condition: "拿到第 5 枚徽章",
+    lockedHint: "{n} / 5 枚",
+    quote: "人事部同意你晋升为罗德岛正式干员。",
+    pill: { background: "#f4f6fa", color: "#1f2a44", border: "1.5px solid #1f2a44" },
+    goal: { count: "badgesOwned", n: 5 },
+  },
+  {
+    id: "elite",
+    name: "罗德岛精英干员",
+    code: "MEM-ELITE",
+    series: "memorial",
+    condition: "外交、宣言、回应、向导、酒神 5 个系列，每个都至少拿到 1 枚",
+    lockedHint: "{n} / 5 个系列",
+    quote: "五个系列都有你，罗德岛的精英干员。",
+    pill: { background: "linear-gradient(100deg, #1f2a44 0%, #2c3d72 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
+    goal: { count: "seriesCovered", n: 5 },
+  },
+  {
     id: "tipsy",
     name: "当一回酒神",
     code: "BAC-01",
@@ -188,6 +350,58 @@ export const BADGES: Badge[] = [
     quote: "醉倒 50 次，泰拉的酒馆都认识你了。",
     pill: { background: "linear-gradient(100deg, #3b1f5c 0%, #8e2a5a 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "drinks", n: 50 },
+  },
+  {
+    id: "thousandcups",
+    name: "人称千杯",
+    code: "BAC-10",
+    series: "bacchus",
+    condition: "主动醉倒满 10 次，每次都算",
+    lockedHint: "{n} / 10 次",
+    quote: "醉倒十次，酒馆里有人叫你「千杯」了。",
+    pill: { background: "#7a4a25", color: "#ffe08a", border: "1.5px solid #b0703f" },
+    goal: { count: "drinks", n: 10 },
+  },
+  {
+    id: "bigjar",
+    name: "人称万两",
+    code: "BAC-100",
+    series: "bacchus",
+    condition: "主动醉倒满 100 次，每次都算",
+    lockedHint: "{n} / 100 次",
+    quote: "醉倒一百次，「万两」这个名号归你了。",
+    pill: { background: "linear-gradient(100deg, #3b1f5c 0%, #8a5530 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
+    goal: { count: "drinks", n: 100 },
+  },
+  {
+    id: "nomore",
+    name: "我真的不能再喝了",
+    code: "BAC-1MIN",
+    series: "bacchus",
+    condition: "醉倒后不到 1 分钟就点了「醒酒」",
+    lockedHint: "醉倒后 1 分钟内醒酒",
+    quote: "……不行，我真的不能再喝了。我要回去了……",
+    pill: { background: "#fbfaf5", color: "#c23a5e", border: "1.5px solid #c23a5e" },
+  },
+  {
+    id: "drinkup",
+    name: "将进酒",
+    code: "BAC-PARTY",
+    series: "bacchus",
+    condition: "醉倒的时候开过一次「⚡舟友的酒⚡」",
+    lockedHint: "醉着的时候开一次舟友的酒",
+    quote: "喝酒吗？……音乐都放起来了。",
+    pill: { background: "#3b1f5c", color: "#ffe08a", border: "1.5px solid #ff5c93" },
+  },
+  {
+    id: "secondwind",
+    name: "二次呼吸",
+    code: "BAC-8AM",
+    series: "bacchus",
+    condition: "醉倒后没点「醒酒」，一觉睡到早上 8 点自然醒",
+    lockedHint: "醉倒后别点醒酒，睡到早上 8 点",
+    quote: "没点醒酒，一觉睡到八点。深呼吸，又是新的一天。",
+    pill: { background: "#ffe3a8", color: "#c23a5e", border: "1.5px solid #c23a5e" },
   },
   {
     // each event brings its own badge, named in events.ts
@@ -270,6 +484,37 @@ export const BADGES: Badge[] = [
     goal: { count: "declareLines", n: 8 },
   },
   {
+    id: "globetrotter",
+    name: "万国信使",
+    code: "DEC-365",
+    series: "declare",
+    condition: "累计 365 天发过宣言",
+    lockedHint: "{n} / 365 天",
+    quote: "这一年，作为万国信使，你踏过了太多前所未见的土地。",
+    pill: { background: "linear-gradient(100deg, #22306a 0%, #3b2f8f 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
+    goal: { count: "declareDays", n: 365 },
+  },
+  {
+    id: "loudhorn",
+    name: "狂响的声筒",
+    code: "DEC-X3",
+    series: "declare",
+    condition: "本体带着 2 只以上克隆体一起发了一次宣言（3 只同时喊）",
+    lockedHint: "本体带上 2 只克隆体一起发一次宣言",
+    quote: "三只一起开口，整片地图都听见了。",
+    pill: { background: "#ff8a2a", color: "#ffffff", border: "1.5px solid #c25a12" },
+  },
+  {
+    id: "rowdy",
+    name: "喧闹法则",
+    code: "DEC-ECHO30",
+    series: "declare",
+    condition: "有一条宣言收到 30 个回应",
+    lockedHint: "让一条宣言收到 30 个回应",
+    quote: "一条宣言换来三十个回应，热闹得像过节。",
+    pill: { background: "#2a1840", color: "#ffb36b", border: "1.5px solid #ff8a2a" },
+  },
+  {
     id: "courtesy",
     name: "合乎粥礼",
     code: "RE-01",
@@ -322,6 +567,17 @@ export const BADGES: Badge[] = [
     lockedHint: "从一条宣言开始，交一位触须之交",
     quote: "一句宣言，换来一位触须之交。",
     pill: { background: "linear-gradient(90deg, #ffe3c7, #d6f6f2)", color: "#0d5a53", border: "1.5px solid #2ec4b6" },
+  },
+  {
+    id: "empathy",
+    name: "萨科塔的共感",
+    code: "RE-HALO",
+    series: "response",
+    condition: "累计 50 天回应过宣言",
+    lockedHint: "{n} / 50 天",
+    quote: "身边的人是快乐还是难过，你都感受得到。",
+    pill: { background: "#0e3b37", color: "#ffe08a", border: "1.5px solid #2ec4b6" },
+    goal: { count: "reactDays", n: 50 },
   },
   {
     id: "amiya",
@@ -403,6 +659,18 @@ export const BADGES: Badge[] = [
     pictureArt: "badge-fireside",
   },
   {
+    id: "warmth",
+    name: "温暖你的战友",
+    code: "GD-WARM",
+    series: "guides",
+    condition: "累计 10 天有蟑螂在塔露拉的篝火边过夜（每天 4 点数火边的时候算一天）",
+    lockedHint: "{n} / 10 天",
+    quote: "威慑敌人那半句用不上，火边只有战友。",
+    pill: { background: "#2a1f4a", color: "#ffb36b", border: "1.5px solid #ff7a2a" },
+    goal: { count: "fireNights", n: 10 },
+    pictureArt: "badge-warmth",
+  },
+  {
     id: "sevenstops",
     name: "七站星河",
     code: "GD-SEVEN",
@@ -453,6 +721,13 @@ export function badgeById(id: string) {
   return BADGES.find((b) => b.id === id);
 }
 
+/** 罗德岛正式干员's count: the badges held besides itself */
+export const badgesOwned = (held: { id: string }[]) => held.filter((b) => b.id !== "regular").length;
+
+/** 罗德岛精英干员's count: how many of ELITE_SERIES a badge is held of */
+export const seriesCovered = (held: { id: string }[]) =>
+  ELITE_SERIES.filter((series) => held.some((b) => badgeById(b.id)?.series === series)).length;
+
 /** A badge someone has, as profile cards show it */
 export type ShownBadge = { id: string; serial?: number };
 
@@ -486,14 +761,21 @@ export function wallBadges(earned: Set<string>, now = Date.now()) {
   return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days));
 }
 
-/** Counts a player is nudged about: drinking, the guides and the sentences never are */
-const NUDGED: BadgeCount[] = ["friends", "responders", "declareDays", "reactDays"];
+/**
+ * Counts a player is nudged about: 触须之交, responders, and days (of declaring, responding, the radar, nights by
+ * the fire, touching sneakily); of drinking only 人称千杯 and 人称万两; the guides, the sentences and the one-off
+ * badges never are
+ */
+const NUDGED: BadgeCount[] = ["friends", "responders", "declareDays", "reactDays", "radarDays", "fireNights", "sneakDays"];
+/** Of the drinking ones, only these two: never the first drink, nor 泰拉异格酒神 */
+const NUDGED_DRINKS = ["thousandcups", "bigjar"];
 
-/** The badge earned by friends, responders or days of declaring and responding that a player is the fewest steps away from. */
+/** The badge earned by one of the NUDGED counts that a player is the fewest steps away from. */
 export function nextBadge(earned: ShownBadge[], counts: Record<BadgeCount, number>) {
   let best: { name: string; count: BadgeCount; more: number } | null = null;
   for (const b of BADGES) {
-    if (!b.goal || !NUDGED.includes(b.goal.count) || earned.some((e) => e.id === b.id)) continue;
+    const nudged = b.goal && (NUDGED.includes(b.goal.count) || NUDGED_DRINKS.includes(b.id));
+    if (!b.goal || !nudged || earned.some((e) => e.id === b.id)) continue;
     const more = b.goal.n - counts[b.goal.count];
     if (more > 0 && (!best || more < best.more)) best = { name: b.name, count: b.goal.count, more };
   }

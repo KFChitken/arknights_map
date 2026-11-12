@@ -358,7 +358,8 @@ describe("server world", () => {
     await me.placeRoach({ kind: "clone" }, TOKYO);
     const { until } = await world.drink(me.id);
     expect(until).toBeGreaterThan(Date.now());
-    expect(await me.me()).toMatchObject({ drunkUntil: until, counts: { drinks: 1 }, badges: [{ id: "tipsy", seen: false }] });
+    // 异卵同生 came with the clone
+    expect(await me.me()).toMatchObject({ drunkUntil: until, counts: { drinks: 1 }, badges: [{ id: "twins" }, { id: "tipsy", seen: false }] });
     const mine = new Set((await me.me()).roaches.map((r) => r.publicId));
     const shown = (await allRoaches()).filter((r) => mine.has(r.id));
     expect(shown.find((r) => r.id === main.publicId)).toMatchObject({ asleep: true });
@@ -1477,7 +1478,8 @@ describe("server world", () => {
     await db.update(users).set({ drinksTotal: 49 }).where(eq(users.id, regular.id));
     await award(regular.id, ["tipsy"]);
     await world.drink(regular.id);
-    expect((await regular.me()).badges.map((b) => b.id)).toEqual(["tipsy", "bacchus"]);
+    // 人称千杯 at ten on the way
+    expect((await regular.me()).badges.map((b) => b.id)).toEqual(["tipsy", "bacchus", "thousandcups"]);
     expect((await regular.me()).counts.drinks).toBe(50);
     await expect(world.drink((await demo("t1")).id)).rejects.toThrow("测试玩家");
   });
@@ -2121,7 +2123,8 @@ describe("server world", () => {
       expect(await badgeIds(me)).toEqual(["amiya", "perlica", "talulah"]);
       expect((await me.me()).counts).toMatchObject({ guideFriends: 3, amiyaDays: 1, perlicaDays: 1 });
       await me.touch(MINGHE_ID, true);
-      expect(await badgeIds(me)).toEqual(["amiya", "perlica", "talulah", "minghe", "fullsquad"]);
+      // five held: 罗德岛正式干员 too
+      expect(await badgeIds(me)).toEqual(["regular", "amiya", "perlica", "talulah", "minghe", "fullsquad"]);
 
       await db.update(users).set({ amiyaDays: 29, amiyaTouchedOn: yesterday() }).where(eq(users.id, me.id));
       await me.touch(AMIYA_ID, false);
@@ -2170,7 +2173,7 @@ describe("server world", () => {
         .set({ declareDays: 30, reactDays: 10, amiyaFriendSince: new Date(), perlicaDays: 30, declaredLines: ["launch"] })
         .where(eq(users.id, me.id));
       await catchUpBadges();
-      expect(await badgeIds(me)).toEqual(["lookatme", "declarer", "chief", "courtesy", "hype", "amiya", "perlica30"]);
+      expect(await badgeIds(me)).toEqual(["regular", "lookatme", "declarer", "chief", "courtesy", "hype", "amiya", "perlica30"]);
     });
   });
 
@@ -2870,7 +2873,8 @@ describe("server world", () => {
         { game: "endfield", uid: "", server: "", favourites: [] },
       ],
       shareUid: true,
-      badges: [],
+      // its clone's
+      badges: ["异卵同生"],
       worn: null,
       roaches: { main: true, clones: 1 },
       friends: 0,
