@@ -14,8 +14,13 @@ export type Box = [number, number, number, number];
 /** What a page holds: the roaches in a box, or the overview */
 export type Area = Box | "overview";
 
-/** View zooms (MapLibre's; 高德's are one more) below this get the overview: where the maps thin out piled roaches anyway */
-export const OVERVIEW_BELOW_ZOOM = 7;
+/**
+ * View zooms (MapLibre's; 高德's are one more) below this get the overview, which a page zooming in from further
+ * out already holds. From 8, not 7: a box at zoom 7 over a crowded region carries every roach of four times the
+ * view, more than the whole overview (2026-11-12, a test map of 400,000: 1.4 MB against 0.7 MB), and every page
+ * zooming into that region downloaded one; at 8 a box is about a quarter of that.
+ */
+export const OVERVIEW_BELOW_ZOOM = 8;
 /** A box reaches this share of the view's own width and height past it on every side */
 export const BOX_MARGIN = 0.5;
 /** Its edges fall on multiples of this many degrees, so nearby views ask for the same box */

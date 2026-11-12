@@ -20,8 +20,8 @@ describe("the areas a page asks for", () => {
   });
 
   it("uses the overview zoomed out, for too big a view, and across ±180°", () => {
-    expect(areaFor(6.9, VIEW)).toBe("overview");
-    expect(areaFor(7, VIEW)).toEqual(boxFor(VIEW));
+    expect(areaFor(7.9, VIEW)).toBe("overview");
+    expect(areaFor(8, VIEW)).toEqual(boxFor(VIEW));
     expect(boxFor([{ lng: 80, lat: 20 }, { lng: 80 + BOX_MAX[0], lat: 30 }])).toBeNull();
     expect(boxFor([{ lng: 179, lat: 0 }, { lng: -179, lat: 1 }])).toBeNull();
   });
