@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { fmtParts } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import { AMIYA_ID, AMIYA_NAME, amiyaLine } from "@/lib/amiya";
 import { beijingDayWords } from "@/lib/beijing";
 import type { Reply } from "@/lib/declarations";
@@ -37,12 +39,21 @@ export type InboxTab = "replies" | "touches" | "friends";
 type Answerable = Extract<InboxItem, { kind: "touch" | "declaration" | "reaction" }>;
 
 /** What ending it with 阿米娅向导 means; also the question before it */
-export const AMIYA_UNFRIEND = "解除后阿米娅不会再每天跟你打招呼，她还在罗德岛等你。";
+export const amiyaUnfriend = () => "解除后阿米娅不会再每天跟你打招呼，她还在罗德岛等你。";
 
 const TABS: { tab: InboxTab; label: string }[] = [
-  { tab: "replies", label: "收到的回复" },
-  { tab: "touches", label: "收到的触碰" },
-  { tab: "friends", label: "触须之交" },
+  {
+    tab: "replies",
+    label: "收到的回复",
+  },
+  {
+    tab: "touches",
+    label: "收到的触碰",
+  },
+  {
+    tab: "friends",
+    label: "触须之交",
+  },
 ];
 
 /** What happens between 触须之交: new friends, 戳一戳 both ways, and all they do for each other (src/lib/friendly.ts) */
@@ -366,7 +377,7 @@ export default function InboxSheet({
     if (item.kind === "friend") {
       return (
         <div key={item.id} className={cls}>
-          <div>你和 {item.from.displayName} 互相大胆碰过，成为了触须之交！</div>
+          <div>{fmtParts("你和 {name} 互相大胆碰过，成为了触须之交！", { name: item.from.displayName })}</div>
           {meta(item, `friend:${item.friendId}`, item.from.displayName)}
           {friendIds.has(item.friendId) && (
             <div className="row-actions">
@@ -531,7 +542,7 @@ export default function InboxSheet({
             {item.ignored ? (
               <span className="done">你默默爬走了</span>
             ) : item.replied ? (
-              <span className="done">已经碰过{item.kind === "minghe" ? "他" : "她"}了</span>
+              <span className="done">{fmtParts("已经碰过{them}了", { them: item.kind === "minghe" ? "他" : "她" })}</span>
             ) : (
               <>
                 <button className="pill" disabled={replying === item.id} onClick={() => {
@@ -598,7 +609,7 @@ export default function InboxSheet({
       }
       return (
         <div key={item.id} className={cls}>
-          <div>附近有舟P回应了你的宣言「{item.text}」：</div>
+          <div>{fmtParts("附近有舟P回应了你的宣言「{text}」：", { text: item.text })}</div>
           <div className="quote">{item.reaction.text}</div>
           {meta(item, item.id, null)}
           <div className="row-actions">{replyButtons(item, "碰 TA 一下")}</div>
@@ -611,10 +622,10 @@ export default function InboxSheet({
         <div>
           {item.from ? `你的触须之交 ${item.from.displayName} 发了宣言：` : `${DECLARATION_RADIUS_KM} 公里内有舟P发了宣言：`}
         </div>
-        <div className="quote">「{item.text}」</div>
+        <div className="quote">{fmtParts("「{text}」", { text: item.text })}</div>
         {meta(item, item.id, item.from?.displayName ?? null)}
         {item.reaction ? (
-          <div className="done">你回应了：{item.reaction.text}</div>
+          <div className="done">{fmtParts("你回应了：{text}", { text: item.reaction.text })}</div>
         ) : (
           <>
             {/* this sentence's own four first, then the five every declaration has, on a line of their own */}
@@ -641,7 +652,7 @@ export default function InboxSheet({
 
   return (
     <Sheet title={notice ? noticeTitle(items) : "消息"} onClose={onClose}>
-      {suspendedUntil && <p className="suspended-banner">你的互动暂停到 {beijingDayWords(suspendedUntil)}。</p>}
+      {suspendedUntil && <p className="suspended-banner">{fmtParts("你的互动暂停到 {until}。", { until: beijingDayWords(suspendedUntil) })}</p>}
       <div className="seg tabs" role="tablist">
         {TABS.map(({ tab: t, label }) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>
@@ -711,18 +722,16 @@ function ProfileDetails({ profile, gameExtra }: { profile: PublicProfile; gameEx
         <div key={g}>
           <dt>{GAME_NAMES[g]}</dt>
           <dd>
-            厨力角色：{profile.favourites[g].length ? <OperatorNames game={g} names={profile.favourites[g]} /> : "还没选"}
+            {fmtNodes("厨力角色：{list}", { list: profile.favourites[g].length ? <OperatorNames game={g} names={profile.favourites[g]} /> : "还没选" })}
           </dd>
           {g === "arknights" && profile.support && (
             <dd>
-              助战：
-              <OperatorNames game="arknights" names={profile.support} />
+              {fmtNodes("助战：{list}", { list: <OperatorNames game="arknights" names={profile.support} /> })}
             </dd>
           )}
           {profile.uid?.[g] && (
             <dd>
-              UID：{serverName(g, profile.uidServer?.[g]) ? `${serverName(g, profile.uidServer?.[g])} ` : ""}
-              <span className="uid">{profile.uid[g]}</span>
+              {fmtNodes("UID：{server}{uid}", { server: serverName(g, profile.uidServer?.[g]) ? `${serverName(g, profile.uidServer?.[g])} ` : "", uid: <span className="uid">{profile.uid[g]}</span> })}
             </dd>
           )}
           {gameExtra?.(g)}
@@ -819,7 +828,7 @@ export function FriendView({
         <div>
           <strong>{profile.displayName}</strong>
           <WornPill profile={profile} />
-          <p className="hint">{ago(friend.since)}成为触须之交</p>
+          <p className="hint">{fmtParts("{ago}成为触须之交", { ago: ago(friend.since) })}</p>
         </div>
         {onStar && (
           <button type="button" className={`star-btn${friend.star !== null ? " on" : ""}`} onClick={onStar} aria-pressed={friend.star !== null}>
@@ -849,7 +858,7 @@ export function FriendView({
 
       {!guide && (
         <>
-          <h3>最近 {INBOX_DAYS} 天发了 {friend.declarations} 次宣言</h3>
+          <h3>{fmtParts("最近 {days} 天发了 {n} 次宣言", { days: INBOX_DAYS, n: friend.declarations })}</h3>
 
           <h3>社交记录</h3>
           {friend.history.length === 0 && <p className="hint">最近还没有动静。</p>}
@@ -867,7 +876,7 @@ export function FriendView({
       </button>
       <p className="hint">
         {friend.id === AMIYA_ID
-          ? AMIYA_UNFRIEND
+          ? amiyaUnfriend()
           : friend.id === PERLICA_ID
             ? PERLICA_UNFRIEND
             : friend.id === MINGHE_ID

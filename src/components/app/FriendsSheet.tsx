@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { BATCH_ACTS, BATCH_NAMES, FRIEND_ACTS_PER_DAY, type BatchAct } from "@/lib/friendly";
 import type { Friend, HelpBoard } from "@/lib/world/types";
 import { MyHelp, TheirHelp } from "./HelpRows";
@@ -118,7 +119,7 @@ export default function FriendsSheet({
             (act ? (
               <div className="batch-head">
                 <span>
-                  选好和谁{BATCH_NAMES[act]}（能收的都勾上了）
+                  {fmtParts("选好和谁{act}（能收的都勾上了）", { act: BATCH_NAMES[act] })}
                 </span>
                 {starred && (
                   <button type="button" className="pill" onClick={onlyStarred}>
@@ -142,7 +143,7 @@ export default function FriendsSheet({
               {theirs.length > 0 && (
                 <section className="help-box">
                   <button type="button" className="help-head" onClick={() => setAskedOpen(!askedOpen)} aria-expanded={askedOpen}>
-                    <span>大家在求助（{theirs.length}）</span>
+                    <span>{fmtParts("大家在求助（{n}）", { n: theirs.length })}</span>
                     <span className="muted">{askedOpen ? "收起" : "展开"}</span>
                   </button>
                   {askedOpen &&
@@ -154,7 +155,7 @@ export default function FriendsSheet({
               {people.length > 0 && (
                 <section className="help-box">
                   <div className="help-head static">
-                    <span>我的求助{mine.length ? `（${mine.length}）` : ""}</span>
+                    <span>{fmtParts("我的求助{count}", { count: mine.length ? `（${mine.length}）` : "" })}</span>
                     <button type="button" className="pill dark" disabled={busy} onClick={onAskHelp}>
                       发求助
                     </button>
@@ -166,7 +167,7 @@ export default function FriendsSheet({
                   )}
                 </section>
               )}
-              <p className="hint">共 {friends.length} 位，点一位看 TA 的资料。</p>
+              <p className="hint">{fmtParts("共 {n} 位，点一位看 TA 的资料。", { n: friends.length })}</p>
             </>
           )}
 

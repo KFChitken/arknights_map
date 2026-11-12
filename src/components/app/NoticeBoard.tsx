@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import { isNew, noticeDay, type NoticeMemory, type PublicNotice } from "@/lib/notices";
 import NoticeBody from "./NoticeBody";
 import Sheet from "./Sheet";
@@ -131,9 +132,9 @@ export default function NoticeBoard({
     >
       <div className="notice-meta">
         <button className="notice-back" onClick={onList}>
-          ‹ 全部公告{view.counted ? `（${notices.length}）` : ""}
+          {fmtParts("‹ 全部公告{count}", { count: view.counted ? `（${notices.length}）` : "" })}
         </button>
-        <span>站长 · {noticeDay(n.publishedAt)}</span>
+        <span>{fmtParts("站长 · {day}", { day: noticeDay(n.publishedAt) })}</span>
       </div>
       <NoticeBody body={n.body} />
     </Sheet>

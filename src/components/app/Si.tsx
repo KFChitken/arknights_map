@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import {
   favouriteLine,
   MINGHE_HERE_LINE,
@@ -97,7 +98,7 @@ export function SiCard({
         <SiScrollArt tier={tier} size={64} />
         <div>
           <strong>今天的画</strong>
-          <p className="muted">今天来过 {(state?.today ?? 0).toLocaleString()} 位管理员</p>
+          <p className="muted">{fmtParts("今天来过 {n} 位管理员", { n: (state?.today ?? 0).toLocaleString() })}</p>
           <p className="muted">{PAINTING_LINES[tier]}</p>
         </div>
       </section>
@@ -105,11 +106,11 @@ export function SiCard({
       <section className="si-block">
         <strong>缘缘庄</strong>
         {inn && (inn.free > 0 ? (
-          <p className="muted">还有 {inn.free.toLocaleString()} 间空房。……才、才不是特意给你留的。</p>
+          <p className="muted">{fmtParts("还有 {n} 间空房。……才、才不是特意给你留的。", { n: inn.free.toLocaleString() })}</p>
         ) : (
           <>
             <p className="muted">
-              缘缘庄客满 · 门口排了 {inn.queue.toLocaleString()} 位 · 村外躺了 {inn.outside.toLocaleString()} 位
+              {fmtParts("缘缘庄客满 · 门口排了 {queue} 位 · 村外躺了 {outside} 位", { queue: inn.queue.toLocaleString(), outside: inn.outside.toLocaleString() })}
             </p>
             {tail && <p className="muted">{tail}</p>}
           </>
@@ -135,7 +136,7 @@ export function SiCard({
           <div>
             <strong>你的集章本</strong>
             <p className="muted">
-              一共盖了 {me.stamps.toLocaleString()} 个 · {today ? `今天的章「${today}」` : "今天还没盖章"}
+              {fmtParts("一共盖了 {n} 个 · {today}", { n: me.stamps.toLocaleString(), today: today ? `今天的章「${today}」` : "今天还没盖章" })}
             </p>
           </div>
           <button className="pill" onClick={onOpenBook}>
@@ -175,7 +176,7 @@ export function SiIntroSheet({ onGo, onLater }: { onGo: () => void; onLater: () 
       <div className="amiya-greet">
         <SiPicture size={96} />
       </div>
-      <p className="consent-place">「{SI_LINES.introCard}」</p>
+      <p className="consent-place">{fmtParts("「{text}」", { text: SI_LINES.introCard })}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onGo}>
           去宏村看看

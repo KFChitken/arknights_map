@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { fmtParts } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import {
   declarationText,
   FOODS,
@@ -188,7 +190,7 @@ export default function DeclareSheet({
           </button>
           {clones.map((c, i) => (
             <button key={c.id} className={`chip ${from.includes(c.id) ? "on" : ""}`} onClick={() => toggle(c.id)}>
-              克隆体 {i + 1}
+              {fmtParts("克隆体 {n}", { n: i + 1 })}
             </button>
           ))}
           {clones.length > 0 && (
@@ -203,22 +205,23 @@ export default function DeclareSheet({
         <div className="drunk-group" role="group" aria-label="醉酒限定宣言">
           <div className="drunk-tag">醉酒限定</div>
           {row("water", <>这白开水怎么没味啊？</>)}
-          {row("drunklove", <>我永远喜欢{characterSelect("drunklove")}！</>)}
+          {row("drunklove", <>{fmtNodes("我永远喜欢{character}！", { character: characterSelect("drunklove") })}</>)}
           {row(
             "kr168",
             <>
-              氪了168，{characterSelect("kr168")}
-              {blank(
-                "kr168",
-                <select value={spouse} onChange={(e) => setSpouse(e.target.value as Spouse)} aria-label="老婆还是老公">
-                  {SPOUSES.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>,
-              )}
-              回家家
+              {fmtNodes("氪了168，{character}{spouse}回家家", {
+                character: characterSelect("kr168"),
+                spouse: blank(
+                  "kr168",
+                  <select value={spouse} onChange={(e) => setSpouse(e.target.value as Spouse)} aria-label="老婆还是老公">
+                    {SPOUSES.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>,
+                ),
+              })}
             </>,
           )}
           {row("radar", <>我的方舟雷达💡的一下响了</>)}
@@ -236,62 +239,67 @@ export default function DeclareSheet({
         </div>
       ))}
 
-      {row("launch", <>{gameSelect("launch")}，启动！</>)}
+      {row("launch", <>{fmtNodes("{game}，启动！", { game: gameSelect("launch") })}</>)}
       {row(
         "iam",
         <>
-          我是{characterSelect("iam")}的
-          {blank(
-            "iam",
-            <select value={title} onChange={(e) => setTitle(e.target.value)} aria-label="称呼">
-              {titles.map((x) => (
-                <option key={x} value={x}>
-                  {x}
-                </option>
-              ))}
-            </select>,
-          )}
+          {fmtNodes("我是{character}的{title}", {
+            character: characterSelect("iam"),
+            title: blank(
+              "iam",
+              <select value={title} onChange={(e) => setTitle(e.target.value)} aria-label="称呼">
+                {titles.map((x) => (
+                  <option key={x} value={x}>
+                    {x}
+                  </option>
+                ))}
+              </select>,
+            ),
+          })}
         </>,
       )}
-      {row("love", <>我永远喜欢{characterSelect("love")}</>)}
-      {row("buff", <>加强{characterSelect("buff")}</>)}
+      {row("love", <>{fmtNodes("我永远喜欢{character}", { character: characterSelect("love") })}</>)}
+      {row("buff", <>{fmtNodes("加强{character}", { character: characterSelect("buff") })}</>)}
       {row(
         "myname",
         <>
-          我是{named ? displayName(profile) : "（你的名字）"}，我要玩{gameSelect("myname")}
+          {fmtNodes("我是{name}，我要玩{game}", { name: named ? displayName(profile) : "（你的名字）", game: gameSelect("myname") })}
         </>,
       )}
       {row(
         "welcome",
         <>
-          欢迎回家，
-          {blank(
-            "welcome",
-            <select value={game} onChange={(e) => setGame(e.target.value as Game)} aria-label="称呼">
-              {GAMES.map((g) => (
-                <option key={g} value={g}>
-                  {WELCOME_NAMES[g]}
-                </option>
-              ))}
-            </select>,
-          )}
+          {fmtNodes("欢迎回家，{title}", {
+            title: blank(
+              "welcome",
+              <select value={game} onChange={(e) => setGame(e.target.value as Game)} aria-label="称呼">
+                {GAMES.map((g) => (
+                  <option key={g} value={g}>
+                    {WELCOME_NAMES[g]}
+                  </option>
+                ))}
+              </select>,
+            ),
+          })}
         </>,
       )}
-      {row("canyou", <>{characterSelect("canyou")}做得到吗？</>)}
+      {row("canyou", <>{fmtNodes("{character}做得到吗？", { character: characterSelect("canyou") })}</>)}
       {row(
         "eat",
         <>
-          我想吃{characterSelect("eat")}的
-          {blank(
-            "eat",
-            <select value={food} onChange={(e) => setFood(e.target.value as Food)} aria-label="吃的">
-              {FOODS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>,
-          )}
+          {fmtNodes("我想吃{character}的{food}", {
+            character: characterSelect("eat"),
+            food: blank(
+              "eat",
+              <select value={food} onChange={(e) => setFood(e.target.value as Food)} aria-label="吃的">
+                {FOODS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>,
+            ),
+          })}
         </>,
       )}
       {row("birthday", <>祝我生日快乐</>)}
@@ -315,10 +323,9 @@ export default function DeclareSheet({
       {template === "myname" && <p className="hint">这句会让收到的人看到你的名字。</p>}
       {template === "birthday" && <p className="hint">这句你所有的触须之交都会收到，不管离多远，而且知道是你发的。</p>}
 
-      <div className="shout">「{declarationText(d)}」</div>
+      <div className="shout">{fmtParts("「{text}」", { text: declarationText(d) })}</div>
       <p className="hint">
-        {DECLARATION_RADIUS_KM} 公里内有蟑螂（本体或克隆体）的舟P都会收到：开着网页的马上收到，没开的下次打开时收到，同一个人只收到一次。TA
-        们只知道是 {DECLARATION_RADIUS_KM} 公里内的某只舟P，可以回应你或者碰你一下。
+        {fmtParts("{km} 公里内有蟑螂（本体或克隆体）的舟P都会收到：开着网页的马上收到，没开的下次打开时收到，同一个人只收到一次。TA 们只知道是 {km} 公里内的某只舟P，可以回应你或者碰你一下。", { km: DECLARATION_RADIUS_KM })}
       </p>
     </Sheet>
   );

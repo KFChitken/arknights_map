@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { GAME_NAMES, type Game } from "@/lib/games";
 import { CLUES, HELP_GAMES, HELP_HOURS, HELP_KINDS, HELP_NAMES, helpText, SKILLS, type HelpAsk, type HelpKind } from "@/lib/help";
 import { CharacterPicker } from "./ProfileSheet";
@@ -47,7 +48,7 @@ export default function HelpAskSheet({
   return (
     <Sheet title="发求助" onBack={onBack} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        只有玩这个游戏的触须之交看得到，不会弹出来打扰 TA，{HELP_HOURS} 小时后自动消失。同一种求助再发，会换掉之前那条。
+        {fmtParts("只有玩这个游戏的触须之交看得到，不会弹出来打扰 TA，{hours} 小时后自动消失。同一种求助再发，会换掉之前那条。", { hours: HELP_HOURS })}
       </p>
       <div className="chips">
         {kinds.map((k) => (
@@ -71,7 +72,7 @@ export default function HelpAskSheet({
           <div className="chips">
             {CLUES.map((n) => (
               <button key={n} type="button" className={`chip${clues.includes(n) ? " on" : ""}`} onClick={() => setClues(toggle(clues, n))}>
-                {n} 号
+                {fmtParts("{n} 号", { n: n })}
               </button>
             ))}
           </div>
@@ -91,7 +92,7 @@ export default function HelpAskSheet({
           </div>
         </>
       )}
-      {ready && <p className="help-preview">触须之交会看到：「{helpText(ask)}」</p>}
+      {ready && <p className="help-preview">{fmtParts("触须之交会看到：「{text}」", { text: helpText(ask) })}</p>}
       <button type="button" className="primary wide" style={{ marginTop: 14 }} disabled={busy || !ready} onClick={() => onSend(ask)}>
         发出去
       </button>

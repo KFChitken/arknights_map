@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import { RADAR_REUSE_MIN, RADAR_SCANS_PER_DAY } from "@/lib/rules";
 import type { Radar } from "@/lib/world/types";
 import { ago } from "./InboxSheet";
@@ -61,10 +62,10 @@ export default function RadarSheet({
           <span className="radar-sweep" />
         </div>
         <div className="radar-count">
-          <span className="muted">{radar.radiusKm} 公里内现在有</span>
+          <span className="muted">{fmtParts("{km} 公里内现在有", { km: radar.radiusKm })}</span>
           <strong>{radar.roaches.toLocaleString()}</strong>
           <span className="muted">
-            只蟑螂，来自 {radar.players.toLocaleString()} 位舟P
+            {fmtParts("只蟑螂，来自 {players} 位舟P", { players: radar.players.toLocaleString() })}
             {radar.clones > 0 && `（${radar.clones} 只是克隆体）`}
           </span>
         </div>
@@ -106,11 +107,11 @@ export default function RadarSheet({
 
       <h3>附近的动静</h3>
       <ul className="radar-facts">
-        <li>24 小时内附近的舟P被触须碰了 {radar.touches} 次，发了 {radar.declarations} 条宣言</li>
+        <li>{fmtParts("24 小时内附近的舟P被触须碰了 {touches} 次，发了 {declarations} 条宣言", { touches: radar.touches, declarations: radar.declarations })}</li>
         <li>
           {radar.friendsNearby > 0 ? `你的触须之交里有 ${radar.friendsNearby} 位就在附近` : "附近还没有你的触须之交"}
         </li>
-        {radar.lastArrivalAt && <li>最近一次：{ago(radar.lastArrivalAt)}有蟑螂爬进了雷达范围</li>}
+        {radar.lastArrivalAt && <li>{fmtParts("最近一次：{ago}有蟑螂爬进了雷达范围", { ago: ago(radar.lastArrivalAt) })}</li>}
       </ul>
 
       <p className="hint" style={{ marginTop: 14 }}>

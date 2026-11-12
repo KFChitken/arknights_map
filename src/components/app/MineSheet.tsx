@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import { MAX_CLONES, MOVES_PER_DAY } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
@@ -59,13 +60,13 @@ export default function MineSheet({
       )}
 
       <h3>
-        克隆体 {clones.length}/{MAX_CLONES}
+        {fmtParts("克隆体 {n}/{max}", { n: clones.length, max: MAX_CLONES })}
       </h3>
       {clones.map((c, i) => (
         <div className="list-row" key={c.id}>
           <RoachIcon color={color} size={40} avatar={avatar} mine clone look={look} />
           <div>
-            <strong>克隆体 {i + 1}</strong>
+            <strong>{fmtParts("克隆体 {n}", { n: i + 1 })}</strong>
           </div>
           <div className="row-actions">
             <button className="pill" onClick={() => onFind(c)}>
@@ -87,7 +88,7 @@ export default function MineSheet({
       )}
       {main && (
         <p className="hint">
-          每天能挪 {MOVES_PER_DAY} 次窝，今天还能挪 {movesLeft} 次。
+          {fmtParts("每天能挪 {perDay} 次窝，今天还能挪 {left} 次。", { perDay: MOVES_PER_DAY, left: movesLeft })}
         </p>
       )}
       <p className="hint">

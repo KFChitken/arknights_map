@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { adultTick, crossBorderTick, publicPlaceNote, publicPlaceTick } from "@/lib/consent";
 import { MIN_SIGNUP_AGE, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
-/** What changed in the privacy policy this time (POLICY_UPDATED_AT); the next change replaces it. */
-const CHANGES = [
+/** What changed in the privacy policy this time (POLICY_UPDATED_AT); the next change replaces it. Read when shown. */
+const changes = () => [
   "我请了几位管理员一起处理举报：他们能看到账号的名字和资料，邮箱是打码的；",
   "管理员进管理页要用手机验证器，每次查看和处理都会记下来，留 1 年；",
   "处理蟑螂的举报时，我能在地图上看到被举报的人的其他蟑螂在哪，只用来判断是不是故意的。",
@@ -38,7 +39,7 @@ export default function ConsentSheet({
     return (
       <Sheet title="隐私说明更新了" onClose={onClose}>
         <p className="consent-sorry">
-          很抱歉，{SITE_NAME}现在只对满 {MIN_SIGNUP_AGE} 岁的玩家开放。
+          {fmtParts("很抱歉，{site}现在只对满 {age} 岁的玩家开放。", { site: SITE_NAME, age: MIN_SIGNUP_AGE })}
         </p>
         <div className="consent-actions">
           <button className="danger wide" onClick={onDelete}>
@@ -67,7 +68,7 @@ export default function ConsentSheet({
         主要有三处变化：
       </p>
       <ol className="consent-changes">
-        {CHANGES.map((c) => (
+        {changes().map((c) => (
           <li key={c}>{c}</li>
         ))}
       </ol>
@@ -102,7 +103,7 @@ export default function ConsentSheet({
           先不同意，退出登录
         </button>
         <button className="link" onClick={() => setUnderage(true)}>
-          我还不满 {MIN_SIGNUP_AGE} 岁
+          {fmtParts("我还不满 {age} 岁", { age: MIN_SIGNUP_AGE })}
         </button>
       </div>
     </Sheet>

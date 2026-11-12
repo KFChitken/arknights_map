@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { REPORT_NOTE_MAX } from "@/lib/rules";
 import { noteMissing, REPORT_REASONS, type ReportReason } from "@/lib/safety";
 import Sheet from "./Sheet";
@@ -38,7 +39,7 @@ export default function SafetySheet({
 
   return (
     <Sheet title="拉黑或举报" onBack={onBack} onClose={onClose}>
-      <h3 style={{ marginTop: 0 }}>拉黑 {them}</h3>
+      <h3 style={{ marginTop: 0 }}>{fmtParts("拉黑 {them}", { them: them })}</h3>
       <p className="hint" style={{ marginBottom: 10 }}>
         拉黑后，TA 的触碰、宣言和回应都不会再送到你这里，你们也不再是触须之交。TA 不会知道被拉黑了。在「我的资料」里可以随时解除。
       </p>
@@ -46,7 +47,7 @@ export default function SafetySheet({
         拉黑
       </button>
 
-      <h3 style={{ marginTop: 22 }}>举报 {them}</h3>
+      <h3 style={{ marginTop: 22 }}>{fmtParts("举报 {them}", { them: them })}</h3>
       <p className="hint" style={{ marginBottom: 10 }}>
         举报只有站长能看到，TA 不会知道是谁举报的。举报的同时也会拉黑 TA。
       </p>

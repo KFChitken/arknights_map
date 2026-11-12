@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { fmtParts } from "@/i18n";
 import type { PageCount } from "@/lib/appCounts";
 import { takeDeskCode } from "@/lib/authClient";
 import { beijingDate } from "@/lib/beijing";
@@ -229,7 +230,7 @@ export function LoginCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSign
           {busy ? "正在拿…" : "拿登录码"}
         </button>
       )}
-      <p className="hint">这个码等于你的登录，{DESK_CODE_TTL_MIN} 分钟内有效，只能用一次，不要发给别人。</p>
+      <p className="hint">{fmtParts("这个码等于你的登录，{min} 分钟内有效，只能用一次，不要发给别人。", { min: DESK_CODE_TTL_MIN })}</p>
       {error && <p className="login-error">{error}</p>}
     </div>
   );
@@ -323,9 +324,9 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
           <Steps>
             <li>点地址栏右边的「安装」小图标（一个小屏幕带向下的箭头）</li>
             <li>
-              没有的话打开菜单：Chrome 在「⋮」里找「安装 {SITE_NAME}」（可能在「投放、保存和分享」里面）；Edge 在「···」里的「应用」，选「将此站点作为应用安装」
+              {fmtParts("没有的话打开菜单：Chrome 在「⋮」里找「安装 {site}」（可能在「投放、保存和分享」里面）；Edge 在「···」里的「应用」，选「将此站点作为应用安装」", { site: SITE_NAME })}
             </li>
-            <li>已经装过的话，去开始菜单或启动台里找「{SITE_NAME}」</li>
+            <li>{fmtParts("已经装过的话，去开始菜单或启动台里找「{site}」", { site: SITE_NAME })}</li>
           </Steps>
           <p className="hint">
             装好以后：Windows 的开始菜单里有舟P图标，Chrome 一般也会在桌面放一个，Edge 会让你选放哪里；Mac 在启动台里，可以拖进程序坞。打开是单独的窗口，没有地址栏，登录和浏览器里共用。

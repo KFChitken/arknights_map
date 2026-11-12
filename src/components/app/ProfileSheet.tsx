@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { fmtParts } from "@/i18n";
 import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
@@ -191,7 +192,7 @@ export default function ProfileSheet({
       {p.games.map((g) => (
         <fieldset key={g}>
           <legend>{GAME_NAMES[g]}</legend>
-          <div className="hint">厨力角色（最多 {MAX_FAVOURITES} 个）</div>
+          <div className="hint">{fmtParts("厨力角色（最多 {max} 个）", { max: MAX_FAVOURITES })}</div>
           <CharacterPicker
             game={g}
             value={p.favourites[g]}
@@ -200,7 +201,7 @@ export default function ProfileSheet({
           {g === "arknights" && !tutorial && (
             <>
               <div className="hint" style={{ marginTop: 12 }}>
-                我的助战（最多 {MAX_SUPPORT} 位）
+                {fmtParts("我的助战（最多 {max} 位）", { max: MAX_SUPPORT })}
               </div>
               <CharacterPicker
                 game="arknights"
@@ -229,7 +230,7 @@ export default function ProfileSheet({
                 </select>
               </label>
               <label className="field">
-                {GAME_NAMES[g]} UID（可选）
+                {fmtParts("{game} UID（可选）", { game: GAME_NAMES[g] })}
                 <input
                   type="text"
                   inputMode="text"
@@ -266,7 +267,7 @@ export default function ProfileSheet({
           好久没来时，蟑螂翻肚皮睡觉
         </label>
         <p className="hint">
-          超过 {AWAY_DAYS} 天没来，大家会看到它翻过来睡觉。关掉的话，好久没来它也照样站着。自己点「摄入酒精」不受这个开关影响。
+          {fmtParts("超过 {days} 天没来，大家会看到它翻过来睡觉。关掉的话，好久没来它也照样站着。自己点「摄入酒精」不受这个开关影响。", { days: AWAY_DAYS })}
         </p>
       </fieldset>
 
@@ -337,7 +338,7 @@ export default function ProfileSheet({
               <div className="list-row" key={b.id}>
                 <div>
                   <strong>{b.name ?? "一只匿名舟P"}</strong>
-                  <p className="muted">{new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}拉黑</p>
+                  <p className="muted">{fmtParts("{date}拉黑", { date: new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" }) })}</p>
                 </div>
                 <div className="row-actions">
                   <button className="pill" onClick={() => onUnblock(b.id)}>

@@ -1,5 +1,7 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import { amiyaLine } from "@/lib/amiya";
 import { nextBadge, type BadgeCount } from "@/lib/badges";
 import { homeGame } from "@/lib/games";
@@ -14,7 +16,7 @@ import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 /** One line about what is new on the site, for players coming back; "" when there is nothing to tell. */
-export const WHATS_NEW = "新功能：祀掌柜在宏村开了缘缘庄，碰她一下，她照你的样子画一只墨小强去排队。";
+const WHATS_NEW = "新功能：祀掌柜在宏村开了缘缘庄，碰她一下，她照你的样子画一只墨小强去排队。";
 
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,
@@ -107,16 +109,16 @@ export function HomecomingSheet({
         <div className="perlica-said" style={amiya ? undefined : { marginTop: 0 }}>
           <PerlicaPicture size={40} />
           <p>
-            {PERLICA_NAME}：「{perlica}」
+            {fmtParts("{name}：「{line}」", { name: PERLICA_NAME, line: perlica })}
           </p>
         </div>
       )}
       {me.wokeFromAway && (
-        <p style={{ marginTop: amiya || perlica ? undefined : 0 }}>你睡了 {homecoming.daysAway} 天，理智早就回满了。</p>
+        <p style={{ marginTop: amiya || perlica ? undefined : 0 }}>{fmtParts("你睡了 {days} 天，理智早就回满了。", { days: homecoming.daysAway })}</p>
       )}
       {awoke && (
         <p className="homecoming-got">
-          拿到了 <BadgePill badge={awoke} />
+          {fmtNodes("拿到了 {badge}", { badge: <BadgePill badge={awoke} /> })}
         </p>
       )}
       {happened.length > 0 && (
@@ -131,7 +133,7 @@ export function HomecomingSheet({
       )}
       {homecoming.arrivals > 0 && (
         <p style={happened.length || amiya || perlica ? undefined : { marginTop: 0 }}>
-          附近 {RADAR_RADIUS_KM} 公里新来了 {homecoming.arrivals} 只蟑螂。
+          {fmtParts("附近 {km} 公里新来了 {n} 只蟑螂。", { km: RADAR_RADIUS_KM, n: homecoming.arrivals })}
         </p>
       )}
       {quiet && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { serverName } from "@/lib/games";
 import { HELP_ANSWER, helpAnswerText, helpText } from "@/lib/help";
 import type { HelpItem } from "@/lib/world/types";
@@ -58,8 +59,7 @@ export function TheirHelp({
       {uid && (
         <div className="help-uid">
           <span>
-            UID：{server ? `${server} ` : ""}
-            {uid}
+            {fmtParts("UID：{server}{uid}", { server: server ? `${server} ` : "", uid: uid })}
           </span>
           <button type="button" className="pill" onClick={() => onCopyUid(uid)}>
             复制
@@ -73,7 +73,7 @@ export function TheirHelp({
           <>
             {(item.clues ?? []).map((n) => (
               <button key={n} type="button" className={`chip${picked.includes(n) ? " on" : ""}`} onClick={() => setPicked(toggle(picked, n))}>
-                {n} 号
+                {fmtParts("{n} 号", { n: n })}
               </button>
             ))}
             <button type="button" className="pill dark" disabled={busy || !picked.length} onClick={() => onAnswer(item.id, picked)}>

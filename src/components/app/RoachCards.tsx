@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import { AMIYA_ID, AMIYA_NAME } from "@/lib/amiya";
 import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
 import { PERLICA_ID, PERLICA_MORE, PERLICA_NAME } from "@/lib/perlica";
@@ -231,8 +232,8 @@ export function OtherRoachCard({
           )}
           {ride && (
             <>
-              <p className="muted">「{ride.line}」</p>
-              <p className="muted">现在有 {ride.riders.toLocaleString()} 只蟑螂跟着他</p>
+              <p className="muted">{fmtParts("「{text}」", { text: ride.line })}</p>
+              <p className="muted">{fmtParts("现在有 {n} 只蟑螂跟着他", { n: ride.riders.toLocaleString() })}</p>
               <MingheRoute day={ride.day} />
               <p className="hint fire-note">跟他走的是克隆体，不用真去。</p>
             </>
@@ -407,7 +408,7 @@ export function MyRoachCard({
       </div>
       {visits && roach.guests && (
         <div className="visit-guests">
-          <p className="muted">家里有 {roach.guests.length} 位客人</p>
+          <p className="muted">{fmtParts("家里有 {n} 位客人", { n: roach.guests.length })}</p>
           {roach.guests.map((g) => (
             <div className="visit-row" key={g.friendId}>
               <strong>{g.name}</strong>
@@ -440,7 +441,7 @@ export function MyRoachCard({
       {riding && (
         <div className="fire-row">
           <span>
-            正在跟明河走：第 {riding.stops} / {RIDE_STOPS} 站
+            {fmtParts("正在跟明河走：第 {stop} / {stops} 站", { stop: riding.stops, stops: RIDE_STOPS })}
           </span>
           <button className="pill dark" disabled={busy} onClick={riding.onDismount}>
             在这一站下马

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { fmtParts } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
@@ -12,8 +13,8 @@ import Sheet from "./Sheet";
 
 const ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe", "si"];
 
-/** What each of them does, in a few lines */
-const ABOUT: Record<GuideId, string[]> = {
+/** What each of them does, in a few lines; read when shown */
+const about = (): Record<GuideId, string[]> => ({
   amiya: [
     "住在罗德岛，所有舟P共用一只。",
     "碰她，她每天会用一样的方式碰回你一次；大胆碰她就成为触须之交，以后她每天跟你打招呼。",
@@ -38,7 +39,7 @@ const ABOUT: Record<GuideId, string[]> = {
     "每天碰她，她顺手在你的集章本上盖一个章；头一回碰她，她还照你的形象画一只墨小强，排队住进缘缘庄。",
     "大胆碰她就成为触须之交，她送你一幅画像。",
   ],
-};
+});
 
 export function GuideDock({ onOpen }: { onOpen: (id: GuideId) => void }) {
   const ref = useRef<HTMLElement>(null);
@@ -94,7 +95,7 @@ export function GuideSheet({
         <RoachIcon color={g.color} size={96} avatar={g.avatar} />
       </div>
       <p className="hint guide-note">{g.note}</p>
-      {ABOUT[id].map((line) => (
+      {about()[id].map((line) => (
         <p key={line} className="guide-about">
           {line}
         </p>
@@ -104,7 +105,7 @@ export function GuideSheet({
           <p className="hint">{away}</p>
         ) : (
           <button className="primary wide" onClick={onFind}>
-            在地图上找到{g.pronoun}
+            {fmtParts("在地图上找到{them}", { them: g.pronoun })}
           </button>
         )}
       </div>

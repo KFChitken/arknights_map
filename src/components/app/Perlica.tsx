@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef } from "react";
+import { fmtParts } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import { PERLICA, PERLICA_LINES, PERLICA_NAME, spotNear } from "@/lib/perlica";
 import { SITE_NAME } from "@/lib/rules";
 import type { LngLat } from "@/lib/types";
@@ -26,7 +28,7 @@ export function PerlicaIntroSheet({ onYes, onNo }: { onYes: () => void; onNo: ()
       <p className="consent-place">佩丽卡监督住到了你的本体附近。</p>
       <p className="amiya-line perlica-ask">{PERLICA_LINES.ask}</p>
       <p className="hint">
-        点「好」以后，{SITE_NAME}会记下你最后一次在看网站的时间（精确到秒，每次覆盖旧的），只用来让她告诉你离开了多久，别人看不到。随时可以在「资料」里关掉，关掉就删掉。
+        {fmtParts("点「好」以后，{site}会记下你最后一次在看网站的时间（精确到秒，每次覆盖旧的），只用来让她告诉你离开了多久，别人看不到。随时可以在「资料」里关掉，关掉就删掉。", { site: SITE_NAME })}
         <a href="/privacy" target="_blank" rel="noreferrer">
           隐私说明
         </a>
@@ -72,14 +74,16 @@ export function PerlicaBanner({ lines, onOpen, onClose }: { lines: string[]; onO
       <button className="perlica-banner-body" onClick={onOpen}>
         <PerlicaPicture size={36} />
         <span>
-          {PERLICA_NAME}：「{lines[0]}
-          {lines.slice(1).map((l) => (
-            <span key={l}>
-              <br />
-              {l}
-            </span>
-          ))}
-          」
+          {fmtNodes("{name}：「{first}{rest}」", {
+            name: PERLICA_NAME,
+            first: lines[0],
+            rest: lines.slice(1).map((l) => (
+              <span key={l}>
+                <br />
+                {l}
+              </span>
+            )),
+          })}
         </span>
       </button>
       <button className="close" aria-label="关闭" onClick={onClose}>

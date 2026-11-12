@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- the badges are small SVGs, which next/image leaves as they are anyway */
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import {
   badgeById,
   daysLeft,
@@ -56,7 +57,7 @@ export function TheirBadges({ badges, worn }: { badges: ShownBadge[]; worn?: str
   return (
     <section className="their-badges">
       <div className="their-badges-head">
-        <h3>TA 的称号 · {known.length}</h3>
+        <h3>{fmtParts("TA 的称号 · {n}", { n: known.length })}</h3>
         {known.length > 4 && (
           <button className="link" onClick={() => setAll((a) => !a)}>
             {all ? "收起" : "全部 ›"}
@@ -272,7 +273,7 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
             {earned.serial ? serialText(earned.serial) : b.code} · {series?.code}
           </span>
         </div>
-        <p className="new-badge-quote">「{quoteOf(b, earned.serial)}」</p>
+        <p className="new-badge-quote">{fmtParts("「{text}」", { text: quoteOf(b, earned.serial) })}</p>
         <p className="new-badge-condition">{b.condition}</p>
         <div className="new-badge-actions">
           <button className="wear" onClick={onWear}>

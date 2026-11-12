@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
+import { fmtParts } from "@/i18n";
 import type { BatchAct } from "@/lib/friendly";
 import { miniHeart } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachColor } from "@/lib/types";
@@ -60,7 +61,7 @@ export default function BatchStage({ act, you, them, onDone }: { act: BatchAct; 
         {shown.map((_, i) => (
           <div key={i} className="bs-fly in" style={{ ...spot(i), ...delay(i) }} {...html(star(18))} />
         ))}
-        <div className="bs-label">欧气 +{them.length}</div>
+        <div className="bs-label">{fmtParts("欧气 +{n}", { n: them.length })}</div>
       </>
     );
   else

@@ -152,7 +152,7 @@ import {
 } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, {
-  AMIYA_UNFRIEND,
+  amiyaUnfriend,
   firstTab,
   FriendView,
   noticeTitle,
@@ -2346,7 +2346,7 @@ export default function MapApp({
     const guide = guideById(friend.id);
     const question = guide
       ? guide.id === AMIYA_ID
-        ? AMIYA_UNFRIEND
+        ? amiyaUnfriend()
         : guide.id === PERLICA_ID
           ? PERLICA_UNFRIEND
           : guide.id === MINGHE_ID

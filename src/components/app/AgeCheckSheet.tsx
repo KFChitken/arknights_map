@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { MIN_SIGNUP_AGE, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
@@ -30,11 +31,11 @@ export default function AgeCheckSheet({
   return (
     <Sheet title="确认一下年龄" onClose={onClose}>
       <p style={{ marginTop: 0 }}>
-        站长想再确认一下：你满 {MIN_SIGNUP_AGE} 岁了吗？{SITE_NAME}只对满 {MIN_SIGNUP_AGE} 岁的人开放。
+        {fmtParts("站长想再确认一下：你满 {age} 岁了吗？{site}只对满 {age} 岁的人开放。", { age: MIN_SIGNUP_AGE, site: SITE_NAME })}
       </p>
       <div className="consent-actions">
         <button className="primary wide" disabled={busy} onClick={confirm}>
-          我已满 {MIN_SIGNUP_AGE} 岁
+          {fmtParts("我已满 {age} 岁", { age: MIN_SIGNUP_AGE })}
         </button>
         <button className="pill" disabled={busy} onClick={onDelete}>
           删除我的账号

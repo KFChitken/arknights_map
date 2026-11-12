@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { fmtParts } from "@/i18n";
 import { FRIEND_ACTS_PER_DAY, GESTURE_DONE, GESTURE_NAMES, isAwakeGesture, type Gesture } from "@/lib/friendly";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { FriendBetween } from "@/lib/world/types";
@@ -59,7 +60,12 @@ const ICONS: Record<FriendAct, ReactNode> = {
 };
 
 /** The plain name of each, before it is used */
-const NAMES: Record<FriendAct, string> = { visit: "做客", sanity: "催理智", poke: "戳一戳", ...GESTURE_NAMES };
+const NAMES: Record<FriendAct, string> = {
+  visit: "做客",
+  sanity: "催理智",
+  poke: "戳一戳",
+  ...GESTURE_NAMES,
+};
 
 /**
  * 触须之交专属: the row of what only 触须之交 do, on their roach's card and their page. Awake:
@@ -118,7 +124,7 @@ export default function FriendActions({
   ].filter(Boolean);
   return (
     <div className="friend-acts">
-      <span className="friend-acts-label">触须之交专属{full ? "" : ` · 今天还能 ${between.actsLeft} 次`}</span>
+      <span className="friend-acts-label">{fmtParts("触须之交专属{left}", { left: full ? "" : ` · 今天还能 ${between.actsLeft} 次` })}</span>
       <div className="friend-acts-row">
         {acts.map((act) => {
           const { label, off } = state(act);

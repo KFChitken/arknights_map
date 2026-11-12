@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import { callName } from "@/lib/amiya";
 import { declarationText, type Declaration } from "@/lib/declarations";
 import { distanceKm } from "@/lib/geo";
@@ -128,7 +129,7 @@ export function TutorialCoach({
       </div>
       <div className="stack coach-body">
         <div className="coach-top">
-          <span className="muted">阿米娅的新手教程 · {step === "done" ? "完成" : `第 ${number}/5 步`}</span>
+          <span className="muted">{fmtParts("阿米娅的新手教程 · {step}", { step: step === "done" ? "完成" : `第 ${number}/5 步` })}</span>
           {!required && step !== "done" && (
             <button className="link" onClick={onSkipAll}>
               跳过教程
@@ -138,7 +139,7 @@ export function TutorialCoach({
 
         {step === "main" && (
           <>
-            <strong>{you}，欢迎来到舟P地图！</strong>
+            <strong>{fmtParts("{you}，欢迎来到舟P地图！", { you: you })}</strong>
             <p>我是阿米娅。先把你的蟑螂本体放到地图上吧，大家能看到它在哪，但不知道是谁的。放好以后随时可以挪窝，也可以收回。</p>
             <div className="row-actions">
               <button className="pill dark" onClick={onPlaceMain}>
@@ -178,11 +179,11 @@ export function TutorialCoach({
         {step === "greet" && (
           <>
             <strong>跟附近的舟P打个招呼吧</strong>
-            <p>挑一句发给 {DECLARATION_RADIUS_KM} 公里内的舟P，他们不知道是谁发的，可以回应你。</p>
+            <p>{fmtParts("挑一句发给 {km} 公里内的舟P，他们不知道是谁发的，可以回应你。", { km: DECLARATION_RADIUS_KM })}</p>
             <div className="chips">
               {greetings(me).map((d) => (
                 <button key={declarationText(d)} className="chip" disabled={sending} onClick={() => onGreet(d)}>
-                  「{declarationText(d)}」
+                  {fmtParts("「{text}」", { text: declarationText(d) })}
                 </button>
               ))}
             </div>
@@ -196,7 +197,7 @@ export function TutorialCoach({
 
         {step === "touch" && !progress.practiced && (
           <>
-            <strong>{you}，我在罗德岛！</strong>
+            <strong>{fmtParts("{you}，我在罗德岛！", { you: you })}</strong>
             <p>
               点一下我，伸出触须碰碰我吧。偷偷碰，对方只知道被一只蟑螂碰了一下；大胆碰，对方能看到你的名片，我们就成了触须之交。
             </p>

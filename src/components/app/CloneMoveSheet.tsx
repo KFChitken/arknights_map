@@ -1,5 +1,6 @@
 "use client";
 
+import { fmtParts } from "@/i18n";
 import { distanceKm } from "@/lib/geo";
 import { MOVES_PER_DAY } from "@/lib/rules";
 import type { LngLat } from "@/lib/types";
@@ -32,12 +33,12 @@ export default function CloneMoveSheet({
   return (
     <Sheet title="挪哪只克隆体过去？" onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        算一次挪窝，今天还能挪 {movesLeft} 次（每天 {MOVES_PER_DAY} 次）。
+        {fmtParts("算一次挪窝，今天还能挪 {left} 次（每天 {perDay} 次）。", { left: movesLeft, perDay: MOVES_PER_DAY })}
       </p>
       {clones.map((r, i) => (
         <div className="list-row" key={r.id}>
           <div>
-            <strong>克隆体 {i + 1}</strong>
+            <strong>{fmtParts("克隆体 {n}", { n: i + 1 })}</strong>
             <p className="muted">{far(r)}</p>
           </div>
           <div className="row-actions">

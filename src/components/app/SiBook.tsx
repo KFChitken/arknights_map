@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fmtParts } from "@/i18n";
 import { chineseDate, portraitTitle, SI_LINES, STAMPS, STAMPS_PER_ROUND, stampAt } from "@/lib/si";
 import { SEAL_RED } from "@/lib/siArt";
 import type { RoachAvatar } from "@/lib/types";
@@ -332,7 +333,7 @@ export function SiBookSheet({
       {shown === "stamps" && (
         <div className="stack">
           <p className="muted si-book-note">
-            一共盖了 {total.toLocaleString()} 个章 · {round > 0 ? `第 ${round + 1} 轮，` : ""}这一轮 {inRound} / {STAMPS_PER_ROUND}
+            {fmtParts("一共盖了 {n} 个章 · {round}这一轮 {inRound} / {per}", { n: total.toLocaleString(), round: round > 0 ? `第 ${round + 1} 轮，` : "", inRound: inRound, per: STAMPS_PER_ROUND })}
           </p>
           <ol className="si-stamps">
             {Array.from({ length: STAMPS_PER_ROUND }, (_, i) => {

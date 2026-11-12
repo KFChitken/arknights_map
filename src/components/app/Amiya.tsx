@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtParts } from "@/i18n";
 import { AMIYA, amiyaLine } from "@/lib/amiya";
 import type { Game } from "@/lib/games";
 import RoachIcon from "../RoachIcon";
@@ -20,7 +21,7 @@ export const AmiyaPicture = ({ size, friend = true }: { size: number; friend?: b
 export function AmiyaTouchBack({ onTouchBack }: { onTouchBack: (bold: boolean) => Promise<string | null> }) {
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
-  if (answer) return <p className="amiya-answer">她碰回来了：「{answer}」</p>;
+  if (answer) return <p className="amiya-answer">{fmtParts("她碰回来了：「{answer}」", { answer: answer })}</p>;
   if (answer === "") return <p className="amiya-answer">她今天已经碰回过你了，明天再碰碰她吧。</p>;
   const go = async (bold: boolean) => {
     setBusy(true);

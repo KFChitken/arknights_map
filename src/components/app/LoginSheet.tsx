@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { fmtParts } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import { finishSignup, passwordLogin, redeemDeskCode, requestCode, savePassword, verifyCode } from "@/lib/authClient";
 import { adultTick, crossBorderTick } from "@/lib/consent";
 import { DESK_CODE_LENGTH, normalizeDeskCode } from "@/lib/deskCode";
@@ -287,8 +289,8 @@ export default function LoginSheet({
           {reason && <p className="hint" style={{ marginTop: 0 }}>{reason}</p>}
           {!byPassword && pausedNames.length > 0 && (
             <p className="hint" style={{ marginTop: 0, color: "var(--ink)", fontWeight: 600 }}>
-              {pausedNames.join("、")} 最近收不到我们的验证码邮件，发往 {pausedNames.join("、")} 的验证码先暂停了。请用 QQ、163 或
-              Outlook 等邮箱登录；已经登录的不受影响。{!fixedEmail && "设过密码的可以切到「密码」直接登录。"}
+              {fmtParts("{names} 最近收不到我们的验证码邮件，发往 {names} 的验证码先暂停了。请用 QQ、163 或 Outlook 等邮箱登录；已经登录的不受影响。", { names: pausedNames.join("、") })}
+              {!fixedEmail && "设过密码的可以切到「密码」直接登录。"}
             </p>
           )}
           <label className="field">
@@ -320,7 +322,7 @@ export default function LoginSheet({
           )}
           {!byPassword && pausedHere && (
             <p className="hint" style={{ marginTop: 0, color: "var(--ink)" }}>
-              这是 {serviceName(typedDomain)} 邮箱，现在收不到验证码，{fixedEmail ? "等恢复了再来。" : "请换一个邮箱。"}
+              {fmtParts("这是 {service} 邮箱，现在收不到验证码，{then}", { service: serviceName(typedDomain), then: fixedEmail ? "等恢复了再来。" : "请换一个邮箱。" })}
             </p>
           )}
           {!fixedEmail && (
@@ -386,11 +388,10 @@ export default function LoginSheet({
         <form className="login" onSubmit={verify}>
           <p className="hint" style={{ marginTop: 0 }}>
             {typedIn ? (
-              <>填 {email} 收到的 6 位验证码。</>
+              <>{fmtParts("填 {email} 收到的 6 位验证码。", { email: email })}</>
             ) : (
               <>
-                {sent?.again ? "又发了一次" : "验证码发到了"} {email}，
-                {sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN} 分钟内有效。
+                {fmtParts("{sent} {email}，{min} 分钟内有效。", { sent: sent?.again ? "又发了一次" : "验证码发到了", email: email, min: sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN })}
               </>
             )}
           </p>
@@ -398,20 +399,19 @@ export default function LoginSheet({
             <p className="hint" style={{ color: "var(--ink)", fontWeight: 600 }}>
               Gmail 最近收我们的信比较慢，可能要等很久。还没注册的话，用 QQ 或 163 邮箱更快。
               {/* said to every address there, known or not, so it tells nobody who has an account or a password */}
-              {!fixedEmail && (
-                <>
-                  设过密码的，可以
-                  <button
-                    type="button"
-                    className="link"
-                    style={{ fontSize: "inherit", fontWeight: "inherit", color: "inherit", textDecoration: "underline" }}
-                    onClick={toPassword}
-                  >
-                    直接用密码登录
-                  </button>
-                  。
-                </>
-              )}
+              {!fixedEmail &&
+                fmtNodes("设过密码的，可以{link}。", {
+                  link: (
+                    <button
+                      type="button"
+                      className="link"
+                      style={{ fontSize: "inherit", fontWeight: "inherit", color: "inherit", textDecoration: "underline" }}
+                      onClick={toPassword}
+                    >
+                      直接用密码登录
+                    </button>
+                  ),
+                })}
             </p>
           )}
           <p className="hint">
@@ -466,7 +466,7 @@ export default function LoginSheet({
       {step === "desk" && (
         <form className="login" onSubmit={redeem}>
           <p className="hint" style={{ marginTop: 0 }}>
-            在已经登录的手机或电脑上打开{SITE_NAME}，在「我的资料」里拿一个登录码，把那 {DESK_CODE_LENGTH} 位码填在这里。
+            {fmtParts("在已经登录的手机或电脑上打开{site}，在「我的资料」里拿一个登录码，把那 {len} 位码填在这里。", { site: SITE_NAME, len: DESK_CODE_LENGTH })}
           </p>
           <label className="field">
             登录码
