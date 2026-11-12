@@ -9,7 +9,7 @@ export const MIN_SIGNUP_AGE = 18;
  * that agreed before it see 「隐私说明更新了」 and do nothing others see until they
  * agree (src/lib/server/consent.ts). Small wording fixes only change the page's date.
  */
-export const POLICY_UPDATED_AT = new Date("2026-11-12T11:00+08:00");
+export const POLICY_UPDATED_AT = new Date("2026-11-13T05:05+08:00");
 export const LOGIN_CODE_TTL_MIN = 10;
 /**
  * How long one address waits for another code: 2 minutes after a code's first sending, 5 after its second,
