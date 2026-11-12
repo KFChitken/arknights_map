@@ -28,17 +28,24 @@ export const POST = route(async (req) => {
   if (problem) throw new HttpError(400, problem);
 
   const now = new Date();
-  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-  let id = existing?.id;
+  let id = await accountOf(email);
   if (!id) {
-    [{ id }] = await db
+    const [made] = await db
       .insert(users)
       .values({ email, ageConfirmedAt: now, policyAcceptedAt: now, crossBorderAcceptedAt: now })
+      .onConflictDoNothing({ target: users.email })
       .returning({ id: users.id });
-    await signedUp(id);
+    if (made) await signedUp(made.id);
+    // the same email signing up twice at once (a double tap, a second tab): the other's row went in
+    // first, and this one signs in to that account
+    id = made?.id ?? (await accountOf(email));
+    if (!id) throw new Error("the new account was neither made nor found");
   }
   if (password) await firstPassword({ id, email }, password);
   await clearSignupProof();
   await startSession(req, id);
   return NextResponse.json({ status: "ok" });
 });
+
+const accountOf = async (email: string) =>
+  (await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1))[0]?.id;
