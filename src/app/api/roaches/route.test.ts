@@ -162,25 +162,3 @@ describe("only an area (f=4)", () => {
     }
   });
 });
-
-describe("the overview by tiles (f=4)", () => {
-  const ask = (query: string, cookie?: string, headers: Record<string, string> = {}) =>
-    GET(new NextRequest(`http://localhost/api/roaches?${query}`, { headers: { ...headers, ...(cookie ? { cookie } : {}) } }));
-
-  it("lists the tiles with roaches, gives one whole by ETag, and refuses tiles that are not", async () => {
-    const a = await player("a@example.com");
-    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
-    const cookie = `sid=${await signIn(a)}`;
-    const listed = await (await ask("f=4&o=1&tiles=1", cookie)).json();
-    expect(listed.tiles).toHaveLength(1);
-    const [[x, y, n]] = listed.tiles;
-    expect(n).toBe(1);
-    const res = await ask(`f=4&o=1&tile=${x},${y}`, cookie, { "accept-encoding": "br" });
-    expect(res.headers.get("content-encoding")).toBe("br");
-    expect((await ask(`f=4&o=1&tile=${x},${y}`, cookie, { "if-none-match": res.headers.get("etag")! })).status).toBe(304);
-    const body = await (await ask(`f=4&o=1&tile=${x},${y}`, cookie)).json();
-    expect(unpackRoaches(body.packed)).toMatchObject([{ lng: SHANGHAI.lng, lat: SHANGHAI.lat }]);
-    expect(await (await ask(`f=4&o=1&tile=${x},${y}`)).json()).toMatchObject({ hidden: true });
-    for (const q of ["f=4&o=1&tile=64,1", "f=4&o=1&tile=1", "f=4&o=1&tile=-1,2"]) expect((await ask(q, cookie)).status, q).toBe(400);
-  });
-});

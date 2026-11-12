@@ -29,16 +29,11 @@ import {
   type Radar,
   type RideTarget,
   type AreaUpdate,
-  type TileUpdate,
-  type TilesUpdate,
   type RoachFeedUpdate,
   type VisitorFeed,
   type TouchResult,
   type World,
 } from "./types";
-
-/** How long a tile of the overview may go with nothing more coming before it is given up and asked for again */
-const TILE_STALL_MS = 20_000;
 
 /** The World backed by the server (src/app/api/world/[op]). */
 export class ServerWorld implements World {
@@ -110,53 +105,6 @@ export class ServerWorld implements World {
     // An area whole that the browser could not hand over from what it holds (a bare 304, or a copy it cannot
     // read): once more, from the server
     if (!since && (res.status === 304 || (res.ok && !body))) ({ res, body } = await ask("reload"));
-    if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
-    if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
-    return body;
-  };
-  // The overview by tiles, each whole by ETag, read as it comes: a tile from which nothing more has come for
-  // TILE_STALL_MS is given up and asked for again (the page's retry), however long a slow link takes for the
-  // whole of one that keeps coming. A stalled answer would otherwise hold its place for minutes.
-  roachTiles = () => this.tileAsk<TilesUpdate | VisitorFeed>("f=4&o=1&tiles=1");
-  roachTile = (x: number, y: number) => this.tileAsk<TileUpdate | VisitorFeed>(`f=4&o=1&tile=${x},${y}`);
-  private tileAsk = async <T>(query: string): Promise<T> => {
-    const ask = async (cache: RequestCache) => {
-      const stop = new AbortController();
-      let timer = 0;
-      const wait = () => {
-        window.clearTimeout(timer);
-        timer = window.setTimeout(() => stop.abort(), TILE_STALL_MS);
-      };
-      try {
-        wait();
-        const res = await fetch(`/api/roaches?${query}`, { cache, signal: stop.signal });
-        heardNoticeStamp(res.headers.get("x-notices"));
-        let text = "";
-        const reader = res.body?.getReader();
-        if (reader) {
-          const decoder = new TextDecoder();
-          for (;;) {
-            wait();
-            const { done, value } = await reader.read();
-            if (done) break;
-            text += decoder.decode(value, { stream: true });
-          }
-          text += decoder.decode();
-        }
-        let body: (T & { error?: string }) | null = null;
-        try {
-          body = text ? (JSON.parse(text) as T & { error?: string }) : null;
-        } catch {}
-        return { res, body };
-      } catch {
-        throw new WorldError("连不上服务器，几秒后自动重试。");
-      } finally {
-        window.clearTimeout(timer);
-      }
-    };
-    let { res, body } = await ask("no-cache");
-    // what the browser could not hand over from what it holds (a bare 304, or a copy it cannot read): once more, from the server
-    if (res.status === 304 || (res.ok && !body)) ({ res, body } = await ask("reload"));
     if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body;

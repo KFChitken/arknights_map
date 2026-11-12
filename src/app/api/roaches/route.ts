@@ -4,8 +4,8 @@ import { clientIp } from "@/lib/server/http";
 import { noticeList } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
 import { note } from "@/lib/server/signals";
-import { compressedArea, roachArea, roachCounts, roachFeed, roachTile, roachTiles, type FeedForm } from "@/lib/server/roachFeed";
-import { parseBox, TILES_ACROSS, type Area } from "@/lib/world/area";
+import { compressedArea, roachArea, roachCounts, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
+import { parseBox, type Area } from "@/lib/world/area";
 
 /** The shape of a session token (auth.ts). Made-up cookies gain nothing: the per-address limit counts every request. */
 const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -18,8 +18,7 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * public ids, and nothing: the list, for pages from before each.
  *
  * f=4 (只发看得到的, src/lib/world/area.ts): only an area, &box=west,south,east,north or &o=1 for the
- * overview, what pages ask now; the whole list stays for pages opened before. The overview by tiles:
- * &o=1&tiles=1 which tiles there are roaches in, &o=1&tile=x,y one tile whole, by ETag.
+ * overview, what pages ask now; the whole list stays for pages opened before.
  *
  * Only to someone signed in: a visitor gets how many roaches there are, by the fire and riding with
  * 明河都尉, and how many players they belong to (FeedCounts), and hidden: true, a few hundred bytes (their
@@ -37,22 +36,10 @@ async function answer(req: NextRequest): Promise<Response> {
   const since = req.nextUrl.searchParams.get("since");
   const f = req.nextUrl.searchParams.get("f");
   const form: FeedForm = f === "3" ? 3 : f === "2" ? 2 : 1;
-  let area: Area | "counts" | "tiles" | [number, number] | null = null;
+  let area: Area | "counts" | null = null;
   if (f === "4") {
     const q = req.nextUrl.searchParams;
-    const tile = /^(\d{1,2}),(\d{1,2})$/.exec(q.get("tile") ?? "");
-    area =
-      q.get("c") === "1"
-        ? "counts"
-        : q.get("o") !== "1"
-          ? parseBox(q.get("box"))
-          : q.get("tiles") === "1"
-            ? "tiles"
-            : !q.has("tile")
-              ? "overview"
-              : tile && Number(tile[1]) < TILES_ACROSS && Number(tile[2]) < TILES_ACROSS
-                ? [Number(tile[1]), Number(tile[2])]
-                : null;
+    area = q.get("c") === "1" ? "counts" : q.get("o") === "1" ? "overview" : parseBox(q.get("box"));
     if (!area) return NextResponse.json({ error: "请求的范围不对。" }, { status: 400 });
   }
   try {
@@ -71,8 +58,7 @@ async function answer(req: NextRequest): Promise<Response> {
       const c = await roachCounts();
       return NextResponse.json({ v: c.v, t: [c.total, c.fire, c.riders, c.players] }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
-    if (area === "tiles" || (Array.isArray(area) && area.length === 2)) return await tileAnswer(req, sid, area as "tiles" | [number, number]);
-    if (area) return await areaAnswer(req, sid, area as Area, since);
+    if (area) return await areaAnswer(req, sid, area, since);
     const answer = await roachFeed(since, Date.now(), form);
     const etag = `"${answer.v}${form === 3 ? "s" : form === 2 ? "p" : ""}"`;
     const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie" };
@@ -110,23 +96,6 @@ const BUSY = (limit: string) => {
   note("busy", limit);
   return NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
 };
-
-/**
- * f=4, the overview by tiles: which tiles there are roaches in, or one tile whole, each made once for every page
- * and kept a while at its own version, by ETag; precompressed. Counted as whole areas are.
- */
-async function tileAnswer(req: NextRequest, sid: string, ask: "tiles" | [number, number]) {
-  const answer = ask === "tiles" ? { ...(await roachTiles()), key: "tiles" } : await roachTile(ask[0], ask[1]);
-  const etag = `"${answer.v}:${answer.key}"`;
-  const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie", "content-type": "application/json" };
-  if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
-  if (!allow(`area:full:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:full:ip");
-  if (!allow(`area:full:sid:${sid}`, 200, 60_000)) return BUSY("area:full:sid");
-  const accepts = req.headers.get("accept-encoding") ?? "";
-  const how = /\bbr\b/.test(accepts) ? "br" : /\bgzip\b/.test(accepts) ? "gzip" : null;
-  if (!how) return new Response(answer.whole.json, { headers });
-  return new Response(new Uint8Array(await compressedArea(answer.whole, how)), { headers: { ...headers, "content-encoding": how } });
-}
 
 /**
  * f=4: an area for a signed-in page. A page asks for a new box each time its view leaves the one it holds,

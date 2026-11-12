@@ -37,9 +37,6 @@ export interface World {
    * the version of the same box held to get only what changed in it. Not signed in: as roachFeed.
    */
   roachArea(area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed>;
-  /** The overview by tiles (world/area.ts tilesFor): which tiles there are roaches in, and one tile whole. Not signed in: as roachFeed. */
-  roachTiles(): Promise<TilesUpdate | VisitorFeed>;
-  roachTile(x: number, y: number): Promise<TileUpdate | VisitorFeed>;
   /** For a visitor who has not signed in: about how many roaches are near a spot (counts.ts rough), counted by the server */
   around(spot: LngLat, signal?: AbortSignal): Promise<{ near: number; far: number }>;
   saveProfile(profile: Profile): Promise<Profile>;
@@ -228,11 +225,6 @@ export type AreaUpdate = {
   changed?: MapRoach[];
   removed?: string[];
 };
-
-/** The overview by tiles (world/area.ts tilesFor): which tiles there are roaches in, [x, y, how many squares] */
-export type TilesUpdate = { whole?: true; v: string; t?: [number, number, number, number?]; tiles: [number, number, number][] };
-/** One tile of the overview whole: its squares' roaches, each standing for all in its square (n) */
-export type TileUpdate = { whole?: true; v: string; tile: [number, number]; t?: [number, number, number, number?]; packed: PackedRoaches };
 
 /**
  * What the feed gives someone not signed in, whose map is 全员隐匿: how many roaches there are in all, by
