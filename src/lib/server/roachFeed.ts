@@ -877,9 +877,12 @@ export async function roachCounts(now = Date.now()): Promise<{ v: string } & Fee
  * anywhere, every few seconds: made anew for each, a page coming back to an area it had downloaded it all
  * again instead of getting a 304, and on a slow link the overview, hundreds of KB, then took minutes or
  * never came. A page holding a box made a while ago asks what changed since its version, as for any box.
- * Past AREAS_KEPT, the least lately made go first; each is up to a few hundred KB.
+ * The overview is always sent whole, so every page showing it downloads it again each time it is made
+ * anew: half an hour, not five minutes (2026-11-12, when the servers' outgoing bandwidth was full), the
+ * roaches seen from that far up being at most that late. Past AREAS_KEPT, the least lately made go first;
+ * each is up to a few hundred KB.
  */
-const OVERVIEW_KEPT_MS = 5 * 60_000;
+const OVERVIEW_KEPT_MS = 30 * 60_000;
 const BOX_KEPT_MS = 60_000;
 const AREAS_KEPT = 256;
 

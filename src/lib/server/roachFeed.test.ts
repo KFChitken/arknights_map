@@ -618,10 +618,10 @@ describe("an area's whole answer, kept a while (f=4)", () => {
     await round(T0 + 8000);
     expect((await askArea(BOX, null, T0 + 8000)).v).toBe(box.v);
     expect((await askArea(BOX, box.v, T0 + 8000)).body.changed).toMatchObject([{ id: "a1000000", lng: 121.6 }]);
-    // made anew once a minute old (a box), five (the overview)
+    // made anew once a minute old (a box), half an hour (the overview)
     expect((await askArea(BOX, null, T0 + 4000 + 60_000)).v).not.toBe(box.v);
-    expect((await askArea("overview", null, T0 + 4 * MINUTE)).v).toBe(overview.v);
-    const later = await askArea("overview", null, T0 + 5 * MINUTE);
+    expect((await askArea("overview", null, T0 + 29 * MINUTE)).v).toBe(overview.v);
+    const later = await askArea("overview", null, T0 + 30 * MINUTE);
     expect(later.v).not.toBe(overview.v);
     expect(later.body.packed && unpackRoaches(later.body.packed).find((r) => r.id === "a1000000")).toMatchObject({ lng: 121.6 });
   });
