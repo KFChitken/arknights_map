@@ -129,7 +129,7 @@ import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import { HomecomingSheet } from "./app/Homecoming";
-import NoticeSheet from "./app/NoticeSheet";
+import NoticeBoard, { NoticeButton, NoticeStrip, type BoardView } from "./app/NoticeBoard";
 import HotSheet from "./app/HotSheet";
 import {
   countOpen,
@@ -200,7 +200,25 @@ import VisitSheet from "./app/VisitSheet";
 import FriendsSheet, { FriendsMark } from "./app/FriendsSheet";
 import PartyScene from "./app/PartyScene";
 import { playPartyMusic, preloadPartyMusic, stopPartyMusic, type PartyMusic } from "./app/partyMusic";
-import { markNoticeSeen, noticeSeen } from "@/lib/notice";
+import {
+  boardOpened,
+  changeNoticeMemory,
+  EMPTY_MEMORY,
+  fetchNotices,
+  markPopped,
+  noticeDot,
+  noticeMemory,
+  noticeMemoryKept,
+  noticeRead,
+  noticeToPop,
+  onNoticeStamp,
+  poppedThisVisit,
+  stripClosed,
+  stripNotice,
+  type NoticeList,
+  type NoticeMemory,
+  type PublicNotice,
+} from "@/lib/notices";
 import { PARTY_ZOOM } from "@/lib/party";
 import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
 import {
@@ -390,13 +408,22 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
 /**
  * cn: the visitor is in mainland China, so the map is Amap only (OSM just when Amap cannot load).
  * mailPaused: mail domains no sign-in code goes to just now, which the sign-in sheet says.
+ * notices: 公告 everyone sees (src/lib/server/notices.ts), as they were when the page was made.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const GUEST_STYLES: Partial<Record<MapStyle, string>> = Object.fromEntries(
   MAP_STYLES.filter((s) => s !== "hidden").map((s) => [s, SIGN_IN_FOR_STYLES]),
 );
 
-export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPaused?: string[] }) {
+export default function MapApp({
+  cn,
+  mailPaused = [],
+  notices: firstNotices = { stamp: "", notices: [] },
+}: {
+  cn: boolean;
+  mailPaused?: string[];
+  notices?: NoticeList;
+}) {
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
   const feedRef = useRef(new RoachFeedCopy());
@@ -469,8 +496,78 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const [friends, setFriends] = useState<Friend[]>([]);
   const [blocked, setBlocked] = useState<BlockedPlayer[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
-  /** The notice for everyone signed in (src/lib/notice.ts), and what opens once it is closed */
-  const [notice, setNotice] = useState<{ userId: string; then: () => void } | null>(null);
+  /** 公告 (src/lib/notices.ts): those everyone sees, as the server last said, and what this device remembers of them */
+  const [notices, setNotices] = useState<NoticeList>(firstNotices);
+  const noticesRef = useRef(notices);
+  noticesRef.current = notices;
+  const [noticeMem, setNoticeMem] = useState<NoticeMemory>(EMPTY_MEMORY);
+  const noticeMemRef = useRef(noticeMem);
+  noticeMemRef.current = noticeMem;
+  /** The board, while open; for a notice that popped up, whose visit it was and what opens once it is closed */
+  const [board, setBoard] = useState<{ view: BoardView; popped: { userId: string; then: () => void } | null } | null>(null);
+  // what this device remembers of them, once the page is in the browser
+  useEffect(() => setNoticeMem(noticeMemory()), []);
+  /** A change to what this device remembers of the notices, stored as well */
+  const rememberNotices = useCallback((change: (m: NoticeMemory) => NoticeMemory) => {
+    const next = changeNoticeMemory(change, noticeMemRef.current);
+    noticeMemRef.current = next;
+    setNoticeMem(next);
+  }, []);
+  /**
+   * Opening the map or signing in: the notice due (noticeToPop) pops up first, and what comes next waits
+   * for it to be closed; with none due, what comes next comes now
+   */
+  const popNotice = useCallback(
+    (userId: string, then: () => void) => {
+      const n = noticeToPop(noticesRef.current.notices, noticeMemRef.current, Date.now());
+      if (!n) return then();
+      rememberNotices((m) => noticeRead(m, n.id));
+      setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: { userId, then } });
+    },
+    [rememberNotices],
+  );
+  // The server says with the roaches which notices there are (x-notices): when they are not the ones held, they
+  // are asked for again. So an open page sees a new one within the two minutes, with the red dot and the strip;
+  // nothing pops up over what the player is doing.
+  useEffect(() => {
+    let asking = false;
+    return onNoticeStamp((stamp) => {
+      if (asking || stamp === noticesRef.current.stamp) return;
+      asking = true;
+      void fetchNotices()
+        .then((list) => list && setNotices(list))
+        .finally(() => (asking = false));
+    });
+  }, []);
+  /** The button: the list, and the red dot goes out */
+  const openBoard = () => {
+    rememberNotices((m) => boardOpened(m, noticesRef.current.notices, Date.now()));
+    setBoard({ view: { kind: "list" }, popped: null });
+  };
+  /** The strip: its notice, as if the board was opened, too */
+  const openStripped = (n: PublicNotice) => {
+    rememberNotices((m) => noticeRead(boardOpened(m, noticesRef.current.notices, Date.now()), n.id));
+    setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: null });
+  };
+  const closeStrip = (n: PublicNotice) => rememberNotices((m) => stripClosed(m, n.id, noticesRef.current.notices, Date.now()));
+  /** One notice from the list: read */
+  const boardOpen = (n: PublicNotice) => {
+    rememberNotices((m) => noticeRead(m, n.id));
+    setBoard((b) => b && { ...b, view: { kind: "notice", notice: n, counted: false } });
+  };
+  /** Back to the list, which is the board opened too */
+  const boardList = () => {
+    rememberNotices((m) => boardOpened(m, noticesRef.current.notices, Date.now()));
+    setBoard((b) => b && { ...b, view: { kind: "list" } });
+  };
+  /** Closed however, on whichever page: one that popped up counts for this visit, and what waited for it opens */
+  const closeBoard = () => {
+    const popped = board?.popped;
+    setBoard(null);
+    if (!popped) return;
+    markPopped(popped.userId);
+    popped.then();
+  };
   const [selected, setSelected] = useState<Selection | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [visible, setVisible] = useState<number | null>(null);
@@ -970,12 +1067,16 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
             setActing("wake");
           } else first();
         };
-        // the notice for everyone signed in comes before all of that, once a visit
-        if (m && !noticeSeen(m.id)) setNotice({ userId: m.id, then: go });
-        else go();
+        // the notice due comes before all of that (src/lib/notices.ts), once a visit
+        if (m && !poppedThisVisit(m.id)) return popNotice(m.id, go);
+        // A tab that showed the one notice there was before the board: it was the one that pops up on every
+        // visit, so that one is not new here either
+        const every = noticesRef.current.notices.find((n) => n.pop === "every");
+        if (m && every && !noticeMemoryKept()) rememberNotices((mem) => noticeRead(mem, every.id));
+        go();
       });
     return () => window.clearTimeout(waiting);
-  }, [load, openInbox, cn]);
+  }, [load, openInbox, cn, popNotice, rememberNotices]);
 
   // Chrome and Edge offer installing the site once, early; 存到桌面 keeps it for when the player taps it.
   // Opens from the desktop icon and in the browser are counted once a device a day, nothing else about them.
@@ -2341,9 +2442,9 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       if (items.some((i) => !i.seen)) openInbox(true, undefined, items);
       else setToast(m && !mainRoach ? "登录好了！先放下你的蟑螂吧。" : "登录好了！");
     };
-    // the notice comes first on every sign-in, even one seen earlier in this visit: for a newcomer, the first
-    // thing after signing up
-    if (m) setNotice({ userId: m.id, then: next });
+    // the notice due comes first on every sign-in, even after one popped up earlier in this visit: for a
+    // newcomer, the first thing after signing up
+    if (m) popNotice(m.id, next);
     else next();
   };
 
@@ -2539,7 +2640,12 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         : heldPlayers + (me?.roaches.some((r) => r.slot === 0) ? 1 : 0);
 
 
-  const coachShown = Boolean(!placing && !selected && !panel && !notice && me && step);
+  const coachShown = Boolean(!placing && !selected && !panel && !board && me && step);
+  // 公告's red dot and strip, once the opening has had its turn (a notice due pops up before them); the strip
+  // not over the tutorial, nor while a sheet covers it
+  const noticeNow = Date.now();
+  const noticeDotOn = settled && noticeDot(notices.notices, noticeMem, noticeNow);
+  const strip = settled && !panel && !board && !step ? stripNotice(notices.notices, noticeMem, noticeNow) : null;
 
   // 获得新称号: once nothing else is on screen, up to three in a row; any more go straight to the wall
   const [newBadges, setNewBadges] = useState<EarnedBadge[]>([]);
@@ -2551,7 +2657,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const idle = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
   // 存到桌面's bubble, once per device: after about 20 seconds on the map with nothing else going on, the tutorial
   // and the style hint over (a new player's first roach starts the tutorial, so it comes after)
-  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !notice && !styleHint);
+  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint);
   useEffect(() => {
     if (!deskHintNow || deskHint || deskHintSeen()) return;
     const t = window.setTimeout(() => {
@@ -3529,6 +3635,23 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
     }
   };
 
+  // only the admin's me() carries the counts
+  const adminPills = me?.admin && (me.admin.open > 0 || me.admin.appeals > 0 || reportedMarks) && (
+    <>
+      {(me.admin.open > 0 || me.admin.appeals > 0) && (
+        <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
+          {[me.admin.open > 0 && `${me.admin.open} 条举报`, me.admin.appeals > 0 && `${me.admin.appeals} 条申诉`].filter(Boolean).join("、")}待处理
+          {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
+        </a>
+      )}
+      {(me.admin.open > 0 || reportedMarks) && (
+        <button className="admin-pill" disabled={markingReported} onClick={toggleReported}>
+          {reportedMarks ? `收起被举报者的蟑螂（${reportedMarks.length} 只）` : "看被举报者的蟑螂"}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <main className={`app ${basemap === "amap" && !amapFailed && !(twoMaps && abroad) ? "on-amap" : ""}`}>
       <header className={`topbar${topRaised ? " raised" : ""}`}>
@@ -3536,6 +3659,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
           <span>{SITE_NAME}</span>
           <span className="tag">内测版</span>
+          <NoticeButton dot={noticeDotOn} onClick={openBoard} />
         </div>
         <div className={`switches${cn ? "" : " with-basemap"}`}>
           <MapStylePicker
@@ -3619,18 +3743,14 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
               </>
             )}
           </div>
-          {/* only the admin's me() carries the counts */}
-          {me?.admin && (me.admin.open > 0 || me.admin.appeals > 0) && (
-            <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
-              {[me.admin.open > 0 && `${me.admin.open} 条举报`, me.admin.appeals > 0 && `${me.admin.appeals} 条申诉`].filter(Boolean).join("、")}待处理
-              {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
-            </a>
+          {/* a line of its own under the counts (globals.css .notice-strip-row), before the admin's own */}
+          {strip && (
+            <div className="notice-strip-row">
+              <NoticeStrip notice={strip} onOpen={() => openStripped(strip)} onClose={() => closeStrip(strip)} />
+            </div>
           )}
-          {me?.admin && (me.admin.open > 0 || reportedMarks) && (
-            <button className="admin-pill" disabled={markingReported} onClick={toggleReported}>
-              {reportedMarks ? `收起被举报者的蟑螂（${reportedMarks.length} 只）` : "看被举报者的蟑螂"}
-            </button>
-          )}
+          {/* under the strip they come down beside 方舟雷达, so they keep to a line of their own in the middle (.admin-row) */}
+          {strip && adminPills ? <div className="admin-row">{adminPills}</div> : adminPills}
         </div>
       )}
 
@@ -3997,13 +4117,14 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         />
       )}
       {/* above the tutorial card or a roach card while one is showing, so the two never cover each other */}
-      {notice && (
-        <NoticeSheet
-          onClose={() => {
-            markNoticeSeen(notice.userId);
-            setNotice(null);
-            notice.then();
-          }}
+      {board && (
+        <NoticeBoard
+          notices={notices.notices}
+          view={board.view}
+          memory={noticeMem}
+          onOpen={boardOpen}
+          onList={boardList}
+          onClose={closeBoard}
         />
       )}
       {liteHint && (

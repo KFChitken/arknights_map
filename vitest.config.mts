@@ -5,6 +5,8 @@ import { TEST_DATABASE_URL } from "./vitest.global-setup.mts";
 const local = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
+  // the tsconfig leaves JSX to Next.js; tests that render a component (with react-dom/server) need it compiled
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "@": local("./src"),

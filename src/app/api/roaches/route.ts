@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { sessionAlive } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/http";
+import { noticeList } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
 import { compressedArea, roachArea, roachCounts, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
 import { parseBox, type Area } from "@/lib/world/area";
@@ -23,6 +24,14 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * map is 全员隐匿). The answer depends on the cookie, so no cache may hand one person's to another.
  */
 export async function GET(req: NextRequest) {
+  const res = await answer(req);
+  // Every answer, a 304 or a visitor's too, says which notices there are now (公告, src/lib/server/notices.ts),
+  // from memory: a page that holds others asks /api/notices. The answer itself and its ETag stay as they are.
+  res.headers.set("x-notices", noticeList(Date.now()).stamp);
+  return res;
+}
+
+async function answer(req: NextRequest): Promise<Response> {
   const since = req.nextUrl.searchParams.get("since");
   const f = req.nextUrl.searchParams.get("f");
   const form: FeedForm = f === "3" ? 3 : f === "2" ? 2 : 1;

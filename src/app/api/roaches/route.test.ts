@@ -4,8 +4,9 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { forgetSessionChecks } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
+import { forgetNotices, loadNotices, noticeList } from "@/lib/server/notices";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
-import { sessions, users } from "@/lib/server/schema";
+import { notices, sessions, users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import { FIRE_AT } from "@/lib/talulah";
 import { unpackRoaches } from "@/lib/world/packed";
@@ -36,6 +37,7 @@ beforeEach(async () => {
   await db.execute(sql`truncate ${users} cascade`);
   resetRoachFeed();
   forgetSessionChecks();
+  forgetNotices();
 });
 
 describe("the roach list", () => {
@@ -86,5 +88,52 @@ describe("the roach list", () => {
     const res = await GET(new NextRequest("http://localhost/api/roaches?f=4&c=1", { headers: { cookie: `sid=${token}` } }));
     expect(res.status).toBe(200);
     expect(JSON.parse(await res.text())).toEqual({ v: expect.any(String), t: [2, 0, 0, 1] });
+  });
+});
+
+describe("which notices there are (公告)", () => {
+  it("is said by every answer, which stays as it was, its ETag too", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    const cookie = `sid=${await signIn(a)}`;
+    await db.insert(notices).values({ title: "一", body: "一", status: "live", publishedAt: new Date() });
+    await loadNotices();
+    const stamp = noticeList().stamp;
+
+    const ask = (query: string, headers: Record<string, string> = {}) =>
+      GET(new NextRequest(`http://localhost/api/roaches?${query}`, { headers: { cookie, ...headers } }));
+    const full = await ask("f=3");
+    const fullText = await full.text();
+    const etag = full.headers.get("etag")!;
+    const v = JSON.parse(fullText).v as string;
+    const area = await ask("f=4&box=121,31,122,32");
+    const areaEtag = area.headers.get("etag")!;
+    const answers = {
+      visitor: await get(),
+      full,
+      notModified: await ask("f=3", { "if-none-match": etag }),
+      diff: await ask(`f=3&since=${encodeURIComponent(v)}`),
+      counts: await ask("f=4&c=1"),
+      area,
+      areaNotModified: await ask("f=4&box=121,31,122,32", { "if-none-match": areaEtag }),
+      areaDiff: await ask(`f=4&box=121,31,122,32&since=${encodeURIComponent(v)}`),
+      overview: await ask("f=4&o=1"),
+    };
+    expect(answers.notModified.status).toBe(304);
+    expect(answers.areaNotModified.status).toBe(304);
+    expect(await answers.diff.text()).toBe(`{"v":"${v}"}`);
+    for (const [kind, res] of Object.entries(answers)) expect([kind, res.headers.get("x-notices")]).toEqual([kind, stamp]);
+
+    // another notice: the same answer and ETag, under the new stamp
+    await db.insert(notices).values({ title: "二", body: "二", status: "live", publishedAt: new Date() });
+    await loadNotices();
+    const later = await ask("f=3");
+    expect(later.headers.get("x-notices")).toBe(noticeList().stamp);
+    expect(later.headers.get("x-notices")).not.toBe(stamp);
+    expect(later.headers.get("etag")).toBe(etag);
+    expect(await later.text()).toBe(fullText);
+    const stillHeld = await ask("f=3", { "if-none-match": etag });
+    expect(stillHeld.status).toBe(304);
+    expect(stillHeld.headers.get("x-notices")).toBe(noticeList().stamp);
   });
 });
