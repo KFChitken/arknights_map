@@ -157,6 +157,8 @@ export type AdminPerson = {
   blockedRecently: number;
   last24h: { touches: number; declarations: number };
   declarations: { text: string; at: number }[];
+  /** Someone who may come into the 管理台: the owner's queue marks cases about them, a moderator never sees them */
+  staff: "owner" | "mod" | null;
 };
 
 /** One open report in a case: never who made it, only how their reports went before */
@@ -222,7 +224,15 @@ export const CASES_PER_PAGE = 50;
  * The admin's queue, a page at a time: its cases, how many match the query in all, how many cases of
  * each colour there are, and how many are only about a name (for 名字快审)
  */
-export type CasePage = { cases: AdminCase[]; total: number; levels: Record<CaseLevel, number>; nameOnly: number; page: number };
+export type CasePage = {
+  cases: AdminCase[];
+  total: number;
+  levels: Record<CaseLevel, number>;
+  nameOnly: number;
+  page: number;
+  /** The 管理台 (the whole queue, not one case asked for): what was done today and by whom, a moderator only their own */
+  today?: { alias: string; you: boolean; n: number }[];
+};
 
 /** What a player told of an action in 站长通知 may appeal, once, within INBOX_DAYS: never an automatic step */
 export const APPEALABLE: readonly AdminAction[] = ["warn", "suspend", "clearName", "clearUid", "clearBoth", "removeRoach"];
@@ -244,6 +254,8 @@ export type AdminAppeal = {
   appealedAt: number;
   /** Who did it, as the 管理台 called them */
   by: string;
+  /** The one looking did it: they may not answer it (another, or the owner, does) */
+  mine: boolean;
   who: AdminPerson;
 };
 

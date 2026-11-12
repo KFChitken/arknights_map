@@ -4,6 +4,7 @@ import { and, asc, count, countDistinct, desc, eq, gt, gte, ilike, inArray, isNo
 import {
   ACCOUNT_ACTIONS,
   maskEmail,
+  MOD_UNDO_HOURS,
   OWNER_ALIAS,
   ROACH_REASON_SHORT,
   UNDOABLE,
@@ -13,6 +14,8 @@ import {
   type AdminLogFilter,
   type AdminLogPage,
   type AdminNote,
+  type AdminRole,
+  type DoneToday,
   type FoundAccounts,
   type ReportedPlace,
   type ReportedRoachAll,
@@ -66,7 +69,7 @@ import {
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
 import { banAccount, banOf } from "./account";
-import { logAdmin, type Actor } from "./admins";
+import { logAdmin, staffRoles, type Actor } from "./admins";
 import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
@@ -77,6 +80,8 @@ import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter, ROACH
 import {
   adminLog,
   adminNotes,
+  adminRequests,
+  admins,
   blocks,
   clearedValues,
   dailyTotals,
@@ -119,7 +124,26 @@ export async function reportCounts(): Promise<ReportCounts> {
 export const adminCounts = async (u: UserRow | null) => (isAdmin(u) ? await reportCounts() : undefined);
 
 const MS_DAY = 86_400_000;
+const MS_HOUR = 3_600_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Who is looking (or doing), for what the 管理台 shows them: the owner sees everything; a moderator nothing about
+ * anyone who may come into the 管理台 (staffRoles), no case they reported, only their own 操作记录, and may undo only
+ * their own steps of the last MOD_UNDO_HOURS. Nobody given (the server's own steps, the tests) sees what the owner does.
+ */
+export type Viewer = Pick<Actor, "id" | "role">;
+const isMod = (v: Viewer | null | undefined): v is Viewer => v?.role === "mod";
+
+/** What a moderator is answered when they would ban: only the owner bans, so they ask for it (adminRequests.ts) */
+export const MOD_NO_BAN = "封号要站长确认，请用「提请封号」。";
+/** What a moderator is answered about an account they reported (and whose report is still open) */
+export const THEIR_OWN_REPORT = "你举报过 TA，这件交给站长或别的管理员。";
+
+/** Whether this account is kept from the one doing something: a moderator, and the account someone of the 管理台's */
+async function hiddenFrom(by: Viewer | null | undefined, userId: string) {
+  return isMod(by) && (await staffRoles()).has(userId);
+}
 
 /** The resolution each way of settling writes on the reports it closes */
 const RESOLUTION: Record<Exclude<AdminAction, "ban">, string> = {
@@ -252,7 +276,7 @@ function caseFilter(q: CaseQuery): SQL {
  * about themselves, what they did in the last day, how cases about them went before. Never where their
  * roaches are or when they came by.
  */
-async function people(ids: string[], now: number): Promise<Map<string, AdminPerson>> {
+async function people(ids: string[], now: number, staff?: Map<string, AdminRole>): Promise<Map<string, AdminPerson>> {
   if (!ids.length) return new Map();
   const dayAgo = new Date(now - MS_DAY);
   const lately = new Date(now - BLOCKS_WINDOW_DAYS * MS_DAY);
@@ -264,7 +288,7 @@ async function people(ids: string[], now: number): Promise<Map<string, AdminPers
     .from(declarations)
     .where(inArray(declarations.senderId, ids))
     .as("ranked");
-  const [rows, recent, declared, sent, slots, friendsA, friendsB, blockers, blockedLately, badges, actions, legacy] = await Promise.all([
+  const [rows, recent, declared, sent, slots, friendsA, friendsB, blockers, blockedLately, badges, actions, legacy, roles] = await Promise.all([
     db.select().from(users).where(inArray(users.id, ids)),
     db
       .select({ d: declarations })
@@ -304,6 +328,7 @@ async function people(ids: string[], now: number): Promise<Map<string, AdminPers
       .selectDistinct({ id: reports.targetId, resolution: reports.resolution, at: reports.resolvedAt })
       .from(reports)
       .where(and(inArray(reports.targetId, ids), isNotNull(reports.resolvedAt))),
+    staff ?? staffRoles(),
   ]);
   const tally = (list: { id: string; n: number }[]) => new Map(list.map((x) => [x.id, x.n]));
   const declaredBy = tally(declared);
@@ -374,9 +399,24 @@ async function people(ids: string[], now: number): Promise<Map<string, AdminPers
       declarations: recent
         .filter(({ d }) => d.senderId === u.id)
         .map(({ d }) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
+      staff: roles.get(u.id) ?? null,
     });
   }
   return out;
+}
+
+/** The info boxes of these players (people), for the 管理台's other parts */
+export const peopleOf = (ids: string[], now = Date.now()) => people(ids, now);
+
+/**
+ * caseTable's cases this viewer sees: a moderator none about the 管理台's people, none they reported, and none about
+ * an account whose ban was asked for and waits for the owner (handed over: the owner sees them, and the request)
+ */
+function casesSeenBy(viewer: Viewer | null | undefined, staff: Map<string, AdminRole>): SQL {
+  if (!isMod(viewer)) return sql`true`;
+  return sql`${notInArray(sql`target`, [...staff.keys()])}
+    and not exists (select 1 from r where r.key = c.key and r.reporter = ${viewer.id}::uuid)
+    and not exists (select 1 from ${adminRequests} where ${adminRequests.userId}::text = target and ${adminRequests.answeredAt} is null)`;
 }
 
 type CaseRow = { key: string; target: string; roachy: boolean; lvl: number; reporters: number; reliable: number; since: Date | string | null };
@@ -402,18 +442,20 @@ const ownerName = (u: { name: string; anonymous: boolean } | undefined) => (u?.n
  * only the page's cases are read in full, all at once. Never where a player's roaches are or when they
  * came by, nor who reported them; a roach's case shows only that roach's spot, which is public anyway.
  */
-export async function openCases(query: CaseQuery = {}, now = Date.now()): Promise<CasePage> {
+export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer: Viewer | null = null): Promise<CasePage> {
   const page = Math.max(1, Math.floor(Number(query.page) || 1));
   const filter = caseFilter(query);
   const table = caseTable(now);
+  const staff = await staffRoles();
+  const seen = casesSeenBy(viewer, staff);
   const [[sum], rows] = await Promise.all([
     db.execute<{ red: number; yellow: number; green: number; name_only: number; total: number }>(sql`${table}
       select (count(*) filter (where lvl = 0))::int as red, (count(*) filter (where lvl = 1))::int as yellow,
         (count(*) filter (where lvl = 2))::int as green, (count(*) filter (where name_only))::int as name_only,
         (count(*) filter (where ${filter}))::int as total
-      from c`),
+      from c where ${seen}`),
     db.execute<CaseRow>(sql`${table}
-      select key, target, roachy, lvl, reporters, reliable, since from c where ${filter}
+      select key, target, roachy, lvl, reporters, reliable, since from c where ${seen} and ${filter}
       order by lvl, reliable desc, since asc nulls last, key
       limit ${CASES_PER_PAGE}::int offset ${(page - 1) * CASES_PER_PAGE}::int`),
   ]);
@@ -424,7 +466,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now()): Promis
   const keys = new Set(rows.map((r) => r.key));
   const roachIds = rows.filter((r) => r.key.startsWith("roach:")).map((r) => r.key.slice("roach:".length));
   const [who, open, spots] = await Promise.all([
-    people(targets, now),
+    people(targets, now, staff),
     db
       .select()
       .from(reports)
@@ -527,6 +569,7 @@ async function tellReporters(tx: Pick<typeof db, "update" | "insert">, open: (ty
  */
 export async function settleCase(caseId: string, action: AdminAction, opts: SettleOptions = {}, now = Date.now()): Promise<Settled> {
   const id = String(caseId);
+  if (action === "ban" && isMod(opts.by)) throw new HttpError(403, MOD_NO_BAN);
   const done = await (isRoachCase(id) ? settleRoach(id, action, opts, now) : settlePerson(id, action, opts, now));
   if (opts.by) {
     const detail = done.action === "dismiss" ? `没问题，关掉了 ${done.closed} 条举报` : `违反：${RULES[done.rule]}`;
@@ -550,7 +593,7 @@ const byColumns = (by: Actor | null | undefined) => ({ byUserId: by?.id ?? null,
  */
 async function settlePerson(targetId: string, action: AdminAction, opts: SettleOptions, now: number): Promise<Settled> {
   const [u] = UUID.test(targetId) ? await db.select().from(users).where(eq(users.id, targetId)).limit(1) : [];
-  if (!u) throw new HttpError(400, "这个账号已经不在了。");
+  if (!u || (await hiddenFrom(opts.by, u.id))) throw new HttpError(400, "这个账号已经不在了。");
   if (action !== "ban" && !Object.hasOwn(RESOLUTION, action)) throw new HttpError(400, "不知道要怎么处理。");
   if (action === "removeRoach") throw new HttpError(400, "移走蟑螂只用在地图上蟑螂的举报。");
   const open = await db
@@ -558,6 +601,7 @@ async function settlePerson(targetId: string, action: AdminAction, opts: SettleO
     .from(reports)
     .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt), notInArray(reports.reason, ROACH_KEYS)))
     .orderBy(asc(reports.createdAt));
+  if (isMod(opts.by) && open.some((r) => r.reporterId === opts.by!.id)) throw new HttpError(403, THEIR_OWN_REPORT);
   const rule = isRuleCode(opts.rule) ? opts.rule : autoRule(action, open.map((r) => r.reason));
   if (action === "ban") {
     if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
@@ -624,6 +668,8 @@ async function settleRoach(caseId: string, action: AdminAction, opts: SettleOpti
   if (!open.length) throw new HttpError(400, "这些举报已经处理过了。");
   const [u] = await db.select().from(users).where(eq(users.id, open[0].targetId)).limit(1);
   if (!u) throw new HttpError(400, "这个账号已经不在了。");
+  if (await hiddenFrom(opts.by, u.id)) throw new HttpError(400, "找不到这个案子了。");
+  if (isMod(opts.by) && open.some((r) => r.reporterId === opts.by!.id)) throw new HttpError(403, THEIR_OWN_REPORT);
   const rule = isRuleCode(opts.rule) ? opts.rule : "roach";
   if (action === "ban") {
     if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
@@ -693,7 +739,11 @@ export const CLEAR_NAMES_MAX = 500;
  * report waits (clearing would end the hold on the UIDs too; the case settles it). Returns how many.
  */
 export async function clearBlockedNames(ids: unknown, now = Date.now(), by: Actor | null = null) {
-  const list = Array.isArray(ids) ? [...new Set(ids.map(String))].filter((id) => UUID.test(id)).slice(0, CLEAR_NAMES_MAX) : [];
+  let list = Array.isArray(ids) ? [...new Set(ids.map(String))].filter((id) => UUID.test(id)).slice(0, CLEAR_NAMES_MAX) : [];
+  if (isMod(by)) {
+    const staff = await staffRoles();
+    list = list.filter((id) => !staff.has(id));
+  }
   if (!list.length) return 0;
   const judge = await nameJudgeNow();
   const named = await db
@@ -716,11 +766,16 @@ export async function clearBlockedNames(ids: unknown, now = Date.now(), by: Acto
   return cleared;
 }
 
-/** 申诉: appeals waiting for the admin, the oldest first, each with the player's info box as it is now */
-export async function openAppeals(now = Date.now()): Promise<AdminAppeal[]> {
+/**
+ * 申诉: appeals waiting for the admin, the oldest first, each with the player's info box as it is now. A moderator
+ * sees none from the 管理台's people, and those against their own steps only to read (mine).
+ */
+export async function openAppeals(now = Date.now(), viewer: Viewer | null = null): Promise<AdminAppeal[]> {
   const rows = await db.select().from(modActions).where(waitingAppeal).orderBy(asc(modActions.appealedAt)).limit(100);
-  const who = await people([...new Set(rows.map((a) => a.userId))], now);
-  return rows.flatMap((a): AdminAppeal[] => {
+  const staff = await staffRoles();
+  const shown = isMod(viewer) ? rows.filter((a) => !staff.has(a.userId)) : rows;
+  const who = await people([...new Set(shown.map((a) => a.userId))], now, staff);
+  return shown.flatMap((a): AdminAppeal[] => {
     const person = who.get(a.userId);
     if (!person || !a.appealedAt) return [];
     return [
@@ -734,6 +789,7 @@ export async function openAppeals(now = Date.now()): Promise<AdminAppeal[]> {
         appeal: a.appeal ?? "",
         appealedAt: a.appealedAt.getTime(),
         by: a.byAlias ?? OWNER_ALIAS,
+        mine: isMod(viewer) && a.byUserId === viewer.id,
         who: person,
       },
     ];
@@ -751,7 +807,8 @@ export async function answerAppeal(actionId: unknown, keep: boolean, now = Date.
   if (!UUID.test(id)) throw new HttpError(400, "找不到这条申诉了。");
   const a = await db.transaction(async (tx) => {
     const [a] = await tx.select().from(modActions).where(eq(modActions.id, id)).for("update");
-    if (!a?.appealedAt) throw new HttpError(400, "找不到这条申诉了。");
+    if (!a?.appealedAt || (await hiddenFrom(by, a.userId))) throw new HttpError(400, "找不到这条申诉了。");
+    if (isMod(by) && a.byUserId === by.id) throw new HttpError(403, "这件是你处理的，交给站长或别的管理员。");
     if (a.answeredAt) throw new HttpError(400, "这条申诉已经处理过了。");
     if (!keep) await revertAction(tx, a);
     await tx
@@ -830,15 +887,15 @@ const searchNeedle = (q: unknown) =>
 
 /**
  * Real accounts whose login email or name contains the needle, whose id starts with it, or whose game UID is it or
- * starts with it (spaces left out)
+ * starts with it (spaces left out). byEmail false: not by email (a moderator's search).
  */
-function playersMatching(needle: string) {
+function playersMatching(needle: string, byEmail = true) {
   const like = literal(needle);
   const uid = literal(needle.replace(/\s/g, ""));
   return and(
     isNull(users.demoKey),
     or(
-      ilike(users.email, `%${like}%`),
+      ...(byEmail ? [ilike(users.email, `%${like}%`)] : []),
       ilike(users.name, `%${like}%`),
       sql`${users.id}::text like ${`${like}%`}`,
       ...(uid ? [sql`${users.uidArknights} like ${`${uid}%`}`, sql`${users.uidEndfield} like ${`${uid}%`}`] : []),
@@ -882,13 +939,15 @@ async function openCaseCounts(ids: string[]): Promise<Map<string, number>> {
 
 /**
  * 搜索账号: findPlayers' accounts, each with what the list marks beside them: paused till when, yellow cards that
- * count, cases waiting, a name and UIDs held. matchedByName: whether every account found has the search in its
- * name or at the start of its id, so the 操作记录 may keep what was searched (an email or a UID it masks).
+ * count, cases waiting, a name and UIDs held, someone of the 管理台. A moderator searches by name, id and UID only
+ * (not by email), and finds none of the 管理台's people. plainSearch: whether every account found has the search in
+ * its name or at the start of its id, so the 操作记录 may keep what was searched (an email or a UID it masks).
  */
-export async function findAccounts(q: unknown, now = Date.now()): Promise<FoundAccounts & { plainSearch: boolean }> {
+export async function findAccounts(q: unknown, now = Date.now(), viewer: Viewer | null = null): Promise<FoundAccounts & { plainSearch: boolean }> {
   const needle = searchNeedle(q);
   if (!needle) return { players: [], total: 0, plainSearch: true };
-  const match = playersMatching(needle);
+  const staff = await staffRoles();
+  const match = isMod(viewer) ? and(playersMatching(needle, false), notInArray(users.id, [...staff.keys()])) : playersMatching(needle);
   const [rows, [n]] = await Promise.all([
     db.select().from(users).where(match).orderBy(desc(users.createdAt)).limit(FIND_PLAYERS_MAX),
     db.select({ n: count() }).from(users).where(match),
@@ -906,6 +965,7 @@ export async function findAccounts(q: unknown, now = Date.now()): Promise<FoundA
     yellow: yellows.filter((a) => a.userId === u.id && countsYellow(a, now)).length,
     open: cases.get(u.id) ?? 0,
     held: Boolean(u.profileHeldAt),
+    staff: staff.get(u.id) ?? null,
   }));
   const plainSearch = !needle.includes("@") && !/^\d+$/.test(needle.replace(/\s/g, "")) && rows.every((u) => u.name.toLowerCase().includes(needle) || u.id.startsWith(needle));
   return { players, total: n.n, plainSearch };
@@ -1129,9 +1189,10 @@ export async function reportedRoaches(): Promise<ReportedRoach[]> {
  * and where it was at the latest report. Never who reported, nor where the reporter's roaches are: for 「一直贴着
  * 我放」 only how far it was from the nearest of them.
  */
-export async function reportedPlaces(now = Date.now()): Promise<ReportedPlace[]> {
+export async function reportedPlaces(now = Date.now(), viewer: Viewer | null = null): Promise<ReportedPlace[]> {
+  const seen = casesSeenBy(viewer, isMod(viewer) ? await staffRoles() : new Map());
   const rows = await db.execute<CaseRow>(sql`${caseTable(now)}
-    select key, target, roachy, lvl, reporters, reliable, since from c where roachy
+    select key, target, roachy, lvl, reporters, reliable, since from c where roachy and ${seen}
     order by since asc nulls last, key limit ${PLACES_MAX}::int`);
   if (!rows.length) return [];
   const keys = new Set(rows.map((r) => r.key));
@@ -1181,10 +1242,18 @@ const ACCOUNT_LIST_MAX = 200;
 /** A note's length, in characters (emoji as one) */
 export const NOTE_MAX = 500;
 
-/** Whether the 管理台 may still undo an action: one it took, of a kind that can be given back, not undone already */
-const canUndo = (a: ModActionRow) => !a.auto && UNDOABLE.includes(a.action) && !a.undoneAt && a.appealResult !== "reverted";
+/**
+ * Whether this viewer may still undo an action: one the 管理台 took, of a kind that can be given back, not undone
+ * already; for a moderator, only one of their own, within MOD_UNDO_HOURS
+ */
+const canUndo = (a: ModActionRow, viewer: Viewer | null | undefined, now: number) =>
+  !a.auto &&
+  UNDOABLE.includes(a.action) &&
+  !a.undoneAt &&
+  a.appealResult !== "reverted" &&
+  (!isMod(viewer) || (a.byUserId === viewer.id && now - a.createdAt.getTime() < MOD_UNDO_HOURS * MS_HOUR));
 
-function historyItem(a: ModActionRow): AdminHistoryItem {
+function historyItem(a: ModActionRow, viewer: Viewer | null | undefined, now: number): AdminHistoryItem {
   return {
     actionId: a.id,
     action: a.action as AdminHistoryItem["action"],
@@ -1199,7 +1268,7 @@ function historyItem(a: ModActionRow): AdminHistoryItem {
       ? { text: a.appeal ?? "", at: a.appealedAt.getTime(), result: a.appealResult === "kept" || a.appealResult === "reverted" ? a.appealResult : null }
       : null,
     undoneAt: a.undoneAt?.getTime() ?? null,
-    canUndo: canUndo(a),
+    canUndo: canUndo(a, viewer, now),
   };
 }
 
@@ -1210,13 +1279,15 @@ const accountGone = () => new HttpError(404, "这个账号已经不在了。");
  * its declarations of the last 7 days (without where from), every report about it kept (never who made one), the
  * reports it made, what was done about it, and the notes on it. Never where its roaches are or when it came by.
  */
-export async function account(id: unknown, now = Date.now()): Promise<AdminAccount> {
+export async function account(id: unknown, now = Date.now(), viewer: Viewer | null = null): Promise<AdminAccount> {
   const userId = String(id ?? "");
   if (!UUID.test(userId)) throw accountGone();
-  const [[u], who] = await Promise.all([db.select().from(users).where(eq(users.id, userId)).limit(1), people([userId], now)]);
+  const staff = await staffRoles();
+  if (isMod(viewer) && staff.has(userId)) throw accountGone();
+  const [[u], who] = await Promise.all([db.select().from(users).where(eq(users.id, userId)).limit(1), people([userId], now, staff)]);
   const person = who.get(userId);
   if (!u || !person) throw accountGone();
-  const [cleared, decls, about, [made], history, notes, cases] = await Promise.all([
+  const [cleared, decls, about, [made], history, notes, cases, [asked]] = await Promise.all([
     db.select().from(clearedValues).where(eq(clearedValues.userId, userId)).orderBy(desc(clearedValues.createdAt)),
     db
       .select()
@@ -1237,6 +1308,11 @@ export async function account(id: unknown, now = Date.now()): Promise<AdminAccou
     db.select().from(modActions).where(eq(modActions.userId, userId)).orderBy(desc(modActions.createdAt)).limit(ACCOUNT_LIST_MAX),
     db.select().from(adminNotes).where(eq(adminNotes.userId, userId)).orderBy(desc(adminNotes.createdAt)).limit(ACCOUNT_LIST_MAX),
     openCaseCounts([userId]),
+    db
+      .select()
+      .from(adminRequests)
+      .where(and(eq(adminRequests.userId, userId), isNull(adminRequests.answeredAt)))
+      .limit(1),
   ]);
   const reporterIds = [...new Set(about.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
   const reporters = new Map((reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((r) => [r.id, r]));
@@ -1262,9 +1338,19 @@ export async function account(id: unknown, now = Date.now()): Promise<AdminAccou
       };
     }),
     reportsMade: { upheld: u.reportsUpheld, dismissed: u.reportsDismissed, open: made.n, reliable: reliableReporter(u, now) },
-    history: history.map(historyItem),
+    history: history.map((a) => historyItem(a, viewer, now)),
     notes: notes.map((n): AdminNote => ({ id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() })),
     openCases: cases.get(userId) ?? 0,
+    banRequest: asked
+      ? {
+          id: asked.id,
+          by: asked.byAlias,
+          mine: Boolean(viewer && asked.byUserId === viewer.id),
+          rule: isRuleCode(asked.rule) ? asked.rule : "harass",
+          reason: asked.reason,
+          at: asked.createdAt.getTime(),
+        }
+      : null,
   };
 }
 
@@ -1278,17 +1364,18 @@ export async function actOnAccount(id: unknown, action: unknown, rule: unknown, 
   if (!UUID.test(userId)) throw accountGone();
   if (!ACCOUNT_ACTIONS.includes(action as AdminAction)) throw new HttpError(400, "不知道要怎么处理。");
   if (!isRuleCode(rule)) throw new HttpError(400, "先选一条 TA 违反的规则。");
+  if (await hiddenFrom(by, userId)) throw accountGone();
   const done = await settleCase(userId, action as AdminAction, { rule, by }, now);
   if (!done.actionId) return null;
   const [a] = await db.select().from(modActions).where(eq(modActions.id, done.actionId)).limit(1);
-  return a ? historyItem(a) : null;
+  return a ? historyItem(a, by, now) : null;
 }
 
 /** 解除暂停: the player's interactions back now, whoever paused them, with the 站长通知 that says so */
 export async function unsuspendAccount(id: unknown, by: Actor, now = Date.now()): Promise<AdminHistoryItem> {
   const userId = String(id ?? "");
   const [u] = UUID.test(userId) ? await db.select().from(users).where(eq(users.id, userId)).limit(1) : [];
-  if (!u) throw accountGone();
+  if (!u || (await hiddenFrom(by, u.id))) throw accountGone();
   if (!u.suspendedUntil || u.suspendedUntil.getTime() <= now) throw new HttpError(400, "TA 现在没有被暂停。");
   const a = await db.transaction(async (tx) => {
     await tx.update(users).set({ suspendedUntil: null, suspendedAuto: false }).where(eq(users.id, u.id));
@@ -1300,13 +1387,13 @@ export async function unsuspendAccount(id: unknown, by: Actor, now = Date.now())
     return a;
   });
   await logAdmin(by, "act", "act.unsuspend", { targetId: u.id, actionId: a.id, detail: ACTION_WORDS.unsuspend }, now);
-  return historyItem(a);
+  return historyItem(a, by, now);
 }
 
 /**
  * 撤销, after the page's own 5 seconds: what the action did given back (revertAction), and it counts no more. An
  * action waiting on an appeal is as if the appeal won; otherwise the player is told it was undone. A dismissal, a
- * roach taken back and a ban cannot be undone.
+ * roach taken back and a ban cannot be undone. A moderator undoes only their own, within MOD_UNDO_HOURS.
  */
 export async function undoAction(actionId: unknown, by: Actor, now = Date.now()): Promise<AdminHistoryItem> {
   const id = String(actionId ?? "");
@@ -1317,6 +1404,7 @@ export async function undoAction(actionId: unknown, by: Actor, now = Date.now())
     if (!a) throw new HttpError(400, "找不到这次处理了。");
     if (a.undoneAt || a.appealResult === "reverted") throw new HttpError(400, "这次处理已经撤销了。");
     if (a.auto || !UNDOABLE.includes(a.action)) throw new HttpError(400, "这种处理撤销不了。");
+    if (!canUndo(a, by, now)) throw new HttpError(403, `只能撤销你自己 ${MOD_UNDO_HOURS} 小时内做的处理。`);
     await revertAction(tx, a);
     const appealing = Boolean(a.appealedAt && !a.answeredAt);
     const changed = { undoneAt: at, ...(appealing ? { appealResult: "reverted", answeredAt: at } : {}) };
@@ -1329,13 +1417,13 @@ export async function undoAction(actionId: unknown, by: Actor, now = Date.now())
     return { ...a, ...changed };
   });
   await logAdmin(by, "act", "act.undo", { targetId: a.userId, actionId: a.id, detail: `撤销了「${ACTION_WORDS[a.action as AdminAction] ?? a.action}」` }, now);
-  return historyItem(a);
+  return historyItem(a, by, now);
 }
 
 /** 备注 on an account, the newest first */
-export async function accountNotes(id: unknown): Promise<AdminNote[]> {
+export async function accountNotes(id: unknown, viewer: Viewer | null = null): Promise<AdminNote[]> {
   const userId = String(id ?? "");
-  if (!UUID.test(userId)) throw accountGone();
+  if (!UUID.test(userId) || (await hiddenFrom(viewer, userId))) throw accountGone();
   const rows = await db.select().from(adminNotes).where(eq(adminNotes.userId, userId)).orderBy(desc(adminNotes.createdAt)).limit(ACCOUNT_LIST_MAX);
   return rows.map((n) => ({ id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() }));
 }
@@ -1348,10 +1436,31 @@ export async function addNote(id: unknown, text: unknown, by: Actor, now = Date.
   if (!length) throw new HttpError(400, "备注不能是空的。");
   if (length > NOTE_MAX) throw new HttpError(400, `备注最多 ${NOTE_MAX} 个字。`);
   const [u] = UUID.test(userId) ? await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1) : [];
-  if (!u) throw accountGone();
+  if (!u || (await hiddenFrom(by, u.id))) throw accountGone();
   const [n] = await db.insert(adminNotes).values({ userId, byUserId: by.id, byAlias: by.alias, text: said, createdAt: new Date(now) }).returning();
   await logAdmin(by, "act", "act.note", { targetId: userId, detail: "加了一条备注" }, now);
   return { id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() };
+}
+
+/**
+ * What was done in the 管理台 today (Beijing time), by whom: the viewer first, then the most. A moderator sees only
+ * their own. Things done are the 操作记录's 处理 (act) lines, as its 今天处理 counts them.
+ */
+export async function doneToday(viewer: Viewer, now = Date.now()): Promise<DoneToday[]> {
+  const rows = await db
+    .select({ id: adminLog.actorId, alias: sql<string>`max(${adminLog.actorAlias})`, n: count() })
+    .from(adminLog)
+    .where(
+      and(
+        gte(adminLog.at, new Date(beijingMidnight(beijingDate(now)))),
+        eq(adminLog.kind, "act"),
+        isMod(viewer) ? eq(adminLog.actorId, viewer.id) : undefined,
+      ),
+    )
+    .groupBy(adminLog.actorId);
+  return rows
+    .map((r) => ({ alias: r.alias, you: r.id === viewer.id, n: r.n }))
+    .sort((a, b) => Number(b.you) - Number(a.you) || b.n - a.n);
 }
 
 /** Lines of the log that are always about one account, so one without an account now was about one since gone */
@@ -1361,21 +1470,23 @@ const LOG_KINDS: Record<Exclude<AdminLogFilter, "all">, string[]> = { act: ["act
 
 /**
  * 操作记录, a page at a time, the newest first: by kind, by who, before a line (its id). Each line with the account
- * it was about as it is now, and whether what it did may still be undone. Today's numbers on top (Beijing time).
+ * it was about as it is now, whether what it did may still be undone, and for a ban asked for what the owner
+ * answered. Today's numbers on top (Beijing time). A moderator gets only their own lines, and their own numbers;
+ * the owner also everyone they may pick to see the lines of.
  */
-export async function adminLogPage(q: unknown, now = Date.now()): Promise<AdminLogPage> {
+export async function adminLogPage(q: unknown, now = Date.now(), viewer: Viewer | null = null): Promise<AdminLogPage> {
   const query = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
   const limit = Math.min(Math.max(Math.floor(Number(query.limit) || 50), 1), 200);
   const kinds = Object.hasOwn(LOG_KINDS, String(query.kind)) ? LOG_KINDS[query.kind as keyof typeof LOG_KINDS] : null;
   const before = Math.floor(Number(query.before));
-  const who = typeof query.who === "string" && UUID.test(query.who) ? query.who : null;
+  const who = isMod(viewer) ? viewer.id : typeof query.who === "string" && UUID.test(query.who) ? query.who : null;
   const where = and(
     kinds ? inArray(adminLog.kind, kinds) : undefined,
     before > 0 ? lt(adminLog.id, before) : undefined,
     who ? eq(adminLog.actorId, who) : undefined,
   );
   const midnight = new Date(beijingMidnight(beijingDate(now)));
-  const [rows, [today]] = await Promise.all([
+  const [rows, [today], team, done] = await Promise.all([
     db
       .select({ log: adminLog, name: users.name, anonymous: users.anonymous })
       .from(adminLog)
@@ -1391,11 +1502,36 @@ export async function adminLogPage(q: unknown, now = Date.now()): Promise<AdminL
         fails: sql<number>`count(*) filter (where ${adminLog.what} = 'gate.fail')`.mapWith(Number),
       })
       .from(adminLog)
-      .where(gte(adminLog.at, midnight)),
+      .where(and(gte(adminLog.at, midnight), isMod(viewer) ? eq(adminLog.actorId, viewer.id) : undefined)),
+    isMod(viewer)
+      ? []
+      : db
+          .select({ id: admins.userId, alias: admins.alias })
+          .from(admins)
+          .orderBy(sql`${admins.role} = 'owner' desc`, asc(admins.addedAt)),
+    isMod(viewer)
+      ? []
+      : db
+          .select({ id: adminLog.actorId, n: count() })
+          .from(adminLog)
+          .where(and(gte(adminLog.at, midnight), eq(adminLog.kind, "act")))
+          .groupBy(adminLog.actorId),
   ]);
   const page = rows.slice(0, limit);
   const actionIds = [...new Set(page.flatMap((r) => (r.log.actionId && r.log.kind === "act" ? [r.log.actionId] : [])))];
-  const actions = new Map((actionIds.length ? await db.select().from(modActions).where(inArray(modActions.id, actionIds)) : []).map((a) => [a.id, a]));
+  // a ban asked for is answered by the owner's line naming the request: act.ban or act.banDeclined (adminRequests.ts)
+  const asked = [...new Set(page.flatMap((r) => (r.log.what === "act.banRequest" && r.log.actionId ? [r.log.actionId] : [])))];
+  const [actionRows, answerRows] = await Promise.all([
+    actionIds.length ? db.select().from(modActions).where(inArray(modActions.id, actionIds)) : [],
+    asked.length
+      ? db
+          .select({ actionId: adminLog.actionId, what: adminLog.what })
+          .from(adminLog)
+          .where(and(inArray(adminLog.actionId, asked), inArray(adminLog.what, ["act.ban", "act.banDeclined"])))
+      : [],
+  ]);
+  const actions = new Map(actionRows.map((a) => [a.id, a]));
+  const answers = new Map(answerRows.map((r) => [r.actionId, r.what === "act.ban" ? ("done" as const) : ("declined" as const)]));
   return {
     entries: page.map(({ log, name, anonymous }) => {
       const a = log.actionId ? actions.get(log.actionId) : undefined;
@@ -1409,12 +1545,14 @@ export async function adminLogPage(q: unknown, now = Date.now()): Promise<AdminL
         gone: !log.targetId && aboutAnAccount(log.what),
         detail: log.detail,
         actionId: log.actionId,
-        canUndo: Boolean(a && log.what !== "act.undo" && canUndo(a)),
+        canUndo: Boolean(a && log.what !== "act.undo" && canUndo(a, viewer, now)),
         undone: Boolean(log.undoneAt),
+        answer: log.what === "act.banRequest" && log.actionId ? (answers.get(log.actionId) ?? null) : null,
       };
     }),
     today: { acts: today?.acts ?? 0, views: today?.views ?? 0, searches: today?.searches ?? 0, fails: today?.fails ?? 0 },
     more: rows.length > limit,
+    people: team.map((p) => ({ ...p, acts: done.find((d) => d.id === p.id)?.n ?? 0 })),
   };
 }
 

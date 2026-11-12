@@ -1,12 +1,13 @@
 import "server-only";
 import { and, asc, eq, gt, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
-import { INBOX_DAYS, KEEP_ACTIVITY_DAYS, KEEP_ADMIN_LOG_DAYS, KEEP_MOD_ACTION_DAYS, KEEP_REPORT_DAYS } from "../rules";
+import { INBOX_DAYS, KEEP_ACTIVITY_DAYS, KEEP_ADMIN_LOG_DAYS, KEEP_ANSWERED_REQUEST_DAYS, KEEP_MOD_ACTION_DAYS, KEEP_REPORT_DAYS } from "../rules";
 import { db } from "./db";
 import { pruneFriendly } from "./friendly";
 import { pruneHelp } from "./help";
 import {
   adminLog,
   adminNotes,
+  adminRequests,
   amiyaTouches,
   declarations,
   deliveries,
@@ -69,6 +70,8 @@ export async function pruneOldActivity(now = Date.now()) {
   const adminCutoff = new Date(now - KEEP_ADMIN_LOG_DAYS * DAY_MS);
   await db.delete(adminLog).where(lt(adminLog.at, adminCutoff));
   await db.delete(adminNotes).where(lt(adminNotes.createdAt, adminCutoff));
+  // bans a moderator asked for, once answered: the 操作记录 keeps what came of them
+  await db.delete(adminRequests).where(lt(adminRequests.answeredAt, new Date(now - KEEP_ANSWERED_REQUEST_DAYS * DAY_MS)));
   // the site's own checks: what they found and emailed, for 网站状态
   await db.delete(watchIncidents).where(lt(watchIncidents.endedAt, cutoff));
   await db.delete(watchMails).where(lt(watchMails.at, cutoff));

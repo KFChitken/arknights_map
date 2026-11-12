@@ -2433,11 +2433,11 @@ export default function MapApp({
   }, []);
   const closeReported = useCallback(() => setReported(null), []);
   const unselect = useCallback(() => setSelected(null), []);
-  // /?case=… from the 管理台: the admin's map opens 看被举报的蟑螂 at that case, and the address forgets it; for
-  // anyone else it is nothing
-  const isAdmin = Boolean(me?.admin);
+  // /?case=… from the 管理台: the owner's or a moderator's map opens 看被举报的蟑螂 at that case, and the address
+  // forgets it; for anyone else it is nothing
+  const reviewer = Boolean(me?.admin || me?.mod);
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!reviewer) return;
     const q = new URLSearchParams(window.location.search);
     const caseId = q.get("case");
     if (!caseId) return;
@@ -2445,7 +2445,7 @@ export default function MapApp({
     window.history.replaceState(null, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
     setSelected(null);
     setReported({ start: caseId });
-  }, [isAdmin]);
+  }, [reviewer]);
 
   /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
   const reportRoach = async (roach: PublicRoach, reason: RoachReportReason, note: string) => {
@@ -4033,10 +4033,10 @@ export default function MapApp({
     }
   };
 
-  // only the admin's me() carries the counts; 看被举报的蟑螂 opens its panel under them (MapReported)
-  const adminPills = me?.admin && (
+  // only the owner's me() carries the counts; 看被举报的蟑螂 (a moderator's too) opens its panel under them (MapReported)
+  const adminPills = reviewer && (
     <>
-      {(me.admin.open > 0 || me.admin.appeals > 0) && (
+      {me?.admin && (me.admin.open > 0 || me.admin.appeals > 0) && (
         <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
           {[me.admin.open > 0 && `${me.admin.open} 条举报`, me.admin.appeals > 0 && `${me.admin.appeals} 条申诉`].filter(Boolean).join("、")}待处理
           {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
@@ -4160,7 +4160,7 @@ export default function MapApp({
           {/* under the strip they come down beside 方舟雷达, so they keep to a line of their own in the middle (.admin-row) */}
           {strip && adminPills ? <div className="admin-row">{adminPills}</div> : adminPills}
           {/* 看被举报的蟑螂's panel goes here, under the counts */}
-          {me?.admin && reported && <div className="rep-slot" ref={setReportedSlot} />}
+          {reviewer && reported && <div className="rep-slot" ref={setReportedSlot} />}
         </div>
       )}
 
@@ -4291,9 +4291,9 @@ export default function MapApp({
         />
       )}
 
-      {me?.admin && reported && (
+      {reviewer && reported && (
         <MapReported
-          owner
+          owner={Boolean(me?.admin)}
           start={reported.start}
           hidden={Boolean(placing || selected)}
           panelSlot={reportedSlot}

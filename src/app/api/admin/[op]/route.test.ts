@@ -149,7 +149,7 @@ describe("the 管理台's door", () => {
   it("has the owner set up an authenticator first, only soon after signing in", async () => {
     const me = await account("owner@example.com");
     await device(me.id, 20);
-    expect((await call("gate")).body.result).toEqual({ alias: "站长", role: "owner", email: "ow***@example.com", state: "setup", recentLogin: false });
+    expect((await call("gate")).body.result).toEqual({ alias: "站长", role: "owner", email: "ow***@example.com", state: "setup", recentLogin: false, pledged: true });
     // their row is made on their first visit
     expect(await db.select({ alias: admins.alias, role: admins.role }).from(admins)).toEqual([{ alias: "站长", role: "owner" }]);
     for (const op of ["cases", "unlock", "account", "log", "reportedRoaches"]) {
@@ -292,7 +292,8 @@ describe("the 管理台's door", () => {
     later(16 * MINUTE);
     const other = await call("resetAdminTotp", [user.id]);
     expect(other.body.code).toBe("ADMIN_FRESH");
-    expect((await call("resetAdminTotp", ["11111111-1111-4111-8111-111111111111"], { fresh: codeNow(secret) })).body.error).toBe("只能重置你自己的验证器。");
+    // nobody of the 管理台 by that id
+    expect((await call("resetAdminTotp", ["11111111-1111-4111-8111-111111111111"], { fresh: codeNow(secret) })).body.error).toBe("找不到这位管理员了。");
     expect((await call("resetAdminTotp", [user.id])).status).toBe(200);
     expect((await call("gate")).body.result).toMatchObject({ state: "setup", recentLogin: false });
     expect(await db.$count(adminBackupCodes)).toBe(0);

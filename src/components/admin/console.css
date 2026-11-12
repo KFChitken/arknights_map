@@ -119,6 +119,7 @@
 .ac-steps li.now span { background: #fff; color: #2253d1; }
 .ac-steps li.past { color: #1e6b34; }
 .ac-steps li.past span { background: #e6f4ea; color: #1e6b34; }
+.ac-rules { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.6; }
 .ac .ac-code {
   width: 180px; max-width: 100%; min-height: 44px; padding: 0 12px; border-radius: 6px;
   font-size: 20px; letter-spacing: 6px; font-variant-numeric: tabular-nums;
@@ -173,7 +174,8 @@
 .ac-side-foot { margin: auto 8px 0 !important; padding-top: 24px; font-size: 12px; color: #a3abb8; }
 .ac-main { flex: 1 1 auto; min-width: 0; padding: 24px 28px 96px; display: flex; flex-direction: column; gap: 16px; }
 .ac-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.ac-head-text { min-width: 0; }
+/* the text takes what the status and the menu leave, and wraps there rather than pushing them onto a line of their own */
+.ac-head-text { min-width: 0; flex: 1 1 320px; }
 .ac-head-text h1 { font-size: 22px; line-height: 1.3; }
 .ac-head-text p { margin-top: 2px; font-size: 13px; color: #4a5260; }
 .ac-head-me { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -195,6 +197,7 @@
   min-height: 40px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; text-align: left; white-space: nowrap; cursor: pointer;
 }
 .ac .ac-menu button:hover { background: #f0f2f5; }
+.ac-menu-note { max-width: 260px; padding: 8px 12px 6px; border-top: 1px solid #eef0f3; font-size: 12px; color: #5f6774; }
 .ac-bars {
   position: fixed; z-index: 40; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   width: min(640px, calc(100% - 32px)); pointer-events: none;
@@ -321,6 +324,10 @@
 .ac-ban > strong { color: #a61b1b; }
 .ac-ban > p { font-size: 13px; color: #3d4450; }
 .ac-ban > p.ac-error { color: #a61b1b; }
+/* a ban asked for: who and why, and the owner's confirming below a line */
+.ac-request-by { font-size: 13px; color: #7a271a; }
+.ac-ban > p.ac-request-why { font-size: 15px; color: #1b1f24; overflow-wrap: anywhere; }
+.ac-ban .ac-ban { padding: 12px 0 0; border: 0; border-top: 1px solid #e3b5b0; border-radius: 0; background: none; }
 .ac .ac-h3 { margin: 0 0 4px; font-size: 15px; }
 .ac-report { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid #eef0f3; }
 .ac-report-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
@@ -449,6 +456,48 @@
 .ac-inline-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .ac .ac-inline-form input:not([type="checkbox"]) { flex: 1 1 220px; width: auto; }
 .ac-result { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: #f7f8fa; font-size: 13px; overflow-wrap: anywhere; }
+
+/* ---- 管理员 (the owner's) ---- */
+.ac-admins { display: flex; flex-direction: column; gap: 16px; }
+/* a panel straight in the column takes its own height (.ac-tool's basis is a width, in rows) */
+.ac-admins > .ac-tool { flex: none; }
+.ac-team { overflow: hidden; }
+.ac-team .ac-list-head { align-items: baseline; padding: 12px 16px; }
+.ac-team .ac-list-head h2 { font-size: 16px; color: #1b1f24; }
+.ac-member { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #eef0f3; }
+.ac-member:last-child { border-bottom: 0; }
+.ac-member-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.ac-member-who { flex: 2 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.ac-member-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ac-member-name strong { font-size: 15px; }
+.ac .ac-member-name .ac-link { min-height: 24px; font-size: 12px; }
+.ac-role { font-size: 12px; font-weight: 600; line-height: 20px; padding: 0 8px; border-radius: 999px; background: #e8eefc; color: #1e3a8a; }
+.ac-role.owner { background: #1b1f24; color: #fff; }
+.ac-member-fact { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.ac-member-fact:nth-child(2) { flex-basis: 170px; }
+.ac-member-fact > span:first-child { font-size: 12px; color: #5f6774; }
+.ac-member-fact .ok { color: #1e6b34; }
+.ac-member-fact .waiting { color: #8a5300; }
+.ac-member-acts { flex: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.ac-member-alert {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-radius: 6px;
+  background: #fff3dc; color: #6b4100; font-size: 13px;
+}
+.ac-member-rename { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
+.ac-admins-two { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.ac-found { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid #e3e6eb; border-radius: 8px; background: #f7f8fa; overflow-wrap: anywhere; }
+.ac-found strong { font-size: 15px; }
+.ac .ac-ok { padding: 10px 14px; border-radius: 8px; background: #e6f4ea; color: #14532d; font-size: 13px; }
+.ac-can { display: flex; flex-wrap: wrap; gap: 16px; }
+.ac-can > div { flex: 1 1 220px; min-width: 0; }
+.ac-can h3 { margin: 0 0 6px; font-size: 14px; }
+.ac-can .ac-can-yes { color: #1e6b34; }
+.ac-can .ac-can-no { color: #a61b1b; }
+.ac-can ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.ac-safety { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.ac-safety > div { padding: 12px 14px; border-radius: 8px; background: #f7f8fa; }
+.ac-safety strong { font-size: 14px; }
+.ac-safety p { margin-top: 4px; font-size: 13px; color: #3d4450; }
 
 /* touch screens: room for a finger */
 @media (pointer: coarse) {

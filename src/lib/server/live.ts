@@ -22,9 +22,9 @@ type Listener = (event: LiveEvent) => void;
 
 /**
  * What each process keeps in memory of what the admin changes, read again on every process at once
- * (reloadEverywhere): 公告 (notices.ts). Others add their kind here.
+ * (reloadEverywhere): 公告 (notices.ts), and who the moderators are (admins.ts). Others add their kind here.
  */
-export type ReloadKind = "notices";
+export type ReloadKind = "notices" | "admins";
 type Reload = () => Promise<void>;
 
 const g = globalThis as unknown as {

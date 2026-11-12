@@ -4,6 +4,7 @@ import { fmt, T } from "@/i18n";
 import type { Declaration } from "@/lib/declarations";
 import type { Profile } from "@/lib/profile";
 import { adminCounts } from "@/lib/server/admin";
+import { isModHere } from "@/lib/server/admins";
 import { currentUser, endSession, homeUserId, renewSession, setHomeUserId, startSession } from "@/lib/server/auth";
 import { markBadgesSeen, wear } from "@/lib/server/badges";
 import { acceptPublicPlace, AGE_CHECK, ageCheckNeeded, confirmAge, mustReconsent, reconsentNeeded } from "@/lib/server/consent";
@@ -63,9 +64,9 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       // every page asks this on opening: a session in use runs SESSION_DAYS from now again (once a day at most)
       if (user) await renewSession(req);
       const m = user ? await world.me(user.id, args[0]) : null;
-      // the admin also sees how many reports wait, in a corner of the map
+      // the admin also sees how many reports wait, in a corner of the map; a moderator only their 看被举报的蟑螂 (from memory)
       const admin = m ? await adminCounts(user) : undefined;
-      result = m && admin ? { ...m, admin } : m;
+      result = m && admin ? { ...m, admin } : m && user && isModHere(user.id) ? { ...m, mod: true } : m;
       break;
     }
     // 佩丽卡监督's 离开计时: sent with me() on opening, before anyone knows who is signed in, and only

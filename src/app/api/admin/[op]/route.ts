@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { maskEmails, MOD_ONLY, MOD_OPS, OWNER_ONLY } from "@/lib/adminConsole";
 import { parseNameWords } from "@/lib/nameRules";
 import { isRuleCode, type AdminAction, type CaseQuery } from "@/lib/safety";
 import {
@@ -10,8 +11,10 @@ import {
   answerAppeal,
   banInfo,
   clearBlockedNames,
+  doneToday,
   findAccounts,
   maskedLookup,
+  MOD_NO_BAN,
   openAppeals,
   openCases,
   reportedPlaces,
@@ -27,21 +30,26 @@ import {
   unsuspendAccount,
   wordsDetail,
 } from "@/lib/server/admin";
+import { answerBanRequest, banRequest, banRequests } from "@/lib/server/adminRequests";
 import {
   actorOf,
+  countView,
   enter,
   gateState,
   lockAllDevices,
   lockDevice,
   logAdmin,
   lookedLately,
+  pledge,
   renewBackupCodes,
   requireFresh,
   resetAdminTotp,
   setupConfirm,
   setupStart,
+  staffRoles,
   unlock,
 } from "@/lib/server/admins";
+import { addAdmin, findAdminCandidate, listAdmins, removeAdmin, renameAdmin, unpauseAdmin } from "@/lib/server/adminTeam";
 import { appCountDays } from "@/lib/server/appCounts";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
@@ -54,8 +62,10 @@ const objectOf = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v
 
 /**
  * The 管理台's endpoints (src/components/admin). Everyone comes through the door first (src/lib/server/admins.ts
- * enter): anyone it does not let in gets the same 404 as a missing page. The heaviest steps want a fresh code
- * (requireFresh), sent along as body.fresh. What is done, looked at or searched goes into the 操作记录.
+ * enter): anyone it does not let in gets the same 404 as a missing page. A moderator may call only MOD_OPS (any
+ * other, including those added later, is the owner's: 403), and within those sees and does less (admin.ts Viewer),
+ * and every email they are sent is masked. The heaviest steps want a fresh code (requireFresh), sent along as
+ * body.fresh. What is done, looked at or searched goes into the 操作记录.
  */
 export const POST = route(
   async (req, { params }: { params: Promise<{ op: string }> }) => {
@@ -66,6 +76,14 @@ export const POST = route(
     const ctx = await enter(op, now);
     const actor = actorOf(ctx.admin);
     const by = actor;
+    const mod = actor.role === "mod";
+    if (mod && !MOD_OPS.has(op)) throw new HttpError(403, OWNER_ONLY);
+    if (!mod && Object.hasOwn(MOD_ONLY, op)) throw new HttpError(400, MOD_ONLY[op]);
+    /** A ban: never a moderator's (they ask the owner, banRequest), and the owner's with a fresh code */
+    const banning = async () => {
+      if (mod) throw new HttpError(403, MOD_NO_BAN);
+      await requireFresh(ctx, body.fresh, now);
+    };
 
     let result: unknown;
     switch (op) {
@@ -83,6 +101,9 @@ export const POST = route(
       case "lockAll":
         result = await lockAllDevices(ctx);
         await logAdmin(actor, "gate", "gate.lockAll", { detail: `锁上了 ${result} 台设备` }, now);
+        break;
+      case "pledge":
+        result = await pledge(ctx, now);
         break;
       case "setupStart":
         result = await setupStart(ctx, now);
@@ -110,8 +131,8 @@ export const POST = route(
           nameOnly: q.nameOnly === true,
           ...(typeof q.caseId === "string" ? { caseId: q.caseId } : {}),
         };
-        const page = await openCases(query, now);
-        result = page;
+        const page = await openCases(query, now, actor);
+        result = query.caseId ? page : { ...page, today: await doneToday(actor, now) };
         if (q.auto !== true) {
           const what = query.caseId ? "一件" : `第 ${page.page} 页，${page.cases.length} 件`;
           await logAdmin(actor, "view", "view.cases", { detail: what }, now);
@@ -121,7 +142,7 @@ export const POST = route(
       case "resolve": {
         // args[0]: the case (a player's id, or roach:/report: for a roach's); args[2]: the community rule picked, or the one picked ahead
         const action = String(args[1]) as AdminAction;
-        if (action === "ban") await requireFresh(ctx, body.fresh, now);
+        if (action === "ban") await banning();
         await settleCase(String(args[0]), action, { rule: args[2], by }, now);
         break;
       }
@@ -129,7 +150,7 @@ export const POST = route(
         result = await settleCases(args[0], String(args[1]) as AdminAction, by);
         break;
       case "appeals":
-        result = await openAppeals(now);
+        result = await openAppeals(now, actor);
         break;
       case "answerAppeal":
         await answerAppeal(args[0], args[1] === true, now, by);
@@ -137,24 +158,38 @@ export const POST = route(
 
       // ---- 搜索账号 ----
       case "findPlayers": {
-        const found = await findAccounts(args[0], now);
+        const found = await findAccounts(args[0], now, actor);
         result = { players: found.players, total: found.total };
         await logAdmin(actor, "search", "search", { detail: `搜「${searchWords(args[0], found.plainSearch)}」，找到 ${found.total} 个` }, now);
         break;
       }
+      // a moderator's look at one more account counts toward the hour's VIEW_LIMIT (countView), the same look again does not
       case "account": {
-        result = await account(args[0], now);
-        if (!(await lookedLately(actor, String(args[0]), now))) await logAdmin(actor, "view", "view.account", { targetId: String(args[0]) }, now);
+        const again = await lookedLately(actor, String(args[0]), now);
+        if (!again) await countView(ctx, now);
+        result = await account(args[0], now, actor);
+        if (!again) await logAdmin(actor, "view", "view.account", { targetId: String(args[0]) }, now);
         break;
       }
       // 搜到以后直接处理: args[0] { id, action, rule }; a ban wants a fresh code
       case "act": {
         const q = objectOf(args[0]);
         if (!isRuleCode(q.rule)) throw new HttpError(400, "先选一条 TA 违反的规则。");
-        if (q.action === "ban") await requireFresh(ctx, body.fresh, now);
+        if (q.action === "ban") await banning();
         result = await actOnAccount(q.id, q.action, q.rule, by, now);
         break;
       }
+      // 提请封号: a moderator's args[0] { id, rule, reason }; the owner's answer args[0] { id, ban } (a ban with a fresh code)
+      case "banRequest":
+        result = await banRequest(by, args[0], now);
+        break;
+      case "banRequests":
+        result = await banRequests(now);
+        break;
+      case "answerBanRequest":
+        if (objectOf(args[0]).ban === true) await requireFresh(ctx, body.fresh, now);
+        result = await answerBanRequest(by, args[0], now);
+        break;
       case "unsuspend":
         result = await unsuspendAccount(args[0], by, now);
         break;
@@ -162,13 +197,35 @@ export const POST = route(
         result = await undoAction(args[0], by, now);
         break;
       case "notes":
-        result = await accountNotes(args[0]);
+        result = await accountNotes(args[0], actor);
         break;
       case "addNote":
         result = await addNote(args[0], args[1], by, now);
         break;
       case "log":
-        result = await adminLogPage(args[0], now);
+        result = await adminLogPage(args[0], now, actor);
+        break;
+
+      // ---- 管理员 (the owner's): adding, removing and resetting want a fresh code ----
+      case "admins":
+        result = await listAdmins(now);
+        break;
+      case "findAdminCandidate":
+        result = await findAdminCandidate(ctx, args[0], now);
+        break;
+      case "addAdmin":
+        await requireFresh(ctx, body.fresh, now);
+        result = await addAdmin(ctx, args[0], now);
+        break;
+      case "removeAdmin":
+        await requireFresh(ctx, body.fresh, now);
+        await removeAdmin(ctx, args[0], now);
+        break;
+      case "renameAdmin":
+        result = await renameAdmin(ctx, args[0], now);
+        break;
+      case "unpauseAdmin":
+        await unpauseAdmin(ctx, args[0], now);
         break;
 
       // ---- 网站和工具 ----
@@ -198,10 +255,14 @@ export const POST = route(
       case "nameWords":
         result = await listNameWords(String(args[0] ?? ""));
         break;
-      // every named player is read for this, so only when the page asks, not on each search
-      case "nameHits":
-        result = await namesHit();
+      // every named player is read for this, so only when the page asks, not on each search; a moderator's list leaves out the 管理台's people
+      case "nameHits": {
+        const found = await namesHit();
+        const staff = mod ? await staffRoles() : null;
+        const hits = staff ? found.hits.filter((h) => !staff.has(h.id)) : found.hits;
+        result = { ...found, hits, count: found.count - (found.hits.length - hits.length) };
         break;
+      }
       case "testName":
         result = await testName(args[0]);
         break;
@@ -241,12 +302,14 @@ export const POST = route(
       // args[0] { view: "place" (default) | "all" }: the roach cases open for where a roach was put, or every roach of a player with open reports
       case "reportedRoaches": {
         const all = objectOf(args[0]).view === "all";
+        // where a reported player's other roaches are: the owner's alone (Breeze, 2026-11-11)
+        if (all && mod) throw new HttpError(403, OWNER_ONLY);
         if (all) {
           const roaches = await reportedRoaches();
           result = { view: "all", roaches };
           await logAdmin(actor, "view", "view.map", { detail: `被举报的人的全部蟑螂 ${roaches.length} 只` }, now);
         } else {
-          const places = await reportedPlaces(now);
+          const places = await reportedPlaces(now, actor);
           result = { view: "place", places };
           await logAdmin(actor, "view", "view.map", { detail: `位置被举报 ${places.length} 件` }, now);
         }
@@ -255,7 +318,8 @@ export const POST = route(
       default:
         throw new HttpError(404, "没有这个功能。");
     }
-    return NextResponse.json({ result: result ?? null });
+    // a moderator never gets a whole email, whatever the answer holds (an info box, a search, the log)
+    return NextResponse.json({ result: mod ? maskEmails(result ?? null) : (result ?? null) });
   },
   { headers: NO_STORE },
 );

@@ -15,10 +15,11 @@ import {
   type CasePage,
   type RuleCode,
 } from "@/lib/safety";
+import type { BanRequestCard, DoneToday } from "@/lib/adminConsole";
 import { beijingShort } from "@/lib/beijing";
 import { ago } from "../app/InboxSheet";
 import { errorWords } from "./api";
-import BanBox from "./BanBox";
+import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
 import { Empty, Facts, LevelTag, Mark, Tag } from "./ui";
 import {
@@ -39,7 +40,8 @@ import {
 /**
  * 待处理: the reports (each player's, and each reported roach's apart) and the appeals, the most pressing first, a
  * case opened beside the list with every way to settle it. A step waits 5 seconds for 撤销 before it is sent, and
- * the next case comes up meanwhile; keys for going through them quickly; several at once from the ticks.
+ * the next case comes up meanwhile; keys for going through them quickly; several at once from the ticks. The owner
+ * also has the bans moderators asked for, on top; a moderator asks for a ban where the owner would ban.
  */
 
 type Settle = Exclude<AdminAction, "ban">;
@@ -85,8 +87,11 @@ function reportersWords(c: AdminCase) {
   return `${c.reporters} 人举报，${reliable}`;
 }
 
+/** Of the 管理台's own people (only the owner sees cases about them), and the rest */
+const staffTag = (p: { staff: AdminCase["staff"] }) => (p.staff === "owner" ? ["站长"] : p.staff === "mod" ? ["管理员"] : []);
+
 function caseTags(c: AdminCase) {
-  return [...(c.kind === "roach" && c.anonymous ? ["主人现在是匿名"] : []), ...personTags(c, c.brigade)];
+  return [...staffTag(c), ...(c.kind === "roach" && c.anonymous ? ["主人现在是匿名"] : []), ...personTags(c, c.brigade)];
 }
 
 /**
@@ -133,10 +138,21 @@ function actsOf(c: AdminCase): Act[] {
 const heldText = (c: AdminCase, action: Settle) =>
   `${action === "removeRoach" && c.roach?.main ? "已收回这只和它的克隆体" : action === "dismiss" && c.reports.length ? `已标成没问题，关掉了 ${c.reports.length} 条举报` : HELD_WORDS[action]}：${caseTitle(c)}`;
 
-type Item = { id: string; kind: "case"; c: AdminCase } | { id: string; kind: "appeal"; a: AdminAppeal };
+/** The header's line: 「今天处理了 18 件：你 11 件，小林 7 件。」, a moderator only their own */
+function todayLine(today: DoneToday[], owner: boolean) {
+  const total = today.reduce((n, d) => n + d.n, 0);
+  if (!owner || (today.length === 1 && today[0].you)) return `今天你处理了 ${total} 件。`;
+  if (!total) return "今天还没处理过。";
+  return `今天处理了 ${total} 件：${today.map((d) => `${d.you ? "你" : d.alias} ${d.n} 件`).join("，")}。`;
+}
+
+type Item = { id: string; kind: "case"; c: AdminCase } | { id: string; kind: "appeal"; a: AdminAppeal } | { id: string; kind: "request"; r: BanRequestCard };
+
+const requestItem = (r: BanRequestCard): Item => ({ id: `request:${r.id}`, kind: "request", r });
 
 export default function Cases({ start }: { start?: string }) {
-  const { call, hold, say, go, setCounts, gate } = useConsole();
+  const { call, hold, say, go, setCounts, setLine, gate } = useConsole();
+  const owner = gate.role === "owner";
   const [tab, setTab] = useState<"cases" | "appeals">("cases");
   const [level, setLevel] = useState<CaseLevel | "all">("all");
   const [reason, setReason] = useState<AnyReason | "blocks" | "all">("all");
@@ -144,6 +160,8 @@ export default function Cases({ start }: { start?: string }) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CasePage | null>(null);
   const [appeals, setAppeals] = useState<AdminAppeal[] | null>(null);
+  // the owner's: bans moderators asked for
+  const [requests, setRequests] = useState<BanRequestCard[]>([]);
   // the case a link opened (from the map, or 搜索账号) when it is not on the page shown
   const [pinned, setPinned] = useState<AdminCase | null>(null);
   // acted on: held for 撤销, or sent
@@ -158,9 +176,10 @@ export default function Cases({ start }: { start?: string }) {
   const load = useCallback(
     async (auto: boolean) => {
       try {
-        const [d, a] = await Promise.all([
+        const [d, a, q] = await Promise.all([
           call<CasePage>("cases", [{ page, level, reason, nameOnly, auto }]),
           call<AdminAppeal[]>("appeals"),
+          owner ? call<BanRequestCard[]>("banRequests") : Promise.resolve([]),
         ]);
         // the last cases of the last page settled: back to the page that is last now
         if (!d.cases.length && page > 1 && d.total > 0) {
@@ -169,12 +188,13 @@ export default function Cases({ start }: { start?: string }) {
         }
         setData(d);
         setAppeals(a);
+        setRequests(q);
         setNow(Date.now());
       } catch (e) {
         setNote(errorWords(e));
       }
     },
-    [call, page, level, reason, nameOnly],
+    [call, page, level, reason, nameOnly, owner],
   );
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -190,7 +210,8 @@ export default function Cases({ start }: { start?: string }) {
     if (!start || !data || started.current) return;
     started.current = true;
     window.history.replaceState(null, "", "/admin");
-    if (data.cases.some((c) => c.caseId === start)) return;
+    // a ban asked for (from 搜索账号) is on top already, or answered meanwhile
+    if (start.startsWith("request:") || data.cases.some((c) => c.caseId === start)) return;
     call<CasePage>("cases", [{ caseId: start, auto: true }])
       .then((one) => {
         if (one.cases[0]) setPinned(one.cases[0]);
@@ -199,12 +220,14 @@ export default function Cases({ start }: { start?: string }) {
       .catch((e) => setNote(errorWords(e)));
   }, [start, data, call]);
 
+  // the bans asked for go on top, among the red, on the first page
+  const showRequests = page === 1 && (level === "all" || level === "red") && reason === "all" && !nameOnly;
   const items = useMemo<Item[]>(() => {
     if (tab === "appeals") return (appeals ?? []).map((a) => ({ id: a.actionId, kind: "appeal" as const, a }));
     const cases = data?.cases ?? [];
     const all = pinned && !cases.some((c) => c.caseId === pinned.caseId) ? [pinned, ...cases] : cases;
-    return all.map((c) => ({ id: c.caseId, kind: "case" as const, c }));
-  }, [tab, data, appeals, pinned]);
+    return [...(showRequests ? requests.map(requestItem) : []), ...all.map((c) => ({ id: c.caseId, kind: "case" as const, c }))];
+  }, [tab, data, appeals, pinned, requests, showRequests]);
   const list = useMemo(() => items.filter((x) => !hidden.has(x.id)), [items, hidden]);
   const current = list.find((x) => x.id === sel) ?? list[0] ?? null;
 
@@ -223,11 +246,16 @@ export default function Cases({ start }: { start?: string }) {
     return { levels, all: levels.red + levels.yellow + levels.green, nameOnly };
   }, [data, pinned, hidden]);
   const appealsLeft = (appeals ?? []).filter((a) => !hidden.has(a.actionId)).length;
+  const requestsLeft = requests.filter((r) => !hidden.has(requestItem(r).id)).length;
+
+  useEffect(() => {
+    if (data?.today) setLine(todayLine(data.today, owner));
+  }, [data, owner, setLine]);
 
   // the menu's count: what waits
   useEffect(() => {
-    if (left && appeals) setCounts(left.all + appealsLeft);
-  }, [left, appeals, appealsLeft, setCounts]);
+    if (left && appeals) setCounts(left.all + requestsLeft + appealsLeft);
+  }, [left, appeals, appealsLeft, requestsLeft, setCounts]);
 
   const unhide = useCallback((ids: string[]) => {
     setHidden((h) => {
@@ -317,6 +345,40 @@ export default function Cases({ start }: { start?: string }) {
     reload();
   };
 
+  // a moderator's: handed over, so the account's cases leave their 待处理 until the owner answers
+  const askBan = async (c: AdminCase, why: string) => {
+    await call("banRequest", [{ id: c.targetId, rule: ruleFor(c), reason: why }]);
+    settleOut(list.filter((x) => x.kind === "case" && x.c.targetId === c.targetId).map((x) => x.id));
+    say(`${caseTitle(c)}：交给站长了，站长确认以后才会封。`);
+    reload();
+  };
+
+  // the owner's answer to a ban asked for: confirmed with a code and done at once, or sent back (held for 撤销)
+  const confirmRequest = async (r: BanRequestCard, fresh: string) => {
+    await call("answerBanRequest", [{ id: r.id, ban: true }], { fresh: fresh || undefined });
+    settleOut(list.filter((x) => x.id === requestItem(r).id || (x.kind === "case" && x.c.targetId === r.who.targetId)).map((x) => x.id));
+    say(`封号了：${savedName(r.who)} 的账号和数据都删了，这个邮箱（连同它的其他写法）不能再登录。`);
+    reload();
+  };
+  const declineRequest = (r: BanRequestCard) => {
+    const id = requestItem(r).id;
+    settleOut([id]);
+    hold({
+      text: `没有封，退回给了${r.by}：${shownName(r.who)}`,
+      send: (keepalive) => call("answerBanRequest", [{ id: r.id, ban: false }], { keepalive }),
+      onUndo: () => {
+        unhide([id]);
+        setSel(id);
+      },
+      onDone: reload,
+      onFail: (e) => {
+        unhide([id]);
+        say(`没做成：${errorWords(e)}`);
+        reload();
+      },
+    });
+  };
+
   const blockName = async (c: AdminCase) => {
     try {
       await call("addNameWords", [`=${c.name}`]);
@@ -372,7 +434,7 @@ export default function Cases({ start }: { start?: string }) {
       <div className="ac-filters">
         <div className="ac-seg" role="group" aria-label="举报还是申诉">
           <button type="button" aria-pressed={tab === "cases"} onClick={() => filter(() => setTab("cases"))}>
-            举报 {left ? left.all : "…"}
+            举报 {left ? left.all + requestsLeft : "…"}
           </button>
           <button type="button" aria-pressed={tab === "appeals"} onClick={() => filter(() => setTab("appeals"))}>
             申诉 {appeals ? appealsLeft : "…"}
@@ -383,7 +445,8 @@ export default function Cases({ start }: { start?: string }) {
             <div className="ac-chips" role="group" aria-label="按轻重筛">
               {(["all", "red", "yellow", "green"] as const).map((l) => (
                 <button key={l} type="button" className={`ac-chip level-${l}`} aria-pressed={level === l} onClick={() => filter(() => setLevel(l))}>
-                  {l === "all" ? "全部" : l === "red" ? "红" : l === "yellow" ? "黄" : "绿"} {left ? (l === "all" ? left.all : left.levels[l]) : ""}
+                  {l === "all" ? "全部" : l === "red" ? "红" : l === "yellow" ? "黄" : "绿"}{" "}
+                  {left ? (l === "all" ? left.all + requestsLeft : l === "red" ? left.levels.red + requestsLeft : left.levels[l]) : ""}
                 </button>
               ))}
             </div>
@@ -456,7 +519,17 @@ export default function Cases({ start }: { start?: string }) {
                       setBanOpen(false);
                     }}
                   >
-                    {x.kind === "case" ? (
+                    {x.kind === "request" ? (
+                      <>
+                        <span className="ac-row-top">
+                          <LevelTag level="red" />
+                          <strong>{shownName(x.r.who)}</strong>
+                          <span className="ac-muted">{waitWords(now - x.r.at)}</span>
+                        </span>
+                        <span className="ac-row-sub">{x.r.by}提请封号</span>
+                        <span className="ac-row-meta">等你确认</span>
+                      </>
+                    ) : x.kind === "case" ? (
                       <>
                         <span className="ac-row-top">
                           <LevelTag level={x.c.level} />
@@ -509,16 +582,28 @@ export default function Cases({ start }: { start?: string }) {
         <section className="ac-panel ac-detail" aria-label="详情">
           {!current ? (
             <Empty done={Boolean(data)}>{data ? "这里都处理完了。" : "正在读取…"}</Empty>
+          ) : current.kind === "request" ? (
+            <RequestDetail
+              key={current.id}
+              r={current.r}
+              banOpen={banOpen}
+              onBanOpen={setBanOpen}
+              onBan={(fresh) => confirmRequest(current.r, fresh)}
+              onDecline={() => declineRequest(current.r)}
+              onAccount={() => go({ page: "accounts", account: current.r.who.targetId })}
+            />
           ) : current.kind === "case" ? (
             <CaseDetail
               key={current.id}
               c={current.c}
+              owner={owner}
               rule={ruleFor(current.c)}
               onRule={(r) => setRules((m) => ({ ...m, [current.c.caseId]: r }))}
               onAct={(action) => act(current.c, action)}
               banOpen={banOpen}
               onBanOpen={setBanOpen}
               onBan={(fresh) => ban(current.c, fresh)}
+              onAskBan={(why) => askBan(current.c, why)}
               onBlockName={() => blockName(current.c)}
               onAccount={() => go({ page: "accounts", account: current.c.targetId })}
             />
@@ -587,22 +672,26 @@ function PersonHead({
 
 function CaseDetail({
   c,
+  owner,
   rule,
   onRule,
   onAct,
   banOpen,
   onBanOpen,
   onBan,
+  onAskBan,
   onBlockName,
   onAccount,
 }: {
   c: AdminCase;
+  owner: boolean;
   rule: RuleCode;
   onRule: (r: RuleCode) => void;
   onAct: (a: Settle) => void;
   banOpen: boolean;
   onBanOpen: (open: boolean) => void;
   onBan: (fresh: string) => Promise<void>;
+  onAskBan: (why: string) => Promise<void>;
   onBlockName: () => void;
   onAccount: () => void;
 }) {
@@ -661,14 +750,15 @@ function CaseDetail({
             </button>
           )}
           <button type="button" className="ac-btn danger" onClick={() => onBanOpen(!banOpen)} aria-expanded={banOpen}>
-            封号…
+            {owner ? "封号…" : "提请封号…"}
           </button>
         </div>
         <p className="ac-hint">
-          蓝色的是建议的做法。处理完自动跳到下一件，几秒内能撤销。键盘：J / K 上下，D 没问题，N 清名字，U 清 UID，W 警告，S 暂停。封号只能点按钮。
+          蓝色的是建议的做法。处理完自动跳到下一件，几秒内能撤销。键盘：J / K 上下，D 没问题，N 清名字，U 清 UID，W 警告，S 暂停。
+          {owner ? "封号只能点按钮。" : "封号要站长确认。"}
           {roach?.state === "moved" && " 它举报以后挪过窝了，收回的是它现在的位置。"}
         </p>
-        {banOpen && <BanBox onBan={onBan} onClose={() => onBanOpen(false)} />}
+        {banOpen && (owner ? <BanBox onBan={onBan} onClose={() => onBanOpen(false)} /> : <BanRequestBox onAsk={onAskBan} onClose={() => onBanOpen(false)} />)}
       </div>
 
       <section aria-label="举报">
@@ -732,20 +822,82 @@ function AppealDetail({ a, me, onAnswer, onAccount }: { a: AdminAppeal; me: stri
         <h3 className="ac-h3">TA 的申诉 · {beijingShort(a.appealedAt)}</h3>
         <p className="ac-appeal-text">「{a.appeal}」</p>
       </div>
-      <div className="ac-stack tight">
-        <div className="ac-acts">
-          <button type="button" className="ac-btn" onClick={() => onAnswer(true)}>
-            维持原来的处理
-          </button>
-          <button type="button" className="ac-btn primary" onClick={() => onAnswer(false)}>
-            撤销这次处理
-          </button>
+      {a.mine ? (
+        <p className="ac-paused">这件是你自己处理的，申诉要由站长或别的管理员来看。</p>
+      ) : (
+        <div className="ac-stack tight">
+          <div className="ac-acts">
+            <button type="button" className="ac-btn" onClick={() => onAnswer(true)}>
+              维持原来的处理
+            </button>
+            <button type="button" className="ac-btn primary" onClick={() => onAnswer(false)}>
+              撤销这次处理
+            </button>
+          </div>
+          <p className="ac-hint">撤销以后：{UNDO_WORDS[a.action] ?? "恢复原样"}。每次处理只能申诉一次，你回复后 TA 会在消息里看到。</p>
         </div>
-        <p className="ac-hint">撤销以后：{UNDO_WORDS[a.action] ?? "恢复原样"}。每次处理只能申诉一次，你回复后 TA 会在消息里看到。</p>
-      </div>
+      )}
       <section aria-label="TA 的资料">
         <h3 className="ac-h3">TA 的资料</h3>
         <Facts facts={personFacts(a.who)} />
+      </section>
+    </div>
+  );
+}
+
+/**
+ * A ban a moderator asked for (the owner's): who asked, why and under which rule, and the account's info box;
+ * 确认封号 with a code, or 不封 back to them (their 操作记录 says 「站长没同意」)
+ */
+function RequestDetail({
+  r,
+  banOpen,
+  onBanOpen,
+  onBan,
+  onDecline,
+  onAccount,
+}: {
+  r: BanRequestCard;
+  banOpen: boolean;
+  onBanOpen: (open: boolean) => void;
+  onBan: (fresh: string) => Promise<void>;
+  onDecline: () => void;
+  onAccount: () => void;
+}) {
+  return (
+    <div className="ac-stack">
+      <PersonHead
+        name={r.who.name}
+        heading={savedName(r.who)}
+        color={r.who.color}
+        level="red"
+        tags={[...staffTag(r.who), ...personTags(r.who)]}
+        id={r.who.targetId}
+        email={r.who.email}
+        joinedAt={r.who.joinedAt}
+        last24={r.who.last24h}
+        onAccount={onAccount}
+      />
+      <div className="ac-ban">
+        <span className="ac-request-by">
+          {r.by} 提请封号 · {beijingShort(r.at)}
+        </span>
+        <p className="ac-request-why">「{r.reason}」</p>
+        <span className="ac-request-by">按「{RULES[r.rule]}」</span>
+        <div className="ac-row">
+          <button type="button" className="ac-btn danger-solid" onClick={() => onBanOpen(!banOpen)} aria-expanded={banOpen}>
+            确认封号…
+          </button>
+          <button type="button" className="ac-btn" onClick={onDecline}>
+            不封，退回给{r.by}
+          </button>
+        </div>
+        {banOpen && <BanBox onBan={onBan} onClose={() => onBanOpen(false)} />}
+      </div>
+      <section aria-label="TA 的资料">
+        <h3 className="ac-h3">TA 的资料</h3>
+        <Facts facts={personFacts(r.who, { declarations: true })} />
+        <p className="ac-hint">举报和以前的处理在「看完整资料和记录」里。</p>
       </section>
     </div>
   );

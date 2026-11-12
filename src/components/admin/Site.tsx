@@ -15,17 +15,20 @@ import { joinedWords, ruleWords } from "./words";
 
 /**
  * 网站和工具: what the site's own checks found (网站状态), this week's people with 存到桌面's 14 days, the name
- * blocklist, whether an email was banned, and badges by hand. The same tools as before, in the 管理台's panels.
+ * blocklist, whether an email was banned, and badges by hand. The same tools as before, in the 管理台's panels. A
+ * moderator has only the name blocklist (the rest is the owner's: OWNER_ONLY).
  */
 export default function Site() {
+  const { gate } = useConsole();
+  const owner = gate.role === "owner";
   const [wordsAdded, setWordsAdded] = useState(0);
   return (
     <div className="ac-site">
-      <SiteStatusPanel />
-      <People />
+      {owner && <SiteStatusPanel />}
+      {owner && <People />}
       <NameList added={wordsAdded} onAdded={() => setWordsAdded((n) => n + 1)} />
-      <BanLookup />
-      <BadgeDesk />
+      {owner && <BanLookup />}
+      {owner && <BadgeDesk />}
     </div>
   );
 }
@@ -414,7 +417,7 @@ function NameList({ added, onAdded }: { added: number; onAdded: () => void }) {
 
   return (
     <section className="ac-panel ac-tool wide" aria-label="名字黑名单">
-      <PanelHead title={`名字黑名单 · ${list?.total ?? "…"} 个词`} aside="只有站长" />
+      <PanelHead title={`名字黑名单 · ${list?.total ?? "…"} 个词`} aside="管理员也能用" />
       <p className="ac-sub">
         存资料时名字里有这些词就存不上（前面带「=」的只在整个名字就是这个词时才挡，带「~」的连读音一样的也挡）。比对前名字和词都会洗一遍：去掉空格、符号和表情，全角转半角，英文转小写，繁体和异体字转简体，所以只加简体就够了。「~」只对三个字以上的词有用，常见人名读音撞得多，别给人名随便加。
       </p>

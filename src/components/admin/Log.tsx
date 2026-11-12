@@ -1,15 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { clockWords, type AdminLogEntry, type AdminLogFilter, type AdminLogPage } from "@/lib/adminConsole";
+import { clockWords, CODE_TRIES, VIEW_LIMIT, type AdminLogEntry, type AdminLogFilter, type AdminLogPage } from "@/lib/adminConsole";
 import { errorWords } from "./api";
 import { useConsole } from "./context";
 import { isAlert, LOG_KIND, logText, stepWords } from "./words";
 
 /**
  * 操作记录: everything done in the 管理台, every look at an account and every search, and the door's own lines, the
- * newest first, by kind; today's numbers on top. What may still be given back has 撤销 beside it.
+ * newest first, by kind and (the owner) by who; today's numbers on top. What may still be given back has 撤销 beside
+ * it. A moderator sees only their own, and a ban they asked for says what the owner answered.
  */
+
+/** What became of a ban asked for, after its line */
+function answerWords(e: AdminLogEntry, owner: boolean) {
+  if (e.what !== "act.banRequest") return "";
+  if (e.answer === "done") return "（站长确认了，封了）";
+  if (e.answer === "declined") return "（站长没同意）";
+  // the account went another way meanwhile (banned from elsewhere, or deleted by its owner): nothing waits
+  if (e.gone) return "";
+  return owner ? "（等你确认）" : "（等站长确认）";
+}
 
 const FILTERS: [AdminLogFilter, string][] = [
   ["all", "全部"],
@@ -21,7 +32,10 @@ const FILTERS: [AdminLogFilter, string][] = [
 
 export default function Log() {
   const { call, say, go, gate } = useConsole();
+  const owner = gate.role === "owner";
   const [kind, setKind] = useState<AdminLogFilter>("all");
+  // the owner's: everyone's, or one person's
+  const [who, setWho] = useState("");
   const [page, setPage] = useState<AdminLogPage | null>(null);
   const [more, setMore] = useState<AdminLogEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -29,13 +43,13 @@ export default function Log() {
 
   const load = useCallback(async () => {
     try {
-      setPage(await call<AdminLogPage>("log", [{ kind }]));
+      setPage(await call<AdminLogPage>("log", [{ kind, ...(who ? { who } : {}) }]));
       setMore([]);
       setNote(null);
     } catch (e) {
       setNote(errorWords(e));
     }
-  }, [call, kind]);
+  }, [call, kind, who]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -46,7 +60,7 @@ export default function Log() {
     if (!last) return;
     setBusy(true);
     try {
-      const next = await call<AdminLogPage>("log", [{ kind, before: last.id }]);
+      const next = await call<AdminLogPage>("log", [{ kind, before: last.id, ...(who ? { who } : {}) }]);
       setMore((m) => [...m, ...next.entries]);
       setPage((p) => (p ? { ...p, more: next.more } : p));
     } catch (e) {
@@ -57,7 +71,7 @@ export default function Log() {
   const undo = async (e: AdminLogEntry) => {
     try {
       await call("undo", [e.actionId]);
-      say(`撤销了「${stepWords(e)}」，TA 会在消息里看到。`);
+      say(`撤销了${e.actor === gate.alias ? "" : `${e.actor}的`}「${stepWords(e)}」，TA 会在消息里看到。`);
       await load();
     } catch (err) {
       say(errorWords(err));
@@ -66,18 +80,20 @@ export default function Log() {
 
   const now = Date.now();
   const today = page?.today;
+  const people = page?.people ?? [];
+  const byWho = people.length > 1 ? people.map((p) => `${p.alias === gate.alias ? "你" : p.alias} ${p.acts}`).join(" · ") : null;
   return (
     <>
       <div className="ac-stats">
         <div className="ac-stat">
           <div className="ac-muted small">今天处理</div>
           <div className="ac-stat-n">{today ? `${today.acts} 件` : "…"}</div>
-          <div className="ac-muted small">警告、清名字、黑名单这些都算</div>
+          <div className="ac-muted small">{byWho ?? "警告、清名字、黑名单这些都算"}</div>
         </div>
         <div className="ac-stat">
           <div className="ac-muted small">今天查看</div>
           <div className="ac-stat-n">{today ? `${today.views} 次` : "…"}</div>
-          <div className="ac-muted small">打开账号、待处理和地图上的蟑螂</div>
+          <div className="ac-muted small">{owner ? "打开账号、待处理和地图上的蟑螂" : `一小时打开到 ${VIEW_LIMIT} 个账号，管理台会暂停`}</div>
         </div>
         <div className="ac-stat">
           <div className="ac-muted small">今天搜索</div>
@@ -87,18 +103,31 @@ export default function Log() {
         <div className={`ac-stat${today?.fails ? " warn" : ""}`}>
           <div className="small">今天验证码输错</div>
           <div className="ac-stat-n">{today ? `${today.fails} 次` : "…"}</div>
-          <div className="small">连续错 5 次会暂停，并发邮件告诉你</div>
+          <div className="small">连续错 {CODE_TRIES} 次会暂停，并发邮件告诉{owner ? "你" : "站长"}</div>
         </div>
       </div>
 
       <div className="ac-filters">
         <div className="ac-chips" role="group" aria-label="按种类筛">
-          {FILTERS.map(([k, label]) => (
+          {FILTERS.filter(([k]) => owner || k !== "admin").map(([k, label]) => (
             <button key={k} type="button" className="ac-chip dark" aria-pressed={kind === k} onClick={() => setKind(k)}>
               {label}
             </button>
           ))}
         </div>
+        {owner && people.length > 1 && (
+          <label className="ac-inline-label">
+            谁
+            <select value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">所有人</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.alias === gate.alias ? "你" : p.alias}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       {note && <p className="ac-notice">{note}</p>}
 
@@ -118,6 +147,7 @@ export default function Log() {
               </span>
               <span className={`ac-log-text${e.undone ? " undone" : ""}`}>
                 {logText(e)}
+                {answerWords(e, owner)}
                 {e.undone ? "（撤销了）" : ""}
               </span>
               {e.target ? (

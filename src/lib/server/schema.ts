@@ -973,7 +973,7 @@ export const admins = pgTable("admins", {
   pausedUntil: at("paused_until"),
   pauses: integer("pauses").notNull().default(0),
   pauseReason: text("pause_reason"),
-});
+}, (t) => [uniqueIndex("admins_alias_idx").on(t.alias)]);
 
 /** The 管理台's backup codes (src/lib/server/admins.ts), each good once: only an HMAC of each is kept (seal.ts) */
 export const adminBackupCodes = pgTable(
@@ -1010,7 +1010,13 @@ export const adminLog = pgTable(
     detail: text("detail"),
     undoneAt: at("undone_at"),
   },
-  (t) => [index("admin_log_at_idx").on(t.at), index("admin_log_actor_idx").on(t.actorId, t.at), index("admin_log_target_idx").on(t.targetId)],
+  (t) => [
+    index("admin_log_at_idx").on(t.at),
+    index("admin_log_actor_idx").on(t.actorId, t.at),
+    index("admin_log_target_idx").on(t.targetId),
+    // 撤销 marks the lines of what it undid, and a ban asked for is answered by lines that name the request
+    index("admin_log_action_idx").on(t.actionId).where(sql`${t.actionId} is not null`),
+  ],
 );
 
 /**
@@ -1030,6 +1036,36 @@ export const adminNotes = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("admin_notes_user_idx").on(t.userId, t.createdAt)],
+);
+
+/**
+ * What a moderator asks the owner to do (src/lib/server/adminRequests.ts): for now only a ban, which only the
+ * owner may do. One open at a time per account. Gone with the account (a ban deletes it; the 操作记录 keeps what
+ * happened), and answered ones after KEEP_ANSWERED_REQUEST_DAYS.
+ */
+export const adminRequests = pgTable(
+  "admin_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** "ban" */
+    action: text("action").notNull(),
+    byUserId: uuid("by_user_id").references(() => users.id, { onDelete: "set null" }),
+    byAlias: text("by_alias").notNull(),
+    /** The community rule broken (src/lib/safety.ts RULES) */
+    rule: text("rule").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: createdAt(),
+    answeredAt: at("answered_at"),
+    /** "done" or "declined" */
+    answer: text("answer"),
+  },
+  (t) => [
+    uniqueIndex("admin_requests_open_idx").on(t.userId).where(sql`${t.answeredAt} is null`),
+    index("admin_requests_answered_idx").on(t.answeredAt),
+  ],
 );
 
 /**
@@ -1220,4 +1256,5 @@ export type UserRow = typeof users.$inferSelect;
 export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;
 export type AdminRow = typeof admins.$inferSelect;
+export type AdminRequestRow = typeof adminRequests.$inferSelect;
 export type ModActionRow = typeof modActions.$inferSelect;

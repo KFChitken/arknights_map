@@ -13,6 +13,7 @@ import { demoEnabled, watchEnabled } from "./lib/server/env";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
+import { startAdmins } from "./lib/server/admins";
 import { startNotices } from "./lib/server/notices";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { spreadFireStacks } from "./lib/server/talulah";
@@ -70,6 +71,9 @@ await hearOthers().catch(failed("live", "Listening for the other processes' nudg
 
 // 公告, kept in memory by every process and read before the first page asks (none, if they cannot be read)
 await startNotices();
+
+// the moderators, kept in memory by every process for the map's buttons (none, if they cannot be read)
+await startAdmins();
 
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, eq, gt, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import QRCode from "qrcode";
 import {
   clockWords,
@@ -14,28 +14,33 @@ import {
   pausedWords,
   SETUP_LOGIN_MINUTES,
   UNLOCK_HOURS,
+  VIEW_LIMIT,
+  VIEW_PAUSE_HOURS,
   type AdminLogKind,
   type AdminRole,
   type GateState,
   type GateWho,
+  type PauseReason,
   type SetupStart,
 } from "../adminConsole";
 import { beijingShort } from "../beijing";
 import { currentSessionId } from "./auth";
 import { db } from "./db";
-import { ADMIN_EMAILS } from "./env";
+import { ADMIN_EMAILS, SITE_URL } from "./env";
 import { HttpError } from "./http";
+import { onReload } from "./live";
 import { sendAdminMail } from "./mail";
 import { adminBackupCodes, adminLog, admins, sessions, users, type AdminRow, type UserRow } from "./schema";
 import { backupHash, makeBackupCodes, open, seal } from "./seal";
-import { logError } from "./signals";
+import { errorCode, logError } from "./signals";
 import { cleanCode, groupedSecret, newTotpSecret, rightStep, totpUri } from "./totp";
 
 /**
  * The 管理台's door. Who may come in: the owner (a sign-in email in ADMIN_EMAILS, which decides it whatever the
- * admins table says) and, later, the moderators the owner adds. Coming in takes an authenticator code on each
- * device every UNLOCK_HOURS, the heaviest steps one from the last FRESH_MINUTES, and wrong codes pause the person
- * for a while. Everything done inside is kept in admin_log (logAdmin).
+ * admins table says) and the moderators the owner adds (adminTeam.ts), who first agree to the rules (pledge).
+ * Coming in takes an authenticator code on each device every UNLOCK_HOURS, the heaviest steps one from the last
+ * FRESH_MINUTES, and wrong codes pause the person for a while (a moderator also when they open too many accounts
+ * in an hour, countView). Everything done inside is kept in admin_log (logAdmin).
  */
 
 const MINUTE = 60_000;
@@ -44,8 +49,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Someone the door lets in: their role, what the 管理台 calls them, and their row */
 export type Admin = { userId: string; role: AdminRole; alias: string; row: AdminRow };
-/** Who did something, as admin_log and mod_actions keep it */
-export type Actor = { id: string; alias: string };
+/** Who did something, as admin_log and mod_actions keep it, and their role, which decides what they see and may do */
+export type Actor = { id: string; alias: string; role: AdminRole };
 /** This device's sign-in, as far as the door needs it */
 export type AdminSession = { id: string; createdAt: Date; adminUntil: Date | null; adminFreshAt: Date | null };
 /** A request that came through the door: who, as a player and as an admin, and from which sign-in */
@@ -53,7 +58,67 @@ export type AdminContext = { admin: Admin; user: UserRow; session: AdminSession 
 
 export const isOwnerEmail = (email: string | null | undefined) => Boolean(email && ADMIN_EMAILS.includes(email));
 
-export const actorOf = (admin: Admin): Actor => ({ id: admin.userId, alias: admin.alias });
+export const actorOf = (admin: Admin): Actor => ({ id: admin.userId, alias: admin.alias, role: admin.role });
+
+/**
+ * Everyone who may come into the 管理台, and as what: the owner (by ADMIN_EMAILS, even before their first visit) and
+ * the moderators. A moderator never sees them: not the cases about them, nor their accounts in a search or opened.
+ */
+export async function staffRoles(): Promise<Map<string, AdminRole>> {
+  const [rows, owners] = await Promise.all([
+    db.select({ id: admins.userId, role: admins.role }).from(admins),
+    ADMIN_EMAILS.length ? db.select({ id: users.id }).from(users).where(inArray(users.email, ADMIN_EMAILS)) : [],
+  ]);
+  const roles = new Map<string, AdminRole>(rows.map((r) => [r.id, r.role === "owner" ? "owner" : "mod"]));
+  for (const o of owners) roles.set(o.id, "owner");
+  return roles;
+}
+
+// ---- the moderators, as the map knows them ----
+
+/**
+ * The moderators, held in memory by every process for the map alone (me() adds mod: true, and the map shows them
+ * 看被举报的蟑螂): read when the process starts, again on every process when the owner adds or removes one
+ * (reloadEverywhere("admins")), and every 5 minutes in case the word was missed. Whether they may then do anything
+ * is the database's to say, on every request to the 管理台's endpoints (enter). On globalThis, as notices.ts.
+ */
+type Mods = { ids: ReadonlySet<string>; loading: Promise<void> | null; again: boolean; started: boolean };
+const g = globalThis as unknown as { adminMods?: Mods };
+const mods = (g.adminMods ??= { ids: new Set(), loading: null, again: false, started: false });
+const MODS_RELOAD_MS = 5 * 60_000;
+
+/** Read the moderators again. Asked again meanwhile, it reads once more after, so the last change is never missed. */
+export function loadMods(): Promise<void> {
+  if (mods.loading) {
+    mods.again = true;
+    return mods.loading;
+  }
+  const loading = (async () => {
+    try {
+      do {
+        mods.again = false;
+        const rows = await db.select({ id: admins.userId }).from(admins).where(eq(admins.role, "mod"));
+        mods.ids = new Set(rows.map((r) => r.id));
+      } while (mods.again);
+    } finally {
+      mods.loading = null;
+    }
+  })();
+  mods.loading = loading;
+  return loading;
+}
+
+/** At the start of every process (src/instrumentation-node.ts). Never throws: until they can be read, the map shows none. */
+export async function startAdmins() {
+  if (mods.started) return;
+  mods.started = true;
+  onReload("admins", loadMods);
+  setInterval(() => loadMods().catch((e) => console.error("admins: reading the moderators again failed", errorCode(e))), MODS_RELOAD_MS).unref();
+  await loadMods().catch((e) => console.error("admins: reading the moderators failed, so the map shows none for now", errorCode(e)));
+}
+
+/** Whether the map shows this player a moderator's tools: from memory, never asking the database */
+export const isModHere = (userId: string) => mods.ids.has(userId);
 
 /**
  * The person as the 管理台 knows them, from their admins row (if any): the owner gets one the first time they come
@@ -106,7 +171,16 @@ export async function adminContext(): Promise<AdminContext | null> {
   return admin ? { admin, user: row.user, session: row.session } : null;
 }
 
-const pausedUntil = (row: AdminRow, now: number) => (row.pausedUntil && row.pausedUntil.getTime() > now ? row.pausedUntil.getTime() : null);
+/** Paused now: until when, for how many minutes in all, and why; else null */
+type Pause = { until: number; minutes: number; reason: PauseReason };
+function pauseOf(row: AdminRow, now: number): Pause | null {
+  const until = row.pausedUntil?.getTime() ?? 0;
+  if (until <= now) return null;
+  const reason: PauseReason = row.pauseReason === "views" ? "views" : "codes";
+  return { until, minutes: reason === "views" ? VIEW_PAUSE_HOURS * 60 : pauseMinutes(row.pauses), reason };
+}
+/** The owner needs no rules read; a moderator reads them once, before their first authenticator */
+const pledged = (admin: Admin) => admin.role === "owner" || Boolean(admin.row.pledgedAt);
 const unlockedUntil = (s: AdminSession, now: number) => (s.adminUntil && s.adminUntil.getTime() > now ? s.adminUntil.getTime() : null);
 const recentLogin = (s: AdminSession, now: number) => now - s.createdAt.getTime() < SETUP_LOGIN_MINUTES * MINUTE;
 const whoOf = (ctx: AdminContext): GateWho => ({ alias: ctx.admin.alias, role: ctx.admin.role, email: maskEmail(ctx.user.email) });
@@ -135,21 +209,21 @@ export async function backupCodesLeft(userId: string) {
 /** Where this person stands at the door, on this device */
 export async function gateState(ctx: AdminContext, now = Date.now()): Promise<GateState> {
   const who = whoOf(ctx);
-  const paused = pausedUntil(ctx.admin.row, now);
-  if (paused) return { ...who, state: "paused", until: paused, minutes: pauseMinutes(ctx.admin.row.pauses) };
-  if (!ctx.admin.row.totpSecret) return { ...who, state: "setup", recentLogin: recentLogin(ctx.session, now) };
+  const paused = pauseOf(ctx.admin.row, now);
+  if (paused) return { ...who, state: "paused", ...paused };
+  if (!ctx.admin.row.totpSecret) return { ...who, state: "setup", recentLogin: recentLogin(ctx.session, now), pledged: pledged(ctx.admin) };
   const backupLeft = await backupCodesLeft(ctx.admin.userId);
   if (!unlockedUntil(ctx.session, now)) return { ...who, state: "locked", triesLeft: Math.max(1, CODE_TRIES - ctx.admin.row.fails), backupLeft };
   return openState(ctx, backupLeft, now);
 }
 
-const pausedError = (ctx: AdminContext, until: number, minutes: number, now: number) =>
-  new HttpError(423, pausedWords(ctx.admin.role, until, minutes, now), "ADMIN_PAUSED", { until, minutes });
+const pausedError = (ctx: AdminContext, p: Pause, now: number) =>
+  new HttpError(423, pausedWords(ctx.admin.role, p.until, p.minutes, now, p.reason), "ADMIN_PAUSED", { ...p });
 
 /** Ops the door lets through whatever the state: where one stands, and locking this device */
 const ALWAYS = new Set(["gate", "lock"]);
-/** Ops for setting up an authenticator, only before there is one */
-const SETUP_OPS = new Set(["setupStart", "setupConfirm"]);
+/** Ops for setting up an authenticator (a moderator agreeing to the rules first), only before there is one */
+const SETUP_OPS = new Set(["pledge", "setupStart", "setupConfirm"]);
 
 /**
  * The door, for every request to the 管理台's endpoints, in this order: not someone it lets in (404, as if there
@@ -160,8 +234,8 @@ export async function enter(op: string, now = Date.now()): Promise<AdminContext>
   const ctx = await adminContext();
   if (!ctx) throw new HttpError(404, "没有这个功能。");
   if (ALWAYS.has(op)) return ctx;
-  const paused = pausedUntil(ctx.admin.row, now);
-  if (paused) throw pausedError(ctx, paused, pauseMinutes(ctx.admin.row.pauses), now);
+  const paused = pauseOf(ctx.admin.row, now);
+  if (paused) throw pausedError(ctx, paused, now);
   if (!ctx.admin.row.totpSecret) {
     if (SETUP_OPS.has(op)) return ctx;
     throw new HttpError(403, "先绑定验证器，才能用管理台。", "ADMIN_SETUP");
@@ -213,10 +287,10 @@ async function wrongCode(ctx: AdminContext, now: number, code: "ADMIN_WRONG" | "
       ctx.admin.userId,
       "gate.pause",
       `${ctx.admin.alias} 连续输错验证码，暂停到 ${clockWords(until, now)}`,
-      `${ctx.admin.alias} 连续输错了 ${CODE_TRIES} 次${backup ? "备用码" : "验证码"}，管理台先暂停 ${minutesWords(minutes)}，到北京时间 ${beijingShort(until)}。\n\n如果不是本人在输，说明有人登进了这个舟P账号：在「我的资料」里退出其他设备。`,
+      `${ctx.admin.alias} 连续输错了 ${CODE_TRIES} 次${backup ? "备用码" : "验证码"}，管理台先暂停 ${minutesWords(minutes)}，到北京时间 ${beijingShort(until)}。\n\n${ifNotThem(ctx.admin, "在输")}`,
       now,
     );
-    throw pausedError(ctx, until, minutes, now);
+    throw pausedError(ctx, { until, minutes, reason: "codes" }, now);
   }
   const left = CODE_TRIES - (row?.fails ?? 0);
   const next = minutesWords(pauseMinutes((row?.pauses ?? 0) + 1));
@@ -275,7 +349,11 @@ export async function unlock(ctx: AdminContext, input: unknown, now = Date.now()
       userId,
       "gate.backup",
       `${ctx.admin.alias} 用了一个备用码，还剩 ${left} 个`,
-      `${ctx.admin.alias} 在北京时间 ${beijingShort(now)} 用备用码进了管理台，还剩 ${left} 个备用码。\n\n如果不是本人，说明有人登进了这个舟P账号，还拿到了备用码：马上在管理台锁上所有设备、重新生成备用码，再在「我的资料」里退出其他设备。`,
+      `${ctx.admin.alias} 在北京时间 ${beijingShort(now)} 用备用码进了管理台，还剩 ${left} 个备用码。\n\n${
+        ctx.admin.role === "owner"
+          ? "如果不是本人，说明有人登进了这个舟P账号，还拿到了备用码：马上在管理台锁上所有设备、重新生成备用码，再在「我的资料」里退出其他设备。"
+          : ifNotThem(ctx.admin, "")
+      }`,
       now,
     );
     return openState(ctx, left, now);
@@ -316,6 +394,24 @@ export async function lockAllDevices(ctx: AdminContext) {
 
 function requireRecentLogin(ctx: AdminContext, now: number) {
   if (!recentLogin(ctx.session, now)) throw new HttpError(403, `为了安全，先退出再登录一次，${SETUP_LOGIN_MINUTES} 分钟内来绑。`, "ADMIN_RELOGIN");
+  if (!pledged(ctx.admin)) throw new HttpError(403, "先读完管理员守则。");
+}
+
+/**
+ * 管理员守则, agreed to (「我读过了，会照着做」): a moderator's first step, once, before their first authenticator. One
+ * reset later does not ask again. The owner needs none (MOD_ONLY).
+ */
+export async function pledge(ctx: AdminContext, now = Date.now()): Promise<GateState> {
+  if (!ctx.admin.row.pledgedAt) {
+    const [row] = await db
+      .update(admins)
+      .set({ pledgedAt: sql`coalesce(${admins.pledgedAt}, ${new Date(now).toISOString()}::timestamptz)` })
+      .where(eq(admins.userId, ctx.admin.userId))
+      .returning();
+    if (row) ctx.admin.row = row;
+    await logAdmin(actorOf(ctx.admin), "gate", "gate.pledge", {}, now);
+  }
+  return gateState(ctx, now);
 }
 
 /** 绑定验证器, first: a new secret waits (sealed) for its first right code; the QR code and the secret to type in */
@@ -377,7 +473,11 @@ export async function setupConfirm(ctx: AdminContext, input: unknown, now = Date
     userId,
     "gate.setup",
     `${ctx.admin.alias} 绑好了验证器`,
-    `${ctx.admin.alias} 在北京时间 ${beijingShort(now)} 绑好了验证器，以后进管理台都要输验证器里的数字。\n\n如果不是本人绑的，说明有人登进了这个舟P账号：在「我的资料」里退出其他设备，再在服务器上重置这个人的验证器（scripts/admin-reset.sql）。`,
+    `${ctx.admin.alias} 在北京时间 ${beijingShort(now)} 绑好了验证器，以后进管理台都要输验证器里的数字。\n\n${
+      ctx.admin.role === "owner"
+        ? "如果不是本人绑的，说明有人登进了这个舟P账号：在「我的资料」里退出其他设备，再在服务器上重置这个人的验证器（scripts/admin-reset.sql）。"
+        : ifNotThem(ctx.admin, "绑的")
+    }`,
     now,
   );
   return { codes, state: openState(ctx, codes.length, now) };
@@ -392,11 +492,28 @@ export async function renewBackupCodes(ctx: AdminContext, now = Date.now()) {
 
 /**
  * 重新绑验证器: the person's authenticator and backup codes go, and every device of theirs locks; next time they set
- * one up again. Only one's own for now (a lost phone: come in by backup code, then this).
+ * one up again (a moderator without reading the rules again). One's own (a lost phone: come in by backup code, then
+ * this), or for the owner a moderator's, who is told so by email; the owner is told either way, in case it was not them.
  */
-export async function resetAdminTotp(ctx: AdminContext, userId: unknown, now = Date.now()) {
+export async function resetAdminTotp(ctx: AdminContext, input: unknown, now = Date.now()) {
+  // { userId } as the 管理员 page sends it, or the id alone; none: one's own
+  const userId = input && typeof input === "object" ? (input as { userId?: unknown }).userId : input;
   const id = userId === undefined || userId === null || userId === "" ? ctx.admin.userId : String(userId);
-  if (id !== ctx.admin.userId) throw new HttpError(403, "只能重置你自己的验证器。");
+  const own = id === ctx.admin.userId;
+  let them = { alias: ctx.admin.alias, email: null as string | null };
+  if (!own) {
+    if (ctx.admin.role !== "owner") throw new HttpError(403, "只能重置你自己的验证器。");
+    const [row] = UUID.test(id)
+      ? await db
+          .select({ alias: admins.alias, role: admins.role, email: users.email })
+          .from(admins)
+          .innerJoin(users, eq(users.id, admins.userId))
+          .where(eq(admins.userId, id))
+          .limit(1)
+      : [];
+    if (!row || row.role !== "mod") throw new HttpError(400, "找不到这位管理员了。");
+    them = row;
+  }
   await db.transaction(async (tx) => {
     await tx
       .update(admins)
@@ -405,14 +522,47 @@ export async function resetAdminTotp(ctx: AdminContext, userId: unknown, now = D
     await tx.delete(adminBackupCodes).where(eq(adminBackupCodes.userId, id));
     await tx.update(sessions).set({ adminUntil: null, adminFreshAt: null }).where(eq(sessions.userId, id));
   });
-  await logAdmin(actorOf(ctx.admin), "admin", "admin.reset", { targetId: id, detail: "重置了验证器" }, now);
+  await logAdmin(actorOf(ctx.admin), "admin", "admin.reset", { targetId: id, detail: own ? "重置了自己的验证器" : `重置了「${them.alias}」的验证器` }, now);
+  if (!own) await mailPerson(them.email, "舟P 管理台：你的验证器被重置了", `站长重置了你的验证器。下次打开管理台时重新绑定。\n\n${SITE_URL}/admin`);
   await mailOwner(
     id,
     "admin.reset",
-    `${ctx.admin.alias} 重置了验证器`,
-    `${ctx.admin.alias} 在北京时间 ${beijingShort(now)} 重置了自己的验证器，备用码也都作废了。下次进管理台要重新绑。\n\n如果不是本人，说明有人登进了这个舟P账号：在「我的资料」里退出其他设备。`,
+    own ? `${ctx.admin.alias} 重置了验证器` : `重置了「${them.alias}」的验证器`,
+    own
+      ? `${ctx.admin.alias} 在北京时间 ${beijingShort(now)} 重置了自己的验证器，备用码也都作废了。下次进管理台要重新绑。\n\n如果不是本人，说明有人登进了这个舟P账号：在「我的资料」里退出其他设备。`
+      : `北京时间 ${beijingShort(now)}，「${them.alias}」的验证器被重置了，备用码也都作废了。TA 下次进管理台要重新绑。\n\n${NOT_YOU}`,
     now,
   );
+}
+
+/**
+ * A moderator's look at one more account (one not in the 操作记录 within LOOK_MINUTES): the VIEW_LIMITth within an
+ * hour is not shown, and pauses them VIEW_PAUSE_HOURS (the owner may lift it early, adminTeam.ts unpauseAdmin) and
+ * tells the owner, once (only one request sets the pause). The map's 看被举报的蟑螂 is not counted, and the owner has
+ * no limit.
+ */
+export async function countView(ctx: AdminContext, now = Date.now()) {
+  if (ctx.admin.role !== "mod") return;
+  const seen = await db.$count(adminLog, and(eq(adminLog.actorId, ctx.admin.userId), eq(adminLog.what, "view.account"), gt(adminLog.at, new Date(now - HOUR))));
+  if (seen + 1 < VIEW_LIMIT) return;
+  const pause: Pause = { until: now + VIEW_PAUSE_HOURS * HOUR, minutes: VIEW_PAUSE_HOURS * 60, reason: "views" };
+  const set = await db
+    .update(admins)
+    .set({ pausedUntil: new Date(pause.until), pauseReason: "views" })
+    .where(and(eq(admins.userId, ctx.admin.userId), or(isNull(admins.pausedUntil), lt(admins.pausedUntil, new Date(now)))))
+    .returning({ id: admins.userId });
+  if (set.length) {
+    const alias = ctx.admin.alias;
+    await logAdmin(actorOf(ctx.admin), "gate", "gate.views", { detail: `一小时里打开账号到了 ${VIEW_LIMIT} 个，暂停 ${VIEW_PAUSE_HOURS} 小时` }, now);
+    await mailOwner(
+      ctx.admin.userId,
+      "gate.views",
+      `${alias} 一小时里看了太多账号，暂停到 ${clockWords(pause.until, now)}`,
+      `${alias} 一小时里打开账号到了 ${VIEW_LIMIT} 个的上限，管理台先暂停 ${VIEW_PAUSE_HOURS} 小时，到北京时间 ${beijingShort(pause.until)}。\n\n如果 TA 是在正常处理举报，可以在管理台的「管理员」页提前解除；如果不是，在那里移除 TA。`,
+      now,
+    );
+  }
+  throw pausedError(ctx, pause, now);
 }
 
 /**
@@ -452,12 +602,18 @@ export async function lookedLately(actor: Actor, targetId: string, now = Date.no
   return n > 0;
 }
 
+/** The end of a mail to the owner about a step they may not have taken themselves */
+export const NOT_YOU = "如果不是你做的，说明有人登进了你的舟P账号：马上在管理台锁上所有设备，再在「我的资料」里退出其他设备。";
+
+/** For the owner, about a moderator at the door: what to do if it was not them */
+const ifNotThem = (admin: Admin, doing: string) => `不是 ${admin.alias} 本人${doing}的话，去管理台的「管理员」页重置 TA 的验证器，或者移除 TA。`;
+
 /**
- * Tell the owner about something at the door: at most once an hour for the same thing about the same person (its
+ * Tell the owner about something in the 管理台: at most once an hour for the same thing about the same person (its
  * line in admin_log is already written, so one more there within the hour means one was sent). Subjects start
- * 「舟P 管理台：」. Never anyone's email, only what the 管理台 calls them.
+ * 「舟P 管理台：」. Never a player's email or name, only what the 管理台 calls its people.
  */
-async function mailOwner(personId: string, what: string, subject: string, text: string, now: number) {
+export async function mailOwner(personId: string, what: string, subject: string, text: string, now: number) {
   if (!ADMIN_EMAILS.length) return;
   const [recent] = await db
     .select({ n: count() })
@@ -466,6 +622,16 @@ async function mailOwner(personId: string, what: string, subject: string, text: 
   if (recent.n > 1) return;
   try {
     await sendAdminMail(ADMIN_EMAILS, `舟P 管理台：${subject}`, text);
+  } catch (e) {
+    logError("admin mail", e);
+  }
+}
+
+/** Tell one of the 管理台's people something at their own sign-in email (never anyone else's details) */
+export async function mailPerson(email: string | null | undefined, subject: string, text: string) {
+  if (!email) return;
+  try {
+    await sendAdminMail([email], subject, text);
   } catch (e) {
     logError("admin mail", e);
   }

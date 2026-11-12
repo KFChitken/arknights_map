@@ -201,7 +201,8 @@ export const LOG_KIND: Record<AdminLogKind | "alert", { name: string; bg: string
 };
 
 /** Lines of the log that want a second look */
-export const isAlert = (e: AdminLogEntry) => e.what === "gate.fail" || e.what === "gate.pause" || e.what === "gate.backup" || e.what === "admin.reset";
+export const isAlert = (e: AdminLogEntry) =>
+  e.what === "gate.fail" || e.what === "gate.pause" || e.what === "gate.views" || e.what === "gate.backup" || e.what === "admin.reset";
 
 const SETTLED: Record<string, string> = {
   "act.clearName": "清掉名字",
@@ -241,6 +242,8 @@ export function logText(e: AdminLogEntry) {
       return "锁上了这台设备";
     case "gate.setup":
       return "绑好了验证器，存了备用码";
+    case "gate.pledge":
+      return "读了管理员守则，答应照着做";
     default:
       return d || e.what;
   }

@@ -9,7 +9,7 @@ export const MIN_SIGNUP_AGE = 18;
  * that agreed before it see 「隐私说明更新了」 and do nothing others see until they
  * agree (src/lib/server/consent.ts). Small wording fixes only change the page's date.
  */
-export const POLICY_UPDATED_AT = new Date("2026-10-31T00:00+08:00");
+export const POLICY_UPDATED_AT = new Date("2026-11-12T11:00+08:00");
 export const LOGIN_CODE_TTL_MIN = 10;
 /**
  * How long one address waits for another code: 2 minutes after a code's first sending, 5 after its second,
@@ -94,6 +94,8 @@ export const BLOCKS_WINDOW_DAYS = 7;
 export const KEEP_MOD_ACTION_DAYS = 365;
 /** The 管理台's own record of what was done and looked at in it, and its notes on accounts, are kept this long */
 export const KEEP_ADMIN_LOG_DAYS = 365;
+/** A ban a moderator asked for, once the owner answered it, is kept this long (the 操作记录 keeps what happened) */
+export const KEEP_ANSWERED_REQUEST_DAYS = 30;
 /** Handled reports are deleted after this many days (see the privacy page). */
 export const KEEP_REPORT_DAYS = 90;
 

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FRESH_MINUTES, type GateState } from "@/lib/adminConsole";
+import { FRESH_MINUTES, MOD_PAGES, type AdminRole, type BanRequestCard, type GateState } from "@/lib/adminConsole";
 import type { AdminAppeal, CasePage } from "@/lib/safety";
 import Accounts from "./Accounts";
+import Admins from "./Admins";
 import { adminCall, AdminError, errorWords, type CallOptions } from "./api";
 import Cases from "./Cases";
 import { ConsoleContext, PAGES, useConsole, type Console, type OpenGate, type Page, type Route } from "./context";
@@ -16,28 +17,45 @@ import { BrandMark, CodeInput, Icon } from "./ui";
 import "./console.css";
 
 /**
- * /admin, the 管理台 (src/app/admin/page.tsx): its door until it lets one in, then 待处理, 搜索账号, 操作记录 and
- * 网站和工具 under one menu. Every look and step goes through src/app/api/admin/[op] and into the 操作记录.
+ * /admin, the 管理台 (src/app/admin/page.tsx): its door until it lets one in, then 待处理, 搜索账号, 网站和工具,
+ * 管理员 and 操作记录 under one menu. A moderator has less of it: 网站和工具 is only the name blocklist, 操作记录 only
+ * their own, and no 管理员 (MOD_PAGES). Every look and step goes through src/app/api/admin/[op] and into the 操作记录.
  */
 
-const TITLES: Record<Page, { title: string; sub: string }> = {
+type Title = { title: string; sub: string };
+
+const TITLES: Record<Page, Title & { mod?: Title }> = {
   cases: { title: "待处理", sub: "红色先看：可能未成年、留了联系方式、一直贴着放、放在不合适的地方。" },
   accounts: { title: "搜索账号", sub: "找到一个人，看 TA 的资料和以前的记录，没人举报也能直接处理。" },
-  log: { title: "操作记录", sub: "在管理台的每次查看和处理都会记下来，站长能看到。" },
-  site: { title: "网站和工具", sub: "网站状态、这周的人、名字黑名单、查邮箱和称号。" },
+  log: {
+    title: "操作记录",
+    sub: "谁、什么时候、看了谁、做了什么。留 1 年。管理员只能看到自己的。",
+    mod: { title: "我的操作记录", sub: "你在管理台的每次查看、搜索和处理都会记下来，站长能看到。" },
+  },
+  site: {
+    title: "网站和工具",
+    sub: "网站状态、这周的人、名字黑名单、查邮箱和称号。",
+    mod: { title: "名字黑名单", sub: "名字里有这些词就存不上。加词、删词都会记进操作记录。" },
+  },
+  admins: { title: "管理员", sub: "只有站长能看到这一页。" },
 };
 
-const NAV: { page: Page; label: string; icon: "cases" | "accounts" | "site" | "log" }[] = [
+const NAV: { page: Page; label: string; modLabel?: string; icon: "cases" | "accounts" | "site" | "log" | "admins" }[] = [
   { page: "cases", label: "待处理", icon: "cases" },
   { page: "accounts", label: "搜索账号", icon: "accounts" },
-  { page: "site", label: "网站和工具", icon: "site" },
-  { page: "log", label: "操作记录", icon: "log" },
+  { page: "site", label: "网站和工具", modLabel: "名字黑名单", icon: "site" },
+  { page: "admins", label: "管理员", icon: "admins" },
+  { page: "log", label: "操作记录", modLabel: "我的操作记录", icon: "log" },
 ];
+
+/** The pages someone sees: a moderator not the owner's (MOD_PAGES) */
+const seesPage = (role: AdminRole, page: Page) => role === "owner" || MOD_PAGES.has(page);
 
 export type Start = { page?: string; caseId?: string; account?: string };
 
-const routeOf = (s: Start): Route => {
-  const page = (PAGES as readonly string[]).includes(s.page ?? "") ? (s.page as Page) : "cases";
+const routeOf = (s: Start, role: AdminRole): Route => {
+  const known = (PAGES as readonly string[]).includes(s.page ?? "") ? (s.page as Page) : "cases";
+  const page = seesPage(role, known) ? known : "cases";
   if (s.caseId) return { page: "cases", caseId: s.caseId };
   if (page === "accounts" && s.account) return { page, account: s.account };
   return { page };
@@ -52,9 +70,9 @@ const urlOf = (r: Route) => {
   return s ? `/admin?${s}` : "/admin";
 };
 
-const searchRoute = () => {
+const searchRoute = (role: AdminRole) => {
   const q = new URLSearchParams(window.location.search);
-  return routeOf({ page: q.get("page") ?? undefined, caseId: q.get("case") ?? undefined, account: q.get("account") ?? undefined });
+  return routeOf({ page: q.get("page") ?? undefined, caseId: q.get("case") ?? undefined, account: q.get("account") ?? undefined }, role);
 };
 
 export default function AdminConsole({ initial, start }: { initial: GateState; start: Start }) {
@@ -85,9 +103,13 @@ function Inside({
   onGate: (g: GateState) => void;
   refreshGate: () => Promise<void>;
 }) {
-  const [route, setRoute] = useState<Route>(() => routeOf(start));
+  const role = gate.role;
+  const owner = role === "owner";
+  const [route, setRoute] = useState<Route>(() => routeOf(start, role));
   const [count, setCount] = useState<number | null>(null);
   const [said, setSaid] = useState<{ key: number; text: string } | null>(null);
+  // the page's own line in the header, kept only for the page that set it
+  const [line, setLineFor] = useState<{ page: Page; text: string } | null>(null);
   const fresh = useRef<number | null>(gate.freshUntil);
   const { held, hold, undo } = useHeld();
   const [now, setNow] = useState(() => Date.now());
@@ -103,10 +125,10 @@ function Inside({
   }, [gate.until, refreshGate]);
 
   useEffect(() => {
-    const back = () => setRoute(searchRoute());
+    const back = () => setRoute(searchRoute(role));
     window.addEventListener("popstate", back);
     return () => window.removeEventListener("popstate", back);
-  }, []);
+  }, [role]);
 
   const go = useCallback((r: Route) => {
     window.history.pushState(null, "", urlOf(r));
@@ -144,12 +166,17 @@ function Inside({
   const pageNow = useRef(route.page);
   pageNow.current = route.page;
   const recount = useCallback(() => {
-    Promise.all([call<CasePage>("cases", [{ auto: true }]), call<AdminAppeal[]>("appeals")])
-      .then(([page, appeals]) => {
-        if (pageNow.current !== "cases") setCount(page.levels.red + page.levels.yellow + page.levels.green + appeals.length);
+    Promise.all([
+      call<CasePage>("cases", [{ auto: true }]),
+      call<AdminAppeal[]>("appeals"),
+      owner ? call<BanRequestCard[]>("banRequests") : Promise.resolve([]),
+    ])
+      .then(([page, appeals, requests]) => {
+        if (pageNow.current !== "cases") setCount(page.levels.red + page.levels.yellow + page.levels.green + appeals.length + requests.length);
       })
       .catch(() => {});
-  }, [call]);
+  }, [call, owner]);
+  const setLine = useCallback((text: string | null) => setLineFor(text === null ? null : { page: pageNow.current, text }), []);
   useEffect(() => {
     if (route.page !== "cases") recount();
     // once, on opening
@@ -157,13 +184,16 @@ function Inside({
   }, []);
 
   const ctx = useMemo<Console>(
-    () => ({ gate, call, say, hold, go, needsFresh, setCounts: setCount, recount }),
-    [gate, call, say, hold, go, needsFresh, recount],
+    () => ({ gate, call, say, hold, go, needsFresh, setCounts: setCount, recount, setLine }),
+    [gate, call, say, hold, go, needsFresh, recount, setLine],
   );
 
   const left = Math.max(0, gate.until - now);
   const leftWords = left >= 3_600_000 ? `${Math.floor(left / 3_600_000)} 小时` : `${Math.max(1, Math.ceil(left / 60_000))} 分钟`;
-  const t = TITLES[route.page];
+  const t = (!owner && TITLES[route.page].mod) || TITLES[route.page];
+  const own = line?.page === route.page ? line.text : "";
+  // 管理员's count goes before its words, 待处理's today after
+  const sub = route.page === "admins" ? `${own}${t.sub}` : `${t.sub}${own}`;
 
   return (
     <ConsoleContext.Provider value={ctx}>
@@ -176,7 +206,7 @@ function Inside({
               <span>只给管理员用</span>
             </div>
           </div>
-          {NAV.map((n) => (
+          {NAV.filter((n) => seesPage(role, n.page)).map((n) => (
             <a
               key={n.page}
               href={urlOf({ page: n.page })}
@@ -189,7 +219,7 @@ function Inside({
               }}
             >
               <Icon name={n.icon} />
-              <span className="ac-nav-label">{n.label}</span>
+              <span className="ac-nav-label">{(!owner && n.modLabel) || n.label}</span>
               {n.page === "cases" && count !== null && count > 0 && <span className="ac-nav-count">{count}</span>}
             </a>
           ))}
@@ -204,7 +234,7 @@ function Inside({
           <header className="ac-head">
             <div className="ac-head-text">
               <h1>{t.title}</h1>
-              <p>{t.sub}</p>
+              <p>{sub}</p>
             </div>
             <div className="ac-head-me">
               <span className="ac-verified">
@@ -219,6 +249,7 @@ function Inside({
           {route.page === "accounts" && <Accounts key={`accounts-${route.account ?? ""}`} start={route.account} />}
           {route.page === "log" && <Log />}
           {route.page === "site" && <Site />}
+          {route.page === "admins" && owner && <Admins />}
         </main>
 
         <div className="ac-bars" aria-live="polite">
@@ -246,7 +277,8 @@ type MenuStep = null | "menu" | "lockAll" | "newCodes" | "reset";
 
 /**
  * Who is in, and their own steps: 锁上 this device; from the menu under their name, 锁上所有设备, 重新生成备用码 and
- * 重新绑验证器 (the last two want a code from the last FRESH_MINUTES).
+ * the owner's 重新绑验证器 (the last two want a code from the last FRESH_MINUTES). A moderator's authenticator is reset
+ * by the owner, on the 管理员 page.
  */
 function MeMenu({ gate, onGate, refreshGate }: { gate: OpenGate; onGate: (g: GateState) => void; refreshGate: () => Promise<void> }) {
   const [step, setStep] = useState<MenuStep>(null);
@@ -282,7 +314,7 @@ function MeMenu({ gate, onGate, refreshGate }: { gate: OpenGate; onGate: (g: Gat
     <>
       <div className="ac-me" ref={menu}>
         <button type="button" className="ac-me-name" aria-haspopup="menu" aria-expanded={step === "menu"} onClick={() => setStep(step === "menu" ? null : "menu")}>
-          {gate.alias}（你）
+          {gate.role === "owner" ? `${gate.alias}（你）` : `${gate.alias} · 管理员`}
         </button>
         {step === "menu" && (
           <div className="ac-menu" role="menu">
@@ -292,9 +324,13 @@ function MeMenu({ gate, onGate, refreshGate }: { gate: OpenGate; onGate: (g: Gat
             <button type="button" role="menuitem" onClick={() => setStep("newCodes")}>
               重新生成备用码（还剩 {gate.backupLeft} 个）
             </button>
-            <button type="button" role="menuitem" onClick={() => setStep("reset")}>
-              重新绑验证器
-            </button>
+            {gate.role === "owner" ? (
+              <button type="button" role="menuitem" onClick={() => setStep("reset")}>
+                重新绑验证器
+              </button>
+            ) : (
+              <p className="ac-menu-note">换手机或者验证器丢了：请站长在「管理员」页重置你的验证器。</p>
+            )}
           </div>
         )}
       </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { pausedWords, SETUP_LOGIN_MINUTES, UNLOCK_HOURS, type GateState, type SetupStart } from "@/lib/adminConsole";
+import { MOD_RULES, pausedWords, SETUP_LOGIN_MINUTES, UNLOCK_HOURS, type GateState, type SetupStart } from "@/lib/adminConsole";
 import { adminCall, AdminError, errorWords } from "./api";
 import { BrandMark, CodeInput, Icon } from "./ui";
 
@@ -143,7 +143,7 @@ function Unlock({ gate, onGate }: { gate: Extract<GateState, { state: "locked" |
         )}
         {gate.state === "paused" && (
           <p role="alert" className="ac-paused">
-            {pausedWords(gate.role, gate.until, gate.minutes, now)}
+            {pausedWords(gate.role, gate.until, gate.minutes, now, gate.reason)}
           </p>
         )}
         <button type="submit" className="ac-btn primary tall full" disabled={paused || busy || (backup ? !typed.trim() : code.length < 6)}>
@@ -168,8 +168,9 @@ function Unlock({ gate, onGate }: { gate: Extract<GateState, { state: "locked" |
 }
 
 /**
- * 绑定验证器, then 存好备用码: the owner's two steps (moderators read their rules first, from the second step on).
- * Binding wants a sign-in from the last SETUP_LOGIN_MINUTES, so a stolen cookie cannot bind its own authenticator.
+ * 绑定验证器, then 存好备用码: the owner's two steps. A moderator reads the 管理员守则 and agrees to it first, once
+ * (a reset later does not ask again). Binding wants a sign-in from the last SETUP_LOGIN_MINUTES, so a stolen cookie
+ * cannot bind its own authenticator.
  */
 function Setup({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>; onGate: (g: GateState) => void }) {
   const [start, setStart] = useState<SetupStart | null>(null);
@@ -178,9 +179,11 @@ function Setup({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>;
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ codes: string[]; state: GateState } | null>(null);
+  const mod = gate.role === "mod";
+  const pledged = gate.pledged;
 
   useEffect(() => {
-    if (relogin) return;
+    if (relogin || !pledged) return;
     let live = true;
     adminCall<SetupStart>("setupStart")
       .then((s) => live && setStart(s))
@@ -192,7 +195,7 @@ function Setup({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>;
     return () => {
       live = false;
     };
-  }, [relogin]);
+  }, [relogin, pledged]);
 
   const confirm = async () => {
     if (code.length < 6) return;
@@ -208,10 +211,11 @@ function Setup({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>;
     setBusy(false);
   };
 
-  const step = done ? 2 : 1;
+  const labels = mod ? ["读管理员守则", "绑定验证器", "存好备用码"] : ["绑定验证器", "存好备用码"];
+  const step = (done ? 2 : pledged ? 1 : 0) + (mod ? 1 : 0);
   const steps = (
     <ol className="ac-steps" aria-label="步骤">
-      {["绑定验证器", "存好备用码"].map((label, i) => (
+      {labels.map((label, i) => (
         <li key={label} className={i + 1 === step ? "now" : i + 1 < step ? "past" : ""} aria-current={i + 1 === step ? "step" : undefined}>
           <span>{i + 1}</span>
           {label}
@@ -224,6 +228,8 @@ function Setup({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>;
     <Shell wide steps={steps} foot="绑好后站长会收到一封邮件。没绑好之前，管理台里什么都看不到。">
       {done ? (
         <BackupCodes codes={done.codes} onDone={() => onGate(done.state)} />
+      ) : !pledged ? (
+        <Pledge gate={gate} onGate={onGate} />
       ) : relogin ? (
         <div className="ac-stack">
           <div>
@@ -284,6 +290,49 @@ function Setup({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>;
         </div>
       )}
     </Shell>
+  );
+}
+
+/** 管理员守则: a moderator's first step, 「我读过了，会照着做」 before anything else (pledge) */
+function Pledge({ gate, onGate }: { gate: Extract<GateState, { state: "setup" }>; onGate: (g: GateState) => void }) {
+  const [read, setRead] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true);
+    try {
+      onGate(await adminCall<GateState>("pledge"));
+    } catch (e) {
+      setNote(errorWords(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="ac-stack">
+      <div>
+        <h1>欢迎，{gate.alias}</h1>
+        <p className="ac-sub">站长把你加成了舟P 的管理员。开始之前，先读一下这几条。</p>
+      </div>
+      <ol className="ac-rules">
+        {MOD_RULES.map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ol>
+      <label className="ac-check-card">
+        <input type="checkbox" checked={read} onChange={(e) => setRead(e.target.checked)} />
+        <span>我读过了，会照着做</span>
+      </label>
+      {note && (
+        <p role="alert" className="ac-error">
+          {note}
+        </p>
+      )}
+      <div>
+        <button type="button" className="ac-btn primary tall" disabled={!read || busy} onClick={go}>
+          下一步
+        </button>
+      </div>
+    </div>
   );
 }
 

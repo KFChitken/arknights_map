@@ -475,6 +475,8 @@ export type Me = {
   passwordNudge: boolean;
   /** Only for the admin: reports waiting, shown in a corner of the map */
   admin?: ReportCounts;
+  /** Only for a moderator: the map shows them 看被举报的蟑螂 (where roaches were reported), without the owner's counts */
+  mod?: true;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

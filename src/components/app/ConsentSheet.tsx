@@ -7,9 +7,9 @@ import Sheet from "./Sheet";
 
 /** What changed in the privacy policy this time (POLICY_UPDATED_AT); the next change replaces it. */
 const CHANGES = [
-  `现在只对满 ${MIN_SIGNUP_AGE} 岁的玩家开放；`,
-  "你的信息存在腾讯云香港服务器，验证码由 Resend USA 发送，需要你单独同意；",
-  "放下的蟑螂所有登录的舟P都能看到确切位置，需要你单独同意。",
+  "我请了几位管理员一起处理举报：他们能看到账号的名字和资料，邮箱是打码的；",
+  "管理员进管理页要用手机验证器，每次查看和处理都会记下来，留 1 年；",
+  "处理蟑螂的举报时，我能在地图上看到被举报的人的其他蟑螂在哪，只用来判断是不是故意的。",
 ];
 
 /**

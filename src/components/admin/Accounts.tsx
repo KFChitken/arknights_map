@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ACCOUNT_ACTIONS, type AdminAccount, type AdminHistoryItem, type AdminNote, type FoundAccount, type FoundAccounts } from "@/lib/adminConsole";
+import { ACCOUNT_ACTIONS, type AdminAccount, type AdminHistoryItem, type AdminNote, type AdminRole, type FoundAccount, type FoundAccounts } from "@/lib/adminConsole";
 import { beijingDate, beijingShort } from "@/lib/beijing";
 import { SUSPEND_DAYS, YELLOW_DAYS } from "@/lib/rules";
 import { reasonWords, RULES, type AdminAction, type RuleCode } from "@/lib/safety";
 import { ago } from "../app/InboxSheet";
 import { AdminError, errorWords } from "./api";
-import BanBox from "./BanBox";
+import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
 import { Empty, Facts, Mark, Tag } from "./ui";
 import { ACTION_WORDS, HELD_WORDS, historyWords, joinedWords, personFacts, reporterWords, savedName } from "./words";
@@ -15,8 +15,12 @@ import { ACTION_WORDS, HELD_WORDS, historyWords, joinedWords, personFacts, repor
 /**
  * 搜索账号: find anyone by name, the start of their id, a game UID or (the owner) their email; open them to see what
  * they wrote, the reports about them, what was done and the notes on them, and act on them even unreported, under
- * a rule picked first. Every search and every account opened goes into the 操作记录.
+ * a rule picked first. Every search and every account opened goes into the 操作记录. A moderator never finds the
+ * 管理台's own people, sees emails masked, and asks the owner for a ban instead of banning.
  */
+
+/** Of the 管理台's own people (only the owner finds them) */
+const staffWords = (staff: AdminRole | null) => (staff === "owner" ? "站长" : staff === "mod" ? "管理员" : null);
 
 type Tab = "info" | "reports" | "history" | "notes";
 type AccountAct = Exclude<(typeof ACCOUNT_ACTIONS)[number], "ban">;
@@ -42,7 +46,8 @@ function badgesOf(a: Pick<FoundAccount, "suspendedUntil" | "yellow" | "open" | "
 }
 
 export default function Accounts({ start }: { start?: string }) {
-  const { call, say } = useConsole();
+  const { call, say, gate } = useConsole();
+  const owner = gate.role === "owner";
   const [q, setQ] = useState("");
   const [found, setFound] = useState<FoundAccounts | null>(null);
   const [sel, setSel] = useState<string | null>(start ?? null);
@@ -84,8 +89,17 @@ export default function Accounts({ start }: { start?: string }) {
     <>
       <div className="ac-panel ac-search">
         <label htmlFor="ac-find">找人</label>
-        <input id="ac-find" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="名字、ID 开头几位或游戏 UID，或邮箱" autoFocus={!start} />
-        <span className="ac-hint">每次搜索都会记进操作记录（邮箱和 UID 打码记）。</span>
+        <input
+          id="ac-find"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={owner ? "名字、ID 开头几位或游戏 UID，或邮箱" : "名字、账号 ID 的开头或游戏 UID"}
+          autoFocus={!start}
+        />
+        <span className="ac-hint">
+          {owner ? "每次搜索都会记进操作记录（邮箱和 UID 打码记）。" : "管理员不能按邮箱找，看到的邮箱也是打码的。每次搜索都会记进操作记录。"}
+        </span>
       </div>
       {note && <p className="ac-notice">{note}</p>}
       <div className="ac-split accounts">
@@ -99,6 +113,7 @@ export default function Accounts({ start }: { start?: string }) {
                 <span className="ac-row-top">
                   <Mark name={p.name} size={28} />
                   <strong>{p.name || "（没有名字）"}</strong>
+                  {staffWords(p.staff) && <Tag>{staffWords(p.staff)}</Tag>}
                 </span>
                 <span className="ac-row-meta">
                   {p.email} · {joinedWords(p.joinedAt, now)} · ID {p.id.slice(0, 8)}
@@ -114,7 +129,9 @@ export default function Accounts({ start }: { start?: string }) {
                 )}
               </button>
             ))}
-            {(!found || found.players.length === 0) && <p className="ac-list-empty">{q.trim() && found ? "没找到。" : "输入名字、账号 ID、UID 或邮箱。"}</p>}
+            {(!found || found.players.length === 0) && (
+              <p className="ac-list-empty">{q.trim() && found ? "没找到。" : owner ? "输入名字、账号 ID、UID 或邮箱。" : "输入名字、账号 ID 或 UID。"}</p>
+            )}
           </div>
         </section>
         <section className="ac-panel ac-detail" aria-label="账号详情">
@@ -169,6 +186,8 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
   const suspended = Boolean(p.suspendedUntil && p.suspendedUntil > now);
   const hasUid = p.games.some((g) => g.uid);
   const me = gate.alias;
+  const owner = gate.role === "owner";
+  const asked = a.banRequest;
   const by = (who: string | null) => (who === me ? "你" : who);
 
   const act = (action: AccountAct) => {
@@ -195,6 +214,14 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
     say(`封号了：${savedName(p)} 的账号和数据都删了，这个邮箱不能再登录。`);
     setGone("banned");
     recount();
+  };
+  // a moderator's: the owner confirms it, or sends it back
+  const askBan = async (why: string) => {
+    if (!rule) throw new Error("先选一条 TA 违反的规则。");
+    await call("banRequest", [{ id, rule, reason: why }]);
+    setBanOpen(false);
+    say(`${savedName(p)}：交给站长了，站长确认以后才会封。`);
+    after();
   };
   const undo = async (h: AdminHistoryItem) => {
     try {
@@ -253,6 +280,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
         <div className="ac-person-text">
           <div className="ac-person-title">
             <h2>{savedName(p)}</h2>
+            {staffWords(p.staff) && <Tag>{staffWords(p.staff)}</Tag>}
             {badgesOf({ suspendedUntil: p.suspendedUntil, yellow: p.yellow, open: a.openCases, held: Boolean(p.heldAt), anonymous: p.anonymous }, now).map((b) => (
               <Tag key={b.text} kind={b.kind}>
                 {b.text}
@@ -268,7 +296,20 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
         </div>
       </div>
 
-      {a.openCases > 0 && (
+      {asked && (
+        <div className="ac-banner">
+          <span>
+            {owner ? `${asked.by}提请封号，在「待处理」里等你确认。` : asked.mine ? "你已经提请封号，等站长确认。" : `${asked.by}已经提请封号，等站长确认。`}
+            {owner && `理由：「${asked.reason}」`}
+          </span>
+          {owner && (
+            <button type="button" className="ac-btn small" onClick={() => go({ page: "cases", caseId: `request:${asked.id}` })}>
+              去确认
+            </button>
+          )}
+        </div>
+      )}
+      {a.openCases > 0 && (owner || !asked) && (
         <div className="ac-banner">
           <span>有 {a.openCases} 件在「待处理」里。在这里处理也行，那边会一起关掉。</span>
           <button type="button" className="ac-btn small" onClick={() => go({ page: "cases", caseId: personOpen ? id : undefined })}>
@@ -411,15 +452,19 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
                 解除暂停（还有 {Math.max(1, Math.ceil((p.suspendedUntil! - now) / 86_400_000))} 天）
               </button>
             )}
-            <button type="button" className="ac-btn danger" onClick={() => setBanOpen((o) => !o)} aria-expanded={banOpen}>
-              封号…
-            </button>
+            {(owner || !asked) && (
+              <button type="button" className="ac-btn danger" onClick={() => setBanOpen((o) => !o)} aria-expanded={banOpen}>
+                {owner ? "封号…" : "提请封号…"}
+              </button>
+            )}
           </div>
           {banOpen &&
-            (rule ? (
+            (!rule ? (
+              <p className="ac-need-rule">{owner ? "封号也要先在上面选一条 TA 违反的规则。" : "提请封号也要先在上面选一条 TA 违反的规则。"}</p>
+            ) : owner ? (
               <BanBox onBan={ban} onClose={() => setBanOpen(false)} />
             ) : (
-              <p className="ac-need-rule">封号也要先在上面选一条 TA 违反的规则。</p>
+              <BanRequestBox onAsk={askBan} onClose={() => setBanOpen(false)} />
             ))}
           <p className="ac-hint">TA 会在消息里收到站长通知，写明按哪条守则，可以申诉一次（暂停 {SUSPEND_DAYS} 天、封号也一样写明）。</p>
         </aside>
