@@ -25,7 +25,8 @@
  *
  * Every piece of text in the file that reads exactly like one of its words is moved:
  * a string or template becomes T.group.name (or fmt(T.group.name, { name: … }) with
- * blanks), JSX text {T.group.name}, a JSX attribute attr={T.group.name}. T is never
+ * blanks), JSX text {T.group.name}, a JSX attribute attr={T.group.name}. A string with
+ * the word's {name} blanks in it already, which the code fills itself, becomes T.group.name. T is never
  * read at the top of a module (one server answers in two languages): there, a property
  * of an object becomes a getter, and a constant only its own file uses is put where it
  * is used. Anything else at the top of a module needs an edit in the plan.
@@ -183,118 +184,138 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
   }
   for (const [path, w] of Object.entries(common)) if (!byText.has(normalize(w))) byText.set(normalize(w), { path, word: w });
   const keep = new Set((fp.keep ?? []).map(normalize));
-  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const hits = scanSource(file, source).filter((h) => !h.kept && !h.logic && h.kind !== "regex" && h.kind !== "name");
-  const changes: Change[] = [];
   const found = new Set<string>();
   let usesFmt = false;
-  const inlined = new Map<string, { decl: ts.VariableStatement; expr: string }>();
+  let changed = false;
+  const problem = (p: string) => {
+    if (!report.problems.includes(p)) report.problems.push(p);
+  };
 
-  for (const h of hits) {
-    const text = h.text;
-    const entry = byText.get(normalize(text));
-    const node = findNode(sf, h);
-    if (!entry) {
-      const meant = fp.only === undefined || (fp.only === "errors" && node !== undefined && inError(node));
-      if (meant && !keep.has(normalize(text))) report.unplanned.push({ file, line: h.line, text: h.text });
-      continue;
-    }
-    if (!node) {
-      report.problems.push(`${file}:${h.line}: could not find 「${h.text}」 in the code`);
-      continue;
-    }
-    const { path, word } = entry;
-    let read: { expr: string; fmt: boolean };
-    try {
-      read = reading(path, word, h.args, `${file}:${h.line}`);
-    } catch (e) {
-      report.problems.push((e as Error).message);
-      continue;
-    }
-    found.add(path);
-    usesFmt ||= read.fmt;
-    report.moved.push({ file, line: h.line, path, text: h.text });
+  // a word inside another piece (in a template's ${…}) moves first, and the piece around it on the next pass
+  for (let pass = 0; ; pass++) {
+    const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    const hits = scanSource(file, source).filter((h) => !h.kept && !h.logic && h.kind !== "regex" && h.kind !== "name");
+    const planned = hits.filter((h) => byText.has(normalize(h.text)));
+    const holdsAnother = (h: Hit) => planned.some((o) => o !== h && o.start >= h.start && o.end <= h.end);
+    const changes: Change[] = [];
+    const inlined = new Map<string, { decl: ts.VariableStatement; expr: string }>();
 
-    if (h.kind === "jsx-text") {
-      // keep the line breaks around it, which React drops anyway; spaces within a line it shows
-      const raw = (node as ts.JsxText).text;
-      const lead = /^\s*\n\s*/.exec(raw)?.[0] ?? "";
-      const trail = /\s*\n\s*$/.exec(raw.slice(lead.length))?.[0] ?? "";
-      changes.push({ start: node.pos, end: node.end, text: `${lead}{${read.expr}}${trail}` });
-      continue;
-    }
-    if (h.kind === "jsx-attr") {
-      changes.push({ start: h.start, end: h.end, text: `{${read.expr}}` });
-      continue;
-    }
-    if (!atModuleLevel(node)) {
-      changes.push({ start: h.start, end: h.end, text: read.expr });
-      continue;
-    }
-    // at the top of the module: a property becomes a getter …
-    let n: ts.Node = node;
-    while (ts.isParenthesizedExpression(n.parent) || ts.isAsExpression(n.parent) || ts.isSatisfiesExpression(n.parent)) n = n.parent;
-    const p = n.parent;
-    if (ts.isPropertyAssignment(p) && p.initializer === n) {
-      changes.push({ start: p.getStart(sf), end: p.end, text: `get ${p.name.getText(sf)}() {\n${indentOf(source, p.getStart(sf))}  return ${read.expr};\n${indentOf(source, p.getStart(sf))}}` });
-      continue;
-    }
-    // … and a constant only this file uses goes where it is used
-    if (ts.isVariableDeclaration(p) && p.initializer === n && ts.isIdentifier(p.name) && ts.isVariableDeclarationList(p.parent) && ts.isVariableStatement(p.parent.parent)) {
-      const stmt = p.parent.parent;
-      const exported = stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
-      if (!exported && p.parent.declarations.length === 1) {
-        inlined.set(p.name.text, { decl: stmt, expr: read.expr });
+    for (const h of hits) {
+      const text = h.text;
+      const entry = byText.get(normalize(text));
+      const node = findNode(sf, h);
+      if (!entry) {
+        const meant = fp.only === undefined || (fp.only === "errors" && node !== undefined && inError(node));
+        if (pass === 0 && meant && !keep.has(normalize(text))) report.unplanned.push({ file, line: h.line, text: h.text });
         continue;
       }
-    }
-    found.delete(path);
-    report.moved.pop();
-    report.problems.push(`${file}:${h.line}: 「${h.text}」 is read when the module loads; plan an edit for it`);
-  }
-
-  // the constants put where they are used: every other mention of the name in the file
-  for (const [name, { decl, expr }] of inlined) {
-    const uses: ts.Identifier[] = [];
-    let shadowed = false;
-    const visit = (n: ts.Node) => {
-      if (ts.isIdentifier(n) && n.text === name && n !== (decl.declarationList.declarations[0].name as ts.Node)) {
-        const q = n.parent;
-        const isName =
-          (ts.isPropertyAccessExpression(q) && q.name === n) ||
-          (ts.isPropertyAssignment(q) && q.name === n) ||
-          ts.isPropertySignature(q) ||
-          ts.isMethodDeclaration(q) ||
-          (ts.isQualifiedName(q) && q.right === n);
-        if ((ts.isVariableDeclaration(q) || ts.isParameter(q) || ts.isFunctionDeclaration(q)) && q.name === n) shadowed = true;
-        else if (ts.isShorthandPropertyAssignment(q)) uses.push(n);
-        else if (!isName) uses.push(n);
+      if (holdsAnother(h)) continue;
+      if (!node) {
+        problem(`${file}:${h.line}: could not find 「${h.text}」 in the code`);
+        continue;
       }
-      ts.forEachChild(n, visit);
-    };
-    visit(sf);
-    if (shadowed) {
-      report.problems.push(`${file}: ${name} is declared again somewhere in the file; plan an edit for it`);
-      continue;
-    }
-    if (uses.some((u) => atModuleLevel(u))) {
-      report.problems.push(`${file}: ${name} is used when the module loads; plan an edit for it`);
-      continue;
-    }
-    for (const u of uses)
-      changes.push({ start: u.getStart(sf), end: u.end, text: ts.isShorthandPropertyAssignment(u.parent) ? `${name}: ${expr}` : expr });
-    // the statement and the comment above it, keeping the line break that ends the line before
-    const start = decl.getFullStart() + (source[decl.getFullStart()] === "\n" ? 1 : 0);
-    changes.push({ start, end: decl.end + (source[decl.end] === "\n" ? 1 : 0), text: "" });
-  }
+      const { path, word } = entry;
+      let read: { expr: string; fmt: boolean };
+      // a string with the word's blanks written in it already, as {name}: the code fills them itself (fmtParts)
+      if (h.kind === "string" && blanks(word).length && !h.args.length) {
+        if (text !== word) {
+          problem(`${file}:${h.line}: 「${text}」 names its blanks otherwise than ${path} 「${word}」`);
+          continue;
+        }
+        read = { expr: `T.${path}`, fmt: false };
+      } else
+        try {
+          read = reading(path, word, h.args, `${file}:${h.line}`);
+        } catch (e) {
+          problem((e as Error).message);
+          continue;
+        }
 
-  changes.sort((a, b) => b.start - a.start);
-  for (let i = 1; i < changes.length; i++)
-    if (changes[i].end > changes[i - 1].start) report.problems.push(`${file}: two changes overlap at ${changes[i].start}`);
-  let out = source;
-  for (const c of changes) out = out.slice(0, c.start) + c.text + out.slice(c.end);
-  if (changes.length && found.size) out = withImports(out, file, usesFmt ? ["T", "fmt"] : ["T"]);
-  return { source: out, found };
+      if (h.kind === "jsx-text") {
+        // keep the line breaks around it, which React drops anyway; spaces within a line it shows
+        const raw = (node as ts.JsxText).text;
+        const lead = /^\s*\n\s*/.exec(raw)?.[0] ?? "";
+        const trail = /\s*\n\s*$/.exec(raw.slice(lead.length))?.[0] ?? "";
+        changes.push({ start: node.pos, end: node.end, text: `${lead}{${read.expr}}${trail}` });
+      } else if (h.kind === "jsx-attr") changes.push({ start: h.start, end: h.end, text: `{${read.expr}}` });
+      else if (!atModuleLevel(node)) changes.push({ start: h.start, end: h.end, text: read.expr });
+      else {
+        // at the top of the module: a property becomes a getter …
+        let n: ts.Node = node;
+        while (ts.isParenthesizedExpression(n.parent) || ts.isAsExpression(n.parent) || ts.isSatisfiesExpression(n.parent)) n = n.parent;
+        const p = n.parent;
+        const isConst = ts.isVariableDeclaration(p) && p.initializer === n && ts.isIdentifier(p.name) && ts.isVariableDeclarationList(p.parent) && ts.isVariableStatement(p.parent.parent);
+        if (ts.isPropertyAssignment(p) && p.initializer === n) {
+          const indent = indentOf(source, p.getStart(sf));
+          changes.push({ start: p.getStart(sf), end: p.end, text: `get ${p.name.getText(sf)}() {\n${indent}  return ${read.expr};\n${indent}}` });
+        } else if (
+          // … and a constant only this file uses goes where it is used
+          isConst &&
+          !(p.parent.parent as ts.VariableStatement).modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) &&
+          (p.parent as ts.VariableDeclarationList).declarations.length === 1
+        )
+          inlined.set((p.name as ts.Identifier).text, { decl: p.parent.parent as ts.VariableStatement, expr: read.expr });
+        else {
+          problem(`${file}:${h.line}: 「${h.text}」 is read when the module loads; plan an edit for it`);
+          continue;
+        }
+      }
+      found.add(path);
+      usesFmt ||= read.fmt;
+      report.moved.push({ file, line: h.line, path, text: h.text });
+    }
+
+    // the constants put where they are used: every other mention of the name in the file
+    for (const [name, { decl, expr }] of inlined) {
+      const uses: ts.Identifier[] = [];
+      let shadowed = false;
+      const visit = (n: ts.Node) => {
+        if (ts.isIdentifier(n) && n.text === name && n !== (decl.declarationList.declarations[0].name as ts.Node)) {
+          const q = n.parent;
+          const isName =
+            (ts.isPropertyAccessExpression(q) && q.name === n) ||
+            (ts.isPropertyAssignment(q) && q.name === n) ||
+            ts.isPropertySignature(q) ||
+            ts.isMethodDeclaration(q) ||
+            (ts.isQualifiedName(q) && q.right === n);
+          if ((ts.isVariableDeclaration(q) || ts.isParameter(q) || ts.isFunctionDeclaration(q)) && q.name === n) shadowed = true;
+          else if (ts.isShorthandPropertyAssignment(q)) uses.push(n);
+          else if (!isName) uses.push(n);
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+      if (shadowed) {
+        problem(`${file}: ${name} is declared again somewhere in the file; plan an edit for it`);
+        continue;
+      }
+      if (uses.some((u) => atModuleLevel(u))) {
+        problem(`${file}: ${name} is used when the module loads; plan an edit for it`);
+        continue;
+      }
+      for (const u of uses)
+        changes.push({ start: u.getStart(sf), end: u.end, text: ts.isShorthandPropertyAssignment(u.parent) ? `${name}: ${expr}` : expr });
+      // the statement and the comment above it, keeping the line break that ends the line before
+      const start = decl.getFullStart() + (source[decl.getFullStart()] === "\n" ? 1 : 0);
+      changes.push({ start, end: decl.end + (source[decl.end] === "\n" ? 1 : 0), text: "" });
+    }
+
+    if (!changes.length) break;
+    changes.sort((a, b) => b.start - a.start);
+    const overlap = changes.findIndex((c, i) => i > 0 && c.end > changes[i - 1].start);
+    if (overlap > 0) {
+      problem(`${file}: two changes overlap at ${changes[overlap].start}`);
+      break;
+    }
+    for (const c of changes) source = source.slice(0, c.start) + c.text + source.slice(c.end);
+    changed = true;
+    if (pass === 9) {
+      problem(`${file}: still moving words after ten passes`);
+      break;
+    }
+  }
+  if (changed && found.size) source = withImports(source, file, usesFmt ? ["T", "fmt"] : ["T"]);
+  return { source, found };
 }
 
 /** The whitespace at the start of the line that offset is on */

@@ -83,7 +83,8 @@ const isWords = (h: Hit) => !h.kept && h.kind !== "regex" && h.kind !== "name";
 
 /**
  * Sentences put together from pieces of the code (a JSX line with values and tags in it),
- * by name in zh.ts: the pieces, in order, a value or tag between them being a blank.
+ * by name in zh.ts: the pieces, in order, a value or tag between them being a blank
+ * (an empty piece first or last for a sentence that starts or ends with one).
  */
 type Join = { key: string; file: string; pieces: string[] };
 
@@ -159,7 +160,7 @@ export async function verify(root: string, base: string): Promise<Report> {
     }
   }
   // a joined sentence stands for its pieces, in the file they came from
-  for (const j of joins) for (const p of j.pieces) put(reads.get(j.file) ?? reads.set(j.file, bag()).get(j.file)!, normalize(p), 1000);
+  for (const j of joins) for (const p of j.pieces) if (p) put(reads.get(j.file) ?? reads.set(j.file, bag()).get(j.file)!, normalize(p), 1000);
 
   // what each file says or reads now, however many base pieces have been matched to it
   const sayNow = new Set(now.map((h) => `${h.file}\0${normalize(h.text)}`));
@@ -198,7 +199,7 @@ export async function verify(root: string, base: string): Promise<Report> {
     if (typeof v === "string") {
       const key = path.join(".");
       const j = joined.get(key) ?? joined.get(path.slice(0, -1).join("."));
-      if (!said.has(normalize(v)) && !(j && j.pieces.every((p) => said.has(normalize(p))) && joinedText(j) === normalize(v)))
+      if (!said.has(normalize(v)) && !(j && j.pieces.every((p) => p === "" || said.has(normalize(p))) && joinedText(j) === normalize(v)))
         report.added.push({ key, text: v });
     } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, [...path, String(i)]));
     else for (const [k, x] of Object.entries(v as Record<string, Value>)) walk(x, [...path, k]);
@@ -209,7 +210,7 @@ export async function verify(root: string, base: string): Promise<Report> {
 
 /** A joined sentence as its pieces make it: each piece, a blank between each two */
 function joinedText(j: Join) {
-  return normalize(j.pieces.join("{}"));
+  return normalize(j.pieces.join("{_}"));
 }
 
 async function main(argv: string[]) {

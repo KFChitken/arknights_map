@@ -2,7 +2,8 @@
  * Finds every piece of text in the code that holds Chinese (or other CJK)
  * characters: string literals, template literals and JSX text. Comments are
  * never seen, as the TypeScript parser drops them; import paths are skipped,
- * and what console.log and sql`…` say is kept as it is.
+ * and what console.log and sql`…` say is kept as it is, as are the comments of a
+ * program for the graphics card.
  *
  *   node scripts/i18n/scan.mts                 totals and the files with the most text
  *   node scripts/i18n/scan.mts --all           every file
@@ -144,6 +145,9 @@ function inConsoleCall(node: ts.Node): boolean {
 /** sql`…` (drizzle): the database's words, its comments among them, not the player's */
 const inSql = (node: ts.Node) => ts.isTaggedTemplateExpression(node.parent) && ts.isIdentifier(node.parent.tag) && node.parent.tag.text === "sql";
 
+/** A program for the graphics card (GLSL), whose comments are ours, not the player's */
+const isShader = (text: string) => /\bprecision\s+(?:lowp|mediump|highp)\s+float\b|\bgl_(?:Position|FragColor|PointSize)\b/.test(text);
+
 function isModuleSpecifier(node: ts.Node) {
   const p = node.parent;
   return (
@@ -158,7 +162,7 @@ export function scanSource(file: string, source: string): Hit[] {
   const add = (node: ts.Node, kind: HitKind, text: string, args: string[] = []) => {
     const start = node.getStart(sf);
     const { line, character } = sf.getLineAndCharacterOfPosition(start);
-    const kept = fileKept ?? (inConsoleCall(node) ? "console" : inSql(node) ? "sql" : null);
+    const kept = fileKept ?? (inConsoleCall(node) ? "console" : inSql(node) ? "sql" : isShader(text) ? "shader" : null);
     const logic = kind === "regex" || kind === "name" || decidesBy(node);
     hits.push({ file, line: line + 1, col: character + 1, kind, text, args, start, end: node.getEnd(), kept, logic });
   };
