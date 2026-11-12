@@ -7,7 +7,7 @@ import { issueLoginCode, withdrawLoginCode } from "@/lib/server/loginCodes";
 import { neverReached, sendLoginCode } from "@/lib/server/mail";
 import { isSlowMail } from "@/lib/server/mailQuota";
 import { allow } from "@/lib/server/rateLimit";
-import { errorCode, note } from "@/lib/server/signals";
+import { errorCode, logError, note } from "@/lib/server/signals";
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
 
@@ -34,7 +34,7 @@ export const POST = route(async (req) => {
     await sendLoginCode(email, issued.code, issued.expiresAt);
     note("mailSent", "login");
   } catch (e) {
-    console.error(e);
+    logError("Sending a sign-in code failed", e);
     note("mailFailed", errorCode(e));
     // nothing went out, so asking again right away is not held up by the wait between codes
     if (neverReached(e)) {

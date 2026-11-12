@@ -4,7 +4,7 @@ import { sessionAlive } from "@/lib/server/auth";
 import { clientIp, inLang } from "@/lib/server/http";
 import { noticeList } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
-import { note } from "@/lib/server/signals";
+import { logError, note } from "@/lib/server/signals";
 import { compressedArea, roachArea, roachCounts, roachesInView, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
 import { parseBox, parseView, type Area, type Box } from "@/lib/world/area";
 
@@ -99,7 +99,7 @@ async function answer(req: NextRequest): Promise<Response> {
     }
     return new Response(answer.json, { headers });
   } catch (e) {
-    console.error(e);
+    logError("GET /api/roaches", e);
     return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
   }
 }

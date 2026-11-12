@@ -3,6 +3,7 @@ import { T } from "@/i18n";
 import { clientIp, inLang } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { roachesNear } from "@/lib/server/roachFeed";
+import { logError } from "@/lib/server/signals";
 
 /**
  * GET /api/around?lng=&lat=: how many roaches are within the declaration and the radar radius of a spot,
@@ -23,7 +24,7 @@ export const GET = inLang(async (req: NextRequest) => {
   try {
     return NextResponse.json(await roachesNear({ lng, lat }), { headers: { "cache-control": "no-store" } });
   } catch (e) {
-    console.error(e);
+    logError("GET /api/around", e);
     return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
   }
 });

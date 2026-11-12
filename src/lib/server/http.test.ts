@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { db } from "./db";
 import { clientIp, HttpError, route } from "./http";
 
 const request = (headers: Record<string, string>) => new NextRequest("http://localhost/api", { headers });
@@ -16,6 +18,25 @@ describe("clientIp", () => {
 });
 
 describe("route", () => {
+  it("logs an unexpected error by its request and codes, never its message", async () => {
+    const said: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void said.push(args.map(String).join(" ")));
+    try {
+      const failing = route(async () => {
+        await db.execute(sql`select ${"secret.doctor@qq.com"}::uuid`);
+        return new Response("never");
+      });
+      const res = await failing(new NextRequest("http://localhost/api/test"), undefined);
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "服务器出了点问题，稍后再试试。" });
+      expect(said).toHaveLength(1);
+      expect(said[0]).toMatch(/^GET \/api\/test DrizzleQueryError caused by PostgresError 22P02\n {2}query: select \$1::uuid\n\s+at /);
+      expect(said[0]).not.toContain("secret.doctor");
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("answers a refusal with its words, and its code when it has one", async () => {
     const refuse = (code?: string) =>
       route(async () => {

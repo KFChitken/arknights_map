@@ -89,3 +89,43 @@ export function errorCode(e: unknown, depth = 0): string {
   const own = parts.map(String).join(" ");
   return x.cause && typeof x.cause === "object" && depth < 3 ? `${own} caused by ${errorCode(x.cause, depth + 1)}` : own;
 }
+
+/**
+ * An error as the log gets it: its code (errorCode), the SQL of a query that failed ($1, $2 where the
+ * values go) and where it was thrown, but never a message or what else it carries: a failed query's
+ * holds its values and the database's can quote one (an email, say), and a mail error names the address.
+ */
+export function errorForLog(e: unknown): string {
+  const lines = [errorCode(e)];
+  const query = queryOf(e);
+  if (query) lines.push(`  query: ${query.replace(/\s+/g, " ").slice(0, 300)}`);
+  const frames = framesOf(e);
+  if (frames) lines.push(frames);
+  return lines.join("\n");
+}
+
+/** An unexpected error into the log, after what was being done, as errorForLog has it */
+export function logError(what: string, e: unknown) {
+  console.error(what, errorForLog(e));
+}
+
+// The SQL of the first query along the error and its causes (drizzle and the database keep the values apart)
+function queryOf(e: unknown, depth = 0): string | null {
+  if (!e || typeof e !== "object") return null;
+  const x = e as { query?: unknown; cause?: unknown };
+  if (typeof x.query === "string" && x.query) return x.query;
+  return depth < 3 ? queryOf(x.cause, depth + 1) : null;
+}
+
+// The "at …" lines of its stack, after the message, which can have lines of its own
+function framesOf(e: unknown): string {
+  const x = (e && typeof e === "object" ? e : {}) as { stack?: unknown; message?: unknown };
+  if (typeof x.stack !== "string") return "";
+  const message = typeof x.message === "string" ? x.message : "";
+  const head = message ? x.stack.indexOf(`: ${message}`) : -1;
+  const rest = head >= 0 ? x.stack.slice(head + 2 + message.length) : x.stack;
+  return rest
+    .split("\n")
+    .filter((line) => /^\s+at /.test(line))
+    .join("\n");
+}

@@ -52,7 +52,7 @@ import {
 import { roachByFeedId } from "./roachFeed";
 import { canSeeDeclaration } from "./declarationInbox";
 import { addNotes } from "./staffNotes";
-import { note as noteSignal } from "./signals";
+import { logError, note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
 
 /**
@@ -307,7 +307,7 @@ async function reportedToday(userId: string) {
 
 const tellAdmin = () =>
   sendReportDigest().catch((e) => {
-    console.error("Report digest failed", e);
+    logError("Report digest failed", e);
     noteSignal("job", "digest");
   });
 
@@ -480,5 +480,5 @@ export async function sendReportDigest(now = new Date()) {
   await db
     .insert(watchMails)
     .values({ at: now, subject, kind: "report" })
-    .catch((e) => console.error("Could not list the report email", e));
+    .catch((e) => logError("Could not list the report email", e));
 }

@@ -21,7 +21,7 @@ import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
-import { note } from "./lib/server/signals";
+import { logError, note } from "./lib/server/signals";
 import { recordDailyTotals } from "./lib/server/totals";
 import { buildId, heardStart, processName, startWatch } from "./lib/server/watch";
 import { hearSignals, shareSignals } from "./lib/server/watchSignals";
@@ -30,7 +30,7 @@ const TRIES = 10;
 
 /** A background job failed: in the log, and counted for the site's own checks (src/lib/server/watch.ts) */
 const failed = (job: string, what: string) => (e: unknown) => {
-  console.error(what, e);
+  logError(what, e);
   note("job", job);
 };
 const DAY_MS = 86_400_000;

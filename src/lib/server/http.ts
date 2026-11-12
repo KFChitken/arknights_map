@@ -5,7 +5,7 @@ import { withLang } from "@/i18n/server";
 import { WorldError } from "../world/types";
 import { SESSION_COOKIE } from "./auth";
 import { inMainland } from "./region";
-import { errorCode, note } from "./signals";
+import { errorCode, logError, note } from "./signals";
 
 /**
  * An error whose message is safe to show to the player. A page that must tell one refusal from
@@ -36,7 +36,7 @@ export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
       } catch (e) {
         if (e instanceof HttpError) return NextResponse.json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, { status: e.status });
         if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
-        console.error(e);
+        logError(`${req.method} ${req.nextUrl.pathname}`, e);
         note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
         return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
       }
