@@ -481,6 +481,8 @@ export default function MapApp({
   // 卡了提醒一次: the hint to try 轻量 is up, and whether this device has had it (read in the browser)
   const [liteHint, setLiteHint] = useState(false);
   const [liteHintDone, setLiteHintDone] = useState(true);
+  // 卡了自动换轻量: the style this device had before, for the notice's way back
+  const [liteFrom, setLiteFrom] = useState<MapStyle | null>(null);
   // once per device: say the style can be changed
   const [styleHint, setStyleHint] = useState(false);
   // 设个密码 (PasswordNudge.tsx): the ask is up, for a player whose codes may not arrive just now
@@ -3441,35 +3443,45 @@ export default function MapApp({
         ]
       : []),
   ];
-  // 卡了提醒一次 (src/lib/lag.ts): whether the map feels slow, measured where 轻量 would help, until the hint has
-  // been up once on this device; not while the player is busy (a card, placing, the tutorial, a touch scene)
+  // 卡了自动换轻量 (src/lib/lag.ts): whether the map feels slow, measured where 轻量 would help, once on this
+  // device; not while the player is busy (a card, placing, the tutorial, a touch scene). Slow: 轻量 at once, as
+  // this device's pick, and a notice that says so with the way back. Gone back, it is never switched again.
   const quietRef = useRef(false);
+  const styleRef = useRef(mapStyle);
   useEffect(() => {
     quietRef.current = Boolean(panel || placing || step || selected || offStage || pwNudgeUp);
+    styleRef.current = mapStyle;
   });
   const lagRef = useRef<LagWatch | null>(null);
   const watchLag = Boolean(me) && !liteHintDone && drawnStyle !== "lite" && drawnStyle !== "hidden";
+  const toLite = useCallback(() => {
+    markLiteHintSeen();
+    setLiteHintDone(true);
+    setLiteFrom(styleRef.current);
+    saveMapStyle("lite");
+    setMapStyle("lite");
+    setStyleStored(true);
+    setLiteHint(true);
+  }, []);
+  // Development only: zhoupLag() in the console, as if the map were slow
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as { zhoupLag?: unknown }).zhoupLag = toLite;
+  }, [toLite]);
   useEffect(() => {
     if (!watchLag) return;
-    const w = lagWatch(
-      () => {
-        markLiteHintSeen();
-        setLiteHintDone(true);
-        setLiteHint(true);
-      },
-      () => quietRef.current,
-    );
+    const w = lagWatch(toLite, () => quietRef.current);
     lagRef.current = w;
     return () => {
       w.stop();
       lagRef.current = null;
     };
-  }, [watchLag]);
+  }, [watchLag, toLite]);
   const onMoving = useCallback((moving: boolean) => lagRef.current?.moving(moving), []);
-  // the hint goes by itself after 8 seconds
+  // the notice goes by itself after 12 seconds (轻量 stays; the style picker goes back any time)
   useEffect(() => {
     if (!liteHint) return;
-    const t = window.setTimeout(() => setLiteHint(false), 8000);
+    const t = window.setTimeout(() => setLiteHint(false), 12_000);
     return () => window.clearTimeout(t);
   }, [liteHint]);
 
@@ -4494,20 +4506,22 @@ export default function MapApp({
       )}
       {liteHint && (
         <div className="lite-hint" role="status">
-          <p>地图有点卡？试试「轻量」画风，挤在一起的小强合成一只，会顺很多。</p>
+          <p>地图有点卡，已经换成「轻量」画风：挤在一起的小强合成一只，会顺很多。</p>
           <div className="row">
-            <button
-              className="go"
-              onClick={() => {
-                setLiteHint(false);
-                switchMapStyle("lite");
-              }}
-            >
-              换成轻量
+            <button className="go" onClick={() => setLiteHint(false)}>
+              好的
             </button>
-            <button className="no" onClick={() => setLiteHint(false)}>
-              不用了
-            </button>
+            {liteFrom && liteFrom !== "lite" && (
+              <button
+                className="no"
+                onClick={() => {
+                  setLiteHint(false);
+                  switchMapStyle(liteFrom);
+                }}
+              >
+                换回「{MAP_STYLE_NAMES[liteFrom]}」
+              </button>
+            )}
           </div>
         </div>
       )}
