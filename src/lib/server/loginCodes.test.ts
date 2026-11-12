@@ -6,17 +6,15 @@ import { MAIL_DAILY_LIMIT } from "./env";
 import { forgetLoginCodes, issueLoginCode, pruneSignInMail, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
 import { neverReached, rateLimited, sendWith } from "./mail";
 import { forgetMailCount, MAIL_SLOW_LOCK } from "./mailQuota";
-import { loginCodes, mailSends, users } from "./schema";
+import { loginCodes, mailSends } from "./schema";
 
-// Gmail slow to take our mail, with small caps to reach in a test (other addresses are not affected), of
-// which addresses with no account may take 2 a day and 1 an hour (6 × 0.4 and 4 × 0.4, rounded down)
+// Gmail slow to take our mail, with small caps to reach in a test (other addresses are not affected)
 vi.mock("./env", async (original) => ({
   ...(await original<typeof import("./env")>()),
   MAIL_SLOW_DOMAINS: ["gmail.com", "googlemail.com"],
   MAIL_SLOW_DAILY_LIMIT: 6,
   MAIL_SLOW_HOURLY_LIMIT: 4,
   MAIL_SLOW_PER_ADDRESS: 3,
-  MAIL_SLOW_NEW_SHARE: 0.4,
 }));
 
 const EMAIL = "player@example.com";
@@ -304,20 +302,8 @@ describe("login codes", () => {
 });
 
 describe("codes to a mail service slow to take our mail", () => {
-  /** Players with an account at these addresses */
-  const players = (...emails: string[]) => db.insert(users).values(emails.map((email) => ({ email })));
-  const sentOf = (kind: string) => db.$count(mailSends, eq(mailSends.kind, kind));
-  /** Pretend every code counted so far was sent this much earlier */
-  const earlier = (ms: number) => db.update(mailSends).set({ sentAt: sql`${mailSends.sentAt} - make_interval(secs => ${ms / 1000})` });
-  const NEW_FULL = "发往 Gmail 的验证码先留给老玩家登录。新注册请换 QQ、163 或 Outlook 邮箱";
-
-  beforeEach(async () => {
-    await db.execute(sql`truncate ${users} cascade`);
-  });
-
   it("sends one address there 3 codes a day, and any other address its 10", async () => {
     const G = "doctor@gmail.com";
-    await players(G);
     for (let i = 0; i < 3; i++) {
       await issueLoginCode(G);
       await rewind({ sent: PAST_ANY_WAIT }, G);
@@ -330,64 +316,22 @@ describe("codes to a mail service slow to take our mail", () => {
   });
 
   it("caps the codes to slow services together, by the hour and by the day, and leaves the rest alone", async () => {
-    await players(...Array.from({ length: 7 }, (_, i) => `g${i}@gmail.com`), "g4@googlemail.com");
     for (let i = 0; i < 4; i++) await issueLoginCode(`g${i}@gmail.com`);
     await expect(issueLoginCode("g4@googlemail.com")).rejects.toThrow("这一小时发往 Gmail 的验证码名额用完了");
     await issueLoginCode(EMAIL);
 
     // an hour on, room again until the day's 6
-    await earlier(61 * MINUTE);
+    await db.update(mailSends).set({ sentAt: sql`${mailSends.sentAt} - interval '61 minutes'` });
     await issueLoginCode("g4@gmail.com");
     await issueLoginCode("g5@gmail.com");
     await expect(issueLoginCode("g6@gmail.com")).rejects.toThrow("今天发往 Gmail 的验证码名额用完了");
     // counted in the database, so every process sees the same number
-    expect(await sentOf("login-slow")).toBe(6);
+    expect(await db.$count(mailSends, eq(mailSends.kind, "login-slow"))).toBe(6);
   });
 
-  it("leaves most of those caps to players with an account: addresses with none take only their share", async () => {
-    await players("old1@gmail.com", "old2@gmail.com", "old3@gmail.com", "old4@gmail.com", "old5@googlemail.com");
-    // the hour's share for new addresses is 1
-    await issueLoginCode("new1@gmail.com");
-    await expect(issueLoginCode("new2@googlemail.com")).rejects.toThrow(NEW_FULL);
-    // which leaves the players with an account the rest of the hour's 4, and no more
-    await issueLoginCode("old1@gmail.com");
-    await issueLoginCode("old2@gmail.com");
-    await issueLoginCode("old3@gmail.com");
-    await expect(issueLoginCode("old4@gmail.com")).rejects.toThrow("这一小时发往 Gmail 的验证码名额用完了");
-    await expect(issueLoginCode("new2@googlemail.com")).rejects.toThrow("这一小时发往 Gmail 的验证码名额用完了");
-    // a refused address keeps no cooldown and no count
-    expect(await row("new2@googlemail.com")).toBeUndefined();
-
-    // an hour on, one more new address, and then the day's share of 2 is used up
-    await earlier(61 * MINUTE);
-    await issueLoginCode("new2@googlemail.com");
-    await earlier(61 * MINUTE);
-    await expect(issueLoginCode("new3@gmail.com")).rejects.toThrow(NEW_FULL);
-    // the players with an account still have the rest of the day's 6, then the day is over for everyone there
-    await issueLoginCode("old4@gmail.com");
-    await expect(issueLoginCode("old5@googlemail.com")).rejects.toThrow("今天发往 Gmail 的验证码名额用完了");
-    expect([await sentOf("login-slow"), await sentOf("login-slow-new")]).toEqual([4, 2]);
-    // other mail services are not affected
-    expect((await issueLoginCode("new@example.com")).code).toMatch(/^\d{6}$/);
-    expect(await sentOf("login")).toBe(1);
-  });
-
-  it("takes a code to a new address that never went out back from the new addresses' share", async () => {
-    const issued = await issueLoginCode("new1@gmail.com");
-    expect(await sentOf("login-slow-new")).toBe(1);
-    await withdrawLoginCode("new1@gmail.com", issued);
-    expect(await db.$count(mailSends)).toBe(0);
-    // so another new address may have this hour's one
-    expect((await issueLoginCode("new2@gmail.com")).code).toMatch(/^\d{6}$/);
-  });
-
-  it("counts codes to slow services against the whole site's cap as well, to new addresses too", async () => {
-    for (const kind of ["login-slow", "login-slow-new"]) {
-      await db.delete(mailSends);
-      forgetMailCount();
-      await db.insert(mailSends).values(Array.from({ length: MAIL_DAILY_LIMIT - 1 }, () => ({ kind })));
-      await issueLoginCode(`${kind}@example.com`);
-      await expect(issueLoginCode(`other-${kind}@example.com`)).rejects.toThrow("验证码邮件发完了");
-    }
+  it("counts codes to slow services against the whole site's cap as well", async () => {
+    await db.insert(mailSends).values(Array.from({ length: MAIL_DAILY_LIMIT - 1 }, () => ({ kind: "login-slow" })));
+    await issueLoginCode(EMAIL);
+    await expect(issueLoginCode("other@example.com")).rejects.toThrow("验证码邮件发完了");
   });
 });

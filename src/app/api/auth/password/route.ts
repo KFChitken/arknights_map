@@ -1,25 +1,18 @@
 import { NextResponse } from "next/server";
 import { currentSession, currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { firstWithoutCode, freshFor, NeedsCode, passwordSetAt, setPassword } from "@/lib/server/passwords";
+import { freshFor, NeedsCode, passwordSetAt, setPassword } from "@/lib/server/passwords";
 import { allow } from "@/lib/server/rateLimit";
 
 /**
  * GET: when the signed-in player set their password (setAt, null: none); their own email, for a sign-in by
- * code to confirm it is them; how much longer this sign-in counts as one by code moments ago
- * (freshForMs, 0: not), when no current password is asked for; and whether their first password goes
- * without that code (noCodeNeeded: none set yet, at a mail service slow just now, not an admin)
+ * code to confirm it is them; and how much longer this sign-in counts as one by code moments ago
+ * (freshForMs, 0: not), when no current password is asked for
  */
 export const GET = route(async () => {
   const [user, session] = await Promise.all([currentUser(), currentSession()]);
   if (!user || !session) throw new HttpError(401, "请先登录。");
-  const setAt = await passwordSetAt(user.id);
-  return NextResponse.json({
-    setAt,
-    email: user.email,
-    freshForMs: freshFor(session),
-    noCodeNeeded: setAt === null && firstWithoutCode(user.email),
-  });
+  return NextResponse.json({ setAt: await passwordSetAt(user.id), email: user.email, freshForMs: freshFor(session) });
 });
 
 /**

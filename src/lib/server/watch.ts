@@ -410,10 +410,6 @@ const REFUSED: Record<string, string> = {
   "slow-day": "发往 Gmail 等慢邮箱的当天名额用完",
   "slow-hour": "发往 Gmail 等慢邮箱的这一小时名额用完",
   "slow-paused": "发往 Gmail 等慢邮箱的验证码暂停中",
-  // of those caps, the share codes to addresses with no account may take (MAIL_SLOW_NEW_SHARE)
-  "slow-new-day": "发往 Gmail 等慢邮箱、给新注册的当天名额用完",
-  "slow-new-hour": "发往 Gmail 等慢邮箱、给新注册的这一小时名额用完",
-  "slow-new-paused": "发往 Gmail 等慢邮箱、给新注册的验证码暂停中",
   // 登录码 (src/app/api/auth/desk-code/redeem)
   "desk-wrong": "登录码不对或者过期",
   "desk-ip": "同一网络试登录码太多次",

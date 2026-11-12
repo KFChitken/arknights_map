@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { passwordStatus, removePassword, savePassword } from "@/lib/authClient";
 import { passwordProblem } from "@/lib/passwordRules";
-import { keepLoginWith, serviceName } from "./LoginSheet";
+import { keepLoginWith } from "./LoginSheet";
 import PasswordField, { HiddenUsername } from "./PasswordField";
 
 /** What the player set out to do with their password */
@@ -16,14 +16,11 @@ export const CONFIRM_REASON: Record<PasswordForm, string> = {
   remove: "为了确认是你本人，先收一封验证码。验证好了回到「我的资料」取消密码。",
 };
 
-/** noCodeNeeded: the first password goes without a sign-in by code, as codes to the player's mail service may not arrive just now */
-type Status = { setAt: number | null; email: string | null; freshUntil: number; noCodeNeeded: boolean };
+type Status = { setAt: number | null; email: string | null; freshUntil: number };
 
 /** A minute short of the server's own reckoning, so a form opened just before it runs out still goes through */
 const MARGIN_MS = 60_000;
 const fresh = (s: Status) => s.freshUntil > Date.now() + MARGIN_MS;
-/** The first password, set now without a sign-in by code first */
-const withoutCode = (s: Status) => !s.setAt && s.noCodeNeeded && !fresh(s);
 
 function dateText(at: number) {
   const d = new Date(at);
@@ -34,18 +31,14 @@ function dateText(at: number) {
 /**
  * 登录密码 in 我的资料: whether there is one and since when, and setting, changing or taking it away. The first
  * one, or one forgotten, takes a sign-in by code moments before: onConfirmByCode asks for one, and the sheet
- * comes back with startOpen set to what the player was doing. Where the first goes without a code
- * (noCodeNeeded), 设密码 opens its form at once, and so does startOpen "set" (from the map's 去设密码).
+ * comes back with startOpen set to what the player was doing.
  */
 export default function PasswordBox({
   startOpen,
   onConfirmByCode,
-  onSet,
 }: {
   startOpen?: PasswordForm;
   onConfirmByCode: (email: string, form: PasswordForm) => void;
-  /** The player has a password now, set or changed here */
-  onSet?: () => void;
 }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [form, setForm] = useState<PasswordForm | null>(null);
@@ -55,11 +48,6 @@ export default function PasswordBox({
   const [error, setError] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  // brought into view once the form opened for startOpen is drawn, its buttons with it
-  const [reveal, setReveal] = useState(false);
-  useEffect(() => {
-    if (reveal) box.current?.scrollIntoView({ block: "center" });
-  }, [reveal]);
 
   useEffect(() => {
     let live = true;
@@ -67,15 +55,11 @@ export default function PasswordBox({
       (s) => {
         if (!live) return;
         setStatus(s);
-        if (startOpen === "set" && !s.setAt && s.noCodeNeeded) {
-          // 去设密码 on the map (such a player is never sent for a code to set the first one): its form, at once
-          setForm("set");
-          setReveal(true);
-        } else if (startOpen && fresh(s)) {
-          // back from confirming by code: straight on with what the player was doing
+        // back from confirming by code: straight on with what the player was doing
+        if (startOpen && fresh(s)) {
           setForm(startOpen === "set" && s.setAt ? "change" : startOpen !== "set" && !s.setAt ? null : startOpen);
           setSaid("验证好了，确认是你本人。");
-          setReveal(true);
+          box.current?.scrollIntoView({ block: "center" });
         }
       },
       (e: Error) => live && setError(e.message),
@@ -92,9 +76,8 @@ export default function PasswordBox({
     setCurrent("");
     setNext("");
     if (!status.email) return setError("这个账号没有邮箱，设不了密码。");
-    // the first one takes a sign-in by code moments ago, unless codes may not reach the player just now;
-    // a change or taking it away takes the current one instead
-    if (f === "set" && !fresh(status) && !withoutCode(status)) return onConfirmByCode(status.email, "set");
+    // the first one takes a sign-in by code moments ago; a change or taking it away takes the current one instead
+    if (f === "set" && !fresh(status)) return onConfirmByCode(status.email, "set");
     setForm(f);
   };
 
@@ -116,7 +99,6 @@ export default function PasswordBox({
         // the sign-in by code grew too old meanwhile
         if ("needsCode" in r) return onConfirmByCode(status.email!, form);
         keepLoginWith("password");
-        onSet?.();
         setSaid(
           r.changed
             ? "密码改好了。其他手机和电脑上的登录都退出了，那边要用新密码重新登录。"
@@ -168,11 +150,6 @@ export default function PasswordBox({
       </div>
       {form && status?.email && (
         <form className="login pw-form" onSubmit={submit}>
-          {form === "set" && withoutCode(status) && (
-            <p className="hint" style={{ marginTop: 0 }}>
-              {`${serviceName(status.email.slice(status.email.lastIndexOf("@") + 1).toLowerCase())} 现在收不到我们的验证码，这次不用先收验证码，直接设就行。`}
-            </p>
-          )}
           <HiddenUsername email={status.email} />
           {form !== "set" && !byCode && (
             <PasswordField label="现在的密码" autoComplete="current-password" value={current} onChange={setCurrent} />

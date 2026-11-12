@@ -87,7 +87,7 @@ function keepPending(p: Pending | null) {
 const waitUntil = (nextAt: number) => Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
 
 /** What a mail service is called to the player: Gmail for both of its domains, else the domain itself */
-export const serviceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain);
+const serviceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain);
 
 /**
  * Sign-in by email and a 6-digit code, or the password set before (密码登录); new players tick their age and
@@ -178,13 +178,6 @@ export default function LoginSheet({
     setLoginWith(how);
     keepLoginWith(how);
     setError(null);
-  };
-
-  // from the code step, where a slow mail service may hold the code back: the password, same email (the code
-  // asked for stays good, should it come after all)
-  const toPassword = () => {
-    switchTo("password");
-    setStep("email");
   };
 
   const send = (e?: FormEvent) => {
@@ -397,21 +390,6 @@ export default function LoginSheet({
           {sent?.slow && (
             <p className="hint" style={{ color: "var(--ink)", fontWeight: 600 }}>
               Gmail 最近收我们的信比较慢，可能要等很久。还没注册的话，用 QQ 或 163 邮箱更快。
-              {/* said to every address there, known or not, so it tells nobody who has an account or a password */}
-              {!fixedEmail && (
-                <>
-                  设过密码的，可以
-                  <button
-                    type="button"
-                    className="link"
-                    style={{ fontSize: "inherit", fontWeight: "inherit", color: "inherit", textDecoration: "underline" }}
-                    onClick={toPassword}
-                  >
-                    直接用密码登录
-                  </button>
-                  。
-                </>
-              )}
             </p>
           )}
           <p className="hint">

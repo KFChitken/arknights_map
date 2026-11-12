@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
@@ -36,30 +35,8 @@ const ABOUT: Record<GuideId, string[]> = {
 };
 
 export function GuideDock({ onOpen }: { onOpen: (id: GuideId) => void }) {
-  const ref = useRef<HTMLElement>(null);
-  // On a short phone globals.css lifts the column by just enough for its last guide to clear the bottom buttons, but
-  // never into the counts at the top. So it needs to know how tall the column is, however many guides it holds and
-  // however small a short screen makes them (--guides-h), and how tall the counts are, with whatever rows are put
-  // under them (--hud-h). The counts come and go with the column (both are hidden while placing a roach).
-  useEffect(() => {
-    const nav = ref.current;
-    const app = nav?.closest<HTMLElement>(".app");
-    if (!nav || !app || typeof ResizeObserver === "undefined") return;
-    const hud = app.querySelector<HTMLElement>(".hud");
-    const sizes = new ResizeObserver(() => {
-      app.style.setProperty("--guides-h", `${nav.getBoundingClientRect().height}px`);
-      if (hud) app.style.setProperty("--hud-h", `${hud.getBoundingClientRect().height}px`);
-    });
-    sizes.observe(nav);
-    if (hud) sizes.observe(hud);
-    return () => {
-      sizes.disconnect();
-      app.style.removeProperty("--guides-h");
-      app.style.removeProperty("--hud-h");
-    };
-  }, []);
   return (
-    <nav ref={ref} className="guide-dock" aria-label="向导">
+    <nav className="guide-dock" aria-label="向导">
       {ORDER.map((id) => (
         <button key={id} onClick={() => onOpen(id)} aria-label={GUIDES[id].name}>
           <RoachIcon color={GUIDES[id].color} size={34} avatar={GUIDES[id].avatar} />

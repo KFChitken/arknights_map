@@ -98,20 +98,6 @@ npm test
 
 Append `?style=blank` to the URL to replace the OSM basemap with a plain background when the tile server is unreachable.
 
-### Text and languages
-
-The words the site shows are moving into `src/i18n`: Chinese in `zh.ts`, English in `en.ts` (what English lacks shows in Chinese). Code reads them through `T`, as in `T.map.loading` (blanks are filled with `fmt`, counts with `count`), and only where the text is used, never at the top of a module: the server answers each request in its own language (`src/i18n/server.ts`). A page loads only its own language's words, from `/i18n/<lang>-<hash>.js`. English stays off (`ENGLISH_ON` in `src/i18n/lang.ts`) until it is ready.
-
-Moving text must not change a word or a pixel of the Chinese site. The tools that check it:
-
-```bash
-node scripts/i18n/scan.mts                          # every piece of Chinese in the code
-node scripts/i18n/verify.mts --base origin/main     # each piece still reads the same, word for word
-node scripts/i18n/size.mts --base <main's .next>    # what each page downloads, before and after
-scripts/i18n/screens-setup.sh <main's folder> .     # both builds side by side, then:
-node scripts/i18n/screens.mjs --base http://127.0.0.1:3201 --now http://127.0.0.1:3202
-```
-
 ## Deploy
 
 The live stack is `docker-compose.prod.yml`: Caddy (`deploy/Caddyfile`) is the only service with open ports and gets HTTPS certificates by itself; the app and Postgres stay on the internal network. Login rate limits trust only the address Caddy appends to `X-Forwarded-For`, so the app port must never be published on the server.

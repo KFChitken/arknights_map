@@ -1,13 +1,13 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { cooldownAfter, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY, waitText } from "../rules";
 import { db } from "./db";
-import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_NEW_SHARE, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
+import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
 import { HttpError } from "./http";
-import { isSlowMail, LOGIN_KINDS, MAIL_SLOW_LOCK, mailRoom, mailRoomBack, slowRoomFull } from "./mailQuota";
+import { isSlowMail, MAIL_SLOW_LOCK, mailRoom, mailRoomBack, slowRoomFull } from "./mailQuota";
 import { note } from "./signals";
-import { loginCodes, mailSends, users } from "./schema";
+import { loginCodes, mailSends } from "./schema";
 
 /**
  * The 6-digit codes emailed for sign-in. An address's row is locked while its code is issued (a first ask
@@ -35,9 +35,6 @@ const codeFor = (email: string, expiresAt: Date) =>
 /** A code on its way: again when it is one already sent, still working, sent once more; waitS: seconds before the address may have another */
 export type IssuedCode = { code: string; again: boolean; expiresAt: Date; waitS: number };
 
-/** Which of a slow service's caps a code would pass (mailQuota.ts slowRoomFull), or that it is paused for everyone or for new addresses */
-type SlowRefusal = "day" | "hour" | "new-day" | "new-hour" | "paused" | "new-paused";
-
 function codeMatches(email: string, code: string, hash: string) {
   const a = Buffer.from(hashCode(email, code));
   const b = Buffer.from(hash);
@@ -63,26 +60,19 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
 
   // The address's own limits first, outside the site-wide lock, so an ask its cooldown or its day refuses
   // never waits in that queue (11/11: some 20 asks were waiting for the lock at a time, holding the
-  // database's connections). Asked again under the lock below, which decides. At a slow service, also
-  // whether the address has an account: codes to one without keep to a share of the service's caps
-  // (MAIL_SLOW_NEW_SHARE), so the players who have one can still sign in.
-  const [[seen], known] = await Promise.all([
-    db
-      .select({
-        sentAt: loginCodes.sentAt,
-        dayStart: loginCodes.dayStart,
-        sentToday: loginCodes.sentToday,
-        sends: loginCodes.sends,
-        codeHash: loginCodes.codeHash,
-        expiresAt: loginCodes.expiresAt,
-        attempts: loginCodes.attempts,
-      })
-      .from(loginCodes)
-      .where(eq(loginCodes.email, email)),
-    slow ? hasAccount(email) : true,
-  ]);
-  // none to a new address there while the share is below 0 (e.g. -1), told without waiting for the lock either
-  if (!known && MAIL_SLOW_NEW_SHARE < 0) refuse("new-paused", email, perDay);
+  // database's connections). Asked again under the lock below, which decides.
+  const [seen] = await db
+    .select({
+      sentAt: loginCodes.sentAt,
+      dayStart: loginCodes.dayStart,
+      sentToday: loginCodes.sentToday,
+      sends: loginCodes.sends,
+      codeHash: loginCodes.codeHash,
+      expiresAt: loginCodes.expiresAt,
+      attempts: loginCodes.attempts,
+    })
+    .from(loginCodes)
+    .where(eq(loginCodes.email, email));
   const early = seen ? addressWait(seen, now, dayAgo, perDay) : null;
   if (early !== null) refuse(early, email, perDay);
 
@@ -94,7 +84,7 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
   try {
     // a code on its way, or (refused) the seconds until the next may go, 0 when the address's day is used up,
     // or which of the slow service's caps it would pass
-    const issued = await db.transaction(async (tx): Promise<IssuedCode | number | SlowRefusal> => {
+    const issued = await db.transaction(async (tx): Promise<IssuedCode | number | "day" | "hour"> => {
       // the slow services' caps hold to the code: their asks are counted one at a time, until the end
       if (slow) await tx.execute(sql`select pg_advisory_xact_lock(${MAIL_SLOW_LOCK})`);
       // An address asking for the first time has no row to lock yet: one saying nothing was sent, so two asks
@@ -114,7 +104,7 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
       const wait = addressWait(row, now, dayAgo, perDay);
       if (wait !== null) return refused(wait);
       if (slow) {
-        const full = await slowRoomFull(tx, now, known);
+        const full = await slowRoomFull(tx, now);
         if (full) return refused(full);
       }
 
@@ -136,7 +126,7 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
             : { codeHash: hashCode(email, code), expiresAt, attempts: 0, sentAt: now, sends: 1, ...day },
         )
         .where(eq(loginCodes.email, email));
-      await tx.insert(mailSends).values({ sentAt: now, kind: !slow ? "login" : known ? "login-slow" : "login-slow-new" });
+      await tx.insert(mailSends).values({ sentAt: now, kind: slow ? "login-slow" : "login" });
       return { code, again, expiresAt, waitS: cooldownAfter(again ? row.sends + 1 : 1) };
     });
     if (typeof issued === "object") {
@@ -167,22 +157,15 @@ function addressWait(
   return null;
 }
 
-/** Whether an address has an account (users.email is unique, and kept as the sign-in forms send it: trimmed, lower case) */
-async function hasAccount(email: string) {
-  const [row] = await db.select({ one: sql`1` }).from(users).where(eq(users.email, email)).limit(1);
-  return Boolean(row);
-}
-
 /** What a slow mail service is called to the player: Gmail for both of its domains, else the domain */
 const mailServiceName = (domain: string) => (/^(gmail|googlemail)\.com$/.test(domain) ? "Gmail" : domain);
 
 /**
  * No code: the address's cooldown (seconds to wait), its day used up (0), a slow service's cap for the day
- * or the hour, that service paused altogether, or (an address with no account there) the share of those
- * caps new addresses may take used up, or none for them at all
+ * or the hour, or that service paused altogether
  */
-function refuse(why: number | SlowRefusal, email: string, perDay: number): never {
-  if (typeof why === "string") {
+function refuse(why: number | "day" | "hour" | "paused", email: string, perDay: number): never {
+  if (why === "day" || why === "hour" || why === "paused") {
     note("codeRefused", `slow-${why}`);
     const service = mailServiceName(email.slice(email.lastIndexOf("@") + 1));
     throw new HttpError(
@@ -191,9 +174,7 @@ function refuse(why: number | SlowRefusal, email: string, perDay: number): never
         ? `${service} 最近收不到我们的验证码邮件，我们先暂停了发往 ${service} 的验证码，恢复后会再开。这段时间请换 QQ、163 或 Outlook 邮箱登录。`
         : why === "day"
           ? `${service} 现在限制我们的发信，今天发往 ${service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。`
-          : why === "hour"
-            ? `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`
-            : `${service} 现在限制我们的发信，发往 ${service} 的验证码先留给老玩家登录。新注册请换 QQ、163 或 Outlook 邮箱，马上就能收到。`,
+          : `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`,
     );
   }
   note("codeRefused", why > 0 ? "cooldown" : "address-day");
@@ -237,7 +218,7 @@ export async function withdrawLoginCode(email: string, issued: IssuedCode) {
       .where(eq(loginCodes.email, email));
     // the one row it added to the site's count, written at the same moment
     await tx.execute(
-      sql`delete from ${mailSends} where ${mailSends.id} = (select ${mailSends.id} from ${mailSends} where ${inArray(mailSends.kind, LOGIN_KINDS)} and ${mailSends.sentAt} = ${row.sentAt.toISOString()}::timestamptz order by ${mailSends.id} desc limit 1)`,
+      sql`delete from ${mailSends} where ${mailSends.id} = (select ${mailSends.id} from ${mailSends} where ${mailSends.kind} in ('login', 'login-slow') and ${mailSends.sentAt} = ${row.sentAt.toISOString()}::timestamptz order by ${mailSends.id} desc limit 1)`,
     );
   });
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { readFileSync, statfsSync } from "node:fs";
 import os from "node:os";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull, lt, or } from "drizzle-orm";
 import { beijingDate, beijingMidnight, beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
 import { asLevel, lasted, LEVEL_MARK, levelRank, type IncidentView, type SiteNumbers, type SiteStatus } from "../siteStatus";
@@ -9,7 +9,6 @@ import { amapMapLoads, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT, SITE_URL } from "./env";
 import { HttpError } from "./http";
-import { LOGIN_KINDS } from "./mailQuota";
 import { byReason } from "./safety";
 import { dailyTotals, mailSends, reports, sessions, watchIncidents, watchMails, watchState } from "./schema";
 
@@ -74,11 +73,10 @@ function backupWords(row: { value: string; updatedAt: Date } | undefined) {
 
 /** The figures of the digest and of 网站状态 */
 export async function siteNumbers(now = Date.now()): Promise<SiteNumbers> {
-  // every sign-in code, to the slow mail services too: the ones MAIL_DAILY_LIMIT counts
   const [{ n }] = await db
     .select({ n: count() })
     .from(mailSends)
-    .where(and(inArray(mailSends.kind, LOGIN_KINDS), gt(mailSends.sentAt, new Date(now - DAY))));
+    .where(and(eq(mailSends.kind, "login"), gt(mailSends.sentAt, new Date(now - DAY))));
   let space: SiteNumbers["disk"] = null;
   try {
     const d = disk();

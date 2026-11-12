@@ -8,7 +8,7 @@ import { db } from "./db";
 import { secret } from "./env";
 import { sessions, users, type UserRow } from "./schema";
 
-export const SESSION_COOKIE = "sid";
+const SESSION_COOKIE = "sid";
 const SIGNUP_COOKIE = "signup";
 const SIGNUP_MIN = 15;
 

@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
-  check,
   customType,
   date,
   doublePrecision,
@@ -215,9 +214,8 @@ export const mailSends = pgTable("mail_sends", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   sentAt: at("sent_at").notNull().defaultNow(),
   /**
-   * "login" for a code, "login-slow" for one to a slow mail service (MAIL_SLOW_DOMAINS) and "login-slow-new"
-   * for one there to an address with no account yet (MAIL_SLOW_NEW_SHARE), the only kinds counted against
-   * MAIL_DAILY_LIMIT (mailQuota.ts LOGIN_KINDS); "report" for the admin's daily
+   * "login" for a code and "login-slow" for one to a slow mail service (MAIL_SLOW_DOMAINS), the only
+   * kinds counted against MAIL_DAILY_LIMIT; "report" for the admin's daily
    * report reminder and "report-urgent" for one about URGENT_REASONS (src/lib/server/safety.ts)
    */
   kind: text("kind").notNull().default("login"),
@@ -912,42 +910,6 @@ export const nameWords = pgTable("name_words", {
   createdAt: createdAt(),
 });
 
-/**
- * 公告 (src/lib/server/notices.ts): what the admin writes to everyone, on the board at the top of the map.
- * A draft is seen by nobody; a live one by everyone, until it is withdrawn or ends_at passes; the
- * withdrawn ones are kept. Whether someone has seen one is kept only in their browser, never here.
- */
-export const notices = pgTable(
-  "notices",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    title: text("title").notNull(),
-    body: text("body").notNull(),
-    /** none: never pops up; once: pops up once for each player; every: on every visit and every sign-in */
-    pop: text("pop").notNull().default("none"),
-    pinned: boolean("pinned").notNull().default(false),
-    /** draft, live or withdrawn */
-    status: text("status").notNull().default("draft"),
-    /** When it went live; edits keep it, so an edit never pops up again or lights the red dot */
-    publishedAt: at("published_at"),
-    /** When it leaves the board by itself; null: never */
-    endsAt: at("ends_at"),
-    withdrawnAt: at("withdrawn_at"),
-    createdAt: createdAt(),
-    /** Every change moves it on, and with it the stamp pages compare (notices.ts) */
-    updatedAt: at("updated_at").notNull().defaultNow(),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
-  },
-  (t) => [
-    index("notices_status_published_idx").on(t.status, t.publishedAt.desc()),
-    // one at a time pops up on every visit
-    uniqueIndex("notices_one_every").on(sql`(true)`).where(sql`${t.status} = 'live' and ${t.pop} = 'every'`),
-    check("notices_pop_check", sql`${t.pop} in ('none', 'once', 'every')`),
-    check("notices_status_check", sql`${t.status} in ('draft', 'live', 'withdrawn')`),
-  ],
-);
-
 /** A player's radar scans of the last day (counts only), to cap them and show the last one again. */
 export const radarScans = pgTable(
   "radar_scans",
@@ -1032,5 +994,4 @@ export const moves = pgTable(
 );
 
 export type UserRow = typeof users.$inferSelect;
-export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;
