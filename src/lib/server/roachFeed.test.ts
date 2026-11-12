@@ -616,6 +616,23 @@ describe("an area's whole answer, kept a while (f=4)", () => {
     const a = await roachArea(area, since, now);
     return { ...a, body: JSON.parse(a.kind === "full" ? a.whole.json : a.json) as AreaUpdate & { changed?: MapRoach[] } };
   };
+
+  it("keeps the overview however many boxes are made meanwhile, each form of it", async () => {
+    const a = await player("a@example.com");
+    await roachWithId(a, 0, "a1000000-0000-4000-8000-000000000001", SHANGHAI);
+    const overview = await roachArea("overview", null, T0);
+    const squares = await roachArea("overview", null, T0, true);
+    // a busy hour's boxes, more than the cache holds, at a new version
+    await db.execute(sql`update roaches set lng = 121.5 where slot = 0`);
+    await roachFeed(null, T0 + 4000, 3);
+    await roachFeedSettled();
+    for (let i = 0; i < 300; i++) await roachArea([100 + (i % 60) * 0.25, 20, 110 + (i % 60) * 0.25, 30 + Math.floor(i / 60) * 0.25], null, T0 + 4000);
+    const again = await roachArea("overview", null, T0 + 4000);
+    const againSquares = await roachArea("overview", null, T0 + 4000, true);
+    expect(again.kind === "full" && overview.kind === "full" && again.whole === overview.whole).toBe(true);
+    expect(againSquares.kind === "full" && squares.kind === "full" && againSquares.whole === squares.whole).toBe(true);
+    expect(again.v).toBe(overview.v);
+  });
   /** Ask once to start a round that is due, and let it finish */
   const round = async (now: number) => {
     await roachFeed(null, now, 3);

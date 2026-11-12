@@ -886,8 +886,8 @@ export async function roachCounts(now = Date.now()): Promise<{ v: string } & Fee
  * never came. A page holding a box made a while ago asks what changed since its version, as for any box.
  * The overview is always sent whole, so every page showing it downloads it again each time it is made
  * anew: half an hour, not five minutes (2026-11-12, when the servers' outgoing bandwidth was full), the
- * roaches seen from that far up being at most that late. Past AREAS_KEPT, the least lately made go first;
- * each is up to a few hundred KB.
+ * roaches seen from that far up being at most that late. Past AREAS_KEPT, the least lately made box goes first,
+ * never the overview; each is up to a few hundred KB.
  */
 const OVERVIEW_KEPT_MS = 30 * 60_000;
 const BOX_KEPT_MS = 60_000;
@@ -945,7 +945,15 @@ function areaWhole(s: Snapshot, area: Area, now: number, squares = false): { v: 
   const whole = { json: `{"v":"${s.v}",${where},"t":${totalsJson(s)},"packed":${JSON.stringify(packRoaches(list, 4, area === "overview" && squares))}}` };
   s.areas.delete(key);
   s.areas.set(key, { v: s.v, at: now, whole });
-  if (s.areas.size > AREAS_KEPT) s.areas.delete(s.areas.keys().next().value!);
+  // Boxes are made by the hundred at a busy hour; the overview, which every page zoomed out holds, is never the one
+  // pushed out: made anew it has a new version, which every such page downloads whole again at its next ask
+  if (s.areas.size > AREAS_KEPT) {
+    for (const k of s.areas.keys()) {
+      if (k === "o" || k === "o2") continue;
+      s.areas.delete(k);
+      break;
+    }
+  }
   return { v: s.v, key, whole };
 }
 
