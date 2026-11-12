@@ -23,6 +23,8 @@ export default async function setup() {
 
   const client = postgres(url.href, { max: 1, onnotice: () => {} });
   await migrate(drizzle(client), { migrationsFolder: "drizzle" });
+  // the database notes every roach written (roach_changes), and nothing clears that between tests
+  await client`truncate roach_changes`;
   await client.end();
 }
 

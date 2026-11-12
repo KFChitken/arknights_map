@@ -4,7 +4,7 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { brotliCompress, constants as zlib, gzip } from "node:zlib";
-import { and, asc, eq, gt, gte, inArray, lt, lte, max, or } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lt, lte, max, or, sql } from "drizzle-orm";
 import { isNearFire } from "../talulah";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import { boxText, inBox, overviewCell, type Area, type Box } from "../world/area";
@@ -55,6 +55,10 @@ const CHECK_MS = 30 * 60_000;
 const CHECK_CHUNK = 20_000;
 /** A gap in the change numbers (a change not yet committed, or rolled back) is looked for again this long */
 const GAP_MS = 60_000;
+/** Roaches put in at a time by a round (or the check) that read many, each piece a version of its own */
+const APPLY_CHUNK = 2000;
+/** The triggers that write roach_changes (drizzle/0040_roach_changes.sql) */
+const TRIGGERS = ["roach_changes_ins", "roach_changes_del", "roach_changes_upd", "roach_owner_changes_upd"];
 /** Changes the first round reads again, from before the snapshot was made */
 const REREAD_AT_START = 2000;
 /** Changes are kept this long; a page further behind gets the whole snapshot again. */
@@ -169,7 +173,6 @@ type Feed = {
   /** Versions in (from, to) mean nothing here: made after the last save by the process before */
   unknown: { from: number; to: number } | null;
   changes: Change[];
-  dirty: boolean;
   building: Promise<Snapshot> | null;
   /** When the last round started */
   polledAt: number;
@@ -191,7 +194,6 @@ const fresh = (): Feed => ({
   before: null,
   unknown: null,
   changes: [],
-  dirty: true,
   building: null,
   polledAt: 0,
   startedAt: Date.now(),
@@ -206,13 +208,11 @@ const g = globalThis as typeof globalThis & { __roachFeed?: Feed };
 const feed: Feed = (g.__roachFeed ??= fresh());
 
 /**
- * Call after roaches are placed, moved or removed, or someone's look changes. The database notes every such
- * change itself (roach_changes), and every process reads them; this only tells this process to look at the
- * next round rather than skip it.
+ * Called after roaches are placed, moved or removed, or someone's look changes. There is nothing left for it to
+ * do: the database notes every such change itself (roach_changes), and every process reads them each round.
+ * Kept so that its callers need not change.
  */
-export function roachesChanged() {
-  feed.dirty = true;
-}
+export function roachesChanged() {}
 
 /** Whether a player's main roach lies asleep: drunk, or flipped over for their staying away. Nothing says which. */
 export const sleeping = (u: { drunkUntil: Date | null; sleptAwayOn: string | null }, now = Date.now()) =>
@@ -571,6 +571,7 @@ const BUILD_CHUNK = 20_000;
  * as one version's changes.
  */
 async function build(now: number): Promise<Snapshot> {
+  await triggersThere();
   // the first round reads a little further back: a change numbered before the newest may still have been on
   // its way (its transaction not yet committed) as the roaches were read; reading one again changes nothing
   feed.seen = Math.max(0, (await newestChange()) - REREAD_AT_START);
@@ -649,7 +650,7 @@ async function poll(s: Snapshot, now: number): Promise<boolean> {
   const rows = await db
     .select({ n: roachChanges.n, publicId: roachChanges.publicId })
     .from(roachChanges)
-    .where(gaps.length ? or(gt(roachChanges.n, feed.seen), inArray(roachChanges.n, gaps)) : gt(roachChanges.n, feed.seen))
+    .where(gaps.length ? or(gt(roachChanges.n, feed.seen), sql`${roachChanges.n} = any(${numbers(gaps)}::bigint[])`) : gt(roachChanges.n, feed.seen))
     .orderBy(asc(roachChanges.n));
   const ids = new Set<string>();
   let next = feed.seen + 1;
@@ -663,19 +664,60 @@ async function poll(s: Snapshot, now: number): Promise<boolean> {
     }
   }
   for (const [id, wakes] of s.drunk) if (wakes <= real) ids.add(id);
-  if (!ids.size) return false;
+  if (!ids.size || feed.stopping) return false;
   const found = await readRoaches([...ids]);
-  // all the round does on the main thread, which grows with the changes and not with the map
-  const started = performance.now();
-  const touched = apply(s, new Map([...ids].map((id) => [id, found.get(id) ?? null])));
-  if (touched) bump(s, touched, now);
-  stats.lastRound = { roaches: ids.size, ms: performance.now() - started };
-  if (stats.lastRound.ms > 200) console.warn(`roach feed: a round of ${ids.size} roaches took ${Math.round(stats.lastRound.ms)} ms`);
-  return Boolean(touched);
+  const put = await inPieces(s, [...ids].map((id) => [id, found.get(id) ?? null]), now);
+  stats.lastRound = { roaches: ids.size, ...put };
+  if (put.longest > 200) console.warn(`roach feed: putting in a round of ${ids.size} roaches took ${Math.round(put.longest)} ms at a stretch`);
+  return put.changed;
+}
+
+/** A Postgres array of numbers, as one parameter however many (a query takes at most 65,535) */
+const numbers = (ns: number[]) => `{${ns.join(",")}}`;
+
+/**
+ * Put these roaches as they are now into the snapshot, APPLY_CHUNK at a time, each piece a version of its own
+ * (as if each had been a round), with other requests let in between: all a round does on the main thread,
+ * which grows with the changes and not with the map. None once the process has been told to stop, whose last
+ * version is written down. Whether any changed, and the time on the main thread, in all and at most at a stretch.
+ */
+async function inPieces(s: Snapshot, reads: [string, Read | null][], now: number) {
+  let changed = false;
+  let ms = 0;
+  let longest = 0;
+  for (let i = 0; i < reads.length; i += APPLY_CHUNK) {
+    if (i) await breathe();
+    if (feed.stopping) break;
+    const started = performance.now();
+    const touched = apply(s, new Map(reads.slice(i, i + APPLY_CHUNK)));
+    if (touched) {
+      bump(s, touched, now);
+      changed = true;
+    }
+    const took = performance.now() - started;
+    ms += took;
+    longest = Math.max(longest, took);
+  }
+  return { changed, ms, longest };
 }
 
 /** How the last round went, for the measurements: how many roaches it read again, and its time on the main thread */
-const stats: { lastRound: { roaches: number; ms: number } | null } = { lastRound: null };
+const stats: { lastRound: { roaches: number; changed: boolean; ms: number; longest: number } | null } = { lastRound: null };
+
+/** Says so in the log if the database no longer notes roach changes: the map would then change only at the checks */
+async function triggersThere() {
+  try {
+    const on = await db.execute<{ name: string }>(
+      sql`select tgname as name from pg_trigger where tgrelid in ('roaches'::regclass, 'users'::regclass) and not tgisinternal and tgenabled in ('O', 'A')`,
+    );
+    const missing = TRIGGERS.filter((t) => !on.some((r) => r.name === t));
+    if (missing.length) {
+      console.error(`roach feed: the database is not noting roach changes (${missing.join(", ")} missing or off), so the map changes only at the half-hourly check`);
+    }
+  } catch (e) {
+    console.error("roach feed: could not look for the triggers that note roach changes", e);
+  }
+}
 export const roachFeedStats = () => ({ ...stats, held: feed.snapshot?.byId.size ?? 0 });
 
 /**
@@ -685,6 +727,10 @@ export const roachFeedStats = () => ({ ...stats, held: feed.snapshot?.byId.size 
  */
 async function check(s: Snapshot, now: number) {
   feed.checkedAt = now;
+  await triggersThere();
+  // no round runs meanwhile: what is written from now on comes in the next one
+  const seen = feed.seen;
+  const gaps = [...feed.gaps.keys()];
   const fix = new Map<string, Read | null>();
   const there = new Set<string>();
   let after: string | null = null;
@@ -708,10 +754,15 @@ async function check(s: Snapshot, now: number) {
   }
   for (const [id, r] of s.byId) if (!r.bot && !there.has(id)) fix.set(id, null);
   if (!fix.size) return false;
-  console.warn(`roach feed: the full check found ${fix.size} roaches the rounds had missed`);
-  const touched = apply(s, fix);
-  if (touched) bump(s, touched, now);
-  return Boolean(touched);
+  // a roach changed while the table was read through is in the log, for the next round: not missed
+  const logged = await db
+    .selectDistinct({ publicId: roachChanges.publicId })
+    .from(roachChanges)
+    .where(gaps.length ? or(gt(roachChanges.n, seen), sql`${roachChanges.n} = any(${numbers(gaps)}::bigint[])`) : gt(roachChanges.n, seen));
+  const pending = new Set(logged.map((r) => r.publicId));
+  const missed = [...fix.keys()].filter((id) => !pending.has(id)).length;
+  if (missed) console.warn(`roach feed: the full check found ${missed} roaches the rounds had missed`);
+  return (await inPieces(s, [...fix], now)).changed;
 }
 
 /**
@@ -738,7 +789,6 @@ async function current(now = Date.now()): Promise<Snapshot> {
   // a round that is due runs in the background, one at a time; meanwhile pages get the version there is
   if (!feed.building && !feed.stopping && now - feed.polledAt >= POLL_MS) {
     feed.polledAt = now;
-    feed.dirty = false;
     // every CHECK_MS the round also reads the whole table through, after the changes
     const checking = now - feed.checkedAt >= CHECK_MS;
     const round = poll(s, now)

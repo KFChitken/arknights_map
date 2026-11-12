@@ -21,7 +21,7 @@ import {
   stopRoachFeed,
   type FeedForm,
 } from "./roachFeed";
-import { users } from "./schema";
+import { roachChanges, users } from "./schema";
 import * as world from "./world";
 
 const SHANGHAI = { lng: 121.47, lat: 31.23 };
@@ -57,7 +57,8 @@ async function player(email: string) {
 }
 
 beforeEach(async () => {
-  await db.execute(sql`truncate ${users} cascade`);
+  // the change log too (it refers to nothing, so a cascade from users leaves it), and without restarting its numbers
+  await db.execute(sql`truncate ${users}, ${roachChanges} cascade`);
   resetRoachFeed();
 });
 
@@ -418,8 +419,55 @@ describe("roach feed", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const fixed = await askAfterRebuild(start.v, T0 + 31 * MINUTE, 3);
       expect(fixed.changed).toMatchObject([{ lng: 120, lat: 30 }]);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("missed"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("found 1 roaches the rounds had missed"));
       warn.mockRestore();
+    });
+
+    it("says in the log when the database has stopped noting changes", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      await db.execute(sql`alter table users disable trigger roach_owner_changes_upd`);
+      try {
+        await ask(null, T0, 3);
+      } finally {
+        await db.execute(sql`alter table users enable trigger roach_owner_changes_upd`);
+      }
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("roach_owner_changes_upd missing or off"));
+      error.mockClear();
+      // all four there: nothing to say
+      resetRoachFeed();
+      await ask(null, T0, 3);
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
+
+    it("puts a big round in a piece at a time, each a version of its own, coming out as a fresh start would", { timeout: 60_000 }, async () => {
+      const start = await ask(null, T0, 3);
+      expect(await askAfterRebuild(start.v, T0 + 4000, 3)).toEqual({ v: start.v });
+      // 4,500 roaches at once: three pieces
+      await db.execute(sql`
+        insert into users (email, policy_accepted_at, cross_border_accepted_at, public_place_accepted_at)
+        select 'big' || i || '@example.com', now(), now(), now() from generate_series(1, 1500) i`);
+      await db.execute(sql`
+        insert into roaches (user_id, slot, lng, lat)
+        select u.id, s.slot, 100 + random() * 40, 20 + random() * 25 from users u, generate_series(0, 2) as s(slot)`);
+      const after = await askAfterRebuild(start.v, T0 + 8000, 3);
+      expect(Number(after.v.split(".")[1]) - Number(start.v.split(".")[1])).toBe(3);
+      expect((await sameAsFresh(T0 + 8000)).whole).toHaveLength(4500);
+    });
+
+    it("looks again for any number of changes not yet seen, in one question", { timeout: 60_000 }, async () => {
+      const a = await player("a@example.com");
+      await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+      const start = await ask(null, T0, 3);
+      expect(await askAfterRebuild(start.v, T0 + 4000, 3)).toEqual({ v: start.v });
+      // 70,000 numbers skipped (more than a query takes parameters), all of them then looked for again each round
+      await db.execute(sql`select setval(pg_get_serial_sequence('roach_changes', 'n'), (select coalesce(max(n), 0) from roach_changes) + 70000)`);
+      await db.execute(sql`update roaches set lng = ${TOKYO.lng}, lat = ${TOKYO.lat} where user_id = ${a}`);
+      const moved = await askAfterRebuild(start.v, T0 + 8000, 3);
+      expect(moved.changed).toMatchObject([TOKYO]);
+      await db.execute(sql`update roaches set lng = ${BEIJING.lng}, lat = ${BEIJING.lat} where user_id = ${a}`);
+      const again = await askAfterRebuild(moved.v, T0 + 12_000, 3);
+      expect(again.changed).toMatchObject([BEIJING]);
     });
   });
 });

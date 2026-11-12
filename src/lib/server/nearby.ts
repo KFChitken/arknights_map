@@ -10,7 +10,6 @@ import type { LngLat } from "../types";
  * about and watching the numbers cannot pin one roach down.
  */
 
-/** The snapshot's roaches by whole degree of longitude and latitude */
 /** The roaches by whole degree of longitude and latitude: those in the cell west and south of (x, y), if any */
 export type Grid = (x: number, y: number) => Iterable<LngLat> | undefined;
 
