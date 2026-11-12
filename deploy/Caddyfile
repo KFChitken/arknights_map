@@ -95,18 +95,18 @@ zhoupmap.com, zhoupmap.com:8443 {
 		# the app's four processes, so it uses more than one core: web here (docker-compose.prod.yml), web2,
 		# web3 and web4 on the second server, over the private network (docker-compose.second.yml). Each visitor
 		# stays with one of them, by address: their event stream and their limits are in one place. One
-		# whose icon has not come six times in a row (about a minute: restarting, or gone) is left out until it
-		# has come twice; a single slow or broken request never is (2026-11-10: that left out all three at once
-		# under load), and a stall under 20 s is not a failure (2026-11-12: a process that stalled a few seconds
-		# was left out and let in again every few minutes, and each time a third of the visitors moved to a
-		# process that had none of their map yet and downloaded it all again)
+		# that is not ready twice in a row (/api/ready: restarting, warming its roach list, or told by a release that
+		# it is about to stop) is left out, about 20 s, and let back in once ready twice; a single slow or broken
+		# request never leaves one out (2026-11-10: that left out all three at once under load). A release takes a
+		# process out this way before restarting it (/tmp/zhoup-draining), so no visitor waits on a cold one.
+		# Before rolling back to a version without /api/ready (before 5eba11c), put health_uri /icon.svg back first.
 		reverse_proxy web:3000 10.5.0.15:3001 10.5.0.15:3002 10.5.0.15:3003 {
 			lb_policy ip_hash
 			lb_try_duration 5s
-			health_uri /icon.svg
+			health_uri /api/ready
 			health_interval 10s
 			health_timeout 20s
-			health_fails 6
+			health_fails 2
 			health_passes 2
 		}
 	}
