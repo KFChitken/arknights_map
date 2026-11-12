@@ -209,6 +209,8 @@ const MOVED: string[] = [
   // B2: the map page
   "src/components/MapApp.tsx",
   "src/components/map/",
+  // B3: the panels on it
+  "src/components/app/",
 ];
 
 /** The Chinese code decides by, where it must: what it compares, looks for or names a property with */
@@ -229,10 +231,12 @@ const DECIDED_BY = new Set([
   "src/lib/perlica.ts 吨 ",
 ]);
 
-/** Chinese that stays in a file whose words have moved, as a code another function takes, not words */
+/** Chinese that stays in a file whose words have moved, as a code another function takes or a picture, not words */
 const CODES = new Set([
   // the measure word countText (src/lib/counts.ts) counts players with
   "src/components/MapApp.tsx 位",
+  // the seal stamped on 祀掌柜's pictures, drawn on a canvas
+  "src/components/app/SiBook.tsx 祀",
 ]);
 
 describe("the code", () => {

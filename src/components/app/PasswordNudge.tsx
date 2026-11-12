@@ -6,6 +6,7 @@
  * LATER_MS; otherwise it comes once a visit until a password is set.
  */
 
+import { T } from "@/i18n";
 const LATER_MS = 30 * 86_400_000;
 const laterKey = (userId: string) => `zhoup.passwordNudgeLater.${userId}`;
 
@@ -28,13 +29,13 @@ export function putOffNudge(userId: string) {
 export default function PasswordNudge({ onSet, onLater }: { onSet: () => void; onLater: () => void }) {
   return (
     <div className="pw-nudge" role="status">
-      <p>Gmail 现在收不到我们的验证码。先设个密码，下次换手机或电脑，用邮箱和密码就能登录。</p>
+      <p>{T.password.nudge.gmail}</p>
       <div className="row">
         <button className="go" onClick={onSet}>
-          去设密码
+          {T.password.nudge.go}
         </button>
         <button className="no" onClick={onLater}>
-          下次再说
+          {T.password.notNow}
         </button>
       </div>
     </div>

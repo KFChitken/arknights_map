@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { AMIYA_ID, AMIYA_NAME } from "@/lib/amiya";
 import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
 import { PERLICA_ID, PERLICA_MORE, PERLICA_NAME } from "@/lib/perlica";
@@ -108,15 +108,15 @@ export function OtherRoachCard({
 }) {
   if (roach.bot) {
     return (
-      <div className="card stack" role="dialog" aria-label="演示蟑螂">
+      <div className="card stack" role="dialog" aria-label={T.cards.demo.title}>
         <div className="card-head">
           <RoachIcon color={roach.color} size={44} avatar={roach.avatar} look={look} />
           <div>
-            <strong>一只路过的演示蟑螂</strong>
-            <p className="muted">这是网站放的演示蟑螂，不是真人，碰不到 TA。</p>
+            <strong>{T.cards.demo.label}</strong>
+            <p className="muted">{T.cards.demo.note}</p>
           </div>
         </div>
-        <button className="close" onClick={onClose} aria-label="关闭">
+        <button className="close" onClick={onClose} aria-label={T.common.close}>
           ×
         </button>
       </div>
@@ -139,61 +139,61 @@ export function OtherRoachCard({
           ? MINGHE_NAME
           : AMIYA_NAME
     : friendName
-      ? `触须之交 · ${friendName}${roach.clone ? " 的克隆体" : ""}`
+      ? fmt(T.cards.friendTitle, { name: friendName, clone: roach.clone ? T.cards.friendClone : "" })
       : roach.clone
-        ? "某舟P的克隆体"
+        ? T.cards.someClone
         : asleep
-          ? "一只翻肚皮的匿名舟P"
-          : "一只匿名舟P";
+          ? T.cards.anonymousAsleep
+          : T.common.anonymousOne;
   // who she is, above what she does
   const about = perlica
     ? perlicaTimer
-      ? "终末地工业监督。负责协议源石技术、帝江号，还有记住管理员离开了多久。"
-      : "终末地工业监督。负责协议源石技术和帝江号。"
+      ? T.cards.perlica.aboutTimer
+      : T.cards.perlica.about
     : talulah
-      ? (talulah.hood ?? "整合运动的创始人，刚上岛的罗德岛干员。现在在太阳岛守着一堆火。")
+      ? (talulah.hood ?? T.cards.talulah.about)
       : ride
         ? MINGHE_LINES.intro
         : null;
   const hint = talulah
-    ? `现在火边坐着 ${talulah.count.toLocaleString()} 只蟑螂`
+    ? fmt(T.cards.talulah.count, { n: talulah.count.toLocaleString() })
     : ride
-    ? `今天在：${ride.today}。明天去：${ride.tomorrow}。`
+    ? fmt(T.cards.minghe.today, { today: ride.today, tomorrow: ride.tomorrow })
     : perlica
     ? friendName
       ? perlicaTimer
-        ? "你们是触须之交。你每次离开多久，她都记着。"
-        : "你们是触须之交。"
+        ? T.cards.perlica.friendsTimer
+        : T.cards.perlica.friends
       : perlicaTimer
-        ? "她每天会用一样的方式碰回你一次，也会记着你每次离开多久。"
-        : "她每天会用一样的方式碰回你一次。"
+        ? T.cards.perlica.touchTimer
+        : T.cards.guide.touchBack
     : roach.guide
     ? !signedIn
       ? waiting
-        ? "正在读取你的账号…"
-        : "登录后就能碰她。"
+        ? T.cards.reading
+        : T.cards.guide.signIn
       : friendName
-        ? "你们是触须之交，她每天会跟你打招呼。"
-        : "她每天会用一样的方式碰回你一次。"
+        ? T.cards.guide.friends
+        : T.cards.guide.touchBack
     : asleep
       ? friendName
-        ? "TA 四脚朝天睡着了。戳一戳，TA 醒来就知道你来过。"
-        : "它四脚朝天睡着了。是喝多了还是好久没来，谁也说不准。"
+        ? T.cards.asleep.friend
+        : T.cards.asleep.stranger
       : !signedIn
         ? waiting
-          ? "正在读取你的账号…"
-          : "登录后就能伸出触须碰 TA。"
+          ? T.cards.reading
+          : T.cards.signIn
         : touched === "sneaky"
-          ? "今天偷偷碰过 TA 了。想让 TA 知道是你，就大胆碰一下："
+          ? T.cards.touched.sneaky
           : touched === "bold"
-            ? "今天大胆碰过 TA 了，明天再来吧。"
+            ? T.cards.touched.bold
             : friendName
-              ? "你们是触须之交，随时可以再碰碰 TA。"
+              ? T.cards.touched.friends
               : roach.clone
-                ? "碰它，触须会传给它的主人。"
-                : "伸出触须碰一下 TA：";
+                ? T.cards.touchClone
+                : T.cards.touch;
   return (
-    <div className="card stack" role="dialog" aria-label="伸出触须">
+    <div className="card stack" role="dialog" aria-label={T.cards.label}>
       <div className="card-head">
         <RoachIcon
           color={roach.color}
@@ -209,7 +209,7 @@ export function OtherRoachCard({
         <div>
           <strong>
             {title}
-            {asleep && <span className="zz">{friendName ? "睡着了" : "理智恢复中"}</span>}
+            {asleep && <span className="zz">{friendName ? T.common.asleep : T.cards.recovering}</span>}
           </strong>
           {about && <p className="muted">{about}</p>}
           {perlica && perlicaGuarding && <p className="muted">{PERLICA_MORE.guarding}</p>}
@@ -217,25 +217,25 @@ export function OtherRoachCard({
           {talulah && (
             <>
               <p className="muted">{FIRE_LINES[talulah.level]}</p>
-              <p className="hint fire-note">派的是克隆体，不用真去哈尔滨。</p>
+              <p className="hint fire-note">{T.cards.talulah.cloneNote}</p>
             </>
           )}
           {roach.guide && roach.id === AMIYA_ID && (
             <p className="hint fire-note">
-              舞蹈和音乐：疚刃（bilibili）的视频
+              {T.cards.amiya.credit}
               {amiyaMusic && (
                 <button className="link amiya-music" onClick={amiyaMusic.onToggle}>
-                  {amiyaMusic.on ? "🔊 跳舞时放音乐" : "🔇 跳舞时不放音乐"}
+                  {amiyaMusic.on ? T.cards.amiya.musicOn : T.cards.amiya.musicOff}
                 </button>
               )}
             </p>
           )}
           {ride && (
             <>
-              <p className="muted">{fmtParts("「{text}」", { text: ride.line })}</p>
-              <p className="muted">{fmtParts("现在有 {n} 只蟑螂跟着他", { n: ride.riders.toLocaleString() })}</p>
+              <p className="muted">{fmtParts(T.common.quoted, { text: ride.line })}</p>
+              <p className="muted">{fmtParts(T.cards.minghe.riders, { n: ride.riders.toLocaleString() })}</p>
               <MingheRoute day={ride.day} />
-              <p className="hint fire-note">跟他走的是克隆体，不用真去。</p>
+              <p className="hint fire-note">{T.cards.minghe.cloneNote}</p>
             </>
           )}
         </div>
@@ -243,7 +243,7 @@ export function OtherRoachCard({
       {onOpenFriend && (
         <div className="row-actions">
           <button className="pill" onClick={onOpenFriend}>
-            看看 TA
+            {T.common.seeThem}
           </button>
         </div>
       )}
@@ -251,21 +251,21 @@ export function OtherRoachCard({
         <>
           <div className="touch-buttons">
             <button disabled={touching} onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
-              偷偷伸出触须
-              <small>他只知道被碰了一下</small>
+              {T.common.reachSneaky}
+              <small>{T.cards.minghe.sneakyNote}</small>
             </button>
             <button disabled={touching} className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
-              大胆伸出触须
-              <small>{sharesUid ? "他能看到你的资料和 UID" : "他能看到你的资料"}</small>
+              {T.common.reachBold}
+              <small>{sharesUid ? T.cards.minghe.boldUid : T.cards.minghe.bold}</small>
             </button>
           </div>
           {signedIn && ride.riding ? (
             <button className="primary wide fire-send" disabled={ride.sending} onClick={ride.onDismount}>
-              在这一站下马
+              {T.cards.minghe.dismount}
             </button>
           ) : (
             <button className="primary wide fire-send" disabled={ride.sending} onClick={ride.onRide}>
-              {signedIn ? "派一只克隆体跟他走" : "登录后就能跟他走"}
+              {signedIn ? T.cards.minghe.ride : T.cards.minghe.signIn}
             </button>
           )}
         </>
@@ -273,61 +273,61 @@ export function OtherRoachCard({
         <>
           <div className="touch-buttons">
             <button disabled={touching} onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
-              偷偷伸出触须
-              <small>TA 只知道被碰了一下</small>
+              {T.common.reachSneaky}
+              <small>{T.cards.sneakyNote}</small>
             </button>
             <button disabled={touching} className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
-              大胆伸出触须
-              <small>{sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
+              {T.common.reachBold}
+              <small>{sharesUid ? T.cards.boldUid : T.cards.bold}</small>
             </button>
           </div>
           {signedIn && talulah.seated ? (
             <div className="fire-row">
-              <span>你的蟑螂已经在火边了</span>
+              <span>{T.cards.talulah.seated}</span>
               <button className="pill dark" onClick={talulah.onVisit}>
-                过去看看
+                {T.common.goThere}
               </button>
             </div>
           ) : (
             <button className="primary wide fire-send" disabled={talulah.sending} onClick={talulah.onSend}>
-              {signedIn ? "派一只克隆体去烤火" : "登录后就能过来烤火"}
+              {signedIn ? T.cards.talulah.send : T.cards.talulah.signIn}
             </button>
           )}
         </>
       ) : !signedIn ? (
         <button className="primary wide" disabled={waiting} onClick={onSignIn}>
-          {waiting ? "稍等…" : "登录"}
+          {waiting ? T.common.wait : T.common.signIn}
         </button>
       ) : pokeable && friendRow ? null : pokeable ? (
         <button className="poke-btn" disabled={busy || daysToWait > 0} onClick={onPoke}>
-          {daysToWait > 0 ? "戳过了" : "戳一戳"}
-          <small>{daysToWait > 0 ? `${daysToWait} 天后可以再戳` : `每 ${POKE_EVERY_DAYS} 天能戳一次`}</small>
+          {daysToWait > 0 ? T.common.poked : T.common.poke}
+          <small>{daysToWait > 0 ? fmt(T.cards.pokeWait, { days: daysToWait }) : fmt(T.cards.pokeEvery, { days: POKE_EVERY_DAYS })}</small>
         </button>
       ) : (
         <div className="touch-buttons">
           <button disabled={touching || Boolean(touched)} onClick={() => onTouch(false)}>
-            偷偷伸出触须
-            <small>{touched ? "今天碰过了" : "TA 只知道被碰了一下"}</small>
+            {T.common.reachSneaky}
+            <small>{touched ? T.cards.touchedToday : T.cards.sneakyNote}</small>
           </button>
           <button disabled={touching || touched === "bold"} className="bold" onClick={() => onTouch(true)}>
-            大胆伸出触须
-            <small>{touched === "bold" ? "今天碰过了" : sharesUid ? "TA 能看到你的资料和 UID" : "TA 能看到你的资料"}</small>
+            {T.common.reachBold}
+            <small>{touched === "bold" ? T.cards.touchedToday : sharesUid ? T.cards.boldUid : T.cards.bold}</small>
           </button>
         </div>
       )}
       {signedIn && friendRow}
       {signedIn && !roach.guide && onReport && (
         <button className="link report-roach" onClick={onReport}>
-          举报这只蟑螂
+          {T.safety.reportRoach}
         </button>
       )}
       {admin && !roach.guide && (
         <div className="row-actions">
           <button className="danger" disabled={admin.busy} onClick={admin.onTakeBack}>
-            站长：收回这只
+            {T.cards.admin.takeBack}
           </button>
           <button className="danger" disabled={admin.busy} onClick={admin.onTakeBackNear}>
-            站长：收回附近一片
+            {T.cards.admin.takeBackNear}
           </button>
           {admin.onDraw && (
             <button className="danger" disabled={admin.busy} onClick={admin.onDraw}>
@@ -336,7 +336,7 @@ export function OtherRoachCard({
           )}
         </div>
       )}
-      <button className="close" onClick={onClose} aria-label="关闭">
+      <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>
     </div>
@@ -389,31 +389,31 @@ export function MyRoachCard({
   const clone = roach.slot > 0;
   const asleep = drunk && !clone;
   return (
-    <div className="card stack" role="dialog" aria-label="我的蟑螂">
+    <div className="card stack" role="dialog" aria-label={T.common.myRoach}>
       <div className="card-head">
         <RoachIcon color={color} size={44} avatar={avatar} mine clone={clone} look={look} asleep={asleep} zzz anim />
         <div>
           <strong>
-            {clone ? `你的克隆体 ${index}` : "你的蟑螂本体"}
-            {asleep && <span className="zz">理智恢复中</span>}
+            {clone ? fmt(T.cards.own.clone, { n: index }) : T.cards.own.main}
+            {asleep && <span className="zz">{T.cards.recovering}</span>}
           </strong>
           <p className="muted">
             {clone
-              ? "别人看到的是“某舟P的克隆体”，地图上不写是谁的。"
+              ? T.cards.own.cloneNote
               : asleep
-                ? "不点的话，早上 8 点自己醒。"
-                : "别人能看到它在哪，地图上不写是谁的。"}
+                ? T.cards.own.asleepNote
+                : T.cards.own.mainNote}
           </p>
         </div>
       </div>
       {visits && roach.guests && (
         <div className="visit-guests">
-          <p className="muted">{fmtParts("家里有 {n} 位客人", { n: roach.guests.length })}</p>
+          <p className="muted">{fmtParts(T.cards.own.guests, { n: roach.guests.length })}</p>
           {roach.guests.map((g) => (
             <div className="visit-row" key={g.friendId}>
               <strong>{g.name}</strong>
               <button className="pill" disabled={busy} onClick={() => visits.onSendHome(g.friendId)}>
-                请 TA 回家
+                {T.visit.sendHome}
               </button>
             </div>
           ))}
@@ -423,64 +423,64 @@ export function MyRoachCard({
         <div className="fire-row">
           <span>
             {roach.visit.left === "moved"
-              ? `${roach.visit.name} 搬家了，你的克隆体还在老地方`
+              ? fmt(T.visit.moved, { who: roach.visit.name })
               : roach.visit.left === "removed"
-                ? `${roach.visit.name} 收回了那只蟑螂，你的克隆体还在老地方`
-                : `在 ${roach.visit.name} 家做客`}
+                ? fmt(T.visit.removed, { who: roach.visit.name })
+                : fmt(T.cards.own.visiting, { name: roach.visit.name })}
           </span>
           {roach.visit.left === "moved" && (
             <button className="pill dark" disabled={busy} onClick={visits.onFollow}>
-              跟过去
+              {T.visit.follow}
             </button>
           )}
           <button className="pill" disabled={busy} onClick={visits.onGoHome}>
-            回家
+            {T.visit.goHome}
           </button>
         </div>
       )}
       {riding && (
         <div className="fire-row">
           <span>
-            {fmtParts("正在跟明河走：第 {stop} / {stops} 站", { stop: riding.stops, stops: RIDE_STOPS })}
+            {fmtParts(T.cards.own.riding, { stop: riding.stops, stops: RIDE_STOPS })}
           </span>
           <button className="pill dark" disabled={busy} onClick={riding.onDismount}>
-            在这一站下马
+            {T.cards.minghe.dismount}
           </button>
         </div>
       )}
       <div className="row-actions">
         <button className="pill" onClick={onMove}>
-          挪个窝
+          {T.cards.own.move}
         </button>
         {!clone &&
           (asleep ? (
             <>
               <button className="pill" disabled={busy} onClick={onSober}>
-                醒酒
+                {T.cards.own.sober}
               </button>
               {party && (
                 <button className={`pill ${party.on ? "" : "party-btn"}`} disabled={busy} onClick={party.onToggle}>
-                  {party.on ? "停下来" : "⚡舟友的酒⚡"}
+                  {party.on ? T.cards.own.partyStop : T.cards.own.party}
                 </button>
               )}
             </>
           ) : (
             <button className="pill wine" disabled={busy} onClick={onDrink}>
               <span dangerouslySetInnerHTML={{ __html: bottleIcon(15) }} />
-              摄入酒精
+              {T.cards.own.drink}
             </button>
           ))}
         <button className="pill" onClick={onRemove}>
-          {clone ? "收回" : "收回（连同克隆体）"}
+          {clone ? T.common.takeBack : T.cards.own.removeAll}
         </button>
       </div>
-      {asleep && party && <p className="tally">⚡舟友的酒⚡只在你自己的屏幕上放。音乐：活跃黑江乐（bilibili）的视频</p>}
+      {asleep && party && <p className="tally">{T.cards.own.partyNote}</p>}
       {!clone && (
         <p className="tally">
-          {drinks >= 50 ? `已醉倒 ${drinks} 次，「泰拉异格酒神」到手了` : `已醉倒 ${drinks}/50 次，满了解锁「泰拉异格酒神」`}
+          {drinks >= 50 ? fmt(T.cards.own.drinksDone, { n: drinks }) : fmt(T.cards.own.drinks, { n: drinks })}
         </p>
       )}
-      <button className="close" onClick={onClose} aria-label="关闭">
+      <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>
     </div>

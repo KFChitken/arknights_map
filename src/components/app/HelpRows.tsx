@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { serverName } from "@/lib/games";
 import { HELP_ANSWER, helpAnswerText, helpText } from "@/lib/help";
 import type { HelpItem } from "@/lib/world/types";
@@ -11,15 +11,15 @@ import { ago } from "./InboxSheet";
 /** 「还剩 5 小时」 until a request comes down by itself */
 export function leftText(until: number, now = Date.now()) {
   const h = Math.ceil((until - now) / 3_600_000);
-  return h <= 1 ? "不到 1 小时后消失" : `还剩 ${h} 小时`;
+  return h <= 1 ? T.help.rows.endsSoon : fmt(T.help.rows.hoursLeft, { h });
 }
 
 const toggle = (list: number[], n: number) => (list.includes(n) ? list.filter((x) => x !== n) : [...list, n].sort((a, b) => a - b));
 
 /** What you answered to one of theirs */
 function answeredText(item: HelpItem) {
-  if (item.kind === "clues") return `你送了 ${(item.answered?.clues ?? []).join("、")} 号`;
-  return item.kind === "exchange" ? "你去拜访了" : "你挂上了";
+  if (item.kind === "clues") return fmt(T.help.rows.gave, { clues: (item.answered?.clues ?? []).join(T.common.listSep) });
+  return item.kind === "exchange" ? T.help.rows.visited : T.help.rows.lent;
 }
 
 /**
@@ -59,10 +59,10 @@ export function TheirHelp({
       {uid && (
         <div className="help-uid">
           <span>
-            {fmtParts("UID：{server}{uid}", { server: server ? `${server} ` : "", uid: uid })}
+            {fmtParts(T.common.uid, { server: server ? `${server} ` : "", uid: uid })}
           </span>
           <button type="button" className="pill" onClick={() => onCopyUid(uid)}>
-            复制
+            {T.common.copy}
           </button>
         </div>
       )}
@@ -73,7 +73,7 @@ export function TheirHelp({
           <>
             {(item.clues ?? []).map((n) => (
               <button key={n} type="button" className={`chip${picked.includes(n) ? " on" : ""}`} onClick={() => setPicked(toggle(picked, n))}>
-                {fmtParts("{n} 号", { n: n })}
+                {fmtParts(T.help.clue, { n: n })}
               </button>
             ))}
             <button type="button" className="pill dark" disabled={busy || !picked.length} onClick={() => onAnswer(item.id, picked)}>
@@ -86,7 +86,7 @@ export function TheirHelp({
           </button>
         )}
       </div>
-      {item.kind === "clues" && !item.answered && <p className="hint help-hint">点你送了的几号，再点「送了」。</p>}
+      {item.kind === "clues" && !item.answered && <p className="hint help-hint">{T.help.rows.pickGiven}</p>}
     </div>
   );
 }
@@ -99,7 +99,7 @@ export function MyHelp({ item, busy, onClose }: { item: HelpItem; busy: boolean;
       <div className="help-text">{helpText(item)}</div>
       <div className="help-meta muted">{leftText(item.until)}</div>
       {answers.length === 0 ? (
-        <p className="hint help-hint">还没有人回应。</p>
+        <p className="hint help-hint">{T.help.rows.noAnswers}</p>
       ) : (
         answers.map((a) => (
           <div key={a.friendId} className={`help-answer${a.fresh ? " fresh" : ""}`}>
@@ -110,7 +110,7 @@ export function MyHelp({ item, busy, onClose }: { item: HelpItem; busy: boolean;
       )}
       <div className="row-actions">
         <button type="button" className="pill" disabled={busy} onClick={() => onClose(item.id)}>
-          关掉
+          {T.help.rows.end}
         </button>
       </div>
     </div>

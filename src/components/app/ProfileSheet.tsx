@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
@@ -21,22 +21,48 @@ import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
 const AVATAR_NAMES: Record<RoachAvatar, string> = {
-  hood: "初始",
-  doctor: "博士",
-  endmin: "管理员",
-  imp: "绝对主角",
-  gugu: "咕咕嘎嘎",
+  get hood() {
+    return T.profile.avatar.hood;
+  },
+  get doctor() {
+    return T.profile.avatar.doctor;
+  },
+  get endmin() {
+    return T.profile.avatar.endmin;
+  },
+  get imp() {
+    return T.profile.avatar.imp;
+  },
+  get gugu() {
+    return T.profile.avatar.gugu;
+  },
 };
 
 const COLOR_NAMES: Record<RoachColor, string> = {
-  cyan: "青色",
-  pink: "粉色",
-  gold: "金色",
-  green: "绿色",
-  purple: "紫色",
-  orange: "橙色",
-  red: "红色",
-  white: "白色",
+  get cyan() {
+    return T.profile.color.cyan;
+  },
+  get pink() {
+    return T.profile.color.pink;
+  },
+  get gold() {
+    return T.profile.color.gold;
+  },
+  get green() {
+    return T.profile.color.green;
+  },
+  get purple() {
+    return T.profile.color.purple;
+  },
+  get orange() {
+    return T.profile.color.orange;
+  },
+  get red() {
+    return T.profile.color.red;
+  },
+  get white() {
+    return T.profile.color.white;
+  },
 };
 
 export default function ProfileSheet({
@@ -93,10 +119,10 @@ export default function ProfileSheet({
   // 退出其他设备: what happened, once asked
   const [othersOut, setOthersOut] = useState<string | null>(null);
   const signOutOthers = async () => {
-    if (!window.confirm("其他手机和电脑上的登录都会失效，这台不受影响。")) return;
+    if (!window.confirm(T.profile.signOutOthersAsk)) return;
     try {
       const r = await logoutOthers();
-      setOthersOut(r.ended > 0 ? `其他设备上的 ${r.ended} 个登录都退出了。` : "没有别的设备登录着。");
+      setOthersOut(r.ended > 0 ? fmt(T.profile.signedOutOthers, { n: r.ended }) : T.profile.noOthers);
     } catch (e) {
       setOthersOut(e instanceof Error ? e.message : String(e));
     }
@@ -116,16 +142,16 @@ export default function ProfileSheet({
 
   return (
     <Sheet
-      title={tutorial ? "给你的蟑螂做张名片吧" : "我的资料"}
+      title={tutorial ? T.profile.makeCard : T.profile.title}
       onClose={tutorial?.onLater ?? onClose}
       footer={
         <>
           <button className="primary wide" onClick={save} disabled={saving}>
-            {saving ? "保存中…" : "保存"}
+            {saving ? T.common.saving : T.profile.save}
           </button>
           {tutorial && (
             <button className="pill wide" style={{ marginTop: 8 }} onClick={tutorial.onLater}>
-              先匿名，以后再说
+              {T.profile.anonymousForNow}
             </button>
           )}
         </>
@@ -137,49 +163,49 @@ export default function ProfileSheet({
           <strong>{displayName(p)}</strong>
           <p className="hint">
             {tutorial
-              ? "地图上没人知道哪只是你。只有你大胆碰过的人和触须之交能看到名片，他们也可能凭形象和颜色在地图上认出你的本体。"
-              : "只有你大胆伸出触须时，对方才看得到这里的资料。地图上的本体和这里长得一样，所以看过资料的人可能认出你的本体在哪。"}
+              ? T.profile.introNew
+              : T.profile.intro}
           </p>
         </div>
       </div>
       {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} onOpen={() => onOpenBadges(p)} />}
       {!tutorial && <HomeScreenRow />}
 
-      {held && <p className="held-note">有人举报了你的名字或 UID，站长看过之前先藏起来了，也暂时改不了。没问题的话会恢复。</p>}
+      {held && <p className="held-note">{T.profile.hidden}</p>}
       <fieldset>
-        <legend>名字</legend>
-        <div className="seg" role="group" aria-label="名字">
+        <legend>{T.profile.name}</legend>
+        <div className="seg" role="group" aria-label={T.profile.name}>
           <button className={p.anonymous ? "on" : ""} disabled={held} onClick={() => set({ anonymous: true })}>
-            保持匿名
+            {T.profile.stayAnonymous}
           </button>
           <button className={p.anonymous ? "" : "on"} disabled={held} onClick={() => set({ anonymous: false })}>
-            显示名字
+            {T.profile.showName}
           </button>
         </div>
         {!p.anonymous && (
           <>
             <label className="field">
-              名字
+              {T.profile.name}
               <input
                 type="text"
                 value={p.name}
                 maxLength={NAME_MAX}
-                placeholder="别人看到的名字"
+                placeholder={T.profile.namePlaceholder}
                 disabled={held}
                 onChange={(e) => set({ name: e.target.value })}
               />
             </label>
-            <p className="hint">别写 QQ、微信、手机号或真名。</p>
+            <p className="hint">{T.profile.nameRule}</p>
             <label className="check">
               <input type="checkbox" checked={p.drPrefix} disabled={held} onChange={(e) => set({ drPrefix: e.target.checked })} />
-              加上 Dr. 前缀
+              {T.profile.drPrefix}
             </label>
           </>
         )}
       </fieldset>
 
       <fieldset>
-        <legend>我玩的游戏</legend>
+        <legend>{T.profile.games}</legend>
         <div className="chips">
           {GAMES.map((g) => (
             <button key={g} className={`chip ${p.games.includes(g) ? "on" : ""}`} onClick={() => toggleGame(g)}>
@@ -192,7 +218,7 @@ export default function ProfileSheet({
       {p.games.map((g) => (
         <fieldset key={g}>
           <legend>{GAME_NAMES[g]}</legend>
-          <div className="hint">{fmtParts("厨力角色（最多 {max} 个）", { max: MAX_FAVOURITES })}</div>
+          <div className="hint">{fmtParts(T.profile.favouritesMax, { max: MAX_FAVOURITES })}</div>
           <CharacterPicker
             game={g}
             value={p.favourites[g]}
@@ -201,13 +227,13 @@ export default function ProfileSheet({
           {g === "arknights" && !tutorial && (
             <>
               <div className="hint" style={{ marginTop: 12 }}>
-                {fmtParts("我的助战（最多 {max} 位）", { max: MAX_SUPPORT })}
+                {fmtParts(T.profile.supportMax, { max: MAX_SUPPORT })}
               </div>
               <CharacterPicker
                 game="arknights"
                 value={p.support}
                 max={MAX_SUPPORT}
-                addLabel="＋ 选干员"
+                addLabel={T.common.pickOperator}
                 onChange={(support) => set({ support })}
               />
             </>
@@ -215,13 +241,13 @@ export default function ProfileSheet({
           {!tutorial && (
             <div className="uid-row">
               <label className="field">
-                服务器
+                {T.profile.server}
                 <select
                   value={p.uidServer[g]}
                   disabled={held}
                   onChange={(e) => set({ uidServer: { ...p.uidServer, [g]: e.target.value } })}
                 >
-                  <option value="">选服务器</option>
+                  <option value="">{T.profile.pickServer}</option>
                   {SERVERS[g].map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -230,14 +256,14 @@ export default function ProfileSheet({
                 </select>
               </label>
               <label className="field">
-                {fmtParts("{game} UID（可选）", { game: GAME_NAMES[g] })}
+                {fmtParts(T.profile.uidLabel, { game: GAME_NAMES[g] })}
                 <input
                   type="text"
                   inputMode="text"
                   autoComplete="off"
                   value={p.uid[g]}
                   maxLength={UID_MAX}
-                  placeholder="游戏 UID，别填 QQ 号"
+                  placeholder={T.profile.uidPlaceholder}
                   disabled={held}
                   onChange={(e) => set({ uid: { ...p.uid, [g]: e.target.value } })}
                 />
@@ -249,53 +275,53 @@ export default function ProfileSheet({
 
       {hasUid && !tutorial && (
         <fieldset>
-          <legend>UID 给谁看</legend>
+          <legend>{T.profile.uidShare.title}</legend>
           <label className="check">
             <input type="checkbox" checked={p.shareUid} disabled={held} onChange={(e) => set({ shareUid: e.target.checked })} />
-            我大胆伸出触须时，把 UID 一起给对方看
+            {T.profile.uidShare.label}
           </label>
           <p className="hint">
-            默认谁都看不到。UID 能让人在游戏里直接加你，也可能被拿去别处搜到你的游戏账号，只建议给想认识的人看。
+            {T.profile.uidShare.note}
           </p>
         </fieldset>
       )}
 
       <fieldset>
-        <legend>翻肚皮</legend>
+        <legend>{T.profile.bellyUp.title}</legend>
         <label className="check">
           <input type="checkbox" checked={p.flipWhenAway} onChange={(e) => set({ flipWhenAway: e.target.checked })} />
-          好久没来时，蟑螂翻肚皮睡觉
+          {T.profile.bellyUp.label}
         </label>
         <p className="hint">
-          {fmtParts("超过 {days} 天没来，大家会看到它翻过来睡觉。关掉的话，好久没来它也照样站着。自己点「摄入酒精」不受这个开关影响。", { days: AWAY_DAYS })}
+          {fmtParts(T.profile.bellyUp.note, { days: AWAY_DAYS })}
         </p>
       </fieldset>
 
       <fieldset>
-        <legend>串门</legend>
+        <legend>{T.profile.visits.title}</legend>
         <label className="check">
           <input type="checkbox" checked={p.welcomeGuests} onChange={(e) => set({ welcomeGuests: e.target.checked })} />
-          让触须之交来串门
+          {T.profile.visits.label}
         </label>
-        <p className="hint">触须之交可以派一只克隆体坐到你的蟑螂旁边做客。关掉以后，在你这里做客的克隆体都会回家，触须之交的「做客」会变灰。</p>
+        <p className="hint">{T.profile.visits.note}</p>
       </fieldset>
 
       {perlicaTimer !== undefined && (
         <fieldset>
-          <legend>佩丽卡的离开计时</legend>
+          <legend>{T.profile.timer.title}</legend>
           <label className="check">
             <input type="checkbox" checked={timerOn} onChange={(e) => setTimerOn(e.target.checked)} />
-            让佩丽卡监督记下我每次离开多久
+            {T.profile.timer.label}
           </label>
           <p className="hint">
-            打开以后，网站会记下你最后一次在看网站的时间（精确到秒，每次覆盖旧的），只用来让她告诉你离开了多久，别人看不到。关掉就不再记，已经存的时间和她报时的消息也一起删掉。关掉以后，她也不报醉倒睡了多久、不出监督周报。
+            {T.profile.timer.note}
           </p>
         </fieldset>
       )}
 
       <fieldset>
-        <legend>蟑螂形象</legend>
-        <div className="avatars" role="radiogroup" aria-label="蟑螂形象">
+        <legend>{T.profile.avatarTitle}</legend>
+        <div className="avatars" role="radiogroup" aria-label={T.profile.avatarTitle}>
           {ROACH_AVATARS.map((a) => (
             <button
               key={a}
@@ -309,12 +335,12 @@ export default function ProfileSheet({
             </button>
           ))}
         </div>
-        {REAL_LOOK_OFFERED && <p className="hint">地图切到写实版时，大家都是一样的真蟑螂。</p>}
+        {REAL_LOOK_OFFERED && <p className="hint">{T.profile.avatarReal}</p>}
       </fieldset>
 
       <fieldset>
-        <legend>蟑螂颜色</legend>
-        <div className="colors" role="radiogroup" aria-label="蟑螂颜色">
+        <legend>{T.profile.colorTitle}</legend>
+        <div className="colors" role="radiogroup" aria-label={T.profile.colorTitle}>
           {ROACH_COLORS.map((c) => (
             <button
               key={c}
@@ -327,22 +353,22 @@ export default function ProfileSheet({
             />
           ))}
         </div>
-        <p className="hint">颜色只改初始形象两边的灯；其他形象用的是原画，颜色不变。</p>
+        <p className="hint">{T.profile.colorNote}</p>
       </fieldset>
       {!tutorial && (
         <>
           <fieldset>
-            <legend>拉黑名单</legend>
-            {blocked.length === 0 && <p className="hint">还没有拉黑任何人。在消息里点「拉黑/举报」就能拉黑。</p>}
+            <legend>{T.profile.blocked.title}</legend>
+            {blocked.length === 0 && <p className="hint">{T.profile.blocked.empty}</p>}
             {blocked.map((b) => (
               <div className="list-row" key={b.id}>
                 <div>
-                  <strong>{b.name ?? "一只匿名舟P"}</strong>
-                  <p className="muted">{fmtParts("{date}拉黑", { date: new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" }) })}</p>
+                  <strong>{b.name ?? T.common.anonymousOne}</strong>
+                  <p className="muted">{fmtParts(T.profile.blocked.on, { date: new Date(b.at).toLocaleDateString("zh-CN", { month: "long", day: "numeric" }) })}</p>
                 </div>
                 <div className="row-actions">
                   <button className="pill" onClick={() => onUnblock(b.id)}>
-                    解除
+                    {T.profile.blocked.unblock}
                   </button>
                 </div>
               </div>
@@ -351,7 +377,7 @@ export default function ProfileSheet({
 
           {onConfirmByCode && (
             <fieldset>
-              <legend>登录密码</legend>
+              <legend>{T.profile.passwordTitle}</legend>
               <PasswordBox
                 startOpen={passwordForm}
                 onConfirmByCode={(email, form) => onConfirmByCode(email, form, p)}
@@ -361,23 +387,23 @@ export default function ProfileSheet({
           )}
 
           <fieldset>
-            <legend>在另一台设备上登录</legend>
-            <p className="hint">在要登录的那台设备上点「登录」→「有登录码？」，输入这里拿的登录码，不用再收验证码邮件。</p>
+            <legend>{T.profile.otherDevice.title}</legend>
+            <p className="hint">{T.profile.otherDevice.note}</p>
             <LoginCodeBox signedIn />
           </fieldset>
 
           <div className="account-actions">
             <button className="pill" onClick={onSignOut}>
-              退出登录
+              {T.profile.signOut}
             </button>
             <button className="pill" onClick={signOutOthers}>
-              退出其他设备
+              {T.profile.signOutOthers}
             </button>
             <button className="pill" onClick={onDelete}>
-              注销账号
+              {T.profile.deleteAccount}
             </button>
             <a className="pill" href="/privacy" target="_blank" rel="noreferrer">
-              隐私说明
+              {T.common.privacy}
             </a>
           </div>
           {othersOut && <p className="hint">{othersOut}</p>}
@@ -394,7 +420,7 @@ function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; 
   const options = useMemo(() => OPERATORS[game].filter((n) => !taken.includes(n) && matchesSearch(n, q)), [game, taken, q]);
   return (
     <div className="picker">
-      <input type="search" placeholder="搜角色名" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input type="search" placeholder={T.profile.search.placeholder} value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="picker-list">
         {options.map((n) => (
           <button
@@ -409,7 +435,7 @@ function OperatorSearch({ game, taken, onPick }: { game: Game; taken: string[]; 
             {n}
           </button>
         ))}
-        {options.length === 0 && <span className="hint">没有找到这个角色</span>}
+        {options.length === 0 && <span className="hint">{T.profile.search.none}</span>}
       </div>
     </div>
   );
@@ -419,7 +445,7 @@ export function CharacterPicker({
   game,
   value,
   max = MAX_FAVOURITES,
-  addLabel = "＋ 选角色",
+  addLabel = T.profile.pickCharacter,
   onChange,
 }: {
   game: Game;
@@ -444,14 +470,14 @@ export function CharacterPicker({
           <span key={n} className="chip on with-pic">
             <OperatorPic game={game} name={n} art={art} />
             {n}
-            <button className="x" aria-label={`去掉${n}`} onClick={() => onChange(value.filter((x) => x !== n))}>
+            <button className="x" aria-label={fmt(T.profile.removeOne, { name: n })} onClick={() => onChange(value.filter((x) => x !== n))}>
               ×
             </button>
           </span>
         ))}
         {!full && (
           <button className="chip add" onClick={() => setOpen((o) => !o)}>
-            {open ? "收起" : addLabel}
+            {open ? T.common.collapse : addLabel}
           </button>
         )}
       </div>

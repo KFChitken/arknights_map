@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { amiyaLine } from "@/lib/amiya";
 import { nextBadge, type BadgeCount } from "@/lib/badges";
@@ -15,20 +15,17 @@ import { RADAR_RADIUS_KM } from "@/lib/rules";
 import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
-/** One line about what is new on the site, for players coming back; "" when there is nothing to tell. */
-const WHATS_NEW = "新功能：祀掌柜在宏村开了缘缘庄，碰她一下，她照你的样子画一只墨小强去排队。";
-
 const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
-  friends: (n, name) => `再交 ${n} 位触须之交，你就是${name}了。`,
-  responders: (n, name) => `再有 ${n} 位舟P回应你的宣言，你就是${name}了。`,
-  declareDays: (n, name) => `再有 ${n} 天发宣言，你就是${name}了。`,
-  reactDays: (n, name) => `再有 ${n} 天回应别人的宣言，你就是${name}了。`,
+  friends: (n, name) => fmt(T.homecoming.next.friends, { n, name }),
+  responders: (n, name) => fmt(T.homecoming.next.responders, { n, name }),
+  declareDays: (n, name) => fmt(T.homecoming.next.declareDays, { n, name }),
+  reactDays: (n, name) => fmt(T.homecoming.next.reactDays, { n, name }),
   // never picked by nextBadge, which leaves drinking, the sentences and the guides alone
-  drinks: (n, name) => `再摄入 ${n} 次酒精，你就是${name}了。`,
-  declareLines: (n, name) => `再发 ${n} 句不一样的宣言，你就是${name}了。`,
-  amiyaDays: (n, name) => `再有 ${n} 天去碰阿米娅，你就是${name}了。`,
-  perlicaDays: (n, name) => `再有 ${n} 天去碰佩丽卡，你就是${name}了。`,
-  guideFriends: (n, name) => `再和 ${n} 位向导成为触须之交，你就是${name}了。`,
+  drinks: (n, name) => fmt(T.homecoming.next.drinks, { n, name }),
+  declareLines: (n, name) => fmt(T.homecoming.next.declareLines, { n, name }),
+  amiyaDays: (n, name) => fmt(T.homecoming.next.amiyaDays, { n, name }),
+  perlicaDays: (n, name) => fmt(T.homecoming.next.perlicaDays, { n, name }),
+  guideFriends: (n, name) => fmt(T.homecoming.next.guideFriends, { n, name }),
 };
 
 /**
@@ -66,10 +63,10 @@ export function HomecomingSheet({
   const reactions = unseen.filter((i) => i.kind === "reaction").length;
   const pokers = pokedBy(unseen);
   const happened = [
-    pokers ? `${pokers} 趁你睡着戳了戳你` : "",
-    touches.length ? `被碰了 ${touches.length} 次${bold ? `，其中 ${bold} 次是大胆碰` : ""}` : "",
-    friends ? `新增 ${friends} 位触须之交` : "",
-    reactions ? `你的宣言收到 ${reactions} 个回应` : "",
+    pokers ? fmt(T.homecoming.poked, { who: pokers }) : "",
+    touches.length ? fmt(T.homecoming.touched, { n: touches.length, bold: bold ? fmt(T.homecoming.touchedBold, { n: bold }) : "" }) : "",
+    friends ? fmt(T.homecoming.newFriends, { n: friends }) : "",
+    reactions ? fmt(T.homecoming.reactions, { n: reactions }) : "",
   ].filter(Boolean);
   const quiet = !happened.length && !homecoming.arrivals;
   // 石棺里的苏醒, given on coming back after a long time away
@@ -78,20 +75,20 @@ export function HomecomingSheet({
   return (
     <Sheet
       // only those who play just Endfield are 管理员
-      title={amiya ? amiyaLine("greet", me.profile.games) : `欢迎回家，${WELCOME_NAMES[homeGame(me.profile.games)]}`}
+      title={amiya ? amiyaLine("greet", me.profile.games) : fmt(T.declare.line.welcome, { title: WELCOME_NAMES[homeGame(me.profile.games)] })}
       onClose={onClose}
       footer={
         quiet ? (
           <button className="primary wide" onClick={onWelcome}>
-            发一条「欢迎回家」
+            {T.homecoming.sendWelcome}
           </button>
         ) : unseen.length ? (
           <button className="primary wide" onClick={onInbox}>
-            去看看
+            {T.common.goSee}
           </button>
         ) : (
           <button className="primary wide" onClick={onClose}>
-            好的
+            {T.common.ok}
           </button>
         )
       }
@@ -100,7 +97,7 @@ export function HomecomingSheet({
         <>
           <div className="amiya-greet small">
             <AmiyaPicture size={64} />
-            <p>阿米娅向导碰了碰你</p>
+            <p>{T.guides.amiya.touchedYou}</p>
           </div>
           <AmiyaTouchBack onTouchBack={amiya.onTouchBack} />
         </>
@@ -109,21 +106,21 @@ export function HomecomingSheet({
         <div className="perlica-said" style={amiya ? undefined : { marginTop: 0 }}>
           <PerlicaPicture size={40} />
           <p>
-            {fmtParts("{name}：「{line}」", { name: PERLICA_NAME, line: perlica })}
+            {fmtParts(T.map.guides.saysQuoted, { name: PERLICA_NAME, line: perlica })}
           </p>
         </div>
       )}
       {me.wokeFromAway && (
-        <p style={{ marginTop: amiya || perlica ? undefined : 0 }}>{fmtParts("你睡了 {days} 天，理智早就回满了。", { days: homecoming.daysAway })}</p>
+        <p style={{ marginTop: amiya || perlica ? undefined : 0 }}>{fmtParts(T.homecoming.slept, { days: homecoming.daysAway })}</p>
       )}
       {awoke && (
         <p className="homecoming-got">
-          {fmtNodes("拿到了 {badge}", { badge: <BadgePill badge={awoke} /> })}
+          {fmtNodes(T.homecoming.got, { badge: <BadgePill badge={awoke} /> })}
         </p>
       )}
       {happened.length > 0 && (
         <>
-          <p style={{ marginTop: me.wokeFromAway || awoke || amiya || perlica ? undefined : 0 }}>你不在的这几天：</p>
+          <p style={{ marginTop: me.wokeFromAway || awoke || amiya || perlica ? undefined : 0 }}>{T.homecoming.whileAway}</p>
           <ul className="homecoming-list">
             {happened.map((h) => (
               <li key={h}>{h}</li>
@@ -133,14 +130,14 @@ export function HomecomingSheet({
       )}
       {homecoming.arrivals > 0 && (
         <p style={happened.length || amiya || perlica ? undefined : { marginTop: 0 }}>
-          {fmtParts("附近 {km} 公里新来了 {n} 只蟑螂。", { km: RADAR_RADIUS_KM, n: homecoming.arrivals })}
+          {fmtParts(T.homecoming.arrivals, { km: RADAR_RADIUS_KM, n: homecoming.arrivals })}
         </p>
       )}
       {quiet && (
-        <p style={amiya || perlica ? undefined : { marginTop: 0 }}>附近静悄悄的。发一条「欢迎回家」宣言，让附近的舟P知道你回来了。</p>
+        <p style={amiya || perlica ? undefined : { marginTop: 0 }}>{T.homecoming.quiet}</p>
       )}
       {next && <p className="homecoming-next">{NEXT[next.count](next.more, next.name)}</p>}
-      {WHATS_NEW && <p className="homecoming-new">{WHATS_NEW}</p>}
+      {T.homecoming.whatsNew && <p className="homecoming-new">{T.homecoming.whatsNew}</p>}
     </Sheet>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { T } from "@/i18n";
 
 /**
  * A password box with a 显示 switch, so one typed on a phone can be looked at before it is kept (there is
@@ -39,7 +40,7 @@ export default function PasswordField({
           onChange={(e) => onChange(e.target.value)}
         />
         <button type="button" className="pw-eye" aria-pressed={shown} onClick={() => setShown((s) => !s)}>
-          {shown ? "隐藏" : "显示"}
+          {shown ? T.password.hide : T.password.show}
         </button>
       </span>
     </label>

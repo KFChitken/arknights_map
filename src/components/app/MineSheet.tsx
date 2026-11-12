@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import { MAX_CLONES, MOVES_PER_DAY } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
@@ -36,69 +36,69 @@ export default function MineSheet({
   const clones = roaches.filter((r) => r.slot > 0);
 
   return (
-    <Sheet title="我的蟑螂" onClose={onClose}>
+    <Sheet title={T.common.myRoach} onClose={onClose}>
       {main ? (
         <div className="list-row">
           <RoachIcon color={color} size={40} avatar={avatar} mine look={look} />
           <div>
-            <strong>蟑螂本体</strong>
-            <p className="muted">别人能看到它在哪，地图上不写是谁的</p>
+            <strong>{T.mine.main}</strong>
+            <p className="muted">{T.mine.mainNote}</p>
           </div>
           <div className="row-actions">
             <button className="pill" onClick={() => onFind(main)}>
-              找到
+              {T.common.find}
             </button>
             <button className="pill" onClick={() => onMove(main)}>
-              挪窝
+              {T.mine.move}
             </button>
           </div>
         </div>
       ) : (
         <button className="primary wide" onClick={onPlaceMain}>
-          放下蟑螂本体
+          {T.mine.placeMain}
         </button>
       )}
 
       <h3>
-        {fmtParts("克隆体 {n}/{max}", { n: clones.length, max: MAX_CLONES })}
+        {fmtParts(T.mine.clones, { n: clones.length, max: MAX_CLONES })}
       </h3>
       {clones.map((c, i) => (
         <div className="list-row" key={c.id}>
           <RoachIcon color={color} size={40} avatar={avatar} mine clone look={look} />
           <div>
-            <strong>{fmtParts("克隆体 {n}", { n: i + 1 })}</strong>
+            <strong>{fmtParts(T.common.cloneN, { n: i + 1 })}</strong>
           </div>
           <div className="row-actions">
             <button className="pill" onClick={() => onFind(c)}>
-              找到
+              {T.common.find}
             </button>
             <button className="pill" onClick={() => onMove(c)}>
-              挪窝
+              {T.mine.move}
             </button>
             <button className="pill" onClick={() => onRemove(c)}>
-              收回
+              {T.common.takeBack}
             </button>
           </div>
         </div>
       ))}
       {main && clones.length < MAX_CLONES && (
         <button className="pill dark" style={{ marginTop: 10 }} onClick={onAddClone}>
-          ＋ 放一只克隆体
+          {T.mine.addClone}
         </button>
       )}
       {main && (
         <p className="hint">
-          {fmtParts("每天能挪 {perDay} 次窝，今天还能挪 {left} 次。", { perDay: MOVES_PER_DAY, left: movesLeft })}
+          {fmtParts(T.mine.movesLeft, { perDay: MOVES_PER_DAY, left: movesLeft })}
         </p>
       )}
       <p className="hint">
-        克隆体可以放在你常去的别的城市。别人看到的是“某舟P的克隆体”，碰它的触须会传到你这里，但谁也看不出它和你的本体是同一只。
-        {!main && " 放下本体之后才能放克隆体。"}
+        {T.mine.cloneNote}
+        {!main && T.mine.mainFirst}
       </p>
 
       {main && (
         <button className="danger wide" style={{ marginTop: 18 }} onClick={() => onRemove(main)}>
-          收回本体（克隆体也会一起收回）
+          {T.mine.removeMain}
         </button>
       )}
     </Sheet>

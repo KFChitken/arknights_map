@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { T } from "@/i18n";
 import { drinkingHood, groundOnly, bottle, POKE_BANG, POKE_FINGER } from "@/lib/flipArt";
 import { sleepingZzz } from "@/lib/roachImages";
 import { GLOW } from "@/lib/roachSvg";
@@ -59,11 +60,11 @@ export default function RoachActor({
       )}
       <span className="dust l" />
       <span className="dust r" />
-      {scene === "wake" ? <span className="pop">嘿！</span> : null}
+      {scene === "wake" ? <span className="pop">{T.fx.hey}</span> : null}
       {scene === "drink" && hood ? (
         <>
-          <span className="glug">咕嘟咕嘟</span>
-          <span className="hic">嗝！</span>
+          <span className="glug">{T.fx.gulp}</span>
+          <span className="hic">{T.fx.hic}</span>
         </>
       ) : null}
     </div>

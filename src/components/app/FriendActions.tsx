@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { FRIEND_ACTS_PER_DAY, GESTURE_DONE, GESTURE_NAMES, isAwakeGesture, type Gesture } from "@/lib/friendly";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { FriendBetween } from "@/lib/world/types";
@@ -61,9 +61,15 @@ const ICONS: Record<FriendAct, ReactNode> = {
 
 /** The plain name of each, before it is used */
 const NAMES: Record<FriendAct, string> = {
-  visit: "做客",
-  sanity: "催理智",
-  poke: "戳一戳",
+  get visit() {
+    return T.friendActs.visit;
+  },
+  get sanity() {
+    return T.friendActs.sanity;
+  },
+  get poke() {
+    return T.common.poke;
+  },
   ...GESTURE_NAMES,
 };
 
@@ -97,34 +103,34 @@ export default function FriendActions({
   // why 做客 cannot be used now, if it cannot
   const visitNote = visiting
     ? visiting.left
-      ? "TA 搬家了，你的克隆体还在老地方。"
-      : "你已经在 TA 家了。"
+      ? T.friendActs.visitMoved
+      : T.friendActs.visitThere
     : !between.welcome
-      ? "TA 现在不接待客人。"
+      ? T.friendActs.visitClosed
       : between.visitAgainAt
-        ? `TA 请你的克隆体回家休息了，${days(between.visitAgainAt)} 天后才能再去。`
+        ? fmt(T.friendActs.visitSentHome, { days: days(between.visitAgainAt) })
         : riding
-          ? "这只在跟明河走，去不了。想一起走，就也派一只跟明河。"
+          ? T.friendActs.visitRiding
           : null;
   const full = between.actsLeft <= 0;
   const state = (act: FriendAct): { label: string; off: boolean } => {
     if (act === "visit") {
-      if (visiting) return { label: "过去看看", off: false };
+      if (visiting) return { label: T.common.goThere, off: false };
       return { label: NAMES.visit, off: Boolean(visitNote) };
     }
-    if (act === "poke") return pokeAgainAt ? { label: "戳过了", off: true } : { label: NAMES.poke, off: false };
-    if (act === "sanity") return between.done.sanity ? { label: "催过了", off: true } : { label: NAMES.sanity, off: full };
+    if (act === "poke") return pokeAgainAt ? { label: T.common.poked, off: true } : { label: NAMES.poke, off: false };
+    if (act === "sanity") return between.done.sanity ? { label: T.friendActs.sanityDone, off: true } : { label: NAMES.sanity, off: full };
     if (!isAwakeGesture(act) && between.done[act]) return { label: GESTURE_DONE[act], off: true };
     return { label: NAMES[act], off: full };
   };
   const notes = [
-    full ? `今天和 TA 互动满 ${FRIEND_ACTS_PER_DAY} 次了，明天再来吧` : null,
+    full ? fmt(T.friendActs.full, { n: FRIEND_ACTS_PER_DAY }) : null,
     visitNote,
-    pokeAgainAt && between.asleep ? `${days(pokeAgainAt)} 天后可以再戳（每 ${POKE_EVERY_DAYS} 天一次）` : null,
+    pokeAgainAt && between.asleep ? fmt(T.friendActs.pokeWait, { days: days(pokeAgainAt), every: POKE_EVERY_DAYS }) : null,
   ].filter(Boolean);
   return (
     <div className="friend-acts">
-      <span className="friend-acts-label">{fmtParts("触须之交专属{left}", { left: full ? "" : ` · 今天还能 ${between.actsLeft} 次` })}</span>
+      <span className="friend-acts-label">{fmtParts(T.friendActs.only, { left: full ? "" : fmt(T.friendActs.left, { n: between.actsLeft }) })}</span>
       <div className="friend-acts-row">
         {acts.map((act) => {
           const { label, off } = state(act);

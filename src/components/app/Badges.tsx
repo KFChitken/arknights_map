@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- the badges are small SVGs, which next/image leaves as they are anyway */
 
 import { useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import {
   badgeById,
   daysLeft,
@@ -57,10 +57,10 @@ export function TheirBadges({ badges, worn }: { badges: ShownBadge[]; worn?: str
   return (
     <section className="their-badges">
       <div className="their-badges-head">
-        <h3>{fmtParts("TA 的称号 · {n}", { n: known.length })}</h3>
+        <h3>{fmtParts(T.badges.theirs, { n: known.length })}</h3>
         {known.length > 4 && (
           <button className="link" onClick={() => setAll((a) => !a)}>
-            {all ? "收起" : "全部 ›"}
+            {all ? T.common.collapse : T.badges.all}
           </button>
         )}
       </div>
@@ -69,7 +69,7 @@ export function TheirBadges({ badges, worn }: { badges: ShownBadge[]; worn?: str
           const b = badgeById(s.id)!;
           return (
             <div key={s.id} className={`badge-cell ${s.id === worn ? "worn" : ""}`}>
-              <BadgeImg id={b.id} size={58} alt={`${b.name}徽章`} />
+              <BadgeImg id={b.id} size={58} alt={fmt(T.badges.alt, { name: b.name })} />
               <span className="badge-name">{b.name}</span>
             </div>
           );
@@ -87,7 +87,7 @@ export function MyBadgesRow({ badges, worn, onOpen }: { badges: EarnedBadge[]; w
   return (
     <button className="link-row" onClick={onOpen}>
       <span>
-        我的称号{" "}
+        {T.badges.mine}{" "}
         <span className="muted">
           {got}/{list.length}
         </span>
@@ -135,21 +135,21 @@ export function BadgeWall({
   const got = tally.filter((b) => earned.has(b.id)).length;
   const worn = me.wornBadge ? earned.get(me.wornBadge) : undefined;
   return (
-    <Sheet title="我的称号" onBack={onBack} onClose={onClose}>
+    <Sheet title={T.badges.mine} onBack={onBack} onClose={onClose}>
       <div className="wall-top">
         <div className="wall-tally">
           <span className="wall-label">COLLECTED</span>
           <span>
-            <b className="wall-count">{got}</b> / {tally.length} 已获得
+            <b className="wall-count">{got}</b> / {tally.length}{T.badges.collected}
           </span>
           <div className="wall-bar" aria-hidden="true">
             <div style={{ width: `${Math.round((100 * got) / tally.length)}%` }} />
           </div>
         </div>
         <div className="wall-worn">
-          <span>正在佩戴</span>
-          {worn ? <BadgePill badge={worn} /> : <span className="wall-none">还没戴</span>}
-          <span>{earned.size ? "点一枚已获得的换上" : "拿到称号就能戴上"}</span>
+          <span>{T.badges.wearing}</span>
+          {worn ? <BadgePill badge={worn} /> : <span className="wall-none">{T.badges.notWearing}</span>}
+          <span>{earned.size ? T.badges.pickOne : T.badges.earnFirst}</span>
         </div>
       </div>
 
@@ -175,14 +175,14 @@ export function BadgeWall({
                     <button
                       key={b.id}
                       className={`badge-cell ${on ? "worn" : ""}`}
-                      aria-label={on ? `取下${b.name}` : `戴上${b.name}`}
+                      aria-label={on ? fmt(T.badges.takeOff, { name: b.name }) : fmt(T.badges.putOn, { name: b.name })}
                       onClick={() => onWear(on ? null : b.id)}
                     >
-                      {on ? <span className="cell-tag">佩戴中</span> : e.until && <span className="cell-tag timed">限时</span>}
+                      {on ? <span className="cell-tag">{T.badges.worn}</span> : e.until && <span className="cell-tag timed">{T.badges.timed}</span>}
                       <BadgeImg id={b.id} size={54} alt="" />
                       <span className="badge-name">{b.name}</span>
                       <span className={e.serial ? "cell-note serial" : "cell-note"}>
-                        {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : `${day(e.at)} 获得`}
+                        {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : fmt(T.badges.gotOn, { day: day(e.at) })}
                       </span>
                     </button>
                   );
@@ -191,8 +191,8 @@ export function BadgeWall({
                 if (b.series === "event") {
                   return (
                     <div key={b.id} className="badge-cell running">
-                      <span className="cell-tag">进行中</span>
-                      <BadgeImg id={b.id} size={54} alt={`${b.name}徽章，未获得`} />
+                      <span className="cell-tag">{T.badges.ongoing}</span>
+                      <BadgeImg id={b.id} size={54} alt={fmt(T.badges.notGot, { name: b.name })} />
                       <span className="badge-name">{b.name}</span>
                       <span className="cell-note">{b.lockedHint}</span>
                     </div>
@@ -202,7 +202,7 @@ export function BadgeWall({
                 return (
                   <div key={b.id} className="badge-cell locked">
                     {LOCK}
-                    <BadgeImg id={b.id} size={54} alt={`${b.name}徽章，未获得`} />
+                    <BadgeImg id={b.id} size={54} alt={fmt(T.badges.notGot, { name: b.name })} />
                     <span className="badge-name">{b.name}</span>
                     <span className="cell-note">{lockedText(b, me.counts)}</span>
                     {share !== null && (
@@ -218,7 +218,7 @@ export function BadgeWall({
         );
       })}
       <p className="hint" style={{ marginTop: 14 }}>
-        称号只在资料卡上给别人看，地图上看不到。
+        {T.badges.onlyOnCard}
       </p>
     </Sheet>
   );
@@ -242,7 +242,7 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
   if (!b) return null;
   const series = SERIES.find((s) => s.id === b.series);
   return (
-    <div className="new-badge" role="dialog" aria-modal="true" aria-label={`获得新称号：${b.name}`}>
+    <div className="new-badge" role="dialog" aria-modal="true" aria-label={fmt(T.badges.newAria, { name: b.name })}>
       {CONFETTI.map((p, i) => (
         <span
           key={i}
@@ -261,11 +261,11 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
       ))}
       <div className="new-badge-body">
         <span className="new-badge-kicker">NEW TITLE</span>
-        <span className="new-badge-sub">获得新称号</span>
+        <span className="new-badge-sub">{T.badges.newTitle}</span>
         <div className="new-badge-art">
           <div className="rays" aria-hidden="true" />
           <div className="glow" aria-hidden="true" />
-          <BadgeImg id={b.id} size={212} alt={`${b.name}徽章`} />
+          <BadgeImg id={b.id} size={212} alt={fmt(T.badges.alt, { name: b.name })} />
         </div>
         <div className="new-badge-banner">
           <strong>{b.name}</strong>
@@ -273,14 +273,14 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
             {earned.serial ? serialText(earned.serial) : b.code} · {series?.code}
           </span>
         </div>
-        <p className="new-badge-quote">{fmtParts("「{text}」", { text: quoteOf(b, earned.serial) })}</p>
+        <p className="new-badge-quote">{fmtParts(T.common.quoted, { text: quoteOf(b, earned.serial) })}</p>
         <p className="new-badge-condition">{b.condition}</p>
         <div className="new-badge-actions">
           <button className="wear" onClick={onWear}>
-            戴上它
+            {T.badges.wearIt}
           </button>
           <button className="later" onClick={onLater}>
-            先收着
+            {T.badges.keepIt}
           </button>
         </div>
       </div>

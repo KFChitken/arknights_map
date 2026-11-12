@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import {
   declarationText,
@@ -121,7 +121,7 @@ export default function DeclareSheet({
   const gameSelect = (t: Template) =>
     blank(
       t,
-      <select value={game} onChange={(e) => setGame(e.target.value as Game)} aria-label="游戏">
+      <select value={game} onChange={(e) => setGame(e.target.value as Game)} aria-label={T.declare.gameLabel}>
         {GAMES.map((g) => (
           <option key={g} value={g}>
             {GAME_NAMES[g]}
@@ -132,7 +132,7 @@ export default function DeclareSheet({
   const characterSelect = (t: Template) =>
     blank(
       t,
-      <select value={character} onChange={(e) => setCharacter(e.target.value)} aria-label="厨力角色">
+      <select value={character} onChange={(e) => setCharacter(e.target.value)} aria-label={T.declare.characterLabel}>
         {favourites.map((f) => (
           <option key={`${f.game}-${f.name}`} value={f.name}>
             {f.name}
@@ -169,51 +169,51 @@ export default function DeclareSheet({
 
   return (
     <Sheet
-      title="我宣布个事儿"
+      title={T.declare.title}
       onClose={onClose}
       footer={
         <button className="primary wide" onClick={send} disabled={!canSend || sending}>
-          {!main ? "先放下蟑螂本体才能发表" : from.length ? "发表宣言" : "选一只蟑螂来发"}
+          {!main ? T.declare.placeFirst : from.length ? T.declare.send : T.declare.pickRoach}
         </button>
       }
     >
       <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
         {clones.length
-          ? `先选从哪几只蟑螂发，会向它们周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`
-          : `先选从本体发，会向它周围 ${DECLARATION_RADIUS_KM} 公里内的所有舟P喊一句话。`}
+          ? fmt(T.declare.introMany, { km: DECLARATION_RADIUS_KM })
+          : fmt(T.declare.introMain, { km: DECLARATION_RADIUS_KM })}
       </p>
 
       {main && (
-        <div className="chips" style={{ marginBottom: 12 }} role="group" aria-label="从哪只蟑螂发">
+        <div className="chips" style={{ marginBottom: 12 }} role="group" aria-label={T.declare.from}>
           <button className={`chip ${from.includes(main.id) ? "on" : ""}`} onClick={() => toggle(main.id)}>
-            本体
+            {T.common.main}
           </button>
           {clones.map((c, i) => (
             <button key={c.id} className={`chip ${from.includes(c.id) ? "on" : ""}`} onClick={() => toggle(c.id)}>
-              {fmtParts("克隆体 {n}", { n: i + 1 })}
+              {fmtParts(T.common.cloneN, { n: i + 1 })}
             </button>
           ))}
           {clones.length > 0 && (
             <button className={`chip ${allOn ? "on" : ""}`} onClick={() => setFrom(allOn ? [] : all)}>
-              全部
+              {T.declare.all}
             </button>
           )}
         </div>
       )}
 
       {drunk && (
-        <div className="drunk-group" role="group" aria-label="醉酒限定宣言">
-          <div className="drunk-tag">醉酒限定</div>
-          {row("water", <>这白开水怎么没味啊？</>)}
-          {row("drunklove", <>{fmtNodes("我永远喜欢{character}！", { character: characterSelect("drunklove") })}</>)}
+        <div className="drunk-group" role="group" aria-label={T.declare.drunk.title}>
+          <div className="drunk-tag">{T.declare.drunk.tag}</div>
+          {row("water", <>{T.declare.line.water}</>)}
+          {row("drunklove", <>{fmtNodes(T.declare.line.drunklove, { character: characterSelect("drunklove") })}</>)}
           {row(
             "kr168",
             <>
-              {fmtNodes("氪了168，{character}{spouse}回家家", {
+              {fmtNodes(T.declare.line.kr168, {
                 character: characterSelect("kr168"),
                 spouse: blank(
                   "kr168",
-                  <select value={spouse} onChange={(e) => setSpouse(e.target.value as Spouse)} aria-label="老婆还是老公">
+                  <select value={spouse} onChange={(e) => setSpouse(e.target.value as Spouse)} aria-label={T.declare.spouseLabel}>
                     {SPOUSES.map((x) => (
                       <option key={x} value={x}>
                         {x}
@@ -224,30 +224,30 @@ export default function DeclareSheet({
               })}
             </>,
           )}
-          {row("radar", <>我的方舟雷达💡的一下响了</>)}
-          {row("roguelike", <>我要打集成战略！</>)}
-          {row("xianshu", <>我要看仙术杯！</>)}
+          {row("radar", <>{T.declare.line.radar}</>)}
+          {row("roguelike", <>{T.declare.line.roguelike}</>)}
+          {row("xianshu", <>{T.declare.line.cup}</>)}
           {/* one span, so the long line wraps beside its button rather than under it */}
-          {row("rental", <span className="tpl-long">我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个</span>)}
+          {row("rental", <span className="tpl-long">{T.declare.line.roaches}</span>)}
         </div>
       )}
 
       {events.map((e) => (
-        <div key={e.id} className="limited-group" role="group" aria-label={`${e.name}限定宣言`}>
-          <div className="limited-tag">限定</div>
+        <div key={e.id} className="limited-group" role="group" aria-label={fmt(T.declare.limitedTitle, { event: e.name })}>
+          <div className="limited-tag">{T.map.declare.limited}</div>
           {e.lines.map(eventRow)}
         </div>
       ))}
 
-      {row("launch", <>{fmtNodes("{game}，启动！", { game: gameSelect("launch") })}</>)}
+      {row("launch", <>{fmtNodes(T.declare.line.launch, { game: gameSelect("launch") })}</>)}
       {row(
         "iam",
         <>
-          {fmtNodes("我是{character}的{title}", {
+          {fmtNodes(T.declare.line.iam, {
             character: characterSelect("iam"),
             title: blank(
               "iam",
-              <select value={title} onChange={(e) => setTitle(e.target.value)} aria-label="称呼">
+              <select value={title} onChange={(e) => setTitle(e.target.value)} aria-label={T.declare.titleLabel}>
                 {titles.map((x) => (
                   <option key={x} value={x}>
                     {x}
@@ -258,21 +258,21 @@ export default function DeclareSheet({
           })}
         </>,
       )}
-      {row("love", <>{fmtNodes("我永远喜欢{character}", { character: characterSelect("love") })}</>)}
-      {row("buff", <>{fmtNodes("加强{character}", { character: characterSelect("buff") })}</>)}
+      {row("love", <>{fmtNodes(T.declare.line.love, { character: characterSelect("love") })}</>)}
+      {row("buff", <>{fmtNodes(T.declare.line.buff, { character: characterSelect("buff") })}</>)}
       {row(
         "myname",
         <>
-          {fmtNodes("我是{name}，我要玩{game}", { name: named ? displayName(profile) : "（你的名字）", game: gameSelect("myname") })}
+          {fmtNodes(T.declare.line.myname, { name: named ? displayName(profile) : T.declare.yourName, game: gameSelect("myname") })}
         </>,
       )}
       {row(
         "welcome",
         <>
-          {fmtNodes("欢迎回家，{title}", {
+          {fmtNodes(T.declare.line.welcome, {
             title: blank(
               "welcome",
-              <select value={game} onChange={(e) => setGame(e.target.value as Game)} aria-label="称呼">
+              <select value={game} onChange={(e) => setGame(e.target.value as Game)} aria-label={T.declare.titleLabel}>
                 {GAMES.map((g) => (
                   <option key={g} value={g}>
                     {WELCOME_NAMES[g]}
@@ -283,15 +283,15 @@ export default function DeclareSheet({
           })}
         </>,
       )}
-      {row("canyou", <>{fmtNodes("{character}做得到吗？", { character: characterSelect("canyou") })}</>)}
+      {row("canyou", <>{fmtNodes(T.declare.line.canyou, { character: characterSelect("canyou") })}</>)}
       {row(
         "eat",
         <>
-          {fmtNodes("我想吃{character}的{food}", {
+          {fmtNodes(T.declare.line.eat, {
             character: characterSelect("eat"),
             food: blank(
               "eat",
-              <select value={food} onChange={(e) => setFood(e.target.value as Food)} aria-label="吃的">
+              <select value={food} onChange={(e) => setFood(e.target.value as Food)} aria-label={T.declare.foodLabel}>
                 {FOODS.map((f) => (
                   <option key={f} value={f}>
                     {f}
@@ -302,30 +302,30 @@ export default function DeclareSheet({
           })}
         </>,
       )}
-      {row("birthday", <>祝我生日快乐</>)}
+      {row("birthday", <>{T.declare.line.birthday}</>)}
 
-      <div className="stay-group" role="group" aria-label="缘缘庄住客的宣言">
-        <div className="stay-tag">缘缘庄住客</div>
-        {row("sihouse", <>你家还挺大的嘛？</>)}
-        {row("simine", <>疯狂新妻祀是我的！</>)}
+      <div className="stay-group" role="group" aria-label={T.declare.inn.title}>
+        <div className="stay-tag">{T.declare.inn.tag}</div>
+        {row("sihouse", <>{T.declare.line.innBig}</>)}
+        {row("simine", <>{T.declare.line.innSi}</>)}
         {!stayed && <p className="hint stay-note">{STAY_NEEDED}</p>}
       </div>
 
       {(!favourites.length || !named) && (
         <p className="hint" style={{ marginTop: -2, marginBottom: 8 }}>
-          {!favourites.length && "带角色的句子要先在资料里选厨力角色。"}
-          {!named && "「我是…，我要玩…」要先在资料里填名字，并且不选匿名。"}
+          {!favourites.length && T.declare.needsCharacter}
+          {!named && T.declare.needsName}
           <button className="pill" style={{ marginLeft: 6 }} onClick={onEditProfile}>
-            去资料
+            {T.declare.toProfile}
           </button>
         </p>
       )}
-      {template === "myname" && <p className="hint">这句会让收到的人看到你的名字。</p>}
-      {template === "birthday" && <p className="hint">这句你所有的触须之交都会收到，不管离多远，而且知道是你发的。</p>}
+      {template === "myname" && <p className="hint">{T.declare.showsName}</p>}
+      {template === "birthday" && <p className="hint">{T.declare.toFriends}</p>}
 
-      <div className="shout">{fmtParts("「{text}」", { text: declarationText(d) })}</div>
+      <div className="shout">{fmtParts(T.common.quoted, { text: declarationText(d) })}</div>
       <p className="hint">
-        {fmtParts("{km} 公里内有蟑螂（本体或克隆体）的舟P都会收到：开着网页的马上收到，没开的下次打开时收到，同一个人只收到一次。TA 们只知道是 {km} 公里内的某只舟P，可以回应你或者碰你一下。", { km: DECLARATION_RADIUS_KM })}
+        {fmtParts(T.declare.reach, { km: DECLARATION_RADIUS_KM })}
       </p>
     </Sheet>
   );

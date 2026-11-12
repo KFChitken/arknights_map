@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { isNew, noticeDay, type NoticeMemory, type PublicNotice } from "@/lib/notices";
 import NoticeBody from "./NoticeBody";
 import Sheet from "./Sheet";
@@ -37,9 +37,9 @@ function Megaphone({ size = 16, width = 1.9 }: { size?: number; width?: number }
 /** In the top bar: the megaphone, with 「公告」 where there is room, and the red dot when something is new */
 export function NoticeButton({ dot, onClick }: { dot: boolean; onClick: () => void }) {
   return (
-    <button className="notice-btn" onClick={onClick} aria-label={dot ? "公告，有新公告" : "公告"}>
+    <button className="notice-btn" onClick={onClick} aria-label={dot ? T.notices.buttonNew : T.notices.title}>
       <Megaphone />
-      <span className="label">公告</span>
+      <span className="label">{T.notices.title}</span>
       {dot && <span className="dot" aria-hidden="true" />}
     </button>
   );
@@ -51,14 +51,14 @@ export function NoticeStrip({ notice, onOpen, onClose }: { notice: PublicNotice;
     <div className="notice-strip">
       <button className="go" onClick={onOpen}>
         <Megaphone size={15} width={2} />
-        <strong>新公告</strong>
+        <strong>{T.notices.newOne}</strong>
         <span className="t">{notice.title}</span>
         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff99" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 6l6 6-6 6" />
         </svg>
       </button>
       <span className="sep" aria-hidden="true" />
-      <button className="x" onClick={onClose} aria-label="关掉这条">
+      <button className="x" onClick={onClose} aria-label={T.notices.dismiss}>
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
@@ -90,15 +90,15 @@ export default function NoticeBoard({
   if (view.kind === "list") {
     const now = Date.now();
     return (
-      <Sheet key="list" title="公告" onClose={onClose}>
+      <Sheet key="list" title={T.notices.title} onClose={onClose}>
         {notices.length ? (
           <div className="notice-list">
             {notices.map((n) => (
               <button key={n.id} className="notice-row" onClick={() => onOpen(n)}>
                 <span className="notice-row-main">
                   <span className="notice-row-top">
-                    {n.pinned && <span className="notice-tag pin">置顶</span>}
-                    {isNew(n, memory, now) && <span className="notice-tag new">新</span>}
+                    {n.pinned && <span className="notice-tag pin">{T.notices.pinned}</span>}
+                    {isNew(n, memory, now) && <span className="notice-tag new">{T.common.new}</span>}
                     <strong>{n.title}</strong>
                   </span>
                   <span className="notice-row-sub">
@@ -112,7 +112,7 @@ export default function NoticeBoard({
             ))}
           </div>
         ) : (
-          <p className="notice-none">还没有公告。</p>
+          <p className="notice-none">{T.notices.empty}</p>
         )}
       </Sheet>
     );
@@ -126,15 +126,15 @@ export default function NoticeBoard({
       onClose={onClose}
       footer={
         <button className="primary wide" onClick={onClose}>
-          知道了
+          {T.common.gotIt}
         </button>
       }
     >
       <div className="notice-meta">
         <button className="notice-back" onClick={onList}>
-          {fmtParts("‹ 全部公告{count}", { count: view.counted ? `（${notices.length}）` : "" })}
+          {fmtParts(T.notices.back, { count: view.counted ? fmt(T.common.inParens, { text: notices.length }) : "" })}
         </button>
-        <span>{fmtParts("站长 · {day}", { day: noticeDay(n.publishedAt) })}</span>
+        <span>{fmtParts(T.notices.byAdmin, { day: noticeDay(n.publishedAt) })}</span>
       </div>
       <NoticeBody body={n.body} />
     </Sheet>

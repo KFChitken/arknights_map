@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { T } from "@/i18n";
 import { SearchBusy, searchPlaces, suggestPlaces, type Place, type PlaceResults } from "@/lib/geocode";
 import type { MapView } from "@/lib/types";
 
@@ -52,10 +53,10 @@ export default function PlaceBar({
         setResults(null);
         setError(
           err instanceof SearchBusy
-            ? "搜的人有点多，过几秒再试，或者直接点地图。"
+            ? T.placeBar.search.busy
             : cn
-              ? "地点搜索暂时用不了，可以直接在地图上点一下放。"
-              : "搜索没有连上，检查一下网络，或者直接点地图。",
+              ? T.placeBar.search.unavailable
+              : T.placeBar.search.offline,
         );
       }
     } finally {
@@ -87,13 +88,13 @@ export default function PlaceBar({
     <div className="placebar" role="dialog" aria-label={label}>
       <div className="placebar-top">
         <span>{label}</span>
-        <button onClick={onCancel}>取消</button>
+        <button onClick={onCancel}>{T.common.cancel}</button>
       </div>
       <form onSubmit={search}>
         <input
           type="search"
           enterKeyHint="search"
-          placeholder="或者输入地点，比如：静安寺、秋叶原"
+          placeholder={T.placeBar.search.placeholder}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           // state, not a ref: browsers differ in whether the last input event comes before or after compositionend,
@@ -105,7 +106,7 @@ export default function PlaceBar({
           }}
         />
         <button type="submit" disabled={busy}>
-          {busy ? "…" : "搜索"}
+          {busy ? "…" : T.placeBar.search.button}
         </button>
       </form>
       {results && (
@@ -118,15 +119,15 @@ export default function PlaceBar({
               </button>
             </li>
           ))}
-          {results.places.length === 0 && results.full && <li className="empty">没找到这个地点，换个说法试试。</li>}
-          {!results.full && <li className="empty">没有想要的？按「搜索」用更全的方式再找一次。</li>}
+          {results.places.length === 0 && results.full && <li className="empty">{T.placeBar.search.none}</li>}
+          {!results.full && <li className="empty">{T.placeBar.search.more}</li>}
         </ul>
       )}
       {error && <p className="hint">{error}</p>}
       <p className="hint">
-        别人会看到你放下的位置，请不要放在家门口。
-        {results?.osm && " 部分地点数据 © OpenStreetMap。"}
-        {results?.tencent && " 部分地点数据 © 腾讯位置服务。"}
+        {T.placeBar.doorstep}
+        {results?.osm && T.placeBar.credit.osm}
+        {results?.tencent && T.placeBar.credit.tencent}
       </p>
     </div>
   );

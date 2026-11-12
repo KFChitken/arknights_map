@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { T } from "@/i18n";
 import { dockFeeler, mark, miniHeart, soundArcs, tap } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
@@ -89,8 +90,8 @@ export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockF
   if (kind === "knock") {
     return (
       <>
-        {word("咚", "w1")}
-        {word("咚", "w2")}
+        {word(T.fx.dong, "w1")}
+        {word(T.fx.dong, "w2")}
       </>
     );
   }
@@ -98,14 +99,14 @@ export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockF
     return (
       <>
         <div className="dock-fx ta-dvial" style={{ left: cx - 9, top: av.y - 12 }} {...html(vial(18))} />
-        {word("清理智！", "late")}
+        {word(T.fx.sanity, "late")}
       </>
     );
   }
   if (kind === "hug" || kind === "hearts") {
     return <div className="dock-fx ta-dhearts dock-hearts" style={{ left: cx, top: av.y - 8 }} {...html(kind === "hug" ? miniHeart(16) : miniHeart(14) + miniHeart(11))} />;
   }
-  if (kind === "highfive") return word("啪！");
+  if (kind === "highfive") return word(T.fx.pa);
   if (kind === "luck") {
     return (
       <div className="dock-fx ta-dstars" style={{ left: cx - 20, top: av.y - 4 }}>
@@ -126,7 +127,7 @@ export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockF
               <RoachIcon color={from.color} size={20} avatar={from.avatar} />
             </span>
           )}
-          <b>{from?.name ?? "匿名"}</b>
+          <b>{from?.name ?? T.map.common.anonymous}</b>
         </span>
       </div>
       {friend ? (
@@ -172,18 +173,18 @@ function HeardBubble({ heard: h, older, onReply, onOk }: { heard: Heard; older: 
           <path d="M3 9 h3 l4 -4 v14 l-4 -4 h-3 z" fill="currentColor" />
           <path d="M13.5 8 a4 4 0 0 1 0 8 M15.5 5 a8 8 0 0 1 0 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
-        附近 10 公里有舟P喊
+        {T.fx.shoutNear}
       </span>
       <p className="ta-heard-line">
-        {h.limited && <span className="ta-tag">限定</span>}
+        {h.limited && <span className="ta-tag">{T.map.declare.limited}</span>}
         {h.text}
       </p>
       <span className="ta-heard-acts">
         <button type="button" className="ta-reply" onClick={() => onReply(h.id)}>
-          回应
+          {T.fx.react}
         </button>
         <button type="button" className="ta-ok" onClick={() => onOk(h.id)}>
-          知道了
+          {T.common.gotIt}
         </button>
       </span>
     </div>

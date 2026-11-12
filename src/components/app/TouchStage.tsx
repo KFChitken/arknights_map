@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
+import { T } from "@/i18n";
 import { usesPicture } from "@/lib/roachImages";
 import { GLOW } from "@/lib/roachSvg";
 import {
@@ -142,7 +143,7 @@ export default function TouchStage({
         <div className="ta-fx ta-mini m2" style={{ left: 198, top: 60 }} {...html(miniHeart())} />
         <div className="ta-fx ta-mini m3" style={{ left: mx, top: 18 }} {...html(miniHeart(10))} />
         <div className="ta-ribbon" style={{ left: 120, top: 150 }}>
-          成为触须之交！
+          {T.fx.friends}
         </div>
       </>
     );
@@ -151,7 +152,7 @@ export default function TouchStage({
   return (
     <>
       {/* under the stage and over the map: a tap, a drag or a wheel anywhere ends the scene */}
-      <button type="button" className="ta-skip" aria-label="跳过动画" onPointerDown={finish} onWheel={finish} />
+      <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="ta-place" style={{ left: place.left, top: place.top, transform: `scale(${place.s})` }} aria-hidden="true">
         <div className={`ta-stage ta-${kind}`} style={stage}>
           {scene}
@@ -212,13 +213,13 @@ export function ShoutStage({
   const stage = { "--dur": `${SHOUT_MS}ms`, "--R": `${place.R}px`, "--end": place.end } as CSSProperties;
   return (
     <>
-      <button type="button" className="ta-skip" aria-label="跳过动画" onPointerDown={finish} onWheel={finish} />
+      <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="ta-place" style={{ left: place.left, top: place.top, transform: `scale(${place.s})` }} aria-hidden="true">
         <div className={`ta-stage ta-shout${picture ? " ta-pic" : ""}`} style={stage}>
           <div className="ta-ring r1" />
           <div className="ta-ring r2" />
           <div className="ta-ring r3" />
-          <div className="ta-r10">10 公里</div>
+          <div className="ta-r10">{T.fx.tenKm}</div>
           <div className="ta-me">
             <div className="ta-body">
               <div className="ta-calm">
@@ -229,7 +230,7 @@ export function ShoutStage({
             </div>
           </div>
           <div className="ta-bubble">
-            {limited && <span className="ta-tag">限定</span>}
+            {limited && <span className="ta-tag">{T.map.declare.limited}</span>}
             {text}
           </div>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import type { BatchAct } from "@/lib/friendly";
 import { miniHeart } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachColor } from "@/lib/types";
@@ -52,7 +52,7 @@ export default function BatchStage({ act, you, them, onDone }: { act: BatchAct; 
   else if (act === "highfive")
     fx = shown.map((_, i) => (
       <div key={i} className="bs-pa" style={{ ...spot(i), ...delay(i, 0.45) }}>
-        啪！
+        {T.fx.pa}
       </div>
     ));
   else if (act === "luck")
@@ -61,7 +61,7 @@ export default function BatchStage({ act, you, them, onDone }: { act: BatchAct; 
         {shown.map((_, i) => (
           <div key={i} className="bs-fly in" style={{ ...spot(i), ...delay(i) }} {...html(star(18))} />
         ))}
-        <div className="bs-label">{fmtParts("欧气 +{n}", { n: them.length })}</div>
+        <div className="bs-label">{fmtParts(T.fx.luck, { n: them.length })}</div>
       </>
     );
   else
@@ -70,13 +70,13 @@ export default function BatchStage({ act, you, them, onDone }: { act: BatchAct; 
         {shown.map((_, i) => (
           <div key={i} className="bs-fly" style={{ ...spot(i), ...delay(i, 0.15) }} {...html(vial(20))} />
         ))}
-        <div className="bs-label bs-ding">叮！</div>
+        <div className="bs-label bs-ding">{T.fx.ding}</div>
       </>
     );
 
   return (
     <>
-      <button type="button" className="ta-skip" aria-label="跳过动画" onPointerDown={finish} onWheel={finish} />
+      <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="bs-stage" style={{ "--dur": `${BATCH_MS}ms` } as CSSProperties} aria-hidden="true">
         <div className="bs-you">
           <RoachIcon color={you.color} avatar={you.avatar} size={84} mine />

@@ -1,5 +1,6 @@
 "use client";
 
+import { fmt, T } from "@/i18n";
 import { roughText } from "@/lib/counts";
 import { DECLARATION_RADIUS_KM, RADAR_RADIUS_KM, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
@@ -12,9 +13,9 @@ import Sheet from "./Sheet";
 
 /** Counts rounded down by the server (counts.ts rough), in words */
 function aroundText({ near, far }: { near: number; far: number }) {
-  if (far === 0) return "这附近还没有舟P，来当第一只吧！";
-  const close = near ? `${DECLARATION_RADIUS_KM} 公里内有 ${roughText(near)}舟P` : `${DECLARATION_RADIUS_KM} 公里内还没有舟P`;
-  return `${close}，${RADAR_RADIUS_KM} 公里内有 ${roughText(far)}。`;
+  if (far === 0) return T.guest.empty;
+  const close = near ? fmt(T.guest.near, { km: DECLARATION_RADIUS_KM, count: roughText(near) }) : fmt(T.guest.nearNone, { km: DECLARATION_RADIUS_KM });
+  return fmt(T.guest.far, { close, km: RADAR_RADIUS_KM, count: roughText(far) });
 }
 
 export function PreviewCard({
@@ -28,20 +29,20 @@ export function PreviewCard({
   onClose: () => void;
 }) {
   return (
-    <div className="card stack" role="dialog" aria-label="放在这里">
+    <div className="card stack" role="dialog" aria-label={T.guest.placeHere}>
       <div className="card-head">
         <div>
-          <strong>如果你把蟑螂放在这里</strong>
-          <p className="muted">{around === "failed" ? "现在数不了，等一下再点点看。" : around ? aroundText(around) : "数一下……"}</p>
+          <strong>{T.guest.ifHere}</strong>
+          <p className="muted">{around === "failed" ? T.guest.countFailed : around ? aroundText(around) : T.guest.counting}</p>
         </div>
       </div>
       <button className="primary wide" onClick={onPlace}>
-        就放这里
+        {T.guest.place}
       </button>
       <p className="hint" style={{ margin: 0 }}>
-        点地图别处，可以换个地方看看。
+        {T.guest.elsewhere}
       </p>
-      <button className="close" onClick={onClose} aria-label="关闭">
+      <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>
     </div>
@@ -50,11 +51,11 @@ export function PreviewCard({
 
 export function GuestRadarSheet({ onSignIn, onClose }: { onSignIn: () => void; onClose: () => void }) {
   return (
-    <Sheet title="方舟雷达" onClose={onClose}>
-      <p style={{ marginTop: 0 }}>点地图任意一处，看看那附近有多少舟P。</p>
-      <p className="hint">登录后能看完整雷达：最近 24 小时谁爬进爬出、新面孔、附近的触须和宣言。</p>
+    <Sheet title={T.map.radar} onClose={onClose}>
+      <p style={{ marginTop: 0 }}>{T.guest.radarHint}</p>
+      <p className="hint">{T.guest.radarSignIn}</p>
       <button className="primary wide" style={{ marginTop: 14 }} onClick={onSignIn}>
-        登录
+        {T.common.signIn}
       </button>
     </Sheet>
   );
@@ -63,17 +64,17 @@ export function GuestRadarSheet({ onSignIn, onClose }: { onSignIn: () => void; o
 export function WelcomeSheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
-      title={`Welcome to ${SITE_NAME}。`}
+      title={fmt(T.guest.welcome, { site: SITE_NAME })}
       onClose={onClose}
       footer={
         <button className="primary wide" onClick={onClose}>
-          去地图上看看
+          {T.guest.toMap}
         </button>
       }
     >
-      <p style={{ marginTop: 0 }}>都说舟P像蟑螂一样多，但事实如此吗？</p>
-      <p>地图上的每只蟑螂都有着厚厚的伪装，而伪装下面是了解其他蟑螂的渴望。</p>
-      <p>点地图任意一处，看看那附近大约有多少舟P；登录后就能看到大家在哪。想放下自己的蟑螂，用邮箱收个验证码就能登录，不用密码。</p>
+      <p style={{ marginTop: 0 }}>{T.guest.intro.doubt}</p>
+      <p>{T.guest.intro.disguise}</p>
+      <p>{T.guest.intro.how}</p>
     </Sheet>
   );
 }

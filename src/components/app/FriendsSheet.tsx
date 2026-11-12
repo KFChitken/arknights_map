@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { BATCH_ACTS, BATCH_NAMES, FRIEND_ACTS_PER_DAY, type BatchAct } from "@/lib/friendly";
 import type { Friend, HelpBoard } from "@/lib/world/types";
 import { MyHelp, TheirHelp } from "./HelpRows";
@@ -28,17 +28,17 @@ export function FriendsMark({ size = 19 }: { size?: number }) {
 /** Why one cannot have this 一键 now, or null */
 function cannot(f: Friend, act: BatchAct): string | null {
   const b = f.between;
-  if (!b) return "向导";
-  if (act === "sanity") return b.done.sanity ? "今天催过了" : b.actsLeft <= 0 ? `今天满 ${FRIEND_ACTS_PER_DAY} 次了` : null;
-  if (b.asleep) return "睡着了";
-  return b.actsLeft <= 0 ? `今天满 ${FRIEND_ACTS_PER_DAY} 次了` : null;
+  if (!b) return T.common.guides;
+  if (act === "sanity") return b.done.sanity ? T.friends.sanityDone : b.actsLeft <= 0 ? fmt(T.common.actsFull, { n: FRIEND_ACTS_PER_DAY }) : null;
+  if (b.asleep) return T.common.asleep;
+  return b.actsLeft <= 0 ? fmt(T.common.actsFull, { n: FRIEND_ACTS_PER_DAY }) : null;
 }
 
 /** The send button: 「和 12 位贴贴」 */
 function sendLabel(act: BatchAct, n: number) {
-  if (act === "luck") return `吸 ${n} 位的欧气`;
-  if (act === "sanity") return `催 ${n} 位清理智`;
-  return `和 ${n} 位${BATCH_NAMES[act]}`;
+  if (act === "luck") return fmt(T.friends.batch.luck, { n });
+  if (act === "sanity") return fmt(T.friends.batch.sanity, { n });
+  return fmt(T.friends.batch.gesture, { n, act: BATCH_NAMES[act] });
 }
 
 /**
@@ -96,7 +96,7 @@ export default function FriendsSheet({
   const mine = help?.mine ?? [];
   return (
     <Sheet
-      title="触须之交"
+      title={T.common.friends}
       onClose={onClose}
       footer={
         act && (
@@ -105,31 +105,31 @@ export default function FriendsSheet({
               {sendLabel(act, chosen.size)}
             </button>
             <button type="button" className="pill" onClick={() => setAct(null)}>
-              取消
+              {T.common.cancel}
             </button>
           </div>
         )
       }
     >
       {friends.length === 0 ? (
-        <p className="hint">还没有触须之交。你大胆碰了 TA，TA 也大胆碰了你，你们就会成为触须之交。</p>
+        <p className="hint">{T.common.noFriends}</p>
       ) : (
         <>
           {people.length > 0 &&
             (act ? (
               <div className="batch-head">
                 <span>
-                  {fmtParts("选好和谁{act}（能收的都勾上了）", { act: BATCH_NAMES[act] })}
+                  {fmtParts(T.friends.pickWho, { act: BATCH_NAMES[act] })}
                 </span>
                 {starred && (
                   <button type="button" className="pill" onClick={onlyStarred}>
-                    只选特别关注
+                    {T.friends.starredOnly}
                   </button>
                 )}
               </div>
             ) : (
               <div className="batch-row">
-                <span className="batch-label">一键</span>
+                <span className="batch-label">{T.friends.batch.label}</span>
                 {BATCH_ACTS.map((a) => (
                   <button key={a} type="button" className="pill" disabled={busy} onClick={() => startPick(a)}>
                     {BATCH_NAMES[a]}
@@ -143,8 +143,8 @@ export default function FriendsSheet({
               {theirs.length > 0 && (
                 <section className="help-box">
                   <button type="button" className="help-head" onClick={() => setAskedOpen(!askedOpen)} aria-expanded={askedOpen}>
-                    <span>{fmtParts("大家在求助（{n}）", { n: theirs.length })}</span>
-                    <span className="muted">{askedOpen ? "收起" : "展开"}</span>
+                    <span>{fmtParts(T.friends.theirs, { n: theirs.length })}</span>
+                    <span className="muted">{askedOpen ? T.common.collapse : T.friends.expand}</span>
                   </button>
                   {askedOpen &&
                     theirs.map((r) => (
@@ -155,19 +155,19 @@ export default function FriendsSheet({
               {people.length > 0 && (
                 <section className="help-box">
                   <div className="help-head static">
-                    <span>{fmtParts("我的求助{count}", { count: mine.length ? `（${mine.length}）` : "" })}</span>
+                    <span>{fmtParts(T.friends.mine, { count: mine.length ? fmt(T.common.inParens, { text: mine.length }) : "" })}</span>
                     <button type="button" className="pill dark" disabled={busy} onClick={onAskHelp}>
-                      发求助
+                      {T.help.ask.title}
                     </button>
                   </div>
                   {mine.length === 0 ? (
-                    <p className="hint help-hint">缺线索、想开线索交流、想借助战，都可以问问触须之交。</p>
+                    <p className="hint help-hint">{T.friends.helpNote}</p>
                   ) : (
                     mine.map((r) => <MyHelp key={r.id} item={r} busy={busy} onClose={onCloseHelp} />)
                   )}
                 </section>
               )}
-              <p className="hint">{fmtParts("共 {n} 位，点一位看 TA 的资料。", { n: friends.length })}</p>
+              <p className="hint">{fmtParts(T.friends.total, { n: friends.length })}</p>
             </>
           )}
 
@@ -185,11 +185,11 @@ export default function FriendsSheet({
                   onClick={() => (act ? flip(f.id) : onOpen(f.id))}
                 >
                   {f.star !== null && (
-                    <span className="tile-star" aria-label="特别关注">
+                    <span className="tile-star" aria-label={T.friends.starred}>
                       ★
                     </span>
                   )}
-                  {!act && asking.has(f.id) && <span className="tile-help" title="在求助" />}
+                  {!act && asking.has(f.id) && <span className="tile-help" title={T.friends.asking} />}
                   {act && !why && <span className={`tile-tick${on ? " on" : ""}`} aria-hidden="true" />}
                   <RoachIcon color={f.profile.color} size={60} avatar={f.profile.avatar} friend />
                   <strong>{f.profile.displayName}</strong>

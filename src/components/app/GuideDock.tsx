@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
@@ -16,28 +16,28 @@ const ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe", "si"];
 /** What each of them does, in a few lines; read when shown */
 const about = (): Record<GuideId, string[]> => ({
   amiya: [
-    "住在罗德岛，所有舟P共用一只。",
-    "碰她，她每天会用一样的方式碰回你一次；大胆碰她就成为触须之交，以后她每天跟你打招呼。",
-    "点她，她还会跳舞。",
+    T.guides.amiya.about.home,
+    T.guides.amiya.about.touch,
+    T.guides.amiya.about.dance,
   ],
   perlica: [
-    "住在你的蟑螂本体附近，只有你看得到她站在哪。",
-    "答应让她记时间以后，你离开满 10 分钟再回来，她会告诉你离开了多久。",
-    "成为触须之交以后，她会吃醋、每周发监督周报，你醉倒时还会守在旁边。",
+    T.guides.perlica.about.home,
+    T.guides.perlica.about.timer,
+    T.guides.perlica.about.friends,
   ],
   talulah: [
-    "在哈尔滨太阳岛守着一堆篝火。",
-    "派一只克隆体去烤火，火边的蟑螂越多，火烧得越旺。",
-    "大胆碰她会跟你握手，成为触须之交。",
+    T.guides.talulah.about.home,
+    T.guides.talulah.about.fire,
+    T.guides.talulah.about.friends,
   ],
   minghe: [
-    "骑着怒骊每天换一座城市，30 站走一圈，身后连着一串星点。",
-    "派一只克隆体跟他走 7 站，每天到一座新城市，让各地的舟P碰到你。",
+    T.guides.minghe.about.home,
+    T.guides.minghe.about.ride,
   ],
   si: [
-    "在黄山宏村的南湖边挂着一幅画轴，画的是缘缘庄。",
-    "每天碰她，她顺手在你的集章本上盖一个章；头一回碰她，她还照你的形象画一只墨小强，排队住进缘缘庄。",
-    "大胆碰她就成为触须之交，她送你一幅画像。",
+    T.guides.si.about.home,
+    T.guides.si.about.stamps,
+    T.guides.si.about.friends,
   ],
 });
 
@@ -65,7 +65,7 @@ export function GuideDock({ onOpen }: { onOpen: (id: GuideId) => void }) {
     };
   }, []);
   return (
-    <nav ref={ref} className="guide-dock" aria-label="向导">
+    <nav ref={ref} className="guide-dock" aria-label={T.common.guides}>
       {ORDER.map((id) => (
         <button key={id} onClick={() => onOpen(id)} aria-label={GUIDES[id].name}>
           <RoachIcon color={GUIDES[id].color} size={34} avatar={GUIDES[id].avatar} />
@@ -105,7 +105,7 @@ export function GuideSheet({
           <p className="hint">{away}</p>
         ) : (
           <button className="primary wide" onClick={onFind}>
-            {fmtParts("在地图上找到{them}", { them: g.pronoun })}
+            {fmtParts(T.guides.dock.find, { them: g.pronoun })}
           </button>
         )}
       </div>

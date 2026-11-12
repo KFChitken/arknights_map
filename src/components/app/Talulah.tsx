@@ -1,5 +1,6 @@
 "use client";
 
+import { T } from "@/i18n";
 import { TALULAH, TALULAH_NAME } from "@/lib/talulah";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
@@ -17,13 +18,13 @@ export function TalulahIntroSheet({ onGo, onLater }: { onGo: () => void; onLater
       <div className="amiya-greet">
         <TalulahPicture size={96} />
       </div>
-      <p className="consent-place">塔露拉上岛了。她在哈尔滨太阳岛点了一堆篝火，派一只克隆体过去坐坐吧。</p>
+      <p className="consent-place">{T.guides.talulah.arrived}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onGo}>
-          去火边看看
+          {T.guides.talulah.goSee}
         </button>
         <button className="pill" onClick={onLater}>
-          以后再说
+          {T.common.later}
         </button>
       </div>
     </Sheet>

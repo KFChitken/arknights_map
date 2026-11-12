@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { distanceKm } from "@/lib/geo";
 import { MOVES_PER_DAY } from "@/lib/rules";
 import type { LngLat } from "@/lib/types";
@@ -28,22 +28,22 @@ export default function CloneMoveSheet({
 }) {
   const far = (r: OwnRoach) => {
     const d = distanceKm(r, to);
-    return d < 1 ? `${from} ${Math.round(d * 1000)} 米` : `${from} ${Math.round(d).toLocaleString()} 公里`;
+    return d < 1 ? fmt(T.cloneMove.meters, { from, m: Math.round(d * 1000) }) : fmt(T.cloneMove.km, { from, km: Math.round(d).toLocaleString() });
   };
   return (
-    <Sheet title="挪哪只克隆体过去？" onClose={onClose}>
+    <Sheet title={T.cloneMove.which} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        {fmtParts("算一次挪窝，今天还能挪 {left} 次（每天 {perDay} 次）。", { left: movesLeft, perDay: MOVES_PER_DAY })}
+        {fmtParts(T.cloneMove.movesLeft, { left: movesLeft, perDay: MOVES_PER_DAY })}
       </p>
       {clones.map((r, i) => (
         <div className="list-row" key={r.id}>
           <div>
-            <strong>{fmtParts("克隆体 {n}", { n: i + 1 })}</strong>
+            <strong>{fmtParts(T.common.cloneN, { n: i + 1 })}</strong>
             <p className="muted">{far(r)}</p>
           </div>
           <div className="row-actions">
             <button className="pill dark" disabled={movesLeft <= 0} onClick={() => onPick(r)}>
-              挪过去
+              {T.cloneMove.move}
             </button>
           </div>
         </div>

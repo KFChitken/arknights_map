@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { chineseDate, portraitTitle, SI_LINES, STAMPS, STAMPS_PER_ROUND, stampAt } from "@/lib/si";
 import { SEAL_RED } from "@/lib/siArt";
 import type { RoachAvatar } from "@/lib/types";
@@ -36,7 +36,7 @@ export function Seal({ text, size, tilt = 0 }: { text: string; size: number; til
   const h = rows * cell + 6;
   const scale = size / Math.max(w, h);
   return (
-    <svg className="si-seal" width={w * scale} height={h * scale} viewBox={`0 0 ${w} ${h}`} style={{ transform: `rotate(${tilt}deg)` }} aria-label={`「${text}」`} role="img">
+    <svg className="si-seal" width={w * scale} height={h * scale} viewBox={`0 0 ${w} ${h}`} style={{ transform: `rotate(${tilt}deg)` }} aria-label={fmt(T.common.quoted, { text })} role="img">
       <rect x="1.4" y="1.4" width={w - 2.8} height={h - 2.8} rx="1.8" fill="none" stroke={SEAL_RED} strokeWidth="2.2" strokeDasharray="17 0.8 9 0.6 23 0.9" />
       {chars.map((c, i) => {
         const col = cols - 1 - Math.floor(i / rows);
@@ -202,13 +202,10 @@ async function savePicture(c: HTMLCanvasElement, name: string) {
   return true;
 }
 
-/** What she wrote on her own */
-const SELF_TITLE = "自画像";
-
 /** A portrait (yours, titled `title`; or hers, 自画像), painted once for what it shows, with the way to save it */
 function Portrait({ look, title, at, hers }: { look: RoachAvatar; title: string; at: number; hers: boolean }) {
   const [art, setArt] = useState<{ key: string; canvas: HTMLCanvasElement; url: string } | null>(null);
-  const written = hers ? SELF_TITLE : title;
+  const written = hers ? T.guides.siBook.selfTitle : title;
   const key = `${look}|${written}|${at}|${hers}`;
   useEffect(() => {
     let gone = false;
@@ -224,15 +221,15 @@ function Portrait({ look, title, at, hers }: { look: RoachAvatar; title: string;
     <figure className="si-portrait">
       {shown ? (
         // eslint-disable-next-line @next/next/no-img-element -- painted here, as a data URL, to be long-pressed and saved
-        <img src={shown.url} alt={hers ? "祀掌柜的自画像" : title} />
+        <img src={shown.url} alt={hers ? T.guides.siBook.selfAlt : title} />
       ) : (
-        <div className="si-portrait-wait" aria-label="正在画" />
+        <div className="si-portrait-wait" aria-label={T.guides.siBook.drawing} />
       )}
       <figcaption>
-        <button className="pill" disabled={!shown} onClick={() => shown && void savePicture(shown.canvas, hers ? "祀掌柜自画像" : title)}>
-          存成图片
+        <button className="pill" disabled={!shown} onClick={() => shown && void savePicture(shown.canvas, hers ? T.guides.siBook.selfFile : title)}>
+          {T.guides.siBook.save}
         </button>
-        <span className="muted">也可以长按图片保存</span>
+        <span className="muted">{T.guides.siBook.longPress}</span>
       </figcaption>
     </figure>
   );
@@ -284,19 +281,19 @@ export function SiBookSheet({
 
   return (
     <Sheet
-      title="集章本"
+      title={T.guides.siBook.title}
       onClose={onClose}
       footer={
         pages.length > 1 && (
           <div className="si-book-pager">
             <button className="pill" disabled={at === 0} onClick={() => setPage(at - 1)}>
-              上一页
+              {T.guides.siBook.prev}
             </button>
             <span className="muted">
               {at + 1} / {pages.length}
             </span>
             <button className="pill" disabled={at === pages.length - 1} onClick={() => setPage(at + 1)}>
-              下一页
+              {T.guides.siBook.next}
             </button>
           </div>
         )
@@ -304,17 +301,17 @@ export function SiBookSheet({
     >
       {shown === "portrait" &&
         (!portrait ? (
-          <p className="muted si-book-note">大胆碰她，成为触须之交，她会送你一幅画像。</p>
+          <p className="muted si-book-note">{T.guides.siBook.noPortrait}</p>
         ) : portrait.state === "wrong" ? (
           <div className="stack">
             <p className="si-says">{SI_LINES.portraitWrong}</p>
             <Portrait look={look} title={title} at={portrait.at} hers />
             <div className="consent-actions">
               <button className="primary" disabled={busy} onClick={() => void answer("return")}>
-                还给她
+                {T.guides.siBook.giveBack}
               </button>
               <button className="pill" disabled={busy} onClick={() => void answer("keep")}>
-                就不还
+                {T.guides.siBook.keepIt}
               </button>
             </div>
           </div>
@@ -326,14 +323,14 @@ export function SiBookSheet({
         ))}
       {shown === "self" && portrait && (
         <div className="stack">
-          <p className="muted si-book-note">她的自画像，没还给她。</p>
+          <p className="muted si-book-note">{T.guides.siBook.kept}</p>
           <Portrait look={look} title={title} at={portrait.at} hers />
         </div>
       )}
       {shown === "stamps" && (
         <div className="stack">
           <p className="muted si-book-note">
-            {fmtParts("一共盖了 {n} 个章 · {round}这一轮 {inRound} / {per}", { n: total.toLocaleString(), round: round > 0 ? `第 ${round + 1} 轮，` : "", inRound: inRound, per: STAMPS_PER_ROUND })}
+            {fmtParts(T.guides.siBook.count, { n: total.toLocaleString(), round: round > 0 ? fmt(T.guides.siBook.round, { n: round + 1 }) : "", inRound: inRound, per: STAMPS_PER_ROUND })}
           </p>
           <ol className="si-stamps">
             {Array.from({ length: STAMPS_PER_ROUND }, (_, i) => {
@@ -344,7 +341,7 @@ export function SiBookSheet({
               return (
                 <li key={i} className={stamped ? (today ? "today" : "stamped") : "empty"}>
                   {stamped ? <Seal text={text} size={44} tilt={slant(k)} /> : <span className="muted">{i + 1}</span>}
-                  {today && <small>今天</small>}
+                  {today && <small>{T.common.today}</small>}
                 </li>
               );
             })}

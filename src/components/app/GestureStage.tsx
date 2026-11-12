@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
+import { T } from "@/i18n";
 import type { Gesture } from "@/lib/friendly";
 import { miniHeart } from "@/lib/touchArt";
 import RoachIcon from "../RoachIcon";
@@ -62,7 +63,7 @@ export default function GestureStage({
 
   let fx = null;
   if (gesture === "hug") fx = <div className="ta-fx gs-heart" style={{ left: 120, top: 46 }} {...html(miniHeart(26))} />;
-  else if (gesture === "highfive") fx = <div className="ta-fx gs-pa" style={{ left: 120, top: 40 }}>啪！</div>;
+  else if (gesture === "highfive") fx = <div className="ta-fx gs-pa" style={{ left: 120, top: 40 }}>{T.fx.pa}</div>;
   else if (gesture === "luck") {
     fx = (
       <>
@@ -70,7 +71,7 @@ export default function GestureStage({
           <div key={i} className={`gs-star s${i}`} style={{ left: 186, top: 92 }} {...html(star(14 + (i % 2) * 4))} />
         ))}
         <div className="gs-luck-label" style={{ left: 18, top: 44 }}>
-          欧气 +1
+          {T.fx.luckOne}
         </div>
       </>
     );
@@ -79,7 +80,7 @@ export default function GestureStage({
 
   return (
     <>
-      <button type="button" className="ta-skip" aria-label="跳过动画" onPointerDown={finish} onWheel={finish} />
+      <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="ta-place" style={{ left: place.left, top: place.top, transform: `scale(${place.s})` }} aria-hidden="true">
         <div className={`ta-stage gs-${gesture}`} style={stage}>
           {!asleep && (
@@ -108,7 +109,7 @@ export function SanityFly({ from, onDone }: { from: { x: number; y: number }; on
     <>
       <div className="dock-fx gs-vial" style={{ left: from.x - 10, top: from.y - 14 }} {...html(vial(20))} />
       <div className="dock-fx ta-dword gs-ding" style={{ left: from.x + 8, top: from.y - 70 }}>
-        叮！
+        {T.fx.ding}
       </div>
     </>
   );

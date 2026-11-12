@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import {
   favouriteLine,
   MINGHE_HERE_LINE,
@@ -89,7 +89,7 @@ export function SiCard({
           {fav && <p className="muted si-aside">{fav}</p>}
           {mingheHere && <p className="muted si-aside">{MINGHE_HERE_LINE}</p>}
           <button className="link si-nickname" onClick={onNickname}>
-            玩家都叫她小葱
+            {T.guides.si.nickname}
           </button>
         </div>
       </div>
@@ -97,20 +97,20 @@ export function SiCard({
       <section className="si-block si-painting">
         <SiScrollArt tier={tier} size={64} />
         <div>
-          <strong>今天的画</strong>
-          <p className="muted">{fmtParts("今天来过 {n} 位管理员", { n: (state?.today ?? 0).toLocaleString() })}</p>
+          <strong>{T.guides.si.todaysPainting}</strong>
+          <p className="muted">{fmtParts(T.guides.si.visitors, { n: (state?.today ?? 0).toLocaleString() })}</p>
           <p className="muted">{PAINTING_LINES[tier]}</p>
         </div>
       </section>
 
       <section className="si-block">
-        <strong>缘缘庄</strong>
+        <strong>{T.guides.si.inn}</strong>
         {inn && (inn.free > 0 ? (
-          <p className="muted">{fmtParts("还有 {n} 间空房。……才、才不是特意给你留的。", { n: inn.free.toLocaleString() })}</p>
+          <p className="muted">{fmtParts(T.guides.si.freeRooms, { n: inn.free.toLocaleString() })}</p>
         ) : (
           <>
             <p className="muted">
-              {fmtParts("缘缘庄客满 · 门口排了 {queue} 位 · 村外躺了 {outside} 位", { queue: inn.queue.toLocaleString(), outside: inn.outside.toLocaleString() })}
+              {fmtParts(T.guides.si.full, { queue: inn.queue.toLocaleString(), outside: inn.outside.toLocaleString() })}
             </p>
             {tail && <p className="muted">{tail}</p>}
           </>
@@ -125,7 +125,7 @@ export function SiCard({
                   : SI_LINES.out}
             </p>
             <button className="pill" onClick={onFind}>
-              看看我在哪
+              {T.guides.si.whereAmI}
             </button>
           </div>
         )}
@@ -134,13 +134,13 @@ export function SiCard({
       {signedIn && me && (
         <section className="si-block si-book-row">
           <div>
-            <strong>你的集章本</strong>
+            <strong>{T.guides.si.book}</strong>
             <p className="muted">
-              {fmtParts("一共盖了 {n} 个 · {today}", { n: me.stamps.toLocaleString(), today: today ? `今天的章「${today}」` : "今天还没盖章" })}
+              {fmtParts(T.guides.si.stamps, { n: me.stamps.toLocaleString(), today: today ? fmt(T.guides.si.todayStamp, { stamp: today }) : T.guides.si.noStampToday })}
             </p>
           </div>
           <button className="pill" onClick={onOpenBook}>
-            翻开集章本
+            {T.guides.si.openBook}
           </button>
         </section>
       )}
@@ -148,21 +148,21 @@ export function SiCard({
       {onOpenFriend && (
         <div className="row-actions">
           <button className="pill" onClick={onOpenFriend}>
-            看看 TA
+            {T.common.seeThem}
           </button>
         </div>
       )}
       <div className="touch-buttons">
         <button disabled={touching || waiting} onClick={() => (signedIn ? onTouch(false) : onSignIn())}>
-          偷偷伸出触须
-          <small>她只知道被碰了一下</small>
+          {T.common.reachSneaky}
+          <small>{T.guides.si.sneakyNote}</small>
         </button>
         <button disabled={touching || waiting} className="bold" onClick={() => (signedIn ? onTouch(true) : onSignIn())}>
-          大胆伸出触须
-          <small>{sharesUid ? "她能看到你的资料和 UID" : "她能看到你的资料"}</small>
+          {T.common.reachBold}
+          <small>{sharesUid ? T.guides.si.boldUid : T.guides.si.bold}</small>
         </button>
       </div>
-      <button className="close" onClick={onClose} aria-label="关闭">
+      <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>
     </div>
@@ -172,17 +172,17 @@ export function SiCard({
 /** Once in each browser, for every signed-in player with a main roach (her 触须之交 too), before the other guides' cards. */
 export function SiIntroSheet({ onGo, onLater }: { onGo: () => void; onLater: () => void }) {
   return (
-    <Sheet title={`祀来${SITE_NAME}啦`} onClose={onLater}>
+    <Sheet title={fmt(T.guides.si.introTitle, { site: SITE_NAME })} onClose={onLater}>
       <div className="amiya-greet">
         <SiPicture size={96} />
       </div>
-      <p className="consent-place">{fmtParts("「{text}」", { text: SI_LINES.introCard })}</p>
+      <p className="consent-place">{fmtParts(T.common.quoted, { text: SI_LINES.introCard })}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onGo}>
-          去宏村看看
+          {T.guides.si.goSee}
         </button>
         <button className="pill" onClick={onLater}>
-          以后再说
+          {T.common.later}
         </button>
       </div>
     </Sheet>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { fmt, T } from "@/i18n";
 import { passwordStatus, removePassword, savePassword } from "@/lib/authClient";
 import { passwordProblem } from "@/lib/passwordRules";
 import { keepLoginWith, serviceName } from "./LoginSheet";
@@ -11,9 +12,15 @@ export type PasswordForm = "set" | "change" | "remove";
 
 /** Said on the sign-in by code that confirms it is the player, for each */
 export const CONFIRM_REASON: Record<PasswordForm, string> = {
-  set: "为了确认是你本人，先收一封验证码。验证好了回到「我的资料」设密码。",
-  change: "为了确认是你本人，先收一封验证码。验证好了回到「我的资料」改密码，不用输现在的密码。",
-  remove: "为了确认是你本人，先收一封验证码。验证好了回到「我的资料」取消密码。",
+  get set() {
+    return T.password.confirmReason.set;
+  },
+  get change() {
+    return T.password.confirmReason.change;
+  },
+  get remove() {
+    return T.password.confirmReason.remove;
+  },
 };
 
 /** noCodeNeeded: the first password goes without a sign-in by code, as codes to the player's mail service may not arrive just now */
@@ -74,7 +81,7 @@ export default function PasswordBox({
         } else if (startOpen && fresh(s)) {
           // back from confirming by code: straight on with what the player was doing
           setForm(startOpen === "set" && s.setAt ? "change" : startOpen !== "set" && !s.setAt ? null : startOpen);
-          setSaid("验证好了，确认是你本人。");
+          setSaid(T.password.confirmed);
           setReveal(true);
         }
       },
@@ -91,7 +98,7 @@ export default function PasswordBox({
     setSaid(null);
     setCurrent("");
     setNext("");
-    if (!status.email) return setError("这个账号没有邮箱，设不了密码。");
+    if (!status.email) return setError(T.password.noEmail);
     // the first one takes a sign-in by code moments ago, unless codes may not reach the player just now;
     // a change or taking it away takes the current one instead
     if (f === "set" && !fresh(status) && !withoutCode(status)) return onConfirmByCode(status.email, "set");
@@ -110,7 +117,7 @@ export default function PasswordBox({
       if (form === "remove") {
         await removePassword(byCode ? "" : current);
         keepLoginWith("code");
-        setSaid("密码取消了。以后换设备，用验证码或登录码登录。");
+        setSaid(T.password.removed);
       } else {
         const r = await savePassword(next, byCode ? undefined : current);
         // the sign-in by code grew too old meanwhile
@@ -119,8 +126,8 @@ export default function PasswordBox({
         onSet?.();
         setSaid(
           r.changed
-            ? "密码改好了。其他手机和电脑上的登录都退出了，那边要用新密码重新登录。"
-            : "密码设好了。换手机或电脑时，用邮箱和这个密码就能登录。",
+            ? T.password.changed
+            : T.password.wasSet,
         );
       }
       setForm(null);
@@ -144,23 +151,23 @@ export default function PasswordBox({
     <div ref={box}>
       <div className="list-row">
         <div>
-          <strong>{status === null ? "…" : status.setAt ? `${dateText(status.setAt)}设的` : "没设"}</strong>
-          <p className="muted">设了密码，换手机或电脑时用邮箱和密码就能登录，不用等验证码邮件。</p>
+          <strong>{status === null ? "…" : status.setAt ? fmt(T.password.setOn, { date: dateText(status.setAt) }) : T.password.notSet}</strong>
+          <p className="muted">{T.password.about}</p>
         </div>
         {status && !form && (
           <div className="row-actions">
             {status.setAt ? (
               <>
                 <button className="pill" onClick={() => open("change")}>
-                  改密码
+                  {T.password.change}
                 </button>
                 <button className="pill" onClick={() => open("remove")}>
-                  取消密码
+                  {T.password.remove}
                 </button>
               </>
             ) : (
               <button className="pill" onClick={() => open("set")}>
-                设密码
+                {T.password.set}
               </button>
             )}
           </div>
@@ -170,42 +177,42 @@ export default function PasswordBox({
         <form className="login pw-form" onSubmit={submit}>
           {form === "set" && withoutCode(status) && (
             <p className="hint" style={{ marginTop: 0 }}>
-              {`${serviceName(status.email.slice(status.email.lastIndexOf("@") + 1).toLowerCase())} 现在收不到我们的验证码，这次不用先收验证码，直接设就行。`}
+              {fmt(T.password.noCodeNeeded, { service: serviceName(status.email.slice(status.email.lastIndexOf("@") + 1).toLowerCase()) })}
             </p>
           )}
           <HiddenUsername email={status.email} />
           {form !== "set" && !byCode && (
-            <PasswordField label="现在的密码" autoComplete="current-password" value={current} onChange={setCurrent} />
+            <PasswordField label={T.password.current} autoComplete="current-password" value={current} onChange={setCurrent} />
           )}
           {form !== "remove" && (
             <div>
               <PasswordField
-                label={form === "set" ? "密码" : "新密码"}
+                label={form === "set" ? T.password.label : T.password.new}
                 autoComplete="new-password"
-                placeholder="至少 8 个字符"
+                placeholder={T.password.minLength}
                 value={next}
                 onChange={setNext}
               />
               <p className="hint" style={problem ? { color: "#b42318" } : undefined}>
                 {problem ??
                   (form === "change"
-                    ? "改了以后，其他手机和电脑上的登录都会退出，要用新密码重新登录。"
-                    : "8 个字符以上就行，不用非得有大小写和符号；别用生日、QQ 号这种别人猜得到的。")}
+                    ? T.password.changeNote
+                    : T.password.rules)}
               </p>
             </div>
           )}
-          {form === "remove" && <p className="hint" style={{ marginTop: 0 }}>取消以后，换设备时用验证码或登录码登录。</p>}
-          {form !== "set" && byCode && <p className="hint" style={{ marginTop: 0 }}>刚用验证码确认过是你，不用输现在的密码。</p>}
+          {form === "remove" && <p className="hint" style={{ marginTop: 0 }}>{T.password.removeNote}</p>}
+          {form !== "set" && byCode && <p className="hint" style={{ marginTop: 0 }}>{T.password.noCurrentNeeded}</p>}
           <div className="row-actions" style={{ marginTop: 0 }}>
             <button className={form === "remove" ? "pill danger-pill" : "pill dark"} disabled={busy || !ready}>
-              {busy ? "稍等…" : form === "set" ? "设好了" : form === "change" ? "改好了" : "取消密码"}
+              {busy ? T.common.wait : form === "set" ? T.password.done : form === "change" ? T.password.changeDone : T.password.remove}
             </button>
             <button type="button" className="pill" disabled={busy} onClick={() => setForm(null)}>
-              算了
+              {T.common.neverMind}
             </button>
             {form !== "set" && !byCode && (
               <button type="button" className="link" disabled={busy} onClick={confirmByCode}>
-                忘了现在的密码？
+                {T.password.forgot}
               </button>
             )}
           </div>

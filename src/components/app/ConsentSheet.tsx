@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import { adultTick, crossBorderTick, publicPlaceNote, publicPlaceTick } from "@/lib/consent";
 import { MIN_SIGNUP_AGE, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 /** What changed in the privacy policy this time (POLICY_UPDATED_AT); the next change replaces it. Read when shown. */
 const changes = () => [
-  "我请了几位管理员一起处理举报：他们能看到账号的名字和资料，邮箱是打码的；",
-  "管理员进管理页要用手机验证器，每次查看和处理都会记下来，留 1 年；",
-  "处理蟑螂的举报时，我能在地图上看到被举报的人的其他蟑螂在哪，只用来判断是不是故意的。",
+  T.consent.update.changeModerators,
+  T.consent.update.changeAdminLog,
+  T.consent.update.changeReportMap,
 ];
 
 /**
@@ -37,16 +37,16 @@ export default function ConsentSheet({
 
   if (underage) {
     return (
-      <Sheet title="隐私说明更新了" onClose={onClose}>
+      <Sheet title={T.consent.update.title} onClose={onClose}>
         <p className="consent-sorry">
-          {fmtParts("很抱歉，{site}现在只对满 {age} 岁的玩家开放。", { site: SITE_NAME, age: MIN_SIGNUP_AGE })}
+          {fmtParts(T.consent.update.sorry, { site: SITE_NAME, age: MIN_SIGNUP_AGE })}
         </p>
         <div className="consent-actions">
           <button className="danger wide" onClick={onDelete}>
-            删除我的账号
+            {T.common.deleteAccount}
           </button>
           <button className="pill" onClick={() => setUnderage(false)}>
-            返回
+            {T.common.back}
           </button>
         </div>
       </Sheet>
@@ -63,9 +63,9 @@ export default function ConsentSheet({
   };
 
   return (
-    <Sheet title="隐私说明更新了" onClose={onClose}>
+    <Sheet title={T.consent.update.title} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        主要有三处变化：
+        {T.consent.update.changes}
       </p>
       <ol className="consent-changes">
         {changes().map((c) => (
@@ -73,7 +73,7 @@ export default function ConsentSheet({
         ))}
       </ol>
       <a className="consent-full" href="/privacy" target="_blank" rel="noreferrer">
-        看完整说明
+        {T.consent.update.full}
       </a>
       <div className="ticks">
         <label className="check">
@@ -85,7 +85,7 @@ export default function ConsentSheet({
           <span>
             {crossBorderTick()}{" "}
             <a href="/privacy#abroad" target="_blank" rel="noreferrer">
-              详情
+              {T.common.details}
             </a>
           </span>
         </label>
@@ -97,13 +97,13 @@ export default function ConsentSheet({
       <p className="hint">{publicPlaceNote()}</p>
       <div className="consent-actions">
         <button className="primary wide" disabled={busy || !adult || !abroad || !place} onClick={agree}>
-          {busy ? "保存中…" : "同意并继续"}
+          {busy ? T.common.saving : T.consent.update.agree}
         </button>
         <button className="pill" onClick={onSignOut}>
-          先不同意，退出登录
+          {T.consent.update.signOut}
         </button>
         <button className="link" onClick={() => setUnderage(true)}>
-          {fmtParts("我还不满 {age} 岁", { age: MIN_SIGNUP_AGE })}
+          {fmtParts(T.consent.update.underage, { age: MIN_SIGNUP_AGE })}
         </button>
       </div>
     </Sheet>
@@ -116,14 +116,14 @@ export default function ConsentSheet({
  */
 export function PlaceConfirm({ consent, onConfirm, onRethink }: { consent: boolean; onConfirm: () => void; onRethink: () => void }) {
   return (
-    <Sheet title={consent ? "放下之前" : "放下蟑螂"} onClose={onRethink}>
-      <p className="consent-place">{consent ? publicPlaceNote() : "把蟑螂放在刚才选的地方吗？"}</p>
+    <Sheet title={consent ? T.consent.place.before : T.consent.place.title} onClose={onRethink}>
+      <p className="consent-place">{consent ? publicPlaceNote() : T.consent.place.ask}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onConfirm}>
-          确认
+          {T.common.confirm}
         </button>
         <button className="pill" onClick={onRethink}>
-          再想想
+          {T.consent.place.rethink}
         </button>
       </div>
     </Sheet>

@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { callName } from "@/lib/amiya";
 import { declarationText, type Declaration } from "@/lib/declarations";
 import { distanceKm } from "@/lib/geo";
@@ -123,27 +123,27 @@ export function TutorialCoach({
   const required = step === "main" || step === "clone";
   const you = callName(me.profile.games);
   return (
-    <div className="card coach" role="dialog" aria-label="新手教程">
+    <div className="card coach" role="dialog" aria-label={T.tutorial.title}>
       <div className="coach-amiya">
         <AmiyaPicture size={56} friend={me.amiya.friend} />
       </div>
       <div className="stack coach-body">
         <div className="coach-top">
-          <span className="muted">{fmtParts("阿米娅的新手教程 · {step}", { step: step === "done" ? "完成" : `第 ${number}/5 步` })}</span>
+          <span className="muted">{fmtParts(T.tutorial.progress, { step: step === "done" ? T.tutorial.complete : fmt(T.tutorial.step, { n: number }) })}</span>
           {!required && step !== "done" && (
             <button className="link" onClick={onSkipAll}>
-              跳过教程
+              {T.tutorial.skip}
             </button>
           )}
         </div>
 
         {step === "main" && (
           <>
-            <strong>{fmtParts("{you}，欢迎来到舟P地图！", { you: you })}</strong>
-            <p>我是阿米娅。先把你的蟑螂本体放到地图上吧，大家能看到它在哪，但不知道是谁的。放好以后随时可以挪窝，也可以收回。</p>
+            <strong>{fmtParts(T.tutorial.welcome, { you: you })}</strong>
+            <p>{T.tutorial.place.text}</p>
             <div className="row-actions">
               <button className="pill dark" onClick={onPlaceMain}>
-                放下我的蟑螂
+                {T.map.bar.placeMine}
               </button>
             </div>
           </>
@@ -151,11 +151,11 @@ export function TutorialCoach({
 
         {step === "clone" && (
           <>
-            <strong>再放一只克隆体吧</strong>
-            <p>克隆体可以放在别的地方，比如学校或者常去的地方，别人看不出它和本体是一个人的。不想要了，在「我的蟑螂」里就能收回。</p>
+            <strong>{T.tutorial.clone.title}</strong>
+            <p>{T.tutorial.clone.text}</p>
             <div className="row-actions">
               <button className="pill dark" onClick={onPlaceClone}>
-                放一只克隆体
+                {T.tutorial.clone.button}
               </button>
             </div>
           </>
@@ -163,14 +163,14 @@ export function TutorialCoach({
 
         {step === "card" && (
           <>
-            <strong>给你的蟑螂做张名片吧</strong>
-            <p>名字、玩的游戏、厨力角色和蟑螂的样子。不想露名字，保持匿名也可以哦。</p>
+            <strong>{T.profile.makeCard}</strong>
+            <p>{T.tutorial.card.text}</p>
             <div className="row-actions">
               <button className="pill dark" onClick={onOpenCard}>
-                做名片
+                {T.tutorial.card.button}
               </button>
               <button className="pill" onClick={onCardLater}>
-                先匿名，以后再说
+                {T.profile.anonymousForNow}
               </button>
             </div>
           </>
@@ -178,18 +178,18 @@ export function TutorialCoach({
 
         {step === "greet" && (
           <>
-            <strong>跟附近的舟P打个招呼吧</strong>
-            <p>{fmtParts("挑一句发给 {km} 公里内的舟P，他们不知道是谁发的，可以回应你。", { km: DECLARATION_RADIUS_KM })}</p>
+            <strong>{T.tutorial.greet.title}</strong>
+            <p>{fmtParts(T.tutorial.greet.text, { km: DECLARATION_RADIUS_KM })}</p>
             <div className="chips">
               {greetings(me).map((d) => (
                 <button key={declarationText(d)} className="chip" disabled={sending} onClick={() => onGreet(d)}>
-                  {fmtParts("「{text}」", { text: declarationText(d) })}
+                  {fmtParts(T.common.quoted, { text: declarationText(d) })}
                 </button>
               ))}
             </div>
             <div className="row-actions">
               <button className="pill" onClick={() => onSkipStep("greet")}>
-                跳过这一步
+                {T.tutorial.skipStep}
               </button>
             </div>
           </>
@@ -197,16 +197,16 @@ export function TutorialCoach({
 
         {step === "touch" && !progress.practiced && (
           <>
-            <strong>{fmtParts("{you}，我在罗德岛！", { you: you })}</strong>
+            <strong>{fmtParts(T.tutorial.touch.title, { you: you })}</strong>
             <p>
-              点一下我，伸出触须碰碰我吧。偷偷碰，对方只知道被一只蟑螂碰了一下；大胆碰，对方能看到你的名片，我们就成了触须之交。
+              {T.tutorial.touch.text}
             </p>
             <div className="row-actions">
               <button className="pill dark" onClick={onFindGuide}>
-                碰碰我
+                {T.tutorial.touch.button}
               </button>
               <button className="pill" onClick={() => onSkipStep("touch")}>
-                跳过这一步
+                {T.tutorial.skipStep}
               </button>
             </div>
           </>
@@ -214,21 +214,21 @@ export function TutorialCoach({
 
         {step === "touch" && progress.practiced && (
           <>
-            <strong>就是这样！</strong>
+            <strong>{T.tutorial.touched.title}</strong>
             <p>
-              碰其他舟P也一样：点开 TA 的蟑螂，伸出触须就好。
+              {T.tutorial.touched.text}
               {nearest
-                ? "要不要去碰碰离你最近的舟P？"
-                : `你的蟑螂 ${RADAR_RADIUS_KM} 公里内还没有别的舟P，等热闹起来再去碰碰 TA 们。`}
+                ? T.tutorial.touched.ask
+                : fmt(T.tutorial.touched.none, { km: RADAR_RADIUS_KM })}
             </p>
             <div className="row-actions">
               {nearest && (
                 <button className="pill dark" onClick={onFindNearest}>
-                  去碰碰离你最近的舟P
+                  {T.tutorial.touched.go}
                 </button>
               )}
               <button className={nearest ? "pill" : "pill dark"} onClick={onBackHome}>
-                回到我的蟑螂
+                {T.tutorial.touched.back}
               </button>
             </div>
           </>
@@ -236,11 +236,11 @@ export function TutorialCoach({
 
         {step === "done" && (
           <>
-            <strong>教程完成啦！</strong>
-            <p>有人碰你或者回应你，左下角的信封会亮。右上角的方舟雷达能看附近的动静。我一直在罗德岛，随时来找我玩。</p>
+            <strong>{T.tutorial.finished.title}</strong>
+            <p>{T.tutorial.finished.text}</p>
             <div className="row-actions">
               <button className="pill dark" onClick={onFinish}>
-                好的
+                {T.common.ok}
               </button>
             </div>
           </>

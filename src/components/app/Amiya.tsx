@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import { AMIYA, amiyaLine } from "@/lib/amiya";
 import type { Game } from "@/lib/games";
 import RoachIcon from "../RoachIcon";
@@ -21,8 +21,8 @@ export const AmiyaPicture = ({ size, friend = true }: { size: number; friend?: b
 export function AmiyaTouchBack({ onTouchBack }: { onTouchBack: (bold: boolean) => Promise<string | null> }) {
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
-  if (answer) return <p className="amiya-answer">{fmtParts("她碰回来了：「{answer}」", { answer: answer })}</p>;
-  if (answer === "") return <p className="amiya-answer">她今天已经碰回过你了，明天再碰碰她吧。</p>;
+  if (answer) return <p className="amiya-answer">{fmtParts(T.guides.amiya.answered, { answer: answer })}</p>;
+  if (answer === "") return <p className="amiya-answer">{T.guides.amiya.backToday}</p>;
   const go = async (bold: boolean) => {
     setBusy(true);
     setAnswer(await onTouchBack(bold));
@@ -31,10 +31,10 @@ export function AmiyaTouchBack({ onTouchBack }: { onTouchBack: (bold: boolean) =
   return (
     <div className="row-actions amiya-back">
       <button className="pill" disabled={busy} onClick={() => go(false)}>
-        偷偷碰回去
+        {T.common.sneakyBack}
       </button>
       <button className="pill dark" disabled={busy} onClick={() => go(true)}>
-        大胆碰回去
+        {T.common.boldBack}
       </button>
     </div>
   );
@@ -52,11 +52,11 @@ export function AmiyaGreetingSheet({
 }) {
   return (
     <Sheet
-      title="阿米娅向导碰了碰你"
+      title={T.guides.amiya.touchedYou}
       onClose={onClose}
       footer={
         <button className="primary wide" onClick={onClose}>
-          好的
+          {T.common.ok}
         </button>
       }
     >
@@ -72,17 +72,17 @@ export function AmiyaGreetingSheet({
 /** Once, for players who have not met her: where she lives and what she does. */
 export function AmiyaIntroSheet({ onFind, onLater }: { onFind: () => void; onLater: () => void }) {
   return (
-    <Sheet title="阿米娅向导" onClose={onLater}>
+    <Sheet title={T.guides.amiya.intro.title} onClose={onLater}>
       <div className="amiya-greet">
         <AmiyaPicture size={96} friend={false} />
       </div>
-      <p className="consent-place">阿米娅向导住进了罗德岛！大胆碰她一下，你们就是触须之交，以后她每天会跟你打招呼。</p>
+      <p className="consent-place">{T.guides.amiya.intro.text}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onFind}>
-          去找她
+          {T.guides.amiya.intro.find}
         </button>
         <button className="pill" onClick={onLater}>
-          以后再说
+          {T.common.later}
         </button>
       </div>
     </Sheet>

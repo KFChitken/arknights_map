@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- one small PNG, which next/image would only copy */
 
 import { Fragment } from "react";
+import { fmt, T } from "@/i18n";
 import { noticeBlocks, type NoticeInline } from "@/lib/noticeText";
 
 const QQ_GROUP = "278579278";
@@ -32,9 +33,9 @@ export default function NoticeBody({ body }: { body: string }) {
             );
           case "qr":
             return (
-              <a key={i} className="notice-qr" href={QQ_JOIN} {...OUT} aria-label={`加入QQ群 ${QQ_GROUP}`}>
-                <img src="/notice/qq-group-2.png" alt={`QQ群 ${QQ_GROUP} 的二维码`} width={160} height={160} />
-                <span>扫一扫，或者点二维码加群</span>
+              <a key={i} className="notice-qr" href={QQ_JOIN} {...OUT} aria-label={fmt(T.notices.qq.join, { group: QQ_GROUP })}>
+                <img src="/notice/qq-group-2.png" alt={fmt(T.notices.qq.qrAlt, { group: QQ_GROUP })} width={160} height={160} />
+                <span>{T.notices.qq.scan}</span>
               </a>
             );
           case "p":

@@ -1,5 +1,6 @@
 "use client";
 
+import { T } from "@/i18n";
 import type { PaintingTier } from "@/lib/si";
 import { scrollSvg } from "@/lib/siArt";
 
@@ -10,7 +11,7 @@ export function SiScrollArt({ tier, size }: { tier: PaintingTier; size: number }
       className="si-scroll-art"
       style={{ width: size * 0.6, height: size }}
       role="img"
-      aria-label="今天的画"
+      aria-label={T.guides.si.todaysPainting}
       dangerouslySetInnerHTML={{ __html: scrollSvg(tier) }}
     />
   );

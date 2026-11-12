@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { finishSignup, passwordLogin, redeemDeskCode, requestCode, savePassword, verifyCode } from "@/lib/authClient";
 import { adultTick, crossBorderTick } from "@/lib/consent";
@@ -167,7 +167,7 @@ export default function LoginSheet({
   const [typedIn, setTypedIn] = useState(false);
   const haveCode = () => {
     const to = email.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return setError("先在上面填好收到验证码的那个邮箱。");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return setError(T.login.emailFirst);
     setError(null);
     setSent(null);
     setWait(0);
@@ -237,7 +237,7 @@ export default function LoginSheet({
     e.preventDefault();
     run(async () => {
       const r = await savePassword(newPassword);
-      if ("needsCode" in r) throw new Error("没设上。在「我的资料」里再设一次。");
+      if ("needsCode" in r) throw new Error(T.login.passwordNotSet);
       keepLoginWith("password");
       onDone();
     });
@@ -265,22 +265,22 @@ export default function LoginSheet({
   };
 
   const title = fixedEmail
-    ? "确认是你本人"
+    ? T.login.title.confirm
     : step === "signup"
-      ? `第一次来${SITE_NAME}`
+      ? fmt(T.login.title.first, { site: SITE_NAME })
       : step === "desk"
-        ? "用登录码登录"
+        ? T.login.title.deskCode
         : step === "offer"
-          ? "登录好了"
-          : "登录";
+          ? T.login.title.done
+          : T.common.signIn;
 
   return (
     <Sheet title={title} onClose={close}>
       {step === "email" && standalone && !fixedEmail && (
         <div className="desk-login">
-          <p>从桌面图标打开的？用在 Safari 里拿的登录码登录，不用再收验证码邮件。</p>
+          <p>{T.login.deskHint}</p>
           <button type="button" className="primary wide" onClick={() => setStep("desk")}>
-            输入登录码
+            {T.login.enterDeskCode}
           </button>
         </div>
       )}
@@ -289,12 +289,12 @@ export default function LoginSheet({
           {reason && <p className="hint" style={{ marginTop: 0 }}>{reason}</p>}
           {!byPassword && pausedNames.length > 0 && (
             <p className="hint" style={{ marginTop: 0, color: "var(--ink)", fontWeight: 600 }}>
-              {fmtParts("{names} 最近收不到我们的验证码邮件，发往 {names} 的验证码先暂停了。请用 QQ、163 或 Outlook 等邮箱登录；已经登录的不受影响。", { names: pausedNames.join("、") })}
-              {!fixedEmail && "设过密码的可以切到「密码」直接登录。"}
+              {fmtParts(T.login.paused, { names: pausedNames.join(T.common.listSep) })}
+              {!fixedEmail && T.login.pausedPassword}
             </p>
           )}
           <label className="field">
-            邮箱
+            {T.login.email}
             <input
               type="email"
               inputMode="email"
@@ -308,7 +308,7 @@ export default function LoginSheet({
           </label>
           {fix && (
             <p className="hint" style={{ marginTop: 0 }}>
-              是不是{" "}
+              {T.login.didYouMean}{" "}
               <button
                 type="button"
                 className="link"
@@ -317,67 +317,67 @@ export default function LoginSheet({
               >
                 {fix}
               </button>
-              ？
+              {T.login.didYouMeanEnd}
             </p>
           )}
           {!byPassword && pausedHere && (
             <p className="hint" style={{ marginTop: 0, color: "var(--ink)" }}>
-              {fmtParts("这是 {service} 邮箱，现在收不到验证码，{then}", { service: serviceName(typedDomain), then: fixedEmail ? "等恢复了再来。" : "请换一个邮箱。" })}
+              {fmtParts(T.login.serviceDown, { service: serviceName(typedDomain), then: fixedEmail ? T.login.serviceDownWait : T.login.serviceDownSwitch })}
             </p>
           )}
           {!fixedEmail && (
-            <div className="seg login-with" role="group" aria-label="登录方式">
+            <div className="seg login-with" role="group" aria-label={T.login.method}>
               <button type="button" className={byPassword ? "" : "on"} aria-pressed={!byPassword} onClick={() => switchTo("code")}>
-                验证码
+                {T.login.code}
               </button>
               <button type="button" className={byPassword ? "on" : ""} aria-pressed={byPassword} onClick={() => switchTo("password")}>
-                密码
+                {T.password.label}
               </button>
             </div>
           )}
           {byPassword ? (
             <>
-              <PasswordField label="密码" autoComplete="current-password" value={password} onChange={setPassword} />
+              <PasswordField label={T.password.label} autoComplete="current-password" value={password} onChange={setPassword} />
               <button className="primary wide" disabled={busy || !email.trim() || !password}>
-                {busy ? "登录中…" : "登录"}
+                {busy ? T.login.signingIn : T.common.signIn}
               </button>
               <div className="row-actions">
                 <button type="button" className="pill" onClick={() => switchTo("code")}>
-                  忘记密码？用验证码登录
+                  {T.login.forgot}
                 </button>
                 {!standalone && (
                   <button type="button" className="pill" onClick={() => setStep("desk")}>
-                    有登录码？
+                    {T.login.haveDeskCode}
                   </button>
                 )}
               </div>
-              <p className="hint">第一次来请用验证码，会自动注册。</p>
+              <p className="hint">{T.login.firstTimeCode}</p>
             </>
           ) : (
             <>
               <button className="primary wide" disabled={busy || !email.trim() || pausedHere}>
-                {busy ? "发送中…" : "发送验证码"}
+                {busy ? T.login.sending : T.login.sendCode}
               </button>
               <div className="row-actions">
                 {/* the email came, but this page no longer knows a code went out: another tab, or the desktop icon started afresh */}
                 <button type="button" className="pill" onClick={haveCode}>
-                  已经收到验证码？
+                  {T.login.haveCode}
                 </button>
                 {/* a 登录码 from a device already signed in; opened from the iPhone home-screen icon, it is offered above */}
                 {!standalone && !fixedEmail && (
                   <button type="button" className="pill" onClick={() => setStep("desk")}>
-                    有登录码？
+                    {T.login.haveDeskCode}
                   </button>
                 )}
               </div>
               <p className="hint">
                 {!fixedEmail && (
                   <>
-                    第一次来用验证码登录，会自动注册；设过密码的可以直接用密码。
+                    {T.login.firstTime}
                     <br />
                   </>
                 )}
-                验证码邮件由 Resend USA 代发，会用到你的邮箱地址。
+                {T.login.resendNote}
               </p>
             </>
           )}
@@ -388,19 +388,19 @@ export default function LoginSheet({
         <form className="login" onSubmit={verify}>
           <p className="hint" style={{ marginTop: 0 }}>
             {typedIn ? (
-              <>{fmtParts("填 {email} 收到的 6 位验证码。", { email: email })}</>
+              <>{fmtParts(T.login.enterCode, { email: email })}</>
             ) : (
               <>
-                {fmtParts("{sent} {email}，{min} 分钟内有效。", { sent: sent?.again ? "又发了一次" : "验证码发到了", email: email, min: sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN })}
+                {fmtParts(T.login.codeSent, { sent: sent?.again ? T.login.sentAgain : T.login.sentTo, email: email, min: sent ? Math.max(1, Math.round((sent.expiresAt - Date.now()) / 60_000)) : LOGIN_CODE_TTL_MIN })}
               </>
             )}
           </p>
           {sent?.slow && (
             <p className="hint" style={{ color: "var(--ink)", fontWeight: 600 }}>
-              Gmail 最近收我们的信比较慢，可能要等很久。还没注册的话，用 QQ 或 163 邮箱更快。
+              {T.login.gmailSlow}
               {/* said to every address there, known or not, so it tells nobody who has an account or a password */}
               {!fixedEmail &&
-                fmtNodes("设过密码的，可以{link}。", {
+                fmtNodes(T.login.usePassword, {
                   link: (
                     <button
                       type="button"
@@ -408,26 +408,26 @@ export default function LoginSheet({
                       style={{ fontSize: "inherit", fontWeight: "inherit", color: "inherit", textDecoration: "underline" }}
                       onClick={toPassword}
                     >
-                      直接用密码登录
+                      {T.login.usePasswordLink}
                     </button>
                   ),
                 })}
             </p>
           )}
           <p className="hint">
-            邮件在路上，一般 1–3 分钟到。先翻一下「垃圾邮件」和「所有邮件」。有效期内重新发送的还是同一个验证码，哪封先到都能用。
+            {T.login.onTheWay}
           </p>
           {mailbox && (
             <p className="hint">
-              本地测试：验证码在{" "}
+              {T.login.dev.before}{" "}
               <a href={mailbox} target="_blank" rel="noreferrer">
-                测试邮箱
+                {T.login.dev.inbox}
               </a>{" "}
-              里。
+              {T.login.dev.after}
             </p>
           )}
           <label className="field">
-            验证码
+            {T.login.code}
             <input
               type="text"
               inputMode="numeric"
@@ -435,17 +435,17 @@ export default function LoginSheet({
               pattern="\d{6}"
               maxLength={6}
               required
-              placeholder="6 位数字"
+              placeholder={T.login.codePlaceholder}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             />
           </label>
           <button className="primary wide" disabled={busy || code.length !== 6}>
-            {busy ? "验证中…" : fixedEmail ? "确认" : "登录"}
+            {busy ? T.login.checking : fixedEmail ? T.common.confirm : T.common.signIn}
           </button>
           <div className="row-actions">
             <button type="button" className="pill" disabled={busy || wait > 0} onClick={() => send()}>
-              {wait > 0 ? `${waitText(wait)}后可重发` : "重新发送"}
+              {wait > 0 ? fmt(T.login.resendIn, { wait: waitText(wait) }) : T.login.resend}
             </button>
             {!fixedEmail && (
               <button
@@ -456,7 +456,7 @@ export default function LoginSheet({
                   setStep("email");
                 }}
               >
-                换个邮箱
+                {T.login.otherEmail}
               </button>
             )}
           </div>
@@ -466,10 +466,10 @@ export default function LoginSheet({
       {step === "desk" && (
         <form className="login" onSubmit={redeem}>
           <p className="hint" style={{ marginTop: 0 }}>
-            {fmtParts("在已经登录的手机或电脑上打开{site}，在「我的资料」里拿一个登录码，把那 {len} 位码填在这里。", { site: SITE_NAME, len: DESK_CODE_LENGTH })}
+            {fmtParts(T.login.deskCodeHow, { site: SITE_NAME, len: DESK_CODE_LENGTH })}
           </p>
           <label className="field">
-            登录码
+            {T.common.loginCode}
             <input
               type="text"
               autoCapitalize="characters"
@@ -484,11 +484,11 @@ export default function LoginSheet({
             />
           </label>
           <button className="primary wide" disabled={busy || normalizeDeskCode(desk).length !== DESK_CODE_LENGTH}>
-            {busy ? "登录中…" : "登录"}
+            {busy ? T.login.signingIn : T.common.signIn}
           </button>
           <div className="row-actions">
             <button type="button" className="pill" onClick={() => setStep("email")}>
-              用邮箱登录
+              {T.login.useEmail}
             </button>
           </div>
         </form>
@@ -497,7 +497,7 @@ export default function LoginSheet({
       {step === "signup" && (
         <form className="login" onSubmit={signup}>
           <p className="hint" style={{ marginTop: 0 }}>
-            邮箱验证好了，还差一步。
+            {T.login.oneMoreStep}
           </p>
           <div className="ticks">
             <label className="check">
@@ -507,9 +507,9 @@ export default function LoginSheet({
             <label className="check">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <span>
-                我已阅读并同意{" "}
+                {T.login.agreeTo}{" "}
                 <a href="/privacy" target="_blank" rel="noreferrer">
-                  隐私说明
+                  {T.common.privacy}
                 </a>
               </span>
             </label>
@@ -518,7 +518,7 @@ export default function LoginSheet({
               <span>
                 {crossBorderTick()}{" "}
                 <a href="/privacy#abroad" target="_blank" rel="noreferrer">
-                  详情
+                  {T.common.details}
                 </a>
               </span>
             </label>
@@ -526,39 +526,39 @@ export default function LoginSheet({
           <HiddenUsername email={email.trim()} />
           <div>
             <PasswordField
-              label="设个密码（可以不填）"
+              label={T.login.signUp.passwordLabel}
               autoComplete="new-password"
               required={false}
-              placeholder="至少 8 个字符"
+              placeholder={T.password.minLength}
               value={newPassword}
               onChange={setNewPassword}
             />
             <p className="hint" style={newProblem ? { color: "#b42318" } : undefined}>
-              {newProblem ?? "以后换手机或电脑，用邮箱和这个密码就能登录，不用等验证码。"}
+              {newProblem ?? T.login.signUp.passwordHint}
             </p>
           </div>
           <button className="primary wide" disabled={busy || !adult || !agree || !abroad || Boolean(newProblem)}>
-            {busy ? "注册中…" : "完成注册"}
+            {busy ? T.login.signUp.busy : T.login.signUp.done}
           </button>
         </form>
       )}
 
       {step === "offer" && (
         <form className="login" onSubmit={keepOffered}>
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>设个密码，下次换手机不用等邮件？</p>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{T.login.nudge.title}</p>
           <HiddenUsername email={email.trim()} />
           <div>
-            <PasswordField label="密码" autoComplete="new-password" placeholder="至少 8 个字符" value={newPassword} onChange={setNewPassword} />
+            <PasswordField label={T.password.label} autoComplete="new-password" placeholder={T.password.minLength} value={newPassword} onChange={setNewPassword} />
             <p className="hint" style={newProblem ? { color: "#b42318" } : undefined}>
-              {newProblem ?? "以后换手机或电脑，用邮箱和这个密码就能登录，不用等验证码。在「我的资料」里随时能改，也能取消。"}
+              {newProblem ?? T.login.nudge.hint}
             </p>
           </div>
           <button className="primary wide" disabled={busy || !newPassword || Boolean(newProblem)}>
-            {busy ? "保存中…" : "设好了"}
+            {busy ? T.common.saving : T.password.done}
           </button>
           <div className="row-actions">
             <button type="button" className="pill" disabled={busy} onClick={later}>
-              下次再说
+              {T.password.notNow}
             </button>
           </div>
         </form>

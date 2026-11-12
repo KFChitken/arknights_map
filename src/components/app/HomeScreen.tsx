@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import type { PageCount } from "@/lib/appCounts";
 import { takeDeskCode } from "@/lib/authClient";
 import { beijingDate } from "@/lib/beijing";
@@ -156,11 +156,11 @@ export function DeskButton({ className = "", hint, onTap, onHintDone }: { classN
       <button className="desk-btn" onClick={onTap}>
         {/* eslint-disable-next-line @next/next/no-img-element -- the icon the desktop will show, small */}
         <img src="/icon-192.png" alt="" width={34} height={34} />
-        <small>存到桌面</small>
+        <small>{T.desk.save}</small>
       </button>
       {hint && (
         <button className="desk-hint" onClick={onTap}>
-          存到桌面，下次一点就开
+          {T.desk.saveHint}
         </button>
       )}
     </div>
@@ -188,10 +188,10 @@ export function LoginCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSign
   if (!signedIn) {
     return (
       <p className="hint">
-        先登录，再拿登录码。
+        {T.desk.signInFirst}
         {onSignIn && (
           <button className="link desk-sign-in" onClick={onSignIn}>
-            去登录
+            {T.desk.toSignIn}
           </button>
         )}
       </p>
@@ -205,7 +205,7 @@ export function LoginCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSign
       setCode(got.code);
       setCopied(await copy(got.code));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "出了点问题。");
+      setError(e instanceof Error ? e.message : T.desk.failed);
     }
     setBusy(false);
   };
@@ -213,24 +213,24 @@ export function LoginCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSign
     <div className="desk-code">
       {code ? (
         <>
-          <div className="desk-code-text" aria-label="登录码">
+          <div className="desk-code-text" aria-label={T.common.loginCode}>
             {code}
           </div>
           <div className="row-actions">
             <button className="pill" onClick={async () => setCopied(await copy(code))}>
-              {copied ? "已经复制了" : "复制"}
+              {copied ? T.desk.copied : T.common.copy}
             </button>
             <button className="pill" disabled={busy} onClick={take}>
-              换一个
+              {T.desk.another}
             </button>
           </div>
         </>
       ) : (
         <button className="primary wide" disabled={busy} onClick={take}>
-          {busy ? "正在拿…" : "拿登录码"}
+          {busy ? T.desk.getting : T.desk.getCode}
         </button>
       )}
-      <p className="hint">{fmtParts("这个码等于你的登录，{min} 分钟内有效，只能用一次，不要发给别人。", { min: DESK_CODE_TTL_MIN })}</p>
+      <p className="hint">{fmtParts(T.desk.codeNote, { min: DESK_CODE_TTL_MIN })}</p>
       {error && <p className="login-error">{error}</p>}
     </div>
   );
@@ -243,7 +243,7 @@ function CopyAddress() {
   return (
     <div className="desk-copy">
       <button className="pill" onClick={async () => setCopied(await copy(url))}>
-        {copied ? "已经复制了" : "复制网址"}
+        {copied ? T.desk.copied : T.desk.copyUrl}
       </button>
       {copied === false && <p className="desk-url">{url}</p>}
     </div>
@@ -265,19 +265,19 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
     return watchHomeScreen(update);
   }, []);
   if (!guide) return null;
-  if (done) return <p>装好了。存好以后，点桌面上的舟P图标就能直接打开地图。</p>;
+  if (done) return <p>{T.desk.installed}</p>;
 
   let steps: ReactNode;
   switch (guide) {
     case "inApp":
       steps = (
         <>
-          <p>你是在 App 里打开的（比如微信、QQ、B站），这里存不了：</p>
+          <p>{T.desk.inApp.title}</p>
           <Steps>
-            <li>先点右上角「···」，选「在浏览器打开」（iPhone 上选「在 Safari 中打开」）</li>
-            <li>在浏览器里再点一次「存到桌面」</li>
+            <li>{T.desk.inApp.open}</li>
+            <li>{T.desk.inApp.again}</li>
           </Steps>
-          <p className="hint">找不到这个选项，就复制网址，粘贴到浏览器里打开。</p>
+          <p className="hint">{T.desk.inApp.copy}</p>
           <CopyAddress />
         </>
       );
@@ -286,14 +286,14 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
       steps = (
         <>
           <Steps>
-            <li>点 Safari 的分享按钮（方框加向上的箭头；iOS 26 在底栏的「···」里）</li>
-            <li>往下翻，选「添加到主屏幕」。iOS 26 会有「作为网页 App 打开」的开关，保持打开</li>
+            <li>{T.desk.ios.share}</li>
+            <li>{T.desk.ios.add}</li>
             <li>
-              从桌面图标打开时要再登录一次：在这里拿一个登录码，打开后点「有登录码？」输入就行，不用再收验证码邮件。
+              {T.desk.ios.signIn}
               <LoginCodeBox signedIn={signedIn} onSignIn={onSignIn} />
             </li>
           </Steps>
-          <p className="hint">iPhone 上的 Chrome 和 Edge 也能这样存：在分享里找「添加到主屏幕」。</p>
+          <p className="hint">{T.desk.ios.otherBrowsers}</p>
         </>
       );
       break;
@@ -301,10 +301,10 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
       steps = (
         <>
           <Steps>
-            <li>点屏幕顶上菜单栏的「文件」</li>
-            <li>选「添加到程序坞」，打开以后会自动带上登录</li>
+            <li>{T.desk.mac.file}</li>
+            <li>{T.desk.mac.dock}</li>
           </Steps>
-          <p className="hint">没有这个选项的话（macOS 14 以前的系统），按 ⌘D 收藏这个网站。</p>
+          <p className="hint">{T.desk.mac.bookmark}</p>
         </>
       );
       break;
@@ -312,9 +312,9 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
     case "android":
       steps = (
         <Steps>
-          <li>打开浏览器的菜单（一般在右上角或底栏，「⋮」或「≡」）</li>
-          <li>找「添加到桌面」「添加到主屏幕」或「添加快捷方式」（Chrome 里叫「添加到主屏幕」或「安装应用」）</li>
-          <li>点了没反应：去手机「设置」里找到这个浏览器的权限，打开「桌面快捷方式」。还不行就用 Chrome 或 Edge 打开</li>
+          <li>{T.desk.android.menu}</li>
+          <li>{T.desk.android.add}</li>
+          <li>{T.desk.android.permission}</li>
         </Steps>
       );
       break;
@@ -322,14 +322,14 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
       steps = (
         <>
           <Steps>
-            <li>点地址栏右边的「安装」小图标（一个小屏幕带向下的箭头）</li>
+            <li>{T.desk.pc.icon}</li>
             <li>
-              {fmtParts("没有的话打开菜单：Chrome 在「⋮」里找「安装 {site}」（可能在「投放、保存和分享」里面）；Edge 在「···」里的「应用」，选「将此站点作为应用安装」", { site: SITE_NAME })}
+              {fmtParts(T.desk.pc.menu, { site: SITE_NAME })}
             </li>
-            <li>{fmtParts("已经装过的话，去开始菜单或启动台里找「{site}」", { site: SITE_NAME })}</li>
+            <li>{fmtParts(T.desk.pc.installed, { site: SITE_NAME })}</li>
           </Steps>
           <p className="hint">
-            装好以后：Windows 的开始菜单里有舟P图标，Chrome 一般也会在桌面放一个，Edge 会让你选放哪里；Mac 在启动台里，可以拖进程序坞。打开是单独的窗口，没有地址栏，登录和浏览器里共用。
+            {T.desk.pc.after}
           </p>
         </>
       );
@@ -337,8 +337,8 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
     default:
       steps = (
         <Steps>
-          <li>用 Chrome 或 Edge 打开这个网站，再点一次「存到桌面」</li>
-          <li>或者按 Ctrl+D（Mac 上 ⌘D）收藏这个网站</li>
+          <li>{T.desk.anyBrowser.open}</li>
+          <li>{T.desk.anyBrowser.bookmark}</li>
         </Steps>
       );
   }
@@ -352,11 +352,11 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
             if ((await installOrGuide()) === "installed") setDone(true);
           }}
         >
-          一键安装
+          {T.desk.install}
         </button>
       )}
       {steps}
-      <p className="desk-end">存好以后，点桌面上的舟P图标就能直接打开地图。</p>
+      <p className="desk-end">{T.desk.afterSave}</p>
     </div>
   );
 }
@@ -364,7 +364,7 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
 /** The panel 存到桌面 opens where the browser offers no prompt */
 export function HomeScreenSheet({ signedIn, onSignIn, onClose }: { signedIn: boolean; onSignIn?: () => void; onClose: () => void }) {
   return (
-    <Sheet title="存到桌面" onClose={onClose}>
+    <Sheet title={T.desk.save} onClose={onClose}>
       <HomeScreenGuide signedIn={signedIn} onSignIn={onSignIn} />
     </Sheet>
   );
@@ -386,7 +386,7 @@ export default function HomeScreenRow() {
           setOpen((o) => !o);
         }}
       >
-        存到桌面
+        {T.desk.save}
         <span className="chev" aria-hidden="true">
           ›
         </span>

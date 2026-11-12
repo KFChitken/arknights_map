@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts } from "@/i18n";
+import { fmtParts, T } from "@/i18n";
 import { dateOfDay, MINGHE, MINGHE_NAME, ROUTE, stopOf } from "@/lib/minghe";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
@@ -18,13 +18,13 @@ export function MingheIntroSheet({ station, onGo, onLater }: { station: string; 
       <div className="amiya-greet">
         <MinghePicture size={96} />
       </div>
-      <p className="consent-place">{fmtParts("明河骑着怒骊出发了，今天在{station}。派一只克隆体跟他走走吧。", { station: station })}</p>
+      <p className="consent-place">{fmtParts(T.guides.minghe.intro, { station: station })}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onGo}>
-          去看看他
+          {T.guides.minghe.goSee}
         </button>
         <button className="pill" onClick={onLater}>
-          以后再说
+          {T.common.later}
         </button>
       </div>
     </Sheet>
@@ -39,7 +39,7 @@ export function MingheRoute({ day }: { day: number }) {
   const lapStart = day - stopOf(day);
   return (
     <details className="minghe-route">
-      <summary>路线</summary>
+      <summary>{T.guides.minghe.route}</summary>
       <ol>
         {ROUTE.map((s, i) => {
           const when = lapStart + i;
@@ -48,7 +48,7 @@ export function MingheRoute({ day }: { day: number }) {
               <span>
                 {i + 1}. {s.name}
               </span>
-              <span>{when === day ? "今天" : short(dateOfDay(when))}</span>
+              <span>{when === day ? T.common.today : short(dateOfDay(when))}</span>
             </li>
           );
         })}

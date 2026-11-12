@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmtParts } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { GAME_NAMES, type Game } from "@/lib/games";
 import { CLUES, HELP_GAMES, HELP_HOURS, HELP_KINDS, HELP_NAMES, helpText, SKILLS, type HelpAsk, type HelpKind } from "@/lib/help";
 import { CharacterPicker } from "./ProfileSheet";
@@ -46,9 +46,9 @@ export default function HelpAskSheet({
   const gameChoices = allowed(kind);
 
   return (
-    <Sheet title="发求助" onBack={onBack} onClose={onClose}>
+    <Sheet title={T.help.ask.title} onBack={onBack} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
-        {fmtParts("只有玩这个游戏的触须之交看得到，不会弹出来打扰 TA，{hours} 小时后自动消失。同一种求助再发，会换掉之前那条。", { hours: HELP_HOURS })}
+        {fmtParts(T.help.ask.note, { hours: HELP_HOURS })}
       </p>
       <div className="chips">
         {kinds.map((k) => (
@@ -68,11 +68,11 @@ export default function HelpAskSheet({
       )}
       {kind === "clues" && (
         <>
-          <h3>缺哪几号（可以多选）</h3>
+          <h3>{T.help.ask.cluesLabel}</h3>
           <div className="chips">
             {CLUES.map((n) => (
               <button key={n} type="button" className={`chip${clues.includes(n) ? " on" : ""}`} onClick={() => setClues(toggle(clues, n))}>
-                {fmtParts("{n} 号", { n: n })}
+                {fmtParts(T.help.clue, { n: n })}
               </button>
             ))}
           </div>
@@ -80,21 +80,21 @@ export default function HelpAskSheet({
       )}
       {kind === "support" && (
         <>
-          <h3>想借哪位干员</h3>
-          <CharacterPicker game="arknights" value={operator} max={1} addLabel="＋ 选干员" onChange={setOperator} />
-          <h3>几技能</h3>
+          <h3>{T.help.ask.operatorLabel}</h3>
+          <CharacterPicker game="arknights" value={operator} max={1} addLabel={T.common.pickOperator} onChange={setOperator} />
+          <h3>{T.help.ask.skillLabel}</h3>
           <div className="chips">
             {SKILLS.map((n) => (
               <button key={n} type="button" className={`chip${skill === n ? " on" : ""}`} onClick={() => setSkill(n)}>
-                {n ? `${n} 技能` : "不限"}
+                {n ? fmt(T.help.ask.skill, { n }) : T.help.ask.anySkill}
               </button>
             ))}
           </div>
         </>
       )}
-      {ready && <p className="help-preview">{fmtParts("触须之交会看到：「{text}」", { text: helpText(ask) })}</p>}
+      {ready && <p className="help-preview">{fmtParts(T.help.ask.preview, { text: helpText(ask) })}</p>}
       <button type="button" className="primary wide" style={{ marginTop: 14 }} disabled={busy || !ready} onClick={() => onSend(ask)}>
-        发出去
+        {T.help.ask.send}
       </button>
     </Sheet>
   );

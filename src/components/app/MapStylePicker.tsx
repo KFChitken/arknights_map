@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { fmt, T } from "@/i18n";
 import {
   MAP_STYLE_NAMES,
   MAP_STYLE_NOTES,
@@ -165,7 +166,7 @@ export default function MapStylePicker({
           className="style-pill"
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label={`地图画风：${MAP_STYLE_NAMES[style]}`}
+          aria-label={fmt(T.map.style.picker.label, { style: MAP_STYLE_NAMES[style] })}
           onClick={toggle}
         >
           <StyleIcon style={style} />
@@ -183,7 +184,7 @@ export default function MapStylePicker({
         </button>
         {hint && !open && (
           <button className="style-hint" onClick={toggle}>
-            地图画风能换了，点这里 ↑
+            {T.map.style.picker.newHint}
           </button>
         )}
       </span>
@@ -192,9 +193,9 @@ export default function MapStylePicker({
           ref={menuRef}
           className="style-menu"
           role="menu"
-          aria-label="地图画风"
+          aria-label={T.map.style.picker.title}
         >
-          <div className="head">地图画风 · 只改这台设备上的样子</div>
+          <div className="head">{T.map.style.picker.note}</div>
           {MAP_STYLES.map((s) => (
             <button
               key={s}
@@ -212,7 +213,7 @@ export default function MapStylePicker({
               <span>
                 <b>
                   {MAP_STYLE_NAMES[s]}
-                  {NEW_STYLES.includes(s) && <i>新</i>}
+                  {NEW_STYLES.includes(s) && <i>{T.common.new}</i>}
                 </b>
                 <small>{unavailable[s] ?? MAP_STYLE_NOTES[s]}</small>
               </span>
