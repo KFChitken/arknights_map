@@ -16,3 +16,12 @@ export const started = () => g.__zhoupStarted === true;
 export function forgetStarted() {
   g.__zhoupStarted = false;
 }
+
+/**
+ * Where a release puts a file before it stops this process (DRAIN_FILE, else /tmp/zhoup-draining) (`touch` inside the container): from then on GET
+ * /api/ready answers 503, so the gateway, which asks it every few seconds, takes the process out while it still
+ * answers everyone it has. In the container's own /tmp, which a new container does not have; the startup code
+ * also removes it, so a process that was only restarted takes visitors again once it is ready.
+ */
+export const drainFile = () => process.env.DRAIN_FILE || "/tmp/zhoup-draining";
+

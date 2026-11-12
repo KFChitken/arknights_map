@@ -1,5 +1,6 @@
 // first, so anything below that says something says it in Chinese (src/i18n)
 import "./i18n/server";
+import { rmSync } from "node:fs";
 import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
 import { saveAppCounts } from "./lib/server/appCounts";
@@ -17,7 +18,7 @@ import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { spreadFireStacks } from "./lib/server/talulah";
 import { pruneOldActivity } from "./lib/server/retention";
 import { pruneRoachChanges } from "./lib/server/roachFeed";
-import { markStarted } from "./lib/server/ready";
+import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
 import { note } from "./lib/server/signals";
@@ -168,5 +169,7 @@ if (!helper) {
   }
 }
 
-// Ready to answer (GET /api/ready, with the roach list once it is made): not when the database could not be set up
+// Ready to answer (GET /api/ready, with the roach list once it is made): not when the database could not be set up.
+// A release's note to take this process out (drainFile) was for the one before it.
+rmSync(drainFile(), { force: true });
 if (setUp) markStarted();
