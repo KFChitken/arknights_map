@@ -1,6 +1,7 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, count, countDistinct, desc, eq, gte, inArray, isNull, lt, notInArray, sql, type AnyColumn } from "drizzle-orm";
+import { T } from "@/i18n";
 import { beijingDate } from "../beijing";
 import { AWAY_KEPT, AWAY_LINES, AWAY_REPORT_S, PERLICA, PERLICA_MORE, perlicaBirthday } from "../perlica";
 import { WorldError, type PerlicaItem, type TouchResult } from "../world/types";
@@ -246,7 +247,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     });
   } catch (e) {
     // two answers to the same one of hers at once: reply_to is unique, so one fails
-    if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
+    if (replyTo && isUniqueViolation(e)) throw new WorldError(T.server.common.touched);
     throw e;
   }
   await guideTouched(userId, "perlica");
@@ -382,7 +383,7 @@ export async function perlicaOf(
  */
 export async function pretendAway(userId: string, seconds: number) {
   const [u] = await db.select({ timer: users.perlicaTimer }).from(users).where(eq(users.id, userId));
-  if (u?.timer !== "on") throw new WorldError("先在介绍卡或资料里让佩丽卡开始记时间。");
+  if (u?.timer !== "on") throw new WorldError(T.server.perlica.startTimerFirst);
   const s = Math.max(0, Math.floor(seconds));
   const days = Math.floor(s / 86400);
   await db
@@ -401,7 +402,7 @@ export async function askAgain(userId: string) {
 /** 假装触须之交第 30 天 (local testing only): as if they became 触须之交 29 days ago */
 export async function pretendFriendDays(userId: string) {
   const [u] = await db.select({ since: users.perlicaFriendSince }).from(users).where(eq(users.id, userId));
-  if (!u?.since) throw new WorldError("先大胆碰她，成为触须之交。");
+  if (!u?.since) throw new WorldError(T.server.perlica.befriendFirst);
   await db
     .update(users)
     .set({ perlicaFriendSince: new Date(Date.now() - 29 * 86_400_000) })

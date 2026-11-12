@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { banned, isBanned } from "@/lib/server/account";
 import { clearSignupProof, readSignupProof, startSession } from "@/lib/server/auth";
 import { signedUp } from "@/lib/server/badges";
@@ -17,7 +18,7 @@ import { passwordProblem } from "@/lib/passwordRules";
  */
 export const POST = route(async (req) => {
   const email = await readSignupProof();
-  if (!email) throw new HttpError(400, "验证已经过期了，请重新获取验证码。");
+  if (!email) throw new HttpError(400, T.server.routes.signup.expired);
   // a code sent just before a ban must not open a new account
   if (await isBanned(email)) throw new HttpError(403, banned());
   const body = await readJson(req);

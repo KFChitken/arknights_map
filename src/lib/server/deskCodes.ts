@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, randomInt } from "node:crypto";
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
+import { T } from "@/i18n";
 import { DESK_CODE_ALPHABET, DESK_CODE_LENGTH, isDeskCode, normalizeDeskCode } from "../deskCode";
 import { DESK_CODE_TTL_MIN, DESK_CODES_PER_HOUR } from "../rules";
 import { countApp } from "./appCounts";
@@ -35,7 +36,7 @@ function sameCodeTaken(e: unknown): boolean {
 
 /** A new code for this account, and when it stops working; at most DESK_CODES_PER_HOUR an hour */
 export async function issueDeskCode(userId: string, now = Date.now()): Promise<{ code: string; expiresAt: number }> {
-  if (!allow(`deskcode-get:${userId}`, DESK_CODES_PER_HOUR, 60 * MINUTE)) throw new HttpError(429, "这一小时拿得太多了，过一会儿再拿。");
+  if (!allow(`deskcode-get:${userId}`, DESK_CODES_PER_HOUR, 60 * MINUTE)) throw new HttpError(429, T.server.deskCodes.hourUsedUp);
   const createdAt = new Date(now);
   const expiresAt = new Date(now + DESK_CODE_TTL_MIN * MINUTE);
   for (let tries = 0; ; tries++) {

@@ -1,5 +1,6 @@
 import "server-only";
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { beijingDayWords } from "../beijing";
 import { APPEAL_MAX, APPEAL_MIN, APPEALABLE, isRoachReportReason, isRuleCode, reasonWords, RULES, type AdminAction } from "../safety";
 import { INBOX_DAYS, SUSPEND_DAYS, YELLOW_DAYS, YELLOWS_TO_WORRY } from "../rules";
@@ -172,8 +173,8 @@ const DAY_MS = 86_400_000;
 export async function appeal(userId: string, actionId: unknown, text: unknown, now = Date.now()) {
   const said = String(text ?? "").trim();
   const length = [...said].length;
-  if (length < APPEAL_MIN) throw new WorldError("写一句为什么觉得处理错了吧。");
-  if (length > APPEAL_MAX) throw new WorldError(`申诉最多写 ${APPEAL_MAX} 个字。`);
+  if (length < APPEAL_MIN) throw new WorldError(T.server.staffNotes.appealSayWhy);
+  if (length > APPEAL_MAX) throw new WorldError(fmt(T.server.staffNotes.appealTooLong, { max: APPEAL_MAX }));
   const id = String(actionId);
   const [a] = UUID.test(id)
     ? await db
@@ -182,15 +183,15 @@ export async function appeal(userId: string, actionId: unknown, text: unknown, n
         .where(and(eq(modActions.id, id), eq(modActions.userId, userId)))
         .limit(1)
     : [];
-  if (!a || a.auto || !APPEALABLE.includes(a.action as AdminAction)) throw new WorldError("找不到这次处理了。");
-  if (a.appealedAt) throw new WorldError("这次处理已经申诉过了，站长会再看一次。");
-  if (!appealable(a, now)) throw new WorldError(`处理过了 ${INBOX_DAYS} 天，不能再申诉了。`);
+  if (!a || a.auto || !APPEALABLE.includes(a.action as AdminAction)) throw new WorldError(T.server.staffNotes.noAction);
+  if (a.appealedAt) throw new WorldError(T.server.staffNotes.appealedAlready);
+  if (!appealable(a, now)) throw new WorldError(fmt(T.server.staffNotes.appealTooLate, { days: INBOX_DAYS }));
   const sent = await db
     .update(modActions)
     .set({ appeal: said, appealedAt: new Date(now) })
     .where(and(eq(modActions.id, a.id), isNull(modActions.appealedAt)))
     .returning({ id: modActions.id });
-  if (!sent.length) throw new WorldError("这次处理已经申诉过了，站长会再看一次。");
+  if (!sent.length) throw new WorldError(T.server.staffNotes.appealedAlready);
 }
 
 /** 消息 opened on them */

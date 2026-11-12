@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { fmt, T } from "@/i18n";
 import type { Declaration } from "@/lib/declarations";
 import type { Profile } from "@/lib/profile";
 import { adminCounts } from "@/lib/server/admin";
@@ -29,7 +30,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   const args = Array.isArray(body.args) ? body.args : [];
   const user = await currentUser();
   const uid = () => {
-    if (!user) throw new HttpError(401, "请先登录。");
+    if (!user) throw new HttpError(401, T.server.common.signIn);
     return user.id;
   };
   // Nothing others see happens until an older account agrees to the updated privacy policy, or says again it is 18 or older
@@ -44,16 +45,16 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   const talking = () => {
     const id = agreed();
     if (user!.suspendedUntil && user!.suspendedUntil.getTime() > Date.now()) {
-      throw new HttpError(403, `你的互动被站长暂停到 ${dayWords(user!.suspendedUntil.getTime())}，${SUSPENDED_MEANS}`);
+      throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user!.suspendedUntil.getTime()), means: SUSPENDED_MEANS }));
     }
     return id;
   };
   const demoOnly = () => {
-    if (!demoEnabled) throw new HttpError(404, "没有这个功能。");
+    if (!demoEnabled) throw new HttpError(404, T.server.routes.world.noSuchOp);
   };
   // the costly reads, per player per minute; a page needs far fewer
   const ration = (perMinute: number) => {
-    if (user && !allow(`${op}:${user.id}`, perMinute, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+    if (user && !allow(`${op}:${user.id}`, perMinute, 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
   };
 
   let result: unknown;
@@ -132,7 +133,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "gameWant": {
       // calling a clone home and sending a guest home stay open to a suspended player
       const id = op === "goHome" || op === "sendHome" ? agreed() : talking();
-      if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
       if (op === "remindSanity") await friendly.remindSanity(id, args[0]);
       else if (op === "answerSanity") await friendly.answerSanity(id, args[0], args[1]);
       else if (op === "gesture") await friendly.gesture(id, args[0], args[1], args[2]);
@@ -148,14 +149,14 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     // 一键 (src/lib/friendly.ts): many at once, each checked as one, so its own limit
     case "friendsAct": {
       const id = talking();
-      if (!allow(`friendsAct:${id}`, 10, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (!allow(`friendsAct:${id}`, 10, 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
       result = await friendly.friendsAct(id, args[0], args[1]);
       break;
     }
     // 特别关注: only the player sees it
     case "starFriend": {
       const id = uid();
-      if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (!allow(`friendly:${id}`, 30, 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
       await world.starFriend(id, args[0], args[1]);
       break;
     }
@@ -172,7 +173,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "closeHelp":
     case "answerHelp": {
       const id = op === "closeHelp" ? agreed() : talking();
-      if (!allow(`help:${id}`, 20, 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (!allow(`help:${id}`, 20, 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
       if (op === "askHelp") await help.askHelp(id, args[0]);
       else if (op === "closeHelp") await help.closeHelp(id, args[0]);
       else await help.answerHelp(id, args[0], args[1]);
@@ -214,7 +215,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await world.radar(uid());
       break;
     case "block":
-      if (!allow(`block:${uid()}`, 60, 60 * 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (!allow(`block:${uid()}`, 60, 60 * 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
       await safety.block(uid(), String(args[0]));
       break;
     case "unblock":
@@ -232,11 +233,11 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     // 我觉得处理错了, on a 站长通知
     case "appeal":
-      if (!allow(`appeal:${uid()}`, 10, 60 * 60_000)) throw new HttpError(429, "操作太频繁了，歇一会儿再试。");
+      if (!allow(`appeal:${uid()}`, 10, 60 * 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
       await appeal(uid(), args[0], args[1]);
       break;
     case "wearBadge":
-      if (!(await wear(agreed(), args[0] === null ? null : String(args[0])))) throw new HttpError(400, "你还没有这个称号。");
+      if (!(await wear(agreed(), args[0] === null ? null : String(args[0])))) throw new HttpError(400, T.server.routes.world.noSuchTitle);
       break;
     case "seeBadges":
       await markBadgesSeen(uid(), Array.isArray(args[0]) ? args[0].map(String) : []);
@@ -252,7 +253,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       const home = (await homeUserId()) ?? (user!.demoKey ? null : me);
       const target = String(args[0]);
       const [t] = await db.select().from(users).where(eq(users.id, target)).limit(1);
-      if (!t || (!t.demoKey && t.id !== home)) throw new HttpError(400, "没有这个测试身份。");
+      if (!t || (!t.demoKey && t.id !== home)) throw new HttpError(400, T.server.routes.world.noSuchTestIdentity);
       await endSession();
       await startSession(req, t.id, "dev");
       await setHomeUserId(req, t.id === home ? null : home);
@@ -290,7 +291,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     }
     default:
-      throw new HttpError(404, "没有这个功能。");
+      throw new HttpError(404, T.server.routes.world.noSuchOp);
   }
   return NextResponse.json({ result: result ?? null });
 });

@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { cooldownAfter, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY, waitText } from "../rules";
 import { db } from "./db";
 import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_NEW_SHARE, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
@@ -88,7 +89,7 @@ export async function issueLoginCode(email: string): Promise<IssuedCode> {
 
   if (!(await mailRoom(now))) {
     note("codeRefused", "quota");
-    throw new HttpError(503, "今天的验证码邮件发完了，明天再试吧。");
+    throw new HttpError(503, T.server.loginCodes.allSentToday);
   }
   let sending = false;
   try {
@@ -188,17 +189,17 @@ function refuse(why: number | SlowRefusal, email: string, perDay: number): never
     throw new HttpError(
       429,
       why === "paused"
-        ? `${service} 最近收不到我们的验证码邮件，我们先暂停了发往 ${service} 的验证码，恢复后会再开。这段时间请换 QQ、163 或 Outlook 邮箱登录。`
+        ? fmt(T.server.loginCodes.servicePaused, { service })
         : why === "day"
-          ? `${service} 现在限制我们的发信，今天发往 ${service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。`
+          ? fmt(T.server.loginCodes.serviceDayUsedUp, { service })
           : why === "hour"
-            ? `${service} 现在限制我们的发信，这一小时发往 ${service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。`
-            : `${service} 现在限制我们的发信，发往 ${service} 的验证码先留给老玩家登录。新注册请换 QQ、163 或 Outlook 邮箱，马上就能收到。`,
+            ? fmt(T.server.loginCodes.serviceHourUsedUp, { service })
+            : fmt(T.server.loginCodes.serviceKeptForPlayers, { service }),
     );
   }
   note("codeRefused", why > 0 ? "cooldown" : "address-day");
-  if (why > 0) throw new HttpError(429, `验证码刚发过，${waitText(why)}后可以再发。`);
-  throw new HttpError(429, `这个邮箱今天已经收了 ${perDay} 次验证码，明天再试吧。`);
+  if (why > 0) throw new HttpError(429, fmt(T.server.loginCodes.justSent, { wait: waitText(why) }));
+  throw new HttpError(429, fmt(T.server.loginCodes.addressDayUsedUp, { n: perDay }));
 }
 
 /**
@@ -253,10 +254,10 @@ export async function redeemLoginCode(email: string, code: string): Promise<void
     .returning({ codeHash: loginCodes.codeHash });
   if (!row) {
     const [r] = await db.select().from(loginCodes).where(eq(loginCodes.email, email)).limit(1);
-    if (r && r.expiresAt > now) throw new HttpError(429, "错误次数太多，请重新获取验证码。");
-    throw new HttpError(400, "验证码过期了，请重新获取。");
+    if (r && r.expiresAt > now) throw new HttpError(429, T.server.loginCodes.tooManyTries);
+    throw new HttpError(400, T.server.loginCodes.expired);
   }
-  if (!/^\d{6}$/.test(code) || !codeMatches(email, code, row.codeHash)) throw new HttpError(400, "验证码不对，再看看邮件。");
+  if (!/^\d{6}$/.test(code) || !codeMatches(email, code, row.codeHash)) throw new HttpError(400, T.server.loginCodes.wrongCode);
 
   // Of two requests carrying the right code, only the one that clears it signs in.
   // The row stays, so the cooldown and the daily count still apply.
@@ -265,7 +266,7 @@ export async function redeemLoginCode(email: string, code: string): Promise<void
     .set({ codeHash: "", expiresAt: now })
     .where(and(eq(loginCodes.email, email), eq(loginCodes.codeHash, row.codeHash)))
     .returning({ email: loginCodes.email });
-  if (!used) throw new HttpError(400, "验证码过期了，请重新获取。");
+  if (!used) throw new HttpError(400, T.server.loginCodes.expired);
 }
 
 /** Forget an address entirely, for account deletion. */

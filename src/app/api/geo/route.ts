@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { isProd } from "@/lib/server/env";
 import { geoSearch } from "@/lib/server/geo";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
@@ -15,10 +16,10 @@ export const POST = route(async (req) => {
   const body = await readJson(req);
   const address = clientIp(req);
   const pretend = !isProd && body.mainland === true;
-  if (!pretend && !inMainland(address)) throw new HttpError(403, "这个搜索只给中国大陆的访客用。");
+  if (!pretend && !inMainland(address)) throw new HttpError(403, T.server.routes.geo.mainlandOnly);
   const kind = body.kind === "suggest" || body.kind === "search" ? body.kind : null;
   const q = typeof body.q === "string" ? body.q.trim().slice(0, 100) : "";
-  if (!kind || !q) throw new HttpError(400, "请求格式不对。");
+  if (!kind || !q) throw new HttpError(400, T.server.common.badRequest);
   const found = await geoSearch(address, { kind, q, near: nearOf(body.near) });
   return NextResponse.json(found, { headers: { "cache-control": "no-store" } });
 });

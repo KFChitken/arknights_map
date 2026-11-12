@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { T } from "@/i18n";
 import { clientIp, inLang } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { siState } from "@/lib/server/si";
@@ -9,12 +10,12 @@ import { siState } from "@/lib/server/si";
  */
 export const GET = inLang(async (req: NextRequest) => {
   if (!allow(`si:ip:${clientIp(req)}`, 240, 60_000)) {
-    return NextResponse.json({ error: "刷新得太快了，歇一会儿再看。" }, { status: 429, headers: { "retry-after": "20" } });
+    return NextResponse.json({ error: T.server.routes.si.tooFast }, { status: 429, headers: { "retry-after": "20" } });
   }
   try {
     return NextResponse.json(await siState(), { headers: { "cache-control": "no-store" } });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
+    return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
   }
 });

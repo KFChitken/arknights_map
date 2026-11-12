@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { FOODS, isDrunkTemplate, isStayTemplate, SPOUSES, STAY_NEEDED, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
@@ -33,16 +34,16 @@ export function normalizeProfile(input: Profile): Profile {
       .slice(0, MAX_FAVOURITES);
     const u = String(input.uid?.[g] ?? "").trim();
     if (u.length > UID_MAX || !/^[0-9A-Za-z#_-]*$/.test(u)) {
-      throw new WorldError("UID 只能填数字、字母和 #，最多 20 个字符。");
+      throw new WorldError(T.checks.uidCharacters);
     }
     uid[g] = u;
     const server = String(input.uidServer?.[g] ?? "");
     uidServer[g] = SERVERS[g].some((s) => s.id === server) ? server : "";
     // a UID only finds someone on its own server
-    if (u && !uidServer[g]) throw new WorldError(`选一下${GAME_NAMES[g]}的 UID 是哪个服务器的。`);
+    if (u && !uidServer[g]) throw new WorldError(fmt(T.checks.uidServer, { game: GAME_NAMES[g] }));
   }
   const anonymous = Boolean(input.anonymous);
-  if (!anonymous && !name) throw new WorldError("想显示名字的话，先填一个名字吧。");
+  if (!anonymous && !name) throw new WorldError(T.checks.nameFirst);
   return {
     anonymous,
     name,
@@ -98,10 +99,10 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
     const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
-    if (!game) throw new WorldError("只能选你资料里的厨力角色。");
+    if (!game) throw new WorldError(T.checks.favoritesOnly);
     return { game, character: name };
   };
-  if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError("醉倒以后才说得出这句，先摄入酒精吧。");
+  if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError(T.checks.drunkFirst);
   if (isStayTemplate(d?.template) && !stayed) throw new WorldError(STAY_NEEDED);
   switch (d?.template) {
     case "launch":
@@ -110,11 +111,11 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
       break;
     case "myname":
       if (!isGame(d.game)) break;
-      if (profile.anonymous || !profile.name.trim()) throw new WorldError("这句要先在资料里填名字，并且不选匿名。");
+      if (profile.anonymous || !profile.name.trim()) throw new WorldError(T.checks.needsName);
       return { template: "myname", game: d.game, name: displayName(profile) };
     case "iam": {
       const { game, character } = favourite(d.character);
-      if (!titlesFor(game).includes(d.title)) throw new WorldError("这个称呼不在列表里。");
+      if (!titlesFor(game).includes(d.title)) throw new WorldError(T.checks.noSuchCallName);
       return { template: "iam", character, title: d.title };
     }
     case "love":
@@ -123,7 +124,7 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
       return { template: d.template, character: favourite(d.character).character };
     case "eat": {
       const { character } = favourite(d.character);
-      if (!FOODS.includes(d.food)) throw new WorldError("这个吃的不在列表里。");
+      if (!FOODS.includes(d.food)) throw new WorldError(T.checks.noSuchFood);
       return { template: "eat", character, food: d.food };
     }
     case "birthday":
@@ -140,25 +141,25 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
       return { template: "drunklove", character: favourite(d.character).character };
     case "kr168": {
       const { character } = favourite(d.character);
-      if (!SPOUSES.includes(d.spouse)) throw new WorldError("选老婆还是老公吧。");
+      if (!SPOUSES.includes(d.spouse)) throw new WorldError(T.checks.pickSpouse);
       return { template: "kr168", character, spouse: d.spouse };
     }
     case "event": {
       const found = findLine(String(d.line ?? ""));
       if (!found) break;
-      if (now < Date.parse(found.line.start)) throw new WorldError("这句限定宣言还没开始。");
-      if (now >= Date.parse(found.line.end)) throw new WorldError("这句限定宣言已经结束啦。");
+      if (now < Date.parse(found.line.start)) throw new WorldError(T.checks.limitedNotYet);
+      if (now >= Date.parse(found.line.end)) throw new WorldError(T.checks.limitedOver);
       return { template: "event", line: found.line.id };
     }
   }
-  throw new WorldError("选一句宣言吧。");
+  throw new WorldError(T.checks.pickDeclaration);
 }
 
 /** Where a player may put a roach down or move it: on the map, and not where none may stand (src/lib/offLimits.ts) */
 export function checkSpot(spot: LngLat): LngLat {
   const at = { lng: Number(spot?.lng), lat: Number(spot?.lat) };
   if (!Number.isFinite(at.lng) || !Number.isFinite(at.lat) || Math.abs(at.lat) > 85 || Math.abs(at.lng) > 180) {
-    throw new WorldError("这个位置放不了蟑螂。");
+    throw new WorldError(T.checks.cannotPlaceHere);
   }
   if (isOffLimits(at)) throw new WorldError(OFF_LIMITS_MESSAGE);
   return at;

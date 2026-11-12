@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { Lang } from "@/i18n";
+import { type Lang, T } from "@/i18n";
 import { ENGLISH_ON, LANG_COOKIE, pickLang } from "@/i18n/lang";
 import { withLang } from "@/i18n/server";
 import { WorldError } from "../world/types";
@@ -38,7 +38,7 @@ export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
         if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
         console.error(e);
         note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
-        return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
+        return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
       }
     });
 }
@@ -76,7 +76,7 @@ function checkOrigin(req: NextRequest) {
   try {
     ok = Boolean(origin && host && new URL(origin).host === host);
   } catch {}
-  if (!ok) throw new HttpError(403, "请求来源不对，请刷新页面再试。");
+  if (!ok) throw new HttpError(403, T.server.http.wrongOrigin);
 }
 
 export async function readJson(req: NextRequest): Promise<Record<string, unknown>> {
@@ -84,7 +84,7 @@ export async function readJson(req: NextRequest): Promise<Record<string, unknown
     const v = await req.json();
     if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   } catch {}
-  throw new HttpError(400, "请求格式不对。");
+  throw new HttpError(400, T.server.common.badRequest);
 }
 
 /**

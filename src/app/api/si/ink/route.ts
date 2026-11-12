@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { T } from "@/i18n";
 import { clientIp, inLang } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { inkTile } from "@/lib/server/siInk";
@@ -16,11 +17,11 @@ export const GET = inLang(async (req: NextRequest) => {
   const y = Number(q.get("y"));
   const n = 2 ** INK_TILE_ZOOM;
   if (z !== INK_TILE_ZOOM || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= n || y >= n) {
-    return NextResponse.json({ error: "没有这一块。" }, { status: 400 });
+    return NextResponse.json({ error: T.server.routes.si.noSuchTile }, { status: 400 });
   }
   // a screen close up takes a dozen tiles, again every half minute
   if (!allow(`si-ink:ip:${clientIp(req)}`, 600, 60_000)) {
-    return NextResponse.json({ error: "刷新得太快了，歇一会儿再看。" }, { status: 429, headers: { "retry-after": "20" } });
+    return NextResponse.json({ error: T.server.routes.si.tooFast }, { status: 429, headers: { "retry-after": "20" } });
   }
   try {
     const bytes = await inkTile(x, y);
@@ -29,6 +30,6 @@ export const GET = inLang(async (req: NextRequest) => {
     });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
+    return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
   }
 });

@@ -1,5 +1,6 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
+import { T } from "@/i18n";
 import { passwordProblem } from "../passwordRules";
 import { isBanned } from "./account";
 import { endSessionsExcept } from "./auth";
@@ -20,9 +21,9 @@ import { note } from "./signals";
  * reach just now.
  */
 
-export const passwordWrong = () => "邮箱或密码不对。没设过密码的话，用验证码登录。";
-export const needsCode = () => "为了确认是你本人，先用验证码登录一次再设密码。";
-export const currentWrong = () => "现在的密码不对。忘了的话，先用验证码登录一次再改。";
+export const passwordWrong = () => T.server.passwords.wrong;
+export const needsCode = () => T.server.passwords.needsCode;
+export const currentWrong = () => T.server.passwords.currentWrong;
 /** A sign-in by emailed code this recent counts as the player themself */
 export const FRESH_MS = 30 * 60_000;
 /** Wrong tries in a row before the password pauses: 15 minutes, twice as long for every PAUSE_FROM more, a day at most */
@@ -171,7 +172,7 @@ export async function removePassword(userId: string, session: Pick<SessionRow, "
   const [row] = await db.select({ hash: userPasswords.hash }).from(userPasswords).where(eq(userPasswords.userId, userId)).limit(1);
   if (!row) return;
   if (!isFresh(session, now) && (typeof current !== "string" || !current || !(await verifyPassword(row.hash, current)))) {
-    throw new HttpError(400, "现在的密码不对。忘了的话，先用验证码登录一次再取消。");
+    throw new HttpError(400, T.server.passwords.currentWrongToRemove);
   }
   await db.delete(userPasswords).where(eq(userPasswords.userId, userId));
 }

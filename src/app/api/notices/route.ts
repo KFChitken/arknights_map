@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { T } from "@/i18n";
 import { clientIp, inLang } from "@/lib/server/http";
 import { noticeList } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
@@ -14,7 +15,7 @@ export const GET = inLang(async (req: NextRequest) => {
   const headers = { etag: `"${stamp}"`, "cache-control": "no-cache" };
   if (req.headers.get("if-none-match") === headers.etag) return new Response(null, { status: 304, headers });
   if (!allow(`notices:ip:${clientIp(req)}`, 60, 60_000)) {
-    return NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
+    return NextResponse.json({ error: T.server.common.busyRetrying }, { status: 429, headers: { "retry-after": "10" } });
   }
   return new Response(json, { headers: { ...headers, "content-type": "application/json" } });
 });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { banned, isBanned } from "@/lib/server/account";
 import { DEV_MAILBOX_PORT } from "@/lib/server/env";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
@@ -15,17 +16,17 @@ export const POST = route(async (req) => {
   const email = String(body.email ?? "")
     .trim()
     .toLowerCase();
-  if (!EMAIL.test(email)) throw new HttpError(400, "邮箱格式不对。");
+  if (!EMAIL.test(email)) throw new HttpError(400, T.server.routes.requestCode.badEmail);
   if (await isBanned(email)) throw new HttpError(403, banned());
   const ip = clientIp(req);
   if (!allow(`code:${ip}`, 10, 10 * 60_000)) {
     note("codeRefused", "ip-10min");
-    throw new HttpError(429, "发得太频繁了，过几分钟再试。");
+    throw new HttpError(429, T.server.routes.requestCode.tooOften);
   }
   // dorms, offices and mobile networks put many people behind one address
   if (!allow(`code-day:${ip}`, 100, 24 * 60 * 60_000)) {
     note("codeRefused", "ip-day");
-    throw new HttpError(429, "这个网络今天发的验证码太多了，明天再试吧。");
+    throw new HttpError(429, T.server.routes.requestCode.networkDayUsedUp);
   }
 
   const issued = await issueLoginCode(email);
@@ -38,9 +39,9 @@ export const POST = route(async (req) => {
     // nothing went out, so asking again right away is not held up by the wait between codes
     if (neverReached(e)) {
       await withdrawLoginCode(email, issued).catch((w) => console.error("could not withdraw the code", errorCode(w)));
-      throw new HttpError(503, "验证码邮件暂时发不出去，过一会儿再点一次试试。");
+      throw new HttpError(503, T.server.routes.requestCode.mailDownTryAgain);
     }
-    throw new HttpError(503, "验证码邮件暂时发不出去，请过几分钟再试。");
+    throw new HttpError(503, T.server.routes.requestCode.mailDown);
   }
   // a mail service slow to take our mail just now: the page says so (MAIL_SLOW_DOMAINS)
   const slow = isSlowMail(email);

@@ -7,6 +7,7 @@ import { en } from "./en";
 import { lang, T } from "./index";
 import { firstLanguage, pickLang } from "./lang";
 import { wordsFile, wordsOf, wordsScript, wordsUrl, withLang } from "./server";
+import { SERVER_ONLY } from "./words";
 import { zh } from "./zh";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
@@ -155,8 +156,30 @@ describe("a page's words", () => {
   });
 });
 
-/** Files whose words have been moved into the dictionaries: no Chinese may be written in them again */
-const MOVED: string[] = [];
+/** Files whose words have been moved into the dictionaries: no Chinese may be written in them again (a folder ends in /) */
+const MOVED: string[] = [
+  // B1: what the server says
+  "src/app/api/",
+  "src/lib/consent.ts",
+  "src/lib/server/account.ts",
+  "src/lib/server/amiya.ts",
+  "src/lib/server/consent.ts",
+  "src/lib/server/deskCodes.ts",
+  "src/lib/server/geo.ts",
+  "src/lib/server/guides.ts",
+  "src/lib/server/help.ts",
+  "src/lib/server/http.ts",
+  "src/lib/server/loginCodes.ts",
+  "src/lib/server/mail.ts",
+  "src/lib/server/minghe.ts",
+  "src/lib/server/nameWords.ts",
+  "src/lib/server/passwordHash.ts",
+  "src/lib/server/passwords.ts",
+  "src/lib/server/perlica.ts",
+  "src/lib/server/si.ts",
+  "src/lib/server/talulah.ts",
+  "src/lib/world/server.ts",
+];
 
 describe("the code", () => {
   it("writes no Chinese of its own where the words have been moved (they go into src/i18n/zh.ts)", () => {
@@ -210,6 +233,16 @@ describe("the code", () => {
       visit(sf, false);
     }
     expect(bad).toEqual([]);
+  });
+
+  it("reads the server's own words (T.server, which pages never download) only on the server", () => {
+    expect(SERVER_ONLY).toContain("server");
+    const onServer = (f: string) => f.startsWith("src/lib/server/") || f.startsWith("src/app/api/");
+    const read = (f: string) => readFileSync(`${ROOT}/${f}`, "utf8");
+    const files = sourceFiles(ROOT).filter((f) => !f.startsWith("src/i18n/"));
+    expect(files.filter((f) => !onServer(f) && /\bT\.server\b/.test(read(f)))).toEqual([]);
+    // nor does a page's own code take anything from there
+    expect(files.filter((f) => /^["']use client["']/m.test(read(f)) && /from ["']@\/lib\/server\//.test(read(f)))).toEqual([]);
   });
 
   it("is scanned the way React shows it", () => {

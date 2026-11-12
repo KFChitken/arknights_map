@@ -1,5 +1,6 @@
 import "server-only";
 import { and, count, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { declarationText, replyOf } from "../declarations";
 import { distanceKm } from "../geo";
 import { guideById, guideOfItem } from "../guides";
@@ -68,7 +69,7 @@ type Sender = { other: string; known: boolean; context: string };
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
   // the page offers neither on the guides; this is the backstop
   const guide = target.startsWith("friend:") ? guideById(target.slice("friend:".length)) : guideOfItem(target);
-  if (guide) throw new WorldError(`${guide.name}不是真人，不用拉黑。`);
+  if (guide) throw new WorldError(fmt(T.server.safety.guideNoBlock, { name: guide.name }));
   if (target.startsWith("friend:")) {
     const key = target.slice("friend:".length);
     const other = [...(await friendIdsOf(userId))].find((o) => friendKey(userId, o) === key);
@@ -134,12 +135,12 @@ async function blockSender(userId: string, who: Sender) {
 
 export async function block(userId: string, target: string) {
   const who = await whoSent(userId, String(target));
-  if (!who) throw new WorldError("找不到这条消息了。");
+  if (!who) throw new WorldError(T.server.common.noSuchNote);
   await blockSender(userId, who);
 }
 
 export async function unblock(userId: string, blockId: string) {
-  if (!UUID.test(String(blockId))) throw new WorldError("找不到这条拉黑记录了。");
+  if (!UUID.test(String(blockId))) throw new WorldError(T.server.safety.noBlock);
   await db.delete(blocks).where(and(eq(blocks.id, blockId), eq(blocks.blockerId, userId)));
 }
 
@@ -312,14 +313,14 @@ const tellAdmin = () =>
 
 /** Report whoever sent an inbox item (or a friend). Reporting also blocks them. */
 export async function report(userId: string, target: string, reason: unknown, note: unknown) {
-  if (!isReportReason(reason)) throw new WorldError("选一个举报理由吧。");
+  if (!isReportReason(reason)) throw new WorldError(T.server.safety.pickReason);
   const said = String(note ?? "")
     .trim()
     .slice(0, REPORT_NOTE_MAX);
-  if (noteMissing(reason, said)) throw new WorldError("选了「其他」的话，写一句是什么事吧。");
+  if (noteMissing(reason, said)) throw new WorldError(T.server.safety.sayWhatOther);
   const who = await whoSent(userId, String(target));
-  if (!who) throw new WorldError("找不到这条消息了。");
-  if ((await reportedToday(userId)) >= REPORTS_PER_DAY) throw new WorldError("今天举报得够多了，明天再来吧。");
+  if (!who) throw new WorldError(T.server.common.noSuchNote);
+  if ((await reportedToday(userId)) >= REPORTS_PER_DAY) throw new WorldError(T.server.safety.reportedEnough);
 
   await blockSender(userId, who);
   // A second report of the same player while the first is still open adds nothing (one of their roaches is a case apart)
@@ -358,19 +359,19 @@ export async function report(userId: string, target: string, reason: unknown, no
  * 「一直贴着我放」 how far it was from the reporter's nearest roach, never where that is.
  */
 export async function reportRoach(userId: string, publicId: string, reason: unknown, note: unknown) {
-  if (!isRoachReportReason(reason)) throw new WorldError("选一个举报理由吧。");
+  if (!isRoachReportReason(reason)) throw new WorldError(T.server.safety.pickReason);
   const said = String(note ?? "")
     .trim()
     .slice(0, REPORT_NOTE_MAX);
   const id = String(publicId);
   // the card offers none of these; this is the backstop
   const guide = guideById(id);
-  if (guide) throw new WorldError(`${guide.name}是站里的向导，不用举报。`);
-  if (isBotId(id)) throw new WorldError("这是网站放的演示蟑螂，不用举报。");
+  if (guide) throw new WorldError(fmt(T.server.safety.guideNoReport, { name: guide.name }));
+  if (isBotId(id)) throw new WorldError(T.server.safety.demoNoReport);
   const roach = await roachByFeedId(id);
-  if (!roach) throw new WorldError("这只蟑螂已经挪走了。");
-  if (roach.userId === userId) throw new WorldError("这是你自己的蟑螂。");
-  if ((await reportedToday(userId)) >= REPORTS_PER_DAY) throw new WorldError("今天举报得够多了，明天再来吧。");
+  if (!roach) throw new WorldError(T.server.safety.roachMoved);
+  if (roach.userId === userId) throw new WorldError(T.server.common.yourOwnRoach);
+  if ((await reportedToday(userId)) >= REPORTS_PER_DAY) throw new WorldError(T.server.safety.reportedEnough);
 
   // once a roach while its reports are open, wherever it moved meanwhile
   const [open] = await db

@@ -1,5 +1,6 @@
 import "server-only";
 import { and, desc, eq, gt, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { isGame, type Game } from "../games";
 import { CLUES, HELP_GAMES, HELP_HOURS, HELP_KEEP_DAYS, HELP_PER_DAY, isHelpKind, SKILLS, type HelpAsk, type HelpKind } from "../help";
@@ -32,18 +33,18 @@ function cluesOf(input: unknown): number[] {
 /** What a request asks, picked from the lists only */
 function askOf(input: unknown): HelpAsk {
   const x = (input ?? {}) as Record<string, unknown>;
-  if (!isHelpKind(x.kind)) throw new WorldError("没有这种求助。");
-  if (!isGame(x.game) || !HELP_GAMES[x.kind].includes(x.game)) throw new WorldError("这个游戏没有这种求助。");
+  if (!isHelpKind(x.kind)) throw new WorldError(T.server.help.noSuchKind);
+  if (!isGame(x.game) || !HELP_GAMES[x.kind].includes(x.game)) throw new WorldError(T.server.help.notForThisGame);
   if (x.kind === "clues") {
     const clues = cluesOf(x.clues);
-    if (!clues.length) throw new WorldError("选一下缺几号线索。");
+    if (!clues.length) throw new WorldError(T.server.help.pickClues);
     return { kind: "clues", game: x.game, clues };
   }
   if (x.kind === "support") {
     const operator = String(x.operator ?? "");
-    if (!isOperator("arknights", operator)) throw new WorldError("选一位干员。");
+    if (!isOperator("arknights", operator)) throw new WorldError(T.server.help.pickOperator);
     const skill = Number(x.skill);
-    if (!(SKILLS as readonly number[]).includes(skill)) throw new WorldError("选一下几技能。");
+    if (!(SKILLS as readonly number[]).includes(skill)) throw new WorldError(T.server.help.pickSkill);
     return { kind: "support", game: "arknights", operator, skill };
   }
   return { kind: "exchange", game: x.game };
@@ -83,7 +84,7 @@ export async function askHelp(userId: string, input: unknown) {
           gte(helpRequests.createdAt, new Date(beijingMidnight(beijingDate(now)))),
         ),
       );
-    if (Number(sent?.n ?? 0) >= HELP_PER_DAY) throw new WorldError(`今天这种求助已经发了 ${HELP_PER_DAY} 次，明天再来吧。`);
+    if (Number(sent?.n ?? 0) >= HELP_PER_DAY) throw new WorldError(fmt(T.server.help.usedUp, { max: HELP_PER_DAY }));
     await tx
       .update(helpRequests)
       .set({ closedAt: new Date(now) })
@@ -105,36 +106,36 @@ export async function askHelp(userId: string, input: unknown) {
 /** 关掉 one of yours before its time */
 export async function closeHelp(userId: string, requestId: unknown) {
   const id = String(requestId).toLowerCase();
-  if (!UUID.test(id)) throw new WorldError("这条求助已经结束了。");
+  if (!UUID.test(id)) throw new WorldError(T.server.help.over);
   const [done] = await db
     .update(helpRequests)
     .set({ closedAt: new Date() })
     .where(and(eq(helpRequests.id, id), eq(helpRequests.userId, userId), isNull(helpRequests.closedAt)))
     .returning({ game: helpRequests.game });
-  if (!done) throw new WorldError("这条求助已经结束了。");
+  if (!done) throw new WorldError(T.server.help.over);
   nudge(await playersOf(userId, done.game as Game), "help");
 }
 
 /** Answer a 触须之交's request once: 送了 (which of the clues asked for), 去拜访了, 我挂上了 */
 export async function answerHelp(userId: string, requestId: unknown, clues?: unknown) {
   const id = String(requestId).toLowerCase();
-  if (!UUID.test(id)) throw new WorldError("这条求助已经结束了。");
+  if (!UUID.test(id)) throw new WorldError(T.server.help.over);
   const now = Date.now();
   const [r] = await db.select().from(helpRequests).where(eq(helpRequests.id, id)).limit(1);
-  if (!r || r.closedAt || r.expiresAt.getTime() <= now) throw new WorldError("这条求助已经结束了。");
-  if (r.userId === userId) throw new WorldError("这是你自己的求助。");
-  if (!(await friendIdsOf(userId)).has(r.userId)) throw new WorldError("你们已经不是触须之交了。");
+  if (!r || r.closedAt || r.expiresAt.getTime() <= now) throw new WorldError(T.server.help.over);
+  if (r.userId === userId) throw new WorldError(T.server.help.yourOwn);
+  if (!(await friendIdsOf(userId)).has(r.userId)) throw new WorldError(T.server.common.notFriends);
   const self = await userById(userId);
-  if (!self?.games.includes(r.game)) throw new WorldError("你没有在玩这个游戏。");
+  if (!self?.games.includes(r.game)) throw new WorldError(T.server.help.notPlaying);
   let sent: number[] | null = null;
   if (r.kind === "clues") {
     sent = cluesOf(clues).filter((n) => r.clues?.includes(n));
-    if (!sent.length) throw new WorldError("选一下送了哪几号。");
+    if (!sent.length) throw new WorldError(T.server.help.pickSent);
   }
   try {
     await db.insert(helpAnswers).values({ requestId: r.id, fromUserId: userId, clues: sent, createdAt: new Date(now) });
   } catch (e) {
-    if (isUniqueViolation(e)) throw new WorldError("已经回应过了。");
+    if (isUniqueViolation(e)) throw new WorldError(T.server.help.answered);
     throw e;
   }
   nudge([r.userId], "help");

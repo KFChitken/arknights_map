@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, eq, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { T } from "@/i18n";
 import { FIRE_AT, FIRE_RADIUS_M, isNearFire, pickSeat, TALULAH, talulahRoach, unstack } from "../talulah";
 import type { LngLat } from "../types";
 import { WorldError, type TalulahItem, type TouchResult } from "../world/types";
@@ -62,7 +63,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     });
   } catch (e) {
     // two answers to the same one of hers at once: reply_to is unique, so one fails
-    if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
+    if (replyTo && isUniqueViolation(e)) throw new WorldError(T.server.common.touched);
     throw e;
   }
   if (done.friend) await guideFriendMade(userId, "talulah");

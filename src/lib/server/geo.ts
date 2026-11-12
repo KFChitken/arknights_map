@@ -1,4 +1,5 @@
 import "server-only";
+import { T } from "@/i18n";
 import { beijingDate } from "../beijing";
 import { fromGcj, shifted, toGcj } from "../coords";
 import { distanceKm } from "../geo";
@@ -34,7 +35,7 @@ export const PHOTON_FAILS = 5;
 export const PHOTON_REST_MS = 15 * 60_000;
 /** Nominatim asks waiting their turn (one a second for the whole site, its rule) before the next is turned away */
 export const NOMINATIM_WAITING = 5;
-export const geoBusy = () => "搜的人有点多，过几秒再试，或者直接点地图。";
+export const geoBusy = () => T.server.geo.busy;
 
 const AGENT = "zhoupmap.com place search (+https://zhoupmap.com)";
 const TIMEOUT_MS = 5000;
@@ -150,7 +151,7 @@ async function ask_(fetcher: typeof fetch, who: string, url: string): Promise<un
   } catch (e) {
     // only the error's code: the address asked holds the words searched
     console.error(`geo: ${who} failed`, errorCode(e));
-    throw new HttpError(502, "地点搜索暂时用不了，可以直接在地图上点一下放。");
+    throw new HttpError(502, T.server.geo.unavailable);
   }
 }
 

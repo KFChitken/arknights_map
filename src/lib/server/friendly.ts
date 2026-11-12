@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { addDays, beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import {
   FRIEND_ACTS_PER_DAY,
@@ -52,14 +53,14 @@ async function friendOf(userId: string, friendId: unknown): Promise<UserRow> {
     const u = await userById(other);
     if (u) return u;
   }
-  throw new WorldError("你们已经不是触须之交了。");
+  throw new WorldError(T.server.common.notFriends);
 }
 
 /** An inbox item's note id ("c:<id>" for one sent to you) */
 function noteId(itemId: unknown, prefix = "c:") {
   const s = String(itemId);
   const id = s.startsWith(prefix) ? s.slice(prefix.length).toLowerCase() : "";
-  if (!UUID.test(id)) throw new WorldError("找不到这条消息了。");
+  if (!UUID.test(id)) throw new WorldError(T.server.common.noSuchNote);
   return id;
 }
 
@@ -79,7 +80,6 @@ const nudgeSoon = (ids: string[]) => {
 
 /** The kinds counted against FRIEND_ACTS_PER_DAY: 催理智 and every gesture, answers included */
 const COUNTED = ["sanity", "hug", "highfive", "luck", "blanket", "water"];
-const FULL = `今天和 TA 互动满 ${FRIEND_ACTS_PER_DAY} 次了，明天再来吧。`;
 
 /** How many of them you did for TA today (Beijing date) */
 async function actsToday(exec: Exec, from: string, to: string, now: number) {
@@ -112,8 +112,8 @@ export async function remindSanity(userId: string, friendId: unknown) {
       .from(friendNotes)
       .where(and(eq(friendNotes.fromUserId, userId), eq(friendNotes.toUserId, other.id), eq(friendNotes.kind, "sanity"), eq(friendNotes.period, today)))
       .limit(1);
-    if (again) throw new WorldError("今天已经催过 TA 了，明天再催吧。");
-    if ((await actsToday(tx, userId, other.id, now)) >= FRIEND_ACTS_PER_DAY) throw new WorldError(FULL);
+    if (again) throw new WorldError(T.server.friendly.sanityAskedToday);
+    if ((await actsToday(tx, userId, other.id, now)) >= FRIEND_ACTS_PER_DAY) throw new WorldError(fmt(T.server.friendly.actsUsedUp, { max: FRIEND_ACTS_PER_DAY }));
     await tx
       .insert(friendNotes)
       .values({ fromUserId: userId, toUserId: other.id, kind: "sanity", period: today, asleep: sleeping(other, now), createdAt: new Date(now) });
@@ -123,31 +123,35 @@ export async function remindSanity(userId: string, friendId: unknown) {
 
 /** 「清完了！」 tells the one who reminded you; 「知道啦」 tells nobody */
 export async function answerSanity(userId: string, itemId: unknown, answer: unknown) {
-  if (answer !== "done" && answer !== "ok") throw new WorldError("不知道要怎么回。");
+  if (answer !== "done" && answer !== "ok") throw new WorldError(T.server.friendly.unknownAnswer);
   const id = noteId(itemId);
   const [note] = await db
     .select()
     .from(friendNotes)
     .where(and(eq(friendNotes.id, id), eq(friendNotes.toUserId, userId), eq(friendNotes.kind, "sanity")))
     .limit(1);
-  if (!note) throw new WorldError("找不到这条消息了。");
-  if (note.answer) throw new WorldError("已经回过了。");
-  if (answer === "done" && !(await friendIdsOf(userId)).has(note.fromUserId)) throw new WorldError("你们已经不是触须之交了。");
+  if (!note) throw new WorldError(T.server.common.noSuchNote);
+  if (note.answer) throw new WorldError(T.server.friendly.answered);
+  if (answer === "done" && !(await friendIdsOf(userId)).has(note.fromUserId)) throw new WorldError(T.server.common.notFriends);
   const now = new Date();
   const [done] = await db
     .update(friendNotes)
     .set({ answer, answeredAt: now, seenAt: note.seenAt ?? now })
     .where(and(eq(friendNotes.id, id), isNull(friendNotes.answer)))
     .returning({ id: friendNotes.id });
-  if (!done) throw new WorldError("已经回过了。");
+  if (!done) throw new WorldError(T.server.friendly.answered);
   if (answer === "done") nudge([note.fromUserId]);
 }
 
 // ---- gestures ----
 
 const AGAIN: Record<"blanket" | "water", string> = {
-  blanket: "已经给 TA 盖过被子了。",
-  water: "已经给 TA 放过白开水了。",
+  get blanket() {
+    return T.server.friendly.again.blanket;
+  },
+  get water() {
+    return T.server.friendly.again.water;
+  },
 };
 
 /**
@@ -156,13 +160,13 @@ const AGAIN: Record<"blanket" | "water", string> = {
  * theirs (replyTo) is one of yours, and each of theirs is returned once.
  */
 export async function gesture(userId: string, friendId: unknown, kind: unknown, replyTo?: unknown) {
-  if (!isGesture(kind)) throw new WorldError("没有这个动作。");
+  if (!isGesture(kind)) throw new WorldError(T.server.friendly.noSuchGesture);
   const other = await friendOf(userId, friendId);
   const now = Date.now();
   const sleep = sleepOf(other, now);
   const awake = isAwakeGesture(kind);
-  if (awake && sleep) throw new WorldError("TA 睡着了，等 TA 醒了再来吧。");
-  if (!awake && !sleep) throw new WorldError("TA 醒着呢。");
+  if (awake && sleep) throw new WorldError(T.server.friendly.asleep);
+  if (!awake && !sleep) throw new WorldError(T.server.friendly.awake);
   let answering: string | null = null;
   if (replyTo !== undefined && replyTo !== null && replyTo !== "") {
     const [n] = await db
@@ -170,21 +174,21 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
       .from(friendNotes)
       .where(and(eq(friendNotes.id, noteId(replyTo)), eq(friendNotes.toUserId, userId), eq(friendNotes.fromUserId, other.id), eq(friendNotes.kind, kind)))
       .limit(1);
-    if (!n || !awake) throw new WorldError("找不到这条消息了。");
-    if (n.answer) throw new WorldError("已经回过了。");
+    if (!n || !awake) throw new WorldError(T.server.common.noSuchNote);
+    if (n.answer) throw new WorldError(T.server.friendly.answered);
     answering = n.id;
   }
   const made = await db.transaction(async (tx) => {
     await lockPlayer(tx, userId);
     const done = await actsToday(tx, userId, other.id, now);
-    if (done >= FRIEND_ACTS_PER_DAY) throw new WorldError(FULL);
+    if (done >= FRIEND_ACTS_PER_DAY) throw new WorldError(fmt(T.server.friendly.actsUsedUp, { max: FRIEND_ACTS_PER_DAY }));
     if (answering) {
       const [open] = await tx
         .update(friendNotes)
         .set({ answer: "back", answeredAt: new Date(now) })
         .where(and(eq(friendNotes.id, answering), isNull(friendNotes.answer)))
         .returning({ id: friendNotes.id });
-      if (!open) throw new WorldError("已经回过了。");
+      if (!open) throw new WorldError(T.server.friendly.answered);
     }
     const rows = await tx
       .insert(friendNotes)
@@ -200,17 +204,17 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
       })
       .onConflictDoNothing()
       .returning({ id: friendNotes.id });
-    if (!rows.length && answering) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? "已经回过了。");
+    if (!rows.length && answering) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? T.server.friendly.answered);
     return rows.length > 0;
   });
-  if (!made) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? FULL);
+  if (!made) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? fmt(T.server.friendly.actsUsedUp, { max: FRIEND_ACTS_PER_DAY }));
   nudge([other.id]);
 }
 
 /** 一键 (src/lib/friendly.ts): one act for many 触须之交 at once, each by the rules for one; says how it went for each */
 export async function friendsAct(userId: string, act: unknown, friendIds: unknown): Promise<BatchResult[]> {
-  if (!isBatchAct(act)) throw new WorldError("没有这个动作。");
-  if (!Array.isArray(friendIds) || !friendIds.length) throw new WorldError("先选几位触须之交。");
+  if (!isBatchAct(act)) throw new WorldError(T.server.friendly.noSuchGesture);
+  if (!Array.isArray(friendIds) || !friendIds.length) throw new WorldError(T.server.friendly.pickFriends);
   const out: BatchResult[] = [];
   for (const id of [...new Set(friendIds.map(String))].slice(0, MAX_BATCH)) {
     try {
@@ -259,14 +263,14 @@ const againIn = (since: Date, now: number) => {
 
 /** 我在游戏里申请了: only for a game whose UID they share, on the same server; again after GAME_ASK_DAYS until they say yes */
 export async function gameAsk(userId: string, friendId: unknown, game: unknown) {
-  if (!isGame(game)) throw new WorldError("没有这个游戏。");
+  if (!isGame(game)) throw new WorldError(T.server.friendly.noSuchGame);
   const other = await friendOf(userId, friendId);
   const me = await userById(userId);
   const theirs = profileOf(other);
   const mine = me ? profileOf(me) : null;
-  if (!theirs.games.includes(game) || !theirs.shareUid || !theirs.uid[game]) throw new WorldError("TA 没有分享这个游戏的 UID。");
+  if (!theirs.games.includes(game) || !theirs.shareUid || !theirs.uid[game]) throw new WorldError(T.server.friendly.uidNotShared);
   if (theirs.uidServer[game] && mine?.uidServer[game] && theirs.uidServer[game] !== mine.uidServer[game]) {
-    throw new WorldError("你们不在一个服务器，游戏里加不了。");
+    throw new WorldError(T.server.friendly.differentServers);
   }
   const now = Date.now();
   const [added] = await db
@@ -274,10 +278,10 @@ export async function gameAsk(userId: string, friendId: unknown, game: unknown) 
     .from(friendNotes)
     .where(and(bothWays(userId, other.id), eq(friendNotes.kind, "gameAsk"), eq(friendNotes.game, game), eq(friendNotes.answer, "added")))
     .limit(1);
-  if (added) throw new WorldError("你们在游戏里已经是好友了。");
+  if (added) throw new WorldError(T.server.friendly.alreadyGameFriends);
   const last = await latestNote(userId, other.id, "gameAsk", game);
   const until = last && againIn(last.createdAt, now);
-  if (until) throw new WorldError(`已经告诉过 TA 了，${Math.ceil((until - now) / DAY)} 天后可以再说一次。`);
+  if (until) throw new WorldError(fmt(T.server.friendly.toldWait, { days: Math.ceil((until - now) / DAY) }));
   await db
     .insert(friendNotes)
     .values({ fromUserId: userId, toUserId: other.id, kind: "gameAsk", game, period: `${game}:${beijingDate(now)}`, createdAt: new Date(now) })
@@ -293,9 +297,9 @@ export async function gameAdded(userId: string, itemId: unknown) {
     .from(friendNotes)
     .where(and(eq(friendNotes.id, id), eq(friendNotes.toUserId, userId), eq(friendNotes.kind, "gameAsk")))
     .limit(1);
-  if (!note) throw new WorldError("找不到这条消息了。");
-  if (note.answer) throw new WorldError("已经说过了。");
-  if (!(await friendIdsOf(userId)).has(note.fromUserId)) throw new WorldError("你们已经不是触须之交了。");
+  if (!note) throw new WorldError(T.server.common.noSuchNote);
+  if (note.answer) throw new WorldError(T.server.friendly.alreadySaid);
+  if (!(await friendIdsOf(userId)).has(note.fromUserId)) throw new WorldError(T.server.common.notFriends);
   const now = new Date();
   await db
     .update(friendNotes)
@@ -306,14 +310,14 @@ export async function gameAdded(userId: string, itemId: unknown) {
 
 /** 想在游戏里加 TA, for a game whose UID they keep to themselves: nothing is given out, once a week per pair */
 export async function gameWant(userId: string, friendId: unknown, game: unknown) {
-  if (!isGame(game)) throw new WorldError("没有这个游戏。");
+  if (!isGame(game)) throw new WorldError(T.server.friendly.noSuchGame);
   const other = await friendOf(userId, friendId);
   const theirs = profileOf(other);
-  if (theirs.shareUid && theirs.uid[game]) throw new WorldError("TA 已经分享了 UID，在游戏里直接加 TA 吧。");
+  if (theirs.shareUid && theirs.uid[game]) throw new WorldError(T.server.friendly.uidShared);
   const now = Date.now();
   const last = await latestNote(userId, other.id, "gameWant");
   const until = last && againIn(last.createdAt, now);
-  if (until) throw new WorldError(`已经告诉过 TA 了，${Math.ceil((until - now) / DAY)} 天后可以再说一次。`);
+  if (until) throw new WorldError(fmt(T.server.friendly.toldWait, { days: Math.ceil((until - now) / DAY) }));
   await db
     .insert(friendNotes)
     .values({ fromUserId: userId, toUserId: other.id, kind: "gameWant", game, period: beijingDate(now), createdAt: new Date(now) })
@@ -404,26 +408,26 @@ export async function roachMoved(tx: Exec, roachId: string, how: "moved" | "remo
  */
 export async function visit(userId: string, friendId: unknown, publicId: unknown, cloneId?: unknown) {
   const host = await friendOf(userId, friendId);
-  if (!host.welcomeGuests) throw new WorldError("TA 现在不接待客人。");
+  if (!host.welcomeGuests) throw new WorldError(T.server.friendly.noGuests);
   const now = Date.now();
   const banned = await bannedUntil(host.id, userId, now);
-  if (banned) throw new WorldError(`${nameOf(host)} 请你的克隆体回家休息了，${Math.ceil((banned - now) / DAY)} 天后才能再去。`);
+  if (banned) throw new WorldError(fmt(T.server.friendly.sentHome, { host: nameOf(host), days: Math.ceil((banned - now) / DAY) }));
   // by the id the feed gave the page, short or whole
   const hostRoach = await roachByFeedId(String(publicId), host.id);
-  if (!hostRoach) throw new WorldError("这只蟑螂已经爬走了。");
-  if (hostRoach.rideSince) throw new WorldError("这只在跟明河走，去不了。想一起走，就也派一只跟明河。");
+  if (!hostRoach) throw new WorldError(T.server.common.roachGone);
+  if (hostRoach.rideSince) throw new WorldError(T.server.friendly.followingMinghe);
   const [already] = await db
     .select()
     .from(visits)
     .where(and(eq(visits.guestId, userId), eq(visits.hostId, host.id)))
     .limit(1);
   if (already) {
-    throw new WorldError(already.leftAt ? "你的克隆体还在 TA 原来的家门口，先让它跟过去或者回家吧。" : "你已经在 TA 家了。");
+    throw new WorldError(already.leftAt ? T.server.friendly.cloneAtOldHome : T.server.friendly.alreadyVisiting);
   }
-  if (cloneId !== undefined && cloneId !== null && !UUID.test(String(cloneId))) throw new WorldError("找不到这只蟑螂了。");
+  if (cloneId !== undefined && cloneId !== null && !UUID.test(String(cloneId))) throw new WorldError(T.server.common.noSuchRoach);
   const target: PlaceTarget = cloneId ? { kind: "move", roachId: String(cloneId) } : { kind: "clone" };
   const placement = await checkPlacement(userId, target);
-  if (placement.slot === 0) throw new WorldError("本体不能去做客，派一只克隆体吧。");
+  if (placement.slot === 0) throw new WorldError(T.server.friendly.mainCannotVisit);
   let seat: LngLat;
   try {
     seat = await db.transaction(async (tx) => {
@@ -460,7 +464,7 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
       return at;
     });
   } catch (e) {
-    if (isUniqueViolation(e)) throw new WorldError("你已经在 TA 家了。");
+    if (isUniqueViolation(e)) throw new WorldError(T.server.friendly.alreadyVisiting);
     throw e;
   }
   roachesChanged();
@@ -470,13 +474,13 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
 }
 
 async function guestVisit(userId: string, cloneId: unknown) {
-  if (!UUID.test(String(cloneId))) throw new WorldError("找不到这只蟑螂了。");
+  if (!UUID.test(String(cloneId))) throw new WorldError(T.server.common.noSuchRoach);
   const [v] = await db
     .select()
     .from(visits)
     .where(and(eq(visits.roachId, String(cloneId)), eq(visits.guestId, userId)))
     .limit(1);
-  if (!v) throw new WorldError("这只克隆体没在做客。");
+  if (!v) throw new WorldError(T.server.friendly.notVisiting);
   return v;
 }
 
@@ -491,13 +495,13 @@ export async function goHome(userId: string, cloneId: unknown): Promise<OwnRoach
 /** 跟过去: a clone left behind sits down by its host's roach where it is now (a move) */
 export async function followHost(userId: string, cloneId: unknown) {
   const v = await guestVisit(userId, cloneId);
-  if (!v.leftAt) throw new WorldError("你的克隆体就在 TA 身边。");
-  if (!(await friendIdsOf(userId)).has(v.hostId)) throw new WorldError("你们已经不是触须之交了。");
+  if (!v.leftAt) throw new WorldError(T.server.friendly.cloneBeside);
+  if (!(await friendIdsOf(userId)).has(v.hostId)) throw new WorldError(T.server.common.notFriends);
   const host = await userById(v.hostId);
-  if (!host?.welcomeGuests) throw new WorldError("TA 现在不接待客人。");
+  if (!host?.welcomeGuests) throw new WorldError(T.server.friendly.noGuests);
   const [hostRoach] = await db.select().from(roaches).where(eq(roaches.id, v.hostRoachId)).limit(1);
-  if (!hostRoach) throw new WorldError("TA 收回了那只蟑螂，让克隆体回家吧。");
-  if (hostRoach.rideSince) throw new WorldError("这只在跟明河走，去不了。想一起走，就也派一只跟明河。");
+  if (!hostRoach) throw new WorldError(T.server.friendly.hostTookBack);
+  if (hostRoach.rideSince) throw new WorldError(T.server.friendly.followingMinghe);
   const placement = await checkPlacement(userId, { kind: "move", roachId: v.roachId });
   const seat = await db.transaction(async (tx) => {
     const at = await seatBy(tx, hostRoach, [v.roachId]);
@@ -519,7 +523,7 @@ export async function sendHome(userId: string, friendId: unknown) {
     .from(visits)
     .where(and(eq(visits.hostId, userId), eq(visits.guestId, guest.id), isNull(visits.leftAt)))
     .limit(1);
-  if (!v) throw new WorldError("TA 的克隆体已经回家了。");
+  if (!v) throw new WorldError(T.server.friendly.guestWentHome);
   const now = new Date();
   await db.transaction(async (tx) => {
     await sendBack(tx, v);

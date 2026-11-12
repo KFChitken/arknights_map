@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { setSignupProof, startSession } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
@@ -19,7 +20,7 @@ export const POST = route(async (req) => {
     .toLowerCase();
   const code = String(body.code ?? "").trim();
 
-  if (!allow(`verify:${clientIp(req)}`, 30, 10 * 60_000)) throw new HttpError(429, "试得太频繁了，过几分钟再试。");
+  if (!allow(`verify:${clientIp(req)}`, 30, 10 * 60_000)) throw new HttpError(429, T.server.common.triedTooOftenMinutes);
   await redeemLoginCode(email, code);
 
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);

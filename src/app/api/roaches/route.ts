@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { T } from "@/i18n";
 import { sessionAlive } from "@/lib/server/auth";
 import { clientIp, inLang } from "@/lib/server/http";
 import { noticeList } from "@/lib/server/notices";
@@ -42,12 +43,12 @@ async function answer(req: NextRequest): Promise<Response> {
   const squares = f === "4" && req.nextUrl.searchParams.get("o") === "2";
   if (f === "4" && req.nextUrl.searchParams.has("n")) {
     const view = parseView(req.nextUrl.searchParams.get("n"));
-    if (!view) return NextResponse.json({ error: "请求的范围不对。" }, { status: 400 });
+    if (!view) return NextResponse.json({ error: T.server.routes.roaches.badArea }, { status: 400 });
     area = { view };
   } else if (f === "4") {
     const q = req.nextUrl.searchParams;
     area = q.get("c") === "1" ? "counts" : q.get("o") === "1" || squares ? "overview" : parseBox(q.get("box"));
-    if (!area) return NextResponse.json({ error: "请求的范围不对。" }, { status: 400 });
+    if (!area) return NextResponse.json({ error: T.server.routes.roaches.badArea }, { status: 400 });
   }
   try {
     const sid = req.cookies.get("sid")?.value;
@@ -99,14 +100,14 @@ async function answer(req: NextRequest): Promise<Response> {
     return new Response(answer.json, { headers });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
+    return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
   }
 }
 
 /** Refused by a limit (which one, for the site's checks: watch.ts counts them) */
 const BUSY = (limit: string) => {
   note("busy", limit);
-  return NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
+  return NextResponse.json({ error: T.server.common.busyRetrying }, { status: 429, headers: { "retry-after": "10" } });
 };
 
 /**

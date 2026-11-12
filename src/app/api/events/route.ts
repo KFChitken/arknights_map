@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import { currentUser } from "@/lib/server/auth";
 import { inLang } from "@/lib/server/http";
 import { listen } from "@/lib/server/live";
@@ -10,7 +11,7 @@ const PING_MS = 25_000;
 /** Server-sent events for the signed-in player: an "inbox" event whenever something new arrives. */
 export const GET = inLang(async (req: Request) => {
   const user = await currentUser();
-  if (!user) return new Response("请先登录。", { status: 401 });
+  if (!user) return new Response(T.server.common.signIn, { status: 401 });
 
   const encoder = new TextEncoder();
   let stop = () => {};

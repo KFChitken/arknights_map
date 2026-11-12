@@ -1,0 +1,428 @@
+{
+  "about": "B1: what the server says when it turns a request down, the consent ticks and the sign-in email",
+  "common": [
+    {
+      "files": ["src/lib/server/", "src/app/api/"],
+      "words": {
+        "server.common.signIn": "请先登录。",
+        "server.common.serverTrouble": "服务器出了点问题，稍后再试试。",
+        "server.common.busyRetrying": "人有点多，几秒后自动重试。",
+        "server.common.badRequest": "请求格式不对。",
+        "server.common.triedTooOften": "试得太频繁了，过一会儿再试。",
+        "server.common.triedTooOftenMinutes": "试得太频繁了，过几分钟再试。",
+        "server.common.noSuchNote": "找不到这条消息了。",
+        "server.common.noSuchRoach": "找不到这只蟑螂了。",
+        "server.common.roachGone": "这只蟑螂已经爬走了。",
+        "server.common.yourOwnRoach": "这是你自己的蟑螂。",
+        "server.common.crawledAway": "你已经默默爬走了。",
+        "server.common.touched": "已经碰过 TA 了。",
+        "server.common.notFriends": "你们已经不是触须之交了。"
+      }
+    }
+  ],
+  "files": {
+    "src/lib/server/http.ts": {
+      "group": "server.http",
+      "only": "errors",
+      "words": {
+        "wrongOrigin": "请求来源不对，请刷新页面再试。"
+      }
+    },
+    "src/lib/server/mail.ts": {
+      "group": "server.mail",
+      "words": {
+        "subject": "{code} 是你的{site}登录验证码",
+        "codeIs": "你的登录验证码是：{code}",
+        "siteCodeIs": "你的{site}登录验证码是：",
+        "valid": "{minutes} 分钟内有效。如果不是你本人在登录，忽略这封邮件就好。"
+      }
+    },
+    "src/lib/server/loginCodes.ts": {
+      "group": "server.loginCodes",
+      "only": "errors",
+      "words": {
+        "allSentToday": "今天的验证码邮件发完了，明天再试吧。",
+        "servicePaused": "{service} 最近收不到我们的验证码邮件，我们先暂停了发往 {service} 的验证码，恢复后会再开。这段时间请换 QQ、163 或 Outlook 邮箱登录。",
+        "serviceDayUsedUp": "{service} 现在限制我们的发信，今天发往 {service} 的验证码名额用完了。可以换 QQ 或 163 邮箱，或者明天再来。",
+        "serviceHourUsedUp": "{service} 现在限制我们的发信，这一小时发往 {service} 的验证码名额用完了。可以过一会儿再试，或者换 QQ 或 163 邮箱。",
+        "serviceKeptForPlayers": "{service} 现在限制我们的发信，发往 {service} 的验证码先留给老玩家登录。新注册请换 QQ、163 或 Outlook 邮箱，马上就能收到。",
+        "justSent": "验证码刚发过，{wait}后可以再发。",
+        "addressDayUsedUp": "这个邮箱今天已经收了 {n} 次验证码，明天再试吧。",
+        "tooManyTries": "错误次数太多，请重新获取验证码。",
+        "expired": "验证码过期了，请重新获取。",
+        "wrongCode": "验证码不对，再看看邮件。"
+      }
+    },
+    "src/lib/server/passwords.ts": {
+      "group": "server.passwords",
+      "words": {
+        "wrong": "邮箱或密码不对。没设过密码的话，用验证码登录。",
+        "needsCode": "为了确认是你本人，先用验证码登录一次再设密码。",
+        "currentWrong": "现在的密码不对。忘了的话，先用验证码登录一次再改。",
+        "currentWrongToRemove": "现在的密码不对。忘了的话，先用验证码登录一次再取消。"
+      }
+    },
+    "src/lib/server/passwordHash.ts": {
+      "group": "server.passwordHash",
+      "words": {
+        "busy": "现在登录的人有点多，过几秒再试。"
+      }
+    },
+    "src/lib/server/account.ts": {
+      "group": "server.account",
+      "words": {
+        "banned": "这个邮箱的账号被封了，不能再登录。"
+      }
+    },
+    "src/lib/server/consent.ts": {
+      "group": "server.consent",
+      "words": {
+        "reconsentNeeded": "隐私说明更新了，同意以后才能继续。"
+      }
+    },
+    "src/lib/server/geo.ts": {
+      "group": "server.geo",
+      "only": "errors",
+      "words": {
+        "busy": "搜的人有点多，过几秒再试，或者直接点地图。",
+        "unavailable": "地点搜索暂时用不了，可以直接在地图上点一下放。"
+      }
+    },
+    "src/lib/server/nameWords.ts": {
+      "group": "server.nameWords",
+      "only": "errors",
+      "words": {
+        "unusable": "这个名字用不了，换一个吧。"
+      }
+    },
+    "src/lib/server/deskCodes.ts": {
+      "group": "server.deskCodes",
+      "only": "errors",
+      "words": {
+        "hourUsedUp": "这一小时拿得太多了，过一会儿再拿。"
+      }
+    },
+    "src/lib/server/world.ts": {
+      "group": "server.world",
+      "only": "errors",
+      "words": {
+        "profileHeld": "你的名字和 UID 被举报了，站长看过之前先改不了。",
+        "nameCleared": "这个名字被站长清掉过，换一个吧。",
+        "uidCleared": "这个 UID 被站长清掉过，换一个吧。",
+        "noAccount": "找不到这个账号了。",
+        "mainBeforeClones": "先放下蟑螂本体，才能放克隆体。",
+        "clonesLimit": "最多只能放 {max} 只克隆体。",
+        "whichRoach": "不知道要放哪只蟑螂。",
+        "movesUsedUp": "每天最多挪 {max} 次窝，今天的用完了，明天再挪吧。",
+        "placedEnough": "今天放下的蟑螂太多了，明天再放吧。",
+        "slotTaken": "刚才那只已经放好了。",
+        "sendACloneWithHim": "派一只克隆体跟他走吧。",
+        "mainCannotFollow": "本体不能跟他走，派一只克隆体吧。",
+        "alreadyFollowing": "你已经有一只克隆体在跟明河走了。",
+        "notFollowing": "你没有克隆体在跟明河走。",
+        "testPlayersDontDrink": "测试玩家不喝酒。",
+        "mainBeforeDrinking": "先放下蟑螂本体，才能摄入酒精。",
+        "stillDrunk": "已经醉倒了，醒了才能再喝。",
+        "justDrank": "刚喝过一回，缓一缓再喝。",
+        "touchesUsedUp": "今天的触须用完啦，明天再来吧。",
+        "demoNoTouch": "这是网站放的演示蟑螂，不是真人，碰不到 TA。",
+        "touchedToday": "今天已经碰过这只蟑螂了，明天再来吧。",
+        "touchedSneakilyToday": "今天已经偷偷碰过这只蟑螂了。想让 TA 知道是你，可以大胆碰一下。",
+        "ownerTouchedToday": "今天已经碰过这只蟑螂的主人 {max} 次了，明天再来吧。",
+        "noNoteSender": "找不到这条消息的主人了。",
+        "touchBackTomorrow": "今天已经碰过 TA 了，明天再碰回去吧。",
+        "touchBackBoldly": "今天已经碰过 TA 了，偷偷碰回去要等明天，大胆碰回去现在就行。",
+        "guideAwake": "{name}一直醒着，碰碰{them}吧。",
+        "demoNoPoke": "这是网站放的演示蟑螂，不是真人，戳不到 TA。",
+        "pokeFriendsOnly": "只有触须之交能戳一戳。",
+        "awakeTouchInstead": "TA 醒着呢，碰碰 TA 吧。",
+        "pokedWait": "戳过 TA 了，{days} 天后可以再戳。",
+        "pokedToday": "今天已经戳过 TA 了。",
+        "nameHeldNoSaying": "你的名字被举报了，站长看过之前先发不了这句。",
+        "mainBeforeDeclaring": "先放下蟑螂本体，才能发宣言。",
+        "roachLostRefresh": "有只蟑螂找不到了，刷新一下再试。",
+        "pickRoachToDeclare": "选一只蟑螂来发宣言吧。",
+        "declaredEnough": "今天的宣言发得够多啦，明天再来吧。",
+        "declaredJustNow": "刚刚才发过宣言，歇一会儿再发吧。",
+        "noDeclaration": "找不到这条宣言了。",
+        "cannotReplyThisWay": "这条宣言不能这样回应。",
+        "alreadyReplied": "已经回应过这条宣言了。"
+      }
+    },
+    "src/lib/server/friendly.ts": {
+      "group": "server.friendly",
+      "only": "errors",
+      "words": {
+        "actsUsedUp": "今天和 TA 互动满 {max} 次了，明天再来吧。",
+        "sanityAskedToday": "今天已经催过 TA 了，明天再催吧。",
+        "unknownAnswer": "不知道要怎么回。",
+        "answered": "已经回过了。",
+        "again.blanket": "已经给 TA 盖过被子了。",
+        "again.water": "已经给 TA 放过白开水了。",
+        "noSuchGesture": "没有这个动作。",
+        "asleep": "TA 睡着了，等 TA 醒了再来吧。",
+        "awake": "TA 醒着呢。",
+        "pickFriends": "先选几位触须之交。",
+        "noSuchGame": "没有这个游戏。",
+        "uidNotShared": "TA 没有分享这个游戏的 UID。",
+        "differentServers": "你们不在一个服务器，游戏里加不了。",
+        "alreadyGameFriends": "你们在游戏里已经是好友了。",
+        "toldWait": "已经告诉过 TA 了，{days} 天后可以再说一次。",
+        "alreadySaid": "已经说过了。",
+        "uidShared": "TA 已经分享了 UID，在游戏里直接加 TA 吧。",
+        "noGuests": "TA 现在不接待客人。",
+        "sentHome": "{host} 请你的克隆体回家休息了，{days} 天后才能再去。",
+        "followingMinghe": "这只在跟明河走，去不了。想一起走，就也派一只跟明河。",
+        "cloneAtOldHome": "你的克隆体还在 TA 原来的家门口，先让它跟过去或者回家吧。",
+        "alreadyVisiting": "你已经在 TA 家了。",
+        "mainCannotVisit": "本体不能去做客，派一只克隆体吧。",
+        "notVisiting": "这只克隆体没在做客。",
+        "cloneBeside": "你的克隆体就在 TA 身边。",
+        "hostTookBack": "TA 收回了那只蟑螂，让克隆体回家吧。",
+        "guestWentHome": "TA 的克隆体已经回家了。"
+      }
+    },
+    "src/lib/server/help.ts": {
+      "group": "server.help",
+      "only": "errors",
+      "words": {
+        "noSuchKind": "没有这种求助。",
+        "notForThisGame": "这个游戏没有这种求助。",
+        "pickClues": "选一下缺几号线索。",
+        "pickOperator": "选一位干员。",
+        "pickSkill": "选一下几技能。",
+        "usedUp": "今天这种求助已经发了 {max} 次，明天再来吧。",
+        "over": "这条求助已经结束了。",
+        "yourOwn": "这是你自己的求助。",
+        "notPlaying": "你没有在玩这个游戏。",
+        "pickSent": "选一下送了哪几号。",
+        "answered": "已经回应过了。"
+      }
+    },
+    "src/lib/server/safety.ts": {
+      "group": "server.safety",
+      "only": "errors",
+      "words": {
+        "guideNoBlock": "{name}不是真人，不用拉黑。",
+        "noBlock": "找不到这条拉黑记录了。",
+        "pickReason": "选一个举报理由吧。",
+        "sayWhatOther": "选了「其他」的话，写一句是什么事吧。",
+        "reportedEnough": "今天举报得够多了，明天再来吧。",
+        "guideNoReport": "{name}是站里的向导，不用举报。",
+        "demoNoReport": "这是网站放的演示蟑螂，不用举报。",
+        "roachMoved": "这只蟑螂已经挪走了。"
+      }
+    },
+    "src/lib/server/staffNotes.ts": {
+      "group": "server.staffNotes",
+      "only": "errors",
+      "words": {
+        "appealSayWhy": "写一句为什么觉得处理错了吧。",
+        "appealTooLong": "申诉最多写 {max} 个字。",
+        "noAction": "找不到这次处理了。",
+        "appealedAlready": "这次处理已经申诉过了，站长会再看一次。",
+        "appealTooLate": "处理过了 {days} 天，不能再申诉了。"
+      }
+    },
+    "src/lib/server/guides.ts": {
+      "group": "server.guides",
+      "only": "errors",
+      "words": {
+        "touchedEnough": "今天跟{guide}碰得够多啦，明天再来吧。"
+      }
+    },
+    "src/lib/server/perlica.ts": {
+      "group": "server.perlica",
+      "only": "errors",
+      "words": {
+        "startTimerFirst": "先在介绍卡或资料里让佩丽卡开始记时间。",
+        "befriendFirst": "先大胆碰她，成为触须之交。"
+      }
+    },
+    "src/lib/server/minghe.ts": {
+      "group": "server.minghe",
+      "only": "errors",
+      "words": {
+        "touched": "已经碰过他了。"
+      }
+    },
+    "src/lib/server/talulah.ts": {
+      "group": "server.talulah",
+      "only": "errors",
+      "words": {}
+    },
+    "src/lib/server/amiya.ts": {
+      "group": "server.amiya",
+      "only": "errors",
+      "words": {}
+    },
+    "src/lib/server/si.ts": {
+      "group": "server.si",
+      "only": "errors",
+      "words": {
+        "touched": "已经碰过她了。",
+        "pickOne": "选一个吧。",
+        "portraitSettled": "这幅画已经说好了。"
+      }
+    },
+    "src/app/api/world/[op]/route.ts": {
+      "group": "server.routes.world",
+      "words": {
+        "suspended": "你的互动被站长暂停到 {until}，{means}",
+        "noSuchOp": "没有这个功能。",
+        "tooFast": "操作太频繁了，歇一会儿再试。",
+        "noSuchTitle": "你还没有这个称号。",
+        "noSuchTestIdentity": "没有这个测试身份。"
+      }
+    },
+    "src/app/api/around/route.ts": {
+      "group": "server.routes.around",
+      "words": {
+        "badSpot": "位置不对。",
+        "tooFast": "点得太快了，歇一会儿再看。"
+      }
+    },
+    "src/app/api/roaches/route.ts": {
+      "group": "server.routes.roaches",
+      "words": {
+        "badArea": "请求的范围不对。"
+      }
+    },
+    "src/app/api/notices/route.ts": {
+      "group": "server.routes.notices",
+      "words": {}
+    },
+    "src/app/api/si/route.ts": {
+      "group": "server.routes.si",
+      "words": {
+        "tooFast": "刷新得太快了，歇一会儿再看。"
+      }
+    },
+    "src/app/api/si/ink/route.ts": {
+      "group": "server.routes.si",
+      "words": {
+        "noSuchTile": "没有这一块。",
+        "tooFast": "刷新得太快了，歇一会儿再看。"
+      }
+    },
+    "src/app/api/hot/route.ts": {
+      "group": "server.routes.hot",
+      "words": {
+        "busy": "人有点多，过一会儿再看。",
+        "unavailable": "热榜暂时打不开，稍后再试试。"
+      }
+    },
+    "src/app/api/events/route.ts": {
+      "group": "server.routes.events",
+      "words": {}
+    },
+    "src/app/api/geo/route.ts": {
+      "group": "server.routes.geo",
+      "words": {
+        "mainlandOnly": "这个搜索只给中国大陆的访客用。"
+      }
+    },
+    "src/app/api/auth/request-code/route.ts": {
+      "group": "server.routes.requestCode",
+      "words": {
+        "badEmail": "邮箱格式不对。",
+        "tooOften": "发得太频繁了，过几分钟再试。",
+        "networkDayUsedUp": "这个网络今天发的验证码太多了，明天再试吧。",
+        "mailDownTryAgain": "验证码邮件暂时发不出去，过一会儿再点一次试试。",
+        "mailDown": "验证码邮件暂时发不出去，请过几分钟再试。"
+      }
+    },
+    "src/app/api/auth/signup/route.ts": {
+      "group": "server.routes.signup",
+      "words": {
+        "expired": "验证已经过期了，请重新获取验证码。"
+      }
+    },
+    "src/app/api/auth/verify/route.ts": {
+      "group": "server.routes.verify",
+      "words": {}
+    },
+    "src/app/api/auth/password-login/route.ts": {
+      "group": "server.routes.passwordLogin",
+      "words": {}
+    },
+    "src/app/api/auth/password/route.ts": {
+      "group": "server.routes.password",
+      "words": {}
+    },
+    "src/app/api/auth/password/remove/route.ts": {
+      "group": "server.routes.passwordRemove",
+      "words": {}
+    },
+    "src/app/api/auth/desk-code/route.ts": {
+      "group": "server.routes.deskCode",
+      "words": {
+        "signInFirst": "先登录，再拿登录码。"
+      }
+    },
+    "src/app/api/auth/desk-code/redeem/route.ts": {
+      "group": "server.routes.deskCodeRedeem",
+      "words": {}
+    },
+    "src/app/api/auth/logout-others/route.ts": {
+      "group": "server.routes.logoutOthers",
+      "words": {
+        "signInFirst": "先登录才能退出其他设备。"
+      }
+    },
+    "src/app/api/auth/reconsent/route.ts": {
+      "group": "server.routes.reconsent",
+      "words": {}
+    },
+    "src/app/api/auth/delete/route.ts": {
+      "group": "server.routes.deleteAccount",
+      "words": {
+        "testPlayersStay": "测试玩家不能注销。"
+      }
+    },
+    "src/lib/consent.ts": {
+      "group": "consent",
+      "words": {
+        "adultTick": "我已满 {age} 岁",
+        "crossBorderTick": "我同意把我的信息存到腾讯云香港服务器，并由 Resend USA 发送验证码邮件",
+        "publicPlaceTick": "我同意注册舟P看到我放下的蟑螂的确切位置",
+        "publicPlaceNote": "放下以后，登录的舟P都能看到这只蟑螂的确切位置。请不要放在家门口。",
+        "missing.adult": "需要确认你已满 {age} 岁。",
+        "missing.acceptPolicy": "需要先同意隐私说明。",
+        "missing.acceptCrossBorder": "需要先同意信息存放和发信的说明。",
+        "missing.acceptPublicPlace": "需要先同意公开蟑螂位置的说明。",
+        "ageCheckNeeded": "先确认一下你满 18 岁了。"
+      }
+    },
+    "src/lib/world/server.ts": {
+      "group": "requests",
+      "only": "errors",
+      "words": {
+        "offline": "连不上服务器，检查一下网络再试。",
+        "signIn": "请先登录。",
+        "reconsent": "隐私说明更新了，同意以后才能继续。",
+        "serverTrouble": "服务器出了点问题，稍后再试试。",
+        "busy": "人有点多，几秒后自动重试。"
+      }
+    },
+    "src/lib/world/logic.ts": {
+      "group": "checks",
+      "only": "errors",
+      "words": {
+        "uidCharacters": "UID 只能填数字、字母和 #，最多 20 个字符。",
+        "uidServer": "选一下{game}的 UID 是哪个服务器的。",
+        "nameFirst": "想显示名字的话，先填一个名字吧。",
+        "favoritesOnly": "只能选你资料里的厨力角色。",
+        "drunkFirst": "醉倒以后才说得出这句，先摄入酒精吧。",
+        "needsName": "这句要先在资料里填名字，并且不选匿名。",
+        "noSuchCallName": "这个称呼不在列表里。",
+        "noSuchFood": "这个吃的不在列表里。",
+        "pickSpouse": "选老婆还是老公吧。",
+        "limitedNotYet": "这句限定宣言还没开始。",
+        "limitedOver": "这句限定宣言已经结束啦。",
+        "pickDeclaration": "选一句宣言吧。",
+        "cannotPlaceHere": "这个位置放不了蟑螂。"
+      }
+    }
+  }
+}

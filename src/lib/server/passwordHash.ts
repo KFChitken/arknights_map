@@ -1,5 +1,6 @@
 import "server-only";
 import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from "node:crypto";
+import { T } from "@/i18n";
 import { HttpError } from "./http";
 
 /**
@@ -18,7 +19,7 @@ const MAX_MEMORY = 64 * 1024 * 1024;
 
 export const HASHING_AT_ONCE = 2;
 export const WAIT_MS = 3000;
-export const busy = () => "现在登录的人有点多，过几秒再试。";
+export const busy = () => T.server.passwordHash.busy;
 
 /**
  * Checked against when there is no password to check (no such account, none set, paused), so every

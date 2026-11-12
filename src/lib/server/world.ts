@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
 import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food } from "../declarations";
@@ -445,7 +446,7 @@ function keepHeld(p: Profile, stored: Profile): Profile {
     p.drPrefix === stored.drPrefix &&
     p.shareUid === stored.shareUid &&
     p.games.every((g) => p.uid[g] === stored.uid[g] && p.uidServer[g] === stored.uidServer[g]);
-  if (!same) throw new WorldError("你的名字和 UID 被举报了，站长看过之前先改不了。");
+  if (!same) throw new WorldError(T.server.world.profileHeld);
   return { ...p, uid: stored.uid, uidServer: stored.uidServer };
 }
 
@@ -460,10 +461,10 @@ async function checkCleared(userId: string, p: Profile) {
     .where(eq(clearedValues.userId, userId));
   if (!gone.length) return;
   const name = fold(p.name);
-  if (name && gone.some((g) => g.kind === "name" && fold(g.value) === name)) throw new WorldError("这个名字被站长清掉过，换一个吧。");
+  if (name && gone.some((g) => g.kind === "name" && fold(g.value) === name)) throw new WorldError(T.server.world.nameCleared);
   const uids = Object.values(p.uid).map((u) => u.toLowerCase());
   if (gone.some((g) => g.kind === "uid" && uids.includes(g.value.toLowerCase()))) {
-    throw new WorldError("这个 UID 被站长清掉过，换一个吧。");
+    throw new WorldError(T.server.world.uidCleared);
   }
 }
 
@@ -495,7 +496,7 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
  */
 export async function checkPlacement(userId: string, target: PlaceTarget) {
   const u = await userById(userId);
-  if (!u) throw new WorldError("找不到这个账号了。");
+  if (!u) throw new WorldError(T.server.world.noAccount);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   const main = mine.find((r) => r.slot === 0);
   let slot: number;
@@ -504,26 +505,26 @@ export async function checkPlacement(userId: string, target: PlaceTarget) {
     slot = 0;
     existing = main;
   } else if (target?.kind === "clone") {
-    if (!main) throw new WorldError("先放下蟑螂本体，才能放克隆体。");
+    if (!main) throw new WorldError(T.server.world.mainBeforeClones);
     const used = new Set(mine.map((r) => r.slot));
     const free = Array.from({ length: MAX_CLONES }, (_, i) => i + 1).find((s) => !used.has(s));
-    if (!free) throw new WorldError(`最多只能放 ${MAX_CLONES} 只克隆体。`);
+    if (!free) throw new WorldError(fmt(T.server.world.clonesLimit, { max: MAX_CLONES }));
     slot = free;
   } else if (target?.kind === "move") {
     existing = mine.find((r) => r.id === target.roachId);
-    if (!existing) throw new WorldError("找不到这只蟑螂了。");
+    if (!existing) throw new WorldError(T.server.common.noSuchRoach);
     slot = existing.slot;
   } else {
-    throw new WorldError("不知道要放哪只蟑螂。");
+    throw new WorldError(T.server.world.whichRoach);
   }
   // A new roach shows its exact spot to everyone, which the player agrees to once, on a card before the first
   if (!existing && !agreedPublicPlace(u)) throw new WorldError(TICK_MISSING.acceptPublicPlace);
   // Each move is a row the radar reads, so they are rationed; taking a roach back and putting it down again counts too
   if (existing && (await recentMoves(userId, "move")) >= MOVES_PER_DAY) {
-    throw new WorldError(`每天最多挪 ${MOVES_PER_DAY} 次窝，今天的用完了，明天再挪吧。`);
+    throw new WorldError(fmt(T.server.world.movesUsedUp, { max: MOVES_PER_DAY }));
   }
   if (!existing && (await recentMoves(userId, "place")) >= PLACEMENTS_PER_DAY) {
-    throw new WorldError("今天放下的蟑螂太多了，明天再放吧。");
+    throw new WorldError(T.server.world.placedEnough);
   }
   return { slot, existing };
 }
@@ -560,9 +561,6 @@ export async function writePlacement(
   });
 }
 
-/** What a second tap that came with the first is told when both picked the same free slot (slotTaken) */
-const SLOT_TAKEN = "刚才那只已经放好了。";
-
 /** Whether a new roach's slot was taken a moment ago by another request of the player's (a double tap): its unique index says so */
 function slotTaken(e: unknown): boolean {
   const err = e as { code?: string; constraint_name?: string; cause?: unknown } | null;
@@ -576,7 +574,7 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   try {
     await db.transaction((tx) => writePlacement(tx, userId, placement, at));
   } catch (e) {
-    if (slotTaken(e)) throw new WorldError(SLOT_TAKEN);
+    if (slotTaken(e)) throw new WorldError(T.server.world.slotTaken);
     throw e;
   }
   roachesChanged();
@@ -601,7 +599,7 @@ export async function sitByFire(userId: string, target: PlaceTarget): Promise<{ 
       return at;
     })
     .catch((e) => {
-      throw slotTaken(e) ? new WorldError(SLOT_TAKEN) : e;
+      throw slotTaken(e) ? new WorldError(T.server.world.slotTaken) : e;
     });
   roachesChanged();
   // the first roach of theirs to sit by her fire is welcomed, and the songs counted
@@ -624,15 +622,15 @@ const riderOf = async (exec: Exec, userId: string) =>
  * (the 04:00 batch, src/lib/server/minghe.ts). One clone at a time, never the main roach.
  */
 export async function rideMinghe(userId: string, target: RideTarget): Promise<{ roaches: OwnRoach[]; item: MingheItem }> {
-  if (target?.kind !== "clone" && target?.kind !== "move") throw new WorldError("派一只克隆体跟他走吧。");
+  if (target?.kind !== "clone" && target?.kind !== "move") throw new WorldError(T.server.world.sendACloneWithHim);
   const placement = await checkPlacement(userId, target);
-  if (placement.slot === 0) throw new WorldError("本体不能跟他走，派一只克隆体吧。");
+  if (placement.slot === 0) throw new WorldError(T.server.world.mainCannotFollow);
   const day = mingheToday();
   const item = await db
     .transaction(async (tx) => {
       // one ride at a time across the site, so two clones never take the same spot, nor one player two
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('minghe-queue'))`);
-      if (await riderOf(tx, userId)) throw new WorldError("你已经有一只克隆体在跟明河走了。");
+      if (await riderOf(tx, userId)) throw new WorldError(T.server.world.alreadyFollowing);
       const [spot] = queueSpots(day, 1, await standingNear(tx, day, placement.existing ? [placement.existing.id] : []));
       await writePlacement(tx, userId, placement, spot, {
         rideSince: new Date(),
@@ -644,7 +642,7 @@ export async function rideMinghe(userId: string, target: RideTarget): Promise<{ 
       return sayAboutRide(tx, userId, "ride", stopOf(day));
     })
     .catch((e) => {
-      throw slotTaken(e) ? new WorldError(SLOT_TAKEN) : e;
+      throw slotTaken(e) ? new WorldError(T.server.world.slotTaken) : e;
     });
   roachesChanged();
   return { roaches: await ownRoaches(userId), item };
@@ -654,7 +652,7 @@ export async function rideMinghe(userId: string, target: RideTarget): Promise<{ 
 export async function dismountMinghe(userId: string): Promise<{ roaches: OwnRoach[]; item: MingheItem }> {
   const item = await db.transaction(async (tx) => {
     const rider = await riderOf(tx, userId);
-    if (!rider) throw new WorldError("你没有克隆体在跟明河走。");
+    if (!rider) throw new WorldError(T.server.world.notFollowing);
     await tx.update(roaches).set(OFF_HORSE).where(eq(roaches.id, rider.id));
     return sayAboutRide(tx, userId, "dismount", stopOf(rider.rideDay ?? mingheToday()));
   });
@@ -664,10 +662,10 @@ export async function dismountMinghe(userId: string): Promise<{ roaches: OwnRoac
 
 /** Taking back the main roach takes back the clones too. */
 export async function removeRoach(userId: string, roachId: string): Promise<OwnRoach[]> {
-  if (!UUID.test(String(roachId))) throw new WorldError("找不到这只蟑螂了。");
+  if (!UUID.test(String(roachId))) throw new WorldError(T.server.common.noSuchRoach);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   const roach = mine.find((r) => r.id === roachId);
-  if (!roach) throw new WorldError("找不到这只蟑螂了。");
+  if (!roach) throw new WorldError(T.server.common.noSuchRoach);
   const gone = roach.slot === 0 ? mine : [roach];
   await db.transaction(async (tx) => {
     for (const r of gone) await roachMoved(tx, r.id, "removed");
@@ -685,15 +683,15 @@ const DRINK_GAP_MS = 10_000;
 /** 摄入酒精: the main roach falls asleep drunk until the next morning where it lies. Every real drink counts for the 酒神 badges. */
 export async function drink(userId: string): Promise<{ until: number }> {
   const u = await userById(userId);
-  if (!u) throw new WorldError("找不到这个账号了。");
+  if (!u) throw new WorldError(T.server.world.noAccount);
   // test players never lie down
-  if (u.demoKey) throw new WorldError("测试玩家不喝酒。");
+  if (u.demoKey) throw new WorldError(T.server.world.testPlayersDontDrink);
   const [main] = await db.select().from(roaches).where(and(eq(roaches.userId, userId), eq(roaches.slot, 0))).limit(1);
-  if (!main) throw new WorldError("先放下蟑螂本体，才能摄入酒精。");
+  if (!main) throw new WorldError(T.server.world.mainBeforeDrinking);
   const now = new Date();
-  const drunk = "已经醉倒了，醒了才能再喝。";
+  const drunk = T.server.world.stillDrunk;
   if (u.drunkUntil && u.drunkUntil > now) throw new WorldError(drunk);
-  if (!allow(`drink:${userId}`, 1, DRINK_GAP_MS)) throw new WorldError("刚喝过一回，缓一缓再喝。");
+  if (!allow(`drink:${userId}`, 1, DRINK_GAP_MS)) throw new WorldError(T.server.world.justDrank);
   const until = nextMorning(main, now.getTime());
   const [row] = await db
     .update(users)
@@ -721,18 +719,18 @@ async function checkTouchQuota(userId: string) {
     .select({ n: sql<number>`count(*)::int` })
     .from(touches)
     .where(and(eq(touches.fromUserId, userId), gt(touches.createdAt, ago(DAY))));
-  if (n >= TOUCHES_PER_DAY) throw new WorldError("今天的触须用完啦，明天再来吧。");
+  if (n >= TOUCHES_PER_DAY) throw new WorldError(T.server.world.touchesUsedUp);
 }
 
 /** offsetMin: the device's Date.getTimezoneOffset(), only for 佩丽卡监督's count of the day; never stored */
 export async function touch(userId: string, publicId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
   const guide = guideById(String(publicId));
   if (guide) return GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
-  if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，碰不到 TA。");
+  if (isBotId(String(publicId))) throw new WorldError(T.server.world.demoNoTouch);
   // by the id the feed gave the page, short or whole
   const roach = await roachByFeedId(String(publicId));
-  if (!roach) throw new WorldError("这只蟑螂已经爬走了。");
-  if (roach.userId === userId) throw new WorldError("这是你自己的蟑螂。");
+  if (!roach) throw new WorldError(T.server.common.roachGone);
+  if (roach.userId === userId) throw new WorldError(T.server.common.yourOwnRoach);
   await checkTouchQuota(userId);
   // One roach once a day, keyed by the public id, not the owner, so the answer cannot tell you two roaches
   // share an owner; but a sneaky touch may be followed by a bold one, to say who it was (Breeze, 2026-11-12).
@@ -746,13 +744,13 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
         gt(touches.createdAt, ago(TOUCH_SAME_ROACH_HOURS * HOUR)),
       ),
     );
-  if (earlier.some((t) => t.bold)) throw new WorldError("今天已经碰过这只蟑螂了，明天再来吧。");
-  if (earlier.length && !bold) throw new WorldError("今天已经偷偷碰过这只蟑螂了。想让 TA 知道是你，可以大胆碰一下。");
+  if (earlier.some((t) => t.bold)) throw new WorldError(T.server.world.touchedToday);
+  if (earlier.length && !bold) throw new WorldError(T.server.world.touchedSneakilyToday);
   // a few touches a day on one player's roaches, main and clones together, touching back included; saying so
   // may tell that two roaches share an owner, which Breeze accepted. The bold touch that makes the two
   // 触须之交 always goes: it comes once.
   if ((await touchedToday(userId, roach.userId)).n >= TOUCHES_PER_PERSON_PER_DAY && !(bold && (await wouldBefriend(userId, roach.userId)))) {
-    throw new WorldError(`今天已经碰过这只蟑螂的主人 ${TOUCHES_PER_PERSON_PER_DAY} 次了，明天再来吧。`);
+    throw new WorldError(fmt(T.server.world.ownerTouchedToday, { max: TOUCHES_PER_PERSON_PER_DAY }));
   }
   // Between a blocked pair the touch looks sent, but never arrives
   const withheld = await blockedBetween(userId, roach.userId);
@@ -856,7 +854,7 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
         .from(touches)
         .where(and(eq(touches.id, id), eq(touches.toUserId, userId)))
         .limit(1);
-      if (t?.ignoredAt) throw new WorldError("你已经默默爬走了。");
+      if (t?.ignoredAt) throw new WorldError(T.server.common.crawledAway);
       to = t?.from;
     } else if (kind === "d") {
       // one the player sees now (src/lib/server/declarationInbox.ts)
@@ -871,20 +869,20 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
       to = r?.from;
     }
   }
-  if (!to) throw new WorldError("找不到这条消息的主人了。");
-  if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
+  if (!to) throw new WorldError(T.server.world.noNoteSender);
+  if ((await replied(userId, [itemId])).size) throw new WorldError(T.server.common.touched);
   // no touching back and forth: whoever touched TA in the last day waits till tomorrow to touch back, but
   // for a bold touch back that makes them 触须之交, or says who touched TA sneakily (touchBackWait())
   const wait = await touchBackWait(userId, to, await touchedToday(userId, to));
-  if (wait === "all") throw new WorldError("今天已经碰过 TA 了，明天再碰回去吧。");
-  if (wait && !bold) throw new WorldError("今天已经碰过 TA 了，偷偷碰回去要等明天，大胆碰回去现在就行。");
+  if (wait === "all") throw new WorldError(T.server.world.touchBackTomorrow);
+  if (wait && !bold) throw new WorldError(T.server.world.touchBackBoldly);
   await checkTouchQuota(userId);
   const withheld = await blockedBetween(userId, to);
   try {
     await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId, withheld });
   } catch (e) {
     // two taps at once: reply_to is unique for each player, so the second is the same answer again
-    if (isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
+    if (isUniqueViolation(e)) throw new WorldError(T.server.common.touched);
     throw e;
   }
   if (withheld) return { newFriend: null };
@@ -910,8 +908,8 @@ async function lastPoke(from: string, to: string) {
  */
 export async function poke(userId: string, publicId: string): Promise<{ againAt: number }> {
   const guide = guideById(String(publicId));
-  if (guide) throw new WorldError(`${guide.name}一直醒着，碰碰${guide.pronoun}吧。`);
-  if (isBotId(String(publicId))) throw new WorldError("这是网站放的演示蟑螂，不是真人，戳不到 TA。");
+  if (guide) throw new WorldError(fmt(T.server.world.guideAwake, { name: guide.name, them: guide.pronoun }));
+  if (isBotId(String(publicId))) throw new WorldError(T.server.world.demoNoPoke);
   // by the id the feed gave the page, short or whole
   const roach = await roachByFeedId(String(publicId));
   const [row] = roach
@@ -922,22 +920,22 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
         .where(eq(roaches.id, roach.id))
         .limit(1)
     : [];
-  if (!row) throw new WorldError("这只蟑螂已经爬走了。");
+  if (!row) throw new WorldError(T.server.common.roachGone);
   const { owner } = row;
-  if (owner.id === userId) throw new WorldError("这是你自己的蟑螂。");
+  if (owner.id === userId) throw new WorldError(T.server.common.yourOwnRoach);
   if (!(await friendIdsOf(userId)).has(owner.id) || (await blockedBetween(userId, owner.id))) {
-    throw new WorldError("只有触须之交能戳一戳。");
+    throw new WorldError(T.server.world.pokeFriendsOnly);
   }
   const now = Date.now();
-  if (row.slot !== 0 || !sleeping(owner, now)) throw new WorldError("TA 醒着呢，碰碰 TA 吧。");
+  if (row.slot !== 0 || !sleeping(owner, now)) throw new WorldError(T.server.world.awakeTouchInstead);
   const again = await lastPoke(userId, owner.id);
-  if (again) throw new WorldError(`戳过 TA 了，${Math.ceil((again - now) / DAY)} 天后可以再戳。`);
+  if (again) throw new WorldError(fmt(T.server.world.pokedWait, { days: Math.ceil((again - now) / DAY) }));
   const [made] = await db
     .insert(pokes)
     .values({ fromUserId: userId, toUserId: owner.id, day: beijingDate(now), createdAt: new Date(now) })
     .onConflictDoNothing()
     .returning({ id: pokes.id });
-  if (!made) throw new WorldError("今天已经戳过 TA 了。");
+  if (!made) throw new WorldError(T.server.world.pokedToday);
   // an awake owner sees it now; a sleeping one's inbox keeps it until they wake
   nudge([owner.id]);
   return { againAt: now + POKE_EVERY_DAYS * DAY };
@@ -1231,27 +1229,27 @@ export async function markSeen(userId: string, itemIds: string[]) {
  */
 export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string }> {
   const u = await userById(userId);
-  if (!u) throw new WorldError("请先登录。");
+  if (!u) throw new WorldError(T.server.common.signIn);
   // held, a player is anonymous, which checkDeclaration refuses 「我是…」 for; this says why
-  if (u.profileHeldAt && input?.template === "myname") throw new WorldError("你的名字被举报了，站长看过之前先发不了这句。");
+  if (u.profileHeldAt && input?.template === "myname") throw new WorldError(T.server.world.nameHeldNoSaying);
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
   const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
   const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
-  if (!mine.some((r) => r.slot === 0)) throw new WorldError("先放下蟑螂本体，才能发宣言。");
+  if (!mine.some((r) => r.slot === 0)) throw new WorldError(T.server.world.mainBeforeDeclaring);
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
   const chosen = wanted ? mine.filter((r) => wanted.includes(r.id)) : mine.filter((r) => r.slot === 0);
-  if (wanted && chosen.length < wanted.length) throw new WorldError("有只蟑螂找不到了，刷新一下再试。");
-  if (!chosen.length) throw new WorldError("选一只蟑螂来发宣言吧。");
+  if (wanted && chosen.length < wanted.length) throw new WorldError(T.server.world.roachLostRefresh);
+  if (!chosen.length) throw new WorldError(T.server.world.pickRoachToDeclare);
 
   const recent = await db
     .select({ at: declarations.createdAt })
     .from(declarations)
     .where(and(eq(declarations.senderId, userId), gt(declarations.createdAt, ago(DAY))));
-  if (recent.length >= DECLARATIONS_PER_DAY) throw new WorldError("今天的宣言发得够多啦，明天再来吧。");
+  if (recent.length >= DECLARATIONS_PER_DAY) throw new WorldError(T.server.world.declaredEnough);
   if (recent.some((r) => Date.now() - r.at.getTime() < DECLARATION_COOLDOWN_MIN * MINUTE)) {
-    throw new WorldError("刚刚才发过宣言，歇一会儿再发吧。");
+    throw new WorldError(T.server.world.declaredJustNow);
   }
 
   // The sender only learns a rough count
@@ -1311,33 +1309,33 @@ export async function ignore(userId: string, itemId: string) {
   const guide = guideOfItem(String(itemId));
   if (guide) return GUIDE_WORLD[guide.id].ignore(userId, String(itemId));
   const [kind, id] = String(itemId).split(":");
-  if (kind !== "t" || !UUID.test(id ?? "")) throw new WorldError("找不到这条消息了。");
-  if ((await replied(userId, [itemId])).size) throw new WorldError("已经碰过 TA 了。");
+  if (kind !== "t" || !UUID.test(id ?? "")) throw new WorldError(T.server.common.noSuchNote);
+  if ((await replied(userId, [itemId])).size) throw new WorldError(T.server.common.touched);
   const now = new Date();
   const [done] = await db
     .update(touches)
     .set({ ignoredAt: now, seenAt: sql`coalesce(${touches.seenAt}, ${now.toISOString()})` })
     .where(and(eq(touches.id, id), eq(touches.toUserId, userId)))
     .returning({ id: touches.id });
-  if (!done) throw new WorldError("找不到这条消息了。");
+  if (!done) throw new WorldError(T.server.common.noSuchNote);
 }
 
 /** Leave one of the fixed reactions on a declaration you received. The sender is not told who. */
 export async function react(userId: string, itemId: string, reaction: string) {
   const [kind, id] = String(itemId).split(":");
-  if (kind !== "d" || !UUID.test(id ?? "")) throw new WorldError("找不到这条宣言了。");
+  if (kind !== "d" || !UUID.test(id ?? "")) throw new WorldError(T.server.world.noDeclaration);
   // one the player sees now: near one of their roaches, or answered before
   const row = await canSeeDeclaration(userId, id);
-  if (!row) throw new WorldError("找不到这条宣言了。");
+  if (!row) throw new WorldError(T.server.world.noDeclaration);
   // its own four or the five every declaration has, never another sentence's
-  if (!canReply(storedDeclaration(row), reaction)) throw new WorldError("这条宣言不能这样回应。");
+  if (!canReply(storedDeclaration(row), reaction)) throw new WorldError(T.server.world.cannotReplyThisWay);
   const withheld = await blockedBetween(userId, row.senderId);
   const [made] = await db
     .insert(reactions)
     .values({ declarationId: id, fromUserId: userId, reaction, withheld })
     .onConflictDoNothing()
     .returning({ id: reactions.id });
-  if (!made) throw new WorldError("已经回应过这条宣言了。");
+  if (!made) throw new WorldError(T.server.world.alreadyReplied);
   if (withheld) return;
   nudge([row.senderId]);
   await reactedTo(row.senderId);
@@ -1430,7 +1428,7 @@ export async function starFriend(userId: string, friendId: unknown, on: unknown)
       ? guide.id
       : null
     : ([...(await friendIdsOf(userId))].find((o) => friendKey(userId, o) === id) ?? null);
-  if (!other) throw new WorldError("你们已经不是触须之交了。");
+  if (!other) throw new WorldError(T.server.common.notFriends);
   if (on === true) await db.insert(friendStars).values({ userId, other }).onConflictDoNothing();
   else await db.delete(friendStars).where(and(eq(friendStars.userId, userId), eq(friendStars.other, other)));
 }
@@ -1443,7 +1441,7 @@ export async function unfriend(userId: string, friendId: string) {
   }
   const others = await friendIdsOf(userId);
   const other = [...others].find((o) => friendKey(userId, o) === friendId);
-  if (!other) throw new WorldError("你们已经不是触须之交了。");
+  if (!other) throw new WorldError(T.server.common.notFriends);
   await endFriendship(userId, other);
 }
 

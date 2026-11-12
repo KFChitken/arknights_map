@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { currentSession, currentUser } from "@/lib/server/auth";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { firstWithoutCode, freshFor, NeedsCode, passwordSetAt, setPassword } from "@/lib/server/passwords";
@@ -12,7 +13,7 @@ import { allow } from "@/lib/server/rateLimit";
  */
 export const GET = route(async () => {
   const [user, session] = await Promise.all([currentUser(), currentSession()]);
-  if (!user || !session) throw new HttpError(401, "请先登录。");
+  if (!user || !session) throw new HttpError(401, T.server.common.signIn);
   const setAt = await passwordSetAt(user.id);
   return NextResponse.json({
     setAt,
@@ -28,8 +29,8 @@ export const GET = route(async () => {
  */
 export const POST = route(async (req) => {
   const [user, session] = await Promise.all([currentUser(), currentSession()]);
-  if (!user || !session) throw new HttpError(401, "请先登录。");
-  if (!allow(`pw-set:${user.id}`, 10, 10 * 60_000)) throw new HttpError(429, "试得太频繁了，过一会儿再试。");
+  if (!user || !session) throw new HttpError(401, T.server.common.signIn);
+  if (!allow(`pw-set:${user.id}`, 10, 10 * 60_000)) throw new HttpError(429, T.server.common.triedTooOften);
   const body = await readJson(req);
   try {
     const { changed } = await setPassword(user, session, body.password, body.current);

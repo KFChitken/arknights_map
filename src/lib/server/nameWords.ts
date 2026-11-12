@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, count, desc, eq, gt, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
+import { T } from "@/i18n";
 import { nameJudge } from "../nameCheck";
 import { fold } from "../nameFold";
 import { bare, parseNameWords } from "../nameRules";
@@ -53,7 +54,7 @@ export function nameJudgeNow(): Promise<Judge> {
 
 /** Refuse a name the rules or the words block, without saying which word, so nobody can feel their way round it. */
 export async function checkName(name: string) {
-  if (name.trim() && (await nameJudgeNow())(name)) throw new WorldError("这个名字用不了，换一个吧。");
+  if (name.trim() && (await nameJudgeNow())(name)) throw new WorldError(T.server.nameWords.unusable);
 }
 
 /** The admin page's view of the list: how many words, and those matching a search (newest first), at most SHOWN. */

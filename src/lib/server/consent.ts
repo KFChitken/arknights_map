@@ -1,5 +1,6 @@
 import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
+import { T } from "@/i18n";
 import { AGE_CHECK, ageCheckNeeded, TICK_MISSING, type Tick } from "../consent";
 import { POLICY_UPDATED_AT } from "../rules";
 import { db } from "./db";
@@ -7,7 +8,7 @@ import { HttpError } from "./http";
 import { users, type UserRow } from "./schema";
 
 /** The fixed refusal the map answers with 「隐私说明更新了」 (HTTP 428). */
-export const reconsentNeeded = () => "隐私说明更新了，同意以后才能继续。";
+export const reconsentNeeded = () => T.server.consent.reconsentNeeded;
 export { AGE_CHECK, ageCheckNeeded };
 
 /** The admin asked them to say again they are 18 or older (src/lib/server/admin.ts): they did, and the time is kept */

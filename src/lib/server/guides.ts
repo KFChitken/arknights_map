@@ -1,5 +1,6 @@
 import "server-only";
 import { and, count, desc, eq, gt, gte, inArray, isNull } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { GUIDE_INBOX_SHOWN, GUIDE_TOUCHES_PER_DAY, guideProfile, type Guide } from "../guides";
 import { INBOX_DAYS } from "../rules";
 import { DAY } from "../world/logic";
@@ -91,7 +92,7 @@ export function guideTouches(guide: Guide, table: GuideTable) {
             .where(and(eq(t.id, id), eq(t.userId, userId), eq(t.direction, from)))
             .limit(1)
         : [];
-    if (!row) throw new WorldError("找不到这条消息了。");
+    if (!row) throw new WorldError(T.server.common.noSuchNote);
     return row;
   }
 
@@ -127,7 +128,7 @@ export function guideTouches(guide: Guide, table: GuideTable) {
         .select({ n: count() })
         .from(t)
         .where(and(eq(t.userId, userId), eq(t.direction, to), gt(t.createdAt, new Date(now - DAY))));
-      if (n >= GUIDE_TOUCHES_PER_DAY) throw new WorldError(guide.tooMany ?? `今天跟${guide.short}碰得够多啦，明天再来吧。`);
+      if (n >= GUIDE_TOUCHES_PER_DAY) throw new WorldError(guide.tooMany ?? fmt(T.server.guides.touchedEnough, { guide: guide.short }));
     },
 
     /**
@@ -160,15 +161,15 @@ export function guideTouches(guide: Guide, table: GuideTable) {
     /** One of hers the player may still touch back: not crawled away from, not answered. */
     async toAnswer(userId: string, itemId: string) {
       const row = await item(userId, itemId);
-      if (row.ignoredAt) throw new WorldError("你已经默默爬走了。");
-      if ((await answered(userId, [row.id])).size) throw new WorldError("已经碰过 TA 了。");
+      if (row.ignoredAt) throw new WorldError(T.server.common.crawledAway);
+      if ((await answered(userId, [row.id])).size) throw new WorldError(T.server.common.touched);
       return row;
     },
 
     /** 默默爬走 from one of hers. */
     async ignore(userId: string, itemId: string) {
       const row = await item(userId, itemId);
-      if ((await answered(userId, [row.id])).size) throw new WorldError("已经碰过 TA 了。");
+      if ((await answered(userId, [row.id])).size) throw new WorldError(T.server.common.touched);
       const now = new Date();
       await db
         .update(t)

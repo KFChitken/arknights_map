@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import { asc, eq, inArray, or } from "drizzle-orm";
+import { T } from "@/i18n";
 import { db } from "./db";
 import { secret } from "./env";
 import { forgetLoginCodes } from "./loginCodes";
@@ -57,7 +58,7 @@ export async function banAccount(user: UserRow, reason: string | null = null) {
   await deleteAccount(user);
 }
 
-export const banned = () => "这个邮箱的账号被封了，不能再登录。";
+export const banned = () => T.server.account.banned;
 
 /** The ban of a mailbox, however it is written: when and why (the first, if more than one form was banned), or null */
 export async function banOf(email: string) {

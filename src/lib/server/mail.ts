@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { fmt, T } from "@/i18n";
 import { SITE_NAME } from "../rules";
 import { MAIL_FROM, SMTP_URL } from "./env";
 
@@ -66,11 +67,11 @@ const send = (mail: Parameters<typeof transport.sendMail>[0]) => sendWith(transp
 
 /** The sign-in code's email, for a code that works minutes more */
 export function loginCodeMail(code: string, minutes: number) {
-  const codeIs = `你的${SITE_NAME}登录验证码是：`;
-  const valid = `${minutes} 分钟内有效。如果不是你本人在登录，忽略这封邮件就好。`;
+  const codeIs = fmt(T.server.mail.siteCodeIs, { site: SITE_NAME });
+  const valid = fmt(T.server.mail.valid, { minutes });
   return {
-    subject: `${code} 是你的${SITE_NAME}登录验证码`,
-    text: [`你的登录验证码是：${code}`, "", valid].join("\n"),
+    subject: fmt(T.server.mail.subject, { code, site: SITE_NAME }),
+    text: [fmt(T.server.mail.codeIs, { code }), "", valid].join("\n"),
     html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">
 <p>${codeIs}</p>
 <p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { startSession } from "@/lib/server/auth";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
 import { passwordLogin } from "@/lib/server/passwords";
@@ -12,7 +13,7 @@ import { allow } from "@/lib/server/rateLimit";
 export const POST = route(async (req) => {
   const ip = clientIp(req);
   if (!allow(`pw:${ip}`, 20, 10 * 60_000) || !allow(`pw-day:${ip}`, 200, 24 * 60 * 60_000)) {
-    throw new HttpError(429, "试得太频繁了，过一会儿再试。");
+    throw new HttpError(429, T.server.common.triedTooOften);
   }
   const body = await readJson(req);
   const userId = await passwordLogin(body.email, body.password);

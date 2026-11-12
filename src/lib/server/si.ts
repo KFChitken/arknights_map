@@ -1,6 +1,7 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, desc, eq, gte, isNotNull, isNull, lte, max, sql } from "drizzle-orm";
+import { T } from "@/i18n";
 import { answerKind, deviceHour, paintingStart, SI, SI_LINES, siRoach, stampAt } from "../si";
 import { homeSpot, homesReach } from "../siHomes";
 import { ROOMS, roomOf, STAY_MS, toLngLat } from "../siInn";
@@ -259,7 +260,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     });
   } catch (e) {
     // two answers to the same one of hers at once: reply_to is unique, so one fails
-    if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过她了。");
+    if (replyTo && isUniqueViolation(e)) throw new WorldError(T.server.si.touched);
     throw e;
   }
   const { event, you } = done.inn;
@@ -308,13 +309,13 @@ export async function unfriendSi(userId: string) {
 
 /** 还给她 or 就不还, only while the portrait she gave is her own by mistake; her line about it. */
 export async function answerPortrait(userId: string, choice: unknown) {
-  if (choice !== "return" && choice !== "keep") throw new WorldError("选一个吧。");
+  if (choice !== "return" && choice !== "keep") throw new WorldError(T.server.si.pickOne);
   const [done] = await db
     .update(users)
     .set({ siPortrait: choice === "return" ? "returned" : "kept" })
     .where(and(eq(users.id, userId), eq(users.siPortrait, "wrong")))
     .returning({ id: users.id });
-  if (!done) throw new WorldError("这幅画已经说好了。");
+  if (!done) throw new WorldError(T.server.si.portraitSettled);
   return { line: choice === "return" ? SI_LINES.portraitReturn : SI_LINES.portraitKeep };
 }
 

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { T } from "@/i18n";
 import { DESK_CODE_WRONG } from "@/lib/deskCode";
 import { DESK_CODE_TRIES } from "@/lib/rules";
 import { isBanned } from "@/lib/server/account";
@@ -20,7 +21,7 @@ export const POST = route(async (req) => {
   const body = await readJson(req);
   if (!allow(`deskcode:${clientIp(req)}`, DESK_CODE_TRIES, 10 * 60_000)) {
     note("codeRefused", "desk-ip");
-    throw new HttpError(429, "试得太频繁了，过几分钟再试。");
+    throw new HttpError(429, T.server.common.triedTooOftenMinutes);
   }
   const userId = await redeemDeskCode(body.code);
   const [user] = userId ? await db.select().from(users).where(eq(users.id, userId)).limit(1) : [];

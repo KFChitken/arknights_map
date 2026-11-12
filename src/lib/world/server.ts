@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import { AGE_CHECK, ageCheckNeeded } from "../consent";
 import type { Declaration } from "../declarations";
 import type { BatchAct, Gesture } from "../friendly";
@@ -46,13 +47,13 @@ export class ServerWorld implements World {
         body: JSON.stringify({ args }),
       });
     } catch {
-      throw new WorldError("连不上服务器，检查一下网络再试。");
+      throw new WorldError(T.requests.offline);
     }
     const body = (await res.json().catch(() => null)) as { result?: T; error?: string; code?: string } | null;
-    if (res.status === 401) throw new SignInNeeded(body?.error ?? "请先登录。");
+    if (res.status === 401) throw new SignInNeeded(body?.error ?? T.requests.signIn);
     if (res.status === 428 && body?.code === AGE_CHECK) throw new AgeCheckNeeded(ageCheckNeeded());
-    if (res.status === 428) throw new ConsentNeeded(body?.error ?? "隐私说明更新了，同意以后才能继续。");
-    if (!res.ok) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    if (res.status === 428) throw new ConsentNeeded(body?.error ?? T.requests.reconsent);
+    if (!res.ok) throw new WorldError(body?.error ?? T.requests.serverTrouble);
     return body?.result as T;
   }
 
@@ -78,13 +79,13 @@ export class ServerWorld implements World {
         cache: since ? "no-store" : "no-cache",
       });
     } catch {
-      throw new WorldError("连不上服务器，检查一下网络再试。");
+      throw new WorldError(T.requests.offline);
     }
     // which notices there are now (公告): the page asks for them only when they are not the ones it holds
     heardNoticeStamp(res.headers.get("x-notices"));
     const body = (await res.json().catch(() => null)) as ((RoachFeedUpdate | VisitorFeed) & { error?: string }) | null;
-    if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
-    if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    if (res.status === 429) throw new TooBusy(body?.error ?? T.requests.busy, Number(res.headers.get("retry-after")) || 10);
+    if (!res.ok || !body) throw new WorldError(body?.error ?? T.requests.serverTrouble);
     return body;
   };
   // f=4: an area only (world/area.ts); a whole one by ETag, so the same one again costs a 304
@@ -99,15 +100,15 @@ export class ServerWorld implements World {
         heardNoticeStamp(res.headers.get("x-notices"));
         return { res, body: (await res.json().catch(() => null)) as ((AreaUpdate | VisitorFeed) & { error?: string }) | null };
       } catch {
-        throw new WorldError("连不上服务器，检查一下网络再试。");
+        throw new WorldError(T.requests.offline);
       }
     };
     let { res, body } = await ask(since ? "no-store" : "no-cache");
     // An area whole that the browser could not hand over from what it holds (a bare 304, or a copy it cannot
     // read): once more, from the server
     if (!since && (res.status === 304 || (res.ok && !body))) ({ res, body } = await ask("reload"));
-    if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
-    if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    if (res.status === 429) throw new TooBusy(body?.error ?? T.requests.busy, Number(res.headers.get("retry-after")) || 10);
+    if (!res.ok || !body) throw new WorldError(body?.error ?? T.requests.serverTrouble);
     return body;
   };
   // Exactly how many roaches there are in a view, for a map showing the overview (its roaches stand at the middle
@@ -116,14 +117,14 @@ export class ServerWorld implements World {
     const res = await fetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}`, { cache: "no-store" });
     heardNoticeStamp(res.headers.get("x-notices"));
     const body = (await res.json().catch(() => null)) as ({ n: number } | VisitorFeed | { whole: true }) | null;
-    if (!res.ok || !body) throw new WorldError("服务器出了点问题，稍后再试试。");
+    if (!res.ok || !body) throw new WorldError(T.requests.serverTrouble);
     return body;
   };
   // the spot to two places of a degree: the server counts no finer, so nothing finer is sent
   around = async (spot: LngLat, signal?: AbortSignal) => {
     const res = await fetch(`/api/around?lng=${spot.lng.toFixed(2)}&lat=${spot.lat.toFixed(2)}`, { signal, cache: "no-store" });
     const body = (await res.json().catch(() => null)) as { near: number; far: number; error?: string } | null;
-    if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
+    if (!res.ok || !body) throw new WorldError(body?.error ?? T.requests.serverTrouble);
     return { near: body.near, far: body.far };
   };
   saveProfile = (p: Profile) => this.call<Profile>("saveProfile", p);

@@ -1,10 +1,10 @@
 import type { Lang, Messages } from "./core";
 
 /**
- * Groups only the server reads (its error messages, emails and the privacy page,
- * which it renders itself): left out of what pages download.
+ * Groups only the server reads, left out of what pages download: `server`, its refusals and emails,
+ * read only in src/lib/server and src/app/api (a test holds the code to that).
  */
-export const SERVER_ONLY: readonly string[] = [];
+export const SERVER_ONLY: readonly string[] = ["server"];
 
 /** How the script that sets a page's words (src/app/i18n) begins */
 export const WORDS_PREFIX = "self.__ZP_I18N=";

@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, asc, count, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { T } from "@/i18n";
 import { metresApart, MINGHE, mingheDay, mingheRoach, queueSpots, RIDE_STOPS, SPOT_TAKEN_M, stationOf, stopOf } from "../minghe";
 import { outsideOffLimits } from "../offLimits";
 import type { LngLat } from "../types";
@@ -89,7 +90,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     });
   } catch (e) {
     // two answers to the same one of his at once: reply_to is unique, so one fails
-    if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过他了。");
+    if (replyTo && isUniqueViolation(e)) throw new WorldError(T.server.minghe.touched);
     throw e;
   }
   if (done.friend) await guideFriendMade(userId, "minghe");

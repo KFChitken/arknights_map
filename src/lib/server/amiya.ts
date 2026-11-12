@@ -1,5 +1,6 @@
 import "server-only";
 import { and, desc, eq, gte, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { T } from "@/i18n";
 import { AMIYA, amiyaRoach } from "../amiya";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { db } from "./db";
@@ -48,7 +49,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     });
   } catch (e) {
     // two answers to the same touch of hers at once: reply_to is unique, so one fails
-    if (replyTo && isUniqueViolation(e)) throw new WorldError("已经碰过 TA 了。");
+    if (replyTo && isUniqueViolation(e)) throw new WorldError(T.server.common.touched);
     throw e;
   }
   await guideTouched(userId, "amiya");
