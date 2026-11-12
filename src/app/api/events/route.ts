@@ -1,4 +1,5 @@
 import { currentUser } from "@/lib/server/auth";
+import { inLang } from "@/lib/server/http";
 import { listen } from "@/lib/server/live";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 const PING_MS = 25_000;
 
 /** Server-sent events for the signed-in player: an "inbox" event whenever something new arrives. */
-export async function GET(req: Request) {
+export const GET = inLang(async (req: Request) => {
   const user = await currentUser();
   if (!user) return new Response("请先登录。", { status: 401 });
 
@@ -49,4 +50,4 @@ export async function GET(req: Request) {
       "x-accel-buffering": "no",
     },
   });
-}
+});

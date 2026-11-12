@@ -18,7 +18,7 @@ const MAX_MEMORY = 64 * 1024 * 1024;
 
 export const HASHING_AT_ONCE = 2;
 export const WAIT_MS = 3000;
-export const BUSY = "现在登录的人有点多，过几秒再试。";
+export const busy = () => "现在登录的人有点多，过几秒再试。";
 
 /**
  * Checked against when there is no password to check (no such account, none set, paused), so every
@@ -46,7 +46,7 @@ async function inSlot<T>(work: () => Promise<T>): Promise<T> {
       const timer = setTimeout(() => {
         const i = waiting.indexOf(go);
         if (i >= 0) waiting.splice(i, 1);
-        reject(new HttpError(503, BUSY));
+        reject(new HttpError(503, busy()));
       }, WAIT_MS);
       waiting.push(go);
     });

@@ -5,7 +5,7 @@ import type { Profile } from "@/lib/profile";
 import { adminCounts } from "@/lib/server/admin";
 import { currentUser, endSession, homeUserId, renewSession, setHomeUserId, startSession } from "@/lib/server/auth";
 import { markBadgesSeen, wear } from "@/lib/server/badges";
-import { acceptPublicPlace, AGE_CHECK_NEEDED, confirmAge, mustReconsent, RECONSENT_NEEDED } from "@/lib/server/consent";
+import { acceptPublicPlace, AGE_CHECK, ageCheckNeeded, confirmAge, mustReconsent, reconsentNeeded } from "@/lib/server/consent";
 import { db } from "@/lib/server/db";
 import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
@@ -36,8 +36,8 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   // when the admin asked; blocking, reporting and leaving still do
   const agreed = () => {
     const id = uid();
-    if (user!.ageCheckAt) throw new HttpError(428, AGE_CHECK_NEEDED);
-    if (mustReconsent(user!)) throw new HttpError(428, RECONSENT_NEEDED);
+    if (user!.ageCheckAt) throw new HttpError(428, ageCheckNeeded(), AGE_CHECK);
+    if (mustReconsent(user!)) throw new HttpError(428, reconsentNeeded());
     return id;
   };
   // 暂停互动 (the admin's, or the reports' own for a new account): the map and 消息 stay open, reaching others does not

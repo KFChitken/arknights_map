@@ -1,6 +1,6 @@
 import { scryptSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { BUSY, DUMMY_HASH, HASHING_AT_ONCE, hashPassword, verifyPassword, WAIT_MS } from "./passwordHash";
+import { busy, DUMMY_HASH, HASHING_AT_ONCE, hashPassword, verifyPassword, WAIT_MS } from "./passwordHash";
 
 describe("password digests", () => {
   it("checks a password against its own digest only", async () => {
@@ -28,7 +28,7 @@ describe("password digests", () => {
   it("hashes a few at a time, and turns away one kept waiting too long", async () => {
     const many = Array.from({ length: HASHING_AT_ONCE + 1 }, () => hashPassword("roach-in-the-rain"));
     expect((await Promise.all(many)).every((h) => h.startsWith("scrypt$"))).toBe(true);
-    // a crowd too big to get through before WAIT_MS: some are turned away with BUSY
+    // a crowd too big to get through before WAIT_MS: some are turned away with busy()
     const crowd = Array.from({ length: Math.ceil((WAIT_MS / 50) * HASHING_AT_ONCE) + 30 }, () =>
       verifyPassword(DUMMY_HASH, "x").then(
         () => "ok",
@@ -36,7 +36,7 @@ describe("password digests", () => {
       ),
     );
     const said = await Promise.all(crowd);
-    expect(said).toContain(BUSY);
+    expect(said).toContain(busy());
     expect(said).toContain("ok");
   }, 30_000);
 });

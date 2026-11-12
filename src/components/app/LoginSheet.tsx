@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { finishSignup, passwordLogin, redeemDeskCode, requestCode, savePassword, verifyCode } from "@/lib/authClient";
-import { ADULT_TICK, CROSS_BORDER_TICK } from "@/lib/consent";
+import { adultTick, crossBorderTick } from "@/lib/consent";
 import { DESK_CODE_LENGTH, normalizeDeskCode } from "@/lib/deskCode";
 import { suggestEmail } from "@/lib/emailTypos";
 import { passwordProblem } from "@/lib/passwordRules";
@@ -502,7 +502,7 @@ export default function LoginSheet({
           <div className="ticks">
             <label className="check">
               <input type="checkbox" checked={adult} onChange={(e) => setAdult(e.target.checked)} />
-              <span>{ADULT_TICK}</span>
+              <span>{adultTick()}</span>
             </label>
             <label className="check">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
@@ -516,7 +516,7 @@ export default function LoginSheet({
             <label className="check">
               <input type="checkbox" checked={abroad} onChange={(e) => setAbroad(e.target.checked)} />
               <span>
-                {CROSS_BORDER_TICK}{" "}
+                {crossBorderTick()}{" "}
                 <a href="/privacy#abroad" target="_blank" rel="noreferrer">
                   详情
                 </a>

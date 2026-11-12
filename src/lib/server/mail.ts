@@ -64,22 +64,25 @@ export async function sendWith(
 
 const send = (mail: Parameters<typeof transport.sendMail>[0]) => sendWith(transport, mail);
 
+/** The sign-in code's email, for a code that works minutes more */
+export function loginCodeMail(code: string, minutes: number) {
+  const codeIs = `你的${SITE_NAME}登录验证码是：`;
+  const valid = `${minutes} 分钟内有效。如果不是你本人在登录，忽略这封邮件就好。`;
+  return {
+    subject: `${code} 是你的${SITE_NAME}登录验证码`,
+    text: [`你的登录验证码是：${code}`, "", valid].join("\n"),
+    html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">
+<p>${codeIs}</p>
+<p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>
+<p style="color:#6b7280">${valid}</p>
+</div>`,
+  };
+}
+
 /** A code that works until expiresAt (an earlier code sent again has less left) */
 export async function sendLoginCode(to: string, code: string, expiresAt: Date) {
   const minutes = Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 60_000));
-  await send({
-    from: MAIL_FROM,
-    to,
-    subject: `${code} 是你的${SITE_NAME}登录验证码`,
-    text: [`你的登录验证码是：${code}`, "", `${minutes} 分钟内有效。如果不是你本人在登录，忽略这封邮件就好。`].join(
-      "\n",
-    ),
-    html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">
-<p>你的${SITE_NAME}登录验证码是：</p>
-<p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>
-<p style="color:#6b7280">${minutes} 分钟内有效。如果不是你本人在登录，忽略这封邮件就好。</p>
-</div>`,
-  });
+  await send({ from: MAIL_FROM, to, ...loginCodeMail(code, minutes) });
 }
 
 /** A plain note to the admins; it never carries anyone's personal details. */

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/geo/route";
 import { fromGcj } from "../coords";
-import { amapSearchToday, forgetGeo, GEO_BUSY, GEO_PER_ADDRESS, geoSearch, NOMINATIM_WAITING, PHOTON_FAILS, PHOTON_REST_MS } from "./geo";
+import { amapSearchToday, forgetGeo, geoBusy, GEO_PER_ADDRESS, geoSearch, NOMINATIM_WAITING, PHOTON_FAILS, PHOTON_REST_MS } from "./geo";
 import { inMainland } from "./region";
 import { forgetSignals, recent } from "./signals";
 
@@ -193,7 +193,7 @@ describe("place search through our server (/api/geo)", () => {
   it(`takes ${GEO_PER_ADDRESS} asks a minute from one address`, async () => {
     const s = services();
     for (let i = 0; i < GEO_PER_ADDRESS; i++) await geoSearch("202.96.128.90", { kind: "suggest", q: `地点${i}` }, s.fetcher);
-    await expect(geoSearch("202.96.128.90", { kind: "suggest", q: "再一个" }, s.fetcher)).rejects.toMatchObject({ status: 429, message: GEO_BUSY });
+    await expect(geoSearch("202.96.128.90", { kind: "suggest", q: "再一个" }, s.fetcher)).rejects.toMatchObject({ status: 429, message: geoBusy() });
     // another address is not held up
     await expect(geoSearch("202.96.128.91", { kind: "suggest", q: "再一个" }, s.fetcher)).resolves.toMatchObject({ places: [{ name: "再一个" }] });
   });

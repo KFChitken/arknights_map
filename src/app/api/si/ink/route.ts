@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clientIp } from "@/lib/server/http";
+import { clientIp, inLang } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { inkTile } from "@/lib/server/siInk";
 import { INK_TILE_ZOOM } from "@/lib/siTiles";
@@ -9,7 +9,7 @@ import { INK_TILE_ZOOM } from "@/lib/siTiles";
  * bytes, the same for everyone who asks (visitors too), kept by browsers half a minute. Only tiles near
  * 宏村 have any; a tile elsewhere is empty.
  */
-export async function GET(req: NextRequest) {
+export const GET = inLang(async (req: NextRequest) => {
   const q = req.nextUrl.searchParams;
   const z = Number(q.get("z"));
   const x = Number(q.get("x"));
@@ -31,4 +31,4 @@ export async function GET(req: NextRequest) {
     console.error(e);
     return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
   }
-}
+});

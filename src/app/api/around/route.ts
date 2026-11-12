@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clientIp } from "@/lib/server/http";
+import { clientIp, inLang } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { roachesNear } from "@/lib/server/roachFeed";
 
@@ -8,7 +8,7 @@ import { roachesNear } from "@/lib/server/roachFeed";
  * roughly (src/lib/server/nearby.ts), for a visitor who has not signed in and taps the map to see where
  * theirs would go. They get no list of roaches (src/app/api/roaches), so the server counts.
  */
-export async function GET(req: NextRequest) {
+export const GET = inLang(async (req: NextRequest) => {
   const q = req.nextUrl.searchParams;
   const lng = Number(q.get("lng"));
   const lat = Number(q.get("lat"));
@@ -25,4 +25,4 @@ export async function GET(req: NextRequest) {
     console.error(e);
     return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
   }
-}
+});

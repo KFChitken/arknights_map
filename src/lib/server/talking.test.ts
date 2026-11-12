@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/world/[op]/route";
-import { AGE_CHECK_NEEDED } from "../consent";
+import { ageCheckNeeded } from "../consent";
 import { EMPTY_PROFILE } from "../profile";
 import { db } from "./db";
 import { users, type UserRow } from "./schema";
@@ -64,8 +64,8 @@ describe("a player the admin asked to say again they are 18", () => {
   it("does nothing others see until they do, and then all of it", async () => {
     await db.update(users).set({ ageCheckAt: new Date() }).where(eq(users.id, player.id));
     await refresh();
-    expect(await call("saveProfile", EMPTY_PROFILE)).toEqual({ status: 428, error: AGE_CHECK_NEEDED });
-    expect(await call("touch", "x", true)).toEqual({ status: 428, error: AGE_CHECK_NEEDED });
+    expect(await call("saveProfile", EMPTY_PROFILE)).toEqual({ status: 428, error: ageCheckNeeded() });
+    expect(await call("touch", "x", true)).toEqual({ status: 428, error: ageCheckNeeded() });
     // reporting, blocking and appealing stay open
     for (const op of ["report", "reportRoach", "appeal"]) expect((await call(op, "x", "spam")).status, op).not.toBe(428);
 

@@ -20,9 +20,9 @@ import { note } from "./signals";
  * reach just now.
  */
 
-export const PASSWORD_WRONG = "邮箱或密码不对。没设过密码的话，用验证码登录。";
-export const NEEDS_CODE = "为了确认是你本人，先用验证码登录一次再设密码。";
-export const CURRENT_WRONG = "现在的密码不对。忘了的话，先用验证码登录一次再改。";
+export const passwordWrong = () => "邮箱或密码不对。没设过密码的话，用验证码登录。";
+export const needsCode = () => "为了确认是你本人，先用验证码登录一次再设密码。";
+export const currentWrong = () => "现在的密码不对。忘了的话，先用验证码登录一次再改。";
 /** A sign-in by emailed code this recent counts as the player themself */
 export const FRESH_MS = 30 * 60_000;
 /** Wrong tries in a row before the password pauses: 15 minutes, twice as long for every PAUSE_FROM more, a day at most */
@@ -31,7 +31,7 @@ export const PAUSE_FROM = 5;
 /** The session must be a sign-in by code moments ago; the page then offers one (needsCode) */
 export class NeedsCode extends HttpError {
   constructor() {
-    super(403, NEEDS_CODE);
+    super(403, needsCode());
   }
 }
 
@@ -78,7 +78,7 @@ export async function passwordLogin(emailIn: unknown, passwordIn: unknown, now =
   const password = String(passwordIn ?? "");
   const wrong = (why: "none" | "paused" | "wrong" | "banned") => {
     note("passwordFail", why);
-    return new HttpError(400, PASSWORD_WRONG);
+    return new HttpError(400, passwordWrong());
   };
   const [row] = email
     ? await db
@@ -158,7 +158,7 @@ export async function setPassword(
     if (!row) {
       if (!firstWithoutCode(user.email)) throw new NeedsCode();
     } else if (typeof current !== "string" || !current || !(await verifyPassword(row.hash, current))) {
-      throw new HttpError(400, CURRENT_WRONG);
+      throw new HttpError(400, currentWrong());
     }
   }
   await store(user.id, password, now);

@@ -7,11 +7,15 @@ import { SESSION_COOKIE } from "./auth";
 import { inMainland } from "./region";
 import { errorCode, note } from "./signals";
 
-/** An error whose message is safe to show to the player. */
+/**
+ * An error whose message is safe to show to the player. A page that must tell one refusal from
+ * another goes by its code, never by its words, which are in the player's language.
+ */
 export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -30,7 +34,7 @@ export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
         if (req.method !== "GET" && req.method !== "HEAD") checkOrigin(req);
         return await fn(req, ctx);
       } catch (e) {
-        if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+        if (e instanceof HttpError) return NextResponse.json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, { status: e.status });
         if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
         console.error(e);
         note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
@@ -39,17 +43,28 @@ export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
     });
 }
 
+/** A handler that does not go through route(), answering in the request's language all the same */
+export function inLang<A extends unknown[]>(fn: (req: NextRequest, ...rest: A) => Promise<Response>) {
+  return (req: NextRequest, ...rest: A) => withLang(requestLang(req), () => fn(req, ...rest));
+}
+
 /**
  * The language an API request is answered in (src/i18n/lang.ts): Chinese while English is
  * not offered, without reading the request.
  */
-export function requestLang(req: NextRequest): Lang {
+export function requestLang(req: Request): Lang {
   if (!ENGLISH_ON) return "zh";
+  const cookies = new Map(
+    (req.headers.get("cookie") ?? "").split(";").map((c) => {
+      const at = c.indexOf("=");
+      return [c.slice(0, at).trim(), c.slice(at + 1).trim()] as const;
+    }),
+  );
   return pickLang({
-    cookie: req.cookies.get(LANG_COOKIE)?.value,
+    cookie: cookies.get(LANG_COOKIE),
     acceptLanguage: req.headers.get("accept-language"),
-    signedIn: req.cookies.has(SESSION_COOKIE),
-    mainland: inMainland(clientIp(req)),
+    signedIn: cookies.has(SESSION_COOKIE),
+    mainland: inMainland(ipFrom(req.headers)),
   });
 }
 

@@ -57,7 +57,7 @@ export async function banAccount(user: UserRow, reason: string | null = null) {
   await deleteAccount(user);
 }
 
-export const BANNED = "这个邮箱的账号被封了，不能再登录。";
+export const banned = () => "这个邮箱的账号被封了，不能再登录。";
 
 /** The ban of a mailbox, however it is written: when and why (the first, if more than one form was banned), or null */
 export async function banOf(email: string) {

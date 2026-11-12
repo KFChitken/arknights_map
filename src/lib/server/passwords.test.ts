@@ -3,16 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { banAccount, deleteAccount } from "./account";
 import { db } from "./db";
 import {
-  CURRENT_WRONG,
+  currentWrong,
   firstPassword,
   firstWithoutCode,
   freshFor,
   FRESH_MS,
   NeedsCode,
-  PASSWORD_WRONG,
   passwordLogin,
   passwordNudge,
   passwordSetAt,
+  passwordWrong,
   removePassword,
   setPassword,
   type SessionRow,
@@ -63,10 +63,10 @@ describe("signing in with a password", () => {
     await player("nopw@example.com");
     await firstPassword({ id: u.id, email: u.email! }, PW);
     expect(await passwordLogin(" P@Example.com ", PW)).toBe(u.id);
-    expect(await said(passwordLogin("p@example.com", "not-the-one"))).toBe(PASSWORD_WRONG);
-    expect(await said(passwordLogin("nopw@example.com", PW))).toBe(PASSWORD_WRONG);
-    expect(await said(passwordLogin("nobody@example.com", PW))).toBe(PASSWORD_WRONG);
-    expect(await said(passwordLogin("", PW))).toBe(PASSWORD_WRONG);
+    expect(await said(passwordLogin("p@example.com", "not-the-one"))).toBe(passwordWrong());
+    expect(await said(passwordLogin("nopw@example.com", PW))).toBe(passwordWrong());
+    expect(await said(passwordLogin("nobody@example.com", PW))).toBe(passwordWrong());
+    expect(await said(passwordLogin("", PW))).toBe(passwordWrong());
   }, 20_000);
 
   it("pauses from the fifth wrong try in a row, even for the right one, and a right one after starts the count again", async () => {
@@ -80,7 +80,7 @@ describe("signing in with a password", () => {
     expect(until - now).toBeGreaterThan(14 * MINUTE);
     expect(until - now).toBeLessThan(16 * MINUTE);
     // paused: the right one too
-    expect(await said(passwordLogin("p@example.com", PW, now + MINUTE))).toBe(PASSWORD_WRONG);
+    expect(await said(passwordLogin("p@example.com", PW, now + MINUTE))).toBe(passwordWrong());
     // after the pause
     expect(await passwordLogin("p@example.com", PW, now + 16 * MINUTE)).toBe(u.id);
     expect(await pausedUntil(u.id)).toBeNull();
@@ -110,8 +110,8 @@ describe("signing in with a password", () => {
     await firstPassword({ id: gone.id, email: gone.email! }, PW);
     await banAccount(banned, "spam");
     await deleteAccount(gone);
-    expect(await said(passwordLogin("banned@example.com", PW))).toBe(PASSWORD_WRONG);
-    expect(await said(passwordLogin("gone@example.com", PW))).toBe(PASSWORD_WRONG);
+    expect(await said(passwordLogin("banned@example.com", PW))).toBe(passwordWrong());
+    expect(await said(passwordLogin("gone@example.com", PW))).toBe(passwordWrong());
     expect(await db.select().from(userPasswords)).toHaveLength(0);
   }, 20_000);
 });
@@ -137,7 +137,7 @@ describe("setting, changing and taking away a password", () => {
     const here = await session(u.id, "here", "password", 60);
     await session(u.id, "phone", "code", 600);
     await session(u.id, "laptop", "desk", 6000);
-    expect(await said(setPassword(u, here, "a-new-one-please", "not-the-one"))).toBe(CURRENT_WRONG);
+    expect(await said(setPassword(u, here, "a-new-one-please", "not-the-one"))).toBe(currentWrong());
     expect(await setPassword(u, here, "a-new-one-please", PW)).toEqual({ changed: true });
     expect((await db.select({ id: sessions.id }).from(sessions)).map((s) => s.id)).toEqual(["here"]);
     expect(await passwordLogin("p@example.com", "a-new-one-please")).toBe(u.id);
@@ -165,7 +165,7 @@ describe("setting, changing and taking away a password", () => {
     expect(await passwordSetAt(u.id)).not.toBeNull();
     await removePassword(u.id, here, PW);
     expect(await passwordSetAt(u.id)).toBeNull();
-    expect(await said(passwordLogin("p@example.com", PW))).toBe(PASSWORD_WRONG);
+    expect(await said(passwordLogin("p@example.com", PW))).toBe(passwordWrong());
     // forgotten: a fresh sign-in by code is enough
     await firstPassword({ id: u.id, email: u.email! }, PW);
     await removePassword(u.id, await session(u.id, "fresh", "code", 3), undefined);
@@ -181,8 +181,8 @@ describe("setting, changing and taking away a password", () => {
     // nothing else of the player's was signed out by a first password
     expect(await db.select().from(sessions)).toHaveLength(2);
     // a change takes the current one, as before
-    expect(await said(setPassword(u, stale, "a-new-one-please", undefined))).toBe(CURRENT_WRONG);
-    expect(await said(setPassword(u, stale, "a-new-one-please", "not-the-one"))).toBe(CURRENT_WRONG);
+    expect(await said(setPassword(u, stale, "a-new-one-please", undefined))).toBe(currentWrong());
+    expect(await said(setPassword(u, stale, "a-new-one-please", "not-the-one"))).toBe(currentWrong());
     expect(await passwordLogin("doctor@gmail.com", PW)).toBe(u.id);
     expect(await setPassword(u, stale, "a-new-one-please", PW)).toEqual({ changed: true });
     expect((await db.select({ id: sessions.id }).from(sessions)).map((s) => s.id)).toEqual(["stale"]);

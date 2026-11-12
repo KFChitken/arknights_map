@@ -1,4 +1,4 @@
-import { AGE_CHECK_NEEDED } from "../consent";
+import { AGE_CHECK, ageCheckNeeded } from "../consent";
 import type { Declaration } from "../declarations";
 import type { BatchAct, Gesture } from "../friendly";
 import type { Game } from "../games";
@@ -48,9 +48,9 @@ export class ServerWorld implements World {
     } catch {
       throw new WorldError("连不上服务器，检查一下网络再试。");
     }
-    const body = (await res.json().catch(() => null)) as { result?: T; error?: string } | null;
+    const body = (await res.json().catch(() => null)) as { result?: T; error?: string; code?: string } | null;
     if (res.status === 401) throw new SignInNeeded(body?.error ?? "请先登录。");
-    if (res.status === 428 && body?.error === AGE_CHECK_NEEDED) throw new AgeCheckNeeded(AGE_CHECK_NEEDED);
+    if (res.status === 428 && body?.code === AGE_CHECK) throw new AgeCheckNeeded(ageCheckNeeded());
     if (res.status === 428) throw new ConsentNeeded(body?.error ?? "隐私说明更新了，同意以后才能继续。");
     if (!res.ok) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
     return body?.result as T;

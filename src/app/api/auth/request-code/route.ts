@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { BANNED, isBanned } from "@/lib/server/account";
+import { banned, isBanned } from "@/lib/server/account";
 import { DEV_MAILBOX_PORT } from "@/lib/server/env";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
 import { issueLoginCode, withdrawLoginCode } from "@/lib/server/loginCodes";
@@ -16,7 +16,7 @@ export const POST = route(async (req) => {
     .trim()
     .toLowerCase();
   if (!EMAIL.test(email)) throw new HttpError(400, "邮箱格式不对。");
-  if (await isBanned(email)) throw new HttpError(403, BANNED);
+  if (await isBanned(email)) throw new HttpError(403, banned());
   const ip = clientIp(req);
   if (!allow(`code:${ip}`, 10, 10 * 60_000)) {
     note("codeRefused", "ip-10min");

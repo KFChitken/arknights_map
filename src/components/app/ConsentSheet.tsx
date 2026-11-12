@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ADULT_TICK, CROSS_BORDER_TICK, PUBLIC_PLACE_NOTE, PUBLIC_PLACE_TICK } from "@/lib/consent";
+import { adultTick, crossBorderTick, publicPlaceNote, publicPlaceTick } from "@/lib/consent";
 import { MIN_SIGNUP_AGE, SITE_NAME } from "@/lib/rules";
 import Sheet from "./Sheet";
 
@@ -77,12 +77,12 @@ export default function ConsentSheet({
       <div className="ticks">
         <label className="check">
           <input type="checkbox" checked={adult} onChange={(e) => setAdult(e.target.checked)} />
-          <span>{ADULT_TICK}</span>
+          <span>{adultTick()}</span>
         </label>
         <label className="check">
           <input type="checkbox" checked={abroad} onChange={(e) => setAbroad(e.target.checked)} />
           <span>
-            {CROSS_BORDER_TICK}{" "}
+            {crossBorderTick()}{" "}
             <a href="/privacy#abroad" target="_blank" rel="noreferrer">
               详情
             </a>
@@ -90,10 +90,10 @@ export default function ConsentSheet({
         </label>
         <label className="check">
           <input type="checkbox" checked={place} onChange={(e) => setPlace(e.target.checked)} />
-          <span>{PUBLIC_PLACE_TICK}</span>
+          <span>{publicPlaceTick()}</span>
         </label>
       </div>
-      <p className="hint">{PUBLIC_PLACE_NOTE}</p>
+      <p className="hint">{publicPlaceNote()}</p>
       <div className="consent-actions">
         <button className="primary wide" disabled={busy || !adult || !abroad || !place} onClick={agree}>
           {busy ? "保存中…" : "同意并继续"}
@@ -116,7 +116,7 @@ export default function ConsentSheet({
 export function PlaceConfirm({ consent, onConfirm, onRethink }: { consent: boolean; onConfirm: () => void; onRethink: () => void }) {
   return (
     <Sheet title={consent ? "放下之前" : "放下蟑螂"} onClose={onRethink}>
-      <p className="consent-place">{consent ? PUBLIC_PLACE_NOTE : "把蟑螂放在刚才选的地方吗？"}</p>
+      <p className="consent-place">{consent ? publicPlaceNote() : "把蟑螂放在刚才选的地方吗？"}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onConfirm}>
           确认

@@ -34,7 +34,7 @@ export const PHOTON_FAILS = 5;
 export const PHOTON_REST_MS = 15 * 60_000;
 /** Nominatim asks waiting their turn (one a second for the whole site, its rule) before the next is turned away */
 export const NOMINATIM_WAITING = 5;
-export const GEO_BUSY = "搜的人有点多，过几秒再试，或者直接点地图。";
+export const geoBusy = () => "搜的人有点多，过几秒再试，或者直接点地图。";
 
 const AGENT = "zhoupmap.com place search (+https://zhoupmap.com)";
 const TIMEOUT_MS = 5000;
@@ -82,7 +82,7 @@ export function amapSearchToday(now = Date.now()) {
 }
 
 export async function geoSearch(address: string, ask: GeoAsk, fetcher: typeof fetch = fetch): Promise<PlaceResults> {
-  if (!allow(`geo:${address}`, GEO_PER_ADDRESS, 60_000)) throw new HttpError(429, GEO_BUSY);
+  if (!allow(`geo:${address}`, GEO_PER_ADDRESS, 60_000)) throw new HttpError(429, geoBusy());
   const near = ask.near ? `${ask.near.lng.toFixed(2)},${ask.near.lat.toFixed(2)},${Math.round(ask.near.zoom)}` : "";
   const key = `${ask.kind}|${ask.q}|${near}`;
   const hit = keptFor(key);
@@ -92,7 +92,7 @@ export async function geoSearch(address: string, ask: GeoAsk, fetcher: typeof fe
   if (ask.kind === "suggest") {
     // resting: no suggestions, and nothing kept, so the words are asked again once Photon is back
     if (Date.now() < photonRestUntil) return { places: [], osm: false };
-    if (!allow("geo-photon", PHOTON_PER_MINUTE, 60_000)) throw new HttpError(429, GEO_BUSY);
+    if (!allow("geo-photon", PHOTON_PER_MINUTE, 60_000)) throw new HttpError(429, geoBusy());
     try {
       // through the second server on the live site (the tests' own fetchers are asked as they are)
       const viaPhoton = photonVia() && fetcher === fetch ? fetchVia(photonVia()) : fetcher;
@@ -222,7 +222,7 @@ function amapPlace(p: AmapPlace, name: string, details: unknown[]): Place[] {
 
 /** Wait for Nominatim's next free second; with too many already waiting, the ask is turned away. */
 async function nominatimTurn() {
-  if (waiting >= NOMINATIM_WAITING) throw new HttpError(429, GEO_BUSY);
+  if (waiting >= NOMINATIM_WAITING) throw new HttpError(429, geoBusy());
   waiting++;
   try {
     const now = Date.now();

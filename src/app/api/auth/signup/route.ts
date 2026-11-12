@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { BANNED, isBanned } from "@/lib/server/account";
+import { banned, isBanned } from "@/lib/server/account";
 import { clearSignupProof, readSignupProof, startSession } from "@/lib/server/auth";
 import { signedUp } from "@/lib/server/badges";
 import { requireTicks } from "@/lib/server/consent";
@@ -19,7 +19,7 @@ export const POST = route(async (req) => {
   const email = await readSignupProof();
   if (!email) throw new HttpError(400, "验证已经过期了，请重新获取验证码。");
   // a code sent just before a ban must not open a new account
-  if (await isBanned(email)) throw new HttpError(403, BANNED);
+  if (await isBanned(email)) throw new HttpError(403, banned());
   const body = await readJson(req);
   requireTicks(body, ["adult", "acceptPolicy", "acceptCrossBorder"]);
   // a password that will not do turns the sign-up back before any account is made
