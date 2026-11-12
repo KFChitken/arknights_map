@@ -59,6 +59,24 @@ beforeEach(async () => {
   sent = [];
 });
 
+describe("passwords tried (passwords check)", () => {
+  it("calls it guessing only for no account or a wrong password, and tells of players without one apart", async () => {
+    const now = Date.now();
+    forgetSignals(now - 2 * 60 * 60_000);
+    note("passwordFail", "noPassword", now - 60_000, 400);
+    note("passwordFail", "wrong", now - 60_000, 30);
+    let found = await check("passwords").run(now, () => false);
+    expect(found.map((f) => [f.key, f.level])).toEqual([["noPassword", "daily"]]);
+    expect(found[0].detail).toContain("400");
+    note("passwordFail", "noAccount", now - 60_000, 290);
+    found = await check("passwords").run(now, () => false);
+    expect(found.map((f) => f.key)).toEqual(["guessing", "noPassword"]);
+    expect(found[0].detail).toContain("320");
+    expect(found[0].detail).toContain("没有这个账号");
+    expect(found[0].detail).not.toContain("没设过密码");
+  });
+});
+
 describe("the site's own checks", () => {
   it("emails an urgent problem once, says when it is over, and says nothing when it is back within the hour", async () => {
     let problems: Finding[] = [{ key: "disk", level: "urgent", title: "硬盘快满了", detail: "已用 92%，还剩 4.0 GB。", advice: "清掉旧镜像。" }];

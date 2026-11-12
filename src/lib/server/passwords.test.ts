@@ -18,6 +18,7 @@ import {
   type SessionRow,
 } from "./passwords";
 import { sessions, userPasswords, users } from "./schema";
+import { forgetSignals, recent } from "./signals";
 import { me } from "./world";
 
 // Gmail slow to take our mail, as on the live site since 2026-11-10 (emptied in place to say it no longer is),
@@ -67,6 +68,17 @@ describe("signing in with a password", () => {
     expect(await said(passwordLogin("nopw@example.com", PW))).toBe(passwordWrong());
     expect(await said(passwordLogin("nobody@example.com", PW))).toBe(passwordWrong());
     expect(await said(passwordLogin("", PW))).toBe(passwordWrong());
+  }, 20_000);
+
+  it("tells only the site's checks which way it failed: no account, an account without a password, a wrong one", async () => {
+    const u = await player("p@example.com");
+    await player("nopw@example.com");
+    await firstPassword({ id: u.id, email: u.email! }, PW);
+    forgetSignals();
+    for (const [email, pw] of [["nobody@example.com", PW], ["nopw@example.com", PW], ["p@example.com", "not-the-one"], ["", PW]]) {
+      expect(await said(passwordLogin(email, pw))).toBe(passwordWrong());
+    }
+    expect(recent("passwordFail", 60_000).map((s) => s.code)).toEqual(["noAccount", "noPassword", "wrong", "noAccount"]);
   }, 20_000);
 
   it("pauses from the fifth wrong try in a row, even for the right one, and a right one after starts the count again", async () => {

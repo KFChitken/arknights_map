@@ -468,26 +468,44 @@ async function checkBusy(now: number): Promise<Finding[]> {
 }
 
 const PASSWORD_FAILS: Record<string, string> = {
+  noAccount: "没有这个账号",
+  noPassword: "有账号但没设过密码",
+  // as counted before the two were told apart
   none: "没有这个账号或没设密码",
   paused: "暂停中还在试",
   wrong: "密码不对",
   banned: "被封的账号",
 };
+/** What can be someone trying passwords from elsewhere; not a player who never set one, nor a banned one */
+const GUESSES = new Set(["noAccount", "none", "paused", "wrong"]);
 
 /** Sign-ins with a password failing (src/lib/server/passwords.ts): over 300 in an hour for the digest, over 3,000 at once */
 async function checkPasswords(now: number): Promise<Finding[]> {
   const list = recent("passwordFail", HOUR, now);
-  if (list.length <= 300) return [];
-  return [
-    {
+  const guesses = list.filter((s) => GUESSES.has(s.code));
+  const noPassword = list.filter((s) => s.code === "noPassword").length;
+  const found: Finding[] = [];
+  if (guesses.length > 300) {
+    found.push({
       key: "guessing",
-      level: list.length > 3000 ? "urgent" : "daily",
+      level: guesses.length > 3000 ? "urgent" : "daily",
       title: "有人在大量试密码",
-      detail: `一小时内用密码登录失败 ${list.length} 次（${tally(list.map((s) => s.code), (c) => PASSWORD_FAILS[c] ?? c)}）。`,
+      detail: `一小时内用密码登录失败 ${guesses.length} 次（${tally(guesses.map((s) => s.code), (c) => PASSWORD_FAILS[c] ?? c)}）。`,
       advice: "每个网络 10 分钟最多试 20 次，一个账号错 5 次就暂停一阵；一直这样多，可能有人拿着别处泄露的密码在试。",
-      worst: { text: `一小时最多 ${list.length} 次`, score: list.length },
-    },
-  ];
+      worst: { text: `一小时最多 ${guesses.length} 次`, score: guesses.length },
+    });
+  }
+  if (noPassword > 100) {
+    found.push({
+      key: "noPassword",
+      level: "daily",
+      title: "不少玩家没设过密码却点了「密码」登录",
+      detail: `一小时内 ${noPassword} 次：账号在，但从没设过密码。`,
+      advice: "不是有人在试密码，多半是验证码来得慢，玩家点了「密码」。他们看到的提示是「没设过密码的话，用验证码登录」；一直这样多，可以在「密码」那栏里先写明只有设过密码的才能用。",
+      worst: { text: `一小时最多 ${noPassword} 次`, score: noPassword },
+    });
+  }
+  return found;
 }
 
 const MAPS: Record<string, string> = { amap: "高德", osm: "OSM 底图", overseas: "我们自己的海外底图" };

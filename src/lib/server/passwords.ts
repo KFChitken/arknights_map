@@ -72,12 +72,14 @@ const normalEmail = (email: unknown) =>
 /**
  * The account an email and password sign in. Every way it can fail (no such account, no password,
  * paused, wrong, banned) says the same, after the same work, so none tells whether an email has an
- * account or a password.
+ * account or a password. Only the site's own checks (watch.ts) are told which it was: someone without an
+ * account (noAccount) or a wrong password, many of them, can be someone trying a list from elsewhere; a
+ * player who never set one (noPassword) is someone who tapped 「密码」 instead of waiting for a code.
  */
 export async function passwordLogin(emailIn: unknown, passwordIn: unknown, now = Date.now()): Promise<string> {
   const email = normalEmail(emailIn);
   const password = String(passwordIn ?? "");
-  const wrong = (why: "none" | "paused" | "wrong" | "banned") => {
+  const wrong = (why: "noAccount" | "noPassword" | "paused" | "wrong" | "banned") => {
     note("passwordFail", why);
     return new HttpError(400, passwordWrong());
   };
@@ -85,13 +87,13 @@ export async function passwordLogin(emailIn: unknown, passwordIn: unknown, now =
     ? await db
         .select({ id: users.id, hash: userPasswords.hash, pausedUntil: userPasswords.pausedUntil })
         .from(users)
-        .innerJoin(userPasswords, eq(userPasswords.userId, users.id))
+        .leftJoin(userPasswords, eq(userPasswords.userId, users.id))
         .where(eq(users.email, email))
         .limit(1)
     : [];
-  if (!row) {
+  if (!row || !row.hash) {
     await verifyPassword(DUMMY_HASH, password);
-    throw wrong("none");
+    throw wrong(row ? "noPassword" : "noAccount");
   }
   if (row.pausedUntil && row.pausedUntil.getTime() > now) {
     await verifyPassword(DUMMY_HASH, password);
