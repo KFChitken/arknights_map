@@ -3,13 +3,17 @@ import { RESERVOIR, RIVER } from "./siWater";
 
 /**
  * Where each ink roach lies outside the village once its half day at 缘缘庄 is over (src/lib/siInn.ts):
- * a home of its own, by its number, the same for everyone. Homes are on a 3 m grid between the spiral's
- * rings, never within 8 m of the queue's three lanes, nor in or right beside the water (南湖, 月沼, the
- * river 西溪, the reservoir 奇墅湖), and fill outwards from the village: the higher the number, the further
- * out. Working out the grid takes a moment, so the server does it once (the page is told its own one's home).
+ * a home of its own, by its number, the same for everyone. Homes are one to a cell of an 8 m grid, each
+ * nudged off its cell's middle by a fixed amount of its own, so they lie scattered, at least 5 m apart. They
+ * are between the spiral's rings, never within 8 m of the queue's three lanes, nor in or right beside the
+ * water (南湖, 月沼, the river 西溪, the reservoir 奇墅湖), and fill outwards from the village: the higher the
+ * number, the further out. Working out the grid takes a moment, so the server does it once (the page is told
+ * its own one's home).
  */
 
-const GRID_M = 3;
+const GRID_M = 8;
+/** A home is nudged off its cell's middle by up to this much east or west, and as much north or south */
+const NUDGE_M = 1.5;
 /** Kept this far (along the radius) from a ring's middle lane: 8 m from its outer lane, 3 m off it */
 const RING_CLEAR_M = 11;
 
@@ -18,7 +22,9 @@ const WATER = [LAKE, MOON_POND, RESERVOIR, RIVER].map((pts) => pts.map(([lng, la
 
 /**
  * Which cells of a grid (n cells each way from the middle, GRID_M apart) are water or within a cell of it:
- * each outline filled row by row where its edges cross, then widened by a cell all round
+ * each outline filled row by row where its edges cross, then widened by a cell all round. Told by the cell's
+ * middle, before its home is nudged: a cell is far wider than a nudge, so homes keep well clear (over 7 m from
+ * the water for the first 250,000)
  */
 function waterMask(n: number) {
   const size = 2 * n + 1;
@@ -55,35 +61,57 @@ function waterMask(n: number) {
   return near;
 }
 
+/** How far the home in the cell i east, j north of the middle is nudged off it: fixed by the cell alone */
+function nudge(i: number, j: number): [number, number] {
+  let a = (Math.imul(i, 0x9e3779b1) ^ Math.imul(j, 0x85ebca77) ^ 20261112) >>> 0;
+  const rand = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return [(rand() * 2 - 1) * NUDGE_M, (rand() * 2 - 1) * NUDGE_M];
+}
+
 let homes: Float32Array = new Float32Array(0);
 let reachM = 0;
 
-/** Every home within `radius` metres of the middle, nearest first (ties by direction), in a few hundred ms */
+/**
+ * Every home within `radius` metres of the middle, nearest first, in a few hundred ms. How far out it is, and how
+ * clear of the rings, are taken where the home lies, nudge and all. Two as far out as each other keep the same
+ * order (the southern row first, then the western) at any radius, so a bigger grid keeps every home the smaller
+ * one had, by its number.
+ */
 function build(radius: number) {
-  const n = Math.ceil(radius / GRID_M);
+  const n = Math.ceil((radius + NUDGE_M * Math.SQRT2) / GRID_M);
   const size = 2 * n + 1;
   const wet = waterMask(n);
-  // sorted by one number each: distance (to 0.1 mm) and direction, then the cell's index in the low 22 bits
+  // sorted by one number each: distance (to 0.1 mm), then the cell's index in the low 22 bits
   const keys: number[] = [];
   const LOW = 2 ** 22;
   for (let j = -n; j <= n; j++) {
     for (let i = -n; i <= n; i++) {
-      const x = i * GRID_M;
-      const y = j * GRID_M;
+      if (wet[(j + n) * size + (i + n)]) continue;
+      const [dx, dy] = nudge(i, j);
+      const x = i * GRID_M + dx;
+      const y = j * GRID_M + dy;
       const d = Math.hypot(x, y);
-      if (d > radius || wet[(j + n) * size + (i + n)]) continue;
+      if (d > radius) continue;
       const s = fromSpiral(x, y);
       if (s.inside || s.gap < RING_CLEAR_M) continue;
-      const turn = (Math.atan2(y, x) + Math.PI) / (2 * Math.PI);
-      keys.push(Math.round(d * 1e4 + turn * 9) * LOW + ((j + n) * size + (i + n)));
+      keys.push(Math.round(d * 1e4) * LOW + ((j + n) * size + (i + n)));
     }
   }
   const sorted = Float64Array.from(keys).sort();
   const out = new Float32Array(sorted.length * 2);
   for (let k = 0; k < sorted.length; k++) {
     const cell = sorted[k] % LOW;
-    out[k * 2] = ((cell % size) - n) * GRID_M;
-    out[k * 2 + 1] = (Math.floor(cell / size) - n) * GRID_M;
+    const i = (cell % size) - n;
+    const j = Math.floor(cell / size) - n;
+    const [dx, dy] = nudge(i, j);
+    out[k * 2] = i * GRID_M + dx;
+    out[k * 2 + 1] = j * GRID_M + dy;
   }
   homes = out;
   reachM = radius;

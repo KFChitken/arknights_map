@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { homeSpot } from "./siHomes";
 import { RESERVOIR, RIVER } from "./siWater";
 import {
@@ -157,8 +157,8 @@ describe("the homes outside the village", () => {
   const water = [LAKE, MOON_POND, RESERVOIR, RIVER].map((pts) => pts.map(([lng, lat]) => toXY({ lng, lat })));
 
   it("fills outwards from the village, one home each, the same every time", () => {
-    // (stored as 32-bit floats: as far out as the one before, to a hair)
-    for (let i = 1; i < COUNT; i++) expect(Math.hypot(homes[i].x, homes[i].y)).toBeGreaterThan(Math.hypot(homes[i - 1].x, homes[i - 1].y) - 1e-4);
+    // (sorted to a tenth of a millimetre, stored as 32-bit floats: as far out as the one before, to a millimetre)
+    for (let i = 1; i < COUNT; i++) expect(Math.hypot(homes[i].x, homes[i].y)).toBeGreaterThan(Math.hypot(homes[i - 1].x, homes[i - 1].y) - 1e-3);
     expect(new Set(homes.map((h) => `${h.x},${h.y}`)).size).toBe(COUNT);
     expect(homeSpot(12345)).toEqual(homes[12344]);
     expect(homes.every((h, i) => h.left === brushOf(i + 1).headLeft)).toBe(true);
@@ -180,8 +180,49 @@ describe("the homes outside the village", () => {
       for (const ring of water) shore = Math.min(shore, distanceTo(h.x, h.y, ring));
       if (Math.hypot(h.x, h.y) < SPIRAL_R0 + 60) for (const r of route) road = Math.min(road, apart(h, r));
     }
-    expect(shore).toBeGreaterThan(1);
+    expect(shore).toBeGreaterThan(3);
     expect(road).toBeGreaterThanOrEqual(8);
+  });
+
+  it("lies scattered, each at least 5 m from any other, nudged off an 8 m grid by up to 1.5 m each way", () => {
+    // the first 20,000, each against the others in the 10 m cells round it (any closer than 10 m are among them)
+    const FIRST = 20_000;
+    const cells = new Map<string, number[]>();
+    const key = (x: number, y: number) => `${Math.floor(x / 10)},${Math.floor(y / 10)}`;
+    for (let k = 0; k < FIRST; k++) cells.set(key(homes[k].x, homes[k].y), [...(cells.get(key(homes[k].x, homes[k].y)) ?? []), k]);
+    let closest = Infinity;
+    for (let k = 0; k < FIRST; k++) {
+      const h = homes[k];
+      const [cx, cy] = [Math.floor(h.x / 10), Math.floor(h.y / 10)];
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++) for (const m of cells.get(`${cx + dx},${cy + dy}`) ?? []) if (m !== k) closest = Math.min(closest, apart(h, homes[m]));
+    }
+    expect(closest).toBeGreaterThanOrEqual(5);
+    // off their cells' middles, each its own way, never by more than 1.5 m
+    const off = homes.slice(0, FIRST).flatMap((h) => [h.x - 8 * Math.round(h.x / 8), h.y - 8 * Math.round(h.y / 8)]);
+    expect(Math.max(...off.map(Math.abs))).toBeLessThanOrEqual(1.5 + 1e-3);
+    const mean = off.reduce((a, b) => a + b, 0) / off.length;
+    const spread = Math.sqrt(off.reduce((a, b) => a + (b - mean) ** 2, 0) / off.length);
+    expect(Math.abs(mean)).toBeLessThan(0.05);
+    expect(spread).toBeGreaterThan(0.8);
+  });
+
+  it("works out 100,000 in well under a second, and the same homes on a grid worked out bigger", async () => {
+    vi.resetModules();
+    const fresh = await import("./siHomes");
+    const t0 = performance.now();
+    fresh.homeSpot(100_000);
+    expect(performance.now() - t0).toBeLessThan(2000);
+    // how far out they reach (the numbers 祀's plan gave): 10,000, 50,000 and 100,000 drawn
+    expect([10_000, 50_000, 100_000].map((k) => Math.round(fresh.homesReach(k)))).toEqual([672, 1249, 1686]);
+    // a grid two sizes bigger keeps every home, by its number
+    fresh.homeSpot(300_000);
+    let moved = 0;
+    for (let i = 0; i < COUNT; i++) {
+      const h = fresh.homeSpot(i + 1);
+      if (h.x !== homes[i].x || h.y !== homes[i].y) moved++;
+    }
+    expect(moved).toBe(0);
   });
 
   it("never lies within 8 m of where the queue stands on the spiral", () => {
