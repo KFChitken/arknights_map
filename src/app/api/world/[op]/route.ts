@@ -100,6 +100,19 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "siPortrait":
       result = await si.answerPortrait(uid(), args[0]);
       break;
+    // 墨小强 on the map: tapped (who may touch it, and how), and 收回 (one's own off the map)
+    case "tapInk": {
+      const id = uid();
+      ration(60);
+      result = await world.tapInk(id, args[0], args[1], args[2], args[3], args[4]);
+      break;
+    }
+    case "recallInk": {
+      const id = uid();
+      ration(10);
+      await si.recallInk(id);
+      break;
+    }
     case "acceptPublicPlace":
       await acceptPublicPlace(agreed());
       break;

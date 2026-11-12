@@ -36,6 +36,19 @@ export const MINGHE_NEAR = ROUTE.reduce((best, s, i) => (distanceKm(s.at, SI_AT)
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
+// ---- 墨小强 as one of the player's clones (src/lib/server/si.ts) ----
+
+/** touches.to_slot of a touch on an ink roach (a roach's is 0 for the main one, 1 to MAX_CLONES for its clones) */
+export const INK_SLOT = -1;
+/** How an ink roach is touched: this, then its public id (src/lib/world/types.ts InkTap) */
+export const INK_PREFIX = "ink:";
+/** Declaring from it: this among the ids of the roaches it goes out from */
+export const INK_FROM = "ink";
+/** Recalled, it does not queue again for her touches this long after, so nobody holds a room by recalling and queuing over and over */
+export const RECALL_REST_MS = 12 * HOUR;
+/** 消息 shows at most this many more declarations, sent near 缘缘庄, while your ink roach is on the map there */
+export const INK_DECLARATIONS = 20;
+
 /** Her lines, word for word as Breeze approved them; {…} are filled in by the page */
 export const SI_LINES = {
   sneaky: ["谁在戳我？……哼，偷偷摸摸的，我早就看见了。", "鬼鬼祟祟的。想碰就大大方方地碰，我又不咬人。", "偷偷碰我？……才、才不是在等你。"],
@@ -73,6 +86,10 @@ export const SI_LINES = {
   out: "住过就别赖着了，在外面躺着吧。……还想住？那、那就再碰我一下，乖乖去后面排着。",
   again: "又来了？……哼，想住就去后面排着，我可不给你插队。",
   againIn: "又是你。{room} 号房，还是住半天。……我才没记得你上回睡的哪间。",
+  // someone else's ink roach lying outside, tapped; yours drawn while your clones were five, and held; yours recalled
+  thrownOut: "住满半天还想赖着？我就把它请出去了。……被子我还给它晒着呢。才、才不是等它回来。",
+  full: "克隆体都放满五只了，墨小强挤不进来。……画我先替你收着。收回一只再来碰我，才、才不是特意等你。",
+  held: "收回去了？……行吧。想住了再来碰我，房间又跑不了。",
 };
 
 /** What she says when your stamps come to these many */

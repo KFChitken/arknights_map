@@ -807,26 +807,50 @@ export const siTouches = pgTable(
   ],
 );
 
+/** Where the map's copy of the ink roaches has read up to (src/lib/server/siInk.ts): si_inks.changed */
+export const siInksChanged = pgSequence("si_inks_changed_seq");
+
 /**
  * 墨小强: the ink roach she drew of a player the first time they touched her, one an account for good
  * (src/lib/siInn.ts). no: the how-manieth she drew, from 1 with no gaps; look: the player's look as
- * she drew it, kept when they change theirs; ticket: its latest place in her queue (si_tickets.n).
- * Closing the account leaves it on the map, nobody's.
+ * she drew it, kept when they change theirs; ticket: its latest place in her queue (si_tickets.n), none
+ * while it waits for room among the player's clones; public_id: how it is tapped and touched, never
+ * whose; recalled_at: its owner took it off the map (held, as with no ticket, till it queues again);
+ * changed: a new number from si_inks_changed_seq whenever it is drawn, recalled or queues again, always
+ * under the inn's lock, so the map's copy reads only what changed. Closing the account leaves it on the
+ * map, nobody's.
  */
-export const siInks = pgTable("si_inks", {
-  no: integer("no").primaryKey(),
-  userId: uuid("user_id")
-    .unique()
-    .references(() => users.id, { onDelete: "set null" }),
-  look: text("look").notNull(),
-  drawnAt: at("drawn_at").notNull(),
-  ticket: integer("ticket").notNull(),
-});
+export const siInks = pgTable(
+  "si_inks",
+  {
+    no: integer("no").primaryKey(),
+    userId: uuid("user_id")
+      .unique()
+      .references(() => users.id, { onDelete: "set null" }),
+    look: text("look").notNull(),
+    drawnAt: at("drawn_at").notNull(),
+    ticket: integer("ticket"),
+    publicId: uuid("public_id").notNull().unique().defaultRandom(),
+    recalledAt: at("recalled_at"),
+    changed: bigint("changed", { mode: "number" })
+      .notNull()
+      .default(sql`nextval('si_inks_changed_seq')`),
+  },
+  (t) => [
+    index("si_inks_changed_idx").on(t.changed),
+    // the held ones, which the inn's counts leave out (si.ts siState)
+    index("si_inks_held_idx")
+      .on(t.no)
+      .where(sql`${t.recalledAt} is not null or ${t.ticket} is null`),
+  ],
+);
 
 /**
  * Places in 缘缘庄's queue, from 1 with no gaps and never taken back (src/lib/server/si.ts): whose ink
  * roach (ink_no), whether it had stayed before (again), when it queued and when it gets its room, fixed
- * as the ticket is given (it leaves 12 hours later); said_in and said_out: her lines about it are written.
+ * as the ticket is given (it leaves 12 hours later); said_in and said_out: her lines about it are written
+ * (or never will be); recalled_at: its ink roach was recalled from this place or room, left empty till its
+ * half day would have been over.
  */
 export const siTickets = pgTable(
   "si_tickets",
@@ -840,6 +864,7 @@ export const siTickets = pgTable(
     checkinAt: at("checkin_at").notNull(),
     saidIn: boolean("said_in").notNull().default(false),
     saidOut: boolean("said_out").notNull().default(false),
+    recalledAt: at("recalled_at"),
   },
   (t) => [
     index("si_tickets_checkin_idx").on(t.checkinAt, t.n),
@@ -847,6 +872,8 @@ export const siTickets = pgTable(
     index("si_tickets_queued_idx").on(t.queuedAt, t.n),
     index("si_tickets_in_idx").on(t.checkinAt).where(sql`not ${t.saidIn}`),
     index("si_tickets_out_idx").on(t.checkinAt).where(sql`not ${t.saidOut}`),
+    // the places and rooms left empty (si.ts siState)
+    index("si_tickets_recalled_idx").on(t.checkinAt).where(sql`${t.recalledAt} is not null`),
   ],
 );
 

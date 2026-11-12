@@ -36,9 +36,10 @@ import {
   weekLine,
   weightSentence,
 } from "@/lib/perlica";
-import { answerLine, firstSentence, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_NAME, SI_ZOOM, siRoach } from "@/lib/si";
+import { answerLine, firstSentence, INK_FROM, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_NAME, SI_ZOOM, siRoach } from "@/lib/si";
 import { brushOf, INN_CENTER, inkNow, innNumbers, toXY } from "@/lib/siInn";
-import { variantOf } from "./map/inkArt";
+import { INK_LOOKS, variantOf } from "./map/inkArt";
+import type { InkTapped } from "./map/inkTap";
 import { FIND_ZOOM } from "./map/siLook";
 import type { SiMapData, SiMine } from "./map/types";
 import {
@@ -115,6 +116,7 @@ import {
   type Homecoming,
   type Identity,
   type InboxItem,
+  type InkTap,
   type MapRoach,
   type Me,
   type OwnRoach,
@@ -185,6 +187,7 @@ import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroSh
 import { forgetSiHere, markSiIntroShown, peekedToday, rememberPeek, SiCard, SiIntroSheet, siIntroShown } from "./app/Si";
 import { SiBookSheet } from "./app/SiBook";
 import { useSiInks, type SiView } from "./useSiInks";
+import type { InkPoint } from "@/lib/siTiles";
 import {
   forgetTalulahHere,
   hoodSaid,
@@ -233,7 +236,7 @@ import {
   type PublicNotice,
 } from "@/lib/notices";
 import { PARTY_ZOOM } from "@/lib/party";
-import { MyRoachCard, OtherRoachCard } from "./app/RoachCards";
+import { MyInkCard, MyRoachCard, OtherInkCard, OtherRoachCard } from "./app/RoachCards";
 import {
   loadProgress,
   nearestReal,
@@ -360,7 +363,8 @@ type Panel =
   /** Your 集章本 from 祀掌柜: her portrait of you first, then this round's seals */
   | { kind: "siBook" }
   | { kind: "mine" }
-  | { kind: "declare"; initial?: Template }
+  /** from: the roaches picked to begin with (墨小强's card picks it, INK_FROM) */
+  | { kind: "declare"; initial?: Template; from?: string[] }
   | { kind: "identity" }
   /** items is a snapshot taken on open, so new ones stay highlighted after they are marked seen */
   | { kind: "inbox"; notice: boolean; items: InboxItem[]; tab: InboxTab; viewed: InboxTab[] }
@@ -397,7 +401,16 @@ type Panel =
   // the newcomer tutorial's first step
   | { kind: "tutorialCard" };
 
-type Selection = { kind: "other"; roach: PublicRoach } | { kind: "mine"; roach: OwnRoach };
+type Selection =
+  | { kind: "other"; roach: PublicRoach }
+  | { kind: "mine"; roach: OwnRoach }
+  /** Someone else's ink roach at 缘缘庄, as its tile drew it; tap: what the server says of it, null till then (and for visitors) */
+  | { kind: "ink"; ink: InkPoint; tap: InkTap | null }
+  /** Your own ink roach at 缘缘庄 */
+  | { kind: "myInk" };
+
+/** Where an ink roach is, by its tile (src/lib/siTiles.ts InkState) */
+const INK_STATES = ["queue", "stay", "out"] as const;
 
 type AmiyaItem = Extract<InboxItem, { kind: "amiya" }>;
 
@@ -659,6 +672,8 @@ export default function MapApp({
   const [siView, setSiView] = useState<SiView | null>(null);
   // she drew your ink roach just now, since then: her brush draws it in on the map
   const [siBrushFrom, setSiBrushFrom] = useState<number | null>(null);
+  // 收回 your ink roach under way
+  const [recalling, setRecalling] = useState(false);
   // a nudge when your ink roach gets its room or leaves it, so the map and her card catch up
   const [siTick, setSiTick] = useState(0);
   // she answered a touch on the map and has yet to say so over her head (the scene still playing)
@@ -1849,8 +1864,10 @@ export default function MapApp({
   };
 
   /** How you touched this roach from this page within the day, if you did (the server's once a day, touch()) */
-  const touchedOn = (roach: PublicRoach) => {
-    const t = roach.guide ? undefined : touchedHere[`${me?.id}:${roach.id}`];
+  const touchedOn = (roach: PublicRoach) => (roach.guide ? undefined : touchedById(roach.id));
+  /** The same by the id it was touched by, an ink roach's too */
+  const touchedById = (id: string) => {
+    const t = touchedHere[`${me?.id}:${id}`];
     if (!t || Date.now() - t.at >= TOUCH_SAME_ROACH_HOURS * HOUR) return undefined;
     return t.bold ? "bold" : "sneaky";
   };
@@ -2229,15 +2246,15 @@ export default function MapApp({
     const { itemId } = res.guide;
     if (res.newFriend) befriendedToast(res.newFriend);
     else if (itemId) touchedToast(bold);
-    else if (!res.si || res.si.inn.event === "none") quietGuideToast(id);
+    else if (!res.si || res.si.inn.event === "none" || res.si.inn.event === "resting") quietGuideToast(id);
     else touchedToast(bold);
     if (id === AMIYA_ID && step === "touch") updateProgress({ practiced: true });
     await loading;
     // 缘缘庄's news, hers to say over her head after her answer (or alone, on a touch she did not answer); her line
     // about the room it went straight into is heard there too, so 消息 does not open for it
     if (res.si) void loadSiState();
-    // your ink roach, drawn in by her brush where it goes, now the page has it
-    if (res.si?.inn.drawn) setSiBrushFrom(Date.now());
+    // your ink roach, drawn in by her brush where it goes, now the page has it (not one she holds for you)
+    if (res.si?.inn.drawn && res.si.you?.state !== "held") setSiBrushFrom(Date.now());
 
     if (!itemId && innLine) {
       window.setTimeout(() => {
@@ -2765,6 +2782,8 @@ export default function MapApp({
   const myColor = me?.profile.color ?? "cyan";
   const myAvatar = me?.profile.avatar ?? "hood";
   const main = me?.roaches.find((r) => r.slot === 0);
+  // your ink roach at 缘缘庄 is on the map (queuing, staying or in the fields): one of your MAX_CLONES clones
+  const inkOut = Boolean(me?.si.inn && me.si.inn.state !== "held");
   // 佩丽卡监督 keeps watch beside the drunk main roach (the map sets her just to its right), then goes back to her spot
   const guarding = Boolean(me?.drunkUntil && main && perlicaAt);
   const perlicaShown = guarding && main ? { lng: main.lng, lat: main.lat } : perlicaAt;
@@ -3190,7 +3209,7 @@ export default function MapApp({
   /** 派一只克隆体去烤火 */
   const sendToFire = async () => {
     if (!me) return setPanel({ kind: "login", reason: T.map.fire.signIn });
-    if (me.roaches.filter((r) => r.slot > 0).length < MAX_CLONES) return seatAtFire({ kind: "clone" });
+    if (me.roaches.filter((r) => r.slot > 0).length + (inkOut ? 1 : 0) < MAX_CLONES) return seatAtFire({ kind: "clone" });
     if (me.movesLeft <= 0) return setToast(fmt(T.map.place.movesUsedUp, { n: MOVES_PER_DAY }));
     setSelected(null);
     setPanel({ kind: "fireMove" });
@@ -3306,7 +3325,7 @@ export default function MapApp({
   /** 派一只克隆体跟他走 */
   const sendRider = () => {
     if (!me) return setPanel({ kind: "login", reason: T.map.minghe.signIn });
-    if (me.roaches.filter((r) => r.slot > 0).length < MAX_CLONES) return rideWith({ kind: "clone" });
+    if (me.roaches.filter((r) => r.slot > 0).length + (inkOut ? 1 : 0) < MAX_CLONES) return rideWith({ kind: "clone" });
     if (me.movesLeft <= 0) return setToast(fmt(T.map.place.movesUsedUp, { n: MOVES_PER_DAY }));
     setSelected(null);
     setPanel({ kind: "mingheMove" });
@@ -3456,7 +3475,9 @@ export default function MapApp({
         ? SI_LINES.queued
         : si.inn.event === "again"
           ? SI_LINES.again
-          : null;
+          : si.inn.event === "full"
+            ? SI_LINES.full
+            : null;
   /** Her self-portrait, given by mistake: back to her, or kept; she says what she makes of it, over her head too */
   const answerSiPortrait = async (choice: "return" | "keep") => {
     const res = await act((w) => w.siPortrait(choice));
@@ -3477,15 +3498,66 @@ export default function MapApp({
    * she be off the screen there, along the bottom too
    */
   const findMyInk = () => {
-    const ink = me?.si.inn;
+    const ink = myInkNow();
     if (!ink) return;
-    const { at } = inkNow(ink, siState?.checkedIn ?? null, siNow());
+    const { at } = ink;
     setSelected(null);
     setFocus({ lng: at.lng, lat: at.lat, zoom: FIND_ZOOM, nonce: Date.now() });
     say(SI_ID, SI_LINES.find);
     const [x, y] = toXY(at);
     const [sx, sy] = toXY(SI_AT);
     if (Math.abs(x - sx) > 25 || Math.abs(y - sy) > 50) setToast(fmt(T.map.guides.says, { name: SI_NAME, line: SI_LINES.find }));
+  };
+
+  /** Your ink roach where it is by her clock, null while she holds it (off the map) */
+  const myInkNow = () => {
+    const ink = me?.si.inn;
+    return ink && ink.state !== "held" ? inkNow(ink, siState?.checkedIn ?? null, siNow()) : null;
+  };
+  /**
+   * An ink roach of 缘缘庄 tapped on the map: your own opens its card at once; another's opens as its tile drew it,
+   * its touches waiting till the server says what it is now (below)
+   */
+  const onInkClick = (hit: InkTapped) =>
+    setSelected(hit.kind === "mine" ? { kind: "myInk" } : { kind: "ink", ink: hit.ink, tap: null });
+  // what someone else's ink roach tapped is now, asked once you are signed in (visitors do without): yours, should
+  // the queue have moved it under your tap, a 触须之交's, or nobody's; gone from the map, its card closes
+  const inkToAsk = selected?.kind === "ink" && !selected.tap ? selected.ink : null;
+  const askerId = me?.id ?? null;
+  useEffect(() => {
+    if (!inkToAsk || !askerId) return;
+    void act((w) => w.tapInk(inkToAsk)).then(async (tap) => {
+      // yours after all, though this page has it held, or none: as it is now
+      if (tap?.mine && !myInkNow()) await loadMe().catch(() => {});
+      // closed meanwhile, or another opened
+      setSelected((s) => (s?.kind !== "ink" || s.ink !== inkToAsk ? s : !tap ? null : tap.mine ? { kind: "myInk" } : { ...s, tap }));
+    });
+    // a new ink roach, or signing in, asks again; nothing else
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inkToAsk, askerId]);
+  /** Touch someone else's ink roach: as a clone, with no scene (she drew it, in her ink); its card closes */
+  const touchInk = async (tap: InkTap, bold: boolean) => {
+    const id = tap.id;
+    if (!id) return;
+    const res = await once("touch", () => act((w) => w.touch(id, bold)));
+    if (!res) return;
+    setTouchedHere((t) => ({ ...t, [`${me?.id}:${id}`]: { bold, at: Date.now() } }));
+    setSelected(null);
+    if (res.newFriend) {
+      befriendedToast(res.newFriend);
+      await Promise.all([loadFriends(), loadInbox()]);
+    } else touchedToast(bold);
+    if (me?.isNew) await loadMe();
+  };
+  /** 收回 your ink roach: off the map at once, held till you touch her again */
+  const recallInk = async () => {
+    setRecalling(true);
+    const done = await act((w) => w.recallInk().then(() => true));
+    setRecalling(false);
+    if (!done) return;
+    setSelected(null);
+    setToast(T.map.si.inkRecalled);
+    await Promise.all([loadMe(), loadSiState()]);
   };
 
   /** 祀掌柜's tools in development: her clock on, pretend crowds and visitors, clear the inn or yourself; then a fresh visit */
@@ -3619,11 +3691,12 @@ export default function MapApp({
     return () => window.clearTimeout(t);
   }, [liteHint]);
 
-  const siInks = useSiInks(siView);
+  const siInks = useSiInks(siView, me?.si.inn?.tap ?? null);
   const siNumbers = siState ? innNumbers(siState) : null;
-  const siInnKey = siState ? `${siNumbers!.queue}/${siState.drawn}/${siNumbers!.free === 0}/${siState.homesReach}` : "";
-  // your own ink roach where it is by her clock and the newest numbers, ringed in your colour (3.8)
-  const siInk = me?.si.inn ?? null;
+  // the queue's line reaches its last place, empty or not (a recalled ticket leaves its place empty)
+  const siInnKey = siState ? `${siNumbers!.places}/${siState.drawn}/${siNumbers!.free === 0}/${siState.homesReach}` : "";
+  // your own ink roach where it is by her clock and the newest numbers, ringed in your colour (3.8); none while held
+  const siInk = me?.si.inn && me.si.inn.state !== "held" ? me.si.inn : null;
   const siCheckedIn = siState?.checkedIn ?? null;
   const siMine = useMemo<SiMine | null>(() => {
     if (!siInk) return null;
@@ -3644,7 +3717,7 @@ export default function MapApp({
   const siTier = paintingTier(siState?.today ?? 0);
   const siMap = useMemo<SiMapData>(
     () => ({
-      inn: siState && siNumbers ? { queue: siNumbers.queue, drawn: siState.drawn, full: siNumbers.free === 0, homesReach: siState.homesReach } : null,
+      inn: siState && siNumbers ? { queue: siNumbers.places, drawn: siState.drawn, full: siNumbers.free === 0, homesReach: siState.homesReach } : null,
       inks: siInks.inks,
       mine: siMine,
       tier: siTier,
@@ -3656,6 +3729,13 @@ export default function MapApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [siInnKey, siInks.key, siMineKey, siTier],
   );
+
+  // your ink roach's card, where it is now; it goes once the ink roach is off the map (recalled on another screen)
+  const myInk = selected?.kind === "myInk" ? myInkNow() : null;
+  const myInkGone = selected?.kind === "myInk" && !myInk;
+  useEffect(() => {
+    if (myInkGone) setSelected(null);
+  }, [myInkGone]);
 
   // while the owner draws a 禁放区, a tap on the map or a roach opens nothing over the drawing
   const ignoreTap = () => {};
@@ -3687,6 +3767,7 @@ export default function MapApp({
     onMapClick: zoneTool?.kind === "draw" ? ignoreTap : onMapClick,
     onRoachClick: zoneTool?.kind === "draw" ? ignoreTap : onRoachClick,
     onMineClick: zoneTool?.kind === "draw" ? ignoreTap : onMineClick,
+    onInkClick: zoneTool?.kind === "draw" ? ignoreTap : onInkClick,
     onViewChange,
     onError: setToast,
     // mainland China: 腾讯's map instead, without a word (TencentView's own onFailed is ownMap)
@@ -3791,6 +3872,7 @@ export default function MapApp({
         return (
           <MineSheet
             roaches={me.roaches}
+            ink={inkOut}
             movesLeft={me.movesLeft}
             avatar={myAvatar}
             color={myColor}
@@ -3901,8 +3983,10 @@ export default function MapApp({
             profile={me.profile}
             roaches={me.roaches}
             initial={p.initial}
+            initialFrom={p.from}
             drunk={Boolean(me.drunkUntil)}
             stayed={me.si.stayed}
+            ink={inkOut}
             onSend={declare}
             onEditProfile={() => setPanel({ kind: "profile" })}
             onClose={() => setPanel(null)}
@@ -4024,6 +4108,7 @@ export default function MapApp({
           <VisitSheet
             name={friend.profile.displayName}
             clones={clones.length}
+            ink={inkOut}
             busy={friendBusy}
             onNew={() => visitFriend(friend.id, p.roach)}
             onPick={() => setPanel({ kind: "visitMove", friendId: friend.id, roach: p.roach })}
@@ -4514,6 +4599,44 @@ export default function MapApp({
             setSelected(null);
             runAfterReport();
           }}
+        />
+      )}
+      {!placing && selected?.kind === "ink" && (
+        <OtherInkCard
+          look={INK_LOOKS[selected.ink.look] ?? "hood"}
+          state={selected.tap?.state ?? INK_STATES[selected.ink.state]}
+          friendName={selected.tap?.friend?.name}
+          gone={Boolean(selected.tap?.gone)}
+          asking={Boolean(me) && !selected.tap}
+          signedIn={Boolean(me)}
+          waiting={waitingMe}
+          sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
+          touched={selected.tap?.id ? touchedById(selected.tap.id) : undefined}
+          touching={touching}
+          onOpenFriend={(() => {
+            const friend = selected.tap?.friend;
+            return friend ? () => setPanel({ kind: "friend", friendId: friend.id, back: null }) : undefined;
+          })()}
+          onSignIn={() => (waitingMe ? setToast(T.map.common.readingAccount) : setPanel({ kind: "login", reason: T.map.touch.signIn }))}
+          onTouch={(bold) => {
+            if (selected.tap) void touchInk(selected.tap, bold);
+          }}
+          onClose={() => setSelected(null)}
+        />
+      )}
+      {!placing && selected?.kind === "myInk" && me?.si.inn && myInk && (
+        <MyInkCard
+          look={me.si.inn.look}
+          where={myInk}
+          now={siNow()}
+          busy={recalling}
+          onDeclare={() => {
+            setSelected(null);
+            setPanel({ kind: "declare", from: [INK_FROM] });
+          }}
+          onToSi={showSi}
+          onRecall={recallInk}
+          onClose={() => setSelected(null)}
         />
       )}
       {!placing && selected?.kind === "mine" && (

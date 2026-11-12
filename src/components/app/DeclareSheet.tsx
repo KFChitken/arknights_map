@@ -19,6 +19,7 @@ import { activeEvents, untilText, type EventLine } from "@/lib/events";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
 import { displayName, type Profile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM } from "@/lib/rules";
+import { INK_FROM } from "@/lib/si";
 import { titlesFor } from "@/lib/titles";
 import type { OwnRoach } from "@/lib/world/types";
 import Sheet from "./Sheet";
@@ -32,6 +33,8 @@ export default function DeclareSheet({
   initial,
   drunk = false,
   stayed = false,
+  ink = false,
+  initialFrom,
   onSend,
   onEditProfile,
   onClose,
@@ -44,15 +47,19 @@ export default function DeclareSheet({
   drunk?: boolean;
   /** Their ink roach has had a room at 缘缘庄 (src/lib/si.ts): 祀掌柜's two are theirs; everyone sees them, greyed till then */
   stayed?: boolean;
+  /** Their ink roach is on the map at 缘缘庄: it goes out from there too, as INK_FROM, when picked */
+  ink?: boolean;
+  /** Picked to begin with (墨小强's card opens this with it) */
+  initialFrom?: string[];
   onSend: (d: Declaration, from: string[]) => Promise<boolean>;
   onEditProfile: () => void;
   onClose: () => void;
 }) {
   const main = roaches.find((r) => r.slot === 0);
   const clones = roaches.filter((r) => r.slot > 0);
-  const all = roaches.map((r) => r.id);
-  // nothing picked to begin with: you choose which of your roaches it goes out from each time
-  const [from, setFrom] = useState<string[]>([]);
+  const all = [...roaches.map((r) => r.id), ...(ink ? [INK_FROM] : [])];
+  // nothing picked to begin with, but what the card opened it with: you choose which of your roaches it goes out from each time
+  const [from, setFrom] = useState<string[]>(() => (initialFrom ?? []).filter((id) => all.includes(id)));
   const allOn = all.length > 0 && all.every((id) => from.includes(id));
   const toggle = (id: string) => setFrom((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
@@ -178,7 +185,7 @@ export default function DeclareSheet({
       }
     >
       <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-        {clones.length
+        {clones.length || ink
           ? fmt(T.declare.introMany, { km: DECLARATION_RADIUS_KM })
           : fmt(T.declare.introMain, { km: DECLARATION_RADIUS_KM })}
       </p>
@@ -193,7 +200,12 @@ export default function DeclareSheet({
               {fmtParts(T.common.cloneN, { n: i + 1 })}
             </button>
           ))}
-          {clones.length > 0 && (
+          {ink && (
+            <button className={`chip ${from.includes(INK_FROM) ? "on" : ""}`} onClick={() => toggle(INK_FROM)}>
+              {T.common.ink}
+            </button>
+          )}
+          {(clones.length > 0 || ink) && (
             <button className={`chip ${allOn ? "on" : ""}`} onClick={() => setFrom(allOn ? [] : all)}>
               {T.declare.all}
             </button>

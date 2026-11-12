@@ -44,6 +44,16 @@ describe("缘缘庄", () => {
       staying: 2000,
       free: 500,
       outside: 1000,
+      places: 3000,
+    });
+    // less the ink roaches held off the map, and the places and rooms their recalled tickets leave empty; a room
+    // left early stays taken till its guest was due out, and the queue's line reaches as far as before
+    expect(innNumbers({ drawn: 6000, tickets: 7000, checkedIn: 4000, checkedOut: 2000, held: 30, empty: { queue: 10, rooms: 5 } })).toEqual({
+      queue: 2990,
+      staying: 1995,
+      free: 500,
+      outside: 985,
+      places: 3000,
     });
   });
 

@@ -146,6 +146,10 @@ export interface World {
   dismountMinghe(): Promise<{ roaches: OwnRoach[]; item: MingheItem }>;
   /** 祀掌柜 handed over her own portrait by mistake: 还给她 (return) or 就不还 (keep); her line about it */
   siPortrait(choice: "return" | "keep"): Promise<{ line: string }>;
+  /** An ink roach of 缘缘庄 tapped on the map, by what its tile says of it (src/lib/siTiles.ts InkPoint) */
+  tapInk(ink: { x: number; y: number; tap: number; fx: number; fy: number }): Promise<InkTap>;
+  /** 收回 your ink roach: off the map, held till you touch 祀掌柜 again (src/lib/server/si.ts recallInk) */
+  recallInk(): Promise<void>;
   /**
    * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
    * seconds (佩丽卡监督 says how long), 让佩丽卡重新问一次 (ask), 清掉我和塔露拉的记录 (talulah),
@@ -293,7 +297,11 @@ export type SiTouch = {
   answer: SiItem["line"] | null;
   stamp: { stamp: number; stamps: number } | null;
   portrait: "right" | "wrong" | null;
-  inn: { drawn: boolean; event: "in" | "queued" | "again" | "none"; room: number | null; place: number | null };
+  /**
+   * full: your clones were five, so the ink roach is held (drawn just now, or one held already); resting: you recalled
+   * it less than RECALL_REST_MS ago (src/lib/si.ts), so it is not back in the queue yet
+   */
+  inn: { drawn: boolean; event: "in" | "queued" | "again" | "none" | "full" | "resting"; room: number | null; place: number | null };
   /** Her line in 消息 about the room it went straight into, said over her head at the same time */
   innItemId: string | null;
   you: SiInk | null;
@@ -302,23 +310,39 @@ export type SiTouch = {
 /**
  * Your ink roach (墨小强, src/lib/siInn.ts) as of the moment asked: queuing at 缘缘庄's door (place: how many
  * are ahead of it, itself included; checkinAt: when it gets its room), staying in room `room` till checkoutAt,
- * or lying in the fields outside the village. n: its latest ticket; inkNo: the how-manieth she drew.
+ * lying in the fields outside the village, or held off the map (recalledAt: when you recalled it, or null while it
+ * waits for room among your clones, never having queued). n: its latest ticket; inkNo: the how-manieth she drew.
+ * On the map it is one of your MAX_CLONES clones.
  */
 export type SiInk = (
   | { state: "queue"; n: number; place: number; checkinAt: number }
   | { state: "stay"; n: number; room: number; checkoutAt: number }
   | { state: "out" }
+  | {
+      state: "held";
+      recalledAt: number | null;
+      /**
+       * Always 0: a page from before "held", still open after the site is updated, takes any state but queue and out
+       * for a stay, and so draws it lying at home (a stay over long ago), not at no place at all
+       */
+      checkoutAt: 0;
+    }
 ) & {
   inkNo: number;
   look: RoachAvatar;
   /** Where it lies once its stay is over (the page works out the queue's and the rooms' spots itself) */
   home: LngLat;
+  /** The number its tiles tap it by (src/lib/siTiles.ts tapOf), so the page draws it once, its own way */
+  tap: number;
 };
 
 /**
  * 缘缘庄 as everyone sees it (GET /api/si, src/lib/siInn.ts): ink roaches drawn (D), tickets given (N), those
  * that had their room by now (C) and had left it (O), how many queued at the door a day ago, and the players
  * who touched her today (今天的画); how far from the middle of the village the homes of those drawn reach (metres).
+ * held: ink roaches off the map (recalled, or never queued while their owner had no room for them among their
+ * clones); empty: the places at the door and the rooms their recalled tickets leave empty now (every check-in
+ * stands as it was given).
  * at: her clock as this was worked out; shift: 祀快进 in development, else 0.
  */
 export type SiState = {
@@ -326,6 +350,8 @@ export type SiState = {
   tickets: number;
   checkedIn: number;
   checkedOut: number;
+  held: number;
+  empty: { queue: number; rooms: number };
   queueDayAgo: number;
   today: number;
   homesReach: number;
@@ -346,6 +372,19 @@ export type SiMe = {
   stayed: boolean;
   /** 祀快进 (development only): ms added to her clock, the page's too; 0 on the live site */
   shift: number;
+};
+
+/**
+ * An ink roach tapped on the map (World.tapInk), as the server tells it: where it is, whether it is yours, a
+ * 触须之交's (their id in your list, and name), whether its owner closed their account (gone: nobody's now, and
+ * not to be touched), and what touching it takes (World.touch; null when gone). Nothing else of whose it is.
+ */
+export type InkTap = {
+  state: "queue" | "stay" | "out";
+  mine: boolean;
+  friend: { id: string; name: string } | null;
+  gone: boolean;
+  id: string | null;
 };
 
 export type Friend = {
@@ -524,8 +563,8 @@ export type InboxItem =
       at: number;
       seen: boolean;
       bold: boolean;
-      /** What of yours it answers: a roach, or your own earlier touch, declaration or reaction */
-      target: "main" | "clone" | "touch" | "declaration" | "reaction";
+      /** What of yours it answers: a roach (your ink roach at 缘缘庄 too), or your own earlier touch, declaration or reaction */
+      target: "main" | "clone" | "ink" | "touch" | "declaration" | "reaction";
       /** Only for bold touches */
       from: PublicProfile | null;
       replied: boolean;

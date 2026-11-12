@@ -330,6 +330,13 @@
       "when": 1794526282416,
       "tag": "0047_badges_round3",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794529695035,
+      "tag": "0048_si_ink_taps",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,7 @@ import type { SiMapData } from "./types";
 
 const si: SiMapData = {
   inn: { queue: MILESTONES.ring1, drawn: 40_000, full: true, homesReach: 600 },
-  inks: [{ lng: 117.984, lat: 30.004, look: 2, state: 2, left: true, size: 1, tilt: 3, ink: 0.8 }],
+  inks: [{ lng: 117.984, lat: 30.004, look: 2, state: 2, left: true, size: 1, tilt: 3, ink: 0.8, x: 0, y: 0, fx: 0.5, fy: 0.5, tap: 1 }],
   mine: { at: { lng: 117.9841, lat: 30.0041 }, look: "gugu", variant: "standL", color: "pink", size: 1.05, tilt: -2, ink: 0.9, brushFrom: null },
   tier: 3,
   innKey: "",

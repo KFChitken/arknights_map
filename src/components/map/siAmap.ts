@@ -2,6 +2,7 @@ import type { AMapNS } from "@/lib/amap";
 import { toGcj } from "@/lib/coords";
 import { innDrawing, queueLine } from "@/lib/siInn";
 import { inkGl, type InkGl } from "./inkGl";
+import { inkTappedAt, type InkTapped } from "./inkTap";
 import {
   FAR_BELOW,
   INK,
@@ -24,6 +25,8 @@ import type { SiMapData } from "./types";
 
 export type SiAmap = {
   set: (si: SiMapData | undefined, changed: { inn?: boolean; inks?: boolean; mine?: boolean; tier?: boolean }) => void;
+  /** The ink roach a tap at these px of the map's box is on, close up (inkTap.ts) */
+  hit: (x: number, y: number) => InkTapped | null;
   setActive: (on: boolean) => void;
   destroy: () => void;
 };
@@ -98,7 +101,9 @@ export function amapSi(AMap: AMapNS, map: AMapNS, zoomOffset: number, si: SiMapD
     restyle();
   };
 
+  let shownSi = si;
   const set: SiAmap["set"] = (next, changed) => {
+    shownSi = next;
     if (changed.inn) {
       placeQueue(next?.inn?.queue ?? 0);
       gpu?.setInn(next?.inn ?? null);
@@ -112,6 +117,15 @@ export function amapSi(AMap: AMapNS, map: AMapNS, zoomOffset: number, si: SiMapD
 
   return {
     set,
+    hit: (x, y) =>
+      inkTappedAt(shownSi, map.getZoom() - zoomOffset, { x, y }, (p) => {
+        try {
+          const px = map.lngLatToContainer(toGcj(p));
+          return { x: px.getX(), y: px.getY() };
+        } catch {
+          return null;
+        }
+      }),
     setActive: (on) => gpu?.setActive(on),
     destroy: () => {
       map.off("zoomchange", meanwhile);

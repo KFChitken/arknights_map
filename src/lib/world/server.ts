@@ -21,6 +21,7 @@ import {
   type HelpBoard,
   type Identity,
   type InboxItem,
+  type InkTap,
   type Me,
   type MingheItem,
   type OwnRoach,
@@ -139,6 +140,9 @@ export class ServerWorld implements World {
   rideMinghe = (target: RideTarget) => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("rideMinghe", target);
   dismountMinghe = () => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("dismountMinghe");
   siPortrait = (choice: "return" | "keep") => this.call<{ line: string }>("siPortrait", choice);
+  tapInk = (ink: { x: number; y: number; tap: number; fx: number; fy: number }) =>
+    this.call<InkTap>("tapInk", ink.x, ink.y, ink.tap, ink.fx, ink.fy);
+  recallInk = () => this.call<void>("recallInk");
   drink = () => this.call<{ until: number }>("drink");
   sober = () => this.call<void>("sober");
   partied = () => this.call<void>("partied");

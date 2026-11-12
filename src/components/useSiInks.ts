@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { decodeTile, INK_TILE_ZOOM, tilesOver, type InkPoint } from "@/lib/siTiles";
+import { decodeTile, INK_TILE_V, INK_TILE_ZOOM, tilesOver, type InkPoint } from "@/lib/siTiles";
 import type { LngLat } from "@/lib/types";
 import { NEAR_FROM } from "./map/siLook";
 
 /**
  * 缘缘庄's ink roaches close up (src/lib/siTiles.ts): the tiles over the view, asked for while the map shows
  * them close enough (NEAR_FROM), each kept half a minute and asked again while still in view; together, the
- * ink roaches of the view and a margin round it. view: the map's bounds and zoom, null away from 宏村.
+ * ink roaches of the view and a margin round it. view: the map's bounds and zoom, null away from 宏村. hide: the
+ * tap number of your own, which the page draws apart (and not at all while it is held), left out of them.
  */
 
 export type SiView = { sw: LngLat; ne: LngLat; zoom: number };
@@ -17,11 +18,19 @@ const KEEP_MS = 30_000;
 /** At most this many tiles at once (a phone close up needs about a dozen with the margin, a big screen more) */
 const MAX_TILES = 64;
 
-export function useSiInks(view: SiView | null) {
+export function useSiInks(view: SiView | null, hide: number | null = null) {
   const tiles = useRef(new Map<string, { at: number; points: InkPoint[] }>());
   const [state, setState] = useState<{ inks: InkPoint[]; key: number }>({ inks: [], key: 0 });
   const [tick, setTick] = useState(0);
   const close = Boolean(view && view.zoom >= NEAR_FROM);
+  const hideRef = useRef(hide);
+  const shown = (h: number | null) => [...tiles.current.values()].flatMap((t) => t.points).filter((p) => p.tap !== h);
+
+  // yours known, or no longer: the tiles held, without it
+  useEffect(() => {
+    hideRef.current = hide;
+    setState((s) => (tiles.current.size ? { inks: shown(hide), key: s.key + 1 } : s));
+  }, [hide]);
 
   // asked again every half minute while close
   useEffect(() => {
@@ -50,7 +59,7 @@ export function useSiInks(view: SiView | null) {
       if (gone) return;
       const keys = new Set(want.map((t) => `${t.x}/${t.y}`));
       for (const k of tiles.current.keys()) if (!keys.has(k)) tiles.current.delete(k);
-      setState((s) => ({ inks: [...tiles.current.values()].flatMap((t) => t.points), key: s.key + 1 }));
+      setState((s) => ({ inks: shown(hideRef.current), key: s.key + 1 }));
     };
     if (!missing.length) {
       merge();
@@ -58,8 +67,9 @@ export function useSiInks(view: SiView | null) {
     }
     Promise.all(
       missing.map(async (t) => {
-        const r = await fetch(`/api/si/ink?z=${INK_TILE_ZOOM}&x=${t.x}&y=${t.y}`);
-        if (!r.ok) return;
+        const r = await fetch(`/api/si/ink?z=${INK_TILE_ZOOM}&x=${t.x}&y=${t.y}&v=${INK_TILE_V}`);
+        // a server from before the tap number, while the site is being updated: what was held is kept till the next ask
+        if (!r.ok || r.headers.get("x-ink-v") !== INK_TILE_V) return;
         const bytes = new Uint8Array(await r.arrayBuffer());
         tiles.current.set(`${t.x}/${t.y}`, { at: Date.now(), points: decodeTile(t.x, t.y, INK_TILE_ZOOM, bytes) });
       }),

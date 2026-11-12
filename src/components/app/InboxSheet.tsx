@@ -98,12 +98,14 @@ function touchText(item: Extract<InboxItem, { kind: "touch" }>) {
     if (item.target === "declaration") return fmt(T.inbox.touch.boldAfterReact, { who });
     if (item.target === "reaction") return fmt(T.inbox.touch.boldAfterReply, { who });
     if (item.target === "clone") return fmt(T.inbox.touch.boldClone, { who });
+    if (item.target === "ink") return fmt(T.inbox.touch.boldInk, { who });
     return fmt(T.inbox.touch.bold, { who });
   }
   if (item.target === "touch") return T.inbox.touch.sneakyBack;
   if (item.target === "declaration") return T.inbox.touch.sneakyAfterReact;
   if (item.target === "reaction") return T.inbox.touch.sneakyAfterReply;
   if (item.target === "clone") return T.inbox.touch.sneakyClone;
+  if (item.target === "ink") return T.inbox.touch.sneakyInk;
   return T.inbox.touch.sneaky;
 }
 
@@ -340,17 +342,20 @@ export default function InboxSheet({
    */
   const replyNote = (item: Answerable) => {
     if (replying !== item.id) return null;
-    // TA touched one of your roaches on the map
-    const yours = item.kind === "touch" && (item.target === "main" || item.target === "clone");
+    // TA touched one of your roaches on the map, or your ink roach at 缘缘庄
+    const yours = item.kind === "touch" && (item.target === "main" || item.target === "clone" || item.target === "ink");
+    const ink = item.kind === "touch" && item.target === "ink";
     const text =
       item.waits === "reveal"
-        ? fmt(T.inbox.reply.revealWaits, { yours: yours ? T.inbox.reply.revealYours : "" })
+        ? fmt(T.inbox.reply.revealWaits, { yours: yours ? (ink ? T.inbox.reply.revealYoursInk : T.inbox.reply.revealYours) : "" })
         : item.kind !== "touch"
           ? null
           : item.waits === "sneaky"
             ? T.inbox.reply.sneakyWaits
             : yours
-              ? T.inbox.reply.yoursNote
+              ? ink
+                ? T.inbox.reply.yoursNoteInk
+                : T.inbox.reply.yoursNote
               : null;
     return text && <p className="hint">{text}</p>;
   };

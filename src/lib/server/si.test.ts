@@ -307,7 +307,7 @@ describe("祀掌柜", () => {
       all.push(...decodeTile(t.x, t.y, INK_TILE_ZOOM, bytes));
     }
     expect(all).toHaveLength(ROOMS + 301);
-    expect(Object.keys(all[0]).sort()).toEqual(["ink", "lat", "left", "lng", "look", "size", "state", "tilt"]);
+    expect(Object.keys(all[0]).sort()).toEqual(["fx", "fy", "ink", "lat", "left", "lng", "look", "size", "state", "tap", "tilt", "x", "y"]);
     const { queue, staying } = innNumbers(await si.siState());
     expect(all.filter((p) => p.state === 0)).toHaveLength(queue);
     expect(all.filter((p) => p.state === 1)).toHaveLength(staying);

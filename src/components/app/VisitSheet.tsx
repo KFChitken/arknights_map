@@ -11,6 +11,7 @@ import Sheet from "./Sheet";
 export default function VisitSheet({
   name,
   clones,
+  ink = false,
   busy,
   onNew,
   onPick,
@@ -20,18 +21,20 @@ export default function VisitSheet({
   name: string;
   /** How many clones you have out */
   clones: number;
+  /** 墨小强 is on the map, one of the MAX_CLONES (src/lib/si.ts) */
+  ink?: boolean;
   busy: boolean;
   onNew: () => void;
   onPick: () => void;
   onClose: () => void;
 }) {
-  const full = clones >= MAX_CLONES;
+  const full = clones + (ink ? 1 : 0) >= MAX_CLONES;
   return (
     <Sheet title={fmt(T.visit.ask, { name })} onClose={onClose}>
       <p style={{ marginTop: 0 }}>{T.visit.friendsKnow}</p>
       <p className="hint">
         {full
-          ? fmt(T.visit.allOut, { max: MAX_CLONES })
+          ? fmt(ink ? T.visit.allOutInk : T.visit.allOut, { max: MAX_CLONES })
           : fmt(T.visit.newOne, { n: PLACEMENTS_PER_DAY })}
         {T.visit.goHomeNote}
       </p>

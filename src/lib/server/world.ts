@@ -32,6 +32,9 @@ import {
   TOUCHES_PER_PERSON_PER_DAY,
 } from "../rules";
 import { queueSpots, stopOf } from "../minghe";
+import { INK_FROM, INK_PREFIX, INK_SLOT } from "../si";
+import { INN_CENTER } from "../siInn";
+import { INK_TILE_ZOOM } from "../siTiles";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import { isBotId } from "../world/bots";
 import { passerbyMoves, type Move } from "../world/cast";
@@ -52,6 +55,7 @@ import {
   type FriendEvent,
   type Homecoming,
   type InboxItem,
+  type InkTap,
   type Me,
   type MingheItem,
   type OwnRoach,
@@ -101,7 +105,8 @@ import {
   touchTalulah,
   unfriendTalulah,
 } from "./talulah";
-import { hasStayed, ignoreSi, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
+import { clonesOut, hasStayed, ignoreSi, inkOnMap, inkSeen, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
+import { inkTapped } from "./siInk";
 import {
   award,
   declared,
@@ -533,6 +538,7 @@ export async function checkPlacement(userId: string, target: PlaceTarget) {
     existing = main;
   } else if (target?.kind === "clone") {
     if (!main) throw new WorldError(T.server.world.mainBeforeClones);
+    await checkCloneRoom(db, userId, mine.filter((r) => r.slot > 0).length);
     const used = new Set(mine.map((r) => r.slot));
     const free = Array.from({ length: MAX_CLONES }, (_, i) => i + 1).find((s) => !used.has(s));
     if (!free) throw new WorldError(fmt(T.server.world.clonesLimit, { max: MAX_CLONES }));
@@ -556,6 +562,15 @@ export async function checkPlacement(userId: string, target: PlaceTarget) {
   return { slot, existing };
 }
 
+/**
+ * Room for one more clone among their `clones`: MAX_CLONES at most, 墨小强 counted among them while it is on the map
+ * (src/lib/server/si.ts). Those who had more before it counted keep them all, and place no more till they have fewer.
+ */
+async function checkCloneRoom(exec: Exec, userId: string, clones: number) {
+  const ink = await inkOnMap(exec, userId);
+  if (clones + (ink ? 1 : 0) >= MAX_CLONES) throw new WorldError(fmt(ink ? T.server.world.clonesLimitInk : T.server.world.clonesLimit, { max: MAX_CLONES }));
+}
+
 type RideColumns = Pick<RoachRow, "rideSince" | "rideStartDay" | "rideDay" | "rideFromLng" | "rideFromLat">;
 
 /**
@@ -575,7 +590,12 @@ export async function writePlacement(
     await tx.update(roaches).set(values).where(eq(roaches.id, existing.id));
     // a visiting clone moved on ends its visit; guests of a roach that moved stay where they sit
     await roachMoved(tx, existing.id, "moved");
-  } else await tx.insert(roaches).values({ userId, slot, ...values });
+  } else {
+    await tx.insert(roaches).values({ userId, slot, ...values });
+    // counted again now it is written, the others with it: its foreign key holds the player's row, so a touch of
+    // 祀掌柜's putting 墨小强 on the map (lockPlayer) waits till this is done, or this till that is, and sees it
+    if (slot > 0) await checkCloneRoom(tx, userId, (await clonesOut(tx, userId)) - 1);
+  }
   // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
   if (slot === 0) await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
   await tx.insert(moves).values({
@@ -767,8 +787,8 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   const guide = guideById(String(publicId));
   if (guide) return GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
   if (isBotId(String(publicId))) throw new WorldError(T.server.world.demoNoTouch);
-  // by the id the feed gave the page, short or whole
-  const roach = await roachByFeedId(String(publicId));
+  // by the id the feed gave the page, short or whole; or an ink roach at 缘缘庄, by the id its tap gave (tapInk)
+  const roach = String(publicId).startsWith(INK_PREFIX) ? await inkToTouch(String(publicId).slice(INK_PREFIX.length)) : await roachByFeedId(String(publicId));
   if (!roach) throw new WorldError(T.server.common.roachGone);
   if (roach.userId === userId) throw new WorldError(T.server.common.yourOwnRoach);
   await checkTouchQuota(userId);
@@ -808,6 +828,41 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   const newFriend = bold ? await befriendIfMutual(userId, roach.userId) : null;
   nudge([roach.userId]);
   return { newFriend };
+}
+
+/**
+ * An ink roach to touch as one of its owner's clones (INK_SLOT): by its public id, on the map and somebody's.
+ * Touched, it counts as their clones do: a day's touches, once a day each, a few a day on one player's.
+ */
+async function inkToTouch(publicId: string) {
+  const ink = UUID.test(publicId) ? await inkSeen({ publicId }) : null;
+  if (!ink) throw new WorldError(T.server.world.inkRecalled);
+  if (!ink.userId) throw new WorldError(T.server.world.inkOwnerGone);
+  return { userId: ink.userId, slot: INK_SLOT, publicId: ink.publicId };
+}
+
+/**
+ * An ink roach tapped on the map (3.4), by what its tile gave the page (src/lib/siTiles.ts InkPoint): the one with
+ * that tap number now, the nearest should two share it (src/lib/server/siInk.ts inkTapped). What its card may say:
+ * where it is, whether it is yours, a 触须之交's (and who), or nobody's now, and how to touch it; never its number,
+ * nor whose it is to anyone else.
+ */
+export async function tapInk(userId: string, x: unknown, y: unknown, tap: unknown, fx: unknown, fy: unknown): Promise<InkTap> {
+  const n = 2 ** INK_TILE_ZOOM;
+  const whole = (v: unknown, below: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < below;
+  const part = (v: unknown): v is number => typeof v === "number" && v >= 0 && v <= 1;
+  if (!whole(x, n) || !whole(y, n) || !whole(tap, 2 ** 32) || !part(fx) || !part(fy)) throw new WorldError(T.server.common.badRequest);
+  const no = await inkTapped(x, y, tap, fx, fy);
+  const ink = no === null ? null : await inkSeen({ no });
+  if (!ink) throw new WorldError(T.server.world.inkRecalled);
+  const mine = ink.userId === userId;
+  const gone = ink.userId === null;
+  let friend: InkTap["friend"] = null;
+  if (ink.userId && !mine && (await friendIdsOf(userId)).has(ink.userId)) {
+    const u = await userById(ink.userId);
+    if (u) friend = { id: friendKey(userId, u.id), name: (await cardsOf([u])).get(u.id)!.displayName };
+  }
+  return { state: ink.state, mine, friend, gone, id: mine || gone ? null : INK_PREFIX + ink.publicId };
 }
 
 /** How many touches one player made on another in the last day, and whether any was bold */
@@ -1109,9 +1164,11 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
           : t.replyTo.startsWith("x:")
             ? "reaction"
             : "touch"
-        : t.toSlot
-          ? "clone"
-          : "main",
+        : t.toSlot === INK_SLOT
+          ? "ink"
+          : t.toSlot
+            ? "clone"
+            : "main",
       from: t.bold ? cards.get(from.id)! : null,
       replied: done.has(id),
       ignored: Boolean(t.ignoredAt),
@@ -1282,8 +1339,12 @@ export async function declare(userId: string, input: Declaration, from?: string[
   if (!mine.some((r) => r.slot === 0)) throw new WorldError(T.server.world.mainBeforeDeclaring);
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
   const chosen = wanted ? mine.filter((r) => wanted.includes(r.id)) : mine.filter((r) => r.slot === 0);
-  if (wanted && chosen.length < wanted.length) throw new WorldError(T.server.world.roachLostRefresh);
-  if (!chosen.length) throw new WorldError(T.server.world.pickRoachToDeclare);
+  // 墨小强 too, from 缘缘庄 wherever it is there, while it is on the map; only those near the spots by their own
+  // roaches are counted and told, never every player whose ink roach is there (src/lib/server/declarationInbox.ts)
+  const fromInk = Boolean(wanted?.includes(INK_FROM)) && (await inkOnMap(db, userId));
+  if (wanted && chosen.length + (fromInk ? 1 : 0) < wanted.length) throw new WorldError(T.server.world.roachLostRefresh);
+  const spots: LngLat[] = [...chosen.map((c) => ({ lng: c.lng, lat: c.lat })), ...(fromInk ? [INN_CENTER] : [])];
+  if (!spots.length) throw new WorldError(T.server.world.pickRoachToDeclare);
 
   const recent = await db
     .select({ at: declarations.createdAt })
@@ -1295,7 +1356,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   }
 
   // The sender only learns a rough count
-  const near = chosen.map(
+  const near = spots.map(
     (c) =>
       sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography, ${DECLARATION_RADIUS_KM * 1000})`,
   );
@@ -1327,7 +1388,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
       })
       .returning({ id: declarations.id, createdAt: declarations.createdAt });
     // where it was sent from, by which it is found (src/lib/server/declarationInbox.ts)
-    await tx.insert(declarationSpots).values(spotRows({ id: row.id, senderId: userId, createdAt: row.createdAt }, chosen));
+    await tx.insert(declarationSpots).values(spotRows({ id: row.id, senderId: userId, createdAt: row.createdAt }, spots));
     // only a birthday's 触须之交 are written down: they see who sent it (the rest find it by its spots)
     const friends = [...friendsToo];
     for (let i = 0; i < friends.length; i += 1000) {

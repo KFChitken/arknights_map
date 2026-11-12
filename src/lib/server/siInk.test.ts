@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ROACH_AVATARS } from "../types";
 import { addToSnapshot, emptySnapshot } from "./siInk";
 
-const inks = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ({ no: from + i, look: "hood" }));
+/** An ink as read from si_inks: on the map, changed as it was drawn */
+const ink = (no: number, look = "hood", held = false) => ({ no, look, publicId: `00000000-0000-4000-8000-${String(no).padStart(12, "0")}`, held, changed: no });
+const inks = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ink(from + i));
 
 describe("the ink snapshot", () => {
   it("keeps a ticket read before its ink, even past the room held so far", () => {
@@ -15,7 +17,7 @@ describe("the ink snapshot", () => {
     expect(s.checkin[1]).toBe(5);
     expect(s.lastNo).toBe(1023);
     expect(s.lastN).toBe(1);
-    addToSnapshot(s, [{ no: 1024, look: "gugu" }], []);
+    addToSnapshot(s, [ink(1024, "gugu")], []);
     expect(s.lastNo).toBe(1024);
     expect(s.look[1024]).toBe(ROACH_AVATARS.indexOf("gugu"));
     expect(s.ticket[1024]).toBe(1);

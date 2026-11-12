@@ -2035,6 +2035,12 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
 .si-mine { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e4d6b8; }
 .si-mine p { margin: 0; color: var(--ink); }
 .si-mine .pill { flex-shrink: 0; }
+.si-mine.si-held { flex-direction: column; align-items: flex-start; gap: 2px; }
+/* 墨小强 on its cards */
+.ink-figure { flex-shrink: 0; width: 44px; height: 44px; object-fit: contain; opacity: 0.92; }
+.ink-figure.lying { transform: rotate(-90deg); }
+.ink-recall p { margin: 0 0 8px; }
+.si-mine.si-held p.muted { color: var(--muted); font-size: 12px; }
 .si-book-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 /* 祀掌柜's 集章本 (src/components/app/SiBook.tsx): her seals' own characters, cut from 思源宋体 (SIL OFL) */

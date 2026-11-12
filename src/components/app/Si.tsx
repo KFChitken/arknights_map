@@ -7,6 +7,7 @@ import {
   PAINTING_LINES,
   paintingTier,
   placeLine,
+  RECALL_REST_MS,
   SI,
   SI_LINES,
   SI_NAME,
@@ -26,6 +27,14 @@ import { SiScrollArt } from "./SiArt";
 export const SiPicture = ({ size, friend = false }: { size: number; friend?: boolean }) => (
   <RoachIcon color={SI.color} size={size} avatar={SI.avatar} friend={friend} />
 );
+
+/** Where your ink roach is now (siInn.ts inkNow), as she puts it: its place in the queue, its room, or the fields */
+export const inkLine = (mine: ReturnType<typeof inkNow>, now: number) =>
+  mine.state === 0
+    ? placeLine(mine.place, Math.max(0, mine.until - now))
+    : mine.state === 1
+      ? stayLine(mine.room, Math.max(0, mine.until - now))
+      : SI_LINES.out;
 
 /**
  * Her card: who she is (and what she makes of your 厨力 list), today's painting, 缘缘庄 and your ink roach
@@ -75,10 +84,14 @@ export function SiCard({
   const fav = favourites ? favouriteLine(favourites) : null;
   const tier = paintingTier(state?.today ?? 0);
   const inn = state ? innNumbers(state) : null;
-  const tail = state && inn ? queueTailLine(inn.queue, state.queueDayAgo) : null;
+  // how far the queue reaches, the places of those recalled included, against a day ago
+  const tail = state && inn ? queueTailLine(inn.places, state.queueDayAgo) : null;
   const today = me && me.stampedToday && userId && me.stamps > 0 ? STAMPS[stampAt(userId, me.stamps - 1)] : null;
-  // your ink roach as of the newest numbers and her clock now (me() may be older than them)
-  const mine = me?.inn ? inkNow(me.inn, state?.checkedIn ?? null, now) : null;
+  // your ink roach as of the newest numbers and her clock now (me() may be older than them); or held off the map:
+  // recalled (back in the queue for a touch of hers once RECALL_REST_MS are over), or drawn while your clones were full
+  const mine = me?.inn && me.inn.state !== "held" ? inkNow(me.inn, state?.checkedIn ?? null, now) : null;
+  const held = me?.inn?.state === "held" ? me.inn : null;
+  const restLeft = held?.recalledAt ? held.recalledAt + RECALL_REST_MS - now : 0;
   return (
     <div className="card stack si-card" role="dialog" aria-label={SI_NAME}>
       <div className="card-head">
@@ -117,16 +130,18 @@ export function SiCard({
         ))}
         {mine && (
           <div className="si-mine">
-            <p>
-              {mine.state === 0
-                ? placeLine(mine.place, Math.max(0, mine.until - now))
-                : mine.state === 1
-                  ? stayLine(mine.room, Math.max(0, mine.until - now))
-                  : SI_LINES.out}
-            </p>
+            <p>{inkLine(mine, now)}</p>
             <button className="pill" onClick={onFind}>
               {T.guides.si.whereAmI}
             </button>
+          </div>
+        )}
+        {held && (
+          <div className="si-mine si-held">
+            <p>{held.recalledAt ? SI_LINES.held : SI_LINES.full}</p>
+            {restLeft > 0 && (
+              <p className="muted">{fmt(T.guides.si.resting, { hours: RECALL_REST_MS / 3_600_000, left: Math.ceil(restLeft / 3_600_000) })}</p>
+            )}
           </div>
         )}
       </section>

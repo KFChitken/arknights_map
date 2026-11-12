@@ -886,6 +886,14 @@ export default function AmapView(props: MapViewProps) {
             window.setTimeout(() => propsRef.current.onRoachClick(hit), 0);
             return;
           }
+          // 缘缘庄's ink roaches, under the real ones
+          const onInk = propsRef.current.onInkClick;
+          const ink = !hit && onInk && !propsRef.current.placing ? (siRef.current?.hit(e.pixel.getX(), e.pixel.getY()) ?? null) : null;
+          if (ink && onInk) {
+            lastHitRef.current = Date.now();
+            window.setTimeout(() => onInk(ink), 0);
+            return;
+          }
           // 轻量: a pile opens up, the map zooming in on it to where it comes apart
           if (hit && pilesRef.current) {
             lastHitRef.current = Date.now();

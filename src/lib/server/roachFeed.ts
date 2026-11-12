@@ -15,6 +15,7 @@ import { db } from "./db";
 import { SHOW_BOTS } from "./env";
 import { countNear, snapSpot } from "./nearby";
 import { roachChanges, roaches, users } from "./schema";
+import { inksOnMap } from "./siInk";
 
 /**
  * Everyone's roaches as one snapshot shared by every viewer. It holds no
@@ -866,8 +867,11 @@ export async function roachFeed(since: string | null, now = Date.now(), form: Fe
   return { kind: "diff", v: s.v, json };
 }
 
-/** How many roaches in all, by the fire, riding with 明河都尉, and how many players they belong to, kept up to date with every change */
-const countsOf = (s: Snapshot): FeedCounts => ({ total: s.byId.size, fire: s.fire, riders: s.riders, players: s.players });
+/**
+ * How many roaches in all (祀掌柜's ink roaches on the map too, src/lib/server/siInk.ts, as each is one of its owner's
+ * clones), by the fire, riding with 明河都尉, and how many players they belong to, kept up to date with every change
+ */
+const countsOf = (s: Snapshot): FeedCounts => ({ total: s.byId.size + inksOnMap(), fire: s.fire, riders: s.riders, players: s.players });
 
 /** The counts a visitor who has not signed in gets in place of the roaches, at the snapshot's version */
 export async function roachCounts(now = Date.now()): Promise<{ v: string } & FeedCounts> {
@@ -1186,6 +1190,8 @@ export async function pruneRoachChanges(now = Date.now()) {
  */
 export function feedReady(now = Date.now()): boolean {
   if (feed.stopping) return false;
+  // the ink roaches' count read meanwhile, for the totals the first answers carry
+  inksOnMap();
   if (feed.snapshot) return true;
   if (!feed.building) void current(now).catch(() => {});
   return false;

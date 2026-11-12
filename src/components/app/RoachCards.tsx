@@ -5,14 +5,17 @@ import { AMIYA_ID, AMIYA_NAME } from "@/lib/amiya";
 import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
 import { PERLICA_ID, PERLICA_MORE, PERLICA_NAME } from "@/lib/perlica";
 import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talulah";
+import { RECALL_REST_MS, SI_LINES, SI_NAME } from "@/lib/si";
 import { bottleIcon } from "@/lib/flipArt";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 import { DRAW_HERE } from "../admin/ZoneDraw";
 import { MingheRoute } from "./Minghe";
+import { inkLine } from "./Si";
+import type { inkNow } from "@/lib/siInn";
 
 /** Tapped someone else's roach: offer the two ways to touch it, or 戳一戳 a 触须之交's sleeping one. */
 export function OtherRoachCard({
@@ -479,6 +482,182 @@ export function MyRoachCard({
         <p className="tally">
           {drinks >= 50 ? fmt(T.cards.own.drinksDone, { n: drinks }) : fmt(T.cards.own.drinks, { n: drinks })}
         </p>
+      )}
+      <button className="close" onClick={onClose} aria-label={T.common.close}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** 墨小强 on a card: its ink picture, standing, or on its side while it lies outside */
+function InkFigure({ look, lying }: { look: RoachAvatar; lying: boolean }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- one small WebP of our own, which next/image would only copy
+    <img className={`ink-figure${lying ? " lying" : ""}`} src={`/avatars/ink-${look}.webp`} alt="" width={44} height={44} />
+  );
+}
+
+/**
+ * Tapped someone else's ink roach at 缘缘庄 (src/lib/si.ts): anyone's, a 触须之交's (by name), or nobody's now;
+ * where it is, with 祀掌柜's word about one she put out, and the two touches as on a clone (touched like one,
+ * src/lib/server/world.ts). Never a report: she drew it, nobody put it there.
+ */
+export function OtherInkCard({
+  look,
+  state,
+  friendName,
+  gone,
+  asking,
+  signedIn,
+  waiting = false,
+  sharesUid,
+  touched,
+  touching = false,
+  onOpenFriend,
+  onSignIn,
+  onTouch,
+  onClose,
+}: {
+  look: RoachAvatar;
+  state: "queue" | "stay" | "out";
+  /** Set when it is a 触须之交's */
+  friendName?: string;
+  /** Its owner closed their account: nobody's now, and not to be touched */
+  gone: boolean;
+  /** Who it may be, asked of the server just now: the touches wait for the answer */
+  asking: boolean;
+  /** Visitors who have not signed in are asked to, instead of being offered the two touches */
+  signedIn: boolean;
+  /** Signed in on this browser before, and who it is has not come yet */
+  waiting?: boolean;
+  sharesUid: boolean;
+  /** You touched it from this page within the day (as on OtherRoachCard) */
+  touched?: "sneaky" | "bold";
+  touching?: boolean;
+  onOpenFriend?: () => void;
+  onSignIn: () => void;
+  onTouch: (bold: boolean) => void;
+  onClose: () => void;
+}) {
+  const title = friendName ? fmt(T.cards.ink.friendTitle, { name: friendName }) : T.cards.ink.title;
+  const where = state === "queue" ? T.cards.ink.queue : state === "stay" ? T.cards.ink.stay : T.cards.ink.out;
+  const hint = gone
+    ? T.cards.ink.gone
+    : !signedIn
+      ? waiting
+        ? T.cards.reading
+        : T.cards.ink.signIn
+      : touched === "sneaky"
+        ? T.cards.touched.sneaky
+        : touched === "bold"
+          ? T.cards.touched.bold
+          : friendName
+            ? T.cards.touched.friends
+            : T.cards.touchClone;
+  return (
+    <div className="card stack" role="dialog" aria-label={T.common.ink}>
+      <div className="card-head">
+        <InkFigure look={look} lying={state === "out"} />
+        <div>
+          <strong>{title}</strong>
+          <p className="muted">{where}</p>
+          {state === "out" && <p className="muted">{fmt(T.map.guides.saysQuoted, { name: SI_NAME, line: SI_LINES.thrownOut })}</p>}
+          <p className="muted">{hint}</p>
+        </div>
+      </div>
+      {onOpenFriend && (
+        <div className="row-actions">
+          <button className="pill" onClick={onOpenFriend}>
+            {T.common.seeThem}
+          </button>
+        </div>
+      )}
+      {gone ? null : !signedIn ? (
+        <button className="primary wide" disabled={waiting} onClick={onSignIn}>
+          {waiting ? T.common.wait : T.common.signIn}
+        </button>
+      ) : (
+        <div className="touch-buttons">
+          <button disabled={asking || touching || Boolean(touched)} onClick={() => onTouch(false)}>
+            {T.common.reachSneaky}
+            <small>{touched ? T.cards.touchedToday : T.cards.sneakyNote}</small>
+          </button>
+          <button disabled={asking || touching || touched === "bold"} className="bold" onClick={() => onTouch(true)}>
+            {T.common.reachBold}
+            <small>{touched === "bold" ? T.cards.touchedToday : sharesUid ? T.cards.boldUid : T.cards.bold}</small>
+          </button>
+        </div>
+      )}
+      <button className="close" onClick={onClose} aria-label={T.common.close}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Tapped your own ink roach at 缘缘庄: where it is, as 祀掌柜 says it, and what can be done with it: 发表宣言 from
+ * it, to her, or 收回 (off the map, after a word on what that does; src/lib/server/si.ts recallInk). No moving
+ * it, visiting or riding: she put it where it is.
+ */
+export function MyInkCard({
+  look,
+  where,
+  now,
+  busy,
+  onDeclare,
+  onToSi,
+  onRecall,
+  onClose,
+}: {
+  look: RoachAvatar;
+  /** Where it is now (siInn.ts inkNow) */
+  where: ReturnType<typeof inkNow>;
+  /** Her clock, as the page keeps it */
+  now: number;
+  /** 收回 under way */
+  busy: boolean;
+  onDeclare: () => void;
+  onToSi: () => void;
+  onRecall: () => void;
+  onClose: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <div className="card stack" role="dialog" aria-label={T.cards.ink.mine}>
+      <div className="card-head">
+        <InkFigure look={look} lying={where.state === 2} />
+        <div>
+          <strong>{T.cards.ink.mine}</strong>
+          <p className="muted">{inkLine(where, now)}</p>
+          <p className="muted">{T.cards.ink.mineNote}</p>
+        </div>
+      </div>
+      {asking ? (
+        <div className="ink-recall">
+          <p>{fmt(T.cards.ink.recallAsk, { hours: RECALL_REST_MS / 3_600_000 })}</p>
+          <div className="row-actions">
+            <button className="danger" disabled={busy} onClick={onRecall}>
+              {T.common.takeBack}
+            </button>
+            <button className="pill" disabled={busy} onClick={() => setAsking(false)}>
+              {T.common.neverMind}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="row-actions">
+          <button className="pill" onClick={onDeclare}>
+            {T.cards.ink.declare}
+          </button>
+          <button className="pill" onClick={onToSi}>
+            {T.cards.ink.toSi}
+          </button>
+          <button className="pill" onClick={() => setAsking(true)}>
+            {T.common.takeBack}
+          </button>
+        </div>
       )}
       <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×

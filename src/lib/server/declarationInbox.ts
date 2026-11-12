@@ -2,6 +2,8 @@ import "server-only";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { LngLat } from "../types";
 import { DECLARATION_DAYS, DECLARATION_RADIUS_KM, INBOX_DAYS, INBOX_DECLARATIONS } from "../rules";
+import { INK_DECLARATIONS } from "../si";
+import { INN_CENTER } from "../siInn";
 import { db } from "./db";
 import { declarations, declarationSpots, deliveries, users } from "./schema";
 
@@ -10,7 +12,8 @@ import { declarations, declarationSpots, deliveries, users } from "./schema";
  * sent from (declaration_spots, kept DECLARATION_DAYS), not a row for everyone it reached. A player sees:
  *   a. any sent in the last DECLARATION_DAYS within DECLARATION_RADIUS_KM of one of their roaches now
  *      (main, clones, visiting or riding with 明河都尉): moving a roach near shows them, moving it away
- *      hides them;
+ *      hides them; and while their ink roach is on the map at 缘缘庄, up to INK_DECLARATIONS more, the
+ *      newest within reach of INN_CENTER, besides those their roaches find (which it never crowds out);
  *   b. any they reacted to or touched back, within INBOX_DAYS, wherever their roaches are now;
  *   c. a 「祝我生日快乐」 sent to them as a 触须之交 (a delivery row with to_friend), within INBOX_DAYS;
  *   and, the week after declarations started keeping their spots, any delivered to them the old way.
@@ -54,6 +57,17 @@ export function cellsNear(places: LngLat[], km = DECLARATION_RADIUS_KM): number[
   }
   return [...cells];
 }
+
+/** Whether spot `s` is within reach of any of the places: on a sphere, flat over 10 km, across ±180° too */
+const nearAny = (to: LngLat[]) => {
+  const lngs = `{${to.map((p) => p.lng).join(",")}}`;
+  const lats = `{${to.map((p) => p.lat).join(",")}}`;
+  return sql`exists (
+    select 1 from unnest(${lngs}::float8[], ${lats}::float8[]) m(lng, lat)
+    where power((s.lat - m.lat) * ${KM_PER_DEG}::float8, 2)
+      + power(least(abs(s.lng - m.lng), 360 - abs(s.lng - m.lng)) * ${KM_PER_DEG}::float8 * cos(radians((s.lat + m.lat) / 2)), 2)
+      <= ${DECLARATION_RADIUS_KM ** 2}::float8)`;
+};
 
 /** A Postgres array of uuids, as one parameter */
 const uuidArray = (ids: Iterable<string>) => `{${[...ids].filter((id) => UUID.test(id)).join(",")}}`;
@@ -105,6 +119,42 @@ const seenOf = (r: Row): SeenDeclaration => ({
 const SLICES_MS = [6 * 3_600_000, 2 * DAY, DECLARATION_DAYS * DAY];
 
 /**
+ * The newest declarations sent within reach of 缘缘庄 (INN_CENTER), for everyone whose ink roach is on the map
+ * there: the same for all of them, so each process reads them once in a while (NEAR_INN_KEPT_MS) and not for each
+ * player, who takes the newest INK_DECLARATIONS of them not theirs, not blocked and not found by their own roaches
+ * already; NEAR_INN of them, a few more than anyone takes. Sent from an ink roach, a declaration is there too.
+ */
+const NEAR_INN = 60;
+const NEAR_INN_KEPT_MS = 30_000;
+type NearInn = { id: string; senderId: string; at: string };
+let nearInnKept: { real: number; now: number; list: NearInn[] } | null = null;
+
+async function newestNearInn(now: number): Promise<NearInn[]> {
+  const real = Date.now();
+  const kept = nearInnKept;
+  if (kept && real >= kept.real && real - kept.real < NEAR_INN_KEPT_MS && Math.abs(now - kept.now) < NEAR_INN_KEPT_MS) return kept.list;
+  const cells = `{${cellsNear([INN_CENTER]).join(",")}}`;
+  let list: NearInn[] = [];
+  for (const back of SLICES_MS) {
+    const rows = await db.execute<{ id: string; sender_id: string; at: string | Date }>(sql`
+      select s.declaration_id as id, s.sender_id, max(s.created_at) as at from declaration_spots s
+      where s.cell = any(${cells}::int[]) and s.created_at > ${new Date(now - back).toISOString()}::timestamptz and ${nearAny([INN_CENTER])}
+      group by s.declaration_id, s.sender_id
+      order by at desc
+      limit ${NEAR_INN}::int`);
+    list = rows.map((r) => ({ id: r.id, senderId: r.sender_id, at: new Date(r.at).toISOString() }));
+    if (list.length >= NEAR_INN) break;
+  }
+  nearInnKept = { real, now, list };
+  return list;
+}
+
+/** Tests: the declarations near 缘缘庄 read afresh */
+export function forgetNearInn() {
+  nearInnKept = null;
+}
+
+/**
  * The declarations a player sees (as above), newest first, at most `limit`, sent after `after`;
  * with `ids`, only those of them. The limit is applied in the database, after leaving out the blocked.
  */
@@ -119,24 +169,23 @@ export async function visibleDeclarations(
   const localFrom = Math.max(now - DECLARATION_DAYS * DAY, after);
   const localSince = new Date(localFrom).toISOString();
   const inboxSince = new Date(Math.max(now - INBOX_DAYS * DAY, after)).toISOString();
-  // the player's roaches, and when spots began (or, once a week has gone by, about a week ago): anything sent before has none
-  const [start] = await db.execute<{ places: [number, number][] | string; first: string | null }>(sql`
+  // the player's roaches, and when spots began (or, once a week has gone by, about a week ago): anything sent before has
+  // none; and whether their ink roach is on the map (src/lib/server/si.ts inkOnMap)
+  const [start] = await db.execute<{ places: [number, number][] | string; first: string | null; ink: boolean }>(sql`
     select coalesce(json_agg(json_build_array(r.lng, r.lat)), '[]'::json) as places,
-      (select min(created_at) from declaration_spots) as first
+      (select min(created_at) from declaration_spots) as first,
+      exists (select 1 from si_inks i where i.user_id = ${userId} and i.ticket is not null and i.recalled_at is null) as ink
     from roaches r where r.user_id = ${userId}`);
   const places = (typeof start.places === "string" ? (JSON.parse(start.places) as [number, number][]) : start.places).map(([lng, lat]) => ({ lng, lat }));
   const spotsFrom = start.first ? new Date(start.first).getTime() : Infinity;
   const ids = opts.ids ? uuidArray(opts.ids) : null;
-  // a. near one of the player's roaches: within reach on a sphere, flat over 10 km, across ±180° too
-  const lngs = `{${places.map((p) => p.lng).join(",")}}`;
-  const lats = `{${places.map((p) => p.lat).join(",")}}`;
-  const near = sql`exists (
-    select 1 from unnest(${lngs}::float8[], ${lats}::float8[]) m(lng, lat)
-    where power((s.lat - m.lat) * ${KM_PER_DEG}::float8, 2)
-      + power(least(abs(s.lng - m.lng), 360 - abs(s.lng - m.lng)) * ${KM_PER_DEG}::float8 * cos(radians((s.lat + m.lat) / 2)), 2)
-      <= ${DECLARATION_RADIUS_KM ** 2}::float8)`;
+  // a. near one of the player's roaches
+  const near = nearAny(places);
   const fromOthers = sql`s.sender_id <> ${userId} and s.sender_id not in (select id from blocked)`;
   const cells = `{${cellsNear(places).join(",")}}`;
+  // and near 缘缘庄, while their ink roach is on the map: those asked about, or the newest there
+  const ink = Boolean(start.ink);
+  const nearInn = ink && !ids ? await newestNearInn(now) : [];
   // Delivered the old way (any delivery row but a birthday's) means sent before spots began, so older than every
   // declaration found by its spots: none can be among the newest once \`limit\` of those are found, nor sent
   // after a time since spots began (the page's ask for what is new). Only then are the player's rows looked up.
@@ -146,20 +195,35 @@ export async function visibleDeclarations(
 
   /** Everything, with the spots read from `from` (a slice: enough only if \`limit\` are found) */
   const inbox = (from: number) => {
+    const none = sql`select null::uuid as id, null::timestamptz as at where false`;
     const local = !places.length
-      ? sql`select null::uuid as id, null::timestamptz as at where false`
+      ? none
       : sql`select s.declaration_id as id, max(s.created_at) as at from declaration_spots s
           where ${ids ? sql`s.declaration_id = any(${ids}::uuid[])` : sql`s.cell = any(${cells}::int[])`}
             and s.created_at > ${new Date(from).toISOString()}::timestamptz and ${fromOthers} and ${near}
           group by s.declaration_id
           order by at desc
           limit ${limit}::int`;
+    // (older than DECLARATION_DAYS, or than what is new when that is asked, it is left out below with the rest)
+    const inkLocal = !ink
+      ? none
+      : ids
+        ? sql`select s.declaration_id as id, max(s.created_at) as at from declaration_spots s
+            where s.declaration_id = any(${ids}::uuid[]) and ${fromOthers} and ${nearAny([INN_CENTER])}
+            group by s.declaration_id`
+        : sql`select x.id, x.at
+            from unnest(${uuidArray(nearInn.map((d) => d.id))}::uuid[], ${uuidArray(nearInn.map((d) => d.senderId))}::uuid[],
+              ${`{${nearInn.map((d) => d.at).join(",")}}`}::timestamptz[]) x(id, sender_id, at)
+            where x.sender_id <> ${userId} and x.sender_id not in (select id from blocked) and x.id not in (select id from local)
+            order by x.at desc
+            limit ${INK_DECLARATIONS}::int`;
     return db.execute<Row & { local_n: number }>(sql`
       with blocked as (
         select blocked_id as id from blocks where blocker_id = ${userId}
         union select blocker_id from blocks where blocked_id = ${userId}
       ),
       local as (${local}),
+      ink_local as (${inkLocal}),
       need_old as (select ${needOld} as yes),
       answered as (
         select declaration_id as id from declaration_reactions
@@ -185,6 +249,7 @@ export async function visibleDeclarations(
       candidates as (
         select id, bool_or(near) as near from (
           select id, true as near from local
+          union all select id, true from ink_local
           union all select id, false from answered
           union all select id, false from delivered
         ) x group by id
@@ -204,7 +269,7 @@ export async function visibleDeclarations(
         ${ids ? sql`and d.id = any(${ids}::uuid[])` : sql``}
         and (not c.near or d.created_at > ${localSince}::timestamptz)
       order by d.created_at desc, d.id
-      limit ${limit}::int`);
+      limit ${ids || !ink ? limit : limit + INK_DECLARATIONS}::int`);
   };
 
   let rows: (Row & { local_n: number })[] = [];

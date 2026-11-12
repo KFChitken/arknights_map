@@ -3,12 +3,13 @@ import { T } from "@/i18n";
 import { clientIp, inLang } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import { inkTile } from "@/lib/server/siInk";
-import { INK_TILE_ZOOM } from "@/lib/siTiles";
+import { INK_TILE_V, INK_TILE_ZOOM, oldTile } from "@/lib/siTiles";
 
 /**
- * GET /api/si/ink?z=17&x=&y=: one tile's ink roaches at 缘缘庄 (src/lib/siTiles.ts), for the map close up:
+ * GET /api/si/ink?z=17&x=&y=&v=2: one tile's ink roaches at 缘缘庄 (src/lib/siTiles.ts), for the map close up:
  * bytes, the same for everyone who asks (visitors too), kept by browsers half a minute. Only tiles near
- * 宏村 have any; a tile elsewhere is empty.
+ * 宏村 have any; a tile elsewhere is empty. Without v (a page from before the tap number), each ink's first
+ * OLD_INK_BYTES, as that page reads them.
  */
 export const GET = inLang(async (req: NextRequest) => {
   const q = req.nextUrl.searchParams;
@@ -25,8 +26,13 @@ export const GET = inLang(async (req: NextRequest) => {
   }
   try {
     const bytes = await inkTile(x, y);
-    return new Response(new Uint8Array(bytes).buffer, {
-      headers: { "content-type": "application/octet-stream", "cache-control": "public, max-age=30" },
+    const current = q.get("v") === INK_TILE_V;
+    return new Response(new Uint8Array(current ? bytes : oldTile(bytes)).buffer, {
+      headers: {
+        "content-type": "application/octet-stream",
+        "cache-control": "public, max-age=30",
+        ...(current ? { "x-ink-v": INK_TILE_V } : {}),
+      },
     });
   } catch (e) {
     console.error(e);

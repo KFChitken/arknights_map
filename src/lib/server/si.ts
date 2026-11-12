@@ -1,19 +1,21 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, desc, eq, gte, isNotNull, isNull, lte, max, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, lte, max, sql } from "drizzle-orm";
 import { T } from "@/i18n";
-import { answerKind, deviceHour, paintingStart, SI, SI_LINES, siRoach, stampAt } from "../si";
+import { MAX_CLONES } from "../rules";
+import { answerKind, deviceHour, paintingStart, RECALL_REST_MS, SI, SI_LINES, siRoach, stampAt } from "../si";
 import { homeSpot, homesReach } from "../siHomes";
 import { ROOMS, roomOf, STAY_MS, toLngLat } from "../siInn";
+import { tapOf } from "../siTiles";
 import { ROACH_AVATARS, type RoachAvatar } from "../types";
 import { WorldError, type SiInk, type SiItem, type SiMe, type SiState, type SiTouch, type TouchResult } from "../world/types";
 import { award } from "./badges";
 import { db } from "./db";
 import { isProd } from "./env";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type Exec, type GuideRow, type GuideTable } from "./guides";
-import { siInks, siTickets, siTouches, users } from "./schema";
+import { roaches, siInks, siTickets, siTouches, users } from "./schema";
 import { fastForwardSi, siGlobals, siNow, siShift } from "./siClock";
-import { forgetInkSnapshot } from "./siInk";
+import { forgetInkSnapshot, inksChanged } from "./siInk";
 
 /**
  * 祀掌柜 on the server (src/lib/si.ts): her answers to each player's touches and the stamp she
@@ -21,7 +23,9 @@ import { forgetInkSnapshot } from "./siInk";
  * 缘缘庄 (src/lib/siInn.ts): the ink roach she draws of each player the first time they touch
  * her, its places in her queue (si_tickets, given out in order under one lock, each knowing when
  * it gets its room the moment it is given), and the minute job that tells them as they check in
- * and out. Nothing here nudges anyone: the page asks again when it wants to know.
+ * and out. On the map an ink roach is one of its owner's MAX_CLONES clones (src/lib/server/world.ts
+ * counts it too): it waits off the map while they have no room for it, and they may recall it.
+ * Nothing here nudges anyone: the page asks again when it wants to know.
  */
 
 // her table starts with the columns every guide's has (schema.ts)
@@ -82,34 +86,81 @@ export async function checkedInBy(exec: Exec, t: number) {
   return row?.n ?? 0;
 }
 
-/** Where an ink roach is at `now`, by its latest ticket */
-function inkState(ink: { no: number; look: string }, ticket: { n: number; checkinAt: Date }, checkedIn: number, now: number): SiInk {
+type Ticket = { n: number; checkinAt: Date };
+
+/** Where an ink roach is at `now`, by its latest ticket: held off the map once recalled, or without one */
+function inkState(
+  ink: { no: number; look: string; publicId: string; recalledAt: Date | null },
+  ticket: Ticket | null,
+  checkedIn: number,
+  now: number,
+): SiInk {
   const look = (ROACH_AVATARS as readonly string[]).includes(ink.look) ? (ink.look as RoachAvatar) : "hood";
   const h = homeSpot(ink.no);
-  const at = { inkNo: ink.no, look, home: toLngLat(h.x, h.y) };
+  const at = { inkNo: ink.no, look, home: toLngLat(h.x, h.y), tap: tapOf(ink.publicId) };
+  if (!ticket || ink.recalledAt) return { state: "held", ...at, recalledAt: ink.recalledAt?.getTime() ?? null, checkoutAt: 0 };
   const inAt = ticket.checkinAt.getTime();
   if (inAt > now) return { state: "queue", ...at, n: ticket.n, place: Math.max(1, ticket.n - checkedIn), checkinAt: inAt };
   if (inAt + STAY_MS > now) return { state: "stay", ...at, n: ticket.n, room: roomOf(ticket.n), checkoutAt: inAt + STAY_MS };
   return { state: "out", ...at };
 }
 
-/** Their ink roach and its latest ticket, if she drew one */
+/** Their ink roach and its latest ticket, if she drew one (none yet while it waited for room among their clones) */
 async function inkOf(exec: Exec, userId: string) {
   const [row] = await exec
-    .select({ no: siInks.no, look: siInks.look, n: siTickets.n, checkinAt: siTickets.checkinAt })
+    .select({
+      no: siInks.no,
+      look: siInks.look,
+      publicId: siInks.publicId,
+      recalledAt: siInks.recalledAt,
+      n: siTickets.n,
+      checkinAt: siTickets.checkinAt,
+    })
     .from(siInks)
-    .innerJoin(siTickets, eq(siTickets.n, siInks.ticket))
+    .leftJoin(siTickets, eq(siTickets.n, siInks.ticket))
     .where(eq(siInks.userId, userId))
     .limit(1);
   return row ?? null;
 }
 
+const ticketOf = (ink: { n: number | null; checkinAt: Date | null }): Ticket | null =>
+  ink.n !== null && ink.checkinAt ? { n: ink.n, checkinAt: ink.checkinAt } : null;
+
+/** Whether it ever had its room: by its latest ticket, before it was recalled (the minute job may not have said so yet) */
+const hadRoom = (ink: { recalledAt: Date | null } & { n: number | null; checkinAt: Date | null }, now: number) => {
+  const t = ticketOf(ink);
+  return t !== null && t.checkinAt.getTime() <= Math.min(now, ink.recalledAt?.getTime() ?? now);
+};
+
+/** A new number for si_inks.changed, under the inn's lock (src/lib/server/siInk.ts reads by it) */
+const nextChanged = sql`nextval('si_inks_changed_seq')`;
+
+/** Whether their ink roach is on the map (queuing, staying or lying outside), where it is one of their MAX_CLONES clones */
+export async function inkOnMap(exec: Exec, userId: string) {
+  const [row] = await exec
+    .select({ no: siInks.no })
+    .from(siInks)
+    .where(and(eq(siInks.userId, userId), isNotNull(siInks.ticket), isNull(siInks.recalledAt)))
+    .limit(1);
+  return Boolean(row);
+}
+
+/** Their clones on the map: their roaches but the main one */
+export async function clonesOut(exec: Exec, userId: string) {
+  const [row] = await exec
+    .select({ n: sql<number>`count(*)::int` })
+    .from(roaches)
+    .where(and(eq(roaches.userId, userId), gt(roaches.slot, 0)));
+  return row?.n ?? 0;
+}
+
 /**
  * A place in the queue for an ink roach, under the inn's lock: the next number, and when it gets its
- * room. Everyone stays exactly STAY_MS and nobody leaves early or gives up a place, so ticket n gets the
- * room ticket n − ROOMS leaves (the same room number), the moment it leaves, or now if that is earlier:
- * known for good as it is given, and the queue moves up one by one without anything to run each day.
- * Never before the ticket ahead of it, whatever the clocks of different processes say.
+ * room. Everyone's stay is held exactly STAY_MS, so ticket n gets the room ticket n − ROOMS leaves (the
+ * same room number), the moment it leaves, or now if that is earlier: known for good as it is given, and
+ * the queue moves up one by one without anything to run each day. One recalled gives nothing back: its
+ * place, and in its turn its room, stay empty till its half day would have been over (recallInk). Never
+ * before the ticket ahead of it, whatever the clocks of different processes say.
  */
 async function giveTicket(tx: Exec, inkNo: number, again: boolean, now: number) {
   const [{ last }] = await tx.select({ last: max(siTickets.n) }).from(siTickets);
@@ -128,48 +179,86 @@ type InnEvent = SiTouch["inn"] & { stayedNow: boolean; queuedNow: boolean; itemI
 
 /**
  * 3.4: after every touch of hers, answered or not. No ink roach yet: she draws one in the player's look,
- * and it queues. One whose stay is over (lying outside): it queues again. Queuing or staying: nothing,
- * and no lock taken. A ticket whose room is free at once checks in on the spot, with her line about it
- * written here rather than by the minute job (said_in). The player's row is locked already (lockPlayer),
- * so their double tap waits its turn; the inn's lock keeps numbers from being skipped or given twice.
+ * and it queues. One whose stay is over (lying outside): it queues again, already one of their clones.
+ * Queuing or staying: nothing, and no lock taken. One held off the map queues again only RECALL_REST_MS
+ * after it was recalled (resting till then), and, like a new one, only while they have room for it among
+ * their clones: otherwise it is held (full), a new one drawn all the same. A ticket whose room is free at
+ * once checks in on the spot, with her line about it written here rather than by the minute job (said_in).
+ * The player's row is locked already (lockPlayer), so their double tap waits its turn, and so does a clone
+ * of theirs placed at the same moment (src/lib/server/world.ts counts after it is written); the inn's lock
+ * keeps numbers from being skipped or given twice.
  */
-async function innAfterTouch(tx: Exec, userId: string, look: string, now: number): Promise<{ event: InnEvent; you: SiInk }> {
-  const ink = await inkOf(tx, userId);
-  if (ink && ink.checkinAt.getTime() + STAY_MS > now) {
-    const you = inkState(ink, ink, await checkedInBy(tx, now), now);
-    return { event: { drawn: false, event: "none", room: null, place: null, stayedNow: false, queuedNow: false, itemId: null }, you };
-  }
+async function innAfterTouch(
+  tx: Exec,
+  u: { id: string; avatar: string; stayedAt: Date | null },
+  now: number,
+): Promise<{ event: InnEvent; you: SiInk }> {
+  const ink = await inkOf(tx, u.id);
+  const ticket = ink && ticketOf(ink);
+  // on the map, one of their clones already; or held off it
+  const onMap = ink !== null && ticket !== null && ink.recalledAt === null;
+  const nothing = (event: "none" | "full" | "resting", you: SiInk, drawn = false) => ({
+    event: { drawn, event, room: null, place: null, stayedNow: false, queuedNow: false, itemId: null },
+    you,
+  });
+  if (onMap && ticket.checkinAt.getTime() + STAY_MS > now) return nothing("none", inkState(ink, ticket, await checkedInBy(tx, now), now));
+  if (ink?.recalledAt && now - ink.recalledAt.getTime() < RECALL_REST_MS) return nothing("resting", inkState(ink, ticket, 0, now));
+  // one off the map takes a place among their clones as it goes on it; one lying outside has its place already
+  const fits = onMap || (await clonesOut(tx, u.id)) < MAX_CLONES;
+  if (ink && !fits) return nothing("full", inkState(ink, ticket, 0, now));
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext('si-inn'))`);
   // tickets go out in the order the lock is had, so their time is taken now, not before waiting for it
   now = Math.max(now, siNow());
-  const drawnLook = (ROACH_AVATARS as readonly string[]).includes(look) ? look : "hood";
+  const drawnLook = (ROACH_AVATARS as readonly string[]).includes(u.avatar) ? u.avatar : "hood";
   let inkNo = ink?.no;
   if (!inkNo) {
     const [{ last }] = await tx.select({ last: max(siInks.no) }).from(siInks);
     inkNo = (last ?? 0) + 1;
   }
-  const again = Boolean(ink);
-  const ticket = await giveTicket(tx, inkNo, again, now);
-  if (ink) await tx.update(siInks).set({ ticket: ticket.n }).where(eq(siInks.no, inkNo));
-  else await tx.insert(siInks).values({ no: inkNo, userId, look: drawnLook, drawnAt: new Date(now), ticket: ticket.n });
-  const straightIn = ticket.checkinAt <= now;
-  await tx.insert(siTickets).values({ ...ticket.values, saidIn: straightIn });
-  const room = roomOf(ticket.n);
+  if (!fits) {
+    const [drawn] = await tx
+      .insert(siInks)
+      .values({ no: inkNo, userId: u.id, look: drawnLook, drawnAt: new Date(now), ticket: null })
+      .returning({ publicId: siInks.publicId });
+    return nothing("full", inkState({ no: inkNo, look: drawnLook, publicId: drawn.publicId, recalledAt: null }, null, 0, now), true);
+  }
+  // a returning guest only once it really had a room, not after a place in the queue it was recalled from
+  const again = Boolean(u.stayedAt) || (ink !== null && hadRoom(ink, now));
+  const given = await giveTicket(tx, inkNo, again, now);
+  let publicId: string;
+  if (ink) {
+    publicId = ink.publicId;
+    await tx.update(siInks).set({ ticket: given.n, recalledAt: null, changed: nextChanged }).where(eq(siInks.no, inkNo));
+  } else {
+    const [drawn] = await tx
+      .insert(siInks)
+      .values({ no: inkNo, userId: u.id, look: drawnLook, drawnAt: new Date(now), ticket: given.n })
+      .returning({ publicId: siInks.publicId });
+    publicId = drawn.publicId;
+  }
+  const straightIn = given.checkinAt <= now;
+  await tx.insert(siTickets).values({ ...given.values, saidIn: straightIn });
+  const room = roomOf(given.n);
   let itemId: string | null = null;
   if (straightIn) {
     // what the minute job would have said, said now
     const [said] = await tx
       .insert(siTouches)
-      .values({ userId, direction: her.from, kind: again ? "again" : "checkin", bold: false, room, waited: 0, createdAt: new Date(now) })
+      .values({ userId: u.id, direction: her.from, kind: again ? "again" : "checkin", bold: false, room, waited: 0, createdAt: new Date(now) })
       .returning({ id: siTouches.id });
     itemId = her.itemId(said.id);
     await tx
       .update(users)
       .set({ siStayedAt: new Date(now) })
-      .where(and(eq(users.id, userId), isNull(users.siStayedAt)));
+      .where(and(eq(users.id, u.id), isNull(users.siStayedAt)));
   }
-  const checkedIn = straightIn ? ticket.n : await checkedInBy(tx, now);
-  const you = inkState({ no: inkNo, look: ink?.look ?? drawnLook }, { n: ticket.n, checkinAt: new Date(ticket.checkinAt) }, checkedIn, now);
+  const checkedIn = straightIn ? given.n : await checkedInBy(tx, now);
+  const you = inkState(
+    { no: inkNo, look: ink?.look ?? drawnLook, publicId, recalledAt: null },
+    { n: given.n, checkinAt: new Date(given.checkinAt) },
+    checkedIn,
+    now,
+  );
   return {
     event: {
       drawn: !ink,
@@ -182,6 +271,55 @@ async function innAfterTouch(tx: Exec, userId: string, look: string, now: number
     },
     you,
   };
+}
+
+// ---- 墨小强 on the map, for its owner and for everyone ----
+
+/**
+ * 收回 (3.8): their ink roach off the map, whatever it was doing, after their touches of her and their clones
+ * placed (lockPlayer). Queuing: its ticket is void, its place at the door left empty and in its turn its room;
+ * staying: it leaves its room early, the room left empty; for the half day the ticket had, as nobody else's
+ * check-in moves (recalled_at on the ticket). Lying outside: it is taken in. Her minute job says nothing more
+ * of that ticket (said_in, said_out); it queues again for a touch of hers, RECALL_REST_MS on (innAfterTouch).
+ */
+export async function recallInk(userId: string) {
+  await db.transaction(async (tx) => {
+    await lockPlayer(tx, userId);
+    const ink = await inkOf(tx, userId);
+    const ticket = ink && ticketOf(ink);
+    if (!ink || !ticket || ink.recalledAt) throw new WorldError(T.server.si.notOnMap);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('si-inn'))`);
+    const now = siNow();
+    const at = new Date(now);
+    const inAt = ticket.checkinAt.getTime();
+    if (inAt + STAY_MS > now) {
+      // queuing, it never gets its room; staying, it never checks out
+      await tx
+        .update(siTickets)
+        .set({ ...(inAt > now ? { saidIn: true } : {}), saidOut: true, recalledAt: at })
+        .where(eq(siTickets.n, ticket.n));
+    }
+    await tx.update(siInks).set({ recalledAt: at, changed: nextChanged }).where(eq(siInks.no, ink.no));
+  });
+  shared = null;
+  inksChanged();
+}
+
+/** An ink roach on the map as others may know it: whose (null: nobody's now), how it is touched, where it is */
+export type InkSeen = { userId: string | null; publicId: string; state: "queue" | "stay" | "out" };
+
+/** An ink roach on the map, by its number or its public id, as it is now; null while held off the map, or with none such */
+export async function inkSeen(by: { no: number } | { publicId: string }): Promise<InkSeen | null> {
+  const [row] = await db
+    .select({ userId: siInks.userId, publicId: siInks.publicId, recalledAt: siInks.recalledAt, checkinAt: siTickets.checkinAt })
+    .from(siInks)
+    .leftJoin(siTickets, eq(siTickets.n, siInks.ticket))
+    .where("no" in by ? eq(siInks.no, by.no) : eq(siInks.publicId, by.publicId))
+    .limit(1);
+  if (!row || row.recalledAt || !row.checkinAt) return null;
+  const now = siNow();
+  const inAt = row.checkinAt.getTime();
+  return { userId: row.userId, publicId: row.publicId, state: inAt > now ? "queue" : inAt + STAY_MS > now ? "stay" : "out" };
 }
 
 // ---- touching her ----
@@ -214,6 +352,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
           portraitAt: users.siPortraitAt,
           stamps: users.siStamps,
           stampedOn: users.siStampedOn,
+          stayedAt: users.siStayedAt,
           avatar: users.avatar,
         })
         .from(users)
@@ -255,7 +394,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
         more: { line: variant, ...(stamp ?? {}) },
       });
       if (stamp && answer) await tx.update(users).set({ siStamps: stamp.stamps, siStampedOn: day.day }).where(eq(users.id, userId));
-      const inn = await innAfterTouch(tx, userId, u.avatar, now);
+      const inn = await innAfterTouch(tx, { id: userId, avatar: u.avatar, stayedAt: u.stayedAt }, now);
       return { id: answer?.id ?? null, friend, kind, variant, stamp: answer ? stamp : null, portrait, inn };
     });
   } catch (e) {
@@ -336,7 +475,7 @@ export async function siOf(
 ): Promise<SiMe> {
   const now = siNow();
   const ink = await inkOf(db, u.id);
-  const inn = ink ? inkState(ink, ink, await checkedInBy(db, now), now) : null;
+  const inn = ink ? inkState(ink, ticketOf(ink), await checkedInBy(db, now), now) : null;
   const state = PORTRAITS.find((p) => p === u.siPortrait);
   return {
     friend: Boolean(u.siFriendSince),
@@ -345,7 +484,7 @@ export async function siOf(
     stampedToday: u.siStampedOn === deviceDay(offsetMin, now).day,
     inn,
     // had its room, whether or not the minute job has said so yet
-    stayed: Boolean(u.siStayedAt) || (ink !== null && ink.checkinAt.getTime() <= now),
+    stayed: Boolean(u.siStayedAt) || (ink !== null && hadRoom(ink, now)),
     shift: siShift(),
   };
 }
@@ -354,7 +493,7 @@ export async function siOf(
 export async function hasStayed(userId: string, stayedAt: Date | null) {
   if (stayedAt) return true;
   const ink = await inkOf(db, userId);
-  return ink !== null && ink.checkinAt.getTime() <= siNow();
+  return ink !== null && hadRoom(ink, siNow());
 }
 
 // ---- 缘缘庄, every minute ----
@@ -432,7 +571,8 @@ export async function siState(): Promise<SiState> {
     db.select({ drawn: max(siInks.no) }).from(siInks),
     db.select({ tickets: max(siTickets.n) }).from(siTickets),
   ]);
-  const [checkedIn, checkedOut, inDayAgo, [queuedDayAgo], today] = await Promise.all([
+  const nowAt = new Date(now).toISOString();
+  const [checkedIn, checkedOut, inDayAgo, [queuedDayAgo], today, [held], [empty]] = await Promise.all([
     checkedInBy(db, now),
     checkedInBy(db, now - STAY_MS),
     checkedInBy(db, now - DAY_MS),
@@ -443,12 +583,26 @@ export async function siState(): Promise<SiState> {
       .orderBy(desc(siTickets.queuedAt), desc(siTickets.n))
       .limit(1),
     todaysVisitors(now),
+    // the few held off the map (si_inks_held_idx), and the places and rooms the recalled leave empty now
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(siInks)
+      .where(sql`${siInks.recalledAt} is not null or ${siInks.ticket} is null`),
+    db
+      .select({
+        queue: sql<number>`(count(*) filter (where ${siTickets.checkinAt} > ${nowAt}::timestamptz))::int`,
+        rooms: sql<number>`(count(*) filter (where ${siTickets.checkinAt} <= ${nowAt}::timestamptz))::int`,
+      })
+      .from(siTickets)
+      .where(and(isNotNull(siTickets.recalledAt), gt(siTickets.checkinAt, new Date(now - STAY_MS)))),
   ]);
   const state: SiState = {
     drawn: drawn ?? 0,
     tickets: tickets ?? 0,
     checkedIn,
     checkedOut,
+    held: held?.n ?? 0,
+    empty: { queue: empty?.queue ?? 0, rooms: empty?.rooms ?? 0 },
     queueDayAgo: Math.max(0, (queuedDayAgo?.n ?? 0) - inDayAgo),
     today,
     homesReach: Math.round(homesReach(drawn ?? 0)),

@@ -361,11 +361,32 @@ export const roomsThatFit = () => roomSpots().length / 2;
 
 // ---- the numbers, and what she says about them ----
 
-/** What the counts make: waiting at the door, in rooms, free rooms, and lying in the fields outside */
-export function innNumbers(s: { drawn: number; tickets: number; checkedIn: number; checkedOut: number }) {
-  const queue = Math.max(0, s.tickets - s.checkedIn);
-  const staying = Math.max(0, s.checkedIn - s.checkedOut);
-  return { queue, staying, free: Math.max(0, ROOMS - staying), outside: Math.max(0, s.drawn - (s.tickets - s.checkedOut)) };
+/**
+ * What the counts make: waiting at the door, in rooms, free rooms, and lying in the fields outside, those held off
+ * the map (recalled, or waiting for room among their owner's clones) left out; and how far the queue reaches
+ * (places: to its last ticket, the places of those recalled left empty, for its line and her line about its tail).
+ * A room left empty by one recalled is not free: every ticket's check-in stands as it was given.
+ */
+export function innNumbers(s: {
+  drawn: number;
+  tickets: number;
+  checkedIn: number;
+  checkedOut: number;
+  held?: number;
+  empty?: { queue: number; rooms: number };
+}) {
+  const empty = s.empty ?? { queue: 0, rooms: 0 };
+  const places = Math.max(0, s.tickets - s.checkedIn);
+  const rooms = Math.max(0, s.checkedIn - s.checkedOut);
+  // every ink roach on the map holds one ticket at the door or in a room, or lies outside
+  const inside = Math.max(0, places + rooms - empty.queue - empty.rooms);
+  return {
+    queue: Math.max(0, places - empty.queue),
+    staying: Math.max(0, rooms - empty.rooms),
+    free: Math.max(0, ROOMS - rooms),
+    outside: Math.max(0, s.drawn - (s.held ?? 0) - inside),
+    places,
+  };
 }
 
 /** 塔川, the hamlet north-east of 宏村 known for its autumn leaves: as far from the middle of the village */

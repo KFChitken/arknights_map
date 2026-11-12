@@ -18,6 +18,7 @@ export default function MineSheet({
   onRemove,
   onPlaceMain,
   onAddClone,
+  ink = false,
   onClose,
 }: {
   roaches: OwnRoach[];
@@ -30,10 +31,13 @@ export default function MineSheet({
   onRemove: (r: OwnRoach) => void;
   onPlaceMain: () => void;
   onAddClone: () => void;
+  /** 墨小强 is on the map (src/lib/si.ts), one of the MAX_CLONES */
+  ink?: boolean;
   onClose: () => void;
 }) {
   const main = roaches.find((r) => r.slot === 0);
   const clones = roaches.filter((r) => r.slot > 0);
+  const out = clones.length + (ink ? 1 : 0);
 
   return (
     <Sheet title={T.common.myRoach} onClose={onClose}>
@@ -60,7 +64,7 @@ export default function MineSheet({
       )}
 
       <h3>
-        {fmtParts(T.mine.clones, { n: clones.length, max: MAX_CLONES })}
+        {fmtParts(ink ? T.mine.clonesInk : T.mine.clones, { n: out, max: MAX_CLONES })}
       </h3>
       {clones.map((c, i) => (
         <div className="list-row" key={c.id}>
@@ -81,7 +85,7 @@ export default function MineSheet({
           </div>
         </div>
       ))}
-      {main && clones.length < MAX_CLONES && (
+      {main && out < MAX_CLONES && (
         <button className="pill dark" style={{ marginTop: 10 }} onClick={onAddClone}>
           {T.mine.addClone}
         </button>

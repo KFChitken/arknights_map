@@ -6,6 +6,7 @@ import { distanceKm } from "../geo";
 import { guideById, guideOfItem } from "../guides";
 import { bare } from "../nameRules";
 import { displayName } from "../profile";
+import { INK_SLOT } from "../si";
 import {
   PROFILE_REPORTS_TO_HOLD,
   RELIABLE_AFTER_DAYS,
@@ -85,7 +86,13 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
       .limit(1);
     if (!t) return null;
     const how = t.bold ? "大胆" : "偷偷";
-    const what = t.replyTo ? "碰回了举报人" : t.toSlot ? "碰了举报人的克隆体" : "碰了举报人的本体";
+    const what = t.replyTo
+      ? "碰回了举报人"
+      : t.toSlot === INK_SLOT
+        ? "碰了举报人的墨小强"
+        : t.toSlot
+          ? "碰了举报人的克隆体"
+          : "碰了举报人的本体";
     return { other: t.fromUserId, known: t.bold, context: `${how}${what}` };
   }
   if (kind === "p") {

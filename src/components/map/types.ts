@@ -3,6 +3,7 @@ import type { FireLevel } from "@/lib/talulah";
 import type { PaintingTier } from "@/lib/si";
 import type { InkPoint } from "@/lib/siTiles";
 import type { InkVariant } from "./inkArt";
+import type { InkTapped } from "./inkTap";
 import type { StyleSpecification } from "maplibre-gl";
 import { hash128 } from "@/lib/prng";
 import type { MapStyle } from "@/lib/mapStyle";
@@ -55,6 +56,8 @@ export type MapViewProps = {
   /** A roach of someone else, or a guide (by her id) */
   onRoachClick: (publicId: string) => void;
   onMineClick: (roachId: string) => void;
+  /** An ink roach of 缘缘庄 close up, yours or another's (src/components/map/inkTap.ts); left out, they take no tap */
+  onInkClick?: (ink: InkTapped) => void;
   onViewChange: (v: MapView, bounds: [LngLat, LngLat]) => void;
   onError?: (message: string) => void;
   /** The map could not load at all; without it, onError says so */

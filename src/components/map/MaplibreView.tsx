@@ -43,6 +43,7 @@ import type { HeartMode } from "./roachGl";
 import { addMaplibreLines, setMaplibreLines } from "./lines";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { addMaplibreSi, setMaplibreSi, startSiFlight } from "./siMap";
+import { inkTappedAt } from "./inkTap";
 import { roachTraits, type MapViewProps } from "./types";
 import { FeatureCache, LITE_LOOKS, liteFeature, roachFeature } from "./features";
 import { BADGE_AT, drawBadge, PILE_MAX_PX } from "./piles";
@@ -875,6 +876,10 @@ export default function MaplibreView(props: MapViewProps) {
           return;
         }
         if (hit) return p.onRoachClick(hit.properties.id);
+        // 缘缘庄's ink roaches, under the real ones
+        const onInk = p.onInkClick;
+        const ink = onInk ? inkTappedAt(p.si, map.getZoom(), { x: point[0], y: point[1] }, (q) => map.project([q.lng, q.lat])) : null;
+        if (ink && onInk) return onInk(ink);
       }
       p.onMapClick({ lng: at.lng, lat: at.lat });
     };
