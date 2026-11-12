@@ -4,7 +4,9 @@ import { passwordProblem } from "../passwordRules";
 import { isBanned } from "./account";
 import { endSessionsExcept } from "./auth";
 import { db } from "./db";
+import { ADMIN_EMAILS } from "./env";
 import { HttpError } from "./http";
+import { isSlowMail } from "./mailQuota";
 import { DUMMY_HASH, hashPassword, verifyPassword } from "./passwordHash";
 import { userPasswords, users } from "./schema";
 import { note } from "./signals";
@@ -14,6 +16,8 @@ import { note } from "./signals";
  * email and it instead of an emailed code. Setting the first one, or one forgotten, takes a sign-in by
  * code moments before (FRESH_MS), so being signed in somehow is never enough to take over an account;
  * changing it takes the current one or that, and signs out every other device. Wrong tries pause it.
+ * One exception (firstWithoutCode): the first password of a player at a mail service our codes hardly
+ * reach just now.
  */
 
 export const PASSWORD_WRONG = "邮箱或密码不对。没设过密码的话，用验证码登录。";
@@ -39,6 +43,25 @@ export const freshFor = (s: Pick<SessionRow, "method" | "createdAt">, now = Date
 
 /** Signed in by an emailed code within FRESH_MS */
 export const isFresh = (s: Pick<SessionRow, "method" | "createdAt">, now = Date.now()) => freshFor(s, now) > 0;
+
+/**
+ * Whether a signed-in player may set their first password without a sign-in by code moments before: their
+ * address is at a mail service slow to take our mail just now (MAIL_SLOW_DOMAINS), whose codes may not
+ * arrive at all, so the code would lock them out of a password. Never an admin account: a stolen sign-in of
+ * theirs would keep its way in with a password. Changing a password or taking it away still takes the
+ * current one or a code, as a change would also sign the player out everywhere else.
+ */
+export const firstWithoutCode = (email: string | null) =>
+  Boolean(email && isSlowMail(email) && !ADMIN_EMAILS.includes(email.trim().toLowerCase()));
+
+/**
+ * The map asks such a player (firstWithoutCode) once to set a password while they are still signed in, as
+ * without one a new phone or computer could not sign in. The password is looked up only for them (some 4%).
+ */
+export async function passwordNudge(user: { id: string; email: string | null }): Promise<boolean> {
+  if (!firstWithoutCode(user.email)) return false;
+  return (await passwordSetAt(user.id)) === null;
+}
 
 const normalEmail = (email: unknown) =>
   String(email ?? "")
@@ -116,8 +139,9 @@ export async function firstPassword(user: { id: string; email: string }, passwor
 }
 
 /**
- * Set a password, or change it. The first, or one forgotten, takes a fresh sign-in by code (NeedsCode);
- * a change takes the current password or that. A change signs out every other device of the player.
+ * Set a password, or change it. The first, or one forgotten, takes a fresh sign-in by code (NeedsCode),
+ * but for the first at a slow mail service (firstWithoutCode); a change takes the current password or
+ * that. A change signs out every other device of the player.
  */
 export async function setPassword(
   user: { id: string; email: string | null },
@@ -131,8 +155,11 @@ export async function setPassword(
   if (problem) throw new HttpError(400, problem);
   const [row] = await db.select({ hash: userPasswords.hash }).from(userPasswords).where(eq(userPasswords.userId, user.id)).limit(1);
   if (!isFresh(session, now)) {
-    if (!row) throw new NeedsCode();
-    if (typeof current !== "string" || !current || !(await verifyPassword(row.hash, current))) throw new HttpError(400, CURRENT_WRONG);
+    if (!row) {
+      if (!firstWithoutCode(user.email)) throw new NeedsCode();
+    } else if (typeof current !== "string" || !current || !(await verifyPassword(row.hash, current))) {
+      throw new HttpError(400, CURRENT_WRONG);
+    }
   }
   await store(user.id, password, now);
   if (row) await endSessionsExcept(user.id, session.id);

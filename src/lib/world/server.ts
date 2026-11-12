@@ -3,6 +3,7 @@ import type { Declaration } from "../declarations";
 import type { BatchAct, Gesture } from "../friendly";
 import type { Game } from "../games";
 import type { HelpAsk } from "../help";
+import { heardNoticeStamp } from "../notices";
 import type { Profile } from "../profile";
 import type { ReportReason, RoachReportReason } from "../safety";
 import type { LngLat } from "../types";
@@ -79,6 +80,8 @@ export class ServerWorld implements World {
     } catch {
       throw new WorldError("连不上服务器，检查一下网络再试。");
     }
+    // which notices there are now (公告): the page asks for them only when they are not the ones it holds
+    heardNoticeStamp(res.headers.get("x-notices"));
     const body = (await res.json().catch(() => null)) as ((RoachFeedUpdate | VisitorFeed) & { error?: string }) | null;
     if (res.status === 429) throw new TooBusy(body?.error ?? "人有点多，几秒后自动重试。", Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? "服务器出了点问题，稍后再试试。");
@@ -92,6 +95,7 @@ export class ServerWorld implements World {
     const ask = async (cache: RequestCache) => {
       try {
         const res = await fetch(url, { cache });
+        heardNoticeStamp(res.headers.get("x-notices"));
         return { res, body: (await res.json().catch(() => null)) as ((AreaUpdate | VisitorFeed) & { error?: string }) | null };
       } catch {
         throw new WorldError("连不上服务器，检查一下网络再试。");

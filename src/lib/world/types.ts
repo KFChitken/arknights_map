@@ -378,6 +378,11 @@ export type Me = {
   suspendedUntil: number | null;
   /** The admin asked them to say again they are 18 or older: a card stands in front of the map until they do */
   ageCheck: boolean;
+  /**
+   * No password, at a mail service our codes may not reach just now (Gmail), and no admin: the map asks
+   * once to set one (it goes without a code, src/lib/server/passwords.ts firstWithoutCode)
+   */
+  passwordNudge: boolean;
   /** Only for the admin: reports waiting, shown in a corner of the map */
   admin?: ReportCounts;
 };

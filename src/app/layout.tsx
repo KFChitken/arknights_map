@@ -1,4 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
+import { HTML_LANG } from "@/i18n";
+import { pageLang } from "@/i18n/request";
+import { wordsUrl } from "@/i18n/server";
 import { SITE_NAME } from "@/lib/rules";
 import "./globals.css";
 
@@ -17,10 +21,15 @@ export const viewport: Viewport = {
   themeColor: "#1b1d22",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const lang = await pageLang();
   return (
-    <html lang="zh-CN">
-      <body>{children}</body>
+    <html lang={HTML_LANG[lang]}>
+      <body>
+        {/* the page's words, before the app starts (src/i18n) */}
+        <Script src={wordsUrl(lang)} strategy="beforeInteractive" />
+        {children}
+      </body>
     </html>
   );
 }

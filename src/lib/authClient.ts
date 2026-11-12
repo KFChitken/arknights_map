@@ -39,19 +39,32 @@ export const finishSignup = (ticks: { adult: boolean; acceptPolicy: boolean; acc
 export const passwordLogin = (email: string, password: string) => post<{ status: "ok" }>("/api/auth/password-login", { email, password });
 
 /**
- * When the signed-in player set their password (null: none), their email, and until when (on this device's
- * clock) this sign-in counts as one by code moments ago, when no current password is asked for (0: not)
+ * When the signed-in player set their password (null: none), their email, until when (on this device's
+ * clock) this sign-in counts as one by code moments ago, when no current password is asked for (0: not),
+ * and whether the first password goes without that code (noCodeNeeded: codes to their mail service may not
+ * arrive just now)
  */
-export async function passwordStatus(): Promise<{ setAt: number | null; email: string | null; freshUntil: number }> {
+export async function passwordStatus(): Promise<{ setAt: number | null; email: string | null; freshUntil: number; noCodeNeeded: boolean }> {
   let res: Response;
   try {
     res = await fetch("/api/auth/password", { cache: "no-store" });
   } catch {
     throw new Error("连不上服务器，检查一下网络再试。");
   }
-  const json = (await res.json().catch(() => null)) as { setAt: number | null; email: string | null; freshForMs: number; error?: string } | null;
+  const json = (await res.json().catch(() => null)) as {
+    setAt: number | null;
+    email: string | null;
+    freshForMs: number;
+    noCodeNeeded?: boolean;
+    error?: string;
+  } | null;
   if (!res.ok || !json) throw new Error(json?.error ?? "服务器出了点问题，稍后再试试。");
-  return { setAt: json.setAt, email: json.email, freshUntil: json.freshForMs > 0 ? Date.now() + json.freshForMs : 0 };
+  return {
+    setAt: json.setAt,
+    email: json.email,
+    freshUntil: json.freshForMs > 0 ? Date.now() + json.freshForMs : 0,
+    noCodeNeeded: json.noCodeNeeded === true,
+  };
 }
 
 /**

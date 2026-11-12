@@ -1,3 +1,5 @@
+// first, so anything below that says something says it in Chinese (src/i18n)
+import "./i18n/server";
 import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
 import { saveAppCounts } from "./lib/server/appCounts";
@@ -10,6 +12,7 @@ import { demoEnabled, watchEnabled } from "./lib/server/env";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
+import { startNotices } from "./lib/server/notices";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { pruneOldActivity } from "./lib/server/retention";
 import { pruneRoachChanges } from "./lib/server/roachFeed";
@@ -58,6 +61,9 @@ for (let attempt = 1; attempt <= TRIES; attempt++) {
 
 // nudges from the other processes, for the pages connected to this one
 await hearOthers().catch(failed("live", "Listening for the other processes' nudges failed"));
+
+// 公告, kept in memory by every process and read before the first page asks (none, if they cannot be read)
+await startNotices();
 
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);

@@ -53,6 +53,7 @@ export default function ProfileSheet({
   onPerlicaTimer,
   passwordForm,
   onConfirmByCode,
+  onPasswordSet,
   onSignOut,
   onDelete,
   onClose,
@@ -74,10 +75,12 @@ export default function ProfileSheet({
   onSave: (p: Profile) => Promise<boolean>;
   /** Switch her timer; only called when the box was changed and the rest saved */
   onPerlicaTimer?: (on: boolean) => Promise<boolean>;
-  /** Back from confirming it is the player by code: what they were doing with their password */
+  /** Back from confirming it is the player by code: what they were doing with their password; or "set", from the map's 去设密码 */
   passwordForm?: PasswordForm;
   /** A sign-in by code to confirm it is the player, for their password; the unsaved changes are kept */
   onConfirmByCode?: (email: string, form: PasswordForm, draft: Profile) => void;
+  /** The player has a password now, set or changed here */
+  onPasswordSet?: () => void;
   onSignOut: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -348,7 +351,11 @@ export default function ProfileSheet({
           {onConfirmByCode && (
             <fieldset>
               <legend>登录密码</legend>
-              <PasswordBox startOpen={passwordForm} onConfirmByCode={(email, form) => onConfirmByCode(email, form, p)} />
+              <PasswordBox
+                startOpen={passwordForm}
+                onConfirmByCode={(email, form) => onConfirmByCode(email, form, p)}
+                onSet={onPasswordSet}
+              />
             </fieldset>
           )}
 

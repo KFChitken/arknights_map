@@ -26,6 +26,12 @@ export const MAIL_SLOW_DOMAINS = (process.env.MAIL_SLOW_DOMAINS || "")
 export const MAIL_SLOW_DAILY_LIMIT = Number(process.env.MAIL_SLOW_DAILY_LIMIT) || 500;
 export const MAIL_SLOW_HOURLY_LIMIT = Number(process.env.MAIL_SLOW_HOURLY_LIMIT) || 30;
 export const MAIL_SLOW_PER_ADDRESS = Number(process.env.MAIL_SLOW_PER_ADDRESS) || 3;
+/**
+ * Of those caps, the share codes to an address with no account yet may take (rounded down, each of the
+ * day's and the hour's), so the players who have one can still sign in. 0 reads as the default, like the
+ * caps above; below 0 (e.g. -1) sends none to a new address there, and to players with an account as before.
+ */
+export const MAIL_SLOW_NEW_SHARE = Number(process.env.MAIL_SLOW_NEW_SHARE) || 0.3;
 
 /** Show roaches on the map that belong to nobody (src/lib/world/bots.ts); 0 or unset shows none. */
 export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BOTS) || 0), 0), 20_000);

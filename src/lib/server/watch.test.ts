@@ -298,6 +298,8 @@ describe("the site's own checks", () => {
 
   it("shows the admin page what is open, the week, the figures and the emails", async () => {
     await run(t0, [seeing("machine", () => [{ key: "disk", level: "urgent", title: "硬盘快满了" }, { key: "cpu", level: "quiet", title: "CPU 一直很忙" }])]);
+    // every sign-in code counts in the figure, to the slow mail services too, and the admin's reminders do not
+    await db.insert(mailSends).values(["login", "login-slow", "login-slow-new", "report"].map((kind) => ({ sentAt: new Date(t0 - HOUR), kind })));
     const s = await siteStatus(t0 + MINUTE);
     expect(s.lastRound).toBe(t0);
     expect(s.open.map((i) => [i.key, i.level, i.mailedAt])).toEqual([
@@ -306,7 +308,7 @@ describe("the site's own checks", () => {
     ]);
     expect(s.week).toHaveLength(2);
     expect(s.mails).toEqual([{ at: t0, subject: "【舟P地图】要你看：硬盘快满了", kind: "urgent" }]);
-    expect(s.numbers.mailLimit).toBe(MAIL_DAILY_LIMIT);
+    expect(s.numbers).toMatchObject({ loginMails: 3, mailLimit: MAIL_DAILY_LIMIT });
     // nothing about anyone
     expect(JSON.stringify(s)).not.toMatch(/@|email/);
   });
