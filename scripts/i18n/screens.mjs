@@ -36,14 +36,25 @@ const WIDTHS = [
 /** 2026-11-12 12:00 Beijing time */
 const NOW = new Date("2026-11-12T04:00:00Z");
 
-/** Click the first visible element matching, if there is one; a step that finds nothing is noted, not fatal */
+/**
+ * Click the first visible element matching, if there is one; a step that finds nothing is noted, not fatal.
+ * At a computer's width the page can be too busy drawing the map (frames of 100 ms and more, with no graphics
+ * card to draw it) for the element ever to count as holding still: then it is clicked where it is, and given
+ * 3 seconds to answer.
+ */
 async function tap(page, selector) {
   const el = page.locator(selector).filter({ visible: true }).first();
   try {
     if (await el.count()) await el.click({ timeout: 5000 });
     else page.notes?.push(`nothing to tap: ${selector}`);
-  } catch (e) {
-    page.notes?.push(`could not tap ${selector}: ${String(e.message).split("\n")[0]}`);
+  } catch {
+    try {
+      await el.click({ timeout: 5000, force: true });
+      await page.waitForTimeout(3000);
+      page.notes?.push(`tapped ${selector} as the page drew`);
+    } catch (e) {
+      page.notes?.push(`could not tap ${selector}: ${String(e.message).split("\n")[0]}`);
+    }
   }
 }
 const button = (name) => `role=button[name="${name}"]`;

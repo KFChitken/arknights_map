@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { createElement as h, Fragment } from "react";
+import { renderToString } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { scanSource, scanTree, sourceFiles } from "../../scripts/i18n/scan.mts";
@@ -6,6 +8,7 @@ import { count, type Counted, fill, fmt, fmtParts, isCounted, LANGS, missing, ty
 import { en } from "./en";
 import { lang, T } from "./index";
 import { firstLanguage, pickLang } from "./lang";
+import { fmtNodes } from "./nodes";
 import { wordsFile, wordsOf, wordsScript, wordsUrl, withLang } from "./server";
 import { SERVER_ONLY } from "./words";
 import { zh } from "./zh";
@@ -30,6 +33,20 @@ describe("filling in blanks", () => {
     expect(fmtParts("不算克隆体 {players}", { players: "9.1 万位" })).toEqual(["不算克隆体 ", "9.1 万位"]);
     expect(fmtParts("{a}和{b}", { a: "x" })).toEqual(["x", "和{b}"]);
     expect(fmtParts("{a}{b}", { a: "", b: 2 })).toEqual(["2"]);
+  });
+
+  it("fills a sentence with elements in its blanks as JSX did: the same children, so the same page", () => {
+    const pick = h("select", { "aria-label": "称呼" }, h("option", null, "博士"));
+    // <p>我是{pick}的{n}，{false}{null}</p>, written out as JSX writes it
+    const jsx = h("p", null, "我是", pick, "的", 3, "，", false, null);
+    const ours = h("p", null, fmtNodes("我是{a}的{n}，{gone}{none}", { a: pick, n: 3, gone: false, none: null }));
+    // server rendering marks where each text node ends, as the browser then has them
+    expect(renderToString(ours)).toBe(renderToString(jsx));
+    expect(renderToString(ours)).toBe('<p>我是<select aria-label="称呼"><option>博士</option></select>的<!-- -->3<!-- -->，</p>');
+    const lines = ["a", "b"].map((l) => h("span", { key: l }, l));
+    expect(renderToString(h(Fragment, null, fmtNodes("「{first}{rest}」", { first: "x", rest: lines })))).toBe(
+      renderToString(h(Fragment, null, "「", "x", lines, "」")),
+    );
   });
 
   it("picks the form for a count", () => {

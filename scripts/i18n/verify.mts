@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
-import { scanSource, sourceFiles, type Hit } from "./scan.mts";
+import { CJK, jsxEntities, jsxTextValue, scanSource, sourceFiles, type Hit } from "./scan.mts";
 
 type Value = string | readonly Value[] | { readonly [k: string]: Value };
 
@@ -84,7 +84,9 @@ const isWords = (h: Hit) => !h.kept && h.kind !== "regex" && h.kind !== "name";
 /**
  * Sentences put together from pieces of the code (a JSX line with values and tags in it),
  * by name in zh.ts: the pieces, in order, a value or tag between them being a blank
- * (an empty piece first or last for a sentence that starts or ends with one).
+ * (an empty piece first or last for a sentence that starts or ends with one). A piece
+ * with no Chinese in it (「 / 」 between two numbers) is no piece of text the scan finds,
+ * so it must be JSX text of its own in that file at base.
  */
 type Join = { key: string; file: string; pieces: string[] };
 
@@ -116,6 +118,18 @@ export type Report = {
   split: { file: string; line: number; text: string; proof: string }[];
 };
 
+/** What every piece of JSX text in a file shows, Chinese or not */
+function jsxTexts(file: string, source: string): Set<string> {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const out = new Set<string>();
+  const visit = (n: ts.Node) => {
+    if (ts.isJsxText(n)) out.add(jsxEntities(jsxTextValue(n.text)));
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
 function filesAt(base: string, root: string) {
   const list = execFileSync("git", ["ls-tree", "-r", "--name-only", base, "--", "src"], { cwd: root, encoding: "utf8" })
     .split("\n")
@@ -124,7 +138,8 @@ function filesAt(base: string, root: string) {
 }
 
 export async function verify(root: string, base: string): Promise<Report> {
-  const before = filesAt(base, root).flatMap(({ file, source }) => scanSource(file, source)).filter(isWords);
+  const atBase = filesAt(base, root);
+  const before = atBase.flatMap(({ file, source }) => scanSource(file, source)).filter(isWords);
   const nowFiles = sourceFiles(root).map((file) => ({ file, source: readFileSync(join(root, file), "utf8") }));
   const now = nowFiles.flatMap(({ file, source }) => scanSource(file, source)).filter(isWords);
   const { zh } = (await import(pathToFileURL(join(root, "src/i18n/zh.ts")).href)) as { zh: Value };
@@ -194,12 +209,24 @@ export async function verify(root: string, base: string): Promise<Report> {
 
   // nothing new: every word in zh.ts was in the code at base, or is a sentence joined from pieces that were
   const said = new Set([...before.map((h) => normalize(h.text)), ...cut]);
-  const joined = new Map(joins.map((j) => [j.key, j]));
+  // by name; one word several files say is joined in each of them
+  const joined = new Map<string, Join[]>();
+  for (const j of joins) joined.set(j.key, [...(joined.get(j.key) ?? []), j]);
+  const jsxAtBase = new Map<string, Set<string>>();
+  const plainAtBase = (file: string, piece: string) => {
+    if (CJK.test(piece)) return false;
+    if (!jsxAtBase.has(file)) {
+      const at = atBase.find((f) => f.file === file);
+      jsxAtBase.set(file, at ? jsxTexts(file, at.source) : new Set());
+    }
+    return jsxAtBase.get(file)!.has(piece);
+  };
   const walk = (v: Value, path: string[]) => {
     if (typeof v === "string") {
       const key = path.join(".");
-      const j = joined.get(key) ?? joined.get(path.slice(0, -1).join("."));
-      if (!said.has(normalize(v)) && !(j && j.pieces.every((p) => p === "" || said.has(normalize(p))) && joinedText(j) === normalize(v)))
+      const js = joined.get(key) ?? joined.get(path.slice(0, -1).join(".")) ?? [];
+      const fromPieces = (x: Join) => x.pieces.every((p) => p === "" || said.has(normalize(p)) || plainAtBase(x.file, p));
+      if (!said.has(normalize(v)) && !js.some((j) => fromPieces(j) && joinedText(j) === normalize(v)))
         report.added.push({ key, text: v });
     } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, [...path, String(i)]));
     else for (const [k, x] of Object.entries(v as Record<string, Value>)) walk(x, [...path, k]);

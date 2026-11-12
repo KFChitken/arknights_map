@@ -198,7 +198,7 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
     const planned = hits.filter((h) => byText.has(normalize(h.text)));
     const holdsAnother = (h: Hit) => planned.some((o) => o !== h && o.start >= h.start && o.end <= h.end);
     const changes: Change[] = [];
-    const inlined = new Map<string, { decl: ts.VariableStatement; expr: string }>();
+    const inlined = new Map<string, { decl: ts.VariableStatement; expr: string; fmt: boolean; moved: Moved }>();
 
     for (const h of hits) {
       const text = h.text;
@@ -253,9 +253,12 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
           isConst &&
           !(p.parent.parent as ts.VariableStatement).modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) &&
           (p.parent as ts.VariableDeclarationList).declarations.length === 1
-        )
-          inlined.set((p.name as ts.Identifier).text, { decl: p.parent.parent as ts.VariableStatement, expr: read.expr });
-        else {
+        ) {
+          // moved once it is put where it is used (below)
+          const moved = { file, line: h.line, path, text: h.text };
+          inlined.set((p.name as ts.Identifier).text, { decl: p.parent.parent as ts.VariableStatement, expr: read.expr, fmt: read.fmt, moved });
+          continue;
+        } else {
           problem(`${file}:${h.line}: 「${h.text}」 is read when the module loads; plan an edit for it`);
           continue;
         }
@@ -266,7 +269,7 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
     }
 
     // the constants put where they are used: every other mention of the name in the file
-    for (const [name, { decl, expr }] of inlined) {
+    for (const [name, { decl, expr, fmt: usesFmtHere, moved }] of inlined) {
       const uses: ts.Identifier[] = [];
       let shadowed = false;
       const visit = (n: ts.Node) => {
@@ -293,11 +296,16 @@ function moveFile(file: string, source: string, fp: FilePlan, common: Record<str
         problem(`${file}: ${name} is used when the module loads; plan an edit for it`);
         continue;
       }
+      // used inside a piece that moves on this pass: on the next, in what that piece has become
+      if (uses.some((u) => changes.some((c) => c.start < u.end && u.getStart(sf) < c.end))) continue;
       for (const u of uses)
         changes.push({ start: u.getStart(sf), end: u.end, text: ts.isShorthandPropertyAssignment(u.parent) ? `${name}: ${expr}` : expr });
       // the statement and the comment above it, keeping the line break that ends the line before
       const start = decl.getFullStart() + (source[decl.getFullStart()] === "\n" ? 1 : 0);
       changes.push({ start, end: decl.end + (source[decl.end] === "\n" ? 1 : 0), text: "" });
+      found.add(moved.path);
+      usesFmt ||= usesFmtHere;
+      report.moved.push(moved);
     }
 
     if (!changes.length) break;

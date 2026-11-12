@@ -58,6 +58,7 @@ export const KEPT: [prefix: string, why: string][] = [
   ["src/app/admin/", "admin"],
   ["src/app/api/admin/", "admin"],
   ["src/components/admin/", "admin"],
+  ["src/components/app/IdentitySheet.tsx", "demo"],
   ["src/lib/adminConsole.ts", "admin"],
   ["src/lib/server/admin.ts", "admin"],
   ["src/lib/server/admins.ts", "admin"],
