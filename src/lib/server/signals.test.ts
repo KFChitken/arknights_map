@@ -46,6 +46,23 @@ describe("an error for the log", () => {
     expect(text).not.toContain(SECRET);
   });
 
+  it("of a refusal the site expects: one line with fixed words, whatever the server said", () => {
+    const busy = (said: string, responseCode = 550) =>
+      Object.assign(new Error(`Message failed: ${said}`), { code: "EMESSAGE", response: said, responseCode, command: "DATA" });
+    expect(errorForLog(busy("550 Too many requests. Please try again later."))).toBe("Error EMESSAGE 550 (mail refused: too many requests)");
+    expect(errorForLog(busy("451 You can only make 10 requests per second.", 451))).toBe("Error EMESSAGE 451 (mail refused: too many requests)");
+    const invalid = Object.assign(new Error(`Can't send mail - all recipients were rejected: 550 Invalid recipient <${SECRET}>`), {
+      code: "EENVELOPE",
+      response: `550 Invalid recipient <${SECRET}>`,
+      responseCode: 550,
+      command: "RCPT TO",
+      rejected: [SECRET],
+    });
+    expect(errorForLog(invalid)).toBe("Error EENVELOPE 550 (mail refused: invalid recipient)");
+    // the same words, not from a mail server: an error like any other
+    expect(errorForLog(new Error("too many requests"))).toMatch(/^Error\n\s+at /);
+  });
+
   it("leaves out the lines of a message that look like the stack's", () => {
     const text = errorForLog(new Error(`no account\n    at ${SECRET}`));
     expect(text).toMatch(/^Error\n\s+at /);

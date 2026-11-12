@@ -96,12 +96,30 @@ export function errorCode(e: unknown, depth = 0): string {
  * holds its values and the database's can quote one (an email, say), and a mail error names the address.
  */
 export function errorForLog(e: unknown): string {
+  // one the site expects is no fault in the code: a line of its own, where it was thrown saying nothing
+  const refused = knownRefusal(e);
+  if (refused) return `${errorCode(e)} (mail refused: ${refused})`;
   const lines = [errorCode(e)];
   const query = queryOf(e);
   if (query) lines.push(`  query: ${query.replace(/\s+/g, " ").slice(0, 300)}`);
   const frames = framesOf(e);
   if (frames) lines.push(frames);
   return lines.join("\n");
+}
+
+/**
+ * A mail server's answer the site knows and expects, in fixed words (its own can name the address): Resend
+ * turning mail away for coming too fast (it takes 10 a second), or an address it will not send to.
+ * null for any other answer, and for anything that is not a mail server's answer.
+ */
+export function knownRefusal(e: unknown): "too many requests" | "invalid recipient" | null {
+  if (!e || typeof e !== "object") return null;
+  const x = e as { responseCode?: unknown; response?: unknown; message?: unknown };
+  if (typeof x.responseCode !== "number") return null;
+  const said = `${String(x.response ?? "")} ${String(x.message ?? "")}`;
+  if (/too many requests|requests per second/i.test(said)) return "too many requests";
+  if (/invalid recipient/i.test(said)) return "invalid recipient";
+  return null;
 }
 
 /** An unexpected error into the log, after what was being done, as errorForLog has it */
