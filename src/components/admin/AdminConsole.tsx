@@ -14,12 +14,14 @@ import { useHeld } from "./held";
 import Log from "./Log";
 import Site from "./Site";
 import { BrandMark, CodeInput, Icon } from "./ui";
+import Zones from "./Zones";
 import "./console.css";
 
 /**
  * /admin, the 管理台 (src/app/admin/page.tsx): its door until it lets one in, then 待处理, 搜索账号, 网站和工具,
- * 管理员 and 操作记录 under one menu. A moderator has less of it: 网站和工具 is only the name blocklist, 操作记录 only
- * their own, and no 管理员 (MOD_PAGES). Every look and step goes through src/app/api/admin/[op] and into the 操作记录.
+ * 管理员, 禁放区 and 操作记录 under one menu. A moderator has less of it: 网站和工具 is only the name blocklist, 操作记录
+ * only their own, and no 管理员 or 禁放区 (MOD_PAGES). Every look and step goes through src/app/api/admin/[op] and into
+ * the 操作记录.
  */
 
 type Title = { title: string; sub: string };
@@ -34,17 +36,22 @@ const TITLES: Record<Page, Title & { mod?: Title }> = {
   },
   site: {
     title: "网站和工具",
-    sub: "网站状态、这周的人、名字黑名单、查邮箱和称号。",
+    sub: "全站变灰、网站状态、这周的人、名字黑名单、查邮箱和称号。",
     mod: { title: "名字黑名单", sub: "名字里有这些词就存不上。加词、删词都会记进操作记录。" },
   },
   admins: { title: "管理员", sub: "只有站长能看到这一页。" },
+  zones: {
+    title: "禁放区",
+    sub: "你在地图上圈的地方。谁都不能把蟑螂放进去或挪进去，玩家看到的提示和代码里的禁放区一样。这份名单只存在服务器上，不进 GitHub，玩家看不到。",
+  },
 };
 
-const NAV: { page: Page; label: string; modLabel?: string; icon: "cases" | "accounts" | "site" | "log" | "admins" }[] = [
+const NAV: { page: Page; label: string; modLabel?: string; icon: "cases" | "accounts" | "site" | "log" | "admins" | "zones" }[] = [
   { page: "cases", label: "待处理", icon: "cases" },
   { page: "accounts", label: "搜索账号", icon: "accounts" },
   { page: "site", label: "网站和工具", modLabel: "名字黑名单", icon: "site" },
   { page: "admins", label: "管理员", icon: "admins" },
+  { page: "zones", label: "禁放区", icon: "zones" },
   { page: "log", label: "操作记录", modLabel: "我的操作记录", icon: "log" },
 ];
 
@@ -250,6 +257,7 @@ function Inside({
           {route.page === "log" && <Log />}
           {route.page === "site" && <Site />}
           {route.page === "admins" && owner && <Admins />}
+          {route.page === "zones" && owner && <Zones />}
         </main>
 
         <div className="ac-bars" aria-live="polite">

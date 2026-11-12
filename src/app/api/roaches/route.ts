@@ -5,6 +5,7 @@ import { clientIp, inLang } from "@/lib/server/http";
 import { noticeList } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
 import { logError, note } from "@/lib/server/signals";
+import { grayUntil } from "@/lib/server/siteSettings";
 import { compressedArea, roachArea, roachCounts, roachesInView, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
 import { parseBox, parseView, type Area, type Box } from "@/lib/world/area";
 
@@ -29,9 +30,13 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  */
 export const GET = inLang(async (req: NextRequest) => {
   const res = await answer(req);
+  const now = Date.now();
   // Every answer, a 304 or a visitor's too, says which notices there are now (公告, src/lib/server/notices.ts),
   // from memory: a page that holds others asks /api/notices. The answer itself and its ETag stay as they are.
-  res.headers.set("x-notices", noticeList(Date.now()).stamp);
+  res.headers.set("x-notices", noticeList(now).stamp);
+  // and until when the site is gray (全站变灰, src/lib/server/siteSettings.ts), 0 when it is not: always there, as a
+  // browser keeps a header the 304 leaves out on the snapshot it holds, and would stay gray
+  res.headers.set("x-gray", String(grayUntil(now) ?? 0));
   return res;
 });
 

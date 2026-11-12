@@ -14,7 +14,8 @@ import { useHeld } from "./held";
  * 看被举报的蟑螂, on the 站长's map: the roach cases open for where a roach was put (贴着别人放, 不合适的地方, 摆字或
  * 图案), each a red ring where it is now and a dashed one where it was at the report; or, the owner only, every
  * roach of a player with open reports, whatever for. A ring opens its card, to settle it there: 没问题 and 收回
- * wait HOLD_SECONDS for 撤销, as in the 管理台. Read once when opened; closed and opened again, it is read anew.
+ * wait HOLD_SECONDS for 撤销, as in the 管理台. Read once when opened; closed and opened again, it is read anew. The
+ * owner's card ends with 站长工具: drawing a 禁放区 round the roach (ZoneDraw.tsx).
  */
 
 type View = "place" | "all";
@@ -65,6 +66,7 @@ export default function MapReported({
   onFocus,
   onPick,
   onSay,
+  onDraw,
   onClose,
 }: {
   owner: boolean;
@@ -80,6 +82,8 @@ export default function MapReported({
   /** A ring was tapped: the roach card open, if any, makes way */
   onPick: () => void;
   onSay: (text: string) => void;
+  /** The owner's 站长工具: draw a 禁放区 round this spot */
+  onDraw?: (at: LngLat) => void;
   onClose: () => void;
 }) {
   const [view, setView] = useState<View>("place");
@@ -212,7 +216,7 @@ export default function MapReported({
           const el = ring(`rep-was-${x.key}`, () => ringElement("was", x.main, gone ? "已收回" : "举报时在这", `${what}，${why}，${gone ? "已经收回" : "举报时在这里"}`));
           overlays.push({ id: `rep-was-${x.key}`, at: p.was, el, onClick: tap });
           mine.push(el);
-          if (p.now) lines.push({ id: `rep-${x.key}`, from: p.was, to: p.now });
+          if (p.now) lines.push({ id: `rep-${x.key}`, path: [p.was, p.now] });
         }
       }
       els.set(x.key, mine);
@@ -407,6 +411,14 @@ export default function MapReported({
                 </a>
               </div>
             </>
+          )}
+          {owner && onDraw && (
+            <p className="rep-hint">
+              站长工具：
+              <button type="button" className="rep-link" onClick={() => onDraw(spotOf(x))}>
+                这一片以后也不让放（圈禁放区）
+              </button>
+            </p>
           )}
         </>
       )}

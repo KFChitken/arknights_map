@@ -34,7 +34,7 @@ export type MapViewProps = {
   shouts: ShoutMark[];
   /** Page elements placed on the map at a spot, over the roaches (⚡舟友的酒⚡'s dance floor); only those with onClick take a tap */
   overlays?: MapOverlay[];
-  /** Dashed red lines from one spot to another (the 站长's marks: where a reported roach was, to where it is now) */
+  /** The 站长's lines on the map (MapLine): where a reported roach was to where it is now, the circle of a 禁放区 */
   lines?: MapLine[];
   myAvatar: RoachAvatar;
   myColor: RoachColor;
@@ -132,7 +132,11 @@ export type ShoutMark = { id: string; at: LngLat; text: string; limited: boolean
 /** An element over the map at a spot; with onClick it takes the tap (outside placing), and the roach under it does not */
 export type MapOverlay = { id: string; at: LngLat; el: HTMLElement; onClick?: () => void };
 
-export type MapLine = { id: string; from: LngLat; to: LngLat };
+/**
+ * A line the map draws through spots (lines.ts), only on the 站长's own map: red and dashed from where a reported roach
+ * was to where it is now; blue round a 禁放区 being drawn (dashed till it is kept), gray round one lifted
+ */
+export type MapLine = { id: string; path: LngLat[]; color?: "red" | "blue" | "gray"; solid?: boolean };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */
 export function roachTraits(id: string, groups: number, headings: number) {

@@ -10,6 +10,7 @@ import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { ReactNode } from "react";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
+import { DRAW_HERE } from "../admin/ZoneDraw";
 import { MingheRoute } from "./Minghe";
 
 /** Tapped someone else's roach: offer the two ways to touch it, or 戳一戳 a 触须之交's sleeping one. */
@@ -100,8 +101,8 @@ export function OtherRoachCard({
   onPoke: () => void;
   /** 举报这只蟑螂: where a player put it; never offered on the guides */
   onReport?: () => void;
-  /** 站长清理, only on an admin's map: take this roach back, or every roach near it, at once */
-  admin?: { busy: boolean; onTakeBack: () => void; onTakeBackNear: () => void };
+  /** 站长清理, only on an admin's map: take this roach back, or every roach near it, at once; or draw a 禁放区 round it */
+  admin?: { busy: boolean; onTakeBack: () => void; onTakeBackNear: () => void; onDraw?: () => void };
   onClose: () => void;
 }) {
   if (roach.bot) {
@@ -327,6 +328,11 @@ export function OtherRoachCard({
           <button className="danger" disabled={admin.busy} onClick={admin.onTakeBackNear}>
             站长：收回附近一片
           </button>
+          {admin.onDraw && (
+            <button className="danger" disabled={admin.busy} onClick={admin.onDraw}>
+              {DRAW_HERE}
+            </button>
+          )}
         </div>
       )}
       <button className="close" onClick={onClose} aria-label="关闭">

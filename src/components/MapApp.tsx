@@ -245,6 +245,10 @@ import { belowGuide, besideMain, besideRight, BIKE_MS, guideBox, guideShift, MIN
 import type { GuideMark, MapLine, MapOverlay, ShoutMark } from "./map/types";
 import { adminCall, AdminError } from "./admin/api";
 import MapReported from "./admin/MapReported";
+import ZoneDraw from "./admin/ZoneDraw";
+import ZoneView from "./admin/ZoneView";
+import { MapPulse, type ZoneTool } from "./admin/zoneAim";
+import { useGrayNow } from "./GrayMode";
 import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
@@ -587,6 +591,11 @@ export default function MapApp({
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const viewRef = useRef<MapView>(WORLD_VIEW);
   const boundsRef = useRef<[LngLat, LngLat] | null>(null);
+  // 圈禁放区 on the owner's map (components/admin/ZoneDraw.tsx), or one place drawn seen there (ZoneView): which is open,
+  // the circle the map draws for it, and where the map rests and whether it moves, for the drawing to follow
+  const [zoneTool, setZoneTool] = useState<ZoneTool | null>(null);
+  const [zoneLines, setZoneLines] = useState<MapLine[]>([]);
+  const [pulse] = useState(() => new MapPulse(viewRef.current));
   const lastMessagesRef = useRef(0);
   // Test identities exist only in development; the live site never asks for them again
   const demoRef = useRef(false);
@@ -1565,6 +1574,7 @@ export default function MapApp({
   const onViewChange = (v: MapView, bounds: [LngLat, LngLat]) => {
     viewRef.current = v;
     boundsRef.current = bounds;
+    pulse.rest(v);
     countVisible(bounds);
     // the roaches of the area the map shows now, if the ones held do not cover it
     askAreaSoon();
@@ -2426,8 +2436,7 @@ export default function MapApp({
 
   const onReportedMarks = useCallback((overlays: MapOverlay[], lines: MapLine[]) => setReportedMarks({ overlays, lines }), []);
   // a reported roach, lift pixels above the middle of the map: the middle that far below it (Web Mercator, 512-pixel tiles)
-  const focusReported = useCallback((at: LngLat, lift: number) => {
-    const zoom = Math.max(viewRef.current.zoom, 15);
+  const focusReported = useCallback((at: LngLat, lift: number, zoom = Math.max(viewRef.current.zoom, 15)) => {
     const lat = at.lat - (lift * 360 * Math.cos((at.lat * Math.PI) / 180)) / (512 * 2 ** zoom);
     setFocus({ lng: at.lng, lat, zoom, nonce: Date.now() });
   }, []);
@@ -2446,6 +2455,36 @@ export default function MapApp({
     setSelected(null);
     setReported({ start: caseId });
   }, [reviewer]);
+
+  // 圈禁放区, the owner's: round a roach (its card, 看被举报的蟑螂) or where the map is; the roach's card and 看被举报的蟑螂
+  // make way, and a tap on the map or a roach does nothing meanwhile
+  const isOwner = Boolean(me?.admin);
+  const drawZoneAt = useCallback((at: LngLat | null) => {
+    setSelected(null);
+    setReported(null);
+    setPanel(null);
+    setZoneTool({ kind: "draw", at, key: Date.now() });
+  }, []);
+  const closeZoneTool = useCallback(() => {
+    setZoneTool(null);
+    setZoneLines([]);
+  }, []);
+  // /?draw=1 and /?zone=… from the 管理台's 禁放区: the owner's map opens 圈禁放区 or goes to that place, and the address
+  // forgets them; for anyone else they are nothing
+  useEffect(() => {
+    if (!isOwner) return;
+    const q = new URLSearchParams(window.location.search);
+    const zone = q.get("zone");
+    if (!zone && !q.has("draw")) return;
+    q.delete("zone");
+    q.delete("draw");
+    window.history.replaceState(null, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
+    if (zone) {
+      setSelected(null);
+      setReported(null);
+      setZoneTool({ kind: "view", id: zone, key: Date.now() });
+    } else drawZoneAt(null);
+  }, [isOwner, drawZoneAt]);
 
   /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
   const reportRoach = async (roach: PublicRoach, reason: RoachReportReason, note: string) => {
@@ -2777,10 +2816,14 @@ export default function MapApp({
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, [meIdForBadges]);
-  const unseenBadges = (me?.badges ?? [])
-    .filter((b) => !b.seen && !badgesPopped.has(poppedKey(b)))
-    .map((b) => b.id)
-    .join(",");
+  // while the site is gray (全站变灰) new badges wait to pop, with their confetti, until it ends; nothing waits for them
+  const gray = useGrayNow();
+  const unseenBadges = gray
+    ? ""
+    : (me?.badges ?? [])
+        .filter((b) => !b.seen && !badgesPopped.has(poppedKey(b)))
+        .map((b) => b.id)
+        .join(",");
   // the page in a background tab: what would pop up waits until it is looked at
   const [pageShown, setPageShown] = useState(true);
   useEffect(() => {
@@ -2790,8 +2833,8 @@ export default function MapApp({
     return () => document.removeEventListener("visibilitychange", look);
   }, []);
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
-  // nothing on the map but the map, the ask to set a password aside
-  const mapClear = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
+  // nothing on the map but the map (nor the owner's 禁放区 tool), the ask to set a password aside
+  const mapClear = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene && !zoneTool);
   // 设个密码 is up: nothing else opens over it meanwhile
   const pwNudgeUp = pwNudge && Boolean(me?.passwordNudge);
   const idle = mapClear && !pwNudgeUp;
@@ -3502,7 +3545,8 @@ export default function MapApp({
   const quietRef = useRef(false);
   const styleRef = useRef(mapStyle);
   useEffect(() => {
-    quietRef.current = Boolean(panel || placing || step || selected || offStage || pwNudgeUp);
+    // and while the owner draws or looks at a 禁放区 (admin/ZoneDraw.tsx, ZoneView.tsx)
+    quietRef.current = Boolean(panel || placing || step || selected || offStage || pwNudgeUp || zoneTool);
     styleRef.current = mapStyle;
   });
   const lagRef = useRef<LagWatch | null>(null);
@@ -3530,7 +3574,14 @@ export default function MapApp({
       lagRef.current = null;
     };
   }, [watchLag, toLite]);
-  const onMoving = useCallback((moving: boolean) => lagRef.current?.moving(moving), []);
+  // and the map's moves to the owner's tool for drawing a 禁放区 (admin/ZoneDraw.tsx)
+  const onMoving = useCallback(
+    (moving: boolean) => {
+      lagRef.current?.moving(moving);
+      pulse.moving(moving);
+    },
+    [pulse],
+  );
   // the notice goes by itself after 12 seconds (轻量 stays; the style picker goes back any time)
   useEffect(() => {
     if (!liteHint) return;
@@ -3576,6 +3627,8 @@ export default function MapApp({
     [siInnKey, siInks.key, siMineKey, siTier],
   );
 
+  // while the owner draws a 禁放区, a tap on the map or a roach opens nothing over the drawing
+  const ignoreTap = () => {};
   const mapProps = {
     roaches: mapRoaches,
     si: siMap,
@@ -3585,7 +3638,7 @@ export default function MapApp({
     trail,
     shouts,
     overlays: mapOverlays,
-    lines: reportedMarks.lines,
+    lines: zoneLines.length ? [...reportedMarks.lines, ...zoneLines] : reportedMarks.lines,
     // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -3601,9 +3654,9 @@ export default function MapApp({
     initialView: viewRef.current,
     placing: Boolean(placing),
     focus,
-    onMapClick,
-    onRoachClick,
-    onMineClick,
+    onMapClick: zoneTool?.kind === "draw" ? ignoreTap : onMapClick,
+    onRoachClick: zoneTool?.kind === "draw" ? ignoreTap : onRoachClick,
+    onMineClick: zoneTool?.kind === "draw" ? ignoreTap : onMineClick,
     onViewChange,
     onError: setToast,
     // mainland China: our own map instead, without the cover, if it is there to fall back on
@@ -4062,7 +4115,7 @@ export default function MapApp({
   );
 
   return (
-    <main className={`app ${basemap === "amap" && !amapFailed && !(twoMaps && abroad) ? "on-amap" : ""}`}>
+    <main className={`app ${basemap === "amap" && !amapFailed && !(twoMaps && abroad) ? "on-amap" : ""}${zoneTool ? " zone-tool" : ""}`}>
       <header className={`topbar${topRaised ? " raised" : ""}`}>
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
@@ -4301,8 +4354,15 @@ export default function MapApp({
           onFocus={focusReported}
           onPick={unselect}
           onSay={setToast}
+          onDraw={isOwner ? drawZoneAt : undefined}
           onClose={closeReported}
         />
+      )}
+      {isOwner && zoneTool?.kind === "draw" && (
+        <ZoneDraw key={zoneTool.key} start={zoneTool.at} pulse={pulse} onFocus={focusReported} onLines={setZoneLines} onClose={closeZoneTool} />
+      )}
+      {isOwner && zoneTool?.kind === "view" && (
+        <ZoneView key={zoneTool.key} id={zoneTool.id} onFocus={focusReported} onLines={setZoneLines} onClose={closeZoneTool} />
       )}
       {!placing && selected?.kind === "other" && selected.roach.id === SI_ID && (
         <SiCard
@@ -4406,7 +4466,12 @@ export default function MapApp({
           }
           admin={
             me?.admin && !selected.roach.guide
-              ? { busy: cleaning, onTakeBack: () => takeBack(selected.roach, false), onTakeBackNear: () => takeBack(selected.roach, true) }
+              ? {
+                  busy: cleaning,
+                  onTakeBack: () => takeBack(selected.roach, false),
+                  onTakeBackNear: () => takeBack(selected.roach, true),
+                  onDraw: () => drawZoneAt({ lng: selected.roach.lng, lat: selected.roach.lat }),
+                }
               : undefined
           }
           onClose={() => {
@@ -4550,7 +4615,7 @@ export default function MapApp({
       {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}
 
       {panel && renderPanel(panel)}
-      {newBadges[0] && (
+      {newBadges[0] && !gray && (
         <NewBadge
           key={newBadges[0].id}
           earned={newBadges[0]}

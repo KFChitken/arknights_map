@@ -4,6 +4,8 @@
  * the phantoms stay on the beat however long the music took to load.
  */
 
+import { isGray } from "@/lib/grayMode";
+
 const MUSIC_URL = "/guide-art/zhouyou-jiu.m4a";
 /** The song is mastered loud: well under full volume */
 const VOLUME = 0.35;
@@ -23,9 +25,9 @@ const fetchBytes = () =>
       return null;
     }));
 
-/** Fetch the music ahead of the tap (once the roach lies drunk), so it starts at once */
+/** Fetch the music ahead of the tap (once the roach lies drunk), so it starts at once; not while the site is gray */
 export function preloadPartyMusic() {
-  void fetchBytes();
+  if (!isGray()) void fetchBytes();
 }
 
 /** The music playing: seconds since it started, by the sound card's own clock */
@@ -46,9 +48,11 @@ export function stopPartyMusic() {
 /**
  * The music from the start. Call it within the tap itself, which is what lets a browser
  * play sound. Resolves once it plays, or to null when it cannot (switched off on the
- * server, or no sound here): the party then dances to its own clock.
+ * server, or no sound here) or may not (the site is gray, 全站变灰): the party then
+ * dances to its own clock.
  */
 export function playPartyMusic(): Promise<PartyMusic | null> {
+  if (isGray()) return Promise.resolve(null);
   const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Context) return Promise.resolve(null);
   ctx ??= new Context();

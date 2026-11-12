@@ -1,4 +1,4 @@
-import { beijingDate, beijingShort } from "./beijing";
+import { addDays, beijingDate, beijingMidnight, beijingShort } from "./beijing";
 import type { AdminAction, AdminPerson, AnyReason, ReporterInfo, RoachReportReason, RuleCode } from "./safety";
 
 /**
@@ -388,3 +388,76 @@ export const ROACH_REASON_SHORT: Record<RoachReportReason, string> = {
 };
 
 export type ReportedRoaches = { view: "place"; places: ReportedPlace[] } | { view: "all"; roaches: ReportedRoachAll[] };
+
+// ---- 禁放区 (the owner's: src/lib/server/zones.ts) ----
+
+/** A place the owner draws on the map: a circle this many metres across from its middle, at least and at most */
+export const ZONE_MIN_M = 30;
+export const ZONE_MAX_M = 3000;
+/** What it is and why, for the owner alone, in characters */
+export const ZONE_LABEL_MAX = 80;
+/** Places drawn and in force at once, at most */
+export const ZONES_MAX = 500;
+/** Drawing round more roaches than this asks again first, since they never come back */
+export const ZONE_SURE_OVER = 300;
+/** The sizes the map offers, and the one it starts with */
+export const ZONE_RADII: readonly number[] = [100, 200, 500, 1000, 2000];
+export const ZONE_RADIUS = 200;
+/** What the server answers, and the map says, for a size it does not take */
+export const ZONE_RADIUS_WRONG = `半径要在 ${ZONE_MIN_M} 到 ${ZONE_MAX_M} 米之间。`;
+
+/**
+ * A place the owner drew, as 禁放区 lists it: what and why, how big, who drew it and when, what came out then (roaches
+ * moved out, and visiting clones sent home), whether that is done, and when it was lifted. Never where it is: seeing
+ * one on the map (zone) goes into the 操作记录.
+ */
+export type ZoneItem = {
+  id: string;
+  label: string;
+  radiusM: number;
+  by: string;
+  at: number;
+  moved: number;
+  sentHome: number;
+  done: boolean;
+  liftedAt: number | null;
+};
+/** 禁放区: in force (the newest first), lifted within a year (the latest first), and how many places the code holds */
+export type ZoneList = { live: ZoneItem[]; lifted: ZoneItem[]; inCode: number };
+/** One place to see on the map: its middle and size, and whether it was lifted */
+export type ZoneSpot = { id: string; lng: number; lat: number; radiusM: number; label: string; lifted: boolean };
+/**
+ * What a circle would take in now: how many roaches, of how many players (the owner's own counted too), and what of
+ * the site's own stands in it or close by. Never whose they are or where.
+ */
+export type ZonePreview = { count: number; owners: number; warnings: string[] };
+/**
+ * drawZone's answer: nothing kept, as more than ZONE_SURE_OVER would move and it was not asked for sure; or kept, with
+ * what came out (the roaches moved out and visiting clones sent home, and their owners), or still under way (done
+ * false) with how many were inside.
+ */
+export type ZoneDrawn =
+  | { needSure: true; count: number }
+  | { needSure?: false; id: string; done: boolean; count: number; moved: number; home: number; owners: number };
+
+// ---- 全站变灰 (the owner's: src/lib/server/siteSettings.ts) ----
+
+/** How far ahead the site may be set gray until */
+export const GRAY_MAX_DAYS = 7;
+/** A day of national remembrance coming (YYYY-MM-DD, Beijing), and in how many days: 0 is today */
+export type Memorial = { date: string; name: string; days: number };
+/** Whether the site is gray now and until when, and the next day of remembrance, which only reminds the owner */
+export type GrayState = { until: number | null; memorial: Memorial };
+
+/**
+ * When 全站变灰 ends, as Beijing time: 「今天 24:00」, 「明天 24:00」, 「11/14 08:00」 (with now; without, always the date,
+ * as the 操作记录 says it). A midnight is the day before's 24:00.
+ */
+export function grayUntilWords(t: number, now?: number) {
+  const midnight = beijingMidnight(beijingDate(t)) === t;
+  const day = beijingDate(midnight ? t - 1 : t);
+  const clock = midnight ? "24:00" : beijingShort(t).split(" ")[1];
+  const today = now === undefined ? null : beijingDate(now);
+  const name = day === today ? "今天" : today && day === addDays(today, 1) ? "明天" : beijingShort(beijingMidnight(day)).split(" ")[0];
+  return `${name} ${clock}`;
+}

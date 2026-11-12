@@ -244,6 +244,16 @@ export function logText(e: AdminLogEntry) {
       return "绑好了验证器，存了备用码";
     case "gate.pledge":
       return "读了管理员守则，答应照着做";
+    case "act.zone":
+      return `圈了一块禁放区：${d}`;
+    case "act.zoneLift":
+      return `解除了禁放区：${d}`;
+    case "view.zone":
+      return `在地图上看禁放区：${d}`;
+    case "act.gray":
+      return `让全站变灰，${d}`;
+    case "act.grayEnd":
+      return "让全站恢复颜色";
     default:
       return d || e.what;
   }

@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { isOffLimits, OFF_LIMITS_REACH, outsideOffLimits } from "../offLimits";
+import { type DrawnPlace, isOffLimits, offLimitsReach, outsideOffLimits } from "../offLimits";
 import { db } from "./db";
 import { roachMoved, sendBack } from "./friendly";
 import type { Exec } from "./guides";
@@ -18,20 +18,25 @@ import { addNotes } from "./staffNotes";
  * takes it on to his next station or home, never into one. None of it counts as the player's
  * own move (no moves rows, the day's moves untouched), and each owner hears once in 站长通知
  * what came of theirs, with no yellow card: it was not their doing.
+ *
+ * Looks near `places` (every place, the code's and the owner's, unless told which: one the owner just drew), and
+ * goes BATCH roaches at a time with a breath between, so a big circle does not hold the database. Says how many
+ * moved, how many went home, and how many owners were told.
  */
-export async function moveOutOfOffLimits(random: () => number = Math.random) {
+export async function moveOutOfOffLimits(places: DrawnPlace[] = offLimitsReach(), random: () => number = Math.random) {
+  if (!places.length) return { moved: 0, home: 0, owners: 0 };
   const near = await db
     .select()
     .from(roaches)
     .where(
       or(
-        ...OFF_LIMITS_REACH.map(
+        ...places.map(
           ({ at, m }) => sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${at.lng}, ${at.lat}), 4326)::geography, ${m * 1.05 + 10})`,
         ),
       ),
     );
   const inside = near.filter((r) => isOffLimits(r) && !r.rideSince);
-  if (!inside.length) return { moved: 0, home: 0 };
+  if (!inside.length) return { moved: 0, home: 0, owners: 0 };
 
   const visiting = await db
     .select()
@@ -46,7 +51,9 @@ export async function moveOutOfOffLimits(random: () => number = Math.random) {
 
   // the guests first, so that none of them is told their host moved on the way
   let home = 0;
+  let done = 0;
   for (const v of visiting) {
+    if (++done % BATCH === 0) await breathe();
     const sent = await db.transaction(async (tx) => {
       // still visiting, and still sitting where it may not
       const [still] = await tx.select().from(visits).where(eq(visits.roachId, v.roachId)).for("update");
@@ -62,8 +69,9 @@ export async function moveOutOfOffLimits(random: () => number = Math.random) {
   let moved = 0;
   const guests = new Set(visiting.map((v) => v.roachId));
   for (const r of inside.filter((r) => !guests.has(r.id))) {
+    if (++done % BATCH === 0) await breathe();
     const to = outsideOffLimits(r, random);
-    const done = await db.transaction(async (tx) => {
+    const went = await db.transaction(async (tx) => {
       // unless its owner moved it, or it set off on a visit or a ride, meanwhile
       const [still] = await tx
         .update(roaches)
@@ -75,12 +83,16 @@ export async function moveOutOfOffLimits(random: () => number = Math.random) {
       await tell(tx, r.userId, "moved");
       return true;
     });
-    if (done) moved++;
+    if (went) moved++;
   }
 
   if (moved || home) {
     roachesChanged();
     console.info(`Moved ${moved} roaches out of off-limits places and sent ${home} visiting clones home`);
   }
-  return { moved, home };
+  return { moved, home, owners: new Set([...told].map((k) => k.split(":")[0])).size };
 }
+
+/** Roaches moved between breaths */
+const BATCH = 200;
+const breathe = () => new Promise((r) => setTimeout(r, 50));

@@ -5,9 +5,9 @@ import type { GateState } from "@/lib/adminConsole";
 import type { CallOptions } from "./api";
 import type { Hold } from "./held";
 
-/** The 管理台's pages (管理员 the owner's alone), and what a link may open on one: a case in 待处理, an account in 搜索账号 */
-export type Page = "cases" | "accounts" | "log" | "site" | "admins";
-export const PAGES: readonly Page[] = ["cases", "accounts", "log", "site", "admins"];
+/** The 管理台's pages (管理员 and 禁放区 the owner's alone), and what a link may open on one: a case in 待处理, an account in 搜索账号 */
+export type Page = "cases" | "accounts" | "log" | "site" | "admins" | "zones";
+export const PAGES: readonly Page[] = ["cases", "accounts", "log", "site", "admins", "zones"];
 export type Route = { page: Page; caseId?: string; account?: string };
 
 export type OpenGate = Extract<GateState, { state: "open" }>;

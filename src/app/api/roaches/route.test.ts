@@ -7,6 +7,7 @@ import { db } from "@/lib/server/db";
 import { forgetNotices, loadNotices, noticeList } from "@/lib/server/notices";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
 import { forgetSignals, recent } from "@/lib/server/signals";
+import { endGray, loadSettings, setGray } from "@/lib/server/siteSettings";
 import { notices, sessions, users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import { FIRE_AT } from "@/lib/talulah";
@@ -184,5 +185,48 @@ describe("the overview as squares, and a view counted exactly (f=4)", () => {
     expect(await (await ask("f=4&n=100,20,150,40", cookie)).json()).toEqual({ n: 2 });
     expect(await (await ask("f=4&n=100,20,150,40")).json()).toMatchObject({ hidden: true });
     for (const q of ["f=4&n=1,2,3", "f=4&n=120,40,121,30", "f=4&n=120,30,190,32"]) expect((await ask(q, cookie)).status, q).toBe(400);
+  });
+});
+
+describe("全站变灰", () => {
+  it("is said by every answer, as 0 while it is off, and the answers and their ETags stay as they were", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    const cookie = `sid=${await signIn(a)}`;
+    await loadSettings();
+
+    const ask = (query: string, headers: Record<string, string> = {}) =>
+      GET(new NextRequest(`http://localhost/api/roaches?${query}`, { headers: { cookie, ...headers } }));
+    const everyAnswer = async () => {
+      const full = await ask("f=3");
+      const area = await ask("f=4&box=121,31,122,32");
+      const v = JSON.parse(await full.clone().text()).v as string;
+      return {
+        visitor: await get(),
+        full,
+        notModified: await ask("f=3", { "if-none-match": full.headers.get("etag")! }),
+        diff: await ask(`f=3&since=${encodeURIComponent(v)}`),
+        counts: await ask("f=4&c=1"),
+        area,
+        areaNotModified: await ask("f=4&box=121,31,122,32", { "if-none-match": area.headers.get("etag")! }),
+        overview: await ask("f=4&o=1"),
+        squares: await ask("f=4&o=2"),
+        view: await ask("f=4&n=120.5,30.5,122.5,32"),
+      };
+    };
+
+    const off = await everyAnswer();
+    for (const [kind, res] of Object.entries(off)) expect([kind, res.headers.get("x-gray")]).toEqual([kind, "0"]);
+    const until = Date.now() + 3_600_000;
+    await setGray(a, until);
+    const on = await everyAnswer();
+    expect([on.notModified.status, on.areaNotModified.status]).toEqual([304, 304]);
+    for (const [kind, res] of Object.entries(on)) expect([kind, res.headers.get("x-gray")]).toEqual([kind, String(until)]);
+    expect(on.full.headers.get("etag")).toBe(off.full.headers.get("etag"));
+    expect(await on.full.text()).toBe(await off.full.text());
+    expect(on.area.headers.get("etag")).toBe(off.area.headers.get("etag"));
+
+    await endGray();
+    expect((await ask("f=3")).headers.get("x-gray")).toBe("0");
   });
 });

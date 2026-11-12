@@ -16,6 +16,7 @@ import { migrationsDone, runMigrations } from "./lib/server/migrate";
 import { startAdmins } from "./lib/server/admins";
 import { startNotices } from "./lib/server/notices";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
+import { startSettings } from "./lib/server/siteSettings";
 import { spreadFireStacks } from "./lib/server/talulah";
 import { pruneOldActivity } from "./lib/server/retention";
 import { pruneRoachChanges } from "./lib/server/roachFeed";
@@ -26,6 +27,7 @@ import { logError, note } from "./lib/server/signals";
 import { recordDailyTotals } from "./lib/server/totals";
 import { buildId, heardStart, processName, startWatch } from "./lib/server/watch";
 import { hearSignals, shareSignals } from "./lib/server/watchSignals";
+import { finishZones, startZones, UNFINISHED_AFTER_MS } from "./lib/server/zones";
 
 const TRIES = 10;
 
@@ -74,6 +76,11 @@ await startNotices();
 
 // the moderators, kept in memory by every process for the map's buttons (none, if they cannot be read)
 await startAdmins();
+
+// the places the owner drew where no roach may stand (禁放区), and the site's settings (全站变灰): kept in memory by
+// every process and read before the first page asks (only the code's places and no gray, if they cannot be read)
+await startZones();
+await startSettings();
 
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);
@@ -142,8 +149,17 @@ if (!helper) {
   spreadStackedRiders().catch(failed("ride", "Spreading 明河都尉's stacked riders failed"));
   // roaches sitting on one another by 塔露拉干员's fire, from when each page picked its own seat, each get a seat of their own
   spreadFireStacks().catch(failed("fire", "Spreading the roaches stacked by 塔露拉干员's fire failed"));
-  // roaches standing where none may (src/lib/offLimits.ts), from before the place was listed, move out
-  moveOutOfOffLimits().catch(failed("offLimits", "Moving roaches out of the off-limits places failed"));
+  // roaches standing where none may (src/lib/offLimits.ts), from before the place was listed, move out: first those in
+  // a place the owner drew that was left half done (the process drawing it stopped), counted on it, then any other
+  finishZones()
+    .catch(failed("offLimits", "Finishing the places the owner drew failed"))
+    .then(() => moveOutOfOffLimits())
+    .catch(failed("offLimits", "Moving roaches out of the off-limits places failed"));
+  // and one drawn on a helper that stopped while this one ran on
+  setInterval(
+    () => finishZones(Date.now(), UNFINISHED_AFTER_MS).catch(failed("offLimits", "Finishing the places the owner drew failed")),
+    10 * MINUTE_MS,
+  );
 
   // 缘缘庄 (src/lib/server/si.ts): 祀掌柜 tells the ink roaches' owners as they get their room and leave it, once a minute;
   // a run never overlaps the one before

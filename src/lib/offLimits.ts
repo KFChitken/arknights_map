@@ -7,7 +7,8 @@ import type { LngLat } from "./types";
  * seats by a friend's roach or the fire (pickSeat), 明河都尉's queue (queueSpots); a roach going
  * home to one, from a visit or a ride, stops just outside (outsideOffLimits); and the roaches
  * that stood in one before it was listed move out as the server starts (src/lib/server/offLimits.ts).
- * The places are drawn nowhere, and no message names them.
+ * The places are drawn nowhere, and no message names them. The owner may add more on the map, which
+ * only the server knows (setExtraOffLimits): everything here treats them the same.
  */
 
 type Ring = [lng: number, lat: number][];
@@ -225,19 +226,44 @@ export const OFF_LIMITS_REACH: { id: string; at: LngLat; m: number }[] = OFF_LIM
   return { id: p.id, at, m: Math.max(...p.ring.map(([lng, lat]) => metres(at, { lng, lat }))) };
 });
 
-// a box around each, in degrees, so most points are let through without any arithmetic
-const BOXES = OFF_LIMITS_REACH.map(({ at, m }) => {
+type Box = { w: number; e: number; s: number; n: number };
+
+/** A box around a place, in degrees, so most points are let through without any arithmetic */
+function boxOf(at: LngLat, m: number): Box {
   const dLat = (m / M_PER_DEG) * 1.01;
   const dLng = dLat / Math.cos(rad(at.lat));
   return { w: at.lng - dLng, e: at.lng + dLng, s: at.lat - dLat, n: at.lat + dLat };
-});
+}
+const BOXES = OFF_LIMITS_REACH.map(({ at, m }) => boxOf(at, m));
+const outOfBox = (b: Box, p: LngLat) => p.lng < b.w || p.lng > b.e || p.lat < b.s || p.lat > b.n;
+
+/** A place the owner drew on the map (src/lib/server/zones.ts): a circle, its id 「zone:」 and the row's */
+export type DrawnPlace = { id: string; at: LngLat; m: number };
+
+// on globalThis: Next.js can load this module once per route bundle, and every copy on the server must know them
+const g = globalThis as typeof globalThis & { offLimitsDrawn?: (DrawnPlace & { box: Box })[] };
+const drawn = () => g.offLimitsDrawn ?? [];
+
+/**
+ * The places the owner drew, as the server reads them (src/lib/server/zones.ts), refused, walked round and moved
+ * out of like the ones in OFF_LIMITS. Only the server calls it: a page never knows them (none is in its bundle or
+ * any answer), so the map lets a spot in one through and the server refuses it.
+ */
+export function setExtraOffLimits(list: DrawnPlace[]) {
+  g.offLimitsDrawn = list.map((p) => ({ ...p, box: boxOf(p.at, p.m) }));
+}
+
+/** Every place's middle and reach, the code's and then the drawn ones: what the server looks through for roaches inside */
+export const offLimitsReach = (): DrawnPlace[] => [...OFF_LIMITS_REACH, ...drawn().map(({ id, at, m }) => ({ id, at, m }))];
 
 /** The id of the place p is in, or null */
 export function offLimitsAt(p: LngLat): string | null {
   for (const [i, place] of OFF_LIMITS.entries()) {
-    const b = BOXES[i];
-    if (p.lng < b.w || p.lng > b.e || p.lat < b.s || p.lat > b.n) continue;
+    if (outOfBox(BOXES[i], p)) continue;
     if ("ring" in place ? inRing(place.ring, p) : metres(place.at, p) < place.m) return place.id;
+  }
+  for (const place of drawn()) {
+    if (!outOfBox(place.box, p) && metres(place.at, p) < place.m) return place.id;
   }
   return null;
 }

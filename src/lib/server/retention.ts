@@ -15,6 +15,7 @@ import {
   moves,
   mingheTouches,
   modActions,
+  offLimitsAreas,
   perlicaTouches,
   pokes,
   radarScans,
@@ -72,6 +73,8 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(adminNotes).where(lt(adminNotes.createdAt, adminCutoff));
   // bans a moderator asked for, once answered: the 操作记录 keeps what came of them
   await db.delete(adminRequests).where(lt(adminRequests.answeredAt, new Date(now - KEEP_ANSWERED_REQUEST_DAYS * DAY_MS)));
+  // places the owner drew and lifted again, kept a year to show why they were drawn (src/lib/server/zones.ts)
+  await db.delete(offLimitsAreas).where(lt(offLimitsAreas.liftedAt, adminCutoff));
   // the site's own checks: what they found and emailed, for 网站状态
   await db.delete(watchIncidents).where(lt(watchIncidents.endedAt, cutoff));
   await db.delete(watchMails).where(lt(watchMails.at, cutoff));

@@ -3,7 +3,9 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { DEVICES, type AppCountDay, type Device, type PageCount } from "@/lib/appCounts";
 import { BADGES } from "@/lib/badges";
-import { beijingDayWords, beijingShort } from "@/lib/beijing";
+import { GRAY_MAX_DAYS, grayUntilWords, type GrayState } from "@/lib/adminConsole";
+import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } from "@/lib/beijing";
+import { memorialWords } from "@/lib/memorials";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { RULES, type BanInfo, type RetentionStats } from "@/lib/safety";
 import { lasted, LEVEL_MARK, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
@@ -24,12 +26,162 @@ export default function Site() {
   const [wordsAdded, setWordsAdded] = useState(0);
   return (
     <div className="ac-site">
+      {owner && <GrayPanel />}
       {owner && <SiteStatusPanel />}
       {owner && <People />}
       <NameList added={wordsAdded} onAdded={() => setWordsAdded((n) => n + 1)} />
       {owner && <BanLookup />}
       {owner && <BadgeDesk />}
     </div>
+  );
+}
+
+type GrayPick = "today" | "tomorrow" | "own";
+const GRAY_PICKS: { pick: GrayPick; label: string }[] = [
+  { pick: "today", label: "今天 24:00" },
+  { pick: "tomorrow", label: "明天 24:00" },
+  { pick: "own", label: "自己选" },
+];
+/** A moment as a datetime-local value, in Beijing time */
+const beijingLocal = (t: number) => new Date(t + 8 * 3_600_000).toISOString().slice(0, 16);
+
+/**
+ * 全站变灰 (src/lib/server/siteSettings.ts), the owner's: everyone's 舟P in gray until a time, Beijing time, for a
+ * national day of mourning; or back to colour now. The 管理台 itself never turns gray. The next day of remembrance
+ * only reminds: the site never turns gray by itself.
+ */
+function GrayPanel() {
+  const { call, say } = useConsole();
+  const [s, setS] = useState<GrayState | null>(null);
+  const [pick, setPick] = useState<GrayPick>("today");
+  const [own, setOwn] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    call<GrayState>("gray")
+      .then(setS)
+      .catch((e) => setNote(`读不出来：${errorWords(e)}`));
+    // the time passing: an end reached shows itself, and 「今天」 stays today
+    const t = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, [call]);
+
+  const today = beijingDate(now);
+  const until =
+    pick === "today"
+      ? beijingMidnight(addDays(today, 1))
+      : pick === "tomorrow"
+        ? beijingMidnight(addDays(today, 2))
+        : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(own)
+          ? Date.parse(`${own}:00+08:00`)
+          : NaN;
+  const fits = until > now && until <= now + GRAY_MAX_DAYS * 86_400_000;
+
+  const step = async (op: "setGray" | "endGray") => {
+    setBusy(true);
+    try {
+      const next = await call<GrayState>(op, op === "setGray" ? [{ until }] : []);
+      setS(next);
+      setAsking(false);
+      setNote(null);
+      say(next.until ? `全站变灰了，到 ${grayUntilWords(next.until, Date.now())} 自动恢复。` : "全站恢复颜色了。");
+    } catch (e) {
+      setNote(errorWords(e));
+    }
+    setBusy(false);
+  };
+
+  const on = s?.until && s.until > now ? s.until : null;
+  return (
+    <section className="ac-panel ac-tool wide" aria-label="全站变灰">
+      <PanelHead title="全站变灰" aside="只有站长" />
+      <p className="ac-sub">
+        国家宣布全国哀悼日的时候用。打开以后，所有人看到的舟P都是黑白的，地图也换成灰色；已经开着的页面最多 2 分钟内跟着变。管理台自己不变灰，方便你看。
+      </p>
+      {!s ? (
+        <p className="ac-sub">{note ?? "正在读取…"}</p>
+      ) : on ? (
+        <>
+          <div className="ac-status-line">
+            <span className="ac-dot gray" aria-hidden="true" />
+            <strong>整站正在变灰，到 {grayUntilWords(on, now)} 自动恢复</strong>
+          </div>
+          <div>
+            <button type="button" className="ac-btn" disabled={busy} onClick={() => step("endGray")}>
+              现在就恢复
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="ac-status-line">
+            <span className="ac-dot" aria-hidden="true" />
+            <strong>现在没有变灰</strong>
+          </div>
+          <div className="ac-field">
+            <span className="ac-label" id="gray-until">
+              到什么时候自动恢复（北京时间）
+            </span>
+            <div className="ac-chips" role="group" aria-labelledby="gray-until">
+              {GRAY_PICKS.map((o) => (
+                <button
+                  key={o.pick}
+                  type="button"
+                  className="ac-chip solid"
+                  aria-pressed={pick === o.pick}
+                  disabled={busy}
+                  onClick={() => {
+                    setPick(o.pick);
+                    setAsking(false);
+                    if (o.pick === "own" && !own) setOwn(beijingLocal(beijingMidnight(addDays(today, 1))));
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {pick === "own" && (
+              <label className="ac-inline-label">
+                恢复时间
+                <input
+                  type="datetime-local"
+                  value={own}
+                  min={beijingLocal(now)}
+                  max={beijingLocal(now + GRAY_MAX_DAYS * 86_400_000)}
+                  onChange={(e) => {
+                    setOwn(e.target.value);
+                    setAsking(false);
+                  }}
+                />
+              </label>
+            )}
+            {pick === "own" && own && !fits && <p className="ac-error">恢复时间要在现在到 {GRAY_MAX_DAYS} 天以内。</p>}
+          </div>
+          {asking && fits ? (
+            <div className="ac-confirm" role="alert">
+              <span>所有人的舟P都会变成黑白的，到 {grayUntilWords(until, now)} 自动恢复。确定吗？</span>
+              <button type="button" className="ac-btn small primary" disabled={busy} onClick={() => step("setGray")}>
+                确认变灰
+              </button>
+              <button type="button" className="ac-btn small" disabled={busy} onClick={() => setAsking(false)}>
+                先不变
+              </button>
+            </div>
+          ) : (
+            <div>
+              <button type="button" className="ac-btn primary" disabled={busy || !fits} onClick={() => setAsking(true)}>
+                现在变灰
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      {s && note && <p className="ac-error">{note}</p>}
+      <p className="ac-muted small">变灰的时候：新称号的彩纸等恢复了再放，阿米娅跳舞和舟友的酒都不放音乐，别的照常。</p>
+      {s && <p className="ac-muted small">{memorialWords(s.memorial)}纪念日只在这里提醒你，不会自己变灰。</p>}
+    </section>
   );
 }
 

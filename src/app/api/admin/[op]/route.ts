@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { maskEmails, MOD_ONLY, MOD_OPS, OWNER_ONLY } from "@/lib/adminConsole";
+import { grayUntilWords, maskEmails, MOD_ONLY, MOD_OPS, OWNER_ONLY } from "@/lib/adminConsole";
 import { parseNameWords } from "@/lib/nameRules";
 import { isRuleCode, type AdminAction, type CaseQuery } from "@/lib/safety";
 import {
@@ -53,7 +53,9 @@ import { addAdmin, findAdminCandidate, listAdmins, removeAdmin, renameAdmin, unp
 import { appCountDays } from "@/lib/server/appCounts";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
+import { endGray, grayState, setGray } from "@/lib/server/siteSettings";
 import { ackIncident, siteStatus } from "@/lib/server/watchReport";
+import { drawZone, liftZone, listZones, previewZone, zoneSpot } from "@/lib/server/zones";
 
 /** No answer of the 管理台 is kept by a browser or anything between */
 const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
@@ -287,6 +289,37 @@ export const POST = route(
       // names the list blocks, cleared with a 站长通知 each (and a line each in the 操作记录): args[0] the accounts' ids
       case "clearNames":
         result = await clearBlockedNames(args[0], now, by);
+        break;
+      // 全站变灰 (the owner's): whether it is on and the next day of remembrance; on until args[0].until (ms); off now
+      case "gray":
+        result = grayState(now);
+        break;
+      case "setGray": {
+        const until = await setGray(actor.id, objectOf(args[0]).until, now);
+        await logAdmin(actor, "act", "act.gray", { detail: `到 ${grayUntilWords(until)} 自动恢复` }, now);
+        result = grayState(now);
+        break;
+      }
+      case "endGray":
+        if (await endGray(now)) await logAdmin(actor, "act", "act.grayEnd", {}, now);
+        result = grayState(now);
+        break;
+
+      // ---- 禁放区 (the owner's, src/lib/server/zones.ts): the list, one to see on the map, what a circle takes in, drawing, lifting ----
+      case "zones":
+        result = await listZones(now);
+        break;
+      case "zone":
+        result = await zoneSpot(actor, args[0], now);
+        break;
+      case "zonePreview":
+        result = await previewZone(args[0]);
+        break;
+      case "drawZone":
+        result = await drawZone(actor, args[0], now);
+        break;
+      case "liftZone":
+        await liftZone(actor, args[0], now);
         break;
 
       // ---- the map: 站长清理 and 看被举报的蟑螂 ----

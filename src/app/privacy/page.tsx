@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
+import GrayMode from "@/components/GrayMode";
 import { AWAY_DAYS, SURVIVOR_DAYS } from "@/lib/badges";
 import { HOT_MIN_PLAYERS } from "@/lib/hotList";
 import {
@@ -19,6 +21,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
+import { grayUntil } from "@/lib/server/siteSettings";
 
 export const metadata: Metadata = { title: `隐私说明 · ${SITE_NAME}` };
 
@@ -26,9 +29,12 @@ const OPERATOR = "Breeze青嵐";
 const CONTACT = "tungsam2003@gmail.com";
 const BACKUP_DAYS = 14;
 
-export default function Privacy() {
+export default async function Privacy() {
+  // rendered for each visit, so 全站变灰 shows here too
+  await connection();
   return (
     <main className="doc">
+      <GrayMode until={grayUntil(Date.now())} />
       <h1>{SITE_NAME}隐私说明</h1>
       <p className="hint">生效日期：2026 年 11 月 12 日</p>
 

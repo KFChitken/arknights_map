@@ -6,47 +6,57 @@ import { fold } from "../nameFold";
 import { bare, parseNameWords } from "../nameRules";
 import { WorldError } from "../world/types";
 import { db } from "./db";
+import { onReload, reloadEverywhere } from "./live";
 import { nameWords, users } from "./schema";
 
 /**
- * The name blocklist kept on the admin page. The live site runs the app as several processes and
- * only the one that took the admin's change hears of it, so each also looks again once what it holds
- * is FRESH_MS old: a word added or taken off counts everywhere within a minute. Looking is one small
- * query; the list is only read and built again when it changed.
+ * The name blocklist kept on the admin page. The live site runs the app as several processes: a change
+ * there tells every one of them to read the list again (reloadEverywhere), and in case one misses the
+ * word, each also looks again once what it holds is FRESH_MS old. Looking is one small query; the list
+ * is only read and built again when it changed. What a process holds lives on globalThis, because
+ * Next.js can load this module once per route bundle and every copy must forget it at once.
  */
 const FRESH_MS = 60_000;
 
 type Judge = (name: string) => string | null;
-let held: { at: number; version: string; judge: Judge } | null = null;
-let looking: Promise<Judge> | null = null;
-/** Counts forgetNameWords calls, so a look that started before one does not put back what it forgot */
-let generation = 0;
+type Held = {
+  held: { at: number; version: string; judge: Judge } | null;
+  looking: Promise<Judge> | null;
+  /** Counts forgetNameWords calls, so a look that started before one does not put back what it forgot */
+  generation: number;
+};
+const g = globalThis as unknown as { nameWordsHeld?: Held };
+const state = (g.nameWordsHeld ??= { held: null, looking: null, generation: 0 });
 
-/** Read the list again on next use: after every change, and when tests empty the table. */
+/** Read the list again on next use: when it changed, here or on another process, and when tests empty the table. */
 export function forgetNameWords() {
-  held = null;
-  looking = null;
-  generation++;
+  state.held = null;
+  state.looking = null;
+  state.generation++;
 }
+
+// wherever this module is loaded, so the word from another process reaches it
+onReload("nameWords", async () => forgetNameWords());
 
 /** Changes whenever a word is added, taken off or changes its 「=」 */
 const VERSION = sql<string>`count(*)::text || ':' || coalesce(sum(hashtext(${nameWords.word} || ${nameWords.whole}::text)), 0)::text`;
 
 /** What stops a name now (src/lib/nameCheck.ts nameJudge), as the list stands within FRESH_MS */
 export function nameJudgeNow(): Promise<Judge> {
+  const { held } = state;
   if (held && Date.now() - held.at < FRESH_MS) return Promise.resolve(held.judge);
-  if (looking) return looking;
-  const started = generation;
+  if (state.looking) return state.looking;
+  const started = state.generation;
   const look = (async () => {
     const [{ version }] = await db.select({ version: VERSION }).from(nameWords);
     let judge = held?.version === version ? held.judge : null;
     if (!judge) judge = nameJudge(await db.select({ word: nameWords.word, whole: nameWords.whole }).from(nameWords));
-    if (generation === started) held = { at: Date.now(), version, judge };
+    if (state.generation === started) state.held = { at: Date.now(), version, judge };
     return judge;
   })();
-  looking = look;
+  state.looking = look;
   const done = () => {
-    if (looking === look) looking = null;
+    if (state.looking === look) state.looking = null;
   };
   look.then(done, done);
   return look;
@@ -86,7 +96,7 @@ export async function addNameWords(text: string) {
       .values(words.slice(i, i + CHUNK))
       .onConflictDoUpdate({ target: nameWords.word, set: { whole: sql`excluded.whole` } });
   }
-  forgetNameWords();
+  await reloadEverywhere("nameWords");
   return words.length;
 }
 
@@ -101,13 +111,13 @@ export async function removeNameWords(text: string) {
       .returning({ word: nameWords.word });
     gone += rows.length;
   }
-  forgetNameWords();
+  await reloadEverywhere("nameWords");
   return gone;
 }
 
 export async function removeNameWord(word: string) {
   await db.delete(nameWords).where(eq(nameWords.word, String(word)));
-  forgetNameWords();
+  await reloadEverywhere("nameWords");
 }
 
 /**

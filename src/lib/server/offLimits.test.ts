@@ -89,7 +89,7 @@ describe("已经在里面的蟑螂", () => {
     const cloneB = await standing(b, 1, NANJING_MEMORIAL);
     const movesBefore = (await db.select().from(moves)).length;
 
-    expect(await moveOutOfOffLimits(mulberry32(5))).toEqual({ moved: 3, home: 0 });
+    expect(await moveOutOfOffLimits(undefined, mulberry32(5))).toEqual({ moved: 3, home: 0, owners: 2 });
     for (const [r, from] of [
       [mainA, MAUSOLEUM],
       [cloneA, ZHONGNANHAI],
@@ -111,7 +111,7 @@ describe("已经在里面的蟑螂", () => {
     // B's main roach never stood in one
     expect(metres(await mainOf(b), PEOPLES_SQUARE)).toBeLessThan(1);
 
-    expect(await moveOutOfOffLimits()).toEqual({ moved: 0, home: 0 });
+    expect(await moveOutOfOffLimits()).toEqual({ moved: 0, home: 0, owners: 0 });
     expect(await notesOf(a)).toHaveLength(1);
   });
 
@@ -129,7 +129,7 @@ describe("已经在里面的蟑螂", () => {
       { ...visit, roachId: outClone.id, guestId: outGuest, fromLng: null, fromLat: null },
     ]);
 
-    expect(await moveOutOfOffLimits(mulberry32(9))).toEqual({ moved: 1, home: 1 });
+    expect(await moveOutOfOffLimits(undefined, mulberry32(9))).toEqual({ moved: 1, home: 1, owners: 2 });
     // G's clone is back home, and G is told so; not that the host moved
     expect(metres(await roachOf(inClone.id), { lng: TOKYO.lng + 0.01, lat: TOKYO.lat })).toBeLessThan(1);
     expect(await db.select().from(visits).where(eq(visits.roachId, inClone.id))).toEqual([]);

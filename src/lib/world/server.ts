@@ -4,6 +4,7 @@ import type { Declaration } from "../declarations";
 import type { BatchAct, Gesture } from "../friendly";
 import type { Game } from "../games";
 import type { HelpAsk } from "../help";
+import { heardGray } from "../grayMode";
 import { heardNoticeStamp } from "../notices";
 import type { Profile } from "../profile";
 import type { ReportReason, RoachReportReason } from "../safety";
@@ -81,8 +82,10 @@ export class ServerWorld implements World {
     } catch {
       throw new WorldError(T.requests.offline);
     }
-    // which notices there are now (公告): the page asks for them only when they are not the ones it holds
+    // which notices there are now (公告): the page asks for them only when they are not the ones it holds; and
+    // whether the site is gray (全站变灰)
     heardNoticeStamp(res.headers.get("x-notices"));
+    heardGray(res.headers.get("x-gray"));
     const body = (await res.json().catch(() => null)) as ((RoachFeedUpdate | VisitorFeed) & { error?: string }) | null;
     if (res.status === 429) throw new TooBusy(body?.error ?? T.requests.busy, Number(res.headers.get("retry-after")) || 10);
     if (!res.ok || !body) throw new WorldError(body?.error ?? T.requests.serverTrouble);
@@ -98,6 +101,7 @@ export class ServerWorld implements World {
       try {
         const res = await fetch(url, { cache });
         heardNoticeStamp(res.headers.get("x-notices"));
+        heardGray(res.headers.get("x-gray"));
         return { res, body: (await res.json().catch(() => null)) as ((AreaUpdate | VisitorFeed) & { error?: string }) | null };
       } catch {
         throw new WorldError(T.requests.offline);
@@ -116,6 +120,7 @@ export class ServerWorld implements World {
   roachesInView = async (view: Box): Promise<{ n: number } | VisitorFeed | { whole: true }> => {
     const res = await fetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}`, { cache: "no-store" });
     heardNoticeStamp(res.headers.get("x-notices"));
+    heardGray(res.headers.get("x-gray"));
     const body = (await res.json().catch(() => null)) as ({ n: number } | VisitorFeed | { whole: true }) | null;
     if (!res.ok || !body) throw new WorldError(T.requests.serverTrouble);
     return body;

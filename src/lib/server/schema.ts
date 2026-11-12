@@ -1069,6 +1069,45 @@ export const adminRequests = pgTable(
 );
 
 /**
+ * Places the owner drew on the map where no roach may stand (src/lib/server/zones.ts), refused like the ones in the
+ * code (src/lib/offLimits.ts): a circle, WGS-84 like roaches. label says what and why, for the owner alone; players
+ * never see the list, nor anything drawn. moved and sent_home count what came out when it was drawn, moved_at when
+ * that was done (null while it goes on). Lifting one keeps its row, for KEEP_ADMIN_LOG_DAYS.
+ */
+export const offLimitsAreas = pgTable(
+  "off_limits_areas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    lng: doublePrecision("lng").notNull(),
+    lat: doublePrecision("lat").notNull(),
+    radiusM: integer("radius_m").notNull(),
+    label: text("label").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    moved: integer("moved").notNull().default(0),
+    sentHome: integer("sent_home").notNull().default(0),
+    movedAt: at("moved_at"),
+    liftedAt: at("lifted_at"),
+    liftedBy: uuid("lifted_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    check("off_limits_areas_radius_check", sql`${t.radiusM} between 30 and 3000`),
+    check("off_limits_areas_label_check", sql`char_length(${t.label}) between 1 and 80`),
+  ],
+);
+
+/**
+ * Settings for the whole site, changed in the 管理台 and kept in memory by every process
+ * (src/lib/server/siteSettings.ts). For now only gray: { until } as an ISO time, its row gone when it ends.
+ */
+export const siteSettings = pgTable("site_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: at("updated_at").notNull().defaultNow(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+/**
  * 站长通知 in a player's 消息 (src/lib/server/staffNotes.ts): what came of a report they made, or what
  * was done about them and under which rule. Never who reported, nor how many. Deleted after
  * KEEP_ACTIVITY_DAYS, and with the account.
@@ -1257,4 +1296,5 @@ export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;
 export type AdminRow = typeof admins.$inferSelect;
 export type AdminRequestRow = typeof adminRequests.$inferSelect;
+export type OffLimitsAreaRow = typeof offLimitsAreas.$inferSelect;
 export type ModActionRow = typeof modActions.$inferSelect;

@@ -4,6 +4,8 @@
  * at all is kept in this browser, switched on her card.
  */
 
+import { isGray } from "@/lib/grayMode";
+
 const MUSIC_URL = "/guide-art/amiya-dance.m4a";
 /** The video's music is loud: well under full volume */
 const VOLUME = 0.3;
@@ -22,9 +24,9 @@ const fetchBytes = () =>
       return null;
     }));
 
-/** Fetch the music ahead of a tap (once she is on screen), unless it is switched off here */
+/** Fetch the music ahead of a tap (once she is on screen), unless it is switched off here or the site is gray */
 export function preloadMusic() {
-  if (musicOn()) void fetchBytes();
+  if (musicOn() && !isGray()) void fetchBytes();
 }
 
 export function musicOn() {
@@ -57,10 +59,11 @@ export function stopMusic() {
 /**
  * The music from the start, over whatever was playing. Call it within the tap itself,
  * which is what lets a browser play sound. Resolves to how long it lasts (ms), or null
- * when it is off, switched off on the server, or cannot play here.
+ * when it is off, switched off on the server, cannot play here, or the site is gray
+ * (全站变灰, src/lib/grayMode.ts): she dances all the same.
  */
 export function playMusic(): Promise<number | null> {
-  if (!musicOn()) return Promise.resolve(null);
+  if (!musicOn() || isGray()) return Promise.resolve(null);
   const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Context) return Promise.resolve(null);
   ctx ??= new Context();

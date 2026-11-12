@@ -2,13 +2,15 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { beijingDayWords } from "@/lib/beijing";
+import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } from "@/lib/beijing";
 import { RULES } from "@/lib/safety";
 import { deleteAccount } from "@/lib/server/account";
 import { db } from "@/lib/server/db";
 import { sendAdminMail } from "@/lib/server/mail";
 import { forgetNameWords } from "@/lib/server/nameWords";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
+import { grayUntil, loadSettings } from "@/lib/server/siteSettings";
+import { loadZones } from "@/lib/server/zones";
 import { adminBackupCodes, adminLog, admins, bannedEmails, clearedValues, modActions, nameWords, reports, roaches, sessions, users } from "@/lib/server/schema";
 import { staffItems } from "@/lib/server/staffNotes";
 import { totpCode, totpStep } from "@/lib/server/totp";
@@ -126,7 +128,32 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const OPS = ["gate", "unlock", "lock", "lockAll", "setupStart", "setupConfirm", "newBackupCodes", "resetAdminTotp", "cases", "resolve", "account", "act", "undo", "log", "reportedRoaches", "nope"];
+const OPS = [
+  "gate",
+  "unlock",
+  "lock",
+  "lockAll",
+  "setupStart",
+  "setupConfirm",
+  "newBackupCodes",
+  "resetAdminTotp",
+  "cases",
+  "resolve",
+  "account",
+  "act",
+  "undo",
+  "log",
+  "reportedRoaches",
+  "zones",
+  "zone",
+  "zonePreview",
+  "drawZone",
+  "liftZone",
+  "gray",
+  "setGray",
+  "endGray",
+  "nope",
+];
 
 describe("the 管理台's door", () => {
   it("is a 404 for everyone it does not let in, for every op, and keeps nothing in a cache", async () => {
@@ -590,5 +617,72 @@ describe("the map's reported roaches", () => {
     expect(a).toMatchObject({ yellow: true, rule: "roach", byAlias: "站长" });
     expect((await staffTexts(bad.id))[0]).toBe(`因为社区守则里「${RULES.roach}」这一条，站长把你的一只本体收回到你手里了，记一张黄牌。`);
     expect(await logged()).toEqual(["gate.setup", "act.dismiss", "act.removeRoach"]);
+  });
+});
+
+describe("禁放区 and 全站变灰, the owner's", () => {
+  const OSAKA = { lng: 135.5, lat: 34.69 };
+
+  afterEach(async () => {
+    // what this process holds, as the emptied tables have it
+    await loadZones();
+    await loadSettings();
+  });
+
+  it("draws a place from the map, lists it and lifts it, each step in the 操作记录, with nobody's id or roach in an answer", async () => {
+    await owner();
+    const p = await account("p@example.com");
+    await world.placeRoach(p.id, { kind: "main" }, OSAKA);
+    const circle = { lng: OSAKA.lng, lat: OSAKA.lat, radiusM: 200 };
+
+    const preview = await call("zonePreview", [circle]);
+    expect(preview.body.result).toEqual({ count: 1, owners: 1, warnings: [] });
+    expect((await call("drawZone", [{ ...circle, label: "" }])).body.error).toBe("先写一句是哪儿、为什么圈，才能保存。");
+    expect((await call("drawZone", [{ ...circle, radiusM: 5000, label: "大阪" }])).body.error).toBe("半径要在 30 到 3000 米之间。");
+    const drawn = await call("drawZone", [{ ...circle, label: "大阪城公园" }]);
+    expect(drawn.body.result).toEqual({ id: expect.any(String), done: true, count: 1, moved: 1, home: 0, owners: 1 });
+    const id = drawn.body.result.id as string;
+    await expect(world.placeRoach(p.id, { kind: "clone" }, OSAKA)).rejects.toThrow("这里不能放蟑螂");
+
+    const list = (await call("zones")).body.result;
+    expect(list.live).toMatchObject([{ id, label: "大阪城公园", radiusM: 200, by: "站长", moved: 1, done: true }]);
+    for (const answer of [list, preview.body.result, drawn.body.result]) {
+      expect(JSON.stringify(answer)).not.toContain(p.id);
+      expect(JSON.stringify(answer)).not.toContain(String(OSAKA.lng));
+    }
+    expect((await call("zone", [{ id }])).body.result).toMatchObject({ lng: OSAKA.lng, lat: OSAKA.lat, radiusM: 200 });
+    expect((await call("liftZone", [{ id }])).status).toBe(200);
+    expect((await call("liftZone", [{ id }])).body.error).toBe("这一处已经解除了。");
+    await world.placeRoach(p.id, { kind: "clone" }, OSAKA);
+    expect(await logged()).toEqual(["gate.setup", "act.zone", "view.zone", "act.zoneLift"]);
+  });
+
+  it("asks again before moving more than 300 roaches, and keeps nothing until it is sure", async () => {
+    await owner();
+    const many = await Promise.all(Array.from({ length: 61 }, (_, i) => account(`m${i}@example.com`)));
+    for (const [i, u] of many.entries()) {
+      for (let slot = 0; slot < 5; slot++) await db.insert(roaches).values({ userId: u.id, slot, lng: OSAKA.lng + slot * 0.0002, lat: OSAKA.lat + i * 0.00001 });
+    }
+    const circle = { lng: OSAKA.lng, lat: OSAKA.lat, radiusM: 300, label: "大阪" };
+    expect((await call("drawZone", [circle])).body.result).toEqual({ needSure: true, count: 305 });
+    expect((await call("zones")).body.result.live).toEqual([]);
+    expect(await logged()).toEqual(["gate.setup"]);
+  });
+
+  it("turns the whole site gray until a time, and back, each in the 操作记录", async () => {
+    await owner();
+    const until = beijingMidnight(addDays(beijingDate(), 1));
+    expect((await call("gray")).body.result).toMatchObject({ until: null, memorial: { name: expect.any(String) } });
+    expect((await call("setGray", [{ until: Date.now() - 1 }])).body.error).toBe("恢复时间要在现在到 7 天以内。");
+    expect((await call("setGray", [{ until }])).body.result).toMatchObject({ until });
+    expect(grayUntil()).toBe(until);
+    expect((await call("endGray")).body.result).toMatchObject({ until: null });
+    // ending it again does nothing more
+    expect((await call("endGray")).status).toBe(200);
+    expect((await db.select().from(adminLog).orderBy(adminLog.id)).map((l) => [l.what, l.detail])).toEqual([
+      ["gate.setup", null],
+      ["act.gray", `到 ${beijingShort(until - 1).split(" ")[0]} 24:00 自动恢复`],
+      ["act.grayEnd", null],
+    ]);
   });
 });

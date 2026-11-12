@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AMIYA_AT } from "./amiya";
 import { distanceKm } from "./geo";
 import { queueSpots, ROUTE } from "./minghe";
-import { isOffLimits, OFF_LIMITS, OFF_LIMITS_REACH, offLimitsAt, outsideOffLimits } from "./offLimits";
+import { isOffLimits, OFF_LIMITS, OFF_LIMITS_REACH, offLimitsAt, offLimitsReach, outsideOffLimits, setExtraOffLimits } from "./offLimits";
 import { mulberry32 } from "./prng";
 import { FIRE_AT, FIRE_RADIUS_M, pickSeat } from "./talulah";
 import type { LngLat } from "./types";
@@ -214,6 +214,51 @@ describe("座位和排队", () => {
   it("keeps 明河都尉's queues out, however long they grow", () => {
     for (let stop = 0; stop < ROUTE.length; stop++) {
       expect(queueSpots(stop, 3000).some(isOffLimits), ROUTE[stop].name).toBe(false);
+    }
+  });
+});
+
+describe("站长圈的地方", () => {
+  // a park in Chengdu, far from any place in the code
+  const MIDDLE = at(104.0657, 30.6595);
+  const zone = { id: "zone:test", at: MIDDLE, m: 200 };
+
+  it("are refused, walked round and looked through like the code's, until they are lifted", () => {
+    try {
+      expect(isOffLimits(MIDDLE)).toBe(false);
+      setExtraOffLimits([zone]);
+      expect(offLimitsAt(MIDDLE)).toBe("zone:test");
+      // 150 m east of the middle is inside, 250 m east is not
+      const east = (m: number) => at(MIDDLE.lng + m / (111_320 * Math.cos((MIDDLE.lat * Math.PI) / 180)), MIDDLE.lat);
+      expect(isOffLimits(east(150))).toBe(true);
+      expect(isOffLimits(east(250))).toBe(false);
+      const out = outsideOffLimits(MIDDLE, mulberry32(3));
+      expect(isOffLimits(out)).toBe(false);
+      // out past the edge, by 60 to 300 m
+      expect(metres(out, MIDDLE)).toBeGreaterThan(200 + 55);
+      expect(metres(out, MIDDLE)).toBeLessThan(200 + 310);
+      expect(offLimitsReach()).toEqual([...OFF_LIMITS_REACH, zone]);
+      // the code's places all the same
+      expect(offLimitsAt(at(116.3915, 39.9011))).toBe("tiananmen");
+
+      setExtraOffLimits([]);
+      expect(isOffLimits(MIDDLE)).toBe(false);
+      expect(offLimitsReach()).toEqual(OFF_LIMITS_REACH);
+    } finally {
+      setExtraOffLimits([]);
+    }
+  });
+
+  it("are left by the shortest way out of two that overlap, a big one included", () => {
+    try {
+      setExtraOffLimits([
+        { id: "zone:a", at: MIDDLE, m: 3000 },
+        { id: "zone:b", at: at(MIDDLE.lng + 0.04, MIDDLE.lat), m: 3000 },
+      ]);
+      const out = outsideOffLimits(at(MIDDLE.lng + 0.02, MIDDLE.lat), mulberry32(8));
+      expect(isOffLimits(out)).toBe(false);
+    } finally {
+      setExtraOffLimits([]);
     }
   });
 });
