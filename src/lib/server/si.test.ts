@@ -23,10 +23,10 @@ const g = globalThis as typeof globalThis & { __siShift?: number; __siWrongNext?
 const at = (ms: number) => {
   g.__siShift = ms;
 };
-/** A time zone whose device clock reads `hour` o'clock at her clock's now */
+/** A time zone whose device clock reads `hour` o'clock at her clock's now, within the ±14 h the server takes */
 const offsetFor = (hour: number) => {
-  const utc = new Date(si.siNow()).getUTCHours();
-  return -(((hour - utc + 24) % 24) * 60);
+  const ahead = (hour - new Date(si.siNow()).getUTCHours() + 24) % 24;
+  return -((ahead > 12 ? ahead - 24 : ahead) * 60);
 };
 
 async function signUp(email: string, avatar = "hood") {
