@@ -24,6 +24,7 @@ export type NoteKind =
   | "unsuspended"
   | "appealKept"
   | "appealReverted"
+  | "undone"
   | "offLimits";
 
 export type NewNote = {
@@ -115,6 +116,11 @@ export function noteText(n: typeof staffNotes.$inferSelect, action?: typeof modA
       return "站长看了你的申诉：维持原来的处理。";
     case "appealReverted":
       return `站长看了你的申诉：撤销了这次处理，${REVERTED[(action?.action ?? "") as AdminAction] ?? "恢复原样了"}。`;
+    // undone in the 管理台 after the fact, without an appeal
+    case "undone":
+      return action
+        ? `站长撤销了 ${dayWords(action.createdAt.getTime())}对你的处理，${REVERTED[action.action as AdminAction] ?? "恢复原样了"}。`
+        : "站长撤销了对你的一次处理。";
     case "held":
       return "有人举报了你的名字或 UID，站长看过之前先藏起来了，也暂时改不了。没问题的话会恢复。";
     case "released":
@@ -137,7 +143,8 @@ const appealable = (a: typeof modActions.$inferSelect, now: number) =>
 /** 「我觉得处理错了」 under the note that told of the action: open, sent, or answered (the answer is a note of its own) */
 function appealOf(n: typeof staffNotes.$inferSelect, a: typeof modActions.$inferSelect | null, now: number): StaffAppeal | undefined {
   if (n.kind !== "action" || !a || a.auto || !APPEALABLE.includes(a.action as AdminAction)) return undefined;
-  if (a.answeredAt) return { actionId: a.id, state: "answered" };
+  // answered, or undone in the 管理台: nothing left to appeal
+  if (a.answeredAt || a.undoneAt) return { actionId: a.id, state: "answered" };
   if (a.appealedAt) return { actionId: a.id, state: "sent" };
   return appealable(a, now) ? { actionId: a.id, state: "open" } : undefined;
 }
@@ -184,6 +191,7 @@ export async function appeal(userId: string, actionId: unknown, text: unknown, n
         .limit(1)
     : [];
   if (!a || a.auto || !APPEALABLE.includes(a.action as AdminAction)) throw new WorldError(T.server.staffNotes.noAction);
+  if (a.undoneAt) throw new WorldError(T.server.staffNotes.undone);
   if (a.appealedAt) throw new WorldError(T.server.staffNotes.appealedAlready);
   if (!appealable(a, now)) throw new WorldError(fmt(T.server.staffNotes.appealTooLate, { days: INBOX_DAYS }));
   const sent = await db

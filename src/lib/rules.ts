@@ -92,6 +92,8 @@ export const BLOCKS_TO_REVIEW = 10;
 export const BLOCKS_WINDOW_DAYS = 7;
 /** What the admin did about players is kept this long (see the privacy page) */
 export const KEEP_MOD_ACTION_DAYS = 365;
+/** The 管理台's own record of what was done and looked at in it, and its notes on accounts, are kept this long */
+export const KEEP_ADMIN_LOG_DAYS = 365;
 /** Handled reports are deleted after this many days (see the privacy page). */
 export const KEEP_REPORT_DAYS = 90;
 

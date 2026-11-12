@@ -146,6 +146,14 @@ Every morning at 09:00 Beijing time GitHub checks that the site opens from mainl
 
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.
 
+`/admin` asks for a code from an authenticator app on each device every 12 hours. The keys that seal the authenticator secrets come from `AUTH_SECRET`, so it must stay the same, and the same on both servers: a new one means everyone setting up their authenticator again. When someone has lost both their phone and their backup codes, reset theirs on the main server:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db psql -U roach -d roach -v email='someone@example.com' < scripts/admin-reset.sql
+```
+
+They set up a new authenticator the next time they open `/admin`, signed in within the last 15 minutes.
+
 ### The second server
 
 A second server in the same cloud region gives the site a second way in, a second share of outgoing bandwidth, and more cores. As the way in, it only passes visitors' connections on to the main server over the cloud's private network, still encrypted: port 443 with the PROXY protocol to Caddy's `:8443`, which takes the visitor's address from that line only when it comes from the second server's private address (`deploy/Caddyfile`), and port 80 as it is. Certificates, the database and Caddy stay on the main server, and this part keeps no logs, so a broken one is replaced rather than repaired: a fresh Ubuntu server with an SSH host entry named `zhoupmap2`, password and root logins turned off, and its cloud firewall open for TCP 22, 80 and 443, then

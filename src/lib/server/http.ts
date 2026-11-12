@@ -9,13 +9,15 @@ import { errorCode, logError, note } from "./signals";
 
 /**
  * An error whose message is safe to show to the player. A page that must tell one refusal from
- * another goes by its code, never by its words, which are in the player's language.
+ * another goes by its code, never by its words, which are in the player's language; extra (e.g.
+ * until when) goes along beside them, as the 管理台's door sends it (src/lib/adminConsole.ts GATE_CODES).
  */
 export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
     public code?: string,
+    public extra?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -24,21 +26,28 @@ export class HttpError extends Error {
 /**
  * Wrap a route handler: answers in the request's language (src/i18n: everything the
  * handler says through T, its errors included), rejects cross-site writes, turns
- * HttpError and WorldError into { error } and hides anything unexpected behind a
- * generic message.
+ * HttpError and WorldError into { error } (with the HttpError's code and extra) and hides
+ * anything unexpected behind a generic message. headers go on every response, the errors too.
  */
-export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
+export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>, opts: { headers?: Record<string, string> } = {}) {
+  const withHeaders = (res: Response) => {
+    for (const [k, v] of Object.entries(opts.headers ?? {})) res.headers.set(k, v);
+    return res;
+  };
   return (req: NextRequest, ctx: C) =>
     withLang(requestLang(req), async () => {
       try {
         if (req.method !== "GET" && req.method !== "HEAD") checkOrigin(req);
-        return await fn(req, ctx);
+        return withHeaders(await fn(req, ctx));
       } catch (e) {
-        if (e instanceof HttpError) return NextResponse.json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, { status: e.status });
-        if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
+        if (e instanceof HttpError) {
+          const body = { ...e.extra, error: e.message, ...(e.code ? { code: e.code } : {}) };
+          return withHeaders(NextResponse.json(body, { status: e.status }));
+        }
+        if (e instanceof WorldError) return withHeaders(NextResponse.json({ error: e.message }, { status: 400 }));
         logError(`${req.method} ${req.nextUrl.pathname}`, e);
         note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
-        return NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 });
+        return withHeaders(NextResponse.json({ error: T.server.common.serverTrouble }, { status: 500 }));
       }
     });
 }

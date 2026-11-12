@@ -32,8 +32,10 @@ export type MapViewProps = {
   si?: SiMapData;
   /** Your own declarations, each over the roach it went out from, for a few seconds after the shout */
   shouts: ShoutMark[];
-  /** Page elements placed on the map at a spot, over the roaches (⚡舟友的酒⚡'s dance floor); they never take a tap */
+  /** Page elements placed on the map at a spot, over the roaches (⚡舟友的酒⚡'s dance floor); only those with onClick take a tap */
   overlays?: MapOverlay[];
+  /** Dashed red lines from one spot to another (the 站长's marks: where a reported roach was, to where it is now) */
+  lines?: MapLine[];
   myAvatar: RoachAvatar;
   myColor: RoachColor;
   look: RoachStyle;
@@ -127,7 +129,10 @@ export type SiMine = {
 /** A line just shouted over one of your own roaches (at), on your screen only; limited: a 限定 line */
 export type ShoutMark = { id: string; at: LngLat; text: string; limited: boolean };
 
-export type MapOverlay = { id: string; at: LngLat; el: HTMLElement };
+/** An element over the map at a spot; with onClick it takes the tap (outside placing), and the roach under it does not */
+export type MapOverlay = { id: string; at: LngLat; el: HTMLElement; onClick?: () => void };
+
+export type MapLine = { id: string; from: LngLat; to: LngLat };
 
 /** Stable per-roach look (tilt, heading, crawl group) derived from its id, not its list position. */
 export function roachTraits(id: string, groups: number, headings: number) {

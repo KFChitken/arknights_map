@@ -1,6 +1,22 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, asc, count, countDistinct, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql, type SQL } from "drizzle-orm";
+import {
+  ACCOUNT_ACTIONS,
+  maskEmail,
+  OWNER_ALIAS,
+  ROACH_REASON_SHORT,
+  UNDOABLE,
+  type AdminAccount,
+  type AdminAccountReport,
+  type AdminHistoryItem,
+  type AdminLogFilter,
+  type AdminLogPage,
+  type AdminNote,
+  type FoundAccounts,
+  type ReportedPlace,
+  type ReportedRoachAll,
+} from "../adminConsole";
 import { badgeById } from "../badges";
 import { beijingDate, beijingMidnight } from "../beijing";
 import { declarationText } from "../declarations";
@@ -8,6 +24,7 @@ import { serverName } from "../games";
 import {
   BLOCKS_TO_REVIEW,
   BLOCKS_WINDOW_DAYS,
+  KEEP_REPORT_DAYS,
   RELIABLE_AFTER_DAYS,
   SUSPEND_DAYS,
   UNRELIABLE_DISMISSED_MIN,
@@ -28,6 +45,7 @@ import {
   REPORT_REASONS,
   ROACH_REPORT_REASONS,
   RULE_OF_REASON,
+  RULES,
   URGENT_REASONS,
   type AdminAction,
   type AdminAppeal,
@@ -42,11 +60,13 @@ import {
   type ReportCounts,
   type ReporterInfo,
   type RetentionStats,
+  type RoachReportReason,
   type RuleCode,
 } from "../safety";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
 import { banAccount, banOf } from "./account";
+import { logAdmin, type Actor } from "./admins";
 import { award } from "./badges";
 import { db } from "./db";
 import { ADMIN_EMAILS } from "./env";
@@ -55,6 +75,8 @@ import { nameJudgeNow } from "./nameWords";
 import { roachByFeedId, roachesChanged } from "./roachFeed";
 import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter, ROACH_KEYS } from "./safety";
 import {
+  adminLog,
+  adminNotes,
   blocks,
   clearedValues,
   dailyTotals,
@@ -66,6 +88,7 @@ import {
   touches,
   userBadges,
   users,
+  type ModActionRow,
   type UserRow,
 } from "./schema";
 import { addNotes, type NewNote } from "./staffNotes";
@@ -110,6 +133,20 @@ const RESOLUTION: Record<Exclude<AdminAction, "ban">, string> = {
   removeRoach: "roach_removed",
 };
 
+/** Each way of settling (and lifting a pause) in the 管理台's words */
+const ACTION_WORDS: Record<AdminAction | "unsuspend", string> = {
+  dismiss: "没问题",
+  clearName: "清掉名字",
+  clearUid: "清掉 UID",
+  clearBoth: "名字和 UID 都清掉",
+  warn: "警告",
+  suspend: `暂停互动 ${SUSPEND_DAYS} 天`,
+  ageCheck: "请 TA 确认年龄",
+  removeRoach: "收回蟑螂",
+  ban: "封号",
+  unsuspend: "解除暂停",
+};
+
 /** The ways of settling a roach's case */
 const ROACH_ACTIONS: readonly AdminAction[] = ["dismiss", "warn", "removeRoach", "ban"];
 
@@ -137,6 +174,10 @@ function autoRule(action: AdminAction | null, reasons: string[]): RuleCode {
   }
   return [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "harass";
 }
+
+/** A yellow card that counts: within YELLOW_DAYS, and neither undone on appeal nor in the 管理台 */
+const countsYellow = (a: Pick<ModActionRow, "yellow" | "appealResult" | "undoneAt" | "createdAt">, now: number) =>
+  a.yellow && a.appealResult !== "reverted" && !a.undoneAt && now - a.createdAt.getTime() < YELLOW_DAYS * MS_DAY;
 
 const rank = (l: CaseLevel) => CASE_LEVELS.indexOf(l);
 const reasonsOfLevel = (l: CaseLevel) => ALL_REASONS.filter((r) => REPORT_LEVEL[r] === l);
@@ -202,6 +243,7 @@ function caseFilter(q: CaseQuery): SQL {
   if (q.reason === "blocks") parts.push(sql`cardinality(reasons) = 0`);
   else if (q.reason && q.reason !== "all" && ALL_REASONS.includes(q.reason)) parts.push(sql`${q.reason}::text = any(reasons)`);
   if (q.nameOnly) parts.push(sql`name_only`);
+  if (typeof q.caseId === "string") parts.push(sql`key = ${q.caseId}`);
   return parts.length ? sql.join(parts, sql` and `) : sql`true`;
 }
 
@@ -275,7 +317,8 @@ async function people(ids: string[], now: number): Promise<Map<string, AdminPers
     const theirActions = actions.filter((a) => a.userId === u.id);
     const firstAction = Math.min(...theirActions.map((a) => a.createdAt.getTime()));
     const settled = { dismissed: 0, nameCleared: 0, uidCleared: 0, warned: 0, suspended: 0, ageChecks: 0, roachesRemoved: 0 };
-    for (const a of theirActions.filter((x) => !x.auto)) {
+    // what was undone in the 管理台 counts no more
+    for (const a of theirActions.filter((x) => !x.auto && !x.undoneAt)) {
       if (a.action === "dismiss") settled.dismissed++;
       if (a.action === "clearName" || a.action === "clearBoth") settled.nameCleared++;
       if (a.action === "clearUid" || a.action === "clearBoth") settled.uidCleared++;
@@ -321,7 +364,7 @@ async function people(ids: string[], now: number): Promise<Map<string, AdminPers
       friends: friendsOf(u.id),
       blockedBy: blockersOf.get(u.id) ?? 0,
       settled,
-      yellow: theirActions.filter((a) => a.yellow && a.appealResult !== "reverted" && now - a.createdAt.getTime() < YELLOW_DAYS * MS_DAY).length,
+      yellow: theirActions.filter((a) => countsYellow(a, now)).length,
       suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > now ? u.suspendedUntil.getTime() : null,
       suspendedAuto: Boolean(u.suspendedAuto && u.suspendedUntil && u.suspendedUntil.getTime() > now),
       ageCheckAt: u.ageCheckAt?.getTime() ?? null,
@@ -337,6 +380,21 @@ async function people(ids: string[], now: number): Promise<Map<string, AdminPers
 }
 
 type CaseRow = { key: string; target: string; roachy: boolean; lvl: number; reporters: number; reliable: number; since: Date | string | null };
+
+/** How a reporter's reports went before, for the 管理台: never who they are */
+const reporterInfo = (r: UserRow, now: number): ReporterInfo => ({
+  days: Math.floor((now - r.createdAt.getTime()) / MS_DAY),
+  upheld: r.reportsUpheld,
+  dismissed: r.reportsDismissed,
+  reliable: reliableReporter(r, now),
+});
+
+/** Where a roach reported is now against where it was at the latest report: still there, moved since, or gone */
+const roachState = (current: { lng: number; lat: number } | undefined, was: { lng: number; lat: number }) =>
+  !current ? ("gone" as const) : current.lng !== was.lng || current.lat !== was.lat ? ("moved" as const) : ("here" as const);
+
+/** A player's name as the 管理台 shows it */
+const ownerName = (u: { name: string; anonymous: boolean } | undefined) => (u?.name ? `${u.name}${u.anonymous ? "（匿名）" : ""}` : "（没有名字）");
 
 /**
  * A page of the admin's queue: red cases first, then yellow, then green; within a colour, the more
@@ -381,13 +439,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now()): Promis
   );
   const reporterOf = (id: string | null): ReporterInfo | null => {
     const r = id ? reporters.get(id) : undefined;
-    if (!r) return null;
-    return {
-      days: Math.floor((now - r.createdAt.getTime()) / MS_DAY),
-      upheld: r.reportsUpheld,
-      dismissed: r.reportsDismissed,
-      reliable: reliableReporter(r, now),
-    };
+    return r ? reporterInfo(r, now) : null;
   };
 
   summary.cases = rows.flatMap((row): AdminCase[] => {
@@ -415,7 +467,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now()): Promis
         main: latest.roachSlot === 0,
         lng: latest.placeLng,
         lat: latest.placeLat,
-        state: !current ? "gone" : current.lng !== latest.placeLng || current.lat !== latest.placeLat ? "moved" : "here",
+        state: roachState(current, { lng: latest.placeLng, lat: latest.placeLat }),
       };
     }
     return [
@@ -473,16 +525,30 @@ async function tellReporters(tx: Pick<typeof db, "update" | "insert">, open: (ty
  * apart, so a reporter is never told of both at once and cannot tell whose roach it was. A ban deletes
  * the account, all its reports with it, and keeps why with the banned address.
  */
-export async function settleCase(caseId: string, action: AdminAction, opts: { rule?: unknown } = {}, now = Date.now()) {
+export async function settleCase(caseId: string, action: AdminAction, opts: SettleOptions = {}, now = Date.now()): Promise<Settled> {
   const id = String(caseId);
-  return isRoachCase(id) ? settleRoach(id, action, opts, now) : settlePerson(id, action, opts, now);
+  const done = await (isRoachCase(id) ? settleRoach(id, action, opts, now) : settlePerson(id, action, opts, now));
+  if (opts.by) {
+    const detail = done.action === "dismiss" ? `没问题，关掉了 ${done.closed} 条举报` : `违反：${RULES[done.rule]}`;
+    await logAdmin(opts.by, "act", `act.${done.action}`, { targetId: done.targetId, actionId: done.actionId, detail }, now);
+  }
+  return done;
 }
+
+/** How a case is settled: under which rule (else the one its reports point to), and by whom in the 管理台 (kept, and logged) */
+export type SettleOptions = { rule?: unknown; by?: Actor | null };
+
+/** What settling did: whose account, the action's record (none for a ban), the rule, and how many reports it closed */
+export type Settled = { targetId: string; actionId: string | null; action: AdminAction; rule: RuleCode; closed: number };
+
+/** Who did it, as mod_actions keeps it; nobody for the reports' own steps */
+const byColumns = (by: Actor | null | undefined) => ({ byUserId: by?.id ?? null, byAlias: by?.alias ?? null });
 
 /**
  * A player's case: every open report about them but their roaches'. A suspension the reports made by
  * themselves is lifted first, then the admin's choice applies.
  */
-async function settlePerson(targetId: string, action: AdminAction, opts: { rule?: unknown }, now: number) {
+async function settlePerson(targetId: string, action: AdminAction, opts: SettleOptions, now: number): Promise<Settled> {
   const [u] = UUID.test(targetId) ? await db.select().from(users).where(eq(users.id, targetId)).limit(1) : [];
   if (!u) throw new HttpError(400, "这个账号已经不在了。");
   if (action !== "ban" && !Object.hasOwn(RESOLUTION, action)) throw new HttpError(400, "不知道要怎么处理。");
@@ -496,7 +562,7 @@ async function settlePerson(targetId: string, action: AdminAction, opts: { rule?
   if (action === "ban") {
     if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
     await banAccount(u, rule);
-    return;
+    return { targetId: u.id, actionId: null, action, rule, closed: open.length };
   }
   const at = new Date(now);
   const autoSuspended = Boolean(u.suspendedAuto && u.suspendedUntil && u.suspendedUntil.getTime() > now);
@@ -518,7 +584,7 @@ async function settlePerson(targetId: string, action: AdminAction, opts: { rule?
 
   await db.transaction(async (tx) => {
     // 2. the record
-    await tx.insert(modActions).values({ id: actionId, userId: u.id, action, rule, yellow: action === "warn", until, createdAt: at });
+    await tx.insert(modActions).values({ id: actionId, userId: u.id, action, rule, yellow: action === "warn", until, createdAt: at, ...byColumns(opts.by) });
     // 3. the reports
     if (open.length) {
       await tx
@@ -538,6 +604,7 @@ async function settlePerson(targetId: string, action: AdminAction, opts: { rule?
   });
   // a cleared or released name changes what others see
   roachesChanged();
+  return { targetId: u.id, actionId, action, rule, closed: open.length };
 }
 
 /**
@@ -545,7 +612,7 @@ async function settlePerson(targetId: string, action: AdminAction, opts: { rule?
  * it back (as its owner would: the main roach takes its clones with it; a yellow card), or a ban. Its
  * owner hears only of a warning or the roach taken back; a dismissal leaves them none the wiser.
  */
-async function settleRoach(caseId: string, action: AdminAction, opts: { rule?: unknown }, now: number) {
+async function settleRoach(caseId: string, action: AdminAction, opts: SettleOptions, now: number): Promise<Settled> {
   const [kind, id] = caseId.split(":");
   if (!UUID.test(id ?? "")) throw new HttpError(400, "找不到这个案子了。");
   if (!ROACH_ACTIONS.includes(action)) throw new HttpError(400, "蟑螂的举报只能：没问题、警告、移走这只蟑螂或者封号。");
@@ -561,7 +628,7 @@ async function settleRoach(caseId: string, action: AdminAction, opts: { rule?: u
   if (action === "ban") {
     if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
     await banAccount(u, rule);
-    return;
+    return { targetId: u.id, actionId: null, action, rule, closed: open.length };
   }
   let slot: number | null = null;
   if (action === "removeRoach") {
@@ -579,10 +646,10 @@ async function settleRoach(caseId: string, action: AdminAction, opts: { rule?: u
     await removeRoach(u.id, roach.id);
   }
   const at = new Date(now);
-  await db.transaction(async (tx) => {
+  const actionId = await db.transaction(async (tx) => {
     const [record] = await tx
       .insert(modActions)
-      .values({ userId: u.id, action, rule, yellow: action !== "dismiss", roachSlot: slot, createdAt: at })
+      .values({ userId: u.id, action, rule, yellow: action !== "dismiss", roachSlot: slot, createdAt: at, ...byColumns(opts.by) })
       .returning({ id: modActions.id });
     // by id: taking the roach back emptied their roach_id
     await tx
@@ -592,18 +659,20 @@ async function settleRoach(caseId: string, action: AdminAction, opts: { rule?: u
     const notes = await tellReporters(tx, open, action === "dismiss");
     if (action !== "dismiss") notes.push({ userId: u.id, kind: "action", actionId: record.id, rule });
     await addNotes(notes, tx);
+    return record.id;
   });
+  return { targetId: u.id, actionId, action, rule, closed: open.length };
 }
 
 /** Several cases at once, each settled on its own; never a ban. A way that does not fit a case (清名字 on a roach) passes it by. */
-export async function settleCases(caseIds: unknown, action: AdminAction) {
+export async function settleCases(caseIds: unknown, action: AdminAction, by: Actor | null = null) {
   if (!BATCH_ACTIONS.includes(action)) throw new HttpError(400, "这个处理不能批量做。");
   const ids = Array.isArray(caseIds) ? [...new Set(caseIds.map(String))].slice(0, 200) : [];
   let done = 0;
   for (const id of ids) {
     if (isRoachCase(id) && !ROACH_ACTIONS.includes(action)) continue;
     try {
-      await settleCase(id, action);
+      await settleCase(id, action, { by });
       done++;
     } catch (e) {
       // settled meanwhile (another tab), or gone: the rest still go
@@ -623,7 +692,7 @@ export const CLEAR_NAMES_MAX = 500;
  * for the queue. Left alone: a name changed meanwhile to one the list lets through, and one held while a
  * report waits (clearing would end the hold on the UIDs too; the case settles it). Returns how many.
  */
-export async function clearBlockedNames(ids: unknown, now = Date.now()) {
+export async function clearBlockedNames(ids: unknown, now = Date.now(), by: Actor | null = null) {
   const list = Array.isArray(ids) ? [...new Set(ids.map(String))].filter((id) => UUID.test(id)).slice(0, CLEAR_NAMES_MAX) : [];
   if (!list.length) return 0;
   const judge = await nameJudgeNow();
@@ -637,9 +706,10 @@ export async function clearBlockedNames(ids: unknown, now = Date.now()) {
     const actionId = randomUUID();
     await clearName(u.id, actionId);
     await db.transaction(async (tx) => {
-      await tx.insert(modActions).values({ id: actionId, userId: u.id, action: "clearName", rule: "name", createdAt: new Date(now) });
+      await tx.insert(modActions).values({ id: actionId, userId: u.id, action: "clearName", rule: "name", createdAt: new Date(now), ...byColumns(by) });
       await addNotes([{ userId: u.id, kind: "action", actionId, rule: "name" }], tx);
     });
+    if (by) await logAdmin(by, "act", "act.clearName", { targetId: u.id, actionId, detail: `名字黑名单命中，违反：${RULES.name}` }, now);
     cleared++;
   }
   if (cleared) roachesChanged();
@@ -663,6 +733,7 @@ export async function openAppeals(now = Date.now()): Promise<AdminAppeal[]> {
         main: a.roachSlot === 0,
         appeal: a.appeal ?? "",
         appealedAt: a.appealedAt.getTime(),
+        by: a.byAlias ?? OWNER_ALIAS,
         who: person,
       },
     ];
@@ -675,36 +746,48 @@ export async function openAppeals(now = Date.now()): Promise<AdminAppeal[]> {
  * taken again (the old name itself is gone: the player fills it in again), an age question goes. The
  * player is told either way.
  */
-export async function answerAppeal(actionId: unknown, keep: boolean, now = Date.now()) {
+export async function answerAppeal(actionId: unknown, keep: boolean, now = Date.now(), by: Actor | null = null) {
   const id = String(actionId);
   if (!UUID.test(id)) throw new HttpError(400, "找不到这条申诉了。");
-  await db.transaction(async (tx) => {
+  const a = await db.transaction(async (tx) => {
     const [a] = await tx.select().from(modActions).where(eq(modActions.id, id)).for("update");
     if (!a?.appealedAt) throw new HttpError(400, "找不到这条申诉了。");
     if (a.answeredAt) throw new HttpError(400, "这条申诉已经处理过了。");
-    if (!keep) {
-      if (a.action === "suspend" && a.until) {
-        // only this pause: a later one of its own stays
-        await tx
-          .update(users)
-          .set({ suspendedUntil: null, suspendedAuto: false })
-          .where(and(eq(users.id, a.userId), eq(users.suspendedUntil, a.until)));
-      }
-      if (a.action === "clearName" || a.action === "clearUid" || a.action === "clearBoth") {
-        await tx.delete(clearedValues).where(and(eq(clearedValues.userId, a.userId), eq(clearedValues.actionId, a.id)));
-      }
-      if (a.action === "ageCheck") await tx.update(users).set({ ageCheckAt: null }).where(eq(users.id, a.userId));
-    }
+    if (!keep) await revertAction(tx, a);
     await tx
       .update(modActions)
       .set({ appealResult: keep ? "kept" : "reverted", answeredAt: new Date(now) })
       .where(eq(modActions.id, a.id));
     await addNotes([{ userId: a.userId, kind: keep ? "appealKept" : "appealReverted", actionId: a.id }], tx);
+    return a;
   });
+  if (by) {
+    const detail = `${keep ? "维持" : "撤销"}「${ACTION_WORDS[a.action as AdminAction] ?? a.action}」`;
+    await logAdmin(by, "act", keep ? "act.appealKept" : "act.appealReverted", { targetId: a.userId, actionId: a.id, detail }, now);
+  }
+}
+
+/**
+ * Undo an action as far as it can be, on appeal or in the 管理台: a yellow card (a warning, a roach taken back)
+ * stops counting by the action's being marked so, a pause still on ends (only this one: a later one of its own
+ * stays), what a clearing cleared may be taken again (the old name itself is gone: the player fills it in again),
+ * an age question goes.
+ */
+async function revertAction(tx: Pick<typeof db, "update" | "delete">, a: ModActionRow) {
+  if (a.action === "suspend" && a.until) {
+    await tx
+      .update(users)
+      .set({ suspendedUntil: null, suspendedAuto: false })
+      .where(and(eq(users.id, a.userId), eq(users.suspendedUntil, a.until)));
+  }
+  if (a.action === "clearName" || a.action === "clearUid" || a.action === "clearBoth") {
+    await tx.delete(clearedValues).where(and(eq(clearedValues.userId, a.userId), eq(clearedValues.actionId, a.id)));
+  }
+  if (a.action === "ageCheck") await tx.update(users).set({ ageCheckAt: null }).where(eq(users.id, a.userId));
 }
 
 /** Hand out 内测功臣, or take any badge back (from someone gaming them), by the player's login email. */
-export async function setBadge(email: string, badge: string, give: boolean) {
+export async function setBadge(email: string, badge: string, give: boolean, by: Actor | null = null) {
   const [u] = await db
     .select()
     .from(users)
@@ -715,6 +798,7 @@ export async function setBadge(email: string, badge: string, give: boolean) {
   if (give) {
     if (badge !== "beta") throw new HttpError(400, "这个称号只能自己拿，不能发。");
     if (!(await award(u.id, [badge])).length) throw new HttpError(400, "TA 已经有这个称号了。");
+    if (by) await logAdmin(by, "act", "act.badge", { targetId: u.id, detail: `发了称号「${badgeById(badge)?.name ?? badge}」` });
     return;
   }
   const gone = await db
@@ -723,6 +807,7 @@ export async function setBadge(email: string, badge: string, give: boolean) {
     .returning({ badge: userBadges.badge });
   if (!gone.length) throw new HttpError(400, "TA 没有这个称号。");
   if (u.wornBadge === badge) await db.update(users).set({ wornBadge: null }).where(eq(users.id, u.id));
+  if (by) await logAdmin(by, "act", "act.badge", { targetId: u.id, detail: `收回了称号「${badgeById(badge)?.name ?? badge}」` });
 }
 
 const playerOf = (u: Pick<UserRow, "id" | "email" | "name" | "anonymous" | "createdAt">): AdminPlayer => ({
@@ -736,27 +821,94 @@ const playerOf = (u: Pick<UserRow, "id" | "email" | "name" | "anonymous" | "crea
 /** In a LIKE pattern, what stands for itself */
 const literal = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
-/**
- * 所有玩家, searched: real accounts whose login email or name contains q, or whose id starts with it,
- * newest first, at most FIND_PLAYERS_MAX of them, and how many matched. Nothing without a q.
- */
-export async function findPlayers(q: unknown): Promise<FoundPlayers> {
-  const needle = String(q ?? "")
+/** A search as typed: trimmed, lower case, at most 100 characters */
+const searchNeedle = (q: unknown) =>
+  String(q ?? "")
     .trim()
     .toLowerCase()
     .slice(0, 100);
-  if (!needle) return { players: [], total: 0 };
+
+/**
+ * Real accounts whose login email or name contains the needle, whose id starts with it, or whose game UID is it or
+ * starts with it (spaces left out)
+ */
+function playersMatching(needle: string) {
   const like = literal(needle);
-  const match = and(
+  const uid = literal(needle.replace(/\s/g, ""));
+  return and(
     isNull(users.demoKey),
-    or(ilike(users.email, `%${like}%`), ilike(users.name, `%${like}%`), sql`${users.id}::text like ${`${like}%`}`),
+    or(
+      ilike(users.email, `%${like}%`),
+      ilike(users.name, `%${like}%`),
+      sql`${users.id}::text like ${`${like}%`}`,
+      ...(uid ? [sql`${users.uidArknights} like ${`${uid}%`}`, sql`${users.uidEndfield} like ${`${uid}%`}`] : []),
+    ),
   );
+}
+
+/**
+ * 所有玩家, searched: real accounts whose login email or name contains q, whose id starts with it, or whose game
+ * UID is it or starts with it, newest first, at most FIND_PLAYERS_MAX of them, and how many matched. Nothing
+ * without a q.
+ */
+export async function findPlayers(q: unknown): Promise<FoundPlayers> {
+  const needle = searchNeedle(q);
+  if (!needle) return { players: [], total: 0 };
+  const match = playersMatching(needle);
   const columns = { id: users.id, email: users.email, name: users.name, anonymous: users.anonymous, createdAt: users.createdAt };
   const [rows, [n]] = await Promise.all([
     db.select(columns).from(users).where(match).orderBy(desc(users.createdAt)).limit(FIND_PLAYERS_MAX),
     db.select({ n: count() }).from(users).where(match),
   ]);
   return { players: rows.map(playerOf), total: n.n };
+}
+
+/** Per account, the cases about them waiting in 待处理 (a roach's case for each roach, as the queue counts them) */
+async function openCaseCounts(ids: string[]): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const roachy = inArray(reports.reason, ROACH_KEYS);
+  const rows = await db
+    .select({
+      id: reports.targetId,
+      n: sql<number>`count(distinct case when ${roachy} then coalesce('roach:' || ${reports.roachId}::text, 'report:' || ${reports.id}::text) else 'person' end)`.mapWith(
+        Number,
+      ),
+    })
+    .from(reports)
+    .where(and(isNull(reports.resolvedAt), inArray(reports.targetId, ids)))
+    .groupBy(reports.targetId);
+  return new Map(rows.map((r) => [r.id, r.n]));
+}
+
+/**
+ * 搜索账号: findPlayers' accounts, each with what the list marks beside them: paused till when, yellow cards that
+ * count, cases waiting, a name and UIDs held. matchedByName: whether every account found has the search in its
+ * name or at the start of its id, so the 操作记录 may keep what was searched (an email or a UID it masks).
+ */
+export async function findAccounts(q: unknown, now = Date.now()): Promise<FoundAccounts & { plainSearch: boolean }> {
+  const needle = searchNeedle(q);
+  if (!needle) return { players: [], total: 0, plainSearch: true };
+  const match = playersMatching(needle);
+  const [rows, [n]] = await Promise.all([
+    db.select().from(users).where(match).orderBy(desc(users.createdAt)).limit(FIND_PLAYERS_MAX),
+    db.select({ n: count() }).from(users).where(match),
+  ]);
+  const ids = rows.map((u) => u.id);
+  const [cases, yellows] = await Promise.all([
+    openCaseCounts(ids),
+    ids.length
+      ? db.select().from(modActions).where(and(inArray(modActions.userId, ids), eq(modActions.yellow, true), gt(modActions.createdAt, new Date(now - YELLOW_DAYS * MS_DAY))))
+      : [],
+  ]);
+  const players = rows.map((u) => ({
+    ...playerOf(u),
+    suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > now ? u.suspendedUntil.getTime() : null,
+    yellow: yellows.filter((a) => a.userId === u.id && countsYellow(a, now)).length,
+    open: cases.get(u.id) ?? 0,
+    held: Boolean(u.profileHeldAt),
+  }));
+  const plainSearch = !needle.includes("@") && !/^\d+$/.test(needle.replace(/\s/g, "")) && rows.every((u) => u.name.toLowerCase().includes(needle) || u.id.startsWith(needle));
+  return { players, total: n.n, plainSearch };
 }
 
 /** 查邮箱: whether this mailbox was banned, however it is written, when and why; and the accounts signed in with this very address */
@@ -836,7 +988,7 @@ export async function roachesNear(adminId: string, lng: unknown, lat: unknown, r
  * and give each owner one yellow card and one 站长通知 for the rule (roach: 摆成字或图案、贴着别人放…),
  * however many of theirs went. Never the admin's own. Returns how many roaches went, of how many players.
  */
-export async function takeBackRoaches(adminId: string, ids: unknown, rule: unknown, now = Date.now()) {
+export async function takeBackRoaches(adminId: string, ids: unknown, rule: unknown, now = Date.now(), by: Actor | null = null) {
   const list = Array.isArray(ids) ? [...new Set(ids.map(String))].slice(0, TAKE_BACK_MAX) : [];
   const code = isRuleCode(rule) ? rule : "roach";
   const whole = list.filter((id) => UUID.test(id));
@@ -866,48 +1018,417 @@ export async function takeBackRoaches(adminId: string, ids: unknown, rule: unkno
     gone += before.n - after.n;
     players++;
     const at = new Date(now);
-    await db.transaction(async (tx) => {
+    const actionId = await db.transaction(async (tx) => {
       const [record] = await tx
         .insert(modActions)
-        .values({ userId, action: "removeRoach", rule: code, yellow: true, roachSlot: Math.min(...theirs.map((r) => r.slot)), createdAt: at })
+        .values({ userId, action: "removeRoach", rule: code, yellow: true, roachSlot: Math.min(...theirs.map((r) => r.slot)), createdAt: at, ...byColumns(by) })
         .returning({ id: modActions.id });
       await addNotes([{ userId, kind: "action", actionId: record.id, rule: code }], tx);
+      return record.id;
     });
+    if (by) await logAdmin(by, "act", "act.takeBack", { targetId: userId, actionId, detail: `在地图上收回了 ${before.n - after.n} 只，违反：${RULES[code]}` }, now);
   }
   return { roaches: gone, players };
 }
 
-/** A roach of a player with open reports, for the admin's map: where, main or clone, whose and why */
-export type ReportedRoach = { id: string; lng: number; lat: number; main: boolean; owner: string; reasons: string[] };
+/** A roach of a player with open reports, for the owner's map: where, main or clone, whose and why, and its case */
+export type ReportedRoach = ReportedRoachAll;
 
-/** How many reported players' roaches the admin's map marks at most */
+/** How many reported players' roaches the owner's map marks at most, and how many roach cases it lists */
 const REPORTED_MAX = 3000;
+const PLACES_MAX = 500;
+
+/** Reasons in a few words, the most frequent first: 「名字不合适 ×2、骚扰刷屏」 */
+function reasonsWords(tally: Map<string, number>) {
+  return [...tally]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, n]) => {
+      const words = isRoachReportReason(reason) ? ROACH_REASON_SHORT[reason] : ((REPORT_REASONS as Record<string, string>)[reason] ?? REPORT_REASONS.other);
+      return n > 1 ? `${words} ×${n}` : words;
+    })
+    .join("、");
+}
+
+const tallyOf = (reasons: string[]) => {
+  const tally = new Map<string, number>();
+  for (const r of reasons) tally.set(r, (tally.get(r) ?? 0) + 1);
+  return tally;
+};
 
 /**
- * 站长地图: every roach of the players with open reports (any reason, a roach of theirs reported
- * included), each with its owner's name as the admin sees it and the reasons reported. Breeze asked for
- * it (2026-11-11): the one place the admin sees where someone's roaches are, only while reports are open.
+ * 站长地图's 「被举报的人的全部蟑螂」 (the owner only): every roach of the players with open reports (any reason, a
+ * roach of theirs reported included), each with its owner's name as the 管理台 shows it, the reasons reported, the
+ * case to settle it in and why it is marked. Breeze asked for it (2026-11-11): the one place the owner sees where
+ * someone's roaches are, only while reports are open, only to judge whether it was on purpose.
  */
 export async function reportedRoaches(): Promise<ReportedRoach[]> {
-  const open = await db.select({ targetId: reports.targetId, reason: reports.reason }).from(reports).where(isNull(reports.resolvedAt));
+  const open = await db
+    .select({ id: reports.id, targetId: reports.targetId, reason: reports.reason, roachId: reports.roachId, roachSlot: reports.roachSlot, at: reports.createdAt })
+    .from(reports)
+    .where(isNull(reports.resolvedAt))
+    .orderBy(asc(reports.createdAt));
+  if (!open.length) return [];
   const why = new Map<string, Set<string>>();
-  for (const r of open) why.set(r.targetId, (why.get(r.targetId) ?? new Set()).add(r.reason));
-  if (!why.size) return [];
+  // per owner: the reports about them, and about each of their roaches (by roach, or by report once it is gone)
+  const aboutOwner = new Map<string, string[]>();
+  const aboutRoach = new Map<string, { key: string; slot: number | null; reasons: string[] }[]>();
+  for (const r of open) {
+    why.set(r.targetId, (why.get(r.targetId) ?? new Set()).add(r.reason));
+    if (!isRoachReportReason(r.reason)) {
+      aboutOwner.set(r.targetId, [...(aboutOwner.get(r.targetId) ?? []), r.reason]);
+      continue;
+    }
+    const key = r.roachId ? `roach:${r.roachId}` : `report:${r.id}`;
+    const cases = aboutRoach.get(r.targetId) ?? [];
+    const c = cases.find((x) => x.key === key);
+    if (c) c.reasons.push(r.reason);
+    else cases.push({ key, slot: r.roachSlot, reasons: [r.reason] });
+    aboutRoach.set(r.targetId, cases);
+  }
   const label = (reason: string) =>
     (REPORT_REASONS as Record<string, string>)[reason] ?? (ROACH_REPORT_REASONS as Record<string, string>)[reason] ?? reason;
   const rows = await db
-    .select({ id: roaches.publicId, lng: roaches.lng, lat: roaches.lat, slot: roaches.slot, userId: roaches.userId, name: users.name, anonymous: users.anonymous })
+    .select({ id: roaches.id, publicId: roaches.publicId, lng: roaches.lng, lat: roaches.lat, slot: roaches.slot, userId: roaches.userId, name: users.name, anonymous: users.anonymous })
     .from(roaches)
     .innerJoin(users, eq(users.id, roaches.userId))
     .where(inArray(roaches.userId, [...why.keys()]))
     .limit(REPORTED_MAX);
-  return rows.map((r) => ({
-    id: r.id,
-    lng: r.lng,
-    lat: r.lat,
-    main: r.slot === 0,
-    owner: r.name ? `${r.name}${r.anonymous ? "（匿名）" : ""}` : "（没有名字）",
-    reasons: [...(why.get(r.userId) ?? [])].map(label),
-  }));
+  return rows.map((r) => {
+    const own = aboutRoach.get(r.userId)?.find((c) => c.key === `roach:${r.id}`);
+    const person = aboutOwner.get(r.userId);
+    const sibling = aboutRoach.get(r.userId)?.find((c) => c.key !== `roach:${r.id}`);
+    let caseId: string;
+    let words: string;
+    let about: ReportedRoach["about"];
+    if (own) {
+      [caseId, words, about] = [own.key, reasonsWords(tallyOf(own.reasons)), "self"];
+    } else if (person?.length) {
+      [caseId, words, about] = [r.userId, reasonsWords(tallyOf(person)), "owner"];
+    } else {
+      const other = sibling!;
+      const which = other.slot === 0 ? "本体" : r.slot === 0 ? "一只克隆体" : "另一只克隆体";
+      [caseId, words, about] = [other.key, `它的${which}被举报：${reasonsWords(tallyOf(other.reasons))}`, "sibling"];
+    }
+    return {
+      caseId,
+      id: r.publicId,
+      lng: r.lng,
+      lat: r.lat,
+      main: r.slot === 0,
+      owner: ownerName(r),
+      reasons: [...(why.get(r.userId) ?? [])].map(label),
+      why: words,
+      about,
+    };
+  });
 }
 
+/**
+ * 站长地图's 「位置被举报的」: the roach cases open for where a roach was put (stalk, place, pattern), the one waiting
+ * longest first, at most PLACES_MAX: their reporters as 待处理 counts them (the same SQL), where the roach is now
+ * and where it was at the latest report. Never who reported, nor where the reporter's roaches are: for 「一直贴着
+ * 我放」 only how far it was from the nearest of them.
+ */
+export async function reportedPlaces(now = Date.now()): Promise<ReportedPlace[]> {
+  const rows = await db.execute<CaseRow>(sql`${caseTable(now)}
+    select key, target, roachy, lvl, reporters, reliable, since from c where roachy
+    order by since asc nulls last, key limit ${PLACES_MAX}::int`);
+  if (!rows.length) return [];
+  const keys = new Set(rows.map((r) => r.key));
+  const targets = [...new Set(rows.map((r) => r.target))];
+  const open = (
+    await db
+      .select()
+      .from(reports)
+      .where(and(isNull(reports.resolvedAt), inArray(reports.reason, ROACH_KEYS), inArray(reports.targetId, targets)))
+      .orderBy(asc(reports.createdAt))
+  ).filter((r) => keys.has(caseOf(r)));
+  const roachIds = [...new Set(open.flatMap((r) => (r.roachId ? [r.roachId] : [])))];
+  const [owners, spots] = await Promise.all([
+    db.select({ id: users.id, name: users.name, anonymous: users.anonymous }).from(users).where(inArray(users.id, targets)),
+    roachIds.length ? db.select({ id: roaches.id, publicId: roaches.publicId, lng: roaches.lng, lat: roaches.lat }).from(roaches).where(inArray(roaches.id, roachIds)) : [],
+  ]);
+  return rows.flatMap((row): ReportedPlace[] => {
+    const theirs = open.filter((r) => caseOf(r) === row.key);
+    const latest = theirs.at(-1);
+    if (!latest || latest.placeLng === null || latest.placeLat === null) return [];
+    const was = { lng: latest.placeLng, lat: latest.placeLat };
+    const current = latest.roachId ? spots.find((x) => x.id === latest.roachId) : undefined;
+    const stalk = theirs.filter((r) => r.reason === "stalk").at(-1);
+    return [
+      {
+        caseId: row.key,
+        id: current?.publicId ?? null,
+        main: latest.roachSlot === 0,
+        owner: ownerName(owners.find((o) => o.id === row.target)),
+        now: current ? { lng: current.lng, lat: current.lat } : null,
+        was,
+        state: roachState(current, was),
+        reasons: [...tallyOf(theirs.map((r) => r.reason))].map(([reason, n]) => ({ reason: reason as RoachReportReason, n })),
+        reporters: row.reporters,
+        reliable: row.reliable,
+        since: row.since ? new Date(row.since).getTime() : now,
+        nearM: stalk ? stalk.nearM : null,
+      },
+    ];
+  });
+}
+
+// ---- 管理台: one account, its history, undoing, notes and the log ----
+
+/** How many of each list an account's page shows at most */
+const ACCOUNT_LIST_MAX = 200;
+/** A note's length, in characters (emoji as one) */
+export const NOTE_MAX = 500;
+
+/** Whether the 管理台 may still undo an action: one it took, of a kind that can be given back, not undone already */
+const canUndo = (a: ModActionRow) => !a.auto && UNDOABLE.includes(a.action) && !a.undoneAt && a.appealResult !== "reverted";
+
+function historyItem(a: ModActionRow): AdminHistoryItem {
+  return {
+    actionId: a.id,
+    action: a.action as AdminHistoryItem["action"],
+    rule: isRuleCode(a.rule) ? a.rule : null,
+    // before there were others, the owner did everything
+    by: a.auto ? null : (a.byAlias ?? OWNER_ALIAS),
+    auto: a.auto,
+    at: a.createdAt.getTime(),
+    until: a.until?.getTime() ?? null,
+    main: a.roachSlot === 0,
+    appeal: a.appealedAt
+      ? { text: a.appeal ?? "", at: a.appealedAt.getTime(), result: a.appealResult === "kept" || a.appealResult === "reverted" ? a.appealResult : null }
+      : null,
+    undoneAt: a.undoneAt?.getTime() ?? null,
+    canUndo: canUndo(a),
+  };
+}
+
+const accountGone = () => new HttpError(404, "这个账号已经不在了。");
+
+/**
+ * Everything the 管理台 shows of one account, reported or not: the info box of a case, what was cleared from it,
+ * its declarations of the last 7 days (without where from), every report about it kept (never who made one), the
+ * reports it made, what was done about it, and the notes on it. Never where its roaches are or when it came by.
+ */
+export async function account(id: unknown, now = Date.now()): Promise<AdminAccount> {
+  const userId = String(id ?? "");
+  if (!UUID.test(userId)) throw accountGone();
+  const [[u], who] = await Promise.all([db.select().from(users).where(eq(users.id, userId)).limit(1), people([userId], now)]);
+  const person = who.get(userId);
+  if (!u || !person) throw accountGone();
+  const [cleared, decls, about, [made], history, notes, cases] = await Promise.all([
+    db.select().from(clearedValues).where(eq(clearedValues.userId, userId)).orderBy(desc(clearedValues.createdAt)),
+    db
+      .select()
+      .from(declarations)
+      .where(and(eq(declarations.senderId, userId), gt(declarations.createdAt, new Date(now - 7 * MS_DAY))))
+      .orderBy(desc(declarations.createdAt))
+      .limit(ACCOUNT_LIST_MAX),
+    db
+      .select()
+      .from(reports)
+      .where(and(eq(reports.targetId, userId), or(isNull(reports.resolvedAt), gt(reports.createdAt, new Date(now - KEEP_REPORT_DAYS * MS_DAY)))))
+      .orderBy(desc(reports.createdAt))
+      .limit(ACCOUNT_LIST_MAX),
+    db
+      .select({ n: count() })
+      .from(reports)
+      .where(and(eq(reports.reporterId, userId), isNull(reports.resolvedAt))),
+    db.select().from(modActions).where(eq(modActions.userId, userId)).orderBy(desc(modActions.createdAt)).limit(ACCOUNT_LIST_MAX),
+    db.select().from(adminNotes).where(eq(adminNotes.userId, userId)).orderBy(desc(adminNotes.createdAt)).limit(ACCOUNT_LIST_MAX),
+    openCaseCounts([userId]),
+  ]);
+  const reporterIds = [...new Set(about.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
+  const reporters = new Map((reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((r) => [r.id, r]));
+  // settling closes a case's reports at the moment its action is kept: that tells who settled each
+  const settledAt = new Map(history.map((a) => [a.createdAt.getTime(), a]));
+  return {
+    person,
+    cleared: cleared.map((c) => ({ kind: c.kind === "uid" ? "uid" : "name", value: c.value, at: c.createdAt.getTime() })),
+    last24: person.last24h,
+    declarations: decls.map((d) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
+    reports: about.map((r): AdminAccountReport => {
+      const reporter = r.reporterId ? reporters.get(r.reporterId) : undefined;
+      const settled = r.resolvedAt ? settledAt.get(r.resolvedAt.getTime()) : undefined;
+      return {
+        reason: asReason(r.reason),
+        note: r.note,
+        at: r.createdAt.getTime(),
+        reporter: reporter ? reporterInfo(reporter, now) : null,
+        roach: isRoachReportReason(r.reason) ? { main: r.roachSlot === 0 } : null,
+        resolvedAt: r.resolvedAt?.getTime() ?? null,
+        resolution: r.resolution,
+        by: settled && !settled.auto ? (settled.byAlias ?? OWNER_ALIAS) : null,
+      };
+    }),
+    reportsMade: { upheld: u.reportsUpheld, dismissed: u.reportsDismissed, open: made.n, reliable: reliableReporter(u, now) },
+    history: history.map(historyItem),
+    notes: notes.map((n): AdminNote => ({ id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() })),
+    openCases: cases.get(userId) ?? 0,
+  };
+}
+
+/**
+ * 搜到以后直接处理: an action on any account, reported or not, under a rule the 管理台 must pick (the player's
+ * 站长通知 names it). As settling their case in 待处理, so the reports about them close with it. The new line of its
+ * 处理记录 (none for a ban, which deletes the account).
+ */
+export async function actOnAccount(id: unknown, action: unknown, rule: unknown, by: Actor, now = Date.now()): Promise<AdminHistoryItem | null> {
+  const userId = String(id ?? "");
+  if (!UUID.test(userId)) throw accountGone();
+  if (!ACCOUNT_ACTIONS.includes(action as AdminAction)) throw new HttpError(400, "不知道要怎么处理。");
+  if (!isRuleCode(rule)) throw new HttpError(400, "先选一条 TA 违反的规则。");
+  const done = await settleCase(userId, action as AdminAction, { rule, by }, now);
+  if (!done.actionId) return null;
+  const [a] = await db.select().from(modActions).where(eq(modActions.id, done.actionId)).limit(1);
+  return a ? historyItem(a) : null;
+}
+
+/** 解除暂停: the player's interactions back now, whoever paused them, with the 站长通知 that says so */
+export async function unsuspendAccount(id: unknown, by: Actor, now = Date.now()): Promise<AdminHistoryItem> {
+  const userId = String(id ?? "");
+  const [u] = UUID.test(userId) ? await db.select().from(users).where(eq(users.id, userId)).limit(1) : [];
+  if (!u) throw accountGone();
+  if (!u.suspendedUntil || u.suspendedUntil.getTime() <= now) throw new HttpError(400, "TA 现在没有被暂停。");
+  const a = await db.transaction(async (tx) => {
+    await tx.update(users).set({ suspendedUntil: null, suspendedAuto: false }).where(eq(users.id, u.id));
+    const [a] = await tx
+      .insert(modActions)
+      .values({ userId: u.id, action: "unsuspend", createdAt: new Date(now), ...byColumns(by) })
+      .returning();
+    await addNotes([{ userId: u.id, kind: "unsuspended" }], tx);
+    return a;
+  });
+  await logAdmin(by, "act", "act.unsuspend", { targetId: u.id, actionId: a.id, detail: ACTION_WORDS.unsuspend }, now);
+  return historyItem(a);
+}
+
+/**
+ * 撤销, after the page's own 5 seconds: what the action did given back (revertAction), and it counts no more. An
+ * action waiting on an appeal is as if the appeal won; otherwise the player is told it was undone. A dismissal, a
+ * roach taken back and a ban cannot be undone.
+ */
+export async function undoAction(actionId: unknown, by: Actor, now = Date.now()): Promise<AdminHistoryItem> {
+  const id = String(actionId ?? "");
+  if (!UUID.test(id)) throw new HttpError(400, "找不到这次处理了。");
+  const at = new Date(now);
+  const a = await db.transaction(async (tx) => {
+    const [a] = await tx.select().from(modActions).where(eq(modActions.id, id)).for("update");
+    if (!a) throw new HttpError(400, "找不到这次处理了。");
+    if (a.undoneAt || a.appealResult === "reverted") throw new HttpError(400, "这次处理已经撤销了。");
+    if (a.auto || !UNDOABLE.includes(a.action)) throw new HttpError(400, "这种处理撤销不了。");
+    await revertAction(tx, a);
+    const appealing = Boolean(a.appealedAt && !a.answeredAt);
+    const changed = { undoneAt: at, ...(appealing ? { appealResult: "reverted", answeredAt: at } : {}) };
+    await tx.update(modActions).set(changed).where(eq(modActions.id, a.id));
+    await addNotes([{ userId: a.userId, kind: appealing ? "appealReverted" : "undone", actionId: a.id }], tx);
+    await tx
+      .update(adminLog)
+      .set({ undoneAt: at })
+      .where(and(eq(adminLog.actionId, a.id), isNull(adminLog.undoneAt)));
+    return { ...a, ...changed };
+  });
+  await logAdmin(by, "act", "act.undo", { targetId: a.userId, actionId: a.id, detail: `撤销了「${ACTION_WORDS[a.action as AdminAction] ?? a.action}」` }, now);
+  return historyItem(a);
+}
+
+/** 备注 on an account, the newest first */
+export async function accountNotes(id: unknown): Promise<AdminNote[]> {
+  const userId = String(id ?? "");
+  if (!UUID.test(userId)) throw accountGone();
+  const rows = await db.select().from(adminNotes).where(eq(adminNotes.userId, userId)).orderBy(desc(adminNotes.createdAt)).limit(ACCOUNT_LIST_MAX);
+  return rows.map((n) => ({ id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() }));
+}
+
+/** 加备注: 1 to NOTE_MAX characters, which the player never sees */
+export async function addNote(id: unknown, text: unknown, by: Actor, now = Date.now()): Promise<AdminNote> {
+  const userId = String(id ?? "");
+  const said = String(text ?? "").trim();
+  const length = [...said].length;
+  if (!length) throw new HttpError(400, "备注不能是空的。");
+  if (length > NOTE_MAX) throw new HttpError(400, `备注最多 ${NOTE_MAX} 个字。`);
+  const [u] = UUID.test(userId) ? await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1) : [];
+  if (!u) throw accountGone();
+  const [n] = await db.insert(adminNotes).values({ userId, byUserId: by.id, byAlias: by.alias, text: said, createdAt: new Date(now) }).returning();
+  await logAdmin(by, "act", "act.note", { targetId: userId, detail: "加了一条备注" }, now);
+  return { id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() };
+}
+
+/** Lines of the log that are always about one account, so one without an account now was about one since gone */
+const aboutAnAccount = (what: string) => (what.startsWith("act.") && what !== "act.ack" && what !== "act.nameWords") || what === "view.account";
+
+const LOG_KINDS: Record<Exclude<AdminLogFilter, "all">, string[]> = { act: ["act"], look: ["view", "search"], gate: ["gate"], admin: ["admin"] };
+
+/**
+ * 操作记录, a page at a time, the newest first: by kind, by who, before a line (its id). Each line with the account
+ * it was about as it is now, and whether what it did may still be undone. Today's numbers on top (Beijing time).
+ */
+export async function adminLogPage(q: unknown, now = Date.now()): Promise<AdminLogPage> {
+  const query = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
+  const limit = Math.min(Math.max(Math.floor(Number(query.limit) || 50), 1), 200);
+  const kinds = Object.hasOwn(LOG_KINDS, String(query.kind)) ? LOG_KINDS[query.kind as keyof typeof LOG_KINDS] : null;
+  const before = Math.floor(Number(query.before));
+  const who = typeof query.who === "string" && UUID.test(query.who) ? query.who : null;
+  const where = and(
+    kinds ? inArray(adminLog.kind, kinds) : undefined,
+    before > 0 ? lt(adminLog.id, before) : undefined,
+    who ? eq(adminLog.actorId, who) : undefined,
+  );
+  const midnight = new Date(beijingMidnight(beijingDate(now)));
+  const [rows, [today]] = await Promise.all([
+    db
+      .select({ log: adminLog, name: users.name, anonymous: users.anonymous })
+      .from(adminLog)
+      .leftJoin(users, eq(users.id, adminLog.targetId))
+      .where(where)
+      .orderBy(desc(adminLog.id))
+      .limit(limit + 1),
+    db
+      .select({
+        acts: sql<number>`count(*) filter (where ${adminLog.kind} = 'act')`.mapWith(Number),
+        views: sql<number>`count(*) filter (where ${adminLog.kind} = 'view')`.mapWith(Number),
+        searches: sql<number>`count(*) filter (where ${adminLog.kind} = 'search')`.mapWith(Number),
+        fails: sql<number>`count(*) filter (where ${adminLog.what} = 'gate.fail')`.mapWith(Number),
+      })
+      .from(adminLog)
+      .where(gte(adminLog.at, midnight)),
+  ]);
+  const page = rows.slice(0, limit);
+  const actionIds = [...new Set(page.flatMap((r) => (r.log.actionId && r.log.kind === "act" ? [r.log.actionId] : [])))];
+  const actions = new Map((actionIds.length ? await db.select().from(modActions).where(inArray(modActions.id, actionIds)) : []).map((a) => [a.id, a]));
+  return {
+    entries: page.map(({ log, name, anonymous }) => {
+      const a = log.actionId ? actions.get(log.actionId) : undefined;
+      return {
+        id: log.id,
+        at: log.at.getTime(),
+        actor: log.actorAlias,
+        kind: log.kind as AdminLogPage["entries"][number]["kind"],
+        what: log.what,
+        target: log.targetId ? { id: log.targetId, name: ownerName({ name: name ?? "", anonymous: anonymous ?? false }) } : null,
+        gone: !log.targetId && aboutAnAccount(log.what),
+        detail: log.detail,
+        actionId: log.actionId,
+        canUndo: Boolean(a && log.what !== "act.undo" && canUndo(a)),
+        undone: Boolean(log.undoneAt),
+      };
+    }),
+    today: { acts: today?.acts ?? 0, views: today?.views ?? 0, searches: today?.searches ?? 0, fails: today?.fails ?? 0 },
+    more: rows.length > limit,
+  };
+}
+
+/** A search as the 操作记录 may keep it: an email or a UID (or anything that only matched one) masked */
+export const searchWords = (q: unknown, plain: boolean) => {
+  const needle = searchNeedle(q);
+  return plain ? needle.slice(0, 30) : needle.includes("@") ? maskEmail(needle) : `${needle.slice(0, 2)}***`;
+};
+
+/** 查邮箱 as the 操作记录 keeps it: the address masked */
+export const maskedLookup = (email: unknown) => maskEmail(String(email ?? "").trim().toLowerCase());
+
+/** For the 操作记录: what a few name words were, at most a few dozen of them */
+export function wordsDetail(verb: string, words: string[]) {
+  const shown = words.slice(0, 20).join("、");
+  return words.length > 20 ? `${verb} ${words.length} 个词：${shown} 等` : `${verb} ${words.length} 个词：${shown}`;
+}

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bigserial,
   boolean,
   check,
@@ -159,6 +160,12 @@ export const sessions = pgTable(
     expiresAt: at("expires_at").notNull(),
     // how it signed in (auth.ts SessionMethod): code, desk (a 登录码), password or dev (test identities)
     method: text("method").notNull().default("code"),
+    /**
+     * The 管理台 on this device (src/lib/server/admins.ts): until when an authenticator code unlocked it,
+     * and when one was last right here (the heaviest steps want one from the last few minutes)
+     */
+    adminUntil: at("admin_until"),
+    adminFreshAt: at("admin_fresh_at"),
   },
   (t) => [index("sessions_user_idx").on(t.userId)],
 );
@@ -923,8 +930,106 @@ export const modActions = pgTable(
     answeredAt: at("answered_at"),
     /** For removeRoach: the roach taken back, 0 for the main one (its clones went with it) */
     roachSlot: smallint("roach_slot"),
+    /**
+     * Who in the 管理台 did it (src/lib/server/admins.ts), and what the 管理台 called them then; both empty for
+     * the reports' own steps and for what was done before 2026-11-12 (then the owner's). Players never see either.
+     */
+    byUserId: uuid("by_user_id").references(() => users.id, { onDelete: "set null" }),
+    byAlias: text("by_alias"),
+    /** Undone in the 管理台 (not on appeal): it counts no more, as one reverted on appeal */
+    undoneAt: at("undone_at"),
   },
-  (t) => [index("mod_actions_user_idx").on(t.userId, t.createdAt), index("mod_actions_appeal_idx").on(t.appealedAt)],
+  (t) => [
+    index("mod_actions_user_idx").on(t.userId, t.createdAt),
+    index("mod_actions_appeal_idx").on(t.appealedAt),
+    index("mod_actions_by_idx").on(t.byUserId),
+  ],
+);
+
+/**
+ * Who may open the 管理台 (src/lib/server/admins.ts), one row each: the owner (a sign-in email in ADMIN_EMAILS, whose
+ * row is made on their first visit, and who is the owner only while the email stays there) and moderators. alias is
+ * what the 管理台 calls them; players only ever see 「站长」. The authenticator's secret is kept sealed (seal.ts):
+ * totp_pending while being set up, totp_secret once a first code proved it; totp_last_step keeps a code from
+ * working twice. Wrong codes count per person, not per device, and pause them (pause_reason "codes", or
+ * "views" for looking at too many accounts in an hour).
+ */
+export const admins = pgTable("admins", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** "owner" or "mod" */
+  role: text("role").notNull(),
+  alias: text("alias").notNull(),
+  addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
+  addedAt: at("added_at").notNull().defaultNow(),
+  /** When they agreed to the moderators' rules, before setting up the authenticator (moderators only) */
+  pledgedAt: at("pledged_at"),
+  totpSecret: text("totp_secret"),
+  totpPending: text("totp_pending"),
+  totpConfirmedAt: at("totp_confirmed_at"),
+  totpLastStep: bigint("totp_last_step", { mode: "number" }),
+  fails: integer("fails").notNull().default(0),
+  pausedUntil: at("paused_until"),
+  pauses: integer("pauses").notNull().default(0),
+  pauseReason: text("pause_reason"),
+});
+
+/** The 管理台's backup codes (src/lib/server/admins.ts), each good once: only an HMAC of each is kept (seal.ts) */
+export const adminBackupCodes = pgTable(
+  "admin_backup_codes",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: at("used_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.codeHash] })],
+);
+
+/**
+ * Everything done in the 管理台, and every look at an account (src/lib/server/admins.ts logAdmin): who (and what the
+ * 管理台 called them), when, what (kind: act, view, search, gate or admin; what: e.g. act.warn), whose account and
+ * which mod_actions row. detail is a short line that never holds a player's name, email or UID: a name is looked up
+ * from target_id when shown, and an account gone (deleted or banned) leaves it empty. Kept KEEP_ADMIN_LOG_DAYS.
+ */
+export const adminLog = pgTable(
+  "admin_log",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    at: at("at").notNull().defaultNow(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    actorAlias: text("actor_alias").notNull(),
+    kind: text("kind").notNull(),
+    what: text("what").notNull(),
+    targetId: uuid("target_id").references(() => users.id, { onDelete: "set null" }),
+    /** The mod_actions row it did, for undoing it; no foreign key, as those go after a year too */
+    actionId: uuid("action_id"),
+    detail: text("detail"),
+    undoneAt: at("undone_at"),
+  },
+  (t) => [index("admin_log_at_idx").on(t.at), index("admin_log_actor_idx").on(t.actorId, t.at), index("admin_log_target_idx").on(t.targetId)],
+);
+
+/**
+ * Notes the 管理台 keeps on an account, between the people who handle reports (src/lib/server/admin.ts): players
+ * never see them. Not 站长通知 (staff_notes), which players do. Gone with the account; kept KEEP_ADMIN_LOG_DAYS.
+ */
+export const adminNotes = pgTable(
+  "admin_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    byUserId: uuid("by_user_id").references(() => users.id, { onDelete: "set null" }),
+    byAlias: text("by_alias").notNull(),
+    text: text("text").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("admin_notes_user_idx").on(t.userId, t.createdAt)],
 );
 
 /**
@@ -939,7 +1044,7 @@ export const staffNotes = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** reportUpheld, reportDismissed, action, held, released, autoSuspended, unsuspended, appealKept, appealReverted or offLimits */
+    /** reportUpheld, reportDismissed, action, held, released, autoSuspended, unsuspended, appealKept, appealReverted, offLimits or undone */
     kind: text("kind").notNull(),
     actionId: uuid("action_id").references(() => modActions.id, { onDelete: "cascade" }),
     /** For a reporter: the reason they gave, and the Beijing day they reported; for offLimits, moved or home */
@@ -1114,3 +1219,5 @@ export const moves = pgTable(
 export type UserRow = typeof users.$inferSelect;
 export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;
+export type AdminRow = typeof admins.$inferSelect;
+export type ModActionRow = typeof modActions.$inferSelect;

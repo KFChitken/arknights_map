@@ -37,6 +37,7 @@ import { swarmGl } from "./swarmGl";
 import { amapSandwich } from "./sandwich";
 import { amapSi, type SiAmap } from "./siAmap";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
+import { amapLines } from "./lines";
 import { amapTrail } from "./trail";
 import { MassCache, STILL, styleIndex, type MassPoint } from "./massPoints";
 import { PILE_MAX_ZOOM } from "./pileWork";
@@ -332,6 +333,8 @@ export default function AmapView(props: MapViewProps) {
   const trailRef = useRef<AMapNS[]>([]);
   // 祀掌柜's 缘缘庄, its queue and its ink roaches
   const siRef = useRef<SiAmap | null>(null);
+  // the 站长's dashed lines
+  const linesRef = useRef<AMapNS[]>([]);
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   /** The icon size the roach layers were last styled for */
@@ -420,7 +423,7 @@ export default function AmapView(props: MapViewProps) {
     }
   };
 
-  // Elements the page places on the map (⚡舟友的酒⚡'s dance floor), moved with it
+  // Elements the page places on the map (⚡舟友的酒⚡'s dance floor, the 站长's marks), moved with it
   const syncOverlays = () => {
     const AMap = amapRef.current;
     const map = mapRef.current;
@@ -434,8 +437,17 @@ export default function AmapView(props: MapViewProps) {
     }
     for (const o of propsRef.current.overlays ?? []) {
       if (shown.has(o.id)) continue;
-      o.el.style.pointerEvents = "none";
+      const tap = o.onClick;
+      if (!tap) o.el.style.pointerEvents = "none";
       const marker = new AMap.Marker({ position: toGcj(o.at), content: o.el, anchor: "center", zIndex: SHOUT_Z - 5, bubble: true });
+      if (tap) {
+        // as a guide's: the map's own click that follows is not a tap on the map
+        marker.on("click", () => {
+          if (propsRef.current.placing) return;
+          lastHitRef.current = Date.now();
+          window.setTimeout(tap, 0);
+        });
+      }
       map.add(marker);
       shown.set(o.id, marker);
     }
@@ -448,6 +460,15 @@ export default function AmapView(props: MapViewProps) {
     if (trailRef.current.length) map.remove(trailRef.current);
     trailRef.current = amapTrail(AMap, propsRef.current.trail);
     if (trailRef.current.length) map.add(trailRef.current);
+  };
+
+  const drawLines = () => {
+    const AMap = amapRef.current;
+    const map = mapRef.current;
+    if (!AMap || !map) return;
+    if (linesRef.current.length) map.remove(linesRef.current);
+    linesRef.current = amapLines(AMap, propsRef.current.lines ?? []);
+    if (linesRef.current.length) map.add(linesRef.current);
   };
 
   const placeMine = async () => {
@@ -842,6 +863,7 @@ export default function AmapView(props: MapViewProps) {
 
         placeMine();
         drawTrail();
+        drawLines();
         // 两面包夹芝士 around Japan, under the roaches
         amapSandwich(AMap, map, ZOOM_OFFSET);
         // 祀掌柜's 缘缘庄: the inn, its queue and its ink roaches, under the roaches too
@@ -935,6 +957,7 @@ export default function AmapView(props: MapViewProps) {
       swarmRef.current = null;
       mineRef.current = [];
       trailRef.current = [];
+      linesRef.current = [];
       guideMarkers.clear();
       shoutMarkers.clear();
       overlayMarkers.clear();
@@ -1040,6 +1063,8 @@ export default function AmapView(props: MapViewProps) {
 
   const trailKey = JSON.stringify(props.trail);
   useEffect(drawTrail, [trailKey]);
+  const linesKey = JSON.stringify(props.lines ?? []);
+  useEffect(drawLines, [linesKey]);
 
   // 缘缘庄: only what changed (its numbers, the ink roaches in view, your own, today's painting)
   const siInnKey = props.si?.innKey ?? "";

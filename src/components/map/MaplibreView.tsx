@@ -39,6 +39,7 @@ import { addMaplibreSandwich } from "./sandwich";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { heartsLayer, type HeartDot, type HeartsLayer } from "./heartsGl";
 import type { HeartMode } from "./roachGl";
+import { addMaplibreLines, setMaplibreLines } from "./lines";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { addMaplibreSi, setMaplibreSi, startSiFlight } from "./siMap";
 import { roachTraits, type MapViewProps } from "./types";
@@ -440,7 +441,7 @@ export default function MaplibreView(props: MapViewProps) {
     }
   };
 
-  // Elements the page places on the map (⚡舟友的酒⚡'s dance floor), moved with it
+  // Elements the page places on the map (⚡舟友的酒⚡'s dance floor, the 站长's marks), moved with it
   const syncOverlays = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -453,7 +454,15 @@ export default function MaplibreView(props: MapViewProps) {
     }
     for (const o of propsRef.current.overlays ?? []) {
       if (shown.has(o.id)) continue;
-      o.el.style.pointerEvents = "none";
+      const tap = o.onClick;
+      if (tap) {
+        o.el.addEventListener("click", (e) => {
+          // while placing, the tap is a spot on the map like any other
+          if (propsRef.current.placing) return;
+          e.stopPropagation();
+          tap();
+        });
+      } else o.el.style.pointerEvents = "none";
       shown.set(o.id, new maplibregl.Marker({ element: o.el, anchor: "center" }).setLngLat([o.at.lng, o.at.lat]).addTo(map));
     }
   };
@@ -709,6 +718,7 @@ export default function MaplibreView(props: MapViewProps) {
       // 祀掌柜's 缘缘庄: the inn, its queue and its ink roaches, under the roaches too
       addMaplibreSi(map, propsRef.current.si);
       stopFlight = startSiFlight(map, () => propsRef.current.active !== false);
+      addMaplibreLines(map, propsRef.current.lines ?? []);
       // 全员隐匿 and 轻量: none of the crowd's data or icons yet in the roaches' own source, made on the way out of them
       const crowdOff = crowdModeOf(propsRef.current.mapStyle) !== "all";
       const crowd = crowdOff ? [] : propsRef.current.roaches;
@@ -908,6 +918,11 @@ export default function MaplibreView(props: MapViewProps) {
     const map = mapRef.current;
     if (map && readyRef.current) setMaplibreTrail(map, propsRef.current.trail);
   }, [trailKey]);
+  const linesKey = JSON.stringify(props.lines ?? []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current) setMaplibreLines(map, propsRef.current.lines ?? []);
+  }, [linesKey]);
 
   const main = props.mine.find((r) => r.slot === 0);
   const guidesKey = `${JSON.stringify(props.guides)}|${main ? `${main.lng},${main.lat}` : ""}`;

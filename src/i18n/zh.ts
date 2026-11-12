@@ -164,6 +164,7 @@ export const zh = {
       appealSayWhy: "写一句为什么觉得处理错了吧。",
       appealTooLong: "申诉最多写 {max} 个字。",
       noAction: "找不到这次处理了。",
+      undone: "站长已经撤销了这次处理。",
       appealedAlready: "这次处理已经申诉过了，站长会再看一次。",
       appealTooLate: "处理过了 {days} 天，不能再申诉了。",
     },

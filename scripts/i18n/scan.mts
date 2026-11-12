@@ -56,8 +56,10 @@ export const CJK = /[⺀-⿿　-〿぀-ヿ㄀-ㇿ㐀-䶿一-鿿가-힯豈-﫿︰
 export const KEPT: [prefix: string, why: string][] = [
   ["src/app/admin/", "admin"],
   ["src/app/api/admin/", "admin"],
-  ["src/components/AdminApp.tsx", "admin"],
+  ["src/components/admin/", "admin"],
+  ["src/lib/adminConsole.ts", "admin"],
   ["src/lib/server/admin.ts", "admin"],
+  ["src/lib/server/admins.ts", "admin"],
   ["src/lib/server/demo.ts", "demo"],
   ["src/lib/server/watch.ts", "watch"],
   ["src/lib/server/watchReport.ts", "watch"],

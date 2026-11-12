@@ -161,6 +161,12 @@ export async function currentSession(): Promise<{ id: string; userId: string; me
   return row ?? null;
 }
 
+/** The stored id of the session this request is signed in with (its token, hashed), or null without one; not checked */
+export async function currentSessionId(): Promise<string | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? sha256(token) : null;
+}
+
 // Every request asks who sent it: the statement is put together once, not by drizzle on each request
 // (on 2026-11-10 putting queries together was the biggest single use of the site's CPU)
 const currentUserQuery = db

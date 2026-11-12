@@ -242,7 +242,9 @@ import {
   type Progress,
 } from "./app/Tutorial";
 import { belowGuide, besideMain, besideRight, BIKE_MS, guideBox, guideShift, MINE_PX, preloadDance } from "./map/guideMarker";
-import type { GuideMark, MapOverlay, ShoutMark } from "./map/types";
+import type { GuideMark, MapLine, MapOverlay, ShoutMark } from "./map/types";
+import { adminCall, AdminError } from "./admin/api";
+import MapReported from "./admin/MapReported";
 import RoachIcon from "./RoachIcon";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
@@ -294,30 +296,8 @@ const awayNote = (item: PerlicaItem): PerlicaNote => ({
 });
 const pickOf = (n: number) => Math.floor(Math.random() * n);
 
-/** The admin's own endpoints (src/app/api/admin/[op]/route.ts), from the map: 站长清理 and the reported players' roaches */
-async function adminCall<T>(op: string, ...args: unknown[]): Promise<T> {
-  const res = await fetch(`/api/admin/${op}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ args }),
-  });
-  const body = (await res.json().catch(() => null)) as { result?: T; error?: string } | null;
-  if (!res.ok) throw new Error(body?.error ?? "没成功，再试一次。");
-  return body?.result as T;
-}
-
-/** A roach of a player with open reports, as the admin's map marks it (src/lib/server/admin.ts reportedRoaches) */
-type ReportedRoachMark = { id: string; lng: number; lat: number; main: boolean; owner: string; reasons: string[] };
-
-/** A red ring over a reported player's roach: 本 for the main roach, 克 for a clone; taps go through to the roach */
-function reportedMark(r: ReportedRoachMark) {
-  const el = document.createElement("div");
-  el.textContent = r.main ? "本" : "克";
-  el.title = `${r.owner} · ${r.main ? "本体" : "克隆体"} · ${r.reasons.join("、")}`;
-  el.style.cssText =
-    "width:30px;height:30px;box-sizing:border-box;border:3px solid #d93025;border-radius:50%;background:#d930251f;color:#d93025;font:700 12px/24px sans-serif;text-align:center;pointer-events:none";
-  return el;
-}
+/** 看被举报的蟑螂's marks on the map, none while it is closed */
+const NO_MARKS: { overlays: MapOverlay[]; lines: MapLine[] } = { overlays: [], lines: [] };
 /** 阿米娅向导 dances two rounds of her 6.9-second dance when tapped */
 const DANCE_MS = 2 * 6900;
 
@@ -596,9 +576,13 @@ export default function MapApp({
   const [toast, setToast] = useState<string | null>(null);
   // 站长清理 under way (takeBack below)
   const [cleaning, setCleaning] = useState(false);
-  // the admin's map: the reported players' roaches marked (null: not shown), and their fetch under way
-  const [reportedMarks, setReportedMarks] = useState<MapOverlay[] | null>(null);
-  const [markingReported, setMarkingReported] = useState(false);
+  // 看被举报的蟑螂 on the admin's map (components/admin/MapReported.tsx): open (with the case a link named), its
+  // marks, and its panel's place under the counts at the top
+  const [reported, setReported] = useState<{ start: string | null } | null>(null);
+  const [reportedMarks, setReportedMarks] = useState(NO_MARKS);
+  const [reportedSlot, setReportedSlot] = useState<HTMLDivElement | null>(null);
+  // the 管理台 is locked on this device: its tools on the map wait for a code typed there
+  const [adminShut, setAdminShut] = useState(false);
 
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const viewRef = useRef<MapView>(WORLD_VIEW);
@@ -2414,7 +2398,7 @@ export default function MapApp({
         const said = window.prompt("收回以这只为中心多少米以内的蟑螂？（最多 3000 米）", "300");
         if (!said) return;
         const meters = Math.min(3000, Math.max(1, Math.round(Number(said) || 0)));
-        const list = await adminCall<{ id: string; ownerId: string }[]>("roachesNear", roach.lng, roach.lat, meters);
+        const list = await adminCall<{ id: string; ownerId: string }[]>("roachesNear", [roach.lng, roach.lat, meters]);
         if (!list.length) return setToast("这附近没有别人的蟑螂。");
         const players = new Set(list.map((r) => r.ownerId)).size;
         const sure = window.confirm(
@@ -2425,30 +2409,43 @@ export default function MapApp({
       } else if (!window.confirm("收回这只蟑螂吗？\n是本体的话会连同它的克隆体一起收回；给主人记一张黄牌，发一条站长通知。")) {
         return;
       }
-      const done = await adminCall<{ roaches: number; players: number }>("takeBackRoaches", ids, "roach");
+      const done = await adminCall<{ roaches: number; players: number }>("takeBackRoaches", [ids, "roach"]);
       setSelected(null);
+      setAdminShut(false);
       setToast(done.roaches ? `收回了 ${done.roaches} 只，涉及 ${done.players} 个人。地图过几秒就更新。` : "没有收回什么，可能已经被收回了。");
     } catch (e) {
-      setToast(e instanceof Error ? e.message : String(e));
+      // the 管理台 locked on this device (its hours passed, or it was never opened here): a code there first
+      if (e instanceof AdminError && e.gate) {
+        setAdminShut(true);
+        setToast("先去管理台输验证码，再回来收回。");
+      } else setToast(e instanceof Error ? e.message : String(e));
     } finally {
       setCleaning(false);
     }
   };
 
-  /** The admin's map: mark (or stop marking) every roach of the players with open reports, main and clones */
-  const toggleReported = async () => {
-    if (reportedMarks) return setReportedMarks(null);
-    setMarkingReported(true);
-    try {
-      const list = await adminCall<ReportedRoachMark[]>("reportedRoaches");
-      setReportedMarks(list.map((r) => ({ id: `reported-${r.id}`, at: { lng: r.lng, lat: r.lat }, el: reportedMark(r) })));
-      setToast(list.length ? `红圈标出了被举报的人的 ${list.length} 只蟑螂：本是本体，克是克隆体。点下面的蟑螂可以收回。` : "被举报的人现在都没在地图上放蟑螂。");
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : String(e));
-    } finally {
-      setMarkingReported(false);
-    }
-  };
+  const onReportedMarks = useCallback((overlays: MapOverlay[], lines: MapLine[]) => setReportedMarks({ overlays, lines }), []);
+  // a reported roach, lift pixels above the middle of the map: the middle that far below it (Web Mercator, 512-pixel tiles)
+  const focusReported = useCallback((at: LngLat, lift: number) => {
+    const zoom = Math.max(viewRef.current.zoom, 15);
+    const lat = at.lat - (lift * 360 * Math.cos((at.lat * Math.PI) / 180)) / (512 * 2 ** zoom);
+    setFocus({ lng: at.lng, lat, zoom, nonce: Date.now() });
+  }, []);
+  const closeReported = useCallback(() => setReported(null), []);
+  const unselect = useCallback(() => setSelected(null), []);
+  // /?case=… from the 管理台: the admin's map opens 看被举报的蟑螂 at that case, and the address forgets it; for
+  // anyone else it is nothing
+  const isAdmin = Boolean(me?.admin);
+  useEffect(() => {
+    if (!isAdmin) return;
+    const q = new URLSearchParams(window.location.search);
+    const caseId = q.get("case");
+    if (!caseId) return;
+    q.delete("case");
+    window.history.replaceState(null, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
+    setSelected(null);
+    setReported({ start: caseId });
+  }, [isAdmin]);
 
   /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
   const reportRoach = async (roach: PublicRoach, reason: RoachReportReason, note: string) => {
@@ -2847,8 +2844,11 @@ export default function MapApp({
     if (partySpot && partySpot !== mainSpot) endParty();
   }, [partySpot, mainSpot, endParty]);
   const partyOverlays = useMemo<MapOverlay[]>(() => (party ? [{ id: `party-${party.key}`, at: party.at, el: party.el }] : []), [party]);
-  // with the admin's marks on the reported players' roaches, when shown
-  const mapOverlays = useMemo(() => (reportedMarks ? [...partyOverlays, ...reportedMarks] : partyOverlays), [partyOverlays, reportedMarks]);
+  // with the admin's marks of 看被举报的蟑螂, while it is open
+  const mapOverlays = useMemo(
+    () => (reportedMarks.overlays.length ? [...partyOverlays, ...reportedMarks.overlays] : partyOverlays),
+    [partyOverlays, reportedMarks],
+  );
   const drunkSeen = useRef<{ id: string; drunk: boolean } | null>(null);
   useEffect(() => {
     if (!me) {
@@ -3585,6 +3585,7 @@ export default function MapApp({
     trail,
     shouts,
     overlays: mapOverlays,
+    lines: reportedMarks.lines,
     // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out
     mine: (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
     mineAsleep: Boolean(me?.drunkUntil),
@@ -4032,8 +4033,8 @@ export default function MapApp({
     }
   };
 
-  // only the admin's me() carries the counts
-  const adminPills = me?.admin && (me.admin.open > 0 || me.admin.appeals > 0 || reportedMarks) && (
+  // only the admin's me() carries the counts; 看被举报的蟑螂 opens its panel under them (MapReported)
+  const adminPills = me?.admin && (
     <>
       {(me.admin.open > 0 || me.admin.appeals > 0) && (
         <a className={`admin-pill ${me.admin.urgent > 0 ? "urgent" : ""}`} href="/admin">
@@ -4041,10 +4042,21 @@ export default function MapApp({
           {me.admin.urgent > 0 && `，其中 ${me.admin.urgent} 条举报要尽快看`}
         </a>
       )}
-      {(me.admin.open > 0 || reportedMarks) && (
-        <button className="admin-pill" disabled={markingReported} onClick={toggleReported}>
-          {reportedMarks ? `收起被举报者的蟑螂（${reportedMarks.length} 只）` : "看被举报者的蟑螂"}
+      {!reported && (
+        <button
+          className="admin-pill"
+          onClick={() => {
+            setSelected(null);
+            setReported({ start: null });
+          }}
+        >
+          看被举报的蟑螂
         </button>
+      )}
+      {adminShut && (
+        <a className="admin-pill urgent" href="/admin">
+          先去管理台输验证码
+        </a>
       )}
     </>
   );
@@ -4147,10 +4159,13 @@ export default function MapApp({
           )}
           {/* under the strip they come down beside 方舟雷达, so they keep to a line of their own in the middle (.admin-row) */}
           {strip && adminPills ? <div className="admin-row">{adminPills}</div> : adminPills}
+          {/* 看被举报的蟑螂's panel goes here, under the counts */}
+          {me?.admin && reported && <div className="rep-slot" ref={setReportedSlot} />}
         </div>
       )}
 
-      {!placing && (
+      {/* the column on the right: not while placing, nor while the 站长 looks at reported roaches (their panel takes the top) */}
+      {!placing && !reported && (
         <button className="radar-btn" onClick={me ? openRadar : () => setPanel({ kind: "guestRadar" })}>
           <span className="radar-scope mini" aria-hidden="true">
             <span className="radar-sweep" />
@@ -4158,7 +4173,7 @@ export default function MapApp({
           <small>{T.map.radar}</small>
         </button>
       )}
-      {!placing && (
+      {!placing && !reported && (
         <GuideDock
           onOpen={(id) => {
             setSelected(null);
@@ -4166,7 +4181,7 @@ export default function MapApp({
           }}
         />
       )}
-      {!placing && (
+      {!placing && !reported && (
         <button className="hot-btn" aria-label="本周舟P热榜" onClick={() => setPanel({ kind: "hot" })}>
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
             <path
@@ -4179,7 +4194,7 @@ export default function MapApp({
         </button>
       )}
       {/* not while placing or in the tutorial, like the guides; not from the desktop icon or once installed here */}
-      {!placing && !step && deskOffer && <DeskButton hint={deskHint && deskHintNow} onTap={tapDesk} onHintDone={deskHintDone} />}
+      {!placing && !reported && !step && deskOffer && <DeskButton hint={deskHint && deskHintNow} onTap={tapDesk} onHintDone={deskHintDone} />}
 
       <div className="map-wrap" ref={wrapRef}>
         {basemap === "amap" && !amapFailed && amapMade && (
@@ -4276,6 +4291,19 @@ export default function MapApp({
         />
       )}
 
+      {me?.admin && reported && (
+        <MapReported
+          owner
+          start={reported.start}
+          hidden={Boolean(placing || selected)}
+          panelSlot={reportedSlot}
+          onMarks={onReportedMarks}
+          onFocus={focusReported}
+          onPick={unselect}
+          onSay={setToast}
+          onClose={closeReported}
+        />
+      )}
       {!placing && selected?.kind === "other" && selected.roach.id === SI_ID && (
         <SiCard
           me={me?.si ?? null}

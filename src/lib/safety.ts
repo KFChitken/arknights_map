@@ -212,8 +212,8 @@ export const BATCH_ACTIONS: readonly AdminAction[] = ["dismiss", "clearName", "w
 /** The admin's corner of the map: open reports, how many of them are for URGENT_REASONS, and appeals waiting */
 export type ReportCounts = { open: number; urgent: number; appeals: number };
 
-/** Which cases a page of the queue shows: by colour, by a reason among their reports (blocks: only being blocked by many), or only names */
-export type CaseQuery = { page?: number; level?: CaseLevel | "all"; reason?: AnyReason | "blocks" | "all"; nameOnly?: boolean };
+/** Which cases a page of the queue shows: by colour, by a reason among their reports (blocks: only being blocked by many), only names, or one case by its id */
+export type CaseQuery = { page?: number; level?: CaseLevel | "all"; reason?: AnyReason | "blocks" | "all"; nameOnly?: boolean; caseId?: string };
 
 /** Cases on a page of the admin's queue */
 export const CASES_PER_PAGE = 50;
@@ -242,6 +242,8 @@ export type AdminAppeal = {
   main: boolean;
   appeal: string;
   appealedAt: number;
+  /** Who did it, as the 管理台 called them */
+  by: string;
   who: AdminPerson;
 };
 
