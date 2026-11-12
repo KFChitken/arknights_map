@@ -16,6 +16,7 @@ import { startNotices } from "./lib/server/notices";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { pruneOldActivity } from "./lib/server/retention";
 import { pruneRoachChanges } from "./lib/server/roachFeed";
+import { markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
 import { note } from "./lib/server/signals";
@@ -42,6 +43,7 @@ const MINUTE_MS = 60_000;
 const helper = process.env.WEB_ROLE === "helper";
 
 // The database can still be starting (first boot, or a server restart that brought the app up first)
+let setUp = false;
 for (let attempt = 1; attempt <= TRIES; attempt++) {
   try {
     if (!helper) {
@@ -49,6 +51,7 @@ for (let attempt = 1; attempt <= TRIES; attempt++) {
       if (demoEnabled) await seedDemo();
       await catchUpBadges();
     } else if (!(await migrationsDone())) throw new Error("the main process has not brought the database up to date yet");
+    setUp = true;
     break;
   } catch (e) {
     if (attempt === TRIES) {
@@ -161,3 +164,6 @@ if (!helper) {
     startWatch();
   }
 }
+
+// Ready to answer (GET /api/ready, with the roach list once it is made): not when the database could not be set up
+if (setUp) markStarted();

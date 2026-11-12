@@ -1143,6 +1143,18 @@ export async function pruneRoachChanges(now = Date.now()) {
   await db.delete(roachChanges).where(lt(roachChanges.at, new Date(now - KEEP_CHANGES_MS)));
 }
 
+/**
+ * Whether this process has its roach list (GET /api/ready), and is not on its way out. If it has none and none is
+ * being made, one is started in the background, never waited for: a process taking no visitors until it is ready
+ * would otherwise never be.
+ */
+export function feedReady(now = Date.now()): boolean {
+  if (feed.stopping) return false;
+  if (feed.snapshot) return true;
+  if (!feed.building) void current(now).catch(() => {});
+  return false;
+}
+
 /** Tests only: wait for a round or the first snapshot in progress. */
 export async function roachFeedSettled() {
   await feed.building?.catch(() => {});
