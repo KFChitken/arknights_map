@@ -137,24 +137,24 @@ void main() {
   gl_FragColor = t * a;
 }`;
 
+/** A picture in its cell: a square one filling it, the rest as wide as they fit (signs on its bottom) */
+function putCell(c: HTMLCanvasElement, cell: number, pic: HTMLCanvasElement | null, bottom: boolean) {
+  if (!pic) return;
+  const x = (cell % GRID) * CELL;
+  const y = Math.floor(cell / GRID) * CELL;
+  const k = CELL / Math.max(pic.width, pic.height);
+  const w = pic.width * k;
+  const h = pic.height * k;
+  c.getContext("2d")!.drawImage(pic, x + (CELL - w) / 2, bottom ? y + CELL - h : y + (CELL - h) / 2, w, h);
+}
+
 let atlasMade: Promise<HTMLCanvasElement> | null = null;
-/** Every picture in its cell: square ones filling it, the rest as wide as they fit (signs on its bottom) */
+/** Every picture in its cell but the ink roaches', which wait for atlasInks */
 function atlas() {
   atlasMade ??= (async () => {
     const c = document.createElement("canvas");
     c.width = c.height = CELL * GRID;
-    const g = c.getContext("2d")!;
-    const put = (cell: number, pic: HTMLCanvasElement | null, bottom: boolean) => {
-      if (!pic) return;
-      const x = (cell % GRID) * CELL;
-      const y = Math.floor(cell / GRID) * CELL;
-      const k = CELL / Math.max(pic.width, pic.height);
-      const w = pic.width * k;
-      const h = pic.height * k;
-      g.drawImage(pic, x + (CELL - w) / 2, bottom ? y + CELL - h : y + (CELL - h) / 2, w, h);
-    };
-    const inks = await Promise.all(INK_LOOKS.flatMap((look) => INK_VARIANTS.map((v) => inkCanvas(look, v, CELL).catch(() => null))));
-    inks.forEach((pic, i) => put(C_INK + i, pic, true));
+    const put = (cell: number, pic: HTMLCanvasElement | null, bottom: boolean) => putCell(c, cell, pic, bottom);
     put(C_TREE, treeCanvas(CELL), true);
     put(C_SIGN, signCanvas("缘缘庄", CELL / 2), true);
     put(C_SIGN_FULL, signCanvas("客满", CELL / 2, true), true);
@@ -168,6 +168,20 @@ function atlas() {
     atlasMade = null;
   });
   return atlasMade;
+}
+
+let inksMade: Promise<void> | null = null;
+/** The ink roaches' pictures into their cells of the atlas, only once the map shows some close up: five downloads */
+function atlasInks() {
+  inksMade ??= (async () => {
+    const c = await atlas();
+    const inks = await Promise.all(INK_LOOKS.flatMap((look) => INK_VARIANTS.map((v) => inkCanvas(look, v, CELL).catch(() => null))));
+    inks.forEach((pic, i) => putCell(c, C_INK + i, pic, true));
+  })();
+  inksMade.catch(() => {
+    inksMade = null;
+  });
+  return inksMade;
 }
 
 const inkCell = (look: number, state: number, left: boolean) => C_INK + look * 4 + INK_VARIANTS.indexOf(variantOf(state, left));
@@ -194,6 +208,8 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
   let failed = false;
   let atlasPic: HTMLCanvasElement | null = null;
   let atlasOn = false;
+  // the ink roaches' pictures asked for (atlasInks), once some are shown close up
+  let inksAsked = false;
   const batches: Record<"blot" | "dots" | "marks" | "inks" | "mine" | "her", Batch> = {
     blot: { vao: null, buf: null, data: new Float32Array(0), count: 0, dirty: true },
     dots: { vao: null, buf: null, data: new Float32Array(0), count: 0, dirty: true },
@@ -210,11 +226,44 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
   let mineFresh = false;
   let brush: { frame: (p: number) => ImageData; start: number } | null = null;
   let mineSeq = 0;
+  // your own as the page has it, its picture made only once it is close up in view (mineAsked)
+  let mineWant: SiMine | null = null;
+  let mineAsked = false;
 
   const fail = (why: string) => {
     if (failed) return;
     failed = true;
     opts.onFail(why);
+  };
+
+  /** Whether a place is on the map's screen, or within margin px of it */
+  const onScreen = (p: { lng: number; lat: number }, margin: number) => {
+    try {
+      const px = map.lngLatToContainer(toGcj(p));
+      const el = map.getContainer();
+      return px.getX() > -margin && px.getY() > -margin && px.getX() < el.clientWidth + margin && px.getY() < el.clientHeight + margin;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Your own's picture, drawn in by her brush when she has only just drawn it */
+  const drawMine = (mine: SiMine) => {
+    const seq = mineSeq;
+    mineAsked = true;
+    void inkCanvas(mine.look, mine.variant, CELL, mine.color)
+      .then((c) => {
+        if (seq !== mineSeq) return;
+        minePic = c;
+        mineFresh = true;
+        const left = mine.brushFrom === null ? 0 : BRUSH_MS - (Date.now() - mine.brushFrom);
+        brush = left > 0 && !prefersReducedMotion() ? { frame: brushReveal(c), start: performance.now() - (BRUSH_MS - left) } : null;
+        frames();
+        map.render();
+      })
+      .catch(() => {
+        if (seq === mineSeq) mineAsked = false;
+      });
   };
 
   /** A batch's points: where, and what each is drawn as */
@@ -369,6 +418,19 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
       mine: near && batches.mine.count > 0 && Boolean(minePic || brush),
       her: batches.her.count > 0,
     };
+    // the pictures of ink roaches only now they are wanted: the page has them only close up at 宏村
+    if (show.inks && !inksAsked) {
+      inksAsked = true;
+      void atlasInks()
+        .then(() => {
+          atlasOn = false;
+          map.render();
+        })
+        .catch(() => {
+          inksAsked = false;
+        });
+    }
+    if (near && mineWant && !mineAsked && batches.mine.count > 0 && onScreen(mineWant.at, 400)) drawMine(mineWant);
     if (!Object.values(show).some(Boolean)) return;
     try {
       const was = saveState(g, vao);
@@ -442,16 +504,7 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
 
   // Frames of their own while her butterflies fly in view, or her brush draws (高德 draws only as the map moves)
   let timer = 0;
-  const herInView = () => {
-    if (map.getZoom() - opts.zoomOffset < SCROLL_OPEN_FROM || prefersReducedMotion()) return false;
-    try {
-      const px = map.lngLatToContainer(toGcj(SI_AT));
-      const el = map.getContainer();
-      return px.getX() > -120 && px.getY() > -120 && px.getX() < el.clientWidth + 120 && px.getY() < el.clientHeight + 120;
-    } catch {
-      return false;
-    }
-  };
+  const herInView = () => map.getZoom() - opts.zoomOffset >= SCROLL_OPEN_FROM && !prefersReducedMotion() && onScreen(SI_AT, 120);
   const frames = () => {
     const want = !failed && active && !document.hidden && (herInView() || brush !== null);
     if (want && !timer) {
@@ -500,7 +553,9 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
       map.render();
     },
     setMine: (mine) => {
-      const seq = ++mineSeq;
+      mineSeq++;
+      mineWant = mine;
+      mineAsked = false;
       if (!mine) {
         batches.mine.count = 0;
         minePic = null;
@@ -514,17 +569,9 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
         d[o + 4] = mine.tilt * RAD;
         d[o + 5] = Math.min(1, 1.05 * mine.ink);
       });
-      void inkCanvas(mine.look, mine.variant, CELL, mine.color)
-        .then((c) => {
-          if (seq !== mineSeq) return;
-          minePic = c;
-          mineFresh = true;
-          const left = mine.brushFrom === null ? 0 : BRUSH_MS - (Date.now() - mine.brushFrom);
-          brush = left > 0 && !prefersReducedMotion() ? { frame: brushReveal(c), start: performance.now() - (BRUSH_MS - left) } : null;
-          frames();
-          map.render();
-        })
-        .catch(() => {});
+      // drawn at once if it was before (its picture is held); otherwise once it is close up in view (render)
+      if (minePic) drawMine(mine);
+      map.render();
     },
     setTier: (next) => {
       tier = next;

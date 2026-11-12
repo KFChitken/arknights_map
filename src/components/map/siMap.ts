@@ -282,18 +282,55 @@ function putImage(map: MaplibreMap, name: string, c: HTMLCanvasElement) {
   else map.addImage(name, data, ratio);
 }
 
-/** The ink roaches' pictures, every look each way, made once per map */
-async function addInkImages(map: MaplibreMap) {
-  await Promise.all(
-    INK_LOOKS.flatMap((look) =>
-      INK_VARIANTS.map(async (v) => {
-        const name = inkImageName(look, v);
-        if (map.hasImage(name)) return;
-        const c = await inkCanvas(look, v, INK_PX * 2).catch(() => null);
-        if (c && !map.hasImage(name)) putImage(map, name, c);
-      }),
-    ),
-  );
+const INK_NAMES = new Set(INK_LOOKS.flatMap((look) => INK_VARIANTS.map((v) => inkImageName(look, v))));
+/** The ink roaches' pictures being made for a map */
+const inksComing = new WeakMap<MaplibreMap, Promise<void>>();
+
+/** The ink roaches' pictures, every look each way (five downloads, held after) */
+function addInkImages(map: MaplibreMap) {
+  let p = inksComing.get(map);
+  if (!p) {
+    p = Promise.all(
+      INK_LOOKS.flatMap((look) =>
+        INK_VARIANTS.map(async (v) => {
+          const c = await inkCanvas(look, v, INK_PX * 2).catch(() => null);
+          try {
+            if (c) putImage(map, inkImageName(look, v), c);
+          } catch {
+            // the map is gone
+          }
+        }),
+      ),
+    ).then(() => {
+      inksComing.delete(map);
+    });
+    inksComing.set(map, p);
+  }
+  return p;
+}
+
+/** Your own ink roach as the page last had it, drawn when the map asks for its picture */
+const mineNow = new WeakMap<MaplibreMap, SiMine | null>();
+const onDemand = new WeakSet<MaplibreMap>();
+
+/**
+ * The ink roaches' pictures, and your own, only when the map first lays one out (close up at 宏村), so nobody else
+ * downloads them: a clear one of the same size at once, so the ink roach is not left out, then the picture in its
+ * place. Again after a new style has dropped them, from the pictures held.
+ */
+function picturesOnDemand(map: MaplibreMap) {
+  if (onDemand.has(map)) return;
+  onDemand.add(map);
+  map.on("styleimagemissing", ({ id }: { id: string }) => {
+    if (id !== "si-mine" && !INK_NAMES.has(id)) return;
+    const px = INK_PX * 2;
+    if (!map.hasImage(id)) map.addImage(id, { width: px, height: px, data: new Uint8Array(px * px * 4) }, ratio);
+    if (id !== "si-mine") void addInkImages(map);
+    else {
+      const mine = mineNow.get(map);
+      if (mine) void drawMine(map, mine);
+    }
+  });
 }
 
 /** The scroll with today's painting, and rolled up; drawn from SVG, so a moment later */
@@ -311,9 +348,11 @@ export function addMaplibreSi(map: MaplibreMap, si: SiMapData | undefined) {
   for (const f of [0, 1] as const) if (!map.hasImage(`si-fly-${f}`)) putImage(map, `si-fly-${f}`, butterflyCanvas(f, BUTTERFLY_PX * 2));
   for (const [id, source] of Object.entries(siSources(si))) map.addSource(id, source);
   for (const layer of siLayers(Boolean(si?.inn?.full))) map.addLayer(layer);
-  void addInkImages(map);
+  picturesOnDemand(map);
   void addScrollImages(map, si?.tier ?? 0);
-  if (si?.mine) void drawMine(map, si.mine);
+  mineNow.set(map, si?.mine ?? null);
+  // kept through a new style: drawn again now (held, no download); otherwise when the map asks for it
+  if (si?.mine && map.hasImage("si-mine")) void drawMine(map, si.mine);
 }
 
 /** Which of your own was drawn last, so a slow picture never lands after a newer one */
@@ -353,8 +392,9 @@ export function setMaplibreSi(map: MaplibreMap, si: SiMapData | undefined, chang
   }
   if (changed.inks) (map.getSource("si-inks") as GeoJSONSource | undefined)?.setData(inksOf(si?.inks ?? []));
   if (changed.mine) {
+    mineNow.set(map, si?.mine ?? null);
     (map.getSource("si-mine") as GeoJSONSource | undefined)?.setData(mineOf(si?.mine ?? null));
-    if (si?.mine) void drawMine(map, si.mine);
+    if (si?.mine && map.hasImage("si-mine")) void drawMine(map, si.mine);
   }
   if (changed.tier) void addScrollImages(map, si?.tier ?? 0);
 }
