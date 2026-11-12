@@ -1,4 +1,4 @@
-# Two of the app's processes, web2 and web3, on the second server (10.5.0.15 on the private network), which
+# Three of the app's processes, web2, web3 and web4, on the second server (10.5.0.15 on the private network), which
 # besides passing visitors through to the main server (deploy/relay) has the cores the main server ran out
 # of. They only answer requests, like web2 and web3 always did; the main server's Caddy sends visitors to
 # them over the private network (deploy/Caddyfile), and they use the main server's database. Lives in
@@ -52,6 +52,16 @@ services:
       FEED_STATE: /app/feed-state/web3.json
     ports:
       - "10.5.0.15:3002:3000"
+
+  # a third here (11/12): the main server's web shared its cores with the database and Caddy and stalled
+  # at peak, so it now takes a quarter of the visitors instead of a third
+  web4:
+    <<: *web
+    environment:
+      <<: *web-env
+      FEED_STATE: /app/feed-state/web4.json
+    ports:
+      - "10.5.0.15:3003:3000"
 
 volumes:
   feed-state:
