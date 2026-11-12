@@ -210,14 +210,15 @@ export type RoachFeedUpdate = { v: string; roaches?: MapRoach[]; packed?: Packed
 
 /**
  * An area of the feed (world/area.ts): whole (packed, with the box or overview it is of), or what changed
- * in the box held since its version; t: how many roaches there are in all, by the fire and riding with
- * 明河都尉. Just {v} where the server has nothing to say yet (just after a start).
+ * in the box held since its version; t: how many roaches there are in all, by the fire, riding with
+ * 明河都尉, and how many players they belong to (their main roaches; none from a server from before it
+ * said so). Just {v} where the server has nothing to say yet (just after a start).
  */
 export type AreaUpdate = {
   /** Areas switched off on the server (AREA_FEED=off): ask for the whole list (roachFeed) instead */
   whole?: true;
   v: string;
-  t?: [number, number, number];
+  t?: [number, number, number, number?];
   box?: Box;
   overview?: true;
   packed?: PackedRoaches;
@@ -227,9 +228,10 @@ export type AreaUpdate = {
 
 /**
  * What the feed gives someone not signed in, whose map is 全员隐匿: how many roaches there are in all, by
- * 塔露拉干员's fire, and riding with 明河都尉, at version v. No roaches at all.
+ * 塔露拉干员's fire, riding with 明河都尉, and how many players they belong to (none from a server from
+ * before it said so), at version v. No roaches at all.
  */
-export type VisitorFeed = { v: string; hidden: true; total: number; fire: number; riders: number };
+export type VisitorFeed = { v: string; hidden: true; total: number; fire: number; riders: number; players?: number };
 
 /**
  * newFriend: the other player's name when this touch made you 触须之交.

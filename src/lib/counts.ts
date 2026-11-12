@@ -4,10 +4,13 @@
  * watching a number change cannot pin one roach down.
  */
 
-/** As the top line says it, with its measure word: as it is under 10,000, else in 万 to one place, rounded down (6.2 万只) */
-export function countText(n: number) {
-  if (n < 10_000) return `${n.toLocaleString("zh-CN")} 只`;
-  return `${Math.floor(n / 1000) / 10} 万只`;
+/**
+ * As the top line says it, with its measure word, 只 for roaches and 位 for players: as it is under 10,000, else in
+ * 万 to one place, rounded down (6.2 万只, 9.1 万位)
+ */
+export function countText(n: number, measure: "只" | "位" = "只") {
+  if (n < 10_000) return `${n.toLocaleString("zh-CN")} ${measure}`;
+  return `${Math.floor(n / 1000) / 10} 万${measure}`;
 }
 
 /** A count rounded down: 0; 1 for a few (1–9); tens below 100; hundreds from there */

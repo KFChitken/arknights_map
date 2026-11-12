@@ -9,6 +9,14 @@ describe("counts for visitors", () => {
     expect(countText(150_000)).toBe("15 万只");
   });
 
+  it("counts players with 位, the same way", () => {
+    expect(countText(0, "位")).toBe("0 位");
+    expect(countText(9_999, "位")).toBe("9,999 位");
+    expect(countText(10_000, "位")).toBe("1 万位");
+    expect(countText(91_208, "位")).toBe("9.1 万位");
+    expect(countText(162_345, "位")).toBe("16.2 万位");
+  });
+
   it("rounds a count near a spot down: a few, tens, hundreds", () => {
     expect([0, 1, 9, 10, 37, 99, 100, 358, 1234].map(rough)).toEqual([0, 1, 1, 10, 30, 90, 100, 300, 1200]);
     expect(roughText(1)).toBe("几只");

@@ -84,8 +84,12 @@ const viewOf = (form: FeedForm): View => (form === 3 ? "short" : "long");
 
 type Whole = { json: string; gzip: Buffer; br?: Buffer };
 
-/** What a visitor who has not signed in gets instead of the roaches (src/app/api/roaches): how many there are, by 塔露拉干员's fire, and riding with 明河都尉 */
-export type FeedCounts = { total: number; fire: number; riders: number };
+/**
+ * What a visitor who has not signed in gets instead of the roaches (src/app/api/roaches): how many there are, by
+ * 塔露拉干员's fire, and riding with 明河都尉; and how many players they belong to, which is how many main roaches
+ * there are: a clone needs its player's main roach there first, and goes when it does. Show roaches (bots) are nobody's.
+ */
+export type FeedCounts = { total: number; fire: number; riders: number; players: number };
 
 type Snapshot = {
   n: number;
@@ -397,8 +401,16 @@ export async function roachFeed(since: string | null, now = Date.now(), form: Fe
   return { kind: "diff", v: s.v, json };
 }
 
-const countsOf = (s: Snapshot) =>
-  (s.counts ??= { total: s.list.length, fire: fireCount(s.list), riders: s.list.reduce((k, r) => k + (r.ride ? 1 : 0), 0) });
+function countsOf(s: Snapshot): FeedCounts {
+  if (s.counts) return s.counts;
+  let riders = 0;
+  let players = 0;
+  for (const r of s.list) {
+    if (r.ride) riders++;
+    if (!r.clone && !r.bot) players++;
+  }
+  return (s.counts = { total: s.list.length, fire: fireCount(s.list), riders, players });
+}
 
 /** The counts a visitor who has not signed in gets in place of the roaches, at the snapshot's version */
 export async function roachCounts(now = Date.now()): Promise<{ v: string } & FeedCounts> {
@@ -418,10 +430,13 @@ export type AreaAnswer =
   | { kind: "full"; v: string; key: string; whole: AreaWhole }
   | { kind: "diff"; v: string; json: string };
 
-/** total, by the fire, riding with 明河都尉: every f=4 answer says them, as pages no longer hold every roach to count */
+/**
+ * total, by the fire, riding with 明河都尉, players: every f=4 answer says them, as pages no longer hold every roach
+ * to count. players came last, so pages from before it still read the first three as they did.
+ */
 const totalsJson = (s: Snapshot) => {
   const c = countsOf(s);
-  return `[${c.total},${c.fire},${c.riders}]`;
+  return `[${c.total},${c.fire},${c.riders},${c.players}]`;
 };
 
 const bucketKey = (lngDeg: number, latDeg: number) => (latDeg + 90) * 361 + (lngDeg + 180);

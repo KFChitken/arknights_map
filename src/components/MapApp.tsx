@@ -74,7 +74,7 @@ import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME, TOUCH_SAME_RO
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
-import { RoachAreaCopy, RoachFeedCopy } from "@/lib/world/feed";
+import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
 import { HOUR, reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach, unpackRoaches } from "@/lib/world/packed";
 import {
@@ -456,9 +456,9 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
   const [feedIn, setFeedIn] = useState(false);
   // not signed in, as the server sees it: how many roaches there are, instead of them (VisitorFeed)
   const [visitorCounts, setVisitorCounts] = useState<Omit<VisitorFeed, "v" | "hidden"> | null>(null);
-  // signed in: how many there are in all, by the fire and riding with 明河都尉, as the server says with each area,
-  // as the page no longer holds every roach to count them (world/area.ts)
-  const [areaTotals, setAreaTotals] = useState<{ total: number; fire: number; riders: number } | null>(null);
+  // signed in: how many there are in all, by the fire, riding with 明河都尉, and how many players they belong to, as
+  // the server says with each area, as the page no longer holds every roach to count them (world/area.ts)
+  const [areaTotals, setAreaTotals] = useState<AreaTotals | null>(null);
   // the map shows the overview: one roach for each small square, standing for all of them there
   const [overview, setOverview] = useState(false);
   // Every public id our roaches had on this page: after a move the old one stays in the feed for a moment
@@ -663,7 +663,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         const u = await worldRef.current!.roachFeed(feed.version);
         if (feedRef.current !== feed) return;
         if ("hidden" in u) {
-          setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
+          setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders, players: u.players });
           if (feed.version) feedRef.current = new RoachFeedCopy();
           setFeedRoaches([]);
         } else {
@@ -697,8 +697,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
         if (why === "view" && countsInRef.current) return;
         const u = await worldRef.current.roachArea("counts", null).catch(() => null);
         if (!u || areaRef.current !== copy) return;
-        if ("hidden" in u) setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
-        else if (u.t) setAreaTotals({ total: u.t[0], fire: u.t[1], riders: u.t[2] });
+        if ("hidden" in u) setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders, players: u.players });
+        else if (u.t) setAreaTotals(totalsOf(u.t));
         countsInRef.current = true;
         setFeedIn(true);
         return;
@@ -733,7 +733,7 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
           }
           if ("hidden" in u) {
             // not signed in (any more): no roaches, only how many there are
-            setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders });
+            setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders, players: u.players });
             if (copy.version) forgetRoaches();
           } else {
             setVisitorCounts(null);
@@ -2527,6 +2527,16 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
       : areaTotals && !fakeFeed
         ? areaTotals.total
         : roaches.length + (me?.roaches.length ?? 0);
+  // How many players have roaches on the map: as many as there are main roaches, as a clone needs its player's main
+  // roach there first (show roaches are nobody's). The server's count, as for total, but for the whole list held
+  // (?whole=1, AREA_FEED=off, the development crowd); none from a server from before it counted them.
+  const heldPlayers = useMemo(() => roaches.reduce((n, r) => n + (r.clone || r.bot ? 0 : 1), 0), [roaches]);
+  const players =
+    visitorCounts && !feedRoaches.length
+      ? visitorCounts.players
+      : areaTotals && !fakeFeed
+        ? areaTotals.players
+        : heldPlayers + (me?.roaches.some((r) => r.slot === 0) ? 1 : 0);
 
 
   const coachShown = Boolean(!placing && !selected && !panel && !notice && me && step);
@@ -3575,7 +3585,8 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
               {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
             </button>
           )}
-          <div className="stats">
+          {/* with how many players there are, a second line in small print (.stats.two); one line, as before, till the server says */}
+          <div className={visible !== null && feedIn && players !== undefined ? "stats two" : "stats"}>
             {visible === null ? (
               "地图加载中…"
             ) : !feedIn ? (
@@ -3583,10 +3594,24 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
             ) : guest ? (
               <>
                 全球 {countText(total)}舟P<span className="muted"> · 登录后就能看到 TA 们</span>
+                {players !== undefined && <span className="l2">不算克隆体 {countText(players, "位")}</span>}
               </>
             ) : drawnStyle === "hidden" ? (
+              players !== undefined ? (
+                <>
+                  全员隐匿中 · 全球 {countText(total)}舟P<span className="l2">不算克隆体 {countText(players, "位")}</span>
+                </>
+              ) : (
+                <>
+                  全员隐匿中<span className="muted"> · 全球 {countText(total)}舟P</span>
+                </>
+              )
+            ) : players !== undefined ? (
               <>
-                全员隐匿中<span className="muted"> · 全球 {countText(total)}舟P</span>
+                这片地图里有 {visible.toLocaleString()} 只舟P
+                <span className="l2">
+                  全球 {total.toLocaleString()} 只 · 不算克隆体 {players.toLocaleString()} 位
+                </span>
               </>
             ) : (
               <>

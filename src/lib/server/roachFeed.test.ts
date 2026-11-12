@@ -9,7 +9,17 @@ import { overviewCell, type Area } from "../world/area";
 import { unpackRoaches } from "../world/packed";
 import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
-import { compressedArea, resetRoachFeed, roachArea, roachByFeedId, roachFeed, roachFeedSettled, stopRoachFeed, type FeedForm } from "./roachFeed";
+import {
+  compressedArea,
+  resetRoachFeed,
+  roachArea,
+  roachByFeedId,
+  roachCounts,
+  roachFeed,
+  roachFeedSettled,
+  stopRoachFeed,
+  type FeedForm,
+} from "./roachFeed";
 import { users } from "./schema";
 import * as world from "./world";
 
@@ -322,7 +332,7 @@ describe("only the area a page shows (f=4)", () => {
     // short ids, and nothing about whose they are
     expect(got.every((r) => /^[0-9a-f]{8}$/.test(r.id) && !("owner" in r))).toBe(true);
     expect(box.box).toEqual(SHANGHAI_BOX);
-    expect(box.t).toEqual([3, 0, 0]);
+    expect(box.t).toEqual([3, 0, 0, 1]);
     // made once, compressed when asked
     const full = await roachArea(SHANGHAI_BOX, null, T0);
     expect(full.kind === "full" && brotliDecompressSync(await compressedArea(full.whole, "br")).toString()).toBe(
@@ -346,7 +356,7 @@ describe("only the area a page shows (f=4)", () => {
     const moved = await areaAfterRebuild(SHANGHAI_BOX, start.v, T0 + MINUTE);
     expect(moved.changed!.map((r) => [r.lng, r.lat])).toEqual([[121.3, 31.1]]);
     expect(moved.removed).toContain(shortOfMain);
-    expect(moved.t).toEqual([2, 0, 0]);
+    expect(moved.t).toEqual([2, 0, 0, 1]);
 
     // a change far away: the box hears only that some ids it may hold changed or went (a moved roach
     // goes by a new id, so its old one and its new one)
@@ -356,7 +366,7 @@ describe("only the area a page shows (f=4)", () => {
     expect(far.removed).toHaveLength(2);
     expect(far.removed).not.toContain(moved.changed![0].id);
     // up to date: only the version and the counts
-    expect(await askArea(SHANGHAI_BOX, far.v, T0 + 2 * MINUTE)).toEqual({ v: far.v, t: [2, 0, 0] });
+    expect(await askArea(SHANGHAI_BOX, far.v, T0 + 2 * MINUTE)).toEqual({ v: far.v, t: [2, 0, 0, 1] });
   });
 
   it("gives the overview: one roach for each small square, the same one while it stays, counting all there", async () => {
@@ -379,5 +389,30 @@ describe("only the area a page shows (f=4)", () => {
     expect(shanghai.id).toBe(all.map((r) => r.id).sort()[0]);
     // a page holding the overview gets it whole again, never what changed
     expect((await roachArea("overview", o.v, T0)).kind).toBe("full");
+  });
+
+  it("counts the players as their main roaches, clones none more, and none once the main roach goes with its clones", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    await player("c@example.com"); // signed up, no roach yet: not on the map
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+    await world.placeRoach(a, { kind: "clone" }, { lng: 121.3, lat: 31.1 });
+    await world.placeRoach(b, { kind: "main" }, BEIJING);
+    expect(await roachCounts(T0)).toMatchObject({ total: 4, fire: 0, riders: 0, players: 2 });
+    // every f=4 answer says it last, after the three counts pages from before it read
+    const box = await askArea(SHANGHAI_BOX, null, T0);
+    expect(box.t).toEqual([4, 0, 0, 2]);
+    expect((await askArea("overview", null, T0)).t).toEqual([4, 0, 0, 2]);
+
+    // a clone more is a roach more, not a player more
+    await world.placeRoach(b, { kind: "clone" }, TOKYO);
+    expect((await areaAfterRebuild(SHANGHAI_BOX, box.v, T0 + MINUTE)).t).toEqual([5, 0, 0, 2]);
+    // a's main roach taken back takes a's clones with it: one player left, with two roaches
+    const main = (await world.me(a))!.roaches.find((r) => r.slot === 0)!;
+    await world.removeRoach(a, main.id);
+    const after = await areaAfterRebuild(SHANGHAI_BOX, box.v, T0 + 2 * MINUTE);
+    expect(after.t).toEqual([2, 0, 0, 1]);
+    expect(await roachCounts(T0 + 2 * MINUTE)).toMatchObject({ total: 2, players: 1 });
   });
 });

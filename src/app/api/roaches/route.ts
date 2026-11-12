@@ -19,8 +19,8 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * overview, what pages ask now; the whole list stays for pages opened before.
  *
  * Only to someone signed in: a visitor gets how many roaches there are, by the fire and riding with
- * 明河都尉 (FeedCounts), and hidden: true, a few hundred bytes (their map is 全员隐匿). The answer depends
- * on the cookie, so no cache may hand one person's to another.
+ * 明河都尉, and how many players they belong to (FeedCounts), and hidden: true, a few hundred bytes (their
+ * map is 全员隐匿). The answer depends on the cookie, so no cache may hand one person's to another.
  */
 export async function GET(req: NextRequest) {
   const since = req.nextUrl.searchParams.get("since");
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     if (area === "counts") {
       if (!allow(`area:counts:sid:${sid}`, 20, 60_000)) return BUSY();
       const c = await roachCounts();
-      return NextResponse.json({ v: c.v, t: [c.total, c.fire, c.riders] }, { headers: { "cache-control": "no-store", vary: "cookie" } });
+      return NextResponse.json({ v: c.v, t: [c.total, c.fire, c.riders, c.players] }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
     if (area) return await areaAnswer(req, sid, area, since);
     const answer = await roachFeed(since, Date.now(), form);

@@ -2,6 +2,14 @@ import type { Area } from "./area";
 import { feedIdsOf, unpackRoaches } from "./packed";
 import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "./types";
 
+/** How many roaches there are in all, by 塔露拉干员's fire, riding with 明河都尉, and how many players they belong to */
+export type AreaTotals = { total: number; fire: number; riders: number; players?: number };
+
+/** An area answer's t as named counts; no players from a server from before it said so */
+export function totalsOf(t: NonNullable<AreaUpdate["t"]>): AreaTotals {
+  return { total: t[0], fire: t[1], riders: t[2], ...(typeof t[3] === "number" ? { players: t[3] } : {}) };
+}
+
 /**
  * The browser's copy of the shared roach feed, kept current by applying only what changed. Its
  * roaches go by short ids (world/packed.ts): compare them with public ids through sameRoach or feedIdsOf.
@@ -64,8 +72,8 @@ export class RoachAreaCopy {
   private list: MapRoach[] = [];
   /** When the area held came whole (Date.now()) */
   heldAt = 0;
-  /** How many roaches there are in all, by the fire and riding with 明河都尉, as the server last said */
-  totals: { total: number; fire: number; riders: number } | null = null;
+  /** How many roaches there are in all, by the fire, riding with 明河都尉, and how many players they belong to, as the server last said */
+  totals: AreaTotals | null = null;
 
   /** The version held, to ask what changed in the box since; null without one */
   get version() {
@@ -84,7 +92,7 @@ export class RoachAreaCopy {
 
   /** Take in an answer for an area. True when the roaches changed. */
   apply(u: AreaUpdate): boolean {
-    if (u.t) this.totals = { total: u.t[0], fire: u.t[1], riders: u.t[2] };
+    if (u.t) this.totals = totalsOf(u.t);
     let changed = false;
     if (u.packed) {
       this.byId = new Map(unpackRoaches(u.packed).map((r) => [r.id, r]));

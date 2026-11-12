@@ -201,6 +201,17 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 }
 .hud > * { pointer-events: auto; }
 .hud .stats { position: static; transform: none; }
+/*
+ * The world's count and how many players it is, in small print under the count of the view: at most 44px tall, so
+ * that a row 30px high under it still clears 方舟雷达 at 140px. Where there is room, one line again.
+ */
+.stats.two { padding: 5px 16px; line-height: 1.25; text-align: center; }
+.stats .l2 { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+@media (min-width: 560px) {
+  .stats.two { padding: 6px 14px; line-height: normal; }
+  .stats .l2 { display: inline; font-size: inherit; }
+  .stats .l2::before { content: " · "; }
+}
 .who {
   border: 0; border-radius: 999px; padding: 6px 12px; background: var(--ink); color: #fff;
   font-size: 13px; box-shadow: 0 2px 10px #0003; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis;
