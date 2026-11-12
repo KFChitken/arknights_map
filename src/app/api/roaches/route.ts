@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sessionAlive } from "@/lib/server/auth";
 import { clientIp } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
+import { note } from "@/lib/server/signals";
 import { compressedArea, roachArea, roachCounts, roachFeed, type FeedForm } from "@/lib/server/roachFeed";
 import { parseBox, type Area } from "@/lib/world/area";
 
@@ -36,9 +37,7 @@ export async function GET(req: NextRequest) {
     const sid = req.cookies.get("sid")?.value;
     // no cookie, or one of the wrong shape, is nobody, without asking the database
     if (!sid || !SESSION_TOKEN.test(sid) || !(await sessionAlive(sid))) {
-      if (!allow(`feed:visitor:ip:${clientIp(req)}`, 300, 60_000)) {
-        return NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
-      }
+      if (!allow(`feed:visitor:ip:${clientIp(req)}`, 300, 60_000)) return BUSY("feed:visitor:ip");
       const counts = await roachCounts();
       return NextResponse.json({ ...counts, hidden: true }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
@@ -46,7 +45,7 @@ export async function GET(req: NextRequest) {
     if (area && process.env.AREA_FEED === "off") return NextResponse.json({ whole: true }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     // 全员隐匿 signed in: only how many there are, as a visitor gets them
     if (area === "counts") {
-      if (!allow(`area:counts:sid:${sid}`, 20, 60_000)) return BUSY();
+      if (!allow(`area:counts:sid:${sid}`, 20, 60_000)) return BUSY("area:counts:sid");
       const c = await roachCounts();
       return NextResponse.json({ v: c.v, t: [c.total, c.fire, c.riders, c.players] }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
@@ -61,11 +60,8 @@ export async function GET(req: NextRequest) {
     // generous, since a dorm or a phone network puts many players behind one; each signed-in page
     // also has a tighter one of its own.
     const full = answer.kind === "full";
-    const perAddress = allow(`feed:${answer.kind}:ip:${clientIp(req)}`, full ? 120 : 300, 60_000);
-    const perPage = allow(`feed:${answer.kind}:sid:${sid}`, full ? 20 : 10, 60_000);
-    if (!perAddress || !perPage) {
-      return NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
-    }
+    if (!allow(`feed:${answer.kind}:ip:${clientIp(req)}`, full ? 120 : 300, 60_000)) return BUSY(`feed:${answer.kind}:ip`);
+    if (!allow(`feed:${answer.kind}:sid:${sid}`, full ? 20 : 10, 60_000)) return BUSY(`feed:${answer.kind}:sid`);
 
     if (answer.kind === "diff") {
       return new Response(answer.json, { headers: { "content-type": "application/json", "cache-control": "no-store", vary: "cookie" } });
@@ -86,22 +82,32 @@ export async function GET(req: NextRequest) {
   }
 }
 
-const BUSY = () => NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
+/** Refused by a limit (which one, for the site's checks: watch.ts counts them) */
+const BUSY = (limit: string) => {
+  note("busy", limit);
+  return NextResponse.json({ error: "人有点多，几秒后自动重试。" }, { status: 429, headers: { "retry-after": "10" } });
+};
 
 /**
  * f=4: an area for a signed-in page. A page asks for a new box each time its view leaves the one it holds,
- * and what changed in it every two minutes, so the limits per page are looser than for the whole list.
+ * and what changed in it every two minutes, so the limits per page are looser than for the whole list. Someone
+ * zooming in and out asks for a new box at each stop, scores of them in a minute: a page held back keeps showing
+ * the box it had until it asks again, so its limit for whole areas is generous. Per address they are higher
+ * still: a phone network puts thousands of players behind one, and these answers cost no database (a box is
+ * made once per version for every page that asks; a page's own limit holds back one that asks too much).
  */
 async function areaAnswer(req: NextRequest, sid: string, area: Area, since: string | null) {
   const answer = await roachArea(area, since);
   if (answer.kind === "diff") {
-    if (!allow(`area:diff:ip:${clientIp(req)}`, 600, 60_000) || !allow(`area:diff:sid:${sid}`, 20, 60_000)) return BUSY();
+    if (!allow(`area:diff:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:diff:ip");
+    if (!allow(`area:diff:sid:${sid}`, 20, 60_000)) return BUSY("area:diff:sid");
     return new Response(answer.json, { headers: { "content-type": "application/json", "cache-control": "no-store", vary: "cookie" } });
   }
   const etag = `"${answer.v}:${answer.key}"`;
   const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie", "content-type": "application/json" };
   if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
-  if (!allow(`area:full:ip:${clientIp(req)}`, 240, 60_000) || !allow(`area:full:sid:${sid}`, 40, 60_000)) return BUSY();
+  if (!allow(`area:full:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:full:ip");
+  if (!allow(`area:full:sid:${sid}`, 200, 60_000)) return BUSY("area:full:sid");
   const accepts = req.headers.get("accept-encoding") ?? "";
   const how = /\bbr\b/.test(accepts) ? "br" : /\bgzip\b/.test(accepts) ? "gzip" : null;
   if (!how) return new Response(answer.whole.json, { headers });

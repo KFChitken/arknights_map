@@ -6,6 +6,7 @@ import { forgetSessionChecks } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
 import { sessions, users } from "@/lib/server/schema";
+import { forgetSignals, recent } from "@/lib/server/signals";
 import * as world from "@/lib/server/world";
 import { FIRE_AT } from "@/lib/talulah";
 import { unpackRoaches } from "@/lib/world/packed";
@@ -86,5 +87,28 @@ describe("the roach list", () => {
     const res = await GET(new NextRequest("http://localhost/api/roaches?f=4&c=1", { headers: { cookie: `sid=${token}` } }));
     expect(res.status).toBe(200);
     expect(JSON.parse(await res.text())).toEqual({ v: expect.any(String), t: [2, 0, 0, 1] });
+  });
+});
+describe("only an area (f=4)", () => {
+  it("notes each page held back, by the limit that held it, for the site's checks", async () => {
+    const a = await player("a@example.com");
+    const cookie = `sid=${await signIn(a)}`;
+    forgetSignals();
+    const statuses: number[] = [];
+    for (let i = 0; i < 21; i++) statuses.push((await GET(new NextRequest("http://localhost/api/roaches?f=4&c=1", { headers: { cookie } }))).status);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(1);
+    expect(recent("busy", 60_000).map((s) => s.code)).toEqual(["area:counts:sid"]);
+  });
+
+  it("gives someone zooming in and out a new box at every stop, scores of them in a minute", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    const cookie = `sid=${await signIn(a)}`;
+    for (let i = 0; i < 120; i++) {
+      // a different box each time, as each stop of a zoom asks for
+      const box = `${100 + (i % 40) * 0.25},20,${121 + (i % 3)},${32 + Math.floor(i / 40) * 0.25}`;
+      const res = await GET(new NextRequest(`http://localhost/api/roaches?f=4&box=${box}`, { headers: { cookie } }));
+      expect(res.status, box).toBe(200);
+    }
   });
 });

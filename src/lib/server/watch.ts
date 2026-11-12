@@ -430,6 +430,39 @@ async function checkCodes(now: number): Promise<Finding[]> {
   ];
 }
 
+/** The limits of the roach list (src/app/api/roaches): what each one holds back */
+const BUSY_LIMITS: Record<string, string> = {
+  "area:full:sid": "一个页面要新范围太勤",
+  "area:full:ip": "同一网络要新范围太多",
+  "area:diff:sid": "一个页面问变化太勤",
+  "area:diff:ip": "同一网络问变化太多",
+  "area:counts:sid": "全员隐匿的页面问总数太勤",
+  "feed:full:sid": "一个页面要整份名单太勤",
+  "feed:full:ip": "同一网络要整份名单太多",
+  "feed:diff:sid": "一个页面问名单变化太勤",
+  "feed:diff:ip": "同一网络问名单变化太多",
+  "feed:visitor:ip": "同一网络的访客问总数太多",
+};
+
+/**
+ * Pages held back by the roach list's limits (429, src/app/api/roaches): a page held back shows the roaches it
+ * had a little longer (zoomed out, only where it was). Over 100 in 10 minutes for the digest, over 1,000 at once.
+ */
+async function checkBusy(now: number): Promise<Finding[]> {
+  const list = recent("busy", 10 * MINUTE, now);
+  if (list.length < 100) return [];
+  return [
+    {
+      key: "busy",
+      level: list.length >= 1000 ? "urgent" : "quiet",
+      title: "很多页面要小强名单时被限速",
+      detail: `10 分钟内有 ${list.length} 次被拦下（三个程序合计；${tally(list.map((s) => s.code), (c) => BUSY_LIMITS[c] ?? c)}）。`,
+      advice: "被拦下的页面会过几秒再要，这期间地图上只显示它原来那片；一直这样的话，要么是有人在刷，要么是限制定得太紧（src/app/api/roaches/route.ts）。",
+      worst: { text: `10 分钟最多 ${list.length} 次`, score: list.length },
+    },
+  ];
+}
+
 const PASSWORD_FAILS: Record<string, string> = {
   none: "没有这个账号或没设密码",
   paused: "暂停中还在试",
@@ -817,6 +850,7 @@ export const CHECKS: Check[] = [
   { name: "quota", closeAfter: 30 * MINUTE, run: checkQuota },
   { name: "mail", window: 30 * MINUTE, run: checkMail },
   { name: "codes", window: HOUR, run: checkCodes },
+  { name: "busy", window: 10 * MINUTE, run: checkBusy },
   { name: "passwords", window: HOUR, run: checkPasswords },
   { name: "map", window: 30 * MINUTE, run: checkMaps },
   // once a month: open for a day, so the next digest has it

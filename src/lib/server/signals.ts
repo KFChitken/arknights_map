@@ -22,7 +22,9 @@ export type SignalKind =
   /** a visitor's page could not load a map; code: "<map>:<what>:<detail>" */
   | "map"
   /** a background job failed; code: the job's name */
-  | "job";
+  | "job"
+  /** a request was refused by a limit (429); code: which limit, as "area:full:sid" */
+  | "busy";
 
 export type Signal = { at: number; code: string };
 

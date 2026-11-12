@@ -10,20 +10,20 @@ import type { LngLat } from "../types";
  * about and watching the numbers cannot pin one roach down.
  */
 
-/** The snapshot's roaches by whole degree of longitude and latitude */
-export type Grid = Map<string, LngLat[]>;
+/** The roaches by whole degree of longitude and latitude: those in the cell west and south of (x, y), if any */
+export type Grid = (x: number, y: number) => Iterable<LngLat> | undefined;
 
 const cellKey = (x: number, y: number) => `${x},${y}`;
 
 export function gridOf(roaches: readonly LngLat[]): Grid {
-  const grid: Grid = new Map();
+  const grid = new Map<string, LngLat[]>();
   for (const r of roaches) {
     const k = cellKey(Math.floor(r.lng), Math.floor(r.lat));
     const cell = grid.get(k);
     if (cell) cell.push(r);
     else grid.set(k, [r]);
   }
-  return grid;
+  return (x, y) => grid.get(cellKey(x, y));
 }
 
 /** The spot as counted: to two places of a degree, about a kilometre */
@@ -44,7 +44,7 @@ export function countNear(grid: Grid, spot: LngLat): { near: number; far: number
       const cx = ((((x + 180) % 360) + 360) % 360) - 180;
       if (seen.has(cx)) continue;
       seen.add(cx);
-      for (const r of grid.get(cellKey(cx, y)) ?? []) {
+      for (const r of grid(cx, y) ?? []) {
         const d = distanceKm(at, r);
         if (d > RADAR_RADIUS_KM) continue;
         far += 1;

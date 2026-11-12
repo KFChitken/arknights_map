@@ -746,12 +746,15 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
           setFeedIn(true);
           retryRef.current.delay = 0;
         } catch (e) {
-          if (!(e instanceof TooBusy)) throw e;
-          // Busy: try again shortly, a little later each time, at a slightly different moment for each page
+          // A new area (the view left the one held) refused or failed: the map would go on showing the old one,
+          // only where the page opened, say. Said, and asked for again in a few seconds, a little later each time.
+          // What changed in the box held, when busy: again later, quietly.
+          const fresh = since === null;
+          if (!(e instanceof TooBusy) && !fresh) throw e;
           const r = retryRef.current;
           if (r.timer !== undefined) return;
-          r.delay = Math.min(60, r.delay ? r.delay * 2 : e.retryAfterS);
-          if (!copy.version) setToast(e.message);
+          r.delay = fresh ? Math.min(30, r.delay ? r.delay * 2 : 3) : Math.min(60, r.delay ? r.delay * 2 : (e as TooBusy).retryAfterS);
+          if (fresh || !copy.version) setToast(e instanceof WorldError ? e.message : "连不上服务器，几秒后自动重试。");
           r.timer = window.setTimeout(
             () => {
               r.timer = undefined;
