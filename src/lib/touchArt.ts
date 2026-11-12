@@ -53,6 +53,7 @@ const TIPS: Partial<Record<DrawnAvatar, { left: [number, number]; right: [number
   perlica: { left: [16, 8], right: [48, 8] },
   talulah: { left: [16, 8], right: [48, 8] },
   minghe: { left: [16, 8], right: [48, 8] },
+  si: { left: [16, 8], right: [48, 8] },
 };
 
 function tip(look: DrawnAvatar, side: "left" | "right", box: readonly number[]): [number, number] {

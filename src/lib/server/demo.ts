@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import { beijingDate } from "../beijing";
 import { displayName } from "../profile";
 import { passerbyProfile, passersby, TESTERS } from "../world/cast";
@@ -9,6 +9,8 @@ import { db } from "./db";
 import { fastForward, forgetMinghe, moveMingheRiders } from "./minghe";
 import { askAgain, pretendAway, pretendBirthday, pretendFriendDays, pretendWeek } from "./perlica";
 import { forgetTalulah } from "./talulah";
+import { clearInn, fastForwardSi, forgetSi, innMinute, pretendCrowd, pretendVisitors, wrongNext } from "./si";
+import { STAY_MS } from "../siInn";
 import {
   amiyaTouches,
   declarations,
@@ -20,6 +22,9 @@ import {
   pokes,
   reactions,
   roaches,
+  siInks,
+  siTickets,
+  siTouches,
   talulahTouches,
   touches,
   users,
@@ -78,6 +83,14 @@ export async function resetDemo() {
   await db.delete(perlicaTouches);
   await db.delete(talulahTouches);
   await db.delete(mingheTouches);
+  await db.delete(siTouches);
+  await db.delete(siTickets);
+  await db.delete(siInks);
+  // only the rows she touched: rewriting every player's row would take seconds
+  await db
+    .update(users)
+    .set({ siFriendSince: null, siPortraitAt: null, siPortrait: null, siStamps: 0, siStampedOn: null, siStayedAt: null })
+    .where(or(isNotNull(users.siPortraitAt), isNotNull(users.siFriendSince), isNotNull(users.siStampedOn), isNotNull(users.siStayedAt)));
   await db.delete(declarations);
   await db.delete(friendships);
   await db.delete(friendCuts);
@@ -166,7 +179,9 @@ export async function identities(currentId: string, homeId: string | null): Prom
  * 假装离开两天 moves the last visit back two days, so the next one gets 欢迎回家;
  * 假装离开 and 让佩丽卡重新问一次 are 佩丽卡监督's (perlica.ts); 清掉我和塔露拉的记录, 塔露拉干员's;
  * 明河快进一天 (his journey a day on, and his riders moved along at once) and 清掉我和明河的记录, 明河都尉's;
- * 假装触须之交第 30 天, 假装今天是佩丽卡生日 and 假装过了一周, 佩丽卡监督's second step.
+ * 假装触须之交第 30 天, 假装今天是佩丽卡生日 and 假装过了一周, 佩丽卡监督's second step; 祀快进
+ * (her clock moved on, and 缘缘庄's check-ins and check-outs told at once), 假装今天来了 n 人,
+ * 假装已经有 n 人碰过她, 清掉缘缘庄, 下次一定拿错 and 清掉我和祀的记录, 祀掌柜's (si.ts).
  */
 export async function pretend(userId: string, what: PretendWhat, seconds = 0) {
   if (what === "left") return pretendAway(userId, seconds);
@@ -176,6 +191,16 @@ export async function pretend(userId: string, what: PretendWhat, seconds = 0) {
   if (what === "perlicaWeek") return pretendWeek(userId);
   if (what === "talulah") return forgetTalulah(userId);
   if (what === "minghe") return forgetMinghe(userId);
+  if (what === "siHalfDay" || what === "siDay" || what === "si21") {
+    fastForwardSi(what === "siHalfDay" ? STAY_MS : what === "siDay" ? 2 * STAY_MS : 42 * STAY_MS);
+    await innMinute();
+    return;
+  }
+  if (what === "siToday") return pretendVisitors(seconds > 0 ? seconds : null);
+  if (what === "siCrowd") return pretendCrowd(seconds);
+  if (what === "siClearInn") return clearInn();
+  if (what === "siWrong") return wrongNext();
+  if (what === "si") return forgetSi(userId);
   if (what === "mingheDay") {
     fastForward();
     await moveMingheRiders();

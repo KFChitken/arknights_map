@@ -1,4 +1,4 @@
-import { FOODS, isDrunkTemplate, SPOUSES, type Declaration } from "../declarations";
+import { FOODS, isDrunkTemplate, isStayTemplate, SPOUSES, STAY_NEEDED, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
@@ -93,7 +93,8 @@ export function publicProfileOf(p: Profile): PublicProfile {
  * and foods, their own name, and limited-time lines that are on.
  */
 /** drunk: the sender's main roach lies drunk, which the drunk lines need */
-export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now(), drunk = false): Declaration {
+/** drunk: their main roach lies drunk now (摄入酒精); stayed: their ink roach has had a room at 缘缘庄 */
+export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now(), drunk = false, stayed = false): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
     const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
@@ -101,6 +102,7 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
     return { game, character: name };
   };
   if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError("醉倒以后才说得出这句，先摄入酒精吧。");
+  if (isStayTemplate(d?.template) && !stayed) throw new WorldError(STAY_NEEDED);
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -131,6 +133,8 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
     case "roguelike":
     case "xianshu":
     case "rental":
+    case "sihouse":
+    case "simine":
       return { template: d.template };
     case "drunklove":
       return { template: "drunklove", character: favourite(d.character).character };

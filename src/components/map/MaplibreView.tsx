@@ -40,6 +40,7 @@ import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { heartsLayer, type HeartDot, type HeartsLayer } from "./heartsGl";
 import type { HeartMode } from "./roachGl";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
+import { addMaplibreSi, setMaplibreSi, startSiFlight } from "./siMap";
 import { roachTraits, type MapViewProps } from "./types";
 import { FeatureCache, LITE_LOOKS, liteFeature, roachFeature } from "./features";
 import { BADGE_AT, drawBadge, PILE_MAX_PX } from "./piles";
@@ -677,6 +678,8 @@ export default function MaplibreView(props: MapViewProps) {
 
     let frame = 0;
     let last = 0;
+    // 祀掌柜's butterflies, flying once the map has them
+    let stopFlight = () => {};
     const animate = () => {
       frame = requestAnimationFrame(animate);
       const t = performance.now();
@@ -703,6 +706,9 @@ export default function MaplibreView(props: MapViewProps) {
       // 两面包夹芝士 around Japan, and 明河都尉's trail of stars, under all the roaches
       addMaplibreSandwich(map);
       addMaplibreTrail(map, propsRef.current.trail);
+      // 祀掌柜's 缘缘庄: the inn, its queue and its ink roaches, under the roaches too
+      addMaplibreSi(map, propsRef.current.si);
+      stopFlight = startSiFlight(map, () => propsRef.current.active !== false);
       // 全员隐匿 and 轻量: none of the crowd's data or icons yet in the roaches' own source, made on the way out of them
       const crowdOff = crowdModeOf(propsRef.current.mapStyle) !== "all";
       const crowd = crowdOff ? [] : propsRef.current.roaches;
@@ -849,6 +855,7 @@ export default function MaplibreView(props: MapViewProps) {
 
     return () => {
       cancelAnimationFrame(frame);
+      stopFlight();
       crawlRef.current = null;
       window.clearTimeout(loadTimer);
       window.clearTimeout(foldTimer);
@@ -876,6 +883,26 @@ export default function MaplibreView(props: MapViewProps) {
   const mineKey = JSON.stringify([props.mine, props.mineAsleep, props.ghost, props.myAvatar, props.myColor]);
   useEffect(syncMine, [mineKey]);
 
+  const siInnKey = props.si?.innKey ?? "";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current) setMaplibreSi(map, propsRef.current.si, { inn: true });
+  }, [siInnKey]);
+  const siInksKey = props.si?.inksKey ?? 0;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current) setMaplibreSi(map, propsRef.current.si, { inks: true });
+  }, [siInksKey]);
+  const siMineKey = props.si?.mineKey ?? "";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current) setMaplibreSi(map, propsRef.current.si, { mine: true });
+  }, [siMineKey]);
+  const siTier = props.si?.tier ?? 0;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && readyRef.current) setMaplibreSi(map, propsRef.current.si, { tier: true });
+  }, [siTier]);
   const trailKey = JSON.stringify(props.trail);
   useEffect(() => {
     const map = mapRef.current;

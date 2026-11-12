@@ -3,15 +3,15 @@ import type { GuideAvatar, RoachColor } from "./types";
 
 /**
  * The site's own guide roaches: 阿米娅向导 (src/lib/amiya.ts), 佩丽卡监督
- * (src/lib/perlica.ts), 塔露拉干员 (src/lib/talulah.ts) and 明河都尉
- * (src/lib/minghe.ts). None is an account. Every page draws them for itself,
+ * (src/lib/perlica.ts), 塔露拉干员 (src/lib/talulah.ts), 明河都尉
+ * (src/lib/minghe.ts) and 祀掌柜 (src/lib/si.ts). None is an account. Every page draws them for itself,
  * they are never in the shared roach list, and the server knows each only by
  * their id and the prefix of their inbox items, with their touches with each player
  * in a table of their own that only that player reads. Nothing of theirs counts
  * between players: the touch quota, 触须之交 badges, the radar or the admin's numbers.
  */
 
-export type GuideId = "amiya" | "perlica" | "talulah" | "minghe";
+export type GuideId = "amiya" | "perlica" | "talulah" | "minghe" | "si";
 
 export type Guide = {
   id: GuideId;
@@ -25,8 +25,12 @@ export type Guide = {
   prefix: string;
   /** Who she is, on her card in place of a player's details */
   note: string;
+  /** What her name card among the 触须之交 says of her, if more than the note */
+  card?: string;
   /** How the page speaks of them: 她, or 他 for 明河都尉 */
   pronoun: "她" | "他";
+  /** What she says to a touch past her 20 a day, if not the words every guide shares */
+  tooMany?: string;
 };
 
 /** Who the guides are, on their cards in place of a player's details */
@@ -65,6 +69,19 @@ export const GUIDES: Record<GuideId, Guide> = {
     prefix: "m:",
     note: "骑着怒骊在各地走",
     pronoun: "他",
+  },
+  // red, for the seal she stamps
+  si: {
+    id: "si",
+    name: "祀掌柜",
+    short: "祀",
+    avatar: "si",
+    color: "red",
+    prefix: "i:",
+    note: "在宏村开缘缘庄",
+    card: "在宏村开缘缘庄，不是真人",
+    pronoun: "她",
+    tooMany: "碰、碰够了没有！今天不许再碰了，明天再来。",
   },
 };
 

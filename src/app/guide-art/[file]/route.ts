@@ -1,6 +1,15 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { AMIYA_DANCE, AMIYA_PICTURE, GUIDE_ART_DIR, MINGHE_PICTURE, PARTY_MUSIC, PERLICA_PICTURE, TALULAH_PICTURE } from "@/lib/server/env";
+import {
+  AMIYA_DANCE,
+  AMIYA_PICTURE,
+  GUIDE_ART_DIR,
+  MINGHE_PICTURE,
+  PARTY_MUSIC,
+  PERLICA_PICTURE,
+  SI_PICTURE,
+  TALULAH_PICTURE,
+} from "@/lib/server/env";
 
 /** The guides' pictures (src/lib/guides.ts) and whether each is switched on; only these files are ever served */
 const PICTURES: Record<string, { on: boolean; type: string }> = {
@@ -9,10 +18,12 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   "perlica.webp": { on: PERLICA_PICTURE, type: "image/webp" },
   "talulah.webp": { on: TALULAH_PICTURE, type: "image/webp" },
   "minghe.webp": { on: MINGHE_PICTURE, type: "image/webp" },
+  "si.webp": { on: SI_PICTURE, type: "image/webp" },
   "amiya.png": { on: AMIYA_PICTURE, type: "image/png" },
   "perlica.png": { on: PERLICA_PICTURE, type: "image/png" },
   "talulah.png": { on: TALULAH_PICTURE, type: "image/png" },
   "minghe.png": { on: MINGHE_PICTURE, type: "image/png" },
+  "si.png": { on: SI_PICTURE, type: "image/png" },
   // 阿米娅向导's dance: one 6.9-second loop, played when she is tapped, and the music of the video it comes from
   "amiya-dance.webp": { on: AMIYA_DANCE, type: "image/webp" },
   "amiya-dance.m4a": { on: AMIYA_DANCE, type: "audio/mp4" },
@@ -23,6 +34,7 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   ...badgeArt(["perlica", "perlica30"], PERLICA_PICTURE),
   ...badgeArt(["talulah", "fireside"], TALULAH_PICTURE),
   ...badgeArt(["minghe", "sevenstops"], MINGHE_PICTURE),
+  ...badgeArt(["siqueue", "siinn"], SI_PICTURE),
   ...badgeArt(["fullsquad"], AMIYA_PICTURE && PERLICA_PICTURE && TALULAH_PICTURE && MINGHE_PICTURE),
 };
 

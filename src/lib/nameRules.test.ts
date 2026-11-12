@@ -44,6 +44,10 @@ describe("name rules", () => {
     expect(nameAllowed("塔露拉", [])).toBe(true);
     expect(nameAllowed("明河都尉", [])).toBe(false);
     expect(nameAllowed("我是明河都尉呀", [])).toBe(false);
+    // 祀掌柜 is the fifth guide; her name alone, her nickname and the like are any fan's
+    expect(nameAllowed("祀掌柜", [])).toBe(false);
+    expect(nameAllowed("缘缘庄祀掌柜", [])).toBe(false);
+    for (const name of ["祀", "小葱", "祀厨"]) expect(nameAllowed(name, []), name).toBe(true);
     expect(nameAllowed("明河", [])).toBe(true);
     expect(nameAllowed("明河厨", [])).toBe(true);
   });

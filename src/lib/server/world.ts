@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
-import { canReply, declarationText, FOODS, repliesFor, replyOf, SPOUSES, type Declaration, type Food } from "../declarations";
+import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food } from "../declarations";
 import { AWAY_DAYS } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
@@ -98,6 +98,7 @@ import {
   touchTalulah,
   unfriendTalulah,
 } from "./talulah";
+import { hasStayed, ignoreSi, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
 import { award, declared, drank, earnedBy, friendsMade, reactedTo, respondersOf, responded, shownBadges, wakeUp } from "./badges";
 import { lastVisitOn } from "./away";
 import {
@@ -194,6 +195,15 @@ const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
     inbox: mingheInbox,
     friend: (u) => (u.mingheFriendSince ? mingheFriend(u.mingheFriendSince) : null),
     unfriend: unfriendMinghe,
+  },
+  si: {
+    touch: (userId, bold, offsetMin) => touchSi(userId, bold, offsetMin),
+    reply: (userId, itemId, bold, offsetMin) => replySi(userId, itemId, bold, offsetMin),
+    ignore: ignoreSi,
+    see: seeSi,
+    inbox: siInbox,
+    friend: (u) => (u.siFriendSince ? siFriend(u.siFriendSince) : null),
+    unfriend: unfriendSi,
   },
 };
 /** In the order they are listed */
@@ -381,6 +391,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     perlica: await perlicaOf(u, offsetMin),
     talulah: talulahOf(u),
     minghe: await mingheOf(u),
+    si: await siOf(u, offsetMin),
     help: await helpCounts(u),
     profileHeld: Boolean(u.profileHeldAt),
     suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > Date.now() ? u.suspendedUntil.getTime() : null,
@@ -1198,7 +1209,9 @@ export async function declare(userId: string, input: Declaration, from?: string[
   // held, a player is anonymous, which checkDeclaration refuses 「我是…」 for; this says why
   if (u.profileHeldAt && input?.template === "myname") throw new WorldError("你的名字被举报了，站长看过之前先发不了这句。");
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
-  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk);
+  // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
+  const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
+  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   if (!mine.some((r) => r.slot === 0)) throw new WorldError("先放下蟑螂本体，才能发宣言。");
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;

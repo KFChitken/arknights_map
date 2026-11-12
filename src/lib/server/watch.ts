@@ -601,6 +601,7 @@ const JOBS: Record<string, string> = {
   digest: "举报提醒邮件",
   flip: "好久没来自动翻",
   ride: "明河都尉换站",
+  inn: "缘缘庄入住退房",
   totals: "全站每日统计",
   live: "收听另外两个程序的消息提醒",
   signals: "收听另外两个程序的出错次数",

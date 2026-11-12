@@ -130,6 +130,18 @@ export const users = pgTable("users", {
   talulahBirthdayAt: at("talulah_birthday_at"),
   /** 明河都尉 (src/lib/minghe.ts): when they became 触须之交 */
   mingheFriendSince: at("minghe_friend_since"),
+  /**
+   * 祀掌柜 (src/lib/si.ts): when they became 触须之交 (cleared on 解除); when she first gave them a
+   * portrait, and which (right, wrong: hers by mistake, not yet answered; returned; kept: both theirs),
+   * neither cleared on 解除; their 集章本: stamps in all and the device day of the latest; and when
+   * their ink roach first had a room at 缘缘庄 (src/lib/server/si.ts), which her two declarations need.
+   */
+  siFriendSince: at("si_friend_since"),
+  siPortraitAt: at("si_portrait_at"),
+  siPortrait: text("si_portrait"),
+  siStamps: integer("si_stamps").notNull().default(0),
+  siStampedOn: text("si_stamped_on"),
+  siStayedAt: at("si_stayed_at"),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -742,6 +754,74 @@ export const mingheTouches = pgTable(
     times: smallint("times"),
   },
   (t) => [index("minghe_touches_user_idx").on(t.userId, t.createdAt), uniqueIndex("minghe_touches_reply_idx").on(t.replyTo)],
+);
+
+/**
+ * 祀掌柜 (src/lib/si.ts). Her kinds: "touch" (her answer; line: which of her three), "away" and
+ * "longaway" (to a 触须之交 back after 3 or 14 days), "night" (midnight to five on their device),
+ * "friend" (her answer that made them 触须之交); "checkin" and "again" (their ink roach got its room,
+ * room, after waited minutes; again: it had stayed before) and "checkout" (it left the room). stamp
+ * and stamps: the stamp she put in their 集章本 with that answer, and how many they had then.
+ */
+export const siTouches = pgTable(
+  "si_touches",
+  {
+    ...guideTouchColumns(),
+    line: smallint("line"),
+    stamp: smallint("stamp"),
+    stamps: integer("stamps"),
+    room: smallint("room"),
+    waited: integer("waited"),
+  },
+  (t) => [
+    index("si_touches_user_idx").on(t.userId, t.createdAt),
+    uniqueIndex("si_touches_reply_idx").on(t.replyTo),
+    // 今天的画 counts the players who touched her today
+    index("si_touches_today_idx").on(t.createdAt, t.userId).where(sql`${t.direction} = 'to_si'`),
+  ],
+);
+
+/**
+ * 墨小强: the ink roach she drew of a player the first time they touched her, one an account for good
+ * (src/lib/siInn.ts). no: the how-manieth she drew, from 1 with no gaps; look: the player's look as
+ * she drew it, kept when they change theirs; ticket: its latest place in her queue (si_tickets.n).
+ * Closing the account leaves it on the map, nobody's.
+ */
+export const siInks = pgTable("si_inks", {
+  no: integer("no").primaryKey(),
+  userId: uuid("user_id")
+    .unique()
+    .references(() => users.id, { onDelete: "set null" }),
+  look: text("look").notNull(),
+  drawnAt: at("drawn_at").notNull(),
+  ticket: integer("ticket").notNull(),
+});
+
+/**
+ * Places in 缘缘庄's queue, from 1 with no gaps and never taken back (src/lib/server/si.ts): whose ink
+ * roach (ink_no), whether it had stayed before (again), when it queued and when it gets its room, fixed
+ * as the ticket is given (it leaves 12 hours later); said_in and said_out: her lines about it are written.
+ */
+export const siTickets = pgTable(
+  "si_tickets",
+  {
+    n: integer("n").primaryKey(),
+    inkNo: integer("ink_no")
+      .notNull()
+      .references(() => siInks.no),
+    again: boolean("again").notNull(),
+    queuedAt: at("queued_at").notNull(),
+    checkinAt: at("checkin_at").notNull(),
+    saidIn: boolean("said_in").notNull().default(false),
+    saidOut: boolean("said_out").notNull().default(false),
+  },
+  (t) => [
+    index("si_tickets_checkin_idx").on(t.checkinAt, t.n),
+    // how long the queue was a day ago (「缩回去」)
+    index("si_tickets_queued_idx").on(t.queuedAt, t.n),
+    index("si_tickets_in_idx").on(t.checkinAt).where(sql`not ${t.saidIn}`),
+    index("si_tickets_out_idx").on(t.checkinAt).where(sql`not ${t.saidOut}`),
+  ],
 );
 
 /** When a pair last stopped being 触须之交; only touches after it count towards a new friendship. */

@@ -35,6 +35,7 @@ import { listenToAmapConsole, reportMapTrouble } from "./report";
 import { roachGl, type HeartMode, type RoachGl } from "./roachGl";
 import { swarmGl } from "./swarmGl";
 import { amapSandwich } from "./sandwich";
+import { amapSi, type SiAmap } from "./siAmap";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapTrail } from "./trail";
 import { MassCache, STILL, styleIndex, type MassPoint } from "./massPoints";
@@ -329,6 +330,8 @@ export default function AmapView(props: MapViewProps) {
   const overlaysRef = useRef(new Map<string, AMapNS>());
   // 明河都尉's trail of stars
   const trailRef = useRef<AMapNS[]>([]);
+  // 祀掌柜's 缘缘庄, its queue and its ink roaches
+  const siRef = useRef<SiAmap | null>(null);
   // the roaches' crawl, which a hidden map stops
   const crawlRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   /** The icon size the roach layers were last styled for */
@@ -841,6 +844,9 @@ export default function AmapView(props: MapViewProps) {
         drawTrail();
         // 两面包夹芝士 around Japan, under the roaches
         amapSandwich(AMap, map, ZOOM_OFFSET);
+        // 祀掌柜's 缘缘庄: the inn, its queue and its ink roaches, under the roaches too
+        siRef.current = amapSi(AMap, map, ZOOM_OFFSET, propsRef.current.si, (why) => console.warn("ink layer:", why));
+        siRef.current.setActive(propsRef.current.active !== false);
 
         syncGuides();
         map.on("zoomchange", syncGuides);
@@ -920,6 +926,8 @@ export default function AmapView(props: MapViewProps) {
       layRef.current = () => {};
       glRef.current?.destroy();
       glRef.current = null;
+      siRef.current?.destroy();
+      siRef.current = null;
       massRef.current.forEach((m) => m.setMap(null));
       massRef.current = [];
       heatRef.current?.destroy();
@@ -1033,6 +1041,16 @@ export default function AmapView(props: MapViewProps) {
   const trailKey = JSON.stringify(props.trail);
   useEffect(drawTrail, [trailKey]);
 
+  // 缘缘庄: only what changed (its numbers, the ink roaches in view, your own, today's painting)
+  const siInnKey = props.si?.innKey ?? "";
+  useEffect(() => siRef.current?.set(propsRef.current.si, { inn: true }), [siInnKey]);
+  const siInksKey = props.si?.inksKey ?? 0;
+  useEffect(() => siRef.current?.set(propsRef.current.si, { inks: true }), [siInksKey]);
+  const siMineKey = props.si?.mineKey ?? "";
+  useEffect(() => siRef.current?.set(propsRef.current.si, { mine: true }), [siMineKey]);
+  const siTier = props.si?.tier ?? 0;
+  useEffect(() => siRef.current?.set(propsRef.current.si, { tier: true }), [siTier]);
+
   useEffect(() => {
     overRef.current = false;
     mapRef.current?.setDefaultCursor(props.placing ? "crosshair" : "default");
@@ -1053,6 +1071,7 @@ export default function AmapView(props: MapViewProps) {
   }, [props.jump]);
 
   useEffect(() => {
+    siRef.current?.setActive(props.active !== false);
     if (props.active === false) crawlRef.current?.stop();
     else {
       reshowRef.current();

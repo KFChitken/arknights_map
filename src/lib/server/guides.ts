@@ -59,8 +59,20 @@ export function guideFriend(guide: Guide, since: Date, roaches: PublicRoach[]): 
 /** Answers she gives however often she has touched back today: the one that makes them 触须之交 */
 const ALWAYS_ANSWERED = ["friend", "handshake"];
 
-/** A touch of hers by the player, and what she answers: kind, and whether she answers it even after one already today */
-type Pairing = { bold: boolean; replyTo: string | null; dayStart: Date; kind?: string; always?: boolean };
+/**
+ * A touch of hers by the player, and what she answers: kind, and whether she answers it even after one
+ * already today; at: when both are written (祀掌柜's clock, which development can move on), now if not
+ * given; more: further columns of her answer, on a table that has them.
+ */
+type Pairing = {
+  bold: boolean;
+  replyTo: string | null;
+  dayStart: Date;
+  kind?: string;
+  always?: boolean;
+  at?: Date;
+  more?: Record<string, unknown>;
+};
 
 /** The shared part of one guide, working on her own table. */
 export function guideTouches(guide: Guide, table: GuideTable) {
@@ -110,12 +122,12 @@ export function guideTouches(guide: Guide, table: GuideTable) {
     answered,
 
     /** Refuses a touch beyond her own allowance; touches between players never count towards it. */
-    async allow(userId: string) {
+    async allow(userId: string, now = Date.now()) {
       const [{ n }] = await db
         .select({ n: count() })
         .from(t)
-        .where(and(eq(t.userId, userId), eq(t.direction, to), gt(t.createdAt, new Date(Date.now() - DAY))));
-      if (n >= GUIDE_TOUCHES_PER_DAY) throw new WorldError(`今天跟${guide.short}碰得够多啦，明天再来吧。`);
+        .where(and(eq(t.userId, userId), eq(t.direction, to), gt(t.createdAt, new Date(now - DAY))));
+      if (n >= GUIDE_TOUCHES_PER_DAY) throw new WorldError(guide.tooMany ?? `今天跟${guide.short}碰得够多啦，明天再来吧。`);
     },
 
     /**
@@ -127,12 +139,16 @@ export function guideTouches(guide: Guide, table: GuideTable) {
     async pair(
       exec: Exec,
       userId: string,
-      { bold, replyTo, dayStart, kind = "touch", always = ALWAYS_ANSWERED.includes(kind) }: Pairing,
+      { bold, replyTo, dayStart, kind = "touch", always = ALWAYS_ANSWERED.includes(kind), at, more }: Pairing,
     ) {
       const first = (await touchesSince(exec, userId, dayStart)) === 0;
-      await exec.insert(t).values({ userId, direction: to, bold, replyTo });
+      const when = at ? { createdAt: at } : {};
+      await exec.insert(t).values({ userId, direction: to, bold, replyTo, ...when });
       if (!first && !always) return null;
-      const [row] = await exec.insert(t).values({ userId, direction: from, kind, bold }).returning({ id: t.id });
+      const [row] = await exec
+        .insert(t)
+        .values({ userId, direction: from, kind, bold, ...when, ...more })
+        .returning({ id: t.id });
       return row;
     },
 

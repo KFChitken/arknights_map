@@ -15,6 +15,7 @@ import * as friendly from "@/lib/server/friendly";
 import * as help from "@/lib/server/help";
 import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
+import * as si from "@/lib/server/si";
 import { appeal, dayWords, SUSPENDED_MEANS } from "@/lib/server/staffNotes";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
@@ -90,6 +91,9 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       break;
     case "dismountMinghe":
       result = await world.dismountMinghe(uid());
+      break;
+    case "siPortrait":
+      result = await si.answerPortrait(uid(), args[0]);
       break;
     case "acceptPublicPlace":
       await acceptPublicPlace(agreed());
@@ -269,6 +273,14 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
         "perlicaDays",
         "perlicaBirthday",
         "perlicaWeek",
+        "siHalfDay",
+        "siDay",
+        "si21",
+        "siToday",
+        "siCrowd",
+        "siClearInn",
+        "siWrong",
+        "si",
       ];
       const what = kinds.find((k) => k === args[0]) ?? "day";
       await pretend(uid(), what, Number(args[1]) || 0);

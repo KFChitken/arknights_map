@@ -21,6 +21,7 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   perlica: "/guide-art/perlica.webp?v=1",
   talulah: "/guide-art/talulah.webp?v=1",
   minghe: "/guide-art/minghe.webp?v=1",
+  si: "/guide-art/si.webp?v=1",
 };
 
 /** What a picture that will not load gives way to, instead of the plain hood: 明河都尉 keeps his horse */

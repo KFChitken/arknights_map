@@ -34,6 +34,11 @@ import {
   weekLine,
   weightSentence,
 } from "@/lib/perlica";
+import { answerLine, firstSentence, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_NAME, SI_ZOOM, siRoach } from "@/lib/si";
+import { brushOf, INN_CENTER, inkNow, innNumbers, toXY } from "@/lib/siInn";
+import { variantOf } from "./map/inkArt";
+import { FIND_ZOOM } from "./map/siLook";
+import type { SiMapData, SiMine } from "./map/types";
 import {
   FIRE_AT,
   FIRE_ZOOM,
@@ -114,9 +119,11 @@ import {
   type OwnRoach,
   type PerlicaItem,
   type PlaceTarget,
+  type PretendWhat,
   type PublicRoach,
   type Radar,
   type RideTarget,
+  type SiState,
   type TouchResult,
   type VisitorFeed,
   type World,
@@ -174,6 +181,9 @@ import {
   rewindSpot,
 } from "./app/Perlica";
 import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroShown } from "./app/Minghe";
+import { forgetSiHere, markSiIntroShown, peekedToday, rememberPeek, SiCard, SiIntroSheet, siIntroShown } from "./app/Si";
+import { SiBookSheet } from "./app/SiBook";
+import { useSiInks, type SiView } from "./useSiInks";
 import {
   forgetTalulahHere,
   hoodSaid,
@@ -359,6 +369,10 @@ type Panel =
   | { kind: "mingheIntro" }
   /** Every clone is out: which one rides with 明河都尉 */
   | { kind: "mingheMove" }
+  /** 祀掌柜 opened 缘缘庄 on the map, said once */
+  | { kind: "siIntro" }
+  /** Your 集章本 from 祀掌柜: her portrait of you first, then this round's seals */
+  | { kind: "siBook" }
   | { kind: "mine" }
   | { kind: "declare"; initial?: Template }
   | { kind: "identity" }
@@ -628,6 +642,17 @@ export default function MapApp({
   const [mingheClock, setMingheClock] = useState(() => Date.now());
   const [riding, setRiding] = useState(false);
   const [fakeRiders, setFakeRiders] = useState<number | null>(null);
+  // 祀掌柜: 缘缘庄's numbers as last fetched, and whether her card was touched since it opened (else 「点开又走了」)
+  const [siState, setSiState] = useState<SiState | null>(null);
+  const siTouched = useRef(false);
+  // the map's view while it shows 宏村 (within a few km of the inn), for drawing 缘缘庄; null elsewhere
+  const [siView, setSiView] = useState<SiView | null>(null);
+  // she drew your ink roach just now, since then: her brush draws it in on the map
+  const [siBrushFrom, setSiBrushFrom] = useState<number | null>(null);
+  // a nudge when your ink roach gets its room or leaves it, so the map and her card catch up
+  const [siTick, setSiTick] = useState(0);
+  // she answered a touch on the map and has yet to say so over her head (the scene still playing)
+  const [siAboutToSay, setSiAboutToSay] = useState(false);
   // 阿米娅向导 dancing since then, after a tap on her: as long as her music, or two rounds of her dance without it
   const [amiyaDance, setAmiyaDance] = useState<number | null>(null);
   const danceTimer = useRef<number | undefined>(undefined);
@@ -1527,6 +1552,7 @@ export default function MapApp({
     }
     if (id === TALULAH_ID) return openTalulah();
     if (id === MINGHE_ID) return setSelected({ kind: "other", roach: mingheRoach(day, Boolean(me?.minghe.friend)) });
+    if (id === SI_ID) return openSi();
     const roach = roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
@@ -1542,6 +1568,21 @@ export default function MapApp({
     countVisible(bounds);
     // the roaches of the area the map shows now, if the ones held do not cover it
     askAreaSoon();
+    // 缘缘庄 in view (or nearly), close enough to be more than a blot: its numbers and, close up, its ink roaches
+    const [sw, ne] = bounds;
+    const nearInn =
+      v.zoom >= 10 &&
+      sw.lng < INN_CENTER.lng + 0.05 &&
+      ne.lng > INN_CENTER.lng - 0.05 &&
+      sw.lat < INN_CENTER.lat + 0.045 &&
+      ne.lat > INN_CENTER.lat - 0.045;
+    setSiView((old) =>
+      !nearInn
+        ? null
+        : old && old.zoom === v.zoom && old.sw.lng === sw.lng && old.sw.lat === sw.lat && old.ne.lng === ne.lng && old.ne.lat === ne.lat
+          ? old
+          : { sw, ne, zoom: v.zoom },
+    );
     // 阿米娅向导 close enough on screen to be tapped: her dance and music on their way, so a tap starts them at once
     if (!amiyaNear.current && v.zoom >= 6 && inBounds(AMIYA_AT, bounds) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       amiyaNear.current = true;
@@ -2093,12 +2134,16 @@ export default function MapApp({
     if (line) sayTimers.current[id] = window.setTimeout(() => setSays((all) => ({ ...all, [id]: undefined })), ms);
   };
 
-  /** What a guide says as she touches back, as far as a speech bubble has room: 塔露拉干员's handshake only begins there. */
-  const guideLine = (g: NonNullable<TouchResult["guide"]>) => {
+  /**
+   * What a guide says as she touches back, as far as a speech bubble has room: 塔露拉干员's handshake only begins
+   * there, and 祀掌柜's first sentence (si: the rest of what came of touching her).
+   */
+  const guideLine = (g: NonNullable<TouchResult["guide"]>, si?: TouchResult["si"]) => {
     const games = me?.profile.games ?? [];
     if (g.id === PERLICA_ID) return touchBackLine(g.kind, g.bold, g.times, g.others, g.line);
     if (g.id === TALULAH_ID) return g.kind === "friend" ? TALULAH_LINES.hello : talulahTouchLine("touch", g.bold, games);
     if (g.id === MINGHE_ID) return mingheTouchLine(g.kind === "friend" ? "friend" : "touch", g.bold);
+    if (g.id === SI_ID) return firstSentence(answerLine(si?.answer ?? (g.kind === "friend" ? "friend" : "touch"), g.bold, g.line));
     return amiyaLine(g.bold ? "bold" : "sneaky", games);
   };
 
@@ -2115,21 +2160,53 @@ export default function MapApp({
     const id = roach.id as GuideId;
     const res = await once("touch", () => act((w) => w.touch(id, bold)));
     if (!res?.guide) return;
+    if (id === SI_ID) {
+      siTouched.current = true;
+      // what she is about to say on screen is heard there: marked at once, before the badge her inn may bring
+      // makes the page look for news (which would open 消息 over the scene)
+      const heard = [res.guide.itemId, res.si?.innItemId].filter((i): i is string => Boolean(i));
+      const b = boundsRef.current;
+      if (heard.length && b && inBounds(SI_AT, b)) await worldRef.current!.markSeen(heard).catch(() => {});
+    }
     setSelected(null);
-    const loading = res.newFriend ? Promise.all([loadFriends(), loadMe()]) : null;
+    // what she has to say comes before the badge her inn brought, which the page learns of during the scene
+    const innLine = res.si ? siInnLine(res.si) : null;
+    const siSays = id === SI_ID && Boolean(res.guide.itemId || innLine);
+    if (siSays) setSiAboutToSay(true);
+    const loading = res.newFriend || res.si ? Promise.all([loadFriends(), loadMe()]) : null;
+    // should the page not catch up, she says nothing more, and the badge need not wait
+    if (siSays) loading?.catch(() => setSiAboutToSay(false));
     const played = await playTouch(roach, res.newFriend ? "friend" : bold ? "bold" : "sneaky");
     const { itemId } = res.guide;
     if (res.newFriend) befriendedToast(res.newFriend);
     else if (itemId) touchedToast(bold);
-    else quietGuideToast(id);
+    else if (!res.si || res.si.inn.event === "none") quietGuideToast(id);
+    else touchedToast(bold);
     if (id === AMIYA_ID && step === "touch") updateProgress({ practiced: true });
     await loading;
+    // 缘缘庄's news, hers to say over her head after her answer (or alone, on a touch she did not answer); her line
+    // about the room it went straight into is heard there too, so 消息 does not open for it
+    if (res.si) void loadSiState();
+    // your ink roach, drawn in by her brush where it goes, now the page has it
+    if (res.si?.inn.drawn) setSiBrushFrom(Date.now());
+
+    if (!itemId && innLine) {
+      window.setTimeout(() => {
+        say(SI_ID, innLine);
+        setSiAboutToSay(false);
+      }, played ? 0 : 1500);
+    }
     // she touched back once already today: nothing more from her
     if (!itemId) return;
-    const line = guideLine(res.guide);
-    const at = id === PERLICA_ID ? perlicaShown : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : AMIYA_AT;
+    const line = guideLine(res.guide, res.si);
+    const at =
+      id === PERLICA_ID ? perlicaShown : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : id === SI_ID ? SI_AT : AMIYA_AT;
     window.setTimeout(async () => {
       say(id, line);
+      if (siSays) setSiAboutToSay(false);
+      if (innLine) window.setTimeout(() => say(SI_ID, innLine), 3800);
+      // she gave you a portrait as you became 触须之交 (perhaps her own, by mistake): the book opens on it
+      if (id === SI_ID && res.si?.portrait) window.setTimeout(() => setPanel({ kind: "siBook" }), innLine ? 6500 : 2600);
       // touching 阿米娅向导 got 佩丽卡监督 to speak up too, along the top
       if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
       // heard on the spot while she is on screen; otherwise it waits in 消息
@@ -2211,11 +2288,16 @@ export default function MapApp({
     else if (res.guide?.itemId) setToast(`${GUIDES[res.guide.id].name}碰回了你。`);
     else if (res.guide) quietGuideToast(res.guide.id);
     else repliedToast(bold);
-    if (res.guide?.itemId) say(res.guide.id, guideLine(res.guide));
+    if (res.guide?.itemId) say(res.guide.id, guideLine(res.guide, res.si));
+    if (res.si) {
+      const innLine = siInnLine(res.si);
+      if (innLine) window.setTimeout(() => say(SI_ID, innLine), res.guide?.itemId ? 3800 : 0);
+      void loadSiState();
+    }
     if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
     keepSnapshot(items);
-    if (me?.isNew || res.newFriend) await loadMe();
+    if (me?.isNew || res.newFriend || res.si) await loadMe();
     if (demoRef.current) await loadIdentities();
   };
 
@@ -2229,7 +2311,9 @@ export default function MapApp({
   const zoomFor = (roach: PublicRoach, zoom: number) =>
     roach.id === TALULAH_ID
       ? FIRE_ZOOM
-      : roach.id === MINGHE_ID
+      : roach.id === SI_ID
+        ? SI_ZOOM
+        : roach.id === MINGHE_ID
         ? MINGHE_ZOOM
         : // abroad, visitors from mainland China see our own map, which draws Rhode Island close up
         roach.id === AMIYA_ID && basemap === "amap" && !cn
@@ -2251,7 +2335,9 @@ export default function MapApp({
           ? PERLICA_UNFRIEND
           : guide.id === MINGHE_ID
             ? MINGHE_LINES.unfriendAsk
-            : TALULAH_LINES.unfriendAsk
+            : guide.id === SI_ID
+              ? SI_LINES.unfriendAsk
+              : TALULAH_LINES.unfriendAsk
       : `解除和 ${friend.profile.displayName} 的触须之交？`;
     if (!window.confirm(question)) return;
     const done = await act(
@@ -2262,7 +2348,9 @@ export default function MapApp({
           ? `${TALULAH_NAME}：${TALULAH_LINES.unfriend}`
           : guide?.id === MINGHE_ID
             ? `${MINGHE_NAME}：${MINGHE_LINES.unfriend}`
-            : "已经解除触须之交。",
+            : guide?.id === SI_ID
+              ? `${SI_NAME}：${SI_LINES.unfriend}`
+              : "已经解除触须之交。",
     );
     if (!done) return;
     await Promise.all([loadFriends(), guide ? loadMe() : null]);
@@ -2805,13 +2893,15 @@ export default function MapApp({
 
 
 
+  // 祀掌柜's answer and her line about 缘缘庄 come first, then the badge the inn brought
+  const siTalking = Boolean(says.si) || siAboutToSay;
   useEffect(() => {
-    if (!idle || perlicaBusy || !unseenBadges || newBadges.length || !me) return;
+    if (!idle || perlicaBusy || siTalking || !unseenBadges || newBadges.length || !me) return;
     setNewBadges(me.badges.filter((b) => !b.seen).slice(0, 3));
     worldRef.current!.seeBadges(unseenBadges.split(",")).catch(() => {});
     // shown now, so a reload of me before the server has caught up does not queue them again
     applyMe({ ...me, badges: me.badges.map((b) => ({ ...b, seen: true })) });
-  }, [idle, perlicaBusy, unseenBadges, newBadges.length, me, applyMe]);
+  }, [idle, perlicaBusy, siTalking, unseenBadges, newBadges.length, me, applyMe]);
 
   // The tutorial's touch step happens on Rhode Island: the map goes to 阿米娅向导 as it begins
   const touchLesson = step === "touch" && !progress.practiced && basemap !== null;
@@ -3081,6 +3171,7 @@ export default function MapApp({
       return openTalulah();
     }
     if (id === MINGHE_ID) return showMinghe();
+    if (id === SI_ID) return showSi();
     if (!perlicaShown) return;
     setFocus({ lng: perlicaShown.lng, lat: perlicaShown.lat, zoom: 13, nonce: Date.now() });
     setSelected({ kind: "other", roach: perlicaRoach(perlicaShown, Boolean(me?.perlica.friend)) });
@@ -3142,6 +3233,127 @@ export default function MapApp({
     setPanel({ kind: "mingheIntro" });
   }, [mingheTells, meIdForIntro]);
 
+  // ---- 祀掌柜 (src/lib/si.ts) ----
+
+  /** Her clock on this page: 祀快进 moves it on in development, the server's and the page's alike */
+  const siShift = me?.si.shift ?? siState?.shift ?? 0;
+  const siNow = () => Date.now() + siShift;
+
+  /** 缘缘庄's numbers and today's visitors, the same for everyone */
+  const loadSiState = useCallback(async () => {
+    try {
+      const r = await fetch("/api/si", { cache: "no-store" });
+      if (r.ok) setSiState((await r.json()) as SiState);
+    } catch {}
+  }, []);
+  // asked again once a minute while her card is open, or the map shows 缘缘庄
+  const siWanted = (selected?.kind === "other" && selected.roach.id === SI_ID) || siView !== null;
+  useEffect(() => {
+    if (!siWanted) return;
+    void loadSiState();
+    const t = window.setInterval(() => void loadSiState(), 60_000);
+    return () => window.clearInterval(t);
+  }, [siWanted, loadSiState]);
+
+  /**
+   * Where to centre the map, at a zoom, so she stands in the open space above her card, which is taller
+   * than the others' (MapLibre levels; 512 px tiles)
+   */
+  const aboveSiCard = (zoom: number) => {
+    const h = wrapRef.current?.clientHeight ?? window.innerHeight;
+    const card = Math.min(h * 0.68, 560) + 96;
+    const dy = Math.max(0, h / 2 - Math.max(90, (h - card) / 2 + 30));
+    const metresPerPx = (78271.517 * Math.cos((SI_AT.lat * Math.PI) / 180)) / 2 ** zoom;
+    return { lng: SI_AT.lng, lat: SI_AT.lat - (dy * metresPerPx) / 111_320, zoom, nonce: Date.now() };
+  };
+  /** Her card, and what she says as it opens: put out at being remembered so late, or at being looked at and left today */
+  const openSi = (zoom = viewRef.current.zoom) => {
+    setFocus(aboveSiCard(zoom));
+    setSelected({ kind: "other", roach: siRoach(Boolean(me?.si.friend)) });
+    say(SI_ID, peekedToday(me?.id ?? null, localDay()) ? SI_LINES.reopen : SI_LINES.open);
+    siTouched.current = false;
+  };
+  /** Closed without touching her: she noticed, for the rest of the day */
+  const closeSi = () => {
+    rememberPeek(me?.id ?? null, siTouched.current ? null : localDay());
+    setSelected(null);
+    runAfterReport();
+  };
+  /** To her, with her card open */
+  const showSi = () => {
+    setPanel(null);
+    openSi(SI_ZOOM);
+  };
+  /** What she says about 缘缘庄 after a touch: straight into a room, to the door, or back from the fields */
+  const siInnLine = (si: NonNullable<TouchResult["si"]>) =>
+    si.inn.event === "in"
+      ? inLine(si.inn.room ?? 0)
+      : si.inn.event === "queued"
+        ? SI_LINES.queued
+        : si.inn.event === "again"
+          ? SI_LINES.again
+          : null;
+  /** Her self-portrait, given by mistake: back to her, or kept; she says what she makes of it, over her head too */
+  const answerSiPortrait = async (choice: "return" | "keep") => {
+    const res = await act((w) => w.siPortrait(choice));
+    if (!res) return null;
+    say(SI_ID, res.line);
+    await loadMe();
+    return res.line;
+  };
+  /** A visitor reaches for her: she says so, then the sign-in */
+  const siSignIn = () => {
+    if (waitingMe) return setToast("正在读取你的账号，稍等一下。");
+    say(SI_ID, SI_LINES.visitor);
+    window.setTimeout(() => setPanel({ kind: "login", reason: "登录后就能碰她。" }), 1200);
+  };
+  /**
+   * 看看我在哪: her card makes way and the map flies to your ink roach, close enough to tell it from the others,
+   * wherever it is (queuing, in its room, in the fields); she says she knew it at once, over her head and, should
+   * she be off the screen there, along the bottom too
+   */
+  const findMyInk = () => {
+    const ink = me?.si.inn;
+    if (!ink) return;
+    const { at } = inkNow(ink, siState?.checkedIn ?? null, siNow());
+    setSelected(null);
+    setFocus({ lng: at.lng, lat: at.lat, zoom: FIND_ZOOM, nonce: Date.now() });
+    say(SI_ID, SI_LINES.find);
+    const [x, y] = toXY(at);
+    const [sx, sy] = toXY(SI_AT);
+    if (Math.abs(x - sx) > 25 || Math.abs(y - sy) > 50) setToast(`${SI_NAME}：${SI_LINES.find}`);
+  };
+
+  /** 祀掌柜's tools in development: her clock on, pretend crowds and visitors, clear the inn or yourself; then a fresh visit */
+  const siPretend = async (what: PretendWhat, n?: number) => {
+    const done = await act((w) => w.pretend(what, n).then(() => true));
+    if (!done || !me) return;
+    if (what === "si") forgetSiHere(me.id);
+    window.location.reload();
+  };
+
+  // She opened 缘缘庄, told once in this browser to players with a roach who are not her 触须之交, on a visit after
+  // the other four had their turn (明河都尉's card last), and never during the tutorial
+  const siTells = Boolean(
+    settled &&
+      idle &&
+      !perlicaBusy &&
+      main &&
+      me &&
+      !me.si.friend &&
+      !me.mustReconsent &&
+      !newBadges.length &&
+      !unseenBadges &&
+      othersIntroduced &&
+      (me.minghe.friend || myRider || mingheIntroShown(me.id)),
+  );
+  useEffect(() => {
+    if (!siTells || !meIdForIntro || introduced.current || siIntroShown(meIdForIntro)) return;
+    markSiIntroShown(meIdForIntro);
+    introduced.current = true;
+    setPanel({ kind: "siIntro" });
+  }, [siTells, meIdForIntro]);
+
   // Back to the page on a new day (from 04:00 on this device): 阿米娅向导 may be greeting
   const dayRef = useRef(localDay());
   useEffect(() => {
@@ -3193,6 +3405,13 @@ export default function MapApp({
       ride: { ahead: (queueBearing(day) + 180) % 360 },
       ...(offStage === MINGHE_ID ? { acting: true } : {}),
     },
+    {
+      id: SI_ID,
+      at: SI_AT,
+      friend: Boolean(me?.si.friend),
+      bubble: says.si ?? null,
+      ...(offStage === SI_ID ? { acting: true } : {}),
+    },
     ...(perlicaShown && me
       ? [
           {
@@ -3240,8 +3459,47 @@ export default function MapApp({
     return () => window.clearTimeout(t);
   }, [liteHint]);
 
+  const siInks = useSiInks(siView);
+  const siNumbers = siState ? innNumbers(siState) : null;
+  const siInnKey = siState ? `${siNumbers!.queue}/${siState.drawn}/${siNumbers!.free === 0}/${siState.homesReach}` : "";
+  // your own ink roach where it is by her clock and the newest numbers, ringed in your colour (3.8)
+  const siInk = me?.si.inn ?? null;
+  const siCheckedIn = siState?.checkedIn ?? null;
+  const siMine = useMemo<SiMine | null>(() => {
+    if (!siInk) return null;
+    const w = inkNow(siInk, siCheckedIn, Date.now() + siShift);
+    const b = brushOf(siInk.inkNo);
+    return { at: w.at, look: siInk.look, variant: variantOf(w.state, w.left), color: myColor, size: b.size, tilt: b.tilt, ink: b.ink, brushFrom: siBrushFrom };
+    // siTick: its check-in or check-out came
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siInk, siCheckedIn, siShift, myColor, siBrushFrom, siTick]);
+  // when that changes next, by the clock of this page
+  const siNext = siInk ? inkNow(siInk, siCheckedIn, Date.now() + siShift).until : null;
+  useEffect(() => {
+    if (siNext === null) return;
+    const t = window.setTimeout(() => setSiTick((n) => n + 1), Math.max(0, siNext - (Date.now() + siShift)) + 500);
+    return () => window.clearTimeout(t);
+  }, [siNext, siShift]);
+  const siMineKey = siMine ? `${siMine.at.lng},${siMine.at.lat},${siMine.look},${siMine.variant},${siMine.color},${siMine.brushFrom}` : "";
+  const siTier = paintingTier(siState?.today ?? 0);
+  const siMap = useMemo<SiMapData>(
+    () => ({
+      inn: siState && siNumbers ? { queue: siNumbers.queue, drawn: siState.drawn, full: siNumbers.free === 0, homesReach: siState.homesReach } : null,
+      inks: siInks.inks,
+      mine: siMine,
+      tier: siTier,
+      innKey: siInnKey,
+      inksKey: siInks.key,
+      mineKey: siMineKey,
+    }),
+    // the keys say when anything changed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [siInnKey, siInks.key, siMineKey, siTier],
+  );
+
   const mapProps = {
     roaches: mapRoaches,
+    si: siMap,
     // whoever acts out a scene over the map is left out of it meanwhile, the list itself kept as it is
     hiddenId: offStage ?? null,
     guides,
@@ -3459,6 +3717,20 @@ export default function MapApp({
         );
       case "mingheIntro":
         return <MingheIntroSheet station={stationOf(day).name} onGo={showMinghe} onLater={() => setPanel(null)} />;
+      case "siIntro":
+        return <SiIntroSheet onGo={showSi} onLater={() => setPanel(null)} />;
+      case "siBook":
+        if (!me) return null;
+        return (
+          <SiBookSheet
+            si={me.si}
+            userId={me.id}
+            name={me.profile.anonymous || !me.profile.name.trim() ? null : displayName(me.profile)}
+            look={myAvatar}
+            onAnswer={answerSiPortrait}
+            onClose={() => setPanel(null)}
+          />
+        );
       case "mingheMove":
         return (
           <CloneMoveSheet
@@ -3477,6 +3749,7 @@ export default function MapApp({
             roaches={me.roaches}
             initial={p.initial}
             drunk={Boolean(me.drunkUntil)}
+            stayed={me.si.stayed}
             onSend={declare}
             onEditProfile={() => setPanel({ kind: "profile" })}
             onClose={() => setPanel(null)}
@@ -3672,6 +3945,7 @@ export default function MapApp({
               setFocus({ lng: mingheAt.lng, lat: mingheAt.lat, zoom: MINGHE_ZOOM, nonce: Date.now() });
             }}
             onForgetMinghe={forgetMinghe}
+            onSi={siPretend}
             onPerlicaMore={perlicaMore}
             onClose={() => setPanel(null)}
           />
@@ -3923,7 +4197,29 @@ export default function MapApp({
         />
       )}
 
-      {!placing && selected?.kind === "other" && (
+      {!placing && selected?.kind === "other" && selected.roach.id === SI_ID && (
+        <SiCard
+          me={me?.si ?? null}
+          userId={me?.id ?? null}
+          friend={Boolean(me?.si.friend)}
+          state={siState}
+          now={siNow()}
+          signedIn={Boolean(me)}
+          waiting={waitingMe}
+          touching={touching}
+          sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
+          favourites={me?.profile.favourites ?? null}
+          mingheHere={stopOf(day) === MINGHE_NEAR}
+          onTouch={(bold) => touch(selected.roach, bold)}
+          onSignIn={siSignIn}
+          onNickname={() => say(SI_ID, SI_LINES.nickname)}
+          onFind={findMyInk}
+          onOpenBook={() => setPanel({ kind: "siBook" })}
+          onOpenFriend={me?.si.friend ? () => setPanel({ kind: "friend", friendId: SI_ID, back: null }) : undefined}
+          onClose={closeSi}
+        />
+      )}
+      {!placing && selected?.kind === "other" && selected.roach.id !== SI_ID && (
         <OtherRoachCard
           roach={selected.roach}
           look={look}

@@ -5,7 +5,7 @@ import type { Game } from "../games";
 import type { GuideId } from "../guides";
 import type { Profile, PublicProfile } from "../profile";
 import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
-import type { DrawnAvatar, LngLat, RoachColor } from "../types";
+import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
@@ -135,11 +135,16 @@ export interface World {
   rideMinghe(target: RideTarget): Promise<{ roaches: OwnRoach[]; item: MingheItem }>;
   /** 在这一站下马: the riding clone stays where it is; his answer */
   dismountMinghe(): Promise<{ roaches: OwnRoach[]; item: MingheItem }>;
+  /** 祀掌柜 handed over her own portrait by mistake: 还给她 (return) or 就不还 (keep); her line about it */
+  siPortrait(choice: "return" | "keep"): Promise<{ line: string }>;
   /**
    * 假装过了一天 (阿米娅向导 greets again), 假装离开两天 (欢迎回家), 假装离开 for
    * seconds (佩丽卡监督 says how long), 让佩丽卡重新问一次 (ask), 清掉我和塔露拉的记录 (talulah),
    * 明河快进一天 (mingheDay), 清掉我和明河的记录 (minghe), 假装触须之交第 30 天 (perlicaDays),
-   * 假装今天是佩丽卡生日 (perlicaBirthday) or 假装过了一周 (perlicaWeek)
+   * 假装今天是佩丽卡生日 (perlicaBirthday) or 假装过了一周 (perlicaWeek); and 祀掌柜's (src/lib/si.ts):
+   * 祀快进半天 / 一天 / 21 天 (siHalfDay, siDay, si21), 假装今天来了 n 人 (siToday, n in seconds),
+   * 假装已经有 n 人碰过她 (siCrowd), 清掉缘缘庄 (siClearInn), 下次一定拿错 (siWrong) and
+   * 清掉我和祀的记录 (si)
    */
   pretend(what: PretendWhat, seconds?: number): Promise<void>;
   /** 「我已满 18 岁」 on the card the admin asked for */
@@ -156,7 +161,15 @@ export type PretendWhat =
   | "minghe"
   | "perlicaDays"
   | "perlicaBirthday"
-  | "perlicaWeek";
+  | "perlicaWeek"
+  | "siHalfDay"
+  | "siDay"
+  | "si21"
+  | "siToday"
+  | "siCrowd"
+  | "siClearInn"
+  | "siWrong"
+  | "si";
 
 export type PlayerId = string;
 
@@ -256,6 +269,74 @@ export type TouchResult = {
   };
   /** Touching 阿米娅向导 got 佩丽卡监督 to say something too (her 「罗德岛那位……」), a new item of hers */
   aside?: { id: "perlica"; itemId: string };
+  /** Touching 祀掌柜 (src/lib/si.ts): what else came of it */
+  si?: SiTouch;
+};
+
+/**
+ * What came of a touch of 祀掌柜 besides her answer: the stamp she put in your 集章本 (which of STAMPS,
+ * and how many you have now), the portrait she gave as you became 触须之交 (wrong: her own, by mistake),
+ * and what happened at 缘缘庄: she drew your ink roach just now, and it went straight into a room (in),
+ * queued at the door for the first time (queued) or again after a stay (again), or nothing changed.
+ */
+export type SiTouch = {
+  /** How she answered (her line's kind; which of the three is guide.line), null when she had answered today already */
+  answer: SiItem["line"] | null;
+  stamp: { stamp: number; stamps: number } | null;
+  portrait: "right" | "wrong" | null;
+  inn: { drawn: boolean; event: "in" | "queued" | "again" | "none"; room: number | null; place: number | null };
+  /** Her line in 消息 about the room it went straight into, said over her head at the same time */
+  innItemId: string | null;
+  you: SiInk | null;
+};
+
+/**
+ * Your ink roach (墨小强, src/lib/siInn.ts) as of the moment asked: queuing at 缘缘庄's door (place: how many
+ * are ahead of it, itself included; checkinAt: when it gets its room), staying in room `room` till checkoutAt,
+ * or lying in the fields outside the village. n: its latest ticket; inkNo: the how-manieth she drew.
+ */
+export type SiInk = (
+  | { state: "queue"; n: number; place: number; checkinAt: number }
+  | { state: "stay"; n: number; room: number; checkoutAt: number }
+  | { state: "out" }
+) & {
+  inkNo: number;
+  look: RoachAvatar;
+  /** Where it lies once its stay is over (the page works out the queue's and the rooms' spots itself) */
+  home: LngLat;
+};
+
+/**
+ * 缘缘庄 as everyone sees it (GET /api/si, src/lib/siInn.ts): ink roaches drawn (D), tickets given (N), those
+ * that had their room by now (C) and had left it (O), how many queued at the door a day ago, and the players
+ * who touched her today (今天的画); how far from the middle of the village the homes of those drawn reach (metres).
+ * at: her clock as this was worked out; shift: 祀快进 in development, else 0.
+ */
+export type SiState = {
+  drawn: number;
+  tickets: number;
+  checkedIn: number;
+  checkedOut: number;
+  queueDayAgo: number;
+  today: number;
+  homesReach: number;
+  at: number;
+  shift: number;
+};
+
+/** 祀掌柜 as me() tells it (src/lib/server/si.ts) */
+export type SiMe = {
+  friend: boolean;
+  /** The portrait she gave as you first became 触须之交: when, and whether it is the right one */
+  portrait: { at: number; state: "right" | "wrong" | "returned" | "kept" } | null;
+  /** Stamps in your 集章本, and whether today's (by your device's day) is in already */
+  stamps: number;
+  stampedToday: boolean;
+  inn: SiInk | null;
+  /** Your ink roach has had a room at 缘缘庄, so her two declarations are yours */
+  stayed: boolean;
+  /** 祀快进 (development only): ms added to her clock, the page's too; 0 on the live site */
+  shift: number;
 };
 
 export type Friend = {
@@ -370,6 +451,8 @@ export type Me = {
    * how-manieth station it is at, 1–7). dayShift: days added by 明河快进一天, 0 but in development.
    */
   minghe: { friend: boolean; riding: { roachId: string; since: number; stops: number } | null; dayShift: number };
+  /** 祀掌柜: 触须之交, her portrait, your 集章本 and your ink roach at 缘缘庄 */
+  si: SiMe;
   /** 求助: your 触须之交's requests up since you last looked, and answers to yours you have not seen (the dot on 触须之交) */
   help: { asks: number; answers: number };
   /** Reports held their name and UIDs until the admin looks: hidden from others, and locked in 资料 */
@@ -529,7 +612,31 @@ export type InboxItem =
   | { kind: "amiya"; id: string; at: number; seen: boolean; bold: boolean; greet: boolean; replied: boolean; ignored: boolean }
   | PerlicaItem
   | TalulahItem
-  | MingheItem;
+  | MingheItem
+  | SiItem;
+
+/**
+ * 祀掌柜 answering your touch (line "touch", variant: which of her three for how you touched her; or
+ * "away" and "longaway" for a 触须之交 back after 3 or 14 days, "night" between midnight and five), as you
+ * became 触须之交 ("friend"); with the stamp she put in your 集章本 that day (stamp, and stamps: how many
+ * now). Or 缘缘庄: your ink roach got its room ("checkin", waited minutes in the queue; "again" for a
+ * returning guest) or left it after half a day ("checkout").
+ */
+export type SiItem = {
+  kind: "si";
+  id: string;
+  at: number;
+  seen: boolean;
+  line: "touch" | "away" | "longaway" | "night" | "friend" | "checkin" | "again" | "checkout";
+  bold: boolean;
+  variant: number | null;
+  stamp: number | null;
+  stamps: number | null;
+  room: number | null;
+  waited: number | null;
+  replied: boolean;
+  ignored: boolean;
+};
 
 /**
  * 明河都尉 answering your touch ("touch"; bold: how you touched him), as you became

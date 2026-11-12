@@ -121,6 +121,7 @@ export class ServerWorld implements World {
   acceptPublicPlace = () => this.call<void>("acceptPublicPlace");
   rideMinghe = (target: RideTarget) => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("rideMinghe", target);
   dismountMinghe = () => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("dismountMinghe");
+  siPortrait = (choice: "return" | "keep") => this.call<{ line: string }>("siPortrait", choice);
   drink = () => this.call<{ until: number }>("drink");
   sober = () => this.call<void>("sober");
   removeRoach = (roachId: string) => this.call<OwnRoach[]>("removeRoach", roachId);

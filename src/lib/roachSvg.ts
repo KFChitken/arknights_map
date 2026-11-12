@@ -1,5 +1,8 @@
 import { realBelly, sleepingHood } from "./flipArt";
+import { LINE } from "./roachLine";
 import type { DrawnAvatar, RoachColor, RoachStyle } from "./types";
+
+export { LINE };
 
 // Front-facing chibi roach (the "hood" look): round black hood with antennae,
 // dark visor, glowing side lights, white front with X straps, dark grey sleeves.
@@ -15,8 +18,6 @@ export const GLOW: Record<RoachColor, string> = {
   red: "#ff5d5d",
   white: "#e8f1ff",
 };
-
-export const LINE = "#0d0e10";
 
 /**
  * clone: a see-through look shared by every clone, so a clone cannot be matched to its main roach.

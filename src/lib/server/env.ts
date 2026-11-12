@@ -50,6 +50,7 @@ export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
  * and she shows as a pink-lit hood instead; PERLICA_PICTURE=off, 佩丽卡监督's (a cyan-lit hood);
  * TALULAH_PICTURE=off, 塔露拉干员's (an orange-lit hood, her fire still burning).
  * MINGHE_PICTURE=off, 明河都尉's (a white-lit hood riding his horse, which is drawn in code).
+ * SI_PICTURE=off, 祀掌柜's (a red-lit hood; her scroll, ink butterflies and inn are drawn in code and stay).
  * AMIYA_DANCE=off takes down 阿米娅向导's dance and its music (from a video by a bilibili
  * artist, 疚刃), and tapping her only opens her card again. PARTY_MUSIC=off takes down
  * ⚡舟友的酒⚡'s music (by 活跃黑江乐 on bilibili); the phantoms then dance in silence.
@@ -58,6 +59,7 @@ export const AMIYA_PICTURE = process.env.AMIYA_PICTURE !== "off";
 export const PERLICA_PICTURE = process.env.PERLICA_PICTURE !== "off";
 export const TALULAH_PICTURE = process.env.TALULAH_PICTURE !== "off";
 export const MINGHE_PICTURE = process.env.MINGHE_PICTURE !== "off";
+export const SI_PICTURE = process.env.SI_PICTURE !== "off";
 export const AMIYA_DANCE = AMIYA_PICTURE && process.env.AMIYA_DANCE !== "off";
 export const PARTY_MUSIC = process.env.PARTY_MUSIC !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";

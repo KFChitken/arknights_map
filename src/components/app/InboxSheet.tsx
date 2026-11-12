@@ -19,6 +19,7 @@ import { GAME_NAMES, serverName, type Game } from "@/lib/games";
 import { guideById, isGuideItem } from "@/lib/guides";
 import { PERLICA_ID, PERLICA_UNFRIEND, perlicaText } from "@/lib/perlica";
 import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
+import { SI_ID, siText } from "@/lib/si";
 import { talulahText } from "@/lib/talulah";
 import type { PublicProfile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
@@ -48,7 +49,7 @@ const TABS: { tab: InboxTab; label: string }[] = [
 const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke", "sanity", "sanityThanks", "gesture", "visit", "game", "anniversary"];
 
 /** Touches, the guides' included */
-const TOUCHES: InboxItem["kind"][] = ["touch", "amiya", "perlica", "talulah", "minghe"];
+const TOUCHES: InboxItem["kind"][] = ["touch", "amiya", "perlica", "talulah", "minghe", "si"];
 
 /** Declarations and reactions are replies; touches (the guides' too) and what happens between 触须之交 have their own tabs. */
 export function tabOf(item: InboxItem): InboxTab {
@@ -115,6 +116,9 @@ export function noticeTitle(items: InboxItem[]) {
   if (unseen.some((i) => i.kind === "talulah")) return "塔露拉干员回了你！";
   if (unseen.some((i) => i.kind === "minghe" && i.line === "trip")) return "明河都尉送你的克隆体回来了！";
   if (unseen.some((i) => i.kind === "minghe")) return "明河都尉回了你！";
+  if (unseen.some((i) => i.kind === "si" && (i.line === "checkin" || i.line === "again"))) return "你的墨小强住进缘缘庄了！";
+  if (unseen.some((i) => i.kind === "si" && i.line === "checkout")) return "你的墨小强从缘缘庄退房了";
+  if (unseen.some((i) => i.kind === "si")) return "祀掌柜回了你！";
   if (unseen.some((i) => i.kind === "reaction")) return "有舟P回应了你的宣言！";
   if (unseen.length) return "附近有舟P发了宣言！";
   return "消息";
@@ -504,7 +508,7 @@ export default function InboxSheet({
         </div>
       );
     }
-    if (item.kind === "amiya" || item.kind === "perlica" || item.kind === "talulah" || item.kind === "minghe") {
+    if (item.kind === "amiya" || item.kind === "perlica" || item.kind === "talulah" || item.kind === "minghe" || item.kind === "si") {
       const text =
         item.kind === "amiya"
           ? amiyaText(item, games)
@@ -512,7 +516,9 @@ export default function InboxSheet({
             ? perlicaText(item)
             : item.kind === "talulah"
               ? talulahText(item, games)
-              : mingheText(item);
+              : item.kind === "minghe"
+                ? mingheText(item)
+                : siText(item);
       return (
         <div key={item.id} className={cls}>
           <div>{text}</div>
@@ -821,7 +827,7 @@ export function FriendView({
           </button>
         )}
       </div>
-      {guideOf ? <p className="hint">{guideOf.note}</p> : <ProfileDetails profile={profile} gameExtra={gameExtra} />}
+      {guideOf ? <p className="hint">{guideOf.card ?? guideOf.note}</p> : <ProfileDetails profile={profile} gameExtra={gameExtra} />}
       {help}
       {actions}
 
@@ -866,9 +872,11 @@ export function FriendView({
             ? PERLICA_UNFRIEND
             : friend.id === MINGHE_ID
               ? "解除后他还会在各地走，大胆碰他一下就能再成为触须之交。"
-              : guide
-                ? "解除后她还在太阳岛守着火，大胆碰她一下就能再握一次手。"
-                : "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。"}
+              : friend.id === SI_ID
+                ? "解除后画像、集章本和墨小强都留着，大胆碰她一下就能再成为触须之交。"
+                : guide
+                  ? "解除后她还在太阳岛守着火，大胆碰她一下就能再握一次手。"
+                  : "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。"}
       </p>
       {!guide && (
         <button className="pill" style={{ marginTop: 14 }} onClick={onSafety}>

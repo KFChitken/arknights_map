@@ -20,7 +20,7 @@ describe("badges", () => {
     expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("half2026");
     expect(wallBadges(new Set(["half2026"]), after).map((b) => b.id)).toContain("half2026");
     // the nine lasting ones of the first round and the twenty of the second
-    expect(wallBadges(new Set(), after)).toHaveLength(29);
+    expect(wallBadges(new Set(), after)).toHaveLength(31);
     // the timed one only while it is held
     expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("survivor");
     expect(wallBadges(new Set(["survivor"]), after).map((b) => b.id)).toContain("survivor");

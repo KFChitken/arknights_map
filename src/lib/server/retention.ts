@@ -17,6 +17,7 @@ import {
   radarScans,
   reports,
   sessions,
+  siTouches,
   staffNotes,
   talulahTouches,
   touches,
@@ -44,6 +45,8 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(perlicaTouches).where(lt(perlicaTouches.createdAt, cutoff));
   await db.delete(talulahTouches).where(lt(talulahTouches.createdAt, cutoff));
   await db.delete(mingheTouches).where(lt(mingheTouches.createdAt, cutoff));
+  // 祀掌柜's lines go like any guide's; her ink roaches and their tickets stay, as the painting they make
+  await db.delete(siTouches).where(lt(siTouches.createdAt, cutoff));
   await db.delete(declarations).where(lt(declarations.createdAt, cutoff));
   await db.delete(moves).where(lt(moves.at, cutoff));
   // a cut only matters for touches made before it, which are gone by now

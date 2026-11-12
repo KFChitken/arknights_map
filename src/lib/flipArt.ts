@@ -1,4 +1,5 @@
-import { FRIEND, HEART, hoodBody, LINE } from "./roachSvg";
+import { LINE } from "./roachLine";
+import { FRIEND, HEART, hoodBody } from "./roachSvg";
 
 /**
  * 翻肚皮: the roach asleep belly up, and the hood drinking. Drawn on roachSvg's

@@ -705,6 +705,11 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   background: #c23a5e; color: #fff; font-size: 12px; font-weight: 700;
 }
 .drunk-group .tpl { border-color: #ecd3dc; background: #fff; }
+/* 祀掌柜's two (src/lib/si.ts): everyone sees them, greyed till their ink roach has had a room at 缘缘庄 */
+.stay-group { margin: 2px 0 10px; padding: 8px 8px 0; border-radius: 14px; background: #faf1ec; }
+.stay-tag { display: inline-block; margin: 0 0 6px 2px; padding: 1px 8px; border-radius: 999px; background: #b8321f; color: #fff; font-size: 11px; font-weight: 700; }
+.stay-group .tpl { border-color: #ecd6cc; background: #fff; }
+.stay-group .stay-note { margin: -2px 2px 8px; }
 .drunk-group .tpl.on { border-color: #c23a5e; background: #fff5f8; }
 .tpl-long { flex: 1; min-width: 0; }
 .shout {
@@ -1045,7 +1050,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
   border: 0; border-radius: 14px; background: var(--ink); box-shadow: 0 2px 10px #0004; line-height: 1;
 }
 .hot-btn small { margin-top: 4px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
-/* the four guides under 方舟雷达 and 热榜 (GuideDock.tsx) */
+/* the five guides under 方舟雷达 and 热榜 (GuideDock.tsx) */
 .guide-dock {
   position: absolute; z-index: 10; top: calc(282px + var(--safe-top)); right: calc(12px + var(--safe-right));
   display: flex; flex-direction: column; gap: 4px; width: 64px; padding: 7px 0; border-radius: 14px;
@@ -1055,11 +1060,20 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .guide-dock small { margin-top: 2px; color: #fff; font-size: 10px; font-weight: 600; white-space: nowrap; }
 .guide-note { margin-top: 0; text-align: center; }
 /*
- * 存到桌面 under the four guides (they start at 282px and take 210px), with the icon the desktop will
+ * On a short screen the five guides step closer and smaller, so the column ends above the map's zoom
+ * buttons (they start 154px above the bottom): 262px tall, 220px from 700px down.
+ */
+@media (max-height: 700px) {
+  .guide-dock { gap: 1px; padding: 5px 0; }
+  .guide-dock img, .guide-dock button > span { width: 28px !important; height: 28px !important; }
+  .guide-dock small { margin-top: 1px; font-size: 9.5px; }
+}
+/*
+ * 存到桌面 under the five guides (they start at 282px and take 262px), with the icon the desktop will
  * show, and its bubble once per device (HomeScreen.tsx). Where that would run into the map's zoom
  * buttons (they start 154px above the bottom), it moves to the left, under the counts.
  */
-.desk-anchor { position: absolute; z-index: 10; top: calc(500px + var(--safe-top)); right: calc(12px + var(--safe-right)); }
+.desk-anchor { position: absolute; z-index: 10; top: calc(552px + var(--safe-top)); right: calc(12px + var(--safe-right)); }
 .desk-btn {
   display: flex; flex-direction: column; align-items: center; width: 64px; padding: 7px 0 6px;
   border: 0; border-radius: 14px; background: var(--ink); box-shadow: 0 2px 10px #0004; line-height: 1; cursor: pointer;
@@ -1072,7 +1086,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
   text-align: left; box-shadow: 0 3px 12px #0004;
 }
 .desk-hint::after { content: ""; position: absolute; top: 10px; right: -6px; border: 6px solid transparent; border-right: 0; border-left-color: var(--accent); }
-@media (max-height: 730px) {
+@media (max-height: 782px) {
   .desk-anchor { top: calc(140px + var(--safe-top)); right: auto; left: calc(12px + var(--safe-left)); }
   .desk-hint { right: auto; left: calc(100% + 10px); }
   .desk-hint::after { right: auto; left: -6px; border-left: 0; border-right: 6px solid var(--accent); }
@@ -1894,3 +1908,58 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
 @media (prefers-reduced-motion: reduce) {
   .ta-dword, .ta-dknock, .ta-dlean, .ta-dvial, .ta-dstars span, .ta-dcake, .gs-vial, .gs-ding { animation: none !important; }
 }
+
+/*
+ * 祀掌柜 (src/lib/si.ts): her card, in blocks, scrolling on a short screen. Its top keeps under the counts at the
+ * top and a 公告 strip under them (146px down): the card ends 96px above the bottom.
+ */
+.si-card { max-height: min(68vh, 560px, calc(100% - 242px - var(--safe-top) - var(--safe-bottom))); overflow-y: auto; overscroll-behavior: contain; }
+/* on a short screen her card scrolls, and the touches stay in sight at its foot */
+.si-card .touch-buttons { position: sticky; bottom: -12px; margin: 0 -12px -12px; padding: 6px 12px 12px; background: var(--paper); }
+.si-card .card-head { align-items: flex-start; }
+.si-card .si-aside { margin-top: 4px; }
+.si-nickname { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-decoration: underline dotted; }
+.si-block { padding: 8px 10px; border-radius: 10px; background: #faf6ee; }
+.si-block > strong { font-size: 13.5px; }
+.si-block p { margin: 3px 0 0; font-size: 13px; }
+.si-painting { display: flex; gap: 10px; align-items: center; }
+.si-scroll-art { display: inline-block; flex-shrink: 0; }
+.si-scroll-art svg { display: block; width: 100%; height: 100%; }
+.si-mine { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e4d6b8; }
+.si-mine p { margin: 0; color: var(--ink); }
+.si-mine .pill { flex-shrink: 0; }
+.si-book-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* 祀掌柜's 集章本 (src/components/app/SiBook.tsx): her seals' own characters, cut from 思源宋体 (SIL OFL) */
+@font-face {
+  font-family: "SiSeal";
+  src: url("/fonts/si-seal.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+.si-book-note { margin: 0; font-size: 13px; }
+.si-says { margin: 0; padding: 8px 10px; border-radius: 10px; background: #faf6ee; font-size: 14px; }
+.si-portrait { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.si-portrait img, .si-portrait-wait {
+  display: block; width: min(100%, 300px); aspect-ratio: 3 / 4; border-radius: 6px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 16%); background: #f7f1e3;
+}
+/* long-pressed on a phone, the picture itself is saved */
+.si-portrait img { -webkit-touch-callout: default; user-select: auto; }
+.si-portrait figcaption { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.si-book-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+.si-stamps {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+}
+.si-stamps li {
+  position: relative; aspect-ratio: 1; display: grid; place-items: center;
+  border-radius: 8px; background: #fbf6ea; border: 1px solid #eadfc6;
+}
+.si-stamps li.empty { border-style: dashed; background: transparent; font-size: 12px; }
+.si-stamps li.today { border-color: #d9472b; box-shadow: 0 0 0 1.5px #d9472b55; }
+.si-stamps li small {
+  position: absolute; top: -7px; right: -4px; padding: 0 4px; border-radius: 6px;
+  background: #d9472b; color: #fff; font-size: 10px; line-height: 15px;
+}
+.si-seal { display: block; overflow: visible; }

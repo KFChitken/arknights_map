@@ -18,7 +18,7 @@ import {
   type GuideRow,
   type GuideTable,
 } from "./guides";
-import { amiyaTouches, mingheTouches, perlicaTouches, roaches, talulahTouches, touches, users } from "./schema";
+import { amiyaTouches, mingheTouches, perlicaTouches, roaches, siTouches, talulahTouches, touches, users } from "./schema";
 
 /**
  * 佩丽卡监督 on the server (src/lib/perlica.ts): her touches with each player
@@ -151,7 +151,7 @@ async function othersTouched(exec: Exec, userId: string, from: Date, to?: Date) 
     .select({ n: countDistinct(touches.toUserId) })
     .from(touches)
     .where(and(eq(touches.fromUserId, userId), when(touches.createdAt)));
-  const guide = async (t: typeof amiyaTouches | typeof talulahTouches | typeof mingheTouches, direction: string) =>
+  const guide = async (t: typeof amiyaTouches | typeof talulahTouches | typeof mingheTouches | typeof siTouches, direction: string) =>
     (
       await exec
         .select({ id: t.id })
@@ -162,7 +162,8 @@ async function othersTouched(exec: Exec, userId: string, from: Date, to?: Date) 
   const amiya = await guide(amiyaTouches, "to_amiya");
   const talulah = await guide(talulahTouches, "to_talulah");
   const minghe = await guide(mingheTouches, "to_minghe");
-  return { players: n, amiya, total: n + Number(amiya) + Number(talulah) + Number(minghe) };
+  const si = await guide(siTouches, "to_si");
+  return { players: n, amiya, total: n + Number(amiya) + Number(talulah) + Number(minghe) + Number(si) };
 }
 
 /** She said 「罗德岛那位……」 or was jealous today already: once a day is enough for either */

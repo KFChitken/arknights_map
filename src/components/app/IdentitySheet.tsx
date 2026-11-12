@@ -1,6 +1,6 @@
 "use client";
 
-import type { Identity } from "@/lib/world/types";
+import type { Identity, PretendWhat } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
 const GROUPS: [Identity["group"], string][] = [
@@ -30,6 +30,7 @@ export default function IdentitySheet({
   onMingheDay,
   onFakeRiders,
   onForgetMinghe,
+  onSi,
   onPerlicaMore,
   onClose,
 }: {
@@ -54,6 +55,8 @@ export default function IdentitySheet({
   onForgetMinghe: () => void;
   /** 佩丽卡监督's second step: 假装喝了 7 小时, 假装触须之交第 30 天, 假装今天是佩丽卡生日, 假装过了一周 */
   onPerlicaMore: (what: "drank" | "days" | "birthday" | "week") => void;
+  /** 祀掌柜's (src/lib/si.ts): her clock on, pretend visitors and crowds, clear the inn or yourself; then reload */
+  onSi: (what: PretendWhat, n?: number) => void;
   onClose: () => void;
 }) {
   return (
@@ -164,6 +167,45 @@ export default function IdentitySheet({
         ))}
         <button className="pill" onClick={onForgetMinghe}>
           清掉我和明河的记录
+        </button>
+      </div>
+      <h3>祀掌柜</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        「快进」：她的时间往后拨，服务器和网页一起，按完马上算一遍入住退房，重启开发服务器后回到现在；「假装今天来了 N 人」只改今天的画；「假装已经有 N 人碰过她」加没有主人的墨小强去排队；「清掉我和祀的记录」以后可以重新试触须之交、画像、盖章、排队和介绍卡，你的墨小强留在画里。
+      </p>
+      <div className="row-actions" style={{ flexWrap: "wrap" }}>
+        <button className="pill" onClick={() => onSi("siHalfDay")}>
+          祀快进半天
+        </button>
+        <button className="pill" onClick={() => onSi("siDay")}>
+          祀快进一天
+        </button>
+        <button className="pill" onClick={() => onSi("si21")}>
+          祀快进 21 天
+        </button>
+        {[500, 3000, 8000, 12000].map((n) => (
+          <button key={n} className="pill" onClick={() => onSi("siToday", n)}>
+            假装今天来了 {n} 人
+          </button>
+        ))}
+        {[
+          [1000, "1000"],
+          [4000, "4000"],
+          [50000, "5 万"],
+          [100000, "10 万"],
+        ].map(([n, words]) => (
+          <button key={n} className="pill" onClick={() => onSi("siCrowd", Number(n))}>
+            假装已经有 {words} 人碰过她
+          </button>
+        ))}
+        <button className="pill" onClick={() => onSi("siWrong")}>
+          下次一定拿错
+        </button>
+        <button className="pill" onClick={() => onSi("siClearInn")}>
+          清掉缘缘庄
+        </button>
+        <button className="pill" onClick={() => onSi("si")}>
+          清掉我和祀的记录
         </button>
       </div>
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>

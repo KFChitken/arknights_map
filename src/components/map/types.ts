@@ -1,5 +1,8 @@
 import type { GuideId } from "@/lib/guides";
 import type { FireLevel } from "@/lib/talulah";
+import type { PaintingTier } from "@/lib/si";
+import type { InkPoint } from "@/lib/siTiles";
+import type { InkVariant } from "./inkArt";
 import type { StyleSpecification } from "maplibre-gl";
 import { hash128 } from "@/lib/prng";
 import type { MapStyle } from "@/lib/mapStyle";
@@ -25,6 +28,8 @@ export type MapViewProps = {
   guides: GuideMark[];
   /** 明河都尉's trail of stars: his last stations, oldest first, his own last */
   trail: LngLat[];
+  /** 祀掌柜's 缘缘庄 (src/components/map/siMap.ts): what the page has of it; left out, nothing of it is drawn */
+  si?: SiMapData;
   /** Your own declarations, each over the roach it went out from, for a few seconds after the shout */
   shouts: ShoutMark[];
   /** Page elements placed on the map at a spot, over the roaches (⚡舟友的酒⚡'s dance floor); they never take a tap */
@@ -86,6 +91,37 @@ export type GuideMark = {
   arrive?: { from: LngLat | null; nonce: number };
   dance?: number;
   acting?: boolean;
+};
+
+/**
+ * 缘缘庄 as the maps draw it: its numbers (null before they come: how many queue at the door, how many she
+ * has drawn, whether it is full, how far out the homes of those who stayed reach, in metres), the ink
+ * roaches of the tiles in view close up (none further out), your own drawn apart over them, and how far
+ * today's painting on her scroll has got. Keys say when each changed, so the maps redraw only that.
+ */
+export type SiMapData = {
+  inn: { queue: number; drawn: number; full: boolean; homesReach: number } | null;
+  inks: InkPoint[];
+  mine: SiMine | null;
+  tier: PaintingTier;
+  innKey: string;
+  inksKey: number;
+  mineKey: string;
+};
+
+/**
+ * Your own ink roach, ringed in your colour (colour), where it is now: its look and which way it is drawn
+ * (inkArt.ts), its brush (siInn.ts brushOf); brushFrom: she is drawing it in just now, since then (ms)
+ */
+export type SiMine = {
+  at: LngLat;
+  look: RoachAvatar;
+  variant: InkVariant;
+  color: RoachColor;
+  size: number;
+  tilt: number;
+  ink: number;
+  brushFrom: number | null;
 };
 
 /** A line just shouted over one of your own roaches (at), on your screen only; limited: a 限定 line */

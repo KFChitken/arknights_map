@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { declarationText, FOODS, SPOUSES, WELCOME_NAMES, type Declaration, type Food, type Spouse, type Template } from "@/lib/declarations";
+import {
+  declarationText,
+  FOODS,
+  isStayTemplate,
+  SPOUSES,
+  STAY_NEEDED,
+  WELCOME_NAMES,
+  type Declaration,
+  type Food,
+  type Spouse,
+  type Template,
+} from "@/lib/declarations";
 import { activeEvents, untilText, type EventLine } from "@/lib/events";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
 import { displayName, type Profile } from "@/lib/profile";
@@ -18,6 +29,7 @@ export default function DeclareSheet({
   roaches,
   initial,
   drunk = false,
+  stayed = false,
   onSend,
   onEditProfile,
   onClose,
@@ -28,6 +40,8 @@ export default function DeclareSheet({
   initial?: Template;
   /** The main roach lies drunk: its own lines come first */
   drunk?: boolean;
+  /** Their ink roach has had a room at 缘缘庄 (src/lib/si.ts): 祀掌柜's two are theirs; everyone sees them, greyed till then */
+  stayed?: boolean;
   onSend: (d: Declaration, from: string[]) => Promise<boolean>;
   onEditProfile: () => void;
   onClose: () => void;
@@ -81,12 +95,15 @@ export default function DeclareSheet({
       case "roguelike":
       case "xianshu":
       case "rental":
+      case "sihouse":
+      case "simine":
         return { template };
       default:
         return { template: template === "welcome" ? "welcome" : "launch", game };
     }
   })();
-  const blocked = (t: Template) => (WITH_CHARACTER.includes(t) && !favourites.length) || (t === "myname" && !named);
+  const blocked = (t: Template) =>
+    (WITH_CHARACTER.includes(t) && !favourites.length) || (t === "myname" && !named) || (isStayTemplate(t) && !stayed);
   const canSend = Boolean(main) && from.length > 0 && !blocked(template);
 
   const send = async () => {
@@ -278,6 +295,13 @@ export default function DeclareSheet({
         </>,
       )}
       {row("birthday", <>祝我生日快乐</>)}
+
+      <div className="stay-group" role="group" aria-label="缘缘庄住客的宣言">
+        <div className="stay-tag">缘缘庄住客</div>
+        {row("sihouse", <>你家还挺大的嘛？</>)}
+        {row("simine", <>疯狂新妻祀是我的！</>)}
+        {!stayed && <p className="hint stay-note">{STAY_NEEDED}</p>}
+      </div>
 
       {(!favourites.length || !named) && (
         <p className="hint" style={{ marginTop: -2, marginBottom: 8 }}>

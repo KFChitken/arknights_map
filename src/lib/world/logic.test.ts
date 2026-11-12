@@ -3,6 +3,7 @@ import {
   canReply,
   declarationText,
   DRUNK_TEMPLATES,
+  STAY_TEMPLATES,
   GENERIC_REACTIONS,
   REACTIONS,
   repliesFor,
@@ -76,11 +77,13 @@ describe("declarations", () => {
     { template: "roguelike" },
     { template: "xianshu" },
     { template: "rental" },
+    { template: "sihouse" },
+    { template: "simine" },
     ...EVENTS.flatMap((e) => e.lines.map((l): Declaration => ({ template: "event", line: l.id }))),
   ];
 
   it("gives every sentence its own four replies, the fourth asking for a touch, then the five every one has", () => {
-    expect(new Set(everySentence.map((d) => d.template))).toEqual(new Set([...TEMPLATES, ...DRUNK_TEMPLATES, "event"]));
+    expect(new Set(everySentence.map((d) => d.template))).toEqual(new Set([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, "event"]));
     for (const d of everySentence) {
       const replies = repliesFor(d);
       const own = replies.filter((r) => r.own);
@@ -156,6 +159,18 @@ describe("drunk declarations", () => {
     expect(drunk({ template: "xianshu" })).toBe("我要看仙术杯！");
     expect(drunk({ template: "rental" })).toBe("我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个");
     expect(DRUNK_TEMPLATES).toHaveLength(7);
+  });
+
+  it("lets only a guest of 缘缘庄 say 祀掌柜's two, from the moment they have stayed", () => {
+    expect(STAY_TEMPLATES).toEqual(["sihouse", "simine"]);
+    for (const template of STAY_TEMPLATES) {
+      expect(() => checkDeclaration(fan, { template } as Declaration)).toThrow("住进缘缘庄就能发。");
+      expect(declarationText(checkDeclaration(fan, { template } as Declaration, Date.now(), false, true))).toBe(
+        template === "sihouse" ? "你家还挺大的嘛？" : "疯狂新妻祀是我的！",
+      );
+    }
+    expect(repliesFor({ template: "simine" }).slice(0, 4).map((r) => r.text)).toEqual(["祀是大家的！", "小心被她听见", "先把房钱结了", "情敌？碰我一下"]);
+    expect(repliesFor({ template: "sihouse" })[0].text).toBe("两千五百间房呢！");
   });
 
   it("refuses them sober, and takes only your own favourites and 老婆 or 老公", () => {

@@ -2,6 +2,7 @@ import { generateFakeRoaches } from "../fakeRoaches";
 import { distanceKm } from "../geo";
 import { mulberry32 } from "../prng";
 import { MINGHE_BOT_FREE_KM, ROUTE } from "../minghe";
+import { SI_AT, SI_BOT_FREE_KM } from "../si";
 import { isOffLimits } from "../offLimits";
 import { FIRE_AT, FIRE_BOT_FREE_KM } from "../talulah";
 import type { LngLat, RoachAvatar } from "../types";
@@ -23,12 +24,14 @@ export const BOT_FREE_KM = 60;
 /**
  * None by 塔露拉干员's fire either, where they would look like players sitting by it
  * (src/lib/talulah.ts), nor at 明河都尉's stations, where they would look like his riders (src/lib/minghe.ts),
+ * nor by 祀掌柜, where they would look like they queue for her inn (src/lib/si.ts),
  * nor where no roach may stand (src/lib/offLimits.ts)
  */
 const NO_BOTS: [LngLat, number][] = [
   [BEIJING, BOT_FREE_KM],
   [FIRE_AT, FIRE_BOT_FREE_KM],
   ...ROUTE.map((s): [LngLat, number] => [s.at, MINGHE_BOT_FREE_KM]),
+  [SI_AT, SI_BOT_FREE_KM],
 ];
 
 export const isBotId = (id: string) => id.startsWith(PREFIX);

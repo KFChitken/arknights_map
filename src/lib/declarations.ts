@@ -17,7 +17,8 @@ export const WELCOME_NAMES: Record<Game, string> = { arknights: "刀客塔", end
  * lists. `name` in 「我是<名字>，我要玩…」 is filled in by the server from the
  * sender's profile. "event" is a limited-time line from events.ts. "alsoplay"
  * can no longer be sent, but older ones still show. The DRUNK_TEMPLATES can only be
- * sent while your main roach lies drunk (摄入酒精).
+ * sent while your main roach lies drunk (摄入酒精); the STAY_TEMPLATES once your ink roach
+ * has had a room at 祀掌柜's 缘缘庄 (src/lib/si.ts), and for good from then on.
  */
 export type Declaration =
   | { template: "launch"; game: Game }
@@ -37,7 +38,9 @@ export type Declaration =
   | { template: "radar" }
   | { template: "roguelike" }
   | { template: "xianshu" }
-  | { template: "rental" };
+  | { template: "rental" }
+  | { template: "sihouse" }
+  | { template: "simine" };
 
 export type Template = Declaration["template"];
 
@@ -47,6 +50,12 @@ export const TEMPLATES = ["launch", "iam", "love", "buff", "myname", "welcome", 
 /** What a drunk roach says on top of those, in the order the sheet lists them */
 export const DRUNK_TEMPLATES = ["water", "drunklove", "kr168", "radar", "roguelike", "xianshu", "rental"] as const;
 export const isDrunkTemplate = (t: unknown) => (DRUNK_TEMPLATES as readonly unknown[]).includes(t);
+
+/** What a guest of 缘缘庄 may say, from the moment their ink roach gets a room, in the order the sheet lists them */
+export const STAY_TEMPLATES = ["sihouse", "simine"] as const;
+export const isStayTemplate = (t: unknown) => (STAY_TEMPLATES as readonly unknown[]).includes(t);
+/** Why one who has not stayed cannot send them, on the sheet and from the server */
+export const STAY_NEEDED = "住进缘缘庄就能发。";
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
@@ -86,6 +95,10 @@ export function declarationText(d: Declaration): string {
       return "我要看仙术杯！";
     case "rental":
       return "我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个";
+    case "sihouse":
+      return "你家还挺大的嘛？";
+    case "simine":
+      return "疯狂新妻祀是我的！";
   }
 }
 
@@ -136,6 +149,8 @@ const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, st
   roguelike: ["这把必出好藏品！", "喝成这样还打肉鸽？", "醉拳流，一层就寄", "打完碰我一下，比比分"],
   xianshu: ["我也要看！", "看会了，手没会", "喝醉了看，更像仙术了", "看完碰我一下"],
   rental: ["现在认识一个了", "那些蟑螂也玩舟吗？", "所以你来对地方了", "碰我一下，这就多一个"],
+  sihouse: ["两千五百间房呢！", "掌柜的听见要脸红了", "我还在门口排着……", "老住客，碰我一下"],
+  simine: ["祀是大家的！", "小心被她听见", "先把房钱结了", "情敌？碰我一下"],
 };
 
 /** A reply's blanks, filled in from the declaration it answers */

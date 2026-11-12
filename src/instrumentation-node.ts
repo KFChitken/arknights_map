@@ -17,6 +17,7 @@ import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { pruneOldActivity } from "./lib/server/retention";
 import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { sendReportDigest } from "./lib/server/safety";
+import { innMinute } from "./lib/server/si";
 import { note } from "./lib/server/signals";
 import { recordDailyTotals } from "./lib/server/totals";
 import { buildId, heardStart, processName, startWatch } from "./lib/server/watch";
@@ -132,6 +133,21 @@ if (!helper) {
   spreadStackedRiders().catch(failed("ride", "Spreading 明河都尉's stacked riders failed"));
   // roaches standing where none may (src/lib/offLimits.ts), from before the place was listed, move out
   moveOutOfOffLimits().catch(failed("offLimits", "Moving roaches out of the off-limits places failed"));
+
+  // 缘缘庄 (src/lib/server/si.ts): 祀掌柜 tells the ink roaches' owners as they get their room and leave it, once a minute;
+  // a run never overlaps the one before
+  let innBusy = false;
+  const inn = () => {
+    if (innBusy) return;
+    innBusy = true;
+    innMinute()
+      .catch(failed("inn", "Telling 缘缘庄's check-ins and check-outs failed"))
+      .finally(() => {
+        innBusy = false;
+      });
+  };
+  inn();
+  setInterval(inn, MINUTE_MS);
 
   // Sitewide counts for the admin, often enough that each day's row closes within minutes of midnight
   const totals = () => recordDailyTotals().catch(failed("totals", "Recording daily totals failed"));

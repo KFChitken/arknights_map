@@ -6,11 +6,11 @@ import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
 /**
- * The four guides (src/lib/guides.ts) in a column under 方舟雷达: tap one for what
+ * The five guides (src/lib/guides.ts) in a column under 方舟雷达: tap one for what
  * they do, with a button that takes the map to them.
  */
 
-const ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe"];
+const ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe", "si"];
 
 /** What each of them does, in a few lines */
 const ABOUT: Record<GuideId, string[]> = {
@@ -32,6 +32,11 @@ const ABOUT: Record<GuideId, string[]> = {
   minghe: [
     "骑着怒骊每天换一座城市，30 站走一圈，身后连着一串星点。",
     "派一只克隆体跟他走 7 站，每天到一座新城市，让各地的舟P碰到你。",
+  ],
+  si: [
+    "在黄山宏村的南湖边挂着一幅画轴，画的是缘缘庄。",
+    "每天碰她，她顺手在你的集章本上盖一个章；头一回碰她，她还照你的形象画一只墨小强，排队住进缘缘庄。",
+    "大胆碰她就成为触须之交，她送你一幅画像。",
   ],
 };
 

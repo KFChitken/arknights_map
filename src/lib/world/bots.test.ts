@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { distanceKm } from "../geo";
 import { MINGHE_BOT_FREE_KM, ROUTE } from "../minghe";
 import { FIRE_AT, FIRE_BOT_FREE_KM } from "../talulah";
+import { SI_AT, SI_BOT_FREE_KM } from "../si";
 import { BOT_FREE_KM, botRoaches, isBotId } from "./bots";
 
 describe("show roaches", () => {
@@ -20,5 +21,7 @@ describe("show roaches", () => {
     expect(botRoaches(5000).filter((b) => distanceKm(b, FIRE_AT) <= FIRE_BOT_FREE_KM)).toEqual([]);
     // nor at 明河都尉's stations, where they would look like his riders
     expect(botRoaches(5000).filter((b) => ROUTE.some((s) => distanceKm(b, s.at) <= MINGHE_BOT_FREE_KM))).toEqual([]);
+    // nor by 祀掌柜, where they would look like they queue for her inn
+    expect(botRoaches(5000).filter((b) => distanceKm(b, SI_AT) <= SI_BOT_FREE_KM)).toEqual([]);
   });
 });
