@@ -3,8 +3,8 @@
 import { useRef } from "react";
 import { fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
-import { PERLICA, PERLICA_LINES, PERLICA_NAME, spotNear } from "@/lib/perlica";
-import { SITE_NAME } from "@/lib/rules";
+import { PERLICA, PERLICA_LINES, spotNear } from "@/lib/perlica";
+import { siteName } from "@/lib/rules";
 import type { LngLat } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
@@ -21,14 +21,14 @@ export const PerlicaPicture = ({ size, friend = false }: { size: number; friend?
  */
 export function PerlicaIntroSheet({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
   return (
-    <Sheet title={PERLICA_NAME} onClose={onNo}>
+    <Sheet title={PERLICA.name} onClose={onNo}>
       <div className="amiya-greet">
         <PerlicaPicture size={96} />
       </div>
       <p className="consent-place">{T.guides.perlica.arrived}</p>
       <p className="amiya-line perlica-ask">{PERLICA_LINES.ask}</p>
       <p className="hint">
-        {fmtParts(T.guides.perlica.intro, { site: SITE_NAME })}
+        {fmtParts(T.guides.perlica.intro, { site: siteName() })}
         <a href="/privacy" target="_blank" rel="noreferrer">
           {T.common.privacy}
         </a>
@@ -75,7 +75,7 @@ export function PerlicaBanner({ lines, onOpen, onClose }: { lines: string[]; onO
         <PerlicaPicture size={36} />
         <span>
           {fmtNodes(T.guides.perlica.says, {
-            name: PERLICA_NAME,
+            name: PERLICA.name,
             first: lines[0],
             rest: lines.slice(1).map((l) => (
               <span key={l}>

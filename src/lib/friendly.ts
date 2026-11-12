@@ -1,4 +1,4 @@
-import { YEARS } from "./perlica";
+import { yearsWord } from "./perlica";
 
 /**
  * What 触须之交 can do for each other besides touching (the server side is
@@ -106,5 +106,5 @@ export function anniversaryText(day: number, who: string) {
   const line = `今天是你和 ${who} 成为触须之交的第 ${day} 天`;
   if (day < 365 || day % 365) return line;
   const years = day / 365;
-  return `${line}，满${years <= YEARS.length ? YEARS[years - 1] : ` ${years} `}年啦`;
+  return `${line}，满${yearsWord(years)}年啦`;
 }

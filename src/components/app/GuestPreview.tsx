@@ -2,7 +2,7 @@
 
 import { fmt, T } from "@/i18n";
 import { roughText } from "@/lib/counts";
-import { DECLARATION_RADIUS_KM, RADAR_RADIUS_KM, SITE_NAME } from "@/lib/rules";
+import { DECLARATION_RADIUS_KM, RADAR_RADIUS_KM, siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 /**
@@ -64,7 +64,7 @@ export function GuestRadarSheet({ onSignIn, onClose }: { onSignIn: () => void; o
 export function WelcomeSheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
-      title={fmt(T.guest.welcome, { site: SITE_NAME })}
+      title={fmt(T.guest.welcome, { site: siteName() })}
       onClose={onClose}
       footer={
         <button className="primary wide" onClick={onClose}>

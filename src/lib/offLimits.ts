@@ -2,7 +2,7 @@ import type { LngLat } from "./types";
 
 /**
  * Places where no roach may stand: national sites and memorials, in WGS-84 like every stored spot.
- * Putting a roach down or moving it there is refused with OFF_LIMITS_MESSAGE (checkSpot in
+ * Putting a roach down or moving it there is refused with offLimitsMessage() (checkSpot in
  * world/logic.ts, and the map before it asks). The spots the server picks itself skip them:
  * seats by a friend's roach or the fire (pickSeat), 明河都尉's queue (queueSpots); a roach going
  * home to one, from a visit or a ride, stops just outside (outsideOffLimits); and the roaches
@@ -186,7 +186,7 @@ export const OFF_LIMITS: Place[] = [
 ];
 
 /** What a player is told who picks a spot in one: the same everywhere, naming no place */
-export const OFF_LIMITS_MESSAGE = "这里不能放蟑螂，换个地方吧。";
+export const offLimitsMessage = () => "这里不能放蟑螂，换个地方吧。";
 
 const M_PER_DEG = 111_320;
 const rad = (deg: number) => (deg * Math.PI) / 180;

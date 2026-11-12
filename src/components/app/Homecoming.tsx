@@ -10,7 +10,7 @@ import { PerlicaPicture } from "./Perlica";
 import { BadgePill } from "./Badges";
 import { pokedBy } from "./InboxSheet";
 import { WELCOME_NAMES } from "@/lib/declarations";
-import { PERLICA_NAME } from "@/lib/perlica";
+import { PERLICA } from "@/lib/perlica";
 import { RADAR_RADIUS_KM } from "@/lib/rules";
 import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
@@ -115,7 +115,7 @@ export function HomecomingSheet({
         <div className="perlica-said" style={amiya ? undefined : { marginTop: 0 }}>
           <PerlicaPicture size={40} />
           <p>
-            {fmtParts(T.map.guides.saysQuoted, { name: PERLICA_NAME, line: perlica })}
+            {fmtParts(T.map.guides.saysQuoted, { name: PERLICA.name, line: perlica })}
           </p>
         </div>
       )}

@@ -3,19 +3,18 @@
 import { fmt, fmtParts, T } from "@/i18n";
 import {
   favouriteLine,
-  MINGHE_HERE_LINE,
+  mingheHereLine,
   PAINTING_LINES,
   paintingTier,
   placeLine,
   RECALL_REST_MS,
   SI,
   SI_LINES,
-  SI_NAME,
   STAMPS,
   stampAt,
   stayLine,
 } from "@/lib/si";
-import { SITE_NAME } from "@/lib/rules";
+import { siteName } from "@/lib/rules";
 import { inkNow, innNumbers, queueTailLine } from "@/lib/siInn";
 import type { SiMe, SiState } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
@@ -93,14 +92,14 @@ export function SiCard({
   const held = me?.inn?.state === "held" ? me.inn : null;
   const restLeft = held?.recalledAt ? held.recalledAt + RECALL_REST_MS - now : 0;
   return (
-    <div className="card stack si-card" role="dialog" aria-label={SI_NAME}>
+    <div className="card stack si-card" role="dialog" aria-label={SI.name}>
       <div className="card-head">
         <SiPicture size={44} friend={friend} />
         <div>
-          <strong>{SI_NAME}</strong>
+          <strong>{SI.name}</strong>
           <p className="muted">{SI_LINES.intro}</p>
           {fav && <p className="muted si-aside">{fav}</p>}
-          {mingheHere && <p className="muted si-aside">{MINGHE_HERE_LINE}</p>}
+          {mingheHere && <p className="muted si-aside">{mingheHereLine()}</p>}
           <button className="link si-nickname" onClick={onNickname}>
             {T.guides.si.nickname}
           </button>
@@ -187,7 +186,7 @@ export function SiCard({
 /** Once in each browser, for every signed-in player with a main roach (her 触须之交 too), before the other guides' cards. */
 export function SiIntroSheet({ onGo, onLater }: { onGo: () => void; onLater: () => void }) {
   return (
-    <Sheet title={fmt(T.guides.si.introTitle, { site: SITE_NAME })} onClose={onLater}>
+    <Sheet title={fmt(T.guides.si.introTitle, { site: siteName() })} onClose={onLater}>
       <div className="amiya-greet">
         <SiPicture size={96} />
       </div>

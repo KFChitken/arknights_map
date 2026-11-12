@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { T } from "@/i18n";
-import { DESK_CODE_WRONG } from "@/lib/deskCode";
+import { deskCodeWrong } from "@/lib/deskCode";
 import { DESK_CODE_TRIES } from "@/lib/rules";
 import { isBanned } from "@/lib/server/account";
 import { countApp } from "@/lib/server/appCounts";
@@ -27,7 +27,7 @@ export const POST = route(async (req) => {
   const [user] = userId ? await db.select().from(users).where(eq(users.id, userId)).limit(1) : [];
   if (!user || (user.email && (await isBanned(user.email)))) {
     note("codeRefused", "desk-wrong");
-    throw new HttpError(400, DESK_CODE_WRONG);
+    throw new HttpError(400, deskCodeWrong());
   }
   await startSession(req, user.id, "desk");
   countApp("code-redeemed");

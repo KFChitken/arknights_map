@@ -3,15 +3,15 @@ import Script from "next/script";
 import { HTML_LANG } from "@/i18n";
 import { pageLang } from "@/i18n/request";
 import { wordsUrl } from "@/i18n/server";
-import { SITE_NAME } from "@/lib/rules";
+import { siteName } from "@/lib/rules";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: SITE_NAME,
+export const generateMetadata = (): Metadata => ({
+  title: siteName(),
   description: "看看你身边有多少舟P",
   // opened from the home screen, the page runs under a see-through status bar; globals.css keeps clear of it
-  appleWebApp: { capable: true, title: SITE_NAME, statusBarStyle: "black-translucent" },
-};
+  appleWebApp: { capable: true, title: siteName(), statusBarStyle: "black-translucent" },
+});
 
 export const viewport: Viewport = {
   width: "device-width",

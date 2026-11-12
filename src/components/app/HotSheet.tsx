@@ -5,7 +5,7 @@ import { fmtParts, T } from "@/i18n";
 import { beijingDate } from "@/lib/beijing";
 import type { Game } from "@/lib/games";
 import { HOT_BOARDS, HOT_MIN_PLAYERS, WEEK, type HotBoard, type HotList } from "@/lib/hotList";
-import { SITE_NAME } from "@/lib/rules";
+import { siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 const GAME_TAGS: Record<Game, string> = {
@@ -92,7 +92,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
         )}
         <div className="hot-foot">
           <span>zhoupmap.com</span>
-          <span>{SITE_NAME}</span>
+          <span>{siteName()}</span>
         </div>
       </div>
       <p className="hint" style={{ marginTop: 12 }}>

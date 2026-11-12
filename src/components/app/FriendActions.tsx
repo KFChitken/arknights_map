@@ -70,7 +70,21 @@ const NAMES: Record<FriendAct, string> = {
   get poke() {
     return T.common.poke;
   },
-  ...GESTURE_NAMES,
+  get hug() {
+    return GESTURE_NAMES.hug;
+  },
+  get highfive() {
+    return GESTURE_NAMES.highfive;
+  },
+  get luck() {
+    return GESTURE_NAMES.luck;
+  },
+  get blanket() {
+    return GESTURE_NAMES.blanket;
+  },
+  get water() {
+    return GESTURE_NAMES.water;
+  },
 };
 
 /**

@@ -1,10 +1,10 @@
-import { SITE_NAME } from "../rules";
+import { siteName } from "../rules";
 
 export const isProd = process.env.NODE_ENV === "production";
 
 export const DATABASE_URL = process.env.DATABASE_URL || "postgres://roach:roach@localhost:5432/roach";
 export const SMTP_URL = process.env.SMTP_URL || "smtp://localhost:1025";
-export const MAIL_FROM = process.env.MAIL_FROM || `${SITE_NAME} <no-reply@roach.local>`;
+export const mailFrom = () => process.env.MAIL_FROM || `${siteName()} <no-reply@roach.local>`;
 
 /** Sign-in code emails the whole site may send in any 24 hours (report reminders have rules of their own, src/lib/server/safety.ts); kept within the mail provider's quota. */
 export const MAIL_DAILY_LIMIT = Number(process.env.MAIL_DAILY_LIMIT) || 90;

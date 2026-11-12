@@ -28,17 +28,28 @@ export type Guide = {
   /** What her name card among the 触须之交 says of her, if more than the note */
   card?: string;
   /** How the page speaks of them: 她, or 他 for 明河都尉 */
-  pronoun: "她" | "他";
+  pronoun: string;
   /** What she says to a touch past her 20 a day, if not the words every guide shares */
   tooMany?: string;
 };
 
 /** Who the guides are, on their cards in place of a player's details */
-export const GUIDE_NOTE = "舟P地图的向导";
+const GUIDE_NOTE = "舟P地图的向导";
 
 // in this order everywhere they are listed together, as among the 触须之交
 export const GUIDES: Record<GuideId, Guide> = {
-  amiya: { id: "amiya", name: "阿米娅向导", short: "阿米娅", avatar: "amiya", color: "pink", prefix: "a:", note: GUIDE_NOTE, pronoun: "她" },
+  amiya: {
+    id: "amiya",
+    name: "阿米娅向导",
+    short: "阿米娅",
+    avatar: "amiya",
+    color: "pink",
+    prefix: "a:",
+    get note() {
+      return GUIDE_NOTE;
+    },
+    pronoun: "她",
+  },
   perlica: {
     id: "perlica",
     name: "佩丽卡监督",
@@ -46,7 +57,9 @@ export const GUIDES: Record<GuideId, Guide> = {
     avatar: "perlica",
     color: "cyan",
     prefix: "e:",
-    note: GUIDE_NOTE,
+    get note() {
+      return GUIDE_NOTE;
+    },
     pronoun: "她",
   },
   talulah: {

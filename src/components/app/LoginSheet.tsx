@@ -8,7 +8,7 @@ import { adultTick, crossBorderTick } from "@/lib/consent";
 import { DESK_CODE_LENGTH, normalizeDeskCode } from "@/lib/deskCode";
 import { suggestEmail } from "@/lib/emailTypos";
 import { passwordProblem } from "@/lib/passwordRules";
-import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, SITE_NAME, waitText } from "@/lib/rules";
+import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, siteName, waitText } from "@/lib/rules";
 import { isStandalone } from "./HomeScreen";
 import PasswordField, { HiddenUsername } from "./PasswordField";
 import Sheet from "./Sheet";
@@ -267,7 +267,7 @@ export default function LoginSheet({
   const title = fixedEmail
     ? T.login.title.confirm
     : step === "signup"
-      ? fmt(T.login.title.first, { site: SITE_NAME })
+      ? fmt(T.login.title.first, { site: siteName() })
       : step === "desk"
         ? T.login.title.deskCode
         : step === "offer"
@@ -466,7 +466,7 @@ export default function LoginSheet({
       {step === "desk" && (
         <form className="login" onSubmit={redeem}>
           <p className="hint" style={{ marginTop: 0 }}>
-            {fmtParts(T.login.deskCodeHow, { site: SITE_NAME, len: DESK_CODE_LENGTH })}
+            {fmtParts(T.login.deskCodeHow, { site: siteName(), len: DESK_CODE_LENGTH })}
           </p>
           <label className="field">
             {T.common.loginCode}

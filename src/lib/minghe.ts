@@ -1,5 +1,5 @@
 import { addDays, beijingDate, beijingMidnight, daysBetween } from "./beijing";
-import { GUIDES, guideProfile } from "./guides";
+import { GUIDES } from "./guides";
 import { isOffLimits } from "./offLimits";
 import type { LngLat } from "./types";
 import type { MingheItem, PublicRoach } from "./world/types";
@@ -20,7 +20,6 @@ import type { MingheItem, PublicRoach } from "./world/types";
 
 export const MINGHE = GUIDES.minghe;
 export const MINGHE_ID = MINGHE.id;
-export const MINGHE_NAME = MINGHE.name;
 
 export const isMingheItem = (id: string) => id.startsWith(MINGHE.prefix);
 
@@ -41,7 +40,7 @@ export type Station = {
   at: LngLat;
   /** Which way his riders queue behind him, in degrees clockwise from north; towards the station before by default */
   queue?: number;
-  /** His own line about the place; the others share three (STATION_LINES) */
+  /** His own line about the place; the others share three (stationLines) */
   line?: string;
 };
 
@@ -92,7 +91,7 @@ export const ROUTE: Station[] = [
 ];
 
 /** What he says at the stations without a line of their own, taking turns by the day */
-export const STATION_LINES = ["路上帮人把车推上了坡，来晚了些。", "怒骊跑累了，今晚在这儿歇脚。", "这里的灯火，比上一站还亮。"];
+export const stationLines = () => ["路上帮人把车推上了坡，来晚了些。", "怒骊跑累了，今晚在这儿歇脚。", "这里的灯火，比上一站还亮。"];
 
 /** His lines, word for word as Breeze approved them */
 export const MINGHE_LINES = {
@@ -127,7 +126,8 @@ export const dateOfDay = (day: number) => addDays(MINGHE_FIRST_DAY, day);
 
 /** What he says about the day's station on his card */
 export function stationLine(day: number) {
-  return stationOf(day).line ?? STATION_LINES[day % STATION_LINES.length];
+  const shared = stationLines();
+  return stationOf(day).line ?? shared[day % shared.length];
 }
 
 /** The stations of the trail of stars, oldest first and his own last: only those already passed in his first days */
@@ -239,20 +239,18 @@ export function mingheText(item: Pick<MingheItem, "line" | "bold" | "stop" | "ti
   const stop = item.stop ?? 0;
   switch (item.line) {
     case "friend":
-      return `${MINGHE_NAME}和你成为了触须之交：「${MINGHE_LINES.friend}」`;
+      return `${MINGHE.name}和你成为了触须之交：「${MINGHE_LINES.friend}」`;
     case "ride":
-      return `你的克隆体跟上了${MINGHE_NAME}：「${rideLine(stop)}」`;
+      return `你的克隆体跟上了${MINGHE.name}：「${rideLine(stop)}」`;
     case "dismount":
-      return `你的克隆体在${stationName(stop)}下了马，${MINGHE_NAME}说：「${dismountLine(stop)}」`;
+      return `你的克隆体在${stationName(stop)}下了马，${MINGHE.name}说：「${dismountLine(stop)}」`;
     case "trip":
-      return `${MINGHE_NAME}送你的克隆体回来了：「${tripLine(item.times ?? 0)}」`;
+      return `${MINGHE.name}送你的克隆体回来了：「${tripLine(item.times ?? 0)}」`;
     default:
-      return `${MINGHE_NAME}回了你：「${item.bold ? MINGHE_LINES.bold : MINGHE_LINES.sneaky}」`;
+      return `${MINGHE.name}回了你：「${item.bold ? MINGHE_LINES.bold : MINGHE_LINES.sneaky}」`;
   }
 }
 
-/** Their card for anyone who opens it: no games, UID, favourites or badges */
-export const MINGHE_PROFILE = guideProfile(MINGHE);
 
 /** His place on the map: today's station */
 export function mingheRoach(day: number, friend: boolean): PublicRoach {

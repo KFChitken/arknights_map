@@ -1,5 +1,5 @@
 import { daysFromTo, deviceDay } from "./deviceDay";
-import { GUIDES, guideProfile } from "./guides";
+import { GUIDES } from "./guides";
 import type { LngLat } from "./types";
 import type { PerlicaItem, PublicRoach } from "./world/types";
 
@@ -16,7 +16,6 @@ import type { PerlicaItem, PublicRoach } from "./world/types";
 
 export const PERLICA = GUIDES.perlica;
 export const PERLICA_ID = PERLICA.id;
-export const PERLICA_NAME = PERLICA.name;
 
 export const isPerlicaItem = (id: string) => id.startsWith(PERLICA.prefix);
 
@@ -36,7 +35,7 @@ export const PERLICA_LINES = {
 };
 
 /** Time away, from the seconds each band starts at, and what she says in it (three lines each, one picked at random) */
-const AWAY_BANDS: [number, [string, string, string]][] = [
+const awayBands = (): [number, [string, string, string]][] => [
   [600, ["……我没有在数，是计时器自己在走。", "我也刚好忙完，不算在等你。", "下次出门，管理员可以先跟我说一声。"]],
   [
     3600,
@@ -48,12 +47,12 @@ const AWAY_BANDS: [number, [string, string, string]][] = [
 ];
 
 /** Lines to pick from in each band */
-export const AWAY_LINES = AWAY_BANDS[0][1].length;
+export const AWAY_LINES = 3;
 
 /** Which band a time away falls in, 0 (10 minutes to an hour) to 4 (two weeks or more) */
 export function awayBand(seconds: number) {
   let band = 0;
-  AWAY_BANDS.forEach(([from], i) => {
+  awayBands().forEach(([from], i) => {
     if (seconds >= from) band = i;
   });
   return band;
@@ -73,7 +72,7 @@ export function formatAway(seconds: number) {
 
 /** What she says about a time away: how long, then the line picked for it */
 export function awaySentence(seconds: number, line: number) {
-  const lines = AWAY_BANDS[awayBand(seconds)][1];
+  const lines = awayBands()[awayBand(seconds)][1];
   return `${formatAway(seconds)}。${lines[Math.min(Math.max(0, Math.floor(line)), lines.length - 1)]}`;
 }
 
@@ -136,7 +135,7 @@ export const missKg = (seconds: number) => Math.max(0.1, Math.round(seconds / 18
 export const formatKg = (kg: number) => (kg >= 1000 ? `${(kg / 1000).toFixed(2)} 吨` : `${kg.toFixed(1)} kg`);
 
 /** Her lines about it, three to a band of time away as with her reports; {w} is the weight */
-const WEIGHT_LINES: [string, string, string][] = [
+const weightLines = (): [string, string, string][] => [
   ["这次只攒了 {w} 的思念，轻轻的，一点也不重。", "{w}。这点思念不算重。……真的不算。", "才 {w}。这么轻的思念，我一只手就拿得动。"],
   ["这次攒了 {w} 重重的思念，你终于回来了。", "{w} 的思念，开始有点重了。我先替你收着。", "攒到 {w} 了。……不重，我还拿得动。"],
   [
@@ -157,7 +156,7 @@ export function weightSentence(seconds: number) {
   const s = Math.max(0, Math.floor(seconds));
   const w = formatKg(missKg(s));
   // 「1.04 吨的思念」: no space after 吨, as after kg
-  return WEIGHT_LINES[awayBand(s)][s % 3].replace("{w}", w).replace("吨 ", "吨");
+  return weightLines()[awayBand(s)][s % 3].replace("{w}", w).replace("吨 ", "吨");
 }
 
 /** Her report of a time away, then its weight */
@@ -175,14 +174,17 @@ export function friendDay(since: number, offsetMin: number, now = Date.now()) {
 /** Days she marks: the 7th, 30th and 100th, and every whole year */
 export const isAnniversary = (day: number) => day === 7 || day === 30 || day === 100 || (day > 0 && day % 365 === 0);
 
-/** 一年, 两年 … 十年; bigger numbers are written as digits */
-export const YEARS = ["一", "两", "三", "四", "五", "六", "七", "八", "九", "十"];
+/** 一年, 两年 … 十年: 一 to 十; bigger numbers are written as digits, a space either side */
+export function yearsWord(years: number) {
+  const words = ["一", "两", "三", "四", "五", "六", "七", "八", "九", "十"];
+  return years <= words.length ? words[years - 1] : ` ${years} `;
+}
 
 /** What she says on one of those days */
 export function anniversaryLine(day: number) {
   if (day < 365) return `今天是我们再次相遇的第 ${day} 天。……我没有特意记，是日历提醒的。`;
   const years = Math.floor(day / 365);
-  const n = years <= 10 ? YEARS[years - 1] : ` ${years} `;
+  const n = yearsWord(years);
   return `今天是我们再次相遇的第 ${day} 天。……上次我等了十年，这次我们一起过了${n}年。`;
 }
 
@@ -196,16 +198,16 @@ export function weekLine(n: number, m: number, line: number) {
 
 /** What one of hers in the inbox says, in her own words. */
 export function perlicaText(item: Pick<PerlicaItem, "what" | "bold" | "seconds" | "line" | "times" | "others">) {
-  if (item.what === "away") return `${PERLICA_NAME}：「${awayWithWeight(item.seconds ?? AWAY_REPORT_S, item.line ?? 0)}」`;
-  if (item.what === "week") return `${PERLICA_NAME}：「${weekLine(item.others ?? 0, item.times ?? 0, item.line ?? 0)}」`;
+  if (item.what === "away") return `${PERLICA.name}：「${awayWithWeight(item.seconds ?? AWAY_REPORT_S, item.line ?? 0)}」`;
+  if (item.what === "week") return `${PERLICA.name}：「${weekLine(item.others ?? 0, item.times ?? 0, item.line ?? 0)}」`;
   // what she said as you touched 阿米娅向导: not an answer to a touch of yours
-  if (item.what === "aside" && item.line === 1) return `${PERLICA_NAME}：「${PERLICA_MORE.aside}」`;
+  if (item.what === "aside" && item.line === 1) return `${PERLICA.name}：「${PERLICA_MORE.aside}」`;
   const line = touchBackLine(item.what, item.bold, item.times, item.others, item.line);
-  return item.bold ? `${PERLICA_NAME}大胆地碰回来了：「${line}」` : `${PERLICA_NAME}偷偷碰回来了：「${line}」`;
+  return item.bold ? `${PERLICA.name}大胆地碰回来了：「${line}」` : `${PERLICA.name}偷偷碰回来了：「${line}」`;
 }
 
 /** What ending it with her means; also the question before it */
-export const PERLICA_UNFRIEND = "解除后佩丽卡还在你附近，离开计时照常；想让她不再计时，去「资料」里关掉。";
+export const perlicaUnfriend = () => "解除后佩丽卡还在你附近，离开计时照常；想让她不再计时，去「资料」里关掉。";
 
 /** Nearest and furthest she stands from the main roach, in metres */
 export const NEAR_M = 100;
@@ -225,8 +227,6 @@ export function spotNear(main: LngLat, u: number, v: number): LngLat {
   };
 }
 
-/** Her card for anyone who opens it: no games, UID, favourites or badges */
-export const PERLICA_PROFILE = guideProfile(PERLICA);
 
 export function perlicaRoach(at: LngLat, friend: boolean): PublicRoach {
   return { id: PERLICA_ID, clone: false, avatar: PERLICA.avatar, color: PERLICA.color, friend, guide: true, ...at };

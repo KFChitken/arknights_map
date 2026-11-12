@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { distanceKm } from "../geo";
 import { RIDE_STOPS } from "../minghe";
-import { isOffLimits, OFF_LIMITS_MESSAGE } from "../offLimits";
+import { isOffLimits, offLimitsMessage } from "../offLimits";
 import { mulberry32 } from "../prng";
 import { EMPTY_PROFILE } from "../profile";
 import type { LngLat } from "../types";
@@ -63,14 +63,14 @@ beforeEach(async () => {
 describe("放下和挪窝", () => {
   it("refuses a roach put down or moved where none may stand, naming no place, and counts nothing", async () => {
     const newcomer = await player("n@example.com", "N");
-    await expect(world.placeRoach(newcomer, { kind: "main" }, MAUSOLEUM)).rejects.toThrow(OFF_LIMITS_MESSAGE);
+    await expect(world.placeRoach(newcomer, { kind: "main" }, MAUSOLEUM)).rejects.toThrow(offLimitsMessage());
     expect((await world.me(newcomer))!.roaches).toEqual([]);
 
     const a = await player("a@example.com", "A", PEOPLES_SQUARE);
     const before = await movesOf(a);
-    await expect(world.placeRoach(a, { kind: "clone" }, ZHONGNANHAI)).rejects.toThrow(OFF_LIMITS_MESSAGE);
+    await expect(world.placeRoach(a, { kind: "clone" }, ZHONGNANHAI)).rejects.toThrow(offLimitsMessage());
     const main = await mainOf(a);
-    await expect(world.placeRoach(a, { kind: "move", roachId: main.id }, NANJING_MEMORIAL)).rejects.toThrow(OFF_LIMITS_MESSAGE);
+    await expect(world.placeRoach(a, { kind: "move", roachId: main.id }, NANJING_MEMORIAL)).rejects.toThrow(offLimitsMessage());
     expect(await movesOf(a)).toBe(before);
     expect((await world.me(a))!.movesLeft).toBeGreaterThan(0);
 

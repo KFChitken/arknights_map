@@ -1964,7 +1964,8 @@ describe("server world", () => {
 
   it("sends a limited-time line while its event is on, earns its badge once, and keeps it readable after", async () => {
     const lines = EVENTS.find((e) => e.id === "half2026")!.lines;
-    const saved = lines.map((l) => ({ ...l }));
+    // the dates, to put back after
+    const saved = lines.map(({ start, end }) => ({ start, end }));
     const hoursFromNow = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
     const moveTo = (start: number, end: number) => lines.forEach((l) => Object.assign(l, { start: hoursFromNow(start), end: hoursFromNow(end) }));
     // the lines moved around now, so the test does not depend on when it runs

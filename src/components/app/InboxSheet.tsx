@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
-import { AMIYA_ID, AMIYA_NAME, amiyaLine } from "@/lib/amiya";
+import { AMIYA, AMIYA_ID, amiyaLine } from "@/lib/amiya";
 import { beijingDayWords } from "@/lib/beijing";
 import type { Reply } from "@/lib/declarations";
 import {
@@ -19,7 +19,7 @@ import {
 } from "@/lib/friendly";
 import { GAME_NAMES, serverName, type Game } from "@/lib/games";
 import { guideById, isGuideItem } from "@/lib/guides";
-import { PERLICA_ID, PERLICA_UNFRIEND, perlicaText } from "@/lib/perlica";
+import { PERLICA_ID, perlicaText, perlicaUnfriend } from "@/lib/perlica";
 import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
 import { SI_ID, siText } from "@/lib/si";
 import { talulahText } from "@/lib/talulah";
@@ -233,10 +233,10 @@ function AppealRow({ appeal, onAppeal }: { appeal: StaffAppeal; onAppeal: (actio
 
 /** What one of 阿米娅向导's touches says, in her own words. */
 function amiyaText(item: Extract<InboxItem, { kind: "amiya" }>, games: Game[]) {
-  if (item.greet) return fmt(T.inbox.amiya.greet, { name: AMIYA_NAME, line: amiyaLine("greet", games) });
+  if (item.greet) return fmt(T.inbox.amiya.greet, { name: AMIYA.name, line: amiyaLine("greet", games) });
   return item.bold
-    ? fmt(T.inbox.amiya.bold, { name: AMIYA_NAME, line: amiyaLine("bold", games) })
-    : fmt(T.inbox.amiya.sneaky, { name: AMIYA_NAME, line: amiyaLine("sneaky", games) });
+    ? fmt(T.inbox.amiya.bold, { name: AMIYA.name, line: amiyaLine("bold", games) })
+    : fmt(T.inbox.amiya.sneaky, { name: AMIYA.name, line: amiyaLine("sneaky", games) });
 }
 
 export default function InboxSheet({
@@ -889,7 +889,7 @@ export function FriendView({
         {friend.id === AMIYA_ID
           ? amiyaUnfriend()
           : friend.id === PERLICA_ID
-            ? PERLICA_UNFRIEND
+            ? perlicaUnfriend()
             : friend.id === MINGHE_ID
               ? T.inbox.unfriend.minghe
               : friend.id === SI_ID

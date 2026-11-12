@@ -4,7 +4,7 @@ import { ZONE_RADIUS_WRONG } from "../adminConsole";
 import { AMIYA_AT } from "../amiya";
 import { distanceKm } from "../geo";
 import { ROUTE } from "../minghe";
-import { isOffLimits, OFF_LIMITS, OFF_LIMITS_MESSAGE, setExtraOffLimits } from "../offLimits";
+import { isOffLimits, OFF_LIMITS, offLimitsMessage, setExtraOffLimits } from "../offLimits";
 import { EMPTY_PROFILE } from "../profile";
 import { FIRE_AT } from "../talulah";
 import type { LngLat } from "../types";
@@ -122,8 +122,8 @@ describe("圈禁放区", () => {
     expect((await db.select().from(adminLog)).map((l) => [l.what, l.detail])).toEqual([["act.zone", "人民公园（有人举报） · 半径 500 米 · 挪走 4 只"]]);
 
     // nobody may put a roach in, nor move one in, and it counts nothing
-    await expect(world.placeRoach(a, { kind: "clone" }, PARK)).rejects.toThrow(OFF_LIMITS_MESSAGE);
-    await expect(world.placeRoach(a, { kind: "move", roachId: before.a.id }, east(PARK, 100))).rejects.toThrow(OFF_LIMITS_MESSAGE);
+    await expect(world.placeRoach(a, { kind: "clone" }, PARK)).rejects.toThrow(offLimitsMessage());
+    await expect(world.placeRoach(a, { kind: "move", roachId: before.a.id }, east(PARK, 100))).rejects.toThrow(offLimitsMessage());
     expect((await world.me(a))!.movesLeft).toBe(before.movesLeft);
     // right outside is fine
     await world.placeRoach(a, { kind: "clone" }, east(PARK, 520));
@@ -255,7 +255,7 @@ describe("圈禁放区", () => {
     expect(isOffLimits(PARK)).toBe(false);
     await pg.notify("live_nudge", JSON.stringify({ p: "another-process", reload: "zones" }));
     await vi.waitFor(() => expect(isOffLimits(PARK)).toBe(true));
-    await expect(world.placeRoach(a, { kind: "clone" }, PARK)).rejects.toThrow(OFF_LIMITS_MESSAGE);
+    await expect(world.placeRoach(a, { kind: "clone" }, PARK)).rejects.toThrow(offLimitsMessage());
 
     // and lifted there
     await db.update(offLimitsAreas).set({ liftedAt: new Date() }).where(eq(offLimitsAreas.id, row.id));

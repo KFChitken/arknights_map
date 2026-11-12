@@ -18,7 +18,7 @@ import * as help from "@/lib/server/help";
 import * as perlica from "@/lib/server/perlica";
 import * as safety from "@/lib/server/safety";
 import * as si from "@/lib/server/si";
-import { appeal, dayWords, SUSPENDED_MEANS } from "@/lib/server/staffNotes";
+import { appeal, dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
 import type { LngLat } from "@/lib/types";
@@ -46,7 +46,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   const talking = () => {
     const id = agreed();
     if (user!.suspendedUntil && user!.suspendedUntil.getTime() > Date.now()) {
-      throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user!.suspendedUntil.getTime()), means: SUSPENDED_MEANS }));
+      throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user!.suspendedUntil.getTime()), means: suspendedMeans() }));
     }
     return id;
   };

@@ -245,7 +245,9 @@ export const POKE_FINGER = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
   <path d="M22 12 C22 7 29 7 30 12"/><path d="M24 31 L24 25 M30 31 L30 25" fill="none"/>
 </g></svg>`;
 
+/** What the burst says, drawn in it: part of the picture */
+const POKE_WORD = "戳!";
 export const POKE_BANG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 52">
   <path d="M35 2 L42 13 L56 6 L53 19 L68 22 L56 30 L64 43 L49 40 L44 51 L35 41 L25 50 L22 38 L6 42 L14 29 L2 21 L17 18 L14 5 L28 12 Z" fill="#ffd23f" stroke="${LINE}" stroke-width="2.2" stroke-linejoin="round"/>
-  <text x="35" y="33" text-anchor="middle" font-size="19" font-weight="700" font-family="ZCOOL KuaiLe, PingFang SC, sans-serif" fill="${LINE}">戳!</text>
+  <text x="35" y="33" text-anchor="middle" font-size="19" font-weight="700" font-family="ZCOOL KuaiLe, PingFang SC, sans-serif" fill="${LINE}">${POKE_WORD}</text>
 </svg>`;

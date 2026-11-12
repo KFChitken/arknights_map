@@ -6,7 +6,7 @@ import type { PageCount } from "@/lib/appCounts";
 import { takeDeskCode } from "@/lib/authClient";
 import { beijingDate } from "@/lib/beijing";
 import { deviceOf, guideOf, type Guide } from "@/lib/homeScreen";
-import { DESK_CODE_TTL_MIN, SITE_NAME } from "@/lib/rules";
+import { DESK_CODE_TTL_MIN, siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 /**
@@ -324,9 +324,9 @@ export function HomeScreenGuide({ signedIn, onSignIn }: { signedIn: boolean; onS
           <Steps>
             <li>{T.desk.pc.icon}</li>
             <li>
-              {fmtParts(T.desk.pc.menu, { site: SITE_NAME })}
+              {fmtParts(T.desk.pc.menu, { site: siteName() })}
             </li>
-            <li>{fmtParts(T.desk.pc.installed, { site: SITE_NAME })}</li>
+            <li>{fmtParts(T.desk.pc.installed, { site: siteName() })}</li>
           </Steps>
           <p className="hint">
             {T.desk.pc.after}

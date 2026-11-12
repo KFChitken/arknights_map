@@ -30,7 +30,7 @@ export const MAP_STYLE_NOTES: Record<MapStyle, string> = {
   hidden: "地图上只有你自己的小强，别人一只都不画",
 };
 /** What the other styles say to a visitor who has not signed in, who sees 全员隐匿 only */
-export const SIGN_IN_FOR_STYLES = "登录后能选";
+export const signInForStyles = () => "登录后能选";
 
 const KEY = "zhoup.mapStyle";
 /** The hint that the style can be changed has been shown on this device */

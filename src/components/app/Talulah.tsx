@@ -1,7 +1,7 @@
 "use client";
 
 import { T } from "@/i18n";
-import { TALULAH, TALULAH_NAME } from "@/lib/talulah";
+import { TALULAH } from "@/lib/talulah";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
@@ -14,7 +14,7 @@ export const TalulahPicture = ({ size, friend = false }: { size: number; friend?
 /** Once, for players with a roach who never sat by her fire. */
 export function TalulahIntroSheet({ onGo, onLater }: { onGo: () => void; onLater: () => void }) {
   return (
-    <Sheet title={TALULAH_NAME} onClose={onLater}>
+    <Sheet title={TALULAH.name} onClose={onLater}>
       <div className="amiya-greet">
         <TalulahPicture size={96} />
       </div>

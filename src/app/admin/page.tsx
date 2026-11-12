@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import AdminConsole from "@/components/admin/AdminConsole";
-import { SITE_NAME } from "@/lib/rules";
 import { adminContext, gateState } from "@/lib/server/admins";
 
-export const metadata: Metadata = { title: `管理台 · ${SITE_NAME}`, robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "管理台 · 舟P地图", robots: { index: false, follow: false } };
 
 // who is signed in decides everything here
 export const dynamic = "force-dynamic";

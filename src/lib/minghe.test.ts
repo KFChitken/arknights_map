@@ -17,7 +17,7 @@ import {
   queueSpots,
   rideLine,
   ROUTE,
-  STATION_LINES,
+  stationLines,
   stationLine,
   stationOf,
   stopOf,
@@ -72,7 +72,8 @@ describe("明河都尉's route", () => {
   it("says his own line at a station that has one, and the three shared ones in turn elsewhere", () => {
     expect(stationLine(0)).toBe("这里也叫武陵。山像是谁一笔一笔画出来的。");
     expect(stationLine(30)).toBe(stationLine(0));
-    expect([2, 3, 4].map(stationLine)).toEqual([STATION_LINES[2], STATION_LINES[0], STATION_LINES[1]]);
+    const shared = stationLines();
+    expect([2, 3, 4].map(stationLine)).toEqual([shared[2], shared[0], shared[1]]);
   });
 });
 

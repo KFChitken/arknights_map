@@ -28,15 +28,14 @@ import {
   PERLICA_ID,
   PERLICA_LINES,
   PERLICA_MORE,
-  PERLICA_NAME,
-  PERLICA_UNFRIEND,
   perlicaRoach,
+  perlicaUnfriend,
   sleptSentence,
   touchBackLine,
   weekLine,
   weightSentence,
 } from "@/lib/perlica";
-import { answerLine, firstSentence, INK_FROM, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_NAME, SI_ZOOM, siRoach } from "@/lib/si";
+import { answerLine, firstSentence, INK_FROM, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_ZOOM, siRoach } from "@/lib/si";
 import { brushOf, INN_CENTER, inkNow, innNumbers, toXY } from "@/lib/siInn";
 import { INK_LOOKS, variantOf } from "./map/inkArt";
 import type { InkTapped } from "./map/inkTap";
@@ -50,7 +49,6 @@ import {
   isNearFire,
   TALULAH_ID,
   TALULAH_LINES,
-  TALULAH_NAME,
   talulahRoach,
   talulahTouchLine,
 } from "@/lib/talulah";
@@ -58,7 +56,6 @@ import {
   dismountLine,
   MINGHE_ID,
   MINGHE_LINES,
-  MINGHE_NAME,
   MINGHE_ZOOM,
   mingheDay,
   mingheRoach,
@@ -72,13 +69,13 @@ import {
   stopOf,
   trailOf,
 } from "@/lib/minghe";
-import { isOffLimits, OFF_LIMITS_MESSAGE } from "@/lib/offLimits";
+import { isOffLimits, offLimitsMessage } from "@/lib/offLimits";
 import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
-import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
+import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, siteName, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MainlandMap, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
@@ -94,7 +91,7 @@ import {
   mapStyleSeen,
   markMapStyleSeen,
   saveMapStyle,
-  SIGN_IN_FOR_STYLES,
+  signInForStyles,
   liteHintSeen,
   markLiteHintSeen,
   storedMapStyle,
@@ -436,9 +433,8 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * notices: 公告 everyone sees (src/lib/server/notices.ts), as they were when the page was made.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
-const GUEST_STYLES: Partial<Record<MapStyle, string>> = Object.fromEntries(
-  MAP_STYLES.filter((s) => s !== "hidden").map((s) => [s, SIGN_IN_FOR_STYLES]),
-);
+const guestStyles = (): Partial<Record<MapStyle, string>> =>
+  Object.fromEntries(MAP_STYLES.filter((s) => s !== "hidden").map((s) => [s, signInForStyles()]));
 
 export default function MapApp({
   cn,
@@ -1520,7 +1516,7 @@ export default function MapApp({
   const placeAt = async (p: LngLat, fly: boolean) => {
     if (!placing) return;
     // said at once, before any card; the server refuses it too
-    if (isOffLimits(p)) return setToast(OFF_LIMITS_MESSAGE);
+    if (isOffLimits(p)) return setToast(offLimitsMessage());
     // the first new roach waits for the player to agree that its spot is public
     if (placing.target.kind !== "move" && !me?.agreedPublicPlace) {
       return setPanel({ kind: "placeConfirm", target: placing.target, spot: p, fly, consent: true });
@@ -1578,7 +1574,7 @@ export default function MapApp({
     if (visitorShown) {
       if (isOffLimits(p)) {
         setPreview(null);
-        return setToast(OFF_LIMITS_MESSAGE);
+        return setToast(offLimitsMessage());
       }
       setPreview(p);
     }
@@ -1786,7 +1782,7 @@ export default function MapApp({
   const befriendedToast = (name: string) => {
     const guide = Object.values(GUIDES).find((g) => g.name === name);
     setToast(
-      name === TALULAH_NAME
+      name === GUIDES.talulah.name
         ? T.map.touch.talulahFriends
         : guide
           ? fmt(T.map.touch.guideFriends, { name, them: guide.pronoun })
@@ -2398,7 +2394,7 @@ export default function MapApp({
       ? guide.id === AMIYA_ID
         ? amiyaUnfriend()
         : guide.id === PERLICA_ID
-          ? PERLICA_UNFRIEND
+          ? perlicaUnfriend()
           : guide.id === MINGHE_ID
             ? MINGHE_LINES.unfriendAsk
             : guide.id === SI_ID
@@ -2409,13 +2405,13 @@ export default function MapApp({
     const done = await act(
       (w) => w.unfriend(friend.id).then(() => true),
       guide?.id === PERLICA_ID
-        ? fmt(T.map.guides.saysQuoted, { name: PERLICA_NAME, line: PERLICA_LINES.unfriend })
+        ? fmt(T.map.guides.saysQuoted, { name: GUIDES.perlica.name, line: PERLICA_LINES.unfriend })
         : guide?.id === TALULAH_ID
-          ? fmt(T.map.guides.says, { name: TALULAH_NAME, line: TALULAH_LINES.unfriend })
+          ? fmt(T.map.guides.says, { name: GUIDES.talulah.name, line: TALULAH_LINES.unfriend })
           : guide?.id === MINGHE_ID
-            ? fmt(T.map.guides.says, { name: MINGHE_NAME, line: MINGHE_LINES.unfriend })
+            ? fmt(T.map.guides.says, { name: GUIDES.minghe.name, line: MINGHE_LINES.unfriend })
             : guide?.id === SI_ID
-              ? fmt(T.map.guides.says, { name: SI_NAME, line: SI_LINES.unfriend })
+              ? fmt(T.map.guides.says, { name: GUIDES.si.name, line: SI_LINES.unfriend })
               : T.map.safety.unfriended,
     );
     if (!done) return;
@@ -2757,7 +2753,7 @@ export default function MapApp({
     await loadMe();
     if (on) setToast(T.map.guides.perlicaOn);
     else {
-      setToast(fmt(T.map.guides.saysQuoted, { name: PERLICA_NAME, line: PERLICA_LINES.declined }));
+      setToast(fmt(T.map.guides.saysQuoted, { name: GUIDES.perlica.name, line: PERLICA_LINES.declined }));
       say(PERLICA_ID, PERLICA_LINES.declined);
     }
   };
@@ -3506,7 +3502,7 @@ export default function MapApp({
     say(SI_ID, SI_LINES.find);
     const [x, y] = toXY(at);
     const [sx, sy] = toXY(SI_AT);
-    if (Math.abs(x - sx) > 25 || Math.abs(y - sy) > 50) setToast(fmt(T.map.guides.says, { name: SI_NAME, line: SI_LINES.find }));
+    if (Math.abs(x - sx) > 25 || Math.abs(y - sy) > 50) setToast(fmt(T.map.guides.says, { name: GUIDES.si.name, line: SI_LINES.find }));
   };
 
   /** Your ink roach where it is by her clock, null while she holds it (off the map) */
@@ -4224,7 +4220,7 @@ export default function MapApp({
       <header className={`topbar${topRaised ? " raised" : ""}`}>
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
-          <span>{SITE_NAME}</span>
+          <span>{siteName()}</span>
           <span className="tag">{T.map.beta}</span>
           <NoticeButton dot={noticeDotOn} onClick={openBoard} />
         </div>
@@ -4232,7 +4228,7 @@ export default function MapApp({
           <MapStylePicker
             style={shownStyle}
             onPick={switchMapStyle}
-            unavailable={guest ? GUEST_STYLES : !HEARTS_READY ? { hearts: T.map.style.heartsSoon } : heartsOff ? { hearts: T.map.style.noHearts } : {}}
+            unavailable={guest ? guestStyles() : !HEARTS_READY ? { hearts: T.map.style.heartsSoon } : heartsOff ? { hearts: T.map.style.noHearts } : {}}
             hint={styleHintNow}
             onHintDone={styleHintDone}
             onRaise={setTopRaised}

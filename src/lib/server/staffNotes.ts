@@ -56,7 +56,7 @@ const shortDay = (date: string) => {
 const ruleWords = (rule: string | null) => `因为社区守则里「${isRuleCode(rule) ? RULES[rule] : RULES.harass}」这一条，`;
 
 /** What a suspended player may and may not do, as each message about it says */
-export const SUSPENDED_MEANS = "这期间你还能看地图和消息，但不能碰人、发宣言、回应、戳一戳和做客。";
+export const suspendedMeans = () => "这期间你还能看地图和消息，但不能碰人、发宣言、回应、戳一戳和做客。";
 
 /** What the admin did about the player, told under the rule it was for; slot: removeRoach's roach, 0 the main one */
 export function actionWords(action: string, rule: string | null, until: Date | null, slot: number | null = null) {
@@ -67,7 +67,7 @@ export function actionWords(action: string, rule: string | null, until: Date | n
     case "warn":
       return `${why}站长提醒你一次，记一张黄牌。${YELLOW_DAYS} 天内 ${YELLOWS_TO_WORRY} 张黄牌可能会被封号。`;
     case "suspend":
-      return `${why}站长暂停了你的互动，到 ${dayWords((until ?? new Date(Date.now() + SUSPEND_DAYS * 86_400_000)).getTime())}。${SUSPENDED_MEANS}`;
+      return `${why}站长暂停了你的互动，到 ${dayWords((until ?? new Date(Date.now() + SUSPEND_DAYS * 86_400_000)).getTime())}。${suspendedMeans()}`;
     case "clearName":
       return `${why}站长清掉了你的名字。这个名字以后不能再用了。`;
     case "clearUid":

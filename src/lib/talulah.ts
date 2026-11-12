@@ -1,6 +1,6 @@
 import { homeGame, type Game } from "./games";
 import { distanceKm } from "./geo";
-import { GUIDES, guideProfile } from "./guides";
+import { GUIDES } from "./guides";
 import { isOffLimits } from "./offLimits";
 import type { LngLat } from "./types";
 import type { PublicRoach, TalulahItem } from "./world/types";
@@ -19,7 +19,6 @@ import type { PublicRoach, TalulahItem } from "./world/types";
 
 export const TALULAH = GUIDES.talulah;
 export const TALULAH_ID = TALULAH.id;
-export const TALULAH_NAME = TALULAH.name;
 
 export const isTalulahItem = (id: string) => id.startsWith(TALULAH.prefix);
 
@@ -62,13 +61,13 @@ export function talulahTouchLine(what: "touch" | "friend", bold: boolean, games:
 export function talulahText(item: Pick<TalulahItem, "line" | "bold">, games: Game[]) {
   switch (item.line) {
     case "handshake":
-      return `${TALULAH_NAME}和你握了握手：「${handshakeLine(games)}」`;
+      return `${TALULAH.name}和你握了握手：「${handshakeLine(games)}」`;
     case "welcome":
-      return `你的克隆体坐到了火边，${TALULAH_NAME}说：「${TALULAH_LINES.welcome}」`;
+      return `你的克隆体坐到了火边，${TALULAH.name}说：「${TALULAH_LINES.welcome}」`;
     case "birthday":
-      return `${TALULAH_NAME}看到了你的生日宣言：「${TALULAH_LINES.birthday}」`;
+      return `${TALULAH.name}看到了你的生日宣言：「${TALULAH_LINES.birthday}」`;
     default:
-      return `${TALULAH_NAME}回了你：「${item.bold ? TALULAH_LINES.bold : TALULAH_LINES.sneaky}」`;
+      return `${TALULAH.name}回了你：「${item.bold ? TALULAH_LINES.bold : TALULAH_LINES.sneaky}」`;
   }
 }
 
@@ -272,8 +271,6 @@ export function unstack(roaches: { id: string; lng: number; lat: number; stays?:
   return out;
 }
 
-/** Her card for anyone who opens it: no games, UID, favourites or badges */
-export const TALULAH_PROFILE = guideProfile(TALULAH);
 
 /** Her place on the map: by her fire (the map draws the fire beside her) */
 export function talulahRoach(friend: boolean): PublicRoach {

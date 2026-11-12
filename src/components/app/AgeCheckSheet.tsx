@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { fmtParts, T } from "@/i18n";
-import { MIN_SIGNUP_AGE, SITE_NAME } from "@/lib/rules";
+import { MIN_SIGNUP_AGE, siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 /**
@@ -31,7 +31,7 @@ export default function AgeCheckSheet({
   return (
     <Sheet title={T.ageCheck.title} onClose={onClose}>
       <p style={{ marginTop: 0 }}>
-        {fmtParts(T.ageCheck.ask, { age: MIN_SIGNUP_AGE, site: SITE_NAME })}
+        {fmtParts(T.ageCheck.ask, { age: MIN_SIGNUP_AGE, site: siteName() })}
       </p>
       <div className="consent-actions">
         <button className="primary wide" disabled={busy} onClick={confirm}>

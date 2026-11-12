@@ -12,7 +12,7 @@ import {
   RELIABLE_AFTER_DAYS,
   REPORT_NOTE_MAX,
   REPORTS_PER_DAY,
-  SITE_NAME,
+  siteName,
   SUSPEND_DAYS,
   UNRELIABLE_DISMISSED_MIN,
   UNRELIABLE_DISMISSED_RATIO,
@@ -464,7 +464,7 @@ export async function sendReportDigest(now = new Date()) {
   const [open] = await db.select({ n: count() }).from(reports).where(isNull(reports.resolvedAt));
   const pressing = due.fresh.filter((f) => isUrgent(f.reason));
   const rest = due.fresh.filter((f) => !isUrgent(f.reason));
-  const subject = `${SITE_NAME}：有 ${pressing.length} 条举报要尽快看`;
+  const subject = `${siteName()}：有 ${pressing.length} 条举报要尽快看`;
   const lines = [
     byReason(pressing, URGENT_REASONS),
     ...(rest.length ? [`另外还有 ${rest.length} 条新举报：${byReason(rest)}`] : []),

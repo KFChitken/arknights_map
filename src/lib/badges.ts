@@ -1,5 +1,5 @@
 import { activeEvents } from "./events";
-import { SITE_NAME } from "./rules";
+import { siteName } from "./rules";
 
 /**
  * 称号: badges a player earns once and keeps, except 石棺里的苏醒, which is
@@ -283,7 +283,7 @@ export const BADGES: Badge[] = [
     series: "memorial",
     condition: `前 ${FIRST_BATCH} 个注册的舟P`,
     lockedHint: `前 ${FIRST_BATCH} 名专属`,
-    quote: `你是第 {serial} 只来到${SITE_NAME}的蟑螂！`,
+    quote: `你是第 {serial} 只来到${siteName()}的蟑螂！`,
     pill: { background: "#1b1d22", color: "#ffd23f", border: "1.5px solid #ffd23f" },
   },
   {
@@ -293,7 +293,7 @@ export const BADGES: Badge[] = [
     series: "memorial",
     condition: "站长颁发，给内测时帮忙找 bug 的人",
     lockedHint: "站长颁发",
-    quote: `感谢你帮${SITE_NAME}抓虫！`,
+    quote: `感谢你帮${siteName()}抓虫！`,
     pill: { background: "#3a74e8", color: "#ffffff", border: "1.5px solid #3a74e8" },
   },
   {

@@ -8,7 +8,7 @@ import {
   FOODS,
   isStayTemplate,
   SPOUSES,
-  STAY_NEEDED,
+  stayNeeded,
   WELCOME_NAMES,
   type Declaration,
   type Food,
@@ -320,7 +320,7 @@ export default function DeclareSheet({
         <div className="stay-tag">{T.declare.inn.tag}</div>
         {row("sihouse", <>{T.declare.line.innBig}</>)}
         {row("simine", <>{T.declare.line.innSi}</>)}
-        {!stayed && <p className="hint stay-note">{STAY_NEEDED}</p>}
+        {!stayed && <p className="hint stay-note">{stayNeeded()}</p>}
       </div>
 
       {(!favourites.length || !named) && (

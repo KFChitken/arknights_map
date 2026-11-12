@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import { fmt, T } from "@/i18n";
-import { SITE_NAME } from "../rules";
-import { MAIL_FROM, SMTP_URL } from "./env";
+import { siteName } from "../rules";
+import { mailFrom, SMTP_URL } from "./env";
 
 // Mailpit in development; any SMTP provider (e.g. Resend's SMTP relay) in production. A mail server
 // that cannot be reached is given up on after 15 seconds rather than nodemailer's two minutes. A few
@@ -67,10 +67,10 @@ const send = (mail: Parameters<typeof transport.sendMail>[0]) => sendWith(transp
 
 /** The sign-in code's email, for a code that works minutes more */
 export function loginCodeMail(code: string, minutes: number) {
-  const codeIs = fmt(T.server.mail.siteCodeIs, { site: SITE_NAME });
+  const codeIs = fmt(T.server.mail.siteCodeIs, { site: siteName() });
   const valid = fmt(T.server.mail.valid, { minutes });
   return {
-    subject: fmt(T.server.mail.subject, { code, site: SITE_NAME }),
+    subject: fmt(T.server.mail.subject, { code, site: siteName() }),
     text: [fmt(T.server.mail.codeIs, { code }), "", valid].join("\n"),
     html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">
 <p>${codeIs}</p>
@@ -83,10 +83,10 @@ export function loginCodeMail(code: string, minutes: number) {
 /** A code that works until expiresAt (an earlier code sent again has less left) */
 export async function sendLoginCode(to: string, code: string, expiresAt: Date) {
   const minutes = Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 60_000));
-  await send({ from: MAIL_FROM, to, ...loginCodeMail(code, minutes) });
+  await send({ from: mailFrom(), to, ...loginCodeMail(code, minutes) });
 }
 
 /** A plain note to the admins; it never carries anyone's personal details. */
 export async function sendAdminMail(to: string[], subject: string, text: string) {
-  await send({ from: MAIL_FROM, to, subject, text });
+  await send({ from: mailFrom(), to, subject, text });
 }

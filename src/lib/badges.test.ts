@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { BADGES, badgeById, badgesOwned, daysLeft, heldUntil, lockedText, nextBadge, quoteOf, serialText, seriesCovered, stillHeld, wallBadges } from "./badges";
-import { SITE_NAME } from "./rules";
+import { siteName } from "./rules";
 
 const none = {
   friends: 0,
@@ -56,7 +56,7 @@ describe("badges", () => {
 
   it("words numbers, quotes and progress", () => {
     expect(serialText(42)).toBe("No.0042");
-    expect(quoteOf(badgeById("firstbatch")!, 42)).toBe(`你是第 42 只来到${SITE_NAME}的蟑螂！`);
+    expect(quoteOf(badgeById("firstbatch")!, 42)).toBe(`你是第 42 只来到${siteName()}的蟑螂！`);
     expect(lockedText(badgeById("ambassador")!, { ...none, friends: 12 })).toBe("12 / 30 位");
     expect(lockedText(badgeById("spokesperson")!, { ...none, responders: 6 })).toBe("6 / 10 人回应");
     expect(lockedText(badgeById("chief")!, { ...none, declareDays: 12 })).toBe("12 / 30 天");

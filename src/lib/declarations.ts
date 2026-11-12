@@ -55,7 +55,7 @@ export const isDrunkTemplate = (t: unknown) => (DRUNK_TEMPLATES as readonly unkn
 export const STAY_TEMPLATES = ["sihouse", "simine"] as const;
 export const isStayTemplate = (t: unknown) => (STAY_TEMPLATES as readonly unknown[]).includes(t);
 /** Why one who has not stayed cannot send them, on the sheet and from the server */
-export const STAY_NEEDED = "住进缘缘庄就能发。";
+export const stayNeeded = () => "住进缘缘庄就能发。";
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
@@ -133,24 +133,24 @@ export type Reply = { id: string; text: string; own: boolean };
  * lines keep theirs in events.ts. Short: about 12 characters besides a character's name.
  */
 const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, string]>> = {
-  launch: ["上号！", "先把理智清了", "现在还不能休息哦", "一起启动，碰我一下"],
-  iam: ["{汪汪}", "我也是{角色}的{称呼}", "{角色}知道吗？", "同一窝的！碰我一下"],
-  love: ["我也永远喜欢{角色}！", "{角色}是我的！", "你上次也是这么说的", "同担！碰我一下"],
-  buff: ["{角色}值得更好的！", "鹰角，听到了吗！", "不是{角色}弱，是练度不够", "同求加强，碰我一下"],
-  myname: ["好名字！", "我也要玩{游戏}！", "准了！", "{名字}你好，碰我一下"],
-  welcome: ["我回来了！", "回来就好", "这次真的不退坑了", "我也刚回来，碰我一下"],
-  canyou: ["{角色}当然做得到！", "你在质疑{角色}？", "做不到也没关系，喜欢就够了", "我也厨{角色}，碰我一下"],
-  eat: ["给我也来一份", "这边建议去医疗部挂个号", "{角色}：？", "同道中人？碰我一下"],
-  birthday: ["生日快乐！", "生日快乐，十连双黄！", "今天寿星最大", "寿星碰我一下，沾沾喜气"],
-  water: ["那是白酒！", "别喝了别喝了", "我给你倒杯真的", "醒了碰我一下"],
-  drunklove: ["酒后吐真言", "醒了还算数吗？", "敬{角色}，干杯！", "同担干杯，碰我一下"],
-  kr168: ["恭喜接{角色}回家！", "168 就出了？我 648 都没出", "醒醒，你还没抽", "欧皇碰我一下，分点欧气"],
-  radar: ["我的也响了！", "响的就是我", "喝多了吧，雷达在乱响", "碰我一下，看看准不准"],
-  roguelike: ["这把必出好藏品！", "喝成这样还打肉鸽？", "醉拳流，一层就寄", "打完碰我一下，比比分"],
-  xianshu: ["我也要看！", "看会了，手没会", "喝醉了看，更像仙术了", "看完碰我一下"],
-  rental: ["现在认识一个了", "那些蟑螂也玩舟吗？", "所以你来对地方了", "碰我一下，这就多一个"],
-  sihouse: ["两千五百间房呢！", "掌柜的听见要脸红了", "我还在门口排着……", "老住客，碰我一下"],
-  simine: ["祀是大家的！", "小心被她听见", "先把房钱结了", "情敌？碰我一下"],
+  launch: ["上号！", "先把理智清了", "现在还不能休息哦", "一起启动，碰我一下"] as const,
+  iam: ["{汪汪}", "我也是{角色}的{称呼}", "{角色}知道吗？", "同一窝的！碰我一下"] as const,
+  love: ["我也永远喜欢{角色}！", "{角色}是我的！", "你上次也是这么说的", "同担！碰我一下"] as const,
+  buff: ["{角色}值得更好的！", "鹰角，听到了吗！", "不是{角色}弱，是练度不够", "同求加强，碰我一下"] as const,
+  myname: ["好名字！", "我也要玩{游戏}！", "准了！", "{名字}你好，碰我一下"] as const,
+  welcome: ["我回来了！", "回来就好", "这次真的不退坑了", "我也刚回来，碰我一下"] as const,
+  canyou: ["{角色}当然做得到！", "你在质疑{角色}？", "做不到也没关系，喜欢就够了", "我也厨{角色}，碰我一下"] as const,
+  eat: ["给我也来一份", "这边建议去医疗部挂个号", "{角色}：？", "同道中人？碰我一下"] as const,
+  birthday: ["生日快乐！", "生日快乐，十连双黄！", "今天寿星最大", "寿星碰我一下，沾沾喜气"] as const,
+  water: ["那是白酒！", "别喝了别喝了", "我给你倒杯真的", "醒了碰我一下"] as const,
+  drunklove: ["酒后吐真言", "醒了还算数吗？", "敬{角色}，干杯！", "同担干杯，碰我一下"] as const,
+  kr168: ["恭喜接{角色}回家！", "168 就出了？我 648 都没出", "醒醒，你还没抽", "欧皇碰我一下，分点欧气"] as const,
+  radar: ["我的也响了！", "响的就是我", "喝多了吧，雷达在乱响", "碰我一下，看看准不准"] as const,
+  roguelike: ["这把必出好藏品！", "喝成这样还打肉鸽？", "醉拳流，一层就寄", "打完碰我一下，比比分"] as const,
+  xianshu: ["我也要看！", "看会了，手没会", "喝醉了看，更像仙术了", "看完碰我一下"] as const,
+  rental: ["现在认识一个了", "那些蟑螂也玩舟吗？", "所以你来对地方了", "碰我一下，这就多一个"] as const,
+  sihouse: ["两千五百间房呢！", "掌柜的听见要脸红了", "我还在门口排着……", "老住客，碰我一下"] as const,
+  simine: ["祀是大家的！", "小心被她听见", "先把房钱结了", "情敌？碰我一下"] as const,
 };
 
 /** A reply's blanks, filled in from the declaration it answers */

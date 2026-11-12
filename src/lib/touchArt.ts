@@ -144,11 +144,15 @@ function burstPath(cx: number, cy: number, rx: number, ry: number, n: number, in
   return `${d} Z`;
 }
 
+/** What the two say, drawn in them: part of the pictures */
+const BOOP_WORD = "啵!";
+const TAP_WORD = "嗒";
+
 /** 啵! where a bold feeler lands, a smaller cousin of 戳一戳's 戳! */
 export const boop = () =>
   svg(
     `<path d="${burstPath(22, 15, 20.5, 14, 9, 0.74)}" fill="${ACCENT}" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>
-<text x="22" y="19.4" text-anchor="middle" font-size="12" font-weight="800" font-family="${FONT}" fill="${INK}">啵!</text>`,
+<text x="22" y="19.4" text-anchor="middle" font-size="12" font-weight="800" font-family="${FONT}" fill="${INK}">${BOOP_WORD}</text>`,
     "0 0 44 30",
     44,
     30,
@@ -158,7 +162,7 @@ export const boop = () =>
 export const tap = () =>
   svg(
     `<g stroke="${INK}" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 10 L6.5 11.5 M4.6 3.6 L8 7.4 M10.6 1.2 L11 5.8"/></g>
-<text x="20.5" y="16.5" text-anchor="middle" font-size="12" font-weight="800" font-family="${FONT}" fill="${INK}" stroke="#fff" stroke-width="3" paint-order="stroke">嗒</text>`,
+<text x="20.5" y="16.5" text-anchor="middle" font-size="12" font-weight="800" font-family="${FONT}" fill="${INK}" stroke="#fff" stroke-width="3" paint-order="stroke">${TAP_WORD}</text>`,
     "0 0 30 20",
     30,
     20,

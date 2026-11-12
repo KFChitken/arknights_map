@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as countRoute } from "@/app/api/app-count/route";
 import { POST as redeemRoute } from "@/app/api/auth/desk-code/redeem/route";
-import { DESK_CODE_ALPHABET, DESK_CODE_WRONG, formatDeskCode } from "../deskCode";
+import { DESK_CODE_ALPHABET, deskCodeWrong, formatDeskCode } from "../deskCode";
 import { banAccount } from "./account";
 import { appCountDays, countApp, forgetAppCounts, saveAppCounts } from "./appCounts";
 import { startSession } from "./auth";
@@ -53,7 +53,7 @@ describe("登录码", () => {
     expect(await redeem(` ${formatDeskCode(code).toLowerCase()} `)).toEqual({ status: 200, body: { status: "ok" } });
     expect(vi.mocked(startSession).mock.calls.map(([, id]) => id)).toEqual([me]);
     // once only
-    expect(await redeem(code)).toEqual({ status: 400, body: { error: DESK_CODE_WRONG } });
+    expect(await redeem(code)).toEqual({ status: 400, body: { error: deskCodeWrong() } });
   });
 
   it("works ten minutes, one at a time an account, and not at all once replaced", async () => {
@@ -88,7 +88,7 @@ describe("登录码", () => {
   it("lets a network try ten codes in ten minutes, says the same whatever went wrong, and notes the failures", async () => {
     const before = recent("codeRefused", 60 * MINUTE).length;
     for (const typed of ["", "ABCD", "ABCD-EFGH", "0O1I-LLLL", 12345678]) {
-      expect(await redeem(typed, "192.0.2.1")).toEqual({ status: 400, body: { error: DESK_CODE_WRONG } });
+      expect(await redeem(typed, "192.0.2.1")).toEqual({ status: 400, body: { error: deskCodeWrong() } });
     }
     for (let i = 0; i < 5; i++) await redeem("ABCD-EFGH", "192.0.2.1");
     const me = await player("me@example.com");
@@ -106,7 +106,7 @@ describe("登录码", () => {
     const { code } = await issueDeskCode(me);
     const [twin] = await db.select().from(users).where(eq(users.id, await player("ab+old@gmail.com")));
     await banAccount(twin);
-    expect(await redeem(code)).toEqual({ status: 400, body: { error: DESK_CODE_WRONG } });
+    expect(await redeem(code)).toEqual({ status: 400, body: { error: deskCodeWrong() } });
     expect(startSession).not.toHaveBeenCalled();
   });
 });

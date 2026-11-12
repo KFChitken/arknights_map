@@ -1,7 +1,7 @@
 "use client";
 
 import { fmtParts, T } from "@/i18n";
-import { dateOfDay, MINGHE, MINGHE_NAME, ROUTE, stopOf } from "@/lib/minghe";
+import { dateOfDay, MINGHE, ROUTE, stopOf } from "@/lib/minghe";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
@@ -14,7 +14,7 @@ export const MinghePicture = ({ size, friend = false }: { size: number; friend?:
 /** Once, for players with a roach who are not his 触须之交 and have no clone riding with him. */
 export function MingheIntroSheet({ station, onGo, onLater }: { station: string; onGo: () => void; onLater: () => void }) {
   return (
-    <Sheet title={MINGHE_NAME} onClose={onLater}>
+    <Sheet title={MINGHE.name} onClose={onLater}>
       <div className="amiya-greet">
         <MinghePicture size={96} />
       </div>

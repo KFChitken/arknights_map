@@ -6,7 +6,7 @@ import https from "node:https";
 import tls from "node:tls";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { beijingDate, beijingShort } from "../beijing";
-import { SITE_NAME } from "../rules";
+import { siteName } from "../rules";
 import { levelRank, type Level } from "../siteStatus";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
@@ -1150,8 +1150,8 @@ function urgentLetter(now: number, told: Incident[], over: Incident[]) {
   const more = (list: Incident[]) => (list.length > 1 ? ` 等 ${list.length} 项` : "");
   const span = (i: Incident) => `${beijingClock(i.startedAt.getTime())}–${beijingClock(i.endedAt!.getTime())}`;
   const subject = told.length
-    ? `【${SITE_NAME}】要你看：${told[0].title}${more(told)}`
-    : `【${SITE_NAME}】已恢复：${over[0].title}（${span(over[0])}）${more(over)}`;
+    ? `【${siteName()}】要你看：${told[0].title}${more(told)}`
+    : `【${siteName()}】已恢复：${over[0].title}（${span(over[0])}）${more(over)}`;
   const lines = [`北京时间 ${beijingShort(now)}：`, ""];
   for (const i of told) {
     lines.push(`🔴 ${i.title}`, `   从 ${beijingShort(i.startedAt.getTime())} 开始。${i.detail}`);

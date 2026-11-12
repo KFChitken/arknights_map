@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
-import { SITE_NAME } from "@/lib/rules";
+import "@/i18n/server";
+import { siteName } from "@/lib/rules";
 
 /**
  * Lets players put the site on their desktop or home screen and open it without the browser bars
@@ -10,8 +11,8 @@ import { SITE_NAME } from "@/lib/rules";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: SITE_NAME,
-    short_name: SITE_NAME,
+    name: siteName(),
+    short_name: siteName(),
     description: "看看你身边有多少舟P",
     start_url: "/",
     scope: "/",
@@ -26,8 +27,8 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     screenshots: [
-      { src: "/screenshot-wide.webp", sizes: "1280x800", type: "image/webp", form_factor: "wide", label: SITE_NAME },
-      { src: "/screenshot-narrow.webp", sizes: "1080x1920", type: "image/webp", form_factor: "narrow", label: SITE_NAME },
+      { src: "/screenshot-wide.webp", sizes: "1280x800", type: "image/webp", form_factor: "wide", label: siteName() },
+      { src: "/screenshot-narrow.webp", sizes: "1080x1920", type: "image/webp", form_factor: "narrow", label: siteName() },
     ],
   };
 }

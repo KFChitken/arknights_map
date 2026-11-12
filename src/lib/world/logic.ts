@@ -1,9 +1,9 @@
 import { fmt, T } from "@/i18n";
-import { FOODS, isDrunkTemplate, isStayTemplate, SPOUSES, STAY_NEEDED, type Declaration } from "../declarations";
+import { FOODS, isDrunkTemplate, isStayTemplate, SPOUSES, stayNeeded, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
-import { isOffLimits, OFF_LIMITS_MESSAGE } from "../offLimits";
+import { isOffLimits, offLimitsMessage } from "../offLimits";
 import { isCharacter } from "../operators";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_MAX } from "../rules";
@@ -103,7 +103,7 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
     return { game, character: name };
   };
   if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError(T.checks.drunkFirst);
-  if (isStayTemplate(d?.template) && !stayed) throw new WorldError(STAY_NEEDED);
+  if (isStayTemplate(d?.template) && !stayed) throw new WorldError(stayNeeded());
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -161,7 +161,7 @@ export function checkSpot(spot: LngLat): LngLat {
   if (!Number.isFinite(at.lng) || !Number.isFinite(at.lat) || Math.abs(at.lat) > 85 || Math.abs(at.lng) > 180) {
     throw new WorldError(T.checks.cannotPlaceHere);
   }
-  if (isOffLimits(at)) throw new WorldError(OFF_LIMITS_MESSAGE);
+  if (isOffLimits(at)) throw new WorldError(offLimitsMessage());
   return at;
 }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { fmtParts, T } from "@/i18n";
 import { adultTick, crossBorderTick, publicPlaceNote, publicPlaceTick } from "@/lib/consent";
-import { MIN_SIGNUP_AGE, SITE_NAME } from "@/lib/rules";
+import { MIN_SIGNUP_AGE, siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
 
 /** What changed in the privacy policy this time (POLICY_UPDATED_AT); the next change replaces it. Read when shown. */
@@ -39,7 +39,7 @@ export default function ConsentSheet({
     return (
       <Sheet title={T.consent.update.title} onClose={onClose}>
         <p className="consent-sorry">
-          {fmtParts(T.consent.update.sorry, { site: SITE_NAME, age: MIN_SIGNUP_AGE })}
+          {fmtParts(T.consent.update.sorry, { site: siteName(), age: MIN_SIGNUP_AGE })}
         </p>
         <div className="consent-actions">
           <button className="danger wide" onClick={onDelete}>

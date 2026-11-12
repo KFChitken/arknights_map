@@ -3,7 +3,7 @@ import { readFileSync, statfsSync } from "node:fs";
 import os from "node:os";
 import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { beijingDate, beijingMidnight, beijingShort } from "../beijing";
-import { SITE_NAME } from "../rules";
+import { siteName } from "../rules";
 import { asLevel, lasted, LEVEL_MARK, levelRank, mainlandWords, type IncidentView, type SiteNumbers, type SiteStatus } from "../siteStatus";
 import { amapMapLoads, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
@@ -159,7 +159,7 @@ export async function digestLetter(now: number) {
 
   const things = wanted.length + (open ? 1 : 0);
   const day = beijingShort(now).split(" ")[0];
-  const subject = `【${SITE_NAME}】每日汇总 ${day}：${things ? `有 ${things} 件事要你看` : "一切正常"}`;
+  const subject = `【${siteName()}】每日汇总 ${day}：${things ? `有 ${things} 件事要你看` : "一切正常"}`;
   const lines: string[] = [];
   if (wanted.length) {
     lines.push("要你处理的：");

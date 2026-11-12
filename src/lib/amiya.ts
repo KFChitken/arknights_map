@@ -1,5 +1,5 @@
 import { homeGame, type Game } from "./games";
-import { GUIDES, guideProfile } from "./guides";
+import { GUIDES } from "./guides";
 import type { LngLat } from "./types";
 import type { PublicRoach } from "./world/types";
 
@@ -12,7 +12,6 @@ import type { PublicRoach } from "./world/types";
 
 export const AMIYA = GUIDES.amiya;
 export const AMIYA_ID = AMIYA.id;
-export const AMIYA_NAME = AMIYA.name;
 /** The middle of Aquidneck Island, Rhode Island */
 export const AMIYA_AT: LngLat = { lng: -71.2647, lat: 41.5556 };
 /** Flying to her on Amap stops at this zoom (MapLibre levels): Amap is blank abroad further in */
@@ -36,8 +35,6 @@ export function amiyaLine(what: "sneaky" | "bold" | "greet", games: Game[]) {
   return what === "bold" ? `诶嘿嘿...${you}` : `欸？${you}？`;
 }
 
-/** Her card for anyone who opens it: no games, UID, favourites or badges */
-export const AMIYA_PROFILE = guideProfile(AMIYA);
 
 export function amiyaRoach(friend: boolean): PublicRoach {
   return { id: AMIYA_ID, clone: false, avatar: AMIYA.avatar, color: AMIYA.color, friend, guide: true, ...AMIYA_AT };

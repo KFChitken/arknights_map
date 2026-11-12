@@ -1,11 +1,11 @@
 "use client";
 
 import { fmt, fmtParts, T } from "@/i18n";
-import { AMIYA_ID, AMIYA_NAME } from "@/lib/amiya";
-import { MINGHE_ID, MINGHE_LINES, MINGHE_NAME, RIDE_STOPS } from "@/lib/minghe";
-import { PERLICA_ID, PERLICA_MORE, PERLICA_NAME } from "@/lib/perlica";
-import { FIRE_LINES, TALULAH_ID, TALULAH_NAME, type FireLevel } from "@/lib/talulah";
-import { RECALL_REST_MS, SI_LINES, SI_NAME } from "@/lib/si";
+import { AMIYA, AMIYA_ID } from "@/lib/amiya";
+import { MINGHE, MINGHE_ID, MINGHE_LINES, RIDE_STOPS } from "@/lib/minghe";
+import { PERLICA, PERLICA_ID, PERLICA_MORE } from "@/lib/perlica";
+import { FIRE_LINES, TALULAH, TALULAH_ID, type FireLevel } from "@/lib/talulah";
+import { RECALL_REST_MS, SI, SI_LINES } from "@/lib/si";
 import { bottleIcon } from "@/lib/flipArt";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
@@ -135,12 +135,12 @@ export function OtherRoachCard({
   const ride = roach.guide && roach.id === MINGHE_ID && minghe;
   const title = roach.guide
     ? perlica
-      ? PERLICA_NAME
+      ? PERLICA.name
       : talulah
-        ? TALULAH_NAME
+        ? TALULAH.name
         : ride
-          ? MINGHE_NAME
-          : AMIYA_NAME
+          ? MINGHE.name
+          : AMIYA.name
     : friendName
       ? fmt(T.cards.friendTitle, { name: friendName, clone: roach.clone ? T.cards.friendClone : "" })
       : roach.clone
@@ -562,7 +562,7 @@ export function OtherInkCard({
         <div>
           <strong>{title}</strong>
           <p className="muted">{where}</p>
-          {state === "out" && <p className="muted">{fmt(T.map.guides.saysQuoted, { name: SI_NAME, line: SI_LINES.thrownOut })}</p>}
+          {state === "out" && <p className="muted">{fmt(T.map.guides.saysQuoted, { name: SI.name, line: SI_LINES.thrownOut })}</p>}
           <p className="muted">{hint}</p>
         </div>
       </div>

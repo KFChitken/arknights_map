@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { feelers, screenDelta, STAGE, stagePlace, TOUCH_MS } from "./touchArt";
+import { boop, feelers, screenDelta, STAGE, stagePlace, tap, TOUCH_MS } from "./touchArt";
 
 describe("touch scenes", () => {
   it("puts the stage so they stand where their icon is, and your side stays on a small phone", () => {
@@ -27,6 +27,17 @@ describe("touch scenes", () => {
     expect(f.meet[0]).toBeGreaterThan(STAGE.box);
     expect(f.meet[0]).toBeLessThan(STAGE.them[0] + STAGE.box);
     expect(TOUCH_MS.friend).toBeGreaterThan(TOUCH_MS.bold);
+  });
+
+  it("draws 啵! and 嗒 in their pictures, character for character as it always has", () => {
+    expect(boop()).toBe(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 30" width="44" height="30" overflow="visible" aria-hidden="true"><path d="M22 1 L27.2 5.3 L35.2 4.3 L35.1 9.8 L42.2 12.6 L36.9 16.8 L39.8 22 L31.8 22.9 L29 28.2 L22 25.4 L15 28.2 L12.2 22.9 L4.2 22 L7.1 16.8 L1.8 12.6 L8.9 9.8 L8.8 4.3 L16.8 5.3 Z" fill="#ffd23f" stroke="#1b1d22" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="22" y="19.4" text-anchor="middle" font-size="12" font-weight="800" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans CJK SC, sans-serif" fill="#1b1d22">啵!</text></svg>`,
+    );
+    expect(tap()).toBe(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20" width="30" height="20" overflow="visible" aria-hidden="true"><g stroke="#1b1d22" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 10 L6.5 11.5 M4.6 3.6 L8 7.4 M10.6 1.2 L11 5.8"/></g>
+<text x="20.5" y="16.5" text-anchor="middle" font-size="12" font-weight="800" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans CJK SC, sans-serif" fill="#1b1d22" stroke="#fff" stroke-width="3" paint-order="stroke">嗒</text></svg>`,
+    );
   });
 
   it("measures map distances in screen pixels", () => {

@@ -1,6 +1,6 @@
 import { beijingDate, beijingMidnight } from "./beijing";
 import { distanceKm } from "./geo";
-import { GUIDES, guideProfile } from "./guides";
+import { GUIDES } from "./guides";
 import { ROUTE } from "./minghe";
 import { mulberry32, hash128 } from "./prng";
 import type { LngLat } from "./types";
@@ -20,7 +20,6 @@ import type { PublicRoach, SiItem } from "./world/types";
 
 export const SI = GUIDES.si;
 export const SI_ID = SI.id;
-export const SI_NAME = SI.name;
 
 export const isSiItem = (id: string) => id.startsWith(SI.prefix);
 
@@ -281,15 +280,15 @@ export function siText(item: Pick<SiItem, "line" | "bold" | "variant" | "stamp" 
   const stamped = item.stamp !== null && item.stamps ? stampLine(item.stamp, item.stamps) : "";
   switch (item.line) {
     case "friend":
-      return `${SI_NAME}和你成为了触须之交：「${SI_LINES.friend}」${stamped}`;
+      return `${SI.name}和你成为了触须之交：「${SI_LINES.friend}」${stamped}`;
     case "checkin":
-      return `${SI_NAME}：「${checkinLine(item.room ?? 0, item.waited ?? 0)}」`;
+      return `${SI.name}：「${checkinLine(item.room ?? 0, item.waited ?? 0)}」`;
     case "again":
-      return `${SI_NAME}：「${againInLine(item.room ?? 0)}」`;
+      return `${SI.name}：「${againInLine(item.room ?? 0)}」`;
     case "checkout":
-      return `${SI_NAME}：「${SI_LINES.checkout}」`;
+      return `${SI.name}：「${SI_LINES.checkout}」`;
     default:
-      return `${SI_NAME}回了你：「${answerLine(item.line, item.bold, item.variant)}」${stamped}`;
+      return `${SI.name}回了你：「${answerLine(item.line, item.bold, item.variant)}」${stamped}`;
   }
 }
 
@@ -314,9 +313,6 @@ export const PAINTING_LINES: Record<PaintingTier, string> = {
 
 // ---- her card ----
 
-/** Her card for anyone who opens it: no games, UID, favourites or badges */
-export const SI_PROFILE = guideProfile(SI);
-
 /** Her place on the map */
 export function siRoach(friend: boolean): PublicRoach {
   return { id: SI_ID, clone: false, avatar: SI.avatar, color: SI.color, friend, guide: true, ...SI_AT };
@@ -333,9 +329,9 @@ const FAMILY: { name: string; line: string }[] = [
   { name: "望", line: "你也认识望？……哼，我才没想哥哥们。……就一点点。" },
 ];
 /** Herself in an Endfield 厨力 list */
-export const SELF_FAV_LINE = "你的厨力角色……是我？哼，眼光还算凑合。";
+const SELF_FAV_LINE = "你的厨力角色……是我？哼，眼光还算凑合。";
 /** On the day 明河都尉 reaches 黄山, his 7th station */
-export const MINGHE_HERE_LINE = "那个头发亮晃晃的小子今天跑到黄山来了，吵死了。……我才没有特意去看。";
+export const mingheHereLine = () => "那个头发亮晃晃的小子今天跑到黄山来了，吵死了。……我才没有特意去看。";
 /** Her own name in the Endfield list */
 export const SI_OPERATOR = "祀";
 
