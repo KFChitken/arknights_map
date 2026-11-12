@@ -14,6 +14,7 @@ import { pruneSignInMail } from "./lib/server/loginCodes";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
 import { startNotices } from "./lib/server/notices";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
+import { spreadFireStacks } from "./lib/server/talulah";
 import { pruneOldActivity } from "./lib/server/retention";
 import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { markStarted } from "./lib/server/ready";
@@ -134,6 +135,8 @@ if (!helper) {
   setInterval(ride, 5 * MINUTE_MS);
   // riders that stood on one another when the queue still ended at 2 km each get a spot of their own
   spreadStackedRiders().catch(failed("ride", "Spreading 明河都尉's stacked riders failed"));
+  // roaches sitting on one another by 塔露拉干员's fire, from when each page picked its own seat, each get a seat of their own
+  spreadFireStacks().catch(failed("fire", "Spreading the roaches stacked by 塔露拉干员's fire failed"));
   // roaches standing where none may (src/lib/offLimits.ts), from before the place was listed, move out
   moveOutOfOffLimits().catch(failed("offLimits", "Moving roaches out of the off-limits places failed"));
 

@@ -17,7 +17,7 @@ import { isGame, serverName, type Game } from "../games";
 import { displayName } from "../profile";
 import { outsideOffLimits } from "../offLimits";
 import { INBOX_DAYS } from "../rules";
-import { FIRE_AT, FIRE_RADIUS_M, isNearFire, pickSeat } from "../talulah";
+import { isNearFire, pickSeat } from "../talulah";
 import type { LngLat } from "../types";
 import { DAY } from "../world/logic";
 import type { PublicProfile } from "../profile";
@@ -27,7 +27,7 @@ import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { nudge } from "./live";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, users, visitBans, visits, type UserRow } from "./schema";
-import { arrivedAt } from "./talulah";
+import { arrivedAt, lockFire, seatByFire } from "./talulah";
 import { cardsOf, checkPlacement, friendIdsOf, friendKey, ownRoaches, profileOf, userById, writePlacement } from "./world";
 
 /**
@@ -324,8 +324,8 @@ export async function gameWant(userId: string, friendId: unknown, game: unknown)
 // ---- 串门 ----
 
 /** Roaches standing within m metres of a spot, some left out */
-async function roachesNear(at: LngLat, m: number, except: string[]) {
-  const rows = await db
+async function roachesNear(exec: Exec, at: LngLat, m: number, except: string[]) {
+  const rows = await exec
     .select({ id: roaches.id, lng: roaches.lng, lat: roaches.lat })
     .from(roaches)
     .where(sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${at.lng}, ${at.lat}), 4326)::geography, ${m})`);
@@ -333,12 +333,19 @@ async function roachesNear(at: LngLat, m: number, except: string[]) {
 }
 
 /**
- * Where a guest sits: on the rings of seats around the host's roach, as by 塔露拉干员's fire;
- * a roach by her fire has its guests on the fire's own rings, as close to it as a seat is free.
+ * Where a guest sits, first thing in the transaction that seats it: on the rings of seats around
+ * the host's roach, as by 塔露拉干员's fire; a roach by her fire has its guests on the fire's own
+ * rings, as close to it as a seat is free. One seat is picked at a time, by the fire across the site
+ * (lockFire, as when sent there from her card), elsewhere for each host roach, so that two never
+ * take the same one.
  */
-async function seatBy(host: LngLat, except: string[]): Promise<LngLat> {
-  if (isNearFire(host)) return pickSeat(await roachesNear(FIRE_AT, FIRE_RADIUS_M * 2, except), Math.random, { nearest: host });
-  return pickSeat(await roachesNear(host, 150, except), Math.random, { center: host });
+async function seatBy(tx: Exec, host: LngLat & { id: string }, except: string[]): Promise<LngLat> {
+  if (isNearFire(host)) {
+    await lockFire(tx);
+    return seatByFire(tx, except, host);
+  }
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`visit-seat:${host.id}`}))`);
+  return pickSeat(await roachesNear(tx, host, 150, except), Math.random, { center: host });
 }
 
 async function bannedUntil(hostId: string, guestId: string, now: number) {
@@ -417,10 +424,11 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
   const target: PlaceTarget = cloneId ? { kind: "move", roachId: String(cloneId) } : { kind: "clone" };
   const placement = await checkPlacement(userId, target);
   if (placement.slot === 0) throw new WorldError("本体不能去做客，派一只克隆体吧。");
-  const seat = await seatBy(hostRoach, placement.existing ? [placement.existing.id] : []);
+  let seat: LngLat;
   try {
-    await db.transaction(async (tx) => {
-      await writePlacement(tx, userId, placement, seat);
+    seat = await db.transaction(async (tx) => {
+      const at = await seatBy(tx, hostRoach, placement.existing ? [placement.existing.id] : []);
+      await writePlacement(tx, userId, placement, at);
       const [clone] = await tx
         .select({ id: roaches.id })
         .from(roaches)
@@ -449,6 +457,7 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
         answer: first ? "tip" : null,
         createdAt: new Date(now),
       });
+      return at;
     });
   } catch (e) {
     if (isUniqueViolation(e)) throw new WorldError("你已经在 TA 家了。");
@@ -490,11 +499,12 @@ export async function followHost(userId: string, cloneId: unknown) {
   if (!hostRoach) throw new WorldError("TA 收回了那只蟑螂，让克隆体回家吧。");
   if (hostRoach.rideSince) throw new WorldError("这只在跟明河走，去不了。想一起走，就也派一只跟明河。");
   const placement = await checkPlacement(userId, { kind: "move", roachId: v.roachId });
-  const seat = await seatBy(hostRoach, [v.roachId]);
-  await db.transaction(async (tx) => {
+  const seat = await db.transaction(async (tx) => {
+    const at = await seatBy(tx, hostRoach, [v.roachId]);
     // moving the clone ends the visit (roachMoved); it goes on by the roach's new spot, as before
-    await writePlacement(tx, userId, placement, seat);
+    await writePlacement(tx, userId, placement, at);
     await tx.insert(visits).values({ ...v, leftAt: null });
+    return at;
   });
   roachesChanged();
   await arrivedAt(userId, seat);

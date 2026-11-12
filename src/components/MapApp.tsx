@@ -45,7 +45,6 @@ import {
   fireCount,
   fireLevel,
   isNearFire,
-  pickSeat,
   TALULAH_ID,
   TALULAH_LINES,
   TALULAH_NAME,
@@ -79,10 +78,10 @@ import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePla
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
-import { areaFor, boxFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
+import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
 import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
 import { HOUR, reachText } from "@/lib/world/logic";
-import { feedIdsOf, sameRoach, unpackRoaches } from "@/lib/world/packed";
+import { feedIdsOf, sameRoach } from "@/lib/world/packed";
 import {
   DEFAULT_MAP_STYLE,
   HEARTS_READY,
@@ -3005,29 +3004,11 @@ export default function MapApp({
     }
   };
 
-  /** The roaches round the fire, for a free seat: the area held has them if it reaches that far, else they are asked for */
-  const roachesByFire = async (): Promise<LngLat[]> => {
-    const held = areaRef.current.area;
-    const around: [LngLat, LngLat] = [
-      { lng: FIRE_AT.lng - 0.01, lat: FIRE_AT.lat - 0.01 },
-      { lng: FIRE_AT.lng + 0.01, lat: FIRE_AT.lat + 0.01 },
-    ];
-    if (fakeFeedRef.current || (held && held !== "overview" && boxHolds(held, around))) return everyRoach;
-    const box = boxFor(around);
-    if (!box || !worldRef.current) return everyRoach;
-    try {
-      const u = await worldRef.current.roachArea(box, null);
-      return "packed" in u && u.packed ? [...unpackRoaches(u.packed), ...(me?.roaches ?? [])] : everyRoach;
-    } catch {
-      return everyRoach;
-    }
-  };
-
-  /** A clone to a free seat by the fire: a new one, or a move once all of them are out */
+  /** A clone to a free seat by the fire, which the server picks: a new one, or a move once all of them are out */
   const seatAtFire = async (target: PlaceTarget) => {
     const before = me?.talulah.visited;
     setSendingToFire(true);
-    const done = await act((w) => roachesByFire().then((near) => w.placeRoach(target, pickSeat(near))));
+    const done = await act((w) => w.sitByFire(target));
     setSendingToFire(false);
     if (!done) return;
     setPanel(null);

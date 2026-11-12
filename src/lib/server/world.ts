@@ -90,7 +90,9 @@ import {
   arrivedAt,
   birthdayDeclared,
   ignoreTalulah,
+  lockFire,
   replyTalulah,
+  seatByFire,
   seeTalulah,
   talulahFriend,
   talulahInbox,
@@ -581,6 +583,30 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
   await arrivedAt(userId, at);
   return ownRoaches(userId);
+}
+
+/**
+ * 派一只克隆体去烤火: a new clone (a placement), or one already out (a move), to a free seat by
+ * 塔露拉干员's fire, which the server picks from every roach sitting there, one at a time across the
+ * site (lockFire), so two sent at once never share a seat. The rules of any placement hold.
+ */
+export async function sitByFire(userId: string, target: PlaceTarget): Promise<{ roaches: OwnRoach[]; seat: LngLat }> {
+  const placement = await checkPlacement(userId, target);
+  const seat = await db
+    .transaction(async (tx) => {
+      await lockFire(tx);
+      // a roach moving there holds no seat for itself
+      const at = await seatByFire(tx, placement.existing ? [placement.existing.id] : []);
+      await writePlacement(tx, userId, placement, at);
+      return at;
+    })
+    .catch((e) => {
+      throw slotTaken(e) ? new WorldError(SLOT_TAKEN) : e;
+    });
+  roachesChanged();
+  // the first roach of theirs to sit by her fire is welcomed, and the songs counted
+  await arrivedAt(userId, seat);
+  return { roaches: await ownRoaches(userId), seat };
 }
 
 const riderOf = async (exec: Exec, userId: string) =>

@@ -128,6 +128,7 @@ export class ServerWorld implements World {
   };
   saveProfile = (p: Profile) => this.call<Profile>("saveProfile", p);
   placeRoach = (target: PlaceTarget, at: LngLat) => this.call<OwnRoach[]>("placeRoach", target, at);
+  sitByFire = (target: PlaceTarget) => this.call<{ roaches: OwnRoach[]; seat: LngLat }>("sitByFire", target);
   acceptPublicPlace = () => this.call<void>("acceptPublicPlace");
   rideMinghe = (target: RideTarget) => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("rideMinghe", target);
   dismountMinghe = () => this.call<{ roaches: OwnRoach[]; item: MingheItem }>("dismountMinghe");

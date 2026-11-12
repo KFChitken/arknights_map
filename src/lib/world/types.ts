@@ -44,6 +44,11 @@ export interface World {
   saveProfile(profile: Profile): Promise<Profile>;
   /** Place or move a roach. Returns the owner's roaches afterwards. A new one needs acceptPublicPlace first. */
   placeRoach(target: PlaceTarget, at: LngLat): Promise<OwnRoach[]>;
+  /**
+   * 派一只克隆体去烤火: put a roach down (or move one) on a free seat by 塔露拉干员's fire, which the
+   * server picks, one at a time across the site. Returns the owner's roaches afterwards and the seat.
+   */
+  sitByFire(target: PlaceTarget): Promise<{ roaches: OwnRoach[]; seat: LngLat }>;
   /** Agree, once, that everyone sees exactly where your roaches are. */
   acceptPublicPlace(): Promise<void>;
   /** 摄入酒精: your main roach falls asleep drunk until the next morning where it is. */

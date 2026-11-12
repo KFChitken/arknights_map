@@ -86,6 +86,9 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "placeRoach":
       result = await world.placeRoach(agreed(), args[0] as PlaceTarget, args[1] as LngLat);
       break;
+    case "sitByFire":
+      result = await world.sitByFire(agreed(), args[0] as PlaceTarget);
+      break;
     case "rideMinghe":
       result = await world.rideMinghe(agreed(), args[0] as RideTarget);
       break;
