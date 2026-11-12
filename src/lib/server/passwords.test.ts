@@ -1,21 +1,33 @@
 import { eq, sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { banAccount, deleteAccount } from "./account";
 import { db } from "./db";
 import {
   CURRENT_WRONG,
   firstPassword,
+  firstWithoutCode,
   freshFor,
   FRESH_MS,
   NeedsCode,
   PASSWORD_WRONG,
   passwordLogin,
+  passwordNudge,
   passwordSetAt,
   removePassword,
   setPassword,
   type SessionRow,
 } from "./passwords";
 import { sessions, userPasswords, users } from "./schema";
+import { me } from "./world";
+
+// Gmail slow to take our mail, as on the live site since 2026-11-10 (emptied in place to say it no longer is),
+// and an admin whose sign-in is a Gmail address
+const slow = vi.hoisted(() => ["gmail.com", "googlemail.com"]);
+vi.mock("./env", async (original) => ({
+  ...(await original<typeof import("./env")>()),
+  MAIL_SLOW_DOMAINS: slow,
+  ADMIN_EMAILS: ["admin@gmail.com"],
+}));
 
 const MINUTE = 60_000;
 const PW = "roach-in-the-rain";
@@ -158,6 +170,69 @@ describe("setting, changing and taking away a password", () => {
     await firstPassword({ id: u.id, email: u.email! }, PW);
     await removePassword(u.id, await session(u.id, "fresh", "code", 3), undefined);
     expect(await passwordSetAt(u.id)).toBeNull();
+  }, 20_000);
+
+  it("lets a player at a slow mail service set the first one without a code, and no more than that", async () => {
+    const u = await player("doctor@gmail.com");
+    const stale = await session(u.id, "stale", "code", FRESH_MS / MINUTE + 1);
+    await session(u.id, "laptop", "desk", 600);
+    expect(await setPassword(u, stale, PW, undefined)).toEqual({ changed: false });
+    expect(await passwordLogin("doctor@gmail.com", PW)).toBe(u.id);
+    // nothing else of the player's was signed out by a first password
+    expect(await db.select().from(sessions)).toHaveLength(2);
+    // a change takes the current one, as before
+    expect(await said(setPassword(u, stale, "a-new-one-please", undefined))).toBe(CURRENT_WRONG);
+    expect(await said(setPassword(u, stale, "a-new-one-please", "not-the-one"))).toBe(CURRENT_WRONG);
+    expect(await passwordLogin("doctor@gmail.com", PW)).toBe(u.id);
+    expect(await setPassword(u, stale, "a-new-one-please", PW)).toEqual({ changed: true });
+    expect((await db.select({ id: sessions.id }).from(sessions)).map((s) => s.id)).toEqual(["stale"]);
+    // and so does taking it away
+    expect(await said(removePassword(u.id, stale, undefined))).toMatch(/不对/);
+    expect(await passwordSetAt(u.id)).not.toBeNull();
+    // the service's other domain too, signed in any way
+    const g = await player("doctor@googlemail.com");
+    expect(await setPassword(g, await session(g.id, "desk", "desk", 1), PW, undefined)).toEqual({ changed: false });
+  }, 30_000);
+
+  it("still takes a code for an admin there, for any other address, and there once it is no longer slow", async () => {
+    const admin = await player("admin@gmail.com");
+    const other = await player("doctor@qq.com");
+    const g = await player("doctor@gmail.com");
+    for (const u of [admin, other]) {
+      await expect(setPassword(u, await session(u.id, `stale-${u.id}`, "code", 600), PW, undefined)).rejects.toBeInstanceOf(NeedsCode);
+    }
+    slow.splice(0);
+    try {
+      await expect(setPassword(g, await session(g.id, "stale", "code", 600), PW, undefined)).rejects.toBeInstanceOf(NeedsCode);
+    } finally {
+      slow.push("gmail.com", "googlemail.com");
+    }
+    for (const u of [admin, other, g]) expect(await passwordSetAt(u.id)).toBeNull();
+    // a sign-in by code moments ago is enough for every one of them, as before
+    expect(await setPassword(admin, await session(admin.id, "fresh", "code", 2), PW, undefined)).toEqual({ changed: false });
+  }, 20_000);
+
+  it("has the map ask such a player to set one until they have it, and nobody else", async () => {
+    const g = await player("doctor@gmail.com");
+    const admin = await player("admin@gmail.com");
+    const other = await player("doctor@qq.com");
+    expect(await passwordNudge(g)).toBe(true);
+    expect((await me(g.id))!.passwordNudge).toBe(true);
+    expect(await passwordNudge(admin)).toBe(false);
+    expect(await passwordNudge(other)).toBe(false);
+    expect((await me(other.id))!.passwordNudge).toBe(false);
+    expect(await passwordNudge({ id: g.id, email: null })).toBe(false);
+    expect(firstWithoutCode(" Admin@Gmail.com ")).toBe(false);
+    expect(firstWithoutCode("Doctor@GMAIL.com")).toBe(true);
+    slow.splice(0);
+    try {
+      expect(await passwordNudge(g)).toBe(false);
+    } finally {
+      slow.push("gmail.com", "googlemail.com");
+    }
+    await setPassword(g, await session(g.id, "stale", "code", 600), PW, undefined);
+    expect(await passwordNudge(g)).toBe(false);
+    expect((await me(g.id))!.passwordNudge).toBe(false);
   }, 20_000);
 
   it("says how much longer a sign-in by code counts as moments ago", () => {

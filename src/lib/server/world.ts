@@ -120,6 +120,7 @@ import { helpCounts } from "./help";
 import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
+import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
 import { canSeeDeclaration, seeDeclarations, spotRows, visibleDeclarations, type SeenDeclaration } from "./declarationInbox";
@@ -384,6 +385,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     profileHeld: Boolean(u.profileHeldAt),
     suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > Date.now() ? u.suspendedUntil.getTime() : null,
     ageCheck: Boolean(u.ageCheckAt),
+    passwordNudge: await passwordNudge(u),
   };
 }
 

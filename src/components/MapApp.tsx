@@ -183,6 +183,7 @@ import {
 } from "./app/Talulah";
 import PlaceBar from "./app/PlaceBar";
 import { CONFIRM_REASON, type PasswordForm } from "./app/PasswordBox";
+import PasswordNudge, { nudgePutOff, putOffNudge } from "./app/PasswordNudge";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import RoachReportSheet from "./app/RoachReportSheet";
@@ -272,6 +273,8 @@ const OVERVIEW_AGAIN_MS = 5 * 60_000;
 const movedFrom = (a: MapView, b: MapView) => Math.abs(a.lng - b.lng) > 1e-3 || Math.abs(a.lat - b.lat) > 1e-3 || Math.abs(a.zoom - b.zoom) > 0.5;
 /** How long one of 佩丽卡监督's notes stays along the top: a line, or two */
 const NOTE_MS = [6000, 8000];
+/** The ask to set a password waits this long on a quiet map, so whatever opens by itself then comes first */
+const PW_NUDGE_AFTER_MS = 3000;
 /** One of her notes along the top (src/components/app/Perlica.tsx) */
 type PerlicaNote = { lines: string[] };
 /** Her report of a time away, with its weight */
@@ -465,6 +468,8 @@ export default function MapApp({
   const [liteHintDone, setLiteHintDone] = useState(true);
   // once per device: say the style can be changed
   const [styleHint, setStyleHint] = useState(false);
+  // 设个密码 (PasswordNudge.tsx): the ask is up, for a player whose codes may not arrive just now
+  const [pwNudge, setPwNudge] = useState(false);
   // 存到桌面: offered unless opened from the desktop icon or installed here; its bubble, once per device
   const [deskOffer, setDeskOffer] = useState(false);
   const [deskHint, setDeskHint] = useState(false);
@@ -2654,10 +2659,17 @@ export default function MapApp({
     .map((b) => b.id)
     .join(",");
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
-  const idle = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
+  // nothing on the map but the map, the ask to set a password aside
+  const mapClear = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene);
+  // 设个密码 is up: nothing else opens over it meanwhile
+  const pwNudgeUp = pwNudge && Boolean(me?.passwordNudge);
+  const idle = mapClear && !pwNudgeUp;
   // 存到桌面's bubble, once per device: after about 20 seconds on the map with nothing else going on, the tutorial
   // and the style hint over (a new player's first roach starts the tutorial, so it comes after)
-  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint);
+  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint && !pwNudgeUp);
+  // the style hint: once the map is up (a slow line can take a while), not while placing, in the tutorial or
+  // asked to set a password, nor to visitors
+  const styleHintNow = Boolean(styleHint && !guest && visible !== null && !placing && !step && !pwNudgeUp);
   useEffect(() => {
     if (!deskHintNow || deskHint || deskHintSeen()) return;
     const t = window.setTimeout(() => {
@@ -2817,6 +2829,32 @@ export default function MapApp({
     introduced.current = true;
     setPanel({ kind: "amiyaIntro" });
   }, [introDue, meIdForIntro]);
+
+  // 设个密码 (PasswordNudge.tsx), for a player whose codes may not arrive just now: once a visit, a moment after
+  // the map falls quiet with every other prompt over (an introduction, new titles, the hints), so it never
+  // comes with one of them; 下次再说 puts it off on this device
+  const pwNudgeDue = Boolean(
+    settled &&
+      idle &&
+      !perlicaBusy &&
+      me?.passwordNudge &&
+      !me.mustReconsent &&
+      !board &&
+      !styleHintNow &&
+      !deskHint &&
+      !liteHint &&
+      !newBadges.length &&
+      !unseenBadges,
+  );
+  const pwNudged = useRef(false);
+  useEffect(() => {
+    if (!pwNudgeDue || !meIdForIntro || pwNudged.current || nudgePutOff(meIdForIntro)) return;
+    const t = window.setTimeout(() => {
+      pwNudged.current = true;
+      setPwNudge(true);
+    }, PW_NUDGE_AFTER_MS);
+    return () => window.clearTimeout(t);
+  }, [pwNudgeDue, meIdForIntro]);
 
   // ---- 塔露拉干员 ----
 
@@ -3170,7 +3208,7 @@ export default function MapApp({
   // been up once on this device; not while the player is busy (a card, placing, the tutorial, a touch scene)
   const quietRef = useRef(false);
   useEffect(() => {
-    quietRef.current = Boolean(panel || placing || step || selected || offStage);
+    quietRef.current = Boolean(panel || placing || step || selected || offStage || pwNudgeUp);
   });
   const lagRef = useRef<LagWatch | null>(null);
   const watchLag = Boolean(me) && !liteHintDone && drawnStyle !== "lite" && drawnStyle !== "hidden";
@@ -3325,6 +3363,8 @@ export default function MapApp({
             onPerlicaTimer={switchPerlicaTimer}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
+            // set before the map got round to asking: it asks no more
+            onPasswordSet={() => me.passwordNudge && applyMe({ ...me, passwordNudge: false })}
             onUnblock={unblock}
             onSave={saveProfile}
             onSignOut={() => leave("signOut")}
@@ -3666,8 +3706,7 @@ export default function MapApp({
             style={shownStyle}
             onPick={switchMapStyle}
             unavailable={guest ? GUEST_STYLES : !HEARTS_READY ? { hearts: "很快就有" } : heartsOff ? { hearts: "这台设备画不了爱心" } : {}}
-            // once the map is up (a slow line can take a while), not while placing or in the tutorial, nor to visitors
-            hint={styleHint && !guest && visible !== null && !placing && !step}
+            hint={styleHintNow}
             onHintDone={styleHintDone}
             onRaise={setTopRaised}
           />
@@ -4125,6 +4164,18 @@ export default function MapApp({
           onOpen={boardOpen}
           onList={boardList}
           onClose={closeBoard}
+        />
+      )}
+      {pwNudgeUp && mapClear && me && (
+        <PasswordNudge
+          onSet={() => {
+            setPwNudge(false);
+            setPanel({ kind: "profile", password: "set" });
+          }}
+          onLater={() => {
+            putOffNudge(me.id);
+            setPwNudge(false);
+          }}
         />
       )}
       {liteHint && (
