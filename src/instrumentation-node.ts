@@ -1,3 +1,5 @@
+// first, so anything below that says something says it in Chinese (src/i18n)
+import "./i18n/server";
 import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
 import { saveAppCounts } from "./lib/server/appCounts";

@@ -17,6 +17,8 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     globalSetup: ["./vitest.global-setup.mts"],
+    // the server's words for T (src/i18n), as the app's own processes load them at start
+    setupFiles: ["./src/i18n/server.ts"],
     env: { DATABASE_URL: TEST_DATABASE_URL, AUTH_SECRET: "test-only-secret-0123456789" },
     // the server tests share one database
     fileParallelism: false,

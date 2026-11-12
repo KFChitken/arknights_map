@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -3698,7 +3699,7 @@ export default function MapApp({
         <div className="brand">
           <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
           <span>{SITE_NAME}</span>
-          <span className="tag">内测版</span>
+          <span className="tag">{T.map.beta}</span>
           <NoticeButton dot={noticeDotOn} onClick={openBoard} />
         </div>
         <div className={`switches${cn ? "" : " with-basemap"}`}>
@@ -3751,7 +3752,7 @@ export default function MapApp({
           {/* with how many players there are, a second line in small print (.stats.two); one line, as before, till the server says */}
           <div className={visible !== null && feedIn && players !== undefined ? "stats two" : "stats"}>
             {visible === null ? (
-              "地图加载中…"
+              T.map.loading
             ) : !feedIn ? (
               "舟P们正在赶来…"
             ) : guest ? (
@@ -3798,7 +3799,7 @@ export default function MapApp({
           <span className="radar-scope mini" aria-hidden="true">
             <span className="radar-sweep" />
           </span>
-          <small>方舟雷达</small>
+          <small>{T.map.radar}</small>
         </button>
       )}
       {!placing && (
@@ -4199,9 +4200,9 @@ export default function MapApp({
       )}
       {toast && <div className={`toast ${coachShown || selected || heard.length ? "high" : ""}`}>{toast}</div>}
       <p className="disclaimer">
-        非官方同人项目 · 与鹰角网络无关 ·{" "}
+        {T.map.disclaimer}{" "}
         <a href="/privacy#contact" target="_blank" rel="noreferrer">
-          联系与举报
+          {T.map.contact}
         </a>
       </p>
     </main>

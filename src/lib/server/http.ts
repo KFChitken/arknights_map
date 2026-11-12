@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { Lang } from "@/i18n";
+import { ENGLISH_ON, LANG_COOKIE, pickLang } from "@/i18n/lang";
+import { withLang } from "@/i18n/server";
 import { WorldError } from "../world/types";
+import { SESSION_COOKIE } from "./auth";
+import { inMainland } from "./region";
 import { errorCode, note } from "./signals";
 
 /** An error whose message is safe to show to the player. */
@@ -13,22 +18,39 @@ export class HttpError extends Error {
 }
 
 /**
- * Wrap a route handler: rejects cross-site writes, turns HttpError and
- * WorldError into { error } and hides anything unexpected behind a generic message.
+ * Wrap a route handler: answers in the request's language (src/i18n: everything the
+ * handler says through T, its errors included), rejects cross-site writes, turns
+ * HttpError and WorldError into { error } and hides anything unexpected behind a
+ * generic message.
  */
 export function route<C>(fn: (req: NextRequest, ctx: C) => Promise<Response>) {
-  return async (req: NextRequest, ctx: C) => {
-    try {
-      if (req.method !== "GET" && req.method !== "HEAD") checkOrigin(req);
-      return await fn(req, ctx);
-    } catch (e) {
-      if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
-      if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
-      console.error(e);
-      note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
-      return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
-    }
-  };
+  return (req: NextRequest, ctx: C) =>
+    withLang(requestLang(req), async () => {
+      try {
+        if (req.method !== "GET" && req.method !== "HEAD") checkOrigin(req);
+        return await fn(req, ctx);
+      } catch (e) {
+        if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+        if (e instanceof WorldError) return NextResponse.json({ error: e.message }, { status: 400 });
+        console.error(e);
+        note("error", `${req.nextUrl.pathname} ${errorCode(e)}`);
+        return NextResponse.json({ error: "服务器出了点问题，稍后再试试。" }, { status: 500 });
+      }
+    });
+}
+
+/**
+ * The language an API request is answered in (src/i18n/lang.ts): Chinese while English is
+ * not offered, without reading the request.
+ */
+export function requestLang(req: NextRequest): Lang {
+  if (!ENGLISH_ON) return "zh";
+  return pickLang({
+    cookie: req.cookies.get(LANG_COOKIE)?.value,
+    acceptLanguage: req.headers.get("accept-language"),
+    signedIn: req.cookies.has(SESSION_COOKIE),
+    mainland: inMainland(clientIp(req)),
+  });
 }
 
 // Cookies are SameSite=Lax, and this blocks the rest: a write must come from our own page
