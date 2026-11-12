@@ -1,6 +1,6 @@
 import type { Area } from "./area";
 import { feedIdsOf, unpackRoaches } from "./packed";
-import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "./types";
+import type { AreaUpdate, MapRoach, RoachFeedUpdate, TilesUpdate, TileUpdate } from "./types";
 
 /** How many roaches there are in all, by 塔露拉干员's fire, riding with 明河都尉, and how many players they belong to */
 export type AreaTotals = { total: number; fire: number; riders: number; players?: number };
@@ -117,5 +117,89 @@ export class RoachAreaCopy {
     for (const id of ids) for (const k of feedIdsOf(id)) changed = this.byId.delete(k) || changed;
     if (changed) this.list = [...this.byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return changed;
+  }
+}
+
+/** How many tiles of the overview a page keeps, drawn or not (each a few to some tens of KB) */
+const TILES_HELD = 300;
+
+/**
+ * The browser's copy of the overview by tiles (world/area.ts tilesFor): the tiles it was given, each with when,
+ * and which tiles there are roaches in. Only the tiles round the view are drawn; the others are kept for the
+ * way back. Short ids, as RoachFeedCopy; each roach stands for all those in its square (n).
+ */
+export class RoachTilesCopy {
+  private held = new Map<string, { at: number; roaches: MapRoach[] }>();
+  private wanted: string[] = [];
+  private list: MapRoach[] = [];
+  /** The tiles there are roaches in, as the server last said, and when (Date.now()) */
+  index: { at: number; tiles: Set<string> } | null = null;
+  totals: AreaTotals | null = null;
+
+  /** The roaches of the tiles round the view that have come, in a fixed order */
+  get roaches() {
+    return this.list;
+  }
+
+  /** Whether a tile has roaches, as far as is known (before the list comes, every one may) */
+  listed(x: number, y: number) {
+    return this.index?.tiles.has(`${x}_${y}`) ?? true;
+  }
+
+  /** When a tile came (Date.now()), if it did */
+  heldAt(x: number, y: number) {
+    return this.held.get(`${x}_${y}`)?.at;
+  }
+
+  /** The tiles round the view now: those held are drawn. True when what is drawn changed. */
+  want(tiles: [number, number][]): boolean {
+    const keys = tiles.map(([x, y]) => `${x}_${y}`);
+    const before = this.drawnKey();
+    this.wanted = keys;
+    if (this.drawnKey() === before) return false;
+    this.compose();
+    return true;
+  }
+
+  /** Whether any tile round the view has come (anything to draw yet) */
+  get any() {
+    return this.wanted.some((k) => this.held.has(k));
+  }
+
+  applyIndex(u: TilesUpdate) {
+    if (u.t) this.totals = totalsOf(u.t);
+    this.index = { at: Date.now(), tiles: new Set(u.tiles.map(([x, y]) => `${x}_${y}`)) };
+    // tiles that no longer have roaches: let go
+    let changed = false;
+    for (const k of [...this.held.keys()]) {
+      if (!this.index.tiles.has(k)) changed = this.held.delete(k) || changed;
+    }
+    if (changed) this.compose();
+  }
+
+  /** A tile whole. True when what is drawn changed. */
+  applyTile(u: TileUpdate): boolean {
+    if (u.t) this.totals = totalsOf(u.t);
+    const k = `${u.tile[0]}_${u.tile[1]}`;
+    this.held.delete(k);
+    this.held.set(k, { at: Date.now(), roaches: unpackRoaches(u.packed) });
+    // the least lately come go first, but never one drawn
+    for (const old of this.held.keys()) {
+      if (this.held.size <= TILES_HELD) break;
+      if (!this.wanted.includes(old)) this.held.delete(old);
+    }
+    if (!this.wanted.includes(k)) return false;
+    this.compose();
+    return true;
+  }
+
+  private drawnKey() {
+    return this.wanted.filter((k) => this.held.has(k)).join(";");
+  }
+
+  private compose() {
+    const out: MapRoach[] = [];
+    for (const k of this.wanted) for (const r of this.held.get(k)?.roaches ?? []) out.push(r);
+    this.list = out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 }

@@ -74,8 +74,8 @@ import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePla
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, SITE_NAME, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MapFocus, MapView, RoachStyle } from "@/lib/types";
-import { areaFor, boxFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
-import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
+import { areaFor, boxFor, boxHolds, boxText, tileOf, TILES_ACROSS, tilesFor, weightOf, type Box } from "@/lib/world/area";
+import { RoachAreaCopy, RoachFeedCopy, RoachTilesCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
 import { HOUR, reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach, unpackRoaches } from "@/lib/world/packed";
 import {
@@ -431,8 +431,11 @@ export default function MapApp({
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
   const feedRef = useRef(new RoachFeedCopy());
-  /** 只发看得到的 (world/area.ts): the roaches of the area the map shows, a box or the overview */
+  /** 只发看得到的 (world/area.ts): closer in, the box round the view; zoomed out, the overview's tiles round it (tilesRef) */
   const areaRef = useRef(new RoachAreaCopy());
+  const tilesRef = useRef(new RoachTilesCopy());
+  /** Which of them the map shows now */
+  const shownRef = useRef<"box" | "tiles" | null>(null);
   // the made-up crowd is on: no area from the server takes its place
   const fakeFeedRef = useRef(false);
   // the whole list as before, not areas: ?whole=1 in the address (to compare), or the server says so (AREA_FEED=off)
@@ -751,6 +754,8 @@ export default function MapApp({
   const forgetRoaches = useCallback(() => {
     feedRef.current = new RoachFeedCopy();
     areaRef.current = new RoachAreaCopy();
+    tilesRef.current = new RoachTilesCopy();
+    shownRef.current = null;
     askingRef.current = null;
     countsInRef.current = false;
     setFeedRoaches([]);
@@ -788,6 +793,105 @@ export default function MapApp({
    * the one held no longer covers the view; "poll": also what changed in the box held, and the overview
    * again once OVERVIEW_AGAIN_MS old. Nothing before the map has said where it is: its first report asks.
    */
+  /**
+   * Zoomed out: the overview's tiles round the view (world/area.ts tilesFor), each asked for alone, four at a time,
+   * from the middle of the view out, and drawn as it comes (the box held stays on the map until the first one is in); which tiles there are roaches
+   * in, and each tile, again once OVERVIEW_AGAIN_MS old. A tile refused or failed is asked for again within
+   * seconds, alone, and the toast says so: on a slow link each tile is small enough to come, where the whole
+   * overview (hundreds of KB) often never did.
+   */
+  const loadTiles = useCallback(
+    async (bounds: [LngLat, LngLat]): Promise<void> => {
+      const tc = tilesRef.current;
+      const wanted = tilesFor(bounds);
+      const show = () => {
+        if (!tc.any) return;
+        shownRef.current = "tiles";
+        setFeedRoaches(tc.roaches);
+        setOverview(true);
+        if (tc.totals) setAreaTotals(tc.totals);
+      };
+      if (tc.want(wanted) || shownRef.current !== "tiles") show();
+      const old = (at: number | undefined) => at === undefined || Date.now() - at >= OVERVIEW_AGAIN_MS;
+      const indexDue = old(tc.index?.at);
+      const due = () => wanted.filter(([x, y]) => tc.listed(x, y) && old(tc.heldAt(x, y)));
+      if (!indexDue && !due().length) return;
+      const key = `tiles:${wanted.map((t) => t.join(",")).join(";")}`;
+      if (askingRef.current?.key === key) return askingRef.current.done;
+      const ask = async () => {
+        let failed: unknown = null;
+        try {
+          if (indexDue) {
+            const u = await worldRef.current!.roachTiles();
+            if (tilesRef.current !== tc) return;
+            if ("whole" in u && u.whole) {
+              wholeRef.current = true;
+              setAreaTotals(null);
+              setOverview(false);
+              return void loadWhole().catch(() => {});
+            }
+            if ("hidden" in u) {
+              setVisitorCounts({ total: u.total, fire: u.fire, riders: u.riders, players: u.players });
+              return forgetRoaches();
+            }
+            setVisitorCounts(null);
+            tc.applyIndex(u);
+            if (tc.totals) setAreaTotals(tc.totals);
+          }
+          // from the middle of the view out, so what is in sight comes first
+          const [cx, cy] = tileOf({ lng: (bounds[0].lng + bounds[1].lng) / 2, lat: (bounds[0].lat + bounds[1].lat) / 2 });
+          const far = ([x, y]: [number, number]) => Math.min(Math.abs(x - cx), TILES_ACROSS - Math.abs(x - cx)) ** 2 + (y - cy) ** 2;
+          const todo = due().sort((p, q) => far(p) - far(q));
+          let next = 0;
+          let drawnAt = 0;
+          const fetchSome = async () => {
+            while (next < todo.length && tilesRef.current === tc) {
+              const [x, y] = todo[next++];
+              try {
+                const u = await worldRef.current!.roachTile(x, y);
+                if (tilesRef.current !== tc || !("packed" in u)) continue;
+                // drawn as they come, at most twice a second, while this view is still the one asked for
+                if (tc.applyTile(u) && askingRef.current?.key === key && Date.now() - drawnAt > 500) {
+                  drawnAt = Date.now();
+                  show();
+                }
+              } catch (e) {
+                failed = e;
+              }
+            }
+          };
+          // four at a time: on a slow link more at once only makes each take longer to finish
+          await Promise.all(Array.from({ length: Math.min(4, todo.length) }, fetchSome));
+          if (tilesRef.current !== tc || askingRef.current?.key !== key) return;
+          show();
+          setFeedIn(true);
+          if (failed) throw failed;
+          retryRef.current.delay = 0;
+        } catch (e) {
+          // some tiles round the view did not come: said, and those asked for again within seconds, a little later each time
+          const r = retryRef.current;
+          if (r.timer !== undefined) return;
+          r.delay = Math.min(30, r.delay ? r.delay * 2 : 3);
+          setToast(e instanceof WorldError ? e.message : "连不上服务器，几秒后自动重试。");
+          r.timer = window.setTimeout(
+            () => {
+              r.timer = undefined;
+              loadRoachesRef.current?.().catch(() => {});
+            },
+            r.delay * (750 + Math.random() * 500),
+          );
+        }
+      };
+      const done = ask().finally(() => {
+        if (askingRef.current?.key === key) askingRef.current = null;
+      });
+      askingRef.current = { key, done };
+      return done;
+    },
+    [forgetRoaches, loadWhole],
+  );
+  /** loadRoaches, for the tiles' retry (defined after it) */
+  const loadRoachesRef = useRef<(() => Promise<void>) | null>(null);
   const loadRoaches = useCallback(
     async (why: "poll" | "view" = "poll"): Promise<void> => {
       wholeRef.current ??= new URLSearchParams(window.location.search).has("whole");
@@ -810,18 +914,23 @@ export default function MapApp({
       const bounds = boundsRef.current;
       if (!v || !bounds) return;
       const want = areaFor(v.zoom, bounds);
+      if (want === "overview") return loadTiles(bounds);
       const held = copy.area;
-      let area: Area = want;
+      let area: Box = want;
       let since: string | null = null;
-      if (want !== "overview" && held && held !== "overview" && boxHolds(held, bounds)) {
-        // the box held still covers the view: what changed in it, when it is time to ask
+      if (held && held !== "overview" && boxHolds(held, bounds)) {
+        // the box held still covers the view (back from the tiles, at once): what changed in it, when it is time to ask
+        if (shownRef.current !== "box") {
+          shownRef.current = "box";
+          setFeedRoaches(copy.roaches);
+          setOverview(false);
+          if (copy.totals) setAreaTotals(copy.totals);
+        }
         if (why === "view") return;
         area = held;
         since = copy.version;
-      } else if (want === "overview" && held === "overview" && (why === "view" || Date.now() - copy.heldAt < OVERVIEW_AGAIN_MS)) {
-        return;
       }
-      const key = `${area === "overview" ? "o" : boxText(area)}:${since ?? ""}`;
+      const key = `${boxText(area)}:${since ?? ""}`;
       if (askingRef.current?.key === key) return askingRef.current.done;
       const ask = async () => {
         try {
@@ -840,11 +949,22 @@ export default function MapApp({
             if (copy.version) forgetRoaches();
           } else {
             setVisitorCounts(null);
-            if (copy.apply(u)) {
+            if (copy.apply(u) || shownRef.current !== "box") {
+              shownRef.current = "box";
               setFeedRoaches(copy.roaches);
-              setOverview(copy.area === "overview");
+              setOverview(false);
             }
             if (copy.totals) setAreaTotals(copy.totals);
+            // which of the overview's tiles have roaches, a few KB, ahead of the first zoom-out, which then starts
+            // on the tiles themselves at once
+            const tc = tilesRef.current;
+            if (!tc.index) {
+              void worldRef.current!.roachTiles()
+                .then((t) => {
+                  if (tilesRef.current === tc && "tiles" in t && !tc.index) tc.applyIndex(t);
+                })
+                .catch(() => {});
+            }
           }
           setFeedIn(true);
           retryRef.current.delay = 0;
@@ -873,8 +993,9 @@ export default function MapApp({
       askingRef.current = { key, done };
       return done;
     },
-    [forgetRoaches, loadWhole],
+    [forgetRoaches, loadWhole, loadTiles],
   );
+  loadRoachesRef.current = loadRoaches;
   // the map moved: a new area once the view settles, if the one held does not cover it (a fly sets it off again on landing)
   const areaTimerRef = useRef<number | undefined>(undefined);
   const askAreaSoon = useCallback(() => {

@@ -83,5 +83,49 @@ export function overviewCell(p: LngLat): number {
   return y * OVERVIEW_CELLS + x;
 }
 
+/**
+ * The overview by tiles: Web Mercator tiles, this many across the world (at zoom 6, 5.6° of longitude each; on 11/12 the busiest about 50 KB),
+ * each the squares of the overview in it, whole (OVERVIEW_CELLS is a multiple, so no square is split). A page
+ * zoomed out asks only for the tiles round its view, one by one, and draws each as it comes: on a slow link
+ * each is small enough to arrive, and one cut off is asked for again alone.
+ */
+export const TILES_ACROSS = 64;
+/** The view's tiles reach this share of its width and height past it on every side */
+export const TILES_MARGIN = 0.25;
+
+/** The tile of the overview a place is in: [x, y] (y from the north) */
+export function tileOf(p: LngLat): [number, number] {
+  const cell = overviewCell(p);
+  const per = OVERVIEW_CELLS / TILES_ACROSS;
+  return [Math.floor((cell % OVERVIEW_CELLS) / per), Math.floor(Math.floor(cell / OVERVIEW_CELLS) / per)];
+}
+
+/** The tiles of the overview round a view, as [x, y]: across ±180° (or nearly the whole world wide), every column */
+export function tilesFor([sw, ne]: [LngLat, LngLat]): [number, number][] {
+  const w = ne.lng - sw.lng;
+  const h = ne.lat - sw.lat;
+  const north = Math.min(85.05, ne.lat + Math.max(0, h) * TILES_MARGIN);
+  const south = Math.max(-85.05, sw.lat - Math.max(0, h) * TILES_MARGIN);
+  const y0 = tileOf({ lng: 0, lat: north })[1];
+  const y1 = tileOf({ lng: 0, lat: south })[1];
+  let xs: number[];
+  if (!(w > 0) || w * (1 + 2 * TILES_MARGIN) >= 360) xs = Array.from({ length: TILES_ACROSS }, (_, i) => i);
+  else {
+    const west = sw.lng - w * TILES_MARGIN;
+    const east = ne.lng + w * TILES_MARGIN;
+    const wrap = (lng: number) => ((((lng + 180) % 360) + 360) % 360) - 180;
+    const x0 = tileOf({ lng: wrap(west), lat: 0 })[0];
+    const x1 = tileOf({ lng: wrap(east), lat: 0 })[0];
+    xs = [];
+    for (let x = x0; ; x = (x + 1) % TILES_ACROSS) {
+      xs.push(x);
+      if (x === x1 || xs.length >= TILES_ACROSS) break;
+    }
+  }
+  const out: [number, number][] = [];
+  for (let y = y0; y <= y1; y++) for (const x of xs) out.push([x, y]);
+  return out;
+}
+
 /** How many roaches a roach of the feed stands for: in the overview, all those in its square */
 export const weightOf = (r: { n?: number }) => r.n ?? 1;

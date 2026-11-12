@@ -5,7 +5,7 @@ import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_PROFILE } from "../profile";
-import { overviewCell, type Area } from "../world/area";
+import { overviewCell, tileOf, type Area } from "../world/area";
 import { unpackRoaches } from "../world/packed";
 import type { AreaUpdate, MapRoach, RoachFeedUpdate } from "../world/types";
 import { db } from "./db";
@@ -19,6 +19,8 @@ import {
   roachCounts,
   roachFeed,
   roachFeedSettled,
+  roachTile,
+  roachTiles,
   stopRoachFeed,
   type FeedForm,
 } from "./roachFeed";
@@ -624,5 +626,42 @@ describe("an area's whole answer, kept a while (f=4)", () => {
     const later = await askArea("overview", null, T0 + 5 * MINUTE);
     expect(later.v).not.toBe(overview.v);
     expect(later.body.packed && unpackRoaches(later.body.packed).find((r) => r.id === "a1000000")).toMatchObject({ lng: 121.6 });
+  });
+});
+
+describe("the overview by tiles (f=4)", () => {
+  const tile = async (x: number, y: number, now: number) => {
+    const t = await roachTile(x, y, now);
+    return { ...t, roaches: unpackRoaches(JSON.parse(t.whole.json).packed) };
+  };
+
+  it("is the overview cut into tiles, each square in one, listed by the tiles there are roaches in, and kept a while", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    const at = [SHANGHAI, TOKYO, BEIJING, { lng: 121.4701, lat: 31.2301 }, { lng: -73.99, lat: 40.73 }, { lng: 179.99, lat: -16.5 }];
+    for (const [i, p] of at.entries()) await roachWithId(i < 3 ? a : b, i % 3, `ab${i}00000-0000-4000-8000-00000000000${i}`, p);
+    const listed = JSON.parse((await roachTiles(T0)).whole.json) as { tiles: [number, number, number][]; t: number[] };
+    expect(listed.t[0]).toBe(6);
+    const expected = new Map<string, number>();
+    for (const p of at) expected.set(tileOf(p).join(","), 0);
+    expect(listed.tiles.map(([x, y]) => `${x},${y}`).sort()).toEqual([...expected.keys()].sort());
+    // every tile together: the overview, roach for roach
+    const all: MapRoach[] = [];
+    for (const [x, y] of listed.tiles) all.push(...(await tile(x, y, T0)).roaches);
+    const overview = JSON.parse(((await roachArea("overview", null, T0)) as { whole: { json: string } }).whole.json);
+    const byId = (rs: MapRoach[]) => [...rs].sort((p, q) => (p.id < q.id ? -1 : 1));
+    expect(byId(all)).toEqual(byId(unpackRoaches(overview.packed)));
+    // Shanghai's two roaches share a square: one roach standing for both
+    expect(all.find((r) => r.n === 2)).toBeDefined();
+    // kept as the overview is: a move does not change a tile asked for again within five minutes
+    const [sx, sy] = tileOf(SHANGHAI);
+    const first = await tile(sx, sy, T0);
+    await db.execute(sql`update roaches set lng = 121.6 where user_id = ${a} and slot = 0`);
+    await roachFeed(null, T0 + 4000, 3);
+    await roachFeedSettled();
+    expect((await tile(sx, sy, T0 + 4000)).whole).toBe(first.whole);
+    const later = await tile(sx, sy, T0 + 5 * MINUTE);
+    expect(later.v).not.toBe(first.v);
+    expect(later.roaches.find((r) => r.id === "ab000000")).toMatchObject({ lng: 121.6 });
   });
 });

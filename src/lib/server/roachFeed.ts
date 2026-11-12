@@ -7,7 +7,7 @@ import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import { and, asc, eq, gt, gte, inArray, lt, lte, max, or, sql } from "drizzle-orm";
 import { isNearFire } from "../talulah";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
-import { boxText, inBox, overviewCell, type Area, type Box } from "../world/area";
+import { boxText, inBox, OVERVIEW_CELLS, overviewCell, TILES_ACROSS, type Area, type Box } from "../world/area";
 import { botRoaches } from "../world/bots";
 import { nearMetre, packRoaches, SHORT_ID, shortIds } from "../world/packed";
 import type { MapRoach } from "../world/types";
@@ -129,8 +129,9 @@ type Snapshot = {
   shared: Map<string, Set<string>>;
   /** The roaches by whole degree of longitude and latitude: f=4's boxes (world/area.ts) and visitors' counts (nearby.ts) */
   buckets: Map<number, Set<MapRoach>>;
-  /** f=4: the roaches by square of the overview */
+  /** f=4: the roaches by square of the overview, and those squares by tile of the overview (tileOfCell) */
   cells: Map<number, Cell>;
+  tiles: Map<number, Set<Cell>>;
   /** Roaches by 塔露拉干员's fire, riding with 明河都尉, and main roaches: one for each player (show roaches never count) */
   fire: number;
   riders: number;
@@ -350,6 +351,7 @@ const emptySnapshot = (n: number, now: number): Snapshot => ({
   shared: new Map(),
   buckets: new Map(),
   cells: new Map(),
+  tiles: new Map(),
   fire: 0,
   riders: 0,
   players: 0,
@@ -360,6 +362,10 @@ const emptySnapshot = (n: number, now: number): Snapshot => ({
 });
 
 const bucketKey = (lngDeg: number, latDeg: number) => (latDeg + 90) * 361 + (lngDeg + 180);
+/** The overview's tile (world/area.ts TILES_ACROSS) a square of it is in, as ty * TILES_ACROSS + tx */
+const CELLS_PER_TILE = OVERVIEW_CELLS / TILES_ACROSS;
+const tileOfCell = (cell: number) =>
+  Math.floor(Math.floor(cell / OVERVIEW_CELLS) / CELLS_PER_TILE) * TILES_ACROSS + Math.floor((cell % OVERVIEW_CELLS) / CELLS_PER_TILE);
 /**
  * The first four bytes of a public id, which the short form goes by; none for the show roaches' ids. Public
  * ids come from the database's uuid column, always in its one written form, so the shape is enough to tell
@@ -403,7 +409,13 @@ function place(s: Snapshot, r: MapRoach) {
   else s.buckets.set(k, new Set([r]));
   const cellKey = overviewCell(r);
   let c = s.cells.get(cellKey);
-  if (!c) s.cells.set(cellKey, (c = { all: new Set(), min: null, minId: "" }));
+  if (!c) {
+    s.cells.set(cellKey, (c = { all: new Set(), min: null, minId: "" }));
+    const t = tileOfCell(cellKey);
+    const tile = s.tiles.get(t);
+    if (tile) tile.add(c);
+    else s.tiles.set(t, new Set([c]));
+  }
   c.all.add(r);
   const id = shortOf(s, r.id);
   if (!c.min || id < c.minId) {
@@ -423,7 +435,13 @@ function unplace(s: Snapshot, r: MapRoach) {
   const c = s.cells.get(cellKey);
   if (c) {
     c.all.delete(r);
-    if (!c.all.size) s.cells.delete(cellKey);
+    if (!c.all.size) {
+      s.cells.delete(cellKey);
+      const t = tileOfCell(cellKey);
+      const tile = s.tiles.get(t);
+      tile?.delete(c);
+      if (tile && !tile.size) s.tiles.delete(t);
+    }
     else if (c.min === r) findMin(s, c);
   }
   if (!r.bot && isNearFire(r)) s.fire--;
@@ -916,7 +934,7 @@ function roachesIn(s: Snapshot, b: Box): MapRoach[] {
 function overviewList(s: Snapshot): MapRoach[] {
   if (s.overview) return s.overview;
   const out: MapRoach[] = [];
-  for (const c of s.cells.values()) if (c.min) out.push({ ...c.min, id: c.minId, ...(c.all.size > 1 ? { n: c.all.size } : {}) });
+  for (const c of s.cells.values()) if (c.min) out.push(standIn(c));
   return (s.overview = out);
 }
 
@@ -942,6 +960,40 @@ export function compressedArea(whole: AreaWhole, how: "br" | "gzip"): Promise<Bu
     }));
   }
   return (whole.gzip ??= gzipAsync(whole.json, { level: 6 }));
+}
+
+/** The overview's roach standing for a square: the one with the lowest short id, carrying how many there are */
+const standIn = (c: Cell): MapRoach => ({ ...c.min!, id: c.minId, ...(c.all.size > 1 ? { n: c.all.size } : {}) });
+
+/**
+ * f=4, the overview by tiles (world/area.ts tilesFor): one tile's squares whole, made once for every page that
+ * asks and kept as the overview is (OVERVIEW_KEPT_MS), at its own version. Together the tiles are the overview:
+ * a square is in one tile only.
+ */
+export async function roachTile(x: number, y: number, now = Date.now()): Promise<{ v: string; key: string; whole: AreaWhole }> {
+  const s = await current(now);
+  const key = `t${x}_${y}`;
+  const kept = s.areas.get(key);
+  if (kept && now >= kept.at && now - kept.at < OVERVIEW_KEPT_MS) return { v: kept.v, key, whole: kept.whole };
+  const list: MapRoach[] = [];
+  for (const c of s.tiles.get(y * TILES_ACROSS + x) ?? []) if (c.min) list.push(standIn(c));
+  const whole = { json: `{"v":"${s.v}","tile":[${x},${y}],"t":${totalsJson(s)},"packed":${JSON.stringify(packRoaches(list, 4))}}` };
+  s.areas.delete(key);
+  s.areas.set(key, { v: s.v, at: now, whole });
+  if (s.areas.size > AREAS_KEPT) s.areas.delete(s.areas.keys().next().value!);
+  return { v: s.v, key, whole };
+}
+
+/** f=4: the overview's tiles there are roaches in, [x, y, how many squares], with the totals; kept as the overview is */
+export async function roachTiles(now = Date.now()): Promise<{ v: string; whole: AreaWhole }> {
+  const s = await current(now);
+  const kept = s.areas.get("tiles");
+  if (kept && now >= kept.at && now - kept.at < OVERVIEW_KEPT_MS) return { v: kept.v, whole: kept.whole };
+  const tiles = [...s.tiles].map(([t, cells]) => `[${t % TILES_ACROSS},${Math.floor(t / TILES_ACROSS)},${cells.size}]`);
+  const whole = { json: `{"v":"${s.v}","t":${totalsJson(s)},"tiles":[${tiles.join(",")}]}` };
+  s.areas.delete("tiles");
+  s.areas.set("tiles", { v: s.v, at: now, whole });
+  return { v: s.v, whole };
 }
 
 /**

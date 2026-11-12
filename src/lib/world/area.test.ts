@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaFor, BOX_MAX, boxFor, boxHolds, boxText, overviewCell, parseBox, weightOf } from "./area";
+import { areaFor, BOX_MAX, boxFor, boxHolds, boxText, overviewCell, parseBox, tileOf, TILES_ACROSS, tilesFor, weightOf } from "./area";
 import { packRoaches, unpackRoaches } from "./packed";
 import type { MapRoach } from "./types";
 
@@ -48,5 +48,38 @@ describe("the areas a page asks for", () => {
     expect(packed.n).toEqual([12, 1]);
     expect(unpackRoaches(packed).map(weightOf)).toEqual([12, 1]);
     expect(packRoaches(list.map((r) => ({ ...r, n: undefined })), 4).n).toBeUndefined();
+  });
+});
+
+describe("the overview's tiles round a view", () => {
+  it("covers the view and a quarter more on each side, across ±180° too, every column when the world is in view", () => {
+    const china = tilesFor([
+      { lng: 100, lat: 20 },
+      { lng: 125, lat: 45 },
+    ]);
+    for (const p of [
+      { lng: 100, lat: 20 },
+      { lng: 125, lat: 45 },
+      { lng: 112, lat: 32 },
+      { lng: 95, lat: 15 },
+    ]) {
+      const [x, y] = tileOf(p);
+      expect(china.some(([a, b]) => a === x && b === y), JSON.stringify(p)).toBe(true);
+    }
+    // a 25° view and a quarter more each way, in tiles of 5.6°: some tens, not the world's thousands
+    expect(china.length).toBeLessThan(100);
+    // across the 180° meridian: both sides
+    const pacific = tilesFor([
+      { lng: 170, lat: -20 },
+      { lng: 190, lat: -10 },
+    ]);
+    expect(pacific.some(([x]) => x === tileOf({ lng: 175, lat: -15 })[0])).toBe(true);
+    expect(pacific.some(([x]) => x === tileOf({ lng: -175, lat: -15 })[0])).toBe(true);
+    // the whole world: all 32 columns
+    const world = tilesFor([
+      { lng: -200, lat: -60 },
+      { lng: 200, lat: 70 },
+    ]);
+    expect(new Set(world.map(([x]) => x)).size).toBe(TILES_ACROSS);
   });
 });
