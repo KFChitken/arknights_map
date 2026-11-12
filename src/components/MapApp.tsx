@@ -3905,10 +3905,10 @@ export default function MapApp({ cn, mailPaused = [] }: { cn: boolean; mailPause
               <button onClick={() => setPanel({ kind: "mine" })}>我的蟑螂</button>
               {/* on one line, or on two where the narrowest phones have no room for it (globals.css) */}
               <button className="primary announce" onClick={() => setPanel({ kind: "declare" })}>
-                <span className="one-line">我宣布个事儿！</span>
+                <span className="one-line">我宣布个事儿</span>
                 <span className="two-lines">
                   <span>我宣布</span>
-                  <span>个事儿！</span>
+                  <span>个事儿</span>
                 </span>
               </button>
             </>

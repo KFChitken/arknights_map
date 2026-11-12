@@ -236,25 +236,25 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   border: 0; border-radius: 16px; background: var(--paper); box-shadow: 0 2px 10px #0003;
 }
 /* where the bottom buttons, centred, would run into the dock (about 150px wide), they keep to its right,
-   a little tighter so 「我的蟑螂」 and 「我宣布个事儿！」 fit side by side on a 375px phone */
+   a little tighter so 「我的蟑螂」 and 「我宣布个事儿」 fit side by side on a 375px phone */
 @media (max-width: 519px) {
   .actions.beside-dock { left: calc(156px + var(--safe-left)); gap: 4px; }
   .actions.beside-dock button { padding: 10px; }
   .actions.beside-dock button.primary { padding: 12px; font-size: 14px; }
 }
-/* at full size, centred, the pair (231px) clears the dock only from 543px: till then it keeps to its right too */
-@media (min-width: 520px) and (max-width: 542px) {
+/* at full size, centred, the pair (216px) keeps 4px from the dock only from 528px: till then it keeps to its right too */
+@media (min-width: 520px) and (max-width: 527px) {
   .actions.beside-dock { left: calc(156px + var(--safe-left)); }
 }
 @media (max-width: 374px) {
   .actions.beside-dock button { padding: 9px 8px; font-size: 12.5px; }
   .actions.beside-dock button.primary { padding: 11px 10px; font-size: 13px; }
 }
-/* narrower still (an iPhone SE, a mini set to 放大显示, a phone with a larger 显示大小) the pair would run
-   into 触须之交 and off the screen: there 「我宣布个事儿！」 shows its label's two-line copy, 我宣布 over
-   个事儿！ (MapApp.tsx), in the height of one line, so nothing above the pair comes nearer */
+/* narrower still (an iPhone SE, a mini set to 放大显示, a phone with a larger 显示大小) the pair would come within
+   4px of 触须之交, and at 320px run 4px into it: there 「我宣布个事儿」 shows its label's two-line copy, 我宣布 over
+   个事儿 (MapApp.tsx), in the height of one line, so nothing above the pair comes nearer */
 .actions button.announce .two-lines { display: none; }
-@media (max-width: 349px) {
+@media (max-width: 335px) {
   .actions.beside-dock button.announce { padding: 5.5px 10px; line-height: 15px; }
   .actions.beside-dock button.announce .one-line { display: none; }
   .actions.beside-dock button.announce .two-lines, .actions.beside-dock button.announce .two-lines > span { display: block; }
