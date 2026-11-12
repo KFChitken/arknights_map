@@ -3,9 +3,9 @@
 import { Fragment } from "react";
 import { noticeBlocks, type NoticeInline } from "@/lib/noticeText";
 
-const QQ_GROUP = "1108446109";
-/** What the group's QR code opens: QQ's page for joining the group */
-const QQ_JOIN = "https://qm.qq.com/q/N2JAcrxeAC";
+const QQ_GROUP = "278579278";
+/** What the group's QR code opens: QQ's page for joining the group (the second group: the first is full, 11/12) */
+const QQ_JOIN = "https://qm.qq.com/q/yEAmVqJZ4Y";
 /** Links open in a new tab and tell the other site nothing about this page */
 const OUT = { target: "_blank", rel: "noreferrer noopener" } as const;
 
@@ -33,7 +33,7 @@ export default function NoticeBody({ body }: { body: string }) {
           case "qr":
             return (
               <a key={i} className="notice-qr" href={QQ_JOIN} {...OUT} aria-label={`加入QQ群 ${QQ_GROUP}`}>
-                <img src="/notice/qq-group.png" alt={`QQ群 ${QQ_GROUP} 的二维码`} width={160} height={160} />
+                <img src="/notice/qq-group-2.png" alt={`QQ群 ${QQ_GROUP} 的二维码`} width={160} height={160} />
                 <span>扫一扫，或者点二维码加群</span>
               </a>
             );

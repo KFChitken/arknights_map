@@ -32,8 +32,9 @@ const OLD_WELCOME =
   "<li>正在为 10 万舟u做准备！晚上人多时线路偶尔被限流，可能会卡一下～</li></ul>" +
   '<p>后续更新请关注 B站「<a href="https://space.bilibili.com/481828661" target="_blank" rel="noreferrer">Breeze青嵐</a>」；' +
   "任何反馈欢迎加企鹅群 1108446109：</p>" +
-  '<a class="notice-qr" href="https://qm.qq.com/q/N2JAcrxeAC" target="_blank" rel="noreferrer" aria-label="加入QQ群 1108446109">' +
-  '<img src="/notice/qq-group.png" alt="QQ群 1108446109 的二维码" width="160" height="160"/><span>扫一扫，或者点二维码加群</span></a>' +
+  // the QR code is the group NoticeBody shows now: the second group since the first filled up (11/12)
+  '<a class="notice-qr" href="https://qm.qq.com/q/yEAmVqJZ4Y" target="_blank" rel="noreferrer" aria-label="加入QQ群 278579278">' +
+  '<img src="/notice/qq-group-2.png" alt="QQ群 278579278 的二维码" width="160" height="160"/><span>扫一扫，或者点二维码加群</span></a>' +
   '<p class="notice-thanks">再次感谢大家！</p></div>';
 
 type NewNotice = typeof notices.$inferInsert;

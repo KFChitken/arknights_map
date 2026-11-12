@@ -61,8 +61,8 @@ describe("a notice's words", () => {
     // only a line that is just that
     expect(noticeBlocks("扫【Q群二维码】加群").map((b) => b.kind)).toEqual(["p"]);
     expect(html("【Q群二维码】\n谢谢！")).toBe(
-      '<div class="notice"><a class="notice-qr" href="https://qm.qq.com/q/N2JAcrxeAC" target="_blank" rel="noreferrer noopener" aria-label="加入QQ群 1108446109">' +
-        '<img src="/notice/qq-group.png" alt="QQ群 1108446109 的二维码" width="160" height="160"/><span>扫一扫，或者点二维码加群</span></a>' +
+      '<div class="notice"><a class="notice-qr" href="https://qm.qq.com/q/yEAmVqJZ4Y" target="_blank" rel="noreferrer noopener" aria-label="加入QQ群 278579278">' +
+        '<img src="/notice/qq-group-2.png" alt="QQ群 278579278 的二维码" width="160" height="160"/><span>扫一扫，或者点二维码加群</span></a>' +
         '<p class="notice-thanks">谢谢！</p></div>',
     );
   });
