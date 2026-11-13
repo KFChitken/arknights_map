@@ -6,7 +6,7 @@ import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
 import { FIRE_AT, TALULAH_ID } from "../talulah";
 import { metresApart, MINGHE_ID, queueSpot, stationOf, stopOf } from "../minghe";
-import type { Declaration } from "../declarations";
+import { declarationText, DRUNK_TEMPLATES, FOODS, repliesFor, STAY_TEMPLATES, TEMPLATES, type Declaration, type Template } from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
@@ -1993,6 +1993,87 @@ describe("server world", () => {
     // one left before the sentences had their own still reads
     await db.update(reactions).set({ reaction: "zhouli" });
     expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({ reaction: { id: "zhouli", text: "合乎粥礼" } });
+  });
+
+  it("gives whoever gets a declaration the very sentence sent, every one there is, with its replies, and its sender each reply", async () => {
+    // One of every sentence (tsc wants one for each), its blanks never what a row read wrong falls back to
+    // (启动, 明日方舟, the first food or spouse): 缘缘庄's two read as 「明日方舟，启动！」 to all who got them
+    const EVERY: { [K in Template]: Extract<Declaration, { template: K }> } = {
+      launch: { template: "launch", game: "endfield" },
+      iam: { template: "iam", character: "阿米娅", title: "猫" },
+      love: { template: "love", character: "阿米娅" },
+      buff: { template: "buff", character: "阿米娅" },
+      myname: { template: "myname", game: "endfield", name: "Dr. Breeze" },
+      welcome: { template: "welcome", game: "endfield" },
+      canyou: { template: "canyou", character: "阿米娅" },
+      eat: { template: "eat", character: "阿米娅", food: FOODS[2] },
+      birthday: { template: "birthday" },
+      event: { template: "event", line: "minghe" },
+      alsoplay: { template: "alsoplay", game: "endfield" },
+      water: { template: "water" },
+      drunklove: { template: "drunklove", character: "阿米娅" },
+      kr168: { template: "kr168", character: "阿米娅", spouse: "老公" },
+      radar: { template: "radar" },
+      roguelike: { template: "roguelike" },
+      xianshu: { template: "xianshu" },
+      rental: { template: "rental" },
+      sihouse: { template: "sihouse" },
+      simine: { template: "simine" },
+    };
+    const sendable = [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES];
+    // the sheet's lists hold every sentence but the limited lines and 「…也玩…」 of before
+    expect([...sendable, "event", "alsoplay"].sort()).toEqual(Object.keys(EVERY).sort());
+    await me.saveProfile({
+      ...EMPTY_PROFILE,
+      anonymous: false,
+      name: "Breeze",
+      drPrefix: true,
+      games: ["arknights", "endfield"],
+      favourites: { arknights: ["阿米娅"], endfield: [] },
+    });
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    // drunk till tomorrow, and a guest of 缘缘庄 before: every sentence can be sent
+    await db.update(users).set({ drunkUntil: new Date(Date.now() + 86_400_000), siStayedAt: new Date() }).where(eq(users.id, me.id));
+    const t2 = await demo("t2");
+    // every limited line, on now
+    const lines = EVENTS.flatMap((e) => e.lines);
+    const saved = lines.map(({ start, end }) => ({ start, end }));
+    lines.forEach((l) => Object.assign(l, { start: new Date(Date.now() - 3_600_000).toISOString(), end: new Date(Date.now() + 3_600_000).toISOString() }));
+    try {
+      const sent: Declaration[] = [...sendable.map((t) => EVERY[t]), ...lines.map((l) => ({ template: "event", line: l.id }) as const)];
+      for (const d of sent) {
+        await me.declare(d);
+        const [got] = await t2.inbox();
+        expect(got, d.template).toMatchObject({ kind: "declaration", text: declarationText(d), reaction: null });
+        expect(got.kind === "declaration" && got.options, d.template).toEqual(repliesFor(d));
+        // its fourth, asking for a touch; one of the five for a sentence without its own
+        const pick = repliesFor(d).filter((r) => r.own).at(-1) ?? repliesFor(d)[0];
+        await t2.react(got.id, pick.id);
+        expect((await t2.inbox())[0], d.template).toMatchObject({ id: got.id, reaction: pick });
+        expect((await me.inbox()).filter((i) => i.kind === "reaction"), d.template).toMatchObject([{ text: declarationText(d), reaction: pick }]);
+        // the next at once, not a minute later or after the day's twenty
+        await db.delete(declarations).where(eq(declarations.senderId, me.id));
+      }
+    } finally {
+      lines.forEach((l, i) => Object.assign(l, saved[i]));
+    }
+
+    // 「…也玩…」 can no longer be sent; one of then reads as it was
+    await me.declare({ template: "launch", game: "endfield" });
+    await db.update(declarations).set({ template: "alsoplay" }).where(eq(declarations.senderId, me.id));
+    const [old] = await t2.inbox();
+    expect(old).toMatchObject({ kind: "declaration", text: declarationText(EVERY.alsoplay) });
+    expect(old.kind === "declaration" && old.options).toEqual(repliesFor(EVERY.alsoplay));
+
+    // replies picked while 缘缘庄's two read as 「明日方舟，启动！」 read as picked, and none is picked so now
+    await db.delete(declarations).where(eq(declarations.senderId, me.id));
+    await me.declare({ template: "simine" });
+    const [inn] = await t2.inbox();
+    expect(inn).toMatchObject({ kind: "declaration", text: "疯狂新妻祀是我的！" });
+    await db.insert(reactions).values({ declarationId: inn.id.slice("d:".length), fromUserId: t2.id, reaction: "launch.1" });
+    expect((await t2.inbox())[0]).toMatchObject({ id: inn.id, reaction: { id: "launch.1", text: "上号！" } });
+    expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({ text: "疯狂新妻祀是我的！", reaction: { text: "上号！" } });
+    await expect((await demo("t1")).react(inn.id, "launch.1")).rejects.toThrow("不能这样回应");
   });
 
   it("puts the sender's name in 「我是…，我要玩…」 as it was when they said it", async () => {

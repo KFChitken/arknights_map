@@ -245,7 +245,10 @@ export function replyOf(d: Declaration, id: unknown): Reply | null {
   if (typeof id !== "string") return null;
   const found = repliesFor(d).find((r) => r.id === id);
   if (found) return found;
-  return isReaction(id) ? { id, text: REACTIONS[id], own: id === "birthday" } : null;
+  if (isReaction(id)) return { id, text: REACTIONS[id], own: id === "birthday" };
+  // 缘缘庄's two read as 「明日方舟，启动！」 until the server read them back as themselves (storedDeclaration in
+  // server/world.ts), and some were answered as that: those replies still read as they were picked
+  return isStayTemplate(d.template) && id.startsWith("launch.") ? replyOf({ template: "launch", game: "arknights" }, id) : null;
 }
 
 /** Whether a reply may be left on this declaration now */

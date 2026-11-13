@@ -4,7 +4,7 @@ import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne,
 import { fmt, T } from "@/i18n";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
-import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food } from "../declarations";
+import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food, type Template } from "../declarations";
 import { AWAY_DAYS, badgesOwned, seriesCovered } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
@@ -1242,23 +1242,28 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
   return items.sort((x, y) => y.at - x.at);
 }
 
+/** A declaration as its row keeps it (declare()), for everyone who reads it: receivers, its sender, the admin */
 export function storedDeclaration(d: typeof declarations.$inferSelect): Declaration {
   const game = isGame(d.game) ? d.game : "arknights";
   const character = d.character ?? "";
-  switch (d.template) {
+  // one of the sentences this code knows, unless newer code wrote the row (the default below)
+  const template = d.template as Template;
+  switch (template) {
+    case "launch":
+      return { template: "launch", game };
     case "iam":
       return { template: "iam", character, title: d.title ?? "" };
     case "love":
     case "buff":
     case "canyou":
-      return { template: d.template, character };
+      return { template, character };
     case "eat":
       return { template: "eat", character, food: FOODS.find((f) => f === d.food) ?? (FOODS[0] as Food) };
     case "myname":
       return { template: "myname", game, name: d.name ?? "" };
     case "welcome":
     case "alsoplay":
-      return { template: d.template, game };
+      return { template, game };
     case "birthday":
       return { template: "birthday" };
     case "event":
@@ -1268,13 +1273,20 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
     case "roguelike":
     case "xianshu":
     case "rental":
-      return { template: d.template };
+    case "sihouse":
+    case "simine":
+      return { template };
     case "drunklove":
       return { template: "drunklove", character };
     case "kr168":
       return { template: "kr168", character, spouse: SPOUSES.find((s) => s === d.title) ?? SPOUSES[0] };
-    default:
+    default: {
+      // Every sentence needs its case above, or it reads as 「明日方舟，启动！」 to all (as 缘缘庄's two did):
+      // tsc fails here when one has none
+      const unknown: never = template;
+      void unknown;
       return { template: "launch", game };
+    }
   }
 }
 
