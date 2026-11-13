@@ -82,6 +82,10 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "setPerlicaTimer":
       await perlica.setTimer(uid(), args[0] === true);
       break;
+    case "setOnlyMains":
+      ration(20);
+      await world.setOnlyMains(uid(), args[0] === true);
+      break;
     case "saveProfile":
       result = await world.saveProfile(agreed(), args[0] as Profile);
       break;

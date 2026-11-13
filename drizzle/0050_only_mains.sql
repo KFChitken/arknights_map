@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "only_mains" boolean DEFAULT false NOT NULL;

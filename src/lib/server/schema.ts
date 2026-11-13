@@ -128,6 +128,11 @@ export const users = pgTable("users", {
   flipWhenAway: boolean("flip_when_away").notNull().default(true),
   /** The Beijing day the 04:00 batch flipped their main roach over for staying away; null while it stands */
   sleptAwayOn: date("slept_away_on", { mode: "string" }),
+  /**
+   * 只看本体: their map draws others' main roaches only (and counts players), not their clones; their own and their
+   * 触须之交's still. Theirs alone: no one else is told
+   */
+  onlyMains: boolean("only_mains").notNull().default(false),
   /** 让触须之交来串门 (src/lib/server/friendly.ts): on unless they switched it off */
   welcomeGuests: boolean("welcome_guests").notNull().default(true),
   /** They were told once, with their first guest, not to keep the main roach by their door */

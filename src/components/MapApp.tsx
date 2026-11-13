@@ -5,6 +5,7 @@ import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fmt, fmtParts, T } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -13,6 +14,7 @@ import type { EarnedBadge } from "@/lib/badges";
 import { alonePopping, markBadgesPopped, poppedBadges, poppedKey, poppedStorageKey } from "@/lib/badgesPopped";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
 import { inBounds } from "@/lib/shapes";
+import { countPlayers, drawnWith } from "@/lib/world/onlyMains";
 import { GUIDES, guideById, type GuideId } from "@/lib/guides";
 import { declarationText, type Declaration, type Template } from "@/lib/declarations";
 import { EVENTS } from "@/lib/events";
@@ -196,6 +198,7 @@ import {
 import PlaceBar from "./app/PlaceBar";
 import { CONFIRM_REASON, type PasswordForm } from "./app/PasswordBox";
 import PasswordNudge, { nudgePutOff, putOffNudge } from "./app/PasswordNudge";
+import OnlyMainsSheet from "./app/OnlyMainsSheet";
 import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import RoachReportSheet from "./app/RoachReportSheet";
@@ -338,6 +341,8 @@ const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 type Panel =
   /** draft: unsaved changes kept while 我的称号 was open */
   | { kind: "profile"; draft?: Profile; password?: PasswordForm }
+  /** 地图上看哪些蟑螂 (只看本体), from the counts at the top, or from 资料 (back: to it, with its unsaved changes) */
+  | { kind: "onlyMains"; back?: Panel }
   | { kind: "badges"; draft: Profile }
   /** greeting: 阿米娅向导's of the day, and away: 佩丽卡监督's report of the time away, which this card then carries */
   | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null; away: PerlicaItem | null }
@@ -741,6 +746,11 @@ export default function MapApp({
     .flatMap((f) => f.roaches.flatMap((r) => feedIdsOf(r.id)))
     .sort()
     .join(",");
+  // 只看本体 (OnlyMainsSheet): others' clones are left out of what is drawn and counted; the overview asked for is of
+  // main roaches only. Not while the 站长 looks at reported roaches, which may be clones
+  const hideClones = Boolean(me?.onlyMains) && !reported;
+  const hideClonesRef = useRef(hideClones);
+  hideClonesRef.current = hideClones;
   // Each roach stays the same object while the feed's own stays and its friend mark is unchanged, so the
   // maps can tell at once which ones changed: an update of the list changes a few hundred of tens of thousands
   // (the feed keeps its own object for each roach that did not change, and those gone are let go with it)
@@ -752,6 +762,8 @@ export default function MapApp({
     for (const r of feedRoaches) {
       if (ownIds.has(r.id)) continue;
       const friend = friendIds.has(r.id);
+      // 只看本体: others' clones are not drawn; 触须之交's are, and our own come from me anyway
+      if (!drawnWith(r, friend, hideClones)) continue;
       let o = kept.get(r);
       if (!o || o.friend !== friend) {
         o = { ...r, friend };
@@ -768,7 +780,7 @@ export default function MapApp({
       }
     }
     return out;
-  }, [feedRoaches, ownIds, friendKey, overview, friends]);
+  }, [feedRoaches, ownIds, friendKey, overview, friends, hideClones]);
 
   const applyMe = useCallback((m: Me | null) => {
     const sameOwner = m?.id === meIdRef.current;
@@ -857,6 +869,8 @@ export default function MapApp({
       if (!v || !bounds) return;
       const want = areaFor(v.zoom, bounds);
       const held = copy.area;
+      // 只看本体: the overview of main roaches only (a box comes whole, and the page picks it over)
+      const mains = hideClonesRef.current;
       let area: Area = want;
       let since: string | null = null;
       if (want !== "overview" && held && held !== "overview" && boxHolds(held, bounds)) {
@@ -864,14 +878,19 @@ export default function MapApp({
         if (why === "view") return;
         area = held;
         since = copy.version;
-      } else if (want === "overview" && held === "overview" && (why === "view" || Date.now() - copy.heldAt < OVERVIEW_AGAIN_MS)) {
+      } else if (
+        want === "overview" &&
+        held === "overview" &&
+        copy.mains === mains &&
+        (why === "view" || Date.now() - copy.heldAt < OVERVIEW_AGAIN_MS)
+      ) {
         return;
       }
-      const key = `${area === "overview" ? "o" : boxText(area)}:${since ?? ""}`;
+      const key = `${area === "overview" ? (mains ? "om" : "o") : boxText(area)}:${since ?? ""}`;
       if (askingRef.current?.key === key) return askingRef.current.done;
       const ask = async () => {
         try {
-          const u = await worldRef.current!.roachArea(area, since);
+          const u = await worldRef.current!.roachArea(area, since, area === "overview" && mains);
           // signed in or out meanwhile, or another area asked for since: that one counts
           if (areaRef.current !== copy || askingRef.current?.key !== key) return;
           if ("whole" in u && u.whole) {
@@ -1400,9 +1419,12 @@ export default function MapApp({
   const exactRef = useRef<{ timer?: number; asked: string }>({ asked: "" });
   const countVisible = useCallback(
     (bounds: [LngLat, LngLat]) => {
-      // each roach of the overview counts as all those in its square, yours among them
-      let n = roaches.reduce((s, r) => s + (inBounds(r, bounds) ? weightOf(r) : 0), 0);
-      if (!overview) for (const r of me?.roaches ?? []) if (inBounds(r, bounds)) n += 1;
+      // each roach of the overview counts as all those in its square, yours among them; with 只看本体, players: the
+      // main roaches in view, ours too (触须之交's clones are drawn but not counted)
+      let n = hideClones
+        ? countPlayers(roaches, bounds, overview, me?.roaches ?? [])
+        : roaches.reduce((s, r) => s + (inBounds(r, bounds) ? weightOf(r) : 0), 0);
+      if (!overview && !hideClones) for (const r of me?.roaches ?? []) if (inBounds(r, bounds)) n += 1;
       setVisible(n);
       // The overview's roaches stand at the middle of their squares, each for all in it, so counted by them the
       // view's edges cut squares in two: once the view settles, the server counts it exactly (every roach, yours too)
@@ -1413,12 +1435,17 @@ export default function MapApp({
       const asked = view.join(",");
       e.asked = asked;
       e.timer = window.setTimeout(async () => {
-        const u = await worldRef.current?.roachesInView(view).catch(() => null);
+        const u = await worldRef.current?.roachesInView(view, hideClones).catch(() => null);
         if (u && "n" in u && exactRef.current.asked === asked) setVisible(u.n);
       }, AREA_SETTLE_MS + 150);
     },
-    [roaches, me, overview],
+    [roaches, me, overview, hideClones],
   );
+
+  // 只看本体 switched: the overview of the other kind at once (boxes are picked over as they are)
+  useEffect(() => {
+    void loadRoaches("view").catch(() => {});
+  }, [hideClones, loadRoaches]);
 
   useEffect(() => {
     if (boundsRef.current) countVisible(boundsRef.current);
@@ -2759,6 +2786,17 @@ export default function MapApp({
   };
 
   /** Her timer switched in 资料, after the rest of it saved. */
+  // 只看本体 (OnlyMainsSheet): shown at once, then kept on the account; put back if the server says no
+  const pickOnlyMains = async (on: boolean) => {
+    if (!me || me.onlyMains === on) return;
+    const flip = (to: boolean) => setMe((m) => (m ? { ...m, onlyMains: to } : m));
+    flip(on);
+    const done = await act((w) => w.setOnlyMains(on).then(() => true));
+    // set again, in case who is signed in was read in between
+    flip(done ? on : !on);
+    if (done) setToast(on ? T.onlyMains.toastOn : T.onlyMains.toastOff);
+  };
+
   const switchPerlicaTimer = async (on: boolean) => {
     const done = await act((w) => w.setPerlicaTimer(on).then(() => true));
     if (done && !on && me) forgetDrank(me.id);
@@ -3293,7 +3331,11 @@ export default function MapApp({
       })),
     [fakeRiders, day, everyRoach],
   );
-  const othersRiding = useMemo(() => roaches.reduce((n, r) => n + (r.ride ? 1 : 0), 0), [roaches]);
+  // of everyone's, drawn or not (只看本体 leaves others' out of the map, not out of his count)
+  const othersRiding = useMemo(
+    () => feedRoaches.reduce((n, r) => n + (r.ride && !ownIds.has(r.id) ? 1 : 0), 0),
+    [feedRoaches, ownIds],
+  );
   const riders =
     (visitorCounts && !feedRoaches.length
       ? visitorCounts.riders
@@ -3687,7 +3729,9 @@ export default function MapApp({
     return () => window.clearTimeout(t);
   }, [liteHint]);
 
-  const siInks = useSiInks(siView, me?.si.inn?.tap ?? null);
+  // 只看本体: of the others' ink roaches, those of your 触须之交 only (each is one of its owner's clones)
+  const friendInks = useMemo(() => (hideClones ? friends.flatMap((f) => (f.inkTap === undefined ? [] : [f.inkTap])) : null), [friends, hideClones]);
+  const siInks = useSiInks(siView, me?.si.inn?.tap ?? null, friendInks);
   const siNumbers = siState ? innNumbers(siState) : null;
   // the queue's line reaches its last place, empty or not (a recalled ticket leaves its place empty)
   const siInnKey = siState ? `${siNumbers!.places}/${siState.drawn}/${siNumbers!.free === 0}/${siState.homesReach}` : "";
@@ -3864,6 +3908,8 @@ export default function MapApp({
             // not while the tutorial runs, as she does not show up before it is over
             perlicaTimer={step ? undefined : me.perlica.timer}
             onPerlicaTimer={switchPerlicaTimer}
+            onlyMains={me.onlyMains}
+            onOpenOnlyMains={(draft) => setPanel({ kind: "onlyMains", back: { kind: "profile", draft } })}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
             // set before the map got round to asking: it asks no more
@@ -3892,6 +3938,18 @@ export default function MapApp({
             onClose={() => setPanel(null)}
           />
         );
+      case "onlyMains": {
+        const back = p.back;
+        return (
+          <OnlyMainsSheet
+            onlyMains={me.onlyMains}
+            look={{ color: myColor, avatar: myAvatar }}
+            onPick={pickOnlyMains}
+            onBack={back ? () => setPanel(back) : undefined}
+            onClose={() => setPanel(null)}
+          />
+        );
+      }
       case "badges":
         return (
           <BadgeWall
@@ -4283,7 +4341,23 @@ export default function MapApp({
             </button>
           )}
           {/* with how many players there are, a second line in small print (.stats.two); one line, as before, till the server says */}
-          <div className={visible !== null && feedIn && players !== undefined ? "stats two" : "stats"}>
+          {/* signed in, the counts open 地图上看哪些蟑螂 (只看本体), with a 「›」 at their end to say so */}
+          <div
+            className={`${visible !== null && feedIn && players !== undefined ? "stats two" : "stats"}${me ? " tappable" : ""}`}
+            {...(me
+              ? {
+                  role: "button",
+                  tabIndex: 0,
+                  "aria-label": T.onlyMains.title,
+                  onClick: () => setPanel({ kind: "onlyMains" }),
+                  onKeyDown: (e: React.KeyboardEvent) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    setPanel({ kind: "onlyMains" });
+                  },
+                }
+              : {})}
+          >
             {visible === null ? (
               T.map.loading
             ) : !feedIn ? (
@@ -4305,11 +4379,18 @@ export default function MapApp({
                   {T.map.count.hidden}<span className="muted">{fmtParts(T.map.count.andWorld, { count: countText(total) })}</span>
                 </>
               )
+            ) : hideClones && players !== undefined ? (
+              <>
+                {fmtParts(T.map.count.herePlayers, { n: visible.toLocaleString() })}
+                <span className="l2">
+                  {fmtNodes(T.map.count.worldOnlyMains, { players: players.toLocaleString(), mark: <b>{T.map.count.onlyMainsMark}</b> })} ›
+                </span>
+              </>
             ) : players !== undefined ? (
               <>
                 {fmtParts(T.map.count.here, { n: visible.toLocaleString() })}
                 <span className="l2">
-                  {fmtParts(T.map.count.worldAndPlayers, { total: total.toLocaleString(), players: players.toLocaleString() })}
+                  {fmtParts(T.map.count.worldAndPlayers, { total: total.toLocaleString(), players: players.toLocaleString() })} ›
                 </span>
               </>
             ) : (
@@ -4565,6 +4646,7 @@ export default function MapApp({
                 }
               : undefined
           }
+          clonesHidden={hideClones}
           busy={pokeSent || Boolean(poking)}
           touching={touching}
           friendRow={

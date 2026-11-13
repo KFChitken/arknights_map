@@ -32,6 +32,7 @@ export function OtherRoachCard({
   amiyaMusic,
   fire,
   minghe,
+  clonesHidden = false,
   friendRow,
   busy,
   touching = false,
@@ -93,6 +94,8 @@ export function OtherRoachCard({
     onRide: () => void;
     onDismount: () => void;
   };
+  /** 只看本体 is on: others' clones by her fire and riding with him are not drawn, which their cards say (the counts are of all) */
+  clonesHidden?: boolean;
   /** 触须之交专属 (FriendActions), on a roach of a 触须之交: 戳一戳 is in it while they sleep */
   friendRow?: ReactNode;
   /** A poke is under way */
@@ -220,6 +223,7 @@ export function OtherRoachCard({
           {talulah && (
             <>
               <p className="muted">{FIRE_LINES[talulah.level]}</p>
+              {clonesHidden && <p className="hint fire-note">{T.cards.clonesHidden}</p>}
               <p className="hint fire-note">{T.cards.talulah.cloneNote}</p>
             </>
           )}
@@ -237,6 +241,7 @@ export function OtherRoachCard({
             <>
               <p className="muted">{fmtParts(T.common.quoted, { text: ride.line })}</p>
               <p className="muted">{fmtParts(T.cards.minghe.riders, { n: ride.riders.toLocaleString() })}</p>
+              {clonesHidden && <p className="hint fire-note">{T.cards.clonesHidden}</p>}
               <MingheRoute day={ride.day} />
               <p className="hint fire-note">{T.cards.minghe.cloneNote}</p>
             </>

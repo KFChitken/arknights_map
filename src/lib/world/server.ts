@@ -73,6 +73,7 @@ export class ServerWorld implements World {
     );
   };
   setPerlicaTimer = (on: boolean) => this.call<void>("setPerlicaTimer", on);
+  setOnlyMains = (on: boolean) => this.call<void>("setOnlyMains", on);
   // A GET, so a browser that already holds the whole snapshot gets a 304 for it; f=3: packed, and with short ids
   roachFeed = async (since: string | null): Promise<RoachFeedUpdate | VisitorFeed> => {
     let res: Response;
@@ -94,9 +95,10 @@ export class ServerWorld implements World {
   };
   // f=4: an area only (world/area.ts); a whole one by ETag, so the same one again costs a 304
   // "counts": how many there are only (t), for 全员隐匿, which draws nobody's roaches
-  roachArea = async (area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed> => {
+  // mains: the overview of main roaches only (只看本体); boxes the page picks over itself
+  roachArea = async (area: Area | "counts", since: string | null, mains = false): Promise<AreaUpdate | VisitorFeed> => {
     // the overview with each roach as its square (o=2: a fraction of the bytes, drawn at the square's middle)
-    const where = area === "counts" ? "c=1" : area === "overview" ? "o=2" : `box=${boxText(area)}`;
+    const where = area === "counts" ? "c=1" : area === "overview" ? `o=2${mains ? "&m=1" : ""}` : `box=${boxText(area)}`;
     const url = `/api/roaches?f=4&${where}${since ? `&since=${encodeURIComponent(since)}` : ""}`;
     const ask = async (cache: RequestCache) => {
       try {
@@ -118,8 +120,9 @@ export class ServerWorld implements World {
   };
   // Exactly how many roaches there are in a view, for a map showing the overview (its roaches stand at the middle
   // of their squares, each for all in it, so counted by them the view's edges cut squares in two)
-  roachesInView = async (view: Box): Promise<{ n: number } | VisitorFeed | { whole: true }> => {
-    const res = await fetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}`, { cache: "no-store" });
+  // mains: how many players' main roaches (只看本体)
+  roachesInView = async (view: Box, mains = false): Promise<{ n: number } | VisitorFeed | { whole: true }> => {
+    const res = await fetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}${mains ? "&m=1" : ""}`, { cache: "no-store" });
     heardNoticeStamp(res.headers.get("x-notices"));
     heardGray(res.headers.get("x-gray"));
     const body = (await res.json().catch(() => null)) as ({ n: number } | VisitorFeed | { whole: true }) | null;

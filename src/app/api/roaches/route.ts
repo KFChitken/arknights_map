@@ -22,7 +22,8 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * f=4 (只发看得到的, src/lib/world/area.ts): only an area, &box=west,south,east,north or the overview,
  * &o=2 with each roach as its square of the overview (world/packed.ts), as pages ask now (&o=1 as it was, for
  * pages from before); &n=<view> exactly how many roaches there are in a view, which a page showing the overview
- * counts by. The whole list stays for pages opened before.
+ * counts by; &m=1 with either: main roaches only (只看本体), the overview's and how many players in the view. The
+ * whole list stays for pages opened before.
  *
  * Only to someone signed in: a visitor gets how many roaches there are, by the fire and riding with
  * 明河都尉, and how many players they belong to (FeedCounts), and hidden: true, a few hundred bytes (their
@@ -46,6 +47,8 @@ async function answer(req: NextRequest): Promise<Response> {
   const form: FeedForm = f === "3" ? 3 : f === "2" ? 2 : 1;
   let area: Area | "counts" | { view: Box } | null = null;
   const squares = f === "4" && req.nextUrl.searchParams.get("o") === "2";
+  // 只看本体: the overview, and a view's count, of main roaches only (boxes are picked over by the page itself)
+  const mains = f === "4" && req.nextUrl.searchParams.get("m") === "1";
   if (f === "4" && req.nextUrl.searchParams.has("n")) {
     const view = parseView(req.nextUrl.searchParams.get("n"));
     if (!view) return NextResponse.json({ error: T.server.routes.roaches.badArea }, { status: 400 });
@@ -74,9 +77,9 @@ async function answer(req: NextRequest): Promise<Response> {
     if (area && typeof area === "object" && "view" in area) {
       if (!allow(`area:count:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:count:ip");
       if (!allow(`area:count:sid:${sid}`, 120, 60_000)) return BUSY("area:count:sid");
-      return NextResponse.json({ n: await roachesInView(area.view) }, { headers: { "cache-control": "no-store", vary: "cookie" } });
+      return NextResponse.json({ n: await roachesInView(area.view, Date.now(), mains) }, { headers: { "cache-control": "no-store", vary: "cookie" } });
     }
-    if (area) return await areaAnswer(req, sid, area, since, squares);
+    if (area) return await areaAnswer(req, sid, area, since, squares, mains);
     const answer = await roachFeed(since, Date.now(), form);
     const etag = `"${answer.v}${form === 3 ? "s" : form === 2 ? "p" : ""}"`;
     const headers: Record<string, string> = { etag, "cache-control": "no-cache", vary: "accept-encoding, cookie" };
@@ -123,8 +126,8 @@ const BUSY = (limit: string) => {
  * still: a phone network puts thousands of players behind one, and these answers cost no database (a box is
  * made once per version for every page that asks; a page's own limit holds back one that asks too much).
  */
-async function areaAnswer(req: NextRequest, sid: string, area: Area, since: string | null, squares: boolean) {
-  const answer = await roachArea(area, since, Date.now(), squares);
+async function areaAnswer(req: NextRequest, sid: string, area: Area, since: string | null, squares: boolean, mains: boolean) {
+  const answer = await roachArea(area, since, Date.now(), squares, mains);
   if (answer.kind === "diff") {
     if (!allow(`area:diff:ip:${clientIp(req)}`, 3000, 60_000)) return BUSY("area:diff:ip");
     if (!allow(`area:diff:sid:${sid}`, 20, 60_000)) return BUSY("area:diff:sid");

@@ -14,6 +14,7 @@ import { MAX_SUPPORT } from "@/lib/support";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import type { BlockedPlayer } from "@/lib/world/types";
 import { MyBadgesRow } from "./Badges";
+import { OnlyMainsRow } from "./OnlyMainsSheet";
 import { OperatorPic, useOperatorArt } from "./OperatorNames";
 import HomeScreenRow, { LoginCodeBox } from "./HomeScreen";
 import PasswordBox, { type PasswordForm } from "./PasswordBox";
@@ -74,6 +75,8 @@ export default function ProfileSheet({
   held = false,
   tutorial,
   perlicaTimer,
+  onlyMains,
+  onOpenOnlyMains,
   onOpenBadges,
   onUnblock,
   onSave,
@@ -97,6 +100,9 @@ export default function ProfileSheet({
   tutorial?: { onLater: () => void };
   /** 佩丽卡监督's 离开计时 (null: she has not asked yet); left out while the tutorial runs */
   perlicaTimer?: "on" | "off" | null;
+  /** 地图上看哪些蟑螂 (只看本体): what is picked, and opening its sheet with the unsaved changes kept */
+  onlyMains?: boolean;
+  onOpenOnlyMains?: (draft: Profile) => void;
   onOpenBadges?: (draft: Profile) => void;
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
@@ -306,6 +312,7 @@ export default function ProfileSheet({
         </label>
         <p className="hint">{T.profile.visits.note}</p>
       </fieldset>
+      {!tutorial && onOpenOnlyMains && <OnlyMainsRow onlyMains={Boolean(onlyMains)} onOpen={() => onOpenOnlyMains(p)} />}
 
       {perlicaTimer !== undefined && (
         <fieldset>

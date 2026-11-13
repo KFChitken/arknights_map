@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { decodeTile, INK_TILE_V, INK_TILE_ZOOM, tilesOver, type InkPoint } from "@/lib/siTiles";
 import type { LngLat } from "@/lib/types";
+import { inkDrawn } from "@/lib/world/onlyMains";
 import { NEAR_FROM } from "./map/siLook";
 
 /**
  * 缘缘庄's ink roaches close up (src/lib/siTiles.ts): the tiles over the view, asked for while the map shows
  * them close enough (NEAR_FROM), each kept half a minute and asked again while still in view; together, the
  * ink roaches of the view and a margin round it. view: the map's bounds and zoom, null away from 宏村. hide: the
- * tap number of your own, which the page draws apart (and not at all while it is held), left out of them.
+ * tap number of your own, which the page draws apart (and not at all while it is held), left out of them. keep:
+ * with 只看本体 on, the tap numbers of your 触须之交's, the only others drawn; null draws every one.
  */
 
 export type SiView = { sw: LngLat; ne: LngLat; zoom: number };
@@ -18,19 +20,24 @@ const KEEP_MS = 30_000;
 /** At most this many tiles at once (a phone close up needs about a dozen with the margin, a big screen more) */
 const MAX_TILES = 64;
 
-export function useSiInks(view: SiView | null, hide: number | null = null) {
+export function useSiInks(view: SiView | null, hide: number | null = null, keep: readonly number[] | null = null) {
   const tiles = useRef(new Map<string, { at: number; points: InkPoint[] }>());
   const [state, setState] = useState<{ inks: InkPoint[]; key: number }>({ inks: [], key: 0 });
   const [tick, setTick] = useState(0);
   const close = Boolean(view && view.zoom >= NEAR_FROM);
-  const hideRef = useRef(hide);
-  const shown = (h: number | null) => [...tiles.current.values()].flatMap((t) => t.points).filter((p) => p.tap !== h);
+  // the numbers, not the list, decide
+  const keepKey = keep ? [...keep].sort((a, b) => a - b).join(",") : null;
+  const pickRef = useRef<{ hide: number | null; keep: ReadonlySet<number> | null }>({ hide, keep: keep ? new Set(keep) : null });
+  const shown = () => {
+    const { hide: h, keep: k } = pickRef.current;
+    return [...tiles.current.values()].flatMap((t) => t.points).filter((p) => inkDrawn(p.tap, h, k));
+  };
 
-  // yours known, or no longer: the tiles held, without it
+  // yours known, or no longer; 只看本体 switched, or your 触须之交's changed: the tiles held, picked again
   useEffect(() => {
-    hideRef.current = hide;
-    setState((s) => (tiles.current.size ? { inks: shown(hide), key: s.key + 1 } : s));
-  }, [hide]);
+    pickRef.current = { hide, keep: keepKey === null ? null : new Set(keepKey ? keepKey.split(",").map(Number) : []) };
+    setState((s) => (tiles.current.size ? { inks: shown(), key: s.key + 1 } : s));
+  }, [hide, keepKey]);
 
   // asked again every half minute while close
   useEffect(() => {
@@ -59,7 +66,7 @@ export function useSiInks(view: SiView | null, hide: number | null = null) {
       if (gone) return;
       const keys = new Set(want.map((t) => `${t.x}/${t.y}`));
       for (const k of tiles.current.keys()) if (!keys.has(k)) tiles.current.delete(k);
-      setState((s) => ({ inks: shown(hideRef.current), key: s.key + 1 }));
+      setState((s) => ({ inks: shown(), key: s.key + 1 }));
     };
     if (!missing.length) {
       merge();

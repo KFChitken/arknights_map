@@ -34,7 +34,7 @@ import {
 import { queueSpots, stopOf } from "../minghe";
 import { INK_FROM, INK_PREFIX, INK_SLOT } from "../si";
 import { INN_CENTER } from "../siInn";
-import { INK_TILE_ZOOM } from "../siTiles";
+import { INK_TILE_ZOOM, tapOf } from "../siTiles";
 import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
 import { isBotId } from "../world/bots";
 import { passerbyMoves, type Move } from "../world/cast";
@@ -166,6 +166,7 @@ import {
   pokes,
   radarScans,
   roaches,
+  siInks,
   touches,
   users,
   type RoachRow,
@@ -416,6 +417,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
       seriesCovered: seriesCovered(badges),
     },
     drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
+    onlyMains: u.onlyMains,
     // a whole day or more away, so not just back the next morning
     homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
     mustReconsent: mustReconsent(u),
@@ -759,6 +761,11 @@ export async function drink(userId: string): Promise<{ until: number }> {
 /** ⚡舟友的酒⚡ opened: 将进酒 if their main roach really lies drunk */
 export async function partied(userId: string) {
   await partiedBadge(userId);
+}
+
+/** 只看本体 on or off, kept on the account; no one else is told (nothing public has it) */
+export async function setOnlyMains(userId: string, on: boolean) {
+  await db.update(users).set({ onlyMains: on }).where(eq(users.id, userId));
 }
 
 /** 醒酒: the main roach stands up at once. */
@@ -1514,6 +1521,18 @@ export async function friends(userId: string): Promise<Friend[]> {
   if (self) {
     const between = await betweenOf(self, met);
     for (const m of met) out[m.at].between = between.get(m.user.id);
+  }
+  // their ink roaches on the map (not held), by tap number: 只看本体 draws them as their other clones
+  if (met.length) {
+    const inks = await db
+      .select({ userId: siInks.userId, publicId: siInks.publicId })
+      .from(siInks)
+      .where(and(inArray(siInks.userId, met.map((m) => m.user.id)), isNotNull(siInks.ticket), isNull(siInks.recalledAt)));
+    const taps = new Map(inks.map((i) => [i.userId, tapOf(i.publicId)]));
+    for (const m of met) {
+      const tap = taps.get(m.user.id);
+      if (tap !== undefined) out[m.at].inkTap = tap;
+    }
   }
   // 特别关注 first, in the order starred; then the guides, in their order; then everyone else, newest first
   const stars = new Map(

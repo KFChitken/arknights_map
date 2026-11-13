@@ -106,6 +106,14 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .style-opt .tick { width: 18px; height: 18px; opacity: 0; }
 .style-opt[aria-checked="true"] .tick { opacity: 1; }
 .style-opt:disabled { opacity: 0.45; }
+/* 地图上看哪些蟑螂 (OnlyMainsSheet): the two choices drawn like the map styles, the player's own roach for a picture */
+.only-mains { display: grid; gap: 4px; margin-bottom: 8px; }
+.only-mains-icons { display: flex; align-items: center; justify-content: center; gap: 2px; width: 64px; height: 40px; border-radius: 6px; background: #eef0f1; }
+/* the roaches themselves, not the 画风 pictures' boxes: a main roach, and its clone a little smaller beside it */
+.style-opt .only-mains-icons img { width: 34px; height: 34px; border-radius: 0; background: none; }
+.style-opt .only-mains-icons img + img { width: 26px; height: 26px; }
+/* its row in 我的资料, between two of the sheet's sections */
+.only-mains-row { margin: -6px 0 16px; }
 /*
  * 舟u本色 over your own roaches (AmapView mineIcon), which are page elements rather than the GPU's points:
  * two hearts in turn, on the same curve as roachGl.ts draws everyone else's (a 2.6 s cycle, seen for 82% of
@@ -245,6 +253,10 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
  */
 .stats.two { padding: 5px 16px; line-height: 1.25; text-align: center; }
 .stats .l2 { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+/* signed in, the counts open 地图上看哪些蟑螂; 只看本体 stands out in them while on */
+.stats.tappable { cursor: pointer; }
+.stats.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stats .l2 b { color: var(--ink); font-weight: 700; }
 @media (min-width: 560px) {
   .stats.two { padding: 6px 14px; line-height: normal; }
   .stats .l2 { display: inline; font-size: inherit; }

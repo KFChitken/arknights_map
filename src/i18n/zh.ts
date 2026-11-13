@@ -187,6 +187,9 @@ export const zh = {
       andWorld: " · 全球 {count}舟P",
       here: "这片地图里有 {n} 只舟P",
       worldAndPlayers: "全球 {total} 只 · 不算克隆体 {players} 位",
+      herePlayers: "这片地图里有 {n} 位舟P",
+      worldOnlyMains: "全球 {players} 位 · {mark}",
+      onlyMainsMark: "只看本体",
       andWorldTotal: " · 全球 {total} 只",
     },
     bar: {
@@ -1538,6 +1541,7 @@ export const zh = {
     note: "雷达只报数量，不报距离和方向。路人蟑螂的来去是演示数据。",
   },
   cards: {
+    clonesHidden: "别人的克隆体你藏起来了",
     demo: {
       title: "演示蟑螂",
       label: "一只路过的演示蟑螂",
@@ -1711,6 +1715,17 @@ export const zh = {
     anonymousOne: "一只匿名舟P",
     reachSneaky: "偷偷伸出触须",
     reachBold: "大胆伸出触须",
+  },
+  onlyMains: {
+    title: "地图上看哪些蟑螂",
+    all: "全部",
+    allNote: "本体和克隆体都画，现在这样",
+    mains: "只看本体",
+    mainsNote: "只画每位舟P的本体",
+    noteHidden: "别人的克隆体不画，也不算进顶上的数。你自己的、触须之交的照画。",
+    noteAccount: "存在账号上，换手机、换电脑登录也一样。别人看不出你开没开。",
+    toastOn: "已换成「只看本体」：地图上只画本体。",
+    toastOff: "已换成「全部」。",
   },
   tutorial: {
     title: "新手教程",

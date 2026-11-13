@@ -26,6 +26,8 @@ export interface World {
   leave(): void;
   /** Her 离开计时 on or off, from her card or 资料; off forgets the time kept and her reports of it. */
   setPerlicaTimer(on: boolean): Promise<void>;
+  /** 只看本体 on or off: the map draws others' main roaches only; kept on the account, told to no one else. */
+  setOnlyMains(on: boolean): Promise<void>;
   /**
    * Everyone's roaches, your own included, as one feed shared by every signed-in viewer.
    * Pass the version you hold to get only what changed since (see RoachFeedUpdate).
@@ -36,9 +38,9 @@ export interface World {
    * 只发看得到的 (world/area.ts): the roaches of an area only, a box or the overview, at a version; pass
    * the version of the same box held to get only what changed in it. Not signed in: as roachFeed.
    */
-  roachArea(area: Area | "counts", since: string | null): Promise<AreaUpdate | VisitorFeed>;
+  roachArea(area: Area | "counts", since: string | null, mains?: boolean): Promise<AreaUpdate | VisitorFeed>;
   /** Exactly how many roaches there are in a view (west, south, east, north), for a map showing the overview */
-  roachesInView(view: Box): Promise<{ n: number } | VisitorFeed | { whole: true }>;
+  roachesInView(view: Box, mains?: boolean): Promise<{ n: number } | VisitorFeed | { whole: true }>;
   /** For a visitor who has not signed in: about how many roaches are near a spot (counts.ts rough), counted by the server */
   around(spot: LngLat, signal?: AbortSignal): Promise<{ near: number; far: number }>;
   saveProfile(profile: Profile): Promise<Profile>;
@@ -247,6 +249,8 @@ export type AreaUpdate = {
   t?: [number, number, number, number?];
   box?: Box;
   overview?: true;
+  /** The overview of main roaches only (只看本体) */
+  mains?: true;
   packed?: PackedRoaches;
   changed?: MapRoach[];
   removed?: string[];
@@ -406,6 +410,11 @@ export type Friend = {
   between?: FriendBetween;
   /** 特别关注: when you starred TA, or null. Only you know; the starred come first, in that order */
   star: number | null;
+  /**
+   * Their ink roach at 缘缘庄 while it is on the map (not held): the number its tiles tap it by (src/lib/siTiles.ts
+   * tapOf), so 只看本体 still draws it. Absent otherwise, and for the guides
+   */
+  inkTap?: number;
 };
 
 /** Between you and one 触须之交 (src/lib/friendly.ts) */
@@ -479,6 +488,8 @@ export type Me = {
   counts: Record<BadgeCount, number>;
   /** 摄入酒精: their main roach sleeps until then, unless they sober up first; null when awake */
   drunkUntil: number | null;
+  /** 只看本体 is on: their map draws others' main roaches only (theirs alone; see setOnlyMains) */
+  onlyMains: boolean;
   /** Back for the first time since their main roach flipped over for their staying away: it stands up again (鲤鱼打挺) */
   wokeFromAway: boolean;
   /** Only on the first visit of a day that comes after at least one whole day away */

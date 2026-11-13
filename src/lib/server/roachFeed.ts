@@ -116,7 +116,11 @@ type Whole = { json: string; gzip: Buffer; br?: Buffer };
 export type FeedCounts = { total: number; fire: number; riders: number; players: number };
 
 /** A square of the overview (overviewCell): its roaches, and the one with the lowest short id, which stands for them */
-type Cell = { all: Set<MapRoach>; min: MapRoach | null; minId: string };
+/**
+ * A square of the overview: its roaches, the one with the lowest short id (min, minId), and of its main roaches
+ * (no clones) how many and the lowest (mainMin, mainMinId), for the pages that show main roaches only (只看本体)
+ */
+type Cell = { all: Set<MapRoach>; min: MapRoach | null; minId: string; mains: number; mainMin: MapRoach | null; mainMinId: string };
 
 /**
  * The one copy of everyone's roaches, changed in place a few roaches at a time (apply). What is kept by
@@ -137,6 +141,8 @@ type Snapshot = {
   shared: Map<string, Set<string>>;
   /** The roaches by whole degree of longitude and latitude: f=4's boxes (world/area.ts) and visitors' counts (nearby.ts) */
   buckets: Map<number, Set<MapRoach>>;
+  /** How many players' main roaches each whole degree holds (show roaches never count), for 只看本体's counts */
+  bucketMains: Map<number, number>;
   /** f=4: the roaches by square of the overview */
   cells: Map<number, Cell>;
   /** Roaches by 塔露拉干员's fire, riding with 明河都尉, and main roaches: one for each player (show roaches never count) */
@@ -151,8 +157,9 @@ type Snapshot = {
   diffs: Map<string, string>;
   /** f=4: the answers for boxes asked for whole, by box, and the overview, kept across versions for a while (areaWhole) */
   areas: Map<string, KeptArea>;
-  /** The overview's roaches at this version, made when first asked for */
+  /** The overview's roaches at this version, made when first asked for; and of the main roaches only */
   overview?: MapRoach[];
+  overviewMains?: MapRoach[];
   /** Answers about spots already asked about, by the snapped spot, at this version */
   around?: Map<string, { near: number; far: number }>;
 };
@@ -357,6 +364,7 @@ const emptySnapshot = (n: number, now: number): Snapshot => ({
   solo: new Map(),
   shared: new Map(),
   buckets: new Map(),
+  bucketMains: new Map(),
   cells: new Map(),
   fire: 0,
   riders: 0,
@@ -390,18 +398,29 @@ function byShort(s: Snapshot, id: string): MapRoach | undefined {
   return r && shortOf(s, id) === id ? r : undefined;
 }
 
-/** The lowest short id in a square of the overview, worked out again (the one there went, or its short id changed) */
+/** The lowest short ids in a square of the overview, of all and of the main roaches, worked out again (one went, or its short id changed) */
 function findMin(s: Snapshot, c: Cell) {
   c.min = null;
   c.minId = "";
-  for (const r of c.all) {
-    const id = shortOf(s, r.id);
-    if (!c.min || id < c.minId) {
-      c.min = r;
-      c.minId = id;
-    }
+  c.mainMin = null;
+  c.mainMinId = "";
+  for (const r of c.all) consider(c, r, shortOf(s, r.id));
+}
+
+/** A roach of a square, going by short id `id`, as its lowest of all and of the main roaches, if it is */
+function consider(c: Cell, r: MapRoach, id: string) {
+  if (!c.min || id < c.minId) {
+    c.min = r;
+    c.minId = id;
+  }
+  if (!r.clone && (!c.mainMin || id < c.mainMinId)) {
+    c.mainMin = r;
+    c.mainMinId = id;
   }
 }
+
+/** A main roach of a player (no clone, no show roach): what 只看本体 counts */
+const isPlayersMain = (r: MapRoach) => !r.clone && !r.bot;
 
 /** A roach into the degree grid and its square of the overview, and the counts */
 function place(s: Snapshot, r: MapRoach) {
@@ -409,15 +428,13 @@ function place(s: Snapshot, r: MapRoach) {
   const bucket = s.buckets.get(k);
   if (bucket) bucket.add(r);
   else s.buckets.set(k, new Set([r]));
+  if (isPlayersMain(r)) s.bucketMains.set(k, (s.bucketMains.get(k) ?? 0) + 1);
   const cellKey = overviewCell(r);
   let c = s.cells.get(cellKey);
-  if (!c) s.cells.set(cellKey, (c = { all: new Set(), min: null, minId: "" }));
+  if (!c) s.cells.set(cellKey, (c = { all: new Set(), min: null, minId: "", mains: 0, mainMin: null, mainMinId: "" }));
   c.all.add(r);
-  const id = shortOf(s, r.id);
-  if (!c.min || id < c.minId) {
-    c.min = r;
-    c.minId = id;
-  }
+  if (!r.clone) c.mains++;
+  consider(c, r, shortOf(s, r.id));
   if (!r.bot && isNearFire(r)) s.fire++;
   if (r.ride && !r.bot) s.riders++;
   if (!r.clone && !r.bot) s.players++;
@@ -427,12 +444,18 @@ function unplace(s: Snapshot, r: MapRoach) {
   const bucket = s.buckets.get(k);
   bucket?.delete(r);
   if (bucket && !bucket.size) s.buckets.delete(k);
+  if (isPlayersMain(r)) {
+    const left = (s.bucketMains.get(k) ?? 1) - 1;
+    if (left > 0) s.bucketMains.set(k, left);
+    else s.bucketMains.delete(k);
+  }
   const cellKey = overviewCell(r);
   const c = s.cells.get(cellKey);
   if (c) {
     c.all.delete(r);
+    if (!r.clone) c.mains--;
     if (!c.all.size) s.cells.delete(cellKey);
-    else if (c.min === r) findMin(s, c);
+    else if (c.min === r || c.mainMin === r) findMin(s, c);
   }
   if (!r.bot && isNearFire(r)) s.fire--;
   if (r.ride && !r.bot) s.riders--;
@@ -454,11 +477,8 @@ function settlePrefix(s: Snapshot, prefix: string, ids: string[], touched: Set<s
       const r = s.byId.get(ids[0]);
       const c = r && s.cells.get(overviewCell(r));
       if (r && c) {
-        if (c.min === r) findMin(s, c);
-        else if (prefix < c.minId) {
-          c.min = r;
-          c.minId = prefix;
-        }
+        if (c.min === r || c.mainMin === r) findMin(s, c);
+        else consider(c, r, prefix);
       }
     } else if (!ids.length && wasSolo !== undefined) {
       s.solo.delete(prefix);
@@ -483,11 +503,8 @@ function settlePrefix(s: Snapshot, prefix: string, ids: string[], touched: Set<s
     const r = s.byId.get(id);
     const c = r && is !== undefined ? s.cells.get(overviewCell(r)) : undefined;
     if (r && c && is !== undefined) {
-      if (c.min === r) findMin(s, c);
-      else if (is < c.minId) {
-        c.min = r;
-        c.minId = is;
-      }
+      if (c.min === r || c.mainMin === r) findMin(s, c);
+      else consider(c, r, is);
     }
   }
 }
@@ -559,6 +576,7 @@ function bump(s: Snapshot, touched: { long: Touched; short: Touched }, now: numb
   s.whole = {};
   s.diffs = new Map();
   s.overview = undefined;
+  s.overviewMains = undefined;
   s.around = undefined;
   feed.changes.push({ n, from, at: now, long: touched.long, short: touched.short });
   feed.changes = feed.changes.filter((c) => now - c.at < KEEP_CHANGES_MS);
@@ -927,7 +945,13 @@ function roachesIn(s: Snapshot, b: Box): MapRoach[] {
  * The overview: for each square of the world (overviewCell) with roaches in it, the one with the lowest
  * short id, so the same one while it stays there, carrying how many there are (n)
  */
-function overviewList(s: Snapshot): MapRoach[] {
+function overviewList(s: Snapshot, mains = false): MapRoach[] {
+  if (mains) {
+    if (s.overviewMains) return s.overviewMains;
+    const out: MapRoach[] = [];
+    for (const c of s.cells.values()) if (c.mainMin) out.push({ ...c.mainMin, id: c.mainMinId, ...(c.mains > 1 ? { n: c.mains } : {}) });
+    return (s.overviewMains = out);
+  }
   if (s.overview) return s.overview;
   const out: MapRoach[] = [];
   for (const c of s.cells.values()) if (c.min) out.push({ ...c.min, id: c.minId, ...(c.all.size > 1 ? { n: c.all.size } : {}) });
@@ -940,12 +964,14 @@ function overviewList(s: Snapshot): MapRoach[] {
  * square's middle, for the pages that ask for it so (o=2): the places take a tenth of the bytes. Pages from before
  * ask for the overview as it was (o=1).
  */
-function areaWhole(s: Snapshot, area: Area, now: number, squares = false): { v: string; key: string; whole: AreaWhole } {
-  const key = area === "overview" ? (squares ? "o2" : "o") : boxText(area);
+function areaWhole(s: Snapshot, area: Area, now: number, squares = false, mains = false): { v: string; key: string; whole: AreaWhole } {
+  // main roaches only (只看本体) only ever in the squares' form, which pages that ask for it ask for
+  const onlyMains = area === "overview" && squares && mains;
+  const key = area === "overview" ? (onlyMains ? "o2m" : squares ? "o2" : "o") : boxText(area);
   const kept = s.areas.get(key);
   if (kept && now >= kept.at && now - kept.at < (area === "overview" ? OVERVIEW_KEPT_MS : BOX_KEPT_MS)) return { v: kept.v, key, whole: kept.whole };
-  const list = area === "overview" ? overviewList(s) : roachesIn(s, area);
-  const where = area === "overview" ? `"overview":true` : `"box":[${key}]`;
+  const list = area === "overview" ? overviewList(s, onlyMains) : roachesIn(s, area);
+  const where = area === "overview" ? `"overview":true${onlyMains ? `,"mains":true` : ""}` : `"box":[${key}]`;
   const whole = { json: `{"v":"${s.v}",${where},"t":${totalsJson(s)},"packed":${JSON.stringify(packRoaches(list, 4, area === "overview" && squares))}}` };
   s.areas.delete(key);
   s.areas.set(key, { v: s.v, at: now, whole });
@@ -953,7 +979,7 @@ function areaWhole(s: Snapshot, area: Area, now: number, squares = false): { v: 
   // pushed out: made anew it has a new version, which every such page downloads whole again at its next ask
   if (s.areas.size > AREAS_KEPT) {
     for (const k of s.areas.keys()) {
-      if (k === "o" || k === "o2") continue;
+      if (k === "o" || k === "o2" || k === "o2m") continue;
       s.areas.delete(k);
       break;
     }
@@ -975,19 +1001,21 @@ export function compressedArea(whole: AreaWhole, how: "br" | "gzip"): Promise<Bu
  * f=4: exactly how many roaches there are in a view, edges in (shapes.ts inBounds; across the 180° meridian its
  * west edge is east of its east one), for a page whose map shows the overview: its roaches stand for all those in
  * their squares, drawn at a square's middle, so counted by them the view's edges cut squares in two. Whole degrees
- * inside the view count by how many they hold; only those on its edges are gone through.
+ * inside the view count by how many they hold; only those on its edges are gone through. mains: players' main
+ * roaches only (只看本体: how many players there are), without clones or show roaches.
  */
-export async function roachesInView(view: Box, now = Date.now()): Promise<number> {
+export async function roachesInView(view: Box, now = Date.now(), mains = false): Promise<number> {
   const s = await current(now);
   const parts: Box[] = view[0] <= view[2] ? [view] : [[view[0], view[1], 180, view[3]], [-180, view[1], view[2], view[3]]];
   let n = 0;
   for (const b of parts) {
     for (let lat = Math.floor(b[1]); lat <= Math.floor(b[3]); lat++) {
       for (let lng = Math.floor(b[0]); lng <= Math.floor(b[2]); lng++) {
-        const bucket = s.buckets.get(bucketKey(lng, lat));
+        const k = bucketKey(lng, lat);
+        const bucket = s.buckets.get(k);
         if (!bucket) continue;
-        if (lng >= b[0] && lng + 1 <= b[2] && lat >= b[1] && lat + 1 <= b[3]) n += bucket.size;
-        else for (const r of bucket) if (inBox(r, b)) n++;
+        if (lng >= b[0] && lng + 1 <= b[2] && lat >= b[1] && lat + 1 <= b[3]) n += mains ? (s.bucketMains.get(k) ?? 0) : bucket.size;
+        else for (const r of bucket) if (inBox(r, b) && (!mains || isPlayersMain(r))) n++;
       }
     }
   }
@@ -1000,9 +1028,9 @@ export async function roachesInView(view: Box, now = Date.now()): Promise<number
  * the ids of any changed or gone elsewhere, which it drops if it holds them). As for roachFeed, a
  * version unknown here gets the whole box, spread out just after a start.
  */
-export async function roachArea(area: Area, since: string | null, now = Date.now(), squares = false): Promise<AreaAnswer> {
+export async function roachArea(area: Area, since: string | null, now = Date.now(), squares = false, mains = false): Promise<AreaAnswer> {
   const s = await current(now);
-  const full = (): AreaAnswer => ({ kind: "full", ...areaWhole(s, area, now, squares) });
+  const full = (): AreaAnswer => ({ kind: "full", ...areaWhole(s, area, now, squares, mains) });
   if (area === "overview" || since === null || !VERSION.test(since)) return full();
   const [epoch, nText] = since.split(".");
   const from = Number(nText);

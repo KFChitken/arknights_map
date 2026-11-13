@@ -72,6 +72,8 @@ export class RoachAreaCopy {
   private list: MapRoach[] = [];
   /** When the area held came whole (Date.now()) */
   heldAt = 0;
+  /** Whether the overview held is of main roaches only (只看本体) */
+  mains = false;
   /** How many roaches there are in all, by the fire, riding with 明河都尉, and how many players they belong to, as the server last said */
   totals: AreaTotals | null = null;
 
@@ -98,6 +100,7 @@ export class RoachAreaCopy {
       // the overview's roaches each at a spot of its own in its square, not in rows at the middles
       this.byId = new Map(unpackRoaches(u.packed, true).map((r) => [r.id, r]));
       this.held = u.overview ? "overview" : (u.box ?? null);
+      this.mains = Boolean(u.overview && u.mains);
       this.heldAt = Date.now();
       changed = true;
     } else {

@@ -346,11 +346,14 @@ describe("roach feed", () => {
       const whole = JSON.parse((await roachFeed(null, now, 3)).json) as Answer & { packed: Parameters<typeof unpackRoaches>[0] };
       const box = JSON.parse(((await roachArea([100, 20, 140, 45], null, now)) as { whole: { json: string } }).whole.json);
       const over = JSON.parse(((await roachArea("overview", null, now)) as { whole: { json: string } }).whole.json);
+      const mains = JSON.parse(((await roachArea("overview", null, now, true, true)) as { whole: { json: string } }).whole.json);
       const byId = (rs: MapRoach[]) => rs.sort((x, y) => (x.id < y.id ? -1 : 1));
       return {
         whole: byId(unpackRoaches(whole.packed)),
         box: byId(unpackRoaches(box.packed)),
         overview: byId(unpackRoaches(over.packed)),
+        mains: byId(unpackRoaches(mains.packed)),
+        players: await roachesInView([100, 20, 140, 45], now, true),
         t: box.t,
       };
     }
@@ -622,6 +625,7 @@ describe("an area's whole answer, kept a while (f=4)", () => {
     await roachWithId(a, 0, "a1000000-0000-4000-8000-000000000001", SHANGHAI);
     const overview = await roachArea("overview", null, T0);
     const squares = await roachArea("overview", null, T0, true);
+    const mains = await roachArea("overview", null, T0, true, true);
     // a busy hour's boxes, more than the cache holds, at a new version
     await db.execute(sql`update roaches set lng = 121.5 where slot = 0`);
     await roachFeed(null, T0 + 4000, 3);
@@ -629,8 +633,10 @@ describe("an area's whole answer, kept a while (f=4)", () => {
     for (let i = 0; i < 300; i++) await roachArea([100 + (i % 60) * 0.25, 20, 110 + (i % 60) * 0.25, 30 + Math.floor(i / 60) * 0.25], null, T0 + 4000);
     const again = await roachArea("overview", null, T0 + 4000);
     const againSquares = await roachArea("overview", null, T0 + 4000, true);
+    const againMains = await roachArea("overview", null, T0 + 4000, true, true);
     expect(again.kind === "full" && overview.kind === "full" && again.whole === overview.whole).toBe(true);
     expect(againSquares.kind === "full" && squares.kind === "full" && againSquares.whole === squares.whole).toBe(true);
+    expect(againMains.kind === "full" && mains.kind === "full" && againMains.whole === mains.whole).toBe(true);
     expect(again.v).toBe(overview.v);
   });
   /** Ask once to start a round that is due, and let it finish */
@@ -713,7 +719,11 @@ describe("the overview with each roach as its square (f=4&o=2)", () => {
       { lng: -179.9, lat: -16.4 },
     ];
     for (const [i, p] of at.entries()) await roachWithId(i < 3 ? a : b, i % 3, `f${i}000000-0000-4000-8000-00000000000${i}`, p);
-    const inView = (v: Box) => at.filter((p) => p.lat >= v[1] && p.lat <= v[3] && (v[0] <= v[2] ? p.lng >= v[0] && p.lng <= v[2] : p.lng >= v[0] || p.lng <= v[2])).length;
+    const of = (list: typeof at, v: Box) =>
+      list.filter((p) => p.lat >= v[1] && p.lat <= v[3] && (v[0] <= v[2] ? p.lng >= v[0] && p.lng <= v[2] : p.lng >= v[0] || p.lng <= v[2])).length;
+    const inView = (v: Box) => of(at, v);
+    // 只看本体: players, as their main roaches (slot 0: the first of a's three and of b's)
+    const mains = at.filter((_, i) => i % 3 === 0);
     for (const view of [
       [121, 31, 122.5, 32],
       [120.995, 30.5, 121.471, 31.5],
@@ -722,6 +732,157 @@ describe("the overview with each roach as its square (f=4&o=2)", () => {
       [179.5, -17, -179.5, -16],
     ] as Box[]) {
       expect(await roachesInView(view, T0), view.join(",")).toBe(inView(view));
+      expect(await roachesInView(view, T0, true), `mains ${view.join(",")}`).toBe(of(mains, view));
     }
+  });
+});
+
+describe("the overview of main roaches only (f=4&o=2&m=1, 只看本体)", () => {
+  const overview = async (now: number, mains = true) => {
+    const a = await roachArea("overview", null, now, true, mains);
+    return { ...a, body: JSON.parse((a as { whole: { json: string } }).whole.json) as AreaUpdate };
+  };
+  const byId = (rs: MapRoach[]) => [...rs].sort((p, q) => (p.id < q.id ? -1 : 1));
+  const squaresOf = (o: { body: AreaUpdate }) => byId(unpackRoaches(o.body.packed!)).map((r) => [r.id, r.n ?? 1]);
+  const NEAR_SHANGHAI = [
+    { lng: 121.4701, lat: 31.2301 },
+    { lng: 121.4702, lat: 31.2299 },
+    { lng: 121.4703, lat: 31.2302 },
+    { lng: 121.4699, lat: 31.2299 },
+  ];
+  const NEAR_BEIJING = { lng: 116.4001, lat: 39.9001 };
+
+  it("leaves clones out and counts each square's main roaches, as the overview of the list without clones would", async () => {
+    for (const p of NEAR_SHANGHAI) expect(overviewCell(p)).toBe(overviewCell(SHANGHAI));
+    expect(overviewCell(NEAR_BEIJING)).toBe(overviewCell(BEIJING));
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    const c = await player("c@example.com");
+    // Shanghai: a's and b's main roaches, and a clone of c's whose id is the lowest; Tokyo: clones only;
+    // Beijing: c's main roach, and a clone of b's whose id is lower
+    await roachWithId(a, 0, "a1000000-0000-4000-8000-000000000001", SHANGHAI);
+    await roachWithId(b, 0, "b1000000-0000-4000-8000-000000000001", NEAR_SHANGHAI[0]);
+    await roachWithId(c, 1, "01000000-0000-4000-8000-000000000001", NEAR_SHANGHAI[1]);
+    await roachWithId(a, 1, "a2000000-0000-4000-8000-000000000002", TOKYO);
+    await roachWithId(b, 1, "b2000000-0000-4000-8000-000000000002", { lng: 139.7001, lat: 35.6801 });
+    await roachWithId(c, 0, "c1000000-0000-4000-8000-000000000001", BEIJING);
+    await roachWithId(b, 2, "b3000000-0000-4000-8000-000000000003", NEAR_BEIJING);
+    const all = await overview(T0, false);
+    const mains = await overview(T0);
+    expect(mains.body).toMatchObject({ overview: true, mains: true, t: all.body.t });
+    expect(all.body.mains).toBeUndefined();
+    expect(unpackRoaches(mains.body.packed!).some((r) => r.clone)).toBe(false);
+    // Shanghai by the lower of its two main roaches' ids, for both; Beijing by c's; Tokyo has none
+    expect(squaresOf(mains)).toEqual([
+      ["a1000000", 2],
+      ["c1000000", 1],
+    ]);
+    // every roach, as before: Shanghai by the clone, for three
+    expect(squaresOf(all)).toEqual([
+      ["01000000", 3],
+      ["a2000000", 2],
+      ["b3000000", 2],
+    ]);
+
+    // the same, roach for roach, as the overview made once the clones are gone
+    const only = byId(unpackRoaches(mains.body.packed!));
+    await db.execute(sql`delete from roaches where slot > 0`);
+    resetRoachFeed();
+    expect(byId(unpackRoaches((await overview(T0, false)).body.packed!))).toEqual(only);
+  });
+
+  it("comes out as a fresh start would, as a square's main roach goes, short ids grow and shrink, and clones come and go", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    const c = await player("c@example.com");
+    await roachWithId(a, 0, "a1000000-0000-4000-8000-000000000001", SHANGHAI);
+    await roachWithId(b, 0, "b1000000-0000-4000-8000-000000000001", NEAR_SHANGHAI[0]);
+    await roachWithId(a, 1, "01000000-0000-4000-8000-000000000001", NEAR_SHANGHAI[1]);
+    let t = T0;
+    await overview(t);
+    /** Both overviews and the players in view, after a round, as kept and as a fresh start reading everything has them */
+    const step = async () => {
+      t += 4000;
+      await roachFeed(null, t, 3);
+      await roachFeedSettled();
+      forgetKeptAreas();
+      const read = async () => ({
+        mains: squaresOf(await overview(t)),
+        all: squaresOf(await overview(t, false)),
+        players: await roachesInView([100, 20, 140, 45], t, true),
+      });
+      const kept = await read();
+      resetRoachFeed();
+      expect(kept).toEqual(await read());
+      return kept;
+    };
+    // the square's main roach moves away (by a new id): b's stands for the square, a clone of a's still for all there
+    await db.execute(
+      sql`update roaches set lng = ${BEIJING.lng}, lat = ${BEIJING.lat}, public_id = 'a3000000-0000-4000-8000-000000000003' where public_id = 'a1000000-0000-4000-8000-000000000001'`,
+    );
+    expect(await step()).toEqual({
+      mains: [
+        ["a3000000", 1],
+        ["b1000000", 1],
+      ],
+      all: [
+        ["01000000", 2],
+        ["a3000000", 1],
+      ],
+      players: 2,
+    });
+    // a clone whose id starts like b's: both go by their whole ids, b's standing for the square under its whole id
+    await roachWithId(a, 2, "b1000000-ffff-4000-8000-000000000002", NEAR_SHANGHAI[2]);
+    expect((await step()).mains).toEqual([
+      ["a3000000", 1],
+      ["b1000000-0000-4000-8000-000000000001", 1],
+    ]);
+    // a main roach coming in with a lower id: it stands for both
+    await roachWithId(c, 0, "05000000-0000-4000-8000-000000000005", NEAR_SHANGHAI[3]);
+    expect((await step()).mains).toEqual([
+      ["05000000", 2],
+      ["a3000000", 1],
+    ]);
+    // the clone sharing b's id goes: b's goes by its short id again, and stands for the square once c's goes
+    await db.execute(sql`delete from roaches where public_id = 'b1000000-ffff-4000-8000-000000000002'`);
+    await step();
+    await db.execute(sql`delete from roaches where user_id = ${c}`);
+    expect((await step()).mains).toEqual([
+      ["a3000000", 1],
+      ["b1000000", 1],
+    ]);
+    // clones coming and going leave it as it is
+    await roachWithId(b, 1, "00000000-0000-4000-8000-000000000009", NEAR_SHANGHAI[3]);
+    const withClone = await step();
+    expect(withClone.mains).toEqual([
+      ["a3000000", 1],
+      ["b1000000", 1],
+    ]);
+    expect(withClone.all).toEqual([
+      ["00000000", 3],
+      ["a3000000", 1],
+    ]);
+    // the square's last main roach goes: it is left out, its clones still in the overview of all
+    await db.execute(sql`delete from roaches where public_id = 'b1000000-0000-4000-8000-000000000001'`);
+    expect(await step()).toEqual({ mains: [["a3000000", 1]], all: [["00000000", 2], ["a3000000", 1]], players: 1 });
+  });
+
+  it("is kept apart from the overview as before, by a key of its own; boxes and the old form take no notice of it", async () => {
+    const a = await player("a@example.com");
+    await roachWithId(a, 0, "a1000000-0000-4000-8000-000000000001", SHANGHAI);
+    await roachWithId(a, 1, "a2000000-0000-4000-8000-000000000002", TOKYO);
+    const squares = await roachArea("overview", null, T0, true);
+    const mains = await roachArea("overview", null, T0, true, true);
+    expect(squares.kind === "full" && mains.kind === "full" && [squares.key, mains.key]).toEqual(["o2", "o2m"]);
+    expect(squares.kind === "full" && mains.kind === "full" && squares.whole !== mains.whole).toBe(true);
+    // the same one while kept
+    const again = await roachArea("overview", null, T0 + 1000, true, true);
+    expect(again.kind === "full" && mains.kind === "full" && again.whole === mains.whole).toBe(true);
+    // the overview's old form (o=1) has no main roaches only, and a box is the same with m or without
+    const old = await roachArea("overview", null, T0, false, true);
+    expect(old.kind === "full" && old.key).toBe("o");
+    const box = await roachArea([121, 31, 122, 32], null, T0);
+    const boxMains = await roachArea([121, 31, 122, 32], null, T0, false, true);
+    expect(box.kind === "full" && boxMains.kind === "full" && boxMains.whole === box.whole).toBe(true);
   });
 });

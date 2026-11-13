@@ -14,6 +14,7 @@ import { EMPTY_PROFILE, type Profile } from "../profile";
 import { MAX_CLONES, POLICY_UPDATED_AT } from "../rules";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
+import { tapOf } from "../siTiles";
 import { reachText } from "../world/logic";
 import type { InboxItem, PlaceTarget, PublicRoach } from "../world/types";
 import type { AdminAction } from "../safety";
@@ -619,6 +620,46 @@ describe("server world", () => {
     await me.placeRoach({ kind: "main" }, { lng: AMIYA_AT.lng + 0.01, lat: AMIYA_AT.lat });
     await me.touch(AMIYA_ID, true);
     expect(await me.radar()).toMatchObject({ roaches: 0, players: 0, friendsNearby: 0 });
+  });
+
+  it("keeps 只看本体 on the account, tells the player alone, and leaves it as it is when the profile is saved", async () => {
+    expect((await me.me()).onlyMains).toBe(false);
+    await world.setOnlyMains(me.id, true);
+    expect((await me.me()).onlyMains).toBe(true);
+    expect((await userRow(me.id)).onlyMains).toBe(true);
+    await me.saveProfile({ ...EMPTY_PROFILE, name: "阿白" });
+    expect((await me.me()).onlyMains).toBe(true);
+    // nothing of it where others look: their 触须之交 list, the roaches on the map
+    const other = await signUp("other@example.com");
+    await realFriends(me, other);
+    const friends = await other.friends();
+    expect(friends).toHaveLength(1);
+    expect(JSON.stringify(friends)).not.toMatch(/onlyMains|only_mains/);
+    expect(JSON.stringify(await other.roaches())).not.toMatch(/onlyMains|only_mains/);
+    // someone else's own stays off, and it switches back
+    expect((await other.me()).onlyMains).toBe(false);
+    await world.setOnlyMains(me.id, false);
+    expect((await me.me()).onlyMains).toBe(false);
+  });
+
+  it("tells a player the tap numbers of their 触须之交's ink roaches on the map, for 只看本体, and of nobody else's", async () => {
+    const friend = await signUp("friend@example.com");
+    const stranger = await signUp("stranger@example.com");
+    const ids = await realFriends(me, friend);
+    const ink = (no: number, userId: string) =>
+      db.insert(siInks).values({ no, userId, look: "hood", drawnAt: new Date(), ticket: no }).returning({ publicId: siInks.publicId });
+    const [theirs] = await ink(1, friend.id);
+    await ink(2, stranger.id);
+    const listed = async () => (await me.friends()).find((f) => f.roaches.some((r) => r.id === ids.b))!;
+    expect((await listed()).inkTap).toBe(tapOf(theirs.publicId));
+    // held: recalled, or never queued
+    await db.update(siInks).set({ recalledAt: new Date() }).where(eq(siInks.no, 1));
+    expect((await listed()).inkTap).toBeUndefined();
+    await db.update(siInks).set({ recalledAt: null, ticket: null }).where(eq(siInks.no, 1));
+    expect((await listed()).inkTap).toBeUndefined();
+    // the stranger's is in nobody's list
+    expect((await me.friends()).some((f) => f.inkTap !== undefined)).toBe(false);
+    expect((await friend.friends()).some((f) => f.inkTap !== undefined)).toBe(false);
   });
 
   describe("佩丽卡监督's 离开计时", () => {

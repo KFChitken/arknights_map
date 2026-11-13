@@ -186,6 +186,28 @@ describe("the overview as squares, and a view counted exactly (f=4)", () => {
     expect(await (await ask("f=4&n=100,20,150,40")).json()).toMatchObject({ hidden: true });
     for (const q of ["f=4&n=1,2,3", "f=4&n=120,40,121,30", "f=4&n=120,30,190,32"]) expect((await ask(q, cookie)).status, q).toBe(400);
   });
+
+  it("gives the overview of main roaches only with m=1 (只看本体), by an ETag of its own, and counts the players in a view", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+    await world.placeRoach(a, { kind: "clone" }, { lng: 121.3, lat: 31.1 });
+    const cookie = `sid=${await signIn(a)}`;
+    const all = await ask("f=4&o=2", cookie);
+    const mains = await ask("f=4&o=2&m=1", cookie);
+    expect(mains.headers.get("etag")).not.toBe(all.headers.get("etag"));
+    expect((await ask("f=4&o=2&m=1", cookie, { "if-none-match": mains.headers.get("etag")! })).status).toBe(304);
+    expect((await ask("f=4&o=2&m=1", cookie, { "if-none-match": all.headers.get("etag")! })).status).toBe(200);
+    const body = await mains.json();
+    expect(body).toMatchObject({ overview: true, mains: true });
+    expect(unpackRoaches(body.packed).map((r) => r.clone)).toEqual([false]);
+    expect((await all.json()).mains).toBeUndefined();
+    // a view: its roaches, or with m=1 its players
+    expect(await (await ask("f=4&n=100,20,150,40", cookie)).json()).toEqual({ n: 3 });
+    expect(await (await ask("f=4&n=100,20,150,40&m=1", cookie)).json()).toEqual({ n: 1 });
+    // m is for f=4 only: other forms take no notice of it
+    expect(unpackRoaches((await (await ask("f=3&m=1", cookie)).json()).packed)).toHaveLength(3);
+  });
 });
 
 describe("全站变灰", () => {
