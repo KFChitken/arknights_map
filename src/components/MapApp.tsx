@@ -931,15 +931,23 @@ export default function MapApp({
     },
     [forgetRoaches, loadWhole],
   );
-  // the map moved: a new area once the view settles, if the one held does not cover it (a fly sets it off again on landing)
-  const areaTimerRef = useRef<number | undefined>(undefined);
-  const askAreaSoon = useCallback(() => {
-    window.clearTimeout(areaTimerRef.current);
-    areaTimerRef.current = window.setTimeout(() => void loadRoaches("view").catch(() => {}), AREA_SETTLE_MS);
-  }, [loadRoaches]);
-  // a fly somewhere starts: the area is asked for where it lands, not where it set off from
+  // the map moved: a new area once the view settles, if the one held does not cover it (a fly sets it off again on
+  // landing); with where the map stood when it was set off
+  const areaTimerRef = useRef<{ timer?: number; at?: MapView }>({});
+  const askAreaSoon = useCallback(
+    (at: MapView) => {
+      window.clearTimeout(areaTimerRef.current.timer);
+      areaTimerRef.current = { timer: window.setTimeout(() => void loadRoaches("view").catch(() => {}), AREA_SETTLE_MS), at };
+    },
+    [loadRoaches],
+  );
+  // A fly somewhere starts: the area is asked for where it lands, not where it set off from. With motion turned down
+  // MapLibre's fly is a jump, made in the map's own effect, which runs before this one: the ask set off where it
+  // landed stays.
   useEffect(() => {
-    window.clearTimeout(areaTimerRef.current);
+    const { timer, at } = areaTimerRef.current;
+    if (focus && at && !movedFrom(at, focus)) return;
+    window.clearTimeout(timer);
   }, [focus]);
   const loadInbox = useCallback(async () => {
     const items = await worldRef.current!.inbox();
@@ -1628,7 +1636,7 @@ export default function MapApp({
     pulse.rest(v);
     countVisible(bounds);
     // the roaches of the area the map shows now, if the ones held do not cover it
-    askAreaSoon();
+    askAreaSoon(v);
     // 缘缘庄 in view (or nearly), close enough to be more than a blot: its numbers and, close up, its ink roaches
     const [sw, ne] = bounds;
     const nearInn =
