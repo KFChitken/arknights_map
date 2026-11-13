@@ -1,17 +1,23 @@
 "use client";
 
+import { useId } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import { isNew, noticeDay, type NoticeMemory, type PublicNotice } from "@/lib/notices";
+import ChangeLogTab from "./ChangeLog";
 import NoticeBody from "./NoticeBody";
 import Sheet from "./Sheet";
 
 /**
  * 公告 (src/lib/notices.ts): the button beside the site's name, the strip under the counts when something is
- * new, and the board, which is the list or one notice. The same for the admin's preview.
+ * new, and the board: its two tabs, the list and 更新记录 (ChangeLog.tsx), or one notice. The same for the
+ * admin's preview.
  */
 
-/** Where the board is: the list, or one notice; counted: its way back says how many there are (popped up, or from the strip) */
-export type BoardView = { kind: "list" } | { kind: "notice"; notice: PublicNotice; counted: boolean };
+/**
+ * Where the board is: the list, 更新记录, or one notice; counted: its way back says how many there are (popped
+ * up, or from the strip)
+ */
+export type BoardView = { kind: "list" } | { kind: "log" } | { kind: "notice"; notice: PublicNotice; counted: boolean };
 
 function Megaphone({ size = 16, width = 1.9 }: { size?: number; width?: number }) {
   return (
@@ -68,9 +74,9 @@ export function NoticeStrip({ notice, onOpen, onClose }: { notice: PublicNotice;
 }
 
 /**
- * The board. The list: pinned first, then the newest, each with 「置顶」 or 「新」 (new: in the last 7 days and
- * not read here). One notice: the way back to the list, the day it went out, and its words. A new view
- * starts a new sheet, so a long notice opens at its top.
+ * The board. Its two tabs, 公告 and 更新记录, over the list or the change log; a tab keeps the sheet, so the
+ * one chosen keeps focus. One notice, without the tabs: the way back to the list, the day it went out, and
+ * its words, on a new sheet, so a long notice opens at its top.
  */
 export default function NoticeBoard({
   notices,
@@ -78,6 +84,7 @@ export default function NoticeBoard({
   memory,
   onOpen,
   onList,
+  onLog,
   onClose,
 }: {
   notices: PublicNotice[];
@@ -85,35 +92,27 @@ export default function NoticeBoard({
   memory: NoticeMemory;
   onOpen: (n: PublicNotice) => void;
   onList: () => void;
+  onLog: () => void;
   onClose: () => void;
 }) {
-  if (view.kind === "list") {
-    const now = Date.now();
+  const id = useId();
+  if (view.kind !== "notice") {
+    const log = view.kind === "log";
+    const tabs = (
+      <div className="board-tabs" role="tablist">
+        <button id={`${id}-list`} role="tab" aria-selected={!log} aria-controls={`${id}-panel`} onClick={onList}>
+          <span>{T.notices.title}</span>
+        </button>
+        <button id={`${id}-log`} role="tab" aria-selected={log} aria-controls={`${id}-panel`} onClick={onLog}>
+          <span>{T.notices.tabLog}</span>
+        </button>
+      </div>
+    );
     return (
-      <Sheet key="list" title={T.notices.title} onClose={onClose}>
-        {notices.length ? (
-          <div className="notice-list">
-            {notices.map((n) => (
-              <button key={n.id} className="notice-row" onClick={() => onOpen(n)}>
-                <span className="notice-row-main">
-                  <span className="notice-row-top">
-                    {n.pinned && <span className="notice-tag pin">{T.notices.pinned}</span>}
-                    {isNew(n, memory, now) && <span className="notice-tag new">{T.common.new}</span>}
-                    <strong>{n.title}</strong>
-                  </span>
-                  <span className="notice-row-sub">
-                    {noticeDay(n.publishedAt)} · {n.excerpt}
-                  </span>
-                </span>
-                <span className="chev" aria-hidden="true">
-                  ›
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="notice-none">{T.notices.empty}</p>
-        )}
+      <Sheet key="board" title={T.notices.title} head={tabs} className={log ? "board log" : "board"} onClose={onClose}>
+        <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${view.kind}`} className={`board-${view.kind}`}>
+          {log ? <ChangeLogTab /> : <NoticeList notices={notices} memory={memory} onOpen={onOpen} onLog={onLog} />}
+        </div>
       </Sheet>
     );
   }
@@ -138,5 +137,56 @@ export default function NoticeBoard({
       </div>
       <NoticeBody body={n.body} />
     </Sheet>
+  );
+}
+
+/**
+ * 公告's tab: pinned first, then the newest, each with 「置顶」 or 「新」 (new: in the last 7 days and not read
+ * here); and under them the way to 更新记录
+ */
+function NoticeList({
+  notices,
+  memory,
+  onOpen,
+  onLog,
+}: {
+  notices: PublicNotice[];
+  memory: NoticeMemory;
+  onOpen: (n: PublicNotice) => void;
+  onLog: () => void;
+}) {
+  const now = Date.now();
+  return (
+    <>
+      {notices.length ? (
+        <div className="notice-list">
+          {notices.map((n) => (
+            <button key={n.id} className="notice-row" onClick={() => onOpen(n)}>
+              <span className="notice-row-main">
+                <span className="notice-row-top">
+                  {n.pinned && <span className="notice-tag pin">{T.notices.pinned}</span>}
+                  {isNew(n, memory, now) && <span className="notice-tag new">{T.common.new}</span>}
+                  <strong>{n.title}</strong>
+                </span>
+                <span className="notice-row-sub">
+                  {noticeDay(n.publishedAt)} · {n.excerpt}
+                </span>
+              </span>
+              <span className="chev" aria-hidden="true">
+                ›
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="notice-none">{T.notices.empty}</p>
+      )}
+      <button className="board-to-log" onClick={onLog}>
+        {T.notices.toLog}
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 3l5 5-5 5" />
+        </svg>
+      </button>
+    </>
   );
 }

@@ -1,0 +1,3 @@
+# The change log gets a row on top with every change, one object a line: when two branches each add one,
+# a merge or rebase keeps both
+src/lib/changelog.ts merge=union

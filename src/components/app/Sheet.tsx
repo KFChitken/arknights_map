@@ -6,16 +6,22 @@ import { T } from "@/i18n";
 /**
  * Bottom sheet on phones, centered dialog on wide screens. A sheet opened from
  * another one (onBack) goes back to it on ×, Escape or a tap outside, so the
- * player lands where they were, say still able to touch back.
+ * player lands where they were, say still able to touch back. head, say tabs,
+ * takes the title's place at the top (the title still names the dialog), and
+ * className marks a sheet laid out its own way (globals.css).
  */
 export default function Sheet({
   title,
+  head,
+  className,
   onClose,
   onBack,
   footer,
   children,
 }: {
   title: string;
+  head?: ReactNode;
+  className?: string;
   onClose: () => void;
   onBack?: () => void;
   footer?: ReactNode;
@@ -30,10 +36,10 @@ export default function Sheet({
   useEffect(fitToScreen, []);
 
   return (
-    <div className="sheet-backdrop" onClick={close}>
+    <div className={className ? `sheet-backdrop ${className}` : "sheet-backdrop"} onClick={close}>
       <section className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
-          <h2>{title}</h2>
+          {head ?? <h2>{title}</h2>}
           <button className="close" onClick={close} aria-label={onBack ? T.common.back : T.common.close}>
             ×
           </button>

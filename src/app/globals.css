@@ -642,6 +642,134 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .notice-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -2px 0 10px; }
 .notice-back { padding: 4px 0; border: 0; background: none; color: #1d6fd6; font-size: 13px; font-weight: 600; }
 .notice-meta span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+/*
+ * The board's two tabs, 公告 and 更新记录 (NoticeBoard.tsx), on a sheet of the same height either way, and the
+ * change log itself (ChangeLog.tsx). A phone reads the log top to bottom; from 900px wide the board is a box
+ * of its own, with the count and the filter on the left and the days on the right, each scrolling on its own.
+ */
+.board .sheet { height: 88vh; height: calc(var(--vv-h, 100svh) * 0.88); }
+.board .sheet-head { flex: none; height: 61px; padding: 0 6px 0 10px; border-bottom: 1px solid #ece9e1; }
+.board .sheet-head .close { flex: none; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; }
+.board .sheet-body { flex: 1; min-height: 0; padding-top: 0; padding-right: 0; padding-left: 0; }
+.board-tabs { display: flex; align-items: center; flex: 1; min-width: 0; }
+.board-tabs button { height: 44px; padding: 0 8px; border: 0; background: none; color: #9a9ea6; }
+.board-tabs span { padding: 0 2px; font-size: 19px; font-weight: 700; }
+.board-tabs [aria-selected="true"] { color: var(--ink); }
+.board-tabs [aria-selected="true"] span { font-weight: 900; background: linear-gradient(transparent 62%, var(--accent) 62%); }
+.board-list { padding: 6px 16px 0; }
+.board-to-log {
+  display: inline-flex; align-items: center; gap: 6px; height: 44px; margin-top: 16px; padding: 0 14px;
+  border: 0; border-radius: 12px; background: #f4f1ea; color: var(--ink); font-size: 14px; font-weight: 700;
+}
+.cl-wait { margin: 0; padding: 28px 16px; color: #8a867c; font-size: 14px; text-align: center; }
+.cl-retry { min-height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: #f4f1ea; color: var(--ink); font-size: 14px; font-weight: 700; }
+/* on a phone the two sides give up their boxes, and their parts are put in reading order */
+.cl { display: flex; flex-direction: column; }
+.cl-side, .cl-main { display: contents; }
+.cl-sum { order: 1; padding: 16px 16px 0; }
+.cl-squares { order: 2; }
+.cl-legend { order: 3; }
+.cl-picks { order: 4; }
+.cl-day, .cl-more, .cl-end { order: 5; }
+.cl-about, .cl-week-wide, .cl-legend-mid { display: none; }
+.cl-total { display: flex; align-items: baseline; gap: 6px; margin: 0; }
+.cl-total strong {
+  padding: 0 2px; font-size: 34px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums;
+  background: linear-gradient(transparent 62%, var(--accent) 62%);
+}
+.cl-total span { font-size: 14px; font-weight: 800; }
+.cl-total .cl-open { margin-left: auto; color: #8a867c; font-size: 12.5px; font-weight: 400; }
+.cl-week { margin: 8px 0 0; color: #5d5a52; font-size: 13px; line-height: 1.5; }
+.cl-squares { display: flex; flex-wrap: wrap; gap: 2px; margin: 10px 16px 0; }
+.cl-squares span { flex: none; width: 13px; height: 13px; border-radius: 3px; background: #ece8df; }
+.cl-squares span:not(.l0) { box-shadow: inset 0 0 0 1px rgba(27, 29, 34, 0.18); }
+.cl-squares .l1 { background: #fff0b3; }
+.cl-squares .l2 { background: #ffd23f; }
+.cl-squares .l3 { background: #f2a900; }
+.cl-squares .l4 { background: #1b1d22; }
+.cl-legend { display: flex; justify-content: space-between; gap: 8px; margin: 4px 16px 0; color: #9a958a; font-size: 11px; }
+.cl-picks { display: flex; flex-wrap: wrap; padding: 8px 12px 0; }
+.cl-picks button { display: flex; align-items: center; height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ink); }
+.cl-picks .pill {
+  display: flex; align-items: center; gap: 3px; height: 28px; padding: 0 8px; border-radius: 14px;
+  background: #fff; box-shadow: inset 0 0 0 1.5px #d9d4c8; font-size: 12.5px; font-weight: 800;
+}
+.cl-picks .n { font-weight: 600; opacity: 0.62; }
+.cl-picks [aria-pressed="true"] .pill { background: var(--ink); color: #fff; box-shadow: none; }
+.cl-day { padding: 12px 16px 4px; }
+.cl-day-head { display: flex; align-items: baseline; gap: 8px; }
+.sheet .cl-day-head h3 { margin: 0; font-size: 15px; font-weight: 900; }
+.cl-weekday { color: #8a867c; font-size: 12.5px; }
+.cl-opening {
+  align-self: center; display: flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px;
+  background: #b0341f; color: #fff; font-size: 11.5px; font-weight: 800;
+}
+.cl-count { margin-left: auto; color: #5d5a52; font-size: 12.5px; font-weight: 700; }
+.cl-lines { margin: 8px 0 0; padding: 0; list-style: none; border-radius: 12px; box-shadow: inset 0 0 0 1px #e6e1d6; overflow: hidden; }
+.cl-lines li { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; border-top: 1px solid #efebe3; }
+.cl-lines li:first-child { border-top: 0; }
+.cl-lines .no { flex: none; width: 60px; color: #a39e92; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 22px; }
+.cl-lines .kind { flex: none; display: flex; align-items: center; height: 20px; margin-top: 1px; padding: 0 6px; border-radius: 5px; font-size: 11.5px; font-weight: 800; }
+.cl-lines .kind.new { background: #ffd23f; color: #1b1d22; }
+.cl-lines .kind.better { background: #dff3e4; color: #1d6b35; }
+.cl-lines .kind.fix { background: #e8eaee; color: #4a505a; }
+.cl-lines .kind.tweak { background: #e4ecfb; color: #2b54a8; }
+.cl-lines .kind.chore { background: #f1eee8; color: #7a766d; }
+.cl-lines .t { flex: 1; min-width: 0; color: #24262b; font-size: 14px; line-height: 22px; overflow-wrap: anywhere; }
+.cl-lines .vague .t { color: #8a867c; }
+.cl-more { height: 1px; }
+/* the sheet's own bottom space comes after it */
+.cl-end { margin: 0; padding: 12px 16px 12px; color: #8a867c; font-size: 12.5px; line-height: 1.6; text-align: center; }
+.cl-end span { display: block; }
+@media (min-width: 720px) {
+  .board .sheet { height: 82vh; height: calc(var(--vv-h, 100svh) * 0.82); }
+}
+@media (min-width: 900px) {
+  .sheet-backdrop.board { background: rgba(16, 17, 20, 0.45); }
+  .board .sheet {
+    width: 780px; max-width: calc(100vw - 48px); height: 672px; max-height: calc(var(--vv-h, 100svh) - 48px);
+    border-radius: 20px; overflow: hidden;
+    box-shadow: 0 0 0 2px #0d0e10, 0 0 0 3px rgba(255, 255, 255, 0.85), 0 30px 70px rgba(0, 0, 0, 0.4);
+  }
+  .board .sheet-head { height: 65px; padding: 0 12px 0 18px; }
+  .board .sheet-head .close { width: 40px; height: 40px; border-radius: 20px; background: #f4f1ea; color: var(--ink); }
+  .board-tabs button { padding: 0 10px; }
+  .board-tabs span { font-size: 21px; }
+  .board-list { padding: 6px 24px 0; }
+  .board-to-log { margin-top: 18px; padding: 0 16px; font-size: 14.5px; }
+  .board.log .sheet-body { display: flex; padding: 0; overflow: hidden; }
+  .board-log { display: flex; flex: 1; min-width: 0; }
+  .cl-wait { flex: 1; }
+  .cl { flex: 1; min-width: 0; flex-direction: row; }
+  .cl-side {
+    display: flex; flex-direction: column; gap: 14px; flex: none; width: 240px; padding: 20px 16px 18px 20px;
+    border-right: 1px solid #ece9e1; overflow-y: auto; overscroll-behavior: contain;
+  }
+  .cl-main { display: block; flex: 1; min-width: 0; padding: 20px 28px 0 24px; overflow-y: auto; overscroll-behavior: contain; }
+  .cl-side > *, .cl-main > * { order: 0; }
+  .cl-sum { padding: 0; }
+  .cl-total strong { font-size: 42px; }
+  .cl-total span { font-size: 15px; }
+  .cl-total .cl-open, .cl-week { display: none; }
+  .cl-week-wide { display: block; margin: 8px 0 0; color: #5d5a52; font-size: 13px; line-height: 1.6; }
+  .cl-picks { flex-direction: column; flex-wrap: nowrap; gap: 2px; padding: 0; }
+  .cl-picks button { height: 38px; padding: 0; }
+  .cl-picks .pill { flex: 1; justify-content: space-between; height: 38px; padding: 0 12px; border-radius: 10px; box-shadow: none; font-size: 14px; }
+  .cl-about { display: block; margin: auto 0 0; color: #8a867c; font-size: 12px; line-height: 1.6; }
+  .cl-squares { gap: 4px; margin: 0; }
+  .cl-squares span { width: 17px; height: 17px; border-radius: 4px; }
+  .cl-legend { margin: 5px 0 0; font-size: 11.5px; }
+  .cl-legend .cl-legend-mid { display: inline; }
+  .cl-day { padding: 16px 0 2px; }
+  .sheet .cl-day-head h3 { font-size: 16px; }
+  .cl-weekday, .cl-count { font-size: 13px; }
+  .cl-lines li { gap: 10px; padding: 8px 14px; }
+  .cl-lines .no { width: 66px; font-size: 12.5px; line-height: 23px; }
+  .cl-lines .kind { height: 21px; padding: 0 7px; font-size: 12px; }
+  .cl-lines .t { font-size: 15px; line-height: 23px; }
+  .cl-end { padding: 14px 0 28px; font-size: 13px; }
+  .cl-end .cl-end-bj { display: none; }
+}
 .sheet h3 { margin: 16px 0 6px; font-size: 14px; }
 .sheet fieldset { margin: 0 0 16px; padding: 0; border: 0; }
 .sheet legend { margin-bottom: 6px; padding: 0; font-size: 14px; font-weight: 700; }
@@ -1180,6 +1308,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .homecoming-list { margin: 6px 0 10px; padding-left: 20px; line-height: 1.8; }
 .homecoming-next { padding: 9px 12px; border-radius: 12px; background: #f6f7f9; font-size: 14px; }
 .homecoming-new { padding: 9px 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; }
+.homecoming-log { margin: -6px 0 -6px 4px; padding: 6px 2px; border: 0; background: none; color: #1d6fd6; font-size: inherit; font-weight: 700; }
 
 /* ---- 本周舟P热榜 ---- */
 .hot-btn {

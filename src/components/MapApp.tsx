@@ -586,6 +586,8 @@ export default function MapApp({
     rememberNotices((m) => boardOpened(m, noticesRef.current.notices, Date.now()));
     setBoard((b) => b && { ...b, view: { kind: "list" } });
   };
+  /** 更新记录, the board's other tab: the notices are not read by it, so a red dot stays */
+  const boardLog = () => setBoard((b) => b && { ...b, view: { kind: "log" } });
   /** Closed however, on whichever page: one that popped up counts for this visit, and what waited for it opens */
   const closeBoard = () => {
     const popped = board?.popped;
@@ -3981,6 +3983,11 @@ export default function MapApp({
               seen().then(() => loadInbox());
               setPanel(null);
             }}
+            onLog={() => {
+              seen().then(() => loadInbox());
+              setPanel(null);
+              setBoard({ view: { kind: "log" }, popped: null });
+            }}
           />
         );
       }
@@ -4903,6 +4910,7 @@ export default function MapApp({
           memory={noticeMem}
           onOpen={boardOpen}
           onList={boardList}
+          onLog={boardLog}
           onClose={closeBoard}
         />
       )}

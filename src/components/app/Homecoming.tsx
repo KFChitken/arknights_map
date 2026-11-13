@@ -52,6 +52,7 @@ export function HomecomingSheet({
   perlica,
   onInbox,
   onWelcome,
+  onLog,
   onClose,
 }: {
   me: Me;
@@ -63,6 +64,8 @@ export function HomecomingSheet({
   perlica?: string;
   onInbox: () => void;
   onWelcome: () => void;
+  /** 「看更新记录」 after what is new: the card closes and the notice board opens on 更新记录 */
+  onLog: () => void;
   onClose: () => void;
 }) {
   const unseen = items.filter((i) => !i.seen);
@@ -146,7 +149,14 @@ export function HomecomingSheet({
         <p style={amiya || perlica ? undefined : { marginTop: 0 }}>{T.homecoming.quiet}</p>
       )}
       {next && <p className="homecoming-next">{NEXT[next.count](next.more, next.name)}</p>}
-      {T.homecoming.whatsNew && <p className="homecoming-new">{T.homecoming.whatsNew}</p>}
+      {T.homecoming.whatsNew && (
+        <p className="homecoming-new">
+          {T.homecoming.whatsNew}
+          <button className="homecoming-log" onClick={onLog}>
+            {T.notices.seeLog}
+          </button>
+        </p>
+      )}
     </Sheet>
   );
 }

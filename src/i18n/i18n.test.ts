@@ -238,6 +238,8 @@ const DECIDED_BY = new Set([
   "src/lib/operators.ts 塔露拉",
   // 「1.04 吨 的思念」 is said 「1.04 吨的思念」: no space after 吨, as there is after kg
   "src/lib/perlica.ts 吨 ",
+  // the change log's vague row (its rows are only in Chinese, src/lib/changelog.ts), greyed and folded like 后台调整
+  "src/lib/changelogView.ts 一些小改动",
 ]);
 
 /** Chinese that stays in a file whose words have moved, as a code another function takes or a picture, not words */

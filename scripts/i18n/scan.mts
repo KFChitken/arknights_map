@@ -53,7 +53,8 @@ export const CJK = /[⺀-⿿　-〿぀-ヿ㄀-ㇿ㐀-䶿一-鿿가-힯豈-﫿︰
  * Files whose text stays Chinese: the admin page, the site's own checks and
  * alert emails, the test players of a development copy (DEMO) and the show
  * roaches, what the server only logs, the words a name may not have (what
- * players type, not what they read), and the tests.
+ * players type, not what they read), the change log's rows (only in Chinese
+ * for now), and the tests.
  * Paths from the repository root; a folder ends in /.
  */
 export const KEPT: [prefix: string, why: string][] = [
@@ -63,6 +64,8 @@ export const KEPT: [prefix: string, why: string][] = [
   ["src/components/app/IdentitySheet.tsx", "demo"],
   ["src/instrumentation-node.ts", "console"],
   ["src/lib/adminConsole.ts", "admin"],
+  // each row of 更新记录, only in Chinese for now
+  ["src/lib/changelog.ts", "changelog"],
   ["src/lib/fakeRoaches.ts", "demo"],
   ["src/lib/nameRules.ts", "typed"],
   ["src/lib/server/admin.ts", "admin"],
