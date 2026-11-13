@@ -6,8 +6,8 @@ import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
 /**
- * 地图上看哪些蟑螂 (只看本体): every roach, or each player's main roach only. Opened from the counts at the top and
- * from 资料; a choice takes at once, with nothing to save (the page shows it first, and goes back if the server
+ * 地图上看哪些蟑螂 (只看本体): every roach, or each player's main roach only, which also hears declarations alone
+ * (src/lib/server/declarationInbox.ts). Opened from the counts at the top, from 资料 and from 消息's 宣言; a choice takes at once, with nothing to save (the page shows it first, and goes back if the server
  * says no). Drawn with the player's own look: a main roach with its clone for 全部, the main roach alone otherwise.
  */
 export default function OnlyMainsSheet({
@@ -48,6 +48,7 @@ export default function OnlyMainsSheet({
         ))}
       </div>
       <p className="hint">{T.onlyMains.noteHidden}</p>
+      <p className="hint">{T.onlyMains.noteInbox}</p>
       <p className="hint">{T.onlyMains.noteAccount}</p>
     </Sheet>
   );

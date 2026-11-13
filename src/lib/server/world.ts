@@ -1380,11 +1380,14 @@ export async function declare(userId: string, input: Declaration, from?: string[
       sql`ST_DWithin(${roaches.geog}, ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography, ${DECLARATION_RADIUS_KM * 1000})`,
   );
   const blocked = await blockedWith(userId);
+  // a player with 只看本体 on hears only near their main roach (src/lib/server/declarationInbox.ts): not counted, nor
+  // nudged, for clones alone
   const rows = (
     await db
       .selectDistinct({ id: roaches.userId })
       .from(roaches)
-      .where(and(ne(roaches.userId, userId), or(...near)))
+      .innerJoin(users, eq(users.id, roaches.userId))
+      .where(and(ne(roaches.userId, userId), or(...near), or(eq(roaches.slot, 0), eq(users.onlyMains, false))))
   ).filter((r) => !blocked.has(r.id));
   // 「祝我生日快乐」 also reaches every 触须之交 however far, as theirs (once in FRIEND_BIRTHDAY_DAYS); one each
   const friendsToo = new Set(d.template === "birthday" ? await birthdayFriends(userId, blocked) : []);

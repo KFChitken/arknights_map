@@ -186,6 +186,8 @@ export default function InboxSheet({
   onAppeal,
   friendly,
   suspendedUntil = null,
+  onlyMains = false,
+  onOpenOnlyMains,
   onClose,
 }: {
   items: InboxItem[];
@@ -211,6 +213,9 @@ export default function InboxSheet({
   friendly: InboxFriendly;
   /** 暂停互动 until then, said at the top */
   suspendedUntil?: number | null;
+  /** 只看本体 is on: 宣言 says only those near the main roach come, with a way to change it */
+  onlyMains?: boolean;
+  onOpenOnlyMains?: () => void;
   onClose: () => void;
 }) {
   const [replying, setReplying] = useState<string | null>(null);
@@ -606,6 +611,16 @@ export default function InboxSheet({
 
       {tab === "replies" && shown.length === 0 && (
         <p className="hint">{T.inbox.empty.replies}</p>
+      )}
+      {tab === "declarations" && onlyMains && (
+        <p className="hint only-mains-inbox">
+          {T.inbox.onlyMains}
+          {onOpenOnlyMains && (
+            <button className="link" onClick={onOpenOnlyMains}>
+              {T.inbox.onlyMainsChange}
+            </button>
+          )}
+        </p>
       )}
       {tab === "declarations" && shown.length === 0 && <p className="hint">{fmt(T.inbox.empty.declarations, { days: DECLARATION_DAYS })}</p>}
       {tab === "touches" && shown.length === 0 && <p className="hint">{T.inbox.empty.touches}</p>}

@@ -2799,6 +2799,8 @@ export default function MapApp({
     // set again, in case who is signed in was read in between
     flip(done ? on : !on);
     if (done) setToast(on ? T.onlyMains.toastOn : T.onlyMains.toastOff);
+    // which declarations 消息 holds changed with it (and so its counts)
+    if (done) void loadInbox().catch(() => {});
   };
 
   const switchPerlicaTimer = async (on: boolean) => {
@@ -3950,7 +3952,8 @@ export default function MapApp({
             onlyMains={me.onlyMains}
             look={{ color: myColor, avatar: myAvatar }}
             onPick={pickOnlyMains}
-            onBack={back ? () => setPanel(back) : undefined}
+            // back to 消息 as it is now: the switch may have changed which declarations it holds
+            onBack={back ? () => (back.kind === "inbox" ? void openInbox(false, back.tab) : setPanel(back)) : undefined}
             onClose={() => setPanel(null)}
           />
         );
@@ -4089,6 +4092,8 @@ export default function MapApp({
             onAppeal={appeal}
             friendly={inboxFriendly}
             suspendedUntil={me.suspendedUntil}
+            onlyMains={me.onlyMains}
+            onOpenOnlyMains={() => setPanel({ kind: "onlyMains", back: { ...p, notice: false } })}
             onClose={() => setPanel(null)}
           />
         );

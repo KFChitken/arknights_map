@@ -13,7 +13,9 @@ import { declarations, declarationSpots, deliveries, users } from "./schema";
  *   a. any sent in the last DECLARATION_DAYS within DECLARATION_RADIUS_KM of one of their roaches now
  *      (main, clones, visiting or riding with 明河都尉): moving a roach near shows them, moving it away
  *      hides them; and while their ink roach is on the map at 缘缘庄, up to INK_DECLARATIONS more, the
- *      newest within reach of INN_CENTER, besides those their roaches find (which it never crowds out);
+ *      newest within reach of INN_CENTER, besides those their roaches find (which it never crowds out).
+ *      With 只看本体 on (users.only_mains), their main roach alone: their clones and ink roach find none,
+ *      and those only they found come back as they were once it is off;
  *   b. any they reacted to or touched back, within INBOX_DAYS, wherever their roaches are now;
  *   c. a 「祝我生日快乐」 sent to them as a 触须之交 (a delivery row with to_friend), within INBOX_DAYS;
  *   and, the week after declarations started keeping their spots, any delivered to them the old way.
@@ -169,13 +171,16 @@ export async function visibleDeclarations(
   const localFrom = Math.max(now - DECLARATION_DAYS * DAY, after);
   const localSince = new Date(localFrom).toISOString();
   const inboxSince = new Date(Math.max(now - INBOX_DAYS * DAY, after)).toISOString();
-  // the player's roaches, and when spots began (or, once a week has gone by, about a week ago): anything sent before has
-  // none; and whether their ink roach is on the map (src/lib/server/si.ts inkOnMap)
+  // the player's roaches (their main roach alone with 只看本体 on), and when spots began (or, once a week has gone by,
+  // about a week ago): anything sent before has none; and whether their ink roach is on the map (src/lib/server/si.ts
+  // inkOnMap), which finds none with 只看本体 on either
   const [start] = await db.execute<{ places: [number, number][] | string; first: string | null; ink: boolean }>(sql`
+    with me as (select coalesce((select only_mains from users where id = ${userId}), false) as only_mains)
     select coalesce(json_agg(json_build_array(r.lng, r.lat)), '[]'::json) as places,
       (select min(created_at) from declaration_spots) as first,
-      exists (select 1 from si_inks i where i.user_id = ${userId} and i.ticket is not null and i.recalled_at is null) as ink
-    from roaches r where r.user_id = ${userId}`);
+      not (select only_mains from me)
+        and exists (select 1 from si_inks i where i.user_id = ${userId} and i.ticket is not null and i.recalled_at is null) as ink
+    from roaches r where r.user_id = ${userId} and (r.slot = 0 or not (select only_mains from me))`);
   const places = (typeof start.places === "string" ? (JSON.parse(start.places) as [number, number][]) : start.places).map(([lng, lat]) => ({ lng, lat }));
   const spotsFrom = start.first ? new Date(start.first).getTime() : Infinity;
   const ids = opts.ids ? uuidArray(opts.ids) : null;

@@ -3770,6 +3770,7 @@ describe("declarations by where the roaches are", () => {
   const FAR = { lng: 121.4737, lat: 31.3654 };
   const ELSEWHERE = { lng: 121.4737, lat: 31.5004 };
   const ELSEWHERE_NEAR = { lng: 121.4737, lat: 31.5454 };
+  const NEAR_FAR = { lng: 121.4837, lat: 31.3654 };
 
   const declarationItems = async (p: Player) => (await p.inbox()).filter((i) => i.kind === "declaration");
   const declarationIds = async (p: Player) => (await declarationItems(p)).map((i) => i.id);
@@ -3796,6 +3797,69 @@ describe("declarations by where the roaches are", () => {
     await db.insert(declarationSpots).values(spotRows(d, from));
     return `d:${d.id}`;
   };
+
+  it("with 只看本体 on, shows those near the main roach, answered ones and a 触须之交's birthday; off again, the rest as they were", async () => {
+    const sender = await signUp("sender@example.com");
+    const friend = await signUp("friend@example.com");
+    // me: main roach at People's Square, a 触须之交 in Tokyo, and a clone 15 km off, out of the main roach's reach
+    await realFriends(me, friend);
+    await me.placeRoach({ kind: "clone" }, FAR);
+    const nearMain = await sentFrom(sender, [NEAR], 3 * 60_000);
+    const nearClone = await sentFrom(sender, [FAR], 2 * 60_000);
+    const answered = await sentFrom(sender, [FAR], 60_000);
+    await me.react(answered, "plusone");
+    expect(await declarationIds(me)).toEqual([answered, nearClone, nearMain]);
+    const before = await unseen(me);
+    expect(before).toContain(nearClone);
+
+    await world.setOnlyMains(me.id, true);
+    expect(await declarationIds(me)).toEqual([answered, nearMain]);
+    // what only a clone was near can no longer be answered or touched back
+    await expect(me.react(nearClone, "plusone")).rejects.toThrow("找不到这条宣言了");
+    await expect(me.reply(nearClone, false)).rejects.toThrow();
+    // a 触须之交's 「祝我生日快乐」 comes however far
+    await friend.declare({ template: "birthday" });
+    const birthday = await latest(friend);
+    expect(await declarationIds(me)).toEqual([birthday, answered, nearMain]);
+
+    // off: the clone's come back, read or unread as they were
+    await world.setOnlyMains(me.id, false);
+    expect(await declarationIds(me)).toEqual([birthday, answered, nearClone, nearMain]);
+    expect((await unseen(me)).filter((id) => id !== birthday)).toEqual(before);
+  });
+
+  it("counts and nudges a player with 只看本体 on only for their main roach, as before for everyone else", async () => {
+    const sender = await signUp("sender@example.com");
+    await sender.placeRoach({ kind: "main" }, FAR);
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await me.placeRoach({ kind: "clone" }, FAR);
+    const other = await signUp("other@example.com");
+    await other.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    await other.placeRoach({ kind: "clone" }, FAR);
+    let nudged = 0;
+    const off = listen(me.id, () => nudged++);
+    const sent = async () => {
+      await earlier(2);
+      await sender.declare({ template: "launch", game: "arknights" });
+      const mine = await db.select().from(declarations).where(eq(declarations.senderId, sender.id));
+      return mine.sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime())[0].recipients;
+    };
+    try {
+      // off: me and other by their clones (and whoever else is about)
+      const all = await sent();
+      expect(nudged).toBe(1);
+      // on: me not counted, not nudged, for a clone alone; other, off, as before
+      await world.setOnlyMains(me.id, true);
+      expect(await sent()).toBe(all - 1);
+      expect(nudged).toBe(1);
+      // on, with the main roach near: counted and nudged
+      await moveTo(me, 0, NEAR_FAR);
+      expect(await sent()).toBe(all);
+      expect(nudged).toBe(2);
+    } finally {
+      off();
+    }
+  });
 
   it("shows one for seven days to every roach within 10 km of where it was sent, kept once with its spot", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);

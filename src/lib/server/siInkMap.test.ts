@@ -465,6 +465,12 @@ describe("墨小强 on the map", () => {
     expect(await ids(3)).toEqual([...nearInn.slice(0, INK_DECLARATIONS), ...atHome.slice(0, 3)]);
     // asked about by id, one near the inn is theirs too, the 21st as well
     expect((await visibleDeclarations(p, { ids: [atInn[24]], limit: 1 })).map((d) => d.d.id)).toEqual([atInn[24]]);
+    // with 只看本体 on, their ink roach finds none, as their clones find none: only their main roach's
+    await world.setOnlyMains(p, true);
+    expect(await ids()).toEqual(atHome);
+    expect(await visibleDeclarations(p, { ids: [atInn[24]], limit: 1 })).toEqual([]);
+    await world.setOnlyMains(p, false);
+    expect(await ids()).toEqual([...nearInn.slice(0, INK_DECLARATIONS), ...atHome]);
     // recalled: only their own again
     await si.recallInk(p);
     expect(await ids()).toEqual(atHome);

@@ -114,6 +114,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .style-opt .only-mains-icons img + img { width: 26px; height: 26px; }
 /* its row in 我的资料, between two of the sheet's sections */
 .only-mains-row { margin: -6px 0 16px; }
+/* 消息's 宣言 with 只看本体 on: what comes, and 「改」 beside it */
+.only-mains-inbox .link { margin-left: 6px; }
 /*
  * 舟u本色 over your own roaches (AmapView mineIcon), which are page elements rather than the GPU's points:
  * two hearts in turn, on the same curve as roachGl.ts draws everyone else's (a 2.6 s cycle, seen for 82% of
