@@ -5,6 +5,12 @@
 //
 //   node scripts/fetch-operator-art.mjs            only the ones still missing
 //   node scripts/fetch-operator-art.mjs --refresh  all of them again
+//   node scripts/fetch-operator-art.mjs --add <game> <name> <picture>
+//       one picture made by hand, for a character on the lists whom the wikis have none of:
+//       a square crop of the face, made 128px like the rest
+//
+// A picture already here stays whenever the wiki gives none for that character (one made by
+// hand, or one the wiki no longer has or fails to send just then), --refresh included.
 //
 // The pictures belong to Hypergryph, so they stay out of the repository (.gitignore) and
 // out of the app image (.dockerignore); scripts/deploy.sh copies the folder to the server.
@@ -23,7 +29,8 @@ const AGENT = "zhoupmap-operator-art/1.0 (https://zhoupmap.com)";
 // Collaboration characters: names only, no pictures
 const COLLAB = new Set(["灰烬", "闪击", "战车", "霜华", "麒麟R夜刀", "火龙S黑角", "雷狼龙S空爆"]);
 
-const refresh = process.argv.includes("--refresh");
+const args = process.argv.slice(2);
+const refresh = args.includes("--refresh");
 const names = (file) => JSON.parse(readFileSync(file, "utf8")).operators.map((o) => o.name);
 const lists = {
   arknights: names("src/data/arknights-operators.json"),
@@ -101,11 +108,9 @@ async function endfieldUrls(wanted) {
   return new Map(known.flatMap((n) => (urls.has(icon(n)) ? [[n, urls.get(icon(n))]] : [])));
 }
 
-/** Download one picture and store it as a small WebP named by its content; returns the file name. */
-async function store(url) {
-  const res = await get(url);
-  if (!(res.headers.get("content-type") ?? "").startsWith("image/")) throw new Error(`not a picture: ${url}`);
-  const webp = await sharp(Buffer.from(await res.arrayBuffer()))
+/** Store a picture as a small WebP named by its content; returns the file name. */
+async function storePicture(input) {
+  const webp = await sharp(input)
     .resize(SIZE, SIZE, { fit: "cover", withoutEnlargement: true })
     .webp({ quality: 80 })
     .toBuffer();
@@ -114,8 +119,37 @@ async function store(url) {
   return file;
 }
 
+/** Download one picture and store it; returns the file name. */
+async function store(url) {
+  const res = await get(url);
+  if (!(res.headers.get("content-type") ?? "").startsWith("image/")) throw new Error(`not a picture: ${url}`);
+  return storePicture(Buffer.from(await res.arrayBuffer()));
+}
+
+/** The picture a character has here already, while its file is still there */
+function keptFile(game, n) {
+  const kept = old[game]?.[n];
+  return kept && existsSync(path.join(OUT, kept)) ? kept : null;
+}
+
 mkdirSync(OUT, { recursive: true });
+
+const add = args.indexOf("--add");
+if (add >= 0) {
+  const [game, name, picture] = args.slice(add + 1, add + 4);
+  // collaboration characters stay names only
+  if (!lists[game]?.includes(name) || COLLAB.has(name) || !picture || !existsSync(picture)) {
+    console.error("Usage: node scripts/fetch-operator-art.mjs --add <arknights|endfield> <a name on that list> <picture>");
+    process.exit(1);
+  }
+  const file = await storePicture(readFileSync(picture));
+  writeFileSync(INDEX, JSON.stringify({ ...old, [game]: { ...old[game], [name]: file } }));
+  console.log(`${game}: ${name} shows ${file} now`);
+  process.exit(0);
+}
+
 const missing = [];
+const ownKept = [];
 for (const [game, find] of [
   ["arknights", arknightsUrls],
   ["endfield", endfieldUrls],
@@ -123,8 +157,8 @@ for (const [game, find] of [
   const wanted = lists[game].filter((n) => !COLLAB.has(n));
   const todo = [];
   for (const n of wanted) {
-    const kept = old[game]?.[n];
-    if (!refresh && kept && existsSync(path.join(OUT, kept))) index[game][n] = kept;
+    const kept = keptFile(game, n);
+    if (!refresh && kept) index[game][n] = kept;
     else todo.push(n);
   }
   const urls = todo.length ? await find(todo) : new Map();
@@ -133,11 +167,14 @@ for (const [game, find] of [
     await Promise.all(
       todo.slice(i, i + 4).map(async (n) => {
         const url = urls.get(n);
-        if (!url) return missing.push(`${game}: ${n}`);
         try {
+          if (!url) throw new Error("none on the wiki");
           index[game][n] = await store(url);
         } catch (e) {
-          missing.push(`${game}: ${n} (${e.message})`);
+          const kept = keptFile(game, n);
+          if (!kept) return missing.push(`${game}: ${n} (${e.message})`);
+          index[game][n] = kept;
+          ownKept.push(`${game}: ${n} (${e.message})`);
         }
       }),
     );
@@ -146,4 +183,5 @@ for (const [game, find] of [
 }
 writeFileSync(INDEX, JSON.stringify(index));
 console.log(`Collaboration characters left as names: ${[...COLLAB].join("、")}`);
+if (ownKept.length) console.log(`Kept the picture already here for:\n  ${ownKept.join("\n  ")}`);
 if (missing.length) console.log(`No picture found for:\n  ${missing.join("\n  ")}`);
