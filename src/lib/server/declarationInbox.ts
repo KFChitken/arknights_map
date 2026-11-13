@@ -289,7 +289,9 @@ export async function canSeeDeclaration(userId: string, id: string, now = Date.n
 
 /**
  * 消息 opened on these declarations: delivery rows are marked as before, and the player has read up to
- * the newest of them they see.
+ * the newest of them they see, of those sent nearby. A 触须之交's 「祝我生日快乐」 is read by its delivery row
+ * alone: it is in a tab of its own (触须之交), and opening that one must leave unread the declarations sent
+ * nearby before it, in 宣言.
  */
 export async function seeDeclarations(userId: string, ids: string[], now = Date.now()) {
   const valid = [...new Set(ids.filter((i) => UUID.test(i)))];
@@ -299,7 +301,7 @@ export async function seeDeclarations(userId: string, ids: string[], now = Date.
     .update(deliveries)
     .set({ seenAt: at })
     .where(and(inArray(deliveries.declarationId, valid), eq(deliveries.recipientId, userId), isNull(deliveries.seenAt)));
-  const seen = await visibleDeclarations(userId, { ids: valid, limit: valid.length }, now);
+  const seen = (await visibleDeclarations(userId, { ids: valid, limit: valid.length }, now)).filter((x) => !x.toFriend);
   if (!seen.length) return;
   // the newest one's own time, to the microsecond (a JavaScript date would stop at the millisecond)
   const newest = sql`(select max(${declarations.createdAt}) from ${declarations} where ${declarations.id} = any(${uuidArray(seen.map((x) => x.d.id))}::uuid[]))`;

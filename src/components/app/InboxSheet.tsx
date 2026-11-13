@@ -19,12 +19,13 @@ import {
 } from "@/lib/friendly";
 import { GAME_NAMES, serverName, type Game } from "@/lib/games";
 import { guideById, isGuideItem } from "@/lib/guides";
+import { capCount, INBOX_TABS, noticeTitle, tabLabel, tabOf, type InboxTab } from "@/lib/inboxTabs";
 import { PERLICA_ID, perlicaText, perlicaUnfriend } from "@/lib/perlica";
 import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
 import { SI_ID, siText } from "@/lib/si";
 import { talulahText } from "@/lib/talulah";
 import type { PublicProfile } from "@/lib/profile";
-import { DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
+import { DECLARATION_DAYS, DECLARATION_RADIUS_KM, INBOX_DAYS } from "@/lib/rules";
 import { APPEAL_MAX, APPEAL_MIN } from "@/lib/safety";
 import type { LngLat } from "@/lib/types";
 import { boldOnly, type Friend, type InboxItem, type StaffAppeal } from "@/lib/world/types";
@@ -33,55 +34,11 @@ import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
-export type InboxTab = "replies" | "touches" | "friends";
-
 /** What can be touched back from 消息: a touch, a declaration, or a reaction to yours */
 type Answerable = Extract<InboxItem, { kind: "touch" | "declaration" | "reaction" }>;
 
 /** What ending it with 阿米娅向导 means; also the question before it */
 export const amiyaUnfriend = () => T.inbox.unfriend.amiya;
-
-const TABS: { tab: InboxTab; label: string }[] = [
-  {
-    tab: "replies",
-    get label() {
-      return T.inbox.tabs.replies;
-    },
-  },
-  {
-    tab: "touches",
-    get label() {
-      return T.inbox.tabs.touches;
-    },
-  },
-  {
-    tab: "friends",
-    get label() {
-      return T.common.friends;
-    },
-  },
-];
-
-/** What happens between 触须之交: new friends, 戳一戳 both ways, and all they do for each other (src/lib/friendly.ts) */
-const BETWEEN_FRIENDS: InboxItem["kind"][] = ["friend", "poke", "pokeWoke", "sanity", "sanityThanks", "gesture", "visit", "game", "anniversary"];
-
-/** Touches, the guides' included */
-const TOUCHES: InboxItem["kind"][] = ["touch", "amiya", "perlica", "talulah", "minghe", "si"];
-
-/** Declarations and reactions are replies; touches (the guides' too) and what happens between 触须之交 have their own tabs. */
-export function tabOf(item: InboxItem): InboxTab {
-  if (TOUCHES.includes(item.kind)) return "touches";
-  if (BETWEEN_FRIENDS.includes(item.kind)) return "friends";
-  return "replies";
-}
-
-/** Open on the tab the notice headline talks about (see noticeTitle). */
-export function firstTab(items: InboxItem[]): InboxTab {
-  const unseen = items.filter((i) => !i.seen);
-  if (unseen.some((i) => BETWEEN_FRIENDS.includes(i.kind))) return "friends";
-  if (unseen.some((i) => TOUCHES.includes(i.kind))) return "touches";
-  return "replies";
-}
 
 export function ago(t: number, now = Date.now()) {
   const s = Math.max(0, (now - t) / 1000);
@@ -114,33 +71,6 @@ export function pokedBy(items: InboxItem[]) {
   const names = [...new Set(items.flatMap((i) => (i.kind === "poke" && !i.seen ? [i.from.displayName] : [])))];
   if (names.length <= 2) return names.join(T.inbox.pokedBy.and);
   return fmt(T.inbox.pokedBy.many, { names: names.slice(0, 2).join(T.common.listSep), n: names.length });
-}
-
-/** Headline for the notice shown when a player opens the map with unseen items. */
-export function noticeTitle(items: InboxItem[]) {
-  const unseen = items.filter((i) => !i.seen);
-  if (unseen.some((i) => i.kind === "staff")) return T.inbox.headline.staff;
-  if (unseen.some((i) => i.kind === "friend")) return T.inbox.headline.friend;
-  if (unseen.some((i) => i.kind === "poke")) return T.inbox.headline.poke;
-  if (unseen.some((i) => i.kind === "pokeWoke")) return T.inbox.headline.pokeWoke;
-  if (unseen.some((i) => i.kind === "anniversary")) return T.inbox.headline.anniversary;
-  if (unseen.some((i) => i.kind === "visit" && i.event === "came")) return T.inbox.headline.visitCame;
-  if (unseen.some((i) => i.kind === "visit")) return T.inbox.headline.visit;
-  if (unseen.some((i) => i.kind === "sanity")) return T.inbox.headline.sanity;
-  if (unseen.some((i) => i.kind === "gesture")) return T.inbox.headline.gesture;
-  if (unseen.some((i) => i.kind === "sanityThanks" || i.kind === "game")) return T.inbox.headline.thanks;
-  if (unseen.some((i) => i.kind === "touch")) return T.inbox.headline.touch;
-  if (unseen.some((i) => i.kind === "amiya")) return T.inbox.headline.amiya;
-  if (unseen.some((i) => i.kind === "perlica")) return T.inbox.headline.perlica;
-  if (unseen.some((i) => i.kind === "talulah")) return T.inbox.headline.talulah;
-  if (unseen.some((i) => i.kind === "minghe" && i.line === "trip")) return T.inbox.headline.mingheTrip;
-  if (unseen.some((i) => i.kind === "minghe")) return T.inbox.headline.minghe;
-  if (unseen.some((i) => i.kind === "si" && (i.line === "checkin" || i.line === "again"))) return T.inbox.headline.siCheckin;
-  if (unseen.some((i) => i.kind === "si" && i.line === "checkout")) return T.inbox.headline.siCheckout;
-  if (unseen.some((i) => i.kind === "si")) return T.inbox.headline.si;
-  if (unseen.some((i) => i.kind === "reaction")) return T.inbox.headline.reaction;
-  if (unseen.length) return T.inbox.headline.declaration;
-  return T.inbox.title;
 }
 
 /** What happened with a visiting clone (串门), by who did it */
@@ -664,11 +594,12 @@ export default function InboxSheet({
   return (
     <Sheet title={notice ? noticeTitle(items) : T.inbox.title} onClose={onClose}>
       {suspendedUntil && <p className="suspended-banner">{fmtParts(T.inbox.suspended, { until: beijingDayWords(suspendedUntil) })}</p>}
-      <div className="seg tabs" role="tablist">
-        {TABS.map(({ tab: t, label }) => (
+      <div className="seg tabs four" role="tablist">
+        {INBOX_TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>
-            {label}
-            {unseenIn(t) > 0 && <span className="badge">{unseenIn(t)}</span>}
+            {tabLabel(t)}
+            {/* declarations sent nearby count in yellow, as the speaker on the envelope; the rest came to you, in red */}
+            {unseenIn(t) > 0 && <span className={`badge${t === "declarations" ? " say" : ""}`}>{capCount(unseenIn(t))}</span>}
           </button>
         ))}
       </div>
@@ -676,6 +607,7 @@ export default function InboxSheet({
       {tab === "replies" && shown.length === 0 && (
         <p className="hint">{T.inbox.empty.replies}</p>
       )}
+      {tab === "declarations" && shown.length === 0 && <p className="hint">{fmt(T.inbox.empty.declarations, { days: DECLARATION_DAYS })}</p>}
       {tab === "touches" && shown.length === 0 && <p className="hint">{T.inbox.empty.touches}</p>}
       {shown.map(message)}
 

@@ -139,6 +139,16 @@ export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockF
   );
 }
 
+/** The speaker of a declaration sent nearby: on its bubble, and on the envelope while one is unread */
+export function SpeakerIcon({ size, stroke = 1.6 }: { size: number; stroke?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path d="M3 9 h3 l4 -4 v14 l-4 -4 h-3 z" fill="currentColor" />
+      <path d="M13.5 8 a4 4 0 0 1 0 8 M15.5 5 a8 8 0 0 1 0 14" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Sound coming down into the dock avatar as a declaration is heard */
 export function DockArcs({ at }: { at: DockAt }) {
   return <div className="dock-fx ta-arcs" style={{ left: at.av.x + at.av.w / 2 - 19, top: at.av.y - 22 }} {...html(soundArcs())} />;
@@ -169,10 +179,7 @@ function HeardBubble({ heard: h, older, onReply, onOk }: { heard: Heard; older: 
   return (
     <div className={`ta-heard${landed ? " landed" : ""}${older ? " older" : ""}`} role="status" onAnimationEnd={() => setLanded(true)}>
       <span className="ta-heard-k">
-        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-          <path d="M3 9 h3 l4 -4 v14 l-4 -4 h-3 z" fill="currentColor" />
-          <path d="M13.5 8 a4 4 0 0 1 0 8 M15.5 5 a8 8 0 0 1 0 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
+        <SpeakerIcon size={14} />
         {T.fx.shoutNear}
       </span>
       <p className="ta-heard-line">

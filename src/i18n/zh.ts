@@ -203,7 +203,9 @@ export const zh = {
       announce: "我宣布个事儿",
       announceTop: "我宣布",
       announceBottom: "个事儿",
-      messagesUnread: "消息，{n} 条未读",
+      messagesForYou: "消息，{n} 条找你的",
+      messagesNear: "消息，附近有新宣言",
+      messagesForYouNear: "消息，{n} 条找你的，附近有新宣言",
       messages: "消息",
       friends: "触须之交",
       friendsHelp: "触须之交那里有求助",
@@ -1101,8 +1103,9 @@ export const zh = {
       player: "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。",
     },
     tabs: {
-      replies: "收到的回复",
-      touches: "收到的触碰",
+      replies: "回复",
+      touches: "触碰",
+      declarations: "宣言",
     },
     ago: {
       now: "刚刚",
@@ -1134,6 +1137,7 @@ export const zh = {
       poke: "有触须之交趁你睡着戳了戳你！",
       pokeWoke: "你戳过的触须之交醒啦！",
       anniversary: "今天是触须之交纪念日！",
+      birthday: "有触须之交过生日啦！",
       visitCame: "有触须之交来你家串门了！",
       visit: "你的克隆体有新消息！",
       sanity: "触须之交催你清理智啦！",
@@ -1225,7 +1229,8 @@ export const zh = {
     seesYou: "TA 能看到是你。",
     suspended: "你的互动暂停到 {until}。",
     empty: {
-      replies: "还没有回复。附近的舟P发宣言、或者回应你的宣言，都会出现在这里。",
+      replies: "还没有人回应你的宣言。发一条宣言，附近的舟P就能回应你。",
+      declarations: "你的蟑螂附近最近 {days} 天还没有人发宣言。",
       touches: "还没有被碰过。点别的蟑螂伸出触须试试。",
     },
     friendRow: {

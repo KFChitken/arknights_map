@@ -153,17 +153,8 @@ import {
   watchHomeScreen,
 } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
-import InboxSheet, {
-  amiyaUnfriend,
-  firstTab,
-  FriendView,
-  noticeTitle,
-  pokedBy,
-  ProfileView,
-  tabOf,
-  type InboxFriendly,
-  type InboxTab,
-} from "./app/InboxSheet";
+import InboxSheet, { amiyaUnfriend, FriendView, pokedBy, ProfileView, type InboxFriendly } from "./app/InboxSheet";
+import { capCount, dockCounts, firstTab, noticeTitle, tabOf, type InboxTab } from "@/lib/inboxTabs";
 import { batchSent, gestureSent, isAwakeGesture, isGesture, type BatchAct, type Gesture } from "@/lib/friendly";
 import type { HelpAsk } from "@/lib/help";
 import type { Game } from "@/lib/games";
@@ -206,7 +197,7 @@ import SafetySheet from "./app/SafetySheet";
 import AgeCheckSheet from "./app/AgeCheckSheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
-import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, SpeakerIcon, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
 import FriendActions, { type FriendAct } from "./app/FriendActions";
 import GestureStage, { SanityFly } from "./app/GestureStage";
 import BatchStage from "./app/BatchStage";
@@ -1311,9 +1302,12 @@ export default function MapApp({
   };
   const hearRef = useRef(hear);
   hearRef.current = hear;
+  // 回应 opens 消息 on the tab the declaration is in: 宣言, or 触须之交 for a 触须之交's birthday
   const heardReply = async (id: string) => {
     setHeard((all) => all.filter((h) => h.id !== id));
-    await openInbox(false, "replies");
+    const items = await loadInbox();
+    const item = items.find((i) => i.id === id);
+    await openInbox(false, item ? tabOf(item) : "declarations", items);
   };
   const heardOk = async (id: string) => {
     setHeard((all) => all.filter((h) => h.id !== id));
@@ -2821,7 +2815,8 @@ export default function MapApp({
   // 佩丽卡监督 keeps watch beside the drunk main roach (the map sets her just to its right), then goes back to her spot
   const guarding = Boolean(me?.drunkUntil && main && perlicaAt);
   const perlicaShown = guarding && main ? { lng: main.lng, lat: main.lat } : perlicaAt;
-  const unseen = inbox.filter((i) => !i.seen).length;
+  // the envelope's red count, of what came to you, and its yellow speaker, for declarations sent nearby
+  const envelope = dockCounts(inbox);
   // what is near the spot a visitor tapped, counted by the server (a visitor has no list): only the last of
   // quick taps is asked about
   const [around, setAround] = useState<{ near: number; far: number } | "failed" | null>(null);
@@ -4833,12 +4828,29 @@ export default function MapApp({
             </span>
             <span className="dock-name">{me.profile.anonymous || !me.profile.name.trim() ? T.map.common.anonymous : displayName(me.profile)}</span>
           </button>
-          <button ref={dockMailRef} className="dock-mail" aria-label={unseen ? fmt(T.map.bar.messagesUnread, { n: unseen }) : T.map.bar.messages} onClick={() => openInbox(false)}>
+          <button
+            ref={dockMailRef}
+            className="dock-mail"
+            aria-label={
+              envelope.red
+                ? fmt(envelope.say ? T.map.bar.messagesForYouNear : T.map.bar.messagesForYou, { n: envelope.red })
+                : envelope.say
+                  ? T.map.bar.messagesNear
+                  : T.map.bar.messages
+            }
+            onClick={() => openInbox(false)}
+          >
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
               <rect x="3" y="5.5" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
               <path d="M4 7.5 12 13l8-5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
             </svg>
-            {unseen > 0 && <span className={`badge ${badgePop ? "ta-dbadge" : ""}`}>{unseen}</span>}
+            {/* before the red count, which the CSS keeps on top of it */}
+            {envelope.say && (
+              <span className={`say-mark${envelope.red ? " under" : ""}`} aria-hidden="true">
+                <SpeakerIcon size={12} stroke={1.8} />
+              </span>
+            )}
+            {envelope.red > 0 && <span className={`badge ${badgePop ? "ta-dbadge" : ""}`}>{capCount(envelope.red)}</span>}
           </button>
           <button className="dock-friends" onClick={() => void openFriends()}>
             <FriendsMark size={28} />

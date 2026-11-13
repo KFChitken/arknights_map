@@ -469,6 +469,49 @@ describe("生日祝福送到所有触须之交", () => {
     expect(of(await b.inbox(), "declaration")).toHaveLength(1);
     expect(of(await d.inbox(), "declaration").find((x) => !x.from)).toBeTruthy();
   });
+
+  /** B's declarations, newest first: a 触须之交's birthday or one sent nearby, and whether read */
+  const readOfB = async () => of(await b.inbox(), "declaration").map((x) => [x.from ? "birthday" : "near", x.seen]);
+  /** Three declared near B's roach (TOKYO), then A's birthday, far away, which reaches B as a 触须之交's: all unread */
+  async function nearThenBirthday() {
+    for (const [i, lng] of [139.71, 139.72, 139.73].entries()) {
+      const p = await player(`near${i}@example.com`, `Near ${i}`, { lng, lat: 35.69 });
+      await p.declare({ template: "launch", game: "arknights" });
+    }
+    await a.declare({ template: "birthday" });
+    const all = of(await b.inbox(), "declaration");
+    expect(await readOfB()).toEqual([
+      ["birthday", false],
+      ["near", false],
+      ["near", false],
+      ["near", false],
+    ]);
+    return { birthday: all.filter((x) => x.from), near: all.filter((x) => !x.from) };
+  }
+
+  it("is read in 触须之交, which leaves the declarations sent nearby before it unread in 宣言", async () => {
+    const { birthday, near } = await nearThenBirthday();
+    await b.markSeen(birthday.map((x) => x.id));
+    expect(await readOfB()).toEqual([
+      ["birthday", true],
+      ["near", false],
+      ["near", false],
+      ["near", false],
+    ]);
+    await b.markSeen(near.map((x) => x.id));
+    expect((await readOfB()).every(([, seen]) => seen)).toBe(true);
+  });
+
+  it("stays unread when 宣言 is read, though sent after what is in it", async () => {
+    const { near } = await nearThenBirthday();
+    await b.markSeen(near.map((x) => x.id));
+    expect(await readOfB()).toEqual([
+      ["birthday", false],
+      ["near", true],
+      ["near", true],
+      ["near", true],
+    ]);
+  });
 });
 
 describe("kept between the two of them", () => {
