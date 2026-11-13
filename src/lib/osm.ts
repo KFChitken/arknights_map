@@ -1,5 +1,6 @@
 import type { Place } from "./geocode";
 import type { LngLat, MapView } from "./types";
+import { lang } from "@/i18n";
 
 /**
  * The OpenStreetMap place searches, built and read the same way whether the browser asks them
@@ -10,8 +11,8 @@ import type { LngLat, MapView } from "./types";
 /** Photon: an OSM geocoder made for search-as-you-type. near ranks places around it first. */
 export function photonUrl(q: string, near?: LngLat) {
   const url = new URL("https://photon.komoot.io/api/");
-  // "default" keeps local names (中文 in China) instead of following the browser language
-  const params = new URLSearchParams({ q, limit: "8", lang: "default" });
+  // "default" keeps local names (中文 in China) instead of following the browser language; English pages ask for English
+  const params = new URLSearchParams({ q, limit: "8", lang: lang() === "zh" ? "default" : "en" });
   if (near) {
     params.set("lat", near.lat.toFixed(4));
     params.set("lon", near.lng.toFixed(4));
@@ -46,7 +47,7 @@ export function photonPlaces(body: unknown): Place[] {
  */
 export function nominatimUrl(q: string, near?: MapView) {
   const url = new URL("https://nominatim.openstreetmap.org/search");
-  const params = new URLSearchParams({ q, format: "jsonv2", limit: "8", "accept-language": "zh-CN,zh,en" });
+  const params = new URLSearchParams({ q, format: "jsonv2", limit: "8", "accept-language": lang() === "zh" ? "zh-CN,zh,en" : "en" });
   if (near) {
     const half = Math.max(0.25, 90 / 2 ** near.zoom);
     const box = [near.lng - half * 1.5, near.lat + half, near.lng + half * 1.5, near.lat - half];

@@ -1,4 +1,5 @@
 import type { Lang, Messages } from "./core";
+import { pathIn } from "./lang";
 import { WORDS_PREFIX } from "./words";
 
 export * from "./core";
@@ -61,6 +62,14 @@ export const T: Messages = new Proxy({} as Messages, {
 
 /** The language the page, or the request being answered, is in */
 export const lang = (): Lang => words().lang;
+
+/** A page of the site in the language of this one: "/privacy" on the Chinese site, "/en/privacy" on the English one (src/i18n/lang.ts) */
+export const localPath = (path: string) => pathIn(path, lang());
+
+/** What goes between two sentences put together: nothing in Chinese, whose sentences end in their own 。！？, a space in English */
+export const sentenceGap = () => (lang() === "zh" ? "" : " ");
+/** Sentences run together as the page's language writes them, the empty ones left out */
+export const sentences = (...parts: string[]) => parts.filter((p) => p !== "").join(sentenceGap());
 
 /** T, for components that read it as a hook */
 export const useT = (): Messages => T;

@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { Game } from "@/lib/games";
+import { characterName } from "@/i18n/names";
 
 /**
  * Character names with their small round pictures. Which characters have one
@@ -37,7 +38,7 @@ export function OperatorPic({ game, name, art }: { game: Game; name: string; art
   return (
     // empty while the list is on its way, so a picture does not replace a letter a moment later
     <span className="op-pic op-initial" aria-hidden="true">
-      {art ? [...name][0] : ""}
+      {art ? [...characterName(name)][0] : ""}
     </span>
   );
 }
@@ -49,7 +50,7 @@ export default function OperatorNames({ game, names }: { game: Game; names: stri
       {names.map((name) => (
         <span key={name} className="op">
           <OperatorPic game={game} name={name} art={art} />
-          {name}
+          {characterName(name)}
         </span>
       ))}
     </span>

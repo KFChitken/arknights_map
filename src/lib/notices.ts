@@ -1,5 +1,6 @@
 import { fmt, T } from "@/i18n";
 import { beijingDate } from "./beijing";
+import { apiFetch } from "@/lib/apiFetch";
 
 /**
  * 公告 (src/components/app/NoticeBoard.tsx): what pages get of each notice, and what this device remembers
@@ -53,7 +54,7 @@ export function readNoticeList(v: unknown): NoticeList | null {
 /** The list again, from the server's memory: when /api/roaches says it changed. Null when it could not be had. */
 export async function fetchNotices(): Promise<NoticeList | null> {
   try {
-    const res = await fetch("/api/notices", { cache: "no-cache" });
+    const res = await apiFetch("/api/notices", { cache: "no-cache" });
     if (!res.ok) return null;
     return readNoticeList(await res.json());
   } catch {

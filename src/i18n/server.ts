@@ -1,9 +1,11 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
+import { workUnitAsyncStorage } from "next/dist/server/app-render/work-unit-async-storage.external";
 import { fill, type Lang, LANGS, type Messages } from "./core";
 import { en } from "./en";
 import type { Words } from "./index";
+import { LANG_HEADER, langOfMark } from "./lang";
 import { wordsBody } from "./words";
 import { zh } from "./zh";
 
@@ -14,7 +16,7 @@ import { zh } from "./zh";
 
 const WORDS: Record<Lang, Words> = {
   zh: { lang: "zh", t: zh },
-  // what English still lacks shows in Chinese (src/i18n/en.ts)
+  // en.ts has every line; filled from zh all the same, so that a line added in Chinese shows until it has its English
   en: { lang: "en", t: fill<Messages>(zh, en) },
 };
 
@@ -27,8 +29,28 @@ declare global {
 // a request's language set through one copy must be the one T reads through any other
 const current = (globalThis.__ZP_I18N_LANG ??= new AsyncLocalStorage<Lang>());
 
+/**
+ * Whether the English site is up: ENGLISH=off on the server takes it down at once, /en
+ * then leading to the Chinese map (src/app/en/layout.tsx) and every answer in Chinese.
+ */
+export const englishOn = () => process.env.ENGLISH !== "off";
+
+/**
+ * The language the request being answered is marked with (src/i18n/lang.ts), as Next keeps the
+ * request for its own headers(): through the page's server rendering, its components drawn
+ * on the server included, and a route's handler. Read without marking the page as one made
+ * for each visit, unlike headers(): a page built ahead of time has no request, and is Chinese.
+ */
+function markedLang(): Lang | undefined {
+  const store = workUnitAsyncStorage.getStore();
+  return store?.type === "request" ? langOfMark(store.headers.get(LANG_HEADER)) : undefined;
+}
+
+/** The language T is in on the server: as withLang says, else as the request is marked, else Chinese */
+const serverLang = (): Lang => (englishOn() ? (current.getStore() ?? markedLang() ?? "zh") : "zh");
+
 // T (src/i18n/index.ts) reads the request's words through this; outside any request, Chinese
-globalThis.__ZP_I18N_SERVER = () => WORDS[current.getStore() ?? "zh"];
+globalThis.__ZP_I18N_SERVER = () => WORDS[serverLang()];
 
 /** Runs fn with T in lang, everything it awaits included: route() does this for every request (src/lib/server/http.ts) */
 export const withLang = <R>(lang: Lang, fn: () => R): R => current.run(lang, fn);

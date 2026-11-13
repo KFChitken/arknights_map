@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmtParts, T } from "@/i18n";
+import { fmtParts, localPath, T } from "@/i18n";
 import { adultTick, crossBorderTick, publicPlaceNote, publicPlaceTick } from "@/lib/consent";
 import { MIN_SIGNUP_AGE, siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
@@ -72,7 +72,7 @@ export default function ConsentSheet({
           <li key={c}>{c}</li>
         ))}
       </ol>
-      <a className="consent-full" href="/privacy" target="_blank" rel="noreferrer">
+      <a className="consent-full" href={localPath("/privacy")} target="_blank" rel="noreferrer">
         {T.consent.update.full}
       </a>
       <div className="ticks">
@@ -84,7 +84,7 @@ export default function ConsentSheet({
           <input type="checkbox" checked={abroad} onChange={(e) => setAbroad(e.target.checked)} />
           <span>
             {crossBorderTick()}{" "}
-            <a href="/privacy#abroad" target="_blank" rel="noreferrer">
+            <a href={localPath("/privacy#abroad")} target="_blank" rel="noreferrer">
               {T.common.details}
             </a>
           </span>

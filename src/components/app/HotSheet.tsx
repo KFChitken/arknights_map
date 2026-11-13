@@ -7,6 +7,8 @@ import type { Game } from "@/lib/games";
 import { HOT_BOARDS, HOT_MIN_PLAYERS, WEEK, type HotBoard, type HotList } from "@/lib/hotList";
 import { siteName } from "@/lib/rules";
 import Sheet from "./Sheet";
+import { apiFetch } from "@/lib/apiFetch";
+import { characterName } from "@/i18n/names";
 
 const GAME_TAGS: Record<Game, string> = {
   get arknights() {
@@ -34,7 +36,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
   const [board, setBoard] = useState<HotBoard>("love");
 
   useEffect(() => {
-    fetch("/api/hot")
+    apiFetch("/api/hot")
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         if (!res.ok || !body) throw new Error(body?.error ?? T.hot.failed);
@@ -79,7 +81,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
           <div key={r.character} className={`hot-row ${r.rank <= 3 ? "top" : ""}`}>
             <span className="hot-rank">{r.rank}</span>
             <span className="hot-name">
-              {r.character}
+              {characterName(r.character)}
               {r.games.length > 0 && <span className="hot-tag">{r.games.map((g) => GAME_TAGS[g]).join(" / ")}</span>}
             </span>
             <span className="hot-n">{fmtParts(T.hot.players, { n: r.players })}</span>
@@ -87,7 +89,7 @@ export default function HotSheet({ onClose }: { onClose: () => void }) {
         ))}
         {last && (
           <p className="hot-last">
-            {fmtParts(T.hot.lastWeek, { character: last.character, n: last.players })}
+            {fmtParts(T.hot.lastWeek, { character: characterName(last.character), n: last.players })}
           </p>
         )}
         <div className="hot-foot">

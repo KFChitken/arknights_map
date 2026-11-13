@@ -1,23 +1,13 @@
 import "server-only";
-import { cookies, headers } from "next/headers";
-import { SESSION_COOKIE } from "@/lib/server/auth";
-import { ipFrom } from "@/lib/server/http";
-import { inMainland } from "@/lib/server/region";
 import type { Lang } from "./core";
-import { ENGLISH_ON, LANG_COOKIE, pickLang } from "./lang";
+import { lang } from "./index";
+import "./server";
 
 /**
- * The language of a page's request (src/i18n/lang.ts; an API request's is requestLang in
- * src/lib/server/http.ts). While English is not offered, Chinese without looking at the
- * request at all, so pages that were built ahead of time stay so.
+ * The language of the page being made: English under /en (src/middleware.ts marks it), else
+ * Chinese (src/i18n/lang.ts). Read without making the page one that is made for each visit,
+ * so pages built ahead of time (the 管理台) stay so, in Chinese.
  */
 export async function pageLang(): Promise<Lang> {
-  if (!ENGLISH_ON) return "zh";
-  const [h, jar] = await Promise.all([headers(), cookies()]);
-  return pickLang({
-    cookie: jar.get(LANG_COOKIE)?.value,
-    acceptLanguage: h.get("accept-language"),
-    signedIn: jar.has(SESSION_COOKIE),
-    mainland: inMainland(ipFrom(h)),
-  });
+  return lang();
 }

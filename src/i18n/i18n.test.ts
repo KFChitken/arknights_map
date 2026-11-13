@@ -1,18 +1,23 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createElement as h, Fragment } from "react";
 import { renderToString } from "react-dom/server";
+import { workUnitAsyncStorage } from "next/dist/server/app-render/work-unit-async-storage.external";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { scanSource, scanTree, sourceFiles } from "../../scripts/i18n/scan.mts";
+import { countText } from "../lib/counts";
 import { FOODS, SPOUSES } from "../lib/declarations";
-import { NICKNAMES } from "../lib/operators";
+import { CHARACTERS, NICKNAMES } from "../lib/operators";
 import { STAMPS } from "../lib/si";
 import { SELF_TITLES } from "../lib/titles";
 import { count, type Counted, fill, fmt, fmtParts, isCounted, LANGS, missing, type Messages } from "./core";
 import { en } from "./en";
-import { lang, T } from "./index";
-import { firstLanguage, pickLang } from "./lang";
+import { lang, localPath, sentences, T } from "./index";
+import { characterName, foodName, nameMatches, spouseName, stampName, titleName } from "./names";
+import { EN_MANIFEST, isEnglishPath, LANG_HEADER, langOfMark, pathIn } from "./lang";
+import { requestLang } from "../lib/server/http";
 import { fmtNodes } from "./nodes";
+import { pageLang } from "./request";
 import { wordsFile, wordsOf, wordsScript, wordsUrl, withLang } from "./server";
 import { SERVER_ONLY } from "./words";
 import { zh } from "./zh";
@@ -51,6 +56,36 @@ describe("filling in blanks", () => {
     expect(renderToString(h(Fragment, null, fmtNodes("「{first}{rest}」", { first: "x", rest: lines })))).toBe(
       renderToString(h(Fragment, null, "「", "x", lines, "」")),
     );
+  });
+
+  it("picks English's plural in a blank by its value, # standing for it; Chinese never writes one", () => {
+    expect(fmt("{n} {n|roach|roaches}", { n: 1 })).toBe("1 roach");
+    expect(fmt("{n} {n|roach|roaches}", { n: 0 })).toBe("0 roaches");
+    expect(fmt("{n|# day|# days} left", { n: 2 })).toBe("2 days left");
+    expect(fmt("{n|# roach}", { n: 3 })).toBe("3 roach");
+    expect(fmt("{who|x|y}", {})).toBe("{who|x|y}");
+    expect(fmtParts("in {n|# day|# days}!", { n: 1 })).toEqual(["in ", "1 day", "!"]);
+    expect(renderToString(h("p", null, fmtNodes("{n|# roach|# roaches} by {who}", { n: 5, who: h("b", null, "Amiya") })))).toBe(
+      "<p>5 roaches<!-- --> by <b>Amiya</b></p>",
+    );
+    // a count shown in an element picks its form by the number given for it
+    const num = (n: string) => h("span", { className: "num" }, n);
+    expect(renderToString(h("p", null, fmtNodes("{n} {n|Doctor|Doctors} here", { n: num("1") }, { n: "1" })))).toBe(
+      '<p><span class="num">1</span> Doctor here</p>',
+    );
+    expect(renderToString(h("p", null, fmtNodes("{n} {n|Doctor|Doctors} here", { n: num("1,234") }, { n: "1,234" })))).toBe(
+      '<p><span class="num">1,234</span> Doctors here</p>',
+    );
+    expect(renderToString(h("p", null, fmtNodes("这片地图里有 {n} 只舟P", { n: num("1") }, { n: "1" })))).toBe(
+      '<p>这片地图里有 <span class="num">1</span> 只舟P</p>',
+    );
+    const bars: string[] = [];
+    const walk = (v: unknown, at: string) => {
+      if (typeof v === "string") for (const m of v.matchAll(/\{([^{}]+)\}/g)) if (m[1].includes("|")) bars.push(at);
+      if (typeof v === "object" && v !== null) for (const [k, w] of Object.entries(v)) walk(w, `${at}.${k}`);
+    };
+    walk(zh, "zh");
+    expect(bars).toEqual([]);
   });
 
   it("picks the form for a count", () => {
@@ -100,43 +135,126 @@ describe("the dictionaries", () => {
     walk(zh, en, "en");
   });
 
-  it("list the English still to write (not a failure until English is offered)", () => {
+  it("list the English still to write: a line added in Chinese shows in Chinese on /en until then", () => {
     const left = missing(zh, en);
     if (left.length) console.info(`English still to write: ${left.length}\n  ${left.slice(0, 20).join("\n  ")}${left.length > 20 ? "\n  …" : ""}`);
     expect(Array.isArray(left)).toBe(true);
   });
+
+  it("give English the blanks Chinese has, by the same names, but where the code fills others in for it", () => {
+    // what the code passes for English alone: a count for a plural, or thousands where Chinese counts in 万
+    const english: Record<string, { adds?: string[]; drops?: string[] }> = {
+      "radar.from": { adds: ["n"] },
+      "help.rows.gave": { adds: ["n"] },
+      "lib.help.clueNumbers": { adds: ["n"] },
+      "map.view.tenThousands": { adds: ["thousands"], drops: ["count"] },
+      "lib.counts.tenThousands": { adds: ["thousands"], drops: ["measure", "n"] },
+    };
+    const names = (text: string) => [...new Set([...text.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1].split("|", 1)[0]))].sort();
+    const odd: string[] = [];
+    const walk = (z: unknown, e: unknown, at: string) => {
+      if (e === undefined) return;
+      if (typeof z === "string") {
+        const want = names(z).filter((n) => !english[at]?.drops?.includes(n));
+        const got = names(e as string).filter((n) => !english[at]?.adds?.includes(n));
+        if (want.join() !== got.join()) odd.push(`${at}: ${want.join()} → ${got.join()}`);
+      } else if (typeof z === "object" && z !== null) for (const [k, v] of Object.entries(z)) walk(v, (e as Record<string, unknown>)[k], at ? `${at}.${k}` : k);
+    };
+    walk(zh, en, "");
+    expect(odd).toEqual([]);
+    for (const at of Object.keys(english)) expect(at.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], en), at).toBeTypeOf("string");
+  });
+
+  it("write English in English: Chinese only in its blanks' names, in names, poems and pictures kept as they are", () => {
+    const kept = new Set([
+      "server.privacy.operator",
+      "server.privacy.images.text",
+      "cards.amiya.credit",
+      "cards.own.partyNote",
+      "notices.log.about",
+      "pamphlet.art.siSeal",
+      "lib.minghe.stations.s2.line",
+      "lib.minghe.stations.s6.line",
+      // the kaomoji |ω・）
+      "map.place.placed",
+      "map.place.clonePlaced",
+    ]);
+    const chinese: string[] = [];
+    const walk = (v: unknown, at: string) => {
+      if (typeof v === "string") {
+        if (/[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/.test(v.replace(/\{[^{}]+\}/g, "")) && !kept.has(at)) chinese.push(`${at}: ${v}`);
+      } else if (typeof v === "object" && v !== null && at !== "names") for (const [k, w] of Object.entries(v)) walk(w, at ? `${at}.${k}` : k);
+    };
+    walk(en, "");
+    expect(chinese).toEqual([]);
+  });
+
+  it("show stored codes in English through maps zh.ts leaves empty, taken whole", () => {
+    expect(fill({ names: { m: {} as Record<string, string> } }, { names: { m: { 甲: "A" } } })).toEqual({ names: { m: { 甲: "A" } } });
+    for (const [group, map] of Object.entries(zh.names)) expect(Object.keys(map), group).toEqual([]);
+    const names = en.names as unknown as Record<string, Record<string, string>>;
+    // every code an English page can show has its English
+    expect(Object.keys(names.titles).sort()).toEqual([...SELF_TITLES].sort());
+    expect(Object.keys(names.foods).sort()).toEqual([...FOODS].sort());
+    expect(Object.keys(names.spouses).sort()).toEqual([...SPOUSES].sort());
+    expect(Object.keys(names.stamps).sort()).toEqual([...new Set(STAMPS)].sort());
+    for (const g of ["arknights", "endfield"] as const) expect(CHARACTERS[g].filter((c) => !names.characters[c]), g).toEqual([]);
+  });
 });
 
-describe("the language of a visitor", () => {
-  const visitor = { cookie: undefined, acceptLanguage: "en-US,en;q=0.9", signedIn: false, mainland: false };
-
-  it("follows the cookie first", () => {
-    expect(pickLang({ ...visitor, cookie: "zh" })).toBe("zh");
-    expect(pickLang({ ...visitor, cookie: "en", signedIn: true, mainland: true })).toBe("en");
-    expect(pickLang({ ...visitor, cookie: "fr" })).toBe("en");
+describe("the language of a page or ask", () => {
+  it("is Chinese unless marked English: zhoupmap.com is always Chinese, English lives under /en", () => {
+    expect(langOfMark("en")).toBe("en");
+    for (const mark of ["zh", "EN", "en-US", "", null, undefined]) expect(langOfMark(mark)).toBe("zh");
+    expect(isEnglishPath("/en")).toBe(true);
+    expect(isEnglishPath("/en/privacy")).toBe(true);
+    expect(isEnglishPath("/english")).toBe(false);
+    expect(isEnglishPath("/")).toBe(false);
   });
 
-  it("keeps signed-in players and visitors from mainland China in Chinese, whatever the phone says", () => {
-    expect(pickLang({ ...visitor, signedIn: true })).toBe("zh");
-    expect(pickLang({ ...visitor, mainland: true })).toBe("zh");
+  it("keeps a link on the site in the page's language", () => {
+    for (const p of ["/", "/privacy", "/privacy#abroad", "/?x=1"]) expect(pathIn(p, "zh")).toBe(p);
+    expect(pathIn("/", "en")).toBe("/en");
+    expect(pathIn("/privacy", "en")).toBe("/en/privacy");
+    expect(pathIn("/privacy#contact", "en")).toBe("/en/privacy#contact");
+    expect(pathIn("/#x", "en")).toBe("/en#x");
+    expect(localPath("/privacy")).toBe("/privacy");
+    withLang("en", () => expect(localPath("/privacy")).toBe("/en/privacy"));
   });
 
-  it("otherwise goes by the language the browser wants most", () => {
-    expect(pickLang(visitor)).toBe("en");
-    expect(pickLang({ ...visitor, acceptLanguage: "zh-TW,zh;q=0.9,en;q=0.8" })).toBe("zh");
-    expect(pickLang({ ...visitor, acceptLanguage: "zh" })).toBe("zh");
-    expect(pickLang({ ...visitor, acceptLanguage: "ja-JP,zh-CN;q=0.5" })).toBe("en");
-    expect(pickLang({ ...visitor, acceptLanguage: "en;q=0.5,zh-CN" })).toBe("zh");
-    expect(pickLang({ ...visitor, acceptLanguage: "zhx" })).toBe("en");
-    expect(pickLang({ ...visitor, acceptLanguage: null })).toBe("zh");
-    expect(pickLang({ ...visitor, acceptLanguage: "" })).toBe("zh");
+  it("gives /en a manifest of its own, named by each English page", () => {
+    expect(EN_MANIFEST).toBe("/en/app.webmanifest");
+    expect(existsSync("src/app/en/app.webmanifest/route.ts")).toBe(true);
+    // a manifest.* there is one Next takes for the site's own
+    expect(readdirSync("src/app/en").filter((f) => f.startsWith("manifest."))).toEqual([]);
+    // Next links the site's manifest over a layout's, so each page names it (the build checks the rest)
+    for (const page of ["src/app/en/page.tsx", "src/app/en/privacy/page.tsx"]) expect(readFileSync(page, "utf8")).toContain("manifest: EN_MANIFEST");
   });
 
-  it("reads Accept-Language by weight, the first of equal weight winning", () => {
-    expect(firstLanguage("en-US,en;q=0.9,zh;q=0.8")).toBe("en-us");
-    expect(firstLanguage("fr;q=0.3, de;q=0.7, *;q=0.9")).toBe("de");
-    expect(firstLanguage("fr, de")).toBe("fr");
-    expect(firstLanguage("fr;q=0, de;q=x")).toBe(null);
+  it("answers an ask in English only when the English page marks it so, and not at all with ENGLISH=off", () => {
+    const ask = (headers: Record<string, string>) => new Request("https://zhoupmap.com/api/x", { headers });
+    expect(requestLang(ask({}))).toBe("zh");
+    expect(requestLang(ask({ "accept-language": "en-US,en;q=0.9", cookie: "lang=en" }))).toBe("zh");
+    expect(requestLang(ask({ [LANG_HEADER]: "en" }))).toBe("en");
+    process.env.ENGLISH = "off";
+    try {
+      expect(requestLang(ask({ [LANG_HEADER]: "en" }))).toBe("zh");
+      withLang("en", () => expect(lang()).toBe("zh"));
+    } finally {
+      delete process.env.ENGLISH;
+    }
+  });
+
+  it("reads the page's mark the way Next keeps its request, without making the page one made for each visit", async () => {
+    // what Next's headers() reads; a page built ahead of time has no such request, and is Chinese
+    const request = (mark?: string) =>
+      ({ type: "request", headers: new Headers(mark ? { [LANG_HEADER]: mark } : {}) }) as unknown as Parameters<typeof workUnitAsyncStorage.run>[0];
+    expect(workUnitAsyncStorage.run(request("en"), () => [lang(), T.map.loading])).toEqual(["en", wordsOf("en").map.loading]);
+    expect(workUnitAsyncStorage.run(request(), () => lang())).toBe("zh");
+    expect(workUnitAsyncStorage.run({ type: "prerender" } as unknown as Parameters<typeof workUnitAsyncStorage.run>[0], () => lang())).toBe("zh");
+    // what a handler says through withLang goes first
+    expect(workUnitAsyncStorage.run(request("en"), () => withLang("zh", () => lang()))).toBe("zh");
+    expect(await workUnitAsyncStorage.run(request("en"), () => pageLang())).toBe("en");
   });
 });
 
@@ -166,6 +284,24 @@ describe("T", () => {
     expect(Object.keys(T)).toEqual(Object.keys(zh));
     expect("map" in T).toBe(true);
     expect({ ...T.map }).toEqual(zh.map);
+  });
+
+  it("shows stored codes as they are in Chinese, and in English on an English page", () => {
+    const shown = () => [characterName("能天使"), characterName("明河"), characterName("没这个人"), titleName("猫"), foodName("脚夹馍"), spouseName("老婆"), stampName("下不为例")];
+    expect(shown()).toEqual(["能天使", "明河", "没这个人", "猫", "脚夹馍", "老婆", "下不为例"]);
+    withLang("en", () => expect(shown()).toEqual(["Exusiai", "Argent Flow", "没这个人", "cat", "foot-wich", "waifu", "下不为例 (Just this once)"]));
+    expect(nameMatches("能天使", "exu")).toBe(false);
+    withLang("en", () => expect(nameMatches("能天使", "exu")).toBe(true));
+  });
+
+  it("runs sentences together in Chinese, and with a space in English", () => {
+    expect(sentences("好。", "", "走吧！")).toBe("好。走吧！");
+    withLang("en", () => expect(sentences("Fine.", "", "Let's go!")).toBe("Fine. Let's go!"));
+  });
+
+  it("counts roaches in 万 with their measure word in Chinese, in thousands without one in English", () => {
+    expect([countText(9_999), countText(62_345), countText(91_000, "位")]).toEqual(["9,999 只", "6.2 万只", "9.1 万位"]);
+    withLang("en", () => expect([countText(9_999), countText(62_345), countText(91_000, "位")]).toEqual(["9,999", "62.3k", "91k"]));
   });
 });
 
@@ -240,6 +376,8 @@ const DECIDED_BY = new Set([
   "src/lib/perlica.ts 吨 ",
   // the change log's vague row (its rows are only in Chinese, src/lib/changelog.ts), greyed and folded like 后台调整
   "src/lib/changelogView.ts 一些小改动",
+  // the stored codes (Chinese, as stored) that English pages show in English: en.ts's names, looked up by them
+  ...Object.values(en.names ?? {}).flatMap((map) => Object.keys(map ?? {}).map((code) => `src/i18n/en.ts ${code}`)),
 ]);
 
 /** Chinese that stays in a file whose words have moved, as a code another function takes or a picture, not words */

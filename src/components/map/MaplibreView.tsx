@@ -3,7 +3,7 @@
 import maplibregl, { type GeoJSONSource, type StyleImageInterface, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
-import { T } from "@/i18n";
+import { lang, T } from "@/i18n";
 import type { GuideId } from "@/lib/guides";
 import { roachImageData } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
@@ -89,12 +89,15 @@ const PILE_MUL = ["min", 2.2, ["+", 1, ["*", 0.18, ["log2", ["max", 1, PILE_COUN
 const PILE_SIZE = ["interpolate", ["linear"], ["zoom"], ...ICON_STOPS.flatMap(([z, px]) => [z, ["/", ["min", ["*", px, PILE_MUL], PILE_MAX_PX], ICON_BASE]])];
 /** The icon a pile shows: the lowest bits of its lowest key (features.ts liteFeature) */
 const PILE_ICON = ["match", ["%", ["coalesce", ["get", "rep"], ["get", "key"]], 256], ...LITE_LOOKS.flatMap((id, i) => [i, id]), LITE_LOOKS[0]];
-/** A pile's count: as it is up to 9999, then in 万 to one place (piles.ts countBadgeText); made with its layer, in the page's words */
+/**
+ * A pile's count: as it is up to 9999, then in 万 to one place, or in English in thousands, k (piles.ts
+ * countBadgeText); made with its layer, in the page's words
+ */
 const pileCountText = () => [
   "case",
   ["<", PILE_COUNT, 10000],
   ["to-string", PILE_COUNT],
-  ["concat", ["to-string", ["/", ["round", ["/", PILE_COUNT, 1000]], 10]], T.map.view.tenThousand],
+  ["concat", ["to-string", ["/", ["round", ["/", PILE_COUNT, lang() === "zh" ? 1000 : 100]], 10]], T.map.view.tenThousand],
 ];
 /** A count right of and above its pile, by the pile's width at each icon size */
 const COUNT_OFFSET = [

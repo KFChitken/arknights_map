@@ -1,4 +1,5 @@
-import { fmt, T } from "@/i18n";
+import { fmt, lang, sentenceGap, sentences, T } from "@/i18n";
+import { stampName } from "@/i18n/names";
 import { beijingDate, beijingMidnight } from "./beijing";
 import { distanceKm } from "./geo";
 import { GUIDES } from "./guides";
@@ -232,9 +233,9 @@ export function stampAt(userId: string, k: number): number {
  */
 export function stampLine(stamp: number, stamps: number) {
   const pick = hash128(`si-stamp-line:${stamps}:${stamp}`)[0] % SI_LINES.stamp.length;
-  const said = SI_LINES.stamp[pick].replace("{stamp}", STAMPS[stamp] ?? "");
+  const said = SI_LINES.stamp[pick].replace("{stamp}", stampName(STAMPS[stamp] ?? ""));
   const more = STAMP_MILESTONES[stamps];
-  return more ? `${said}${more}` : said;
+  return more ? sentences(said, more) : said;
 }
 
 // ---- the portraits ----
@@ -328,10 +329,10 @@ export function howLong(ms: number) {
   if (ms < DAY) return fmt(T.lib.si.howLong.hours, { n: Math.ceil(ms / HOUR) });
   return fmt(T.lib.si.howLong.days, { n: Math.round(ms / DAY) });
 }
-/** A length of time after a word, with the space a number gets: 「排了 3 小时」, 「排了不到 1 小时」 */
+/** A length of time after a word, with the space a number gets: 「排了 3 小时」, 「排了不到 1 小时」 (English lines have their own spaces) */
 const after = (ms: number) => {
   const d = howLong(ms);
-  return /^\d/.test(d) ? ` ${d}` : d;
+  return lang() === "zh" && /^\d/.test(d) ? ` ${d}` : d;
 };
 
 export const vacancyLine = (free: number) => SI_LINES.vacancy.replace("{n}", free.toLocaleString());
@@ -346,7 +347,7 @@ export const stayLine = (room: number, leftMs: number) => fmt(T.lib.si.stay, { r
 
 /** One of hers in the inbox, in her own words: whole lines, then the stamp and what she adds about it */
 export function siText(item: Pick<SiItem, "line" | "bold" | "variant" | "stamp" | "stamps" | "room" | "waited">) {
-  const stamped = item.stamp !== null && item.stamps ? stampLine(item.stamp, item.stamps) : "";
+  const stamped = item.stamp !== null && item.stamps ? sentenceGap() + stampLine(item.stamp, item.stamps) : "";
   switch (item.line) {
     case "friend":
       return fmt(T.lib.si.text.friend, { name: SI.name, line: SI_LINES.friend, stamped });

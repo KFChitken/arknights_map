@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { fmtParts, T } from "@/i18n";
+import { fmtParts, localPath, T } from "@/i18n";
 import type { PageCount } from "@/lib/appCounts";
 import { takeDeskCode } from "@/lib/authClient";
 import { beijingDate } from "@/lib/beijing";
@@ -213,7 +213,7 @@ export function LoginCodeBox({ signedIn, onSignIn }: { signedIn: boolean; onSign
 /** Opened inside an app: its address, to copy (or to long-press when copying is not allowed) */
 function CopyAddress() {
   const [copied, setCopied] = useState<boolean | null>(null);
-  const url = typeof location === "undefined" ? "" : `${location.origin}/`;
+  const url = typeof location === "undefined" ? "" : `${location.origin}${localPath("/")}`;
   return (
     <div className="desk-copy">
       <button className="pill" onClick={async () => setCopied(await copy(url))}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { fmt, fmtParts, T } from "@/i18n";
+import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { finishSignup, passwordLogin, redeemDeskCode, requestCode, savePassword, verifyCode } from "@/lib/authClient";
 import { adultTick, crossBorderTick } from "@/lib/consent";
@@ -508,7 +508,7 @@ export default function LoginSheet({
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <span>
                 {T.login.agreeTo}{" "}
-                <a href="/privacy" target="_blank" rel="noreferrer">
+                <a href={localPath("/privacy")} target="_blank" rel="noreferrer">
                   {T.common.privacy}
                 </a>
               </span>
@@ -517,7 +517,7 @@ export default function LoginSheet({
               <input type="checkbox" checked={abroad} onChange={(e) => setAbroad(e.target.checked)} />
               <span>
                 {crossBorderTick()}{" "}
-                <a href="/privacy#abroad" target="_blank" rel="noreferrer">
+                <a href={localPath("/privacy#abroad")} target="_blank" rel="noreferrer">
                   {T.common.details}
                 </a>
               </span>

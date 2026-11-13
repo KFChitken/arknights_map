@@ -496,6 +496,8 @@ export const zh = {
       },
       note: {
         reported: "站长看过你{when}举报的那{what}（{reason}）了：",
+        /** {when} above: the day, with the spaces a number gets */
+        reportedOn: " {day} ",
         reportedRoach: "只蟑螂",
         reportedPlayer: "位舟P",
         reportUpheld: "{seen}已经处理了，谢谢你。",
@@ -3314,5 +3316,16 @@ export const zh = {
         many: "{where}有 50 多只舟P收到了你的宣言！",
       },
     },
+  },
+  /**
+   * Stored codes as another language shows them (src/i18n/names.ts): characters, self-titles, foods,
+   * spouses and 祀's stamps are stored in Chinese, so here they are their own words and these stay empty.
+   */
+  names: {
+    characters: {} as Readonly<Record<string, string>>,
+    titles: {} as Readonly<Record<string, string>>,
+    foods: {} as Readonly<Record<string, string>>,
+    spouses: {} as Readonly<Record<string, string>>,
+    stamps: {} as Readonly<Record<string, string>>,
   },
 } as const;

@@ -266,7 +266,7 @@ function HudCounts({ counts: c, tap }: { counts: Counts; tap: boolean }) {
     const mark = <b className="mains">{T.map.count.onlyMainsMark}</b>;
     return (
       <span>
-        {fmtNodes(T.ui.hud.herePlayers, { n: <span className="num">{c.here}</span> })}
+        {fmtNodes(T.ui.hud.herePlayers, { n: <span className="num">{c.here}</span> }, { n: c.here })}
         <span className="wide"> · {fmtNodes(T.map.count.worldOnlyMains, { players: c.players, mark })}</span>
         <span className="narrow"> · {mark}</span>
         {tap && " ›"}
@@ -275,7 +275,7 @@ function HudCounts({ counts: c, tap }: { counts: Counts; tap: boolean }) {
   }
   return (
     <span>
-      {fmtNodes(T.ui.hud.here, { n: <span className="num">{c.here}</span> })}
+      {fmtNodes(T.ui.hud.here, { n: <span className="num">{c.here}</span> }, { n: c.here })}
       <span className="wide">
         {c.players !== undefined
           ? ` · ${fmt(T.map.count.worldAndPlayers, { total: c.total, players: c.players })}`

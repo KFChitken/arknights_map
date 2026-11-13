@@ -119,7 +119,7 @@ export const OFF_LIMITS_WORDS = {
 
 /** The words of one note */
 export function noteText(n: typeof staffNotes.$inferSelect, action?: typeof modActions.$inferSelect | null) {
-  const when = n.reportedOn ? ` ${shortDay(n.reportedOn)} ` : "";
+  const when = n.reportedOn ? fmt(T.server.staffNotes.note.reportedOn, { day: shortDay(n.reportedOn) }) : "";
   // a roach's report blocks nobody, so there is nobody blocked to mention
   const roach = isRoachReportReason(n.reason);
   const reported = fmt(T.server.staffNotes.note.reported, { when, what: roach ? T.server.staffNotes.note.reportedRoach : T.server.staffNotes.note.reportedPlayer, reason: reasonWords(n.reason) });

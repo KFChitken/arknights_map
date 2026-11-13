@@ -1,5 +1,5 @@
 import "server-only";
-import { T } from "@/i18n";
+import { lang, T } from "@/i18n";
 import { beijingDate } from "../beijing";
 import { fromGcj, shifted, toGcj } from "../coords";
 import { distanceKm } from "../geo";
@@ -85,7 +85,8 @@ export function amapSearchToday(now = Date.now()) {
 export async function geoSearch(address: string, ask: GeoAsk, fetcher: typeof fetch = fetch): Promise<PlaceResults> {
   if (!allow(`geo:${address}`, GEO_PER_ADDRESS, 60_000)) throw new HttpError(429, geoBusy());
   const near = ask.near ? `${ask.near.lng.toFixed(2)},${ask.near.lat.toFixed(2)},${Math.round(ask.near.zoom)}` : "";
-  const key = `${ask.kind}|${ask.q}|${near}`;
+  // the page's language too: OpenStreetMap answers in it (src/lib/osm.ts)
+  const key = `${ask.kind}|${ask.q}|${near}|${lang()}`;
   const hit = keptFor(key);
   if (hit) return hit;
 

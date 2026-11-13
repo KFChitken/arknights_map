@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { fmtParts, T } from "@/i18n";
+import { fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { PERLICA, PERLICA_LINES, spotNear } from "@/lib/perlica";
 import { siteName } from "@/lib/rules";
@@ -29,7 +29,7 @@ export function PerlicaIntroSheet({ onYes, onNo }: { onYes: () => void; onNo: ()
       <p className="amiya-line perlica-ask">{PERLICA_LINES.ask}</p>
       <p className="hint">
         {fmtParts(T.guides.perlica.intro, { site: siteName() })}
-        <a href="/privacy" target="_blank" rel="noreferrer">
+        <a href={localPath("/privacy")} target="_blank" rel="noreferrer">
           {T.common.privacy}
         </a>
       </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { T } from "@/i18n";
+import { lang, T } from "@/i18n";
 import type { GuideId } from "@/lib/guides";
 import { loadAMap, type AMapNS } from "@/lib/amap";
 import { fromGcj, toGcj } from "@/lib/coords";
@@ -539,7 +539,8 @@ export default function AmapView(props: MapViewProps) {
           zoom: Math.max(2, Math.min(20, initialView.zoom + ZOOM_OFFSET)),
           zooms: [2, 20],
           viewMode: "2D",
-          lang: "zh_cn",
+          // 高德's own English labels on an English page
+          lang: lang() === "zh" ? "zh_cn" : "en",
         });
         madeAt = Date.now();
         mapRef.current = map;

@@ -1,10 +1,11 @@
 /** Browser side of email sign-in (src/app/api/auth). Errors carry a message to show as is. */
 
 import { T } from "@/i18n";
+import { apiFetch } from "@/lib/apiFetch";
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await apiFetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -48,7 +49,7 @@ export const passwordLogin = (email: string, password: string) => post<{ status:
 export async function passwordStatus(): Promise<{ setAt: number | null; email: string | null; freshUntil: number; noCodeNeeded: boolean }> {
   let res: Response;
   try {
-    res = await fetch("/api/auth/password", { cache: "no-store" });
+    res = await apiFetch("/api/auth/password", { cache: "no-store" });
   } catch {
     throw new Error(T.requests.offline);
   }
@@ -75,7 +76,7 @@ export async function passwordStatus(): Promise<{ setAt: number | null; email: s
 export async function savePassword(password: string, current?: string): Promise<{ changed: boolean } | { needsCode: true }> {
   let res: Response;
   try {
-    res = await fetch("/api/auth/password", {
+    res = await apiFetch("/api/auth/password", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ password, current }),

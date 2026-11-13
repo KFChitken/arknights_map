@@ -37,13 +37,14 @@ import {
   type TouchResult,
   type World,
 } from "./types";
+import { apiFetch } from "@/lib/apiFetch";
 
 /** The World backed by the server (src/app/api/world/[op]). */
 export class ServerWorld implements World {
   private async call<T>(op: string, ...args: unknown[]): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(`/api/world/${op}`, {
+      res = await apiFetch(`/api/world/${op}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ args }),
@@ -68,7 +69,7 @@ export class ServerWorld implements World {
     try {
       if (navigator.sendBeacon?.("/api/world/leave", body)) return;
     } catch {}
-    fetch("/api/world/leave", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(
+    apiFetch("/api/world/leave", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(
       () => {},
     );
   };
@@ -78,7 +79,7 @@ export class ServerWorld implements World {
   roachFeed = async (since: string | null): Promise<RoachFeedUpdate | VisitorFeed> => {
     let res: Response;
     try {
-      res = await fetch(since ? `/api/roaches?since=${encodeURIComponent(since)}&f=3` : "/api/roaches?f=3", {
+      res = await apiFetch(since ? `/api/roaches?since=${encodeURIComponent(since)}&f=3` : "/api/roaches?f=3", {
         cache: since ? "no-store" : "no-cache",
       });
     } catch {
@@ -102,7 +103,7 @@ export class ServerWorld implements World {
     const url = `/api/roaches?f=4&${where}${since ? `&since=${encodeURIComponent(since)}` : ""}`;
     const ask = async (cache: RequestCache) => {
       try {
-        const res = await fetch(url, { cache });
+        const res = await apiFetch(url, { cache });
         heardNoticeStamp(res.headers.get("x-notices"));
         heardGray(res.headers.get("x-gray"));
         return { res, body: (await res.json().catch(() => null)) as ((AreaUpdate | VisitorFeed) & { error?: string }) | null };
@@ -122,7 +123,7 @@ export class ServerWorld implements World {
   // of their squares, each for all in it, so counted by them the view's edges cut squares in two)
   // mains: how many players' main roaches (只看本体)
   roachesInView = async (view: Box, mains = false): Promise<{ n: number } | VisitorFeed | { whole: true }> => {
-    const res = await fetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}${mains ? "&m=1" : ""}`, { cache: "no-store" });
+    const res = await apiFetch(`/api/roaches?f=4&n=${view.map((x) => +x.toFixed(7)).join(",")}${mains ? "&m=1" : ""}`, { cache: "no-store" });
     heardNoticeStamp(res.headers.get("x-notices"));
     heardGray(res.headers.get("x-gray"));
     const body = (await res.json().catch(() => null)) as ({ n: number } | VisitorFeed | { whole: true }) | null;
@@ -131,7 +132,7 @@ export class ServerWorld implements World {
   };
   // the spot to two places of a degree: the server counts no finer, so nothing finer is sent
   around = async (spot: LngLat, signal?: AbortSignal) => {
-    const res = await fetch(`/api/around?lng=${spot.lng.toFixed(2)}&lat=${spot.lat.toFixed(2)}`, { signal, cache: "no-store" });
+    const res = await apiFetch(`/api/around?lng=${spot.lng.toFixed(2)}&lat=${spot.lat.toFixed(2)}`, { signal, cache: "no-store" });
     const body = (await res.json().catch(() => null)) as { near: number; far: number; error?: string } | null;
     if (!res.ok || !body) throw new WorldError(body?.error ?? T.requests.serverTrouble);
     return { near: body.near, far: body.far };

@@ -2,6 +2,7 @@ import { reportMapTrouble } from "@/components/map/report";
 import { nominatimPlaces, nominatimUrl, photonPlaces, photonUrl } from "./osm";
 import { tencentTips } from "./tencent";
 import type { LngLat, MapView } from "./types";
+import { apiFetch } from "@/lib/apiFetch";
 
 /** A search hit, always in WGS-84. */
 export type Place = LngLat & { name: string; detail: string };
@@ -90,7 +91,7 @@ async function photonSearch(q: string, near?: LngLat): Promise<Place[]> {
 
 /** Ask our server: the words go in the request's body, never in an address that could be logged */
 async function throughServer(kind: "suggest" | "search", q: string, near?: LngLat & { zoom?: number }): Promise<PlaceResults> {
-  const res = await fetch("/api/geo", {
+  const res = await apiFetch("/api/geo", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

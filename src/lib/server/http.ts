@@ -1,10 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { type Lang, T } from "@/i18n";
-import { ENGLISH_ON, LANG_COOKIE, pickLang } from "@/i18n/lang";
-import { withLang } from "@/i18n/server";
+import { LANG_HEADER, langOfMark } from "@/i18n/lang";
+import { englishOn, withLang } from "@/i18n/server";
 import { WorldError } from "../world/types";
-import { SESSION_COOKIE } from "./auth";
-import { inMainland } from "./region";
 import { errorCode, logError, note } from "./signals";
 
 /**
@@ -58,23 +56,11 @@ export function inLang<A extends unknown[]>(fn: (req: NextRequest, ...rest: A) =
 }
 
 /**
- * The language an API request is answered in (src/i18n/lang.ts): Chinese while English is
- * not offered, without reading the request.
+ * The language an API request is answered in (src/i18n/lang.ts): English when the English
+ * site's page asking says so, else Chinese. The 管理台 never says so.
  */
 export function requestLang(req: Request): Lang {
-  if (!ENGLISH_ON) return "zh";
-  const cookies = new Map(
-    (req.headers.get("cookie") ?? "").split(";").map((c) => {
-      const at = c.indexOf("=");
-      return [c.slice(0, at).trim(), c.slice(at + 1).trim()] as const;
-    }),
-  );
-  return pickLang({
-    cookie: cookies.get(LANG_COOKIE),
-    acceptLanguage: req.headers.get("accept-language"),
-    signedIn: cookies.has(SESSION_COOKIE),
-    mainland: inMainland(ipFrom(req.headers)),
-  });
+  return englishOn() ? langOfMark(req.headers.get(LANG_HEADER)) : "zh";
 }
 
 // Cookies are SameSite=Lax, and this blocks the rest: a write must come from our own page

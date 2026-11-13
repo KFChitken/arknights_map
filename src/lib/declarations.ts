@@ -1,4 +1,5 @@
 import { fmt, T } from "@/i18n";
+import { characterName, foodName, spouseName, titleName } from "@/i18n/names";
 import { findLine } from "./events";
 import { GAME_NAMES, type Game } from "./games";
 
@@ -70,19 +71,19 @@ export function declarationText(d: Declaration): string {
     case "launch":
       return fmt(T.lib.declarations.text.launch, { game: GAME_NAMES[d.game] });
     case "iam":
-      return fmt(T.lib.declarations.text.iam, { character: d.character, title: d.title });
+      return fmt(T.lib.declarations.text.iam, { character: characterName(d.character), title: titleName(d.title) });
     case "love":
-      return fmt(T.lib.declarations.text.love, { character: d.character });
+      return fmt(T.lib.declarations.text.love, { character: characterName(d.character) });
     case "buff":
-      return fmt(T.lib.declarations.text.buff, { character: d.character });
+      return fmt(T.lib.declarations.text.buff, { character: characterName(d.character) });
     case "myname":
       return fmt(T.lib.declarations.text.myname, { name: d.name ?? "……", game: GAME_NAMES[d.game] });
     case "welcome":
       return fmt(T.lib.declarations.text.welcome, { name: WELCOME_NAMES[d.game] });
     case "canyou":
-      return fmt(T.lib.declarations.text.canyou, { character: d.character });
+      return fmt(T.lib.declarations.text.canyou, { character: characterName(d.character) });
     case "eat":
-      return fmt(T.lib.declarations.text.eat, { character: d.character, food: d.food });
+      return fmt(T.lib.declarations.text.eat, { character: characterName(d.character), food: foodName(d.food) });
     case "birthday":
       return T.declare.line.birthday;
     case "event":
@@ -92,9 +93,9 @@ export function declarationText(d: Declaration): string {
     case "water":
       return T.declare.line.water;
     case "drunklove":
-      return fmt(T.lib.declarations.text.drunklove, { character: d.character });
+      return fmt(T.lib.declarations.text.drunklove, { character: characterName(d.character) });
     case "kr168":
-      return fmt(T.lib.declarations.text.kr168, { character: d.character, spouse: d.spouse });
+      return fmt(T.lib.declarations.text.kr168, { character: characterName(d.character), spouse: spouseName(d.spouse) });
     case "radar":
       return T.declare.line.radar;
     case "roguelike":
@@ -209,12 +210,12 @@ const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, st
 
 /** A reply's blanks, filled in from the declaration it answers */
 function fillReply(text: string, d: Declaration) {
-  const character = ("character" in d && d.character) || "TA";
+  const character = ("character" in d && d.character && characterName(d.character)) || "TA";
   return text
     .replaceAll("{角色}", character)
     .replaceAll("{游戏}", "game" in d ? GAME_NAMES[d.game] : T.lib.declarations.fill.game)
     .replaceAll("{名字}", d.template === "myname" ? (d.name ?? "") : "")
-    .replaceAll("{称呼}", d.template === "iam" ? d.title : "")
+    .replaceAll("{称呼}", d.template === "iam" ? titleName(d.title) : "")
     .replaceAll("{汪汪}", d.template === "iam" && d.title === "猫" ? T.lib.declarations.fill.meow : T.lib.declarations.fill.woof);
 }
 

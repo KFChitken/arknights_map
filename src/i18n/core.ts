@@ -37,12 +37,32 @@ export type Draft<T> = T extends string | Counted ? T : T extends readonly unkno
 
 export type Params = Readonly<Record<string, string | number | boolean | null | undefined>>;
 
+/** A blank: {name}, or {name|one|other} */
+const BLANK = /\{([^{}]+)\}/g;
+
+/** The name a blank is filled from: n for {n} and for {n|roach|roaches} */
+const nameOf = (blank: string) => blank.split("|", 1)[0];
+
+/**
+ * What goes in a blank: {n} is the value itself; {n|one|other}, English's plural, is the first
+ * form for exactly 1 and the second for any other number, a # in it standing for the value
+ * ("{n} {n|roach|roaches}", "{n|# day|# days}"). Chinese has no use for it.
+ */
+function blankValue<V>(blank: string, value: V): V | string {
+  const bar = blank.indexOf("|");
+  if (bar < 0) return value;
+  const [one, other = one] = blank.slice(bar + 1).split("|");
+  return (Number(value) === 1 ? one : other).replaceAll("#", String(value));
+}
+
 /**
  * Fills in the {name} blanks from params, as a template literal would: String(value).
  * Braces whose name is not in params stay as written.
  */
 export function fmt(text: string, params: Params): string {
-  return text.replace(/\{([^{}]+)\}/g, (all, name: string) => (Object.hasOwn(params, name) ? String(params[name]) : all));
+  return text.replace(BLANK, (all, blank: string) =>
+    Object.hasOwn(params, nameOf(blank)) ? String(blankValue(blank, params[nameOf(blank)])) : all,
+  );
 }
 
 /**
@@ -52,15 +72,31 @@ export function fmt(text: string, params: Params): string {
  * out empty text.
  */
 export function fmtParts(text: string, params: Params): string[] {
-  const out: string[] = [];
+  return pieces(text, params, (v) => String(v));
+}
+
+/** text in pieces: the words between blanks, and what goes in each blank params has, as shown by show */
+export function pieces<V, P>(text: string, params: Readonly<Record<string, V>>, show: (value: V | string) => P): (string | P)[] {
+  const out: (string | P)[] = [];
   let at = 0;
-  for (const m of text.matchAll(/\{([^{}]+)\}/g)) {
-    if (!Object.hasOwn(params, m[1])) continue;
-    out.push(text.slice(at, m.index), String(params[m[1]]));
+  for (const m of text.matchAll(BLANK)) {
+    const name = nameOf(m[1]);
+    if (!Object.hasOwn(params, name)) continue;
+    out.push(text.slice(at, m.index), show(blankValue(m[1], params[name])));
     at = m.index + m[0].length;
   }
   out.push(text.slice(at));
   return out.filter((p) => p !== "");
+}
+
+/**
+ * text with each {name|one|other} blank whose number counts has written in its form for that number:
+ * for a sentence whose {name} is an element (fmtNodes), which cannot say what number it shows
+ */
+export function withCounts(text: string, counts: Readonly<Record<string, number | string>>): string {
+  return text.replace(BLANK, (all, blank: string) =>
+    blank.includes("|") && Object.hasOwn(counts, nameOf(blank)) ? String(blankValue(blank, counts[nameOf(blank)])) : all,
+  );
 }
 
 /** The form of a Counted for n, with {n} and any other blanks filled in */
@@ -78,10 +114,13 @@ export function isCounted(v: unknown): v is Counted {
   return typeof (v as Counted).other === "string" && keys.every((k) => (k === "one" || k === "other") && typeof (v as Record<string, unknown>)[k] === "string");
 }
 
-/** base with what over has in its place; what over lacks stays as in base. Only base's names are kept. */
+/**
+ * base with what over has in its place; what over lacks stays as in base. Only base's names are kept,
+ * but for a group base leaves empty: a map of stored codes to words (zh.ts `names`), taken whole.
+ */
 export function fill<T>(base: T, over: Draft<T> | undefined): T {
   if (over === undefined) return base;
-  if (!isGroup(base)) return over as T;
+  if (!isGroup(base) || Object.keys(base).length === 0) return over as T;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(base)) {
     const o = (over as Record<string, unknown>)[k];

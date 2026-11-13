@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { fmt, fmtParts, T } from "@/i18n";
+import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -78,6 +78,7 @@ import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
+import { apiFetch } from "@/lib/apiFetch";
 import type { Basemap, LngLat, MainlandMap, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
 import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
@@ -3633,7 +3634,7 @@ export default function MapApp({
   /** 缘缘庄's numbers and today's visitors, the same for everyone */
   const loadSiState = useCallback(async () => {
     try {
-      const r = await fetch("/api/si", { cache: "no-store" });
+      const r = await apiFetch("/api/si", { cache: "no-store" });
       if (r.ok) setSiState((await r.json()) as SiState);
     } catch {}
   }, []);
@@ -4619,7 +4620,7 @@ export default function MapApp({
     disclaimer: (
       <p className="disclaimer">
         {T.map.disclaimer}{" "}
-        <a href="/privacy#contact" target="_blank" rel="noreferrer">
+        <a href={localPath("/privacy#contact")} target="_blank" rel="noreferrer">
           {T.map.contact}
         </a>
       </p>

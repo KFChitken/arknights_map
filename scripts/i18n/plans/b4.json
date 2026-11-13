@@ -118,7 +118,7 @@
         "description": "看看你身边有多少舟P"
       }
     },
-    "src/app/manifest.ts": {
+    "src/lib/server/manifest.ts": {
       "group": "server.site",
       "words": {
         "description": "看看你身边有多少舟P"

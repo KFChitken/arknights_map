@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import GrayMode from "@/components/GrayMode";
-import { fmt, fmtParts, T } from "@/i18n";
+import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { AWAY_DAYS, SURVIVOR_DAYS } from "@/lib/badges";
 import { HOT_MIN_PLAYERS } from "@/lib/hotList";
@@ -231,7 +231,7 @@ export default async function Privacy() {
       <p className="hint">
         {fmtNodes(T.server.privacy.footer.operator, { operator: T.server.privacy.operator, link: <a href={`mailto:${CONTACT}`}>{CONTACT}</a> })}
         <br />
-        {fmtNodes(T.server.privacy.footer.fan, { site: siteName(), back: <Link href="/">{T.server.privacy.footer.back}</Link> })}
+        {fmtNodes(T.server.privacy.footer.fan, { site: siteName(), back: <Link href={localPath("/")}>{T.server.privacy.footer.back}</Link> })}
       </p>
     </main>
   );

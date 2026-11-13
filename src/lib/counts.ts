@@ -6,12 +6,13 @@
 
 /**
  * As the top line says it, with its measure word, 只 for roaches and 位 for players: as it is under 10,000, else in
- * 万 to one place, rounded down (6.2 万只, 9.1 万位)
+ * 万 to one place, rounded down (6.2 万只, 9.1 万位). English has no measure word, and counts in thousands (62.3k).
  */
-import { fmt, T } from "@/i18n";
+import { fmt, lang, T } from "@/i18n";
 export function countText(n: number, measure: "只" | "位" = "只") {
-  if (n < 10_000) return `${n.toLocaleString("zh-CN")} ${measure}`;
-  return fmt(T.lib.counts.tenThousands, { n: Math.floor(n / 1000) / 10, measure });
+  const zh = lang() === "zh";
+  if (n < 10_000) return zh ? `${n.toLocaleString("zh-CN")} ${measure}` : n.toLocaleString("en-US");
+  return fmt(T.lib.counts.tenThousands, { n: Math.floor(n / 1000) / 10, measure, thousands: Math.floor(n / 100) / 10 });
 }
 
 /** A count rounded down: 0; 1 for a few (1–9); tens below 100; hundreds from there */

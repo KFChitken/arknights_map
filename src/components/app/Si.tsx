@@ -20,6 +20,7 @@ import type { SiMe, SiState } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 import { SiScrollArt } from "./SiArt";
+import { stampName } from "@/i18n/names";
 
 /** 祀掌柜 (src/lib/si.ts) on the page: her picture, her card, and the card that tells older players she is here. */
 
@@ -150,7 +151,7 @@ export function SiCard({
           <div>
             <strong>{T.guides.si.book}</strong>
             <p className="muted">
-              {fmtParts(T.guides.si.stamps, { n: me.stamps.toLocaleString(), today: today ? fmt(T.guides.si.todayStamp, { stamp: today }) : T.guides.si.noStampToday })}
+              {fmtParts(T.guides.si.stamps, { n: me.stamps.toLocaleString(), today: today ? fmt(T.guides.si.todayStamp, { stamp: stampName(today) }) : T.guides.si.noStampToday })}
             </p>
           </div>
           <button className="pill" onClick={onOpenBook}>

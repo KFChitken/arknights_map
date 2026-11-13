@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { fmt, fmtParts, T } from "@/i18n";
+import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { AWAY_DAYS, type EarnedBadge } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
@@ -20,6 +20,7 @@ import HomeScreenRow, { LoginCodeBox } from "./HomeScreen";
 import PasswordBox, { type PasswordForm } from "./PasswordBox";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
+import { characterName } from "@/i18n/names";
 
 const AVATAR_NAMES: Record<RoachAvatar, string> = {
   get hood() {
@@ -410,7 +411,7 @@ export default function ProfileSheet({
             <button className="pill" onClick={onDelete}>
               {T.profile.deleteAccount}
             </button>
-            <a className="pill" href="/privacy" target="_blank" rel="noreferrer">
+            <a className="pill" href={localPath("/privacy")} target="_blank" rel="noreferrer">
               {T.common.privacy}
             </a>
           </div>
@@ -440,7 +441,7 @@ function OperatorSearch({ game, names, taken, onPick }: { game: Game; names: str
             }}
           >
             <OperatorPic game={game} name={n} art={art} />
-            {n}
+            {characterName(n)}
           </button>
         ))}
         {options.length === 0 && <span className="hint">{T.profile.search.none}</span>}
@@ -480,8 +481,8 @@ export function CharacterPicker({
         {value.map((n) => (
           <span key={n} className="chip on with-pic">
             <OperatorPic game={game} name={n} art={art} />
-            {n}
-            <button className="x" aria-label={fmt(T.profile.removeOne, { name: n })} onClick={() => onChange(value.filter((x) => x !== n))}>
+            {characterName(n)}
+            <button className="x" aria-label={fmt(T.profile.removeOne, { name: characterName(n) })} onClick={() => onChange(value.filter((x) => x !== n))}>
               ×
             </button>
           </span>

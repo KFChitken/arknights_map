@@ -1,5 +1,6 @@
 import arknights from "@/data/arknights-operators.json";
 import endfield from "@/data/endfield-operators.json";
+import { nameMatches } from "@/i18n/names";
 import type { Game } from "./games";
 
 /** Each game's characters as listed (from the BWIKI lists, a few added by hand), rarest first */
@@ -30,10 +31,10 @@ const operators = setsOf(OPERATORS);
 /** Nicknames players search by, for characters whose name they may not type */
 export const NICKNAMES: Record<string, string[]> = { 祀: ["小葱"], 塔露拉: ["塔姐"] };
 
-/** Whether a character's name, or one of their nicknames, contains what was typed. */
+/** Whether a character's name, one of their nicknames, or on an English page their English name, contains what was typed. */
 export function matchesSearch(name: string, needle: string) {
   const q = needle.trim().toLowerCase();
-  return !q || name.toLowerCase().includes(q) || (NICKNAMES[name] ?? []).some((n) => n.includes(q));
+  return !q || name.toLowerCase().includes(q) || (NICKNAMES[name] ?? []).some((n) => n.includes(q)) || nameMatches(name, q);
 }
 
 /** Whether a name may be among a player's 厨力 for a game */

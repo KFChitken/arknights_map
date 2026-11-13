@@ -18,7 +18,10 @@ const toggle = (list: number[], n: number) => (list.includes(n) ? list.filter((x
 
 /** What you answered to one of theirs */
 function answeredText(item: HelpItem) {
-  if (item.kind === "clues") return fmt(T.help.rows.gave, { clues: (item.answered?.clues ?? []).join(T.common.listSep) });
+  if (item.kind === "clues") {
+    const clues = item.answered?.clues ?? [];
+    return fmt(T.help.rows.gave, { clues: clues.join(T.common.listSep), n: clues.length });
+  }
   return item.kind === "exchange" ? T.help.rows.visited : T.help.rows.lent;
 }
 

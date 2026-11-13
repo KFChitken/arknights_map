@@ -1,4 +1,5 @@
 import { T } from "@/i18n";
+import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { Collection, Drawn, DrawSize, LogPage, PassState } from "./passes";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
@@ -10,7 +11,7 @@ import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world
 async function call<R>(method: "GET" | "POST" | "PUT", op: string, body?: unknown, query = ""): Promise<R> {
   let res: Response;
   try {
-    res = await fetch(
+    res = await apiFetch(
       `/api/passes/${op}${query}`,
       method === "GET" ? { cache: "no-store" } : { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) },
     );

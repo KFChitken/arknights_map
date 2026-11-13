@@ -247,6 +247,8 @@
   justify-content: center;
   transform: rotate(-8deg);
 }
+/* 新 is one character; English's word is three letters, in a stamp of the same size */
+:lang(en) .pp-stamp { font-size: 30px; }
 .pp-l-pic { position: absolute; left: 25px; top: 164px; width: 330px; height: 220px; transform: scale(1.3); transform-origin: 0 0; }
 .pp-l-pic.cover { top: 196px; height: 128px; }
 .pp-l-count { position: absolute; left: 44px; top: 500px; width: 392px; margin: 0; font-size: 14px; line-height: 1.6; color: #4a4c53; }

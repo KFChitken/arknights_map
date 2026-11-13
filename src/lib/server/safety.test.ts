@@ -1,5 +1,6 @@
 import { eq, isNotNull, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { adminCounts } from "./admin";
 import { db } from "./db";
 import { MAIL_DAILY_LIMIT } from "./env";
@@ -91,6 +92,12 @@ describe("report reminders", () => {
     await sendReportDigest();
     expect(sendAdminMail).toHaveBeenCalledTimes(2);
     expect(await db.$count(reports, isNotNull(reports.notifiedAt))).toBe(1);
+  });
+
+  it("are in Chinese when a report from the English site sets them off", async () => {
+    await fileReport("contact");
+    await withLang("en", () => sendReportDigest());
+    expect(mails()).toEqual([{ subject: "舟P地图：有 1 条举报要尽快看", text: expect.stringContaining("留了联系方式或个人信息 1 条\n一共 1 条没处理。") }]);
   });
 });
 

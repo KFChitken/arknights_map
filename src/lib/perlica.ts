@@ -1,4 +1,4 @@
-import { fmt, T } from "@/i18n";
+import { fmt, sentences, T } from "@/i18n";
 import { daysFromTo, deviceDay } from "./deviceDay";
 import { GUIDES } from "./guides";
 import type { LngLat } from "./types";
@@ -187,7 +187,7 @@ export function weightSentence(seconds: number) {
 }
 
 /** Her report of a time away, then its weight */
-export const awayWithWeight = (seconds: number, line: number) => `${awaySentence(seconds, line)}${weightSentence(seconds)}`;
+export const awayWithWeight = (seconds: number, line: number) => sentences(awaySentence(seconds, line), weightSentence(seconds));
 
 /** 「你睡了 7 小时 3 分 2 秒。」 and one of her lines about it */
 export const sleptSentence = (seconds: number, pick: number) =>

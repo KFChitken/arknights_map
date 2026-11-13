@@ -16,7 +16,8 @@
  * screenshots (screens.mjs) check the rest.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -144,12 +145,30 @@ function filesAt(base: string, root: string) {
   return list.map((f) => ({ file: f, source: execFileSync("git", ["show", `${base}:${f}`], { cwd: root, encoding: "utf8", maxBuffer: 1 << 26 }) }));
 }
 
+/** zh.ts as it was at base, or an empty one before it was made */
+async function zhAt(base: string, root: string): Promise<Value> {
+  let source: string;
+  try {
+    source = execFileSync("git", ["show", `${base}:src/i18n/zh.ts`], { cwd: root, encoding: "utf8", maxBuffer: 1 << 26, stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return {};
+  }
+  const dir = mkdtempSync(join(tmpdir(), "zh-at-base-"));
+  try {
+    writeFileSync(join(dir, "zh.ts"), source);
+    return ((await import(pathToFileURL(join(dir, "zh.ts")).href)) as { zh: Value }).zh;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 export async function verify(root: string, base: string): Promise<Report> {
   const atBase = filesAt(base, root);
   const before = atBase.flatMap(({ file, source }) => scanSource(file, source)).filter(isWords);
   const nowFiles = sourceFiles(root).map((file) => ({ file, source: readFileSync(join(root, file), "utf8") }));
   const now = nowFiles.flatMap(({ file, source }) => scanSource(file, source)).filter(isWords);
   const { zh } = (await import(pathToFileURL(join(root, "src/i18n/zh.ts")).href)) as { zh: Value };
+  const zhBase = await zhAt(base, root);
   const joinsPath = join(root, "scripts/i18n/joins.json");
   const joins: Join[] = existsSync(joinsPath) ? JSON.parse(readFileSync(joinsPath, "utf8")) : [];
   const splitsPath = join(root, "scripts/i18n/splits.json");
@@ -228,12 +247,15 @@ export async function verify(root: string, base: string): Promise<Report> {
     }
     return jsxAtBase.get(file)!.has(piece);
   };
+  // a word with no Chinese in it is no piece of text the scan finds: it says nothing new when zh.ts had it
+  // as it is at base under its name, or when it is nothing but spaces around blanks (「 {day} 」)
+  const plainWord = (v: string, path: string[]) => !CJK.test(v) && (at(zhBase, path) === v || v.replace(/\{[^{}]+\}/g, "").trim() === "");
   const walk = (v: Value, path: string[]) => {
     if (typeof v === "string") {
       const key = path.join(".");
       const js = joined.get(key) ?? joined.get(path.slice(0, -1).join(".")) ?? [];
       const fromPieces = (x: Join) => piecesOf(x).every((p) => p === "" || said.has(normalize(p)) || plainAtBase(x.file, p));
-      if (!said.has(normalize(v)) && !js.some((j) => fromPieces(j) && joinedText(j) === normalize(v)))
+      if (!said.has(normalize(v)) && !plainWord(v, path) && !js.some((j) => fromPieces(j) && joinedText(j) === normalize(v)))
         report.added.push({ key, text: v });
     } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, [...path, String(i)]));
     else for (const [k, x] of Object.entries(v as Record<string, Value>)) walk(x, [...path, k]);

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
 import { FIRE_AT, TALULAH_ID } from "../talulah";
@@ -3908,6 +3909,23 @@ describe("declarations by where the roaches are", () => {
     await pruneOldActivity();
     expect(await db.$count(declarationSpots)).toBe(0);
     expect(await db.$count(declarations)).toBe(1);
+  });
+
+  it("keeps what the admin reads of a reported declaration or reaction in Chinese, though reported from the English site", async () => {
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const near = await signUp("near@example.com");
+    await near.placeRoach({ kind: "main" }, NEAR);
+    const d: Declaration = { template: "launch", game: "arknights" };
+    await me.declare(d);
+    const id = await latest(me);
+    await near.react(id, "zhouli");
+    await withLang("en", () => near.report(id, "spam"));
+    const reaction = (await me.inbox()).find((i) => i.kind === "reaction")!;
+    await withLang("en", () => me.report(reaction.id, "other", "not nice"));
+    expect((await db.select({ context: reports.context }).from(reports)).map((r) => r.context).sort()).toEqual(
+      [`宣言「${declarationText(d)}」`, `回应「合乎粥礼」，回应的是举报人的宣言「${declarationText(d)}」`].sort(),
+    );
+    expect(declarationText(d)).toMatch(/[\u4e00-\u9fff]/);
   });
 
   it("counts every roach of the player, never one between players who blocked each other, and shows the newest hundred", async () => {

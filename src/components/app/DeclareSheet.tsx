@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
+import { characterName, foodName, spouseName, titleName } from "@/i18n/names";
 import { fmtNodes } from "@/i18n/nodes";
 import {
   declarationText,
@@ -142,7 +143,7 @@ export default function DeclareSheet({
       <select value={character} onChange={(e) => setCharacter(e.target.value)} aria-label={T.declare.characterLabel}>
         {favourites.map((f) => (
           <option key={`${f.game}-${f.name}`} value={f.name}>
-            {f.name}
+            {characterName(f.name)}
           </option>
         ))}
       </select>,
@@ -228,7 +229,7 @@ export default function DeclareSheet({
                   <select value={spouse} onChange={(e) => setSpouse(e.target.value as Spouse)} aria-label={T.declare.spouseLabel}>
                     {SPOUSES.map((x) => (
                       <option key={x} value={x}>
-                        {x}
+                        {spouseName(x)}
                       </option>
                     ))}
                   </select>,
@@ -262,7 +263,7 @@ export default function DeclareSheet({
               <select value={title} onChange={(e) => setTitle(e.target.value)} aria-label={T.declare.titleLabel}>
                 {titles.map((x) => (
                   <option key={x} value={x}>
-                    {x}
+                    {titleName(x)}
                   </option>
                 ))}
               </select>,
@@ -306,7 +307,7 @@ export default function DeclareSheet({
               <select value={food} onChange={(e) => setFood(e.target.value as Food)} aria-label={T.declare.foodLabel}>
                 {FOODS.map((f) => (
                   <option key={f} value={f}>
-                    {f}
+                    {foodName(f)}
                   </option>
                 ))}
               </select>,

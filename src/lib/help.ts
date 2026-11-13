@@ -1,4 +1,5 @@
 import { fmt, T } from "@/i18n";
+import { characterName } from "@/i18n/names";
 import { GAME_NAMES, type Game } from "./games";
 
 /**
@@ -42,7 +43,8 @@ export const HELP_KEEP_DAYS = 7;
 /** What a request says */
 export type HelpAsk = { kind: HelpKind; game: Game; clues?: number[]; operator?: string; skill?: number };
 
-const clueList = (clues: number[]) => fmt(T.lib.help.clueNumbers, { numbers: [...clues].sort((a, b) => a - b).join(T.common.listSep) });
+const clueList = (clues: number[]) =>
+  fmt(T.lib.help.clueNumbers, { numbers: [...clues].sort((a, b) => a - b).join(T.common.listSep), n: clues.length });
 
 /** 「明日方舟 · 缺 3、5 号线索」 */
 export function helpText(r: HelpAsk) {
@@ -53,7 +55,7 @@ export function helpText(r: HelpAsk) {
     case "exchange":
       return fmt(T.lib.help.text.exchange, { game, place: r.game === "endfield" ? T.lib.help.places.endfield : T.lib.help.places.arknights });
     case "support":
-      return fmt(T.lib.help.text.support, { game, operator: r.operator, skill: r.skill ? fmt(T.lib.help.skill, { n: r.skill }) : " " });
+      return fmt(T.lib.help.text.support, { game, operator: r.operator && characterName(r.operator), skill: r.skill ? fmt(T.lib.help.skill, { n: r.skill }) : " " });
   }
 }
 
@@ -78,6 +80,6 @@ export function helpAnswerText(r: HelpAsk, who: string, clues?: number[]) {
     case "exchange":
       return fmt(T.lib.help.answered.exchange, { who });
     case "support":
-      return fmt(T.lib.help.answered.support, { who, operator: r.operator });
+      return fmt(T.lib.help.answered.support, { who, operator: r.operator && characterName(r.operator) });
   }
 }

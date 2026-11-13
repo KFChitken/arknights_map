@@ -63,7 +63,7 @@ export default function RadarSheet({
           <span className="muted">{fmtParts(T.radar.within, { km: radar.radiusKm })}</span>
           <strong>{radar.roaches.toLocaleString()}</strong>
           <span className="muted">
-            {fmtParts(T.radar.from, { players: radar.players.toLocaleString() })}
+            {fmtParts(T.radar.from, { n: radar.roaches, players: radar.players.toLocaleString() })}
             {radar.clones > 0 && fmt(T.radar.clones, { n: radar.clones })}
           </span>
         </div>

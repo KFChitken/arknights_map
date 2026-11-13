@@ -1,12 +1,13 @@
 import { layers, namedFlavor } from "@protomaps/basemaps";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import { Protocol } from "pmtiles";
+import { lang } from "@/i18n";
 
 /**
  * Our own overseas map, for visitors from mainland China looking at somewhere
  * abroad (src/lib/chinaView.ts says when): OpenStreetMap data cut by Protomaps,
  * zoom levels 0–12 of one build, served from our own server (Caddy, /tiles), with
- * Chinese place names. Like the other overseas map it shows no national borders
+ * Chinese place names (English ones on an English page). Like the other overseas map it shows no national borders
  * and no country names. A new build goes in under a new file name, so the
  * browser's cached pieces of the old one are never mixed with it.
  */
@@ -53,7 +54,7 @@ export function overseasStyle(origin: string): StyleSpecification {
     sources: {
       protomaps: { type: "vector", url: `pmtiles://${origin}${OVERSEAS_TILES}`, attribution: OVERSEAS_CREDIT },
     },
-    layers: layers("protomaps", namedFlavor("light"), { lang: "zh-Hans" })
+    layers: layers("protomaps", namedFlavor("light"), { lang: lang() === "zh" ? "zh-Hans" : "en" })
       .filter((l) => !HIDDEN_LAYERS.has(l.id) && !("source-layer" in l && l["source-layer"] === "boundaries"))
       .map(noMilitary),
   };

@@ -1,6 +1,7 @@
 import "server-only";
 import { and, count, eq, gt, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
+import { withLang } from "@/i18n/server";
 import { declarationText, replyOf } from "../declarations";
 import { distanceKm } from "../geo";
 import { guideById, guideOfItem } from "../guides";
@@ -66,6 +67,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Sender = { other: string; known: boolean; context: string };
 
+/** What the admin reads is in Chinese, whichever site the report came from (/en included) */
+const forAdmin = <R>(fn: () => R): R => withLang("zh", fn);
+
 /** Who sent an inbox item ("t:", "d:", "x:", "p:" ids) or who a friend is ("friend:<id>"), as far as this player may ask. */
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
   // the page offers neither on the guides; this is the backstop
@@ -108,7 +112,7 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
     // one the reporter sees now (src/lib/server/declarationInbox.ts)
     const d = await canSeeDeclaration(userId, id);
     if (!d) return null;
-    return { other: d.senderId, known: false, context: `宣言「${declarationText(storedDeclaration(d))}」` };
+    return { other: d.senderId, known: false, context: forAdmin(() => `宣言「${declarationText(storedDeclaration(d))}」`) };
   }
   if (kind === "x") {
     const [row] = await db
@@ -118,11 +122,13 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
       .where(and(eq(reactions.id, id), eq(declarations.senderId, userId)))
       .limit(1);
     if (!row) return null;
-    const reaction = replyOf(storedDeclaration(row.d), row.r.reaction)?.text ?? row.r.reaction;
     return {
       other: row.r.fromUserId,
       known: false,
-      context: `回应「${reaction}」，回应的是举报人的宣言「${declarationText(storedDeclaration(row.d))}」`,
+      context: forAdmin(() => {
+        const reaction = replyOf(storedDeclaration(row.d), row.r.reaction)?.text ?? row.r.reaction;
+        return `回应「${reaction}」，回应的是举报人的宣言「${declarationText(storedDeclaration(row.d))}」`;
+      }),
     };
   }
   return null;
@@ -439,7 +445,12 @@ export function byReason(rows: { reason: string }[], order: readonly AnyReason[]
  * gets them. Runs after every report and every 10 minutes, so an urgent report reaches the admin within
  * about 40 minutes.
  */
-export async function sendReportDigest(now = new Date()) {
+export function sendReportDigest(now = new Date()): Promise<void> {
+  // in Chinese, though an English page's report sets it off
+  return forAdmin(() => reportDigest(now));
+}
+
+async function reportDigest(now: Date) {
   if (!ADMIN_EMAILS.length) return;
   const due = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${REPORT_MAIL_LOCK})`);

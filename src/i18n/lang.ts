@@ -1,51 +1,33 @@
-import { isLang, type Lang } from "./core";
+import type { Lang } from "./core";
 
 /**
- * Which language a visitor gets. Until English is offered (ENGLISH_ON), every page
- * and answer is in Chinese, as before, and nothing is written into a cookie.
+ * Which language a page or answer is in (Breeze, 2026-11-12): zhoupmap.com is always in
+ * Chinese, whatever the phone's language, and English lives under zhoupmap.com/en. Nothing
+ * is guessed and nothing is kept in a cookie. A page under /en is marked English by
+ * src/middleware.ts, and an English page marks each ask it makes of the server the same way
+ * (src/lib/apiFetch.ts). Anything not marked is Chinese.
  */
-export const ENGLISH_ON = false;
+export const LANG_HEADER = "x-zp-lang";
 
-/** The visitor's choice, once made or first worked out: kept a year */
-export const LANG_COOKIE = "lang";
-export const LANG_COOKIE_DAYS = 365;
-
-export type LangSignals = {
-  /** The lang cookie, if any */
-  cookie: string | null | undefined;
-  /** The Accept-Language header */
-  acceptLanguage: string | null | undefined;
-  /** Whether the visitor holds a session cookie: signed-in players keep Chinese */
-  signedIn: boolean;
-  /** Whether the visitor's address is in mainland China (src/lib/server/region.ts) */
-  mainland: boolean;
-};
+/** Where the English site lives */
+export const EN_PATH = "/en";
 
 /**
- * The cookie when there is one. Without: signed-in players and visitors from
- * mainland China get Chinese, whatever their phone says; anyone else gets
- * Chinese when the language they want most is Chinese (zh, zh-CN, zh-Hant…),
- * else English. No Accept-Language at all (a crawler, say) gets Chinese.
+ * The English site's own manifest (src/app/en/app.webmanifest), to put it on a home screen in English, opening at
+ * /en. Each English page names it in its own metadata: Next links the site's manifest (src/app/manifest.ts) over
+ * whatever a layout of the top two levels says, and only a page's metadata comes after that.
  */
-export function pickLang({ cookie, acceptLanguage, signedIn, mainland }: LangSignals): Lang {
-  if (isLang(cookie)) return cookie;
-  if (signedIn || mainland) return "zh";
-  const first = firstLanguage(acceptLanguage);
-  if (first === null) return "zh";
-  return first === "zh" || first.startsWith("zh-") ? "zh" : "en";
-}
+export const EN_MANIFEST = "/en/app.webmanifest";
 
-/** The language a browser wants most, from its Accept-Language ("en-US,en;q=0.9,zh;q=0.8" → "en-us"), or null for none */
-export function firstLanguage(header: string | null | undefined): string | null {
-  let best: { tag: string; q: number } | null = null;
-  for (const part of (header ?? "").split(",")) {
-    const [tag, ...attrs] = part.trim().split(";").map((s) => s.trim());
-    if (!tag || tag === "*") continue;
-    const qAttr = attrs.find((a) => a.startsWith("q="));
-    const q = qAttr ? Number(qAttr.slice(2)) : 1;
-    if (!Number.isFinite(q) || q <= 0) continue;
-    // the first of equal weight wins, as browsers list them in order
-    if (!best || q > best.q) best = { tag: tag.toLowerCase(), q };
-  }
-  return best?.tag ?? null;
+/** The language a request is marked with: English only when it says so */
+export const langOfMark = (mark: string | null | undefined): Lang => (mark === "en" ? "en" : "zh");
+
+/** A path of the English site: "/en", "/en/privacy"; not "/english" */
+export const isEnglishPath = (path: string) => path === EN_PATH || path.startsWith(`${EN_PATH}/`);
+
+/** The same page in a language: ("/privacy#abroad", "en") → "/en/privacy#abroad", ("/", "en") → "/en"; Chinese as given */
+export function pathIn(path: string, lang: Lang): string {
+  if (lang === "zh") return path;
+  if (path === "/") return EN_PATH;
+  return path.startsWith("/#") || path.startsWith("/?") ? `${EN_PATH}${path.slice(1)}` : `${EN_PATH}${path}`;
 }

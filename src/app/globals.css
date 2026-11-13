@@ -62,6 +62,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   border-radius: var(--radius); background: var(--paper); color: var(--ink); box-shadow: 0 10px 30px #0005; display: grid; gap: 4px;
 }
 .style-menu .head { padding: 4px 6px 6px; font-size: 12px; color: var(--muted); }
+/* the top bars' nowrap reaches this menu: English's longer head and notes wrap inside it instead of running past it */
+:lang(en) .style-menu { white-space: normal; }
 .style-opt {
   display: grid; grid-template-columns: 64px minmax(0, 1fr) 18px; gap: 10px; align-items: center; text-align: left;
   padding: 6px; border: 2px solid transparent; border-radius: 10px; background: transparent; color: var(--ink);
@@ -1076,6 +1078,8 @@ button.pill.danger-pill { border-color: #f1c4bf; color: #c0392b; }
   text-align: center; text-wrap: balance; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 .badge-grid.four .badge-name { font-size: 11px; }
+/* English names run longer than the Chinese they stand for: a third line before … */
+:lang(en) .badge-name { -webkit-line-clamp: 3; }
 .cell-note { font-size: 11px; color: var(--muted); }
 .cell-note.serial { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; }
 .cell-tag {

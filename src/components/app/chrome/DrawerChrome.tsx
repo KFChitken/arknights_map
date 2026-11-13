@@ -31,6 +31,8 @@ import {
   type Counts,
 } from "./parts";
 import "./drawer.css";
+import { apiFetch } from "@/lib/apiFetch";
+import { characterName } from "@/i18n/names";
 
 /**
  * 抽屉: on a phone, a capsule along the top (the site's name, 公告, 界面, the map's style and base map), 方舟雷达, 热榜
@@ -262,10 +264,10 @@ function PhoneCounts({ counts: c, onTap }: { counts: Counts; onTap?: () => void 
     main = T.map.count.hidden;
     side = fmt(T.map.count.world, { count: c.total });
   } else if (c.mainsOnly && c.players !== undefined) {
-    main = fmtNodes(T.map.count.herePlayers, { n: <span className="num">{c.here}</span> });
+    main = fmtNodes(T.map.count.herePlayers, { n: <span className="num">{c.here}</span> }, { n: c.here });
     side = fmtNodes(T.map.count.worldOnlyMains, { players: c.players, mark: <b className="mains">{T.map.count.onlyMainsMark}</b> });
   } else {
-    main = fmtNodes(T.map.count.here, { n: <span className="num">{c.here}</span> });
+    main = fmtNodes(T.map.count.here, { n: <span className="num">{c.here}</span> }, { n: c.here });
     side = fmt(T.ui.drawer.worldShort, { total: c.total });
   }
   return (
@@ -356,7 +358,7 @@ function RadarCard({ p }: { p: ChromeProps }) {
   let title: ReactNode;
   let note: string | null = null;
   if (r) {
-    title = fmtNodes(T.ui.drawer.radar, { km: r.radiusKm, n: <span className="num">{r.roaches.toLocaleString()}</span> });
+    title = fmtNodes(T.ui.drawer.radar, { km: r.radiusKm, n: <span className="num">{r.roaches.toLocaleString()}</span> }, { n: r.roaches });
     const net = r.day.arrived - r.day.left;
     note = fmt(net < 0 ? T.ui.drawer.radarFromLess : T.ui.drawer.radarFrom, { players: r.players.toLocaleString(), net: Math.abs(net) });
   } else {
@@ -386,7 +388,7 @@ function useHot() {
   useEffect(() => {
     if (hotKept && Date.now() - hotKept.at < HOT_KEEP_MS) return;
     let live = true;
-    fetch("/api/hot")
+    apiFetch("/api/hot")
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         if (!res.ok || !body) throw new Error(String(res.status));
@@ -415,7 +417,7 @@ function HotCard({ onOpen }: { onOpen: () => void }) {
           {rows.map((r) => (
             <span key={r.character} className="row">
               <i>{r.rank}</i>
-              {r.character}
+              {characterName(r.character)}
               {r.games.length > 0 && <span className="g">{r.games.map((g) => T.hot.tag[g]).join(" / ")}</span>}
               <span className="n">{fmt(T.hot.players, { n: r.players })}</span>
             </span>
