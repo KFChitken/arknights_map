@@ -12,6 +12,7 @@ import { seedDemo } from "./lib/server/demo";
 import { demoEnabled, watchEnabled } from "./lib/server/env";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
+import { startMainlandMap } from "./lib/server/mainlandMap";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
 import { startAdmins } from "./lib/server/admins";
 import { startNotices } from "./lib/server/notices";
@@ -81,6 +82,10 @@ await startAdmins();
 // every process and read before the first page asks (only the code's places and no gray, if they cannot be read)
 await startZones();
 await startSettings();
+
+// which map visitors from mainland China start with (高德's, or 腾讯's once 高德's map loads ran out this month): kept in
+// memory by every process and read again every minute (高德's, if it cannot be read)
+await startMainlandMap();
 
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);

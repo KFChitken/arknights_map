@@ -9,6 +9,7 @@ import { db } from "./db";
 import { countAmapLoad, forgetAmapLoads, saveAmapLoads } from "./amapLoads";
 import { forgetGeo, geoSearch } from "./geo";
 import { MAIL_DAILY_LIMIT } from "./env";
+import { forgetMainlandMap, mainlandMap } from "./mainlandMap";
 import { dailyTotals, mailSends, reports, users, watchAlerts, watchIncidents, watchMails, watchState } from "./schema";
 import { errorCode, forgetSignals, note, recent } from "./signals";
 import {
@@ -56,6 +57,7 @@ beforeEach(async () => {
   forgetSignals(t0 - 48 * HOUR);
   forgetWatch();
   forgetAmapLoads();
+  forgetMainlandMap();
   sent = [];
 });
 
@@ -272,6 +274,7 @@ describe("the site's own checks", () => {
     // all is well: only the figures and where the rest is
     expect(sent[0].text).toMatch(/^几个数：\n· 验证码邮件：过去 24 小时发了 0 封，上限 \d+ 封\n/);
     expect(sent[0].text).toContain("· 备份：还没有备份的记录");
+    expect(sent[0].text).toMatch(/· 高德地图：这个月大约打开了 0 次，上限 [\d,]+ 次；内地现在用：高德\n/);
     expect(sent[0].text).toMatch(/\n\n完整记录：http.*\/admin$/);
     forgetWatch();
     await digest(nine + 10 * MINUTE);
@@ -327,6 +330,8 @@ describe("the site's own checks", () => {
     expect(s.week).toHaveLength(2);
     expect(s.mails).toEqual([{ at: t0, subject: "【舟P地图】要你看：硬盘快满了", kind: "urgent" }]);
     expect(s.numbers).toMatchObject({ loginMails: 3, mailLimit: MAIL_DAILY_LIMIT });
+    // what visitors from mainland China start with: 高德's, as nothing ran out
+    expect(s.numbers.amap).toMatchObject({ home: "amap", set: null, out: null });
     // nothing about anyone
     expect(JSON.stringify(s)).not.toMatch(/@|email/);
   });
@@ -490,6 +495,52 @@ describe("the site's own checks", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it("starts mainland China on 腾讯's map once many pages say 高德's map loads ran out, and tells the next digest once", async () => {
+    const out = [check("amapOut")];
+    // noon on the 20th, Beijing time
+    const mid = Date.parse("2026-11-20T04:00:00Z");
+    forgetSignals(mid - 48 * HOUR);
+    // too many in a second is no reason; nor are a page short of the line, over the last ten minutes
+    for (let i = 0; i < 40; i++) note("map", i % 2 ? "amap:key:CUQPS_HAS_EXCEEDED_THE_LIMIT" : "amap:key:ACCESS_TOO_FREQUENT", mid - (i % 10) * MINUTE);
+    for (let i = 0; i < 29; i++) note("map", i % 3 ? "amap:key:USER_DAILY_QUERY_OVER_LIMIT" : "amap:key:QUOTA_PLAN_RUN_OUT", mid - (i % 10) * MINUTE);
+    note("map", "amap:key:USER_DAILY_QUERY_OVER_LIMIT", mid - 10 * MINUTE);
+    await run(mid, out);
+    expect(await incidents()).toEqual([]);
+    expect(mainlandMap(mid, "auto")).toBe("amap");
+
+    note("map", "amap:key:DAILY_QUERY_OVER_LIMIT", mid);
+    await run(mid, out);
+    expect(await incidents()).toMatchObject([
+      {
+        key: "amapOut.out",
+        level: "daily",
+        title: "高德地图这个月的额度用完了",
+        detail:
+          "10 分钟内有 30 个内地访客的页面说高德不给画地图了：USER_DAILY_QUERY_OVER_LIMIT ×19；QUOTA_PLAN_RUN_OUT ×10；DAILY_QUERY_OVER_LIMIT ×1。这个月剩下的日子，内地访客打开网站直接用腾讯地图，不再先试高德；12 月 1 日（北京时间）自动换回高德。",
+      },
+    ]);
+    expect(mainlandMap(mid, "auto")).toBe("tencent");
+    expect(await db.select({ value: watchState.value }).from(watchState).where(eq(watchState.key, "amapOut"))).toEqual([{ value: "2026-11" }]);
+    // pages still saying so are not news; open a day so the digest has it, and no email
+    for (let i = 0; i < 40; i++) note("map", "amap:key:USER_DAILY_QUERY_OVER_LIMIT", mid + (1 + (i % 10)) * MINUTE);
+    expect(recent("map", 10 * MINUTE, mid + 10 * MINUTE).filter((r) => r.code.endsWith("OVER_LIMIT"))).toHaveLength(40);
+    for (const later of [10, 20, 6 * 60]) await run(mid + later * MINUTE, out);
+    expect(await incidents()).toHaveLength(1);
+    expect((await incidents())[0].endedAt).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
+  it("does not believe a burst of reports that 高德's map loads ran out", async () => {
+    const mid = Date.parse("2026-11-20T04:00:00Z");
+    forgetSignals(mid - 48 * HOUR);
+    // all within four of the minutes
+    for (let i = 0; i < 100; i++) note("map", "amap:key:USER_DAILY_QUERY_OVER_LIMIT", mid - (i % 4) * MINUTE);
+    expect(await look("amapOut", mid)).toEqual([]);
+    expect(mainlandMap(mid, "auto")).toBe("amap");
+    note("map", "amap:key:USER_DAILY_QUERY_OVER_LIMIT", mid - 4 * MINUTE);
+    expect(await look("amapOut", mid)).toMatchObject([{ key: "out", detail: expect.stringContaining("10 分钟内有 101 个") }]);
   });
 
   it("tells of 腾讯位置服务 turning away the key of the place suggestions, apart from the map failing", async () => {

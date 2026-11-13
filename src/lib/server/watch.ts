@@ -10,10 +10,11 @@ import { SITE_NAME } from "../rules";
 import { levelRank, type Level } from "../siteStatus";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
-import { isProd, MAIL_DAILY_LIMIT, SITE_URL, WATCH_DIGEST_HOUR, WATCH_DOORS, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
+import { isProd, MAIL_DAILY_LIMIT, MAINLAND_MAP, SITE_URL, WATCH_DIGEST_HOUR, WATCH_DOORS, WATCH_EMAILS, WATCH_TLS_HOST } from "./env";
 import { amapSearchToday } from "./geo";
 import { sendAdminMail } from "./mail";
 import { LOGIN_KINDS } from "./mailQuota";
+import { recordAmapOut } from "./mainlandMap";
 import { mailSends, reports, watchIncidents, watchMails, watchState } from "./schema";
 import { errorCode, recent, startedAt, type Signal } from "./signals";
 import {
@@ -613,6 +614,45 @@ async function checkAmapLoads(now: number): Promise<Finding[]> {
   ];
 }
 
+/** 高德's codes for a key whose allowance is used up: not those for too many in a second (CUQPS_HAS_EXCEEDED_THE_LIMIT, ACCESS_TOO_FREQUENT) */
+const AMAP_USED_UP = /^amap:key:((USER_)?DAILY_QUERY_OVER_LIMIT|QUOTA_PLAN_RUN_OUT)$/;
+/** Pages saying so within ten minutes that tell 高德's map loads ran out, coming in over at least AMAP_OUT_MINUTES of those minutes */
+export const AMAP_OUT_REPORTS = 30;
+export const AMAP_OUT_MINUTES = 5;
+/** What MAINLAND_MAP can hold a visitor from mainland China to, in the digest */
+const MAINLAND_NAMES = { amap: "高德地图", tencent: "腾讯地图", own: "我们自己的图" };
+
+/**
+ * 高德's map loads used up for the month: many pages in mainland China saying so within ten minutes, over several of
+ * them (anyone can send these reports; a burst all at once is not believed). Visitors from there then start with 腾讯's
+ * map, without trying 高德's, for the rest of the Beijing month (src/lib/server/mainlandMap.ts). Told in the next digest,
+ * once a month.
+ */
+async function checkAmapOut(now: number): Promise<Finding[]> {
+  const list = recent("map", 10 * MINUTE, now).filter((s) => AMAP_USED_UP.test(s.code));
+  const minutes = new Set(list.map((s) => Math.floor(s.at / MINUTE))).size;
+  if (list.length < AMAP_OUT_REPORTS || minutes < AMAP_OUT_MINUTES) return [];
+  if (!(await recordAmapOut(now))) return [];
+  const back = `${(Number(beijingDate(now).slice(5, 7)) % 12) + 1} 月 1 日`;
+  const told = `10 分钟内有 ${list.length} 个内地访客的页面说高德不给画地图了：${tally(list.map((s) => s.code.slice("amap:key:".length)))}。`;
+  const check = "以高德控制台为准：https://console.amap.com/dev/flow/manage 的用量详情。";
+  return [
+    {
+      key: "out",
+      level: "daily",
+      title: "高德地图这个月的额度用完了",
+      detail:
+        MAINLAND_MAP === "auto"
+          ? `${told}这个月剩下的日子，内地访客打开网站直接用腾讯地图，不再先试高德；${back}（北京时间）自动换回高德。`
+          : `${told}服务器上的 MAINLAND_MAP 设成了 ${MAINLAND_MAP}，内地访客还是照它先用${MAINLAND_NAMES[MAINLAND_MAP]}。`,
+      advice:
+        MAINLAND_MAP === "auto"
+          ? `${check}腾讯也载不出来的访客才换成我们自己的图（没有审图号）。这类报告谁都能发：要是控制台显示高德其实没用完，把服务器上的 MAINLAND_MAP 设成 amap（要重启网站），内地访客就接着先用高德。`
+          : `${check}MAINLAND_MAP 改回 auto（要重启网站），这个月剩下的日子内地访客就直接用腾讯地图。`,
+    },
+  ];
+}
+
 const JOBS: Record<string, string> = {
   setup: "启动时升级数据库",
   prune: "清理 90 天前的记录",
@@ -880,6 +920,7 @@ export const CHECKS: Check[] = [
   { name: "map", window: 30 * MINUTE, run: checkMaps },
   // once a month: open for a day, so the next digest has it
   { name: "amapLoads", events: true, every: 10 * MINUTE, closeAfter: DAY, run: checkAmapLoads },
+  { name: "amapOut", events: true, closeAfter: DAY, run: checkAmapOut },
   { name: "jobs", window: DAY, run: checkJobs },
   { name: "machine", closeAfter: 30 * MINUTE, run: checkMachine },
   { name: "backup", every: 30 * MINUTE, run: checkBackup },

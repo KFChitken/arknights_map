@@ -100,6 +100,13 @@ export const WATCH_DOORS = (process.env.WATCH_DOORS || "")
 const digestHour = Number(process.env.WATCH_DIGEST_HOUR || 9);
 export const WATCH_DIGEST_HOUR = Number.isInteger(digestHour) && digestHour >= 0 && digestHour <= 23 ? digestHour : 9;
 
+/**
+ * Which map visitors from mainland China start with (src/lib/server/mainlandMap.ts): auto (the default) is 高德's,
+ * or 腾讯's for the rest of a Beijing month in which 高德's map loads ran out; amap, tencent or own (ours) holds
+ * one whatever happens, until set back. Each still falls back to the next when it cannot load.
+ */
+export const MAINLAND_MAP = (["amap", "tencent", "own"] as const).find((m) => m === process.env.MAINLAND_MAP) ?? "auto";
+
 /** Port of a local test inbox (Mailpit) to link from the sign-in screen; unset in production. */
 export const DEV_MAILBOX_PORT = process.env.DEV_MAILBOX_PORT || "";
 

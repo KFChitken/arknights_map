@@ -1,3 +1,5 @@
+import type { MainlandMap } from "./types";
+
 /**
  * 网站状态 on the admin page: what the site's own checks (src/lib/server/watch.ts) found, as the page
  * shows it. urgent problems are emailed at once and again when over, daily ones go into the morning's
@@ -51,8 +53,12 @@ export type SiteNumbers = {
   backup: string;
   /** Days left on the HTTPS certificate when it was last asked; null where there is none (development) */
   tlsDays: number | null;
-  /** 高德's map loads this Beijing month (an estimate) */
-  amap: { count: number; limit: number };
+  /**
+   * 高德's map loads this Beijing month (an estimate), and the map visitors from mainland China start with now
+   * (src/lib/server/mainlandMap.ts): set, what MAINLAND_MAP holds them to (null for auto); out, the month (as 2026-11)
+   * when 高德's ran out this one
+   */
+  amap: { count: number; limit: number; home: MainlandMap; set: MainlandMap | null; out: string | null };
   /** Sign-ins on yesterday's Beijing date, by how (auth.ts SessionMethod): code, password, desk, dev */
   logins?: Record<string, number>;
   /** Signups and new 触须之交 pairs on yesterday's Beijing date; null before the totals have such a row */
@@ -71,6 +77,15 @@ export type SiteStatus = {
   /** The latest emails: urgent, recovered, digest, report, or skipped (over the day's cap) */
   mails: { at: number; subject: string; kind: string }[];
 };
+
+const HOME_NAMES: Record<MainlandMap, string> = { amap: "高德", tencent: "腾讯", own: "我们自己的图" };
+
+/** 「内地现在用：腾讯（本月高德已用完，12 月 1 日换回）」, after 高德's map loads in the digest and on the page */
+export function mainlandWords(a: SiteNumbers["amap"]) {
+  const back = a.out ? `${(Number(a.out.slice(5, 7)) % 12) + 1} 月 1 日换回` : "";
+  const why = a.set ? `服务器上 MAINLAND_MAP 设成了 ${a.set}${a.out ? "；本月高德已用完" : ""}` : a.out ? `本月高德已用完，${back}` : "";
+  return `内地现在用：${HOME_NAMES[a.home]}${why ? `（${why}）` : ""}`;
+}
 
 /** How long, as 「25 分钟」, 「2 小时 10 分」 or 「3 天 4 小时」 */
 export function lasted(ms: number) {

@@ -8,7 +8,7 @@ import { fmt, fmtParts, T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
-import { tencentConfigured } from "@/lib/tencentMap";
+import { loadTMap, tencentConfigured } from "@/lib/tencentMap";
 import type { EarnedBadge } from "@/lib/badges";
 import { alonePopping, markBadgesPopped, poppedBadges, poppedKey, poppedStorageKey } from "@/lib/badgesPopped";
 import { amapConfigured, guessBasemap, saveBasemap } from "@/lib/basemap";
@@ -417,6 +417,8 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
 
 /**
  * cn: the visitor is in mainland China, so the map is Amap only (OSM just when Amap cannot load).
+ * home: for them, the map to start with (src/lib/server/mainlandMap.ts): 高德's, 腾讯's once 高德's map loads ran
+ * out this month, or our own.
  * mailPaused: mail domains no sign-in code goes to just now, which the sign-in sheet says.
  * notices: 公告 everyone sees (src/lib/server/notices.ts), as they were when the page was made.
  */
@@ -427,10 +429,12 @@ const GUEST_STYLES: Partial<Record<MapStyle, string>> = Object.fromEntries(
 
 export default function MapApp({
   cn,
+  home = "amap",
   mailPaused = [],
   notices: firstNotices = { stamp: "", notices: [] },
 }: {
   cn: boolean;
+  home?: MainlandMap;
   mailPaused?: string[];
   notices?: NoticeList;
 }) {
@@ -450,11 +454,13 @@ export default function MapApp({
   const [basemap, setBasemap] = useState<Basemap | null>(null);
   // Visitors from mainland China: the home map wherever China is in view, our own map abroad (src/lib/chinaView.ts).
   // Both maps stay made once made, and only the one on show is used; the home map is made when first needed.
-  // The home map is 高德's; 腾讯's when 高德's cannot load; our own, the whole way, when neither can.
+  // The home map is 高德's; 腾讯's when 高德's cannot load; our own, the whole way, when neither can. The server can
+  // say to start further down (home): 腾讯's needs its key in the build, or it is our own.
   const chinaRef = useRef<typeof import("@/lib/chinaView") | null>(null);
   const [overseas, setOverseas] = useState<{ style: StyleSpecification; cover: GeoJSON.FeatureCollection } | null>(null);
   const [abroad, setAbroad] = useState(false);
-  const [homeMap, setHomeMap] = useState<MainlandMap>("amap");
+  const firstHome: MainlandMap = !cn ? "amap" : home === "tencent" && !tencentConfigured ? "own" : home;
+  const [homeMap, setHomeMap] = useState<MainlandMap>(firstHome);
   const [homeMade, setHomeMade] = useState(true);
   const [overseasMade, setOverseasMade] = useState(false);
   const [homeJump, setHomeJump] = useState<MapFocus | null>(null);
@@ -1000,10 +1006,13 @@ export default function MapApp({
     setWasIn(loadHome() !== null);
     const b = guessBasemap(cn);
     // The map's code downloads while the first API calls are in flight; the map itself waits for where to start.
-    // A failed Amap load is forgotten, so AmapView tries again and falls back to OSM as before.
-    if (b === "amap") {
+    // A failed Amap load is forgotten, so AmapView tries again and falls back to OSM as before; so is Tencent's.
+    if (b === "amap" && firstHome === "amap") {
       void import("./map/AmapView");
       loadAMap().catch(() => {});
+    } else if (b === "amap" && firstHome === "tencent") {
+      void import("./map/TencentView");
+      loadTMap().catch(() => {});
     } else void import("./map/MaplibreView");
     // visitors from mainland China: the outline of where Amap must show, and our own map's style for abroad.
     // Our own map's code (MapLibre, the biggest download of the page) comes only once it is made, when the
@@ -1037,7 +1046,8 @@ export default function MapApp({
       setStyleStored(storedMapStyle() !== null);
       setLiteHintDone(liteHintSeen());
       setStyleHint(!mapStyleSeen());
-      setBasemap(b);
+      // our own map from the start is the one for abroad, which could not come: OSM in its place
+      setBasemap(b === "amap" && firstHome === "own" && !kit ? "osm" : b);
     };
     const waiting = window.setTimeout(() => void startMap(null), loadHome() ? 0 : MAP_WAIT_MS);
     let failed = false;
@@ -1114,7 +1124,7 @@ export default function MapApp({
         go();
       });
     return () => window.clearTimeout(waiting);
-  }, [load, openInbox, cn, popNotice, rememberNotices]);
+  }, [load, openInbox, cn, firstHome, popNotice, rememberNotices]);
 
   // Chrome and Edge offer installing the site once, early; 存到桌面 keeps it for when the player taps it.
   // Opens from the desktop icon and in the browser are counted once a device a day, nothing else about them.

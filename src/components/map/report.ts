@@ -33,7 +33,7 @@ export function reportMapTrouble(map: MapKind, what: MapTrouble, detail = "") {
  */
 /** 高德's codes for a key it will not serve, as they appear in its console messages */
 const AMAP_KEY_CODES =
-  /\b(USER_DAILY_QUERY_OVER_LIMIT|DAILY_QUERY_OVER_LIMIT|CUQPS_HAS_EXCEEDED_THE_LIMIT|ACCESS_TOO_FREQUENT|INVALID_USER_KEY|INVALID_USER_SCODE|INVALID_USER_DOMAIN|USERKEY_PLAT_NOMATCH|INSUFFICIENT_PRIVILEGES|USER_KEY_RECYCLED|SERVICE_NOT_AVAILABLE)\b/;
+  /\b(USER_DAILY_QUERY_OVER_LIMIT|DAILY_QUERY_OVER_LIMIT|QUOTA_PLAN_RUN_OUT|CUQPS_HAS_EXCEEDED_THE_LIMIT|ACCESS_TOO_FREQUENT|INVALID_USER_KEY|INVALID_USER_SCODE|INVALID_USER_DOMAIN|USERKEY_PLAT_NOMATCH|INSUFFICIENT_PRIVILEGES|USER_KEY_RECYCLED|SERVICE_NOT_AVAILABLE)\b/;
 
 export function listenToAmapConsole(onKeyTrouble?: (code: string) => void): () => void {
   const c = console as unknown as Record<"error" | "warn", (...args: unknown[]) => void>;
@@ -43,7 +43,7 @@ export function listenToAmapConsole(onKeyTrouble?: (code: string) => void): () =
     c[level] = (...args: unknown[]) => {
       try {
         const text = args.map(String).join(" ");
-        // used up (…LIMIT), too many a second (ACCESS_TOO_FREQUENT, CUQPS_…LIMIT), a wrong or stopped key
+        // used up (…LIMIT, QUOTA_PLAN_RUN_OUT), too many a second (ACCESS_TOO_FREQUENT, CUQPS_…LIMIT), a wrong or stopped key
         // (INVALID…, INSUFFICIENT_PRIVILEGES, USER_KEY_RECYCLED), or the service down (SERVICE_NOT_AVAILABLE);
         // 「KEY异常，错误信息：…」 from the loader, 「FlyDataAuthTask error: …」 from the map itself
         const known = text.match(AMAP_KEY_CODES)?.[0];

@@ -4,12 +4,13 @@ import os from "node:os";
 import { and, count, desc, eq, gt, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { beijingDate, beijingMidnight, beijingShort } from "../beijing";
 import { SITE_NAME } from "../rules";
-import { asLevel, lasted, LEVEL_MARK, levelRank, type IncidentView, type SiteNumbers, type SiteStatus } from "../siteStatus";
+import { asLevel, lasted, LEVEL_MARK, levelRank, mainlandWords, type IncidentView, type SiteNumbers, type SiteStatus } from "../siteStatus";
 import { amapMapLoads, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
-import { MAIL_DAILY_LIMIT, SITE_URL } from "./env";
+import { MAIL_DAILY_LIMIT, MAINLAND_MAP, SITE_URL } from "./env";
 import { HttpError } from "./http";
 import { LOGIN_KINDS } from "./mailQuota";
+import { amapOutNow, mainlandMap } from "./mainlandMap";
 import { byReason } from "./safety";
 import { dailyTotals, mailSends, reports, sessions, watchIncidents, watchMails, watchState } from "./schema";
 
@@ -104,7 +105,7 @@ export async function siteNumbers(now = Date.now()): Promise<SiteNumbers> {
     load: { fifteen: os.loadavg()[2], cores: os.cpus().length || 1 },
     backup: backupWords(await getState("backup")),
     tlsDays: tls ? Number(tls.value) : null,
-    amap: { count: loads, limit: amapMapLoads() },
+    amap: { count: loads, limit: amapMapLoads(), home: mainlandMap(now), set: MAINLAND_MAP === "auto" ? null : MAINLAND_MAP, out: amapOutNow(now) },
     yesterday: yesterday ? { signups: yesterday.signups, friendships: yesterday.friendships } : null,
   };
 }
@@ -194,7 +195,7 @@ function numberLines(n: SiteNumbers) {
   if (n.disk) lines.push(`· 硬盘：用了 ${pct(n.disk.used)}，还剩 ${gb(n.disk.free)}`);
   lines.push(`· 备份：${n.backup}`);
   lines.push(`· 证书：${n.tlsDays === null ? "这里不查（只在服务器上查）" : n.tlsDays < 0 ? "已经过期" : `还有 ${n.tlsDays} 天`}`);
-  lines.push(`· 高德地图：这个月大约打开了 ${n.amap.count.toLocaleString("en-US")} 次，上限 ${n.amap.limit.toLocaleString("en-US")} 次`);
+  lines.push(`· 高德地图：这个月大约打开了 ${n.amap.count.toLocaleString("en-US")} 次，上限 ${n.amap.limit.toLocaleString("en-US")} 次；${mainlandWords(n.amap)}`);
   if (n.yesterday) lines.push(`· 昨天：新来 ${n.yesterday.signups} 人，新结成 ${n.yesterday.friendships} 对触须之交`);
   if (n.logins) {
     const l = n.logins;

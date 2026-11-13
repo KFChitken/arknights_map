@@ -8,7 +8,7 @@ import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } 
 import { memorialWords } from "@/lib/memorials";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { RULES, type BanInfo, type RetentionStats } from "@/lib/safety";
-import { lasted, LEVEL_MARK, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
+import { lasted, LEVEL_MARK, mainlandWords, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
 import { ago } from "../app/InboxSheet";
 import { errorWords } from "./api";
 import { useConsole } from "./context";
@@ -333,7 +333,7 @@ function SiteStatusPanel() {
           <li>备份：{n.backup}</li>
           <li>证书：{n.tlsDays === null ? "这里不查（只在服务器上查）" : n.tlsDays < 0 ? "已经过期" : `还有 ${n.tlsDays} 天`}</li>
           <li>
-            高德地图：这个月大约打开了 {n.amap.count.toLocaleString("en-US")} 次，上限 {n.amap.limit.toLocaleString("en-US")} 次
+            高德地图：这个月大约打开了 {n.amap.count.toLocaleString("en-US")} 次，上限 {n.amap.limit.toLocaleString("en-US")} 次；{mainlandWords(n.amap)}
           </li>
           {n.yesterday && (
             <li>
