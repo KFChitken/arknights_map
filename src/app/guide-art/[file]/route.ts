@@ -34,7 +34,7 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   ...badgeArt(["perlica", "perlica30"], PERLICA_PICTURE),
   ...badgeArt(["talulah", "fireside", "warmth"], TALULAH_PICTURE),
   ...badgeArt(["minghe", "sevenstops"], MINGHE_PICTURE),
-  ...badgeArt(["siqueue", "siinn"], SI_PICTURE),
+  ...badgeArt(["siqueue", "siinn", "sibook"], SI_PICTURE),
   ...badgeArt(["fullsquad"], AMIYA_PICTURE && PERLICA_PICTURE && TALULAH_PICTURE && MINGHE_PICTURE),
 };
 

@@ -816,9 +816,10 @@ export const siInksChanged = pgSequence("si_inks_changed_seq");
  * she drew it, kept when they change theirs; ticket: its latest place in her queue (si_tickets.n), none
  * while it waits for room among the player's clones; public_id: how it is tapped and touched, never
  * whose; recalled_at: its owner took it off the map (held, as with no ticket, till it queues again);
- * changed: a new number from si_inks_changed_seq whenever it is drawn, recalled or queues again, always
- * under the inn's lock, so the map's copy reads only what changed. Closing the account leaves it on the
- * map, nobody's.
+ * sealed: her red 「祀」 seal on its back, from the day its owner's 集章本 was first full (30 stamps);
+ * changed: a new number from si_inks_changed_seq whenever it is drawn, recalled, queues again or is
+ * sealed, always under the inn's lock, so the map's copy reads only what changed. Closing the account
+ * leaves it on the map, nobody's.
  */
 export const siInks = pgTable(
   "si_inks",
@@ -832,6 +833,7 @@ export const siInks = pgTable(
     ticket: integer("ticket"),
     publicId: uuid("public_id").notNull().unique().defaultRandom(),
     recalledAt: at("recalled_at"),
+    sealed: boolean("sealed").notNull().default(false),
     changed: bigint("changed", { mode: "number" })
       .notNull()
       .default(sql`nextval('si_inks_changed_seq')`),

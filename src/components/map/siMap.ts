@@ -99,7 +99,13 @@ const blotOf = (drawn: number): GeoJSON.FeatureCollection =>
 const inksOf = (inks: InkPoint[]): GeoJSON.FeatureCollection => ({
   type: "FeatureCollection",
   features: inks.map((p) =>
-    point(p.lng, p.lat, { icon: inkImageName(p.look, variantOf(p.state, p.left)), size: p.size, tilt: p.tilt, ink: p.ink, lying: p.state === 2 ? 1 : 0 }),
+    point(p.lng, p.lat, {
+      icon: inkImageName(p.look, variantOf(p.state, p.left), p.sealed),
+      size: p.size,
+      tilt: p.tilt,
+      ink: p.ink,
+      lying: p.state === 2 ? 1 : 0,
+    }),
   ),
 });
 
@@ -283,25 +289,25 @@ function putImage(map: MaplibreMap, name: string, c: HTMLCanvasElement) {
   else map.addImage(name, data, ratio);
 }
 
-const INK_NAMES = new Set(INK_LOOKS.flatMap((look) => INK_VARIANTS.map((v) => inkImageName(look, v))));
+/** Each look each way, with her seal and without */
+const INK_KINDS = INK_LOOKS.flatMap((look) => INK_VARIANTS.flatMap((v) => [false, true].map((sealed) => ({ look, v, sealed }))));
+const INK_NAMES = new Set(INK_KINDS.map((k) => inkImageName(k.look, k.v, k.sealed)));
 /** The ink roaches' pictures being made for a map */
 const inksComing = new WeakMap<MaplibreMap, Promise<void>>();
 
-/** The ink roaches' pictures, every look each way (five downloads, held after) */
+/** The ink roaches' pictures, every look each way, sealed or not (five downloads, held after) */
 function addInkImages(map: MaplibreMap) {
   let p = inksComing.get(map);
   if (!p) {
     p = Promise.all(
-      INK_LOOKS.flatMap((look) =>
-        INK_VARIANTS.map(async (v) => {
-          const c = await inkCanvas(look, v, INK_PX * 2).catch(() => null);
-          try {
-            if (c) putImage(map, inkImageName(look, v), c);
-          } catch {
-            // the map is gone
-          }
-        }),
-      ),
+      INK_KINDS.map(async ({ look, v, sealed }) => {
+        const c = await inkCanvas(look, v, INK_PX * 2, undefined, sealed).catch(() => null);
+        try {
+          if (c) putImage(map, inkImageName(look, v, sealed), c);
+        } catch {
+          // the map is gone
+        }
+      }),
     ).then(() => {
       inksComing.delete(map);
     });
@@ -363,7 +369,7 @@ const mineSeq = new WeakMap<MaplibreMap, number>();
 async function drawMine(map: MaplibreMap, mine: SiMine) {
   const seq = (mineSeq.get(map) ?? 0) + 1;
   mineSeq.set(map, seq);
-  const c = await inkCanvas(mine.look, mine.variant, INK_PX * 2, mine.color).catch(() => null);
+  const c = await inkCanvas(mine.look, mine.variant, INK_PX * 2, mine.color, mine.sealed).catch(() => null);
   if (!c || mineSeq.get(map) !== seq) return;
   const left = mine.brushFrom === null ? 0 : BRUSH_MS - (Date.now() - mine.brushFrom);
   if (left <= 0 || prefersReducedMotion()) {

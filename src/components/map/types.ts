@@ -140,13 +140,15 @@ export type SiMapData = {
 
 /**
  * Your own ink roach, ringed in your colour (colour), where it is now: its look and which way it is drawn
- * (inkArt.ts), its brush (siInn.ts brushOf); brushFrom: she is drawing it in just now, since then (ms)
+ * (inkArt.ts), whether it bears her seal, its brush (siInn.ts brushOf); brushFrom: she is drawing it in just
+ * now, since then (ms)
  */
 export type SiMine = {
   at: LngLat;
   look: RoachAvatar;
   variant: InkVariant;
   color: RoachColor;
+  sealed: boolean;
   size: number;
   tilt: number;
   ink: number;

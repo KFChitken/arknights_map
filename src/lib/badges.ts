@@ -1193,6 +1193,26 @@ export const BADGES: Badge[] = [
     pictureArt: "badge-siinn",
   },
   {
+    id: "sibook",
+    get name() {
+      return T.lib.badges.sibook.name;
+    },
+    code: "GD-SI-BOOK",
+    series: "guides",
+    get condition() {
+      return T.lib.badges.sibook.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.sibook.lockedHint;
+    },
+    // her line at the 30th stamp (src/lib/si.ts STAMP_MILESTONES), word for word
+    get quote() {
+      return T.lib.si.milestone30;
+    },
+    pill: { background: "#fbe9e4", color: "#b8321f", border: "1.5px solid #d9472b" },
+    pictureArt: "badge-sibook",
+  },
+  {
     id: "fullsquad",
     get name() {
       return T.lib.badges.fullsquad.name;

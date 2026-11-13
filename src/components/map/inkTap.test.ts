@@ -4,11 +4,26 @@ import { inkTappedAt } from "./inkTap";
 import { INK_PX, INK_SIZE, interp, NEAR_FROM } from "./siLook";
 import type { SiMapData } from "./types";
 
-const ink = (lng: number, size = 1, tap = 7): InkPoint => ({ lng, lat: 30, look: 0, state: 1, left: false, size, tilt: 0, ink: 0.8, x: 0, y: 0, fx: 0, fy: 0, tap });
+const ink = (lng: number, size = 1, tap = 7): InkPoint => ({
+  lng,
+  lat: 30,
+  look: 0,
+  state: 1,
+  left: false,
+  sealed: false,
+  size,
+  tilt: 0,
+  ink: 0.8,
+  x: 0,
+  y: 0,
+  fx: 0,
+  fy: 0,
+  tap,
+});
 const si = (inks: InkPoint[], mineAt: number | null = null): SiMapData => ({
   inn: null,
   inks,
-  mine: mineAt === null ? null : { at: { lng: mineAt, lat: 30 }, look: "hood", variant: "standL", color: "cyan", size: 1, tilt: 0, ink: 0.9, brushFrom: null },
+  mine: mineAt === null ? null : { at: { lng: mineAt, lat: 30 }, look: "hood", variant: "standL", color: "cyan", sealed: false, size: 1, tilt: 0, ink: 0.9, brushFrom: null },
   tier: 0,
   innKey: "",
   inksKey: 0,

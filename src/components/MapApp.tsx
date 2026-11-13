@@ -3698,7 +3698,18 @@ export default function MapApp({
     if (!siInk) return null;
     const w = inkNow(siInk, siCheckedIn, Date.now() + siShift);
     const b = brushOf(siInk.inkNo);
-    return { at: w.at, look: siInk.look, variant: variantOf(w.state, w.left), color: myColor, size: b.size, tilt: b.tilt, ink: b.ink, brushFrom: siBrushFrom };
+    return {
+      at: w.at,
+      look: siInk.look,
+      variant: variantOf(w.state, w.left),
+      color: myColor,
+      // none from a server from before her seal, while the site is being updated
+      sealed: siInk.sealed === true,
+      size: b.size,
+      tilt: b.tilt,
+      ink: b.ink,
+      brushFrom: siBrushFrom,
+    };
     // siTick: its check-in or check-out came
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siInk, siCheckedIn, siShift, myColor, siBrushFrom, siTick]);
@@ -3709,7 +3720,7 @@ export default function MapApp({
     const t = window.setTimeout(() => setSiTick((n) => n + 1), Math.max(0, siNext - (Date.now() + siShift)) + 500);
     return () => window.clearTimeout(t);
   }, [siNext, siShift]);
-  const siMineKey = siMine ? `${siMine.at.lng},${siMine.at.lat},${siMine.look},${siMine.variant},${siMine.color},${siMine.brushFrom}` : "";
+  const siMineKey = siMine ? `${siMine.at.lng},${siMine.at.lat},${siMine.look},${siMine.variant},${siMine.color},${siMine.sealed},${siMine.brushFrom}` : "";
   const siTier = paintingTier(siState?.today ?? 0);
   const siMap = useMemo<SiMapData>(
     () => ({

@@ -56,7 +56,7 @@ export type InkGl = {
 /** The pictures' cells: 128 px squares, 8 × 8 of them */
 const CELL = 128;
 const GRID = 8;
-/** Each look's four ways (inkArt.ts INK_VARIANTS), looks in ROACH_AVATARS' order */
+/** Each look's four ways (inkArt.ts INK_VARIANTS), looks in ROACH_AVATARS' order; with her seal from C_SEALED */
 const C_INK = 0;
 const C_TREE = 20;
 const C_SIGN = 21;
@@ -66,6 +66,7 @@ const C_ROLLED = 23;
 const C_SCROLL = 24;
 /** Plus the frame */
 const C_FLY = 29;
+const C_SEALED = 32;
 /** Worked out by the GPU: a dot (MapLibre's circle-blur 0.4) and the blot (0.85) */
 const C_DOT = -1;
 const C_BLOT = -2;
@@ -172,12 +173,16 @@ function atlas() {
 }
 
 let inksMade: Promise<void> | null = null;
-/** The ink roaches' pictures into their cells of the atlas, only once the map shows some close up: five downloads */
+/** The ink roaches' pictures into their cells of the atlas, sealed and not, only once the map shows some close up: five downloads */
 function atlasInks() {
   inksMade ??= (async () => {
     const c = await atlas();
-    const inks = await Promise.all(INK_LOOKS.flatMap((look) => INK_VARIANTS.map((v) => inkCanvas(look, v, CELL).catch(() => null))));
+    const kinds = INK_LOOKS.flatMap((look) => INK_VARIANTS.map((v) => [look, v] as const));
+    const [inks, sealed] = await Promise.all(
+      [false, true].map((seal) => Promise.all(kinds.map(([look, v]) => inkCanvas(look, v, CELL, undefined, seal).catch(() => null)))),
+    );
     inks.forEach((pic, i) => putCell(c, C_INK + i, pic, true));
+    sealed.forEach((pic, i) => putCell(c, C_SEALED + i, pic, true));
   })();
   inksMade.catch(() => {
     inksMade = null;
@@ -185,7 +190,8 @@ function atlasInks() {
   return inksMade;
 }
 
-const inkCell = (look: number, state: number, left: boolean) => C_INK + look * 4 + INK_VARIANTS.indexOf(variantOf(state, left));
+const inkCell = (look: number, state: number, left: boolean, sealed: boolean) =>
+  (sealed ? C_SEALED : C_INK) + look * 4 + INK_VARIANTS.indexOf(variantOf(state, left));
 const RAD = Math.PI / 180;
 
 /** One kind of thing drawn: its points, as they go to the GPU */
@@ -252,7 +258,7 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
   const drawMine = (mine: SiMine) => {
     const seq = mineSeq;
     mineAsked = true;
-    void inkCanvas(mine.look, mine.variant, CELL, mine.color)
+    void inkCanvas(mine.look, mine.variant, CELL, mine.color, mine.sealed)
       .then((c) => {
         if (seq !== mineSeq) return;
         minePic = c;
@@ -535,7 +541,7 @@ export function inkGl(AMap: AMapNS, map: AMapNS, opts: { zIndex: number; zoomOff
         inks.map((p): [number, number] => [p.lng, p.lat]),
         (i, d, o) => {
           const p = inks[i];
-          d[o + 2] = inkCell(p.look, p.state, p.left);
+          d[o + 2] = inkCell(p.look, p.state, p.left, p.sealed);
           d[o + 3] = INK_PX * p.size;
           d[o + 4] = p.tilt * RAD;
           d[o + 5] = INK_OPACITY * p.ink;

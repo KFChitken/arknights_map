@@ -13,8 +13,8 @@ import { siNow } from "./siClock";
  * tickets in memory, adds only what is new or changed every half minute (new tickets by number; inks by
  * si_inks.changed, so a recall or a return to the queue shows too; an ink's latest ticket comes with the
  * ticket), works out where each one is from them (src/lib/siInn.ts, src/lib/siHomes.ts) and sorts them
- * into tiles, each sent as a few bytes an ink: where, which look, standing or lying, which way, its brush,
- * and the number it is tapped by. Held ones (recalled, or waiting for room among their owner's clones) are
+ * into tiles, each sent as a few bytes an ink: where, which look, standing or lying, which way, her seal on
+ * it or not, its brush, and the number it is tapped by. Held ones (recalled, or waiting for room among their owner's clones) are
  * off the map. No ink numbers or owners: two players asking for the same tile get the same bytes.
  */
 
@@ -26,11 +26,12 @@ export type Snapshot = {
   lastNo: number;
   lastN: number;
   lastChanged: number;
-  /** By ink number: look (index into ROACH_AVATARS), latest ticket, tap number (siTiles.ts tapOf), held (1) or not */
+  /** By ink number: look (index into ROACH_AVATARS), latest ticket, tap number (siTiles.ts tapOf), held (1) or not, sealed (1) or not */
   look: Uint8Array;
   ticket: Uint32Array;
   tap: Uint32Array;
   held: Uint8Array;
+  sealed: Uint8Array;
   /** By ticket number: when it got (or gets) its room, in seconds */
   checkin: Float64Array;
 };
@@ -44,6 +45,7 @@ export const emptySnapshot = (): Snapshot => ({
   ticket: new Uint32Array(1024),
   tap: new Uint32Array(1024),
   held: new Uint8Array(1024),
+  sealed: new Uint8Array(1024),
   checkin: new Float64Array(1024),
 });
 
@@ -62,7 +64,7 @@ const grow = <T extends Uint8Array | Uint32Array | Float64Array>(a: T, size: num
   return b;
 };
 
-type InkRow = { no: number; look: string; publicId: string; held: boolean; changed: number };
+type InkRow = { no: number; look: string; publicId: string; held: boolean; sealed: boolean; changed: number };
 type TicketRow = { n: number; inkNo: number; checkinAt: Date };
 
 /**
@@ -78,11 +80,13 @@ export function addToSnapshot(s: Snapshot, inks: InkRow[], tickets: TicketRow[])
     s.ticket = grow(s.ticket, top, (n) => new Uint32Array(n));
     s.tap = grow(s.tap, top, (n) => new Uint32Array(n));
     s.held = grow(s.held, top, (n) => new Uint8Array(n));
+    s.sealed = grow(s.sealed, top, (n) => new Uint8Array(n));
   }
   for (const i of inks) {
     s.look[i.no] = Math.max(0, LOOKS.indexOf(i.look));
     s.tap[i.no] = tapOf(i.publicId);
     s.held[i.no] = i.held ? 1 : 0;
+    s.sealed[i.no] = i.sealed ? 1 : 0;
     if (i.no > s.lastNo) s.lastNo = i.no;
     if (i.changed > s.lastChanged) s.lastChanged = i.changed;
   }
@@ -121,12 +125,20 @@ async function refresh() {
       publicId: siInks.publicId,
       ticket: siInks.ticket,
       recalledAt: siInks.recalledAt,
+      sealed: siInks.sealed,
       changed: siInks.changed,
     })
     .from(siInks)
     .where(gt(siInks.changed, snap.lastChanged))
     .orderBy(siInks.changed);
-  const inks = rows.map((r) => ({ no: r.no, look: r.look, publicId: r.publicId, held: r.ticket === null || r.recalledAt !== null, changed: r.changed }));
+  const inks = rows.map((r) => ({
+    no: r.no,
+    look: r.look,
+    publicId: r.publicId,
+    held: r.ticket === null || r.recalledAt !== null,
+    sealed: r.sealed,
+    changed: r.changed,
+  }));
   addToSnapshot(snap, inks, tickets);
   if (inks.length || tickets.length) {
     tiles = null;
@@ -174,6 +186,9 @@ function placeOf(no: number, t: number, inBy: number) {
   return { state, spot };
 }
 
+/** Numbers an ink roach takes in a tile's list, as sortIntoTiles gathers them */
+const EACH = 10;
+
 /** Every ink roach where it is at her clock's `now`, sorted into tiles */
 function sortIntoTiles(now: number) {
   const t = now / 1000;
@@ -187,22 +202,23 @@ function sortIntoTiles(now: number) {
     const b = brushOf(no);
     let list = lists.get(key);
     if (!list) lists.set(key, (list = []));
-    list.push(fx, fy, snap.look[no], p.state, p.spot.left ? 1 : 0, b.size, b.tilt, b.ink, snap.tap[no]);
+    list.push(fx, fy, snap.look[no], p.state, p.spot.left ? 1 : 0, snap.sealed[no], b.size, b.tilt, b.ink, snap.tap[no]);
   }
   const byKey = new Map<string, Uint8Array>();
   for (const [key, list] of lists) {
-    const out = new Uint8Array((list.length / 9) * INK_BYTES);
-    for (let i = 0, k = 0; i < list.length; i += 9, k++) {
+    const out = new Uint8Array((list.length / EACH) * INK_BYTES);
+    for (let i = 0, k = 0; i < list.length; i += EACH, k++) {
       encodeInk(out, k * INK_BYTES, {
         fx: list[i],
         fy: list[i + 1],
         look: list[i + 2],
         state: list[i + 3],
         left: list[i + 4] === 1,
-        size: list[i + 5],
-        tilt: list[i + 6],
-        ink: list[i + 7],
-        tap: list[i + 8],
+        sealed: list[i + 5] === 1,
+        size: list[i + 6],
+        tilt: list[i + 7],
+        ink: list[i + 8],
+        tap: list[i + 9],
       });
     }
     byKey.set(key, out);

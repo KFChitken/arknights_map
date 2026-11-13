@@ -2110,6 +2110,11 @@ export const zh = {
         lockedHint: "排到你，住进缘缘庄",
         quote: "被子是新晒的，才、才不是为你晒的。",
       },
+      sibook: {
+        name: "再给你加几页",
+        condition: "集章本头一回盖满 30 个章",
+        lockedHint: "每天碰祀一下，盖满一本",
+      },
       fullsquad: {
         name: "满编小队",
         condition: "认识的 4 枚都拿到",

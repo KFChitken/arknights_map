@@ -3,9 +3,10 @@ import type { LngLat } from "./types";
 /**
  * 缘缘庄's ink roaches as the map asks for them close up (GET /api/si/ink, src/lib/server/siInk.ts): by Web
  * Mercator tiles at INK_TILE_ZOOM (about 270 m across at 宏村), each ink roach in INK_BYTES bytes: where in
- * the tile (to a centimetre), its look, whether it queues, stays or lies outside, which way it faces, the
- * little differences that make it look painted by hand, and the number it is tapped by (the first four bytes
- * of its public id, which the server answers for: the same for everyone, and nothing of whose it is).
+ * the tile (to a centimetre), its look, whether it queues, stays or lies outside, which way it faces, whether
+ * it bears her seal, the little differences that make it look painted by hand, and the number it is tapped by
+ * (the first four bytes of its public id, which the server answers for: the same for everyone, and nothing of
+ * whose it is). Pages from before the seal leave its bit alone.
  * The page asks for them with v=INK_TILE_V, which the answer repeats in its x-ink-v header; a page from before
  * the tap number, still open after the site is updated, asks without it and gets the OLD_INK_BYTES it reads.
  */
@@ -59,6 +60,8 @@ export type InkCell = {
   state: number;
   /** Facing left on screen (standing), or its head to the left (lying) */
   left: boolean;
+  /** Her red 「祀」 seal on its back: its owner's 集章本 was full once (src/lib/server/si.ts) */
+  sealed: boolean;
   /** Its brush (siInn.ts brushOf): size 0.9–1.1, tilt −8–8°, ink 0.7–1 */
   size: number;
   tilt: number;
@@ -77,7 +80,7 @@ export function encodeInk(out: Uint8Array, at: number, c: InkCell) {
   out[at + 1] = x >> 8;
   out[at + 2] = y & 255;
   out[at + 3] = y >> 8;
-  out[at + 4] = (c.look & 7) | ((c.state & 3) << 3) | (c.left ? 32 : 0);
+  out[at + 4] = (c.look & 7) | ((c.state & 3) << 3) | (c.left ? 32 : 0) | (c.sealed ? 64 : 0);
   out[at + 5] = u8((c.size - 0.9) / 0.2);
   out[at + 6] = u8((c.tilt + 8) / 16);
   out[at + 7] = u8((c.ink - 0.7) / 0.3);
@@ -103,6 +106,7 @@ export function decodeInk(bytes: Uint8Array, at: number): InkCell {
     look: f & 7,
     state: (f >> 3) & 3,
     left: (f & 32) !== 0,
+    sealed: (f & 64) !== 0,
     size: 0.9 + (bytes[at + 5] / 255) * 0.2,
     tilt: -8 + (bytes[at + 6] / 255) * 16,
     ink: 0.7 + (bytes[at + 7] / 255) * 0.3,
@@ -120,6 +124,7 @@ export type InkPoint = {
   look: number;
   state: InkState;
   left: boolean;
+  sealed: boolean;
   size: number;
   tilt: number;
   ink: number;
@@ -142,6 +147,7 @@ export function decodeTile(x: number, y: number, z: number, bytes: Uint8Array): 
       look: c.look,
       state: c.state as InkState,
       left: c.left,
+      sealed: c.sealed,
       size: c.size,
       tilt: c.tilt,
       ink: c.ink,

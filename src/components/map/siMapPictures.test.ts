@@ -53,7 +53,17 @@ function fakeMap() {
 const asMap = (m: ReturnType<typeof fakeMap>) => m as unknown as MaplibreMap;
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
-const mine: NonNullable<SiMapData["mine"]> = { at: { lng: 117.9841, lat: 30.0041 }, look: "gugu", variant: "standL", color: "pink", size: 1, tilt: 0, ink: 1, brushFrom: null };
+const mine: NonNullable<SiMapData["mine"]> = {
+  at: { lng: 117.9841, lat: 30.0041 },
+  look: "gugu",
+  variant: "standL",
+  color: "pink",
+  sealed: false,
+  size: 1,
+  tilt: 0,
+  ink: 1,
+  brushFrom: null,
+};
 const si: SiMapData = { inn: null, inks: [], mine, tier: 0, innKey: "", inksKey: 0, mineKey: "" };
 const ink = (name: string) => name.startsWith("si-ink-");
 
@@ -76,11 +86,14 @@ describe("缘缘庄's pictures on MapLibre", () => {
     map.missing("si-ink-hood-standR");
     expect(map.images.get("si-ink-hood-standR")).toEqual({ width: 64, height: 64 });
     map.missing("si-ink-imp-lieL");
-    // five looks each four ways, asked for once however many are missing
-    expect(inkCanvas).toHaveBeenCalledTimes(20);
+    map.missing("si-ink-gugu-lieR-sealed");
+    // five looks each four ways, with her seal and without, asked for once however many are missing
+    expect(inkCanvas).toHaveBeenCalledTimes(40);
+    expect(inkCanvas).toHaveBeenCalledWith("gugu", "lieR", 64, undefined, true);
+    expect(inkCanvas).toHaveBeenCalledWith("gugu", "lieR", 64, undefined, false);
     await settle();
-    expect([...map.images.keys()].filter(ink)).toHaveLength(20);
-    expect(map.updateImage.mock.calls.map(([id]) => id).sort()).toEqual(["si-ink-hood-standR", "si-ink-imp-lieL"]);
+    expect([...map.images.keys()].filter(ink)).toHaveLength(40);
+    expect(map.updateImage.mock.calls.map(([id]) => id).sort()).toEqual(["si-ink-gugu-lieR-sealed", "si-ink-hood-standR", "si-ink-imp-lieL"]);
   });
 
   it("draws your own when the map asks for it, and again at once when it changes", async () => {
@@ -88,11 +101,14 @@ describe("缘缘庄's pictures on MapLibre", () => {
     addMaplibreSi(asMap(map), si);
     map.missing("si-mine");
     expect(map.images.get("si-mine")).toEqual({ width: 64, height: 64 });
-    expect(inkCanvas).toHaveBeenCalledWith("gugu", "standL", 64, "pink");
+    expect(inkCanvas).toHaveBeenCalledWith("gugu", "standL", 64, "pink", false);
     await settle();
     expect(map.updateImage).toHaveBeenCalledWith("si-mine", expect.anything());
     setMaplibreSi(asMap(map), { ...si, mine: { ...mine, variant: "lieR" } }, { mine: true });
-    expect(inkCanvas).toHaveBeenLastCalledWith("gugu", "lieR", 64, "pink");
+    expect(inkCanvas).toHaveBeenLastCalledWith("gugu", "lieR", 64, "pink", false);
+    // her seal on it, the day the 集章本 is full
+    setMaplibreSi(asMap(map), { ...si, mine: { ...mine, variant: "lieR", sealed: true } }, { mine: true });
+    expect(inkCanvas).toHaveBeenLastCalledWith("gugu", "lieR", 64, "pink", true);
   });
 
   it("leaves other missing pictures alone, and asks once a map however often its style is made", async () => {
@@ -104,7 +120,7 @@ describe("缘缘庄's pictures on MapLibre", () => {
     map.images.clear();
     addMaplibreSi(asMap(map), si);
     map.missing("si-ink-doctor-standL");
-    expect(inkCanvas).toHaveBeenCalledTimes(20);
+    expect(inkCanvas).toHaveBeenCalledTimes(40);
     await settle();
   });
 });

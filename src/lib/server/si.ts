@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { and, desc, eq, gt, gte, isNotNull, isNull, lte, max, sql } from "drizzle-orm";
 import { T } from "@/i18n";
 import { MAX_CLONES } from "../rules";
-import { answerKind, deviceHour, paintingStart, RECALL_REST_MS, SI, SI_LINES, siRoach, stampAt } from "../si";
+import { answerKind, deviceHour, paintingStart, RECALL_REST_MS, SI, SI_LINES, siRoach, stampAt, STAMPS_PER_ROUND } from "../si";
 import { homeSpot, homesReach } from "../siHomes";
 import { ROOMS, roomOf, STAY_MS, toLngLat } from "../siInn";
 import { tapOf } from "../siTiles";
@@ -90,14 +90,14 @@ type Ticket = { n: number; checkinAt: Date };
 
 /** Where an ink roach is at `now`, by its latest ticket: held off the map once recalled, or without one */
 function inkState(
-  ink: { no: number; look: string; publicId: string; recalledAt: Date | null },
+  ink: { no: number; look: string; publicId: string; recalledAt: Date | null; sealed: boolean },
   ticket: Ticket | null,
   checkedIn: number,
   now: number,
 ): SiInk {
   const look = (ROACH_AVATARS as readonly string[]).includes(ink.look) ? (ink.look as RoachAvatar) : "hood";
   const h = homeSpot(ink.no);
-  const at = { inkNo: ink.no, look, home: toLngLat(h.x, h.y), tap: tapOf(ink.publicId) };
+  const at = { inkNo: ink.no, look, home: toLngLat(h.x, h.y), tap: tapOf(ink.publicId), sealed: ink.sealed };
   if (!ticket || ink.recalledAt) return { state: "held", ...at, recalledAt: ink.recalledAt?.getTime() ?? null, checkoutAt: 0 };
   const inAt = ticket.checkinAt.getTime();
   if (inAt > now) return { state: "queue", ...at, n: ticket.n, place: Math.max(1, ticket.n - checkedIn), checkinAt: inAt };
@@ -113,6 +113,7 @@ async function inkOf(exec: Exec, userId: string) {
       look: siInks.look,
       publicId: siInks.publicId,
       recalledAt: siInks.recalledAt,
+      sealed: siInks.sealed,
       n: siTickets.n,
       checkinAt: siTickets.checkinAt,
     })
@@ -134,6 +135,20 @@ const hadRoom = (ink: { recalledAt: Date | null } & { n: number | null; checkinA
 
 /** A new number for si_inks.changed, under the inn's lock (src/lib/server/siInk.ts reads by it) */
 const nextChanged = sql`nextval('si_inks_changed_seq')`;
+
+/**
+ * Her seal on an ink roach, as its owner's 集章本 is first full (touchBack): for good, held off the map or not, with
+ * a new `changed` under the inn's lock, so the map's copy reads it. Whether it was sealed just now.
+ */
+async function sealInk(tx: Exec, inkNo: number) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('si-inn'))`);
+  const done = await tx
+    .update(siInks)
+    .set({ sealed: true, changed: nextChanged })
+    .where(and(eq(siInks.no, inkNo), eq(siInks.sealed, false)))
+    .returning({ no: siInks.no });
+  return done.length > 0;
+}
 
 /** Whether their ink roach is on the map (queuing, staying or lying outside), where it is one of their MAX_CLONES clones */
 export async function inkOnMap(exec: Exec, userId: string) {
@@ -220,7 +235,7 @@ async function innAfterTouch(
       .insert(siInks)
       .values({ no: inkNo, userId: u.id, look: drawnLook, drawnAt: new Date(now), ticket: null })
       .returning({ publicId: siInks.publicId });
-    return nothing("full", inkState({ no: inkNo, look: drawnLook, publicId: drawn.publicId, recalledAt: null }, null, 0, now), true);
+    return nothing("full", inkState({ no: inkNo, look: drawnLook, publicId: drawn.publicId, recalledAt: null, sealed: false }, null, 0, now), true);
   }
   // a returning guest only once it really had a room, not after a place in the queue it was recalled from
   const again = Boolean(u.stayedAt) || (ink !== null && hadRoom(ink, now));
@@ -254,7 +269,7 @@ async function innAfterTouch(
   }
   const checkedIn = straightIn ? given.n : await checkedInBy(tx, now);
   const you = inkState(
-    { no: inkNo, look: ink?.look ?? drawnLook, publicId, recalledAt: null },
+    { no: inkNo, look: ink?.look ?? drawnLook, publicId, recalledAt: null, sealed: ink?.sealed ?? false },
     { n: given.n, checkinAt: new Date(given.checkinAt) },
     checkedIn,
     now,
@@ -328,7 +343,8 @@ export async function inkSeen(by: { no: number } | { publicId: string }): Promis
  * The player touches her, maybe answering one of hers: the first touch of their day she answers at
  * once, the same way they touched her, and stamps their 集章本; the rest of the day not. Their first
  * bold touch makes them 触须之交, answered whenever it comes, and the first time it does she gives them a
- * portrait. Every touch, answered or not, sees to their ink roach at 缘缘庄.
+ * portrait. Every touch, answered or not, sees to their ink roach at 缘缘庄; the stamp that fills their 集章本
+ * (STAMPS_PER_ROUND) puts her seal on it and gives them 再给你加几页.
  */
 async function touchBack(userId: string, bold: boolean, replyTo: string | null, offsetMin?: unknown): Promise<TouchResult> {
   const now = siNow();
@@ -342,6 +358,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     stamp: { stamp: number; stamps: number } | null;
     portrait: "right" | "wrong" | null;
     inn: { event: InnEvent; you: SiInk };
+    sealed: boolean;
   };
   try {
     done = await db.transaction(async (tx) => {
@@ -395,7 +412,18 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
       });
       if (stamp && answer) await tx.update(users).set({ siStamps: stamp.stamps, siStampedOn: day.day }).where(eq(users.id, userId));
       const inn = await innAfterTouch(tx, { id: userId, avatar: u.avatar, stayedAt: u.stayedAt }, now);
-      return { id: answer?.id ?? null, friend, kind, variant, stamp: answer ? stamp : null, portrait, inn };
+      // the 集章本 full (第 30 个章): her seal on their ink roach, for everyone to see on the map
+      const sealed = Boolean(stamp && answer && stamp.stamps >= STAMPS_PER_ROUND && !inn.you.sealed) && (await sealInk(tx, inn.you.inkNo));
+      return {
+        id: answer?.id ?? null,
+        friend,
+        kind,
+        variant,
+        stamp: answer ? stamp : null,
+        portrait,
+        inn: sealed ? { ...inn, you: { ...inn.you, sealed: true } } : inn,
+        sealed,
+      };
     });
   } catch (e) {
     // two answers to the same one of hers at once: reply_to is unique, so one fails
@@ -405,6 +433,9 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
   const { event, you } = done.inn;
   if (event.queuedNow) await award(userId, ["siqueue"]);
   if (event.stayedNow) await award(userId, ["siinn"]);
+  // 再给你加几页 for the full 集章本; given again (to no effect) with every stamp after, should the first have been missed
+  if (done.stamp && done.stamp.stamps >= STAMPS_PER_ROUND) await award(userId, ["sibook"]);
+  if (done.sealed) inksChanged();
   const inn = { drawn: event.drawn, event: event.event, room: event.room, place: event.place };
   return {
     newFriend: done.friend ? SI.name : null,

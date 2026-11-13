@@ -1,0 +1,1 @@
+ALTER TABLE "si_inks" ADD COLUMN "sealed" boolean DEFAULT false NOT NULL;

@@ -334,6 +334,8 @@ export type SiInk = (
   home: LngLat;
   /** The number its tiles tap it by (src/lib/siTiles.ts tapOf), so the page draws it once, its own way */
   tap: number;
+  /** Her red 「祀」 seal on its back, since the 集章本 was first full */
+  sealed: boolean;
 };
 
 /**

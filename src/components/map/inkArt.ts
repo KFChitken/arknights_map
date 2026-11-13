@@ -7,8 +7,9 @@ import { INK, RING_PAD } from "./siLook";
 /**
  * The pictures of 祀掌柜's corner of the map, drawn once on a canvas each, for both maps: 墨小强, the ink
  * roaches she draws (src/lib/siInn.ts), each of the five ink pictures (public/avatars/ink-<look>.webp, 256 px,
- * feet at the bottom) standing facing either way, or lying on its side head left or right, and your own ringed
- * in your colour; the inn's trees and sign; her scroll, rolled or open with today's painting; her butterflies.
+ * feet at the bottom) standing facing either way, or lying on its side head left or right, with her red seal on
+ * its back or without, and your own ringed in your colour; the inn's trees and sign; her scroll, rolled or open
+ * with today's painting; her butterflies.
  */
 
 export const INK_LOOKS = ROACH_AVATARS;
@@ -24,6 +25,73 @@ const SPAN: Record<RoachAvatar, [number, number]> = {
   gugu: [57, 199],
 };
 
+/**
+ * Her seal on one whose owner's 集章本 was full (as the design's ink-seal.svg, 24 × 24): red, a cream frame inside,
+ * 「祀」 cut out of it, outlined (Noto Sans SC Black), so no font is needed
+ */
+const SEAL_COLORS = { red: "#c8321e", paper: "#fbf1e3", edge: "#1b1d22" };
+const SEAL_GLYPH = "M6.24 9.22H10.03V10.86H6.24ZM7.87 13.82 9.64 11.71V19.07H7.87ZM9.53 12.1Q9.68 12.2 9.95 12.44Q10.22 12.67 10.51 12.94Q10.81 13.21 11.06 13.45Q11.31 13.69 11.42 13.79L10.33 15.27Q10.17 15.02 9.94 14.71Q9.7 14.39 9.45 14.07Q9.2 13.75 8.96 13.46Q8.73 13.18 8.54 12.98ZM9.48 9.22H9.84L10.14 9.16L11.08 9.84Q10.63 11.04 9.9 12.15Q9.17 13.26 8.27 14.15Q7.37 15.05 6.43 15.62Q6.38 15.36 6.27 14.99Q6.15 14.62 6.03 14.27Q5.9 13.92 5.79 13.74Q6.59 13.33 7.33 12.66Q8.06 12 8.63 11.18Q9.19 10.37 9.48 9.53ZM7.37 7.78 8.8 7Q9.15 7.39 9.48 7.89Q9.82 8.38 9.99 8.76L8.49 9.65Q8.35 9.26 8.02 8.74Q7.7 8.21 7.37 7.78ZM12.43 11.97H16.44V13.62H12.43ZM11.51 7.89H13.34V16.21Q13.34 16.59 13.38 16.76Q13.42 16.94 13.56 17Q13.71 17.05 13.99 17.05Q14.08 17.05 14.24 17.05Q14.4 17.05 14.6 17.05Q14.8 17.05 15 17.05Q15.2 17.05 15.36 17.05Q15.51 17.05 15.59 17.05Q15.86 17.05 16.01 16.91Q16.15 16.78 16.22 16.42Q16.29 16.06 16.34 15.38Q16.65 15.6 17.14 15.81Q17.62 16.02 18.01 16.1Q17.91 17.08 17.67 17.66Q17.43 18.24 16.98 18.51Q16.53 18.77 15.78 18.77Q15.65 18.77 15.45 18.77Q15.25 18.77 15 18.77Q14.75 18.77 14.5 18.77Q14.26 18.77 14.06 18.77Q13.86 18.77 13.74 18.77Q12.9 18.77 12.41 18.55Q11.92 18.33 11.72 17.77Q11.51 17.22 11.51 16.2ZM12.51 7.89H17.28V14.18H15.49V9.54H12.51Z";
+/**
+ * Where its middle sits on each figure (px of 256, the picture as it faces), low on its back as the design shows,
+ * and how wide it is (of the picture): smaller on the slight figures than on the round hood
+ */
+const SEAL_AT: Record<RoachAvatar, [number, number, number]> = {
+  hood: [190, 210, 0.2],
+  doctor: [142, 178, 0.17],
+  endmin: [148, 182, 0.17],
+  imp: [136, 178, 0.17],
+  gugu: [150, 196, 0.17],
+};
+/** How it is turned (degrees; the other way round on a figure facing the other way) */
+const SEAL_TILT = -12;
+
+let sealPath: Path2D | null = null;
+/** The seal, its middle at x, y, size px wide, turned tilt degrees */
+function drawSeal(g: CanvasRenderingContext2D, x: number, y: number, size: number, tilt: number) {
+  g.save();
+  g.translate(x, y);
+  g.rotate((tilt * Math.PI) / 180);
+  g.scale(size / 24, size / 24);
+  g.translate(-12, -12);
+  g.fillStyle = SEAL_COLORS.red;
+  g.strokeStyle = SEAL_COLORS.edge;
+  g.lineWidth = 1.4;
+  g.beginPath();
+  g.roundRect(2.2, 2.2, 19.6, 19.6, 2.35);
+  g.fill();
+  g.stroke();
+  g.strokeStyle = SEAL_COLORS.paper;
+  g.lineWidth = 1;
+  g.beginPath();
+  g.roundRect(4.2, 4.2, 15.6, 15.6, 1.57);
+  g.stroke();
+  g.fillStyle = SEAL_COLORS.paper;
+  g.fill((sealPath ??= new Path2D(SEAL_GLYPH)));
+  g.restore();
+}
+
+/**
+ * Where the seal goes on a figure drawn one way (inkCanvas), on a canvas px wide with the picture box px wide at
+ * pad: on its back as it stands, the same spot the other way round as it faces left; lying, as the figure is turned,
+ * on whichever side faces up. Its middle, its size, and how it is turned.
+ */
+function sealSpot(look: RoachAvatar, variant: InkVariant, px: number, pad: number, box: number) {
+  const [sx, sy, w] = SEAL_AT[look];
+  const k = box / 256;
+  const size = w * box;
+  if (variant === "standR") return { x: pad + sx * k, y: pad + sy * k, size, tilt: SEAL_TILT };
+  if (variant === "standL") return { x: px - pad - sx * k, y: pad + sy * k, size, tilt: -SEAL_TILT };
+  const [l, r] = SPAN[look];
+  const lying = ((r - l) / 256) * box;
+  const cx = px / 2;
+  const cy = px - pad - lying / 2;
+  // from the figure's middle: across it, and down the picture
+  const across = (sx - (l + r) / 2) * k;
+  const down = (sy - 128) * k;
+  // a quarter turn left takes its right side up; a quarter turn right takes its left side up, so the seal goes there
+  return variant === "lieL" ? { x: cx + down, y: cy - across, size, tilt: SEAL_TILT } : { x: cx - down, y: cy - across, size, tilt: -SEAL_TILT };
+}
+
 const url = (look: RoachAvatar) => `/avatars/ink-${look}.webp`;
 const pictures = new Map<RoachAvatar, Promise<HTMLImageElement>>();
 function picture(look: RoachAvatar) {
@@ -38,8 +106,11 @@ function picture(look: RoachAvatar) {
   return p;
 }
 
-/** One look in one way, on a square canvas px wide; ring: your colour round it, for your own (RING_PAD of room) */
-export async function inkCanvas(look: RoachAvatar, variant: InkVariant, px: number, ring?: RoachColor) {
+/**
+ * One look in one way, on a square canvas px wide; ring: your colour round it, for your own (RING_PAD of room);
+ * sealed: her seal on its back
+ */
+export async function inkCanvas(look: RoachAvatar, variant: InkVariant, px: number, ring?: RoachColor, sealed = false) {
   const img = await picture(look);
   const c = document.createElement("canvas");
   c.width = c.height = px;
@@ -64,6 +135,10 @@ export async function inkCanvas(look: RoachAvatar, variant: InkVariant, px: numb
       g.drawImage(img, -box / 2 + (box / 2 - ((l + r) / 2 / 256) * box), -box / 2, box, box);
     }
     g.restore();
+    if (sealed) {
+      const at = sealSpot(look, variant, px, pad, box);
+      drawSeal(g, at.x, at.y, at.size, at.tilt);
+    }
   };
   if (ring) {
     // the outline: the picture's shape in the colour, a little bigger all round, under it
@@ -84,9 +159,9 @@ export async function inkCanvas(look: RoachAvatar, variant: InkVariant, px: numb
   return c;
 }
 
-/** The name each look and way is registered under on a map */
-export const inkImageName = (look: number | RoachAvatar, variant: InkVariant) =>
-  `si-ink-${typeof look === "number" ? (INK_LOOKS[look] ?? "hood") : look}-${variant}`;
+/** The name each look and way, sealed or not, is registered under on a map */
+export const inkImageName = (look: number | RoachAvatar, variant: InkVariant, sealed = false) =>
+  `si-ink-${typeof look === "number" ? (INK_LOOKS[look] ?? "hood") : look}-${variant}${sealed ? "-sealed" : ""}`;
 
 /** Which way an ink roach is drawn: standing (queuing or in a room) facing its way, or lying on its side */
 export const variantOf = (state: number, left: boolean): InkVariant => (state === 2 ? (left ? "lieL" : "lieR") : left ? "standL" : "standR");

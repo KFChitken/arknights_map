@@ -7,8 +7,11 @@ import type { SiMapData } from "./types";
 
 const si: SiMapData = {
   inn: { queue: MILESTONES.ring1, drawn: 40_000, full: true, homesReach: 600 },
-  inks: [{ lng: 117.984, lat: 30.004, look: 2, state: 2, left: true, size: 1, tilt: 3, ink: 0.8, x: 0, y: 0, fx: 0.5, fy: 0.5, tap: 1 }],
-  mine: { at: { lng: 117.9841, lat: 30.0041 }, look: "gugu", variant: "standL", color: "pink", size: 1.05, tilt: -2, ink: 0.9, brushFrom: null },
+  inks: [
+    { lng: 117.984, lat: 30.004, look: 2, state: 2, left: true, sealed: false, size: 1, tilt: 3, ink: 0.8, x: 0, y: 0, fx: 0.5, fy: 0.5, tap: 1 },
+    { lng: 117.985, lat: 30.003, look: 4, state: 0, left: false, sealed: true, size: 1, tilt: -3, ink: 0.9, x: 0, y: 0, fx: 0.6, fy: 0.4, tap: 2 },
+  ],
+  mine: { at: { lng: 117.9841, lat: 30.0041 }, look: "gugu", variant: "standL", color: "pink", sealed: true, size: 1.05, tilt: -2, ink: 0.9, brushFrom: null },
   tier: 3,
   innKey: "",
   inksKey: 0,
@@ -22,6 +25,11 @@ describe("缘缘庄 on MapLibre", () => {
       expect(errors.map((e) => e.message)).toEqual([]);
     }
     expect(validateStyleMin({ version: 8, sources: siSources(undefined), layers: siLayers(false) } as never)).toEqual([]);
+  });
+
+  it("draws each ink roach as it is, her seal on the ones whose 集章本 was full", () => {
+    const inks = (siSources(si)["si-inks"] as { data: GeoJSON.FeatureCollection }).data.features;
+    expect(inks.map((f) => f.properties?.icon)).toEqual(["si-ink-endmin-lieL", "si-ink-gugu-standR-sealed"]);
   });
 
   it("works out sizes on 高德 as MapLibre does from the same stops", () => {

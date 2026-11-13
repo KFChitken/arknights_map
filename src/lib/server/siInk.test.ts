@@ -3,7 +3,14 @@ import { ROACH_AVATARS } from "../types";
 import { addToSnapshot, emptySnapshot } from "./siInk";
 
 /** An ink as read from si_inks: on the map, changed as it was drawn */
-const ink = (no: number, look = "hood", held = false) => ({ no, look, publicId: `00000000-0000-4000-8000-${String(no).padStart(12, "0")}`, held, changed: no });
+const ink = (no: number, look = "hood", held = false) => ({
+  no,
+  look,
+  publicId: `00000000-0000-4000-8000-${String(no).padStart(12, "0")}`,
+  held,
+  sealed: false,
+  changed: no,
+});
 const inks = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ink(from + i));
 
 describe("the ink snapshot", () => {
@@ -21,6 +28,12 @@ describe("the ink snapshot", () => {
     expect(s.lastNo).toBe(1024);
     expect(s.look[1024]).toBe(ROACH_AVATARS.indexOf("gugu"));
     expect(s.ticket[1024]).toBe(1);
+    expect(s.sealed[1024]).toBe(0);
+    // its owner's 集章本 full: read again as changed, now with her seal
+    addToSnapshot(s, [{ ...ink(1024, "gugu"), sealed: true, changed: 2000 }], []);
+    expect(s.sealed[1024]).toBe(1);
+    expect(s.sealed[1023]).toBe(0);
+    expect(s.lastChanged).toBe(2000);
   });
 
   it("holds an ink's latest ticket, and grows to take thousands at once", () => {
