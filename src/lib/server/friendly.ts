@@ -29,6 +29,7 @@ import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { nudge } from "./live";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, users, visitBans, visits, type UserRow } from "./schema";
+import { countNote, countPlaced } from "./stats";
 import { arrivedAt, lockFire, seatByFire } from "./talulah";
 import { cardsOf, checkPlacement, friendIdsOf, friendKey, ownRoaches, profileOf, userById, writePlacement } from "./world";
 
@@ -119,6 +120,7 @@ export async function remindSanity(userId: string, friendId: unknown) {
       .insert(friendNotes)
       .values({ fromUserId: userId, toUserId: other.id, kind: "sanity", period: today, asleep: sleeping(other, now), createdAt: new Date(now) });
   });
+  countNote("sanity");
   nudge([other.id]);
 }
 
@@ -209,6 +211,7 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
     return rows.length > 0;
   });
   if (!made) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? fmt(T.server.friendly.actsUsedUp, { max: FRIEND_ACTS_PER_DAY }));
+  countNote(kind);
   nudge([other.id]);
   // 眠于树影之中: covered with a quilt while asleep, by this 触须之交
   if (kind === "blanket") await quilted(other.id, userId);
@@ -285,10 +288,12 @@ export async function gameAsk(userId: string, friendId: unknown, game: unknown) 
   const last = await latestNote(userId, other.id, "gameAsk", game);
   const until = last && againIn(last.createdAt, now);
   if (until) throw new WorldError(fmt(T.server.friendly.toldWait, { days: Math.ceil((until - now) / DAY) }));
-  await db
+  const [asked] = await db
     .insert(friendNotes)
     .values({ fromUserId: userId, toUserId: other.id, kind: "gameAsk", game, period: `${game}:${beijingDate(now)}`, createdAt: new Date(now) })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: friendNotes.id });
+  if (asked) countNote("gameAsk");
   nudge([other.id]);
 }
 
@@ -322,10 +327,12 @@ export async function gameWant(userId: string, friendId: unknown, game: unknown)
   const last = await latestNote(userId, other.id, "gameWant");
   const until = last && againIn(last.createdAt, now);
   if (until) throw new WorldError(fmt(T.server.friendly.toldWait, { days: Math.ceil((until - now) / DAY) }));
-  await db
+  const [wanted] = await db
     .insert(friendNotes)
     .values({ fromUserId: userId, toUserId: other.id, kind: "gameWant", game, period: beijingDate(now), createdAt: new Date(now) })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: friendNotes.id });
+  if (wanted) countNote("gameWant");
   nudge([other.id]);
 }
 
@@ -471,6 +478,8 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
     if (isUniqueViolation(e)) throw new WorldError(T.server.friendly.alreadyVisiting);
     throw e;
   }
+  countNote("visit");
+  countPlaced(placement.slot, placement.existing);
   roachesChanged();
   await arrivedAt(userId, seat);
   nudge([host.id]);

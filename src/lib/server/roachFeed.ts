@@ -149,6 +149,8 @@ type Snapshot = {
   fire: number;
   riders: number;
   players: number;
+  /** Players' clones (show roaches never count) */
+  clones: number;
   /** Main roaches asleep drunk, by public id: when they wake (and are read again) */
   drunk: Map<string, number>;
   /** The whole snapshot in each form, made when first wanted at this version */
@@ -369,6 +371,7 @@ const emptySnapshot = (n: number, now: number): Snapshot => ({
   fire: 0,
   riders: 0,
   players: 0,
+  clones: 0,
   drunk: new Map(),
   whole: {},
   diffs: new Map(),
@@ -438,6 +441,7 @@ function place(s: Snapshot, r: MapRoach) {
   if (!r.bot && isNearFire(r)) s.fire++;
   if (r.ride && !r.bot) s.riders++;
   if (!r.clone && !r.bot) s.players++;
+  if (r.clone && !r.bot) s.clones++;
 }
 function unplace(s: Snapshot, r: MapRoach) {
   const k = bucketKey(Math.floor(r.lng), Math.floor(r.lat));
@@ -460,6 +464,7 @@ function unplace(s: Snapshot, r: MapRoach) {
   if (!r.bot && isNearFire(r)) s.fire--;
   if (r.ride && !r.bot) s.riders--;
   if (!r.clone && !r.bot) s.players--;
+  if (r.clone && !r.bot) s.clones--;
 }
 
 /**
@@ -895,6 +900,20 @@ const countsOf = (s: Snapshot): FeedCounts => ({ total: s.byId.size + inksOnMap(
 export async function roachCounts(now = Date.now()): Promise<{ v: string } & FeedCounts> {
   const s = await current(now);
   return { v: s.v, ...countsOf(s) };
+}
+
+/** Players' roaches on the map by kind, for the admin's board (never sent to visitors): main roaches, clones, ink roaches, by the fire, riding */
+export async function roachKinds(now = Date.now()) {
+  const s = await current(now);
+  return { mains: s.players, clones: s.clones, inks: inksOnMap(), fire: s.fire, riders: s.riders };
+}
+
+/** Where each player's main roach stands, from the map's copy (no query), for the admin's board to count by place */
+export async function mainSpots(now = Date.now()): Promise<LngLat[]> {
+  const s = await current(now);
+  const out: LngLat[] = [];
+  for (const r of s.byId.values()) if (isPlayersMain(r)) out.push({ lng: r.lng, lat: r.lat });
+  return out;
 }
 
 // ---- f=4, 只发看得到的 (world/area.ts) ----

@@ -16,6 +16,7 @@ import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, ty
 import { roaches, siInks, siTickets, siTouches, users } from "./schema";
 import { fastForwardSi, siGlobals, siNow, siShift } from "./siClock";
 import { forgetInkSnapshot, inksChanged } from "./siInk";
+import { countInkDrawn } from "./stats";
 
 /**
  * 祀掌柜 on the server (src/lib/si.ts): her answers to each player's touches and the stamp she
@@ -431,6 +432,7 @@ async function touchBack(userId: string, bold: boolean, replyTo: string | null, 
     throw e;
   }
   const { event, you } = done.inn;
+  if (event.drawn) countInkDrawn();
   if (event.queuedNow) await award(userId, ["siqueue"]);
   if (event.stayedNow) await award(userId, ["siinn"]);
   // 再给你加几页 for the full 集章本; given again (to no effect) with every stamp after, should the first have been missed

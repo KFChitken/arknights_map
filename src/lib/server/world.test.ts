@@ -2144,16 +2144,17 @@ describe("server world", () => {
     await db.insert(friendships).values({ a, b, createdAt: at("2026-11-10T10:00+08:00") });
 
     await recordDailyTotals(Date.parse("2026-11-10T12:00+08:00"));
-    // seen within 11/04–11/10: me and other; the demo players never count
-    expect(await db.select().from(dailyTotals)).toEqual([{ day: "2026-11-10", activeWeek: 2, signups: 1, friendships: 1 }]);
+    // seen within 11/04–11/10: me and other; the demo players never count; came that day: me
+    expect(await db.select().from(dailyTotals)).toEqual([{ day: "2026-11-10", activeWeek: 2, signups: 1, friendships: 1, players: 3, visitors: 1 }]);
 
     // someone signs up a minute before midnight, after the last count of the day
     const late = await signUp("late@example.com");
     await db.update(users).set({ createdAt: at("2026-11-10T23:59+08:00") }).where(eq(users.id, late.id));
     await recordDailyTotals(Date.parse("2026-11-11T00:05+08:00"));
+    // yesterday's players counted again too, but not who came: by now some of them may have come today
     expect(await db.select().from(dailyTotals).orderBy(dailyTotals.day)).toEqual([
-      { day: "2026-11-10", activeWeek: 2, signups: 2, friendships: 1 },
-      { day: "2026-11-11", activeWeek: 1, signups: 0, friendships: 0 },
+      { day: "2026-11-10", activeWeek: 2, signups: 2, friendships: 1, players: 4, visitors: 1 },
+      { day: "2026-11-11", activeWeek: 1, signups: 0, friendships: 0, players: 4, visitors: 0 },
     ]);
   });
 

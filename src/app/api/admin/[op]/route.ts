@@ -51,6 +51,7 @@ import {
 } from "@/lib/server/admins";
 import { addAdmin, findAdminCandidate, listAdmins, removeAdmin, renameAdmin, unpauseAdmin } from "@/lib/server/adminTeam";
 import { appCountDays } from "@/lib/server/appCounts";
+import { dashboard } from "@/lib/server/dashboard";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
 import { endGray, grayState, setGray } from "@/lib/server/siteSettings";
@@ -253,6 +254,10 @@ export const POST = route(
       // 存到桌面's counts, the last 14 days
       case "appCounts":
         result = await appCountDays();
+        break;
+      // 数据看板: the site's totals, the owner's alone; asked every minute while it is open, so not logged
+      case "dashboard":
+        result = await dashboard(now);
         break;
       case "nameWords":
         result = await listNameWords(String(args[0] ?? ""));

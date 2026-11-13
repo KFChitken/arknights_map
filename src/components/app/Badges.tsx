@@ -29,7 +29,7 @@ const art = (id: string, size: number) => `/badges/${id}${size <= 32 ? "-mini" :
  * A badge's art. The 向导 ones are drawn with the guide's own picture too, which the server gives
  * only while that guide's picture is switched on; otherwise (404) the drawn one stands in.
  */
-function BadgeImg({ id, size, alt }: { id: string; size: number; alt: string }) {
+export function BadgeImg({ id, size, alt }: { id: string; size: number; alt: string }) {
   const picture = badgeById(id)?.pictureArt;
   const drawn = art(id, size);
   const [src, setSrc] = useState(picture ? `/guide-art/${picture}${size <= 32 ? "-mini" : ""}.svg` : drawn);

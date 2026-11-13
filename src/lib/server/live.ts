@@ -55,6 +55,9 @@ export function listen(userId: string, fn: Listener) {
   };
 }
 
+/** Signed-in players with a page open on this process (one connected to two processes is counted by both) */
+export const connectedPlayers = () => listeners.size;
+
 function deliver(userIds: Iterable<string>, event: LiveEvent) {
   for (const id of userIds) {
     for (const fn of listeners.get(id) ?? []) fn(event);

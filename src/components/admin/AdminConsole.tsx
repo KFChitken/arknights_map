@@ -8,6 +8,7 @@ import Accounts from "./Accounts";
 import Admins from "./Admins";
 import { adminCall, AdminError, errorWords, type CallOptions } from "./api";
 import Cases from "./Cases";
+import Dashboard from "./Dashboard";
 import { ConsoleContext, PAGES, useConsole, type Console, type OpenGate, type Page, type Route } from "./context";
 import Door, { BackupCodes, Gone } from "./Gate";
 import { useHeld } from "./held";
@@ -18,16 +19,20 @@ import Zones from "./Zones";
 import "./console.css";
 
 /**
- * /admin, the 管理台 (src/app/admin/page.tsx): its door until it lets one in, then 待处理, 搜索账号, 网站和工具,
- * 管理员, 禁放区 and 操作记录 under one menu. A moderator has less of it: 网站和工具 is only the name blocklist, 操作记录
- * only their own, and no 管理员 or 禁放区 (MOD_PAGES). Every look and step goes through src/app/api/admin/[op] and into
- * the 操作记录.
+ * /admin, the 管理台 (src/app/admin/page.tsx): its door until it lets one in, then 待处理, 数据看板, 搜索账号,
+ * 网站和工具, 管理员, 禁放区 and 操作记录 under one menu. A moderator has less of it: 网站和工具 is only the name
+ * blocklist, 操作记录 only their own, and no 数据看板, 管理员 or 禁放区 (MOD_PAGES). Every look and step goes through
+ * src/app/api/admin/[op] and into the 操作记录, except 数据看板's looks: it asks every minute, and shows no one.
  */
 
 type Title = { title: string; sub: string };
 
 const TITLES: Record<Page, Title & { mod?: Title }> = {
   cases: { title: "待处理", sub: "红色先看：可能未成年、留了联系方式、一直贴着放、放在不合适的地方。" },
+  dashboard: {
+    title: "数据看板",
+    sub: "全站的数，只有总数，不看具体是谁。今天的数每分钟更新，分布和排行每天早上 5 点更新。只有站长能看到这一页。",
+  },
   accounts: { title: "搜索账号", sub: "找到一个人，看 TA 的资料和以前的记录，没人举报也能直接处理。" },
   log: {
     title: "操作记录",
@@ -36,7 +41,7 @@ const TITLES: Record<Page, Title & { mod?: Title }> = {
   },
   site: {
     title: "网站和工具",
-    sub: "全站变灰、网站状态、这周的人、名字黑名单、查邮箱和称号。",
+    sub: "全站变灰、网站状态、名字黑名单、查邮箱和称号。",
     mod: { title: "名字黑名单", sub: "名字里有这些词就存不上。加词、删词都会记进操作记录。" },
   },
   admins: { title: "管理员", sub: "只有站长能看到这一页。" },
@@ -46,8 +51,9 @@ const TITLES: Record<Page, Title & { mod?: Title }> = {
   },
 };
 
-const NAV: { page: Page; label: string; modLabel?: string; icon: "cases" | "accounts" | "site" | "log" | "admins" | "zones" }[] = [
+const NAV: { page: Page; label: string; modLabel?: string; icon: "cases" | "dashboard" | "accounts" | "site" | "log" | "admins" | "zones" }[] = [
   { page: "cases", label: "待处理", icon: "cases" },
+  { page: "dashboard", label: "数据看板", icon: "dashboard" },
   { page: "accounts", label: "搜索账号", icon: "accounts" },
   { page: "site", label: "网站和工具", modLabel: "名字黑名单", icon: "site" },
   { page: "admins", label: "管理员", icon: "admins" },
@@ -253,6 +259,7 @@ function Inside({
           </header>
 
           {route.page === "cases" && <Cases key="cases" start={route.caseId} />}
+          {route.page === "dashboard" && owner && <Dashboard />}
           {route.page === "accounts" && <Accounts key={`accounts-${route.account ?? ""}`} start={route.account} />}
           {route.page === "log" && <Log />}
           {route.page === "site" && <Site />}

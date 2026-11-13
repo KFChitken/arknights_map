@@ -130,6 +130,14 @@ export const ICONS = {
       <path d="M4 14v6h16v-6" />
     </>
   ),
+  dashboard: (
+    <>
+      <path d="M4 20h16" />
+      <path d="M7 16v-4" />
+      <path d="M12 16V7" />
+      <path d="M17 16v-7" />
+    </>
+  ),
   accounts: (
     <>
       <circle cx="11" cy="11" r="7" />

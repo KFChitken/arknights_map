@@ -153,6 +153,7 @@ import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
 import { canSeeDeclaration, seeDeclarations, spotRows, visibleDeclarations, type SeenDeclaration } from "./declarationInbox";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
+import { countDeclared, countGuide, countIgnored, countPlaced, countReply, countTouch } from "./stats";
 import {
   clearedValues,
   declarations,
@@ -626,6 +627,7 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
     if (slotTaken(e)) throw new WorldError(T.server.world.slotTaken);
     throw e;
   }
+  countPlaced(placement.slot, placement.existing);
   roachesChanged();
   // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
   await arrivedAt(userId, at);
@@ -651,6 +653,7 @@ export async function sitByFire(userId: string, target: PlaceTarget): Promise<{ 
     .catch((e) => {
       throw slotTaken(e) ? new WorldError(T.server.world.slotTaken) : e;
     });
+  countPlaced(placement.slot, placement.existing);
   roachesChanged();
   // the first roach of theirs to sit by her fire is welcomed, and the songs counted
   await arrivedAt(userId, seat);
@@ -695,6 +698,7 @@ export async function rideMinghe(userId: string, target: RideTarget): Promise<{ 
     .catch((e) => {
       throw slotTaken(e) ? new WorldError(T.server.world.slotTaken) : e;
     });
+  countPlaced(placement.slot, placement.existing);
   roachesChanged();
   await placed(userId, placement.slot, placement.existing ?? null, item.spot);
   return { roaches: await ownRoaches(userId), item: item.said };
@@ -792,7 +796,11 @@ async function checkTouchQuota(userId: string) {
 /** offsetMin: the device's Date.getTimezoneOffset(), only for 佩丽卡监督's count of the day; never stored */
 export async function touch(userId: string, publicId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
   const guide = guideById(String(publicId));
-  if (guide) return GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
+  if (guide) {
+    const done = await GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
+    countGuide(guide.id);
+    return done;
+  }
   if (isBotId(String(publicId))) throw new WorldError(T.server.world.demoNoTouch);
   // by the id the feed gave the page, short or whole; or an ink roach at 缘缘庄, by the id its tap gave (tapInk)
   const roach = String(publicId).startsWith(INK_PREFIX) ? await inkToTouch(String(publicId).slice(INK_PREFIX.length)) : await roachByFeedId(String(publicId));
@@ -829,6 +837,7 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
     toPublicId: roach.publicId,
     withheld,
   });
+  countTouch(Boolean(bold));
   // 惊霆无声 is the toucher's own, so it counts whether or not the touch arrives
   if (!bold) await touchedSneakily(userId);
   if (withheld) return { newFriend: null };
@@ -945,7 +954,11 @@ async function replied(userId: string, itemIds: string[]) {
 /** Touch back whoever sent an inbox item. */
 export async function reply(userId: string, itemId: string, bold: boolean, offsetMin?: unknown): Promise<TouchResult> {
   const guide = guideOfItem(String(itemId));
-  if (guide) return GUIDE_WORLD[guide.id].reply(userId, String(itemId), Boolean(bold), offsetMin);
+  if (guide) {
+    const done = await GUIDE_WORLD[guide.id].reply(userId, String(itemId), Boolean(bold), offsetMin);
+    countGuide(guide.id);
+    return done;
+  }
   const [kind, raw] = String(itemId).split(":");
   // one spelling per item, so an item is answered once however its id is written
   const id = (raw ?? "").toLowerCase();
@@ -989,6 +1002,8 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
     if (isUniqueViolation(e)) throw new WorldError(T.server.common.touched);
     throw e;
   }
+  // touching back a touch, as against the sender of a declaration or a reply
+  countTouch(Boolean(bold), kind === "t");
   if (withheld) return { newFriend: null };
   const newFriend = bold ? await befriendIfMutual(userId, to) : null;
   nudge([to]);
@@ -1419,6 +1434,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
         .values(friends.slice(i, i + 1000).map((id) => ({ declarationId: row.id, recipientId: id, toFriend: true })));
     }
   });
+  countDeclared(d.template, everyone.length);
   nudge(everyone, "declare");
   // 塔露拉干员 answers her 触须之交's birthday, never among the recipients
   if (d.template === "birthday") await birthdayDeclared(userId);
@@ -1438,11 +1454,18 @@ export async function ignore(userId: string, itemId: string) {
   if (kind !== "t" || !UUID.test(id ?? "")) throw new WorldError(T.server.common.noSuchNote);
   if ((await replied(userId, [itemId])).size) throw new WorldError(T.server.common.touched);
   const now = new Date();
-  const [done] = await db
+  const mine = and(eq(touches.id, id), eq(touches.toUserId, userId));
+  // counted the first time; crawling away again changes nothing
+  const [first] = await db
     .update(touches)
     .set({ ignoredAt: now, seenAt: sql`coalesce(${touches.seenAt}, ${now.toISOString()})` })
-    .where(and(eq(touches.id, id), eq(touches.toUserId, userId)))
+    .where(and(mine, isNull(touches.ignoredAt)))
     .returning({ id: touches.id });
+  if (first) {
+    countIgnored();
+    return;
+  }
+  const [done] = await db.select({ id: touches.id }).from(touches).where(mine).limit(1);
   if (!done) throw new WorldError(T.server.common.noSuchNote);
 }
 
@@ -1462,6 +1485,7 @@ export async function react(userId: string, itemId: string, reaction: string) {
     .onConflictDoNothing()
     .returning({ id: reactions.id });
   if (!made) throw new WorldError(T.server.world.alreadyReplied);
+  countReply(reaction);
   if (withheld) return;
   nudge([row.senderId]);
   await reactedTo(row.senderId);

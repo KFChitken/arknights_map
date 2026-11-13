@@ -23,6 +23,22 @@ function boxMeetsChina([w, s, e, n]: Box) {
   return runs.some(([r, c, len]) => r >= r0 && r <= r1 && c <= c1 && c + len - 1 >= c0);
 }
 
+/** The grid's cells as one byte each (1: China), made when first asked */
+let cells: Uint8Array | null = null;
+function cellsOf() {
+  if (cells) return cells;
+  cells = new Uint8Array(cols * rows);
+  for (const [r, c, len] of runs) cells.fill(1, r * cols + c, r * cols + c + len);
+  return cells;
+}
+
+/** Whether a point is in China by the same cells (so it errs towards China within a cell of the border) */
+export function inChina({ lng, lat }: LngLat) {
+  const c = Math.floor((lng - west) / step);
+  const r = Math.floor((lat - south) / step);
+  return c >= 0 && r >= 0 && c < cols && r < rows && cellsOf()[r * cols + c] === 1;
+}
+
 /** Whether any of China shows in a map's view (south-west and north-east corners, WGS-84). */
 export const seesChina = (bounds: [LngLat, LngLat]) => viewBoxes(bounds).some(boxMeetsChina);
 

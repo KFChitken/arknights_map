@@ -5,12 +5,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MOD_ONLY, MOD_OPS, OWNER_ONLY, VIEW_LIMIT } from "@/lib/adminConsole";
 import { MOD_NO_BAN } from "@/lib/server/admin";
 import { isModHere, loadMods, startAdmins } from "@/lib/server/admins";
+import { takeSnapshot } from "@/lib/server/dashboard";
 import { db, pg } from "@/lib/server/db";
 import { hearOthers } from "@/lib/server/live";
 import { sendAdminMail } from "@/lib/server/mail";
 import { forgetNameWords } from "@/lib/server/nameWords";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
-import { adminLog, adminRequests, admins, bannedEmails, modActions, nameWords, reports, roaches, sessions, users } from "@/lib/server/schema";
+import {
+  adminLog,
+  adminRequests,
+  admins,
+  bannedEmails,
+  dailyTotals,
+  modActions,
+  nameWords,
+  onlineHours,
+  onlineNow,
+  reports,
+  roaches,
+  sessions,
+  statCounts,
+  statSnapshots,
+  users,
+} from "@/lib/server/schema";
+import { forgetStatCounts, saveStatCounts } from "@/lib/server/stats";
 import { totpCode, totpStep } from "@/lib/server/totp";
 import * as world from "@/lib/server/world";
 import { POST as worldPOST } from "../../world/[op]/route";
@@ -169,6 +187,7 @@ const OWNER_OPS = [
   "ack",
   "retention",
   "appCounts",
+  "dashboard",
   "banInfo",
   "giveBadge",
   "takeBadge",
@@ -265,6 +284,29 @@ describe("moderators in the 管理台", () => {
     }
     expect(answers[4].body.result.person.email).toBe("ba***@example.com");
     expect(answers[0].body.result.email).toBe("li***@example.com");
+  });
+
+  it("shows the owner 数据看板 in totals that point at nobody, and keeps no record of the look", async () => {
+    await db.execute(sql`truncate ${statCounts}, ${statSnapshots}, ${onlineNow}, ${onlineHours}, ${dailyTotals}`);
+    forgetStatCounts();
+    const boss = await owner();
+    const a = await player("someone.a@example.com", "小甲");
+    const b = await player("someone.b@example.com", "小乙");
+    const [bMain] = await db.select().from(roaches).where(eq(roaches.userId, b.id));
+    await world.touch(a.id, bMain.publicId, true);
+    await saveStatCounts();
+    await takeSnapshot();
+    use(boss.here);
+    const logged = (await db.select().from(adminLog)).length;
+    const res = await call("dashboard");
+    expect(res.status).toBe(200);
+    expect(res.body.result.totals).toMatchObject({ players: 3, touches: { sneaky: 0, bold: 1 }, roaches: { mains: 2 } });
+    expect(res.body.result.today.counts).toMatchObject({ "touch.bold": 1, "place.main": 2 });
+    const own = await db.select({ id: roaches.id, publicId: roaches.publicId }).from(roaches);
+    for (const secret of [boss.user.id, a.id, b.id, "@example.com", "someone", "小甲", "小乙", "站长本人", ...own.flatMap((r) => [r.id, r.publicId])]) {
+      expect(res.text, secret).not.toContain(secret);
+    }
+    expect((await db.select().from(adminLog)).length).toBe(logged);
   });
 
   it("keeps the 管理台's people and a moderator's own reports out of their sight", async () => {

@@ -5,6 +5,7 @@ import { beijingDate } from "./lib/beijing";
 import { saveAmapLoads } from "./lib/server/amapLoads";
 import { saveAppCounts } from "./lib/server/appCounts";
 import { flipTheAway } from "./lib/server/away";
+import { morningStats, recordOnlinePeak, reportOnline } from "./lib/server/dashboard";
 import { comrades, fireSongs, nightByTheFire, sleptItOff } from "./lib/server/badges";
 import { moveMingheRiders, spreadStackedRiders } from "./lib/server/minghe";
 import { catchUpBadges } from "./lib/server/badges";
@@ -25,6 +26,7 @@ import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
 import { logError, note } from "./lib/server/signals";
+import { saveStatCounts } from "./lib/server/stats";
 import { recordDailyTotals } from "./lib/server/totals";
 import { buildId, heardStart, processName, startWatch } from "./lib/server/watch";
 import { hearSignals, shareSignals } from "./lib/server/watchSignals";
@@ -90,11 +92,23 @@ await startMainlandMap();
 // 高德 map loads counted by this process go into the shared count (the main's checks add theirs as they look)
 if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高德's map loads failed")), 10 * MINUTE_MS);
 
-// 存到桌面's counts, kept in memory by every process: added to the day's rows once a minute, and once more when it is
-// told to stop (Next.js then waits for the requests under way before it goes, src/lib/server/appCounts.ts)
-const saveCounts = () => saveAppCounts().catch(failed("counts", "Saving 存到桌面's counts failed"));
+// 存到桌面's counts and 数据看板's, kept in memory by every process: added to the day's rows once a minute, and once
+// more when it is told to stop (Next.js then waits for the requests under way before it goes, src/lib/server/appCounts.ts
+// and stats.ts)
+const saveCounts = () => {
+  void saveAppCounts().catch(failed("counts", "Saving 存到桌面's counts failed"));
+  void saveStatCounts().catch(failed("counts", "Saving 数据看板's counts failed"));
+};
 setInterval(saveCounts, MINUTE_MS);
 process.once("SIGTERM", () => void saveCounts());
+
+// 数据看板's 此刻在线: every process says how many signed-in players have a page open on it, once a minute; the main adds
+// them up, keeping each hour's peak (src/lib/server/dashboard.ts)
+const online = async () => {
+  await reportOnline(processName());
+  if (!helper) await recordOnlinePeak();
+};
+setInterval(() => online().catch(failed("online", "Counting the players online failed")), MINUTE_MS);
 
 // the helpers tell the main's checks what they noted, and when they started (src/lib/server/watchSignals.ts)
 if (helper && watchEnabled) shareSignals(processName(), buildId());
@@ -192,6 +206,21 @@ if (!helper) {
   const totals = () => recordDailyTotals().catch(failed("totals", "Recording daily totals failed"));
   totals();
   setInterval(totals, 10 * MINUTE_MS);
+
+  // 数据看板's morning: from 05:00 Beijing time, the days before the board filled in once ever (before 06:00), then the
+  // day's snapshot of how players and roaches are spread, unless today's is there (a restart takes it only if not)
+  let morningBusy = false;
+  const morning = () => {
+    if (morningBusy) return;
+    morningBusy = true;
+    morningStats()
+      .catch(failed("dashboard", "数据看板's morning counts failed"))
+      .finally(() => {
+        morningBusy = false;
+      });
+  };
+  morning();
+  setInterval(morning, 5 * MINUTE_MS);
 
   // The site's own checks, which email the admins when something urgent is wrong and send a digest each morning
   // (on in production unless WATCH=off), counting what the helpers noted too

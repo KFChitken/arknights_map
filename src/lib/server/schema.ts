@@ -19,6 +19,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { StatSnapshot } from "../dashboard";
 import type { RadarScan } from "../world/types";
 
 /** PostGIS geography; only ever written through the generated column below. */
@@ -1314,6 +1315,54 @@ export const dailyTotals = pgTable("daily_totals", {
   signups: integer("signups").notNull(),
   /** Pairs who became 触须之交 that day */
   friendships: integer("friendships").notNull(),
+  /**
+   * Real accounts at the day's end, and those who came that day (last_seen_on): kept from the day 数据看板 went up,
+   * 0 before. A day's visitors are never counted again after midnight: by then some of them came the next day too.
+   */
+  players: integer("players").notNull().default(0),
+  visitors: integer("visitors").notNull().default(0),
+});
+
+/**
+ * 数据看板's counters (src/lib/server/stats.ts), one row per Beijing day and name (src/lib/dashboard.ts COUNTED):
+ * touches, declarations, replies, what 触须之交 do for each other, roaches put down, guides touched. Counted in memory
+ * by every process as each row is written and added here once a minute; the days before the board were filled in
+ * once from the tables (src/lib/server/dashboard.ts). Only totals: nothing in it points at a player. Kept for good.
+ */
+export const statCounts = pgTable(
+  "stat_counts",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    name: text("name").notNull(),
+    n: bigint("n", { mode: "number" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.name] })],
+);
+
+/** How many signed-in players have a page open on each web process (its event stream), written by it once a minute */
+export const onlineNow = pgTable("online_now", {
+  process: text("process").primaryKey(),
+  n: integer("n").notNull(),
+  at: at("at").notNull(),
+});
+
+/** The most players online at once in each Beijing hour, and when that was first reached; kept by the main process */
+export const onlineHours = pgTable(
+  "online_hours",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    hour: smallint("hour").notNull(),
+    peak: integer("peak").notNull(),
+    peakAt: at("peak_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.hour] })],
+);
+
+/** 数据看板's count of the whole site at 05:00 Beijing time (src/lib/dashboard.ts StatSnapshot), one a day; codes and totals only */
+export const statSnapshots = pgTable("stat_snapshots", {
+  day: date("day", { mode: "string" }).primaryKey(),
+  at: at("at").notNull(),
+  data: jsonb("data").$type<StatSnapshot>().notNull(),
 });
 
 /** Placements, moves and removals, for the radar. */

@@ -666,7 +666,9 @@ const JOBS: Record<string, string> = {
   live: "收听另外两个程序的消息提醒",
   signals: "收听另外两个程序的出错次数",
   loads: "保存高德地图加载次数",
-  counts: "保存「存到桌面」的统计",
+  counts: "保存「存到桌面」和数据看板的统计",
+  online: "数据看板数此刻在线",
+  dashboard: "数据看板早上 5 点的统计（和补记以前的天）",
 };
 
 /** Background jobs that failed in the last day: the database not brought up to date at start is urgent */
