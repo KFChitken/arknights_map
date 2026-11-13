@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { activeEvents } from "./events";
 import { siteName } from "./rules";
 
@@ -11,14 +12,62 @@ import { siteName } from "./rules";
 export type BadgeSeries = "diplomacy" | "daily" | "memorial" | "bacchus" | "event" | "declare" | "response" | "guides";
 
 export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
-  { id: "diplomacy", name: "外交系列", code: "DIPLOMACY" },
-  { id: "daily", name: "日常系列", code: "DAILY" },
-  { id: "memorial", name: "纪念系列", code: "MEMORIAL" },
-  { id: "bacchus", name: "酒神系列", code: "BACCHUS" },
-  { id: "event", name: "活动系列", code: "EVENT" },
-  { id: "declare", name: "宣言系列", code: "DECLARE" },
-  { id: "response", name: "回应系列", code: "RESPONSE" },
-  { id: "guides", name: "向导系列", code: "GUIDES" },
+  {
+    id: "diplomacy",
+    get name() {
+      return T.lib.badges.series.diplomacy;
+    },
+    code: "DIPLOMACY",
+  },
+  {
+    id: "daily",
+    get name() {
+      return T.lib.badges.series.daily;
+    },
+    code: "DAILY",
+  },
+  {
+    id: "memorial",
+    get name() {
+      return T.lib.badges.series.memorial;
+    },
+    code: "MEMORIAL",
+  },
+  {
+    id: "bacchus",
+    get name() {
+      return T.lib.badges.series.bacchus;
+    },
+    code: "BACCHUS",
+  },
+  {
+    id: "event",
+    get name() {
+      return T.lib.badges.series.event;
+    },
+    code: "EVENT",
+  },
+  {
+    id: "declare",
+    get name() {
+      return T.lib.badges.series.declare;
+    },
+    code: "DECLARE",
+  },
+  {
+    id: "response",
+    get name() {
+      return T.lib.badges.series.response;
+    },
+    code: "RESPONSE",
+  },
+  {
+    id: "guides",
+    get name() {
+      return T.lib.badges.series.guides;
+    },
+    code: "GUIDES",
+  },
 ];
 
 /**
@@ -103,45 +152,77 @@ export const ELITE_SERIES: BadgeSeries[] = ["diplomacy", "declare", "response", 
 export const BADGES: Badge[] = [
   {
     id: "trainee",
-    name: "见习外交官",
+    get name() {
+      return T.lib.badges.trainee.name;
+    },
     code: "DIP-01",
     series: "diplomacy",
-    condition: "有了第 1 位触须之交",
-    lockedHint: "{n} / 1 位",
-    quote: "舟P社交的第一步，迈出去了！",
+    get condition() {
+      return T.lib.badges.trainee.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.trainee.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.trainee.quote;
+    },
     pill: { background: "#e3f8ee", color: "#1f7a56", border: "1.5px solid #86e0b9" },
     goal: { count: "friends", n: 1 },
   },
   {
     id: "diplomat",
-    name: "舟P外交官",
+    get name() {
+      return T.lib.badges.diplomat.name;
+    },
     code: "DIP-10",
     series: "diplomacy",
-    condition: "和 10 位不同的舟P成为过触须之交",
-    lockedHint: "{n} / 10 位",
-    quote: "在我们舟P里，这已经是外交官级别的了！",
+    get condition() {
+      return T.lib.badges.diplomat.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.diplomat.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.diplomat.quote;
+    },
     pill: { background: "#2b3d8f", color: "#ffe48a", border: "1.5px solid #2b3d8f" },
     goal: { count: "friends", n: 10 },
   },
   {
     id: "ambassador",
-    name: "特命全权大使",
+    get name() {
+      return T.lib.badges.ambassador.name;
+    },
     code: "DIP-30",
     series: "diplomacy",
-    condition: "和 30 位不同的舟P成为过触须之交",
-    lockedHint: "{n} / 30 位",
-    quote: "全权代表舟P，出使四方！",
+    get condition() {
+      return T.lib.badges.ambassador.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.ambassador.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.ambassador.quote;
+    },
     pill: { background: "#4b32b0", color: "#ffffff", border: "1.5px solid #ffcc3d" },
     goal: { count: "friends", n: 30 },
   },
   {
     id: "farwhisker",
-    name: "千里传须",
+    get name() {
+      return T.lib.badges.farwhisker.name;
+    },
     code: "DIP-1000KM",
     series: "diplomacy",
-    condition: `有一位相隔 ${FAR_FRIEND_KM} 公里以上的触须之交`,
-    lockedHint: "找一位千里之外的触须之交",
-    quote: "千里之外，触须相连。",
+    get condition() {
+      return fmt(T.lib.badges.farwhisker.condition, { km: FAR_FRIEND_KM });
+    },
+    get lockedHint() {
+      return T.lib.badges.farwhisker.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.farwhisker.quote;
+    },
     pill: {
       background:
         "linear-gradient(#fffaf0, #fffaf0) padding-box, repeating-linear-gradient(-45deg, #ec4b45 0 6px, #fffaf0 6px 9px, #2e6fd8 9px 15px, #fffaf0 15px 18px) border-box",
@@ -151,267 +232,467 @@ export const BADGES: Badge[] = [
   },
   {
     id: "spokesperson",
-    name: "罗德岛外交部发言人",
+    get name() {
+      return T.lib.badges.spokesperson.name;
+    },
     code: "DIP-PRESS",
     series: "diplomacy",
-    condition: "你的宣言被 10 位不同的舟P回应过",
-    lockedHint: "{n} / 10 人回应",
-    quote: "你的宣言，有十位舟P在听！",
+    get condition() {
+      return T.lib.badges.spokesperson.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.spokesperson.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.spokesperson.quote;
+    },
     pill: { background: "#ff6f5e", color: "#ffffff", border: "1.5px solid #ff6f5e" },
     goal: { count: "responders", n: 10 },
   },
   {
     id: "ingame",
-    name: "相见欢",
+    get name() {
+      return T.lib.badges.ingame.name;
+    },
     code: "DIP-GAME",
     series: "diplomacy",
-    condition: "第一次和触须之交在游戏里也成了好友（一方点「我在游戏里申请了」，另一方点「我也加了」），两人都拿",
-    lockedHint: "和触须之交在游戏里也加个好友",
-    quote: "地图上碰过触须，游戏里也见着了。",
+    get condition() {
+      return T.lib.badges.ingame.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.ingame.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.ingame.quote;
+    },
     pill: { background: "#c8352f", color: "#ffe08a", border: "1.5px solid #c8352f" },
   },
   {
     id: "comrade",
-    name: "共患难的战友",
+    get name() {
+      return T.lib.badges.comrade.name;
+    },
     code: "DIP-30D",
     series: "diplomacy",
-    condition: "和同一位触须之交做满 30 天，中间没解除，两人都拿",
-    lockedHint: "和同一位触须之交做满 30 天",
-    quote: "别那么拘谨，我们可已经是共患难的战友了。",
+    get condition() {
+      return T.lib.badges.comrade.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.comrade.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.comrade.quote;
+    },
     pill: { background: "#55642a", color: "#ffffff", border: "1.5px solid #36401a" },
   },
   {
     id: "summit",
-    name: "万国峰会",
+    get name() {
+      return T.lib.badges.summit.name;
+    },
     code: "DIP-100",
     series: "diplomacy",
-    condition: "和 100 位不同的舟P成为过触须之交",
-    lockedHint: "{n} / 100 位",
-    quote: "一百位触须之交，各国的代表都到齐了。",
+    get condition() {
+      return T.lib.badges.summit.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.summit.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.summit.quote;
+    },
     pill: { background: "#136148", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "friends", n: 100 },
   },
   {
     id: "postman",
-    name: "罗德岛信使",
+    get name() {
+      return T.lib.badges.postman.name;
+    },
     code: "DAY-BDAY",
     series: "daily",
-    condition: "给 5 位不同的触须之交的生日宣言回过「生日快乐！」",
-    lockedHint: "{n} / 5 位",
-    quote: "有你的信——五份生日祝福，都是你送到的。",
+    get condition() {
+      return T.lib.badges.postman.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.postman.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.postman.quote;
+    },
     pill: { background: "#e7f2ff", color: "#1f5fb8", border: "1.5px solid #3d8ef0" },
     goal: { count: "birthdayWishes", n: 5 },
   },
   {
     id: "delivery",
-    name: "使命必达",
+    get name() {
+      return T.lib.badges.delivery.name;
+    },
     code: "DAY-VISIT",
     series: "daily",
-    condition: "第一次派克隆体去触须之交家串门",
-    lockedHint: "派克隆体去触须之交家串个门",
-    quote: "咚咚！打扰了，有人在吗？送货上门——",
+    get condition() {
+      return T.lib.badges.delivery.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.delivery.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.delivery.quote;
+    },
     pill: { background: "#fff3dc", color: "#7a4a25", border: "1.5px solid #b0703f" },
   },
   {
     id: "longtime",
-    name: "好久不见",
+    get name() {
+      return T.lib.badges.longtime.name;
+    },
     code: "DAY-WAKE",
     series: "daily",
-    condition: "你戳过的触须之交睡醒回来了（第一次）",
-    lockedHint: "戳一戳睡着的触须之交，等 TA 醒来",
-    quote: "你戳过的那位醒了。好久不见！",
+    get condition() {
+      return T.lib.badges.longtime.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.longtime.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.longtime.quote;
+    },
     pill: { background: "#fff4dc", color: "#9a5a00", border: "1.5px solid #f0a019" },
   },
   {
     id: "twins",
-    name: "异卵同生",
+    get name() {
+      return T.lib.badges.twins.name;
+    },
     code: "DAY-CLONE",
     series: "daily",
-    condition: "第一次放出克隆体",
-    lockedHint: "放出一只克隆体",
-    quote: "又一只你，出门去了。",
+    get condition() {
+      return T.lib.badges.twins.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.twins.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.twins.quote;
+    },
     pill: { background: "#eef7ff", color: "#1f5fb8", border: "1.5px dashed #3d8ef0" },
   },
   {
     id: "stormchaser",
-    name: "天灾信使",
+    get name() {
+      return T.lib.badges.stormchaser.name;
+    },
     code: "DAY-RADAR",
     series: "daily",
-    condition: "累计 10 天用过方舟雷达",
-    lockedHint: "{n} / 10 天",
-    quote: "十天的雷达，附近有多少舟P，你心里有数。",
+    get condition() {
+      return T.lib.badges.stormchaser.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days10;
+    },
+    get quote() {
+      return T.lib.badges.stormchaser.quote;
+    },
     pill: { background: "#10251f", color: "#3fd0d4", border: "1.5px solid #3fd0d4" },
     goal: { count: "radarDays", n: 10 },
   },
   {
     id: "treeshade",
-    name: "眠于树影之中",
+    get name() {
+      return T.lib.badges.treeshade.name;
+    },
     code: "DAY-NAP",
     series: "daily",
-    condition: "睡着的时候被 3 位不同的触须之交盖过被子",
-    lockedHint: "{n} / 3 位",
-    quote: "睡着的时候，三位触须之交给你盖过被子。",
+    get condition() {
+      return T.lib.badges.treeshade.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.treeshade.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.treeshade.quote;
+    },
     pill: { background: "#e6f6e9", color: "#2f7d4a", border: "1.5px solid #4caf6a" },
     goal: { count: "quilters", n: 3 },
   },
   {
     id: "movingcity",
-    name: "移动城市",
+    get name() {
+      return T.lib.badges.movingcity.name;
+    },
     code: "DAY-MOVE",
     series: "daily",
-    condition: "本体搬过 3 次家，每次相隔 100 公里以上",
-    lockedHint: "{n} / 3 次",
-    quote: "搬了三次家，你的城市一直在路上。",
+    get condition() {
+      return T.lib.badges.movingcity.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.movingcity.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.movingcity.quote;
+    },
     pill: { background: "#f3dca6", color: "#123e80", border: "1.5px solid #3d8ef0" },
     goal: { count: "farMoves", n: 3 },
   },
   {
     id: "silentbolt",
-    name: "惊霆无声",
+    get name() {
+      return T.lib.badges.silentbolt.name;
+    },
     code: "DAY-SNEAK",
     series: "daily",
-    condition: "累计 10 天偷偷碰过人",
-    lockedHint: "{n} / 10 天",
-    quote: "十天，悄悄碰过去，一点声响都没有。",
+    get condition() {
+      return T.lib.badges.silentbolt.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days10;
+    },
+    get quote() {
+      return T.lib.badges.silentbolt.quote;
+    },
     pill: { background: "#1b2046", color: "#ffd23f", border: "1.5px solid #3d8ef0" },
     goal: { count: "sneakDays", n: 10 },
   },
   {
     id: "firstbatch",
-    name: "首批蟑螂",
+    get name() {
+      return T.lib.badges.firstbatch.name;
+    },
     code: "MEM-1000",
     series: "memorial",
-    condition: `前 ${FIRST_BATCH} 个注册的舟P`,
-    lockedHint: `前 ${FIRST_BATCH} 名专属`,
-    quote: `你是第 {serial} 只来到${siteName()}的蟑螂！`,
+    get condition() {
+      return fmt(T.lib.badges.firstbatch.condition, { n: FIRST_BATCH });
+    },
+    get lockedHint() {
+      return fmt(T.lib.badges.firstbatch.lockedHint, { n: FIRST_BATCH });
+    },
+    get quote() {
+      return fmt(T.lib.badges.firstbatch.quote, { site: siteName() });
+    },
     pill: { background: "#1b1d22", color: "#ffd23f", border: "1.5px solid #ffd23f" },
   },
   {
     id: "beta",
-    name: "内测功臣",
+    get name() {
+      return T.lib.badges.beta.name;
+    },
     code: "MEM-BETA",
     series: "memorial",
-    condition: "站长颁发，给内测时帮忙找 bug 的人",
-    lockedHint: "站长颁发",
-    quote: `感谢你帮${siteName()}抓虫！`,
+    get condition() {
+      return T.lib.badges.beta.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.beta.lockedHint;
+    },
+    get quote() {
+      return fmt(T.lib.badges.beta.quote, { site: siteName() });
+    },
     pill: { background: "#3a74e8", color: "#ffffff", border: "1.5px solid #3a74e8" },
   },
   {
     id: "survivor",
-    name: "石棺里的苏醒",
+    get name() {
+      return T.lib.badges.survivor.name;
+    },
     code: "MEM-14D",
     series: "memorial",
-    condition: `刚注册，或者离开 ${AWAY_DAYS} 天以上又回来；能戴 ${SURVIVOR_DAYS} 天`,
-    lockedHint: `离开 ${AWAY_DAYS} 天再回来`,
-    quote: "石棺打开了，欢迎回来。",
+    get condition() {
+      return fmt(T.lib.badges.survivor.condition, { awayDays: AWAY_DAYS, holdDays: SURVIVOR_DAYS });
+    },
+    get lockedHint() {
+      return fmt(T.lib.badges.survivor.lockedHint, { awayDays: AWAY_DAYS });
+    },
+    get quote() {
+      return T.lib.badges.survivor.quote;
+    },
     pill: { background: "#24a874", color: "#ffffff", border: "1.5px solid #24a874" },
     days: SURVIVOR_DAYS,
   },
   {
     id: "regular",
-    name: "罗德岛正式干员",
+    get name() {
+      return T.lib.badges.regular.name;
+    },
     code: "MEM-5",
     series: "memorial",
-    condition: "拿到第 5 枚徽章",
-    lockedHint: "{n} / 5 枚",
-    quote: "人事部同意你晋升为罗德岛正式干员。",
+    get condition() {
+      return T.lib.badges.regular.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.regular.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.regular.quote;
+    },
     pill: { background: "#f4f6fa", color: "#1f2a44", border: "1.5px solid #1f2a44" },
     goal: { count: "badgesOwned", n: 5 },
   },
   {
     id: "elite",
-    name: "罗德岛精英干员",
+    get name() {
+      return T.lib.badges.elite.name;
+    },
     code: "MEM-ELITE",
     series: "memorial",
-    condition: "外交、宣言、回应、向导、酒神 5 个系列，每个都至少拿到 1 枚",
-    lockedHint: "{n} / 5 个系列",
-    quote: "五个系列都有你，罗德岛的精英干员。",
+    get condition() {
+      return T.lib.badges.elite.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.elite.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.elite.quote;
+    },
     pill: { background: "linear-gradient(100deg, #1f2a44 0%, #2c3d72 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "seriesCovered", n: 5 },
   },
   {
     id: "tipsy",
-    name: "当一回酒神",
+    get name() {
+      return T.lib.badges.tipsy.name;
+    },
     code: "BAC-01",
     series: "bacchus",
-    condition: "第一次主动「摄入酒精」，醉倒翻肚皮",
-    lockedHint: "摄入一次酒精",
-    quote: "咕嘟咕嘟……嗝！这回你就是酒神。",
+    get condition() {
+      return T.lib.badges.tipsy.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.tipsy.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.tipsy.quote;
+    },
     pill: { background: "#c23a5e", color: "#ffffff", border: "1.5px solid #c23a5e" },
     goal: { count: "drinks", n: 1 },
   },
   {
     id: "bacchus",
-    name: "泰拉异格酒神",
+    get name() {
+      return T.lib.badges.bacchus.name;
+    },
     code: "BAC-50",
     series: "bacchus",
-    condition: "主动醉倒满 50 次，每次都算",
-    lockedHint: "{n} / 50 次",
-    quote: "醉倒 50 次，泰拉的酒馆都认识你了。",
+    get condition() {
+      return T.lib.badges.bacchus.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.bacchus.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.bacchus.quote;
+    },
     pill: { background: "linear-gradient(100deg, #3b1f5c 0%, #8e2a5a 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "drinks", n: 50 },
   },
   {
     id: "thousandcups",
-    name: "人称千杯",
+    get name() {
+      return T.lib.badges.thousandcups.name;
+    },
     code: "BAC-10",
     series: "bacchus",
-    condition: "主动醉倒满 10 次，每次都算",
-    lockedHint: "{n} / 10 次",
-    quote: "醉倒十次，酒馆里有人叫你「千杯」了。",
+    get condition() {
+      return T.lib.badges.thousandcups.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.thousandcups.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.thousandcups.quote;
+    },
     pill: { background: "#7a4a25", color: "#ffe08a", border: "1.5px solid #b0703f" },
     goal: { count: "drinks", n: 10 },
   },
   {
     id: "bigjar",
-    name: "人称万两",
+    get name() {
+      return T.lib.badges.bigjar.name;
+    },
     code: "BAC-100",
     series: "bacchus",
-    condition: "主动醉倒满 100 次，每次都算",
-    lockedHint: "{n} / 100 次",
-    quote: "醉倒一百次，「万两」这个名号归你了。",
+    get condition() {
+      return T.lib.badges.bigjar.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.bigjar.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.bigjar.quote;
+    },
     pill: { background: "linear-gradient(100deg, #3b1f5c 0%, #8a5530 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "drinks", n: 100 },
   },
   {
     id: "nomore",
-    name: "我真的不能再喝了",
+    get name() {
+      return T.lib.badges.nomore.name;
+    },
     code: "BAC-1MIN",
     series: "bacchus",
-    condition: "醉倒后不到 1 分钟就点了「醒酒」",
-    lockedHint: "醉倒后 1 分钟内醒酒",
-    quote: "……不行，我真的不能再喝了。我要回去了……",
+    get condition() {
+      return T.lib.badges.nomore.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.nomore.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.nomore.quote;
+    },
     pill: { background: "#fbfaf5", color: "#c23a5e", border: "1.5px solid #c23a5e" },
   },
   {
     id: "drinkup",
-    name: "将进酒",
+    get name() {
+      return T.lib.badges.drinkup.name;
+    },
     code: "BAC-PARTY",
     series: "bacchus",
-    condition: "醉倒的时候开过一次「⚡舟友的酒⚡」",
-    lockedHint: "醉着的时候开一次舟友的酒",
-    quote: "喝酒吗？……音乐都放起来了。",
+    get condition() {
+      return T.lib.badges.drinkup.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.drinkup.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.drinkup.quote;
+    },
     pill: { background: "#3b1f5c", color: "#ffe08a", border: "1.5px solid #ff5c93" },
   },
   {
     id: "secondwind",
-    name: "二次呼吸",
+    get name() {
+      return T.lib.badges.secondwind.name;
+    },
     code: "BAC-8AM",
     series: "bacchus",
-    condition: "醉倒后没点「醒酒」，一觉睡到早上 8 点自然醒",
-    lockedHint: "醉倒后别点醒酒，睡到早上 8 点",
-    quote: "没点醒酒，一觉睡到八点。深呼吸，又是新的一天。",
+    get condition() {
+      return T.lib.badges.secondwind.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.secondwind.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.secondwind.quote;
+    },
     pill: { background: "#ffe3a8", color: "#c23a5e", border: "1.5px solid #c23a5e" },
   },
   {
     // each event brings its own badge, named in events.ts
     id: "half2026",
-    name: "半周年限定",
+    get name() {
+      return T.lib.badges.half2026.name;
+    },
     code: "EVT-01 · 7.5TH",
     series: "event",
-    condition: "方舟 7.5 周年「时间啊，向前！」期间发过一次限定宣言",
-    lockedHint: "发一次限定宣言",
-    quote: "时间啊，向前！半周年快乐！",
+    get condition() {
+      return T.lib.badges.half2026.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.half2026.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.half2026.quote;
+    },
     pill: {
       background: "linear-gradient(100deg, #2a3f6e 0%, #2a3f6e 40%, #d9482b 64%, #ff8a3d 100%)",
       color: "#ffffff",
@@ -420,297 +701,513 @@ export const BADGES: Badge[] = [
   },
   {
     id: "lookatme",
-    name: "全体目光向我看齐！",
+    get name() {
+      return T.lib.badges.lookatme.name;
+    },
     code: "DEC-01",
     series: "declare",
-    condition: "第一次发宣言",
-    lockedHint: "发一句宣言",
-    quote: "看我看我，我宣布个事儿！",
+    get condition() {
+      return T.lib.badges.lookatme.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.lookatme.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.lookatme.quote;
+    },
     pill: { background: "#fff3c4", color: "#b8371c", border: "1.5px solid #ffd23f" },
     goal: { count: "declareDays", n: 1 },
   },
   {
     id: "declarer",
-    name: "罗德岛宣言部干员",
+    get name() {
+      return T.lib.badges.declarer.name;
+    },
     code: "DEC-10",
     series: "declare",
-    condition: "累计 10 天发过宣言",
-    lockedHint: "{n} / 10 天",
-    quote: "十天的宣言没白喊，宣言部正式收下你了。",
+    get condition() {
+      return T.lib.badges.declarer.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days10;
+    },
+    get quote() {
+      return T.lib.badges.declarer.quote;
+    },
     pill: { background: "#1f2a44", color: "#ffffff", border: "1.5px solid #ff8a2a" },
     goal: { count: "declareDays", n: 10 },
   },
   {
     id: "chief",
-    name: "罗德岛宣言部部长",
+    get name() {
+      return T.lib.badges.chief.name;
+    },
     code: "DEC-30",
     series: "declare",
-    condition: "累计 30 天发过宣言",
-    lockedHint: "{n} / 30 天",
-    quote: "三十天，从干员干到了部长，宣言部交给你了。",
+    get condition() {
+      return T.lib.badges.chief.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days30;
+    },
+    get quote() {
+      return T.lib.badges.chief.quote;
+    },
     pill: { background: "#22305c", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "declareDays", n: 30 },
   },
   {
     id: "resound",
-    name: "响彻泰拉",
+    get name() {
+      return T.lib.badges.resound.name;
+    },
     code: "DEC-100",
     series: "declare",
-    condition: "累计 100 天发过宣言",
-    lockedHint: "{n} / 100 天",
-    quote: "一百天的宣言，全泰拉都听见了。",
+    get condition() {
+      return T.lib.badges.resound.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days100;
+    },
+    get quote() {
+      return T.lib.badges.resound.quote;
+    },
     pill: { background: "#5a2f86", color: "#ffe08a", border: "1.5px solid #3a74e8" },
     goal: { count: "declareDays", n: 100 },
   },
   {
     id: "echo",
-    name: "一呼百舟应",
+    get name() {
+      return T.lib.badges.echo.name;
+    },
     code: "DEC-ECHO",
     series: "declare",
-    condition: "有一条宣言收到 10 个回应",
-    lockedHint: "让一条宣言收到 10 个回应",
-    quote: "你一开口，十位舟P起了反应。",
+    get condition() {
+      return T.lib.badges.echo.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.echo.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.echo.quote;
+    },
     pill: { background: "#fff4e0", color: "#c25a12", border: "1.5px solid #ff8a2a" },
   },
   {
     id: "fluent",
-    name: "满嘴舟语",
+    get name() {
+      return T.lib.badges.fluent.name;
+    },
     code: "DEC-8",
     series: "declare",
-    condition: "平常那 9 句里，除了「祝我生日快乐」，另外 8 句都发过",
-    lockedHint: "{n} / 8 句",
-    quote: "舟语专业八级，恭喜通过！",
+    get condition() {
+      return T.lib.badges.fluent.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.fluent.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.fluent.quote;
+    },
     pill: { background: "#fff6e6", color: "#a8282d", border: "1.5px solid #ffb547" },
     goal: { count: "declareLines", n: 8 },
   },
   {
     id: "globetrotter",
-    name: "万国信使",
+    get name() {
+      return T.lib.badges.globetrotter.name;
+    },
     code: "DEC-365",
     series: "declare",
-    condition: "累计 365 天发过宣言",
-    lockedHint: "{n} / 365 天",
-    quote: "这一年，作为万国信使，你踏过了太多前所未见的土地。",
+    get condition() {
+      return T.lib.badges.globetrotter.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.globetrotter.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.globetrotter.quote;
+    },
     pill: { background: "linear-gradient(100deg, #22306a 0%, #3b2f8f 100%)", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "declareDays", n: 365 },
   },
   {
     id: "loudhorn",
-    name: "狂响的声筒",
+    get name() {
+      return T.lib.badges.loudhorn.name;
+    },
     code: "DEC-X3",
     series: "declare",
-    condition: "本体带着 2 只以上克隆体一起发了一次宣言（3 只同时喊）",
-    lockedHint: "本体带上 2 只克隆体一起发一次宣言",
-    quote: "三只一起开口，整片地图都听见了。",
+    get condition() {
+      return T.lib.badges.loudhorn.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.loudhorn.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.loudhorn.quote;
+    },
     pill: { background: "#ff8a2a", color: "#ffffff", border: "1.5px solid #c25a12" },
   },
   {
     id: "rowdy",
-    name: "喧闹法则",
+    get name() {
+      return T.lib.badges.rowdy.name;
+    },
     code: "DEC-ECHO30",
     series: "declare",
-    condition: "有一条宣言收到 30 个回应",
-    lockedHint: "让一条宣言收到 30 个回应",
-    quote: "一条宣言换来三十个回应，热闹得像过节。",
+    get condition() {
+      return T.lib.badges.rowdy.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.rowdy.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.rowdy.quote;
+    },
     pill: { background: "#2a1840", color: "#ffb36b", border: "1.5px solid #ff8a2a" },
   },
   {
     id: "courtesy",
-    name: "合乎粥礼",
+    get name() {
+      return T.lib.badges.courtesy.name;
+    },
     code: "RE-01",
     series: "response",
-    condition: "第一次回应别人的宣言",
-    lockedHint: "回应一条别人的宣言",
-    quote: "有来有往，合乎粥礼。",
+    get condition() {
+      return T.lib.badges.courtesy.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.courtesy.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.courtesy.quote;
+    },
     pill: { background: "#e3faf6", color: "#178a80", border: "1.5px solid #2ec4b6" },
     goal: { count: "reactDays", n: 1 },
   },
   {
     id: "hype",
-    name: "舟P气氛组",
+    get name() {
+      return T.lib.badges.hype.name;
+    },
     code: "RE-10",
     series: "response",
-    condition: "累计 10 天回应过宣言",
-    lockedHint: "{n} / 10 天",
-    quote: "有你在，宣言从不冷场！",
+    get condition() {
+      return T.lib.badges.hype.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days10;
+    },
+    get quote() {
+      return T.lib.badges.hype.quote;
+    },
     pill: { background: "#221a3c", color: "#ff9fc0", border: "1.5px solid #ff5c93" },
     goal: { count: "reactDays", n: 10 },
   },
   {
     id: "sidekick",
-    name: "金牌捧哏",
+    get name() {
+      return T.lib.badges.sidekick.name;
+    },
     code: "RE-30",
     series: "response",
-    condition: "累计 30 天回应过宣言",
-    lockedHint: "{n} / 30 天",
-    quote: "你一句我一句，这活儿离了你不行。",
+    get condition() {
+      return T.lib.badges.sidekick.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days30;
+    },
+    get quote() {
+      return T.lib.badges.sidekick.quote;
+    },
     pill: { background: "#9e1f35", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "reactDays", n: 30 },
   },
   {
     id: "responder",
-    name: "有求必应",
+    get name() {
+      return T.lib.badges.responder.name;
+    },
     code: "RE-100",
     series: "response",
-    condition: "累计 100 天回应过宣言",
-    lockedHint: "{n} / 100 天",
-    quote: "一百天，有宣言就有你的回应。",
+    get condition() {
+      return T.lib.badges.responder.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days100;
+    },
+    get quote() {
+      return T.lib.badges.responder.quote;
+    },
     pill: { background: "#3b2385", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "reactDays", n: 100 },
   },
   {
     id: "declfriend",
-    name: "以宣会友",
+    get name() {
+      return T.lib.badges.declfriend.name;
+    },
     code: "RE-PAL",
     series: "response",
-    condition: "从一条宣言开始（你回应了 TA、或者碰了发宣言的人），一来一回最后成了触须之交；两个人都拿",
-    lockedHint: "从一条宣言开始，交一位触须之交",
-    quote: "一句宣言，换来一位触须之交。",
+    get condition() {
+      return T.lib.badges.declfriend.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.declfriend.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.declfriend.quote;
+    },
     pill: { background: "linear-gradient(90deg, #ffe3c7, #d6f6f2)", color: "#0d5a53", border: "1.5px solid #2ec4b6" },
   },
   {
     id: "empathy",
-    name: "萨科塔的共感",
+    get name() {
+      return T.lib.badges.empathy.name;
+    },
     code: "RE-HALO",
     series: "response",
-    condition: "累计 50 天回应过宣言",
-    lockedHint: "{n} / 50 天",
-    quote: "身边的人是快乐还是难过，你都感受得到。",
+    get condition() {
+      return T.lib.badges.empathy.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.empathy.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.empathy.quote;
+    },
     pill: { background: "#0e3b37", color: "#ffe08a", border: "1.5px solid #2ec4b6" },
     goal: { count: "reactDays", n: 50 },
   },
   {
     id: "amiya",
-    name: "博士，欢迎回家",
+    get name() {
+      return T.lib.badges.amiya.name;
+    },
     code: "GD-AMIYA",
     series: "guides",
-    condition: "和阿米娅成为触须之交",
-    lockedHint: "去罗德岛大胆碰一下阿米娅",
-    quote: "诶嘿嘿...欢迎登上罗德岛！",
+    get condition() {
+      return T.lib.badges.amiya.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.amiya.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.amiya.quote;
+    },
     pill: { background: "#ffeaf3", color: "#c2477f", border: "1.5px solid #ff7eb6" },
     pictureArt: "badge-amiya",
   },
   {
     id: "perlica",
-    name: "空气突然好重...",
+    get name() {
+      return T.lib.badges.perlica.name;
+    },
     code: "GD-PERLICA",
     series: "guides",
-    condition: "和佩丽卡成为触须之交",
-    lockedHint: "大胆碰一下佩丽卡",
-    quote: "好，记下了。……以后不许再一声不吭地走掉。",
+    get condition() {
+      return T.lib.badges.perlica.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.perlica.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.perlica.quote;
+    },
     pill: { background: "#e2f8f8", color: "#178a8e", border: "1.5px solid #3fd0d4" },
     pictureArt: "badge-perlica",
   },
   {
     id: "talulah",
-    name: "小龙女是我自己？",
+    get name() {
+      return T.lib.badges.talulah.name;
+    },
     code: "GD-TALULAH",
     series: "guides",
-    condition: "和塔露拉握手（第一次大胆碰她）",
-    lockedHint: "去篝火边和塔露拉握个手",
-    quote: "重新认识一下……来，握个手吧。",
+    get condition() {
+      return T.lib.badges.talulah.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.talulah.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.talulah.quote;
+    },
     pill: { background: "#fff0e0", color: "#c25a12", border: "1.5px solid #ff9f43" },
     pictureArt: "badge-talulah",
   },
   {
     id: "minghe",
-    name: "不急，身后有他",
+    get name() {
+      return T.lib.badges.minghe.name;
+    },
     code: "GD-MINGHE",
     series: "guides",
-    condition: "和明河成为触须之交",
-    lockedHint: "大胆碰一下明河",
-    quote: "往后这一路，有我。",
+    get condition() {
+      return T.lib.badges.minghe.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.minghe.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.minghe.quote;
+    },
     pill: { background: "#1d2a5a", color: "#e8f1ff", border: "1.5px solid #5a78e6" },
     pictureArt: "badge-minghe",
   },
   {
     id: "amiya30",
-    name: "现在还不能休息哦",
+    get name() {
+      return T.lib.badges.amiya30.name;
+    },
     code: "GD-AMIYA-30",
     series: "guides",
-    condition: "累计 30 天碰过阿米娅",
-    lockedHint: "{n} / 30 天",
-    quote: "三十天了呢。……不过，现在还不能休息哦。",
+    get condition() {
+      return T.lib.badges.amiya30.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days30;
+    },
+    get quote() {
+      return T.lib.badges.amiya30.quote;
+    },
     pill: { background: "#ffeaf3", color: "#c2477f", border: "1.5px solid #f6c343" },
     goal: { count: "amiyaDays", n: 30 },
     pictureArt: "badge-amiya30",
   },
   {
     id: "perlica30",
-    name: "重力翻倍",
+    get name() {
+      return T.lib.badges.perlica30.name;
+    },
     code: "GD-PERLICA-30",
     series: "guides",
-    condition: "累计 30 天碰过佩丽卡",
-    lockedHint: "{n} / 30 天",
-    quote: "三十天，一天都没漏记。……你是重点监督对象了。",
+    get condition() {
+      return T.lib.badges.perlica30.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days30;
+    },
+    get quote() {
+      return T.lib.badges.perlica30.quote;
+    },
     pill: { background: "#e2f8f8", color: "#178a8e", border: "1.5px solid #f6c343" },
     goal: { count: "perlicaDays", n: 30 },
     pictureArt: "badge-perlica30",
   },
   {
     id: "fireside",
-    name: "火边的歌声",
+    get name() {
+      return T.lib.badges.fireside.name;
+    },
     code: "GD-FIRESIDE",
     series: "guides",
-    condition: "篝火烧到 50 只以上（第 3 档）的时候，你有蟑螂坐在火边",
-    lockedHint: "篝火凑到 50 只时，你有蟑螂在火边",
-    quote: "你听，火边有人在唱歌。",
+    get condition() {
+      return T.lib.badges.fireside.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.fireside.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.fireside.quote;
+    },
     pill: { background: "#2a1f4a", color: "#ffc94a", border: "1.5px solid #f6c343" },
     pictureArt: "badge-fireside",
   },
   {
     id: "warmth",
-    name: "温暖你的战友",
+    get name() {
+      return T.lib.badges.warmth.name;
+    },
     code: "GD-WARM",
     series: "guides",
-    condition: "累计 10 天有蟑螂在塔露拉的篝火边过夜（每天 4 点数火边的时候算一天）",
-    lockedHint: "{n} / 10 天",
-    quote: "威慑敌人那半句用不上，火边只有战友。",
+    get condition() {
+      return T.lib.badges.warmth.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.progress.days10;
+    },
+    get quote() {
+      return T.lib.badges.warmth.quote;
+    },
     pill: { background: "#2a1f4a", color: "#ffb36b", border: "1.5px solid #ff7a2a" },
     goal: { count: "fireNights", n: 10 },
     pictureArt: "badge-warmth",
   },
   {
     id: "sevenstops",
-    name: "七站星河",
+    get name() {
+      return T.lib.badges.sevenstops.name;
+    },
     code: "GD-SEVEN",
     series: "guides",
-    condition: "派克隆体跟明河走完整整 7 站，中途没下马",
-    lockedHint: "跟明河走完 7 站",
-    quote: "七座城连成一条星河，你都走过了。",
+    get condition() {
+      return T.lib.badges.sevenstops.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.sevenstops.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.sevenstops.quote;
+    },
     pill: { background: "#1d2a5a", color: "#ffe08a", border: "1.5px solid #f6c343" },
     pictureArt: "badge-sevenstops",
   },
   {
     id: "siqueue",
-    name: "门口排着去",
+    get name() {
+      return T.lib.badges.siqueue.name;
+    },
     code: "GD-SI-QUEUE",
     series: "guides",
-    condition: "你的墨小强头一回在缘缘庄门口排上队",
-    lockedHint: "缘缘庄客满时，去门口排一回队",
-    quote: "客满了，门口排着去。……排队的路，我都给你画好了。",
+    get condition() {
+      return T.lib.badges.siqueue.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.siqueue.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.siqueue.quote;
+    },
     pill: { background: "#fbe9e4", color: "#b8321f", border: "1.5px solid #d9472b" },
     pictureArt: "badge-siqueue",
   },
   {
     id: "siinn",
-    name: "塔卫二最好的客栈",
+    get name() {
+      return T.lib.badges.siinn.name;
+    },
     code: "GD-SI-INN",
     series: "guides",
-    condition: "你的墨小强头一回住进缘缘庄",
-    lockedHint: "排到你，住进缘缘庄",
-    quote: "被子是新晒的，才、才不是为你晒的。",
+    get condition() {
+      return T.lib.badges.siinn.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.siinn.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.siinn.quote;
+    },
     pill: { background: "#fbe9e4", color: "#b8321f", border: "1.5px solid #d9472b" },
     pictureArt: "badge-siinn",
   },
   {
     id: "fullsquad",
-    name: "满编小队",
+    get name() {
+      return T.lib.badges.fullsquad.name;
+    },
     code: "GD-SQUAD",
     series: "guides",
-    condition: "认识的 4 枚都拿到",
-    lockedHint: "{n} / 4 位向导",
-    quote: "四位向导都认得你了。小队满编，出发！",
+    get condition() {
+      return T.lib.badges.fullsquad.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.fullsquad.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.fullsquad.quote;
+    },
     pill: { background: "#1f2a44", color: "#ffe08a", border: "1.5px solid #f6c343" },
     goal: { count: "guideFriends", n: 4 },
     pictureArt: "badge-fullsquad",
@@ -741,7 +1238,7 @@ export const heldUntil = (b: Badge, at: number) => (b.days ? at + b.days * 86_40
 export const stillHeld = (b: Badge, at: number, now = Date.now()) => now < (heldUntil(b, at) ?? Infinity);
 
 /** 「还剩 3 天」, counting a part of a day as a day */
-export const daysLeft = (until: number, now = Date.now()) => `还剩 ${Math.max(1, Math.ceil((until - now) / 86_400_000))} 天`;
+export const daysLeft = (until: number, now = Date.now()) => fmt(T.lib.badges.daysLeft, { n: Math.max(1, Math.ceil((until - now) / 86_400_000)) });
 
 /** 「No.0042」 */
 export const serialText = (n: number) => `No.${String(n).padStart(4, "0")}`;

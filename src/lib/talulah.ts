@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { homeGame, type Game } from "./games";
 import { distanceKm } from "./geo";
 import { GUIDES } from "./guides";
@@ -33,22 +34,37 @@ export const FIRE_BOT_FREE_KM = 2;
 
 /** Her lines, word for word as Breeze approved them; the handshake and birthday ones are her own voice lines */
 export const TALULAH_LINES = {
-  sneaky: "我看见你了。不用躲，过来坐吧，火边暖和。",
-  bold: "来得正好，火刚添过柴。",
-  welcome: "一起在篝火边休息一下吧。",
-  birthday:
-    "原来今天是你的生日吗？抱歉，自从离开龙门，过生日这件事就变得很陌生了。我随身带着的这本书可以当作礼物吗？明年这个时候我一定会认真准备的。嗯，除了晖洁的生日，现在我也记住你的了。",
-  hood: "这兜帽……让我想起一些老朋友。",
+  get sneaky() {
+    return T.lib.talulah.line.sneaky;
+  },
+  get bold() {
+    return T.lib.talulah.line.bold;
+  },
+  get welcome() {
+    return T.lib.talulah.line.welcome;
+  },
+  get birthday() {
+    return T.lib.talulah.line.birthday;
+  },
+  get hood() {
+    return T.lib.talulah.line.hood;
+  },
   /** The start of the handshake, all a speech bubble has room for */
-  hello: "你好！终于见到你了",
-  unfriendAsk: "解除和塔露拉干员的触须之交？她还在太阳岛守着火。",
-  unfriend: "我明白。火会一直烧着，你想回来就回来。",
+  get hello() {
+    return T.lib.talulah.line.hello;
+  },
+  get unfriendAsk() {
+    return T.lib.talulah.line.unfriendAsk;
+  },
+  get unfriend() {
+    return T.lib.talulah.line.unfriend;
+  },
 };
 
 /** The handshake, the one line that says 博士: 管理员 for those who play only Endfield */
 export function handshakeLine(games: Game[]) {
-  const you = homeGame(games) === "endfield" ? "管理员" : "罗德岛的博士";
-  return `${TALULAH_LINES.hello}，${you}，我很荣幸。重新认识一下，塔露拉·雅特利亚斯，一名来自乌萨斯的感染者。来，握个手吧。`;
+  const you = homeGame(games) === "endfield" ? T.profile.avatar.endmin : T.lib.talulah.handshake.doctor;
+  return fmt(T.lib.talulah.handshake.line, { hello: TALULAH_LINES.hello, you });
 }
 
 /** What she says back to a touch: the handshake when it made you 触须之交; she always answers openly */
@@ -61,13 +77,13 @@ export function talulahTouchLine(what: "touch" | "friend", bold: boolean, games:
 export function talulahText(item: Pick<TalulahItem, "line" | "bold">, games: Game[]) {
   switch (item.line) {
     case "handshake":
-      return `${TALULAH.name}和你握了握手：「${handshakeLine(games)}」`;
+      return fmt(T.lib.talulah.text.handshake, { name: TALULAH.name, line: handshakeLine(games) });
     case "welcome":
-      return `你的克隆体坐到了火边，${TALULAH.name}说：「${TALULAH_LINES.welcome}」`;
+      return fmt(T.lib.talulah.text.welcome, { name: TALULAH.name, line: TALULAH_LINES.welcome });
     case "birthday":
-      return `${TALULAH.name}看到了你的生日宣言：「${TALULAH_LINES.birthday}」`;
+      return fmt(T.lib.talulah.text.birthday, { name: TALULAH.name, line: TALULAH_LINES.birthday });
     default:
-      return `${TALULAH.name}回了你：「${item.bold ? TALULAH_LINES.bold : TALULAH_LINES.sneaky}」`;
+      return fmt(T.lib.guides.answered, { name: TALULAH.name, line: item.bold ? TALULAH_LINES.bold : TALULAH_LINES.sneaky });
   }
 }
 
@@ -95,10 +111,18 @@ export const fireLevel = (n: number): FireLevel => (n >= 200 ? 4 : n >= 50 ? 3 :
 
 /** What she says on her card about the fire, by its size */
 export const FIRE_LINES: Record<FireLevel, string> = {
-  1: "火还小，不过够暖和了。坐过来吧。",
-  2: "人多起来了。记住彼此的名字吧。",
-  3: "你听，火边有人在唱歌。",
-  4: "……原来大家都在。你并不孤单。",
+  get 1() {
+    return T.lib.talulah.fire.tier1;
+  },
+  get 2() {
+    return T.lib.talulah.fire.tier2;
+  },
+  get 3() {
+    return T.lib.talulah.fire.tier3;
+  },
+  get 4() {
+    return T.lib.talulah.fire.tier4;
+  },
 };
 
 const M_PER_DEG = 111_320;

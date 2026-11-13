@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { LngLat } from "./types";
 
 /**
@@ -186,7 +187,7 @@ export const OFF_LIMITS: Place[] = [
 ];
 
 /** What a player is told who picks a spot in one: the same everywhere, naming no place */
-export const offLimitsMessage = () => "这里不能放蟑螂，换个地方吧。";
+export const offLimitsMessage = () => T.lib.offLimits.message;
 
 const M_PER_DEG = 111_320;
 const rad = (deg: number) => (deg * Math.PI) / 180;

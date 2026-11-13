@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { beijingShort } from "./beijing";
 import type { Game } from "./games";
 
@@ -41,12 +42,12 @@ const perlicaBirthdays = (from: number, to: number): EventLine[] =>
       id: `perlica-bday-${y}`,
       game: "endfield",
       get text() {
-        return "祝佩丽卡生日快乐！";
+        return T.lib.events.lines.perlicaBday.text;
       },
       start: `${y}-03-16T00:00+08:00`,
       end: `${y}-03-17T04:00+08:00`,
       get replies() {
-        return ["佩丽卡生日快乐！", "蛋糕备好了", "整个塔卫二都在庆祝", "一起庆生，碰我一下"] as const;
+        return [T.lib.events.lines.perlicaBday.replies.r1, T.lib.events.lines.perlicaBday.replies.r2, T.lib.events.lines.perlicaBday.replies.r3, T.lib.events.lines.perlicaBday.replies.r4] as const;
       },
       replyKey: "perlica-bday",
     };
@@ -55,58 +56,86 @@ const perlicaBirthdays = (from: number, to: number): EventLine[] =>
 export const EVENTS: SiteEvent[] = [
   {
     id: "half2026",
-    name: "半周年",
+    get name() {
+      return T.lib.events.half2026.name;
+    },
     badge: "half2026",
     lines: [
       // Arknights' 7.5th anniversary, 「时间啊，向前！」: until its shop and outfits go
       {
         id: "tazi",
         game: "arknights",
-        text: "恭喜塔姐上岛！",
+        get text() {
+          return T.lib.events.lines.tazi.text;
+        },
         start: "2026-10-27T00:00+08:00",
         end: "2026-11-29T04:00+08:00",
-        replies: ["塔姐，欢迎上岛！", "我抽到了！", "塔姐还没来我岛上", "同喜同喜，碰我一下"] as const,
+        get replies() {
+          return [T.lib.events.lines.tazi.replies.r1, T.lib.events.lines.tazi.replies.r2, T.lib.events.lines.tazi.replies.r3, T.lib.events.lines.tazi.replies.r4] as const;
+        },
       },
       // 塔露拉's own words in its story: her letter to 晖洁 (TL-ST-4), and after TL-7
       {
         id: "talulah-spring",
         game: "arknights",
-        text: "推开窗看看吧，春天已经到了。",
+        get text() {
+          return T.lib.events.lines.talulahSpring.text;
+        },
         start: "2026-10-27T00:00+08:00",
         end: "2026-11-29T04:00+08:00",
-        replies: ["（推开了窗）", "春天真的到了", "可现在是十一月啊", "一起等春天，碰我一下"] as const,
+        get replies() {
+          return [T.lib.events.lines.talulahSpring.replies.r1, T.lib.events.lines.talulahSpring.replies.r2, T.lib.events.lines.talulahSpring.replies.r3, T.lib.events.lines.talulahSpring.replies.r4] as const;
+        },
       },
       {
         id: "talulah-flame",
         game: "arknights",
-        text: "我，就是火焰。",
+        get text() {
+          return T.lib.events.lines.talulahFlame.text;
+        },
         start: "2026-10-27T00:00+08:00",
         end: "2026-11-29T04:00+08:00",
-        replies: ["塔姐帅！", "好烫好烫", "那我来烤火了", "借个火，碰我一下"] as const,
+        get replies() {
+          return [T.lib.events.lines.talulahFlame.replies.r1, T.lib.events.lines.talulahFlame.replies.r2, T.lib.events.lines.talulahFlame.replies.r3, T.lib.events.lines.talulahFlame.replies.r4] as const;
+        },
       },
       // Endfield 1.6, 「丹青渡」: its notice ends it at the next version's maintenance without a date yet;
       // its 理智补给 runs to 11/26 04:00
       {
         id: "yuanyuan",
         game: "endfield",
-        text: "才...才不想和祀住进缘缘庄呢！",
+        get text() {
+          return T.lib.events.lines.yuanyuan.text;
+        },
         start: "2026-10-27T00:00+08:00",
         end: "2026-11-26T04:00+08:00",
-        replies: ["口嫌体正直", "小葱在等你呢", "掌柜的，来间上房！", "才不想认识你呢，碰我一下"] as const,
+        get replies() {
+          return [T.lib.events.lines.yuanyuan.replies.r1, T.lib.events.lines.yuanyuan.replies.r2, T.lib.events.lines.yuanyuan.replies.r3, T.lib.events.lines.yuanyuan.replies.r4] as const;
+        },
       },
       // 明河's banner runs to the next version too; until its date is out, it ends with 缘缘庄's line
       {
         id: "minghe",
         game: "endfield",
-        text: "明河，带我一程！",
+        get text() {
+          return T.lib.events.lines.minghe.text;
+        },
         start: "2026-11-06T00:00+08:00",
         end: "2026-11-26T04:00+08:00",
-        replies: ["也带我一程！", "我的克隆体已经上马了", "抓紧了，怒骊跑得快", "同路人，碰我一下"] as const,
+        get replies() {
+          return [T.lib.events.lines.minghe.replies.r1, T.lib.events.lines.minghe.replies.r2, T.lib.events.lines.minghe.replies.r3, T.lib.events.lines.minghe.replies.r4] as const;
+        },
       },
     ],
   },
   // no badge of its own, every year
-  { id: "perlica-birthday", name: "佩丽卡生日", lines: perlicaBirthdays(2027, 2036) },
+  {
+    id: "perlica-birthday",
+    get name() {
+      return T.lib.events.perlicaBirthday.name;
+    },
+    lines: perlicaBirthdays(2027, 2036),
+  },
 ];
 
 export function lineIsOn(line: EventLine, now = Date.now()) {
@@ -129,5 +158,5 @@ export function findLine(lineId: string) {
 
 /** 「到 11/29 04:00」 */
 export function untilText(line: EventLine) {
-  return `到 ${beijingShort(Date.parse(line.end))}`;
+  return fmt(T.lib.events.until, { time: beijingShort(Date.parse(line.end)) });
 }

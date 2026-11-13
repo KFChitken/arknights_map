@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { beijingDate } from "./beijing";
 
 /**
@@ -203,5 +204,5 @@ export function markPopped(userId: string) {
 /** A notice's day in Beijing, like 「11月12日」 */
 export function noticeDay(t: number) {
   const [, m, d] = beijingDate(t).split("-");
-  return `${Number(m)}月${Number(d)}日`;
+  return fmt(T.lib.notices.day, { m: Number(m), d: Number(d) });
 }

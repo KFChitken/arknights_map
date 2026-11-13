@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { LngLat } from "./types";
 
 /**
@@ -419,14 +420,30 @@ export const MILESTONES = (() => {
 
 /** What she says on her card about how far the queue reaches */
 export const QUEUE_LINES = {
-  bridge: "画桥上也排满了。……桥是让人看的，不是让你们排队的。",
-  moon: "排到月沼边了。别往水里挤，掉下去我可不捞。",
-  gate: "出村了。村口那两棵老树都快被你们挤歪了。……哼，挤就挤吧。",
-  ring1: "绕了宏村一整圈。你们是不是都没别的事做？……我可没有一直在数。",
-  ring5: "绕了五圈了。我的墨又不是用不完的！……还、还够画就是了。",
-  ring10: "盘得跟蚊香似的……才、才不是我故意画成这样。",
-  tachuan: "排到塔川了。那边秋天叶子红，排着也不闷。……我、我随口说的。",
-  shrink: "队伍短了。……哼，人少了我也没觉得冷清。",
+  get bridge() {
+    return T.lib.siInn.queue.bridge;
+  },
+  get moon() {
+    return T.lib.siInn.queue.moon;
+  },
+  get gate() {
+    return T.lib.siInn.queue.gate;
+  },
+  get ring1() {
+    return T.lib.siInn.queue.ring1;
+  },
+  get ring5() {
+    return T.lib.siInn.queue.ring5;
+  },
+  get ring10() {
+    return T.lib.siInn.queue.ring10;
+  },
+  get tachuan() {
+    return T.lib.siInn.queue.tachuan;
+  },
+  get shrink() {
+    return T.lib.siInn.queue.shrink;
+  },
 };
 
 /**

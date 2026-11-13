@@ -1,4 +1,5 @@
 /** The site counts days in Beijing time, which is UTC+8 all year. */
+import { fmt, T } from "@/i18n";
 const OFFSET_MS = 8 * 3_600_000;
 
 /** The date in Beijing, as YYYY-MM-DD. */
@@ -26,5 +27,5 @@ export function beijingShort(t: number) {
 /** A moment's Beijing date in words, like 「11 月 17 日」. */
 export function beijingDayWords(t: number) {
   const [, m, d] = beijingDate(t).split("-");
-  return `${Number(m)} 月 ${Number(d)} 日`;
+  return fmt(T.lib.beijing.dayWords, { m: Number(m), d: Number(d) });
 }

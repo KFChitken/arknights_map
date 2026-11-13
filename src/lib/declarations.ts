@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { findLine } from "./events";
 import { GAME_NAMES, type Game } from "./games";
 
@@ -10,7 +11,14 @@ export const SPOUSES = ["老婆", "老公"] as const;
 export type Spouse = (typeof SPOUSES)[number];
 
 /** What players call themselves in 欢迎回家，<称呼> */
-export const WELCOME_NAMES: Record<Game, string> = { arknights: "刀客塔", endfield: "管理员" };
+export const WELCOME_NAMES: Record<Game, string> = {
+  get arknights() {
+    return T.lib.declarations.welcomeNames.arknights;
+  },
+  get endfield() {
+    return T.profile.avatar.endmin;
+  },
+};
 
 /**
  * A declaration is always one of a few fixed sentences with blanks picked from
@@ -55,50 +63,50 @@ export const isDrunkTemplate = (t: unknown) => (DRUNK_TEMPLATES as readonly unkn
 export const STAY_TEMPLATES = ["sihouse", "simine"] as const;
 export const isStayTemplate = (t: unknown) => (STAY_TEMPLATES as readonly unknown[]).includes(t);
 /** Why one who has not stayed cannot send them, on the sheet and from the server */
-export const stayNeeded = () => "住进缘缘庄就能发。";
+export const stayNeeded = () => T.lib.declarations.stayNeeded;
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
     case "launch":
-      return `${GAME_NAMES[d.game]}，启动！`;
+      return fmt(T.lib.declarations.text.launch, { game: GAME_NAMES[d.game] });
     case "iam":
-      return `我是${d.character}的${d.title}`;
+      return fmt(T.lib.declarations.text.iam, { character: d.character, title: d.title });
     case "love":
-      return `我永远喜欢${d.character}`;
+      return fmt(T.lib.declarations.text.love, { character: d.character });
     case "buff":
-      return `加强${d.character}`;
+      return fmt(T.lib.declarations.text.buff, { character: d.character });
     case "myname":
-      return `我是${d.name ?? "……"}，我要玩${GAME_NAMES[d.game]}`;
+      return fmt(T.lib.declarations.text.myname, { name: d.name ?? "……", game: GAME_NAMES[d.game] });
     case "welcome":
-      return `欢迎回家，${WELCOME_NAMES[d.game]}`;
+      return fmt(T.lib.declarations.text.welcome, { name: WELCOME_NAMES[d.game] });
     case "canyou":
-      return `${d.character}做得到吗？`;
+      return fmt(T.lib.declarations.text.canyou, { character: d.character });
     case "eat":
-      return `我想吃${d.character}的${d.food}`;
+      return fmt(T.lib.declarations.text.eat, { character: d.character, food: d.food });
     case "birthday":
-      return "祝我生日快乐";
+      return T.declare.line.birthday;
     case "event":
-      return findLine(d.line)?.line.text ?? "（限定宣言）";
+      return findLine(d.line)?.line.text ?? T.lib.declarations.text.event;
     case "alsoplay":
-      return `原来，你也玩${GAME_NAMES[d.game]}`;
+      return fmt(T.lib.declarations.text.alsoplay, { game: GAME_NAMES[d.game] });
     case "water":
-      return "这白开水怎么没味啊？";
+      return T.declare.line.water;
     case "drunklove":
-      return `我永远喜欢${d.character}！`;
+      return fmt(T.lib.declarations.text.drunklove, { character: d.character });
     case "kr168":
-      return `氪了168，${d.character}${d.spouse}回家家`;
+      return fmt(T.lib.declarations.text.kr168, { character: d.character, spouse: d.spouse });
     case "radar":
-      return "我的方舟雷达💡的一下响了";
+      return T.declare.line.radar;
     case "roguelike":
-      return "我要打集成战略！";
+      return T.declare.line.roguelike;
     case "xianshu":
-      return "我要看仙术杯！";
+      return T.declare.line.cup;
     case "rental":
-      return "我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个";
+      return T.declare.line.roaches;
     case "sihouse":
-      return "你家还挺大的嘛？";
+      return T.declare.line.innBig;
     case "simine":
-      return "疯狂新妻祀是我的！";
+      return T.declare.line.innSi;
   }
 }
 
@@ -107,12 +115,22 @@ export function declarationText(d: Declaration): string {
  * 生日快乐！ are the five every declaration has (GENERIC_REACTIONS), after its own four.
  */
 export const REACTIONS = {
-  alsoplay: "原来，你也玩舟？",
-  birthday: "生日快乐！",
-  zhouli: "合乎粥礼",
-  shouwei: "舟P收收味",
+  get alsoplay() {
+    return T.lib.declarations.reactions.alsoplay;
+  },
+  get birthday() {
+    return T.lib.declarations.reactions.birthday;
+  },
+  get zhouli() {
+    return T.lib.declarations.reactions.zhouli;
+  },
+  get shouwei() {
+    return T.lib.declarations.reactions.shouwei;
+  },
   plusone: "+1",
-  diplomat: "这种已经是外交官级别的了",
+  get diplomat() {
+    return T.lib.declarations.reactions.diplomat;
+  },
 } as const;
 export type Reaction = keyof typeof REACTIONS;
 
@@ -133,24 +151,60 @@ export type Reply = { id: string; text: string; own: boolean };
  * lines keep theirs in events.ts. Short: about 12 characters besides a character's name.
  */
 const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, string]>> = {
-  launch: ["上号！", "先把理智清了", "现在还不能休息哦", "一起启动，碰我一下"] as const,
-  iam: ["{汪汪}", "我也是{角色}的{称呼}", "{角色}知道吗？", "同一窝的！碰我一下"] as const,
-  love: ["我也永远喜欢{角色}！", "{角色}是我的！", "你上次也是这么说的", "同担！碰我一下"] as const,
-  buff: ["{角色}值得更好的！", "鹰角，听到了吗！", "不是{角色}弱，是练度不够", "同求加强，碰我一下"] as const,
-  myname: ["好名字！", "我也要玩{游戏}！", "准了！", "{名字}你好，碰我一下"] as const,
-  welcome: ["我回来了！", "回来就好", "这次真的不退坑了", "我也刚回来，碰我一下"] as const,
-  canyou: ["{角色}当然做得到！", "你在质疑{角色}？", "做不到也没关系，喜欢就够了", "我也厨{角色}，碰我一下"] as const,
-  eat: ["给我也来一份", "这边建议去医疗部挂个号", "{角色}：？", "同道中人？碰我一下"] as const,
-  birthday: ["生日快乐！", "生日快乐，十连双黄！", "今天寿星最大", "寿星碰我一下，沾沾喜气"] as const,
-  water: ["那是白酒！", "别喝了别喝了", "我给你倒杯真的", "醒了碰我一下"] as const,
-  drunklove: ["酒后吐真言", "醒了还算数吗？", "敬{角色}，干杯！", "同担干杯，碰我一下"] as const,
-  kr168: ["恭喜接{角色}回家！", "168 就出了？我 648 都没出", "醒醒，你还没抽", "欧皇碰我一下，分点欧气"] as const,
-  radar: ["我的也响了！", "响的就是我", "喝多了吧，雷达在乱响", "碰我一下，看看准不准"] as const,
-  roguelike: ["这把必出好藏品！", "喝成这样还打肉鸽？", "醉拳流，一层就寄", "打完碰我一下，比比分"] as const,
-  xianshu: ["我也要看！", "看会了，手没会", "喝醉了看，更像仙术了", "看完碰我一下"] as const,
-  rental: ["现在认识一个了", "那些蟑螂也玩舟吗？", "所以你来对地方了", "碰我一下，这就多一个"] as const,
-  sihouse: ["两千五百间房呢！", "掌柜的听见要脸红了", "我还在门口排着……", "老住客，碰我一下"] as const,
-  simine: ["祀是大家的！", "小心被她听见", "先把房钱结了", "情敌？碰我一下"] as const,
+  get launch() {
+    return [T.lib.declarations.replies.launch.r1, T.lib.declarations.replies.launch.r2, T.lib.declarations.replies.launch.r3, T.lib.declarations.replies.launch.r4] as const;
+  },
+  get iam() {
+    return [T.lib.declarations.replies.iam.r1, T.lib.declarations.replies.iam.r2, T.lib.declarations.replies.iam.r3, T.lib.declarations.replies.iam.r4] as const;
+  },
+  get love() {
+    return [T.lib.declarations.replies.love.r1, T.lib.declarations.replies.love.r2, T.lib.declarations.replies.love.r3, T.lib.declarations.replies.love.r4] as const;
+  },
+  get buff() {
+    return [T.lib.declarations.replies.buff.r1, T.lib.declarations.replies.buff.r2, T.lib.declarations.replies.buff.r3, T.lib.declarations.replies.buff.r4] as const;
+  },
+  get myname() {
+    return [T.lib.declarations.replies.myname.r1, T.lib.declarations.replies.myname.r2, T.lib.declarations.replies.myname.r3, T.lib.declarations.replies.myname.r4] as const;
+  },
+  get welcome() {
+    return [T.lib.declarations.replies.welcome.r1, T.lib.declarations.replies.welcome.r2, T.lib.declarations.replies.welcome.r3, T.lib.declarations.replies.welcome.r4] as const;
+  },
+  get canyou() {
+    return [T.lib.declarations.replies.canyou.r1, T.lib.declarations.replies.canyou.r2, T.lib.declarations.replies.canyou.r3, T.lib.declarations.replies.canyou.r4] as const;
+  },
+  get eat() {
+    return [T.lib.declarations.replies.eat.r1, T.lib.declarations.replies.eat.r2, T.lib.declarations.replies.eat.r3, T.lib.declarations.replies.eat.r4] as const;
+  },
+  get birthday() {
+    return [T.lib.declarations.reactions.birthday, T.lib.declarations.replies.birthday.r2, T.lib.declarations.replies.birthday.r3, T.lib.declarations.replies.birthday.r4] as const;
+  },
+  get water() {
+    return [T.lib.declarations.replies.water.r1, T.lib.declarations.replies.water.r2, T.lib.declarations.replies.water.r3, T.lib.declarations.replies.water.r4] as const;
+  },
+  get drunklove() {
+    return [T.lib.declarations.replies.drunklove.r1, T.lib.declarations.replies.drunklove.r2, T.lib.declarations.replies.drunklove.r3, T.lib.declarations.replies.drunklove.r4] as const;
+  },
+  get kr168() {
+    return [T.lib.declarations.replies.kr168.r1, T.lib.declarations.replies.kr168.r2, T.lib.declarations.replies.kr168.r3, T.lib.declarations.replies.kr168.r4] as const;
+  },
+  get radar() {
+    return [T.lib.declarations.replies.radar.r1, T.lib.declarations.replies.radar.r2, T.lib.declarations.replies.radar.r3, T.lib.declarations.replies.radar.r4] as const;
+  },
+  get roguelike() {
+    return [T.lib.declarations.replies.roguelike.r1, T.lib.declarations.replies.roguelike.r2, T.lib.declarations.replies.roguelike.r3, T.lib.declarations.replies.roguelike.r4] as const;
+  },
+  get xianshu() {
+    return [T.lib.declarations.replies.xianshu.r1, T.lib.declarations.replies.xianshu.r2, T.lib.declarations.replies.xianshu.r3, T.lib.declarations.replies.xianshu.r4] as const;
+  },
+  get rental() {
+    return [T.lib.declarations.replies.rental.r1, T.lib.declarations.replies.rental.r2, T.lib.declarations.replies.rental.r3, T.lib.declarations.replies.rental.r4] as const;
+  },
+  get sihouse() {
+    return [T.lib.declarations.replies.sihouse.r1, T.lib.declarations.replies.sihouse.r2, T.lib.declarations.replies.sihouse.r3, T.lib.declarations.replies.sihouse.r4] as const;
+  },
+  get simine() {
+    return [T.lib.declarations.replies.simine.r1, T.lib.declarations.replies.simine.r2, T.lib.declarations.replies.simine.r3, T.lib.declarations.replies.simine.r4] as const;
+  },
 };
 
 /** A reply's blanks, filled in from the declaration it answers */
@@ -158,10 +212,10 @@ function fillReply(text: string, d: Declaration) {
   const character = ("character" in d && d.character) || "TA";
   return text
     .replaceAll("{角色}", character)
-    .replaceAll("{游戏}", "game" in d ? GAME_NAMES[d.game] : "舟")
+    .replaceAll("{游戏}", "game" in d ? GAME_NAMES[d.game] : T.lib.declarations.fill.game)
     .replaceAll("{名字}", d.template === "myname" ? (d.name ?? "") : "")
     .replaceAll("{称呼}", d.template === "iam" ? d.title : "")
-    .replaceAll("{汪汪}", d.template === "iam" && d.title === "猫" ? "喵～" : "汪汪！");
+    .replaceAll("{汪汪}", d.template === "iam" && d.title === "猫" ? T.lib.declarations.fill.meow : T.lib.declarations.fill.woof);
 }
 
 /** A sentence's own four, filled in; none for one without them (an older sentence, a limited line written without) */

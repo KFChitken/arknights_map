@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { T } from "@/i18n";
 import "@/i18n/server";
 import { siteName } from "@/lib/rules";
 
@@ -13,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: siteName(),
     short_name: siteName(),
-    description: "看看你身边有多少舟P",
+    description: T.server.site.description,
     start_url: "/",
     scope: "/",
     display: "standalone",

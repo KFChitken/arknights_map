@@ -1,5 +1,6 @@
 /** Browser side of email sign-in (src/app/api/auth). Errors carry a message to show as is. */
 
+import { T } from "@/i18n";
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   let res: Response;
   try {
@@ -9,10 +10,10 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
       body: JSON.stringify(body),
     });
   } catch {
-    throw new Error("连不上服务器，检查一下网络再试。");
+    throw new Error(T.requests.offline);
   }
   const json = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  if (!res.ok) throw new Error(json?.error ?? "服务器出了点问题，稍后再试试。");
+  if (!res.ok) throw new Error(json?.error ?? T.requests.serverTrouble);
   return json as T;
 }
 
@@ -49,7 +50,7 @@ export async function passwordStatus(): Promise<{ setAt: number | null; email: s
   try {
     res = await fetch("/api/auth/password", { cache: "no-store" });
   } catch {
-    throw new Error("连不上服务器，检查一下网络再试。");
+    throw new Error(T.requests.offline);
   }
   const json = (await res.json().catch(() => null)) as {
     setAt: number | null;
@@ -58,7 +59,7 @@ export async function passwordStatus(): Promise<{ setAt: number | null; email: s
     noCodeNeeded?: boolean;
     error?: string;
   } | null;
-  if (!res.ok || !json) throw new Error(json?.error ?? "服务器出了点问题，稍后再试试。");
+  if (!res.ok || !json) throw new Error(json?.error ?? T.requests.serverTrouble);
   return {
     setAt: json.setAt,
     email: json.email,
@@ -80,11 +81,11 @@ export async function savePassword(password: string, current?: string): Promise<
       body: JSON.stringify({ password, current }),
     });
   } catch {
-    throw new Error("连不上服务器，检查一下网络再试。");
+    throw new Error(T.requests.offline);
   }
   const json = (await res.json().catch(() => null)) as { changed?: boolean; needsCode?: boolean; error?: string } | null;
   if (res.status === 403 && json?.needsCode) return { needsCode: true };
-  if (!res.ok) throw new Error(json?.error ?? "服务器出了点问题，稍后再试试。");
+  if (!res.ok) throw new Error(json?.error ?? T.requests.serverTrouble);
   return { changed: Boolean(json?.changed) };
 }
 

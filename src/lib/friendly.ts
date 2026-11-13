@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { yearsWord } from "./perlica";
 
 /**
@@ -16,27 +17,70 @@ export type Gesture = AwakeGesture | SleepGesture;
 export const isAwakeGesture = (x: unknown): x is AwakeGesture => (AWAKE_GESTURES as readonly unknown[]).includes(x);
 export const isGesture = (x: unknown): x is Gesture => isAwakeGesture(x) || (SLEEP_GESTURES as readonly unknown[]).includes(x);
 
-export const GESTURE_NAMES: Record<Gesture, string> = { hug: "贴贴", highfive: "击掌", luck: "吸欧气", blanket: "盖被子", water: "放杯白开水" };
+export const GESTURE_NAMES: Record<Gesture, string> = {
+  get hug() {
+    return T.lib.friendly.names.hug;
+  },
+  get highfive() {
+    return T.lib.friendly.names.highfive;
+  },
+  get luck() {
+    return T.lib.friendly.names.luck;
+  },
+  get blanket() {
+    return T.lib.friendly.names.blanket;
+  },
+  get water() {
+    return T.lib.friendly.names.water;
+  },
+};
 /** The button once used for this sleep of theirs; the awake ones may come again, within the day's FRIEND_ACTS_PER_DAY */
-export const GESTURE_DONE: Record<SleepGesture, string> = { blanket: "盖过了", water: "放过了" };
+export const GESTURE_DONE: Record<SleepGesture, string> = {
+  get blanket() {
+    return T.lib.friendly.done.blanket;
+  },
+  get water() {
+    return T.lib.friendly.done.water;
+  },
+};
 /** Answering one */
-export const GESTURE_BACK: Record<AwakeGesture, string> = { hug: "贴回去", highfive: "击回去", luck: "吸回来" };
+export const GESTURE_BACK: Record<AwakeGesture, string> = {
+  get hug() {
+    return T.lib.friendly.back.hug;
+  },
+  get highfive() {
+    return T.lib.friendly.back.highfive;
+  },
+  get luck() {
+    return T.lib.friendly.back.luck;
+  },
+};
 /** One of theirs you answered */
-export const GESTURE_RETURNED: Record<AwakeGesture, string> = { hug: "贴回去了", highfive: "击回去了", luck: "吸回来了" };
+export const GESTURE_RETURNED: Record<AwakeGesture, string> = {
+  get hug() {
+    return T.lib.friendly.returned.hug;
+  },
+  get highfive() {
+    return T.lib.friendly.returned.highfive;
+  },
+  get luck() {
+    return T.lib.friendly.returned.luck;
+  },
+};
 
 /** What TA reads, by your name */
 export function gestureText(g: Gesture, who: string) {
   switch (g) {
     case "hug":
-      return `${who} 和你贴贴了`;
+      return fmt(T.lib.friendly.text.hug, { who });
     case "highfive":
-      return `${who} 和你击了个掌`;
+      return fmt(T.lib.friendly.text.highfive, { who });
     case "luck":
-      return `${who} 吸走了你的一口欧气`;
+      return fmt(T.lib.friendly.text.luck, { who });
     case "blanket":
-      return `你睡着的时候，${who} 给你盖了被子`;
+      return fmt(T.lib.friendly.text.blanket, { who });
     case "water":
-      return `${who} 在你枕边放了一杯白开水`;
+      return fmt(T.lib.friendly.text.water, { who });
   }
 }
 
@@ -44,23 +88,23 @@ export function gestureText(g: Gesture, who: string) {
 export function gestureSent(g: Gesture, who: string) {
   switch (g) {
     case "hug":
-      return `和 ${who} 贴贴了！`;
+      return fmt(T.lib.friendly.sent.hug, { who });
     case "highfive":
-      return `和 ${who} 击了个掌！`;
+      return fmt(T.lib.friendly.sent.highfive, { who });
     case "luck":
-      return `从 ${who} 那里吸了一口欧气，抽卡去吧！`;
+      return fmt(T.lib.friendly.sent.luck, { who });
     case "blanket":
-      return `给 ${who} 盖好了被子。`;
+      return fmt(T.lib.friendly.sent.blanket, { who });
     case "water":
-      return `在 ${who} 枕边放了一杯白开水。`;
+      return fmt(T.lib.friendly.sent.water, { who });
   }
 }
 
 /** 催理智, as TA reads it; asleep: sent while TA slept */
 export const sanityText = (who: string, asleep: boolean) =>
-  asleep ? `${who} 趁你睡着催你清理智啦！理智要溢出了。` : `${who} 催你清理智啦！理智要溢出了。`;
+  asleep ? fmt(T.lib.friendly.sanityAsleep, { who }) : fmt(T.lib.friendly.sanity, { who });
 /** What you get back when TA says 「清完了！」 */
-export const sanityThanks = (who: string) => `${who}：清完了，谢谢提醒！`;
+export const sanityThanks = (who: string) => fmt(T.lib.friendly.sanityThanks, { who });
 
 /**
  * What you may do for one 触须之交 a day (Beijing date), of any kinds together: 催理智 and the
@@ -73,19 +117,32 @@ export const FRIEND_ACTS_PER_DAY = 3;
 export const BATCH_ACTS = ["hug", "highfive", "luck", "sanity"] as const;
 export type BatchAct = (typeof BATCH_ACTS)[number];
 export const isBatchAct = (x: unknown): x is BatchAct => (BATCH_ACTS as readonly unknown[]).includes(x);
-export const BATCH_NAMES: Record<BatchAct, string> = { hug: "贴贴", highfive: "击掌", luck: "吸欧气", sanity: "催理智" };
+export const BATCH_NAMES: Record<BatchAct, string> = {
+  get hug() {
+    return T.lib.friendly.names.hug;
+  },
+  get highfive() {
+    return T.lib.friendly.names.highfive;
+  },
+  get luck() {
+    return T.lib.friendly.names.luck;
+  },
+  get sanity() {
+    return T.friendActs.sanity;
+  },
+};
 
 /** The toast once a batch went out to n of them */
 export function batchSent(act: BatchAct, n: number) {
   switch (act) {
     case "hug":
-      return `和 ${n} 位触须之交贴贴了！`;
+      return fmt(T.lib.friendly.batchSent.hug, { n });
     case "highfive":
-      return `和 ${n} 位触须之交击了掌！`;
+      return fmt(T.lib.friendly.batchSent.highfive, { n });
     case "luck":
-      return `从 ${n} 位触须之交那里吸了欧气，抽卡去吧！`;
+      return fmt(T.lib.friendly.batchSent.luck, { n });
     case "sanity":
-      return `已经催 ${n} 位触须之交清理智啦`;
+      return fmt(T.lib.friendly.batchSent.sanity, { n });
   }
 }
 
@@ -103,8 +160,8 @@ export const isFriendAnniversary = (day: number) => day === 7 || day === 30 || d
 
 /** 「今天是你和 Dr. A 成为触须之交的第 100 天」, with 「，满一年啦」 on the years */
 export function anniversaryText(day: number, who: string) {
-  const line = `今天是你和 ${who} 成为触须之交的第 ${day} 天`;
+  const line = fmt(T.lib.friendly.anniversary, { who, day });
   if (day < 365 || day % 365) return line;
   const years = day / 365;
-  return `${line}，满${yearsWord(years)}年啦`;
+  return fmt(T.lib.friendly.anniversaryYears, { line, years: yearsWord(years) });
 }

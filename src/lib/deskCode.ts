@@ -5,6 +5,7 @@
  * with or without spaces and the dash.
  */
 
+import { T } from "@/i18n";
 export const DESK_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 export const DESK_CODE_LENGTH = 8;
 
@@ -23,4 +24,4 @@ export const isDeskCode = (code: string) => WELL_FORMED.test(code);
 export const formatDeskCode = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`;
 
 /** What every failed try is told, whichever way it failed */
-export const deskCodeWrong = () => "登录码不对或者过期了，回 Safari 再拿一个。";
+export const deskCodeWrong = () => T.lib.deskCode.wrong;

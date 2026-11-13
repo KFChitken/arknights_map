@@ -1,9 +1,14 @@
+import { T } from "@/i18n";
 export const GAMES = ["arknights", "endfield"] as const;
 export type Game = (typeof GAMES)[number];
 
 export const GAME_NAMES: Record<Game, string> = {
-  arknights: "明日方舟",
-  endfield: "终末地",
+  get arknights() {
+    return T.lib.games.names.arknights;
+  },
+  get endfield() {
+    return T.lib.games.names.endfield;
+  },
 };
 
 /**
@@ -12,18 +17,68 @@ export const GAME_NAMES: Record<Game, string> = {
  */
 export const SERVERS: Record<Game, { id: string; name: string }[]> = {
   arknights: [
-    { id: "cn", name: "官服" },
-    { id: "bili", name: "B服" },
-    { id: "global", name: "国际服" },
-    { id: "jp", name: "日服" },
-    { id: "kr", name: "韩服" },
-    { id: "tw", name: "繁中服" },
+    {
+      id: "cn",
+      get name() {
+        return T.lib.games.servers.cn;
+      },
+    },
+    {
+      id: "bili",
+      get name() {
+        return T.lib.games.servers.bili;
+      },
+    },
+    {
+      id: "global",
+      get name() {
+        return T.lib.games.servers.global;
+      },
+    },
+    {
+      id: "jp",
+      get name() {
+        return T.lib.games.servers.jp;
+      },
+    },
+    {
+      id: "kr",
+      get name() {
+        return T.lib.games.servers.kr;
+      },
+    },
+    {
+      id: "tw",
+      get name() {
+        return T.lib.games.servers.tw;
+      },
+    },
   ],
   endfield: [
-    { id: "cn", name: "官服" },
-    { id: "bili", name: "B服" },
-    { id: "asia", name: "国际服·亚洲" },
-    { id: "ameu", name: "国际服·美洲/欧洲" },
+    {
+      id: "cn",
+      get name() {
+        return T.lib.games.servers.cn;
+      },
+    },
+    {
+      id: "bili",
+      get name() {
+        return T.lib.games.servers.bili;
+      },
+    },
+    {
+      id: "asia",
+      get name() {
+        return T.lib.games.servers.asia;
+      },
+    },
+    {
+      id: "ameu",
+      get name() {
+        return T.lib.games.servers.ameu;
+      },
+    },
   ],
 };
 

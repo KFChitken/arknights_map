@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { ShownBadge } from "./badges";
 import type { Game } from "./games";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "./types";
@@ -62,6 +63,6 @@ export const EMPTY_PROFILE: Profile = {
 
 export function displayName(p: Pick<Profile, "anonymous" | "name" | "drPrefix">) {
   const name = p.name.trim();
-  if (p.anonymous || !name) return "匿名舟P";
+  if (p.anonymous || !name) return T.lib.profile.anonymous;
   return p.drPrefix ? `Dr. ${name}` : name;
 }

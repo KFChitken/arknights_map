@@ -53,41 +53,55 @@ const shortDay = (date: string) => {
   return `${Number(m)}/${Number(d)}`;
 };
 
-const ruleWords = (rule: string | null) => `因为社区守则里「${isRuleCode(rule) ? RULES[rule] : RULES.harass}」这一条，`;
+const ruleWords = (rule: string | null) => fmt(T.server.staffNotes.because, { rule: isRuleCode(rule) ? RULES[rule] : RULES.harass });
 
 /** What a suspended player may and may not do, as each message about it says */
-export const suspendedMeans = () => "这期间你还能看地图和消息，但不能碰人、发宣言、回应、戳一戳和做客。";
+export const suspendedMeans = () => T.server.staffNotes.suspendedMeans;
 
 /** What the admin did about the player, told under the rule it was for; slot: removeRoach's roach, 0 the main one */
 export function actionWords(action: string, rule: string | null, until: Date | null, slot: number | null = null) {
   const why = ruleWords(rule);
   switch (action) {
     case "removeRoach":
-      return `${why}站长把你的一只${slot === 0 ? "本体" : "克隆体"}收回到你手里了，记一张黄牌。`;
+      return fmt(T.server.staffNotes.action.removeRoach, { why, roach: slot === 0 ? T.server.staffNotes.roach.main : T.server.staffNotes.roach.clone });
     case "warn":
-      return `${why}站长提醒你一次，记一张黄牌。${YELLOW_DAYS} 天内 ${YELLOWS_TO_WORRY} 张黄牌可能会被封号。`;
+      return fmt(T.server.staffNotes.action.warn, { why, days: YELLOW_DAYS, yellows: YELLOWS_TO_WORRY });
     case "suspend":
-      return `${why}站长暂停了你的互动，到 ${dayWords((until ?? new Date(Date.now() + SUSPEND_DAYS * 86_400_000)).getTime())}。${suspendedMeans()}`;
+      return fmt(T.server.staffNotes.action.suspend, { why, until: dayWords((until ?? new Date(Date.now() + SUSPEND_DAYS * 86_400_000)).getTime()), means: suspendedMeans() });
     case "clearName":
-      return `${why}站长清掉了你的名字。这个名字以后不能再用了。`;
+      return fmt(T.server.staffNotes.action.clearName, { why });
     case "clearUid":
-      return `${why}站长清掉了你填的 UID。这个 UID 以后不能再填了。`;
+      return fmt(T.server.staffNotes.action.clearUid, { why });
     case "clearBoth":
-      return `${why}站长清掉了你的名字和你填的 UID。这个名字和 UID 以后都不能再用了。`;
+      return fmt(T.server.staffNotes.action.clearBoth, { why });
     default:
-      return `${why}站长处理了你的账号。`;
+      return fmt(T.server.staffNotes.action.handled, { why });
   }
 }
 
 /** What undoing an action on appeal gave back */
 const REVERTED: Partial<Record<AdminAction, string>> = {
-  warn: "黄牌不算了",
-  removeRoach: "黄牌不算了",
-  suspend: "互动恢复了",
-  clearName: "可以再用原来的名字了（要在「我的资料」里重新填上）",
-  clearUid: "可以再填原来的 UID 了（要在「我的资料」里重新填上）",
-  clearBoth: "可以再用原来的名字和 UID 了（要在「我的资料」里重新填上）",
-  ageCheck: "不用再确认年龄了",
+  get warn() {
+    return T.server.staffNotes.reverted.yellow;
+  },
+  get removeRoach() {
+    return T.server.staffNotes.reverted.yellow;
+  },
+  get suspend() {
+    return T.server.staffNotes.reverted.suspend;
+  },
+  get clearName() {
+    return T.server.staffNotes.reverted.clearName;
+  },
+  get clearUid() {
+    return T.server.staffNotes.reverted.clearUid;
+  },
+  get clearBoth() {
+    return T.server.staffNotes.reverted.clearBoth;
+  },
+  get ageCheck() {
+    return T.server.staffNotes.reverted.ageCheck;
+  },
 };
 
 /**
@@ -95,8 +109,12 @@ const REVERTED: Partial<Record<AdminAction, string>> = {
  * moved just outside, or, visiting there, sent home. No yellow card: it is not their doing.
  */
 export const OFF_LIMITS_WORDS = {
-  moved: "有些地方不能放蟑螂。你有蟑螂放在了这样的地方，站长已经帮你挪到旁边了。这不算违规，不用做什么。",
-  home: "有些地方不能放蟑螂。你有克隆体在这样的地方做客，站长已经把它送回家了。这不算违规，不用做什么。",
+  get moved() {
+    return T.server.staffNotes.offLimits.moved;
+  },
+  get home() {
+    return T.server.staffNotes.offLimits.home;
+  },
 };
 
 /** The words of one note */
@@ -104,35 +122,35 @@ export function noteText(n: typeof staffNotes.$inferSelect, action?: typeof modA
   const when = n.reportedOn ? ` ${shortDay(n.reportedOn)} ` : "";
   // a roach's report blocks nobody, so there is nobody blocked to mention
   const roach = isRoachReportReason(n.reason);
-  const reported = `站长看过你${when}举报的那${roach ? "只蟑螂" : "位舟P"}（${reasonWords(n.reason)}）了：`;
+  const reported = fmt(T.server.staffNotes.note.reported, { when, what: roach ? T.server.staffNotes.note.reportedRoach : T.server.staffNotes.note.reportedPlayer, reason: reasonWords(n.reason) });
   switch (n.kind) {
     case "reportUpheld":
-      return `${reported}已经处理了，谢谢你。`;
+      return fmt(T.server.staffNotes.note.reportUpheld, { seen: reported });
     case "reportDismissed":
-      return roach ? `${reported}这次没发现问题。` : `${reported}这次没发现违规。TA 已经被你拉黑了，不会再打扰你。`;
+      return roach ? fmt(T.server.staffNotes.note.reportDismissed, { seen: reported }) : fmt(T.server.staffNotes.note.reportDismissedBlocked, { seen: reported });
     case "action":
       return actionWords(action?.action ?? "", n.rule ?? action?.rule ?? null, n.until ?? action?.until ?? null, action?.roachSlot ?? null);
     case "appealKept":
-      return "站长看了你的申诉：维持原来的处理。";
+      return T.server.staffNotes.note.appealKept;
     case "appealReverted":
-      return `站长看了你的申诉：撤销了这次处理，${REVERTED[(action?.action ?? "") as AdminAction] ?? "恢复原样了"}。`;
+      return fmt(T.server.staffNotes.note.appealReverted, { back: REVERTED[(action?.action ?? "") as AdminAction] ?? T.server.staffNotes.note.restored });
     // undone in the 管理台 after the fact, without an appeal
     case "undone":
       return action
-        ? `站长撤销了 ${dayWords(action.createdAt.getTime())}对你的处理，${REVERTED[action.action as AdminAction] ?? "恢复原样了"}。`
-        : "站长撤销了对你的一次处理。";
+        ? fmt(T.server.staffNotes.note.undone, { day: dayWords(action.createdAt.getTime()), back: REVERTED[action.action as AdminAction] ?? T.server.staffNotes.note.restored })
+        : T.server.staffNotes.note.undoneOnce;
     case "held":
-      return "有人举报了你的名字或 UID，站长看过之前先藏起来了，也暂时改不了。没问题的话会恢复。";
+      return T.profile.hidden;
     case "released":
-      return "站长看过了，你的名字和 UID 没问题，已经恢复。";
+      return T.server.staffNotes.note.released;
     case "autoSuspended":
-      return `有人举报你骚扰，站长看过之前先暂停你的互动，最长 ${SUSPEND_DAYS} 天。`;
+      return fmt(T.server.staffNotes.note.autoSuspended, { days: SUSPEND_DAYS });
     case "unsuspended":
-      return "站长看过了，没发现问题，你的互动恢复了。";
+      return T.server.staffNotes.note.unsuspended;
     case "offLimits":
       return n.reason === "home" ? OFF_LIMITS_WORDS.home : OFF_LIMITS_WORDS.moved;
     default:
-      return "站长给你发了一条通知。";
+      return T.server.staffNotes.note.generic;
   }
 }
 

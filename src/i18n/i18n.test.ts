@@ -4,6 +4,10 @@ import { renderToString } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { scanSource, scanTree, sourceFiles } from "../../scripts/i18n/scan.mts";
+import { FOODS, SPOUSES } from "../lib/declarations";
+import { NICKNAMES } from "../lib/operators";
+import { STAMPS } from "../lib/si";
+import { SELF_TITLES } from "../lib/titles";
 import { count, type Counted, fill, fmt, fmtParts, isCounted, LANGS, missing, type Messages } from "./core";
 import { en } from "./en";
 import { lang, T } from "./index";
@@ -211,6 +215,11 @@ const MOVED: string[] = [
   "src/components/map/",
   // B3: the panels on it
   "src/components/app/",
+  // B4: what the rest of src/lib says, and the pages' own words
+  "src/lib/",
+  "src/app/layout.tsx",
+  "src/app/manifest.ts",
+  "src/app/privacy/",
 ];
 
 /** The Chinese code decides by, where it must: what it compares, looks for or names a property with */
@@ -227,7 +236,7 @@ const DECIDED_BY = new Set([
   // characters' names (codes, as stored) with the nicknames players search them by
   "src/lib/operators.ts 祀",
   "src/lib/operators.ts 塔露拉",
-  // 「1.04 吨的思念」: no space after 吨 (moves with 佩丽卡监督's words)
+  // 「1.04 吨 的思念」 is said 「1.04 吨的思念」: no space after 吨, as there is after kg
   "src/lib/perlica.ts 吨 ",
 ]);
 
@@ -237,7 +246,41 @@ const CODES = new Set([
   "src/components/MapApp.tsx 位",
   // the seal stamped on 祀掌柜's pictures, drawn on a canvas
   "src/components/app/SiBook.tsx 祀",
+  // the measure word countText counts roaches with, unless it is given 位
+  "src/lib/counts.ts 只",
+  // what a declaration stores and is shown by: the foods of 我想吃<角色>的<食物>, 老婆/老公 of 氪了168
+  ...[...FOODS, ...SPOUSES].map((w) => `src/lib/declarations.ts ${w}`),
+  // the self-titles of 我是<角色>的<称呼>, stored as they are
+  ...SELF_TITLES.map((w) => `src/lib/titles.ts ${w}`),
+  // the nicknames players type to find a character
+  ...Object.values(NICKNAMES).flatMap((ns) => ns.map((n) => `src/lib/operators.ts ${n}`)),
+  // what the 戳一戳, 啵 and 嗒 pictures say, drawn in them
+  "src/lib/flipArt.ts 戳!",
+  "src/lib/touchArt.ts 啵!",
+  "src/lib/touchArt.ts 嗒",
+  // what a 公告's author writes on a line of its own where the QQ group's QR code goes
+  "src/lib/noticeText.ts 【Q群二维码】",
+  // what that 「吨 」 becomes
+  "src/lib/perlica.ts 吨",
+  // 祀掌柜's seals, in her seal font (scripts/si-seal-font.py reads them from src/lib/si.ts)
+  ...STAMPS.map((w) => `src/lib/si.ts ${w}`),
+  // what is written on her portraits, in that font: 「<name>小像」 (管理员 for the nameless) and the day in Chinese numerals
+  "src/lib/si.ts {0}小像",
+  "src/lib/si.ts 管理员",
+  "src/lib/si.ts 〇一二三四五六七八九",
+  "src/lib/si.ts {0}十{1}",
+  "src/lib/si.ts {0}年{1}月{2}日",
+  // her family and herself as players' 厨力 lists have them (characters' names, as stored)
+  ...["年", "夕", "令", "重岳", "黍", "余", "望", "祀"].map((w) => `src/lib/si.ts ${w}`),
+  // her seal's character, drawn on her scroll paintings
+  "src/lib/siArt.ts 祀",
 ]);
+
+/**
+ * Where a pattern matches what people type, whatever the page's language: full-width dashes in a 登录码,
+ * 。 for a dot and contact details in a name, the Chinese punctuation that ends a bare address in a 公告
+ */
+const TYPED = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts", "src/lib/noticeText.ts"]);
 
 describe("the code", () => {
   it("writes no Chinese of its own where the words have been moved (they go into src/i18n/zh.ts)", () => {
@@ -246,17 +289,15 @@ describe("the code", () => {
         !h.kept &&
         MOVED.some((m) => (m.endsWith("/") ? h.file.startsWith(m) : h.file === m)) &&
         !(h.logic && DECIDED_BY.has(`${h.file} ${h.text}`)) &&
+        !(h.kind === "regex" && TYPED.has(h.file)) &&
         !CODES.has(`${h.file} ${h.text}`),
     );
     expect(left.map((h) => `${h.file}:${h.line} ${h.text}`)).toEqual([]);
   });
 
   it("decides nothing by Chinese words but the places that must", () => {
-    // what people type, whatever the page's language: full-width dashes in a 登录码, 。 for a dot and contact
-    // details in a name, the Chinese punctuation that ends a bare address in a 公告
-    const typed = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts", "src/lib/noticeText.ts"]);
     const found = scanTree(ROOT)
-      .filter((h) => !h.kept && h.logic && !(h.kind === "regex" && typed.has(h.file)))
+      .filter((h) => !h.kept && h.logic && !(h.kind === "regex" && TYPED.has(h.file)))
       .map((h) => `${h.file} ${h.text}`);
     expect(found.filter((f) => !DECIDED_BY.has(f))).toEqual([]);
   });
@@ -285,7 +326,11 @@ describe("the code", () => {
 
   it("reads the server's own words (T.server, which pages never download) only on the server", () => {
     expect(SERVER_ONLY).toContain("server");
-    const onServer = (f: string) => f.startsWith("src/lib/server/") || f.startsWith("src/app/api/");
+    const onServer = (f: string) =>
+      f.startsWith("src/lib/server/") ||
+      f.startsWith("src/app/api/") ||
+      // what only the server makes: the privacy page, every page's head, the app's manifest
+      ["src/app/privacy/page.tsx", "src/app/layout.tsx", "src/app/manifest.ts"].includes(f);
     const read = (f: string) => readFileSync(`${ROOT}/${f}`, "utf8");
     const files = sourceFiles(ROOT).filter((f) => !f.startsWith("src/i18n/"));
     expect(files.filter((f) => !onServer(f) && /\bT\.server\b/.test(read(f)))).toEqual([]);

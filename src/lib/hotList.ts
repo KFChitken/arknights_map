@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { Game } from "./games";
 
 /**
@@ -7,9 +8,33 @@ import type { Game } from "./games";
  */
 
 export const HOT_BOARDS = [
-  { id: "love", name: "我永远喜欢", shout: "我永远喜欢" },
-  { id: "buff", name: "加强", shout: "加强" },
-  { id: "eat", name: "合乎粥礼", shout: "我想吃" },
+  {
+    id: "love",
+    get name() {
+      return T.lib.hotList.boards.love;
+    },
+    get shout() {
+      return T.lib.hotList.boards.love;
+    },
+  },
+  {
+    id: "buff",
+    get name() {
+      return T.lib.hotList.boards.buff;
+    },
+    get shout() {
+      return T.lib.hotList.boards.buff;
+    },
+  },
+  {
+    id: "eat",
+    get name() {
+      return T.lib.hotList.boards.eat;
+    },
+    get shout() {
+      return T.lib.hotList.boards.eatShout;
+    },
+  },
 ] as const;
 export type HotBoard = (typeof HOT_BOARDS)[number]["id"];
 

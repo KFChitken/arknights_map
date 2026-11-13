@@ -1,7 +1,8 @@
 /** Product limits in one place so they are easy to tune. */
 
 /** The site's name as players see it. */
-export const siteName = () => "舟P地图";
+import { fmt, T } from "@/i18n";
+export const siteName = () => T.lib.rules.siteName;
 
 export const MIN_SIGNUP_AGE = 18;
 /**
@@ -22,7 +23,7 @@ export const cooldownAfter = (sends: number) =>
   LOGIN_CODE_COOLDOWNS_S[Math.min(Math.max(sends, 1), LOGIN_CODE_COOLDOWNS_S.length) - 1];
 /** A wait in words: 「45 秒」, 「2 分钟」, 「4 分 30 秒」 */
 export const waitText = (s: number) =>
-  s < 60 ? `${s} 秒` : s % 60 ? `${Math.floor(s / 60)} 分 ${s % 60} 秒` : `${Math.floor(s / 60)} 分钟`;
+  s < 60 ? fmt(T.lib.rules.wait.seconds, { s }) : s % 60 ? fmt(T.lib.rules.wait.minutesSeconds, { m: Math.floor(s / 60), s: s % 60 }) : fmt(T.lib.rules.wait.minutes, { m: Math.floor(s / 60) });
 export const LOGIN_CODE_MAX_ATTEMPTS = 5;
 /** Codes one email address may receive per day, so nobody can use us to flood an inbox. */
 export const LOGIN_CODES_PER_DAY = 10;

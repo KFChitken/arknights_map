@@ -5,6 +5,7 @@
  * symbols: those make passwords harder to remember, not to guess.
  */
 
+import { fmt, T } from "@/i18n";
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 64;
 
@@ -50,13 +51,13 @@ const COMMON = new Set(
 export function passwordProblem(password: string, email: string): string | null {
   const pw = password.normalize("NFKC");
   const n = [...pw].length;
-  if (n < PASSWORD_MIN) return `密码至少 ${PASSWORD_MIN} 个字符。`;
-  if (n > PASSWORD_MAX) return `密码最多 ${PASSWORD_MAX} 个字符。`;
+  if (n < PASSWORD_MIN) return fmt(T.lib.passwordRules.tooShort, { min: PASSWORD_MIN });
+  if (n > PASSWORD_MAX) return fmt(T.lib.passwordRules.tooLong, { max: PASSWORD_MAX });
   const lower = pw.toLowerCase();
-  if (COMMON.has(lower)) return "密码太常见了，换一个。";
+  if (COMMON.has(lower)) return T.lib.passwordRules.tooCommon;
   const address = email.trim().toLowerCase();
-  if (lower === address) return "密码不能和邮箱一样。";
+  if (lower === address) return T.lib.passwordRules.sameAsEmail;
   const local = address.split("@")[0];
-  if (local.length >= 4 && lower.includes(local)) return "密码里不要有你的 QQ 号（邮箱 @ 前面那串）。";
+  if (local.length >= 4 && lower.includes(local)) return T.lib.passwordRules.hasQq;
   return null;
 }

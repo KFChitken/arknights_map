@@ -8,6 +8,7 @@
  * but your own (the guides still there), the only style for visitors who have not signed in, whom the
  * server sends no list of roaches at all.
  */
+import { T } from "@/i18n";
 export type MapStyle = "nation" | "plain" | "hearts" | "lite" | "hidden";
 
 export const MAP_STYLES: MapStyle[] = ["nation", "plain", "hearts", "lite", "hidden"];
@@ -16,21 +17,41 @@ export const HEARTS_READY = true;
 export const DEFAULT_MAP_STYLE: MapStyle = "plain";
 
 export const MAP_STYLE_NAMES: Record<MapStyle, string> = {
-  nation: "国度版",
-  plain: "默认",
-  hearts: "舟u本色",
-  lite: "轻量",
-  hidden: "全员隐匿",
+  get nation() {
+    return T.lib.mapStyle.names.nation;
+  },
+  get plain() {
+    return T.lib.mapStyle.names.plain;
+  },
+  get hearts() {
+    return T.lib.mapStyle.names.hearts;
+  },
+  get lite() {
+    return T.lib.mapStyle.names.lite;
+  },
+  get hidden() {
+    return T.lib.mapStyle.names.hidden;
+  },
 };
 export const MAP_STYLE_NOTES: Record<MapStyle, string> = {
-  nation: "远看黑压压一片小强国度（现在的样子）",
-  plain: "只有小强，地图看得最清楚",
-  hearts: "每只小强头上都在冒爱心",
-  lite: "人多卡的时候用：挨得近的合成一大只，最顺、最省电",
-  hidden: "地图上只有你自己的小强，别人一只都不画",
+  get nation() {
+    return T.lib.mapStyle.notes.nation;
+  },
+  get plain() {
+    return T.lib.mapStyle.notes.plain;
+  },
+  get hearts() {
+    return T.lib.mapStyle.notes.hearts;
+  },
+  get lite() {
+    return T.lib.mapStyle.notes.lite;
+  },
+  get hidden() {
+    return T.lib.mapStyle.notes.hidden;
+  },
 };
 /** What the other styles say to a visitor who has not signed in, who sees 全员隐匿 only */
-export const signInForStyles = () => "登录后能选";
+export const signInForStyles = () => T.lib.mapStyle.signIn;
 
 const KEY = "zhoup.mapStyle";
 /** The hint that the style can be changed has been shown on this device */

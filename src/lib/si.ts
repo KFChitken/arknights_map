@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { beijingDate, beijingMidnight } from "./beijing";
 import { distanceKm } from "./geo";
 import { GUIDES } from "./guides";
@@ -50,52 +51,120 @@ export const INK_DECLARATIONS = 20;
 
 /** Her lines, word for word as Breeze approved them; {…} are filled in by the page */
 export const SI_LINES = {
-  sneaky: ["谁在戳我？……哼，偷偷摸摸的，我早就看见了。", "鬼鬼祟祟的。想碰就大大方方地碰，我又不咬人。", "偷偷碰我？……才、才不是在等你。"],
-  bold: ["干、干嘛突然这么大胆！……下不为例。", "哼，管理员总算想起我了？我可没在等你。", "墨都被你碰洒了！……算了，就原谅你这一次。"],
-  away: "哟，还记得我啊？我还以为你又把我忘了。",
-  longaway: "一百五十年都别想我理你！……好、好吧，就理你这一下。",
-  night: "都几点了还不睡？再不睡，我就去告诉那位小监督。……才、才不是担心你。快去睡！",
-  friend: "才、才不想和你交朋友呢！……这幅画是顺手画的，拿着。画的什么不重要，重要的是我的印。还有，不许再忘了我的名字！",
-  unfriendAsk: "解除和祀掌柜的触须之交？画像和集章本都会留着。",
-  unfriend: "走就走！……画像不用还，章也不用擦。哼。",
+  get sneaky() {
+    return [T.lib.si.line.sneaky1, T.lib.si.line.sneaky2, T.lib.si.line.sneaky3];
+  },
+  get bold() {
+    return [T.lib.si.line.bold1, T.lib.si.line.bold2, T.lib.si.line.bold3];
+  },
+  get away() {
+    return T.lib.si.line.away;
+  },
+  get longaway() {
+    return T.lib.si.line.longAway;
+  },
+  get night() {
+    return T.lib.si.line.night;
+  },
+  get friend() {
+    return T.lib.si.line.friend;
+  },
+  get unfriendAsk() {
+    return T.lib.si.line.unfriendAsk;
+  },
+  get unfriend() {
+    return T.lib.si.line.unfriend;
+  },
 
-  portraitWrong: "等等！那张是我的自画像！……练笔用的！呆货，快还给我！",
-  portraitReturn: "哼，算你识相。……给你的是这张。",
-  portraitKeep: "你！……那、那就借你几天！不许给别人看！",
-  stamp: [
-    "顺手给你盖了个章：「{stamp}」。在我盖新的之前，不许擦掉。",
-    "今天的章：「{stamp}」。……别、别多想，随手盖的。",
-    "「{stamp}」。哼，就这个了，不满意也不换。",
-  ],
+  get portraitWrong() {
+    return T.lib.si.line.portraitWrong;
+  },
+  get portraitReturn() {
+    return T.lib.si.line.portraitReturn;
+  },
+  get portraitKeep() {
+    return T.lib.si.line.portraitKeep;
+  },
+  get stamp() {
+    return [
+      T.lib.si.line.stamp1,
+      T.lib.si.line.stamp2,
+      T.lib.si.line.stamp3,
+    ];
+  },
 
-  open: "哼，惹了麻烦，才想起来找我？",
-  reopen: "刚才点开又走了？……当我没看见吗？",
-  intro: "缘缘庄掌柜，祀。……别误会，我才不是来给管理员当向导的，出来找找灵感而已。要盖章就过来，别磨蹭。",
-  nickname: "不许叫我小葱！……叫、叫一次就算了。",
-  visitor: "没登录就想碰我？……先登录再说。",
-  introCard: "缘缘庄开到地图上来了。……才、才不是请你来的。有空就来碰我一下，顺手给你盖个章。",
-  find: "喏，就是这只。……我、我才没有一眼就认出来。",
+  get open() {
+    return T.lib.si.line.open;
+  },
+  get reopen() {
+    return T.lib.si.line.reopen;
+  },
+  get intro() {
+    return T.lib.si.line.intro;
+  },
+  get nickname() {
+    return T.lib.si.line.nickname;
+  },
+  get visitor() {
+    return T.lib.si.line.visitor;
+  },
+  get introCard() {
+    return T.lib.si.line.introCard;
+  },
+  get find() {
+    return T.lib.si.line.find;
+  },
 
-  vacancy: "还有 {n} 间空房。……才、才不是特意给你留的。",
-  in: "正好有空房，{room} 号。……来得巧而已，别得意。",
-  queued: "客满了，门口排着去。……排队的路，我都给你画好了。",
-  place: "你排在第 {n} 位，大概还要{wait}。……我才没有特意帮你算。",
-  checkin: "排了{wait}，总算轮到你了。{room} 号房，就住半天。……被子是新晒的，才、才不是为你晒的。",
-  checkout: "住够半天了，退房！……我、我才没有舍不得，是后面排着的人等急了。",
-  out: "住过就别赖着了，在外面躺着吧。……还想住？那、那就再碰我一下，乖乖去后面排着。",
-  again: "又来了？……哼，想住就去后面排着，我可不给你插队。",
-  againIn: "又是你。{room} 号房，还是住半天。……我才没记得你上回睡的哪间。",
+  get vacancy() {
+    return T.guides.si.freeRooms;
+  },
+  get in() {
+    return T.lib.si.line.in;
+  },
+  get queued() {
+    return T.lib.si.line.queued;
+  },
+  get place() {
+    return T.lib.si.line.place;
+  },
+  get checkin() {
+    return T.lib.si.line.checkin;
+  },
+  get checkout() {
+    return T.lib.si.line.checkout;
+  },
+  get out() {
+    return T.lib.si.line.out;
+  },
+  get again() {
+    return T.lib.si.line.again;
+  },
+  get againIn() {
+    return T.lib.si.line.againIn;
+  },
   // someone else's ink roach lying outside, tapped; yours drawn while your clones were five, and held; yours recalled
-  thrownOut: "住满半天还想赖着？我就把它请出去了。……被子我还给它晒着呢。才、才不是等它回来。",
-  full: "克隆体都放满五只了，墨小强挤不进来。……画我先替你收着。收回一只再来碰我，才、才不是特意等你。",
-  held: "收回去了？……行吧。想住了再来碰我，房间又跑不了。",
+  get thrownOut() {
+    return T.lib.si.line.thrownOut;
+  },
+  get full() {
+    return T.lib.si.line.full;
+  },
+  get held() {
+    return T.lib.si.line.held;
+  },
 };
 
 /** What she says when your stamps come to these many */
 export const STAMP_MILESTONES: Record<number, string> = {
-  7: "才七个？……还早着呢。",
-  30: "三十种都被你集齐了？……哼，集章本盖满了，我再给你加几页。",
-  100: "一百个……你就这么闲吗？……明、明天也来。",
+  get 7() {
+    return T.lib.si.milestone7;
+  },
+  get 30() {
+    return T.lib.si.milestone30;
+  },
+  get 100() {
+    return T.lib.si.milestone100;
+  },
 };
 
 /** Her 30 闲章, the last her own name; each player gets the first 29 in an order of their own */
@@ -255,9 +324,9 @@ export function firstSentence(line: string) {
 
 /** 「不到 1 小时」, 「{h} 小时」 rounded up, or 「{d} 天」 rounded */
 export function howLong(ms: number) {
-  if (ms < HOUR) return "不到 1 小时";
-  if (ms < DAY) return `${Math.ceil(ms / HOUR)} 小时`;
-  return `${Math.round(ms / DAY)} 天`;
+  if (ms < HOUR) return T.lib.si.howLong.underAnHour;
+  if (ms < DAY) return fmt(T.lib.si.howLong.hours, { n: Math.ceil(ms / HOUR) });
+  return fmt(T.lib.si.howLong.days, { n: Math.round(ms / DAY) });
 }
 /** A length of time after a word, with the space a number gets: 「排了 3 小时」, 「排了不到 1 小时」 */
 const after = (ms: number) => {
@@ -273,22 +342,22 @@ export const checkinLine = (room: number, waitedMin: number) =>
   waitedMin > 0 ? SI_LINES.checkin.replace("{wait}", after(waitedMin * 60_000)).replace("{room}", String(room)) : inLine(room);
 export const againInLine = (room: number) => SI_LINES.againIn.replace("{room}", String(room));
 /** What the card says about your room while you stay (the site's words, not hers) */
-export const stayLine = (room: number, leftMs: number) => `${room} 号房，还能住${after(leftMs)}`;
+export const stayLine = (room: number, leftMs: number) => fmt(T.lib.si.stay, { room, left: after(leftMs) });
 
 /** One of hers in the inbox, in her own words: whole lines, then the stamp and what she adds about it */
 export function siText(item: Pick<SiItem, "line" | "bold" | "variant" | "stamp" | "stamps" | "room" | "waited">) {
   const stamped = item.stamp !== null && item.stamps ? stampLine(item.stamp, item.stamps) : "";
   switch (item.line) {
     case "friend":
-      return `${SI.name}和你成为了触须之交：「${SI_LINES.friend}」${stamped}`;
+      return fmt(T.lib.si.text.friend, { name: SI.name, line: SI_LINES.friend, stamped });
     case "checkin":
-      return `${SI.name}：「${checkinLine(item.room ?? 0, item.waited ?? 0)}」`;
+      return fmt(T.lib.guides.says, { name: SI.name, line: checkinLine(item.room ?? 0, item.waited ?? 0) });
     case "again":
-      return `${SI.name}：「${againInLine(item.room ?? 0)}」`;
+      return fmt(T.lib.guides.says, { name: SI.name, line: againInLine(item.room ?? 0) });
     case "checkout":
-      return `${SI.name}：「${SI_LINES.checkout}」`;
+      return fmt(T.lib.guides.says, { name: SI.name, line: SI_LINES.checkout });
     default:
-      return `${SI.name}回了你：「${answerLine(item.line, item.bold, item.variant)}」${stamped}`;
+      return fmt(T.lib.si.text.answered, { name: SI.name, line: answerLine(item.line, item.bold, item.variant), stamped });
   }
 }
 
@@ -304,11 +373,21 @@ export type PaintingTier = 0 | 1 | 2 | 3 | 4;
 export const paintingTier = (n: number): PaintingTier => (n <= 0 ? 0 : n <= 1000 ? 1 : n <= 5000 ? 2 : n <= 10000 ? 3 : 4);
 /** What she says about it on her card */
 export const PAINTING_LINES: Record<PaintingTier, string> = {
-  0: "今天还没人来？……哼，正好清静。",
-  1: "就这么几笔？……我、我是故意留白的。",
-  2: "有点样子了。……才不是因为你们来了，我才画得顺。",
-  3: "来的人还真不少。挤一挤吧，画里还画得下。",
-  4: "……画完了。今天这张，勉强可以盖章。",
+  get 0() {
+    return T.lib.si.painting.tier0;
+  },
+  get 1() {
+    return T.lib.si.painting.tier1;
+  },
+  get 2() {
+    return T.lib.si.painting.tier2;
+  },
+  get 3() {
+    return T.lib.si.painting.tier3;
+  },
+  get 4() {
+    return T.lib.si.painting.tier4;
+  },
 };
 
 // ---- her card ----
@@ -320,18 +399,51 @@ export function siRoach(friend: boolean): PublicRoach {
 
 /** Her family in the players' 厨力 lists (src/data/arknights-operators.json), each with what she says about them */
 const FAMILY: { name: string; line: string }[] = [
-  { name: "年", line: "年姐姐？……她打的东西倒是结实，就是人太吵。……她现在还好吗？" },
-  { name: "夕", line: "夕姐姐的画？……比我的好那么一点点。就、就一点点！" },
-  { name: "令", line: "令姐姐是不是又喝多了？……我才不担心。" },
-  { name: "重岳", line: "大哥还天天练拳吗？……哼，我才不想他。" },
-  { name: "黍", line: "黍姐姐种的东西？……我田里种的也不差。" },
-  { name: "余", line: "你也认识余？……哼，我才没想哥哥们。……就一点点。" },
-  { name: "望", line: "你也认识望？……哼，我才没想哥哥们。……就一点点。" },
+  {
+    name: "年",
+    get line() {
+      return T.lib.si.family.nian;
+    },
+  },
+  {
+    name: "夕",
+    get line() {
+      return T.lib.si.family.xi;
+    },
+  },
+  {
+    name: "令",
+    get line() {
+      return T.lib.si.family.ling;
+    },
+  },
+  {
+    name: "重岳",
+    get line() {
+      return T.lib.si.family.chongyue;
+    },
+  },
+  {
+    name: "黍",
+    get line() {
+      return T.lib.si.family.shu;
+    },
+  },
+  {
+    name: "余",
+    get line() {
+      return T.lib.si.family.yu;
+    },
+  },
+  {
+    name: "望",
+    get line() {
+      return T.lib.si.family.wang;
+    },
+  },
 ];
-/** Herself in an Endfield 厨力 list */
-const SELF_FAV_LINE = "你的厨力角色……是我？哼，眼光还算凑合。";
 /** On the day 明河都尉 reaches 黄山, his 7th station */
-export const mingheHereLine = () => "那个头发亮晃晃的小子今天跑到黄山来了，吵死了。……我才没有特意去看。";
+export const mingheHereLine = () => T.lib.si.mingheHere;
 /** Her own name in the Endfield list */
 export const SI_OPERATOR = "祀";
 
@@ -340,7 +452,7 @@ export const SI_OPERATOR = "祀";
  * ones; otherwise the first of her family in their Arknights list, in the order they put them.
  */
 export function favouriteLine(fav: { arknights: string[]; endfield: string[] }) {
-  if (fav.endfield.includes(SI_OPERATOR)) return SELF_FAV_LINE;
+  if (fav.endfield.includes(SI_OPERATOR)) return T.lib.si.selfFav;
   for (const name of fav.arknights) {
     const kin = FAMILY.find((f) => f.name === name);
     if (kin) return kin.line;

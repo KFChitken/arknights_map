@@ -609,7 +609,7 @@ export async function withVisits(userId: string, own: OwnRoach[]): Promise<OwnRo
   const standing = new Set(
     hostRoaches.length ? (await db.select({ id: roaches.id }).from(roaches).where(inArray(roaches.id, hostRoaches))).map((r) => r.id) : [],
   );
-  const who = (id: string) => (people.get(id) ? nameOf(people.get(id)!) : "匿名舟P");
+  const who = (id: string) => (people.get(id) ? nameOf(people.get(id)!) : T.lib.profile.anonymous);
   return own.map((r) => {
     const guests = asHost.filter((v) => v.hostRoachId === r.id).map((v) => ({ friendId: friendKey(userId, v.guestId), name: who(v.guestId) }));
     const v = asGuest.find((x) => x.roachId === r.id);

@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { addDays, beijingDate, beijingMidnight, daysBetween } from "./beijing";
 import { GUIDES } from "./guides";
 import { isOffLimits } from "./offLimits";
@@ -50,57 +51,247 @@ export type Station = {
  */
 export const ROUTE: Station[] = [
   {
-    name: "张家界·武陵源",
+    get name() {
+      return T.lib.minghe.stations.s1.name;
+    },
     at: { lng: 110.4352, lat: 29.3499 },
-    line: "这里也叫武陵。山像是谁一笔一笔画出来的。",
+    get line() {
+      return T.lib.minghe.stations.s1.line;
+    },
   },
-  { name: "常德·桃花源", at: { lng: 111.4203, lat: 28.7774 }, line: "缘溪行，忘路之远近。……古人走到这里，也迷了路。" },
-  { name: "长沙·橘子洲", at: { lng: 112.9561, lat: 28.1897 }, queue: 0 },
-  { name: "岳阳·岳阳楼", at: { lng: 113.0883, lat: 29.3847 }, queue: 90 },
-  { name: "武汉·黄鹤楼", at: { lng: 114.2971, lat: 30.5471 } },
-  { name: "南昌·滕王阁", at: { lng: 115.8784, lat: 28.6814 }, queue: 90, line: "落霞与孤鹜齐飞，秋水共长天一色。" },
-  { name: "黄山", at: { lng: 118.1639, lat: 30.1348 } },
-  { name: "杭州·西湖", at: { lng: 120.1627, lat: 30.2585 }, queue: 90 },
-  { name: "上海·外滩", at: { lng: 121.4856, lat: 31.2393 } },
-  { name: "苏州·平江路", at: { lng: 120.6297, lat: 31.3149 }, queue: 180 },
-  { name: "南京·玄武湖", at: { lng: 118.7822, lat: 32.072 }, queue: 200 },
-  { name: "合肥·包公园", at: { lng: 117.2882, lat: 31.8603 } },
-  { name: "济南·大明湖", at: { lng: 117.0215, lat: 36.6712 } },
-  { name: "青岛·栈桥", at: { lng: 120.3144, lat: 36.062 }, queue: 0 },
-  { name: "大连·星海湾", at: { lng: 121.581, lat: 38.8805 }, queue: 0, line: "星海。……好名字。" },
-  { name: "沈阳·中街", at: { lng: 123.4544, lat: 41.799 } },
-  { name: "天津·海河", at: { lng: 117.1775, lat: 39.1535 }, queue: 270 },
-  { name: "北京·颐和园", at: { lng: 116.268, lat: 39.9978 }, queue: 0 },
-  { name: "郑州·黄河", at: { lng: 113.5285, lat: 34.9445 }, queue: 180 },
-  { name: "洛阳·龙门", at: { lng: 112.4707, lat: 34.5571 }, queue: 270, line: "龙门。这名字，跟我们龙族有点缘分。" },
-  { name: "西安·城墙", at: { lng: 108.9423, lat: 34.2545 }, queue: 0 },
-  { name: "成都·锦江", at: { lng: 104.0812, lat: 30.6453 } },
-  { name: "重庆·朝天门", at: { lng: 106.5841, lat: 29.5697 }, queue: 235 },
-  { name: "贵阳·甲秀楼", at: { lng: 106.716, lat: 26.5758 } },
-  { name: "昆明·滇池", at: { lng: 102.6495, lat: 24.9759 } },
-  { name: "南宁·邕江", at: { lng: 108.3348, lat: 22.7971 }, queue: 0 },
   {
-    name: "桂林·漓江画山",
+    get name() {
+      return T.lib.minghe.stations.s2.name;
+    },
+    at: { lng: 111.4203, lat: 28.7774 },
+    get line() {
+      return T.lib.minghe.stations.s2.line;
+    },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s3.name;
+    },
+    at: { lng: 112.9561, lat: 28.1897 },
+    queue: 0,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s4.name;
+    },
+    at: { lng: 113.0883, lat: 29.3847 },
+    queue: 90,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s5.name;
+    },
+    at: { lng: 114.2971, lat: 30.5471 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s6.name;
+    },
+    at: { lng: 115.8784, lat: 28.6814 },
+    queue: 90,
+    get line() {
+      return T.lib.minghe.stations.s6.line;
+    },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s7.name;
+    },
+    at: { lng: 118.1639, lat: 30.1348 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s8.name;
+    },
+    at: { lng: 120.1627, lat: 30.2585 },
+    queue: 90,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s9.name;
+    },
+    at: { lng: 121.4856, lat: 31.2393 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s10.name;
+    },
+    at: { lng: 120.6297, lat: 31.3149 },
+    queue: 180,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s11.name;
+    },
+    at: { lng: 118.7822, lat: 32.072 },
+    queue: 200,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s12.name;
+    },
+    at: { lng: 117.2882, lat: 31.8603 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s13.name;
+    },
+    at: { lng: 117.0215, lat: 36.6712 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s14.name;
+    },
+    at: { lng: 120.3144, lat: 36.062 },
+    queue: 0,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s15.name;
+    },
+    at: { lng: 121.581, lat: 38.8805 },
+    queue: 0,
+    get line() {
+      return T.lib.minghe.stations.s15.line;
+    },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s16.name;
+    },
+    at: { lng: 123.4544, lat: 41.799 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s17.name;
+    },
+    at: { lng: 117.1775, lat: 39.1535 },
+    queue: 270,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s18.name;
+    },
+    at: { lng: 116.268, lat: 39.9978 },
+    queue: 0,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s19.name;
+    },
+    at: { lng: 113.5285, lat: 34.9445 },
+    queue: 180,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s20.name;
+    },
+    at: { lng: 112.4707, lat: 34.5571 },
+    queue: 270,
+    get line() {
+      return T.lib.minghe.stations.s20.line;
+    },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s21.name;
+    },
+    at: { lng: 108.9423, lat: 34.2545 },
+    queue: 0,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s22.name;
+    },
+    at: { lng: 104.0812, lat: 30.6453 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s23.name;
+    },
+    at: { lng: 106.5841, lat: 29.5697 },
+    queue: 235,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s24.name;
+    },
+    at: { lng: 106.716, lat: 26.5758 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s25.name;
+    },
+    at: { lng: 102.6495, lat: 24.9759 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s26.name;
+    },
+    at: { lng: 108.3348, lat: 22.7971 },
+    queue: 0,
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s27.name;
+    },
     at: { lng: 110.4859, lat: 24.9384 },
     queue: 270,
-    line: "山壁上画了九匹马。怒骊看了好一会儿，不太服气。",
+    get line() {
+      return T.lib.minghe.stations.s27.line;
+    },
   },
-  { name: "广州·天河", at: { lng: 113.319, lat: 23.1225 }, line: "这里叫天河。天河、明河，说的是同一条河。" },
-  { name: "深圳·深圳湾", at: { lng: 113.965, lat: 22.5222 } },
-  { name: "厦门·鼓浪屿", at: { lng: 118.0619, lat: 24.4475 } },
+  {
+    get name() {
+      return T.lib.minghe.stations.s28.name;
+    },
+    at: { lng: 113.319, lat: 23.1225 },
+    get line() {
+      return T.lib.minghe.stations.s28.line;
+    },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s29.name;
+    },
+    at: { lng: 113.965, lat: 22.5222 },
+  },
+  {
+    get name() {
+      return T.lib.minghe.stations.s30.name;
+    },
+    at: { lng: 118.0619, lat: 24.4475 },
+  },
 ];
 
 /** What he says at the stations without a line of their own, taking turns by the day */
-export const stationLines = () => ["路上帮人把车推上了坡，来晚了些。", "怒骊跑累了，今晚在这儿歇脚。", "这里的灯火，比上一站还亮。"];
+export const stationLines = () => [T.lib.minghe.stationLines.l1, T.lib.minghe.stationLines.l2, T.lib.minghe.stationLines.l3];
 
 /** His lines, word for word as Breeze approved them */
 export const MINGHE_LINES = {
-  sneaky: "这一下很轻，不过我察觉到了。管理员，一路可好？",
-  bold: "管理员。来得正好，前面的路，一起走一段？",
-  friend: "你给过我的答案，我一直记着。往后这一路，有我。",
-  unfriend: "明白。路还长，想同行的时候，再叫我。",
-  unfriendAsk: "解除和明河都尉的触须之交？他还会在各地走。",
-  intro: "宏山科学院，明河。都尉这个头衔，在这里就不必提了。这些日子骑着怒骊四处走走，路上遇到要帮忙的，搭把手。",
+  get sneaky() {
+    return T.lib.minghe.line.sneaky;
+  },
+  get bold() {
+    return T.lib.minghe.line.bold;
+  },
+  get friend() {
+    return T.lib.minghe.line.friend;
+  },
+  get unfriend() {
+    return T.lib.minghe.line.unfriend;
+  },
+  get unfriendAsk() {
+    return T.lib.minghe.line.unfriendAsk;
+  },
+  get intro() {
+    return T.lib.minghe.line.intro;
+  },
 };
 
 const HOUR = 3_600_000;
@@ -221,9 +412,9 @@ export function queueSpots(stop: number, n: number, taken: LngLat[] = []): LngLa
 
 const stationName = (stop: number | null) => (stop === null ? "" : stationOf(stop).name);
 
-export const rideLine = (stop: number) => `上来吧。今天在${stationName(stop)}，明天去${stationName(stop + 1)}。`;
-export const dismountLine = (stop: number) => `就在${stationName(stop)}下吗？好，这里的灯火不错。`;
-export const tripLine = (times: number) => `${RIDE_STOPS} 站走完了。这一路，你的克隆体被碰了 ${times} 次。辛苦了，我送你回去。`;
+export const rideLine = (stop: number) => fmt(T.lib.minghe.ride, { today: stationName(stop), tomorrow: stationName(stop + 1) });
+export const dismountLine = (stop: number) => fmt(T.lib.minghe.dismount, { station: stationName(stop) });
+export const tripLine = (times: number) => fmt(T.lib.minghe.trip, { stops: RIDE_STOPS, times });
 
 /** What he says back to a touch, over his head */
 export function mingheTouchLine(what: "touch" | "friend", bold: boolean) {
@@ -239,15 +430,15 @@ export function mingheText(item: Pick<MingheItem, "line" | "bold" | "stop" | "ti
   const stop = item.stop ?? 0;
   switch (item.line) {
     case "friend":
-      return `${MINGHE.name}和你成为了触须之交：「${MINGHE_LINES.friend}」`;
+      return fmt(T.lib.minghe.text.friend, { name: MINGHE.name, line: MINGHE_LINES.friend });
     case "ride":
-      return `你的克隆体跟上了${MINGHE.name}：「${rideLine(stop)}」`;
+      return fmt(T.lib.minghe.text.ride, { name: MINGHE.name, line: rideLine(stop) });
     case "dismount":
-      return `你的克隆体在${stationName(stop)}下了马，${MINGHE.name}说：「${dismountLine(stop)}」`;
+      return fmt(T.lib.minghe.text.dismount, { station: stationName(stop), name: MINGHE.name, line: dismountLine(stop) });
     case "trip":
-      return `${MINGHE.name}送你的克隆体回来了：「${tripLine(item.times ?? 0)}」`;
+      return fmt(T.lib.minghe.text.trip, { name: MINGHE.name, line: tripLine(item.times ?? 0) });
     default:
-      return `${MINGHE.name}回了你：「${item.bold ? MINGHE_LINES.bold : MINGHE_LINES.sneaky}」`;
+      return fmt(T.lib.guides.answered, { name: MINGHE.name, line: item.bold ? MINGHE_LINES.bold : MINGHE_LINES.sneaky });
   }
 }
 

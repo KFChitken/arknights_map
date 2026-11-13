@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import { fold, foldLoose, hanOnly, isHan, soundKey, soundMatcher, type SoundKey } from "./nameFold";
 import { CODE_WORDS, CONTACT, LINK, LONG_NUMBER, SOUND, type NameWord } from "./nameRules";
 
@@ -47,10 +48,10 @@ export function nameJudge(words: NameWord[]): (name: string) => string | null {
 
   return (name: string) => {
     // 「。」 is how a dot is typed in Chinese
-    if (LINK.test(foldLoose(name).replace(/。/g, "."))) return "网址";
+    if (LINK.test(foldLoose(name).replace(/。/g, "."))) return T.lib.nameCheck.link;
     const folded = fold(name);
-    if (CONTACT.test(folded)) return "QQ 或微信号";
-    if (LONG_NUMBER.test(folded)) return "6 位以上的数字";
+    if (CONTACT.test(folded)) return T.lib.nameCheck.contact;
+    if (LONG_NUMBER.test(folded)) return T.lib.nameCheck.longNumber;
     const hit = whole.get(folded) ?? within(folded);
     if (hit) return hit;
     // a word with other letters or digits put between its characters: 「台a独」

@@ -166,17 +166,17 @@ export function checkSpot(spot: LngLat): LngLat {
 }
 
 export function reachText(n: number) {
-  const km = `${DECLARATION_RADIUS_KM} 公里内`;
-  if (n === 0) return `${km}暂时没有别的舟P，宣言飘向了远方……`;
-  if (n < 5) return `${km}有不到 5 只舟P收到了你的宣言。`;
+  const km = fmt(T.lib.world.reach.within, { km: DECLARATION_RADIUS_KM });
+  if (n === 0) return fmt(T.lib.world.reach.none, { where: km });
+  if (n < 5) return fmt(T.lib.world.reach.few, { where: km });
   for (const [lo, hi] of [
     [5, 10],
     [10, 20],
     [20, 50],
   ]) {
-    if (n < hi) return `${km}有 ${lo}–${hi} 只舟P收到了你的宣言。`;
+    if (n < hi) return fmt(T.lib.world.reach.some, { where: km, lo, hi });
   }
-  return `${km}有 50 多只舟P收到了你的宣言！`;
+  return fmt(T.lib.world.reach.many, { where: km });
 }
 
 /** Inputs for the radar: everything is already limited to other players. */

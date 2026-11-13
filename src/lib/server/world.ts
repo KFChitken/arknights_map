@@ -1404,7 +1404,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   if (event?.badge) await award(userId, [event.badge]);
   await declared(userId, d.template);
   await declaredFrom(userId, chosen.map((r) => r.slot));
-  const told = friendsToo.size ? `你的 ${friendsToo.size} 位触须之交也都收到了。` : "";
+  const told = friendsToo.size ? fmt(T.server.world.friendsToo, { n: friendsToo.size }) : "";
   return { reach: reachText(rows.length) + told };
 }
 

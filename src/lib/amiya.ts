@@ -1,3 +1,4 @@
+import { fmt, T } from "@/i18n";
 import { homeGame, type Game } from "./games";
 import { GUIDES } from "./guides";
 import type { LngLat } from "./types";
@@ -26,13 +27,13 @@ export function localDay(now = Date.now()) {
 }
 
 /** 博士, or 管理员 for players who play only Endfield */
-export const callName = (games: Game[]) => (homeGame(games) === "endfield" ? "管理员" : "博士");
+export const callName = (games: Game[]) => (homeGame(games) === "endfield" ? T.profile.avatar.endmin : T.profile.avatar.doctor);
 
 /** Her lines, word for word as Breeze wrote them (欸 and 诶 are different on purpose) */
 export function amiyaLine(what: "sneaky" | "bold" | "greet", games: Game[]) {
   const you = callName(games);
-  if (what === "greet") return `欢迎回家，${you}`;
-  return what === "bold" ? `诶嘿嘿...${you}` : `欸？${you}？`;
+  if (what === "greet") return fmt(T.lib.amiya.greet, { you });
+  return what === "bold" ? fmt(T.lib.amiya.bold, { you }) : fmt(T.lib.amiya.sneaky, { you });
 }
 
 

@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { Game } from "./games";
 import type { RoachAvatar, RoachColor } from "./types";
 
@@ -5,12 +6,24 @@ import { OTHER_NOTE_MIN } from "./rules";
 
 /** Why one player may report another, worded as the reporter picks it, in the order the report sheet shows them. */
 export const REPORT_REASONS = {
-  name: "名字不合适",
-  contact: "留了联系方式或个人信息",
-  impersonate: "冒充官方或别人",
-  spam: "骚扰刷屏",
-  minor: "可能未成年",
-  other: "其他",
+  get name() {
+    return T.lib.safety.reasons.name;
+  },
+  get contact() {
+    return T.lib.safety.reasons.contact;
+  },
+  get impersonate() {
+    return T.lib.safety.reasons.impersonate;
+  },
+  get spam() {
+    return T.lib.safety.reasons.spam;
+  },
+  get minor() {
+    return T.lib.safety.reasons.minor;
+  },
+  get other() {
+    return T.lib.safety.reasons.misc;
+  },
 } as const;
 
 export type ReportReason = keyof typeof REPORT_REASONS;
@@ -19,9 +32,15 @@ export const isReportReason = (r: unknown): r is ReportReason => typeof r === "s
 
 /** Why one player may report a roach on the map: where it was put, never who owns it */
 export const ROACH_REPORT_REASONS = {
-  stalk: "一直贴着我的蟑螂放",
-  place: "放在学校、别人家门口等不合适的地方",
-  pattern: "好几只摆成字或图案",
+  get stalk() {
+    return T.lib.safety.roachReasons.stalk;
+  },
+  get place() {
+    return T.lib.safety.roachReasons.place;
+  },
+  get pattern() {
+    return T.lib.safety.roachReasons.pattern;
+  },
 } as const;
 
 export type RoachReportReason = keyof typeof ROACH_REPORT_REASONS;
@@ -75,12 +94,24 @@ export const BLOCKS_LEVEL: CaseLevel = "yellow";
  * about them can find which rule it was under.
  */
 export const RULES = {
-  name: "名字和资料里不能有违法、涉政、色情、赌博、广告引流的内容",
-  contact: "不能留联系方式或个人信息",
-  impersonate: "不能冒充官方或他人",
-  harass: "不能骚扰别人",
-  age: "只对满 18 岁开放",
-  roach: "蟑螂不能放在不合适的地方",
+  get name() {
+    return T.lib.safety.rules.name;
+  },
+  get contact() {
+    return T.lib.safety.rules.contact;
+  },
+  get impersonate() {
+    return T.lib.safety.rules.impersonate;
+  },
+  get harass() {
+    return T.lib.safety.rules.harass;
+  },
+  get age() {
+    return T.lib.safety.rules.age;
+  },
+  get roach() {
+    return T.lib.safety.rules.roach;
+  },
 } as const;
 export type RuleCode = keyof typeof RULES;
 export const isRuleCode = (r: unknown): r is RuleCode => typeof r === "string" && Object.hasOwn(RULES, r);

@@ -1,3 +1,4 @@
+import { T } from "@/i18n";
 import type { PublicProfile } from "./profile";
 import type { GuideAvatar, RoachColor } from "./types";
 
@@ -33,68 +34,105 @@ export type Guide = {
   tooMany?: string;
 };
 
-/** Who the guides are, on their cards in place of a player's details */
-const GUIDE_NOTE = "舟P地图的向导";
-
 // in this order everywhere they are listed together, as among the 触须之交
 export const GUIDES: Record<GuideId, Guide> = {
   amiya: {
     id: "amiya",
-    name: "阿米娅向导",
-    short: "阿米娅",
+    get name() {
+      return T.lib.guides.amiya.name;
+    },
+    get short() {
+      return T.lib.guides.amiya.short;
+    },
     avatar: "amiya",
     color: "pink",
     prefix: "a:",
     get note() {
-      return GUIDE_NOTE;
+      return T.lib.guides.note;
     },
-    pronoun: "她",
+    get pronoun() {
+      return T.lib.guides.she;
+    },
   },
   perlica: {
     id: "perlica",
-    name: "佩丽卡监督",
-    short: "佩丽卡",
+    get name() {
+      return T.lib.guides.perlica.name;
+    },
+    get short() {
+      return T.lib.guides.perlica.short;
+    },
     avatar: "perlica",
     color: "cyan",
     prefix: "e:",
     get note() {
-      return GUIDE_NOTE;
+      return T.lib.guides.note;
     },
-    pronoun: "她",
+    get pronoun() {
+      return T.lib.guides.she;
+    },
   },
   talulah: {
     id: "talulah",
-    name: "塔露拉干员",
-    short: "塔露拉",
+    get name() {
+      return T.lib.guides.talulah.name;
+    },
+    get short() {
+      return T.lib.guides.talulah.short;
+    },
     avatar: "talulah",
     color: "orange",
     prefix: "h:",
-    note: "在太阳岛守着一堆篝火",
-    pronoun: "她",
+    get note() {
+      return T.lib.guides.talulah.note;
+    },
+    get pronoun() {
+      return T.lib.guides.she;
+    },
   },
   // white, for the Milky Way his name means
   minghe: {
     id: "minghe",
-    name: "明河都尉",
-    short: "明河",
+    get name() {
+      return T.lib.guides.minghe.name;
+    },
+    get short() {
+      return T.lib.guides.minghe.short;
+    },
     avatar: "minghe",
     color: "white",
     prefix: "m:",
-    note: "骑着怒骊在各地走",
-    pronoun: "他",
+    get note() {
+      return T.lib.guides.minghe.note;
+    },
+    get pronoun() {
+      return T.lib.guides.he;
+    },
   },
   // red, for the seal she stamps
   si: {
     id: "si",
-    name: "祀掌柜",
-    short: "祀",
+    get name() {
+      return T.lib.guides.si.name;
+    },
+    get short() {
+      return T.lib.guides.si.short;
+    },
     avatar: "si",
     color: "red",
     prefix: "i:",
-    note: "在宏村开缘缘庄",
-    card: "在宏村开缘缘庄，不是真人",
-    pronoun: "她",
-    tooMany: "碰、碰够了没有！今天不许再碰了，明天再来。",
+    get note() {
+      return T.lib.guides.si.note;
+    },
+    get card() {
+      return T.lib.guides.si.card;
+    },
+    get pronoun() {
+      return T.lib.guides.she;
+    },
+    get tooMany() {
+      return T.lib.guides.si.tooMany;
+    },
   },
 };
 

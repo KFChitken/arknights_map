@@ -8,9 +8,10 @@
  * As the top line says it, with its measure word, 只 for roaches and 位 for players: as it is under 10,000, else in
  * 万 to one place, rounded down (6.2 万只, 9.1 万位)
  */
+import { fmt, T } from "@/i18n";
 export function countText(n: number, measure: "只" | "位" = "只") {
   if (n < 10_000) return `${n.toLocaleString("zh-CN")} ${measure}`;
-  return `${Math.floor(n / 1000) / 10} 万${measure}`;
+  return fmt(T.lib.counts.tenThousands, { n: Math.floor(n / 1000) / 10, measure });
 }
 
 /** A count rounded down: 0; 1 for a few (1–9); tens below 100; hundreds from there */
@@ -22,4 +23,4 @@ export function rough(n: number) {
 }
 
 /** A rough count (rough()) in words, with its measure word: 几只, 30 多只, 300 多只 */
-export const roughText = (n: number) => (n === 1 ? "几只" : `${n} 多只`);
+export const roughText = (n: number) => (n === 1 ? T.lib.counts.roughFew : fmt(T.lib.counts.roughMore, { n }));
