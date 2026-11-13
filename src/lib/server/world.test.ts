@@ -1583,6 +1583,18 @@ describe("server world", () => {
     expect(await me.me()).toMatchObject({ isNew: false, hasDeclared: false, hasTouched: false });
   });
 
+  it("tells you when you signed up, which nobody else is told", async () => {
+    const row = (await world.userById(me.id))!;
+    const mine = await me.me();
+    expect(mine.joinedAt).toBe(row.createdAt.getTime());
+    expect(Object.keys(mine.profile)).not.toContain("joinedAt");
+    // the card others see of you
+    const card = (await world.cardsOf([row])).get(me.id)!;
+    expect(card.displayName).toBeDefined();
+    expect(JSON.stringify(card)).not.toContain(String(row.createdAt.getTime()));
+    expect(Object.keys(card)).not.toContain("joinedAt");
+  });
+
   it("lists your own roaches apart from everyone else's", async () => {
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     expect((await me.me()).roaches[0]).toMatchObject(PEOPLES_SQUARE);

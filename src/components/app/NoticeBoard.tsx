@@ -141,8 +141,8 @@ export default function NoticeBoard({
 }
 
 /**
- * 公告's tab: pinned first, then the newest, each with 「置顶」 or 「新」 (new: in the last 7 days and not read
- * here); and under them the way to 更新记录
+ * 公告's tab: pinned first, then the newest, each with 「置顶」 or 「新」 (new: in the last 7 days, or the 30 of 最近更新,
+ * and not read here); and under them the way to 更新记录
  */
 function NoticeList({
   notices,

@@ -106,6 +106,7 @@ function StyleIcon({ style }: { style: MapStyle }) {
  * 地图画风: a button with the style in use, and a card of them all to pick from, each with a small picture (fetched
  * only when the card opens). Picking one changes the map at once. unavailable: styles that cannot be picked here, with
  * why. hint: show once that the style can change. round: only the style's small picture, on a round button (游戏风).
+ * openSignal: the card opens each time it goes up while the button is on the page (最近更新's 换个画风).
  */
 export default function MapStylePicker({
   round = false,
@@ -115,6 +116,7 @@ export default function MapStylePicker({
   hint,
   onHintDone,
   onRaise,
+  openSignal = 0,
 }: {
   round?: boolean;
   style: MapStyle;
@@ -124,10 +126,20 @@ export default function MapStylePicker({
   onHintDone: () => void;
   /** The card or the hint is out: the top bar should sit over what is under it on the map */
   onRaise: (raised: boolean) => void;
+  openSignal?: number;
 }) {
   const [open, setOpen] = useState(false);
   const pillRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // opened from elsewhere: once for each time it goes up, not again when the button comes back (another 界面)
+  const signalled = useRef(openSignal);
+  useEffect(() => {
+    if (openSignal === signalled.current) return;
+    signalled.current = openSignal;
+    if (hint) onHintDone();
+    setOpen(true);
+  }, [openSignal, hint, onHintDone]);
 
   useEffect(() => onRaise(open || hint), [open, hint, onRaise]);
 

@@ -242,6 +242,17 @@ import ZoneDraw from "./admin/ZoneDraw";
 import ZoneView from "./admin/ZoneView";
 import { MapPulse, type ZoneTool } from "./admin/zoneAim";
 import { useGrayNow } from "./GrayMode";
+import { isGray } from "@/lib/grayMode";
+import {
+  actionMayRun,
+  hintsMayCome,
+  isPamphlet,
+  mayPopAmong,
+  pamphletMayPop,
+  pamphletNotice,
+  withPamphlet,
+  type PamphletAction,
+} from "@/lib/pamphlet";
 import RoachIcon from "./RoachIcon";
 import FloatChrome from "./app/chrome/FloatChrome";
 import "./app/chrome/chrome.css";
@@ -256,6 +267,8 @@ const TencentView = dynamic(() => import("./map/TencentView"), { ssr: false });
 const DrawerChrome = dynamic(() => import("./app/chrome/DrawerChrome"), { ssr: false });
 const HudChrome = dynamic(() => import("./app/chrome/HudChrome"), { ssr: false });
 const UiPicker = dynamic(() => import("./app/chrome/UiPicker"), { ssr: false });
+// 最近更新 (src/lib/pamphlet.ts), only once it opens
+const Pamphlet = dynamic(() => import("./app/Pamphlet"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -558,6 +571,22 @@ export default function MapApp({
   noticeMemRef.current = noticeMem;
   /** The board, while open; for a notice that popped up, whose visit it was and what opens once it is closed */
   const [board, setBoard] = useState<{ view: BoardView; popped: { userId: string; then: () => void } | null } | null>(null);
+  /**
+   * 最近更新 (src/lib/pamphlet.ts), the booklet the page adds to the notices, while open: popped up (whose visit it
+   * was, and what opens once it is closed), or opened from the board's list (closed, the list is there under it) or
+   * from the strip
+   */
+  const [pamphlet, setPamphlet] = useState<{ from: "popped"; userId: string; then: () => void } | { from: "board" | "strip" } | null>(null);
+  /** It popped up by itself on this visit, which has said enough: the hints wait for the next */
+  const [pamphletPopped, setPamphletPopped] = useState(false);
+  /** Where a button pressed in it takes the player, once what waited for it has had its turn; a press, to look again */
+  const pamphletGo = useRef<PamphletAction | null>(null);
+  const [pamphletPress, setPamphletPress] = useState(0);
+  /** 换个画风: the style card opens (MapStylePicker openSignal) */
+  const [styleAsk, setStyleAsk] = useState(0);
+  /** The notices as the board, the red dot and the strip have them: the server's, with the booklet among them */
+  const boardNotices = useMemo(() => withPamphlet(notices.notices, pamphletNotice(uiChoice)), [notices, uiChoice]);
+  const shownNotices = () => withPamphlet(noticesRef.current.notices, pamphletNotice(uiChoice));
   // what this device remembers of them, once the page is in the browser
   useEffect(() => setNoticeMem(noticeMemory()), []);
   /** A change to what this device remembers of the notices, stored as well */
@@ -568,16 +597,23 @@ export default function MapApp({
   }, []);
   /**
    * Opening the map or signing in: the notice due (noticeToPop) pops up first, and what comes next waits
-   * for it to be closed; with none due, what comes next comes now
+   * for it to be closed; with none due, what comes next comes now. 最近更新 is among them for a player who may
+   * have it now (src/lib/pamphlet.ts): popped up, it is the only thing that pops up by itself on this visit, as
+   * the guides' introductions wait for another
    */
   const popNotice = useCallback(
-    (userId: string, then: () => void) => {
-      const n = noticeToPop(noticesRef.current.notices, noticeMemRef.current, Date.now());
+    (m: Me, then: () => void) => {
+      const now = Date.now();
+      const mayPop = pamphletMayPop(m.joinedAt, now, { tutorial: Boolean(tutorialStep(m, loadProgress(m.id))), gray: isGray() });
+      const n = noticeToPop(mayPopAmong(noticesRef.current.notices, mayPop, uiChoice), noticeMemRef.current, now);
       if (!n) return then();
-      rememberNotices((m) => noticeRead(m, n.id));
-      setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: { userId, then } });
+      rememberNotices((mem) => noticeRead(mem, n.id));
+      if (!isPamphlet(n)) return setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: { userId: m.id, then } });
+      introduced.current = true;
+      setPamphletPopped(true);
+      setPamphlet({ from: "popped", userId: m.id, then });
     },
-    [rememberNotices],
+    [rememberNotices, uiChoice],
   );
   // The server says with the roaches which notices there are (x-notices): when they are not the ones held, they
   // are asked for again. So an open page sees a new one within the two minutes, with the red dot and the strip;
@@ -594,23 +630,25 @@ export default function MapApp({
   }, []);
   /** The button: the list, and the red dot goes out */
   const openBoard = () => {
-    rememberNotices((m) => boardOpened(m, noticesRef.current.notices, Date.now()));
+    rememberNotices((m) => boardOpened(m, shownNotices(), Date.now()));
     setBoard({ view: { kind: "list" }, popped: null });
   };
-  /** The strip: its notice, as if the board was opened, too */
+  /** The strip: its notice (or the booklet), as if the board was opened, too */
   const openStripped = (n: PublicNotice) => {
-    rememberNotices((m) => noticeRead(boardOpened(m, noticesRef.current.notices, Date.now()), n.id));
+    rememberNotices((m) => noticeRead(boardOpened(m, shownNotices(), Date.now()), n.id));
+    if (isPamphlet(n)) return setPamphlet({ from: "strip" });
     setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: null });
   };
-  const closeStrip = (n: PublicNotice) => rememberNotices((m) => stripClosed(m, n.id, noticesRef.current.notices, Date.now()));
-  /** One notice from the list: read */
+  const closeStrip = (n: PublicNotice) => rememberNotices((m) => stripClosed(m, n.id, shownNotices(), Date.now()));
+  /** One notice from the list: read; the booklet opens over the list */
   const boardOpen = (n: PublicNotice) => {
     rememberNotices((m) => noticeRead(m, n.id));
+    if (isPamphlet(n)) return setPamphlet({ from: "board" });
     setBoard((b) => b && { ...b, view: { kind: "notice", notice: n, counted: false } });
   };
   /** Back to the list, which is the board opened too */
   const boardList = () => {
-    rememberNotices((m) => boardOpened(m, noticesRef.current.notices, Date.now()));
+    rememberNotices((m) => boardOpened(m, shownNotices(), Date.now()));
     setBoard((b) => b && { ...b, view: { kind: "list" } });
   };
   /** 更新记录, the board's other tab: the notices are not read by it, so a red dot stays */
@@ -622,6 +660,27 @@ export default function MapApp({
     if (!popped) return;
     markPopped(popped.userId);
     popped.then();
+  };
+  /**
+   * 最近更新 closed however (read since it opened): one that popped up counts for this visit, says where it is
+   * kept, and what waited for it opens. A button pressed in it closes the board it was opened from as well, and
+   * takes the player there once all that has had its turn, with no introduction meanwhile
+   */
+  const closePamphlet = (go?: PamphletAction) => {
+    const was = pamphlet;
+    setPamphlet(null);
+    if (go) {
+      pamphletGo.current = go;
+      setPamphletPress((n) => n + 1);
+      introduced.current = true;
+      // 去宏村看看 is her introduction
+      if (go === "si" && me) markSiIntroShown(me.id);
+    }
+    if (was?.from === "popped") {
+      markPopped(was.userId);
+      was.then();
+      setToast(T.pamphlet.putAway);
+    } else if (go && was?.from === "board") closeBoard();
   };
   const [selected, setSelected] = useState<Selection | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
@@ -1180,7 +1239,7 @@ export default function MapApp({
         };
         const noticeThenGo = () => {
           // the notice due comes before all of that (src/lib/notices.ts), once a visit
-          if (m && !poppedThisVisit(m.id)) return popNotice(m.id, go);
+          if (m && !poppedThisVisit(m.id)) return popNotice(m, go);
           // A tab that showed the one notice there was before the board: it was the one that pops up on every
           // visit, so that one is not new here either
           const every = noticesRef.current.notices.find((n) => n.pop === "every");
@@ -2760,7 +2819,7 @@ export default function MapApp({
     };
     // the notice due comes first on every sign-in, even after one popped up earlier in this visit: for a
     // newcomer, the first thing after signing up but which 界面 they want, so the tutorial points at its buttons
-    const noticeThenNext = () => (m ? popNotice(m.id, next) : next());
+    const noticeThenNext = () => (m ? popNotice(m, next) : next());
     if (asksUi(m, uiChoice)) setPanel({ kind: "uiPicker", then: noticeThenNext });
     else noticeThenNext();
   };
@@ -2973,7 +3032,7 @@ export default function MapApp({
         : heldPlayers + (me?.roaches.some((r) => r.slot === 0) ? 1 : 0);
 
 
-  const coachShown = Boolean(!placing && !selected && !panel && !board && me && step);
+  const coachShown = Boolean(!placing && !selected && !panel && !board && !pamphlet && me && step);
   // 抽屉's drawer goes back down for a roach's card, for putting a roach down, and for the tutorial, which want the map
   useEffect(() => {
     if (selected || placing || coachShown) setDrawerOpen(false);
@@ -2987,8 +3046,8 @@ export default function MapApp({
   // 公告's red dot and strip, once the opening has had its turn (a notice due pops up before them); the strip
   // not over the tutorial, nor while a sheet covers it
   const noticeNow = Date.now();
-  const noticeDotOn = settled && noticeDot(notices.notices, noticeMem, noticeNow);
-  const strip = settled && !panel && !board && !step ? stripNotice(notices.notices, noticeMem, noticeNow) : null;
+  const noticeDotOn = settled && noticeDot(boardNotices, noticeMem, noticeNow);
+  const strip = settled && !panel && !board && !pamphlet && !step ? stripNotice(boardNotices, noticeMem, noticeNow) : null;
 
   // 获得新称号: once nothing else is on screen and the page is looked at, up to three in a row; any more go
   // straight to the wall. Once on each device (src/lib/badgesPopped.ts): one this browser showed before, in
@@ -3028,16 +3087,20 @@ export default function MapApp({
   }, []);
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
   // nothing on the map but the map (nor the owner's 禁放区 tool), the ask to set a password aside
-  const mapClear = Boolean(me && !placing && !selected && !panel && !step && !acting && !touchScene && !batchScene && !zoneTool);
+  const mapClear = Boolean(me && !placing && !selected && !panel && !pamphlet && !step && !acting && !touchScene && !batchScene && !zoneTool);
   // 设个密码 is up: nothing else opens over it meanwhile
   const pwNudgeUp = pwNudge && Boolean(me?.passwordNudge);
   const idle = mapClear && !pwNudgeUp;
+  // the hints: not over 最近更新, nor at all on a visit it popped up on (src/lib/pamphlet.ts)
+  const hintsNow = hintsMayCome(Boolean(pamphlet), pamphletPopped);
   // 存到桌面's bubble, once per device: after about 20 seconds on the map with nothing else going on, the tutorial
   // and the style hint over (a new player's first roach starts the tutorial, so it comes after)
-  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint && !pwNudgeUp && !uiMenu);
+  const deskHintNow = Boolean(
+    deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint && !pwNudgeUp && !uiMenu && hintsNow,
+  );
   // the style hint: once the map is up (a slow line can take a while), not while placing, in the tutorial or
   // asked to set a password, nor to visitors
-  const styleHintNow = Boolean(styleHint && !guest && visible !== null && !placing && !step && !pwNudgeUp && panel?.kind !== "uiPicker");
+  const styleHintNow = Boolean(styleHint && !guest && visible !== null && !placing && !step && !pwNudgeUp && panel?.kind !== "uiPicker" && hintsNow);
   useEffect(() => {
     if (!deskHintNow || deskHint || deskHintSeen()) return;
     const t = window.setTimeout(() => {
@@ -3271,6 +3334,7 @@ export default function MapApp({
       me?.passwordNudge &&
       !me.mustReconsent &&
       !board &&
+      hintsNow &&
       !styleHintNow &&
       !deskHint &&
       !liteHint &&
@@ -3607,6 +3671,32 @@ export default function MapApp({
     setPanel(null);
     openSi(SI_ZOOM);
   };
+
+  // 最近更新's buttons: there once what waited for the booklet has had its turn (src/lib/pamphlet.ts actionMayRun),
+  // 消息 waiting for 佩丽卡监督's notes too
+  const pamphletMayGo = actionMayRun({
+    open: Boolean(pamphlet),
+    board: Boolean(board),
+    panel: Boolean(panel),
+    scene: Boolean(acting),
+    notes: perlicaBusy && afterReport.current !== null,
+    settled,
+  });
+  useEffect(() => {
+    const go = pamphletGo.current;
+    if (!pamphletMayGo || !go) return;
+    pamphletGo.current = null;
+    if (go === "ui") setUiMenu(true);
+    else if (go === "styles") setStyleAsk((n) => n + 1);
+    else if (go === "si") showSi();
+    else if (!me) return;
+    else if (go === "mains") setPanel({ kind: "onlyMains" });
+    else if (go === "inbox") void openInbox(false);
+    else if (go === "badges") setPanel({ kind: "badges", draft: me.profile });
+    else if (go === "friends") void openFriends();
+    else setPanel({ kind: "profile", password: "set" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pamphletMayGo, pamphletPress]);
   /** What she says about 缘缘庄 after a touch: straight into a room, to the door, or back from the fields */
   const siInnLine = (si: NonNullable<TouchResult["si"]>) =>
     si.inn.event === "in"
@@ -4438,6 +4528,7 @@ export default function MapApp({
         hint={styleHintNow}
         onHintDone={styleHintDone}
         onRaise={setTopRaised}
+        openSignal={styleAsk}
       />
     ),
     // mainland China has Amap only
@@ -4542,7 +4633,7 @@ export default function MapApp({
       {layout === "float" && <FloatChrome {...chrome} />}
       {layout === "drawer" && <DrawerChrome {...chrome} />}
       {layout === "hud" && <HudChrome {...chrome} />}
-      {uiMenu && uiButton && !placing && !zoneTool && (
+      {uiMenu && uiButton && !placing && !zoneTool && !pamphlet && (
         <UiMenu ui={ui} choices={uiChoice} desk={deskOffer} onPick={pickUi} onDesk={() => void tapDesk()} onClose={closeUiMenu} />
       )}
 
@@ -4904,7 +4995,8 @@ export default function MapApp({
       {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}
 
       {panel && renderPanel(panel)}
-      {newBadges[0] && !gray && (
+      {/* one that came as the page opened, just before 最近更新 popped up, waits for it to be closed */}
+      {newBadges[0] && !gray && !pamphlet && (
         <NewBadge
           key={newBadges[0].id}
           earned={newBadges[0]}
@@ -4919,13 +5011,25 @@ export default function MapApp({
       {/* above the tutorial card or a roach card while one is showing, so the two never cover each other */}
       {board && (
         <NoticeBoard
-          notices={notices.notices}
+          notices={boardNotices}
           view={board.view}
           memory={noticeMem}
           onOpen={boardOpen}
           onList={boardList}
           onLog={boardLog}
           onClose={closeBoard}
+        />
+      )}
+      {/* over everything of each layout, the board it was opened from too */}
+      {pamphlet && (
+        <Pamphlet
+          uiChoice={uiChoice}
+          signedIn={Boolean(me)}
+          asking={Boolean(me?.ageCheck || me?.mustReconsent)}
+          ui={ui}
+          mapStyle={shownStyle}
+          onAction={closePamphlet}
+          onClose={() => closePamphlet()}
         />
       )}
       {pwNudgeUp && mapClear && me && (

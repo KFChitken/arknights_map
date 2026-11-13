@@ -394,6 +394,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     roaches: mine,
     movesLeft,
     isNew,
+    joinedAt: u.createdAt.getTime(),
     hasDeclared: Boolean(declared),
     hasTouched: Boolean(touched),
     badges,

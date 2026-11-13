@@ -22,6 +22,8 @@ export type PublicNotice = {
   publishedAt: number;
   /** The first paragraph or list item as plain text (noticeText.ts) */
   excerpt: string;
+  /** How long it counts as new, when not FRESH_MS: only notices the page adds itself (src/lib/pamphlet.ts) */
+  freshMs?: number;
 };
 
 /** The notices everyone sees just now, pinned first, then the newest; the stamp changes with any of them */
@@ -148,11 +150,14 @@ export const stripClosed = (m: NoticeMemory, id: string, list: PublicNotice[], n
 
 // ---- the rules ----
 
-/** A notice counts as new for 7 days: the red dot, the strip, 「新」 and popping up once are for these only */
+/**
+ * A notice counts as new for 7 days, or for its own freshMs: the red dot, the strip, 「新」 and popping up once
+ * are for these only
+ */
 export const FRESH_MS = 7 * 86_400_000;
 
-export const isFresh = (n: PublicNotice, now: number) => now - n.publishedAt < FRESH_MS;
-/** New: published in the last 7 days, and not read here */
+export const isFresh = (n: PublicNotice, now: number) => now - n.publishedAt < (n.freshMs ?? FRESH_MS);
+/** New: published in the last 7 days (or its freshMs), and not read here */
 export const isNew = (n: PublicNotice, m: NoticeMemory, now: number) => isFresh(n, now) && !m.seen.includes(n.id);
 
 const newestFirst = (a: PublicNotice, b: PublicNotice) => b.publishedAt - a.publishedAt;

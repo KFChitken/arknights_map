@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-13", kind: "new", text: "最近更新做成一本小册子，滑着看" },
   { date: "2026-11-13", kind: "chore", text: "后台调整" },
   { date: "2026-11-13", kind: "new", text: "三种界面随你换：浮岛、抽屉、游戏风" },
   { date: "2026-11-13", kind: "tweak", text: "只看本体时，克隆体不再替你收宣言" },

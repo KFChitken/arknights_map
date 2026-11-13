@@ -480,6 +480,8 @@ export type Me = {
   movesLeft: number;
   /** Signed up within NEWCOMER_DAYS */
   isNew: boolean;
+  /** When they signed up (ms), for themselves only: never in what others get */
+  joinedAt: number;
   hasDeclared: boolean;
   hasTouched: boolean;
   badges: EarnedBadge[];
