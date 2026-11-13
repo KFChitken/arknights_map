@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { fmtParts, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
 /**
- * The five guides (src/lib/guides.ts) in a column under 方舟雷达: tap one for what
- * they do, with a button that takes the map to them.
+ * One of the five guides (src/lib/guides.ts), opened from wherever the layout puts them (src/components/app/chrome):
+ * what they do, with a button that takes the map to them.
  */
-
-const ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe", "si"];
 
 /** What each of them does, in a few lines; read when shown */
 const about = (): Record<GuideId, string[]> => ({
@@ -40,41 +37,6 @@ const about = (): Record<GuideId, string[]> => ({
     T.guides.si.about.friends,
   ],
 });
-
-export function GuideDock({ onOpen }: { onOpen: (id: GuideId) => void }) {
-  const ref = useRef<HTMLElement>(null);
-  // On a short phone globals.css lifts the column by just enough for its last guide to clear the bottom buttons, but
-  // never into the counts at the top. So it needs to know how tall the column is, however many guides it holds and
-  // however small a short screen makes them (--guides-h), and how tall the counts are, with whatever rows are put
-  // under them (--hud-h). The counts come and go with the column (both are hidden while placing a roach).
-  useEffect(() => {
-    const nav = ref.current;
-    const app = nav?.closest<HTMLElement>(".app");
-    if (!nav || !app || typeof ResizeObserver === "undefined") return;
-    const hud = app.querySelector<HTMLElement>(".hud");
-    const sizes = new ResizeObserver(() => {
-      app.style.setProperty("--guides-h", `${nav.getBoundingClientRect().height}px`);
-      if (hud) app.style.setProperty("--hud-h", `${hud.getBoundingClientRect().height}px`);
-    });
-    sizes.observe(nav);
-    if (hud) sizes.observe(hud);
-    return () => {
-      sizes.disconnect();
-      app.style.removeProperty("--guides-h");
-      app.style.removeProperty("--hud-h");
-    };
-  }, []);
-  return (
-    <nav ref={ref} className="guide-dock" aria-label={T.common.guides}>
-      {ORDER.map((id) => (
-        <button key={id} onClick={() => onOpen(id)} aria-label={GUIDES[id].name}>
-          <RoachIcon color={GUIDES[id].color} size={34} avatar={GUIDES[id].avatar} />
-          <small>{GUIDES[id].short}</small>
-        </button>
-      ))}
-    </nav>
-  );
-}
 
 /** One of them: who they are and what they do, and where they are. away: why the map cannot show them now, if so */
 export function GuideSheet({

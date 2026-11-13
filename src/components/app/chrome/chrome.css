@@ -1,0 +1,334 @@
+/*
+ * The buttons around the map (src/components/app/chrome): the glass they are made of, 浮岛's layout (the default, so
+ * it is here from the first paint), the 界面 menu, and the handles that fold a side away. 抽屉 and 游戏风 bring their
+ * own (drawer.css, hud.css) when they are used.
+ */
+
+.chrome { display: contents; }
+
+/* ---- the glass: dark, the map blurred behind it ---- */
+.glass {
+  background: rgba(20, 22, 27, 0.66);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  backdrop-filter: blur(14px) saturate(1.6);
+  box-shadow: inset 0 0 0 1px #ffffff24, inset 0 1px 0 #ffffff14, 0 4px 16px #00000033;
+  color: #fff;
+}
+.glass small { text-shadow: 0 1px 2px #00000080; }
+/* no blur, a firmer black: where the browser cannot blur, where the system asks for less see-through, and with 轻量
+   (picked, or put on by itself on a phone that struggles), the lightest the page can be */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: rgba(27, 29, 34, 0.86); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(27, 29, 34, 0.86); }
+}
+.app.no-blur .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(27, 29, 34, 0.86); }
+/* 浮岛's outline, black and a thin white outside it: outside the glass, so nothing moves or changes size */
+.app.ui-float .glass {
+  box-shadow: inset 0 0 0 1px #ffffff24, inset 0 1px 0 #ffffff14, 0 0 0 2px #0d0e10, 0 0 0 3px rgba(255, 255, 255, 0.85), 0 4px 16px #00000033;
+}
+
+/* signed in, the counts open 地图上看哪些蟑螂, and say in yellow when 只看本体 is on */
+.chrome .tappable { cursor: pointer; }
+.chrome .tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chrome .mains { color: var(--accent); font-weight: 700; }
+
+/* what is said one way on a phone and another on a computer (WIDE_QUERY in parts.tsx) */
+.on-computer { display: none; }
+@media (min-width: 900px) {
+  .on-phone { display: none; }
+  .on-computer { display: inline; }
+}
+
+/* 界面 while its menu is open */
+.pressed { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/*
+ * Before the app starts, a device that picked 抽屉 or 游戏风 has 浮岛's buttons hidden, and a side it folded away
+ * folded already (earlyUiScript in src/lib/uiChoice.ts), so they do not show for a moment and then change
+ */
+html[data-ui-early] .chrome-float { display: none; }
+
+/*
+ * 抽屉 (drawer.css) keeps the map above its drawer (126px, or 404px pulled up, less on a short screen), and on a
+ * computer right of its panel: here, so the map is made that size from the first paint (MapApp.tsx tells the map
+ * when it changes)
+ */
+html[data-ui-early="drawer"] .app, .app.ui-drawer { --dock-h: 126px; background: #15171c; }
+.app.ui-drawer.drawer-open { --dock-h: min(404px, calc(100vh - 180px)); }
+@supports (height: 100dvh) {
+  .app.ui-drawer.drawer-open { --dock-h: min(404px, calc(100dvh - 180px)); }
+}
+html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(var(--dock-h) + var(--safe-bottom)); }
+@media (min-width: 900px) {
+  html[data-ui-early="drawer"] .app, .app.ui-drawer, .app.ui-drawer.drawer-open { --dock-h: 0px; }
+  html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { left: calc(340px + var(--safe-left)); bottom: 0; }
+}
+
+/* ---- folding a side away: the arrow beside it (only the arrow), and the handle left at the screen's edge ---- */
+.nub {
+  position: absolute; top: 7px; display: grid; place-items: center; width: 32px; height: 44px; padding: 0; border: 0;
+  background: none; box-shadow: none;
+}
+.nub svg { display: block; overflow: visible; }
+.tab-r, .tab-l {
+  position: absolute; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  padding: 0; border: 0; visibility: hidden;
+  transition: transform 0.2s ease-out, visibility 0s linear 0.2s;
+}
+.tab-r { right: var(--safe-right); width: 28px; height: 80px; border-radius: 14px 0 0 14px; transform: translateX(calc(100% + 4px)); }
+.tab-l { left: var(--safe-left); width: 28px; height: 60px; border-radius: 0 14px 14px 0; transform: translateX(calc(-100% - 4px)); }
+.tab-r.shown, .tab-l.shown { transform: none; visibility: visible; transition: transform 0.2s ease-out, visibility 0s; }
+.tab-r .radar-scope { width: 16px; height: 16px; box-shadow: inset 0 0 0 1px #3fd0d488; }
+.tab-r .radar-scope::before, .tab-r .radar-scope::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tab-r, .tab-l, .tab-r.shown, .tab-l.shown, .chrome-float .rail, .ui-tile-box { transition: none !important; }
+}
+
+/* ---- 浮岛 ---- */
+/* two islands along the top: the site's name with 公告, and the map's style with the base map */
+.chrome-float .isle {
+  position: absolute; z-index: 10; top: calc(10px + var(--safe-top)); display: flex; align-items: center; gap: 6px; height: 40px;
+  border-radius: 20px; white-space: nowrap;
+}
+.chrome-float .isle-l { left: calc(10px + var(--safe-left)); padding: 0 5px 0 8px; font-size: 15px; font-weight: 700; }
+.chrome-float .isle-l .notice-btn { width: 30px; height: 30px; padding: 0; border-color: #ffffff33; }
+.chrome-float .isle-l .notice-btn .label { display: none; }
+.chrome-float .isle-l .notice-btn .mega { width: 16px; height: 16px; }
+.chrome-float .isle-l .notice-btn .dot { border-color: #2a2c31; }
+.chrome-float .isle-r { right: calc(10px + var(--safe-right)); gap: 4px; padding: 0 5px; }
+.chrome-float .isle-r.raised { z-index: 25; }
+.chrome-float .isle .style-pill, .chrome-float .isle .basemap-switch { border: 0; background: #ffffff14; }
+.chrome-float .isle .basemap-switch button { padding: 6px 11px; line-height: 18px; }
+/* the style's name goes first where there is no room for it beside 高德 / OSM */
+@media (max-width: 399px) {
+  .chrome-float .isle-r.with-basemap .style-pill.long .label { display: none; }
+}
+@media (max-width: 359px) {
+  .chrome-float .isle-l { font-size: 14px; }
+  .chrome-float .isle-r.with-basemap .style-pill .label { display: none; }
+  .chrome-float .isle .basemap-switch button { padding: 6px 9px; }
+}
+
+/* the counts in the middle, under the islands; on a wide screen, between them */
+.chrome-float .stats { padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.chrome-float .stats .l2, .chrome-float .stats .muted { color: #ffffffb8; }
+.chrome-float .stats.two { padding: 5px 16px; line-height: 1.25; text-align: center; }
+.chrome-float .stats .l2 { display: block; font-size: 12px; font-weight: 400; }
+@media (min-width: 560px) {
+  .chrome-float .stats.two { padding: 6px 14px; line-height: normal; }
+  .chrome-float .stats .l2 { display: inline; font-size: inherit; }
+  .chrome-float .stats .l2::before { content: " · "; }
+}
+@media (min-width: 1100px) {
+  .chrome-float .hud { top: calc(10px + var(--safe-top)); left: 300px; right: 300px; }
+  .chrome-float .stats, .chrome-float .stats.two { height: 40px; padding: 0 16px; line-height: 40px; }
+}
+
+/* on the right, 方舟雷达, 热榜 and the guides in one column; on the left, 界面 */
+.chrome-float .rail {
+  --rail-top: calc(140px + var(--safe-top));
+  position: absolute; z-index: 10; right: calc(10px + var(--safe-right)); top: var(--rail-top); display: flex; flex-direction: column;
+  width: 62px; max-height: calc(100% - var(--rail-top) - var(--rail-bottom, 96px) - var(--safe-bottom));
+  border-radius: 16px; line-height: 1;
+  transition: transform 0.2s ease-out, visibility 0s;
+}
+/* where it is too short for all of them, they scroll in it rather than run under the bottom bar */
+.chrome-float .rail-in {
+  display: flex; flex-direction: column; align-items: center; min-height: 0; padding: 5px 0; overflow-y: auto;
+  border-radius: inherit; scrollbar-width: none;
+}
+.chrome-float .rail-in::-webkit-scrollbar { display: none; }
+.chrome-float .rail .it {
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 4px 0; border: 0;
+  background: none; color: #fff; line-height: 1;
+}
+.chrome-float .rail small { margin-top: 3px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.chrome-float .rail .radar-scope { width: 36px; height: 36px; }
+.chrome-float .rail .guide small { margin-top: 2px; font-size: 10px; }
+.chrome-float .rail .sep { flex-shrink: 0; width: 34px; height: 1px; margin: 3px 0; background: #ffffff26; }
+.chrome-float .rail .nub { left: -27px; }
+/* a short screen: smaller, then smaller again, so they end above the bottom bar */
+@media (max-height: 639px) {
+  .chrome-float .rail .radar-scope { width: 30px; height: 30px; }
+  .chrome-float .rail .hot svg { width: 20px; height: 20px; }
+  .chrome-float .rail .guide { padding: 3px 0; }
+  .chrome-float .rail .guide > :first-child { width: 26px !important; height: 26px !important; }
+  .chrome-float .rail small { font-size: 10px; }
+  .chrome-float .rail .guide small { font-size: 9.5px; }
+}
+@media (max-height: 599px) {
+  .chrome-float .rail .radar-scope { width: 28px; height: 28px; }
+  .chrome-float .rail .hot svg { width: 18px; height: 18px; }
+  .chrome-float .rail .guide { padding: 2px 0; }
+  .chrome-float .rail .guide > :first-child { width: 24px !important; height: 24px !important; }
+  .chrome-float .rail .guide small { margin-top: 1px; }
+}
+/* wide enough, the bottom bar is in the middle and the column can come down to the bottom */
+@media (min-width: 704px) {
+  .chrome-float .rail { --rail-bottom: 16px; }
+}
+
+.chrome-float .ui-tile-box {
+  position: absolute; z-index: 10; left: calc(10px + var(--safe-left)); top: calc(140px + var(--safe-top));
+  transition: transform 0.2s ease-out, visibility 0s;
+}
+.chrome-float .ui-tile {
+  display: flex; flex-direction: column; align-items: center; width: 56px; padding: 6px 0 5px; border: 0; border-radius: 14px;
+  line-height: 1;
+}
+.chrome-float .ui-tile svg { margin: 2px; }
+.chrome-float .ui-tile small { margin-top: 4px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.chrome-float .ui-tile-box .nub { right: -27px; }
+/* once a device: 存到桌面 is in 界面 now, beside it (past its arrow) */
+.chrome-float .ui-tile-box .desk-hint { top: 12px; right: auto; left: calc(100% + 30px); }
+.chrome-float .ui-tile-box .desk-hint::after { top: 10px; right: auto; left: -6px; border: 6px solid transparent; border-left: 0; border-right-color: var(--accent); }
+
+/* folded away into the edge of the screen, the radar no longer turning (FloatChrome.tsx) */
+.chrome-float .rail.folded {
+  transform: translateX(calc(100% + 16px + var(--safe-right))); visibility: hidden;
+  transition: transform 0.2s ease-out, visibility 0s linear 0.2s;
+}
+.chrome-float .ui-tile-box.folded {
+  transform: translateX(calc(-100% - 16px - var(--safe-left))); visibility: hidden;
+  transition: transform 0.2s ease-out, visibility 0s linear 0.2s;
+}
+.chrome-float .tab-r, .chrome-float .tab-l { top: calc(140px + var(--safe-top)); }
+html[data-fold-r] .chrome-float .rail { transform: translateX(calc(100% + 16px + var(--safe-right))); visibility: hidden; }
+html[data-fold-r] .chrome-float .tab-r, html[data-fold-l] .chrome-float .tab-l { transform: none; visibility: visible; }
+html[data-fold-l] .chrome-float .ui-tile-box { transform: translateX(calc(-100% - 16px - var(--safe-left))); visibility: hidden; }
+
+@media (min-width: 900px) {
+  .chrome-float .rail { --rail-top: calc(64px + var(--safe-top)); right: calc(12px + var(--safe-right)); }
+  .chrome-float .ui-tile-box { top: calc(64px + var(--safe-top)); left: calc(12px + var(--safe-left)); }
+  .chrome-float .tab-r, .chrome-float .tab-l { top: calc(64px + var(--safe-top)); }
+}
+
+/* one bar along the bottom: your look and name, 消息 and 触须之交, and the pair that act */
+.chrome-float .bar {
+  position: absolute; z-index: 11; left: calc(8px + var(--safe-left)); right: calc(8px + var(--safe-right));
+  bottom: calc(26px + var(--safe-bottom)); display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  height: 60px; padding: 0 7px 0 5px; border-radius: 22px;
+}
+@media (min-width: 560px) {
+  .chrome-float .bar { left: 50%; right: auto; width: 540px; padding: 0 8px; transform: translateX(-50%); }
+}
+/* before signing in, or while who is signed in has not come: one or two buttons in the middle */
+.chrome-float .bar.solo { left: 50%; right: auto; width: auto; gap: 8px; padding: 0 9px; transform: translateX(-50%); }
+
+/* those buttons, in 浮岛's bar and 抽屉's drawer alike (MeSlots and ActButtons in parts.tsx) */
+.chrome .slots { display: flex; gap: 2px; min-width: 0; }
+.chrome .slot {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 46px;
+  height: 52px; padding: 0; border: 0; border-radius: 14px; background: none; color: #fff; line-height: 1;
+}
+.chrome .slot .ic { display: grid; place-items: center; width: 30px; height: 30px; }
+.chrome .slot small { max-width: 100%; overflow: hidden; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.chrome .slot-me small { max-width: 50px; }
+.chrome .slot .badge { position: absolute; z-index: 2; top: 1px; right: 4px; margin: 0; }
+.chrome .slot .help-dot { top: 5px; right: 8px; box-shadow: 0 0 0 2px #2a2c31; }
+/*
+ * 消息's corner (MailBadge in parts.tsx): the red count of what came to you, and a yellow speaker, with no number, for a
+ * declaration sent nearby; with both, the red count on top and the speaker behind it, a little up and to the right
+ */
+.chrome .say-mark {
+  position: absolute; z-index: 1; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); color: var(--ink); box-shadow: 0 0 0 2px #2a2c31;
+}
+.chrome .say-mark svg { display: block; }
+.chrome .say-mark.under ~ .badge { box-shadow: 0 0 0 1.5px #2a2c31; }
+.chrome .slot .say-mark { top: 1px; right: 4px; }
+.chrome .slot .say-mark.under { top: -5px; right: -5px; }
+.chrome .btns { display: flex; align-items: center; gap: 6px; }
+.chrome .b {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; height: 42px; padding: 0 12px; border: 0;
+  border-radius: 21px; font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.chrome .b.mine { background: #ffffff1c; color: #fff; box-shadow: inset 0 0 0 1px #ffffff2e; }
+.chrome .b.say { background: var(--accent); color: var(--ink); font-weight: 800; }
+.chrome .b.waiting:disabled { opacity: 1; cursor: default; color: #ffffffb3; }
+.chrome .announce .two-lines { display: none; }
+/* narrower phones: a little tighter, and narrower still, 我宣布个事儿 on two lines in the height of one */
+@media (max-width: 374px) {
+  .chrome .slot { width: 42px; }
+  .chrome .b { height: 40px; padding: 0 10px; font-size: 12.5px; }
+  .chrome .b.say { padding: 0 9px; font-size: 13px; }
+}
+@media (max-width: 339px) {
+  .chrome .announce { line-height: 14px; }
+  .chrome .announce .one-line { display: none; }
+  .chrome .announce .two-lines, .chrome .announce .two-lines > span { display: block; text-align: center; }
+}
+
+/* the map's own buttons: on a phone no + and −, and OpenStreetMap's (i) on the left, over the bottom bar */
+@media (max-width: 899px) {
+  .app .map .maplibregl-ctrl-group, .app .map .amap-toolbar, .app .map .tmap-corner-right { display: none !important; }
+  .app.ui-float .map .maplibregl-ctrl-bottom-right { left: var(--safe-left); right: auto; bottom: calc(84px + var(--safe-bottom)); }
+}
+@media (min-width: 900px) {
+  .app.ui-float .map .maplibregl-ctrl-bottom-right { bottom: calc(16px + var(--safe-bottom)); }
+  .app.ui-float .map .amap-toolbar { bottom: calc(60px + var(--safe-bottom)) !important; }
+  .app.ui-float .map .tmap-corner-right { margin-bottom: calc(50px + var(--safe-bottom)); }
+}
+/*
+ * Amap's terms forbid covering its logo, copyright and map approval number (审图号) in the bottom-left corner (the
+ * same for Tencent's): under the bar they show; on a phone our note has no room beside them, so it goes up to the
+ * right of them and the bar a little higher, with what sits over the bar
+ */
+.app.on-amap.ui-float .disclaimer { left: auto; right: calc(10px + var(--safe-right)); text-align: right; }
+@media (max-width: 759px) {
+  .app.on-amap.ui-float .disclaimer { bottom: calc(22px + var(--safe-bottom)); }
+  .app.on-amap.ui-float .bar { bottom: calc(42px + var(--safe-bottom)); }
+  .app.on-amap.ui-float .rail { --rail-bottom: 112px; }
+  .app.on-amap.ui-float :is(.card, .lite-hint, .pw-nudge) { bottom: calc(112px + var(--safe-bottom)); }
+  .app.on-amap.ui-float .heard-stack { bottom: calc(128px + var(--safe-bottom)); }
+}
+
+/* 圈禁放区 and 看一处 (an owner's tools): the map to the tool, only the islands along the top */
+.app.zone-tool :is(.chrome-float .hud, .rail, .tab-r, .ui-tile-box, .tab-l, .bar, .heard-stack, .disclaimer, .style-hint) { display: none; }
+
+/* ---- 界面's menu: the three layouts as small pictures, then 存到桌面 ---- */
+.uimenu { position: absolute; z-index: 30; width: 266px; padding: 12px 12px 10px; border-radius: 18px; }
+.uimenu .um-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 9px; white-space: nowrap; }
+.uimenu .um-h b { font-size: 14px; }
+.uimenu .um-h small { color: #ffffff8c; font-size: 10.5px; }
+.uimenu .um-opts { display: flex; gap: 7px; }
+.uimenu .um-o {
+  position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; padding: 7px 0;
+  border: 0; border-radius: 12px; background: #ffffff0f; color: #fff; font-size: 12px; font-weight: 700;
+}
+.uimenu .um-o picture { display: block; }
+.uimenu .um-o img { display: block; width: 62px; height: 110px; border-radius: 8px; background: #2a2c31; box-shadow: 0 0 0 1px #ffffff2e; object-fit: cover; }
+.uimenu .um-o.on, .ui-picker .pk-o.on { background: #ffd23f24; box-shadow: inset 0 0 0 2px var(--accent); }
+.uimenu .ck, .ui-picker .ck {
+  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--ink);
+  font-size: 11px; font-style: normal; font-weight: 800; line-height: 18px; text-align: center;
+}
+.uimenu .um-sep { height: 1px; margin: 10px 2px; background: #ffffff1f; }
+.uimenu .um-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0 2px; border: 0; background: none; color: #fff; text-align: left; }
+.uimenu .um-row img { display: block; flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; }
+.uimenu .um-row > span:not(.go) { flex: 1; display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.uimenu .um-row b { font-size: 13.5px; }
+.uimenu .um-row small { color: #ffffff8c; font-size: 11px; }
+.uimenu .um-row .go { flex: none; color: #ffffff73; font-size: 20px; line-height: 1; }
+@media (min-width: 900px) {
+  .uimenu { width: 380px; }
+  .uimenu .um-o { padding: 7px; }
+  .uimenu .um-o picture { width: 100%; }
+  .uimenu .um-o img { width: 100%; height: auto; aspect-ratio: 480 / 285; }
+}
+/* where each layout opens it; a short screen keeps all of it in sight */
+.uimenu { top: calc(var(--um-top) + var(--safe-top)); max-height: calc(100% - var(--um-top) - var(--safe-top) - var(--safe-bottom) - 8px); overflow-y: auto; }
+.ui-float .uimenu { --um-top: 206px; left: calc(10px + var(--safe-left)); }
+.ui-drawer .uimenu { --um-top: 64px; right: calc(10px + var(--safe-right)); }
+.ui-hud .uimenu { --um-top: 262px; left: calc(66px + var(--safe-left)); }
+@media (min-width: 900px) {
+  .ui-float .uimenu { --um-top: 130px; left: calc(12px + var(--safe-left)); }
+  .ui-drawer .uimenu { --um-top: 54px; right: auto; left: 296px; }
+}
+/* a phone on its side: higher, beside the button rather than under it */
+@media (max-height: 500px) {
+  .ui-float .uimenu { --um-top: 62px; left: calc(80px + var(--safe-left)); }
+  .ui-hud .uimenu { --um-top: 62px; }
+}

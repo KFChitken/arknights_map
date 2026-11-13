@@ -246,6 +246,68 @@ export const zh = {
       tenThousands: "{count}万",
     },
   },
+  /** 界面: the map page's three layouts (src/lib/uiChoice.ts), its menu, the question on the first visit, the folds */
+  ui: {
+    button: "界面",
+    names: {
+      float: "浮岛",
+      drawer: "抽屉",
+      hud: "游戏风",
+    },
+    lines: {
+      float: "默认 · 两边能收起",
+      drawer: "按钮都在下面",
+      hud: "像游戏里的界面",
+      // on a computer 抽屉 is a column down the left
+      drawerWide: "按钮都在左边",
+    },
+    menu: {
+      title: "换界面",
+      keptPhone: "选了马上换，这台手机记住",
+      keptComputer: "选了马上换，这台电脑记住",
+      deskPhone: "像 App 一样从手机桌面打开",
+      deskComputer: "装到电脑上，像 App 一样打开",
+    },
+    picker: {
+      title: "选一个你喜欢的界面",
+      note: "以后随时可以点「界面」按钮再换",
+      use: "就用「{name}」",
+      skip: "先不选，用默认的",
+    },
+    fold: {
+      right: "把右边这条收起来",
+      left: "把「界面」收起来",
+      guides: "把向导收起来",
+      openRight: "拿出方舟雷达、热榜和向导",
+      openLeft: "拿出「界面」",
+      openGuides: "拿出向导",
+      guides5: "{n} 位",
+    },
+    drawer: {
+      open: "拉开抽屉",
+      close: "收起抽屉",
+      radar: "{km} 公里内现在有 {n} 只蟑螂",
+      radarFrom: "来自 {players} 位舟P · 今天净增 {net} 只",
+      radarFromLess: "来自 {players} 位舟P · 今天少了 {net} 只",
+      radarAsk: "看看你的蟑螂 {km} 公里内有多少只",
+      radarSignIn: "登录后看看附近有多少只蟑螂",
+      hotHead: "本周舟P热榜 · {board}",
+      hotNone: "这周还没上榜的，点开看看",
+      guides: "向导",
+      here: "这片地图里有",
+      hereUnit: "只舟P",
+      // with 只看本体 on, the counts are of players
+      hereUnitPlayers: "位舟P",
+      worldShort: "全球 {total} 只",
+      signInToSee: "登录后能看到 TA 们",
+    },
+    hud: {
+      profile: "我的资料",
+      here: "这片 {n} 只舟P",
+      herePlayers: "这片 {n} 位舟P",
+      style: "画风",
+    },
+  },
   server: {
     http: {
       wrongOrigin: "请求来源不对，请刷新页面再试。",
@@ -553,7 +615,7 @@ export const zh = {
         age: "{b}注册时请你确认已满 {minSignupAge} 岁，我只记下你确认的时间，{b2}。你同意这份说明、同意信息存放和发信、同意公开蟑螂位置、打开或关掉佩丽卡监督的离开计时，也都只记下当时的时间。",
         ageB: "年龄确认和同意。",
         ageB2: "不问也不存你的生日",
-        security: "{b}登录状态存在你浏览器的 Cookie 里，{sessionDays} 天没打开网站就会失效，服务器上只存它的加密摘要和这次是用验证码、密码还是登录码登录的；如果你设了密码，服务器上只存用 scrypt 算过的摘要，看不到原密码，连续输错的次数也会记下，用来暂停猜密码；验证码在服务器上只存加密后的样子和发送次数，一天后自动清掉；你的 IP 地址只在内存里短暂用来防止有人刷验证码和搜地点，和判断你是不是在中国大陆（在的话用高德或腾讯的底图），{b2}；地图在你这里没加载出来时，网页会告诉服务器一声是哪种地图、出了什么错（地图服务给的错误代码），不带你的任何信息，只在内存里留一天，用来及时发现地图服务出了问题；你选的底图和蟑螂样式、看没看过欢迎卡、新手教程做到了哪一步、佩丽卡监督这次站在哪、阿米娅向导跳舞时放不放音乐、你点「摄入酒精」的时间（用来让佩丽卡监督告诉你睡了多久，报完就删）、你上次看网页的时间（用来决定她换不换地方），只存在你自己的浏览器里。",
+        security: "{b}登录状态存在你浏览器的 Cookie 里，{sessionDays} 天没打开网站就会失效，服务器上只存它的加密摘要和这次是用验证码、密码还是登录码登录的；如果你设了密码，服务器上只存用 scrypt 算过的摘要，看不到原密码，连续输错的次数也会记下，用来暂停猜密码；验证码在服务器上只存加密后的样子和发送次数，一天后自动清掉；你的 IP 地址只在内存里短暂用来防止有人刷验证码和搜地点，和判断你是不是在中国大陆（在的话用高德或腾讯的底图），{b2}；地图在你这里没加载出来时，网页会告诉服务器一声是哪种地图、出了什么错（地图服务给的错误代码），不带你的任何信息，只在内存里留一天，用来及时发现地图服务出了问题；你选的底图和蟑螂样式、选的界面和两边收没收、看没看过欢迎卡、新手教程做到了哪一步、佩丽卡监督这次站在哪、阿米娅向导跳舞时放不放音乐、你点「摄入酒精」的时间（用来让佩丽卡监督告诉你睡了多久，报完就删）、你上次看网页的时间（用来决定她换不换地方），只存在你自己的浏览器里。",
         securityB: "为了安全和正常运行产生的信息。",
         securityB2: "不写进数据库，也不记访问日志",
         notCollected: "我不收集手机号、真实姓名、身份证号、设备定位或通讯录。",
@@ -998,7 +1060,7 @@ export const zh = {
   },
   desk: {
     save: "存到桌面",
-    saveHint: "存到桌面，下次一点就开",
+    saveHint: "存到桌面在「界面」里，下次一点就开",
     signInFirst: "先登录，再拿登录码。",
     toSignIn: "去登录",
     failed: "出了点问题。",
@@ -1813,6 +1875,10 @@ export const zh = {
     finished: {
       title: "教程完成啦！",
       text: "有人碰你或者回应你，左下角的信封会亮。右上角的方舟雷达能看附近的动静。我一直在罗德岛，随时来找我玩。",
+      // the same, where 抽屉 (on a phone, then on a computer) and 游戏风 have them
+      drawer: "有人碰你或者回应你，左下角的信封会亮。抽屉上面那排的方舟雷达能看附近的动静。我一直在罗德岛，随时来找我玩。",
+      drawerWide: "有人碰你或者回应你，左下角的「消息」会亮。左边栏里的方舟雷达能看附近的动静。我一直在罗德岛，随时来找我玩。",
+      hud: "有人碰你或者回应你，左上角的信封会亮。右上角的方舟雷达能看附近的动静。我一直在罗德岛，随时来找我玩。",
     },
   },
   visit: {

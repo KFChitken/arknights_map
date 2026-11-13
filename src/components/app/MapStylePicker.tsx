@@ -103,11 +103,12 @@ function StyleIcon({ style }: { style: MapStyle }) {
 }
 
 /**
- * 地图画风 in the top bar: a button with the style in use, and a card of them all to pick from, each
- * with a small picture (fetched only when the card opens). Picking one changes the map at once.
- * unavailable: styles that cannot be picked here, with why. hint: show once that the style can change.
+ * 地图画风: a button with the style in use, and a card of them all to pick from, each with a small picture (fetched
+ * only when the card opens). Picking one changes the map at once. unavailable: styles that cannot be picked here, with
+ * why. hint: show once that the style can change. round: only the style's small picture, on a round button (游戏风).
  */
 export default function MapStylePicker({
+  round = false,
   style,
   onPick,
   unavailable,
@@ -115,6 +116,7 @@ export default function MapStylePicker({
   onHintDone,
   onRaise,
 }: {
+  round?: boolean;
   style: MapStyle;
   onPick: (style: MapStyle) => void;
   unavailable: Partial<Record<MapStyle, string>>;
@@ -163,24 +165,28 @@ export default function MapStylePicker({
       <span className="style-anchor">
         <button
           ref={pillRef}
-          className="style-pill"
+          className={round ? "style-round ob glass" : `style-pill${MAP_STYLE_NAMES[style].length > 2 ? " long" : ""}`}
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={fmt(T.map.style.picker.label, { style: MAP_STYLE_NAMES[style] })}
           onClick={toggle}
         >
           <StyleIcon style={style} />
-          <span className="label">{MAP_STYLE_NAMES[style]}</span>
-          <svg className="caret" viewBox="0 0 10 10" aria-hidden="true">
-            <path
-              d="M1.5 3.5 L5 7 L8.5 3.5"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          {!round && (
+            <>
+              <span className="label">{MAP_STYLE_NAMES[style]}</span>
+              <svg className="caret" viewBox="0 0 10 10" aria-hidden="true">
+                <path
+                  d="M1.5 3.5 L5 7 L8.5 3.5"
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </>
+          )}
         </button>
         {hint && !open && (
           <button className="style-hint" onClick={toggle}>

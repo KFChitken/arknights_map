@@ -1,0 +1,175 @@
+/*
+ * 游戏风 (HudChrome.tsx), loaded with it: your plate top left, 方舟雷达 top right, a column of round buttons down the
+ * left, the guides as tabs on the right edge, and the buttons that act in the bottom corners.
+ */
+
+.chrome-hud .ob {
+  position: relative; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%;
+  color: #fff;
+}
+.chrome-hud .ob .badge { position: absolute; z-index: 2; top: -4px; right: -5px; margin: 0; }
+.chrome-hud .ob .say-mark { top: -4px; right: -5px; }
+.chrome-hud .ob .say-mark.under { top: -10px; right: -14px; }
+/* over 公告 beside it, which the speaker reaches */
+.chrome-hud .ob.mail { z-index: 1; }
+.chrome-hud .lbl {
+  padding: 2px 7px; border-radius: 9px; background: rgba(20, 22, 27, 0.72); color: #fff; font-size: 10.5px; font-weight: 600;
+  line-height: 1.3; white-space: nowrap;
+}
+.chrome-hud .rb { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.chrome-hud .rb .ob { width: 42px; height: 42px; }
+
+/* ---- top left: your plate, 消息 and 公告; the counts under them ---- */
+/* up to 方舟雷达: a long name gives way first */
+.chrome-hud .topl {
+  position: absolute; z-index: 10; top: calc(10px + var(--safe-top)); left: calc(10px + var(--safe-left));
+  right: calc(90px + var(--safe-right)); display: flex; align-items: center; gap: 6px; pointer-events: none;
+}
+.chrome-hud .topl > * { flex-shrink: 0; pointer-events: auto; }
+.chrome-hud .topl > .plate { flex-shrink: 1; min-width: 0; }
+.chrome-hud .plate {
+  display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 14px 0 4px; border: 0; border-radius: 24px;
+  text-align: left;
+}
+.chrome-hud .plate .av { flex-shrink: 0; }
+.chrome-hud .plate .av {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #ffffff12;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.chrome-hud .plate.guest .av { box-shadow: none; }
+.chrome-hud .plate .pw { display: flex; flex-direction: column; gap: 1px; min-width: 0; max-width: 160px; line-height: 1.15; white-space: nowrap; }
+.chrome-hud .plate .pw b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; }
+.chrome-hud .plate .pw small { color: #ffffffa6; font-size: 10.5px; font-weight: 500; text-shadow: none; }
+/* 公告: the round glass is the button's */
+.chrome-hud .topl .notice-btn { width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; }
+.chrome-hud .topl .notice-btn .label { display: none; }
+.chrome-hud .topl .notice-btn .mega { width: 18px; height: 18px; }
+.chrome-hud .topl .notice-btn .dot { top: 1px; right: 1px; border-color: #2a2c31; }
+.chrome-hud .hstat {
+  position: absolute; z-index: 10; top: calc(66px + var(--safe-top)); left: calc(10px + var(--safe-left)); display: flex;
+  align-items: center; gap: 7px; max-width: calc(100% - 110px - var(--safe-left) - var(--safe-right)); height: 30px; padding: 0 12px;
+  border-radius: 15px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.chrome-hud .hstat > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chrome-hud .hstat .num { color: var(--accent); }
+.chrome-hud .hstat .vr { flex-shrink: 0; width: 1px; height: 13px; background: #ffffff38; }
+.chrome-hud .hstat .wide { display: none; }
+@media (min-width: 900px) {
+  .chrome-hud .hstat { max-width: calc(100% - 200px); }
+  .chrome-hud .hstat .wide { display: inline; }
+  .chrome-hud .hstat .narrow { display: none; }
+}
+/* the notice strip, the 站长's pills and panel: under the counts, between the columns */
+.chrome-hud .hud { top: calc(104px + var(--safe-top)); left: calc(66px + var(--safe-left)); right: calc(66px + var(--safe-right)); }
+
+/* ---- top right: 方舟雷达, always turning ---- */
+.chrome-hud .radarw {
+  position: absolute; z-index: 10; top: calc(10px + var(--safe-top)); right: calc(10px + var(--safe-right)); display: flex;
+  flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: #fff;
+}
+.chrome-hud .radarw .ring { display: grid; place-items: center; width: 68px; height: 68px; border-radius: 50%; }
+.chrome-hud .radarw .radar-scope { width: 56px; height: 56px; }
+
+/* ---- down the left: 热榜, the map's style, the base map, 界面 ---- */
+.chrome-hud .lcol {
+  position: absolute; z-index: 10; top: calc(108px + var(--safe-top)); left: calc(12px + var(--safe-left)); display: flex;
+  flex-direction: column; gap: 9px;
+}
+.chrome-hud .lcol.raised { z-index: 25; }
+.chrome-hud .rb .bm { font-size: 11.5px; font-weight: 800; letter-spacing: 0.02em; }
+.chrome-hud .rb .ob:disabled { opacity: 0.55; }
+.chrome-hud .style-round .ic { width: 22px; height: 22px; }
+.chrome-hud .style-round[aria-expanded="true"] { background: #2a2c31; }
+/* the style's card and its hint open to the right of the column */
+.chrome-hud .lcol .style-menu { top: 0; left: calc(100% + 10px); right: auto; }
+.chrome-hud .lcol .style-hint { top: 50%; left: calc(100% + 12px); right: auto; transform: translateY(-50%); }
+.chrome-hud .lcol .style-hint::before { top: calc(50% - 6px); right: auto; left: -6px; border: 6px solid transparent; border-left: 0; border-right-color: var(--accent); }
+.chrome-hud .ui-rb .desk-hint { top: 8px; left: calc(100% + 12px); }
+.chrome-hud .ui-rb .desk-hint::after { top: 10px; left: -6px; border: 6px solid transparent; border-left: 0; border-right-color: var(--accent); }
+
+/* ---- the guides: tabs on the right edge, folding away to one ---- */
+.chrome-hud .etabs {
+  position: absolute; z-index: 10; right: var(--safe-right); top: calc(112px + var(--safe-top)); display: flex; flex-direction: column;
+  gap: 5px; transition: transform 0.2s ease-out, visibility 0s;
+}
+.chrome-hud .etab {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; width: 54px; padding: 4px 0 3px 3px; border: 0;
+  border-radius: 16px 0 0 16px; line-height: 1.2;
+}
+.chrome-hud .etab img { display: block; }
+.chrome-hud .etab small { font-size: 10px; font-weight: 600; }
+.chrome-hud .etabs .nub { top: 5px; left: -27px; }
+.chrome-hud .etabs.folded {
+  transform: translateX(calc(100% + 4px + var(--safe-right))); visibility: hidden;
+  transition: transform 0.2s ease-out, visibility 0s linear 0.2s;
+}
+.chrome-hud .tab-r { top: calc(112px + var(--safe-top)); width: 40px; height: auto; padding: 8px 0 7px 3px; border-radius: 16px 0 0 16px; gap: 0; }
+.chrome-hud .tab-r .stack { display: flex; flex-direction: column; align-items: center; margin-top: 5px; }
+.chrome-hud .tab-r .stack img { display: block; border-radius: 50%; background: #2a2c31; box-shadow: 0 0 0 1.5px #2a2c31; }
+.chrome-hud .tab-r .stack img + img { margin-top: -9px; }
+.chrome-hud .tab-r .cnt { margin-top: 3px; color: #ffffffb3; font-size: 10px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) {
+  .chrome-hud .etabs { transition: none !important; }
+}
+
+/* ---- along the bottom: 触须之交 in the left corner; 我的蟑螂 and 我宣布个事儿 in the right ---- */
+.chrome-hud .act {
+  position: absolute; z-index: 11; left: calc(12px + var(--safe-left)); right: calc(12px + var(--safe-right));
+  bottom: calc(28px + var(--safe-bottom)); display: flex; align-items: flex-end; justify-content: flex-end; gap: 10px;
+  pointer-events: none;
+}
+.chrome-hud .act > * { pointer-events: auto; }
+.chrome-hud .act .fr { margin-right: auto; }
+.chrome-hud .act .rb .ob { width: 54px; height: 54px; }
+.chrome-hud .act .rb .ob img { display: block; }
+.chrome-hud .fr .help-dot { top: 4px; right: 4px; box-shadow: 0 0 0 2px #2a2c31; }
+.chrome-hud .bigsay {
+  display: grid; place-items: center; width: 80px; height: 80px; padding: 0 8px; border: 0; border-radius: 50%; background: var(--accent);
+  color: var(--ink); font-size: 14.5px; font-weight: 800; line-height: 1.2; text-align: center;
+  box-shadow: 0 0 0 4px rgba(20, 22, 27, 0.55), 0 6px 18px #0006;
+}
+/* before signing in, or while who is signed in has not come: one or two buttons in the middle */
+.chrome-hud .solo {
+  position: absolute; z-index: 11; left: 50%; bottom: calc(28px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px;
+  height: 60px; padding: 0 9px; border-radius: 22px; transform: translateX(-50%);
+}
+.chrome-hud .disclaimer { bottom: calc(8px + var(--safe-bottom)); }
+
+/* ---- the map's own buttons: OpenStreetMap's (i) on the left on a phone; on a computer + and − over 我宣布个事儿 ---- */
+@media (max-width: 899px) and (min-height: 501px) {
+  .app.ui-hud .map .maplibregl-ctrl-bottom-right { left: var(--safe-left); right: auto; bottom: calc(102px + var(--safe-bottom)); }
+}
+@media (min-width: 900px) and (min-height: 501px) {
+  .app.ui-hud .map .maplibregl-ctrl-bottom-right { bottom: calc(110px + var(--safe-bottom)); }
+  .app.ui-hud .map .amap-toolbar { bottom: calc(150px + var(--safe-bottom)) !important; }
+  .app.ui-hud .map .tmap-corner-right { margin-bottom: calc(140px + var(--safe-bottom)); }
+}
+
+/*
+ * A phone on its side: the column and the guides' tabs higher and without their names, and the round buttons together
+ * at the bottom right, clear of the tabs (the map's own buttons stay in its corner)
+ */
+@media (max-height: 500px) {
+  .chrome-hud .lcol { top: calc(104px + var(--safe-top)); gap: 8px; }
+  .chrome-hud .lcol .lbl, .chrome-hud .etab small { display: none; }
+  .chrome-hud .etabs, .chrome-hud .tab-r { top: calc(104px + var(--safe-top)); }
+  .chrome-hud .act { right: calc(66px + var(--safe-right)); }
+  .chrome-hud .act .fr { margin-right: 0; }
+}
+
+/* ---- what else sits over the map: above the bottom buttons ---- */
+.app.ui-hud :is(.card, .rep-card, .lite-hint, .pw-nudge) { bottom: calc(124px + var(--safe-bottom)); }
+.app.ui-hud .placebar { top: calc(66px + var(--safe-top)); }
+.app.ui-hud .perlica-banner { top: calc(104px + var(--safe-top)); }
+
+/*
+ * Amap's logo, copyright and map approval number (审图号) in the bottom-left corner stay uncovered (the same for
+ * Tencent's): on a phone our note goes up to the right of them, and the buttons in the corners a little higher
+ */
+.app.on-amap.ui-hud .disclaimer { left: auto; right: calc(10px + var(--safe-right)); text-align: right; }
+@media (max-width: 759px) {
+  .app.on-amap.ui-hud .disclaimer { bottom: calc(24px + var(--safe-bottom)); }
+  .app.on-amap.ui-hud .chrome-hud :is(.act, .solo) { bottom: calc(46px + var(--safe-bottom)); }
+  .app.on-amap.ui-hud :is(.card, .rep-card, .lite-hint, .pw-nudge) { bottom: calc(142px + var(--safe-bottom)); }
+  .app.on-amap.ui-hud .heard-stack { bottom: calc(128px + var(--safe-bottom)); }
+}

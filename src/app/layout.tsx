@@ -24,7 +24,8 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const lang = await pageLang();
   return (
-    <html lang={HTML_LANG[lang]}>
+    // the map page marks it before the app starts (earlyUiScript in src/lib/uiChoice.ts), and takes the marks off again
+    <html lang={HTML_LANG[lang]} suppressHydrationWarning>
       <body>
         {/* the page's words, before the app starts (src/i18n) */}
         <Script src={wordsUrl(lang)} strategy="beforeInteractive" />

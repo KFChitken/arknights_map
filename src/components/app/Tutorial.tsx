@@ -5,6 +5,7 @@ import { callName } from "@/lib/amiya";
 import { declarationText, type Declaration } from "@/lib/declarations";
 import { distanceKm } from "@/lib/geo";
 import { DECLARATION_RADIUS_KM, RADAR_RADIUS_KM } from "@/lib/rules";
+import type { UiName } from "@/lib/uiChoice";
 import type { Me, PublicRoach } from "@/lib/world/types";
 import { AmiyaPicture } from "./Amiya";
 
@@ -83,6 +84,7 @@ export function nearestReal(roaches: PublicRoach[], from: { lng: number; lat: nu
 }
 
 export function TutorialCoach({
+  ui,
   step,
   me,
   progress,
@@ -100,6 +102,8 @@ export function TutorialCoach({
   onFinish,
   onSkipAll,
 }: {
+  /** The layout in use, where the buttons it speaks of are (src/lib/uiChoice.ts) */
+  ui: UiName;
   step: TutorialStep;
   me: Me;
   progress: Progress;
@@ -237,7 +241,18 @@ export function TutorialCoach({
         {step === "done" && (
           <>
             <strong>{T.tutorial.finished.title}</strong>
-            <p>{T.tutorial.finished.text}</p>
+            <p>
+              {ui === "hud" ? (
+                T.tutorial.finished.hud
+              ) : ui === "drawer" ? (
+                <>
+                  <span className="on-phone">{T.tutorial.finished.drawer}</span>
+                  <span className="on-computer">{T.tutorial.finished.drawerWide}</span>
+                </>
+              ) : (
+                T.tutorial.finished.text
+              )}
+            </p>
             <div className="row-actions">
               <button className="pill dark" onClick={onFinish}>
                 {T.common.ok}

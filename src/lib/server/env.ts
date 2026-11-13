@@ -64,6 +64,12 @@ export const AMIYA_DANCE = AMIYA_PICTURE && process.env.AMIYA_DANCE !== "off";
 export const PARTY_MUSIC = process.env.PARTY_MUSIC !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
 
+/**
+ * The map page's three layouts (src/lib/uiChoice.ts): UI_CHOICE=off puts everyone on 浮岛 and asks nobody which they
+ * want, and 界面's menu keeps only 存到桌面. What each device picked stays where it is, for when it is on again.
+ */
+export const UI_CHOICE = process.env.UI_CHOICE !== "off";
+
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
 export const TILES_DIR = process.env.TILES_DIR || "tiles";
 

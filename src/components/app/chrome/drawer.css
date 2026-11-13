@@ -1,0 +1,207 @@
+/*
+ * 抽屉 (DrawerChrome.tsx), loaded with it: a capsule along the top, a row of small tabs, and a drawer along the bottom
+ * on a phone; a panel down the left on a computer. Where the map ends for them is in chrome.css, there from the first
+ * paint so the map is made that size.
+ */
+
+/* ---- the capsule along the top ---- */
+.chrome-drawer .tb {
+  position: absolute; z-index: 10; top: calc(10px + var(--safe-top)); left: calc(10px + var(--safe-left));
+  right: calc(10px + var(--safe-right)); display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 6px 0 7px;
+  border-radius: 22px; white-space: nowrap;
+}
+.chrome-drawer .tb.raised { z-index: 25; }
+.chrome-drawer .tb .nm { font-size: 15px; font-weight: 700; }
+.chrome-drawer .grow { flex: 1; min-width: 0; }
+.chrome-drawer .tb .notice-btn { width: 30px; padding: 0; border-color: #ffffff33; }
+.chrome-drawer .tb .notice-btn .label { display: none; }
+.chrome-drawer .tb .notice-btn .mega { width: 16px; height: 16px; }
+.chrome-drawer .tb .notice-btn .dot { border-color: #2a2c31; }
+.chrome-drawer .tb .style-pill, .chrome-drawer .tb .basemap-switch { border: 0; background: #ffffff14; }
+.chrome-drawer .tb .style-pill { padding: 0 8px; }
+.chrome-drawer .tb .style-pill .label { display: none; }
+.chrome-drawer .tb .basemap-switch button { padding: 6px 10px; line-height: 18px; }
+@media (max-width: 359px) {
+  .chrome-drawer .tb { gap: 4px; padding: 0 5px 0 6px; }
+  .chrome-drawer .tb .nm { font-size: 14px; }
+  .chrome-drawer .tb .basemap-switch button { padding: 6px 8px; }
+}
+
+/* 界面, round, and once a device the bubble under it that 存到桌面 is in it */
+.chrome-drawer .ib-box { position: relative; display: flex; flex-shrink: 0; }
+.chrome-drawer .ib {
+  display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: #ffffff14;
+  color: #fff;
+}
+.chrome-drawer .ib::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+.chrome-drawer .ib-box .desk-hint { top: calc(100% + 12px); left: 50%; transform: translateX(-50%); }
+.chrome-drawer .ib-box .desk-hint::after { top: -6px; left: calc(50% - 6px); border: 6px solid transparent; border-top: 0; border-bottom-color: var(--accent); }
+
+/* the notice strip, the 站长's pills and panel: under the capsule */
+.chrome-drawer .hud { top: calc(62px + var(--safe-top)); }
+
+/* ---- 方舟雷达, 热榜 and the guides: a row of tabs over the drawer, sliding sideways, clear of Amap's mark ---- */
+.chrome-drawer .dchips {
+  position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(var(--dock-h) + 20px + var(--safe-bottom)); display: flex;
+  gap: 6px; padding: 6px calc(10px + var(--safe-right)) 6px calc(10px + var(--safe-left)); overflow-x: auto;
+  overscroll-behavior-x: contain; scrollbar-width: none; pointer-events: none;
+}
+.chrome-drawer .dchips::-webkit-scrollbar { display: none; }
+.chrome-drawer .dchip {
+  flex: none; display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 13px 0 5px; border: 0; border-radius: 19px;
+  font-size: 13px; font-weight: 600; white-space: nowrap; pointer-events: auto;
+}
+.chrome-drawer .dchip .radar-scope { width: 28px; height: 28px; }
+.chrome-drawer .dchip .ico { display: grid; place-items: center; width: 28px; height: 28px; }
+.chrome-drawer .dchip img { display: block; }
+
+/* ---- the drawer ---- */
+.chrome-drawer .dock {
+  position: absolute; z-index: 11; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;
+  height: calc(var(--dock-h) + var(--safe-bottom)); padding: 0 calc(8px + var(--safe-right)) var(--safe-bottom) calc(8px + var(--safe-left));
+  background: #15171c; color: #fff; box-shadow: 0 -1px 0 #ffffff1a;
+}
+/* while a roach is being put down: there, waiting */
+.chrome-drawer .idle > * { opacity: 0.4; }
+.chrome-drawer .dtop { flex: none; touch-action: none; }
+.chrome-drawer .handle { display: block; width: 100%; height: 17px; padding: 0; border: 0; background: none; }
+.chrome-drawer .handle::before { content: ""; display: block; width: 36px; height: 4px; margin: 7px auto 6px; border-radius: 2px; background: #ffffff3d; }
+.chrome-drawer .dstats {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 6px; font-size: 15px; font-weight: 700;
+  line-height: 20px; white-space: nowrap;
+}
+.chrome-drawer .dstats .l1, .chrome-drawer .dstats .l2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chrome-drawer .dstats .l2 { flex-shrink: 1; color: #ffffff8c; font-size: 12px; font-weight: 500; }
+.chrome-drawer .num { color: var(--accent); }
+@media (max-width: 359px) {
+  .chrome-drawer .dstats { font-size: 14px; }
+}
+.chrome-drawer .more {
+  flex: 0 1 auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; margin: 10px 0 2px; overflow-y: auto;
+  overscroll-behavior: contain; scrollbar-width: none;
+}
+.chrome-drawer .more::-webkit-scrollbar { display: none; }
+/* the buttons stay where they are, open or closed: what is left over goes above them */
+.chrome-drawer .drow { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 58px; margin-top: auto; }
+.chrome-drawer .drow.solo { justify-content: center; gap: 8px; }
+.chrome-drawer .dock .disclaimer { position: static; padding-bottom: 7px; color: #ffffff59; font-size: 10.5px; }
+
+/* the cards in the open drawer and the panel: 方舟雷达's last scan, 本周舟P热榜's first three */
+.chrome-drawer .dcard {
+  flex-shrink: 0; display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 0; border-radius: 14px;
+  background: #ffffff0d; box-shadow: inset 0 0 0 1px #ffffff12; color: #fff; text-align: left;
+}
+.chrome-drawer .dcard .radar-scope { width: 42px; height: 42px; }
+.chrome-drawer .dcard .tx { flex: 1; min-width: 0; line-height: 1.35; }
+.chrome-drawer .dcard .tx b { display: block; font-size: 14px; }
+.chrome-drawer .dcard .tx small { display: block; color: #ffffff8c; font-size: 11.5px; }
+.chrome-drawer .dcard .go { color: #ffffff73; font-size: 20px; line-height: 1; }
+@media (max-width: 359px) {
+  .chrome-drawer .dcard .tx b { font-size: 13px; }
+}
+.chrome-drawer .dhot { display: block; }
+.chrome-drawer .dhot .kick {
+  display: block; color: var(--accent); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 9px; font-weight: 700;
+  line-height: 1; letter-spacing: 0.16em;
+}
+.chrome-drawer .dhot .hh { display: block; margin: 5px 0 7px; font-size: 14px; font-weight: 700; }
+.chrome-drawer .dhot .rows { display: grid; gap: 5px; }
+.chrome-drawer .dhot .row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.chrome-drawer .dhot .row i {
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: #ffffff14;
+  font: normal 700 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+}
+.chrome-drawer .dhot .row:first-child i { background: var(--accent); color: var(--ink); }
+.chrome-drawer .dhot .row .g { color: #ffffff73; font-size: 11px; }
+.chrome-drawer .dhot .row .n { margin-left: auto; color: #ffffffb3; font-size: 12px; }
+.chrome-drawer .dhot .none { display: block; color: #ffffff8c; font-size: 12.5px; }
+.chrome-drawer .dguides { flex-shrink: 0; display: flex; justify-content: space-between; padding: 2px 6px 0; }
+.chrome-drawer .dguides button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0; border: 0; background: none; color: #fff;
+  font-size: 10.5px; font-weight: 600;
+}
+.chrome-drawer .dguides img { display: block; border-radius: 50%; background: #ffffff0f; }
+
+/* ---- on a computer: the panel down the left ---- */
+.chrome-drawer .dpanel {
+  position: absolute; z-index: 11; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; gap: 10px;
+  width: calc(340px + var(--safe-left)); padding: calc(14px + var(--safe-top)) 16px calc(10px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  overflow-y: auto; background: #15171c; color: #fff; box-shadow: 1px 0 0 #ffffff14; scrollbar-width: thin;
+}
+.chrome-drawer .dpanel > * { flex-shrink: 0; }
+.chrome-drawer .ph { display: flex; align-items: center; gap: 8px; height: 36px; font-size: 18px; font-weight: 700; white-space: nowrap; }
+.chrome-drawer .ph .tag { padding: 2px 6px; border-radius: 6px; background: #ffffff1f; color: #ffffffcc; font-size: 11px; font-weight: 500; }
+.chrome-drawer .ph .notice-btn .dot { border-color: #15171c; }
+.chrome-drawer .ps {
+  position: relative; padding: 11px 14px 12px; border-radius: 14px; background: #ffffff0d; box-shadow: inset 0 0 0 1px #ffffff12;
+  line-height: 1.35;
+}
+.chrome-drawer .ps .go { position: absolute; top: 10px; right: 12px; color: #ffffff73; font-size: 20px; line-height: 1; }
+.chrome-drawer .ps small { display: block; color: #ffffff8c; font-size: 12px; }
+.chrome-drawer .ps .big { display: flex; align-items: baseline; gap: 6px; margin: 1px 0 3px; font-size: 14px; font-weight: 600; }
+.chrome-drawer .ps .big b { color: var(--accent); font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: 0.01em; }
+.chrome-drawer .ps .big.line { margin: 0 0 3px; font-size: 18px; font-weight: 700; }
+.chrome-drawer .pa { display: flex; gap: 8px; }
+.chrome-drawer .pa:empty { display: none; }
+.chrome-drawer .pa .b { flex: 1; height: 44px; border-radius: 22px; font-size: 15px; font-weight: 700; }
+.chrome-drawer .pa .b.say { flex: 1.4; font-weight: 800; }
+.chrome-drawer .dpanel h4 { margin: 2px 0 -4px; color: #ffffff8c; font-size: 12px; font-weight: 600; }
+.chrome-drawer .glist { display: grid; }
+.chrome-drawer .glist button {
+  display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 4px; border: 0; border-radius: 10px; background: none;
+  color: #fff; font-size: 13.5px; font-weight: 600; line-height: 1.25; text-align: left;
+}
+.chrome-drawer .glist button:hover { background: #ffffff0d; }
+.chrome-drawer .glist b { display: block; }
+.chrome-drawer .glist small { display: block; color: #ffffff8c; font-size: 11.5px; font-weight: 400; }
+.chrome-drawer .glist img { display: block; flex-shrink: 0; }
+.chrome-drawer .pm { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 10px; border-top: 1px solid #ffffff14; }
+.chrome-drawer .pm:empty { display: none; }
+.chrome-drawer .pme {
+  flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: #fff;
+  font-size: 14px; font-weight: 700; text-align: left;
+}
+.chrome-drawer .pme > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chrome-drawer .pp {
+  position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 5px; height: 32px; padding: 0 11px; border: 0;
+  border-radius: 16px; background: #ffffff14; color: #fff; font-size: 12.5px; font-weight: 600;
+}
+.chrome-drawer .pp .badge { position: absolute; z-index: 2; top: -6px; right: -6px; margin: 0; }
+.chrome-drawer .pp .say-mark { top: -6px; right: -6px; }
+.chrome-drawer .pp .say-mark.under { top: -12px; right: -15px; }
+/* on the drawer's own black */
+.chrome-drawer .say-mark { box-shadow: 0 0 0 2px #15171c; }
+.chrome-drawer .say-mark.under ~ .badge { box-shadow: 0 0 0 1.5px #15171c; }
+.chrome-drawer .pp .help-dot { top: -2px; right: -2px; box-shadow: 0 0 0 2px #15171c; }
+.chrome-drawer .dpanel .disclaimer { position: static; margin: 0; color: #ffffff59; font-size: 11px; text-align: left; }
+.chrome-drawer .pm:empty + .disclaimer { margin-top: auto; }
+/* the map's style and base map, over the map at its top right */
+.chrome-drawer .isle-r {
+  position: absolute; z-index: 10; top: calc(12px + var(--safe-top)); right: calc(12px + var(--safe-right)); display: flex;
+  align-items: center; gap: 4px; height: 40px; padding: 0 5px; border-radius: 20px; white-space: nowrap;
+}
+.chrome-drawer .isle-r.raised { z-index: 25; }
+.chrome-drawer .isle-r .style-pill, .chrome-drawer .isle-r .basemap-switch { border: 0; background: #ffffff14; }
+.chrome-drawer .isle-r .basemap-switch button { padding: 6px 11px; line-height: 18px; }
+.chrome-drawer.wide .hud { top: calc(12px + var(--safe-top)); left: calc(352px + var(--safe-left)); right: 260px; }
+.chrome-drawer.wide .ib-box .desk-hint { left: auto; right: -8px; transform: none; }
+.chrome-drawer.wide .ib-box .desk-hint::after { left: auto; right: 17px; }
+
+/* ---- what else sits over the map: above the drawer, or over the map beside the panel ---- */
+/* as high as the tabs, clear of Amap's mark at the foot of the map */
+.app.ui-drawer :is(.card, .rep-card, .lite-hint, .pw-nudge) { bottom: calc(var(--dock-h) + 26px + var(--safe-bottom)); }
+.app.ui-drawer .toast:not(.high) { bottom: calc(var(--dock-h) + 78px + var(--safe-bottom)); }
+.app.ui-drawer .heard-stack { bottom: calc(var(--dock-h) + 78px + var(--safe-bottom)); }
+.app.ui-drawer .placebar { top: calc(62px + var(--safe-top)); }
+@media (max-width: 899px) {
+  /* OpenStreetMap's (i) just over the drawer, under the tabs */
+  .app.ui-drawer .map .maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 8px 2px 0; }
+}
+@media (min-width: 900px) {
+  .app.ui-drawer :is(.card, .rep-card, .lite-hint, .pw-nudge, .placebar) { left: calc(352px + var(--safe-left)); }
+  .app.ui-drawer :is(.card, .rep-card, .lite-hint, .pw-nudge) { bottom: calc(40px + var(--safe-bottom)); }
+  .app.ui-drawer .toast:not(.high) { left: calc(50% + 170px); bottom: calc(110px + var(--safe-bottom)); }
+  .app.ui-drawer .heard-stack { left: calc(352px + var(--safe-left)); bottom: calc(44px + var(--safe-bottom)); }
+  .app.ui-drawer .placebar { top: calc(64px + var(--safe-top)); }
+  .app.ui-drawer .perlica-banner { left: calc(50% + 170px); }
+}

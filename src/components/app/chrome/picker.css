@@ -1,0 +1,63 @@
+/*
+ * Which 界面, asked once (UiPicker.tsx), loaded with it: from the bottom on a phone, in the middle on a computer, the
+ * map dimmed behind it. On a short screen the small pictures give way, never the buttons.
+ */
+.ui-picker-dim { position: fixed; inset: 0; z-index: 30; background: rgba(10, 11, 14, 0.58); }
+.ui-picker {
+  --pk-room: calc(100vh - 330px);
+  position: fixed; z-index: 31; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;
+  max-height: calc(100% - 12px - var(--safe-top)); overflow-y: auto;
+  padding: 18px calc(14px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(14px + var(--safe-left));
+  border-radius: 22px 22px 0 0; background: #15171c; color: #fff; box-shadow: 0 -10px 30px #0006; outline: none;
+}
+@supports (height: 100dvh) {
+  .ui-picker { --pk-room: calc(100dvh - 330px); }
+}
+.ui-picker .pk-h { flex-shrink: 0; margin: 0 4px 14px; }
+.ui-picker .pk-h b { display: block; font-size: 18px; line-height: 1.3; }
+.ui-picker .pk-h small { display: block; color: #ffffff8c; font-size: 12.5px; }
+.ui-picker .pk-opts { flex-shrink: 0; display: flex; gap: 8px; }
+.ui-picker .pk-o {
+  position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 5px 10px; border: 0; border-radius: 14px; background: #ffffff0d; color: #fff; text-align: center;
+}
+.ui-picker .pk-o picture { display: block; width: 100%; }
+.ui-picker .pk-o img {
+  display: block; width: 100%; height: auto; max-height: max(64px, var(--pk-room)); aspect-ratio: 9 / 16; border-radius: 10px;
+  background: #2a2c31; box-shadow: 0 0 0 1px #ffffff2e; object-fit: cover; object-position: top;
+}
+.ui-picker .pk-o b { margin-top: 5px; font-size: 14px; }
+.ui-picker .pk-o small { color: #ffffff8c; font-size: 11px; line-height: 1.35; text-wrap: balance; }
+.ui-picker .pk-o .ck { top: 3px; right: 3px; width: 22px; height: 22px; font-size: 13px; line-height: 22px; }
+.ui-picker .pk-go {
+  flex-shrink: 0; display: grid; place-items: center; width: 100%; height: 48px; margin-top: 16px; border: 0; border-radius: 24px;
+  background: var(--accent); color: var(--ink); font-size: 16px; font-weight: 800;
+}
+.ui-picker .pk-skip {
+  flex-shrink: 0; display: block; margin: 10px auto 0; padding: 4px 10px; border: 0; background: none; color: #ffffff8c;
+  font-size: 13px;
+}
+@media (max-width: 359px) {
+  .ui-picker { padding: 16px calc(10px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(10px + var(--safe-left)); }
+  .ui-picker .pk-h b { font-size: 17px; }
+  .ui-picker .pk-opts { gap: 6px; }
+  .ui-picker .pk-o { padding: 6px 4px 8px; }
+  .ui-picker .pk-o small { font-size: 10.5px; }
+  .ui-picker .pk-go { height: 44px; margin-top: 12px; }
+}
+/* a tablet: from the bottom still, not as wide as the screen */
+@media (min-width: 560px) {
+  .ui-picker { left: 50%; right: auto; width: 520px; transform: translateX(-50%); }
+}
+/* a computer: in the middle, the pictures as wide as its screen */
+@media (min-width: 900px) {
+  .ui-picker {
+    top: 50%; bottom: auto; width: min(840px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 26px 28px 22px;
+    border-radius: 22px; transform: translate(-50%, -50%);
+  }
+  .ui-picker .pk-h b { font-size: 22px; }
+  .ui-picker .pk-opts { gap: 14px; }
+  .ui-picker .pk-o { padding: 10px 10px 12px; }
+  .ui-picker .pk-o img { aspect-ratio: 480 / 285; }
+  .ui-picker .pk-go { width: 320px; margin: 20px auto 0; }
+}

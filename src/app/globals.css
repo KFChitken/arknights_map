@@ -25,21 +25,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .map-hidden { visibility: hidden; pointer-events: none; }
 .map { width: 100%; height: 100%; }
 
-.topbar {
-  position: absolute; z-index: 10; top: 0; left: 0; right: 0;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: calc(10px + var(--safe-top)) calc(12px + var(--safe-right)) 10px calc(12px + var(--safe-left));
-  background: var(--ink); color: #fff;
-}
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; min-width: 0; }
-.brand .tag {
-  font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 6px;
-  background: #ffffff1f; color: #ffffffcc; white-space: nowrap;
-}
-.switches { display: flex; gap: 6px; flex-shrink: 0; }
-@media (max-width: 440px) { .brand .tag { display: none; } }
-.brand span { white-space: nowrap; }
-/* 公告 (components/app/NoticeBoard.tsx) beside the name: the megaphone, with its word where there is room */
+/* 公告 (components/app/NoticeBoard.tsx) beside the site's name: the megaphone, with its word where the layout has room */
 .notice-btn {
   position: relative; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   height: 30px; padding: 0 11px 0 9px; border: 1px solid #ffffff40; border-radius: 999px; background: transparent;
@@ -54,24 +40,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; border: 2px solid var(--ink); border-radius: 50%;
   background: #ff4d4f;
 }
-/*
- * The word only from 481px: from 441px 内测版 shows too, and the word would then run under the switches on the right
- * up to about 475px (with 高德/OSM and 全员隐匿, the widest of them)
- */
-@media (max-width: 480px) {
-  .notice-btn { width: 30px; padding: 0; }
-  .notice-btn .mega { width: 16px; height: 16px; }
-  .notice-btn .label { display: none; }
-}
-@media (max-width: 400px) {
-  .topbar { padding: calc(10px + var(--safe-top)) calc(8px + var(--safe-right)) 10px calc(8px + var(--safe-left)); }
-  .brand { gap: 6px; font-size: 15px; }
-  .basemap-switch button { padding: 5px 9px; }
-}
 .basemap-switch { display: flex; border: 1px solid #ffffff40; border-radius: 999px; overflow: hidden; flex-shrink: 0; }
-/* 地图画风 (components/app/MapStylePicker.tsx): the button, its card under the top bar, and the hint once */
+/* 地图画风 (components/app/MapStylePicker.tsx): the button, its card under it, and the hint once */
 .switches { position: relative; align-items: center; }
-.topbar.raised { z-index: 25; }
 .style-anchor { position: relative; display: inline-flex; flex-shrink: 0; }
 .style-pill {
   display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px 0 9px; border-radius: 999px;
@@ -80,7 +51,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .style-pill[aria-expanded="true"] { background: #ffffff1f; }
 .style-pill .ic { width: 15px; height: 15px; display: block; flex-shrink: 0; }
 .style-pill .caret { width: 9px; height: 9px; opacity: 0.8; }
-@media (max-width: 360px) { .switches.with-basemap .style-pill .label { display: none; } }
 .style-hint {
   position: absolute; top: calc(100% + 10px); right: -4px; width: max-content; max-width: 220px; padding: 7px 11px;
   border: 0; border-radius: 10px; background: var(--accent); color: var(--ink); font-size: 13px; font-weight: 600;
@@ -144,11 +114,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .basemap-switch button { border: 0; padding: 5px 12px; background: transparent; color: #fff; font-size: 13px; }
 .basemap-switch button.on { background: var(--accent); color: var(--ink); font-weight: 700; }
 
-.stats {
-  position: absolute; z-index: 10; top: calc(60px + var(--safe-top)); left: 50%; transform: translateX(-50%);
-  padding: 6px 14px; border-radius: 999px; background: var(--paper);
-  box-shadow: 0 2px 10px #0003; font-size: 14px; font-weight: 600; white-space: nowrap;
-}
 .muted { color: var(--muted); font-weight: 400; }
 
 .banner {
@@ -157,19 +122,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   border-radius: var(--radius); background: var(--accent); font-size: 14px; box-shadow: 0 2px 10px #0003;
 }
 .banner button { margin-left: auto; border: 0; border-radius: 8px; padding: 4px 10px; background: var(--ink); color: #fff; flex-shrink: 0; }
-
-.actions {
-  position: absolute; z-index: 10; left: calc(12px + var(--safe-left)); right: calc(12px + var(--safe-right));
-  bottom: calc(34px + var(--safe-bottom));
-  display: flex; gap: 6px; justify-content: center;
-}
-.actions button {
-  border: 0; border-radius: 999px; padding: 10px 12px; background: var(--paper);
-  box-shadow: 0 2px 10px #0003; font-size: 14px; white-space: nowrap;
-}
-.actions button.primary { background: var(--ink); color: #fff; font-weight: 700; padding: 12px 20px; font-size: 15px; }
-/* who is signed in has not come yet: said plainly, not greyed out to near nothing */
-.actions button.waiting:disabled { opacity: 1; cursor: default; color: #555; }
 
 .card {
   position: absolute; z-index: 11; left: 12px; right: 12px; bottom: calc(96px + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
@@ -201,21 +153,14 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .disclaimer a { padding: 6px 0; color: inherit; pointer-events: auto; }
 /*
- * Amap's terms forbid covering its logo, copyright and map approval number (审图号) in the
- * bottom-left corner: on its map our note moves up to the right of them, the buttons above
- * that, and the logo clears the phone's home bar
+ * Amap's terms forbid covering its logo, copyright and map approval number (审图号) in the bottom-left corner: each
+ * layout keeps clear of them (src/components/app/chrome), and the logo clears the phone's home bar
  */
-.on-amap .disclaimer { left: auto; right: calc(10px + var(--safe-right)); bottom: calc(22px + var(--safe-bottom)); text-align: right; }
-.on-amap .actions { bottom: calc(42px + var(--safe-bottom)); }
 .map .amap-logo, .map .amap-copyright, .map .amap-scalecontrol { margin-bottom: var(--safe-bottom); }
 /* they stay above our bottom sheets too, so the end of a sheet keeps clear of them */
 @media (max-width: 719px) {
   .on-amap .sheet-body:last-child, .on-amap .sheet-foot { padding-bottom: calc(34px + var(--safe-bottom)); }
 }
-
-/* Lift the maps' own controls above the bottom buttons */
-.map .maplibregl-ctrl-bottom-right { bottom: calc(96px + var(--safe-bottom)); }
-.map .amap-toolbar { bottom: calc(100px + var(--safe-bottom)) !important; }
 
 /*
  * 腾讯's map (TencentView): its land below, ours see-through over it, and its logo, 审图号 and buttons over both,
@@ -229,7 +174,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .tmap-base > div { pointer-events: none; }
 .tmap-base > div > div { pointer-events: auto; }
 .map .tmap-corner-left { margin-bottom: var(--safe-bottom); }
-.map .tmap-corner-right { margin-bottom: calc(86px + var(--safe-bottom)); }
 
 /* ---- profiles, touches, declarations ---- */
 input[type="text"], input[type="search"], select {
@@ -248,24 +192,8 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; pointer-events: none;
 }
 .hud > * { pointer-events: auto; }
-.hud .stats { position: static; transform: none; }
 /*
- * The world's count and how many players it is, in small print under the count of the view: at most 44px tall, so
- * that a row 30px high under it still clears 方舟雷达 at 140px. Where there is room, one line again.
- */
-.stats.two { padding: 5px 16px; line-height: 1.25; text-align: center; }
-.stats .l2 { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
-/* signed in, the counts open 地图上看哪些蟑螂; 只看本体 stands out in them while on */
-.stats.tappable { cursor: pointer; }
-.stats.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.stats .l2 b { color: var(--ink); font-weight: 700; }
-@media (min-width: 560px) {
-  .stats.two { padding: 6px 14px; line-height: normal; }
-  .stats .l2 { display: inline; font-size: inherit; }
-  .stats .l2::before { content: " · "; }
-}
-/*
- * 公告's strip: a line of its own under the counts (30px; the counts may take two lines on phones, 44px at
+ * 公告's strip: a line of its own under the counts (30px; 浮岛's counts may take two lines on phones, 44px at
  * most, so the strip ends by 138px and 方舟雷达 starts at 140px). Look here before adding another line to .hud.
  * The line itself lets the map have its taps; only the strip takes them.
  */
@@ -297,66 +225,7 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   display: inline-block; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px;
   background: #ff4d4f; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: 1px;
 }
-.actions button .badge { margin-left: 3px; }
 
-/* Bottom-left: your look and name open 资料, the envelope opens 消息, and 触须之交 is a block of its own beside them */
-.me-dock {
-  position: absolute; z-index: 11; left: calc(12px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom));
-  display: flex; align-items: stretch; gap: 12px;
-}
-.dock-me {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; width: 72px; padding: 6px 4px 5px;
-  border: 0; border-radius: 16px; background: var(--paper); box-shadow: 0 2px 10px #0003;
-}
-/* long names wrap onto a second line rather than being cut short */
-.dock-name {
-  display: -webkit-box; max-width: 100%; overflow: hidden; font-size: 11.5px; font-weight: 600; line-height: 13px;
-  text-align: center; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-}
-/* on the top right corner of 资料 (72px wide) */
-.dock-mail {
-  position: absolute; top: -8px; left: 52px; display: grid; place-items: center; width: 30px; height: 30px;
-  padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: #fff; box-shadow: 0 2px 8px #0004;
-}
-.dock-mail .badge { position: absolute; z-index: 2; top: -6px; right: -7px; margin: 0; }
-/* a declaration sent nearby is unread: a yellow speaker, no number, on the envelope's top right corner where the red
-   count goes; with a red count too, the red one stays on top and the speaker sits behind it, a little up and to the right */
-.say-mark {
-  position: absolute; z-index: 1; top: -6px; right: -7px; display: grid; place-items: center; width: 18px; height: 18px;
-  border-radius: 50%; background: #ffd23f; color: #1b1d22; box-shadow: 0 0 0 2px var(--paper);
-}
-.say-mark.under { top: -12px; right: -16px; }
-.say-mark svg { display: block; }
-/* the red count keeps a thin ring while the speaker is behind it, so the two read as two */
-.say-mark.under ~ .badge { box-shadow: 0 0 0 1.5px var(--paper); }
-.dock-friends {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 56px; padding: 6px 4px 5px;
-  border: 0; border-radius: 16px; background: var(--paper); box-shadow: 0 2px 10px #0003;
-}
-/* where the bottom buttons, centred, would run into the dock (about 150px wide), they keep to its right,
-   a little tighter so 「我的蟑螂」 and 「我宣布个事儿」 fit side by side on a 375px phone */
-@media (max-width: 519px) {
-  .actions.beside-dock { left: calc(156px + var(--safe-left)); gap: 4px; }
-  .actions.beside-dock button { padding: 10px; }
-  .actions.beside-dock button.primary { padding: 12px; font-size: 14px; }
-}
-/* at full size, centred, the pair (216px) keeps 4px from the dock only from 528px: till then it keeps to its right too */
-@media (min-width: 520px) and (max-width: 527px) {
-  .actions.beside-dock { left: calc(156px + var(--safe-left)); }
-}
-@media (max-width: 374px) {
-  .actions.beside-dock button { padding: 9px 8px; font-size: 12.5px; }
-  .actions.beside-dock button.primary { padding: 11px 10px; font-size: 13px; }
-}
-/* narrower still (an iPhone SE, a mini set to 放大显示, a phone with a larger 显示大小) the pair would come within
-   4px of 触须之交, and at 320px run 4px into it: there 「我宣布个事儿」 shows its label's two-line copy, 我宣布 over
-   个事儿 (MapApp.tsx), in the height of one line, so nothing above the pair comes nearer */
-.actions button.announce .two-lines { display: none; }
-@media (max-width: 335px) {
-  .actions.beside-dock button.announce { padding: 5.5px 10px; line-height: 15px; }
-  .actions.beside-dock button.announce .one-line { display: none; }
-  .actions.beside-dock button.announce .two-lines, .actions.beside-dock button.announce .two-lines > span { display: block; }
-}
 .friend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
 .friend-tile {
   display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 10px 6px 8px;
@@ -403,7 +272,6 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .help-hint { margin: 6px 0 0; }
 .help-row .row-actions { flex-wrap: wrap; margin-top: 8px; }
 .help-preview { margin: 14px 0 0; padding: 8px 10px; border-radius: 10px; background: #fffbea; font-size: 14px; }
-.dock-friends { position: relative; }
 .help-dot { position: absolute; top: 4px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: #ffc400; box-shadow: 0 0 0 2px var(--paper); }
 /* 特别关注 on a 触须之交's page */
 .who-card .star-btn { margin-left: auto; align-self: flex-start; padding: 5px 10px; border: 1px solid #f1d27a; border-radius: 999px; background: #fff; color: #9a6b00; font-size: 13px; white-space: nowrap; }
@@ -918,13 +786,6 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .event .muted { flex-shrink: 0; font-size: 12px; }
 
 /* ---- 方舟雷达 ---- */
-.radar-btn {
-  position: absolute; z-index: 10; top: calc(140px + var(--safe-top)); right: calc(12px + var(--safe-right));
-  display: flex; flex-direction: column; align-items: center;
-  width: 64px; padding: 7px 0 6px; border: 0; border-radius: 14px; background: var(--ink);
-  box-shadow: 0 2px 10px #0004; line-height: 1;
-}
-.radar-btn small { margin-top: 5px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .radar { display: flex; align-items: center; gap: 14px; margin: 4px 0 6px; }
 .radar-scope {
   position: relative; display: block; flex-shrink: 0; width: 92px; height: 92px; overflow: hidden; border-radius: 50%;
@@ -941,7 +802,6 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   background: conic-gradient(from 0deg, #3fd0d4cc, #3fd0d400 70deg, transparent 360deg);
   animation: radar-spin 2.4s linear infinite;
 }
-.radar-scope.mini { width: 40px; height: 40px; }
 @keyframes radar-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .radar-sweep { animation: none; } }
 .radar-count { display: flex; flex-direction: column; font-size: 13px; }
@@ -1111,9 +971,7 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
  * 圈禁放区 and 看一处 on the owner's map (components/admin/ZoneDraw.tsx, ZoneView.tsx): the map to the tool, with the
  * card at the top, the crosshair and its ring over the map (the layer covers the map exactly), and the card below
  */
-.app.zone-tool .hud, .app.zone-tool .radar-btn, .app.zone-tool .guide-dock, .app.zone-tool .hot-btn, .app.zone-tool .desk-anchor,
-.app.zone-tool footer.actions, .app.zone-tool .me-dock, .app.zone-tool .heard-stack, .app.zone-tool .disclaimer,
-.app.zone-tool .style-hint { display: none; }
+.app.zone-tool .hud, .app.zone-tool .heard-stack, .app.zone-tool .disclaimer, .app.zone-tool .style-hint { display: none; }
 .zone-top {
   position: absolute; z-index: 12; top: calc(56px + var(--safe-top)); left: 10px; right: 10px; max-width: 460px; margin: 0 auto;
   padding: 12px; border-radius: 12px; background: #fff; box-shadow: 0 4px 16px #10182829;
@@ -1312,82 +1170,17 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .homecoming-new { padding: 9px 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; }
 .homecoming-log { margin: -6px 0 -6px 4px; padding: 6px 2px; border: 0; background: none; color: #1d6fd6; font-size: inherit; font-weight: 700; }
 
-/* ---- 本周舟P热榜 ---- */
-.hot-btn {
-  position: absolute; z-index: 10; top: calc(214px + var(--safe-top)); right: calc(12px + var(--safe-right));
-  display: flex; flex-direction: column; align-items: center; width: 64px; padding: 7px 0 6px;
-  border: 0; border-radius: 14px; background: var(--ink); box-shadow: 0 2px 10px #0004; line-height: 1;
-}
-.hot-btn small { margin-top: 4px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
-/* the five guides under 方舟雷达 and 热榜 (GuideDock.tsx) */
-.guide-dock {
-  position: absolute; z-index: 10; top: calc(282px + var(--safe-top)); right: calc(12px + var(--safe-right));
-  display: flex; flex-direction: column; gap: 4px; width: 64px; padding: 7px 0; border-radius: 14px;
-  background: var(--ink); box-shadow: 0 2px 10px #0004;
-}
-.guide-dock button { display: flex; flex-direction: column; align-items: center; padding: 0; border: 0; background: none; line-height: 1; cursor: pointer; }
-.guide-dock small { margin-top: 2px; color: #fff; font-size: 10px; font-weight: 600; white-space: nowrap; }
+/* a guide's card (GuideDock.tsx) */
 .guide-note { margin-top: 0; text-align: center; }
-/*
- * On a short screen the five guides step closer and smaller, so the column ends above the map's zoom
- * buttons (they start 154px above the bottom): 262px tall, 220px from 700px down.
- */
-@media (max-height: 700px) {
-  .guide-dock { gap: 1px; padding: 5px 0; }
-  .guide-dock img, .guide-dock button > span { width: 28px !important; height: 28px !important; }
-  .guide-dock small { margin-top: 1px; font-size: 9.5px; }
-}
-/*
- * 存到桌面 under the five guides (they start at 282px and take 262px), with the icon the desktop will
- * show, and its bubble once per device (HomeScreen.tsx). Where that would run into the map's zoom
- * buttons (they start 154px above the bottom), it moves to the left, under the counts.
- */
-.desk-anchor { position: absolute; z-index: 10; top: calc(552px + var(--safe-top)); right: calc(12px + var(--safe-right)); }
-.desk-btn {
-  display: flex; flex-direction: column; align-items: center; width: 64px; padding: 7px 0 6px;
-  border: 0; border-radius: 14px; background: var(--ink); box-shadow: 0 2px 10px #0004; line-height: 1; cursor: pointer;
-}
-.desk-btn img { display: block; width: 34px; height: 34px; border-radius: 9px; }
-.desk-btn small { margin-top: 4px; color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+/* ---- 存到桌面 ---- */
+/* it is in 界面 (src/components/app/chrome): once per device, a bubble beside 界面 that says so (HomeScreen.tsx) */
 .desk-hint {
-  position: absolute; top: 12px; right: calc(100% + 10px); width: max-content; max-width: 190px; padding: 7px 11px;
-  border: 0; border-radius: 10px; background: var(--accent); color: var(--ink); font-size: 13px; font-weight: 600;
-  text-align: left; box-shadow: 0 3px 12px #0004;
+  position: absolute; width: max-content; max-width: 190px; padding: 7px 11px; border: 0; border-radius: 10px;
+  background: var(--accent); color: var(--ink); font-size: 13px; font-weight: 600; text-align: left; white-space: normal;
+  box-shadow: 0 3px 12px #0004;
 }
-.desk-hint::after { content: ""; position: absolute; top: 10px; right: -6px; border: 6px solid transparent; border-right: 0; border-left-color: var(--accent); }
-@media (max-height: 782px) {
-  .desk-anchor { top: calc(140px + var(--safe-top)); right: auto; left: calc(12px + var(--safe-left)); }
-  .desk-hint { right: auto; left: calc(100% + 10px); }
-  .desk-hint::after { right: auto; left: -6px; border-left: 0; border-right: 6px solid var(--accent); }
-}
-/*
- * Below 484px wide the bottom pair reaches under the right-hand column, and on a short phone it would cover the
- * last guide. There 方舟雷达, 热榜 and the guides, and 存到桌面 across from them, move up together just as far as
- * it takes for the guides to end 6px above the pair, but never closer than 5px to the counts at the top (.hud, from
- * 58px down), as close as 热榜 is to 方舟雷达: by at most 45px under one line of them, 34.5px under two, and not at
- * all once one more row is under them. Below 503px tall (511px on Amap) that could not clear the last guide anyway,
- * and would put more of it behind the pair than it takes out, so nothing moves there. GuideDock.tsx says how tall the
- * guides (--guides-h; four of them take 210px) and the counts (--hud-h) are, and the pair's top is 78px above the
- * bottom, 86px on Amap. A browser without min() and max() leaves them where they are.
- */
-@supports (top: max(0px, min(1px, 2px))) {
-  @media (max-width: 483px) {
-    .app, .app.on-amap { --lift: 0px; }
-    .app .radar-btn { top: calc(140px + var(--safe-top) - var(--lift)); }
-    .app .hot-btn { top: calc(214px + var(--safe-top) - var(--lift)); }
-    .app .guide-dock { top: calc(282px + var(--safe-top) - var(--lift)); }
-  }
-  @media (max-width: 483px) and (min-height: 503px) {
-    .app { --lift: max(0px, min(calc(366px + var(--guides-h, 210px) + var(--safe-top) + var(--safe-bottom) - 100%), calc(77px - var(--hud-h, 44px)))); }
-  }
-  @media (max-width: 483px) and (min-height: 511px) {
-    .app.on-amap { --lift: max(0px, min(calc(374px + var(--guides-h, 210px) + var(--safe-top) + var(--safe-bottom) - 100%), calc(77px - var(--hud-h, 44px)))); }
-  }
-  /* where 存到桌面 is on the left, under the counts (above) */
-  @media (max-width: 483px) and (max-height: 730px) {
-    .app .desk-anchor { top: calc(140px + var(--safe-top) - var(--lift)); }
-  }
-}
+.desk-hint::after { content: ""; position: absolute; }
 /* how to do it here: at most three steps, the same in the panel and in 资料 */
 .desk-guide { font-size: 15px; line-height: 1.6; }
 .desk-guide > p { margin: 0 0 6px; }
@@ -1409,6 +1202,8 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 .desk-login { margin: 0 0 16px; padding: 12px; border-radius: 12px; background: #fff6cc; font-size: 14px; line-height: 1.6; }
 .desk-login p { margin: 0 0 8px; }
 .guide-about { margin: 8px 0 0; line-height: 1.6; }
+
+/* ---- 本周舟P热榜 ---- */
 .hot-card { overflow: hidden; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px #e6e8eb; }
 .hot-head { position: relative; padding: 14px 16px 16px; background: var(--ink); color: #fff; }
 .hot-head::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--accent); }

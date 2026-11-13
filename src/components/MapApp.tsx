@@ -5,7 +5,6 @@ import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fmt, fmtParts, T } from "@/i18n";
-import { fmtNodes } from "@/i18n/nodes";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -77,7 +76,7 @@ import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
-import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, siteName, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
+import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import type { Basemap, LngLat, MainlandMap, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
@@ -134,16 +133,15 @@ import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from 
 import { musicOn, playMusic, preloadMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
-import { GuideDock, GuideSheet } from "./app/GuideDock";
+import { GuideSheet } from "./app/GuideDock";
 import ConsentSheet, { PlaceConfirm } from "./app/ConsentSheet";
 import DeclareSheet from "./app/DeclareSheet";
 import { GuestRadarSheet, markWelcomed, PreviewCard, WelcomeSheet, welcomed } from "./app/GuestPreview";
 import { HomecomingSheet } from "./app/Homecoming";
-import NoticeBoard, { NoticeButton, NoticeStrip, type BoardView } from "./app/NoticeBoard";
+import NoticeBoard, { NoticeStrip, type BoardView } from "./app/NoticeBoard";
 import HotSheet from "./app/HotSheet";
 import {
   countOpen,
-  DeskButton,
   deskHintSeen,
   deskOffered,
   HomeScreenSheet,
@@ -154,7 +152,7 @@ import {
 } from "./app/HomeScreen";
 import IdentitySheet from "./app/IdentitySheet";
 import InboxSheet, { amiyaUnfriend, FriendView, pokedBy, ProfileView, type InboxFriendly } from "./app/InboxSheet";
-import { capCount, dockCounts, firstTab, noticeTitle, tabOf, type InboxTab } from "@/lib/inboxTabs";
+import { dockCounts, firstTab, noticeTitle, tabOf, type InboxTab } from "@/lib/inboxTabs";
 import { batchSent, gestureSent, isAwakeGesture, isGesture, type BatchAct, type Gesture } from "@/lib/friendly";
 import type { HelpAsk } from "@/lib/help";
 import type { Game } from "@/lib/games";
@@ -197,14 +195,14 @@ import SafetySheet from "./app/SafetySheet";
 import AgeCheckSheet from "./app/AgeCheckSheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
-import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, SpeakerIcon, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
 import FriendActions, { type FriendAct } from "./app/FriendActions";
 import GestureStage, { SanityFly } from "./app/GestureStage";
 import BatchStage from "./app/BatchStage";
 import HelpAskSheet from "./app/HelpAskSheet";
 import { TheirHelp } from "./app/HelpRows";
 import VisitSheet from "./app/VisitSheet";
-import FriendsSheet, { FriendsMark } from "./app/FriendsSheet";
+import FriendsSheet from "./app/FriendsSheet";
 import PartyScene from "./app/PartyScene";
 import { playPartyMusic, preloadPartyMusic, stopPartyMusic, type PartyMusic } from "./app/partyMusic";
 import {
@@ -245,10 +243,19 @@ import ZoneView from "./admin/ZoneView";
 import { MapPulse, type ZoneTool } from "./admin/zoneAim";
 import { useGrayNow } from "./GrayMode";
 import RoachIcon from "./RoachIcon";
+import FloatChrome from "./app/chrome/FloatChrome";
+import "./app/chrome/chrome.css";
+import UiMenu from "./app/chrome/UiMenu";
+import type { ChromeProps, Counts } from "./app/chrome/parts";
+import { DEFAULT_UI, EARLY_UI_MARKS, loadFold, markUiAsked, saveFold, saveUi, shouldAskUi, storedUi, UNFOLDED, type UiFold, type UiName } from "@/lib/uiChoice";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
 const AmapView = dynamic(() => import("./map/AmapView"), { ssr: false });
 const TencentView = dynamic(() => import("./map/TencentView"), { ssr: false });
+// the layouts other than 浮岛, and the question which one, come only to those who use them (src/lib/uiChoice.ts)
+const DrawerChrome = dynamic(() => import("./app/chrome/DrawerChrome"), { ssr: false });
+const HudChrome = dynamic(() => import("./app/chrome/HudChrome"), { ssr: false });
+const UiPicker = dynamic(() => import("./app/chrome/UiPicker"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -329,6 +336,12 @@ function queueSleep(out: PerlicaNote[], seconds: number) {
 }
 const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 
+/**
+ * Whether to ask a signed-in player on this device which 界面 they want (UiPicker.tsx): once, before anything else on
+ * the map but the admin's age question and an updated privacy policy, which a visit with either of them keeps to
+ */
+const asksUi = (m: Me | null, uiChoice: boolean) => Boolean(m && uiChoice && !m.ageCheck && !m.mustReconsent && shouldAskUi());
+
 type Panel =
   /** draft: unsaved changes kept while 我的称号 was open */
   | { kind: "profile"; draft?: Profile; password?: PasswordForm }
@@ -379,6 +392,8 @@ type Panel =
   | { kind: "login"; reason?: string; confirm?: { email: string; form: PasswordForm; draft: Profile } }
   /** 隐私说明更新了; then: what was going to open first */
   | { kind: "consent"; then?: Panel | null }
+  /** Which 界面 this device wants, asked once (UiPicker.tsx); then: what comes after it */
+  | { kind: "uiPicker"; then: (() => void) | null }
   | { kind: "ageCheck" }
   /** consent: the player's first roach, so the card asks them to agree its spot is public */
   | { kind: "placeConfirm"; target: PlaceTarget; spot: LngLat; fly: boolean; consent: boolean }
@@ -427,6 +442,7 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * out this month, or our own.
  * mailPaused: mail domains no sign-in code goes to just now, which the sign-in sheet says.
  * notices: 公告 everyone sees (src/lib/server/notices.ts), as they were when the page was made.
+ * uiChoice: players may pick one of the three layouts (src/lib/uiChoice.ts); off (UI_CHOICE=off), everyone has 浮岛.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const guestStyles = (): Partial<Record<MapStyle, string>> =>
@@ -437,11 +453,13 @@ export default function MapApp({
   home = "amap",
   mailPaused = [],
   notices: firstNotices = { stamp: "", notices: [] },
+  uiChoice = true,
 }: {
   cn: boolean;
   home?: MainlandMap;
   mailPaused?: string[];
   notices?: NoticeList;
+  uiChoice?: boolean;
 }) {
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
@@ -495,6 +513,15 @@ export default function MapApp({
   const [deskOffer, setDeskOffer] = useState(false);
   const [deskHint, setDeskHint] = useState(false);
   const [topRaised, setTopRaised] = useState(false);
+  // 界面 (src/lib/uiChoice.ts): this device's layout and folds, 浮岛 unfolded until they are read in the browser; its menu
+  const [ui, setUi] = useState<UiName>(DEFAULT_UI);
+  const [fold, setFold] = useState<UiFold>(UNFOLDED);
+  const [uiRead, setUiRead] = useState(false);
+  const [uiMenu, setUiMenu] = useState(false);
+  // 抽屉's drawer, pulled up
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // 方舟雷达's last scan on this page, which 抽屉 shows on its card (a scan is never made for it: they are few a day)
+  const [lastRadar, setLastRadar] = useState<Radar | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   // Who is signed in comes a moment after the map on a slow line. A browser that was signed in last time
   // (it remembers the main roach, lib/lastHome) is not shown 「登录」 meanwhile: on every refresh that
@@ -1130,7 +1157,12 @@ export default function MapApp({
           }
           // the admin's age question, then an updated privacy policy, before anything else
           if (m?.ageCheck) setPanel({ kind: "ageCheck" });
-          else if (m?.mustReconsent) setPanel({ kind: "consent", then: opening });
+          // agreed again, a player this device never asked which 界面 they want is asked next
+          else if (m?.mustReconsent)
+            setPanel({
+              kind: "consent",
+              then: uiChoice && shouldAskUi() ? { kind: "uiPicker", then: opening ? () => setPanel(opening) : null } : opening,
+            });
           else if (opening) setPanel(opening);
           else if (pending.length) return;
           // What arrived since the last visit
@@ -1146,16 +1178,21 @@ export default function MapApp({
             setActing("wake");
           } else first();
         };
-        // the notice due comes before all of that (src/lib/notices.ts), once a visit
-        if (m && !poppedThisVisit(m.id)) return popNotice(m.id, go);
-        // A tab that showed the one notice there was before the board: it was the one that pops up on every
-        // visit, so that one is not new here either
-        const every = noticesRef.current.notices.find((n) => n.pop === "every");
-        if (m && every && !noticeMemoryKept()) rememberNotices((mem) => noticeRead(mem, every.id));
-        go();
+        const noticeThenGo = () => {
+          // the notice due comes before all of that (src/lib/notices.ts), once a visit
+          if (m && !poppedThisVisit(m.id)) return popNotice(m.id, go);
+          // A tab that showed the one notice there was before the board: it was the one that pops up on every
+          // visit, so that one is not new here either
+          const every = noticesRef.current.notices.find((n) => n.pop === "every");
+          if (m && every && !noticeMemoryKept()) rememberNotices((mem) => noticeRead(mem, every.id));
+          go();
+        };
+        // which 界面 this device wants, asked once, before the notice and everything else
+        if (asksUi(m, uiChoice)) setPanel({ kind: "uiPicker", then: noticeThenGo });
+        else noticeThenGo();
       });
     return () => window.clearTimeout(waiting);
-  }, [load, openInbox, cn, firstHome, popNotice, rememberNotices]);
+  }, [load, openInbox, cn, firstHome, popNotice, rememberNotices, uiChoice]);
 
   // Chrome and Edge offer installing the site once, early; 存到桌面 keeps it for when the player taps it.
   // Opens from the desktop icon and in the browser are counted once a device a day, nothing else about them.
@@ -1168,6 +1205,50 @@ export default function MapApp({
     return () => {
       stop();
       unwatch();
+    };
+  }, []);
+
+  // 界面: the layout this device picked (浮岛 for everyone while the server keeps it so) and how its sides are folded
+  useEffect(() => {
+    setUi(uiChoice ? (storedUi() ?? DEFAULT_UI) : DEFAULT_UI);
+    setFold(loadFold());
+    setUiRead(true);
+  }, [uiChoice]);
+  // drawn as picked: what stood in for it before the app started (page.tsx) comes off
+  useEffect(() => {
+    if (uiRead) for (const mark of EARLY_UI_MARKS) document.documentElement.removeAttribute(mark);
+  }, [uiRead]);
+  /** Another layout, at once and kept on this device: the map, its view and a roach's open card stay as they are */
+  const pickUi = useCallback((next: UiName) => {
+    saveUi(next);
+    setUi(next);
+    setUiMenu(false);
+    setDrawerOpen(false);
+  }, []);
+  const changeFold = useCallback((next: UiFold) => {
+    saveFold(next);
+    setFold(next);
+  }, []);
+  const closeUiMenu = useCallback(() => setUiMenu(false), []);
+  // The map's box changes size with the layout (抽屉's drawer pulled up, the layout changed): Amap's and Tencent's
+  // maps are told as when the window changes size, which they watch (MapLibre watches its box itself)
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || typeof ResizeObserver === "undefined") return;
+    let first = true;
+    let frame = 0;
+    const seen = new ResizeObserver(() => {
+      if (first) {
+        first = false;
+        return;
+      }
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    });
+    seen.observe(wrap);
+    return () => {
+      seen.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, []);
 
@@ -1267,7 +1348,8 @@ export default function MapApp({
     const av = dockAvRef.current?.getBoundingClientRect();
     const mail = dockMailRef.current?.getBoundingClientRect();
     if (!av?.width || !mail) return null;
-    const top = document.querySelector("header.topbar")?.getBoundingClientRect().bottom ?? 0;
+    // under what the layout has along the top (the site's name), where a feeler comes down from
+    const top = document.querySelector("[data-chrome-top]")?.getBoundingClientRect().bottom ?? 0;
     return { av: { x: av.left, y: av.top, w: av.width, h: av.height }, mail: { x: mail.left, y: mail.top, w: mail.width, h: mail.height }, top };
   };
   const motionOff = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1510,6 +1592,7 @@ export default function MapApp({
 
   /** 存到桌面: the browser's own install prompt where it offered one, else how to do it here */
   const tapDesk = async () => {
+    setUiMenu(false);
     deskHintDone();
     const r = await installOrGuide();
     if (r === "guide") {
@@ -2398,6 +2481,7 @@ export default function MapApp({
     setSelected(null);
     const radar = await act((w) => w.radar());
     if (radar !== undefined) setPanel({ kind: "radar", radar });
+    if (radar) setLastRadar(radar);
   };
 
   /** How close to fly to a roach: Amap draws nothing abroad close in, so 阿米娅向导 is shown from further out there. */
@@ -2675,9 +2759,10 @@ export default function MapApp({
       else setToast(m && !mainRoach ? T.map.account.signedInPlace : T.map.account.signedIn);
     };
     // the notice due comes first on every sign-in, even after one popped up earlier in this visit: for a
-    // newcomer, the first thing after signing up
-    if (m) popNotice(m.id, next);
-    else next();
+    // newcomer, the first thing after signing up but which 界面 they want, so the tutorial points at its buttons
+    const noticeThenNext = () => (m ? popNotice(m.id, next) : next());
+    if (asksUi(m, uiChoice)) setPanel({ kind: "uiPicker", then: noticeThenNext });
+    else noticeThenNext();
   };
 
   // ---- the tutorial's steps ----
@@ -2889,6 +2974,16 @@ export default function MapApp({
 
 
   const coachShown = Boolean(!placing && !selected && !panel && !board && me && step);
+  // 抽屉's drawer goes back down for a roach's card, for putting a roach down, and for the tutorial, which want the map
+  useEffect(() => {
+    if (selected || placing || coachShown) setDrawerOpen(false);
+  }, [selected, placing, coachShown]);
+  // a side folded away may hold what the tutorial speaks of (方舟雷达, the guides): out it comes while it is on. What
+  // is left of it is read again here, as the step can run ahead of it for a moment when the player first comes
+  const anyFolded = fold.float.l || fold.float.r || fold.hud.r;
+  useEffect(() => {
+    if (coachShown && anyFolded && me && tutorialStep(me, loadProgress(me.id))) changeFold(UNFOLDED);
+  }, [coachShown, anyFolded, changeFold, me]);
   // 公告's red dot and strip, once the opening has had its turn (a notice due pops up before them); the strip
   // not over the tutorial, nor while a sheet covers it
   const noticeNow = Date.now();
@@ -2939,10 +3034,10 @@ export default function MapApp({
   const idle = mapClear && !pwNudgeUp;
   // 存到桌面's bubble, once per device: after about 20 seconds on the map with nothing else going on, the tutorial
   // and the style hint over (a new player's first roach starts the tutorial, so it comes after)
-  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint && !pwNudgeUp);
+  const deskHintNow = Boolean(deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint && !pwNudgeUp && !uiMenu);
   // the style hint: once the map is up (a slow line can take a while), not while placing, in the tutorial or
   // asked to set a password, nor to visitors
-  const styleHintNow = Boolean(styleHint && !guest && visible !== null && !placing && !step && !pwNudgeUp);
+  const styleHintNow = Boolean(styleHint && !guest && visible !== null && !placing && !step && !pwNudgeUp && panel?.kind !== "uiPicker");
   useEffect(() => {
     if (!deskHintNow || deskHint || deskHintSeen()) return;
     const t = window.setTimeout(() => {
@@ -3847,6 +3942,16 @@ export default function MapApp({
     }
     if (p.kind === "login") return <LoginSheet reason={p.reason} paused={mailPaused} onDone={signedIn} onClose={() => setPanel(null)} />;
     if (p.kind === "hot") return <HotSheet onClose={() => setPanel(null)} />;
+    if (p.kind === "uiPicker") {
+      // either way this device has answered, and is not asked again; what was to come next comes now
+      const answer = (picked: UiName | null) => {
+        markUiAsked();
+        if (picked) pickUi(picked);
+        setPanel(null);
+        p.then?.();
+      };
+      return <UiPicker onPick={answer} onSkip={() => answer(null)} />;
+    }
     if (p.kind === "homeScreen") {
       return (
         <HomeScreenSheet
@@ -4299,166 +4404,147 @@ export default function MapApp({
     </>
   );
 
-  return (
-    <main className={`app ${homeOn && !(twoMaps && abroad) ? "on-amap" : ""}${zoneTool ? " zone-tool" : ""}`}>
-      <header className={`topbar${topRaised ? " raised" : ""}`}>
-        <div className="brand">
-          <RoachIcon color={myColor} size={28} avatar={myAvatar} look={look} />
-          <span>{siteName()}</span>
-          <span className="tag">{T.map.beta}</span>
-          <NoticeButton dot={noticeDotOn} onClick={openBoard} />
-        </div>
-        <div className={`switches${cn ? "" : " with-basemap"}`}>
-          <MapStylePicker
-            style={shownStyle}
-            onPick={switchMapStyle}
-            unavailable={guest ? guestStyles() : !HEARTS_READY ? { hearts: T.map.style.heartsSoon } : heartsOff ? { hearts: T.map.style.noHearts } : {}}
-            hint={styleHintNow}
-            onHintDone={styleHintDone}
-            onRaise={setTopRaised}
-          />
-          {/* 写实 is off for now (src/lib/look.ts) */}
-          {REAL_LOOK_OFFERED && (
-            <div className="basemap-switch" role="group" aria-label={T.map.style.look}>
-              <button className={look === "cartoon" ? "on" : ""} onClick={() => switchLook("cartoon")}>
-                {T.map.style.cartoon}
-              </button>
-              <button className={look === "real" ? "on" : ""} onClick={() => switchLook("real")}>
-                {T.map.style.real}
-              </button>
-            </div>
-          )}
-          {/* mainland China has Amap only */}
-          {!cn && (
-            <div className="basemap-switch" role="group" aria-label={T.map.style.basemap}>
-              <button
-                className={basemap === "amap" ? "on" : ""}
-                onClick={() => switchBasemap("amap")}
-                disabled={!amapConfigured}
-                title={amapConfigured ? T.map.style.amapTitle : T.map.style.noAmapKey}
-              >
-                {T.map.style.amap}
-              </button>
-              <button className={basemap === "osm" ? "on" : ""} onClick={() => switchBasemap("osm")}>
-                OSM
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
+  // ---- 界面 (src/lib/uiChoice.ts): the buttons around the map, laid out as this device picked ----
 
-      {!placing && (
-        <div className="hud">
-          {identities.length > 0 && (
-            <button className="who" onClick={() => setPanel({ kind: "identity" })} title={T.map.demo.identity}>
-              👤 {current?.label ?? T.map.demo.me}
-              {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
-            </button>
-          )}
-          {/* with how many players there are, a second line in small print (.stats.two); one line, as before, till the server says */}
-          {/* signed in, the counts open 地图上看哪些蟑螂 (只看本体), with a 「›」 at their end to say so */}
-          <div
-            className={`${visible !== null && feedIn && players !== undefined ? "stats two" : "stats"}${me ? " tappable" : ""}`}
-            {...(me
-              ? {
-                  role: "button",
-                  tabIndex: 0,
-                  "aria-label": T.onlyMains.title,
-                  onClick: () => setPanel({ kind: "onlyMains" }),
-                  onKeyDown: (e: React.KeyboardEvent) => {
-                    if (e.key !== "Enter" && e.key !== " ") return;
-                    e.preventDefault();
-                    setPanel({ kind: "onlyMains" });
-                  },
-                }
-              : {})}
-          >
-            {visible === null ? (
-              T.map.loading
-            ) : !feedIn ? (
-              T.map.count.arriving
-            ) : guest ? (
-              <>
-                {fmtParts(T.map.count.world, { count: countText(total) })}
-                <span className="muted">{T.map.count.signInToSee}</span>
-                {players !== undefined && <span className="l2">{fmtParts(T.map.count.withoutClones, { players: countText(players, "位") })}</span>}
-              </>
-            ) : drawnStyle === "hidden" ? (
-              players !== undefined ? (
-                <>
-                  {fmtParts(T.map.count.hiddenWorld, { count: countText(total) })}
-                  <span className="l2">{fmtParts(T.map.count.withoutClones, { players: countText(players, "位") })}</span>
-                </>
-              ) : (
-                <>
-                  {T.map.count.hidden}<span className="muted">{fmtParts(T.map.count.andWorld, { count: countText(total) })}</span>
-                </>
-              )
-            ) : hideClones && players !== undefined ? (
-              <>
-                {fmtParts(T.map.count.herePlayers, { n: visible.toLocaleString() })}
-                <span className="l2">
-                  {fmtNodes(T.map.count.worldOnlyMains, { players: players.toLocaleString(), mark: <b>{T.map.count.onlyMainsMark}</b> })} ›
-                </span>
-              </>
-            ) : players !== undefined ? (
-              <>
-                {fmtParts(T.map.count.here, { n: visible.toLocaleString() })}
-                <span className="l2">
-                  {fmtParts(T.map.count.worldAndPlayers, { total: total.toLocaleString(), players: players.toLocaleString() })} ›
-                </span>
-              </>
-            ) : (
-              <>
-                {fmtParts(T.map.count.here, { n: visible.toLocaleString() })}
-                <span className="muted">{fmtParts(T.map.count.andWorldTotal, { total: total.toLocaleString() })}</span>
-              </>
-            )}
+  // the counts, as each layout words them
+  const counts: Counts =
+    visible === null
+      ? { kind: "loading" }
+      : !feedIn
+        ? { kind: "arriving" }
+        : guest
+          ? { kind: "guest", total: countText(total), players: players === undefined ? undefined : countText(players, "位") }
+          : drawnStyle === "hidden"
+            ? { kind: "hidden", total: countText(total), players: players === undefined ? undefined : countText(players, "位") }
+            : { kind: "here", here: visible.toLocaleString(), total: total.toLocaleString(), players: players?.toLocaleString(), mainsOnly: hideClones };
+  // 界面 has a menu to open: the layouts to pick from, or 存到桌面
+  const uiButton = uiChoice || deskOffer;
+  // an owner's 圈禁放区 and 看一处 measure the map as the whole screen, which 浮岛 leaves it
+  const layout: UiName = zoneTool ? "float" : ui;
+  const chrome: ChromeProps = {
+    placing: Boolean(placing),
+    reported: Boolean(reported),
+    tutorial: Boolean(step),
+    card: Boolean(selected),
+    brand: (size) => <RoachIcon color={myColor} size={size} avatar={myAvatar} look={look} />,
+    noticeDot: noticeDotOn,
+    onBoard: openBoard,
+    stylePicker: (round) => (
+      <MapStylePicker
+        round={round}
+        style={shownStyle}
+        onPick={switchMapStyle}
+        unavailable={guest ? guestStyles() : !HEARTS_READY ? { hearts: T.map.style.heartsSoon } : heartsOff ? { hearts: T.map.style.noHearts } : {}}
+        hint={styleHintNow}
+        onHintDone={styleHintDone}
+        onRaise={setTopRaised}
+      />
+    ),
+    // mainland China has Amap only
+    basemap: cn ? null : { now: basemap, amapOk: amapConfigured, onSwitch: switchBasemap },
+    // 写实 is off for now (src/lib/look.ts)
+    look: REAL_LOOK_OFFERED && (
+      <div className="basemap-switch" role="group" aria-label={T.map.style.look}>
+        <button className={look === "cartoon" ? "on" : ""} onClick={() => switchLook("cartoon")}>
+          {T.map.style.cartoon}
+        </button>
+        <button className={look === "real" ? "on" : ""} onClick={() => switchLook("real")}>
+          {T.map.style.real}
+        </button>
+      </div>
+    ),
+    raised: topRaised,
+    counts,
+    // signed in, the counts open 地图上看哪些蟑螂 (只看本体)
+    onCounts: me ? () => setPanel({ kind: "onlyMains" }) : undefined,
+    top: (
+      <>
+        {identities.length > 0 && (
+          <button className="who" onClick={() => setPanel({ kind: "identity" })} title={T.map.demo.identity}>
+            👤 {current?.label ?? T.map.demo.me}
+            {othersUnseen > 0 && <span className="badge">{othersUnseen}</span>}
+          </button>
+        )}
+        {/* a line of its own under the counts (globals.css .notice-strip-row), before the admin's own */}
+        {strip && (
+          <div className="notice-strip-row">
+            <NoticeStrip notice={strip} onOpen={() => openStripped(strip)} onClose={() => closeStrip(strip)} />
           </div>
-          {/* a line of its own under the counts (globals.css .notice-strip-row), before the admin's own */}
-          {strip && (
-            <div className="notice-strip-row">
-              <NoticeStrip notice={strip} onOpen={() => openStripped(strip)} onClose={() => closeStrip(strip)} />
-            </div>
-          )}
-          {/* under the strip they come down beside 方舟雷达, so they keep to a line of their own in the middle (.admin-row) */}
-          {strip && adminPills ? <div className="admin-row">{adminPills}</div> : adminPills}
-          {/* 看被举报的蟑螂's panel goes here, under the counts */}
-          {reviewer && reported && <div className="rep-slot" ref={setReportedSlot} />}
-        </div>
-      )}
+        )}
+        {/* under the strip they come down beside 方舟雷达, so they keep to a line of their own in the middle (.admin-row) */}
+        {strip && adminPills ? <div className="admin-row">{adminPills}</div> : adminPills}
+        {/* 看被举报的蟑螂's panel goes here, under the counts */}
+        {reviewer && reported && <div className="rep-slot" ref={setReportedSlot} />}
+      </>
+    ),
+    onRadar: me ? openRadar : () => setPanel({ kind: "guestRadar" }),
+    onHot: () => setPanel({ kind: "hot" }),
+    onGuide: (id) => {
+      setSelected(null);
+      setPanel({ kind: "guide", id });
+    },
+    ui: uiButton
+      ? {
+          open: uiMenu,
+          onToggle: () => {
+            deskHintDone();
+            setUiMenu((o) => !o);
+          },
+          deskHint: deskHint && deskHintNow,
+          onDeskHintDone: deskHintDone,
+        }
+      : null,
+    fold,
+    onFold: changeFold,
+    me: me
+      ? {
+          name: me.profile.anonymous || !me.profile.name.trim() ? T.map.common.anonymous : displayName(me.profile),
+          color: me.profile.color,
+          look: { avatar: me.profile.avatar },
+          avRef: dockAvRef,
+          anim: dockAnim,
+          mailRef: dockMailRef,
+          envelope,
+          badgePop,
+          help: me.help.asks + me.help.answers > 0,
+          main: Boolean(main),
+          onProfile: () => setPanel({ kind: "profile" }),
+          onInbox: () => openInbox(false),
+          onFriends: () => void openFriends(),
+          onMine: () => setPanel({ kind: "mine" }),
+          onAnnounce: () => setPanel({ kind: "declare" }),
+          onPlaceMain: () => startPlacing({ kind: "main" }),
+        }
+      : null,
+    visitor: visitorShown
+      ? { onPlace: () => setPanel({ kind: "login", reason: T.map.place.signInToPlace }), onSignIn: () => setPanel({ kind: "login" }) }
+      : null,
+    waiting: waitingMe ? { failed: meFailed, onRetry: () => window.location.reload() } : null,
+    disclaimer: (
+      <p className="disclaimer">
+        {T.map.disclaimer}{" "}
+        <a href="/privacy#contact" target="_blank" rel="noreferrer">
+          {T.map.contact}
+        </a>
+      </p>
+    ),
+    radar: lastRadar,
+    drawerOpen,
+    onDrawer: setDrawerOpen,
+  };
 
-      {/* the column on the right: not while placing, nor while the 站长 looks at reported roaches (their panel takes the top) */}
-      {!placing && !reported && (
-        <button className="radar-btn" onClick={me ? openRadar : () => setPanel({ kind: "guestRadar" })}>
-          <span className="radar-scope mini" aria-hidden="true">
-            <span className="radar-sweep" />
-          </span>
-          <small>{T.map.radar}</small>
-        </button>
+  return (
+    <main
+      className={`app ui-${layout}${homeOn && !(twoMaps && abroad) ? " on-amap" : ""}${zoneTool ? " zone-tool" : ""}${
+        drawnStyle === "lite" ? " no-blur" : ""
+      }${layout === "drawer" && drawerOpen ? " drawer-open" : ""}${placing ? " placing" : ""}`}
+    >
+      {layout === "float" && <FloatChrome {...chrome} />}
+      {layout === "drawer" && <DrawerChrome {...chrome} />}
+      {layout === "hud" && <HudChrome {...chrome} />}
+      {uiMenu && uiButton && !placing && !zoneTool && (
+        <UiMenu ui={ui} choices={uiChoice} desk={deskOffer} onPick={pickUi} onDesk={() => void tapDesk()} onClose={closeUiMenu} />
       )}
-      {!placing && !reported && (
-        <GuideDock
-          onOpen={(id) => {
-            setSelected(null);
-            setPanel({ kind: "guide", id });
-          }}
-        />
-      )}
-      {!placing && !reported && (
-        <button className="hot-btn" aria-label={T.map.bar.hot} onClick={() => setPanel({ kind: "hot" })}>
-          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-            <path
-              d="M12 2.5c.8 3.2 4.6 5.4 4.6 10a4.6 4.6 0 0 1-9.2 0c0-2.3 1.1-3.8 2.4-5 .1 1.9.9 3 2 3.4-.7-2.9-.6-5.5.2-8.4Z"
-              fill="#ffd23f"
-            />
-            <path d="M12 21.6a2.6 2.6 0 0 1-2.6-2.6c0-1.6 1.3-2.4 2.1-3.6.4 1.2 1.6 1.8 2.3 2.6.5.6.8 1.1.8 1.8a2.6 2.6 0 0 1-2.6 2.6Z" fill="#ff8a3d" />
-          </svg>
-          <small>{T.map.bar.hotShort}</small>
-        </button>
-      )}
-      {/* not while placing or in the tutorial, like the guides; not from the desktop icon or once installed here */}
-      {!placing && !reported && !step && deskOffer && <DeskButton hint={deskHint && deskHintNow} onTap={tapDesk} onHintDone={deskHintDone} />}
 
       <div className="map-wrap" ref={wrapRef}>
         {basemap === "amap" && homeMap === "amap" && homeMade && (
@@ -4777,6 +4863,7 @@ export default function MapApp({
       )}
       {coachShown && me && step && (
         <TutorialCoach
+          ui={ui}
           step={step}
           me={me}
           progress={progress}
@@ -4802,84 +4889,6 @@ export default function MapApp({
         />
       )}
 
-      {!placing && visitorShown && (
-        <footer className="actions">
-          <button className="primary" onClick={() => setPanel({ kind: "login", reason: T.map.place.signInToPlace })}>
-            {T.map.bar.placeMine}
-          </button>
-          <button onClick={() => setPanel({ kind: "login" })}>{T.map.bar.signIn}</button>
-        </footer>
-      )}
-      {!placing && waitingMe && (
-        <footer className="actions">
-          <button className="waiting" disabled={!meFailed} onClick={() => window.location.reload()}>
-            {meFailed ? T.map.bar.retry : T.map.bar.loadingMine}
-          </button>
-        </footer>
-      )}
-      {!placing && me && (
-        <footer className={`actions${selected ? "" : " beside-dock"}`}>
-          {main ? (
-            <>
-              <button onClick={() => setPanel({ kind: "mine" })}>{T.map.bar.mine}</button>
-              {/* on one line, or on two where the narrowest phones have no room for it (globals.css) */}
-              <button className="primary announce" onClick={() => setPanel({ kind: "declare" })}>
-                <span className="one-line">{T.map.bar.announce}</span>
-                <span className="two-lines">
-                  <span>{T.map.bar.announceTop}</span>
-                  <span>{T.map.bar.announceBottom}</span>
-                </span>
-              </button>
-            </>
-          ) : (
-            <button className="primary" onClick={() => startPlacing({ kind: "main" })}>
-              {T.map.bar.placeMine}
-            </button>
-          )}
-        </footer>
-      )}
-      {/* hidden while a roach card fills the bottom of the screen */}
-      {!placing && !selected && me && (
-        <div className="me-dock">
-          {/* your own cartoon look as the profile picture, whichever style the map shows */}
-          <button className="dock-me" onClick={() => setPanel({ kind: "profile" })}>
-            <span ref={dockAvRef} className={`dock-av ${dockAnim ?? ""}`}>
-              <RoachIcon color={me.profile.color} size={38} avatar={me.profile.avatar} />
-            </span>
-            <span className="dock-name">{me.profile.anonymous || !me.profile.name.trim() ? T.map.common.anonymous : displayName(me.profile)}</span>
-          </button>
-          <button
-            ref={dockMailRef}
-            className="dock-mail"
-            aria-label={
-              envelope.red
-                ? fmt(envelope.say ? T.map.bar.messagesForYouNear : T.map.bar.messagesForYou, { n: envelope.red })
-                : envelope.say
-                  ? T.map.bar.messagesNear
-                  : T.map.bar.messages
-            }
-            onClick={() => openInbox(false)}
-          >
-            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
-              <rect x="3" y="5.5" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M4 7.5 12 13l8-5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-            </svg>
-            {/* before the red count, which the CSS keeps on top of it */}
-            {envelope.say && (
-              <span className={`say-mark${envelope.red ? " under" : ""}`} aria-hidden="true">
-                <SpeakerIcon size={12} stroke={1.8} />
-              </span>
-            )}
-            {envelope.red > 0 && <span className={`badge ${badgePop ? "ta-dbadge" : ""}`}>{capCount(envelope.red)}</span>}
-          </button>
-          <button className="dock-friends" onClick={() => void openFriends()}>
-            <FriendsMark size={28} />
-            <span className="dock-name">{T.map.bar.friends}</span>
-            {/* 求助: someone asks, or answered yours; a quiet dot, never a red count */}
-            {me && me.help.asks + me.help.answers > 0 && <span className="help-dot" aria-label={T.map.bar.friendsHelp} />}
-          </button>
-        </div>
-      )}
       {dockScene && <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} onDone={dockScene.done} />}
       {vialAt && <SanityFly from={vialAt} onDone={() => setVialAt(null)} />}
       {batchScene && (
@@ -4953,12 +4962,6 @@ export default function MapApp({
         </div>
       )}
       {toast && <div className={`toast ${coachShown || selected || heard.length ? "high" : ""}`}>{toast}</div>}
-      <p className="disclaimer">
-        {T.map.disclaimer}{" "}
-        <a href="/privacy#contact" target="_blank" rel="noreferrer">
-          {T.map.contact}
-        </a>
-      </p>
     </main>
   );
 }

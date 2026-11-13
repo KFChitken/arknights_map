@@ -141,32 +141,6 @@ export function deskHintSeen() {
 }
 export const markDeskHintSeen = () => void remember(HINT_SEEN, "1");
 
-/**
- * The button under the guides, with the app's icon as it will be on the desktop, and once a device a
- * bubble beside it that goes by itself after 8 seconds.
- */
-export function DeskButton({ className = "", hint, onTap, onHintDone }: { className?: string; hint: boolean; onTap: () => void; onHintDone: () => void }) {
-  useEffect(() => {
-    if (!hint) return;
-    const t = window.setTimeout(onHintDone, 8000);
-    return () => window.clearTimeout(t);
-  }, [hint, onHintDone]);
-  return (
-    <div className={`desk-anchor ${className}`}>
-      <button className="desk-btn" onClick={onTap}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- the icon the desktop will show, small */}
-        <img src="/icon-192.png" alt="" width={34} height={34} />
-        <small>{T.desk.save}</small>
-      </button>
-      {hint && (
-        <button className="desk-hint" onClick={onTap}>
-          {T.desk.saveHint}
-        </button>
-      )}
-    </div>
-  );
-}
-
 async function copy(text: string) {
   try {
     await navigator.clipboard.writeText(text);

@@ -9,11 +9,11 @@ import { ago } from "./InboxSheet";
 import Sheet from "./Sheet";
 import RoachIcon from "../RoachIcon";
 
-/** The 触须之交 mark: two feelers that met, under a heart, as when two roaches become 触须之交 */
-export function FriendsMark({ size = 19 }: { size?: number }) {
+/** The 触须之交 mark: two feelers that met, under a heart, as when two roaches become 触须之交; arch: the feelers' colour */
+export function FriendsMark({ size = 19, arch = "#1b1d22" }: { size?: number; arch?: string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-      <path d="M5 22 C5 15.5 8 12.2 12 12.2 M19 22 C19 15.5 16 12.2 12 12.2" fill="none" stroke="#1b1d22" strokeWidth="2" strokeLinecap="round" />
+      <path d="M5 22 C5 15.5 8 12.2 12 12.2 M19 22 C19 15.5 16 12.2 12 12.2" fill="none" stroke={arch} strokeWidth="2" strokeLinecap="round" />
       <path
         d="M12 11.4 C8.2 8.7 6.7 6.6 6.7 4.5 C6.7 2.9 8 1.6 9.6 1.6 C10.6 1.6 11.5 2.2 12 3 C12.5 2.2 13.4 1.6 14.4 1.6 C16 1.6 17.3 2.9 17.3 4.5 C17.3 6.6 15.8 8.7 12 11.4 Z"
         fill="#ff4f8b"

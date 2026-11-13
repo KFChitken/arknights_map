@@ -334,7 +334,6 @@
       "group": "desk",
       "words": {
         "save": "存到桌面",
-        "saveHint": "存到桌面，下次一点就开",
         "signInFirst": "先登录，再拿登录码。",
         "toSignIn": "去登录",
         "failed": "出了点问题。",
@@ -367,6 +366,12 @@
         "anyBrowser.bookmark": "或者按 Ctrl+D（Mac 上 ⌘D）收藏这个网站",
         "install": "一键安装",
         "afterSave": "存好以后，点桌面上的舟P图标就能直接打开地图。"
+      }
+    },
+    "src/components/app/chrome/parts.tsx": {
+      "group": "desk",
+      "words": {
+        "saveHint": "存到桌面在「界面」里，下次一点就开"
       }
     },
     "src/components/app/Homecoming.tsx": {

@@ -3,12 +3,13 @@ import { preconnect } from "react-dom";
 import GrayMode from "@/components/GrayMode";
 import MapApp from "@/components/MapApp";
 import { countAmapLoad } from "@/lib/server/amapLoads";
-import { isProd, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_DOMAINS } from "@/lib/server/env";
+import { isProd, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_DOMAINS, UI_CHOICE } from "@/lib/server/env";
 import { ipFrom } from "@/lib/server/http";
 import { mainlandMap } from "@/lib/server/mainlandMap";
 import { noticeList } from "@/lib/server/notices";
 import { inMainland } from "@/lib/server/region";
 import { grayUntil } from "@/lib/server/siteSettings";
+import { earlyUiScript } from "@/lib/uiChoice";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
@@ -36,7 +37,9 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
     <>
       {/* 全站变灰, from memory too: gray from the first look */}
       <GrayMode until={grayUntil(Date.now())} />
-      <MapApp cn={cn} home={home} mailPaused={mailPaused} notices={{ stamp, notices }} />
+      {/* a layout other than 浮岛 picked on this device: 浮岛's buttons stay out of sight until the app draws its own */}
+      <script dangerouslySetInnerHTML={{ __html: earlyUiScript(UI_CHOICE) }} />
+      <MapApp cn={cn} home={home} mailPaused={mailPaused} notices={{ stamp, notices }} uiChoice={UI_CHOICE} />
     </>
   );
 }
