@@ -144,7 +144,7 @@ export const en: Draft<Messages> = {
       deleted: "Your account and data have been deleted.",
       signedOut: "Signed out.",
       thanks: "Thanks! Carry on.",
-      installed: "Added! From now on, open the map straight from the ZhouP icon on your home screen.",
+      installed: "Added! From now on, open the map straight from the Arkmap icon on your home screen.",
       signInDeskCode: "Sign in first to get a login code.",
       signInRadar: "Sign in to see the full Ark Radar.",
     },
@@ -1067,7 +1067,7 @@ export const en: Draft<Messages> = {
     getCode: "Get a login code",
     codeNote: "This code is as good as your sign-in. It's valid for {min} minutes and works only once. Don't send it to anyone.",
     copyUrl: "Copy the address",
-    installed: "Installed. From now on, the ZhouP icon on your home screen opens the map directly.",
+    installed: "Installed. From now on, the Arkmap icon on your home screen opens the map directly.",
     inApp: {
       title: "You opened this inside an app (like WeChat, QQ or Bilibili), which can't add it here:",
       open: "Press “···” at the top right and pick “Open in browser” (on iPhone, “Open in Safari”)",
@@ -1094,14 +1094,14 @@ export const en: Draft<Messages> = {
       icon: "Press the small “Install” icon at the right of the address bar (a little screen with a down arrow)",
       menu: "Not there? Open the menu: in Chrome, find “Install {site}” under “⋮” (it may be under “Cast, save and share”); in Edge, go to “Apps” under “···” and pick “Install this site as an app”",
       installed: "Already installed? Find “{site}” in the Start menu or Launchpad",
-      after: "Once installed: on Windows the ZhouP icon is in the Start menu, Chrome usually puts one on the desktop too, and Edge lets you choose where; on a Mac it's in Launchpad and you can drag it to the Dock. It opens in its own window with no address bar, signed in the same as your browser.",
+      after: "Once installed: on Windows the Arkmap icon is in the Start menu, Chrome usually puts one on the desktop too, and Edge lets you choose where; on a Mac it's in Launchpad and you can drag it to the Dock. It opens in its own window with no address bar, signed in the same as your browser.",
     },
     anyBrowser: {
       open: "Open this site in Chrome or Edge and press “Add to Home Screen” again",
       bookmark: "Or press Ctrl+D (⌘D on a Mac) to bookmark the site",
     },
     install: "Install",
-    afterSave: "Once it's added, the ZhouP icon on your home screen opens the map directly.",
+    afterSave: "Once it's added, the Arkmap icon on your home screen opens the map directly.",
   },
   homecoming: {
     whatsNew: "New: Shopkeeper Si has opened the Yuanyuan Inn in Hongcun. Tap her and she'll paint an ink roach in your likeness to queue up for a room.",
@@ -1454,15 +1454,15 @@ export const en: Draft<Messages> = {
       dayTimes: "{n} {n|change|changes}",
       dayRows: "{n} {n|line|lines}",
       folded: "{text} ×{n}",
-      oldest: "The first one is from {day}, the day ZhouP Map opened.",
+      oldest: "The first one is from {day}, the day Arkmap opened.",
       beijing: "Dates are in Beijing time. Entries are in Chinese for now.",
       about: "Dates are in Beijing time, and entries are in Chinese for now. Changes behind the scenes are noted only as “后台调整” (upkeep), with several in a row merged into one line.",
     },
   },
   pamphlet: {
     label: "What's new",
-    brand: "ZhouP Map · What's new",
-    issue: "ZhouP Map · What's new · Issue 1",
+    brand: "Arkmap · What's new",
+    issue: "Arkmap · What's new · Issue 1",
     issueDate: "Issue 1 · November 2026",
     close: "Close the booklet",
     prev: "Back",
@@ -1984,7 +1984,7 @@ export const en: Draft<Messages> = {
     complete: "Done",
     step: "Step {n} of 5",
     skip: "Skip tutorial",
-    welcome: "{you}, welcome to ZhouP Map!",
+    welcome: "{you}, welcome to Arkmap!",
     place: {
       text: "I'm Amiya. First, put your main roach on the map. Everyone can see where it is, but not whose it is. Once it's down, you can move house or take it back anytime.",
     },
@@ -2674,7 +2674,7 @@ export const en: Draft<Messages> = {
       },
     },
     guides: {
-      note: "A guide on ZhouP Map",
+      note: "A guide on Arkmap",
       amiya: {
         name: "Guide Amiya",
         short: "Amiya",
@@ -3017,7 +3017,7 @@ export const en: Draft<Messages> = {
       anonymous: "Anonymous Doctor",
     },
     rules: {
-      siteName: "ZhouP Map",
+      siteName: "Arkmap",
       wait: {
         seconds: "{s|# second|# seconds}",
         minutesSeconds: "{m} min {s} s",

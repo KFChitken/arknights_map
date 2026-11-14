@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-14", kind: "tweak", text: "英文版站名改为 Arkmap" },
   { date: "2026-11-14", kind: "new", text: "新增英文版，网址末尾加 /en" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-13", kind: "new", text: "最近更新做成一本小册子，滑着看" },
