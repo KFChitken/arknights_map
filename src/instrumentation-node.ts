@@ -17,6 +17,7 @@ import { startMainlandMap } from "./lib/server/mainlandMap";
 import { migrationsDone, runMigrations } from "./lib/server/migrate";
 import { startAdmins } from "./lib/server/admins";
 import { startNotices } from "./lib/server/notices";
+import { fixBorders } from "./lib/server/borderFix";
 import { moveOutOfOffLimits } from "./lib/server/offLimits";
 import { startSettings } from "./lib/server/siteSettings";
 import { spreadFireStacks } from "./lib/server/talulah";
@@ -177,6 +178,15 @@ if (!helper) {
     .catch(failed("offLimits", "Finishing the places the owner drew failed"))
     .then(() => moveOutOfOffLimits())
     .catch(failed("offLimits", "Moving roaches out of the off-limits places failed"));
+  // roaches by China's land borders, once after the borders deciding Amap's shift were drawn anew (src/lib/server/borderFix.ts):
+  // each put where Amap shows it where it did. BORDER_FIX=dry only counts them
+  fixBorders()
+    .then((r) => {
+      if (!r) return;
+      const what = `${r.places} roaches and ${r.rideFroms} riders' spots to go back to by China's borders (${r.atBorder} right at the border left as they are)`;
+      console.log(r.dry ? `Would put right ${what}; nothing written (BORDER_FIX=dry)` : `Put right ${what}`);
+    })
+    .catch(failed("borderFix", "Putting right the roaches by China's borders failed"));
   // and one drawn on a helper that stopped while this one ran on
   setInterval(
     () => finishZones(Date.now(), UNFINISHED_AFTER_MS).catch(failed("offLimits", "Finishing the places the owner drew failed")),

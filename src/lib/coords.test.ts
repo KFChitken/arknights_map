@@ -56,6 +56,61 @@ describe("Amap's coordinates", () => {
   });
 });
 
+describe("Amap's coordinates by China's land borders", () => {
+  // Around each border town, the spot the borders before (Natural Earth's) judged wrong deepest, on China's side and
+  // across: from scripts comparing them with OpenStreetMap's (geo-maps countries-land-100m), on a 0.002° grid
+  const CHINA_SIDE: [string, number, number][] = [
+    ["Dandong", 124.438, 40.148],
+    ["Ji'an", 126.164, 41.096],
+    ["Changbai", 128.196, 41.418],
+    ["Tumen", 129.848, 42.932],
+    ["Hunchun", 130.254, 42.856],
+    ["Heihe", 127.59, 50.182],
+    ["Tongjiang", 132.452, 47.716],
+    ["Fuyuan", 134.212, 48.366],
+    ["Suifenhe", 131.144, 44.436],
+    ["Manzhouli", 117.428, 49.616],
+    ["Hekou", 103.986, 22.558],
+    ["Pingxiang", 106.71, 21.992],
+    ["Ruili", 97.866, 24.0],
+    ["Mohe, Beiji Village", 122.34, 53.49],
+  ];
+  const ACROSS: [string, number, number][] = [
+    ["Sinuiju", 124.388, 40.052],
+    ["Manpo", 126.122, 41.072],
+    ["Hyesan", 128.172, 41.396],
+    ["Namyang", 129.888, 42.988],
+    ["across from Hunchun", 130.252, 42.884],
+    ["Zamyn-Uud", 111.938, 43.706],
+    ["across from Khorgos", 80.344, 44.136],
+    ["Lao Cai", 103.926, 22.532],
+    ["Mong Cai", 108.004, 21.492],
+    ["Dong Dang", 106.682, 22.076],
+    ["Muse", 97.824, 23.968],
+    ["Boten", 101.662, 21.182],
+    ["across from Zhangmu", 85.952, 27.988],
+    ["across from Beiji Village", 122.45, 53.46],
+  ];
+
+  it("shifts China's side of the border towns, to about 100 m of the border", () => {
+    for (const [name, lng, lat] of CHINA_SIDE) expect(shifted({ lng, lat }), name).toBe(true);
+  });
+
+  it("leaves the towns across the border where they are", () => {
+    for (const [name, lng, lat] of ACROSS) expect(shifted({ lng, lat }), name).toBe(false);
+  });
+
+  it("shifts what China draws as its own, as Amap does: 藏南 too", () => {
+    // Tawang and Itanagar
+    for (const p of [
+      { lng: 91.86, lat: 27.59 },
+      { lng: 93.62, lat: 27.08 },
+    ]) {
+      expect(shifted(p)).toBe(true);
+    }
+  });
+});
+
 describe("Tencent's coordinates", () => {
   // the county halls of Penghu, Kinmen and Lienchiang (Matsu), and Wuqiu
   const ISLANDS = [

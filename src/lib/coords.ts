@@ -1,6 +1,6 @@
 import gcoord from "gcoord";
 import data from "@/data/china-gcj.json";
-import { area, inArea, type Box, type Ring } from "./shapes";
+import { area, inArea, type Area, type Box, type Ring } from "./shapes";
 import type { LngLat } from "./types";
 
 /**
@@ -8,15 +8,31 @@ import type { LngLat } from "./types";
  * rest of the world as it is (WGS-84). gcoord on its own shifts everything in a box
  * around China, the neighbours included, so here a point is only shifted when it
  * lies in that box and on nobody else's land (src/data/china-gcj.json, built by
- * scripts/build-china-areas.mjs). The sea and China's small islands count as China,
- * which is right for the islands and does no harm at sea. Borders are good to about 500 m.
+ * scripts/build-china-areas.mjs), as China draws the borders. The sea and China's small
+ * islands count as China, which is right for the islands and does no harm at sea.
+ * Borders are good to a few hundred metres, and to about 100 m around the towns on
+ * China's land borders, where the file holds them finely in boxes of their own.
  */
 const BOX = data.box as Box;
 const FOREIGN = area(data.foreign as Ring[]);
+/** Around a border town: the foreign land there, and the holes in it (China's islands in a border river) */
+type Fine = { box: Box; foreign: Area; holes: Area | null };
+const FINE: Fine[] = (data.fine as { box: number[]; foreign: Ring[]; holes?: Ring[] }[]).map((f) => ({
+  box: f.box as Box,
+  foreign: area(f.foreign),
+  holes: f.holes ? area(f.holes) : null,
+}));
 
 /** Whether Amap draws this spot shifted */
 export function shifted(p: LngLat) {
-  return p.lng >= BOX[0] && p.lng <= BOX[2] && p.lat >= BOX[1] && p.lat <= BOX[3] && !inArea(p, FOREIGN);
+  if (!(p.lng >= BOX[0] && p.lng <= BOX[2] && p.lat >= BOX[1] && p.lat <= BOX[3])) return false;
+  for (let i = 0; i < FINE.length; i++) {
+    const f = FINE[i];
+    if (p.lng >= f.box[0] && p.lng <= f.box[2] && p.lat >= f.box[1] && p.lat <= f.box[3]) {
+      return !inArea(p, f.foreign) || (f.holes !== null && inArea(p, f.holes));
+    }
+  }
+  return !inArea(p, FOREIGN);
 }
 
 /** WGS-84 → what Amap draws */

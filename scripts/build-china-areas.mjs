@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // Build src/data/china-gcj.json and src/data/china-view.json, the outlines the map needs about China, from
-// Natural Earth's 10m admin-0 countries (public domain, naturalearthdata.com):
+// Natural Earth's 10m admin-0 countries (public domain, naturalearthdata.com) and, around the towns on China's
+// land borders, OpenStreetMap's land borders (© OpenStreetMap contributors, ODbL; geo-maps' countries-land-100m):
 //
-//   node scripts/build-china-areas.mjs <folder with the Natural Earth geojson files>
+//   node --max-old-space-size=8192 scripts/build-china-areas.mjs <folder with the Natural Earth geojson files> <countries-land-100m.geo.json>
 //
-// That folder needs ne_10m_admin_0_countries.geojson and ne_10m_admin_0_countries_chn.geojson
-// (github.com/nvkelso/natural-earth-vector, geojson/). One thing goes in each file:
+// That folder needs ne_10m_admin_0_countries_chn.geojson (github.com/nvkelso/natural-earth-vector, geojson/); the
+// other file is github.com/simonepri/geo-maps/releases/download/v0.6.0/countries-land-100m.geo.json. One thing
+// goes in each file:
 //
 // - foreign: every other country's land inside the box where gcoord would shift
 //   coordinates (src/lib/coords.ts), simplified. Amap shifts mainland China, Hong
@@ -13,7 +15,11 @@
 //   where it is, 14 m once shifted), and nowhere else, so a point in that box is
 //   shifted unless it lies in one of these: Korea, Japan, Vietnam and the rest. The
 //   sea and China's islands (some too small for Natural Earth) are shifted, which is
-//   right for the islands and harmless at sea. Borders are good to about 500 m.
+//   right for the islands and harmless at sea. The countries are drawn from China's
+//   point of view, as Amap draws them: what China counts as its own (藏南, Aksai Chin)
+//   is shifted. Natural Earth's borders are off by up to a few km in places, so:
+// - fine: around each town in TOWNS, a box where the foreign land is OpenStreetMap's,
+//   good to about 100 m; there it is used in place of foreign.
 // - view: where the map must be Amap (src/lib/chinaView.ts): China as China draws
 //   it (Natural Earth's China point of view: Taiwan, 藏南 and Aksai Chin included),
 //   Hong Kong and Macau, the South China Sea within the nine-dash line, and the
@@ -22,8 +28,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const dir = process.argv[2];
-if (!dir) throw new Error("usage: node scripts/build-china-areas.mjs <folder with the Natural Earth geojson files>");
+const [dir, osmFile] = process.argv.slice(2);
+if (!dir || !osmFile) {
+  throw new Error("usage: node scripts/build-china-areas.mjs <folder with the Natural Earth geojson files> <countries-land-100m.geo.json>");
+}
 const load = (name) => JSON.parse(readFileSync(path.join(dir, name), "utf8"));
 
 /** gcoord's own idea of China, the only place it shifts anything */
@@ -42,6 +50,37 @@ const DETAIL = {
 };
 const NEIGHBOURS = new Set(["PRK", "RUS", "MNG", "KAZ", "KGZ", "TJK", "AFG", "PAK", "IND", "NPL", "BTN", "MMR", "LAO", "VNM"]);
 const detailOf = (a3) => (NEIGHBOURS.has(a3) ? DETAIL.neighbour : DETAIL.far);
+/**
+ * Towns and crossings on China's settled land borders, where people put roaches: around each, within FINE.km,
+ * OpenStreetMap's border, kept to FINE.tolerance degrees. Disputed borders are left out (藏南, Aksai Chin and the
+ * rest stay as Natural Earth draws them from China's point of view).
+ */
+const TOWNS = [
+  ["丹东", 124.38, 40.125],
+  ["集安", 126.18, 41.115],
+  ["临江", 126.92, 41.81],
+  ["长白", 128.19, 41.41],
+  ["图们", 129.84, 42.965],
+  ["珲春", 130.35, 42.875],
+  ["绥芬河", 131.15, 44.39],
+  ["抚远", 134.3, 48.36],
+  ["同江", 132.535, 47.66],
+  ["黑河", 127.51, 50.24],
+  ["漠河北极村", 122.365, 53.48],
+  ["满洲里", 117.4, 49.6],
+  ["二连浩特", 111.98, 43.655],
+  ["阿拉山口", 82.57, 45.17],
+  ["霍尔果斯", 80.37, 44.195],
+  ["樟木", 85.985, 27.985],
+  ["瑞丽", 97.865, 23.995],
+  ["畹町", 98.06, 24.08],
+  ["磨憨", 101.67, 21.17],
+  ["河口", 103.955, 22.51],
+  ["凭祥", 106.75, 22.05],
+  ["东兴", 107.975, 21.54],
+];
+const FINE = { km: 18, tolerance: 0.001 };
+
 /** The view grid: cell size in degrees, and the area it covers */
 const STEP = 0.1;
 const GRID = { west: 73, south: 3, east: 136, north: 54 };
@@ -191,7 +230,8 @@ const nearChina = (x, y) => {
   return false;
 };
 
-const countries = load("ne_10m_admin_0_countries.geojson");
+// China's point of view: what China counts as its own is no other country's land
+const countries = china;
 const foreign = [];
 let foreignPoints = 0;
 for (const f of countries.features) {
@@ -206,6 +246,37 @@ for (const f of countries.features) {
     foreign.push(simple);
     foreignPoints += simple.length;
   }
+}
+
+// around the towns, OpenStreetMap's foreign land, clipped to each town's box
+const osm = JSON.parse(readFileSync(osmFile, "utf8"));
+const fine = [];
+let finePoints = 0;
+for (const [name, lng, lat] of TOWNS) {
+  const dLat = FINE.km / 111.32;
+  const dLng = FINE.km / (111.32 * Math.cos((lat * Math.PI) / 180));
+  const box = [lng - dLng, lat - dLat, lng + dLng, lat + dLat].map(round);
+  // another country's land, and the holes in it (islands of China's in a border river), each clipped to the box
+  const rings = [];
+  const holes = [];
+  const keep = (ring, into) => {
+    const inBox = clip(ring.slice(0, -1), box);
+    if (inBox.length < 3) return;
+    const simple = simplifyRing([...inBox, inBox[0]], FINE.tolerance).map(([x, y]) => [round(x), round(y)]);
+    if (simple.length < 3) return;
+    into.push(simple);
+    finePoints += simple.length;
+  };
+  for (const f of osm.features) {
+    if (CHINA.has(f.properties.A3)) continue;
+    const polygons = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const polygon of polygons) {
+      keep(polygon[0], rings);
+      for (const hole of polygon.slice(1)) keep(hole, holes);
+    }
+  }
+  fine.push({ box, foreign: rings, ...(holes.length ? { holes } : {}) });
+  console.log(`${name}: ${rings.length} rings, ${holes.length} holes`);
 }
 
 // a cell more all round
@@ -233,9 +304,13 @@ for (let r = 0; r < rows; r++) {
 }
 
 const source = "Natural Earth 10m admin-0 countries (public domain); built by scripts/build-china-areas.mjs";
-writeFileSync("src/data/china-gcj.json", `${JSON.stringify({ source, box: GCJ_BOX, foreign })}\n`);
+const fineSource =
+  "Natural Earth 10m admin-0 countries, China's point of view (public domain); fine: © OpenStreetMap contributors, ODbL (geo-maps countries-land-100m v0.6.0); built by scripts/build-china-areas.mjs";
+writeFileSync("src/data/china-gcj.json", `${JSON.stringify({ source: fineSource, box: GCJ_BOX, foreign, fine })}\n`);
 writeFileSync(
   "src/data/china-view.json",
   `${JSON.stringify({ source, west: GRID.west, south: GRID.south, step: STEP, cols, rows, runs })}\n`,
 );
-console.log(`foreign: ${foreign.length} rings, ${foreignPoints} points; view: ${runs.length} runs over ${cols}×${rows} cells`);
+console.log(
+  `foreign: ${foreign.length} rings, ${foreignPoints} points; fine: ${fine.length} towns, ${finePoints} points; view: ${runs.length} runs over ${cols}×${rows} cells`,
+);

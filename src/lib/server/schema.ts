@@ -1167,6 +1167,31 @@ export const offLimitsAreas = pgTable(
 );
 
 /**
+ * Roaches put right after a change to the borders that decide where Amap shifts a spot (src/data/china-gcj.json; done
+ * by src/lib/server/borderFix.ts): for each spot changed, whose roach and which spot (place: where it stands;
+ * ride_from: where a rider of 明河都尉 goes back to), where it was and where it went, to check it and put it back; and,
+ * once a fix has run, one row of it with field done, so it runs once. run names the fix.
+ */
+export const borderFixes = pgTable(
+  "border_fixes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    run: text("run").notNull(),
+    roachId: uuid("roach_id"),
+    field: text("field").notNull(),
+    fromLng: doublePrecision("from_lng"),
+    fromLat: doublePrecision("from_lat"),
+    toLng: doublePrecision("to_lng"),
+    toLat: doublePrecision("to_lat"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("border_fixes_field_check", sql`${t.field} in ('place', 'ride_from', 'done')`),
+    uniqueIndex("border_fixes_done_idx").on(t.run).where(sql`${t.field} = 'done'`),
+  ],
+);
+
+/**
  * Settings for the whole site, changed in the 管理台 and kept in memory by every process
  * (src/lib/server/siteSettings.ts). For now only gray: { until } as an ISO time, its row gone when it ends.
  */
