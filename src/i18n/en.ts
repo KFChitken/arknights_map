@@ -694,7 +694,7 @@ export const en: Draft<Messages> = {
         title: "Community rules",
         rule: "{rule}.",
         contact: "{rule} (QQ, WeChat, phone number, real name, school): for your own safety, don't write anything that could be used to find you.",
-        roach: "{rule}: don't place them at schools or at someone's front door, don't keep placing them right next to other people's roaches, and don't arrange several into words or pictures.",
+        roach: "{rule}: don't place them at schools, military sites or someone's front door, don't keep placing them right next to other people's roaches, and don't arrange several into words or pictures.",
         names: "Names are checked automatically when you save them, and if one can't be used, you'll be asked to choose another. If you break these rules, I'll clear your name or ban your account.",
       },
       enforce: {
@@ -3036,7 +3036,7 @@ export const en: Draft<Messages> = {
       },
       roachReasons: {
         stalk: "Keeps placing it right next to mine",
-        place: "Placed somewhere inappropriate, like a school or someone's front door",
+        place: "Placed somewhere inappropriate, like a school, a military site or someone's front door",
         pattern: "Several arranged into words or pictures",
       },
       rules: {

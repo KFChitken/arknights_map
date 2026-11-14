@@ -3408,7 +3408,7 @@ describe("server world", () => {
     cases = (await openCases()).cases;
     expect(cases.map((c) => c.kind)).toEqual(["person"]);
     const day = monthDay(Date.now());
-    expect(await staffTexts(b.p)).toEqual([`站长看过你 ${day} 举报的那只蟑螂（放在学校、别人家门口等不合适的地方）了：已经处理了，谢谢你。`]);
+    expect(await staffTexts(b.p)).toEqual([`站长看过你 ${day} 举报的那只蟑螂（放在学校、部队、别人家门口等不合适的地方）了：已经处理了，谢谢你。`]);
     expect(await staffTexts(a.p)).toEqual([]);
     expect(await staffTexts(bad)).toEqual(["因为社区守则里「蟑螂不能放在不合适的地方」这一条，站长提醒你一次，记一张黄牌。90 天内 3 张黄牌可能会被封号。"]);
 
