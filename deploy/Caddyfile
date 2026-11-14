@@ -25,9 +25,11 @@
 }
 
 # Plain HTTP goes to HTTPS on the same name, as Caddy does by itself. Written out because with the
-# second server's entrance (:8443) Caddy would send zhoupmap.com to https://zhoupmap.com:8443,
-# which only the second server can reach. Certificate checks on port 80 are still answered first.
-http:// {
+# second server's entrance (:8443) Caddy sends zhoupmap.com to https://zhoupmap.com:8443, which only
+# the second server can reach. The names are written too: Caddy puts its own redirects ahead of a
+# block for no name in particular (http:// alone), so until 2026-11-14 that block never answered and
+# every plain HTTP visitor was sent to :8443. Certificate checks on port 80 are still answered first.
+http://zhoupmap.com, http://www.zhoupmap.com {
 	header Connection close
 	redir https://{host}{uri} 308
 }
