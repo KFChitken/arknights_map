@@ -12,7 +12,7 @@ import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
-import { DECLARATIONS_PER_DAY, MAX_CLONES, POLICY_UPDATED_AT, TOUCHES_PER_DAY } from "../rules";
+import { DECLARATIONS_PER_DAY, MAX_CLONES, POLICY_UPDATED_AT, RADAR_RADIUS_KM, TOUCHES_PER_DAY } from "../rules";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { tapOf } from "../siTiles";
@@ -1471,14 +1471,17 @@ describe("server world", () => {
     });
 
     it("never counts him on the radar, nor his riders' daily moves as arrivals", async () => {
-      const next = stationOf(today() + 1).at;
+      // his riders moved on to a station out of the radar's reach of today's, where they get on: the next one is not
+      // always (Shanghai to Suzhou is 82 km)
+      const ahead = [1, 2, 3].find((n) => distanceKm(stationOf(today()).at, stationOf(today() + n).at) > RADAR_RADIUS_KM)!;
+      const next = stationOf(today() + ahead).at;
       await me.placeRoach({ kind: "main" }, { lng: next.lng + 0.002, lat: next.lat });
       const before = (await me.radar())!;
       await me.touch(MINGHE_ID, true);
       const other = await signUp("other@example.com");
       await other.placeRoach({ kind: "main" }, TOKYO);
       await world.rideMinghe(other.id, { kind: "clone" });
-      await minghe.moveMingheRiders(Date.now() + DAY_MS);
+      await minghe.moveMingheRiders(Date.now() + ahead * DAY_MS);
       await rewindScans(me.id);
       // what the radar read is kept a few minutes: as if they had passed
       forgetRadarBlocks();
