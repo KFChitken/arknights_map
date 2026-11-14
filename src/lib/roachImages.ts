@@ -59,6 +59,20 @@ export function sleepingZzz(opts: RoachOpts) {
   return fit ? pictureZzz(fit, { anim: true }) : zzz({ anim: true });
 }
 
+/**
+ * A picture look on the 64 grid as SVG, without its ground, for a scene that keeps the ground still under it:
+ * standing, or asleep (laid down on its pillow under the quilt, with its Zzz). Empty for a look that is no picture.
+ */
+export function pictureSvg(avatar: DrawnAvatar, { asleep = false } = {}) {
+  const href = AVATAR_PICTURES[avatar];
+  if (!href) return "";
+  const body = `<image href="${href}" x="4" y="4" width="56" height="56"/>`;
+  const fit = PICTURE_FIT[avatar];
+  if (!asleep || !fit) return body;
+  const { under, over, mask, layDown } = pictureSleeping(fit, { ground: "none", zzz: true });
+  return `${under}<g transform="translate(${layDown.x} ${layDown.y}) rotate(${layDown.deg}) translate(-32 -32)">${body}${mask}</g>${over}`;
+}
+
 const images = new Map<string, Promise<HTMLImageElement>>();
 function loadImage(src: string) {
   let p = images.get(src);

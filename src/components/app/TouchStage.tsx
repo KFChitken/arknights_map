@@ -21,7 +21,7 @@ import {
 } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { boldYou, touchedOn } from "./LookMoves";
+import { boldAround, boldYou, shoutProp, touchedOn } from "./LookMoves";
 
 /**
  * Who is in a touch scene. you: your own look and the name your dock shows. them: the
@@ -129,6 +129,7 @@ export default function TouchStage({
           </span>
         </div>
         <div className="ta-mark" style={{ left: 204, top: 38 }} {...html(mark("!"))} />
+        {boldAround(you.avatar, f.boldEnd)}
       </>
     );
   } else {
@@ -178,8 +179,9 @@ export type ShoutPlace = StagePlace & { R: number };
 /**
  * 独立宣言, played once on the sender's own screen over the roach it went out from (which
  * the map leaves out meanwhile): a deep breath, both sleeves up (the looks that are
- * pictures only breathe and spring), the line pops out over its head, and rings run out
- * to 10 km. onToast as the rings reach it, onDone at the end; a tap or a drag ends it at once.
+ * pictures breathe and spring, with their own props: LookMoves.tsx), the line pops out over
+ * its head, and rings run out to 10 km. onToast as the rings reach it, onDone at the end; a
+ * tap or a drag ends it at once.
  */
 export function ShoutStage({
   me,
@@ -225,7 +227,7 @@ export function ShoutStage({
     <>
       <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="ta-place" style={{ left: place.left, top: place.top, transform: `scale(${place.s})` }} aria-hidden="true">
-        <div className={`ta-stage ta-shout${picture ? " ta-pic" : ""}`} style={stage}>
+        <div className={`ta-stage ta-shout me-${me.avatar}${picture ? " ta-pic" : ""}`} style={stage}>
           <div className="ta-ring r1" />
           <div className="ta-ring r2" />
           <div className="ta-ring r3" />
@@ -237,6 +239,7 @@ export function ShoutStage({
               </div>
               {!picture && <div className="ta-up" {...html(shoutingHood(GLOW[me.color]))} />}
               <div className="ta-shoutlines" {...html(shoutLines())} />
+              {shoutProp(me.avatar)}
             </div>
           </div>
           <div className="ta-bubble">

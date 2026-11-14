@@ -918,6 +918,7 @@ export const en: Draft<Messages> = {
     hic: "Hic!",
     friends: "Feeler Friends now!",
     tenKm: "10 km",
+    deploy: "Deploy!",
   },
   cloneMove: {
     meters: "{from} {m} m",

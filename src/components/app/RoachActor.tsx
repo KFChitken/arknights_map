@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { T } from "@/i18n";
 import { drinkingHood, groundOnly, bottle, POKE_BANG, POKE_FINGER } from "@/lib/flipArt";
-import { sleepingZzz } from "@/lib/roachImages";
+import { drinkCup } from "@/lib/lookArt";
+import { pictureSvg, sleepingZzz } from "@/lib/roachImages";
 import { GLOW } from "@/lib/roachSvg";
 import type { DrawnAvatar, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
@@ -15,8 +16,9 @@ const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox=
 
 /**
  * Your own main roach, big, acting out 摄入酒精 (bottle up, glug, wobble, hiccup,
- * tip over) or 醒酒 (鲤鱼打挺). Only the hood holds the bottle; the realistic roach
- * and the pictures just wobble and tip over. Seen only by the one who pressed.
+ * tip over) or 醒酒 (鲤鱼打挺). The hood holds the bottle; a picture with a cup of its
+ * own (lib/lookArt.ts) drinks from that, on its ground; the realistic roach and the
+ * other pictures just wobble and tip over. Seen only by the one who pressed.
  */
 export default function RoachActor({
   scene,
@@ -39,7 +41,25 @@ export default function RoachActor({
 
   const hood = avatar === "hood" && look === "cartoon";
   const glow = GLOW[color];
-  const lay = (cls: string, html: string) => <div className={`lay ${cls}`} dangerouslySetInnerHTML={{ __html: html }} />;
+  const lay = (cls: string, html: string, style?: CSSProperties) => (
+    <div className={`lay ${cls}`} style={style} dangerouslySetInnerHTML={{ __html: html }} />
+  );
+  const cup = scene === "drink" && look === "cartoon" ? drinkCup(avatar) : null;
+  if (cup) {
+    // the picture alone over its ground, which stays: it sips, wobbles, tips over (--fall) and sleeps
+    return (
+      <div className="actor pic" data-state="drinking" style={cup.fall ? ({ "--fall": cup.fall } as CSSProperties) : undefined} aria-hidden="true">
+        {lay("base", svg(groundOnly("mine")))}
+        {lay("asleep", svg(pictureSvg(avatar, { asleep: true })))}
+        {lay("drunk", svg(pictureSvg(avatar)))}
+        {lay("cup", svg(cup.svg), { transformOrigin: cup.origin })}
+        <span className="dust l" />
+        <span className="dust r" />
+        <span className="glug">{T.fx.gulp}</span>
+        <span className="hic">{T.fx.hic}</span>
+      </div>
+    );
+  }
   return (
     <div className={`actor ${hood ? "" : "plain"}`} data-state={scene === "drink" ? "drinking" : "waking"} aria-hidden="true">
       {hood && lay("base", svg(groundOnly("mine")))}

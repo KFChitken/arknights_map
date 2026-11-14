@@ -1344,6 +1344,28 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 /* the realistic roach and the pictures hold no bottle: they wobble, then tip over */
 .actor.plain[data-state="drinking"] .awake { animation: none; opacity: 0; }
 .actor.plain[data-state="drinking"] .drunk { animation: fa-plain-drunk 2.8s ease-in-out both; }
+/* a picture with its own cup (lib/lookArt.ts): the cup pops up and tips at its mouth as it sips with little bobs,
+   then it wobbles and tips over (--fall: which way) and sleeps; its ground stays where it is */
+.actor .cup { opacity: 0; }
+.actor.pic[data-state="drinking"] .base { opacity: 1; animation: none; }
+.actor.pic[data-state="drinking"] .drunk { animation: fa-pic-drunk 2.8s ease-in-out both; }
+.actor.pic[data-state="drinking"] .cup { animation: fa-pic-cup 2.8s ease-in-out both; }
+.actor.pic[data-state="drinking"] .asleep { animation: fa-pic-asleep 2.8s ease-out both; }
+@keyframes fa-pic-drunk {
+  0% { opacity: 1; transform: none; } 14% { transform: translateY(-1%) rotate(-1deg); } 22% { transform: none; } 30% { transform: translateY(-1%) rotate(-1deg); } 38% { transform: none; }
+  46% { transform: rotate(-9deg); } 53% { transform: rotate(10deg); } 60% { transform: rotate(-13deg); } 67% { transform: rotate(15deg); }
+  74% { opacity: 1; transform: rotate(5deg); animation-timing-function: ease-in; } 84% { opacity: 1; transform: rotate(var(--fall, 92deg)); }
+  84.5%, 100% { opacity: 0; transform: rotate(var(--fall, 92deg)); }
+}
+@keyframes fa-pic-cup {
+  0% { opacity: 0; transform: scale(0.3); } 6% { opacity: 1; transform: scale(1.15); } 10% { transform: scale(1); }
+  14% { transform: rotate(-38deg); } 20% { transform: rotate(-52deg); } 26% { transform: rotate(-40deg); } 32% { transform: rotate(-56deg); }
+  38% { opacity: 1; transform: rotate(-44deg); } 41%, 100% { opacity: 0; transform: rotate(-44deg) translateY(4px); }
+}
+@keyframes fa-pic-asleep {
+  0%, 84% { opacity: 0; transform: rotate(calc(var(--fall, 92deg) * -0.9565)); } 84.5% { opacity: 1; transform: rotate(calc(var(--fall, 92deg) * -0.9565)); }
+  93% { transform: rotate(calc(var(--fall, 92deg) * 0.13)); } 97% { transform: rotate(calc(var(--fall, 92deg) * -0.043)); } 100% { opacity: 1; transform: rotate(0); }
+}
 @keyframes fa-rock { 0% { transform: rotate(0); } 20% { transform: rotate(-10deg); } 42% { transform: rotate(12deg); } 66% { transform: rotate(-17deg); } 88%, 100% { transform: rotate(19deg); } }
 @keyframes fa-flip-out { 0% { opacity: 1; transform: translateY(0) rotate(19deg); } 49% { opacity: 1; } 50% { opacity: 0; transform: translateY(-30%) rotate(100deg); } 100% { opacity: 0; transform: translateY(0) rotate(180deg); } }
 @keyframes fa-flip-in { 0% { opacity: 0; transform: translateY(0) rotate(-160deg); } 49% { opacity: 0; } 50% { opacity: 1; transform: translateY(-30%) rotate(-80deg); } 100% { opacity: 1; transform: translateY(0) rotate(0deg); } }
@@ -1729,8 +1751,8 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 }
 /* ---- each look's own moves (LookMoves.tsx, lib/lookArt.ts).
    A scene's stage says whose they are: you-<look> (not sneaking up: a shadow has no look) and them-<look>, the look
-   your map draws them in, so a stranger's clone reacts as the hood. The pieces lie over the roach in its 88 box;
-   on the dock (.dock-look) the same pieces lie over your own avatar, smaller. ---- */
+   your map draws them in, so a stranger's clone reacts as the hood; a shout's, me-<look>. The pieces lie over the
+   roach in its 88 box; on the dock (.dock-look) the same pieces lie over your own avatar, smaller. ---- */
 .ta-lay { position: absolute; inset: 0; }
 .ta-lay svg { width: 100%; height: 100%; }
 
@@ -1770,6 +1792,93 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 @keyframes hd-flash-q { 0%, 44% { opacity: 0; } 47% { opacity: 0.8; } 53% { opacity: 0.2; } 59% { opacity: 0.8; } 72%, 100% { opacity: 0; } }
 @keyframes hd-eyes-q { 0%, 44% { opacity: 0; } 47%, 84% { opacity: 1; } 90%, 100% { opacity: 0; } }
 @keyframes hd-eye-q { 0%, 44% { transform: scale(0.3); } 48% { transform: scale(1.08); } 52% { transform: scale(0.9); } 70% { transform: scale(0.9, 0.12); } 73%, 100% { transform: scale(0.9); } }
+
+/* 博士, 大胆碰别人 (部署): a deployment tile lights up under them, the name card drops into it with three crystals,
+   a beam of light, 部署！ in place of 啵! */
+.dc-tile, .dc-beam, .dc-ring, .dc-drop, .dc-word { opacity: 0; }
+.dc-tile { left: 154px; top: 133px; width: 80px; height: 28px; transform-origin: 50% 50%; }
+.dc-beam {
+  left: 178px; top: 62px; width: 32px; height: 86px; transform-origin: 50% 100%;
+  background: linear-gradient(to top, rgba(120, 200, 255, 0.75), rgba(120, 200, 255, 0)); border-radius: 16px 16px 4px 4px;
+}
+.dc-ring { left: 194px; top: 147px; width: 64px; height: 18px; border: 2px solid #4fb6ff; border-radius: 50%; transform: translate(-50%, -50%); }
+.dc-drop { transform: translate(-50%, -50%); }
+.dc-word {
+  left: 168px; top: 56px; transform: translate(-50%, -50%);
+  font-size: 15px; font-weight: 900; color: #1d6fd0; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 6px #fff;
+}
+.ta-bold.you-doctor .ta-boop { display: none; }
+.ta-bold.you-doctor .ta-cardway { animation-name: dc-card; }
+.ta-bold.you-doctor .dc-tile { animation-name: dc-tile; }
+.ta-bold.you-doctor .dc-beam { animation-name: dc-beam; }
+.ta-bold.you-doctor .dc-ring { animation-name: dc-ring; }
+.ta-bold.you-doctor .dc-drop { animation-name: dc-drop; animation-timing-function: ease-in; }
+.ta-bold.you-doctor .dc-word { animation-name: dc-word; }
+@keyframes dc-card {
+  0%, 44% { opacity: 0; offset-distance: 0%; transform: scale(0.6); }
+  49% { opacity: 1; offset-distance: 4%; transform: scale(1); }
+  66% { opacity: 1; offset-distance: 100%; transform: scale(1); }
+  67%, 100% { opacity: 0; offset-distance: 100%; }
+}
+@keyframes dc-tile {
+  0%, 30% { opacity: 0; transform: scale(0.5); } 36% { opacity: 1; transform: scale(1.08); } 40% { transform: scale(1); }
+  76% { transform: scale(1); } 79% { transform: scale(1.12); } 84% { transform: scale(1); } 92% { opacity: 1; } 100% { opacity: 0; }
+}
+@keyframes dc-beam { 0%, 60% { opacity: 0; transform: scaleY(0.2); } 67% { opacity: 0.9; transform: scaleY(1); } 80% { opacity: 0.6; } 90%, 100% { opacity: 0; } }
+@keyframes dc-ring { 0%, 76% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); } 78% { opacity: 1; } 92%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); } }
+@keyframes dc-drop {
+  0%, 65% { opacity: 0; transform: translate(-50%, -50%); }
+  66% { opacity: 1; transform: translate(-50%, -50%); }
+  76% { opacity: 1; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); }
+  80% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.15, 0.8); }
+  86% { opacity: 1; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1); }
+  94%, 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 4px)) scale(0.6); }
+}
+@keyframes dc-word {
+  0%, 76% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-10deg); }
+  80% { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(4deg); }
+  84% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  96% { opacity: 1; } 100% { opacity: 0; }
+}
+/* 博士, 被大胆碰 (打瞌睡被吵醒): dozing on its feet, a snot bubble swelling at its nose and z Z; touched, the bubble
+   pops, it jumps awake, ! (the pieces are drawn on the 64 grid, so origins and moves are in its units) */
+.dc-snot, .dc-pop, .dc-zz { opacity: 0; }
+.dc-snot { transform-origin: 34px 32.2px; }
+.dc-pop { transform-origin: 37.1px 29.1px; }
+.ta-bold.them-doctor .dc-snot, .dock-bold .dc-snot { animation-name: dc-snot; }
+.ta-bold.them-doctor .dc-pop, .dock-bold .dc-pop { animation-name: dc-pop; }
+.ta-bold.them-doctor .dc-zz, .dock-bold .dc-zz { animation-name: dc-zz; }
+.ta-bold.them-doctor .ta-jump { animation-name: dc-jolt; }
+.ta-bold.them-doctor .ta-mark { animation-name: hd-mark; }
+@keyframes dc-snot {
+  0% { opacity: 1; transform: scale(0.55); } 10% { transform: scale(0.95); } 20% { transform: scale(0.6); } 32% { transform: scale(1); }
+  42% { opacity: 1; transform: scale(1.05); } 44% { opacity: 1; transform: scale(1.4); } 45%, 100% { opacity: 0; transform: scale(1.5); }
+}
+@keyframes dc-pop { 0%, 44% { opacity: 0; transform: scale(0.5); } 46% { opacity: 1; transform: scale(1); } 56%, 100% { opacity: 0; transform: scale(1.4); } }
+@keyframes dc-zz { 0% { opacity: 0; transform: translate(0, 2.9px); } 8% { opacity: 1; } 40% { opacity: 1; transform: translate(4.4px, -5.8px); } 44%, 100% { opacity: 0; transform: translate(4.4px, -7.3px); } }
+@keyframes dc-jolt {
+  0%, 44% { transform: none; } 48% { transform: translateY(-14px) rotate(-6deg); } 53% { transform: translateY(0) scale(1.06, 0.92); }
+  57% { transform: rotate(4deg); } 61% { transform: rotate(-3deg); } 65%, 100% { transform: none; }
+}
+/* 被偷偷碰: the same a size smaller, the bubble popping at the tap; it jumps and looks round as anyone does */
+.ta-sneaky.them-doctor .dc-snot, .dock-sneaky .dc-snot { animation-name: dc-snot-q; }
+.ta-sneaky.them-doctor .dc-pop, .dock-sneaky .dc-pop { animation-name: dc-pop-q; }
+.ta-sneaky.them-doctor .dc-zz, .dock-sneaky .dc-zz { animation-name: dc-zz-q; }
+@keyframes dc-snot-q {
+  0% { opacity: 1; transform: scale(0.45); } 10% { transform: scale(0.8); } 20% { transform: scale(0.5); } 32% { transform: scale(0.85); }
+  44% { opacity: 1; transform: scale(0.9); } 46% { opacity: 1; transform: scale(1.15); } 47%, 100% { opacity: 0; transform: scale(1.2); }
+}
+@keyframes dc-pop-q { 0%, 46% { opacity: 0; transform: scale(0.4); } 48% { opacity: 1; transform: scale(0.8); } 58%, 100% { opacity: 0; transform: scale(1.1); } }
+@keyframes dc-zz-q { 0% { opacity: 0; transform: translate(0, 2.9px); } 8% { opacity: 0.8; } 42% { opacity: 0.8; transform: translate(4.4px, -5.8px); } 46%, 100% { opacity: 0; transform: translate(4.4px, -7.3px); } }
+/* 博士, 喊话 (拿出终端): a terminal comes up in front of it before it shouts, its screen flickering */
+.dc-tablet { position: absolute; left: 27px; top: 46px; width: 34px; height: 26px; opacity: 0; }
+.ta-shout.me-doctor .dc-tablet { animation-name: dc-tablet; }
+.ta-shout.me-doctor .dc-tablet .scr { animation: dc-scr var(--dur) linear both; }
+@keyframes dc-tablet {
+  0%, 11% { opacity: 0; transform: translateY(14px) scale(0.7); } 17% { opacity: 1; transform: translateY(-3px) scale(1.06); } 21% { transform: none; }
+  60% { opacity: 1; transform: none; } 68%, 100% { opacity: 0; transform: translateY(12px) scale(0.8); }
+}
+@keyframes dc-scr { 0%, 18% { opacity: 0.4; } 22% { opacity: 1; } 30% { opacity: 0.6; } 38% { opacity: 1; } 46% { opacity: 0.6; } 54% { opacity: 1; } 100% { opacity: 1; } }
 
 /* the dock's: over your own avatar (its box), moving with it, as long as the dock's scene */
 .dock-look * { animation-duration: 1.6s; animation-fill-mode: both; animation-timing-function: ease-out; }

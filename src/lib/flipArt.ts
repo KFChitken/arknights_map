@@ -176,7 +176,7 @@ export type PictureFit = { left: number; right: number; mask?: boolean };
  * a quilt. Returns what goes under it and over it, and the transform that lays the
  * picture (drawn at 4,4 56×56) down; mask is drawn in the picture's own frame.
  */
-export function pictureSleeping(fit: PictureFit, { ground: kind = "other", zzz: z = false }: { ground?: Ground; zzz?: boolean } = {}) {
+export function pictureSleeping(fit: PictureFit, { ground: kind = "other", zzz: z = false }: { ground?: Ground | "none"; zzz?: boolean } = {}) {
   const { cy, top } = laidDown(fit);
   const q = Math.max(top + 9, 31);
   const shadow = kind === "other" ? `<ellipse cx="32" cy="59.5" rx="27" ry="3" fill="#000" opacity="0.18"/>` : ground(kind, true);
