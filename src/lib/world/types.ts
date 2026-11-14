@@ -8,6 +8,7 @@ import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { GiftState, PassesDot, PassesMe } from "../passes";
+import type { StudyMe } from "../study/rules";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
 
@@ -549,6 +550,8 @@ export type Me = {
   mod?: true;
   /** 通行证寻访's button (src/lib/passes.ts): only for a player who may draw (PASSES) */
   passes?: PassesMe;
+  /** 325大学习 (src/lib/study): only for a player who may study (STUDY); never in what others get */
+  study?: StudyMe;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

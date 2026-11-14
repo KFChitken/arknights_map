@@ -149,6 +149,7 @@ import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
+import { studyMe } from "./study";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
@@ -450,6 +451,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     ageCheck: Boolean(u.ageCheckAt),
     passwordNudge: await passwordNudge(u),
     passes: await passesMe(u),
+    study: studyMe(u),
   };
 }
 

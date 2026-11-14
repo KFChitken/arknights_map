@@ -17,6 +17,7 @@ import {
   HotFlame,
   MeSlots,
   RadarScope,
+  StudyIcon,
   TicketIcon,
   UiIcon,
   useSwipeAway,
@@ -84,6 +85,17 @@ export default function FloatChrome(p: ChromeProps) {
                 >
                   <TicketIcon size={24} dot={p.passes.dot} />
                   <small>{T.map.bar.passesShort}</small>
+                </button>
+              )}
+              {p.study && (
+                <button
+                  className="it study-entry"
+                  aria-label={p.study.dot ? T.map.bar.studyNew : T.map.bar.study}
+                  onClick={p.study.onOpen}
+                  tabIndex={folded.r ? -1 : undefined}
+                >
+                  <StudyIcon size={24} dot={p.study.dot} />
+                  <small>{T.map.bar.studyShort}</small>
                 </button>
               )}
               <span className="sep" aria-hidden="true" />

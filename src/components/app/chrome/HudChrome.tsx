@@ -20,6 +20,7 @@ import {
   mailLabel,
   MeAvatar,
   RadarScope,
+  StudyIcon,
   TicketIcon,
   UiIcon,
   useSwipeAway,
@@ -118,6 +119,16 @@ export default function HudChrome(p: ChromeProps) {
               </button>
               <span className="lbl" aria-hidden="true">
                 {T.map.bar.passesShort}
+              </span>
+            </span>
+          )}
+          {p.study && (
+            <span className="rb">
+              <button className="ob glass" aria-label={p.study.dot ? T.map.bar.studyNew : T.map.bar.study} onClick={p.study.onOpen}>
+                <StudyIcon size={24} dot={p.study.dot} />
+              </button>
+              <span className="lbl" aria-hidden="true">
+                {T.map.bar.study}
               </span>
             </span>
           )}

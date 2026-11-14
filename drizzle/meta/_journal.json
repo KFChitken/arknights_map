@@ -372,6 +372,13 @@
       "when": 1794632543210,
       "tag": "0053_daily_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1794644177411,
+      "tag": "0054_study",
+      "breakpoints": true
     }
   ]
 }

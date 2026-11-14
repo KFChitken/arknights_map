@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { fmt, fmtParts, localPath, T } from "@/i18n";
+import { fmt, fmtParts, lang, localPath, T } from "@/i18n";
 import { AMIYA_AMAP_ZOOM, AMIYA_AT, AMIYA_ID, amiyaLine, amiyaRoach, localDay } from "@/lib/amiya";
 import { deleteAccount, reconsent, signOut } from "@/lib/authClient";
 import { loadAMap } from "@/lib/amap";
@@ -107,6 +107,8 @@ import { countText } from "@/lib/counts";
 import MapStylePicker from "./app/MapStylePicker";
 import type { PassesDot } from "@/lib/passes";
 import { passesApi } from "@/lib/passesClient";
+import { guestStudy } from "@/lib/study/guest";
+import { studiedNow } from "@/lib/study/rules";
 import { ServerWorld } from "@/lib/world/server";
 import {
   AgeCheckNeeded,
@@ -279,6 +281,8 @@ const UiPicker = dynamic(() => import("./app/chrome/UiPicker"), { ssr: false });
 const Pamphlet = dynamic(() => import("./app/Pamphlet"), { ssr: false });
 // 通行证寻访 (src/lib/passes.ts), with the characters' list, only once it opens
 const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
+// 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
+const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -478,6 +482,7 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * mailPaused: mail domains no sign-in code goes to just now, which the sign-in sheet says.
  * notices: 公告 everyone sees (src/lib/server/notices.ts), as they were when the page was made.
  * uiChoice: players may pick one of the three layouts (src/lib/uiChoice.ts); off (UI_CHOICE=off), everyone has 浮岛.
+ * studyGuests: 325大学习 is open to visitors who have not signed in as well (STUDY=on); a player has it from me.study.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const guestStyles = (): Partial<Record<MapStyle, string>> =>
@@ -489,12 +494,14 @@ export default function MapApp({
   mailPaused = [],
   notices: firstNotices = { stamp: "", notices: [] },
   uiChoice = true,
+  studyGuests = false,
 }: {
   cn: boolean;
   home?: MainlandMap;
   mailPaused?: string[];
   notices?: NoticeList;
   uiChoice?: boolean;
+  studyGuests?: boolean;
 }) {
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
@@ -606,6 +613,13 @@ export default function MapApp({
   const [pamphletPress, setPamphletPress] = useState(0);
   // 通行证寻访, over everything (from its button, for a player who may draw)
   const [passesOpen, setPassesOpen] = useState(false);
+  // 325大学习 (from its button, where it is open to them); the map's roaches keep still while it is open
+  const [studyOpen, setStudyOpen] = useState(false);
+  // a visitor's, kept in this browser (src/lib/study/guest.ts): the day last drawn for and whether it was played
+  const [guestStudied, setGuestStudied] = useState<{ day: string; done: boolean } | null>(null);
+  useEffect(() => {
+    if (studyGuests) setGuestStudied(guestStudy());
+  }, [studyGuests]);
   /** 换个画风: the style card opens (MapStylePicker openSignal) */
   const [styleAsk, setStyleAsk] = useState(0);
   /** The notices as the board, the red dot and the strip have them: the server's, with the booklet among them */
@@ -4739,6 +4753,8 @@ export default function MapApp({
   const uiButton = uiChoice || deskOffer;
   // an owner's 圈禁放区 and 看一处 measure the map as the whole screen, which 浮岛 leaves it
   const layout: UiName = zoneTool ? "float" : ui;
+  // 325大学习: a player where the server opened it to them (me.study), a visitor while it is open to everyone; not on /en
+  const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
   const chrome: ChromeProps = {
     placing: Boolean(placing),
     reported: Boolean(reported),
@@ -4799,6 +4815,13 @@ export default function MapApp({
     onRadar: me ? openRadar : () => setPanel({ kind: "guestRadar" }),
     onHot: () => setPanel({ kind: "hot" }),
     passes: me?.passes ? { dot: me.passes.dot, tickets: me.passes.tickets, onOpen: () => setPassesOpen(true) } : null,
+    study: studyShown
+      ? {
+          dot: me?.study ? !studiedNow(me.study) : !(guestStudied && studiedNow(guestStudied)),
+          days: me?.study ? me.study.days : null,
+          onOpen: () => setStudyOpen(true),
+        }
+      : null,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });
@@ -4872,7 +4895,7 @@ export default function MapApp({
             <AmapView
               key="amap"
               {...mapProps}
-              active={!(twoMaps && abroad)}
+              active={!(twoMaps && abroad) && !studyOpen}
               jump={homeJump}
               onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
               onReady={onHomeReady}
@@ -4885,7 +4908,7 @@ export default function MapApp({
               key="tencent"
               {...mapProps}
               onFailed={ownMap}
-              active={!(twoMaps && abroad)}
+              active={!(twoMaps && abroad) && !studyOpen}
               jump={homeJump}
               onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
               onReady={onHomeReady}
@@ -4900,7 +4923,7 @@ export default function MapApp({
               style={overseas.style}
               cover={overseas.cover}
               slowNote={T.map.style.slow}
-              active={abroad}
+              active={abroad && !studyOpen}
               jump={overseasJump}
               onViewChange={abroad ? onOverseasView : ignoreView}
               onReady={onOverseasReady}
@@ -4908,9 +4931,9 @@ export default function MapApp({
           </div>
         )}
         {basemap === "amap" && homeMap === "own" && overseas && (
-          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} />
+          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} active={!studyOpen} />
         )}
-        {basemap === "osm" && <MaplibreView key="osm" {...mapProps} />}
+        {basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen} />}
         {poking && (
           <div className="actor-stage">
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
@@ -5238,7 +5261,7 @@ export default function MapApp({
 
       {panel && renderPanel(panel)}
       {/* one that came as the page opened, just before 最近更新 popped up, waits for it to be closed */}
-      {newBadges[0] && !gray && !pamphlet && !passesOpen && (
+      {newBadges[0] && !gray && !pamphlet && !passesOpen && !studyOpen && (
         <NewBadge
           key={newBadges[0].id}
           earned={newBadges[0]}
@@ -5277,6 +5300,20 @@ export default function MapApp({
             void act(() => Promise.reject(e));
           }}
           onWallet={(p) => setMe((m) => (m?.passes ? { ...m, passes: { ...m.passes, ...p } } : m))}
+        />
+      )}
+      {/* a round is played over everything of each layout; what it cannot do itself (sign in, the age question, the privacy policy) closes it */}
+      {studyOpen && studyShown && (
+        <Study
+          signedIn={Boolean(me)}
+          look={{ color: myColor, avatar: myAvatar, style: look }}
+          onClose={() => setStudyOpen(false)}
+          onState={(st) => setMe((m) => (m?.study ? { ...m, study: st } : m))}
+          onGuestDone={(day) => setGuestStudied({ day, done: true })}
+          onRefused={(e) => {
+            setStudyOpen(false);
+            void act(() => Promise.reject(e));
+          }}
         />
       )}
       {/* over everything of each layout, the board it was opened from too */}

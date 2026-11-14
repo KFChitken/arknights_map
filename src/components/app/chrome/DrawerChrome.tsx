@@ -22,6 +22,7 @@ import {
   MeAvatar,
   MeSlots,
   RadarScope,
+  StudyIcon,
   TicketIcon,
   UiIcon,
   useWide,
@@ -83,6 +84,14 @@ function Phone(p: ChromeProps) {
                 <TicketIcon size={22} dot={p.passes.dot} />
               </span>
               <span aria-hidden="true">{T.map.bar.passesShort}</span>
+            </button>
+          )}
+          {p.study && (
+            <button className="dchip glass" aria-label={p.study.dot ? T.map.bar.studyNew : T.map.bar.study} onClick={p.study.onOpen}>
+              <span className="ico">
+                <StudyIcon size={22} dot={p.study.dot} />
+              </span>
+              <span aria-hidden="true">{T.map.bar.study}</span>
             </button>
           )}
           {GUIDE_ORDER.map((id) => (
@@ -184,6 +193,7 @@ function Panel(p: ChromeProps) {
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
             {p.passes && <PassesCard passes={p.passes} />}
+            {p.study && <StudyCard study={p.study} />}
             <h4>{T.ui.drawer.guides}</h4>
             <div className="glist">
               {GUIDE_ORDER.map((id) => (
@@ -344,6 +354,22 @@ function PassesCard({ passes }: { passes: NonNullable<ChromeProps["passes"]> }) 
       <span className="tx" aria-hidden="true">
         <b>{T.map.bar.passes}</b>
         <small>{fmt(T.map.bar.passesTickets, { n: passes.tickets })}</small>
+      </span>
+      <span className="go" aria-hidden="true">
+        ›
+      </span>
+    </button>
+  );
+}
+
+/** 325大学习 in the computer's panel, under 寻访: whether today's course is still to play, else the days studied */
+function StudyCard({ study }: { study: NonNullable<ChromeProps["study"]> }) {
+  return (
+    <button className="dcard" aria-label={study.dot ? T.map.bar.studyNew : T.map.bar.study} onClick={study.onOpen}>
+      <StudyIcon size={40} dot={study.dot} />
+      <span className="tx" aria-hidden="true">
+        <b>{T.map.bar.study}</b>
+        <small>{study.dot ? T.map.bar.studyNotYet : study.days === null ? T.study.doneToday : fmt(T.map.bar.studyDays, { n: study.days })}</small>
       </span>
       <span className="go" aria-hidden="true">
         ›

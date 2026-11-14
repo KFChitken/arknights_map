@@ -92,6 +92,13 @@ export const passArtSkipped = (): ReadonlySet<number> =>
       .filter((n) => Number.isInteger(n) && n > 0),
   );
 
+/**
+ * 325大学习 (src/lib/server/study.ts): STUDY=on lets every player, and visitors too, play a course a day; admins, only
+ * the 站长 and the admins (to try it on the live site first); off (the default) shows nobody the way in and answers its
+ * requests 404. The days studied stay, whichever it is. Read on every use, so the tests can switch it.
+ */
+export const studyMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.STUDY) ?? "off";
+
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
 export const TILES_DIR = process.env.TILES_DIR || "tiles";
 

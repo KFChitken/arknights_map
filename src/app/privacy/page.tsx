@@ -23,6 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
+import { studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -65,6 +66,12 @@ export default async function Privacy() {
         <li>
           {fmtNodes(T.server.privacy.collect.passes, { b: <strong>{T.server.privacy.collect.passesB}</strong> })}
         </li>
+        {/* only once it is open to everyone (STUDY=on, src/lib/server/env.ts) */}
+        {studyMode() === "on" && (
+          <li>
+            {fmtNodes(T.server.privacy.collect.study, { b: <strong>{T.server.privacy.collect.studyB}</strong> })}
+          </li>
+        )}
         <li>
           {fmtNodes(T.server.privacy.collect.away, { b: <strong>{T.server.privacy.collect.awayB}</strong>, site: siteName() })}
         </li>

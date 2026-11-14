@@ -171,6 +171,15 @@ export const users = pgTable("users", {
   siStayedAt: at("si_stayed_at"),
   /** 通行证寻访 (src/lib/server/passes.ts): the pass they wear, if any; gone with the pass */
   wornPass: bigint("worn_pass", { mode: "number" }).references((): AnyPgColumn => passes.id, { onDelete: "set null" }),
+  /**
+   * 325大学习 (src/lib/server/study.ts): site days studied (src/lib/siteDay.ts), at most one a day and never going down,
+   * and the site day last counted; the course drawn last and the site day it was drawn for; the courses drawn this round
+   */
+  studyDays: integer("study_days").notNull().default(0),
+  studiedOn: text("studied_on"),
+  studyCourse: text("study_course"),
+  studyCourseOn: text("study_course_on"),
+  studyBag: text("study_bag").array().notNull().default(emptyArray),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),

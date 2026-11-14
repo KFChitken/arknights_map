@@ -104,6 +104,11 @@ export type ChromeProps = {
   onHot: () => void;
   /** 通行证寻访, for a player who may draw (src/lib/passes.ts); dot: ten tickets or more, or the first ones waiting */
   passes: { dot: boolean; tickets: number; onOpen: () => void } | null;
+  /**
+   * 325大学习, where it is open to them (src/lib/study); dot: today's course not played yet; days: the days studied,
+   * null for a visitor (their browser counts none)
+   */
+  study: { dot: boolean; days: number | null; onOpen: () => void } | null;
   onGuide: (id: GuideId) => void;
   /** 界面, unless there is nothing in its menu here */
   ui: { open: boolean; onToggle: () => void; deskHint: boolean; onDeskHintDone: () => void } | null;
@@ -206,6 +211,20 @@ export function TicketIcon({ size = 24, dot = false }: { size?: number; dot?: bo
           <path d="M9.2 7.4v9.2" stroke="#1b1d22" strokeWidth="1.3" strokeDasharray="1.5 1.5" />
           <path d="M12.2 10.4h4.6M12.2 13.6h3.2" stroke="#1b1d22" strokeWidth="1.5" strokeLinecap="round" />
         </g>
+      </svg>
+      {dot && <span className="dot" aria-hidden="true" />}
+    </span>
+  );
+}
+
+/** 325大学习's notebook, a few lines written in it; dot: a red one, while today's course is not played */
+export function StudyIcon({ size = 24, dot = false }: { size?: number; dot?: boolean }) {
+  return (
+    <span className="study-ico">
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+        <rect x="3.5" y="2.5" width="17.5" height="19" rx="2.6" fill="#fffdf5" />
+        <path d="M3.5 5.1a2.6 2.6 0 0 1 2.6-2.6h1.6v19H6.1a2.6 2.6 0 0 1-2.6-2.6Z" fill="#ffd23f" />
+        <path d="M10.6 8.4h7M10.6 12h7M10.6 15.6h4.4" stroke="#1b1d22" strokeWidth="1.7" strokeLinecap="round" />
       </svg>
       {dot && <span className="dot" aria-hidden="true" />}
     </span>

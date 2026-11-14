@@ -1,0 +1,135 @@
+/*
+ * 325大学习 (Study.tsx): the course list and 下课's page in a sheet (globals.css .sheet), and the layer a round is
+ * played on, over everything on the map in each layout as 寻访's is (the sides ≤ 25, sheets 30), under the toast (40):
+ * the whole screen on a phone, a card in the middle on a computer.
+ */
+.study,
+.study-play {
+  --st-yellow: #ffd23f;
+  --st-tint: #fff8d6;
+  --st-line: #d6d9de;
+  --st-soft: #f4f5f7;
+  --st-green: #1f9d55;
+  --st-red: #c0392b;
+}
+
+.st-go {
+  border: 0; border-radius: 999px; padding: 12px 18px; background: var(--st-yellow); color: #1b1d22; font-size: 15px;
+  font-weight: 800; line-height: 1.2;
+}
+.st-go:disabled { opacity: 0.6; }
+.st-ghost {
+  border: 1.5px solid var(--st-line); border-radius: 999px; padding: 11px 18px; background: #fff; color: #1b1d22; font-size: 15px;
+  font-weight: 600; line-height: 1.2;
+}
+.st-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; }
+.st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- the course list ---- */
+.study .st-wait { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 0; color: var(--muted); font-size: 14px; text-align: center; }
+.study .st-wait p { margin: 0; }
+.study .st-note { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: var(--st-soft); font-size: 13px; line-height: 1.5; }
+.study .st-label { margin: 2px 2px 6px; color: var(--muted); font-size: 12.5px; }
+.study .st-today {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 14px 16px 16px; border: 1.5px solid var(--st-yellow);
+  border-radius: 14px; background: var(--st-tint);
+}
+.study .st-subject { color: var(--muted); font-size: 12.5px; }
+.study .st-name { font-size: 18px; line-height: 1.35; }
+.study .st-rule { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
+.study .st-did { margin: -4px 0 8px; color: var(--st-green); font-size: 13px; font-weight: 700; }
+.study .st-today .st-go { align-self: stretch; }
+.study .st-err { margin: 8px 0 0; color: var(--st-red); font-size: 13px; line-height: 1.5; }
+
+.study .st-days { display: flex; flex-direction: column; gap: 2px; margin: 16px 2px 0; }
+.study .st-days b { font-size: 15px; }
+.study .st-days small { color: var(--muted); font-size: 12.5px; }
+.study .st-seals { display: flex; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.study .st-seals li {
+  display: grid; place-items: center; flex: 1; max-width: 54px; height: 30px; border: 1.5px dashed #c3c8cf; border-radius: 7px;
+  color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.study .st-seals li.got { border-style: solid; border-color: var(--st-yellow); background: var(--st-tint); color: #1b1d22; font-weight: 800; }
+.study .st-guest { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+
+.study .st-more { margin: 18px 2px 0; }
+.study .st-more > p { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
+.study .st-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.study .st-chip {
+  padding: 7px 15px; border: 1.5px solid #c3c8cf; border-radius: 999px; background: #fff; color: #1b1d22; font-size: 13.5px;
+  font-weight: 600;
+}
+.study .st-chip.shut { border-style: dashed; color: var(--muted); font-weight: 500; }
+.study .st-hint { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+
+/* ---- 下课 ---- */
+.study .st-finish { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 2px; text-align: center; }
+.study .st-check {
+  display: grid; place-items: center; width: 56px; height: 56px; border: 2px solid var(--st-green); border-radius: 50%;
+  background: #e7f6ed; color: var(--st-green);
+}
+.study .st-finish h3 { margin: 8px 0 0; font-size: 18px; }
+.study .st-sub { margin: 0; color: var(--muted); font-size: 13px; }
+.study .st-round { margin: 10px 0 2px; font-size: 15px; }
+.study .st-finish .st-note { align-self: stretch; margin: 4px 0 0; }
+.study .st-fact { align-self: stretch; margin: 8px 0 6px; padding: 12px 14px; border-radius: 12px; background: var(--st-soft); text-align: left; }
+.study .st-fact small { color: var(--muted); font-size: 12px; }
+.study .st-fact p { margin: 4px 0 0; font-size: 15px; line-height: 1.55; }
+.study .st-finish .wide { align-self: stretch; margin-top: 4px; }
+
+/* ---- the layer a round is played on ---- */
+.study-play {
+  position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(16, 17, 20, 0.55);
+  -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+  touch-action: manipulation;
+}
+.study-play button { font-family: inherit; cursor: pointer; }
+.sp-box {
+  position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; outline: none; background: #fff;
+  color: #1b1d22; padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+@media (min-width: 600px) and (min-height: 600px) {
+  .sp-box { width: 420px; height: min(720px, calc(100% - 48px)); padding: 0; border-radius: 24px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+}
+.sp-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 6px 8px 18px; border-bottom: 1px solid #eef0f2; }
+.sp-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; white-space: nowrap; }
+.sp-title small { flex: none; color: var(--muted); font-size: 12.5px; }
+.sp-title b { overflow: hidden; font-size: 16px; text-overflow: ellipsis; }
+.sp-quit {
+  flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: none;
+  color: var(--muted); font-size: 28px; line-height: 1;
+}
+.sp-game { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 16px; }
+/* the end of a round: kept its height all along, so nothing moves when it fills */
+.sp-end { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 156px; padding: 6px 16px 16px; text-align: center; }
+.sp-end:not(.armed) button { pointer-events: none; }
+.sp-belly { display: block; height: 56px; margin-top: -10px; }
+.sp-verdict { margin: 0; font-size: 18px; font-weight: 800; line-height: 1.4; }
+.sp-end .st-err { margin: 0; color: var(--st-red); font-size: 13px; line-height: 1.5; }
+.sp-btns { display: flex; gap: 10px; align-self: stretch; margin-top: auto; padding-top: 8px; }
+.sp-btns button { flex: 1; }
+
+/* ---- 3.25 秒停表 (Stopwatch.tsx) ---- */
+.sw-watch { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+.sw-dial { position: relative; width: min(64vw, 260px, 40vh); aspect-ratio: 1; container-type: inline-size; }
+.sw-dial svg { display: block; width: 100%; height: 100%; }
+.sw-ring { fill: none; stroke: #1b1d22; stroke-width: 5; }
+.sw-tick { stroke: #1b1d22; stroke-width: 3; stroke-linecap: round; }
+.sw-watch.won .sw-ring, .sw-watch.won .sw-tick { stroke: var(--st-green); }
+.sw-time {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 56px; font-size: 25cqw;
+  font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+}
+.sw-time.veiled { visibility: hidden; }
+.sw-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
+.sw-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.sw-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+
+/* a phone on its side: less room above and below */
+@media (max-height: 520px) {
+  .sp-end { min-height: 112px; padding-bottom: 10px; }
+  .sp-belly { display: none; }
+  .sw-watch { gap: 10px; }
+  .sw-dial { width: min(34vh, 200px); }
+  .sw-under { gap: 8px; min-height: 76px; }
+}
