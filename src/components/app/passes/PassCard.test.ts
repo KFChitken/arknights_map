@@ -22,6 +22,18 @@ describe("a small pass", () => {
     expect(mini({ c: admin, fancy: true })).toContain('class="mpc tag tagx"');
   });
 
+  it("is 5:9, the picture over a slim bar: for 明日方舟 a line of their colour along its top, no block of colour", () => {
+    for (const fancy of [false, true]) {
+      const ra = mini({ c: amiya, fancy });
+      expect(ra).toMatch(/<i class="mra-l"><\/i><i class="mra-p"><\/i><i class="mra-x"><\/i><b>0001<\/b>/);
+      // the number's colour comes from the look alone, not from theirs
+      expect(ra).not.toContain("--pk");
+    }
+    const tag = mini({ c: admin });
+    expect(tag).toContain('<i class="mtg-f"></i><b>0001</b>');
+    expect(tag).not.toContain("mra-x");
+  });
+
   it("adds only a gold corner for the first hundred and 靓号, and leaves the number off a wish not drawn yet", () => {
     expect(mini({ c: amiya, no: 1 })).toContain('class="mfo"');
     expect(mini({ c: amiya, no: 100 })).toContain('class="mfo"');
@@ -54,8 +66,11 @@ describe("a small pass", () => {
     expect(inkOf("not a colour")).toBe("#ffffff");
     // every character's own colour gets one of the two
     for (const c of PASS_CATALOG) expect(["#15181d", "#ffffff"], c.name).toContain(inkOf(c.color));
-    // the fancy 明日方舟 pass is pale whatever their colour
-    expect(mini({ c: amiya, fancy: true })).toContain("--pk:#1b2330");
+    // on the whole 明日方舟 pass; the fancy one is pale whatever their colour
+    expect(renderToStaticMarkup(createElement(FullPass, { c: amiya, no: 1, fancy: false, holder: "", at: 0, w: 178 }))).toContain(
+      `--pk:${inkOf(amiya.color)}`,
+    );
+    expect(renderToStaticMarkup(createElement(FullPass, { c: amiya, no: 1, fancy: true, holder: "", at: 0, w: 178 }))).toContain("--pk:#1b2330");
   });
 });
 

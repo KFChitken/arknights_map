@@ -107,7 +107,7 @@
   background: #5ad18b; color: #0b2a17; font-size: 10px; font-weight: 900; line-height: 16px; text-align: center;
 }
 .hw.empty .slotx {
-  width: 100%; aspect-ratio: 2 / 3; border-radius: 6px; border: 1.5px dashed #4a505b;
+  width: 100%; aspect-ratio: 5 / 9; border-radius: 6px; border: 1.5px dashed #4a505b;
   display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 16px;
 }
 .hb-n { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; padding-left: 8px; font-size: 12.5px; color: #d3d7dd; }
@@ -198,7 +198,7 @@
 @keyframes ps-bob { from { transform: translateY(-2px); } to { transform: translateY(3px); } }
 
 /* a card that turns over */
-.cardx { position: absolute; container-type: inline-size; aspect-ratio: 2 / 3; perspective: 700px; cursor: pointer; outline: none; transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s; }
+.cardx { position: absolute; container-type: inline-size; aspect-ratio: 5 / 9; perspective: 700px; cursor: pointer; outline: none; transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s; }
 .cardx:focus-visible .fl { outline: 2px solid #fff; outline-offset: 3px; border-radius: 8px; }
 .cardx .fl { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 0.45s ease; }
 .cardx.open .fl { transform: rotateY(180deg); }

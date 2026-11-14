@@ -10,10 +10,10 @@
 //       whose picture should be another: 普瑞赛斯's is the story picture her small one was cut from. game: ak or ef
 //
 // Each picture is cut to the character (its transparent border taken off) and saved as <hash>.avif and <hash>.webp
-// 480 wide (the whole pass), <hash>.s.webp 240 wide (the small ones) and <hash>.b.webp 20 wide (a blur shown while the
-// picture comes), <hash> from the picture itself, so a changed picture gets new names and browsers keep each file for
-// good. The colour of the character's pass is picked from the picture too: index.json has both, by catalogue id;
-// colors.json the colours alone, for
+// 480 wide (the whole pass), <hash>.s.webp 240 wide and at most 370 tall, from the top of the head down to the waist
+// (the small ones, 5:9), and <hash>.b.webp 20 wide (a blur shown while the picture comes), <hash> from the picture
+// itself, so a changed picture gets new names and browsers keep each file for good. The colour of the character's
+// pass is picked from the picture too: index.json has both, by catalogue id; colors.json the colours alone, for
 //   node scripts/build-pass-catalog.mjs --colors operator-art/pass/colors.json
 // which keeps them in the catalogue for when the pictures are switched off (PASS_ART=off).
 //
@@ -35,7 +35,10 @@ const ASK_WIDTH = 960;
 /** Narrower than this is a small picture, not a 立绘 */
 const MIN_HEIGHT = 600;
 /** The pipeline's version: changing how the files are made changes every hash, so no browser keeps an old one */
-const MAKE = "1";
+const MAKE = "2";
+/** The small ones' picture, 100 wide by 154 tall (src/components/app/passes/pass.css .mpc.ra .art) */
+const SMALL_WIDTH = 240;
+const SMALL_TALL = 1.54;
 const FILE = /^[0-9a-f]{16}(?:\.s|\.b)?\.(?:avif|webp)$/;
 
 const args = process.argv.slice(2);
@@ -195,6 +198,13 @@ function hex(h, s, l) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
+/** The picture for the small passes: SMALL_WIDTH wide, cut off at the waist (SMALL_TALL times as tall) when it goes lower */
+async function small(cut) {
+  const { data, info } = await sharp(cut).resize({ width: SMALL_WIDTH, withoutEnlargement: true }).png().toBuffer({ resolveWithObject: true });
+  const height = Math.min(info.height, Math.round(info.width * SMALL_TALL));
+  return sharp(data).extract({ left: 0, top: 0, width: info.width, height }).webp({ quality: 78, alphaQuality: 85, effort: 5 }).toBuffer();
+}
+
 /** Make a character's files from their picture; returns { file, color } */
 async function storePicture(input) {
   const source = await sharp(input, { limitInputPixels: 80_000_000 }).ensureAlpha().png().toBuffer();
@@ -209,7 +219,7 @@ async function storePicture(input) {
   const out = {
     [`${file}.avif`]: await width(480).avif({ quality: 52, effort: 6 }).toBuffer(),
     [`${file}.webp`]: await width(480).webp({ quality: 80, alphaQuality: 90, effort: 5 }).toBuffer(),
-    [`${file}.s.webp`]: await width(240).webp({ quality: 78, alphaQuality: 85, effort: 5 }).toBuffer(),
+    [`${file}.s.webp`]: await small(cut),
     [`${file}.b.webp`]: await width(20).webp({ quality: 60, alphaQuality: 60 }).toBuffer(),
   };
   for (const [name, bytes] of Object.entries(out)) writeFileSync(path.join(OUT, name), bytes);

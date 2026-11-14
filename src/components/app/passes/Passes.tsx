@@ -413,17 +413,19 @@ function Home({
 
 /** Room under a card for its name */
 const CAPTION = 20;
+/** How tall a card is for its width: a small pass is 5:9 (pass.css .mp) */
+const TALL = 9 / 5;
 /** Where the cards of a draw lie in a box W wide: one big in the middle, or two rows of five */
-function layout(n: number, W: number): { pos: { x: number; y: number; w: number }[]; h: number } {
+export function layout(n: number, W: number): { pos: { x: number; y: number; w: number }[]; h: number } {
   // under each card its name once turned (CAPTION), and over it the tag of what it was
   if (n === 1) {
-    const w = Math.round(Math.min(150, W * 0.42));
-    return { pos: [{ x: Math.round((W - w) / 2), y: 14, w }], h: 14 + Math.round(w * 1.5) + CAPTION };
+    const w = Math.round(Math.min(96, W * 0.38));
+    return { pos: [{ x: Math.round((W - w) / 2), y: 14, w }], h: 14 + Math.round(w * TALL) + CAPTION };
   }
   const gap = W < 240 ? 6 : 8;
   const w = Math.floor((W - 4 * gap) / 5);
   const x0 = Math.round((W - (5 * w + 4 * gap)) / 2);
-  const rowH = Math.round(w * 1.5);
+  const rowH = Math.round(w * TALL);
   const rows = [14, 14 + rowH + CAPTION + 12];
   return { pos: Array.from({ length: n }, (_, i) => ({ x: x0 + (i % 5) * (w + gap), y: rows[Math.floor(i / 5)], w })), h: rows[1] + rowH + CAPTION };
 }

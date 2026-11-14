@@ -11,10 +11,11 @@ import type { Art } from "../OperatorNames";
 import "./pass.css";
 
 /**
- * A pass, small (2:3: the results of a draw, the wish list, 我的通行证, profile cards) or whole (popped up from a
- * profile card or 我的通行证, a wish held up): ① 通行认证 for a character of 明日方舟, ③ 长条挂牌 for one of 终末地, and
- * their special looks ② ④ (fancy: two copies or more, src/lib/passes.ts isFancy). Gold numbers (goldKind) add a gold corner
- * or chip, nothing else. Everything inside is sized in cqw (pass.css), so one looks the same at any width.
+ * A pass, small (5:9, the character from head to waist: the results of a draw, the wish list, 我的通行证, profile cards)
+ * or whole (popped up from a profile card or 我的通行证, a wish held up): ① 通行认证 for a character of 明日方舟,
+ * ③ 长条挂牌 for one of 终末地, and their special looks ② ④ (fancy: two copies or more, src/lib/passes.ts isFancy). Gold
+ * numbers (goldKind) add a gold corner or chip, nothing else. Everything inside is sized in cqw (pass.css), so one looks
+ * the same at any width.
  * The picture is the character's 立绘 (src/lib/passArt.ts), its blur first and the picture fading in over it, or the
  * blur alone to save data (src/lib/passLean.ts); without one, their small picture (/operator-art), else a figure in
  * their colour. Which characters have a 立绘 comes once a page (usePassArt), handed to the passes inside PassArtProvider.
@@ -139,7 +140,7 @@ export function MiniPass({
   const pc = color ?? passColor(passArt, c);
   const corner = no !== null && isFoil(no) && <i className="mfo" aria-hidden="true" />;
   const number = no !== null && <b>{padNo(no)}</b>;
-  const vars = { "--pc": pc, "--pk": style === "rax" ? "#1b2330" : inkOf(pc) } as CSSProperties;
+  const vars = { "--pc": pc } as CSSProperties;
   const picture = <Picture pic={pic ?? picOf(c, passArt, art)} />;
   return (
     <div className={`mp${className ? ` ${className}` : ""}`} aria-hidden="true">
@@ -149,6 +150,7 @@ export function MiniPass({
           <span className="mra-t">ZHOUP MAP</span>
           <i className="mra-l" />
           <i className="mra-p" />
+          <i className="mra-x" />
           {number}
           {corner}
         </div>

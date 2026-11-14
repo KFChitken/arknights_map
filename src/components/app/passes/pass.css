@@ -1,6 +1,6 @@
 /*
  * The passes themselves (PassCard.tsx), wherever they show: on 通行证寻访 (passes.css) and on profile cards. The four
- * looks, ① 通行认证 ra and its special one ② rax for 明日方舟, ③ 长条挂牌 tag and ④ tagx for 终末地, small (.mp, 2:3)
+ * looks, ① 通行认证 ra and its special one ② rax for 明日方舟, ③ 长条挂牌 tag and ④ tagx for 终末地, small (.mp, 5:9)
  * and whole (.zp; the 长条挂牌 0.644 as wide, as tall). Everything inside one is sized in container units (cqw), so it
  * looks the same at any width (--w). .zp.hang adds the strap and clip above a whole pass that pops up; .zp.tilt leans it
  * after the pointer (--rx, --ry) and moves its shine (--hx).
@@ -34,8 +34,8 @@
 .art.lh.in .fg { opacity: 1; }
 .art.lh.lean .bl { filter: blur(5px); }
 
-/* ===== small (2:3) ===== */
-.mp { width: var(--w, 56px); aspect-ratio: 2 / 3; container-type: inline-size; position: relative; flex: none; }
+/* ===== small (5:9): the picture from head to waist, a slim bar with the number under it ===== */
+.mp { width: var(--w, 56px); aspect-ratio: 5 / 9; container-type: inline-size; position: relative; flex: none; }
 .mpc { position: absolute; inset: 0; border-radius: 9cqw; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18); }
 .mpc b { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
 .mpc .art { position: absolute; overflow: hidden; }
@@ -45,51 +45,52 @@
 .mpc .art.drawn path { fill: color-mix(in srgb, var(--pc) 35%, #08090c); }
 
 .mpc.ra { background: #23262c; border-radius: 7cqw; }
-.mpc.ra .art { left: 0; right: 0; top: 0; height: 98cqw; }
+.mpc.ra .art { left: 0; right: 0; top: 0; height: 154cqw; }
 /* a 立绘 stands on their colour */
 .mpc.ra .art.lh { background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 34%, #fff), var(--pc)); }
 .mpc.rax .art.lh { background: linear-gradient(160deg, #fbfcfe, #dfe7f1 55%, #ece3f7); }
 .mpc.ra .mra-t {
-  position: absolute; left: -0.5cqw; top: 2cqw; height: 94cqw; width: 16cqw; writing-mode: vertical-rl; transform: rotate(180deg);
-  font: 700 15cqw/1.05 var(--font-num); color: #fff; -webkit-text-stroke: 0.7cqw #111317; paint-order: stroke fill;
+  position: absolute; left: -0.5cqw; top: 3cqw; height: 122cqw; width: 16cqw; writing-mode: vertical-rl; transform: rotate(180deg);
+  font: 700 14cqw/1.05 var(--font-num); color: #fff; -webkit-text-stroke: 0.7cqw #111317; paint-order: stroke fill;
   overflow: hidden; white-space: nowrap; text-align: start; z-index: 2;
 }
-.mpc.ra .mra-l { position: absolute; left: 0; top: 98cqw; bottom: 0; width: 16cqw; background: #f2f2ee; }
-.mpc.ra .mra-l::after {
-  content: ""; position: absolute; left: 4cqw; right: 4cqw; top: 7cqw; bottom: 7cqw;
-  background: repeating-linear-gradient(180deg, #16181c 0 1cqw, transparent 1cqw 2.4cqw, #16181c 2.4cqw 3cqw, transparent 3cqw 4.4cqw);
+/* the bar under the picture, a line of their colour along its top, the barcode lying on its left, the number on its right */
+.mpc.ra .mra-p { position: absolute; left: 0; right: 0; bottom: 0; height: 26cqw; background: #16181c; z-index: 1; }
+.mpc.ra .mra-x { position: absolute; left: 0; right: 0; bottom: 26cqw; height: 2.8cqw; background: var(--pc); z-index: 2; }
+.mpc.ra .mra-l {
+  position: absolute; left: 6cqw; bottom: 6cqw; width: 24cqw; height: 14cqw; opacity: 0.8; z-index: 2;
+  background: repeating-linear-gradient(90deg, #e9e9e4 0 1cqw, transparent 1cqw 2.4cqw, #e9e9e4 2.4cqw 3cqw, transparent 3cqw 4.4cqw);
 }
-.mpc.ra .mra-p {
-  position: absolute; left: 16cqw; right: 0; top: 98cqw; bottom: 0;
-  background: linear-gradient(165deg, color-mix(in srgb, var(--pc) 72%, #fff), var(--pc) 70%);
-}
-.mpc.ra b { left: 16cqw; bottom: 9cqw; color: var(--pk, #fff); font: 700 21cqw/1 var(--font-num); z-index: 2; }
+.mpc.ra b { left: auto; right: 6cqw; bottom: 4.6cqw; color: #fff; font: 700 19cqw/1 var(--font-num); text-align: right; z-index: 2; }
+/* ② 镭射: the bar pearl and shining, the line a rainbow */
 .mpc.rax { background: #e9edf2; }
 .mpc.rax .art { background: linear-gradient(160deg, #fbfcfe, #dfe7f1 55%, #ece3f7); }
-.mpc.rax .art::after {
-  content: ""; position: absolute; inset: 0; background-image: var(--holo); background-size: 240% 100%; mix-blend-mode: overlay; opacity: 0.35;
-}
 .mpc.rax .mra-t { -webkit-text-stroke-color: #5d6679; }
-.mpc.rax .mra-p { background: linear-gradient(160deg, #f0f9ff, #dde8ff 40%, #f2e6ff 70%, #e0fff2); }
+.mpc.rax .mra-p { background: linear-gradient(160deg, #f7fbff, #dfe8fb 45%, #efe4fb 75%, #e2faf0); }
 .mpc.rax .mra-p::after {
   content: ""; position: absolute; inset: 0; background-image: var(--holo); background-size: 240% 100%; mix-blend-mode: overlay; opacity: 0.8;
+}
+.mpc.rax .mra-x { background: var(--holo); }
+.mpc.rax .mra-l {
+  opacity: 0.7;
+  background: repeating-linear-gradient(90deg, #1b2330 0 1cqw, transparent 1cqw 2.4cqw, #1b2330 2.4cqw 3cqw, transparent 3cqw 4.4cqw);
 }
 .mpc.rax b { color: #1b2330; }
 
 .mpc.tag { background: #f3f4f0; border-radius: 7cqw; }
 /* contour lines, our own (public/passes/contour.svg, contour-w.svg on the dark one) */
-.mpc.tag::before { content: ""; position: absolute; inset: 0; opacity: 0.3; background: url("/passes/contour.svg") 50% 36% / 190% auto no-repeat; }
-.mpc.tag .art { left: 15cqw; right: 0; top: 9cqw; bottom: 30cqw; }
+.mpc.tag::before { content: ""; position: absolute; inset: 0; opacity: 0.3; background: url("/passes/contour.svg") 50% 30% / 220% auto no-repeat; }
+.mpc.tag .art { left: 9cqw; right: -9cqw; top: 8cqw; bottom: 26cqw; }
 .mpc.tag .mtg-b {
-  position: absolute; left: 0; top: 9cqw; bottom: 0; width: 15cqw; background: #f2e21a; z-index: 2;
+  position: absolute; left: 0; top: 8cqw; bottom: 0; width: 15cqw; background: #f2e21a; z-index: 2;
   clip-path: polygon(0 0, 9cqw 0, 9cqw 55%, 15cqw calc(55% + 6cqw), 15cqw 100%, 0 100%);
 }
 .mpc.tag .mtg-k {
-  position: absolute; right: 5cqw; top: 9cqw; width: 7cqw; height: 30cqw; z-index: 2;
+  position: absolute; right: 5cqw; top: 8cqw; width: 7cqw; height: 34cqw; z-index: 2;
   background: linear-gradient(#8a8f98 0 22%, transparent 22% 26%, #16c784 26% 48%, transparent 48% 52%, #f2e21a 52% 74%, transparent 74% 78%, #e6187d 78%);
 }
-.mpc.tag .mtg-f { position: absolute; left: 15cqw; right: 0; bottom: 0; height: 30cqw; background: #fff; border-top: 1.2cqw dashed #16181c; z-index: 2; }
-.mpc.tag b { left: 15cqw; bottom: 5cqw; color: #16181c; font: 700 20cqw/1 var(--font-num); z-index: 3; }
+.mpc.tag .mtg-f { position: absolute; left: 15cqw; right: 0; bottom: 0; height: 26cqw; background: #fff; border-top: 1.2cqw dashed #16181c; z-index: 2; }
+.mpc.tag b { left: 15cqw; bottom: 4.6cqw; color: #16181c; font: 700 19cqw/1 var(--font-num); z-index: 3; }
 .mpc.tagx { background: #0f1114; }
 .mpc.tagx::before { background-image: url("/passes/contour-w.svg"); opacity: 0.2; }
 .mpc.tagx .art::before {
