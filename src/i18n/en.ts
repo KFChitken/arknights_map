@@ -921,6 +921,9 @@ export const en: Draft<Messages> = {
     deploy: "Deploy!",
     tease: "Nyah~",
     lue: "Nyah-nyah~",
+    quack: "Gah!",
+    quackBack: "Gah!",
+    guguGaga: "Gugu gaga~",
   },
   cloneMove: {
     meters: "{from} {m} m",

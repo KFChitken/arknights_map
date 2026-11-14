@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { T } from "@/i18n";
-import { devilBits, drinkCup, hoodLamps, standingApart } from "@/lib/lookArt";
+import { devilBits, drinkCup, flaps, hoodLamps, speedLines, standingApart } from "@/lib/lookArt";
 import { pictureSvg } from "@/lib/roachImages";
 import { GLOW, hoodBody } from "@/lib/roachSvg";
 import { boop, burst, feelers } from "@/lib/touchArt";
@@ -287,5 +287,81 @@ describe("each look's own moves", () => {
     expect(cup.origin).toBe("66% 66%");
     expect(cup.svg.startsWith('<g transform="translate(42.24 42.24) scale(1.35) translate(-42.24 -42.24)">')).toBe(true);
     expect(drink("imp")).toContain('class="lay cup" style="transform-origin:66% 66%"');
+  });
+
+  it("has 咕咕嘎嘎 slide in on its belly with speed lines behind it, its ground waiting for it, and 嘎! where its feeler lands", () => {
+    const html = scene("bold", { you: you("gugu"), them: them("hood", "orange") });
+    const f = feelers("gugu", "hood");
+    const [x, y] = f.boldEnd;
+    const { ground, figure } = standingApart("gugu");
+    // the picture alone slides in; its ground stays where it gets up
+    expect(html).toContain(`<div class="ta-you"><div class="ta-lay gg-gnd">${ground}</div><div class="ta-body"><div class="ta-lay">${figure}</div></div></div>`);
+    expect(html).toContain(`<div class="gg-speed">${speedLines()}</div>`);
+    expect(html).toContain(`<div class="ta-fx gg-ga" style="left:${x + 3}px;top:${y - 15}px">${burst(T.fx.quack)}</div>`);
+    // 啵! is still there for globals.css to hide, and the name card still goes over
+    expect(html).toContain('class="ta-fx ta-boop"');
+    expect(html).toContain('class="ta-cardway"');
+    expect(looks(html)).toContain("you-gugu");
+    // the others come in whole as they always have, and sneaking up you are a shadow
+    expect(scene("bold", { you: you("doctor"), them: them("hood", "orange") })).toMatch(/<div class="ta-you"><div class="ta-body"><span/);
+    const touched = scene("bold", { you: you("hood"), them: them("gugu", "orange") });
+    expect(touched).not.toContain("gg-gnd");
+    expect(touched).not.toContain("gg-speed");
+    expect(scene("sneaky", { you: you("gugu"), them: them("hood", "orange") })).not.toContain("gg-");
+  });
+
+  it("has 咕咕嘎嘎 touched flap its wings and say 嘎！ in place of !, as the map draws it", () => {
+    const html = scene("bold", { you: you("hood"), them: them("gugu", "orange") });
+    expect(piece(html, "gg-flap")).toBe(flaps());
+    // the flap lines flap with it, in what jumps; 嘎！ stays where it is, over the scene
+    expect(html).toMatch(/<div class="ta-jump"><div class="ta-a"><span[\s\S]*?<\/span><\/div><div class="ta-lay gg-flap">/);
+    expect(html).toContain(`<div class="ta-around"><div class="gg-quack">${T.fx.quackBack}</div></div>`);
+    expect(html).not.toContain('class="ta-mark"');
+    // on the sly: a smaller flap, and ? as anyone gets (嘎！ stays hidden there in globals.css)
+    const sneaky = scene("sneaky", { you: you("hood"), them: them("gugu", "orange") });
+    expect(sneaky).toContain('class="ta-lay gg-flap"');
+    expect(sneaky).toContain('class="ta-mark"');
+    // as the map draws it: a stranger's clone is the hood and gets !, a 触须之交's is 咕咕嘎嘎
+    const stranger = scene("bold", { you: you("hood"), them: them("gugu", "orange", true) });
+    expect(stranger).not.toContain("gg-flap");
+    expect(stranger).not.toContain("gg-quack");
+    expect(stranger).toContain('class="ta-mark"');
+    expect(scene("bold", { you: you("hood"), them: them("gugu", "orange", true, true) })).toContain("gg-quack");
+  });
+
+  it("has your own dock avatar flap when you are 咕咕嘎嘎, saying 嘎！ when touched boldly", () => {
+    expect(dockAnimFor("bold", "gugu")).toBe("gg-dflap");
+    expect(dockAnimFor("sneaky", "gugu")).toBe("gg-dflap-q");
+    expect(dockAnimFor("friend", "gugu")).toBe("ta-dhop");
+    const bold = dock("bold", "gugu", "green");
+    expect(bold).toContain(`<div class="dock-fx dock-look dock-bold gg-dflap"`);
+    expect(bold).toContain(`<div class="ta-lay gg-flap">${flaps()}</div><div class="gg-quack">${T.fx.quackBack}</div>`);
+    expect(bold).not.toContain("ta-dmark");
+    const sneaky = dock("sneaky", "gugu", "green");
+    expect(sneaky).toContain('class="dock-fx dock-look dock-sneaky gg-dflap-q"');
+    expect(sneaky).toContain("ta-dmark");
+  });
+
+  it("has 咕咕嘎嘎 waddle over its own ground as it shouts, 咕咕嘎嘎～ beside it", () => {
+    const html = shout("gugu");
+    const { ground, figure } = standingApart("gugu");
+    expect(looks(html)).toEqual(["ta-shout", "me-gugu", "ta-pic"]);
+    expect(html).toContain(`<div class="ta-calm"><div class="ta-lay">${ground}</div><div class="ta-lay gg-fig">${figure}</div></div>`);
+    expect(html).toContain(`<div class="ta-bubble">x</div><div class="gg-sound">${T.fx.guguGaga}</div>`);
+    // its bubble is the plain one
+    expect(html).not.toContain("im-devil");
+    for (const look of ["hood", "doctor", "endmin", "imp"] as const) expect(shout(look)).not.toContain("gg-");
+  });
+
+  it("has 咕咕嘎嘎 drink from a little fish bottle and fall flat on its face", () => {
+    const cup = drinkCup("gugu")!;
+    expect(cup.origin).toBe("66% 63%");
+    expect(cup.fall).toBe("-92deg");
+    expect(cup.svg.startsWith('<g transform="translate(42.24 40.32) scale(1.35) translate(-42.24 -40.32)">')).toBe(true);
+    const html = drink("gugu");
+    expect(html).toContain('<div class="actor pic" data-state="drinking" style="--fall:-92deg" aria-hidden="true">');
+    expect(html).toContain('class="lay cup" style="transform-origin:66% 63%"');
+    // the others tip over to their right as before
+    expect(drink("imp")).toContain('<div class="actor pic" data-state="drinking" aria-hidden="true">');
   });
 });

@@ -21,7 +21,7 @@ import {
 } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { boldAround, boldLines, boldYou, ownMark, shoutAround, shoutBubble, shoutFigure, shoutProp, touchedAround, touchedOn } from "./LookMoves";
+import { boldAround, boldGround, boldLines, boldYou, ownMark, shoutAround, shoutBubble, shoutFigure, shoutProp, touchedAround, touchedOn } from "./LookMoves";
 
 /**
  * Who is in a touch scene. you: your own look and the name your dock shows. them: the
@@ -112,6 +112,7 @@ export default function TouchStage({
     scene = (
       <>
         <div className="ta-you">
+          {boldGround(you.avatar)}
           <div className="ta-body">{boldYou(you.avatar, you.color) ?? yours}</div>
         </div>
         <div className="ta-them">

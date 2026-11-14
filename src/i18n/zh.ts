@@ -965,6 +965,9 @@ export const zh = {
     deploy: "部署！",
     tease: "略～",
     lue: "略略略～",
+    quack: "嘎!",
+    quackBack: "嘎！",
+    guguGaga: "咕咕嘎嘎～",
   },
   cloneMove: {
     meters: "{from} {m} 米",

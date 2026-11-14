@@ -1932,7 +1932,7 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 /* 绝对主角, 大胆碰别人 (纸飞机): 略～ at them first, a wind-up, and a paper plane flies over along the feeler; 啵! as it
    lands, where it turns into the name card */
 .im-plane { left: 0; top: 0; offset-anchor: 50% 50%; offset-rotate: auto; offset-distance: 0%; opacity: 0; }
-.im-tease, .im-lue {
+.im-tease, .im-lue, .gg-quack, .gg-sound {
   position: absolute; padding: 2px 8px; border: 1.5px solid #1b1d22; border-radius: 10px; color: #1b1d22;
   font-size: 12px; font-weight: 800; line-height: 18px; white-space: nowrap; transform-origin: 0 100%; opacity: 0;
 }
@@ -1989,6 +1989,70 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 .im-horn.l { left: 7px; top: -10px; }
 .im-horn.r { right: 7px; top: -10px; }
 .im-tail { right: -17px; bottom: -9px; }
+
+/* 咕咕嘎嘎, 大胆碰别人 (肚皮滑行): it slides in on its belly with speed lines behind it, gets up where its ground waits,
+   and its feeler lands with 嘎! in place of 啵! */
+.gg-gnd, .gg-ga { opacity: 0; }
+.gg-speed { left: 0; top: 112px; width: 46px; height: 30px; opacity: 0; }
+.ta-bold.you-gugu .ta-boop { display: none; }
+.ta-bold.you-gugu .ta-you .ta-body { animation-name: gg-slide; }
+.ta-bold.you-gugu .gg-gnd { animation-name: gg-gnd; }
+.ta-bold.you-gugu .ta-line { animation-name: gg-line; }
+.ta-bold.you-gugu .gg-ga { animation-name: ta-bo-boop; }
+.ta-bold.you-gugu .gg-speed { animation-name: gg-speed; }
+@keyframes gg-slide {
+  0% { opacity: 0; transform: translate(-72px, 6px) rotate(84deg); } 4% { opacity: 1; } 19% { transform: translate(-10px, 6px) rotate(84deg); }
+  22% { transform: translate(0, -12px) rotate(30deg); } 26% { transform: translate(0, 0) rotate(-6deg) scale(1.05, 0.94); } 30% { transform: rotate(3deg); }
+  33%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translate(-12px, 0); }
+}
+@keyframes gg-gnd { 0%, 22% { opacity: 0; } 28%, 86% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes gg-line {
+  0%, 26% { opacity: 0; stroke-dashoffset: 1.05; } 27% { opacity: 1; stroke-dashoffset: 1.05; } 43% { stroke-dashoffset: 0; }
+  80% { opacity: 1; stroke-dashoffset: 0; } 94%, 100% { opacity: 1; stroke-dashoffset: 1.05; }
+}
+@keyframes gg-speed { 0%, 3% { opacity: 0; transform: translateX(-30px); } 6% { opacity: 1; } 19% { opacity: 1; transform: translateX(28px); } 23%, 100% { opacity: 0; transform: translateX(34px); } }
+/* 咕咕嘎嘎, 被大胆碰 (扑腾): it flaps its wings, flap lines either side, 嘎！ in place of !; on your own dock avatar,
+   beside it */
+.gg-flap { opacity: 0; }
+.dock-look .gg-flap g { stroke: #fff; } /* the dock is dark */
+.gg-quack { left: 26px; top: -30px; background: #fff; }
+.dock-look .gg-quack { left: calc(100% + 4px); top: -8px; }
+.ta-bold.them-gugu .ta-jump { animation-name: gg-flapbody; }
+.ta-bold.them-gugu .gg-flap, .dock-bold .gg-flap { animation-name: gg-flaplines; }
+.ta-bold.them-gugu .gg-quack, .dock-bold .gg-quack { animation-name: im-lue; }
+@keyframes gg-flapbody {
+  0%, 44% { transform: none; } 46% { transform: translateY(-6px) rotate(-9deg); } 48.5% { transform: translateY(-2px) rotate(9deg); }
+  51% { transform: translateY(-6px) rotate(-9deg); } 53.5% { transform: translateY(-2px) rotate(9deg); } 56% { transform: translateY(-6px) rotate(-8deg); }
+  58.5% { transform: translateY(-2px) rotate(7deg); } 61% { transform: rotate(-3deg); } 64%, 100% { transform: none; }
+}
+@keyframes gg-flaplines { 0%, 44% { opacity: 0; } 46% { opacity: 1; } 49% { opacity: 0.2; } 51% { opacity: 1; } 54% { opacity: 0.2; } 56% { opacity: 1; } 60% { opacity: 1; } 64%, 100% { opacity: 0; } }
+/* 被偷偷碰: a smaller flap at the tap in place of the jump, then it looks round under ? as anyone does */
+.ta-sneaky.them-gugu .ta-jump { animation-name: gg-flapbody-q; }
+.ta-sneaky.them-gugu .gg-flap, .dock-sneaky .gg-flap { animation-name: gg-flaplines-q; }
+@keyframes gg-flapbody-q {
+  0%, 45% { transform: none; } 48% { transform: translateY(-4px) rotate(-6deg); } 51% { transform: translateY(-1px) rotate(6deg); }
+  54% { transform: translateY(-4px) rotate(-6deg); } 57% { transform: translateY(-1px) rotate(5deg); } 61%, 100% { transform: none; }
+}
+@keyframes gg-flaplines-q { 0%, 45% { opacity: 0; } 48% { opacity: 0.8; } 51% { opacity: 0.2; } 54% { opacity: 0.8; } 57% { opacity: 0.2; } 61%, 100% { opacity: 0; } }
+/* your own dock avatar flaps the same way (DockFx.tsx dockAnimFor) */
+.gg-dflap { animation: gg-flapbody 1.6s ease-out both; transform-origin: 50% 90%; }
+.gg-dflap-q { animation: gg-flapbody-q 1.6s ease-out both; transform-origin: 50% 90%; }
+@media (prefers-reduced-motion: reduce) {
+  .gg-dflap, .gg-dflap-q { animation: none !important; }
+}
+/* 咕咕嘎嘎, 喊话 (摇摆): it waddles from side to side over its own ground before it shouts, 咕咕嘎嘎～ beside it */
+.gg-sound { left: 156px; top: 86px; background: #fff; }
+.ta-shout.ta-pic.me-gugu .gg-fig { animation-name: gg-waddle; transform-origin: 50% 92%; }
+.ta-shout.me-gugu .gg-sound { animation-name: gg-sound; }
+@keyframes gg-waddle {
+  0%, 10% { transform: none; } 15% { transform: rotate(-8deg); } 20% { transform: rotate(8deg); } 25% { transform: rotate(-8deg); } 30% { transform: rotate(8deg); }
+  35% { transform: rotate(-8deg); } 40% { transform: rotate(8deg); } 45% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } 55% { transform: rotate(-5deg); }
+  60% { transform: rotate(4deg); } 64%, 100% { transform: none; }
+}
+@keyframes gg-sound {
+  0%, 18% { opacity: 0; transform: translateY(8px) scale(0.6); } 23% { opacity: 1; transform: translateY(0) scale(1.08); } 27% { transform: scale(1); }
+  58% { opacity: 1; transform: translateY(-10px); } 66%, 100% { opacity: 0; transform: translateY(-14px); }
+}
 
 /* the dock's: over your own avatar (its box), moving with it, as long as the dock's scene */
 .dock-look * { animation-duration: 1.6s; animation-fill-mode: both; animation-timing-function: ease-out; }

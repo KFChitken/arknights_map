@@ -9,10 +9,12 @@ import {
   deployTile,
   devilBits,
   doctorDozing,
+  flaps,
   hoodEyes,
   hoodLamps,
   loudspeaker,
   paperPlane,
+  speedLines,
   standingApart,
   terminal,
   wavingHood,
@@ -54,6 +56,14 @@ export function boldYou(look: RoachAvatar, color: RoachColor): ReactNode {
       </>
     );
   }
+  // 肚皮滑行: the picture alone slides in on its belly; its ground waits for it (boldGround)
+  if (look === "gugu") return <div className="ta-lay" {...html(standingApart(look).figure)} />;
+  return null;
+}
+
+/** What stays where you land as your look comes in on its own (boldYou): 咕咕嘎嘎's ground, waiting as it slides in */
+export function boldGround(look: RoachAvatar): ReactNode {
+  if (look === "gugu") return <div className="ta-lay gg-gnd" {...html(standingApart(look).ground)} />;
   return null;
 }
 
@@ -110,6 +120,15 @@ export function boldAround(look: RoachAvatar, f: { bold: string; boldEnd: [numbe
       </>
     );
   }
+  if (look === "gugu") {
+    // 肚皮滑行: speed lines behind it as it slides in, and 嘎! in place of 啵! where its feeler lands
+    return (
+      <>
+        <div className="gg-speed" {...html(speedLines())} />
+        <div className="ta-fx gg-ga" style={{ left: x + 3, top: y - 15 }} {...html(burst(T.fx.quack))} />
+      </>
+    );
+  }
   return null;
 }
 
@@ -129,6 +148,8 @@ export function touchedOn(look: DrawnAvatar, glow: string): ReactNode {
   }
   // 打瞌睡被吵醒: dozing on its feet with a snot bubble, which pops as it is touched
   if (look === "doctor") return <div className="ta-lay dc-doze" {...html(doctorDozing())} />;
+  // 扑腾: flap lines either side as it flaps its wings
+  if (look === "gugu") return <div className="ta-lay gg-flap" {...html(flaps())} />;
   return null;
 }
 
@@ -141,16 +162,25 @@ export function touchedAround(look: DrawnAvatar): ReactNode {
   if (look === "endmin") return <div className="ta-lay em-alarm" {...html(alarm())} />;
   // 做鬼脸: 略略略～ as it twirls round (not on the sly either)
   if (look === "imp") return <div className="im-lue">{T.fx.lue}</div>;
+  // 扑腾: 嘎！ as it flaps (not on the sly either)
+  if (look === "gugu") return <div className="gg-quack">{T.fx.quackBack}</div>;
   return null;
 }
 
-/** The looks that say ! of themselves when touched boldly (管理员's warning sign, 绝对主角's 略略略～), so no ! goes up */
-const OWN_MARK: ReadonlySet<DrawnAvatar> = new Set(["endmin", "imp"]);
+/**
+ * The looks that say ! of themselves when touched boldly (管理员's warning sign, 绝对主角's 略略略～, 咕咕嘎嘎's 嘎！),
+ * so no ! goes up
+ */
+const OWN_MARK: ReadonlySet<DrawnAvatar> = new Set(["endmin", "imp", "gugu"]);
 export const ownMark = (look: DrawnAvatar) => OWN_MARK.has(look);
 
-/** How your dock avatar itself moves when you are touched and your look has a move of its own: 绝对主角 twirls round */
+/**
+ * How your dock avatar itself moves when you are touched and your look has a move of its own: 绝对主角 twirls round,
+ * 咕咕嘎嘎 flaps
+ */
 export function dockMove(look: RoachAvatar, kind: "sneaky" | "bold"): string | null {
   if (look === "imp") return kind === "bold" ? "im-dspin" : "im-dspin-q";
+  if (look === "gugu") return kind === "bold" ? "gg-dflap" : "gg-dflap-q";
   return null;
 }
 
@@ -160,21 +190,23 @@ export function shoutProp(look: RoachAvatar): ReactNode {
   return null;
 }
 
+/** The looks whose picture moves on its own as they shout, over a ground that stays, and its class */
+const SHOUT_FIGURE: Partial<Record<RoachAvatar, string>> = { imp: "im-fig", gugu: "gg-fig" };
+
 /**
- * Your look as it shouts, when the picture moves on its own over a ground that stays (绝对主角 twirls round); null for
- * the roach as it is
+ * Your look as it shouts, when the picture moves on its own over a ground that stays (绝对主角 twirls round, 咕咕嘎嘎
+ * waddles); null for the roach as it is
  */
 export function shoutFigure(look: RoachAvatar): ReactNode {
-  if (look === "imp") {
-    const { ground, figure } = standingApart(look);
-    return (
-      <>
-        <div className="ta-lay" {...html(ground)} />
-        <div className="ta-lay im-fig" {...html(figure)} />
-      </>
-    );
-  }
-  return null;
+  const move = SHOUT_FIGURE[look];
+  if (!move) return null;
+  const { ground, figure } = standingApart(look);
+  return (
+    <>
+      <div className="ta-lay" {...html(ground)} />
+      <div className={`ta-lay ${move}`} {...html(figure)} />
+    </>
+  );
 }
 
 /** What your look adds to the bubble it shouts: 绝对主角 little devil horns and a tail */
@@ -183,8 +215,9 @@ export function shoutBubble(look: RoachAvatar): ReactNode {
   return null;
 }
 
-/** What comes up on the stage beside your look as it shouts: 管理员 a loudspeaker on a pole */
+/** What comes up on the stage beside your look as it shouts: 管理员 a loudspeaker on a pole, 咕咕嘎嘎 咕咕嘎嘎～ */
 export function shoutAround(look: RoachAvatar): ReactNode {
   if (look === "endmin") return <div className="em-pole" {...html(loudspeaker())} />;
+  if (look === "gugu") return <div className="gg-sound">{T.fx.guguGaga}</div>;
   return null;
 }

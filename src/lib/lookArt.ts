@@ -132,6 +132,24 @@ export const devilBits = () =>
   `<svg class="im-horn r" viewBox="0 0 12 12" width="12" height="12" overflow="visible" aria-hidden="true"><path d="M10 12 C10 6 7 2 2 0.5 C4 4 3.5 8 2 12 Z" fill="#e8443a" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>` +
   `<svg class="im-tail" viewBox="0 0 24 16" width="24" height="16" overflow="visible" aria-hidden="true"><path d="M0.5 2 C6 2 8 11 14 9" fill="none" stroke="#fff" stroke-width="4.4" stroke-linecap="round"/><path d="M0.5 2 C6 2 8 11 14 9" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M12.6 5.4 L22.6 7.2 L15 13.8 Z" fill="#e8443a" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
 
+/** 咕咕嘎嘎 肚皮滑行: the speed lines it leaves behind as it slides in */
+export const speedLines = () =>
+  svgBox(
+    "0 0 46 30",
+    46,
+    30,
+    `<g stroke="${INK}" stroke-width="2" stroke-linecap="round" opacity="0.75"><path d="M14 6 H42"/><path d="M4 15 H38"/><path d="M12 24 H40"/></g>`,
+  );
+
+/**
+ * 咕咕嘎嘎 touched (扑腾): flap lines either side of it as it flaps its wings. On the 64 grid, so the one drawing fits
+ * the stage and your dock avatar alike.
+ */
+export const flaps = () =>
+  svg64(`<g transform="translate(0 13.09) scale(0.7273)" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round">
+<path d="M14 18 C9 20 7 24 7.6 28"/><path d="M10 30 C5.6 32 4.2 36 5 40"/><path d="M17 33 C13 35.4 12 39 12.6 42.6"/>
+<path d="M74 18 C79 20 81 24 80.4 28"/><path d="M78 30 C82.4 32 83.8 36 83 40"/><path d="M71 33 C75 35.4 76 39 75.4 42.6"/></g>`);
+
 /** A picture look standing, as its ground and the picture alone, to move the picture over a ground that stays */
 export const standingApart = (look: RoachAvatar) => ({ ground: svg64(groundOnly("mine")), figure: svg64(pictureSvg(look)) });
 
@@ -170,6 +188,18 @@ const CUPS: Partial<Record<RoachAvatar, Cup>> = {
   <path d="M38.5 31.4 H46.5 C46.2 33.8 44.8 35 42.5 35 C40.2 35 38.8 33.8 38.5 31.4 Z" fill="#c2203d" stroke="none"/>
   <path d="M42.5 35.6 V40.6 M39.6 41.6 Q42.5 40 45.4 41.6 Z" fill="#fff" stroke-width="1.2"/>
   <path d="M39.6 30.6 L40.4 32.4" stroke="#fff" stroke-width="0.9" stroke-linecap="round"/>
+</g>`,
+  },
+  // a little bottle shaped like a fish; drunk, it falls flat on its face
+  gugu: {
+    origin: "66% 63%",
+    fall: "-92deg",
+    draw: () => `<g stroke="${LINE}" stroke-linejoin="round">
+  <path d="M38 34 C40.6 30.4 45.4 30.4 47.6 34 C45.4 37.6 40.6 37.6 38 34 Z" fill="#7fc4ff" stroke-width="1.3"/>
+  <path d="M47.4 34 L50.4 31.4 L50.4 36.6 Z" fill="#7fc4ff" stroke-width="1.2"/>
+  <circle cx="40.6" cy="33.4" r="0.7" fill="${LINE}" stroke="none"/>
+  <path d="M42.6 31.6 Q43.6 34 42.6 36.4" fill="none" stroke-width="0.8"/>
+  <rect x="36" y="32.8" width="2.4" height="2.4" rx="0.6" fill="#e2c391" stroke-width="1"/>
 </g>`,
   },
 };
