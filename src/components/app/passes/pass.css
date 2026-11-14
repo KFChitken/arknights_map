@@ -202,7 +202,8 @@
 .zc.ra .ra-logo { flex: none; display: flex; flex-direction: column; align-items: center; gap: 0.7cqw; font: 700 1.8cqw/1 var(--font-mono); letter-spacing: 0.12em; }
 .zc.ra .ra-logo svg { width: 8.6cqw; height: 8.6cqw; border: 0.35cqw solid currentColor; padding: 0.7cqw; box-sizing: border-box; }
 .zc.ra .ra-fine { flex: 1; min-width: 0; font: 600 2.1cqw/1.42 var(--font-mono); letter-spacing: 0.03em; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.zc.ra .ra-no { flex: none; font: 700 12cqw/0.86 var(--font-num); letter-spacing: 0.01em; white-space: nowrap; text-align: right; }
+/* six digits a little smaller than the four there were, so the fine print beside them keeps its room */
+.zc.ra .ra-no { flex: none; font: 700 10.5cqw/0.86 var(--font-num); letter-spacing: 0.01em; white-space: nowrap; text-align: right; }
 .zc.ra .ra-no small { font-size: 4.4cqw; opacity: 0.75; margin-right: 0.5cqw; }
 .zc.ra .ra-no .zfoil { display: block; width: max-content; margin: 0 0 1.2cqw auto; vertical-align: 0; font-size: 4.2cqw; padding: 0 2.2cqw; }
 .zc.ra .ra-edge {

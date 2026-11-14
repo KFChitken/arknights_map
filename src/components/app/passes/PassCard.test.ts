@@ -25,12 +25,12 @@ describe("a small pass", () => {
   it("is 5:9, the picture over a slim bar: for 明日方舟 a line of their colour along its top, no block of colour", () => {
     for (const fancy of [false, true]) {
       const ra = mini({ c: amiya, fancy });
-      expect(ra).toMatch(/<i class="mra-l"><\/i><i class="mra-p"><\/i><i class="mra-x"><\/i><b>0001<\/b>/);
+      expect(ra).toMatch(/<i class="mra-l"><\/i><i class="mra-p"><\/i><i class="mra-x"><\/i><b>000001<\/b>/);
       // the number's colour comes from the look alone, not from theirs
       expect(ra).not.toContain("--pk");
     }
     const tag = mini({ c: admin });
-    expect(tag).toContain('<i class="mtg-f"></i><b>0001</b>');
+    expect(tag).toContain('<i class="mtg-f"></i><b>000001</b>');
     expect(tag).not.toContain("mra-x");
   });
 
@@ -40,8 +40,8 @@ describe("a small pass", () => {
     expect(mini({ c: amiya, no: 1325 })).toContain('class="mfo"');
     expect(mini({ c: amiya, no: 111 })).not.toContain("mfo");
     expect(mini({ c: amiya, no: 112 })).not.toContain("mfo");
-    expect(mini({ c: amiya, no: 112 })).toContain("<b>0112</b>");
-    expect(mini({ c: admin, no: 12345 })).toContain("<b>12345</b>");
+    expect(mini({ c: amiya, no: 112 })).toContain("<b>000112</b>");
+    expect(mini({ c: admin, no: 12345 })).toContain("<b>012345</b>");
     const wish = mini({ c: amiya, no: null });
     expect(wish).not.toContain("<b>");
     expect(wish).not.toContain("mfo");
@@ -137,13 +137,14 @@ describe("a whole pass", () => {
     const html = whole({ c: exu });
     expect(html).toContain(">EXUSIAI</b>");
     expect(html).toContain("能天使<i>★★★★★★</i>");
-    expect(html).toContain("<small>No.</small>0007");
+    expect(html).toContain("<small>No.</small>000007");
     expect(html).toContain("持证 Dr. 某人");
     expect(html).toContain("2026.11.20");
     expect(html).toContain(`ZHOUP MAP - AK${String(exu.id).padStart(3, "0")} · OPERATOR`);
-    expect(html).toContain("ZHOUP MAP · AK-0007");
+    expect(html).toContain("ZHOUP MAP · AK-000007");
     const tag = whole({ c: admin, no: 12345 });
-    expect(tag).toContain("<small>No.</small>12345");
+    expect(tag).toContain("<small>No.</small>012345");
+    expect(whole({ c: admin, no: 1234567 })).toContain("<small>No.</small>1234567");
     expect(tag).toContain(`>${printedEn(admin)}</span>`);
   });
 
@@ -213,7 +214,7 @@ describe("a whole pass", () => {
 });
 
 describe("a 样张", () => {
-  it("prints ???? for the number, —— for the holder and the day, never gold, and a stamp across it, in every look", () => {
+  it("prints ?????? for the number, —— for the holder and the day, never gold, and a stamp across it, in every look", () => {
     for (const [c, fancy, look] of [
       [amiya, false, "ra"],
       [amiya, true, "ra rax"],
@@ -222,11 +223,11 @@ describe("a 样张", () => {
     ] as const) {
       const html = renderToStaticMarkup(createElement(SamplePass, { c, fancy, w: 118 }));
       expect(html).toContain(`<div class="zc ${look}"`);
-      expect(html).toContain("<small>No.</small>????");
+      expect(html).toContain("<small>No.</small>??????<");
       expect(html).not.toContain("zfoil");
       expect(html).toContain('<span class="zsmp" aria-hidden="true">样张<small>SAMPLE</small></span>');
       expect(html).toContain(c.game === "ak" ? "持证 ——<br/>——" : "持证 —— · ——");
-      if (c.game === "ak") expect(html).toContain("ZHOUP MAP · AK-????");
+      if (c.game === "ak") expect(html).toContain("ZHOUP MAP · AK-??????<");
     }
     // a pass of their own has none of it
     const own = renderToStaticMarkup(createElement(FullPass, { c: amiya, no: 1, fancy: false, holder: "柚子", at: 0, w: 118 }));

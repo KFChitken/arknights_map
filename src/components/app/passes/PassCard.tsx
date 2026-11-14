@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState, type CSSPropert
 import { T } from "@/i18n";
 import { passArtUrl, passColor, type PassArtList } from "@/lib/passArt";
 import { GAME_OF, type PassChar } from "@/lib/passCatalog";
-import { goldKind, isFoil, padNo, styleFor, type PassOnCard } from "@/lib/passes";
+import { goldKind, isFoil, padNo, PRINTED_DIGITS, styleFor, type PassOnCard } from "@/lib/passes";
 import { useLeanArt } from "@/lib/passLean";
 import type { Art } from "../OperatorNames";
 import "./pass.css";
@@ -263,9 +263,9 @@ function HangTag() {
 /** no null: a 样张, as a wish not drawn yet shows (SamplePass) */
 type FaceProps = { c: PassChar; no: number | null; color: string; pic: PassPic; holder: string; at: number };
 
-/** What a pass prints of whose it is: its number, holder and day, or ????, —— and —— on a 样张 */
+/** What a pass prints of whose it is: its number, holder and day, or ??????, —— and —— on a 样张 */
 const printed = (no: number | null, holder: string, at: number) =>
-  no === null ? { num: "????", holder: "——", date: "——" } : { num: padNo(no), holder, date: issued(at) };
+  no === null ? { num: "?".repeat(PRINTED_DIGITS), holder: "——", date: "——" } : { num: padNo(no), holder, date: issued(at) };
 
 /** The rubber stamp across a 样张 */
 function Stamp() {
@@ -473,7 +473,7 @@ export function FullPass({
 }
 
 /**
- * A character's pass as 样张, for a wish not drawn yet: No.????, —— for the holder and the day, never gold, and a
+ * A character's pass as 样张, for a wish not drawn yet: No.??????, —— for the holder and the day, never gold, and a
  * stamp across it; in either look (fancy: the special one a second copy brings)
  */
 export function SamplePass(props: { c: PassChar; fancy: boolean; art?: Art | null; w: number; tilt?: boolean; label?: string }) {

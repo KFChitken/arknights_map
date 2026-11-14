@@ -115,7 +115,7 @@ describe("a wish tapped on the 寻访 page", () => {
     expect(editor).toContain('<div class="hw got">');
   });
 
-  it("shows one not drawn yet as 样张, both looks side by side, No.????, no gold, nothing to wear, and only 返回", () => {
+  it("shows one not drawn yet as 样张, both looks side by side, No.??????, no gold, nothing to wear, and only 返回", () => {
     for (const [c, marks] of [
       [amiya, ["①", "②"]],
       [admin, ["③", "④"]],
@@ -123,7 +123,7 @@ describe("a wish tapped on the 寻访 page", () => {
       const html = peek(c.id, state([], { wish: [c.id], wishDrawn: [{ charId: c.id, lastNo: 63 }] }));
       const looks = [...html.matchAll(/<div class="zc (\w+( \w+)?)"/g)].map((m) => m[1]);
       expect(looks).toEqual(c.game === "ak" ? ["ra", "ra rax"] : ["tag", "tag tagx"]);
-      expect(html.match(/<small>No.<\/small>\?\?\?\?/g)).toHaveLength(2);
+      expect(html.match(/<small>No.<\/small>\?{6}</g)).toHaveLength(2);
       expect(html.match(/class="zsmp" aria-hidden="true">样张<small>SAMPLE<\/small>/g)).toHaveLength(2);
       expect(html).not.toContain("zfoil");
       expect(html).toContain("持证 ——");
@@ -174,7 +174,7 @@ describe("a wish tapped on the 寻访 page", () => {
   it("opens one the player has (just drawn too) as 我的通行证 does, at once, with ‹ back to 寻访; 镭射 from a second copy", () => {
     const one = peek(amiya.id, state([], { wish: [amiya.id], wishOwned: [owned(amiya.id, 1, 11)], wishDrawn: [{ charId: amiya.id, lastNo: 12 }] }));
     expect(one).not.toContain("zsmp");
-    expect(one).toContain("<small>No.</small>0011");
+    expect(one).toContain("<small>No.</small>000011");
     expect(one).toContain('aria-label="回到寻访"');
     expect(one).toContain('<button type="button" aria-pressed="false" disabled="">镭射 ②</button>');
     expect(one).toContain('<button type="button" class="y">戴上</button>');

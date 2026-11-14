@@ -170,7 +170,7 @@ export const styleFor = (game: PassGame, fancy: boolean): PassStyle => (fancy ? 
 export const isFancy = (copies: number, plain: boolean) => copies >= 2 && !plain;
 
 /**
- * A gold number, and which: the first hundred of a character (No.0001–0100), or 靓号, one with 325 or 799 in it
+ * A gold number, and which: the first hundred of a character (No.000001–000100), or 靓号, one with 325 or 799 in it
  * (325, 1325, 3250, 7990, 13258…); "" for any other. The rule is here alone: the server marks a drawn pass foil by it,
  * the page writes the chip's words (前 100, 靓号) from it.
  */
@@ -183,8 +183,9 @@ export const isFoil = (n: number) => goldKind(n) !== "";
 /** Of a character's gold first hundred, how many are still to be drawn, after the last number given (lastNo) */
 export const goldLeft = (lastNo: number) => Math.max(0, GOLD_TOP - lastNo);
 
-/** A pass's number as printed: four digits below 10000, as it is from there */
-export const padNo = (n: number) => (n < 10000 ? String(n).padStart(4, "0") : String(n));
+/** A pass's number as printed: six digits (No.000042), as it is from a million on */
+export const PRINTED_DIGITS = 6;
+export const padNo = (n: number) => String(n).padStart(PRINTED_DIGITS, "0");
 
 /** Draws in a row without a wish before the next one surely brings one (0 for the pity pull itself) */
 export const pityLeft = (miss: number) => Math.max(1, PITY - miss);

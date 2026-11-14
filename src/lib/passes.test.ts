@@ -173,8 +173,8 @@ describe("a pass's look and number", () => {
     for (const n of [101, 111, 8888, 1000, 3000, 352]) expect(isFoil(n), String(n)).toBe(false);
   });
 
-  it("prints four digits below 10000, and the number as it is from there", () => {
-    expect([1, 12, 345, 6789, 10000, 123456].map(padNo)).toEqual(["0001", "0012", "0345", "6789", "10000", "123456"]);
+  it("prints six digits, and the number as it is from a million on", () => {
+    expect([1, 12, 345, 6789, 10000, 123456, 1234567].map(padNo)).toEqual(["000001", "000012", "000345", "006789", "010000", "123456", "1234567"]);
   });
 
   it("draws one or ten, and a day of play brings ten tickets at most", () => {

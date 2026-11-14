@@ -549,7 +549,7 @@ describe("the pass on a main roach's card on the map", () => {
     const c = passChar(1)!;
     const shown = await roachPass(main, NOON);
     expect(shown).toEqual({ charId: 1, name: c.name, rarity: c.rarity, color: c.color, art: null });
-    // No.0001 of ten copies: neither the number, how many, the special look, nor gold
+    // No.000001 of ten copies: neither the number, how many, the special look, nor gold
     expect(Object.keys(shown!).sort()).toEqual(["art", "charId", "color", "name", "rarity"]);
     expect(JSON.stringify(shown)).not.toMatch(/"(no|copies|fancy|foil|gold|drawnAt|passId)"/);
     // the short form of the id the feed gives, too

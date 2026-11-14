@@ -8,7 +8,7 @@ import { padNo, type PassOnCard } from "@/lib/passes";
 /**
  * 通行证寻访 on profile cards (我的资料, TA 的资料, 触须之交): the pass worn, small on the right of the card
  * (passes/ProfilePass.tsx, fetched only for a card with one, as most have none), and its line under the card,
- * 「通行证 能天使 No.0007 · 潜能 2」 (潜能 from a second copy). The card's name is printed on it as its holder.
+ * 「通行证 能天使 No.000007 · 潜能 2」 (潜能 from a second copy). The card's name is printed on it as its holder.
  */
 const ProfilePass = dynamic(() => import("./passes/ProfilePass"), {
   ssr: false,

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Builds public/fonts/pass-num.woff2, the narrow letters and numbers printed on passes (src/components/app/passes):
-capital letters, digits, a few signs, the "o" of "No.", and every letter of the characters' English names
-(src/data/pass-catalog.json), cut from Barlow Condensed Bold, under the SIL Open Font License 1.1
+capital letters, digits, a few signs (the ? of a 样张's No.??????), the "o" of "No.", and every letter of the
+characters' English names (src/data/pass-catalog.json), cut from Barlow Condensed Bold, under the SIL Open Font License 1.1
 (public/fonts/pass-num-OFL.txt). Barlow has no Reserved Font Name; the copy is still named PassNum, so that a whole
 Barlow Condensed on someone's computer is never mistaken for it. Run it again when a name brings a new letter:
 
@@ -21,7 +21,7 @@ from fontTools.ttLib import TTFont
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NAME = "PassNum"
-FIXED = string.ascii_uppercase + string.digits + " .'-()·²&+/:#o"
+FIXED = string.ascii_uppercase + string.digits + " .'-()·²&+/:#?o"
 
 
 def characters() -> str:
