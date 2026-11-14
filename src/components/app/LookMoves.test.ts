@@ -2,12 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { T } from "@/i18n";
-import { drinkCup, hoodLamps } from "@/lib/lookArt";
+import { devilBits, drinkCup, hoodLamps, standingApart } from "@/lib/lookArt";
 import { pictureSvg } from "@/lib/roachImages";
 import { GLOW, hoodBody } from "@/lib/roachSvg";
-import { burst, feelers } from "@/lib/touchArt";
+import { boop, burst, feelers } from "@/lib/touchArt";
 import { ROACH_AVATARS, type DrawnAvatar, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
-import { DockFx, type DockAt, type DockKind } from "./DockFx";
+import { DockFx, dockAnimFor, type DockAt, type DockKind } from "./DockFx";
 import { touchedAround, touchedOn } from "./LookMoves";
 import RoachActor from "./RoachActor";
 import TouchStage, { ShoutStage, type TouchCast } from "./TouchStage";
@@ -226,5 +226,66 @@ describe("each look's own moves", () => {
     const html = drink("endmin");
     expect(html).toContain('<div class="actor pic" data-state="drinking" aria-hidden="true">');
     expect(html).toContain('class="lay cup" style="transform-origin:66% 64%"');
+  });
+
+  it("has 绝对主角 tease them with 略～, then throw a paper plane along her feeler that lands with 啵! as her name card", () => {
+    const html = scene("bold", { you: you("imp"), them: them("hood", "orange") });
+    const f = feelers("imp", "hood");
+    const [x, y] = f.boldEnd;
+    expect(html).toContain(`<div class="im-plane" style="offset-path:path(&#x27;${f.bold}&#x27;)"><svg`);
+    expect(html).toContain(`<div class="im-tease">${T.fx.tease}</div>`);
+    expect(html).toContain(`<div class="ta-fx im-pa" style="left:${x + 3}px;top:${y - 15}px">${boop()}</div>`);
+    // the name card itself still goes over: globals.css only has it come out where the plane lands
+    expect(html).toContain('class="ta-cardway"');
+    expect(looks(html)).toContain("you-imp");
+    expect(scene("bold", { you: you("hood"), them: them("imp", "orange") })).not.toContain("im-plane");
+    expect(scene("sneaky", { you: you("imp"), them: them("hood", "orange") })).not.toContain("im-tease");
+  });
+
+  it("has 绝对主角 touched twirl round and say 略略略～ in place of !, as the map draws her", () => {
+    const html = scene("bold", { you: you("hood"), them: them("imp", "orange") });
+    expect(html).toContain(`<div class="ta-around"><div class="im-lue">${T.fx.lue}</div></div>`);
+    expect(html).not.toContain('class="ta-mark"');
+    // on the sly: ? as anyone gets (略略略～ stays hidden there in globals.css)
+    expect(scene("sneaky", { you: you("hood"), them: them("imp", "orange") })).toContain('class="ta-mark"');
+    const stranger = scene("bold", { you: you("hood"), them: them("imp", "orange", true) });
+    expect(stranger).not.toContain("im-lue");
+    expect(stranger).toContain('class="ta-mark"');
+    expect(scene("bold", { you: you("hood"), them: them("imp", "orange", true, true) })).toContain("im-lue");
+  });
+
+  it("has your own dock avatar twirl round when you are 绝对主角, saying 略略略～ when touched boldly", () => {
+    expect(dockAnimFor("bold", "imp")).toBe("im-dspin");
+    expect(dockAnimFor("sneaky", "imp")).toBe("im-dspin-q");
+    expect(dockAnimFor("friend", "imp")).toBe("ta-dhop");
+    // the others hop and shiver as they always have
+    expect(dockAnimFor("bold", "hood")).toBe("ta-dhop");
+    expect(dockAnimFor("sneaky", "endmin")).toBe("ta-dshiver");
+    const bold = dock("bold", "imp", "green");
+    expect(bold).toContain('class="dock-fx dock-look dock-bold im-dspin"');
+    expect(bold).toContain(`<div class="im-lue">${T.fx.lue}</div>`);
+    expect(bold).not.toContain("ta-dmark");
+    expect(dock("sneaky", "imp", "green")).toContain("ta-dmark");
+  });
+
+  it("has 绝对主角 twirl round over her own ground as she shouts, her bubble with devil horns and a tail", () => {
+    const html = shout("imp");
+    const { ground, figure } = standingApart("imp");
+    expect(figure).toContain(pictureSvg("imp"));
+    expect(html).toContain(`<div class="ta-calm"><div class="ta-lay">${ground}</div><div class="ta-lay im-fig">${figure}</div></div>`);
+    expect(html).toContain(`<span class="im-devil">${devilBits()}</span></div>`);
+    expect(devilBits().match(/class="im-(horn l|horn r|tail)"/g)).toHaveLength(3);
+    // the others shout as before, the roach whole
+    for (const look of ["hood", "doctor", "endmin"] as const) {
+      expect(shout(look)).not.toContain("im-fig");
+      expect(shout(look)).not.toContain("im-devil");
+    }
+  });
+
+  it("has 绝对主角 drink a glass of red wine", () => {
+    const cup = drinkCup("imp")!;
+    expect(cup.origin).toBe("66% 66%");
+    expect(cup.svg.startsWith('<g transform="translate(42.24 42.24) scale(1.35) translate(-42.24 -42.24)">')).toBe(true);
+    expect(drink("imp")).toContain('class="lay cup" style="transform-origin:66% 66%"');
   });
 });

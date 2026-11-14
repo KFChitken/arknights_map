@@ -2,9 +2,23 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { T } from "@/i18n";
-import { alarm, crate, deployCrystal, deployTile, doctorDozing, hoodEyes, hoodLamps, loudspeaker, terminal, wavingHood } from "@/lib/lookArt";
+import {
+  alarm,
+  crate,
+  deployCrystal,
+  deployTile,
+  devilBits,
+  doctorDozing,
+  hoodEyes,
+  hoodLamps,
+  loudspeaker,
+  paperPlane,
+  standingApart,
+  terminal,
+  wavingHood,
+} from "@/lib/lookArt";
 import { GLOW } from "@/lib/roachSvg";
-import { burst } from "@/lib/touchArt";
+import { boop, burst } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
 
@@ -85,6 +99,17 @@ export function boldAround(look: RoachAvatar, f: { bold: string; boldEnd: [numbe
       </>
     );
   }
+  if (look === "imp") {
+    // 纸飞机: 略～ at them first, then a paper plane flies over along your feeler, 啵! as it lands, and turns into your
+    // name card there
+    return (
+      <>
+        <div className="im-plane" style={{ offsetPath: `path('${f.bold}')` }} {...html(paperPlane())} />
+        <div className="im-tease">{T.fx.tease}</div>
+        <div className="ta-fx im-pa" style={{ left: x + 3, top: y - 15 }} {...html(boop())} />
+      </>
+    );
+  }
   return null;
 }
 
@@ -114,15 +139,47 @@ export function touchedOn(look: DrawnAvatar, glow: string): ReactNode {
 export function touchedAround(look: DrawnAvatar): ReactNode {
   // 黄黑警报: a warning sign over its head (not when touched on the sly: then ? as anyone), a yellow ring at its feet
   if (look === "endmin") return <div className="ta-lay em-alarm" {...html(alarm())} />;
+  // 做鬼脸: 略略略～ as it twirls round (not on the sly either)
+  if (look === "imp") return <div className="im-lue">{T.fx.lue}</div>;
   return null;
 }
 
-/** Whether a look touched boldly says ! of itself (管理员 with its warning sign), so no ! goes up over it */
-export const ownMark = (look: DrawnAvatar) => look === "endmin";
+/** The looks that say ! of themselves when touched boldly (管理员's warning sign, 绝对主角's 略略略～), so no ! goes up */
+const OWN_MARK: ReadonlySet<DrawnAvatar> = new Set(["endmin", "imp"]);
+export const ownMark = (look: DrawnAvatar) => OWN_MARK.has(look);
+
+/** How your dock avatar itself moves when you are touched and your look has a move of its own: 绝对主角 twirls round */
+export function dockMove(look: RoachAvatar, kind: "sneaky" | "bold"): string | null {
+  if (look === "imp") return kind === "bold" ? "im-dspin" : "im-dspin-q";
+  return null;
+}
 
 /** What your look holds up as it shouts, in its box: 博士 its terminal */
 export function shoutProp(look: RoachAvatar): ReactNode {
   if (look === "doctor") return <div className="dc-tablet" {...html(terminal())} />;
+  return null;
+}
+
+/**
+ * Your look as it shouts, when the picture moves on its own over a ground that stays (绝对主角 twirls round); null for
+ * the roach as it is
+ */
+export function shoutFigure(look: RoachAvatar): ReactNode {
+  if (look === "imp") {
+    const { ground, figure } = standingApart(look);
+    return (
+      <>
+        <div className="ta-lay" {...html(ground)} />
+        <div className="ta-lay im-fig" {...html(figure)} />
+      </>
+    );
+  }
+  return null;
+}
+
+/** What your look adds to the bubble it shouts: 绝对主角 little devil horns and a tail */
+export function shoutBubble(look: RoachAvatar): ReactNode {
+  if (look === "imp") return <span className="im-devil" {...html(devilBits())} />;
   return null;
 }
 

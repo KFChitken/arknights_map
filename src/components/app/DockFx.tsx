@@ -6,7 +6,7 @@ import { GLOW } from "@/lib/roachSvg";
 import { dockFeeler, mark, miniHeart, soundArcs, tap } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { ownMark, touchedAround, touchedOn } from "./LookMoves";
+import { dockMove, ownMark, touchedAround, touchedOn } from "./LookMoves";
 
 /**
  * The touched side (the third step of the touch and declaration animations): only your
@@ -37,6 +37,8 @@ export const DOCK_ANIM: Record<DockKind, string> = {
   cake: "ta-dhop",
   hearts: "ta-dhop",
 };
+/** The class your dock avatar plays: your look's own move for a touch when it has one (LookMoves.tsx), or as anyone's */
+export const dockAnimFor = (kind: DockKind, look: RoachAvatar) => ((kind === "sneaky" || kind === "bold") && dockMove(look, kind)) || DOCK_ANIM[kind];
 /** Who touched, for the card of a bold touch or a new 触须之交 */
 export type DockFrom = { name: string; avatar: DrawnAvatar; color: RoachColor };
 type Box = { x: number; y: number; w: number; h: number };
@@ -94,7 +96,7 @@ export function DockFx({
   const around = touched ? touchedAround(me.avatar) : null;
   const look = (on || around) && (
     <div
-      className={`dock-fx dock-look dock-${kind} ${DOCK_ANIM[kind]}`}
+      className={`dock-fx dock-look dock-${kind} ${dockAnimFor(kind, me.avatar)}`}
       style={{ left: icon.x, top: icon.y, width: icon.w, height: icon.h }}
     >
       {on}

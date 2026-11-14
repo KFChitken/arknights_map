@@ -21,7 +21,7 @@ import {
 } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { boldAround, boldLines, boldYou, ownMark, shoutAround, shoutProp, touchedAround, touchedOn } from "./LookMoves";
+import { boldAround, boldLines, boldYou, ownMark, shoutAround, shoutBubble, shoutFigure, shoutProp, touchedAround, touchedOn } from "./LookMoves";
 
 /**
  * Who is in a touch scene. you: your own look and the name your dock shows. them: the
@@ -240,9 +240,7 @@ export function ShoutStage({
           <div className="ta-r10">{T.fx.tenKm}</div>
           <div className="ta-me">
             <div className="ta-body">
-              <div className="ta-calm">
-                <RoachIcon color={me.color} size={88} avatar={me.avatar} mine />
-              </div>
+              <div className="ta-calm">{shoutFigure(me.avatar) ?? <RoachIcon color={me.color} size={88} avatar={me.avatar} mine />}</div>
               {!picture && <div className="ta-up" {...html(shoutingHood(GLOW[me.color]))} />}
               <div className="ta-shoutlines" {...html(shoutLines())} />
               {shoutProp(me.avatar)}
@@ -251,6 +249,7 @@ export function ShoutStage({
           <div className="ta-bubble">
             {limited && <span className="ta-tag">{T.map.declare.limited}</span>}
             {text}
+            {shoutBubble(me.avatar)}
           </div>
           {shoutAround(me.avatar)}
         </div>

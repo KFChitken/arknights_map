@@ -201,7 +201,7 @@ import SafetySheet from "./app/SafetySheet";
 import AgeCheckSheet from "./app/AgeCheckSheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
-import { DOCK_ANIM, DockArcs, DockFx, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
+import { DockArcs, DockFx, dockAnimFor, HeardBubbles, type DockAt, type DockFrom, type DockKind, type Heard } from "./app/DockFx";
 import FriendActions, { type FriendAct } from "./app/FriendActions";
 import GestureStage, { SanityFly } from "./app/GestureStage";
 import BatchStage from "./app/BatchStage";
@@ -1458,7 +1458,7 @@ export default function MapApp({
     new Promise<void>((resolve) => {
       const at = dockAt();
       if (!at || motionOff() || look === "real") return resolve();
-      setDockAnim(DOCK_ANIM[kind]);
+      setDockAnim(dockAnimFor(kind, me?.profile.avatar ?? "hood"));
       setBadgePop(kind !== "sneaky");
       setDockScene({
         kind,

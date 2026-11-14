@@ -963,6 +963,8 @@ export const zh = {
     friends: "成为触须之交！",
     tenKm: "10 公里",
     deploy: "部署！",
+    tease: "略～",
+    lue: "略略略～",
   },
   cloneMove: {
     meters: "{from} {m} 米",

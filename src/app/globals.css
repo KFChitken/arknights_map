@@ -1929,6 +1929,67 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
   53% { opacity: 0; transform: scale(0.6); } 56% { opacity: 1; } 62%, 100% { opacity: 0; transform: scale(1.3); }
 }
 
+/* 绝对主角, 大胆碰别人 (纸飞机): 略～ at them first, a wind-up, and a paper plane flies over along the feeler; 啵! as it
+   lands, where it turns into the name card */
+.im-plane { left: 0; top: 0; offset-anchor: 50% 50%; offset-rotate: auto; offset-distance: 0%; opacity: 0; }
+.im-tease, .im-lue {
+  position: absolute; padding: 2px 8px; border: 1.5px solid #1b1d22; border-radius: 10px; color: #1b1d22;
+  font-size: 12px; font-weight: 800; line-height: 18px; white-space: nowrap; transform-origin: 0 100%; opacity: 0;
+}
+.im-tease { left: 62px; top: 52px; background: #ffe0ee; }
+.im-pa { opacity: 0; }
+.ta-bold.you-imp .ta-boop { display: none; }
+.ta-bold.you-imp .ta-you .ta-body { animation-name: im-throw; }
+.ta-bold.you-imp .im-plane { animation-name: im-plane; animation-timing-function: ease-in-out; }
+.ta-bold.you-imp .im-tease { animation-name: im-tease; }
+.ta-bold.you-imp .im-pa { animation-name: ta-bo-boop; animation-delay: calc(var(--dur) * 0.24); }
+.ta-bold.you-imp .ta-cardway { animation-name: im-card; }
+@keyframes im-throw {
+  0% { opacity: 0; transform: translate(-34px, 0); } 6% { opacity: 1; transform: translate(-20px, -13px); } 12% { transform: translate(-4px, 0) scale(1.05, 0.93); }
+  16%, 28% { transform: none; } 34% { transform: rotate(-10deg); } 39% { transform: rotate(9deg) translateX(3px); }
+  44%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translate(-12px, 0); }
+}
+@keyframes im-plane { 0%, 37% { opacity: 0; offset-distance: 0%; } 39% { opacity: 1; offset-distance: 2%; } 64% { opacity: 1; offset-distance: 100%; } 66%, 100% { opacity: 0; offset-distance: 100%; } }
+@keyframes im-tease { 0%, 14% { opacity: 0; transform: scale(0.3); } 18% { opacity: 1; transform: scale(1.1); } 21% { transform: scale(1); } 44% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes im-card {
+  0%, 65% { opacity: 0; offset-distance: 100%; transform: scale(0.4) rotate(-20deg); } 69% { opacity: 1; offset-distance: 100%; transform: scale(1.1) rotate(4deg); }
+  72% { transform: scale(1); } 82% { opacity: 1; offset-distance: 100%; transform: scale(1); } 88%, 100% { opacity: 0; offset-distance: 100%; transform: scale(0.3); }
+}
+/* 绝对主角, 被大胆碰 (做鬼脸): it twirls round on the spot, 略略略～ in place of !; on your own dock avatar, beside it */
+.im-lue { left: 16px; top: -30px; background: #ffe3e3; }
+.dock-look .im-lue { left: calc(100% + 4px); top: -8px; }
+.ta-bold.them-imp .ta-jump { animation-name: im-spin; }
+.ta-bold.them-imp .im-lue, .dock-bold .im-lue { animation-name: im-lue; }
+@keyframes im-spin {
+  0%, 44% { transform: none; } 47% { transform: translateY(-9px) scaleX(0.2); } 50% { transform: translateY(-11px) scaleX(-1); }
+  53% { transform: translateY(-9px) scaleX(-0.2); } 56% { transform: translateY(-4px) scaleX(1); } 60% { transform: translateY(0) scale(1.05, 0.94); } 64%, 100% { transform: none; }
+}
+@keyframes im-lue { 0%, 54% { opacity: 0; transform: scale(0.3); } 58% { opacity: 1; transform: scale(1.12); } 62% { transform: scale(1); } 92% { opacity: 1; } 100% { opacity: 0; } }
+/* 被偷偷碰: a smaller twirl at the tap in place of the jump, then it looks round under ? as anyone does */
+.ta-sneaky.them-imp .ta-jump { animation-name: im-spin-q; }
+@keyframes im-spin-q {
+  0%, 45% { transform: none; } 48% { transform: translateY(-6px) scaleX(0.3); } 51% { transform: translateY(-7px) scaleX(-0.9); }
+  54% { transform: translateY(-5px) scaleX(-0.3); } 57% { transform: translateY(-2px) scaleX(1); } 61%, 100% { transform: none; }
+}
+/* your own dock avatar twirls the same way (DockFx.tsx dockAnimFor) */
+.im-dspin { animation: im-spin 1.6s ease-out both; transform-origin: 50% 90%; }
+.im-dspin-q { animation: im-spin-q 1.6s ease-out both; transform-origin: 50% 90%; }
+@media (prefers-reduced-motion: reduce) {
+  .im-dspin, .im-dspin-q { animation: none !important; }
+}
+/* 绝对主角, 喊话 (小恶魔气泡): she twirls round before she shouts, her ground staying put, and her bubble grows little
+   devil horns and a tail */
+.ta-shout.ta-pic.me-imp .im-fig { animation-name: im-twirl; transform-origin: 50% 92%; }
+@keyframes im-twirl {
+  0%, 8% { transform: none; } 11% { transform: translateY(-6px) scaleX(0.15); } 14% { transform: translateY(-8px) scaleX(-1); }
+  17% { transform: translateY(-6px) scaleX(-0.15); } 20% { transform: translateY(0) scaleX(1); } 100% { transform: none; }
+}
+.im-devil { position: absolute; inset: 0; }
+.im-horn, .im-tail { position: absolute; display: block; }
+.im-horn.l { left: 7px; top: -10px; }
+.im-horn.r { right: 7px; top: -10px; }
+.im-tail { right: -17px; bottom: -9px; }
+
 /* the dock's: over your own avatar (its box), moving with it, as long as the dock's scene */
 .dock-look * { animation-duration: 1.6s; animation-fill-mode: both; animation-timing-function: ease-out; }
 @media (prefers-reduced-motion: reduce) {

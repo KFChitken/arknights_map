@@ -1,4 +1,5 @@
 import { groundOnly } from "./flipArt";
+import { pictureSvg } from "./roachImages";
 import { LINE } from "./roachLine";
 import { hoodBody } from "./roachSvg";
 import type { RoachAvatar } from "./types";
@@ -114,6 +115,26 @@ export const loudspeaker = () =>
 <path class="arc a2" d="M32.4 3.4 Q38 13.5 32.4 23.6" fill="none" stroke="${LINE}" stroke-width="2" stroke-linecap="round"/>`,
   );
 
+/** 绝对主角 纸飞机: the paper plane she throws, nose to the right (the path it flies along turns it) */
+export const paperPlane = () =>
+  svgBox(
+    "0 0 26 16",
+    26,
+    16,
+    `<path d="M1 7.6 L25 1.4 L9.4 9.6 Z" fill="#fff" stroke="${INK}" stroke-width="1.3" stroke-linejoin="round"/>
+<path d="M9.4 9.6 L25 1.4 L12.6 14.6 Z" fill="#dfe4ee" stroke="${INK}" stroke-width="1.3" stroke-linejoin="round"/>
+<path d="M9.4 9.6 L10.2 13.4" stroke="${INK}" stroke-width="1.1" stroke-linecap="round"/>`,
+  );
+
+/** 绝对主角 shouting: little devil horns on the bubble's top corners and a devil's tail off its side */
+export const devilBits = () =>
+  `<svg class="im-horn l" viewBox="0 0 12 12" width="12" height="12" overflow="visible" aria-hidden="true"><path d="M2 12 C2 6 5 2 10 0.5 C8 4 8.5 8 10 12 Z" fill="#e8443a" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>` +
+  `<svg class="im-horn r" viewBox="0 0 12 12" width="12" height="12" overflow="visible" aria-hidden="true"><path d="M10 12 C10 6 7 2 2 0.5 C4 4 3.5 8 2 12 Z" fill="#e8443a" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>` +
+  `<svg class="im-tail" viewBox="0 0 24 16" width="24" height="16" overflow="visible" aria-hidden="true"><path d="M0.5 2 C6 2 8 11 14 9" fill="none" stroke="#fff" stroke-width="4.4" stroke-linecap="round"/><path d="M0.5 2 C6 2 8 11 14 9" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M12.6 5.4 L22.6 7.2 L15 13.8 Z" fill="#e8443a" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+
+/** A picture look standing, as its ground and the picture alone, to move the picture over a ground that stays */
+export const standingApart = (look: RoachAvatar) => ({ ground: svg64(groundOnly("mine")), figure: svg64(pictureSvg(look)) });
+
 /**
  * What each picture look drinks from (摄入酒精), drawn on the 64 grid by its mouth, with the point it tips about
  * (the cup's base, in % of the box). fall: which way it tips over drunk, when not to its right.
@@ -139,6 +160,16 @@ const CUPS: Partial<Record<RoachAvatar, Cup>> = {
   <path d="M37.6 33.6 C37.6 31.2 39.6 30.6 42.1 30.6 C44.6 30.6 46.6 31.2 46.6 33.6 V39.4 C46.6 40.6 45.6 41.2 44.4 41.2 H39.8 C38.6 41.2 37.6 40.6 37.6 39.4 Z" fill="#4f6b4a" stroke-width="1.4"/>
   <path d="M37.8 35.6 H46.4" stroke="#ffd23f" stroke-width="1.6"/>
   <path d="M39.4 33 V34.4" stroke="#8fb08a" stroke-width="1" stroke-linecap="round"/>
+</g>`,
+  },
+  // a glass of red wine
+  imp: {
+    origin: "66% 66%",
+    draw: () => `<g stroke="${LINE}" stroke-linejoin="round">
+  <path d="M38.2 29.6 H46.8 C46.8 33.6 45 35.6 42.5 35.6 C40 35.6 38.2 33.6 38.2 29.6 Z" fill="#ffffff" stroke-width="1.3"/>
+  <path d="M38.5 31.4 H46.5 C46.2 33.8 44.8 35 42.5 35 C40.2 35 38.8 33.8 38.5 31.4 Z" fill="#c2203d" stroke="none"/>
+  <path d="M42.5 35.6 V40.6 M39.6 41.6 Q42.5 40 45.4 41.6 Z" fill="#fff" stroke-width="1.2"/>
+  <path d="M39.6 30.6 L40.4 32.4" stroke="#fff" stroke-width="0.9" stroke-linecap="round"/>
 </g>`,
   },
 };
