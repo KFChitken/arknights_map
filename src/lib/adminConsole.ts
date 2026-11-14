@@ -1,4 +1,5 @@
 import { addDays, beijingDate, beijingMidnight, beijingShort } from "./beijing";
+import { hasHidden } from "./playerText";
 import type { AdminAction, AdminPerson, AnyReason, ReporterInfo, RoachReportReason, RuleCode } from "./safety";
 
 /**
@@ -181,6 +182,65 @@ export function maskEmails<T>(value: T): T {
   for (const [k, v] of Object.entries(value)) out[k] = k === "email" && typeof v === "string" ? maskEmail(v) : maskEmails(v);
   return out as T;
 }
+
+// ---- what a player wrote, as the 管理台 shows it ----
+
+/**
+ * Why words a player wrote for the 管理台 to read (a report's note, an appeal) may be bait for whoever reads them: a
+ * web address, written out or broken up (hxxp, [.], 点com); a code or password; passing for the site or a notice of
+ * its; markup; characters that cannot be seen. The 管理台 shows them as plain words whatever they hold (never markup,
+ * never a link): these only say to be careful.
+ */
+export type LureFlag = "link" | "code" | "system" | "markup" | "hidden";
+export const LURE_WORDS: Record<LureFlag, string> = {
+  link: "含网址",
+  code: "提到验证码或密码",
+  system: "像网站发的通知",
+  markup: "带网页代码",
+  hidden: "藏了看不见的字符",
+};
+
+/** The endings of web addresses people are sent to: common ones, cheap ones, and .invalid, which tests use */
+const TLDS =
+  "com|cn|net|org|top|xyz|io|me|cc|co|vip|site|online|link|app|info|invalid|ru|su|club|shop|live|pro|icu|buzz|work|fun|ink|wang|xin|ltd|tv|hk|tw|jp|kr|us|uk|de|ly|gg|to|sh|la|ws|biz|asia|cloud|art|space|website|tech|store|life|world|one|run|dev|page|mobi|im|in|ai|tk|ml|ga|cf|gq";
+/** A dot as it is written to get past a filter: 「.」 「。」 「[.]」 「(.)」 「点」 */
+const DOT = String.raw`(?:[.。．]|\[\s*[.。．]\s*\]|\(\s*[.。．]\s*\)|点)`;
+const LURES: [LureFlag, RegExp][] = [
+  [
+    "link",
+    new RegExp(
+      [
+        // http://, hxxp[:]//, https：//
+        String.raw`(?:h[tx]{2}ps?|ftp)\s*(?:[:：]|\[\s*[:：]\s*\]|\(\s*[:：]\s*\))\s*[/／]{2}`,
+        String.raw`(?:^|[^a-z0-9])www\s*${DOT}`,
+        // a name ending as a web address does (中文 names too), however its dot is written
+        String.raw`[\p{L}\p{N}][\p{L}\p{N}-]*\s*${DOT}\s*(?:${TLDS})(?![a-z0-9])`,
+        // an address by its numbers
+        String.raw`(?:^|[^\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])`,
+      ].join("|"),
+      "iu",
+    ),
+  ],
+  [
+    "code",
+    // the site's own codes (a sign-in code by mail, a 登录码 from a signed-in device, the 管理台's authenticator and backup codes) and passwords
+    /验证码|动态码|动态口令|验证器|口令|密码|备用码|校验码|安全码|登[录陆入]码|authenticator|password|passcode|two[\s-]?factor|(?:log[\s-]?in|sign[\s-]?in|verification|backup|recovery|one[\s-]?time|security)\s*codes?|(?:^|[^a-z])(?:totp|otp|2fa|mfa)(?![a-z])/i,
+  ],
+  [
+    "system",
+    /系统(?:通知|消息|提示|公告)|官方(?:通知|客服)|安全(?:中心|提醒|警告)|账[号户](?:异常|冻结|被封)|[【\[［]\s*(?:系统|官方|通知)\s*[】\]］]|我是(?:站长|管理员)|system\s*(?:notice|message|alert)|security\s*(?:notice|alert)|official\s*notice/i,
+  ],
+  ["markup", /<\s*\/?\s*[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?\s*>|javascript\s*:|&#x?[0-9a-f]+;|&(?:lt|gt|amp|quot|nbsp);/i],
+];
+
+/** Which of LURE_WORDS words a player wrote call for care, in that order; none for most */
+export function lureFlags(text: string): LureFlag[] {
+  const flags = LURES.filter(([, re]) => re.test(text)).map(([flag]) => flag);
+  return hasHidden(text) ? [...flags, "hidden"] : flags;
+}
+
+/** The mark a case gets in 待处理 when the words of one of its reports call for care */
+export const LURE_TAG = "举报内容可疑";
 
 // ---- 操作记录 ----
 

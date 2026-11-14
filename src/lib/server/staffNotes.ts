@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { beijingDayWords } from "../beijing";
+import { cleanPlayerText } from "../playerText";
 import { APPEAL_MAX, APPEAL_MIN, APPEALABLE, isRoachReportReason, isRuleCode, reasonWords, RULES, type AdminAction } from "../safety";
 import { INBOX_DAYS, SUSPEND_DAYS, YELLOW_DAYS, YELLOWS_TO_WORRY } from "../rules";
 import { WorldError, type InboxItem, type StaffAppeal } from "../world/types";
@@ -196,7 +197,8 @@ const DAY_MS = 86_400_000;
  * characters, within INBOX_DAYS of it. The admin answers it on the admin page (src/lib/server/admin.ts).
  */
 export async function appeal(userId: string, actionId: unknown, text: unknown, now = Date.now()) {
-  const said = String(text ?? "").trim();
+  // plain words, as a report's note (src/lib/playerText.ts)
+  const said = cleanPlayerText(String(text ?? ""));
   const length = [...said].length;
   if (length < APPEAL_MIN) throw new WorldError(T.server.staffNotes.appealSayWhy);
   if (length > APPEAL_MAX) throw new WorldError(fmt(T.server.staffNotes.appealTooLong, { max: APPEAL_MAX }));

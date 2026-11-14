@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { REPORTS_PER_IP_HOUR } from "@/lib/rules";
 import { db } from "@/lib/server/db";
 import { sessions, users } from "@/lib/server/schema";
 import { POST } from "./route";
@@ -17,10 +18,10 @@ vi.mock("next/headers", () => ({
   headers: async () => new Headers(),
 }));
 
-async function call(op: string, args: unknown[] = []) {
+async function call(op: string, args: unknown[] = [], headers: Record<string, string> = {}) {
   const req = new NextRequest(`http://localhost/api/world/${op}`, {
     method: "POST",
-    headers: { origin: "http://localhost", host: "localhost", "content-type": "application/json" },
+    headers: { origin: "http://localhost", host: "localhost", "content-type": "application/json", ...headers },
     body: JSON.stringify({ args }),
   });
   const res = await POST(req, { params: Promise.resolve({ op }) });
@@ -66,5 +67,29 @@ describe("只看本体 (setOnlyMains)", () => {
     }
     // and in what the page reads about who is signed in
     expect((await call("me")).body.result).toMatchObject({ onlyMains: false });
+  });
+});
+
+describe("举报 from one network", () => {
+  it("takes at most REPORTS_PER_IP_HOUR an hour from one address, players and roaches alike, whichever accounts send them", async () => {
+    const from = (ip: string) => ({ "x-forwarded-for": ip });
+    // signed out, nothing is counted
+    expect((await call("report", ["t:nothing", "spam"], from("203.0.113.9"))).status).toBe(401);
+    const a = await account("a@example.com");
+    const b = await account("b@example.com");
+    await signIn(a);
+    for (let i = 0; i < REPORTS_PER_IP_HOUR; i++) {
+      // nothing to report here, but each one tried counts
+      const op = i % 2 ? "report" : "reportRoach";
+      expect((await call(op, [`t:${i}`, op === "report" ? "spam" : "place"], from("203.0.113.9"))).status, `${i}`).toBe(400);
+    }
+    await signIn(b);
+    const over = await call("report", ["t:more", "spam"], from("203.0.113.9"));
+    expect(over).toEqual({ status: 429, body: { error: "操作太频繁了，歇一会儿再试。" } });
+    expect((await call("reportRoach", ["more", "place"], from("203.0.113.9"))).status).toBe(429);
+    // another network is not held up
+    expect((await call("report", ["t:more", "spam"], from("198.51.100.4"))).status).toBe(400);
+    // nor is anything else from the same one
+    expect((await call("setOnlyMains", [true], from("203.0.113.9"))).status).toBe(200);
   });
 });

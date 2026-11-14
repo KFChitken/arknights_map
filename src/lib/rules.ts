@@ -76,6 +76,12 @@ export const POKE_EVERY_DAYS = 7;
  * about themselves (src/lib/safety.ts PROFILE_REASONS) hold their name and UIDs until the admin looks.
  */
 export const REPORTS_PER_DAY = 10;
+/**
+ * Reports (of players and roaches alike) from one network an hour, however many accounts they come from. Counted in
+ * each process (rateLimit.ts), so a few processes let a few times this through at most; enough for a school's or a
+ * phone company's shared address, too few for one person to flood the 管理台 with notes.
+ */
+export const REPORTS_PER_IP_HOUR = 20;
 export const PROFILE_REPORTS_TO_HOLD = 3;
 export const REPORT_NOTE_MAX = 100;
 /** A report for 「其他」 says what happened in at least this many characters */

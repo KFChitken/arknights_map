@@ -15,13 +15,13 @@ import {
   type CasePage,
   type RuleCode,
 } from "@/lib/safety";
-import type { BanRequestCard, DoneToday } from "@/lib/adminConsole";
+import { LURE_TAG, lureFlags, type BanRequestCard, type DoneToday } from "@/lib/adminConsole";
 import { beijingShort } from "@/lib/beijing";
 import { ago } from "../app/InboxSheet";
 import { errorWords } from "./api";
 import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
-import { Empty, Facts, LevelTag, Mark, Tag } from "./ui";
+import { Empty, Facts, LevelTag, Mark, PlayerWords, Tag, tagKind } from "./ui";
 import {
   ACTION_WORDS,
   caseTitle,
@@ -93,7 +93,13 @@ function reportersWords(c: AdminCase) {
 const staffTag = (p: { staff: AdminCase["staff"] }) => (p.staff === "owner" ? ["站长"] : p.staff === "mod" ? ["管理员"] : []);
 
 function caseTags(c: AdminCase) {
-  return [...staffTag(c), ...(c.kind === "roach" && c.anonymous ? ["主人现在是匿名"] : []), ...personTags(c, c.brigade)];
+  return [
+    // what a reporter wrote looks like bait: the words themselves say so where they are shown
+    ...(c.reports.some((r) => lureFlags(r.note).length) ? [LURE_TAG] : []),
+    ...staffTag(c),
+    ...(c.kind === "roach" && c.anonymous ? ["主人现在是匿名"] : []),
+    ...personTags(c, c.brigade),
+  ];
 }
 
 /**
@@ -543,7 +549,9 @@ export default function Cases({ start }: { start?: string }) {
                         {caseTags(x.c).length > 0 && (
                           <span className="ac-row-tags">
                             {caseTags(x.c).map((t) => (
-                              <Tag key={t}>{t}</Tag>
+                              <Tag key={t} kind={tagKind(t)}>
+                                {t}
+                              </Tag>
                             ))}
                           </span>
                         )}
@@ -655,7 +663,9 @@ function PersonHead({
           <h2>{heading}</h2>
           <LevelTag level={level} />
           {tags.map((t) => (
-            <Tag key={t}>{t}</Tag>
+            <Tag key={t} kind={tagKind(t)}>
+              {t}
+            </Tag>
           ))}
         </div>
         <div className="ac-sub">
@@ -771,7 +781,7 @@ function CaseDetail({
               <strong>{reasonWords(r.reason)}</strong>
               <span className="ac-muted">{ago(r.at)}</span>
             </div>
-            {r.note && <div>举报人写：「{r.note}」</div>}
+            {r.note && <PlayerWords label="举报人自己写的" text={r.note} what="举报" />}
             <div className="ac-report-context">
               {[r.context, `${roach ? "主人当时的名字" : "当时的名字"}：${r.name || "（没有名字）"}`].filter(Boolean).join(" · ")}
               {r.place && roach && (r.place.lng !== roach.lng || r.place.lat !== roach.lat) && " · 这次举报时它在别处"}
@@ -822,7 +832,7 @@ function AppealDetail({ a, me, onAnswer, onAccount }: { a: AdminAppeal; me: stri
       </div>
       <div>
         <h3 className="ac-h3">TA 的申诉 · {beijingShort(a.appealedAt)}</h3>
-        <p className="ac-appeal-text">「{a.appeal}」</p>
+        <PlayerWords label="TA 自己写的" text={a.appeal} what="申诉" />
       </div>
       {a.mine ? (
         <p className="ac-paused">这件是你自己处理的，申诉要由站长或别的管理员来看。</p>

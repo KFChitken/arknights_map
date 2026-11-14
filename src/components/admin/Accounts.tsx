@@ -9,7 +9,7 @@ import { ago } from "../app/InboxSheet";
 import { AdminError, errorWords } from "./api";
 import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
-import { Empty, Facts, Mark, Tag } from "./ui";
+import { Empty, Facts, Mark, PlayerWords, Tag } from "./ui";
 import { ACTION_WORDS, HELD_WORDS, historyWords, joinedWords, personFacts, reporterWords, savedName } from "./words";
 
 /**
@@ -356,7 +356,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
                     </strong>
                     <span className="ac-muted small">{beijingShort(r.at)}</span>
                   </div>
-                  {r.note && <div>举报人写：「{r.note}」</div>}
+                  {r.note && <PlayerWords label="举报人自己写的" text={r.note} what="举报" />}
                   <div className={`small ${r.resolvedAt ? "ac-muted" : "ac-open-text"}`}>
                     {!r.resolvedAt
                       ? "还没处理"

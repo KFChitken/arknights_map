@@ -1,6 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { LURE_TAG, LURE_WORDS, lureFlags } from "@/lib/adminConsole";
+import { cleanPlayerText } from "@/lib/playerText";
 import type { CaseLevel } from "@/lib/safety";
 import type { RoachColor } from "@/lib/types";
 import { markOf, type Fact } from "./words";
@@ -21,6 +23,31 @@ export function LevelTag({ level }: { level: CaseLevel | "appeal" }) {
 /** A mark beside a name: plain, a warning (red) or something waiting (yellow) */
 export function Tag({ kind = "plain", children }: { kind?: "plain" | "warn" | "open"; children: ReactNode }) {
   return <span className={`ac-tag ${kind}`}>{children}</span>;
+}
+
+/** A tag of a case or a person: LURE_TAG in red, the rest plain */
+export const tagKind = (t: string) => (t === LURE_TAG ? "warn" : "plain");
+
+/**
+ * Words a player typed (a report's note, an appeal), shown as theirs and nothing more: in a box of their own under
+ * a label, cut off from the words around them (bdi), cleaned of what cannot be seen as new ones are kept, never as
+ * markup or a link. When they look like bait (lureFlags), a warning goes under them: the site never asks for a code
+ * or sends anyone elsewhere in these. what: what they are, 「举报」 or 「申诉」.
+ */
+export function PlayerWords({ label, text, what }: { label: string; text: string; what: string }) {
+  const flags = lureFlags(text);
+  return (
+    <div className={`ac-player${flags.length ? " lure" : ""}`}>
+      <span className="ac-player-label">{label}</span>
+      <bdi className="ac-player-text">{cleanPlayerText(text)}</bdi>
+      {flags.length > 0 && (
+        <p className="ac-lure">
+          <strong>小心：这段话{flags.map((f) => LURE_WORDS[f]).join("、")}。</strong>
+          网站不会在{what}里找你要验证码或密码，也不会叫你去别的网址，别点、别照做。{what}本身照常判断。
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** A player's round mark: the first character of their name on their roach's colour */

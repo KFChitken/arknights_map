@@ -6,6 +6,7 @@ import { declarationText, replyOf } from "../declarations";
 import { distanceKm } from "../geo";
 import { guideById, guideOfItem } from "../guides";
 import { bare } from "../nameRules";
+import { cleanPlayerText } from "../playerText";
 import { displayName } from "../profile";
 import { INK_SLOT } from "../si";
 import {
@@ -327,9 +328,8 @@ export const tellAdmin = () =>
 /** Report whoever sent an inbox item (or a friend). Reporting also blocks them. */
 export async function report(userId: string, target: string, reason: unknown, note: unknown) {
   if (!isReportReason(reason)) throw new WorldError(T.server.safety.pickReason);
-  const said = String(note ?? "")
-    .trim()
-    .slice(0, REPORT_NOTE_MAX);
+  // kept as plain words: what cannot be seen or would move the words around it goes (src/lib/playerText.ts)
+  const said = cleanPlayerText(String(note ?? ""), REPORT_NOTE_MAX);
   if (noteMissing(reason, said)) throw new WorldError(T.server.safety.sayWhatOther);
   const who = await whoSent(userId, String(target));
   if (!who) throw new WorldError(T.server.common.noSuchNote);
@@ -373,9 +373,8 @@ export async function report(userId: string, target: string, reason: unknown, no
  */
 export async function reportRoach(userId: string, publicId: string, reason: unknown, note: unknown) {
   if (!isRoachReportReason(reason)) throw new WorldError(T.server.safety.pickReason);
-  const said = String(note ?? "")
-    .trim()
-    .slice(0, REPORT_NOTE_MAX);
+  // kept as plain words: what cannot be seen or would move the words around it goes (src/lib/playerText.ts)
+  const said = cleanPlayerText(String(note ?? ""), REPORT_NOTE_MAX);
   const id = String(publicId);
   // the card offers none of these; this is the backstop
   const guide = guideById(id);

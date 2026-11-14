@@ -3032,6 +3032,21 @@ describe("server world", () => {
     expect(await db.$count(reports)).toBe(1);
   });
 
+  it("keeps a report's note as plain words: what cannot be seen goes and lines join, so 其他 still wants real ones", async () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const ZWSP = String.fromCodePoint(0x200b);
+    await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    const t1 = await demo("t1");
+    await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true);
+    const [touch] = await me.inbox();
+    await expect(me.report(touch.id, "other", `${ZWSP}啊${RLO}${ZWSP}`)).rejects.toThrow("写一句是什么事");
+    expect(await db.$count(reports)).toBe(0);
+    await me.report(touch.id, "other", `  <b>系统通知</b>\n${RLO}站长请看${ZWSP}  ${"啊".repeat(120)}`);
+    const [filed] = await db.select().from(reports);
+    expect(filed.note).toBe(`<b>系统通知</b> 站长请看 ${"啊".repeat(100 - 17)}`);
+    expect([...filed.note]).toHaveLength(100);
+  });
+
   it("shows the admin what a reported player wrote about themselves, UIDs included, and what came of reports before", async () => {
     const troll = await signUp("troll@example.com");
     await troll.saveProfile({
@@ -3590,18 +3605,20 @@ describe("server world", () => {
     expect(open).toEqual({ actionId: expect.any(String), state: "open" });
     const actionId = open!.actionId;
     await expect(bad.appeal(actionId, "嗯")).rejects.toThrow("写一句");
+    // hidden characters are no words
+    await expect(bad.appeal(actionId, `${String.fromCodePoint(0x200b)}嗯${String.fromCodePoint(0x202e)}`)).rejects.toThrow("写一句");
     await expect(bad.appeal(actionId, "长".repeat(101))).rejects.toThrow("最多写 100 个字");
     await expect(a.p.appeal(actionId, "不是我的处理")).rejects.toThrow("找不到这次处理了");
     await expect(bad.appeal("nonsense", "我没有刷屏")).rejects.toThrow("找不到这次处理了");
     // the reporter's note has nothing to appeal
     expect((await a.p.inbox()).find((i) => i.kind === "staff")).not.toHaveProperty("appeal");
 
-    await bad.appeal(actionId, "  我没有刷屏，是误会  ");
+    await bad.appeal(actionId, `  我没有刷屏，\n是误会${String.fromCodePoint(0x202e)}  `);
     await expect(bad.appeal(actionId, "再申诉一次")).rejects.toThrow("已经申诉过了");
     expect((await staffNote()).appeal).toEqual({ actionId, state: "sent" });
     expect(await reportCounts()).toMatchObject({ appeals: 1 });
     const [waiting] = await openAppeals();
-    expect(waiting).toMatchObject({ actionId, action: "warn", rule: "harass", appeal: "我没有刷屏，是误会", who: { targetId: bad.id, yellow: 1, name: "小坏" } });
+    expect(waiting).toMatchObject({ actionId, action: "warn", rule: "harass", appeal: "我没有刷屏， 是误会", who: { targetId: bad.id, yellow: 1, name: "小坏" } });
 
     await answerAppeal(actionId, true);
     await expect(answerAppeal(actionId, false)).rejects.toThrow("已经处理过了");

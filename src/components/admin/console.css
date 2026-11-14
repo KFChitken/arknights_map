@@ -335,6 +335,12 @@
 .ac-report-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .ac-report-head strong { font-size: 14px; }
 .ac-report-head .ac-muted { font-size: 12px; }
+/* words a player typed: a box of their own, so they never pass for the 管理台's; one that looks like bait in red */
+.ac-player { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border: 1px dashed #c4cad3; border-radius: 6px; background: #fff; }
+.ac-player-label { font-size: 11px; line-height: 16px; color: #5f6774; }
+.ac-player-text { display: block; font-size: 14px; color: #1b1f24; overflow-wrap: anywhere; unicode-bidi: isolate; overflow: hidden; }
+.ac-player.lure { border: 1px solid #e3b5b0; background: #fff7f6; }
+.ac .ac-lure { margin: 4px 0 0; font-size: 12px; line-height: 18px; color: #a61b1b; }
 .ac-report-context { font-size: 13px; color: #3d4450; background: #f7f8fa; border-radius: 6px; padding: 6px 10px; overflow-wrap: anywhere; }
 .ac-report-none { padding: 10px 0; border-top: 1px solid #eef0f3; font-size: 13px; color: #4a5260; }
 .ac-report + .ac-hint, .ac-report-none + .ac-hint { margin-top: 6px; }
@@ -344,7 +350,6 @@
 .ac-facts dd { margin: 0; overflow-wrap: anywhere; }
 .ac-facts dd.warn { color: #a61b1b; }
 .ac-facts + .ac-hint { margin-top: 8px; }
-.ac-appeal-text { font-size: 15px; overflow-wrap: anywhere; }
 .ac-foot-hint { font-size: 12px; color: #5f6774; }
 
 /* 搜索账号 */

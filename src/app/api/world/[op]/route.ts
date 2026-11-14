@@ -11,7 +11,7 @@ import { acceptPublicPlace, AGE_CHECK, ageCheckNeeded, confirmAge, mustReconsent
 import { db } from "@/lib/server/db";
 import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
-import { HttpError, readJson, route } from "@/lib/server/http";
+import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import * as friendly from "@/lib/server/friendly";
 import * as help from "@/lib/server/help";
@@ -21,6 +21,7 @@ import * as si from "@/lib/server/si";
 import { appeal, dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 import { users } from "@/lib/server/schema";
 import * as world from "@/lib/server/world";
+import { REPORTS_PER_IP_HOUR } from "@/lib/rules";
 import type { LngLat } from "@/lib/types";
 import type { PlaceTarget, PretendWhat, RideTarget } from "@/lib/world/types";
 
@@ -56,6 +57,12 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
   // the costly reads, per player per minute; a page needs far fewer
   const ration = (perMinute: number) => {
     if (user && !allow(`${op}:${user.id}`, perMinute, 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
+  };
+  // reports from one network, whichever accounts send them: each puts a note in front of the 管理台
+  const reporting = () => {
+    const id = uid();
+    if (!allow(`report:ip:${clientIp(req)}`, REPORTS_PER_IP_HOUR, 60 * 60_000)) throw new HttpError(429, T.server.routes.world.tooFast);
+    return id;
   };
 
   let result: unknown;
@@ -246,11 +253,11 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       result = await safety.blockList(uid());
       break;
     case "report":
-      await safety.report(uid(), String(args[0]), args[1], args[2]);
+      await safety.report(reporting(), String(args[0]), args[1], args[2]);
       break;
     // a roach's spot on the map; like a report, open while paused or before agreeing again
     case "reportRoach":
-      await safety.reportRoach(uid(), String(args[0]), args[1], args[2]);
+      await safety.reportRoach(reporting(), String(args[0]), args[1], args[2]);
       break;
     // 我觉得处理错了, on a 站长通知
     case "appeal":
