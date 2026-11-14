@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import { NOT_TODAY, NOT_YET, type StudyDone, type StudyToday } from "./study/rules";
+import { NOT_TODAY, NOT_YET, type StudyAnnounced, type StudyDone, type StudyToday } from "./study/rules";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -47,6 +47,8 @@ export const studyApi = {
   today: () => call<StudyToday>("today"),
   /** A round of the day's course was played, and whether it was won */
   done: (course: string, won: boolean) => call<StudyDone>("done", { course, won }),
-  /** The day's course given up, after five rounds of it lost */
+  /** The day's course given up, after five rounds of it lost, saying 苦也！ if it can */
   giveUp: (course: string) => call<StudyDone>("giveup", { course }),
+  /** 已完成今日的325大学习 said, once today's course is done */
+  announce: () => call<StudyAnnounced>("announce"),
 };

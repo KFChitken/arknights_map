@@ -1,3 +1,4 @@
+import type { PassesDot } from "../passes";
 import { siteDayStart } from "../siteDay";
 
 /**
@@ -29,13 +30,23 @@ export type StudyMe = { day: string; done: boolean; days: number; fails: number 
 
 /**
  * The day's course, as POST /api/study/today answers: drawn then, unless it was before (a course a page may not know
- * yet); whether it was given up rather than passed; and whether the player may pick any course to play (the 站长 and
- * the admins), where everyone else is dealt one at random once today's is done
+ * yet); whether it was given up rather than passed; whether the player may pick any course to play (the 站长 and the
+ * admins), where everyone else is dealt one at random once today's is done; and whether 已完成今日的325大学习 was said
+ * today
  */
-export type StudyToday = StudyMe & { course: string; skipped: boolean; pick: boolean };
+export type StudyToday = StudyMe & { course: string; skipped: boolean; pick: boolean; announced: boolean };
 
-/** The answer to a round of the day's course played (POST /api/study/done) or given up (POST /api/study/giveup) */
-export type StudyDone = { done: boolean; days: number; fails: number; skipped: boolean };
+/** What became of a declaration 325大学习 sent: how far it reached (world.ts reachText), or why it was not sent */
+export type StudySaid = { reach: string } | { failed: string };
+
+/**
+ * The answer to a round of the day's course played (POST /api/study/done) or given up (POST /api/study/giveup); the
+ * time it was given up, what became of 苦也！ (said), and the 每日任务 dot it may have lit (src/lib/passes.ts)
+ */
+export type StudyDone = { done: boolean; days: number; fails: number; skipped: boolean; said?: StudySaid } & PassesDot;
+
+/** The answer to 已完成今日的325大学习 said (POST /api/study/announce): how far it reached */
+export type StudyAnnounced = { reach: string } & PassesDot;
 /** The code of the refusal for a course that is not today's (409), which brings today's along (src/lib/studyClient.ts) */
 export const NOT_TODAY = "notToday";
 /** The code of the refusal to give up before GIVE_UP_AFTER rounds lost (409), which brings today's along */

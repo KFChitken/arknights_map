@@ -42,7 +42,9 @@
 .study .st-fails { display: flex; flex-wrap: wrap; gap: 0 8px; margin: -4px 0 8px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .study .st-fails b { color: var(--st-red); font-weight: 700; }
 .study .st-today .st-go { align-self: stretch; }
-.study .st-today .st-giveup { align-self: stretch; margin-top: 6px; }
+.study .st-today .st-giveup, .study .st-today .st-say { align-self: stretch; margin-top: 6px; }
+/* a declaration said: how far it reached */
+.study .st-said { margin: 6px 0 0; color: var(--st-green); font-size: 13px; line-height: 1.5; }
 .study .st-err { margin: 8px 0 0; color: var(--st-red); font-size: 13px; line-height: 1.5; }
 
 .study .st-days { display: flex; flex-direction: column; gap: 2px; margin: 16px 2px 0; }

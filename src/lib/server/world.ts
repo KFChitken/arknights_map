@@ -1333,6 +1333,8 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
     case "rental":
     case "sihouse":
     case "simine":
+    case "kuye":
+    case "studied":
       return { template };
     case "drunklove":
       return { template: "drunklove", character };
@@ -1401,15 +1403,16 @@ export async function markSeen(userId: string, itemIds: string[]) {
  * Shout from the sender's chosen roaches (the main roach unless `from` says otherwise): kept once, with
  * their spots, it shows to everyone with a roach within DECLARATION_RADIUS_KM of any of them for
  * DECLARATION_DAYS (src/lib/server/declarationInbox.ts). Those near now are nudged and counted, for the
- * sender's rough count; a 「祝我生日快乐」 also goes to every 触须之交 as theirs, one row each.
+ * sender's rough count; a 「祝我生日快乐」 also goes to every 触须之交 as theirs, one row each. study: sent by
+ * 325大学习 (src/lib/server/studySay.ts), which alone may send its two sentences.
  */
-export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string } & PassesDot> {
+export async function declare(userId: string, input: Declaration, from?: string[], study = false): Promise<{ reach: string } & PassesDot> {
   const u = await userById(userId);
   if (!u) throw new WorldError(T.server.common.signIn);
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
   const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
-  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed);
+  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   if (!mine.some((r) => r.slot === 0)) throw new WorldError(T.server.world.mainBeforeDeclaring);
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;

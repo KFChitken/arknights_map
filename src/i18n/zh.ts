@@ -556,6 +556,9 @@ export const zh = {
       badCourse: "没有这门课。",
       notToday: "今天抽到的不是这门课。",
       notYet: "今天这门没过满 {n} 次，还不能跳过。",
+      /** 已完成今日的325大学习 asked before today's course was passed, or a second time today */
+      notDone: "今天这门上完了才能发这句。",
+      announced: "今天已经发过这句了。",
     },
     routes: {
       world: {
@@ -653,7 +656,7 @@ export const zh = {
         visitsB2: "不记 IP",
         passes: "{b}你抽到的每张通行证（哪个角色、编号、什么时候抽的）、你的心愿单和送券记录存在服务器上，只用来显示和防作弊。送券记录 7 天后删掉，其余的注销账号时一起删掉。",
         passesB: "寻访：",
-        study: "{b}只记你一共学了几天、最近一次是哪天、今天抽到哪门课、今天这门没过关几次、是不是跳过了，和这一轮抽过哪几门（好让每门课轮完一遍才重复）；没登录时，这些只存在你自己的浏览器里。每一局只告诉服务器过没过关，成绩不上传。地图上和触须之交都看不到你学没学。",
+        study: "{b}只记你一共学了几天、最近一次是哪天、今天抽到哪门课、今天这门没过关几次、是不是跳过了，和这一轮抽过哪几门（好让每门课轮完一遍才重复）；没登录时，这些只存在你自己的浏览器里。每一局只告诉服务器过没过关，成绩不上传。地图上和触须之交都看不到你学没学，除非你自己发「苦也！」或「已完成今日的325大学习」这两句宣言，它们和别的宣言一样，附近的人看得到。",
         studyB: "325大学习：",
         away: "{b}佩丽卡监督第一次出现时，会问你能不能记时间。你点「好」以后，{site}会记下你最后一次在看网站的时间，精确到秒：网页开着的时候，大约每分钟告诉服务器一声「还在」，切走或关掉时再说一声「走了」。这个时间只存一个，每次覆盖旧的，只用来让她告诉你离开了多久；她报时的消息只留最近 5 条。别人看不到，管理页也不显示，不记 IP。在「资料」里关掉「佩丽卡的离开计时」，就不再记，已经存的时间和她报时的消息和监督周报也一起删掉。",
         awayB: "佩丽卡监督的离开计时（你同意了才记）。",
@@ -832,6 +835,8 @@ export const zh = {
     limitedNotYet: "这句限定宣言还没开始。",
     limitedOver: "这句限定宣言已经结束啦。",
     pickDeclaration: "选一句宣言吧。",
+    /** 苦也！ and 已完成今日的325大学习 asked of the declaration sheet: never listed there */
+    studyOnly: "这句只能在325大学习里发。",
     cannotPlaceHere: "这个位置放不了蟑螂。",
   },
   ageCheck: {
@@ -1025,6 +1030,9 @@ export const zh = {
       birthday: "祝我生日快乐",
       innBig: "你家还挺大的嘛？",
       innSi: "疯狂新妻祀是我的！",
+      /** 325大学习's two (STUDY_TEMPLATES), sent from it alone */
+      kuye: "苦也！",
+      studied: "已完成今日的325大学习",
     },
     spouseLabel: "老婆还是老公",
     limitedTitle: "{event}限定宣言",
@@ -2270,9 +2278,18 @@ export const zh = {
     /** Under today's course, not passed yet */
     passToCount: "过关才算上完今天这门",
     fails: "今天没过 {n} 次",
+    /** A visitor's, who cannot declare; a player's says 苦也！ as well */
     failsHint: "满 {n} 次可以跳过今天",
+    failsHintSay: "满 {n} 次可以喊『苦也！』跳过今天",
     giveUp: "跳过今天",
+    giveUpSay: "发宣言『苦也！』，跳过今天",
     giveUpFailed: "没跳过去：{why}",
+    /** 苦也！ not sent, today given up all the same; why ends with its own 。 */
+    saidNot: "宣言没发出去：{why}今天也算上完了。",
+    /** Once today's course is passed, not given up: once a day */
+    announce: "发宣言：已完成今日的325大学习",
+    announcing: "正在发宣言…",
+    announceFailed: "宣言没发出去：{why}",
     days: "已学 {n} 天",
     nextSeal: "再学 {n} 天拿第 {k} 枚印章",
     seals: "印章：学满 7、14、30、90、180、325 天各一枚",
@@ -3141,6 +3158,18 @@ export const zh = {
           r2: "小心被她听见",
           r3: "先把房钱结了",
           r4: "情敌？碰我一下",
+        },
+        kuye: {
+          r1: "抱抱，明天再学",
+          r2: "我今天也没过",
+          r3: "325 不会跑的",
+          r4: "同是苦学人，碰我一下",
+        },
+        studied: {
+          r1: "学霸！",
+          r2: "我也学完了",
+          r3: "今天学的哪门？",
+          r4: "碰我一下，沾沾学气",
         },
       },
       fill: {

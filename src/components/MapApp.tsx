@@ -5319,6 +5319,7 @@ export default function MapApp({
           onClose={() => setStudyOpen(false)}
           onState={(st) => setMe((m) => (m?.study ? { ...m, study: st } : m))}
           onGuestDone={(day) => setGuestStudied({ day, done: true })}
+          onPassesDot={passesDotAfter}
           onRefused={(e) => {
             setStudyOpen(false);
             void act(() => Promise.reject(e));

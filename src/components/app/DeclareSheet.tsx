@@ -115,6 +115,10 @@ export default function DeclareSheet({
       case "alsoplay":
         // no longer offered
         return { template: "launch", game };
+      case "kuye":
+      case "studied":
+        // 325大学习's own, never offered here
+        return { template: "launch", game };
     }
   })();
   const blocked = (t: Template) =>

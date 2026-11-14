@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BADGES } from "@/lib/badges";
 import { addDays } from "@/lib/beijing";
 import { CITIES, OPEN_DAY, type DashboardData, type DashDay, type StatSnapshot } from "@/lib/dashboard";
-import { DRUNK_TEMPLATES, FUN_REACTIONS, GENERIC_REACTIONS, repliesFor, STAY_TEMPLATES, TEMPLATES, type Declaration } from "@/lib/declarations";
+import { DRUNK_TEMPLATES, FUN_REACTIONS, GENERIC_REACTIONS, repliesFor, STAY_TEMPLATES, STUDY_TEMPLATES, TEMPLATES, type Declaration } from "@/lib/declarations";
 import { EVENTS } from "@/lib/events";
 import { colTop, highest, layout, niceTicks, tickWords } from "./chartMath";
 import { Board } from "./Dashboard";
@@ -68,7 +68,7 @@ describe("数据看板's words", () => {
     expect(actsCover()).toBe(true);
     const blank = (template: string) =>
       ({ template, game: "arknights", character: "X", title: "X", name: "X", food: "X", spouse: "老婆", line: "" }) as unknown as Declaration;
-    for (const t of [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES]) {
+    for (const t of [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES]) {
       const words = templateWords(t);
       expect(words, t).not.toBe(t);
       expect(words, t).not.toMatch(/[{}]|undefined/);
@@ -78,6 +78,8 @@ describe("数据看板's words", () => {
       }
     }
     expect(templateWords("event")).toBe("限定宣言（几句合起来算）");
+    expect(STUDY_TEMPLATES.map(templateWords)).toEqual(["苦也！（325大学习里发的）", "已完成今日的325大学习（325大学习里发的）"]);
+    expect(replyWords("kuye.4")).toBe("同是苦学人，碰我一下");
     for (const id of [...GENERIC_REACTIONS, ...FUN_REACTIONS]) expect(replyWords(id), id).not.toBe(id);
     // what 「我是<名字>，我要玩…」 was answered with before it became 「我要玩…！」
     expect(["myname.1", "myname.4"].map(replyWords)).toEqual(["好名字！", "你好，碰我一下"]);

@@ -28,7 +28,8 @@ export const WELCOME_NAMES: Record<Game, string> = {
  * read). "event" is a limited-time line from events.ts. "alsoplay"
  * can no longer be sent, but older ones still show. The DRUNK_TEMPLATES can only be
  * sent while your main roach lies drunk (摄入酒精); the STAY_TEMPLATES once your ink roach
- * has had a room at 祀掌柜's 缘缘庄 (src/lib/si.ts), and for good from then on.
+ * has had a room at 祀掌柜's 缘缘庄 (src/lib/si.ts), and for good from then on; the STUDY_TEMPLATES
+ * only from 325大学习 (src/lib/server/studySay.ts), never from the sheet.
  */
 export type Declaration =
   | { template: "launch"; game: Game }
@@ -51,7 +52,9 @@ export type Declaration =
   | { template: "xianshu" }
   | { template: "rental" }
   | { template: "sihouse" }
-  | { template: "simine" };
+  | { template: "simine" }
+  | { template: "kuye" }
+  | { template: "studied" };
 
 export type Template = Declaration["template"];
 
@@ -67,6 +70,14 @@ export const STAY_TEMPLATES = ["sihouse", "simine"] as const;
 export const isStayTemplate = (t: unknown) => (STAY_TEMPLATES as readonly unknown[]).includes(t);
 /** Why one who has not stayed cannot send them, on the sheet and from the server */
 export const stayNeeded = () => T.lib.declarations.stayNeeded;
+
+/**
+ * What 325大学习 sends for the player, and nothing else does (the sheet never lists them): 苦也！ as today's course
+ * is given up after five rounds of it lost, and 已完成今日的325大学习 once a day after it was passed
+ */
+export const STUDY_TEMPLATES = ["kuye", "studied"] as const;
+export type StudyTemplate = (typeof STUDY_TEMPLATES)[number];
+export const isStudyTemplate = (t: unknown): t is StudyTemplate => (STUDY_TEMPLATES as readonly unknown[]).includes(t);
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
@@ -112,6 +123,10 @@ export function declarationText(d: Declaration): string {
       return T.declare.line.innBig;
     case "simine":
       return T.declare.line.innSi;
+    case "kuye":
+      return T.declare.line.kuye;
+    case "studied":
+      return T.declare.line.studied;
   }
 }
 
@@ -232,6 +247,12 @@ const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, st
   },
   get simine() {
     return [T.lib.declarations.replies.simine.r1, T.lib.declarations.replies.simine.r2, T.lib.declarations.replies.simine.r3, T.lib.declarations.replies.simine.r4] as const;
+  },
+  get kuye() {
+    return [T.lib.declarations.replies.kuye.r1, T.lib.declarations.replies.kuye.r2, T.lib.declarations.replies.kuye.r3, T.lib.declarations.replies.kuye.r4] as const;
+  },
+  get studied() {
+    return [T.lib.declarations.replies.studied.r1, T.lib.declarations.replies.studied.r2, T.lib.declarations.replies.studied.r3, T.lib.declarations.replies.studied.r4] as const;
   },
 };
 

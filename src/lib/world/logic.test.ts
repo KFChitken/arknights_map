@@ -4,6 +4,7 @@ import {
   declarationText,
   DRUNK_TEMPLATES,
   STAY_TEMPLATES,
+  STUDY_TEMPLATES,
   FOODS,
   FUN_REACTIONS,
   GENERIC_REACTIONS,
@@ -93,11 +94,13 @@ describe("declarations", () => {
     { template: "rental" },
     { template: "sihouse" },
     { template: "simine" },
+    { template: "kuye" },
+    { template: "studied" },
     ...EVENTS.flatMap((e) => e.lines.map((l): Declaration => ({ template: "event", line: l.id }))),
   ];
 
   it("gives every sentence its own four replies, the fourth asking for a touch, then the five every one has, then the playful four", () => {
-    expect(new Set(everySentence.map((d) => d.template))).toEqual(new Set([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, "event"]));
+    expect(new Set(everySentence.map((d) => d.template))).toEqual(new Set([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES, "event"]));
     for (const d of everySentence) {
       const replies = repliesFor(d);
       const own = replies.filter((r) => r.own);
@@ -278,6 +281,23 @@ describe("drunk declarations", () => {
     }
     expect(repliesFor({ template: "simine" }).slice(0, 4).map((r) => r.text)).toEqual(["祀是大家的！", "小心被她听见", "先把房钱结了", "情敌？碰我一下"]);
     expect(repliesFor({ template: "sihouse" })[0].text).toBe("两千五百间房呢！");
+  });
+
+  it("lets only 325大学习 say its two, never the sheet", () => {
+    expect(STUDY_TEMPLATES).toEqual(["kuye", "studied"]);
+    for (const template of STUDY_TEMPLATES) {
+      expect(() => checkDeclaration(fan, { template } as Declaration)).toThrow("这句只能在325大学习里发。");
+      // drunk or a guest of 缘缘庄 makes no difference
+      expect(() => checkDeclaration(fan, { template } as Declaration, Date.now(), true, true)).toThrow("这句只能在325大学习里发。");
+      // nothing of the profile is needed: anonymous will do
+      expect(declarationText(checkDeclaration(EMPTY_PROFILE, { template } as Declaration, Date.now(), false, false, true))).toBe(
+        template === "kuye" ? "苦也！" : "已完成今日的325大学习",
+      );
+    }
+    // what 325大学习 sends is only ever its two
+    expect(() => checkDeclaration(fan, { template: "sihouse" }, Date.now(), false, false, true)).toThrow("住进缘缘庄就能发。");
+    expect(repliesFor({ template: "kuye" }).slice(0, 4).map((r) => r.text)).toEqual(["抱抱，明天再学", "我今天也没过", "325 不会跑的", "同是苦学人，碰我一下"]);
+    expect(repliesFor({ template: "studied" }).slice(0, 4).map((r) => r.text)).toEqual(["学霸！", "我也学完了", "今天学的哪门？", "碰我一下，沾沾学气"]);
   });
 
   it("refuses them sober, and takes only your own favourites and 老婆 or 老公", () => {

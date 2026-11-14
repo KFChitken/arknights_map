@@ -60,7 +60,7 @@ describe("325大学习 on the server", () => {
     const id = await account();
     await db.update(users).set({ studyCourse: "gone", studyCourseOn: "2026-11-21", studyBag: ["gone"] }).where(eq(users.id, id));
     const t = await studyToday(who(id), at("2026-11-21"), () => 0);
-    expect(t).toEqual({ day: "2026-11-21", course: "stopwatch", done: false, days: 0, fails: 0, skipped: false, pick: false });
+    expect(t).toEqual({ day: "2026-11-21", course: "stopwatch", done: false, days: 0, fails: 0, skipped: false, pick: false, announced: false });
     expect(await row(id)).toMatchObject({ studyCourse: "stopwatch", studyBag: ["stopwatch"] });
   });
 

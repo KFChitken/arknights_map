@@ -1,5 +1,5 @@
 import { fmt, T } from "@/i18n";
-import { FOODS, isDrunkTemplate, isStayTemplate, SPOUSES, stayNeeded, type Declaration } from "../declarations";
+import { FOODS, isDrunkTemplate, isStayTemplate, isStudyTemplate, SPOUSES, stayNeeded, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
@@ -94,8 +94,11 @@ export function publicProfileOf(p: Profile): PublicProfile {
  * and foods, and limited-time lines that are on; none carries their name.
  */
 /** drunk: the sender's main roach lies drunk, which the drunk lines need */
-/** drunk: their main roach lies drunk now (摄入酒精); stayed: their ink roach has had a room at 缘缘庄 */
-export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now(), drunk = false, stayed = false): Declaration {
+/**
+ * drunk: their main roach lies drunk now (摄入酒精); stayed: their ink roach has had a room at 缘缘庄; study: sent by
+ * 325大学习 (src/lib/server/studySay.ts), the only one that may send its two
+ */
+export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now(), drunk = false, stayed = false, study = false): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
     const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
@@ -104,6 +107,7 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
   };
   if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError(T.checks.drunkFirst);
   if (isStayTemplate(d?.template) && !stayed) throw new WorldError(stayNeeded());
+  if (isStudyTemplate(d?.template) && !study) throw new WorldError(T.checks.studyOnly);
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -134,6 +138,8 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
     case "rental":
     case "sihouse":
     case "simine":
+    case "kuye":
+    case "studied":
       return { template: d.template };
     case "drunklove":
       return { template: "drunklove", character: favourite(d.character).character };

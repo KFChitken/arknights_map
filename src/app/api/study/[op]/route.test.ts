@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/server/db";
-import { sessions, users } from "@/lib/server/schema";
+import { roaches, sessions, users } from "@/lib/server/schema";
 import { studyMe } from "@/lib/server/study";
 import { isCourse } from "@/lib/study/courses";
 import { nextSiteDayAt, siteDay } from "@/lib/siteDay";
@@ -88,6 +88,7 @@ describe("325大学习's requests", () => {
     expect((await call("POST", "today")).status).toBe(404);
     expect((await call("POST", "done", { course: "stopwatch" })).status).toBe(404);
     expect((await call("POST", "giveup", { course: "stopwatch" })).status).toBe(404);
+    expect((await call("POST", "announce")).status).toBe(404);
     expect(studyMe(await row(player))).toBeUndefined();
     const owner = await account("owner@example.com");
     await signIn(owner);
@@ -136,12 +137,36 @@ describe("325大学习's requests", () => {
       });
       expect(await call("POST", "done", { course, won: false })).toMatchObject({ status: 200, body: { done: false, fails: i } });
     }
-    expect(await call("POST", "giveup", { course })).toMatchObject({ status: 200, body: { done: true, days: 1, fails: 5, skipped: true }, cache: "no-store" });
+    // 苦也！ as well, from the main roach: there is none, so it is not said, and today is given up all the same
+    expect(await call("POST", "giveup", { course })).toMatchObject({
+      status: 200,
+      body: { done: true, days: 1, fails: 5, skipped: true, said: { failed: "先放下蟑螂本体，才能发宣言。" } },
+      cache: "no-store",
+    });
     expect(await call("POST", "today")).toMatchObject({ status: 200, body: { course, done: true, days: 1, fails: 5, skipped: true } });
     expect(await row(id)).toMatchObject({ studyDays: 1, studiedOn: siteDay(), studySkippedOn: siteDay() });
-    // ten a minute: seven asked so far
-    for (let i = 0; i < 3; i++) expect((await call("POST", "giveup", { course })).status).toBe(200);
+    // ten a minute: seven asked so far; given up already, nothing is said again
+    for (let i = 0; i < 3; i++) expect((await call("POST", "giveup", { course })).body).toEqual({ done: true, days: 1, fails: 5, skipped: true });
     expect(await call("POST", "giveup", { course })).toMatchObject({ status: 429 });
+  });
+
+  it("say 已完成今日的325大学习 from the main roach once today's course is passed, once a day, and not while paused", async () => {
+    vi.stubEnv("STUDY", "on");
+    const id = await account("player@example.com");
+    await signIn(id);
+    const course = (await call("POST", "today")).body.course as string;
+    expect(await call("POST", "announce")).toMatchObject({ status: 409, body: { error: "今天这门上完了才能发这句。" } });
+    await call("POST", "done", { course, won: true });
+    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { done: true, announced: false } });
+    // as any declaration: from the main roach, and not while the player's interactions are paused
+    expect(await call("POST", "announce")).toMatchObject({ status: 400, body: { error: "先放下蟑螂本体，才能发宣言。" } });
+    await db.insert(roaches).values({ userId: id, slot: 0, lng: 121.4737, lat: 31.2304 });
+    await db.update(users).set({ suspendedUntil: new Date(Date.now() + 86_400_000) }).where(eq(users.id, id));
+    expect(await call("POST", "announce")).toMatchObject({ status: 403, body: { error: expect.stringContaining("暂停") } });
+    await db.update(users).set({ suspendedUntil: null }).where(eq(users.id, id));
+    expect(await call("POST", "announce")).toMatchObject({ status: 200, body: { reach: expect.stringContaining("宣言") }, cache: "no-store" });
+    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { done: true, announced: true } });
+    expect(await call("POST", "announce")).toMatchObject({ status: 409, body: { error: "今天已经发过这句了。" } });
   });
 
   it("refuse a round of a course not drawn today, with today's, drawn then if it was not", async () => {
@@ -194,6 +219,7 @@ describe("325大学习's requests", () => {
     expect(await call("POST", "today")).toMatchObject({ status: 428, body: { code: "age" } });
     expect(await call("POST", "done", { course: "stopwatch" })).toMatchObject({ status: 428, body: { code: "age" } });
     expect(await call("POST", "giveup", { course: "stopwatch" })).toMatchObject({ status: 428, body: { code: "age" } });
+    expect(await call("POST", "announce")).toMatchObject({ status: 428, body: { code: "age" } });
     await db.update(users).set({ ageCheckAt: null, policyAcceptedAt: new Date("2026-01-01T00:00:00Z") }).where(eq(users.id, id));
     const policy = await call("POST", "today");
     expect(policy.status).toBe(428);

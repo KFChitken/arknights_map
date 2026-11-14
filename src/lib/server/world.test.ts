@@ -7,7 +7,7 @@ import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
 import { FIRE_AT, TALULAH_ID } from "../talulah";
 import { metresApart, MINGHE_ID, queueSpot, stationOf, stopOf } from "../minghe";
-import { declarationText, DRUNK_TEMPLATES, FOODS, repliesFor, STAY_TEMPLATES, TEMPLATES, type Declaration, type Template } from "../declarations";
+import { declarationText, DRUNK_TEMPLATES, FOODS, isStudyTemplate, repliesFor, STAY_TEMPLATES, STUDY_TEMPLATES, TEMPLATES, type Declaration, type Template } from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
@@ -2047,10 +2047,12 @@ describe("server world", () => {
       rental: { template: "rental" },
       sihouse: { template: "sihouse" },
       simine: { template: "simine" },
+      kuye: { template: "kuye" },
+      studied: { template: "studied" },
     };
     const sendable = [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES];
-    // the sheet's lists hold every sentence but the limited lines and 「…也玩…」 of before
-    expect([...sendable, "event", "alsoplay"].sort()).toEqual(Object.keys(EVERY).sort());
+    // the sheet's lists hold every sentence but the limited lines, 「…也玩…」 of before and 325大学习's two
+    expect([...sendable, ...STUDY_TEMPLATES, "event", "alsoplay"].sort()).toEqual(Object.keys(EVERY).sort());
     await me.saveProfile({
       ...EMPTY_PROFILE,
       anonymous: false,
@@ -2068,9 +2070,14 @@ describe("server world", () => {
     const saved = lines.map(({ start, end }) => ({ start, end }));
     lines.forEach((l) => Object.assign(l, { start: new Date(Date.now() - 3_600_000).toISOString(), end: new Date(Date.now() + 3_600_000).toISOString() }));
     try {
-      const sent: Declaration[] = [...sendable.map((t) => EVERY[t]), ...lines.map((l) => ({ template: "event", line: l.id }) as const)];
+      const sent: Declaration[] = [
+        ...[...sendable, ...STUDY_TEMPLATES].map((t) => EVERY[t]),
+        ...lines.map((l) => ({ template: "event", line: l.id }) as const),
+      ];
       for (const d of sent) {
-        await me.declare(d);
+        // 325大学习's two as it sends them (src/lib/server/studySay.ts)
+        if (isStudyTemplate(d.template)) await world.declare(me.id, d, undefined, true);
+        else await me.declare(d);
         const [got] = await t2.inbox();
         expect(got, d.template).toMatchObject({ kind: "declaration", text: declarationText(d), reaction: null });
         expect(got.kind === "declaration" && got.options, d.template).toEqual(repliesFor(d));

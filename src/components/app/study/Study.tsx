@@ -5,7 +5,8 @@ import { fmt, T } from "@/i18n";
 import { COURSE_IDS, isCourse, subjectOf, type CourseId } from "@/lib/study/courses";
 import { drawCourse } from "@/lib/study/draw";
 import { guestDone, guestGiveUp, guestToday, type GuestToday } from "@/lib/study/guest";
-import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, SEALS, type StudyMe, type StudyToday } from "@/lib/study/rules";
+import type { PassesDot } from "@/lib/passes";
+import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, SEALS, type StudyMe, type StudySaid, type StudyToday } from "@/lib/study/rules";
 import { NotToday, StaleToday, studyApi } from "@/lib/studyClient";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
@@ -20,12 +21,13 @@ import "./study.css";
  * page after a round. A round is played on a layer of its own over everything (the whole screen on a phone, a card in
  * the middle on a computer), so that tapping and swiping in a game never closes or scrolls a sheet. Each round is
  * dealt from a seed of its own; a round of today's course counts the moment it is over (won: today's is passed; lost:
- * one more lost; a step on the way: nothing), and leaving before that counts nothing.
+ * one more lost; a step on the way: nothing), and leaving before that counts nothing. A player (never a visitor) says
+ * 苦也！ as they give today's course up, and may say 已完成今日的325大学习 once a day after passing it.
  * signedIn: the server draws and counts (src/lib/studyClient.ts); otherwise this browser draws, and counts no days
  * (src/lib/study/guest.ts). look: the player's roach, lying belly up after a round lost. onState: what the server last
  * said of the player's study (the dot on the way in, 抽屉's card); onGuestDone: a visitor passed the day's course (or
- * gave it up); onRefused: what the map page answers itself (sign in, say again they are 18, agree to the privacy
- * policy), which closes this first.
+ * gave it up); onPassesDot: a declaration said lit the 每日任务 dot, or not; onRefused: what the map page answers itself
+ * (sign in, say again they are 18, agree to the privacy policy), which closes this first.
  */
 export default function Study({
   signedIn,
@@ -33,6 +35,7 @@ export default function Study({
   onClose,
   onState,
   onGuestDone,
+  onPassesDot,
   onRefused,
 }: {
   signedIn: boolean;
@@ -40,6 +43,7 @@ export default function Study({
   onClose: () => void;
   onState: (s: StudyMe) => void;
   onGuestDone: (day: string) => void;
+  onPassesDot: (r: PassesDot) => void;
   onRefused: (e: unknown) => void;
 }) {
   const [today, setToday] = useState<Today | null>(() => (signedIn ? null : guestsOwn(guestToday())));
@@ -57,6 +61,10 @@ export default function Study({
   const [save, setSave] = useState<"saving" | { why: string } | null>(null);
   /** Giving today's course up: on its way, or what went wrong */
   const [giving, setGiving] = useState<"saving" | { why: string } | null>(null);
+  /** What became of 苦也！, said as today's course was given up just now */
+  const [said, setSaid] = useState<StudySaid | null>(null);
+  /** 已完成今日的325大学习: on its way, how far it reached, or what went wrong */
+  const [announcing, setAnnouncing] = useState<"saving" | StudySaid | null>(null);
 
   const live = useRef(true);
   useEffect(() => {
@@ -69,6 +77,8 @@ export default function Study({
   stateRef.current = onState;
   const guestDoneRef = useRef(onGuestDone);
   guestDoneRef.current = onGuestDone;
+  const passesRef = useRef(onPassesDot);
+  passesRef.current = onPassesDot;
   const refusedRef = useRef(onRefused);
   refusedRef.current = onRefused;
   const playNo = useRef(0);
@@ -78,7 +88,9 @@ export default function Study({
 
   /** Today as the server has it: shown, and told to the map page */
   const took = useCallback((t: StudyToday) => {
-    setToday({ day: t.day, course: t.course, done: t.done, days: t.days, fails: t.fails, skipped: t.skipped, pick: t.pick });
+    setToday({ day: t.day, course: t.course, done: t.done, days: t.days, fails: t.fails, skipped: t.skipped, pick: t.pick, announced: t.announced });
+    // not said today: what this page last heard of it was another day's
+    if (!t.announced) setAnnouncing((a) => (a === "saving" ? a : null));
     stateRef.current({ day: t.day, done: t.done, days: t.days, fails: t.fails });
   }, []);
 
@@ -102,6 +114,7 @@ export default function Study({
     setScreen("home");
     setGame(null);
     setEnded(null);
+    setSaid(null);
   }, []);
 
   /** A visitor's course of that day was another by the time it counted: today's, drawn again, on the course list */
@@ -139,7 +152,7 @@ export default function Study({
     );
   };
 
-  /** Today's course given up after GIVE_UP_AFTER rounds of it lost: a day studied all the same, then 下课's page */
+  /** Today's course given up after GIVE_UP_AFTER rounds of it lost: a day studied all the same (saying 苦也！ if it can), then 下课's page */
   const giveUp = (id: CourseId, day: string) => {
     if (!signedIn) {
       const t = guestGiveUp(day, id);
@@ -154,11 +167,13 @@ export default function Study({
     }
     setGiving("saving");
     studyApi.giveUp(id).then(
-      (d) => {
+      ({ said, passesDot, ...d }) => {
         if (!live.current) return;
         setGiving(null);
         setToday((t) => (t && t.day === day ? { ...t, ...d } : t));
         stateRef.current({ day, done: d.done, days: d.days, fails: d.fails });
+        setSaid(said ?? null);
+        passesRef.current({ passesDot });
         setScreen("finish");
       },
       (e) => {
@@ -175,10 +190,29 @@ export default function Study({
     );
   };
 
+  /** 已完成今日的325大学习, said from the player's main roach once today's is passed */
+  const announce = () => {
+    setAnnouncing("saving");
+    studyApi.announce().then(
+      ({ reach, passesDot }) => {
+        if (!live.current) return;
+        setAnnouncing({ reach });
+        setToday((t) => t && { ...t, announced: true });
+        passesRef.current({ passesDot });
+      },
+      (e) => {
+        if (!live.current) return;
+        if (mapsOwn(e)) return refusedRef.current(e);
+        setAnnouncing({ failed: sayWhy(e) });
+      },
+    );
+  };
+
   const start = (id: CourseId, mode?: string) => {
     setOpening(id);
     setOpenFailed(null);
     setNote("");
+    setSaid(null);
     setGiving((g) => (g === "saving" ? g : null));
     loadGame(id).then(
       (Game) => {
@@ -252,11 +286,24 @@ export default function Study({
   const giveUpButton = (t: Today, className: string) => (
     <>
       <button className={className} disabled={giving === "saving"} onClick={() => isCourse(t.course) && giveUp(t.course, t.day)}>
-        {giving === "saving" ? T.study.saving : T.study.giveUp}
+        {giving === "saving" ? T.study.saving : signedIn ? T.study.giveUpSay : T.study.giveUp}
       </button>
       {giving && giving !== "saving" && <p className="st-err">{fmt(T.study.giveUpFailed, { why: giving.why })}</p>}
     </>
   );
+  /** 已完成今日的325大学习 may be said: a player's, today's passed (not given up), not said yet today unless just now */
+  const mayAnnounce = (t: Today) => signedIn && t.done && !t.skipped && (!t.announced || (announcing !== null && announcing !== "saving" && "reach" in announcing));
+  const announceButton = (className: string) =>
+    announcing && announcing !== "saving" && "reach" in announcing ? (
+      <p className="st-said">{fmt(T.map.declare.sent, { reach: announcing.reach })}</p>
+    ) : (
+      <>
+        <button className={className} disabled={announcing === "saving"} onClick={announce}>
+          {announcing === "saving" ? T.study.announcing : T.study.announce}
+        </button>
+        {announcing && announcing !== "saving" && "failed" in announcing && <p className="st-err">{fmt(T.study.announceFailed, { why: announcing.failed })}</p>}
+      </>
+    );
 
   if (screen === "play" && game && today) {
     const name = T.study.courses[game.id].name;
@@ -324,6 +371,11 @@ export default function Study({
               </span>
               <h3>{today.skipped ? T.study.finish.skipped : T.study.finish.done}</h3>
               <p className="st-sub">{today.days === null ? T.study.guest : fmt(T.study.days, { n: today.days })}</p>
+              {said && today.skipped && (
+                <p className={"reach" in said ? "st-said" : "st-err"}>
+                  {"reach" in said ? fmt(T.map.declare.sent, { reach: said.reach }) : fmt(T.study.saidNot, { why: said.failed })}
+                </p>
+              )}
             </>
           )}
           {ended && <p className="st-round">{fmt(T.study.finish.round, { result: ended.r.result })}</p>}
@@ -337,6 +389,7 @@ export default function Study({
               <p>{facts[factIndex(today.day, facts.length)]}</p>
             </div>
           )}
+          {passed && mayAnnounce(today) && announceButton("st-ghost wide")}
           {notYet ? (
             <>
               <button className="st-go wide" onClick={replay}>
@@ -394,7 +447,7 @@ export default function Study({
                 ) : today.fails > 0 ? (
                   <p className="st-fails">
                     <b>{fmt(T.study.fails, { n: today.fails })}</b>
-                    {today.fails < GIVE_UP_AFTER && <span>{fmt(T.study.failsHint, { n: GIVE_UP_AFTER })}</span>}
+                    {today.fails < GIVE_UP_AFTER && <span>{fmt(signedIn ? T.study.failsHintSay : T.study.failsHint, { n: GIVE_UP_AFTER })}</span>}
                   </p>
                 ) : (
                   <p className="st-fails">{T.study.passToCount}</p>
@@ -403,6 +456,7 @@ export default function Study({
                   {opening === today.course ? T.study.loading : today.done ? T.study.again : T.study.start}
                 </button>
                 {mayGiveUp(today) && giveUpButton(today, "st-ghost st-giveup")}
+                {mayAnnounce(today) && announceButton("st-ghost st-say")}
                 {openFailed === today.course && <p className="st-err">{T.study.failed}</p>}
               </>
             ) : (
@@ -445,10 +499,10 @@ export default function Study({
 }
 
 /** Today's course as this page shows it: days null for a visitor, whose days are not counted */
-type Today = { day: string; course: string; done: boolean; days: number | null; fails: number; skipped: boolean; pick: boolean };
+type Today = { day: string; course: string; done: boolean; days: number | null; fails: number; skipped: boolean; pick: boolean; announced: boolean };
 
-/** A visitor's day, as this page shows it: no days counted, and courses dealt at random rather than picked */
-const guestsOwn = (t: GuestToday): Today => ({ ...t, days: null, pick: false });
+/** A visitor's day, as this page shows it: no days counted, courses dealt at random rather than picked, nothing said */
+const guestsOwn = (t: GuestToday): Today => ({ ...t, days: null, pick: false, announced: false });
 
 /** The days studied, the next seal and the six of them (got: filled; to come: dashed) */
 function Days({ days }: { days: number }) {
