@@ -1,8 +1,9 @@
 import type { AMapNS } from "@/lib/amap";
 import { toGcj } from "@/lib/coords";
+import type { LngLat } from "@/lib/types";
 import { innDrawing, queueLine } from "@/lib/siInn";
 import { inkGl, type InkGl } from "./inkGl";
-import { inkTappedAt, type InkTapped } from "./inkTap";
+import { inksNear, inkTappedAt, type InkTapped } from "./inkTap";
 import {
   FAR_BELOW,
   INK,
@@ -27,6 +28,8 @@ export type SiAmap = {
   set: (si: SiMapData | undefined, changed: { inn?: boolean; inks?: boolean; mine?: boolean; tier?: boolean }) => void;
   /** The ink roach a tap at these px of the map's box is on, close up (inkTap.ts) */
   hit: (x: number, y: number) => InkTapped | null;
+  /** Every ink roach a tap there is on, close up, with how far from its middle (inkTap.ts inksNear; reach as there) */
+  near: (x: number, y: number, reach?: number) => { ink: InkTapped; d: number }[];
   setActive: (on: boolean) => void;
   destroy: () => void;
 };
@@ -115,17 +118,19 @@ export function amapSi(AMap: AMapNS, map: AMapNS, zoomOffset: number, si: SiMapD
   set(si, { inn: true, inks: true, mine: true, tier: true });
   restyle();
 
+  /** Where a spot is in the map's box (px), or null where 高德 cannot say */
+  const toScreen = (p: LngLat) => {
+    try {
+      const px = map.lngLatToContainer(toGcj(p));
+      return { x: px.getX(), y: px.getY() };
+    } catch {
+      return null;
+    }
+  };
   return {
     set,
-    hit: (x, y) =>
-      inkTappedAt(shownSi, map.getZoom() - zoomOffset, { x, y }, (p) => {
-        try {
-          const px = map.lngLatToContainer(toGcj(p));
-          return { x: px.getX(), y: px.getY() };
-        } catch {
-          return null;
-        }
-      }),
+    hit: (x, y) => inkTappedAt(shownSi, map.getZoom() - zoomOffset, { x, y }, toScreen),
+    near: (x, y, reach) => inksNear(shownSi, map.getZoom() - zoomOffset, { x, y }, toScreen, reach),
     setActive: (on) => gpu?.setActive(on),
     destroy: () => {
       map.off("zoomchange", meanwhile);

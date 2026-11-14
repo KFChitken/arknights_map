@@ -41,7 +41,7 @@ import { brushOf, INN_CENTER, inkNow, innNumbers, toXY } from "@/lib/siInn";
 import { INK_LOOKS, variantOf } from "./map/inkArt";
 import type { InkTapped } from "./map/inkTap";
 import { FIND_ZOOM } from "./map/siLook";
-import type { SiMapData, SiMine } from "./map/types";
+import type { SiMapData, SiMine, StackHit, StackUnder } from "./map/types";
 import {
   FIRE_AT,
   FIRE_ZOOM,
@@ -75,6 +75,7 @@ import { displayName, type Profile, type PublicProfile } from "@/lib/profile";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
+import { slidTo, stackSlide } from "@/lib/stackPick";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY } from "@/lib/rules";
 import { nextSiteDayAt, siteDay, siteDayStart } from "@/lib/siteDay";
@@ -229,7 +230,8 @@ import {
   type PublicNotice,
 } from "@/lib/notices";
 import { PARTY_ZOOM } from "@/lib/party";
-import { MyInkCard, MyRoachCard, OtherInkCard, OtherRoachCard } from "./app/RoachCards";
+import { MyInkCard, MyRoachCard, OtherInkCard, OtherRoachCard, roachTitle } from "./app/RoachCards";
+import StackPicker, { InkIcon, StackBack, StackUnderGuide, type StackRow } from "./app/StackPicker";
 import {
   loadProgress,
   nearestReal,
@@ -438,6 +440,18 @@ type Selection =
 
 /** Where an ink roach is, by its tile (src/lib/siTiles.ts InkState) */
 const INK_STATES = ["queue", "stay", "out"] as const;
+
+/** Whether the card open is of one of those lying on top of each other (src/lib/stackPick.ts) */
+const inStack = (hits: readonly StackHit[], s: Selection) =>
+  hits.some((h) =>
+    h.kind === "roach"
+      ? s.kind === "other" && s.roach.id === h.id
+      : h.kind === "mine"
+        ? s.kind === "mine" && s.roach.id === h.id
+        : h.kind === "ink"
+          ? s.kind === "ink" && s.ink === h.ink
+          : s.kind === "myInk",
+  );
 
 type AmiyaItem = Extract<InboxItem, { kind: "amiya" }>;
 
@@ -691,6 +705,14 @@ export default function MapApp({
     } else if (go && was?.from === "board") closeBoard();
   };
   const [selected, setSelected] = useState<Selection | null>(null);
+  /**
+   * Roaches lying on top of each other where the map was tapped close up, or under a guide's picture
+   * (src/lib/stackPick.ts): their list open, or one of them (or the guide) on its card, with the way back to them
+   */
+  const [stack, setStack] = useState<(StackUnder & { open: boolean; guide?: string }) | null>(null);
+  // their list's box, and where the map slid to as it opened (stackSlide), which move keeps them
+  const stackPickRef = useRef<HTMLDivElement>(null);
+  const stackSlid = useRef<MapView | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [visible, setVisible] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -1756,6 +1778,7 @@ export default function MapApp({
   const onMapClick = (p: LngLat) => {
     if (placing) return placeAt(p, false);
     setSelected(null);
+    setStack(null);
     // a visitor sees where their roach would go and about how many are around, counted by the server
     if (visitorShown) {
       if (isOffLimits(p)) {
@@ -1766,7 +1789,15 @@ export default function MapApp({
     }
   };
 
-  const onRoachClick = (id: string) => {
+  /**
+   * A roach of someone else's, or a guide, tapped on the map; under: what lies under a guide's picture close up, for
+   * her card to offer (StackUnderGuide)
+   */
+  const onRoachClick = (id: string, under?: StackUnder) => {
+    setStack(under && guideById(id) ? { ...under, open: false, guide: id } : null);
+    openRoach(id);
+  };
+  const openRoach = (id: string) => {
     if (id === AMIYA_ID) {
       danceAmiya();
       return setSelected({ kind: "other", roach: amiyaRoach(Boolean(me?.amiya.friend)) });
@@ -1783,11 +1814,52 @@ export default function MapApp({
   };
 
   const onMineClick = (id: string) => {
+    setStack(null);
+    openMine(id);
+  };
+  const openMine = (id: string) => {
     const roach = me?.roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "mine", roach });
   };
+  /** Tapped close up where roaches lie on top of each other: their list (StackPicker) */
+  const onStackClick = (under: StackUnder) => {
+    setSelected(null);
+    stackSlid.current = null;
+    setStack({ ...under, open: true });
+  };
+  /** One of them picked from the list: its card, as a tap on it alone opens it, with the way back to them */
+  const showHit = (h: StackHit) => {
+    setStack((s) => s && { ...s, open: false });
+    if (h.kind === "roach") openRoach(h.id);
+    else if (h.kind === "mine") openMine(h.id);
+    else openInk(h.kind === "myInk" ? { kind: "mine" } : { kind: "other", ink: h.ink });
+  };
+  /** From the card of one of them, or of the guide they lie under, to the list of them */
+  const toStack = () => {
+    if (selected?.kind === "other" && selected.roach.id === SI_ID) closeSi();
+    else {
+      setSelected(null);
+      runAfterReport();
+    }
+    setStack((s) => s && { ...s, open: true });
+  };
+  // forgotten once neither their list nor the card of one of them (or of the guide they lie under) is up, and
+  // for putting a roach down
+  useEffect(() => {
+    if (!stack || stack.open) return;
+    const kept = selected && (inStack(stack.hits, selected) || (selected.kind === "other" && selected.roach.id === stack.guide));
+    if (!kept) setStack(null);
+  }, [stack, selected]);
+  useEffect(() => {
+    if (placing) setStack(null);
+  }, [placing]);
 
   const onViewChange = (v: MapView, bounds: [LngLat, LngLat]) => {
+    // a pile is forgotten as the map moves, but not for sliding out from under their list; what lies under a guide
+    // stays with her card, which may move it (祀)
+    if (stackSlid.current && !slidTo(v, stackSlid.current)) stackSlid.current = null;
+    const slid = stackSlid.current !== null;
+    setStack((s) => (s?.guide || slid ? s : null));
     viewRef.current = v;
     boundsRef.current = bounds;
     pulse.rest(v);
@@ -3077,12 +3149,91 @@ export default function MapApp({
         ? areaTotals.players
         : heldPlayers + (me?.roaches.some((r) => r.slot === 0) ? 1 : 0);
 
+  // Roaches lying on top of each other, as their list shows them (StackPicker): the others' found once in the
+  // whole list, those no longer on the map left out
+  const stackRoaches = useMemo(() => {
+    const want = new Set(stack?.hits.flatMap((h) => (h.kind === "roach" ? [h.id] : [])));
+    const found = new Map<string, PublicRoach>();
+    if (want.size) for (const r of roaches) if (want.has(r.id)) found.set(r.id, r);
+    return found;
+  }, [stack, roaches]);
+  const stackList: StackRow[] = [];
+  stack?.hits.forEach((h, i) => {
+    const onPick = () => showHit(h);
+    if (h.kind === "roach") {
+      const r = stackRoaches.get(h.id);
+      if (!r) return;
+      const friend = r.friend ? shownFriends.find((f) => f.roaches.some((x) => sameRoach(r.id, x.id))) : undefined;
+      stackList.push({
+        key: `r:${r.id}`,
+        title: roachTitle(r, friend?.profile.displayName),
+        icon: (
+          <RoachIcon color={r.color} size={36} avatar={r.avatar} clone={r.clone} friend={r.friend} look={look} asleep={Boolean(r.asleep) && !r.clone} />
+        ),
+        onPick,
+      });
+    } else if (h.kind === "mine") {
+      const clones = me?.roaches.filter((x) => x.slot > 0) ?? [];
+      const r = me?.roaches.find((x) => x.id === h.id);
+      if (!r) return;
+      const clone = r.slot > 0;
+      stackList.push({
+        key: `m:${r.id}`,
+        title: clone ? fmt(T.cards.own.clone, { n: clones.indexOf(r) + 1 }) : T.cards.own.main,
+        icon: <RoachIcon color={myColor} size={36} avatar={myAvatar} mine clone={clone} look={look} asleep={!clone && Boolean(me?.drunkUntil)} />,
+        onPick,
+      });
+    } else if (h.kind === "ink") {
+      const where = INK_STATES[h.ink.state];
+      stackList.push({
+        key: `i:${i}`,
+        title: T.cards.ink.title,
+        sub: where === "queue" ? T.cards.ink.queue : where === "stay" ? T.cards.ink.stay : T.cards.ink.out,
+        icon: <InkIcon look={INK_LOOKS[h.ink.look] ?? "hood"} />,
+        onPick,
+      });
+    } else if (me?.si.inn) {
+      stackList.push({ key: "myInk", title: T.cards.ink.mine, icon: <InkIcon look={me.si.inn.look} />, onPick });
+    }
+  });
+  const picking = Boolean(stack?.open && stackList.length);
+  // Their list open, or open again: the map slides up if it must, for the list not to hide them (where the finger
+  // was, or the guide's picture they lie under), as 祀 stands above her card
+  const pickingAt = picking ? stack?.at : undefined;
+  useEffect(() => {
+    const map = wrapRef.current?.getBoundingClientRect();
+    const list = stackPickRef.current?.getBoundingClientRect();
+    if (!pickingAt || !map || !list) return;
+    const box = { top: list.top - map.top, bottom: list.bottom - map.top, left: list.left - map.left, right: list.right - map.left };
+    const to = stackSlide(viewRef.current, pickingAt, { w: map.width, h: map.height }, box);
+    if (!to) return;
+    stackSlid.current = to;
+    setFocus({ ...to, nonce: Date.now() });
+  }, [pickingAt]);
+  // the map's closest, where 放大看看 has nowhere to go: 高德 and 腾讯 at 20 of theirs, our own map at 22
+  const zoomMax = homeOn && !(twoMaps && abroad) ? 19 : 22;
+  const zoomInStack =
+    stack && viewRef.current.zoom < zoomMax - 0.1
+      ? () => {
+          setFocus({ lng: stack.at.lng, lat: stack.at.lat, zoom: Math.min(zoomMax, viewRef.current.zoom + 2), nonce: Date.now() });
+          setStack(null);
+        }
+      : undefined;
+  // on the card of one of them: back to the list; on a guide's, what lies under her picture
+  const stackBack =
+    stack && !stack.open && selected && inStack(stack.hits, selected) && stackList.length > 1 ? (
+      <StackBack n={stackList.length - 1} onBack={toStack} />
+    ) : undefined;
+  const stackUnder =
+    stack?.guide && !stack.open && selected?.kind === "other" && selected.roach.id === stack.guide && stackList.length ? (
+      <StackUnderGuide them={guideById(stack.guide)?.pronoun ?? T.map.touch.her} n={stackList.length} onOpen={toStack} />
+    ) : undefined;
 
-  const coachShown = Boolean(!placing && !selected && !panel && !board && !pamphlet && me && step);
+  const coachShown = Boolean(!placing && !selected && !picking && !panel && !board && !pamphlet && me && step);
   // 抽屉's drawer goes back down for a roach's card, for putting a roach down, and for the tutorial, which want the map
   useEffect(() => {
-    if (selected || placing || coachShown) setDrawerOpen(false);
-  }, [selected, placing, coachShown]);
+    if (selected || picking || placing || coachShown) setDrawerOpen(false);
+  }, [selected, picking, placing, coachShown]);
   // a side folded away may hold what the tutorial speaks of (方舟雷达, the guides): out it comes while it is on. What
   // is left of it is read again here, as the step can run ahead of it for a moment when the player first comes
   const anyFolded = fold.float.l || fold.float.r || fold.hud.r;
@@ -3133,7 +3284,7 @@ export default function MapApp({
   }, []);
   // nothing new opens over a touch scene: a title earned by the touch (见习外交官) waits for 成为触须之交 to play out
   // nothing on the map but the map (nor the owner's 禁放区 tool), the ask to set a password aside
-  const mapClear = Boolean(me && !placing && !selected && !panel && !pamphlet && !step && !acting && !touchScene && !batchScene && !zoneTool);
+  const mapClear = Boolean(me && !placing && !selected && !picking && !panel && !pamphlet && !step && !acting && !touchScene && !batchScene && !zoneTool);
   // 设个密码 is up: nothing else opens over it meanwhile
   const pwNudgeUp = pwNudge && Boolean(me?.passwordNudge);
   const idle = mapClear && !pwNudgeUp;
@@ -3142,7 +3293,7 @@ export default function MapApp({
   // 存到桌面's bubble, once per device: after about 20 seconds on the map with nothing else going on, the tutorial
   // and the style hint over (a new player's first roach starts the tutorial, so it comes after)
   const deskHintNow = Boolean(
-    deskOffer && visible !== null && !placing && !step && !panel && !selected && !board && !styleHint && !pwNudgeUp && !uiMenu && hintsNow,
+    deskOffer && visible !== null && !placing && !step && !panel && !selected && !picking && !board && !styleHint && !pwNudgeUp && !uiMenu && hintsNow,
   );
   // the style hint: once the map is up (a slow line can take a while), not while placing, in the tutorial or
   // asked to set a password, nor to visitors
@@ -3794,7 +3945,11 @@ export default function MapApp({
    * An ink roach of 缘缘庄 tapped on the map: your own opens its card at once; another's opens as its tile drew it,
    * its touches waiting till the server says what it is now (below)
    */
-  const onInkClick = (hit: InkTapped) =>
+  const onInkClick = (hit: InkTapped) => {
+    setStack(null);
+    openInk(hit);
+  };
+  const openInk = (hit: InkTapped) =>
     setSelected(hit.kind === "mine" ? { kind: "myInk" } : { kind: "ink", ink: hit.ink, tap: null });
   // what someone else's ink roach tapped is now, asked once you are signed in (visitors do without): yours, should
   // the queue have moved it under your tap, a 触须之交's, or nobody's; gone from the map, its card closes
@@ -3925,7 +4080,7 @@ export default function MapApp({
   const styleRef = useRef(mapStyle);
   useEffect(() => {
     // and while the owner draws or looks at a 禁放区 (admin/ZoneDraw.tsx, ZoneView.tsx)
-    quietRef.current = Boolean(panel || placing || step || selected || offStage || pwNudgeUp || zoneTool);
+    quietRef.current = Boolean(panel || placing || step || selected || picking || offStage || pwNudgeUp || zoneTool);
     styleRef.current = mapStyle;
   });
   const lagRef = useRef<LagWatch | null>(null);
@@ -4058,6 +4213,7 @@ export default function MapApp({
     onRoachClick: zoneTool?.kind === "draw" ? ignoreTap : onRoachClick,
     onMineClick: zoneTool?.kind === "draw" ? ignoreTap : onMineClick,
     onInkClick: zoneTool?.kind === "draw" ? ignoreTap : onInkClick,
+    onStackClick: zoneTool?.kind === "draw" ? ignoreTap : onStackClick,
     onViewChange,
     onError: setToast,
     // mainland China: 腾讯's map instead, without a word (TencentView's own onFailed is ownMap)
@@ -4565,7 +4721,7 @@ export default function MapApp({
     placing: Boolean(placing),
     reported: Boolean(reported),
     tutorial: Boolean(step),
-    card: Boolean(selected),
+    card: Boolean(selected || picking),
     brand: (size) => <RoachIcon color={myColor} size={size} avatar={myAvatar} look={look} />,
     noticeDot: noticeDotOn,
     onBoard: openBoard,
@@ -4800,7 +4956,7 @@ export default function MapApp({
         <MapReported
           owner={Boolean(me?.admin)}
           start={reported.start}
-          hidden={Boolean(placing || selected)}
+          hidden={Boolean(placing || selected || picking)}
           panelSlot={reportedSlot}
           onMarks={onReportedMarks}
           onFocus={focusReported}
@@ -4835,6 +4991,7 @@ export default function MapApp({
           onFind={findMyInk}
           onOpenBook={() => setPanel({ kind: "siBook" })}
           onOpenFriend={me?.si.friend ? () => setPanel({ kind: "friend", friendId: SI_ID, back: null }) : undefined}
+          under={stackUnder}
           onClose={closeSi}
         />
       )}
@@ -4929,6 +5086,8 @@ export default function MapApp({
                 }
               : undefined
           }
+          back={stackBack}
+          under={stackUnder}
           onClose={() => {
             setSelected(null);
             runAfterReport();
@@ -4956,6 +5115,7 @@ export default function MapApp({
           onTouch={(bold) => {
             if (selected.tap) void touchInk(selected.tap, bold);
           }}
+          back={stackBack}
           onClose={() => setSelected(null)}
         />
       )}
@@ -4971,6 +5131,7 @@ export default function MapApp({
           }}
           onToSi={showSi}
           onRecall={recallInk}
+          back={stackBack}
           onClose={() => setSelected(null)}
         />
       )}
@@ -4995,11 +5156,13 @@ export default function MapApp({
           onRemove={() => remove(selected.roach)}
           onDrink={drinkUp}
           onSober={soberUp}
+          back={stackBack}
           onClose={() => setSelected(null)}
         />
       )}
+      {!placing && picking && <StackPicker ref={stackPickRef} rows={stackList} onZoomIn={zoomInStack} onClose={() => setStack(null)} />}
 
-      {!placing && !selected && !panel && !me && preview && (
+      {!placing && !selected && !picking && !panel && !me && preview && (
         <PreviewCard
           around={around}
           onPlace={() => setPanel({ kind: "login", reason: T.map.place.signInHere })}
@@ -5046,7 +5209,7 @@ export default function MapApp({
       )}
       {arcs && <DockArcs key={arcs.nonce} at={arcs.at} />}
       {party && createPortal(<PartyScene key={party.key} avatar={myAvatar} color={myColor} music={party.music} onDone={endParty} />, party.el)}
-      {!placing && !selected && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}
+      {!placing && !selected && !picking && <HeardBubbles list={heard} onReply={heardReply} onOk={heardOk} />}
 
       {panel && renderPanel(panel)}
       {/* one that came as the page opened, just before 最近更新 popped up, waits for it to be closed */}

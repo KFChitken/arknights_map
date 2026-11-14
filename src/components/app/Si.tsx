@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import {
   favouriteLine,
@@ -58,6 +59,7 @@ export function SiCard({
   onFind,
   onOpenBook,
   onOpenFriend,
+  under,
   onClose,
 }: {
   me: SiMe | null;
@@ -79,6 +81,8 @@ export function SiCard({
   onFind: () => void;
   onOpenBook: () => void;
   onOpenFriend?: () => void;
+  /** Roaches under her picture: to pick one of them (StackUnderGuide) */
+  under?: ReactNode;
   onClose: () => void;
 }) {
   const fav = favourites ? favouriteLine(favourites) : null;
@@ -177,6 +181,7 @@ export function SiCard({
           <small>{sharesUid ? T.guides.si.boldUid : T.guides.si.bold}</small>
         </button>
       </div>
+      {under}
       <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>

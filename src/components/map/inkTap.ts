@@ -10,18 +10,20 @@ export type InkTapped = { kind: "mine" } | { kind: "other"; ink: InkPoint };
 const FINGER_PX = 11;
 
 /**
- * Which ink roach a tap is on, the same on both maps, close up only (NEAR_FROM on, where they are drawn one by one):
- * yours first, drawn over the rest, then the nearest of the others whose figure the tap is on, the middle of each
- * worked out from where it stands (toScreen, at the middle of its feet; the picture goes up from there); null for
- * none. zoom: MapLibre's levels.
+ * Every ink roach a tap is on, the same on both maps, close up only (NEAR_FROM on, where they are drawn one by one),
+ * each with how far from the middle of its figure the tap is: yours (drawn over the rest), then the others in the
+ * order the tiles have them. The middle of each is worked out from where it stands (toScreen, at the middle of its
+ * feet; the picture goes up from there). zoom: MapLibre's levels. reach: how far from its middle a tap still counts
+ * (px); left out, as far as its figure, or a fingertip if it is drawn smaller
  */
-export function inkTappedAt(
+export function inksNear(
   si: SiMapData | undefined,
   zoom: number,
   tap: { x: number; y: number },
   toScreen: (p: LngLat) => { x: number; y: number } | null,
-): InkTapped | null {
-  if (!si || zoom < NEAR_FROM) return null;
+  reach?: number,
+): { ink: InkTapped; d: number }[] {
+  if (!si || zoom < NEAR_FROM) return [];
   const px = INK_PX * interp(INK_SIZE, zoom, 2);
   /** How far from its middle the tap is, if it is on it */
   const off = (at: LngLat, size: number) => {
@@ -29,17 +31,34 @@ export function inkTappedAt(
     if (!s) return null;
     const h = px * size;
     const d = Math.hypot(tap.x - s.x, tap.y - (s.y - h / 2));
-    return d <= Math.max(h / 2, FINGER_PX) ? d : null;
+    return d <= (reach ?? Math.max(h / 2, FINGER_PX)) ? d : null;
   };
-  if (si.mine && off(si.mine.at, si.mine.size) !== null) return { kind: "mine" };
-  let best: InkPoint | null = null;
-  let bestOff = Infinity;
+  const out: { ink: InkTapped; d: number }[] = [];
+  if (si.mine) {
+    const d = off(si.mine.at, si.mine.size);
+    if (d !== null) out.push({ ink: { kind: "mine" }, d });
+  }
   for (const p of si.inks) {
     const d = off(p, p.size);
-    if (d !== null && d < bestOff) {
-      best = p;
-      bestOff = d;
-    }
+    if (d !== null) out.push({ ink: { kind: "other", ink: p }, d });
   }
-  return best ? { kind: "other", ink: best } : null;
+  return out;
+}
+
+/**
+ * Which ink roach a tap is on (inksNear): yours first, drawn over the others, then the nearest of the others whose
+ * figure the tap is on; null for none
+ */
+export function inkTappedAt(
+  si: SiMapData | undefined,
+  zoom: number,
+  tap: { x: number; y: number },
+  toScreen: (p: LngLat) => { x: number; y: number } | null,
+): InkTapped | null {
+  let best: { ink: InkTapped; d: number } | null = null;
+  for (const n of inksNear(si, zoom, tap, toScreen)) {
+    if (n.ink.kind === "mine") return n.ink;
+    if (!best || n.d < best.d) best = n;
+  }
+  return best ? best.ink : null;
 }

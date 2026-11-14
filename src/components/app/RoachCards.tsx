@@ -19,6 +19,17 @@ import { inkLine } from "./Si";
 import { touchesNow, turnsAtText, useTick, waitParts } from "./dayTurns";
 import type { inkNow } from "@/lib/siInn";
 
+/**
+ * What someone else's roach is called on its card, and in the list of those lying on top of each other
+ * (StackPicker): a 触须之交's by name, anyone else's only as 某舟P's, the same for all of theirs
+ */
+export function roachTitle(roach: Pick<PublicRoach, "clone" | "asleep" | "bot">, friendName?: string): string {
+  if (roach.bot) return T.cards.demo.label;
+  if (friendName) return fmt(T.cards.friendTitle, { name: friendName, clone: roach.clone ? T.cards.friendClone : "" });
+  if (roach.clone) return T.cards.someClone;
+  return roach.asleep ? T.cards.anonymousAsleep : T.common.anonymousOne;
+}
+
 /** Tapped someone else's roach: offer the two ways to touch it, or 戳一戳 a 触须之交's sleeping one. */
 export function OtherRoachCard({
   roach,
@@ -45,6 +56,8 @@ export function OtherRoachCard({
   onPoke,
   onReport,
   admin,
+  back,
+  under,
   onClose,
 }: {
   roach: PublicRoach;
@@ -119,6 +132,10 @@ export function OtherRoachCard({
   onReport?: () => void;
   /** 站长清理, only on an admin's map: take this roach back, or every roach near it, at once; or draw a 禁放区 round it */
   admin?: { busy: boolean; onTakeBack: () => void; onTakeBackNear: () => void; onDraw?: () => void };
+  /** Picked from those lying on top of each other: back to them (StackBack) */
+  back?: ReactNode;
+  /** A guide with roaches under her picture: to pick one of them (StackUnderGuide) */
+  under?: ReactNode;
   onClose: () => void;
 }) {
   // today's touches as they are now (a new day's once it turned with the card open); with none left, it draws
@@ -128,6 +145,7 @@ export function OtherRoachCard({
   if (roach.bot) {
     return (
       <div className="card stack" role="dialog" aria-label={T.cards.demo.title}>
+        {back}
         <div className="card-head">
           <RoachIcon color={roach.color} size={44} avatar={roach.avatar} look={look} />
           <div>
@@ -157,13 +175,7 @@ export function OtherRoachCard({
         : ride
           ? MINGHE.name
           : AMIYA.name
-    : friendName
-      ? fmt(T.cards.friendTitle, { name: friendName, clone: roach.clone ? T.cards.friendClone : "" })
-      : roach.clone
-        ? T.cards.someClone
-        : asleep
-          ? T.cards.anonymousAsleep
-          : T.common.anonymousOne;
+    : roachTitle(roach, friendName);
   // who she is, above what she does
   const about = perlica
     ? perlicaTimer
@@ -214,6 +226,7 @@ export function OtherRoachCard({
                   : T.cards.touch));
   return (
     <div className="card stack" role="dialog" aria-label={T.cards.label}>
+      {back}
       <div className="card-head">
         <RoachIcon
           color={roach.color}
@@ -349,6 +362,7 @@ export function OtherRoachCard({
           )}
         </div>
       )}
+      {under}
       <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>
@@ -369,6 +383,7 @@ export function MyRoachCard({
   riding,
   party,
   visits,
+  back,
   onMove,
   onRemove,
   onDrink,
@@ -393,6 +408,8 @@ export function MyRoachCard({
   party?: { on: boolean; onToggle: () => void };
   /** 串门: sending a guest home, and this clone going home or following its host who moved */
   visits?: { onSendHome: (friendId: string) => void; onGoHome: () => void; onFollow: () => void };
+  /** Picked from those lying on top of each other: back to them (StackBack) */
+  back?: ReactNode;
   onMove: () => void;
   onRemove: () => void;
   onDrink: () => void;
@@ -403,6 +420,7 @@ export function MyRoachCard({
   const asleep = drunk && !clone;
   return (
     <div className="card stack" role="dialog" aria-label={T.common.myRoach}>
+      {back}
       <div className="card-head">
         <RoachIcon color={color} size={44} avatar={avatar} mine clone={clone} look={look} asleep={asleep} zzz anim />
         <div>
@@ -525,6 +543,7 @@ export function OtherInkCard({
   touched,
   touches,
   touching = false,
+  back,
   onOpenFriend,
   onSignIn,
   onTouch,
@@ -548,6 +567,8 @@ export function OtherInkCard({
   /** Today's touches, and on its owner when TA is one of your 触须之交 (as on OtherRoachCard) */
   touches?: { left: number; at: number; friendLeft?: number };
   touching?: boolean;
+  /** Picked from those lying on top of each other: back to them (StackBack) */
+  back?: ReactNode;
   onOpenFriend?: () => void;
   onSignIn: () => void;
   onTouch: (bold: boolean) => void;
@@ -573,6 +594,7 @@ export function OtherInkCard({
               : T.cards.touchClone));
   return (
     <div className="card stack" role="dialog" aria-label={T.common.ink}>
+      {back}
       <div className="card-head">
         <InkFigure look={look} lying={state === "out"} />
         <div>
@@ -670,6 +692,7 @@ export function MyInkCard({
   where,
   now,
   busy,
+  back,
   onDeclare,
   onToSi,
   onRecall,
@@ -682,6 +705,8 @@ export function MyInkCard({
   now: number;
   /** 收回 under way */
   busy: boolean;
+  /** Picked from those lying on top of each other: back to them (StackBack) */
+  back?: ReactNode;
   onDeclare: () => void;
   onToSi: () => void;
   onRecall: () => void;
@@ -690,6 +715,7 @@ export function MyInkCard({
   const [asking, setAsking] = useState(false);
   return (
     <div className="card stack" role="dialog" aria-label={T.cards.ink.mine}>
+      {back}
       <div className="card-head">
         <InkFigure look={look} lying={where.state === 2} />
         <div>

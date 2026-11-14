@@ -2157,6 +2157,18 @@ export const zh = {
       drinksDone: "已醉倒 {n} 次，「泰拉异格酒神」到手了",
       drinks: "已醉倒 {n}/50 次，满了解锁「泰拉异格酒神」",
     },
+    /** Roaches lying on top of each other where the map was tapped close up (StackPicker) */
+    stack: {
+      title: "这里叠着 {n} 只",
+      hint: "点一只，看看是谁",
+      order: "按离你点的地方远近排",
+      more: "还有 {n} 只",
+      zoomIn: "放大看看",
+      /** Above the card of one picked from the list: back to it */
+      back: "← 这一堆还有 {n} 只",
+      /** On a guide's card, when roaches lie under her picture; them: 她 or 他 */
+      underGuide: "{them}脚下还有 {n} 只 · 挑一只看看",
+    },
   },
   safety: {
     reportClone: "举报这只克隆体",

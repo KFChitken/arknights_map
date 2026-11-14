@@ -285,6 +285,33 @@ button.pill.gift { border-color: #ffd23f; background: #ffd23f; color: #1b1d22; f
 .card-head { display: flex; align-items: center; gap: 10px; padding-right: 28px; }
 .card-head p { margin: 2px 0 0; }
 .card.stack .row-actions { margin-top: 0; }
+/*
+ * roaches lying on top of each other, to pick one from (StackPicker.tsx); on a card, the way back to them. The list's
+ * top keeps under the counts and 公告 strip at the top (146px down) with room above it for the pile, which the map
+ * slides up there (src/lib/stackPick.ts stackSlide): on a short screen its rows scroll sooner
+ */
+.card.stack-pick { max-height: max(250px, calc(100% - 330px - var(--safe-top) - var(--safe-bottom))); }
+.stack-head { padding-right: 28px; }
+.stack-head strong { font-size: 17px; }
+.card .stack-head p { margin: 2px 0 0; }
+.stack-rows {
+  display: grid; gap: 8px; margin: 0; padding: 0; list-style: none;
+  max-height: min(392px, 46vh); overflow-y: auto; overscroll-behavior: contain;
+}
+.stack-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 10px;
+  border: 1px solid #e3e6ea; border-radius: 12px; background: #fff; color: inherit; text-align: left;
+}
+.stack-row:active { background: #f3f4f6; }
+.stack-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; }
+.stack-ink { display: block; width: 36px; height: 36px; object-fit: contain; }
+.stack-name { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.stack-name small { display: block; font-size: 12px; color: var(--muted); }
+.stack-go { flex: none; color: var(--muted); font-size: 22px; line-height: 1; }
+.card .stack-more { margin: 0; text-align: center; }
+.stack-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+button.link.stack-back { align-self: flex-start; margin-right: 28px; font-size: 13px; }
+button.link.stack-under { align-self: flex-start; font-size: 13px; text-decoration: underline; }
 /* the newcomer tutorial, above the bottom buttons */
 /* the tutorial, told by 阿米娅向导: her picture beside what she says */
 .card.coach { align-items: flex-start; gap: 10px; padding: 12px; }

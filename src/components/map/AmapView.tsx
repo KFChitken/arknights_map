@@ -10,6 +10,7 @@ import { roachDataUrl, type RoachOpts } from "@/lib/roachSvg";
 import { crawl, iconPx, MASS_GROUPS, prefersReducedMotion, SWARM_FADE_ZOOM, SWARM_GRADIENT } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
+import { byDistance, STACK_FROM_ZOOM, type Near } from "@/lib/stackPick";
 import {
   belowGuide,
   besideMain,
@@ -33,8 +34,9 @@ import { amapLines } from "./lines";
 import { amapTrail } from "./trail";
 import { MassCache, STILL, styleIndex, styleSpecs, type MassPoint } from "./massPoints";
 import { PILE_MAX_ZOOM } from "./pileWork";
+import { inkHit, tapNear } from "./stackTap";
 import { BADGE_AT, countBadgeText, PILE_MAX_PX, pileMul, Piles, type Box, type PileItem } from "./piles";
-import type { MapViewProps } from "./types";
+import type { MapViewProps, StackHit, StackUnder } from "./types";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
@@ -311,6 +313,102 @@ export default function AmapView(props: MapViewProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
+  /**
+   * Everything drawn within reach of a point of the map's box (px), for a tap close up (src/lib/stackPick.ts): the
+   * others' roaches (轻量's piles left out: a tap opens one up instead), your own, and 缘缘庄's ink roaches, each with
+   * how far from the point its middle is, wherever the crawl has it now. reach: left out, as far as a tap on each
+   * counts (half its icon, at least 14 px; your own, half theirs; an ink roach's figure); a guide's figure gives its
+   * own. near: the point on the map (高德's), to look at only the MassMarks' roaches around it
+   */
+  const underAt = (x: number, y: number, reach?: number, near?: [number, number]): Near<StackHit>[] => {
+    const map = mapRef.current;
+    const p = propsRef.current;
+    if (!map) return [];
+    const onScreen = (lng: number, lat: number) => {
+      const px = map.lngLatToContainer([lng, lat]);
+      return { x: px.getX(), y: px.getY() };
+    };
+    const out: Near<StackHit>[] = [];
+    const gl = glRef.current;
+    if (gl) {
+      for (const h of gl.hits(x, y, reach)) out.push({ ref: { kind: "roach", id: h.id }, d: h.d });
+    } else if (massRef.current.length) {
+      // 高德's MassMarks: the batches as they were handed over, each roach where its crawl has it now
+      const zoom = map.getZoom();
+      const size = iconPx(zoom - ZOOM_OFFSET);
+      const r = reach ?? Math.max(size / 2, 14);
+      const degPerPx = 360 / (256 * 2 ** zoom);
+      // the crawl takes a realistic roach up to 7.5 px of its icon at 24 px from its spot
+      const box = (r + 8 + (7.5 * size) / 24) * degPerPx;
+      const crawling = p.active !== false && !prefersReducedMotion();
+      const now = performance.now();
+      const { look } = styledRef.current;
+      shownRef.current.forEach((points, g) => {
+        for (const q of points) {
+          if (near && (Math.abs(q.lng - near[0]) > box || Math.abs(q.lat - near[1]) > box * q.cos)) continue;
+          const s = onScreen(q.lng, q.lat);
+          const c = crawling && g !== STILL ? crawl(q.seed, now, look, size / 24) : { dx: 0, dy: 0 };
+          const d = Math.hypot(s.x + c.dx - x, s.y + c.dy - y);
+          if (d <= r) out.push({ ref: { kind: "roach", id: q.id }, d });
+        }
+      });
+    }
+    for (const m of p.mine) {
+      const s = onScreen(...toGcj(m));
+      const d = Math.hypot(s.x - x, s.y - y);
+      if (d <= (reach ?? MINE_ICON / 2)) out.push({ ref: { kind: "mine", id: m.id }, d });
+    }
+    if (p.onInkClick) for (const n of siRef.current?.near(x, y, reach) ?? []) out.push({ ref: inkHit(n.ink), d: n.d });
+    return out;
+  };
+  /**
+   * A tap close up (src/lib/stackPick.ts) at a point of the map's box (px), at this place: the one nearest the finger
+   * opened, or those lying on top of each other offered to pick from, once the map's own click for the tap is over.
+   * tapped: what 高德 says the tap was on, counted even if it lies further from the point than a tap on it counts.
+   * False where it is not for that tap (further out, while placing, or nothing there), for the tap to go on as before
+   */
+  const stackTap = (x: number, y: number, at: LngLat, gcj: [number, number], tapped?: Near<StackHit>): boolean => {
+    const map = mapRef.current;
+    const p = propsRef.current;
+    if (!map || p.placing || !p.onStackClick || map.getZoom() - ZOOM_OFFSET < STACK_FROM_ZOOM) return false;
+    const near = underAt(x, y, undefined, gcj);
+    const same = (h: StackHit) => tapped && h.kind === tapped.ref.kind && "id" in h && "id" in tapped.ref && h.id === tapped.ref.id;
+    if (tapped && !near.some((n) => same(n.ref))) near.push(tapped);
+    if (!near.length) return false;
+    lastHitRef.current = Date.now();
+    // after the map's own click for the same tap, which would close what this opens
+    window.setTimeout(() => tapNear(propsRef.current, near, at), 0);
+    return true;
+  };
+  /**
+   * What lies under a guide's figure close up, nearest her middle first, and where her middle is (src/lib/stackPick.ts):
+   * the roaches whose middles are within half her figure's width of hers; none: undefined. at: where she stands, for
+   * where 高德 cannot say where her middle is
+   */
+  const underGuide = (figure: HTMLElement, at: LngLat): StackUnder | undefined => {
+    const map = mapRef.current;
+    const AMap = amapRef.current;
+    const box = el.current;
+    const p = propsRef.current;
+    if (!map || !AMap || !box || !p.onStackClick || map.getZoom() - ZOOM_OFFSET < STACK_FROM_ZOOM) return undefined;
+    // her picture, not her name or what she says
+    const fig = (figure.querySelector("img") ?? figure).getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    const x = fig.left + fig.width / 2 - b.left;
+    const y = fig.top + fig.height / 2 - b.top;
+    let middle = at;
+    try {
+      const ll = map.containerToLngLat(new AMap.Pixel(x, y));
+      middle = fromGcj(ll.getLng(), ll.getLat());
+    } catch {}
+    const near = underAt(x, y, Math.min(fig.width, fig.height) / 2, toGcj(middle));
+    if (!near.length) return undefined;
+    return { hits: byDistance(near).map((n) => n.ref), at: middle };
+  };
+  // both for 高德's own handlers, set up once with the map, as they are now
+  const stackRef = useRef({ tap: stackTap, underGuide });
+  stackRef.current = { tap: stackTap, underGuide };
+
   // The guides: page element markers on top of everything, in their pictures whatever the look.
   // Added, moved and taken away as the page says; each kept beside your main roach, never on it.
   const syncGuides = () => {
@@ -340,7 +438,8 @@ export default function AmapView(props: MapViewProps) {
         marker.on("click", () => {
           if (propsRef.current.placing) return;
           lastHitRef.current = Date.now();
-          window.setTimeout(() => propsRef.current.onRoachClick(mark.id), 0);
+          const under = stackRef.current.underGuide(el, propsRef.current.guides.find((x) => x.id === mark.id)?.at ?? mark.at);
+          window.setTimeout(() => propsRef.current.onRoachClick(mark.id, under), 0);
         });
         map.add(marker);
         g = { el, marker };
@@ -464,6 +563,13 @@ export default function AmapView(props: MapViewProps) {
         // while placing, let the tap fall through to the map
         if (propsRef.current.placing) return;
         lastHitRef.current = Date.now();
+        // close up, what lies on top of each other with it, by its middle (高德 tells no more of where the tap was);
+        // a visitor's preview spot opens as before
+        if (r.id !== "ghost") {
+          const gcj = toGcj(r);
+          const px = map.lngLatToContainer(gcj);
+          if (stackRef.current.tap(px.getX(), px.getY(), { lng: r.lng, lat: r.lat }, gcj, { ref: { kind: "mine", id: r.id }, d: 0 })) return;
+        }
         window.setTimeout(() => propsRef.current.onMineClick(r.id), 0);
       });
       return marker;
@@ -568,8 +674,18 @@ export default function AmapView(props: MapViewProps) {
           if (propsRef.current.placing) return;
           lastHitRef.current = Date.now();
           const id = e.data?.id;
+          if (!id) return;
+          // close up, what lies on top of each other with it, by its middle as drawn (高德 tells no more of where
+          // the tap was)
+          const ll = e.data.lnglat;
+          const gcj: [number, number] | null = Array.isArray(ll) ? [ll[0], ll[1]] : ll?.getLng ? [ll.getLng(), ll.getLat()] : null;
+          if (gcj) {
+            const px = map.lngLatToContainer(gcj);
+            const tapped = { ref: { kind: "roach", id } as const, d: 0 };
+            if (stackRef.current.tap(px.getX(), px.getY(), fromGcj(gcj[0], gcj[1]), gcj, tapped)) return;
+          }
           // defer so a map click fired for the same tap cannot clear the selection
-          if (id) window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
+          window.setTimeout(() => propsRef.current.onRoachClick(id), 0);
         };
         // The roaches on 高德's MassMarks: the realistic look, and wherever the GPU layer cannot run
         const startMass = () => {
@@ -850,6 +966,12 @@ export default function AmapView(props: MapViewProps) {
           // the GPU layer's roaches are found here, being no markers of 高德's
           const gl = glRef.current;
           const hit = gl && !propsRef.current.placing ? gl.hit(e.pixel.getX(), e.pixel.getY()) : null;
+          // close up: the one nearest the finger, or those lying on top of each other to pick from (src/lib/stackPick.ts);
+          // a tap on the MassMarks' roaches is theirs to tell (onMassClick)
+          if ((hit === null || typeof hit === "string") && (gl || !massRef.current.length)) {
+            const gcj: [number, number] = [e.lnglat.getLng(), e.lnglat.getLat()];
+            if (stackRef.current.tap(e.pixel.getX(), e.pixel.getY(), fromGcj(...gcj), gcj)) return;
+          }
           if (typeof hit === "string") {
             lastHitRef.current = Date.now();
             window.setTimeout(() => propsRef.current.onRoachClick(hit), 0);

@@ -20,6 +20,7 @@ import {
 } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
+import { byDistance, STACK_FROM_ZOOM, type Near } from "@/lib/stackPick";
 import {
   belowGuide,
   besideMain,
@@ -41,8 +42,9 @@ import type { HeartMode } from "./roachGl";
 import { addMaplibreLines, setMaplibreLines } from "./lines";
 import { addMaplibreTrail, setMaplibreTrail } from "./trail";
 import { addMaplibreSi, setMaplibreSi, startSiFlight } from "./siMap";
-import { inkTappedAt } from "./inkTap";
-import { roachTraits, type MapViewProps } from "./types";
+import { inksNear, inkTappedAt } from "./inkTap";
+import { inkHit, tapNear } from "./stackTap";
+import { roachTraits, type MapViewProps, type StackHit, type StackUnder } from "./types";
 import { FeatureCache, LITE_LOOKS, liteFeature, roachFeature } from "./features";
 import { imageSpec, mineImage, neededImages, roachImage, roachRotate, sleepImage, sleepRotate, WALKING } from "./roachIcons";
 import { BADGE_AT, drawBadge, PILE_MAX_PX } from "./piles";
@@ -253,6 +255,54 @@ function mineGeoJSON(
   };
 }
 
+/** Your own roaches are drawn this big (px): their pictures at icon-size 1 */
+const MINE_PX = ICON_PX / 2;
+
+/**
+ * Everything drawn within reach of a point of the map (px), for a tap close up (src/lib/stackPick.ts): the others'
+ * roaches (轻量's piles left out: a tap opens one up instead), your own, and 缘缘庄's ink roaches, each with how far
+ * from the point its middle is, wherever the crawl has it now; on top first among those as far. reach: left out, as
+ * far as a tap on each counts (half its icon, at least 14 px; an ink roach's figure); a guide's figure gives its own
+ */
+function underAt(map: maplibregl.Map, p: MapViewProps, offsets: [number, number][] | null, x: number, y: number, reach?: number): Near<StackHit>[] {
+  const zoom = map.getZoom();
+  const icon = Math.max(iconPx(zoom) / 2, 14);
+  const own = Math.max(MINE_PX / 2, 14);
+  // a little further than anything counts, for the crawl's nudge
+  const r = (reach ?? Math.max(icon, own)) + 8;
+  const layers = [...CLICKABLE, LITE_PILES, LITE_FRIENDS].filter((id) => map.getLayer(id));
+  const seen = new Set<string>();
+  const out: Near<StackHit>[] = [];
+  for (const f of map.queryRenderedFeatures(
+    [
+      [x - r, y - r],
+      [x + r, y + r],
+    ],
+    { layers },
+  )) {
+    if (f.properties.cluster || f.properties.ghost) continue;
+    const mine = f.layer.id === "mine";
+    const id = String(f.properties.id);
+    if (!mine && id === p.hiddenId) continue;
+    // a roach comes once from each tile it is in
+    const key = `${mine ? "m" : "r"}:${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+    const at = map.project([lng, lat]);
+    // each crawl group's layer is nudged as a whole (animate)
+    const g = ROACH_LAYERS.indexOf(f.layer.id);
+    const [dx, dy] = g >= 0 && offsets?.[g] ? offsets[g] : [0, 0];
+    const d = Math.hypot(at.x + dx - x, at.y + dy - y);
+    if (d > (reach ?? (mine ? own : icon))) continue;
+    out.push({ ref: mine ? { kind: "mine", id } : { kind: "roach", id }, d });
+  }
+  if (p.onInkClick) {
+    for (const n of inksNear(p.si, zoom, { x, y }, (q) => map.project([q.lng, q.lat]), reach)) out.push({ ref: inkHit(n.ink), d: n.d });
+  }
+  return out;
+}
+
 export default function MaplibreView(props: MapViewProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -284,6 +334,28 @@ export default function MaplibreView(props: MapViewProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
+  /**
+   * What lies under a guide's figure close up, nearest her middle first, and where her middle is (src/lib/stackPick.ts):
+   * the roaches whose middles are within half her figure's width of hers; none: undefined
+   */
+  const underGuide = (el: HTMLElement): StackUnder | undefined => {
+    const map = mapRef.current;
+    const p = propsRef.current;
+    if (!map || !readyRef.current || !p.onStackClick || map.getZoom() < STACK_FROM_ZOOM) return undefined;
+    // her picture, not her name or what she says
+    const fig = (el.querySelector("img") ?? el).getBoundingClientRect();
+    const box = map.getContainer().getBoundingClientRect();
+    const x = fig.left + fig.width / 2 - box.left;
+    const y = fig.top + fig.height / 2 - box.top;
+    const near = underAt(map, p, offsetsRef.current, x, y, Math.min(fig.width, fig.height) / 2);
+    if (!near.length) return undefined;
+    const at = map.unproject([x, y]);
+    return { hits: byDistance(near).map((n) => n.ref), at: { lng: at.lng, lat: at.lat } };
+  };
+  // for the guides' own handlers, set up as they come, as it is now
+  const underGuideRef = useRef(underGuide);
+  underGuideRef.current = underGuide;
+
   // The guides: page elements over the map, so taps on them never reach the roaches below.
   // Added, moved and taken away as the page says; each kept beside your main roach, never on it.
   const syncGuides = () => {
@@ -308,7 +380,7 @@ export default function MaplibreView(props: MapViewProps) {
           // while placing, the tap is a spot on the map like any other
           if (propsRef.current.placing) return;
           e.stopPropagation();
-          propsRef.current.onRoachClick(mark.id);
+          propsRef.current.onRoachClick(mark.id, underGuideRef.current(el));
         });
         g = { el, marker: new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([mark.at.lng, mark.at.lat]).addTo(map) };
         shown.set(mark.id, g);
@@ -764,7 +836,6 @@ export default function MaplibreView(props: MapViewProps) {
       if (!p.placing) {
         // the one off stage is still there, see-through: a tap goes to whatever is under it
         const hit = map.queryRenderedFeatures(point, { layers: tappable() }).find((f) => f.layer.id === "mine" || f.properties.id !== p.hiddenId);
-        if (hit?.layer.id === "mine") return p.onMineClick(hit.properties.id);
         // 轻量: a pile opens up, the map easing in to where it comes apart
         if (hit?.properties.cluster) {
           const [lng, lat] = (hit.geometry as GeoJSON.Point).coordinates;
@@ -778,6 +849,11 @@ export default function MaplibreView(props: MapViewProps) {
             .catch(() => {});
           return;
         }
+        // close up: the one nearest the finger, or those lying on top of each other to pick from (src/lib/stackPick.ts)
+        if (p.onStackClick && map.getZoom() >= STACK_FROM_ZOOM) {
+          if (tapNear(p, underAt(map, p, offsetsRef.current, point[0], point[1]), { lng: at.lng, lat: at.lat })) return;
+        }
+        if (hit?.layer.id === "mine") return p.onMineClick(hit.properties.id);
         if (hit) return p.onRoachClick(hit.properties.id);
         // 缘缘庄's ink roaches, under the real ones
         const onInk = p.onInkClick;

@@ -53,6 +53,12 @@ export type RoachGl = {
   setPiles: (items: PileItem[] | null) => void;
   /** What is drawn at a point of the map's container (CSS px), the top one: a roach's id, a pile, or null */
   hit: (x: number, y: number) => string | PileHit | null;
+  /**
+   * Every roach drawn within reach of a point of the map's container (CSS px), on top first, each with how far its
+   * middle is (src/lib/stackPick.ts): reach, or a fingertip as hit() has it. In 轻量 the lone roaches only (a pile
+   * opens up instead, hit())
+   */
+  hits: (x: number, y: number, reach?: number) => { id: string; d: number }[];
   destroy: () => void;
 };
 
@@ -431,6 +437,41 @@ const loadImage = (url: string) =>
     img.onerror = () => reject(new Error("icon"));
     img.src = url;
   });
+
+/** What the layer last drew, as a tap looks through it: the view (mvp; the container W × H CSS px), the icons' size, which far-out zooms thin the crowd, and where the crawl is */
+export type DrawnView = { mvp: Float32Array; W: number; H: number; size: number; thinPow: number; now: number; crawling: boolean };
+
+/**
+ * The roaches drawn within reach of a point of the map's container (CSS px), wherever their crawl has them now, the
+ * last drawn (on top) first, each with how far its middle is: all of them, or with first the top one only. Left out:
+ * the one off stage (hiddenIndex), and those not drawn at this zoom far out (thinMasks). reach: half an icon, at
+ * least 14 px, unless given
+ */
+export function roachesAt(
+  v: DrawnView,
+  list: readonly Pick<GlRoach, "seed" | "still">[],
+  xy: Float64Array,
+  thin: Float32Array,
+  hiddenIndex: number,
+  x: number,
+  y: number,
+  opts: { first?: boolean; reach?: number } = {},
+): { i: number; d: number }[] {
+  const radius = opts.reach ?? Math.max(v.size / 2, 14);
+  const out: { i: number; d: number }[] = [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (i === hiddenIndex || (v.thinPow && Math.floor(thin[i] / v.thinPow) % 2 === 0)) continue;
+    const { x: sx, y: sy } = onScreen(v.mvp, xy[i * 2], xy[i * 2 + 1], v.W, v.H);
+    // the crawl takes a roach a few px from its spot at most
+    if (Math.abs(sx - x) > radius + 8 || Math.abs(sy - y) > radius + 8) continue;
+    const c = v.crawling && !list[i].still ? crawl(list[i].seed, v.now, "cartoon", v.size / 24) : { dx: 0, dy: 0 };
+    const d = Math.hypot(sx + c.dx - x, sy + c.dy - y);
+    if (d > radius) continue;
+    out.push({ i, d });
+    if (opts.first) break;
+  }
+  return out;
+}
 
 /**
  * For each roach, one bit per 高德 zoom from 2 to thinZoom: whether it is drawn there. As AmapView's
@@ -956,6 +997,17 @@ export function roachGl(
     }, FIRST_FRAME_MS);
   };
 
+  /** What the last frame drew (f: last), for a tap in a W × H container */
+  const drawnView = (f: NonNullable<typeof last>, W: number, H: number): DrawnView => ({
+    mvp: f.mvp,
+    W,
+    H,
+    size: f.size,
+    thinPow: f.thinPow,
+    now: (performance.now() - t0) % CLOCK_WRAP,
+    crawling,
+  });
+
   const layer = new AMap.GLCustomLayer({ zIndex: opts.zIndex, init, render });
   map.add(layer);
 
@@ -1052,18 +1104,29 @@ export function roachGl(
         }
         return null;
       }
-      const { mvp: m, size, thinPow } = last;
-      const radius = Math.max(size / 2, 14);
-      const now = (performance.now() - t0) % CLOCK_WRAP;
       // the last drawn (on top) wins: 触须之交 are at the end
-      for (let i = roaches.length - 1; i >= 0; i--) {
-        if (i === hiddenIndex || (thinPow && Math.floor(thin[i] / thinPow) % 2 === 0)) continue;
-        const { x: sx, y: sy } = onScreen(m, xy[i * 2], xy[i * 2 + 1], W, H);
-        if (Math.abs(sx - x) > radius + 8 || Math.abs(sy - y) > radius + 8) continue;
-        const c = crawling && !roaches[i].still ? crawl(roaches[i].seed, now, "cartoon", size / 24) : { dx: 0, dy: 0 };
-        if (Math.hypot(sx + c.dx - x, sy + c.dy - y) <= radius) return roaches[i].id;
+      const [top] = roachesAt(drawnView(last, W, H), roaches, xy, thin, hiddenIndex, x, y, { first: true });
+      return top ? roaches[top.i].id : null;
+    },
+    hits: (x, y, reach) => {
+      if (!last || !iconsReady) return [];
+      const el = map.getContainer();
+      const W = el.clientWidth;
+      const H = el.clientHeight;
+      if (piles) {
+        const { mvp: m, size, maxPx } = last;
+        const out: { id: string; d: number }[] = [];
+        for (let i = piles.length - 1; i >= 0; i--) {
+          const it = piles[i];
+          if (typeof it.ref !== "string" || it.ref === hiddenId || i * 2 + 1 >= pileXY.length) continue;
+          const { x: sx, y: sy } = onScreen(m, pileXY[i * 2], pileXY[i * 2 + 1], W, H);
+          const width = Math.min(size * pileMul(it.n), Math.max(size, maxPx));
+          const d = Math.hypot(sx - x, sy - y);
+          if (d <= (reach ?? Math.max(width / 2, 16))) out.push({ id: it.ref, d });
+        }
+        return out;
       }
-      return null;
+      return roachesAt(drawnView(last, W, H), roaches, xy, thin, hiddenIndex, x, y, { reach }).map(({ i, d }) => ({ id: roaches[i].id, d }));
     },
     destroy: () => {
       window.clearInterval(timer);

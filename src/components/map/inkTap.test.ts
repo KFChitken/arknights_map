@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InkPoint } from "@/lib/siTiles";
-import { inkTappedAt } from "./inkTap";
+import { inksNear, inkTappedAt } from "./inkTap";
 import { INK_PX, INK_SIZE, interp, NEAR_FROM } from "./siLook";
 import type { SiMapData } from "./types";
 
@@ -61,5 +61,19 @@ describe("a tap on 缘缘庄's ink roaches", () => {
     expect(inkTappedAt(si([other], 118.0011), Z, { x: 105, y: 500 - h / 2 }, toScreen)).toEqual({ kind: "mine" });
     // off the screen (behind the globe): never
     expect(inkTappedAt(si([other]), Z, { x: 100, y: 500 }, () => null)).toBeNull();
+  });
+
+  it("finds every one the tap is on, each with how far from its middle, yours first", () => {
+    const a = ink(118.001, 1, 1);
+    const b = ink(118.0012, 1, 2);
+    const far = ink(118.002, 1, 3);
+    const near = inksNear(si([a, b, far], 118.0011), Z, { x: 110, y: 500 - h / 2 }, toScreen);
+    expect(near.map((n) => n.ink)).toEqual([{ kind: "mine" }, { kind: "other", ink: a }, { kind: "other", ink: b }]);
+    expect(near.map((n) => n.d)).toEqual([0, 10, 10].map((d) => expect.closeTo(d, 6)));
+    // as far out as given instead of each one's figure
+    expect(inksNear(si([a, b, far]), Z, { x: 110, y: 500 - h / 2 }, toScreen, 5)).toEqual([]);
+    expect(inksNear(si([a, b, far]), Z, { x: 110, y: 500 - h / 2 }, toScreen, 95).map((n) => n.ink)).toHaveLength(3);
+    // from afar: none
+    expect(inksNear(si([a]), NEAR_FROM - 0.01, { x: 100, y: 500 - h / 2 }, toScreen)).toEqual([]);
   });
 });

@@ -53,11 +53,19 @@ export type MapViewProps = {
   placing: boolean;
   focus: MapFocus | null;
   onMapClick: (p: LngLat) => void;
-  /** A roach of someone else, or a guide (by her id) */
-  onRoachClick: (publicId: string) => void;
+  /**
+   * A roach of someone else, or a guide (by her id); close up (src/lib/stackPick.ts), with a guide what lies under her
+   * figure, nearest her middle first, and where (none: left out)
+   */
+  onRoachClick: (publicId: string, under?: StackUnder) => void;
   onMineClick: (roachId: string) => void;
   /** An ink roach of 缘缘庄 close up, yours or another's (src/components/map/inkTap.ts); left out, they take no tap */
   onInkClick?: (ink: InkTapped) => void;
+  /**
+   * A tap close up on roaches drawn on top of each other, none of them clearly nearest (src/lib/stackPick.ts): all
+   * that lie under the finger, nearest first, and where; left out, the one on top opens as before
+   */
+  onStackClick?: (under: StackUnder) => void;
   onViewChange: (v: MapView, bounds: [LngLat, LngLat]) => void;
   onError?: (message: string) => void;
   /** The map could not load at all; without it, onError says so */
@@ -154,6 +162,15 @@ export type SiMine = {
   ink: number;
   brushFrom: number | null;
 };
+
+/**
+ * One of what lies under a tap close up (src/lib/stackPick.ts): someone else's roach (by its id in the list), one of
+ * your own, another's ink roach of 缘缘庄 as its tile has it, or your own ink roach
+ */
+export type StackHit = { kind: "roach"; id: string } | { kind: "mine"; id: string } | { kind: "ink"; ink: InkPoint } | { kind: "myInk" };
+
+/** What lies under a tap, nearest first, and where the tap was (or the middle of the guide they lie under) */
+export type StackUnder = { hits: StackHit[]; at: LngLat };
 
 /** A line just shouted over one of your own roaches (at), on your screen only; limited: a 限定 line */
 export type ShoutMark = { id: string; at: LngLat; text: string; limited: boolean };
