@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { CourseId } from "@/lib/study/courses";
+import type { DrawnAvatar, RoachColor, RoachStyle } from "@/lib/types";
 
 /**
  * Each course's game (src/lib/study/courses.ts), one file apiece, fetched the first time 开始上课 is pressed rather
@@ -18,11 +19,16 @@ export type Round = {
   again?: { label: string; mode: string };
 };
 
+/** The player's roach as the map shows it */
+export type Look = { color: RoachColor; avatar: DrawnAvatar; style: RoachStyle };
+
 export type GameProps = {
   /** The site day the round is played on, for a course whose numbers are the day's */
   day: string;
   /** How to play this round, as a Round's again asked (the stopwatch: hidden) */
   mode?: string;
+  /** The player's roach, for a game it plays in (接住 3、2、5) */
+  look: Look;
   /** Called once, the moment the round is over */
   onRound: (r: Round) => void;
 };
@@ -37,6 +43,7 @@ const GAMES: Record<CourseId, () => Promise<{ default: Game }>> = {
   mental325: () => import("./Mental325"),
   beat325: () => import("./Beat325"),
   make325: () => import("./Make325"),
+  catch325: () => import("./Catch325"),
 };
 
 export const loadGame = (id: CourseId): Promise<Game> => GAMES[id]().then((m) => m.default);

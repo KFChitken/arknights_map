@@ -2310,6 +2310,7 @@ export const zh = {
       mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
       beat325: { name: "325 节拍", rule: "跟着亮点敲：哒哒哒、哒哒、哒哒哒哒哒", short: "节拍" },
       make325: { name: "凑 325", rule: "4 个数用加减乘除凑出 325，每个数用一次", short: "凑 325" },
+      catch325: { name: "接住 3、2、5", rule: "左右挪小强，按 3、2、5 的顺序接住数字，躲开炸弹", short: "接住" },
     },
     stopwatch: {
       start: "开始",
@@ -2442,6 +2443,29 @@ export const zh = {
       seen: "看了答案",
       result: "用了 {s} 秒凑出 325",
       resultSeen: "看了答案",
+    },
+    /** 接住 3、2、5 (src/lib/study/catch325.ts) */
+    catch325: {
+      start: "开始",
+      rule: "左右拖小强，按 3、2、5 的顺序接数字\n接错或撞上炸弹、纸飞机、源石虫，都从 3 重来\n60 秒内接住 {sets} 组过关",
+      drag: "按住场地左右拖",
+      dragKeys: "按住场地左右拖，或按 ← →",
+      /** Read out for the three slots */
+      slotsSr: "按 3、2、5 的顺序接，这组接了 {n} 个",
+      sets: "接住",
+      setsSr: "接住 {n} 组，{of} 组过关",
+      /** The seconds left */
+      left: "{s} 秒",
+      leftSr: "还剩 {s} 秒",
+      /** Read out for the field */
+      fieldSr: "掉东西的场地",
+      /** Said over the field for a moment: a set caught, a wrong digit, an obstacle run into */
+      set: "接住一组！",
+      wrong: "接错了，从 3 重来",
+      hit: "撞上了，从 3 重来",
+      pass: "接住 {n} 组，过关！",
+      out: "60 秒到了，这局到这儿，接住 {n} 组",
+      result: "接住 {n} 组",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",

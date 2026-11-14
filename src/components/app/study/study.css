@@ -131,7 +131,8 @@
 .ec-start,
 .fd-start,
 .mt-start,
-.bt-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.bt-start,
+.ct-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
 .ec-hint,
@@ -150,16 +151,20 @@
 .rx-score { display: flex; gap: 20px; }
 .rx-tally,
 .mt-tally,
-.bt-tally { display: inline-flex; align-items: center; gap: 5px; }
+.bt-tally,
+.ct-tally { display: inline-flex; align-items: center; gap: 5px; }
 .rx-tally small,
 .mt-tally small,
-.bt-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
+.bt-tally small,
+.ct-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
 .rx-tally i,
 .mt-tally i,
-.bt-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
+.bt-tally i,
+.ct-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
 .rx-tally i.rx-on,
 .mt-tally i.mt-on,
-.bt-tally i.bt-on { border-color: var(--st-green); background: var(--st-green); }
+.bt-tally i.bt-on,
+.ct-tally i.ct-on { border-color: var(--st-green); background: var(--st-green); }
 .rx-tally.rx-slips i.rx-on,
 .mt-tally.mt-wrongs i.mt-on,
 .bt-tally.bt-wrongs i.bt-on { border-color: var(--st-red); background: var(--st-red); }
@@ -366,6 +371,62 @@
 .mk-tools .st-ghost:disabled { color: #9aa1ab; }
 .mk-tools .mk-help { border-color: var(--st-yellow); background: var(--st-tint); }
 
+/* ---- 接住 3、2、5 (Catch325.tsx): the slots, the sets and the time over a field drawn on a canvas (arena.ts); the
+   canvas fills what room there is, the field in it is drawn no wider or taller than it plays the same ---- */
+.ct-game { flex: 1; align-self: stretch; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+/* as wide as the field under it (--ct-fw, set in Catch325.tsx) */
+.ct-top {
+  flex: none; align-self: center; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+  max-width: var(--ct-fw, 100%); white-space: nowrap;
+}
+.ct-slots { display: inline-flex; gap: 6px; }
+.ct-slots b {
+  display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid var(--st-line); border-radius: 10px;
+  color: #b7bdc6; font-size: 19px; font-weight: 800;
+}
+.ct-slots b.ct-next { border-color: #1b1d22; color: #1b1d22; }
+.ct-slots b.ct-got { border-color: var(--st-green); background: var(--st-green); color: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ct-slots.ct-shake0 { animation: ct-shake0 360ms ease-in-out; }
+  .ct-slots.ct-shake1 { animation: ct-shake1 360ms ease-in-out; }
+}
+@keyframes ct-shake0 {
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes ct-shake1 {
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+.ct-time { min-width: 3.4em; color: var(--muted); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+/* dragged on: the page does not scroll or zoom under the finger, and a long press opens nothing */
+.ct-stage {
+  position: relative; flex: 1; min-height: 150px; touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.ct-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* over the field before the round, above the roach (its height set in Catch325.tsx); on a low field over all of it, smaller */
+.ct-ready {
+  position: absolute; top: 0; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 12px;
+}
+.ct-hint { max-width: 300px; margin: 0; color: #4b5260; font-size: 13.5px; line-height: 1.5; text-align: center; }
+/* each line of the rule its own, a long one broken in two even halves (after a comma) on a narrow field */
+.ct-hint span { display: block; word-break: keep-all; text-wrap: balance; }
+.ct-ready.ct-tight { gap: 6px; padding: 8px; }
+.ct-tight .ct-hint { font-size: 12px; line-height: 1.4; }
+.ct-tight .ct-start { padding-block: 8px; font-size: 16px; }
+.ct-said { position: absolute; top: 10px; left: 0; right: 0; margin: 0; font-size: 16px; font-weight: 800; text-align: center; pointer-events: none; }
+/* on a light pill, so what falls behind it does not get in the way of reading it */
+.ct-said span { display: inline-block; padding: 3px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.92); }
+.ct-said.ct-set { color: var(--st-green); }
+.ct-said.ct-wrong,
+.ct-said.ct-hit { color: var(--st-red); }
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -387,6 +448,10 @@
   .mk-game { --mk-h: clamp(40px, calc((100vh - 370px) / 2), 84px); --mk-h: clamp(40px, calc((100dvh - 370px) / 2), 84px); gap: 8px; }
   .mk-said { min-height: 56px; font-size: 13px; }
   .mk-op { height: 44px; }
+  .ct-game { gap: 6px; }
+  .ct-slots b { width: 30px; height: 30px; font-size: 17px; }
+  .ct-hint { font-size: 12.5px; }
+  .ct-ready { gap: 8px; }
   .mt-card { height: clamp(96px, calc(100vh - 300px), 180px); height: clamp(96px, calc(100dvh - 300px), 180px); }
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
@@ -441,4 +506,8 @@
   .mk-op { height: 44px; }
   .mk-tools { grid-column: 2; grid-row: 2; width: 100%; }
   .mk-tools .st-ghost { padding-block: 7px; }
+  /* the slots, the sets and the time down the left, the field all the height beside them */
+  .ct-game { flex-direction: row; gap: 16px; }
+  .ct-top { flex-direction: column; align-self: stretch; justify-content: center; gap: 12px; width: 130px; max-width: none; }
+  .ct-stage { min-height: 0; }
 }

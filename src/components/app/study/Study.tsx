@@ -6,11 +6,10 @@ import { COURSE_IDS, isCourse, subjectOf, type CourseId } from "@/lib/study/cour
 import { guestDone, guestToday } from "@/lib/study/guest";
 import { factIndex, nextSeal, SEALS, type StudyMe, type StudyToday } from "@/lib/study/rules";
 import { NotToday, studyApi } from "@/lib/studyClient";
-import type { DrawnAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import Sheet from "../Sheet";
-import { loadGame, type Game, type Round } from "./games";
+import { loadGame, type Game, type Look, type Round } from "./games";
 import "./study.css";
 
 /**
@@ -33,7 +32,7 @@ export default function Study({
   onRefused,
 }: {
   signedIn: boolean;
-  look: { color: RoachColor; avatar: DrawnAvatar; style: RoachStyle };
+  look: Look;
   onClose: () => void;
   onState: (s: StudyMe) => void;
   onGuestDone: (day: string) => void;
@@ -206,7 +205,7 @@ export default function Study({
             </button>
           </header>
           <div className="sp-game">
-            <game.Game key={game.key} day={today.day} mode={game.mode} onRound={(r) => roundOver(game.id, r)} />
+            <game.Game key={game.key} day={today.day} mode={game.mode} look={look} onRound={(r) => roundOver(game.id, r)} />
           </div>
           <footer className={`sp-end${armed ? " armed" : ""}`} role="status">
             {ended && (
