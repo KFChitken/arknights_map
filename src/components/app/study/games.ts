@@ -11,6 +11,8 @@ import type { DrawnAvatar, RoachColor, RoachStyle } from "@/lib/types";
 export type Round = {
   /** Passed (the stopwatch: stopped within 3.20–3.30); a loss shows the player's roach belly up */
   won: boolean;
+  /** A step on the way, passed: neither won nor lost, nothing counts or is told (the stopwatch: shown, before hidden) */
+  step?: boolean;
   /** The round in a few words, for 下课's page: 停在 3.26 秒 */
   result: string;
   /** What the play screen says once it is over: 正好 3.25！, 过关！, 停在 3.41 秒，再试一次 */
@@ -23,8 +25,10 @@ export type Round = {
 export type Look = { color: RoachColor; avatar: DrawnAvatar; style: RoachStyle };
 
 export type GameProps = {
-  /** The site day the round is played on, for a course whose numbers are the day's */
+  /** The site day the round is played on */
   day: string;
+  /** What the round's numbers are dealt from (src/lib/prng.ts mulberry32): another every round */
+  seed: number;
   /** How to play this round, as a Round's again asked (the stopwatch: hidden) */
   mode?: string;
   /** The player's roach, for a game it plays in (接住 3、2、5, 描红 325) */

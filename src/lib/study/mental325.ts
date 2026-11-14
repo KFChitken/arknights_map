@@ -1,8 +1,8 @@
 /**
  * 心算快打 (src/components/app/study/Mental325.tsx): sums come one at a time, and for each the player says whether it
  * makes 325 or not, against a clock that gives a little less time for each. Ten right in a row pass; three wrong end the
- * round, a sum left until its time ran out counting as wrong. The day's sums are the same for everyone who plays it that
- * day (rules.ts dayRandom): half of them make 325, written as a product, a sum, a difference, a quotient, a square and a
+ * round, a sum left until its time ran out counting as wrong. Each round's sums are dealt afresh
+ * (rules.ts newSeed): half of them make 325, written as a product, a sum, a difference, a quotient, a square and a
  * bit more, two squares, or a product and a bit more or less; the other half are written the same ways but make a
  * number near 325, or 325's digits in another order. Whether a sum makes 325 is worked out from what it shows.
  */
@@ -39,7 +39,7 @@ export type Sum = { text: string; form: MentalForm; is325: boolean };
 type Int = (lo: number, hi: number) => number;
 
 /**
- * What a sum shows comes to, with × and ÷ before + and −: NaN for one that is not written as the day's are written, or
+ * What a sum shows comes to, with × and ÷ before + and −: NaN for one that is not written as a round's are written, or
  * that divides unevenly
  */
 export function valueOf(text: string): number {
@@ -128,7 +128,7 @@ export function sumKey(s: Pick<Sum, "text" | "form">): string {
 }
 
 /**
- * The day's sums, from its random (rules.ts dayRandom): in each ten, five make 325. No sum comes twice in a day, not
+ * A round's sums, from its random (mulberry32 of its seed): in each ten, five make 325. No sum comes twice in a round, not
  * even the other way round, and no way of writing them three times running.
  */
 export function mentalSums(random: () => number): Sum[] {

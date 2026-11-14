@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { siteDayStart } from "../siteDay";
-import { dayRandom, factIndex, nextSeal, sameDay, SEALS, studiedNow } from "./rules";
+import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, sameDay, SEALS, studiedNow } from "./rules";
 
 describe("325大学习's rules", () => {
   it("name the next seal and the days left to it, and none once all six are had", () => {
@@ -33,13 +33,13 @@ describe("325大学习's rules", () => {
     expect(factIndex("1969-12-31", 13)).toBeGreaterThanOrEqual(0);
   });
 
-  it("deal a course the same numbers all day for everyone, and others on another day or course", () => {
-    const a = dayRandom("react325", "2026-11-21");
-    const b = dayRandom("react325", "2026-11-21");
-    const first = [a(), a(), a()];
-    expect([b(), b(), b()]).toEqual(first);
-    for (const x of first) expect(x >= 0 && x < 1).toBe(true);
-    expect(dayRandom("react325", "2026-11-22")()).not.toBe(first[0]);
-    expect(dayRandom("find325", "2026-11-21")()).not.toBe(first[0]);
+  it("let the day's course be given up after five rounds of it lost", () => {
+    expect(GIVE_UP_AFTER).toBe(5);
+  });
+
+  it("deal each round from a seed of its own", () => {
+    const seeds = Array.from({ length: 200 }, newSeed);
+    for (const s of seeds) expect(Number.isInteger(s) && s >= 0 && s < 2 ** 32).toBe(true);
+    expect(new Set(seeds).size).toBe(200);
   });
 });

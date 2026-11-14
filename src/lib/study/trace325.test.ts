@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isObstacle } from "./field";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 import {
   FLIGHT,
   flightMs,
@@ -25,9 +25,9 @@ import {
   WRITING_START,
 } from "./trace325";
 
-/** Nearly three years of site days */
-const DAYS = Array.from({ length: 1000 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const flyersOf = (day: string) => traceFlyers(dayRandom("trace325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1000 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const flyersOf = (seed: number) => traceFlyers(mulberry32(seed));
 
 /** The roach going along a stroke's middle line from one place to another, `off` to one side of it, in moves of `step` */
 function along(s: Stroke, from: number, to: number, off = 0, step = 0.02): Pt[] {
@@ -189,13 +189,13 @@ describe("描红 325", () => {
     expect(flyerAt(f, (1000 + ms / 2) / TRACE_CALM, true).x).toBeCloseTo(0.5, 5);
   });
 
-  it("is the same flyers for everyone that day and others the next; never too many at once; 90 s to write in", () => {
+  it("is the same flyers from the same seed and others from another; never too many at once; 90 s to write in", () => {
     expect(TRACE.ms).toBe(90_000);
-    expect(flyersOf("2026-11-21")).toEqual(flyersOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => JSON.stringify(flyersOf(d)))).size).toBe(100);
+    expect(flyersOf(SEEDS[0])).toEqual(flyersOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => JSON.stringify(flyersOf(d)))).size).toBe(100);
     let count = 0;
-    for (const day of DAYS) {
-      const fs = flyersOf(day);
+    for (const seed of SEEDS) {
+      const fs = flyersOf(seed);
       count += fs.length;
       expect(fs[0].at).toBe(TRACE_FIRST_MS);
       for (let i = 0; i < fs.length; i++) {
@@ -214,7 +214,7 @@ describe("描红 325", () => {
       }
     }
     // about TRACE.perMinute a minute from the first on
-    expect(count / DAYS.length).toBeGreaterThan(((TRACE.ms - TRACE_FIRST_MS) / 60_000) * TRACE.perMinute * 0.75);
-    expect(count / DAYS.length).toBeLessThan(((TRACE.ms - TRACE_FIRST_MS) / 60_000) * TRACE.perMinute * 1.05);
+    expect(count / SEEDS.length).toBeGreaterThan(((TRACE.ms - TRACE_FIRST_MS) / 60_000) * TRACE.perMinute * 0.75);
+    expect(count / SEEDS.length).toBeLessThan(((TRACE.ms - TRACE_FIRST_MS) / 60_000) * TRACE.perMinute * 1.05);
   });
 });

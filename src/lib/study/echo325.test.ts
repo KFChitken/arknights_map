@@ -14,11 +14,11 @@ import {
   remembered,
   ring,
 } from "./echo325";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 
-/** Three years of site days from the first one the course could be played */
-const DAYS = Array.from({ length: 1100 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const bellsOf = (day: string) => echoBells(dayRandom("echo325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1100 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const bellsOf = (seed: number) => echoBells(mulberry32(seed));
 
 /** Rings bells one after another from the start of a round: what each did, and where the round was left */
 function play(bells: readonly Bell[], rings: readonly Bell[]) {
@@ -36,12 +36,12 @@ const turnsUpTo = (bells: readonly Bell[], n: number) =>
   Array.from({ length: n - ECHO_FIRST + 1 }, (_, t) => bells.slice(0, ECHO_FIRST + t)).flat();
 
 describe("复读 325", () => {
-  it("is 3、2、5 and then the day's own bells, the same for everyone that day", () => {
-    expect(bellsOf("2026-11-21")).toEqual(bellsOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => bellsOf(d).join(""))).size).toBeGreaterThanOrEqual(90);
+  it("is 3、2、5 and then the round's own bells, the same from the same seed", () => {
+    expect(bellsOf(SEEDS[0])).toEqual(bellsOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => bellsOf(d).join(""))).size).toBeGreaterThanOrEqual(90);
     const seen = { 3: 0, 2: 0, 5: 0 };
-    for (const day of DAYS) {
-      const s = bellsOf(day);
+    for (const seed of SEEDS) {
+      const s = bellsOf(seed);
       expect(s).toHaveLength(ECHO_STEPS);
       expect(s.slice(0, 3)).toEqual([3, 2, 5]);
       expect(s.every((b) => isBell(b))).toBe(true);
@@ -50,7 +50,7 @@ describe("复读 325", () => {
       for (const b of s.slice(3)) seen[b]++;
     }
     // the three come up about as often as each other
-    for (const b of ECHO_BELLS) expect(seen[b] / (DAYS.length * (ECHO_STEPS - 3))).toBeGreaterThan(0.28);
+    for (const b of ECHO_BELLS) expect(seen[b] / (SEEDS.length * (ECHO_STEPS - 3))).toBeGreaterThan(0.28);
   });
 
   it("takes the bells back in order, a turn at a time, each one bell longer than the last", () => {

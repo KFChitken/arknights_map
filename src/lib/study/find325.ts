@@ -1,8 +1,8 @@
 /**
  * 找 325 (src/components/app/study/Find325.tsx): a 10 × 10 grid of digits with five 325s hidden in it, across, down
  * or slanting (down to the right, or up to the right, both read left to right). A finger dragged from a 3 to its 5
- * rings one; all five, or the minute running out, end the round. The grid is the day's, the same for everyone who plays
- * it that day (rules.ts dayRandom), with 32s, 25s and 352s in it meant to fool the eye, and no 325 read any way but
+ * rings one; all five, or the minute running out, end the round. The grid is dealt afresh each round
+ * (rules.ts newSeed), with 32s, 25s and 352s in it meant to fool the eye, and no 325 read any way but
  * the five.
  */
 
@@ -70,7 +70,7 @@ function finishes(grid: readonly (readonly (number | null)[])[], r: number, c: n
 }
 
 /**
- * The grid of the day, from its random (rules.ts dayRandom): five 325s, at least one each way, none sharing a cell;
+ * A round's grid, from its random (mulberry32 of its seed): five 325s, at least one each way, none sharing a cell;
  * then the things meant to fool the eye; then the rest, each digit one that finishes no 325. So the five put there
  * are all a grid has, whichever way it is read.
  */

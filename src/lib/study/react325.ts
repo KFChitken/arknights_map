@@ -1,8 +1,8 @@
 /**
  * 3、2、5 反应 (src/components/app/study/React325.tsx): digits from 0 to 9 come up one at a time in a box, a little
  * faster as they go. When 3, 2 and 5 come up in a row, a tap while that 5 shows is a hit; a tap at any other digit is a
- * slip. Five hits pass; three slips end the round, and so does the stream running out. The stream is the day's, the same
- * for everyone who plays it that day (rules.ts dayRandom), with digits in it meant to fool the hand: 3、2、4, 3、5, 2、5.
+ * slip. Five hits pass; three slips end the round, and so does the stream running out. The stream is dealt afresh each
+ * round (rules.ts newSeed), with digits in it meant to fool the hand: 3、2、4, 3、5, 2、5.
  */
 
 /** Hits that pass */
@@ -39,7 +39,7 @@ export const isTarget = (s: readonly number[], i: number) => i >= 2 && s[i] === 
 export const countTargets = (s: readonly number[]) => s.reduce((n, _, i) => n + (isTarget(s, i) ? 1 : 0), 0);
 
 /**
- * The stream of the day, from its random (rules.ts dayRandom): a few digits to warm up, then 3、2、5s with a digit or
+ * A round's stream, from its random (mulberry32 of its seed): a few digits to warm up, then 3、2、5s with a digit or
  * two between, most of them with something meant to fool the hand before them. No digit comes twice in a row (the box
  * would show no change), and no 3、2、5 comes up but those put there.
  */

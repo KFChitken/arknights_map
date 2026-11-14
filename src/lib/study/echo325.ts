@@ -1,8 +1,8 @@
 /**
  * 复读 325 (src/components/app/study/Echo325.tsx): three bells, 3, 2 and 5, stand in a row. They light up one after
  * another and the player rings them back in the same order. Each turn plays one bell more than the last; ringing back
- * ten passes, and one wrong bell ends the round. The first three are always 3, 2, 5; the rest are the day's, the same
- * for everyone who plays it that day (rules.ts dayRandom). Nothing in it needs sound.
+ * ten passes, and one wrong bell ends the round. The first three are always 3, 2, 5; the rest are dealt afresh each
+ * round (rules.ts newSeed). Nothing in it needs sound.
  */
 
 /** The bells, left to right */
@@ -24,7 +24,7 @@ export const ECHO_RING_MS = 200;
 export const isBell = (d: unknown): d is Bell => ECHO_BELLS.includes(d as Bell);
 
 /**
- * The day's bells, from its random (rules.ts dayRandom): 3, 2, 5, then the rest drawn from the three, never one bell
+ * A round's bells, from its random (mulberry32 of its seed): 3, 2, 5, then the rest drawn from the three, never one bell
  * three times running (hard to count as it lights)
  */
 export function echoBells(random: () => number): Bell[] {

@@ -4,8 +4,8 @@
  * goes on along the line as long as the roach keeps near it. Things fly across the square from either side, and one
  * that touches the roach rubs out the character being written.
  *
- * Everything here is pure: the strokes, how far the ink goes for a move of the roach, what a touch rubs out, and the
- * day's flyers. Places are in copybook units: the square is 0 to 1 across, and 0 to 1 down.
+ * Everything here is pure: the strokes, how far the ink goes for a move of the roach, what a touch rubs out, and a
+ * round's flyers. Places are in copybook units: the square is 0 to 1 across, and 0 to 1 down.
  */
 import { OBSTACLES, type Obstacle } from "./field";
 
@@ -188,7 +188,7 @@ export function flyerAt(f: Flyer, t: number, calm = false): { x: number; y: numb
 }
 
 /**
- * The day's flyers, from a random source (rules.ts dayRandom): about TRACE.perMinute a minute from TRACE_FIRST_MS on,
+ * A round's flyers, from its random (mulberry32 of its seed): about TRACE.perMinute a minute from TRACE_FIRST_MS on,
  * through the round, never more than TRACE.atOnce flying at once (one that would be waits until one is gone).
  */
 export function traceFlyers(random: () => number): Flyer[] {

@@ -3,16 +3,16 @@
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { type Cell, dragTo, FIND_COUNT, FIND_MS, FIND_SIDE, findPuzzle, wordAt, wordEnd } from "@/lib/study/find325";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 
 /**
- * 找 325 (src/lib/study/find325.ts): the day's grid, its digits hidden until 开始. Then a minute to find the five 325s
+ * 找 325 (src/lib/study/find325.ts): a round's grid, its digits hidden until 开始. Then a minute to find the five 325s
  * in it: a finger (or a mouse) dragged from a 3 to its 5 rings one, a rounded box along it that stays. All five, or the
  * minute out, end the round, and those not found are shown. Only the boxes and the count change: nothing flashes.
  */
-export default function Find325({ day, onRound }: GameProps) {
-  const { grid, words } = useMemo(() => findPuzzle(dayRandom("find325", day)), [day]);
+export default function Find325({ seed, onRound }: GameProps) {
+  const { grid, words } = useMemo(() => findPuzzle(mulberry32(seed)), [seed]);
   const [phase, setPhase] = useState<"ready" | "run" | "over">("ready");
   /** The 325s found, in the order they were */
   const [found, setFound] = useState<number[]>([]);

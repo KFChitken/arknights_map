@@ -29,11 +29,11 @@ import {
   type Thing,
 } from "./catch325";
 import { isObstacle, OBSTACLES, touches } from "./field";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 
-/** Nearly three years of site days from the first one the course could be played */
-const DAYS = Array.from({ length: 1000 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const dropsOf = (day: string) => catchDrops(dayRandom("catch325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1000 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const dropsOf = (seed: number) => catchDrops(mulberry32(seed));
 
 /** Things caught one after another from the start of a round: how the last left it, and what each did */
 function catchAll(things: Thing[]) {
@@ -113,12 +113,12 @@ describe("接住 3、2、5", () => {
     expect(crowded([at(0, 0.2), at(200, 0.8), at(400, 0.3)])).toBe(true);
   });
 
-  it("is the same for everyone that day and another the next, and over a thousand days always fair", () => {
-    expect(dropsOf("2026-11-21")).toEqual(dropsOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => JSON.stringify(dropsOf(d)))).size).toBe(100);
+  it("is the same from the same seed and another from another, and over a thousand rounds always fair", () => {
+    expect(dropsOf(SEEDS[0])).toEqual(dropsOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => JSON.stringify(dropsOf(d)))).size).toBe(100);
     const share = { each: 0, other: 0, obstacle: 0, all: 0 };
-    for (const day of DAYS) {
-      const drops = dropsOf(day);
+    for (const seed of SEEDS) {
+      const drops = dropsOf(seed);
       expect(fairDrops(drops)).toBe(true);
       expect(crowded(drops)).toBe(false);
       // about one every 0.55 s through the minute

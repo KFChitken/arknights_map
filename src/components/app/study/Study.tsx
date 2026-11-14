@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { COURSE_IDS, isCourse, subjectOf, type CourseId } from "@/lib/study/courses";
-import { guestDone, guestToday } from "@/lib/study/guest";
-import { factIndex, nextSeal, SEALS, type StudyMe, type StudyToday } from "@/lib/study/rules";
-import { NotToday, studyApi } from "@/lib/studyClient";
+import { drawCourse } from "@/lib/study/draw";
+import { guestDone, guestGiveUp, guestToday, type GuestToday } from "@/lib/study/guest";
+import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, SEALS, type StudyMe, type StudyToday } from "@/lib/study/rules";
+import { NotToday, StaleToday, studyApi } from "@/lib/studyClient";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import Sheet from "../Sheet";
@@ -14,14 +15,17 @@ import "./study.css";
 
 /**
  * 325大学习 (src/lib/study): the course drawn for today with the days studied and the seals towards which they count,
- * the other courses (open once today's is played), and 下课's page after a round. A round is played on a layer of its
- * own over everything (the whole screen on a phone, a card in the middle on a computer), so that tapping and swiping
- * in a game never closes or scrolls a sheet; it counts the moment it is over, and leaving before that counts nothing.
+ * the rounds of it lost and, after GIVE_UP_AFTER of them, the way to give it up; the other courses, any of them for
+ * those who may pick (the 站长 and the admins), and for everyone else one at random once today's is done; and 下课's
+ * page after a round. A round is played on a layer of its own over everything (the whole screen on a phone, a card in
+ * the middle on a computer), so that tapping and swiping in a game never closes or scrolls a sheet. Each round is
+ * dealt from a seed of its own; a round of today's course counts the moment it is over (won: today's is passed; lost:
+ * one more lost; a step on the way: nothing), and leaving before that counts nothing.
  * signedIn: the server draws and counts (src/lib/studyClient.ts); otherwise this browser draws, and counts no days
  * (src/lib/study/guest.ts). look: the player's roach, lying belly up after a round lost. onState: what the server last
- * said of the player's study (the dot on the way in, 抽屉's card); onGuestDone: a visitor played the day's course;
- * onRefused: what the map page answers itself (sign in, say again they are 18, agree to the privacy policy), which
- * closes this first.
+ * said of the player's study (the dot on the way in, 抽屉's card); onGuestDone: a visitor passed the day's course (or
+ * gave it up); onRefused: what the map page answers itself (sign in, say again they are 18, agree to the privacy
+ * policy), which closes this first.
  */
 export default function Study({
   signedIn,
@@ -38,21 +42,21 @@ export default function Study({
   onGuestDone: (day: string) => void;
   onRefused: (e: unknown) => void;
 }) {
-  const [today, setToday] = useState<Today | null>(() => (signedIn ? null : { ...guestToday(), days: null }));
+  const [today, setToday] = useState<Today | null>(() => (signedIn ? null : guestsOwn(guestToday())));
   const [failed, setFailed] = useState<string | null>(null);
   /** Said over the course list: the day turned, so today's course is another */
   const [note, setNote] = useState("");
   const [screen, setScreen] = useState<"home" | "play" | "finish">("home");
-  const [game, setGame] = useState<{ id: CourseId; Game: Game; key: number; mode?: string } | null>(null);
+  const [game, setGame] = useState<{ id: CourseId; Game: Game; key: number; seed: number; mode?: string } | null>(null);
   /** A game being fetched, and one that could not be */
   const [opening, setOpening] = useState<CourseId | null>(null);
   const [openFailed, setOpenFailed] = useState<CourseId | null>(null);
   /** The round just over: which course, how it went, and the site day of the course list it was played from */
   const [ended, setEnded] = useState<{ id: CourseId; r: Round; day: string } | null>(null);
-  /** Telling the server a round of today's course was played: on its way, or what went wrong */
+  /** Telling the server how a round of today's course went: on its way, or what went wrong */
   const [save, setSave] = useState<"saving" | { why: string } | null>(null);
-  /** Other courses, pressed while still shut */
-  const [lockedTap, setLockedTap] = useState(false);
+  /** Giving today's course up: on its way, or what went wrong */
+  const [giving, setGiving] = useState<"saving" | { why: string } | null>(null);
 
   const live = useRef(true);
   useEffect(() => {
@@ -68,11 +72,14 @@ export default function Study({
   const refusedRef = useRef(onRefused);
   refusedRef.current = onRefused;
   const playNo = useRef(0);
+  /** The courses dealt at random since this was opened, and the one played last: neither is dealt next */
+  const dealt = useRef<string[]>([]);
+  const lastPlayed = useRef<CourseId | null>(null);
 
   /** Today as the server has it: shown, and told to the map page */
   const took = useCallback((t: StudyToday) => {
-    setToday({ day: t.day, course: t.course, done: t.done, days: t.days });
-    stateRef.current({ day: t.day, done: t.done, days: t.days });
+    setToday({ day: t.day, course: t.course, done: t.done, days: t.days, fails: t.fails, skipped: t.skipped, pick: t.pick });
+    stateRef.current({ day: t.day, done: t.done, days: t.days, fails: t.fails });
   }, []);
 
   const load = useCallback(() => {
@@ -90,30 +97,39 @@ export default function Study({
     if (signedIn) load();
   }, [signedIn, load]);
 
-  /** A round of the course drawn on `day` was played: today's studied, the first time */
-  const record = (id: CourseId, day: string) => {
+  /** Back to the course list: from a round not over, it counts nothing */
+  const toList = useCallback(() => {
+    setScreen("home");
+    setGame(null);
+    setEnded(null);
+  }, []);
+
+  /** A visitor's course of that day was another by the time it counted: today's, drawn again, on the course list */
+  const visitorsDayTurned = () => {
+    setToday(guestsOwn(guestToday()));
+    setNote(T.study.dayTurned);
+  };
+
+  /** A round of the course drawn on `day` was played: won, today's is passed (the first time); lost, one more lost */
+  const record = (id: CourseId, day: string, won: boolean) => {
     if (!signedIn) {
-      if (guestDone(day, id)) {
-        setToday((t) => t && { ...t, done: true });
-        guestDoneRef.current(day);
-      } else {
-        // the day turned while it was played: today's is another course
-        setToday({ ...guestToday(), days: null });
-        setNote(T.study.dayTurned);
-      }
+      const t = guestDone(day, id, won);
+      if (!t) return visitorsDayTurned();
+      setToday(guestsOwn(t));
+      if (t.done) guestDoneRef.current(day);
       return;
     }
     setSave("saving");
-    studyApi.done(id).then(
+    studyApi.done(id, won).then(
       (d) => {
         if (!live.current) return;
         setSave(null);
-        setToday((t) => (t && t.day === day ? { ...t, done: true, days: d.days } : t));
-        stateRef.current({ day, done: true, days: d.days });
+        setToday((t) => (t && t.day === day ? { ...t, ...d } : t));
+        stateRef.current({ day, done: d.done, days: d.days, fails: d.fails });
       },
       (e) => {
         if (!live.current) return;
-        if (e instanceof NotToday) {
+        if (e instanceof StaleToday) {
           setSave(null);
           took(e.today);
           setNote(T.study.dayTurned);
@@ -123,18 +139,55 @@ export default function Study({
     );
   };
 
+  /** Today's course given up after GIVE_UP_AFTER rounds of it lost: a day studied all the same, then 下课's page */
+  const giveUp = (id: CourseId, day: string) => {
+    if (!signedIn) {
+      const t = guestGiveUp(day, id);
+      if (!t) {
+        visitorsDayTurned();
+        return toList();
+      }
+      setToday(guestsOwn(t));
+      guestDoneRef.current(day);
+      setScreen("finish");
+      return;
+    }
+    setGiving("saving");
+    studyApi.giveUp(id).then(
+      (d) => {
+        if (!live.current) return;
+        setGiving(null);
+        setToday((t) => (t && t.day === day ? { ...t, ...d } : t));
+        stateRef.current({ day, done: d.done, days: d.days, fails: d.fails });
+        setScreen("finish");
+      },
+      (e) => {
+        if (!live.current) return;
+        if (e instanceof StaleToday) {
+          // the day turned, or too few lost after all: today's as the server has it
+          setGiving(null);
+          took(e.today);
+          setNote(e instanceof NotToday ? T.study.dayTurned : e.message);
+          toList();
+        } else if (mapsOwn(e)) refusedRef.current(e);
+        else setGiving({ why: sayWhy(e) });
+      },
+    );
+  };
+
   const start = (id: CourseId, mode?: string) => {
     setOpening(id);
     setOpenFailed(null);
-    setLockedTap(false);
     setNote("");
+    setGiving((g) => (g === "saving" ? g : null));
     loadGame(id).then(
       (Game) => {
         if (!live.current) return;
         setOpening(null);
         setEnded(null);
         setSave((s) => (s === "saving" ? s : null));
-        setGame({ id, Game, key: ++playNo.current, mode });
+        setGame({ id, Game, key: ++playNo.current, seed: newSeed(), mode });
+        lastPlayed.current = id;
         setScreen("play");
       },
       () => {
@@ -145,26 +198,31 @@ export default function Study({
     );
   };
 
+  /** Another course at random, for one who may not pick, once today's is done: none dealt since this was opened, until all the others have been */
+  const dealAnother = () => {
+    if (!today) return;
+    const others = COURSE_IDS.filter((c) => c !== today.course);
+    if (!others.length) return;
+    const { course, bag } = drawCourse({ bag: dealt.current, last: lastPlayed.current }, others, Math.random);
+    dealt.current = bag;
+    start(course);
+  };
+
   const roundOver = (id: CourseId, r: Round) => {
     if (!today) return;
     setEnded({ id, r, day: today.day });
-    // another round of it adds nothing, and no other course counts
-    if (id === today.course && !today.done) record(id, today.day);
+    // a step on the way tells nothing; once today's is passed nothing more counts; no other course does
+    if (!r.step && id === today.course && !today.done) record(id, today.day, r.won);
   };
 
   const replay = () => {
     const mode = ended?.r.again?.mode ?? game?.mode;
     setEnded(null);
     setSave((s) => (s === "saving" ? s : null));
-    setGame((g) => g && { ...g, key: ++playNo.current, mode });
+    setGiving((g) => (g === "saving" ? g : null));
+    setGame((g) => g && { ...g, key: ++playNo.current, seed: newSeed(), mode });
+    setScreen("play");
   };
-
-  /** Back to the course list: from a round not over, it counts nothing */
-  const toList = useCallback(() => {
-    setScreen("home");
-    setGame(null);
-    setEnded(null);
-  }, []);
 
   // what is pressed just as a round ends is not taken as a press on what then shows under the finger
   const [armed, setArmed] = useState(false);
@@ -189,9 +247,22 @@ export default function Study({
     return () => window.removeEventListener("keydown", onKey);
   }, [screen, toList]);
 
+  /** Today's course may be given up now: GIVE_UP_AFTER rounds of it lost, and not passed */
+  const mayGiveUp = (t: Today) => !t.done && t.fails >= GIVE_UP_AFTER && isCourse(t.course);
+  const giveUpButton = (t: Today, className: string) => (
+    <>
+      <button className={className} disabled={giving === "saving"} onClick={() => isCourse(t.course) && giveUp(t.course, t.day)}>
+        {giving === "saving" ? T.study.saving : T.study.giveUp}
+      </button>
+      {giving && giving !== "saving" && <p className="st-err">{fmt(T.study.giveUpFailed, { why: giving.why })}</p>}
+    </>
+  );
+
   if (screen === "play" && game && today) {
     const name = T.study.courses[game.id].name;
     const lost = ended && !ended.r.won;
+    // today's course lost, as many times as it may be given up after
+    const canQuit = ended && lost && ended.id === today.course && ended.day === today.day && mayGiveUp(today);
     return (
       <div className="study-play">
         <div ref={box} className="sp-box" role="dialog" aria-modal="true" aria-label={name} tabIndex={-1}>
@@ -205,7 +276,7 @@ export default function Study({
             </button>
           </header>
           <div className="sp-game">
-            <game.Game key={game.key} day={today.day} mode={game.mode} look={look} onRound={(r) => roundOver(game.id, r)} />
+            <game.Game key={game.key} day={today.day} seed={game.seed} mode={game.mode} look={look} onRound={(r) => roundOver(game.id, r)} />
           </div>
           <footer className={`sp-end${armed ? " armed" : ""}`} role="status">
             {ended && (
@@ -216,7 +287,7 @@ export default function Study({
                   </span>
                 )}
                 <p className="sp-verdict">{ended.r.verdict}</p>
-                {save && save !== "saving" && ended.id === today.course && <Unsaved why={save.why} onResend={() => record(ended.id, ended.day)} />}
+                {save && save !== "saving" && ended.id === today.course && <Unsaved why={save.why} onResend={() => record(ended.id, ended.day, ended.r.won)} />}
                 <div className="sp-btns">
                   <button className="st-ghost" onClick={replay}>
                     {ended.r.again?.label ?? T.study.play.replay}
@@ -225,6 +296,7 @@ export default function Study({
                     {T.study.play.end}
                   </button>
                 </div>
+                {canQuit && giveUpButton(today, "st-link sp-giveup")}
               </>
             )}
           </footer>
@@ -233,37 +305,56 @@ export default function Study({
     );
   }
 
-  if (screen === "finish" && ended && today) {
-    // today's course, played on the day it was drawn for
-    const todays = ended.id === today.course && ended.day === today.day;
+  if (screen === "finish" && today) {
+    // today's course, played on the day it was drawn for (or given up without a round)
+    const todays = !ended || (ended.id === today.course && ended.day === today.day);
+    const passed = todays && today.done;
+    // a round of today's course lost, and today's not passed: another round of it (one won is on its way to the server)
+    const notYet = todays && !today.done && ended !== null && !ended.r.won;
     const facts = T.study.facts;
     return (
       <Sheet title={T.study.title} className="study" onClose={onClose}>
         <div className="st-finish">
-          {todays && today.done && (
+          {passed && (
             <>
               <span className="st-check" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="30" height="30">
                   <path d="M5.5 12.5 10 17l8.5-9" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
-              <h3>{T.study.finish.done}</h3>
+              <h3>{today.skipped ? T.study.finish.skipped : T.study.finish.done}</h3>
               <p className="st-sub">{today.days === null ? T.study.guest : fmt(T.study.days, { n: today.days })}</p>
             </>
           )}
-          <p className="st-round">{fmt(T.study.finish.round, { result: ended.r.result })}</p>
-          {todays && save === "saving" && <p className="st-sub">{T.study.saving}</p>}
-          {todays && save && save !== "saving" && <Unsaved why={save.why} onResend={() => record(ended.id, ended.day)} />}
+          {ended && <p className="st-round">{fmt(T.study.finish.round, { result: ended.r.result })}</p>}
+          {notYet && <p className="st-again">{T.study.finish.notYet}</p>}
+          {todays && ended && save === "saving" && ended.r.won && <p className="st-sub">{T.study.saving}</p>}
+          {todays && ended && save && save !== "saving" && <Unsaved why={save.why} onResend={() => record(ended.id, ended.day, ended.r.won)} />}
           {note && <p className="st-note">{note}</p>}
-          {todays && today.done && (
+          {passed && (
             <div className="st-fact">
               <small>{T.study.finish.fact}</small>
               <p>{facts[factIndex(today.day, facts.length)]}</p>
             </div>
           )}
-          <button className="st-go wide" onClick={toList}>
-            {T.study.finish.another}
-          </button>
+          {notYet ? (
+            <>
+              <button className="st-go wide" onClick={replay}>
+                {ended?.r.again?.label ?? T.study.play.replay}
+              </button>
+              {mayGiveUp(today) && giveUpButton(today, "st-ghost wide")}
+              {today.pick && (
+                <button className="st-ghost wide" onClick={toList}>
+                  {T.study.finish.list}
+                </button>
+              )}
+            </>
+          ) : (
+            <button className="st-go wide" disabled={opening !== null} onClick={() => (today.pick || !today.done ? toList() : dealAnother())}>
+              {opening !== null ? T.study.loading : T.study.finish.another}
+            </button>
+          )}
+          {openFailed && <p className="st-err">{T.study.failed}</p>}
           <button className="st-ghost wide" onClick={onClose}>
             {T.study.finish.back}
           </button>
@@ -298,10 +389,20 @@ export default function Study({
                 <small className="st-subject">{T.study.subjects[subjectOf(today.course)]}</small>
                 <b className="st-name">{T.study.courses[today.course].name}</b>
                 <p className="st-rule">{T.study.courses[today.course].rule}</p>
-                {today.done && <p className="st-did">{T.study.doneToday}</p>}
+                {today.done ? (
+                  <p className="st-did">{today.skipped ? T.study.skippedToday : T.study.doneToday}</p>
+                ) : today.fails > 0 ? (
+                  <p className="st-fails">
+                    <b>{fmt(T.study.fails, { n: today.fails })}</b>
+                    {today.fails < GIVE_UP_AFTER && <span>{fmt(T.study.failsHint, { n: GIVE_UP_AFTER })}</span>}
+                  </p>
+                ) : (
+                  <p className="st-fails">{T.study.passToCount}</p>
+                )}
                 <button className="st-go" disabled={opening !== null} onClick={() => isCourse(today.course) && start(today.course)}>
                   {opening === today.course ? T.study.loading : today.done ? T.study.again : T.study.start}
                 </button>
+                {mayGiveUp(today) && giveUpButton(today, "st-ghost st-giveup")}
                 {openFailed === today.course && <p className="st-err">{T.study.failed}</p>}
               </>
             ) : (
@@ -316,20 +417,24 @@ export default function Study({
           {today.days === null ? <p className="st-guest">{T.study.guest}</p> : <Days days={today.days} />}
           {others.length > 0 && (
             <div className="st-more">
-              <p>{today.done ? T.study.moreOpen : T.study.more}</p>
-              <div className="st-chips">
-                {others.map((id) => (
-                  <button
-                    key={id}
-                    className={`st-chip${today.done ? "" : " shut"}`}
-                    aria-disabled={!today.done || opening !== null || undefined}
-                    onClick={() => (!today.done ? setLockedTap(true) : opening === null && start(id))}
-                  >
-                    {opening === id ? T.study.loading : T.study.courses[id].short}
-                  </button>
-                ))}
-              </div>
-              {lockedTap && !today.done && <p className="st-hint">{T.study.locked}</p>}
+              {today.pick ? (
+                <>
+                  <p>{T.study.moreOpen}</p>
+                  <div className="st-chips">
+                    {others.map((id) => (
+                      <button key={id} className="st-chip" aria-disabled={opening !== null || undefined} onClick={() => opening === null && start(id)}>
+                        {opening === id ? T.study.loading : T.study.courses[id].short}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : today.done ? (
+                <button className="st-ghost" disabled={opening !== null} onClick={dealAnother}>
+                  {opening !== null && opening !== today.course ? T.study.loading : T.study.random}
+                </button>
+              ) : (
+                <p>{T.study.more}</p>
+              )}
               {openFailed && openFailed !== today.course && <p className="st-err">{T.study.failed}</p>}
             </div>
           )}
@@ -339,7 +444,11 @@ export default function Study({
   );
 }
 
-type Today = { day: string; course: string; done: boolean; days: number | null };
+/** Today's course as this page shows it: days null for a visitor, whose days are not counted */
+type Today = { day: string; course: string; done: boolean; days: number | null; fails: number; skipped: boolean; pick: boolean };
+
+/** A visitor's day, as this page shows it: no days counted, and courses dealt at random rather than picked */
+const guestsOwn = (t: GuestToday): Today => ({ ...t, days: null, pick: false });
 
 /** The days studied, the next seal and the six of them (got: filled; to come: dashed) */
 function Days({ days }: { days: number }) {

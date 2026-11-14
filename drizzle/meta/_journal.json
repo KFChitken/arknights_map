@@ -379,6 +379,13 @@
       "when": 1794644177411,
       "tag": "0054_study",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1794696190876,
+      "tag": "0055_study_fails",
+      "breakpoints": true
     }
   ]
 }

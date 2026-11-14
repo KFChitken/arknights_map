@@ -6,13 +6,16 @@ import { studyMode } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
-import { studyDone, studyOpen, studyToday } from "@/lib/server/study";
+import { studyDone, studyGiveUp, studyOpen, studyToday } from "@/lib/server/study";
 
 /**
  * 325大学习 (src/lib/server/study.ts), each for the signed-in player alone; a visitor plays on their own page, which
  * never asks here:
- *   POST today           the day's course (drawn now the first time today), whether it was played, the days studied
- *   POST done {course}   a round of the day's course was played: a site day studied, the first time today
+ *   POST today                the day's course (drawn now the first time today), whether it was passed or given up,
+ *                             the days studied, the rounds of it lost, and whether the player may pick any course
+ *   POST done {course, won}   a round of the day's course was played: won, a site day studied, the first time today;
+ *                             lost, one more round of it lost
+ *   POST giveup {course}      the day's course given up after five rounds of it lost: a site day studied all the same
  * While STUDY keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were here.
  * Both wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an updated
  * privacy policy is not agreed yet.
@@ -21,6 +24,7 @@ import { studyDone, studyOpen, studyToday } from "@/lib/server/study";
 const OPS = {
   today: { perMinute: 30 },
   done: { perMinute: 20 },
+  giveup: { perMinute: 10 },
 } as const satisfies Record<string, { perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -55,5 +59,6 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
   const { user, op } = await playerFor("POST", (await params).op);
   if (op === "today") return answer(await studyToday(user));
   const body = await readJson(req);
-  return answer(await studyDone(user, body.course));
+  if (op === "giveup") return answer(await studyGiveUp(user, body.course));
+  return answer(await studyDone(user, body.course, body.won));
 });

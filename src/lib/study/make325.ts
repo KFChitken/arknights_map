@@ -1,13 +1,13 @@
 /**
  * 凑 325 (src/components/app/study/Make325.tsx): four numbers to make 325 with + − × ÷, each used once, two at a time
  * put together into one until one is left. Every step must come out a whole number above nought: nothing divided
- * unevenly, nothing taken away down to nought or below. The day's four are the same for everyone who plays it that day
- * (rules.ts dayRandom): drawn until they make 325, no two or three of them alone do (else 325 could be made with a
+ * unevenly, nothing taken away down to nought or below. Each round's four are dealt afresh
+ * (rules.ts newSeed): drawn until they make 325, no two or three of them alone do (else 325 could be made with a
  * number left over, or × 7 ÷ 7 given away), and it can be done at least two ways (else it is likely a knot only one way
  * undoes).
  */
 
-/** What the day's four are drawn from */
+/** What a round's four are drawn from */
 export const MAKE_POOL: readonly number[] = [...Array.from({ length: 24 }, (_, i) => i + 2), 30, 40, 50, 60, 75, 100];
 export const MAKE_GOAL = 325;
 /** How many draws before falling back on a set four (over a thousand days it never has) */
@@ -105,7 +105,7 @@ function smaller(nums: readonly number[]): number[][] {
   return out;
 }
 
-/** Whether four numbers make a day's puzzle: 325 at least two ways, and none with fewer of them */
+/** Whether four numbers make a round's puzzle: 325 at least two ways, and none with fewer of them */
 export function fair(nums: readonly number[]): boolean {
   return (
     reaches(nums, MAKE_GOAL) &&
@@ -114,7 +114,7 @@ export function fair(nums: readonly number[]): boolean {
   );
 }
 
-/** The day's four, smallest first, from its random (rules.ts dayRandom), and a way to 325 for 看答案 */
+/** A round's four, smallest first, from its random (mulberry32 of its seed), and a way to 325 for 看答案 */
 export function makePuzzle(random: () => number): { nums: number[]; answer: string; fallback: boolean } {
   for (let t = 0; t < MAKE_TRIES; t++) {
     const pool = [...MAKE_POOL];

@@ -173,13 +173,17 @@ export const users = pgTable("users", {
   wornPass: bigint("worn_pass", { mode: "number" }).references((): AnyPgColumn => passes.id, { onDelete: "set null" }),
   /**
    * 325大学习 (src/lib/server/study.ts): site days studied (src/lib/siteDay.ts), at most one a day and never going down,
-   * and the site day last counted; the course drawn last and the site day it was drawn for; the courses drawn this round
+   * and the site day last counted; the course drawn last and the site day it was drawn for; the courses drawn this round;
+   * the rounds of the course drawn last that were lost (none yet when it is drawn), and the site day it was given up
+   * after five of them
    */
   studyDays: integer("study_days").notNull().default(0),
   studiedOn: text("studied_on"),
   studyCourse: text("study_course"),
   studyCourseOn: text("study_course_on"),
   studyBag: text("study_bag").array().notNull().default(emptyArray),
+  studyFails: integer("study_fails").notNull().default(0),
+  studySkippedOn: text("study_skipped_on"),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),

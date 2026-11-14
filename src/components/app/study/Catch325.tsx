@@ -19,7 +19,7 @@ import {
   TALLY_START,
 } from "@/lib/study/catch325";
 import { clamp } from "@/lib/study/field";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import { calmNow, drawObstacle, roundRect, useArrows, useCanvasSize, useDrag, useFrames, useRoachArt } from "./arena";
 import type { GameProps, Round } from "./games";
 import { useKeys } from "./taps";
@@ -59,15 +59,15 @@ const lineY = (ry: number) => ry - CATCH_ROACH_BOX * 0.32;
 const thingY = (down: number, ry: number) => -CATCH_THING_R + down * (lineY(ry) + CATCH_THING_R);
 
 /**
- * 接住 3、2、5 (src/lib/study/catch325.ts): the day's things fall down a field drawn on a canvas (arena.ts), and the
+ * 接住 3、2、5 (src/lib/study/catch325.ts): a round's things fall down a field drawn on a canvas (arena.ts), and the
  * player's own roach, dragged left and right along the bottom (or moved with ← →), catches 3, 2 and 5 in that order.
  * A thing is caught, or run into, as it comes down to the top of the roach's head within its reach (catch325.ts); the
  * rest fall on past, behind it. Three slots over the field fill as they are caught and empty at a wrong digit (they
  * shake, when motion is not turned down) or an obstacle (the roach lies belly up a moment, and nothing touches it
  * meanwhile). The round's clock stands still while the page is put away. Nothing flashes.
  */
-export default function Catch325({ day, look, onRound }: GameProps) {
-  const drops = useMemo(() => catchDrops(dayRandom("catch325", day)), [day]);
+export default function Catch325({ seed, look, onRound }: GameProps) {
+  const drops = useMemo(() => catchDrops(mulberry32(seed)), [seed]);
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useCanvasSize(canvas);

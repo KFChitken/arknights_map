@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import { NOT_TODAY, type StudyDone, type StudyToday } from "./study/rules";
+import { NOT_TODAY, NOT_YET, type StudyDone, type StudyToday } from "./study/rules";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -9,8 +9,8 @@ import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world
  * page already tells apart (src/lib/world/types.ts), as ServerWorld's do.
  */
 
-/** A round of a course that is not today's any more (the day turned at 04:00): today's, as the server has it now */
-export class NotToday extends WorldError {
+/** A refusal that brings today's course along, as the server has it now: the page shows that instead */
+export class StaleToday extends WorldError {
   constructor(
     message: string,
     public today: StudyToday,
@@ -18,6 +18,12 @@ export class NotToday extends WorldError {
     super(message);
   }
 }
+
+/** A round of a course that is not today's any more (the day turned at 04:00) */
+export class NotToday extends StaleToday {}
+
+/** Today's course given up before five rounds of it were lost */
+export class NotYet extends StaleToday {}
 
 async function call<R>(op: string, body?: unknown): Promise<R> {
   let res: Response;
@@ -31,13 +37,16 @@ async function call<R>(op: string, body?: unknown): Promise<R> {
   if (res.status === 428 && json?.code === AGE_CHECK) throw new AgeCheckNeeded(ageCheckNeeded());
   if (res.status === 428) throw new ConsentNeeded(json?.error ?? T.requests.reconsent);
   if (res.status === 409 && json?.code === NOT_TODAY && json.today) throw new NotToday(json.error ?? "", json.today);
+  if (res.status === 409 && json?.code === NOT_YET && json.today) throw new NotYet(json.error ?? "", json.today);
   if (!res.ok || !json) throw new WorldError(json?.error ?? T.requests.serverTrouble);
   return json as R;
 }
 
 export const studyApi = {
-  /** The day's course (drawn the first time today), whether it was played, the days studied */
+  /** The day's course (drawn the first time today), whether it was passed or given up, the days studied, the rounds lost */
   today: () => call<StudyToday>("today"),
-  /** A round of the day's course was played */
-  done: (course: string) => call<StudyDone>("done", { course }),
+  /** A round of the day's course was played, and whether it was won */
+  done: (course: string, won: boolean) => call<StudyDone>("done", { course, won }),
+  /** The day's course given up, after five rounds of it lost */
+  giveUp: (course: string) => call<StudyDone>("giveup", { course }),
 };

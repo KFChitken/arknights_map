@@ -12,7 +12,7 @@ import {
   TALLY_START,
   valueOf,
 } from "@/lib/study/mental325";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 import { onClock, useKeys } from "./taps";
 
@@ -26,17 +26,17 @@ const LATE_MS = 80;
 type Phase = "ready" | "ask" | "right" | "wrong";
 
 /**
- * 心算快打 (src/lib/study/mental325.ts): 开始, then the day's sums one at a time on a card that comes in from the right
+ * 心算快打 (src/lib/study/mental325.ts): 开始, then a round's sums one at a time on a card that comes in from the right
  * (just appears when less motion is asked for), a bar along its foot running down its time; 「= 325」 and 「≠ 325」
  * under it, ← and → on a keyboard. Right: a tick, and the next. Wrong, or the bar run out: the card shakes and says
  * what the sum makes for a second. A page hidden halfway holds the round, and puts the sum that showed up again with all
  * its time when it is back. Only the card and the dots change: nothing flashes.
  */
-export default function Mental325({ day, onRound }: GameProps) {
-  const sums = useMemo(() => mentalSums(dayRandom("mental325", day)), [day]);
+export default function Mental325({ seed, onRound }: GameProps) {
+  const sums = useMemo(() => mentalSums(mulberry32(seed)), [seed]);
   const [phase, setPhase] = useState<Phase>("ready");
   const [over, setOver] = useState(false);
-  /** The sum showing (which of the day's), its time, and how many times a sum was put up (its bar starts again) */
+  /** The sum showing (which of the round's), its time, and how many times a sum was put up (its bar starts again) */
   const [shown, setShown] = useState({ i: 0, ms: mentalMs(1), put: 0 });
   const [tally, setTally] = useState<Tally>(TALLY_START);
   /** A sum answered wrong: what it makes, and whether its time ran out */
@@ -53,7 +53,7 @@ export default function Mental325({ day, onRound }: GameProps) {
     setOver(true);
     roundRef.current(roundOf(at.current.tally, end));
   };
-  /** Puts up the day's ith sum with all its time */
+  /** Puts up the round's ith sum with all its time */
   const ask = (i: number) => {
     const a = at.current;
     if (a.over) return;

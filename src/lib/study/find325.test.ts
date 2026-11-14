@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { dragTo, FIND_COUNT, FIND_SIDE, FIND_WAYS, findPuzzle, readings, type Word, wordAt, wordEnd } from "./find325";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 
-/** About three years of site days from the first one the course could be played */
-const DAYS = Array.from({ length: 1000 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const puzzleOf = (day: string) => findPuzzle(dayRandom("find325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1000 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const puzzleOf = (seed: number) => findPuzzle(mulberry32(seed));
 const key = (w: Word) => `${w.r},${w.c},${w.dr},${w.dc}`;
 
 /** How many times a run of digits comes up in a grid, read any of the eight ways */
@@ -21,14 +21,14 @@ function count(grid: number[][], run: number[]): number {
 }
 
 describe("找 325", () => {
-  it("is the same grid for everyone on a day, and another the next day", () => {
-    expect(puzzleOf("2026-11-21")).toEqual(puzzleOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => JSON.stringify(puzzleOf(d).grid))).size).toBe(100);
+  it("is the same grid from the same seed, and another from another", () => {
+    expect(puzzleOf(SEEDS[0])).toEqual(puzzleOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => JSON.stringify(puzzleOf(d).grid))).size).toBe(100);
   });
 
-  it("hides exactly five 325s every day, across, down and slanting, and no other read any of the eight ways", () => {
-    for (const day of DAYS) {
-      const { grid, words } = puzzleOf(day);
+  it("hides exactly five 325s every round, across, down and slanting, and no other read any of the eight ways", () => {
+    for (const seed of SEEDS) {
+      const { grid, words } = puzzleOf(seed);
       expect(grid).toHaveLength(FIND_SIDE);
       for (const row of grid) {
         expect(row).toHaveLength(FIND_SIDE);
@@ -49,9 +49,9 @@ describe("找 325", () => {
     }
   });
 
-  it("has 32s and 25s that are not 325s, and a 352, every day", () => {
-    for (const day of DAYS) {
-      const { grid } = puzzleOf(day);
+  it("has 32s and 25s that are not 325s, and a 352, every round", () => {
+    for (const seed of SEEDS) {
+      const { grid } = puzzleOf(seed);
       // a 3 and a 2 not followed by 5, and a 2 and 5 not after a 3: more of them than the five
       expect(count(grid, [3, 2]) - FIND_COUNT).toBeGreaterThanOrEqual(2);
       expect(count(grid, [2, 5]) - FIND_COUNT).toBeGreaterThanOrEqual(2);

@@ -38,7 +38,11 @@
 .study .st-name { font-size: 18px; line-height: 1.35; }
 .study .st-rule { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
 .study .st-did { margin: -4px 0 8px; color: var(--st-green); font-size: 13px; font-weight: 700; }
+/* not passed yet: what counts, the rounds of it lost, and after five of them the way to give it up */
+.study .st-fails { display: flex; flex-wrap: wrap; gap: 0 8px; margin: -4px 0 8px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.study .st-fails b { color: var(--st-red); font-weight: 700; }
 .study .st-today .st-go { align-self: stretch; }
+.study .st-today .st-giveup { align-self: stretch; margin-top: 6px; }
 .study .st-err { margin: 8px 0 0; color: var(--st-red); font-size: 13px; line-height: 1.5; }
 
 .study .st-days { display: flex; flex-direction: column; gap: 2px; margin: 16px 2px 0; }
@@ -59,8 +63,6 @@
   padding: 7px 15px; border: 1.5px solid #c3c8cf; border-radius: 999px; background: #fff; color: #1b1d22; font-size: 13.5px;
   font-weight: 600;
 }
-.study .st-chip.shut { border-style: dashed; color: var(--muted); font-weight: 500; }
-.study .st-hint { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
 
 /* ---- 下课 ---- */
 .study .st-finish { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 2px; text-align: center; }
@@ -71,6 +73,7 @@
 .study .st-finish h3 { margin: 8px 0 0; font-size: 18px; }
 .study .st-sub { margin: 0; color: var(--muted); font-size: 13px; }
 .study .st-round { margin: 10px 0 2px; font-size: 15px; }
+.study .st-again { margin: 2px 0 6px; font-size: 16px; font-weight: 800; }
 .study .st-finish .st-note { align-self: stretch; margin: 4px 0 0; }
 .study .st-fact { align-self: stretch; margin: 8px 0 6px; padding: 12px 14px; border-radius: 12px; background: var(--st-soft); text-align: left; }
 .study .st-fact small { color: var(--muted); font-size: 12px; }
@@ -108,6 +111,7 @@
 .sp-end .st-err { margin: 0; color: var(--st-red); font-size: 13px; line-height: 1.5; }
 .sp-btns { display: flex; gap: 10px; align-self: stretch; margin-top: auto; padding-top: 8px; }
 .sp-btns button { flex: 1; }
+.sp-end .sp-giveup { margin-top: 2px; font-size: 14px; }
 
 /* ---- 3.25 秒停表 (Stopwatch.tsx) ---- */
 .sw-watch { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }

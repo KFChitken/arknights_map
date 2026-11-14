@@ -15,11 +15,11 @@ import {
   undo,
   waysTo,
 } from "./make325";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 
-/** Nearly three years of site days from the first one the course could be played */
-const DAYS = Array.from({ length: 1000 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const puzzleOf = (day: string) => makePuzzle(dayRandom("make325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1000 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const puzzleOf = (seed: number) => makePuzzle(mulberry32(seed));
 
 /** What a way to 325 as written comes to, worked out as written, and the numbers in it */
 function readWay(text: string): { value: number; nums: number[] } {
@@ -64,11 +64,11 @@ describe("凑 325", () => {
     expect(fair([6, 8, 11, 25])).toBe(true);
   });
 
-  it("is the same four for everyone that day, others the next, and over a thousand days always a fair one", () => {
-    expect(puzzleOf("2026-11-21")).toEqual(puzzleOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => puzzleOf(d).nums.join())).size).toBeGreaterThanOrEqual(90);
-    for (const day of DAYS) {
-      const p = puzzleOf(day);
+  it("is the same four from the same seed, others from another, and over a thousand rounds always a fair one", () => {
+    expect(puzzleOf(SEEDS[0])).toEqual(puzzleOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => puzzleOf(d).nums.join())).size).toBeGreaterThanOrEqual(90);
+    for (const seed of SEEDS) {
+      const p = puzzleOf(seed);
       // never the set four it falls back on
       expect(p.fallback).toBe(false);
       expect(p.nums).toHaveLength(4);

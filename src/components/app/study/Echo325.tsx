@@ -17,7 +17,7 @@ import {
   remembered,
   ring,
 } from "@/lib/study/echo325";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 import { useKeys } from "./taps";
 
@@ -29,8 +29,8 @@ type Phase = "ready" | "watch" | "echo" | "over";
  * back plays again with one bell more; ten pass, and one wrong bell ends the round. Only the bell lit changes and the
  * dots over them fill: nothing flashes, and nothing needs sound.
  */
-export default function Echo325({ day, onRound }: GameProps) {
-  const bells = useMemo(() => echoBells(dayRandom("echo325", day)), [day]);
+export default function Echo325({ seed, onRound }: GameProps) {
+  const bells = useMemo(() => echoBells(mulberry32(seed)), [seed]);
   const [phase, setPhase] = useState<Phase>("ready");
   const [echo, setEcho] = useState<Echo>(ECHO_START);
   /** The bell lit now; n tells two lightings of the same bell apart */

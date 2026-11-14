@@ -3,7 +3,7 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { clamp, touches } from "@/lib/study/field";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import {
   FLIGHT,
   flyerAt,
@@ -82,13 +82,13 @@ function fresh(calm = false) {
 /**
  * 描红 325 (src/lib/study/trace325.ts): 3, 2 and 5 in turn on a copybook square drawn on a canvas (arena.ts), each as
  * dashed lines with a dot where each stroke starts. The player drags their own roach along them, the roach a little
- * above a finger (on a mouse pointer), and the ink goes on along the stroke while the roach keeps near it. The day's
+ * above a finger (on a mouse pointer), and the ink goes on along the stroke while the roach keeps near it. A round's
  * bombs, paper planes and slugs fly across from the sides; one that touches the roach leaves it belly up a moment and
  * rubs out the character being written (TRACE.erase). Three slots over the square show how far it has got. The
  * round's clock stands still while the page is put away. Nothing flashes.
  */
-export default function Trace325({ day, look, onRound }: GameProps) {
-  const flyers = useMemo(() => traceFlyers(dayRandom("trace325", day)), [day]);
+export default function Trace325({ seed, look, onRound }: GameProps) {
+  const flyers = useMemo(() => traceFlyers(mulberry32(seed)), [seed]);
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useCanvasSize(canvas);

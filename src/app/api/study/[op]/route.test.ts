@@ -87,14 +87,15 @@ describe("325大学习's requests", () => {
     await signIn(player);
     expect((await call("POST", "today")).status).toBe(404);
     expect((await call("POST", "done", { course: "stopwatch" })).status).toBe(404);
+    expect((await call("POST", "giveup", { course: "stopwatch" })).status).toBe(404);
     expect(studyMe(await row(player))).toBeUndefined();
     const owner = await account("owner@example.com");
     await signIn(owner);
-    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { day: siteDay(), course: expect.any(String), done: false, days: 0 } });
-    expect(studyMe(await row(owner))).toEqual({ day: siteDay(), done: false, days: 0 });
+    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { day: siteDay(), course: expect.any(String), done: false, days: 0, fails: 0, skipped: false, pick: true } });
+    expect(studyMe(await row(owner))).toEqual({ day: siteDay(), done: false, days: 0, fails: 0 });
   });
 
-  it("draw the day's course, count a day the first time a round of it is played, and no more that day", async () => {
+  it("draw the day's course, count a day the first time a round of it is won, and no more that day", async () => {
     vi.stubEnv("STUDY", "on");
     expect(await call("POST", "today")).toMatchObject({ status: 401, body: { error: expect.any(String) } });
     const id = await account("player@example.com");
@@ -105,17 +106,42 @@ describe("325大学习's requests", () => {
     expect((await call("POST", "toString")).status).toBe(404);
 
     const today = await call("POST", "today");
-    expect(today).toMatchObject({ status: 200, body: { day: siteDay(), course: expect.any(String), done: false, days: 0 }, cache: "no-store" });
+    expect(today).toMatchObject({ status: 200, body: { day: siteDay(), course: expect.any(String), done: false, days: 0, fails: 0, skipped: false, pick: false }, cache: "no-store" });
     const course = today.body.course as string;
     expect(isCourse(course)).toBe(true);
     expect(await row(id)).toMatchObject({ studyCourse: course, studyCourseOn: siteDay(), studyBag: [course], studyDays: 0, studiedOn: null });
 
     expect(await call("POST", "done", { course: "nothing" })).toMatchObject({ status: 400, body: { error: "没有这门课。" } });
     expect(await call("POST", "done", {})).toMatchObject({ status: 400 });
-    expect(await call("POST", "done", { course })).toMatchObject({ status: 200, body: { done: true, days: 1 }, cache: "no-store" });
+    expect(await call("POST", "done", { course, won: false })).toMatchObject({ status: 200, body: { done: false, days: 0, fails: 1, skipped: false }, cache: "no-store" });
+    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { course, done: false, days: 0, fails: 1 } });
+    expect(await call("POST", "done", { course, won: true })).toMatchObject({ status: 200, body: { done: true, days: 1, fails: 1 }, cache: "no-store" });
+    // a page from before rounds were lost says nothing of it: won
     expect(await call("POST", "done", { course })).toMatchObject({ status: 200, body: { done: true, days: 1 } });
-    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { course, done: true, days: 1 } });
-    expect(studyMe(await row(id))).toEqual({ day: siteDay(), done: true, days: 1 });
+    expect(await call("POST", "done", { course, won: false })).toMatchObject({ status: 200, body: { done: true, days: 1, fails: 1 } });
+    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { course, done: true, days: 1, fails: 1, skipped: false } });
+    expect(studyMe(await row(id))).toEqual({ day: siteDay(), done: true, days: 1, fails: 1 });
+  });
+
+  it("give up the day's course after five rounds of it lost, and refuse to before", async () => {
+    vi.stubEnv("STUDY", "on");
+    const id = await account("player@example.com");
+    await signIn(id);
+    const course = (await call("POST", "today")).body.course as string;
+    expect(await call("POST", "giveup", { course: "nothing" })).toMatchObject({ status: 400 });
+    for (let i = 1; i <= 5; i++) {
+      expect(await call("POST", "giveup", { course })).toMatchObject({
+        status: 409,
+        body: { code: "notYet", error: "今天这门没过满 5 次，还不能跳过。", today: { course, done: false, fails: i - 1 } },
+      });
+      expect(await call("POST", "done", { course, won: false })).toMatchObject({ status: 200, body: { done: false, fails: i } });
+    }
+    expect(await call("POST", "giveup", { course })).toMatchObject({ status: 200, body: { done: true, days: 1, fails: 5, skipped: true }, cache: "no-store" });
+    expect(await call("POST", "today")).toMatchObject({ status: 200, body: { course, done: true, days: 1, fails: 5, skipped: true } });
+    expect(await row(id)).toMatchObject({ studyDays: 1, studiedOn: siteDay(), studySkippedOn: siteDay() });
+    // ten a minute: seven asked so far
+    for (let i = 0; i < 3; i++) expect((await call("POST", "giveup", { course })).status).toBe(200);
+    expect(await call("POST", "giveup", { course })).toMatchObject({ status: 429 });
   });
 
   it("refuse a round of a course not drawn today, with today's, drawn then if it was not", async () => {
@@ -125,7 +151,7 @@ describe("325大学习's requests", () => {
     const refused = await call("POST", "done", { course: "stopwatch" });
     expect(refused).toMatchObject({
       status: 409,
-      body: { code: "notToday", error: "今天抽到的不是这门课。", today: { day: siteDay(), course: expect.any(String), done: false, days: 0 } },
+      body: { code: "notToday", error: "今天抽到的不是这门课。", today: { day: siteDay(), course: expect.any(String), done: false, days: 0, fails: 0 } },
     });
     const drawn = (refused.body.today as { course: string }).course;
     expect((await row(id)).studyDays).toBe(0);
@@ -167,6 +193,7 @@ describe("325大学习's requests", () => {
     await db.update(users).set({ ageCheckAt: new Date() }).where(eq(users.id, id));
     expect(await call("POST", "today")).toMatchObject({ status: 428, body: { code: "age" } });
     expect(await call("POST", "done", { course: "stopwatch" })).toMatchObject({ status: 428, body: { code: "age" } });
+    expect(await call("POST", "giveup", { course: "stopwatch" })).toMatchObject({ status: 428, body: { code: "age" } });
     await db.update(users).set({ ageCheckAt: null, policyAcceptedAt: new Date("2026-01-01T00:00:00Z") }).where(eq(users.id, id));
     const policy = await call("POST", "today");
     expect(policy.status).toBe(428);

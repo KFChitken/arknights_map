@@ -3,7 +3,7 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { lastCard, MAKE_GOAL, MAKE_HELP_MS, makePuzzle, type Op, OPS, put, type Refusal, restart, type Table, table, undo } from "@/lib/study/make325";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 
 /** What the line over the cards says: how to play, the last step, why a step was refused, or what one card left makes */
@@ -16,15 +16,15 @@ type Said =
   | { kind: "answer" };
 
 /**
- * 凑 325 (src/lib/study/make325.ts): the day's four numbers on cards, two by two, with + − × ÷ under them. A card, a
+ * 凑 325 (src/lib/study/make325.ts): a round's four numbers on cards, two by two, with + − × ÷ under them. A card, a
  * sign, another card: the two are put together into one, in the second's place, which is marked until the next step.
  * A step that divides unevenly, or takes away down to nought or below, is refused (the card shakes, when motion is not
  * turned down), and the first card and the sign stay picked. One card left: 325 passes, in the seconds it took with the page in sight; anything else is
  * said, and 撤一步 or 重来 go on. No clock; after a minute 看答案 is offered, which shows a way and ends the round
  * unsolved. Nothing flashes.
  */
-export default function Make325({ day, onRound }: GameProps) {
-  const puzzle = useMemo(() => makePuzzle(dayRandom("make325", day)), [day]);
+export default function Make325({ seed, onRound }: GameProps) {
+  const puzzle = useMemo(() => makePuzzle(mulberry32(seed)), [seed]);
   const [t, setT] = useState<Table>(() => table(puzzle.nums));
   /** The card picked first, and the sign after it */
   const [sel, setSel] = useState<number | null>(null);

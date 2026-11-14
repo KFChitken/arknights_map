@@ -11,7 +11,7 @@ import {
   reactStream,
   reactTimes,
 } from "@/lib/study/react325";
-import { dayRandom } from "@/lib/study/rules";
+import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 import { listenTaps, onClock, useKeys } from "./taps";
 
@@ -21,11 +21,11 @@ import { listenTaps, onClock, useKeys } from "./taps";
  * of a 3、2、5 shows is a hit, at any other digit a slip, each judged by the press's own time against when each digit
  * came up on the screen. Only the digit in the box and the tallies under it change: nothing flashes.
  */
-export default function React325({ day, onRound }: GameProps) {
-  const stream = useMemo(() => reactStream(dayRandom("react325", day)), [day]);
+export default function React325({ seed, onRound }: GameProps) {
+  const stream = useMemo(() => reactStream(mulberry32(seed)), [seed]);
   const times = useMemo(() => reactTimes(stream.length), [stream]);
   const [phase, setPhase] = useState<"ready" | "count" | "run" | "over">("ready");
-  /** What the box shows: a digit of the countdown or of the day's */
+  /** What the box shows: a digit of the countdown or of the round's */
   const [digit, setDigit] = useState<number | null>(null);
   const [hits, setHits] = useState(0);
   const [slips, setSlips] = useState(0);
@@ -40,7 +40,7 @@ export default function React325({ day, onRound }: GameProps) {
   useEffect(() => {
     if (startAt === null) return;
     const runAt = startAt + REACT_COUNTDOWN.length * REACT_COUNT_MS;
-    /** When each of the day's digits came up on the screen, as far as they have */
+    /** When each of the round's digits came up on the screen, as far as they have */
     const shown: number[] = [];
     const hit = new Set<number>();
     let slipped = 0;

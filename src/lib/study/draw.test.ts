@@ -67,6 +67,28 @@ describe("the day's course", () => {
     expect(drawCourse({ bag: ["stopwatch"], last: "stopwatch" }, ["stopwatch"], Math.random)).toEqual({ course: "stopwatch", bag: ["stopwatch"] });
   });
 
+  it("deals another course on the page, once today's is done: never today's nor the one just played, each other once before any again", () => {
+    const nine = ["stopwatch", "react325", "echo325", "find325", "mental325", "beat325", "make325", "catch325", "trace325"];
+    const today = "find325";
+    const others = nine.filter((c) => c !== today);
+    for (let seed = 1; seed <= 100; seed++) {
+      const random = mulberry32(seed);
+      // as Study.tsx keeps them: those dealt since it opened, and the one played last (today's, to begin with)
+      let dealt: string[] = [];
+      let last: string | null = today;
+      const got: string[] = [];
+      for (let i = 0; i < 24; i++) {
+        const d: { course: string; bag: string[] } = drawCourse({ bag: dealt, last }, others, random);
+        expect(d.course).not.toBe(today);
+        expect(d.course).not.toBe(last);
+        got.push(d.course);
+        ({ bag: dealt } = d);
+        last = d.course;
+      }
+      for (let r = 0; r < 24; r += 8) expect(new Set(got.slice(r, r + 8)).size, `seed ${seed}, from ${r}`).toBe(8);
+    }
+  });
+
   it("stays within the list whatever the random gives", () => {
     for (const r of [0, 0.5, 0.999999, 1]) expect(four).toContain(drawCourse({ bag: [], last: null }, four, () => r).course);
     expect(() => drawCourse({ bag: [], last: null }, [], Math.random)).toThrow();

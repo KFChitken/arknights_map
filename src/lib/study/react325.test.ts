@@ -13,28 +13,28 @@ import {
   reactStream,
   reactTimes,
 } from "./react325";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 
-/** Three years of site days from the first one the course could be played */
-const DAYS = Array.from({ length: 1100 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const streamOf = (day: string) => reactStream(dayRandom("react325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1100 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const streamOf = (seed: number) => reactStream(mulberry32(seed));
 
 /** Where a run of digits comes up in a stream */
 const at = (s: readonly number[], run: readonly number[]) =>
   s.map((_, i) => i).filter((i) => run.every((d, k) => s[i + k] === d));
 
 describe("3、2、5 反应", () => {
-  it("is the same stream for everyone on a day, and another the next day", () => {
-    expect(streamOf("2026-11-21")).toEqual(streamOf("2026-11-21"));
-    expect(streamOf("2026-11-22")).not.toEqual(streamOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => streamOf(d).join(""))).size).toBe(100);
+  it("is the same stream from the same seed, and another from another", () => {
+    expect(streamOf(SEEDS[0])).toEqual(streamOf(SEEDS[0]));
+    expect(streamOf(SEEDS[1])).not.toEqual(streamOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => streamOf(d).join(""))).size).toBe(100);
   });
 
-  it("has 3、2、5 eight times every day, only where it was put, after a few digits to warm up, and no digit twice in a row", () => {
+  it("has 3、2、5 eight times every round, only where it was put, after a few digits to warm up, and no digit twice in a row", () => {
     expect(REACT_TARGETS).toBeGreaterThanOrEqual(7);
     expect(REACT_TARGETS).toBeGreaterThan(REACT_HITS);
-    for (const day of DAYS) {
-      const s = streamOf(day);
+    for (const seed of SEEDS) {
+      const s = streamOf(seed);
       expect(s.every((d) => Number.isInteger(d) && d >= 0 && d <= 9)).toBe(true);
       expect(countTargets(s)).toBe(REACT_TARGETS);
       expect(at(s, [3, 2, 5])).toHaveLength(REACT_TARGETS);
@@ -50,9 +50,9 @@ describe("3、2、5 反应", () => {
     }
   });
 
-  it("puts in things meant to fool the hand: 3、2、4, 3、5, 2、5 and the like, six a day, each kind every day", () => {
-    for (const day of DAYS) {
-      const s = streamOf(day);
+  it("puts in things meant to fool the hand: 3、2、4, 3、5, 2、5 and the like, six a round, each kind every round", () => {
+    for (const seed of SEEDS) {
+      const s = streamOf(seed);
       // 3 and 2 not followed by 5, a 5 after only one of them, the three backwards
       const near = REACT_DECOYS.map((d) => at(s, d).filter((i) => d[0] !== 2 || s[i - 1] !== 3).length);
       expect(near.every((n) => n >= 1)).toBe(true);

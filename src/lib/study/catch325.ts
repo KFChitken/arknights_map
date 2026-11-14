@@ -2,8 +2,8 @@
  * 接住 3、2、5 (src/components/app/study/Catch325.tsx): things fall down a field, and the player's roach, moved left and
  * right along the bottom, catches the digits 3, 2 and 5 in that order, a set at a time, and keeps clear of the rest. A
  * wrong digit empties the set begun; an obstacle (field.ts) empties it too, and turns the roach belly up for a moment.
- * Five sets inside the minute pass. What falls, where and when, is the same for everyone that day (rules.ts
- * dayRandom), and is drawn again until it is fair: nothing comes down crowded together, there are enough of each of 3,
+ * Five sets inside the minute pass. What falls, where and when, is dealt afresh each round (rules.ts newSeed), and is
+ * drawn again until it is fair: nothing comes down crowded together, there are enough of each of 3,
  * 2 and 5, and a player who caught each digit wanted as it came would have the five sets in well inside the minute.
  */
 import { clamp, isObstacle, OBSTACLES, type Obstacle } from "./field";
@@ -22,7 +22,7 @@ export const CATCH_GAP_MS: readonly [number, number] = [400, 700];
 /** What falls, as shares: each of 3, 2 and 5; obstacles; the other digits are the rest (26%) */
 export const CATCH_EACH = 0.18;
 export const CATCH_OBSTACLES = 0.2;
-/** At least this many of each of 3, 2 and 5 a day, that come down inside the minute */
+/** At least this many of each of 3, 2 and 5 a round, that come down inside the minute */
 export const CATCH_MIN_EACH = 15;
 /** How long a thing takes to fall to the roach (ms): at the round's start, and at its end */
 export const CATCH_FALL_MS: readonly [number, number] = [3000, 2200];
@@ -94,7 +94,7 @@ export const comesDown = (d: Drop, from: number, to: number, calm = false) => dr
 /** Whether a thing coming down at x reaches the roach at roachX (field widths) */
 export const inReach = (x: number, roachX: number) => Math.abs(x - roachX) <= CATCH_REACH;
 
-/** Whether two of a day's drops come down crowded: within CATCH_CROWD_MS of each other, nearer than CATCH_CROWD_GAP */
+/** Whether two of a round's drops come down crowded: within CATCH_CROWD_MS of each other, nearer than CATCH_CROWD_GAP */
 export function crowded(drops: readonly Drop[]): boolean {
   const byTime = [...drops].sort((a, b) => arrives(a) - arrives(b));
   for (let i = 0; i < byTime.length; i++)
@@ -117,7 +117,7 @@ export function parMs(drops: readonly Drop[]): number | null {
   return null;
 }
 
-/** Whether a day's drops are fair (see above) */
+/** Whether a round's drops are fair (see above) */
 export function fairDrops(drops: readonly Drop[]): boolean {
   const near = inTime(drops);
   const par = parMs(drops);
@@ -129,7 +129,7 @@ export function fairDrops(drops: readonly Drop[]): boolean {
   );
 }
 
-/** The day's drops, from its random (rules.ts dayRandom), in the order they start to fall */
+/** A round's drops, from its random (mulberry32 of its seed), in the order they start to fall */
 export function catchDrops(random: () => number): Drop[] {
   let best: Drop[] = [];
   let bestPar = Infinity;
@@ -143,7 +143,7 @@ export function catchDrops(random: () => number): Drop[] {
   return best.length ? best : drawDrops(random);
 }
 
-/** One try at a day's drops */
+/** One try at a round's drops */
 function drawDrops(random: () => number): Drop[] {
   const between = () => CATCH_GAP_MS[0] + (CATCH_GAP_MS[1] - CATCH_GAP_MS[0]) * random();
   const times: number[] = [];

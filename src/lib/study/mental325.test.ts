@@ -14,11 +14,11 @@ import {
   TALLY_START,
   valueOf,
 } from "./mental325";
-import { dayRandom } from "./rules";
+import { mulberry32 } from "../prng";
 
-/** Nearly three years of site days from the first one the course could be played */
-const DAYS = Array.from({ length: 1000 }, (_, i) => new Date(Date.UTC(2026, 10, 14 + i)).toISOString().slice(0, 10));
-const sumsOf = (day: string) => mentalSums(dayRandom("mental325", day));
+/** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
+const SEEDS = ((r) => Array.from({ length: 1000 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
+const sumsOf = (seed: number) => mentalSums(mulberry32(seed));
 
 /** Answers one after another from the start of a round: the tally after each, and how the last one left the round */
 function play(answers: boolean[]) {
@@ -40,7 +40,7 @@ describe("心算快打", () => {
     expect(valueOf("300 + 52")).toBe(352);
     expect(valueOf("2 + 3 × 4")).toBe(14);
     expect(valueOf("20 − 12 ÷ 4")).toBe(17);
-    // dividing unevenly, or anything not written the day's way, makes nothing
+    // dividing unevenly, or anything not written as a round's sums are, makes nothing
     expect(valueOf("10 ÷ 3")).toBeNaN();
     expect(valueOf("13 x 25")).toBeNaN();
     expect(valueOf("13 × ")).toBeNaN();
@@ -55,16 +55,16 @@ describe("心算快打", () => {
     expect(sumKey({ text: "975 ÷ 3", form: "div" })).not.toBe(sumKey({ text: "3 ÷ 975", form: "div" }));
   });
 
-  it("is the same sums for everyone that day, and others the next", () => {
-    expect(sumsOf("2026-11-21")).toEqual(sumsOf("2026-11-21"));
-    expect(new Set(DAYS.slice(0, 100).map((d) => sumsOf(d).map((s) => s.text).join())).size).toBe(100);
+  it("is the same sums from the same seed, and others from another", () => {
+    expect(sumsOf(SEEDS[0])).toEqual(sumsOf(SEEDS[0]));
+    expect(new Set(SEEDS.slice(0, 100).map((d) => sumsOf(d).map((s) => s.text).join())).size).toBe(100);
   });
 
-  it("over a thousand days: half of each day 325, worked out from what shows, every one whole and small", () => {
+  it("over a thousand rounds: half of each round 325, worked out from what shows, every one whole and small", () => {
     const others = new Set<number>([...MENTAL_NEAR, ...MENTAL_SHUFFLED]);
     const forms = new Map<string, number>();
-    for (const day of DAYS) {
-      const sums = sumsOf(day);
+    for (const seed of SEEDS) {
+      const sums = sumsOf(seed);
       expect(sums).toHaveLength(MENTAL_COUNT);
       // what each makes, worked out from what it shows, is what it was put there to make
       const values = sums.map((s) => valueOf(s.text));
@@ -102,13 +102,13 @@ describe("心算快打", () => {
         } else if (!s.is325) expect([s.text, others.has(v)]).toEqual([s.text, true]);
         forms.set(s.form, (forms.get(s.form) ?? 0) + 1);
       }
-      // never the same sum twice in a day, not even the other way round, nor a way of writing them three times running
+      // never the same sum twice in a round, not even the other way round, nor a way of writing them three times running
       expect(new Set(sums.map((s) => s.text)).size).toBe(sums.length);
       expect(new Set(sums.map(sumKey)).size).toBe(sums.length);
       for (let i = 2; i < sums.length; i++) expect(sums[i].form === sums[i - 1].form && sums[i].form === sums[i - 2].form).toBe(false);
     }
     // each way of writing them comes up
-    for (const f of MENTAL_FORMS) expect((forms.get(f) ?? 0) / (DAYS.length * MENTAL_COUNT)).toBeGreaterThan(0.08);
+    for (const f of MENTAL_FORMS) expect((forms.get(f) ?? 0) / (SEEDS.length * MENTAL_COUNT)).toBeGreaterThan(0.08);
   });
 
   it("gives a little less time for each sum, never under three seconds", () => {
