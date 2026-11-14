@@ -1,30 +1,36 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, count, desc, eq, inArray, lt, max, min, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql } from "drizzle-orm";
 import { T } from "@/i18n";
-import { CATALOG_IDS, isPassChar, passCharNamed } from "../passCatalog";
+import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed } from "../passCatalog";
 import {
   EARN_CAPS,
   isDrawSize,
+  isFancy,
   isFoil,
   rollChars,
   tiersOf,
   TICKETS_CAP,
   WELCOME_TICKETS,
   WISH_MAX,
+  type CharCopies,
   type Collection,
   type Drawn,
   type EarnKind,
   type LogPage,
   type PassesMe,
+  type PassOnCard,
   type PassState,
+  type WornPass,
 } from "../passes";
 import { nextSiteDayAt, siteDay } from "../siteDay";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
 import { passesMode } from "./env";
 import { HttpError } from "./http";
-import { passCounters, passes, passWallets, type UserRow } from "./schema";
+import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
+import { passArtIndex } from "./passArt";
+import { passCounters, passes, passWallets, users, type UserRow } from "./schema";
 import { errorCode } from "./signals";
 
 /**
@@ -84,7 +90,7 @@ export async function earn(userId: string, kind: EarnKind, now = Date.now()): Pr
   }
 }
 
-/** What me() carries for the 寻访 button: undefined when the player may not draw */
+/** What me() carries for the 寻访 button and 我的资料: undefined when the player may not draw */
 export async function passesMe(user: UserRow): Promise<PassesMe | undefined> {
   if (!passesOpen(user)) return undefined;
   const [w] = await db
@@ -93,7 +99,7 @@ export async function passesMe(user: UserRow): Promise<PassesMe | undefined> {
     .where(eq(passWallets.userId, user.id))
     .limit(1);
   const tickets = w?.tickets ?? 0;
-  return { tickets, dot: !w?.welcomed || tickets >= 10 };
+  return { tickets, dot: !w?.welcomed || tickets >= 10, worn: user.wornPass === null ? null : await wornOf(user.id) };
 }
 
 /** Their 厨力 as a first wish list: each game's in the order picked, those in the catalogue, at most WISH_MAX */
@@ -157,6 +163,7 @@ async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassSt
     plain: w.plain,
     welcomed,
     nextDayAt: nextSiteDayAt(now),
+    worn: await wornOf(w.userId),
   };
 }
 
@@ -276,4 +283,140 @@ export async function passLog(userId: string, before?: unknown): Promise<LogPage
     rows: rows.slice(0, LOG_PAGE).map((r) => ({ id: r.id, charId: r.charId, no: r.no, wish: r.wish, at: r.at.getTime() })),
     more: rows.length > LOG_PAGE,
   };
+}
+
+/** What a worn pass's row brings, to make its card of */
+const wornColumns = {
+  passId: passes.id,
+  userId: passes.userId,
+  charId: passes.charId,
+  no: passes.no,
+  drawnAt: passes.drawnAt,
+  copies: sql<number>`(select count(*) from passes as q where q.user_id = ${passes.userId} and q.char_id = ${passes.charId})::int`,
+  plain: passWallets.plain,
+};
+type WornRow = { passId: number; charId: number; no: number; drawnAt: Date; copies: number; plain: number[] | null };
+
+type Pictures = { art: Awaited<ReturnType<typeof passArtIndex>>; avatars: OperatorArtIndex };
+const pictures = async (): Promise<Pictures> => ({ art: await passArtIndex(), avatars: await operatorArtIndex() });
+
+/** A worn pass as cards show it: what the catalogue and the pictures say of the character; null for one not there */
+function cardOf(r: WornRow, { art, avatars }: Pictures): PassOnCard | null {
+  const c = passChar(r.charId);
+  if (!c) return null;
+  const a = art.get(c.id);
+  return {
+    game: c.game,
+    charId: c.id,
+    name: c.name,
+    en: c.en,
+    rarity: c.rarity,
+    no: r.no,
+    copies: r.copies,
+    fancy: isFancy(r.copies, (r.plain ?? []).includes(c.id)),
+    color: a?.color ?? c.color,
+    art: a?.file ?? null,
+    avatar: avatars[GAME_OF[c.game]][c.name] ?? null,
+    drawnAt: r.drawnAt.getTime(),
+  };
+}
+
+/** The pass a player wears, as their own pages show it */
+async function wornOf(userId: string): Promise<WornPass | null> {
+  const [r] = await db
+    .select(wornColumns)
+    .from(users)
+    .innerJoin(passes, eq(passes.id, users.wornPass))
+    .leftJoin(passWallets, eq(passWallets.userId, passes.userId))
+    .where(eq(users.id, userId))
+    .limit(1);
+  const card = r ? cardOf(r, await pictures()) : null;
+  return card && { ...card, passId: r.passId };
+}
+
+/**
+ * Whether a player sees the passes others wear: everyone while PASSES is on, only the 站长 and the admins while it is
+ * admins (as only they may draw), nobody while it is off; viewer null: nobody's card is being looked at, so none.
+ */
+async function passesShownTo(viewerId: string | null): Promise<boolean> {
+  const mode = passesMode();
+  if (mode === "off" || !viewerId) return false;
+  if (mode === "on" || isModHere(viewerId)) return true;
+  const [v] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, viewerId)).limit(1);
+  return Boolean(v && passesOpen(v));
+}
+
+/**
+ * The passes these players wear, as their profile cards show them to the viewer (world.ts cardsOf): to those who
+ * may see their profile, the number too (src/lib/profile.ts). Nothing asked of the database for players who wear none.
+ */
+export async function wornPasses(people: readonly Pick<UserRow, "id" | "wornPass">[], viewerId: string | null): Promise<Map<string, PassOnCard>> {
+  const out = new Map<string, PassOnCard>();
+  const ids = people.flatMap((u) => (u.wornPass === null ? [] : [u.wornPass]));
+  if (!ids.length || !(await passesShownTo(viewerId))) return out;
+  const rows = await db
+    .select(wornColumns)
+    .from(passes)
+    .leftJoin(passWallets, eq(passWallets.userId, passes.userId))
+    .where(inArray(passes.id, ids));
+  const pics = await pictures();
+  for (const r of rows) {
+    const card = cardOf(r, pics);
+    if (card) out.set(r.userId, card);
+  }
+  return out;
+}
+
+/** A player's passes of one character, lowest number first: which one to wear */
+export async function copiesOf(userId: string, charId: unknown): Promise<CharCopies> {
+  if (!isPassChar(charId)) throw new HttpError(400, T.server.passes.badChar);
+  const rows = await db
+    .select({ id: passes.id, no: passes.no, at: passes.drawnAt })
+    .from(passes)
+    .where(and(eq(passes.userId, userId), eq(passes.charId, charId)))
+    .orderBy(asc(passes.no));
+  return { charId, copies: rows.map((r) => ({ id: r.id, no: r.no, at: r.at.getTime() })) };
+}
+
+/**
+ * The look of a character's passes: plain keeps the normal one (① ③) though the player has two or more, which would
+ * bring the special one (② ④); only with two or more, since one pass has no other look yet.
+ */
+export async function setLook(user: UserRow, charId: unknown, plain: unknown, now = Date.now()): Promise<PassState> {
+  if (!isPassChar(charId) || typeof plain !== "boolean") throw new HttpError(400, T.server.passes.badChar);
+  await walletOf(user.id);
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(passes)
+    .where(and(eq(passes.userId, user.id), eq(passes.charId, charId)));
+  if (n < 2) throw new HttpError(409, T.server.passes.lookNeedsTwo);
+  const id = sql`${charId}::smallint`;
+  await db
+    .update(passWallets)
+    .set({ plain: plain ? sql`array_append(array_remove(${passWallets.plain}, ${id}), ${id})` : sql`array_remove(${passWallets.plain}, ${id})` })
+    .where(eq(passWallets.userId, user.id));
+  return passState(user.id, now);
+}
+
+/** Wear one of the player's own passes on their profile card (passId), or none (null) */
+export async function wear(user: UserRow, passId: unknown, now = Date.now()): Promise<PassState> {
+  if (passId !== null && !(typeof passId === "number" && Number.isSafeInteger(passId) && passId > 0)) {
+    throw new HttpError(400, T.server.passes.notYours);
+  }
+  await walletOf(user.id);
+  if (passId === null) {
+    await db.update(users).set({ wornPass: null }).where(eq(users.id, user.id));
+  } else {
+    const theirs = db
+      .select({ one: sql`1` })
+      .from(passes)
+      .where(and(eq(passes.id, passId), eq(passes.userId, user.id)));
+    const done = await db
+      .update(users)
+      .set({ wornPass: passId })
+      .where(and(eq(users.id, user.id), exists(theirs)))
+      .returning({ id: users.id });
+    if (!done.length) throw new HttpError(404, T.server.passes.notYours);
+  }
+  return passState(user.id, now);
 }

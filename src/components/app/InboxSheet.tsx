@@ -32,6 +32,7 @@ import { boldOnly, type Friend, type InboxItem, type StaffAppeal } from "@/lib/w
 import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
+import { WornPassLine, WornPassMini } from "./WornPass";
 import RoachIcon from "../RoachIcon";
 
 /** What can be touched back from 消息: a touch, a declaration, or a reaction to yours */
@@ -719,7 +720,9 @@ export function ProfileView({
           <strong>{profile.displayName}</strong>
           <WornPill profile={profile} />
         </div>
+        {profile.pass && <WornPassMini pass={profile.pass} holder={profile.displayName} />}
       </div>
+      {profile.pass && <WornPassLine pass={profile.pass} />}
       <ProfileDetails profile={profile} />
       <p className="hint" style={{ marginTop: 16 }}>
         {T.inbox.profile.why}
@@ -793,7 +796,9 @@ export function FriendView({
             {friend.star !== null ? T.inbox.starred : T.inbox.star}
           </button>
         )}
+        {profile.pass && <WornPassMini pass={profile.pass} holder={profile.displayName} />}
       </div>
+      {profile.pass && <WornPassLine pass={profile.pass} />}
       {guideOf ? <p className="hint">{guideOf.card ?? guideOf.note}</p> : <ProfileDetails profile={profile} gameExtra={gameExtra} />}
       {help}
       {actions}

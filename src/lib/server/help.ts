@@ -185,7 +185,7 @@ export async function helpBoard(userId: string, now = Date.now()): Promise<HelpB
     const u = await userById(id);
     if (u) people.set(id, u);
   }
-  const cards = await cardsOf([...people.values()]);
+  const cards = await cardsOf([...people.values()], userId);
   const stars = new Map((await db.select().from(friendStars).where(eq(friendStars.userId, userId))).map((s) => [s.other, s.createdAt.getTime()]));
 
   const mine: HelpItem[] = mineRows.map((r) => {

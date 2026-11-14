@@ -11,9 +11,11 @@ export type PassChar = {
   id: number;
   game: PassGame;
   name: string;
+  /** their name in English as the English words have it (src/i18n/en.ts), printed big on the pass; null: none known */
+  en: string | null;
   /** the stars printed on the pass; null for a character of the story; nothing to do with the chance */
   rarity: number | null;
-  /** the character's own colour, #rrggbb, for the block of colour on the pass */
+  /** the character's own colour, #rrggbb, for the block of colour on the pass, until their picture gives one (passArt.ts) */
   color: string;
 };
 

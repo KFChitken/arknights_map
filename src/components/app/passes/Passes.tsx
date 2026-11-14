@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
 import { fmt, T } from "@/i18n";
+import { characterName, nameMatches } from "@/i18n/names";
 import { fmtNodes } from "@/i18n/nodes";
 import type { Game } from "@/lib/games";
 import { CATALOG_SIZE, catalogCounts, PASS_CATALOG, passChar, passCharNamed, type PassChar } from "@/lib/passCatalog";
@@ -20,36 +21,46 @@ import {
   type Drawn,
   type DrawSize,
   type LogRow,
+  type OwnedChar,
+  type PassCopy,
   type PassesMe,
   type PassState,
   type Tier,
+  type WornPass,
 } from "@/lib/passes";
 import { passesApi } from "@/lib/passesClient";
+import { useLeanArt } from "@/lib/passLean";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import { useOperatorArt, type Art } from "../OperatorNames";
-import { artUrl, CardBack, MiniPass } from "./PassCard";
+import { CardBack, FullPass, issued, MiniPass, PassArtProvider, picOf, smallUrl, usePassArt } from "./PassCard";
 import "./passes.css";
 
 /**
  * 通行证寻访 (src/lib/passes.ts), over everything on the map in each of the three layouts: the page with the wish list,
  * the count towards a sure wish and the day's tickets; 刷券, where the passes a draw brought (decided by the server
- * before anything shows) come out of a reader face down and are turned over one by one; 我的通行证, the wish list's
- * editor, 概率说明 and 寻访记录. ×, ‹ 地图, a tap beside it and Escape close it, or step back a screen.
- * onRefused: a refusal the map page answers itself (sign in, say again they are 18, agree to the privacy policy),
- * which closes this first; onWallet: the tickets the map's button shows, as they change.
+ * before anything shows) come out of a reader face down and are turned over one by one; 我的通行证 (each character
+ * opens to their whole pass, its look and the one worn), the wish list's editor, 概率说明 and 寻访记录. ×, ‹ 地图,
+ * a tap beside it and Escape close it, or step back a screen.
+ * holder: the name printed on the player's passes (their card's, 匿名舟P for the anonymous); onRefused: a refusal the
+ * map page answers itself (sign in, say again they are 18, agree to the privacy policy), which closes this first;
+ * onWallet: the tickets the map's button shows and the pass worn, as they change.
  */
 export default function Passes({
   favourites,
+  holder,
   onClose,
   onRefused,
   onWallet,
 }: {
   favourites: Record<Game, string[]>;
+  holder: string;
   onClose: () => void;
   onRefused: (e: unknown) => void;
   onWallet: (p: PassesMe) => void;
 }) {
   const art = useOperatorArt();
+  const passArt = usePassArt();
+  const lean = useLeanArt();
   const [st, setSt] = useState<PassState | null>(null);
   const [failed, setFailed] = useState(false);
   const [msg, setMsg] = useState("");
@@ -70,7 +81,7 @@ export default function Passes({
   refusedRef.current = onRefused;
   const took = useCallback((s: PassState) => {
     setSt(s);
-    walletRef.current({ tickets: s.tickets, dot: s.tickets >= 10 });
+    walletRef.current({ tickets: s.tickets, dot: s.tickets >= 10, worn: s.worn });
   }, []);
   /** A refusal: the map page's own kinds there, the rest said here */
   const refuse = useCallback((e: unknown) => {
@@ -101,10 +112,10 @@ export default function Passes({
     setMsg("");
     try {
       const r = await passesApi.draw(n);
-      // the small pictures of who came, on their way while the ticket goes in
+      // the small pictures of who came, on their way while the ticket goes in (a whole pass's only once held up)
       for (const d of r.drawn) {
         const c = passChar(d.charId);
-        const src = c && artUrl(c, art);
+        const src = c && smallUrl(picOf(c, passArt, art), lean);
         if (src) new Image().src = src;
       }
       if (!live.current) return;
@@ -118,13 +129,15 @@ export default function Passes({
   };
 
   // Into it for the keyboard and screen readers, and kept in it: Tab goes round what it has to press, Escape steps
-  // back (刷券: shows all at once, then puts it away; a screen: back to 寻访; 寻访: closes it); closed, back to where
-  // the focus was
+  // back (刷券: shows all at once, then puts it away; a character of 我的通行证: back to the list; a screen: back to
+  // 寻访; 寻访: closes it); closed, back to where the focus was
   const box = useRef<HTMLDivElement>(null);
   const termEscape = useRef<(() => void) | null>(null);
+  const stepBack = useRef<(() => void) | null>(null);
   const escape = useRef(() => {});
   escape.current = () => {
     if (term) termEscape.current?.();
+    else if (stepBack.current) stepBack.current();
     else if (screen !== "home") setScreen("home");
     else onClose();
   };
@@ -153,6 +166,7 @@ export default function Passes({
   return (
     <div className="passes" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={box} className={`ps-box ${night ? "night" : "day"}`} role="dialog" aria-modal="true" aria-label={T.passes.label} tabIndex={-1}>
+        <PassArtProvider value={passArt}>
         {!st ? (
           <div className="ps-wait">
             {failed ? (
@@ -172,7 +186,7 @@ export default function Passes({
         ) : screen === "home" ? (
           <Home st={st} art={art} msg={msg} busy={busy} onPull={pull} onScreen={setScreen} onClose={onClose} hidden={Boolean(term)} />
         ) : screen === "wallet" ? (
-          <Wallet st={st} art={art} onBack={() => setScreen("home")} onRefused={refuse} />
+          <Wallet st={st} art={art} holder={holder} stepBack={stepBack} onBack={() => setScreen("home")} onTook={took} onRefused={refuse} />
         ) : screen === "wish" ? (
           <WishEditor
             st={st}
@@ -196,7 +210,9 @@ export default function Passes({
             key={term.key}
             drawn={term.drawn}
             n={term.n}
+            at={term.key}
             art={art}
+            holder={holder}
             escapeRef={termEscape}
             enough={st.tickets >= term.n}
             onKeep={() => setTerm(null)}
@@ -206,6 +222,7 @@ export default function Passes({
             }}
           />
         )}
+        </PassArtProvider>
       </div>
     </div>
   );
@@ -278,12 +295,12 @@ function WishSlots({ st, art, draft, onRemove }: { st: PassState; art: Art | nul
               </span>
             )}
             {onRemove && (
-              <button className="x" aria-label={fmt(T.passes.wish.remove, { name: c.name })} onClick={() => onRemove(c.id)}>
+              <button className="x" aria-label={fmt(T.passes.wish.remove, { name: characterName(c.name) })} onClick={() => onRemove(c.id)}>
                 ✕
               </button>
             )}
             <MiniPass c={c} no={own ? own.no : null} fancy={own ? isFancy(own.copies, st.plain.includes(c.id)) : false} art={art} />
-            <span>{c.name}</span>
+            <span>{characterName(c.name)}</span>
             {own && !onRemove && <span className="sr">{T.passes.owned}</span>}
           </div>
         );
@@ -429,7 +446,9 @@ const stillMotion = () => typeof window !== "undefined" && window.matchMedia("(p
 function Terminal({
   drawn,
   n,
+  at,
   art,
+  holder,
   escapeRef,
   enough,
   onKeep,
@@ -437,7 +456,10 @@ function Terminal({
 }: {
   drawn: Drawn[];
   n: DrawSize;
+  /** when they were drawn, as printed on a pass held up */
+  at: number;
   art: Art | null;
+  holder: string;
   escapeRef: { current: (() => void) | null };
   /** tickets enough for the same again: else it is dimmed, and pressed, says so on 寻访 */
   enough: boolean;
@@ -604,7 +626,7 @@ function Terminal({
                 tabIndex={stage === "flip" || stage === "done" ? 0 : -1}
                 aria-label={
                   turned
-                    ? fmt(T.passes.term.card, { name: c.name, no: padNo(d.no), tier: T.passes.term.tier[d.tier] })
+                    ? fmt(T.passes.term.card, { name: characterName(c.name), no: padNo(d.no), tier: T.passes.term.tier[d.tier] })
                     : fmt(T.passes.term.flipCard, { n: i + 1 })
                 }
                 style={{
@@ -630,7 +652,7 @@ function Terminal({
                 </div>
                 {turned && (
                   <span className="cap" aria-hidden="true">
-                    {c.name}
+                    {characterName(c.name)}
                   </span>
                 )}
               </div>
@@ -691,7 +713,7 @@ function Terminal({
           <p>
             {T.passes.term.best}
             <b>
-              {bestChar.name} No.{padNo(best.no)}
+              {characterName(bestChar.name)} No.{padNo(best.no)}
               {tail}
             </b>
           </p>
@@ -706,15 +728,16 @@ function Terminal({
           </button>
         </div>
       </div>
-      {held && (
-        <HeldUp d={held} art={art} onClose={() => setHeld(null)} />
-      )}
+      {held && <HeldUp d={held} at={at} art={art} holder={holder} onClose={() => setHeld(null)} />}
     </div>
   );
 }
 
-/** A wish just turned over, held up on a rainbow; a tap (Enter, Space, Escape) puts it down and the turning goes on */
-function HeldUp({ d, art, onClose }: { d: Drawn; art: Art | null; onClose: () => void }) {
+/**
+ * A wish just turned over, held up on a rainbow as a whole pass (its big picture fetched now, not before); a tap
+ * (Enter, Space, Escape) puts it down and the turning goes on
+ */
+function HeldUp({ d, at, art, holder, onClose }: { d: Drawn; at: number; art: Art | null; holder: string; onClose: () => void }) {
   const c = passChar(d.charId);
   const [on, setOn] = useState(false);
   const self = useRef<HTMLDivElement>(null);
@@ -734,10 +757,10 @@ function HeldUp({ d, art, onClose }: { d: Drawn; art: Art | null; onClose: () =>
       onClick={onClose}
       onKeyDown={pressKeys(onClose)}
     >
-      <MiniPass c={c} no={d.no} fancy={d.fancy} art={art} className="hl" />
+      <FullPass c={c} no={d.no} fancy={d.fancy} art={art} holder={holder} at={at} w={c.game === "ef" ? 196 : 164} />
       <p>
         <b>{d.up ? T.passes.term.wishHitUp : T.passes.term.wishHit}</b>
-        {c.name} No.{padNo(d.no)}
+        {characterName(c.name)} No.{padNo(d.no)}
       </p>
       <p className="sm">{T.passes.term.onward}</p>
     </div>
@@ -758,12 +781,37 @@ function DayTop({ title, extra, onBack }: { title: string; extra?: string; onBac
 }
 
 type WalletFilter = "all" | "ak" | "ef" | "wish";
+type Owned = OwnedChar & { c: PassChar };
 
-/** 我的通行证: everyone the player has, the most copies first, each in their look with the number of their first */
-function Wallet({ st, art, onBack, onRefused }: { st: PassState; art: Art | null; onBack: () => void; onRefused: (e: unknown) => void }) {
+/**
+ * 我的通行证: everyone the player has, the most copies first, each in their look with the number of their first, the
+ * one worn marked; under them a bar with the pass worn and 摘下. A character pressed opens over the list (Detail);
+ * Escape or ‹ back to it (stepBack), where the list was.
+ */
+function Wallet({
+  st,
+  art,
+  holder,
+  stepBack,
+  onBack,
+  onTook,
+  onRefused,
+}: {
+  st: PassState;
+  art: Art | null;
+  holder: string;
+  stepBack: { current: (() => void) | null };
+  onBack: () => void;
+  onTook: (s: PassState) => void;
+  onRefused: (e: unknown) => void;
+}) {
   const [coll, setColl] = useState<Collection | null>(null);
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState<WalletFilter>("all");
+  const [open, setOpen] = useState<Owned | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     let live = true;
     passesApi.collection().then(
@@ -774,49 +822,276 @@ function Wallet({ st, art, onBack, onRefused }: { st: PassState; art: Art | null
       live = false;
     };
   }, [onRefused]);
+  const close = () => {
+    setOpen(null);
+    // back on the character it opened from
+    requestAnimationFrame(() => opener.current?.focus({ preventScroll: true }));
+  };
+  stepBack.current = open ? close : null;
+  useEffect(
+    () => () => {
+      stepBack.current = null;
+    },
+    [stepBack],
+  );
   const items = useMemo(() => {
     if (!coll) return [];
     return coll.chars
       .map((o) => ({ ...o, c: passChar(o.charId) }))
-      .filter((o): o is typeof o & { c: PassChar } => Boolean(o.c))
+      .filter((o): o is Owned => Boolean(o.c))
       .filter((o) => (filter === "all" ? true : filter === "wish" ? st.wish.includes(o.charId) : o.c.game === filter))
       .sort((a, b) => b.copies - a.copies || a.charId - b.charId);
   }, [coll, filter, st.wish]);
+  const takeOff = async () => {
+    if (busy) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      onTook(await passesApi.wear(null));
+      setMsg(T.passes.wallet.tookOff);
+    } catch (e) {
+      if (mapsOwn(e)) onRefused(e);
+      else setMsg(sayWhy(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const filters: WalletFilter[] = ["all", "ak", "ef", "wish"];
   return (
-    <div className="ps-day">
-      <DayTop title={T.passes.wallet.title} onBack={onBack} />
-      {!coll ? (
-        <p className="w-sub">{err || T.passes.wallet.loading}</p>
-      ) : (
-        <>
-          <p className="w-sub">
-            {fmt(T.passes.wallet.count, { have: coll.chars.length, all: CATALOG_SIZE, n: coll.passes })}
-            <br />
-            {T.passes.wallet.note}
-          </p>
-          <div className="w-chips" role="group">
-            {filters.map((f) => (
-              <button key={f} className={filter === f ? "on" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>
-                {T.passes.wallet[f]}
+    <>
+      <div className="ps-day" inert={open ? true : undefined}>
+        <DayTop title={T.passes.wallet.title} onBack={onBack} />
+        {!coll ? (
+          <p className="w-sub">{err || T.passes.wallet.loading}</p>
+        ) : (
+          <>
+            <p className="w-sub">
+              {fmt(T.passes.wallet.count, { have: coll.chars.length, all: CATALOG_SIZE, n: coll.passes })}
+              <br />
+              {T.passes.wallet.note}
+            </p>
+            <div className="w-chips" role="group">
+              {filters.map((f) => (
+                <button key={f} className={filter === f ? "on" : ""} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+                  {T.passes.wallet[f]}
+                </button>
+              ))}
+            </div>
+            <div className="w-grid">
+              {items.length ? (
+                items.map((o) => {
+                  const worn = st.worn?.charId === o.charId;
+                  const name = characterName(o.c.name);
+                  return (
+                    <button
+                      key={o.charId}
+                      type="button"
+                      className="wc"
+                      aria-label={fmt(worn ? T.passes.wallet.openWorn : T.passes.wallet.open, { name, n: o.copies })}
+                      onClick={(e) => {
+                        opener.current = e.currentTarget;
+                        setMsg("");
+                        setOpen(o);
+                      }}
+                    >
+                      {worn && <u aria-hidden="true">{T.passes.wallet.worn}</u>}
+                      {o.copies > 1 && <em aria-hidden="true">×{o.copies}</em>}
+                      <MiniPass c={o.c} no={o.no} fancy={isFancy(o.copies, st.plain.includes(o.charId))} art={art} />
+                      <span aria-hidden="true">{name}</span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="w-none">{coll.chars.length ? T.passes.wallet.noneHere : T.passes.wallet.none}</p>
+              )}
+            </div>
+          </>
+        )}
+        <p className="w-msg" role="status">
+          {msg}
+        </p>
+        {st.worn && <WornBar worn={st.worn} busy={busy} onTakeOff={() => void takeOff()} />}
+      </div>
+      {open && <Detail o={open} st={st} art={art} holder={holder} onBack={close} onTook={onTook} onRefused={onRefused} />}
+    </>
+  );
+}
+
+/** The pass worn, on a bar under 我的通行证: which, its look, when drawn and 潜能 (from a second copy), and 摘下 */
+function WornBar({ worn, busy, onTakeOff }: { worn: WornPass; busy: boolean; onTakeOff: () => void }) {
+  const w = T.passes.wallet;
+  return (
+    <div className="w-bar">
+      <div>
+        <b>{fmt(w.wornBar, { name: characterName(worn.name), no: padNo(worn.no) })}</b>
+        <small>
+          {fmt(w.wornSub, { look: worn.fancy ? w.fancyLook : w.plainLook, date: issued(worn.drawnAt) })}
+          {worn.copies >= 2 && fmt(w.potential, { n: worn.copies })}
+        </small>
+      </div>
+      <button type="button" onClick={onTakeOff} disabled={busy}>
+        {w.takeOff}
+      </button>
+    </div>
+  );
+}
+
+/** ① ③ for the normal look of a character's pass, ② ④ for the special one */
+const MARKS = { ak: ["①", "②"], ef: ["③", "④"] } as const;
+
+/**
+ * One character of 我的通行证, over the list: their whole pass, leaning after the pointer; 普通 or 镭射 (from a second
+ * copy); which of their passes to wear, by number, when they have more than one; 戴上, or 摘下 for the one worn. It
+ * opens on the pass worn, else their first; their passes come from the server, but a pass known already shows at once.
+ */
+function Detail({
+  o,
+  st,
+  art,
+  holder,
+  onBack,
+  onTook,
+  onRefused,
+}: {
+  o: Owned;
+  st: PassState;
+  art: Art | null;
+  holder: string;
+  onBack: () => void;
+  onTook: (s: PassState) => void;
+  onRefused: (e: unknown) => void;
+}) {
+  const d = T.passes.detail;
+  const [copies, setCopies] = useState<PassCopy[] | null>(null);
+  const [pickId, setPickId] = useState<number | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const self = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    self.current?.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
+    let live = true;
+    passesApi.copies(o.charId).then(
+      (r) => live && setCopies(r.copies),
+      (e) => (mapsOwn(e) ? onRefused(e) : live && setMsg(sayWhy(e))),
+    );
+    return () => {
+      live = false;
+    };
+  }, [o.charId, onRefused]);
+
+  const worn = st.worn?.charId === o.charId ? st.worn : null;
+  // the pass shown: the one picked, else the one worn, else their first; its id null until their passes come
+  const shown: { id: number | null; no: number; at: number } | null =
+    copies?.find((p) => p.id === pickId) ??
+    (worn ? { id: worn.passId, no: worn.no, at: worn.drawnAt } : null) ??
+    copies?.[0] ??
+    (o.copies === 1 ? { id: null, no: o.no, at: o.lastAt } : null);
+  const n = copies?.length ?? o.copies;
+  const plain = st.plain.includes(o.charId);
+  const fancy = isFancy(n, plain);
+  const isWorn = shown?.id != null && st.worn?.passId === shown.id;
+  const name = characterName(o.c.name);
+  const marks = MARKS[o.c.game];
+  // as big as the screen leaves room for under and over it: a 通行认证 150 to 220 wide, a 长条挂牌 (as tall again
+  // as wide, a little taller) from 184
+  const room = (typeof window === "undefined" ? 0 : window.innerHeight) - 430;
+  const ra = Math.min(220, Math.max(150, room / 1.61));
+  const w = Math.round(o.c.game === "ef" ? Math.max(184, Math.min(ra * 1.23, room / 1.61)) : ra);
+
+  const send = async (ask: () => Promise<PassState>, said: string) => {
+    if (busy) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      onTook(await ask());
+      setMsg(said);
+    } catch (e) {
+      if (mapsOwn(e)) onRefused(e);
+      else setMsg(sayWhy(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const look = (wantPlain: boolean) => {
+    if (wantPlain !== plain) void send(() => passesApi.look(o.charId, wantPlain), "");
+  };
+  const wear = () => {
+    if (shown?.id == null) return;
+    const id = shown.id;
+    void send(() => passesApi.wear(isWorn ? null : id), isWorn ? d.tookOff : d.worn);
+  };
+
+  return (
+    <div ref={self} className="ps-day wd" role="group" aria-label={name} tabIndex={-1}>
+      <div className="w-top">
+        <button className="w-back" onClick={onBack} aria-label={d.backLabel}>
+          ‹
+        </button>
+        <b>{name}</b>
+        <span>{fmt(d.copies, { n })}</span>
+      </div>
+      <div className="wd-stage">
+        {shown ? (
+          <FullPass
+            c={o.c}
+            no={shown.no}
+            fancy={fancy}
+            art={art}
+            holder={holder}
+            at={shown.at}
+            w={w}
+            tilt
+            label={fmt(T.passes.pass.label, { name, no: padNo(shown.no) })}
+          />
+        ) : (
+          <p className="wd-wait">{d.loading}</p>
+        )}
+      </div>
+      <div className="wd-seg" role="group" aria-label={d.look}>
+        <button type="button" aria-pressed={!fancy} onClick={() => look(true)} disabled={busy}>
+          {fmt(d.plain, { mark: marks[0] })}
+        </button>
+        <button type="button" aria-pressed={fancy} onClick={() => look(false)} disabled={busy || n < 2}>
+          {fmt(d.fancy, { mark: marks[1] })}
+        </button>
+      </div>
+      <p className="wd-note">{n < 2 ? d.needsTwo : fancy ? d.fancyOn : d.plainOn}</p>
+      {copies && copies.length > 1 && (
+        <div className="wd-which" role="group" aria-label={d.which}>
+          <span aria-hidden="true">{d.which}</span>
+          {copies.map((p) => {
+            const on = st.worn?.passId === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={on ? "worn" : ""}
+                aria-pressed={p.id === shown?.id}
+                aria-label={fmt(on ? d.pickWorn : d.pick, { no: padNo(p.no), date: issued(p.at) })}
+                onClick={() => {
+                  setMsg("");
+                  setPickId(p.id);
+                }}
+              >
+                {padNo(p.no)}
               </button>
-            ))}
-          </div>
-          <div className="w-grid">
-            {items.length ? (
-              items.map((o) => (
-                <div key={o.charId} className="wc" role="img" aria-label={fmt(T.passes.wallet.item, { name: o.c.name, n: o.copies })}>
-                  {o.copies > 1 && <em aria-hidden="true">×{o.copies}</em>}
-                  <MiniPass c={o.c} no={o.no} fancy={isFancy(o.copies, st.plain.includes(o.charId))} art={art} />
-                  <span aria-hidden="true">{o.c.name}</span>
-                </div>
-              ))
-            ) : (
-              <p className="w-none">{coll.chars.length ? T.passes.wallet.noneHere : T.passes.wallet.none}</p>
-            )}
-          </div>
-        </>
+            );
+          })}
+        </div>
       )}
+      <div className="g-btns wd-btns">
+        <button type="button" onClick={onBack}>
+          {d.back}
+        </button>
+        <button type="button" className="y" onClick={wear} disabled={busy || shown?.id == null}>
+          {isWorn ? d.takeOff : d.wear}
+        </button>
+      </div>
+      <p className="wd-msg" role="status">
+        {msg}
+      </p>
     </div>
   );
 }
@@ -862,13 +1137,15 @@ function WishEditor({
     const q = query.trim().toLowerCase();
     return PASS_CATALOG.filter(
       (c) =>
-        (filter === "all" || (filter === "fav" ? favIds.has(c.id) : c.game === filter)) && (!q || c.name.toLowerCase().includes(q)),
+        (filter === "all" || (filter === "fav" ? favIds.has(c.id) : c.game === filter)) &&
+        (!q || c.name.toLowerCase().includes(q) || nameMatches(c.name, q)),
     );
   }, [query, filter, favIds]);
   const ownedNames = st.wish
     .filter((id) => st.wishOwned.some((o) => o.charId === id))
     .map((id) => passChar(id)?.name)
-    .filter(Boolean)
+    .filter((name): name is string => Boolean(name))
+    .map(characterName)
     .join(T.passes.wish.and);
   const changed = draft.length !== st.wish.length || draft.some((id, i) => id !== st.wish[i]);
   const toggle = (id: number) => {
@@ -936,7 +1213,7 @@ function WishEditor({
                     <div key={c.id} className="wl-row">
                       <MiniPass c={c} no={null} fancy={false} art={art} />
                       <span className="nm">
-                        {c.name}
+                        {characterName(c.name)}
                         <small>
                           {c.game === "ak" ? T.passes.wish.ak : T.passes.wish.ef} · {STARS(c.rarity) ?? T.passes.wish.story}
                         </small>
@@ -1058,7 +1335,7 @@ function Log({ art, onBack, onRefused }: { art: Art | null; onBack: () => void; 
               <div key={r.id} className="lg-row">
                 <MiniPass c={c} no={null} fancy={false} art={art} />
                 <span className="nm">
-                  {c.name} <span className="no">No.{padNo(r.no)}</span>
+                  {characterName(c.name)} <span className="no">No.{padNo(r.no)}</span>
                   {r.wish && <em>{T.passes.log.wish}</em>}
                   <small>{when(r.at)}</small>
                 </span>

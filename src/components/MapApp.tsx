@@ -4117,6 +4117,7 @@ export default function MapApp({
             onPerlicaTimer={switchPerlicaTimer}
             onlyMains={me.onlyMains}
             onOpenOnlyMains={(draft) => setPanel({ kind: "onlyMains", back: { kind: "profile", draft } })}
+            passes={me.passes}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
             // set before the map got round to asking: it asks no more
@@ -5030,6 +5031,7 @@ export default function MapApp({
       {passesOpen && me?.passes && (
         <Passes
           favourites={me.profile.favourites}
+          holder={displayName(me.profile)}
           onClose={() => setPassesOpen(false)}
           onRefused={(e) => {
             setPassesOpen(false);

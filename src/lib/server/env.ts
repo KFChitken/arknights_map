@@ -78,6 +78,19 @@ export const UI_CHOICE = process.env.UI_CHOICE !== "off";
  */
 export const passesMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.PASSES) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
+/**
+ * The characters' pictures on passes (src/lib/server/passArt.ts), which belong to Hypergryph: PASS_ART=off takes them
+ * all down at once, and passes show the small pictures instead (OPERATOR_AVATARS); PASS_ART_SKIP=<catalogue id,…>
+ * only those characters' (src/data/pass-catalog.json), such as a collaboration's. Nothing drawn changes either way.
+ */
+export const passArtOn = () => process.env.PASS_ART !== "off";
+export const passArtSkipped = (): ReadonlySet<number> =>
+  new Set(
+    (process.env.PASS_ART_SKIP ?? "")
+      .split(",")
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0),
+  );
 
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
 export const TILES_DIR = process.env.TILES_DIR || "tiles";

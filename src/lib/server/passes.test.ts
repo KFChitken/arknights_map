@@ -7,7 +7,22 @@ import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
 import { db } from "./db";
 import { HttpError } from "./http";
-import { collection, draw, earn, openWallet, passesMe, passesOpen, passLog, passState, setWish, wishFromFavourites } from "./passes";
+import {
+  collection,
+  copiesOf,
+  draw,
+  earn,
+  openWallet,
+  passesMe,
+  passesOpen,
+  passLog,
+  passState,
+  setLook,
+  setWish,
+  wear,
+  wishFromFavourites,
+  wornPasses,
+} from "./passes";
 import { admins, blocks, passCounters, passes, passWallets, touches, users, type UserRow } from "./schema";
 import * as world from "./world";
 
@@ -62,6 +77,8 @@ async function refusal(p: Promise<unknown>) {
 beforeEach(async () => {
   await db.execute(sql`truncate ${users}, ${passCounters} cascade`);
   vi.stubEnv("PASSES", "on");
+  // whatever pictures this computer has (passArt.test.ts tries them)
+  vi.stubEnv("PASS_ART", "off");
 });
 
 afterEach(() => {
@@ -369,11 +386,134 @@ describe("who may draw (PASSES)", () => {
 
   it("puts a dot on the button for the first ten, and while there are ten tickets for a draw", async () => {
     const a = await player("a@example.com");
-    expect(await passesMe(a)).toEqual({ tickets: 0, dot: true });
-    expect((await world.me(a.id))?.passes).toEqual({ tickets: 0, dot: true });
+    expect(await passesMe(a)).toEqual({ tickets: 0, dot: true, worn: null });
+    expect((await world.me(a.id))?.passes).toEqual({ tickets: 0, dot: true, worn: null });
     await openWallet(a, NOON);
-    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS, dot: true });
+    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS, dot: true, worn: null });
     await draw(a, 1, NOON, always(1));
-    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS - 1, dot: false });
+    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS - 1, dot: false, worn: null });
+  });
+});
+
+/** The player's passes of a character, lowest number first */
+const passesOf = (userId: string, charId: number) =>
+  db.select({ id: passes.id, no: passes.no }).from(passes).where(and(eq(passes.userId, userId), eq(passes.charId, charId))).orderBy(asc(passes.no));
+
+describe("wearing a pass", () => {
+  it("switches a character between the special look and the normal one, from their second copy", async () => {
+    const a = await player("a@example.com");
+    expect(await refusal(setLook(a, 7, true, NOON))).toMatchObject({ status: 409 });
+    await openWallet(a, NOON);
+    await draw(a, 1, NOON, always(7));
+    expect(await refusal(setLook(a, 7, true, NOON))).toEqual({ status: 409, message: "再抽到一张这位，就能换成镭射版。" });
+    for (const [charId, plain] of [[99_999, true], [0, true], ["7", true], [7, "true"], [7, null], [null, true]]) {
+      expect(await refusal(setLook(a, charId, plain, NOON)), JSON.stringify([charId, plain])).toEqual({ status: 400, message: "没有这位角色。" });
+    }
+    await draw(a, 1, NOON + 1000, always(7));
+    await draw(a, 1, NOON + 2000, always(8));
+    await draw(a, 1, NOON + 3000, always(8));
+    expect((await setLook(a, 7, true, NOON)).plain).toEqual([7]);
+    // asked twice, kept once
+    expect((await setLook(a, 7, true, NOON)).plain).toEqual([7]);
+    expect((await setLook(a, 8, true, NOON)).plain).toEqual([7, 8]);
+    expect((await setLook(a, 7, false, NOON)).plain).toEqual([8]);
+    expect((await setLook(a, 7, false, NOON)).plain).toEqual([8]);
+
+    // the pass worn follows the look picked, on their own pages and on the card others see
+    const [, second] = await passesOf(a.id, 8);
+    const worn = (await wear(a, second.id, NOON)).worn;
+    expect(worn).toMatchObject({ passId: second.id, charId: 8, no: 2, copies: 2, fancy: false });
+    const seen = async () => (await world.cardsOf([(await world.userById(a.id))!], a.id)).get(a.id)!.pass;
+    expect(await seen()).toMatchObject({ charId: 8, no: 2, copies: 2, fancy: false });
+    expect((await setLook(a, 8, false, NOON)).worn).toMatchObject({ fancy: true });
+    expect(await seen()).toMatchObject({ fancy: true });
+    expect((await passesMe((await world.userById(a.id))!))?.worn).toMatchObject({ passId: second.id, fancy: true });
+  });
+
+  it("wears one of the player's own passes, or none, and says what is printed on it", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    expect(await refusal(wear(a, null, NOON))).toMatchObject({ status: 409 });
+    await openWallet(a, NOON);
+    await openWallet(b, NOON);
+    const exu = id("arknights", "能天使");
+    await draw(a, 1, NOON, always(exu));
+    await draw(b, 1, NOON, always(exu));
+    const [mine] = await passesOf(a.id, exu);
+    const [theirs] = await passesOf(b.id, exu);
+    expect(await refusal(wear(a, theirs.id, NOON))).toEqual({ status: 404, message: "这张通行证不在你这里。" });
+    expect(await refusal(wear(a, 2 ** 31 - 1, NOON))).toMatchObject({ status: 404 });
+    for (const bad of ["1", 0, -1, 1.5, undefined, {}]) {
+      expect(await refusal(wear(a, bad, NOON)), JSON.stringify(bad)).toMatchObject({ status: 400 });
+    }
+    expect((await passState(a.id, NOON)).worn).toBeNull();
+    const s = await wear(a, mine.id, NOON);
+    expect(s.worn).toEqual({
+      passId: mine.id,
+      game: "ak",
+      charId: exu,
+      name: "能天使",
+      en: "Exusiai",
+      rarity: 6,
+      no: 1,
+      copies: 1,
+      fancy: false,
+      color: expect.stringMatching(/^#[0-9a-f]{6}$/),
+      art: null,
+      avatar: expect.toBeOneOf([null, expect.any(String)]),
+      drawnAt: NOON,
+    });
+    const row = (await world.userById(a.id))!;
+    expect((await passesMe(row))?.worn).toEqual(s.worn);
+    expect(row.wornPass).toBe(mine.id);
+    expect((await wear(a, null, NOON)).worn).toBeNull();
+    expect((await world.userById(a.id))!.wornPass).toBeNull();
+  });
+
+  it("lists a player's passes of one character, lowest number first, for picking which to wear", async () => {
+    const a = await player("a@example.com");
+    await openWallet(a, NOON);
+    await draw(a, 1, NOON, always(5));
+    await draw(a, 1, NOON + 1000, always(6));
+    await draw(a, 1, NOON + 2000, always(5));
+    const got = await copiesOf(a.id, 5);
+    expect(got).toEqual({
+      charId: 5,
+      copies: [
+        { id: expect.any(Number), no: 1, at: NOON },
+        { id: expect.any(Number), no: 2, at: NOON + 2000 },
+      ],
+    });
+    expect(await copiesOf(a.id, 9)).toEqual({ charId: 9, copies: [] });
+    for (const bad of [0, 99_999, "5", Number.NaN]) expect(await refusal(copiesOf(a.id, bad)), String(bad)).toMatchObject({ status: 400 });
+  });
+
+  it("shows the pass worn on profile cards to whoever may see passes: all while on, the admins' eyes alone while admins", async () => {
+    const owner = await player("owner@example.com");
+    const someone = await player("someone@example.com");
+    const a = await player("a@example.com");
+    await openWallet(a, NOON);
+    await draw(a, 10, NOON, always(3));
+    const [, , third] = await passesOf(a.id, 3);
+    await wear(a, third.id, NOON);
+    const row = (await world.userById(a.id))!;
+    const bare = (await world.userById(someone.id))!;
+    const card = async (viewer: string | null) => (await world.cardsOf([row, bare], viewer)).get(a.id)!.pass;
+
+    const shown = await card(someone.id);
+    expect(shown).toMatchObject({ charId: 3, no: 3, copies: 10, fancy: true, drawnAt: NOON });
+    // which of their passes it is stays theirs
+    expect(Object.keys(shown!)).not.toContain("passId");
+    expect((await world.cardsOf([bare], a.id)).get(someone.id)!.pass).toBeUndefined();
+    // nobody is looking (a card in a reply to their own ink)
+    expect(await card(null)).toBeUndefined();
+    expect((await wornPasses([row], null)).size).toBe(0);
+
+    vi.stubEnv("PASSES", "admins");
+    expect(await card(someone.id)).toBeUndefined();
+    expect(await card(owner.id)).toMatchObject({ charId: 3 });
+    vi.stubEnv("PASSES", "off");
+    expect(await card(owner.id)).toBeUndefined();
+    expect(await passesMe(row)).toBeUndefined();
   });
 });

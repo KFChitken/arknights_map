@@ -1,6 +1,7 @@
 import { T } from "@/i18n";
 import type { ShownBadge } from "./badges";
 import type { Game } from "./games";
+import type { PassOnCard } from "./passes";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "./types";
 
 /** Everything a player can fill in about themselves. Only the owner ever sees all of it. */
@@ -43,6 +44,8 @@ export type PublicProfile = {
   /** Their badges, the worn one first */
   badges?: ShownBadge[];
   worn?: string | null;
+  /** 通行证寻访: the pass they wear (src/lib/server/passes.ts wornPasses), for those who may see it */
+  pass?: PassOnCard;
 };
 
 export const EMPTY_PROFILE: Profile = {

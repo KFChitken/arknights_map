@@ -761,7 +761,7 @@ export async function friendlyInbox(self: UserRow, blocked: Set<string>, now = D
   const otherOf = (f: { a: string; b: string }) => (f.a === userId ? f.b : f.a);
   const ids = [...new Set([...toMe.map((n) => n.fromUserId), ...answered.map((n) => n.toUserId), ...fs.map(otherOf)])];
   if (!ids.length) return [];
-  const cards = await cardsOf(await db.select().from(users).where(inArray(users.id, ids)));
+  const cards = await cardsOf(await db.select().from(users).where(inArray(users.id, ids)), self.id);
   // guests still sitting by your roaches, for 去看看
   const guestRoaches = toMe.filter((n) => n.kind === "visit").map((n) => n.period.split(":")[0]);
   const sitting = guestRoaches.length
@@ -922,7 +922,7 @@ export async function birthdayNames(userId: string, senders: string[], reactors:
     : [];
   const named = new Set(asFriend.map((x) => `${x.declarationId}|${x.recipientId}`));
   const ids = [...new Set([...senders, ...asFriend.map((x) => x.recipientId)])];
-  const cards: Map<string, PublicProfile> = ids.length ? await cardsOf(await db.select().from(users).where(inArray(users.id, ids))) : new Map();
+  const cards: Map<string, PublicProfile> = ids.length ? await cardsOf(await db.select().from(users).where(inArray(users.id, ids)), userId) : new Map();
   const whoIs = (id: string) => {
     const card = cards.get(id);
     return card ? { from: card, friendId: friendKey(userId, id) } : {};

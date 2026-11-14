@@ -19,7 +19,7 @@
   --rainbow: linear-gradient(90deg, #ff5d8f, #ffb43f, #f4f05c, #5dff9b, #5dc8ff, #b07bff, #ff5d8f);
   --holo: linear-gradient(115deg, #ff9ab0 0%, #ffe27a 17%, #9dffb0 34%, #8fd3ff 51%, #c6a2ff 68%, #ff9ab0 85%, #ffe27a 100%);
   --hazard: repeating-linear-gradient(135deg, #ffd23f 0 6px, #16181c 6px 12px);
-  --font-num: "DIN Alternate", "Bahnschrift", "Roboto Condensed", "Arial Narrow", sans-serif-condensed, -apple-system, sans-serif;
+  --font-num: "PassNum", "DIN Alternate", "Bahnschrift", "Roboto Condensed", "Arial Narrow", sans-serif-condensed, -apple-system, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   position: fixed;
   inset: 0;
@@ -71,83 +71,6 @@
 .ps-pill { border: 1.5px solid rgba(255, 255, 255, 0.7); background: transparent; border-radius: 999px; padding: 6px 18px; font-size: 14px; font-weight: 700; }
 .ps-pill.ghost { border-color: transparent; text-decoration: underline; font-weight: 500; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-/* ===== the pass, small (2:3): ① ra, ② rax, ③ tag, ④ tagx ===== */
-.mp { width: var(--w, 56px); aspect-ratio: 2 / 3; container-type: inline-size; position: relative; flex: none; }
-.mpc { position: absolute; inset: 0; border-radius: 9cqw; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18); }
-.mpc b { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
-.mpc .art { position: absolute; overflow: hidden; }
-.mpc .art img { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-select: none; }
-.mpc .art svg { display: block; width: 100%; height: 100%; }
-/* no picture of them: a figure in their colour */
-.mpc .art.drawn { background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 30%, #fff), var(--pc)); }
-.mpc .art.drawn path { fill: color-mix(in srgb, var(--pc) 35%, #08090c); }
-
-.mpc.ra { background: #23262c; border-radius: 7cqw; }
-.mpc.ra .art { left: 0; right: 0; top: 0; height: 98cqw; }
-.mpc.ra .mra-t {
-  position: absolute; left: -0.5cqw; top: 2cqw; height: 94cqw; width: 16cqw; writing-mode: vertical-rl; transform: rotate(180deg);
-  font: 700 15cqw/1.05 var(--font-num); color: #fff; -webkit-text-stroke: 0.7cqw #111317; paint-order: stroke fill;
-  overflow: hidden; white-space: nowrap; text-align: start; z-index: 2;
-}
-.mpc.ra .mra-l { position: absolute; left: 0; top: 98cqw; bottom: 0; width: 16cqw; background: #f2f2ee; }
-.mpc.ra .mra-l::after {
-  content: ""; position: absolute; left: 4cqw; right: 4cqw; top: 7cqw; bottom: 7cqw;
-  background: repeating-linear-gradient(180deg, #16181c 0 1cqw, transparent 1cqw 2.4cqw, #16181c 2.4cqw 3cqw, transparent 3cqw 4.4cqw);
-}
-.mpc.ra .mra-p {
-  position: absolute; left: 16cqw; right: 0; top: 98cqw; bottom: 0;
-  background: linear-gradient(165deg, color-mix(in srgb, var(--pc) 72%, #fff), var(--pc) 70%);
-}
-.mpc.ra b { left: 16cqw; bottom: 9cqw; color: var(--pk, #fff); font: 700 21cqw/1 var(--font-num); z-index: 2; }
-.mpc.rax { background: #e9edf2; }
-.mpc.rax .art { background: linear-gradient(160deg, #fbfcfe, #dfe7f1 55%, #ece3f7); }
-.mpc.rax .art::after {
-  content: ""; position: absolute; inset: 0; background-image: var(--holo); background-size: 240% 100%; mix-blend-mode: overlay; opacity: 0.35;
-}
-.mpc.rax .mra-t { -webkit-text-stroke-color: #5d6679; }
-.mpc.rax .mra-p { background: linear-gradient(160deg, #f0f9ff, #dde8ff 40%, #f2e6ff 70%, #e0fff2); }
-.mpc.rax .mra-p::after {
-  content: ""; position: absolute; inset: 0; background-image: var(--holo); background-size: 240% 100%; mix-blend-mode: overlay; opacity: 0.8;
-}
-.mpc.rax b { color: #1b2330; }
-
-.mpc.tag { background: #f3f4f0; border-radius: 7cqw; }
-/* contour lines, our own (public/passes/contour.svg, contour-w.svg on the dark one) */
-.mpc.tag::before { content: ""; position: absolute; inset: 0; opacity: 0.3; background: url("/passes/contour.svg") 50% 36% / 190% auto no-repeat; }
-.mpc.tag .art { left: 15cqw; right: 0; top: 9cqw; bottom: 30cqw; }
-.mpc.tag .mtg-b {
-  position: absolute; left: 0; top: 9cqw; bottom: 0; width: 15cqw; background: #f2e21a; z-index: 2;
-  clip-path: polygon(0 0, 9cqw 0, 9cqw 55%, 15cqw calc(55% + 6cqw), 15cqw 100%, 0 100%);
-}
-.mpc.tag .mtg-k {
-  position: absolute; right: 5cqw; top: 9cqw; width: 7cqw; height: 30cqw; z-index: 2;
-  background: linear-gradient(#8a8f98 0 22%, transparent 22% 26%, #16c784 26% 48%, transparent 48% 52%, #f2e21a 52% 74%, transparent 74% 78%, #e6187d 78%);
-}
-.mpc.tag .mtg-f { position: absolute; left: 15cqw; right: 0; bottom: 0; height: 30cqw; background: #fff; border-top: 1.2cqw dashed #16181c; z-index: 2; }
-.mpc.tag b { left: 15cqw; bottom: 5cqw; color: #16181c; font: 700 20cqw/1 var(--font-num); z-index: 3; }
-.mpc.tagx { background: #0f1114; }
-.mpc.tagx::before { background-image: url("/passes/contour-w.svg"); opacity: 0.2; }
-.mpc.tagx .art::before {
-  content: ""; position: absolute; left: -14%; right: -6%; top: 4%; bottom: -4%; z-index: -1;
-  background: radial-gradient(closest-side, var(--pc), transparent); opacity: 0.85;
-}
-.mpc.tagx .mtg-f { background: #17191d; border-top-color: #f2e21a; }
-.mpc.tagx b { color: #f2e21a; }
-/* No.0001 and 靓号: a gold corner */
-.mpc .mfo {
-  position: absolute; top: 0; right: 0; width: 24cqw; height: 24cqw; z-index: 4;
-  background: linear-gradient(135deg, #b88a1b, #ffe08a 45%, #c79a28 62%, #fff1b8); clip-path: polygon(0 0, 100% 0, 100% 100%);
-}
-
-/* face down */
-.zb {
-  position: absolute; inset: 0; border-radius: 7cqw; overflow: hidden; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(80% 60% at 50% 42%, #2b303a, #121418); border: 1.4cqw solid #2d313a; color: #ffd23f;
-}
-.zb::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 1.2cqw, transparent 1.2cqw 4.4cqw); }
-.zb svg { width: 46cqw; height: 46cqw; position: relative; }
-.zb small { position: absolute; bottom: 6cqw; left: 0; right: 0; text-align: center; font: 600 7cqw/1 var(--font-mono); letter-spacing: 0.2em; color: #9aa1ad; }
 
 /* ===== 寻访 ===== */
 .ps-home { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -326,7 +249,6 @@
   cursor: pointer; opacity: 0; transition: opacity 0.25s; outline: none;
 }
 .t-hl.on { opacity: 1; }
-.t-hl .mp.hl { --w: min(46vw, 168px); }
 .t-hl p { margin: 0; text-align: center; font-size: 14px; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
 .t-hl p b { display: block; font-size: 20px; letter-spacing: 0.08em; }
 .t-hl p.sm { font-size: 12.5px; opacity: 0.85; }
@@ -342,11 +264,56 @@
 .w-chips button { font-size: 13px; border: 1px solid var(--p-line); border-radius: 999px; padding: 3px 12px; background: #fff; }
 .w-chips button.on { background: var(--p-ink); color: #fff !important; border-color: var(--p-ink); }
 .w-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 9px; padding: 8px 16px 24px; align-content: start; }
-.wc { display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 130px; }
+/* drawn only on screen (content-visibility), which also cuts off whatever sticks out: the count and 戴着 sit in its top */
+.wc {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 137px;
+  border: 0; background: none; padding: 7px 0 0; font: inherit; text-align: center; outline: none;
+}
+.wc:focus-visible .mp { outline: 2.5px solid var(--p-ink); outline-offset: -1px; border-radius: 6px; }
+.wc:focus-visible > span { text-decoration: underline 2px; text-underline-offset: 3px; }
 .wc .mp { --w: 100%; }
 .wc > span { font-size: 12px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wc em { position: absolute; right: -4px; top: -5px; z-index: 3; font: 700 12px/1.4 var(--font-num); font-style: normal; background: var(--p-ink); color: #fff; border-radius: 5px; padding: 0 5px; }
+.wc em { position: absolute; right: 0; top: 0; z-index: 3; font: 700 12px/1.4 var(--font-num); font-style: normal; background: var(--p-ink); color: #fff; border-radius: 5px; padding: 0 5px; }
+.wc u {
+  position: absolute; left: 50%; top: 0; transform: translateX(-50%); z-index: 3; text-decoration: none; white-space: nowrap;
+  background: var(--p-yellow); color: var(--p-ink); font-size: 11px; font-weight: 800; line-height: 1.5; border-radius: 4px; padding: 0 5px;
+}
 .w-none { grid-column: 1 / -1; color: var(--p-muted); font-size: 14px; padding: 8px 16px; margin: 0; }
+.w-msg { margin: 0 16px 10px; font-size: 13px; line-height: 1.5; color: var(--p-muted); text-align: center; }
+.w-msg:empty { margin: 0; }
+/* the pass worn, kept in sight under the list */
+.w-bar {
+  position: sticky; bottom: 12px; z-index: 3; flex: none; margin: auto 12px 12px; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 14px; background: var(--p-ink); color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+.w-bar div { flex: 1; min-width: 0; }
+.w-bar b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-bar small { display: block; font-size: 11.5px; color: #b9bec6; margin-top: 1px; }
+.w-bar button { flex: none; border: 0; border-radius: 10px; padding: 5px 12px; background: #fff; color: var(--p-ink) !important; font-size: 13px; font-weight: 800; }
+.w-bar button:disabled { opacity: 0.5; }
+
+/* one character of 我的通行证, over the list: the whole pass, 普通 / 镭射, which one, 戴上 */
+.wd { position: absolute; inset: 0; z-index: 5; background: #fff; outline: none; padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); }
+@media (min-width: 600px) and (min-height: 600px) {
+  .wd { padding: 0; }
+}
+.wd-stage { flex: 1 0 auto; min-height: 270px; display: flex; align-items: center; justify-content: center; padding: 14px 0 18px; }
+.wd-wait { margin: 0; color: var(--p-muted); font-size: 14px; }
+.wd-seg { flex: none; display: grid; grid-template-columns: 1fr 1fr; margin: 0 16px; border: 1.5px solid var(--p-ink); border-radius: 12px; overflow: hidden; }
+.wd-seg button { border: 0; background: transparent; padding: 8px 0; font-size: 14px; font-weight: 800; }
+.wd-seg button[aria-pressed="true"] { background: var(--p-ink); color: #fff !important; }
+.wd-seg button:disabled { opacity: 0.35; cursor: not-allowed; }
+.wd-note { flex: none; margin: 8px 18px 0; min-height: 3.1em; font-size: 12.5px; line-height: 1.55; color: var(--p-muted); text-align: center; }
+.wd-which { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 16px 0; max-height: 86px; overflow-y: auto; padding: 2px 0; }
+.wd-which span { font-size: 12.5px; color: var(--p-muted); margin-right: 2px; }
+.wd-which button { border: 1px solid var(--p-line); border-radius: 999px; padding: 1px 10px; background: #fff; font: 700 14px/1.4 var(--font-num); }
+.wd-which button[aria-pressed="true"] { border-color: var(--p-ink); background: var(--p-ink); color: #fff !important; }
+/* the one worn: underlined yellow */
+.wd-which button.worn { box-shadow: inset 0 -3px 0 var(--p-yellow); }
+.wd .wd-btns { flex: none; margin: 12px 16px 0; }
+.wd .g-btns button { border-color: var(--p-line); color: var(--p-ink); }
+.wd .g-btns .y { border-color: var(--p-yellow); }
+.wd-msg { flex: none; margin: 8px 16px 14px; min-height: 18px; font-size: 13px; line-height: 1.5; color: var(--p-muted); text-align: center; }
 
 .wl-body { padding: 4px 16px 12px; }
 .wl-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; margin: 6px 0 10px; }

@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { Collection, Drawn, DrawSize, LogPage, PassState } from "./passes";
+import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassState } from "./passes";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -33,4 +33,9 @@ export const passesApi = {
   wish: (ids: number[]) => call<PassState>("PUT", "wish", { ids }),
   collection: () => call<Collection>("GET", "collection"),
   log: (before?: number) => call<LogPage>("GET", "log", undefined, before ? `?before=${before}` : ""),
+  copies: (charId: number) => call<CharCopies>("GET", "copies", undefined, `?char=${charId}`),
+  /** a character's passes in the normal look (plain) or the special one */
+  look: (charId: number, plain: boolean) => call<PassState>("PUT", "look", { charId, plain }),
+  /** the pass worn on the player's profile card, or none */
+  wear: (passId: number | null) => call<PassState>("PUT", "wear", { passId }),
 };

@@ -683,6 +683,17 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .who-card { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; padding: 10px 12px; border-radius: 14px; background: #f6f7f9; }
 .who-card strong { font-size: 16px; }
 .who-card p { margin: 2px 0 0; }
+/* 通行证寻访: the pass worn, small on the right of a profile card (WornPass.tsx), and its line under the card */
+.who-pass { flex: none; margin-left: auto; width: 56px; aspect-ratio: 2 / 3; padding: 0; border: 0; border-radius: 6px; background: none; cursor: pointer; }
+.star-btn + .who-pass { margin-left: 0; }
+.who-pass .mp { --w: 100%; }
+.who-pass:focus-visible { outline: 2px solid #1b1d22; outline-offset: 3px; }
+@media (min-width: 720px) {
+  .who-pass { width: 72px; }
+}
+.pass-line { margin: -4px 0 12px; }
+.pass-line > div { display: flex; align-items: baseline; gap: 10px; }
+.pass-line dt, .pass-line dd { margin: 0; }
 .seg { display: inline-flex; overflow: hidden; border: 1px solid #d6d9de; border-radius: 999px; }
 .seg button { border: 0; padding: 6px 14px; background: transparent; font-size: 14px; }
 .seg button.on { background: var(--ink); color: #fff; }

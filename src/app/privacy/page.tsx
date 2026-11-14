@@ -63,6 +63,9 @@ export default async function Privacy() {
           {fmtNodes(T.server.privacy.collect.visits, { b: <strong>{T.server.privacy.collect.visitsB}</strong>, site: siteName(), b2: <strong>{T.server.privacy.collect.visitsB2}</strong> })}
         </li>
         <li>
+          {fmtNodes(T.server.privacy.collect.passes, { b: <strong>{T.server.privacy.collect.passesB}</strong> })}
+        </li>
+        <li>
           {fmtNodes(T.server.privacy.collect.away, { b: <strong>{T.server.privacy.collect.awayB}</strong>, site: siteName() })}
         </li>
         <li>
@@ -98,6 +101,9 @@ export default async function Privacy() {
         </li>
         <li>
           {fmtNodes(T.server.privacy.seen.titles, { b: <strong>{T.server.privacy.seen.titlesB}</strong> })}
+        </li>
+        <li>
+          {fmtNodes(T.server.privacy.seen.passes, { b: <strong>{T.server.privacy.seen.passesB}</strong> })}
         </li>
         <li>
           {fmtNodes(T.server.privacy.seen.hot, { b: <strong>{T.server.privacy.seen.hotB}</strong>, hotMinPlayers: HOT_MIN_PLAYERS })}

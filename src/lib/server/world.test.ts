@@ -1594,7 +1594,7 @@ describe("server world", () => {
     expect(mine.joinedAt).toBe(row.createdAt.getTime());
     expect(Object.keys(mine.profile)).not.toContain("joinedAt");
     // the card others see of you
-    const card = (await world.cardsOf([row])).get(me.id)!;
+    const card = (await world.cardsOf([row], me.id)).get(me.id)!;
     expect(card.displayName).toBeDefined();
     expect(JSON.stringify(card)).not.toContain(String(row.createdAt.getTime()));
     expect(Object.keys(card)).not.toContain("joinedAt");

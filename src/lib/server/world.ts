@@ -148,7 +148,7 @@ import { helpCounts } from "./help";
 import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
-import { earn, passesMe } from "./passes";
+import { earn, passesMe, wornPasses } from "./passes";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
@@ -289,10 +289,19 @@ export function profileColumns(p: Profile) {
   };
 }
 
-/** Profile cards as other players see them, badges included. */
-export async function cardsOf(people: UserRow[]) {
+/**
+ * Profile cards as the viewer sees them, badges included, and the pass each wears where the viewer may see passes
+ * (src/lib/server/passes.ts wornPasses); viewer null: only the names are wanted.
+ */
+export async function cardsOf(people: UserRow[], viewerId: string | null) {
   const badges = await shownBadges(people);
-  return new Map(people.map((u): [string, PublicProfile] => [u.id, { ...publicProfileOf(profileOf(u)), ...badges.get(u.id) }]));
+  const worn = await wornPasses(people, viewerId);
+  return new Map(
+    people.map((u): [string, PublicProfile] => {
+      const pass = worn.get(u.id);
+      return [u.id, { ...publicProfileOf(profileOf(u)), ...badges.get(u.id), ...(pass ? { pass } : {}) }];
+    }),
+  );
 }
 
 export async function userById(id: string) {
@@ -881,7 +890,7 @@ export async function tapInk(userId: string, x: unknown, y: unknown, tap: unknow
   let friend: InkTap["friend"] = null;
   if (ink.userId && !mine && (await friendIdsOf(userId)).has(ink.userId)) {
     const u = await userById(ink.userId);
-    if (u) friend = { id: friendKey(userId, u.id), name: (await cardsOf([u])).get(u.id)!.displayName };
+    if (u) friend = { id: friendKey(userId, u.id), name: (await cardsOf([u], null)).get(u.id)!.displayName };
   }
   return { state: ink.state, mine, friend, gone, id: mine || gone ? null : INK_PREFIX + ink.publicId };
 }
@@ -1164,14 +1173,14 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       .innerJoin(users, eq(users.id, pokes.toUserId))
       .where(and(eq(pokes.fromUserId, userId), gt(pokes.wokeToldAt, since)))
   ).filter((x) => friendIds.has(x.p.toUserId));
-  const pokers = await cardsOf([...ps.map((x) => x.from), ...ws.map((x) => x.to)]);
+  const pokers = await cardsOf([...ps.map((x) => x.from), ...ws.map((x) => x.to)], userId);
   // a 触须之交's reactions to your birthday say who
   const asFriend = await birthdayNames(
     userId,
     [],
     rs.map((x) => ({ declarationId: x.r.declarationId, from: x.r.fromUserId })),
   );
-  const cards = await cardsOf(ts.filter((x) => x.t.bold).map((x) => x.from));
+  const cards = await cardsOf(ts.filter((x) => x.t.bold).map((x) => x.from), userId);
   const done = await replied(userId, [...ts.map((x) => `t:${x.t.id}`), ...rs.map((x) => `x:${x.r.id}`)]);
   // touching back waits for whoever you touched in the last day (reply())
   const waits = await touchBackWaits(userId, [
@@ -1232,7 +1241,7 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       id: `f:${f.a}~${f.b}`,
       at: f.createdAt.getTime(),
       seen: f.a === userId ? f.seenByA : f.seenByB,
-      from: (await cardsOf([u])).get(u.id)!,
+      from: (await cardsOf([u], userId)).get(u.id)!,
       friendId: friendKey(userId, other),
       replied: true,
     });
@@ -1551,7 +1560,7 @@ export async function friends(userId: string): Promise<Friend[]> {
     out.push({
       id: friendKey(userId, other),
       since: f.createdAt.getTime(),
-      profile: (await cardsOf([u])).get(u.id)!,
+      profile: (await cardsOf([u], userId)).get(u.id)!,
       roaches: theirRoaches.map((r) => ({
         id: r.publicId,
         clone: r.slot > 0,

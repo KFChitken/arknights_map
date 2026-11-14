@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/server/db";
-import { passCounters, sessions, users } from "@/lib/server/schema";
+import { passCounters, passes, sessions, users } from "@/lib/server/schema";
 import { GET, POST, PUT } from "./route";
 
 vi.mock("@/lib/server/env", async (original) => ({ ...(await original<typeof import("@/lib/server/env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -36,14 +36,19 @@ async function call(method: Method, op: string, body?: unknown, query = ""): Pro
   return { status: res.status, body: (await res.json()) as Record<string, unknown>, cache: res.headers.get("cache-control") };
 }
 
-/** Every request 通行证寻访 answers, as the page sends them */
-const EVERY: [Method, string, unknown?][] = [
+/** Every request 通行证寻访 answers, as the page sends them: first those that change what others may see */
+const EVERY: [Method, string, unknown?, string?][] = [
   ["POST", "open"],
   ["POST", "draw", { n: 1 }],
   ["PUT", "wish", { ids: [1] }],
+  ["PUT", "look", { charId: 1, plain: true }],
+  ["PUT", "wear", { passId: null }],
   ["GET", "collection"],
+  ["GET", "copies", undefined, "?char=1"],
   ["GET", "log"],
 ];
+/** Those that wait for the age check and the privacy policy */
+const CHANGING = 5;
 
 async function account(email: string) {
   const now = new Date();
@@ -71,10 +76,10 @@ afterEach(() => vi.unstubAllEnvs());
 describe("通行证寻访's requests", () => {
   it("are answered 404 while PASSES is off, as if nothing were here", async () => {
     vi.stubEnv("PASSES", "off");
-    for (const [method, op, body] of EVERY) expect((await call(method, op, body)).status, op).toBe(404);
+    for (const [method, op, body, query] of EVERY) expect((await call(method, op, body, query)).status, op).toBe(404);
     await signIn(await account("owner@example.com"));
-    for (const [method, op, body] of EVERY) {
-      expect(await call(method, op, body), op).toMatchObject({ status: 404, body: { error: "没有这个功能。" } });
+    for (const [method, op, body, query] of EVERY) {
+      expect(await call(method, op, body, query), op).toMatchObject({ status: 404, body: { error: "没有这个功能。" } });
     }
   });
 
@@ -82,7 +87,7 @@ describe("通行证寻访's requests", () => {
     vi.stubEnv("PASSES", "admins");
     expect((await call("POST", "open")).status).toBe(404);
     await signIn(await account("someone@example.com"));
-    for (const [method, op, body] of EVERY) expect((await call(method, op, body)).status, op).toBe(404);
+    for (const [method, op, body, query] of EVERY) expect((await call(method, op, body, query)).status, op).toBe(404);
     await signIn(await account("owner@example.com"));
     expect(await call("POST", "open")).toMatchObject({ status: 200, body: { tickets: 10, welcomed: true } });
   });
@@ -120,16 +125,48 @@ describe("通行证寻访's requests", () => {
     await signIn(id);
     await call("POST", "open");
     await db.update(users).set({ ageCheckAt: new Date() }).where(eq(users.id, id));
-    for (const [method, op, body] of EVERY.slice(0, 3)) {
+    for (const [method, op, body] of EVERY.slice(0, CHANGING)) {
       expect(await call(method, op, body), op).toMatchObject({ status: 428, body: { code: "age" } });
     }
-    for (const [method, op] of EVERY.slice(3)) expect((await call(method, op)).status, op).toBe(200);
+    for (const [method, op, , query] of EVERY.slice(CHANGING)) expect((await call(method, op, undefined, query)).status, op).toBe(200);
 
     await db.update(users).set({ ageCheckAt: null, policyAcceptedAt: new Date("2026-01-01T00:00:00Z") }).where(eq(users.id, id));
     const policy = await call("POST", "draw", { n: 1 });
     expect(policy.status).toBe(428);
     expect(policy.body.code).toBeUndefined();
+    expect((await call("PUT", "wear", { passId: null })).status).toBe(428);
     expect((await call("GET", "collection")).status).toBe(200);
+  });
+
+  it("let a player see their passes of one character, pick its look from a second copy, and wear one of theirs", async () => {
+    vi.stubEnv("PASSES", "on");
+    vi.stubEnv("PASS_ART", "off");
+    const id = await account("player@example.com");
+    const other = await account("other@example.com");
+    await signIn(id);
+    await call("POST", "open");
+    const [first] = await db.insert(passes).values({ userId: id, charId: 7, no: 3, wish: false, drawnAt: new Date(1_800_000_000_000) }).returning();
+    const [theirs] = await db.insert(passes).values({ userId: other, charId: 7, no: 4, wish: false, drawnAt: new Date() }).returning();
+
+    expect(await call("GET", "copies", undefined, "?char=7")).toMatchObject({
+      status: 200,
+      body: { charId: 7, copies: [{ id: first.id, no: 3, at: 1_800_000_000_000 }] },
+      cache: "no-store",
+    });
+    expect(await call("GET", "copies")).toMatchObject({ status: 400, body: { error: "没有这位角色。" } });
+    expect(await call("GET", "copies", undefined, "?char=abc")).toMatchObject({ status: 400 });
+    expect(await call("PUT", "look", { charId: 7, plain: true })).toMatchObject({ status: 409, body: { error: "再抽到一张这位，就能换成镭射版。" } });
+    await db.insert(passes).values({ userId: id, charId: 7, no: 5, wish: false, drawnAt: new Date() });
+    expect(await call("PUT", "look", { charId: 7, plain: true })).toMatchObject({ status: 200, body: { plain: [7] } });
+    expect(await call("PUT", "look", { charId: 7 })).toMatchObject({ status: 400 });
+
+    expect(await call("PUT", "wear", { passId: theirs.id })).toMatchObject({ status: 404, body: { error: "这张通行证不在你这里。" } });
+    expect(await call("PUT", "wear", { passId: String(first.id) })).toMatchObject({ status: 400 });
+    expect(await call("PUT", "wear", { passId: first.id })).toMatchObject({
+      status: 200,
+      body: { worn: { passId: first.id, charId: 7, no: 3, copies: 2, fancy: false } },
+    });
+    expect(await call("PUT", "wear", { passId: null })).toMatchObject({ status: 200, body: { worn: null } });
   });
 
   it("slow down a player who asks too fast", async () => {

@@ -7,6 +7,8 @@ import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
 import { CHARACTERS, matchesSearch, OPERATORS } from "@/lib/operators";
 import { logoutOthers } from "@/lib/authClient";
+import type { PassesMe } from "@/lib/passes";
+import { setLeanArt, useLeanArt } from "@/lib/passLean";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
@@ -19,6 +21,7 @@ import { OperatorPic, useOperatorArt } from "./OperatorNames";
 import HomeScreenRow, { LoginCodeBox } from "./HomeScreen";
 import PasswordBox, { type PasswordForm } from "./PasswordBox";
 import Sheet from "./Sheet";
+import { WornPassLine, WornPassMini } from "./WornPass";
 import RoachIcon from "../RoachIcon";
 import { characterName } from "@/i18n/names";
 
@@ -79,6 +82,7 @@ export default function ProfileSheet({
   onlyMains,
   onOpenOnlyMains,
   onOpenBadges,
+  passes,
   onUnblock,
   onSave,
   onPerlicaTimer,
@@ -105,6 +109,8 @@ export default function ProfileSheet({
   onlyMains?: boolean;
   onOpenOnlyMains?: (draft: Profile) => void;
   onOpenBadges?: (draft: Profile) => void;
+  /** 通行证寻访, when the player may draw: the pass they wear on their card, and 省流量 for passes on this device */
+  passes?: PassesMe;
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
   /** Switch her timer; only called when the box was changed and the rest saved */
@@ -121,6 +127,7 @@ export default function ProfileSheet({
 }) {
   const [p, setP] = useState<Profile>(draft ?? profile);
   const [saving, setSaving] = useState(false);
+  const lean = useLeanArt();
   // not asked yet shows unticked, and stays not asked unless the box is ticked
   const [timerOn, setTimerOn] = useState(perlicaTimer === "on");
   // 退出其他设备: what happened, once asked
@@ -174,7 +181,9 @@ export default function ProfileSheet({
               : T.profile.intro}
           </p>
         </div>
+        {passes?.worn && <WornPassMini pass={passes.worn} holder={displayName(p)} />}
       </div>
+      {passes?.worn && <WornPassLine pass={passes.worn} />}
       {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} onOpen={() => onOpenBadges(p)} />}
       {!tutorial && <HomeScreenRow />}
 
@@ -314,6 +323,18 @@ export default function ProfileSheet({
         <p className="hint">{T.profile.visits.note}</p>
       </fieldset>
       {!tutorial && onOpenOnlyMains && <OnlyMainsRow onlyMains={Boolean(onlyMains)} onOpen={() => onOpenOnlyMains(p)} />}
+
+      {passes && (
+        <fieldset>
+          <legend>{T.passes.lean.title}</legend>
+          {/* on this device alone, at once: not part of the card that 保存 sends */}
+          <label className="check">
+            <input type="checkbox" checked={lean} onChange={(e) => setLeanArt(e.target.checked)} />
+            {T.passes.lean.label}
+          </label>
+          <p className="hint">{T.passes.lean.hint}</p>
+        </fieldset>
+      )}
 
       {perlicaTimer !== undefined && (
         <fieldset>

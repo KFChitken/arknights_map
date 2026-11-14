@@ -8,12 +8,18 @@
 //       a character the lists now call by another name keeps their id, and so their passes and numbers
 //   node scripts/build-pass-catalog.mjs --colors <file.json>
 //       colours by name ({ "<game>:<name>": "#rrggbb" }, game ak or ef), as the art script picks them from each
-//       character's picture; a character without one keeps theirs
+//       character's picture (operator-art/pass/colors.json); a character without one keeps theirs
+//   node scripts/build-pass-catalog.mjs --english <file.json>
+//       English names by Chinese name ({ "<name>": "<English>" }), when the English words (src/i18n/en.ts) do not
+//       have them yet; once they do, every run takes them from there
 //
 // An id is given once and never changes, nor is it given to anyone else: passes are stored by it. New characters
 // come after the rest, and nobody is ever taken out, so a pass already drawn always has its character. Until the art
-// script gives one, a character's colour is worked out from their name.
+// script gives one, a character's colour is worked out from their name. The English name is printed on the pass
+// (null: none known, the pass prints the Chinese one alone); a character without one in the table keeps theirs.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const OUT = "src/data/pass-catalog.json";
 const LISTS = { ak: "src/data/arknights-operators.json", ef: "src/data/endfield-operators.json" };
@@ -41,9 +47,19 @@ for (const [game, file] of Object.entries(LISTS)) {
       known.rarity = o.rarity ?? null;
       continue;
     }
-    catalog.push({ id: catalog.reduce((m, c) => Math.max(m, c.id), 0) + 1, game, name: o.name, rarity: o.rarity ?? null, color: nameColor(o.name) });
+    catalog.push({ id: catalog.reduce((m, c) => Math.max(m, c.id), 0) + 1, game, name: o.name, rarity: o.rarity ?? null, color: nameColor(o.name), en: null });
     added++;
   }
+}
+
+// the English names: the file given, else the English words' table of characters (en.names.characters)
+const english = args.indexOf("--english");
+const { en } = await import(pathToFileURL(path.resolve("src/i18n/en.ts")).href);
+const named = english >= 0 ? read(args[english + 1]) : (en.names?.characters ?? {});
+for (const c of catalog) {
+  const n = named[c.name];
+  if (typeof n === "string" && n.trim()) c.en = n.trim();
+  c.en ??= null;
 }
 
 const colors = args.indexOf("--colors");
@@ -54,7 +70,7 @@ if (colors >= 0) {
 
 const names = new Set(catalog.map(key));
 if (names.size !== catalog.length) throw new Error("two characters of one game share a name");
-const lines = catalog.map((c) => "    " + JSON.stringify({ id: c.id, game: c.game, name: c.name, rarity: c.rarity, color: c.color }));
+const lines = catalog.map((c) => "    " + JSON.stringify({ id: c.id, game: c.game, name: c.name, en: c.en, rarity: c.rarity, color: c.color }));
 writeFileSync(OUT, `{\n  "note": ${JSON.stringify(NOTE)},\n  "characters": [\n${lines.join(",\n")}\n  ]\n}\n`);
 console.log(`${catalog.length} characters, ${added} new`);
 

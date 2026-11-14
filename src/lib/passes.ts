@@ -66,10 +66,42 @@ export type PassState = {
   welcomed: boolean;
   /** when the next site day begins, for 「明天 4 点」 */
   nextDayAt: number;
+  /** the pass they wear on their profile card, if any */
+  worn: WornPass | null;
 };
 
 /** One character in 我的通行证 */
 export type OwnedChar = { charId: number; copies: number; no: number; lastAt: number };
+/** One of a player's passes of a character, for picking which one they wear */
+export type PassCopy = { id: number; no: number; at: number };
+/** A player's passes of one character, lowest number first */
+export type CharCopies = { charId: number; copies: PassCopy[] };
+
+/**
+ * A pass as profile cards show it: the one a player wears (PublicProfile.pass), with what a card prints on it, so
+ * that a card needs no catalogue. Its holder is the card's name.
+ */
+export type PassOnCard = {
+  game: PassGame;
+  charId: number;
+  /** the character's name, and in English (null: none known) */
+  name: string;
+  en: string | null;
+  rarity: number | null;
+  no: number;
+  /** how many passes of the character the player has (潜能) */
+  copies: number;
+  /** drawn in the special look (isFancy) */
+  fancy: boolean;
+  /** the colour of the pass, and its picture's files (src/lib/passArt.ts; null: none here, or switched off) */
+  color: string;
+  art: string | null;
+  /** the character's small round picture's file (/operator-art), shown where there is no 立绘 */
+  avatar: string | null;
+  drawnAt: number;
+};
+/** The pass a player wears, as their own pages have it: also which of their passes it is */
+export type WornPass = PassOnCard & { passId: number };
 /** 我的通行证: every character the player has, and how many passes in all */
 export type Collection = { chars: OwnedChar[]; passes: number };
 /** A line of 寻访记录, newest first */
@@ -81,6 +113,8 @@ export type PassesMe = {
   tickets: number;
   /** the dot on the button: tickets enough for a draw of ten, or the first ten waiting */
   dot: boolean;
+  /** the pass they wear, for 我的资料 */
+  worn: WornPass | null;
 };
 
 /** The look a pass is drawn in, by game: the normal ones, and the special ones a second copy unlocks */

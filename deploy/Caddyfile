@@ -52,11 +52,12 @@ zhoupmap.com, zhoupmap.com:8443 {
 	encode @compressible zstd gzip
 	# the characters' pictures (src/lib/server/operatorArt.ts), files named by their content, straight from the
 	# server's folder: through the site's own process each cost it a whole request (2026-11-10: about 8% of its
-	# CPU). Only those names. Switching the pictures off (OPERATOR_AVATARS) stops the pages asking for them;
-	# to stop them being served at all, take the folder's files away too.
+	# CPU). Only those names: the small ones, and in pass/ the bigger ones of passes (src/lib/server/passArt.ts).
+	# Switching the pictures off (OPERATOR_AVATARS, PASS_ART) stops the pages asking for them; to stop them being
+	# served at all, take the folder's files away too.
 	# (and only a file that is there: a missing one goes on to the site, so its 404 is not kept for a year)
 	@operatorArt {
-		path_regexp ^/operator-art/[0-9a-f]{16}\.webp$
+		path_regexp ^/operator-art/(?:[0-9a-f]{16}\.webp|pass/[0-9a-f]{16}(?:\.s|\.b)?\.(?:webp|avif))$
 		file {
 			root /srv
 		}
