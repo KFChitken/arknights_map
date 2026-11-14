@@ -452,7 +452,7 @@ function Horn({ size, color = "#1b1d22" }: { size: number; color?: string }) {
 /** A row of roaches with 祀掌柜 in the middle, before a yellow sun */
 function CoverArt() {
   return (
-    <div className="pa pa-cover">
+    <div className="pp-art pa-cover">
       <span className="sun" />
       <span className="ground" />
       <img className="r1" src="/avatars/doctor.webp" alt="" />
@@ -479,7 +479,7 @@ function Art({ page, drawn, ui, mapStyle }: { page: UpdatePage; drawn: boolean; 
     login: () => <ArtLogin />,
     notice: () => <ArtNotice />,
   };
-  return <div className={`pa pa-${page}`}>{drawn && art[page]()}</div>;
+  return <div className={`pp-art pa-${page}`}>{drawn && art[page]()}</div>;
 }
 
 /** The three layouts' small pictures, the one in use framed and ticked, and the 界面 button under them */

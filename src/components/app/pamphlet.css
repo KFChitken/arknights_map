@@ -2,7 +2,8 @@
  * 最近更新 (Pamphlet.tsx). Over everything on the map in each layout (the sides ≤ 25, sheets 30, 界面's question 31),
  * under the toast (40). A card on a phone, an open book on a computer (pp-wide); the pages' pictures are drawn in
  * a box of 330 × 220, shrunk by --art on a small phone and enlarged to 1.3 on the book's left page, and the whole
- * book by --book in a window too small for it.
+ * book by --book in a window too small for it. This sheet comes with the booklet and stays on the page once it has
+ * opened, so each rule begins at a class of the booklet's own (pamphletCss.test.ts).
  */
 .pamphlet {
   position: fixed;
@@ -64,14 +65,14 @@
 }
 .pp-brand { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; }
 .pp-brand i { width: 10px; height: 10px; border-radius: 2px; background: #ffd23f; box-shadow: 0 0 0 1.5px #1b1d22; }
-.pp-x { width: 44px; height: 44px; border: 0; padding: 0; background: transparent; display: flex; align-items: center; justify-content: center; }
-.pp-x svg { width: 20px; height: 20px; }
+:where(.pamphlet) .pp-x { width: 44px; height: 44px; border: 0; padding: 0; background: transparent; display: flex; align-items: center; justify-content: center; }
+:where(.pamphlet) .pp-x svg { width: 20px; height: 20px; }
 .pp-phone .pp-view { flex: 1; min-height: 0; }
 .pp-phone .pp-page { overflow-y: auto; overscroll-behavior: contain; }
 .pp-in { box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; }
 .pp-pic { position: relative; flex: none; width: calc(330px * var(--art)); height: calc(220px * var(--art)); }
 .pp-pic.cover { height: calc(128px * var(--art)); }
-.pp-pic > .pa { transform: scale(var(--art)); transform-origin: 0 0; }
+.pp-pic > .pp-art { transform: scale(var(--art)); transform-origin: 0 0; }
 
 .pp-kicker { margin-top: 14px; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; color: #b0341f; }
 .pp-title { margin: 4px 0 0; font-size: 23px; line-height: 1.3; font-weight: 900; }
@@ -286,7 +287,7 @@
 .pp-folio { margin-top: auto; padding-top: 12px; display: flex; justify-content: space-between; font-size: 12px; color: #5d5a52; }
 
 /* ---- the pictures ---- */
-.pa {
+.pp-art {
   position: absolute;
   left: 0;
   top: 0;
@@ -301,8 +302,8 @@
   line-height: normal;
   color: #1b1d22;
 }
-.pa > * { position: absolute; }
-.pa img { display: block; }
+.pp-art > * { position: absolute; }
+.pp-art img { display: block; }
 .pa-tick {
   position: absolute;
   width: 22px;
@@ -316,7 +317,7 @@
   justify-content: center;
 }
 
-.pa.pa-cover { height: 128px; overflow: visible; border-radius: 0; background: none; box-shadow: none; }
+.pp-art.pa-cover { height: 128px; overflow: visible; border-radius: 0; background: none; box-shadow: none; }
 .pa-cover .sun { left: 116px; top: 6px; width: 98px; height: 98px; border-radius: 50%; background: #ffd23f; opacity: 0.65; }
 .pa-cover .ground { left: 6px; top: 117px; width: 318px; height: 2px; border-radius: 2px; background: #1b1d22; }
 .pa-cover .r1 { left: 8px; top: 56px; width: 62px; height: 62px; }

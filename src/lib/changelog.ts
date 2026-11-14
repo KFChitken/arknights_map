@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-14", kind: "fix", text: "电脑上抽屉界面的按钮不再被盖住" },
   { date: "2026-11-14", kind: "new", text: "咕咕嘎嘎的专属动作：肚皮滑行、摇摆" },
   { date: "2026-11-14", kind: "new", text: "绝对主角的专属动作：纸飞机、鬼脸" },
   { date: "2026-11-14", kind: "new", text: "管理员的专属动作：传送带、警报、水壶" },
