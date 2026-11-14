@@ -658,6 +658,9 @@ export const en: Draft<Messages> = {
         mainlandLink: "privacy policy",
         maps: "{b} base maps come from Amap, Tencent Maps or OpenStreetMap / OpenFreeMap (in mainland China, Amap is used, or Tencent Maps when Amap isn't available). Your browser requests the maps from them directly, so they can see your IP address and the area of the map you're viewing. Place search uses Tencent Location Service, Amap, OpenStreetMap (Nominatim) and Photon. In mainland China, as you type, your browser sends what you've typed and the map location you're viewing straight to Tencent Location Service for suggestions, and it can see your IP address; when Tencent gives no suggestions, and when you press “Search”, your search terms and the map area you're viewing go through our server to Amap, OpenStreetMap and Photon, which see our server's address instead. The server doesn't write search terms to the database and keeps no logs; it only keeps them in memory, together with the places found, for one day (without recording who searched), so the same search doesn't have to be asked again. Elsewhere, your browser asks OpenStreetMap for search results directly, and it can see your IP address, the map area you're viewing and the search terms you type. Their own privacy policies apply to all of this. I never give them your account information.",
         mapsB: "Maps and search:",
+        sponsor:
+          "{b} the Chinese site's sponsoring page only has links to Afdian, and perhaps Ko-fi later. You pay there, under their own privacy policies, and {site} never receives your payment details. In Afdian's dashboard I can see your Afdian nickname, the amount and your message; I use the sign-in email in your message only to give your account the thank-you titles, and don't record it anywhere else on {site}.",
+        sponsorB: "Sponsoring:",
         noOthers: "Apart from the above, and except where the law requires it or to protect the personal safety of you or others, I don't give your information to any third party.",
       },
       keep: {
@@ -2230,6 +2233,18 @@ export const en: Draft<Messages> = {
         condition: "Given by the Admin to those who helped find bugs in the beta",
         lockedHint: "Given by the Admin",
         quote: "Thanks for helping {site} squash bugs!",
+      },
+      feeder: {
+        name: "Server Feeder",
+        condition: "Given by the Admin as thanks to those who sponsored {site}'s servers",
+        lockedHint: "Given by the Admin",
+        quote: "The servers are well fed. Thanks for treating {site} to a meal!",
+      },
+      volt: {
+        name: "?!Zap Zap?!",
+        condition: "Given by the Admin as thanks to those who sponsored {site}'s servers",
+        lockedHint: "Given by the Admin",
+        quote: "?! Servers that run on love, charged up by you ?!",
       },
       survivor: {
         name: "Awakening from the Sarcophagus",

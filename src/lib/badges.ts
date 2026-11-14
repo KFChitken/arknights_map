@@ -126,6 +126,12 @@ export type Badge = {
    * picture is switched on (src/app/guide-art/[file]/route.ts): /guide-art/<file>(-mini).svg, else the drawn one
    */
   pictureArt?: string;
+  /** Handed out by the owner by login email (src/lib/server/admin.ts setBadge), never earned by playing */
+  byHand?: true;
+  /** Left off the wall until it is had, so no one is shown a way to get it: the thanks for sponsoring */
+  unlisted?: true;
+  /** A thanks for sponsoring the servers (支持舟P地图, src/lib/sponsor.ts): the owner gives these together, whatever was given */
+  sponsor?: true;
 };
 
 /** 千里传须: the two main roaches this far apart when two players become 触须之交 */
@@ -488,6 +494,50 @@ export const BADGES: Badge[] = [
       return fmt(T.lib.badges.beta.quote, { site: siteName() });
     },
     pill: { background: "#3a74e8", color: "#ffffff", border: "1.5px solid #3a74e8" },
+    byHand: true,
+  },
+  {
+    // the thanks for 支持舟P地图 (src/lib/sponsor.ts): the same whatever was given, and only for show
+    id: "feeder",
+    get name() {
+      return T.lib.badges.feeder.name;
+    },
+    code: "MEM-FEED",
+    series: "memorial",
+    get condition() {
+      return fmt(T.lib.badges.feeder.condition, { site: siteName() });
+    },
+    get lockedHint() {
+      return T.lib.badges.feeder.lockedHint;
+    },
+    get quote() {
+      return fmt(T.lib.badges.feeder.quote, { site: siteName() });
+    },
+    pill: { background: "#fff1dc", color: "#8a4b14", border: "1.5px solid #e8a961" },
+    byHand: true,
+    unlisted: true,
+    sponsor: true,
+  },
+  {
+    id: "volt",
+    get name() {
+      return T.lib.badges.volt.name;
+    },
+    code: "MEM-VOLT",
+    series: "memorial",
+    get condition() {
+      return fmt(T.lib.badges.volt.condition, { site: siteName() });
+    },
+    get lockedHint() {
+      return T.lib.badges.volt.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.volt.quote;
+    },
+    pill: { background: "#e6edff", color: "#1c3fae", border: "1.5px solid #7d9dff" },
+    byHand: true,
+    unlisted: true,
+    sponsor: true,
   },
   {
     id: "survivor",
@@ -1238,8 +1288,8 @@ export function badgeById(id: string) {
   return BADGES.find((b) => b.id === id);
 }
 
-/** 罗德岛正式干员's count: the badges held besides itself */
-export const badgesOwned = (held: { id: string }[]) => held.filter((b) => b.id !== "regular").length;
+/** 罗德岛正式干员's count: the badges held besides itself, and besides the thanks for sponsoring (paying earns nothing in play) */
+export const badgesOwned = (held: { id: string }[]) => held.filter((b) => b.id !== "regular" && !badgeById(b.id)?.sponsor).length;
 
 /** 罗德岛精英干员's count: how many of ELITE_SERIES a badge is held of */
 export const seriesCovered = (held: { id: string }[]) =>
@@ -1270,12 +1320,12 @@ export const lockedText = (b: Badge, counts: Record<BadgeCount, number>) =>
 
 /**
  * The badges the wall lists: every lasting one, of the event badges only those
- * earned or on offer now, and a timed one only while it is held. Past events
- * nobody earned stay out of sight.
+ * earned or on offer now, a timed one only while it is held, and an unlisted one
+ * only once had. Past events nobody earned stay out of sight.
  */
 export function wallBadges(earned: Set<string>, now = Date.now()) {
   const onNow = new Set(activeEvents(now).flatMap((e) => (e.badge ? [e.badge] : [])));
-  return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days));
+  return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days && !b.unlisted));
 }
 
 /**

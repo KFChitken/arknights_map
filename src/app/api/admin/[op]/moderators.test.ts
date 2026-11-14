@@ -200,6 +200,7 @@ const OWNER_OPS = [
   "withdrawNotice",
   "sponsor",
   "saveSponsor",
+  "saveSponsorStartup",
   "saveSponsorMonth",
   "removeSponsorMonth",
   "zones",

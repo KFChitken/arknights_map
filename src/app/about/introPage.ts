@@ -37,7 +37,8 @@ export function introFills(english: boolean, gray: boolean, name = siteName()): 
     declDays: String(DECLARATION_DAYS),
     radarKm: String(RADAR_RADIUS_KM),
     helpHours: String(HELP_HOURS),
-    badgeCount: String(BADGES.length),
+    // the thanks for sponsoring are left out: they are not earned in play
+    badgeCount: String(BADGES.filter((b) => !b.unlisted).length),
     keepDays: String(KEEP_ACTIVITY_DAYS),
   };
 }

@@ -23,7 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
-import { listenMode, studyMode } from "@/lib/server/env";
+import { listenMode, sponsorMode, studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -162,6 +162,12 @@ export default async function Privacy() {
       <p>
         {fmtNodes(T.server.privacy.where.maps, { b: <strong>{T.server.privacy.where.mapsB}</strong> })}
       </p>
+      {/* only once it is shown to everyone (SPONSOR=on, src/lib/server/env.ts) */}
+      {sponsorMode() === "on" && (
+        <p>
+          {fmtNodes(T.server.privacy.where.sponsor, { b: <strong>{T.server.privacy.where.sponsorB}</strong>, site: siteName() })}
+        </p>
+      )}
       <p>{T.server.privacy.where.noOthers}</p>
 
       <h2>{T.server.privacy.keep.title}</h2>

@@ -414,6 +414,13 @@
       "when": 1794705901550,
       "tag": "0059_listen_rooms",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794718024925,
+      "tag": "0060_sponsor",
+      "breakpoints": true
     }
   ]
 }

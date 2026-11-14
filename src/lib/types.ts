@@ -37,6 +37,8 @@ export type RoachColor = (typeof ROACH_COLORS)[number];
 // new looks go at the end: the map lists its icons by position here
 export const ROACH_AVATARS = ["hood", "doctor", "endmin", "imp", "gugu"] as const;
 export type RoachAvatar = (typeof ROACH_AVATARS)[number];
+/** Looks given only as the thanks for sponsoring (支持舟P地图, src/lib/sponsor.ts), listed on its card: none yet */
+export const SPONSOR_AVATARS: readonly RoachAvatar[] = [];
 /** The guides' own looks (src/lib/guides.ts): drawn like the others, never offered to players */
 export const GUIDE_AVATARS = ["amiya", "perlica", "talulah", "minghe", "si"] as const;
 export type GuideAvatar = (typeof GUIDE_AVATARS)[number];

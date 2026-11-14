@@ -109,7 +109,7 @@ describe("/about", () => {
     for (const said of [
       `within ${DECLARATION_RADIUS_KM}&nbsp;km`,
       `up to ${MAX_CLONES} clones`,
-      `${BADGES.length} titles to earn`,
+      `${BADGES.filter((b) => !b.unlisted).length} titles to earn`,
       `for ${DECLARATION_DAYS}&nbsp;days`,
       `up to ${RADAR_RADIUS_KM}&nbsp;km`,
       `after ${HELP_HOURS}&nbsp;hours`,

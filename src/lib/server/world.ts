@@ -5,7 +5,7 @@ import { fmt, T } from "@/i18n";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
 import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food, type Template } from "../declarations";
-import { AWAY_DAYS, badgesOwned, seriesCovered } from "../badges";
+import { AWAY_DAYS, badgeById, badgesOwned, seriesCovered } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
 import { nextMorning } from "../morning";
@@ -107,6 +107,7 @@ import {
 } from "./talulah";
 import { clonesOut, hasStayed, ignoreSi, inkOnMap, inkSeen, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
 import { inkTapped } from "./siInk";
+import { sponsorOpen, thanksShownTo } from "./sponsor";
 import {
   award,
   declared,
@@ -294,11 +295,12 @@ export function profileColumns(p: Profile) {
 }
 
 /**
- * Profile cards as the viewer sees them, badges included, and the pass each wears where the viewer may see passes
+ * Profile cards as the viewer sees them, badges included (the thanks for sponsoring where SPONSOR shows them to the
+ * viewer, src/lib/server/sponsor.ts), and the pass each wears where the viewer may see passes
  * (src/lib/server/passes.ts wornPasses); viewer null: only the names are wanted.
  */
 export async function cardsOf(people: UserRow[], viewerId: string | null) {
-  const badges = await shownBadges(people);
+  const badges = await shownBadges(people, () => thanksShownTo(viewerId));
   const worn = await wornPasses(people, viewerId);
   return new Map(
     people.map((u): [string, PublicProfile] => {
@@ -394,7 +396,8 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
   if (u.lastSeenOn !== today) await db.update(users).set({ lastSeenOn: today }).where(eq(users.id, u.id));
   if (daysAway >= AWAY_DAYS) await wakeUp(u.id);
   const mine = await ownRoaches(u.id);
-  const badges = await earnedBy(u.id);
+  // the thanks for sponsoring only while SPONSOR shows them to this player (src/lib/server/sponsor.ts)
+  const badges = (await earnedBy(u.id)).filter((b) => !badgeById(b.id)?.sponsor || sponsorOpen(u));
   const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
   const isNew = Date.now() - u.createdAt.getTime() < NEWCOMER_DAYS * DAY;
   // only asked for while the tutorial can still show; a young account's records are far from the 90-day clean-up

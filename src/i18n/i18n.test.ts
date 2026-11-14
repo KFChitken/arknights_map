@@ -417,9 +417,10 @@ const CODES = new Set([
 
 /**
  * Where a pattern matches what people type, whatever the page's language: full-width dashes in a 登录码,
- * 。 for a dot and contact details in a name, the Chinese punctuation that ends a bare address in a 公告
+ * 。 for a dot and contact details in a name, the Chinese punctuation that ends a bare address in a 公告,
+ * ￥ and ， in a sum the owner types for 支持舟P地图
  */
-const TYPED = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts", "src/lib/noticeText.ts"]);
+const TYPED = new Set(["src/lib/deskCode.ts", "src/lib/nameCheck.ts", "src/lib/nameRules.ts", "src/lib/noticeText.ts", "src/lib/sponsor.ts"]);
 
 describe("the code", () => {
   it("writes no Chinese of its own where the words have been moved (they go into src/i18n/zh.ts)", () => {
@@ -468,8 +469,8 @@ describe("the code", () => {
     const onServer = (f: string) =>
       f.startsWith("src/lib/server/") ||
       f.startsWith("src/app/api/") ||
-      // what only the server makes: the privacy page, every page's head, the app's manifest
-      ["src/app/privacy/page.tsx", "src/app/layout.tsx", "src/app/manifest.ts"].includes(f);
+      // what only the server makes: the privacy page, the sponsors' accounts, every page's head, the app's manifest
+      ["src/app/privacy/page.tsx", "src/app/support/page.tsx", "src/app/layout.tsx", "src/app/manifest.ts"].includes(f);
     const read = (f: string) => readFileSync(`${ROOT}/${f}`, "utf8");
     const files = sourceFiles(ROOT).filter((f) => !f.startsWith("src/i18n/"));
     expect(files.filter((f) => !onServer(f) && /\bT\.server\b/.test(read(f)))).toEqual([]);

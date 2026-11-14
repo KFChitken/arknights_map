@@ -78,6 +78,7 @@ export const KEPT: [prefix: string, why: string][] = [
   // what the admin reads of a case, and the name a held declaration is stored with (a code, as fakeRoaches' cities are)
   ["src/lib/server/safety.ts", "admin"],
   ["src/lib/server/siteSettings.ts", "admin"],
+  ["src/lib/server/sponsorAdmin.ts", "admin"],
   ["src/lib/server/totp.ts", "admin"],
   // what the admin reads of a roach the site reported, as put in a 提醒区
   ["src/lib/server/watchPlaces.ts", "admin"],

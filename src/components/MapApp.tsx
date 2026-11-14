@@ -81,6 +81,7 @@ import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePla
 import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY } from "@/lib/rules";
 import { nextSiteDayAt, siteDay, siteDayStart } from "@/lib/siteDay";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
+import type { SponsorView } from "@/lib/sponsor";
 import { apiFetch } from "@/lib/apiFetch";
 import type { Basemap, LngLat, MainlandMap, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
@@ -217,6 +218,7 @@ import ProfileSheet from "./app/ProfileSheet";
 import RadarSheet from "./app/RadarSheet";
 import RoachReportSheet from "./app/RoachReportSheet";
 import SafetySheet from "./app/SafetySheet";
+import SponsorSheet, { fetchSponsor } from "./app/SponsorSheet";
 import AgeCheckSheet from "./app/AgeCheckSheet";
 import RoachActor, { POKE_LANDS_MS, PokeActor } from "./app/RoachActor";
 import TouchStage, { ShoutStage, type ShoutPlace, type StagePlace, type TouchCast } from "./app/TouchStage";
@@ -397,6 +399,8 @@ type Panel =
   /** 地图上看哪些蟑螂 (只看本体), from the counts at the top, or from 资料 (back: to it, with its unsaved changes) */
   | { kind: "onlyMains"; back?: Panel }
   | { kind: "badges"; draft: Profile }
+  /** 支持舟P地图, opened from 我的资料: the draft is kept for going back */
+  | { kind: "sponsor"; draft: Profile }
   /** greeting: 阿米娅向导's of the day, and away: 佩丽卡监督's report of the time away, which this card then carries */
   | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null; away: PerlicaItem | null }
   /** 阿米娅向导's greeting of the day, on a day without 欢迎回家 */
@@ -616,6 +620,8 @@ export default function MapApp({
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [blocked, setBlocked] = useState<BlockedPlayer[]>([]);
+  // 支持舟P地图's card, asked for as 我的资料 opens; null while the owner has it off, and on the English site
+  const [sponsor, setSponsor] = useState<SponsorView | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   /** 公告 (src/lib/notices.ts): those everyone sees, as the server last said, and what this device remembers of them */
   const [notices, setNotices] = useState<NoticeList>(firstNotices);
@@ -1707,6 +1713,15 @@ export default function MapApp({
     if (!profileOpen || !me) return;
     worldRef.current!.blocks().then(setBlocked, () => setBlocked([]));
   }, [profileOpen, me]);
+  // and so is whether 支持舟P地图 is on, with its card: once each time it opens
+  useEffect(() => {
+    if (!profileOpen || !meId) return;
+    let live = true;
+    fetchSponsor().then((s) => live && setSponsor(s));
+    return () => {
+      live = false;
+    };
+  }, [profileOpen, meId]);
 
   /** 每日任务: a touch, a declaration or a reply that counted lights the dot on the 寻访 button at once (src/lib/passes.ts) */
   const passesDotAfter = (result: unknown) => {
@@ -4484,6 +4499,7 @@ export default function MapApp({
             badges={me.badges}
             wornBadge={me.wornBadge}
             onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
+            onOpenSponsor={sponsor ? (draft) => setPanel({ kind: "sponsor", draft }) : undefined}
             blocked={blocked}
             held={me.profileHeld}
             // not while the tutorial runs, as she does not show up before it is over
@@ -4543,6 +4559,14 @@ export default function MapApp({
             onClose={() => setPanel(null)}
           />
         );
+      case "sponsor":
+        return sponsor ? (
+          <SponsorSheet
+            view={sponsor}
+            onBack={() => setPanel({ kind: "profile", draft: p.draft })}
+            onClose={() => setPanel(null)}
+          />
+        ) : null;
       case "homecoming": {
         // her greeting counts as seen however this card is left
         const seen = () => (p.greeting ? worldRef.current!.markSeen([p.greeting.id]).catch(() => {}) : Promise.resolve());

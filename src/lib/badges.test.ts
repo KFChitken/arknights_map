@@ -42,6 +42,21 @@ describe("badges", () => {
     // the timed one only while it is held
     expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain("survivor");
     expect(wallBadges(new Set(["survivor"]), after).map((b) => b.id)).toContain("survivor");
+    // the thanks for sponsoring only once had: no one is shown a way to them
+    for (const id of ["feeder", "volt"]) {
+      expect(wallBadges(new Set(), after).map((b) => b.id)).not.toContain(id);
+      expect(wallBadges(new Set([id]), after).map((b) => b.id)).toContain(id);
+    }
+    expect(wallBadges(new Set(["feeder", "volt"]), after)).toHaveLength(57);
+  });
+
+  it("gives by hand only 内测功臣 and the two thanks for sponsoring, which nothing in play earns", () => {
+    expect(BADGES.filter((b) => b.byHand).map((b) => b.id)).toEqual(["beta", "feeder", "volt"]);
+    for (const b of BADGES.filter((b) => b.byHand)) expect([b.goal, b.days, b.series]).toEqual([undefined, undefined, "memorial"]);
+    // 服务器饲养员 and ？！电电？！ go together, off the wall until had
+    const thanks = BADGES.filter((b) => b.sponsor);
+    expect(thanks.map((b) => b.name)).toEqual(["服务器饲养员", "？！电电？！"]);
+    for (const b of thanks) expect([b.byHand, b.unlisted]).toEqual([true, true]);
   });
 
   it("holds a timed badge for its days, and counts what is left in whole days", () => {
@@ -91,6 +106,9 @@ describe("badges", () => {
   it("counts the badges held besides 罗德岛正式干员, and the series of 精英干员", () => {
     const held = ["trainee", "tipsy", "regular", "lookatme"].map((id) => ({ id }));
     expect(badgesOwned(held)).toBe(3);
+    // the thanks for sponsoring count for nothing in play
+    expect(badgesOwned([...held, { id: "feeder" }, { id: "volt" }])).toBe(3);
+    expect(badgesOwned([...held, { id: "beta" }])).toBe(4);
     expect(seriesCovered(held)).toBe(3);
     expect(seriesCovered([...held, { id: "courtesy" }, { id: "amiya" }, { id: "twins" }])).toBe(5);
     expect(lockedText(badgeById("regular")!, { ...none, badgesOwned: 3 })).toBe("3 / 5 枚");

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { BADGES } from "@/lib/badges";
+import { BADGES, type Badge } from "@/lib/badges";
 import { GRAY_MAX_DAYS, grayUntilWords, type GrayState } from "@/lib/adminConsole";
 import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } from "@/lib/beijing";
 import { CAP_RANGE, ROOM_RANGE, type ListenDesk } from "@/lib/listen";
@@ -12,13 +12,14 @@ import { lasted, LEVEL_MARK, mainlandWords, type IncidentView, type SiteStatus }
 import { ago } from "../app/InboxSheet";
 import { errorWords } from "./api";
 import { useConsole } from "./context";
+import SponsorPanel from "./Sponsor";
 import { PanelHead } from "./ui";
 import { joinedWords, ruleWords } from "./words";
 
 /**
- * 网站和工具: what the site's own checks found (网站状态), the name blocklist, whether an email was banned, and
- * badges by hand. The same tools as before, in the 管理台's panels; this week's people moved to 数据看板
- * (People.tsx). A moderator has only the name blocklist (the rest is the owner's: OWNER_ONLY).
+ * 网站和工具: what the site's own checks found (网站状态), the name blocklist, whether an email was banned,
+ * badges by hand, and 支持舟P地图 (Sponsor.tsx). The same tools as before, in the 管理台's panels; this week's
+ * people moved to 数据看板 (People.tsx). A moderator has only the name blocklist (the rest is the owner's: OWNER_ONLY).
  */
 export default function Site() {
   const { gate } = useConsole();
@@ -32,6 +33,7 @@ export default function Site() {
       <NameList added={wordsAdded} onAdded={() => setWordsAdded((n) => n + 1)} />
       {owner && <BanLookup />}
       {owner && <BadgeDesk />}
+      {owner && <SponsorPanel />}
     </div>
   );
 }
@@ -829,22 +831,40 @@ function BanLookup() {
   );
 }
 
-/** 内测功臣 is handed out here, and any badge can be taken back from someone gaming it */
+/**
+ * The badges given by hand: 内测功臣, and the thanks for sponsoring to a sponsor who wrote their login email in the
+ * payment's note, both of them at once. Any badge can be taken back, from someone gaming it or a refunded sponsor.
+ */
 function BadgeDesk() {
   const { call, say } = useConsole();
   const [email, setEmail] = useState("");
   const [badge, setBadge] = useState("beta");
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const run = async (give: boolean) => {
+  /** Taking back, asked first: which */
+  const [asking, setAsking] = useState<Badge[] | null>(null);
+  const thanks = BADGES.filter((b) => b.sponsor);
+  const named = (list: Badge[]) => list.map((b) => `「${b.name}」`).join("和");
+  /** Give or take back each badge in turn, saying what went through and what did not */
+  const run = async (give: boolean, list: Badge[]) => {
     setBusy(true);
-    try {
-      await call(give ? "giveBadge" : "takeBadge", [email, give ? "beta" : badge]);
-      say(give ? "发好了，TA 下次打开网站时会看到。" : "收回了。");
-      setAsking(false);
-    } catch (e) {
-      say(errorWords(e));
+    const done: Badge[] = [];
+    const failed: { badge: Badge; why: string }[] = [];
+    for (const b of list) {
+      try {
+        await call(give ? "giveBadge" : "takeBadge", [email, b.id]);
+        done.push(b);
+      } catch (e) {
+        failed.push({ badge: b, why: errorWords(e) });
+      }
     }
+    const said = done.length ? `${named(done)}${give ? "发好了，TA 下次打开网站时会看到。" : "收回了。"}` : "";
+    // the same reason for every one, like an email no one signs in with, is said once
+    const why =
+      !done.length && failed.length && failed.every((f) => f.why === failed[0].why)
+        ? failed[0].why
+        : failed.map((f) => `「${f.badge.name}」：${f.why}`).join(" ");
+    say([said, why].filter(Boolean).join(" "));
+    setAsking(null);
     setBusy(false);
   };
   return (
@@ -854,10 +874,22 @@ function BadgeDesk() {
         TA 的登录邮箱
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
       </label>
+      <p className="ac-sub">赞助的人在爱发电付款留言里写的登录邮箱，粘在这里发赞助谢礼（{named(thanks)}，两个一起发）；退款了就一起收回。</p>
       <div className="ac-row">
-        <button type="button" className="ac-btn" disabled={busy || !email.trim()} onClick={() => run(true)}>
-          发「内测功臣」
+        <button type="button" className="ac-btn primary" disabled={busy || !email.trim()} onClick={() => run(true, thanks)}>
+          发赞助谢礼
         </button>
+        <button type="button" className="ac-btn danger" disabled={busy || !email.trim()} onClick={() => setAsking(thanks)}>
+          收回赞助谢礼
+        </button>
+      </div>
+      <p className="ac-muted small">只发一个的话：</p>
+      <div className="ac-row">
+        {BADGES.filter((b) => b.byHand).map((b) => (
+          <button key={b.id} type="button" className="ac-btn" disabled={busy || !email.trim()} onClick={() => run(true, [b])}>
+            发「{b.name}」
+          </button>
+        ))}
       </div>
       <label className="ac-field">
         收回哪个称号
@@ -871,17 +903,22 @@ function BadgeDesk() {
       </label>
       {asking ? (
         <div className="ac-confirm">
-          <span>确定收回这个称号吗？</span>
-          <button type="button" className="ac-btn danger-solid small" disabled={busy} onClick={() => run(false)}>
+          <span>确定收回{named(asking)}吗？</span>
+          <button type="button" className="ac-btn danger-solid small" disabled={busy} onClick={() => run(false, asking)}>
             收回
           </button>
-          <button type="button" className="ac-btn small" onClick={() => setAsking(false)}>
+          <button type="button" className="ac-btn small" onClick={() => setAsking(null)}>
             算了
           </button>
         </div>
       ) : (
         <div className="ac-row">
-          <button type="button" className="ac-btn danger" disabled={busy || !email.trim()} onClick={() => setAsking(true)}>
+          <button
+            type="button"
+            className="ac-btn danger"
+            disabled={busy || !email.trim()}
+            onClick={() => setAsking(BADGES.filter((b) => b.id === badge))}
+          >
             收回
           </button>
         </div>

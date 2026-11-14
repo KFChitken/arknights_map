@@ -73,7 +73,7 @@ import { banAccount, banOf } from "./account";
 import { logAdmin, staffRoles, type Actor } from "./admins";
 import { award } from "./badges";
 import { db } from "./db";
-import { ADMIN_EMAILS } from "./env";
+import { ADMIN_EMAILS, sponsorMode } from "./env";
 import { HttpError } from "./http";
 import { nameJudgeNow } from "./nameWords";
 import { roachByFeedId, roachesChanged } from "./roachFeed";
@@ -98,6 +98,7 @@ import {
   type ModActionRow,
   type UserRow,
 } from "./schema";
+import { sponsorOpen } from "./sponsor";
 import { addNotes, type NewNote } from "./staffNotes";
 import { profileOf, removeRoach, storedDeclaration } from "./world";
 
@@ -874,7 +875,10 @@ async function revertAction(tx: Pick<typeof db, "update" | "delete">, a: ModActi
   if (a.action === "ageCheck") await tx.update(users).set({ ageCheckAt: null }).where(eq(users.id, a.userId));
 }
 
-/** Hand out 内测功臣, or take any badge back (from someone gaming them), by the player's login email. */
+/**
+ * Hand out a badge given by hand (内测功臣, and the thanks for sponsoring), or take any badge back (from someone
+ * gaming them, or a sponsor refunded), by the player's login email.
+ */
 export async function setBadge(email: string, badge: string, give: boolean, by: Actor | null = null) {
   const [u] = await db
     .select()
@@ -884,7 +888,16 @@ export async function setBadge(email: string, badge: string, give: boolean, by: 
   if (!u) throw new HttpError(400, "没有用这个邮箱登录的账号。");
   if (!badgeById(badge)) throw new HttpError(400, "没有这个称号。");
   if (give) {
-    if (badge !== "beta") throw new HttpError(400, "这个称号只能自己拿，不能发。");
+    if (!badgeById(badge)?.byHand) throw new HttpError(400, "这个称号只能自己拿，不能发。");
+    // the thanks for sponsoring only to those SPONSOR shows them to (src/lib/server/sponsor.ts), so no one else learns of it
+    if (badgeById(badge)?.sponsor && !sponsorOpen(u)) {
+      throw new HttpError(
+        400,
+        sponsorMode() === "off"
+          ? "现在支持舟P地图谁都看不到（SPONSOR 是 off），赞助谢礼先发不了。"
+          : "现在支持舟P地图只给站长和管理员看（SPONSOR 是 admins），赞助谢礼也先只能发给站长和管理员。",
+      );
+    }
     if (!(await award(u.id, [badge])).length) throw new HttpError(400, "TA 已经有这个称号了。");
     if (by) await logAdmin(by, "act", "act.badge", { targetId: u.id, detail: `发了称号「${badgeById(badge)?.name ?? badge}」` });
     return;
@@ -1523,8 +1536,8 @@ export async function doneToday(viewer: Viewer, now = Date.now()): Promise<DoneT
     .sort((a, b) => Number(b.you) - Number(a.you) || b.n - a.n);
 }
 
-/** Steps taken on the site rather than on an account: 知道了, the name blocklist, 禁放区, 全站变灰 and 听歌 */
-const SITE_ACTS = new Set(["act.ack", "act.nameWords", "act.zone", "act.zoneLift", "act.gray", "act.grayEnd", "act.listen"]);
+/** Steps taken on the site rather than on an account: 知道了, the name blocklist, 禁放区, 全站变灰, 听歌 and 支持舟P地图 */
+const SITE_ACTS = new Set(["act.ack", "act.nameWords", "act.zone", "act.zoneLift", "act.gray", "act.grayEnd", "act.listen", "act.sponsor"]);
 /** Lines of the log that are always about one account, so one without an account now was about one since gone */
 const aboutAnAccount = (what: string) => (what.startsWith("act.") && !SITE_ACTS.has(what)) || what === "view.account";
 

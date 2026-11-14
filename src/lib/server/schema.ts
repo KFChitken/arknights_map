@@ -1651,6 +1651,44 @@ export const listenInvites = pgTable(
   ],
 );
 
+/**
+ * 支持舟P地图 (src/lib/sponsor.ts): whether the entry shows, where its buttons go, and what starting the site
+ * cost. One row, written from the 管理台; none before the first save, which reads as switched off.
+ */
+export const sponsorSettings = pgTable(
+  "sponsor_settings",
+  {
+    id: smallint("id").primaryKey().default(1),
+    enabled: boolean("enabled").notNull().default(false),
+    afdian: text("afdian").notNull().default(""),
+    kofi: text("kofi").notNull().default(""),
+    /** What starting the site cost, in fen: paid by the owner, shown apart from the months and never paid back from them */
+    startupFen: integer("startup_fen").notNull().default(0),
+    /** What that went on, in a few words */
+    startupNote: text("startup_note").notNull().default(""),
+    updatedAt: at("updated_at").notNull().defaultNow(),
+  },
+  (t) => [check("sponsor_settings_one_row", sql`${t.id} = 1`), check("sponsor_settings_startup", sql`${t.startupFen} >= 0`)],
+);
+
+/** Each month's accounts as /support shows them, entered by the owner, in fen. Nothing in them points at any player. */
+export const sponsorMonths = pgTable(
+  "sponsor_months",
+  {
+    /** 2026-11 */
+    month: text("month").primaryKey(),
+    spentFen: integer("spent_fen").notNull(),
+    receivedFen: integer("received_fen").notNull(),
+    /** Where the money went, in a few words */
+    note: text("note").notNull().default(""),
+    updatedAt: at("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("sponsor_months_month", sql`${t.month} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+    check("sponsor_months_sums", sql`${t.spentFen} >= 0 and ${t.receivedFen} >= 0`),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;

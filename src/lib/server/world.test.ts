@@ -2492,16 +2492,33 @@ describe("server world", () => {
     expect((await me.me()).wornBadge).toBeNull();
   });
 
-  it("lets the admin hand out 内测功臣 and take any badge back, by email", async () => {
+  it("lets the admin hand out 内测功臣 and the thanks for sponsoring and take any badge back, by email", async () => {
     await setBadge(" ME@example.com", "beta", true);
     expect(await badgeIds(me)).toEqual(["beta"]);
     await expect(setBadge("me@example.com", "beta", true)).rejects.toThrow("已经有");
     await expect(setBadge("me@example.com", "trainee", true)).rejects.toThrow("不能发");
+    await expect(setBadge("me@example.com", "nonesuch", true)).rejects.toThrow("没有这个称号");
     await expect(setBadge("nobody@example.com", "beta", true)).rejects.toThrow("没有用这个邮箱");
     await wear(me.id, "beta");
     await setBadge("me@example.com", "beta", false);
     expect(await me.me()).toMatchObject({ badges: [], wornBadge: null });
     await expect(setBadge("me@example.com", "beta", false)).rejects.toThrow("没有这个称号");
+
+    // the thanks for sponsoring: both given by the email the sponsor wrote in the payment's note, taken back on a
+    // refund; while SPONSOR shows 支持舟P地图 to everyone (to whom else, src/lib/server/sponsor.test.ts)
+    vi.stubEnv("SPONSOR", "on");
+    try {
+      await setBadge("me@example.com", "feeder", true);
+      await setBadge("me@example.com", "volt", true);
+      expect(await badgeIds(me)).toEqual(["feeder", "volt"]);
+      expect(await wear(me.id, "volt")).toBe(true);
+      await setBadge("me@example.com", "volt", false);
+      expect(await me.me()).toMatchObject({ badges: [{ id: "feeder", seen: false }], wornBadge: null });
+      await setBadge("me@example.com", "feeder", false);
+      expect(await me.me()).toMatchObject({ badges: [], wornBadge: null });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("catches up badges the counts already earned", async () => {

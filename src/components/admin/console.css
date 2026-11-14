@@ -470,6 +470,12 @@
 .ac .ac-num-form input:not([type="checkbox"]) { flex: 0 0 110px; }
 .ac .ac-num-form .ac-inline-label { white-space: nowrap; }
 .ac-result { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: #f7f8fa; font-size: 13px; overflow-wrap: anywhere; }
+/* 支持舟P地图 (Sponsor.tsx): its three parts, the month's form in a row, and the accounts as /support shows them */
+.ac-sponsor-head { margin: 8px 0 0; padding-top: 12px; border-top: 1px solid #eef0f3; font-size: 14px; }
+.ac-sponsor-month { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.ac-sponsor-month .ac-sponsor-note { grid-column: 1 / -1; }
+.ac-sponsor-ledger td { font-variant-numeric: tabular-nums; }
+.ac-sponsor-ledger td.short { color: #a61b1b; }
 
 /* ---- 管理员 (the owner's) ---- */
 .ac-admins { display: flex; flex-direction: column; gap: 16px; }

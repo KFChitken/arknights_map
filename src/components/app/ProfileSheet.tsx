@@ -11,7 +11,7 @@ import type { PassesMe } from "@/lib/passes";
 import { setLeanArt, useLeanArt } from "@/lib/passLean";
 import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
-import { MAX_FAVOURITES, NAME_MAX, UID_MAX } from "@/lib/rules";
+import { MAX_FAVOURITES, NAME_MAX, siteName, UID_MAX } from "@/lib/rules";
 import { MAX_SUPPORT } from "@/lib/support";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import type { BlockedPlayer } from "@/lib/world/types";
@@ -82,6 +82,7 @@ export default function ProfileSheet({
   onlyMains,
   onOpenOnlyMains,
   onOpenBadges,
+  onOpenSponsor,
   passes,
   onPassOnMap,
   onUnblock,
@@ -110,6 +111,8 @@ export default function ProfileSheet({
   onlyMains?: boolean;
   onOpenOnlyMains?: (draft: Profile) => void;
   onOpenBadges?: (draft: Profile) => void;
+  /** 支持舟P地图, only while the owner has it switched on; the unsaved changes are kept */
+  onOpenSponsor?: (draft: Profile) => void;
   /** 通行证寻访, when the player may draw: the pass they wear on their card, and 省流量 for passes on this device */
   passes?: PassesMe;
   /** Switch 地图卡片上显示立绘; only called when the box was changed and the rest saved */
@@ -445,6 +448,11 @@ export default function ProfileSheet({
             <a className="pill" href={localPath("/privacy")} target="_blank" rel="noreferrer">
               {T.common.privacy}
             </a>
+            {onOpenSponsor && (
+              <button className="pill" onClick={() => onOpenSponsor(p)}>
+                {fmt(T.profile.sponsor, { site: siteName() })}
+              </button>
+            )}
           </div>
           {othersOut && <p className="hint">{othersOut}</p>}
         </>

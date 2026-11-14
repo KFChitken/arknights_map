@@ -58,6 +58,8 @@ import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords,
 import { listenDesk } from "@/lib/server/listen";
 import { endAllRooms } from "@/lib/server/listenRooms";
 import { endGray, grayState, listenSettings, setGray, setListen } from "@/lib/server/siteSettings";
+import { sponsorForAdmin } from "@/lib/server/sponsor";
+import { removeSponsorMonth, saveSponsorMonth, saveSponsorSettings, saveSponsorStartup } from "@/lib/server/sponsorAdmin";
 import { ackIncident, siteStatus } from "@/lib/server/watchReport";
 import { drawZone, liftZone, listZones, previewZone, zoneSpot } from "@/lib/server/zones";
 
@@ -338,6 +340,24 @@ export const POST = route(
         result = await listenDesk(now);
         break;
       }
+
+      // ---- 支持舟P地图 (the owner's, src/lib/server/sponsorAdmin.ts): the switch and the links, what starting the site cost,
+      // each month's accounts; each step answers with all of it as it now stands ----
+      case "sponsor":
+        result = await sponsorForAdmin();
+        break;
+      case "saveSponsor":
+        result = await saveSponsorSettings(args[0], actor, now);
+        break;
+      case "saveSponsorStartup":
+        result = await saveSponsorStartup(args[0], actor, now);
+        break;
+      case "saveSponsorMonth":
+        result = await saveSponsorMonth(args[0], actor, now);
+        break;
+      case "removeSponsorMonth":
+        result = await removeSponsorMonth(args[0], actor, now);
+        break;
 
       // ---- 禁放区 (the owner's, src/lib/server/zones.ts): the list, one to see on the map, what a circle takes in, drawing, lifting ----
       case "zones":

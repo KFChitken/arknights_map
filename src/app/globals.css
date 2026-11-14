@@ -1294,6 +1294,52 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 .desk-login p { margin: 0 0 8px; }
 .guide-about { margin: 8px 0 0; line-height: 1.6; }
 
+/* ---- 支持舟P地图 (src/components/app/SponsorSheet.tsx): the card in 我的资料 and on /support ---- */
+.sponsor { font-size: 15px; line-height: 1.65; }
+.sponsor p { margin: 0 0 10px; }
+.sponsor .sponsor-title { margin: 2px 0 8px; font-size: 18px; line-height: 1.4; }
+.sponsor-progress { margin: 14px 0; padding: 12px 14px; border-radius: 14px; background: #fff6d6; }
+.sponsor-progress.full { background: #e3f6ec; }
+.sponsor .sponsor-sum { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 14px; }
+.sponsor-sum b { font-size: 17px; }
+.sponsor-done { padding: 2px 10px; border-radius: 999px; background: #24a874; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.sponsor-bar { height: 10px; overflow: hidden; border-radius: 999px; background: #1b1d2214; }
+.sponsor-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ffc93d, #ff9f43); }
+.sponsor-progress.full .sponsor-bar span { background: #24a874; }
+.sponsor .sponsor-progress .hint { margin: 6px 0 0; }
+.sponsor-copy { margin: 16px 0 0; }
+.sponsor-copy button.pill { padding: 8px 16px; font-size: 14px; font-weight: 700; }
+.sponsor .sponsor-copy .hint { margin: 8px 0 0; }
+.sponsor-thanks p { margin: 0; }
+.sponsor-thanks ol { margin: 2px 0; padding-left: 1.6em; }
+.sponsor-thanks ol.one { padding-left: 0; list-style: none; }
+.sponsor-copy input.sponsor-email { margin-top: 6px; }
+.sponsor .sponsor-signin { margin: 16px 0 0; padding: 10px 12px; border-radius: 12px; background: #f1f3f5; font-size: 14px; font-weight: 600; }
+.sponsor-go { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.sponsor-button {
+  display: block; padding: 12px 16px; border: 1px solid var(--ink); border-radius: 12px; background: var(--ink); color: #fff;
+  font-size: 15px; font-weight: 700; line-height: 1.4; text-align: center; text-decoration: none;
+}
+.sponsor-button.alt { border-color: #d6d9de; background: #fff; color: var(--ink); }
+.sponsor-notes { margin: 0 0 12px; padding-left: 1.2em; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.sponsor-notes li { margin-bottom: 2px; }
+.sponsor-ledger { display: inline-block; color: var(--ink); font-size: 14px; font-weight: 700; text-decoration: none; }
+/* /support's accounts */
+.sponsor-ledger-table { overflow-x: auto; }
+.sponsor-ledger-table table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sponsor-ledger-table th { padding: 6px 8px; color: var(--muted); font-weight: 600; text-align: right; white-space: nowrap; }
+.sponsor-ledger-table td { padding: 8px; border-top: 1px solid #eef0f2; text-align: right; vertical-align: top; white-space: nowrap; }
+.sponsor-ledger-table th:first-child, .sponsor-ledger-table td:first-child { padding-left: 0; text-align: left; }
+.sponsor-ledger-table td small { display: block; max-width: 16em; color: var(--muted); font-size: 12px; line-height: 1.5; white-space: normal; }
+.sponsor-ledger-table td.short { color: #b42318; }
+.sponsor-ledger-table td small.repaid { white-space: nowrap; }
+/* the month may wrap, 「2026 年」 over 「11 月」, so 结余 still fits a 320px phone */
+.support .sponsor-ledger-table td:first-child { white-space: normal; min-width: 4.6em; }
+@media (max-width: 359px) {
+  .support .sponsor-ledger-table table { font-size: 13px; }
+  .support .sponsor-ledger-table th, .support .sponsor-ledger-table td { padding-left: 5px; padding-right: 5px; }
+}
+
 /* ---- 本周舟P热榜 ---- */
 .hot-card { overflow: hidden; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px #e6e8eb; }
 .hot-head { position: relative; padding: 14px 16px 16px; background: var(--ink); color: #fff; }

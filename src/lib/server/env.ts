@@ -1,4 +1,5 @@
 import { siteName } from "../rules";
+import type { SponsorMode } from "../sponsor";
 
 export const isProd = process.env.NODE_ENV === "production";
 
@@ -113,6 +114,16 @@ export const listenMode = (): "on" | "admins" | "off" => (["on", "admins"] as co
  * development.
  */
 export const MUSIC_DIR = process.env.MUSIC_DIR || "music";
+
+/**
+ * 支持舟P地图 (src/lib/server/sponsor.ts): SPONSOR=on shows it to everyone, once the owner has switched it on in the
+ * 管理台 with an 爱发电 link; admins, only to the 站长 and the admins (to try it on the live site first); off (the
+ * default) to nobody. Shown means the way in, /support, and the thanks for sponsoring, on anyone's card and on the
+ * player's own; the rest are answered as if nothing were there, and the thanks can only be given to those it shows
+ * them to. What the owner keeps in the 管理台, and the thanks given, stay, whichever it is. Read on every use, so the
+ * tests can switch it.
+ */
+export const sponsorMode = (): SponsorMode => (["on", "admins"] as const).find((v) => v === process.env.SPONSOR) ?? "off";
 
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
 export const TILES_DIR = process.env.TILES_DIR || "tiles";

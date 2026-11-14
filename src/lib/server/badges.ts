@@ -472,12 +472,15 @@ export async function catchUpBadges() {
   );
   await give("delivery", sql`select ${visits.guestId} from ${visits}`);
   await comrades(Date.now(), false);
-  // last, by the badges held now: five besides 罗德岛正式干员 itself (石棺里的苏醒 left out, as it may have run out),
-  // and one of each of ELITE_SERIES
+  // last, by the badges held now: five besides 罗德岛正式干员 itself (石棺里的苏醒 left out, as it may have run out, and
+  // the thanks for sponsoring, as badgesOwned leaves them out), and one of each of ELITE_SERIES
+  const uncounted = ["regular", "survivor", ...BADGES.filter((b) => b.sponsor).map((b) => b.id)];
   await give(
     "regular",
-    sql`select ${userBadges.userId} from ${userBadges} where ${userBadges.badge} not in ('regular', 'survivor')
-      group by ${userBadges.userId} having count(*) >= 5`,
+    sql`select ${userBadges.userId} from ${userBadges} where ${userBadges.badge} not in (${sql.join(
+      uncounted.map((id) => sql`${id}`),
+      sql`, `,
+    )}) group by ${userBadges.userId} having count(*) >= 5`,
   );
   const series = BADGES.filter((b) => ELITE_SERIES.includes(b.series));
   await give(
@@ -502,13 +505,18 @@ export async function earnedBy(userId: string): Promise<EarnedBadge[]> {
   });
 }
 
-/** What profile cards show of each player: their badges, the one they wear first. */
-export async function shownBadges(people: UserRow[]) {
+/**
+ * What profile cards show of each player: their badges, the one they wear first. The thanks for sponsoring only
+ * when thanksShown says so, asked only when one of them holds one (world.ts cardsOf).
+ */
+export async function shownBadges(people: UserRow[], thanksShown: () => Promise<boolean> = async () => true) {
   const ids = [...new Set(people.map((u) => u.id))];
   const rows = ids.length ? await db.select().from(userBadges).where(inArray(userBadges.userId, ids)) : [];
+  const hideThanks = rows.some((r) => badgeById(r.badge)?.sponsor) && !(await thanksShown());
   const shown = new Map<string, { badges: ShownBadge[]; worn: string | null }>();
   for (const u of people) {
     const theirs = BADGES.flatMap((b) => {
+      if (hideThanks && b.sponsor) return [];
       const r = rows.find((x) => x.userId === u.id && x.badge === b.id);
       if (!r || !stillHeld(b, r.earnedAt.getTime())) return [];
       return [r.serial ? { id: b.id, serial: r.serial } : { id: b.id }];
