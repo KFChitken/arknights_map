@@ -1727,6 +1727,56 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 @media (prefers-reduced-motion: reduce) {
   .shout-mark { animation: none; }
 }
+/* ---- each look's own moves (LookMoves.tsx, lib/lookArt.ts).
+   A scene's stage says whose they are: you-<look> (not sneaking up: a shadow has no look) and them-<look>, the look
+   your map draws them in, so a stranger's clone reacts as the hood. The pieces lie over the roach in its 88 box;
+   on the dock (.dock-look) the same pieces lie over your own avatar, smaller. ---- */
+.ta-lay { position: absolute; inset: 0; }
+.ta-lay svg { width: 100%; height: 100%; }
+
+/* 初始, 大胆碰别人 (挥袖子): one sleeve up, waved twice, both lamps blinking in your colour */
+.hd-wave, .hd-glow, .hd-eyes, .hd-flash { opacity: 0; }
+.hd-sleeve { transform-origin: 47.5px 36px; transform: rotate(-160deg); }
+.hd-glow, .hd-flash { filter: drop-shadow(0 0 3px var(--glow)) drop-shadow(0 0 6px var(--glow)); }
+.ta-bold.you-hood .hd-calm { animation-name: hd-calm; }
+.ta-bold.you-hood .hd-wave { animation-name: hd-wave; }
+.ta-bold.you-hood .hd-sleeve { animation-name: hd-sleeve; }
+.ta-bold.you-hood .hd-glow { animation-name: hd-blink; }
+@keyframes hd-calm { 0%, 13% { opacity: 1; } 14%, 45% { opacity: 0; } 46%, 100% { opacity: 1; } }
+@keyframes hd-wave { 0%, 13% { opacity: 0; } 14%, 45% { opacity: 1; } 46%, 100% { opacity: 0; } }
+@keyframes hd-sleeve {
+  0%, 14% { transform: rotate(-148deg); }
+  20% { transform: rotate(-174deg); }
+  26% { transform: rotate(-146deg); }
+  32% { transform: rotate(-174deg); }
+  38% { transform: rotate(-148deg); }
+  45%, 100% { transform: rotate(-160deg); }
+}
+@keyframes hd-blink { 0%, 15% { opacity: 0; } 18% { opacity: 1; } 22% { opacity: 0; } 26% { opacity: 1; } 30% { opacity: 0; } 34% { opacity: 1; } 38%, 100% { opacity: 0; } }
+/* 初始, 被大胆碰 (灯一闪，睁圆眼): its lamps flash, two round eyes pop up on the visor and blink, ! with them */
+.hd-eyes ellipse { transform-box: fill-box; transform-origin: center; }
+.ta-bold.them-hood .hd-flash, .dock-bold .hd-flash { animation-name: hd-flash; }
+.ta-bold.them-hood .hd-eyes, .dock-bold .hd-eyes { animation-name: hd-eyes; }
+.ta-bold.them-hood .hd-eyes ellipse, .dock-bold .hd-eyes ellipse { animation-name: hd-eye; }
+.ta-bold.them-hood .ta-mark { animation-name: hd-mark; }
+@keyframes hd-flash { 0%, 43% { opacity: 0; } 45% { opacity: 1; } 50% { opacity: 0.3; } 55% { opacity: 1; } 60% { opacity: 0.3; } 65% { opacity: 1; } 82%, 100% { opacity: 0; } }
+@keyframes hd-eyes { 0%, 43% { opacity: 0; } 45%, 86% { opacity: 1; } 92%, 100% { opacity: 0; } }
+@keyframes hd-eye { 0%, 43% { transform: scale(0.3); } 47% { transform: scale(1.3); } 51% { transform: scale(1); } 64% { transform: scale(1, 0.12); } 67%, 100% { transform: scale(1); } }
+@keyframes hd-mark { 0%, 46% { opacity: 0; transform: scale(0); } 50% { opacity: 1; transform: scale(1.25); } 54% { transform: scale(1); } 92% { opacity: 1; transform: scale(1); } 100% { opacity: 0; } }
+/* 被偷偷碰: the same a size smaller, under ? */
+.ta-sneaky.them-hood .hd-flash, .dock-sneaky .hd-flash { animation-name: hd-flash-q; }
+.ta-sneaky.them-hood .hd-eyes, .dock-sneaky .hd-eyes { animation-name: hd-eyes-q; }
+.ta-sneaky.them-hood .hd-eyes ellipse, .dock-sneaky .hd-eyes ellipse { animation-name: hd-eye-q; }
+@keyframes hd-flash-q { 0%, 44% { opacity: 0; } 47% { opacity: 0.8; } 53% { opacity: 0.2; } 59% { opacity: 0.8; } 72%, 100% { opacity: 0; } }
+@keyframes hd-eyes-q { 0%, 44% { opacity: 0; } 47%, 84% { opacity: 1; } 90%, 100% { opacity: 0; } }
+@keyframes hd-eye-q { 0%, 44% { transform: scale(0.3); } 48% { transform: scale(1.08); } 52% { transform: scale(0.9); } 70% { transform: scale(0.9, 0.12); } 73%, 100% { transform: scale(0.9); } }
+
+/* the dock's: over your own avatar (its box), moving with it, as long as the dock's scene */
+.dock-look * { animation-duration: 1.6s; animation-fill-mode: both; animation-timing-function: ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .dock-look, .dock-look * { animation: none !important; }
+}
+
 /* ---- the touched side (DockFx.tsx): your dock avatar reacts; heard declarations float down over the dock ----
    Someone touched you: only your own dock avatar (bottom left) reacts, 1.6s, then 消息
    opens. Nothing on the map moves and nothing points anywhere. */

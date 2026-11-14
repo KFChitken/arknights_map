@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { T } from "@/i18n";
+import { GLOW } from "@/lib/roachSvg";
 import { dockFeeler, mark, miniHeart, soundArcs, tap } from "@/lib/touchArt";
-import type { DrawnAvatar, RoachColor } from "@/lib/types";
+import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
+import { touchedOn } from "./LookMoves";
 
 /**
  * The touched side (the third step of the touch and declaration animations): only your
@@ -37,8 +39,9 @@ export const DOCK_ANIM: Record<DockKind, string> = {
 };
 /** Who touched, for the card of a bold touch or a new 触须之交 */
 export type DockFrom = { name: string; avatar: DrawnAvatar; color: RoachColor };
-/** Where the dock is on screen when the scene starts */
-export type DockAt = { av: { x: number; y: number; w: number; h: number }; mail: { x: number; y: number; w: number; h: number }; top: number };
+type Box = { x: number; y: number; w: number; h: number };
+/** Where the dock is on screen when the scene starts: your avatar, the picture in it, 消息, and the top of the map */
+export type DockAt = { av: Box; icon: Box; mail: Box; top: number };
 
 /** How long the dock's scene runs */
 export const DOCK_MS = 1600;
@@ -64,19 +67,43 @@ export const cake = (size: number) =>
   `<rect x="2.5" y="16.5" width="21" height="7" rx="2" fill="#ffd5e6" stroke="#1b1d22" stroke-width="1.4"/>` +
   `<path d="M4 14c1.5 1.4 3 1.4 4.5 0s3-1.4 4.5 0 3 1.4 4.5 0 3-1.4 4.5 0" fill="none" stroke="#ff4f8b" stroke-width="1.4"/></svg>`;
 
-export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockFrom | null; at: DockAt; onDone: () => void }) {
+export function DockFx({
+  kind,
+  from,
+  at,
+  me,
+  onDone,
+}: {
+  kind: DockKind;
+  from: DockFrom | null;
+  at: DockAt;
+  /** Your own look, which reacts on your avatar */
+  me: { avatar: RoachAvatar; color: RoachColor };
+  onDone: () => void;
+}) {
   useEffect(() => {
     const t = window.setTimeout(onDone, DOCK_MS + 50);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { av, mail, top } = at;
+  const { av, icon, mail, top } = at;
   const cx = av.x + av.w / 2;
+  // your look's own reaction, over your avatar's picture and moving with it (LookMoves.tsx)
+  const reacts = kind === "sneaky" || kind === "bold" ? touchedOn(me.avatar, GLOW[me.color]) : null;
+  const look = reacts && (
+    <div
+      className={`dock-fx dock-look dock-${kind} ${DOCK_ANIM[kind]}`}
+      style={{ left: icon.x, top: icon.y, width: icon.w, height: icon.h }}
+    >
+      {reacts}
+    </div>
+  );
   if (kind === "sneaky") {
     const h = Math.max(20, Math.round(av.y - top + 3));
     return (
       <>
         <div className="dock-fx" style={{ left: cx - 7, top }} {...html(dockFeeler(h))} />
+        {look}
         <div className="dock-fx ta-dtap" style={{ left: cx - 20, top: av.y + 2 }} {...html(tap())} />
         <div className="dock-fx ta-dmark" style={{ left: av.x - 14, top: av.y - 30 }} {...html(mark("?"))} />
       </>
@@ -120,6 +147,7 @@ export function DockFx({ kind, from, at, onDone }: { kind: DockKind; from: DockF
   const friend = kind === "friend";
   return (
     <>
+      {look}
       <div className="dock-fx ta-dcard" style={{ left: mail.x + mail.w / 2, top: mail.y + mail.h / 2 }}>
         <span className={`ta-card${friend ? " pink" : ""}`}>
           {from && (

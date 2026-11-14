@@ -95,15 +95,19 @@ export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine" | 
 
 export const bodyOpacityFor = (opts: Pick<RoachOpts, "mine" | "clone" | "friend">) => bodyOpacity(opts.mine, opts.clone, opts.friend);
 
-/** The standing hood; raise: its right sleeve lifted (to drink, see flipArt.ts), or "both" sleeves (to shout, see touchArt.ts). */
-export function hoodBody(glow: string, { raise = false }: { raise?: boolean | "both" } = {}) {
+/**
+ * The standing hood; raise: its right sleeve lifted (to drink, see flipArt.ts), or "both" sleeves (to shout, see touchArt.ts).
+ * sleeveClass: the right sleeve in a group of that class, for CSS to turn (it waves, see lookArt.ts).
+ */
+export function hoodBody(glow: string, { raise = false, sleeveClass }: { raise?: boolean | "both"; sleeveClass?: string } = {}) {
   const right = raise ? ` transform="rotate(-160.5 47.5 36)"` : "";
   const left = raise === "both" ? ` transform="rotate(160.5 16.5 36)"` : "";
+  const sleeve = `<rect x="40" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"${right}/>`;
   return `<g fill="none" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round">
   <path d="M27 14 C24 7 17 3 8 4"/><path d="M36 13 C38 6 43 2 51 2"/>
 </g>
 <rect x="9" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"${left}/>
-<rect x="40" y="33" width="15" height="25" rx="5" fill="#33363d" stroke="${LINE}" stroke-width="2"${right}/>
+${sleeveClass ? `<g class="${sleeveClass}">${sleeve}</g>` : sleeve}
 <path d="M22 40 L42 40 L43.5 57.5 L20.5 57.5 Z" fill="#fff" stroke="${LINE}" stroke-width="2" stroke-linejoin="round"/>
 <path d="M23.5 42.5 L40.5 50 M40.5 42.5 L23.5 50" stroke="${LINE}" stroke-width="1.8" stroke-linecap="round"/>
 <path d="M10 40 C10 22 20 12 32 12 C44 12 54 22 54 40 C54 43 51 44 48 42 L16 42 C13 44 10 43 10 40 Z" fill="#1d1f24" stroke="${LINE}" stroke-width="2"/>

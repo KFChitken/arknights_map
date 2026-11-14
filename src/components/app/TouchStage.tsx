@@ -21,6 +21,7 @@ import {
 } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
+import { boldYou, touchedOn } from "./LookMoves";
 
 /**
  * Who is in a touch scene. you: your own look and the name your dock shows. them: the
@@ -40,7 +41,8 @@ const html = (markup: string) => ({ dangerouslySetInnerHTML: { __html: markup } 
  * Touching someone, played once on the toucher's own screen over the spot of the roach
  * touched (which the map leaves out meanwhile): 偷偷 a shadow tiptoes up and taps low,
  * 大胆 your roach hops in and its feeler lands with 啵! and your name card, 成为触须之交
- * both feelers meet under a heart. Tapping or dragging the map ends it at once.
+ * both feelers meet under a heart. Each look adds its own moves (LookMoves.tsx). Tapping
+ * or dragging the map ends it at once.
  */
 export default function TouchStage({
   kind,
@@ -66,12 +68,18 @@ export default function TouchStage({
   }, []);
 
   const { you, them } = cast;
-  // a stranger's clone wears the plain hood, so its feeler is the hood's; a 触须之交's wears TA's look (roachSvg.ts)
-  const f = feelers(you.avatar, them.clone && !them.friend ? "hood" : them.avatar);
+  // a stranger's clone wears the plain hood with white lamps, so its feeler and its moves are the hood's; a
+  // 触须之交's wears TA's look (roachSvg.ts)
+  const plain = them.clone && !them.friend;
+  const theirLook = plain ? "hood" : them.avatar;
+  const f = feelers(you.avatar, theirLook);
   const theirs = (friend: boolean) => <RoachIcon color={them.color} size={88} avatar={them.avatar} clone={them.clone} friend={friend} />;
   const yours = <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
+  const touched = touchedOn(theirLook, GLOW[plain ? "white" : them.color]);
   const line = (d: string, cls = "") => <path className={`ta-line ${cls}`} d={d} pathLength={1} />;
   const stage = { "--dur": `${TOUCH_MS[kind]}ms`, "--end": place.end } as CSSProperties;
+  // each look's own moves play by these (LookMoves.tsx); sneaking up, you are a shadow with no look
+  const looks = `${kind === "sneaky" ? "" : ` you-${you.avatar}`} them-${theirLook}`;
 
   let scene;
   if (kind === "sneaky") {
@@ -84,6 +92,7 @@ export default function TouchStage({
           <div className="ta-jump">
             <div className="ta-look">
               <div className="ta-a">{theirs(them.friend)}</div>
+              {touched}
             </div>
           </div>
         </div>
@@ -99,11 +108,12 @@ export default function TouchStage({
     scene = (
       <>
         <div className="ta-you">
-          <div className="ta-body">{yours}</div>
+          <div className="ta-body">{boldYou(you.avatar, you.color) ?? yours}</div>
         </div>
         <div className="ta-them">
           <div className="ta-jump">
             <div className="ta-a">{theirs(them.friend)}</div>
+            {touched}
           </div>
         </div>
         <svg className="ta-lines" viewBox="0 0 240 160" aria-hidden="true">
@@ -154,7 +164,7 @@ export default function TouchStage({
       {/* under the stage and over the map: a tap, a drag or a wheel anywhere ends the scene */}
       <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="ta-place" style={{ left: place.left, top: place.top, transform: `scale(${place.s})` }} aria-hidden="true">
-        <div className={`ta-stage ta-${kind}`} style={stage}>
+        <div className={`ta-stage ta-${kind}${looks}`} style={stage}>
           {scene}
         </div>
       </div>

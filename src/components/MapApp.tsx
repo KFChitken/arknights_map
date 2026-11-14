@@ -1443,9 +1443,12 @@ export default function MapApp({
     const av = dockAvRef.current?.getBoundingClientRect();
     const mail = dockMailRef.current?.getBoundingClientRect();
     if (!av?.width || !mail) return null;
+    // the picture itself, which your look's own reaction lies over (the avatar around it can be a little taller)
+    const icon = dockAvRef.current?.querySelector("img")?.getBoundingClientRect() ?? av;
     // under what the layout has along the top (the site's name), where a feeler comes down from
     const top = document.querySelector("[data-chrome-top]")?.getBoundingClientRect().bottom ?? 0;
-    return { av: { x: av.left, y: av.top, w: av.width, h: av.height }, mail: { x: mail.left, y: mail.top, w: mail.width, h: mail.height }, top };
+    const box = (r: DOMRect) => ({ x: r.left, y: r.top, w: r.width, h: r.height });
+    return { av: box(av), icon: box(icon), mail: box(mail), top };
   };
   const motionOff = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -5205,7 +5208,9 @@ export default function MapApp({
         />
       )}
 
-      {dockScene && <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} onDone={dockScene.done} />}
+      {dockScene && (
+        <DockFx kind={dockScene.kind} from={dockScene.from} at={dockScene.at} me={{ avatar: myAvatar, color: myColor }} onDone={dockScene.done} />
+      )}
       {vialAt && <SanityFly from={vialAt} onDone={() => setVialAt(null)} />}
       {batchScene && (
         <BatchStage
