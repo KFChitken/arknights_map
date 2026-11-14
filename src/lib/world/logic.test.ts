@@ -37,7 +37,7 @@ describe("declarations", () => {
     expect(say({ template: "iam", character: "能天使", title: "佩洛" })).toBe("我是能天使的佩洛");
     expect(say({ template: "love", character: "佩丽卡" })).toBe("我永远喜欢佩丽卡");
     expect(say({ template: "buff", character: "能天使" })).toBe("加强能天使");
-    expect(say({ template: "myname", game: "arknights" })).toBe("我是Dr. Breeze，我要玩明日方舟");
+    expect(say({ template: "myname", game: "arknights" })).toBe("我要玩明日方舟！");
     expect(say({ template: "welcome", game: "arknights" })).toBe("欢迎回家，刀客塔");
     expect(say({ template: "welcome", game: "endfield" })).toBe("欢迎回家，管理员");
     expect(say({ template: "canyou", character: "佩丽卡" })).toBe("佩丽卡做得到吗？");
@@ -55,14 +55,14 @@ describe("declarations", () => {
     for (const food of ["角糖布丁", "细角水煮面"]) expect(() => say({ template: "eat", character: "能天使", food: food as Food }), food).toThrow("吃的");
   });
 
-  it("only takes your own favourites, the listed titles and foods, and your real name", () => {
+  it("only takes your own favourites, the listed titles and foods, and never a name", () => {
     expect(() => say({ template: "love", character: "陈" })).toThrow("厨力角色");
     expect(() => say({ template: "iam", character: "能天使", title: "博士" })).toThrow("称呼");
     // @ts-expect-error a food that is not on the list
     expect(() => say({ template: "eat", character: "能天使", food: "火锅" })).toThrow("吃的");
-    // the name always comes from the profile, never from the request
-    expect(say({ template: "myname", game: "endfield", name: "别人" })).toBe("我是Dr. Breeze，我要玩终末地");
-    expect(() => say({ template: "myname", game: "endfield" }, { ...fan, anonymous: true })).toThrow("名字");
+    // 「我要玩…！」 says no name, the sender's or one sent along, and anyone may say it, anonymous too
+    expect(checkDeclaration(fan, { template: "myname", game: "endfield", name: "别人" } as Declaration)).toEqual({ template: "myname", game: "endfield" });
+    expect(say({ template: "myname", game: "endfield" }, { ...fan, anonymous: true, name: "" })).toBe("我要玩终末地！");
     // no longer offered as a declaration; it became a reaction
     expect(() => say({ template: "alsoplay", game: "arknights" })).toThrow("选一句宣言");
   });
@@ -79,7 +79,7 @@ describe("declarations", () => {
     { template: "iam", character: "阿米娅", title: "狗" },
     { template: "love", character: "阿米娅" },
     { template: "buff", character: "阿米娅" },
-    { template: "myname", game: "endfield", name: "Dr. Breeze" },
+    { template: "myname", game: "endfield" },
     { template: "welcome", game: "arknights" },
     { template: "canyou", character: "阿米娅" },
     { template: "eat", character: "阿米娅", food: "脚夹馍" },
@@ -127,15 +127,27 @@ describe("declarations", () => {
     expect(repliesFor({ template: "iam", character: "阿米娅", title: "猫" })[0].text).toBe("喵～");
     expect(repliesFor({ template: "iam", character: "阿米娅", title: "佩洛" })[0].text).toBe("汪汪！");
     expect(repliesFor({ template: "iam", character: "阿米娅", title: "狗" })[1].text).toBe("我也是阿米娅的狗");
-    expect(repliesFor({ template: "myname", game: "endfield", name: "Dr. Breeze" }).slice(1, 4).map((r) => r.text)).toEqual([
-      "我也要玩终末地！",
-      "准了！",
-      "Dr. Breeze你好，碰我一下",
+    expect(repliesFor({ template: "myname", game: "endfield" }).slice(0, 4).map((r) => [r.id, r.text])).toEqual([
+      ["myname.5", "欢迎入坑！"],
+      ["myname.2", "我也要玩终末地！"],
+      ["myname.3", "准了！"],
+      ["myname.6", "一起玩？碰我一下"],
     ]);
     // 佩丽卡's birthday is the same every year
     const p27 = repliesFor({ template: "event", line: "perlica-bday-2027" });
     expect(repliesFor({ template: "event", line: "perlica-bday-2036" })).toEqual(p27);
     expect(p27[0]).toEqual({ id: "perlica-bday.1", text: "佩丽卡生日快乐！", own: true });
+  });
+
+  it("reads the first and fourth that 「我是<名字>，我要玩…」 had as picked, the fourth without the name, and offers them no more", () => {
+    const said: Declaration = { template: "myname", game: "arknights" };
+    expect(replyOf(said, "myname.1")).toEqual({ id: "myname.1", text: "好名字！", own: true });
+    expect(replyOf(said, "myname.4")).toEqual({ id: "myname.4", text: "你好，碰我一下", own: true });
+    expect(replyOf(said, "myname.2")).toEqual({ id: "myname.2", text: "我也要玩明日方舟！", own: true });
+    for (const id of ["myname.1", "myname.4"]) expect(canReply(said, id), id).toBe(false);
+    for (const id of ["myname.5", "myname.2", "myname.3", "myname.6"]) expect(canReply(said, id), id).toBe(true);
+    // only under that sentence
+    expect(replyOf({ template: "launch", game: "arknights" }, "myname.1")).toBeNull();
   });
 
   it("gives 卫戍协议，启动！ its own four, apart from 启动's", () => {

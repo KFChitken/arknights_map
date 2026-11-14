@@ -128,7 +128,7 @@ export function templateWords(template: string): string {
     case "canyou":
       return spaced(fmt(x[template], { character: BLANK }));
     case "myname":
-      return spaced(fmt(x.myname, { name: BLANK, game: BLANK }));
+      return spaced(fmt(x.myname, { game: BLANK }));
     case "welcome":
       return spaced(fmt(x.welcome, { name: BLANK }));
     case "eat":

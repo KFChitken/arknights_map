@@ -91,7 +91,7 @@ export function publicProfileOf(p: Profile): PublicProfile {
 
 /**
  * A declaration may only use the sender's own favourites, the listed titles
- * and foods, their own name, and limited-time lines that are on.
+ * and foods, and limited-time lines that are on; none carries their name.
  */
 /** drunk: the sender's main roach lies drunk, which the drunk lines need */
 /** drunk: their main roach lies drunk now (摄入酒精); stayed: their ink roach has had a room at 缘缘庄 */
@@ -107,12 +107,9 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
   switch (d?.template) {
     case "launch":
     case "welcome":
+    case "myname":
       if (isGame(d.game)) return { template: d.template, game: d.game };
       break;
-    case "myname":
-      if (!isGame(d.game)) break;
-      if (profile.anonymous || !profile.name.trim()) throw new WorldError(T.checks.needsName);
-      return { template: "myname", game: d.game, name: displayName(profile) };
     case "iam": {
       const { game, character } = favourite(d.character);
       if (!titlesFor(game).includes(d.title)) throw new WorldError(T.checks.noSuchCallName);

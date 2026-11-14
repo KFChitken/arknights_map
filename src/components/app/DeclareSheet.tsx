@@ -18,7 +18,7 @@ import {
 } from "@/lib/declarations";
 import { activeEvents, untilText, type EventLine } from "@/lib/events";
 import { GAME_NAMES, GAMES, type Game } from "@/lib/games";
-import { displayName, type Profile } from "@/lib/profile";
+import type { Profile } from "@/lib/profile";
 import { DECLARATION_RADIUS_KM } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
 import { titlesFor } from "@/lib/titles";
@@ -65,7 +65,6 @@ export default function DeclareSheet({
   const toggle = (id: string) => setFrom((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
   const favourites = profile.games.flatMap((g) => profile.favourites[g].map((name) => ({ name, game: g })));
-  const named = !profile.anonymous && Boolean(profile.name.trim());
   // while an event is on, its first line is picked to begin with
   const [events] = useState(() => activeEvents());
   const [line, setLine] = useState(events[0]?.lines[0]?.id ?? "");
@@ -92,7 +91,7 @@ export default function DeclareSheet({
       case "eat":
         return { template, character, food };
       case "myname":
-        return { template, game, name: displayName(profile) };
+        return { template, game };
       case "birthday":
         return { template };
       case "event":
@@ -119,7 +118,7 @@ export default function DeclareSheet({
     }
   })();
   const blocked = (t: Template) =>
-    (WITH_CHARACTER.includes(t) && !favourites.length) || (t === "myname" && !named) || (isStayTemplate(t) && !stayed);
+    (WITH_CHARACTER.includes(t) && !favourites.length) || (isStayTemplate(t) && !stayed);
   const canSend = Boolean(main) && from.length > 0 && !blocked(template);
 
   const send = async () => {
@@ -280,12 +279,7 @@ export default function DeclareSheet({
       )}
       {row("love", <>{fmtNodes(T.declare.line.love, { character: characterSelect("love") })}</>)}
       {row("buff", <>{fmtNodes(T.declare.line.buff, { character: characterSelect("buff") })}</>)}
-      {row(
-        "myname",
-        <>
-          {fmtNodes(T.declare.line.myname, { name: named ? displayName(profile) : T.declare.yourName, game: gameSelect("myname") })}
-        </>,
-      )}
+      {row("myname", <>{fmtNodes(T.declare.line.myname, { game: gameSelect("myname") })}</>)}
       {row(
         "welcome",
         <>
@@ -331,16 +325,14 @@ export default function DeclareSheet({
         {!stayed && <p className="hint stay-note">{stayNeeded()}</p>}
       </div>
 
-      {(!favourites.length || !named) && (
+      {!favourites.length && (
         <p className="hint" style={{ marginTop: -2, marginBottom: 8 }}>
-          {!favourites.length && T.declare.needsCharacter}
-          {!named && T.declare.needsName}
+          {T.declare.needsCharacter}
           <button className="pill" style={{ marginLeft: 6 }} onClick={onEditProfile}>
             {T.declare.toProfile}
           </button>
         </p>
       )}
-      {template === "myname" && <p className="hint">{T.declare.showsName}</p>}
       {template === "birthday" && <p className="hint">{T.declare.toFriends}</p>}
 
       <div className="shout">{fmtParts(T.common.quoted, { text: declarationText(d) })}</div>

@@ -186,8 +186,7 @@
         "titleLabel": "称呼",
         "line.love": "我永远喜欢{character}",
         "line.buff": "加强{character}",
-        "line.myname": "我是{name}，我要玩{game}",
-        "yourName": "（你的名字）",
+        "line.myname": "我要玩{game}！",
         "line.welcome": "欢迎回家，{title}",
         "line.canyou": "{character}做得到吗？",
         "line.eat": "我想吃{character}的{food}",
@@ -198,9 +197,7 @@
         "line.innBig": "你家还挺大的嘛？",
         "line.innSi": "疯狂新妻祀是我的！",
         "needsCharacter": "带角色的句子要先在资料里选厨力角色。",
-        "needsName": "「我是…，我要玩…」要先在资料里填名字，并且不选匿名。",
         "toProfile": "去资料",
-        "showsName": "这句会让收到的人看到你的名字。",
         "toFriends": "这句你所有的触须之交都会收到，不管离多远，而且知道是你发的。",
         "reach": "{km} 公里内有蟑螂（本体或克隆体）的舟P都会收到：开着网页的马上收到，没开的下次打开时收到，同一个人只收到一次。TA 们只知道是 {km} 公里内的某只舟P，可以回应你或者碰你一下。"
       }

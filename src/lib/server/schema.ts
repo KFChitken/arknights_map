@@ -452,7 +452,7 @@ export const declarations = pgTable(
     character: text("character"),
     title: text("title"),
     food: text("food"),
-    /** The sender's name as it was when they declared it, for 「我是<名字>…」 */
+    /** The sender's name, which 「我要玩…！」 once said as 「我是<名字>，我要玩…」: never shown now, nor written when one is sent */
     name: text("name"),
     /** While the sender's profile is held: the name the declaration had, put back if the admin finds nothing wrong */
     heldName: text("held_name"),

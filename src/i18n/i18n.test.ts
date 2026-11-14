@@ -365,7 +365,6 @@ const DECIDED_BY = new Set([
   // a reply's blanks, and the title (a code, as stored) that barks 喵～ instead
   "src/lib/declarations.ts {角色}",
   "src/lib/declarations.ts {游戏}",
-  "src/lib/declarations.ts {名字}",
   "src/lib/declarations.ts {称呼}",
   "src/lib/declarations.ts {汪汪}",
   "src/lib/declarations.ts 猫",

@@ -323,7 +323,7 @@ describe("server world", () => {
     const after = await shown.me();
     expect(after.profile).toMatchObject({ name: "", anonymous: true });
     const said = (await (await demo("t1")).inbox()).find((i) => i.kind === "declaration");
-    expect(said).toMatchObject({ text: "我是匿名舟P，我要玩明日方舟" });
+    expect(said).toMatchObject({ text: "我要玩明日方舟！" });
     const notes = (await shown.inbox()).filter((i): i is Extract<InboxItem, { kind: "staff" }> => i.kind === "staff");
     expect(notes.map((n) => n.text)).toEqual(["因为社区守则里「名字和资料里不能有违法、涉政、色情、赌博、广告引流的内容」这一条，站长清掉了你的名字。这个名字以后不能再用了。"]);
     expect(notes[0].appeal).toMatchObject({ state: "open" });
@@ -2031,7 +2031,7 @@ describe("server world", () => {
       iam: { template: "iam", character: "阿米娅", title: "猫" },
       love: { template: "love", character: "阿米娅" },
       buff: { template: "buff", character: "阿米娅" },
-      myname: { template: "myname", game: "endfield", name: "Dr. Breeze" },
+      myname: { template: "myname", game: "endfield" },
       welcome: { template: "welcome", game: "endfield" },
       canyou: { template: "canyou", character: "阿米娅" },
       eat: { template: "eat", character: "阿米娅", food: FOODS[2] },
@@ -2112,12 +2112,32 @@ describe("server world", () => {
     await expect((await demo("t1")).react(inn.id, "launch.1")).rejects.toThrow("不能这样回应");
   });
 
-  it("puts the sender's name in 「我是…，我要玩…」 as it was when they said it", async () => {
+  it("says no name in 「我要玩…！」, nor in a 「我是<名字>，我要玩…」 of before, whose replies read as picked", async () => {
     await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", drPrefix: true, games: ["arknights"] });
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
+    // a name sent along is kept nowhere
     await me.declare({ template: "myname", game: "endfield", name: "冒充别人" } as Declaration);
+    expect(await db.select({ name: declarations.name }).from(declarations).where(eq(declarations.senderId, me.id))).toEqual([{ name: null }]);
+    const t2 = await demo("t2");
+    const [got] = await t2.inbox();
+    expect(got).toMatchObject({ kind: "declaration", text: "我要玩终末地！" });
+
+    // one sent while it said the name, answered with its fourth then: the name shows to nobody, the reply as picked
+    await db.update(declarations).set({ name: "Dr. Breeze" }).where(eq(declarations.senderId, me.id));
+    await db.insert(reactions).values({ declarationId: got.id.slice("d:".length), fromUserId: t2.id, reaction: "myname.4" });
+    const [old] = await t2.inbox();
+    expect(old).toMatchObject({ id: got.id, text: "我要玩终末地！", reaction: { id: "myname.4", text: "你好，碰我一下" } });
+    expect(JSON.stringify(old)).not.toContain("Breeze");
+    const back = (await me.inbox()).find((i) => i.kind === "reaction");
+    expect(back).toMatchObject({ text: "我要玩终末地！", reaction: { id: "myname.4", text: "你好，碰我一下" } });
+    // its first and fourth of before are picked no more
+    await expect((await demo("t1")).react(got.id, "myname.1")).rejects.toThrow("不能这样回应");
+
+    // anonymous, it can be sent all the same
+    await db.delete(declarations).where(eq(declarations.senderId, me.id));
     await me.saveProfile({ ...EMPTY_PROFILE, anonymous: true, games: ["arknights"] });
-    expect((await (await demo("t2")).inbox())[0]).toMatchObject({ text: "我是Dr. Breeze，我要玩终末地" });
+    await me.declare({ template: "myname", game: "arknights" });
+    expect((await t2.inbox())[0]).toMatchObject({ kind: "declaration", text: "我要玩明日方舟！" });
   });
 
   it("sends a limited-time line while its event is on, earns its badge once, and keeps it readable after", async () => {
@@ -2884,17 +2904,17 @@ describe("server world", () => {
     const seen = async () => {
       const items = await t1.inbox();
       const touch = items.find((i) => i.kind === "touch");
-      const said = items.find((i) => i.kind === "declaration" && i.text.endsWith("我要玩明日方舟"));
+      const said = items.find((i) => i.kind === "declaration" && i.text === "我要玩明日方舟！");
       return {
         name: touch?.kind === "touch" ? touch.from?.displayName : null,
         uid: touch?.kind === "touch" ? touch.from?.uid : null,
         said: said?.kind === "declaration" ? said.text : null,
       };
     };
-    expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我是小坏，我要玩明日方舟" });
+    expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我要玩明日方舟！" });
 
     await safety.holdProfile(troll.id);
-    expect(await seen()).toEqual({ name: "匿名舟P", uid: undefined, said: "我是匿名舟P，我要玩明日方舟" });
+    expect(await seen()).toEqual({ name: "匿名舟P", uid: undefined, said: "我要玩明日方舟！" });
     // holding again keeps what they had chosen
     await safety.holdProfile(troll.id);
     expect(await userRow(troll.id)).toMatchObject({ heldAnonymous: false, heldShareUid: true });
@@ -2913,11 +2933,13 @@ describe("server world", () => {
     await troll.saveProfile({ ...held, avatar: "imp", color: "red", games: ["endfield"] });
     expect((await troll.me()).profile).toMatchObject({ avatar: "imp", color: "red", games: ["endfield"], uid: { arknights: "12345678" } });
     await troll.saveProfile({ ...held, avatar: "imp", color: "red" });
-    await expect(troll.declare({ template: "myname", game: "arknights" } as Declaration)).rejects.toThrow("站长看过之前先发不了这句");
+    // 「我要玩…！」 says no name, so it can still be sent (a minute after the last)
+    await db.delete(declarations).where(eq(declarations.senderId, troll.id));
+    await troll.declare({ template: "myname", game: "arknights" });
 
     // nothing wrong after all: everything as it was, and editable again
     await settleCase(troll.id, "dismiss");
-    expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我是小坏，我要玩明日方舟" });
+    expect(await seen()).toEqual({ name: "小坏", uid: { arknights: "12345678" }, said: "我要玩明日方舟！" });
     const back = await troll.me();
     expect(back.profileHeld).toBe(false);
     expect(back.profile).toMatchObject({ anonymous: false, name: "小坏", shareUid: true, avatar: "imp" });
@@ -2945,7 +2967,7 @@ describe("server world", () => {
     expect(after.profile).toMatchObject({ name: "", anonymous: true, shareUid: true, uid: { arknights: "12345678" } });
     expect(after.profileHeld).toBe(false);
     const said = (await (await demo("t1")).inbox()).find((i) => i.kind === "declaration");
-    expect(said).toMatchObject({ text: "我是匿名舟P，我要玩明日方舟" });
+    expect(said).toMatchObject({ text: "我要玩明日方舟！" });
     for (const name of ["小坏", " 小 坏 ", "小-坏!"]) {
       await expect(troll.saveProfile({ ...after.profile, anonymous: false, name })).rejects.toThrow("这个名字被站长清掉过");
     }

@@ -79,6 +79,8 @@ describe("数据看板's words", () => {
     }
     expect(templateWords("event")).toBe("限定宣言（几句合起来算）");
     for (const id of [...GENERIC_REACTIONS, ...FUN_REACTIONS]) expect(replyWords(id), id).not.toBe(id);
+    // what 「我是<名字>，我要玩…」 was answered with before it became 「我要玩…！」
+    expect(["myname.1", "myname.4"].map(replyWords)).toEqual(["好名字！", "你好，碰我一下"]);
     expect(FUN_REACTIONS.map(replyWords)).toEqual(["该电了", "6", "绷不住了", "已截图"]);
     for (const e of EVENTS) {
       for (const l of e.lines) {

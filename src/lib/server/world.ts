@@ -1313,8 +1313,8 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
       return { template, character };
     case "eat":
       return { template: "eat", character, food: FOODS.find((f) => f === d.food) ?? (FOODS[0] as Food) };
+    // 「我要玩…！」, and 「我是<名字>，我要玩…」 of before as that: the name such a row keeps is never shown
     case "myname":
-      return { template: "myname", game, name: d.name ?? "" };
     case "welcome":
     case "alsoplay":
       return { template, game };
@@ -1403,8 +1403,6 @@ export async function markSeen(userId: string, itemIds: string[]) {
 export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string } & PassesDot> {
   const u = await userById(userId);
   if (!u) throw new WorldError(T.server.common.signIn);
-  // held, a player is anonymous, which checkDeclaration refuses 「我是…」 for; this says why
-  if (u.profileHeldAt && input?.template === "myname") throw new WorldError(T.server.world.nameHeldNoSaying);
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
   const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
@@ -1461,7 +1459,6 @@ export async function declare(userId: string, input: Declaration, from?: string[
         // the title column also keeps 老婆/老公 of 氪了168
         title: d.template === "iam" ? d.title : d.template === "kr168" ? d.spouse : null,
         food: d.template === "eat" ? d.food : null,
-        name: d.template === "myname" ? (d.name ?? null) : null,
         line: d.template === "event" ? d.line : null,
         recipients: everyone.length,
       })

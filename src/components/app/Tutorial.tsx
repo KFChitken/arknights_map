@@ -57,7 +57,7 @@ export function tutorialStep(me: Me | null, p: Progress): TutorialStep | null {
   return "done";
 }
 
-/** A few ready sentences to greet the neighbourhood with; never 「我是…」, which shows your name. */
+/** A few ready sentences to greet the neighbourhood with. */
 export function greetings(me: Me): Declaration[] {
   const game = me.profile.games[0] ?? "arknights";
   const favourite = me.profile.games.flatMap((g) => me.profile.favourites[g])[0];

@@ -23,8 +23,9 @@ export const WELCOME_NAMES: Record<Game, string> = {
 
 /**
  * A declaration is always one of a few fixed sentences with blanks picked from
- * lists. `name` in 「我是<名字>，我要玩…」 is filled in by the server from the
- * sender's profile. "event" is a limited-time line from events.ts. "alsoplay"
+ * lists. "myname" is 「我要玩<游戏>！」: it was 「我是<名字>，我要玩…」 with the sender's
+ * name, and the ones sent then read as it does now (the name their row keeps is never
+ * read). "event" is a limited-time line from events.ts. "alsoplay"
  * can no longer be sent, but older ones still show. The DRUNK_TEMPLATES can only be
  * sent while your main roach lies drunk (摄入酒精); the STAY_TEMPLATES once your ink roach
  * has had a room at 祀掌柜's 缘缘庄 (src/lib/si.ts), and for good from then on.
@@ -35,7 +36,7 @@ export type Declaration =
   | { template: "iam"; character: string; title: string }
   | { template: "love"; character: string }
   | { template: "buff"; character: string }
-  | { template: "myname"; game: Game; name?: string }
+  | { template: "myname"; game: Game }
   | { template: "welcome"; game: Game }
   | { template: "canyou"; character: string }
   | { template: "eat"; character: string; food: Food }
@@ -80,7 +81,7 @@ export function declarationText(d: Declaration): string {
     case "buff":
       return fmt(T.lib.declarations.text.buff, { character: characterName(d.character) });
     case "myname":
-      return fmt(T.lib.declarations.text.myname, { name: d.name ?? "……", game: GAME_NAMES[d.game] });
+      return fmt(T.lib.declarations.text.myname, { game: GAME_NAMES[d.game] });
     case "welcome":
       return fmt(T.lib.declarations.text.welcome, { name: WELCOME_NAMES[d.game] });
     case "canyou":
@@ -170,8 +171,8 @@ export type Reply = { id: string; text: string; own: boolean; fun?: true };
 
 /**
  * Each sentence's own four replies, stored as "<template>.<n>" (the birthday one's first is
- * the old 生日快乐！, "birthday"); the fourth always asks for a touch. {角色} {游戏} {名字}
- * {称呼} are filled in from the declaration, {汪汪} is 汪汪！, or 喵～ for a 猫. Limited
+ * the old 生日快乐！, "birthday"; OWN_NUMBERS where n is not 1–4); the fourth always asks for a
+ * touch. {角色} {游戏} {称呼} are filled in from the declaration, {汪汪} is 汪汪！, or 喵～ for a 猫. Limited
  * lines keep theirs in events.ts. Short: about 12 characters besides a character's name.
  */
 const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, string]>> = {
@@ -191,7 +192,7 @@ const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, st
     return [T.lib.declarations.replies.buff.r1, T.lib.declarations.replies.buff.r2, T.lib.declarations.replies.buff.r3, T.lib.declarations.replies.buff.r4] as const;
   },
   get myname() {
-    return [T.lib.declarations.replies.myname.r1, T.lib.declarations.replies.myname.r2, T.lib.declarations.replies.myname.r3, T.lib.declarations.replies.myname.r4] as const;
+    return [T.lib.declarations.replies.myname.r5, T.lib.declarations.replies.myname.r2, T.lib.declarations.replies.myname.r3, T.lib.declarations.replies.myname.r6] as const;
   },
   get welcome() {
     return [T.lib.declarations.replies.welcome.r1, T.lib.declarations.replies.welcome.r2, T.lib.declarations.replies.welcome.r3, T.lib.declarations.replies.welcome.r4] as const;
@@ -234,13 +235,28 @@ const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, st
   },
 };
 
+/** The numbers of a sentence's own four where they are not 1–4: 「我要玩…！」's first and fourth are new (RETIRED_REPLIES) */
+const OWN_NUMBERS: Partial<Record<Template, readonly [number, number, number, number]>> = { myname: [5, 2, 3, 6] };
+
+/**
+ * Own replies no longer offered, by the id they are stored as: they still read where they were picked. The first
+ * and fourth of 「我是<名字>，我要玩…」, the fourth without the name now
+ */
+const RETIRED_REPLIES: Record<string, string> = {
+  get "myname.1"() {
+    return T.lib.declarations.replies.myname.r1;
+  },
+  get "myname.4"() {
+    return T.lib.declarations.replies.myname.r4;
+  },
+};
+
 /** A reply's blanks, filled in from the declaration it answers */
 function fillReply(text: string, d: Declaration) {
   const character = ("character" in d && d.character && characterName(d.character)) || "TA";
   return text
     .replaceAll("{角色}", character)
     .replaceAll("{游戏}", "game" in d ? GAME_NAMES[d.game] : T.lib.declarations.fill.game)
-    .replaceAll("{名字}", d.template === "myname" ? (d.name ?? "") : "")
     .replaceAll("{称呼}", d.template === "iam" ? titleName(d.title) : "")
     .replaceAll("{汪汪}", d.template === "iam" && d.title === "猫" ? T.lib.declarations.fill.meow : T.lib.declarations.fill.woof);
 }
@@ -256,7 +272,7 @@ function ownReplies(d: Declaration): Reply[] {
   const own = OWN_REPLIES[d.template];
   if (!own) return [];
   return own.map((text, i) => ({
-    id: d.template === "birthday" && i === 0 ? "birthday" : `${d.template}.${i + 1}`,
+    id: d.template === "birthday" && i === 0 ? "birthday" : `${d.template}.${OWN_NUMBERS[d.template]?.[i] ?? i + 1}`,
     text: fillReply(text, d),
     own: true,
   }));
@@ -271,12 +287,16 @@ export function repliesFor(d: Declaration): Reply[] {
   ];
 }
 
-/** A reply someone left on this declaration, its words filled in; the fixed ones of before still read; null when unknown */
+/**
+ * A reply someone left on this declaration, its words filled in; the fixed ones of before, and a sentence's own it
+ * no longer offers, still read; null when unknown
+ */
 export function replyOf(d: Declaration, id: unknown): Reply | null {
   if (typeof id !== "string") return null;
   const found = repliesFor(d).find((r) => r.id === id);
   if (found) return found;
   if (isReaction(id)) return { id, text: REACTIONS[id], own: id === "birthday", ...(isFun(id) && { fun: true as const }) };
+  if (Object.hasOwn(RETIRED_REPLIES, id) && id.startsWith(`${d.template}.`)) return { id, text: RETIRED_REPLIES[id], own: true };
   // 缘缘庄's two read as 「明日方舟，启动！」 until the server read them back as themselves (storedDeclaration in
   // server/world.ts), and some were answered as that: those replies still read as they were picked
   return isStayTemplate(d.template) && id.startsWith("launch.") ? replyOf({ template: "launch", game: "arknights" }, id) : null;
