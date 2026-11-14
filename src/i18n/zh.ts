@@ -2299,10 +2299,12 @@ export const zh = {
     },
     subjects: {
       pe: "体育课",
+      music: "音乐课",
     },
     courses: {
       stopwatch: { name: "3.25 秒停表", rule: "觉得到 3.25 秒就点停", short: "停表" },
       react325: { name: "3、2、5 反应", rule: "3、2、5 连着出来时，趁 5 还亮着拍一下", short: "反应" },
+      echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
     },
     stopwatch: {
       start: "开始",
@@ -2337,6 +2339,24 @@ export const zh = {
       slipOut: "拍错 {n} 次，这局到这儿",
       ranOut: "数字出完了，拍中 {n} 次，再试一次",
       result: "拍中 {hits} 次，拍错 {slips} 次",
+    },
+    /** 复读 325 (src/lib/study/echo325.ts) */
+    echo325: {
+      start: "开始",
+      rule: "看铃亮的顺序照着按，每轮多一下\n记住 {steps} 步过关，按错一次就结束",
+      /** While the bells light */
+      watch: "看好",
+      /** A turn rung back, before the next one's first bell */
+      right: "对了！",
+      /** The player's turn to ring them back */
+      yours: "该你了",
+      yoursKeys: "该你了，也可以按键盘上的 3、2、5",
+      /** Read out for the dots over the bells */
+      stepsSr: "记住 {n} 步，{of} 步过关",
+      pass: "记住 {n} 步，过关！",
+      wrong: "按错了，记住 {n} 步，再试一次",
+      wrongFirst: "第一下就按错了，再试一次",
+      result: "记住 {n} 步",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",

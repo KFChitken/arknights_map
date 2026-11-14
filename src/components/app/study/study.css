@@ -123,11 +123,14 @@
 .sw-time.veiled { visibility: hidden; }
 /* under the dial or the box: 开始 and a line of how to play */
 .sw-under,
-.rx-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
+.rx-under,
+.ec-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
 .sw-start,
-.rx-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.rx-start,
+.ec-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
-.rx-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.rx-hint,
+.ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
 
 /* ---- 3、2、5 反应 (React325.tsx): only the digit and the tallies change, nothing flashes ---- */
 .rx-game { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
@@ -151,6 +154,39 @@
 .rx-said.rx-hit { color: var(--st-green); }
 .rx-said.rx-slip { color: var(--st-red); }
 
+/* ---- 复读 325 (Echo325.tsx): three bells on a desk; only the bell lit and the dots change, nothing flashes ---- */
+.ec-game { display: flex; flex-direction: column; align-items: center; gap: 22px; width: 100%; }
+.ec-steps { display: flex; gap: 7px; }
+.ec-steps i { width: 12px; height: 12px; border: 1.5px solid #dfe2e6; border-radius: 50%; }
+.ec-steps i.ec-in { border-color: #1b1d22; }
+.ec-steps i.ec-on { border-color: var(--st-green); background: var(--st-green); }
+.ec-steps i.ec-miss { border-color: var(--st-red); background: var(--st-red); }
+.ec-stand { display: flex; flex-direction: column; align-items: stretch; }
+.ec-bells { display: flex; justify-content: center; gap: 10px; padding: 0 12px; }
+.ec-bell { width: min(25vw, 112px); padding: 0; border: 0; border-radius: 12px; background: none; color: #1b1d22; }
+.ec-bell:focus-visible { outline: 3px solid #1b1d22; outline-offset: 2px; }
+.ec-game:not([data-phase="echo"]) .ec-bell { cursor: default; }
+.ec-bell svg { display: block; width: 100%; height: auto; }
+.ec-dome { fill: #fff; stroke: #1b1d22; stroke-width: 4; stroke-linejoin: round; }
+.ec-knob,
+.ec-base { fill: #1b1d22; }
+.ec-num { fill: currentColor; font-size: 34px; font-weight: 800; text-anchor: middle; }
+/* rung: the dome lit, the button on top pressed, and lines over it */
+.ec-ding { visibility: hidden; fill: none; stroke: #1b1d22; stroke-width: 4; stroke-linecap: round; }
+.ec-bell.ec-lit .ec-dome { fill: var(--st-yellow); }
+.ec-bell.ec-lit .ec-ding { visibility: visible; }
+.ec-bell.ec-lit .ec-press { transform: translateY(5px); }
+.ec-bell.ec-wrong .ec-dome { fill: var(--st-red); stroke: var(--st-red); }
+.ec-bell.ec-wrong .ec-num { fill: #fff; }
+.ec-bell.ec-want .ec-dome { stroke: var(--st-green); stroke-dasharray: 9 6; }
+.ec-bell.ec-want .ec-num { fill: var(--st-green); }
+.ec-desk { height: 14px; border: 2px solid #1b1d22; border-radius: 4px 4px 8px 8px; background: var(--st-soft); }
+.ec-under { justify-content: flex-start; min-height: 104px; }
+.ec-hint { max-width: 300px; white-space: pre-line; }
+.ec-said { margin: 0; color: var(--muted); font-size: 17px; font-weight: 800; line-height: 1.4; }
+.ec-said.ec-yours { color: #1b1d22; }
+.ec-said.ec-right { color: var(--st-green); }
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -161,6 +197,8 @@
   .rx-game { gap: 8px; }
   .rx-box { width: min(30vh, 180px); border-radius: 22px; }
   .rx-under { gap: 8px; min-height: 84px; }
+  .ec-game { gap: 12px; }
+  .ec-under { gap: 8px; min-height: 84px; }
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
 @media (max-height: 520px) and (orientation: landscape) {
@@ -173,4 +211,10 @@
   .rx-box { grid-row: span 2; align-self: center; }
   .rx-score { align-self: end; }
   .rx-under { min-height: 100px; justify-content: flex-start; }
+  .ec-game { display: grid; grid-template-columns: auto 220px; justify-content: center; justify-items: center; align-items: center; gap: 12px 24px; }
+  .ec-steps,
+  .ec-stand { grid-column: 1; }
+  .ec-under { grid-column: 2; grid-row: 1 / 3; min-height: 0; justify-content: center; }
+  .ec-bells { padding: 0; }
+  .ec-bell { width: min(28vh, 104px); }
 }

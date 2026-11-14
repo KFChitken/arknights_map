@@ -32,6 +32,7 @@ export type Game = ComponentType<GameProps>;
 const GAMES: Record<CourseId, () => Promise<{ default: Game }>> = {
   stopwatch: () => import("./Stopwatch"),
   react325: () => import("./React325"),
+  echo325: () => import("./Echo325"),
 };
 
 export const loadGame = (id: CourseId): Promise<Game> => GAMES[id]().then((m) => m.default);
