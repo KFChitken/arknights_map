@@ -70,6 +70,8 @@ const MAX_ICONS = COLS * Math.floor(ATLAS_H / CELL);
 /** The hearts take the last four cells: three pinks, then a 触须之交's red */
 const HEART_TINTS = ["#ff4f8b", "#ff7eb6", "#ff98c3", "#ff2e63"];
 const HEART_CELL = MAX_ICONS - HEART_TINTS.length;
+/** How many roach icons fit besides the hearts: the cartoon look's (massPoints.ts styleSpecs) must, or the layer gives up */
+export const ICON_ROOM = HEART_CELL;
 // 高德 zoom levels are one above MapLibre's, which swarm.ts counts in
 const ZOOM_OFFSET = 1;
 /** Frames asked for while the roaches crawl: as often as the OSM map moves them */

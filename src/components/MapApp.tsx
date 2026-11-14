@@ -85,6 +85,7 @@ import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/are
 import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach } from "@/lib/world/packed";
+import { friendCloneLooks } from "@/lib/world/friendLooks";
 import {
   DEFAULT_MAP_STYLE,
   HEARTS_READY,
@@ -840,6 +841,8 @@ export default function MapApp({
   // maps can tell at once which ones changed: an update of the list changes a few hundred of tens of thousands
   // (the feed keeps its own object for each roach that did not change, and those gone are let go with it)
   const keptRef = useRef(new WeakMap<MapRoach, PublicRoach>());
+  // 触须之交's clones wear TA's look on this map (world/friendLooks.ts): the feed gives every clone the plain one
+  const cloneLooks = useMemo(() => friendCloneLooks(friends), [friends]);
   const roaches = useMemo<PublicRoach[]>(() => {
     const friendIds = new Set(friendKey.split(","));
     const kept = keptRef.current;
@@ -849,9 +852,10 @@ export default function MapApp({
       const friend = friendIds.has(r.id);
       // 只看本体: others' clones are not drawn; 触须之交's are, and our own come from me anyway
       if (!drawnWith(r, friend, hideClones)) continue;
+      const look = friend && r.clone ? cloneLooks.get(r.id) : undefined;
       let o = kept.get(r);
-      if (!o || o.friend !== friend) {
-        o = { ...r, friend };
+      if (!o || o.friend !== friend || (look && (o.avatar !== look.avatar || o.color !== look.color))) {
+        o = { ...r, friend, ...look };
         kept.set(r, o);
       }
       out.push(o);
@@ -861,11 +865,13 @@ export default function MapApp({
     if (overview) {
       const shown = new Set(out.map((r) => r.id));
       for (const f of friends) {
-        for (const r of f.roaches) if (!feedIdsOf(r.id).some((id) => shown.has(id))) out.push({ ...r, friend: true, n: 0 });
+        for (const r of f.roaches) {
+          if (!feedIdsOf(r.id).some((id) => shown.has(id))) out.push({ ...r, ...(r.clone ? cloneLooks.get(r.id) : undefined), friend: true, n: 0 });
+        }
       }
     }
     return out;
-  }, [feedRoaches, ownIds, friendKey, overview, friends, hideClones]);
+  }, [feedRoaches, ownIds, friendKey, overview, friends, hideClones, cloneLooks]);
 
   const applyMe = useCallback((m: Me | null) => {
     const sameOwner = m?.id === meIdRef.current;

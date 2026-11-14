@@ -7,17 +7,8 @@ import { loadAMap, type AMapNS } from "@/lib/amap";
 import { fromGcj, toGcj } from "@/lib/coords";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import { roachDataUrl, type RoachOpts } from "@/lib/roachSvg";
-import {
-  crawl,
-  HEADINGS,
-  iconPx,
-  LEG_FRAMES,
-  MASS_GROUPS,
-  prefersReducedMotion,
-  SWARM_FADE_ZOOM,
-  SWARM_GRADIENT,
-} from "@/lib/swarm";
-import { ROACH_AVATARS, ROACH_COLORS, type LngLat, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
+import { crawl, iconPx, MASS_GROUPS, prefersReducedMotion, SWARM_FADE_ZOOM, SWARM_GRADIENT } from "@/lib/swarm";
+import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import {
   belowGuide,
@@ -40,7 +31,7 @@ import { amapSi, type SiAmap } from "./siAmap";
 import { SHOUT_LIFT, shoutElement } from "./shoutMarker";
 import { amapLines } from "./lines";
 import { amapTrail } from "./trail";
-import { MassCache, STILL, styleIndex, type MassPoint } from "./massPoints";
+import { MassCache, STILL, styleIndex, styleSpecs, type MassPoint } from "./massPoints";
 import { PILE_MAX_ZOOM } from "./pileWork";
 import { BADGE_AT, countBadgeText, PILE_MAX_PX, pileMul, Piles, type Box, type PileItem } from "./piles";
 import type { MapViewProps } from "./types";
@@ -175,30 +166,7 @@ const styleUrlCache = new Map<RoachStyle, Promise<string[]>>();
 function styleUrls(look: RoachStyle) {
   let p = styleUrlCache.get(look);
   if (!p) {
-    const block = (step?: number) =>
-      [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
-        look === "real"
-          ? [
-              ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, step }]),
-              ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, clone: true, step }]),
-            ]
-          : [
-              ...ROACH_AVATARS.flatMap((avatar) =>
-                ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend }]),
-              ),
-              ["white", { friend, clone: true }],
-            ],
-      );
-    const awake = look === "real" ? Array.from({ length: LEG_FRAMES }, (_, f) => block(f / LEG_FRAMES)).flat() : block();
-    // then the sleeping main roaches (asleepFrom), still and with no clones
-    const asleep = [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
-      look === "real"
-        ? HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, asleep: true }])
-        : ROACH_AVATARS.flatMap((avatar) =>
-            ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend, asleep: true }]),
-          ),
-    );
-    p = Promise.all([...awake, ...asleep].map(([color, opts]) => iconUrl(color, opts)));
+    p = Promise.all(styleSpecs(look).map(([color, opts]) => iconUrl(color, opts)));
     styleUrlCache.set(look, p);
   }
   return p;

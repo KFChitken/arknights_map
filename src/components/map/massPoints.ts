@@ -1,6 +1,7 @@
 import { toGcj } from "@/lib/coords";
+import type { RoachOpts } from "@/lib/roachSvg";
 import { HEADINGS, LEG_FRAMES, MASS_GROUPS } from "@/lib/swarm";
-import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachStyle } from "@/lib/types";
+import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
 import { weightOf } from "@/lib/world/area";
 import type { PublicRoach } from "@/lib/world/types";
 import type { GlRoach } from "./roachGl";
@@ -15,10 +16,11 @@ import { roachTraits } from "./types";
 
 // MassMarks draws thousands of points on one canvas, unlike DOM markers.
 // Roaches are split into batches, each with its own MassMarks redrawn in turn;
-// every roach moves on its own rhythm. Style indexes: cartoon = one per look
+// every roach moves on its own rhythm. Style indexes (styleSpecs): cartoon = one per look
 // and color, then one shared clone look, then the same again for 触须之交;
 // real = pre-rendered heading, then see-through clone headings, then both
-// again for 触须之交, and that whole block once per walk-cycle pose.
+// again for 触须之交, and that whole block once per walk-cycle pose. Then the
+// sleeping main roaches, and last (cartoon only) a 触须之交's clones in each look.
 export type MassPoint = {
   lng: number;
   lat: number;
@@ -48,12 +50,47 @@ const REAL_STYLES = HEADINGS.length * 2;
 const REAL_POSE = REAL_STYLES * 2;
 /** Where the sleeping icons start in each look's style list, after the awake ones */
 export const asleepFrom = (look: RoachStyle) => (look === "real" ? REAL_POSE * LEG_FRAMES : CARTOON_STYLES * 2);
+/** The cartoon look's icons for a 触须之交's clones, one for each look TA can have, after those asleep */
+export const friendClonesFrom = asleepFrom("cartoon") + 2 * LOOKS;
+/** How many icons the cartoon look has in all (styleSpecs) */
+export const CARTOON_ICONS = friendClonesFrom + LOOKS;
 /** The batch the crawl never moves: sleeping roaches lie still */
 export const STILL = MASS_GROUPS;
+
+/** The icon of each style index (styleIndex) in a look, as AmapView.tsx draws them: colour and how */
+export function styleSpecs(look: RoachStyle): [RoachColor, RoachOpts][] {
+  const block = (step?: number) =>
+    [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
+      look === "real"
+        ? [
+            ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, step }]),
+            ...HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, clone: true, step }]),
+          ]
+        : [
+            ...ROACH_AVATARS.flatMap((avatar) => ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend }])),
+            ["white", { friend, clone: true }],
+          ],
+    );
+  const awake = look === "real" ? Array.from({ length: LEG_FRAMES }, (_, f) => block(f / LEG_FRAMES)).flat() : block();
+  // then the sleeping main roaches (asleepFrom), still and with no clones
+  const asleep = [false, true].flatMap((friend): [RoachColor, RoachOpts][] =>
+    look === "real"
+      ? HEADINGS.map((rotate): [RoachColor, RoachOpts] => ["cyan", { look, rotate, friend, asleep: true }])
+      : ROACH_AVATARS.flatMap((avatar) => ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend, asleep: true }])),
+  );
+  // last, so the numbers before stay: a 触须之交's clones in every look TA can have (friendClonesFrom)
+  const friendClones =
+    look === "real"
+      ? []
+      : ROACH_AVATARS.flatMap((avatar) => ROACH_COLORS.map((color): [RoachColor, RoachOpts] => [color, { avatar, friend: true, clone: true }]));
+  return [...awake, ...asleep, ...friendClones];
+}
 
 export function styleIndex(p: MassPoint, look: RoachStyle, pose: number) {
   if (p.asleep) return asleepFrom(look) + (look === "real" ? (p.friend ? HEADINGS.length : 0) + p.heading : (p.friend ? LOOKS : 0) + p.color);
   if (look === "real") return pose * REAL_POSE + (p.friend ? REAL_STYLES : 0) + (p.clone ? HEADINGS.length : 0) + p.heading;
+  // a 触须之交's clone in TA's look (MapApp gives it them), after all the rest
+  if (p.clone && p.friend) return friendClonesFrom + p.color;
   return (p.friend ? CARTOON_STYLES : 0) + (p.clone ? LOOKS : p.color);
 }
 

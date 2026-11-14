@@ -20,7 +20,9 @@ export const GLOW: Record<RoachColor, string> = {
 };
 
 /**
- * clone: a see-through look shared by every clone, so a clone cannot be matched to its main roach.
+ * clone: see-through. A stranger's clone has the plain look every such clone shares (the hood with white lights),
+ * so it cannot be matched to its main roach; your own, and a 触须之交's, wear their owner's look, which the page
+ * knows already (the shared list never says whose a clone is).
  * friend: a pink ground and a heart, for roaches of your 触须之交.
  */
 export type RoachOpts = {
@@ -49,13 +51,18 @@ export const HEART = `<path d="M54 17 C48.5 13 47.5 8.5 50.5 7 C52.4 6.1 53.6 7.
 const CLONE_OPACITY = 0.55;
 // your own clones stay a bit more solid so you can tell them from other players' clones
 const MINE_CLONE_OPACITY = 0.75;
-const bodyOpacity = (mine?: boolean, clone?: boolean) => (clone ? (mine ? MINE_CLONE_OPACITY : CLONE_OPACITY) : 1);
+// a 触须之交's, in TA's look, a little more solid than a stranger's plain one
+const FRIEND_CLONE_OPACITY = 0.62;
+const bodyOpacity = (mine?: boolean, clone?: boolean, friend?: boolean) =>
+  clone ? (mine ? MINE_CLONE_OPACITY : friend ? FRIEND_CLONE_OPACITY : CLONE_OPACITY) : 1;
+/** A stranger's clone: the plain look, whatever its owner picked */
+const plainClone = (opts: Pick<RoachOpts, "clone" | "mine" | "friend">) => Boolean(opts.clone && !opts.mine && !opts.friend);
 
 export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
   if (opts.asleep && !opts.clone) return sleepingSvg(color, opts);
   if (opts.look === "real") return realRoachSvg(opts);
   const size = opts.size ?? 64;
-  const glow = GLOW[opts.clone && !opts.mine ? "white" : color];
+  const glow = GLOW[plainClone(opts) ? "white" : color];
   const dash = opts.clone ? ` stroke-dasharray="4 3"` : "";
   const ground = opts.mine
     ? opts.clone
@@ -75,18 +82,18 @@ export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
       ? ground
       : opts.part === "overlay"
         ? heart
-        : `${ground}\n<g opacity="${bodyOpacity(opts.mine, opts.clone)}">\n${body}\n</g>\n${heart}`;
+        : `${ground}\n<g opacity="${bodyOpacity(opts.mine, opts.clone, opts.friend)}">\n${body}\n</g>\n${heart}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="${size}" height="${size}">
 ${parts}
 </svg>`;
 }
 
-/** Clones of other players all wear the plain hood, whatever their owner picked. */
-export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine">): DrawnAvatar {
-  return opts.clone && !opts.mine ? "hood" : (opts.avatar ?? "hood");
+/** Strangers' clones all wear the plain hood, whatever their owner picked; a 触须之交's wear TA's look. */
+export function shownAvatar(opts: Pick<RoachOpts, "avatar" | "clone" | "mine" | "friend">): DrawnAvatar {
+  return plainClone(opts) ? "hood" : (opts.avatar ?? "hood");
 }
 
-export const bodyOpacityFor = (opts: Pick<RoachOpts, "mine" | "clone">) => bodyOpacity(opts.mine, opts.clone);
+export const bodyOpacityFor = (opts: Pick<RoachOpts, "mine" | "clone" | "friend">) => bodyOpacity(opts.mine, opts.clone, opts.friend);
 
 /** The standing hood; raise: its right sleeve lifted (to drink, see flipArt.ts), or "both" sleeves (to shout, see touchArt.ts). */
 export function hoodBody(glow: string, { raise = false }: { raise?: boolean | "both" } = {}) {

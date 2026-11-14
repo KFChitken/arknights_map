@@ -6,7 +6,6 @@ import { useEffect, useRef } from "react";
 import { lang, T } from "@/i18n";
 import type { GuideId } from "@/lib/guides";
 import { roachImageData } from "@/lib/roachImages";
-import type { RoachOpts } from "@/lib/roachSvg";
 import {
   crawl,
   HEADINGS,
@@ -14,14 +13,13 @@ import {
   iconPx,
   LAYER_GROUPS,
   LEG_FRAMES,
-  LEG_PHASES,
   legFrame,
   prefersReducedMotion,
   SWARM_FADE_ZOOM,
   SWARM_GRADIENT,
 } from "@/lib/swarm";
 import type { LngLat, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
-import type { OwnRoach, PublicRoach } from "@/lib/world/types";
+import type { OwnRoach } from "@/lib/world/types";
 import {
   belowGuide,
   besideMain,
@@ -46,6 +44,7 @@ import { addMaplibreSi, setMaplibreSi, startSiFlight } from "./siMap";
 import { inkTappedAt } from "./inkTap";
 import { roachTraits, type MapViewProps } from "./types";
 import { FeatureCache, LITE_LOOKS, liteFeature, roachFeature } from "./features";
+import { imageSpec, mineImage, neededImages, roachImage, roachRotate, sleepImage, sleepRotate, WALKING } from "./roachIcons";
 import { BADGE_AT, drawBadge, PILE_MAX_PX } from "./piles";
 import { PILE_MAX_ZOOM, PILE_RADIUS } from "./pileWork";
 
@@ -136,8 +135,6 @@ function offStageOn(map: maplibregl.Map, was: string | null, id: string | null) 
 /** How the crowd is drawn in a style: every roach, piles (轻量), or none (全员隐匿) */
 const crowdModeOf = (style: MapViewProps["mapStyle"]) => (style === "hidden" ? "off" : style === "lite" ? "lite" : "all");
 
-// The cartoon roach faces the viewer and only tilts; the real one is top-down and can face any way.
-// Clones share one see-through look whatever their owner's color; 触须之交 get a pink ground and a heart.
 /**
  * The overseas basemap shows no national borders or country names, since a map shown in
  * China must not draw them differently from the official ones. Layers are found by what
@@ -150,103 +147,6 @@ function hideBorders(map: maplibregl.Map) {
     const countryName = from === "place" && /"==",(\["get","class"\]|"class"),"country"/.test(filter);
     if (from === "boundary" || countryName) map.setLayoutProperty(layer.id, "visibility", "none");
   }
-}
-
-function roachImage(look: RoachStyle) {
-  if (look === "real") {
-    // the walking icons come in LEG_PHASES out-of-step copies, picked per roach
-    return [
-      "concat",
-      [
-        "case",
-        ["get", "friend"],
-        ["case", ["get", "clone"], "friendclone-real", "friend-real"],
-        ["case", ["get", "clone"], "clone-real", "real"],
-      ],
-      "-p",
-      ["to-string", ["get", "lp"]],
-    ];
-  }
-  const icon = (kind: string) => ["concat", kind, "-", ["get", "avatar"], "-", ["get", "color"]];
-  return [
-    "case",
-    ["get", "friend"],
-    ["case", ["get", "clone"], "friendclone", icon("friend")],
-    ["case", ["get", "clone"], "clone", icon("roach")],
-  ];
-}
-function roachRotate(look: RoachStyle) {
-  return look === "real" ? ["get", "heading"] : ["get", "rot"];
-}
-/** A sleeping main roach (never a clone): sleep-<roach|friend>-<avatar>-<color>, or sleep-real / sleep-friend-real */
-function sleepImage(look: RoachStyle) {
-  return look === "real"
-    ? ["case", ["get", "friend"], "sleep-friend-real", "sleep-real"]
-    : ["concat", ["case", ["get", "friend"], "sleep-friend-", "sleep-roach-"], ["get", "avatar"], "-", ["get", "color"]];
-}
-/** The cartoon one lies already tilted; the realistic one keeps facing its own way. */
-function sleepRotate(look: RoachStyle) {
-  return look === "real" ? ["get", "heading"] : 0;
-}
-function mineImage(look: RoachStyle) {
-  const awake =
-    look === "real"
-      ? ["case", [">", ["get", "slot"], 0], "mineclone-real", "mine-real"]
-      : ["concat", ["case", [">", ["get", "slot"], 0], "mineclone-", "mine-"], ["get", "avatar"], "-", ["get", "color"]];
-  const asleep = look === "real" ? "sleep-mine-real" : ["concat", "sleep-mine-", ["get", "avatar"], "-", ["get", "color"]];
-  return ["case", ["get", "asleep"], asleep, awake];
-}
-
-/**
- * Icon ids: real-p<n> / clone-real-p<n> / ... for the walking realistic roach,
- * mine-real and mineclone-real for your own (which keep still), clone and
- * friendclone for other players' clones, and
- * <roach|friend|mine|mineclone>-<avatar>-<color> for everything else.
- */
-const WALKING = /^(.*real)-p(\d+)$/;
-
-function imageSpec(id: string): [RoachColor, RoachOpts] {
-  if (id.startsWith("sleep-")) {
-    const [color, opts] = imageSpec(id.slice("sleep-".length));
-    return [color, { ...opts, asleep: true }];
-  }
-  const walking = WALKING.exec(id);
-  if (walking) return imageSpec(walking[1]);
-  if (id.endsWith("real")) {
-    const kind = id.slice(0, -"real".length);
-    const flags = { mine: kind.startsWith("mine"), friend: kind.startsWith("friend"), clone: kind.includes("clone") };
-    return ["cyan", { look: "real", ...flags }];
-  }
-  if (id === "clone" || id === "friendclone") return ["white", { clone: true, friend: id === "friendclone" }];
-  const [kind, avatar, color] = id.split("-") as [string, RoachAvatar, RoachColor];
-  return [color, { avatar, mine: kind.startsWith("mine"), clone: kind === "mineclone", friend: kind === "friend" }];
-}
-
-/**
- * The icons the current data needs, so only those get drawn: those of your own roaches, and of the crowd
- * given (all of it, or only its roaches new since the map last had it, whose icons may be new).
- */
-function neededImages(p: Pick<MapViewProps, "mine" | "mineAsleep" | "ghost" | "myAvatar" | "myColor" | "look">, crowd: readonly PublicRoach[]) {
-  const ids = new Set<string>();
-  if (p.look === "real") {
-    for (const id of ["real", "clone-real", "friend-real", "friendclone-real"]) {
-      for (let n = 0; n < LEG_PHASES; n++) ids.add(`${id}-p${n}`);
-    }
-    ids.add("mine-real");
-    ids.add("mineclone-real");
-    for (const id of ["sleep-real", "sleep-friend-real", "sleep-mine-real"]) ids.add(id);
-    return ids;
-  }
-  for (const r of crowd) {
-    if (r.clone) ids.add(r.friend ? "friendclone" : "clone");
-    else ids.add(`${r.asleep ? "sleep-" : ""}${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`);
-  }
-  for (const r of p.mine) {
-    const sleeps = r.slot === 0 && p.mineAsleep;
-    ids.add(`${sleeps ? "sleep-" : ""}${r.slot > 0 ? "mineclone" : "mine"}-${p.myAvatar}-${p.myColor}`);
-  }
-  if (p.ghost) ids.add(`mine-${p.myAvatar}-${p.myColor}`);
-  return ids;
 }
 
 // Walk-cycle poses per realistic look, drawn once and shared by its out-of-step copies

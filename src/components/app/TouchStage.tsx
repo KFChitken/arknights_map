@@ -66,8 +66,8 @@ export default function TouchStage({
   }, []);
 
   const { you, them } = cast;
-  // someone else's clone wears the plain hood, so its feeler is the hood's
-  const f = feelers(you.avatar, them.clone ? "hood" : them.avatar);
+  // a stranger's clone wears the plain hood, so its feeler is the hood's; a 触须之交's wears TA's look (roachSvg.ts)
+  const f = feelers(you.avatar, them.clone && !them.friend ? "hood" : them.avatar);
   const theirs = (friend: boolean) => <RoachIcon color={them.color} size={88} avatar={them.avatar} clone={them.clone} friend={friend} />;
   const yours = <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
   const line = (d: string, cls = "") => <path className={`ta-line ${cls}`} d={d} pathLength={1} />;
