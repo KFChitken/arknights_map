@@ -124,15 +124,18 @@
 /* under the dial or the box: 开始 and a line of how to play */
 .sw-under,
 .rx-under,
-.ec-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
+.ec-under,
+.bt-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
 .sw-start,
 .rx-start,
 .ec-start,
 .fd-start,
-.mt-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.mt-start,
+.bt-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
-.ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.ec-hint,
+.bt-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
 
 /* ---- 3、2、5 反应 (React325.tsx): only the digit and the tallies change, nothing flashes ---- */
 .rx-game { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
@@ -146,15 +149,20 @@
 .rx-ready { position: absolute; top: 8%; left: 0; right: 0; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0.3em; text-align: center; }
 .rx-score { display: flex; gap: 20px; }
 .rx-tally,
-.mt-tally { display: inline-flex; align-items: center; gap: 5px; }
+.mt-tally,
+.bt-tally { display: inline-flex; align-items: center; gap: 5px; }
 .rx-tally small,
-.mt-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
+.mt-tally small,
+.bt-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
 .rx-tally i,
-.mt-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
+.mt-tally i,
+.bt-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
 .rx-tally i.rx-on,
-.mt-tally i.mt-on { border-color: var(--st-green); background: var(--st-green); }
+.mt-tally i.mt-on,
+.bt-tally i.bt-on { border-color: var(--st-green); background: var(--st-green); }
 .rx-tally.rx-slips i.rx-on,
-.mt-tally.mt-wrongs i.mt-on { border-color: var(--st-red); background: var(--st-red); }
+.mt-tally.mt-wrongs i.mt-on,
+.bt-tally.bt-wrongs i.bt-on { border-color: var(--st-red); background: var(--st-red); }
 .rx-under { min-height: 104px; }
 .rx-hint { max-width: 300px; white-space: pre-line; }
 .rx-said { margin: 0; font-size: 15px; font-weight: 800; line-height: 1.35; }
@@ -276,6 +284,32 @@
   border-bottom-width: 3px; border-radius: 6px; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 700;
 }
 
+/* ---- 325 节拍 (Beat325.tsx): a ring stepping along a row of dots; only it, the dots and the words change, nothing flashes ---- */
+.bt-game { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+.bt-score { display: flex; gap: 18px; white-space: nowrap; }
+.bt-say { display: grid; place-items: center; height: 92px; }
+.bt-ready { color: var(--muted); font-size: 15px; font-weight: 700; letter-spacing: 0.3em; }
+.bt-count { color: #9aa1ab; font-size: 76px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.bt-said { margin: 0; font-size: 24px; font-weight: 800; }
+.bt-said.bt-good { color: var(--st-green); }
+.bt-said.bt-bad { color: var(--st-red); }
+/* fourteen slots: three beats, a rest, two, a rest, five, two rests */
+.bt-row { display: grid; grid-template-columns: repeat(14, 1fr); width: min(100%, 392px); }
+.bt-slot { position: relative; display: grid; place-items: center; aspect-ratio: 1; }
+/* the ring: a yellow disc with a dark rim, a little wider than its slot, under the dot */
+.bt-slot.bt-on::before {
+  content: ""; position: absolute; top: 50%; left: 50%; width: 130%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  border: 2.5px solid #1b1d22; border-radius: 50%; background: var(--st-yellow);
+}
+.bt-dot { position: relative; width: 52%; aspect-ratio: 1; border: 2px solid #9aa1ab; border-radius: 50%; background: #fff; }
+.bt-dot.bt-hit { border-color: var(--st-green); background: var(--st-green); }
+.bt-dot.bt-twice { border-color: var(--st-red); background: var(--st-red); }
+.bt-dot.bt-miss { border: 3px solid var(--st-red); }
+.bt-rest { position: relative; width: 18%; aspect-ratio: 1; border-radius: 50%; background: #c3c8cf; }
+.bt-rest.bt-stray { width: 34%; background: var(--st-red); }
+.bt-under { min-height: 104px; }
+.bt-hint { max-width: 300px; white-space: pre-line; text-wrap: balance; }
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -290,6 +324,10 @@
   .ec-under { gap: 8px; min-height: 84px; }
   .fd-game { --fd-side: min(100%, 360px, calc(100vh - 261px)); --fd-side: min(100%, 360px, calc(100dvh - 261px)); gap: 8px; }
   .mt-game { gap: 10px; }
+  .bt-game { gap: 8px; }
+  .bt-say { height: 72px; }
+  .bt-count { font-size: 60px; }
+  .bt-under { gap: 8px; min-height: 84px; }
   .mt-card { height: clamp(96px, calc(100vh - 300px), 180px); height: clamp(96px, calc(100dvh - 300px), 180px); }
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
@@ -324,4 +362,11 @@
   .mt-score { grid-column: 2; flex-direction: column; align-items: center; gap: 6px; align-self: end; }
   .mt-answers { grid-column: 2; align-self: start; width: 100%; min-height: 56px; }
   .mt-say { height: 56px; font-size: 20px; }
+  .bt-game { display: grid; grid-template-columns: auto 230px; justify-content: center; justify-items: center; align-items: center; gap: 6px 28px; }
+  .bt-score { grid-column: 1; grid-row: 1; }
+  .bt-say { grid-column: 1; grid-row: 2; height: 56px; }
+  .bt-count { font-size: 48px; }
+  .bt-said { font-size: 20px; }
+  .bt-row { grid-column: 1; grid-row: 3; width: min(48vw, 340px); }
+  .bt-under { grid-column: 2; grid-row: 1 / 4; min-height: 0; justify-content: center; }
 }

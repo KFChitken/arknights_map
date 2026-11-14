@@ -2308,6 +2308,7 @@ export const zh = {
       echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
       find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
       mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
+      beat325: { name: "325 节拍", rule: "跟着亮点敲：哒哒哒、哒哒、哒哒哒哒哒", short: "节拍" },
     },
     stopwatch: {
       start: "开始",
@@ -2396,6 +2397,27 @@ export const zh = {
       pass: "连对 {n} 道，过关！",
       out: "答错 {wrongs} 道，这局到这儿，最多连对 {n} 道",
       result: "连对 {n} 道",
+    },
+    /** 325 节拍 (src/lib/study/beat325.ts) */
+    beat325: {
+      start: "开始",
+      rule: "亮圈跳到点上就敲，空的地方不敲\n敲对 {pass} 小节过关，敲错 {fails} 小节结束",
+      /** Over the count 3、2、5 */
+      ready: "预备",
+      tap: "跟着亮圈敲屏幕任何地方",
+      tapKeys: "跟着亮圈敲屏幕任何地方，或按空格",
+      right: "敲对",
+      wrong: "敲错",
+      /** Read out for the dots */
+      rightSr: "敲对 {n} 小节，{of} 小节过关",
+      wrongSr: "敲错 {n} 小节，{of} 小节结束",
+      rowSr: "一小节：哒哒哒、哒哒、哒哒哒哒哒",
+      /** After a bar */
+      good: "对了",
+      bad: "差一拍",
+      pass: "敲对 {n} 小节，过关！",
+      out: "敲错 {wrong} 小节，这局到这儿，敲对 {n} 小节",
+      result: "敲对 {n} 小节",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
