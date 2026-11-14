@@ -148,15 +148,18 @@ function burstPath(cx: number, cy: number, rx: number, ry: number, n: number, in
 const BOOP_WORD = "啵!";
 const TAP_WORD = "嗒";
 
-/** 啵! where a bold feeler lands, a smaller cousin of 戳一戳's 戳! */
-export const boop = () =>
+/** A word in a yellow burst, as big as 啵! */
+export const burst = (word: string) =>
   svg(
     `<path d="${burstPath(22, 15, 20.5, 14, 9, 0.74)}" fill="${ACCENT}" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>
-<text x="22" y="19.4" text-anchor="middle" font-size="12" font-weight="800" font-family="${FONT}" fill="${INK}">${BOOP_WORD}</text>`,
+<text x="22" y="19.4" text-anchor="middle" font-size="12" font-weight="800" font-family="${FONT}" fill="${INK}">${word}</text>`,
     "0 0 44 30",
     44,
     30,
   );
+
+/** 啵! where a bold feeler lands, a smaller cousin of 戳一戳's 戳! */
+export const boop = () => burst(BOOP_WORD);
 
 /** 嗒: a sneaky feeler's touch, quiet: no burst, three tiny marks */
 export const tap = () =>

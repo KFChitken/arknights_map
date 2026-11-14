@@ -6,7 +6,7 @@ import { GLOW } from "@/lib/roachSvg";
 import { dockFeeler, mark, miniHeart, soundArcs, tap } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { touchedOn } from "./LookMoves";
+import { ownMark, touchedAround, touchedOn } from "./LookMoves";
 
 /**
  * The touched side (the third step of the touch and declaration animations): only your
@@ -89,13 +89,16 @@ export function DockFx({
   const { av, icon, mail, top } = at;
   const cx = av.x + av.w / 2;
   // your look's own reaction, over your avatar's picture and moving with it (LookMoves.tsx)
-  const reacts = kind === "sneaky" || kind === "bold" ? touchedOn(me.avatar, GLOW[me.color]) : null;
-  const look = reacts && (
+  const touched = kind === "sneaky" || kind === "bold";
+  const on = touched ? touchedOn(me.avatar, GLOW[me.color]) : null;
+  const around = touched ? touchedAround(me.avatar) : null;
+  const look = (on || around) && (
     <div
       className={`dock-fx dock-look dock-${kind} ${DOCK_ANIM[kind]}`}
       style={{ left: icon.x, top: icon.y, width: icon.w, height: icon.h }}
     >
-      {reacts}
+      {on}
+      {around}
     </div>
   );
   if (kind === "sneaky") {
@@ -161,7 +164,7 @@ export function DockFx({
       {friend ? (
         <div className="dock-fx ta-dhearts dock-hearts" style={{ left: cx, top: av.y - 8 }} {...html(miniHeart(14) + miniHeart(11))} />
       ) : (
-        <div className="dock-fx ta-dmark" style={{ left: av.x - 14, top: av.y - 30 }} {...html(mark("!"))} />
+        !ownMark(me.avatar) && <div className="dock-fx ta-dmark" style={{ left: av.x - 14, top: av.y - 30 }} {...html(mark("!"))} />
       )}
     </>
   );

@@ -21,7 +21,7 @@ import {
 } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { boldAround, boldYou, shoutProp, touchedOn } from "./LookMoves";
+import { boldAround, boldLines, boldYou, ownMark, shoutAround, shoutProp, touchedAround, touchedOn } from "./LookMoves";
 
 /**
  * Who is in a touch scene. you: your own look and the name your dock shows. them: the
@@ -76,6 +76,9 @@ export default function TouchStage({
   const theirs = (friend: boolean) => <RoachIcon color={them.color} size={88} avatar={them.avatar} clone={them.clone} friend={friend} />;
   const yours = <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
   const touched = touchedOn(theirLook, GLOW[plain ? "white" : them.color]);
+  // what it sets off round itself stays where it is, over the whole scene, as it jumps and shrinks back
+  const around = touchedAround(theirLook);
+  const aroundThem = around && <div className="ta-around">{around}</div>;
   const line = (d: string, cls = "") => <path className={`ta-line ${cls}`} d={d} pathLength={1} />;
   const stage = { "--dur": `${TOUCH_MS[kind]}ms`, "--end": place.end } as CSSProperties;
   // each look's own moves play by these (LookMoves.tsx); sneaking up, you are a shadow with no look
@@ -101,6 +104,7 @@ export default function TouchStage({
         </svg>
         <div className="ta-fx ta-tap" style={{ left: 157, top: 114 }} {...html(tap())} />
         <div className="ta-mark" style={{ left: 204, top: 38 }} {...html(mark("?"))} />
+        {aroundThem}
       </>
     );
   } else if (kind === "bold") {
@@ -117,6 +121,7 @@ export default function TouchStage({
           </div>
         </div>
         <svg className="ta-lines" viewBox="0 0 240 160" aria-hidden="true">
+          {boldLines(you.avatar, f.bold)}
           {line(f.bold)}
         </svg>
         <div className="ta-fx ta-boop" style={{ left: bx + 3, top: by - 15 }} {...html(boop())} />
@@ -128,8 +133,9 @@ export default function TouchStage({
             <b>{you.name}</b>
           </span>
         </div>
-        <div className="ta-mark" style={{ left: 204, top: 38 }} {...html(mark("!"))} />
-        {boldAround(you.avatar, f.boldEnd)}
+        {!ownMark(theirLook) && <div className="ta-mark" style={{ left: 204, top: 38 }} {...html(mark("!"))} />}
+        {boldAround(you.avatar, f)}
+        {aroundThem}
       </>
     );
   } else {
@@ -246,6 +252,7 @@ export function ShoutStage({
             {limited && <span className="ta-tag">{T.map.declare.limited}</span>}
             {text}
           </div>
+          {shoutAround(me.avatar)}
         </div>
       </div>
     </>

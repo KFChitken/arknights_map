@@ -1755,6 +1755,8 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
    roach in its 88 box; on the dock (.dock-look) the same pieces lie over your own avatar, smaller. ---- */
 .ta-lay { position: absolute; inset: 0; }
 .ta-lay svg { width: 100%; height: 100%; }
+/* round the roach touched, over everything else in the scene: its box, not moving as it does */
+.ta-around { left: 150px; top: 66px; width: 88px; height: 88px; }
 
 /* 初始, 大胆碰别人 (挥袖子): one sleeve up, waved twice, both lamps blinking in your colour */
 .hd-wave, .hd-glow, .hd-eyes, .hd-flash { opacity: 0; }
@@ -1879,6 +1881,53 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
   60% { opacity: 1; transform: none; } 68%, 100% { opacity: 0; transform: translateY(12px) scale(0.8); }
 }
 @keyframes dc-scr { 0%, 18% { opacity: 0.4; } 22% { opacity: 1; } 30% { opacity: 0.6; } 38% { opacity: 1; } 46% { opacity: 0.6; } 54% { opacity: 1; } 100% { opacity: 1; } }
+
+/* 管理员, 大胆碰别人 (传送带): its feeler is a conveyor belt with yellow dashes running along it, and a crate rides
+   over to them on it in place of the name card, landing with 咚 in place of 啵! */
+.em-belt { fill: none; stroke: #3a3d45; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 1 1.2; stroke-dashoffset: 1.05; }
+.em-dash { fill: none; stroke: #ffd23f; stroke-width: 2.6; stroke-dasharray: 0.9 1.1; opacity: 0; }
+.em-crateway { left: 0; top: 0; offset-anchor: 50% 92%; offset-rotate: 0deg; offset-distance: 0%; opacity: 0; }
+.em-dong { opacity: 0; }
+.ta-bold.you-endmin .ta-line, .ta-bold.you-endmin .ta-boop, .ta-bold.you-endmin .ta-cardway { display: none; }
+.ta-bold.you-endmin .em-belt { animation-name: ta-bo-line; }
+.ta-bold.you-endmin .em-dash { animation-name: em-dash; animation-timing-function: linear; }
+.ta-bold.you-endmin .em-crateway { animation-name: ta-bo-card; animation-timing-function: linear; }
+.ta-bold.you-endmin .em-dong { animation-name: ta-bo-boop; animation-delay: calc(var(--dur) * 0.3); }
+@keyframes em-dash { 0%, 41% { opacity: 0; stroke-dashoffset: 0; } 43% { opacity: 1; } 79% { opacity: 1; stroke-dashoffset: -16; } 82%, 100% { opacity: 0; stroke-dashoffset: -17; } }
+/* 管理员, 被大胆碰 (黄黑警报): a warning sign blinks over its head in place of !, a dashed yellow ring spreads round
+   its feet, and it shrinks back (the pieces are drawn on the 64 grid, so origins are in its units) */
+.em-warn, .em-ring { opacity: 0; }
+.em-warn { transform-origin: 47.27px -18.69px; }
+.em-ring { transform-origin: 32px 59.64px; }
+.ta-bold.them-endmin .em-warn, .dock-bold .em-warn { animation-name: em-warn; }
+.ta-bold.them-endmin .em-ring, .dock-bold .em-ring { animation-name: em-ring; }
+.ta-bold.them-endmin .ta-jump { animation-name: em-recoil; }
+@keyframes em-warn {
+  0%, 44% { opacity: 0; transform: scale(0.3); } 48% { opacity: 1; transform: scale(1.2); } 52% { transform: scale(1); }
+  56% { opacity: 0.25; } 60% { opacity: 1; } 64% { opacity: 0.25; } 68% { opacity: 1; } 92% { opacity: 1; } 100% { opacity: 0; }
+}
+@keyframes em-ring { 0%, 44% { opacity: 0; transform: scale(0.5); } 48% { opacity: 1; } 70% { opacity: 1; transform: scale(1.1); } 88%, 100% { opacity: 0; transform: scale(1.2); } }
+@keyframes em-recoil { 0%, 44% { transform: none; } 48% { transform: translateX(6px) rotate(6deg); } 54% { transform: translateX(-3px) rotate(-3deg); } 60%, 100% { transform: none; } }
+/* 被偷偷碰: the ring alone, a size smaller, at the tap; ? as anyone, and it jumps and looks round as anyone does */
+.ta-sneaky.them-endmin .em-ring, .dock-sneaky .em-ring { animation-name: em-ring-q; }
+@keyframes em-ring-q { 0%, 46% { opacity: 0; transform: scale(0.4); } 50% { opacity: 0.85; } 70% { opacity: 0.85; transform: scale(0.85); } 88%, 100% { opacity: 0; transform: scale(0.9); } }
+/* 管理员, 喊话 (广播喇叭): a loudspeaker on a pole comes up beside it, sound going out of it in arcs */
+.em-pole { left: 146px; top: 60px; width: 40px; height: 92px; opacity: 0; transform-origin: 30% 100%; }
+.em-pole .arc { opacity: 0; transform-box: fill-box; transform-origin: 0% 50%; }
+.ta-shout.me-endmin .em-pole { animation-name: em-pole; }
+.ta-shout.me-endmin .em-pole .arc { animation: em-arc var(--dur) ease-out both; }
+.ta-shout.me-endmin .em-pole .arc.a2 { animation-name: em-arc2; }
+@keyframes em-pole { 0%, 11% { opacity: 0; transform: scaleY(0.1); } 17% { opacity: 1; transform: scaleY(1.06); } 20% { transform: scaleY(1); } 62% { opacity: 1; transform: scaleY(1); } 70%, 100% { opacity: 0; transform: scaleY(0.1); } }
+@keyframes em-arc {
+  0%, 19% { opacity: 0; transform: scale(0.6); } 22% { opacity: 1; } 28% { opacity: 0; transform: scale(1.3); } 29% { opacity: 0; transform: scale(0.6); }
+  32% { opacity: 1; } 38% { opacity: 0; transform: scale(1.3); } 39% { opacity: 0; transform: scale(0.6); } 42% { opacity: 1; } 48% { opacity: 0; transform: scale(1.3); }
+  49% { opacity: 0; transform: scale(0.6); } 52% { opacity: 1; } 58%, 100% { opacity: 0; transform: scale(1.3); }
+}
+@keyframes em-arc2 {
+  0%, 23% { opacity: 0; transform: scale(0.6); } 26% { opacity: 1; } 32% { opacity: 0; transform: scale(1.3); } 33% { opacity: 0; transform: scale(0.6); }
+  36% { opacity: 1; } 42% { opacity: 0; transform: scale(1.3); } 43% { opacity: 0; transform: scale(0.6); } 46% { opacity: 1; } 52% { opacity: 0; transform: scale(1.3); }
+  53% { opacity: 0; transform: scale(0.6); } 56% { opacity: 1; } 62%, 100% { opacity: 0; transform: scale(1.3); }
+}
 
 /* the dock's: over your own avatar (its box), moving with it, as long as the dock's scene */
 .dock-look * { animation-duration: 1.6s; animation-fill-mode: both; animation-timing-function: ease-out; }

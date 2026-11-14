@@ -74,6 +74,46 @@ export const terminal = () =>
 <circle cx="31.4" cy="13" r="0.8" fill="#50555e"/>`,
   );
 
+/** 管理员 传送带: the crate its belt carries over to them */
+export const crate = () =>
+  svgBox(
+    "0 0 22 20",
+    22,
+    20,
+    `<rect x="1.5" y="2.5" width="19" height="16" rx="1.6" fill="#ffd23f" stroke="${LINE}" stroke-width="1.5"/>
+<path d="M1.5 7 H20.5" stroke="${LINE}" stroke-width="1.2"/>
+<path d="M2.5 3.5 L6 3.5 L2.5 6.5 Z M20 3.5 L16.5 3.5 L20 6.5 Z" fill="${LINE}"/>
+<rect x="5.6" y="9.6" width="10.8" height="6" rx="1" fill="#fff" stroke="${LINE}" stroke-width="1"/>
+<path d="M7.6 12.6 H14.4" stroke="${LINE}" stroke-width="1" stroke-linecap="round"/>`,
+  );
+
+/**
+ * 管理员 touched (黄黑警报): a warning sign up over its head (.em-warn) and a dashed yellow ring round its feet
+ * (.em-ring). On the 64 grid, so the one drawing fits the stage and your dock avatar alike.
+ */
+export const alarm = () =>
+  svg64(`<g class="em-ring"><ellipse cx="32" cy="59.64" rx="31.27" ry="8.73" fill="none" stroke="#ffd23f" stroke-width="1.45"/>
+<ellipse cx="32" cy="59.64" rx="30.55" ry="8" fill="rgba(255,210,63,0.45)"/>
+<ellipse cx="32" cy="59.64" rx="29.45" ry="6.91" fill="none" stroke="${INK}" stroke-width="2.18" pathLength="20" stroke-dasharray="0.6 0.4" stroke-dashoffset="0.3"/></g>
+<g class="em-warn"><g transform="translate(36.36 -36.36) scale(0.7273)">
+<path d="M15 1.6 L28.6 25.2 H1.4 Z" fill="#ffd23f" stroke="${LINE}" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M15 9 V17" stroke="${LINE}" stroke-width="2.8" stroke-linecap="round"/><circle cx="15" cy="21.2" r="1.7" fill="${LINE}"/></g></g>`);
+
+/** 管理员 shouting: the loudspeaker on a pole that comes up beside it, sound going out of it in arcs (.arc) */
+export const loudspeaker = () =>
+  svgBox(
+    "0 0 40 92",
+    40,
+    92,
+    `<path d="M4 90.6 H18" stroke="${LINE}" stroke-width="2.6" stroke-linecap="round"/>
+<rect x="9" y="16" width="4" height="74" rx="1.5" fill="#5b5f69" stroke="${LINE}" stroke-width="1.4"/>
+<path d="M9 40 H13 M9 64 H13" stroke="#ffd23f" stroke-width="2"/>
+<rect x="6.6" y="8.6" width="8" height="9" rx="1.8" fill="#33363d" stroke="${LINE}" stroke-width="1.3"/>
+<path d="M14 9.6 L25 3.6 L25 23.4 L14 17.4 Z" fill="#ffd23f" stroke="${LINE}" stroke-width="1.5" stroke-linejoin="round"/>
+<path class="arc" d="M28.6 7.6 Q32 13.5 28.6 19.4" fill="none" stroke="${LINE}" stroke-width="2" stroke-linecap="round"/>
+<path class="arc a2" d="M32.4 3.4 Q38 13.5 32.4 23.6" fill="none" stroke="${LINE}" stroke-width="2" stroke-linecap="round"/>`,
+  );
+
 /**
  * What each picture look drinks from (摄入酒精), drawn on the 64 grid by its mouth, with the point it tips about
  * (the cup's base, in % of the box). fall: which way it tips over drunk, when not to its right.
@@ -89,6 +129,16 @@ const CUPS: Partial<Record<RoachAvatar, Cup>> = {
   <path d="M37.1 28.4 H44.1" stroke="#c98a2e" stroke-width="1.6"/>
   <path d="M38.6 31 L42.6 31" stroke="#5aa8d6" stroke-width="1.2"/>
   <ellipse cx="40.6" cy="27.2" rx="3.6" ry="0.9" fill="#fff4cf" stroke-width="1"/>
+</g>`,
+  },
+  // a field canteen
+  endmin: {
+    origin: "66% 64%",
+    draw: () => `<g stroke="${LINE}" stroke-linejoin="round">
+  <rect x="40.4" y="28.2" width="3.4" height="2.6" rx="0.8" fill="#33363d" stroke-width="1.1"/>
+  <path d="M37.6 33.6 C37.6 31.2 39.6 30.6 42.1 30.6 C44.6 30.6 46.6 31.2 46.6 33.6 V39.4 C46.6 40.6 45.6 41.2 44.4 41.2 H39.8 C38.6 41.2 37.6 40.6 37.6 39.4 Z" fill="#4f6b4a" stroke-width="1.4"/>
+  <path d="M37.8 35.6 H46.4" stroke="#ffd23f" stroke-width="1.6"/>
+  <path d="M39.4 33 V34.4" stroke="#8fb08a" stroke-width="1" stroke-linecap="round"/>
 </g>`,
   },
 };
