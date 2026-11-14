@@ -260,10 +260,26 @@ function HangTag() {
   );
 }
 
-type FaceProps = { c: PassChar; no: number; color: string; pic: PassPic; holder: string; at: number };
+/** no null: a 样张, as a wish not drawn yet shows (SamplePass) */
+type FaceProps = { c: PassChar; no: number | null; color: string; pic: PassPic; holder: string; at: number };
+
+/** What a pass prints of whose it is: its number, holder and day, or ????, —— and —— on a 样张 */
+const printed = (no: number | null, holder: string, at: number) =>
+  no === null ? { num: "????", holder: "——", date: "——" } : { num: padNo(no), holder, date: issued(at) };
+
+/** The rubber stamp across a 样张 */
+function Stamp() {
+  return (
+    <span className="zsmp" aria-hidden="true">
+      {T.passes.sample.stamp}
+      <small>{T.passes.sample.stampEn}</small>
+    </span>
+  );
+}
 
 /** ① 通行认证, and ② its special look (x) */
 function RaFace({ c, no, color, pic, holder, at, x }: FaceProps & { x: boolean }) {
+  const p = printed(no, holder, at);
   const en = printedEn(c);
   const len = [...c.name].length;
   const gm = gameMark(c);
@@ -311,14 +327,14 @@ function RaFace({ c, no, color, pic, holder, at, x }: FaceProps & { x: boolean }
           <span className="ra-fine">
             OPERATOR PASS
             <br />
-            {T.passes.pass.holder} {holder}
+            {T.passes.pass.holder} {p.holder}
             <br />
-            {issued(at)}
+            {p.date}
           </span>
           <span className="ra-no">
-            <FoilChip no={no} />
+            {no !== null && <FoilChip no={no} />}
             <small>No.</small>
-            {padNo(no)}
+            {p.num}
           </span>
         </div>
       </div>
@@ -326,15 +342,17 @@ function RaFace({ c, no, color, pic, holder, at, x }: FaceProps & { x: boolean }
         ZHOUP MAP PASS
       </span>
       <span className="ra-edge" aria-hidden="true">
-        ZHOUP MAP · {gm}-{padNo(no)}
+        ZHOUP MAP · {gm}-{p.num}
       </span>
       {x && <i className="ra-holo holo" />}
+      {no === null && <Stamp />}
     </div>
   );
 }
 
 /** ③ 长条挂牌, and ④ its special look (x) */
 function TagFace({ c, no, color, pic, holder, at, x }: FaceProps & { x: boolean }) {
+  const p = printed(no, holder, at);
   const en = printedEn(c);
   const chars = [...c.name];
   const tn = en ? Math.min(17, 132 / (en.length * 0.47)) : Math.min(21, 124 / chars.length);
@@ -374,13 +392,14 @@ function TagFace({ c, no, color, pic, holder, at, x }: FaceProps & { x: boolean 
         </span>
         <span className="tg-no">
           <small>No.</small>
-          {padNo(no)}
-          <FoilChip no={no} />
+          {p.num}
+          {no !== null && <FoilChip no={no} />}
         </span>
         <span className="tg-hold">
-          {T.passes.pass.holder} {holder} · {issued(at)}
+          {T.passes.pass.holder} {p.holder} · {p.date}
         </span>
       </div>
+      {no === null && <Stamp />}
     </div>
   );
 }
@@ -390,7 +409,7 @@ const stillMotion = () => typeof window !== "undefined" && window.matchMedia("(p
 /**
  * A whole pass, w wide (a 长条挂牌 0.644 of it, as tall); hang: with its strap or clip above it, as one that pops up;
  * tilt: leaning after the pointer, its shine moving, unless the player asked for less motion. Its picture and colour
- * as MiniPass's: given (a profile card's), else from the 立绘 there are.
+ * as MiniPass's: given (a profile card's), else from the 立绘 there are. no null: a 样张 (SamplePass).
  */
 export function FullPass({
   c,
@@ -451,6 +470,14 @@ export function FullPass({
       {children}
     </div>
   );
+}
+
+/**
+ * A character's pass as 样张, for a wish not drawn yet: No.????, —— for the holder and the day, never gold, and a
+ * stamp across it; in either look (fancy: the special one a second copy brings)
+ */
+export function SamplePass(props: { c: PassChar; fancy: boolean; art?: Art | null; w: number; tilt?: boolean; label?: string }) {
+  return <FullPass {...props} no={null} holder="" at={0} />;
 }
 
 /** A character as the catalogue has them, from what a worn pass carries (profile cards have no catalogue) */

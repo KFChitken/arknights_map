@@ -143,6 +143,17 @@
   background: linear-gradient(120deg, #b88a1b, #ffe08a 45%, #c79a28 60%, #fff1b8); color: #3b2a05; letter-spacing: 0.04em;
 }
 
+/* 样张 (SamplePass): a pass of a wish not drawn yet, a rubber stamp across the middle; no number, no holder */
+.zc .zsmp {
+  position: absolute; left: 50%; top: 47%; z-index: 30; transform: translate(-50%, -50%) rotate(-14deg); display: flex; flex-direction: column;
+  align-items: center; padding: 2cqw 5.5cqw 1.6cqw; border: 1.2cqw solid #d23a52; border-radius: 2.6cqw; background: rgba(255, 255, 255, 0.86);
+  color: #d23a52; font: 900 13cqw/1 var(--font-ui); letter-spacing: 0.32em; text-indent: 0.32em; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 0.8cqw 2.4cqw rgba(8, 10, 14, 0.22);
+}
+.zc .zsmp small { font: 700 4.4cqw/1 var(--font-num); letter-spacing: 0.5em; text-indent: 0.5em; margin-top: 1.2cqw; }
+.zc.tag .zsmp { top: 42%; font-size: 18cqw; padding: 2.6cqw 6cqw 2cqw; }
+.zc.tag .zsmp small { font-size: 6cqw; }
+
 /* the strap and clip above a pass that pops up */
 .zp.hang { margin-top: calc(var(--w, 236px) * 0.64); }
 .zp.hang.s-tag { margin-top: calc(var(--w, 236px) * 0.56); }

@@ -22,6 +22,7 @@ import {
   claimable,
   DAY_TICKETS,
   GIFTS_IN_PER_DAY,
+  goldLeft,
   gotToday,
   isFancy,
   padNo,
@@ -49,15 +50,16 @@ import { passesApi } from "@/lib/passesClient";
 import { useLeanArt } from "@/lib/passLean";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import { useOperatorArt, type Art } from "../OperatorNames";
-import { CardBack, FullPass, issued, MiniPass, PassArtProvider, picOf, smallUrl, usePassArt } from "./PassCard";
+import { CardBack, FullPass, issued, MiniPass, PassArtProvider, picOf, SamplePass, smallUrl, usePassArt } from "./PassCard";
 import "./passes.css";
 
 /**
- * 通行证寻访 (src/lib/passes.ts), over everything on the map in each of the three layouts: the page with the wish list,
- * the count towards a sure wish and 每日任务 (whose tickets are claimed there, a tap on a task); 刷券, where the passes a draw brought (decided by the server
- * before anything shows) come out of a reader face down and are turned over one by one; 我的通行证 (each character
- * opens to their whole pass, its look and the one worn), the wish list's editor, 概率说明 and 寻访记录. ×, ‹ 地图,
- * a tap beside it and Escape close it, or step back a screen.
+ * 通行证寻访 (src/lib/passes.ts), over everything on the map in each of the three layouts: the page with the wish list
+ * (each wish a tap away from their pass: the player's own, as 我的通行证 opens it, or a 样张), the count towards a
+ * sure wish and 每日任务 (whose tickets are claimed there, a tap on a task); 刷券, where the passes a draw brought
+ * (decided by the server before anything shows) come out of a reader face down and are turned over one by one;
+ * 我的通行证 (each character opens to their whole pass, its look and the one worn), the wish list's editor, 概率说明
+ * and 寻访记录. ×, ‹ 地图, a tap beside it and Escape close it, or step back a screen.
  * holder: the name printed on the player's passes (their card's, 匿名舟P for the anonymous); onRefused: a refusal the
  * map page answers itself (sign in, say again they are 18, agree to the privacy policy), which closes this first;
  * onWallet: the tickets the map's button shows and the pass worn, as they change; onGift: 送券, the 触须之交 page
@@ -85,6 +87,17 @@ export default function Passes({
   const [failed, setFailed] = useState(false);
   const [msg, setMsg] = useState("");
   const [screen, setScreen] = useState<"home" | "wallet" | "wish" | "odds" | "log">("home");
+  // a wish tapped on 寻访, over it: the catalogue id, and the slot it came from, where the focus goes back
+  const [peek, setPeek] = useState<number | null>(null);
+  const peekFrom = useRef<HTMLElement | null>(null);
+  const openPeek = (id: number, from: HTMLElement) => {
+    peekFrom.current = from;
+    setPeek(id);
+  };
+  const closePeek = () => {
+    setPeek(null);
+    requestAnimationFrame(() => peekFrom.current?.focus({ preventScroll: true }));
+  };
   const [busy, setBusy] = useState(false);
   const [term, setTerm] = useState<{ drawn: Drawn[]; n: DrawSize; key: number } | null>(null);
   const live = useRef(true);
@@ -205,14 +218,15 @@ export default function Passes({
   };
 
   // Into it for the keyboard and screen readers, and kept in it: Tab goes round what it has to press, Escape steps
-  // back (刷券: shows all at once, then puts it away; a character of 我的通行证: back to the list; a screen: back to
-  // 寻访; 寻访: closes it); closed, back to where the focus was
+  // back (刷券: shows all at once, then puts it away; a wish tapped: back to 寻访; a character of 我的通行证: back to
+  // the list; a screen: back to 寻访; 寻访: closes it); closed, back to where the focus was
   const box = useRef<HTMLDivElement>(null);
   const termEscape = useRef<(() => void) | null>(null);
   const stepBack = useRef<(() => void) | null>(null);
   const escape = useRef(() => {});
   escape.current = () => {
     if (term) termEscape.current?.();
+    else if (peek !== null) closePeek();
     else if (stepBack.current) stepBack.current();
     else if (screen !== "home") setScreen("home");
     else onClose();
@@ -260,21 +274,25 @@ export default function Passes({
             )}
           </div>
         ) : screen === "home" ? (
-          <Home
-            st={st}
-            art={art}
-            msg={msg}
-            said={said}
-            busy={busy}
-            bump={bump}
-            claimed={claimed}
-            onPull={pull}
-            onClaim={claim}
-            onScreen={setScreen}
-            onGift={onGift}
-            onClose={onClose}
-            hidden={Boolean(term)}
-          />
+          <>
+            <Home
+              st={st}
+              art={art}
+              msg={msg}
+              said={said}
+              busy={busy}
+              bump={bump}
+              claimed={claimed}
+              onPull={pull}
+              onClaim={claim}
+              onPeek={openPeek}
+              onScreen={setScreen}
+              onGift={onGift}
+              onClose={onClose}
+              hidden={Boolean(term) || peek !== null}
+            />
+            {peek !== null && <Peek id={peek} st={st} art={art} holder={holder} onBack={closePeek} onTook={took} onRefused={refuse} />}
+          </>
         ) : screen === "wallet" ? (
           <Wallet st={st} art={art} holder={holder} stepBack={stepBack} onBack={() => setScreen("home")} onTook={took} onRefused={refuse} />
         ) : screen === "wish" ? (
@@ -368,24 +386,74 @@ function TicketCount({ n, bump }: { n: number; bump?: { n: number; key: number }
   );
 }
 
-/** The wish list as six places: who is on it (in colour, with the number of their first, once drawn), and the empty ones */
-function WishSlots({ st, art, draft, onRemove }: { st: PassState; art: Art | null; draft?: number[]; onRemove?: (id: number) => void }) {
+/**
+ * The wish list as six places: who is on it (in colour, with the number of their first, once drawn), and the empty
+ * ones. On 寻访 (onPeek) each is a button: a wish opens their pass (Peek), an empty place the wish list's editor; in
+ * the editor (onRemove) a wish has its ✕.
+ */
+export function WishSlots({
+  st,
+  art,
+  draft,
+  onRemove,
+  onPeek,
+  onEdit,
+}: {
+  st: PassState;
+  art: Art | null;
+  draft?: number[];
+  onRemove?: (id: number) => void;
+  onPeek?: (id: number, from: HTMLElement) => void;
+  onEdit?: () => void;
+}) {
   const ids = draft ?? st.wish;
   return (
     <>
       {Array.from({ length: WISH_MAX }, (_, k) => {
         const c = ids[k] !== undefined ? passChar(ids[k]) : null;
         if (!c) {
-          return (
-            <div key={`e${k}`} className="hw empty" role="img" aria-label={fmt(T.passes.wish.emptySlot, { n: k + 1 })}>
+          const place = (
+            <>
               <div className="slotx" aria-hidden="true">
                 +
               </div>
               <span aria-hidden="true">{T.passes.emptySlot}</span>
+            </>
+          );
+          return onEdit ? (
+            <button key={`e${k}`} type="button" className="hw empty" aria-label={T.passes.peek.empty} onClick={onEdit}>
+              {place}
+            </button>
+          ) : (
+            <div key={`e${k}`} className="hw empty" role="img" aria-label={fmt(T.passes.wish.emptySlot, { n: k + 1 })}>
+              {place}
             </div>
           );
         }
         const own = st.wishOwned.find((o) => o.charId === c.id);
+        const name = characterName(c.name);
+        const pass = (
+          <MiniPass c={c} no={own ? own.first.no : null} fancy={own ? isFancy(own.copies, st.plain.includes(c.id)) : false} art={art} />
+        );
+        if (onPeek) {
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`hw${own ? " got" : ""}`}
+              aria-label={fmt(own ? T.passes.peek.own : T.passes.peek.sample, { name })}
+              onClick={(e) => onPeek(c.id, e.currentTarget)}
+            >
+              {own && (
+                <span className="ck" aria-hidden="true">
+                  ✓
+                </span>
+              )}
+              {pass}
+              <span aria-hidden="true">{name}</span>
+            </button>
+          );
+        }
         return (
           <div key={c.id} className={`hw${own ? " got" : ""}`}>
             {own && !onRemove && (
@@ -394,12 +462,12 @@ function WishSlots({ st, art, draft, onRemove }: { st: PassState; art: Art | nul
               </span>
             )}
             {onRemove && (
-              <button className="x" aria-label={fmt(T.passes.wish.remove, { name: characterName(c.name) })} onClick={() => onRemove(c.id)}>
+              <button className="x" aria-label={fmt(T.passes.wish.remove, { name })} onClick={() => onRemove(c.id)}>
                 ✕
               </button>
             )}
-            <MiniPass c={c} no={own ? own.no : null} fancy={own ? isFancy(own.copies, st.plain.includes(c.id)) : false} art={art} />
-            <span>{characterName(c.name)}</span>
+            {pass}
+            <span>{name}</span>
             {own && !onRemove && <span className="sr">{T.passes.owned}</span>}
           </div>
         );
@@ -517,6 +585,7 @@ function Home({
   hidden,
   onPull,
   onClaim,
+  onPeek,
   onScreen,
   onGift,
   onClose,
@@ -534,6 +603,8 @@ function Home({
   hidden: boolean;
   onPull: (n: DrawSize) => void;
   onClaim: (task: Task) => void;
+  /** a wish tapped: their pass over 寻访 */
+  onPeek: (id: number, from: HTMLElement) => void;
   onScreen: (s: "wallet" | "wish" | "odds" | "log") => void;
   /** 送券: to the 触须之交 page */
   onGift: () => void;
@@ -565,7 +636,7 @@ function Home({
             <span>{fmt(T.passes.pool, { n: CATALOG_SIZE })}</span>
           </div>
           <div className="hb-w">
-            <WishSlots st={st} art={art} />
+            <WishSlots st={st} art={art} onPeek={onPeek} onEdit={() => onScreen("wish")} />
           </div>
           <div className="hb-n">
             <span>{fmt(T.passes.wishHead, { pity: PITY })}</span>
@@ -1001,7 +1072,8 @@ function DayTop({ title, extra, onBack }: { title: string; extra?: string; onBac
 }
 
 type WalletFilter = "all" | "ak" | "ef" | "wish";
-type Owned = OwnedChar & { c: PassChar };
+/** A character the player has, as Detail opens them; first: their first pass, when known already (a wish's) */
+type Owned = OwnedChar & { c: PassChar; first?: PassCopy };
 
 /**
  * 我的通行证: everyone the player has, the most copies first, each in their look with the number of their first, the
@@ -1160,15 +1232,17 @@ function WornBar({ worn, busy, onTakeOff }: { worn: WornPass; busy: boolean; onT
 const MARKS = { ak: ["①", "②"], ef: ["③", "④"] } as const;
 
 /**
- * One character of 我的通行证, over the list: their whole pass, leaning after the pointer; 普通 or 镭射 (from a second
- * copy); which of their passes to wear, by number, when they have more than one; 戴上, or 摘下 for the one worn. It
- * opens on the pass worn, else their first; their passes come from the server, but a pass known already shows at once.
+ * One character of 我的通行证, over the list (or over 寻访, a wish tapped there: backLabel says where ‹ goes): their
+ * whole pass, leaning after the pointer; 普通 or 镭射 (from a second copy); which of their passes to wear, by number,
+ * when they have more than one; 戴上, or 摘下 for the one worn. It opens on the pass worn, else their first; their
+ * passes come from the server, but a pass known already shows at once, and a wish's only pass needs no asking.
  */
-function Detail({
+export function Detail({
   o,
   st,
   art,
   holder,
+  backLabel = T.passes.detail.backLabel,
   onBack,
   onTook,
   onRefused,
@@ -1177,6 +1251,7 @@ function Detail({
   st: PassState;
   art: Art | null;
   holder: string;
+  backLabel?: string;
   onBack: () => void;
   onTook: (s: PassState) => void;
   onRefused: (e: unknown) => void;
@@ -1190,7 +1265,10 @@ function Detail({
   useEffect(() => {
     self.current?.focus({ preventScroll: true });
   }, []);
+  // which one to wear is only asked of more than one
+  const known = o.first !== undefined && o.copies < 2;
   useEffect(() => {
+    if (known) return;
     let live = true;
     passesApi.copies(o.charId).then(
       (r) => live && setCopies(r.copies),
@@ -1199,7 +1277,7 @@ function Detail({
     return () => {
       live = false;
     };
-  }, [o.charId, onRefused]);
+  }, [o.charId, known, onRefused]);
 
   const worn = st.worn?.charId === o.charId ? st.worn : null;
   // the pass shown: the one picked, else the one worn, else their first; its id null until their passes come
@@ -1207,6 +1285,7 @@ function Detail({
     copies?.find((p) => p.id === pickId) ??
     (worn ? { id: worn.passId, no: worn.no, at: worn.drawnAt } : null) ??
     copies?.[0] ??
+    o.first ??
     (o.copies === 1 ? { id: null, no: o.no, at: o.lastAt } : null);
   const n = copies?.length ?? o.copies;
   const plain = st.plain.includes(o.charId);
@@ -1246,7 +1325,7 @@ function Detail({
   return (
     <div ref={self} className="ps-day wd" role="group" aria-label={name} tabIndex={-1}>
       <div className="w-top">
-        <button className="w-back" onClick={onBack} aria-label={d.backLabel}>
+        <button className="w-back" onClick={onBack} aria-label={backLabel}>
           ‹
         </button>
         <b>{name}</b>
@@ -1312,6 +1391,102 @@ function Detail({
       <p className="wd-msg" role="status">
         {msg}
       </p>
+    </div>
+  );
+}
+
+/**
+ * A wish tapped on 寻访, over it: one the player has opens as in 我的通行证 (Detail, at once: the page has their first
+ * pass), ‹ and 返回 back to 寻访; one they have not, a 样张 (Sample)
+ */
+export function Peek({
+  id,
+  st,
+  art,
+  holder,
+  onBack,
+  onTook,
+  onRefused,
+}: {
+  id: number;
+  st: PassState;
+  art: Art | null;
+  holder: string;
+  onBack: () => void;
+  onTook: (s: PassState) => void;
+  onRefused: (e: unknown) => void;
+}) {
+  const c = passChar(id);
+  if (!c) return null;
+  const own = st.wishOwned.find((o) => o.charId === id);
+  if (!own) return <Sample c={c} lastNo={st.wishDrawn.find((d) => d.charId === id)?.lastNo ?? 0} art={art} onBack={onBack} />;
+  const o: Owned = { charId: id, copies: own.copies, no: own.first.no, lastAt: own.first.at, c, first: own.first };
+  return <Detail o={o} st={st} art={art} holder={holder} backLabel={T.passes.detail.backHome} onBack={onBack} onTook={onTook} onRefused={onRefused} />;
+}
+
+/** The width of each of the two 样张 side by side, for a screen of this size (null: none yet, so the smallest) */
+export function sampleWidth(game: PassChar["game"], screen: { width: number; height: number } | null): number {
+  const [w, wide, tall] = game === "ef" ? [160, 103, 258] : [118, 118, 190];
+  if (!screen) return w;
+  // 16 at either side and 12 between them; the top, the words and 返回 take about 260 of the height
+  const k = Math.min((screen.width - 44) / (2 * wide), (screen.height - 260) / tall);
+  return Math.floor(w * Math.min(1.5, Math.max(1, k)));
+}
+
+/**
+ * A wish the player has not drawn yet: their pass in both looks side by side, as 样张 (SamplePass), leaning after the
+ * pointer; how many of theirs the whole site has drawn (lastNo), and of the gold first hundred how many are left,
+ * while there are. Only 返回: nothing to wear. The focus starts on ‹.
+ */
+function Sample({ c, lastNo, art, onBack }: { c: PassChar; lastNo: number; art: Art | null; onBack: () => void }) {
+  const t = T.passes.sample;
+  const name = characterName(c.name);
+  const [one, two] = MARKS[c.game];
+  const back = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    back.current?.focus({ preventScroll: true });
+  }, []);
+  // two side by side, as big as the screen leaves room for, as 我的通行证's one: from a 通行认证 118 wide and a 长条挂牌
+  // 160 (103 as it stands; 1.61 times as tall as either is wide), two of which fit a phone 375 wide, up to half again
+  const w = sampleWidth(c.game, typeof window === "undefined" ? null : { width: Math.min(window.innerWidth, 420), height: window.innerHeight });
+  const left = goldLeft(lastNo);
+  const label = fmt(t.label, { name });
+  return (
+    <div className="ps-day wd smpv" role="group" aria-label={name}>
+      <div className="w-top">
+        <button ref={back} className="w-back" onClick={onBack} aria-label={T.passes.detail.backHome}>
+          ‹
+        </button>
+        <b>{name}</b>
+        <span>{t.notYet}</span>
+      </div>
+      <div className="wd-stage smp2">
+        <figure>
+          <SamplePass c={c} fancy={false} art={art} w={w} tilt label={label} />
+          <figcaption>{fmt(t.first, { v: one })}</figcaption>
+        </figure>
+        <figure>
+          <SamplePass c={c} fancy art={art} w={w} tilt label={label} />
+          <figcaption>{fmt(t.second, { v: two })}</figcaption>
+        </figure>
+      </div>
+      <p className="wd-note">
+        {t.note}
+        <br />
+        {left > 0 ? (
+          <>
+            <span>{fmtNodes(t.drawn, { n: <b>{lastNo}</b> })}</span>
+            <span>{fmtNodes(t.goldLeft, { m: <b>{left}</b> })}</span>
+          </>
+        ) : (
+          <span>{fmtNodes(t.drawnAll, { n: <b>{lastNo}</b> })}</span>
+        )}
+      </p>
+      <div className="g-btns wd-btns one">
+        <button type="button" onClick={onBack}>
+          {T.passes.detail.back}
+        </button>
+      </div>
     </div>
   );
 }

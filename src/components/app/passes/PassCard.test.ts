@@ -5,7 +5,7 @@ import type { PassArtList } from "@/lib/passArt";
 import { passChar, passCharNamed, PASS_CATALOG } from "@/lib/passCatalog";
 import type { PassOnCard } from "@/lib/passes";
 import type { Art } from "../OperatorNames";
-import { artUrl, charOfCard, FullPass, inkOf, issued, MiniPass, PassArtProvider, picOf, picOfCard, printedEn, smallUrl } from "./PassCard";
+import { artUrl, charOfCard, FullPass, inkOf, issued, MiniPass, PassArtProvider, picOf, picOfCard, printedEn, SamplePass, smallUrl } from "./PassCard";
 
 const amiya = passCharNamed("arknights", "阿米娅")!;
 const admin = passCharNamed("endfield", "管理员")!;
@@ -209,5 +209,28 @@ describe("a whole pass", () => {
     expect(html).toContain('class="zc ra rax"');
     expect(html).toContain("--pc:#aa3344");
     expect(html).toContain(`/operator-art/pass/${LH}.avif`);
+  });
+});
+
+describe("a 样张", () => {
+  it("prints ???? for the number, —— for the holder and the day, never gold, and a stamp across it, in every look", () => {
+    for (const [c, fancy, look] of [
+      [amiya, false, "ra"],
+      [amiya, true, "ra rax"],
+      [admin, false, "tag"],
+      [admin, true, "tag tagx"],
+    ] as const) {
+      const html = renderToStaticMarkup(createElement(SamplePass, { c, fancy, w: 118 }));
+      expect(html).toContain(`<div class="zc ${look}"`);
+      expect(html).toContain("<small>No.</small>????");
+      expect(html).not.toContain("zfoil");
+      expect(html).toContain('<span class="zsmp" aria-hidden="true">样张<small>SAMPLE</small></span>');
+      expect(html).toContain(c.game === "ak" ? "持证 ——<br/>——" : "持证 —— · ——");
+      if (c.game === "ak") expect(html).toContain("ZHOUP MAP · AK-????");
+    }
+    // a pass of their own has none of it
+    const own = renderToStaticMarkup(createElement(FullPass, { c: amiya, no: 1, fancy: false, holder: "柚子", at: 0, w: 118 }));
+    expect(own).not.toContain("zsmp");
+    expect(own).toContain('<span class="zfoil">前 100</span>');
   });
 });

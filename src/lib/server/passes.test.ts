@@ -176,7 +176,9 @@ describe("a draw", () => {
     expect(ten.drawn.map((d) => d.tier)).toEqual(["new", "up", "wish", "dup", "dup", "dup", "dup", "dup", "dup", "dup"]);
     expect(ten.drawn[2]).toMatchObject({ charId: amiya, no: 1, tier: "wish", up: false, fancy: false });
     expect(ten.state.miss).toBe(7);
-    expect(ten.state.wishOwned).toEqual([{ charId: amiya, copies: 1, no: 1 }]);
+    // just drawn, so a tap on them on the page opens their pass, not a 样张
+    expect(ten.state.wishOwned).toEqual([{ charId: amiya, copies: 1, first: { id: expect.any(Number), no: 1, at: NOON } }]);
+    expect(ten.state.wishDrawn).toEqual([{ charId: amiya, lastNo: 1 }]);
     expect((await db.select({ wish: passes.wish }).from(passes).where(eq(passes.charId, amiya)))[0].wish).toBe(true);
 
     // the sure one again, for a character they already have: their second copy
@@ -273,6 +275,58 @@ describe("the wish list", () => {
     expect(await openWallet(b, NOON)).toMatchObject({ wish: [id("endfield", "管理员")], wishOpen: true });
     expect(await setWish(b, [4], NOON)).toMatchObject({ wish: [4], wishOpen: false });
     expect(await refusal(setWish(b, [5], NOON))).toMatchObject({ status: 409 });
+  });
+});
+
+describe("the wish list on the page", () => {
+  it("brings how many of each wish the site has drawn and the player's first pass of each they have, in one more query", async () => {
+    const [amiya, exu, hei] = [id("arknights", "阿米娅"), id("arknights", "能天使"), id("arknights", "黑")];
+    const a = await player("a@example.com", { ak: ["阿米娅", "能天使", "黑"] });
+    const b = await player("b@example.com");
+    for (const u of [a, b]) {
+      await openWallet(u, NOON);
+      await setWallet(u.id, { tickets: 50 });
+    }
+    // somebody else draws 阿米娅 ten times; then the player twice, and 能天使 once; nobody draws 黑
+    await draw(b, 10, NOON, always(amiya));
+    await draw(a, 1, NOON, always(amiya));
+    await draw(a, 1, NOON + 1000, always(amiya));
+    await draw(a, 1, NOON + 2000, always(exu));
+
+    const asked = vi.spyOn(db._.session, "prepareQuery");
+    const st = await passState(a.id, NOON + 3000);
+    const queries = asked.mock.calls.map(([q]) => q.sql);
+    expect([...st.wishDrawn].sort((x, y) => x.charId - y.charId)).toEqual(
+      [
+        { charId: amiya, lastNo: 12 },
+        { charId: exu, lastNo: 1 },
+      ].sort((x, y) => x.charId - y.charId),
+    );
+    expect(st.wishDrawn.some((d) => d.charId === hei)).toBe(false);
+    // their first (the lowest number), as 我的通行证 would open it, and how many
+    const firstOf = async (charId: number) => (await copiesOf(a.id, charId)).copies[0];
+    expect([...st.wishOwned].sort((x, y) => x.charId - y.charId)).toEqual(
+      [
+        { charId: amiya, copies: 2, first: await firstOf(amiya) },
+        { charId: exu, copies: 1, first: await firstOf(exu) },
+      ].sort((x, y) => x.charId - y.charId),
+    );
+    expect(st.wishOwned.find((o) => o.charId === amiya)?.first).toMatchObject({ no: 11, at: NOON });
+
+    // the wallet, their passes of the wishes, the site's counts of the wishes (a row each at most), the pass worn
+    expect(queries).toHaveLength(4);
+    const counts = queries.filter((q) => q.includes('"pass_counters"'));
+    expect(counts).toHaveLength(1);
+    expect(counts[0]).toMatch(/"char_id" in \(\$1, \$2, \$3\)/);
+  });
+
+  it("asks nothing of the passes or the counts for an empty wish list", async () => {
+    const a = await player("a@example.com");
+    await openWallet(a, NOON);
+    const asked = vi.spyOn(db._.session, "prepareQuery");
+    const st = await passState(a.id, NOON);
+    expect(st).toMatchObject({ wish: [], wishOwned: [], wishDrawn: [] });
+    expect(asked.mock.calls.map(([q]) => q.sql).filter((q) => q.includes('"pass_counters"') || q.includes('from "passes"'))).toEqual([]);
   });
 });
 

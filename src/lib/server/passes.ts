@@ -194,18 +194,33 @@ export async function openWallet(user: UserRow, now = Date.now()): Promise<PassS
   return stateOf(await walletOf(user.id), now);
 }
 
-/** The page's view of a wallet: the day's counts (none yet, for a row of a past day), the wish list and what of it they own */
+/**
+ * The page's view of a wallet: the day's counts (none yet, for a row of a past day), the wish list, what of it they
+ * own (with their first pass of each, so a tap on one there opens it at once) and how many of each the site has drawn
+ */
 async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassState> {
   const day = siteDay(now);
   const same = w.day === day;
   const wish = w.wish.filter(isPassChar);
-  const owned = wish.length
-    ? await db
-        .select({ charId: passes.charId, copies: count(), no: min(passes.no) })
-        .from(passes)
-        .where(and(eq(passes.userId, w.userId), inArray(passes.charId, wish)))
-        .groupBy(passes.charId)
-    : [];
+  const [owned, drawn, worn] = await Promise.all([
+    wish.length
+      ? db
+          .selectDistinctOn([passes.charId], {
+            charId: passes.charId,
+            id: passes.id,
+            no: passes.no,
+            at: passes.drawnAt,
+            copies: sql<number>`(count(*) over (partition by ${passes.charId}))::int`,
+          })
+          .from(passes)
+          .where(and(eq(passes.userId, w.userId), inArray(passes.charId, wish)))
+          .orderBy(passes.charId, asc(passes.no))
+      : [],
+    wish.length
+      ? db.select({ charId: passCounters.charId, lastNo: passCounters.lastNo }).from(passCounters).where(inArray(passCounters.charId, wish))
+      : [],
+    wornOf(w.userId),
+  ]);
   return {
     tickets: w.tickets,
     tasks: tasksOf(w, day),
@@ -213,11 +228,12 @@ async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassSt
     wish,
     wishOpen: !wish.length || w.wishDay !== day,
     miss: wish.length ? w.miss : 0,
-    wishOwned: owned.map((o) => ({ charId: o.charId, copies: o.copies, no: o.no ?? 0 })),
+    wishOwned: owned.map((o) => ({ charId: o.charId, copies: o.copies, first: { id: o.id, no: o.no, at: o.at.getTime() } })),
+    wishDrawn: drawn,
     plain: w.plain,
     welcomed,
     nextDayAt: nextSiteDayAt(now),
-    worn: await wornOf(w.userId),
+    worn,
     gifts: passGiftsOn(),
   };
 }

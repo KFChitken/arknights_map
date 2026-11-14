@@ -1798,6 +1798,7 @@ export const zh = {
       pickWorn: "No.{no}，{date} 寻访，戴着这张",
       back: "返回",
       backLabel: "回到我的通行证",
+      backHome: "回到寻访",
       wear: "戴上",
       takeOff: "摘下",
       worn: "戴上了：能看到你资料的人都能看到它。",
@@ -1811,6 +1812,24 @@ export const zh = {
         top: "前 100",
         lucky: "靓号",
       },
+    },
+    /** a character on the wish list, tapped on 寻访: the player's own pass, or a 样张 of one not drawn yet */
+    peek: {
+      own: "{name}：看你的通行证",
+      sample: "{name}：还没抽到，看样张",
+      empty: "空格子，改心愿单",
+    },
+    sample: {
+      notYet: "还没抽到",
+      first: "第一张 · 普通 {v}",
+      second: "第二张起 · 镭射 {v}",
+      label: "{name}的通行证样张",
+      note: "这是样张，抽到以后印上你的名字和编号。",
+      drawn: "全站已抽出 {n} 张，",
+      drawnAll: "全站已抽出 {n} 张。",
+      goldLeft: "金色的前 100 号还剩 {m} 个。",
+      stamp: "样张",
+      stampEn: "SAMPLE",
     },
     card: {
       row: "通行证",

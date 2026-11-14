@@ -84,8 +84,13 @@ export type PassState = {
   wishOpen: boolean;
   /** draws in a row without anyone from the wish list (0 while it is empty) */
   miss: number;
-  /** copies the player has of each character on the wish list, and the number of the first */
-  wishOwned: { charId: number; copies: number; no: number }[];
+  /** the player's passes of each character on the wish list: how many, and their first, which a tap on them there shows at once */
+  wishOwned: WishOwned[];
+  /**
+   * how many passes of each character on the wish list the whole site has drawn: the last number given them
+   * (pass_counters.last_no), as numbers are never given twice; one nobody has drawn yet is left out
+   */
+  wishDrawn: { charId: number; lastNo: number }[];
   /** catalogue ids they picked the normal look for, though they have two or more */
   plain: number[];
   /** just now given WELCOME_TICKETS, the first time they opened the page */
@@ -102,6 +107,8 @@ export type PassState = {
 export type OwnedChar = { charId: number; copies: number; no: number; lastAt: number };
 /** One of a player's passes of a character, for picking which one they wear */
 export type PassCopy = { id: number; no: number; at: number };
+/** A character on the wish list the player has: how many passes of them, and the first (the lowest number) */
+export type WishOwned = { charId: number; copies: number; first: PassCopy };
 /** A player's passes of one character, lowest number first */
 export type CharCopies = { charId: number; copies: PassCopy[] };
 
@@ -161,9 +168,13 @@ export const isFancy = (copies: number, plain: boolean) => copies >= 2 && !plain
  * the page writes the chip's words (前 100, 靓号) from it.
  */
 export type GoldKind = "top" | "lucky" | "";
-export const goldKind = (n: number): GoldKind => (n >= 1 && n <= 100 ? "top" : /325|799/.test(String(n)) ? "lucky" : "");
+/** Each character's first hundred passes are gold */
+export const GOLD_TOP = 100;
+export const goldKind = (n: number): GoldKind => (n >= 1 && n <= GOLD_TOP ? "top" : /325|799/.test(String(n)) ? "lucky" : "");
 /** A gold number gets a gold chip on the whole pass and a gold corner on the small one, in either look */
 export const isFoil = (n: number) => goldKind(n) !== "";
+/** Of a character's gold first hundred, how many are still to be drawn, after the last number given (lastNo) */
+export const goldLeft = (lastNo: number) => Math.max(0, GOLD_TOP - lastNo);
 
 /** A pass's number as printed: four digits below 10000, as it is from there */
 export const padNo = (n: number) => (n < 10000 ? String(n).padStart(4, "0") : String(n));
