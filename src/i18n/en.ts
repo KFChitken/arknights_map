@@ -897,7 +897,6 @@ export const en: Draft<Messages> = {
     timed: "Limited time",
     gotOn: "Earned {day}",
     ongoing: "Ongoing",
-    notGot: "{name} badge, not earned",
     onlyOnCard: "Titles only show to others on your profile card, not on the map.",
     newAria: "New title earned: {name}",
     newTitle: "New title earned",

@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- the badges are small SVGs, which next/image leaves as they are anyway */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import {
   badgeById,
@@ -11,6 +11,7 @@ import {
   serialText,
   SERIES,
   wallBadges,
+  type Badge,
   type EarnedBadge,
   type ShownBadge,
 } from "@/lib/badges";
@@ -116,7 +117,8 @@ const LOCK = (
 
 /**
  * 我的称号: every badge there is to get, by series. Tap an earned one to wear it, or tap the worn one
- * to take it off. A timed badge shows only while held, and is left out of the counts.
+ * to take it off; tap one not earned yet, or one on offer now, to see how to get it (BadgePeek). A timed
+ * badge shows only while held, and is left out of the counts.
  */
 export function BadgeWall({
   me,
@@ -134,93 +136,187 @@ export function BadgeWall({
   const tally = list.filter((b) => !b.days);
   const got = tally.filter((b) => earned.has(b.id)).length;
   const worn = me.wornBadge ? earned.get(me.wornBadge) : undefined;
+  const [peek, setPeek] = useState<Badge | null>(null);
   return (
-    <Sheet title={T.badges.mine} onBack={onBack} onClose={onClose}>
-      <div className="wall-top">
-        <div className="wall-tally">
-          <span className="wall-label">COLLECTED</span>
-          <span>
-            <b className="wall-count">{got}</b> / {tally.length}{T.badges.collected}
-          </span>
-          <div className="wall-bar" aria-hidden="true">
-            <div style={{ width: `${Math.round((100 * got) / tally.length)}%` }} />
+    <>
+      <Sheet title={T.badges.mine} onBack={onBack} onClose={onClose}>
+        <div className="wall-top">
+          <div className="wall-tally">
+            <span className="wall-label">COLLECTED</span>
+            <span>
+              <b className="wall-count">{got}</b> / {tally.length}{T.badges.collected}
+            </span>
+            <div className="wall-bar" aria-hidden="true">
+              <div style={{ width: `${Math.round((100 * got) / tally.length)}%` }} />
+            </div>
+          </div>
+          <div className="wall-worn">
+            <span>{T.badges.wearing}</span>
+            {worn ? <BadgePill badge={worn} /> : <span className="wall-none">{T.badges.notWearing}</span>}
+            <span>{earned.size ? T.badges.pickOne : T.badges.earnFirst}</span>
           </div>
         </div>
-        <div className="wall-worn">
-          <span>{T.badges.wearing}</span>
-          {worn ? <BadgePill badge={worn} /> : <span className="wall-none">{T.badges.notWearing}</span>}
-          <span>{earned.size ? T.badges.pickOne : T.badges.earnFirst}</span>
-        </div>
-      </div>
 
-      {SERIES.map((series) => {
-        const mine = list.filter((b) => b.series === series.id);
-        const kept = mine.filter((b) => !b.days);
-        if (!mine.length) return null;
-        return (
-          <section key={series.id}>
-            <div className={`series-head series-${series.id}`}>
-              <span className="diamond" aria-hidden="true" />
-              <h3>{series.name}</h3>
-              <span className="series-count">
-                {kept.filter((b) => earned.has(b.id)).length}/{kept.length}
-              </span>
-            </div>
-            <div className="badge-grid three">
-              {mine.map((b) => {
-                const e = earned.get(b.id);
-                if (e) {
-                  const on = me.wornBadge === b.id;
+        {SERIES.map((series) => {
+          const mine = list.filter((b) => b.series === series.id);
+          const kept = mine.filter((b) => !b.days);
+          if (!mine.length) return null;
+          return (
+            <section key={series.id}>
+              <div className={`series-head series-${series.id}`}>
+                <span className="diamond" aria-hidden="true" />
+                <h3>{series.name}</h3>
+                <span className="series-count">
+                  {kept.filter((b) => earned.has(b.id)).length}/{kept.length}
+                </span>
+              </div>
+              <div className="badge-grid three">
+                {mine.map((b) => {
+                  const e = earned.get(b.id);
+                  if (e) {
+                    const on = me.wornBadge === b.id;
+                    return (
+                      <button
+                        key={b.id}
+                        className={`badge-cell ${on ? "worn" : ""}`}
+                        aria-label={on ? fmt(T.badges.takeOff, { name: b.name }) : fmt(T.badges.putOn, { name: b.name })}
+                        onClick={() => onWear(on ? null : b.id)}
+                      >
+                        {on ? <span className="cell-tag">{T.badges.worn}</span> : e.until && <span className="cell-tag timed">{T.badges.timed}</span>}
+                        <BadgeImg id={b.id} size={54} alt="" />
+                        <span className="badge-name">{b.name}</span>
+                        <span className={e.serial ? "cell-note serial" : "cell-note"}>
+                          {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : fmt(T.badges.gotOn, { day: day(e.at) })}
+                        </span>
+                      </button>
+                    );
+                  }
+                  // the only event badges listed unearned are the ones on offer now
+                  if (b.series === "event") {
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className="badge-cell running"
+                        aria-label={fmt(T.badges.peek.aria, { name: b.name })}
+                        onClick={() => setPeek(b)}
+                      >
+                        <span className="cell-tag">{T.badges.ongoing}</span>
+                        <BadgeImg id={b.id} size={54} alt="" />
+                        <span className="badge-name">{b.name}</span>
+                        <span className="cell-note">{b.lockedHint}</span>
+                      </button>
+                    );
+                  }
+                  const share = shareOf(b, me.counts);
                   return (
                     <button
                       key={b.id}
-                      className={`badge-cell ${on ? "worn" : ""}`}
-                      aria-label={on ? fmt(T.badges.takeOff, { name: b.name }) : fmt(T.badges.putOn, { name: b.name })}
-                      onClick={() => onWear(on ? null : b.id)}
+                      type="button"
+                      className="badge-cell locked"
+                      aria-label={fmt(T.badges.peek.aria, { name: b.name })}
+                      onClick={() => setPeek(b)}
                     >
-                      {on ? <span className="cell-tag">{T.badges.worn}</span> : e.until && <span className="cell-tag timed">{T.badges.timed}</span>}
+                      {LOCK}
                       <BadgeImg id={b.id} size={54} alt="" />
                       <span className="badge-name">{b.name}</span>
-                      <span className={e.serial ? "cell-note serial" : "cell-note"}>
-                        {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : fmt(T.badges.gotOn, { day: day(e.at) })}
-                      </span>
+                      <span className="cell-note">{lockedText(b, me.counts)}</span>
+                      {share !== null && (
+                        <span className="cell-bar" aria-hidden="true">
+                          <span style={{ width: `${Math.round(share * 100)}%` }} />
+                        </span>
+                      )}
                     </button>
                   );
-                }
-                // the only event badges listed unearned are the ones on offer now
-                if (b.series === "event") {
-                  return (
-                    <div key={b.id} className="badge-cell running">
-                      <span className="cell-tag">{T.badges.ongoing}</span>
-                      <BadgeImg id={b.id} size={54} alt={fmt(T.badges.notGot, { name: b.name })} />
-                      <span className="badge-name">{b.name}</span>
-                      <span className="cell-note">{b.lockedHint}</span>
-                    </div>
-                  );
-                }
-                const share = b.goal ? Math.min(1, me.counts[b.goal.count] / b.goal.n) : null;
-                return (
-                  <div key={b.id} className="badge-cell locked">
-                    {LOCK}
-                    <BadgeImg id={b.id} size={54} alt={fmt(T.badges.notGot, { name: b.name })} />
-                    <span className="badge-name">{b.name}</span>
-                    <span className="cell-note">{lockedText(b, me.counts)}</span>
-                    {share !== null && (
-                      <div className="cell-bar" aria-hidden="true">
-                        <div style={{ width: `${Math.round(share * 100)}%` }} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
-      <p className="hint" style={{ marginTop: 14 }}>
-        {T.badges.onlyOnCard}
-      </p>
-    </Sheet>
+                })}
+              </div>
+            </section>
+          );
+        })}
+        <p className="hint" style={{ marginTop: 14 }}>
+          {T.badges.onlyOnCard}
+        </p>
+      </Sheet>
+      {peek && <BadgePeek badge={peek} counts={me.counts} onClose={() => setPeek(null)} />}
+    </>
+  );
+}
+
+/** How far a badge with a goal has got, 0 to 1; null for one without */
+const shareOf = (b: Badge, counts: Me["counts"]) => (b.goal ? Math.min(1, counts[b.goal.count] / b.goal.n) : null);
+
+/**
+ * 怎么拿: a badge not earned yet, or one on offer now, tapped on 我的称号. Over the sheet, which stays as it
+ * was underneath: 知道了, ×, a tap beside it or Escape close only this. Its words are the condition the
+ * badge is earned by, and how far along a count is; never its quote, which is for when it is earned.
+ */
+export function BadgePeek({ badge: b, counts, onClose }: { badge: Badge; counts: Me["counts"]; onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const from = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    box.current?.focus({ preventScroll: true });
+    // heard before the sheet underneath, which would go back from 我的称号 on Escape too
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      close.current();
+    };
+    window.addEventListener("keydown", esc, true);
+    return () => {
+      window.removeEventListener("keydown", esc, true);
+      // back to the badge that was tapped, for the keyboard and screen readers
+      from?.focus({ preventScroll: true });
+    };
+  }, []);
+  const running = b.series === "event";
+  const series = SERIES.find((s) => s.id === b.series);
+  const share = running ? null : shareOf(b, counts);
+  return (
+    <div className="badge-peek" onClick={onClose}>
+      <div
+        ref={box}
+        className={`badge-peek-card${running ? " running" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="badge-peek-name"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button type="button" className="close" onClick={onClose} aria-label={T.common.close}>
+          ×
+        </button>
+        <div className="badge-peek-art">
+          <BadgeImg id={b.id} size={72} alt="" />
+          {!running && LOCK}
+        </div>
+        <h3 id="badge-peek-name">{b.name}</h3>
+        <p className="badge-peek-sub">
+          {series?.name} · {running ? T.badges.peek.ongoing : T.badges.peek.notYet}
+        </p>
+        <div className="badge-peek-how">
+          <span>{T.badges.peek.how}</span>
+          <p>{b.condition}</p>
+        </div>
+        {/* only a count has a way to go: a badge without one is all in its condition */}
+        {share !== null && (
+          <div className="badge-peek-progress">
+            <span className="cell-bar" aria-hidden="true">
+              <span style={{ width: `${Math.round(share * 100)}%` }} />
+            </span>
+            <span className="badge-peek-row">
+              <span>{T.badges.peek.progress}</span>
+              <b>{lockedText(b, counts)}</b>
+            </span>
+          </div>
+        )}
+        <p className="badge-peek-after">{T.badges.peek.after}</p>
+        <button type="button" className="badge-peek-ok" onClick={onClose}>
+          {T.badges.peek.ok}
+        </button>
+      </div>
+    </div>
   );
 }
 

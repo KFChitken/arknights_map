@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-14", kind: "better", text: "点没拿到的称号，能看到怎么拿" },
   { date: "2026-11-14", kind: "fix", text: "地图画风菜单的说明不再被截" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },

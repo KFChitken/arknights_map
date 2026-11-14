@@ -112,7 +112,6 @@
         "timed": "限时",
         "gotOn": "{day} 获得",
         "ongoing": "进行中",
-        "notGot": "{name}徽章，未获得",
         "onlyOnCard": "称号只在资料卡上给别人看，地图上看不到。",
         "newAria": "获得新称号：{name}",
         "newTitle": "获得新称号",
