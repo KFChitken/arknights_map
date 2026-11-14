@@ -550,6 +550,11 @@ function Terminal({
     if (next.every(Boolean)) later(done, heldOnce.current ? 500 : 520);
   };
   const openAll = () => drawn.forEach((_, i) => later(() => flip(i, true), i * 80));
+  // a card turned over already is held up whole, its big picture fetched only now
+  const press = (i: number) => {
+    if (opened.current[i]) setHeld(drawn[i]);
+    else if (stage === "flip") flip(i);
+  };
 
   // with less motion, no show at all: what came, at once
   useEffect(() => {
@@ -629,6 +634,7 @@ function Terminal({
                     ? fmt(T.passes.term.card, { name: characterName(c.name), no: padNo(d.no), tier: T.passes.term.tier[d.tier] })
                     : fmt(T.passes.term.flipCard, { n: i + 1 })
                 }
+                aria-haspopup={turned ? "dialog" : undefined}
                 style={{
                   left: at.x,
                   top: at.y,
@@ -637,8 +643,8 @@ function Terminal({
                   transform: out ? undefined : start,
                   transitionDelay: out && stage === "cards" ? `${i * 70}ms` : undefined,
                 }}
-                onClick={() => stage === "flip" && flip(i)}
-                onKeyDown={pressKeys(() => stage === "flip" && flip(i))}
+                onClick={() => press(i)}
+                onKeyDown={pressKeys(() => press(i))}
               >
                 <i className="glow" />
                 <div className="fl">
@@ -728,16 +734,16 @@ function Terminal({
           </button>
         </div>
       </div>
-      {held && <HeldUp d={held} at={at} art={art} holder={holder} onClose={() => setHeld(null)} />}
+      {held && <HeldUp d={held} at={at} art={art} holder={holder} done={stage === "done"} onClose={() => setHeld(null)} />}
     </div>
   );
 }
 
 /**
- * A wish just turned over, held up on a rainbow as a whole pass (its big picture fetched now, not before); a tap
- * (Enter, Space, Escape) puts it down and the turning goes on
+ * A pass held up whole (its big picture fetched now, not before): a wish as it turns over, on a rainbow, or any card
+ * turned over already, when pressed. A tap (Enter, Space, Escape) puts it down, and the turning goes on.
  */
-function HeldUp({ d, at, art, holder, onClose }: { d: Drawn; at: number; art: Art | null; holder: string; onClose: () => void }) {
+function HeldUp({ d, at, art, holder, done, onClose }: { d: Drawn; at: number; art: Art | null; holder: string; done: boolean; onClose: () => void }) {
   const c = passChar(d.charId);
   const [on, setOn] = useState(false);
   const self = useRef<HTMLDivElement>(null);
@@ -747,22 +753,24 @@ function HeldUp({ d, at, art, holder, onClose }: { d: Drawn; at: number; art: Ar
     return () => cancelAnimationFrame(raf);
   }, []);
   if (!c) return null;
+  const t = T.passes.term;
+  const wish = d.tier === "wish";
   return (
     <div
       ref={self}
-      className={`t-hl${on ? " on" : ""}`}
+      className={`t-hl${wish ? "" : " calm"}${on ? " on" : ""}`}
       role="button"
       tabIndex={0}
-      aria-label={T.passes.term.closeHit}
+      aria-label={done ? t.closeDone : t.closeHit}
       onClick={onClose}
       onKeyDown={pressKeys(onClose)}
     >
       <FullPass c={c} no={d.no} fancy={d.fancy} art={art} holder={holder} at={at} w={c.game === "ef" ? 196 : 164} />
       <p>
-        <b>{d.up ? T.passes.term.wishHitUp : T.passes.term.wishHit}</b>
+        <b>{wish ? (d.up ? t.wishHitUp : t.wishHit) : t.tier[d.tier]}</b>
         {characterName(c.name)} No.{padNo(d.no)}
       </p>
-      <p className="sm">{T.passes.term.onward}</p>
+      <p className="sm">{done ? t.putDown : t.onward}</p>
     </div>
   );
 }

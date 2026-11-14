@@ -98,7 +98,7 @@
 }
 .mpc.tagx .mtg-f { background: #17191d; border-top-color: #f2e21a; }
 .mpc.tagx b { color: #f2e21a; }
-/* No.0001 and 靓号: a gold corner */
+/* a gold number (the first hundred, 靓号): a gold corner */
 .mpc .mfo {
   position: absolute; top: 0; right: 0; width: 24cqw; height: 24cqw; z-index: 4;
   background: linear-gradient(135deg, #b88a1b, #ffe08a 45%, #c79a28 62%, #fff1b8); clip-path: polygon(0 0, 100% 0, 100% 100%);
@@ -136,7 +136,7 @@
 .zc .art svg { display: block; width: 100%; height: 100%; }
 .zc .art.drawn { background: linear-gradient(160deg, color-mix(in srgb, var(--pc) 30%, #fff), var(--pc)); }
 .zc .art.drawn path { fill: color-mix(in srgb, var(--pc) 35%, #08090c); }
-/* No.0001 and 靓号: a gold chip by the number */
+/* a gold number: a gold chip by the number, its words 前 100 or 靓号 */
 .zfoil {
   display: inline-block; font: 800 3cqw/1.5 var(--font-ui); padding: 0 2cqw; border-radius: 1cqw; vertical-align: 1.6cqw; margin-left: 2cqw;
   background: linear-gradient(120deg, #b88a1b, #ffe08a 45%, #c79a28 60%, #fff1b8); color: #3b2a05; letter-spacing: 0.04em;
@@ -192,7 +192,7 @@
 .zc.ra .ra-fine { flex: 1; min-width: 0; font: 600 2.1cqw/1.42 var(--font-mono); letter-spacing: 0.03em; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zc.ra .ra-no { flex: none; font: 700 12cqw/0.86 var(--font-num); letter-spacing: 0.01em; white-space: nowrap; text-align: right; }
 .zc.ra .ra-no small { font-size: 4.4cqw; opacity: 0.75; margin-right: 0.5cqw; }
-.zc.ra .ra-no .zfoil { display: block; width: max-content; margin: 0 0 1.2cqw auto; vertical-align: 0; }
+.zc.ra .ra-no .zfoil { display: block; width: max-content; margin: 0 0 1.2cqw auto; vertical-align: 0; font-size: 4.2cqw; padding: 0 2.2cqw; }
 .zc.ra .ra-edge {
   position: absolute; right: 1.5cqw; top: 24cqw; writing-mode: vertical-rl; font: 600 2cqw/1 var(--font-mono); letter-spacing: 0.16em;
   color: rgba(255, 255, 255, 0.82); z-index: 5; white-space: nowrap;
@@ -256,7 +256,7 @@
 .zc.tag .tg-cn i { font-style: normal; font-size: 2.6cqw; letter-spacing: 0.04em; color: #b08c00; flex: none; }
 .zc.tag .tg-no { font: 700 12cqw/1 var(--font-num); letter-spacing: 0.01em; margin-top: 0.4cqw; white-space: nowrap; }
 .zc.tag .tg-no small { font-size: 4.6cqw; opacity: 0.7; margin-right: 0.6cqw; }
-.zc.tag .tg-no .zfoil { vertical-align: 3cqw; }
+.zc.tag .tg-no .zfoil { vertical-align: 2.6cqw; font-size: 5.6cqw; padding: 0 2.4cqw; border-radius: 1.4cqw; }
 .zc.tag .tg-hold { font: 600 2.3cqw/1.4 var(--font-mono); letter-spacing: 0.03em; color: #5b616b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.5cqw; }
 .zc.tagx { background: #0f1114; color: #eef0f3; }
 .zc.tagx .tg-bg { background-image: url("/passes/contour-w.svg"); opacity: 0.2; }

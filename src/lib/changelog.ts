@@ -7,6 +7,7 @@ export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
+  { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "new", text: "新宣言：卫戍协议，启动！" },
   { date: "2026-11-14", kind: "new", text: "英文介绍页 /about，可发给海外朋友" },
   { date: "2026-11-14", kind: "tweak", text: "英文版站名改为 Arkmap" },

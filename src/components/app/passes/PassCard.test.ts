@@ -22,9 +22,11 @@ describe("a small pass", () => {
     expect(mini({ c: admin, fancy: true })).toContain('class="mpc tag tagx"');
   });
 
-  it("adds only a gold corner for No.1 and 靓号, and leaves the number off a wish not drawn yet", () => {
+  it("adds only a gold corner for the first hundred and 靓号, and leaves the number off a wish not drawn yet", () => {
     expect(mini({ c: amiya, no: 1 })).toContain('class="mfo"');
-    expect(mini({ c: amiya, no: 111 })).toContain('class="mfo"');
+    expect(mini({ c: amiya, no: 100 })).toContain('class="mfo"');
+    expect(mini({ c: amiya, no: 1325 })).toContain('class="mfo"');
+    expect(mini({ c: amiya, no: 111 })).not.toContain("mfo");
     expect(mini({ c: amiya, no: 112 })).not.toContain("mfo");
     expect(mini({ c: amiya, no: 112 })).toContain("<b>0112</b>");
     expect(mini({ c: admin, no: 12345 })).toContain("<b>12345</b>");
@@ -154,11 +156,12 @@ describe("a whole pass", () => {
     for (const c of tags) expect(font(whole({ c }), "--tn"), c.name).toBeLessThanOrEqual(21);
   });
 
-  it("adds only a gold chip for No.1 (首张) and 靓号, and keeps the look", () => {
-    expect(whole({ c: exu, no: 1 })).toContain('<span class="zfoil">首张</span>');
-    expect(whole({ c: exu, no: 8888 })).toContain('<span class="zfoil">靓号</span>');
-    expect(whole({ c: admin, no: 3000 })).toContain('<span class="zfoil">靓号</span>');
-    expect(whole({ c: exu, no: 112 })).not.toContain("zfoil");
+  it("adds only a gold chip for the first hundred (前 100) and 靓号, and keeps the look", () => {
+    expect(whole({ c: exu, no: 1 })).toContain('<span class="zfoil">前 100</span>');
+    expect(whole({ c: exu, no: 100 })).toContain('<span class="zfoil">前 100</span>');
+    expect(whole({ c: exu, no: 799 })).toContain('<span class="zfoil">靓号</span>');
+    expect(whole({ c: admin, no: 13258 })).toContain('<span class="zfoil">靓号</span>');
+    for (const no of [101, 112, 8888, 3000]) expect(whole({ c: exu, no }), String(no)).not.toContain("zfoil");
     expect(whole({ c: exu, no: 1 })).toContain('class="zc ra"');
   });
 

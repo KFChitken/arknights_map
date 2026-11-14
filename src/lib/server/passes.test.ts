@@ -186,13 +186,13 @@ describe("a draw", () => {
     await setWallet(a.id, { tickets: 30 });
     const ten = await draw(a, 10, NOON + 1000, always(1));
     expect(ten.drawn.map((d) => d.no)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    expect(ten.drawn[0]).toEqual({ charId: 1, no: 2, tier: "up", up: true, fancy: true, foil: false });
+    expect(ten.drawn[0]).toEqual({ charId: 1, no: 2, tier: "up", up: true, fancy: true, foil: true });
     expect(ten.drawn.slice(1).every((d) => d.tier === "dup" && !d.up && d.fancy)).toBe(true);
     expect(ten.state.tickets).toBe(20);
 
     // someone else's first of the same character takes the next number, and is new to them
     const theirs = await draw(b, 10, NOON, always(1));
-    expect(theirs.drawn[0]).toEqual({ charId: 1, no: 12, tier: "new", up: false, fancy: false, foil: false });
+    expect(theirs.drawn[0]).toEqual({ charId: 1, no: 12, tier: "new", up: false, fancy: false, foil: true });
     expect(theirs.drawn[1]).toMatchObject({ no: 13, tier: "up", fancy: true });
     expect(theirs.drawn.find((d) => d.no === 111)).toBeUndefined();
     expect((await db.select().from(passCounters))[0]).toEqual({ charId: 1, lastNo: 21 });

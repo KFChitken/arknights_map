@@ -43,7 +43,7 @@ export type Drawn = {
   up: boolean;
   /** drawn in the special look: two or more copies, and the player has not picked the normal one for the character */
   fancy: boolean;
-  /** 首张 or 靓号 (isFoil) */
+  /** a gold number: the first hundred, or 靓号 (isFoil) */
   foil: boolean;
 };
 
@@ -122,13 +122,20 @@ export type PassStyle = "ra" | "rax" | "tag" | "tagx";
 export type PassGame = "ak" | "ef";
 const NORMAL: Record<PassGame, PassStyle> = { ak: "ra", ef: "tag" };
 const SPECIAL: Record<PassGame, PassStyle> = { ak: "rax", ef: "tagx" };
-/** ① ③ normally, ② ④ when fancy; No.0001 and 靓号 change nothing but a gold chip and corner */
+/** ① ③ normally, ② ④ when fancy; a gold number changes nothing but a gold chip and corner */
 export const styleFor = (game: PassGame, fancy: boolean): PassStyle => (fancy ? SPECIAL : NORMAL)[game];
 /** The special look is on: two copies or more, and not switched back to the normal one */
 export const isFancy = (copies: number, plain: boolean) => copies >= 2 && !plain;
 
-/** 靓号: No.1; three or more of one digit (111, 666, 8888, 11111…); whole thousands (1000, 3000…) */
-export const isFoil = (n: number) => n === 1 || (n >= 100 && /^(\d)\1{2,}$/.test(String(n))) || (n >= 1000 && n % 1000 === 0);
+/**
+ * A gold number, and which: the first hundred of a character (No.0001–0100), or 靓号, one with 325 or 799 in it
+ * (325, 1325, 3250, 7990, 13258…); "" for any other. The rule is here alone: the server marks a drawn pass foil by it,
+ * the page writes the chip's words (前 100, 靓号) from it.
+ */
+export type GoldKind = "top" | "lucky" | "";
+export const goldKind = (n: number): GoldKind => (n >= 1 && n <= 100 ? "top" : /325|799/.test(String(n)) ? "lucky" : "");
+/** A gold number gets a gold chip on the whole pass and a gold corner on the small one, in either look */
+export const isFoil = (n: number) => goldKind(n) !== "";
 
 /** A pass's number as printed: four digits below 10000, as it is from there */
 export const padNo = (n: number) => (n < 10000 ? String(n).padStart(4, "0") : String(n));

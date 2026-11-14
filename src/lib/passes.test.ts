@@ -4,6 +4,7 @@ import { CATALOG_IDS, CATALOG_SIZE, catalogCounts, isPassChar, passChar, passCha
 import {
   bestOf,
   DAY_TICKETS,
+  goldKind,
   isDrawSize,
   isFancy,
   isFoil,
@@ -157,9 +158,12 @@ describe("a pass's look and number", () => {
     expect(styleFor("ef", isFancy(9, true))).toBe("tag");
   });
 
-  it("knows No.1 and 靓号", () => {
-    for (const n of [1, 111, 666, 8888, 11111, 1000, 3000, 999, 77777, 20000]) expect(isFoil(n), String(n)).toBe(true);
-    for (const n of [112, 1001, 10, 2, 11, 22, 100, 1100, 12345, 0]) expect(isFoil(n), String(n)).toBe(false);
+  it("knows the gold numbers: the first hundred, and 靓号 with 325 or 799 in them", () => {
+    for (const n of [1, 42, 100]) expect(goldKind(n), String(n)).toBe("top");
+    for (const n of [325, 799, 1325, 3250, 7990, 13258, 17991]) expect(goldKind(n), String(n)).toBe("lucky");
+    for (const n of [101, 666, 8888, 3000, 1111, 352, 797, 3205, 10000, 0]) expect(goldKind(n), String(n)).toBe("");
+    for (const n of [1, 2, 12, 100, 325, 13258]) expect(isFoil(n), String(n)).toBe(true);
+    for (const n of [101, 111, 8888, 1000, 3000, 352]) expect(isFoil(n), String(n)).toBe(false);
   });
 
   it("prints four digits below 10000, and the number as it is from there", () => {

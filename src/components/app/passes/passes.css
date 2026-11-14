@@ -248,6 +248,8 @@
     conic-gradient(from 200deg at 50% 42%, #ff5d8f, #ffb43f, #f4f05c, #5dff9b, #5dc8ff, #b07bff, #ff5d8f);
   cursor: pointer; opacity: 0; transition: opacity 0.25s; outline: none;
 }
+/* any other card, pressed once turned over: the same, without the rainbow */
+.t-hl.calm { background: radial-gradient(75% 55% at 50% 42%, rgba(255, 255, 255, 0.16) 0, rgba(12, 13, 16, 0.72) 58%, rgba(12, 13, 16, 0.92) 100%); }
 .t-hl.on { opacity: 1; }
 .t-hl p { margin: 0; text-align: center; font-size: 14px; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
 .t-hl p b { display: block; font-size: 20px; letter-spacing: 0.08em; }

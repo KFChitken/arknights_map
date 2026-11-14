@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState, type CSSPropert
 import { T } from "@/i18n";
 import { passArtUrl, passColor, type PassArtList } from "@/lib/passArt";
 import { GAME_OF, type PassChar } from "@/lib/passCatalog";
-import { isFoil, padNo, styleFor, type PassOnCard } from "@/lib/passes";
+import { goldKind, isFoil, padNo, styleFor, type PassOnCard } from "@/lib/passes";
 import { useLeanArt } from "@/lib/passLean";
 import type { Art } from "../OperatorNames";
 import "./pass.css";
@@ -13,7 +13,7 @@ import "./pass.css";
 /**
  * A pass, small (2:3: the results of a draw, the wish list, 我的通行证, profile cards) or whole (popped up from a
  * profile card or 我的通行证, a wish held up): ① 通行认证 for a character of 明日方舟, ③ 长条挂牌 for one of 终末地, and
- * their special looks ② ④ (fancy: two copies or more, src/lib/passes.ts isFancy). 首张 and 靓号 add a gold corner
+ * their special looks ② ④ (fancy: two copies or more, src/lib/passes.ts isFancy). Gold numbers (goldKind) add a gold corner
  * or chip, nothing else. Everything inside is sized in cqw (pass.css), so one looks the same at any width.
  * The picture is the character's 立绘 (src/lib/passArt.ts), its blur first and the picture fading in over it, or the
  * blur alone to save data (src/lib/passLean.ts); without one, their small picture (/operator-art), else a figure in
@@ -202,10 +202,11 @@ export const printedEn = (c: Pick<PassChar, "en" | "name">) => (c.en ?? (/^[\x20
 const stars = (r: number | null) => (r ? "★".repeat(r) : "");
 const gameMark = (c: PassChar) => (c.game === "ak" ? "AK" : "EF");
 
-/** 首张 (No.0001) or 靓号, as a gold chip by the number */
+/** A gold number (src/lib/passes.ts goldKind): 前 100 or 靓号 on a gold chip by the number */
 function FoilChip({ no }: { no: number }) {
-  if (!isFoil(no)) return null;
-  return <span className="zfoil">{no === 1 ? T.passes.pass.first : T.passes.pass.lucky}</span>;
+  const kind = goldKind(no);
+  if (!kind) return null;
+  return <span className="zfoil">{T.passes.pass.gold[kind]}</span>;
 }
 
 /** The strap through the slot of a 通行认证, its buckle, and the label sewn on it */
