@@ -967,6 +967,8 @@ export const reports = pgTable(
     placeLat: doublePrecision("place_lat"),
     roachSlot: smallint("roach_slot"),
     nearM: integer("near_m"),
+    /** Made by the site, with no reporter: the roach was put in this 提醒区 (src/lib/server/watchPlaces.ts) */
+    watchAreaId: uuid("watch_area_id").references(() => offLimitsAreas.id, { onDelete: "set null" }),
   },
   (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt), index("reports_roach_idx").on(t.roachId)],
 );
@@ -1159,6 +1161,8 @@ export const offLimitsAreas = pgTable(
     movedAt: at("moved_at"),
     liftedAt: at("lifted_at"),
     liftedBy: uuid("lifted_by").references(() => users.id, { onDelete: "set null" }),
+    /** A 提醒区: nothing is refused or moved, and a roach put in it is reported by the site (src/lib/server/watchPlaces.ts) */
+    watch: boolean("watch").notNull().default(false),
   },
   (t) => [
     check("off_limits_areas_radius_check", sql`${t.radiusM} between 30 and 3000`),

@@ -15,7 +15,7 @@ import {
 import type { LngLat } from "@/lib/types";
 import type { MapLine } from "../map/types";
 import { adminCall, AdminError, errorWords } from "./api";
-import { circlePath, metresPerPx, spotAbove, zoomFor, type MapPulse } from "./zoneAim";
+import { circlePath, metresPerPx, spotAbove, zoomFor, type MapPulse, type ZonePrefill } from "./zoneAim";
 
 /**
  * 圈一块禁放区 on the owner's map (src/lib/server/zones.ts): a crosshair over the map with the ring of the size round it,
@@ -26,6 +26,9 @@ import { circlePath, metresPerPx, spotAbove, zoomFor, type MapPulse } from "./zo
  *
  * The crosshair keeps its height over the middle of the map, measured once as the card first shows: a keyboard coming
  * up for the label then moves it with the map, and it points at the same spot all along.
+ *
+ * 挡住 or 只提醒: a 提醒区 (watch) refuses and moves nothing; the site reports each roach in it now, and any put in it
+ * later. A link may give the place, size, kind and label (prefill), for drawing from a list one place at a time.
  */
 
 /** The roach card's 站长 button (RoachCards.tsx): draw round that roach */
@@ -56,6 +59,7 @@ function ownRadius(text: string) {
 }
 
 function doneWords(k: Kept) {
+  if (k.watch) return `圈里现在 ${num(k.count)} 只，已各记一条。以后有人放进来，会自动记一条举报给你和管理员。`;
   if (!k.done) return `正在把圈里的 ${num(k.count)} 只挪到圈外，挪完列表上会显示。以后谁也放不进这个圈。`;
   const out = k.moved + k.home;
   return out
@@ -65,6 +69,7 @@ function doneWords(k: Kept) {
 
 export default function ZoneDraw({
   start,
+  prefill,
   pulse,
   onFocus,
   onLines,
@@ -72,6 +77,8 @@ export default function ZoneDraw({
 }: {
   /** Round this spot (a roach), the map going there; or null, where the map is */
   start: LngLat | null;
+  /** From a link: the size, whether it only marks (提醒区), and the label */
+  prefill?: ZonePrefill;
   /** Where the map rests and whether it moves (MapApp) */
   pulse: MapPulse;
   /** Fly to a spot, lift pixels above the middle of the map, at that zoom */
@@ -80,9 +87,11 @@ export default function ZoneDraw({
   onLines: (lines: MapLine[]) => void;
   onClose: () => void;
 }) {
-  const [size, setSize] = useState<number | "own">(ZONE_RADIUS);
-  const [own, setOwn] = useState("");
-  const [label, setLabel] = useState("");
+  const given = prefill?.radius ?? null;
+  const [size, setSize] = useState<number | "own">(given === null ? ZONE_RADIUS : ZONE_RADII.includes(given) ? given : "own");
+  const [own, setOwn] = useState(given !== null && !ZONE_RADII.includes(given) ? String(given) : "");
+  const [label, setLabel] = useState(prefill?.label.slice(0, ZONE_LABEL_MAX) ?? "");
+  const [watch, setWatch] = useState(prefill?.watch ?? false);
   const [step, setStep] = useState<Step>({ kind: "edit" });
   const [preview, setPreview] = useState<{ key: string; p: ZonePreview } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,7 +148,7 @@ export default function ZoneDraw({
   // the map at rest, or the size changed: after PREVIEW_MS, what the ring takes in now. A new size the ring no longer
   // fits round the crosshair at takes the map out to show it whole first (the count follows once it rests there)
   const asked = useRef(0);
-  const fitted = useRef<number | null>(ZONE_RADIUS);
+  const fitted = useRef<number | null>(given ?? ZONE_RADIUS);
   useEffect(() => {
     if (!editing || moving || !key || !spot || !radius || !aim) return;
     const t = window.setTimeout(() => {
@@ -171,7 +180,7 @@ export default function ZoneDraw({
     setBusy(true);
     setNote(null);
     try {
-      const res = await adminCall<ZoneDrawn>("drawZone", [{ lng: at.lng, lat: at.lat, radiusM: r, label: label.trim(), sure }]);
+      const res = await adminCall<ZoneDrawn>("drawZone", [{ lng: at.lng, lat: at.lat, radiusM: r, label: label.trim(), sure, watch }]);
       setStep(res.needSure ? { kind: "sure", count: res.count, at, radius: r } : { kind: "done", kept: res, at, radius: r });
     } catch (e) {
       fail(e);
@@ -225,9 +234,9 @@ export default function ZoneDraw({
         )}
       </div>
 
-      <section ref={topEl} className="zone-top" aria-label="圈一块禁放区">
+      <section ref={topEl} className="zone-top" aria-label={watch ? "圈一块提醒区" : "圈一块禁放区"}>
         <div className="zone-top-head">
-          <strong>圈一块禁放区</strong>
+          <strong>{watch ? "圈一块提醒区" : "圈一块禁放区"}</strong>
           <button type="button" className="rep-btn small" onClick={onClose}>
             {step.kind === "done" ? "收起" : "取消"}
           </button>
@@ -250,6 +259,19 @@ export default function ZoneDraw({
 
         {step.kind === "edit" && (
           <>
+            <div className="zone-size">
+              <span id="zone-kind-label" className="zone-label">
+                放进来的蟑螂
+              </span>
+              <div className="zone-opts" role="group" aria-labelledby="zone-kind-label">
+                <button type="button" className="zone-opt" aria-pressed={!watch} onClick={() => setWatch(false)}>
+                  挡住（禁放区）
+                </button>
+                <button type="button" className="zone-opt" aria-pressed={watch} onClick={() => setWatch(true)}>
+                  只提醒（提醒区）
+                </button>
+              </div>
+            </div>
             <div className="zone-size">
               <span id="zone-size-label" className="zone-label">
                 圈多大（半径）
@@ -302,7 +324,9 @@ export default function ZoneDraw({
               />
             </label>
             <p className="zone-small">
-              圈好马上生效：谁都不能把蟑螂放进或挪进这个圈，提示和别的禁放区一样。圈里现在的蟑螂挪到圈外 60 到 300 米，主人收到一条站长通知，不记黄牌。玩家看不到这个圈。
+              {watch
+                ? "圈里的蟑螂不挪；以后有人放进来，会自动记一条举报给你和管理员。放的人照常放得下，什么也看不出来。玩家看不到这个圈。"
+                : "圈好马上生效：谁都不能把蟑螂放进或挪进这个圈，提示和别的禁放区一样。圈里现在的蟑螂挪到圈外 60 到 300 米，主人收到一条站长通知，不记黄牌。玩家看不到这个圈。"}
             </p>
             <button
               type="button"
@@ -310,7 +334,7 @@ export default function ZoneDraw({
               disabled={busy || needLabel || !radius || !spot || Boolean(note?.shut)}
               onClick={tapSave}
             >
-              {shown && shown.count > 0 ? `圈好，挪走 ${num(shown.count)} 只` : "圈好"}
+              {shown && shown.count > 0 ? (watch ? `圈好，${num(shown.count)} 只各记一条` : `圈好，挪走 ${num(shown.count)} 只`) : "圈好"}
             </button>
             {needLabel && <p className="zone-small zone-need">先写一句是哪儿、为什么圈，才能保存。</p>}
           </>
@@ -322,11 +346,11 @@ export default function ZoneDraw({
               <strong>
                 圈里有 {num(step.count)} 只，超过 {ZONE_SURE_OVER} 只了
               </strong>
-              <span>真的都挪走吗？挪走以后，就算解除这个圈，它们也不会挪回来。</span>
+              <span>{watch ? "真的都各记一条举报吗？" : "真的都挪走吗？挪走以后，就算解除这个圈，它们也不会挪回来。"}</span>
             </div>
             <div className="rep-acts">
               <button type="button" className="rep-btn danger-solid" disabled={busy} onClick={() => void save(true, step.at, step.radius)}>
-                确认，挪走 {num(step.count)} 只
+                {watch ? `确认，各记一条` : `确认，挪走 ${num(step.count)} 只`}
               </button>
               <button type="button" className="rep-btn" disabled={busy} onClick={() => setStep({ kind: "edit" })}>
                 再想想

@@ -250,7 +250,7 @@ import { adminCall, AdminError } from "./admin/api";
 import MapReported from "./admin/MapReported";
 import ZoneDraw from "./admin/ZoneDraw";
 import ZoneView from "./admin/ZoneView";
-import { MapPulse, type ZoneTool } from "./admin/zoneAim";
+import { MapPulse, prefillOf, type ZonePrefill, type ZoneTool } from "./admin/zoneAim";
 import { useGrayNow } from "./GrayMode";
 import { isGray } from "@/lib/grayMode";
 import {
@@ -2829,31 +2829,32 @@ export default function MapApp({
   // 圈禁放区, the owner's: round a roach (its card, 看被举报的蟑螂) or where the map is; the roach's card and 看被举报的蟑螂
   // make way, and a tap on the map or a roach does nothing meanwhile
   const isOwner = Boolean(me?.admin);
-  const drawZoneAt = useCallback((at: LngLat | null) => {
+  const drawZoneAt = useCallback((at: LngLat | null, prefill?: ZonePrefill) => {
     setSelected(null);
     setReported(null);
     setPanel(null);
-    setZoneTool({ kind: "draw", at, key: Date.now() });
+    setZoneTool({ kind: "draw", at, key: Date.now(), ...(prefill ? { prefill } : {}) });
   }, []);
   const closeZoneTool = useCallback(() => {
     setZoneTool(null);
     setZoneLines([]);
   }, []);
   // /?draw=1 and /?zone=… from the 管理台's 禁放区: the owner's map opens 圈禁放区 or goes to that place, and the address
-  // forgets them; for anyone else they are nothing
+  // forgets them; for anyone else they are nothing. A link to draw may give the place, size, kind and label
+  // (&at=<lng>,<lat>&r=<metres>&watch=1&label=…), as the owner's list of 提醒区 to draw does
   useEffect(() => {
     if (!isOwner) return;
     const q = new URLSearchParams(window.location.search);
     const zone = q.get("zone");
-    if (!zone && !q.has("draw")) return;
-    q.delete("zone");
-    q.delete("draw");
+    const draw = prefillOf(q);
+    if (!zone && !draw) return;
+    for (const k of ["zone", "draw", "at", "r", "watch", "label"]) q.delete(k);
     window.history.replaceState(null, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
     if (zone) {
       setSelected(null);
       setReported(null);
       setZoneTool({ kind: "view", id: zone, key: Date.now() });
-    } else drawZoneAt(null);
+    } else if (draw) drawZoneAt(draw.at, draw.prefill);
   }, [isOwner, drawZoneAt]);
 
   /** 举报这只蟑螂: nobody is blocked, so nothing else changes on the page */
@@ -5012,7 +5013,15 @@ export default function MapApp({
         />
       )}
       {isOwner && zoneTool?.kind === "draw" && (
-        <ZoneDraw key={zoneTool.key} start={zoneTool.at} pulse={pulse} onFocus={focusReported} onLines={setZoneLines} onClose={closeZoneTool} />
+        <ZoneDraw
+          key={zoneTool.key}
+          start={zoneTool.at}
+          prefill={zoneTool.prefill}
+          pulse={pulse}
+          onFocus={focusReported}
+          onLines={setZoneLines}
+          onClose={closeZoneTool}
+        />
       )}
       {isOwner && zoneTool?.kind === "view" && (
         <ZoneView key={zoneTool.key} id={zoneTool.id} onFocus={focusReported} onLines={setZoneLines} onClose={closeZoneTool} />

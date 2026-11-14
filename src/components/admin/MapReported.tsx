@@ -9,6 +9,7 @@ import { ago } from "../app/InboxSheet";
 import type { MapLine, MapOverlay } from "../map/types";
 import { adminCall, AdminError, errorWords } from "./api";
 import { useHeld } from "./held";
+import { watchWords } from "./words";
 
 /**
  * 看被举报的蟑螂, on the 站长's map: the roach cases open for where a roach was put (贴着别人放, 不合适的地方, 摆字或
@@ -31,8 +32,9 @@ const SPOT = {
   gone: "已经收回了，虚线圈是举报时它在哪。",
 } as const;
 
-/** 「3 人举报，2 人算可靠 · 最早 5 小时前」 */
+/** 「3 人举报，2 人算可靠 · 最早 5 小时前」, or 「网站自动标的 · 提醒区「…」」 when only the site reported it */
 function metaOf(p: ReportedPlace, now: number) {
+  if (!p.reporters) return `${p.watch !== null ? watchWords(p.watch) : "举报人已注销"} · ${ago(p.since, now)}`;
   const reliable =
     p.reliable === 0 ? "" : p.reporters === 1 ? "，算可靠" : p.reliable === p.reporters ? "，都算可靠" : `，${p.reliable} 人算可靠`;
   return `${p.reporters} 人举报${reliable} · ${p.reporters > 1 ? "最早 " : ""}${ago(p.since, now)}`;

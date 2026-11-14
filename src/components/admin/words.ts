@@ -70,8 +70,12 @@ const COLOR_HEX: Record<RoachColor, string> = {
 };
 export const markOf = (name: string, color?: RoachColor) => ({ initial: [...(name.trim() || "匿")][0], color: (color && COLOR_HEX[color]) || "#475467" });
 
-/** How a reporter's reports went before, never who they are */
-export function reporterWords(r: ReporterInfo | null) {
+/** Who made a report the site made itself: a roach put in a 提醒区 (src/lib/server/watchPlaces.ts) */
+export const watchWords = (label: string) => `网站自动标的 · 提醒区「${label}」`;
+
+/** How a reporter's reports went before, never who they are; or, made by the site, which 提醒区 */
+export function reporterWords(r: ReporterInfo | null, watch?: string) {
+  if (watch !== undefined) return watchWords(watch);
   if (!r) return "举报人已注销";
   const before = r.upheld + r.dismissed;
   const record = before ? `以前举报 ${before} 次，${r.dismissed === 0 ? "都成立" : r.upheld === 0 ? "都判了没问题" : `成立 ${r.upheld} 次`}` : "以前没举报过";

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, countDistinct, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { after } from "next/server";
 import {
   OWNER_ALIAS,
@@ -7,6 +7,7 @@ import {
   ZONE_MAX_M,
   ZONE_MIN_M,
   ZONE_RADIUS_WRONG,
+  WATCH_MAX,
   ZONE_SURE_OVER,
   ZONES_MAX,
   type ZoneDrawn,
@@ -27,8 +28,9 @@ import { db } from "./db";
 import { HttpError } from "./http";
 import { onReload, reloadEverywhere } from "./live";
 import { moveOutOfOffLimits } from "./offLimits";
-import { admins, offLimitsAreas, roaches } from "./schema";
+import { admins, offLimitsAreas, reports, roaches } from "./schema";
 import { errorCode } from "./signals";
+import { markInside, setWatchAreas } from "./watchPlaces";
 
 /**
  * 禁放区 the owner draws on the map (off_limits_areas): refused, walked round and moved out of like the places in the
@@ -39,6 +41,10 @@ import { errorCode } from "./signals";
  *
  * Drawing one moves the roaches already inside out of it, after the answer if it takes long (DRAW_WAIT_MS); one left
  * half done (the process stopped) is finished by the main process (finishZones). Lifting one moves nothing back.
+ *
+ * A 提醒区 (watch) is drawn, listed and lifted the same way, but refuses and moves nothing: a roach put in one is
+ * reported by the site (src/lib/server/watchPlaces.ts, which holds its own list, read here), and so is each already
+ * standing in one when it is drawn.
  */
 
 type Held = { loading: Promise<void> | null; again: boolean; started: boolean; moving: Set<Promise<unknown>> };
@@ -72,10 +78,18 @@ export function loadZones(): Promise<void> {
       do {
         held.again = false;
         const rows = await db
-          .select({ id: offLimitsAreas.id, lng: offLimitsAreas.lng, lat: offLimitsAreas.lat, radiusM: offLimitsAreas.radiusM })
+          .select({
+            id: offLimitsAreas.id,
+            lng: offLimitsAreas.lng,
+            lat: offLimitsAreas.lat,
+            radiusM: offLimitsAreas.radiusM,
+            label: offLimitsAreas.label,
+            watch: offLimitsAreas.watch,
+          })
           .from(offLimitsAreas)
           .where(isNull(offLimitsAreas.liftedAt));
-        setExtraOffLimits(rows.map(placeOf));
+        setExtraOffLimits(rows.filter((r) => !r.watch).map(placeOf));
+        setWatchAreas(rows.filter((r) => r.watch).map((r) => ({ id: r.id, at: { lng: r.lng, lat: r.lat }, radiusM: r.radiusM, label: r.label })));
       } while (held.again);
     } finally {
       held.loading = null;
@@ -179,30 +193,40 @@ function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /**
- * drawZone { lng, lat, radiusM, label, sure }: keep a place, tell every process, then move the roaches inside out
+ * drawZone { lng, lat, radiusM, label, sure, watch }: keep a place, tell every process, then move the roaches inside out
  * (src/lib/server/offLimits.ts: just outside, owners told in 站长通知, no yellow card, visiting clones sent home, riders
  * of 明河都尉 left to his next station). More than ZONE_SURE_OVER inside and not sure: nothing kept, the page asks again.
  * Waits up to waitMs for the moving out; past that it answers that it goes on, and the list shows when it is done.
+ * watch: a 提醒区, which moves nothing: each roach inside is reported instead (marked), and so is any put in it later.
  */
 export async function drawZone(actor: Actor, q: unknown, now = Date.now(), waitMs = DRAW_WAIT_MS): Promise<ZoneDrawn> {
   const body = objectOf(q);
   const { at, radiusM } = circleOf(body);
+  const watch = body.watch === true;
   const label = typeof body.label === "string" ? body.label.trim() : "";
   if (!label) throw new HttpError(400, "先写一句是哪儿、为什么圈，才能保存。");
   if ([...label].length > ZONE_LABEL_MAX) throw new HttpError(400, `是哪儿、为什么圈，最多写 ${ZONE_LABEL_MAX} 个字。`);
-  const live = await db.$count(offLimitsAreas, isNull(offLimitsAreas.liftedAt));
-  if (live >= ZONES_MAX) throw new HttpError(400, `正在生效的禁放区最多 ${ZONES_MAX} 处，先解除几处不用的。`);
-  const { count: n } = await inside(at, radiusM);
+  const live = await db.$count(offLimitsAreas, and(isNull(offLimitsAreas.liftedAt), eq(offLimitsAreas.watch, watch)));
+  if (watch && live >= WATCH_MAX) throw new HttpError(400, `正在生效的提醒区最多 ${WATCH_MAX} 处，先解除几处不用的。`);
+  if (!watch && live >= ZONES_MAX) throw new HttpError(400, `正在生效的禁放区最多 ${ZONES_MAX} 处，先解除几处不用的。`);
+  const { count: n, owners } = await inside(at, radiusM);
   if (n > ZONE_SURE_OVER && body.sure !== true) return { needSure: true, count: n };
 
   const [row] = await db
     .insert(offLimitsAreas)
-    .values({ lng: at.lng, lat: at.lat, radiusM, label, createdBy: actor.id, createdAt: new Date(now) })
+    // a 提醒区 has nothing to move out: done as it is drawn
+    .values({ lng: at.lng, lat: at.lat, radiusM, label, createdBy: actor.id, createdAt: new Date(now), watch, ...(watch ? { movedAt: new Date(now) } : {}) })
     .returning();
   // this process first, so that the moving below knows the place (failing here fails the answer: the main finishes it),
-  // then every other, which refuses a spot in it from now on
+  // then every other, which refuses a spot in it from now on (or, a 提醒区, reports one put in it)
   await loadZones();
   await reloadEverywhere("zones");
+
+  if (watch) {
+    const marked = await markInside({ id: row.id, at, radiusM, label }, now);
+    await logAdmin(actor, "act", "act.zone", { detail: `${short(label)} · 半径 ${radiusM} 米 · 只提醒 · 圈里 ${n} 只，记了 ${marked} 条` }, now);
+    return { id: row.id, done: true, count: n, moved: 0, home: 0, owners, watch: true, marked };
+  }
 
   const moving = moveOut(row.id, placeOf(row));
   // the moving goes on after the answer: Next.js keeps it (outside a request, as in the tests, it simply goes on)
@@ -223,6 +247,16 @@ export async function listZones(now = Date.now()): Promise<ZoneList> {
     .leftJoin(admins, eq(admins.userId, offLimitsAreas.createdBy))
     .where(or(isNull(offLimitsAreas.liftedAt), gt(offLimitsAreas.liftedAt, new Date(now - KEEP_ADMIN_LOG_DAYS * DAY_MS))))
     .orderBy(desc(offLimitsAreas.createdAt));
+  // how often the site reported a roach in each 提醒区
+  const marks = new Map(
+    (
+      await db
+        .select({ id: reports.watchAreaId, n: count() })
+        .from(reports)
+        .where(isNotNull(reports.watchAreaId))
+        .groupBy(reports.watchAreaId)
+    ).map((m) => [m.id, m.n]),
+  );
   const items = rows.map(
     ({ zone: z, by }): ZoneItem => ({
       id: z.id,
@@ -234,6 +268,8 @@ export async function listZones(now = Date.now()): Promise<ZoneList> {
       sentHome: z.sentHome,
       done: z.movedAt !== null,
       liftedAt: z.liftedAt?.getTime() ?? null,
+      watch: z.watch,
+      marked: marks.get(z.id) ?? 0,
     }),
   );
   return {
@@ -278,7 +314,14 @@ export async function finishZones(now = Date.now(), olderThan = 0) {
   const rows = await db
     .select()
     .from(offLimitsAreas)
-    .where(and(isNull(offLimitsAreas.movedAt), isNull(offLimitsAreas.liftedAt), lte(offLimitsAreas.createdAt, new Date(now - olderThan))));
+    .where(
+      and(
+        isNull(offLimitsAreas.movedAt),
+        isNull(offLimitsAreas.liftedAt),
+        eq(offLimitsAreas.watch, false),
+        lte(offLimitsAreas.createdAt, new Date(now - olderThan)),
+      ),
+    );
   if (!rows.length) return 0;
   // as the database has them, so none is taken for done because this process missed it
   await loadZones();

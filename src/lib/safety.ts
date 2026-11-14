@@ -204,6 +204,8 @@ export type AdminReport = {
   /** A roach's report: where it was then, and for 「一直贴着我放」 how far from the reporter's nearest roach (metres), if they had one */
   place?: { lng: number; lat: number };
   nearM?: number | null;
+  /** Made by the site, with no reporter: the roach was put in this 提醒区 (its label, shortened) */
+  watch?: string;
 };
 
 /**

@@ -88,6 +88,7 @@ import {
   declarations,
   friendships,
   modActions,
+  offLimitsAreas,
   reports,
   roaches,
   touches,
@@ -436,6 +437,15 @@ const roachState = (current: { lng: number; lat: number } | undefined, was: { ln
 /** A player's name as the 管理台 shows it */
 const ownerName = (u: { name: string; anonymous: boolean } | undefined) => (u?.name ? `${u.name}${u.anonymous ? "（匿名）" : ""}` : "（没有名字）");
 
+/** The 提醒区 the site reported these in (src/lib/server/watchPlaces.ts): each one's label, shortened as the 管理台 shows it */
+async function watchLabelsOf(rows: { watchAreaId: string | null }[]) {
+  const ids = [...new Set(rows.flatMap((r) => (r.watchAreaId ? [r.watchAreaId] : [])))];
+  if (!ids.length) return new Map<string, string>();
+  const found = await db.select({ id: offLimitsAreas.id, label: offLimitsAreas.label }).from(offLimitsAreas).where(inArray(offLimitsAreas.id, ids));
+  return new Map(found.map((f) => [f.id, [...f.label].length > 20 ? `${[...f.label].slice(0, 20).join("")}…` : f.label]));
+}
+const watchOf = (labels: Map<string, string>, r: { watchAreaId: string | null }) => (r.watchAreaId ? { watch: labels.get(r.watchAreaId) ?? "" } : {});
+
 /**
  * A page of the admin's queue: red cases first, then yellow, then green; within a colour, the more
  * reliable reporters first, then the one waiting longest. The grouping and order are SQL's (caseTable);
@@ -483,6 +493,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
     const r = id ? reporters.get(id) : undefined;
     return r ? reporterInfo(r, now) : null;
   };
+  const watchLabels = await watchLabelsOf(inPage);
 
   summary.cases = rows.flatMap((row): AdminCase[] => {
     const person = who.get(row.target);
@@ -531,6 +542,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
           at: r.createdAt.getTime(),
           reporter: reporterOf(r.reporterId),
           ...(r.placeLng !== null && r.placeLat !== null ? { place: { lng: r.placeLng, lat: r.placeLat }, nearM: r.nearM } : {}),
+          ...watchOf(watchLabels, r),
         })),
         ...(roach ? { roach } : {}),
       },
@@ -1205,6 +1217,7 @@ export async function reportedPlaces(now = Date.now(), viewer: Viewer | null = n
       .orderBy(asc(reports.createdAt))
   ).filter((r) => keys.has(caseOf(r)));
   const roachIds = [...new Set(open.flatMap((r) => (r.roachId ? [r.roachId] : [])))];
+  const watchLabels = await watchLabelsOf(open);
   const [owners, spots] = await Promise.all([
     db.select({ id: users.id, name: users.name, anonymous: users.anonymous }).from(users).where(inArray(users.id, targets)),
     roachIds.length ? db.select({ id: roaches.id, publicId: roaches.publicId, lng: roaches.lng, lat: roaches.lat }).from(roaches).where(inArray(roaches.id, roachIds)) : [],
@@ -1230,6 +1243,7 @@ export async function reportedPlaces(now = Date.now(), viewer: Viewer | null = n
         reliable: row.reliable,
         since: row.since ? new Date(row.since).getTime() : now,
         nearM: stalk ? stalk.nearM : null,
+        watch: theirs.filter((r) => r.watchAreaId).map((r) => watchLabels.get(r.watchAreaId!) ?? "").at(-1) ?? null,
       },
     ];
   });
@@ -1316,6 +1330,7 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
   ]);
   const reporterIds = [...new Set(about.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
   const reporters = new Map((reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((r) => [r.id, r]));
+  const watchLabels = await watchLabelsOf(about);
   // settling closes a case's reports at the moment its action is kept: that tells who settled each
   const settledAt = new Map(history.map((a) => [a.createdAt.getTime(), a]));
   return {
@@ -1331,6 +1346,7 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
         note: r.note,
         at: r.createdAt.getTime(),
         reporter: reporter ? reporterInfo(reporter, now) : null,
+        ...watchOf(watchLabels, r),
         roach: isRoachReportReason(r.reason) ? { main: r.roachSlot === 0 } : null,
         resolvedAt: r.resolvedAt?.getTime() ?? null,
         resolution: r.resolution,

@@ -156,6 +156,7 @@ import { allow } from "./rateLimit";
 import { canSeeDeclaration, seeDeclarations, spotRows, visibleDeclarations, type SeenDeclaration } from "./declarationInbox";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import { countCapped, countDeclared, countGuide, countIgnored, countPlaced, countReply, countTouch } from "./stats";
+import { markIfWatched } from "./watchPlaces";
 import {
   clearedValues,
   declarations,
@@ -649,6 +650,8 @@ export async function placeRoach(userId: string, target: PlaceTarget, spot: LngL
   // the first roach of theirs to sit by 塔露拉干员's fire is welcomed
   await arrivedAt(userId, at);
   await placed(userId, placement.slot, placement.existing ?? null, at);
+  // put in a 提醒区: reported to the admins after the answer, the player none the wiser
+  markIfWatched(userId, placement.slot, at);
   return ownRoaches(userId);
 }
 

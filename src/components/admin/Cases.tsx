@@ -80,11 +80,13 @@ function reasonsOf(c: AdminCase) {
   return [...n].map(([reason, k]) => `${reason} ×${k}`).join("、");
 }
 
-/** 「2 人举报，都算可靠」 */
+/** 「2 人举报，都算可靠」, and 「网站自动标的」 for what the site reported itself (a 提醒区) */
 function reportersWords(c: AdminCase) {
   if (!c.reports.length) return "没有举报";
+  const marks = c.reports.filter((r) => r.watch !== undefined).length;
+  if (!c.reporters) return marks ? "网站自动标的" : "举报人已注销";
   const reliable = c.reporters === 1 ? (c.reliable ? "算可靠" : "不算可靠") : c.reliable === c.reporters ? "都算可靠" : `${c.reliable} 个可靠`;
-  return `${c.reporters} 人举报，${reliable}`;
+  return `${c.reporters} 人举报，${reliable}${marks ? `；网站也自动标了 ${marks} 次` : ""}`;
 }
 
 /** Of the 管理台's own people (only the owner sees cases about them), and the rest */
@@ -774,7 +776,7 @@ function CaseDetail({
               {[r.context, `${roach ? "主人当时的名字" : "当时的名字"}：${r.name || "（没有名字）"}`].filter(Boolean).join(" · ")}
               {r.place && roach && (r.place.lng !== roach.lng || r.place.lat !== roach.lat) && " · 这次举报时它在别处"}
             </div>
-            <div className="ac-muted small">{reporterWords(r.reporter)}</div>
+            <div className="ac-muted small">{reporterWords(r.reporter, r.watch)}</div>
           </div>
         ))}
         {!c.reports.length && (

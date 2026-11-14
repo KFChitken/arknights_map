@@ -364,7 +364,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
                         ? `判了没问题${r.by ? `（${by(r.by)}）` : ""}`
                         : `成立：${r.by ? by(r.by) : ""}${RESOLUTION_WORDS[r.resolution ?? ""] ?? "处理了"}`}
                     {" · "}
-                    {reporterWords(r.reporter)}
+                    {reporterWords(r.reporter, r.watch)}
                   </div>
                 </div>
               ))}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { circlePath, MapPulse, metresPerPx, spotAbove, zoomFor } from "./zoneAim";
+import { circlePath, MapPulse, metresPerPx, prefillOf, spotAbove, zoomFor } from "./zoneAim";
 
 /** Metres between two spots on a sphere the size of the Earth */
 function metresBetween(a: { lng: number; lat: number }, b: { lng: number; lat: number }) {
@@ -53,5 +53,21 @@ describe("圈禁放区's sums", () => {
     off();
     pulse.moving(true);
     expect(heard).toBe(2);
+  });
+});
+
+describe("a link to draw a place", () => {
+  it("gives the place, size, kind and label it names", () => {
+    const q = new URLSearchParams(`draw=1&at=104.0657,30.6595&r=300&watch=1&label=${encodeURIComponent("某个编出来的地方")}`);
+    expect(prefillOf(q)).toEqual({ at: { lng: 104.0657, lat: 30.6595 }, prefill: { radius: 300, watch: true, label: "某个编出来的地方" } });
+  });
+
+  it("draws where the map is, a 禁放区 of the usual size, when it names nothing more", () => {
+    expect(prefillOf(new URLSearchParams("draw=1"))).toEqual({ at: null, prefill: { radius: null, watch: false, label: "" } });
+  });
+
+  it("leaves out what it cannot read, and is nothing without draw", () => {
+    expect(prefillOf(new URLSearchParams("draw=1&at=200,95&r=wide&watch=yes"))).toEqual({ at: null, prefill: { radius: null, watch: false, label: "" } });
+    expect(prefillOf(new URLSearchParams("at=104,30&watch=1"))).toBeNull();
   });
 });

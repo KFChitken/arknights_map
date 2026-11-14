@@ -34,8 +34,19 @@ export function circlePath(at: LngLat, metres: number, points = 72): LngLat[] {
   });
 }
 
+/** What a link to draw one gives (/?draw=1&at=<lng>,<lat>&r=<metres>&watch=1&label=<text>): the size, the kind, the label */
+export type ZonePrefill = { radius: number | null; watch: boolean; label: string };
 /** What the owner's map has open of its 禁放区 tools: drawing one (round a spot, or where the map is), or seeing one */
-export type ZoneTool = { kind: "draw"; at: LngLat | null; key: number } | { kind: "view"; id: string; key: number };
+export type ZoneTool = { kind: "draw"; at: LngLat | null; key: number; prefill?: ZonePrefill } | { kind: "view"; id: string; key: number };
+
+/** A link's draw=1 with what it gives, read from the address; null without draw */
+export function prefillOf(q: URLSearchParams): { at: LngLat | null; prefill: ZonePrefill } | null {
+  if (!q.has("draw")) return null;
+  const [lng, lat] = (q.get("at") ?? "").split(",").map(Number);
+  const at = Number.isFinite(lng) && Number.isFinite(lat) && Math.abs(lng) <= 180 && Math.abs(lat) <= 85 && q.get("at") ? { lng, lat } : null;
+  const r = Math.round(Number(q.get("r")));
+  return { at, prefill: { radius: q.get("r") && Number.isFinite(r) ? r : null, watch: q.get("watch") === "1", label: (q.get("label") ?? "").trim() } };
+}
 
 /**
  * Where the map last came to rest and whether it is moving now, for the drawing to follow without the whole map page

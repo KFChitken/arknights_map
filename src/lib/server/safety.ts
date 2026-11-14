@@ -304,7 +304,7 @@ async function suspendIfNew(target: UserRow, now: number) {
 export const ROACH_KEYS = Object.keys(ROACH_REPORT_REASONS) as (keyof typeof ROACH_REPORT_REASONS)[];
 
 /** The reported player's name as a report keeps it: while held, anonymous is the hold's doing, and what they had chosen is kept beside it */
-function nameThen(u: UserRow) {
+export function nameThen(u: UserRow) {
   const anonymous = u.profileHeldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous;
   return u.name ? `${u.name}${anonymous ? "（当时是匿名）" : ""}` : "（没有名字）";
 }
@@ -318,7 +318,7 @@ async function reportedToday(userId: string) {
   return today.n;
 }
 
-const tellAdmin = () =>
+export const tellAdmin = () =>
   sendReportDigest().catch((e) => {
     logError("Report digest failed", e);
     noteSignal("job", "digest");

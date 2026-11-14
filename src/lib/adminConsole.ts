@@ -271,6 +271,8 @@ export type AdminAccountReport = {
   note: string;
   at: number;
   reporter: ReporterInfo | null;
+  /** Made by the site, as put in this 提醒区 (its label, shortened) */
+  watch?: string;
   /** About one of their roaches: whether it was the main one */
   roach: { main: boolean } | null;
   /** Handled: when, how (reports.resolution), and who in the 管理台 when that can be told */
@@ -360,6 +362,8 @@ export type ReportedPlace = {
   reliable: number;
   since: number;
   nearM: number | null;
+  /** The site reported it, as put in this 提醒区 (its label, shortened); null when only players did */
+  watch: string | null;
 };
 
 /**
@@ -396,8 +400,9 @@ export const ZONE_MIN_M = 30;
 export const ZONE_MAX_M = 3000;
 /** What it is and why, for the owner alone, in characters */
 export const ZONE_LABEL_MAX = 80;
-/** Places drawn and in force at once, at most */
+/** Places drawn and in force at once, at most: 禁放区, and 提醒区 (which refuse nothing, only mark) */
 export const ZONES_MAX = 500;
+export const WATCH_MAX = 2000;
 /** Drawing round more roaches than this asks again first, since they never come back */
 export const ZONE_SURE_OVER = 300;
 /** The sizes the map offers, and the one it starts with */
@@ -421,6 +426,9 @@ export type ZoneItem = {
   sentHome: number;
   done: boolean;
   liftedAt: number | null;
+  /** A 提醒区: nothing moved out; marked counts the roaches the site reported in it */
+  watch: boolean;
+  marked: number;
 };
 /** 禁放区: in force (the newest first), lifted within a year (the latest first), and how many places the code holds */
 export type ZoneList = { live: ZoneItem[]; lifted: ZoneItem[]; inCode: number };
@@ -438,7 +446,7 @@ export type ZonePreview = { count: number; owners: number; warnings: string[] };
  */
 export type ZoneDrawn =
   | { needSure: true; count: number }
-  | { needSure?: false; id: string; done: boolean; count: number; moved: number; home: number; owners: number };
+  | { needSure?: false; id: string; done: boolean; count: number; moved: number; home: number; owners: number; watch?: true; marked?: number };
 
 // ---- 全站变灰 (the owner's: src/lib/server/siteSettings.ts) ----
 

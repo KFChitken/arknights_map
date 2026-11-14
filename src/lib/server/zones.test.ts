@@ -192,7 +192,19 @@ describe("圈禁放区", () => {
     const list = await listZones();
     expect(list).toEqual({
       live: [
-        { id, label: "公园东门，住户来信说有人一直往这放", radiusM: 300, by: "站长", at: expect.any(Number), moved: 2, sentHome: 0, done: true, liftedAt: null },
+        {
+          id,
+          label: "公园东门，住户来信说有人一直往这放",
+          radiusM: 300,
+          by: "站长",
+          at: expect.any(Number),
+          moved: 2,
+          sentHome: 0,
+          done: true,
+          liftedAt: null,
+          watch: false,
+          marked: 0,
+        },
       ],
       lifted: [],
       inCode: OFF_LIMITS.length,

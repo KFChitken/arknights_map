@@ -12,6 +12,7 @@ import { Icon } from "./ui";
  * 禁放区 (the owner's, src/lib/server/zones.ts): the places the owner drew on the map, in force and lifted within a
  * year, and how many the code holds. One is drawn on the map (/?draw=1) and seen there (/?zone=<id>, which goes into
  * the 操作记录); 解除 asks first, in its row. A place still moving its roaches out is read again until it is done.
+ * 提醒区 (watch) are listed apart: they move nothing, and say how often the site reported a roach put in them.
  */
 
 /** 「今天 21:30」, 「昨天 09:10」, 「11/9 22:05」, Beijing time */
@@ -29,6 +30,88 @@ function movedWords(z: ZoneItem) {
 }
 
 const short = (label: string) => ([...label].length > 12 ? `${[...label].slice(0, 12).join("")}…` : label);
+
+/** The places in force of one kind, as rows */
+function ZoneRows({
+  zones,
+  now,
+  asking,
+  busy,
+  onAsk,
+  onLift,
+}: {
+  zones: ZoneItem[];
+  now: number;
+  asking: string | null;
+  busy: boolean;
+  onAsk: (id: string | null) => void;
+  onLift: (z: ZoneItem) => void;
+}) {
+  const watch = zones[0]?.watch ?? false;
+  return (
+    <>
+      <div className="ac-zone-row ac-zone-cols" aria-hidden="true">
+        <span className="zc-label">是哪儿、为什么圈（只有你看得到）</span>
+        <span className="zc-r">半径</span>
+        <span className="zc-by">谁圈的</span>
+        <span className="zc-at">什么时候</span>
+        <span className="zc-moved">{watch ? "标过" : "当时挪走"}</span>
+        <span className="zc-acts" />
+      </div>
+      <ul className="ac-zone-list">
+        {zones.map((z) => (
+          <li key={z.id} className="ac-zone-row">
+            <div className="zc-label">
+              <strong>{z.label}</strong>
+              {asking === z.id && (
+                <div className="ac-confirm" role="alert">
+                  <span>{z.watch ? "解除以后，放进这里不再自动记举报。" : "解除以后，这里又能放蟑螂了。之前挪走的不会挪回来。"}</span>
+                  <button type="button" className="ac-btn small danger" disabled={busy} onClick={() => onLift(z)}>
+                    确认解除
+                  </button>
+                  <button type="button" className="ac-btn small" disabled={busy} onClick={() => onAsk(null)}>
+                    先不解除
+                  </button>
+                </div>
+              )}
+            </div>
+            <span className="zc-r">
+              <span className="zc-k">半径 </span>
+              {z.radiusM} 米
+            </span>
+            <span className="zc-by">
+              <span className="zc-k">谁圈的：</span>
+              {z.by}
+            </span>
+            <span className="zc-at">{whenWords(z.at, now)}</span>
+            <span className="zc-moved">
+              {z.watch ? (
+                <>
+                  <span className="zc-k">标过 </span>
+                  {z.marked} 次
+                </>
+              ) : (
+                <>
+                  <span className="zc-k">当时挪走 </span>
+                  {movedWords(z)}
+                  {z.done && z.sentHome > 0 && <small>含送回家 {z.sentHome} 只</small>}
+                </>
+              )}
+            </span>
+            <span className="zc-acts">
+              <Link className="ac-btn small" href={`/?zone=${encodeURIComponent(z.id)}`}>
+                去地图上看
+              </Link>
+              <button type="button" className="ac-btn small" disabled={busy || asking === z.id} onClick={() => onAsk(z.id)}>
+                解除
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 export default function Zones() {
   const { call, say } = useConsole();
@@ -63,7 +146,7 @@ export default function Zones() {
     try {
       await call("liftZone", [{ id: z.id }]);
       setAsking(null);
-      say(`解除了「${short(z.label)}」，那里又能放蟑螂了。`);
+      say(z.watch ? `解除了提醒区「${short(z.label)}」。` : `解除了「${short(z.label)}」，那里又能放蟑螂了。`);
       await load();
     } catch (e) {
       setNote(errorWords(e));
@@ -78,14 +161,18 @@ export default function Zones() {
       </div>
     );
   }
+  const blocking = list.live.filter((z) => !z.watch);
+  const watching = list.live.filter((z) => z.watch);
   return (
     <div className="ac-zones">
       <div className="ac-zone-cards">
         <section className="ac-panel ac-zone-card" aria-label="你圈的">
           <div>
             <div className="ac-sub">你圈的，正在生效</div>
-            <div className="ac-zone-n">{list.live.length} 处</div>
-            <div className="ac-muted small">圈好马上生效，不用等上线</div>
+            <div className="ac-zone-n">{blocking.length} 处</div>
+            <div className="ac-muted small">
+              另有提醒区 {watching.length} 处。圈好马上生效，不用等上线
+            </div>
           </div>
           <Link className="ac-btn primary" href="/?draw=1">
             <Icon name="draw" size={16} />
@@ -101,67 +188,28 @@ export default function Zones() {
         </section>
       </div>
 
-      <section className="ac-panel ac-tool" aria-label="正在生效">
+      <section className="ac-panel ac-tool" aria-label="禁放区">
         <div className="ac-panel-head">
-          <h2>正在生效</h2>
+          <h2>禁放区 {blocking.length} 处</h2>
           <span className="ac-muted">只有站长能圈、能解除。每次都记在操作记录里。</span>
         </div>
         {note && <p className="ac-error">{note}</p>}
-        {list.live.length ? (
-          <>
-            <div className="ac-zone-row ac-zone-cols" aria-hidden="true">
-              <span className="zc-label">是哪儿、为什么圈（只有你看得到）</span>
-              <span className="zc-r">半径</span>
-              <span className="zc-by">谁圈的</span>
-              <span className="zc-at">什么时候</span>
-              <span className="zc-moved">当时挪走</span>
-              <span className="zc-acts" />
-            </div>
-            <ul className="ac-zone-list">
-              {list.live.map((z) => (
-                <li key={z.id} className="ac-zone-row">
-                  <div className="zc-label">
-                    <strong>{z.label}</strong>
-                    {asking === z.id && (
-                      <div className="ac-confirm" role="alert">
-                        <span>解除以后，这里又能放蟑螂了。之前挪走的不会挪回来。</span>
-                        <button type="button" className="ac-btn small danger" disabled={busy} onClick={() => lift(z)}>
-                          确认解除
-                        </button>
-                        <button type="button" className="ac-btn small" disabled={busy} onClick={() => setAsking(null)}>
-                          先不解除
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <span className="zc-r">
-                    <span className="zc-k">半径 </span>
-                    {z.radiusM} 米
-                  </span>
-                  <span className="zc-by">
-                    <span className="zc-k">谁圈的：</span>
-                    {z.by}
-                  </span>
-                  <span className="zc-at">{whenWords(z.at, now)}</span>
-                  <span className="zc-moved">
-                    <span className="zc-k">当时挪走 </span>
-                    {movedWords(z)}
-                    {z.done && z.sentHome > 0 && <small>含送回家 {z.sentHome} 只</small>}
-                  </span>
-                  <span className="zc-acts">
-                    <Link className="ac-btn small" href={`/?zone=${encodeURIComponent(z.id)}`}>
-                      去地图上看
-                    </Link>
-                    <button type="button" className="ac-btn small" disabled={busy || asking === z.id} onClick={() => setAsking(z.id)}>
-                      解除
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
+        {blocking.length ? (
+          <ZoneRows zones={blocking} now={now} asking={asking} busy={busy} onAsk={setAsking} onLift={lift} />
         ) : (
           <p className="ac-sub">现在没有你圈的禁放区。代码里的 {list.inCode} 处照常生效。</p>
+        )}
+      </section>
+
+      <section className="ac-panel ac-tool" aria-label="提醒区">
+        <div className="ac-panel-head">
+          <h2>提醒区 {watching.length} 处</h2>
+          <span className="ac-muted">放进去照常放得下，玩家看不出来；网站自动记一条举报给你和管理员。</span>
+        </div>
+        {watching.length ? (
+          <ZoneRows zones={watching} now={now} asking={asking} busy={busy} onAsk={setAsking} onLift={lift} />
+        ) : (
+          <p className="ac-sub">现在没有提醒区。在地图上圈的时候选「只提醒」就是。</p>
         )}
       </section>
 
@@ -172,7 +220,10 @@ export default function Zones() {
           <ul className="ac-zone-list lifted">
             {list.lifted.map((z) => (
               <li key={z.id}>
-                <strong>{z.label}</strong>
+                <strong>
+                  {z.watch && "提醒区 · "}
+                  {z.label}
+                </strong>
                 <span>{z.radiusM} 米</span>
                 <span>{beijingShort(z.at)} 圈</span>
                 <span>{beijingShort(z.liftedAt!)} 解除</span>
@@ -183,7 +234,7 @@ export default function Zones() {
       )}
 
       <p className="ac-muted small">
-        圈的时候：圈里已经有的蟑螂当场挪到圈外 60 到 300 米，在圈里做客的克隆体送回家，主人收到一条站长通知，不记黄牌。管理员看不到这一页。
+        圈禁放区的时候：圈里已经有的蟑螂当场挪到圈外 60 到 300 米，在圈里做客的克隆体送回家，主人收到一条站长通知，不记黄牌。圈提醒区的时候：一只也不挪，圈里已经有的各记一条举报。管理员看不到这一页。
       </p>
     </div>
   );
