@@ -12,11 +12,14 @@ export type Bell = (typeof ECHO_BELLS)[number];
 export const ECHO_FIRST = 3;
 /** How many bells rung back in a row pass */
 export const ECHO_STEPS = 10;
-/** How long a bell stays lit when it is played, and dark before the next (ms): fewer than two a second */
-export const ECHO_ON_MS = 480;
-export const ECHO_OFF_MS = 240;
-/** How long before a turn's first bell (ms) */
-export const ECHO_PAUSE_MS = 900;
+/**
+ * How long a bell stays lit when it is played, and dark before the next (ms): fewer than two a second, and 1.2 times as
+ * fast as the first ones were (480 and 240)
+ */
+export const ECHO_ON_MS = 400;
+export const ECHO_OFF_MS = 200;
+/** How long before a turn's first bell (ms), 1.2 times as quick as at first (900) */
+export const ECHO_PAUSE_MS = 750;
 /** How long a bell the player rings stays lit (ms) */
 export const ECHO_RING_MS = 200;
 

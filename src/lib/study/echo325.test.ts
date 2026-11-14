@@ -80,8 +80,12 @@ describe("复读 325", () => {
     expect(remembered(r.echo)).toBe(5);
   });
 
-  it("lights fewer than two bells a second, and a round of every turn takes about a minute", () => {
+  it("lights fewer than two bells a second, 1.2 times as fast as at first, and a round of every turn takes about a minute", () => {
     expect(1000 / (ECHO_ON_MS + ECHO_OFF_MS)).toBeLessThan(2);
+    // the first ones: lit 480, dark 240, 900 before a turn
+    expect((480 + 240) / (ECHO_ON_MS + ECHO_OFF_MS)).toBeCloseTo(1.2);
+    expect(480 / ECHO_ON_MS).toBeCloseTo(1.2);
+    expect(900 / ECHO_PAUSE_MS).toBeCloseTo(1.2);
     // each turn: the pause, its bells shown, then rung back at about one every half second
     let ms = 0;
     for (let n = ECHO_FIRST; n <= ECHO_STEPS; n++) ms += ECHO_PAUSE_MS + n * (ECHO_ON_MS + ECHO_OFF_MS) + n * 500;
