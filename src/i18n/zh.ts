@@ -2302,6 +2302,7 @@ export const zh = {
     },
     courses: {
       stopwatch: { name: "3.25 秒停表", rule: "觉得到 3.25 秒就点停", short: "停表" },
+      react325: { name: "3、2、5 反应", rule: "3、2、5 连着出来时，趁 5 还亮着拍一下", short: "反应" },
     },
     stopwatch: {
       start: "开始",
@@ -2315,6 +2316,27 @@ export const zh = {
       hideNote: "1 秒后数字藏起来，全凭感觉停",
       hidden: "（藏数字）",
       limit: "10 秒到了，自动停下",
+    },
+    /** 3、2、5 反应 (src/lib/study/react325.ts) */
+    react325: {
+      start: "开始",
+      /** Over the countdown 3、2、5 */
+      ready: "预备",
+      rule: "3、2、5 连着出来时，趁 5 还亮着拍屏幕\n拍中 {hits} 次过关，拍错 {slips} 次结束",
+      tap: "看到 3、2、5 的 5 就拍屏幕任何地方",
+      tapKeys: "看到 3、2、5 的 5 就拍屏幕任何地方，或按空格",
+      hits: "拍中",
+      slips: "拍错",
+      /** Read out for the tallies */
+      hitsSr: "拍中 {n} 次，{of} 次过关",
+      slipsSr: "拍错 {n} 次，{of} 次结束",
+      hit: "拍中！",
+      slip: "拍错了",
+      clean: "一次没拍错，过关！",
+      pass: "过关！",
+      slipOut: "拍错 {n} 次，这局到这儿",
+      ranOut: "数字出完了，拍中 {n} 次，再试一次",
+      result: "拍中 {hits} 次，拍错 {slips} 次",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",

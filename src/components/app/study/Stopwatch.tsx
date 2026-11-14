@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { hundredths, judgeStop, STOP_HIDE_AFTER_MS, STOP_LIMIT_MS, watchText } from "@/lib/study/stopwatch";
 import type { GameProps, Round } from "./games";
+import { listenTaps, onClock, useKeys } from "./taps";
 
 /**
  * 3.25 秒停表 (src/lib/study/stopwatch.ts): 开始 sets a watch running up from 0.00, and a tap anywhere on the screen
- * (Space on a keyboard) stops it; it stops by itself at 10.00. The time is the stopping press's own time stamp less
- * the starting one's, so neither how often the screen is drawn nor a slow phone moves it. mode hidden (藏数字再来): the
- * numbers hide after a second, leaving the dial, and show again once it stops.
+ * (Space on a keyboard, taps.ts) stops it; it stops by itself at 10.00. The time is the stopping press's own time stamp
+ * less the starting one's, so neither how often the screen is drawn nor a slow phone moves it. mode hidden (藏数字再来):
+ * the numbers hide after a second, leaving the dial, and show again once it stops.
  */
 export default function Stopwatch({ mode, onRound }: GameProps) {
   const hidden = mode === "hidden";
@@ -20,9 +21,7 @@ export default function Stopwatch({ mode, onRound }: GameProps) {
   const startRef = useRef(0);
   const roundRef = useRef(onRound);
   roundRef.current = onRound;
-  // a keyboard to press Space on, as far as the device tells: the hint says so
-  const [keys, setKeys] = useState(false);
-  useEffect(() => setKeys(window.matchMedia?.("(hover: hover) and (pointer: fine)").matches ?? false), []);
+  const keys = useKeys();
 
   useEffect(() => {
     if (phase !== "running") return;
@@ -47,25 +46,11 @@ export default function Stopwatch({ mode, onRound }: GameProps) {
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    const at = (e: Event) => Math.min(hundredths(onClock(e.timeStamp) - startRef.current), hundredths(STOP_LIMIT_MS));
-    // anywhere on the screen, all but 不玩了 (which leaves without a round)
-    const onPointer = (e: PointerEvent) => {
-      if (e.button > 0 || (e.target instanceof Element && e.target.closest("[data-quit]"))) return;
-      e.preventDefault();
-      stop(at(e), false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== " " && e.code !== "Space") return;
-      e.preventDefault();
-      if (!e.repeat) stop(at(e), false);
-    };
-    window.addEventListener("pointerdown", onPointer, true);
-    window.addEventListener("keydown", onKey, true);
+    const unlisten = listenTaps((at) => stop(Math.min(hundredths(at - startRef.current), hundredths(STOP_LIMIT_MS)), false));
     return () => {
       over = true;
       cancelAnimationFrame(frame);
-      window.removeEventListener("pointerdown", onPointer, true);
-      window.removeEventListener("keydown", onKey, true);
+      unlisten();
     };
   }, [phase, hidden]);
 
@@ -109,15 +94,6 @@ export default function Stopwatch({ mode, onRound }: GameProps) {
 
 /** The dial's marks, every 30° */
 const TICKS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
-
-/**
- * An event's time on performance.now()'s clock, which event.timeStamp is in browsers today; one that is not, or
- * says nothing, is read as now
- */
-function onClock(stamp: number): number {
-  const now = performance.now();
-  return Number.isFinite(stamp) && stamp > 0 && stamp <= now + 50 && now - stamp < 5_000 ? stamp : now;
-}
 
 function roundOf(cs: number, v: "exact" | "pass" | "miss", hidden: boolean, limit: boolean): Round {
   const t = watchText(cs);

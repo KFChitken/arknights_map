@@ -121,9 +121,35 @@
   font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
 }
 .sw-time.veiled { visibility: hidden; }
-.sw-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
-.sw-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
-.sw-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+/* under the dial or the box: 开始 and a line of how to play */
+.sw-under,
+.rx-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
+.sw-start,
+.rx-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.sw-hint,
+.rx-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+
+/* ---- 3、2、5 反应 (React325.tsx): only the digit and the tallies change, nothing flashes ---- */
+.rx-game { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.rx-box {
+  position: relative; display: grid; place-items: center; width: min(56vw, 230px, 34vh); aspect-ratio: 1; border: 4px solid #1b1d22;
+  border-radius: 28px; container-type: inline-size;
+}
+.rx-digit { font-size: 120px; font-size: 62cqw; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.rx-digit.rx-idle { color: #c3c8cf; font-size: 40px; font-size: 22cqw; }
+.rx-game[data-phase="count"] .rx-digit { color: #9aa1ab; }
+.rx-ready { position: absolute; top: 8%; left: 0; right: 0; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0.3em; text-align: center; }
+.rx-score { display: flex; gap: 20px; }
+.rx-tally { display: inline-flex; align-items: center; gap: 5px; }
+.rx-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
+.rx-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
+.rx-tally i.rx-on { border-color: var(--st-green); background: var(--st-green); }
+.rx-tally.rx-slips i.rx-on { border-color: var(--st-red); background: var(--st-red); }
+.rx-under { min-height: 104px; }
+.rx-hint { max-width: 300px; white-space: pre-line; }
+.rx-said { margin: 0; font-size: 15px; font-weight: 800; line-height: 1.35; }
+.rx-said.rx-hit { color: var(--st-green); }
+.rx-said.rx-slip { color: var(--st-red); }
 
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
@@ -132,4 +158,19 @@
   .sw-watch { gap: 10px; }
   .sw-dial { width: min(34vh, 200px); }
   .sw-under { gap: 8px; min-height: 76px; }
+  .rx-game { gap: 8px; }
+  .rx-box { width: min(30vh, 180px); border-radius: 22px; }
+  .rx-under { gap: 8px; min-height: 84px; }
+}
+/* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
+@media (max-height: 520px) and (orientation: landscape) {
+  .sp-game { padding-block: 8px; }
+  .sw-watch { flex-direction: row; justify-content: center; gap: 36px; }
+  .sw-dial,
+  .rx-box { width: clamp(100px, calc(100vh - 200px), 200px); width: clamp(100px, calc(100dvh - 200px), 200px); }
+  .sw-under { width: 240px; min-height: 0; justify-content: center; }
+  .rx-game { display: grid; grid-template-columns: auto 280px; justify-content: center; justify-items: center; align-items: start; gap: 12px 36px; }
+  .rx-box { grid-row: span 2; align-self: center; }
+  .rx-score { align-self: end; }
+  .rx-under { min-height: 100px; justify-content: flex-start; }
 }

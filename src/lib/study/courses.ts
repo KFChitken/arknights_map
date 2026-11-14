@@ -9,7 +9,10 @@
 export const SUBJECTS = ["pe"] as const;
 export type Subject = (typeof SUBJECTS)[number];
 
-export const COURSES = [{ id: "stopwatch", subject: "pe" }] as const satisfies readonly { id: string; subject: Subject }[];
+export const COURSES = [
+  { id: "stopwatch", subject: "pe" },
+  { id: "react325", subject: "pe" },
+] as const satisfies readonly { id: string; subject: Subject }[];
 
 export type Course = (typeof COURSES)[number];
 export type CourseId = Course["id"];
