@@ -232,6 +232,7 @@ import {
 } from "@/lib/notices";
 import { PARTY_ZOOM } from "@/lib/party";
 import { MyInkCard, MyRoachCard, OtherInkCard, OtherRoachCard, roachTitle } from "./app/RoachCards";
+import { passCardRoach, useRoachPass } from "./app/passes/RoachPass";
 import StackPicker, { InkIcon, StackBack, StackUnderGuide, type StackRow } from "./app/StackPicker";
 import {
   loadProgress,
@@ -3083,6 +3084,13 @@ export default function MapApp({
     return Boolean(done);
   };
 
+  /** 地图卡片上显示立绘, saved with the rest of 我的资料 */
+  const switchPassOnMap = async (on: boolean) => {
+    const done = await act(() => passesApi.onMap(on));
+    if (done) await loadMe();
+    return Boolean(done);
+  };
+
   const reset = async () => {
     if (!window.confirm(T.map.demo.resetAsk)) return;
     await act((w) => w.reset(), T.map.demo.reset);
@@ -3141,6 +3149,8 @@ export default function MapApp({
     selected?.kind === "other" && selected.roach.friend
       ? shownFriends.find((f) => f.roaches.some((r) => sameRoach(selected.roach.id, r.id)))
       : undefined;
+  // the pass the owner of the main roach whose card is open wears, its 立绘 on the card: asked by those 寻访 is open to
+  const cardPass = useRoachPass(passCardRoach(Boolean(me?.passes), selected?.kind === "other" ? selected.roach : null));
   // the server's count until there is a list to count (a visitor never has one)
   // signed in, the server's count: the page holds only the roaches of the area it shows
   const total =
@@ -4327,6 +4337,7 @@ export default function MapApp({
             onlyMains={me.onlyMains}
             onOpenOnlyMains={(draft) => setPanel({ kind: "onlyMains", back: { kind: "profile", draft } })}
             passes={me.passes}
+            onPassOnMap={switchPassOnMap}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
             // set before the map got round to asking: it asks no more
@@ -5099,6 +5110,7 @@ export default function MapApp({
           }
           back={stackBack}
           under={stackUnder}
+          pass={cardPass}
           onClose={() => {
             setSelected(null);
             runAfterReport();
@@ -5264,7 +5276,7 @@ export default function MapApp({
             setPassesOpen(false);
             void act(() => Promise.reject(e));
           }}
-          onWallet={(p) => setMe((m) => (m?.passes ? { ...m, passes: p } : m))}
+          onWallet={(p) => setMe((m) => (m?.passes ? { ...m, passes: { ...m.passes, ...p } } : m))}
         />
       )}
       {/* over everything of each layout, the board it was opened from too */}

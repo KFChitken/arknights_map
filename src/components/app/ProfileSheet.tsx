@@ -83,6 +83,7 @@ export default function ProfileSheet({
   onOpenOnlyMains,
   onOpenBadges,
   passes,
+  onPassOnMap,
   onUnblock,
   onSave,
   onPerlicaTimer,
@@ -111,6 +112,8 @@ export default function ProfileSheet({
   onOpenBadges?: (draft: Profile) => void;
   /** 通行证寻访, when the player may draw: the pass they wear on their card, and 省流量 for passes on this device */
   passes?: PassesMe;
+  /** Switch 地图卡片上显示立绘; only called when the box was changed and the rest saved */
+  onPassOnMap?: (on: boolean) => Promise<boolean>;
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;
   /** Switch her timer; only called when the box was changed and the rest saved */
@@ -130,6 +133,7 @@ export default function ProfileSheet({
   const lean = useLeanArt();
   // not asked yet shows unticked, and stays not asked unless the box is ticked
   const [timerOn, setTimerOn] = useState(perlicaTimer === "on");
+  const [passOnMap, setPassOnMap] = useState(passes?.onMap ?? true);
   // 退出其他设备: what happened, once asked
   const [othersOut, setOthersOut] = useState<string | null>(null);
   const signOutOthers = async () => {
@@ -150,6 +154,7 @@ export default function ProfileSheet({
     setSaving(true);
     let ok = await onSave(p);
     if (ok && perlicaTimer !== undefined && timerOn !== (perlicaTimer === "on")) ok = Boolean(await onPerlicaTimer?.(timerOn));
+    if (ok && passes && passOnMap !== passes.onMap) ok = Boolean(await onPassOnMap?.(passOnMap));
     setSaving(false);
     if (ok) onClose();
   };
@@ -327,6 +332,11 @@ export default function ProfileSheet({
       {passes && (
         <fieldset>
           <legend>{T.passes.lean.title}</legend>
+          <label className="check">
+            <input type="checkbox" checked={passOnMap} onChange={(e) => setPassOnMap(e.target.checked)} />
+            {T.passes.onMap.label}
+          </label>
+          <p className="hint">{T.passes.onMap.hint}</p>
           {/* on this device alone, at once: not part of the card that 保存 sends */}
           <label className="check">
             <input type="checkbox" checked={lean} onChange={(e) => setLeanArt(e.target.checked)} />

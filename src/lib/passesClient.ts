@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassState, Task } from "./passes";
+import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassState, RoachPass, Task } from "./passes";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -42,4 +42,8 @@ export const passesApi = {
   wear: (passId: number | null) => call<PassState>("PUT", "wear", { passId }),
   /** 送 1 张寻访券 to a 触须之交, by their Friend.id */
   gift: (friendId: string) => call<{ ok: true }>("POST", "gift", { friendId }),
+  /** 地图卡片上显示立绘 (我的资料) */
+  onMap: (on: boolean) => call<{ onMap: boolean }>("PUT", "map", { on }),
+  /** the pass someone wears, for their main roach's card on the map (null: none to show), by the roach's id in the feed */
+  roach: (id: string) => call<{ pass: RoachPass | null }>("GET", "roach", undefined, `?id=${encodeURIComponent(id)}`),
 };

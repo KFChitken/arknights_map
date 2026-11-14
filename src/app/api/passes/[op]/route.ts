@@ -5,7 +5,7 @@ import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib
 import { passesMode } from "@/lib/server/env";
 import { giftTicket } from "@/lib/server/friendly";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { claim, collection, copiesOf, draw, openWallet, passesOpen, passLog, setLook, setWish, wear } from "@/lib/server/passes";
+import { claim, collection, copiesOf, draw, openWallet, passesOpen, passLog, roachPass, setLook, setOnMap, setWish, wear } from "@/lib/server/passes";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
@@ -19,9 +19,11 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   PUT  wish {ids}  the wish list
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
  *   PUT  wear {passId}         the pass worn on their profile card (null: none)
+ *   PUT  map {on}    地图卡片上显示立绘 (我的资料)
  *   GET  collection  我的通行证
  *   GET  copies      their passes of one character, ?char= its id
  *   GET  log         寻访记录, ?before= the id of the last row shown
+ *   GET  roach       the pass someone wears, for their main roach's card on the map, ?id= the roach's id in the feed
  * While PASSES keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. Drawing and the wish list wait, like the map's world, while the admin asks the player to say again they are
  * 18 or older, or an updated privacy policy is not agreed yet; what they have stays readable. A gift reaches another
@@ -38,9 +40,13 @@ const OPS = {
   wish: { method: "PUT", perMinute: 20, agreed: true },
   look: { method: "PUT", perMinute: 30, agreed: true },
   wear: { method: "PUT", perMinute: 30, agreed: true },
+  // what others see of them: always theirs to switch off
+  map: { method: "PUT", perMinute: 20, agreed: false },
   collection: { method: "GET", perMinute: 30, agreed: false },
   copies: { method: "GET", perMinute: 60, agreed: false },
   log: { method: "GET", perMinute: 60, agreed: false },
+  // once for each roach's card opened, which a minute keeps (src/components/app/passes/RoachPass.tsx)
+  roach: { method: "GET", perMinute: 120, agreed: false },
 } as const satisfies Record<string, Limit>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -73,6 +79,7 @@ export const GET = route(async (req: NextRequest, { params }: Ctx) => {
   const { user, op } = await playerFor("GET", (await params).op);
   if (op === "collection") return answer(await collection(user.id));
   if (op === "copies") return answer(await copiesOf(user.id, Number(req.nextUrl.searchParams.get("char"))));
+  if (op === "roach") return answer({ pass: await roachPass(req.nextUrl.searchParams.get("id") ?? "") });
   const before = Number(req.nextUrl.searchParams.get("before"));
   return answer(await passLog(user.id, before || undefined));
 });
@@ -97,5 +104,6 @@ export const PUT = route(async (req: NextRequest, { params }: Ctx) => {
   const body = await readJson(req);
   if (op === "look") return answer(await setLook(user, body.charId, body.plain));
   if (op === "wear") return answer(await wear(user, body.passId));
+  if (op === "map") return answer(await setOnMap(user, body.on));
   return answer(await setWish(user, body.ids));
 });

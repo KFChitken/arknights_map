@@ -137,6 +137,11 @@ export type PassOnCard = {
 };
 /** The pass a player wears, as their own pages have it: also which of their passes it is */
 export type WornPass = PassOnCard & { passId: number };
+/**
+ * The pass the owner of a main roach wears, as its card on the map shows it to anyone else (GET /api/passes/roach):
+ * the character, the colour and the picture's files, never the number, how many they have, or anything gold
+ */
+export type RoachPass = Pick<PassOnCard, "charId" | "name" | "rarity" | "color" | "art">;
 /** 我的通行证: every character the player has, and how many passes in all */
 export type Collection = { chars: OwnedChar[]; passes: number };
 /** A line of 寻访记录, newest first */
@@ -150,6 +155,8 @@ export type PassesMe = {
   dot: boolean;
   /** the pass they wear, for 我的资料 */
   worn: WornPass | null;
+  /** 地图卡片上显示立绘: the 立绘 of the pass they wear shows on their main roach's card on the map (RoachPass) */
+  onMap: boolean;
 };
 
 /** The look a pass is drawn in, by game: the normal ones, and the special ones a second copy unlocks */

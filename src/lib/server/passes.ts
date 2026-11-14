@@ -26,6 +26,7 @@ import {
   type PassesMe,
   type PassOnCard,
   type PassState,
+  type RoachPass,
   type Task,
   type TaskState,
   type WornPass,
@@ -39,6 +40,7 @@ import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
 import { passArtIndex } from "./passArt";
+import { roachByFeedId } from "./roachFeed";
 import { passCounters, passes, passGifts, passWallets, users, type UserRow } from "./schema";
 import { errorCode } from "./signals";
 
@@ -157,6 +159,7 @@ export async function passesMe(user: UserRow, now = Date.now()): Promise<PassesM
     tickets,
     dot: passesDot(Boolean(w?.welcomed), tickets, w ? tasksOf(w, siteDay(now)) : []),
     worn: user.wornPass === null ? null : await wornOf(user.id),
+    onMap: w?.onMap ?? true,
   };
 }
 
@@ -464,6 +467,64 @@ export async function wornPasses(people: readonly Pick<UserRow, "id" | "wornPass
     if (card) out.set(r.userId, card);
   }
   return out;
+}
+
+/** How long the pass of a main roach is kept for the cards that ask (roachPass), and how many roaches' at most */
+const ROACH_PASS_MS = 60_000;
+const ROACH_PASS_KEEP = 5000;
+const roachPassKept = new Map<string, { at: number; pass: RoachPass | null }>();
+
+/**
+ * The pass the owner of a roach wears, as the roach's card on the map shows it to anyone else (RoachPass): on their
+ * main roach alone, as the same picture on a clone would tell whose clone it is, and only while they let it show
+ * (on_map); never the number, how many they have, or anything gold. Null for a clone, a guide, a demo roach, a roach
+ * not there, nothing worn, or on_map off. id is the one the map's feed gave the roach (roachByFeedId). Kept
+ * ROACH_PASS_MS for whoever asks next, so a pass changed or on_map switched shows within that.
+ */
+export async function roachPass(id: string, now = Date.now()): Promise<RoachPass | null> {
+  // no roach's id is longer (a public id): nothing longer is looked up, or kept
+  if (id.length > 36) return null;
+  const hit = roachPassKept.get(id);
+  if (hit && now - hit.at < ROACH_PASS_MS) return hit.pass;
+  const pass = await roachPassNow(id);
+  roachPassKept.delete(id);
+  roachPassKept.set(id, { at: now, pass });
+  if (roachPassKept.size > ROACH_PASS_KEEP) roachPassKept.delete(roachPassKept.keys().next().value as string);
+  return pass;
+}
+
+async function roachPassNow(id: string): Promise<RoachPass | null> {
+  const roach = await roachByFeedId(id);
+  if (!roach || roach.slot !== 0) return null;
+  const [r] = await db
+    .select({ charId: passes.charId, onMap: passWallets.onMap })
+    .from(users)
+    .innerJoin(passes, eq(passes.id, users.wornPass))
+    .leftJoin(passWallets, eq(passWallets.userId, users.id))
+    .where(eq(users.id, roach.userId))
+    .limit(1);
+  const c = r && r.onMap !== false ? passChar(r.charId) : null;
+  if (!c) return null;
+  const a = (await passArtIndex()).get(c.id);
+  return { charId: c.id, name: c.name, rarity: c.rarity, color: a?.color ?? c.color, art: a?.file ?? null };
+}
+
+/** For tests: the roaches' passes kept, forgotten, as in a fresh process */
+export function forgetRoachPasses() {
+  roachPassKept.clear();
+}
+
+/**
+ * 地图卡片上显示立绘, switched in 我的资料 (on_map). The wallet is made for a player who never opened 寻访 (as a gift
+ * makes it: the first tickets still come when they do). Never waits for an agreement, so it can always be switched off.
+ */
+export async function setOnMap(user: UserRow, on: unknown, now = Date.now()): Promise<{ onMap: boolean }> {
+  if (typeof on !== "boolean") throw new HttpError(400, T.server.common.badRequest);
+  await db
+    .insert(passWallets)
+    .values({ userId: user.id, day: siteDay(now), onMap: on })
+    .onConflictDoUpdate({ target: passWallets.userId, set: { onMap: on } });
+  return { onMap: on };
 }
 
 /** A player's passes of one character, lowest number first: which one to wear */

@@ -1,7 +1,8 @@
 import { randomInt } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CATALOG_IDS, passCharNamed } from "../passCatalog";
+import { AMIYA_ID } from "../amiya";
+import { CATALOG_IDS, passChar, passCharNamed } from "../passCatalog";
 import { PITY, WELCOME_TICKETS } from "../passes";
 import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
@@ -12,17 +13,21 @@ import {
   copiesOf,
   draw,
   didTask,
+  forgetRoachPasses,
   openWallet,
   passesMe,
   passesOpen,
   passLog,
   passState,
+  roachPass,
   setLook,
+  setOnMap,
   setWish,
   wear,
   wishFromFavourites,
   wornPasses,
 } from "./passes";
+import * as passArt from "./passArt";
 import { admins, passCounters, passes, passWallets, users, type UserRow } from "./schema";
 import * as world from "./world";
 
@@ -76,6 +81,7 @@ async function refusal(p: Promise<unknown>) {
 
 beforeEach(async () => {
   await db.execute(sql`truncate ${users}, ${passCounters} cascade`);
+  forgetRoachPasses();
   vi.stubEnv("PASSES", "on");
   // whatever pictures this computer has (passArt.test.ts tries them)
   vi.stubEnv("PASS_ART", "off");
@@ -386,12 +392,12 @@ describe("who may draw (PASSES)", () => {
 
   it("puts a dot on the button for the first ten, a ticket of 每日任务 to claim, and ten tickets for a draw", async () => {
     const a = await player("a@example.com");
-    expect(await passesMe(a)).toEqual({ tickets: 0, dot: true, worn: null });
-    expect((await world.me(a.id))?.passes).toEqual({ tickets: 0, dot: true, worn: null });
+    expect(await passesMe(a)).toEqual({ tickets: 0, dot: true, worn: null, onMap: true });
+    expect((await world.me(a.id))?.passes).toEqual({ tickets: 0, dot: true, worn: null, onMap: true });
     await openWallet(a, NOON);
-    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS, dot: true, worn: null });
+    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS, dot: true, worn: null, onMap: true });
     await draw(a, 1, NOON, always(1));
-    expect(await passesMe(a, NOON)).toEqual({ tickets: WELCOME_TICKETS - 1, dot: false, worn: null });
+    expect(await passesMe(a, NOON)).toEqual({ tickets: WELCOME_TICKETS - 1, dot: false, worn: null, onMap: true });
     await didTask(a.id, "npc", NOON);
     expect(await passesMe(a, NOON)).toMatchObject({ dot: true });
     // till the day turns, unclaimed
@@ -519,5 +525,77 @@ describe("wearing a pass", () => {
     vi.stubEnv("PASSES", "off");
     expect(await card(owner.id)).toBeUndefined();
     expect(await passesMe(row)).toBeUndefined();
+  });
+});
+
+describe("the pass on a main roach's card on the map", () => {
+  const SPOT = { lng: 121.4737, lat: 31.2304 };
+  const NEAR = { lng: 121.48, lat: 31.235 };
+  /** A player wearing their first pass of a character (ten drawn: numbers 1 to 10, gold, the special look) */
+  async function wearer(email: string, charId: number) {
+    const a = await player(email);
+    await world.placeRoach(a.id, { kind: "main" }, SPOT);
+    await world.placeRoach(a.id, { kind: "clone" }, NEAR);
+    await openWallet(a, NOON);
+    await draw(a, 10, NOON, always(charId));
+    const [first] = await passesOf(a.id, charId);
+    await wear(a, first.id, NOON);
+    const roaches = (await world.me(a.id))!.roaches;
+    return { a, main: roaches.find((r) => r.slot === 0)!.publicId, clone: roaches.find((r) => r.slot > 0)!.publicId };
+  }
+
+  it("shows the character of the pass the owner wears, by the roach's id in the feed: no number, nothing gold", async () => {
+    const { main } = await wearer("a@example.com", 1);
+    const c = passChar(1)!;
+    const shown = await roachPass(main, NOON);
+    expect(shown).toEqual({ charId: 1, name: c.name, rarity: c.rarity, color: c.color, art: null });
+    // No.0001 of ten copies: neither the number, how many, the special look, nor gold
+    expect(Object.keys(shown!).sort()).toEqual(["art", "charId", "color", "name", "rarity"]);
+    expect(JSON.stringify(shown)).not.toMatch(/"(no|copies|fancy|foil|gold|drawnAt|passId)"/);
+    // the short form of the id the feed gives, too
+    forgetRoachPasses();
+    expect(await roachPass(main.slice(0, 8), NOON)).toEqual(shown);
+
+    // its picture's files and colour, where there is one
+    forgetRoachPasses();
+    vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[1, { file: "0123456789abcdef", color: "#7d338a" }]]));
+    expect(await roachPass(main, NOON)).toMatchObject({ art: "0123456789abcdef", color: "#7d338a" });
+  });
+
+  it("is nothing on a clone, a guide, a demo roach, a roach not there, or a main roach whose owner wears none", async () => {
+    const { a, main, clone } = await wearer("a@example.com", 1);
+    const b = await player("b@example.com");
+    await world.placeRoach(b.id, { kind: "main" }, NEAR);
+    const bare = (await world.me(b.id))!.roaches[0].publicId;
+    for (const id of [clone, clone.slice(0, 8), bare, AMIYA_ID, "bot-3", "00000000-0000-4000-8000-000000000000", "", "x".repeat(400)]) {
+      expect(await roachPass(id, NOON), id.slice(0, 40)).toBeNull();
+    }
+    await wear(a, null, NOON);
+    forgetRoachPasses();
+    expect(await roachPass(main, NOON)).toBeNull();
+  });
+
+  it("is nothing while the owner switched it off in 我的资料, as the next to ask sees within a minute", async () => {
+    const { a, main } = await wearer("a@example.com", 1);
+    expect((await passesMe(a, NOON))?.onMap).toBe(true);
+    expect(await roachPass(main, NOON)).toMatchObject({ charId: 1 });
+
+    expect(await setOnMap(a, false, NOON)).toEqual({ onMap: false });
+    expect((await passesMe(a, NOON))?.onMap).toBe(false);
+    // kept a minute for whoever asks
+    expect(await roachPass(main, NOON + 59_000)).toMatchObject({ charId: 1 });
+    expect(await roachPass(main, NOON + 61_000)).toBeNull();
+    await setOnMap(a, true, NOON);
+    expect(await roachPass(main, NOON + 122_000)).toMatchObject({ charId: 1 });
+    expect(await refusal(setOnMap(a, "off", NOON))).toMatchObject({ status: 400 });
+    expect(await refusal(setOnMap(a, undefined, NOON))).toMatchObject({ status: 400 });
+  });
+
+  it("can be switched off before the player ever opened 寻访, and their first ten still come", async () => {
+    const a = await player("a@example.com");
+    await setOnMap(a, false, NOON);
+    expect(await wallet(a.id)).toMatchObject({ onMap: false, welcomed: false, tickets: 0 });
+    expect(await openWallet(a, NOON)).toMatchObject({ tickets: WELCOME_TICKETS, welcomed: true });
+    expect((await passesMe(a, NOON))?.onMap).toBe(false);
   });
 });

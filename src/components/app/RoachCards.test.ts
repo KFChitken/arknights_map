@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { RoachPass } from "@/lib/passes";
 import { TOUCHES_PER_DAY } from "@/lib/rules";
 import type { PublicRoach } from "@/lib/world/types";
 import { OtherInkCard, OtherRoachCard } from "./RoachCards";
@@ -20,7 +21,10 @@ const roach = (more: Partial<PublicRoach> = {}): PublicRoach => ({
 
 type Touches = { left: number; at: number; friendLeft?: number };
 
-const card = (touches: Touches | undefined, more: { roach?: Partial<PublicRoach>; friendName?: string; touched?: "sneaky" | "bold" } = {}) =>
+const card = (
+  touches: Touches | undefined,
+  more: { roach?: Partial<PublicRoach>; friendName?: string; touched?: "sneaky" | "bold"; pass?: RoachPass | null } = {},
+) =>
   renderToStaticMarkup(
     createElement(OtherRoachCard, {
       roach: roach(more.roach),
@@ -32,6 +36,7 @@ const card = (touches: Touches | undefined, more: { roach?: Partial<PublicRoach>
       touched: more.touched,
       touches,
       busy: false,
+      pass: more.pass,
       onSignIn: () => {},
       onTouch: () => {},
       onPoke: () => {},
@@ -120,5 +125,41 @@ describe("a card's touches for today", () => {
     expect(text(ink({ left: 12, at }))).not.toContain("还能碰 TA");
     expect(text(ink({ left: 12, at, friendLeft: 1 }, "小满"))).toContain("今天还能碰 TA 1 次");
     expect(disabled(ink({ left: 0, at }))).toBe(2);
+  });
+});
+
+describe("the pass the owner of a main roach wears, on its card", () => {
+  const pass: RoachPass = { charId: 1, name: "能天使", rarity: 6, color: "#d63829", art: "0123456789abcdef" };
+  const at = Date.now() + 5 * 3_600_000;
+
+  it("has its 立绘 peek out of the card, and the character's name on the card's edge: no number", () => {
+    const html = card({ left: 57, at }, { pass });
+    expect(html).toContain('class="card stack with-pass"');
+    expect(text(html)).toContain("通行证 · 能天使");
+    expect(html).toContain('<source type="image/avif" srcSet="/operator-art/pass/0123456789abcdef.avif"/>');
+    expect(html).toContain('src="/operator-art/pass/0123456789abcdef.webp"');
+    // the picture is the card's decoration, its name is in the words
+    expect(html).toMatch(/<span class="rp-art" aria-hidden="true">/);
+    expect(html).toContain("--pc:#d63829");
+    expect(text(html)).not.toMatch(/No\.|潜能|\d{4}/);
+    // a card with nothing worn, or nothing heard yet, is as it was
+    for (const none of [card({ left: 57, at }), card({ left: 57, at }, { pass: null })]) {
+      expect(none).toContain('class="card stack"');
+      expect(none).not.toContain("rp-");
+    }
+  });
+
+  it("is the name alone where there is no 立绘", () => {
+    const html = card({ left: 57, at }, { pass: { ...pass, art: null } });
+    expect(text(html)).toContain("通行证 · 能天使");
+    expect(html).toContain("rp-glow");
+    expect(html).not.toContain("<picture>");
+  });
+
+  it("is never on a clone's card or a guide's", () => {
+    for (const html of [card({ left: 57, at }, { pass, roach: { clone: true } }), card(undefined, { pass, roach: { guide: true, id: "amiya" } })]) {
+      expect(html).not.toContain("rp-");
+      expect(text(html)).not.toContain("通行证");
+    }
   });
 });

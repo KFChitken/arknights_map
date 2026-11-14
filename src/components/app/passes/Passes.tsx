@@ -78,7 +78,7 @@ export default function Passes({
   onClose: () => void;
   onGift: () => void;
   onRefused: (e: unknown) => void;
-  onWallet: (p: PassesMe) => void;
+  onWallet: (p: Omit<PassesMe, "onMap">) => void;
 }) {
   const art = useOperatorArt();
   const passArt = usePassArt();

@@ -3,7 +3,8 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/server/db";
-import { passCounters, passes, sessions, users } from "@/lib/server/schema";
+import { forgetRoachPasses } from "@/lib/server/passes";
+import { passCounters, passes, passWallets, roaches, sessions, users } from "@/lib/server/schema";
 import { GET, POST, PUT } from "./route";
 
 vi.mock("@/lib/server/env", async (original) => ({ ...(await original<typeof import("@/lib/server/env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -43,9 +44,11 @@ const EVERY: [Method, string, unknown?, string?][] = [
   ["PUT", "wish", { ids: [1] }],
   ["PUT", "look", { charId: 1, plain: true }],
   ["PUT", "wear", { passId: null }],
+  ["PUT", "map", { on: true }],
   ["GET", "collection"],
   ["GET", "copies", undefined, "?char=1"],
   ["GET", "log"],
+  ["GET", "roach", undefined, "?id=0123abcd"],
 ];
 /** Those that wait for the age check and the privacy policy */
 const CHANGING = 5;
@@ -69,6 +72,7 @@ async function signIn(userId: string) {
 beforeEach(async () => {
   await db.execute(sql`truncate ${users}, ${sessions}, ${passCounters} cascade`);
   jar.token = null;
+  forgetRoachPasses();
 });
 
 afterEach(() => vi.unstubAllEnvs());
@@ -128,7 +132,8 @@ describe("通行证寻访's requests", () => {
     for (const [method, op, body] of EVERY.slice(0, CHANGING)) {
       expect(await call(method, op, body), op).toMatchObject({ status: 428, body: { code: "age" } });
     }
-    for (const [method, op, , query] of EVERY.slice(CHANGING)) expect((await call(method, op, undefined, query)).status, op).toBe(200);
+    // what others see of them can always be switched off
+    for (const [method, op, body, query] of EVERY.slice(CHANGING)) expect((await call(method, op, body, query)).status, op).toBe(200);
 
     await db.update(users).set({ ageCheckAt: null, policyAcceptedAt: new Date("2026-01-01T00:00:00Z") }).where(eq(users.id, id));
     const policy = await call("POST", "draw", { n: 1 });
@@ -167,6 +172,54 @@ describe("通行证寻访's requests", () => {
       body: { worn: { passId: first.id, charId: 7, no: 3, copies: 2, fancy: false } },
     });
     expect(await call("PUT", "wear", { passId: null })).toMatchObject({ status: 200, body: { worn: null } });
+  });
+
+  it("show anyone 寻访 is open to the character of the pass worn on a main roach's card, and let its owner switch that off", async () => {
+    vi.stubEnv("PASSES", "on");
+    vi.stubEnv("PASS_ART", "off");
+    const owner = await account("player@example.com");
+    const [worn] = await db.insert(passes).values({ userId: owner, charId: 7, no: 1, wish: false, drawnAt: new Date() }).returning();
+    await db.update(users).set({ wornPass: worn.id }).where(eq(users.id, owner));
+    const [main, clone] = await db
+      .insert(roaches)
+      .values([
+        { userId: owner, slot: 0, lng: 121.47, lat: 31.23 },
+        { userId: owner, slot: 1, lng: 121.48, lat: 31.24 },
+      ])
+      .returning({ id: roaches.publicId });
+    const ask = (id: string) => call("GET", "roach", undefined, `?id=${id}`);
+
+    // a visitor is asked to sign in, as for the rest of 寻访
+    expect((await ask(main.id)).status).toBe(401);
+    await signIn(await account("someone@example.com"));
+    const shown = await ask(main.id);
+    expect(shown).toMatchObject({ status: 200, body: { pass: { charId: 7, rarity: expect.anything() } }, cache: "no-store" });
+    expect(Object.keys(shown.body.pass as object).sort()).toEqual(["art", "charId", "color", "name", "rarity"]);
+    expect(await ask(clone.id)).toMatchObject({ status: 200, body: { pass: null } });
+    expect(await ask("")).toMatchObject({ status: 200, body: { pass: null } });
+    expect((await call("GET", "roach")).body).toEqual({ pass: null });
+
+    await signIn(owner);
+    expect(await call("PUT", "map", { on: false })).toMatchObject({ status: 200, body: { onMap: false }, cache: "no-store" });
+    expect(await call("PUT", "map", { on: "no" })).toMatchObject({ status: 400 });
+    const [w] = await db.select({ onMap: passWallets.onMap }).from(passWallets).where(eq(passWallets.userId, owner));
+    expect(w.onMap).toBe(false);
+    forgetRoachPasses();
+    expect(await ask(main.id)).toMatchObject({ status: 200, body: { pass: null } });
+
+    // while PASSES is admins, the 站长 and the admins alone: the pass the 站长 wears is for their eyes, and anyone
+    // else, opening the 站长's main roach, hears nothing is here
+    vi.stubEnv("PASSES", "admins");
+    expect((await ask(main.id)).status).toBe(404);
+    const boss = await account("owner@example.com");
+    const [bossPass] = await db.insert(passes).values({ userId: boss, charId: 9, no: 1, wish: false, drawnAt: new Date() }).returning();
+    await db.update(users).set({ wornPass: bossPass.id }).where(eq(users.id, boss));
+    const [bossMain] = await db.insert(roaches).values({ userId: boss, slot: 0, lng: 121.5, lat: 31.25 }).returning({ id: roaches.publicId });
+    await signIn(await account("another@example.com"));
+    expect(await ask(bossMain.id)).toMatchObject({ status: 404, body: { error: "没有这个功能。" } });
+    expect((await call("PUT", "map", { on: false })).status).toBe(404);
+    await signIn(boss);
+    expect(await ask(bossMain.id)).toMatchObject({ status: 200, body: { pass: { charId: 9 } } });
   });
 
   it("slow down a player who asks too fast", async () => {

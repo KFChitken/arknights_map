@@ -8,6 +8,7 @@ import { PERLICA, PERLICA_ID, PERLICA_MORE } from "@/lib/perlica";
 import { FIRE_LINES, TALULAH, TALULAH_ID, type FireLevel } from "@/lib/talulah";
 import { RECALL_REST_MS, SI, SI_LINES } from "@/lib/si";
 import { bottleIcon } from "@/lib/flipArt";
+import type { RoachPass } from "@/lib/passes";
 import { POKE_EVERY_DAYS, TOUCHES_PER_DAY } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import { useState, type ReactNode } from "react";
@@ -15,6 +16,7 @@ import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 import { DRAW_HERE } from "../admin/ZoneDraw";
 import { MingheRoute } from "./Minghe";
+import { RoachPassPeek } from "./passes/RoachPass";
 import { inkLine } from "./Si";
 import { touchesNow, turnsAtText, useTick, waitParts } from "./dayTurns";
 import type { inkNow } from "@/lib/siInn";
@@ -58,6 +60,7 @@ export function OtherRoachCard({
   admin,
   back,
   under,
+  pass,
   onClose,
 }: {
   roach: PublicRoach;
@@ -136,6 +139,8 @@ export function OtherRoachCard({
   back?: ReactNode;
   /** A guide with roaches under her picture: to pick one of them (StackUnderGuide) */
   under?: ReactNode;
+  /** The pass the owner wears (passes/RoachPass.tsx), on their main roach alone: its 立绘 peeks out of the card */
+  pass?: RoachPass | null;
   onClose: () => void;
 }) {
   // today's touches as they are now (a new day's once it turned with the card open); with none left, it draws
@@ -224,8 +229,9 @@ export function OtherRoachCard({
                 : roach.clone
                   ? T.cards.touchClone
                   : T.cards.touch));
+  const showPass = pass && !roach.guide && !roach.clone ? pass : null;
   return (
-    <div className="card stack" role="dialog" aria-label={T.cards.label}>
+    <div className={`card stack${showPass ? " with-pass" : ""}`} role="dialog" aria-label={T.cards.label}>
       {back}
       <div className="card-head">
         <RoachIcon
@@ -275,6 +281,7 @@ export function OtherRoachCard({
           )}
         </div>
       </div>
+      {showPass && <RoachPassPeek pass={showPass} />}
       {onOpenFriend && (
         <div className="row-actions">
           <button className="pill" onClick={onOpenFriend}>
