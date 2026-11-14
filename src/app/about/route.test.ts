@@ -17,6 +17,35 @@ import { GET } from "./route";
 
 // Runs against the database named in vitest.config.mts (全站变灰 is kept there)
 
+/** Players' posts about the map, shown with their sites' own embeds and players: what an embed's address may start with */
+const EMBEDS = [
+  "https://platform.twitter.com/embed/Tweet.html?",
+  "https://embed.reddit.com/r/arknights/",
+  "https://player.bilibili.com/player.html?",
+];
+
+const REDDIT_COMMENT = "https://www.reddit.com/r/arknights/comments/1xtpcwp/comment/19slrt5jlwqmb/?context=1";
+
+/** Every link that leads off the site: the posts themselves, then the news about the map in Chinese */
+const LINKS_OUT = [
+  "https://x.com/bitoUtAkAtA/status/2120355023007920599",
+  REDDIT_COMMENT,
+  "https://bbs.ruliweb.com/community/board/300143/read/77349478",
+  "https://www.bilibili.com/video/BV13YWN6bEnR/",
+  "https://www.bilibili.com/video/BV1qxW86gELW/",
+  "https://www.msn.com/zh-cn/news/other/%E6%98%8E%E6%97%A5%E6%96%B9%E8%88%9F%E7%8E%A9%E5%AE%B6%E8%87%AA%E5%88%B6%E8%88%9F%E5%8F%8B%E5%9C%B0%E5%9B%BE-%E6%95%B010%E4%B8%87%E8%88%9F%E5%8F%8B%E4%BA%92%E7%9B%B8%E4%BC%B8%E5%87%BA%E8%A7%A6%E9%A1%BB-%E5%A1%AB%E6%BB%A1%E5%9C%B0%E5%9B%BE/ar-AA2hitWe",
+  "https://www.sohu.com/a/1099798153_122348420",
+  "https://m.163.com/dy/article/LBFILPUN0526VGN7.html",
+  "https://tieba.baidu.com/p/11186258188",
+];
+
+/** An address on this site, or a place on the page */
+const local = (address: string) => /^(\/(?!\/)|#)/.test(address);
+
+/** A srcdoc attribute's value, as the frame reads it */
+const unescapeHtml = (s: string) =>
+  s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+
 async function page() {
   const res = GET();
   return { status: res.status, type: res.headers.get("content-type"), cache: res.headers.get("cache-control"), html: await res.text() };
@@ -100,23 +129,70 @@ describe("/about", () => {
     expect(SERVERS.endfield.length).toBe(4);
   });
 
-  it("asks nothing of another site, and runs no script", async () => {
+  it("runs no script, and asks other sites only for the posts it shows", async () => {
     for (const english of ["on", "off"]) {
       vi.stubEnv("ENGLISH", english);
       const { html } = await page();
       expect(html).not.toMatch(/<script/i);
-      const links = [...html.matchAll(/\b(?:src|href)="([^"]*)"/g)].map((m) => m[1]);
-      expect(links.length).toBeGreaterThan(20);
-      expect(links.filter((l) => !/^(\/|#|https:\/\/zhoupmap\.com\/)/.test(l))).toEqual([]);
+      expect(unescapeHtml(html)).not.toMatch(/<script/i); // nor in the Reddit frame's own document
+      const attr = (name: string) => [...html.matchAll(new RegExp(`\\b${name}="([^"]*)"`, "g"))].map((m) => m[1]);
+      // pictures from the site itself; from elsewhere only the posts, in their sites' own embeds
+      const sources = attr("src");
+      expect(sources.length).toBeGreaterThan(20);
+      expect(sources.filter((s) => !local(s) && !EMBEDS.some((e) => s.startsWith(e)))).toEqual([]);
+      // links off the site: its own address, and the posts and the news it names, each once (and the card in the Reddit frame, below)
+      expect(attr("href").filter((h) => !local(h)).sort()).toEqual(["https://zhoupmap.com/about", ...LINKS_OUT].sort());
+      // and no other site's address anywhere in the page
+      const addresses = [...html.matchAll(/https?:\/\/[^"'\s<>]+/g)].map((m) => m[0]);
+      expect(addresses.filter((a) => !a.startsWith("https://zhoupmap.com/") && !EMBEDS.some((e) => a.startsWith(e)) && !LINKS_OUT.includes(a))).toEqual([]);
       // its own address, for the links people share: canonical, og:url and og:image
       expect(html.match(/https:\/\/zhoupmap\.com\//g)).toHaveLength(3);
-      expect(html).not.toMatch(/https?:\/\/(?!zhoupmap\.com\/)/);
       expect(html).toContain('<link rel="canonical" href="https://zhoupmap.com/about">');
       expect(html).toContain('<meta property="og:url" content="https://zhoupmap.com/about">');
       expect(html).toContain('<meta property="og:image" content="https://zhoupmap.com/intro-art/share.png">');
       // its name at the top leads back to the page itself
       expect(html).toContain('<a href="/about" aria-label=');
     }
+  });
+
+  it("frames each post with a title, lazily and sandboxed, and opens each link off the site in a new tab", async () => {
+    const { html } = await page();
+    const frames = html.match(/<iframe\b[^>]*>/g) ?? [];
+    expect(frames).toHaveLength(4);
+    for (const frame of frames) {
+      expect(frame).toMatch(/\btitle="[^"]+"/);
+      expect(frame).toContain('loading="lazy"');
+      const sandbox = /\bsandbox="([^"]*)"/.exec(frame)?.[1];
+      expect(sandbox, frame).toBeDefined();
+      // a post may open its own site in a new tab, but never take this page somewhere else
+      expect(sandbox).not.toMatch(/allow-top-navigation/);
+    }
+    const out = html.match(/<a\b[^>]*\bhref="https?:\/\/[^"]*"[^>]*>/g) ?? [];
+    expect(out).toHaveLength(LINKS_OUT.length);
+    for (const a of out) {
+      expect(a).toContain('target="_blank"');
+      expect(a).toMatch(/\brel="[^"]*\bnoopener\b/);
+    }
+  });
+
+  it("shows the Reddit comment through an <object>, which shows our own card instead when Reddit won't", async () => {
+    const { html } = await page();
+    // the <object> is the whole document of a sandboxed frame, so the embed keeps the frame's sandbox and lazy loading
+    const docs = [...html.matchAll(/<iframe\b[^>]*\bsrcdoc="([^"]*)"[^>]*>/g)];
+    expect(docs).toHaveLength(1);
+    expect(docs[0][0]).toContain('title="Comment on r/arknights"');
+    const doc = unescapeHtml(docs[0][1]);
+    const objects = [...doc.matchAll(/<object\b([^>]*)>([\s\S]*?)<\/object>/g)];
+    expect(objects).toHaveLength(1);
+    const [, attrs, fallback] = objects[0];
+    expect(attrs).toContain("data='https://embed.reddit.com/r/arknights/comments/1xtpcwp/comment/19slrt5jlwqmb/?embed=true&amp;");
+    expect(attrs).toContain("type=text/html");
+    // what shows when the load fails (an HTTP error, a network error, a refusal to be framed): a way to the comment
+    expect([...fallback.matchAll(/<a\s+([^>]*)>/g)].map((m) => m[1])).toEqual([`href='${REDDIT_COMMENT}' target=_blank rel=noopener`]);
+    // and nothing else is asked of anyone
+    const addresses = [...doc.matchAll(/https?:\/\/[^"'\s<>]+/g)].map((m) => m[0]);
+    expect(addresses).toHaveLength(2);
+    expect(addresses.filter((a) => !a.startsWith("https://embed.reddit.com/r/arknights/") && a !== REDDIT_COMMENT)).toEqual([]);
   });
 
   it("has every picture it shows", async () => {
@@ -131,8 +207,8 @@ describe("/about", () => {
     for (const english of ["on", "off"]) {
       vi.stubEnv("ENGLISH", english);
       const bytes = Buffer.from((await page()).html);
-      expect(bytes.length).toBeLessThanOrEqual(90_000);
-      expect(gzipSync(bytes).length).toBeLessThanOrEqual(14_000);
+      expect(bytes.length).toBeLessThanOrEqual(100_000);
+      expect(gzipSync(bytes).length).toBeLessThanOrEqual(15_000);
     }
   });
 
