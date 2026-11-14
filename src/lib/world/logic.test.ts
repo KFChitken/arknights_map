@@ -209,8 +209,9 @@ describe("declarations", () => {
 });
 
 describe("looks", () => {
-  it("keeps every look on the list, 咕咕嘎嘎 too, and puts anything else back to the hood", () => {
-    for (const avatar of ["hood", "doctor", "endmin", "imp", "gugu"] as const) {
+  it("keeps every look on the list, 咕咕嘎嘎 and 鸭爵 too, and puts anything else back to the hood", () => {
+    // who may wear 鸭爵 is the server's to say (server/looks.ts)
+    for (const avatar of ["hood", "doctor", "endmin", "imp", "gugu", "duck"] as const) {
       expect(normalizeProfile({ ...EMPTY_PROFILE, avatar }).avatar).toBe(avatar);
     }
     // @ts-expect-error not a look

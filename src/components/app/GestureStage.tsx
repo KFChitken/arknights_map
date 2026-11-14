@@ -6,6 +6,7 @@ import type { Gesture } from "@/lib/friendly";
 import { miniHeart } from "@/lib/touchArt";
 import RoachIcon from "../RoachIcon";
 import { star, vial } from "./DockFx";
+import { facingThem, luckIn, luckStar } from "./LookMoves";
 import type { StagePlace, TouchCast } from "./TouchStage";
 
 /** How long a gesture plays */
@@ -57,7 +58,7 @@ export default function GestureStage({
 
   const { you, them } = cast;
   const asleep = gesture === "blanket" || gesture === "water";
-  const yours = <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
+  const yours = facingThem(you.avatar) ?? <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
   const theirs = <RoachIcon color={them.color} size={88} avatar={them.avatar} clone={them.clone} friend asleep={asleep} zzz={asleep} />;
   const stage = { "--dur": `${GESTURE_MS}ms`, "--end": place.end } as CSSProperties;
 
@@ -67,25 +68,39 @@ export default function GestureStage({
   else if (gesture === "luck") {
     fx = (
       <>
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className={`gs-star s${i}`} style={{ left: 186, top: 92 }} {...html(star(14 + (i % 2) * 4))} />
-        ))}
+        {[0, 1, 2, 3].map((i) => {
+          const size = 14 + (i % 2) * 4;
+          // your look's own (LookMoves.tsx): 鸭爵's turn into coins on the way
+          const own = luckStar(you.avatar, size, star);
+          return own ? (
+            <div key={i} className={`gs-star s${i}`} style={{ left: 186, top: 92, width: size, height: size }}>
+              {own}
+            </div>
+          ) : (
+            <div key={i} className={`gs-star s${i}`} style={{ left: 186, top: 92 }} {...html(star(size))} />
+          );
+        })}
         <div className="gs-luck-label" style={{ left: 18, top: 44 }}>
           {T.fx.luckOne}
         </div>
       </>
     );
-  } else if (gesture === "blanket") fx = <div className="gs-blanket" style={{ left: 152, top: 104 }} {...html(blanket())} />;
+  } else if (gesture === "blanket")
+    // 鸭爵 dozes on his feet, so his goes over his shoulders
+    fx = <div className="gs-blanket" style={{ left: 152, top: them.avatar === "duck" ? 94 : 104 }} {...html(blanket())} />;
   else fx = <div className="gs-glass" style={{ left: 214, top: 116 }} {...html(glass())} />;
 
   return (
     <>
       <button type="button" className="ta-skip" aria-label={T.fx.skip} onPointerDown={finish} onWheel={finish} />
       <div className="ta-place" style={{ left: place.left, top: place.top, transform: `scale(${place.s})` }} aria-hidden="true">
-        <div className={`ta-stage gs-${gesture}`} style={stage}>
+        <div className={`ta-stage gs-${gesture} you-${you.avatar}`} style={stage}>
           {!asleep && (
             <div className="ta-you">
-              <div className="ta-body">{yours}</div>
+              <div className="ta-body">
+                {yours}
+                {gesture === "luck" && luckIn(you.avatar)}
+              </div>
             </div>
           )}
           <div className="ta-them">

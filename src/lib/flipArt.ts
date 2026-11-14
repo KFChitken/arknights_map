@@ -206,6 +206,14 @@ function laidDown(fit: PictureFit) {
 export const pictureZzz = (fit: PictureFit, { anim = false } = {}) =>
   `<g transform="translate(41 ${Math.max(laidDown(fit).top - 17, -3)})">${zzz({ anim })}</g>`;
 
+/**
+ * 鸭爵 asleep does not lie down (his long neck and his two cases end in a heap under a quilt): he dozes on his feet,
+ * leaning on his silver case (lean, about his feet), his hat pulled down over his eyes (hat, about its brim's corner,
+ * 26.4 9.7), the Zzz over his hat. On the 64 grid.
+ */
+export const DUCK_ASLEEP = { lean: { deg: 4, x: 32, y: 58 }, hat: "rotate(-11 26.4 9.7) translate(-0.8 1.6)" } as const;
+export const duckZzz = ({ anim = false } = {}) => `<g transform="translate(37 -1)">${zzz({ anim })}</g>`;
+
 /** A green bottle: "rest" held in the hanging right sleeve, "pour" tipped into the visor from the raised one. */
 export function bottle(pose: "rest" | "pour" = "rest") {
   const at = pose === "pour" ? "translate(55.5 13.5) rotate(-127)" : "translate(51 44) rotate(-24)";

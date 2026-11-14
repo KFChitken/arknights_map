@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { BADGES } from "@/lib/badges";
 import { MIN_SIGNUP_AGE, siteName } from "@/lib/rules";
 import { enough, inHand, monthsCovered, share, whichMonth, yuan, type LedgerRow, type SponsorView } from "@/lib/sponsor";
-import { SPONSOR_AVATARS, type RoachColor } from "@/lib/types";
+import type { RoachAvatar, RoachColor } from "@/lib/types";
 import { useGrayNow } from "../GrayMode";
 import Sheet from "./Sheet";
 import { AfdianLink, GiftBadges, SponsorStage } from "./SponsorFx";
@@ -32,17 +32,18 @@ export async function fetchSponsor(): Promise<SponsorView | null> {
 const named = (names: string[]) => names.map((name) => fmt(T.sponsor.badgeName, { name })).join(T.sponsor.and);
 
 /**
- * The thanks a sponsor gets, one line for each kind: the looks only sponsors have (none until the code has
- * one, so the card never offers a look there is not), and the badges
+ * The thanks a sponsor gets, one line for each kind: the looks only sponsors have, as the server lists them to this
+ * player (SponsorView looks: none while none shows to them, so the card never offers a look they cannot see), and
+ * the badges
  */
-const gifts = () => [
-  ...(SPONSOR_AVATARS.length ? [fmt(T.sponsor.giftLooks, { looks: named(SPONSOR_AVATARS.map((a) => T.profile.avatar[a])) })] : []),
+const gifts = (looks: readonly RoachAvatar[]) => [
+  ...(looks.length ? [fmt(T.sponsor.giftLooks, { looks: named(looks.map((a) => T.profile.avatar[a])) })] : []),
   fmt(T.sponsor.giftBadges, { badges: named(BADGES.filter((b) => b.sponsor).map((b) => b.name)) }),
 ];
 
 /** What a sponsor is given, under the copy button, and the badges themselves (calm: while the site is gray) */
-function Thanks({ calm }: { calm: boolean }) {
-  const list = gifts();
+function Thanks({ calm, looks }: { calm: boolean; looks: readonly RoachAvatar[] }) {
+  const list = gifts(looks);
   return (
     <div className="sponsor-thanks hint">
       <p>{T.sponsor.thanksLead}</p>
@@ -88,7 +89,7 @@ async function copyText(text: string) {
  * 复制我的登录邮箱: the email is not on the card, so a screenshot of it shows none; only where copying is
  * not allowed does it come up, selected, to copy by hand.
  */
-function CopyEmail({ email, calm }: { email: string; calm: boolean }) {
+function CopyEmail({ email, calm, looks }: { email: string; calm: boolean; looks: readonly RoachAvatar[] }) {
   const [copied, setCopied] = useState<boolean | null>(null);
   return (
     <div className="sponsor-copy">
@@ -108,7 +109,7 @@ function CopyEmail({ email, calm }: { email: string; calm: boolean }) {
           />
         </>
       )}
-      <Thanks calm={calm} />
+      <Thanks calm={calm} looks={looks} />
     </div>
   );
 }
@@ -204,7 +205,7 @@ export function SponsorCard({
 
       {row && <Progress row={row} months={months} />}
 
-      {view.email ? <CopyEmail email={view.email} calm={calm} /> : <p className="sponsor-signin">{T.sponsor.signIn}</p>}
+      {view.email ? <CopyEmail email={view.email} calm={calm} looks={view.looks} /> : <p className="sponsor-signin">{T.sponsor.signIn}</p>}
 
       <div className="sponsor-go">
         <AfdianLink href={view.afdian} calm={calm} />

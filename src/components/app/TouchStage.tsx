@@ -21,7 +21,23 @@ import {
 } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { boldAround, boldGround, boldLines, boldYou, ownMark, shoutAround, shoutBubble, shoutFigure, shoutProp, touchedAround, touchedOn } from "./LookMoves";
+import {
+  boldAround,
+  boldGround,
+  boldLines,
+  boldThem,
+  boldYou,
+  facingThem,
+  friendsAround,
+  ownMark,
+  shoutAround,
+  shoutBubble,
+  shoutFigure,
+  shoutProp,
+  theirParts,
+  touchedAround,
+  touchedOn,
+} from "./LookMoves";
 
 /**
  * Who is in a touch scene. you: your own look and the name your dock shows. them: the
@@ -74,7 +90,9 @@ export default function TouchStage({
   const theirLook = plain ? "hood" : them.avatar;
   const f = feelers(you.avatar, theirLook);
   const theirs = (friend: boolean) => <RoachIcon color={them.color} size={88} avatar={them.avatar} clone={them.clone} friend={friend} />;
-  const yours = <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
+  // in their parts where those move on their own (LookMoves.tsx), as the map draws them
+  const whose = { clone: them.clone, friend: them.friend };
+  const yours = facingThem(you.avatar) ?? <RoachIcon color={you.color} size={88} avatar={you.avatar} mine />;
   const touched = touchedOn(theirLook, GLOW[plain ? "white" : them.color]);
   // what it sets off round itself stays where it is, over the whole scene, as it jumps and shrinks back
   const around = touchedAround(theirLook);
@@ -94,7 +112,7 @@ export default function TouchStage({
         <div className="ta-them">
           <div className="ta-jump">
             <div className="ta-look">
-              <div className="ta-a">{theirs(them.friend)}</div>
+              <div className="ta-a">{theirParts(theirLook, whose) ?? theirs(them.friend)}</div>
               {touched}
             </div>
           </div>
@@ -109,6 +127,8 @@ export default function TouchStage({
     );
   } else if (kind === "bold") {
     const [bx, by] = f.boldEnd;
+    // a look that runs off leaves part of itself behind (LookMoves.tsx boldThem)
+    const apart = boldThem(theirLook, whose);
     scene = (
       <>
         <div className="ta-you">
@@ -116,10 +136,12 @@ export default function TouchStage({
           <div className="ta-body">{boldYou(you.avatar, you.color) ?? yours}</div>
         </div>
         <div className="ta-them">
+          {apart?.stays}
           <div className="ta-jump">
-            <div className="ta-a">{theirs(them.friend)}</div>
+            <div className="ta-a">{apart?.runs ?? theirs(them.friend)}</div>
             {touched}
           </div>
+          {apart?.after}
         </div>
         <svg className="ta-lines" viewBox="0 0 240 160" aria-hidden="true">
           {boldLines(you.avatar, f.bold)}
@@ -163,6 +185,7 @@ export default function TouchStage({
         <div className="ta-ribbon" style={{ left: 120, top: 150 }}>
           {T.fx.friends}
         </div>
+        {friendsAround(you.avatar, theirLook)}
       </>
     );
   }

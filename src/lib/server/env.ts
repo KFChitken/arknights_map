@@ -94,6 +94,15 @@ export const UI_CHOICE = process.env.UI_CHOICE !== "off";
  */
 export const passesMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.PASSES) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
+
+/**
+ * 鸭爵, the look kept as the thanks for sponsoring (src/lib/server/looks.ts): DUCK=on lets a 服务器饲养员 pick him, and
+ * the 站长 and the admins, and shows him to everyone; admins, only the 站长 and the admins may pick him, and they alone
+ * see him, on themselves and on one another, everyone else the plain hood (to try him on the live site first); off
+ * (the default) nobody may pick him, and every 鸭爵 is drawn as the plain hood. The database keeps him whichever it
+ * is, so he is back as he was once he shows again. Read on every use, so the tests can switch it.
+ */
+export const duckMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.DUCK) ?? "off";
 /**
  * The characters' pictures on passes (src/lib/server/passArt.ts), which belong to Hypergryph: PASS_ART=off takes them
  * all down at once, and passes show the small pictures instead (OPERATOR_AVATARS); PASS_ART_SKIP=<catalogue id,…>

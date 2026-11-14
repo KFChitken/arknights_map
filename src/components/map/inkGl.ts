@@ -7,7 +7,7 @@ import { INN_CENTER, innDrawing } from "@/lib/siInn";
 import type { InkPoint } from "@/lib/siTiles";
 import { prefersReducedMotion } from "@/lib/swarm";
 import { coordsOf, layerState, mvpOf, program, restoreState, saveState, type Vao, vaoOf } from "./glCommon";
-import { brushReveal, butterflyCanvas, INK_LOOKS, INK_VARIANTS, inkCanvas, rolledCanvas, scrollCanvas, signCanvas, treeCanvas, variantOf } from "./inkArt";
+import { brushReveal, butterflyCanvas, INK_LOOKS, INK_VARIANTS, inkCanvas, inkLook, rolledCanvas, scrollCanvas, signCanvas, treeCanvas, variantOf } from "./inkArt";
 import {
   BLOT_OPACITY,
   BLOT_RADIUS,
@@ -56,7 +56,7 @@ export type InkGl = {
 /** The pictures' cells: 128 px squares, 8 × 8 of them */
 const CELL = 128;
 const GRID = 8;
-/** Each look's four ways (inkArt.ts INK_VARIANTS), looks in ROACH_AVATARS' order; with her seal from C_SEALED */
+/** Each look's four ways (inkArt.ts INK_VARIANTS), looks in INK_LOOKS' order (lib/inkLook.ts); with her seal from C_SEALED */
 const C_INK = 0;
 const C_TREE = 20;
 const C_SIGN = 21;
@@ -190,8 +190,9 @@ function atlasInks() {
   return inksMade;
 }
 
-const inkCell = (look: number, state: number, left: boolean, sealed: boolean) =>
-  (sealed ? C_SEALED : C_INK) + look * 4 + INK_VARIANTS.indexOf(variantOf(state, left));
+/** An ink roach's cell; a look with no ink picture of its own (鸭爵) takes the hood's: it must not run on into the trees' */
+export const inkCell = (look: number, state: number, left: boolean, sealed: boolean) =>
+  (sealed ? C_SEALED : C_INK) + INK_LOOKS.indexOf(inkLook(look)) * 4 + INK_VARIANTS.indexOf(variantOf(state, left));
 const RAD = Math.PI / 180;
 
 /** One kind of thing drawn: its points, as they go to the GPU */

@@ -1,12 +1,12 @@
 import { expression } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
-import { usesPicture } from "@/lib/roachImages";
-import { GLOW, roachSvg, shownAvatar, type RoachOpts } from "@/lib/roachSvg";
+import { roachIconKey, usesPicture } from "@/lib/roachImages";
+import { GLOW, roachDataUrl, roachSvg, shownAvatar, type RoachOpts } from "@/lib/roachSvg";
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
-import { friendCloneLooks, friendLook } from "@/lib/world/friendLooks";
+import { duckIdsOf, friendCloneLooks, friendLook, lookOnMap } from "@/lib/world/friendLooks";
 import type { Friend, PublicRoach } from "@/lib/world/types";
 import { CARTOON_ICONS, massPointOf, styleIndex, styleSpecs } from "./massPoints";
-import { ICON_ROOM } from "./roachGl";
+import { ICON_ROOM, iconCells } from "./roachGl";
 import { imageSpec, neededImages, roachImage } from "./roachIcons";
 
 const UUID = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
@@ -53,6 +53,12 @@ describe("a 触须之交's clone, as drawn", () => {
     expect(friendLook(friendOf([main]))).toEqual({ avatar: "doctor", color: "gold" });
     expect(friendLook(friendOf([]))).toEqual({ avatar: "endmin", color: "purple" });
     expect(friendLook(friendOf([], "amiya", "nope"))).toEqual({ avatar: "hood", color: "cyan" });
+    // 鸭爵 too: the server gives him only while he is on (server/looks.ts drawnLook), so a clone shows whatever TA's main roach does
+    const duck = roach({ id: UUID, avatar: "duck", color: "gold", friend: true });
+    expect(friendLook(friendOf([duck, roach({ id: "c1", clone: true, color: "white", friend: true })]))).toEqual({ avatar: "duck", color: "gold" });
+    expect(friendLook(friendOf([], "duck", "gold"))).toEqual({ avatar: "duck", color: "gold" });
+    expect(usesPicture({ avatar: "duck", clone: true, friend: true })).toBe(true);
+    expect(shownAvatar({ avatar: "duck", clone: true })).toBe("hood");
   });
 
   it("knows each 触须之交's clones by both ids the feed may give them, and nothing else", () => {
@@ -61,6 +67,24 @@ describe("a 触须之交's clone, as drawn", () => {
     const looks = friendCloneLooks([friendOf([main, clone]), friendOf([roach({ id: "b0000000-0000-4000-8000-000000000000", friend: true })])]);
     expect([...looks.keys()].sort()).toEqual([UUID, UUID.slice(0, 8)].sort());
     expect(looks.get(UUID.slice(0, 8))).toEqual({ avatar: "imp", color: "red" });
+  });
+
+  it("draws the main roaches the server names as 鸭爵 to the 站长 and the admins in him, and nothing else changes", () => {
+    const ducks = duckIdsOf([UUID]);
+    expect([...ducks].sort()).toEqual([UUID, UUID.slice(0, 8)].sort());
+    expect(duckIdsOf(undefined).size).toBe(0);
+    const cloneLooks = new Map([["c1", { avatar: "doctor" as const, color: "gold" as const }]]);
+    const none = duckIdsOf([]);
+    // by either id the feed may give, in its own colour, a 触须之交's too
+    expect(lookOnMap(roach({ id: UUID, color: "purple" }), false, cloneLooks, ducks)).toEqual({ avatar: "duck", color: "purple" });
+    expect(lookOnMap(roach({ id: UUID.slice(0, 8), color: "purple" }), true, cloneLooks, ducks)).toEqual({ avatar: "duck", color: "purple" });
+    expect(lookOnMap(roach({ id: UUID, color: "purple" }), false, cloneLooks, none)).toEqual({ avatar: "hood", color: "purple" });
+    // a clone stays as it was: the plain white hood to a stranger, TA's look to a 触须之交
+    expect(lookOnMap(roach({ id: UUID, clone: true, color: "white" }), false, cloneLooks, ducks)).toEqual({ avatar: "hood", color: "white" });
+    expect(lookOnMap(roach({ id: "c1", clone: true, color: "white" }), true, cloneLooks, ducks)).toEqual({ avatar: "doctor", color: "gold" });
+    expect(lookOnMap(roach({ id: "c1", clone: true, color: "white" }), false, cloneLooks, ducks)).toEqual({ avatar: "hood", color: "white" });
+    // anyone else as the feed has them
+    expect(lookOnMap(roach({ id: "r2", avatar: "imp", color: "red" }), false, cloneLooks, ducks)).toEqual({ avatar: "imp", color: "red" });
   });
 });
 
@@ -101,15 +125,26 @@ describe("the 高德 map's icons", () => {
     }
   });
 
-  it("keep the numbers of before, the 触须之交's clones after them all, and fit beside the hearts", () => {
+  it("keep their order, the 触须之交's clones after them all, and fit beside the hearts, those drawn alike in one cell", () => {
     const specs = styleSpecs("cartoon");
+    const looks = ROACH_AVATARS.length * ROACH_COLORS.length;
     expect(specs).toHaveLength(CARTOON_ICONS);
-    expect(CARTOON_ICONS).toBe(162 + ROACH_AVATARS.length * ROACH_COLORS.length);
-    expect(CARTOON_ICONS).toBeLessThanOrEqual(ICON_ROOM);
-    // a stranger's clone, and a 触须之交's main roach, are where they were
-    expect(styleIndex(massPointOf(roach({ clone: true })), "cartoon", 0)).toBe(40);
-    expect(styleIndex(massPointOf(roach({ friend: true, avatar: "doctor", color: "pink" })), "cartoon", 0)).toBe(41 + 8 + 1);
-    expect(styleIndex(massPointOf(roach({ friend: true, clone: true, avatar: "doctor", color: "pink" })), "cartoon", 0)).toBe(162 + 8 + 1);
+    expect(CARTOON_ICONS).toBe(5 * looks + 2);
+    // a stranger's clone after every look awake, then a 触须之交's main roaches, and their clones after all the rest
+    expect(styleIndex(massPointOf(roach({ clone: true })), "cartoon", 0)).toBe(looks);
+    expect(styleIndex(massPointOf(roach({ friend: true, avatar: "doctor", color: "pink" })), "cartoon", 0)).toBe(looks + 1 + 8 + 1);
+    expect(styleIndex(massPointOf(roach({ friend: true, clone: true, avatar: "doctor", color: "pink" })), "cartoon", 0)).toBe(4 * looks + 2 + 8 + 1);
+    // the URLs AmapView gives the GPU layer: a picture look's are one whatever the colour, and share a cell
+    const urls = specs.map(([color, o]) => (usesPicture(o) ? roachIconKey(color, o, 96) : roachDataUrl(color, o)));
+    const { cells, cellOf } = iconCells(urls);
+    expect(cells.length).toBeLessThanOrEqual(ICON_ROOM);
+    expect(cellOf).toHaveLength(CARTOON_ICONS);
+    urls.forEach((url, i) => expect(cells[cellOf[i]]).toBe(url));
+    const at = (r: Partial<PublicRoach>) => cellOf[styleIndex(massPointOf(roach(r)), "cartoon", 0)];
+    expect(at({ avatar: "duck", color: "pink" })).toBe(at({ avatar: "duck", color: "gold" }));
+    expect(at({ avatar: "duck", color: "pink" })).not.toBe(at({ avatar: "gugu", color: "pink" }));
+    expect(at({ avatar: "duck", color: "pink", friend: true })).not.toBe(at({ avatar: "duck", color: "pink" }));
+    expect(at({ avatar: "hood", color: "pink" })).not.toBe(at({ avatar: "hood", color: "gold" }));
     // the realistic look is as it was: no icons of its own for them
     expect(styleSpecs("real").every(([, o]) => !(o.clone && o.friend && o.avatar))).toBe(true);
     for (const r of every) {

@@ -49,6 +49,8 @@ const TIPS: Partial<Record<DrawnAvatar, { left: [number, number]; right: [number
   endmin: { left: [22.6, 5.5], right: [44, 6.2] },
   imp: { left: [36.8, 6.6], right: [36.8, 6.6] },
   gugu: { left: [9.8, 1.8], right: [53, 1.8] },
+  // no feelers in his picture: they come out of his hat's front corners
+  duck: { left: [21.5, 5.3], right: [42.5, 5.3] },
   amiya: { left: [16, 8], right: [48, 8] },
   perlica: { left: [16, 8], right: [48, 8] },
   talulah: { left: [16, 8], right: [48, 8] },

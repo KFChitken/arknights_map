@@ -38,7 +38,7 @@ export type RoachGl = {
   setRoaches: (roaches: GlRoach[]) => void;
   /** One roach (by id) not drawn, nor hit, until another or none (null): the one a touch scene plays out */
   setHidden: (id: string | null) => void;
-  /** One icon URL per style index */
+  /** One icon URL per style index; alike ones share a cell of the atlas (iconCells) */
   setIcons: (urls: string[]) => Promise<void>;
   /** The roaches crawl, or all stand still (motion turned down) */
   setCrawl: (on: boolean) => void;
@@ -76,8 +76,26 @@ const MAX_ICONS = COLS * Math.floor(ATLAS_H / CELL);
 /** The hearts take the last four cells: three pinks, then a 触须之交's red */
 const HEART_TINTS = ["#ff4f8b", "#ff7eb6", "#ff98c3", "#ff2e63"];
 const HEART_CELL = MAX_ICONS - HEART_TINTS.length;
-/** How many roach icons fit besides the hearts: the cartoon look's (massPoints.ts styleSpecs) must, or the layer gives up */
+/**
+ * How many roach icons fit besides the hearts: the cartoon look's (massPoints.ts styleSpecs) must, those drawn alike
+ * sharing a cell (iconCells), or the layer gives up
+ */
 export const ICON_ROOM = HEART_CELL;
+
+/**
+ * The atlas's cells for icons given one per style index, and each index's cell: icons alike share one, as a picture
+ * look's do in every colour (roachImages.ts roachIconUrl), so far fewer cells are needed than there are indexes
+ */
+export function iconCells(urls: readonly string[]) {
+  const cells: string[] = [];
+  const at = new Map<string, number>();
+  const cellOf = urls.map((url) => {
+    let i = at.get(url);
+    if (i === undefined) at.set(url, (i = cells.push(url) - 1));
+    return i;
+  });
+  return { cells, cellOf };
+}
 // 高德 zoom levels are one above MapLibre's, which swarm.ts counts in
 const ZOOM_OFFSET = 1;
 /** Frames asked for while the roaches crawl: as often as the OSM map moves them */
@@ -542,8 +560,9 @@ export function roachGl(
   })();
   let dirty = true;
   let count = 0;
-  /** The icons' URLs, and the picture of them all until it is on the GPU */
+  /** The icons' URLs, one per cell, and the picture of them all until it is on the GPU; each style index's cell */
   let iconUrls: string[] = [];
+  let cellOf: number[] = [];
   let atlas: HTMLCanvasElement | null = null;
   let atlasSeq = 0;
   let iconsReady = false;
@@ -610,7 +629,7 @@ export function roachGl(
       const o = i * STRIDE;
       data[o] = xy[i * 2];
       data[o + 1] = xy[i * 2 + 1];
-      data[o + 2] = r.style;
+      data[o + 2] = cellOf[r.style] ?? 0;
       data[o + 3] = k[0];
       data[o + 4] = k[1];
       data[o + 5] = k[2];
@@ -828,7 +847,7 @@ export function roachGl(
       const o = i * 4;
       pd[o] = pileXY[i * 2];
       pd[o + 1] = pileXY[i * 2 + 1];
-      pd[o + 2] = it.style;
+      pd[o + 2] = cellOf[it.style] ?? 0;
       pd[o + 3] = it.ref === hiddenId ? -1 : pileMul(it.n);
     });
     const counted = items.map((it, i) => ({ it, i })).filter(({ it }) => it.n > 1);
@@ -1069,11 +1088,16 @@ export function roachGl(
       map.render();
     },
     setIcons: (urls) => {
-      if (urls.length > HEART_CELL) {
+      const icons = iconCells(urls);
+      if (icons.cells.length > HEART_CELL) {
         fail("too many icons");
         return Promise.resolve();
       }
-      iconUrls = urls;
+      iconUrls = icons.cells;
+      cellOf = icons.cellOf;
+      // the roaches and piles go up again with their cells
+      dirty = true;
+      pilesDirty = true;
       return buildAtlas();
     },
     setCrawl: (on) => {

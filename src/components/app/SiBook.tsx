@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import { chineseDate, portraitTitle, SI_LINES, STAMPS, STAMPS_PER_ROUND, stampAt } from "@/lib/si";
 import { SEAL_RED } from "@/lib/siArt";
+import { inkPicture } from "@/lib/inkLook";
 import type { RoachAvatar } from "@/lib/types";
 import type { SiMe } from "@/lib/world/types";
 import Sheet from "./Sheet";
@@ -141,7 +142,7 @@ export async function paintPortrait(opts: { look: RoachAvatar; title: string; at
   g.lineWidth = 2;
   g.strokeRect(40, 40, W - 80, H - 80);
   await Promise.allSettled([document.fonts?.load(`700 48px SiSeal`)]);
-  const img = await picture(`/avatars/ink-${opts.hers ? "hood" : opts.look}.webp`).catch(() => null);
+  const img = await picture(inkPicture(opts.hers ? "hood" : opts.look)).catch(() => null);
   // the ground it stands on, in a pale wash, and the figure
   const box = 470;
   const fx = 60;

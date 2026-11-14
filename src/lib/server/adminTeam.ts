@@ -8,6 +8,8 @@ import { db } from "./db";
 import { SITE_URL } from "./env";
 import { HttpError } from "./http";
 import { reloadEverywhere } from "./live";
+import { takeOffDuck } from "./looks";
+import { roachesChanged } from "./roachFeed";
 import { adminBackupCodes, adminLog, admins, modActions, reports, sessions, users } from "./schema";
 import { errorCode } from "./signals";
 
@@ -195,6 +197,8 @@ export async function removeAdmin(ctx: AdminContext, input: unknown, now = Date.
   });
   await logAdmin(actorOf(ctx.admin), "admin", "admin.remove", { targetId: row.userId, detail: `移除了管理员「${row.alias}」` }, now);
   await reloadEverywhere("admins");
+  // 鸭爵 is for the admins and the 服务器饲养员 (looks.ts): no longer an admin, he goes unless they hold the badge
+  if (await takeOffDuck(row.userId, false)) roachesChanged();
   await mailOwner(
     row.userId,
     "admin.remove",

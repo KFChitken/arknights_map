@@ -511,6 +511,13 @@ export type Me = {
   hasTouched: boolean;
   badges: EarnedBadge[];
   wornBadge: string | null;
+  /** The looks this player may pick (src/lib/server/looks.ts): 鸭爵, the thanks for sponsoring, only for some */
+  looks?: RoachAvatar[];
+  /**
+   * Only for the 站长 and the admins while DUCK is admins (src/lib/server/looks.ts ducksOnMapFor): the main roaches
+   * (public ids) of the others among them wearing 鸭爵, whom the map's feed, the same for all, draws as the plain hood
+   */
+  ducks?: string[];
   /** The counts badges are earned by: 触须之交 ever made, different players who reacted to their declarations, times drunk */
   counts: Record<BadgeCount, number>;
   /** 摄入酒精: their main roach sleeps until then, unless they sober up first; null when awake */

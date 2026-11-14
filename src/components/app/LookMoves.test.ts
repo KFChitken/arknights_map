@@ -2,13 +2,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { T } from "@/i18n";
-import { devilBits, drinkCup, flaps, hoodLamps, speedLines, standingApart } from "@/lib/lookArt";
+import { coin, contract, devilBits, drinkCup, duckApart, duckDrinking, duckFigure, dust, flaps, heartSeal, hoodLamps, loot, speedLines, standingApart } from "@/lib/lookArt";
 import { pictureSvg } from "@/lib/roachImages";
 import { GLOW, hoodBody } from "@/lib/roachSvg";
 import { boop, burst, feelers } from "@/lib/touchArt";
 import { ROACH_AVATARS, type DrawnAvatar, type RoachAvatar, type RoachColor, type RoachStyle } from "@/lib/types";
-import { DockFx, dockAnimFor, type DockAt, type DockKind } from "./DockFx";
-import { touchedAround, touchedOn } from "./LookMoves";
+import { DockFx, dockAnimFor, star, type DockAt, type DockKind } from "./DockFx";
+import GestureStage from "./GestureStage";
+import { dockParts, touchedAround, touchedOn } from "./LookMoves";
 import RoachActor from "./RoachActor";
 import TouchStage, { ShoutStage, type TouchCast } from "./TouchStage";
 
@@ -44,6 +45,8 @@ const shout = (avatar: RoachAvatar) =>
   );
 const drink = (avatar: RoachAvatar, look: RoachStyle = "cartoon", scene: "drink" | "wake" = "drink") =>
   renderToStaticMarkup(createElement(RoachActor, { scene, avatar, color: "cyan", look, onDone: () => {} }));
+const gesture = (g: "luck" | "blanket", cast: TouchCast) =>
+  renderToStaticMarkup(createElement(GestureStage, { gesture: g, cast, place: { s: 1, left: 0, top: 0, end: 1 }, onDone: () => {} }));
 
 describe("each look's own moves", () => {
   it("draws the hood as it always has, with the sleeve that waves in a group of its own when asked", () => {
@@ -102,7 +105,9 @@ describe("each look's own moves", () => {
     expect(dock("sneaky", "hood", "purple")).toContain('class="dock-fx dock-look dock-sneaky ta-dshiver"');
     // the other scenes on the dock, and the looks without a reaction yet, are as they were
     for (const kind of ["friend", "knock", "hug", "luck"] as const) expect(dock(kind, "hood", "green")).not.toContain("dock-look");
-    for (const look of ROACH_AVATARS) if (!touchedOn(look, GLOW.green) && !touchedAround(look)) expect(dock("bold", look, "green")).not.toContain("dock-look");
+    for (const look of ROACH_AVATARS) {
+      if (!touchedOn(look, GLOW.green) && !touchedAround(look) && !dockParts(look, "bold", 1)) expect(dock("bold", look, "green")).not.toContain("dock-look");
+    }
   });
 
   it("has 博士 deploy them when it touches boldly: a tile under them, three crystals from where its feeler lands, 部署！", () => {
@@ -363,5 +368,129 @@ describe("each look's own moves", () => {
     expect(html).toContain('class="lay cup" style="transform-origin:66% 63%"');
     // the others tip over to their right as before
     expect(drink("imp")).toContain('<div class="actor pic" data-state="drinking" aria-hidden="true">');
+  });
+
+  it("has 鸭爵 turn to face them, tip his hat and pop a coin out of his lit case as he touches boldly, the card gold", () => {
+    const html = scene("bold", { you: you("duck"), them: them("hood", "orange") });
+    expect(looks(html)).toEqual(["ta-bold", "you-duck", "them-hood"]);
+    // drawn facing left, turned round on the left of the stage, in his three parts so his hat can tip
+    const facing = duckFigure({ mine: true }, { flip: true });
+    expect(facing).toMatch(/<g transform="translate\(64 0\) scale\(-1 1\)"><g class="d-bcase">[\s\S]*<g class="d-body">[\s\S]*<g class="d-hat">/);
+    expect(html).toContain(`<div class="ta-body"><div class="ta-lay">${facing}</div><div class="dk-glow"></div><div class="dk-pop" style="--dx:-6px;--dy:-30px">${coin(14)}</div></div>`);
+    // the card still goes over (globals.css gilds it)
+    expect(html).toContain('class="ta-cardway"');
+    // sneaking up you are a shadow, and the others come in as they always have
+    expect(scene("sneaky", { you: you("duck"), them: them("hood", "orange") })).not.toContain("d-hat");
+    expect(scene("bold", { you: you("doctor"), them: them("hood", "orange") })).not.toContain("dk-pop");
+  });
+
+  it("has 鸭爵 touched boldly run off from his ground and black case, which jolts as a treasure pops out, as the map draws him", () => {
+    const html = scene("bold", { you: you("hood"), them: them("duck", "orange") });
+    expect(looks(html)).toEqual(["ta-bold", "you-hood", "them-duck"]);
+    const { stays, bcase, figure } = duckApart({});
+    // his ground and black case stay as he runs; what goes up stays over them
+    expect(html).toContain(`<div class="ta-them"><div class="ta-lay">${stays}</div><div class="ta-lay dk-case">${bcase}</div><div class="ta-jump"><div class="ta-a"><div class="ta-lay">${figure}</div></div>`);
+    expect(html).toContain(`<div class="dk-loot">${loot()}</div><div class="dk-dust">${dust()}</div><div class="dk-zoom">${T.fx.whoosh}</div></div>`);
+    expect(bcase).not.toContain("d-body");
+    expect(figure).not.toContain("d-bcase");
+    // ! before he runs, as anyone gets
+    expect(html).toContain('class="ta-mark"');
+    // a 触须之交's keeps his heart over the ground that stays
+    expect(scene("bold", { you: you("hood"), them: them("duck", "orange", false, true) })).toContain(`<div class="ta-lay">${duckApart({ friend: true }).stays}</div>`);
+    // as the map draws it: a stranger's clone is the hood and stays where it is; a 触须之交's is 鸭爵
+    const stranger = scene("bold", { you: you("hood"), them: them("duck", "orange", true) });
+    expect(looks(stranger)).toContain("them-hood");
+    expect(stranger).not.toContain("dk-case");
+    expect(stranger).not.toContain("dk-zoom");
+    expect(scene("bold", { you: you("hood"), them: them("duck", "orange", true, true) })).toContain(duckApart({ clone: true, friend: true }).figure);
+    // the others stay where they are
+    expect(scene("bold", { you: you("hood"), them: them("doctor", "orange") })).not.toContain("dk-case");
+  });
+
+  it("has 鸭爵's hat fly off when he is touched on the sly, ? over him as anyone gets", () => {
+    const html = scene("sneaky", { you: you("hood"), them: them("duck", "orange") });
+    expect(looks(html)).toEqual(["ta-sneaky", "them-duck"]);
+    expect(html).toContain(`<div class="ta-a"><div class="ta-lay">${duckFigure({})}</div></div>`);
+    expect(html).toContain('class="ta-mark"');
+    expect(scene("sneaky", { you: you("hood"), them: them("duck", "orange", true) })).not.toContain("d-hat");
+    expect(scene("sneaky", { you: you("hood"), them: them("duck", "orange", true, true) })).toContain(duckFigure({ clone: true, friend: true }));
+  });
+
+  it("has a contract drop between the feelers as you become 触须之交 with 鸭爵 on either side, 啪！ a heart seal on it", () => {
+    const around = `<div class="dk-contract">${contract(T.fx.contract)}</div><div class="dk-stamp">${heartSeal()}</div><div class="dk-pa">${T.fx.stamp}</div>`;
+    const mine = scene("friend", { you: you("duck"), them: them("hood", "pink") });
+    expect(mine).toContain(around);
+    expect(mine).toContain(duckFigure({ mine: true }, { flip: true }));
+    expect(scene("friend", { you: you("hood"), them: them("duck", "pink") })).toContain(around);
+    expect(scene("friend", { you: you("hood"), them: them("duck", "pink", true) })).not.toContain("dk-contract");
+    expect(scene("friend", { you: you("doctor"), them: them("gugu", "pink") })).not.toContain("dk-contract");
+  });
+
+  it("has 鸭爵 lift his hat as he shouts, seven gold coins and a flash bursting out of his silver case", () => {
+    const html = shout("duck");
+    expect(looks(html)).toEqual(["ta-shout", "me-duck", "ta-pic"]);
+    expect(html).toContain(`<div class="ta-lay">${duckFigure({ mine: true })}</div>`);
+    expect(html.match(/<div class="dk-coin" style="--dx:-?\d+px;--dy:-\d+px;--k:[\d.]+">/g)).toHaveLength(7);
+    expect(html).toContain('<div class="dk-shine"></div>');
+    for (const look of ["hood", "doctor", "endmin", "imp", "gugu"] as const) expect(shout(look)).not.toContain("dk-coin");
+  });
+
+  it("has the lucky stars turn into coins on their way into 鸭爵's silver case, which lights up", () => {
+    const html = gesture("luck", { you: you("duck"), them: them("hood", "pink", false, true) });
+    expect(looks(html)).toEqual(["gs-luck", "you-duck"]);
+    expect(html).toContain(`<div class="ta-body"><div class="ta-lay">${duckFigure({ mine: true }, { flip: true })}</div><div class="dk-glow"></div></div>`);
+    expect(html).toContain(`<div class="gs-star s0" style="left:186px;top:92px;width:14px;height:14px"><span class="st">${star(14)}</span><span class="co">${coin(14)}</span></div>`);
+    expect(html.match(/class="co"/g)).toHaveLength(4);
+    // the others' stars float over as stars
+    const hood = gesture("luck", { you: you("hood"), them: them("hood", "pink", false, true) });
+    expect(hood).toContain(`<div class="gs-star s0" style="left:186px;top:92px">${star(14)}</div>`);
+    expect(hood).not.toContain("dk-glow");
+  });
+
+  it("has 鸭爵 doze on his feet with a blanket over his shoulders, his hat over his eyes", () => {
+    const asleep = pictureSvg("duck", { asleep: true });
+    expect(asleep).toContain('<g transform="rotate(4 32 58)">');
+    expect(asleep).toContain('<g class="d-hat" transform="rotate(-11 26.4 9.7) translate(-0.8 1.6)">');
+    expect(gesture("blanket", { you: you("hood"), them: them("duck", "pink", false, true) })).toContain('<div class="gs-blanket" style="left:152px;top:94px">');
+    expect(gesture("blanket", { you: you("hood"), them: them("imp", "pink", false, true) })).toContain('<div class="gs-blanket" style="left:152px;top:104px">');
+  });
+
+  it("has your own dock avatar as 鸭爵 hide while his parts play over it: his hat flies off on the sly, boldly he dashes aside and back", () => {
+    expect(dockAnimFor("bold", "duck")).toBe("dk-dhide");
+    expect(dockAnimFor("sneaky", "duck")).toBe("dk-dhide ta-dshiver");
+    const scale = `transform:scale(${30 / 88})`;
+    const { stays, bcase, figure } = duckApart({});
+    const bold = dock("bold", "duck", "green");
+    expect(bold).toContain(
+      `<div class="dock-fx dock-look dock-bold dk-dhide" style="left:12px;top:602px;width:30px;height:30px"><div class="dk-mini" style="${scale}"><div class="ta-lay">${stays}</div><div class="ta-lay dk-case">${bcase}</div><div class="ta-lay dk-dash">${figure}</div><div class="dk-loot">${loot()}</div><div class="dk-dust">${dust()}</div></div></div>`,
+    );
+    expect(bold).toContain("ta-dmark");
+    const sneaky = dock("sneaky", "duck", "green");
+    expect(sneaky).toContain(`<div class="dock-fx dock-look dock-sneaky dk-dhide ta-dshiver" style="left:12px;top:602px;width:30px;height:30px"><div class="dk-mini" style="${scale}"><div class="ta-lay">${duckFigure({})}</div></div></div>`);
+    expect(sneaky).toContain("ta-dmark");
+    // the other scenes on the dock are as they were
+    for (const kind of ["friend", "knock", "hug", "luck"] as const) expect(dock(kind, "duck", "green")).not.toContain("dock-look");
+  });
+
+  it("has 鸭爵 pop a bottle of champagne, drink from it and doze off on his feet, his hat askew", () => {
+    const html = drink("duck");
+    const d = duckDrinking();
+    expect(html).toContain('<div class="actor pic duck" data-state="drinking" aria-hidden="true">');
+    for (const [cls, art] of [
+      ["dk-stand", d.standing],
+      ["dk-bottle", d.bottle],
+      ["dk-sip", d.sip],
+      ["dk-drunk", d.drunk],
+    ] as const)
+      expect(html).toContain(`<div class="lay ${cls}">${art}</div>`);
+    expect(d.bottle).toContain('<g class="ck">');
+    expect(d.sip).not.toContain('<g class="ck">');
+    expect(d.drunk).toContain('<g class="d-hat" transform="rotate(-13 26.4 9.7) translate(-1.2 1.4)">');
+    expect(html).toContain(`<div class="dk-cork">${d.cork}</div><div class="dk-foam">${d.foam}</div><span class="dk-uncork">${T.fx.uncork}</span>`);
+    // he ends dozing on his feet, as he sleeps on the map
+    expect(html).toContain(pictureSvg("duck", { asleep: true }));
+    // the others drink as they did, and 写实 is the realistic roach
+    expect(drink("imp")).not.toContain("dk-");
+    expect(drink("duck", "real")).not.toContain("dk-");
   });
 });

@@ -89,7 +89,7 @@ import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/are
 import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
 import { reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach } from "@/lib/world/packed";
-import { friendCloneLooks } from "@/lib/world/friendLooks";
+import { duckIdsOf, friendCloneLooks, lookOnMap } from "@/lib/world/friendLooks";
 import {
   DEFAULT_MAP_STYLE,
   HEARTS_READY,
@@ -982,6 +982,9 @@ export default function MapApp({
   const keptRef = useRef(new WeakMap<MapRoach, PublicRoach>());
   // 触须之交's clones wear TA's look on this map (world/friendLooks.ts): the feed gives every clone the plain one
   const cloneLooks = useMemo(() => friendCloneLooks(friends), [friends]);
+  // while DUCK is admins, the 站长 and the admins see one another in 鸭爵: the main roaches me names (world/friendLooks.ts)
+  const duckKey = (me?.ducks ?? []).join(",");
+  const duckIds = useMemo(() => duckIdsOf(duckKey ? duckKey.split(",") : []), [duckKey]);
   const roaches = useMemo<PublicRoach[]>(() => {
     const friendIds = new Set(friendKey.split(","));
     const kept = keptRef.current;
@@ -991,10 +994,10 @@ export default function MapApp({
       const friend = friendIds.has(r.id);
       // 只看本体: others' clones are not drawn; 触须之交's are, and our own come from me anyway
       if (!drawnWith(r, friend, hideClones)) continue;
-      const look = friend && r.clone ? cloneLooks.get(r.id) : undefined;
+      const { avatar, color } = lookOnMap(r, friend, cloneLooks, duckIds);
       let o = kept.get(r);
-      if (!o || o.friend !== friend || (look && (o.avatar !== look.avatar || o.color !== look.color))) {
-        o = { ...r, friend, ...look };
+      if (!o || o.friend !== friend || o.avatar !== avatar || o.color !== color) {
+        o = { ...r, friend, avatar, color };
         kept.set(r, o);
       }
       out.push(o);
@@ -1010,7 +1013,7 @@ export default function MapApp({
       }
     }
     return out;
-  }, [feedRoaches, ownIds, friendKey, overview, friends, hideClones, cloneLooks]);
+  }, [feedRoaches, ownIds, friendKey, overview, friends, hideClones, cloneLooks, duckIds]);
 
   const applyMe = useCallback((m: Me | null) => {
     const sameOwner = m?.id === meIdRef.current;
@@ -4685,6 +4688,7 @@ export default function MapApp({
             profile={me.profile}
             badges={me.badges}
             wornBadge={me.wornBadge}
+            looks={me.looks}
             blocked={[]}
             held={me.profileHeld}
             tutorial={{ onLater: later }}
@@ -4703,6 +4707,7 @@ export default function MapApp({
             draft={p.draft}
             badges={me.badges}
             wornBadge={me.wornBadge}
+            looks={me.looks}
             onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
             onOpenSponsor={sponsor ? (draft) => setPanel({ kind: "sponsor", draft }) : undefined}
             blocked={blocked}

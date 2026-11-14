@@ -28,6 +28,7 @@ const view = (more: Partial<SponsorView> = {}): SponsorView => ({
   kofi: null,
   month: month(32050),
   repaying: false,
+  looks: [],
   email: "me@example.com",
   ...more,
 });
@@ -65,6 +66,16 @@ describe("支持舟P地图's card", () => {
     }
     expect(html.indexOf(T.sponsor.copy)).toBeLessThan(html.indexOf("sf-badges"));
     expect(html.indexOf("sf-badges")).toBeLessThan(html.indexOf(T.sponsor.thanksTail));
+  });
+
+  it("lists the looks kept for sponsors only as the server lists them to the player, first", () => {
+    const looksLine = fmt(T.sponsor.giftLooks, { looks: fmt(T.sponsor.badgeName, { name: T.profile.avatar.duck }) });
+    expect(text(card(view()))).not.toContain(looksLine);
+    expect(card(view())).toContain('<ol class="one">');
+    const html = text(card(view({ looks: ["duck"] })));
+    expect(html).toContain(looksLine);
+    expect(html.indexOf(looksLine)).toBeLessThan(html.indexOf(T.sponsor.giftBadges.split("{")[0]));
+    expect(card(view({ looks: ["duck"] }))).toContain("<ol><li>");
   });
 
   it("asks a visitor to sign in instead, with no badges to turn", () => {

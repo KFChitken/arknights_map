@@ -58,13 +58,10 @@ const bodyOpacity = (mine?: boolean, clone?: boolean, friend?: boolean) =>
 /** A stranger's clone: the plain look, whatever its owner picked */
 const plainClone = (opts: Pick<RoachOpts, "clone" | "mine" | "friend">) => Boolean(opts.clone && !opts.mine && !opts.friend);
 
-export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
-  if (opts.asleep && !opts.clone) return sleepingSvg(color, opts);
-  if (opts.look === "real") return realRoachSvg(opts);
-  const size = opts.size ?? 64;
-  const glow = GLOW[plainClone(opts) ? "white" : color];
+/** The ground under a standing roach on the 64 grid: yours yellow, a 触须之交's pink, anyone else's a shadow; dashed for a clone */
+export function groundOf(opts: Pick<RoachOpts, "mine" | "clone" | "friend">) {
   const dash = opts.clone ? ` stroke-dasharray="4 3"` : "";
-  const ground = opts.mine
+  return opts.mine
     ? opts.clone
       ? `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="#ffd23f55" stroke="#ffd23f" stroke-width="2"${dash}/>`
       : `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="#ffd23f" stroke="${LINE}" stroke-width="1.5"/>`
@@ -72,11 +69,22 @@ export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
       ? opts.clone
         ? `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="${FRIEND}55" stroke="${FRIEND}" stroke-width="2"${dash}/>`
         : `<ellipse cx="32" cy="59" rx="25" ry="4.5" fill="${FRIEND}" stroke="${LINE}" stroke-width="1.5"/>`
-    : opts.clone
-      ? `<ellipse cx="32" cy="59.5" rx="21" ry="3.2" fill="none" stroke="#1b1d22" stroke-width="1.5"${dash} opacity="0.6"/>`
-      : `<ellipse cx="32" cy="59.5" rx="20" ry="3" fill="#000" opacity="0.18"/>`;
+      : opts.clone
+        ? `<ellipse cx="32" cy="59.5" rx="21" ry="3.2" fill="none" stroke="#1b1d22" stroke-width="1.5"${dash} opacity="0.6"/>`
+        : `<ellipse cx="32" cy="59.5" rx="20" ry="3" fill="#000" opacity="0.18"/>`;
+}
+
+/** The heart over a 触须之交's roach, on the 64 grid; nothing for anyone else's or yours */
+export const heartOver = (opts: Pick<RoachOpts, "mine" | "friend">) => (opts.friend && !opts.mine ? HEART : "");
+
+export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
+  if (opts.asleep && !opts.clone) return sleepingSvg(color, opts);
+  if (opts.look === "real") return realRoachSvg(opts);
+  const size = opts.size ?? 64;
+  const glow = GLOW[plainClone(opts) ? "white" : color];
+  const ground = groundOf(opts);
   const body = BODIES[shownAvatar(opts)]?.(glow) ?? "";
-  const heart = opts.friend && !opts.mine ? HEART : "";
+  const heart = heartOver(opts);
   const parts =
     opts.part === "ground"
       ? ground

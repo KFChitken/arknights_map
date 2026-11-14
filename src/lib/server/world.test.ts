@@ -16,6 +16,7 @@ import { DECLARATIONS_PER_DAY, MAX_CLONES, POLICY_UPDATED_AT, RADAR_RADIUS_KM, T
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { tapOf } from "../siTiles";
+import { friendLook } from "../world/friendLooks";
 import { reachText } from "../world/logic";
 import type { InboxItem, PlaceTarget, PublicRoach } from "../world/types";
 import type { AdminAction } from "../safety";
@@ -36,6 +37,7 @@ import {
   settleCases,
   takeBackRoaches,
 } from "./admin";
+import { loadMods } from "./admins";
 import { award, catchUpBadges, fireSongs, markBadgesSeen, shownBadges, signedUp, wakeUp, wear } from "./badges";
 import { greetAmiya } from "./amiya";
 import { deviceDay, deviceWeek } from "./guides";
@@ -2522,6 +2524,100 @@ describe("server world", () => {
       expect(await me.me()).toMatchObject({ badges: [], wornBadge: null });
     } finally {
       vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps 鸭爵 for whom DUCK lets wear him: only admins, seen only among them, then a 服务器饲养员 too", async () => {
+    const CANTON = { lng: 113.26, lat: 23.13 };
+    const CHENGDU = { lng: 104.07, lat: 30.67 };
+    const pal = await signUp("pal@example.com");
+    const stranger = await signUp("stranger@example.com");
+    const helper = await signUp("helper@example.com");
+    const cardOf = async (viewer: Player) => (await world.cardsOf([await userRow(me.id)], viewer.id)).get(me.id)!;
+    // me as a 触须之交 sees me: in their list, the one with my clone in it
+    const mineTo = async (p: Player) => (await p.friends()).find((f) => f.roaches.some((r) => r.lng === CANTON.lng))!;
+    await me.saveProfile({ ...EMPTY_PROFILE, avatar: "imp" });
+    const { a: myMain } = await realFriends(me, pal);
+    const [helperMain] = await helper.placeRoach({ kind: "main" }, CHENGDU);
+    await me.touch(helperMain.publicId, true);
+    await helper.touch(myMain, true);
+    await me.placeRoach({ kind: "clone" }, CANTON);
+    // me and helper admins, as the 管理台 makes them
+    await db.insert(admins).values([
+      { userId: me.id, role: "mod", alias: "小管" },
+      { userId: helper.id, role: "mod", alias: "小帮" },
+    ]);
+    await loadMods();
+    try {
+      // off, the default: nobody may pick him; asked for all the same, the look they had stays
+      expect((await me.me()).looks).not.toContain("duck");
+      await me.saveProfile({ ...EMPTY_PROFILE, avatar: "duck" });
+      expect((await me.me()).profile.avatar).toBe("imp");
+
+      vi.stubEnv("DUCK", "admins");
+      try {
+        expect((await me.me()).looks!.at(-1)).toBe("duck");
+        expect((await stranger.me()).looks).not.toContain("duck");
+        expect((await me.saveProfile({ ...EMPTY_PROFILE, avatar: "duck" })).avatar).toBe("duck");
+        expect((await me.me()).profile.avatar).toBe("duck");
+        // the map's feed, the same for all, draws him as the plain hood
+        for (const viewer of [stranger, pal, helper]) expect((await publicAt(viewer, PEOPLES_SQUARE)).avatar).toBe("hood");
+        // the other admin sees him: on the card, as a 触须之交, and on the map, by the main roach their own me names
+        expect((await cardOf(helper)).avatar).toBe("duck");
+        expect(friendLook(await mineTo(helper)).avatar).toBe("duck");
+        expect((await helper.me()).ducks).toEqual([myMain]);
+        expect((await me.me()).ducks).toEqual([]);
+        // nobody else does, a 触须之交 who is no admin neither, nor is told which roach is him
+        expect((await cardOf(stranger)).avatar).toBe("hood");
+        expect((await cardOf(pal)).avatar).toBe("hood");
+        expect(friendLook(await mineTo(pal)).avatar).toBe("hood");
+        for (const p of [stranger, pal]) expect((await p.me()).ducks).toBeUndefined();
+        await stranger.saveProfile({ ...EMPTY_PROFILE, avatar: "duck" });
+        expect((await userRow(stranger.id)).avatar).toBe("hood");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+
+      // off again: the plain hood to himself too, and kept as he was, though saved meanwhile
+      const shown = await me.me();
+      expect(shown.profile.avatar).toBe("hood");
+      expect(shown.looks).not.toContain("duck");
+      expect((await me.saveProfile(shown.profile)).avatar).toBe("hood");
+      expect((await userRow(me.id)).avatar).toBe("duck");
+      expect((await publicAt(stranger, PEOPLES_SQUARE)).avatar).toBe("hood");
+      expect((await cardOf(helper)).avatar).toBe("hood");
+      expect((await helper.me()).ducks).toBeUndefined();
+
+      // on: for all to see, the main roach and the card; a clone in the plain white hood like everyone's, but to a 触须之交
+      vi.stubEnv("DUCK", "on");
+      vi.stubEnv("SPONSOR", "on");
+      try {
+        expect((await me.me()).profile.avatar).toBe("duck");
+        expect((await publicAt(stranger, PEOPLES_SQUARE)).avatar).toBe("duck");
+        expect(await publicAt(stranger, CANTON)).toMatchObject({ avatar: "hood", color: "white" });
+        expect((await cardOf(stranger)).avatar).toBe("duck");
+        expect(friendLook(await mineTo(pal)).avatar).toBe("duck");
+        // the feed has him for all now: nobody need be told
+        expect((await helper.me()).ducks).toBeUndefined();
+        // and a 服务器饲养员's to pick too, until the badge is taken back
+        expect((await stranger.me()).looks).not.toContain("duck");
+        await setBadge("stranger@example.com", "feeder", true);
+        expect((await stranger.me()).looks!.at(-1)).toBe("duck");
+        await stranger.saveProfile({ ...EMPTY_PROFILE, avatar: "duck" });
+        expect((await stranger.me()).profile.avatar).toBe("duck");
+        await setBadge("stranger@example.com", "feeder", false);
+        expect((await stranger.me()).profile.avatar).toBe("hood");
+        expect((await stranger.me()).looks).not.toContain("duck");
+        // an admin keeps him without it
+        await setBadge("me@example.com", "feeder", true);
+        await setBadge("me@example.com", "feeder", false);
+        expect((await me.me()).profile.avatar).toBe("duck");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    } finally {
+      await db.delete(admins);
+      await loadMods();
     }
   });
 

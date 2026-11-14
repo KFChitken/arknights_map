@@ -6,7 +6,7 @@ import { GLOW } from "@/lib/roachSvg";
 import { dockFeeler, mark, miniHeart, soundArcs, tap } from "@/lib/touchArt";
 import type { DrawnAvatar, RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../RoachIcon";
-import { dockMove, ownMark, touchedAround, touchedOn } from "./LookMoves";
+import { dockMove, dockParts, ownMark, touchedAround, touchedOn } from "./LookMoves";
 
 /**
  * The touched side (the third step of the touch and declaration animations): only your
@@ -94,11 +94,14 @@ export function DockFx({
   const touched = kind === "sneaky" || kind === "bold";
   const on = touched ? touchedOn(me.avatar, GLOW[me.color]) : null;
   const around = touched ? touchedAround(me.avatar) : null;
-  const look = (on || around) && (
+  // a look that moves in its parts plays them over your avatar, scaled from the stage's 88 px box to it
+  const parts = kind === "sneaky" || kind === "bold" ? dockParts(me.avatar, kind, icon.w / 88) : null;
+  const look = (on || around || parts) && (
     <div
       className={`dock-fx dock-look dock-${kind} ${dockAnimFor(kind, me.avatar)}`}
       style={{ left: icon.x, top: icon.y, width: icon.w, height: icon.h }}
     >
+      {parts}
       {on}
       {around}
     </div>

@@ -1,6 +1,6 @@
 import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "../types";
 import { feedIdsOf } from "./packed";
-import type { Friend } from "./types";
+import type { Friend, MapRoach } from "./types";
 
 /**
  * A 触须之交's clones as your map draws them: in TA's look, not in the plain one the shared list gives every
@@ -28,4 +28,22 @@ export function friendCloneLooks(friends: readonly Pick<Friend, "roaches" | "pro
     for (const r of clones) for (const id of feedIdsOf(r.id)) looks.set(id, look);
   }
   return looks;
+}
+
+/** The main roaches the server names as 鸭爵 to the 站长 and the admins (Me ducks), by their ids in the feed (either form) */
+export const duckIdsOf = (ducks: readonly string[] | undefined): ReadonlySet<string> => new Set((ducks ?? []).flatMap(feedIdsOf));
+
+/**
+ * A roach of the feed as your map draws it: a 触须之交's clone in TA's look (friendCloneLooks); a main roach the
+ * server names as 鸭爵 (duckIdsOf: the 站长 and the admins see one another in him while DUCK is admins, where the feed,
+ * the same for all, has the plain hood) in him, in its own colour; any other as the feed has it
+ */
+export function lookOnMap(
+  r: Pick<MapRoach, "id" | "clone" | "avatar" | "color">,
+  friend: boolean,
+  cloneLooks: ReadonlyMap<string, Look>,
+  ducks: ReadonlySet<string>,
+): Pick<MapRoach, "avatar" | "color"> {
+  if (r.clone) return (friend && cloneLooks.get(r.id)) || { avatar: r.avatar, color: r.color };
+  return { avatar: ducks.has(r.id) ? "duck" : r.avatar, color: r.color };
 }

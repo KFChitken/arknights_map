@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { INK_LOOKS } from "../inkLook";
 import { SI_AT, SI_ID, SI_LINES, STAMPS, stampAt } from "../si";
 import { ROOMS, roomOf, STAY_MS } from "../siInn";
 import { deleteAccount } from "./account";
@@ -200,6 +201,27 @@ describe("祀掌柜", () => {
     await deleteAccount(await user(me));
     expect(await db.select().from(siInks)).toEqual([expect.objectContaining({ no: 1, userId: null, look: "gugu" })]);
     expect(await db.select().from(siTouches)).toEqual([]);
+  });
+
+  it("draws 鸭爵 as the hood in ink, having no ink picture of his own yet, and never draws a crowd's ink roach as him", async () => {
+    const me = await signUp("me@example.com", "duck");
+    await touch(me, false);
+    expect(await db.select().from(siInks)).toEqual([expect.objectContaining({ no: 1, userId: me, look: "hood" })]);
+    expect((await world.me(me))!.si.inn).toMatchObject({ inkNo: 1, look: "hood" });
+    // one kept as him all the same is drawn as the hood, in the tiles too
+    await db.update(siInks).set({ look: "duck" }).where(eq(siInks.no, 1));
+    forgetInkSnapshot();
+    expect((await world.me(me))!.si.inn).toMatchObject({ inkNo: 1, look: "hood" });
+    const drawn = [];
+    for (const t of tilesOver({ lng: 117.97, lat: 29.99 }, { lng: 118.0, lat: 30.02 }, INK_TILE_ZOOM, 400)) {
+      drawn.push(...decodeTile(t.x, t.y, INK_TILE_ZOOM, await inkTile(t.x, t.y)));
+    }
+    expect(drawn.map((p) => p.look)).toEqual([INK_LOOKS.indexOf("hood")]);
+    // till 300 are drawn in all
+    await si.pretendCrowd(300);
+    const crowd = (await db.select({ look: siInks.look, userId: siInks.userId }).from(siInks)).filter((r) => r.userId === null);
+    expect(crowd).toHaveLength(299);
+    expect(crowd.filter((r) => !(INK_LOOKS as readonly string[]).includes(r.look))).toEqual([]);
   });
 
   it("gives out places with no gaps or twins when many come at once, the first 2500 straight into their rooms", async () => {

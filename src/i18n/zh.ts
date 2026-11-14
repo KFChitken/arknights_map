@@ -1071,6 +1071,10 @@ export const zh = {
     quack: "嘎!",
     quackBack: "嘎！",
     guguGaga: "咕咕嘎嘎～",
+    whoosh: "嗖——",
+    contract: "合约",
+    stamp: "啪！",
+    uncork: "啵！",
   },
   cloneMove: {
     meters: "{from} {m} 米",
@@ -2229,6 +2233,7 @@ export const zh = {
       endmin: "管理员",
       imp: "绝对主角",
       gugu: "咕咕嘎嘎",
+      duck: "鸭爵",
     },
     color: {
       cyan: "青色",

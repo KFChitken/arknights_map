@@ -1,9 +1,9 @@
 import "server-only";
 import { gt } from "drizzle-orm";
+import { INK_LOOKS } from "../inkLook";
 import { homeSpot } from "../siHomes";
 import { brushOf, queueSpot, roomOf, roomSpot, STAY_MS, toLngLat, toXY } from "../siInn";
 import { encodeInk, INK_BYTES, INK_TILE_ZOOM, pointOf, tapOf, tileOf } from "../siTiles";
-import { ROACH_AVATARS } from "../types";
 import { db } from "./db";
 import { siInks, siTickets } from "./schema";
 import { siNow } from "./siClock";
@@ -19,14 +19,15 @@ import { siNow } from "./siClock";
  */
 
 const REFRESH_MS = 30_000;
-const LOOKS = ROACH_AVATARS as readonly string[];
+/** The looks with an ink picture, numbered as ROACH_AVATARS numbers them; any other is drawn as the hood */
+const LOOKS = INK_LOOKS as readonly string[];
 
 export type Snapshot = {
   /** Highest ink number, ticket and si_inks.changed held */
   lastNo: number;
   lastN: number;
   lastChanged: number;
-  /** By ink number: look (index into ROACH_AVATARS), latest ticket, tap number (siTiles.ts tapOf), held (1) or not, sealed (1) or not */
+  /** By ink number: look (index into INK_LOOKS, as into ROACH_AVATARS), latest ticket, tap number (siTiles.ts tapOf), held (1) or not, sealed (1) or not */
   look: Uint8Array;
   ticket: Uint32Array;
   tap: Uint32Array;

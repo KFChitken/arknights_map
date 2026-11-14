@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MOD_ONLY, MOD_OPS, OWNER_ONLY, VIEW_LIMIT } from "@/lib/adminConsole";
@@ -26,6 +26,7 @@ import {
   sessions,
   statCounts,
   statSnapshots,
+  userBadges,
   users,
 } from "@/lib/server/schema";
 import { forgetStatCounts, saveStatCounts } from "@/lib/server/stats";
@@ -630,6 +631,21 @@ describe("moderators in the 管理台", () => {
     }
     expect(await db.$count(sessions, and(eq(sessions.userId, mod.user.id), sql`${sessions.adminUntil} is not null`))).toBe(0);
     expect(await db.$count(adminLog, eq(adminLog.actorAlias, "小林"))).toBeGreaterThan(0);
+  });
+
+  it("takes 鸭爵 off a removed moderator, unless they hold 服务器饲养员", async () => {
+    const boss = await owner();
+    const mod = await moderator("mod@example.com", "小林");
+    const sponsor = await moderator("other@example.com", "阿杰");
+    const both = [mod.user.id, sponsor.user.id];
+    await db.update(users).set({ avatar: "duck" }).where(inArray(users.id, both));
+    await db.insert(userBadges).values({ userId: sponsor.user.id, badge: "feeder" });
+    use(boss.here);
+    later(30_000);
+    expect((await call("removeAdmin", [{ userId: mod.user.id }], { fresh: codeNow(boss.secret) })).status).toBe(200);
+    expect((await call("removeAdmin", [{ userId: sponsor.user.id }])).status).toBe(200);
+    const looks = await db.select({ id: users.id, avatar: users.avatar }).from(users).where(inArray(users.id, both));
+    expect(Object.fromEntries(looks.map((u) => [u.id, u.avatar]))).toEqual({ [mod.user.id]: "hood", [sponsor.user.id]: "duck" });
   });
 
   it("marks for the owner the cases about the 管理台's people, and settles them as any other", async () => {

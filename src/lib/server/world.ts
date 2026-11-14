@@ -36,7 +36,7 @@ import { queueSpots, stopOf } from "../minghe";
 import { INK_FROM, INK_PREFIX, INK_SLOT } from "../si";
 import { INN_CENTER } from "../siInn";
 import { INK_TILE_ZOOM, tapOf } from "../siTiles";
-import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
+import { ROACH_COLORS, type LngLat } from "../types";
 import { isBotId } from "../world/bots";
 import { passerbyMoves, type Move } from "../world/cast";
 import {
@@ -157,6 +157,7 @@ import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
 import { canSeeDeclaration, seeDeclarations, spotRows, visibleDeclarations, type SeenDeclaration } from "./declarationInbox";
+import { badgeIdsOf, drawnLook, duckShownBetween, ducksOnMapFor, ducksSeenAmong, lookToSave, ownLook, pickableLooks } from "./looks";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import { countCapped, countDeclared, countGuide, countIgnored, countPlaced, countReply, countTouch } from "./stats";
 import { markIfWatched } from "./watchPlaces";
@@ -268,7 +269,7 @@ export function profileOf(u: UserRow): Profile {
     flipWhenAway: u.flipWhenAway,
     welcomeGuests: u.welcomeGuests,
     showListening: u.showListening,
-    avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
+    avatar: drawnLook(u.avatar),
     color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
     support: checkSupport(u.support),
   };
@@ -304,10 +305,13 @@ export function profileColumns(p: Profile) {
 export async function cardsOf(people: UserRow[], viewerId: string | null) {
   const badges = await shownBadges(people, () => thanksShownTo(viewerId));
   const worn = await wornPasses(people, viewerId);
+  // 鸭爵 where DUCK shows him to this viewer (looks.ts), else the plain hood, as profileOf draws him for all
+  const ducks = await ducksSeenAmong(viewerId, people);
   return new Map(
     people.map((u): [string, PublicProfile] => {
       const pass = worn.get(u.id);
-      return [u.id, { ...publicProfileOf(profileOf(u)), ...badges.get(u.id), ...(pass ? { pass } : {}) }];
+      const duck = ducks.has(u.id) ? { avatar: "duck" as const } : {};
+      return [u.id, { ...publicProfileOf(profileOf(u)), ...duck, ...badges.get(u.id), ...(pass ? { pass } : {}) }];
     }),
   );
 }
@@ -399,7 +403,9 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
   if (daysAway >= AWAY_DAYS) await wakeUp(u.id);
   const mine = await ownRoaches(u.id);
   // the thanks for sponsoring only while SPONSOR shows them to this player (src/lib/server/sponsor.ts)
-  const badges = (await earnedBy(u.id)).filter((b) => !badgeById(b.id)?.sponsor || sponsorOpen(u));
+  const earned = await earnedBy(u.id);
+  const badges = earned.filter((b) => !badgeById(b.id)?.sponsor || sponsorOpen(u));
+  const ducks = await ducksOnMapFor(u);
   const movesLeft = Math.max(0, MOVES_PER_DAY - (await recentMoves(u.id, "move")));
   const isNew = Date.now() - u.createdAt.getTime() < NEWCOMER_DAYS * DAY;
   // only asked for while the tutorial can still show; a young account's records are far from the 90-day clean-up
@@ -410,7 +416,8 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
   const now = Date.now();
   return {
     id: u.id,
-    profile: profileOf(u),
+    // their own look as they see it: 鸭爵 while DUCK shows him to them (src/lib/server/looks.ts)
+    profile: { ...profileOf(u), avatar: ownLook(u) },
     roaches: mine,
     movesLeft,
     touchesLeft: Math.max(0, TOUCHES_PER_DAY - (await touchesToday(u.id, now))),
@@ -421,6 +428,9 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     hasTouched: Boolean(touched),
     badges,
     wornBadge: badges.some((b) => b.id === u.wornBadge) ? u.wornBadge : null,
+    looks: pickableLooks(u, earned.map((b) => b.id)),
+    // while DUCK is admins, the 站长 and the admins see one another in 鸭爵: which main roaches on the map are him (looks.ts)
+    ...(ducks ? { ducks } : {}),
     counts: {
       friends: u.friendsEver,
       responders: await respondersOf(u.id),
@@ -539,6 +549,9 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
   // checked even while anonymous: the name is kept, and shows again once they go by it
   else await checkName(profile.name);
   await checkCleared(userId, profile);
+  // 鸭爵, the thanks for sponsoring, only for those DUCK lets pick him (looks.ts); anyone else keeps the look they had
+  const who = { id: userId, email: before?.email ?? null };
+  profile = { ...profile, avatar: lookToSave(profile.avatar, before?.avatar, who, await badgeIdsOf(userId)) };
   // 触须之交 see 「换了助战」 for the latest change only
   const changed = (before?.support ?? []).join("|") !== profile.support.join("|");
   await db
@@ -549,7 +562,8 @@ export async function saveProfile(userId: string, input: Profile): Promise<Profi
   if (before?.welcomeGuests && !profile.welcomeGuests) await closeHouse(userId);
   // the main roach wears the profile's look
   roachesChanged();
-  return profile;
+  // as they see it: 鸭爵 kept while he is not shown to them reads as the hood (looks.ts)
+  return { ...profile, avatar: ownLook({ ...who, avatar: profile.avatar }) };
 }
 
 /**
@@ -1626,7 +1640,8 @@ export async function friends(userId: string): Promise<Friend[]> {
       roaches: theirRoaches.map((r) => ({
         id: r.publicId,
         clone: r.slot > 0,
-        ...lookOf(r.slot, u.avatar, u.color),
+        // 鸭爵 where DUCK shows him to you (looks.ts); TA's clones take TA's main roach's look on your map (world/friendLooks.ts)
+        ...lookOf(r.slot, u.avatar, u.color, duckShownBetween(self, u)),
         friend: true,
         lng: r.lng,
         lat: r.lat,

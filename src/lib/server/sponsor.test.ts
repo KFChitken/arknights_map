@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as adminRoute } from "@/app/api/admin/[op]/route";
@@ -109,7 +109,7 @@ describe("支持舟P地图", () => {
     expect(await sponsorCard(null)).toBeNull();
 
     await saveSponsorSettings({ enabled: true, afdian: ` ${LINK} ` });
-    expect(await sponsorCard(null)).toEqual({ afdian: LINK, kofi: null, month: null, repaying: false });
+    expect(await sponsorCard(null)).toEqual({ afdian: LINK, kofi: null, month: null, repaying: false, looks: [] });
     expect(await sponsorForAdmin()).toMatchObject({ enabled: true, afdian: LINK, kofi: "", shows: true });
     expect(await db.$count(sponsorSettings)).toBe(1);
 
@@ -307,6 +307,38 @@ describe("whom SPONSOR shows 支持舟P地图 to", () => {
     expect(all.map((u) => sponsorOpen(u))).toEqual([false, false, false, false]);
     vi.stubEnv("SPONSOR", "");
     expect(sponsorOpen(boss)).toBe(false);
+  });
+
+  it("lists 鸭爵 among the thanks only to those DUCK shows him to", async () => {
+    const boss = await signIn("owner@example.com");
+    const helper = await mod("mod@example.com");
+    const someone = await signIn("someone@example.com");
+    await saveSponsorSettings({ enabled: true, afdian: LINK });
+    const looks = async () => Promise.all([boss, helper, someone, null].map(async (u) => (await sponsorCard(u))?.looks));
+    expect(await looks()).toEqual([[], [], [], []]);
+    vi.stubEnv("DUCK", "admins");
+    expect(await looks()).toEqual([["duck"], ["duck"], [], []]);
+    vi.stubEnv("DUCK", "on");
+    expect(await looks()).toEqual([["duck"], ["duck"], ["duck"], ["duck"]]);
+  });
+
+  it("draws 鸭爵 on cards between the 站长 and the admins alone while DUCK is admins", async () => {
+    const boss = await signIn("owner@example.com");
+    const helper = await mod("mod@example.com");
+    const someone = await signIn("someone@example.com");
+    // all three in him, as the database keeps him whatever DUCK says (someone, say, from a 服务器饲养员 once theirs)
+    await db.update(users).set({ avatar: "duck" }).where(inArray(users.id, [boss.id, helper.id, someone.id]));
+    const people = await Promise.all([boss, helper, someone].map(async (u) => (await userById(u.id))!));
+    const seen = async () =>
+      Promise.all([boss, helper, someone, null].map(async (v) => [...(await cardsOf(people, v?.id ?? null)).values()].map((c) => c.avatar)));
+    const hoods = ["hood", "hood", "hood"];
+    expect(await seen()).toEqual([hoods, hoods, hoods, hoods]);
+    // the 站长 (known by the email alone) and the admin see each other in him; one in him who is no admin is the hood to all
+    vi.stubEnv("DUCK", "admins");
+    expect(await seen()).toEqual([["duck", "duck", "hood"], ["duck", "duck", "hood"], hoods, hoods]);
+    vi.stubEnv("DUCK", "on");
+    const ducks = ["duck", "duck", "duck"];
+    expect(await seen()).toEqual([ducks, ducks, ducks, ducks]);
   });
 
   it("answers the card and /support as if nothing were there to anyone it is not shown to, and tells the owner whom it is shown to", async () => {

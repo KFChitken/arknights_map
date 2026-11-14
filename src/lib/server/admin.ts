@@ -67,15 +67,16 @@ import {
   type RoachReportReason,
   type RuleCode,
 } from "../safety";
-import { ROACH_AVATARS, ROACH_COLORS } from "../types";
+import { ROACH_COLORS } from "../types";
 import { DAY } from "../world/logic";
 import { banAccount, banOf } from "./account";
-import { logAdmin, staffRoles, type Actor } from "./admins";
+import { isModHere, logAdmin, staffRoles, type Actor } from "./admins";
 import { award } from "./badges";
 import { db } from "./db";
-import { ADMIN_EMAILS, sponsorMode } from "./env";
+import { ADMIN_EMAILS, duckMode, sponsorMode } from "./env";
 import { HttpError } from "./http";
 import { nameJudgeNow } from "./nameWords";
+import { drawnLook, SPONSOR_BADGE, takeOffDuck } from "./looks";
 import { roachByFeedId, roachesChanged } from "./roachFeed";
 import { clearBoth, clearName, clearUid, releaseProfile, reliableReporter, ROACH_KEYS } from "./safety";
 import {
@@ -374,7 +375,8 @@ async function people(ids: string[], now: number, staff?: Map<string, AdminRole>
       anonymous: heldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous,
       heldAt: heldAt?.getTime() ?? null,
       drPrefix: u.drPrefix,
-      avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
+      // the 站长 and the admins see 鸭爵 here unless DUCK is off (looks.ts)
+      avatar: drawnLook(u.avatar, duckMode() !== "off"),
       color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
       joinedAt: u.createdAt.getTime(),
       email: u.email ?? "",
@@ -908,6 +910,8 @@ export async function setBadge(email: string, badge: string, give: boolean, by: 
     .returning({ badge: userBadges.badge });
   if (!gone.length) throw new HttpError(400, "TA 没有这个称号。");
   if (u.wornBadge === badge) await db.update(users).set({ wornBadge: null }).where(eq(users.id, u.id));
+  // without 服务器饲养员, 鸭爵 is off: back to the plain hood (the 站长 and the admins may still wear him)
+  if (badge === SPONSOR_BADGE && (await takeOffDuck(u.id, isModHere(u.id)))) roachesChanged();
   if (by) await logAdmin(by, "act", "act.badge", { targetId: u.id, detail: `收回了称号「${badgeById(badge)?.name ?? badge}」` });
 }
 

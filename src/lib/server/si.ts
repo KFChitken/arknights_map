@@ -2,12 +2,13 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { and, desc, eq, gt, gte, isNotNull, isNull, lte, max, sql } from "drizzle-orm";
 import { T } from "@/i18n";
+import { INK_LOOKS, inkLook } from "../inkLook";
 import { MAX_CLONES } from "../rules";
 import { answerKind, deviceHour, paintingStart, RECALL_REST_MS, SI, SI_LINES, siRoach, stampAt, STAMPS_PER_ROUND } from "../si";
 import { homeSpot, homesReach } from "../siHomes";
 import { ROOMS, roomOf, STAY_MS, toLngLat } from "../siInn";
 import { tapOf } from "../siTiles";
-import { ROACH_AVATARS, type RoachAvatar } from "../types";
+import type { RoachAvatar } from "../types";
 import { WorldError, type SiInk, type SiItem, type SiMe, type SiState, type SiTouch, type TouchResult } from "../world/types";
 import { award } from "./badges";
 import { db } from "./db";
@@ -96,7 +97,8 @@ function inkState(
   checkedIn: number,
   now: number,
 ): SiInk {
-  const look = (ROACH_AVATARS as readonly string[]).includes(ink.look) ? (ink.look as RoachAvatar) : "hood";
+  // only the looks with an ink picture: 鸭爵 has none yet, and is drawn as the hood in ink (lib/inkLook.ts)
+  const look: RoachAvatar = inkLook(ink.look);
   const h = homeSpot(ink.no);
   const at = { inkNo: ink.no, look, home: toLngLat(h.x, h.y), tap: tapOf(ink.publicId), sealed: ink.sealed };
   if (!ticket || ink.recalledAt) return { state: "held", ...at, recalledAt: ink.recalledAt?.getTime() ?? null, checkoutAt: 0 };
@@ -225,7 +227,8 @@ async function innAfterTouch(
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext('si-inn'))`);
   // tickets go out in the order the lock is had, so their time is taken now, not before waiting for it
   now = Math.max(now, siNow());
-  const drawnLook = (ROACH_AVATARS as readonly string[]).includes(u.avatar) ? u.avatar : "hood";
+  // she draws them in a look with an ink picture: 鸭爵 has none yet, so he is drawn (and kept) as the hood
+  const drawnLook = inkLook(u.avatar);
   let inkNo = ink?.no;
   if (!inkNo) {
     const [{ last }] = await tx.select({ last: max(siInks.no) }).from(siInks);
@@ -730,7 +733,7 @@ export async function pretendCrowd(total: number) {
         const freed = checkin.get(n - ROOMS);
         const at = Math.max(now, checkin.get(n - 1) ?? 0, freed !== undefined ? freed + STAY_MS : 0);
         checkin.set(n, at);
-        inks.push({ no: from + i, userId: null, look: ROACH_AVATARS[randomInt(ROACH_AVATARS.length)], drawnAt: new Date(now), ticket: n });
+        inks.push({ no: from + i, userId: null, look: INK_LOOKS[randomInt(INK_LOOKS.length)], drawnAt: new Date(now), ticket: n });
         tickets.push({ n, inkNo: from + i, again: false, queuedAt: new Date(now), checkinAt: new Date(at) });
       }
       await tx.insert(siInks).values(inks);

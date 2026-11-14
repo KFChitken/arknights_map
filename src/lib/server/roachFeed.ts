@@ -6,13 +6,14 @@ import { promisify } from "node:util";
 import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import { and, asc, eq, gt, gte, inArray, lt, lte, max, or, sql } from "drizzle-orm";
 import { isNearFire } from "../talulah";
-import { ROACH_AVATARS, ROACH_COLORS, type LngLat } from "../types";
+import { ROACH_COLORS, type LngLat } from "../types";
 import { boxText, inBox, overviewCell, type Area, type Box } from "../world/area";
 import { botRoaches } from "../world/bots";
 import { nearMetre, packRoaches, SHORT_ID, shortIds } from "../world/packed";
 import type { MapRoach } from "../world/types";
 import { db } from "./db";
 import { SHOW_BOTS } from "./env";
+import { drawnLook } from "./looks";
 import { countNear, snapSpot } from "./nearby";
 import { roachChanges, roaches, users } from "./schema";
 import { inksOnMap } from "./siInk";
@@ -93,11 +94,15 @@ const OLD_SPREAD_MS = 60 * 60_000;
 /** A version as pages hold it: the epoch (random hex) and a number */
 const VERSION = /^[0-9a-f]{8}\.\d{1,12}$/;
 
-/** How a roach looks to others: its owner's look, except that clones all look alike, so a clone cannot point at its main roach. */
-export function lookOf(slot: number, avatar: string, color: string) {
+/**
+ * How a roach looks to others: its owner's look (as drawn: looks.ts; duck, whether it is 鸭爵 to the one looking, by
+ * default as in the feed, which is the same for all), except that clones all look alike, so a clone cannot point at
+ * its main roach.
+ */
+export function lookOf(slot: number, avatar: string, color: string, duck?: boolean) {
   return slot > 0
     ? { avatar: "hood" as const, color: "white" as const }
-    : { avatar: ROACH_AVATARS.find((a) => a === avatar) ?? "hood", color: ROACH_COLORS.find((c) => c === color) ?? "cyan" };
+    : { avatar: drawnLook(avatar, duck), color: ROACH_COLORS.find((c) => c === color) ?? "cyan" };
 }
 
 /** The forms a page can ask for (?f=): 1 the list, 2 packed with public ids, 3 packed with short ids */

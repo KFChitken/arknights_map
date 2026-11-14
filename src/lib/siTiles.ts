@@ -55,7 +55,7 @@ export type InkState = 0 | 1 | 2;
 export type InkCell = {
   fx: number;
   fy: number;
-  /** Index into ROACH_AVATARS */
+  /** Index into INK_LOOKS (src/lib/inkLook.ts), the looks with an ink picture, as into ROACH_AVATARS */
   look: number;
   state: number;
   /** Facing left on screen (standing), or its head to the left (lying) */

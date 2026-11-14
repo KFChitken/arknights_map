@@ -12,9 +12,11 @@ import {
   type SponsorView,
   type StartupPaid,
 } from "../sponsor";
+import { SPONSOR_AVATARS } from "../types";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
 import { sponsorMode } from "./env";
+import { duckShownTo } from "./looks";
 import { sponsorMonths, sponsorSettings, users, type UserRow } from "./schema";
 
 /**
@@ -113,6 +115,8 @@ export async function sponsorCard(viewer: Pick<UserRow, "id" | "email"> | null, 
     kofi: data.settings.kofi || null,
     month: cardMonth(rows, now),
     repaying: startup.repaid < startup.spent,
+    // 鸭爵 listed only to those DUCK shows him to (looks.ts), so no one else learns of him here
+    looks: SPONSOR_AVATARS.filter((a) => a !== "duck" || duckShownTo(viewer)),
   };
 }
 

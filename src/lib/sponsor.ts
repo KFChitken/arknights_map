@@ -1,5 +1,6 @@
 import { fmt, T } from "@/i18n";
 import { beijingDate } from "./beijing";
+import type { RoachAvatar } from "./types";
 
 /**
  * 支持舟P地图: a link out to the site's page on a sponsoring platform (爱发电, and Ko-fi once there is a link
@@ -58,6 +59,8 @@ export type SponsorView = {
   month: (LedgerRow & { current: boolean }) | null;
   /** Some of what starting the site cost is still to be paid back, so what is left over goes there first */
   repaying: boolean;
+  /** The looks kept for sponsors (SPONSOR_AVATARS) listed to this viewer: 鸭爵 only where DUCK shows him to them */
+  looks: RoachAvatar[];
   /** The signed-in player's own login email, for 复制我的登录邮箱; null for visitors */
   email: string | null;
 };

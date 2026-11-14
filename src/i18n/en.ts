@@ -927,6 +927,10 @@ export const en: Draft<Messages> = {
     quack: "Gah!",
     quackBack: "Gah!",
     guguGaga: "Gugu gaga~",
+    whoosh: "Zoom!",
+    contract: "Deal",
+    stamp: "Stamp!",
+    uncork: "Pop!",
   },
   cloneMove: {
     meters: "{from} {m} m",
@@ -1674,6 +1678,7 @@ export const en: Draft<Messages> = {
       endmin: "Endministrator",
       imp: "The Protagonist",
       gugu: "Gugu Gaga",
+      duck: "Duck Lord",
     },
     color: {
       cyan: "Cyan",

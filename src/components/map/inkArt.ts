@@ -1,4 +1,5 @@
-import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
+import { inkLook, inkPicture, type InkLook } from "@/lib/inkLook";
+import { ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import { GLOW } from "@/lib/roachSvg";
 import type { PaintingTier } from "@/lib/si";
 import { rolledSvg, scrollSvg, SEAL_RED } from "@/lib/siArt";
@@ -12,12 +13,13 @@ import { INK, RING_PAD } from "./siLook";
  * with today's painting; her butterflies.
  */
 
-export const INK_LOOKS = ROACH_AVATARS;
+// the looks with an ink picture: 鸭爵 has none yet, and is drawn as the hood in ink (lib/inkLook.ts)
+export { INK_LOOKS, inkLook, type InkLook } from "@/lib/inkLook";
 export type InkVariant = "standR" | "standL" | "lieL" | "lieR";
 export const INK_VARIANTS: InkVariant[] = ["standR", "standL", "lieL", "lieR"];
 
 /** Where each figure sits across its picture (px of 256), to lay it down on its side (the cut-out's own measures) */
-const SPAN: Record<RoachAvatar, [number, number]> = {
+const SPAN: Record<InkLook, [number, number]> = {
   hood: [22, 234],
   doctor: [65, 191],
   endmin: [60, 196],
@@ -35,7 +37,7 @@ const SEAL_GLYPH = "M6.24 9.22H10.03V10.86H6.24ZM7.87 13.82 9.64 11.71V19.07H7.8
  * Where its middle sits on each figure (px of 256, the picture as it faces), low on its back as the design shows,
  * and how wide it is (of the picture): smaller on the slight figures than on the round hood
  */
-const SEAL_AT: Record<RoachAvatar, [number, number, number]> = {
+const SEAL_AT: Record<InkLook, [number, number, number]> = {
   hood: [190, 210, 0.2],
   doctor: [142, 178, 0.17],
   endmin: [148, 182, 0.17],
@@ -75,7 +77,7 @@ function drawSeal(g: CanvasRenderingContext2D, x: number, y: number, size: numbe
  * pad: on its back as it stands, the same spot the other way round as it faces left; lying, as the figure is turned,
  * on whichever side faces up. Its middle, its size, and how it is turned.
  */
-function sealSpot(look: RoachAvatar, variant: InkVariant, px: number, pad: number, box: number) {
+function sealSpot(look: InkLook, variant: InkVariant, px: number, pad: number, box: number) {
   const [sx, sy, w] = SEAL_AT[look];
   const k = box / 256;
   const size = w * box;
@@ -92,13 +94,12 @@ function sealSpot(look: RoachAvatar, variant: InkVariant, px: number, pad: numbe
   return variant === "lieL" ? { x: cx + down, y: cy - across, size, tilt: SEAL_TILT } : { x: cx - down, y: cy - across, size, tilt: -SEAL_TILT };
 }
 
-const url = (look: RoachAvatar) => `/avatars/ink-${look}.webp`;
-const pictures = new Map<RoachAvatar, Promise<HTMLImageElement>>();
-function picture(look: RoachAvatar) {
+const pictures = new Map<InkLook, Promise<HTMLImageElement>>();
+function picture(look: InkLook) {
   let p = pictures.get(look);
   if (!p) {
     const img = new Image();
-    img.src = url(look);
+    img.src = inkPicture(look);
     p = img.decode().then(() => img);
     p.catch(() => pictures.delete(look));
     pictures.set(look, p);
@@ -110,7 +111,8 @@ function picture(look: RoachAvatar) {
  * One look in one way, on a square canvas px wide; ring: your colour round it, for your own (RING_PAD of room);
  * sealed: her seal on its back
  */
-export async function inkCanvas(look: RoachAvatar, variant: InkVariant, px: number, ring?: RoachColor, sealed = false) {
+export async function inkCanvas(given: RoachAvatar, variant: InkVariant, px: number, ring?: RoachColor, sealed = false) {
+  const look = inkLook(given);
   const img = await picture(look);
   const c = document.createElement("canvas");
   c.width = c.height = px;
@@ -161,7 +163,7 @@ export async function inkCanvas(look: RoachAvatar, variant: InkVariant, px: numb
 
 /** The name each look and way, sealed or not, is registered under on a map */
 export const inkImageName = (look: number | RoachAvatar, variant: InkVariant, sealed = false) =>
-  `si-ink-${typeof look === "number" ? (INK_LOOKS[look] ?? "hood") : look}-${variant}${sealed ? "-sealed" : ""}`;
+  `si-ink-${inkLook(look)}-${variant}${sealed ? "-sealed" : ""}`;
 
 /** Which way an ink roach is drawn: standing (queuing or in a room) facing its way, or lying on its side */
 export const variantOf = (state: number, left: boolean): InkVariant => (state === 2 ? (left ? "lieL" : "lieR") : left ? "standL" : "standR");

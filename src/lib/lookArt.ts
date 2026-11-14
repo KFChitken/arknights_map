@@ -1,7 +1,7 @@
 import { groundOnly } from "./flipArt";
-import { pictureSvg } from "./roachImages";
+import { duckLayers, pictureSvg } from "./roachImages";
 import { LINE } from "./roachLine";
-import { hoodBody } from "./roachSvg";
+import { bodyOpacityFor, groundOf, heartOver, hoodBody, type RoachOpts } from "./roachSvg";
 import type { RoachAvatar } from "./types";
 
 /**
@@ -149,6 +149,117 @@ export const flaps = () =>
   svg64(`<g transform="translate(0 13.09) scale(0.7273)" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round">
 <path d="M14 18 C9 20 7 24 7.6 28"/><path d="M10 30 C5.6 32 4.2 36 5 40"/><path d="M17 33 C13 35.4 12 39 12.6 42.6"/>
 <path d="M74 18 C79 20 81 24 80.4 28"/><path d="M78 30 C82.4 32 83.8 36 83 40"/><path d="M71 33 C75 35.4 76 39 75.4 42.6"/></g>`);
+
+/** Who a roach drawn in parts is, for its ground, its heart and how see-through it is (roachSvg.ts) */
+export type Whose = Pick<RoachOpts, "mine" | "clone" | "friend">;
+const seeThrough = (whose: Whose, inner: string) => {
+  const o = bodyOpacityFor(whose);
+  return o < 1 ? `<g opacity="${o}">${inner}</g>` : inner;
+};
+
+/**
+ * 鸭爵 standing as the map draws him, in his three layers so they move apart (roachImages.ts duckLayers); flip: facing
+ * right, as he does on the left of a stage
+ */
+export const duckFigure = (whose: Whose, { flip = false } = {}) =>
+  svg64(groundOf(whose) + seeThrough(whose, duckLayers({ flip })) + heartOver(whose));
+
+/**
+ * 鸭爵 apart, as he runs off when touched boldly: what stays (his ground and a 触须之交's heart), his black case (which
+ * stays too, and jolts), and the rest of him, which runs
+ */
+export const duckApart = (whose: Whose) => ({
+  stays: svg64(groundOf(whose) + heartOver(whose)),
+  bcase: svg64(seeThrough(whose, duckLayers({ body: false, hat: false }))),
+  figure: svg64(seeThrough(whose, duckLayers({ bcase: false }))),
+});
+
+/** A gold coin (鸭爵), size px */
+export const coin = (size = 14) =>
+  svgBox(
+    "0 0 14 14",
+    size,
+    size,
+    `<circle cx="7" cy="7" r="6.1" fill="#ffcf3a" stroke="#9a6a00" stroke-width="1.2"/><circle cx="7" cy="7" r="3.9" fill="none" stroke="#d99a12" stroke-width="1"/><path d="M4.6 4.6 Q5.6 3.2 7.2 3.1" fill="none" stroke="#fff6cf" stroke-width="1.1" stroke-linecap="round"/>`,
+  );
+
+/** 鸭爵 一碰就跑: the treasure that pops out of his black case */
+export const loot = () =>
+  svgBox(
+    "0 0 18 18",
+    18,
+    18,
+    `<path d="M4 2.6 H14 L17 7 L9 16.4 L1 7 Z" fill="#7fd6ff" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>
+<path d="M1 7 H17 M6.4 2.6 L5.2 7 L9 16.4 L12.8 7 L11.6 2.6" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linejoin="round"/>
+<path d="M3.6 6 L5 3.8" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/>`,
+  );
+
+/** The dust he leaves as he dashes off */
+export const dust = () =>
+  svgBox(
+    "0 0 60 24",
+    60,
+    24,
+    `<g fill="#cfc8bb" stroke="#8a8274" stroke-width="1" opacity="0.9"><circle cx="12" cy="15" r="7"/><circle cx="24" cy="11" r="8.4"/><circle cx="38" cy="15" r="6.4"/><circle cx="50" cy="17" r="4.4"/><circle cx="5" cy="19" r="3.4"/></g>`,
+  );
+
+/** 鸭爵 签约: the contract that drops between the two feelers, headed word */
+export const contract = (word: string) =>
+  svgBox(
+    "0 0 36 44",
+    36,
+    44,
+    `<path d="M3 2 H26 L33 9 V42 H3 Z" fill="#fffdf6" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M26 2 V9 H33" fill="#ece4cf" stroke="${INK}" stroke-width="1.3" stroke-linejoin="round"/>
+<text x="16" y="12" text-anchor="middle" font-size="6.4" font-weight="800" font-family="${FONT}" fill="${INK}">${word}</text>
+<g stroke="#9aa1ad" stroke-width="1.2" stroke-linecap="round"><path d="M8 17 H28 M8 21.4 H28 M8 25.8 H22"/></g>
+<path d="M7.4 36.4 C9.6 32.6 11.2 38.6 13.4 34.8 C14.6 32.8 15.6 36.6 17.4 35.2" fill="none" stroke="#2f5fb0" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M7 38.8 H20" stroke="${INK}" stroke-width="0.9"/>`,
+  );
+
+/** The heart seal stamped on it */
+export const heartSeal = () =>
+  svgBox(
+    "0 0 20 20",
+    20,
+    20,
+    `<circle cx="10" cy="10" r="8.6" fill="rgba(255,79,139,0.12)" stroke="#e0336f" stroke-width="1.8"/>
+<path d="M10 15 C5.6 12 4.4 9.6 4.4 7.6 C4.4 5.8 5.8 4.6 7.4 4.6 C8.6 4.6 9.5 5.3 10 6.3 C10.5 5.3 11.4 4.6 12.6 4.6 C14.2 4.6 15.6 5.8 15.6 7.6 C15.6 9.6 14.4 12 10 15 Z" fill="#e0336f"/>`,
+  );
+
+/** 鸭爵's champagne, its base at (0 0) and its neck up; cork: still in it (in a group of its own, .ck, to pop) */
+const champagne = ({ cork = true } = {}) => `<g stroke="${LINE}" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M-3.8 -0.6 Q-3.8 0.6 -2.6 0.6 H2.6 Q3.8 0.6 3.8 -0.6 V-9.4 C3.8 -11.6 1.5 -12.2 1.4 -13.6 V-16.4 H-1.4 V-13.6 C-1.5 -12.2 -3.8 -11.6 -3.8 -9.4 Z" fill="#2f6b45" stroke-width="1.4"/>
+  <path d="M-1.7 -16.6 H1.7 L1.9 -12.6 C1.4 -12 -1.4 -12 -1.9 -12.6 Z" fill="#e8b43a" stroke-width="1"/>
+  <rect x="-3.8" y="-7.6" width="7.6" height="4.4" fill="#f6e7c1" stroke-width="0.9"/>
+  <path d="M-1.4 -5.4 H1.4" stroke="#b07d00" stroke-width="0.9"/>
+  <path d="M-2.4 -1.6 V-3 M-2.4 -9 V-10.2" stroke="#fff" stroke-width="0.9" opacity="0.55"/>
+  ${cork ? `<g class="ck"><path d="M-1.3 -16.4 V-17.6 C-2 -17.8 -2.2 -19.6 0 -19.8 C2.2 -19.6 2 -17.8 1.3 -17.6 V-16.4 Z" fill="#e2c391" stroke-width="0.9"/></g>` : ""}
+</g>`;
+
+/**
+ * 鸭爵 摄入酒精 (开香槟), each step on the 64 grid without his ground: the bottle in his wing tip, him drinking from it
+ * (its neck at his bill), him drunk with his hat askew; and the cork and the foam as it pops
+ */
+export const duckDrinking = () => ({
+  standing: svg64(duckLayers()),
+  bottle: svg64(`<g transform="translate(10.8 47.7) scale(0.75)">${champagne()}</g>`),
+  sip: svg64(duckLayers() + `<g transform="translate(12.6 16.4) rotate(143) scale(0.75) translate(0 16.4)">${champagne({ cork: false })}</g>`),
+  drunk: svg64(duckLayers({ hatTransform: "rotate(-13 26.4 9.7) translate(-1.2 1.4)" })),
+  cork: svgBox(
+    "0 0 12 10",
+    12,
+    10,
+    `<path d="M3.6 9 V6.2 C1.8 5.8 1.4 1.4 6 1.1 C10.6 1.4 10.2 5.8 8.4 6.2 V9 Z" fill="#e2c391" stroke="${LINE}" stroke-width="1.1" stroke-linejoin="round"/>`,
+  ),
+  foam: svgBox(
+    "0 0 34 30",
+    34,
+    30,
+    `<g fill="#fffbe9" stroke="${INK}" stroke-width="1.2"><circle cx="17" cy="22" r="5.4"/><circle cx="11" cy="16" r="4.4"/><circle cx="22.6" cy="15.2" r="4.6"/><circle cx="16.4" cy="9.4" r="4"/><circle cx="7" cy="8.4" r="2.6"/><circle cx="27.4" cy="7.6" r="2.4"/></g>
+<g fill="#fff"><circle cx="15.4" cy="20.4" r="1.4"/><circle cx="21.4" cy="13.6" r="1.1"/></g>`,
+  ),
+});
 
 /** A picture look standing, as its ground and the picture alone, to move the picture over a ground that stays */
 export const standingApart = (look: RoachAvatar) => ({ ground: svg64(groundOnly("mine")), figure: svg64(pictureSvg(look)) });

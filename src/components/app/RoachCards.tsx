@@ -20,6 +20,7 @@ import { RoachPassPeek } from "./passes/RoachPass";
 import { inkLine } from "./Si";
 import { touchesNow, turnsAtText, useTick, waitParts } from "./dayTurns";
 import type { inkNow } from "@/lib/siInn";
+import { inkPicture } from "@/lib/inkLook";
 
 /**
  * What someone else's roach is called on its card, and in the list of those lying on top of each other
@@ -529,7 +530,7 @@ export function MyRoachCard({
 function InkFigure({ look, lying }: { look: RoachAvatar; lying: boolean }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element -- one small WebP of our own, which next/image would only copy
-    <img className={`ink-figure${lying ? " lying" : ""}`} src={`/avatars/ink-${look}.webp`} alt="" width={44} height={44} />
+    <img className={`ink-figure${lying ? " lying" : ""}`} src={inkPicture(look)} alt="" width={44} height={44} />
   );
 }
 

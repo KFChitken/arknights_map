@@ -13,7 +13,7 @@ import { displayName, type Profile } from "@/lib/profile";
 import { GLOW } from "@/lib/roachSvg";
 import { MAX_FAVOURITES, NAME_MAX, siteName, UID_MAX } from "@/lib/rules";
 import { MAX_SUPPORT } from "@/lib/support";
-import { ROACH_AVATARS, ROACH_COLORS, type RoachAvatar, type RoachColor } from "@/lib/types";
+import { ROACH_AVATARS, ROACH_COLORS, SPONSOR_AVATARS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import type { BlockedPlayer } from "@/lib/world/types";
 import { MyBadgesRow } from "./Badges";
 import { OnlyMainsRow } from "./OnlyMainsSheet";
@@ -40,6 +40,9 @@ const AVATAR_NAMES: Record<RoachAvatar, string> = {
   },
   get gugu() {
     return T.profile.avatar.gugu;
+  },
+  get duck() {
+    return T.profile.avatar.duck;
   },
 };
 
@@ -75,6 +78,7 @@ export default function ProfileSheet({
   draft,
   badges,
   wornBadge,
+  looks = ROACH_AVATARS.filter((a) => !SPONSOR_AVATARS.includes(a)),
   blocked,
   held = false,
   tutorial,
@@ -101,6 +105,8 @@ export default function ProfileSheet({
   draft?: Profile;
   badges: EarnedBadge[];
   wornBadge: string | null;
+  /** The looks they may pick (鸭爵, the thanks for sponsoring, only for some); everyone's when not given */
+  looks?: readonly RoachAvatar[];
   blocked: BlockedPlayer[];
   /** Reports held the name and UIDs until the admin looks: they show greyed out, and cannot change */
   held?: boolean;
@@ -378,7 +384,7 @@ export default function ProfileSheet({
       <fieldset>
         <legend>{T.profile.avatarTitle}</legend>
         <div className="avatars" role="radiogroup" aria-label={T.profile.avatarTitle}>
-          {ROACH_AVATARS.map((a) => (
+          {looks.map((a) => (
             <button
               key={a}
               role="radio"

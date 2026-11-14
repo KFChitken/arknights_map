@@ -2,6 +2,7 @@
 
 import type { ReactNode, Ref } from "react";
 import { fmt, T } from "@/i18n";
+import { inkPicture } from "@/lib/inkLook";
 import { stackRows } from "@/lib/stackPick";
 
 /** One of those lying on top of each other, as the list shows it: its icon, what its card calls it, and where it is */
@@ -85,5 +86,5 @@ export function StackUnderGuide({ them, n, onOpen }: { them: string; n: number; 
 /** An ink roach of 缘缘庄 in the list: its ink picture, small */
 export function InkIcon({ look }: { look: string }) {
   // eslint-disable-next-line @next/next/no-img-element -- one small WebP of our own, which next/image would only copy
-  return <img className="stack-ink" src={`/avatars/ink-${look}.webp`} alt="" width={36} height={36} />;
+  return <img className="stack-ink" src={inkPicture(look)} alt="" width={36} height={36} />;
 }

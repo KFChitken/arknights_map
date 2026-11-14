@@ -3,7 +3,7 @@
 import { useEffect, type CSSProperties } from "react";
 import { T } from "@/i18n";
 import { drinkingHood, groundOnly, bottle, POKE_BANG, POKE_FINGER } from "@/lib/flipArt";
-import { drinkCup } from "@/lib/lookArt";
+import { drinkCup, duckDrinking } from "@/lib/lookArt";
 import { pictureSvg, sleepingZzz } from "@/lib/roachImages";
 import { GLOW } from "@/lib/roachSvg";
 import type { DrawnAvatar, RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
@@ -17,8 +17,9 @@ const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox=
 /**
  * Your own main roach, big, acting out 摄入酒精 (bottle up, glug, wobble, hiccup,
  * tip over) or 醒酒 (鲤鱼打挺). The hood holds the bottle; a picture with a cup of its
- * own (lib/lookArt.ts) drinks from that, on its ground; the realistic roach and the
- * other pictures just wobble and tip over. Seen only by the one who pressed.
+ * own (lib/lookArt.ts) drinks from that, on its ground; 鸭爵 pops a champagne and dozes
+ * off on his feet; the realistic roach and the other pictures just wobble and tip over.
+ * Seen only by the one who pressed.
  */
 export default function RoachActor({
   scene,
@@ -44,6 +45,26 @@ export default function RoachActor({
   const lay = (cls: string, html: string, style?: CSSProperties) => (
     <div className={`lay ${cls}`} style={style} dangerouslySetInnerHTML={{ __html: html }} />
   );
+  if (scene === "drink" && look === "cartoon" && avatar === "duck") {
+    // 开香槟: he shakes the bottle in his wing tip, 啵！ the cork and the foam fly, he drinks from it, sways with his hat
+    // askew and dozes off on his feet; his ground stays where it is
+    const d = duckDrinking();
+    return (
+      <div className="actor pic duck" data-state="drinking" aria-hidden="true">
+        {lay("base", svg(groundOnly("mine")))}
+        {lay("asleep", svg(pictureSvg(avatar, { asleep: true })))}
+        {lay("dk-stand", d.standing)}
+        {lay("dk-bottle", d.bottle)}
+        {lay("dk-sip", d.sip)}
+        {lay("dk-drunk", d.drunk)}
+        <div className="dk-cork" dangerouslySetInnerHTML={{ __html: d.cork }} />
+        <div className="dk-foam" dangerouslySetInnerHTML={{ __html: d.foam }} />
+        <span className="dk-uncork">{T.fx.uncork}</span>
+        <span className="glug">{T.fx.gulp}</span>
+        <span className="hic">{T.fx.hic}</span>
+      </div>
+    );
+  }
   const cup = scene === "drink" && look === "cartoon" ? drinkCup(avatar) : null;
   if (cup) {
     // the picture alone over its ground, which stays: it sips, wobbles, tips over (--fall) and sleeps
