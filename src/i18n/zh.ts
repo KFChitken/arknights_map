@@ -2307,6 +2307,7 @@ export const zh = {
       react325: { name: "3、2、5 反应", rule: "3、2、5 连着出来时，趁 5 还亮着拍一下", short: "反应" },
       echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
       find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
+      mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
     },
     stopwatch: {
       start: "开始",
@@ -2374,6 +2375,27 @@ export const zh = {
       time: "时间到，找到 {n} 个，再试一次",
       none: "时间到，一个也没找到，再试一次",
       result: "找到 {n} 个",
+    },
+    /** 心算快打 (src/lib/study/mental325.ts) */
+    mental325: {
+      start: "开始",
+      rule: "判断每道算式等不等于 325\n每道限时，连对 {streak} 道过关\n答错 {wrongs} 道结束",
+      /** The two answers */
+      yes: "= 325",
+      no: "≠ 325",
+      streak: "连对",
+      wrongs: "答错",
+      /** Read out for the dots */
+      streakSr: "连对 {n} 道，{of} 道过关",
+      wrongsSr: "答错 {n} 道，{of} 道结束",
+      /** Over a sum whose time ran out */
+      late: "时间到",
+      /** Under a sum answered wrong: what it makes */
+      not: "= {v}，不是 325",
+      is: "= 325，就是 325",
+      pass: "连对 {n} 道，过关！",
+      out: "答错 {wrongs} 道，这局到这儿，最多连对 {n} 道",
+      result: "连对 {n} 道",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",

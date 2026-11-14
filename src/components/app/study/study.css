@@ -104,7 +104,7 @@
 .sp-end { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 156px; padding: 6px 16px 16px; text-align: center; }
 .sp-end:not(.armed) button { pointer-events: none; }
 .sp-belly { display: block; height: 56px; margin-top: -10px; }
-.sp-verdict { margin: 0; font-size: 18px; font-weight: 800; line-height: 1.4; }
+.sp-verdict { margin: 0; font-size: 18px; font-weight: 800; line-height: 1.4; text-wrap: balance; }
 .sp-end .st-err { margin: 0; color: var(--st-red); font-size: 13px; line-height: 1.5; }
 .sp-btns { display: flex; gap: 10px; align-self: stretch; margin-top: auto; padding-top: 8px; }
 .sp-btns button { flex: 1; }
@@ -128,7 +128,8 @@
 .sw-start,
 .rx-start,
 .ec-start,
-.fd-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.fd-start,
+.mt-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
 .ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
@@ -144,11 +145,16 @@
 .rx-game[data-phase="count"] .rx-digit { color: #9aa1ab; }
 .rx-ready { position: absolute; top: 8%; left: 0; right: 0; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0.3em; text-align: center; }
 .rx-score { display: flex; gap: 20px; }
-.rx-tally { display: inline-flex; align-items: center; gap: 5px; }
-.rx-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
-.rx-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
-.rx-tally i.rx-on { border-color: var(--st-green); background: var(--st-green); }
-.rx-tally.rx-slips i.rx-on { border-color: var(--st-red); background: var(--st-red); }
+.rx-tally,
+.mt-tally { display: inline-flex; align-items: center; gap: 5px; }
+.rx-tally small,
+.mt-tally small { margin-right: 3px; color: var(--muted); font-size: 12.5px; }
+.rx-tally i,
+.mt-tally i { width: 11px; height: 11px; border: 1.5px solid #c3c8cf; border-radius: 50%; }
+.rx-tally i.rx-on,
+.mt-tally i.mt-on { border-color: var(--st-green); background: var(--st-green); }
+.rx-tally.rx-slips i.rx-on,
+.mt-tally.mt-wrongs i.mt-on { border-color: var(--st-red); background: var(--st-red); }
 .rx-under { min-height: 104px; }
 .rx-hint { max-width: 300px; white-space: pre-line; }
 .rx-said { margin: 0; font-size: 15px; font-weight: 800; line-height: 1.35; }
@@ -223,6 +229,53 @@
 .fd-ready p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; white-space: pre-line; }
 .fd-tip { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
 
+/* ---- 心算快打 (Mental325.tsx): a card for each sum, in from the right; only it and the dots change, nothing flashes ---- */
+.mt-game { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; }
+.mt-score { display: flex; gap: 18px; white-space: nowrap; }
+.mt-card {
+  position: relative; display: grid; place-items: center; width: min(100%, 340px); height: clamp(100px, calc(100vh - 356px), 180px);
+  height: clamp(100px, calc(100dvh - 356px), 180px); overflow: hidden; border: 4px solid #1b1d22; border-radius: 24px; background: #fff;
+  container-type: inline-size;
+}
+.mt-card.mt-idle { border-color: var(--st-line); }
+.mt-card.mt-idle p { margin: 0; padding: 0 18px; color: var(--muted); font-size: 14px; line-height: 1.7; text-align: center; white-space: pre-line; }
+.mt-sum { font-size: 40px; font-size: 13cqw; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mt-card.mt-right { border-color: var(--st-green); }
+.mt-card.mt-wrong { border-color: var(--st-red); }
+.mt-tick {
+  position: absolute; top: 10px; right: 12px; width: 30px; height: 30px; fill: none; stroke: var(--st-green); stroke-width: 3.2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.mt-late { position: absolute; top: 12px; left: 0; right: 0; color: var(--st-red); font-size: 13px; font-weight: 800; text-align: center; }
+.mt-truth { position: absolute; bottom: 18px; left: 0; right: 0; color: var(--st-red); font-size: 15px; font-weight: 800; text-align: center; }
+/* the sum's time, running down */
+.mt-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--st-soft); }
+.mt-bar i { display: block; height: 100%; background: #1b1d22; transform-origin: left; animation: mt-time linear forwards; }
+.mt-game:not([data-phase="ask"]) .mt-bar i { animation-play-state: paused; }
+@keyframes mt-time { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .mt-card { animation: mt-in 180ms ease-out; }
+  .mt-card.mt-wrong { animation: mt-shake 360ms ease-in-out; }
+}
+@keyframes mt-in { from { opacity: 0; transform: translateX(56px); } }
+@keyframes mt-shake {
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(3px); }
+}
+.mt-answers { display: flex; align-items: center; justify-content: center; gap: 12px; width: min(100%, 340px); min-height: 64px; }
+.mt-say {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 64px; padding: 0 8px; border: 3px solid #1b1d22;
+  border-radius: 18px; background: #fff; color: #1b1d22; font-size: 22px; font-weight: 800; white-space: nowrap;
+}
+.mt-say:active { background: var(--st-tint); }
+.mt-say:disabled { border-color: var(--st-line); color: #9aa1ab; }
+.mt-say kbd {
+  display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 4px; border: 1.5px solid #c3c8cf;
+  border-bottom-width: 3px; border-radius: 6px; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 700;
+}
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -236,6 +289,8 @@
   .ec-game { gap: 12px; }
   .ec-under { gap: 8px; min-height: 84px; }
   .fd-game { --fd-side: min(100%, 360px, calc(100vh - 261px)); --fd-side: min(100%, 360px, calc(100dvh - 261px)); gap: 8px; }
+  .mt-game { gap: 10px; }
+  .mt-card { height: clamp(96px, calc(100vh - 300px), 180px); height: clamp(96px, calc(100dvh - 300px), 180px); }
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
 @media (max-height: 520px) and (orientation: landscape) {
@@ -261,4 +316,12 @@
   .fd-grid { grid-column: 1; grid-row: 1 / 3; }
   .fd-top { flex-direction: column; align-items: center; align-self: end; gap: 4px; width: auto; }
   .fd-tip { align-self: start; text-align: center; }
+  .mt-game { display: grid; grid-template-columns: auto 250px; justify-content: center; align-items: center; gap: 12px 28px; }
+  .mt-card {
+    grid-column: 1; grid-row: 1 / 3; width: min(42vw, 300px);
+    height: clamp(96px, calc(100vh - 200px), 170px); height: clamp(96px, calc(100dvh - 200px), 170px);
+  }
+  .mt-score { grid-column: 2; flex-direction: column; align-items: center; gap: 6px; align-self: end; }
+  .mt-answers { grid-column: 2; align-self: start; width: 100%; min-height: 56px; }
+  .mt-say { height: 56px; font-size: 20px; }
 }
