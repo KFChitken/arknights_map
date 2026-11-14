@@ -218,7 +218,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
       await world.ignore(uid(), String(args[0]));
       break;
     case "react":
-      await world.react(talking(), String(args[0]), String(args[1]));
+      result = await world.react(talking(), String(args[0]), String(args[1]));
       break;
     // the admin asked them to say again they are 18 or older (src/lib/server/admin.ts)
     case "confirmAge":

@@ -8,6 +8,7 @@ import { heardGray } from "../grayMode";
 import { heardNoticeStamp } from "../notices";
 import type { Profile } from "../profile";
 import type { ReportReason, RoachReportReason } from "../safety";
+import type { PassesDot } from "../passes";
 import type { LngLat } from "../types";
 import { boxText, type Area, type Box } from "./area";
 import {
@@ -176,8 +177,8 @@ export class ServerWorld implements World {
   inbox = () => this.call<InboxItem[]>("inbox");
   newDeclarations = (after: number) => this.call<InboxItem[]>("newDeclarations", after);
   markSeen = (itemIds: string[]) => this.call<void>("markSeen", itemIds);
-  declare = (d: Declaration, from?: string[]) => this.call<{ reach: string }>("declare", d, from);
-  react = (itemId: string, reaction: string) => this.call<void>("react", itemId, reaction);
+  declare = (d: Declaration, from?: string[]) => this.call<{ reach: string } & PassesDot>("declare", d, from);
+  react = (itemId: string, reaction: string) => this.call<PassesDot>("react", itemId, reaction);
   ignore = (itemId: string) => this.call<void>("ignore", itemId);
   friends = () => this.call<Friend[]>("friends");
   unfriend = (friendId: string) => this.call<void>("unfriend", friendId);

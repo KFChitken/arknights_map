@@ -30,7 +30,7 @@ import { db } from "./db";
 import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { HttpError } from "./http";
 import { nudge } from "./live";
-import { earn, giftsOpen, passesOpen, receiveGift } from "./passes";
+import { giftsOpen, passesOpen, receiveGift } from "./passes";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import {
   declarations,
@@ -140,7 +140,6 @@ export async function remindSanity(userId: string, friendId: unknown) {
       .values({ fromUserId: userId, toUserId: other.id, kind: "sanity", period: today, asleep: sleeping(other, now), createdAt: new Date(now) });
   });
   countNote("sanity");
-  await earn(userId, "social");
   nudge([other.id]);
 }
 
@@ -232,7 +231,6 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
   });
   if (!made) throw new WorldError(AGAIN[kind as "blanket" | "water"] ?? fmt(T.server.friendly.actsUsedUp, { max: FRIEND_ACTS_PER_DAY }));
   countNote(kind);
-  await earn(userId, "social");
   nudge([other.id]);
   // 眠于树影之中: covered with a quilt while asleep, by this 触须之交
   if (kind === "blanket") await quilted(other.id, userId);
@@ -538,7 +536,6 @@ export async function visit(userId: string, friendId: unknown, publicId: unknown
   }
   countNote("visit");
   countPlaced(placement.slot, placement.existing);
-  await earn(userId, "social");
   roachesChanged();
   await arrivedAt(userId, seat);
   nudge([host.id]);

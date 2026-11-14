@@ -105,6 +105,7 @@ import {
 import { lagWatch, type LagWatch } from "@/lib/lag";
 import { countText } from "@/lib/counts";
 import MapStylePicker from "./app/MapStylePicker";
+import type { PassesDot } from "@/lib/passes";
 import { passesApi } from "@/lib/passesClient";
 import { ServerWorld } from "@/lib/world/server";
 import {
@@ -1638,10 +1639,17 @@ export default function MapApp({
     worldRef.current!.blocks().then(setBlocked, () => setBlocked([]));
   }, [profileOpen, me]);
 
+  /** 每日任务: a touch, a declaration or a reply that counted lights the dot on the 寻访 button at once (src/lib/passes.ts) */
+  const passesDotAfter = (result: unknown) => {
+    const dot = (result as PassesDot | null | undefined)?.passesDot;
+    if (typeof dot === "boolean") setMe((m) => (m?.passes && m.passes.dot !== dot ? { ...m, passes: { ...m.passes, dot } } : m));
+  };
+
   /** Run a world call; refusals become a toast. Resolves to undefined on failure. */
   async function act<T>(fn: (w: World) => Promise<T>, ok?: string): Promise<T | undefined> {
     try {
       const result = await fn(worldRef.current!);
+      passesDotAfter(result);
       if (ok) setToast(ok);
       return result;
     } catch (e) {
@@ -2624,7 +2632,7 @@ export default function MapApp({
   };
 
   const react = async (itemId: string, reaction: string) => {
-    const done = await act((w) => w.react(itemId, reaction).then(() => true));
+    const done = await act((w) => w.react(itemId, reaction).then((r) => r ?? {}));
     if (!done) return;
     setToast(T.map.inbox.reacted);
     keepSnapshot(await loadInbox());

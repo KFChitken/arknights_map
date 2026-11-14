@@ -1424,13 +1424,15 @@ export const passCounters = pgTable("pass_counters", {
 });
 
 /**
- * A player's tickets and wish list, made the first time they open 寻访 (with WELCOME_TICKETS). day is the site day
- * (src/lib/siteDay.ts) the counts of what play brought (social, guide, declare) and what 触须之交 gave (giftsIn) are
- * for: a row whose day is past reads as nothing brought yet, and is set back to 0 by the next write. miss: draws in a
- * row without anyone from the wish list; wishDay: the site day the list was last changed (null: never by the player,
- * the first was filled in from their 厨力); plain: characters they keep in the normal look though they own two or
- * more; onMap: strangers who open their main roach's card see the character they wear; drawnAt: their last draw, so
- * that every web process keeps to one a second.
+ * A player's tickets and wish list, made the first time they open 寻访 (with WELCOME_TICKETS), or by a 触须之交's gift
+ * before that (welcomed false). day is the site day (src/lib/siteDay.ts) the day's counts are for: how often they did
+ * each of the 每日任务 (touch, declare, reply, npc), how many tickets they claimed for each (touchGot…), and how many
+ * 触须之交 gave (giftsIn); a row whose day is past reads as nothing done yet, and is set back to 0 by the next write.
+ * social and guide are no longer written but for that: tickets that came by themselves, before 每日任务; kept so the
+ * program before it still runs. miss: draws in a row without anyone from the wish list; wishDay: the site day the
+ * list was last changed (null: never by the player, the first was filled in from their 厨力); plain: characters they
+ * keep in the normal look though they own two or more; onMap: strangers who open their main roach's card see the
+ * character they wear; drawnAt: their last draw, so that every web process keeps to one a second.
  */
 export const passWallets = pgTable("pass_wallets", {
   userId: uuid("user_id")
@@ -1441,6 +1443,13 @@ export const passWallets = pgTable("pass_wallets", {
   social: smallint("social").notNull().default(0),
   guide: smallint("guide").notNull().default(0),
   declare: smallint("declare").notNull().default(0),
+  touch: smallint("touch").notNull().default(0),
+  reply: smallint("reply").notNull().default(0),
+  npc: smallint("npc").notNull().default(0),
+  touchGot: smallint("touch_got").notNull().default(0),
+  declareGot: smallint("declare_got").notNull().default(0),
+  replyGot: smallint("reply_got").notNull().default(0),
+  npcGot: smallint("npc_got").notNull().default(0),
   giftsIn: smallint("gifts_in").notNull().default(0),
   welcomed: boolean("welcomed").notNull().default(false),
   miss: smallint("miss").notNull().default(0),

@@ -79,13 +79,22 @@
 .g-top b { font-size: 17px; }
 .g-top > * { min-width: 72px; }
 .g-back { border: 0; background: none; padding: 4px 0; text-align: left; color: #c8ccd3; font-size: 15px; }
-.tk { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; font: 700 19px/1 var(--font-num); color: var(--p-yellow); }
+.tk { position: relative; display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; font: 700 19px/1 var(--font-num); color: var(--p-yellow); }
 .tk i {
   width: 19px; height: 13px; border-radius: 2px; background: var(--p-yellow); display: inline-block;
   -webkit-mask: radial-gradient(circle at 0 50%, transparent 3.5px, #000 4px) left/51% 100% no-repeat, radial-gradient(circle at 100% 50%, transparent 3.5px, #000 4px) right/51% 100% no-repeat;
   mask: radial-gradient(circle at 0 50%, transparent 3.5px, #000 4px) left/51% 100% no-repeat, radial-gradient(circle at 100% 50%, transparent 3.5px, #000 4px) right/51% 100% no-repeat;
 }
 .tk em { font-style: normal; }
+/* tickets just claimed: the count jumps, and +n rises from under it (Passes.tsx leaves both out for less motion) */
+.tk.bump em { display: inline-block; animation: tk-bump 0.45s ease; }
+.tk-plus { position: absolute; right: 0; top: 100%; font: 700 15px/1 var(--font-num); color: var(--p-yellow); pointer-events: none; animation: tk-plus 0.9s ease forwards; }
+@keyframes tk-bump { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.35); } }
+@keyframes tk-plus { 0% { opacity: 0; transform: translateY(6px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-12px); } }
+@media (prefers-reduced-motion: reduce) {
+  .tk.bump em { animation: none; }
+  .tk-plus { display: none; }
+}
 .hb {
   position: relative; margin: 0 12px; border-radius: 16px; overflow: hidden; border: 1px solid var(--night-line);
   background: linear-gradient(160deg, #2b3039 0, #16181d 70%); padding: 13px 12px 12px;
@@ -120,13 +129,35 @@
 .hp-bar i.last.on { background: var(--p-yellow); }
 .hp-t { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: #c8ccd3; margin-top: 6px; }
 .hp-t b { font: 700 17px/1 var(--font-num); color: #fff; margin: 0 3px; }
-.g-today { margin: 12px 16px 0; background: rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 9px 11px; }
-.g-row { display: flex; justify-content: space-between; font-size: 12.5px; color: #d3d7dd; gap: 6px; }
-.g-row b { font: 700 16px/1.1 var(--font-num); color: #fff; white-space: nowrap; }
-.g-bar { height: 5px; background: rgba(255, 255, 255, 0.12); border-radius: 3px; margin: 5px 0 0; overflow: hidden; }
-.g-bar i { display: block; height: 100%; background: var(--p-yellow); border-radius: 3px; }
-.g-today.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
-.g-bar.pink i { background: #ff7fae; }
+/* 每日任务: a row a task, its boxes its tickets (solid: claimed, outlined: done, not claimed yet); a row to claim is a button */
+.g-task { margin: 12px 16px 0; background: rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 7px 8px 5px; }
+.gt-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 5px 5px; font-size: 12px; color: #aab1bc; }
+.gt-h > b { font-size: 14px; color: #fff; letter-spacing: 0.06em; white-space: nowrap; }
+.gt-h > b small { font-size: 11.5px; font-weight: 400; color: #8f97a3; letter-spacing: 0; margin-left: 6px; }
+.gt-h em { font-style: normal; white-space: nowrap; }
+.gt-h em b { font: 700 17px/1 var(--font-num); color: var(--p-yellow); margin: 0 3px 0 4px; }
+.gt-r {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 66px; align-items: center; gap: 8px; width: 100%; min-height: 30px;
+  margin: 0; padding: 0 5px; border: 0; border-radius: 8px; background: transparent; color: #e6e9ee; font-size: 13px; line-height: 1.2; text-align: left;
+}
+.gt-r + .gt-r { margin-top: 2px; }
+.gt-r svg { width: 16px; height: 16px; color: #8f97a3; }
+.gt-r .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt-r.can { background: rgba(255, 210, 63, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.4); }
+.gt-r.can svg { color: var(--p-yellow); }
+button.gt-r:hover { background: rgba(255, 210, 63, 0.17); }
+button.gt-r:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.gt-p { display: flex; gap: 3px; }
+.gt-p i { width: 10px; height: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.13); }
+.gt-p i.d { background: rgba(255, 210, 63, 0.22); box-shadow: inset 0 0 0 1px var(--p-yellow); }
+.gt-p i.g { background: var(--p-yellow); }
+.gt-x { justify-self: end; font-size: 12px; color: #8f97a3; white-space: nowrap; }
+.gt-x.can { background: var(--p-yellow); color: var(--p-ink); font-weight: 800; border-radius: 10px; padding: 3px 8px; }
+.gt-x.full { border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; padding: 2px 7px; }
+.gt-x.ok { color: #5ad18b; }
+.gt-r.gift { margin-top: 4px; border-top: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 0; padding-top: 3px; }
+.gt-r.gift svg { color: #ff7fae; }
+.gt-r.gift .gt-p i.g { background: #ff7fae; }
 .g-btns { display: grid; grid-template-columns: 1fr 1.35fr; gap: 10px; margin: 14px 16px 0; }
 .g-btns button {
   border-radius: 14px; text-align: center; padding: 10px 0; font-weight: 800; font-size: 16px; line-height: 1.35;

@@ -1,20 +1,39 @@
 /**
- * 通行证寻访: tickets earned by playing, spent to draw passes of the game characters, each pass numbered in the order
+ * 通行证寻访: tickets earned by playing (每日任务), spent to draw passes of the game characters, each pass numbered in the order
  * the whole site drew that character. The rules both sides go by; the server's part is src/lib/server/passes.ts,
  * the characters src/lib/passCatalog.ts. Nothing here reads the catalogue, so the map page can ask what it needs
  * (the entry's dot) without downloading it.
  */
 
-/** Tickets a player may hold; playing adds none past it, a 触须之交's gift goes past it */
+/** Tickets a player may hold; claiming brings none past it, a 触须之交's gift goes past it */
 export const TICKETS_CAP = 50;
 /** Tickets given once, the first time a player opens the page */
 export const WELCOME_TICKETS = 10;
-/** Tickets a site day (src/lib/siteDay.ts) brings for each kind of play, at most */
-export const EARN_CAPS = { social: 6, guide: 2, declare: 2 } as const;
-export type EarnKind = keyof typeof EARN_CAPS;
-export const EARN_KINDS = Object.keys(EARN_CAPS) as EarnKind[];
-/** All of them together: what 今天拿到 x / 10 counts to */
-export const DAY_TICKETS = EARN_KINDS.reduce((n, k) => n + EARN_CAPS[k], 0);
+/**
+ * 每日任务: what a player does that a ticket is claimed for on the 寻访 page, each done at most so many times a site day
+ * (src/lib/siteDay.ts) that counts: touching someone's roach (on the map or back from 消息, sneakily or boldly),
+ * declaring, answering someone's declaration (its reply chips), touching one of the guides (NPC). In the order the
+ * page lists them.
+ */
+export const TASK_MAX = { touch: 3, declare: 2, reply: 3, npc: 2 } as const;
+export type Task = keyof typeof TASK_MAX;
+export const TASKS = Object.keys(TASK_MAX) as Task[];
+export const isTask = (t: unknown): t is Task => typeof t === "string" && Object.hasOwn(TASK_MAX, t);
+/** All of them together: what 今天领了 x / 10 counts to */
+export const DAY_TICKETS = TASKS.reduce((n, k) => n + TASK_MAX[k], 0);
+/** One of the day's 每日任务 as the page shows it: done so many times today, so many of those claimed */
+export type TaskState = { task: Task; done: number; got: number; max: number };
+/** The tickets one may claim for a task now: done and not claimed yet, as many as TICKETS_CAP leaves room for */
+export const claimable = (t: Pick<TaskState, "done" | "got">, tickets: number) => Math.max(0, Math.min(t.done - t.got, TICKETS_CAP - tickets));
+/** The tickets done for and not claimed yet, all tasks together, room or not */
+export const unclaimed = (tasks: readonly Pick<TaskState, "done" | "got">[]) => tasks.reduce((n, t) => n + Math.max(0, t.done - t.got), 0);
+/** The tickets claimed today, all tasks together */
+export const gotToday = (tasks: readonly Pick<TaskState, "got">[]) => tasks.reduce((n, t) => n + t.got, 0);
+/** The dot on the 寻访 button: the first ten waiting, a ticket to claim (with room for it), or enough for a draw of ten */
+export const passesDot = (welcomed: boolean, tickets: number, tasks: readonly Pick<TaskState, "done" | "got">[]) =>
+  !welcomed || tickets >= 10 || (tickets < TICKETS_CAP && tasks.some((t) => t.done > t.got));
+/** What a touch, a declaration or a reply also brings back when it counted towards 每日任务: the dot after it, for the map to light at once */
+export type PassesDot = { passesDot?: boolean };
 /** Tickets a player may be given by their 触须之交 a site day; each 触须之交 gives one a day at most */
 export const GIFTS_IN_PER_DAY = 3;
 /**
@@ -55,8 +74,10 @@ export type Drawn = {
 /** The wallet as the page shows it, after every change */
 export type PassState = {
   tickets: number;
-  /** tickets this site day brought, by kind, and how many 触须之交 gave */
-  today: Record<EarnKind, number> & { giftsIn: number };
+  /** the day's 每日任务, in the order of TASKS */
+  tasks: TaskState[];
+  /** the tickets 触须之交 gave today */
+  giftsIn: number;
   /** catalogue ids, at most WISH_MAX; empty when the player never had any 厨力 and never picked */
   wish: number[];
   /** whether the wish list may still be changed this site day (picking the first one never counts) */
@@ -118,7 +139,7 @@ export type LogPage = { rows: LogRow[]; more: boolean };
 /** What me() carries for the map page's 寻访 button, when the player may draw */
 export type PassesMe = {
   tickets: number;
-  /** the dot on the button: tickets enough for a draw of ten, or the first ten waiting */
+  /** the dot on the button (passesDot) */
   dot: boolean;
   /** the pass they wear, for 我的资料 */
   worn: WornPass | null;

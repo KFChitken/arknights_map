@@ -1,6 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { fmt, T } from "@/i18n";
 import { characterName, nameMatches } from "@/i18n/names";
 import { fmtNodes } from "@/i18n/nodes";
@@ -8,14 +19,18 @@ import type { Game } from "@/lib/games";
 import { CATALOG_SIZE, catalogCounts, PASS_CATALOG, passChar, passCharNamed, type PassChar } from "@/lib/passCatalog";
 import {
   bestOf,
+  claimable,
   DAY_TICKETS,
-  EARN_CAPS,
   GIFTS_IN_PER_DAY,
+  gotToday,
   isFancy,
   padNo,
+  passesDot,
   PITY,
   pityLeft,
+  TASK_MAX,
   TICKETS_CAP,
+  unclaimed,
   WELCOME_TICKETS,
   WISH_MAX,
   type Collection,
@@ -26,6 +41,7 @@ import {
   type PassCopy,
   type PassesMe,
   type PassState,
+  type Task,
   type Tier,
   type WornPass,
 } from "@/lib/passes";
@@ -38,7 +54,7 @@ import "./passes.css";
 
 /**
  * 通行证寻访 (src/lib/passes.ts), over everything on the map in each of the three layouts: the page with the wish list,
- * the count towards a sure wish and the day's tickets; 刷券, where the passes a draw brought (decided by the server
+ * the count towards a sure wish and 每日任务 (whose tickets are claimed there, a tap on a task); 刷券, where the passes a draw brought (decided by the server
  * before anything shows) come out of a reader face down and are turned over one by one; 我的通行证 (each character
  * opens to their whole pass, its look and the one worn), the wish list's editor, 概率说明 and 寻访记录. ×, ‹ 地图,
  * a tap beside it and Escape close it, or step back a screen.
@@ -83,9 +99,12 @@ export default function Passes({
   walletRef.current = onWallet;
   const refusedRef = useRef(onRefused);
   refusedRef.current = onRefused;
+  // the wallet as the last answer had it, for what runs after an await
+  const stRef = useRef<PassState | null>(null);
   const took = useCallback((s: PassState) => {
+    stRef.current = s;
     setSt(s);
-    walletRef.current({ tickets: s.tickets, dot: s.tickets >= 10, worn: s.worn });
+    walletRef.current({ tickets: s.tickets, dot: passesDot(true, s.tickets, s.tasks), worn: s.worn });
   }, []);
   /** A refusal: the map page's own kinds there, the rest said here */
   const refuse = useCallback((e: unknown) => {
@@ -109,9 +128,62 @@ export default function Passes({
   }, [took]);
   useEffect(load, [load]);
 
+  // 每日任务: claims one after another, so each answer is the wallet after the one before it; a row tapped again
+  // before its answer came is not asked twice. Once claimed, the count of tickets jumps (not for less motion), a
+  // screen reader is told, and the focus goes on to the next row to claim, or to 寻访十次 (Home)
+  const claims = useRef<Promise<void>>(Promise.resolve());
+  const claiming = useRef(new Set<Task>());
+  const [bump, setBump] = useState<{ n: number; key: number } | null>(null);
+  const [said, setSaid] = useState("");
+  const [claimed, setClaimed] = useState(0);
+  const claim = (task: Task) => {
+    if (claiming.current.has(task)) return;
+    claiming.current.add(task);
+    setMsg("");
+    claims.current = claims.current.then(async () => {
+      try {
+        const was = stRef.current?.tasks.find((t) => t.task === task)?.got ?? 0;
+        const s = await passesApi.claim(task);
+        if (!live.current) return;
+        took(s);
+        const n = Math.max(0, (s.tasks.find((t) => t.task === task)?.got ?? 0) - was);
+        setSaid(fmt(T.passes.tasks.claimed, { n, tickets: s.tickets }));
+        if (n && !stillMotion()) setBump({ n, key: Date.now() });
+        setClaimed((k) => k + 1);
+      } catch (e) {
+        refuse(e);
+        // what the page shows may be of a day gone by, or behind the wallet: as it is now
+        if (!mapsOwn(e)) passesApi.open().then((s) => live.current && took(s), () => {});
+      } finally {
+        claiming.current.delete(task);
+      }
+    });
+  };
+  useEffect(() => {
+    if (!bump) return;
+    const t = window.setTimeout(() => setBump(null), 900);
+    return () => window.clearTimeout(t);
+  }, [bump]);
+
+  const pulling = useRef(false);
   const pull = async (n: DrawSize) => {
-    if (busy || !st) return;
-    if (st.tickets < n) return setMsg(T.passes.notEnough);
+    if (busy || pulling.current) return;
+    pulling.current = true;
+    try {
+      // a claim on its way first: its tickets count
+      await claims.current;
+      const now = stRef.current;
+      if (!now || !live.current) return;
+      if (now.tickets < n) {
+        const left = Math.min(unclaimed(now.tasks), TICKETS_CAP - now.tickets);
+        return setMsg(left > 0 ? fmt(T.passes.notEnoughClaim, { n: left }) : T.passes.notEnough);
+      }
+      await drawNow(n);
+    } finally {
+      pulling.current = false;
+    }
+  };
+  const drawNow = async (n: DrawSize) => {
     setBusy(true);
     setMsg("");
     try {
@@ -188,7 +260,21 @@ export default function Passes({
             )}
           </div>
         ) : screen === "home" ? (
-          <Home st={st} art={art} msg={msg} busy={busy} onPull={pull} onScreen={setScreen} onGift={onGift} onClose={onClose} hidden={Boolean(term)} />
+          <Home
+            st={st}
+            art={art}
+            msg={msg}
+            said={said}
+            busy={busy}
+            bump={bump}
+            claimed={claimed}
+            onPull={pull}
+            onClaim={claim}
+            onScreen={setScreen}
+            onGift={onGift}
+            onClose={onClose}
+            hidden={Boolean(term)}
+          />
         ) : screen === "wallet" ? (
           <Wallet st={st} art={art} holder={holder} stepBack={stepBack} onBack={() => setScreen("home")} onTook={took} onRefused={refuse} />
         ) : screen === "wish" ? (
@@ -205,7 +291,7 @@ export default function Passes({
             onRefused={refuse}
           />
         ) : screen === "odds" ? (
-          <Odds onBack={() => setScreen("home")} />
+          <Odds gifts={st.gifts} onBack={() => setScreen("home")} />
         ) : (
           <Log art={art} onBack={() => setScreen("home")} onRefused={refuse} />
         )}
@@ -264,11 +350,20 @@ const pressKeys = (fn: () => void) => (e: ReactKeyboardEvent) => {
   }
 };
 
-function TicketCount({ n }: { n: number }) {
+/** The tickets held; bump: just claimed so many, the count jumps and +n rises from it */
+function TicketCount({ n, bump }: { n: number; bump?: { n: number; key: number } | null }) {
   return (
-    <span className="tk" role="img" aria-label={fmt(T.passes.tickets, { n })}>
+    <span className={`tk${bump ? " bump" : ""}`} role="img" aria-label={fmt(T.passes.tickets, { n })}>
       <i aria-hidden="true" />
-      <em aria-hidden="true">{n}</em>
+      {/* a new key each claim, so the jump plays again */}
+      <em key={`n${bump?.key ?? ""}`} aria-hidden="true">
+        {n}
+      </em>
+      {bump && (
+        <span key={`p${bump.key}`} className="tk-plus" aria-hidden="true">
+          +{bump.n}
+        </span>
+      )}
     </span>
   );
 }
@@ -313,13 +408,115 @@ function WishSlots({ st, art, draft, onRemove }: { st: PassState; art: Art | nul
   );
 }
 
+/** The small pictures of 每日任务: a roach, a speech bubble, an arrow back, a star (the NPC), a gift */
+const TASK_ICON: Record<Task | "gift", ReactNode> = {
+  touch: (
+    <>
+      <ellipse cx="6.5" cy="8.7" rx="2.4" ry="3.1" />
+      <path d="M6.5 6.6v5M5.8 5.7C5.3 3.7 4.2 2.2 2.5 1.5M7.2 5.7c.5-2 1.6-3.5 3.3-4.2M4.1 8.2 2.3 7.4M4.1 10l-1.8.9M8.9 8.2l1.8-.8M8.9 10l1.8.9" />
+    </>
+  ),
+  declare: <path d="M2 2.6h9v6.1H6.2L3.4 11V8.7H2z" />,
+  reply: (
+    <>
+      <path d="M5.4 3 2 6.4l3.4 3.4" />
+      <path d="M2.4 6.4h5.4a3.2 3.2 0 0 1 3.2 3.2v.9" />
+    </>
+  ),
+  npc: <path d="m6.5 1.6 1.45 2.95 3.25.47-2.35 2.3.55 3.23L6.5 9.03 3.6 10.55l.55-3.23L1.8 5.02l3.25-.47z" />,
+  gift: (
+    <>
+      <rect x="1.9" y="5.2" width="9.2" height="6.3" rx="1" />
+      <path d="M1.4 3.3h10.2v1.9H1.4zM6.5 3.3v8.2M6.5 3.3C5.6 1.5 3.6 1.5 3.9 2.7c.3.6 1.6.6 2.6.6m0 0c.9-1.8 2.9-1.8 2.6-.6-.3.6-1.6.6-2.6.6" />
+    </>
+  ),
+};
+
+function TaskIcon({ k }: { k: Task | "gift" }) {
+  return (
+    <svg viewBox="0 0 13 13" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round">
+      {TASK_ICON[k]}
+    </svg>
+  );
+}
+
+/**
+ * 每日任务: a row a task, its little boxes its tickets of the day (solid: claimed, outlined: done and not claimed
+ * yet, grey: not done); a row with tickets to claim is the button that claims them (as many as TICKETS_CAP leaves
+ * room for: 满 50 张 when none). Under them, while 触须之交 may give them, the tickets given today: theirs at once.
+ */
+export function Tasks({ st, onClaim }: { st: PassState; onClaim: (task: Task) => void }) {
+  const t = T.passes.tasks;
+  return (
+    <div className="g-task">
+      <div className="gt-h">
+        <b>
+          {t.title}
+          <small>{t.refresh}</small>
+        </b>
+        <em>{fmtNodes(t.got, { b: <b>{gotToday(st.tasks)}</b>, n: DAY_TICKETS })}</em>
+      </div>
+      {st.tasks.map((k) => {
+        const name = t.name[k.task];
+        const n = claimable(k, st.tickets);
+        const max = k.max;
+        const inner = (
+          <>
+            <TaskIcon k={k.task} />
+            <span className="l">{name}</span>
+            <span className="gt-p" aria-hidden="true">
+              {Array.from({ length: max }, (_, i) => (
+                <i key={i} className={i < k.got ? "g" : i < k.done ? "d" : ""} />
+              ))}
+            </span>
+            {n > 0 ? (
+              <span className="gt-x can">{fmt(t.claim, { n })}</span>
+            ) : k.done > k.got ? (
+              <span className="gt-x full">{fmt(t.full, { n: TICKETS_CAP })}</span>
+            ) : k.got >= max ? (
+              <span className="gt-x ok">{t.done}</span>
+            ) : (
+              <span className="gt-x">{fmt(t.count, { done: k.done, max })}</span>
+            )}
+          </>
+        );
+        return n > 0 ? (
+          <button key={k.task} type="button" className="gt-r can" aria-label={fmt(t.claimLabel, { name, n })} onClick={() => onClaim(k.task)}>
+            {inner}
+          </button>
+        ) : (
+          <div key={k.task} className="gt-r">
+            {inner}
+          </div>
+        );
+      })}
+      {st.gifts && (
+        <div className="gt-r gift">
+          <TaskIcon k="gift" />
+          <span className="l">{t.gifts}</span>
+          <span className="gt-p" aria-hidden="true">
+            {Array.from({ length: GIFTS_IN_PER_DAY }, (_, i) => (
+              <i key={i} className={i < st.giftsIn ? "g" : ""} />
+            ))}
+          </span>
+          <span className="gt-x">{fmt(t.giftsIn, { n: st.giftsIn })}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Home({
   st,
   art,
   msg,
+  said,
   busy,
+  bump,
+  claimed,
   hidden,
   onPull,
+  onClaim,
   onScreen,
   onGift,
   onClose,
@@ -327,10 +524,16 @@ function Home({
   st: PassState;
   art: Art | null;
   msg: string;
+  /** what the last claim brought, for screen readers */
+  said: string;
   busy: boolean;
+  bump: { n: number; key: number } | null;
+  /** claims answered so far: each moves the focus on */
+  claimed: number;
   /** 刷券 is over it */
   hidden: boolean;
   onPull: (n: DrawSize) => void;
+  onClaim: (task: Task) => void;
   onScreen: (s: "wallet" | "wish" | "odds" | "log") => void;
   /** 送券: to the 触须之交 page */
   onGift: () => void;
@@ -338,15 +541,21 @@ function Home({
 }) {
   const has = st.wish.length > 0;
   const miss = has ? st.miss : 0;
-  const today = st.today.social + st.today.guide + st.today.declare;
+  // a task claimed: on to the next with tickets to claim, else to 寻访十次
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!claimed) return;
+    const next = root.current?.querySelector<HTMLElement>("button.gt-r") ?? root.current?.querySelector<HTMLElement>(".g-btns .y");
+    next?.focus({ preventScroll: true });
+  }, [claimed]);
   return (
-    <div className="ps-home" inert={hidden || undefined}>
+    <div ref={root} className="ps-home" inert={hidden || undefined}>
       <div className="g-top">
         <button className="g-back" onClick={onClose} aria-label={T.passes.close}>
           ‹ <span>{T.passes.back}</span>
         </button>
         <b>{T.passes.title}</b>
-        <TicketCount n={st.tickets} />
+        <TicketCount n={st.tickets} bump={bump} />
       </div>
       <div className="ps-scroll">
         <section className="hb">
@@ -382,33 +591,7 @@ function Home({
             )}
           </div>
         </div>
-        {/* the day's own tickets, and beside them (while 触须之交 may give them) those given */}
-        <div className={`g-today${st.gifts ? " two" : ""}`}>
-          <div>
-            <div className="g-row">
-              <span>{T.passes.today}</span>
-              <b>
-                {today} / {DAY_TICKETS}
-              </b>
-            </div>
-            <div className="g-bar" aria-hidden="true">
-              <i style={{ width: `${Math.min(100, (today / DAY_TICKETS) * 100)}%` }} />
-            </div>
-          </div>
-          {st.gifts && (
-            <div>
-              <div className="g-row">
-                <span>{T.passes.giftsIn}</span>
-                <b>
-                  {st.today.giftsIn} / {GIFTS_IN_PER_DAY}
-                </b>
-              </div>
-              <div className="g-bar pink" aria-hidden="true">
-                <i style={{ width: `${Math.min(100, (st.today.giftsIn / GIFTS_IN_PER_DAY) * 100)}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
+        <Tasks st={st} onClaim={onClaim} />
         <div className="g-btns">
           {/* too few tickets: dimmed, and pressed, says how to get more */}
           <button className={st.tickets < 1 ? "dim" : ""} onClick={() => onPull(1)} disabled={busy}>
@@ -422,6 +605,9 @@ function Home({
         </div>
         <p className="g-msg" role="status">
           {msg}
+        </p>
+        <p className="sr" role="status">
+          {said}
         </p>
         <div className="g-links">
           <button onClick={() => onScreen("odds")}>{T.passes.links.odds}</button>
@@ -1281,7 +1467,7 @@ function WishEditor({
 }
 
 /** 概率说明: the rules, from the same numbers the server draws by */
-function Odds({ onBack }: { onBack: () => void }) {
+function Odds({ gifts, onBack }: { gifts: boolean; onBack: () => void }) {
   const counts = catalogCounts();
   const o = T.passes.odds;
   return (
@@ -1293,15 +1479,9 @@ function Odds({ onBack }: { onBack: () => void }) {
         <p>{fmt(o.pity, { max: WISH_MAX, miss: PITY - 1, pity: PITY })}</p>
         <p>{o.wish}</p>
         <p>
-          {fmt(o.tickets, {
-            day: DAY_TICKETS,
-            social: EARN_CAPS.social,
-            guide: EARN_CAPS.guide,
-            declare: EARN_CAPS.declare,
-            cap: TICKETS_CAP,
-            welcome: WELCOME_TICKETS,
-          })}
+          {fmt(o.tickets, { ...TASK_MAX, day: DAY_TICKETS, cap: TICKETS_CAP, welcome: WELCOME_TICKETS })}
         </p>
+        {gifts && <p>{fmt(o.gifts, { n: GIFTS_IN_PER_DAY, cap: TICKETS_CAP })}</p>}
         <p>{o.numbers}</p>
         <p>{o.fancy}</p>
         <p>{o.fair}</p>

@@ -10,6 +10,7 @@ import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
 import { nextMorning } from "../morning";
 import { nextSiteDayAt, siteDay, siteDayStart } from "../siteDay";
+import type { PassesDot } from "../passes";
 import { checkSupport } from "../support";
 import { isGame } from "../games";
 import { fold } from "../nameFold";
@@ -147,7 +148,7 @@ import { helpCounts } from "./help";
 import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
-import { earn, passesMe, wornPasses } from "./passes";
+import { didTask, passesMe, wornPasses } from "./passes";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
@@ -827,8 +828,7 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   if (guide) {
     const done = await GUIDE_WORLD[guide.id].touch(userId, Boolean(bold), offsetMin);
     countGuide(guide.id);
-    await earn(userId, "guide");
-    return done;
+    return { ...done, ...(await didTask(userId, "npc")) };
   }
   if (isBotId(String(publicId))) throw new WorldError(T.server.world.demoNoTouch);
   // by the id the feed gave the page, short or whole; or an ink roach at 缘缘庄, by the id its tap gave (tapInk)
@@ -866,13 +866,18 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   // how many more today on TA, told only to 触须之交: to anyone else it would tell which roaches share an owner
   const onFriend = wereFriends ? Math.max(0, TOUCHES_PER_PERSON_PER_DAY - onOwner - 1) : undefined;
   countCapped(left, onFriend);
-  // 惊霆无声 is the toucher's own, so it counts whether or not the touch arrives; so does a 寻访券
+  // 惊霆无声 is the toucher's own, so it counts whether or not the touch arrives; so does 每日任务
   if (!bold) await touchedSneakily(userId);
-  await earn(userId, "social");
-  if (withheld) return { newFriend: null, touchesLeft: left, friendTouchesLeft: onFriend };
+  const task = await didTask(userId, "touch");
+  if (withheld) return { newFriend: null, touchesLeft: left, friendTouchesLeft: onFriend, ...task };
   const newFriend = bold ? await befriendIfMutual(userId, roach.userId) : null;
   nudge([roach.userId]);
-  return { newFriend, touchesLeft: left, friendTouchesLeft: newFriend ? Math.max(0, TOUCHES_PER_PERSON_PER_DAY - onOwner - 1) : onFriend };
+  return {
+    newFriend,
+    touchesLeft: left,
+    friendTouchesLeft: newFriend ? Math.max(0, TOUCHES_PER_PERSON_PER_DAY - onOwner - 1) : onFriend,
+    ...task,
+  };
 }
 
 /**
@@ -986,8 +991,7 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   if (guide) {
     const done = await GUIDE_WORLD[guide.id].reply(userId, String(itemId), Boolean(bold), offsetMin);
     countGuide(guide.id);
-    await earn(userId, "guide");
-    return done;
+    return { ...done, ...(await didTask(userId, "npc")) };
   }
   const [kind, raw] = String(itemId).split(":");
   // one spelling per item, so an item is answered once however its id is written
@@ -1035,11 +1039,12 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   // touching back a touch, as against the sender of a declaration or a reply
   countTouch(Boolean(bold), kind === "t");
   countCapped(left);
-  await earn(userId, "social");
-  if (withheld) return { newFriend: null, touchesLeft: left };
+  // a touch back is a touch of 每日任务, whatever it answers, and counts as one whether or not it arrives
+  const task = await didTask(userId, "touch");
+  if (withheld) return { newFriend: null, touchesLeft: left, ...task };
   const newFriend = bold ? await befriendIfMutual(userId, to) : null;
   nudge([to]);
-  return { newFriend, touchesLeft: left };
+  return { newFriend, touchesLeft: left, ...task };
 }
 
 /** The latest poke from one player to another that still keeps them waiting, if any. */
@@ -1087,7 +1092,6 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
     .onConflictDoNothing()
     .returning({ id: pokes.id });
   if (!made) throw new WorldError(T.server.world.pokedToday);
-  await earn(userId, "social");
   // an awake owner sees it now; a sleeping one's inbox keeps it until they wake
   nudge([owner.id]);
   return { againAt: now + POKE_EVERY_DAYS * DAY };
@@ -1394,7 +1398,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
  * DECLARATION_DAYS (src/lib/server/declarationInbox.ts). Those near now are nudged and counted, for the
  * sender's rough count; a 「祝我生日快乐」 also goes to every 触须之交 as theirs, one row each.
  */
-export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string }> {
+export async function declare(userId: string, input: Declaration, from?: string[]): Promise<{ reach: string } & PassesDot> {
   const u = await userById(userId);
   if (!u) throw new WorldError(T.server.common.signIn);
   // held, a player is anonymous, which checkDeclaration refuses 「我是…」 for; this says why
@@ -1471,7 +1475,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
     }
   });
   countDeclared(d.template, everyone.length);
-  await earn(userId, "declare");
+  const task = await didTask(userId, "declare");
   nudge(everyone, "declare");
   // 塔露拉干员 answers her 触须之交's birthday, never among the recipients
   if (d.template === "birthday") await birthdayDeclared(userId);
@@ -1480,7 +1484,7 @@ export async function declare(userId: string, input: Declaration, from?: string[
   await declared(userId, d.template);
   await declaredFrom(userId, chosen.map((r) => r.slot));
   const told = friendsToo.size ? fmt(T.server.world.friendsToo, { n: friendsToo.size }) : "";
-  return { reach: reachText(rows.length) + told };
+  return { reach: reachText(rows.length) + told, ...task };
 }
 
 /** 默默爬走: leave a touch you received unanswered for good. Only the receiver ever knows. */
@@ -1507,7 +1511,7 @@ export async function ignore(userId: string, itemId: string) {
 }
 
 /** Leave one of the fixed reactions on a declaration you received. The sender is not told who. */
-export async function react(userId: string, itemId: string, reaction: string) {
+export async function react(userId: string, itemId: string, reaction: string): Promise<PassesDot> {
   const [kind, id] = String(itemId).split(":");
   if (kind !== "d" || !UUID.test(id ?? "")) throw new WorldError(T.server.world.noDeclaration);
   // one the player sees now: near one of their roaches, or answered before
@@ -1523,8 +1527,9 @@ export async function react(userId: string, itemId: string, reaction: string) {
     .returning({ id: reactions.id });
   if (!made) throw new WorldError(T.server.world.alreadyReplied);
   countReply(reaction);
-  await earn(userId, "social");
-  if (withheld) return;
+  // counted whether or not it arrives, as a touch is
+  const task = await didTask(userId, "reply");
+  if (withheld) return task;
   nudge([row.senderId]);
   await reactedTo(row.senderId);
   await responded(userId, id, row.senderId);
@@ -1532,6 +1537,7 @@ export async function react(userId: string, itemId: string, reaction: string) {
   if (reaction === "birthday" && row.template === "birthday" && (await friendIdsOf(userId)).has(row.senderId)) {
     await wishedHappyBirthday(userId, row.senderId);
   }
+  return task;
 }
 
 export async function friends(userId: string): Promise<Friend[]> {

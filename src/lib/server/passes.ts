@@ -1,15 +1,19 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed } from "../passCatalog";
 import {
-  EARN_CAPS,
+  claimable,
   GIFTS_IN_PER_DAY,
   isDrawSize,
   isFancy,
   isFoil,
+  isTask,
+  passesDot,
   rollChars,
+  TASK_MAX,
+  TASKS,
   tiersOf,
   TICKETS_CAP,
   WELCOME_TICKETS,
@@ -17,11 +21,13 @@ import {
   type CharCopies,
   type Collection,
   type Drawn,
-  type EarnKind,
   type LogPage,
+  type PassesDot,
   type PassesMe,
   type PassOnCard,
   type PassState,
+  type Task,
+  type TaskState,
   type WornPass,
 } from "../passes";
 import { nextSiteDayAt, siteDay } from "../siteDay";
@@ -37,12 +43,12 @@ import { passCounters, passes, passGifts, passWallets, users, type UserRow } fro
 import { errorCode } from "./signals";
 
 /**
- * 通行证寻访 (src/lib/passes.ts): tickets a player earns by playing (earn), up to EARN_CAPS of each kind a site day
- * (src/lib/siteDay.ts, from 04:00 Beijing time) and TICKETS_CAP held; spent on draws of one or ten (draw), each pass
- * numbered in the order the whole site drew its character; the wish list, PITY draws at most from one of it.
- * Who was drawn is decided here, by crypto.randomInt, before the page shows anything. No ticket is sold or given
- * for money; 触须之交 may give each other one a day (receiveGift, from friendly.ts giftTicket). Switched by PASSES
- * and PASS_GIFTS (env.ts).
+ * 通行证寻访 (src/lib/passes.ts): tickets a player earns by playing, through 每日任务: what they do is counted
+ * (didTask), up to TASK_MAX of each a site day (src/lib/siteDay.ts, from 04:00 Beijing time), and claimed on the page
+ * (claim), up to TICKETS_CAP held; spent on draws of one or ten (draw), each pass numbered in the order the whole
+ * site drew its character; the wish list, PITY draws at most from one of it. Who was drawn is decided here, by
+ * crypto.randomInt, before the page shows anything. No ticket is sold or given for money; 触须之交 may give each
+ * other one a day (receiveGift, from friendly.ts giftTicket). Switched by PASSES and PASS_GIFTS (env.ts).
  */
 
 type Wallet = typeof passWallets.$inferSelect;
@@ -61,55 +67,97 @@ export function passesOpen(user: Pick<UserRow, "id" | "email">): boolean {
 /** Whether this player may give their 触须之交 tickets, and be given them: PASS_GIFTS on, and 寻访 open to them */
 export const giftsOpen = (user: Pick<UserRow, "id" | "email">) => passGiftsOn() && passesOpen(user);
 
+/** Each task's columns: how often it was done today, and how many tickets were claimed for it */
+const TASK_COLUMNS = {
+  touch: { done: passWallets.touch, got: passWallets.touchGot },
+  declare: { done: passWallets.declare, got: passWallets.declareGot },
+  reply: { done: passWallets.reply, got: passWallets.replyGot },
+  npc: { done: passWallets.npc, got: passWallets.npcGot },
+} as const satisfies Record<Task, unknown>;
+
+/** The day's 每日任务 of a wallet: nothing done yet for a row of a past day */
+function tasksOf(w: Wallet, day: string): TaskState[] {
+  const same = w.day === day;
+  const got = { touch: w.touchGot, declare: w.declareGot, reply: w.replyGot, npc: w.npcGot };
+  return TASKS.map((task) => ({ task, done: same ? w[task] : 0, got: same ? got[task] : 0, max: TASK_MAX[task] }));
+}
+
+/** What a write that starts a new site day sets: every count of the day back to 0 (social and guide, written before 每日任务, too) */
+const NEW_DAY = { social: 0, guide: 0, declare: 0, touch: 0, reply: 0, npc: 0, touchGot: 0, declareGot: 0, replyGot: 0, npcGot: 0, giftsIn: 0 };
 
 /**
- * A ticket for something the player just did (touched, touched back, answered a declaration or did something for a
- * 触须之交: social; touched a guide or answered one: guide; declared: declare), while the day's EARN_CAPS of that kind
- * and TICKETS_CAP allow. Only for a player who has opened 寻访 once (their wallet, welcomed: a 触须之交's gift may
- * have made it before), so nothing is written for anyone else. Counted whoever it reached, a player who blocked them
- * too (withheld), so tickets never tell. One statement, which also starts the counts of a new site day. Never fails
- * what it is counted for: a fault is only logged.
+ * The player did one of 每日任务 (touched someone's roach or touched one back: touch; declared; answered a
+ * declaration: reply; touched a guide or touched her back: npc): counted while the day's TASK_MAX of it allows,
+ * however many tickets they hold; the ticket is theirs to claim on the page (claim). Only for a player who has
+ * opened 寻访 once (their wallet, welcomed: a 触须之交's gift may have made it before), so nothing is written for
+ * anyone else. Counted whoever it reached, a player who blocked them too (withheld), so 每日任务 never tell. One
+ * statement, which also starts the counts of a new site day. Returns the dot of the 寻访 button after it (passesDot),
+ * for the map to light at once; nothing when nothing was counted. Never fails what it is counted for: a fault is
+ * only logged.
  */
-export async function earn(userId: string, kind: EarnKind, now = Date.now()): Promise<void> {
-  if (passesMode() === "off") return;
+export async function didTask(userId: string, task: Task, now = Date.now()): Promise<PassesDot> {
+  if (passesMode() === "off") return {};
   try {
     const day = siteDay(now);
     const sameDay = sql`${passWallets.day} = ${day}`;
-    const counted = (k: EarnKind) =>
-      k === kind ? sql`case when ${sameDay} then ${passWallets[k]} + 1 else 1 end` : sql`case when ${sameDay} then ${passWallets[k]} else 0 end`;
-    await db
+    const kept = (c: AnyColumn) => sql`case when ${sameDay} then ${c} else 0 end`;
+    const set: Record<string, unknown> = { day };
+    for (const t of TASKS) {
+      const c = TASK_COLUMNS[t];
+      set[t] = t === task ? sql`case when ${sameDay} then ${c.done} + 1 else 1 end` : kept(c.done);
+      set[`${t}Got`] = kept(c.got);
+    }
+    const [w] = await db
       .update(passWallets)
-      .set({
-        day,
-        tickets: sql`${passWallets.tickets} + 1`,
-        social: counted("social"),
-        guide: counted("guide"),
-        declare: counted("declare"),
-        giftsIn: sql`case when ${sameDay} then ${passWallets.giftsIn} else 0 end`,
-      })
+      .set({ ...set, social: kept(passWallets.social), guide: kept(passWallets.guide), giftsIn: kept(passWallets.giftsIn) })
       .where(
         and(
           eq(passWallets.userId, userId),
           eq(passWallets.welcomed, true),
-          lt(passWallets.tickets, TICKETS_CAP),
-          or(ne(passWallets.day, day), lt(passWallets[kind], EARN_CAPS[kind])),
+          or(ne(passWallets.day, day), lt(TASK_COLUMNS[task].done, TASK_MAX[task])),
         ),
-      );
+      )
+      .returning();
+    return w ? { passesDot: passesDot(true, w.tickets, tasksOf(w, day)) } : {};
   } catch (e) {
-    console.error(`passes: a ${kind} ticket for a player was not counted`, errorCode(e));
+    console.error(`passes: a ${task} of a player was not counted`, errorCode(e));
+    return {};
   }
 }
 
+/**
+ * The tickets of a task done today and not claimed yet, as many as TICKETS_CAP leaves room for; the rest may still be
+ * claimed today, once there is room. In one transaction, the wallet locked first, so two claims at once never bring
+ * more. A refusal (409) says why: nothing to claim, or 50 held.
+ */
+export async function claim(user: UserRow, task: unknown, now = Date.now()): Promise<PassState> {
+  if (!isTask(task)) throw new HttpError(400, T.server.passes.badTask);
+  const day = siteDay(now);
+  await db.transaction(async (tx) => {
+    const [w] = await tx.select().from(passWallets).where(eq(passWallets.userId, user.id)).for("update");
+    if (!w || !w.welcomed) throw new HttpError(409, T.server.passes.openFirst);
+    const t = tasksOf(w, day).find((x) => x.task === task)!;
+    const n = claimable(t, w.tickets);
+    if (n <= 0) throw new HttpError(409, t.done > t.got ? fmt(T.server.passes.claimFull, { n: TICKETS_CAP }) : T.server.passes.nothingToClaim);
+    const c = TASK_COLUMNS[task];
+    await tx
+      .update(passWallets)
+      .set({ tickets: sql`${passWallets.tickets} + ${n}`, [`${task}Got`]: sql`${c.got} + ${n}` })
+      .where(eq(passWallets.userId, user.id));
+  });
+  return passState(user.id, now);
+}
+
 /** What me() carries for the 寻访 button and 我的资料: undefined when the player may not draw */
-export async function passesMe(user: UserRow): Promise<PassesMe | undefined> {
+export async function passesMe(user: UserRow, now = Date.now()): Promise<PassesMe | undefined> {
   if (!passesOpen(user)) return undefined;
-  const [w] = await db
-    .select({ tickets: passWallets.tickets, welcomed: passWallets.welcomed })
-    .from(passWallets)
-    .where(eq(passWallets.userId, user.id))
-    .limit(1);
+  const [w] = await db.select().from(passWallets).where(eq(passWallets.userId, user.id)).limit(1);
   const tickets = w?.tickets ?? 0;
-  return { tickets, dot: !w?.welcomed || tickets >= 10, worn: user.wornPass === null ? null : await wornOf(user.id) };
+  return {
+    tickets,
+    dot: passesDot(Boolean(w?.welcomed), tickets, w ? tasksOf(w, siteDay(now)) : []),
+    worn: user.wornPass === null ? null : await wornOf(user.id),
+  };
 }
 
 /** Their 厨力 as a first wish list: each game's in the order picked, those in the catalogue, at most WISH_MAX */
@@ -160,12 +208,8 @@ async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassSt
     : [];
   return {
     tickets: w.tickets,
-    today: {
-      social: same ? w.social : 0,
-      guide: same ? w.guide : 0,
-      declare: same ? w.declare : 0,
-      giftsIn: same ? w.giftsIn : 0,
-    },
+    tasks: tasksOf(w, day),
+    giftsIn: same ? w.giftsIn : 0,
     wish,
     wishOpen: !wish.length || w.wishDay !== day,
     miss: wish.length ? w.miss : 0,
@@ -212,7 +256,7 @@ export async function receiveGift(tx: Exec, fromId: string, toId: string, now = 
     .set(
       same
         ? { tickets: sql`${passWallets.tickets} + 1`, giftsIn: sql`${passWallets.giftsIn} + 1` }
-        : { tickets: sql`${passWallets.tickets} + 1`, giftsIn: 1, day, social: 0, guide: 0, declare: 0 },
+        : { ...NEW_DAY, tickets: sql`${passWallets.tickets} + 1`, giftsIn: 1, day },
     )
     .where(eq(passWallets.userId, toId));
 }

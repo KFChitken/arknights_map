@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassState } from "./passes";
+import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassState, Task } from "./passes";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -30,6 +30,8 @@ export const passesApi = {
   /** The page opened: the wallet (the first tickets, the first time) */
   open: () => call<PassState>("POST", "open"),
   draw: (n: DrawSize) => call<{ drawn: Drawn[]; state: PassState }>("POST", "draw", { n }),
+  /** 每日任务: claim the tickets of one task done today */
+  claim: (task: Task) => call<PassState>("POST", "claim", { task }),
   wish: (ids: number[]) => call<PassState>("PUT", "wish", { ids }),
   collection: () => call<Collection>("GET", "collection"),
   log: (before?: number) => call<LogPage>("GET", "log", undefined, before ? `?before=${before}` : ""),

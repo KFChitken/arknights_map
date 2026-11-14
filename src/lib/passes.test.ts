@@ -3,17 +3,24 @@ import { describe, expect, it } from "vitest";
 import { CATALOG_IDS, CATALOG_SIZE, catalogCounts, isPassChar, passChar, passCharNamed, PASS_CATALOG } from "./passCatalog";
 import {
   bestOf,
+  claimable,
   DAY_TICKETS,
   goldKind,
+  gotToday,
   isDrawSize,
   isFancy,
   isFoil,
+  isTask,
   padNo,
+  passesDot,
   PITY,
   pityLeft,
   rollChars,
   styleFor,
+  TASK_MAX,
+  TICKETS_CAP,
   tiersOf,
+  unclaimed,
   type Tier,
 } from "./passes";
 
@@ -174,5 +181,41 @@ describe("a pass's look and number", () => {
     expect([1, 10].every(isDrawSize)).toBe(true);
     for (const x of [0, 2, 5, 11, "1", "10", null, 1.5]) expect(isDrawSize(x), String(x)).toBe(false);
     expect(DAY_TICKETS).toBe(10);
+  });
+});
+
+describe("每日任务", () => {
+  it("are touching someone 3, declaring 2, answering a declaration 3 and touching an NPC 2 a day, ten in all", () => {
+    expect(TASK_MAX).toEqual({ touch: 3, declare: 2, reply: 3, npc: 2 });
+    expect(DAY_TICKETS).toBe(10);
+    expect(["touch", "declare", "reply", "npc"].every(isTask)).toBe(true);
+    for (const x of ["social", "guide", "gift", "toString", "", null, 1]) expect(isTask(x), String(x)).toBe(false);
+  });
+
+  it("claims what was done and not claimed, as many as fit under 50", () => {
+    expect(claimable({ done: 3, got: 1 }, 10)).toBe(2);
+    expect(claimable({ done: 3, got: 3 }, 10)).toBe(0);
+    expect(claimable({ done: 3, got: 0 }, TICKETS_CAP - 1)).toBe(1);
+    expect(claimable({ done: 3, got: 0 }, TICKETS_CAP)).toBe(0);
+    // a gift may take a wallet past 50
+    expect(claimable({ done: 2, got: 0 }, TICKETS_CAP + 2)).toBe(0);
+    const day = [
+      { done: 3, got: 1 },
+      { done: 2, got: 2 },
+      { done: 1, got: 0 },
+      { done: 0, got: 0 },
+    ];
+    expect(unclaimed(day)).toBe(3);
+    expect(gotToday(day)).toBe(3);
+  });
+
+  it("put a dot on the 寻访 button for the first ten, a ticket to claim with room for it, or ten for a draw", () => {
+    const none = [{ done: 0, got: 0 }];
+    const one = [{ done: 1, got: 0 }];
+    expect(passesDot(false, 0, none)).toBe(true);
+    expect(passesDot(true, 9, none)).toBe(false);
+    expect(passesDot(true, 9, one)).toBe(true);
+    expect(passesDot(true, 10, none)).toBe(true);
+    expect(passesDot(true, 0, [{ done: 2, got: 2 }])).toBe(false);
   });
 });

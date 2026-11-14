@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CATALOG_IDS, passCharNamed } from "../passCatalog";
-import { PITY, TICKETS_CAP, WELCOME_TICKETS } from "../passes";
+import { PITY, WELCOME_TICKETS } from "../passes";
 import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
 import { db } from "./db";
@@ -11,7 +11,7 @@ import {
   collection,
   copiesOf,
   draw,
-  earn,
+  didTask,
   openWallet,
   passesMe,
   passesOpen,
@@ -23,7 +23,7 @@ import {
   wishFromFavourites,
   wornPasses,
 } from "./passes";
-import { admins, blocks, passCounters, passes, passWallets, touches, users, type UserRow } from "./schema";
+import { admins, passCounters, passes, passWallets, users, type UserRow } from "./schema";
 import * as world from "./world";
 
 vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -99,7 +99,13 @@ describe("寻访券", () => {
     ]);
     const first = await openWallet(u, NOON);
     expect(first).toMatchObject({ tickets: WELCOME_TICKETS, welcomed: true, wish: wishFromFavourites(u), wishOpen: true, miss: 0 });
-    expect(first.today).toEqual({ social: 0, guide: 0, declare: 0, giftsIn: 0 });
+    expect(first.tasks.map((t) => [t.task, t.done, t.got])).toEqual([
+      ["touch", 0, 0],
+      ["declare", 0, 0],
+      ["reply", 0, 0],
+      ["npc", 0, 0],
+    ]);
+    expect(first.giftsIn).toBe(0);
     const again = await openWallet(u, NOON + HOUR);
     expect(again).toMatchObject({ tickets: WELCOME_TICKETS, welcomed: false });
     expect(again.nextDayAt).toBe(Date.parse("2026-11-15T04:00:00+08:00"));
@@ -110,66 +116,6 @@ describe("寻访券", () => {
     await db.insert(passWallets).values({ userId: u.id, tickets: 2, day: "2026-11-14" });
     expect(await openWallet(u, NOON)).toMatchObject({ tickets: 2 + WELCOME_TICKETS, welcomed: true, wish: [id("arknights", "阿米娅")] });
     expect(await openWallet(u, NOON)).toMatchObject({ tickets: 2 + WELCOME_TICKETS, welcomed: false });
-  });
-
-  it("comes for play up to 6, 2 and 2 a site day, which turns at 04:00 Beijing time, and 50 held", async () => {
-    const u = await player("a@example.com");
-    // nothing is written for a player who never opened the page
-    await earn(u.id, "social", NOON);
-    expect(await wallet(u.id)).toBeUndefined();
-
-    const before4 = Date.parse("2026-11-14T03:59:00+08:00");
-    await openWallet(u, before4);
-    for (let i = 0; i < 7; i++) await earn(u.id, "social", before4);
-    for (let i = 0; i < 3; i++) await earn(u.id, "guide", before4);
-    for (let i = 0; i < 3; i++) await earn(u.id, "declare", before4);
-    expect(await passState(u.id, before4)).toMatchObject({ tickets: 20, today: { social: 6, guide: 2, declare: 2, giftsIn: 0 } });
-
-    const at4 = Date.parse("2026-11-14T04:00:00+08:00");
-    // a new day reads as nothing brought yet, before anything is written
-    expect((await passState(u.id, at4)).today).toEqual({ social: 0, guide: 0, declare: 0, giftsIn: 0 });
-    await earn(u.id, "social", at4);
-    expect(await passState(u.id, at4)).toMatchObject({ tickets: 21, today: { social: 1, guide: 0, declare: 0 } });
-    expect((await wallet(u.id)).day).toBe("2026-11-14");
-
-    await setWallet(u.id, { tickets: TICKETS_CAP - 1 });
-    await earn(u.id, "guide", at4);
-    await earn(u.id, "declare", at4);
-    await earn(u.id, "social", at4);
-    expect(await passState(u.id, at4)).toMatchObject({ tickets: TICKETS_CAP, today: { social: 1, guide: 1, declare: 0 } });
-  });
-
-  it("counts nothing while PASSES is off, and never fails what it is counted for", async () => {
-    const u = await player("a@example.com");
-    await openWallet(u, NOON);
-    vi.stubEnv("PASSES", "off");
-    await earn(u.id, "social", NOON);
-    expect((await wallet(u.id)).tickets).toBe(WELCOME_TICKETS);
-
-    vi.stubEnv("PASSES", "admins");
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(db, "update").mockImplementationOnce(() => {
-      throw new Error("connection lost");
-    });
-    await expect(earn(u.id, "social", NOON)).resolves.toBeUndefined();
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("not counted"), expect.anything());
-    expect((await wallet(u.id)).tickets).toBe(WELCOME_TICKETS);
-  });
-
-  it("comes for a touch even when a block keeps it from arriving, so tickets never tell", async () => {
-    const owner = await player("owner-of-roach@example.com");
-    const toucher = await player("toucher@example.com");
-    const [main] = await world.placeRoach(owner.id, { kind: "main" }, { lng: 121.4737, lat: 31.2304 });
-    await openWallet(toucher);
-    await world.touch(toucher.id, main.publicId, false);
-    expect((await wallet(toucher.id)).tickets).toBe(WELCOME_TICKETS + 1);
-    await db.insert(blocks).values({ blockerId: owner.id, blockedId: toucher.id });
-    await world.touch(toucher.id, main.publicId, true);
-    const sent = await db.select({ withheld: touches.withheld }).from(touches).where(eq(touches.fromUserId, toucher.id)).orderBy(asc(touches.createdAt));
-    expect(sent.map((t) => t.withheld)).toEqual([false, true]);
-    expect((await wallet(toucher.id)).tickets).toBe(WELCOME_TICKETS + 2);
-    // the owner of the roach, who never opened the page, has no wallet
-    expect(await wallet(owner.id)).toBeUndefined();
   });
 });
 
@@ -384,14 +330,18 @@ describe("who may draw (PASSES)", () => {
     expect(passesOpen(owner)).toBe(false);
   });
 
-  it("puts a dot on the button for the first ten, and while there are ten tickets for a draw", async () => {
+  it("puts a dot on the button for the first ten, a ticket of 每日任务 to claim, and ten tickets for a draw", async () => {
     const a = await player("a@example.com");
     expect(await passesMe(a)).toEqual({ tickets: 0, dot: true, worn: null });
     expect((await world.me(a.id))?.passes).toEqual({ tickets: 0, dot: true, worn: null });
     await openWallet(a, NOON);
     expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS, dot: true, worn: null });
     await draw(a, 1, NOON, always(1));
-    expect(await passesMe(a)).toEqual({ tickets: WELCOME_TICKETS - 1, dot: false, worn: null });
+    expect(await passesMe(a, NOON)).toEqual({ tickets: WELCOME_TICKETS - 1, dot: false, worn: null });
+    await didTask(a.id, "npc", NOON);
+    expect(await passesMe(a, NOON)).toMatchObject({ dot: true });
+    // till the day turns, unclaimed
+    expect(await passesMe(a, NOON + 24 * HOUR)).toMatchObject({ dot: false });
   });
 });
 

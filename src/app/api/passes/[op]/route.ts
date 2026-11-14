@@ -5,7 +5,7 @@ import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib
 import { passesMode } from "@/lib/server/env";
 import { giftTicket } from "@/lib/server/friendly";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { collection, copiesOf, draw, openWallet, passesOpen, passLog, setLook, setWish, wear } from "@/lib/server/passes";
+import { claim, collection, copiesOf, draw, openWallet, passesOpen, passLog, setLook, setWish, wear } from "@/lib/server/passes";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
@@ -14,6 +14,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  * 通行证寻访 (src/lib/server/passes.ts), each for the signed-in player alone:
  *   POST open        the page opened: the wallet as it is (made, with the first tickets, the first time)
  *   POST draw {n}    a draw of 1 or 10
+ *   POST claim {task}          每日任务: the tickets of one task done today, as many as may be held
  *   POST gift {friendId}       送 1 张寻访券 to a 触须之交 (src/lib/server/friendly.ts giftTicket); 一键 is world's friendsAct
  *   PUT  wish {ids}  the wish list
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
@@ -27,9 +28,12 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  * player, so it also waits while the admin has paused the giver's 互动, as world's do.
  */
 
+type Limit = { method: "GET" | "POST" | "PUT"; agreed: boolean } & ({ perMinute: number } | { perSecond: number });
 const OPS = {
   open: { method: "POST", perMinute: 30, agreed: true },
   draw: { method: "POST", perMinute: 90, agreed: true },
+  // the rows of 每日任务 tapped one after the other never wait
+  claim: { method: "POST", perSecond: 5, agreed: true },
   gift: { method: "POST", perMinute: 30, agreed: true },
   wish: { method: "PUT", perMinute: 20, agreed: true },
   look: { method: "PUT", perMinute: 30, agreed: true },
@@ -37,7 +41,7 @@ const OPS = {
   collection: { method: "GET", perMinute: 30, agreed: false },
   copies: { method: "GET", perMinute: 60, agreed: false },
   log: { method: "GET", perMinute: 60, agreed: false },
-} as const;
+} as const satisfies Record<string, Limit>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 
@@ -53,7 +57,9 @@ async function playerFor(method: string, op: string): Promise<{ user: UserRow; o
     throw notHere();
   }
   if (!passesOpen(user)) throw notHere();
-  if (!allow(`passes:${op}:${user.id}`, OPS[op].perMinute, 60_000)) throw new HttpError(429, T.server.routes.passes.tooFast);
+  const limit: Limit = OPS[op];
+  const [times, ms] = "perSecond" in limit ? [limit.perSecond, 1000] : [limit.perMinute, 60_000];
+  if (!allow(`passes:${op}:${user.id}`, times, ms)) throw new HttpError(429, T.server.routes.passes.tooFast);
   if (OPS[op].agreed) {
     if (user.ageCheckAt) throw new HttpError(428, ageCheckNeeded(), AGE_CHECK);
     if (mustReconsent(user)) throw new HttpError(428, reconsentNeeded());
@@ -82,6 +88,7 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
     await giftTicket(user, body.friendId);
     return answer({ ok: true });
   }
+  if (op === "claim") return answer(await claim(user, body.task));
   return answer(await draw(user, body.n));
 });
 

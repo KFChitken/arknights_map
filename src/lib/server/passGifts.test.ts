@@ -9,7 +9,7 @@ import { loadMods } from "./admins";
 import { db } from "./db";
 import * as friendly from "./friendly";
 import { HttpError } from "./http";
-import { earn, openWallet, passState } from "./passes";
+import { claim, didTask, openWallet, passState } from "./passes";
 import { admins, friendNotes, friendships, passCounters, passGifts, passWallets, users, type UserRow } from "./schema";
 import * as world from "./world";
 
@@ -105,7 +105,7 @@ describe("送 1 张寻访券", () => {
     expect(await refused(give(a, b, before4))).toBe(T.server.passes.giftedToday);
     await give(a, b, at4);
     expect(await wallet(b.id)).toMatchObject({ tickets: WELCOME_TICKETS + 2, giftsIn: 1, day: "2026-11-15" });
-    expect((await passState(b.id, at4)).today.giftsIn).toBe(1);
+    expect((await passState(b.id, at4)).giftsIn).toBe(1);
   });
 
   it("lets a player be given 3 a site day, by whoever comes first, past the 50 held", async () => {
@@ -119,8 +119,9 @@ describe("送 1 张寻访券", () => {
     expect(await wallet(r.id)).toMatchObject({ tickets: TICKETS_CAP + 3, giftsIn: GIFTS_IN_PER_DAY });
     expect(await refused(give(givers[3], r))).toBe(fullUp());
     expect(await db.select().from(passGifts).where(eq(passGifts.toId, r.id))).toHaveLength(3);
-    // playing brings none past 50
-    await earn(r.id, "social", NOON);
+    // 每日任务 bring none past 50
+    await didTask(r.id, "touch", NOON);
+    await expect(claim(r, "touch", NOON)).rejects.toThrow("满 50 张");
     expect((await wallet(r.id)).tickets).toBe(TICKETS_CAP + 3);
 
     await give(givers[3], r, NOON + DAY);
@@ -148,17 +149,20 @@ describe("送 1 张寻访券", () => {
     const before4 = Date.parse("2026-11-14T03:59:00+08:00");
     const at4 = Date.parse("2026-11-14T04:00:00+08:00");
     await openWallet(r, before4);
-    for (let i = 0; i < 6; i++) await earn(r.id, "social", before4);
-    for (let i = 0; i < 2; i++) await earn(r.id, "guide", before4);
-    for (let i = 0; i < 2; i++) await earn(r.id, "declare", before4);
+    for (const task of ["touch", "touch", "declare", "reply", "npc"] as const) await didTask(r.id, task, before4);
+    await claim(r, "touch", before4);
     await db.update(passWallets).set({ giftsIn: GIFTS_IN_PER_DAY }).where(eq(passWallets.userId, r.id));
-    expect((await passState(r.id, before4)).today).toEqual({ social: 6, guide: 2, declare: 2, giftsIn: 3 });
+    const old = await passState(r.id, before4);
+    expect(old.tasks.map((t) => [t.done, t.got])).toEqual([[2, 2], [1, 0], [1, 0], [1, 0]]);
+    expect(old.giftsIn).toBe(GIFTS_IN_PER_DAY);
 
     await give(g, r, at4);
-    expect(await wallet(r.id)).toMatchObject({ day: "2026-11-14", social: 0, guide: 0, declare: 0, giftsIn: 1, tickets: WELCOME_TICKETS + 10 + 1 });
-    // and the day's own tickets come again from nothing
-    await earn(r.id, "social", at4);
-    expect((await passState(r.id, at4)).today).toEqual({ social: 1, guide: 0, declare: 0, giftsIn: 1 });
+    expect(await wallet(r.id)).toMatchObject({ day: "2026-11-14", touch: 0, touchGot: 0, declare: 0, reply: 0, npc: 0, giftsIn: 1, tickets: WELCOME_TICKETS + 2 + 1 });
+    // and 每日任务 start again from nothing
+    await didTask(r.id, "reply", at4);
+    const now = await passState(r.id, at4);
+    expect(now.tasks.map((t) => [t.done, t.got])).toEqual([[0, 0], [0, 0], [1, 0], [0, 0]]);
+    expect(now.giftsIn).toBe(1);
   });
 
   it("is only between 触须之交: not to a stranger, nor once they are no longer", async () => {
@@ -179,14 +183,14 @@ describe("送 1 张寻访券", () => {
     await befriend(a, r);
     await give(a, r);
     expect(await wallet(r.id)).toMatchObject({ tickets: 1, giftsIn: 1, welcomed: false });
-    await earn(r.id, "social", NOON);
-    expect((await wallet(r.id)).tickets).toBe(1);
+    expect(await didTask(r.id, "touch", NOON)).toEqual({});
+    expect((await wallet(r.id)).touch).toBe(0);
     const opened = await openWallet(r, NOON + MINUTE);
     expect(opened).toMatchObject({ tickets: 1 + WELCOME_TICKETS, welcomed: true, gifts: true });
     expect(opened.wish).toHaveLength(1);
-    expect(opened.today.giftsIn).toBe(1);
-    await earn(r.id, "social", NOON + MINUTE);
-    expect((await wallet(r.id)).tickets).toBe(2 + WELCOME_TICKETS);
+    expect(opened.giftsIn).toBe(1);
+    await didTask(r.id, "touch", NOON + MINUTE);
+    expect((await claim(r, "touch", NOON + MINUTE)).tickets).toBe(2 + WELCOME_TICKETS);
   });
 
   it("is for those 寻访 is open to: nobody while PASS_GIFTS is off, the 站长 and the admins alone while PASSES is admins", async () => {

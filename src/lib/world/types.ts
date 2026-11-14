@@ -7,7 +7,7 @@ import type { Profile, PublicProfile } from "../profile";
 import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
-import type { GiftState, PassesMe } from "../passes";
+import type { GiftState, PassesDot, PassesMe } from "../passes";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
 
@@ -108,11 +108,11 @@ export interface World {
   markSeen(itemIds: string[]): Promise<void>;
   /** Shout to every player with a roach within the radius of your main roach. */
   /** Shout from the main roach, or from the roaches listed by id. */
-  declare(d: Declaration, from?: string[]): Promise<{ reach: string }>;
+  declare(d: Declaration, from?: string[]): Promise<{ reach: string } & PassesDot>;
   /** Crawl away from a touch in your inbox without answering it. */
   ignore(itemId: string): Promise<void>;
   /** Leave a reaction on a declaration in your inbox. */
-  react(itemId: string, reaction: string): Promise<void>;
+  react(itemId: string, reaction: string): Promise<PassesDot>;
   /** 触须之交: players you and they have both touched boldly. */
   friends(): Promise<Friend[]>;
   unfriend(friendId: string): Promise<void>;
@@ -275,7 +275,7 @@ export type VisitorFeed = { v: string; hidden: true; total: number; fire: number
  * 塔露拉干员's own answer to that), and for 佩丽卡监督's bold touch back the
  * how-manieth touch of yours today.
  */
-export type TouchResult = {
+export type TouchResult = PassesDot & {
   newFriend: string | null;
   touchesLeft?: number;
   friendTouchesLeft?: number;
