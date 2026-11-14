@@ -10,6 +10,7 @@ import {
   bestOf,
   DAY_TICKETS,
   EARN_CAPS,
+  GIFTS_IN_PER_DAY,
   isFancy,
   padNo,
   PITY,
@@ -43,18 +44,21 @@ import "./passes.css";
  * a tap beside it and Escape close it, or step back a screen.
  * holder: the name printed on the player's passes (their card's, 匿名舟P for the anonymous); onRefused: a refusal the
  * map page answers itself (sign in, say again they are 18, agree to the privacy policy), which closes this first;
- * onWallet: the tickets the map's button shows and the pass worn, as they change.
+ * onWallet: the tickets the map's button shows and the pass worn, as they change; onGift: 送券, the 触须之交 page
+ * picking whom to give a 寻访券 (this closes first).
  */
 export default function Passes({
   favourites,
   holder,
   onClose,
+  onGift,
   onRefused,
   onWallet,
 }: {
   favourites: Record<Game, string[]>;
   holder: string;
   onClose: () => void;
+  onGift: () => void;
   onRefused: (e: unknown) => void;
   onWallet: (p: PassesMe) => void;
 }) {
@@ -184,7 +188,7 @@ export default function Passes({
             )}
           </div>
         ) : screen === "home" ? (
-          <Home st={st} art={art} msg={msg} busy={busy} onPull={pull} onScreen={setScreen} onClose={onClose} hidden={Boolean(term)} />
+          <Home st={st} art={art} msg={msg} busy={busy} onPull={pull} onScreen={setScreen} onGift={onGift} onClose={onClose} hidden={Boolean(term)} />
         ) : screen === "wallet" ? (
           <Wallet st={st} art={art} holder={holder} stepBack={stepBack} onBack={() => setScreen("home")} onTook={took} onRefused={refuse} />
         ) : screen === "wish" ? (
@@ -317,6 +321,7 @@ function Home({
   hidden,
   onPull,
   onScreen,
+  onGift,
   onClose,
 }: {
   st: PassState;
@@ -327,6 +332,8 @@ function Home({
   hidden: boolean;
   onPull: (n: DrawSize) => void;
   onScreen: (s: "wallet" | "wish" | "odds" | "log") => void;
+  /** 送券: to the 触须之交 page */
+  onGift: () => void;
   onClose: () => void;
 }) {
   const has = st.wish.length > 0;
@@ -375,16 +382,32 @@ function Home({
             )}
           </div>
         </div>
-        <div className="g-today">
-          <div className="g-row">
-            <span>{T.passes.today}</span>
-            <b>
-              {today} / {DAY_TICKETS}
-            </b>
+        {/* the day's own tickets, and beside them (while 触须之交 may give them) those given */}
+        <div className={`g-today${st.gifts ? " two" : ""}`}>
+          <div>
+            <div className="g-row">
+              <span>{T.passes.today}</span>
+              <b>
+                {today} / {DAY_TICKETS}
+              </b>
+            </div>
+            <div className="g-bar" aria-hidden="true">
+              <i style={{ width: `${Math.min(100, (today / DAY_TICKETS) * 100)}%` }} />
+            </div>
           </div>
-          <div className="g-bar" aria-hidden="true">
-            <i style={{ width: `${Math.min(100, (today / DAY_TICKETS) * 100)}%` }} />
-          </div>
+          {st.gifts && (
+            <div>
+              <div className="g-row">
+                <span>{T.passes.giftsIn}</span>
+                <b>
+                  {st.today.giftsIn} / {GIFTS_IN_PER_DAY}
+                </b>
+              </div>
+              <div className="g-bar pink" aria-hidden="true">
+                <i style={{ width: `${Math.min(100, (st.today.giftsIn / GIFTS_IN_PER_DAY) * 100)}%` }} />
+              </div>
+            </div>
+          )}
         </div>
         <div className="g-btns">
           {/* too few tickets: dimmed, and pressed, says how to get more */}
@@ -404,6 +427,7 @@ function Home({
           <button onClick={() => onScreen("odds")}>{T.passes.links.odds}</button>
           <button onClick={() => onScreen("log")}>{T.passes.links.log}</button>
           <button onClick={() => onScreen("wallet")}>{T.passes.links.wallet}</button>
+          {st.gifts && <button onClick={onGift}>{T.passes.links.gift}</button>}
         </div>
         <p className="ps-copy">{T.passes.copyright}</p>
       </div>

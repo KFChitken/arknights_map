@@ -16,13 +16,17 @@ const RADIUS = 112;
 
 const html = (markup: string) => ({ dangerouslySetInnerHTML: { __html: markup } });
 
+/** A 寻访券, as on the map's 寻访 button, flying out to one of them */
+const ticket = (size: number) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}"><g transform="rotate(-14 12 12)"><path d="M3.5 7.2c0-.8.6-1.4 1.4-1.4h14.2c.8 0 1.4.6 1.4 1.4v2.4a2.4 2.4 0 0 0 0 4.8v2.4c0 .8-.6 1.4-1.4 1.4H4.9c-.8 0-1.4-.6-1.4-1.4v-2.4a2.4 2.4 0 0 0 0-4.8Z" fill="#ffd23f" stroke="#1b1d22" stroke-width="0.9"/><path d="M9.2 7.4v9.2" stroke="#1b1d22" stroke-width="1.3" stroke-dasharray="1.5 1.5"/></g></svg>`;
+
 type Look = { color: RoachColor; avatar: DrawnAvatar };
 
 /**
  * 一键 (src/lib/friendly.ts) on your own screen, once however many it went to: your roach in
  * the middle, a ring of theirs around it (at most SHOWN, the rest as 「+N」). 贴贴 hearts fly out
- * to them, 击掌 a 「啪！」 by each, 吸欧气 stars fly in from them, 催理智 bottles fly off in every
- * direction with 叮！. A tap ends it.
+ * to them, 击掌 a 「啪！」 by each, 吸欧气 stars fly in from them, 送券 a 寻访券 flies out to each,
+ * 催理智 bottles fly off in every direction with 叮！. A tap ends it.
  */
 export default function BatchStage({ act, you, them, onDone }: { act: BatchAct; you: Look; them: Look[]; onDone: () => void }) {
   const done = useRef(false);
@@ -55,6 +59,7 @@ export default function BatchStage({ act, you, them, onDone }: { act: BatchAct; 
         {T.fx.pa}
       </div>
     ));
+  else if (act === "gift") fx = shown.map((_, i) => <div key={i} className="bs-fly" style={{ ...spot(i), ...delay(i) }} {...html(ticket(22))} />);
   else if (act === "luck")
     fx = (
       <>

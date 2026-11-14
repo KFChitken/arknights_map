@@ -1,10 +1,11 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql } from "drizzle-orm";
-import { T } from "@/i18n";
+import { fmt, T } from "@/i18n";
 import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed } from "../passCatalog";
 import {
   EARN_CAPS,
+  GIFTS_IN_PER_DAY,
   isDrawSize,
   isFancy,
   isFoil,
@@ -24,13 +25,15 @@ import {
   type WornPass,
 } from "../passes";
 import { nextSiteDayAt, siteDay } from "../siteDay";
+import { WorldError } from "../world/types";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
-import { passesMode } from "./env";
+import { passesMode, passGiftsOn } from "./env";
+import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
 import { passArtIndex } from "./passArt";
-import { passCounters, passes, passWallets, users, type UserRow } from "./schema";
+import { passCounters, passes, passGifts, passWallets, users, type UserRow } from "./schema";
 import { errorCode } from "./signals";
 
 /**
@@ -38,7 +41,8 @@ import { errorCode } from "./signals";
  * (src/lib/siteDay.ts, from 04:00 Beijing time) and TICKETS_CAP held; spent on draws of one or ten (draw), each pass
  * numbered in the order the whole site drew its character; the wish list, PITY draws at most from one of it.
  * Who was drawn is decided here, by crypto.randomInt, before the page shows anything. No ticket is sold or given
- * for money. Switched by PASSES (env.ts).
+ * for money; 触须之交 may give each other one a day (receiveGift, from friendly.ts giftTicket). Switched by PASSES
+ * and PASS_GIFTS (env.ts).
  */
 
 type Wallet = typeof passWallets.$inferSelect;
@@ -54,12 +58,17 @@ export function passesOpen(user: Pick<UserRow, "id" | "email">): boolean {
   return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
 }
 
+/** Whether this player may give their 触须之交 tickets, and be given them: PASS_GIFTS on, and 寻访 open to them */
+export const giftsOpen = (user: Pick<UserRow, "id" | "email">) => passGiftsOn() && passesOpen(user);
+
+
 /**
  * A ticket for something the player just did (touched, touched back, answered a declaration or did something for a
  * 触须之交: social; touched a guide or answered one: guide; declared: declare), while the day's EARN_CAPS of that kind
- * and TICKETS_CAP allow. Only for a player who has opened 寻访 once (their wallet), so nothing is written for anyone
- * else. Counted whoever it reached, a player who blocked them too (withheld), so tickets never tell. One statement,
- * which also starts the counts of a new site day. Never fails what it is counted for: a fault is only logged.
+ * and TICKETS_CAP allow. Only for a player who has opened 寻访 once (their wallet, welcomed: a 触须之交's gift may
+ * have made it before), so nothing is written for anyone else. Counted whoever it reached, a player who blocked them
+ * too (withheld), so tickets never tell. One statement, which also starts the counts of a new site day. Never fails
+ * what it is counted for: a fault is only logged.
  */
 export async function earn(userId: string, kind: EarnKind, now = Date.now()): Promise<void> {
   if (passesMode() === "off") return;
@@ -81,6 +90,7 @@ export async function earn(userId: string, kind: EarnKind, now = Date.now()): Pr
       .where(
         and(
           eq(passWallets.userId, userId),
+          eq(passWallets.welcomed, true),
           lt(passWallets.tickets, TICKETS_CAP),
           or(ne(passWallets.day, day), lt(passWallets[kind], EARN_CAPS[kind])),
         ),
@@ -164,6 +174,7 @@ async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassSt
     welcomed,
     nextDayAt: nextSiteDayAt(now),
     worn: await wornOf(w.userId),
+    gifts: passGiftsOn(),
   };
 }
 
@@ -176,6 +187,34 @@ async function walletOf(userId: string): Promise<Wallet> {
 /** The page's view of a player's wallet, as after any change */
 export async function passState(userId: string, now = Date.now()): Promise<PassState> {
   return stateOf(await walletOf(userId), now);
+}
+
+/**
+ * A ticket from one 触须之交 to another (friendly.ts giftTicket, which made sure they are), within that transaction.
+ * The receiver's wallet is made if they never opened 寻访 (the first ten still come when they do), then locked, so
+ * however many give at once, nobody is given more than GIFTS_IN_PER_DAY a site day, whoever came first; a new site
+ * day's first starts all the day's counts again. Each giver once a site day (pass_gifts). Past TICKETS_CAP too.
+ */
+export async function receiveGift(tx: Exec, fromId: string, toId: string, now = Date.now()): Promise<void> {
+  const day = siteDay(now);
+  await tx.insert(passWallets).values({ userId: toId, day }).onConflictDoNothing();
+  const [w] = await tx.select().from(passWallets).where(eq(passWallets.userId, toId)).for("update");
+  const same = w.day === day;
+  if (same && w.giftsIn >= GIFTS_IN_PER_DAY) throw new WorldError(fmt(T.server.passes.giftsFull, { n: GIFTS_IN_PER_DAY }));
+  const [made] = await tx
+    .insert(passGifts)
+    .values({ fromId, toId, day, createdAt: new Date(now) })
+    .onConflictDoNothing()
+    .returning({ day: passGifts.day });
+  if (!made) throw new WorldError(T.server.passes.giftedToday);
+  await tx
+    .update(passWallets)
+    .set(
+      same
+        ? { tickets: sql`${passWallets.tickets} + 1`, giftsIn: sql`${passWallets.giftsIn} + 1` }
+        : { tickets: sql`${passWallets.tickets} + 1`, giftsIn: 1, day, social: 0, guide: 0, declare: 0 },
+    )
+    .where(eq(passWallets.userId, toId));
 }
 
 /** A list of catalogue ids as a smallint[] for the database */

@@ -253,6 +253,8 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 /* 一键 */
 .batch-row, .batch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 12px; }
 .batch-label { margin-right: 2px; color: var(--muted); font-size: 13px; font-weight: 600; }
+/* 一键 送券: yellow as the tickets */
+button.pill.gift { border-color: #ffd23f; background: #ffd23f; color: #1b1d22; font-weight: 700; }
 .batch-head { justify-content: space-between; font-size: 14px; font-weight: 600; }
 .batch-bar { display: flex; gap: 8px; align-items: center; }
 .batch-bar .primary { flex: 1; }
@@ -1859,6 +1861,24 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
 .friend-act:disabled .fa-ico { background: #f1f2f4; border-color: #e3e5e9; color: #b4b9c2; }
 .friend-act:not(:disabled):active .fa-ico { transform: scale(0.94); }
 .friend-acts-note { margin: 0; }
+/* 送 1 张寻访券 (src/lib/passes.ts): yellow as the tickets; grey once given, or TA was given all a day brings */
+.friend-gift { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; font-size: 11.5px; color: var(--muted); }
+.gift-pill {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid #ffd23f; border-radius: 999px; padding: 5px 12px;
+  background: #ffd23f; color: #1b1d22; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.gift-pill.done, .gift-pill:disabled { border-color: #eef0f3; background: #eef0f3; color: #6b7280; cursor: default; }
+.gift-pill.done .tki { display: none; }
+.gift-pill:not(:disabled):active { transform: scale(0.97); }
+.msg.gifts-full .tki { margin-right: 6px; vertical-align: -1px; }
+/* a 寻访券, dark, its two notches cut out */
+.tki {
+  display: inline-block; flex: none; width: 14px; height: 10px; border-radius: 2px; background: currentColor;
+  -webkit-mask: radial-gradient(circle at 0 50%, transparent 2.6px, #000 3px) left / 51% 100% no-repeat,
+    radial-gradient(circle at 100% 50%, transparent 2.6px, #000 3px) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle at 0 50%, transparent 2.6px, #000 3px) left / 51% 100% no-repeat,
+    radial-gradient(circle at 100% 50%, transparent 2.6px, #000 3px) right / 51% 100% no-repeat;
+}
 .msg.anniversary { background: #fff7fb; }
 .uid { user-select: all; -webkit-user-select: all; }
 .game-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import { BATCH_ACTS, BATCH_NAMES, FRIEND_ACTS_PER_DAY, type BatchAct } from "@/lib/friendly";
 import type { Friend, HelpBoard } from "@/lib/world/types";
@@ -29,6 +29,8 @@ export function FriendsMark({ size = 19, arch = "#1b1d22" }: { size?: number; ar
 function cannot(f: Friend, act: BatchAct): string | null {
   const b = f.between;
   if (!b) return T.common.guides;
+  // 送券: asleep too, and none of the day's FRIEND_ACTS_PER_DAY
+  if (act === "gift") return b.gift === "ok" ? null : b.gift === "given" ? T.friends.gift.given : b.gift === "full" ? T.friends.gift.full : T.friends.gift.closed;
   if (act === "sanity") return b.done.sanity ? T.friends.sanityDone : b.actsLeft <= 0 ? fmt(T.common.actsFull, { n: FRIEND_ACTS_PER_DAY }) : null;
   if (b.asleep) return T.common.asleep;
   return b.actsLeft <= 0 ? fmt(T.common.actsFull, { n: FRIEND_ACTS_PER_DAY }) : null;
@@ -38,20 +40,22 @@ function cannot(f: Friend, act: BatchAct): string | null {
 function sendLabel(act: BatchAct, n: number) {
   if (act === "luck") return fmt(T.friends.batch.luck, { n });
   if (act === "sanity") return fmt(T.friends.batch.sanity, { n });
+  if (act === "gift") return fmt(T.friends.batch.gift, { n });
   return fmt(T.friends.batch.gesture, { n, act: BATCH_NAMES[act] });
 }
 
 /**
  * Everyone you are 触须之交 with: 特别关注 first, then the guides, then everyone else, as a grid
  * of how they look on the map; a tap opens one (FriendView), and going back comes here again.
- * On top: 一键 (贴贴 · 击掌 · 吸欧气 · 催理智 for many at once: pick, everyone who can have it
- * ticked), then 求助: your 触须之交's requests and your own (src/lib/help.ts), which never pop up
- * anywhere else.
+ * On top: 一键 (贴贴 · 击掌 · 吸欧气 · 催理智, and 送券 while any of them may be given a 寻访券,
+ * for many at once: pick, everyone who can have it ticked), then 求助: your 触须之交's requests
+ * and your own (src/lib/help.ts), which never pop up anywhere else. pick: a 一键 to open on.
  */
 export default function FriendsSheet({
   friends,
   help,
   busy,
+  pick,
   onOpen,
   onBatch,
   onAskHelp,
@@ -64,6 +68,8 @@ export default function FriendsSheet({
   /** 求助, once loaded */
   help: HelpBoard | null;
   busy: boolean;
+  /** Open picking for this 一键 (送券, from 寻访) */
+  pick?: BatchAct;
   onOpen: (id: string) => void;
   onBatch: (act: BatchAct, friendIds: string[]) => void;
   onAskHelp: () => void;
@@ -72,17 +78,28 @@ export default function FriendsSheet({
   onCopyUid: (uid: string) => void;
   onClose: () => void;
 }) {
-  const [act, setAct] = useState<BatchAct | null>(null);
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const [askedOpen, setAskedOpen] = useState(true);
   const people = friends.filter((f) => f.between);
+  // picking for a 一键: everyone who can have it, ticked
+  const ticked = (a: BatchAct) => new Set(people.filter((f) => !cannot(f, a)).map((f) => f.id));
+  const [act, setAct] = useState<BatchAct | null>(pick ?? null);
+  const [chosen, setChosen] = useState<Set<string>>(() => (pick ? ticked(pick) : new Set()));
+  const [askedOpen, setAskedOpen] = useState(true);
   const starred = people.some((f) => f.star !== null);
   const asking = new Set((help?.theirs ?? []).map((r) => r.friendId));
+  // 送券 only while any of them may be given a 寻访券 (Friend.between.gift)
+  const acts = BATCH_ACTS.filter((a) => a !== "gift" || people.some((f) => f.between?.gift));
+  // opened on a 一键 before the list came: tick once it does
+  const [waiting, setWaiting] = useState(Boolean(pick) && people.length === 0);
+  useEffect(() => {
+    if (!waiting || !act || people.length === 0) return;
+    setWaiting(false);
+    setChosen(ticked(act));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, act, people.length]);
 
-  // picking for a 一键: everyone who can have it, ticked
   const startPick = (a: BatchAct) => {
     setAct(a);
-    setChosen(new Set(people.filter((f) => !cannot(f, a)).map((f) => f.id)));
+    setChosen(ticked(a));
   };
   const onlyStarred = () => act && setChosen(new Set(people.filter((f) => f.star !== null && !cannot(f, act)).map((f) => f.id)));
   const flip = (id: string) =>
@@ -118,9 +135,7 @@ export default function FriendsSheet({
           {people.length > 0 &&
             (act ? (
               <div className="batch-head">
-                <span>
-                  {fmtParts(T.friends.pickWho, { act: BATCH_NAMES[act] })}
-                </span>
+                <span>{act === "gift" ? T.friends.pickGift : fmtParts(T.friends.pickWho, { act: BATCH_NAMES[act] })}</span>
                 {starred && (
                   <button type="button" className="pill" onClick={onlyStarred}>
                     {T.friends.starredOnly}
@@ -130,8 +145,8 @@ export default function FriendsSheet({
             ) : (
               <div className="batch-row">
                 <span className="batch-label">{T.friends.batch.label}</span>
-                {BATCH_ACTS.map((a) => (
-                  <button key={a} type="button" className="pill" disabled={busy} onClick={() => startPick(a)}>
+                {acts.map((a) => (
+                  <button key={a} type="button" className={`pill${a === "gift" ? " gift" : ""}`} disabled={busy} onClick={() => startPick(a)}>
                     {BATCH_NAMES[a]}
                   </button>
                 ))}

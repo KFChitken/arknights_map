@@ -38,4 +38,6 @@ export const passesApi = {
   look: (charId: number, plain: boolean) => call<PassState>("PUT", "look", { charId, plain }),
   /** the pass worn on the player's profile card, or none */
   wear: (passId: number | null) => call<PassState>("PUT", "wear", { passId }),
+  /** 送 1 张寻访券 to a 触须之交, by their Friend.id */
+  gift: (friendId: string) => call<{ ok: true }>("POST", "gift", { friendId }),
 };

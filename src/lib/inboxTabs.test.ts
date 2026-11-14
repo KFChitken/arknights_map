@@ -31,6 +31,8 @@ const ONE_OF_EACH: [InboxItem, InboxTab, () => string][] = [
   [item("visit", { ...FROM, event: "sentHome", tip: false, spot: null, cloneId: "c:1" }), "friends", () => T.inbox.headline.visit],
   [item("sanity", { ...FROM, asleep: false, answer: null }), "friends", () => T.inbox.headline.sanity],
   [item("gesture", { ...FROM, gesture: "hug", returned: false }), "friends", () => T.inbox.headline.gesture],
+  [item("gift", { ...FROM, returned: false }), "friends", () => T.inbox.headline.gift],
+  [item("giftsFull", { replied: true }), "friends", () => T.inbox.headline.gift],
   [item("sanityThanks", FROM), "friends", () => T.inbox.headline.thanks],
   [item("game", { ...FROM, event: "added", game: "arknights", server: "", answered: false }), "friends", () => T.inbox.headline.thanks],
   [touch(), "touches", () => T.inbox.headline.touch],
@@ -56,8 +58,8 @@ describe("消息's tabs", () => {
     // every kind there is has its row above (a new kind fails here, and its tab fails to compile in inboxTabs.ts)
     const kinds: Record<InboxItem["kind"], true> = {
       staff: true, touch: true, declaration: true, reaction: true, friend: true, poke: true, pokeWoke: true, sanity: true,
-      sanityThanks: true, gesture: true, visit: true, game: true, anniversary: true, amiya: true, perlica: true, talulah: true,
-      minghe: true, si: true,
+      sanityThanks: true, gesture: true, gift: true, giftsFull: true, visit: true, game: true, anniversary: true, amiya: true,
+      perlica: true, talulah: true, minghe: true, si: true,
     };
     expect(new Set(ONE_OF_EACH.map(([i]) => i.kind))).toEqual(new Set(Object.keys(kinds)));
     for (const [message, tab, title] of ONE_OF_EACH) {

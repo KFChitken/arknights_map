@@ -1,17 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { T } from "@/i18n";
+import { fmt, T } from "@/i18n";
 import { currentUser } from "@/lib/server/auth";
 import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib/server/consent";
 import { passesMode } from "@/lib/server/env";
+import { giftTicket } from "@/lib/server/friendly";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { collection, copiesOf, draw, openWallet, passesOpen, passLog, setLook, setWish, wear } from "@/lib/server/passes";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
+import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 
 /**
  * 通行证寻访 (src/lib/server/passes.ts), each for the signed-in player alone:
  *   POST open        the page opened: the wallet as it is (made, with the first tickets, the first time)
  *   POST draw {n}    a draw of 1 or 10
+ *   POST gift {friendId}       送 1 张寻访券 to a 触须之交 (src/lib/server/friendly.ts giftTicket); 一键 is world's friendsAct
  *   PUT  wish {ids}  the wish list
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
  *   PUT  wear {passId}         the pass worn on their profile card (null: none)
@@ -20,12 +23,14 @@ import type { UserRow } from "@/lib/server/schema";
  *   GET  log         寻访记录, ?before= the id of the last row shown
  * While PASSES keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. Drawing and the wish list wait, like the map's world, while the admin asks the player to say again they are
- * 18 or older, or an updated privacy policy is not agreed yet; what they have stays readable.
+ * 18 or older, or an updated privacy policy is not agreed yet; what they have stays readable. A gift reaches another
+ * player, so it also waits while the admin has paused the giver's 互动, as world's do.
  */
 
 const OPS = {
   open: { method: "POST", perMinute: 30, agreed: true },
   draw: { method: "POST", perMinute: 90, agreed: true },
+  gift: { method: "POST", perMinute: 30, agreed: true },
   wish: { method: "PUT", perMinute: 20, agreed: true },
   look: { method: "PUT", perMinute: 30, agreed: true },
   wear: { method: "PUT", perMinute: 30, agreed: true },
@@ -70,6 +75,13 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
   const { user, op } = await playerFor("POST", (await params).op);
   if (op === "open") return answer(await openWallet(user));
   const body = await readJson(req);
+  if (op === "gift") {
+    if (user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()) {
+      throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user.suspendedUntil.getTime()), means: suspendedMeans() }));
+    }
+    await giftTicket(user, body.friendId);
+    return answer({ ok: true });
+  }
   return answer(await draw(user, body.n));
 });
 

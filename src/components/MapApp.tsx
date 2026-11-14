@@ -104,6 +104,7 @@ import {
 import { lagWatch, type LagWatch } from "@/lib/lag";
 import { countText } from "@/lib/counts";
 import MapStylePicker from "./app/MapStylePicker";
+import { passesApi } from "@/lib/passesClient";
 import { ServerWorld } from "@/lib/world/server";
 import {
   AgeCheckNeeded,
@@ -395,8 +396,8 @@ type Panel =
   /** target: the message the profile came with, for blocking or reporting */
   | { kind: "viewProfile"; profile: PublicProfile; target: string; back: Panel }
   | { kind: "friend"; friendId: string; back: Panel | null }
-  /** Everyone you are 触须之交 with, as a grid (from the dock) */
-  | { kind: "friends" }
+  /** Everyone you are 触须之交 with, as a grid (from the dock); pick: a 一键 to start on (送券, from 寻访) */
+  | { kind: "friends"; pick?: BatchAct }
   /** 发求助, from the 触须之交 page */
   | { kind: "helpAsk"; back: Panel | null }
   /** 做客 at one of a 触须之交's roaches: asked first, then (every clone out) which clone goes */
@@ -2122,6 +2123,15 @@ export default function MapApp({
     await loading;
   };
 
+  /** 送 1 张寻访券 (src/lib/passes.ts), from their card or page, or 回送一张 in 消息: the toast, and the button saying it went */
+  const giveTicket = async (friend: Friend) => {
+    if (!(await friendly(() => passesApi.gift(friend.id)))) return;
+    setToast(fmt(T.map.friends.giftSent, { name: friend.profile.displayName }));
+    // theirs to you in 消息 now say 已经回送
+    const back = inbox.some((i) => i.kind === "gift" && i.friendId === friend.id && !i.returned);
+    await Promise.all([loadFriends(), back ? refreshInbox() : null]);
+  };
+
   /** 一键: one act for many at once, acted out once over the map, then the toast */
   const batch = async (act: BatchAct, friendIds: string[]) => {
     setFriendBusy(true);
@@ -2137,7 +2147,8 @@ export default function MapApp({
     if (!res) return;
     const went = res.filter((r) => r.ok).map((r) => shownFriends.find((f) => f.id === r.id)).filter((f): f is Friend => Boolean(f));
     const missed = res.filter((r) => !r.ok);
-    const loading = loadFriends();
+    // 送券 answers theirs to you in 消息 (已经回送)
+    const loading = Promise.all([loadFriends(), act === "gift" && went.length ? refreshInbox() : null]);
     if (!went.length) {
       setToast(missed[0]?.why ?? T.map.friends.notSent);
       return loading;
@@ -2164,10 +2175,10 @@ export default function MapApp({
     if (board) setHelpBoard(board);
     return board;
   }, []);
-  /** The 触须之交 page: the list and 求助, which then count as seen (the dot goes) */
-  const openFriends = async () => {
+  /** The 触须之交 page: the list and 求助, which then count as seen (the dot goes); pick: a 一键 to start on */
+  const openFriends = async (pick?: BatchAct) => {
     setSelected(null);
-    setPanel({ kind: "friends" });
+    setPanel({ kind: "friends", pick });
     loadFriends().catch(() => {});
     const board = await loadHelp();
     if (board && (board.theirs.some((r) => r.fresh) || board.mine.some((r) => r.fresh) || (me && me.help.asks + me.help.answers > 0))) {
@@ -2318,6 +2329,10 @@ export default function MapApp({
       if (!(await friendly((w) => w.gameAdded(itemId)))) return;
       setToast(T.map.game.friendsToo);
       await Promise.all([refreshInbox(), loadFriends()]);
+    },
+    giftBack: async (friendId) => {
+      const friend = shownFriends.find((f) => f.id === friendId);
+      if (friend) await giveTicket(friend);
     },
   };
 
@@ -4349,6 +4364,7 @@ export default function MapApp({
             friends={shownFriends}
             help={helpBoard}
             busy={friendBusy}
+            pick={p.pick}
             onOpen={(friendId) => setPanel({ kind: "friend", friendId, back: p })}
             onBatch={batch}
             onAskHelp={() => setPanel({ kind: "helpAsk", back: p })}
@@ -4395,6 +4411,7 @@ export default function MapApp({
                   pokeAgainAt={friend.pokeAgainAt}
                   busy={friendBusy || pokeSent}
                   onAct={(a, at) => friendAct(friend, a, at, null)}
+                  onGift={() => giveTicket(friend)}
                 />
               )
             }
@@ -4884,6 +4901,7 @@ export default function MapApp({
                 riding={Boolean(selected.roach.ride)}
                 busy={friendBusy || pokeSent || Boolean(poking)}
                 onAct={(a, at) => friendAct(selectedFriend, a, at, selected.roach)}
+                onGift={() => giveTicket(selectedFriend)}
               />
             )
           }
@@ -5062,6 +5080,10 @@ export default function MapApp({
           favourites={me.profile.favourites}
           holder={displayName(me.profile)}
           onClose={() => setPassesOpen(false)}
+          onGift={() => {
+            setPassesOpen(false);
+            void openFriends("gift");
+          }}
           onRefused={(e) => {
             setPassesOpen(false);
             void act(() => Promise.reject(e));

@@ -20,6 +20,7 @@ import {
 import { GAME_NAMES, serverName, type Game } from "@/lib/games";
 import { guideById, isGuideItem } from "@/lib/guides";
 import { capCount, INBOX_TABS, noticeTitle, tabLabel, tabOf, type InboxTab } from "@/lib/inboxTabs";
+import { GIFTS_IN_PER_DAY } from "@/lib/passes";
 import { PERLICA_ID, perlicaText, perlicaUnfriend } from "@/lib/perlica";
 import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
 import { SI_ID, siText } from "@/lib/si";
@@ -111,6 +112,8 @@ export type InboxFriendly = {
   follow: (cloneId: string) => Promise<void>;
   goHome: (cloneId: string) => Promise<void>;
   gameAdded: (itemId: string) => Promise<void>;
+  /** 回送一张: a 寻访券 for the 触须之交 who gave you one */
+  giftBack: (friendId: string) => Promise<void>;
 };
 
 /**
@@ -321,6 +324,20 @@ export default function InboxSheet({
         </div>
       );
     }
+    // given all the 寻访券 a day brings: from nobody, so nobody to block
+    if (item.kind === "giftsFull") {
+      return (
+        <div key={item.id} className={`${cls} gifts-full`}>
+          <div>
+            <i className="tki" aria-hidden="true" />
+            {fmt(T.inbox.gift.full, { n: GIFTS_IN_PER_DAY })}
+          </div>
+          <div className="meta">
+            {T.inbox.gift.fullFrom} · {ago(item.at)}
+          </div>
+        </div>
+      );
+    }
     if (item.kind === "friend") {
       return (
         <div key={item.id} className={cls}>
@@ -356,6 +373,7 @@ export default function InboxSheet({
       item.kind === "sanity" ||
       item.kind === "sanityThanks" ||
       item.kind === "gesture" ||
+      item.kind === "gift" ||
       item.kind === "visit" ||
       item.kind === "game" ||
       item.kind === "anniversary"
@@ -403,6 +421,19 @@ export default function InboxSheet({
             </button>
           );
         }
+      } else if (item.kind === "gift") {
+        text = fmt(T.inbox.gift.text, { who });
+        // while you may give TA one: back, unless TA was given all a day brings already; given one today (two who gave
+        // each other at the very same moment) is as good as back
+        const gift = friend ? betweenOf(item.friendId)?.gift : undefined;
+        actions = item.returned || gift === "given" ? (
+          <span className="done">{T.inbox.gift.returned}</span>
+        ) : gift ? (
+          <button className="gift-pill" disabled={busy || gift === "full"} onClick={() => act(item.id, () => friendly.giftBack(item.friendId))}>
+            <i className="tki" aria-hidden="true" />
+            {gift === "full" ? T.friendActs.giftFull : T.inbox.gift.back}
+          </button>
+        ) : null;
       } else if (item.kind === "visit") {
         text = visitText(item);
         if (item.tip) note = <p className="hint">{T.inbox.visit.doorstep}</p>;

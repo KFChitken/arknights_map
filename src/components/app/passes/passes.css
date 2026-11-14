@@ -125,6 +125,8 @@
 .g-row b { font: 700 16px/1.1 var(--font-num); color: #fff; white-space: nowrap; }
 .g-bar { height: 5px; background: rgba(255, 255, 255, 0.12); border-radius: 3px; margin: 5px 0 0; overflow: hidden; }
 .g-bar i { display: block; height: 100%; background: var(--p-yellow); border-radius: 3px; }
+.g-today.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.g-bar.pink i { background: #ff7fae; }
 .g-btns { display: grid; grid-template-columns: 1fr 1.35fr; gap: 10px; margin: 14px 16px 0; }
 .g-btns button {
   border-radius: 14px; text-align: center; padding: 10px 0; font-weight: 800; font-size: 16px; line-height: 1.35;

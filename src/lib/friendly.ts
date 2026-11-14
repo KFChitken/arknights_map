@@ -113,8 +113,8 @@ export const sanityThanks = (who: string) => fmt(T.lib.friendly.sanityThanks, { 
  */
 export const FRIEND_ACTS_PER_DAY = 3;
 
-/** 一键: what may go to many 触须之交 at once */
-export const BATCH_ACTS = ["hug", "highfive", "luck", "sanity"] as const;
+/** 一键: what may go to many 触须之交 at once; 送券 only while 寻访券 may be given (src/lib/passes.ts) */
+export const BATCH_ACTS = ["hug", "highfive", "luck", "sanity", "gift"] as const;
 export type BatchAct = (typeof BATCH_ACTS)[number];
 export const isBatchAct = (x: unknown): x is BatchAct => (BATCH_ACTS as readonly unknown[]).includes(x);
 export const BATCH_NAMES: Record<BatchAct, string> = {
@@ -130,6 +130,9 @@ export const BATCH_NAMES: Record<BatchAct, string> = {
   get sanity() {
     return T.friendActs.sanity;
   },
+  get gift() {
+    return T.friends.batch.giftName;
+  },
 };
 
 /** The toast once a batch went out to n of them */
@@ -143,6 +146,8 @@ export function batchSent(act: BatchAct, n: number) {
       return fmt(T.lib.friendly.batchSent.luck, { n });
     case "sanity":
       return fmt(T.lib.friendly.batchSent.sanity, { n });
+    case "gift":
+      return fmt(T.lib.friendly.batchSent.gift, { n });
   }
 }
 

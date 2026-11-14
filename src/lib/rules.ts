@@ -116,6 +116,8 @@ export const INBOX_DAYS = 30;
 export const INBOX_DECLARATIONS = 100;
 /** Touches, pokes, declarations, reactions and roach moves older than this are deleted (see the privacy page). */
 export const KEEP_ACTIVITY_DAYS = 90;
+/** Who gave whom a 寻访券, and its note in 消息, are deleted after this many days (the privacy page says 7) */
+export const KEEP_PASS_GIFT_DAYS = 7;
 
 /** 方舟雷达 scans this far around your main roach. */
 export const RADAR_RADIUS_KM = 100;

@@ -562,7 +562,7 @@ export const friendNotes = pgTable(
     asleep: boolean("asleep").notNull().default(false),
     /** A gesture sent back: the note it answers */
     replyTo: uuid("reply_to"),
-    /** How the other answered: "done" or "ok" (sanity), "back" (a gesture returned), "added" (gameAsk) */
+    /** How the other answered: "done" or "ok" (sanity), "back" (a gesture or a 寻访券 returned), "added" (gameAsk) */
     answer: text("answer"),
     answeredAt: at("answered_at"),
     /** When the sender saw the answer ("done", "added") */

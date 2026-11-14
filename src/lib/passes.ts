@@ -15,8 +15,13 @@ export type EarnKind = keyof typeof EARN_CAPS;
 export const EARN_KINDS = Object.keys(EARN_CAPS) as EarnKind[];
 /** All of them together: what 今天拿到 x / 10 counts to */
 export const DAY_TICKETS = EARN_KINDS.reduce((n, k) => n + EARN_CAPS[k], 0);
-/** Tickets a player may be given by their 触须之交 a site day */
+/** Tickets a player may be given by their 触须之交 a site day; each 触须之交 gives one a day at most */
 export const GIFTS_IN_PER_DAY = 3;
+/**
+ * 送 1 张寻访券, as it stands between you and one 触须之交 today: you may (ok), you gave TA one (given), or TA was
+ * given GIFTS_IN_PER_DAY already (full)
+ */
+export type GiftState = "ok" | "given" | "full";
 /** The pull that surely brings someone from the wish list: after PITY - 1 without one */
 export const PITY = 30;
 /** Characters on a wish list, at most */
@@ -68,6 +73,8 @@ export type PassState = {
   nextDayAt: number;
   /** the pass they wear on their profile card, if any */
   worn: WornPass | null;
+  /** 触须之交 may give each other tickets (PASS_GIFTS): 送来的 y / 3 and 送券 show */
+  gifts: boolean;
 };
 
 /** One character in 我的通行证 */

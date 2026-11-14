@@ -15,9 +15,10 @@ import {
   type BatchAct,
 } from "../friendly";
 import { isGame, serverName, type Game } from "../games";
+import { GIFTS_IN_PER_DAY, type GiftState } from "../passes";
 import { displayName } from "../profile";
 import { outsideOffLimits } from "../offLimits";
-import { INBOX_DAYS, TOUCHES_PER_PERSON_PER_DAY } from "../rules";
+import { INBOX_DAYS, KEEP_PASS_GIFT_DAYS, TOUCHES_PER_PERSON_PER_DAY } from "../rules";
 import { siteDay, siteDayStart } from "../siteDay";
 import { isNearFire, pickSeat } from "../talulah";
 import type { LngLat } from "../types";
@@ -27,19 +28,35 @@ import { WorldError, type FriendBetween, type InboxItem, type OwnRoach, type Pla
 import { addedInGame, award, placed, quilted } from "./badges";
 import { db } from "./db";
 import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
+import { HttpError } from "./http";
 import { nudge } from "./live";
-import { earn } from "./passes";
+import { earn, giftsOpen, passesOpen, receiveGift } from "./passes";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
-import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, touches, users, visitBans, visits, type UserRow } from "./schema";
+import {
+  declarations,
+  deliveries,
+  friendNotes,
+  friendships,
+  friendStars,
+  passGifts,
+  passWallets,
+  roaches,
+  touches,
+  users,
+  visitBans,
+  visits,
+  type UserRow,
+} from "./schema";
 import { countNote, countPlaced } from "./stats";
 import { arrivedAt, lockFire, seatByFire } from "./talulah";
 import { cardsOf, checkPlacement, friendIdsOf, friendKey, ownRoaches, profileOf, userById, writePlacement } from "./world";
 
 /**
  * What 触须之交 do for each other (src/lib/friendly.ts): 催理智, gestures, 串门 (a clone
- * sitting by the other's roach), adding each other in a game, and their anniversaries. Each
- * is between the two of them only: nothing shows on the shared map or in the shared roach
- * list, and none of it counts against touches. Blocking ends a friendship, and with it all this.
+ * sitting by the other's roach), adding each other in a game, giving each other 寻访券, and their
+ * anniversaries. Each is between the two of them only: nothing shows on the shared map or in the
+ * shared roach list, and none of it counts against touches. Blocking ends a friendship, and with
+ * it all this.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -225,11 +242,15 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
 export async function friendsAct(userId: string, act: unknown, friendIds: unknown): Promise<BatchResult[]> {
   if (!isBatchAct(act)) throw new WorldError(T.server.friendly.noSuchGesture);
   if (!Array.isArray(friendIds) || !friendIds.length) throw new WorldError(T.server.friendly.pickFriends);
+  // 送券: whether gifts are open to the giver is asked of their account (giftTicket)
+  const giver = act === "gift" ? await userById(userId) : null;
+  if (act === "gift" && !giver) throw new HttpError(404, T.server.routes.passes.notHere);
   const out: BatchResult[] = [];
   for (const id of [...new Set(friendIds.map(String))].slice(0, MAX_BATCH)) {
     try {
       if (act === "sanity") await remindSanity(userId, id);
-      else await gesture(userId, id, act satisfies Exclude<BatchAct, "sanity">);
+      else if (act === "gift") await giftTicket(giver!, id);
+      else await gesture(userId, id, act satisfies Exclude<BatchAct, "sanity" | "gift">);
       out.push({ id, ok: true });
     } catch (e) {
       if (!(e instanceof WorldError)) throw e;
@@ -243,6 +264,39 @@ export async function friendsAct(userId: string, act: unknown, friendIds: unknow
 export type BatchResult = { id: string; ok: boolean; why?: string };
 /** More 触须之交 than anyone has */
 const MAX_BATCH = 300;
+
+// ---- 送 1 张寻访券 (src/lib/passes.ts) ----
+
+/**
+ * A ticket for a 触须之交, costing the giver none of theirs, and none of the day's FRIEND_ACTS_PER_DAY: once a site
+ * day for each 触须之交, and a player is given GIFTS_IN_PER_DAY a day at most, by whoever comes first
+ * (./passes receiveGift). Only while gifts are open to both. It answers whatever of theirs to you was still waiting
+ * (回送), and comes to them already answered if they gave you one that day: you gave each other one.
+ */
+export async function giftTicket(user: Pick<UserRow, "id" | "email">, friendId: unknown, now = Date.now()) {
+  if (!giftsOpen(user)) throw new HttpError(404, T.server.routes.passes.notHere);
+  const other = await friendOf(user.id, friendId);
+  if (!passesOpen(other)) throw new WorldError(T.server.passes.giftClosed);
+  const day = siteDay(now);
+  const at = new Date(now);
+  await db.transaction(async (tx) => {
+    await receiveGift(tx, user.id, other.id, now);
+    await tx
+      .update(friendNotes)
+      .set({ answer: "back", answeredAt: at })
+      .where(and(eq(friendNotes.fromUserId, other.id), eq(friendNotes.toUserId, user.id), eq(friendNotes.kind, "gift"), isNull(friendNotes.answer)));
+    const [theirs] = await tx
+      .select({ day: passGifts.day })
+      .from(passGifts)
+      .where(and(eq(passGifts.fromId, other.id), eq(passGifts.toId, user.id), eq(passGifts.day, day)))
+      .limit(1);
+    await tx
+      .insert(friendNotes)
+      .values({ fromUserId: user.id, toUserId: other.id, kind: "gift", period: day, ...(theirs ? { answer: "back", answeredAt: at } : {}), createdAt: at })
+      .onConflictDoNothing();
+  });
+  nudge([other.id]);
+}
 
 // ---- 游戏里也加个好友 ----
 
@@ -670,6 +724,28 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
     .select()
     .from(visitBans)
     .where(and(eq(visitBans.guestId, userId), inArray(visitBans.hostId, ids)));
+  // 送 1 张寻访券: whom you gave one today, and who was given all a day may bring; only while you may give at all
+  const giving = giftsOpen(self);
+  const gaveTo = new Set(
+    giving
+      ? (
+          await db
+            .select({ to: passGifts.toId })
+            .from(passGifts)
+            .where(and(eq(passGifts.fromId, userId), eq(passGifts.day, today), inArray(passGifts.toId, ids)))
+        ).map((g) => g.to)
+      : [],
+  );
+  const fullUp = new Set(
+    giving
+      ? (
+          await db
+            .select({ id: passWallets.userId })
+            .from(passWallets)
+            .where(and(inArray(passWallets.userId, ids), eq(passWallets.day, today), gte(passWallets.giftsIn, GIFTS_IN_PER_DAY)))
+        ).map((w) => w.id)
+      : [],
+  );
   // today's touches on each of them, touching back included, as touch() counts them (touchedToday in ./world)
   const touched = await db
     .select({ to: touches.toUserId, n: count() })
@@ -695,6 +771,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
     const v = mineVisiting.find((x) => x.hostId === o.id);
     const day = friendDayOf(since, now);
     const used = to.filter((n) => COUNTED.includes(n.kind) && n.at.getTime() >= dayStart).length;
+    const gift: GiftState | null = giving && passesOpen(o) ? (gaveTo.has(o.id) ? "given" : fullUp.has(o.id) ? "full" : "ok") : null;
     out.set(o.id, {
       mainId: mains.find((m) => m.user === o.id)?.publicId ?? null,
       asleep: sleeping(o, now),
@@ -711,6 +788,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
       games,
       wantAgainAt: wanted ? againIn(wanted, now) : null,
       anniversary: isFriendAnniversary(day) ? day : null,
+      ...(gift ? { gift } : {}),
     });
   }
   return out;
@@ -815,6 +893,8 @@ export async function friendlyInbox(self: UserRow, blocked: Set<string>, now = D
         cloneId: left ? roachId : null,
         replied: true,
       });
+    } else if (n.kind === "gift") {
+      items.push({ kind: "gift", ...b, returned: n.answer === "back", replied: n.answer === "back" });
     } else if ((n.kind === "gameAsk" || n.kind === "gameWant") && isGame(n.game)) {
       const ask = n.kind === "gameAsk";
       items.push({
@@ -833,6 +913,20 @@ export async function friendlyInbox(self: UserRow, blocked: Set<string>, now = D
     const b = base(n, `r:${n.id}`, n.answeredAt, Boolean(n.answerSeenAt), n.toUserId);
     if (n.kind === "sanity") items.push({ kind: "sanityThanks", ...b, replied: true });
     else if (isGame(n.game)) items.push({ kind: "game", ...b, event: "added", game: n.game, server: "", answered: true, replied: true });
+  }
+  // given all a day may bring: said once, just above today's last
+  const today = siteDay(now);
+  const giftsToday = toMe.filter((n) => n.kind === "gift" && n.period === today);
+  if (giftsToday.length) {
+    const [w] = await db
+      .select({ giftsIn: passWallets.giftsIn })
+      .from(passWallets)
+      .where(and(eq(passWallets.userId, userId), eq(passWallets.day, today)))
+      .limit(1);
+    if (w && w.giftsIn >= GIFTS_IN_PER_DAY) {
+      const last = Math.max(...giftsToday.map((n) => n.createdAt.getTime()));
+      items.push({ kind: "giftsFull", id: `g:${today}`, at: last + 1, seen: giftsToday.every((n) => Boolean(n.seenAt)), replied: true });
+    }
   }
   for (const f of fs) {
     const other = otherOf(f);
@@ -886,11 +980,21 @@ export async function seeFriendly(userId: string, itemIds: string[]) {
   }
 }
 
-/** Old notes go with the rest of the activity, except that two are also friends in a game; old bans when they end */
+/**
+ * Old notes go with the rest of the activity, except that two are also friends in a game; who gave whom a 寻访券
+ * goes after KEEP_PASS_GIFT_DAYS (the privacy page), its note too; old bans when they end
+ */
 export async function pruneFriendly(cutoff: Date, now = Date.now()) {
+  const gifts = new Date(now - KEEP_PASS_GIFT_DAYS * DAY);
   await db
     .delete(friendNotes)
-    .where(and(lt(friendNotes.createdAt, cutoff), or(sql`${friendNotes.kind} <> 'gameAsk'`, isNull(friendNotes.answer))));
+    .where(
+      or(
+        and(lt(friendNotes.createdAt, cutoff), or(sql`${friendNotes.kind} <> 'gameAsk'`, isNull(friendNotes.answer))),
+        and(eq(friendNotes.kind, "gift"), lt(friendNotes.createdAt, gifts)),
+      ),
+    );
+  await db.delete(passGifts).where(lt(passGifts.createdAt, gifts));
   await db.delete(visitBans).where(lt(visitBans.at, new Date(now - VISIT_BAN_DAYS * DAY)));
 }
 

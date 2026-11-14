@@ -5,7 +5,8 @@ import type { InboxItem } from "./world/types";
  * How 消息 is split, what the envelope at the bottom left counts, and where 消息 opens.
  *
  * Four tabs: touches (the guides' too), replies (reactions to your declarations, and 站长通知), declarations
- * sent nearby, and 触须之交 (all they do for each other, and a 触须之交's 「祝我生日快乐」, sent to you as one).
+ * sent nearby, and 触须之交 (all they do for each other, 寻访券 they give you included, and a 触须之交's
+ * 「祝我生日快乐」, sent to you as one).
  * The red count on the envelope counts what came to you, so everything but the declarations sent nearby;
  * those light a yellow speaker of their own, without a number.
  */
@@ -36,6 +37,8 @@ const TAB_OF: Record<Exclude<InboxItem["kind"], "declaration">, InboxTab> = {
   sanity: "friends",
   sanityThanks: "friends",
   gesture: "friends",
+  gift: "friends",
+  giftsFull: "friends",
   visit: "friends",
   game: "friends",
   anniversary: "friends",
@@ -63,6 +66,7 @@ const NOTICES: { is: (item: InboxItem) => boolean; title: () => string }[] = [
   { is: (i) => i.kind === "visit", title: () => T.inbox.headline.visit },
   { is: (i) => i.kind === "sanity", title: () => T.inbox.headline.sanity },
   { is: (i) => i.kind === "gesture", title: () => T.inbox.headline.gesture },
+  { is: (i) => i.kind === "gift" || i.kind === "giftsFull", title: () => T.inbox.headline.gift },
   { is: (i) => i.kind === "sanityThanks" || i.kind === "game", title: () => T.inbox.headline.thanks },
   { is: (i) => i.kind === "touch", title: () => T.inbox.headline.touch },
   { is: (i) => i.kind === "amiya", title: () => T.inbox.headline.amiya },

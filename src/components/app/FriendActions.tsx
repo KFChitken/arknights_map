@@ -91,7 +91,8 @@ const NAMES: Record<FriendAct, string> = {
  * 触须之交专属: the row of what only 触须之交 do, on their roach's card and their page. Awake:
  * 做客 · 催理智 · 贴贴 · 击掌 · 吸欧气; their main roach asleep: 做客 · 催理智 · 戳一戳 ·
  * 盖被子 · 放杯白开水. 催理智 and the gestures share FRIEND_ACTS_PER_DAY a day and all turn grey
- * once those are used; 催理智 once a day, 盖被子 and 放杯白开水 once a sleep.
+ * once those are used; 催理智 once a day, 盖被子 and 放杯白开水 once a sleep. Under it, while TA
+ * may be given 寻访券 (between.gift): 送 1 张寻访券, none of the day's FRIEND_ACTS_PER_DAY, once a day.
  */
 export default function FriendActions({
   between,
@@ -99,6 +100,7 @@ export default function FriendActions({
   riding = false,
   busy = false,
   onAct,
+  onGift,
 }: {
   between: FriendBetween;
   /** You poked them lately: when you may again */
@@ -109,6 +111,8 @@ export default function FriendActions({
   busy?: boolean;
   /** at: the middle of the button on screen, where 催理智's bottle flies from */
   onAct: (act: FriendAct, at: { x: number; y: number }) => void;
+  /** 送 1 张寻访券 (src/lib/passes.ts) */
+  onGift?: () => void;
 }) {
   const now = Date.now();
   const days = (t: number) => Math.max(1, Math.ceil((t - now) / 86_400_000));
@@ -165,6 +169,15 @@ export default function FriendActions({
           );
         })}
       </div>
+      {between.gift && onGift && (
+        <div className="friend-gift">
+          <button type="button" className={`gift-pill${between.gift === "ok" ? "" : " done"}`} disabled={busy || between.gift !== "ok"} onClick={onGift}>
+            <i className="tki" aria-hidden="true" />
+            {between.gift === "given" ? T.friendActs.giftGiven : between.gift === "full" ? T.friendActs.giftFull : T.friendActs.gift}
+          </button>
+          <span>{fmt(T.friendActs.giftFree, { n: FRIEND_ACTS_PER_DAY })}</span>
+        </div>
+      )}
       {notes.map((n) => (
         <p key={n} className="hint friend-acts-note">
           {n}
