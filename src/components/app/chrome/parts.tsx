@@ -102,6 +102,8 @@ export type ChromeProps = {
   top: ReactNode;
   onRadar: () => void;
   onHot: () => void;
+  /** 通行证寻访, for a player who may draw (src/lib/passes.ts); dot: ten tickets or more, or the first ones waiting */
+  passes: { dot: boolean; tickets: number; onOpen: () => void } | null;
   onGuide: (id: GuideId) => void;
   /** 界面, unless there is nothing in its menu here */
   ui: { open: boolean; onToggle: () => void; deskHint: boolean; onDeskHintDone: () => void } | null;
@@ -188,6 +190,25 @@ export function HotFlame({ size = 24 }: { size?: number }) {
       <path d="M12 2.5c.8 3.2 4.6 5.4 4.6 10a4.6 4.6 0 0 1-9.2 0c0-2.3 1.1-3.8 2.4-5 .1 1.9.9 3 2 3.4-.7-2.9-.6-5.5.2-8.4Z" fill="#ffd23f" />
       <path d="M12 21.6a2.6 2.6 0 0 1-2.6-2.6c0-1.6 1.3-2.4 2.1-3.6.4 1.2 1.6 1.8 2.3 2.6.5.6.8 1.1.8 1.8a2.6 2.6 0 0 1-2.6 2.6Z" fill="#ff8a3d" />
     </svg>
+  );
+}
+
+/** 通行证寻访's ticket, with its notches; dot: a yellow one on it */
+export function TicketIcon({ size = 24, dot = false }: { size?: number; dot?: boolean }) {
+  return (
+    <span className="ticket-ico">
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+        <g transform="rotate(-14 12 12)">
+          <path
+            d="M3.5 7.2c0-.8.6-1.4 1.4-1.4h14.2c.8 0 1.4.6 1.4 1.4v2.4a2.4 2.4 0 0 0 0 4.8v2.4c0 .8-.6 1.4-1.4 1.4H4.9c-.8 0-1.4-.6-1.4-1.4v-2.4a2.4 2.4 0 0 0 0-4.8Z"
+            fill="#ffd23f"
+          />
+          <path d="M9.2 7.4v9.2" stroke="#1b1d22" strokeWidth="1.3" strokeDasharray="1.5 1.5" />
+          <path d="M12.2 10.4h4.6M12.2 13.6h3.2" stroke="#1b1d22" strokeWidth="1.5" strokeLinecap="round" />
+        </g>
+      </svg>
+      {dot && <span className="dot" aria-hidden="true" />}
+    </span>
   );
 }
 

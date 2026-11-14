@@ -22,6 +22,7 @@ import {
   MeAvatar,
   MeSlots,
   RadarScope,
+  TicketIcon,
   UiIcon,
   useWide,
   VisitorButtons,
@@ -74,6 +75,14 @@ function Phone(p: ChromeProps) {
             </span>
             <span aria-hidden="true">{T.map.bar.hotShort}</span>
           </button>
+          {p.passes && (
+            <button className="dchip glass" aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes} onClick={p.passes.onOpen}>
+              <span className="ico">
+                <TicketIcon size={22} dot={p.passes.dot} />
+              </span>
+              <span aria-hidden="true">{T.map.bar.passesShort}</span>
+            </button>
+          )}
           {GUIDE_ORDER.map((id) => (
             <button key={id} className="dchip glass" aria-label={GUIDES[id].name} onClick={() => p.onGuide(id)}>
               <GuideFace id={id} size={28} />
@@ -172,6 +181,7 @@ function Panel(p: ChromeProps) {
           <>
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
+            {p.passes && <PassesCard passes={p.passes} />}
             <h4>{T.ui.drawer.guides}</h4>
             <div className="glist">
               {GUIDE_ORDER.map((id) => (
@@ -321,6 +331,22 @@ function PanelCounts({ counts: c, onTap }: { counts: Counts; onTap?: () => void 
       {players !== undefined && <small>{fmt(T.map.count.withoutClones, { players })}</small>}
       {c.kind === "hidden" && go}
     </div>
+  );
+}
+
+/** 通行证寻访 in the computer's panel, under 热榜: the tickets the player holds */
+function PassesCard({ passes }: { passes: NonNullable<ChromeProps["passes"]> }) {
+  return (
+    <button className="dcard" aria-label={passes.dot ? T.map.bar.passesNew : T.map.bar.passes} onClick={passes.onOpen}>
+      <TicketIcon size={40} dot={passes.dot} />
+      <span className="tx" aria-hidden="true">
+        <b>{T.map.bar.passes}</b>
+        <small>{fmt(T.map.bar.passesTickets, { n: passes.tickets })}</small>
+      </span>
+      <span className="go" aria-hidden="true">
+        ›
+      </span>
+    </button>
   );
 }
 

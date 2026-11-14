@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -168,6 +169,8 @@ export const users = pgTable("users", {
   siStamps: integer("si_stamps").notNull().default(0),
   siStampedOn: text("si_stamped_on"),
   siStayedAt: at("si_stayed_at"),
+  /** 通行证寻访 (src/lib/server/passes.ts): the pass they wear, if any; gone with the pass */
+  wornPass: bigint("worn_pass", { mode: "number" }).references((): AnyPgColumn => passes.id, { onDelete: "set null" }),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -1391,6 +1394,77 @@ export const moves = pgTable(
     index("moves_from_geog_idx").using("gist", t.fromGeog),
     index("moves_to_geog_idx").using("gist", t.toGeog),
   ],
+);
+
+/**
+ * 通行证寻访 (src/lib/server/passes.ts): every pass drawn, which is also the record of every draw (who, when, whom).
+ * charId is the character's id in src/data/pass-catalog.json; no its number, each character's own from 1 in the
+ * order the whole site drew them, never given twice, not even once the pass is gone with its account. wish: it was
+ * someone on the player's wish list then.
+ */
+export const passes = pgTable(
+  "passes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    charId: smallint("char_id").notNull(),
+    no: integer("no").notNull(),
+    wish: boolean("wish").notNull().default(false),
+    drawnAt: at("drawn_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("passes_char_no_idx").on(t.charId, t.no), index("passes_user_char_idx").on(t.userId, t.charId)],
+);
+
+/** The last number given to each character's passes; a draw takes the next ones, the rows in order of charId */
+export const passCounters = pgTable("pass_counters", {
+  charId: smallint("char_id").primaryKey(),
+  lastNo: integer("last_no").notNull(),
+});
+
+/**
+ * A player's tickets and wish list, made the first time they open 寻访 (with WELCOME_TICKETS). day is the site day
+ * (src/lib/siteDay.ts) the counts of what play brought (social, guide, declare) and what 触须之交 gave (giftsIn) are
+ * for: a row whose day is past reads as nothing brought yet, and is set back to 0 by the next write. miss: draws in a
+ * row without anyone from the wish list; wishDay: the site day the list was last changed (null: never by the player,
+ * the first was filled in from their 厨力); plain: characters they keep in the normal look though they own two or
+ * more; onMap: strangers who open their main roach's card see the character they wear; drawnAt: their last draw, so
+ * that every web process keeps to one a second.
+ */
+export const passWallets = pgTable("pass_wallets", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tickets: integer("tickets").notNull().default(0),
+  day: date("day", { mode: "string" }).notNull(),
+  social: smallint("social").notNull().default(0),
+  guide: smallint("guide").notNull().default(0),
+  declare: smallint("declare").notNull().default(0),
+  giftsIn: smallint("gifts_in").notNull().default(0),
+  welcomed: boolean("welcomed").notNull().default(false),
+  miss: smallint("miss").notNull().default(0),
+  wish: smallint("wish").array().notNull().default(sql`'{}'::smallint[]`),
+  wishDay: date("wish_day", { mode: "string" }),
+  onMap: boolean("on_map").notNull().default(true),
+  plain: smallint("plain").array().notNull().default(sql`'{}'::smallint[]`),
+  drawnAt: at("drawn_at"),
+});
+
+/** A ticket one 触须之交 gave another, once a site day each way; kept a week */
+export const passGifts = pgTable(
+  "pass_gifts",
+  {
+    fromId: uuid("from_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toId: uuid("to_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.fromId, t.toId, t.day] }), index("pass_gifts_to_idx").on(t.toId, t.day)],
 );
 
 export type UserRow = typeof users.$inferSelect;

@@ -9,6 +9,7 @@ import { WorldError, type HelpBoard, type HelpItem } from "../world/types";
 import { db } from "./db";
 import { isUniqueViolation, lockPlayer } from "./guides";
 import { nudge } from "./live";
+import { earn } from "./passes";
 import { friendStars, helpAnswers, helpRequests, users, type UserRow } from "./schema";
 import { cardsOf, friendIdsOf, friendKey, userById } from "./world";
 
@@ -138,6 +139,7 @@ export async function answerHelp(userId: string, requestId: unknown, clues?: unk
     if (isUniqueViolation(e)) throw new WorldError(T.server.help.answered);
     throw e;
   }
+  await earn(userId, "social");
   nudge([r.userId], "help");
 }
 

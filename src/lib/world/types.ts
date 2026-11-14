@@ -7,6 +7,7 @@ import type { Profile, PublicProfile } from "../profile";
 import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
+import type { PassesMe } from "../passes";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
 
@@ -533,6 +534,8 @@ export type Me = {
   admin?: ReportCounts;
   /** Only for a moderator: the map shows them 看被举报的蟑螂 (where roaches were reported), without the owner's counts */
   mod?: true;
+  /** 通行证寻访's button (src/lib/passes.ts): only for a player who may draw (PASSES) */
+  passes?: PassesMe;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

@@ -17,6 +17,7 @@ import {
   HotFlame,
   MeSlots,
   RadarScope,
+  TicketIcon,
   UiIcon,
   useSwipeAway,
   VisitorButtons,
@@ -73,6 +74,17 @@ export default function FloatChrome(p: ChromeProps) {
                 <HotFlame size={22} />
                 <small>{T.map.bar.hotShort}</small>
               </button>
+              {p.passes && (
+                <button
+                  className="it passes"
+                  aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes}
+                  onClick={p.passes.onOpen}
+                  tabIndex={folded.r ? -1 : undefined}
+                >
+                  <TicketIcon size={24} dot={p.passes.dot} />
+                  <small>{T.map.bar.passesShort}</small>
+                </button>
+              )}
               <span className="sep" aria-hidden="true" />
               {GUIDE_ORDER.map((id) => (
                 <button key={id} className="it guide" aria-label={GUIDES[id].name} onClick={() => p.onGuide(id)} tabIndex={folded.r ? -1 : undefined}>

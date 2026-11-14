@@ -128,9 +128,11 @@ describe("what the page makes of them", () => {
   });
 });
 
-/** The log as it is drawn on 11 月 13 日, every day of it (the page draws the newest 14 first) */
+/** The day of the newest row: the page is never drawn on a day before it (logToday) */
+const TODAY = CHANGELOG[0].date;
+/** The log as it is drawn that day, every day of it (the page draws the newest 14 first) */
 const page = (props: Partial<Parameters<typeof ChangeLog>[0]> = {}) =>
-  renderToStaticMarkup(createElement(ChangeLog, { rows: CHANGELOG, today: "2026-11-13", firstDays: Infinity, ...props }));
+  renderToStaticMarkup(createElement(ChangeLog, { rows: CHANGELOG, today: TODAY, firstDays: Infinity, ...props }));
 /** Each day's part of the page */
 const daysOf = (html: string) => html.split('<section class="cl-day">').slice(1);
 const linesOf = (html: string) => html.match(/<li[ >].*?<\/li>/g) ?? [];
@@ -139,11 +141,13 @@ describe("更新记录 as drawn", () => {
   it("shows the total, the days open, the last 7 days, a square a day and a line for each change or run", () => {
     const html = page();
     expect(html).toContain(`<strong>${CHANGELOG.length}</strong><span>次更新</span>`);
-    expect(html).toContain("开张第 23 天");
-    const lastWeek = CHANGELOG.filter((r) => r.date >= addDays("2026-11-13", -6)).length;
+    // 10 月 22 日 is the first day
+    const daysOpen = daysBetween("2026-10-22", TODAY) + 1;
+    expect(html).toContain(`开张第 ${daysOpen} 天`);
+    const lastWeek = CHANGELOG.filter((r) => r.date >= addDays(TODAY, -6)).length;
     expect(html).toContain(`最近 7 天改了 ${lastWeek} 次。一格是一天，颜色越深改得越多。`);
-    expect(html.match(/<span class="l\d" title="/g)).toHaveLength(23);
-    expect(html).toContain('title="11 月 13 日：');
+    expect(html.match(/<span class="l\d" title="/g)).toHaveLength(daysOpen);
+    expect(html).toContain(`title="${Number(TODAY.slice(5, 7))} 月 ${Number(TODAY.slice(8))} 日：`);
     // a vague row folds into the one above it when they are the same, on the same day
     const folded = CHANGELOG.filter((r, i) => i > 0 && isVague(r) && r.date === CHANGELOG[i - 1].date && r.kind === CHANGELOG[i - 1].kind && r.text === CHANGELOG[i - 1].text).length;
     expect(linesOf(html)).toHaveLength(CHANGELOG.length - folded);

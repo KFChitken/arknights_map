@@ -20,6 +20,7 @@ import {
   mailLabel,
   MeAvatar,
   RadarScope,
+  TicketIcon,
   UiIcon,
   useSwipeAway,
   VisitorButtons,
@@ -110,6 +111,16 @@ export default function HudChrome(p: ChromeProps) {
               {T.map.bar.hotShort}
             </span>
           </span>
+          {p.passes && (
+            <span className="rb">
+              <button className="ob glass" aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes} onClick={p.passes.onOpen}>
+                <TicketIcon size={24} dot={p.passes.dot} />
+              </button>
+              <span className="lbl" aria-hidden="true">
+                {T.map.bar.passesShort}
+              </span>
+            </span>
+          )}
           <span className="rb">
             {p.stylePicker(true)}
             <span className="lbl" aria-hidden="true">

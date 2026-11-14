@@ -70,6 +70,15 @@ export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
  */
 export const UI_CHOICE = process.env.UI_CHOICE !== "off";
 
+/**
+ * 通行证寻访 (src/lib/server/passes.ts): PASSES=on lets every player earn tickets and draw; admins, only the 站长 and
+ * the admins (to try it on the live site first); off (the default) shows nobody the way in, answers its requests 404
+ * and counts no tickets. Whatever was drawn stays, whichever it is. PASS_GIFTS=off stops 触须之交 giving each other
+ * tickets on its own. Read on every use, so the tests can switch them.
+ */
+export const passesMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.PASSES) ?? "off";
+export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
+
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
 export const TILES_DIR = process.env.TILES_DIR || "tiles";
 

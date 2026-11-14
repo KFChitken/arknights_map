@@ -269,6 +269,8 @@ const HudChrome = dynamic(() => import("./app/chrome/HudChrome"), { ssr: false }
 const UiPicker = dynamic(() => import("./app/chrome/UiPicker"), { ssr: false });
 // 最近更新 (src/lib/pamphlet.ts), only once it opens
 const Pamphlet = dynamic(() => import("./app/Pamphlet"), { ssr: false });
+// 通行证寻访 (src/lib/passes.ts), with the characters' list, only once it opens
+const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -582,6 +584,8 @@ export default function MapApp({
   /** Where a button pressed in it takes the player, once what waited for it has had its turn; a press, to look again */
   const pamphletGo = useRef<PamphletAction | null>(null);
   const [pamphletPress, setPamphletPress] = useState(0);
+  // 通行证寻访, over everything (from its button, for a player who may draw)
+  const [passesOpen, setPassesOpen] = useState(false);
   /** 换个画风: the style card opens (MapStylePicker openSignal) */
   const [styleAsk, setStyleAsk] = useState(0);
   /** The notices as the board, the red dot and the strip have them: the server's, with the booklet among them */
@@ -4570,6 +4574,7 @@ export default function MapApp({
     ),
     onRadar: me ? openRadar : () => setPanel({ kind: "guestRadar" }),
     onHot: () => setPanel({ kind: "hot" }),
+    passes: me?.passes ? { dot: me.passes.dot, tickets: me.passes.tickets, onOpen: () => setPassesOpen(true) } : null,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });
@@ -4996,7 +5001,7 @@ export default function MapApp({
 
       {panel && renderPanel(panel)}
       {/* one that came as the page opened, just before 最近更新 popped up, waits for it to be closed */}
-      {newBadges[0] && !gray && !pamphlet && (
+      {newBadges[0] && !gray && !pamphlet && !passesOpen && (
         <NewBadge
           key={newBadges[0].id}
           earned={newBadges[0]}
@@ -5018,6 +5023,18 @@ export default function MapApp({
           onList={boardList}
           onLog={boardLog}
           onClose={closeBoard}
+        />
+      )}
+      {/* over everything of each layout; what it cannot do itself (sign in, the age question, the privacy policy) closes it */}
+      {passesOpen && me?.passes && (
+        <Passes
+          favourites={me.profile.favourites}
+          onClose={() => setPassesOpen(false)}
+          onRefused={(e) => {
+            setPassesOpen(false);
+            void act(() => Promise.reject(e));
+          }}
+          onWallet={(p) => setMe((m) => (m?.passes ? { ...m, passes: p } : m))}
         />
       )}
       {/* over everything of each layout, the board it was opened from too */}
