@@ -16,6 +16,7 @@ export const COURSES = [
   { id: "find325", subject: "math" },
   { id: "mental325", subject: "math" },
   { id: "beat325", subject: "music" },
+  { id: "make325", subject: "math" },
 ] as const satisfies readonly { id: string; subject: Subject }[];
 
 export type Course = (typeof COURSES)[number];

@@ -310,6 +310,62 @@
 .bt-under { min-height: 104px; }
 .bt-hint { max-width: 300px; white-space: pre-line; text-wrap: balance; }
 
+/* ---- 凑 325 (Make325.tsx): four cards and four signs; only the cards and the line over them change, nothing flashes ---- */
+.mk-game {
+  /* a card's height: as tall as there is room for under the title and over the round's end */
+  --mk-h: clamp(52px, calc((100vh - 450px) / 2), 84px); --mk-h: clamp(52px, calc((100dvh - 450px) / 2), 84px);
+  display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%;
+}
+@media (min-width: 600px) and (min-height: 600px) {
+  .mk-game { --mk-h: clamp(52px, calc((min(720px, 100vh - 48px) - 450px) / 2), 84px); }
+}
+.mk-said {
+  /* three lines of the rule high, whatever is said, so the cards under it never move */
+  display: flex; align-items: center; justify-content: center; max-width: 320px; min-height: 62px; margin: 0; color: var(--muted);
+  font-size: 14px; line-height: 1.45; text-align: center; white-space: pre-line; text-wrap: balance;
+}
+.mk-said.mk-bad { color: var(--st-red); font-size: 15px; font-weight: 700; }
+.mk-said.mk-good { color: var(--st-green); font-size: 16px; font-weight: 800; }
+.mk-said.mk-answer { color: #1b1d22; font-size: 17px; font-weight: 800; }
+.mk-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: min(100%, 300px); }
+.mk-card,
+.mk-gone { height: var(--mk-h); border-radius: 16px; }
+.mk-card {
+  /* smaller for a long number (--mk-len, its digits), to stay inside the card (--mk-fit, about its width) */
+  --mk-fit: 210px;
+  padding: 0; border: 3px solid #1b1d22; background: #fff; color: #1b1d22; font-size: clamp(13px, calc(var(--mk-fit) / var(--mk-len, 2)), 30px);
+  font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.mk-card.mk-sel { background: var(--st-yellow); }
+.mk-card.mk-new:not(.mk-sel) { background: var(--st-tint); }
+.mk-card.mk-win { border-color: var(--st-green); background: #e7f6ed; color: var(--st-green); opacity: 1; }
+.mk-card:disabled { cursor: default; }
+.mk-gone { border: 2px dashed var(--st-line); }
+@media (prefers-reduced-motion: no-preference) {
+  .mk-card.mk-shake0 { animation: mk-shake0 360ms ease-in-out; }
+  .mk-card.mk-shake1 { animation: mk-shake1 360ms ease-in-out; }
+}
+@keyframes mk-shake0 {
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes mk-shake1 {
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+.mk-ops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: min(100%, 300px); }
+.mk-op { height: 52px; padding: 0; border: 2px solid #1b1d22; border-radius: 14px; background: #fff; color: #1b1d22; font-size: 26px; font-weight: 700; line-height: 1; }
+.mk-op.mk-sel { background: #1b1d22; color: #fff; }
+.mk-op:disabled { border-color: var(--st-line); color: #9aa1ab; }
+.mk-tools { display: flex; justify-content: center; gap: 8px; width: min(100%, 300px); }
+.mk-tools .st-ghost { flex: 1; padding: 9px 8px; font-size: 14px; }
+.mk-tools .st-ghost:disabled { color: #9aa1ab; }
+.mk-tools .mk-help { border-color: var(--st-yellow); background: var(--st-tint); }
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -328,6 +384,9 @@
   .bt-say { height: 72px; }
   .bt-count { font-size: 60px; }
   .bt-under { gap: 8px; min-height: 84px; }
+  .mk-game { --mk-h: clamp(40px, calc((100vh - 370px) / 2), 84px); --mk-h: clamp(40px, calc((100dvh - 370px) / 2), 84px); gap: 8px; }
+  .mk-said { min-height: 56px; font-size: 13px; }
+  .mk-op { height: 44px; }
   .mt-card { height: clamp(96px, calc(100vh - 300px), 180px); height: clamp(96px, calc(100dvh - 300px), 180px); }
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
@@ -369,4 +428,17 @@
   .bt-said { font-size: 20px; }
   .bt-row { grid-column: 1; grid-row: 3; width: min(48vw, 340px); }
   .bt-under { grid-column: 2; grid-row: 1 / 4; min-height: 0; justify-content: center; }
+  /* the four cards in a row over the signs, what is said and the tools beside them */
+  .mk-game {
+    --mk-h: clamp(40px, calc(100vh - 262px), 72px); --mk-h: clamp(40px, calc(100dvh - 262px), 72px);
+    display: grid; grid-template-columns: min(46vw, 300px) 230px; justify-content: center; align-items: center; gap: 8px 24px;
+  }
+  .mk-cards { grid-column: 1; grid-row: 1; grid-template-columns: repeat(4, 1fr); width: 100%; gap: 8px; }
+  .mk-card { --mk-fit: 90px; border-radius: 14px; }
+  .mk-gone { border-radius: 14px; }
+  .mk-said { grid-column: 2; grid-row: 1; min-height: 58px; font-size: 13px; }
+  .mk-ops { grid-column: 1; grid-row: 2; width: 100%; gap: 8px; }
+  .mk-op { height: 44px; }
+  .mk-tools { grid-column: 2; grid-row: 2; width: 100%; }
+  .mk-tools .st-ghost { padding-block: 7px; }
 }

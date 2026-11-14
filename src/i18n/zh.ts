@@ -2309,6 +2309,7 @@ export const zh = {
       find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
       mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
       beat325: { name: "325 节拍", rule: "跟着亮点敲：哒哒哒、哒哒、哒哒哒哒哒", short: "节拍" },
+      make325: { name: "凑 325", rule: "4 个数用加减乘除凑出 325，每个数用一次", short: "凑 325" },
     },
     stopwatch: {
       start: "开始",
@@ -2418,6 +2419,29 @@ export const zh = {
       pass: "敲对 {n} 小节，过关！",
       out: "敲错 {wrong} 小节，这局到这儿，敲对 {n} 小节",
       result: "敲对 {n} 小节",
+    },
+    /** 凑 325 (src/lib/study/make325.ts) */
+    make325: {
+      rule: "点一个数、一个符号、再点一个数\n两个数就合成一个\n4 个数都用上，最后剩下 325 就过关",
+      undo: "撤一步",
+      restart: "重来",
+      answer: "看答案",
+      /** The step just taken */
+      step: "{a} {op} {b} = {n}",
+      uneven: "除不尽",
+      notPositive: "不能减成 0 或负数",
+      /** One card left that is not 325 */
+      notYet: "等于 {n}，不是 325",
+      done: "凑出 325 了！",
+      /** 看答案 pressed */
+      shown: "{way} = 325",
+      /** Read out for the cards and the signs */
+      cardsSr: "数字牌",
+      opsSr: "运算符号",
+      pass: "用了 {s} 秒凑出 325！",
+      seen: "看了答案",
+      result: "用了 {s} 秒凑出 325",
+      resultSeen: "看了答案",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
