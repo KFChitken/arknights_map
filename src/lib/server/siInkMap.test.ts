@@ -191,18 +191,18 @@ describe("墨小强 on the map", () => {
     const id = await inkId(a);
 
     await expect(world.touch(a, id, false)).rejects.toThrow("这是你自己的蟑螂。");
-    expect(await world.touch(b, id, false)).toEqual({ newFriend: null });
+    expect(await world.touch(b, id, false)).toMatchObject({ newFriend: null });
     expect((await world.inbox(a)).filter((i) => i.kind === "touch")).toEqual([
       expect.objectContaining({ kind: "touch", target: "ink", bold: false, from: null }),
     ]);
     expect(await db.select({ toSlot: touches.toSlot }).from(touches)).toEqual([{ toSlot: -1 }]);
     // once a day each, a bold one after a sneaky one to say who it was
     await expect(world.touch(b, id, false)).rejects.toThrow("今天已经偷偷碰过这只蟑螂了。");
-    expect(await world.touch(b, id, true)).toEqual({ newFriend: null });
-    await expect(world.touch(b, id, true)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
+    expect(await world.touch(b, id, true)).toMatchObject({ newFriend: null });
+    await expect(world.touch(b, id, true)).rejects.toThrow("今天已经碰过这只蟑螂了，北京时间凌晨 4 点刷新。");
     // a few a day on one player's roaches, 墨小强 among them
     await world.touch(b, aMain.publicId, false);
-    await expect(world.touch(b, aClone.publicId, false)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，明天再来吧。");
+    await expect(world.touch(b, aClone.publicId, false)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，北京时间凌晨 4 点刷新。");
 
     // b's bold touch on it counts as on any roach of a's: a touching b boldly back makes them 触须之交
     await world.placeRoach(b, { kind: "main" }, TOKYO);
@@ -211,20 +211,20 @@ describe("墨小强 on the map", () => {
     expect(await db.select().from(friendships)).toHaveLength(1);
     // and a day on, it may be touched again
     await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
-    expect(await world.touch(b, id, false)).toEqual({ newFriend: null });
+    expect(await world.touch(b, id, false)).toMatchObject({ newFriend: null });
 
     // between a blocked pair it looks sent, and never arrives
     const c = await signUp("c@example.com");
     await db.insert(blocks).values({ blockerId: a, blockedId: c });
     const seen = (await world.inbox(a)).length;
-    expect(await world.touch(c, id, true)).toEqual({ newFriend: null });
+    expect(await world.touch(c, id, true)).toMatchObject({ newFriend: null });
     expect(await world.inbox(a)).toHaveLength(seen);
     expect((await db.select().from(touches).where(eq(touches.fromUserId, c)))[0]).toMatchObject({ withheld: true, toSlot: -1 });
 
     // the day's touches in all, as anywhere
     const d = await signUp("d@example.com");
     await db.insert(touches).values(Array.from({ length: TOUCHES_PER_DAY }, () => ({ fromUserId: d, toUserId: b, bold: false, toSlot: 0, toPublicId: randomUUID() })));
-    await expect(world.touch(d, id, false)).rejects.toThrow("今天的触须用完啦，明天再来吧。");
+    await expect(world.touch(d, id, false)).rejects.toThrow("今天的触须用完啦，北京时间凌晨 4 点刷新。");
 
     // none such, or recalled
     await expect(world.touch(b, `${INK_PREFIX}${randomUUID()}`, false)).rejects.toThrow("它被收回去了。");

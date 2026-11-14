@@ -1,13 +1,14 @@
 "use client";
 
 import { fmt, fmtParts, T } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import { AMIYA, AMIYA_ID } from "@/lib/amiya";
 import { MINGHE, MINGHE_ID, MINGHE_LINES, RIDE_STOPS } from "@/lib/minghe";
 import { PERLICA, PERLICA_ID, PERLICA_MORE } from "@/lib/perlica";
 import { FIRE_LINES, TALULAH, TALULAH_ID, type FireLevel } from "@/lib/talulah";
 import { RECALL_REST_MS, SI, SI_LINES } from "@/lib/si";
 import { bottleIcon } from "@/lib/flipArt";
-import { POKE_EVERY_DAYS } from "@/lib/rules";
+import { POKE_EVERY_DAYS, TOUCHES_PER_DAY } from "@/lib/rules";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import { useState, type ReactNode } from "react";
 import type { OwnRoach, PublicRoach } from "@/lib/world/types";
@@ -15,6 +16,7 @@ import RoachIcon from "../RoachIcon";
 import { DRAW_HERE } from "../admin/ZoneDraw";
 import { MingheRoute } from "./Minghe";
 import { inkLine } from "./Si";
+import { touchesNow, turnsAtText, useTick, waitParts } from "./dayTurns";
 import type { inkNow } from "@/lib/siInn";
 
 /** Tapped someone else's roach: offer the two ways to touch it, or 戳一戳 a 触须之交's sleeping one. */
@@ -27,6 +29,7 @@ export function OtherRoachCard({
   friendName,
   pokeAgainAt,
   touched,
+  touches,
   perlicaTimer = false,
   perlicaGuarding = false,
   amiyaMusic,
@@ -60,6 +63,12 @@ export function OtherRoachCard({
    * says who that was, or boldly, when nothing more goes till tomorrow (src/lib/server/world.ts touch())
    */
   touched?: "sneaky" | "bold";
+  /**
+   * Touches left today (Me.touchesLeft), when the day turns (Me.dayTurnsAt), and on this roach's owner when
+   * TA is one of your 触须之交 (FriendBetween.touchesLeft): never anyone else's, which would tell whose roaches
+   * these are. Not for the guides, who count their own
+   */
+  touches?: { left: number; at: number; friendLeft?: number };
   /** 佩丽卡监督's 离开计时 is on, which her card mentions */
   perlicaTimer?: boolean;
   /** 佩丽卡监督 is keeping watch beside your drunk main roach */
@@ -112,6 +121,10 @@ export function OtherRoachCard({
   admin?: { busy: boolean; onTakeBack: () => void; onTakeBackNear: () => void; onDraw?: () => void };
   onClose: () => void;
 }) {
+  // today's touches as they are now (a new day's once it turned with the card open); with none left, it draws
+  // again now and then, so the wait counts down and the buttons come back as the day turns
+  const quota = touches && signedIn && !roach.guide && !roach.bot ? touchesNow(touches) : null;
+  useTick(quota && (quota.left === 0 || quota.friendLeft === 0) ? 30_000 : null);
   if (roach.bot) {
     return (
       <div className="card stack" role="dialog" aria-label={T.cards.demo.title}>
@@ -189,15 +202,16 @@ export function OtherRoachCard({
         ? waiting
           ? T.cards.reading
           : T.cards.signIn
-        : touched === "sneaky"
-          ? T.cards.touched.sneaky
-          : touched === "bold"
-            ? T.cards.touched.bold
-            : friendName
-              ? T.cards.touched.friends
-              : roach.clone
-                ? T.cards.touchClone
-                : T.cards.touch;
+        : (quotaHint(quota) ??
+          (touched === "sneaky"
+            ? T.cards.touched.sneaky
+            : touched === "bold"
+              ? T.cards.touched.bold
+              : quota?.friendLeft !== undefined
+                ? friendsLeft(quota.friendLeft)
+                : roach.clone
+                  ? T.cards.touchClone
+                  : T.cards.touch));
   return (
     <div className="card stack" role="dialog" aria-label={T.cards.label}>
       <div className="card-head">
@@ -312,16 +326,7 @@ export function OtherRoachCard({
           <small>{daysToWait > 0 ? fmt(T.cards.pokeWait, { days: daysToWait }) : fmt(T.cards.pokeEvery, { days: POKE_EVERY_DAYS })}</small>
         </button>
       ) : (
-        <div className="touch-buttons">
-          <button disabled={touching || Boolean(touched)} onClick={() => onTouch(false)}>
-            {T.common.reachSneaky}
-            <small>{touched ? T.cards.touchedToday : T.cards.sneakyNote}</small>
-          </button>
-          <button disabled={touching || touched === "bold"} className="bold" onClick={() => onTouch(true)}>
-            {T.common.reachBold}
-            <small>{touched === "bold" ? T.cards.touchedToday : sharesUid ? T.cards.boldUid : T.cards.bold}</small>
-          </button>
-        </div>
+        <TouchButtons quota={quota} touched={touched} busy={touching} sharesUid={sharesUid} onTouch={onTouch} />
       )}
       {signedIn && friendRow}
       {signedIn && !roach.guide && onReport && (
@@ -518,6 +523,7 @@ export function OtherInkCard({
   waiting = false,
   sharesUid,
   touched,
+  touches,
   touching = false,
   onOpenFriend,
   onSignIn,
@@ -539,12 +545,16 @@ export function OtherInkCard({
   sharesUid: boolean;
   /** You touched it from this page within the day (as on OtherRoachCard) */
   touched?: "sneaky" | "bold";
+  /** Today's touches, and on its owner when TA is one of your 触须之交 (as on OtherRoachCard) */
+  touches?: { left: number; at: number; friendLeft?: number };
   touching?: boolean;
   onOpenFriend?: () => void;
   onSignIn: () => void;
   onTouch: (bold: boolean) => void;
   onClose: () => void;
 }) {
+  const quota = touches && signedIn && !gone ? touchesNow(touches) : null;
+  useTick(quota && (quota.left === 0 || quota.friendLeft === 0) ? 30_000 : null);
   const title = friendName ? fmt(T.cards.ink.friendTitle, { name: friendName }) : T.cards.ink.title;
   const where = state === "queue" ? T.cards.ink.queue : state === "stay" ? T.cards.ink.stay : T.cards.ink.out;
   const hint = gone
@@ -553,13 +563,14 @@ export function OtherInkCard({
       ? waiting
         ? T.cards.reading
         : T.cards.ink.signIn
-      : touched === "sneaky"
-        ? T.cards.touched.sneaky
-        : touched === "bold"
-          ? T.cards.touched.bold
-          : friendName
-            ? T.cards.touched.friends
-            : T.cards.touchClone;
+      : (quotaHint(quota) ??
+        (touched === "sneaky"
+          ? T.cards.touched.sneaky
+          : touched === "bold"
+            ? T.cards.touched.bold
+            : quota?.friendLeft !== undefined
+              ? friendsLeft(quota.friendLeft)
+              : T.cards.touchClone));
   return (
     <div className="card stack" role="dialog" aria-label={T.common.ink}>
       <div className="card-head">
@@ -583,22 +594,70 @@ export function OtherInkCard({
           {waiting ? T.common.wait : T.common.signIn}
         </button>
       ) : (
-        <div className="touch-buttons">
-          <button disabled={asking || touching || Boolean(touched)} onClick={() => onTouch(false)}>
-            {T.common.reachSneaky}
-            <small>{touched ? T.cards.touchedToday : T.cards.sneakyNote}</small>
-          </button>
-          <button disabled={asking || touching || touched === "bold"} className="bold" onClick={() => onTouch(true)}>
-            {T.common.reachBold}
-            <small>{touched === "bold" ? T.cards.touchedToday : sharesUid ? T.cards.boldUid : T.cards.bold}</small>
-          </button>
-        </div>
+        <TouchButtons quota={quota} touched={touched} busy={asking || touching} sharesUid={sharesUid} onTouch={onTouch} />
       )}
       <button className="close" onClick={onClose} aria-label={T.common.close}>
         ×
       </button>
     </div>
   );
+}
+
+type Quota = { left: number; at: number; friendLeft?: number };
+
+/** 「你们是触须之交，今天还能碰 TA n 次。」 */
+const friendsLeft = (n: number) => fmtNodes(T.cards.touched.friendsLeft, { n: <b>{n}</b> });
+
+/** What a card says of today's touches before anything else: none left at all, or none left on this 触须之交 */
+function quotaHint(quota: Quota | null): ReactNode {
+  if (quota?.left === 0) return fmt(T.cards.touchesUsedUp, { max: TOUCHES_PER_DAY });
+  if (quota?.friendLeft === 0) return friendsLeft(0);
+  return null;
+}
+
+/**
+ * The two touches, and under them how many are left today and when the day turns (quota, as touchesNow() gives
+ * it; none for the guides). With none left, on anyone or on this 触须之交, both wait for the day to turn
+ */
+function TouchButtons({
+  quota,
+  touched,
+  busy,
+  sharesUid,
+  onTouch,
+}: {
+  quota: Quota | null;
+  touched?: "sneaky" | "bold";
+  busy: boolean;
+  sharesUid: boolean;
+  onTouch: (bold: boolean) => void;
+}) {
+  const out = quota?.left === 0 || quota?.friendLeft === 0;
+  return (
+    <>
+      <div className="touch-buttons">
+        <button disabled={busy || Boolean(touched) || out} onClick={() => onTouch(false)}>
+          {T.common.reachSneaky}
+          <small>{out ? T.cards.usedUpToday : touched ? T.cards.touchedToday : T.cards.sneakyNote}</small>
+        </button>
+        <button disabled={busy || touched === "bold" || out} className="bold" onClick={() => onTouch(true)}>
+          {T.common.reachBold}
+          <small>{out ? T.cards.usedUpToday : touched === "bold" ? T.cards.touchedToday : sharesUid ? T.cards.boldUid : T.cards.bold}</small>
+        </button>
+      </div>
+      {quota && <TouchesLine left={quota.left} at={quota.at} />}
+    </>
+  );
+}
+
+/** 「今天总共还能碰 n 次 · 凌晨 4 点刷新」; with none left, 「凌晨 4 点刷新 · 还有 2 小时 40 分」 */
+function TouchesLine({ left, at }: { left: number; at: number }) {
+  const when = turnsAtText(at);
+  if (left > 0) return <p className="touch-quota">{fmtNodes(T.cards.touchesLeft, { n: <b>{left}</b>, at: when })}</p>;
+  const { h, m } = waitParts(at);
+  const w = T.cards.dayTurns;
+  const wait = h && m ? fmtNodes(w.hoursMinutes, { h: <b>{h}</b>, m: <b>{m}</b> }) : h ? fmtNodes(w.hours, { h: <b>{h}</b> }) : fmtNodes(w.minutes, { m: <b>{m}</b> });
+  return <p className="touch-quota">{fmtNodes(T.cards.dayTurnsIn, { at: when, wait })}</p>;
 }
 
 /**

@@ -226,7 +226,7 @@
         "visitSentHome": "TA 请你的克隆体回家休息了，{days} 天后才能再去。",
         "visitRiding": "这只在跟明河走，去不了。想一起走，就也派一只跟明河。",
         "sanityDone": "催过了",
-        "full": "今天和 TA 互动满 {n} 次了，明天再来吧",
+        "full": "今天和 TA 互动满 {n} 次了，北京时间凌晨 4 点刷新",
         "pokeWait": "{days} 天后可以再戳（每 {every} 天一次）",
         "only": "触须之交专属{left}",
         "left": " · 今天还能 {n} 次"
@@ -877,8 +877,7 @@
         "asleep.stranger": "它四脚朝天睡着了。是喝多了还是好久没来，谁也说不准。",
         "signIn": "登录后就能伸出触须碰 TA。",
         "touched.sneaky": "今天偷偷碰过 TA 了。想让 TA 知道是你，就大胆碰一下：",
-        "touched.bold": "今天大胆碰过 TA 了，明天再来吧。",
-        "touched.friends": "你们是触须之交，随时可以再碰碰 TA。",
+        "touched.bold": "今天大胆碰过 TA 了，北京时间凌晨 4 点刷新。",
         "touchClone": "碰它，触须会传给它的主人。",
         "touch": "伸出触须碰一下 TA：",
         "label": "伸出触须",

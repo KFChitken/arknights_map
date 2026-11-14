@@ -23,7 +23,7 @@
         "place.main": "点地图放下你的蟑螂本体",
         "place.clone": "点地图放一只克隆体",
         "place.move": "点地图给它挪个窝",
-        "place.movesUsedUp": "每天最多挪 {n} 次窝，今天的用完了，明天再挪吧。",
+        "place.movesUsedUp": "24 小时内最多挪 {n} 次窝，等最早那次满 24 小时再挪吧。",
         "place.moved": "挪好啦！今天还能挪 {n} 次。",
         "place.clonePlaced": "克隆体放好啦！等待其他舟P发现中 |ω・）",
         "place.placed": "放好啦！等待其他舟P发现中 |ω・）",

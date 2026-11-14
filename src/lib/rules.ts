@@ -45,6 +45,7 @@ export const UID_MAX = 20;
 export const DECLARATION_RADIUS_KM = 10;
 /** A declaration stays where it was sent this long: anyone whose roach is near it then sees it in 消息 */
 export const DECLARATION_DAYS = 7;
+/** Declarations a player may send a day (from 04:00 Beijing time, src/lib/siteDay.ts), at least a minute apart */
 export const DECLARATION_COOLDOWN_MIN = 1;
 export const DECLARATIONS_PER_DAY = 20;
 
@@ -56,12 +57,14 @@ export const PLACEMENTS_PER_DAY = 8;
 export const RADAR_SCANS_PER_DAY = 5;
 export const RADAR_REUSE_MIN = 10;
 
-/** Touches one player may send per day, and the wait before touching the same roach again. */
+/**
+ * Touches one player may send a day; each roach once a day. The day turns at 04:00 Beijing time
+ * (src/lib/siteDay.ts), for declarations, help requests and what 触须之交 do for each other too.
+ */
 export const TOUCHES_PER_DAY = 60;
-export const TOUCH_SAME_ROACH_HOURS = 24;
 /**
  * Touches one player may make a day on another player's roaches, main and clones together,
- * touching back included. Touching back is only for someone not touched in the last day, so
+ * touching back included. Touching back is only for someone not touched today, so
  * touches never go back and forth (Breeze, 2026-11-10).
  */
 export const TOUCHES_PER_PERSON_PER_DAY = 3;

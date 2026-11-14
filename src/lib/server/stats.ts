@@ -63,6 +63,12 @@ export function countTouch(bold: boolean, back = false) {
 /** 默默爬走 from a touch */
 export const countIgnored = () => countStat(COUNTED.ignored);
 
+/** A touch that used the last of the day's: of all of them (left 0), or of those on one 触须之交 (onFriend 0) */
+export function countCapped(left: number, onFriend?: number) {
+  if (left === 0) countStat(COUNTED.capped);
+  if (onFriend === 0) countStat(COUNTED.friendCapped);
+}
+
 /** A declaration, by its sentence, and how many players it reached */
 export function countDeclared(template: string, reached: number) {
   countStat(COUNTED.decl);

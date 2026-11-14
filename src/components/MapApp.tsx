@@ -76,13 +76,14 @@ import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { iconPx } from "@/lib/swarm";
 import { BUBBLE_FADE_MS, BUBBLE_MS, screenDelta, shoutPlace, shoutZoom, stagePlace, type TouchKind } from "@/lib/touchArt";
-import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY, TOUCH_SAME_ROACH_HOURS } from "@/lib/rules";
+import { INBOX_DECLARATIONS, MAX_CLONES, MOVES_PER_DAY } from "@/lib/rules";
+import { nextSiteDayAt, siteDay, siteDayStart } from "@/lib/siteDay";
 import type { ReportReason, RoachReportReason } from "@/lib/safety";
 import { apiFetch } from "@/lib/apiFetch";
 import type { Basemap, LngLat, MainlandMap, MapFocus, MapView, RoachStyle } from "@/lib/types";
 import { areaFor, boxHolds, boxText, weightOf, type Area } from "@/lib/world/area";
 import { RoachAreaCopy, RoachFeedCopy, totalsOf, type AreaTotals } from "@/lib/world/feed";
-import { HOUR, reachText } from "@/lib/world/logic";
+import { reachText } from "@/lib/world/logic";
 import { feedIdsOf, sameRoach } from "@/lib/world/packed";
 import {
   DEFAULT_MAP_STYLE,
@@ -2026,6 +2027,7 @@ export default function MapApp({
     const res = await once("touch", () => act((w) => w.touch(roach.id, bold)));
     if (!res) return;
     setTouchedHere((t) => ({ ...t, [`${me?.id}:${roach.id}`]: { bold, at: Date.now() } }));
+    touchesUsed(res, roach.friend ? friends.find((f) => f.roaches.some((r) => sameRoach(roach.id, r.id)))?.id : undefined);
     setSelected(null);
     // the scene plays first, then today's toast
     const loading = res.newFriend ? Promise.all([loadFriends(), loadInbox()]) : null;
@@ -2037,14 +2039,31 @@ export default function MapApp({
     if (demoRef.current) await loadIdentities();
   };
 
-  /** How you touched this roach from this page within the day, if you did (the server's once a day, touch()) */
+  /** How you touched this roach from this page today, if you did (the server's once a day, touch()) */
   const touchedOn = (roach: PublicRoach) => (roach.guide ? undefined : touchedById(roach.id));
-  /** The same by the id it was touched by, an ink roach's too */
+  /** The same by the id it was touched by, an ink roach's too; the day turns at 04:00 Beijing time (src/lib/siteDay.ts) */
   const touchedById = (id: string) => {
     const t = touchedHere[`${me?.id}:${id}`];
-    if (!t || Date.now() - t.at >= TOUCH_SAME_ROACH_HOURS * HOUR) return undefined;
+    if (!t || t.at < siteDayStart(siteDay())) return undefined;
     return t.bold ? "bold" : "sneaky";
   };
+  /**
+   * What a touch's answer says is left today: on everyone, and on its owner when TA is the 触须之交 friendId
+   * (the answer says so only then). A touch that made you 触须之交 reloads the list instead
+   */
+  const touchesUsed = (res: TouchResult, friendId?: string) => {
+    const left = res.touchesLeft;
+    // the turn the server said, till this page's clock has passed it
+    if (left !== undefined) setMe((m) => (m ? { ...m, touchesLeft: left, dayTurnsAt: Date.now() < m.dayTurnsAt ? m.dayTurnsAt : nextSiteDayAt() } : m));
+    const onThem = res.friendTouchesLeft;
+    if (onThem !== undefined && friendId && !res.newFriend)
+      setFriends((list) => list.map((f) => (f.id === friendId && f.between ? { ...f, between: { ...f.between, touchesLeft: onThem } } : f)));
+  };
+  /** Today's touches for a card: left on everyone and when the day turns, and on this 触须之交 when TA is one */
+  const touchesFor = (friend?: Friend) =>
+    me && typeof me.touchesLeft === "number"
+      ? { left: me.touchesLeft, at: me.dayTurnsAt, friendLeft: friend?.between?.touchesLeft }
+      : undefined;
 
   /** 戳一戳 a 触须之交's sleeping roach: the card stays open, and its button turns to 「戳过了」. */
   const poke = async (roach: PublicRoach) => {
@@ -2523,6 +2542,7 @@ export default function MapApp({
   const reply = async (itemId: string, bold: boolean) => {
     const res = await act((w) => w.reply(itemId, bold));
     if (!res) return;
+    touchesUsed(res);
     if (res.newFriend) befriendedToast(res.newFriend);
     // a guide answers at once: her touch is now at the top of 收到的触碰 (once a day)
     else if (res.guide?.itemId) setToast(fmt(T.map.inbox.guideReplied, { name: GUIDES[res.guide.id].name }));
@@ -3777,6 +3797,7 @@ export default function MapApp({
     const res = await once("touch", () => act((w) => w.touch(id, bold)));
     if (!res) return;
     setTouchedHere((t) => ({ ...t, [`${me?.id}:${id}`]: { bold, at: Date.now() } }));
+    touchesUsed(res, tap.friend?.id);
     setSelected(null);
     if (res.newFriend) {
       befriendedToast(res.newFriend);
@@ -4814,6 +4835,7 @@ export default function MapApp({
           friendName={selectedFriend?.profile.displayName}
           pokeAgainAt={selectedFriend?.pokeAgainAt ?? null}
           touched={touchedOn(selected.roach)}
+          touches={selected.roach.guide ? undefined : touchesFor(selectedFriend)}
           perlicaTimer={me?.perlica.timer === "on"}
           amiyaMusic={selected.roach.id === AMIYA_ID ? { on: music, onToggle: switchMusic } : undefined}
           perlicaGuarding={guarding}
@@ -4900,6 +4922,7 @@ export default function MapApp({
           waiting={waitingMe}
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           touched={selected.tap?.id ? touchedById(selected.tap.id) : undefined}
+          touches={touchesFor(friends.find((f) => f.id === selected.tap?.friend?.id))}
           touching={touching}
           onOpenFriend={(() => {
             const friend = selected.tap?.friend;

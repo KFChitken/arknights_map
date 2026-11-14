@@ -35,7 +35,7 @@ export const SKILLS = [1, 2, 3, 0] as const;
 
 /** A request is up this long, unless its asker closes it first */
 export const HELP_HOURS = 24;
-/** Requests of one kind, for one game, a player may put up a day (Beijing date) */
+/** Requests of one kind, for one game, a player may put up a day (from 04:00 Beijing time, src/lib/siteDay.ts) */
 export const HELP_PER_DAY = 3;
 /** Requests and their answers are deleted after this many days */
 export const HELP_KEEP_DAYS = 7;

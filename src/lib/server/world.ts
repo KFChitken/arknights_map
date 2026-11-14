@@ -9,6 +9,7 @@ import { AWAY_DAYS, badgesOwned, seriesCovered } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
 import { nextMorning } from "../morning";
+import { nextSiteDayAt, siteDay, siteDayStart } from "../siteDay";
 import { checkSupport } from "../support";
 import { isGame } from "../games";
 import { fold } from "../nameFold";
@@ -27,7 +28,6 @@ import {
   RADAR_RADIUS_KM,
   RADAR_REUSE_MIN,
   RADAR_SCANS_PER_DAY,
-  TOUCH_SAME_ROACH_HOURS,
   TOUCHES_PER_DAY,
   TOUCHES_PER_PERSON_PER_DAY,
 } from "../rules";
@@ -43,7 +43,6 @@ import {
   checkDeclaration,
   checkSpot,
   DAY,
-  HOUR,
   MINUTE,
   normalizeProfile,
   publicProfileOf,
@@ -154,7 +153,7 @@ import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
 import { canSeeDeclaration, seeDeclarations, spotRows, visibleDeclarations, type SeenDeclaration } from "./declarationInbox";
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
-import { countDeclared, countGuide, countIgnored, countPlaced, countReply, countTouch } from "./stats";
+import { countCapped, countDeclared, countGuide, countIgnored, countPlaced, countReply, countTouch } from "./stats";
 import {
   clearedValues,
   declarations,
@@ -398,11 +397,14 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     ? await db.select({ id: declarations.id }).from(declarations).where(eq(declarations.senderId, u.id)).limit(1)
     : [];
   const [touched] = isNew ? await db.select({ id: touches.id }).from(touches).where(eq(touches.fromUserId, u.id)).limit(1) : [];
+  const now = Date.now();
   return {
     id: u.id,
     profile: profileOf(u),
     roaches: mine,
     movesLeft,
+    touchesLeft: Math.max(0, TOUCHES_PER_DAY - (await touchesToday(u.id, now))),
+    dayTurnsAt: nextSiteDayAt(now),
     isNew,
     joinedAt: u.createdAt.getTime(),
     hasDeclared: Boolean(declared),
@@ -797,12 +799,26 @@ export async function sober(userId: string) {
   await soberedUp(userId, before?.drunkAt ?? null);
 }
 
-async function checkTouchQuota(userId: string) {
+/**
+ * When the day began that what a player may do so many times a day is counted in: 04:00 Beijing time, as the
+ * games turn theirs (src/lib/siteDay.ts). Moving, putting roaches down and the radar still count the last 24 hours.
+ */
+const dayBegan = (now = Date.now()) => new Date(siteDayStart(siteDay(now)));
+
+/** The touches a player sent today: on players' roaches and touching back; the guides count their own */
+async function touchesToday(userId: string, now = Date.now()) {
   const [{ n }] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(touches)
-    .where(and(eq(touches.fromUserId, userId), gt(touches.createdAt, ago(DAY))));
+    .where(and(eq(touches.fromUserId, userId), gte(touches.createdAt, dayBegan(now))));
+  return n;
+}
+
+/** Throws when today's touches are used up; otherwise how many are left after this one */
+async function checkTouchQuota(userId: string) {
+  const n = await touchesToday(userId);
   if (n >= TOUCHES_PER_DAY) throw new WorldError(T.server.world.touchesUsedUp);
+  return TOUCHES_PER_DAY - n - 1;
 }
 
 /** offsetMin: the device's Date.getTimezoneOffset(), only for 佩丽卡监督's count of the day; never stored */
@@ -819,27 +835,23 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
   const roach = String(publicId).startsWith(INK_PREFIX) ? await inkToTouch(String(publicId).slice(INK_PREFIX.length)) : await roachByFeedId(String(publicId));
   if (!roach) throw new WorldError(T.server.common.roachGone);
   if (roach.userId === userId) throw new WorldError(T.server.common.yourOwnRoach);
-  await checkTouchQuota(userId);
+  const left = await checkTouchQuota(userId);
   // One roach once a day, keyed by the public id, not the owner, so the answer cannot tell you two roaches
   // share an owner; but a sneaky touch may be followed by a bold one, to say who it was (Breeze, 2026-11-12).
   const earlier = await db
     .select({ bold: touches.bold })
     .from(touches)
-    .where(
-      and(
-        eq(touches.fromUserId, userId),
-        eq(touches.toPublicId, roach.publicId),
-        gt(touches.createdAt, ago(TOUCH_SAME_ROACH_HOURS * HOUR)),
-      ),
-    );
+    .where(and(eq(touches.fromUserId, userId), eq(touches.toPublicId, roach.publicId), gte(touches.createdAt, dayBegan())));
   if (earlier.some((t) => t.bold)) throw new WorldError(T.server.world.touchedToday);
   if (earlier.length && !bold) throw new WorldError(T.server.world.touchedSneakilyToday);
   // a few touches a day on one player's roaches, main and clones together, touching back included; saying so
   // may tell that two roaches share an owner, which Breeze accepted. The bold touch that makes the two
   // 触须之交 always goes: it comes once.
-  if ((await touchedToday(userId, roach.userId)).n >= TOUCHES_PER_PERSON_PER_DAY && !(bold && (await wouldBefriend(userId, roach.userId)))) {
+  const onOwner = (await touchedToday(userId, roach.userId)).n;
+  if (onOwner >= TOUCHES_PER_PERSON_PER_DAY && !(bold && (await wouldBefriend(userId, roach.userId)))) {
     throw new WorldError(fmt(T.server.world.ownerTouchedToday, { max: TOUCHES_PER_PERSON_PER_DAY }));
   }
+  const wereFriends = (await friendIdsOf(userId)).has(roach.userId);
   // Between a blocked pair the touch looks sent, but never arrives
   const withheld = await blockedBetween(userId, roach.userId);
   await db.insert(touches).values({
@@ -851,13 +863,16 @@ export async function touch(userId: string, publicId: string, bold: boolean, off
     withheld,
   });
   countTouch(Boolean(bold));
+  // how many more today on TA, told only to 触须之交: to anyone else it would tell which roaches share an owner
+  const onFriend = wereFriends ? Math.max(0, TOUCHES_PER_PERSON_PER_DAY - onOwner - 1) : undefined;
+  countCapped(left, onFriend);
   // 惊霆无声 is the toucher's own, so it counts whether or not the touch arrives; so does a 寻访券
   if (!bold) await touchedSneakily(userId);
   await earn(userId, "social");
-  if (withheld) return { newFriend: null };
+  if (withheld) return { newFriend: null, touchesLeft: left, friendTouchesLeft: onFriend };
   const newFriend = bold ? await befriendIfMutual(userId, roach.userId) : null;
   nudge([roach.userId]);
-  return { newFriend };
+  return { newFriend, touchesLeft: left, friendTouchesLeft: newFriend ? Math.max(0, TOUCHES_PER_PERSON_PER_DAY - onOwner - 1) : onFriend };
 }
 
 /**
@@ -895,18 +910,18 @@ export async function tapInk(userId: string, x: unknown, y: unknown, tap: unknow
   return { state: ink.state, mine, friend, gone, id: mine || gone ? null : INK_PREFIX + ink.publicId };
 }
 
-/** How many touches one player made on another in the last day, and whether any was bold */
+/** How many touches one player made on another today, and whether any was bold */
 type TouchedToday = { n: number; bold: boolean };
 
 /**
- * Touches from a to b in the last day: on b's roaches on the map, main and clones together, and
+ * Touches from a to b today (since dayBegan): on b's roaches on the map, main and clones together, and
  * touching back; the ones that never arrived too, so that a blocked player sees what anyone would.
  */
 async function touchedToday(a: string, b: string): Promise<TouchedToday> {
   const [sent] = await db
     .select({ n: count(), bold: sql<boolean | null>`bool_or(${touches.bold})` })
     .from(touches)
-    .where(and(eq(touches.fromUserId, a), eq(touches.toUserId, b), gt(touches.createdAt, ago(DAY))));
+    .where(and(eq(touches.fromUserId, a), eq(touches.toUserId, b), gte(touches.createdAt, dayBegan())));
   return { n: sent?.n ?? 0, bold: Boolean(sent?.bold) };
 }
 
@@ -928,8 +943,8 @@ async function wouldBefriend(a: string, b: string) {
 }
 
 /**
- * No touching back and forth: what of touching TA back waits till tomorrow, after your touches on TA in
- * the last day; null when you made none. A bold touch back still goes while it makes you 触须之交
+ * No touching back and forth: what of touching TA back waits till tomorrow, after your touches on TA
+ * today; null when you made none. A bold touch back still goes while it makes you 触须之交
  * ("sneaky"), or while you touched TA only sneakily so far, fewer than the day's few times, so that it
  * says who that was ("reveal", Breeze 2026-11-12); otherwise "all" waits.
  */
@@ -939,7 +954,7 @@ async function touchBackWait(from: string, to: string, today: TouchedToday): Pro
   return !today.bold && today.n < TOUCHES_PER_PERSON_PER_DAY ? "reveal" : "all";
 }
 
-/** The players among these you touched in the last day, with what of touching them back waits (touchBackWait()) */
+/** The players among these you touched today, with what of touching them back waits (touchBackWait()) */
 async function touchBackWaits(userId: string, others: string[]) {
   const waits = new Map<string, TouchBackWaits>();
   const ids = [...new Set(others)];
@@ -947,7 +962,7 @@ async function touchBackWaits(userId: string, others: string[]) {
   const touched = await db
     .select({ to: touches.toUserId, n: count(), bold: sql<boolean | null>`bool_or(${touches.bold})` })
     .from(touches)
-    .where(and(eq(touches.fromUserId, userId), inArray(touches.toUserId, ids), gt(touches.createdAt, ago(DAY))))
+    .where(and(eq(touches.fromUserId, userId), inArray(touches.toUserId, ids), gte(touches.createdAt, dayBegan())))
     .groupBy(touches.toUserId);
   for (const { to, n, bold } of touched) {
     const wait = await touchBackWait(userId, to, { n, bold: Boolean(bold) });
@@ -1003,12 +1018,12 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   }
   if (!to) throw new WorldError(T.server.world.noNoteSender);
   if ((await replied(userId, [itemId])).size) throw new WorldError(T.server.common.touched);
-  // no touching back and forth: whoever touched TA in the last day waits till tomorrow to touch back, but
+  // no touching back and forth: whoever touched TA today waits till tomorrow to touch back, but
   // for a bold touch back that makes them 触须之交, or says who touched TA sneakily (touchBackWait())
   const wait = await touchBackWait(userId, to, await touchedToday(userId, to));
   if (wait === "all") throw new WorldError(T.server.world.touchBackTomorrow);
   if (wait && !bold) throw new WorldError(T.server.world.touchBackBoldly);
-  await checkTouchQuota(userId);
+  const left = await checkTouchQuota(userId);
   const withheld = await blockedBetween(userId, to);
   try {
     await db.insert(touches).values({ fromUserId: userId, toUserId: to, bold: Boolean(bold), replyTo: itemId, withheld });
@@ -1019,11 +1034,12 @@ export async function reply(userId: string, itemId: string, bold: boolean, offse
   }
   // touching back a touch, as against the sender of a declaration or a reply
   countTouch(Boolean(bold), kind === "t");
+  countCapped(left);
   await earn(userId, "social");
-  if (withheld) return { newFriend: null };
+  if (withheld) return { newFriend: null, touchesLeft: left };
   const newFriend = bold ? await befriendIfMutual(userId, to) : null;
   nudge([to]);
-  return { newFriend };
+  return { newFriend, touchesLeft: left };
 }
 
 /** The latest poke from one player to another that still keeps them waiting, if any. */
@@ -1398,11 +1414,13 @@ export async function declare(userId: string, input: Declaration, from?: string[
   const spots: LngLat[] = [...chosen.map((c) => ({ lng: c.lng, lat: c.lat })), ...(fromInk ? [INN_CENTER] : [])];
   if (!spots.length) throw new WorldError(T.server.world.pickRoachToDeclare);
 
+  // the last day's, for the minute's wait across 04:00 too; today's twenty since the day turned
   const recent = await db
     .select({ at: declarations.createdAt })
     .from(declarations)
     .where(and(eq(declarations.senderId, userId), gt(declarations.createdAt, ago(DAY))));
-  if (recent.length >= DECLARATIONS_PER_DAY) throw new WorldError(T.server.world.declaredEnough);
+  const began = dayBegan().getTime();
+  if (recent.filter((r) => r.at.getTime() >= began).length >= DECLARATIONS_PER_DAY) throw new WorldError(T.server.world.declaredEnough);
   if (recent.some((r) => Date.now() - r.at.getTime() < DECLARATION_COOLDOWN_MIN * MINUTE)) {
     throw new WorldError(T.server.world.declaredJustNow);
   }

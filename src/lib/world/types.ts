@@ -266,6 +266,10 @@ export type VisitorFeed = { v: string; hidden: true; total: number; fire: number
 
 /**
  * newFriend: the other player's name when this touch made you 触须之交.
+ * touchesLeft: how many more touches you may send today (TOUCHES_PER_DAY; the day turns at 04:00 Beijing time).
+ * friendTouchesLeft: how many more today on this roach's owner, main and clones together, only when you are
+ * 触须之交 (this touch may have made you so): told to anyone else, it would say which roaches share an owner.
+ * Neither comes with a touch of the guides, who count their own.
  * guide: when you touched one of the guides (src/lib/guides.ts), her touch back,
  * which she gives at once: "friend" when it made you 触须之交 (佩丽卡监督's and
  * 塔露拉干员's own answer to that), and for 佩丽卡监督's bold touch back the
@@ -273,6 +277,8 @@ export type VisitorFeed = { v: string; hidden: true; total: number; fire: number
  */
 export type TouchResult = {
   newFriend: string | null;
+  touchesLeft?: number;
+  friendTouchesLeft?: number;
   guide?: {
     id: GuideId;
     /** Her touch back; null when she has touched back once already today (src/lib/server/guides.ts) */
@@ -424,8 +430,10 @@ export type FriendBetween = {
   mainId: string | null;
   /** Their main roach sleeps, drunk or away: the gestures change, and 戳一戳 comes in */
   asleep: boolean;
-  /** How many more of 催理智 and the gestures you may do for TA today (FRIEND_ACTS_PER_DAY, Beijing date) */
+  /** How many more of 催理智 and the gestures you may do for TA today (FRIEND_ACTS_PER_DAY; the day turns at 04:00 Beijing time) */
   actsLeft: number;
+  /** How many more touches on TA's roaches today, main and clones together (TOUCHES_PER_PERSON_PER_DAY) */
+  touchesLeft: number;
   /** Used today (催理智), or for this sleep of theirs (blanket, water) */
   done: Record<"sanity" | SleepGesture, boolean>;
   /** They welcome guests (让触须之交来串门) */
@@ -472,6 +480,7 @@ export type FriendEvent =
 
 /**
  * movesLeft: how many more times a roach may be moved in the next 24 hours.
+ * touchesLeft: how many more touches today; dayTurnsAt: when today ends (ms), the next 04:00 Beijing time.
  * isNew, hasDeclared and hasTouched drive the newcomer tutorial.
  */
 export type Me = {
@@ -479,6 +488,8 @@ export type Me = {
   profile: Profile;
   roaches: OwnRoach[];
   movesLeft: number;
+  touchesLeft: number;
+  dayTurnsAt: number;
   /** Signed up within NEWCOMER_DAYS */
   isNew: boolean;
   /** When they signed up (ms), for themselves only: never in what others get */

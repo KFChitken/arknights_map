@@ -148,7 +148,7 @@ describe("小动作", () => {
     await a.gesture(key(a, b), "hug");
     expect((await between(a, b)).actsLeft).toBe(1);
     await a.remindSanity(key(a, b));
-    await expect(a.gesture(key(a, b), "luck")).rejects.toThrow("今天和 TA 互动满 3 次了，明天再来吧。");
+    await expect(a.gesture(key(a, b), "luck")).rejects.toThrow("今天和 TA 互动满 3 次了，北京时间凌晨 4 点刷新。");
     await expect(a.remindSanity(key(a, b))).rejects.toThrow("今天已经催过 TA 了");
     await expect(a.gesture(key(a, b), "blanket")).rejects.toThrow("TA 醒着呢");
     await expect(a.gesture(key(a, b), "dance")).rejects.toThrow("没有这个动作");
@@ -190,7 +190,7 @@ describe("小动作", () => {
     expect((await friendly.friendsAct(a.id, "sanity", [key(a, b), key(a, c)])).every((r) => r.ok)).toBe(true);
     expect((await between(a, c)).actsLeft).toBe(1);
     expect(await friendly.friendsAct(a.id, "highfive", [key(a, c)])).toEqual([{ id: key(a, c), ok: true }]);
-    expect(await friendly.friendsAct(a.id, "luck", [key(a, c)])).toEqual([{ id: key(a, c), ok: false, why: "今天和 TA 互动满 3 次了，明天再来吧。" }]);
+    expect(await friendly.friendsAct(a.id, "luck", [key(a, c)])).toEqual([{ id: key(a, c), ok: false, why: "今天和 TA 互动满 3 次了，北京时间凌晨 4 点刷新。" }]);
     await expect(friendly.friendsAct(a.id, "poke", [key(a, c)])).rejects.toThrow("没有这个动作");
     await expect(friendly.friendsAct(a.id, "hug", [])).rejects.toThrow("先选几位触须之交");
   });

@@ -302,6 +302,9 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
 .touch-buttons small { font-size: 11px; font-weight: 400; color: var(--muted); }
 .touch-buttons .bold { border-color: var(--ink); background: var(--ink); color: #fff; }
 .touch-buttons .bold small { color: #ffffffb3; }
+/* Under the touch buttons: touches left today and when the day turns (RoachCards.tsx TouchesLine) */
+.touch-quota { margin: -4px 0 0; text-align: center; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.touch-quota b { color: var(--ink); font-weight: 700; }
 /* The guides (src/lib/guides.ts): their markers on both maps, and their cards */
 .guide-marker { position: relative; width: var(--guide-size, 24px); height: var(--guide-size, 24px); cursor: pointer; }
 .guide-marker img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; user-select: none; }

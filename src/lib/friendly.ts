@@ -107,7 +107,7 @@ export const sanityText = (who: string, asleep: boolean) =>
 export const sanityThanks = (who: string) => fmt(T.lib.friendly.sanityThanks, { who });
 
 /**
- * What you may do for one 触须之交 a day (Beijing date), of any kinds together: 催理智 and the
+ * What you may do for one 触须之交 a day (from 04:00 Beijing time, src/lib/siteDay.ts), of any kinds together: 催理智 and the
  * gestures, returning one of theirs included. 催理智 stays once a day, 盖被子 and 放杯白开水
  * once a sleep. Touches, 戳一戳, 串门 and 游戏里加好友 have their own rules (Breeze, 2026-11-10).
  */

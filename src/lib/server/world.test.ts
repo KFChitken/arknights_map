@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withLang } from "@/i18n/server";
 import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
@@ -12,7 +12,7 @@ import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
 import { EMPTY_PROFILE, type Profile } from "../profile";
-import { MAX_CLONES, POLICY_UPDATED_AT } from "../rules";
+import { DECLARATIONS_PER_DAY, MAX_CLONES, POLICY_UPDATED_AT, TOUCHES_PER_DAY } from "../rules";
 import type { LngLat } from "../types";
 import { passersby, TESTERS } from "../world/cast";
 import { tapOf } from "../siTiles";
@@ -109,6 +109,9 @@ import {
 import { recordDailyTotals } from "./totals";
 import * as world from "./world";
 import { forgetRadarBlocks } from "./radarBlocks";
+import { remindSanity } from "./friendly";
+import { forgetStatCounts, unsavedStats } from "./stats";
+import { nextSiteDayAt } from "../siteDay";
 
 // Runs against the database named in vitest.config.mts, which is wiped before every test
 
@@ -1626,7 +1629,7 @@ describe("server world", () => {
     const beijingClone = await publicAt(me, kal.roaches[1]);
     expect([main.clone, beijingClone.clone]).toEqual([false, true]);
     await me.touch(main.id, false);
-    await expect(me.touch(beijingClone.id, false)).resolves.toEqual({ newFriend: null });
+    await expect(me.touch(beijingClone.id, false)).resolves.toMatchObject({ newFriend: null });
   });
 
   it("delivers a bold touch with the toucher's profile, and a sneaky one without", async () => {
@@ -1694,8 +1697,8 @@ describe("server world", () => {
     // I have, boldly: my touch back waits till tomorrow, either way, and the inbox says so before I try
     const mine = await waiting(me);
     expect(mine).toMatchObject({ target: "touch", waits: "all" });
-    await expect(me.reply(mine.id, false)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
-    await expect(me.reply(mine.id, true)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
+    await expect(me.reply(mine.id, false)).rejects.toThrow("今天已经碰过 TA 了，北京时间凌晨 4 点以后再碰回去吧。");
+    await expect(me.reply(mine.id, true)).rejects.toThrow("今天已经碰过 TA 了，北京时间凌晨 4 点以后再碰回去吧。");
 
     // the same for a touch on another of my roaches, and for touching back from a declaration
     await t1.touch((await publicAt(t1, TOKYO)).id, false);
@@ -1710,7 +1713,7 @@ describe("server world", () => {
     // a day on, they go; however its id is spelled, an item is answered once
     await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
     expect(await waiting(me)).not.toHaveProperty("waits");
-    await expect(me.reply(mine.id, false)).resolves.toEqual({ newFriend: null });
+    await expect(me.reply(mine.id, false)).resolves.toMatchObject({ newFriend: null });
     await expect(me.reply(`t:${mine.id.slice(2).toUpperCase()}`, false)).rejects.toThrow("已经碰过 TA 了");
     await expect(me.reply(`${mine.id}:again`, false)).rejects.toThrow("已经碰过 TA 了");
   });
@@ -1721,7 +1724,7 @@ describe("server world", () => {
     const t1 = await demo("t1");
     const [a, b, c, d] = (await t1.roaches()).filter((r) => r.lng === PEOPLES_SQUARE.lng || r.lat === 20);
     for (const r of [a, b, c]) await t1.touch(r.id, false);
-    await expect(t1.touch(d.id, true)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，明天再来吧。");
+    await expect(t1.touch(d.id, true)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，北京时间凌晨 4 点刷新。");
     expect((await me.inbox()).filter((i) => i.kind === "touch")).toHaveLength(3);
 
     // touching back counts too: once I touched 阿白 back, two more of their roaches, and no more
@@ -1733,7 +1736,7 @@ describe("server world", () => {
 
     // a day on, three more
     await db.update(touches).set({ createdAt: sql`${touches.createdAt} - interval '25 hours'` });
-    await expect(t1.touch(d.id, false)).resolves.toEqual({ newFriend: null });
+    await expect(t1.touch(d.id, false)).resolves.toMatchObject({ newFriend: null });
   });
 
   it("lets the bold touch that makes two players 触须之交 go, past the day's three or after touching today", async () => {
@@ -1770,26 +1773,26 @@ describe("server world", () => {
     // sneakily again: not today, and the answer says what still goes
     await expect(me.touch(r.id, false)).rejects.toThrow("今天已经偷偷碰过这只蟑螂了。想让 TA 知道是你，可以大胆碰一下。");
     // boldly: it goes, and 小林 sees who, besides the sneaky one
-    await expect(me.touch(r.id, true)).resolves.toEqual({ newFriend: null });
+    await expect(me.touch(r.id, true)).resolves.toMatchObject({ newFriend: null });
     const theirs = (await (await demo("t2")).inbox()).filter((i) => i.kind === "touch");
     expect(theirs.map((i) => i.kind === "touch" && [i.bold, i.from?.displayName ?? null, i.target]).sort()).toEqual([
       [false, null, "main"],
       [true, "Breeze", "main"],
     ]);
     // after the bold one, nothing more on that roach today, either way
-    await expect(me.touch(r.id, true)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
-    await expect(me.touch(r.id, false)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
+    await expect(me.touch(r.id, true)).rejects.toThrow("今天已经碰过这只蟑螂了，北京时间凌晨 4 点刷新。");
+    await expect(me.touch(r.id, false)).rejects.toThrow("今天已经碰过这只蟑螂了，北京时间凌晨 4 点刷新。");
     // nor after a bold one first
     const other = await publicAt(me, tester("t1").roaches[0]);
     await me.touch(other.id, true);
-    await expect(me.touch(other.id, false)).rejects.toThrow("今天已经碰过这只蟑螂了，明天再来吧。");
+    await expect(me.touch(other.id, false)).rejects.toThrow("今天已经碰过这只蟑螂了，北京时间凌晨 4 点刷新。");
 
     // the bold one makes 触须之交 when TA touched you boldly before
     const t3 = await demo("t3");
     await t3.touch((await publicAt(t3, PEOPLES_SQUARE)).id, true);
     const kal = await publicAt(me, tester("t3").roaches[0]);
     await me.touch(kal.id, false);
-    await expect(me.touch(kal.id, true)).resolves.toEqual({ newFriend: "Kal" });
+    await expect(me.touch(kal.id, true)).resolves.toMatchObject({ newFriend: "Kal" });
   });
 
   it("keeps the day's three touches on one player when a bold touch follows sneaky ones", async () => {
@@ -1797,13 +1800,13 @@ describe("server world", () => {
     // all three of Kal's roaches, sneakily: a bold one now on the first is a fourth
     const kal = await Promise.all(tester("t3").roaches.map((at) => publicAt(me, at)));
     for (const r of kal) await me.touch(r.id, false);
-    await expect(me.touch(kal[0].id, true)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，明天再来吧。");
+    await expect(me.touch(kal[0].id, true)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，北京时间凌晨 4 点刷新。");
     // nor from 消息, when Kal touches me
     const t3 = await demo("t3");
     await t3.touch((await publicAt(t3, PEOPLES_SQUARE)).id, false);
     const item = (await me.inbox()).find((i) => i.kind === "touch")!;
     expect(item).toMatchObject({ waits: "all" });
-    await expect(me.reply(item.id, true)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
+    await expect(me.reply(item.id, true)).rejects.toThrow("今天已经碰过 TA 了，北京时间凌晨 4 点以后再碰回去吧。");
   });
 
   it("lets you touch back boldly, to say who it was, someone you touched only sneakily today, and nothing more after", async () => {
@@ -1822,15 +1825,15 @@ describe("server world", () => {
     await t1.declare({ template: "launch", game: "arknights" });
     const heard = () => me.inbox().then((items) => items.find((i) => i.kind === "declaration")!);
     expect(await heard()).toMatchObject({ waits: "reveal" });
-    await expect(me.reply(back.id, true)).resolves.toEqual({ newFriend: null });
+    await expect(me.reply(back.id, true)).resolves.toMatchObject({ newFriend: null });
 
     // 阿白 sees who it was, and may touch back boldly to become 触须之交
     const told = (await t1.inbox()).find((i) => i.kind === "touch" && i.bold)!;
     expect(told).toMatchObject({ target: "touch", from: { displayName: "Breeze" }, waits: "sneaky" });
     // after my bold touch, nothing more from me today
     expect(await heard()).toMatchObject({ waits: "all" });
-    await expect(me.reply((await heard()).id, true)).rejects.toThrow("今天已经碰过 TA 了，明天再碰回去吧。");
-    await expect(t1.reply(told.id, true)).resolves.toEqual({ newFriend: "Breeze" });
+    await expect(me.reply((await heard()).id, true)).rejects.toThrow("今天已经碰过 TA 了，北京时间凌晨 4 点以后再碰回去吧。");
+    await expect(t1.reply(told.id, true)).resolves.toMatchObject({ newFriend: "Breeze" });
   });
 
   it("lets you crawl away from a touch without the toucher ever knowing", async () => {
@@ -2676,11 +2679,11 @@ describe("server world", () => {
     await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", games: ["arknights"] });
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     const aBaiRoach = await publicAt(me, tester("t1").roaches[0]);
-    expect(await me.touch(aBaiRoach.id, true)).toEqual({ newFriend: null });
+    expect(await me.touch(aBaiRoach.id, true)).toMatchObject({ newFriend: null });
 
     const t1 = await demo("t1");
     const [touchFromMe] = await t1.inbox();
-    expect(await t1.reply(touchFromMe.id, true)).toEqual({ newFriend: "Breeze" });
+    expect(await t1.reply(touchFromMe.id, true)).toMatchObject({ newFriend: "Breeze" });
     const [friend] = await t1.friends();
     expect(friend.profile.displayName).toBe("Breeze");
     expect(friend.roaches).toHaveLength(1);
@@ -2702,7 +2705,7 @@ describe("server world", () => {
     await me.touch((await publicAt(me, tester("t2").roaches[0])).id, false);
     const t2 = await demo("t2");
     const [item] = await t2.inbox();
-    expect(await t2.reply(item.id, true)).toEqual({ newFriend: null });
+    expect(await t2.reply(item.id, true)).toMatchObject({ newFriend: null });
     expect(await t2.friends()).toEqual([]);
   });
 
@@ -2728,7 +2731,7 @@ describe("server world", () => {
     expect((await me.roaches()).some((r) => r.friend)).toBe(false);
     expect(await t1.friends()).toEqual([]);
     // old touches no longer count; a fresh pair of bold touches is needed
-    expect(await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true)).toEqual({ newFriend: null });
+    expect(await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true)).toMatchObject({ newFriend: null });
   });
 
   it("hides a blocked player's messages from you, old and new, without telling them", async () => {
@@ -2747,7 +2750,7 @@ describe("server world", () => {
 
     // 阿白 sees nothing change: the touch from you is still there, and touching you seems to work
     expect(await t1.inbox()).toHaveLength(1);
-    expect(await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true)).toEqual({ newFriend: null });
+    expect(await t1.touch((await publicAt(t1, PEOPLES_SQUARE)).id, true)).toMatchObject({ newFriend: null });
     expect(await me.inbox()).toEqual([]);
     // declarations stop both ways
     await me.declare({ template: "launch", game: "arknights" });
@@ -3714,15 +3717,15 @@ describe("server world", () => {
     const main = (await me.me()).roaches[0];
     for (let i = 1; i <= 3; i++) await me.placeRoach({ kind: "move", roachId: main.id }, { lng: 121 + i / 10, lat: 31 });
     expect((await me.me()).movesLeft).toBe(0);
-    await expect(me.placeRoach({ kind: "move", roachId: main.id }, TOKYO)).rejects.toThrow("每天最多挪 3 次窝");
-    await expect(me.placeRoach({ kind: "main" }, TOKYO)).rejects.toThrow("每天最多挪 3 次窝");
+    await expect(me.placeRoach({ kind: "move", roachId: main.id }, TOKYO)).rejects.toThrow("24 小时内最多挪 3 次窝");
+    await expect(me.placeRoach({ kind: "main" }, TOKYO)).rejects.toThrow("24 小时内最多挪 3 次窝");
 
     // taking roaches back and putting them down again is capped too
     for (let i = 0; i < 7; i++) {
       await me.placeRoach({ kind: "clone" }, { lng: 100, lat: 20 + i });
       await me.removeRoach((await me.me()).roaches.find((r) => r.slot > 0)!.id);
     }
-    await expect(me.placeRoach({ kind: "clone" }, TOKYO)).rejects.toThrow("今天放下的蟑螂太多了");
+    await expect(me.placeRoach({ kind: "clone" }, TOKYO)).rejects.toThrow("24 小时内放下的新蟑螂太多了");
     // a day later the moves come back
     await db.update(moves).set({ at: sql`${moves.at} - interval '1 day'` }).where(eq(moves.userId, me.id));
     expect((await me.me()).movesLeft).toBe(3);
@@ -4111,5 +4114,132 @@ describe("declarations by where the roaches are", () => {
     const there = await signUp("there@example.com");
     await there.placeRoach({ kind: "main" }, quiet);
     expect(await declarationIds(there)).toEqual(far);
+  });
+});
+
+describe("the day turning at 04:00 Beijing time", () => {
+  // the site's day (src/lib/siteDay.ts): 03:59 is still the day before, 04:00 the new one. The clock is set by hand,
+  // and what the day counts is written at its own moments: what the code writes takes the database's clock
+  const TURN = new Date("2026-11-20T04:00+08:00").getTime();
+  const MIN = 60_000;
+  const clock = (t: number) => vi.useFakeTimers({ now: t, toFake: ["Date"] });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** n touches from one player on another's roaches, at one moment */
+  const touchedAt = (from: Player, to: Player, at: number, n: number, toPublicId?: string) =>
+    db.insert(touches).values(
+      Array.from({ length: n }, () => ({ fromUserId: from.id, toUserId: to.id, bold: false, toSlot: 0, toPublicId: toPublicId ?? randomUUID(), createdAt: new Date(at) })),
+    );
+  const mainOf = async (p: Player, at: LngLat) => (await p.placeRoach({ kind: "main" }, at)).find((r) => r.slot === 0)!;
+  const cloneOf = async (p: Player, at: LngLat) => (await p.placeRoach({ kind: "clone" }, at)).find((r) => r.lng === at.lng && r.lat === at.lat)!;
+
+  it("gives the day's touches back at 04:00, all of them used up at 03:59, and counts who used them all", async () => {
+    const b = await signUp("b@example.com");
+    const c = await signUp("c@example.com");
+    const main = await mainOf(b, TOKYO);
+    const clone = await cloneOf(b, { lng: 100, lat: 20 });
+    clock(TURN - 30_000);
+    await touchedAt(me, c, TURN - MIN, TOUCHES_PER_DAY);
+    expect(await me.me()).toMatchObject({ touchesLeft: 0, dayTurnsAt: TURN });
+    await expect(me.touch(main.publicId, false)).rejects.toThrow("今天的触须用完啦，北京时间凌晨 4 点刷新。");
+
+    clock(TURN);
+    expect(await me.me()).toMatchObject({ touchesLeft: TOUCHES_PER_DAY, dayTurnsAt: TURN + 86_400_000 });
+    await expect(me.touch(main.publicId, false)).resolves.toMatchObject({ newFriend: null, touchesLeft: TOUCHES_PER_DAY - 1 });
+    // the one that uses the last of the day's is counted once, for the data board; a try after it, never
+    await touchedAt(me, c, TURN, TOUCHES_PER_DAY - 1);
+    forgetStatCounts();
+    await expect(me.touch(clone.publicId, false)).resolves.toMatchObject({ touchesLeft: 0 });
+    // (the touch just made, at the database's own clock, which is not the day this test pretends it is)
+    await touchedAt(me, c, TURN, 1);
+    await expect(me.touch(clone.publicId, true)).rejects.toThrow("今天的触须用完啦");
+    expect(unsavedStats().get("2026-11-20|touch.capped")).toBe(1);
+  });
+
+  it("lets a roach touched at 03:59 be touched again at 04:00, and not before", async () => {
+    const b = await signUp("b@example.com");
+    const main = await mainOf(b, TOKYO);
+    clock(TURN - 30_000);
+    await db.insert(touches).values({ fromUserId: me.id, toUserId: b.id, bold: true, toSlot: 0, toPublicId: main.publicId, createdAt: new Date(TURN - MIN) });
+    await expect(me.touch(main.publicId, false)).rejects.toThrow("今天已经碰过这只蟑螂了，北京时间凌晨 4 点刷新。");
+    clock(TURN);
+    await expect(me.touch(main.publicId, false)).resolves.toMatchObject({ newFriend: null });
+  });
+
+  it("counts the three a day on one player's roaches from 04:00, and says how many are left only to 触须之交", async () => {
+    const b = await signUp("b@example.com");
+    await mainOf(b, TOKYO);
+    const clone = await cloneOf(b, { lng: 100, lat: 20 });
+    clock(TURN - 30_000);
+    await touchedAt(me, b, TURN - MIN, 3);
+    await expect(me.touch(clone.publicId, false)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了，北京时间凌晨 4 点刷新。");
+    clock(TURN);
+    const res = await me.touch(clone.publicId, false);
+    expect(res).toMatchObject({ newFriend: null, touchesLeft: TOUCHES_PER_DAY - 1 });
+    // to a stranger, how many more on TA would tell which roaches are one player's
+    expect(res.friendTouchesLeft).toBeUndefined();
+  });
+
+  it("tells 触须之交 how many touches each has left on the other today, and counts the one that uses the last", async () => {
+    const b = await signUp("b@example.com");
+    // I touched b's main roach boldly, one of today's three on b
+    await realFriends(me, b);
+    const left = async () => (await me.friends()).find((f) => f.between)!.between!.touchesLeft;
+    expect(await left()).toBe(2);
+    const one = await cloneOf(b, { lng: 100, lat: 20 });
+    const two = await cloneOf(b, { lng: 101, lat: 20 });
+    const three = await cloneOf(b, { lng: 102, lat: 20 });
+    forgetStatCounts();
+    await expect(me.touch(one.publicId, false)).resolves.toMatchObject({ friendTouchesLeft: 1, touchesLeft: TOUCHES_PER_DAY - 2 });
+    expect(unsavedStats().has(`${beijingDate()}|touch.friendCapped`)).toBe(false);
+    await expect(me.touch(two.publicId, false)).resolves.toMatchObject({ friendTouchesLeft: 0 });
+    expect(unsavedStats().get(`${beijingDate()}|touch.friendCapped`)).toBe(1);
+    expect(await left()).toBe(0);
+    await expect(me.touch(three.publicId, false)).rejects.toThrow("今天已经碰过这只蟑螂的主人 3 次了");
+    // b's own count on me is b's: one bold touch back so far
+    expect((await b.friends()).find((f) => f.between)!.between).toMatchObject({ touchesLeft: 2 });
+  });
+
+  it("turns the day for what 触须之交 do for each other at 04:00 too", async () => {
+    const b = await signUp("b@example.com");
+    await realFriends(me, b);
+    const friendId = (await me.friends()).find((f) => f.between)!.id;
+    clock(TURN - 30_000);
+    await db.insert(friendNotes).values(
+      ["hug", "highfive", "luck"].map((kind, i) => ({ fromUserId: me.id, toUserId: b.id, kind, period: `before#${i}`, createdAt: new Date(TURN - MIN) })),
+    );
+    await expect(remindSanity(me.id, friendId)).rejects.toThrow("今天和 TA 互动满 3 次了，北京时间凌晨 4 点刷新。");
+    clock(TURN);
+    await remindSanity(me.id, friendId);
+    await expect(remindSanity(me.id, friendId)).rejects.toThrow("今天已经催过 TA 了");
+    expect((await me.friends()).find((f) => f.id === friendId)!.between).toMatchObject({ actsLeft: 2, done: { sanity: true } });
+  });
+
+  it("counts the day's twenty declarations from 04:00, and the minute between two across it", async () => {
+    await mainOf(me, PEOPLES_SQUARE);
+    clock(TURN + 30 * MIN);
+    const sent = await db
+      .insert(declarations)
+      .values(Array.from({ length: DECLARATIONS_PER_DAY }, () => ({ senderId: me.id, template: "launch", game: "arknights", recipients: 0, createdAt: new Date(TURN) })))
+      .returning({ id: declarations.id });
+    await expect(me.declare({ template: "launch", game: "arknights" })).rejects.toThrow("今天的宣言发得够多啦，北京时间凌晨 4 点刷新。");
+    await db.update(declarations).set({ createdAt: new Date(TURN - MIN) }).where(inArray(declarations.id, sent.map((d) => d.id)));
+    await expect(me.declare({ template: "launch", game: "arknights" })).resolves.toBeTruthy();
+    // one sent at 03:59:30 is yesterday's, but a minute's wait still follows it
+    clock(TURN + 10_000);
+    await db.update(declarations).set({ createdAt: new Date(TURN - 30_000) }).where(eq(declarations.id, sent[0].id));
+    await expect(me.declare({ template: "launch", game: "arknights" })).rejects.toThrow("刚刚才发过宣言");
+  });
+
+  it("still counts moves over the last 24 hours, not the day", async () => {
+    const main = await mainOf(me, PEOPLES_SQUARE);
+    for (let i = 0; i < 3; i++) await me.placeRoach({ kind: "move", roachId: main.id }, { lng: 110 + i, lat: 30 });
+    expect((await me.me()).movesLeft).toBe(0);
+    // the next 04:00 comes, and the moves are still within the 24 hours
+    clock(nextSiteDayAt() + 1_000);
+    expect((await me.me()).movesLeft).toBe(0);
+    await expect(me.placeRoach({ kind: "move", roachId: main.id }, TOKYO)).rejects.toThrow("24 小时内最多挪 3 次窝");
   });
 });

@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { addDays, beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import {
@@ -17,7 +17,8 @@ import {
 import { isGame, serverName, type Game } from "../games";
 import { displayName } from "../profile";
 import { outsideOffLimits } from "../offLimits";
-import { INBOX_DAYS } from "../rules";
+import { INBOX_DAYS, TOUCHES_PER_PERSON_PER_DAY } from "../rules";
+import { siteDay, siteDayStart } from "../siteDay";
 import { isNearFire, pickSeat } from "../talulah";
 import type { LngLat } from "../types";
 import { DAY } from "../world/logic";
@@ -29,7 +30,7 @@ import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { nudge } from "./live";
 import { earn } from "./passes";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
-import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, users, visitBans, visits, type UserRow } from "./schema";
+import { declarations, deliveries, friendNotes, friendships, friendStars, roaches, touches, users, visitBans, visits, type UserRow } from "./schema";
 import { countNote, countPlaced } from "./stats";
 import { arrivedAt, lockFire, seatByFire } from "./talulah";
 import { cardsOf, checkPlacement, friendIdsOf, friendKey, ownRoaches, profileOf, userById, writePlacement } from "./world";
@@ -84,7 +85,7 @@ const nudgeSoon = (ids: string[]) => {
 /** The kinds counted against FRIEND_ACTS_PER_DAY: 催理智 and every gesture, answers included */
 const COUNTED = ["sanity", "hug", "highfive", "luck", "blanket", "water"];
 
-/** How many of them you did for TA today (Beijing date) */
+/** How many of them you did for TA today: the day turns at 04:00 Beijing time (src/lib/siteDay.ts), as touches do */
 async function actsToday(exec: Exec, from: string, to: string, now: number) {
   const [row] = await exec
     .select({ n: sql<number>`count(*)::int` })
@@ -94,7 +95,7 @@ async function actsToday(exec: Exec, from: string, to: string, now: number) {
         eq(friendNotes.fromUserId, from),
         eq(friendNotes.toUserId, to),
         inArray(friendNotes.kind, COUNTED),
-        gte(friendNotes.createdAt, new Date(beijingMidnight(beijingDate(now)))),
+        gte(friendNotes.createdAt, new Date(siteDayStart(siteDay(now)))),
       ),
     );
   return Number(row?.n ?? 0);
@@ -102,11 +103,11 @@ async function actsToday(exec: Exec, from: string, to: string, now: number) {
 
 // ---- 催理智 ----
 
-/** 催理智: one a day (Beijing date) for each 触须之交, one of the day's three; it reaches them asleep too, and drunk ones see it once up */
+/** 催理智: one a day (from 04:00 Beijing time) for each 触须之交, one of the day's three; it reaches them asleep too, and drunk ones see it once up */
 export async function remindSanity(userId: string, friendId: unknown) {
   const other = await friendOf(userId, friendId);
   const now = Date.now();
-  const today = beijingDate(now);
+  const today = siteDay(now);
   await db.transaction(async (tx) => {
     // one at a time for each player, so two taps cannot both find room for a third
     await lockPlayer(tx, userId);
@@ -202,7 +203,7 @@ export async function gesture(userId: string, friendId: unknown, kind: unknown, 
         toUserId: other.id,
         kind,
         // awake ones may come again the same day: which of the day's it was keeps each its own
-        period: awake ? `${beijingDate(now)}#${done + 1}` : sleep!,
+        period: awake ? `${siteDay(now)}#${done + 1}` : sleep!,
         asleep: !awake,
         replyTo: answering,
         createdAt: new Date(now),
@@ -293,7 +294,7 @@ export async function gameAsk(userId: string, friendId: unknown, game: unknown) 
   if (until) throw new WorldError(fmt(T.server.friendly.toldWait, { days: Math.ceil((until - now) / DAY) }));
   const [asked] = await db
     .insert(friendNotes)
-    .values({ fromUserId: userId, toUserId: other.id, kind: "gameAsk", game, period: `${game}:${beijingDate(now)}`, createdAt: new Date(now) })
+    .values({ fromUserId: userId, toUserId: other.id, kind: "gameAsk", game, period: `${game}:${siteDay(now)}`, createdAt: new Date(now) })
     .onConflictDoNothing()
     .returning({ id: friendNotes.id });
   if (asked) countNote("gameAsk");
@@ -332,7 +333,7 @@ export async function gameWant(userId: string, friendId: unknown, game: unknown)
   if (until) throw new WorldError(fmt(T.server.friendly.toldWait, { days: Math.ceil((until - now) / DAY) }));
   const [wanted] = await db
     .insert(friendNotes)
-    .values({ fromUserId: userId, toUserId: other.id, kind: "gameWant", game, period: beijingDate(now), createdAt: new Date(now) })
+    .values({ fromUserId: userId, toUserId: other.id, kind: "gameWant", game, period: siteDay(now), createdAt: new Date(now) })
     .onConflictDoNothing()
     .returning({ id: friendNotes.id });
   if (wanted) countNote("gameWant");
@@ -646,8 +647,8 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
   if (!others.length) return out;
   const userId = self.id;
   const ids = others.map((o) => o.user.id);
-  const today = beijingDate(now);
-  const dayStart = beijingMidnight(today);
+  const today = siteDay(now);
+  const dayStart = siteDayStart(today);
   const recent = new Date(now - 90 * DAY);
   const mine = await db
     .select({ to: friendNotes.toUserId, kind: friendNotes.kind, period: friendNotes.period, game: friendNotes.game, answer: friendNotes.answer, at: friendNotes.createdAt })
@@ -669,6 +670,12 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
     .select()
     .from(visitBans)
     .where(and(eq(visitBans.guestId, userId), inArray(visitBans.hostId, ids)));
+  // today's touches on each of them, touching back included, as touch() counts them (touchedToday in ./world)
+  const touched = await db
+    .select({ to: touches.toUserId, n: count() })
+    .from(touches)
+    .where(and(eq(touches.fromUserId, userId), inArray(touches.toUserId, ids), gte(touches.createdAt, new Date(dayStart))))
+    .groupBy(touches.toUserId);
   for (const { user: o, since } of others) {
     const to = mine.filter((n) => n.to === o.id);
     const sleep = sleepOf(o, now);
@@ -692,6 +699,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
       mainId: mains.find((m) => m.user === o.id)?.publicId ?? null,
       asleep: sleeping(o, now),
       actsLeft: Math.max(0, FRIEND_ACTS_PER_DAY - used),
+      touchesLeft: Math.max(0, TOUCHES_PER_PERSON_PER_DAY - (touched.find((t) => t.to === o.id)?.n ?? 0)),
       done: {
         sanity: did("sanity", today),
         blanket: did("blanket", sleep),

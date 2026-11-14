@@ -742,6 +742,8 @@ function Touch({ d }: { d: DashboardData }) {
             rows={[
               ["被碰的人又碰了回去", touches ? pct(c("touch.back") / touches) : "—"],
               ["被碰的人默默爬走", touches ? pct(c("touch.ignored") / touches) : "—"],
+              ["把触须用完的人", num(c("touch.capped")), "人次"],
+              ["对某位触须之交碰满", num(c("touch.friendCapped")), "次"],
               ["一句宣言平均送到", decl ? num(c("decl.reach") / decl) : "—", "位舟P"],
               ["一句宣言平均收到", decl ? (c("reply") / decl).toFixed(1) : "—", "个回应"],
             ]}

@@ -1840,7 +1840,6 @@ export const en: Draft<Messages> = {
     touched: {
       sneaky: "You tapped them sneakily today. To let them know it's you, give them a bold tap:",
       bold: "You tapped them boldly today. Come back tomorrow.",
-      friends: "You're Feeler Friends. Tap them again any time.",
     },
     touchClone: "Tap it and the feeler reaches its owner.",
     touch: "Put out a feeler and tap them:",

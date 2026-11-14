@@ -23,6 +23,9 @@ export const isNoteKind = (k: unknown): k is NoteKind => (NOTE_KINDS as readonly
  * The day's counters (stat_counts.name), each counted as the row it stands for is written:
  * - touch.sneaky, touch.bold: a touch of a player's roach (an ink roach's too) or touching one back; touch.back: one
  *   that answers a touch; touch.ignored: 默默爬走 from a touch
+ * - touch.capped: the touch that used the last of a player's day (TOUCHES_PER_DAY); touch.friendCapped: the one that
+ *   used the last of the day's on one 触须之交 (TOUCHES_PER_PERSON_PER_DAY). Once each, as it happens: a refused
+ *   try after it counts nothing
  * - decl: a declaration, decl.<template> by its sentence (a limited one is decl.event), decl.reach: the players it reached
  * - reply: a reply left on a declaration, reply.<id> by the reply (love.1, zhouli…)
  * - note.<kind>: one of NOTE_KINDS
@@ -37,6 +40,8 @@ export const COUNTED = {
   bold: "touch.bold",
   back: "touch.back",
   ignored: "touch.ignored",
+  capped: "touch.capped",
+  friendCapped: "touch.friendCapped",
   decl: "decl",
   reach: "decl.reach",
   reply: "reply",

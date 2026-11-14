@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gt, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
-import { beijingDate, beijingMidnight } from "../beijing";
+import { siteDay, siteDayStart } from "../siteDay";
 import { isGame, type Game } from "../games";
 import { CLUES, HELP_GAMES, HELP_HOURS, HELP_KEEP_DAYS, HELP_PER_DAY, isHelpKind, SKILLS, type HelpAsk, type HelpKind } from "../help";
 import { isOperator } from "../operators";
@@ -82,7 +82,7 @@ export async function askHelp(userId: string, input: unknown) {
           eq(helpRequests.userId, userId),
           eq(helpRequests.kind, ask.kind),
           eq(helpRequests.game, ask.game),
-          gte(helpRequests.createdAt, new Date(beijingMidnight(beijingDate(now)))),
+          gte(helpRequests.createdAt, new Date(siteDayStart(siteDay(now)))),
         ),
       );
     if (Number(sent?.n ?? 0) >= HELP_PER_DAY) throw new WorldError(fmt(T.server.help.usedUp, { max: HELP_PER_DAY }));
