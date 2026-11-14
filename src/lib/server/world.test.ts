@@ -2083,6 +2083,14 @@ describe("server world", () => {
       lines.forEach((l, i) => Object.assign(l, saved[i]));
     }
 
+    // every food is kept and read back as itself, the three added last too, never as the first
+    for (const food of FOODS) {
+      await me.declare({ template: "eat", character: "阿米娅", food });
+      const [got] = await t2.inbox();
+      expect(got, food).toMatchObject({ kind: "declaration", text: `我想吃阿米娅的${food}` });
+      await db.delete(declarations).where(eq(declarations.senderId, me.id));
+    }
+
     // 「…也玩…」 can no longer be sent; one of then reads as it was
     await me.declare({ template: "launch", game: "endfield" });
     await db.update(declarations).set({ template: "alsoplay" }).where(eq(declarations.senderId, me.id));

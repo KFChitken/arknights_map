@@ -4,7 +4,7 @@ import { findLine } from "./events";
 import { GAME_NAMES, type Game } from "./games";
 
 /** 我想吃<角色>的<食物> */
-export const FOODS = ["靴子泡面", "玉族配饭", "脚夹馍"] as const;
+export const FOODS = ["靴子泡面", "玉族配饭", "脚夹馍", "丝袜奶茶", "脚糖布丁", "洗角水煮面"] as const;
 export type Food = (typeof FOODS)[number];
 
 /** 氪了168，<角色>老婆/老公回家家 */

@@ -4,6 +4,7 @@ import {
   declarationText,
   DRUNK_TEMPLATES,
   STAY_TEMPLATES,
+  FOODS,
   FUN_REACTIONS,
   GENERIC_REACTIONS,
   REACTIONS,
@@ -11,6 +12,7 @@ import {
   replyOf,
   TEMPLATES,
   type Declaration,
+  type Food,
 } from "../declarations";
 import { beijingDate } from "../beijing";
 import { activeEvents, EVENTS, untilText } from "../events";
@@ -42,6 +44,15 @@ describe("declarations", () => {
     expect(say({ template: "eat", character: "能天使", food: "脚夹馍" })).toBe("我想吃能天使的脚夹馍");
     expect(say({ template: "birthday" })).toBe("祝我生日快乐");
     expect(TEMPLATES).toHaveLength(10);
+  });
+
+  it("has 丝袜奶茶, 脚糖布丁 and 洗角水煮面 to eat too, after the three of before", () => {
+    expect(FOODS).toEqual(["靴子泡面", "玉族配饭", "脚夹馍", "丝袜奶茶", "脚糖布丁", "洗角水煮面"]);
+    for (const food of ["丝袜奶茶", "脚糖布丁", "洗角水煮面"] as const) {
+      expect(say({ template: "eat", character: "能天使", food })).toBe(`我想吃能天使的${food}`);
+    }
+    // only as written: not 角糖布丁 or 细角水煮面
+    for (const food of ["角糖布丁", "细角水煮面"]) expect(() => say({ template: "eat", character: "能天使", food: food as Food }), food).toThrow("吃的");
   });
 
   it("only takes your own favourites, the listed titles and foods, and your real name", () => {

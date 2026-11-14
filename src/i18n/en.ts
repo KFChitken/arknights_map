@@ -3652,6 +3652,9 @@ export const en: Draft<Messages> = {
       "靴子泡面": "boot ramen",
       "玉族配饭": "feet over rice",
       "脚夹馍": "foot-wich",
+      "丝袜奶茶": "pantyhose milk tea",
+      "脚糖布丁": "toe-ffee pudding",
+      "洗角水煮面": "footbath noodles",
     },
     spouses: {
       "老婆": "waifu",

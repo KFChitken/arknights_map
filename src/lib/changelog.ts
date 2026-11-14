@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-14", kind: "new", text: "新菜：丝袜奶茶、脚糖布丁、洗角水煮面" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "better", text: "触须之交的克隆体穿上 TA 的样子" },
