@@ -5,6 +5,13 @@
  * badges wait to pop.
  */
 
+/**
+ * Filters the whole page to gray. On the root element, a filter leaves everything fixed where it is (on any other
+ * element it would not), and the map is filtered with the rest. The map page (src/components/GrayMode.tsx) and the
+ * intro page (src/app/about/route.ts) both say it.
+ */
+export const GRAY_CSS = "html{filter:grayscale(1)}";
+
 let until: number | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();

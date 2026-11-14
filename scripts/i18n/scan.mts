@@ -54,12 +54,14 @@ export const CJK = /[⺀-⿿　-〿぀-ヿ㄀-ㇿ㐀-䶿一-鿿가-힯豈-﫿︰
  * alert emails, the test players of a development copy (DEMO) and the show
  * roaches, what the server only logs, the words a name may not have (what
  * players type, not what they read), the change log's rows (only in Chinese
- * for now), and the tests.
+ * for now), the English intro page's own words, and the tests.
  * Paths from the repository root; a folder ends in /.
  */
 export const KEPT: [prefix: string, why: string][] = [
   ["src/app/admin/", "admin"],
   ["src/app/api/admin/", "admin"],
+  // the English intro page, a page of its own: its words go with its template, the site's Chinese name among them
+  ["src/app/about/", "intro"],
   ["src/components/admin/", "admin"],
   ["src/components/app/IdentitySheet.tsx", "demo"],
   ["src/instrumentation-node.ts", "console"],

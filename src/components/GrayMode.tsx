@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { isGray, onGrayChange, seedGray } from "@/lib/grayMode";
-
-/**
- * Filters the whole page to gray. On the root element, a filter leaves everything fixed where it is (on any other
- * element it would not), and the map is filtered with the rest.
- */
-const GRAY_CSS = "html{filter:grayscale(1)}";
+import { GRAY_CSS, isGray, onGrayChange, seedGray } from "@/lib/grayMode";
 
 /**
  * 全站变灰 (src/lib/grayMode.ts): the page in gray while it is on. Rendered on the server with the page, so the first
