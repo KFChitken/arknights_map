@@ -127,7 +127,8 @@
 .ec-under { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; min-height: 96px; }
 .sw-start,
 .rx-start,
-.ec-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.ec-start,
+.fd-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
 .ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
@@ -187,6 +188,41 @@
 .ec-said.ec-yours { color: #1b1d22; }
 .ec-said.ec-right { color: var(--st-green); }
 
+/* ---- 找 325 (Find325.tsx): only the boxes and the count change, nothing flashes ---- */
+.fd-game {
+  /* the grid's side: as wide as there is room for, and short enough to leave room for the round's end under it */
+  --fd-side: min(100%, 360px, calc(100vh - 305px));
+  --fd-side: min(100%, 360px, calc(100dvh - 305px));
+  display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;
+}
+@media (min-width: 600px) and (min-height: 600px) {
+  .fd-game { --fd-side: min(360px, calc(min(720px, 100vh - 48px) - 305px)); }
+}
+.fd-top {
+  display: flex; justify-content: space-between; width: var(--fd-side); color: var(--muted); font-size: 14px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fd-top .fd-low { color: var(--st-red); }
+.fd-grid {
+  position: relative; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr);
+  width: var(--fd-side); aspect-ratio: 1; border: 2px solid #1b1d22; border-radius: 12px; container-type: inline-size;
+  touch-action: none; cursor: crosshair;
+}
+.fd-grid > span {
+  display: grid; place-items: center; font-size: 19px; font-size: 5.4cqw; font-weight: 700; font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.fd-marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fd-found { fill: rgba(31, 157, 85, 0.14); stroke: var(--st-green); stroke-width: 0.07; }
+.fd-drag { fill: rgba(255, 210, 63, 0.45); stroke: #1b1d22; stroke-width: 0.06; }
+.fd-missed { fill: none; stroke: var(--st-red); stroke-width: 0.06; stroke-dasharray: 0.2 0.12; }
+.fd-ready {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  padding: 16px; border-radius: 10px; background: #fff; cursor: default; text-align: center;
+}
+.fd-ready p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; white-space: pre-line; }
+.fd-tip { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -199,6 +235,7 @@
   .rx-under { gap: 8px; min-height: 84px; }
   .ec-game { gap: 12px; }
   .ec-under { gap: 8px; min-height: 84px; }
+  .fd-game { --fd-side: min(100%, 360px, calc(100vh - 261px)); --fd-side: min(100%, 360px, calc(100dvh - 261px)); gap: 8px; }
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
 @media (max-height: 520px) and (orientation: landscape) {
@@ -217,4 +254,11 @@
   .ec-under { grid-column: 2; grid-row: 1 / 3; min-height: 0; justify-content: center; }
   .ec-bells { padding: 0; }
   .ec-bell { width: min(28vh, 104px); }
+  .fd-game {
+    --fd-side: max(120px, calc(100vh - 200px)); --fd-side: max(120px, calc(100dvh - 200px));
+    display: grid; grid-template-columns: auto 180px; justify-content: center; align-items: center; gap: 8px 24px;
+  }
+  .fd-grid { grid-column: 1; grid-row: 1 / 3; }
+  .fd-top { flex-direction: column; align-items: center; align-self: end; gap: 4px; width: auto; }
+  .fd-tip { align-self: start; text-align: center; }
 }

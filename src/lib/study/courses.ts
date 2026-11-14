@@ -6,13 +6,14 @@
  */
 
 /** What a course is filed under on its card */
-export const SUBJECTS = ["pe", "music"] as const;
+export const SUBJECTS = ["pe", "music", "math"] as const;
 export type Subject = (typeof SUBJECTS)[number];
 
 export const COURSES = [
   { id: "stopwatch", subject: "pe" },
   { id: "react325", subject: "pe" },
   { id: "echo325", subject: "music" },
+  { id: "find325", subject: "math" },
 ] as const satisfies readonly { id: string; subject: Subject }[];
 
 export type Course = (typeof COURSES)[number];

@@ -2300,11 +2300,13 @@ export const zh = {
     subjects: {
       pe: "体育课",
       music: "音乐课",
+      math: "数学课",
     },
     courses: {
       stopwatch: { name: "3.25 秒停表", rule: "觉得到 3.25 秒就点停", short: "停表" },
       react325: { name: "3、2、5 反应", rule: "3、2、5 连着出来时，趁 5 还亮着拍一下", short: "反应" },
       echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
+      find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
     },
     stopwatch: {
       start: "开始",
@@ -2357,6 +2359,21 @@ export const zh = {
       wrong: "按错了，记住 {n} 步，再试一次",
       wrongFirst: "第一下就按错了，再试一次",
       result: "记住 {n} 步",
+    },
+    /** 找 325 (src/lib/study/find325.ts) */
+    find325: {
+      start: "开始",
+      rule: "方阵里藏着 {n} 个 325，横、竖、斜都有\n手指从 3 划到 5 圈出来，限时 {s} 秒",
+      /** Under the grid while the minute runs */
+      tip: "从 3 划到 5，圈出 325",
+      count: "找到 {n} / {of}",
+      left: "剩 {s} 秒",
+      /** Read out for the grid */
+      gridSr: "数字方阵",
+      all: "{n} 个全找到了！用了 {s} 秒",
+      time: "时间到，找到 {n} 个，再试一次",
+      none: "时间到，一个也没找到，再试一次",
+      result: "找到 {n} 个",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
