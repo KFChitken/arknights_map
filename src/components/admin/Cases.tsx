@@ -21,7 +21,7 @@ import { ago } from "../app/InboxSheet";
 import { errorWords } from "./api";
 import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
-import { Empty, Facts, LevelTag, Mark, PlayerWords, Tag, tagKind } from "./ui";
+import { Empty, Facts, LevelTag, Mark, PlayerWords, ReporterLine, Tag, tagKind } from "./ui";
 import {
   ACTION_WORDS,
   caseTitle,
@@ -29,7 +29,6 @@ import {
   joinedWords,
   personFacts,
   personTags,
-  reporterWords,
   ruleWords,
   savedName,
   shownName,
@@ -616,6 +615,7 @@ export default function Cases({ start }: { start?: string }) {
               onAskBan={(why) => askBan(current.c, why)}
               onBlockName={() => blockName(current.c)}
               onAccount={() => go({ page: "accounts", account: current.c.targetId })}
+              onReporter={(id) => go({ page: "accounts", account: id })}
             />
           ) : (
             <AppealDetail key={current.id} a={current.a} me={gate.alias} onAnswer={(keep) => answer(current.a, keep)} onAccount={() => go({ page: "accounts", account: current.a.who.targetId })} />
@@ -694,6 +694,7 @@ function CaseDetail({
   onAskBan,
   onBlockName,
   onAccount,
+  onReporter,
 }: {
   c: AdminCase;
   owner: boolean;
@@ -706,6 +707,7 @@ function CaseDetail({
   onAskBan: (why: string) => Promise<void>;
   onBlockName: () => void;
   onAccount: () => void;
+  onReporter: (id: string) => void;
 }) {
   const roach = c.kind === "roach" ? c.roach : undefined;
   const suggest = suggestOf(c);
@@ -786,7 +788,7 @@ function CaseDetail({
               {[r.context, `${roach ? "主人当时的名字" : "当时的名字"}：${r.name || "（没有名字）"}`].filter(Boolean).join(" · ")}
               {r.place && roach && (r.place.lng !== roach.lng || r.place.lat !== roach.lat) && " · 这次举报时它在别处"}
             </div>
-            <div className="ac-muted small">{reporterWords(r.reporter, r.watch)}</div>
+            <ReporterLine r={r.reporter} watch={r.watch} onOpen={onReporter} />
           </div>
         ))}
         {!c.reports.length && (
@@ -794,7 +796,7 @@ function CaseDetail({
             没有人举报，是 {BLOCKS_WINDOW_DAYS} 天内被 {c.blockedRecently} 个人拉黑才进了这里。处理以后，再被拉黑 {BLOCKS_TO_REVIEW} 次才会再列出来。
           </p>
         )}
-        <p className="ac-hint">不显示是谁举报的，只显示举报人以前举报得准不准。</p>
+        <p className="ac-hint">点「看 TA 的账号」能看举报人交过的举报。乱举报、借举报骗人的，在 TA 的账号里处理。</p>
       </section>
 
       <section aria-label="TA 的资料">

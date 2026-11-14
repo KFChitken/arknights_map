@@ -361,6 +361,60 @@ describe("moderators in the 管理台", () => {
     expect((await call("account", [other.user.id])).body.result.person.staff).toBe("mod");
   });
 
+  it("shows who reported: to the owner in full, to a moderator with the email masked and never which of the 管理台's people", async () => {
+    const boss = await owner();
+    const mod = await moderator("mod@example.com", "小林");
+    const other = await moderator("other@example.com", "阿杰");
+    const bad = await player("bad@example.com");
+    const victim = await player("victim@example.com", "无辜的");
+    const snitch = await player("snitch.player@example.com", "爱举报的");
+    await reported(bad, "other", snitch.id, { note: "站长请点链接" });
+    await reported(bad, "spam", other.user.id);
+    await reported(bad, "name", boss.user.id);
+    // what else the reporter sent: lately, two days ago, and about one of the 管理台's people
+    await reported(victim, "other", snitch.id);
+    await reported(victim, "name", snitch.id, { createdAt: new Date(Date.now() - 2 * DAY) });
+    await reported(other.user, "spam", snitch.id);
+    const caseOf = async () => {
+      const page = (await call("cases")).body.result;
+      return page.cases.find((c: { targetId: string }) => c.targetId === bad.id);
+    };
+    const whoOf = (c: { reports: { reporter: { who: { id: string } | null } | null }[] }) => c.reports.map((r) => r.reporter?.who?.id ?? null);
+
+    use(boss.here);
+    const full = await caseOf();
+    expect(whoOf(full)).toEqual([snitch.id, other.user.id, boss.user.id]);
+    expect(full.reports[0].reporter).toMatchObject({
+      who: { id: snitch.id, name: "爱举报的", anonymous: false, email: "snitch.player@example.com" },
+      upheld: 0,
+      lastDay: 3,
+    });
+    const theirs = (await call("account", [snitch.id])).body.result;
+    expect(theirs.reportsMade).toMatchObject({ open: 4, lastDay: 3 });
+    expect(theirs.made.map((r: { targetId: string; reason: string }) => [r.targetId, r.reason])).toEqual([
+      [other.user.id, "spam"],
+      [victim.id, "other"],
+      [bad.id, "other"],
+      [victim.id, "name"],
+    ]);
+    expect(theirs.made[2]).toMatchObject({ note: "站长请点链接", name: "小坏", roach: null, resolvedAt: null, resolution: null });
+    expect((await call("account", [bad.id])).body.result.reports.map((r: { reporter: { who: { id: string } } }) => r.reporter.who.id).sort()).toEqual(
+      [snitch.id, other.user.id, boss.user.id].sort(),
+    );
+
+    use(mod.here);
+    const seen = await caseOf();
+    expect(whoOf(seen)).toEqual([snitch.id, null, null]);
+    expect(seen.reports[0].reporter).toMatchObject({ who: { id: snitch.id, email: "sn***@example.com" }, lastDay: 3 });
+    expect(seen.reports[1].reporter).toMatchObject({ who: null, upheld: 0, dismissed: 0 });
+    const opened = await call("account", [snitch.id]);
+    expect(opened.body.result.made.map((r: { targetId: string }) => r.targetId)).toEqual([victim.id, bad.id, victim.id]);
+    const aboutBad = await call("account", [bad.id]);
+    for (const text of [JSON.stringify(seen), opened.text, aboutBad.text]) {
+      for (const hidden of [boss.user.id, other.user.id, "snitch.player@example.com"]) expect(text).not.toContain(hidden);
+    }
+  });
+
   it("lets a moderator read but not answer an appeal against their own step, and none from the 管理台's people", async () => {
     const boss = await owner();
     const mod = await moderator("mod@example.com", "小林");

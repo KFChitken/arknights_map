@@ -1,28 +1,38 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ACCOUNT_ACTIONS, type AdminAccount, type AdminHistoryItem, type AdminNote, type AdminRole, type FoundAccount, type FoundAccounts } from "@/lib/adminConsole";
+import {
+  ACCOUNT_ACTIONS,
+  type AdminAccount,
+  type AdminAccountReport,
+  type AdminHistoryItem,
+  type AdminNote,
+  type AdminRole,
+  type FoundAccount,
+  type FoundAccounts,
+} from "@/lib/adminConsole";
 import { beijingDate, beijingShort } from "@/lib/beijing";
+import { cleanPlayerText } from "@/lib/playerText";
 import { SUSPEND_DAYS, YELLOW_DAYS } from "@/lib/rules";
 import { reasonWords, RULES, type AdminAction, type RuleCode } from "@/lib/safety";
 import { ago } from "../app/InboxSheet";
 import { AdminError, errorWords } from "./api";
 import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
-import { Empty, Facts, Mark, PlayerWords, Tag } from "./ui";
-import { ACTION_WORDS, HELD_WORDS, historyWords, joinedWords, personFacts, reporterWords, savedName } from "./words";
+import { Empty, Facts, Mark, PlayerWords, ReporterLine, Tag } from "./ui";
+import { ACTION_WORDS, HELD_WORDS, historyWords, joinedWords, personFacts, savedName } from "./words";
 
 /**
  * 搜索账号: find anyone by name, the start of their id, a game UID or (the owner) their email; open them to see what
- * they wrote, the reports about them, what was done and the notes on them, and act on them even unreported, under
- * a rule picked first. Every search and every account opened goes into the 操作记录. A moderator never finds the
+ * they wrote, the reports about them and who made each, the reports they made, what was done and the notes on them,
+ * and act on them even unreported, under a rule picked first. Every search and every account opened goes into the 操作记录. A moderator never finds the
  * 管理台's own people, sees emails masked, and asks the owner for a ban instead of banning.
  */
 
 /** Of the 管理台's own people (only the owner finds them) */
 const staffWords = (staff: AdminRole | null) => (staff === "owner" ? "站长" : staff === "mod" ? "管理员" : null);
 
-type Tab = "info" | "reports" | "history" | "notes";
+type Tab = "info" | "reports" | "made" | "history" | "notes";
 type AccountAct = Exclude<(typeof ACCOUNT_ACTIONS)[number], "ban">;
 
 const RESOLUTION_WORDS: Record<string, string> = {
@@ -34,6 +44,14 @@ const RESOLUTION_WORDS: Record<string, string> = {
   age_check: "请 TA 确认年龄",
   roach_removed: "收回了蟑螂",
 };
+
+/** How a report went: waiting, or handled how (and by whom, when that can be told) */
+const outcomeWords = (r: Pick<AdminAccountReport, "resolvedAt" | "resolution"> & { by?: string | null }, by: (who: string | null) => string | null) =>
+  !r.resolvedAt
+    ? "还没处理"
+    : r.resolution === "dismissed"
+      ? `判了没问题${r.by ? `（${by(r.by)}）` : ""}`
+      : `成立：${r.by ? by(r.by) : ""}${RESOLUTION_WORDS[r.resolution ?? ""] ?? "处理了"}`;
 
 function badgesOf(a: Pick<FoundAccount, "suspendedUntil" | "yellow" | "open" | "held" | "anonymous">, now: number) {
   const days = a.suspendedUntil ? Math.max(1, Math.ceil((a.suspendedUntil - now) / 86_400_000)) : 0;
@@ -253,7 +271,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
       k: "TA 举报别人",
       v:
         a.reportsMade.upheld + a.reportsMade.dismissed + a.reportsMade.open
-          ? `${a.reportsMade.upheld + a.reportsMade.dismissed + a.reportsMade.open} 次：${a.reportsMade.upheld} 次成立，${a.reportsMade.dismissed} 次判了没问题${a.reportsMade.open ? `，${a.reportsMade.open} 次还没处理` : ""}${a.reportsMade.reliable ? "，算进自动处理" : "，不算进自动处理"}`
+          ? `${a.reportsMade.upheld + a.reportsMade.dismissed + a.reportsMade.open} 次：${a.reportsMade.upheld} 次成立，${a.reportsMade.dismissed} 次判了没问题${a.reportsMade.open ? `，${a.reportsMade.open} 次还没处理` : ""}${a.reportsMade.reliable ? "，算进自动处理" : "，不算进自动处理"}${a.reportsMade.lastDay ? `；最近 24 小时交了 ${a.reportsMade.lastDay} 条` : ""}`
           : "没举报过",
     },
   ];
@@ -269,6 +287,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
   const tabs: [Tab, string][] = [
     ["info", "资料"],
     ["reports", `被举报 ${a.reports.length}`],
+    ["made", `举报别人 ${a.made.length}`],
     ["history", `处理记录 ${a.history.length}`],
     ["notes", `备注 ${a.notes.length}`],
   ];
@@ -357,19 +376,39 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
                     <span className="ac-muted small">{beijingShort(r.at)}</span>
                   </div>
                   {r.note && <PlayerWords label="举报人自己写的" text={r.note} what="举报" />}
-                  <div className={`small ${r.resolvedAt ? "ac-muted" : "ac-open-text"}`}>
-                    {!r.resolvedAt
-                      ? "还没处理"
-                      : r.resolution === "dismissed"
-                        ? `判了没问题${r.by ? `（${by(r.by)}）` : ""}`
-                        : `成立：${r.by ? by(r.by) : ""}${RESOLUTION_WORDS[r.resolution ?? ""] ?? "处理了"}`}
-                    {" · "}
-                    {reporterWords(r.reporter, r.watch)}
-                  </div>
+                  <div className={`small ${r.resolvedAt ? "ac-muted" : "ac-open-text"}`}>{outcomeWords(r, by)}</div>
+                  <ReporterLine r={r.reporter} watch={r.watch} onOpen={(who) => go({ page: "accounts", account: who })} />
                 </div>
               ))}
               {!a.reports.length && <p className="ac-line-none">90 天内没人举报过 TA。</p>}
-              <p className="ac-hint">举报留 90 天。不显示是谁举报的。</p>
+              <p className="ac-hint">举报留 90 天。</p>
+            </div>
+          )}
+
+          {tab === "made" && (
+            <div>
+              {a.made.map((r, i) => (
+                <div key={i} className="ac-line">
+                  <div className="ac-report-head">
+                    <strong>
+                      {reasonWords(r.reason)}
+                      {r.roach ? `（${r.roach.main ? "本体" : "一只克隆体"}）` : ""}
+                    </strong>
+                    <span className="ac-muted small">{beijingShort(r.at)}</span>
+                  </div>
+                  {r.note && <PlayerWords label="TA 自己写的" text={r.note} what="举报" />}
+                  <div className="ac-reporter small">
+                    <span className={r.resolvedAt ? "ac-muted" : "ac-open-text"}>
+                      {r.roach ? "蟑螂的主人" : "举报的是"}：{cleanPlayerText(r.name) || "（没有名字）"} · {outcomeWords(r, by)}
+                    </span>
+                    <button type="button" className="ac-btn small" onClick={() => go({ page: "accounts", account: r.targetId })}>
+                      看被举报的人
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!a.made.length && <p className="ac-line-none">90 天内 TA 没举报过别人。</p>}
+              <p className="ac-hint">举报留 90 天。名字是举报那时的名字。</p>
             </div>
           )}
 

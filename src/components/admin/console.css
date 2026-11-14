@@ -341,6 +341,9 @@
 .ac-player-text { display: block; font-size: 14px; color: #1b1f24; overflow-wrap: anywhere; unicode-bidi: isolate; overflow: hidden; }
 .ac-player.lure { border: 1px solid #e3b5b0; background: #fff7f6; }
 .ac .ac-lure { margin: 4px 0 0; font-size: 12px; line-height: 18px; color: #a61b1b; }
+/* who made a report, and the way to their account */
+.ac-reporter { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; overflow-wrap: anywhere; }
+.ac-reporter > span { flex: 1 1 240px; min-width: 0; }
 .ac-report-context { font-size: 13px; color: #3d4450; background: #f7f8fa; border-radius: 6px; padding: 6px 10px; overflow-wrap: anywhere; }
 .ac-report-none { padding: 10px 0; border-top: 1px solid #eef0f3; font-size: 13px; color: #4a5260; }
 .ac-report + .ac-hint, .ac-report-none + .ac-hint { margin-top: 6px; }

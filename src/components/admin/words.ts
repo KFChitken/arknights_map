@@ -1,6 +1,7 @@
 import type { AdminHistoryItem, AdminLogEntry, AdminLogKind } from "@/lib/adminConsole";
 import { beijingDate, beijingDayWords } from "@/lib/beijing";
 import { GAME_NAMES } from "@/lib/games";
+import { cleanPlayerText } from "@/lib/playerText";
 import { BLOCKS_WINDOW_DAYS, SUSPEND_DAYS, YELLOW_DAYS, YELLOWS_TO_WORRY } from "@/lib/rules";
 import { isRuleCode, RULES, type AdminAction, type AdminCase, type AdminPerson, type ReporterInfo } from "@/lib/safety";
 import type { RoachColor } from "@/lib/types";
@@ -73,13 +74,19 @@ export const markOf = (name: string, color?: RoachColor) => ({ initial: [...(nam
 /** Who made a report the site made itself: a roach put in a 提醒区 (src/lib/server/watchPlaces.ts) */
 export const watchWords = (label: string) => `网站自动标的 · 提醒区「${label}」`;
 
-/** How a reporter's reports went before, never who they are; or, made by the site, which 提醒区 */
+/**
+ * Who made a report: their name and email (one of the 管理台's own people is not named to a moderator), how their
+ * reports went before, and how many they made lately; or, made by the site, which 提醒区
+ */
 export function reporterWords(r: ReporterInfo | null, watch?: string) {
   if (watch !== undefined) return watchWords(watch);
   if (!r) return "举报人已注销";
   const before = r.upheld + r.dismissed;
   const record = before ? `以前举报 ${before} 次，${r.dismissed === 0 ? "都成立" : r.upheld === 0 ? "都判了没问题" : `成立 ${r.upheld} 次`}` : "以前没举报过";
-  return `举报人注册 ${r.days} 天，${record}${r.reliable ? "" : " · 不算进自动处理"}`;
+  // their name as plain words: one that hides characters (a right-to-left override, say) cannot turn the line around
+  const name = r.who && cleanPlayerText(r.who.name);
+  const who = r.who ? `举报人：${name || "（没有名字）"}${r.who.anonymous ? "（匿名）" : ""} · 邮箱 ${r.who.email || "（没有）"}` : "举报人是管理台的人（不显示是谁）";
+  return `${who} · 注册 ${r.days} 天，${record}${r.reliable ? "" : " · 不算进自动处理"}${r.lastDay ? ` · 最近 24 小时交了 ${r.lastDay} 条举报` : ""}`;
 }
 
 /** 「关掉过 3 次，警告过 1 次……」 */

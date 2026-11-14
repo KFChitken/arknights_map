@@ -3,9 +3,9 @@
 import type { ReactNode } from "react";
 import { LURE_TAG, LURE_WORDS, lureFlags } from "@/lib/adminConsole";
 import { cleanPlayerText } from "@/lib/playerText";
-import type { CaseLevel } from "@/lib/safety";
+import type { CaseLevel, ReporterInfo } from "@/lib/safety";
 import type { RoachColor } from "@/lib/types";
-import { markOf, type Fact } from "./words";
+import { markOf, reporterWords, type Fact } from "./words";
 
 /** Small pieces every page of the 管理台 uses, styled in console.css */
 
@@ -51,6 +51,21 @@ export function PlayerWords({ label, text, what }: { label: string; text: string
 }
 
 /** A player's round mark: the first character of their name on their roach's colour */
+/** Who made a report (or which 提醒区, when the site made it), with a way to their account when they are named */
+export function ReporterLine({ r, watch, onOpen }: { r: ReporterInfo | null; watch?: string; onOpen: (id: string) => void }) {
+  const who = watch === undefined ? r?.who : undefined;
+  return (
+    <div className="ac-reporter small">
+      <span className="ac-muted">{reporterWords(r, watch)}</span>
+      {who && (
+        <button type="button" className="ac-btn small" onClick={() => onOpen(who.id)}>
+          看 TA 的账号
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Mark({ name, color, size = 48 }: { name: string; color?: RoachColor; size?: number }) {
   const m = markOf(name, color);
   return (

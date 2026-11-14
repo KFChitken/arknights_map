@@ -381,11 +381,12 @@ describe("the 管理台's ops", () => {
     const lines = await db.select().from(adminLog).where(eq(adminLog.what, "act.warn"));
     expect(lines).toMatchObject([{ targetId: p.id, actionId: a.id, detail: `违反：${RULES.contact}` }]);
 
-    // the whole account, without who reported
+    // the whole account, and who reported
     const full = (await call("account", [p.id])).body.result;
     expect(full.history).toMatchObject([{ actionId: a.id, by: "站长" }]);
     expect(full.reports).toMatchObject([{ reason: "contact", resolution: "warned", by: "站长" }]);
-    expect(JSON.stringify(full)).not.toContain(open.reporterId!);
+    expect(full.reports[0].reporter).toMatchObject({ who: { id: open.reporterId, email: expect.stringMatching(/^r[0-9a-f]{8}@example\.com$/) }, lastDay: 1 });
+    expect(full.made).toEqual([]);
     expect(full.person.yellow).toBe(1);
     expect((await call("account", ["11111111-1111-4111-8111-111111111111"])).body).toEqual({ error: "这个账号已经不在了。" });
   });

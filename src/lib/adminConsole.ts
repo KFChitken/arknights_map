@@ -325,7 +325,7 @@ export type AdminHistoryItem = {
   canUndo: boolean;
 };
 
-/** A report about the account, open or handled: never who made it */
+/** A report about the account, open or handled, and who made it */
 export type AdminAccountReport = {
   reason: AnyReason;
   note: string;
@@ -341,6 +341,19 @@ export type AdminAccountReport = {
   by: string | null;
 };
 
+/** A report the account made, open or handled: about whom (to open them) and their name then, and how it went */
+export type AdminMadeReport = {
+  reason: AnyReason;
+  note: string;
+  at: number;
+  targetId: string;
+  name: string;
+  /** About one of their roaches: whether it was the main one */
+  roach: { main: boolean } | null;
+  resolvedAt: number | null;
+  resolution: string | null;
+};
+
 /** A note between the people of the 管理台, which the player never sees */
 export type AdminNote = { id: string; by: string; text: string; at: number };
 
@@ -353,8 +366,10 @@ export type AdminAccount = {
   /** Declarations of the last 7 days, without where they were sent from */
   declarations: { text: string; at: number }[];
   reports: AdminAccountReport[];
-  /** Reports they made: upheld, dismissed, waiting, and whether the automatic steps count them */
-  reportsMade: { upheld: number; dismissed: number; open: number; reliable: boolean };
+  /** Reports they made: upheld, dismissed, waiting, in the last 24 hours, and whether the automatic steps count them */
+  reportsMade: { upheld: number; dismissed: number; open: number; lastDay: number; reliable: boolean };
+  /** The reports they made that are kept, newest first: a moderator not those about the 管理台's own people */
+  made: AdminMadeReport[];
   history: AdminHistoryItem[];
   notes: AdminNote[];
   /** Cases about them waiting in 待处理 */

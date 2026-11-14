@@ -129,8 +129,20 @@ export const RULE_OF_REASON: Record<AnyReason, RuleCode> = {
   pattern: "roach",
 };
 
-/** How a reporter's reports went before, for the admin: never who they are */
-export type ReporterInfo = { days: number; upheld: number; dismissed: number; reliable: boolean };
+/**
+ * Who made a report, for the 管理台: the account (to open it), its name and login email (masked for a moderator, as
+ * every email they are sent), how its reports went before, and how many it made in the last 24 hours. who is null
+ * for one of the 管理台's own people when a moderator looks, who never sees them.
+ */
+export type ReporterInfo = {
+  who: { id: string; name: string; anonymous: boolean; email: string } | null;
+  days: number;
+  upheld: number;
+  dismissed: number;
+  reliable: boolean;
+  /** Reports they made in the last 24 hours, about anyone */
+  lastDay: number;
+};
 
 /**
  * What the admin page shows about a player, in a case about them or their roach, or beside their appeal:
@@ -192,7 +204,7 @@ export type AdminPerson = {
   staff: "owner" | "mod" | null;
 };
 
-/** One open report in a case: never who made it, only how their reports went before */
+/** One open report in a case, and who made it */
 export type AdminReport = {
   reason: AnyReason;
   note: string;

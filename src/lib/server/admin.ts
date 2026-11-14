@@ -13,6 +13,7 @@ import {
   type AdminHistoryItem,
   type AdminLogFilter,
   type AdminLogPage,
+  type AdminMadeReport,
   type AdminNote,
   type AdminRole,
   type DoneToday,
@@ -422,13 +423,38 @@ function casesSeenBy(viewer: Viewer | null | undefined, staff: Map<string, Admin
 
 type CaseRow = { key: string; target: string; roachy: boolean; lvl: number; reporters: number; reliable: number; since: Date | string | null };
 
-/** How a reporter's reports went before, for the 管理台: never who they are */
-const reporterInfo = (r: UserRow, now: number): ReporterInfo => ({
-  days: Math.floor((now - r.createdAt.getTime()) / MS_DAY),
-  upheld: r.reportsUpheld,
-  dismissed: r.reportsDismissed,
-  reliable: reliableReporter(r, now),
-});
+/**
+ * Who made these reports, as this viewer is shown them (ReporterInfo), and each reporter's account as kept, for
+ * telling new ones. A moderator is not told which of the 管理台's own people reported, as they never see them.
+ */
+async function reportersOf(rows: { reporterId: string | null }[], now: number, staff: Map<string, AdminRole>, viewer: Viewer | null) {
+  const ids = [...new Set(rows.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
+  const [found, lately] = await Promise.all([
+    ids.length ? db.select().from(users).where(inArray(users.id, ids)) : [],
+    ids.length
+      ? db
+          .select({ id: reports.reporterId, n: count() })
+          .from(reports)
+          .where(and(inArray(reports.reporterId, ids), gt(reports.createdAt, new Date(now - MS_DAY))))
+          .groupBy(reports.reporterId)
+      : [],
+  ]);
+  const accounts = new Map(found.map((u) => [u.id, u]));
+  const lastDay = new Map(lately.map((l) => [l.id, l.n]));
+  const of = (id: string | null): ReporterInfo | null => {
+    const u = id ? accounts.get(id) : undefined;
+    if (!u) return null;
+    return {
+      who: isMod(viewer) && staff.has(u.id) ? null : { id: u.id, name: u.name, anonymous: u.anonymous, email: u.email ?? "" },
+      days: Math.floor((now - u.createdAt.getTime()) / MS_DAY),
+      upheld: u.reportsUpheld,
+      dismissed: u.reportsDismissed,
+      reliable: reliableReporter(u, now),
+      lastDay: lastDay.get(u.id) ?? 0,
+    };
+  };
+  return { accounts, of };
+}
 
 /** Where a roach reported is now against where it was at the latest report: still there, moved since, or gone */
 const roachState = (current: { lng: number; lat: number } | undefined, was: { lng: number; lat: number }) =>
@@ -449,8 +475,9 @@ const watchOf = (labels: Map<string, string>, r: { watchAreaId: string | null })
 /**
  * A page of the admin's queue: red cases first, then yellow, then green; within a colour, the more
  * reliable reporters first, then the one waiting longest. The grouping and order are SQL's (caseTable);
- * only the page's cases are read in full, all at once. Never where a player's roaches are or when they
- * came by, nor who reported them; a roach's case shows only that roach's spot, which is public anyway.
+ * only the page's cases are read in full, all at once, each report with who made it (reportersOf). Never
+ * where a player's roaches are or when they came by; a roach's case shows only that roach's spot, which is
+ * public anyway.
  */
 export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer: Viewer | null = null): Promise<CasePage> {
   const page = Math.max(1, Math.floor(Number(query.page) || 1));
@@ -485,15 +512,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
     roachIds.length ? db.select({ id: roaches.id, lng: roaches.lng, lat: roaches.lat }).from(roaches).where(inArray(roaches.id, roachIds)) : [],
   ]);
   const inPage = open.filter((r) => keys.has(caseOf(r)));
-  const reporterIds = [...new Set(inPage.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
-  const reporters = new Map(
-    (reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((u) => [u.id, u]),
-  );
-  const reporterOf = (id: string | null): ReporterInfo | null => {
-    const r = id ? reporters.get(id) : undefined;
-    return r ? reporterInfo(r, now) : null;
-  };
-  const watchLabels = await watchLabelsOf(inPage);
+  const [{ accounts: reporters, of: reporterOf }, watchLabels] = await Promise.all([reportersOf(inPage, now, staff, viewer), watchLabelsOf(inPage)]);
 
   summary.cases = rows.flatMap((row): AdminCase[] => {
     const person = who.get(row.target);
@@ -1290,7 +1309,7 @@ const accountGone = () => new HttpError(404, "这个账号已经不在了。");
 
 /**
  * Everything the 管理台 shows of one account, reported or not: the info box of a case, what was cleared from it,
- * its declarations of the last 7 days (without where from), every report about it kept (never who made one), the
+ * its declarations of the last 7 days (without where from), every report about it kept and who made each, the
  * reports it made, what was done about it, and the notes on it. Never where its roaches are or when it came by.
  */
 export async function account(id: unknown, now = Date.now(), viewer: Viewer | null = null): Promise<AdminAccount> {
@@ -1301,7 +1320,7 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
   const [[u], who] = await Promise.all([db.select().from(users).where(eq(users.id, userId)).limit(1), people([userId], now, staff)]);
   const person = who.get(userId);
   if (!u || !person) throw accountGone();
-  const [cleared, decls, about, [made], history, notes, cases, [asked]] = await Promise.all([
+  const [cleared, decls, about, [waiting], [lately], made, history, notes, cases, [asked]] = await Promise.all([
     db.select().from(clearedValues).where(eq(clearedValues.userId, userId)).orderBy(desc(clearedValues.createdAt)),
     db
       .select()
@@ -1319,6 +1338,22 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
       .select({ n: count() })
       .from(reports)
       .where(and(eq(reports.reporterId, userId), isNull(reports.resolvedAt))),
+    db
+      .select({ n: count() })
+      .from(reports)
+      .where(and(eq(reports.reporterId, userId), gt(reports.createdAt, new Date(now - MS_DAY)))),
+    db
+      .select()
+      .from(reports)
+      .where(
+        and(
+          eq(reports.reporterId, userId),
+          or(isNull(reports.resolvedAt), gt(reports.createdAt, new Date(now - KEEP_REPORT_DAYS * MS_DAY))),
+          isMod(viewer) && staff.size ? notInArray(reports.targetId, [...staff.keys()]) : undefined,
+        ),
+      )
+      .orderBy(desc(reports.createdAt))
+      .limit(ACCOUNT_LIST_MAX),
     db.select().from(modActions).where(eq(modActions.userId, userId)).orderBy(desc(modActions.createdAt)).limit(ACCOUNT_LIST_MAX),
     db.select().from(adminNotes).where(eq(adminNotes.userId, userId)).orderBy(desc(adminNotes.createdAt)).limit(ACCOUNT_LIST_MAX),
     openCaseCounts([userId]),
@@ -1328,9 +1363,7 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
       .where(and(eq(adminRequests.userId, userId), isNull(adminRequests.answeredAt)))
       .limit(1),
   ]);
-  const reporterIds = [...new Set(about.flatMap((r) => (r.reporterId ? [r.reporterId] : [])))];
-  const reporters = new Map((reporterIds.length ? await db.select().from(users).where(inArray(users.id, reporterIds)) : []).map((r) => [r.id, r]));
-  const watchLabels = await watchLabelsOf(about);
+  const [reporters, watchLabels] = await Promise.all([reportersOf(about, now, staff, viewer), watchLabelsOf(about)]);
   // settling closes a case's reports at the moment its action is kept: that tells who settled each
   const settledAt = new Map(history.map((a) => [a.createdAt.getTime(), a]));
   return {
@@ -1339,13 +1372,12 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
     last24: person.last24h,
     declarations: decls.map((d) => ({ text: declarationText(storedDeclaration(d)), at: d.createdAt.getTime() })),
     reports: about.map((r): AdminAccountReport => {
-      const reporter = r.reporterId ? reporters.get(r.reporterId) : undefined;
       const settled = r.resolvedAt ? settledAt.get(r.resolvedAt.getTime()) : undefined;
       return {
         reason: asReason(r.reason),
         note: r.note,
         at: r.createdAt.getTime(),
-        reporter: reporter ? reporterInfo(reporter, now) : null,
+        reporter: reporters.of(r.reporterId),
         ...watchOf(watchLabels, r),
         roach: isRoachReportReason(r.reason) ? { main: r.roachSlot === 0 } : null,
         resolvedAt: r.resolvedAt?.getTime() ?? null,
@@ -1353,7 +1385,19 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
         by: settled && !settled.auto ? (settled.byAlias ?? OWNER_ALIAS) : null,
       };
     }),
-    reportsMade: { upheld: u.reportsUpheld, dismissed: u.reportsDismissed, open: made.n, reliable: reliableReporter(u, now) },
+    reportsMade: { upheld: u.reportsUpheld, dismissed: u.reportsDismissed, open: waiting.n, lastDay: lately.n, reliable: reliableReporter(u, now) },
+    made: made.map(
+      (r): AdminMadeReport => ({
+        reason: asReason(r.reason),
+        note: r.note,
+        at: r.createdAt.getTime(),
+        targetId: r.targetId,
+        name: r.targetName,
+        roach: isRoachReportReason(r.reason) ? { main: r.roachSlot === 0 } : null,
+        resolvedAt: r.resolvedAt?.getTime() ?? null,
+        resolution: r.resolution,
+      }),
+    ),
     history: history.map((a) => historyItem(a, viewer, now)),
     notes: notes.map((n): AdminNote => ({ id: n.id, by: n.byAlias, text: n.text, at: n.createdAt.getTime() })),
     openCases: cases.get(userId) ?? 0,
