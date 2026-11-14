@@ -1,6 +1,7 @@
 /**
  * What the games played on a field share (src/components/app/study/arena.ts draws them): the things to keep clear of,
- * and whether two round things touch. Places and sizes are in field widths, so a field is the same game on any screen.
+ * and whether two round things touch. Places and sizes are in the field's own units (接住 3、2、5: field widths; 描红 325:
+ * the copybook square's side), so a field is the same game on any screen.
  */
 
 /** What can come at the player's roach: a bomb, a paper plane, a little slug with a crystal on its back */

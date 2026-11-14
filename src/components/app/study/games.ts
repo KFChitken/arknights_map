@@ -27,7 +27,7 @@ export type GameProps = {
   day: string;
   /** How to play this round, as a Round's again asked (the stopwatch: hidden) */
   mode?: string;
-  /** The player's roach, for a game it plays in (接住 3、2、5) */
+  /** The player's roach, for a game it plays in (接住 3、2、5, 描红 325) */
   look: Look;
   /** Called once, the moment the round is over */
   onRound: (r: Round) => void;
@@ -44,6 +44,7 @@ const GAMES: Record<CourseId, () => Promise<{ default: Game }>> = {
   beat325: () => import("./Beat325"),
   make325: () => import("./Make325"),
   catch325: () => import("./Catch325"),
+  trace325: () => import("./Trace325"),
 };
 
 export const loadGame = (id: CourseId): Promise<Game> => GAMES[id]().then((m) => m.default);

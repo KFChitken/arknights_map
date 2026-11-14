@@ -20,7 +20,7 @@ import {
 } from "@/lib/study/catch325";
 import { clamp } from "@/lib/study/field";
 import { dayRandom } from "@/lib/study/rules";
-import { calmNow, drawObstacle, useArrows, useCanvasSize, useDrag, useFrames, useRoachArt } from "./arena";
+import { calmNow, drawObstacle, roundRect, useArrows, useCanvasSize, useDrag, useFrames, useRoachArt } from "./arena";
 import type { GameProps, Round } from "./games";
 import { useKeys } from "./taps";
 
@@ -210,7 +210,7 @@ export default function Catch325({ day, look, onRound }: GameProps) {
   const w = T.study.catch325;
   const shake = said && said.did !== "set" ? ` ct-shake${said.k % 2}` : "";
   return (
-    <div className="ct-game" data-phase={phase} style={size.w ? ({ "--ct-fw": `${Math.round(field.fw)}px` } as CSSProperties) : undefined}>
+    <div className="ct-game" data-phase={phase} style={size.w ? ({ "--arena-fw": `${Math.round(field.fw)}px` } as CSSProperties) : undefined}>
       <div className="ct-top">
         <span className={`ct-slots${shake}`} role="img" aria-label={fmt(w.slotsSr, { n: tally.filled })}>
           {CATCH_ORDER.map((n, i) => (
@@ -259,17 +259,6 @@ export default function Catch325({ day, look, onRound }: GameProps) {
       </p>
     </div>
   );
-}
-
-/** A rectangle with round corners, as a path (CanvasRenderingContext2D.roundRect is not in older Safari) */
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
 
 /** A falling digit: a white disc, the digit dark on it */

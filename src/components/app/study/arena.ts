@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * The field the games that move the player's roach about are played on (Catch325.tsx, and the tracing game after it):
- * a canvas kept sharp at the screen's pixel ratio, a frame loop whose clock stands still while the page is put away, the
- * player's roach drawn standing and belly up, the obstacles drawn by hand (src/lib/study/field.ts), and a finger, the
- * mouse or the arrow keys moving it. Places and sizes in the games are in field widths, so a field plays the same on any
+ * The field the games that move the player's roach about are played on (Catch325.tsx, Trace325.tsx): a canvas kept
+ * sharp at the screen's pixel ratio, a frame loop whose clock stands still while the page is put away, the player's
+ * roach drawn standing and belly up, the obstacles drawn by hand (src/lib/study/field.ts), and a finger, a pen, the
+ * mouse or the arrow keys moving it. Places and sizes in the games are in field units, so a field plays the same on any
  * screen. Nothing drawn on it flashes.
  */
 import { type RefObject, useEffect, useRef, useState } from "react";
@@ -97,11 +97,16 @@ export function useRoachArt(look: Look, px: number): { stand: HTMLCanvasElement 
 }
 
 /**
- * Where a finger or the mouse is on an element while it is pressed there (x, y in the element's CSS pixels; down
- * false when it is let go), until it is let go, even off the element. The page does not scroll, zoom or open a menu
- * under it: the element is also touch-action: none in the style sheet, and iOS's own pinch is stopped here.
+ * Where a finger, a pen or the mouse is on an element while it is pressed there (x, y in the element's CSS pixels; down
+ * false when it is let go; kind the PointerEvent's pointerType: "touch" for a finger), until it is let go, even off the
+ * element. The page does not scroll, zoom or open a menu under it: the element is also touch-action: none in the style
+ * sheet, and iOS's own pinch is stopped here.
  */
-export function useDrag(ref: RefObject<HTMLElement | null>, on: boolean, move: (x: number, y: number, down: boolean) => void) {
+export function useDrag(
+  ref: RefObject<HTMLElement | null>,
+  on: boolean,
+  move: (x: number, y: number, down: boolean, kind: string) => void,
+) {
   const call = useRef(move);
   call.current = move;
   useEffect(() => {
@@ -110,7 +115,7 @@ export function useDrag(ref: RefObject<HTMLElement | null>, on: boolean, move: (
     let held: number | null = null;
     const tell = (e: PointerEvent, down: boolean) => {
       const box = el.getBoundingClientRect();
-      call.current(e.clientX - box.left, e.clientY - box.top, down);
+      call.current(e.clientX - box.left, e.clientY - box.top, down, e.pointerType);
     };
     const onDown = (e: PointerEvent) => {
       if (held !== null || e.button > 0) return;
@@ -184,10 +189,24 @@ export function useArrows(on: boolean): RefObject<number> {
   return dir;
 }
 
+/** A rectangle with round corners, as a path (CanvasRenderingContext2D.roundRect is not in older Safari) */
+export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 /** Whether motion is turned down, as the round starts */
 export const calmNow = () => typeof window !== "undefined" && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 
-/** An obstacle, about 2r across, centred on x, y; heading: a paper plane's, in radians (0 is to the right) */
+/**
+ * An obstacle, about 2r across, centred on x, y; heading: the way it goes, in radians (0 is to the right, π/2 down),
+ * which a paper plane points and a slug faces (left, unless it goes rightwards)
+ */
 export function drawObstacle(ctx: CanvasRenderingContext2D, what: Obstacle, x: number, y: number, r: number, heading = 0) {
   ctx.save();
   ctx.translate(x, y);
@@ -195,7 +214,10 @@ export function drawObstacle(ctx: CanvasRenderingContext2D, what: Obstacle, x: n
   ctx.lineCap = "round";
   if (what === "bomb") bomb(ctx, r);
   else if (what === "plane") plane(ctx, r, heading);
-  else slug(ctx, r);
+  else {
+    if (Math.cos(heading) > 0.1) ctx.scale(-1, 1);
+    slug(ctx, r);
+  }
   ctx.restore();
 }
 

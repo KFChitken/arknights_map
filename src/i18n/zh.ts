@@ -2301,6 +2301,7 @@ export const zh = {
       pe: "体育课",
       music: "音乐课",
       math: "数学课",
+      calligraphy: "书法课",
     },
     courses: {
       stopwatch: { name: "3.25 秒停表", rule: "觉得到 3.25 秒就点停", short: "停表" },
@@ -2311,6 +2312,7 @@ export const zh = {
       beat325: { name: "325 节拍", rule: "跟着亮点敲：哒哒哒、哒哒、哒哒哒哒哒", short: "节拍" },
       make325: { name: "凑 325", rule: "4 个数用加减乘除凑出 325，每个数用一次", short: "凑 325" },
       catch325: { name: "接住 3、2、5", rule: "左右挪小强，按 3、2、5 的顺序接住数字，躲开炸弹", short: "接住" },
+      trace325: { name: "描红 325", rule: "拖着小强沿虚线描 3、2、5，碰到飞来的东西就重写", short: "描红" },
     },
     stopwatch: {
       start: "开始",
@@ -2466,6 +2468,29 @@ export const zh = {
       pass: "接住 {n} 组，过关！",
       out: "60 秒到了，这局到这儿，接住 {n} 组",
       result: "接住 {n} 组",
+    },
+    /** 描红 325 (src/lib/study/trace325.ts) */
+    trace325: {
+      start: "开始",
+      /** Over the square before the round: as a touch rubs out the character being written, or all of them */
+      rule: "从红点起，拖着小强沿虚线写 3、2、5\n碰到炸弹、纸飞机、源石虫，这个字重写\n{s} 秒内写完过关",
+      ruleAll: "从红点起，拖着小强沿虚线写 3、2、5\n碰到炸弹、纸飞机、源石虫，从 3 重写\n{s} 秒内写完过关",
+      drag: "手指按住拖，小强在手指上方",
+      dragMouse: "按住鼠标拖",
+      /** Read out for the three slots */
+      slotsSr: "按 3、2、5 的顺序写，写好了 {n} 个",
+      rewrites: "重写 {n} 次",
+      /** The seconds left */
+      left: "{s} 秒",
+      leftSr: "还剩 {s} 秒",
+      /** Read out for the field */
+      fieldSr: "字帖",
+      /** Said over the field for a moment: a character written, something run into */
+      done: "写好了！",
+      hit: "碰到了，这个字重写",
+      hitAll: "碰到了，从 3 重写",
+      pass: "写完 325，重写 {n} 次",
+      out: "时间到，写到了 {d}",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
