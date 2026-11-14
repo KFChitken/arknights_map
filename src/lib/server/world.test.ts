@@ -1986,7 +1986,7 @@ describe("server world", () => {
     await expect(t2.react(got.id, "nonsense")).rejects.toThrow("不能这样回应");
   });
 
-  it("offers each declaration its own four replies, filled in, then the five every one has", async () => {
+  it("offers each declaration its own four replies, filled in, then the five every one has, then the playful four", async () => {
     await me.saveProfile({ ...EMPTY_PROFILE, games: ["arknights"], favourites: { arknights: ["阿米娅"], endfield: [] } });
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
     await me.declare({ template: "love", character: "阿米娅" });
@@ -2002,6 +2002,10 @@ describe("server world", () => {
       ["舟P收收味", false],
       ["+1", false],
       ["这种已经是外交官级别的了", false],
+      ["该电了", false],
+      ["6", false],
+      ["绷不住了", false],
+      ["已截图", false],
     ]);
     await expect(t2.react(got.id, "launch.4")).rejects.toThrow("不能这样回应");
     await t2.react(got.id, "love.4");

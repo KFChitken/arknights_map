@@ -4,6 +4,7 @@ import {
   declarationText,
   DRUNK_TEMPLATES,
   STAY_TEMPLATES,
+  FUN_REACTIONS,
   GENERIC_REACTIONS,
   REACTIONS,
   repliesFor,
@@ -84,17 +85,20 @@ describe("declarations", () => {
     ...EVENTS.flatMap((e) => e.lines.map((l): Declaration => ({ template: "event", line: l.id }))),
   ];
 
-  it("gives every sentence its own four replies, the fourth asking for a touch, then the five every one has", () => {
+  it("gives every sentence its own four replies, the fourth asking for a touch, then the five every one has, then the playful four", () => {
     expect(new Set(everySentence.map((d) => d.template))).toEqual(new Set([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, "event"]));
     for (const d of everySentence) {
       const replies = repliesFor(d);
       const own = replies.filter((r) => r.own);
       expect(own, declarationText(d)).toHaveLength(4);
       expect(own[3].text).toContain("碰我一下");
-      expect(replies.filter((r) => !r.own).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
+      expect(replies.filter((r) => !r.own && !r.fun).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
+      expect(replies.filter((r) => r.fun).map((r) => r.id)).toEqual([...FUN_REACTIONS]);
       expect(replies.slice(0, 4)).toEqual(own);
-      expect(new Set(replies.map((r) => r.text)).size).toBe(9);
-      expect(new Set(replies.map((r) => r.id)).size).toBe(9);
+      expect(replies.slice(4, 9).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
+      expect(replies.slice(9).map((r) => r.id)).toEqual([...FUN_REACTIONS]);
+      expect(new Set(replies.map((r) => r.text)).size).toBe(13);
+      expect(new Set(replies.map((r) => r.id)).size).toBe(13);
       for (const r of replies) expect(r.text).not.toMatch(/^\s*$|undefined|[{}【】]/);
     }
     // every sentence's own ids are its own
@@ -131,6 +135,7 @@ describe("declarations", () => {
       "再来一把就睡",
       "一起卫戍，碰我一下",
       ...GENERIC_REACTIONS.map((id) => REACTIONS[id]),
+      ...FUN_REACTIONS.map((id) => REACTIONS[id]),
     ]);
     expect(repliesFor(stronghold).slice(0, 4).map((r) => r.id)).toEqual(["stronghold.1", "stronghold.2", "stronghold.3", "stronghold.4"]);
     expect(canReply(stronghold, "stronghold.4")).toBe(true);
@@ -149,8 +154,31 @@ describe("declarations", () => {
     // what was left before each sentence had its own still reads
     for (const id of Object.keys(REACTIONS)) expect(replyOf(love, id)?.text).toBe(REACTIONS[id as keyof typeof REACTIONS]);
     expect(replyOf(love, "nonsense")).toBeNull();
-    expect(repliesFor({ template: "alsoplay", game: "arknights" }).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
-    expect(repliesFor({ template: "event", line: "nope" }).map((r) => r.id)).toEqual([...GENERIC_REACTIONS]);
+    expect(repliesFor({ template: "alsoplay", game: "arknights" }).map((r) => r.id)).toEqual([...GENERIC_REACTIONS, ...FUN_REACTIONS]);
+    expect(repliesFor({ template: "event", line: "nope" }).map((r) => r.id)).toEqual([...GENERIC_REACTIONS, ...FUN_REACTIONS]);
+  });
+
+  it("lets every declaration be answered with the playful four, 该电了, 6, 绷不住了 and 已截图, and nothing made up", () => {
+    const sentences: Declaration[] = [
+      { template: "launch", game: "arknights" },
+      { template: "stronghold" },
+      { template: "birthday" },
+      { template: "event", line: "yuanyuan" },
+    ];
+    for (const d of sentences) {
+      expect(repliesFor(d).filter((r) => r.fun)).toEqual([
+        { id: "dian", text: "该电了", own: false, fun: true },
+        { id: "six", text: "6", own: false, fun: true },
+        { id: "beng", text: "绷不住了", own: false, fun: true },
+        { id: "jietu", text: "已截图", own: false, fun: true },
+      ]);
+      for (const id of FUN_REACTIONS) expect(canReply(d, id), id).toBe(true);
+      for (const id of ["fun", "seven", "Dian", "jietu.1", "", "beng "]) expect(canReply(d, id), id).toBe(false);
+    }
+    // what the five of before read as stays as it was, and a reply left before reads as itself
+    expect(replyOf({ template: "launch", game: "arknights" }, "beng")).toEqual({ id: "beng", text: "绷不住了", own: false, fun: true });
+    expect(replyOf({ template: "launch", game: "arknights" }, "plusone")).toEqual({ id: "plusone", text: "+1", own: false });
+    expect(replyOf({ template: "birthday" }, "birthday")).toEqual({ id: "birthday", text: "生日快乐！", own: true });
   });
 });
 

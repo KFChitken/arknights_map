@@ -116,7 +116,8 @@ export function declarationText(d: Declaration): string {
 
 /**
  * The fixed replies of before, which still show on the messages that have them. All but
- * 生日快乐！ are the five every declaration has (GENERIC_REACTIONS), after its own four.
+ * 生日快乐！ are the five every declaration has (GENERIC_REACTIONS), after its own four; the
+ * last four are the playful ones every declaration has too (FUN_REACTIONS), on a line below.
  */
 export const REACTIONS = {
   get alsoplay() {
@@ -135,6 +136,18 @@ export const REACTIONS = {
   get diplomat() {
     return T.lib.declarations.reactions.diplomat;
   },
+  get dian() {
+    return T.lib.declarations.reactions.dian;
+  },
+  get six() {
+    return T.lib.declarations.reactions.six;
+  },
+  get beng() {
+    return T.lib.declarations.reactions.beng;
+  },
+  get jietu() {
+    return T.lib.declarations.reactions.jietu;
+  },
 } as const;
 export type Reaction = keyof typeof REACTIONS;
 
@@ -145,8 +158,15 @@ export function isReaction(v: unknown): v is Reaction {
 /** The five every declaration can get, on a line of their own after its own four */
 export const GENERIC_REACTIONS = ["alsoplay", "zhouli", "shouwei", "plusone", "diplomat"] as const;
 
-/** One reply a declaration can get: its id (what is stored), its words filled in, and whether it is one of that sentence's own four */
-export type Reply = { id: string; text: string; own: boolean };
+/** The four playful ones every declaration can get too, on a third line after the five */
+export const FUN_REACTIONS = ["dian", "six", "beng", "jietu"] as const;
+const isFun = (id: string) => (FUN_REACTIONS as readonly string[]).includes(id);
+
+/**
+ * One reply a declaration can get: its id (what is stored), its words filled in, whether it is one of that
+ * sentence's own four, and fun when it is one of the playful four (FUN_REACTIONS)
+ */
+export type Reply = { id: string; text: string; own: boolean; fun?: true };
 
 /**
  * Each sentence's own four replies, stored as "<template>.<n>" (the birthday one's first is
@@ -242,9 +262,13 @@ function ownReplies(d: Declaration): Reply[] {
   }));
 }
 
-/** What a declaration can be answered with: its own four, then the five every one has */
+/** What a declaration can be answered with: its own four, then the five every one has, then the playful four */
 export function repliesFor(d: Declaration): Reply[] {
-  return [...ownReplies(d), ...GENERIC_REACTIONS.map((id) => ({ id, text: REACTIONS[id], own: false }))];
+  return [
+    ...ownReplies(d),
+    ...GENERIC_REACTIONS.map((id) => ({ id, text: REACTIONS[id], own: false })),
+    ...FUN_REACTIONS.map((id) => ({ id, text: REACTIONS[id], own: false, fun: true as const })),
+  ];
 }
 
 /** A reply someone left on this declaration, its words filled in; the fixed ones of before still read; null when unknown */
@@ -252,7 +276,7 @@ export function replyOf(d: Declaration, id: unknown): Reply | null {
   if (typeof id !== "string") return null;
   const found = repliesFor(d).find((r) => r.id === id);
   if (found) return found;
-  if (isReaction(id)) return { id, text: REACTIONS[id], own: id === "birthday" };
+  if (isReaction(id)) return { id, text: REACTIONS[id], own: id === "birthday", ...(isFun(id) && { fun: true as const }) };
   // 缘缘庄's two read as 「明日方舟，启动！」 until the server read them back as themselves (storedDeclaration in
   // server/world.ts), and some were answered as that: those replies still read as they were picked
   return isStayTemplate(d.template) && id.startsWith("launch.") ? replyOf({ template: "launch", game: "arknights" }, id) : null;

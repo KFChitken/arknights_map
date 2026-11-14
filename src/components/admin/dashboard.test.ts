@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BADGES } from "@/lib/badges";
 import { addDays } from "@/lib/beijing";
 import { CITIES, OPEN_DAY, type DashboardData, type DashDay, type StatSnapshot } from "@/lib/dashboard";
-import { DRUNK_TEMPLATES, GENERIC_REACTIONS, repliesFor, STAY_TEMPLATES, TEMPLATES, type Declaration } from "@/lib/declarations";
+import { DRUNK_TEMPLATES, FUN_REACTIONS, GENERIC_REACTIONS, repliesFor, STAY_TEMPLATES, TEMPLATES, type Declaration } from "@/lib/declarations";
 import { EVENTS } from "@/lib/events";
 import { colTop, highest, layout, niceTicks, tickWords } from "./chartMath";
 import { Board } from "./Dashboard";
@@ -78,7 +78,8 @@ describe("数据看板's words", () => {
       }
     }
     expect(templateWords("event")).toBe("限定宣言（几句合起来算）");
-    for (const id of GENERIC_REACTIONS) expect(replyWords(id), id).not.toBe(id);
+    for (const id of [...GENERIC_REACTIONS, ...FUN_REACTIONS]) expect(replyWords(id), id).not.toBe(id);
+    expect(FUN_REACTIONS.map(replyWords)).toEqual(["该电了", "6", "绷不住了", "已截图"]);
     for (const e of EVENTS) {
       for (const l of e.lines) {
         if (l.replies?.length) expect(replyWords(`${l.replyKey ?? l.id}.1`)).toBe(`${l.replies[0]}（限定宣言的）`);

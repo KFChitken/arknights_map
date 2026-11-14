@@ -575,11 +575,11 @@ export default function InboxSheet({
           <div className="done">{fmtParts(T.inbox.youReplied, { text: item.reaction.text })}</div>
         ) : (
           <>
-            {/* this sentence's own four first, then the five every declaration has, on a line of their own */}
-            {[item.options.filter((r) => r.own), item.options.filter((r) => !r.own)].map(
+            {/* this sentence's own four first, then the five every declaration has and the playful four, each on a line of their own */}
+            {[item.options.filter((r) => r.own), item.options.filter((r) => !r.own && !r.fun), item.options.filter((r) => r.fun)].map(
               (row: Reply[], i) =>
                 row.length > 0 && (
-                  <div key={i} className={`chips reactions${i ? " generic" : ""}`}>
+                  <div key={i} className={`chips reactions${["", " generic", " fun"][i]}`}>
                     {row.map((r) => (
                       <button key={r.id} className="chip" disabled={reacting === item.id} onClick={() => react(item.id, r.id)}>
                         {r.text}

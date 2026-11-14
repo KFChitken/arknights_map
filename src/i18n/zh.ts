@@ -2662,6 +2662,10 @@ export const zh = {
         zhouli: "合乎粥礼",
         shouwei: "舟P收收味",
         diplomat: "这种已经是外交官级别的了",
+        dian: "该电了",
+        six: "6",
+        beng: "绷不住了",
+        jietu: "已截图",
       },
       replies: {
         launch: {

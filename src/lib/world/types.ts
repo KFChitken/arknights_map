@@ -608,7 +608,7 @@ export type InboxItem =
       seen: boolean;
       text: string;
       replied: boolean;
-      /** The reply you left, and the ones you may choose from: its own four first, then the five every one has */
+      /** The reply you left, and the ones you may choose from: its own four first, then the five every one has, then the playful four */
       reaction: Reply | null;
       options: Reply[];
       /** A 触须之交's 「祝我生日快乐」, sent to you as one: who, and how to open them (they see who reacts) */
