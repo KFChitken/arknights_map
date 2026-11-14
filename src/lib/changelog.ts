@@ -7,6 +7,7 @@ export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
   { date: "2026-11-15", kind: "chore", text: "后台调整" },
+  { date: "2026-11-15", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },
   { date: "2026-11-14", kind: "chore", text: "后台调整" },

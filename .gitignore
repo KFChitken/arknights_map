@@ -12,3 +12,6 @@ next-env.d.ts
 /guide-art
 # Our own overseas map: tens of GB, kept on the server (see the README)
 /tiles
+
+# 听歌's songs belong to Hypergryph too: kept on the main server (scripts/fetch-msr-music.mjs)
+/music

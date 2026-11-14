@@ -142,6 +142,13 @@ pmtiles extract https://build.protomaps.com/20261105.pmtiles ~/arknights_map/til
 
 A newer build goes in under its own date, with `OVERSEAS_TILES` in `src/lib/overseas.ts` changed to match. The fonts (Noto Sans Regular, Medium and Italic) and the `light` icons of `sprites/v4` come from [basemaps-assets](https://github.com/protomaps/basemaps-assets) into `tiles/fonts` and `tiles/sprites` on the Mac, and each deploy copies them over. For local development put a small cut (`--bbox=...`) under the same name in `tiles/`, and open `localhost:3000/?mainland=1` to see the site as a visitor from mainland China would.
 
+The songs of 听歌 live in `~/arknights_map/music` on the main server, outside git. `scripts/fetch-music.sh` runs `scripts/fetch-msr-music.mjs` there in a throwaway container that has ffmpeg: it downloads the Arknights albums of the [Monster Siren Records](https://monster-siren.hypergryph.com) site one song at a time, turns each into a 96 kbps AAC file named by its content (`music/files`) and deletes the original, and lists albums and songs in `music/catalog.json`. A later run only adds what is new, and nothing is ever taken out; cron runs it on Mondays at 04:30, after the backup:
+
+```bash
+~/arknights_map/scripts/fetch-music.sh --dry-run    # what it would fetch
+~/arknights_map/scripts/fetch-music.sh              # fetch it
+```
+
 Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it through each server's address from probes in mainland China and in Hong Kong, and the run fails when most of either cannot through either server, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
 
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.
