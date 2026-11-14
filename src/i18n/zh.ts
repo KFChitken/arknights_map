@@ -972,6 +972,7 @@ export const zh = {
       cup: "我要看仙术杯！",
       roaches: "我的出租屋里真的有很多蟑螂，但我认识的粥批真的没有几个",
       launch: "{game}，启动！",
+      stronghold: "卫戍协议，启动！",
       iam: "我是{character}的{title}",
       love: "我永远喜欢{character}",
       buff: "加强{character}",
@@ -2440,7 +2441,7 @@ export const zh = {
       },
       fluent: {
         name: "满嘴舟语",
-        condition: "平常那 9 句里，除了「祝我生日快乐」，另外 8 句都发过",
+        condition: "平常那几句里，除了「祝我生日快乐」和「卫戍协议，启动！」，另外 8 句都发过",
         lockedHint: "{n} / 8 句",
         quote: "舟语专业八级，恭喜通过！",
       },
@@ -2582,6 +2583,12 @@ export const zh = {
           r2: "先把理智清了",
           r3: "现在还不能休息哦",
           r4: "一起启动，碰我一下",
+        },
+        stronghold: {
+          r1: "上号！摆阵！",
+          r2: "这把稳了",
+          r3: "再来一把就睡",
+          r4: "一起卫戍，碰我一下",
         },
         iam: {
           r1: "{汪汪}",

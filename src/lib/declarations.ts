@@ -31,6 +31,7 @@ export const WELCOME_NAMES: Record<Game, string> = {
  */
 export type Declaration =
   | { template: "launch"; game: Game }
+  | { template: "stronghold" }
   | { template: "iam"; character: string; title: string }
   | { template: "love"; character: string }
   | { template: "buff"; character: string }
@@ -54,7 +55,7 @@ export type Declaration =
 export type Template = Declaration["template"];
 
 /** The ones a player can always send, in the order the sheet lists them; events come on top while they are on. */
-export const TEMPLATES = ["launch", "iam", "love", "buff", "myname", "welcome", "canyou", "eat", "birthday"] as const;
+export const TEMPLATES = ["launch", "stronghold", "iam", "love", "buff", "myname", "welcome", "canyou", "eat", "birthday"] as const;
 
 /** What a drunk roach says on top of those, in the order the sheet lists them */
 export const DRUNK_TEMPLATES = ["water", "drunklove", "kr168", "radar", "roguelike", "xianshu", "rental"] as const;
@@ -70,6 +71,8 @@ export function declarationText(d: Declaration): string {
   switch (d.template) {
     case "launch":
       return fmt(T.lib.declarations.text.launch, { game: GAME_NAMES[d.game] });
+    case "stronghold":
+      return T.declare.line.stronghold;
     case "iam":
       return fmt(T.lib.declarations.text.iam, { character: characterName(d.character), title: titleName(d.title) });
     case "love":
@@ -154,6 +157,9 @@ export type Reply = { id: string; text: string; own: boolean };
 const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, string]>> = {
   get launch() {
     return [T.lib.declarations.replies.launch.r1, T.lib.declarations.replies.launch.r2, T.lib.declarations.replies.launch.r3, T.lib.declarations.replies.launch.r4] as const;
+  },
+  get stronghold() {
+    return [T.lib.declarations.replies.stronghold.r1, T.lib.declarations.replies.stronghold.r2, T.lib.declarations.replies.stronghold.r3, T.lib.declarations.replies.stronghold.r4] as const;
   },
   get iam() {
     return [T.lib.declarations.replies.iam.r1, T.lib.declarations.replies.iam.r2, T.lib.declarations.replies.iam.r3, T.lib.declarations.replies.iam.r4] as const;

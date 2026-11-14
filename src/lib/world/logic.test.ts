@@ -30,6 +30,7 @@ const say = (d: Declaration, p: Profile = fan) => declarationText(checkDeclarati
 describe("declarations", () => {
   it("fills every sentence the sheet offers", () => {
     expect(say({ template: "launch", game: "endfield" })).toBe("终末地，启动！");
+    expect(say({ template: "stronghold" })).toBe("卫戍协议，启动！");
     expect(say({ template: "iam", character: "能天使", title: "佩洛" })).toBe("我是能天使的佩洛");
     expect(say({ template: "love", character: "佩丽卡" })).toBe("我永远喜欢佩丽卡");
     expect(say({ template: "buff", character: "能天使" })).toBe("加强能天使");
@@ -39,7 +40,7 @@ describe("declarations", () => {
     expect(say({ template: "canyou", character: "佩丽卡" })).toBe("佩丽卡做得到吗？");
     expect(say({ template: "eat", character: "能天使", food: "脚夹馍" })).toBe("我想吃能天使的脚夹馍");
     expect(say({ template: "birthday" })).toBe("祝我生日快乐");
-    expect(TEMPLATES).toHaveLength(9);
+    expect(TEMPLATES).toHaveLength(10);
   });
 
   it("only takes your own favourites, the listed titles and foods, and your real name", () => {
@@ -62,6 +63,7 @@ describe("declarations", () => {
   /** One of each sentence, its blanks filled */
   const everySentence: Declaration[] = [
     { template: "launch", game: "arknights" },
+    { template: "stronghold" },
     { template: "iam", character: "阿米娅", title: "狗" },
     { template: "love", character: "阿米娅" },
     { template: "buff", character: "阿米娅" },
@@ -119,6 +121,22 @@ describe("declarations", () => {
     const p27 = repliesFor({ template: "event", line: "perlica-bday-2027" });
     expect(repliesFor({ template: "event", line: "perlica-bday-2036" })).toEqual(p27);
     expect(p27[0]).toEqual({ id: "perlica-bday.1", text: "佩丽卡生日快乐！", own: true });
+  });
+
+  it("gives 卫戍协议，启动！ its own four, apart from 启动's", () => {
+    const stronghold: Declaration = { template: "stronghold" };
+    expect(repliesFor(stronghold).map((r) => r.text)).toEqual([
+      "上号！摆阵！",
+      "这把稳了",
+      "再来一把就睡",
+      "一起卫戍，碰我一下",
+      ...GENERIC_REACTIONS.map((id) => REACTIONS[id]),
+    ]);
+    expect(repliesFor(stronghold).slice(0, 4).map((r) => r.id)).toEqual(["stronghold.1", "stronghold.2", "stronghold.3", "stronghold.4"]);
+    expect(canReply(stronghold, "stronghold.4")).toBe(true);
+    expect(canReply(stronghold, "launch.1")).toBe(false);
+    expect(canReply({ template: "launch", game: "arknights" }, "stronghold.1")).toBe(false);
+    expect(replyOf(stronghold, "stronghold.2")).toEqual({ id: "stronghold.2", text: "这把稳了", own: true });
   });
 
   it("refuses another sentence's own reply, keeps the old ones readable, and has only the five where a sentence has none", () => {

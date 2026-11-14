@@ -1291,6 +1291,7 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
       return { template: "birthday" };
     case "event":
       return { template: "event", line: d.line ?? "" };
+    case "stronghold":
     case "water":
     case "radar":
     case "roguelike":

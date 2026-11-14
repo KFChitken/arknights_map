@@ -102,7 +102,7 @@ export const ECHO_REACTIONS = 10;
 /** 火边的歌声: this many roaches by 塔露拉干员's fire, her third level */
 export const FIRE_SONG_ROACHES = 50;
 
-/** The everyday sentences 满嘴舟语 asks for: all but 祝我生日快乐, and no limited or drunk ones */
+/** The everyday sentences 满嘴舟语 asks for: all but 祝我生日快乐 and 卫戍协议，启动！, and no limited or drunk ones */
 export const FLUENT_TEMPLATES = ["launch", "iam", "love", "buff", "myname", "welcome", "canyou", "eat"] as const;
 
 export type Badge = {

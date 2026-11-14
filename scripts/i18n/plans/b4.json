@@ -421,7 +421,7 @@
         "echo.lockedHint": "让一条宣言收到 10 个回应",
         "echo.quote": "你一开口，十位舟P起了反应。",
         "fluent.name": "满嘴舟语",
-        "fluent.condition": "平常那 9 句里，除了「祝我生日快乐」，另外 8 句都发过",
+        "fluent.condition": "平常那几句里，除了「祝我生日快乐」和「卫戍协议，启动！」，另外 8 句都发过",
         "fluent.lockedHint": "{n} / 8 句",
         "fluent.quote": "舟语专业八级，恭喜通过！",
         "courtesy.name": "合乎粥礼",

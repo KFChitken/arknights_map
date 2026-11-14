@@ -2017,6 +2017,7 @@ describe("server world", () => {
     // (启动, 明日方舟, the first food or spouse): 缘缘庄's two read as 「明日方舟，启动！」 to all who got them
     const EVERY: { [K in Template]: Extract<Declaration, { template: K }> } = {
       launch: { template: "launch", game: "endfield" },
+      stronghold: { template: "stronghold" },
       iam: { template: "iam", character: "阿米娅", title: "猫" },
       love: { template: "love", character: "阿米娅" },
       buff: { template: "buff", character: "阿米娅" },
@@ -2234,6 +2235,11 @@ describe("server world", () => {
       await nextDeclaration();
       // 祝我生日快乐 is not one of the eight, but a new day of declaring
       await me.declare({ template: "birthday" });
+      expect((await me.me()).counts).toMatchObject({ declareDays: 10, declareLines: 7 });
+      expect(await badgeIds(me)).toEqual(["lookatme", "declarer"]);
+      await nextDeclaration();
+      // nor is 卫戍协议，启动！
+      await me.declare({ template: "stronghold" });
       expect((await me.me()).counts).toMatchObject({ declareDays: 10, declareLines: 7 });
       expect(await badgeIds(me)).toEqual(["lookatme", "declarer"]);
       await nextDeclaration();

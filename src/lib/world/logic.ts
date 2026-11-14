@@ -129,6 +129,7 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
     }
     case "birthday":
       return { template: "birthday" };
+    case "stronghold":
     case "water":
     case "radar":
     case "roguelike":

@@ -80,6 +80,7 @@ export default function DeclareSheet({
   const [spouse, setSpouse] = useState<Spouse>(SPOUSES[0]);
   const [sending, setSending] = useState(false);
 
+  // a case for every sentence, so tsc fails when one has none rather than the sheet sending 「明日方舟，启动！」 for it
   const d: Declaration = (() => {
     switch (template) {
       case "iam":
@@ -100,6 +101,7 @@ export default function DeclareSheet({
         return { template, character };
       case "kr168":
         return { template, character, spouse };
+      case "stronghold":
       case "water":
       case "radar":
       case "roguelike":
@@ -108,8 +110,12 @@ export default function DeclareSheet({
       case "sihouse":
       case "simine":
         return { template };
-      default:
-        return { template: template === "welcome" ? "welcome" : "launch", game };
+      case "launch":
+      case "welcome":
+        return { template, game };
+      case "alsoplay":
+        // no longer offered
+        return { template: "launch", game };
     }
   })();
   const blocked = (t: Template) =>
@@ -253,6 +259,7 @@ export default function DeclareSheet({
       ))}
 
       {row("launch", <>{fmtNodes(T.declare.line.launch, { game: gameSelect("launch") })}</>)}
+      {row("stronghold", <>{T.declare.line.stronghold}</>)}
       {row(
         "iam",
         <>
