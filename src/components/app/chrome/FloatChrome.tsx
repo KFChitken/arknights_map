@@ -75,8 +75,9 @@ export default function FloatChrome(p: ChromeProps) {
                 <small>{T.map.bar.hotShort}</small>
               </button>
               {p.passes && (
+                // not .passes, which is 寻访's own page (passes.css) and would cover the whole rail once that is loaded
                 <button
-                  className="it passes"
+                  className="it pass-entry"
                   aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes}
                   onClick={p.passes.onOpen}
                   tabIndex={folded.r ? -1 : undefined}

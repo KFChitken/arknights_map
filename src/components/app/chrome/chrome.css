@@ -152,7 +152,7 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 /* a short screen: smaller, then smaller again, so they end above the bottom bar */
 @media (max-height: 639px) {
   .chrome-float .rail .radar-scope { width: 30px; height: 30px; }
-  .chrome-float .rail .hot svg, .chrome-float .rail .passes svg { width: 20px; height: 20px; }
+  .chrome-float .rail .hot svg, .chrome-float .rail .pass-entry svg { width: 20px; height: 20px; }
   .chrome-float .rail .guide { padding: 3px 0; }
   .chrome-float .rail .guide > :first-child { width: 26px !important; height: 26px !important; }
   .chrome-float .rail small { font-size: 10px; }
@@ -160,7 +160,7 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 }
 @media (max-height: 599px) {
   .chrome-float .rail .radar-scope { width: 28px; height: 28px; }
-  .chrome-float .rail .hot svg, .chrome-float .rail .passes svg { width: 18px; height: 18px; }
+  .chrome-float .rail .hot svg, .chrome-float .rail .pass-entry svg { width: 18px; height: 18px; }
   .chrome-float .rail .guide { padding: 2px 0; }
   .chrome-float .rail .guide > :first-child { width: 24px !important; height: 24px !important; }
   .chrome-float .rail .guide small { margin-top: 1px; }
