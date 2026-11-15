@@ -23,6 +23,8 @@ export type SignalKind =
   | "staffCodeWrong"
   /** a visitor's page could not load a map; code: "<map>:<what>:<detail>" */
   | "map"
+  /** a visitor's page broke, or could not draw its map with the graphics card; code: "<crash|nogl|lost>:<detail>" */
+  | "page"
   /** a background job failed; code: the job's name */
   | "job"
   /** a request was refused by a limit (429); code: which limit, as "area:full:sid" */

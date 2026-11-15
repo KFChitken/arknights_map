@@ -610,6 +610,50 @@ async function checkMaps(now: number): Promise<Finding[]> {
   return findings;
 }
 
+/** The maps a page had up when their drawing was lost (src/lib/pageTrouble.ts): 「腾讯地图+我们自己的海外底图」 from 「tencent+overseas」 */
+function mapsUp(detail: string) {
+  return detail ? detail.split("+").map((m) => (m === "own" ? "我们自己的图" : (MAPS[m] ?? m))).join("+") : "没说";
+}
+
+/**
+ * Visitors' pages that broke (app/error.tsx: 「页面出了点问题」) or could not draw their map with the graphics card
+ * (NoMap: 「地图画不出来」, 「地图画面断了」), as the pages themselves say (POST /api/health/page), so anyone could
+ * send them. Ten breaks in half an hour are for the admin page, fifty for the digest, two hundred emailed at once
+ * (2026-11-15: every new player's page black on Tencent's map, known only from players). Maps not drawn, twenty in
+ * half an hour, only for the admin page: a player's graphics card is beyond the site, but many at once after a
+ * release say the maps now ask too much of it.
+ */
+async function checkPages(now: number): Promise<Finding[]> {
+  const list = recent("page", 30 * MINUTE, now);
+  const crashes = list.filter((s) => s.code.startsWith("crash:")).map((s) => s.code.slice("crash:".length) || "没有出错信息");
+  const nogl = list.filter((s) => s.code.startsWith("nogl:")).length;
+  const lost = list.filter((s) => s.code.startsWith("lost:")).map((s) => s.code.slice("lost:".length));
+  const findings: Finding[] = [];
+  if (crashes.length >= 10) {
+    findings.push({
+      key: "crash",
+      level: crashes.length >= 200 ? "urgent" : crashes.length >= 50 ? "daily" : "quiet",
+      title: "访客的页面出错停下了",
+      detail: `30 分钟内有 ${crashes.length} 个页面出错、整页停下（访客看到「页面出了点问题」），最多的是：${tally(crashes, undefined, 3)}。`,
+      advice:
+        "多半是网页代码的毛病：刚上线过的话先想到新版本，必要时回滚。出错信息是浏览器给的一行，去掉了引号里的内容、网址和中文。这类报告谁都能发。",
+      worst: { text: `半小时最多 ${crashes.length} 个`, score: crashes.length },
+    });
+  }
+  if (nogl + lost.length >= 20) {
+    findings.push({
+      key: "gl",
+      level: "quiet",
+      title: "访客的浏览器画不了地图",
+      detail: `30 分钟内有 ${nogl} 个页面一打开就不能用显卡画地图，${lost.length} 个页面的地图画面中途断了${lost.length ? `（当时开着：${tally(lost, mapsUp, 3)}）` : ""}。`,
+      advice:
+        "访客那边看到「地图画不出来」或「地图画面断了」，其他功能照常：多半是他们电脑的显卡出了状况，或者浏览器停用了本站的显卡画图，把浏览器完全关掉再打开就好。突然多起来的话，看是不是刚上线的版本或换了底图，让地图更吃显卡。这类报告谁都能发。",
+      worst: { text: `半小时最多 ${nogl + lost.length} 个`, score: nogl + lost.length },
+    });
+  }
+  return findings;
+}
+
 /**
  * 高德's map loads this month (src/lib/server/amapLoads.ts), told once a month in the digest: when 80%
  * of the allowance is gone, or when this month's pace so far would use it up before the month ends.
@@ -946,6 +990,7 @@ export const CHECKS: Check[] = [
   { name: "passwords", window: HOUR, run: checkPasswords },
   { name: "staffCodes", window: DAY, events: true, closeAfter: HOUR, run: checkStaffCodes },
   { name: "map", window: 30 * MINUTE, run: checkMaps },
+  { name: "page", window: 30 * MINUTE, run: checkPages },
   // once a month: open for a day, so the next digest has it
   { name: "amapLoads", events: true, every: 10 * MINUTE, closeAfter: DAY, run: checkAmapLoads },
   { name: "amapOut", events: true, closeAfter: DAY, run: checkAmapOut },

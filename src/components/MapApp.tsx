@@ -20,6 +20,7 @@ import { EVENTS } from "@/lib/events";
 import type { Place } from "@/lib/geocode";
 import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
 import { loadHome, saveHome } from "@/lib/lastHome";
+import { reportPageTrouble } from "@/lib/pageTrouble";
 import { onDrawingLost, webglWorks } from "@/lib/webgl";
 import {
   anniversaryLine,
@@ -896,12 +897,17 @@ export default function MapApp({
   /** A sleeping roach touched: it only jolts in its sleep */
   const [jolting, setJolting] = useState<{ roach: PublicRoach; done: () => void } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  /** The maps up now, as "tencent+overseas", for telling the server their drawing was lost (src/lib/pageTrouble.ts) */
+  const mapsUpRef = useRef("");
   // a graphics card that hung or reset takes the maps' drawing with it: NoMap says so until the page starts
   // afresh, as a map that gets its drawing back has lost what this page added to it (MaplibreView stops at once)
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    return onDrawingLost(el, () => setGlLost(true));
+    return onDrawingLost(el, () => {
+      setGlLost(true);
+      reportPageTrouble("lost", mapsUpRef.current);
+    });
   }, []);
   /** A declaration shouted over the map (ShoutStage) from one of your roaches */
   const [shouting, setShouting] = useState<{ roach: string; text: string; limited: boolean; place: ShoutPlace; toast: () => void; done: () => void } | null>(null);
@@ -1238,7 +1244,10 @@ export default function MapApp({
     worldRef.current = new ServerWorld();
     setWasIn(loadHome() !== null);
     // no map can start without the graphics card: none is made (each would break the page), the rest goes on
-    if (!webglWorks()) setNoGl(true);
+    if (!webglWorks()) {
+      setNoGl(true);
+      reportPageTrouble("nogl", "start");
+    }
     const b = guessBasemap(cn);
     // The map's code downloads while the first API calls are in flight; the map itself waits for where to start.
     // A failed Amap load is forgotten, so AmapView tries again and falls back to OSM as before; so is Tencent's.
@@ -2041,6 +2050,7 @@ export default function MapApp({
   // a map of China's own (高德's or 腾讯's), with its logo and 审图号 bottom left
   const homeOn = basemap === "amap" && homeMap !== "own";
   const twoMaps = cn && homeOn && Boolean(overseas);
+  mapsUpRef.current = `${basemap === "osm" ? "osm" : basemap === "amap" ? homeMap : ""}${twoMaps && overseasMade ? "+overseas" : ""}`;
   const ignoreView = () => {};
   // the other map jumps to where this one is, without flying, and takes over
   const showAbroad = () => {
@@ -4548,7 +4558,11 @@ export default function MapApp({
     onError: setToast,
     // mainland China: 腾讯's map instead, without a word (TencentView's own onFailed is ownMap)
     onFailed: cn ? amapFailed : undefined,
-    onNoGl: () => setNoGl(true),
+    onNoGl: () => {
+      setNoGl(true);
+      // the check at the start said it could: worth knowing apart
+      reportPageTrouble("nogl", "map");
+    },
   };
   /** NoMap's 再试一次: a fresh start once the graphics card may be used again, which a closed browser brings */
   const retryMap = () => {

@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-15", kind: "tweak", text: "隐私说明写上网页出错时的报告" },
   { date: "2026-11-15", kind: "chore", text: "后台调整" },
   { date: "2026-11-15", kind: "chore", text: "后台调整" },
   { date: "2026-11-15", kind: "chore", text: "后台调整" },

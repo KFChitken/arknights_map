@@ -4,6 +4,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as reportMap } from "@/app/api/health/map/route";
+import { POST as reportPage } from "@/app/api/health/page/route";
 import { beijingDate, beijingShort } from "../beijing";
 import { db } from "./db";
 import { countAmapLoad, forgetAmapLoads, saveAmapLoads } from "./amapLoads";
@@ -774,6 +775,80 @@ describe("POST /api/health/map", () => {
       "osm:tiles:zhoupmap-verifycomlogin",
       "tencent:search:121",
       "tencent:key:-301",
+    ]);
+  });
+});
+
+describe("POST /api/health/page", () => {
+  const post = (body: unknown) =>
+    reportPage(
+      new NextRequest("http://localhost/api/health/page", {
+        method: "POST",
+        headers: { origin: "http://localhost", host: "localhost", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      undefined,
+    );
+
+  it("keeps which trouble, a break's line made fit to keep again, and only words it knows for the others", async () => {
+    forgetSignals(t0);
+    expect((await post({ what: "crash", detail: "TypeError: Cannot read properties of null (reading 'getSource')" })).status).toBe(204);
+    // whatever a page sends: nothing of the visitor's, nothing a mail app would make a link of
+    await post({ what: "crash", detail: 'Error: "me@example.com" 阿米娅 https://zhoupmap-verify.com/login at 121.47' });
+    await post({ what: "nogl", detail: "start" });
+    await post({ what: "nogl", detail: "map" });
+    await post({ what: "nogl", detail: "<script>" });
+    await post({ what: "lost", detail: "tencent+overseas" });
+    await post({ what: "lost", detail: "osm" });
+    await post({ what: "lost", detail: "zhoupmap.com" });
+    await post({ what: "explode", detail: "x" });
+    expect(recent("page", HOUR).map((s) => s.code)).toEqual([
+      "crash:TypeError: Cannot read properties of null (reading 'getSource')",
+      "crash:Error: at N",
+      "nogl:start",
+      "nogl:map",
+      "nogl:start",
+      "lost:tencent+overseas",
+      "lost:osm",
+      "lost:",
+    ]);
+  });
+});
+
+describe("pages that broke or could not draw (page check)", () => {
+  it("puts ten breaks in half an hour on the admin page, fifty in the digest, two hundred in a mail at once", async () => {
+    for (let i = 0; i < 9; i++) note("page", "crash:TypeError: Cannot read properties of null (reading 'getSource')", t0 - 5 * MINUTE);
+    expect(await look("page", t0)).toEqual([]);
+    note("page", "crash:", t0 - MINUTE);
+    expect(await look("page", t0)).toMatchObject([
+      {
+        key: "crash",
+        level: "quiet",
+        detail:
+          "30 分钟内有 10 个页面出错、整页停下（访客看到「页面出了点问题」），最多的是：TypeError: Cannot read properties of null (reading 'getSource') ×9；没有出错信息 ×1。",
+      },
+    ]);
+    note("page", "crash:Error: x", t0 - MINUTE, 40);
+    expect((await look("page", t0)).map((f) => [f.key, f.level])).toEqual([["crash", "daily"]]);
+    note("page", "crash:Error: x", t0 - MINUTE, 149);
+    expect((await look("page", t0)).map((f) => [f.key, f.level])).toEqual([["crash", "daily"]]);
+    note("page", "crash:Error: x", t0 - MINUTE);
+    expect((await look("page", t0)).map((f) => [f.key, f.level])).toEqual([["crash", "urgent"]]);
+    expect(await look("page", t0 + 31 * MINUTE)).toEqual([]);
+  });
+
+  it("tells twenty pages that could not draw their map, and which maps were up when the drawing was lost", async () => {
+    note("page", "nogl:start", t0 - MINUTE, 7);
+    note("page", "lost:tencent+overseas", t0 - MINUTE, 9);
+    note("page", "lost:amap", t0 - MINUTE, 3);
+    expect(await look("page", t0)).toEqual([]);
+    note("page", "lost:", t0 - MINUTE);
+    expect(await look("page", t0)).toMatchObject([
+      {
+        key: "gl",
+        level: "quiet",
+        detail: "30 分钟内有 7 个页面一打开就不能用显卡画地图，13 个页面的地图画面中途断了（当时开着：腾讯地图+我们自己的海外底图 ×9；高德 ×3；没说 ×1）。",
+      },
     ]);
   });
 });

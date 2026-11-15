@@ -11,8 +11,11 @@ import { errorCode, note, recent, startedAt, type SignalKind } from "./signals";
  */
 
 const CHANNEL = "watch_signal";
-/** What the checks count from every process; maps are reported to web anyway (Caddy sends /api/health/map there) */
-const SHARED: SignalKind[] = ["error", "mailFailed", "mailSent", "codeRefused", "passwordFail", "staffCodeWrong", "busy"];
+/**
+ * What the checks count from every process; maps are reported to web anyway (Caddy sends /api/health/map there),
+ * pages that broke or could not draw (/api/health/page) to whichever process serves the visitor
+ */
+const SHARED: SignalKind[] = ["error", "mailFailed", "mailSent", "codeRefused", "passwordFail", "staffCodeWrong", "busy", "page"];
 const EVERY_MS = 10_000;
 /** A NOTIFY carries at most 8000 bytes */
 const MAX_BYTES = 7000;
