@@ -127,7 +127,7 @@ describe("听歌's requests, by who may listen", () => {
     expect(await call("GET", "songs")).toMatchObject({ status: 404, body: { error: "没有这个功能。" } });
     expect((await call("POST", "play", { song: "s1" })).status).toBe(404);
     expect((await call("POST", "stop")).status).toBe(404);
-    expect(listenMe(owner)).toBeUndefined();
+    expect(await listenMe(owner)).toBeUndefined();
     expect(await nowRow(owner.id)).toBeNull();
     // unset is off
     vi.stubEnv("LISTEN", "");
@@ -142,12 +142,12 @@ describe("听歌's requests, by who may listen", () => {
     await signIn(player.id);
     expect((await call("GET", "songs")).status).toBe(404);
     expect((await call("POST", "play", { song: "s1" })).status).toBe(404);
-    expect(listenMe(player)).toBeUndefined();
+    expect(await listenMe(player)).toBeUndefined();
 
     const owner = await account("owner@example.com");
     await signIn(owner.id);
     expect((await call("GET", "songs")).status).toBe(200);
-    expect(listenMe(owner)).toEqual({ paused: false });
+    expect(await listenMe(owner)).toEqual({ paused: false, room: false, roomMax: 20, mode: "admins" });
 
     const mod = await account("mod@example.com");
     await db.insert(admins).values({ userId: mod.id, role: "mod", alias: "小管" });
@@ -164,7 +164,7 @@ describe("听歌's requests, by who may listen", () => {
     const player = await account("someone@example.com");
     await signIn(player.id);
     expect((await call("GET", "songs")).status).toBe(200);
-    expect(listenMe(player)).toEqual({ paused: false });
+    expect(await listenMe(player)).toEqual({ paused: false, room: false, roomMax: 20, mode: "on" });
     // only the ways in that exist, each by its own method
     expect((await call("POST", "songs")).status).toBe(404);
     expect((await call("GET", "play")).status).toBe(404);
@@ -271,7 +271,7 @@ describe("a song played", () => {
     await endGray();
 
     await setListen(owner.id, { paused: true });
-    expect(listenMe(owner)).toEqual({ paused: true });
+    expect(await listenMe(owner)).toEqual({ paused: true, room: false, roomMax: 20, mode: "on" });
     expect(await call("POST", "play", { song: "s2" })).toMatchObject({ status: 503, body: { code: "LISTEN_PAUSED" } });
     expect(asked(link)).toBe(403);
     // stopping still works

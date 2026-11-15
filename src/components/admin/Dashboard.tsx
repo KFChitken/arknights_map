@@ -931,13 +931,20 @@ function Guides({ d }: { d: DashboardData }) {
 
 // ---- 听歌 ----
 
-/** 听歌's counts (src/lib/server/listen.ts): songs played from their start, and players turned away because it was full */
+/**
+ * 听歌's counts (src/lib/server/listen.ts): songs played from their start, and players turned away because it was full;
+ * and 一起听's (src/lib/server/listenRooms.ts): rooms opened, invitations, players who went in at one, 短评
+ */
 function Listen({ d }: { d: DashboardData }) {
   const today = (name: string) => d.today.counts[name] ?? 0;
   const week = (name: string) => d.week.counts[name] ?? 0;
   const rows = (n: (name: string) => number): [string, ReactNode, string?][] => [
     ["放了", num(n(COUNTED.listenPlay)), "首"],
     ["满了被挡", num(n(COUNTED.listenFull)), "次"],
+    ["开了一起听", num(n(COUNTED.listenRoom)), "场"],
+    ["邀请", num(n(COUNTED.listenInvite)), "次"],
+    ["被邀请进场", num(n(COUNTED.listenJoin)), "次"],
+    ["短评", num(n(COUNTED.listenRx)), "条"],
   ];
   return (
     <section className="ac-panel db-panel" id="db-listen" aria-label="听歌">

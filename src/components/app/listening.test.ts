@@ -1,16 +1,27 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { T } from "@/i18n";
 import { heardGray } from "@/lib/grayMode";
-import { LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenTrack } from "@/lib/listen";
+import { DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenRoom, type ListenTrack, type RoomMember } from "@/lib/listen";
 import { playMusic } from "./amiyaMusic";
 import {
   forgetListening,
+  heardListen,
+  hostQueue,
   isListening,
+  joinAt,
+  leaveListen,
+  listenBubblesNow,
   listenPlayerNow,
+  listenRoomNow,
+  listenRxNow,
   listenSongsNow,
+  loadRoom,
   loadSongs,
   markIntro,
+  onListenSaid,
+  openRoomWith,
   playTrack,
+  sendRx,
   skip,
   toggle,
 } from "./listening";
@@ -28,6 +39,9 @@ class FakeAudio extends EventTarget {
   ended = false;
   volume = 1;
   preload = "";
+  playbackRate = 1;
+  readyState = 4;
+  seeking = false;
   constructor() {
     super();
     FakeAudio.last = this;
@@ -93,11 +107,21 @@ const link = (id: string) => `/music/${id}.m4a?k=1.sig`;
 let asked: { op: string; body: Record<string, unknown> | null }[] = [];
 /** The songs fetched early */
 let early: string[] = [];
-/** How the server answers play, for the test to change */
-let playAnswer: (body: Record<string, unknown>) => { status: number; json: unknown };
+/** How far the server's clock is ahead of the page's */
+let skew = 0;
+const serverClock = () => Date.now() + skew;
+type Answer = { status: number; json: unknown };
+/** How the server answers play, and the other ops, for the test to change */
+let playAnswer: (body: Record<string, unknown>) => Answer;
+let answers: Record<string, (body: Record<string, unknown>) => Answer> = {};
 const played = (body: Record<string, unknown>) => ({
   status: 200,
-  json: { url: link(String(body.song)), ...(body.next ? { nextUrl: link(String(body.next)) } : {}), until: Date.now() + 5 * 60_000, now: Date.now() },
+  json: {
+    url: link(String(body.song)),
+    ...(body.next ? { nextUrl: link(String(body.next)) } : {}),
+    until: serverClock() + 5 * 60_000,
+    now: serverClock(),
+  },
 });
 const refusing = (code: string, error: string) => () => ({ status: 503, json: { error, code } });
 
@@ -118,11 +142,19 @@ beforeAll(() => {
     const op = input.replace("/api/listen/", "");
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     asked.push({ op, body });
-    const a = op === "songs" ? { status: 200, json: CATALOG } : op === "play" ? playAnswer(body ?? {}) : { status: 200, json: { now: Date.now() } };
+    const a =
+      op === "songs"
+        ? { status: 200, json: CATALOG }
+        : op === "play"
+          ? playAnswer(body ?? {})
+          : (answers[op]?.(body ?? {}) ?? { status: 200, json: { now: serverClock() } });
     return new Response(JSON.stringify(a.json), { status: a.status, headers: { "content-type": "application/json" } });
   });
 });
 afterAll(() => vi.unstubAllGlobals());
+/** What the page said in a toast */
+let said: string[] = [];
+onListenSaid((t) => said.push(t));
 
 /** Every answer in, and what the element does after it */
 const settle = async () => {
@@ -140,6 +172,9 @@ beforeEach(async () => {
   forgetListening();
   asked = [];
   early = [];
+  said = [];
+  skew = 0;
+  answers = {};
   playAnswer = played;
   session.map.clear();
   local.map.clear();
@@ -329,5 +364,274 @@ describe("听歌 on the page", () => {
     markIntro("ok");
     markIntro("opened");
     expect(read()).toBe("ok");
+  });
+});
+
+// ---- 一起听 ----
+
+const card = (name: string) => ({ displayName: name, games: [], favourites: { arknights: [], endfield: [] }, avatar: "hood" as const, color: "cyan" as const });
+const member = (h: number, name: string, host = false): RoomMember => ({ h, card: card(name), friend: true, host, state: "in" });
+/** A room of two: 岚 its host (1), and you (2), with One (100 s) then Two (120 s) */
+const roomOf = (over: Partial<ListenRoom> = {}): ListenRoom => ({
+  id: "r1",
+  queue: ["s1", "s2"],
+  idx: 0,
+  startedAt: null,
+  version: 1,
+  max: 20,
+  you: 2,
+  host: false,
+  hostName: "Dr.岚",
+  members: [member(1, "Dr.岚", true), member(2, "Dr.桐")],
+  invited: [],
+  now: serverClock(),
+  ...over,
+});
+const answerRoom = (op: string, r: () => ListenRoom | null) => {
+  answers[op] = () => ({ status: 200, json: { room: r(), sent: [], now: serverClock() } });
+};
+const tick = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+const silence = /^data:audio\/wav;base64,/;
+
+describe("一起听 on the page", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  });
+  afterEach(() => {
+    forgetListening();
+    vi.useRealTimers();
+  });
+
+  /** In at an invitation to a room whose One started `ago` ms before, by the server's clock */
+  async function joinPlaying(ago: number, over: Partial<ListenRoom> = {}) {
+    const startedAt = serverClock() - ago;
+    answerRoom("join", () => roomOf({ startedAt, ...over }));
+    const joined = joinAt("inv-1");
+    // within the tap, before any answer: the element plays, silence first
+    expect(audio().src).toMatch(silence);
+    expect(await joined).toBe(true);
+    await tick(0);
+    return startedAt;
+  }
+
+  it("goes in part way, at the second the room is at by the server's clock, and says so", async () => {
+    skew = 10_000;
+    await joinPlaying(30_000);
+    expect(ops("join")).toEqual([{ invite: "inv-1" }]);
+    expect(ops("play")).toEqual([{ song: "s1", at: 30, next: "s2" }]);
+    expect(audio().src).toBe(link("s1"));
+    await tick(400);
+    audio().dispatchEvent(new Event("canplay"));
+    expect(audio().currentTime).toBeCloseTo(30.4, 1);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(said).toEqual(["跟上了：和大家都在 0:30"]);
+    expect(listenRoomNow()?.id).toBe("r1");
+  });
+
+  it("keeps in step: a little faster or slower when a little off, a jump when far off", async () => {
+    await joinPlaying(30_000);
+    audio().currentTime = 35.5;
+    await tick(5_000);
+    expect(audio().playbackRate).toBe(1 - DRIFT_RATE);
+    // while catching up it looks every second, and stops once close
+    audio().currentTime = 36.02;
+    await tick(1_000);
+    expect(audio().playbackRate).toBe(1);
+    audio().currentTime = 40;
+    await tick(5_000);
+    expect(audio().playbackRate).toBe(1 + DRIFT_RATE);
+    audio().currentTime = 30;
+    await tick(1_000);
+    expect(audio().currentTime).toBe(42);
+    expect(audio().playbackRate).toBe(1);
+    // nobody else was asked anything meanwhile
+    expect(ops("play")).toHaveLength(1);
+  });
+
+  it("goes on to the next song by itself: silence for the two seconds between, then the link given ahead at once", async () => {
+    await joinPlaying(99_000);
+    audio().duration = 100;
+    await tick(1_000);
+    audio().end();
+    expect(audio().src).toMatch(silence);
+    expect(listenPlayerNow()).toMatchObject({ status: "starting", track: { id: "s2" } });
+    expect(isListening()).toBe(true);
+    await tick(2_050);
+    expect(audio().src).toBe(link("s2"));
+    await tick(0);
+    expect(ops("play")).toEqual([
+      { song: "s1", at: 99, next: "s2" },
+      { song: "s2", at: 0 },
+    ]);
+    // the last one over: nothing plays, and the server counts nobody
+    audio().duration = 120;
+    await tick(120_000);
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s2" } });
+    expect(ops("stop")).toEqual([{}]);
+  });
+
+  it("pauses only you, and ▶ goes back to where everyone is", async () => {
+    await joinPlaying(30_000);
+    toggle();
+    expect(audio().paused).toBe(true);
+    expect(listenPlayerNow().status).toBe("paused");
+    expect(said.at(-1)).toBe("只停了你自己，大家还在听。");
+    await tick(6_000);
+    expect(audio().paused).toBe(true);
+    expect(ops("stop")).toEqual([]);
+    toggle();
+    expect(audio().paused).toBe(false);
+    expect(audio().currentTime).toBe(36);
+    expect(said.at(-1)).toBe("跳回大家这里了：0:36");
+    expect(ops("play")).toHaveLength(1);
+  });
+
+  it("waits for the host, and starts with everyone when told to, the room told in a bubble", async () => {
+    answerRoom("join", () => roomOf());
+    await joinAt("inv-1");
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", tap: false, track: { id: "s1" } });
+    expect(ops("play")).toEqual([]);
+    toggle();
+    expect(said.at(-1)).toBe("等发起人点开始。");
+    // an older word about the room changes nothing
+    heardListen(JSON.stringify({ t: "state", room: "r1", how: "start", queue: ["s1"], idx: 0, startedAt: serverClock(), version: 1 }));
+    expect(listenRoomNow()?.startedAt).toBeNull();
+    heardListen(JSON.stringify({ t: "state", room: "r1", how: "start", queue: ["s1", "s2"], idx: 0, startedAt: serverClock() + 1_000, version: 2 }));
+    expect(listenBubblesNow().map((b) => [b.kind, b.text])).toEqual([["sys", "开始一起听：《One》"]]);
+    expect(audio().src).toMatch(silence);
+    await tick(1_050);
+    expect(ops("play")).toEqual([{ song: "s1", at: 0, next: "s2" }]);
+    await tick(0);
+    expect(audio().src).toBe(link("s1"));
+  });
+
+  it("asks for a tap on a page opened again in a room, and goes to the room's second on it", async () => {
+    answerRoom("room", () => roomOf({ startedAt: serverClock() - 10_000 }));
+    await loadRoom();
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", tap: true, track: { id: "s1" } });
+    expect(ops("play")).toEqual([]);
+    toggle();
+    expect(audio().src).toMatch(silence);
+    expect(said).toEqual(["跟上了：和大家都在 0:10"]);
+    await tick(0);
+    expect(ops("play")).toEqual([{ song: "s1", at: 10, next: "s2" }]);
+    // a song from the list does not play over the room's
+    playTrack(track("s3"));
+    expect(ops("play")).toHaveLength(1);
+  });
+
+  it("shows 短评 at once, one every three seconds, the same one from several as one, ×N", async () => {
+    await joinPlaying(30_000);
+    sendRx(0);
+    sendRx(1);
+    expect(ops("react")).toEqual([{ r: 0 }]);
+    expect(listenBubblesNow().map((b) => [b.kind, b.text])).toEqual([["me", "你：好听！"]]);
+    expect(listenRxNow().cool).toBe(true);
+    // yours back from the server is not shown twice; one from a number not in the list yet, without a name
+    heardListen({ t: "rx", room: "r1", items: [{ h: 1, r: 0 }, { h: 2, r: 0 }, { h: 3, r: 0 }, { h: 1, r: 99 }] });
+    expect(listenBubblesNow().map((b) => [b.kind, b.text])).toEqual([["agg", "好听！ ×3"]]);
+    heardListen({ t: "rx", room: "r1", items: [{ h: 1, r: 8 }] });
+    expect(listenBubblesNow().map((b) => b.text)).toEqual(["好听！ ×3", "Dr.岚：kksk"]);
+    await tick(3_000);
+    expect(listenRxNow().cool).toBe(false);
+    await tick(300);
+    expect(listenBubblesNow()).toEqual([]);
+    // this song's used up: the buttons grey
+    answers.react = () => ({ status: 200, json: { sent: false, full: true, now: serverClock() } });
+    sendRx(2);
+    await tick(0);
+    expect(listenRxNow().full).toBe(true);
+    await tick(3_000);
+    sendRx(3);
+    expect(ops("react")).toHaveLength(2);
+  });
+
+  it("asks who is in the room again a moment after it is told, and floats who came and went", async () => {
+    await joinPlaying(30_000);
+    answerRoom("room", () => roomOf({ startedAt: serverClock() - 31_000, members: [member(1, "Dr.岚", true), member(2, "Dr.桐"), member(3, "夜班博士")] }));
+    heardListen({ t: "members", room: "r1" });
+    heardListen({ t: "members", room: "r1" });
+    // another room's word is not this one's
+    heardListen({ t: "members", room: "r9" });
+    await tick(1_600);
+    expect(ops("room")).toHaveLength(1);
+    expect(listenBubblesNow().map((b) => b.text)).toEqual(["夜班博士 来了！"]);
+    answerRoom("room", () => roomOf({ startedAt: serverClock() - 33_000 }));
+    heardListen({ t: "members", room: "r1" });
+    await tick(1_600);
+    expect(listenBubblesNow().map((b) => b.text)).toContain("夜班博士 走了");
+  });
+
+  it("fades out when the room ends, says who ended it, and leaves the server counting nobody", async () => {
+    await joinPlaying(30_000);
+    heardListen({ t: "end", room: "r1", why: "host" });
+    expect(listenRoomNow()).toBeNull();
+    expect(listenPlayerNow().status).toBe("idle");
+    expect(said.at(-1)).toBe("Dr.岚 结束了这次一起听。");
+    await tick(0);
+    expect(ops("stop")).toEqual([{}]);
+    await tick(1_000);
+    expect(audio().volume).toBeLessThan(1);
+    await tick(1_100);
+    expect(audio().paused).toBe(true);
+    expect(audio().volume).toBe(1);
+  });
+
+  it("leaves, and tells the server as the page goes so the room keeps your place a while", async () => {
+    await joinPlaying(30_000);
+    page.dispatchEvent(new Event("pagehide"));
+    await tick(0);
+    expect(ops("stop")).toEqual([{ away: true }]);
+    expect(await leaveListen()).toBe(true);
+    expect(ops("leave")).toEqual([{}]);
+    expect(listenRoomNow()).toBeNull();
+    expect(said.at(-1)).toBe("你离开了 Dr.岚 的一起听。");
+  });
+
+  it("lets the host skip to the next song, said to everyone once however the change comes back", async () => {
+    const startedAt = await joinPlaying(30_000, { host: true, you: 1 });
+    const nextAt = serverClock() + 1_000;
+    const next = () => roomOf({ host: true, you: 1, queue: ["s2"], startedAt: nextAt, version: 2 });
+    answerRoom("queue", next);
+    expect(await hostQueue("next")).toBe(true);
+    expect(ops("queue")).toEqual([{ next: true }]);
+    // the room's own word on it comes after: nothing more
+    heardListen({ t: "state", room: "r1", how: "next", ...next(), version: 2 });
+    expect(listenBubblesNow().map((b) => b.text)).toEqual(["下一首：《Two》"]);
+    expect(audio().src).toMatch(silence);
+    await tick(1_050);
+    expect(audio().src).toBe(link("s2"));
+    expect(startedAt).toBeLessThan(serverClock());
+    // a song added while one plays waits its turn: the host is told it is in
+    answerRoom("queue", () => roomOf({ host: true, you: 1, queue: ["s2", "s3"], startedAt: nextAt, version: 3 }));
+    await hostQueue({ add: "s3" });
+    expect(said.at(-1)).toBe("加到一起听：Three");
+  });
+
+  it("opens a room of your own within the tap, and its host's ▶ before the start is 开始", async () => {
+    answerRoom("open", () => roomOf({ host: true, you: 1, queue: ["s1"] }));
+    const opened = openRoomWith(null, ["f1"]);
+    // the element is unlocked within the tap, for the room to start by itself later
+    expect(audio().src).toMatch(silence);
+    expect(await opened).toEqual([]);
+    expect(ops("open")).toEqual([{ song: null, invite: ["f1"] }]);
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s1" } });
+    answerRoom("queue", () => roomOf({ host: true, you: 1, queue: ["s1"], startedAt: serverClock() + 1_000, version: 2 }));
+    toggle();
+    expect(ops("queue")).toEqual([{ start: true }]);
+    await tick(0);
+    expect(listenBubblesNow().map((b) => b.text)).toEqual(["开始一起听：《One》"]);
+    await tick(1_050);
+    expect(ops("play")).toEqual([{ song: "s1", at: 0 }]);
+  });
+
+  it("says why it could not go in, and stays out", async () => {
+    answers.join = () => ({ status: 409, json: { error: "这场满了。", code: "ROOM_FULL" } });
+    expect(await joinAt("inv-1")).toBe(false);
+    expect(said).toEqual(["这场满了。"]);
+    expect(listenRoomNow()).toBeNull();
   });
 });

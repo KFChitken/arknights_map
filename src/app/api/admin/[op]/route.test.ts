@@ -11,7 +11,8 @@ import { forgetNameWords } from "@/lib/server/nameWords";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
 import { grayUntil, listenSettings, loadSettings } from "@/lib/server/siteSettings";
 import { loadZones } from "@/lib/server/zones";
-import { adminBackupCodes, adminLog, admins, bannedEmails, clearedValues, modActions, nameWords, reports, roaches, sessions, users } from "@/lib/server/schema";
+import { adminBackupCodes, adminLog, admins, bannedEmails, clearedValues, modActions, nameWords, reports, roaches, sessions, songs, statCounts, users } from "@/lib/server/schema";
+import { loadSongs } from "@/lib/server/songs";
 import { staffItems } from "@/lib/server/staffNotes";
 import { totpCode, totpStep } from "@/lib/server/totp";
 import * as world from "@/lib/server/world";
@@ -691,6 +692,9 @@ describe("禁放区 and 全站变灰, the owner's", () => {
 
   it("pauses 听歌 and changes how many may listen at once, each change in the 操作记录", async () => {
     await owner();
+    // what the files before this one left in the shared database: their songs and today's counts
+    await db.execute(sql`truncate ${songs}, ${statCounts} cascade`);
+    await loadSongs();
     vi.stubEnv("LISTEN", "admins");
     try {
       expect((await call("listen")).body.result).toEqual({
@@ -699,6 +703,7 @@ describe("禁放区 and 全站变灰, the owner's", () => {
         listening: 0,
         plays: 0,
         full: 0,
+        rooms: 0,
         songs: 0,
         catalog: null,
       });
@@ -712,11 +717,14 @@ describe("禁放区 and 全站变灰, the owner's", () => {
       expect((await call("setListen", [{ cap: 800 }])).status).toBe(200);
       expect((await call("setListen", [{ paused: false }])).body.result).toMatchObject({ settings: { paused: false, cap: 800 } });
       expect(listenSettings()).toEqual({ paused: false, cap: 800, roomMax: 20 });
+      expect((await call("setListen", [{ roomMax: 1 }])).status).toBe(400);
+      expect((await call("setListen", [{ roomMax: 8 }])).body.result).toMatchObject({ settings: { roomMax: 8 } });
       expect((await db.select().from(adminLog).orderBy(adminLog.id)).map((l) => [l.what, l.detail])).toEqual([
         ["gate.setup", null],
         ["act.listen", "暂停了听歌"],
         ["act.listen", "同时在听上限从 600 人改成 800 人"],
         ["act.listen", "恢复了听歌"],
+        ["act.listen", "一起听一场最多从 20 人改成 8 人"],
       ]);
     } finally {
       vi.unstubAllEnvs();

@@ -28,6 +28,7 @@ import {
   TicketIcon,
   UiIcon,
   useListenEntry,
+  listenWord,
   useWide,
   VisitorButtons,
   WaitingButton,
@@ -70,7 +71,7 @@ function Phone(p: ChromeProps) {
       {!p.placing && <div className="hud">{p.top}</div>}
 
       {chips && (
-        <nav className="dchips" aria-label={T.common.guides}>
+        <nav className="dchips" aria-label={T.common.guides} data-chrome-bottom>
           <button className="dchip glass" onClick={p.onRadar}>
             <RadarScope />
             <span>{T.map.radar}</span>
@@ -108,7 +109,7 @@ function Phone(p: ChromeProps) {
       )}
 
       {/* while a roach is being put down, the drawer stays (the map keeps its size) but waits */}
-      <section className={`dock${open ? " open" : ""}${p.placing ? " idle" : ""}`} inert={p.placing || undefined}>
+      <section className={`dock${open ? " open" : ""}${p.placing ? " idle" : ""}`} inert={p.placing || undefined} data-chrome-bottom>
         <div className="dtop" {...swipe.area}>
           <button
             className="handle"
@@ -356,16 +357,17 @@ function ListenChip({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
   const e = useListenEntry();
   return (
     <button
-      className={`dchip glass${e.on ? " listen-on" : ""}`}
-      aria-label={listenLabel(e.on, e.track)}
+      className={`dchip glass${e.lit ? " listen-on" : ""}`}
+      aria-label={listenLabel(e)}
       aria-haspopup="dialog"
       aria-expanded={listen.open}
       onClick={listen.onToggle}
+      data-listen-anchor="up"
     >
       <span className="ico">
         <ListenIcon on={e.on} size={20} />
       </span>
-      <span aria-hidden="true">{e.on ? T.map.bar.listenNow : T.map.bar.listen}</span>
+      <span aria-hidden="true">{listenWord(e)}</span>
       {e.fresh && (
         <span className="listen-new" aria-hidden="true">
           {T.map.bar.listenNew}
@@ -381,10 +383,11 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
   return (
     <button
       className={`dcard dlisten${listen.open ? " open" : ""}`}
-      aria-label={listenLabel(e.on, e.track)}
+      aria-label={listenLabel(e)}
       aria-haspopup="dialog"
       aria-expanded={listen.open}
       onClick={listen.onToggle}
+      data-listen-anchor="right"
     >
       <span className="lico">
         <ListenIcon on={e.on} size={26} />
@@ -394,7 +397,13 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
           {T.map.bar.listen}
           {e.fresh && <span className="listen-new">{T.map.bar.listenNew}</span>}
         </b>
-        <small>{e.on && e.track ? fmt(T.map.bar.listenSong, { name: e.track.name }) : T.map.bar.listenIdle}</small>
+        <small>
+          {e.together !== null
+            ? fmt(T.map.bar.listenTogether, { n: e.together })
+            : e.on && e.track
+              ? fmt(T.map.bar.listenSong, { name: e.track.name })
+              : T.map.bar.listenIdle}
+        </small>
       </span>
       <span className="go" aria-hidden="true">
         ›

@@ -12,6 +12,7 @@ import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
 import { demoEnabled, listenMode, watchEnabled } from "./lib/server/env";
 import { sweepListening } from "./lib/server/listen";
+import { sweepRooms } from "./lib/server/listenRooms";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
 import { startMainlandMap } from "./lib/server/mainlandMap";
@@ -135,9 +136,11 @@ if (!helper) {
   pruneChanges();
   setInterval(pruneChanges, 10 * MINUTE_MS);
 
-  // 听歌: what each player listens to now, swept away once past (src/lib/server/listen.ts); and the catalogue read in
-  // again when the fetch changed it
+  // 听歌: what each player listens to now, swept away once past (src/lib/server/listen.ts); the rooms of 一起听 that are
+  // over ended, and a day after gone (src/lib/server/listenRooms.ts); and the catalogue read in again when the fetch
+  // changed it
   setInterval(() => sweepListening().catch(failed("listen", "Sweeping away who listened before failed")), MINUTE_MS);
+  setInterval(() => sweepRooms().catch(failed("listen", "Sweeping the listening rooms failed")), MINUTE_MS);
   if (listening) setInterval(() => syncCatalog().catch(failed("songs", "Reading the songs' catalogue failed")), 10 * MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code

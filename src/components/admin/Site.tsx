@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { BADGES } from "@/lib/badges";
 import { GRAY_MAX_DAYS, grayUntilWords, type GrayState } from "@/lib/adminConsole";
 import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } from "@/lib/beijing";
-import { CAP_RANGE, type ListenDesk } from "@/lib/listen";
+import { CAP_RANGE, ROOM_RANGE, type ListenDesk } from "@/lib/listen";
 import { memorialWords } from "@/lib/memorials";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { RULES, type BanInfo } from "@/lib/safety";
@@ -197,6 +197,7 @@ function ListenPanel() {
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
   const [cap, setCap] = useState("");
+  const [roomMax, setRoomMax] = useState("");
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -206,6 +207,7 @@ function ListenPanel() {
           setD(x);
           setNote(null);
           setCap((c) => c || String(x.settings.cap));
+          setRoomMax((c) => c || String(x.settings.roomMax));
         })
         .catch((e) => {
           if (alive) setNote(`读不出来：${errorWords(e)}`);
@@ -221,12 +223,13 @@ function ListenPanel() {
     };
   }, [call]);
 
-  const change = async (what: { paused?: boolean; cap?: number }, done: string) => {
+  const change = async (what: { paused?: boolean; cap?: number; roomMax?: number }, done: string) => {
     setBusy(true);
     try {
       const next = await call<ListenDesk>("setListen", [what]);
       setD(next);
       setCap(String(next.settings.cap));
+      setRoomMax(String(next.settings.roomMax));
       setAsking(false);
       setNote(null);
       say(done);
@@ -238,12 +241,14 @@ function ListenPanel() {
 
   const capN = Number(cap);
   const capFits = Number.isInteger(capN) && capN >= CAP_RANGE[0] && capN <= CAP_RANGE[1];
+  const roomN = Number(roomMax);
+  const roomFits = Number.isInteger(roomN) && roomN >= ROOM_RANGE[0] && roomN <= ROOM_RANGE[1];
   const when = (iso: string | null) => (iso && Number.isFinite(Date.parse(iso)) ? beijingShort(Date.parse(iso)) : "—");
   return (
     <section className="ac-panel ac-tool wide" aria-label="听歌">
       <PanelHead title="听歌" aside="只有站长" />
       <p className="ac-sub">
-        站里放塞壬唱片官网上方舟的歌。出事的时候先在这里点「暂停听歌」，马上对所有人生效，不用发版：谁都不能再放新的歌，歌文件也不再发出去，正在放的那首可能放不完。
+        站里放塞壬唱片官网上方舟的歌。出事的时候先在这里点「暂停听歌」，马上对所有人生效，不用发版：谁都不能再放新的歌，歌文件也不再发出去，正在放的那首可能放不完，一起听的场都结束。
       </p>
       {!d ? (
         <p className="ac-sub">{note ?? "正在读取…"}</p>
@@ -266,6 +271,11 @@ function ListenPanel() {
               <div className="ac-muted small">现在在听</div>
               <div className="ac-stat-n">{d.listening} 人</div>
               <div className="ac-muted small">上限 {d.settings.cap} 人</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">一起听</div>
+              <div className="ac-stat-n">{d.rooms} 场</div>
+              <div className="ac-muted small">一场最多 {d.settings.roomMax} 人</div>
             </div>
             <div className="ac-stat">
               <div className="ac-muted small">今天放了</div>
@@ -293,7 +303,7 @@ function ListenPanel() {
             </div>
           ) : asking ? (
             <div className="ac-confirm" role="alert">
-              <span>所有人都不能再放歌，正在放的那首也可能停下。确定吗？</span>
+              <span>所有人都不能再放歌，正在放的那首也可能停下，一起听的场都会结束。确定吗？</span>
               <button type="button" className="ac-btn small primary" disabled={busy} onClick={() => change({ paused: true }, "听歌暂停了。")}>
                 确认暂停
               </button>
@@ -309,7 +319,7 @@ function ListenPanel() {
             </div>
           )}
           <form
-            className="ac-inline-form"
+            className="ac-inline-form ac-num-form"
             onSubmit={(e) => {
               e.preventDefault();
               if (capFits && capN !== d.settings.cap) void change({ cap: capN }, `同时在听上限改成 ${capN} 人了。`);
@@ -335,6 +345,34 @@ function ListenPanel() {
           {cap && !capFits && <p className="ac-error">上限要是 {CAP_RANGE[0]} 到 {CAP_RANGE[1]} 之间的整数。</p>}
           <p className="ac-muted small" id="listen-cap-why">
             到了上限，没在听的人点歌会看到「听歌的人有点多，过几分钟再来」；已经在听的人照常换歌。每人约 12 KB/秒，600 人约 58 Mbps，两台服务器分着出。
+          </p>
+          <form
+            className="ac-inline-form ac-num-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (roomFits && roomN !== d.settings.roomMax) void change({ roomMax: roomN }, `一起听一场最多改成 ${roomN} 人了。`);
+            }}
+          >
+            <label className="ac-inline-label">
+              一起听一场最多
+              <input
+                type="number"
+                inputMode="numeric"
+                min={ROOM_RANGE[0]}
+                max={ROOM_RANGE[1]}
+                value={roomMax}
+                onChange={(e) => setRoomMax(e.target.value)}
+                aria-describedby="listen-room-why"
+              />
+              人
+            </label>
+            <button className="ac-btn" type="submit" disabled={busy || !roomFits || roomN === d.settings.roomMax}>
+              改人数
+            </button>
+          </form>
+          {roomMax && !roomFits && <p className="ac-error">一场最多几人要是 {ROOM_RANGE[0]} 到 {ROOM_RANGE[1]} 之间的整数。</p>}
+          <p className="ac-muted small" id="listen-room-why">
+            发起人也算在里面。改小了，已经在场里的人不会被请出去，只是满了以后进不来。人多了短评会刷屏。
           </p>
         </>
       )}

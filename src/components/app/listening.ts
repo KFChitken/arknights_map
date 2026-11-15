@@ -1,7 +1,28 @@
 import { useSyncExternalStore } from "react";
-import { T } from "@/i18n";
+import { fmt, T } from "@/i18n";
 import { isGray, onGrayChange } from "@/lib/grayMode";
-import { indexCatalog, nextOnAlbum, type ListenCatalog, type ListenTrack } from "@/lib/listen";
+import {
+  clock,
+  DRIFT_OK_S,
+  indexCatalog,
+  isRx,
+  keepUp,
+  nextOnAlbum,
+  roomAt,
+  RX_EVERY_MS,
+  RX_MERGE_MS,
+  RX_SHOW_MS,
+  SYNC_EVERY_MS,
+  type InviteSent,
+  type ListenCatalog,
+  type ListenFriend,
+  type ListenRoom,
+  type ListenTell,
+  type ListenTrack,
+  type QueueChange,
+  type RoomAt,
+  type RoomEnd,
+} from "@/lib/listen";
 import { listenApi, ListenRefused } from "@/lib/listenClient";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import { stopMusic } from "./amiyaMusic";
@@ -15,6 +36,13 @@ import { stopPartyMusic } from "./partyMusic";
  * pause and next. The page's other music (阿米娅向导's dance, ⚡舟友的酒⚡) keeps quiet while a song plays
  * (isListening), and the site going gray (全站变灰) fades it out. A page opened again offers the song it played, from
  * where it got to, for a tap.
+ *
+ * 一起听: in a room the element plays what the room's songs say should play now (src/lib/listen.ts roomAt), by the
+ * server's clock as its answers put it, and keeps in step with it (keepUp): every SYNC_EVERY_MS, as each song ends,
+ * as the room is told something (heardListen, from the page's event stream), and as the page comes back into view.
+ * Between two songs, and before the first, it plays silence, so a phone in a pocket goes on to the next one by itself.
+ * A pause is the player's own: the room goes on, and ▶ goes back to where everyone is. 短评 float a moment
+ * (useListenBubbles), the same one from several at once shown once, ×N.
  */
 
 /** The next song is fetched this long before the one playing ends */
@@ -31,6 +59,18 @@ const INTRO_KEY = "zhoup.listenIntro";
 const SONGS_KEEP_MS = 10 * 60_000;
 /** A song that breaks this often in a minute is given up */
 const FIXES_MAX = 3;
+/** A clip of silence between a room's songs lasts this long at most (seconds); a longer wait is looked at again after */
+const GAP_CLIP_S = 5;
+/** A room's song fades out over this long as the room ends */
+const END_FADE_MS = 2_000;
+/** Who is in the room is asked again this long after the room was told it changed, at random, so not all at once */
+const MEMBERS_AFTER_MS = [250, 1_500] as const;
+/** A room's song that would not start for want of the network is tried again this long after; one refused waits for ▶ */
+const RETRY_MS = 10_000;
+/** The room is asked again as the page comes back into view, at most this often */
+const BACK_EVERY_MS = 10_000;
+/** 短评 and what happened in the room: this many kept to show at most (the page shows two of them) */
+const BUBBLES_KEPT = 4;
 
 export type ListenStatus = "idle" | "starting" | "playing" | "paused";
 
@@ -55,6 +95,11 @@ export type ListenSongs =
 /** 新: never opened; opened; ok: its line on privacy read (知道了) */
 export type ListenIntro = "new" | "opened" | "ok";
 
+/** A line floating over the page: a 短评 (yours, someone's, or the same one from n at once), or what happened in the room */
+export type ListenBubble = { key: number; text: string; kind: "me" | "rx" | "agg" | "sys" };
+/** 短评 now: waiting (one every RX_EVERY_MS), or this song's used up (RX_PER_SONG) */
+export type ListenRxState = { cool: boolean; full: boolean };
+
 // ---- what the page reads, through the hooks below ----
 
 function kept<S>(first: S) {
@@ -76,13 +121,23 @@ function kept<S>(first: S) {
   };
 }
 
+/** A bubble as kept: its 短评's number (merging: the same one within RX_MERGE_MS of the first), how many sent it */
+type Bubble = ListenBubble & { r: number | null; n: number; first: number };
+
 const IDLE: ListenPlayer = { track: null, status: "idle", buffering: false, tap: false, problem: null };
 const NONE: ListenSongs = { state: "none" };
+const NO_BUBBLES: Bubble[] = [];
+const RX_FREE: ListenRxState = { cool: false, full: false };
 const player = kept<ListenPlayer>(IDLE);
 const songs = kept<ListenSongs>(NONE);
-/** The whole seconds the song has got to */
+/** The whole seconds the song has got to (in a room, where the room is) */
 const second = kept(0);
 const intro = kept(0);
+const room = kept<ListenRoom | null>(null);
+const bubbles = kept<Bubble[]>(NO_BUBBLES);
+const rxNow = kept<ListenRxState>(RX_FREE);
+/** What was said as the last room was over for you (ended, or you left), until you are in another */
+const roomEnd = kept<string | null>(null);
 const change = (p: Partial<ListenPlayer>) => player.set({ ...player.get(), ...p });
 
 /** What plays, and the list of songs, now; and as hooks, following them */
@@ -92,6 +147,17 @@ export const useListenPlayer = () => useSyncExternalStore(player.on, player.get,
 export const useListenSongs = () => useSyncExternalStore(songs.on, songs.get, () => NONE);
 export const useListenSecond = () => useSyncExternalStore(second.on, second.get, () => 0);
 export const useListenIntro = () => useSyncExternalStore(intro.on, readIntro, () => "ok" as ListenIntro);
+/** The room of 一起听 you are in (null: none), its 短评 floating, and whether you may send one now */
+export const listenRoomNow = room.get;
+export const listenBubblesNow = (): ListenBubble[] => bubbles.get();
+export const listenRxNow = rxNow.get;
+export const useListenRoom = () => useSyncExternalStore(room.on, room.get, () => null);
+export const useListenBubbles = (): ListenBubble[] => useSyncExternalStore(bubbles.on, bubbles.get, () => NO_BUBBLES);
+export const useListenRx = () => useSyncExternalStore(rxNow.on, rxNow.get, () => RX_FREE);
+export const useListenRoomEnd = () => useSyncExternalStore(roomEnd.on, roomEnd.get, () => null);
+const inRoom = () => room.get() !== null;
+/** Only whether you are in a room, for what changes with that alone (a layout keeps 听歌's entry through the tutorial) */
+export const useInListenRoom = () => useSyncExternalStore(room.on, inRoom, () => false);
 
 /** A song is playing, or about to: the guides' music keeps quiet (src/components/app/amiyaMusic.ts, partyMusic.ts) */
 export function isListening() {
@@ -102,10 +168,13 @@ export function isListening() {
 // ---- the element, and what it holds ----
 
 let audio: HTMLAudioElement | null = null;
-/** The silent clip the element was unlocked with, or a song (current's) */
-let holding: "silent" | "song" | null = null;
-/** The song in the element, as the server gave it: the next one on its album, its link, and until when the server counts us */
-let current: { track: ListenTrack; next: string | null; nextUrl: string | null; until: number; early: boolean } | null = null;
+/** The silent clip the element was unlocked with, silence between a room's songs, or a song (current's) */
+let holding: "silent" | "gap" | "song" | null = null;
+/**
+ * The song in the element, as the server gave it: the next one (on its album, or in the room), its link, until when the
+ * server counts us; and in a room, when the song starts on the server's clock (null: played alone)
+ */
+let current: { track: ListenTrack; next: string | null; nextUrl: string | null; until: number; early: boolean; start: number | null } | null = null;
 /** Counts what is asked of the server, so an answer that a later tap overtook is dropped */
 let asked = 0;
 /** Counts songs put in the element, so a seek or a fade meant for one is not done to the next */
@@ -124,7 +193,29 @@ const offsets: number[] = [];
 let offset = 0;
 let songsAt = 0;
 let refusedTo: ((e: WorldError) => void) | null = null;
+let saidTo: ((text: string) => void) | null = null;
 let watching = false;
+
+/** The element was played within a tap on this page, so songs may start in it by themselves */
+let unlocked = false;
+/** In a room: paused by the player (▶ goes to where everyone is); playing a little faster or slower to catch up */
+let selfPaused = false;
+let catching = false;
+/** In a room: the link the server gave ahead for the room's next song */
+let ahead: { id: string; url: string } | null = null;
+/** In a room: a song that would not start (its start on the server's clock), not tried again before until */
+let stuck: { start: number; until: number } | null = null;
+let beat: ReturnType<typeof setInterval> | null = null;
+let checkedAt = 0;
+/** Where the room was when it was last looked at (placeKey), so a beat that finds it moved on looks again at once */
+let syncedAt = "";
+let gapTimer: ReturnType<typeof setTimeout> | undefined;
+let membersTimer: ReturnType<typeof setTimeout> | undefined;
+let rxTimer: ReturnType<typeof setTimeout> | undefined;
+/** Counts what is asked of the server about the room, so an answer that a later one overtook is dropped */
+let roomAsked = 0;
+let backAt = 0;
+let bubbleKeys = 0;
 
 function element(): HTMLAudioElement {
   if (audio) return audio;
@@ -137,21 +228,28 @@ function element(): HTMLAudioElement {
   a.addEventListener("error", onError);
   a.addEventListener("timeupdate", onTime);
   audio = a;
-  if (!watching && typeof window !== "undefined") {
-    watching = true;
-    window.addEventListener("pagehide", onLeave);
-    onGrayChange(() => {
-      if (isGray()) silence();
-    });
-  }
+  watch();
   return a;
 }
 
-let silentUrl: string | null = null;
-/** A tenth of a second of silence (8 kHz, 8 bits, one channel), which the element plays in the tap that unlocks it */
-function silent(): string {
-  if (silentUrl) return silentUrl;
-  const n = 800;
+/** The page going, coming back into view, going gray: once a page */
+function watch() {
+  if (watching || typeof window === "undefined") return;
+  watching = true;
+  window.addEventListener("pagehide", onLeave);
+  window.addEventListener("pageshow", onBack);
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", onBack);
+  onGrayChange(() => {
+    if (isGray()) silence();
+  });
+}
+
+const silentUrls = new Map<number, string>();
+/** seconds of silence (8 kHz, 8 bits, one channel): a tenth of a second unlocks the element within a tap */
+function silent(seconds = 0.1): string {
+  const n = Math.max(80, Math.round(seconds * 10) * 800);
+  const had = silentUrls.get(n);
+  if (had) return had;
   const b = new Uint8Array(44 + n);
   const v = new DataView(b.buffer);
   const text = (at: number, s: string) => {
@@ -172,25 +270,30 @@ function silent(): string {
   b.fill(128, 44);
   let s = "";
   for (const x of b) s += String.fromCharCode(x);
-  return (silentUrl = `data:audio/wav;base64,${btoa(s)}`);
+  const url = `data:audio/wav;base64,${btoa(s)}`;
+  silentUrls.set(n, url);
+  return url;
 }
 
 // ---- what the page does ----
 
 /** A song from the list, from its start or `at` seconds in. Call it within the tap itself, which is what lets a phone play. */
 export function playTrack(track: ListenTrack, at = 0) {
-  if (isGray()) return;
+  // in a room the room's songs play (the host adds to them instead)
+  if (isGray() || room.get()) return;
   const a = element();
   // within the tap: a phone lets an element start only from one, and this one then plays every song after it
   holding = "silent";
   a.src = silent();
   a.play().catch(() => {});
+  unlocked = true;
   quietOthers();
   begin(track, at, null);
 }
 
 /** ▶ or ⏸, within the tap */
 export function toggle() {
+  if (room.get()) return roomToggle();
   const v = player.get();
   if (!v.track) return;
   if (v.status === "playing" || v.status === "starting") return pauseNow();
@@ -205,8 +308,13 @@ export function toggle() {
   a.play().catch(() => change({ status: "paused", buffering: false }));
 }
 
-/** The next song of the album, if there is one (the lock screen's ⏭) */
+/** The next song of the album, if there is one (the lock screen's ⏭); in a room, the host's 下一首 */
 export function skip() {
+  const r = room.get();
+  if (r) {
+    if (r.host) void hostQueue("next");
+    return;
+  }
   const v = player.get();
   const id = v.track && nextOnAlbum(v.track);
   const next = id ? tracks()?.get(id) : undefined;
@@ -225,6 +333,7 @@ export function loadSongs() {
       songsAt = Date.now();
       songs.set({ state: "ok", catalog, tracks: indexCatalog(catalog) });
       offerSaved();
+      if (room.get()) syncRoom();
     },
     (e: unknown) => {
       if (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded) refusedTo?.(e);
@@ -239,6 +348,14 @@ export function onListenRefused(fn: (e: WorldError) => void) {
   refusedTo = fn;
   return () => {
     if (refusedTo === fn) refusedTo = null;
+  };
+}
+
+/** Who shows a short line of 一起听 (a toast): why a room ended, what a tap did, why it was refused; the map page */
+export function onListenSaid(fn: (text: string) => void) {
+  saidTo = fn;
+  return () => {
+    if (saidTo === fn) saidTo = null;
   };
 }
 
@@ -286,7 +403,7 @@ function begin(track: ListenTrack, at: number, url: string | null) {
   ended = false;
   lastAt = at;
   second.set(Math.floor(at));
-  current = { track, next, nextUrl: null, until: 0, early: false };
+  current = { track, next, nextUrl: null, until: 0, early: false, start: null };
   change({ track, status: "starting", buffering: true, tap: false, problem: null });
   meta(track);
   if (url) load(url, at);
@@ -297,7 +414,7 @@ function begin(track: ListenTrack, at: number, url: string | null) {
       heard(r.now, sent, Date.now());
       counted = true;
       away = false;
-      current = { track, next, nextUrl: r.nextUrl ?? null, until: r.until - offset, early: false };
+      current = { track, next, nextUrl: r.nextUrl ?? null, until: r.until - offset, early: false, start: null };
       if (!url) load(r.url, at);
     },
     (e: unknown) => {
@@ -322,7 +439,10 @@ function load(url: string, at: number) {
   }
   a.play().catch((e: unknown) => {
     // the browser would not start it without a tap (the first one did not unlock it): ▶ does
-    if (mine === loads && (e as { name?: string } | null)?.name === "NotAllowedError") change({ status: "paused", buffering: false, tap: true });
+    if (mine === loads && (e as { name?: string } | null)?.name === "NotAllowedError") {
+      unlocked = false;
+      change({ status: "paused", buffering: false, tap: true });
+    }
   });
 }
 
@@ -389,13 +509,13 @@ function stopCounting() {
   listenApi.stop().catch(() => {});
 }
 
-/** The site went gray: the song fades out and nothing plays until it is over (the entry is gone meanwhile) */
+/** The site went gray: the song fades out and nothing plays until it is over (the entry is gone meanwhile); a room ends */
 function silence() {
+  if (room.get()) return roomOver(null);
   const a = audio;
   if (!a || player.get().status === "idle") return;
   ++asked;
   const was = holding === "song" && !a.paused;
-  const mine = ++loads;
   holding = null;
   current = null;
   ended = false;
@@ -403,8 +523,16 @@ function silence() {
   meta(null);
   stopCounting();
   forgetSaved();
-  if (!was) return void a.pause();
-  // faded, as the guides' music is; a phone that keeps the volume to itself just stops
+  if (!was) {
+    ++loads;
+    return void a.pause();
+  }
+  fadeOut(a, 600);
+}
+
+/** Faded over ms, as the guides' music is; a phone that keeps the volume to itself just stops */
+function fadeOut(a: HTMLAudioElement, ms: number) {
+  const mine = ++loads;
   const from = a.volume;
   let step = 0;
   const fade = setInterval(() => {
@@ -420,7 +548,7 @@ function silence() {
     try {
       a.volume = from;
     } catch {}
-  }, 60);
+  }, ms / 10);
 }
 
 function onPlaying() {
@@ -436,13 +564,18 @@ function onWaiting() {
 function onPause() {
   const a = element();
   if (holding !== "song" || a.ended || player.get().status !== "playing") return;
-  // stopped by the phone itself (a call, the headphones out)
+  // stopped by the phone itself (a call, the headphones out): in a room, as if the player paused it
+  if (room.get()) selfPaused = true;
   change({ status: "paused", buffering: false });
   state("paused");
   save();
 }
 
 function onEnded() {
+  if (room.get()) {
+    if (holding === "song" || holding === "gap") syncRoom();
+    return;
+  }
   if (holding !== "song" || !current) return;
   const next = current.next ? tracks()?.get(current.next) : undefined;
   if (!next) return finish();
@@ -455,22 +588,30 @@ function onError() {
   // a link gone stale (each lasts 6 to 12 hours), or the network gave way: the song again, from where it got to
   const t = Date.now();
   fixes = fixes.filter((x) => t - x < 60_000);
+  const inRoom = current.start !== null && room.get();
   if (fixes.length >= FIXES_MAX) {
     const track = current.track;
+    if (inRoom) stuck = { start: current.start!, until: Infinity };
     unload();
     stopCounting();
     player.set({ ...IDLE, track, status: "paused", problem: { message: T.listen.broken, code: null } });
     return;
   }
   fixes.push(t);
-  begin(current.track, lastAt, null);
+  if (!inRoom) return begin(current.track, lastAt, null);
+  // the room's song again, with a new link, from where the room is now
+  ++loads;
+  holding = null;
+  current = null;
+  syncRoom();
 }
 
 function onTime() {
   const a = element();
   if (holding !== "song" || !current) return;
   lastAt = a.currentTime;
-  second.set(Math.floor(lastAt));
+  // in a room the bar follows the room's clock (the beat), whatever this phone is at
+  if (current.start === null) second.set(Math.floor(lastAt));
   const left = (Number.isFinite(a.duration) ? a.duration : current.track.seconds) - a.currentTime;
   if (!current.early && current.nextUrl && left <= EARLY_S) {
     current.early = true;
@@ -484,9 +625,616 @@ function onTime() {
 
 function onLeave() {
   save();
-  if (!counted || away) return;
+  // in a room, the server keeps your place for a while (AWAY_MS), for the page that comes straight back
+  if (away || (!counted && !room.get())) return;
   away = true;
   listenApi.away();
+}
+
+/** The page is in view again (or back from the browser's cache): a room is asked again, in case anything was missed */
+function onBack() {
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  if (!room.get()) return;
+  const t = Date.now();
+  if (!away && t - backAt < BACK_EVERY_MS) return;
+  backAt = t;
+  void loadRoom();
+}
+
+// ---- 一起听 ----
+
+const lengthOf = (all: Map<string, ListenTrack>) => (id: string) => all.get(id)?.seconds ?? 0;
+
+/** Where the room's songs are now, by the server's clock; null until the list of songs is in */
+export function roomPlace(r: Pick<ListenRoom, "queue" | "idx" | "startedAt">): RoomAt | null {
+  const all = tracks();
+  return all ? roomAt(r, lengthOf(all), serverNow()) : null;
+}
+
+/** What placeKey tells apart: another song, its start come, the songs over or not begun */
+const placeKey = (at: RoomAt) => (at.phase === "playing" ? `${at.i}@${at.start}${at.offset < 0 ? "-" : ""}` : at.phase);
+
+const say = (text: string) => saidTo?.(text);
+
+/** A tap that may start the room's songs: within it, the element plays (silence first), so the songs after may too */
+function unlockNow() {
+  if (isGray()) return;
+  const a = element();
+  quietOthers();
+  if ((holding === "song" || holding === "gap") && !a.paused) {
+    unlocked = true;
+    return;
+  }
+  ++loads;
+  holding = "silent";
+  a.src = silent();
+  unlocked = true;
+  a.play().catch((e: unknown) => {
+    if ((e as { name?: string } | null)?.name === "NotAllowedError") unlocked = false;
+  });
+}
+
+/** The room as the server answered (sent: when it was asked, got: when the answer came; now: the server's clock) */
+function enter(next: ListenRoom, sent: number, got: number, now: number): boolean {
+  heard(now, sent, got);
+  watch();
+  away = false;
+  const was = room.get();
+  let r = next;
+  // the room's songs told since this answer was made stay
+  if (was?.id === r.id && was.version > r.version) r = { ...r, queue: was.queue, idx: was.idx, startedAt: was.startedAt, version: was.version };
+  if (was?.id !== r.id) {
+    // a room new to the page: nothing of one before it is left
+    selfPaused = false;
+    catching = false;
+    ahead = null;
+    stuck = null;
+    syncedAt = "";
+    bubbles.set(NO_BUBBLES);
+    rxNow.set(RX_FREE);
+    forgetSaved();
+  } else cameWent(was, r);
+  roomEnd.set(null);
+  room.set(r);
+  startBeat();
+  // the songs' lengths are what the room's clock goes by: asked for first, if they are not in
+  syncRoom();
+  return Boolean(was && was.id === r.id && r.version > was.version);
+}
+
+/** Who came in and who went, since the room was last asked for */
+function cameWent(was: ListenRoom, now: ListenRoom) {
+  const inBefore = new Set(was.members.filter((m) => m.state === "in").map((m) => m.h));
+  const inNow = new Set(now.members.filter((m) => m.state === "in").map((m) => m.h));
+  for (const m of now.members) {
+    if (m.h !== now.you && m.state === "in" && !inBefore.has(m.h)) sys(fmt(T.listen.came, { name: m.card.displayName }));
+  }
+  for (const m of was.members) {
+    if (m.h !== now.you && inBefore.has(m.h) && !inNow.has(m.h)) sys(fmt(T.listen.went, { name: m.card.displayName }));
+  }
+}
+
+/** Play what the room should be playing now, where it should be */
+function syncRoom() {
+  const r = room.get();
+  if (!r || isGray()) return;
+  const all = tracks();
+  if (!all) return void loadSongs();
+  const now = serverNow();
+  const at = roomAt(r, lengthOf(all), now);
+  checkedAt = Date.now();
+  syncedAt = placeKey(at);
+  if (at.phase !== "playing") return holdRoom(r, at, all);
+  const track = all.get(r.queue[at.i]) ?? null;
+  second.set(Math.max(0, Math.floor(at.offset)));
+  if (!unlocked || selfPaused || (stuck?.start === at.start && Date.now() < stuck.until)) return waitRoom(track, at.start);
+  if (!track || at.offset < 0) return gap(at.start - now, track);
+  const a = element();
+  if (holding === "song" && current?.start === at.start && current.track.id === track.id) {
+    if (!a.ended) return keepUpNow(a, at.offset);
+    // over before the room's clock says (a file a little shorter than its length): silence until the next
+    return gap(at.start + track.seconds * 1000 - now, track);
+  }
+  beginRoom(r, track, at.i, at.start);
+}
+
+/** Silence until the room's next song starts (ms from now), so the element goes on by itself; then that song */
+function gap(ms: number, track: ListenTrack | null) {
+  const a = element();
+  clearTimeout(gapTimer);
+  gapTimer = setTimeout(syncRoom, Math.max(0, ms) + 30);
+  const p = player.get();
+  if (p.status !== "starting" || p.buffering || p.tap || p.problem || (track && p.track !== track)) {
+    change({ track: track ?? p.track, status: "starting", buffering: false, tap: false, problem: null });
+  }
+  if (holding === "gap" && !a.paused && !a.ended) return;
+  ++loads;
+  holding = "gap";
+  catching = false;
+  setRate(a, 1);
+  a.src = silent(Math.min(GAP_CLIP_S, Math.max(0.1, ms / 1000)));
+  a.play().catch(() => {});
+}
+
+/** The room's song shown, not playing here: the browser wants a tap first, the player paused it, or it would not start */
+function waitRoom(track: ListenTrack | null, start: number) {
+  clearTimeout(gapTimer);
+  const a = audio;
+  if (a && (holding === "song" || holding === "gap") && !a.paused) {
+    ++asked;
+    a.pause();
+  }
+  if (holding === "gap") holding = null;
+  const p = player.get();
+  const problem = stuck?.start === start ? p.problem : null;
+  const tap = !unlocked;
+  if (p.status === "paused" && !p.buffering && p.tap === tap && p.problem === problem && (!track || p.track === track)) return;
+  change({ track: track ?? p.track, status: "paused", buffering: false, tap, problem });
+}
+
+/** Nothing plays in the room: before the host starts it, or after its last song; its first or last song shown */
+function holdRoom(r: ListenRoom, at: RoomAt, all: Map<string, ListenTrack>) {
+  clearTimeout(gapTimer);
+  if (holding === "song" || holding === "gap") {
+    ++asked;
+    ++loads;
+    holding = null;
+    current = null;
+    audio?.pause();
+    meta(null);
+  }
+  stopCounting();
+  catching = false;
+  const id = at.phase === "done" ? r.queue[r.queue.length - 1] : r.queue[Math.max(0, r.idx)];
+  const track = (id && all.get(id)) || null;
+  second.set(at.phase === "done" && track ? Math.floor(track.seconds) : 0);
+  const p = player.get();
+  if (p.track === track && p.status === "paused" && !p.buffering && !p.tap && !p.problem) return;
+  player.set({ track, status: "paused", buffering: false, tap: false, problem: null });
+}
+
+/** The room's song i, started (or to start) at start: from the link given ahead at once, else from the server's answer */
+function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) {
+  const mine = ++asked;
+  clearTimeout(gapTimer);
+  const next = r.queue[i + 1] ?? null;
+  // a song of its own: its own 短评
+  if (current?.start !== start && rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
+  current = { track, next, nextUrl: null, until: 0, early: false, start };
+  stuck = null;
+  change({ track, status: "starting", buffering: true, tap: false, problem: null });
+  meta(track);
+  const url = ahead?.id === track.id ? ahead.url : null;
+  ahead = null;
+  if (url) loadRoomSong(url, start);
+  const sent = Date.now();
+  const at = (serverNow() - start) / 1000;
+  // one started within its first second counts as played from its start
+  listenApi.play(track.id, at < 1 ? 0 : Math.floor(at), next).then(
+    (p) => {
+      if (mine !== asked) return;
+      heard(p.now, sent, Date.now());
+      counted = true;
+      away = false;
+      if (current?.start === start) current = { ...current, nextUrl: p.nextUrl ?? null, until: p.until - offset };
+      ahead = next && p.nextUrl ? { id: next, url: p.nextUrl } : null;
+      if (!url) loadRoomSong(p.url, start);
+    },
+    (e: unknown) => {
+      if (mine === asked) roomSongRefused(e, track, start);
+    },
+  );
+}
+
+/** The room's song from its link, gone on to where the room is once the element knows enough of it */
+function loadRoomSong(url: string, start: number) {
+  const a = element();
+  const mine = ++loads;
+  holding = "song";
+  catching = false;
+  a.src = url;
+  setRate(a, 1);
+  // joining part way, or a slow network: once it can play, to where the room is by then
+  const catchUp = () => {
+    if (mine !== loads || a.seeking) return;
+    const want = (serverNow() - start) / 1000;
+    if (want > DRIFT_OK_S && Math.abs(a.currentTime - want) > DRIFT_OK_S) a.currentTime = want;
+  };
+  a.addEventListener("loadedmetadata", catchUp, { once: true });
+  a.addEventListener("canplay", catchUp, { once: true });
+  a.play().catch((e: unknown) => {
+    if (mine === loads && (e as { name?: string } | null)?.name === "NotAllowedError") {
+      unlocked = false;
+      change({ status: "paused", buffering: false, tap: true });
+    }
+  });
+}
+
+/** A room's song refused: the player says why; not tried again until ▶, or a while when the network gave way */
+function roomSongRefused(e: unknown, track: ListenTrack, start: number) {
+  const first = e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded;
+  if (!first && !(e instanceof WorldError)) console.error(e);
+  stuck = { start, until: first || e instanceof ListenRefused ? Infinity : Date.now() + RETRY_MS };
+  if (holding === "song" || holding === "gap") {
+    ++loads;
+    holding = null;
+    audio?.pause();
+  }
+  current = null;
+  const message = e instanceof WorldError ? e.message : T.map.common.tryAgain;
+  player.set({ ...IDLE, track, status: "paused", problem: first ? null : { message, code: e instanceof ListenRefused ? e.code : null } });
+  if (first) refusedTo?.(e as WorldError);
+}
+
+/** In step with the room: want is where it is (seconds into the song) */
+function keepUpNow(a: HTMLAudioElement, want: number) {
+  if (a.paused || a.seeking || a.readyState < 3) return;
+  const k = keepUp(a.currentTime - want, catching);
+  if (k === "seek") {
+    catching = false;
+    setRate(a, 1);
+    a.currentTime = want;
+    return;
+  }
+  catching = k.rate !== 1;
+  setRate(a, k.rate);
+}
+
+function setRate(a: HTMLAudioElement, rate: number) {
+  try {
+    if (a.playbackRate !== rate) a.playbackRate = rate;
+  } catch {}
+}
+
+/** ▶ or ⏸ in a room: ⏸ pauses only you; ▶ goes back to where everyone is now */
+function roomToggle() {
+  const v = player.get();
+  if (v.status === "playing" || v.status === "starting") {
+    selfPaused = true;
+    ++asked;
+    clearTimeout(gapTimer);
+    audio?.pause();
+    if (holding === "gap") holding = null;
+    change({ status: "paused", buffering: false });
+    state("paused");
+    return say(T.listen.pausedSelf);
+  }
+  const r = room.get()!;
+  const at = roomPlace(r);
+  // before it starts the host's ▶ is 开始; after its last song, a line on what comes next
+  if (!at || at.phase === "ready") return r.host ? void hostQueue("start") : say(T.listen.waitStart);
+  if (at.phase === "done") return say(r.host ? T.listen.doneHost : T.listen.waitMore);
+  if (isGray()) return;
+  const was = selfPaused;
+  selfPaused = false;
+  stuck = null;
+  // back from a pause of your own, or in at last on a page opened again: where everyone is
+  if (was || v.tap) say(fmt(was ? T.listen.jumped : T.listen.following, { at: clock(Math.max(0, at.offset)) }));
+  const a = element();
+  if (holding === "song" && current?.start === at.start && !a.ended && at.offset >= 0) {
+    // the same song, still in the element: on from where the room is, within the tap
+    quietOthers();
+    unlocked = true;
+    change({ status: "starting", buffering: true, tap: false, problem: null });
+    if (Math.abs(a.currentTime - at.offset) > DRIFT_OK_S) a.currentTime = at.offset;
+    a.play().catch((e: unknown) => {
+      if ((e as { name?: string } | null)?.name === "NotAllowedError") {
+        unlocked = false;
+        change({ status: "paused", buffering: false, tap: true });
+      }
+    });
+    return;
+  }
+  unlockNow();
+  syncRoom();
+}
+
+/** What the room's songs did, as the room is told, or as the host's tap answered: a line for everyone in it */
+function announce(how: "start" | "next" | "restart" | "add", was: ListenRoom, now: ListenRoom) {
+  const song = tracks()?.get(now.queue[now.idx] ?? "")?.name;
+  if (!song) return;
+  if (how === "start") sys(fmt(T.listen.started, { song }));
+  else if (how === "next") sys(fmt(T.listen.nextSong, { song }));
+  else if (how === "restart") sys(fmt(T.listen.restarted, { song }));
+  // one added after all of them were over starts at once; otherwise it waits its turn, unannounced
+  else if (now.startedAt !== null && now.startedAt !== was.startedAt) sys(fmt(T.listen.nextSong, { song }));
+}
+
+const rxText = (r: number) => T.listen.rx.flat()[r] ?? null;
+
+/** A 短评 from the room's number h: the same one within RX_MERGE_MS of the first shows once, ×N */
+function showRx(r: ListenRoom, h: number, x: number) {
+  const text = rxText(x);
+  if (!text) return;
+  const t = Date.now();
+  const all = bubbles.get();
+  const same = all.find((b) => b.r === x && t - b.first <= RX_MERGE_MS);
+  if (same) {
+    const n = same.n + 1;
+    return put([...all.filter((b) => b !== same), { ...same, key: ++bubbleKeys, n, text: fmt(T.listen.rxMany, { text, n }), kind: "agg" }]);
+  }
+  // yours as 你; the room's number for someone not in its list yet (just in, the list not asked again): the 短评 alone
+  const who = h === r.you ? T.listen.rxYou : r.members.find((m) => m.h === h)?.card.displayName;
+  const line = who ? fmt(T.listen.rxSay, { name: who, text }) : text;
+  put([...all, { key: ++bubbleKeys, text: line, kind: h === r.you ? "me" : "rx", r: x, n: 1, first: t }]);
+}
+
+/** What happened in the room, floating as a 短评 does */
+function sys(text: string) {
+  put([...bubbles.get(), { key: ++bubbleKeys, text, kind: "sys", r: null, n: 1, first: Date.now() }]);
+}
+
+function put(list: Bubble[]) {
+  const shown = list.slice(-BUBBLES_KEPT);
+  bubbles.set(shown);
+  const key = shown[shown.length - 1]?.key;
+  if (key === undefined) return;
+  setTimeout(() => {
+    const now = bubbles.get();
+    if (now.some((b) => b.key === key)) bubbles.set(now.filter((b) => b.key !== key));
+  }, RX_SHOW_MS + 200);
+}
+
+/** What the room is told on the page's event stream (event: listen), as it came */
+export function heardListen(raw: unknown) {
+  let d: ListenTell | null = null;
+  try {
+    d = (typeof raw === "string" ? JSON.parse(raw) : raw) as ListenTell;
+  } catch {
+    return;
+  }
+  const r = room.get();
+  if (!d || typeof d !== "object" || !r || d.room !== r.id) return;
+  if (d.t === "state") {
+    if (!Array.isArray(d.queue) || !(d.version > r.version)) return;
+    const next = { ...r, queue: d.queue, idx: d.idx, startedAt: d.startedAt, version: d.version };
+    room.set(next);
+    announce(d.how, r, next);
+    return syncRoom();
+  }
+  if (d.t === "members") return membersLater();
+  if (d.t === "rx") {
+    for (const x of Array.isArray(d.items) ? d.items : []) if (x.h !== r.you && isRx(x.r)) showRx(r, x.h, x.r);
+    return;
+  }
+  if (d.t === "end") return roomOver(endNote(d.why, r));
+}
+
+/** What the room's end says, to someone in it */
+function endNote(why: RoomEnd, r: ListenRoom): string | null {
+  if (why === "host") return r.host ? null : fmt(T.listen.endedHost, { name: r.hostName });
+  if (why === "admin") return T.listen.endedAdmin;
+  if (why === "idle") return T.listen.endedIdle;
+  return null;
+}
+
+/** Who is in the room changed: asked again in a moment, each page at its own */
+function membersLater() {
+  if (membersTimer !== undefined) return;
+  const [lo, hi] = MEMBERS_AFTER_MS;
+  membersTimer = setTimeout(
+    () => {
+      membersTimer = undefined;
+      void loadRoom();
+    },
+    lo + Math.random() * (hi - lo),
+  );
+}
+
+/** Out of the room: its song fades out, and nothing of it is left; note: what the page says of it */
+function roomOver(note: string | null) {
+  if (!room.get()) return;
+  ++roomAsked;
+  ++asked;
+  room.set(null);
+  stopBeat();
+  clearTimeout(gapTimer);
+  clearTimeout(membersTimer);
+  membersTimer = undefined;
+  clearTimeout(rxTimer);
+  selfPaused = false;
+  catching = false;
+  ahead = null;
+  stuck = null;
+  syncedAt = "";
+  bubbles.set(NO_BUBBLES);
+  rxNow.set(RX_FREE);
+  const a = audio;
+  const sounding = Boolean(a && (holding === "song" || holding === "gap") && !a.paused);
+  holding = null;
+  current = null;
+  player.set(IDLE);
+  second.set(0);
+  meta(null);
+  stopCounting();
+  if (a && sounding) fadeOut(a, END_FADE_MS);
+  else if (a) {
+    ++loads;
+    a.pause();
+  }
+  roomEnd.set(note);
+  if (note) say(note);
+}
+
+function startBeat() {
+  if (beat === null) beat = setInterval(onBeat, 1_000);
+}
+
+function stopBeat() {
+  if (beat !== null) clearInterval(beat);
+  beat = null;
+}
+
+/** Every second in a room: the bar follows its clock; in step every SYNC_EVERY_MS, every second while catching up */
+function onBeat() {
+  const r = room.get();
+  if (!r) return stopBeat();
+  const at = roomPlace(r);
+  if (!at) return;
+  if (at.phase === "playing") second.set(Math.max(0, Math.floor(at.offset)));
+  if (placeKey(at) !== syncedAt || Date.now() - checkedAt >= (catching ? 1_000 : SYNC_EVERY_MS)) syncRoom();
+}
+
+/** An action refused: what the server asks first goes to the map page, anything else is said */
+function failed(e: unknown) {
+  if (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded) return refusedTo?.(e);
+  if (!(e instanceof WorldError)) console.error(e);
+  say(e instanceof WorldError ? e.message : T.map.common.tryAgain);
+}
+
+/** The room you are in, asked of the server: on a page opened again in one, after who is in it changed, back in view */
+export function loadRoom(): Promise<void> {
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  return listenApi.room().then(
+    (res) => {
+      if (mine !== roomAsked) return;
+      if (res.room) return void enter(res.room, sent, Date.now(), res.now);
+      // it ended while this page was not told (asleep, offline)
+      roomOver(T.listen.endedIdle);
+    },
+    (e: unknown) => {
+      if (mine === roomAsked && (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded)) refusedTo?.(e);
+    },
+  );
+}
+
+/**
+ * A room of your own, song first (null: 新歌's first, as the server has it), with invitations to these 触须之交 (their
+ * Friend ids); within the tap. null: refused
+ */
+export async function openRoomWith(song: string | null, invite: string[]): Promise<InviteSent[] | null> {
+  if (isGray()) return null;
+  unlockNow();
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  try {
+    const res = await listenApi.open(song, invite);
+    if (res.room && mine === roomAsked) enter(res.room, sent, Date.now(), res.now);
+    return res.sent;
+  } catch (e) {
+    failed(e);
+    return null;
+  }
+}
+
+/** More invitations to your room. null: refused */
+export async function inviteMore(friends: string[]): Promise<InviteSent[] | null> {
+  const sent = Date.now();
+  try {
+    const res = await listenApi.invite(friends);
+    if (res.room) enter(res.room, sent, Date.now(), res.now);
+    return res.sent;
+  } catch (e) {
+    failed(e);
+    return null;
+  }
+}
+
+/** In at an invitation to you (its id, without 消息's li:); within the tap */
+export async function joinAt(invite: string): Promise<boolean> {
+  if (isGray()) return false;
+  unlockNow();
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  try {
+    const res = await listenApi.join(invite);
+    if (mine !== roomAsked) return true;
+    enter(res.room, sent, Date.now(), res.now);
+    const at = roomPlace(res.room);
+    if (at?.phase === "playing" && at.offset >= 1) say(fmt(T.listen.following, { at: clock(at.offset) }));
+    return true;
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+}
+
+/** 下次吧 */
+export async function laterAt(invite: string): Promise<boolean> {
+  try {
+    await listenApi.later(invite);
+    return true;
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+}
+
+/** Out of the room: the host's 结束 ends it, anyone else's 离开 goes on without them */
+export async function leaveListen(): Promise<boolean> {
+  const r = room.get();
+  if (!r) return true;
+  try {
+    await (r.host ? listenApi.end() : listenApi.leave());
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+  roomOver(r.host ? null : fmt(T.listen.leftNote, { name: r.hostName }));
+  return true;
+}
+
+/** What the host does to the room's songs: 开始, 下一首, 这首从头再来, or one added (点歌); within the tap */
+export async function hostQueue(what: QueueChange): Promise<boolean> {
+  const r = room.get();
+  if (!r?.host) return false;
+  if (typeof what !== "object") {
+    // the host means to hear it: a pause of their own is over
+    selfPaused = false;
+    stuck = null;
+    unlockNow();
+  }
+  const sent = Date.now();
+  try {
+    const res = await listenApi.queue(what);
+    // as the room is now: the event stream may have told it the change before this answer came
+    const told = room.get();
+    if (!res.room || !told) return true;
+    if (enter(res.room, sent, Date.now(), res.now)) announce(typeof what === "object" ? "add" : what, told, room.get()!);
+    if (typeof what === "object") {
+      const after = room.get()!;
+      const name = tracks()?.get(what.add)?.name;
+      // one that waits its turn: the host is told it is in; one that started at once has its line already
+      if (name && !(after.startedAt !== null && after.startedAt !== r.startedAt)) say(fmt(T.listen.added, { name }));
+    }
+    return true;
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+}
+
+/** A 短评 in the room, by its number: shown here at once, then to everyone in it; one every RX_EVERY_MS */
+export function sendRx(x: number) {
+  const r = room.get();
+  const s = rxNow.get();
+  if (!r || !isRx(x) || s.cool || s.full) return;
+  rxNow.set({ cool: true, full: false });
+  clearTimeout(rxTimer);
+  rxTimer = setTimeout(() => rxNow.set({ ...rxNow.get(), cool: false }), RX_EVERY_MS);
+  showRx(r, r.you, x);
+  listenApi.react(x).then(
+    (res) => {
+      if (!res.sent && res.full && room.get()?.id === r.id) rxNow.set({ ...rxNow.get(), full: true });
+    },
+    () => {},
+  );
+}
+
+/** Your 触须之交 you may invite; null: they could not be asked for (said) */
+export async function listenFriendsList(): Promise<ListenFriend[] | null> {
+  try {
+    return (await listenApi.friends()).friends;
+  } catch (e) {
+    failed(e);
+    return null;
+  }
+}
+
+/** The page's event stream is back after a drop: what the room was told meanwhile is lost, so it is asked again */
+export function listenStreamBack() {
+  if (room.get()) void loadRoom();
 }
 
 // ---- kept for the page opened again ----
@@ -494,7 +1242,8 @@ function onLeave() {
 function save() {
   savedAt = Date.now();
   const v = player.get();
-  if (!v.track || v.status === "idle" || ended) return forgetSaved();
+  // a room's song is the room's: a page opened again finds the room itself
+  if (room.get() || !v.track || v.status === "idle" || ended) return forgetSaved();
   try {
     sessionStorage.setItem(SAVED_KEY, JSON.stringify({ song: v.track.id, at: Math.floor(lastAt), t: savedAt }));
   } catch {}
@@ -509,7 +1258,7 @@ function forgetSaved() {
 function offerSaved() {
   const v = player.get();
   const all = tracks();
-  if (!all || v.track || v.status !== "idle") return;
+  if (!all || v.track || v.status !== "idle" || room.get()) return;
   let was: { song?: unknown; at?: unknown; t?: unknown } | null = null;
   try {
     was = JSON.parse(sessionStorage.getItem(SAVED_KEY) ?? "null");
@@ -532,16 +1281,17 @@ function handle(action: MediaSessionAction, fn: (() => void) | null) {
   } catch {}
 }
 
-/** What the lock screen shows (no cover), and its buttons: play and pause, and next where the album has one */
+/** What the lock screen shows (no cover), and its buttons: play and pause, and next where the album has one (in a room, for the host) */
 function meta(track: ListenTrack | null) {
   const ms = session();
   if (!ms) return;
   try {
     ms.metadata = track ? new MediaMetadata({ title: track.name, artist: track.artists.join(" / "), album: track.album.name }) : null;
   } catch {}
+  const r = room.get();
   handle("play", track ? () => !isListening() && toggle() : null);
   handle("pause", track ? () => isListening() && toggle() : null);
-  handle("nexttrack", track && nextOnAlbum(track) ? skip : null);
+  handle("nexttrack", track && (r ? r.host : nextOnAlbum(track)) ? skip : null);
   for (const action of ["previoustrack", "seekbackward", "seekforward", "seekto", "stop"] as const) handle(action, null);
   if (!track) ms.playbackState = "none";
 }
@@ -560,6 +1310,12 @@ function state(s: MediaSessionPlaybackState) {
 export function forgetListening() {
   ++asked;
   ++loads;
+  ++roomAsked;
+  stopBeat();
+  clearTimeout(gapTimer);
+  clearTimeout(membersTimer);
+  membersTimer = undefined;
+  clearTimeout(rxTimer);
   audio = null;
   holding = null;
   current = null;
@@ -573,7 +1329,19 @@ export function forgetListening() {
   offset = 0;
   songsAt = 0;
   introHere = null;
+  unlocked = false;
+  selfPaused = false;
+  catching = false;
+  ahead = null;
+  stuck = null;
+  checkedAt = 0;
+  syncedAt = "";
+  backAt = 0;
   player.set(IDLE);
   songs.set(NONE);
   second.set(0);
+  room.set(null);
+  bubbles.set(NO_BUBBLES);
+  rxNow.set(RX_FREE);
+  roomEnd.set(null);
 }

@@ -4,6 +4,7 @@ import { fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { GUIDES } from "@/lib/guides";
 import { siteName } from "@/lib/rules";
+import { useInListenRoom } from "../listening";
 import { NoticeButton } from "../NoticeBoard";
 import {
   ActButtons,
@@ -24,6 +25,7 @@ import {
   TicketIcon,
   UiIcon,
   useListenEntry,
+  listenWord,
   useSwipeAway,
   VisitorButtons,
   WaitingButton,
@@ -46,7 +48,9 @@ export default function FloatChrome(p: ChromeProps) {
   // the right-hand column makes room for the 站长's panel of reported roaches, and neither side shows while placing
   const sides = !p.placing && !p.reported;
   const ui = sides && !p.tutorial ? p.ui : null;
-  const listen = sides && !p.tutorial ? p.listen : null;
+  // through the tutorial too while you are in a room of 一起听: the way back to it
+  const inRoom = useInListenRoom();
+  const listen = sides && (!p.tutorial || inRoom) ? p.listen : null;
   return (
     <div className="chrome chrome-float">
       <header className="isle isle-l glass" data-chrome-top>
@@ -176,15 +180,16 @@ function ListenTile({ listen, folded }: { listen: NonNullable<ChromeProps["liste
   const e = useListenEntry();
   return (
     <button
-      className={`ui-tile listen-tile glass${e.on ? " listen-on" : ""}${listen.open ? " pressed" : ""}`}
-      aria-label={listenLabel(e.on, e.track)}
+      className={`ui-tile listen-tile glass${e.lit ? " listen-on" : ""}${listen.open ? " pressed" : ""}`}
+      aria-label={listenLabel(e)}
       aria-haspopup="dialog"
       aria-expanded={listen.open}
       tabIndex={folded ? -1 : undefined}
       onClick={listen.onToggle}
+      data-listen-anchor={folded ? undefined : "right"}
     >
       <ListenIcon on={e.on} size={26} />
-      <small aria-hidden="true">{e.on ? T.map.bar.listenNow : T.map.bar.listen}</small>
+      <small aria-hidden="true">{listenWord(e)}</small>
       {e.fresh && (
         <span className="listen-new" aria-hidden="true">
           {T.map.bar.listenNew}
@@ -196,9 +201,9 @@ function ListenTile({ listen, folded }: { listen: NonNullable<ChromeProps["liste
 
 /** On the handle the left side folds away to: a small note, yellow while a song plays */
 function ListenMark() {
-  const { on } = useListenEntry();
+  const { lit } = useListenEntry();
   return (
-    <span className={`listen-mark${on ? " on" : ""}`}>
+    <span className={`listen-mark${lit ? " on" : ""}`}>
       <NoteIcon size={16} />
     </span>
   );
@@ -260,7 +265,7 @@ export function CountsLine({ counts: c }: { counts: Counts }) {
 function BottomBar(p: ChromeProps) {
   if (p.me) {
     return (
-      <div className="bar glass">
+      <div className="bar glass" data-chrome-bottom>
         <MeSlots me={p.me} />
         <ActButtons me={p.me} />
       </div>
@@ -268,14 +273,14 @@ function BottomBar(p: ChromeProps) {
   }
   if (p.waiting) {
     return (
-      <div className="bar glass solo">
+      <div className="bar glass solo" data-chrome-bottom>
         <WaitingButton waiting={p.waiting} />
       </div>
     );
   }
   if (p.visitor) {
     return (
-      <div className="bar glass solo">
+      <div className="bar glass solo" data-chrome-bottom>
         <VisitorButtons visitor={p.visitor} />
       </div>
     );

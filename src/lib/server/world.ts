@@ -149,7 +149,8 @@ import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
-import { listenMe } from "./listen";
+import { listenMe, listenOpen } from "./listen";
+import { listenInbox, seeListenInvites } from "./listenRooms";
 import { studyMe } from "./study";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
@@ -454,7 +455,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     passwordNudge: await passwordNudge(u),
     passes: await passesMe(u),
     study: studyMe(u),
-    listen: listenMe(u),
+    listen: await listenMe(u),
   };
 }
 
@@ -1296,6 +1297,8 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
     });
   }
   if (self) items.push(...(await friendlyInbox(self, blocked)));
+  // invitations to 一起听, while this player may listen
+  if (self && listenOpen(self)) items.push(...(await listenInbox(userId, blocked)));
   for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
   items.push(...(await staffItems(userId, since)));
   return items.sort((x, y) => y.at - x.at);
@@ -1378,6 +1381,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
   }
   for (const id of GUIDE_IDS) await GUIDE_WORLD[id].see(userId, itemIds);
   await seeFriendly(userId, itemIds);
+  await seeListenInvites(userId, itemIds);
   await seeStaff(userId, itemIds);
   const p = ids("p:");
   if (p.length) {

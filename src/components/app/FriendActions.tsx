@@ -3,8 +3,10 @@
 import type { ReactNode } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import { FRIEND_ACTS_PER_DAY, GESTURE_DONE, GESTURE_NAMES, isAwakeGesture, type Gesture } from "@/lib/friendly";
+import { INVITES_PER_DAY } from "@/lib/listen";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { FriendBetween } from "@/lib/world/types";
+import { NoteIcon } from "./chrome/parts";
 
 /** One button of the row: 做客, 催理智, 戳一戳, or one of the gestures */
 export type FriendAct = "visit" | "sanity" | "poke" | Gesture;
@@ -92,7 +94,8 @@ const NAMES: Record<FriendAct, string> = {
  * 做客 · 催理智 · 贴贴 · 击掌 · 吸欧气; their main roach asleep: 做客 · 催理智 · 戳一戳 ·
  * 盖被子 · 放杯白开水. 催理智 and the gestures share FRIEND_ACTS_PER_DAY a day and all turn grey
  * once those are used; 催理智 once a day, 盖被子 and 放杯白开水 once a sleep. Under it, while TA
- * may be given 寻访券 (between.gift): 送 1 张寻访券, none of the day's FRIEND_ACTS_PER_DAY, once a day.
+ * may be given 寻访券 (between.gift): 送 1 张寻访券, none of the day's FRIEND_ACTS_PER_DAY, once a day. While you may
+ * both listen (between.listen): 邀请一起听, none of them either (INVITES_PER_DAY times a day).
  */
 export default function FriendActions({
   between,
@@ -101,6 +104,7 @@ export default function FriendActions({
   busy = false,
   onAct,
   onGift,
+  onListen,
 }: {
   between: FriendBetween;
   /** You poked them lately: when you may again */
@@ -113,6 +117,8 @@ export default function FriendActions({
   onAct: (act: FriendAct, at: { x: number; y: number }) => void;
   /** 送 1 张寻访券 (src/lib/passes.ts) */
   onGift?: () => void;
+  /** 邀请一起听 (src/components/app/listening.ts); within the tap, as it may open a room */
+  onListen?: () => void;
 }) {
   const now = Date.now();
   const days = (t: number) => Math.max(1, Math.ceil((t - now) / 86_400_000));
@@ -176,6 +182,15 @@ export default function FriendActions({
             {between.gift === "given" ? T.friendActs.giftGiven : between.gift === "full" ? T.friendActs.giftFull : T.friendActs.gift}
           </button>
           <span>{fmt(T.friendActs.giftFree, { n: FRIEND_ACTS_PER_DAY })}</span>
+        </div>
+      )}
+      {between.listen && onListen && (
+        <div className="friend-gift">
+          <button type="button" className="listen-pill" disabled={busy} onClick={onListen}>
+            <NoteIcon size={14} />
+            {T.friendActs.listen}
+          </button>
+          <span>{fmt(T.friendActs.listenFree, { n: INVITES_PER_DAY })}</span>
         </div>
       )}
       {notes.map((n) => (

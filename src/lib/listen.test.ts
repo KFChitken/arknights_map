@@ -1,15 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
+  changeQueue,
   clock,
+  DRIFT_RATE,
   freshSongs,
   indexCatalog,
+  isRx,
+  keepUp,
   LISTEN_GRACE_MS,
   listeningUntil,
   nextOnAlbum,
   NEW_MAX,
+  QUEUE_MAX,
+  ROOM_GAP_MS,
+  ROOM_LEAD_MS,
+  roomAt,
+  RX_COUNT,
+  RX_ROOM_FROM,
+  RX_ROWS,
   songMatches,
   type ListenAlbum,
   type ListenCatalog,
+  type RoomSchedule,
 } from "./listen";
 
 const album = (id: string, name: string, n: number, artists?: string[]): ListenAlbum => ({
@@ -65,5 +77,78 @@ describe("听歌's list", () => {
     expect(listeningUntil(100, 500, now)).toBe(now + LISTEN_GRACE_MS);
     expect(listeningUntil(100, -5, now)).toBe(now + 100_000 + LISTEN_GRACE_MS);
     expect(listeningUntil(100, Number.NaN, now)).toBe(now + 100_000 + LISTEN_GRACE_MS);
+  });
+});
+
+describe("一起听's schedule", () => {
+  // three songs of 100, 50 and 30 seconds; z is not known (it lasts nothing)
+  const len: Record<string, number> = { a: 100, b: 50, c: 30 };
+  const seconds = (id: string) => len[id] ?? Number.NaN;
+  const t0 = 1_000_000;
+  const room = (queue: string[], startedAt: number | null, idx = 0, version = 1): RoomSchedule => ({ queue, idx, startedAt, version });
+
+  it("waits for the host, then plays each song after the one before and two seconds", () => {
+    expect(roomAt(room(["a", "b"], null), seconds, t0)).toEqual({ phase: "ready" });
+    expect(roomAt(room(["a", "b"], t0 + 1000), seconds, t0)).toEqual({ phase: "playing", i: 0, start: t0 + 1000, offset: -1 });
+    expect(roomAt(room(["a", "b"], t0), seconds, t0 + 40_500)).toEqual({ phase: "playing", i: 0, start: t0, offset: 40.5 });
+    const second = t0 + 100_000 + ROOM_GAP_MS;
+    // in the gap the next one is the one to come, not yet started
+    expect(roomAt(room(["a", "b"], t0), seconds, t0 + 101_000)).toEqual({ phase: "playing", i: 1, start: second, offset: -1 });
+    expect(roomAt(room(["a", "b"], t0), seconds, second + 10_000)).toEqual({ phase: "playing", i: 1, start: second, offset: 10 });
+    expect(roomAt(room(["a", "b"], t0), seconds, second + 50_000)).toEqual({ phase: "done", end: second + 50_000 });
+  });
+
+  it("goes from idx on, and passes over a song it does not know", () => {
+    expect(roomAt(room(["a", "b", "c"], t0, 1), seconds, t0 + 49_000)).toMatchObject({ phase: "playing", i: 1, offset: 49 });
+    expect(roomAt(room(["a", "z", "c"], t0), seconds, t0 + 100_000 + 2 * ROOM_GAP_MS + 5_000)).toMatchObject({ phase: "playing", i: 2, offset: 5 });
+    expect(roomAt(room(["z"], t0), seconds, t0)).toEqual({ phase: "done", end: t0 });
+  });
+
+  it("starts the room, the next song or this one again a second from now, as everyone counts from", () => {
+    const now = t0 + 30_000;
+    expect(changeQueue(room(["a", "b"], null), "start", seconds, now)).toEqual(room(["a", "b"], now + ROOM_LEAD_MS, 0, 2));
+    expect(changeQueue(room(["a", "b"], t0), "start", seconds, now)).toBe("same");
+    expect(changeQueue(room(["a", "b", "c"], t0), "next", seconds, now)).toEqual(room(["b", "c"], now + ROOM_LEAD_MS, 0, 2));
+    expect(changeQueue(room(["a", "b", "c"], t0), "restart", seconds, now)).toEqual(room(["a", "b", "c"], now + ROOM_LEAD_MS, 0, 2));
+    expect(changeQueue(room(["a"], t0), "next", seconds, now)).toBe("noNext");
+    expect(changeQueue(room(["a"], null), "restart", seconds, now)).toBe("same");
+  });
+
+  it("drops what has played as the host changes it, so every phone goes on where it was", () => {
+    // b plays (from t0 + 102 s); a is dropped, and b keeps its start
+    const now = t0 + 120_000;
+    const b = t0 + 100_000 + ROOM_GAP_MS;
+    const added = changeQueue(room(["a", "b"], t0), { add: "c" }, seconds, now);
+    expect(added).toEqual(room(["b", "c"], b, 0, 2));
+    expect(roomAt(added as RoomSchedule, seconds, now)).toEqual({ phase: "playing", i: 0, start: b, offset: 18 });
+    expect(roomAt(room(["a", "b"], t0), seconds, now)).toEqual({ phase: "playing", i: 1, start: b, offset: 18 });
+  });
+
+  it("adds at the end while songs are left, and plays one added after all of them at once", () => {
+    expect(changeQueue(room(["a"], null), { add: "b" }, seconds, t0)).toEqual(room(["a", "b"], null, 0, 2));
+    const over = t0 + 200_000;
+    expect(changeQueue(room(["a", "b"], t0), { add: "c" }, seconds, over)).toEqual(room(["c"], over + ROOM_LEAD_MS, 0, 2));
+    expect(changeQueue(room(["a", "b"], t0), "restart", seconds, over)).toEqual(room(["b"], over + ROOM_LEAD_MS, 0, 2));
+    const full = room(Array.from({ length: QUEUE_MAX }, () => "a"), null);
+    expect(changeQueue(full, { add: "b" }, seconds, t0)).toBe("full");
+  });
+
+  it("keeps a phone in step: a little faster or slower when a little off, until close, and a jump when far off", () => {
+    expect(keepUp(0.1)).toEqual({ rate: 1 });
+    expect(keepUp(0.4)).toEqual({ rate: 1 - DRIFT_RATE });
+    expect(keepUp(-1.9)).toEqual({ rate: 1 + DRIFT_RATE });
+    // once catching up, on until within a twentieth of a second
+    expect(keepUp(0.1, true)).toEqual({ rate: 1 - DRIFT_RATE });
+    expect(keepUp(-0.04, true)).toEqual({ rate: 1 });
+    expect(keepUp(2.5)).toBe("seek");
+    expect(keepUp(-30, true)).toBe("seek");
+    expect(keepUp(Number.NaN)).toEqual({ rate: 1 });
+  });
+
+  it("knows 短评 by number: nineteen in three rows, the last row only for a room", () => {
+    expect(RX_ROWS.reduce((n, x) => n + x, 0)).toBe(RX_COUNT);
+    expect(RX_ROOM_FROM).toBe(RX_ROWS[0] + RX_ROWS[1]);
+    expect([0, 18, 5].map(isRx)).toEqual([true, true, true]);
+    expect([-1, 19, 1.5, "3", null].map(isRx)).toEqual([false, false, false, false, false]);
   });
 });

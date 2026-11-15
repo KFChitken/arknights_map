@@ -11,7 +11,10 @@ const PING_MS = 25_000;
 // still on it waits ten minutes before asking again, so pages past the cap do not keep pushing one another out
 const GAVE_WAY_RETRY_MS = 600_000;
 
-/** Server-sent events for the signed-in player: an "inbox" event whenever something new arrives. */
+/**
+ * Server-sent events for the signed-in player: an "inbox" event whenever something new arrives (and "declare",
+ * "help"), with nothing in it; and "listen" with what their room of 一起听 did (src/lib/listen.ts ListenTell).
+ */
 export const GET = inLang(async (req: Request) => {
   const user = await currentUser();
   if (!user) return new Response(T.server.common.signIn, { status: 401 });
@@ -29,7 +32,7 @@ export const GET = inLang(async (req: Request) => {
       };
       const off = listen(
         user.id,
-        (event) => send(`event: ${event}\ndata: {}\n\n`),
+        (event, data) => send(`event: ${event}\ndata: ${data ?? "{}"}\n\n`),
         () => {
           send(`retry: ${GAVE_WAY_RETRY_MS}\n\n`);
           stop();

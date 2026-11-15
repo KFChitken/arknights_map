@@ -6,6 +6,7 @@ import { GUIDES } from "@/lib/guides";
 import { siteName } from "@/lib/rules";
 import RoachIcon from "../../RoachIcon";
 import { FriendsMark } from "../FriendsSheet";
+import { useInListenRoom } from "../listening";
 import { NoticeButton } from "../NoticeBoard";
 import {
   Chev,
@@ -18,6 +19,7 @@ import {
   HotFlame,
   ListenIcon,
   listenLabel,
+  listenWord,
   MailBadge,
   mailLabel,
   MeAvatar,
@@ -48,7 +50,9 @@ export default function HudChrome(p: ChromeProps) {
   // the columns make room for the 站长's panel of reported roaches; putting a roach down, only the plate stays
   const sides = !p.placing && !p.reported;
   const ui = sides && !p.tutorial ? p.ui : null;
-  const listen = sides && !p.tutorial ? p.listen : null;
+  // through the tutorial too while you are in a room of 一起听: the way back to it
+  const inRoom = useInListenRoom();
+  const listen = sides && (!p.tutorial || inRoom) ? p.listen : null;
   const bm = p.basemap;
   return (
     <div className="chrome chrome-hud">
@@ -214,7 +218,7 @@ export default function HudChrome(p: ChromeProps) {
       )}
 
       {!p.placing && me && (
-        <div className="act">
+        <div className="act" data-chrome-bottom>
           <span className="rb fr">
             <button className="ob glass" onClick={me.onFriends}>
               <FriendsMark size={30} arch="#fff" />
@@ -250,7 +254,9 @@ export default function HudChrome(p: ChromeProps) {
         </div>
       )}
       {!p.placing && !me && (p.waiting || p.visitor) && (
-        <div className="solo glass">{p.waiting ? <WaitingButton waiting={p.waiting} /> : p.visitor && <VisitorButtons visitor={p.visitor} />}</div>
+        <div className="solo glass" data-chrome-bottom>
+          {p.waiting ? <WaitingButton waiting={p.waiting} /> : p.visitor && <VisitorButtons visitor={p.visitor} />}
+        </div>
       )}
       {p.disclaimer}
     </div>
@@ -263,11 +269,12 @@ function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> })
   return (
     <span className="rb">
       <button
-        className={`ob glass${e.on ? " listen-on" : ""}${listen.open ? " pressed" : ""}`}
-        aria-label={listenLabel(e.on, e.track)}
+        className={`ob glass${e.lit ? " listen-on" : ""}${listen.open ? " pressed" : ""}`}
+        aria-label={listenLabel(e)}
         aria-haspopup="dialog"
         aria-expanded={listen.open}
         onClick={listen.onToggle}
+        data-listen-anchor="right"
       >
         <ListenIcon on={e.on} size={22} />
         {e.fresh && (
@@ -277,7 +284,7 @@ function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> })
         )}
       </button>
       <span className="lbl" aria-hidden="true">
-        {e.on ? T.map.bar.listenNow : T.map.bar.listen}
+        {listenWord(e)}
       </span>
     </span>
   );

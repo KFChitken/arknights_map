@@ -466,6 +466,9 @@
 .ac-confirm span { flex: 1 1 260px; font-size: 13px; color: #6b4100; }
 .ac-inline-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .ac .ac-inline-form input:not([type="checkbox"]) { flex: 1 1 220px; width: auto; }
+/* a number of a few digits: its words stay on one line beside it */
+.ac .ac-num-form input:not([type="checkbox"]) { flex: 0 0 110px; }
+.ac .ac-num-form .ac-inline-label { white-space: nowrap; }
 .ac-result { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: #f7f8fa; font-size: 13px; overflow-wrap: anywhere; }
 
 /* ---- 管理员 (the owner's) ---- */

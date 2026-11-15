@@ -66,6 +66,93 @@
 .lp-note { margin: 18px 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; text-align: center; }
 .lp-retry { display: block; margin: 8px auto 0; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; }
 .lp-foot { margin: 0; color: #8a8f99; font-size: 11.5px; text-align: center; }
+.lp-note.left { margin: 10px 0; text-align: left; }
+.lp-note.small { margin: 8px 0; font-size: 12.5px; }
+
+/* the two tabs, 一起听 and the songs; a dot on 一起听 while you are in a room */
+.lp-tabs { display: flex; gap: 4px; margin: 2px 0 8px; padding: 3px; border-radius: 10px; background: #f1f2f4; }
+.lp-tabs button {
+  position: relative; flex: 1; padding: 8px 0; border: 0; border-radius: 8px; background: none; color: #4b5260;
+  font-size: 14px; font-weight: 700;
+}
+.lp-tabs button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px #0002; }
+.lp-tabs .dot { position: absolute; top: 6px; right: 18%; width: 7px; height: 7px; border-radius: 50%; background: #18a0a5; }
+
+/* in a room: the host's ＋ by a song, and a song anyone else only looks at */
+.lp-row .go.add { border-color: #18a0a5; color: #0f7f83; font-size: 18px; font-weight: 700; line-height: 1; }
+div.lp-row { cursor: default; }
+
+/* ---- 一起听 ---- */
+.lt, .lr { padding: 2px 0 8px; }
+.lt-big {
+  display: block; width: 100%; margin: 10px 0 0; padding: 12px 0; border: 0; border-radius: 12px; background: var(--accent);
+  color: var(--ink); font-size: 15px; font-weight: 800;
+}
+.lt-big.ghost { background: #f1f2f4; color: #4b5260; font-weight: 700; }
+.lt-big:disabled { opacity: 0.45; }
+/* what the invitations came to */
+.lr-said { margin: 4px 0 10px; padding: 9px 12px; border-radius: 10px; background: #e6f6f6; color: #0b6366; font-size: 13px; line-height: 1.5; }
+
+/* the room: how many, the host's 邀请 and 结束 (anyone else's 离开) */
+.lr-head { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.lr-head b { flex: 1; font-size: 15.5px; }
+.lr-mini {
+  padding: 6px 13px; border: 1px solid #e1e3e8; border-radius: 999px; background: #fff; color: var(--ink);
+  font-size: 13px; font-weight: 700;
+}
+.lr-mini.warn { color: #b23a3a; }
+.lr-mini:disabled { opacity: 0.45; }
+
+/* who is in it, and who was invited: swiped sideways */
+.lr-ppl { display: flex; gap: 4px; margin-bottom: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.lr-ppl::-webkit-scrollbar { display: none; }
+.lr-pp { display: flex; flex: none; flex-direction: column; align-items: center; gap: 3px; width: 68px; padding: 4px 0 3px; text-align: center; }
+.lp-av {
+  display: grid; place-items: center; flex: none; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; background: #f1f2f4;
+  box-shadow: 0 0 0 2px #d5d8de;
+}
+.lr-pp b { max-width: 66px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.lr-pp small { color: #8a8f99; font-size: 11px; }
+.lr-pp.waiting small { color: #0f7f83; }
+.lr-pp.missed .lp-av, .lr-pp.left .lp-av, .lr-pp.kicked .lp-av { opacity: 0.45; }
+
+/* what plays: 第一首, 正在一起听, 歌单放完了 (and an invitation to you, before any room) */
+.lr-now { margin-bottom: 8px; padding: 11px 12px; border-radius: 12px; background: #f6f7f9; }
+.lr-now .lbl { display: block; color: #0f7f83; font-size: 12px; font-weight: 800; }
+.lr-now b { display: block; margin-top: 1px; font-size: 16.5px; line-height: 1.35; }
+.lr-now small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.lr-now .lp-note { margin-bottom: 0; }
+.lr-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #4b5260; font-size: 12px; font-variant-numeric: tabular-nums; }
+.lr-bar .track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; }
+.lr-bar .fill { display: block; height: 100%; background: #18a0a5; }
+.lr-hostbtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.lr-queue { margin: 8px 0 6px; color: #4b5260; font-size: 13px; line-height: 1.5; }
+
+/* the 短评, row by row (the room's own in teal) */
+.lr-rxh { margin: 14px 0 4px; color: #4b5260; font-size: 13px; font-weight: 800; }
+.lr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.lr-chip {
+  padding: 6px 12px; border: 1px solid #e1e3e8; border-radius: 999px; background: #f7f8f9; color: var(--ink);
+  font-size: 14px; font-weight: 700;
+}
+.lr-chip.room { border-color: #bfe6e7; background: #e6f6f6; color: #0b6366; }
+.lr-chip:disabled { opacity: 0.45; }
+
+/* whom to invite: ticked one by one */
+.lpk { margin: 4px 0 2px; }
+.lpk-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 0; border: 0; border-bottom: 1px solid #f0f1f3;
+  background: none; color: var(--ink); text-align: left;
+}
+.lpk-ck {
+  display: grid; place-items: center; flex: none; width: 22px; height: 22px; border: 1.5px solid #c5c9d0; border-radius: 6px;
+  font-size: 14px; font-weight: 800;
+}
+.lpk-row.on .lpk-ck { border-color: var(--ink); background: var(--ink); color: var(--accent); }
+.lpk-who { flex: 1; min-width: 0; }
+.lpk-who b { display: block; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.lpk-who small { color: #8a8f99; font-size: 12px; }
+.lpk-row:disabled { opacity: 0.5; }
 
 /*
  * ---- on a computer: at the left, beside each layout's buttons, over the map but clear of its middle ----
@@ -88,5 +175,6 @@
 .listen-float .lp-scroll { flex: 1; min-height: 0; padding: 0 16px 6px; overflow-y: auto; overscroll-behavior: contain; }
 .listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid #eef0f2; }
 @media (hover: hover) {
-  .lp-row:hover { background: #f7f8f9; }
+  .lp-row:hover, .lpk-row:hover:not(:disabled) { background: #f7f8f9; }
+  div.lp-row:hover { background: none; }
 }

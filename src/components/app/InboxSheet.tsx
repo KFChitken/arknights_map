@@ -114,6 +114,10 @@ export type InboxFriendly = {
   gameAdded: (itemId: string) => Promise<void>;
   /** 回送一张: a 寻访券 for the 触须之交 who gave you one */
   giftBack: (friendId: string) => Promise<void>;
+  /** 一起听 at an invitation (its item id), 下次吧, and to the room you are in (src/components/app/ListenPanel.tsx) */
+  listenJoin: (itemId: string) => Promise<void>;
+  listenLater: (itemId: string) => Promise<void>;
+  listenShow: () => void;
 };
 
 /**
@@ -366,6 +370,48 @@ export default function InboxSheet({
               </button>
             </div>
           )}
+        </div>
+      );
+    }
+    // an invitation to 一起听: go in or 下次吧 while it is good (the host only ever sees 下次吧 as 没来)
+    if (item.kind === "listenInvite") {
+      const who = item.from.displayName;
+      const busy = acting === item.id;
+      return (
+        <div key={item.id} className={cls}>
+          <div>{fmt(T.inbox.listen.invite, { who, song: item.song })}</div>
+          <p className="hint">
+            {item.state === "open"
+              ? fmt(T.inbox.listen.open, { n: item.n })
+              : item.state === "later"
+                ? T.inbox.listen.later
+                : item.state === "in"
+                  ? T.inbox.listen.in
+                  : T.inbox.listen.over}
+          </p>
+          {meta(item, `friend:${item.friendId}`, who)}
+          <div className="row-actions">
+            {(item.state === "open" || item.state === "later") && (
+              <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.listenJoin(item.id))}>
+                {T.listen.join}
+              </button>
+            )}
+            {item.state === "open" && (
+              <button className="pill" disabled={busy} onClick={() => act(item.id, () => friendly.listenLater(item.id))}>
+                {T.listen.later}
+              </button>
+            )}
+            {item.state === "in" && (
+              <button className="pill dark" onClick={() => friendly.listenShow()}>
+                {T.inbox.listen.go}
+              </button>
+            )}
+            {friendIds.has(item.friendId) && (
+              <button className="pill" onClick={() => onOpenFriend(item.friendId)}>
+                {T.common.seeThem}
+              </button>
+            )}
+          </div>
         </div>
       );
     }

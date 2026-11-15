@@ -1554,7 +1554,7 @@ export const songPlays = pgTable("song_plays", {
 /**
  * What a player listens to now, one row each (src/lib/server/listen.ts): not a record of what they listened to.
  * until is when the song should end, and LISTEN_GRACE_MS more; written as each song starts, gone once they stop,
- * and swept away by the main process when it is past. room_id: the room they listen in (patch 2 on).
+ * and swept away by the main process when it is past. room_id: the room of 一起听 they listen in, if any.
  */
 export const listenNow = pgTable(
   "listen_now",
@@ -1563,10 +1563,92 @@ export const listenNow = pgTable(
       .primaryKey()
       .references(() => users.id, { onDelete: "cascade" }),
     song: text("song").notNull(),
-    roomId: uuid("room_id"),
+    roomId: uuid("room_id").references((): AnyPgColumn => listenRooms.id, { onDelete: "set null" }),
     until: at("until").notNull(),
   },
   (t) => [index("listen_now_until_idx").on(t.until)],
+);
+
+/**
+ * 一起听's rooms (src/lib/server/listenRooms.ts): the host's, with its songs (src/lib/listen.ts RoomSchedule: queue
+ * from idx on, queue[idx] starting at started_at, null until the host starts it) and their version, which every change
+ * to them moves on. ended_at and end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in
+ * it and the invitations to it.
+ */
+export const listenRooms = pgTable(
+  "listen_rooms",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    hostId: uuid("host_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: at("created_at").notNull().defaultNow(),
+    startedAt: at("started_at"),
+    idx: smallint("idx").notNull().default(0),
+    queue: text("queue").array().notNull().default(emptyArray),
+    version: integer("version").notNull().default(1),
+    endedAt: at("ended_at"),
+    endReason: text("end_reason"),
+  },
+  (t) => [index("listen_rooms_open_idx").on(t.createdAt).where(sql`${t.endedAt} is null`), index("listen_rooms_ended_idx").on(t.endedAt)],
+);
+
+/**
+ * Who is, or was, in a room: handle is their number in it, from 1 (the host's) and never given to another; via how
+ * they came (host, invite). left_at once they left (or the room ended), away_at while their page is gone (closed,
+ * reloaded: AWAY_MS to come back in). kicked: asked to leave by the host, and never let in again; hidden_from: the
+ * handles of those in it who do not see them (blocking). In one room at a time (listen_members_one_room).
+ */
+export const listenMembers = pgTable(
+  "listen_members",
+  {
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => listenRooms.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    handle: smallint("handle").notNull(),
+    via: text("via").notNull(),
+    joinedAt: at("joined_at").notNull().defaultNow(),
+    leftAt: at("left_at"),
+    awayAt: at("away_at"),
+    kicked: boolean("kicked").notNull().default(false),
+    hiddenFrom: smallint("hidden_from").array().notNull().default(sql`'{}'::smallint[]`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roomId, t.userId] }),
+    uniqueIndex("listen_members_one_room").on(t.userId).where(sql`${t.leftAt} is null`),
+  ],
+);
+
+/**
+ * Invitations to a room, from its host to a 触须之交, good for INVITE_MS: in 消息 → 触须之交 (seen_at), and answered
+ * joined (went in) or later (下次吧, which the host sees as not come, as one that ran out)
+ */
+export const listenInvites = pgTable(
+  "listen_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => listenRooms.id, { onDelete: "cascade" }),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: at("created_at").notNull().defaultNow(),
+    seenAt: at("seen_at"),
+    answer: text("answer"),
+    answeredAt: at("answered_at"),
+  },
+  (t) => [
+    index("listen_invites_to_idx").on(t.toUserId, t.createdAt),
+    index("listen_invites_pair_idx").on(t.fromUserId, t.toUserId, t.createdAt),
+    index("listen_invites_room_idx").on(t.roomId),
+  ],
 );
 
 export type UserRow = typeof users.$inferSelect;

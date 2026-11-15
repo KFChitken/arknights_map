@@ -140,7 +140,22 @@ import {
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
 import { musicOn, playMusic, preloadMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
-import { onListenRefused } from "./app/listening";
+import {
+  heardListen,
+  inviteMore,
+  joinAt,
+  laterAt,
+  listenPlayerNow,
+  listenRoomNow,
+  listenStreamBack,
+  loadRoom,
+  onListenRefused,
+  onListenSaid,
+  openRoomWith,
+  serverNow,
+} from "./app/listening";
+import type { ListenInvite } from "./app/ListenOverlay";
+import type { ListenTab } from "./app/ListenPanel";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
 import { GuideSheet } from "./app/GuideDock";
@@ -288,6 +303,8 @@ const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
+// 一起听 over the map (the card of an invitation, the 短评), for those who may listen
+const ListenOverlay = dynamic(() => import("./app/ListenOverlay"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -626,6 +643,10 @@ export default function MapApp({
   const [studyOpen, setStudyOpen] = useState(false);
   // 听歌's panel (from its button, where it is open to them): the map stays to be used beside it on a computer
   const [listenOpen, setListenOpen] = useState(false);
+  // its tab: the songs, unless you are in a room of 一起听
+  const [listenTab, setListenTab] = useState<ListenTab>("ark");
+  // an invitation to 一起听 that came while the page is open, its card over the map (ask: whether to switch rooms first)
+  const [listenCard, setListenCard] = useState<{ invite: ListenInvite; ask: boolean } | null>(null);
   // a visitor's, kept in this browser (src/lib/study/guest.ts): the day last drawn for and whether it was played
   const [guestStudied, setGuestStudied] = useState<{ day: string; done: boolean } | null>(null);
   useEffect(() => {
@@ -1460,8 +1481,13 @@ export default function MapApp({
     if (demoRef.current) await loadIdentities();
     if (!items.some((i) => !i.seen)) return;
     const { panel: open, placing: busy } = busyRef.current;
-    // only declarations came: they float down over the dock, and 消息 stays shut
-    if (fresh.length && fresh.every((i) => i.kind === "declaration") && open?.kind !== "inbox") {
+    // an invitation to 一起听: the newest still good comes up as a card over the map (after a roach's card, if one is open)
+    const invite = fresh
+      .filter((i): i is ListenInvite => i.kind === "listenInvite" && i.state === "open")
+      .reduce<ListenInvite | null>((a, i) => (!a || i.at > a.at ? i : a), null);
+    if (invite) setListenCard({ invite, ask: false });
+    // only declarations (or invitations) came: they float down over the dock, and 消息 stays shut
+    if (fresh.length && fresh.every((i) => i.kind === "declaration" || i.kind === "listenInvite") && open?.kind !== "inbox") {
       hearRef.current(fresh);
       return;
     }
@@ -1584,11 +1610,16 @@ export default function MapApp({
     events.addEventListener("inbox", () => later());
     events.addEventListener("declare", () => later(60_000, true));
     events.addEventListener("help", () => helpNudgeRef.current());
+    // 一起听: what the room you are in is told (src/components/app/listening.ts)
+    events.addEventListener("listen", (e) => heardListen((e as MessageEvent).data));
     // nudges sent while the connection was down are lost, so look once it is back: spread over a minute, as
     // after a restart every page comes back at once
     events.addEventListener("error", () => (dropped = true));
     events.addEventListener("open", () => {
-      if (dropped) later(60_000);
+      if (dropped) {
+        later(60_000);
+        listenStreamBack();
+      }
       dropped = false;
     });
     // a page in the background only notes that something came, and looks when it is in view again
@@ -1711,6 +1742,19 @@ export default function MapApp({
     void act(() => Promise.reject(e));
   };
   useEffect(() => onListenRefused((e) => listenRefused.current(e)), []);
+  // 一起听's short lines: why a room ended, what a tap did, why it was refused
+  useEffect(() => onListenSaid((text) => setToast(text)), []);
+  // a page opened (again) while in a room: the room, to go on with at a tap
+  const inListenRoom = Boolean(me?.listen?.room);
+  useEffect(() => {
+    if (inListenRoom && !listenRoomNow()) void loadRoom();
+  }, [inListenRoom]);
+  // an invitation's card goes when the invitation runs out
+  useEffect(() => {
+    if (!listenCard) return;
+    const t = window.setTimeout(() => setListenCard(null), Math.max(0, listenCard.invite.until - serverNow()));
+    return () => window.clearTimeout(t);
+  }, [listenCard]);
 
   const switchBasemap = (b: Basemap) => {
     if (b === basemap) return;
@@ -2231,6 +2275,55 @@ export default function MapApp({
   const mainRoachOf = (friend: Friend) => friend.roaches.find((r) => !r.clone) ?? null;
   const refreshInbox = async () => keepSnapshot(await loadInbox());
 
+  // ---- 一起听 (src/components/app/listening.ts) ----
+
+  /** 听歌's panel, on 一起听 */
+  const showListenRoom = () => {
+    setPanel(null);
+    setListenTab("together");
+    setListenOpen(true);
+  };
+  /** In at an invitation (its item id in 消息, li:…), from its card or 消息; within the tap, as it may start a song */
+  const joinInvite = async (itemId: string) => {
+    const ok = await joinAt(itemId.replace(/^li:/, ""));
+    setListenCard((c) => (c?.invite.id === itemId ? null : c));
+    if (ok) {
+      showListenRoom();
+      await worldRef.current!.markSeen([itemId]).catch(() => {});
+    }
+    await refreshInbox().catch(() => {});
+  };
+  /** 下次吧: the host sees 没来, as when it runs out */
+  const laterInvite = async (itemId: string) => {
+    if (!(await laterAt(itemId.replace(/^li:/, "")))) return;
+    setListenCard((c) => (c?.invite.id === itemId ? null : c));
+    await worldRef.current!.markSeen([itemId]).catch(() => {});
+    await refreshInbox().catch(() => {});
+  };
+  /**
+   * 邀请一起听 on a 触须之交's card or page: a room of your own with TA alone invited, its first song the one you play
+   * (or 新歌's first), shown on 一起听; your room already, TA invited to it; someone else's, a line to leave it first.
+   * Within the tap, as a room opened may start its song by itself later.
+   */
+  const listenGoing = useRef(false);
+  const listenWith = (friend: Friend) => {
+    // a second tap meanwhile would open another room, and invite TA once more of the day's few
+    if (listenGoing.current) return;
+    const r = listenRoomNow();
+    if (r && !r.host) return setToast(T.listen.leaveFirst);
+    listenGoing.current = true;
+    const going = r ? inviteMore([friend.id]) : openRoomWith(listenPlayerNow().track?.id ?? null, [friend.id]);
+    void going.then((sent) => {
+      listenGoing.current = false;
+      if (!sent) return;
+      const bad = sent.find((x) => !x.ok);
+      setToast(bad ? (bad.why ?? T.map.common.tryAgain) : fmt(T.listen.sentTo, { name: friend.profile.displayName }));
+      if (r) return;
+      setSelected(null);
+      showListenRoom();
+    });
+  };
+
   /** 催理智: a bottle flies off the button, 叮！ */
   const remindSanity = async (friend: Friend, at: { x: number; y: number } | null) => {
     if (!(await friendly((w) => w.remindSanity(friend.id)))) return;
@@ -2461,6 +2554,18 @@ export default function MapApp({
       const friend = shownFriends.find((f) => f.id === friendId);
       if (friend) await giveTicket(friend);
     },
+    listenJoin: async (itemId) => {
+      const invite = inbox.find((i): i is ListenInvite => i.id === itemId && i.kind === "listenInvite");
+      // in a room already: its card on the map asks first whether to switch
+      if (invite && listenRoomNow()) {
+        setPanel(null);
+        setListenCard({ invite, ask: true });
+        return;
+      }
+      await joinInvite(itemId);
+    },
+    listenLater: laterInvite,
+    listenShow: showListenRoom,
   };
 
   /** Their games on their page: 复制, 我在游戏里申请了, 想在游戏里加 TA, 游戏里也是好友 */
@@ -4640,6 +4745,7 @@ export default function MapApp({
                   busy={friendBusy || pokeSent}
                   onAct={(a, at) => friendAct(friend, a, at, null)}
                   onGift={() => giveTicket(friend)}
+                  onListen={listenShown && !me?.listen?.paused ? () => listenWith(friend) : undefined}
                 />
               )
             }
@@ -4793,6 +4899,10 @@ export default function MapApp({
   const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
   // 听歌: where the server opened it to them (me.listen), and not while the site is gray (全站变灰); not on /en
   const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
+  // the newest invitation to 一起听 still to answer, for its tab
+  const openInvite = inbox
+    .filter((i): i is ListenInvite => i.kind === "listenInvite" && i.state === "open")
+    .reduce<ListenInvite | null>((a, i) => (!a || i.at > a.at ? i : a), null);
   const chrome: ChromeProps = {
     placing: Boolean(placing),
     reported: Boolean(reported),
@@ -4860,7 +4970,16 @@ export default function MapApp({
           onOpen: () => setStudyOpen(true),
         }
       : null,
-    listen: listenShown ? { open: listenOpen, onToggle: () => setListenOpen((o) => !o) } : null,
+    listen: listenShown
+      ? {
+          open: listenOpen,
+          onToggle: () => {
+            // opened while in a room of 一起听: on it
+            if (!listenOpen && listenRoomNow()) setListenTab("together");
+            setListenOpen(!listenOpen);
+          },
+        }
+      : null,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });
@@ -5152,6 +5271,7 @@ export default function MapApp({
                 busy={friendBusy || pokeSent || Boolean(poking)}
                 onAct={(a, at) => friendAct(selectedFriend, a, at, selected.roach)}
                 onGift={() => giveTicket(selectedFriend)}
+                onListen={listenShown && !me?.listen?.paused ? () => listenWith(selectedFriend) : undefined}
               />
             )
           }
@@ -5366,7 +5486,32 @@ export default function MapApp({
         />
       )}
       {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}
-      {listenOpen && listenShown && me?.listen && <ListenPanel paused={me.listen.paused} onClose={closeListen} />}
+      {listenOpen && listenShown && me?.listen && (
+        <ListenPanel
+          paused={me.listen.paused}
+          roomMax={me.listen.roomMax}
+          mode={me.listen.mode}
+          tab={listenTab}
+          onTab={setListenTab}
+          invite={openInvite}
+          onJoin={(i) => void joinInvite(i.id)}
+          onLater={(i) => void laterInvite(i.id)}
+          onClose={closeListen}
+        />
+      )}
+      {/* 一起听 over the map: the card of an invitation that came, the 短评 by 听歌's button */}
+      {listenShown && me?.listen && (
+        <ListenOverlay
+          panelOpen={listenOpen}
+          cardOpen={Boolean(selected || picking || placing)}
+          invite={listenCard?.invite ?? null}
+          ask={listenCard?.ask ?? false}
+          onOpen={showListenRoom}
+          onJoin={(i) => void joinInvite(i.id)}
+          onLater={(i) => void laterInvite(i.id)}
+          onDismiss={() => setListenCard(null)}
+        />
+      )}
       {/* over everything of each layout, the board it was opened from too */}
       {pamphlet && (
         <Pamphlet

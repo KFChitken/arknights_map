@@ -22,6 +22,7 @@ const staff = () => item("staff", { text: "你举报的那只蟑螂已经处理�
 /** One unread message of each kind (and of each line with a headline of its own): the tab it is in, what the notice says */
 const ONE_OF_EACH: [InboxItem, InboxTab, () => string][] = [
   [staff(), "replies", () => T.inbox.headline.staff],
+  [item("listenInvite", { ...FROM, song: "Hunter's Song", state: "open", n: 1, until: 1_800_001_800_000, replied: true }), "friends", () => T.inbox.headline.listenInvite],
   [item("friend", FROM), "friends", () => T.inbox.headline.friend],
   [item("poke", FROM), "friends", () => T.inbox.headline.poke],
   [item("pokeWoke", FROM), "friends", () => T.inbox.headline.pokeWoke],
@@ -59,7 +60,7 @@ describe("消息's tabs", () => {
     const kinds: Record<InboxItem["kind"], true> = {
       staff: true, touch: true, declaration: true, reaction: true, friend: true, poke: true, pokeWoke: true, sanity: true,
       sanityThanks: true, gesture: true, gift: true, giftsFull: true, visit: true, game: true, anniversary: true, amiya: true,
-      perlica: true, talulah: true, minghe: true, si: true,
+      perlica: true, talulah: true, minghe: true, si: true, listenInvite: true,
     };
     expect(new Set(ONE_OF_EACH.map(([i]) => i.kind))).toEqual(new Set(Object.keys(kinds)));
     for (const [message, tab, title] of ONE_OF_EACH) {

@@ -2240,6 +2240,13 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
 .gift-pill.done, .gift-pill:disabled { border-color: #eef0f3; background: #eef0f3; color: #6b7280; cursor: default; }
 .gift-pill.done .tki { display: none; }
 .gift-pill:not(:disabled):active { transform: scale(0.97); }
+/* 邀请一起听 (src/components/app/listening.ts): teal as 一起听 */
+.listen-pill {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bfe6e7; border-radius: 999px; padding: 5px 12px;
+  background: #e6f6f6; color: #0b6366; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.listen-pill:disabled { border-color: #eef0f3; background: #eef0f3; color: #6b7280; cursor: default; }
+.listen-pill:not(:disabled):active { transform: scale(0.97); }
 .msg.gifts-full .tki { margin-right: 6px; vertical-align: -1px; }
 /* a 寻访券, dark, its two notches cut out */
 .tki {

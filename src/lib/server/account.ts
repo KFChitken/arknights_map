@@ -8,11 +8,14 @@ import { forgetLoginCodes } from "./loginCodes";
 import { roachesChanged } from "./roachFeed";
 import { bannedEmails, friendCuts, friendStars, users, type UserRow } from "./schema";
 import { guestsLeave } from "./friendly";
+import { leaveRoom } from "./listenRooms";
 
 /** Delete a player and everything tied to them (roaches, touches, declarations, friends, blocks, reports about them). */
 export async function deleteAccount(user: UserRow) {
   // clones visiting their roaches go home first; their own visiting clones go with their roaches
   await guestsLeave(user.id);
+  // out of their room of 一起听, so the others in it hear of it (theirs ends)
+  await leaveRoom(user);
   await db.delete(users).where(eq(users.id, user.id));
   if (user.email) await forgetLoginCodes(user.email);
   // the tables that name players without a foreign key

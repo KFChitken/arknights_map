@@ -407,6 +407,13 @@
       "when": 1794703831390,
       "tag": "0058_listen",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794705901550,
+      "tag": "0059_listen_rooms",
+      "breakpoints": true
     }
   ]
 }

@@ -452,6 +452,8 @@ export type FriendBetween = {
   anniversary: number | null;
   /** 送 1 张寻访券 today (src/lib/passes.ts); absent while you may not give TA any (寻访 not open to one of you, or gifts off) */
   gift?: GiftState;
+  /** 邀请一起听: there while you and TA may both listen (LISTEN, src/lib/server/listen.ts) */
+  listen?: true;
 };
 
 /**
@@ -662,6 +664,24 @@ export type InboxItem =
   | { kind: "gift"; id: string; at: number; seen: boolean; from: PublicProfile; friendId: string; returned: boolean; replied: boolean }
   /** You were given all the 寻访券 a site day may bring (GIFTS_IN_PER_DAY): just after today's last */
   | { kind: "giftsFull"; id: string; at: number; seen: boolean; replied: true }
+  /**
+   * A 触须之交 invites you to 一起听 (src/lib/server/listenRooms.ts): song, what the room plays now; state: you may go
+   * in until `until` ("open", n: how many are in it; "later": you said 下次吧, and still may), you are in it ("in"), or
+   * it is over (the room ended, or the invitation ran out)
+   */
+  | {
+      kind: "listenInvite";
+      id: string;
+      at: number;
+      seen: boolean;
+      from: PublicProfile;
+      friendId: string;
+      song: string;
+      state: "open" | "later" | "in" | "over";
+      n: number;
+      until: number;
+      replied: true;
+    }
   /**
    * 串门 news. To the host: a guest came ("came"; tip: the first time, with a word about the main roach; spot:
    * where the guest sits while it still does). To the guest: sent home, the host moved or took the roach back, or

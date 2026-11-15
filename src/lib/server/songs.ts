@@ -241,6 +241,13 @@ export async function songOf(id: unknown): Promise<HeldSong | undefined> {
   return isSongId(id) ? (await songList()).byId.get(id) : undefined;
 }
 
+/** The first of 新歌, else of the whole list: what a room opened with no song named starts with */
+export async function firstSong(): Promise<HeldSong | undefined> {
+  const { catalog, byId } = await songList();
+  const id = catalog.fresh[0] ?? catalog.albums[0]?.songs[0]?.id;
+  return id ? byId.get(id) : undefined;
+}
+
 // ---- how often each was played ----
 
 /** One more play of a song */

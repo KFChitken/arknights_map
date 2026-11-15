@@ -15,10 +15,12 @@ import { errorCode } from "./signals";
 /**
  * inbox: something new in 消息; declare: only declarations, which reach a whole neighbourhood at once,
  * so pages take their time (and several in one look); help: only the 求助 dot on the 触须之交 card,
- * which never opens anything
+ * which never opens anything; listen: what a room of 一起听 does (tellListen), the one event that carries what
+ * happened, as a room's phones act on it at once
  */
-export type LiveEvent = "inbox" | "declare" | "help";
-type Listener = (event: LiveEvent) => void;
+export type LiveEvent = "inbox" | "declare" | "help" | "listen";
+/** data: the event's, as JSON (listen only) */
+type Listener = (event: LiveEvent, data?: string) => void;
 
 /**
  * What each process keeps in memory of what the admin changes, read again on every process at once
@@ -46,6 +48,8 @@ const self = (g.liveSelf ??= randomUUID());
 const CHANNEL = "live_nudge";
 /** A NOTIFY carries at most 8000 bytes: the players go in parts this long */
 const PER_NOTIFY = 150;
+/** And one that carries what happened (tellListen) at most this long, the players in as many parts as that takes */
+const NOTIFY_BYTES = 7_500;
 const across = () => process.env.LIVE_ACROSS === "1";
 
 /**
@@ -77,9 +81,9 @@ export function listen(userId: string, fn: Listener, drop?: () => void) {
 /** Signed-in players with a page open on this process (one connected to two processes is counted by both) */
 export const connectedPlayers = () => listeners.size;
 
-function deliver(userIds: Iterable<string>, event: LiveEvent) {
+function deliver(userIds: Iterable<string>, event: LiveEvent, data?: string) {
   for (const id of userIds) {
-    for (const fn of listeners.get(id) ?? []) fn(event);
+    for (const fn of listeners.get(id) ?? []) fn(event, data);
   }
 }
 
@@ -98,6 +102,42 @@ async function tellOthers(ids: string[], event: LiveEvent) {
   }
 }
 
+/** What one of 一起听's rooms did (src/lib/server/listenRooms.ts), to the players in it: src/lib/listen.ts ListenTell */
+export function tellListen(userIds: Iterable<string>, data: object) {
+  const ids = [...new Set(userIds)];
+  if (!ids.length) return;
+  const d = JSON.stringify(data);
+  deliver(ids, "listen", d);
+  if (across()) void tellOthersWhat(ids, d);
+}
+
+/** The players in as few NOTIFYs as fit what happened, each at most NOTIFY_BYTES */
+async function tellOthersWhat(ids: string[], d: string) {
+  const head = Buffer.byteLength(JSON.stringify({ p: self, e: "listen", ids: [], d: JSON.parse(d) }));
+  const parts: string[][] = [[]];
+  let size = head;
+  for (const id of ids) {
+    const more = Buffer.byteLength(JSON.stringify(id)) + 1;
+    if (size + more > NOTIFY_BYTES && parts[parts.length - 1].length) {
+      parts.push([]);
+      size = head;
+    }
+    parts[parts.length - 1].push(id);
+    size += more;
+  }
+  for (const part of parts) {
+    const payload = `{"p":${JSON.stringify(self)},"e":"listen","ids":${JSON.stringify(part)},"d":${d}}`;
+    await pg.notify(CHANNEL, payload).catch((e) => console.error("live: telling the other processes failed", errorCode(e)));
+  }
+}
+
+const told = new Set<(data: unknown) => void>();
+/** Hear what other processes tell rooms (tellListen), as their pages do: src/lib/server/listenRooms.ts forgets who is in one */
+export function onToldListen(fn: (data: unknown) => void) {
+  told.add(fn);
+  return () => void told.delete(fn);
+}
+
 /**
  * Every process hears the others' nudges and passes them to the pages connected to it, and reads again what
  * they say changed (src/instrumentation-node.ts)
@@ -109,10 +149,15 @@ export async function hearOthers() {
     CHANNEL,
     (payload) => {
       try {
-        const { p, e, ids, reload } = JSON.parse(payload) as { p?: string; e?: string; ids?: unknown[]; reload?: unknown };
+        const { p, e, ids, reload, d } = JSON.parse(payload) as { p?: string; e?: string; ids?: unknown[]; reload?: unknown; d?: unknown };
         if (p === self) return;
         if (typeof reload === "string") return void reloadHere(reload as ReloadKind);
         if (!Array.isArray(ids)) return;
+        if (e === "listen") {
+          if (!d || typeof d !== "object") return;
+          for (const fn of told) fn(d);
+          return void deliver(ids.map(String), "listen", JSON.stringify(d));
+        }
         deliver(ids.map(String), e === "help" || e === "declare" ? e : "inbox");
       } catch {
         // not ours to read

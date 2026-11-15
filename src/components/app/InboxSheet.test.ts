@@ -36,6 +36,9 @@ const sheet = (items: InboxItem[], friends: Friend[] = [], tab: InboxTab = "decl
         goHome: nothing,
         gameAdded: nothing,
         giftBack: nothing,
+        listenJoin: nothing,
+        listenLater: nothing,
+        listenShow: () => {},
       },
       onClose: () => {},
     }),
@@ -158,5 +161,43 @@ describe("a 寻访券 in 消息", () => {
     expect(read(row).text).toContain(fmt(T.inbox.gift.full, { n: GIFTS_IN_PER_DAY }));
     expect(read(row).text).toContain(T.inbox.gift.fullFrom);
     expect(row).not.toMatch(/<button|<a /);
+  });
+});
+
+const invited = (state: "open" | "later" | "in" | "over"): InboxItem => ({
+  kind: "listenInvite",
+  id: "li:1",
+  at: Date.now() - 60_000,
+  seen: false,
+  from: DR_A,
+  friendId: "f:a",
+  song: "逐星河",
+  state,
+  n: state === "open" || state === "later" ? 2 : 0,
+  until: Date.now() + 29 * 60_000,
+  replied: true,
+});
+const words = (html: string) => read(html).buttons.map(([w]) => w);
+
+describe("an invitation to 一起听 in 消息", () => {
+  it("offers 一起听 and 下次吧 while it is good, and after 下次吧 still 一起听", () => {
+    const open = sheet([invited("open")], [drA()], "friends");
+    expect(read(open).text).toContain(fmt(T.inbox.listen.invite, { who: "Dr. A", song: "逐星河" }));
+    expect(read(open).text).toContain(fmt(T.inbox.listen.open, { n: 2 }));
+    expect(words(open)).toEqual(expect.arrayContaining([T.listen.join, T.listen.later, T.common.seeThem]));
+    const later = sheet([invited("later")], [drA()], "friends");
+    expect(read(later).text).toContain(T.inbox.listen.later);
+    expect(words(later)).toContain(T.listen.join);
+    expect(words(later)).not.toContain(T.listen.later);
+  });
+
+  it("says when you are in that room, or that it is over, with nothing to go in at", () => {
+    const inIt = sheet([invited("in")], [], "friends");
+    expect(read(inIt).text).toContain(T.inbox.listen.in);
+    expect(words(inIt)).toContain(T.inbox.listen.go);
+    expect(words(inIt)).not.toContain(T.listen.join);
+    const over = sheet([invited("over")], [], "friends");
+    expect(read(over).text).toContain(T.inbox.listen.over);
+    for (const w of [T.listen.join, T.listen.later, T.inbox.listen.go]) expect(words(over)).not.toContain(w);
   });
 });

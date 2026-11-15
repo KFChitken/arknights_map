@@ -29,6 +29,7 @@ import { addedInGame, award, placed, quilted } from "./badges";
 import { db } from "./db";
 import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { HttpError } from "./http";
+import { listenOpen } from "./listen";
 import { nudge } from "./live";
 import { giftsOpen, passesOpen, receiveGift } from "./passes";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
@@ -723,6 +724,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
     .where(and(eq(visitBans.guestId, userId), inArray(visitBans.hostId, ids)));
   // 送 1 张寻访券: whom you gave one today, and who was given all a day may bring; only while you may give at all
   const giving = giftsOpen(self);
+  const listening = listenOpen(self);
   const gaveTo = new Set(
     giving
       ? (
@@ -786,6 +788,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
       wantAgainAt: wanted ? againIn(wanted, now) : null,
       anniversary: isFriendAnniversary(day) ? day : null,
       ...(gift ? { gift } : {}),
+      ...(listening && listenOpen(o) ? { listen: true as const } : {}),
     });
   }
   return out;

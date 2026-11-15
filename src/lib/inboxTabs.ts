@@ -5,8 +5,8 @@ import type { InboxItem } from "./world/types";
  * How 消息 is split, what the envelope at the bottom left counts, and where 消息 opens.
  *
  * Four tabs: touches (the guides' too), replies (reactions to your declarations, and 站长通知), declarations
- * sent nearby, and 触须之交 (all they do for each other, 寻访券 they give you included, and a 触须之交's
- * 「祝我生日快乐」, sent to you as one).
+ * sent nearby, and 触须之交 (all they do for each other, 寻访券 they give you and invitations to 一起听 included,
+ * and a 触须之交's 「祝我生日快乐」, sent to you as one).
  * The red count on the envelope counts what came to you, so everything but the declarations sent nearby;
  * those light a yellow speaker of their own, without a number.
  */
@@ -42,6 +42,7 @@ const TAB_OF: Record<Exclude<InboxItem["kind"], "declaration">, InboxTab> = {
   visit: "friends",
   game: "friends",
   anniversary: "friends",
+  listenInvite: "friends",
 };
 
 /** Which tab a message is in: a declaration with `from` is a 触须之交's birthday, sent to you as one */
@@ -57,6 +58,8 @@ export function tabOf(item: InboxItem): InboxTab {
  */
 const NOTICES: { is: (item: InboxItem) => boolean; title: () => string }[] = [
   { is: (i) => i.kind === "staff", title: () => T.inbox.headline.staff },
+  // good for 30 minutes alone
+  { is: (i) => i.kind === "listenInvite", title: () => T.inbox.headline.listenInvite },
   { is: (i) => i.kind === "friend", title: () => T.inbox.headline.friend },
   { is: (i) => i.kind === "poke", title: () => T.inbox.headline.poke },
   { is: (i) => i.kind === "pokeWoke", title: () => T.inbox.headline.pokeWoke },

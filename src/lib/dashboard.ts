@@ -32,7 +32,9 @@ export const isNoteKind = (k: unknown): k is NoteKind => (NOTE_KINDS as readonly
  * - place.main, place.clone, place.ink: a new roach on the map (a move is none), 墨小强 as 祀掌柜 draws it
  * - guide.<id>: a player's touch of a guide
  * - listen.play: a song played from its start (听歌, src/lib/server/listen.ts); listen.full: a player turned away
- *   because as many as the 管理台's cap were listening
+ *   because as many as the 管理台's cap were listening; listen.room: a room of 一起听 opened, listen.invite: an
+ *   invitation to one, listen.join: a player who went in at one, listen.rx: a 短评 sent in one
+ *   (src/lib/server/listenRooms.ts)
  * Written only by the one-time backfill (src/lib/server/dashboard.ts), for the days before daily_totals was kept:
  * - signups, friendships: accounts made and pairs who became 触须之交 that day, of those still there
  * - backfill.done (on OPEN_DAY): when the backfill ran, so it runs once
@@ -52,6 +54,10 @@ export const COUNTED = {
   ink: "place.ink",
   listenPlay: "listen.play",
   listenFull: "listen.full",
+  listenRoom: "listen.room",
+  listenInvite: "listen.invite",
+  listenJoin: "listen.join",
+  listenRx: "listen.rx",
   signups: "signups",
   friendships: "friendships",
   backfilled: "backfill.done",

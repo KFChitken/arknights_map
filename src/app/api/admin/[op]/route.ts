@@ -56,6 +56,7 @@ import { dashboard } from "@/lib/server/dashboard";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
 import { listenDesk } from "@/lib/server/listen";
+import { endAllRooms } from "@/lib/server/listenRooms";
 import { endGray, grayState, listenSettings, setGray, setListen } from "@/lib/server/siteSettings";
 import { ackIncident, siteStatus } from "@/lib/server/watchReport";
 import { drawZone, liftZone, listZones, previewZone, zoneSpot } from "@/lib/server/zones";
@@ -314,6 +315,8 @@ export const POST = route(
       case "setGray": {
         const until = await setGray(actor.id, objectOf(args[0]).until, now);
         await logAdmin(actor, "act", "act.gray", { detail: `到 ${grayUntilWords(until)} 自动恢复` }, now);
+        // no songs while the site is gray: every room of 一起听 ends now
+        await endAllRooms("gray", now);
         result = grayState(now);
         break;
       }
@@ -327,8 +330,11 @@ export const POST = route(
         break;
       case "setListen": {
         const before = listenSettings();
-        const detail = listenChange(before, await setListen(actor.id, objectOf(args[0]), now));
+        const after = await setListen(actor.id, objectOf(args[0]), now);
+        const detail = listenChange(before, after);
         if (detail) await logAdmin(actor, "act", "act.listen", { detail }, now);
+        // paused: every room of 一起听 ends now (the sweep would within a minute)
+        if (after.paused && !before.paused) await endAllRooms("admin", now);
         result = await listenDesk(now);
         break;
       }

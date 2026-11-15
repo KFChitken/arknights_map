@@ -12,7 +12,7 @@ import type { RoachOpts } from "@/lib/roachSvg";
 import RoachIcon from "../../RoachIcon";
 import { SpeakerIcon } from "../DockFx";
 import { FriendsMark } from "../FriendsSheet";
-import { useListenIntro, useListenPlayer } from "../listening";
+import { useListenIntro, useListenPlayer, useListenRoom } from "../listening";
 
 /**
  * What the map page's three layouts (src/lib/uiChoice.ts) are made of: the same buttons doing the same things, laid
@@ -258,16 +258,30 @@ export function ListenIcon({ on, size }: { on: boolean; size: number }) {
   );
 }
 
-/** What 听歌's entry shows, from what plays (src/components/app/listening.ts): on while a song plays; 新 until its panel is first opened */
-export function useListenEntry(): { on: boolean; track: ListenTrack | null; fresh: boolean } {
+/**
+ * What 听歌's entry shows, from what plays (src/components/app/listening.ts): on while a song plays; together: how many
+ * are in your room of 一起听 (null: none), which keeps it lit; 新 until its panel is first opened
+ */
+export function useListenEntry(): { on: boolean; lit: boolean; together: number | null; track: ListenTrack | null; fresh: boolean } {
   const p = useListenPlayer();
   const intro = useListenIntro();
-  return { on: p.status === "playing" || p.status === "starting", track: p.track, fresh: intro === "new" };
+  const room = useListenRoom();
+  const on = p.status === "playing" || p.status === "starting";
+  const together = room ? room.members.filter((m) => m.state === "in").length : null;
+  return { on, lit: on || together !== null, together, track: p.track, fresh: intro === "new" };
 }
 
-/** 听歌's name for a screen reader, with the song while one plays */
-export const listenLabel = (on: boolean, track: ListenTrack | null) =>
-  on && track ? fmt(T.map.bar.listenNowLabel, { name: track.name }) : T.map.bar.listen;
+/** 听歌's name for a screen reader, with the song while one plays, or how many listen together */
+export function listenLabel(e: ReturnType<typeof useListenEntry>) {
+  if (e.together !== null) return fmt(T.map.bar.listenTogetherLabel, { n: e.together });
+  return e.on && e.track ? fmt(T.map.bar.listenNowLabel, { name: e.track.name }) : T.map.bar.listen;
+}
+
+/** 听歌's word under its icon: 在听 while a song plays, 一起 N 人 in a room */
+export function listenWord(e: ReturnType<typeof useListenEntry>) {
+  if (e.together !== null) return fmt(T.map.bar.listenTogether, { n: e.together });
+  return e.on ? T.map.bar.listenNow : T.map.bar.listen;
+}
 
 /** 消息's envelope */
 export function Envelope({ size = 17 }: { size?: number }) {
