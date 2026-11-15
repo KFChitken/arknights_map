@@ -1,20 +1,26 @@
+import bank from "@/data/make325-bank.json";
+
 /**
  * 凑 325 (src/components/app/study/Make325.tsx): four numbers to make 325 with + − × ÷, each used once, two at a time
  * put together into one until one is left. Every step must come out a whole number above nought: nothing divided
- * unevenly, nothing taken away down to nought or below. Each round's four are dealt afresh
- * (rules.ts newSeed): drawn until they make 325, no two or three of them alone do (else 325 could be made with a
- * number left over, or × 7 ÷ 7 given away), and it can be done at least two ways (else it is likely a knot only one way
- * undoes).
+ * unevenly, nothing taken away down to nought or below. A round's four are one of the bank's (MAKE_BANK), every four of
+ * MAKE_POOL that make 325 while no two or three of them alone do (else 325 could be made with a number left over, or
+ * × 7 ÷ 7 given away), and at least two ways (else it is likely a knot only one way undoes). Each round deals one
+ * afresh (rules.ts newSeed), never one of those this device dealt last, its cards in an order of their own.
  */
 
 /** What a round's four are drawn from */
 export const MAKE_POOL: readonly number[] = [...Array.from({ length: 24 }, (_, i) => i + 2), 30, 40, 50, 60, 75, 100];
 export const MAKE_GOAL = 325;
-/** How many draws before falling back on a set four (over a thousand days it never has) */
-export const MAKE_TRIES = 5000;
-export const MAKE_FALLBACK: readonly number[] = [9, 10, 25, 40];
 /** How long before 看答案 is offered (ms) */
 export const MAKE_HELP_MS = 60_000;
+/**
+ * Every fair four of MAKE_POOL, smallest first (fair below): src/data/make325-bank.json, written by
+ * scripts/build-make325-bank.mts, so that no phone searches for one
+ */
+export const MAKE_BANK: readonly (readonly number[])[] = bank.puzzles;
+/** How many of the puzzles this device dealt last are not dealt again */
+export const MAKE_RECENT = 200;
 
 export const OPS = ["+", "−", "×", "÷"] as const;
 export type Op = (typeof OPS)[number];
@@ -114,16 +120,44 @@ export function fair(nums: readonly number[]): boolean {
   );
 }
 
-/** A round's four, smallest first, from its random (mulberry32 of its seed), and a way to 325 for 看答案 */
-export function makePuzzle(random: () => number): { nums: number[]; answer: string; fallback: boolean } {
-  for (let t = 0; t < MAKE_TRIES; t++) {
-    const pool = [...MAKE_POOL];
-    const nums: number[] = [];
-    while (nums.length < 4) nums.push(pool.splice(Math.min(pool.length - 1, Math.floor(random() * pool.length)), 1)[0]);
-    nums.sort((a, b) => a - b);
-    if (fair(nums)) return { nums, answer: waysTo(nums, MAKE_GOAL, 1)[0].text, fallback: false };
+/**
+ * A round's puzzle, from its random (mulberry32 of its seed): one of the bank's (k, its place there) that is not among
+ * recent (those this device dealt last, recentPuzzles), its four cards in an order of their own, and a way to 325 for
+ * 看答案
+ */
+export function makePuzzle(random: () => number, recent: readonly number[] = []): { k: number; nums: number[]; answer: string } {
+  const skip = new Set(recent);
+  const open = MAKE_BANK.map((_, k) => k).filter((k) => !skip.has(k));
+  const from = open.length ? open : MAKE_BANK.map((_, k) => k);
+  const k = from[Math.min(from.length - 1, Math.floor(random() * from.length))];
+  const nums = [...MAKE_BANK[k]];
+  for (let i = nums.length - 1; i > 0; i--) {
+    const j = Math.min(i, Math.floor(random() * (i + 1)));
+    [nums[i], nums[j]] = [nums[j], nums[i]];
   }
-  return { nums: [...MAKE_FALLBACK], answer: waysTo(MAKE_FALLBACK, MAKE_GOAL, 1)[0].text, fallback: true };
+  return { k, nums, answer: waysTo(MAKE_BANK[k], MAKE_GOAL, 1)[0].text };
+}
+
+const RECENT_KEY = "zhoup.study.make325";
+/** The puzzles this page dealt last, for a browser that keeps nothing (a private window) */
+let held: number[] = [];
+
+/** The puzzles this device dealt last, by their place in the bank, the latest last: MAKE_RECENT at most */
+export function recentPuzzles(): number[] {
+  let kept: number[] = [];
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    if (Array.isArray(v)) kept = v.filter((k): k is number => Number.isInteger(k) && k >= 0 && k < MAKE_BANK.length);
+  } catch {}
+  return [...kept.filter((k) => !held.includes(k)), ...held].slice(-MAKE_RECENT);
+}
+
+/** A puzzle dealt on this device: not dealt again until MAKE_RECENT others were */
+export function dealtPuzzle(k: number) {
+  held = [...recentPuzzles().filter((r) => r !== k), k].slice(-MAKE_RECENT);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(held));
+  } catch {}
 }
 
 /** The cards on the table, a place each (null: put together into another), and the tables before, for 撤一步 */

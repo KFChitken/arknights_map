@@ -2,7 +2,22 @@
 
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
-import { lastCard, MAKE_GOAL, MAKE_HELP_MS, makePuzzle, type Op, OPS, put, type Refusal, restart, type Table, table, undo } from "@/lib/study/make325";
+import {
+  dealtPuzzle,
+  lastCard,
+  MAKE_GOAL,
+  MAKE_HELP_MS,
+  makePuzzle,
+  type Op,
+  OPS,
+  put,
+  recentPuzzles,
+  type Refusal,
+  restart,
+  type Table,
+  table,
+  undo,
+} from "@/lib/study/make325";
 import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 
@@ -24,7 +39,9 @@ type Said =
  * unsolved. Nothing flashes.
  */
 export default function Make325({ seed, onRound }: GameProps) {
-  const puzzle = useMemo(() => makePuzzle(mulberry32(seed)), [seed]);
+  // one of the bank's this device did not deal lately, kept as dealt once the round is on
+  const puzzle = useMemo(() => makePuzzle(mulberry32(seed), recentPuzzles()), [seed]);
+  useEffect(() => dealtPuzzle(puzzle.k), [puzzle.k]);
   const [t, setT] = useState<Table>(() => table(puzzle.nums));
   /** The card picked first, and the sign after it */
   const [sel, setSel] = useState<number | null>(null);

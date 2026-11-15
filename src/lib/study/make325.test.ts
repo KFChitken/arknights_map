@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   combine,
   fair,
   reaches,
   lastCard,
-  MAKE_FALLBACK,
+  MAKE_BANK,
   MAKE_GOAL,
   MAKE_POOL,
+  MAKE_RECENT,
   makePuzzle,
   put,
   restart,
@@ -19,7 +20,7 @@ import { mulberry32 } from "../prng";
 
 /** So many rounds' seeds, as the page deals them (rules.ts newSeed): whole numbers from 0 up to 2³² */
 const SEEDS = ((r) => Array.from({ length: 1000 }, () => Math.floor(r() * 2 ** 32)))(mulberry32(325));
-const puzzleOf = (seed: number) => makePuzzle(mulberry32(seed));
+const puzzleOf = (seed: number, recent: readonly number[] = []) => makePuzzle(mulberry32(seed), recent);
 
 /** What a way to 325 as written comes to, worked out as written, and the numbers in it */
 function readWay(text: string): { value: number; nums: number[] } {
@@ -64,30 +65,123 @@ describe("凑 325", () => {
     expect(fair([6, 8, 11, 25])).toBe(true);
   });
 
-  it("is the same four from the same seed, others from another, and over a thousand rounds always a fair one", () => {
+  it("keeps a bank of every fair four of the pool, smallest first, each once, as a count made afresh finds them", () => {
+    const pool = [...MAKE_POOL].sort((a, b) => a - b);
+    const afresh: string[] = [];
+    for (let a = 0; a < pool.length; a++)
+      for (let b = a + 1; b < pool.length; b++)
+        for (let c = b + 1; c < pool.length; c++)
+          for (let d = c + 1; d < pool.length; d++) {
+            const nums = [pool[a], pool[b], pool[c], pool[d]];
+            if (fair(nums)) afresh.push(nums.join());
+          }
+    // as the design counted them: 1,468 of the 27,405 fours of the thirty numbers
+    expect(pool).toHaveLength(30);
+    expect(afresh).toHaveLength(1468);
+    expect(MAKE_BANK.map((p) => p.join())).toEqual(afresh);
+    expect(new Set(MAKE_BANK.map((p) => p.join())).size).toBe(MAKE_BANK.length);
+    for (const p of MAKE_BANK) {
+      expect(p).toHaveLength(4);
+      expect(new Set(p).size).toBe(4);
+      expect(p.every((n) => MAKE_POOL.includes(n))).toBe(true);
+      expect([...p].sort((a, b) => a - b)).toEqual(p);
+      // 325 at least two ways, and no two or three of them make it alone
+      expect(waysTo(p, MAKE_GOAL, 2)).toHaveLength(2);
+      for (const [a, b, c] of [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]) expect(reaches([p[a], p[b], p[c]], MAKE_GOAL)).toBe(false);
+    }
+  }, 60_000);
+
+  it("deals one of the bank, its cards in an order of their own, the same from the same seed, with 看答案 coming to 325", () => {
     expect(puzzleOf(SEEDS[0])).toEqual(puzzleOf(SEEDS[0]));
-    expect(new Set(SEEDS.slice(0, 100).map((d) => puzzleOf(d).nums.join())).size).toBeGreaterThanOrEqual(90);
+    expect(new Set(SEEDS.slice(0, 100).map((d) => puzzleOf(d).k)).size).toBeGreaterThanOrEqual(90);
+    let shuffled = 0;
     for (const seed of SEEDS) {
       const p = puzzleOf(seed);
-      // never the set four it falls back on
-      expect(p.fallback).toBe(false);
-      expect(p.nums).toHaveLength(4);
-      expect(new Set(p.nums).size).toBe(4);
-      expect(p.nums.every((n) => MAKE_POOL.includes(n))).toBe(true);
-      expect([...p.nums].sort((a, b) => a - b)).toEqual(p.nums);
-      // 325 at least two ways, and no two or three of them make it alone
-      expect(fair(p.nums)).toBe(true);
-      expect(waysTo(p.nums, MAKE_GOAL).length).toBeGreaterThanOrEqual(2);
-      for (const [a, b, c] of [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
-        expect(waysTo([p.nums[a], p.nums[b], p.nums[c]], MAKE_GOAL)).toHaveLength(0);
-      // 看答案 comes to 325, with each of the four once
+      expect([...p.nums].sort((a, b) => a - b)).toEqual(MAKE_BANK[p.k]);
+      if (p.nums.join() !== MAKE_BANK[p.k].join()) shuffled++;
       const way = readWay(p.answer);
       expect([p.answer, way.value]).toEqual([p.answer, MAKE_GOAL]);
-      expect([...way.nums].sort((a, b) => a - b)).toEqual(p.nums);
+      expect([...way.nums].sort((a, b) => a - b)).toEqual(MAKE_BANK[p.k]);
     }
-    expect(fair(MAKE_FALLBACK)).toBe(true);
-  }, 30_000);
+    // in the order they were found one time in 24
+    expect(shuffled).toBeGreaterThan(SEEDS.length * 0.9);
+  });
 
+  it("never deals one of the last two hundred this device dealt, until all but those were", () => {
+    const recent: number[] = [];
+    const seen = new Map<number, number>();
+    const random = mulberry32(7);
+    for (let round = 0; round < 1000; round++) {
+      const p = makePuzzle(random, recent);
+      expect(recent).not.toContain(p.k);
+      // dealt again only after two hundred others
+      if (seen.has(p.k)) expect(round - seen.get(p.k)!).toBeGreaterThan(MAKE_RECENT);
+      seen.set(p.k, round);
+      recent.push(p.k);
+      if (recent.length > MAKE_RECENT) recent.shift();
+    }
+    // a bank with all but one recent deals that one
+    const all = MAKE_BANK.map((_, k) => k).filter((k) => k !== 42);
+    expect(makePuzzle(mulberry32(1), all).k).toBe(42);
+  });
+});
+
+/** A browser's storage, or one that keeps nothing (a private window) */
+function storage(keeps: boolean) {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k: string) => (keeps ? (m.get(k) ?? null) : null),
+    setItem: (k: string, v: string) => {
+      if (!keeps) throw new Error("QuotaExceededError");
+      m.set(k, v);
+    },
+    raw: m,
+  };
+}
+
+// the module keeps what it dealt last for a browser that keeps nothing: a fresh copy for each test
+async function load() {
+  vi.resetModules();
+  return import("./make325");
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("凑 325's puzzles dealt lately, kept on this device", () => {
+  it("keeps the last two hundred dealt, the latest last, in the browser", async () => {
+    const store = storage(true);
+    vi.stubGlobal("localStorage", store);
+    const { dealtPuzzle, recentPuzzles } = await load();
+    expect(recentPuzzles()).toEqual([]);
+    for (let k = 0; k < 250; k++) dealtPuzzle(k);
+    expect(recentPuzzles()).toEqual(Array.from({ length: MAKE_RECENT }, (_, i) => 50 + i));
+    // one dealt again goes last, once
+    dealtPuzzle(60);
+    expect(recentPuzzles().at(-1)).toBe(60);
+    expect(recentPuzzles().filter((k) => k === 60)).toHaveLength(1);
+    // a fresh page reads them back; what is not a place in the bank is let go
+    expect((await load()).recentPuzzles()).toHaveLength(MAKE_RECENT);
+    store.raw.set("zhoup.study.make325", JSON.stringify([3, -1, 2.5, "7", 99999, 5]));
+    expect((await load()).recentPuzzles()).toEqual([3, 5]);
+    store.raw.set("zhoup.study.make325", "{not json");
+    expect((await load()).recentPuzzles()).toEqual([]);
+  });
+
+  it("keeps them while the page is open where the browser keeps nothing, and where there is no storage at all", async () => {
+    vi.stubGlobal("localStorage", storage(false));
+    const { dealtPuzzle, recentPuzzles } = await load();
+    dealtPuzzle(4);
+    dealtPuzzle(8);
+    expect(recentPuzzles()).toEqual([4, 8]);
+    expect((await load()).recentPuzzles()).toEqual([]);
+    vi.stubGlobal("localStorage", undefined);
+    const none = await load();
+    none.dealtPuzzle(9);
+    expect(none.recentPuzzles()).toEqual([9]);
+  });
+});
+
+describe("凑 325's cards", () => {
   it("puts cards together, refuses what is uneven or not above nought, and goes back a step or to the start", () => {
     let t: Table = table([9, 10, 25, 40]);
     const refused = put(t, 1, "÷", 3);
