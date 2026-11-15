@@ -7,6 +7,7 @@ import { fmt, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { siteName } from "@/lib/rules";
 import { monthCell, yuan } from "@/lib/sponsor";
+import { ROACH_COLORS } from "@/lib/types";
 import { currentUser } from "@/lib/server/auth";
 import { grayUntil } from "@/lib/server/siteSettings";
 import { sponsorLedger } from "@/lib/server/sponsor";
@@ -27,11 +28,17 @@ export default async function Support() {
   if (!ledger) notFound();
   const t = T.server.support;
   const startup = ledger.startup;
+  const gray = grayUntil(Date.now());
   return (
     <main className="doc support">
-      <GrayMode until={grayUntil(Date.now())} />
+      <GrayMode until={gray} />
       <h1>{fmt(t.title, { site: siteName() })}</h1>
-      <SponsorCard view={{ ...ledger.card, email: user?.email ?? null }} onPage />
+      <SponsorCard
+        view={{ ...ledger.card, email: user?.email ?? null }}
+        onPage
+        color={ROACH_COLORS.find((c) => c === user?.color)}
+        grayFirst={gray !== null}
+      />
 
       {startup && (
         <>

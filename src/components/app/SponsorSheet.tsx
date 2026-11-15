@@ -7,8 +7,10 @@ import { apiFetch } from "@/lib/apiFetch";
 import { BADGES } from "@/lib/badges";
 import { MIN_SIGNUP_AGE, siteName } from "@/lib/rules";
 import { enough, inHand, monthsCovered, share, whichMonth, yuan, type LedgerRow, type SponsorView } from "@/lib/sponsor";
-import { SPONSOR_AVATARS } from "@/lib/types";
+import { SPONSOR_AVATARS, type RoachColor } from "@/lib/types";
+import { useGrayNow } from "../GrayMode";
 import Sheet from "./Sheet";
+import { AfdianLink, GiftBadges, SponsorStage } from "./SponsorFx";
 
 /**
  * 支持舟P地图 (src/lib/sponsor.ts): the card in 我的资料, and on /support for anyone. Its buttons are plain
@@ -38,8 +40,8 @@ const gifts = () => [
   fmt(T.sponsor.giftBadges, { badges: named(BADGES.filter((b) => b.sponsor).map((b) => b.name)) }),
 ];
 
-/** What a sponsor is given, under the copy button */
-function Thanks() {
+/** What a sponsor is given, under the copy button, and the badges themselves (calm: while the site is gray) */
+function Thanks({ calm }: { calm: boolean }) {
   const list = gifts();
   return (
     <div className="sponsor-thanks hint">
@@ -50,6 +52,7 @@ function Thanks() {
           <li key={g}>{g}</li>
         ))}
       </ol>
+      <GiftBadges calm={calm} />
       <p>{T.sponsor.thanksTail}</p>
     </div>
   );
@@ -85,7 +88,7 @@ async function copyText(text: string) {
  * 复制我的登录邮箱: the email is not on the card, so a screenshot of it shows none; only where copying is
  * not allowed does it come up, selected, to copy by hand.
  */
-function CopyEmail({ email }: { email: string }) {
+function CopyEmail({ email, calm }: { email: string; calm: boolean }) {
   const [copied, setCopied] = useState<boolean | null>(null);
   return (
     <div className="sponsor-copy">
@@ -105,7 +108,7 @@ function CopyEmail({ email }: { email: string }) {
           />
         </>
       )}
-      <Thanks />
+      <Thanks calm={calm} />
     </div>
   );
 }
@@ -156,10 +159,23 @@ function bill(row: (LedgerRow & { current: boolean }) | null) {
 /**
  * The card: what the servers cost and what came in (「够啦」 once it is paid for, and how many months it
  * keeps them going once that is two or more), the copy button for a signed-in player (a visitor is asked
- * to sign in first), and the way to the sponsoring page.
- * onPage: on /support, where the accounts follow below.
+ * to sign in first), and the way to the sponsoring page; above it all the player's roach throws the server hearts
+ * (SponsorFx.tsx), but not while the site is gray (全站变灰), when nothing on it moves.
+ * onPage: on /support, where the accounts follow below. color: the player's roach's, cyan as for a new one.
+ * grayFirst: whether the site was gray as the page was drawn on the server (/support), for its first look.
  */
-export function SponsorCard({ view, onPage = false }: { view: SponsorView; onPage?: boolean }) {
+export function SponsorCard({
+  view,
+  onPage = false,
+  color = "cyan",
+  grayFirst = false,
+}: {
+  view: SponsorView;
+  onPage?: boolean;
+  color?: RoachColor;
+  grayFirst?: boolean;
+}) {
+  const calm = useGrayNow(grayFirst);
   const row = view.month && view.month.spent > 0 ? view.month : null;
   const full = row ? enough(row) : false;
   // how long what is in hand keeps the servers going, said only against this month's bill
@@ -167,6 +183,7 @@ export function SponsorCard({ view, onPage = false }: { view: SponsorView; onPag
   const Title = onPage ? "h2" : "h3";
   return (
     <div className="sponsor">
+      {!calm && <SponsorStage color={color} full={full} />}
       {full && row && months >= 2 ? (
         <>
           <Title className="sponsor-title">{fmt(T.sponsor.monthsTitle, { n: months })}</Title>
@@ -187,12 +204,10 @@ export function SponsorCard({ view, onPage = false }: { view: SponsorView; onPag
 
       {row && <Progress row={row} months={months} />}
 
-      {view.email ? <CopyEmail email={view.email} /> : <p className="sponsor-signin">{T.sponsor.signIn}</p>}
+      {view.email ? <CopyEmail email={view.email} calm={calm} /> : <p className="sponsor-signin">{T.sponsor.signIn}</p>}
 
       <div className="sponsor-go">
-        <a className="sponsor-button" href={view.afdian} target="_blank" rel="noreferrer">
-          {T.sponsor.afdian}
-        </a>
+        <AfdianLink href={view.afdian} calm={calm} />
         {view.kofi && (
           <a className="sponsor-button alt" href={view.kofi} target="_blank" rel="noreferrer">
             {T.sponsor.kofi}
@@ -216,11 +231,21 @@ export function SponsorCard({ view, onPage = false }: { view: SponsorView; onPag
   );
 }
 
-/** 支持舟P地图, opened from 我的资料 and going back to it (onBack), or from its button on the map */
-export default function SponsorSheet({ view, onBack, onClose }: { view: SponsorView; onBack?: () => void; onClose: () => void }) {
+/** 支持舟P地图, opened from 我的资料 and going back to it (onBack), or from its button on the map; color: the player's roach's */
+export default function SponsorSheet({
+  view,
+  color,
+  onBack,
+  onClose,
+}: {
+  view: SponsorView;
+  color: RoachColor;
+  onBack?: () => void;
+  onClose: () => void;
+}) {
   return (
     <Sheet title={fmt(T.sponsor.title, { site: siteName() })} onBack={onBack} onClose={onClose}>
-      <SponsorCard view={view} />
+      <SponsorCard view={view} color={color} />
     </Sheet>
   );
 }

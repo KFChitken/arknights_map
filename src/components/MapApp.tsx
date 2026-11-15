@@ -4742,6 +4742,7 @@ export default function MapApp({
         return sponsor ? (
           <SponsorSheet
             view={sponsor}
+            color={myColor}
             onBack={draft ? () => setPanel({ kind: "profile", draft }) : undefined}
             onClose={() => setPanel(null)}
           />
