@@ -25,6 +25,7 @@ import {
   mailLabel,
   MeAvatar,
   RadarScope,
+  SponsorIcon,
   StudyIcon,
   TicketIcon,
   UiIcon,
@@ -39,8 +40,8 @@ import "./hud.css";
 
 /**
  * 游戏风: as in a game, your name plate top left with 消息 and 公告, the counts under it, 方舟雷达 always turning top
- * right, the guides as tabs on the right edge (they fold away), 热榜, the map's style, the base map, 界面 and 听歌 down
- * the left, 触须之交 bottom left, and 我的蟑螂 with one big round 我宣布个事儿 bottom right.
+ * right, the guides as tabs on the right edge (they fold away), 热榜, the map's style, the base map, 界面, 听歌 and 支持
+ * down the left, 触须之交 bottom left, and 我的蟑螂 with one big round 我宣布个事儿 bottom right.
  */
 export default function HudChrome(p: ChromeProps) {
   const { fold, onFold } = p;
@@ -54,9 +55,10 @@ export default function HudChrome(p: ChromeProps) {
   // through the tutorial too while you are in a room of 一起听: the way back to it
   const inRoom = useInListenRoom();
   const listen = sides && (!p.tutorial || inRoom) ? p.listen : null;
+  const sponsor = sides && !p.tutorial ? p.sponsor : null;
   const bm = p.basemap;
   const col = useRef<HTMLDivElement>(null);
-  const n = 2 + [p.passes, p.study, bm, ui, listen].filter(Boolean).length;
+  const n = 2 + [p.passes, p.study, bm, ui, listen, sponsor].filter(Boolean).length;
   const fit = useColumnFit(col, [sides, n, Boolean(me), Boolean(me?.main), bm?.now]);
   return (
     <div className="chrome chrome-hud">
@@ -190,6 +192,16 @@ export default function HudChrome(p: ChromeProps) {
             </span>
           )}
           {listen && <ListenRound listen={listen} />}
+          {sponsor && (
+            <span className="rb">
+              <button className="ob glass" aria-label={fmt(T.map.bar.sponsor, { site: siteName() })} aria-haspopup="dialog" onClick={sponsor.onOpen}>
+                <SponsorIcon size={22} />
+              </button>
+              <span className="lbl" aria-hidden="true">
+                {T.map.bar.sponsorShort}
+              </span>
+            </span>
+          )}
         </div>
       )}
 

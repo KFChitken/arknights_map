@@ -216,8 +216,8 @@ export function SponsorCard({ view, onPage = false }: { view: SponsorView; onPag
   );
 }
 
-/** 支持舟P地图, opened from 我的资料 and going back to it */
-export default function SponsorSheet({ view, onBack, onClose }: { view: SponsorView; onBack: () => void; onClose: () => void }) {
+/** 支持舟P地图, opened from 我的资料 and going back to it (onBack), or from its button on the map */
+export default function SponsorSheet({ view, onBack, onClose }: { view: SponsorView; onBack?: () => void; onClose: () => void }) {
   return (
     <Sheet title={fmt(T.sponsor.title, { site: siteName() })} onBack={onBack} onClose={onClose}>
       <SponsorCard view={view} />

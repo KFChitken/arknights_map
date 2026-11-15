@@ -107,7 +107,7 @@ import {
 } from "./talulah";
 import { clonesOut, hasStayed, ignoreSi, inkOnMap, inkSeen, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
 import { inkTapped } from "./siInk";
-import { sponsorOpen, thanksShownTo } from "./sponsor";
+import { sponsorMe, sponsorOpen, thanksShownTo } from "./sponsor";
 import {
   award,
   declared,
@@ -461,6 +461,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     passes: await passesMe(u),
     study: studyMe(u),
     listen: await listenMe(u),
+    sponsor: await sponsorMe(u),
   };
 }
 

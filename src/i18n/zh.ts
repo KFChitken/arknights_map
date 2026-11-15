@@ -221,6 +221,8 @@ export const zh = {
       listenTogether: "一起 {n} 人",
       listenTogetherLabel: "听歌，一起听 {n} 人",
       listenChat: "发短评",
+      sponsor: "支持{site}",
+      sponsorShort: "支持",
       placeMine: "放下我的蟑螂",
       signIn: "登录",
       retry: "连不上服务器，点这里重试",

@@ -12,7 +12,7 @@ import { wear } from "./badges";
 import { db } from "./db";
 import { forgetHits } from "./rateLimit";
 import { adminLog, admins, sessions, sponsorMonths, sponsorSettings, users } from "./schema";
-import { forgetSponsor, KEEP_MS, sponsorCard, sponsorForAdmin, sponsorLedger, sponsorOpen } from "./sponsor";
+import { forgetSponsor, KEEP_MS, sponsorCard, sponsorForAdmin, sponsorLedger, sponsorMe, sponsorOpen } from "./sponsor";
 import { removeSponsorMonth, saveSponsorMonth, saveSponsorSettings, saveSponsorStartup } from "./sponsorAdmin";
 import { totpCode, totpStep } from "./totp";
 import { cardsOf, me, userById } from "./world";
@@ -336,6 +336,34 @@ describe("whom SPONSOR shows 支持舟P地图 to", () => {
     expect(await sponsorLedger(someone)).not.toBeNull();
     jar.token = null;
     expect((await card()).body.sponsor).toMatchObject({ afdian: LINK, email: null });
+  });
+
+  it("puts its button on the map for those it is shown to, only while the owner has it on with an 爱发电 link", async () => {
+    const someone = await signIn("someone@example.com");
+    const boss = await owner();
+    const button = async (u: { id: string }) => (await me(u.id))?.sponsor;
+
+    expect([await button(boss), await button(someone)]).toEqual([undefined, undefined]);
+    expect((await admin("saveSponsor", { enabled: true, afdian: LINK, kofi: "" })).status).toBe(200);
+    expect([await button(boss), await button(someone)]).toEqual([true, true]);
+    vi.stubEnv("SPONSOR", "admins");
+    expect([await button(boss), await button(someone)]).toEqual([true, undefined]);
+    vi.stubEnv("SPONSOR", "off");
+    expect([await button(boss), await button(someone)]).toEqual([undefined, undefined]);
+
+    vi.stubEnv("SPONSOR", "on");
+    expect((await admin("saveSponsor", { enabled: false, afdian: LINK, kofi: "" })).status).toBe(200);
+    expect([await button(boss), await button(someone)]).toEqual([undefined, undefined]);
+    // a settings read that fails leaves the button out, not the player's page
+    expect((await admin("saveSponsor", { enabled: true, afdian: LINK, kofi: "" })).status).toBe(200);
+    forgetSponsor();
+    const read = vi.spyOn(db, "select").mockImplementationOnce(() => {
+      throw new Error("down");
+    });
+    expect(await sponsorMe(someone)).toBeUndefined();
+    read.mockRestore();
+    forgetSponsor();
+    expect(await button(someone)).toBe(true);
   });
 
   it("shows the thanks only to those it is shown to, on anyone's card and on their own, and gives them only to them", async () => {

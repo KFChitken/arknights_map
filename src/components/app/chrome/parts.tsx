@@ -113,6 +113,8 @@ export type ChromeProps = {
   study: { dot: boolean; days: number | null; onOpen: () => void } | null;
   /** 听歌, where the server opened it to them (LISTEN) and the site is not gray; open: its panel is out */
   listen: { open: boolean; onToggle: () => void } | null;
+  /** 支持舟P地图, where the server shows it to them (me.sponsor, SPONSOR) and the site is not gray: opens its card */
+  sponsor: { onOpen: () => void } | null;
   onGuide: (id: GuideId) => void;
   /** 界面, unless there is nothing in its menu here */
   ui: { open: boolean; onToggle: () => void; deskHint: boolean; onDeskHintDone: () => void } | null;
@@ -232,6 +234,19 @@ export function StudyIcon({ size = 24, dot = false }: { size?: number; dot?: boo
       </svg>
       {dot && <span className="dot" aria-hidden="true" />}
     </span>
+  );
+}
+
+/** 支持舟P地图's red heart */
+export function SponsorIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg className="sponsor-ico" viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path
+        d="M12 21.4C12 21.4 2.6 15.9 2.6 9.3C2.6 6.5 4.8 4.3 7.5 4.3C9.4 4.3 11.1 5.4 12 7C12.9 5.4 14.6 4.3 16.5 4.3C19.2 4.3 21.4 6.5 21.4 9.3C21.4 15.9 12 21.4 12 21.4Z"
+        fill="#f5333f"
+      />
+      <path d="M6.3 9.6a2.8 2.8 0 0 1 2.4-2.5" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" opacity="0.9" />
+    </svg>
   );
 }
 

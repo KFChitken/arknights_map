@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtParts, T } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { GUIDES } from "@/lib/guides";
 import { siteName } from "@/lib/rules";
@@ -21,6 +21,7 @@ import {
   MeSlots,
   NoteIcon,
   RadarScope,
+  SponsorIcon,
   StudyIcon,
   TicketIcon,
   UiIcon,
@@ -35,8 +36,8 @@ import {
 
 /**
  * 浮岛, the default layout: two islands of glass along the top (the site's name with 公告, the map's style and base
- * map), the counts under them, 方舟雷达 with 热榜 and the guides in one column on the right, 界面 and 听歌 on the left,
- * and one bar along the bottom. Each side folds away to a handle at the edge of the screen; the bottom bar and the top
+ * map), the counts under them, 方舟雷达 with 热榜 and the guides in one column on the right, 界面, 听歌 and 支持 on
+ * the left, and one bar along the bottom. Each side folds away to a handle at the edge of the screen; the bottom bar and the top
  * stay.
  */
 export default function FloatChrome(p: ChromeProps) {
@@ -51,6 +52,9 @@ export default function FloatChrome(p: ChromeProps) {
   // through the tutorial too while you are in a room of 一起听: the way back to it
   const inRoom = useInListenRoom();
   const listen = sides && (!p.tutorial || inRoom) ? p.listen : null;
+  const sponsor = sides && !p.tutorial ? p.sponsor : null;
+  // how many tiles the left side folds away with, for the height of the handle they leave
+  const tiles = [ui, listen, sponsor].filter(Boolean).length;
   return (
     <div className="chrome chrome-float">
       <header className="isle isle-l glass" data-chrome-top>
@@ -133,9 +137,9 @@ export default function FloatChrome(p: ChromeProps) {
         </>
       )}
 
-      {(ui || listen) && (
+      {tiles > 0 && (
         <>
-          <div className={`ui-tile-box${folded.l ? " folded" : ""}`} aria-hidden={folded.l || undefined} {...swipeLeft}>
+          <div className={`ui-tile-box n${tiles}${folded.l ? " folded" : ""}`} aria-hidden={folded.l || undefined} {...swipeLeft}>
             {ui && (
               <button
                 className={`ui-tile glass${ui.open ? " pressed" : ""}`}
@@ -150,13 +154,25 @@ export default function FloatChrome(p: ChromeProps) {
               </button>
             )}
             {listen && <ListenTile listen={listen} folded={folded.l} />}
+            {sponsor && (
+              <button
+                className="ui-tile sponsor-tile glass"
+                aria-label={fmt(T.map.bar.sponsor, { site: siteName() })}
+                aria-haspopup="dialog"
+                tabIndex={folded.l ? -1 : undefined}
+                onClick={sponsor.onOpen}
+              >
+                <SponsorIcon size={26} />
+                <small aria-hidden="true">{T.map.bar.sponsorShort}</small>
+              </button>
+            )}
             <button className="nub" aria-label={T.ui.fold.left} onClick={() => setSide("l", true)} tabIndex={folded.l ? -1 : undefined}>
               <FoldArrow dir="left" />
             </button>
             {ui?.deskHint && !folded.l && !ui.open && <DeskHint onTap={ui.onToggle} onDone={ui.onDeskHintDone} />}
           </div>
           <button
-            className={`tab-l glass${folded.l ? " shown" : ""}${ui && listen ? " two" : ""}`}
+            className={`tab-l glass${folded.l ? " shown" : ""}${tiles === 3 ? " three" : tiles === 2 ? " two" : ""}`}
             aria-label={T.ui.fold.openLeft}
             aria-hidden={!folded.l || undefined}
             tabIndex={folded.l ? undefined : -1}
@@ -165,6 +181,7 @@ export default function FloatChrome(p: ChromeProps) {
             <Chev dir="right" />
             {ui && <UiIcon size={16} />}
             {listen && <ListenMark />}
+            {sponsor && <SponsorIcon size={16} />}
           </button>
         </>
       )}

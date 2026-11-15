@@ -562,6 +562,11 @@ export type Me = {
   study?: StudyMe;
   /** 听歌 (src/lib/listen.ts): only for a player who may listen (LISTEN); never in what others get */
   listen?: ListenMe;
+  /**
+   * 支持舟P地图's button on the map (src/lib/sponsor.ts): only while SPONSOR shows it to this player and the owner has
+   * it switched on with an 爱发电 link; never in what others get
+   */
+  sponsor?: true;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

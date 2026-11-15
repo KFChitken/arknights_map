@@ -406,8 +406,8 @@ type Panel =
   /** 地图上看哪些蟑螂 (只看本体), from the counts at the top, or from 资料 (back: to it, with its unsaved changes) */
   | { kind: "onlyMains"; back?: Panel }
   | { kind: "badges"; draft: Profile }
-  /** 支持舟P地图, opened from 我的资料: the draft is kept for going back */
-  | { kind: "sponsor"; draft: Profile }
+  /** 支持舟P地图, opened from 我的资料 (the draft is kept for going back) or from its button on the map (no draft) */
+  | { kind: "sponsor"; draft?: Profile }
   /** greeting: 阿米娅向导's of the day, and away: 佩丽卡监督's report of the time away, which this card then carries */
   | { kind: "homecoming"; homecoming: Homecoming; items: InboxItem[]; greeting: AmiyaItem | null; away: PerlicaItem | null }
   /** 阿米娅向导's greeting of the day, on a day without 欢迎回家 */
@@ -1762,6 +1762,23 @@ export default function MapApp({
       live = false;
     };
   }, [profileOpen, meId]);
+  /**
+   * 支持舟P地图's button on the map: its card at once if it was read before (read again under it), else once it
+   * comes; one that does not come says so, and one that comes after the player went on to something else stays shut
+   */
+  const sponsorAsk = useRef(0);
+  const openSponsor = () => {
+    const ask = ++sponsorAsk.current;
+    if (sponsor) setPanel({ kind: "sponsor" });
+    fetchSponsor().then((s) => {
+      if (ask !== sponsorAsk.current) return;
+      setSponsor(s);
+      if (!s) {
+        setPanel((p) => (p?.kind === "sponsor" && !p.draft ? null : p));
+        setToast(T.map.common.tryAgain);
+      } else if (!sponsor) setPanel((p) => (p ? p : { kind: "sponsor" }));
+    });
+  };
 
   /** 每日任务: a touch, a declaration or a reply that counted lights the dot on the 寻访 button at once (src/lib/passes.ts) */
   const passesDotAfter = (result: unknown) => {
@@ -4720,14 +4737,16 @@ export default function MapApp({
             onClose={() => setPanel(null)}
           />
         );
-      case "sponsor":
+      case "sponsor": {
+        const draft = p.draft;
         return sponsor ? (
           <SponsorSheet
             view={sponsor}
-            onBack={() => setPanel({ kind: "profile", draft: p.draft })}
+            onBack={draft ? () => setPanel({ kind: "profile", draft }) : undefined}
             onClose={() => setPanel(null)}
           />
         ) : null;
+      }
       case "homecoming": {
         // her greeting counts as seen however this card is left
         const seen = () => (p.greeting ? worldRef.current!.markSeen([p.greeting.id]).catch(() => {}) : Promise.resolve());
@@ -5086,6 +5105,8 @@ export default function MapApp({
   const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
   // 听歌: where the server opened it to them (me.listen), and not while the site is gray (全站变灰); not on /en
   const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
+  // 支持舟P地图's button: where the server shows it to them (me.sponsor: SPONSOR, and the owner's switch), not while gray
+  const sponsorShown = lang() === "zh" && Boolean(me?.sponsor) && !gray;
   // the newest invitation to 一起听 still to answer, for its tab
   const openInvite = inbox
     .filter((i): i is ListenInvite => i.kind === "listenInvite" && i.state === "open")
@@ -5183,6 +5204,7 @@ export default function MapApp({
           },
         }
       : null,
+    sponsor: sponsorShown ? { onOpen: openSponsor } : null,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });

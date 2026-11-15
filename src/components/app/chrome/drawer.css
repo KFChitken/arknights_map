@@ -101,8 +101,8 @@
 @media (max-width: 359px) {
   .chrome-drawer .dcard .tx b { font-size: 13px; }
 }
-/* 听歌 in the computer's panel: edged in yellow while its own panel is out beside it */
-.chrome-drawer .dlisten .lico { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: #ffffff14; }
+/* 听歌 and 支持 in the computer's panel, each icon on a square of its own; 听歌 edged in yellow while its panel is out */
+.chrome-drawer :is(.dlisten, .dsponsor) .lico { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: #ffffff14; }
 .chrome-drawer .dlisten .listen-new { position: static; display: inline-block; margin-left: 6px; vertical-align: 1px; box-shadow: none; }
 .chrome-drawer .dlisten.open { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .chrome-drawer .dhot { display: block; }

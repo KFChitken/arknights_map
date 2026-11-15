@@ -109,8 +109,9 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 }
 .tab-r { right: var(--safe-right); width: 28px; height: 80px; border-radius: 14px 0 0 14px; transform: translateX(calc(100% + 4px)); }
 .tab-l { left: var(--safe-left); width: 28px; height: 60px; border-radius: 0 14px 14px 0; transform: translateX(calc(-100% - 4px)); }
-/* 界面 and 听歌 both folded away into it; 听歌's note yellow while a song plays */
+/* 界面 and 听歌 (or 支持) folded away into it, or all three; 听歌's note yellow while a song plays */
 .tab-l.two { height: 84px; }
+.tab-l.three { height: 108px; }
 .tab-l .listen-mark { display: grid; color: #fff; }
 .tab-l .listen-mark.on { color: var(--accent); }
 .tab-r.shown, .tab-l.shown { transform: none; visibility: visible; transition: transform 0.2s ease-out, visibility 0s; }
@@ -246,6 +247,18 @@ html[data-fold-r] .chrome-float .rail { transform: translateX(calc(100% + 16px +
 html[data-fold-r] .chrome-float .tab-r, html[data-fold-l] .chrome-float .tab-l { transform: none; visibility: visible; }
 html[data-fold-l] .chrome-float .ui-tile-box { transform: translateX(calc(-100% - 16px - var(--safe-left))); visibility: hidden; }
 
+/*
+ * A phone on its side: two or three tiles start higher, under the island with the site's name, so they end above the
+ * bottom bar (n2, n3: how many there are), and on the shortest three go without their names
+ */
+@media (max-height: 500px) {
+  .chrome-float :is(.ui-tile-box.n2, .ui-tile-box.n3, .tab-l.two, .tab-l.three) { top: calc(62px + var(--safe-top)); }
+}
+@media (max-height: 360px) {
+  .chrome-float .ui-tile-box.n3 { gap: 6px; }
+  /* out of sight, still read out (界面's is its only name) */
+  .chrome-float .ui-tile-box.n3 .ui-tile small { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+}
 @media (min-width: 900px) {
   .chrome-float .rail { --rail-top: calc(64px + var(--safe-top)); right: calc(12px + var(--safe-right)); }
   .chrome-float .ui-tile-box { top: calc(64px + var(--safe-top)); left: calc(12px + var(--safe-left)); }

@@ -24,6 +24,7 @@ import {
   MeAvatar,
   MeSlots,
   RadarScope,
+  SponsorIcon,
   StudyIcon,
   TicketIcon,
   UiIcon,
@@ -41,7 +42,7 @@ import { characterName } from "@/i18n/names";
 
 /**
  * 抽屉: on a phone, a capsule along the top (the site's name, 公告, 界面, the map's style and base map), 方舟雷达, 热榜,
- * 听歌 and the guides as a row of small tabs, and a drawer along the bottom with the counts and your buttons, pulled up
+ * 听歌, 支持 and the guides as a row of small tabs, and a drawer along the bottom with the counts and your buttons, pulled up
  * for the radar's last scan, the week's hot list and the guides. On a computer, all of it in a panel down the left.
  * The map keeps clear of the drawer and the panel (chrome.css), so Amap's mark always shows.
  */
@@ -83,6 +84,14 @@ function Phone(p: ChromeProps) {
             <span aria-hidden="true">{T.map.bar.hotShort}</span>
           </button>
           {p.listen && <ListenChip listen={p.listen} />}
+          {p.sponsor && (
+            <button className="dchip glass" aria-label={fmt(T.map.bar.sponsor, { site: siteName() })} aria-haspopup="dialog" onClick={p.sponsor.onOpen}>
+              <span className="ico">
+                <SponsorIcon size={20} />
+              </span>
+              <span aria-hidden="true">{T.map.bar.sponsorShort}</span>
+            </button>
+          )}
           {p.passes && (
             <button className="dchip glass" aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes} onClick={p.passes.onOpen}>
               <span className="ico">
@@ -198,6 +207,19 @@ function Panel(p: ChromeProps) {
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
             {p.listen && <ListenCard listen={p.listen} />}
+            {p.sponsor && (
+              <button className="dcard dsponsor" aria-haspopup="dialog" onClick={p.sponsor.onOpen}>
+                <span className="lico">
+                  <SponsorIcon size={26} />
+                </span>
+                <span className="tx">
+                  <b>{fmt(T.map.bar.sponsor, { site: siteName() })}</b>
+                </span>
+                <span className="go" aria-hidden="true">
+                  ›
+                </span>
+              </button>
+            )}
             {p.passes && <PassesCard passes={p.passes} />}
             {p.study && <StudyCard study={p.study} />}
             <h4>{T.ui.drawer.guides}</h4>

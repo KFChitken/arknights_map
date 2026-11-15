@@ -89,6 +89,19 @@ function accounts({ startup, months }: Stored): { startup: StartupPaid; rows: Le
   return { startup: { ...startup, repaid: repaidOf(rows) }, rows };
 }
 
+/**
+ * me()'s 支持舟P地图, for its button on the map: true while it shows to this player (sponsorOpen, and switched on with
+ * an 爱发电 link); a settings read that fails leaves the button out rather than the player's whole page
+ */
+export async function sponsorMe(user: Pick<UserRow, "id" | "email">, now = Date.now()): Promise<true | undefined> {
+  if (!sponsorOpen(user)) return undefined;
+  try {
+    return shows((await stored(now)).settings) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The card as this viewer (null: a visitor) sees it, but for their email; null while the entry is off, or not shown to them */
 export async function sponsorCard(viewer: Pick<UserRow, "id" | "email"> | null, now = Date.now()): Promise<Omit<SponsorView, "email"> | null> {
   if (!sponsorOpen(viewer)) return null;
