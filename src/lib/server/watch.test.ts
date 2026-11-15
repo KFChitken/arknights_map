@@ -724,6 +724,8 @@ describe("POST /api/health/map", () => {
     forgetSignals(t0);
     expect((await post({ map: "amap", what: "key", detail: "USER_DAILY_QUERY_OVER_LIMIT" })).status).toBe(204);
     await post({ map: "amap", what: "load", detail: "<script>me@example.com 你好" });
+    // nothing that a mail app would make a link of
+    await post({ map: "osm", what: "tiles", detail: "zhoupmap-verify.com/login" });
     await post({ map: "elsewhere", what: "key" });
     await post({ map: "osm", what: "explode" });
     // 腾讯's map, and 腾讯位置服务 turning away the key of the place suggestions; 高德's never says that
@@ -732,7 +734,8 @@ describe("POST /api/health/map", () => {
     await post({ map: "amap", what: "search", detail: "121" });
     expect(recent("map", HOUR).map((s) => s.code)).toEqual([
       "amap:key:USER_DAILY_QUERY_OVER_LIMIT",
-      "amap:load:scriptmeexample.com",
+      "amap:load:scriptmeexamplecom",
+      "osm:tiles:zhoupmap-verifycomlogin",
       "tencent:search:121",
       "tencent:key:-301",
     ]);

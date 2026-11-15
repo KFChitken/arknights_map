@@ -17,8 +17,10 @@ export const POST = route(async (req) => {
   const body = await readJson(req);
   const map = String(body.map ?? "");
   const what = String(body.what ?? "");
+  // letters, digits, _ and - only: no dots, so nothing in it reads as a web address in the alert mail it may
+  // end up in (mapTrouble in src/lib/server/watch.ts), which mail apps would make a link
   const detail = String(body.detail ?? "")
-    .replace(/[^\w.-]/g, "")
+    .replace(/[^\w-]/g, "")
     .slice(0, 40);
   // anyone can send these: a cap for the whole site keeps a flood from filling memory
   const known = (MAPS.has(map) && TROUBLES.has(what)) || `${map}:${what}` === SEARCH;
