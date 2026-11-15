@@ -9,7 +9,7 @@ import { db } from "@/lib/server/db";
 import { sendAdminMail } from "@/lib/server/mail";
 import { forgetNameWords } from "@/lib/server/nameWords";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
-import { grayUntil, loadSettings } from "@/lib/server/siteSettings";
+import { grayUntil, listenSettings, loadSettings } from "@/lib/server/siteSettings";
 import { loadZones } from "@/lib/server/zones";
 import { adminBackupCodes, adminLog, admins, bannedEmails, clearedValues, modActions, nameWords, reports, roaches, sessions, users } from "@/lib/server/schema";
 import { staffItems } from "@/lib/server/staffNotes";
@@ -152,6 +152,8 @@ const OPS = [
   "gray",
   "setGray",
   "endGray",
+  "listen",
+  "setListen",
   "nope",
 ];
 
@@ -685,5 +687,39 @@ describe("禁放区 and 全站变灰, the owner's", () => {
       ["act.gray", `到 ${beijingShort(until - 1).split(" ")[0]} 24:00 自动恢复`],
       ["act.grayEnd", null],
     ]);
+  });
+
+  it("pauses 听歌 and changes how many may listen at once, each change in the 操作记录", async () => {
+    await owner();
+    vi.stubEnv("LISTEN", "admins");
+    try {
+      expect((await call("listen")).body.result).toEqual({
+        mode: "admins",
+        settings: { paused: false, cap: 600, roomMax: 20 },
+        listening: 0,
+        plays: 0,
+        full: 0,
+        songs: 0,
+        catalog: null,
+      });
+      expect((await call("setListen", [{ cap: 0 }])).body.error).toBe("同时在听上限要是 1 到 10000 之间的整数。");
+      expect((await call("setListen", [{ cap: 1.5 }])).status).toBe(400);
+      expect((await call("setListen", [{ paused: "yes" }])).body.error).toBe("暂停听歌只能开或关。");
+      expect((await call("setListen", [{ paused: true }])).body.result).toMatchObject({ settings: { paused: true, cap: 600 } });
+      expect(listenSettings().paused).toBe(true);
+      expect((await call("setListen", [{ cap: 800 }])).body.result).toMatchObject({ settings: { paused: true, cap: 800 } });
+      // the same again changes nothing, and adds nothing to the log
+      expect((await call("setListen", [{ cap: 800 }])).status).toBe(200);
+      expect((await call("setListen", [{ paused: false }])).body.result).toMatchObject({ settings: { paused: false, cap: 800 } });
+      expect(listenSettings()).toEqual({ paused: false, cap: 800, roomMax: 20 });
+      expect((await db.select().from(adminLog).orderBy(adminLog.id)).map((l) => [l.what, l.detail])).toEqual([
+        ["gate.setup", null],
+        ["act.listen", "暂停了听歌"],
+        ["act.listen", "同时在听上限从 600 人改成 800 人"],
+        ["act.listen", "恢复了听歌"],
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

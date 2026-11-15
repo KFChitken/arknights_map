@@ -67,8 +67,9 @@ ssh "$HOST" "MODE=$mode SHA=$sha bash -s" <<'REMOTE'
 set -e
 cd ~/arknights_map
 git pull --ff-only
-# made by us, not by Docker as root, should the pictures or the map not be there yet
-mkdir -p operator-art guide-art tiles
+# made by us, not by Docker as root, should the pictures, the map or the songs not be there yet
+# (scripts/fetch-music.sh writes into music/ as us)
+mkdir -p operator-art guide-art tiles music/files
 IMAGE=ghcr.io/kfchitken/arknights_map
 compose() { docker compose -f docker-compose.prod.yml "$@"; }
 # :latest on the server is always the image that runs, so plain compose commands keep using it

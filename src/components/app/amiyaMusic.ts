@@ -1,10 +1,12 @@
 /**
  * 阿米娅向导's dance music (from the video by 疚刃 her dance comes from), played
  * quietly through Web Audio when she is tapped, never on its own. Whether it plays
- * at all is kept in this browser, switched on her card.
+ * at all is kept in this browser, switched on her card. While a song of 听歌 plays
+ * (src/components/app/listening.ts), she dances to it instead.
  */
 
 import { isGray } from "@/lib/grayMode";
+import { isListening } from "./listening";
 
 const MUSIC_URL = "/guide-art/amiya-dance.m4a";
 /** The video's music is loud: well under full volume */
@@ -59,11 +61,11 @@ export function stopMusic() {
 /**
  * The music from the start, over whatever was playing. Call it within the tap itself,
  * which is what lets a browser play sound. Resolves to how long it lasts (ms), or null
- * when it is off, switched off on the server, cannot play here, or the site is gray
- * (全站变灰, src/lib/grayMode.ts): she dances all the same.
+ * when it is off, switched off on the server, cannot play here, the site is gray
+ * (全站变灰, src/lib/grayMode.ts) or a song plays (听歌): she dances all the same.
  */
 export function playMusic(): Promise<number | null> {
-  if (!musicOn() || isGray()) return Promise.resolve(null);
+  if (!musicOn() || isGray() || isListening()) return Promise.resolve(null);
   const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Context) return Promise.resolve(null);
   ctx ??= new Context();
@@ -80,7 +82,7 @@ export function playMusic(): Promise<number | null> {
     });
   stopMusic();
   return buffer.then((b) => {
-    if (!b || !musicOn()) return null;
+    if (!b || !musicOn() || isListening()) return null;
     stopMusic();
     const gain = c.createGain();
     gain.gain.value = VOLUME;

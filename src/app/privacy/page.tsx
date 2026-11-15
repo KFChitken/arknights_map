@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import GrayMode from "@/components/GrayMode";
-import { fmt, fmtParts, localPath, T } from "@/i18n";
+import { fmt, fmtParts, lang, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { AWAY_DAYS, SURVIVOR_DAYS } from "@/lib/badges";
 import { HOT_MIN_PLAYERS } from "@/lib/hotList";
@@ -23,7 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
-import { studyMode } from "@/lib/server/env";
+import { listenMode, studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -33,6 +33,8 @@ const BACKUP_DAYS = 14;
 export default async function Privacy() {
   // rendered for each visit, so 全站变灰 shows here too
   await connection();
+  // 听歌, once it is open to everyone (LISTEN=on); on the Chinese site alone, the only one it is on
+  const listen = listenMode() === "on" && lang() === "zh";
   return (
     <main className="doc">
       <GrayMode until={grayUntil(Date.now())} />
@@ -72,6 +74,11 @@ export default async function Privacy() {
             {fmtNodes(T.server.privacy.collect.study, { b: <strong>{T.server.privacy.collect.studyB}</strong> })}
           </li>
         )}
+        {listen && (
+          <li>
+            {fmtNodes(T.server.privacy.collect.listen, { b: <strong>{T.server.privacy.collect.listenB}</strong>, site: siteName() })}
+          </li>
+        )}
         <li>
           {fmtNodes(T.server.privacy.collect.away, { b: <strong>{T.server.privacy.collect.awayB}</strong>, site: siteName() })}
         </li>
@@ -79,7 +86,12 @@ export default async function Privacy() {
           {fmtNodes(T.server.privacy.collect.age, { b: <strong>{T.server.privacy.collect.ageB}</strong>, minSignupAge: MIN_SIGNUP_AGE, b2: <strong>{T.server.privacy.collect.ageB2}</strong> })}
         </li>
         <li>
-          {fmtNodes(T.server.privacy.collect.security, { b: <strong>{T.server.privacy.collect.securityB}</strong>, sessionDays: SESSION_DAYS, b2: <strong>{T.server.privacy.collect.securityB2}</strong> })}
+          {fmtNodes(T.server.privacy.collect.security, {
+            b: <strong>{T.server.privacy.collect.securityB}</strong>,
+            sessionDays: SESSION_DAYS,
+            b2: <strong>{T.server.privacy.collect.securityB2}</strong>,
+            listen: listen ? T.server.privacy.collect.securityListen : "",
+          })}
         </li>
       </ul>
       <p>{T.server.privacy.collect.notCollected}</p>
@@ -234,6 +246,7 @@ export default async function Privacy() {
       <h2>{T.server.privacy.images.title}</h2>
       <p>
         {fmtParts(T.server.privacy.images.text, { site: siteName() })}
+        {listen && T.server.privacy.images.songs}
       </p>
 
       <h2>{T.server.privacy.updates.title}</h2>

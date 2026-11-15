@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { GRAY_MAX_DAYS, type GrayState } from "../adminConsole";
 import { beijingDate } from "../beijing";
+import { CAP_RANGE, LISTEN_DEFAULTS, ROOM_RANGE, type ListenSettings } from "../listen";
 import { nextMemorial } from "../memorials";
 import { db } from "./db";
 import { HttpError } from "./http";
@@ -12,17 +13,19 @@ import { errorCode } from "./signals";
 /**
  * Settings for the whole site that the owner changes in the 管理台 (site_settings), kept in memory by every process
  * and read before the first page asks (src/instrumentation-node.ts): a change reaches every process at once
- * (reloadEverywhere), and each reads them again every RELOAD_MS anyway. For now only 全站变灰: until when everyone
- * sees the site in gray, for a national day of mourning. It lives on globalThis because Next.js can load this module
- * once per route bundle.
+ * (reloadEverywhere), and each reads them again every RELOAD_MS anyway: 全站变灰, until when everyone sees the site in
+ * gray, for a national day of mourning; and 听歌's (src/lib/server/listen.ts), paused or not, how many may listen at
+ * once, how many to a room. It lives on globalThis because Next.js can load this module once per route bundle.
  */
 
-type Held = { grayUntil: number | null; loading: Promise<void> | null; again: boolean; started: boolean };
+type Held = { grayUntil: number | null; listen: ListenSettings; loading: Promise<void> | null; again: boolean; started: boolean };
 const g = globalThis as unknown as { siteSettingsHeld?: Held };
-const held = (g.siteSettingsHeld ??= { grayUntil: null, loading: null, again: false, started: false });
+const held = (g.siteSettingsHeld ??= { grayUntil: null, listen: LISTEN_DEFAULTS, loading: null, again: false, started: false });
+held.listen ??= LISTEN_DEFAULTS;
 const RELOAD_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 const GRAY = "gray";
+const LISTEN = "listen";
 
 /** gray's value: { until } as an ISO time; anything else is no gray at all */
 function untilOf(value: unknown) {
@@ -42,6 +45,7 @@ export function loadSettings(): Promise<void> {
         held.again = false;
         const rows = await db.select({ key: siteSettings.key, value: siteSettings.value }).from(siteSettings);
         held.grayUntil = untilOf(rows.find((r) => r.key === GRAY)?.value);
+        held.listen = listenOf(rows.find((r) => r.key === LISTEN)?.value);
       } while (held.again);
     } finally {
       held.loading = null;
@@ -91,4 +95,50 @@ export async function endGray(now = Date.now()) {
   const gone = await db.delete(siteSettings).where(eq(siteSettings.key, GRAY)).returning({ value: siteSettings.value });
   await reloadEverywhere("settings");
   return gone.some((r) => (untilOf(r.value) ?? 0) > now);
+}
+
+// ---- 听歌 ----
+
+const within = (n: unknown, [lo, hi]: readonly [number, number]): n is number => Number.isInteger(n) && (n as number) >= lo && (n as number) <= hi;
+
+/** listen's value: { paused, cap, roomMax }, each its default where it is missing or makes no sense */
+function listenOf(value: unknown): ListenSettings {
+  const v = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    paused: v.paused === true,
+    cap: within(v.cap, CAP_RANGE) ? v.cap : LISTEN_DEFAULTS.cap,
+    roomMax: within(v.roomMax, ROOM_RANGE) ? v.roomMax : LISTEN_DEFAULTS.roomMax,
+  };
+}
+
+/** 听歌's settings now: from memory, never the database */
+export const listenSettings = (): ListenSettings => held.listen;
+
+/**
+ * Some of 听歌's settings changed by byId (the owner): paused, cap, roomMax, each only if given. On every process at
+ * once. Says what they are now.
+ */
+export async function setListen(byId: string, change: unknown, now = Date.now()): Promise<ListenSettings> {
+  const c = change && typeof change === "object" ? (change as Record<string, unknown>) : {};
+  const [row] = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, LISTEN));
+  const next = listenOf(row?.value);
+  if ("paused" in c) {
+    if (typeof c.paused !== "boolean") throw new HttpError(400, "暂停听歌只能开或关。");
+    next.paused = c.paused;
+  }
+  if ("cap" in c) {
+    if (!within(c.cap, CAP_RANGE)) throw new HttpError(400, `同时在听上限要是 ${CAP_RANGE[0]} 到 ${CAP_RANGE[1]} 之间的整数。`);
+    next.cap = c.cap;
+  }
+  if ("roomMax" in c) {
+    if (!within(c.roomMax, ROOM_RANGE)) throw new HttpError(400, `一场最多几人要是 ${ROOM_RANGE[0]} 到 ${ROOM_RANGE[1]} 之间的整数。`);
+    next.roomMax = c.roomMax;
+  }
+  const set = { value: next, updatedAt: new Date(now), updatedBy: byId };
+  await db
+    .insert(siteSettings)
+    .values({ key: LISTEN, ...set })
+    .onConflictDoUpdate({ target: siteSettings.key, set });
+  await reloadEverywhere("settings");
+  return next;
 }

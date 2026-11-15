@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { grayUntilWords, maskEmails, MOD_ONLY, MOD_OPS, OWNER_ONLY } from "@/lib/adminConsole";
+import type { ListenSettings } from "@/lib/listen";
 import { parseNameWords } from "@/lib/nameRules";
 import { isRuleCode, type AdminAction, type CaseQuery } from "@/lib/safety";
 import {
@@ -54,7 +55,8 @@ import { appCountDays } from "@/lib/server/appCounts";
 import { dashboard } from "@/lib/server/dashboard";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
-import { endGray, grayState, setGray } from "@/lib/server/siteSettings";
+import { listenDesk } from "@/lib/server/listen";
+import { endGray, grayState, listenSettings, setGray, setListen } from "@/lib/server/siteSettings";
 import { ackIncident, siteStatus } from "@/lib/server/watchReport";
 import { drawZone, liftZone, listZones, previewZone, zoneSpot } from "@/lib/server/zones";
 
@@ -62,6 +64,16 @@ import { drawZone, liftZone, listZones, previewZone, zoneSpot } from "@/lib/serv
 const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
 const objectOf = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/** What a change to 听歌's settings did, for the 操作记录: empty when it changed nothing */
+const listenChange = (a: ListenSettings, b: ListenSettings) =>
+  [
+    a.paused !== b.paused ? (b.paused ? "暂停了听歌" : "恢复了听歌") : "",
+    a.cap !== b.cap ? `同时在听上限从 ${a.cap} 人改成 ${b.cap} 人` : "",
+    a.roomMax !== b.roomMax ? `一起听一场最多从 ${a.roomMax} 人改成 ${b.roomMax} 人` : "",
+  ]
+    .filter(Boolean)
+    .join("，");
 
 /**
  * The 管理台's endpoints (src/components/admin). Everyone comes through the door first (src/lib/server/admins.ts
@@ -309,6 +321,17 @@ export const POST = route(
         if (await endGray(now)) await logAdmin(actor, "act", "act.grayEnd", {}, now);
         result = grayState(now);
         break;
+      // 听歌 (the owner's, src/lib/server/listen.ts): how it goes now; paused, the cap, a room's most, as args[0] changes them
+      case "listen":
+        result = await listenDesk(now);
+        break;
+      case "setListen": {
+        const before = listenSettings();
+        const detail = listenChange(before, await setListen(actor.id, objectOf(args[0]), now));
+        if (detail) await logAdmin(actor, "act", "act.listen", { detail }, now);
+        result = await listenDesk(now);
+        break;
+      }
 
       // ---- 禁放区 (the owner's, src/lib/server/zones.ts): the list, one to see on the map, what a circle takes in, drawing, lifting ----
       case "zones":

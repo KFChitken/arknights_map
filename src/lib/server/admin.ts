@@ -1523,8 +1523,8 @@ export async function doneToday(viewer: Viewer, now = Date.now()): Promise<DoneT
     .sort((a, b) => Number(b.you) - Number(a.you) || b.n - a.n);
 }
 
-/** Steps taken on the site rather than on an account: 知道了, the name blocklist, 禁放区 and 全站变灰 */
-const SITE_ACTS = new Set(["act.ack", "act.nameWords", "act.zone", "act.zoneLift", "act.gray", "act.grayEnd"]);
+/** Steps taken on the site rather than on an account: 知道了, the name blocklist, 禁放区, 全站变灰 and 听歌 */
+const SITE_ACTS = new Set(["act.ack", "act.nameWords", "act.zone", "act.zoneLift", "act.gray", "act.grayEnd", "act.listen"]);
 /** Lines of the log that are always about one account, so one without an account now was about one since gone */
 const aboutAnAccount = (what: string) => (what.startsWith("act.") && !SITE_ACTS.has(what)) || what === "view.account";
 

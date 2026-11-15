@@ -15,11 +15,15 @@ import {
   GuideFace,
   GUIDE_ORDER,
   HotFlame,
+  ListenIcon,
+  listenLabel,
   MeSlots,
+  NoteIcon,
   RadarScope,
   StudyIcon,
   TicketIcon,
   UiIcon,
+  useListenEntry,
   useSwipeAway,
   VisitorButtons,
   WaitingButton,
@@ -29,8 +33,9 @@ import {
 
 /**
  * 浮岛, the default layout: two islands of glass along the top (the site's name with 公告, the map's style and base
- * map), the counts under them, 方舟雷达 with 热榜 and the guides in one column on the right, 界面 on the left, and one
- * bar along the bottom. Each side folds away to a handle at the edge of the screen; the bottom bar and the top stay.
+ * map), the counts under them, 方舟雷达 with 热榜 and the guides in one column on the right, 界面 and 听歌 on the left,
+ * and one bar along the bottom. Each side folds away to a handle at the edge of the screen; the bottom bar and the top
+ * stay.
  */
 export default function FloatChrome(p: ChromeProps) {
   const { fold, onFold } = p;
@@ -41,6 +46,7 @@ export default function FloatChrome(p: ChromeProps) {
   // the right-hand column makes room for the 站长's panel of reported roaches, and neither side shows while placing
   const sides = !p.placing && !p.reported;
   const ui = sides && !p.tutorial ? p.ui : null;
+  const listen = sides && !p.tutorial ? p.listen : null;
   return (
     <div className="chrome chrome-float">
       <header className="isle isle-l glass" data-chrome-top>
@@ -123,34 +129,38 @@ export default function FloatChrome(p: ChromeProps) {
         </>
       )}
 
-      {ui && (
+      {(ui || listen) && (
         <>
           <div className={`ui-tile-box${folded.l ? " folded" : ""}`} aria-hidden={folded.l || undefined} {...swipeLeft}>
-            <button
-              className={`ui-tile glass${ui.open ? " pressed" : ""}`}
-              data-ui-btn
-              aria-haspopup="menu"
-              aria-expanded={ui.open}
-              tabIndex={folded.l ? -1 : undefined}
-              onClick={ui.onToggle}
-            >
-              <UiIcon size={26} />
-              <small>{T.ui.button}</small>
-            </button>
+            {ui && (
+              <button
+                className={`ui-tile glass${ui.open ? " pressed" : ""}`}
+                data-ui-btn
+                aria-haspopup="menu"
+                aria-expanded={ui.open}
+                tabIndex={folded.l ? -1 : undefined}
+                onClick={ui.onToggle}
+              >
+                <UiIcon size={26} />
+                <small>{T.ui.button}</small>
+              </button>
+            )}
+            {listen && <ListenTile listen={listen} folded={folded.l} />}
             <button className="nub" aria-label={T.ui.fold.left} onClick={() => setSide("l", true)} tabIndex={folded.l ? -1 : undefined}>
               <FoldArrow dir="left" />
             </button>
-            {ui.deskHint && !folded.l && !ui.open && <DeskHint onTap={ui.onToggle} onDone={ui.onDeskHintDone} />}
+            {ui?.deskHint && !folded.l && !ui.open && <DeskHint onTap={ui.onToggle} onDone={ui.onDeskHintDone} />}
           </div>
           <button
-            className={`tab-l glass${folded.l ? " shown" : ""}`}
+            className={`tab-l glass${folded.l ? " shown" : ""}${ui && listen ? " two" : ""}`}
             aria-label={T.ui.fold.openLeft}
             aria-hidden={!folded.l || undefined}
             tabIndex={folded.l ? undefined : -1}
             onClick={() => setSide("l", false)}
           >
             <Chev dir="right" />
-            <UiIcon size={16} />
+            {ui && <UiIcon size={16} />}
+            {listen && <ListenMark />}
           </button>
         </>
       )}
@@ -158,6 +168,39 @@ export default function FloatChrome(p: ChromeProps) {
       {!p.placing && <BottomBar {...p} />}
       {p.disclaimer}
     </div>
+  );
+}
+
+/** 听歌, a tile under 界面 as big as it: the note, or three bars and 在听 while a song plays; 新 until first opened */
+function ListenTile({ listen, folded }: { listen: NonNullable<ChromeProps["listen"]>; folded: boolean }) {
+  const e = useListenEntry();
+  return (
+    <button
+      className={`ui-tile listen-tile glass${e.on ? " listen-on" : ""}${listen.open ? " pressed" : ""}`}
+      aria-label={listenLabel(e.on, e.track)}
+      aria-haspopup="dialog"
+      aria-expanded={listen.open}
+      tabIndex={folded ? -1 : undefined}
+      onClick={listen.onToggle}
+    >
+      <ListenIcon on={e.on} size={26} />
+      <small aria-hidden="true">{e.on ? T.map.bar.listenNow : T.map.bar.listen}</small>
+      {e.fresh && (
+        <span className="listen-new" aria-hidden="true">
+          {T.map.bar.listenNew}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** On the handle the left side folds away to: a small note, yellow while a song plays */
+function ListenMark() {
+  const { on } = useListenEntry();
+  return (
+    <span className={`listen-mark${on ? " on" : ""}`}>
+      <NoteIcon size={16} />
+    </span>
   );
 }
 

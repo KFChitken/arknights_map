@@ -1,0 +1,92 @@
+/*
+ * 听歌's panel (ListenPanel.tsx), loaded with it: a sheet on a phone (Sheet.tsx), a panel at the left on a computer.
+ * The player, the line on privacy and the search stay at its top while the songs scroll under them.
+ */
+
+/* the same height whatever is found, so the search box stays put while typing (as 公告's sheet, globals.css .board) */
+.listen-sheet .sheet { height: 88vh; height: calc(var(--vv-h, 100svh) * 0.88); }
+.listen-sheet .sheet-body { flex: 1; min-height: 0; padding-top: 0; }
+.listen-sheet .sheet-foot { padding-top: 8px; }
+
+.lp-top { position: sticky; top: 0; z-index: 1; padding: 2px 0 6px; background: var(--paper); }
+
+/* the player: a block for the game, the song, ▶ or ⏸, how far it got */
+.lp-player {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 38px; align-items: center; gap: 7px 10px; padding: 10px 10px 8px;
+  border-radius: 12px; background: #f4f4f5;
+}
+.lp-player.empty { display: block; padding: 14px 12px; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.lp-player.full { background: #fdf0f0; color: #a33a3a; }
+.lp-cover {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #2b2f3a, #5b6274);
+  color: #fff; font-size: 11px; font-weight: 800;
+}
+.lp-what { min-width: 0; line-height: 1.3; }
+.lp-what b, .lp-what small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-what b { font-size: 15px; }
+.lp-what small { margin-top: 1px; color: var(--muted); font-size: 12px; }
+.lp-btn { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: #fff; }
+.lp-btn svg { width: 16px; height: 16px; }
+.lp-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.lp-bar .track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; }
+.lp-bar .fill { display: block; height: 100%; background: #e0464d; }
+.lp-hint { grid-column: 1 / -1; margin-top: -2px; color: var(--muted); font-size: 12.5px; text-align: center; }
+.lp-hint.bad { color: #a33a3a; }
+
+/* the first time, what is kept of it */
+.lp-privacy {
+  display: flex; align-items: center; gap: 10px; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff7d6;
+  font-size: 12.5px; line-height: 1.5;
+}
+.lp-privacy span { flex: 1; min-width: 0; }
+.lp-privacy a { margin-left: 4px; color: inherit; font-weight: 700; }
+.lp-privacy button { flex: none; padding: 5px 11px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 12.5px; font-weight: 700; }
+
+/* 16px, so a phone does not zoom in on it */
+.lp-search {
+  display: block; width: 100%; margin-top: 8px; padding: 8px 12px; border: 1px solid #e1e3e8; border-radius: 10px; background: #fafafa;
+  color: var(--ink); font: inherit; font-size: 16px;
+}
+
+/* the songs: an album off screen is not laid out until it comes near */
+.lp-album { content-visibility: auto; contain-intrinsic-size: auto 360px; }
+.lp-album h3 { margin: 14px 0 2px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.lp-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 0; border: 0;
+  border-bottom: 1px solid #f0f1f3; background: none; color: var(--ink); text-align: left;
+}
+.lp-row .nm { flex: 1; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.lp-row .nm small { display: block; overflow: hidden; color: #8a8f99; font-size: 11.5px; font-weight: 400; text-overflow: ellipsis; }
+.lp-row.now .nm { color: #d9363e; }
+.lp-row .dur { flex: none; color: #8a8f99; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.lp-row .go { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border: 1px solid #e1e3e8; border-radius: 50%; }
+.lp-row .go svg { width: 12px; height: 12px; }
+.lp-row.now .go { border-color: #d9363e; color: #d9363e; }
+.lp-end { height: 1px; }
+.lp-note { margin: 18px 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; text-align: center; }
+.lp-retry { display: block; margin: 8px auto 0; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; }
+.lp-foot { margin: 0; color: #8a8f99; font-size: 11.5px; text-align: center; }
+
+/*
+ * ---- on a computer: at the left, beside each layout's buttons, over the map but clear of its middle ----
+ * 浮岛: above its bar at the bottom (26px up, 60px high). 抽屉: right of the drawer, under what stands at the top
+ * (我, the notice, 看被举报的蟑螂). 游戏风: under its notice, clear of 触须之交 at the bottom left.
+ */
+.listen-float {
+  --lf-top: 64px; --lf-left: 84px; --lf-bottom: 24px;
+  position: absolute; z-index: 20; top: calc(var(--lf-top) + var(--safe-top)); left: calc(var(--lf-left) + var(--safe-left));
+  display: flex; flex-direction: column; width: 360px;
+  max-height: calc(100% - var(--lf-top) - var(--safe-top) - var(--lf-bottom) - var(--safe-bottom));
+  border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: 0 8px 28px #0005;
+}
+.app.ui-float .listen-float { --lf-bottom: 96px; }
+.app.ui-drawer .listen-float { --lf-top: 132px; --lf-left: 352px; }
+.app.ui-hud .listen-float { --lf-top: 160px; --lf-left: 76px; }
+.listen-float .lp-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px 16px; }
+.listen-float .lp-head h2 { flex: 1; margin: 0; font-size: 17px; }
+.listen-float .lp-head .close { border: 0; background: none; color: var(--muted); font-size: 24px; line-height: 1; }
+.listen-float .lp-scroll { flex: 1; min-height: 0; padding: 0 16px 6px; overflow-y: auto; overscroll-behavior: contain; }
+.listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid #eef0f2; }
+@media (hover: hover) {
+  .lp-row:hover { background: #f7f8f9; }
+}

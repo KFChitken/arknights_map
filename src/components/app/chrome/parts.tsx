@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { fmt, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import { capCount } from "@/lib/inboxTabs";
+import type { ListenTrack } from "@/lib/listen";
 import type { Basemap, RoachColor } from "@/lib/types";
 import type { UiFold } from "@/lib/uiChoice";
 import type { Radar } from "@/lib/world/types";
@@ -11,6 +12,7 @@ import type { RoachOpts } from "@/lib/roachSvg";
 import RoachIcon from "../../RoachIcon";
 import { SpeakerIcon } from "../DockFx";
 import { FriendsMark } from "../FriendsSheet";
+import { useListenIntro, useListenPlayer } from "../listening";
 
 /**
  * What the map page's three layouts (src/lib/uiChoice.ts) are made of: the same buttons doing the same things, laid
@@ -109,6 +111,8 @@ export type ChromeProps = {
    * null for a visitor (their browser counts none)
    */
   study: { dot: boolean; days: number | null; onOpen: () => void } | null;
+  /** 听歌, where the server opened it to them (LISTEN) and the site is not gray; open: its panel is out */
+  listen: { open: boolean; onToggle: () => void } | null;
   onGuide: (id: GuideId) => void;
   /** 界面, unless there is nothing in its menu here */
   ui: { open: boolean; onToggle: () => void; deskHint: boolean; onDeskHintDone: () => void } | null;
@@ -230,6 +234,40 @@ export function StudyIcon({ size = 24, dot = false }: { size?: number; dot?: boo
     </span>
   );
 }
+
+/** 听歌's note */
+export function NoteIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path d="M9 17.2V6.2l10-2.2v11" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="6.6" cy="17.4" r="2.6" fill="currentColor" />
+      <circle cx="16.6" cy="15.2" r="2.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 听歌 while a song plays: its note, or three bars going up and down (still where less motion is asked for, chrome.css) */
+export function ListenIcon({ on, size }: { on: boolean; size: number }) {
+  if (!on) return <NoteIcon size={size} />;
+  return (
+    <span className="listen-bars" style={{ "--lb": `${size}px` } as CSSProperties} aria-hidden="true">
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
+/** What 听歌's entry shows, from what plays (src/components/app/listening.ts): on while a song plays; 新 until its panel is first opened */
+export function useListenEntry(): { on: boolean; track: ListenTrack | null; fresh: boolean } {
+  const p = useListenPlayer();
+  const intro = useListenIntro();
+  return { on: p.status === "playing" || p.status === "starting", track: p.track, fresh: intro === "new" };
+}
+
+/** 听歌's name for a screen reader, with the song while one plays */
+export const listenLabel = (on: boolean, track: ListenTrack | null) =>
+  on && track ? fmt(T.map.bar.listenNowLabel, { name: track.name }) : T.map.bar.listen;
 
 /** 消息's envelope */
 export function Envelope({ size = 17 }: { size?: number }) {

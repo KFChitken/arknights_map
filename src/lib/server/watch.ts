@@ -691,6 +691,8 @@ const JOBS: Record<string, string> = {
   counts: "保存「存到桌面」和数据看板的统计",
   online: "数据看板数此刻在线",
   dashboard: "数据看板早上 5 点的统计（和补记以前的天）",
+  songs: "听歌读歌单（music/catalog.json）",
+  listen: "听歌清掉过时的「在听」",
 };
 
 /** Background jobs that failed in the last day: the database not brought up to date at start is urgent */

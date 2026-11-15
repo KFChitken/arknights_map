@@ -140,6 +140,7 @@ import {
 } from "@/lib/world/types";
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
 import { musicOn, playMusic, preloadMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
+import { onListenRefused } from "./app/listening";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
 import { GuideSheet } from "./app/GuideDock";
@@ -285,6 +286,8 @@ const Pamphlet = dynamic(() => import("./app/Pamphlet"), { ssr: false });
 const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
 const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
+// 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
+const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -621,6 +624,8 @@ export default function MapApp({
   const [passesOpen, setPassesOpen] = useState(false);
   // 325大学习 (from its button, where it is open to them); the map's roaches keep still while it is open
   const [studyOpen, setStudyOpen] = useState(false);
+  // 听歌's panel (from its button, where it is open to them): the map stays to be used beside it on a computer
+  const [listenOpen, setListenOpen] = useState(false);
   // a visitor's, kept in this browser (src/lib/study/guest.ts): the day last drawn for and whether it was played
   const [guestStudied, setGuestStudied] = useState<{ day: string; done: boolean } | null>(null);
   useEffect(() => {
@@ -1697,6 +1702,15 @@ export default function MapApp({
       return undefined;
     }
   }
+
+  // 听歌: what a song needs first (to sign in, the age question, the privacy policy) shows as for any other refusal
+  const closeListen = useCallback(() => setListenOpen(false), []);
+  const listenRefused = useRef<(e: WorldError) => void>(() => {});
+  listenRefused.current = (e) => {
+    setListenOpen(false);
+    void act(() => Promise.reject(e));
+  };
+  useEffect(() => onListenRefused((e) => listenRefused.current(e)), []);
 
   const switchBasemap = (b: Basemap) => {
     if (b === basemap) return;
@@ -4777,6 +4791,8 @@ export default function MapApp({
   const layout: UiName = zoneTool ? "float" : ui;
   // 325大学习: a player where the server opened it to them (me.study), a visitor while it is open to everyone; not on /en
   const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
+  // 听歌: where the server opened it to them (me.listen), and not while the site is gray (全站变灰); not on /en
+  const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
   const chrome: ChromeProps = {
     placing: Boolean(placing),
     reported: Boolean(reported),
@@ -4844,6 +4860,7 @@ export default function MapApp({
           onOpen: () => setStudyOpen(true),
         }
       : null,
+    listen: listenShown ? { open: listenOpen, onToggle: () => setListenOpen((o) => !o) } : null,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });
@@ -5348,6 +5365,8 @@ export default function MapApp({
           }}
         />
       )}
+      {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}
+      {listenOpen && listenShown && me?.listen && <ListenPanel paused={me.listen.paused} onClose={closeListen} />}
       {/* over everything of each layout, the board it was opened from too */}
       {pamphlet && (
         <Pamphlet

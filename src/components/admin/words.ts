@@ -265,6 +265,8 @@ export function logText(e: AdminLogEntry) {
       return `让全站变灰，${d}`;
     case "act.grayEnd":
       return "让全站恢复颜色";
+    case "act.listen":
+      return `听歌：${d}`;
     default:
       return d || e.what;
   }

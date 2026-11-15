@@ -17,6 +17,8 @@ import {
   GuideFace,
   GUIDE_ORDER,
   HotFlame,
+  ListenIcon,
+  listenLabel,
   MailBadge,
   mailLabel,
   MeAvatar,
@@ -25,6 +27,7 @@ import {
   StudyIcon,
   TicketIcon,
   UiIcon,
+  useListenEntry,
   useWide,
   VisitorButtons,
   WaitingButton,
@@ -36,8 +39,8 @@ import { apiFetch } from "@/lib/apiFetch";
 import { characterName } from "@/i18n/names";
 
 /**
- * 抽屉: on a phone, a capsule along the top (the site's name, 公告, 界面, the map's style and base map), 方舟雷达, 热榜
- * and the guides as a row of small tabs, and a drawer along the bottom with the counts and your buttons, pulled up
+ * 抽屉: on a phone, a capsule along the top (the site's name, 公告, 界面, the map's style and base map), 方舟雷达, 热榜,
+ * 听歌 and the guides as a row of small tabs, and a drawer along the bottom with the counts and your buttons, pulled up
  * for the radar's last scan, the week's hot list and the guides. On a computer, all of it in a panel down the left.
  * The map keeps clear of the drawer and the panel (chrome.css), so Amap's mark always shows.
  */
@@ -78,6 +81,7 @@ function Phone(p: ChromeProps) {
             </span>
             <span aria-hidden="true">{T.map.bar.hotShort}</span>
           </button>
+          {p.listen && <ListenChip listen={p.listen} />}
           {p.passes && (
             <button className="dchip glass" aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes} onClick={p.passes.onOpen}>
               <span className="ico">
@@ -192,6 +196,7 @@ function Panel(p: ChromeProps) {
           <>
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
+            {p.listen && <ListenCard listen={p.listen} />}
             {p.passes && <PassesCard passes={p.passes} />}
             {p.study && <StudyCard study={p.study} />}
             <h4>{T.ui.drawer.guides}</h4>
@@ -343,6 +348,58 @@ function PanelCounts({ counts: c, onTap }: { counts: Counts; onTap?: () => void 
       {players !== undefined && <small>{fmt(T.map.count.withoutClones, { players })}</small>}
       {c.kind === "hidden" && go}
     </div>
+  );
+}
+
+/** 听歌 in the row of tabs, after 热榜: the note, or three bars and 在听 while a song plays; 新 until first opened */
+function ListenChip({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) {
+  const e = useListenEntry();
+  return (
+    <button
+      className={`dchip glass${e.on ? " listen-on" : ""}`}
+      aria-label={listenLabel(e.on, e.track)}
+      aria-haspopup="dialog"
+      aria-expanded={listen.open}
+      onClick={listen.onToggle}
+    >
+      <span className="ico">
+        <ListenIcon on={e.on} size={20} />
+      </span>
+      <span aria-hidden="true">{e.on ? T.map.bar.listenNow : T.map.bar.listen}</span>
+      {e.fresh && (
+        <span className="listen-new" aria-hidden="true">
+          {T.map.bar.listenNew}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** 听歌 in the computer's panel, under 热榜: the song playing, if one is; its own panel opens beside this one */
+function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) {
+  const e = useListenEntry();
+  return (
+    <button
+      className={`dcard dlisten${listen.open ? " open" : ""}`}
+      aria-label={listenLabel(e.on, e.track)}
+      aria-haspopup="dialog"
+      aria-expanded={listen.open}
+      onClick={listen.onToggle}
+    >
+      <span className="lico">
+        <ListenIcon on={e.on} size={26} />
+      </span>
+      <span className="tx" aria-hidden="true">
+        <b>
+          {T.map.bar.listen}
+          {e.fresh && <span className="listen-new">{T.map.bar.listenNew}</span>}
+        </b>
+        <small>{e.on && e.track ? fmt(T.map.bar.listenSong, { name: e.track.name }) : T.map.bar.listenIdle}</small>
+      </span>
+      <span className="go" aria-hidden="true">
+        ›
+      </span>
+    </button>
   );
 }
 

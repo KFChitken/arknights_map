@@ -99,6 +99,21 @@ export const passArtSkipped = (): ReadonlySet<number> =>
  */
 export const studyMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.STUDY) ?? "off";
 
+/**
+ * 听歌 (src/lib/server/listen.ts): LISTEN=on lets every signed-in player play the site's songs, alone and together;
+ * admins, only the 站长 and the admins (to try it on the live site first); off (the default) shows nobody the way
+ * in, answers its requests 404 and lets no song out (/api/listen/ok). What was kept stays, whichever it is. Read on
+ * every use, so the tests can switch it.
+ */
+export const listenMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.LISTEN) ?? "off";
+
+/**
+ * The songs (scripts/fetch-msr-music.mjs): catalog.json and files/ under it. The main process reads the catalogue
+ * into the database (src/lib/server/songs.ts); on the live site Caddy serves the files, and src/app/music only in
+ * development.
+ */
+export const MUSIC_DIR = process.env.MUSIC_DIR || "music";
+
 /** Our own overseas map's files in development (src/app/tiles); Caddy serves them on the live site */
 export const TILES_DIR = process.env.TILES_DIR || "tiles";
 

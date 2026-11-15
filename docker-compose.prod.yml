@@ -20,12 +20,16 @@ x-web: &web
     # where each process writes down how far its roach list has got (FEED_STATE), to take up from
     # there after a restart instead of sending every open page the whole list again (src/lib/server/roachFeed.ts)
     - feed-state:/app/feed-state
+    # 听歌's songs, which scripts/fetch-music.sh puts here: this process reads the catalogue into the database
+    # (src/lib/server/songs.ts); Caddy serves the files (below). Only web uses this block, so only it has them.
+    - ./music:/app/music:ro
   restart: unless-stopped
 
 x-web-env: &web-env
   DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach
   OPERATOR_ART_DIR: /app/operator-art
   GUIDE_ART_DIR: /app/guide-art
+  MUSIC_DIR: /app/music
   # never link a test inbox on the live site
   DEV_MAILBOX_PORT: ""
   # nudges go between the processes through the database
@@ -122,6 +126,8 @@ services:
       - ./tiles:/srv/tiles:ro
       # the characters' pictures, which scripts/deploy.sh copies here, served by Caddy too (deploy/Caddyfile)
       - ./operator-art:/srv/operator-art:ro
+      # 听歌's songs, only the files (not the catalogue), served by Caddy at the links the app gives (deploy/Caddyfile)
+      - ./music/files:/srv/music:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:

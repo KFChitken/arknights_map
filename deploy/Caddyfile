@@ -49,8 +49,9 @@ zhoupmap.com, zhoupmap.com:8443 {
 		# browsers that learned HTTP/3 here before forget it (take this out if HTTP/3 comes back)
 		Alt-Svc "clear"
 	}
-	# the live event stream must reach the browser as it is written, and the map tiles and pictures come compressed already
-	@compressible not path /api/events /tiles/* /operator-art/*
+	# the live event stream must reach the browser as it is written, and the map tiles, pictures and songs come
+	# compressed already (a song compressed again could not be asked for in ranges)
+	@compressible not path /api/events /tiles/* /operator-art/* /music/*
 	encode @compressible zstd gzip
 	# the characters' pictures (src/lib/server/operatorArt.ts), files named by their content, straight from the
 	# server's folder: through the site's own process each cost it a whole request (2026-11-10: about 8% of its
@@ -87,6 +88,41 @@ zhoupmap.com, zhoupmap.com:8443 {
 		}
 		respond @whole "The map file is only served in ranges." 403
 		file_server
+	}
+	# 听歌's songs (src/lib/server/musicLinks.ts), straight from the server's folder (docker-compose.prod.yml mounts
+	# music/files at /srv/music), in ranges as the player asks: only at a link that carries ?k=<expiry>.<signature>,
+	# which the app checks first (/api/listen/ok, no database), and only a file that is there. Anything else under
+	# /music is a 404, and never reaches the site. To stop the songs going out at once, pause 听歌 in the 管理台
+	# (or LISTEN=off); to stop them for good, take this block out or move music/files away.
+	handle /music/* {
+		@song {
+			path_regexp ^/music/[0-9a-f]{16}\.m4a$
+			file {
+				root /srv
+			}
+		}
+		handle @song {
+			# in this order: the check first, so a refused link's 403 goes out as the app wrote it
+			route {
+				forward_auth web:3000 10.5.0.15:3001 10.5.0.15:3002 10.5.0.15:3003 {
+					uri /api/listen/ok
+					lb_try_duration 5s
+					health_uri /api/ready
+					health_interval 10s
+					health_timeout 20s
+					health_fails 2
+					health_passes 2
+				}
+				# kept by the player's browser for as long as a link lasts at most, for a song played again
+				header Cache-Control "private, max-age=43200"
+				root * /srv
+				file_server
+			}
+		}
+		handle {
+			header Cache-Control "no-store"
+			respond 404
+		}
 	}
 	# the place search, the map trouble reports and the health check go to the main process: their limits
 	# (one ask a second to Nominatim, three to 高德) and counts are kept in its memory

@@ -1,10 +1,12 @@
 /**
  * ⚡舟友的酒⚡'s music (src/lib/party.ts): a minute of 「⚡邦友の酒⚡」 by 活跃黑江乐 (bilibili),
  * played through Web Audio from the tap that starts the party. Its clock is the dance's, so
- * the phantoms stay on the beat however long the music took to load.
+ * the phantoms stay on the beat however long the music took to load. While a song of 听歌
+ * plays (src/components/app/listening.ts), the party dances without it.
  */
 
 import { isGray } from "@/lib/grayMode";
+import { isListening } from "./listening";
 
 const MUSIC_URL = "/guide-art/zhouyou-jiu.m4a";
 /** The song is mastered loud: well under full volume */
@@ -48,11 +50,11 @@ export function stopPartyMusic() {
 /**
  * The music from the start. Call it within the tap itself, which is what lets a browser
  * play sound. Resolves once it plays, or to null when it cannot (switched off on the
- * server, or no sound here) or may not (the site is gray, 全站变灰): the party then
- * dances to its own clock.
+ * server, or no sound here) or may not (the site is gray, 全站变灰, or a song of 听歌
+ * plays): the party then dances to its own clock.
  */
 export function playPartyMusic(): Promise<PartyMusic | null> {
-  if (isGray()) return Promise.resolve(null);
+  if (isGray() || isListening()) return Promise.resolve(null);
   const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Context) return Promise.resolve(null);
   ctx ??= new Context();
@@ -71,7 +73,7 @@ export function playPartyMusic(): Promise<PartyMusic | null> {
   stopPartyMusic();
   const mine = ++asked;
   return buffer.then((b) => {
-    if (!b || mine !== asked) return null;
+    if (!b || mine !== asked || isListening()) return null;
     const gain = c.createGain();
     gain.gain.value = VOLUME;
     gain.connect(c.destination);

@@ -16,6 +16,8 @@ import {
   GuideFace,
   GUIDE_ORDER,
   HotFlame,
+  ListenIcon,
+  listenLabel,
   MailBadge,
   mailLabel,
   MeAvatar,
@@ -23,6 +25,7 @@ import {
   StudyIcon,
   TicketIcon,
   UiIcon,
+  useListenEntry,
   useSwipeAway,
   VisitorButtons,
   WaitingButton,
@@ -33,8 +36,8 @@ import "./hud.css";
 
 /**
  * 游戏风: as in a game, your name plate top left with 消息 and 公告, the counts under it, 方舟雷达 always turning top
- * right, the guides as tabs on the right edge (they fold away), 热榜, the map's style, the base map and 界面 down the
- * left, 触须之交 bottom left, and 我的蟑螂 with one big round 我宣布个事儿 bottom right.
+ * right, the guides as tabs on the right edge (they fold away), 热榜, the map's style, the base map, 界面 and 听歌 down
+ * the left, 触须之交 bottom left, and 我的蟑螂 with one big round 我宣布个事儿 bottom right.
  */
 export default function HudChrome(p: ChromeProps) {
   const { fold, onFold } = p;
@@ -45,6 +48,7 @@ export default function HudChrome(p: ChromeProps) {
   // the columns make room for the 站长's panel of reported roaches; putting a roach down, only the plate stays
   const sides = !p.placing && !p.reported;
   const ui = sides && !p.tutorial ? p.ui : null;
+  const listen = sides && !p.tutorial ? p.listen : null;
   const bm = p.basemap;
   return (
     <div className="chrome chrome-hud">
@@ -172,6 +176,7 @@ export default function HudChrome(p: ChromeProps) {
               {ui.deskHint && !ui.open && <DeskHint onTap={ui.onToggle} onDone={ui.onDeskHintDone} />}
             </span>
           )}
+          {listen && <ListenRound listen={listen} />}
         </div>
       )}
 
@@ -249,6 +254,32 @@ export default function HudChrome(p: ChromeProps) {
       )}
       {p.disclaimer}
     </div>
+  );
+}
+
+/** 听歌 at the foot of the column: the note, or three bars and 在听 while a song plays; 新 until first opened */
+function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) {
+  const e = useListenEntry();
+  return (
+    <span className="rb">
+      <button
+        className={`ob glass${e.on ? " listen-on" : ""}${listen.open ? " pressed" : ""}`}
+        aria-label={listenLabel(e.on, e.track)}
+        aria-haspopup="dialog"
+        aria-expanded={listen.open}
+        onClick={listen.onToggle}
+      >
+        <ListenIcon on={e.on} size={22} />
+        {e.fresh && (
+          <span className="listen-new" aria-hidden="true">
+            {T.map.bar.listenNew}
+          </span>
+        )}
+      </button>
+      <span className="lbl" aria-hidden="true">
+        {e.on ? T.map.bar.listenNow : T.map.bar.listen}
+      </span>
+    </span>
   );
 }
 

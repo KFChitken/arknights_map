@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { BADGES } from "@/lib/badges";
 import { GRAY_MAX_DAYS, grayUntilWords, type GrayState } from "@/lib/adminConsole";
 import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } from "@/lib/beijing";
+import { CAP_RANGE, type ListenDesk } from "@/lib/listen";
 import { memorialWords } from "@/lib/memorials";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { RULES, type BanInfo } from "@/lib/safety";
@@ -26,6 +27,7 @@ export default function Site() {
   return (
     <div className="ac-site">
       {owner && <GrayPanel />}
+      {owner && <ListenPanel />}
       {owner && <SiteStatusPanel />}
       <NameList added={wordsAdded} onAdded={() => setWordsAdded((n) => n + 1)} />
       {owner && <BanLookup />}
@@ -179,6 +181,164 @@ function GrayPanel() {
       {s && note && <p className="ac-error">{note}</p>}
       <p className="ac-muted small">变灰的时候：新称号的彩纸等恢复了再放，阿米娅跳舞和舟友的酒都不放音乐，别的照常。</p>
       {s && <p className="ac-muted small">{memorialWords(s.memorial)}纪念日只在这里提醒你，不会自己变灰。</p>}
+    </section>
+  );
+}
+
+/**
+ * 听歌 (src/lib/server/listen.ts), the owner's: whether LISTEN lets anyone in, how many listen now against the cap,
+ * today's songs and the players turned away because it was full, and the catalogue the main process read in. Pausing
+ * stops it for everyone at once, with no release: no new song plays, and the files stop going out.
+ */
+function ListenPanel() {
+  const { call, say } = useConsole();
+  const [d, setD] = useState<ListenDesk | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [cap, setCap] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      call<ListenDesk>("listen")
+        .then((x) => {
+          if (!alive) return;
+          setD(x);
+          setNote(null);
+          setCap((c) => c || String(x.settings.cap));
+        })
+        .catch((e) => {
+          if (alive) setNote(`读不出来：${errorWords(e)}`);
+        });
+    void load();
+    // how many listen now, every half minute while it is in sight
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [call]);
+
+  const change = async (what: { paused?: boolean; cap?: number }, done: string) => {
+    setBusy(true);
+    try {
+      const next = await call<ListenDesk>("setListen", [what]);
+      setD(next);
+      setCap(String(next.settings.cap));
+      setAsking(false);
+      setNote(null);
+      say(done);
+    } catch (e) {
+      setNote(errorWords(e));
+    }
+    setBusy(false);
+  };
+
+  const capN = Number(cap);
+  const capFits = Number.isInteger(capN) && capN >= CAP_RANGE[0] && capN <= CAP_RANGE[1];
+  const when = (iso: string | null) => (iso && Number.isFinite(Date.parse(iso)) ? beijingShort(Date.parse(iso)) : "—");
+  return (
+    <section className="ac-panel ac-tool wide" aria-label="听歌">
+      <PanelHead title="听歌" aside="只有站长" />
+      <p className="ac-sub">
+        站里放塞壬唱片官网上方舟的歌。出事的时候先在这里点「暂停听歌」，马上对所有人生效，不用发版：谁都不能再放新的歌，歌文件也不再发出去，正在放的那首可能放不完。
+      </p>
+      {!d ? (
+        <p className="ac-sub">{note ?? "正在读取…"}</p>
+      ) : (
+        <>
+          <div className="ac-status-line">
+            <span className={`ac-dot${d.mode === "off" ? " gray" : d.settings.paused ? " yellow" : ""}`} aria-hidden="true" />
+            <strong>
+              {d.mode === "off"
+                ? "开关是关的（LISTEN=off）：谁都看不到听歌"
+                : d.settings.paused
+                  ? "听歌暂停了：谁都放不了"
+                  : d.mode === "admins"
+                    ? "听歌开着，只有站长和管理员看得到（LISTEN=admins）"
+                    : "听歌开着，所有登录的舟P都能听（LISTEN=on）"}
+            </strong>
+          </div>
+          <div className="ac-stats">
+            <div className="ac-stat">
+              <div className="ac-muted small">现在在听</div>
+              <div className="ac-stat-n">{d.listening} 人</div>
+              <div className="ac-muted small">上限 {d.settings.cap} 人</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">今天放了</div>
+              <div className="ac-stat-n">{d.plays} 首</div>
+              <div className="ac-muted small">从头放的才算，每分钟更新</div>
+            </div>
+            <div className={`ac-stat${d.full ? " warn" : ""}`}>
+              <div className="small">今天满了被挡</div>
+              <div className="ac-stat-n">{d.full} 次</div>
+              <div className={d.full ? "small" : "ac-muted small"}>常有就该调高上限，或者问要不要买专门放歌的服务器</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">歌单</div>
+              <div className="ac-stat-n">{d.songs} 首</div>
+              <div className="ac-muted small">
+                {d.catalog ? `官网的歌 ${when(d.catalog.updated)} 下好，${when(d.catalog.readAt)} 读进来` : "还没读到歌单（服务器上的 music/catalog.json）"}
+              </div>
+            </div>
+          </div>
+          {d.settings.paused ? (
+            <div>
+              <button type="button" className="ac-btn primary" disabled={busy} onClick={() => change({ paused: false }, "听歌恢复了。")}>
+                恢复听歌
+              </button>
+            </div>
+          ) : asking ? (
+            <div className="ac-confirm" role="alert">
+              <span>所有人都不能再放歌，正在放的那首也可能停下。确定吗？</span>
+              <button type="button" className="ac-btn small primary" disabled={busy} onClick={() => change({ paused: true }, "听歌暂停了。")}>
+                确认暂停
+              </button>
+              <button type="button" className="ac-btn small" disabled={busy} onClick={() => setAsking(false)}>
+                先不停
+              </button>
+            </div>
+          ) : (
+            <div>
+              <button type="button" className="ac-btn" disabled={busy} onClick={() => setAsking(true)}>
+                暂停听歌
+              </button>
+            </div>
+          )}
+          <form
+            className="ac-inline-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (capFits && capN !== d.settings.cap) void change({ cap: capN }, `同时在听上限改成 ${capN} 人了。`);
+            }}
+          >
+            <label className="ac-inline-label">
+              同时在听上限
+              <input
+                type="number"
+                inputMode="numeric"
+                min={CAP_RANGE[0]}
+                max={CAP_RANGE[1]}
+                value={cap}
+                onChange={(e) => setCap(e.target.value)}
+                aria-describedby="listen-cap-why"
+              />
+              人
+            </label>
+            <button className="ac-btn" type="submit" disabled={busy || !capFits || capN === d.settings.cap}>
+              改上限
+            </button>
+          </form>
+          {cap && !capFits && <p className="ac-error">上限要是 {CAP_RANGE[0]} 到 {CAP_RANGE[1]} 之间的整数。</p>}
+          <p className="ac-muted small" id="listen-cap-why">
+            到了上限，没在听的人点歌会看到「听歌的人有点多，过几分钟再来」；已经在听的人照常换歌。每人约 12 KB/秒，600 人约 58 Mbps，两台服务器分着出。
+          </p>
+        </>
+      )}
+      {d && note && <p className="ac-error">{note}</p>}
     </section>
   );
 }

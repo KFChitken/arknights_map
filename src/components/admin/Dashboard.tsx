@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { daysBetween } from "@/lib/beijing";
-import { CITY_KM, guideName, OPEN_DAY, type BestDay, type DashboardData, type DashDay } from "@/lib/dashboard";
+import { CITY_KM, COUNTED, guideName, OPEN_DAY, type BestDay, type DashboardData, type DashDay } from "@/lib/dashboard";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import { AVATAR_PICTURES } from "@/lib/roachImages";
 import { roachDataUrl } from "@/lib/roachSvg";
@@ -74,6 +74,7 @@ const JUMPS: [string, string][] = [
   ["db-look", "小强长什么样"],
   ["db-fav", "厨力和助战"],
   ["db-guides", "向导们"],
+  ["db-listen", "听歌"],
   ["db-badges", "徽章"],
   ["db-map", "地图"],
   ["db-records", "纪录"],
@@ -113,6 +114,7 @@ export function Board({ data: d, stale = null }: { data: DashboardData; stale?: 
         <Look d={d} />
         <Favourites d={d} />
         <Guides d={d} />
+        <Listen d={d} />
         <Badges d={d} />
         <div className="db-row">
           <Where d={d} />
@@ -923,6 +925,34 @@ function Guides({ d }: { d: DashboardData }) {
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+// ---- 听歌 ----
+
+/** 听歌's counts (src/lib/server/listen.ts): songs played from their start, and players turned away because it was full */
+function Listen({ d }: { d: DashboardData }) {
+  const today = (name: string) => d.today.counts[name] ?? 0;
+  const week = (name: string) => d.week.counts[name] ?? 0;
+  const rows = (n: (name: string) => number): [string, ReactNode, string?][] => [
+    ["放了", num(n(COUNTED.listenPlay)), "首"],
+    ["满了被挡", num(n(COUNTED.listenFull)), "次"],
+  ];
+  return (
+    <section className="ac-panel db-panel" id="db-listen" aria-label="听歌">
+      <Head title="听歌" aside={`最近 7 天（${dayShort(d.week.from)}–${dayShort(d.week.to)}）和今天`} />
+      <div className="db-cols">
+        <div className="db-col">
+          <h3 className="db-h3">今天</h3>
+          <Facts rows={rows(today)} />
+        </div>
+        <div className="db-col">
+          <h3 className="db-h3">最近 7 天</h3>
+          <Facts rows={rows(week)} />
+        </div>
+      </div>
+      <p className="ac-muted small">只记次数，不记谁听了什么。「满了被挡」常有，就该调高管理台里的上限，或者加专门放歌的服务器。</p>
     </section>
   );
 }

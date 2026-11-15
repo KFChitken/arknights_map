@@ -276,7 +276,7 @@ const page = (d: DashboardData, stale: string | null = null) => renderToStaticMa
 describe("数据看板's page", () => {
   it("shows every panel of a full answer, with nothing left unfilled", () => {
     const html = page(fixture());
-    for (const words of ["一共", "今天", "每天的变化", "触须之交", "触须和宣言", "小强长什么样", "厨力和助战", "向导们", "徽章", "地图", "纪录", "这周的人"]) {
+    for (const words of ["一共", "今天", "每天的变化", "触须之交", "触须和宣言", "小强长什么样", "厨力和助战", "向导们", "听歌", "徽章", "地图", "纪录", "这周的人"]) {
       expect(html, words).toContain(words);
     }
     expect(html).toContain(fixture().totals.players.toLocaleString("en-US"));

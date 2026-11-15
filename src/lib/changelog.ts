@@ -28,6 +28,7 @@ export const CHANGELOG: readonly ChangeRow[] = [
   { date: "2026-11-15", kind: "chore", text: "后台调整" },
   { date: "2026-11-15", kind: "chore", text: "后台调整" },
   { date: "2026-11-15", kind: "chore", text: "后台调整" },
+  { date: "2026-11-15", kind: "chore", text: "后台调整" },
   { date: "2026-11-15", kind: "fix", text: "绥芬河、黑河等边境城市的蟑螂不再错位" },
   { date: "2026-11-15", kind: "tweak", text: "守则补了一句：蟑螂也别放在部队里" },
   { date: "2026-11-15", kind: "better", text: "「我是…，我要玩…」去掉了名字" },

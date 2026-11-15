@@ -14,6 +14,7 @@ import {
   pgSequence,
   pgTable,
   primaryKey,
+  real,
   smallint,
   text,
   timestamp,
@@ -1516,6 +1517,56 @@ export const passGifts = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.fromId, t.toId, t.day] }), index("pass_gifts_to_idx").on(t.toId, t.day)],
+);
+
+/**
+ * 听歌's songs (src/lib/server/songs.ts), as the main process reads them from the catalogue the fetch writes
+ * (scripts/fetch-msr-music.mjs): id is the Monster Siren Records site's cid; album_order the album's place in the
+ * site's list (0 the newest) and track the song's on its album; file is served by Caddy (deploy/Caddyfile). A song the
+ * catalogue no longer lists, or whose file is gone, is kept with gone_at, as a room may still point at it.
+ */
+export const songs = pgTable(
+  "songs",
+  {
+    id: text("id").primaryKey(),
+    game: text("game").notNull(),
+    name: text("name").notNull(),
+    albumId: text("album_id").notNull(),
+    album: text("album").notNull(),
+    artists: text("artists").array().notNull().default(emptyArray),
+    seconds: real("seconds").notNull(),
+    file: text("file").notNull(),
+    bytes: integer("bytes").notNull(),
+    albumOrder: integer("album_order").notNull(),
+    track: smallint("track").notNull(),
+    addedAt: at("added_at").notNull(),
+    goneAt: at("gone_at"),
+  },
+  (t) => [index("songs_order_idx").on(t.albumOrder, t.track)],
+);
+
+/** How many times each song was played, by everyone together: never who (src/lib/server/songs.ts countPlay) */
+export const songPlays = pgTable("song_plays", {
+  song: text("song").primaryKey(),
+  plays: bigint("plays", { mode: "number" }).notNull(),
+});
+
+/**
+ * What a player listens to now, one row each (src/lib/server/listen.ts): not a record of what they listened to.
+ * until is when the song should end, and LISTEN_GRACE_MS more; written as each song starts, gone once they stop,
+ * and swept away by the main process when it is past. room_id: the room they listen in (patch 2 on).
+ */
+export const listenNow = pgTable(
+  "listen_now",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    song: text("song").notNull(),
+    roomId: uuid("room_id"),
+    until: at("until").notNull(),
+  },
+  (t) => [index("listen_now_until_idx").on(t.until)],
 );
 
 export type UserRow = typeof users.$inferSelect;

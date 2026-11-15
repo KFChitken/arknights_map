@@ -45,6 +45,36 @@
 .pressed { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /*
+ * 听歌 in each layout (parts.tsx ListenIcon): its note, or three bars going up and down while a song plays, standing
+ * still where less motion is asked for, and its glass edged in yellow; 新 on its corner until its panel is first opened
+ */
+.listen-bars { display: inline-flex; align-items: flex-end; justify-content: center; gap: 2px; width: var(--lb); height: var(--lb); padding: 3px 0 2px; }
+.listen-bars i {
+  width: 3.5px; height: 100%; border-radius: 1px; background: var(--accent); transform-origin: bottom;
+  animation: listen-bars 0.9s ease-in-out infinite alternate;
+}
+.listen-bars i:nth-child(2) { animation-delay: -0.35s; }
+.listen-bars i:nth-child(3) { animation-delay: -0.7s; }
+@keyframes listen-bars {
+  from { transform: scaleY(0.25); }
+  to { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .listen-bars i { animation: none; }
+  .listen-bars i:nth-child(1) { transform: scaleY(0.5); }
+  .listen-bars i:nth-child(2) { transform: scaleY(0.9); }
+  .listen-bars i:nth-child(3) { transform: scaleY(0.65); }
+}
+.chrome .glass.listen-on { box-shadow: inset 0 0 0 1.5px var(--accent), 0 4px 16px #00000033; }
+.app.ui-float .chrome .glass.listen-on {
+  box-shadow: inset 0 0 0 1px #ffd23f88, 0 0 0 2px #0d0e10, 0 0 0 3px var(--accent), 0 4px 16px #00000033;
+}
+.listen-new {
+  position: absolute; z-index: 2; top: -7px; right: -9px; padding: 1px 4px; border-radius: 6px; background: var(--accent);
+  color: var(--ink); font-size: 9.5px; font-weight: 800; line-height: 1.3; text-shadow: none; box-shadow: 0 0 0 1.5px #1b1d22;
+}
+
+/*
  * Before the app starts, a device that picked 抽屉 or 游戏风 has 浮岛's buttons hidden, and a side it folded away
  * folded already (earlyUiScript in src/lib/uiChoice.ts), so they do not show for a moment and then change
  */
@@ -79,6 +109,10 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 }
 .tab-r { right: var(--safe-right); width: 28px; height: 80px; border-radius: 14px 0 0 14px; transform: translateX(calc(100% + 4px)); }
 .tab-l { left: var(--safe-left); width: 28px; height: 60px; border-radius: 0 14px 14px 0; transform: translateX(calc(-100% - 4px)); }
+/* 界面 and 听歌 both folded away into it; 听歌's note yellow while a song plays */
+.tab-l.two { height: 84px; }
+.tab-l .listen-mark { display: grid; color: #fff; }
+.tab-l .listen-mark.on { color: var(--accent); }
 .tab-r.shown, .tab-l.shown { transform: none; visibility: visible; transition: transform 0.2s ease-out, visibility 0s; }
 .tab-r .radar-scope { width: 16px; height: 16px; box-shadow: inset 0 0 0 1px #3fd0d488; }
 .tab-r .radar-scope::before, .tab-r .radar-scope::after { display: none; }
@@ -183,14 +217,15 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 }
 
 .chrome-float .ui-tile-box {
-  position: absolute; z-index: 10; left: calc(10px + var(--safe-left)); top: calc(140px + var(--safe-top));
-  transition: transform 0.2s ease-out, visibility 0s;
+  position: absolute; z-index: 10; left: calc(10px + var(--safe-left)); top: calc(140px + var(--safe-top)); display: flex;
+  flex-direction: column; gap: 10px; transition: transform 0.2s ease-out, visibility 0s;
 }
 .chrome-float .ui-tile {
   display: flex; flex-direction: column; align-items: center; width: 56px; padding: 6px 0 5px; border: 0; border-radius: 14px;
   line-height: 1;
 }
-.chrome-float .ui-tile svg { margin: 2px; }
+.chrome-float .ui-tile svg, .chrome-float .ui-tile .listen-bars { margin: 2px; }
+.chrome-float .listen-tile { position: relative; }
 .chrome-float .ui-tile small { margin-top: 4px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .chrome-float .ui-tile-box .nub { right: -27px; }
 /* once a device: 存到桌面 is in 界面 now, beside it (past its arrow) */

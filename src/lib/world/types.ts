@@ -8,6 +8,7 @@ import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { GiftState, PassesDot, PassesMe } from "../passes";
+import type { ListenMe } from "../listen";
 import type { StudyMe } from "../study/rules";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
@@ -552,6 +553,8 @@ export type Me = {
   passes?: PassesMe;
   /** 325大学习 (src/lib/study): only for a player who may study (STUDY); never in what others get */
   study?: StudyMe;
+  /** 听歌 (src/lib/listen.ts): only for a player who may listen (LISTEN); never in what others get */
+  listen?: ListenMe;
 };
 
 /** 欢迎回家: what changed while the player was away, beyond what their inbox says */

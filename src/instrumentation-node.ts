@@ -10,7 +10,8 @@ import { comrades, fireSongs, nightByTheFire, sleptItOff } from "./lib/server/ba
 import { moveMingheRiders, spreadStackedRiders } from "./lib/server/minghe";
 import { catchUpBadges } from "./lib/server/badges";
 import { seedDemo } from "./lib/server/demo";
-import { demoEnabled, watchEnabled } from "./lib/server/env";
+import { demoEnabled, listenMode, watchEnabled } from "./lib/server/env";
+import { sweepListening } from "./lib/server/listen";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
 import { startMainlandMap } from "./lib/server/mainlandMap";
@@ -26,6 +27,7 @@ import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
+import { saveSongPlays, startSongs, syncCatalog } from "./lib/server/songs";
 import { logError, note } from "./lib/server/signals";
 import { saveStatCounts } from "./lib/server/stats";
 import { recordDailyTotals } from "./lib/server/totals";
@@ -86,6 +88,13 @@ await startAdmins();
 await startZones();
 await startSettings();
 
+// 听歌's songs (src/lib/server/songs.ts), while LISTEN is not off: the main reads the catalogue the fetch writes
+// (scripts/fetch-msr-music.mjs) into the database first, then every process keeps the list in memory (none, if it
+// cannot be read); the main looks at the catalogue again every 10 minutes, below
+const listening = listenMode() !== "off";
+if (listening && !helper) await syncCatalog().catch(failed("songs", "Reading the songs' catalogue failed"));
+if (listening) await startSongs();
+
 // which map visitors from mainland China start with (高德's, or 腾讯's once 高德's map loads ran out this month): kept in
 // memory by every process and read again every minute (高德's, if it cannot be read)
 await startMainlandMap();
@@ -99,6 +108,7 @@ if (helper) setInterval(() => saveAmapLoads().catch(failed("loads", "Saving 高�
 const saveCounts = () => {
   void saveAppCounts().catch(failed("counts", "Saving 存到桌面's counts failed"));
   void saveStatCounts().catch(failed("counts", "Saving 数据看板's counts failed"));
+  void saveSongPlays().catch(failed("counts", "Saving how often each song was played failed"));
 };
 setInterval(saveCounts, MINUTE_MS);
 process.once("SIGTERM", () => void saveCounts());
@@ -124,6 +134,11 @@ if (!helper) {
   const pruneChanges = () => pruneRoachChanges().catch(failed("prune", "Pruning the roach change log failed"));
   pruneChanges();
   setInterval(pruneChanges, 10 * MINUTE_MS);
+
+  // 听歌: what each player listens to now, swept away once past (src/lib/server/listen.ts); and the catalogue read in
+  // again when the fetch changed it
+  setInterval(() => sweepListening().catch(failed("listen", "Sweeping away who listened before failed")), MINUTE_MS);
+  if (listening) setInterval(() => syncCatalog().catch(failed("songs", "Reading the songs' catalogue failed")), 10 * MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
   const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));

@@ -149,6 +149,8 @@ The songs of 听歌 live in `~/arknights_map/music` on the main server, outside 
 ~/arknights_map/scripts/fetch-music.sh              # fetch it
 ```
 
+The main process reads `music/catalog.json` into the database at the start and whenever it changes (`src/lib/server/songs.ts`), and Caddy serves `music/files` at `/music` (`deploy/Caddyfile`), but only at the links the site gives, which carry their own expiry and an HMAC keyed from `AUTH_SECRET` (`src/lib/server/musicLinks.ts`): Caddy asks `/api/listen/ok` before each file goes out. `LISTEN` (`off`, `admins` or `on`) decides who sees 听歌 at all, and the 管理台 can pause it and cap how many listen at once. For local development put a catalogue and its files under `music/` and open the song links as given; `src/app/music` serves them in development only.
+
 Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it through each server's address from probes in mainland China and in Hong Kong, and the run fails when most of either cannot through either server, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
 
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.
