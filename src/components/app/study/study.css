@@ -140,7 +140,8 @@
 .ct-start,
 .tr-start,
 .sk-start,
-.sn-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.sn-start,
+.rn-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
 .ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
@@ -605,6 +606,52 @@
 .sn-tight .sn-hint { font-size: 12px; }
 .sn-tight .sn-start { padding-block: 8px; font-size: 16px; }
 
+/* ---- 325 米跑酷 (Run325.tsx): how far the roach has run and how many times it was run into, over a classroom seen from
+   the side, drawn on a canvas (arena.ts) as wide as there is room and 0.62 of that high. A press anywhere jumps it, so
+   while it runs the page under the finger does not scroll or zoom. Nothing flashes, and nothing shakes ---- */
+.rn-game { flex: 1; align-self: stretch; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+/* as wide as the scene under it (--rn-w, set in the game) */
+.rn-side { flex: none; align-self: center; display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: var(--rn-w, 100%); }
+.rn-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-inline: 2px; white-space: nowrap; }
+.rn-way { display: inline-flex; align-items: baseline; gap: 6px; color: #4b5260; font-variant-numeric: tabular-nums; }
+.rn-way small,
+.rn-hits small { color: var(--muted); font-size: 12.5px; }
+.rn-way b { min-width: 1.9em; color: #1b1d22; font-size: 24px; font-weight: 800; line-height: 1.1; text-align: right; }
+.rn-way span { font-size: 14px; font-weight: 700; }
+.rn-hits { display: inline-flex; align-items: center; gap: 5px; }
+.rn-hits i { width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #c3c8d0; border-radius: 50%; }
+.rn-hits i.rn-hit { border-color: var(--st-red); background: var(--st-red); }
+.rn-bar { height: 6px; border-radius: 999px; background: #e7e9ee; overflow: hidden; }
+.rn-bar i { display: block; height: 100%; border-radius: inherit; background: var(--st-yellow); }
+/* a line high whatever is said, so the scene under it never moves */
+.rn-said { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.rn-said.rn-flag { color: #8a5a1c; font-weight: 700; }
+.rn-said.rn-good { color: var(--st-green); font-weight: 800; }
+.rn-said.rn-bad { color: var(--st-red); font-weight: 800; }
+/* the scene as wide as there is room and 0.62 of that high, or less high if there is not room (drawn smaller then) */
+.rn-stage { position: relative; flex: 0 1 auto; width: 100%; aspect-ratio: 100 / 62; min-height: 150px; }
+.rn-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* pressed anywhere while it runs: the page under the finger does not scroll, zoom or pull down to load again */
+.study-play:has(.rn-game[data-phase="run"]) { touch-action: none; overscroll-behavior: none; }
+/* before the round: a card over the classroom, in a smaller hand on a small one */
+.rn-ready { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.rn-card {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 100%; padding: 14px 16px; border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95); box-shadow: 0 6px 24px rgba(16, 17, 20, 0.16); text-align: center;
+}
+.rn-rule { margin: 0; color: #1b1d22; font-size: 14px; line-height: 1.55; }
+/* each line of the rule its own, a long one broken in two even halves (after a comma) on a narrow screen */
+.rn-rule span { display: block; word-break: keep-all; text-wrap: balance; }
+.rn-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; text-wrap: balance; }
+.rn-tight .rn-card { gap: 7px; padding: 9px 12px; }
+.rn-tight .rn-rule { font-size: 12.5px; line-height: 1.42; }
+.rn-tight .rn-hint { font-size: 12px; }
+.rn-tight .rn-start { padding-block: 7px; font-size: 16px; }
+.rn-tiny .rn-card { gap: 5px; padding: 6px 12px; }
+.rn-tiny .rn-rule { font-size: 12px; line-height: 1.35; }
+.rn-tiny .rn-hint { font-size: 11.5px; line-height: 1.35; }
+.rn-tiny .rn-start { padding-block: 5px; font-size: 15px; }
+
 /* ---- 接住 3、2、5 (Catch325.tsx) and 描红 325 (Trace325.tsx): three slots, how it goes and the time over a field
    drawn on a canvas (arena.ts); the canvas fills what room there is, the field in it is drawn no wider or taller than
    it plays the same ---- */
@@ -714,6 +761,8 @@
   .sk-rule { font-size: 13px; line-height: 1.5; }
   .sn-card { gap: 8px; padding: 10px 14px; }
   .sn-rule { font-size: 13px; line-height: 1.5; }
+  .rn-card { gap: 8px; padding: 10px 14px; }
+  .rn-rule { font-size: 13px; line-height: 1.5; }
   .ct-game,
   .tr-game { gap: 6px; }
   .ct-slots b,
@@ -794,6 +843,12 @@
   .sn-top { flex-direction: column; align-items: flex-start; gap: 6px; padding-inline: 0; }
   .sn-said { min-height: 3em; text-align: left; }
   .sn-stage { min-height: 0; }
+  /* 325 米跑酷: how far, the hits and what is said down the left, the classroom all the height beside them */
+  .rn-game { flex-direction: row; align-items: center; gap: 14px; }
+  .rn-side { width: 132px; max-width: none; gap: 10px; }
+  .rn-top { flex-direction: column; align-items: flex-start; gap: 6px; padding-inline: 0; }
+  .rn-said { min-height: 3em; text-align: left; }
+  .rn-stage { flex: 1; align-self: stretch; width: auto; aspect-ratio: auto; min-height: 0; }
   /* the slots, how it goes and the time down the left, the field all the height beside them */
   .ct-game,
   .tr-game { flex-direction: row; gap: 16px; }

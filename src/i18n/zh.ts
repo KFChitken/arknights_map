@@ -2530,6 +2530,7 @@ export const zh = {
       stack325: { name: "叠罗汉", rule: "一排排小强往上叠，每排少一只，没对齐的掉下去", short: "叠罗汉" },
       rogue325: { name: "控分肉鸽", rule: "爬 5 层楼，每层挑一扇门，结算越接近 325 越好", short: "控分" },
       snake325: { name: "贪吃小强", rule: "带着小强吃面包屑，正好吃到 325 过关，吃超了会撑爆", short: "贪吃" },
+      run325: { name: "325 米跑酷", rule: "小强自己往前跑，点屏幕跳过障碍，跑满 325 米下课", short: "跑酷" },
     },
     stopwatch: {
       start: "开始",
@@ -2831,6 +2832,35 @@ export const zh = {
         time: "时间到，吃到 {n}",
       },
       result: "吃到 {n}",
+    },
+    /** 325 米跑酷 (src/lib/study/run325.ts) */
+    run325: {
+      start: "开始",
+      /** On the card over the classroom before the round */
+      rule: "小强自己往前跑，跳过课桌上的课本、黑板擦和拖鞋\n飞过来的粉笔头从头顶过去，别跳起来撞上\n撞 {k} 次这局结束，跑满 {goal} 米下课",
+      /** Under it: how to jump */
+      tap: "点屏幕任何地方就跳，按住久一点跳得高一点",
+      tapKeys: "按空格键就跳，按住久一点跳得高一点，点鼠标也行",
+      /** Over the classroom: how far it has run, and how many times it was run into */
+      ran: "跑了",
+      of: "/ {goal} 米",
+      waySr: "跑了 {n} 米，跑满 {goal} 米下课",
+      hits: "撞了",
+      hitsSr: "撞了 {n} 次，撞 {of} 次这局结束",
+      /** Read out for the classroom */
+      fieldSr: "教室里的一排课桌，小强在上面往右跑",
+      /** On the desks' front every 100 m, and at the line */
+      mark: "{m} 米",
+      /** Said a moment: run into, and a flag passed */
+      hit: "撞到了！再撞 {n} 次就结束",
+      hitLast: "撞到了！再撞一次就结束",
+      flag: "{m} 米！",
+      /** At the end */
+      done: "下课铃响了！",
+      short: "还差 {d} 米",
+      pass: "跑满 325 米，下课！",
+      fail: "跑到 {n} 米，撞了 {k} 次",
+      result: "跑到 {n} 米",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
