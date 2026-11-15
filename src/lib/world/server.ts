@@ -76,6 +76,7 @@ export class ServerWorld implements World {
   };
   setPerlicaTimer = (on: boolean) => this.call<void>("setPerlicaTimer", on);
   setOnlyMains = (on: boolean) => this.call<void>("setOnlyMains", on);
+  hideNotice = (noticeId: string) => this.call<void>("hideNotice", noticeId);
   // A GET, so a browser that already holds the whole snapshot gets a 304 for it; f=3: packed, and with short ids
   roachFeed = async (since: string | null): Promise<RoachFeedUpdate | VisitorFeed> => {
     let res: Response;

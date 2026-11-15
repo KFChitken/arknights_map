@@ -1749,6 +1749,7 @@ export const zh = {
     empty: "还没有公告。",
     back: "‹ 全部公告{count}",
     byAdmin: "站长 · {day}",
+    hideNext: "以后不再显示",
     qq: {
       join: "加入QQ群 {group}",
       qrAlt: "QQ群 {group} 的二维码",

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "hidden_notices" uuid[] DEFAULT '{}'::uuid[] NOT NULL;

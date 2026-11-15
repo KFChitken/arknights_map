@@ -557,6 +557,8 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .notice-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -2px 0 10px; }
 .notice-back { padding: 4px 0; border: 0; background: none; color: #1d6fd6; font-size: 13px; font-weight: 600; }
 .notice-meta span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+/* 「以后不再显示」 over 知道了, on the notice that popped up */
+.check.notice-hide { width: fit-content; margin: 0 0 10px; color: #4b5260; font-size: 13px; }
 /*
  * The board's two tabs, 公告 and 更新记录 (NoticeBoard.tsx), on a sheet of the same height either way, and the
  * change log itself (ChangeLog.tsx). A phone reads the log top to bottom; from 900px wide the board is a box

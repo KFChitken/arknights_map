@@ -136,6 +136,11 @@ export const users = pgTable("users", {
    * 触须之交's still. Theirs alone: no one else is told
    */
   onlyMains: boolean("only_mains").notNull().default(false),
+  /**
+   * 公告 they ticked 「以后不再显示」 on as it popped up (src/lib/server/notices.ts hideNotice): it never pops up for them
+   * again, on any device; it stays on the board. Only notices still live are kept, so the list stays short
+   */
+  hiddenNotices: uuid("hidden_notices").array().notNull().default(emptyIds),
   /** 让触须之交来串门 (src/lib/server/friendly.ts): on unless they switched it off */
   welcomeGuests: boolean("welcome_guests").notNull().default(true),
   /**
@@ -1293,7 +1298,8 @@ export const nameWords = pgTable("name_words", {
 /**
  * 公告 (src/lib/server/notices.ts): what the admin writes to everyone, on the board at the top of the map.
  * A draft is seen by nobody; a live one by everyone, until it is withdrawn or ends_at passes; the
- * withdrawn ones are kept. Whether someone has seen one is kept only in their browser, never here.
+ * withdrawn ones are kept. Whether someone has seen one is kept only in their browser, never here; only
+ * 「以后不再显示」, ticked on one that popped up, is kept on their account (users.hidden_notices).
  */
 export const notices = pgTable(
   "notices",

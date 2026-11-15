@@ -12,6 +12,7 @@ import { db } from "@/lib/server/db";
 import { identities, pretend, resetDemo } from "@/lib/server/demo";
 import { demoEnabled } from "@/lib/server/env";
 import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
+import { hideNotice } from "@/lib/server/notices";
 import { allow } from "@/lib/server/rateLimit";
 import * as friendly from "@/lib/server/friendly";
 import * as help from "@/lib/server/help";
@@ -92,6 +93,11 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
     case "setOnlyMains":
       ration(20);
       await world.setOnlyMains(uid(), args[0] === true);
+      break;
+    // 公告's 「以后不再显示」: theirs alone, as 只看本体
+    case "hideNotice":
+      ration(20);
+      await hideNotice(uid(), args[0]);
       break;
     case "saveProfile":
       result = await world.saveProfile(agreed(), args[0] as Profile);

@@ -5,7 +5,8 @@ import { apiFetch } from "@/lib/apiFetch";
 /**
  * 公告 (src/components/app/NoticeBoard.tsx): what pages get of each notice, and what this device remembers
  * of them. Whether a notice was seen is kept only here, in the browser, and sent nowhere: on another phone
- * or browser, one that pops up once pops up once more.
+ * or browser, one that pops up once pops up once more. Only 「以后不再显示」, ticked on one that popped up, is
+ * kept on the player's account (Me.hiddenNotices), so it pops up on no device again.
  */
 
 /** none: only the red dot and the strip; once: pops up once on each device; every: on every visit and sign-in */
@@ -165,11 +166,13 @@ const newestFirst = (a: PublicNotice, b: PublicNotice) => b.publishedAt - a.publ
 
 /**
  * What pops up on opening the map or signing in (never for visitors), one at a time: the newest new one
- * that pops up once, else the one that pops up on every visit, else nothing
+ * that pops up once, else the one that pops up on every visit, else nothing. Never one of hidden, those the
+ * player ticked 「以后不再显示」 on (Me.hiddenNotices)
  */
-export function noticeToPop(list: PublicNotice[], m: NoticeMemory, now: number): PublicNotice | null {
-  const once = list.filter((n) => n.pop === "once" && isNew(n, m, now)).sort(newestFirst)[0];
-  return once ?? list.find((n) => n.pop === "every") ?? null;
+export function noticeToPop(list: PublicNotice[], m: NoticeMemory, now: number, hidden: readonly string[] = []): PublicNotice | null {
+  const may = list.filter((n) => !hidden.includes(n.id));
+  const once = may.filter((n) => n.pop === "once" && isNew(n, m, now)).sort(newestFirst)[0];
+  return once ?? may.find((n) => n.pop === "every") ?? null;
 }
 
 /** The red dot on 「公告」: something new since the board was last opened */

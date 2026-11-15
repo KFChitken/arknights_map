@@ -76,12 +76,14 @@ export function NoticeStrip({ notice, onOpen, onClose }: { notice: PublicNotice;
 /**
  * The board. Its two tabs, 公告 and 更新记录, over the list or the change log; a tab keeps the sheet, so the
  * one chosen keeps focus. One notice, without the tabs: the way back to the list, the day it went out, and
- * its words, on a new sheet, so a long notice opens at its top.
+ * its words, on a new sheet, so a long notice opens at its top. hide: 「以后不再显示」 over 知道了, on the one that
+ * popped up (src/lib/notices.ts noticeToPop), ticked or not; what it does is the caller's, once the board closes.
  */
 export default function NoticeBoard({
   notices,
   view,
   memory,
+  hide,
   onOpen,
   onList,
   onLog,
@@ -90,6 +92,7 @@ export default function NoticeBoard({
   notices: PublicNotice[];
   view: BoardView;
   memory: NoticeMemory;
+  hide?: { id: string; on: boolean; onChange: (on: boolean) => void } | null;
   onOpen: (n: PublicNotice) => void;
   onList: () => void;
   onLog: () => void;
@@ -118,15 +121,24 @@ export default function NoticeBoard({
   }
   // its latest words if it was edited while open; as it was, if it was taken down meanwhile
   const n = notices.find((x) => x.id === view.notice.id) ?? view.notice;
+  const tick = hide?.id === n.id ? hide : null;
   return (
     <Sheet
       key={n.id}
       title={n.title}
       onClose={onClose}
       footer={
-        <button className="primary wide" onClick={onClose}>
-          {T.common.gotIt}
-        </button>
+        <>
+          {tick && (
+            <label className="check notice-hide">
+              <input type="checkbox" checked={tick.on} onChange={(e) => tick.onChange(e.target.checked)} />
+              <span>{T.notices.hideNext}</span>
+            </label>
+          )}
+          <button className="primary wide" onClick={onClose}>
+            {T.common.gotIt}
+          </button>
+        </>
       }
     >
       <div className="notice-meta">

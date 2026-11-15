@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { REPORTS_PER_IP_HOUR } from "@/lib/rules";
 import { db } from "@/lib/server/db";
-import { sessions, users } from "@/lib/server/schema";
+import { notices, sessions, users } from "@/lib/server/schema";
 import { POST } from "./route";
 
 // the route reads its cookie as any page does; here, the one this test signed in with
@@ -67,6 +67,24 @@ describe("只看本体 (setOnlyMains)", () => {
     }
     // and in what the page reads about who is signed in
     expect((await call("me")).body.result).toMatchObject({ onlyMains: false });
+  });
+});
+
+describe("公告's 「以后不再显示」 (hideNotice)", () => {
+  it("needs a player signed in, and the page has it with who is signed in", async () => {
+    const [n] = await db
+      .insert(notices)
+      .values({ title: "欢迎", body: "欢迎", pop: "every", status: "live", publishedAt: new Date() })
+      .returning({ id: notices.id });
+    expect((await call("hideNotice", [n.id])).status).toBe(401);
+    await signIn(await account("a@example.com"));
+    expect((await call("me")).body.result).toMatchObject({ hiddenNotices: [] });
+    expect(await call("hideNotice", [n.id])).toEqual({ status: 200, body: { result: null } });
+    expect((await call("me")).body.result).toMatchObject({ hiddenNotices: [n.id] });
+    // anything else is passed over, not an error
+    expect(await call("hideNotice", ["not-a-notice"])).toEqual({ status: 200, body: { result: null } });
+    expect((await call("hideNotice", [])).status).toBe(200);
+    expect((await call("me")).body.result).toMatchObject({ hiddenNotices: [n.id] });
   });
 });
 

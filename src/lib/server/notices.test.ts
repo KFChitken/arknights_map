@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NoticeBody from "@/components/app/NoticeBody";
 import { db, pg } from "./db";
 import { hearOthers, reloadEverywhere } from "./live";
-import { forgetNotices, loadNotices, noticeList, NOTICES_SHOWN, startNotices, visibleNotices } from "./notices";
-import { notices } from "./schema";
+import { forgetNotices, hideNotice, loadNotices, noticeList, NOTICES_SHOWN, startNotices, visibleNotices } from "./notices";
+import { notices, users } from "./schema";
 
 const HOUR = 3_600_000;
 
@@ -57,6 +57,51 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe("「以后不再显示」 (hideNotice)", () => {
+  const player = async (email: string) => (await db.insert(users).values({ email }).returning({ id: users.id }))[0].id;
+  const hiddenBy = async (id: string) => (await db.select({ h: users.hiddenNotices }).from(users).where(eq(users.id, id)))[0].h;
+
+  beforeEach(async () => {
+    await db.execute(sql`truncate ${users} cascade`);
+  });
+
+  it("keeps a live notice on the player's account, once, and theirs alone", async () => {
+    const a = await player("a@example.com");
+    const b = await player("b@example.com");
+    const n = await add("欢迎", { pop: "every" });
+    await hideNotice(a, n.id);
+    await hideNotice(a, n.id);
+    await hideNotice(a, n.id.toUpperCase());
+    expect(await hiddenBy(a)).toEqual([n.id]);
+    expect(await hiddenBy(b)).toEqual([]);
+  });
+
+  it("takes no notice that is not live, nor anything that is not a notice", async () => {
+    const a = await player("a@example.com");
+    const draft = await add("草稿", { pop: "once", status: "draft", publishedAt: null });
+    const gone = await add("撤下的", { pop: "once", status: "withdrawn", withdrawnAt: new Date() });
+    const ended = await add("过期的", { pop: "once", endsAt: new Date(Date.now() - HOUR) });
+    const madeUp = "6f1e0a52-7a6b-4c55-9d1e-2f4b8f0c1a99";
+    for (const id of [draft.id, gone.id, ended.id, madeUp, "abc", `${madeUp}x`, 42, null, undefined, [draft.id]]) await hideNotice(a, id);
+    expect(await hiddenBy(a)).toEqual([]);
+  });
+
+  it("drops the ones no longer live as it keeps another, so the list never outgrows the board", async () => {
+    const a = await player("a@example.com");
+    const one = await add("一", { pop: "once" });
+    const two = await add("二", { pop: "once" });
+    const three = await add("三", { pop: "once", endsAt: new Date(Date.now() + HOUR) });
+    for (const n of [one, two, three]) await hideNotice(a, n.id);
+    expect(await hiddenBy(a)).toEqual([one.id, two.id, three.id]);
+    // one taken down, three past its end
+    await db.update(notices).set({ status: "withdrawn", withdrawnAt: new Date() }).where(eq(notices.id, one.id));
+    await db.update(notices).set({ endsAt: new Date(Date.now() - 1000) }).where(eq(notices.id, three.id));
+    const four = await add("四", { pop: "every" });
+    await hideNotice(a, four.id);
+    expect(await hiddenBy(a)).toEqual([two.id, four.id]);
+  });
 });
 
 describe("the notices everyone sees", () => {

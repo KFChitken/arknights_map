@@ -1420,6 +1420,7 @@ export const en: Draft<Messages> = {
     empty: "No notices yet.",
     back: "‹ All notices{count}",
     byAdmin: "Admin · {day}",
+    hideNext: "Don't show this again",
     qq: {
       join: "Join QQ group {group}",
       qrAlt: "QR code for QQ group {group}",

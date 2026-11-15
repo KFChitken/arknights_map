@@ -70,6 +70,23 @@ describe("what pops up", () => {
     expect(noticeToPop([welcome, old], EMPTY_MEMORY, NOW)).toBe(welcome);
     expect(noticeToPop([{ ...old, publishedAt: NOW - FRESH_MS + 1 }], EMPTY_MEMORY, NOW)?.id).toBe("old");
   });
+
+  it("is never one the player ticked 「以后不再显示」 on, though a new one still pops up", () => {
+    const a = notice("a", "once", 2);
+    const b = notice("b", "once", 1);
+    // ticked on b: a in its place, on this device and any other; on both: the welcome notice; on that too: nothing
+    expect(noticeToPop([welcome, a, b], EMPTY_MEMORY, NOW, ["b"])).toBe(a);
+    expect(noticeToPop([welcome, a, b], EMPTY_MEMORY, NOW, ["a", "b"])).toBe(welcome);
+    const all = ["a", "b", "welcome"];
+    expect(noticeToPop([welcome, a, b], EMPTY_MEMORY, NOW, all)).toBeNull();
+    // edited, a notice keeps its id, so it stays hidden
+    expect(noticeToPop([{ ...welcome, title: "改过的", body: "改过的" }], EMPTY_MEMORY, NOW, all)).toBeNull();
+    // a new one is another notice: it pops up, as does the next one put up to pop up on every visit
+    const c = notice("c", "once", 0);
+    expect(noticeToPop([welcome, a, b, c], EMPTY_MEMORY, NOW, all)).toBe(c);
+    const next = notice("next", "every", 0);
+    expect(noticeToPop([next, a, b], EMPTY_MEMORY, NOW, all)).toBe(next);
+  });
 });
 
 describe("the red dot and the strip", () => {

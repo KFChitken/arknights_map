@@ -4,14 +4,15 @@ import { noticeExcerpt } from "../noticeText";
 import type { NoticeList, NoticePop, PublicNotice } from "../notices";
 import { db } from "./db";
 import { onReload } from "./live";
-import { notices } from "./schema";
+import { notices, users } from "./schema";
 import { errorCode } from "./signals";
 
 /**
  * 公告 for everyone (src/components/app/NoticeBoard.tsx), from memory. Each process reads the live notices
  * (a few dozen at most) when it starts, when the admin changes one (reloadEverywhere("notices") in live.ts,
  * on every process) and every 5 minutes in case it missed the word; nothing about them is asked of the
- * database while answering a page, and nothing about who reads them is kept.
+ * database while answering a page, and nothing about who reads them is kept, but for 「以后不再显示」
+ * (hideNotice), on the player's own account.
  *
  * A page gets them with the map (src/app/page.tsx). Every answer of /api/roaches carries their stamp
  * (x-notices), and a page holding another one asks /api/notices. The stamp comes from the notices alone,
@@ -131,6 +132,25 @@ export function noticeList(now = Date.now()): NoticeAnswer {
   const ends = state.rows.map((n) => n.endsAt ?? Infinity).filter((t) => t > now);
   state.made = { answer, rows: state.rows, from: now, until: Math.min(Infinity, ...ends) };
   return answer;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 「以后不再显示」, ticked on a notice that popped up (src/lib/notices.ts noticeToPop): kept on the player's account
+ * (users.hidden_notices, which me() hands the page), so it never pops up for them again, on any device. Only a live
+ * notice is taken, and the ones no longer live are dropped as it is, so the list never outgrows the board; anything
+ * else, as a made-up id, is ignored.
+ */
+export async function hideNotice(userId: string, id: unknown) {
+  if (typeof id !== "string" || !UUID.test(id)) return;
+  const live = sql`select ${notices.id} from ${notices} where ${notices.status} = 'live' and (${notices.endsAt} is null or ${notices.endsAt} > now())`;
+  await db
+    .update(users)
+    .set({
+      hiddenNotices: sql`array_append(array(select h from unnest(${users.hiddenNotices}) h where h <> ${id}::uuid and h in (${live})), ${id}::uuid)`,
+    })
+    .where(and(eq(users.id, userId), sql`${id}::uuid in (${live})`));
 }
 
 /** Tests: nothing held */

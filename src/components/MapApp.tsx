@@ -649,8 +649,14 @@ export default function MapApp({
   const [noticeMem, setNoticeMem] = useState<NoticeMemory>(EMPTY_MEMORY);
   const noticeMemRef = useRef(noticeMem);
   noticeMemRef.current = noticeMem;
-  /** The board, while open; for a notice that popped up, whose visit it was and what opens once it is closed */
-  const [board, setBoard] = useState<{ view: BoardView; popped: { userId: string; then: () => void } | null } | null>(null);
+  /**
+   * The board, while open; for a notice that popped up, whose visit it was, what opens once it is closed, which it
+   * was, and whether 「以后不再显示」 is ticked on it
+   */
+  const [board, setBoard] = useState<{
+    view: BoardView;
+    popped: { userId: string; then: () => void; noticeId: string; hide: boolean } | null;
+  } | null>(null);
   /**
    * 最近更新 (src/lib/pamphlet.ts), the booklet the page adds to the notices, while open: popped up (whose visit it
    * was, and what opens once it is closed), or opened from the board's list (closed, the list is there under it) or
@@ -702,10 +708,12 @@ export default function MapApp({
     (m: Me, then: () => void) => {
       const now = Date.now();
       const mayPop = pamphletMayPop(m.joinedAt, now, { tutorial: Boolean(tutorialStep(m, loadProgress(m.id))), gray: isGray() });
-      const n = noticeToPop(mayPopAmong(noticesRef.current.notices, mayPop, uiChoice), noticeMemRef.current, now);
+      const n = noticeToPop(mayPopAmong(noticesRef.current.notices, mayPop, uiChoice), noticeMemRef.current, now, m.hiddenNotices);
       if (!n) return then();
       rememberNotices((mem) => noticeRead(mem, n.id));
-      if (!isPamphlet(n)) return setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: { userId: m.id, then } });
+      if (!isPamphlet(n)) {
+        return setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: { userId: m.id, then, noticeId: n.id, hide: false } });
+      }
       introduced.current = true;
       setPamphletPopped(true);
       setPamphlet({ from: "popped", userId: m.id, then });
@@ -750,12 +758,33 @@ export default function MapApp({
   };
   /** 更新记录, the board's other tab: the notices are not read by it, so a red dot stays */
   const boardLog = () => setBoard((b) => b && { ...b, view: { kind: "log" } });
-  /** Closed however, on whichever page: one that popped up counts for this visit, and what waited for it opens */
+  /** 「以后不再显示」 on the one that popped up, ticked or not; it is told once the board closes */
+  const tickHide = (on: boolean) => setBoard((b) => (b?.popped ? { ...b, popped: { ...b.popped, hide: on } } : b));
+  /**
+   * Ticked and closed: kept on the account (hideNotice), so it pops up on no device again; tried again a few times,
+   * quietly, when that does not get through (this visit has had it already)
+   */
+  const hideNoticeSurely = useCallback((userId: string, noticeId: string) => {
+    const again = [2_000, 10_000, 60_000];
+    const tell = (i: number) => {
+      // signed out, or in as someone else, meanwhile: not theirs to hide
+      if (meIdRef.current !== userId || !worldRef.current) return;
+      worldRef.current.hideNotice(noticeId).catch((e) => {
+        if (i < again.length && !(e instanceof SignInNeeded)) window.setTimeout(() => tell(i + 1), again[i]);
+      });
+    };
+    tell(0);
+  }, []);
+  /**
+   * Closed however, on whichever page: one that popped up counts for this visit, never pops up again for this
+   * player if 「以后不再显示」 was ticked on it, and what waited for it opens
+   */
   const closeBoard = () => {
     const popped = board?.popped;
     setBoard(null);
     if (!popped) return;
     markPopped(popped.userId);
+    if (popped.hide) hideNoticeSurely(popped.userId, popped.noticeId);
     popped.then();
   };
   /**
@@ -5675,6 +5704,7 @@ export default function MapApp({
           notices={boardNotices}
           view={board.view}
           memory={noticeMem}
+          hide={board.popped && { id: board.popped.noticeId, on: board.popped.hide, onChange: tickHide }}
           onOpen={boardOpen}
           onList={boardList}
           onLog={boardLog}

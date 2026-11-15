@@ -442,6 +442,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     },
     drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
     onlyMains: u.onlyMains,
+    hiddenNotices: u.hiddenNotices,
     // a whole day or more away, so not just back the next morning
     homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
     mustReconsent: mustReconsent(u),

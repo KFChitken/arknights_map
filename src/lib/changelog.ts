@@ -6,6 +6,7 @@ export type ChangeKind = "new" | "better" | "fix" | "tweak" | "chore";
 export type ChangeRow = { date: string; kind: ChangeKind; text: string };
 
 export const CHANGELOG: readonly ChangeRow[] = [
+  { date: "2026-11-16", kind: "better", text: "公告弹窗可以勾「以后不再显示」" },
   { date: "2026-11-16", kind: "tweak", text: "去掉站名旁的「内测版」" },
   { date: "2026-11-16", kind: "fix", text: "英文介绍页的 Reddit 换成原帖" },
   { date: "2026-11-16", kind: "chore", text: "后台调整" },

@@ -31,6 +31,8 @@ export interface World {
   setPerlicaTimer(on: boolean): Promise<void>;
   /** 只看本体 on or off: the map draws others' main roaches only; kept on the account, told to no one else. */
   setOnlyMains(on: boolean): Promise<void>;
+  /** 「以后不再显示」 ticked on a notice that popped up: it never pops up for them again; kept on the account (Me.hiddenNotices). */
+  hideNotice(noticeId: string): Promise<void>;
   /**
    * Everyone's roaches, your own included, as one feed shared by every signed-in viewer.
    * Pass the version you hold to get only what changed since (see RoachFeedUpdate).
@@ -515,6 +517,8 @@ export type Me = {
   drunkUntil: number | null;
   /** 只看本体 is on: their map draws others' main roaches only (theirs alone; see setOnlyMains) */
   onlyMains: boolean;
+  /** The 公告 they ticked 「以后不再显示」 on (hideNotice), of those still live: none of them pops up for them again */
+  hiddenNotices: string[];
   /** Back for the first time since their main roach flipped over for their staying away: it stands up again (鲤鱼打挺) */
   wokeFromAway: boolean;
   /** Only on the first visit of a day that comes after at least one whole day away */
