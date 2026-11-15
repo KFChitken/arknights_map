@@ -58,6 +58,7 @@ const GAMES: Record<CourseId, () => Promise<{ default: Game }>> = {
   rogue325: () => import("./Rogue325"),
   snake325: () => import("./Snake325"),
   run325: () => import("./Run325"),
+  write325: () => import("./Write325"),
 };
 
 export const loadGame = (id: CourseId): Promise<Game> => GAMES[id]().then((m) => m.default);

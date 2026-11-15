@@ -2570,6 +2570,7 @@ export const zh = {
       rogue325: { name: "控分肉鸽", rule: "爬 5 层楼，每层挑一扇门，结算越接近 325 越好", short: "控分" },
       snake325: { name: "贪吃小强", rule: "带着小强吃面包屑，正好吃到 325 过关，吃超了会撑爆", short: "贪吃" },
       run325: { name: "325 米跑酷", rule: "小强自己往前跑，点屏幕跳过障碍，跑满 325 米下课", short: "跑酷" },
+      write325: { name: "徒手写 325", rule: "没有虚线，自己在格子里写 3、2、5，看写得像不像", short: "徒手写" },
     },
     stopwatch: {
       start: "开始",
@@ -2900,6 +2901,35 @@ export const zh = {
       pass: "跑满 325 米，下课！",
       fail: "跑到 {n} 米，撞了 {k} 次",
       result: "跑到 {n} 米",
+    },
+    /** 徒手写 325 (src/lib/study/write325.ts) */
+    write325: {
+      /** Over the squares: what to write, and how */
+      rule: "没有虚线，在三个格子里各写一个字：3、2、5",
+      how: "手指按住在格子里写，写坏了点「擦掉」",
+      howMouse: "按住鼠标在格子里写，写坏了点「擦掉」",
+      /** Read out for a square, and whether it is written in yet */
+      squareSr: "第 {n} 个格子，写 {d}，{state}",
+      empty: "还没写",
+      written: "写了",
+      erase: "擦掉",
+      eraseSr: "擦掉第 {n} 个格子",
+      handIn: "交卷",
+      /** Under 交卷 until every square is written in */
+      notYet: "三个格子都写了才能交卷",
+      /** Under a square once marked: its mark, or what it looked like instead */
+      mark: "{n} 分",
+      as: "像 {e}，0 分",
+      unread: "认不出，0 分",
+      /** Read out for a square once marked */
+      markSr: "{d}：{n} 分",
+      asSr: "{d}：认成了 {e}，0 分",
+      unreadSr: "{d}：认不出，0 分",
+      /** Between the squares' marks as they are read out */
+      markSep: "；",
+      /** The word for the three marks' average */
+      words: { neat: "字迹工整", like: "还挺像", doctor: "医生体", ghost: "鬼画符" },
+      result: "{word}，{n} 分",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",

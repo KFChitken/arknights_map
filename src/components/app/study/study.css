@@ -731,6 +731,35 @@
 .ct-said.ct-hit,
 .tr-said.tr-hit { color: var(--st-red); }
 
+/* ---- 徒手写 325 (Write325.tsx): what to write over three copybook squares in a row, each a canvas as big as the room
+   lets them (set in the game), 擦掉 or its mark under each, and 交卷 under them ---- */
+.wr-game { flex: 1; align-self: stretch; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.wr-rule { flex: none; display: flex; flex-direction: column; gap: 2px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; text-align: center; }
+.wr-rule span { display: block; word-break: keep-all; text-wrap: balance; }
+.wr-rule span:first-child { color: #1b1d22; font-size: 14.5px; font-weight: 700; }
+.wr-room { flex: 1; min-height: 0; align-self: stretch; display: flex; align-items: center; justify-content: center; }
+/* the gap is the game's GAP */
+.wr-row { display: flex; gap: 8px; }
+.wr-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wr-label { height: 18px; color: #9aa1ab; font-size: 15px; font-weight: 800; line-height: 18px; }
+/* written in: the page does not scroll or zoom under the pen, and a long press opens nothing */
+.wr-square { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: crosshair; }
+.wr-game[data-phase="marked"] .wr-square { cursor: default; }
+.wr-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.wr-erase {
+  height: 32px; margin-top: 2px; padding: 0 14px; border: 1.5px solid var(--st-line); border-radius: 999px; background: #fff; color: #1b1d22;
+  font-size: 13px; font-weight: 600;
+}
+.wr-erase:disabled { opacity: 0.45; }
+.wr-mark { display: grid; place-items: center; height: 32px; margin: 2px 0 0; color: #d8372a; font-size: 15px; font-weight: 800; white-space: nowrap; }
+.wr-mark.wr-off { font-size: 13px; }
+.wr-under { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; max-width: 300px; }
+.wr-hand { align-self: stretch; }
+/* handed in: gone, its room kept */
+.wr-game[data-phase="marked"] .wr-hand { visibility: hidden; }
+.wr-note { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.study-play:has(.wr-game[data-phase="write"]) { touch-action: none; overscroll-behavior: none; }
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }
@@ -763,6 +792,9 @@
   .sn-rule { font-size: 13px; line-height: 1.5; }
   .rn-card { gap: 8px; padding: 10px 14px; }
   .rn-rule { font-size: 13px; line-height: 1.5; }
+  .wr-game { gap: 6px; }
+  .wr-rule { font-size: 12.5px; }
+  .wr-rule span:first-child { font-size: 13.5px; }
   .ct-game,
   .tr-game { gap: 6px; }
   .ct-slots b,
@@ -849,6 +881,12 @@
   .rn-top { flex-direction: column; align-items: flex-start; gap: 6px; padding-inline: 0; }
   .rn-said { min-height: 3em; text-align: left; }
   .rn-stage { flex: 1; align-self: stretch; width: auto; aspect-ratio: auto; min-height: 0; }
+  /* 徒手写: the squares all the height at the left, what to write and 交卷 beside them */
+  .wr-game { display: grid; grid-template-columns: minmax(0, 1fr) 190px; grid-template-rows: 1fr auto auto 1fr; gap: 10px 16px; }
+  .wr-room { grid-column: 1; grid-row: 1 / 5; }
+  .wr-rule { grid-column: 2; grid-row: 2; text-align: left; }
+  .wr-under { grid-column: 2; grid-row: 3; }
+  .wr-note { align-self: flex-start; }
   /* the slots, how it goes and the time down the left, the field all the height beside them */
   .ct-game,
   .tr-game { flex-direction: row; gap: 16px; }
