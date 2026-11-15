@@ -5,6 +5,8 @@ import { fmt, T } from "@/i18n";
 import {
   CATCH_MS,
   CATCH_ORDER,
+  CATCH_PLATE_W,
+  CATCH_RIM,
   CATCH_ROACH_BOX,
   CATCH_SETS,
   CATCH_STUN_MS,
@@ -12,11 +14,12 @@ import {
   type Catch,
   catchDrops,
   caught,
-  comesDown,
   dropAt,
-  inReach,
+  onPlate,
+  plateTop,
   type Tally,
   TALLY_START,
+  thingY,
 } from "@/lib/study/catch325";
 import { clamp } from "@/lib/study/field";
 import { mulberry32 } from "@/lib/prng";
@@ -35,11 +38,12 @@ const ROACH_SIDE = 0.1;
 const WIDEST = 1.25;
 const TALLEST = 1.5;
 /**
- * Before the round, the rule, the start button and how to move are said over the field, above the roach, in this much
- * room (CSS px). A field with less above the roach has them over all of it, the roach coming in as the round starts;
- * one lower than that altogether leaves out how to move, and one lower than RULE_ROOM the rule as well (the list showed
- * it).
+ * Before the round, the rule, the start button and how to move are said over the field, above the plate, in this much
+ * room (CSS px). A field with less above the plate has them over all of it, the roach coming in as the round starts;
+ * one lower than READY_ROOM altogether leaves out how to move, and one lower than RULE_ROOM the rule as well (the list
+ * showed it).
  */
+const ABOVE_ROOM = 180;
 const READY_ROOM = 150;
 const RULE_ROOM = 110;
 
@@ -50,21 +54,20 @@ function fieldIn(w: number, h: number) {
   return { left: (w - fw) / 2, top: 0, fw, fh };
 }
 
-/**
- * How far down the roach's middle is in a field so high, how far down a thing comes to it (the top of its head, where
- * catch325.ts dropAt's down is 1), and where a thing is when down is so far: field widths from the top
- */
+/** How far down the roach's middle is in a field so high (field widths from the top) */
 const roachY = (high: number) => high - CATCH_ROACH_BOX / 2 - 0.012;
-const lineY = (ry: number) => ry - CATCH_ROACH_BOX * 0.32;
-const thingY = (down: number, ry: number) => -CATCH_THING_R + down * (lineY(ry) + CATCH_THING_R);
+/** How far up from the field's bottom the top of the plate's rim is (field widths) */
+const PLATE_UP = -plateTop(roachY(0));
+/** While the roach lies belly up its plate is on the ground beside it, leaning on it this much (radians) */
+const PLATE_LEAN = 0.3;
 
 /**
  * 接住 3、2、5 (src/lib/study/catch325.ts): a round's things fall down a field drawn on a canvas (arena.ts), and the
- * player's own roach, dragged left and right along the bottom (or moved with ← →), catches 3, 2 and 5 in that order.
- * A thing is caught, or run into, as it comes down to the top of the roach's head within its reach (catch325.ts); the
- * rest fall on past, behind it. Three slots over the field fill as they are caught and empty at a wrong digit (they
- * shake, when motion is not turned down) or an obstacle (the roach lies belly up a moment, and nothing touches it
- * meanwhile). The round's clock stands still while the page is put away. Nothing flashes.
+ * player's own roach, dragged left and right along the bottom (or moved with ← →), catches 3, 2 and 5 in that order
+ * on the plate on its head. A thing is caught, or run into, as it touches the plate's rim (catch325.ts); the rest fall
+ * on past, behind the roach. Three slots over the field fill as they are caught and empty at a wrong digit (they
+ * shake, when motion is not turned down) or an obstacle (the roach lies belly up a moment, its plate tipped, and
+ * nothing touches it meanwhile). The round's clock stands still while the page is put away. Nothing flashes.
  */
 export default function Catch325({ seed, look, onRound }: GameProps) {
   const drops = useMemo(() => catchDrops(mulberry32(seed)), [seed]);
@@ -89,10 +92,10 @@ export default function Catch325({ seed, look, onRound }: GameProps) {
   const art = useRoachArt(look, Math.ceil((CATCH_ROACH_BOX * field.fw * size.dpr) / 8) * 8);
   const artRef = useRef(art);
   artRef.current = art;
-  // the room for the rule and the start button: above the roach, or on a low field all of it
-  const overRoach = field.fh - Math.round(CATCH_ROACH_BOX * field.fw);
-  const tight = overRoach < READY_ROOM;
-  const room = Math.round(tight ? field.fh : overRoach);
+  // the room for the rule and the start button: above the plate, or on a low field all of it
+  const overPlate = field.fh - Math.round(PLATE_UP * field.fw);
+  const tight = overPlate < ABOVE_ROOM;
+  const room = Math.round(tight ? field.fh : overPlate);
 
   const draw = () => {
     const ctx = canvas.current?.getContext("2d");
@@ -109,15 +112,17 @@ export default function Catch325({ seed, look, onRound }: GameProps) {
     ctx.clip();
     const s = g.current;
     const ry = roachY(f.fh / u);
+    const top = plateTop(ry);
     drops.forEach((d, i) => {
       if (s.gone.has(i) || d.at > s.t) return;
       const p = dropAt(d, s.t, s.calm);
       const x = f.left + p.x * u;
-      const y = f.top + thingY(p.down, ry) * u;
+      const y = f.top + thingY(p.down, top) * u;
       if (typeof d.what === "number") digit(ctx, x, y, CATCH_THING_R * u, d.what);
-      else drawObstacle(ctx, d.what, x, y, CATCH_THING_R * u * 1.05, Math.atan2(lineY(ry) + CATCH_THING_R, d.to - d.from));
+      else drawObstacle(ctx, d.what, x, y, CATCH_THING_R * u * 1.05, Math.atan2(top, d.to - d.from));
     });
-    const img = s.t < s.stunTill ? artRef.current.belly : artRef.current.stand;
+    const belly = s.t < s.stunTill;
+    const img = belly ? artRef.current.belly : artRef.current.stand;
     const b = CATCH_ROACH_BOX * u;
     const rx = f.left + s.x * u;
     const rY = f.top + ry * u;
@@ -129,6 +134,14 @@ export default function Catch325({ seed, look, onRound }: GameProps) {
         ctx.beginPath();
         ctx.ellipse(rx, rY, b * 0.3, b * 0.36, 0, 0, Math.PI * 2);
         ctx.fill();
+      }
+      const pw = CATCH_PLATE_W * u;
+      const rim = CATCH_RIM * u;
+      if (!belly) plate(ctx, rx, f.top + top * u, pw, rim, 0);
+      else {
+        // knocked off: standing on the ground beside the roach, on the side towards the middle, leaning on it
+        const side = s.x < 0.5 ? 1 : -1;
+        plate(ctx, rx + side * (b * 0.34 + pw * 0.4), rY + b * (0.5 - 4 / 64) - rim * 2.05, pw, rim, -side * PLATE_LEAN);
       }
     }
     ctx.restore();
@@ -154,8 +167,11 @@ export default function Catch325({ seed, look, onRound }: GameProps) {
     s.t += dt;
     const { w, h } = box.current;
     const f = fieldIn(w, h);
-    const ry = roachY(f.fh / Math.max(1, f.fw));
+    const high = f.fh / Math.max(1, f.fw);
+    const top = plateTop(roachY(high));
     const stunned = s.t < s.stunTill;
+    // where the plate was a frame before, so one moved fast does not jump past a thing
+    const was = s.x;
     if (!stunned) {
       const dir = arrows.current;
       if (dir) s.x = s.aim = clamp(s.x + (dir * KEY_SPEED * dt) / 1000, ROACH_SIDE, 1 - ROACH_SIDE);
@@ -166,8 +182,9 @@ export default function Catch325({ seed, look, onRound }: GameProps) {
       if (d.at > s.t) break;
       if (s.gone.has(i)) continue;
       const p = dropAt(d, s.t, s.calm);
-      if (thingY(p.down, ry) - CATCH_THING_R > f.fh / Math.max(1, f.fw)) s.gone.add(i);
-      else if (!stunned && comesDown(d, s.t - dt, s.t, s.calm) && inReach(p.x, s.x)) {
+      const y = thingY(p.down, top);
+      if (y - CATCH_THING_R > high) s.gone.add(i);
+      else if (!stunned && onPlate(p.x, y, was, s.x, top)) {
         s.gone.add(i);
         const r = caught(s.tally, d.what);
         s.tally = r.tally;
@@ -259,6 +276,40 @@ export default function Catch325({ seed, look, onRound }: GameProps) {
       </p>
     </div>
   );
+}
+
+/**
+ * The plate on the roach's head, seen from the side: a cream dish, its rim's top at top and as wide as w, rim high
+ * (CSS px), the middle of the rim at x; tipped by tip (radians) about it
+ */
+function plate(ctx: CanvasRenderingContext2D, x: number, top: number, w: number, rim: number, tip: number) {
+  ctx.save();
+  ctx.translate(x, top + rim / 2);
+  ctx.rotate(tip);
+  ctx.strokeStyle = "#1b1d22";
+  ctx.lineWidth = Math.max(1.5, rim * 0.16);
+  ctx.lineJoin = "round";
+  // its foot, under the rim
+  ctx.fillStyle = "#e6d9bd";
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.3, 0);
+  ctx.lineTo(-w * 0.17, rim * 1.05);
+  ctx.lineTo(w * 0.17, rim * 1.05);
+  ctx.lineTo(w * 0.3, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // the rim, and the well inside it
+  ctx.fillStyle = "#fff8ea";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, w / 2, rim / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f1e4c8";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, w * 0.3, rim * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 /** A falling digit: a white disc, the digit dark on it */

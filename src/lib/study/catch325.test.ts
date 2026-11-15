@@ -11,22 +11,28 @@ import {
   CATCH_MS,
   CATCH_ORDER,
   CATCH_PAR_MS,
+  CATCH_PLATE_LIFT,
+  CATCH_PLATE_W,
+  CATCH_RIM,
+  CATCH_ROACH_BOX,
   CATCH_SETS,
   CATCH_SIDE,
+  CATCH_THING_R,
   catchDrops,
   caught,
-  comesDown,
   crowded,
   type Drop,
   dropAt,
   fairDrops,
   fallMs,
-  inReach,
   inTime,
+  onPlate,
   parMs,
+  plateTop,
   type Tally,
   TALLY_START,
   type Thing,
+  thingY,
 } from "./catch325";
 import { isObstacle, OBSTACLES, touches } from "./field";
 import { mulberry32 } from "../prng";
@@ -84,17 +90,40 @@ describe("接住 3、2、5", () => {
     expect(dropAt(d, 500).x).toBe(0.2);
   });
 
-  it("catches a thing the moment it comes down to the roach, if it is within reach then", () => {
+  it("catches what touches the plate's rim, the moment it comes down to it, and lets what falls past it fall on", () => {
+    // a plate on the head of a roach whose middle is 1.3 field widths down
+    const top = plateTop(1.3);
+    expect(top).toBeCloseTo(1.3 - CATCH_ROACH_BOX / 2 - CATCH_PLATE_LIFT);
+    // as wide as about 1.4 roaches: wider than the roach's picture
+    expect(CATCH_PLATE_W).toBeGreaterThan(CATCH_ROACH_BOX);
     const d: Drop = { at: 0, what: 3, from: 0.5, to: 0.5, fall: 2000 };
-    expect(comesDown(d, 1990, 2000)).toBe(true);
-    expect(comesDown(d, 1980, 1990)).toBe(false);
-    expect(comesDown(d, 2000, 2010)).toBe(false);
+    const yAt = (t: number, calm = false) => thingY(dropAt(d, t, calm).down, top);
+    // just over the field as it starts, and on the rim as it comes down
+    expect(yAt(0)).toBeCloseTo(-CATCH_THING_R);
+    expect(yAt(2000) + CATCH_THING_R).toBeCloseTo(top);
+    // straight down onto the plate's middle: it touches the rim as it comes down to it, and not before
+    expect(onPlate(0.5, yAt(1990), 0.5, 0.5, top)).toBe(false);
+    expect(onPlate(0.5, yAt(2001), 0.5, 0.5, top)).toBe(true);
     // with motion turned down, later
-    expect(comesDown(d, 1990, 2000, true)).toBe(false);
-    expect(comesDown(d, 2000 / CATCH_CALM - 5, 2000 / CATCH_CALM + 5, true)).toBe(true);
-    expect(inReach(0.5, 0.6)).toBe(true);
-    expect(inReach(0.5, 0.4)).toBe(true);
-    expect(inReach(0.5, 0.61)).toBe(false);
+    expect(onPlate(0.5, yAt(2001, true), 0.5, 0.5, top)).toBe(false);
+    expect(onPlate(0.5, yAt(2000 / CATCH_CALM + 1, true), 0.5, 0.5, top)).toBe(true);
+    // off to one side: it touches the rim's end, or it falls past, at every height, onto the roach and away
+    const reach = CATCH_PLATE_W / 2 + CATCH_THING_R;
+    const level = top + CATCH_RIM / 2;
+    expect(onPlate(0.5 + reach - 0.002, level, 0.5, 0.5, top)).toBe(true);
+    expect(onPlate(0.5 - reach + 0.002, level, 0.5, 0.5, top)).toBe(true);
+    for (let t = 0; t <= 4000; t += 10) {
+      expect(onPlate(0.5 + reach + 0.002, yAt(t), 0.5, 0.5, top)).toBe(false);
+      expect(onPlate(0.5 - reach - 0.002, yAt(t), 0.5, 0.5, top)).toBe(false);
+    }
+    // once under the rim, nothing touches the plate, even right under its middle
+    expect(onPlate(0.5, top + CATCH_RIM + CATCH_THING_R + 0.002, 0.5, 0.5, top)).toBe(false);
+    // a plate moved fast past a thing level with its rim touches it on the way, whichever way it goes
+    expect(onPlate(0.5, level, 0.1, 0.9, top)).toBe(true);
+    expect(onPlate(0.5, level, 0.9, 0.1, top)).toBe(true);
+    expect(onPlate(0.5, level, 0.9, 0.5 + reach + 0.002, top)).toBe(false);
+    // two things coming down together are further apart than a plate held still reaches over both
+    expect(CATCH_CROWD_GAP).toBeGreaterThan(CATCH_PLATE_W + 2 * CATCH_THING_R);
   });
 
   it("touches within the two radii and not beyond", () => {
