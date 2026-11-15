@@ -139,7 +139,8 @@
 .bt-start,
 .ct-start,
 .tr-start,
-.sk-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.sk-start,
+.sn-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
 .ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
@@ -565,6 +566,45 @@
   from { stroke-dashoffset: 1; }
 }
 
+/* ---- 贪吃小强 (Snake325.tsx): what is eaten and the time over a sheet of squared paper on a desk, drawn on a canvas
+   (arena.ts). A swipe anywhere turns the roach, so while it crawls the page under it does not scroll or zoom. The roaches
+   go from square to square, a crumb eaten rises as its number and a roach that burst throws crumbs: nothing flashes,
+   and nothing shakes ---- */
+.sn-game { flex: 1; align-self: stretch; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+/* as wide as the paper under it (--sn-paper, set in the game) */
+.sn-side { flex: none; align-self: center; display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: var(--sn-paper, 100%); }
+.sn-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-inline: 2px; white-space: nowrap; }
+.sn-count { display: inline-flex; align-items: baseline; gap: 6px; color: #4b5260; font-variant-numeric: tabular-nums; }
+.sn-count small { color: var(--muted); font-size: 12.5px; }
+.sn-count b { color: #1b1d22; font-size: 24px; font-weight: 800; line-height: 1.1; }
+.sn-count span { font-size: 14px; font-weight: 700; }
+.sn-count.sn-full b { color: var(--st-green); }
+.sn-count.sn-over b { color: var(--st-red); }
+.sn-time { min-width: 3.4em; color: var(--muted); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+/* a line high whatever is said, so the paper under it never moves */
+.sn-said { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.sn-said.sn-ate { color: #8a5a1c; font-weight: 700; }
+.sn-said.sn-good { color: var(--st-green); font-weight: 800; }
+.sn-said.sn-bad { color: var(--st-red); font-weight: 800; }
+.sn-stage { position: relative; flex: 1; min-height: 160px; }
+.sn-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* swiped on anywhere while it crawls: the page under the finger does not scroll, zoom or pull down to load again */
+.study-play:has(.sn-game[data-phase="run"]) { touch-action: none; overscroll-behavior: none; }
+/* before the round: a card over the paper, in a smaller hand on a small one */
+.sn-ready { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.sn-card {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 100%; padding: 14px 16px; border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95); box-shadow: 0 6px 24px rgba(16, 17, 20, 0.16); text-align: center;
+}
+.sn-rule { margin: 0; color: #1b1d22; font-size: 14px; line-height: 1.55; }
+/* each line of the rule its own, a long one broken in two even halves (after a comma) on a narrow screen */
+.sn-rule span { display: block; word-break: keep-all; text-wrap: balance; }
+.sn-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; text-wrap: balance; }
+.sn-tight .sn-card { gap: 8px; padding: 10px 12px; }
+.sn-tight .sn-rule { font-size: 12.5px; line-height: 1.45; }
+.sn-tight .sn-hint { font-size: 12px; }
+.sn-tight .sn-start { padding-block: 8px; font-size: 16px; }
+
 /* ---- 接住 3、2、5 (Catch325.tsx) and 描红 325 (Trace325.tsx): three slots, how it goes and the time over a field
    drawn on a canvas (arena.ts); the canvas fills what room there is, the field in it is drawn no wider or taller than
    it plays the same ---- */
@@ -672,6 +712,8 @@
   .mc-tools .st-ghost { padding-block: 7px; }
   .sk-card { gap: 8px; padding: 10px 14px; }
   .sk-rule { font-size: 13px; line-height: 1.5; }
+  .sn-card { gap: 8px; padding: 10px 14px; }
+  .sn-rule { font-size: 13px; line-height: 1.5; }
   .ct-game,
   .tr-game { gap: 6px; }
   .ct-slots b,
@@ -746,6 +788,12 @@
   .sk-top { flex-direction: column; align-items: flex-start; gap: 6px; }
   .sk-said { min-height: 3em; text-align: left; }
   .sk-stage { min-height: 0; }
+  /* 贪吃小强: what is eaten, the time and what is said down the left, the paper all the height beside them */
+  .sn-game { flex-direction: row; gap: 14px; }
+  .sn-side { width: 132px; max-width: none; gap: 12px; }
+  .sn-top { flex-direction: column; align-items: flex-start; gap: 6px; padding-inline: 0; }
+  .sn-said { min-height: 3em; text-align: left; }
+  .sn-stage { min-height: 0; }
   /* the slots, how it goes and the time down the left, the field all the height beside them */
   .ct-game,
   .tr-game { flex-direction: row; gap: 16px; }

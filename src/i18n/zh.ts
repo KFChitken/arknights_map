@@ -2529,6 +2529,7 @@ export const zh = {
       match325: { name: "火柴棒 325", rule: "挪 1 根火柴，让等式成立", short: "火柴棒" },
       stack325: { name: "叠罗汉", rule: "一排排小强往上叠，每排少一只，没对齐的掉下去", short: "叠罗汉" },
       rogue325: { name: "控分肉鸽", rule: "爬 5 层楼，每层挑一扇门，结算越接近 325 越好", short: "控分" },
+      snake325: { name: "贪吃小强", rule: "带着小强吃面包屑，正好吃到 325 过关，吃超了会撑爆", short: "贪吃" },
     },
     stopwatch: {
       start: "开始",
@@ -2800,6 +2801,36 @@ export const zh = {
       pass: "结算 {n} 分，过关！",
       fail: "结算 {n} 分，差 325 太远了",
       result: "结算 {n} 分",
+    },
+    /** 贪吃小强 (src/lib/study/snake325.ts) */
+    snake325: {
+      start: "开始",
+      /** On the card over the paper before the round */
+      rule: "带着小强吃面包屑，吃到就加上它的数\n{s} 秒内正好吃到 325 过关，吃超了会撑爆\n撞到纸边或自己的队伍，这局也结束",
+      /** Under it: how to turn */
+      swipe: "在屏幕任何地方滑一下，小强就转弯",
+      swipeKeys: "按方向键或 W A S D 转弯，按住鼠标拖也行",
+      /** Over the paper: what is eaten so far, and the seconds left */
+      eaten: "已吃",
+      eatenSr: "已吃 {n}，正好 {goal} 过关",
+      left: "{s} 秒",
+      leftSr: "还剩 {s} 秒",
+      /** Read out for the paper */
+      fieldSr: "{size} × {size} 格的方格纸，小强在上面爬",
+      /** Said a moment after a crumb is eaten; at the end, how far from 325 it was */
+      ate: "吃了 {n}，还差 {d}",
+      full: "正好吃饱！",
+      less: "还差 {d}",
+      more: "多吃了 {d}",
+      /** At the end, by how it ended */
+      verdicts: {
+        won: "正好 325，过关！",
+        burst: "吃到 {n}，撑爆了",
+        wall: "撞到纸边了，吃到 {n}",
+        self: "撞到自己的队伍了，吃到 {n}",
+        time: "时间到，吃到 {n}",
+      },
+      result: "吃到 {n}",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
