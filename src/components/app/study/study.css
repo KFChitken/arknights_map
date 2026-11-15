@@ -462,6 +462,109 @@
 }
 .sk-sum.sk-fate { color: #b88a00; }
 
+/* ---- 控分肉鸽 (Rogue325.tsx): a school building from the front under the score, its doors chalked with what they do;
+   each door's button is its share of the floor. Only the roach crawls and climbs; a door gone through is ringed in
+   chalk and the others of its floor fade: nothing flashes, and nothing shakes ---- */
+.rg-game {
+  --rg-wall: #f5ecd7; --rg-edge: #cdb98f; --rg-slab: #dcd0b4; --rg-slab-edge: #b9a67f; --rg-door: #2f5b4c; --rg-frame: #7a5a3a;
+  --rg-chalk: #f7f4ea; --rg-chalk-gold: #ffe066; --rg-gold: #d29b00;
+  --rg-chalk-font: "Chalkboard SE", "Chalkboard", "Comic Sans MS", "Segoe Print", "Bradley Hand", ui-rounded, sans-serif;
+  flex: 1; align-self: stretch; min-height: 0; display: flex; flex-direction: column; gap: 6px;
+}
+.rg-side { flex: none; display: flex; flex-direction: column; gap: 2px; }
+.rg-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.rg-score { display: inline-flex; align-items: baseline; gap: 6px; }
+.rg-score small { color: var(--muted); font-size: 13px; font-weight: 700; }
+.rg-score b { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.rg-score.rg-good b { color: var(--st-green); }
+.rg-score.rg-bad b { color: var(--st-red); }
+.rg-score.rg-fate b { color: #b88a00; }
+.rg-goal { color: #4b5260; font-size: 13px; font-weight: 700; }
+/* a line high whatever is said, so the building under it never moves */
+.rg-said { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; text-wrap: balance; }
+.rg-said.rg-step { color: #1b1d22; font-weight: 700; }
+.rg-said.rg-fate { color: #b88a00; font-weight: 800; }
+.rg-said.rg-route { color: #8a6400; font-weight: 700; }
+.rg-room { position: relative; flex: 1 1 0; min-height: 0; display: grid; place-items: center; }
+.rg-building { position: relative; }
+.rg-roof,
+.rg-floor,
+.rg-ground { position: absolute; left: 0; right: 0; }
+/* the roof: a parapet over the top floor, a little wider than it, with the sign on it */
+.rg-roof {
+  left: -2%; right: -2%; border: 2px solid var(--rg-edge); border-radius: 4px 4px 0 0; background: #eadbbb;
+  box-shadow: inset 0 3px 0 #f6ecd5;
+}
+.rg-sign {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); padding: 0.12em 0.7em 0.1em 0.9em; border-radius: 3px;
+  background: #c0392b; color: #fff; font-weight: 800; letter-spacing: 0.2em; line-height: 1.25; white-space: nowrap;
+}
+.rg-floor { border-inline: 2px solid var(--rg-edge); background: var(--rg-wall); }
+/* the slab the floor stands on: the floor's own corridor, the first one's on the ground */
+.rg-floor::after {
+  content: ""; position: absolute; left: -2px; right: -2px; bottom: 0; height: var(--rg-slab); background: var(--rg-slab);
+  box-shadow: inset 0 -1px 0 var(--rg-slab-edge);
+}
+.rg-floor.rg-now { background: #fff6da; }
+.rg-level {
+  position: absolute; left: 0; transform: translateY(50%); color: #a08f6c; font-size: var(--rg-small); font-weight: 800;
+  line-height: 1; text-align: center; white-space: nowrap;
+}
+.rg-now .rg-level { color: #1b1d22; }
+.rg-ground { border-top: 2px solid #9cc58f; background: linear-gradient(#d6dadd, #c9ced2); }
+/* a door's button: all its share of the floor, the door standing on the slab in the middle of it */
+.rg-slot {
+  position: absolute; top: 0; display: block; margin: 0; padding: 0; border: 0; background: none; color: inherit; opacity: 1;
+  outline: none; -webkit-tap-highlight-color: transparent;
+}
+/* not faded as the site fades a button that may not be pressed: a floor not reached yet is there to be read */
+.rg-slot:disabled { opacity: 1; cursor: default; }
+.rg-door {
+  position: absolute; left: 50%; bottom: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  border: 2px solid var(--rg-frame); border-bottom: 0; border-radius: 4px 4px 0 0; background: var(--rg-door);
+  transform: translateX(-50%);
+}
+/* its knob */
+.rg-door::after {
+  content: ""; position: absolute; right: 6%; top: 74%; width: max(3px, 6%); aspect-ratio: 1; border-radius: 50%; background: #e2bd5a;
+}
+.rg-chalk {
+  position: relative; display: inline-flex; align-items: center; gap: 0.12em; margin-bottom: 8%; color: var(--rg-chalk);
+  font-family: var(--rg-chalk-font); font-size: var(--rg-font); font-weight: 700; line-height: 1; white-space: nowrap;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.45);
+}
+.rg-slug { display: block; }
+/* the floor the roach is on: its doors may be picked */
+.rg-now .rg-slot:enabled .rg-door { box-shadow: 0 0 0 2px var(--st-yellow); }
+.rg-slot:focus-visible .rg-door { outline: 3px solid #1b1d22; outline-offset: 2px; }
+@media (hover: hover) {
+  .rg-slot:enabled:hover .rg-door { background: #3a6c5b; }
+}
+.rg-slot:enabled:active .rg-door { transform: translateX(-50%) translateY(1px); }
+/* gone through: ringed in chalk; the others of its floor fade */
+.rg-took .rg-chalk { color: var(--rg-chalk-gold); }
+.rg-skip .rg-door { opacity: 0.36; }
+/* a little wider than the door, so that the most chalked on it is inside */
+.rg-ring {
+  position: absolute; left: -5%; top: 4%; width: 110%; height: 86%; overflow: visible; fill: none; pointer-events: none;
+}
+.rg-ring path { stroke: var(--rg-chalk-gold); stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 1 1; stroke-dashoffset: 0; }
+/* ended off 325: a way to it */
+.rg-route .rg-door { opacity: 1; outline: 2px dashed var(--rg-gold); outline-offset: 2px; }
+.rg-roach { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; transition-property: transform; }
+.rg-turn { display: block; transition: transform 150ms ease-out; }
+.rg-turn img { display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  .rg-ring path { animation: rg-ring 320ms ease-out both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rg-roach,
+  .rg-turn { transition: none; }
+}
+@keyframes rg-ring {
+  from { stroke-dashoffset: 1; }
+}
+
 /* ---- 接住 3、2、5 (Catch325.tsx) and 描红 325 (Trace325.tsx): three slots, how it goes and the time over a field
    drawn on a canvas (arena.ts); the canvas fills what room there is, the field in it is drawn no wider or taller than
    it plays the same ---- */
@@ -581,6 +684,12 @@
 }
 /* and wider than tall: the dial or the box at the left, the rest beside it, so the game fits under the title */
 @media (max-height: 520px) and (orientation: landscape) {
+  /* 控分肉鸽: the score and what is said at the left, the building all the height beside them */
+  .rg-game { flex-direction: row; align-items: center; gap: 18px; }
+  .rg-side { width: 150px; gap: 8px; }
+  .rg-top { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .rg-said { min-height: 3em; text-align: left; }
+  .rg-room { align-self: stretch; }
   .sp-game { padding-block: 8px; }
   .sw-watch { flex-direction: row; justify-content: center; gap: 36px; }
   .sw-dial,

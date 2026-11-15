@@ -19,7 +19,7 @@ export type Round = {
   verdict: string;
   /** Another round played differently, offered instead of 再来一局 (the stopwatch, passed: 藏数字再来) */
   again?: { label: string; mode: string };
-  /** Passed at exactly 325, 命运的 325 (叠罗汉: none fell, 325 roaches stacked); nothing reads it yet */
+  /** Passed at exactly 325, 命运的 325 (叠罗汉: none fell, 325 roaches stacked; 控分肉鸽: 325 at the top); nothing reads it yet */
   fate?: boolean;
 };
 
@@ -55,6 +55,7 @@ const GAMES: Record<CourseId, () => Promise<{ default: Game }>> = {
   trace325: () => import("./Trace325"),
   match325: () => import("./Match325"),
   stack325: () => import("./Stack325"),
+  rogue325: () => import("./Rogue325"),
 };
 
 export const loadGame = (id: CourseId): Promise<Game> => GAMES[id]().then((m) => m.default);

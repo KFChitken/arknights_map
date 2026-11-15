@@ -2499,6 +2499,7 @@ export const zh = {
       trace325: { name: "描红 325", rule: "拖着小强沿虚线描 3、2、5，碰到飞来的东西就重写", short: "描红" },
       match325: { name: "火柴棒 325", rule: "挪 1 根火柴，让等式成立", short: "火柴棒" },
       stack325: { name: "叠罗汉", rule: "一排排小强往上叠，每排少一只，没对齐的掉下去", short: "叠罗汉" },
+      rogue325: { name: "控分肉鸽", rule: "爬 5 层楼，每层挑一扇门，结算越接近 325 越好", short: "控分" },
     },
     stopwatch: {
       start: "开始",
@@ -2742,6 +2743,34 @@ export const zh = {
       pass: "叠住 {n} 只，过关！",
       out: "第 {k} 排没叠住，叠住 {n} 只",
       result: "叠住 {n} 只",
+    },
+    /** 控分肉鸽 (src/lib/study/rogue325.ts) */
+    rogue325: {
+      /** Over the building: the score, and what is played for */
+      score: "分数",
+      goal: "目标 {goal} · {from}–{to} 过关",
+      /** Under them: how to play, what a door just did, and at the end a way to 325 or that it came to it */
+      rule: "每层点一扇门，可以先算好再走",
+      ruleKeys: "每层点一扇门或按 1、2、3，可以先算好再走",
+      step: "{door} → {n} 分",
+      stepZero: "{door} → 0 分，最低就是 0 分",
+      route: "金框是一种正好 325 的走法",
+      /** The building: each floor's name, and the sign on the roof */
+      floor: "{f}楼",
+      sign: "教学楼",
+      /** Read out for the building and each door */
+      buildingSr: "教学楼，{floors} 层，每层 {doors} 扇门",
+      doorSr: "{f} 楼第 {i} 扇门：{what}",
+      plusSr: "加 {n}",
+      minusSr: "减 {n}",
+      doubleSr: "乘 2",
+      slugSr: "源石虫，减 {n}",
+      takenSr: "，走了这扇",
+      routeSr: "，正好 325 的走法",
+      fate: "正好 325！",
+      pass: "结算 {n} 分，过关！",
+      fail: "结算 {n} 分，差 325 太远了",
+      result: "结算 {n} 分",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
