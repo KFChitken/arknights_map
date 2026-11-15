@@ -31,6 +31,8 @@ export type GameProps = {
   seed: number;
   /** How to play this round, as a Round's again asked (the stopwatch: hidden) */
   mode?: string;
+  /** A round of the day's course while it is not passed yet: what counts (the stopwatch then asks for two steps) */
+  todays?: boolean;
   /** The player's roach, for a game it plays in (接住 3、2、5, 描红 325) */
   look: Look;
   /** Called once, the moment the round is over */

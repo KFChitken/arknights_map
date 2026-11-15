@@ -2,7 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
-import { hundredths, judgeStop, STOP_HIDE_AFTER_MS, STOP_LIMIT_MS, watchText } from "@/lib/study/stopwatch";
+import {
+  hundredths,
+  judgeStop,
+  rememberShown,
+  shownPassed,
+  stageOf,
+  STOP_HIDE_AFTER_MS,
+  STOP_LIMIT_MS,
+  stopOutcome,
+  type StopStage,
+  type StopVerdict,
+  watchText,
+} from "@/lib/study/stopwatch";
 import type { GameProps, Round } from "./games";
 import { listenTaps, onClock, useKeys } from "./taps";
 
@@ -10,10 +22,14 @@ import { listenTaps, onClock, useKeys } from "./taps";
  * 3.25 秒停表 (src/lib/study/stopwatch.ts): 开始 sets a watch running up from 0.00, and a tap anywhere on the screen
  * (Space on a keyboard, taps.ts) stops it; it stops by itself at 10.00. The time is the stopping press's own time stamp
  * less the starting one's, so neither how often the screen is drawn nor a slow phone moves it. mode hidden (藏数字再来):
- * the numbers hide after a second, leaving the dial, and show again once it stops.
+ * the numbers hide after a second, leaving the dial, and show again once it stops. As the day's course not passed yet
+ * (todays), a round with the numbers shown comes first, whose pass is a step that counts nothing; then the hidden one,
+ * whose pass passes it. Once the shown one is passed, the day's next rounds on this device start hidden.
  */
-export default function Stopwatch({ mode, onRound }: GameProps) {
-  const hidden = mode === "hidden";
+export default function Stopwatch({ day, mode, todays, onRound }: GameProps) {
+  // as it was when the round began, whatever is passed meanwhile
+  const [stage] = useState<StopStage>(() => stageOf(mode, Boolean(todays), shownPassed(day)));
+  const hidden = stage === "hidden";
   const [phase, setPhase] = useState<"ready" | "running" | "stopped">("ready");
   const [cs, setCs] = useState(0);
   const [veiled, setVeiled] = useState(false);
@@ -36,7 +52,8 @@ export default function Stopwatch({ mode, onRound }: GameProps) {
       setVeiled(false);
       setVerdict(v);
       setPhase("stopped");
-      roundRef.current(roundOf(shown, v, hidden, limit));
+      if (stopOutcome(stage, v) === "step") rememberShown(day);
+      roundRef.current(roundOf(shown, v, stage, limit));
     };
     const tick = () => {
       const ms = performance.now() - startRef.current;
@@ -52,7 +69,7 @@ export default function Stopwatch({ mode, onRound }: GameProps) {
       cancelAnimationFrame(frame);
       unlisten();
     };
-  }, [phase, hidden]);
+  }, [phase, hidden, stage, day]);
 
   const passed = verdict === "exact" || verdict === "pass";
   return (
@@ -95,14 +112,17 @@ export default function Stopwatch({ mode, onRound }: GameProps) {
 /** The dial's marks, every 30° */
 const TICKS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
 
-function roundOf(cs: number, v: "exact" | "pass" | "miss", hidden: boolean, limit: boolean): Round {
+function roundOf(cs: number, v: StopVerdict, stage: StopStage, limit: boolean): Round {
   const t = watchText(cs);
-  const won = v !== "miss";
+  const outcome = stopOutcome(stage, v);
   const words = T.study.stopwatch;
+  const said = v === "exact" ? words.exact : words.pass;
   return {
-    won,
-    result: fmt(words.result, { t }) + (hidden ? words.hidden : ""),
-    verdict: limit ? words.limit : v === "exact" ? words.exact : v === "pass" ? words.pass : fmt(words.miss, { t }),
-    again: won ? { label: words.hide, mode: "hidden" } : undefined,
+    won: outcome !== "lost",
+    // today's shown round passed: hidden next, which alone counts
+    ...(outcome === "step" && { step: true }),
+    result: fmt(words.result, { t }) + (stage === "hidden" ? words.hidden : ""),
+    verdict: limit ? words.limit : outcome === "lost" ? fmt(words.miss, { t }) : outcome === "step" ? said + words.hideNext : said,
+    again: outcome === "lost" ? undefined : { label: words.hide, mode: "hidden" },
   };
 }

@@ -6,7 +6,7 @@ import { COURSE_IDS, isCourse, subjectOf, type CourseId } from "@/lib/study/cour
 import { drawCourse } from "@/lib/study/draw";
 import { guestDone, guestGiveUp, guestToday, type GuestToday } from "@/lib/study/guest";
 import type { PassesDot } from "@/lib/passes";
-import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, SEALS, type StudyMe, type StudySaid, type StudyToday } from "@/lib/study/rules";
+import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, roundTells, SEALS, type StudyMe, type StudySaid, type StudyToday } from "@/lib/study/rules";
 import { NotToday, StaleToday, studyApi } from "@/lib/studyClient";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
@@ -246,7 +246,7 @@ export default function Study({
     if (!today) return;
     setEnded({ id, r, day: today.day });
     // a step on the way tells nothing; once today's is passed nothing more counts; no other course does
-    if (!r.step && id === today.course && !today.done) record(id, today.day, r.won);
+    if (roundTells(r, id === today.course && !today.done)) record(id, today.day, r.won);
   };
 
   const replay = () => {
@@ -323,7 +323,15 @@ export default function Study({
             </button>
           </header>
           <div className="sp-game">
-            <game.Game key={game.key} day={today.day} seed={game.seed} mode={game.mode} look={look} onRound={(r) => roundOver(game.id, r)} />
+            <game.Game
+              key={game.key}
+              day={today.day}
+              seed={game.seed}
+              mode={game.mode}
+              todays={game.id === today.course && !today.done}
+              look={look}
+              onRound={(r) => roundOver(game.id, r)}
+            />
           </div>
           <footer className={`sp-end${armed ? " armed" : ""}`} role="status">
             {ended && (
@@ -356,8 +364,9 @@ export default function Study({
     // today's course, played on the day it was drawn for (or given up without a round)
     const todays = !ended || (ended.id === today.course && ended.day === today.day);
     const passed = todays && today.done;
-    // a round of today's course lost, and today's not passed: another round of it (one won is on its way to the server)
-    const notYet = todays && !today.done && ended !== null && !ended.r.won;
+    // a round of today's course lost, or only a step of it passed (the stopwatch's shown one), and today's not passed:
+    // another round of it (one won is on its way to the server)
+    const notYet = todays && !today.done && ended !== null && (!ended.r.won || Boolean(ended.r.step));
     const facts = T.study.facts;
     return (
       <Sheet title={T.study.title} className="study" onClose={onClose}>
@@ -379,8 +388,8 @@ export default function Study({
             </>
           )}
           {ended && <p className="st-round">{fmt(T.study.finish.round, { result: ended.r.result })}</p>}
-          {notYet && <p className="st-again">{T.study.finish.notYet}</p>}
-          {todays && ended && save === "saving" && ended.r.won && <p className="st-sub">{T.study.saving}</p>}
+          {notYet && <p className="st-again">{ended?.r.step ? T.study.finish.stepped : T.study.finish.notYet}</p>}
+          {todays && ended && save === "saving" && ended.r.won && !ended.r.step && <p className="st-sub">{T.study.saving}</p>}
           {todays && ended && save && save !== "saving" && <Unsaved why={save.why} onResend={() => record(ended.id, ended.day, ended.r.won)} />}
           {note && <p className="st-note">{note}</p>}
           {passed && (
@@ -441,7 +450,7 @@ export default function Study({
               <>
                 <small className="st-subject">{T.study.subjects[subjectOf(today.course)]}</small>
                 <b className="st-name">{T.study.courses[today.course].name}</b>
-                <p className="st-rule">{T.study.courses[today.course].rule}</p>
+                <p className="st-rule">{todayRule(today.course, today.done)}</p>
                 {today.done ? (
                   <p className="st-did">{today.skipped ? T.study.skippedToday : T.study.doneToday}</p>
                 ) : today.fails > 0 ? (
@@ -496,6 +505,12 @@ export default function Study({
       )}
     </Sheet>
   );
+}
+
+/** What today's course is, on its card: how it is passed today, while it is not yet, for a course passed in steps */
+function todayRule(id: CourseId, done: boolean): string {
+  const c = T.study.courses[id];
+  return !done && "todayRule" in c ? c.todayRule : c.rule;
 }
 
 /** Today's course as this page shows it: days null for a visitor, whose days are not counted */

@@ -66,3 +66,9 @@ export function factIndex(day: string, n: number) {
 
 /** A seed for a round, which deals its numbers (src/lib/prng.ts mulberry32): another every round */
 export const newSeed = () => Math.floor(Math.random() * 2 ** 32);
+
+/**
+ * Whether a round played is told (src/lib/studyClient.ts done, a visitor's guest.ts guestDone): one won or lost of the
+ * day's course while it is not passed yet (todays), never a step on the way (the stopwatch's shown round passed)
+ */
+export const roundTells = (r: { won: boolean; step?: boolean }, todays: boolean) => todays && !r.step;
