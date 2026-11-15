@@ -610,20 +610,38 @@ export default function MaplibreView(props: MapViewProps) {
     const undo: (() => void)[] = [];
     const start = base ? base.view() : initialView;
     const blank = new URLSearchParams(location.search).get("style") === "blank";
-    const map = new maplibregl.Map({
-      container: el.current!,
-      style: base ? OVER_STYLE : blank ? BLANK_STYLE : (propsRef.current.style ?? (process.env.NEXT_PUBLIC_OSM_STYLE || DEFAULT_STYLE)),
-      center: [start.lng, start.lat],
-      zoom: start.zoom,
-      attributionControl: base ? false : { compact: true },
-      interactive: !base,
-      dragRotate: false,
-      pitchWithRotate: false,
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: el.current!,
+        style: base ? OVER_STYLE : blank ? BLANK_STYLE : (propsRef.current.style ?? (process.env.NEXT_PUBLIC_OSM_STYLE || DEFAULT_STYLE)),
+        center: [start.lng, start.lat],
+        zoom: start.zoom,
+        attributionControl: base ? false : { compact: true },
+        interactive: !base,
+        dragRotate: false,
+        pitchWithRotate: false,
+      });
+    } catch (e) {
+      // the browser will not let it draw with the graphics card (src/lib/webgl.ts): no map, and the page says why,
+      // where this used to take the whole page down (2026-11-15)
+      const noGl = propsRef.current.onNoGl;
+      if (!noGl) throw e;
+      console.error(e);
+      noGl();
+      return;
+    }
     map.touchZoomRotate.disableRotation();
     if (!base) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("style.load", () => hideBorders(map));
     mapRef.current = map;
+    // The graphics card hung or reset: MapLibre drops the style with the drawing, and anything here that touched the
+    // map after that broke the whole page (2026-11-15, touching 阿米娅向导 just then). Nothing here touches it again;
+    // the page says what happened (NoMap) and starts afresh when asked, as what it added to the map would not come back.
+    map.on("webglcontextlost", () => {
+      readyRef.current = false;
+      crawlRef.current?.stop();
+    });
 
     // The base map's view, followed as it starts drawing each frame, so both show the same frame together
     let followed = "";

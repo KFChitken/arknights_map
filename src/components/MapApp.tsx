@@ -20,6 +20,7 @@ import { EVENTS } from "@/lib/events";
 import type { Place } from "@/lib/geocode";
 import { loadLook, REAL_LOOK_OFFERED, saveLook } from "@/lib/look";
 import { loadHome, saveHome } from "@/lib/lastHome";
+import { onDrawingLost, webglWorks } from "@/lib/webgl";
 import {
   anniversaryLine,
   awaySentence,
@@ -264,6 +265,7 @@ import {
   type PamphletAction,
 } from "@/lib/pamphlet";
 import RoachIcon from "./RoachIcon";
+import NoMap from "./app/NoMap";
 import FloatChrome from "./app/chrome/FloatChrome";
 import "./app/chrome/chrome.css";
 import UiMenu from "./app/chrome/UiMenu";
@@ -541,6 +543,10 @@ export default function MapApp({
   const [heartsOff, setHeartsOff] = useState(false);
   // 高德's GPU roach layer cannot run here; whether this device ever picked a style (read in the browser)
   const [noGpu, setNoGpu] = useState(false);
+  // the browser will not let the page draw with the graphics card (src/lib/webgl.ts): no map is made, and NoMap
+  // says why; or the drawing of the maps made was lost meanwhile (a graphics card that hung or reset)
+  const [noGl, setNoGl] = useState(false);
+  const [glLost, setGlLost] = useState(false);
   const [styleStored, setStyleStored] = useState(true);
   // 卡了提醒一次: the hint to try 轻量 is up, and whether this device has had it (read in the browser)
   const [liteHint, setLiteHint] = useState(false);
@@ -838,6 +844,13 @@ export default function MapApp({
   /** A sleeping roach touched: it only jolts in its sleep */
   const [jolting, setJolting] = useState<{ roach: PublicRoach; done: () => void } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // a graphics card that hung or reset takes the maps' drawing with it: NoMap says so until the page starts
+  // afresh, as a map that gets its drawing back has lost what this page added to it (MaplibreView stops at once)
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    return onDrawingLost(el, () => setGlLost(true));
+  }, []);
   /** A declaration shouted over the map (ShoutStage) from one of your roaches */
   const [shouting, setShouting] = useState<{ roach: string; text: string; limited: boolean; place: ShoutPlace; toast: () => void; done: () => void } | null>(null);
   /** The lines just shouted, each over a roach it went out from, for a few seconds */
@@ -1172,6 +1185,8 @@ export default function MapApp({
   useEffect(() => {
     worldRef.current = new ServerWorld();
     setWasIn(loadHome() !== null);
+    // no map can start without the graphics card: none is made (each would break the page), the rest goes on
+    if (!webglWorks()) setNoGl(true);
     const b = guessBasemap(cn);
     // The map's code downloads while the first API calls are in flight; the map itself waits for where to start.
     // A failed Amap load is forgotten, so AmapView tries again and falls back to OSM as before; so is Tencent's.
@@ -4254,6 +4269,12 @@ export default function MapApp({
     onError: setToast,
     // mainland China: 腾讯's map instead, without a word (TencentView's own onFailed is ownMap)
     onFailed: cn ? amapFailed : undefined,
+    onNoGl: () => setNoGl(true),
+  };
+  /** NoMap's 再试一次: a fresh start once the graphics card may be used again, which a closed browser brings */
+  const retryMap = () => {
+    if (webglWorks()) window.location.reload();
+    else setToast(T.map.noGl.still);
   };
 
   const renderPanel = (p: Panel) => {
@@ -4891,7 +4912,8 @@ export default function MapApp({
       )}
 
       <div className="map-wrap" ref={wrapRef}>
-        {basemap === "amap" && homeMap === "amap" && homeMade && (
+        {(noGl || glLost) && <NoMap lost={!noGl} onRetry={retryMap} />}
+        {!noGl && basemap === "amap" && homeMap === "amap" && homeMade && (
           <div className={`map-slot ${twoMaps && abroad ? "map-hidden" : ""}`}>
             <AmapView
               key="amap"
@@ -4903,7 +4925,7 @@ export default function MapApp({
             />
           </div>
         )}
-        {basemap === "amap" && homeMap === "tencent" && homeMade && (
+        {!noGl && basemap === "amap" && homeMap === "tencent" && homeMade && (
           <div className={`map-slot ${twoMaps && abroad ? "map-hidden" : ""}`}>
             <TencentView
               key="tencent"
@@ -4916,7 +4938,7 @@ export default function MapApp({
             />
           </div>
         )}
-        {twoMaps && overseas && overseasMade && (
+        {!noGl && twoMaps && overseas && overseasMade && (
           <div className={`map-slot ${abroad ? "" : "map-hidden"}`}>
             <MaplibreView
               key="overseas"
@@ -4931,10 +4953,10 @@ export default function MapApp({
             />
           </div>
         )}
-        {basemap === "amap" && homeMap === "own" && overseas && (
+        {!noGl && basemap === "amap" && homeMap === "own" && overseas && (
           <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} active={!studyOpen} />
         )}
-        {basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen} />}
+        {!noGl && basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen} />}
         {poking && (
           <div className="actor-stage">
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />

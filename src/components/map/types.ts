@@ -70,6 +70,11 @@ export type MapViewProps = {
   onError?: (message: string) => void;
   /** The map could not load at all; without it, onError says so */
   onFailed?: () => void;
+  /**
+   * MapLibre only: the browser would not let the map draw with the graphics card (src/lib/webgl.ts), so there is
+   * no map; without it, the page breaks as before
+   */
+  onNoGl?: () => void;
   /** Shown, or kept hidden behind the other map (mainland visitors abroad); hidden, its roaches stop crawling */
   active?: boolean;
   /** Jump here at once, without flying, as the other map hands over; only a new nonce triggers it */
