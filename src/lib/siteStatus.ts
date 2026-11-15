@@ -55,8 +55,8 @@ export type SiteNumbers = {
   tlsDays: number | null;
   /**
    * 高德's map loads this Beijing month (an estimate), and the map visitors from mainland China start with now
-   * (src/lib/server/mainlandMap.ts): set, what MAINLAND_MAP holds them to (null for auto); out, the month (as 2026-11)
-   * when 高德's ran out this one
+   * (src/lib/server/mainlandMap.ts): set, what MAINLAND_MAP holds them to (null for auto); out, today's Beijing date
+   * (as 2026-11-14) when 高德 would not give its map loads today
    */
   amap: { count: number; limit: number; home: MainlandMap; set: MainlandMap | null; out: string | null };
   /** Sign-ins on yesterday's Beijing date, by how (auth.ts SessionMethod): code, password, desk, dev */
@@ -80,10 +80,9 @@ export type SiteStatus = {
 
 const HOME_NAMES: Record<MainlandMap, string> = { amap: "高德", tencent: "腾讯", own: "我们自己的图" };
 
-/** 「内地现在用：腾讯（本月高德已用完，12 月 1 日换回）」, after 高德's map loads in the digest and on the page */
+/** 「内地现在用：腾讯（今天高德不给加载了，明天 0 点先再试高德）」, after 高德's map loads in the digest and on the page */
 export function mainlandWords(a: SiteNumbers["amap"]) {
-  const back = a.out ? `${(Number(a.out.slice(5, 7)) % 12) + 1} 月 1 日换回` : "";
-  const why = a.set ? `服务器上 MAINLAND_MAP 设成了 ${a.set}${a.out ? "；本月高德已用完" : ""}` : a.out ? `本月高德已用完，${back}` : "";
+  const why = a.set ? `服务器上 MAINLAND_MAP 设成了 ${a.set}${a.out ? "；今天高德不给加载了" : ""}` : a.out ? "今天高德不给加载了，明天 0 点先再试高德" : "";
   return `内地现在用：${HOME_NAMES[a.home]}${why ? `（${why}）` : ""}`;
 }
 

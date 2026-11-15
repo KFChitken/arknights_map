@@ -533,7 +533,7 @@ describe("the site's own checks", () => {
     }
   });
 
-  it("starts mainland China on 腾讯's map once many pages say 高德's map loads ran out, and tells the next digest once", async () => {
+  it("starts mainland China on 腾讯's map for the day once many pages say 高德 will not load, and tells the next digest once", async () => {
     const out = [check("amapOut")];
     // noon on the 20th, Beijing time
     const mid = Date.parse("2026-11-20T04:00:00Z");
@@ -552,13 +552,13 @@ describe("the site's own checks", () => {
       {
         key: "amapOut.out",
         level: "daily",
-        title: "高德地图这个月的额度用完了",
+        title: "高德地图今天不给加载了",
         detail:
-          "10 分钟内有 30 个内地访客的页面说高德不给画地图了：USER_DAILY_QUERY_OVER_LIMIT ×19；QUOTA_PLAN_RUN_OUT ×10；DAILY_QUERY_OVER_LIMIT ×1。这个月剩下的日子，内地访客打开网站直接用腾讯地图，不再先试高德；12 月 1 日（北京时间）自动换回高德。",
+          "10 分钟内有 30 个内地访客的页面说高德不给画地图了：USER_DAILY_QUERY_OVER_LIMIT ×19；QUOTA_PLAN_RUN_OUT ×10；DAILY_QUERY_OVER_LIMIT ×1。今天剩下的时间，内地访客打开网站直接用腾讯地图，不再先试高德；明天 0 点（北京时间）起先再试高德，还不行就再换。",
       },
     ]);
     expect(mainlandMap(mid, "auto")).toBe("tencent");
-    expect(await db.select({ value: watchState.value }).from(watchState).where(eq(watchState.key, "amapOut"))).toEqual([{ value: "2026-11" }]);
+    expect(await db.select({ value: watchState.value }).from(watchState).where(eq(watchState.key, "amapOut"))).toEqual([{ value: "2026-11-20" }]);
     // pages still saying so are not news; open a day so the digest has it, and no email
     for (let i = 0; i < 40; i++) note("map", "amap:key:USER_DAILY_QUERY_OVER_LIMIT", mid + (1 + (i % 10)) * MINUTE);
     expect(recent("map", 10 * MINUTE, mid + 10 * MINUTE).filter((r) => r.code.endsWith("OVER_LIMIT"))).toHaveLength(40);

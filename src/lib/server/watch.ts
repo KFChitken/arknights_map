@@ -645,32 +645,33 @@ export const AMAP_OUT_MINUTES = 5;
 const MAINLAND_NAMES = { amap: "高德地图", tencent: "腾讯地图", own: "我们自己的图" };
 
 /**
- * 高德's map loads used up for the month: many pages in mainland China saying so within ten minutes, over several of
- * them (anyone can send these reports; a burst all at once is not believed). Visitors from there then start with 腾讯's
- * map, without trying 高德's, for the rest of the Beijing month (src/lib/server/mainlandMap.ts). Told in the next digest,
- * once a month.
+ * 高德 not giving its map loads: many pages in mainland China saying so within ten minutes, over several of them
+ * (anyone can send these reports; a burst all at once is not believed). Visitors from there then start with 腾讯's
+ * map, without trying 高德's, for the rest of the Beijing day (src/lib/server/mainlandMap.ts): its codes do not tell its
+ * daily allowance from the month's, and on 2026-11-14 the daily one ran out at night and was back by morning. If the
+ * month's is gone, each day starts with pages giving way to 腾讯's one by one, as before, until this sees it again.
+ * Told in the next digest, once a day at most.
  */
 async function checkAmapOut(now: number): Promise<Finding[]> {
   const list = recent("map", 10 * MINUTE, now).filter((s) => AMAP_USED_UP.test(s.code));
   const minutes = new Set(list.map((s) => Math.floor(s.at / MINUTE))).size;
   if (list.length < AMAP_OUT_REPORTS || minutes < AMAP_OUT_MINUTES) return [];
   if (!(await recordAmapOut(now))) return [];
-  const back = `${(Number(beijingDate(now).slice(5, 7)) % 12) + 1} 月 1 日`;
   const told = `10 分钟内有 ${list.length} 个内地访客的页面说高德不给画地图了：${tally(list.map((s) => s.code.slice("amap:key:".length)))}。`;
   const check = "以高德控制台为准：https://console.amap.com/dev/flow/manage 的用量详情。";
   return [
     {
       key: "out",
       level: "daily",
-      title: "高德地图这个月的额度用完了",
+      title: "高德地图今天不给加载了",
       detail:
         MAINLAND_MAP === "auto"
-          ? `${told}这个月剩下的日子，内地访客打开网站直接用腾讯地图，不再先试高德；${back}（北京时间）自动换回高德。`
+          ? `${told}今天剩下的时间，内地访客打开网站直接用腾讯地图，不再先试高德；明天 0 点（北京时间）起先再试高德，还不行就再换。`
           : `${told}服务器上的 MAINLAND_MAP 设成了 ${MAINLAND_MAP}，内地访客还是照它先用${MAINLAND_NAMES[MAINLAND_MAP]}。`,
       advice:
         MAINLAND_MAP === "auto"
-          ? `${check}腾讯也载不出来的访客才换成我们自己的图（没有审图号）。这类报告谁都能发：要是控制台显示高德其实没用完，把服务器上的 MAINLAND_MAP 设成 amap（要重启网站），内地访客就接着先用高德。`
-          : `${check}MAINLAND_MAP 改回 auto（要重启网站），这个月剩下的日子内地访客就直接用腾讯地图。`,
+          ? `${check}多半是当天的额度用完了，第二天就恢复；这个月的额度用完的话，每天头几分钟内地访客会先试高德、不行再一个个换成腾讯。腾讯也载不出来的访客才换成我们自己的图（没有审图号）。这类报告谁都能发：要是控制台显示高德其实没用完，把服务器上的 MAINLAND_MAP 设成 amap（要重启网站），内地访客就接着先用高德。`
+          : `${check}MAINLAND_MAP 改回 auto（要重启网站），今天剩下的时间内地访客就直接用腾讯地图，以后哪天再这样也一样。`,
     },
   ];
 }
