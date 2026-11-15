@@ -63,6 +63,16 @@ const TAIWAN = area([
   [[119.4, 24.94], [119.5, 24.94], [119.5, 25.03], [119.4, 25.03]],
 ]);
 
+/** A longitude in [-180, 180), where maps take it: MapLibre's own runs on past 180 across the date line, Tencent's throws */
+export function wrapLng(lng: number) {
+  return lng >= -180 && lng < 180 ? lng : ((((lng + 180) % 360) + 360) % 360) - 180;
+}
+
+/** The longitude halfway between two, the short way round: across the date line when that is shorter */
+export function midLng(from: number, to: number) {
+  return wrapLng(from + wrapLng(to - from) / 2);
+}
+
 /** Whether Tencent's map draws this spot shifted */
 export function tencentShifted(p: LngLat) {
   return shifted(p) && !inArea(p, TAIWAN);

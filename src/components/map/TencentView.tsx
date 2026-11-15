@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { fromTencent, toTencent } from "@/lib/coords";
+import { fromTencent, midLng, toTencent, wrapLng } from "@/lib/coords";
 import { loadTMap, type TMapNS } from "@/lib/tencentMap";
 import type { MapView } from "@/lib/types";
 import MaplibreView from "./MaplibreView";
@@ -102,7 +102,7 @@ export default function TencentView(props: MapViewProps) {
         if (cancelled) return;
         const { initialView } = propsRef.current;
         const latLng = (v: { lng: number; lat: number }) => {
-          const [lng, lat] = toTencent(v);
+          const [lng, lat] = toTencent({ lng: wrapLng(v.lng), lat: v.lat });
           return new TMap.LatLng(lat, lng);
         };
         // the WebGL context Tencent makes for its map, as it makes it (onDraws)
@@ -217,8 +217,17 @@ export default function TencentView(props: MapViewProps) {
           }
           return shown;
         };
-        const easeTo = (v: MapView, ms = GLIDE_MS) => {
+        // Tencent's map throws on a place it will not take, and a throw here takes the whole page down: there at once
+        // instead (2026-11-15: from China to 阿米娅向导 on Rhode Island, halfway came to 205°, every new player's page black)
+        const jumpTo = (v: MapView) => {
           window.clearTimeout(glideTimer);
+          try {
+            tm.jumpTo({ center: latLng(v), zoom: clampZoom(v.zoom + ZOOM_OFFSET) });
+          } catch (e) {
+            console.error(e);
+          }
+        };
+        const glide = (v: MapView, ms: number) => {
           const to = { center: latLng(v), zoom: clampZoom(v.zoom + ZOOM_OFFSET) };
           // far away: up first to where both places show, then down, so the way between is not a blur
           const from = tm.getCenter();
@@ -228,9 +237,26 @@ export default function TencentView(props: MapViewProps) {
           const screens = a && b ? Math.hypot(b.x - a.x, b.y - a.y) / screen : 0;
           if (screens <= FAR_SCREENS) return tm.easeTo(to, { duration: ms });
           const up = clampZoom(Math.min(tm.getZoom(), to.zoom) - Math.log2(screens) - 0.5);
-          const mid = new TMap.LatLng((from.getLat() + to.center.getLat()) / 2, (from.getLng() + to.center.getLng()) / 2);
+          // halfway the short way round, which can cross the date line (Tencent may hand back the far end past 180)
+          const mid = new TMap.LatLng((from.getLat() + to.center.getLat()) / 2, midLng(from.getLng(), to.center.getLng()));
           tm.easeTo({ center: mid, zoom: up }, { duration: ms });
-          glideTimer = window.setTimeout(() => tm.easeTo(to, { duration: ms }), ms + 20);
+          glideTimer = window.setTimeout(() => {
+            try {
+              tm.easeTo({ center: latLng(v), zoom: to.zoom }, { duration: ms });
+            } catch (e) {
+              console.error(e);
+              jumpTo(v);
+            }
+          }, ms + 20);
+        };
+        const easeTo = (v: MapView, ms = GLIDE_MS) => {
+          window.clearTimeout(glideTimer);
+          try {
+            glide(v, ms);
+          } catch (e) {
+            console.error(e);
+            jumpTo(v);
+          }
         };
         const cursor = (c: string) => {
           if (typeof tm.setCursorStyle === "function") tm.setCursorStyle(c || "default");
@@ -243,10 +269,7 @@ export default function TencentView(props: MapViewProps) {
           onPointer: (f) => listen(pointers, f),
           onMoving: (f) => listen(movings, f),
           easeTo,
-          jumpTo: (v) => {
-            window.clearTimeout(glideTimer);
-            tm.jumpTo({ center: latLng(v), zoom: clampZoom(v.zoom + ZOOM_OFFSET) });
-          },
+          jumpTo,
           setCursor: cursor,
         });
         undo.push(() => {

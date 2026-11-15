@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromGcj, fromTencent, shifted, tencentShifted, toGcj, toTencent } from "./coords";
+import { fromGcj, fromTencent, midLng, shifted, tencentShifted, toGcj, toTencent, wrapLng } from "./coords";
 import { distanceKm } from "./geo";
 
 const metresMoved = (p: { lng: number; lat: number }) => {
@@ -152,5 +152,29 @@ describe("Tencent's coordinates", () => {
       const [lng, lat] = toTencent(p);
       expect(distanceKm(p, fromTencent(lng, lat)) * 1000).toBeLessThan(1);
     }
+  });
+});
+
+describe("longitudes as the maps take them", () => {
+  it("brings one past the date line back into [-180, 180)", () => {
+    expect(wrapLng(288.7353)).toBeCloseTo(-71.2647, 9);
+    expect(wrapLng(-200)).toBeCloseTo(160, 9);
+    expect(wrapLng(481.47)).toBeCloseTo(121.47, 9);
+    expect(wrapLng(121.47)).toBe(121.47);
+    expect(wrapLng(-180)).toBe(-180);
+    expect(wrapLng(180)).toBe(-180);
+  });
+
+  it("goes halfway the short way round, across the Pacific from China to Rhode Island", () => {
+    // Shanghai to 阿米娅向导: Tencent's map can hand back her end as 288.7, the copy of the world nearest the view
+    for (const to of [-71.2647, 288.7353]) {
+      const mid = midLng(121.47, to);
+      expect(mid).toBeCloseTo(-154.89735, 6);
+      expect(mid >= -180 && mid < 180).toBe(true);
+    }
+    expect(midLng(-71.2647, 121.47)).toBeCloseTo(-154.89735, 6);
+    expect(midLng(100, 120)).toBe(110);
+    expect(midLng(170, -170)).toBe(-180);
+    expect(midLng(-10, 30)).toBe(10);
   });
 });
