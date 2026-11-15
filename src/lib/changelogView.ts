@@ -70,6 +70,34 @@ export function logSquares(rows: readonly ChangeRow[], today: string): Square[] 
   return squares;
 }
 
+// ---- the squares in one row, which slides (src/components/app/ChangeLog.tsx) ----
+
+/** Where the row of squares stands: scrolled left by left, of max at most (0 when it all fits) */
+export type StripAt = { left: number; max: number };
+
+/** Showing the first day (10/22), and today: either end, within a pixel, as the browser rounds */
+export const stripEnds = ({ left, max }: StripAt) => ({ start: left <= 1, end: left >= max - 1 });
+
+/**
+ * How far a turn of the wheel over the squares slides them: one mostly up or down slides them, so a mouse
+ * with no sideways wheel can go back to earlier days, but only while there are more that way; past either
+ * end the turn is the page's again (0). A sideways turn (a trackpad) the browser slides by itself (0 too).
+ */
+export function wheelAside(dx: number, dy: number, { left, max }: StripAt) {
+  if (Math.abs(dy) <= Math.abs(dx)) return 0;
+  if (dy < 0 ? left <= 0 : left >= max) return 0;
+  return dy;
+}
+
+/** Where a key slides the squares, for a week of them (in pixels): ← → a week, Home the first day, End today */
+export function keySlide(key: string, { left, max }: StripAt, week: number): number | null {
+  if (key === "ArrowLeft") return Math.max(0, left - week);
+  if (key === "ArrowRight") return Math.min(max, left + week);
+  if (key === "Home") return 0;
+  if (key === "End") return max;
+  return null;
+}
+
 /**
  * The rows by day, newest first, each numbered from the oldest (#1) so a row keeps its number as new ones
  * go on top. Vague rows next to each other, of the same words and numbers in a row, become one line; a

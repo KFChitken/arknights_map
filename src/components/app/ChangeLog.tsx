@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { fmt, T } from "@/i18n";
 import type { ChangeRow } from "@/lib/changelog";
 import {
   dateParts,
   DAYS_AT_A_TIME,
   KINDS,
+  keySlide,
   kindCounts,
   type KindPick,
   type LogDay,
@@ -15,14 +16,18 @@ import {
   logToday,
   logTotals,
   openingDay,
+  type Square,
+  type StripAt,
+  stripEnds,
+  wheelAside,
 } from "@/lib/changelogView";
 
 /**
  * 更新记录, the notice board's second tab: how many changes there have been, a square for each day since the
- * site opened, and the changes day by day, newest first, with a filter by kind. A phone reads it top to
- * bottom; a wide screen has the count and the filter on the left and the days on the right, each scrolling
- * on its own (globals.css). The rows (src/lib/changelog.ts) are a file of their own, downloaded the first
- * time the tab is opened.
+ * site opened (in one row, which slides), and the changes day by day, newest first, with a filter by kind. A
+ * phone reads it top to bottom; a wide screen has the count and the filter on the left and the days on the
+ * right, each scrolling on its own (globals.css). The rows (src/lib/changelog.ts) are a file of their own,
+ * downloaded the first time the tab is opened.
  */
 
 const PICKS: readonly KindPick[] = ["all", ...KINDS];
@@ -158,17 +163,7 @@ export function ChangeLog({
         <p className="cl-about">{T.notices.log.about}</p>
       </div>
       <div className="cl-main" ref={mainRef}>
-        {/* the sentence above says the numbers */}
-        <div className="cl-squares" aria-hidden="true">
-          {squares.map((s) => (
-            <span key={s.date} className={`l${s.level}`} title={fmt(T.notices.log.square, { day: dayWords(s.date), n: s.n })} />
-          ))}
-        </div>
-        <div className="cl-legend" aria-hidden="true">
-          <span>{fmt(T.notices.log.from, { m: first.m, d: first.d })}</span>
-          <span className="cl-legend-mid">{T.notices.log.squares}</span>
-          <span>{T.notices.log.today}</span>
-        </div>
+        <Squares squares={squares} from={fmt(T.notices.log.from, { m: first.m, d: first.d })} />
         {days.slice(0, shown).map((day) => (
           <Day key={day.date} day={day} filtered={pick !== "all"} />
         ))}
@@ -182,6 +177,148 @@ export function ChangeLog({
         )}
       </div>
     </div>
+  );
+}
+
+/** Sliding as the reader asks it to, without the motion when they would rather have none */
+const glide = (): ScrollBehavior => (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
+/** Where the row of squares stands in its box */
+const stripAt = (el: HTMLElement): StripAt => ({ left: el.scrollLeft, max: el.scrollWidth - el.clientWidth });
+/** A week of squares, as wide as they are drawn on this screen */
+function weekOf(el: HTMLElement) {
+  const [a, b] = el.querySelectorAll<HTMLElement>(".cl-days span");
+  return 7 * (a && b ? b.offsetLeft - a.offsetLeft : 15);
+}
+
+/**
+ * A square for each day, in one row however many there are: it starts at today, at the right, and slides back
+ * to earlier days with a finger, a drag of the mouse, the wheel, ← → Home End once it has the focus, or
+ * 「‹ 往期」 under it; 「今天 ›」 brings today back. A side with more days fades out. Under either end, the first
+ * day and today while they show (as on one line before). The squares say nothing to a screen reader: the
+ * sentence above has the numbers.
+ */
+function Squares({ squares, from }: { squares: Square[]; from: string }) {
+  const strip = useRef<HTMLDivElement>(null);
+  // before it is measured (and drawn by the server, for the tests) as if it all fitted
+  const [ends, setEnds] = useState({ start: true, end: true });
+  const [dragging, setDragging] = useState(false);
+  /** Today is kept in view, as the window or the board changes size, until the reader slides away from it */
+  const atToday = useRef(true);
+  const drag = useRef<{ id: number; x: number; left: number } | null>(null);
+
+  const look = useCallback(() => {
+    const el = strip.current;
+    if (!el) return;
+    const now = stripEnds(stripAt(el));
+    atToday.current = now.end;
+    setEnds((was) => (was.start === now.start && was.end === now.end ? was : now));
+  }, []);
+
+  // at today first, before it is drawn, and again when the size changes while today is in view
+  useLayoutEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const keep = () => {
+      if (atToday.current) el.scrollLeft = el.scrollWidth;
+      look();
+    };
+    keep();
+    const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(keep);
+    sized?.observe(el);
+    return () => sized?.disconnect();
+  }, [squares.length, look]);
+
+  // the wheel's own listener, as only one that is not passive can keep the page from scrolling too
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1;
+      const move = wheelAside(e.deltaX * unit, e.deltaY * unit, stripAt(el));
+      if (!move) return;
+      e.preventDefault();
+      el.scrollLeft += move;
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, []);
+
+  const slideTo = (left: number) => strip.current?.scrollTo({ left, behavior: glide() });
+
+  // a finger or a pen slides it as the browser does; a mouse drags it
+  const down = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || (ends.start && ends.end)) return;
+    drag.current = { id: e.pointerId, x: e.clientX, left: e.currentTarget.scrollLeft };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    if (Math.abs(e.clientX - d.x) > 3) setDragging(true);
+    e.currentTarget.scrollLeft = d.left - (e.clientX - d.x);
+  };
+  const up = () => {
+    drag.current = null;
+    setDragging(false);
+  };
+
+  const slides = !(ends.start && ends.end);
+  return (
+    <>
+      <div className={`cl-strip${ends.start ? "" : " more-left"}${ends.end ? "" : " more-right"}`}>
+        <div
+          ref={strip}
+          className={`cl-squares${slides ? " slides" : ""}${dragging ? " dragging" : ""}`}
+          role="group"
+          aria-label={T.notices.log.strip}
+          tabIndex={0}
+          onScroll={look}
+          onKeyDown={(e) => {
+            const to = keySlide(e.key, stripAt(e.currentTarget), weekOf(e.currentTarget));
+            if (to === null) return;
+            e.preventDefault();
+            slideTo(to);
+          }}
+          onPointerDown={down}
+          onPointerMove={move}
+          onPointerUp={up}
+          onPointerCancel={up}
+          onLostPointerCapture={up}
+        >
+          <div className="cl-days" aria-hidden="true">
+            {squares.map((s) => (
+              <span key={s.date} className={`l${s.level}`} title={fmt(T.notices.log.square, { day: dayWords(s.date), n: s.n })} />
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* under the ends: the first day and today while they show, else the way to earlier days and back */}
+      <div className="cl-legend" aria-hidden="true">
+        {ends.start ? (
+          <span>{from}</span>
+        ) : (
+          <button
+            className="cl-slide"
+            tabIndex={-1}
+            onClick={() => {
+              const el = strip.current;
+              // a boxful back, two days of it kept in view
+              if (el) slideTo(Math.max(0, el.scrollLeft - Math.max(weekOf(el), el.clientWidth - (2 * weekOf(el)) / 7)));
+            }}
+          >
+            {T.notices.log.earlier}
+          </button>
+        )}
+        <span className="cl-legend-mid">{T.notices.log.squares}</span>
+        {ends.end ? (
+          <span>{T.notices.log.today}</span>
+        ) : (
+          <button className="cl-slide" tabIndex={-1} onClick={() => strip.current && slideTo(strip.current.scrollWidth)}>
+            {T.notices.log.backToToday}
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 

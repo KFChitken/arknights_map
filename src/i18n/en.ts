@@ -1439,6 +1439,9 @@ export const en: Draft<Messages> = {
       from: "Opened {m}/{d}",
       squares: "One square is one day; the darker, the more changes",
       today: "Today",
+      strip: "A square for each day's updates; left and right arrow keys for earlier days",
+      earlier: "‹ Earlier",
+      backToToday: "Today ›",
       all: "All",
       kinds: {
         new: "New",

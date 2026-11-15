@@ -582,7 +582,7 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .cl { display: flex; flex-direction: column; }
 .cl-side, .cl-main { display: contents; }
 .cl-sum { order: 1; padding: 16px 16px 0; }
-.cl-squares { order: 2; }
+.cl-strip { order: 2; }
 .cl-legend { order: 3; }
 .cl-picks { order: 4; }
 .cl-day, .cl-more, .cl-end { order: 5; }
@@ -595,14 +595,34 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .cl-total span { font-size: 14px; font-weight: 800; }
 .cl-total .cl-open { margin-left: auto; color: #8a867c; font-size: 12.5px; font-weight: 400; }
 .cl-week { margin: 8px 0 0; color: #5d5a52; font-size: 13px; line-height: 1.5; }
-.cl-squares { display: flex; flex-wrap: wrap; gap: 2px; margin: 10px 16px 0; }
-.cl-squares span { flex: none; width: 13px; height: 13px; border-radius: 3px; background: #ece8df; }
-.cl-squares span:not(.l0) { box-shadow: inset 0 0 0 1px rgba(27, 29, 34, 0.18); }
-.cl-squares .l1 { background: #fff0b3; }
-.cl-squares .l2 { background: #ffd23f; }
-.cl-squares .l3 { background: #f2a900; }
-.cl-squares .l4 { background: #1b1d22; }
-.cl-legend { display: flex; justify-content: space-between; gap: 8px; margin: 4px 16px 0; color: #9a958a; font-size: 11px; }
+/* the squares: one row, which slides sideways once there are more days than fit; a side with more fades out */
+.cl-strip { position: relative; margin: 10px 16px 0; }
+.cl-strip::before, .cl-strip::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 28px; pointer-events: none; opacity: 0; transition: opacity 0.15s;
+}
+.cl-strip::before { left: 0; background: linear-gradient(to right, var(--paper), rgba(255, 255, 255, 0)); }
+.cl-strip::after { right: 0; background: linear-gradient(to left, var(--paper), rgba(255, 255, 255, 0)); }
+.cl-strip.more-left::before, .cl-strip.more-right::after { opacity: 1; }
+.cl-squares {
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+  border-radius: 4px; outline-offset: 3px; user-select: none; -webkit-user-select: none;
+}
+.cl-squares::-webkit-scrollbar { display: none; }
+.cl-squares.slides { cursor: grab; }
+.cl-squares.dragging { cursor: grabbing; }
+.cl-days { display: flex; gap: 2px; width: max-content; }
+.cl-days span { flex: none; width: 13px; height: 13px; border-radius: 3px; background: #ece8df; }
+.cl-days span:not(.l0) { box-shadow: inset 0 0 0 1px rgba(27, 29, 34, 0.18); }
+.cl-days .l1 { background: #fff0b3; }
+.cl-days .l2 { background: #ffd23f; }
+.cl-days .l3 { background: #f2a900; }
+.cl-days .l4 { background: #1b1d22; }
+@media (prefers-reduced-motion: reduce) {
+  .cl-strip::before, .cl-strip::after { transition: none; }
+}
+.cl-legend { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 16px 0; color: #9a958a; font-size: 11px; }
+/* 「‹ 往期」「今天 ›」: the legend's words that slide the squares, with some room around them to tap */
+.cl-slide { margin: -8px; padding: 8px; border: 0; background: none; color: #6f6b62; font: inherit; font-weight: 700; cursor: pointer; }
 .cl-picks { display: flex; flex-wrap: wrap; padding: 8px 12px 0; }
 .cl-picks button { display: flex; align-items: center; height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ink); }
 .cl-picks .pill {
@@ -671,8 +691,9 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
   .cl-picks button { height: 38px; padding: 0; }
   .cl-picks .pill { flex: 1; justify-content: space-between; height: 38px; padding: 0 12px; border-radius: 10px; box-shadow: none; font-size: 14px; }
   .cl-about { display: block; margin: auto 0 0; color: #8a867c; font-size: 12px; line-height: 1.6; }
-  .cl-squares { gap: 4px; margin: 0; }
-  .cl-squares span { width: 17px; height: 17px; border-radius: 4px; }
+  .cl-strip { margin: 0; }
+  .cl-days { gap: 4px; }
+  .cl-days span { width: 17px; height: 17px; border-radius: 4px; }
   .cl-legend { margin: 5px 0 0; font-size: 11.5px; }
   .cl-legend .cl-legend-mid { display: inline; }
   .cl-day { padding: 16px 0 2px; }

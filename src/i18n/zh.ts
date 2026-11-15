@@ -1766,6 +1766,10 @@ export const zh = {
       from: "{m}/{d} 开张",
       squares: "一格是一天，颜色越深改得越多",
       today: "今天",
+      // the squares in one row: it starts at today and slides back to earlier days
+      strip: "每天的更新方格，左右键看往期",
+      earlier: "‹ 往期",
+      backToToday: "今天 ›",
       all: "全部",
       kinds: {
         new: "新增",

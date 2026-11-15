@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ChangeLog } from "@/components/app/ChangeLog";
 import { addDays, beijingDate, daysBetween } from "./beijing";
 import { CHANGELOG, type ChangeRow } from "./changelog";
-import { isVague, kindCounts, logDays, logSquares, logToday, logTotals } from "./changelogView";
+import { isVague, keySlide, kindCounts, logDays, logSquares, logToday, logTotals, stripEnds, wheelAside } from "./changelogView";
 
 const KIND_NAMES = ["new", "better", "fix", "tweak", "chore"];
 /** What a row may not say: how the site is made and run */
@@ -92,6 +92,40 @@ describe("what the page makes of them", () => {
     ]);
   });
 
+  it("knows the squares' row shows the first day or today only at either end, within a pixel", () => {
+    expect(stripEnds({ left: 0, max: 0 })).toEqual({ start: true, end: true });
+    expect(stripEnds({ left: 420, max: 420 })).toEqual({ start: false, end: true });
+    expect(stripEnds({ left: 419.5, max: 420 })).toEqual({ start: false, end: true });
+    expect(stripEnds({ left: 0.5, max: 420 })).toEqual({ start: true, end: false });
+    expect(stripEnds({ left: 200, max: 420 })).toEqual({ start: false, end: false });
+  });
+
+  it("slides the squares with a wheel turned up or down while there are more days that way, else leaves it to the page", () => {
+    const mid = { left: 200, max: 420 };
+    expect(wheelAside(0, -100, mid)).toBe(-100);
+    expect(wheelAside(0, 100, mid)).toBe(100);
+    // at today, a turn down scrolls the page; at the first day, a turn up does
+    expect(wheelAside(0, 100, { left: 420, max: 420 })).toBe(0);
+    expect(wheelAside(0, -100, { left: 0, max: 420 })).toBe(0);
+    expect(wheelAside(0, -100, { left: 420, max: 420 })).toBe(-100);
+    // all in view: never
+    expect(wheelAside(0, -100, { left: 0, max: 0 })).toBe(0);
+    // sideways (a trackpad): the browser's own
+    expect(wheelAside(-80, 10, mid)).toBe(0);
+  });
+
+  it("slides the squares a week with ← →, to the first day with Home and to today with End, never past either end", () => {
+    const at = { left: 200, max: 420 };
+    expect(keySlide("ArrowLeft", at, 105)).toBe(95);
+    expect(keySlide("ArrowRight", at, 105)).toBe(305);
+    expect(keySlide("ArrowLeft", { left: 60, max: 420 }, 105)).toBe(0);
+    expect(keySlide("ArrowRight", { left: 400, max: 420 }, 105)).toBe(420);
+    expect(keySlide("Home", at, 105)).toBe(0);
+    expect(keySlide("End", at, 105)).toBe(420);
+    expect(keySlide("ArrowUp", at, 105)).toBeNull();
+    expect(keySlide("Enter", at, 105)).toBeNull();
+  });
+
   it("folds a run of the same vague row with numbers in a row, also when filtered, and nothing else", () => {
     const rows = [
       row("2026-11-13", "chore", "后台调整"),
@@ -153,6 +187,17 @@ describe("更新记录 as drawn", () => {
     expect(linesOf(html)).toHaveLength(CHANGELOG.length - folded);
     expect(daysOf(html)).toHaveLength(new Set(CHANGELOG.map((r) => r.date)).size);
     expect(html).toContain("最早一条是 10 月 22 日，舟P地图开张那天。");
+  });
+
+  it("puts every day's square in one row that slides, which a keyboard can reach, with the first day and today under its ends", () => {
+    const html = page();
+    const strip = html.match(/<div class="cl-strip">(.*?)<\/div><\/div><\/div>/)?.[1];
+    expect(strip).toBeDefined();
+    expect(strip).toContain('<div class="cl-squares" role="group" aria-label="每天的更新方格，左右键看往期" tabindex="0">');
+    expect(strip).toContain('<div class="cl-days" aria-hidden="true">');
+    expect(strip!.match(/<span class="l\d" title="/g)).toHaveLength(daysBetween("2026-10-22", TODAY) + 1);
+    // before the page measures it, as if it all fitted: as the one line it was
+    expect(html).toContain('<div class="cl-legend" aria-hidden="true"><span>10/22 开张</span><span class="cl-legend-mid">一格是一天，颜色越深改得越多</span><span>今天</span></div>');
   });
 
   it("keeps only 新增 with that filter, counted as 条", () => {
