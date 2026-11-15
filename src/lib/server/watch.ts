@@ -6,7 +6,7 @@ import https from "node:https";
 import tls from "node:tls";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { beijingDate, beijingShort } from "../beijing";
-import { siteName } from "../rules";
+import { LOGIN_CODE_MAX_ATTEMPTS, siteName } from "../rules";
 import { levelRank, type Level } from "../siteStatus";
 import { amapMapLoads, monthProgress, saveAmapLoads } from "./amapLoads";
 import { db } from "./db";
@@ -509,6 +509,28 @@ async function checkPasswords(now: number): Promise<Finding[]> {
   return found;
 }
 
+/**
+ * Wrong sign-in codes typed for the owner or a moderator (src/lib/server/loginCodes.ts): five in a day, as many as
+ * use up one code, is more than slips of the finger. Told once each time it starts.
+ */
+async function checkStaffCodes(now: number): Promise<Finding[]> {
+  const list = recent("staffCodeWrong", DAY, now);
+  if (list.length < LOGIN_CODE_MAX_ATTEMPTS) return [];
+  const owner = list.filter((s) => s.code === "owner").length;
+  const whose = [owner && `站长的 ${owner} 次`, list.length - owner && `其他管理员的 ${list.length - owner} 次`].filter(Boolean).join("，");
+  return [
+    {
+      key: "guessing",
+      level: "urgent",
+      title: "有人在猜管理员的登录码",
+      detail: `24 小时内，发给管理员的登录验证码被输错 ${list.length} 次（${whose}）。一个码输错 ${LOGIN_CODE_MAX_ATTEMPTS} 次就作废，输错不会让人登进来。`,
+      advice:
+        "只有拿到邮件里的码才能登录：码谁要都不给，只在 zhoupmap.com 自己的登录框里输。接下来几天要是有人在举报、消息或邮件里自称网站找你要码，那是骗子；也提醒其他管理员。也可能是管理员自己连着输错了。",
+      worst: { text: `24 小时最多 ${list.length} 次`, score: list.length },
+    },
+  ];
+}
+
 const MAPS: Record<string, string> = { amap: "高德", tencent: "腾讯地图", osm: "OSM 底图", overseas: "我们自己的海外底图" };
 
 /** What 腾讯位置服务's status means, when it turns away the key of the place suggestions */
@@ -919,6 +941,7 @@ export const CHECKS: Check[] = [
   { name: "codes", window: HOUR, run: checkCodes },
   { name: "busy", window: 10 * MINUTE, run: checkBusy },
   { name: "passwords", window: HOUR, run: checkPasswords },
+  { name: "staffCodes", window: DAY, events: true, closeAfter: HOUR, run: checkStaffCodes },
   { name: "map", window: 30 * MINUTE, run: checkMaps },
   // once a month: open for a day, so the next digest has it
   { name: "amapLoads", events: true, every: 10 * MINUTE, closeAfter: DAY, run: checkAmapLoads },

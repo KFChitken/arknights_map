@@ -19,6 +19,8 @@ export type SignalKind =
   | "codeRefused"
   /** a sign-in with a password failed (src/lib/server/passwords.ts); code: none, paused, wrong or banned */
   | "passwordFail"
+  /** a wrong sign-in code typed for someone who may come into the 管理台 (src/lib/server/loginCodes.ts); code: owner or mod */
+  | "staffCodeWrong"
   /** a visitor's page could not load a map; code: "<map>:<what>:<detail>" */
   | "map"
   /** a background job failed; code: the job's name */

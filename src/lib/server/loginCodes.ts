@@ -4,11 +4,11 @@ import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { cooldownAfter, LOGIN_CODE_MAX_ATTEMPTS, LOGIN_CODE_TTL_MIN, LOGIN_CODES_PER_DAY, waitText } from "../rules";
 import { db } from "./db";
-import { MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_NEW_SHARE, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
+import { ADMIN_EMAILS, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_NEW_SHARE, MAIL_SLOW_PER_ADDRESS, secret } from "./env";
 import { HttpError } from "./http";
 import { isSlowMail, LOGIN_KINDS, MAIL_SLOW_LOCK, mailRoom, mailRoomBack, slowRoomFull } from "./mailQuota";
 import { note } from "./signals";
-import { loginCodes, mailSends, users } from "./schema";
+import { admins, loginCodes, mailSends, users } from "./schema";
 
 /**
  * The 6-digit codes emailed for sign-in. An address's row is locked while its code is issued (a first ask
@@ -243,6 +243,24 @@ export async function withdrawLoginCode(email: string, issued: IssuedCode) {
   });
 }
 
+/**
+ * A wrong code typed for the owner (ADMIN_EMAILS) or a moderator: the site's checks tell the owner when there are
+ * many (watch.ts), as someone who knows an admin's address may be trying codes for it (2026-11-14: one of the owner's
+ * codes was tried wrong five times). Nothing else is noted for anyone else's.
+ */
+async function noteStaffWrong(email: string) {
+  if (ADMIN_EMAILS.includes(email)) return note("staffCodeWrong", "owner");
+  // an owner's row lets nobody in once its email has left ADMIN_EMAILS (admins.ts)
+  const mod = await db
+    .select({ role: admins.role })
+    .from(admins)
+    .innerJoin(users, eq(users.id, admins.userId))
+    .where(and(eq(users.email, email), eq(admins.role, "mod")))
+    .limit(1)
+    .catch(() => []);
+  if (mod.length) note("staffCodeWrong", "mod");
+}
+
 /** Spend one try on the code sent to this address. Resolves only for the right code, which is then used up. */
 export async function redeemLoginCode(email: string, code: string): Promise<void> {
   const now = new Date();
@@ -257,7 +275,10 @@ export async function redeemLoginCode(email: string, code: string): Promise<void
     if (r && r.expiresAt > now) throw new HttpError(429, T.server.loginCodes.tooManyTries);
     throw new HttpError(400, T.server.loginCodes.expired);
   }
-  if (!/^\d{6}$/.test(code) || !codeMatches(email, code, row.codeHash)) throw new HttpError(400, T.server.loginCodes.wrongCode);
+  if (!/^\d{6}$/.test(code) || !codeMatches(email, code, row.codeHash)) {
+    await noteStaffWrong(email);
+    throw new HttpError(400, T.server.loginCodes.wrongCode);
+  }
 
   // Of two requests carrying the right code, only the one that clears it signs in.
   // The row stays, so the cooldown and the daily count still apply.

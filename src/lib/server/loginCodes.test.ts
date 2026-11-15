@@ -6,12 +6,15 @@ import { MAIL_DAILY_LIMIT } from "./env";
 import { forgetLoginCodes, issueLoginCode, pruneSignInMail, redeemLoginCode, withdrawLoginCode } from "./loginCodes";
 import { neverReached, rateLimited, sendWith } from "./mail";
 import { forgetMailCount, MAIL_SLOW_LOCK } from "./mailQuota";
-import { loginCodes, mailSends, users } from "./schema";
+import { admins, loginCodes, mailSends, users } from "./schema";
+import { forgetSignals, recent } from "./signals";
 
 // Gmail slow to take our mail, with small caps to reach in a test (other addresses are not affected), of
-// which addresses with no account may take 2 a day and 1 an hour (6 × 0.4 and 4 × 0.4, rounded down)
+// which addresses with no account may take 2 a day and 1 an hour (6 × 0.4 and 4 × 0.4, rounded down);
+// and the owner's sign-in email
 vi.mock("./env", async (original) => ({
   ...(await original<typeof import("./env")>()),
+  ADMIN_EMAILS: ["owner@example.com"],
   MAIL_SLOW_DOMAINS: ["gmail.com", "googlemail.com"],
   MAIL_SLOW_DAILY_LIMIT: 6,
   MAIL_SLOW_HOURLY_LIMIT: 4,
@@ -300,6 +303,36 @@ describe("login codes", () => {
 
     await forgetLoginCodes(EMAIL);
     expect(await row()).toBeUndefined();
+  });
+});
+
+describe("wrong codes typed for the 管理台's people", () => {
+  beforeEach(async () => {
+    await db.execute(sql`truncate ${users} cascade`);
+    forgetSignals();
+  });
+
+  it("notes each wrong code for the owner or a moderator, for the site's checks, and nobody else's", async () => {
+    const [mod, former] = await db.insert(users).values([{ email: "mod@example.com" }, { email: "former@example.com" }]).returning();
+    await db.insert(admins).values([
+      { userId: mod.id, role: "mod", alias: "小管" },
+      // an owner whose email has left ADMIN_EMAILS, which lets nobody in
+      { userId: former.id, role: "owner", alias: "站长" },
+    ]);
+    for (const email of ["owner@example.com", "mod@example.com", "former@example.com", EMAIL]) {
+      const { code } = await issueLoginCode(email);
+      await expect(redeemLoginCode(email, wrongFor(code))).rejects.toThrow("验证码不对");
+      // neither the right code nor one used up counts
+      await redeemLoginCode(email, code);
+      await expect(redeemLoginCode(email, wrongFor(code))).rejects.toThrow("过期");
+    }
+    expect(recent("staffCodeWrong", DAY).map((s) => s.code)).toEqual(["owner", "mod"]);
+  });
+
+  it("notes only the tries a code allows", async () => {
+    const { code } = await issueLoginCode("owner@example.com");
+    await Promise.allSettled(Array.from({ length: 20 }, () => redeemLoginCode("owner@example.com", wrongFor(code))));
+    expect(recent("staffCodeWrong", DAY)).toHaveLength(LOGIN_CODE_MAX_ATTEMPTS);
   });
 });
 

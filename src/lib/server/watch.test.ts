@@ -79,6 +79,42 @@ describe("passwords tried (passwords check)", () => {
   });
 });
 
+describe("wrong sign-in codes for the 管理台's people (staffCodes check)", () => {
+  it("tells at once of as many wrong codes in a day as use up one code, once, and never of it being over", async () => {
+    note("staffCodeWrong", "owner", t0 - 3 * HOUR, 4);
+    expect(await look("staffCodes", t0)).toEqual([]);
+    note("staffCodeWrong", "mod", t0 - HOUR);
+    const found = await look("staffCodes", t0);
+    expect(found.map((f) => [f.key, f.level, f.title])).toEqual([["guessing", "urgent", "有人在猜管理员的登录码"]]);
+    expect(found[0].detail).toContain("输错 5 次（站长的 4 次，其他管理员的 1 次）");
+    // a day on, they have gone
+    expect(await look("staffCodes", t0 + DAY)).toEqual([]);
+
+    const staff = [check("staffCodes")];
+    await run(t0, staff);
+    await run(t0 + 10 * MINUTE, staff);
+    expect(sent.map((s) => s.subject)).toEqual(["【舟P地图】要你看：有人在猜管理员的登录码"]);
+    expect(sent[0].text).toContain("码谁要都不给");
+    await run(t0 + DAY + 2 * HOUR, staff);
+    expect((await incidents()).map((i) => [i.key, i.endedAt !== null])).toEqual([["staffCodes.guessing", true]]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("leaves out whoever had none wrong", async () => {
+    note("staffCodeWrong", "mod", t0 - HOUR, 5);
+    expect((await look("staffCodes", t0))[0].detail).toContain("输错 5 次（其他管理员的 5 次）");
+  });
+
+  it("counts the wrong codes typed on every process", async () => {
+    note("staffCodeWrong", "owner", t0 - MINUTE, 3);
+    const counts = countsSince(t0 - 10 * MINUTE, t0);
+    // the main process
+    forgetSignals(t0 - 48 * HOUR);
+    for (const m of batches("web2", counts)) heardMessage(JSON.stringify(m), () => {});
+    expect(recent("staffCodeWrong", HOUR, t0)).toHaveLength(3);
+  });
+});
+
 describe("the site's own checks", () => {
   it("emails an urgent problem once, says when it is over, and says nothing when it is back within the hour", async () => {
     let problems: Finding[] = [{ key: "disk", level: "urgent", title: "硬盘快满了", detail: "已用 92%，还剩 4.0 GB。", advice: "清掉旧镜像。" }];
