@@ -459,10 +459,21 @@ export const declarations = pgTable(
     heldName: text("held_name"),
     /** For a limited-time declaration, the id of its line in events.ts */
     line: text("line"),
+    /**
+     * 一起听's (template listen, src/lib/server/listenRooms.ts declareRoom): the room it calls to, null once that is
+     * gone (a day after it ended), and the song's name as it was then
+     */
+    roomId: uuid("room_id").references((): AnyPgColumn => listenRooms.id, { onDelete: "set null" }),
+    song: text("song"),
     recipients: integer("recipients").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("declarations_sender_idx").on(t.senderId, t.createdAt), index("declarations_created_idx").on(t.createdAt)],
+  (t) => [
+    index("declarations_sender_idx").on(t.senderId, t.createdAt),
+    index("declarations_created_idx").on(t.createdAt),
+    // a room deleted sets them null: only the few that have one
+    index("declarations_room_idx").on(t.roomId).where(sql`${t.roomId} is not null`),
+  ],
 );
 
 /**
@@ -1572,8 +1583,8 @@ export const listenNow = pgTable(
 /**
  * 一起听's rooms (src/lib/server/listenRooms.ts): the host's, with its songs (src/lib/listen.ts RoomSchedule: queue
  * from idx on, queue[idx] starting at started_at, null until the host starts it) and their version, which every change
- * to them moves on. ended_at and end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in
- * it and the invitations to it.
+ * to them moves on. declared_at once its host called the players nearby to it (宣言一起听, once a room). ended_at and
+ * end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in it and the invitations to it.
  */
 export const listenRooms = pgTable(
   "listen_rooms",
@@ -1587,6 +1598,7 @@ export const listenRooms = pgTable(
     idx: smallint("idx").notNull().default(0),
     queue: text("queue").array().notNull().default(emptyArray),
     version: integer("version").notNull().default(1),
+    declaredAt: at("declared_at"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
   },
@@ -1595,9 +1607,9 @@ export const listenRooms = pgTable(
 
 /**
  * Who is, or was, in a room: handle is their number in it, from 1 (the host's) and never given to another; via how
- * they came (host, invite). left_at once they left (or the room ended), away_at while their page is gone (closed,
- * reloaded: AWAY_MS to come back in). kicked: asked to leave by the host, and never let in again; hidden_from: the
- * handles of those in it who do not see them (blocking). In one room at a time (listen_members_one_room).
+ * they came (host, invite, declaration). left_at once they left (or the room ended), away_at while their page is gone
+ * (closed, reloaded: AWAY_MS to come back in). kicked: asked to leave by the host, and never let in again; hidden_from:
+ * the handles of those in it who do not see them (blocking). In one room at a time (listen_members_one_room).
  */
 export const listenMembers = pgTable(
   "listen_members",

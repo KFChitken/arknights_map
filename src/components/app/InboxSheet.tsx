@@ -33,6 +33,7 @@ import { boldOnly, type Friend, type InboxItem, type StaffAppeal } from "@/lib/w
 import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
+import { callLine } from "./listening";
 import { WornPassLine, WornPassMini } from "./WornPass";
 import RoachIcon from "../RoachIcon";
 
@@ -118,6 +119,8 @@ export type InboxFriendly = {
   listenJoin: (itemId: string) => Promise<void>;
   listenLater: (itemId: string) => Promise<void>;
   listenShow: () => void;
+  /** 进去听 at a 宣言一起听 you got (its item id) */
+  listenCall: (itemId: string) => Promise<void>;
 };
 
 /**
@@ -668,7 +671,21 @@ export default function InboxSheet({
           </>
         )}
         {item.from && !item.reaction && <p className="hint">{T.inbox.seesYou}</p>}
-        <div className="row-actions">{replyButtons(item, T.inbox.touchThem)}</div>
+        {/* a 宣言一起听: how its room is now, and the way in while it is open */}
+        {item.listen && <p className="hint">{callLine(item.listen)}</p>}
+        <div className="row-actions">
+          {item.listen?.state === "open" && (
+            <button className="pill dark" disabled={acting === item.id} onClick={() => act(item.id, () => friendly.listenCall(item.id))}>
+              {T.listen.call.join}
+            </button>
+          )}
+          {item.listen?.state === "in" && (
+            <button className="pill dark" onClick={() => friendly.listenShow()}>
+              {T.inbox.listen.go}
+            </button>
+          )}
+          {replyButtons(item, T.inbox.touchThem)}
+        </div>
         {replyNote(item)}
       </div>
     );

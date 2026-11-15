@@ -54,6 +54,7 @@ import {
 } from "./schema";
 import { roachByFeedId } from "./roachFeed";
 import { canSeeDeclaration } from "./declarationInbox";
+import { roomSender, separateBlocked } from "./listenRooms";
 import { addNotes } from "./staffNotes";
 import { logError, note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
@@ -71,7 +72,10 @@ type Sender = { other: string; known: boolean; context: string };
 /** What the admin reads is in Chinese, whichever site the report came from (/en included) */
 const forAdmin = <R>(fn: () => R): R => withLang("zh", fn);
 
-/** Who sent an inbox item ("t:", "d:", "x:", "p:" ids) or who a friend is ("friend:<id>"), as far as this player may ask. */
+/**
+ * Who sent an inbox item ("t:", "d:", "x:", "p:" ids), who a friend is ("friend:<id>"), or who has a number in the room
+ * of 一起听 they are in ("lr:<room>:<number>"), as far as this player may ask.
+ */
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
   // the page offers neither on the guides; this is the backstop
   const guide = target.startsWith("friend:") ? guideById(target.slice("friend:".length)) : guideOfItem(target);
@@ -132,6 +136,10 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
       }),
     };
   }
+  if (kind === "lr") {
+    const who = await roomSender(userId, id, Number(target.split(":")[2]));
+    return who ? { ...who, context: "一起听里" } : null;
+  }
   return null;
 }
 
@@ -145,6 +153,8 @@ async function blockSender(userId: string, who: Sender) {
       set: { known: who.known ? true : blocks.known },
     });
   if ((await friendIdsOf(userId)).has(who.other)) await endFriendship(userId, who.other);
+  // in a room of 一起听 together now: they part there
+  await separateBlocked(userId, who.other);
 }
 
 export async function block(userId: string, target: string) {

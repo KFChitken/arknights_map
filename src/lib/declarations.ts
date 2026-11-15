@@ -29,7 +29,9 @@ export const WELCOME_NAMES: Record<Game, string> = {
  * can no longer be sent, but older ones still show. The DRUNK_TEMPLATES can only be
  * sent while your main roach lies drunk (摄入酒精); the STAY_TEMPLATES once your ink roach
  * has had a room at 祀掌柜's 缘缘庄 (src/lib/si.ts), and for good from then on; the STUDY_TEMPLATES
- * only from 325大学习 (src/lib/server/studySay.ts), never from the sheet.
+ * only from 325大学习 (src/lib/server/studySay.ts), never from the sheet; "listen" only from 一起听's panel
+ * (src/lib/server/listenRooms.ts declareRoom), calling those nearby to the room (null once it is gone) with the
+ * song's name as it was.
  */
 export type Declaration =
   | { template: "launch"; game: Game }
@@ -54,7 +56,8 @@ export type Declaration =
   | { template: "sihouse" }
   | { template: "simine" }
   | { template: "kuye" }
-  | { template: "studied" };
+  | { template: "studied" }
+  | { template: "listen"; song: string; room: string | null };
 
 export type Template = Declaration["template"];
 
@@ -78,6 +81,9 @@ export const stayNeeded = () => T.lib.declarations.stayNeeded;
 export const STUDY_TEMPLATES = ["kuye", "studied"] as const;
 export type StudyTemplate = (typeof STUDY_TEMPLATES)[number];
 export const isStudyTemplate = (t: unknown): t is StudyTemplate => (STUDY_TEMPLATES as readonly unknown[]).includes(t);
+
+/** 一起听's (我在听《…》，来一起听吗？), which its panel alone sends, once a room; the sheet never lists it */
+export const LISTEN_TEMPLATE = "listen";
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
@@ -127,6 +133,8 @@ export function declarationText(d: Declaration): string {
       return T.declare.line.kuye;
     case "studied":
       return T.declare.line.studied;
+    case "listen":
+      return fmt(T.lib.declarations.text.listen, { song: d.song });
   }
 }
 

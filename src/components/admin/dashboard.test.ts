@@ -78,6 +78,7 @@ describe("数据看板's words", () => {
       }
     }
     expect(templateWords("event")).toBe("限定宣言（几句合起来算）");
+    expect(templateWords("listen")).toBe("我在听《___》，来一起听吗？（一起听里发的）");
     expect(STUDY_TEMPLATES.map(templateWords)).toEqual(["苦也！（325大学习里发的）", "已完成今日的325大学习（325大学习里发的）"]);
     expect(replyWords("kuye.4")).toBe("同是苦学人，碰我一下");
     for (const id of [...GENERIC_REACTIONS, ...FUN_REACTIONS]) expect(replyWords(id), id).not.toBe(id);

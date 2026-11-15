@@ -151,7 +151,7 @@ import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
 import { listenMe, listenOpen } from "./listen";
-import { listenInbox, seeListenInvites } from "./listenRooms";
+import { listenCalls, listenInbox, seeListenInvites } from "./listenRooms";
 import { studyMe } from "./study";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
@@ -1128,9 +1128,15 @@ async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<
   const done = await replied(userId, ds.map((x) => `d:${x.d.id}`));
   // touching back waits for whoever you touched in the last day (reply())
   const waits = await touchBackWaits(userId, ds.filter((x) => !done.has(`d:${x.d.id}`)).map((x) => x.d.senderId));
+  // 宣言一起听: each one's room as it is now, all read at once (one gone, a day after it ended, is over)
+  const calls = await listenCalls(
+    userId,
+    ds.flatMap((x) => (x.d.template === "listen" && x.d.roomId ? [x.d.roomId] : [])),
+  );
   return ds.map(({ d, seen, toFriend }) => {
     const id = `d:${d.id}`;
     const stored = storedDeclaration(d);
+    const call = d.template === "listen" ? ((d.roomId && calls.get(d.roomId)) || { state: "over" as const, n: 0, max: 0 }) : null;
     return {
       kind: "declaration",
       id,
@@ -1142,6 +1148,7 @@ async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<
       options: repliesFor(stored),
       ...asFriend.sender(d.senderId, toFriend),
       ...(!done.has(id) && waits.has(d.senderId) ? { waits: waits.get(d.senderId)! } : {}),
+      ...(call ? { listen: call } : {}),
     };
   });
 }
@@ -1348,6 +1355,9 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
       return { template: "drunklove", character };
     case "kr168":
       return { template: "kr168", character, spouse: SPOUSES.find((s) => s === d.title) ?? SPOUSES[0] };
+    // the room it called to is gone a day after it ended (null), the song's name stays as it was
+    case "listen":
+      return { template: "listen", song: d.song ?? "", room: d.roomId };
     default: {
       // Every sentence needs its case above, or it reads as 「明日方舟，启动！」 to all (as 缘缘庄's two did):
       // tsc fails here when one has none
@@ -1413,15 +1423,23 @@ export async function markSeen(userId: string, itemIds: string[]) {
  * their spots, it shows to everyone with a roach within DECLARATION_RADIUS_KM of any of them for
  * DECLARATION_DAYS (src/lib/server/declarationInbox.ts). Those near now are nudged and counted, for the
  * sender's rough count; a 「祝我生日快乐」 also goes to every 触须之交 as theirs, one row each. study: sent by
- * 325大学习 (src/lib/server/studySay.ts), which alone may send its two sentences.
+ * 325大学习 (src/lib/server/studySay.ts), which alone may send its two sentences; listen: by 一起听 for a room
+ * (src/lib/server/listenRooms.ts declareRoom), which alone sends 我在听《…》, and only to those who may listen
+ * are counted and told.
  */
-export async function declare(userId: string, input: Declaration, from?: string[], study = false): Promise<{ reach: string } & PassesDot> {
+export async function declare(
+  userId: string,
+  input: Declaration,
+  from?: string[],
+  study = false,
+  listen = false,
+): Promise<{ reach: string } & PassesDot> {
   const u = await userById(userId);
   if (!u) throw new WorldError(T.server.common.signIn);
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
   const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
-  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study);
+  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study, listen);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   if (!mine.some((r) => r.slot === 0)) throw new WorldError(T.server.world.mainBeforeDeclaring);
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
@@ -1454,11 +1472,11 @@ export async function declare(userId: string, input: Declaration, from?: string[
   // nudged, for clones alone
   const rows = (
     await db
-      .selectDistinct({ id: roaches.userId })
+      .selectDistinct({ id: roaches.userId, email: users.email })
       .from(roaches)
       .innerJoin(users, eq(users.id, roaches.userId))
       .where(and(ne(roaches.userId, userId), or(...near), or(eq(roaches.slot, 0), eq(users.onlyMains, false))))
-  ).filter((r) => !blocked.has(r.id));
+  ).filter((r) => !blocked.has(r.id) && (d.template !== "listen" || listenOpen(r)));
   // 「祝我生日快乐」 also reaches every 触须之交 however far, as theirs (once in FRIEND_BIRTHDAY_DAYS); one each
   const friendsToo = new Set(d.template === "birthday" ? await birthdayFriends(userId, blocked) : []);
   const nearby = new Set(rows.map((r) => r.id));
@@ -1475,6 +1493,8 @@ export async function declare(userId: string, input: Declaration, from?: string[
         title: d.template === "iam" ? d.title : d.template === "kr168" ? d.spouse : null,
         food: d.template === "eat" ? d.food : null,
         line: d.template === "event" ? d.line : null,
+        roomId: d.template === "listen" ? d.room : null,
+        song: d.template === "listen" ? d.song : null,
         recipients: everyone.length,
       })
       .returning({ id: declarations.id, createdAt: declarations.createdAt });

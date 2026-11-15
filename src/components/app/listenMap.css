@@ -63,6 +63,10 @@
 .lm-ib button { flex: 1; padding: 9px 0; border: 0; border-radius: 10px; font-size: 14.5px; font-weight: 800; }
 .lm-ib .acc { background: var(--accent); color: #1b1d22; }
 .lm-ib .dec { background: #f1f2f4; color: #4b5260; }
+/* a 宣言一起听 that came: the megaphone, its words, how its room is now */
+.lm-invite.call .lm-ih svg { color: #b7791f; }
+.lm-dq { display: block; margin: 5px 0 1px; font-size: 14.5px; font-weight: 700; }
+.lm-invite.call small { margin-top: 2px; }
 @keyframes lm-up { from { transform: translateY(12px); opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {

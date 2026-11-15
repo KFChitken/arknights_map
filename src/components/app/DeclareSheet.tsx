@@ -117,7 +117,8 @@ export default function DeclareSheet({
         return { template: "launch", game };
       case "kuye":
       case "studied":
-        // 325大学习's own, never offered here
+      case "listen":
+        // 325大学习's own and 一起听's, never offered here
         return { template: "launch", game };
     }
   })();

@@ -142,6 +142,8 @@ export function templateWords(template: string): string {
       return spaced(fmt(x.kr168, { character: BLANK, spouse: "老婆" })) + drunk;
     case "event":
       return "限定宣言（几句合起来算）";
+    case "listen":
+      return fmt(x.listen, { song: BLANK }) + "（一起听里发的）";
     default:
       if ([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES].includes(template as never)) {
         return declarationText(blankOf(template)) + drunk + stay + study;

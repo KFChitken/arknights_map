@@ -247,6 +247,8 @@ export const RX_MERGE_MS = 2_000;
 export type RoomMember = {
   h: number;
   card: PublicProfile;
+  /** Their card is open (a name of their own, not 匿名舟P) */
+  open: boolean;
   /** A 触须之交 of the one looking */
   friend: boolean;
   host: boolean;
@@ -267,6 +269,8 @@ export type ListenRoom = RoomSchedule & {
   /** You are its host */
   host: boolean;
   hostName: string;
+  /** Its host sent 宣言一起听 for it (once a room) */
+  declared: boolean;
   members: RoomMember[];
   /** The host's alone */
   invited: RoomInvited[];
@@ -279,7 +283,17 @@ export type ListenTell =
   | { t: "members"; room: string }
   | { t: "rx"; room: string; items: { h: number; r: number }[] }
   | { t: "end"; room: string; why: RoomEnd }
-  | { t: "you"; room: string; why: "kicked" };
+  /** To one alone: the host asked you to leave (kicked), or you are out of it by blocking its host (left) */
+  | { t: "you"; room: string; why: "kicked" | "left" };
+
+/**
+ * 宣言一起听 (template listen) as one who got it sees its room, in 消息 → 宣言 and on its card on the map: open to go
+ * in at (n of max in it), full, you in it, closed to you (the host asked you to leave it), or over (the room ended;
+ * gone a day after)
+ */
+export type ListenCall = { state: "open" | "full" | "in" | "shut" | "over"; n: number; max: number };
+/** A page shows the card of a 宣言一起听 that came this often at most; the rest go to 消息 alone */
+export const CALL_CARD_EVERY_MS = 10 * 60_000;
 
 /** One of your 触须之交 who may listen, to invite (id: their Friend id): how many times more today, and whether TA is in your room */
 export type ListenFriend = { id: string; card: PublicProfile; left: number; inRoom: boolean };

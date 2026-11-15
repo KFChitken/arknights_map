@@ -76,7 +76,11 @@ export default async function Privacy() {
         )}
         {listen && (
           <li>
-            {fmtNodes(T.server.privacy.collect.listen, { b: <strong>{T.server.privacy.collect.listenB}</strong>, site: siteName() })}
+            {fmtNodes(T.server.privacy.collect.listen, {
+              b: <strong>{T.server.privacy.collect.listenB}</strong>,
+              site: siteName(),
+              km: DECLARATION_RADIUS_KM,
+            })}
           </li>
         )}
         <li>

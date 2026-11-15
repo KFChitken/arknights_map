@@ -8,15 +8,18 @@ import { listenOpen, playSong, stopSong } from "@/lib/server/listen";
 import {
   cameBack,
   changeSongs,
+  declareRoom,
   endByHost,
   inviteFriends,
   joinRoom,
+  kickMember,
   laterInvite,
   leaveRoom,
   listenFriends,
   myRoom,
   openRoom,
   reactInRoom,
+  touchMember,
 } from "@/lib/server/listenRooms";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
@@ -33,12 +36,16 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST friends                  your 触须之交 you may invite
  *   POST open {song, invite?}     a new room of yours, with invitations to the 触须之交 given (their Friend ids)
  *   POST invite {friends}         more invitations to your room
- *   POST join {invite}            in at an invitation to you
+ *   POST join {invite|declaration}   in at an invitation to you, or at a 宣言一起听 you got
  *   POST later {invite}           下次吧
  *   POST leave                    out of your room (the host's ends)
  *   POST end                      the host ends it
  *   POST queue {start|next|restart: true, add: song}   what the host does to its songs
  *   POST react {r}                a 短评, by its number
+ *   POST declare {from?, song?}   宣言一起听 for your room, once (not in one: a room of your own first, song first)
+ *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
+ *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
+ * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as lr:<room>:<number>).
  * While LISTEN keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
  * updated privacy policy is not agreed yet; one whose 互动 is paused (暂停互动) may listen alone, not with others. Any
@@ -60,9 +67,12 @@ const OPS = {
   end: { method: "POST", perMinute: 10 },
   queue: { method: "POST", perMinute: 30 },
   react: { method: "POST", perMinute: 30 },
+  declare: { method: "POST", perMinute: 6 },
+  kick: { method: "POST", perMinute: 20 },
+  touch: { method: "POST", perMinute: 20 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "declare", "touch"]);
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 
@@ -130,6 +140,12 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await changeSongs(user, body));
     case "react":
       return answer(await reactInRoom(user, body));
+    case "declare":
+      return answer(await declareRoom(user, body));
+    case "kick":
+      return answer(await kickMember(user, body));
+    case "touch":
+      return answer(await touchMember(user, body));
     default:
       throw new HttpError(404, T.server.routes.listen.notHere);
   }

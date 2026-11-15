@@ -1,5 +1,5 @@
 import { fmt, T } from "@/i18n";
-import { FOODS, isDrunkTemplate, isStayTemplate, isStudyTemplate, SPOUSES, stayNeeded, type Declaration } from "../declarations";
+import { FOODS, isDrunkTemplate, isStayTemplate, isStudyTemplate, LISTEN_TEMPLATE, SPOUSES, stayNeeded, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
@@ -96,9 +96,18 @@ export function publicProfileOf(p: Profile): PublicProfile {
 /** drunk: the sender's main roach lies drunk, which the drunk lines need */
 /**
  * drunk: their main roach lies drunk now (摄入酒精); stayed: their ink roach has had a room at 缘缘庄; study: sent by
- * 325大学习 (src/lib/server/studySay.ts), the only one that may send its two
+ * 325大学习 (src/lib/server/studySay.ts), the only one that may send its two; listen: sent by 一起听 for a room
+ * (src/lib/server/listenRooms.ts declareRoom), the only one that may send 我在听《…》
  */
-export function checkDeclaration(profile: Profile, d: Declaration, now = Date.now(), drunk = false, stayed = false, study = false): Declaration {
+export function checkDeclaration(
+  profile: Profile,
+  d: Declaration,
+  now = Date.now(),
+  drunk = false,
+  stayed = false,
+  study = false,
+  listen = false,
+): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
     const game = GAMES.find((g) => profile.games.includes(g) && profile.favourites[g].includes(name));
@@ -108,6 +117,7 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
   if (isDrunkTemplate(d?.template) && !drunk) throw new WorldError(T.checks.drunkFirst);
   if (isStayTemplate(d?.template) && !stayed) throw new WorldError(stayNeeded());
   if (isStudyTemplate(d?.template) && !study) throw new WorldError(T.checks.studyOnly);
+  if (d?.template === LISTEN_TEMPLATE && !listen) throw new WorldError(T.checks.listenOnly);
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -148,6 +158,9 @@ export function checkDeclaration(profile: Profile, d: Declaration, now = Date.no
       if (!SPOUSES.includes(d.spouse)) throw new WorldError(T.checks.pickSpouse);
       return { template: "kr168", character, spouse: d.spouse };
     }
+    case "listen":
+      if (typeof d.song === "string" && d.song && typeof d.room === "string") return { template: "listen", song: d.song, room: d.room };
+      break;
     case "event": {
       const found = findLine(String(d.line ?? ""));
       if (!found) break;

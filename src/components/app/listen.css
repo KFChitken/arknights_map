@@ -4,7 +4,7 @@
  */
 
 /* the same height whatever is found, so the search box stays put while typing (as 公告's sheet, globals.css .board) */
-.listen-sheet .sheet { height: 88vh; height: calc(var(--vv-h, 100svh) * 0.88); }
+.listen-sheet .sheet { position: relative; height: 88vh; height: calc(var(--vv-h, 100svh) * 0.88); }
 .listen-sheet .sheet-body { flex: 1; min-height: 0; padding-top: 0; }
 .listen-sheet .sheet-foot { padding-top: 8px; }
 
@@ -89,7 +89,18 @@ div.lp-row { cursor: default; }
   color: var(--ink); font-size: 15px; font-weight: 800;
 }
 .lt-big.ghost { background: #f1f2f4; color: #4b5260; font-weight: 700; }
+/* 发宣言招附近的人: white, outlined, the megaphone before it */
+.lt-big.alt { display: flex; align-items: center; justify-content: center; gap: 6px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--ink); }
+.lt-big.alt svg { flex: none; }
 .lt-big:disabled { opacity: 0.45; }
+/* which of your roaches it goes out from, as the map's 宣言 picks them */
+.lt-from { margin: 6px 0 2px; }
+/* the host's line once it went out */
+.lr-declok {
+  display: flex; align-items: flex-start; gap: 6px; margin: 2px 0 8px; padding: 8px 10px; border-radius: 10px; background: #fff3c2;
+  color: #6f5300; font-size: 12.5px; line-height: 1.45;
+}
+.lr-declok svg { flex: none; margin-top: 2px; }
 /* what the invitations came to */
 .lr-said { margin: 4px 0 10px; padding: 9px 12px; border-radius: 10px; background: #e6f6f6; color: #0b6366; font-size: 13px; line-height: 1.5; }
 
@@ -107,6 +118,8 @@ div.lp-row { cursor: default; }
 .lr-ppl { display: flex; gap: 4px; margin-bottom: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .lr-ppl::-webkit-scrollbar { display: none; }
 .lr-pp { display: flex; flex: none; flex-direction: column; align-items: center; gap: 3px; width: 68px; padding: 4px 0 3px; text-align: center; }
+/* anyone else in it: tapped for their card */
+button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit; }
 .lp-av {
   display: grid; place-items: center; flex: none; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; background: #f1f2f4;
   box-shadow: 0 0 0 2px #d5d8de;
@@ -122,6 +135,10 @@ div.lp-row { cursor: default; }
 .lr-now b { display: block; margin-top: 1px; font-size: 16.5px; line-height: 1.35; }
 .lr-now small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .lr-now .lp-note { margin-bottom: 0; }
+/* a 宣言一起听 you got, before any room: its words, and how its room is now */
+.lr-now.call .lbl { color: #b7791f; }
+.lr-now.call b { font-size: 15px; }
+.lp-note.tight { margin: -2px 0 8px; }
 .lr-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #4b5260; font-size: 12px; font-variant-numeric: tabular-nums; }
 .lr-bar .track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; }
 .lr-bar .fill { display: block; height: 100%; background: #18a0a5; }
@@ -137,6 +154,31 @@ div.lp-row { cursor: default; }
 }
 .lr-chip.room { border-color: #bfe6e7; background: #e6f6f6; color: #0b6366; }
 .lr-chip:disabled { opacity: 0.45; }
+
+/*
+ * the card of someone in it, over the panel (not under what scrolls): who TA is to you, 偷偷碰 and 大胆碰, 拉黑 and
+ * 举报, and the host's 请出去
+ */
+.lr-pback { position: absolute; inset: 0; z-index: 5; padding: 0; border: 0; border-radius: inherit; background: #00000059; cursor: default; }
+.lr-pcard {
+  position: absolute; z-index: 6; top: 50%; left: 14px; right: 14px; padding: 12px 12px 8px; border-radius: 16px; background: #fff;
+  color: var(--ink); box-shadow: 0 12px 32px #0006; line-height: 1.35; transform: translateY(-50%); animation: lr-pop 0.18s ease-out;
+}
+@keyframes lr-pop { from { opacity: 0; transform: translateY(-50%) scale(0.96); } }
+.lr-ph { display: flex; align-items: center; gap: 9px; }
+.lr-pw { flex: 1; min-width: 0; }
+.lr-pw b { display: block; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.lr-pw small { display: block; color: #6b7280; font-size: 12px; }
+.lr-ph .close { align-self: flex-start; padding: 0 2px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; }
+.lr-pb2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.lr-pb2 button { padding: 9px 0; border: 0; border-radius: 10px; background: #f1f2f4; color: var(--ink); font-size: 14px; font-weight: 800; }
+.lr-pb2 button.bold { background: #ffd23f; }
+.lr-pb2 button:disabled { opacity: 0.55; }
+.lr-pnote { margin: 8px 0 0; color: #6b7280; font-size: 12px; line-height: 1.5; }
+.lr-plinks { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.lr-plinks span { display: flex; gap: 14px; }
+.lr-plinks button { padding: 6px 0; border: 0; background: none; color: #6b7280; font-size: 13px; font-weight: 700; }
+.lr-plinks .kick { color: #b23a3a; }
 
 /* whom to invite: ticked one by one */
 .lpk { margin: 4px 0 2px; }
@@ -175,6 +217,9 @@ div.lp-row { cursor: default; }
 .listen-float .lp-scroll { flex: 1; min-height: 0; padding: 0 16px 6px; overflow-y: auto; overscroll-behavior: contain; }
 .listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid #eef0f2; }
 @media (hover: hover) {
-  .lp-row:hover, .lpk-row:hover:not(:disabled) { background: #f7f8f9; }
+  .lp-row:hover, .lpk-row:hover:not(:disabled), button.lr-pp:hover { background: #f7f8f9; }
   div.lp-row:hover { background: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lr-pcard { animation: none; }
 }

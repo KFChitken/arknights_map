@@ -142,9 +142,11 @@ import {
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
 import { musicOn, playMusic, preloadMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
 import {
+  declareRoom,
   heardListen,
   inviteMore,
   joinAt,
+  joinCall,
   laterAt,
   listenPlayerNow,
   listenRoomNow,
@@ -154,9 +156,11 @@ import {
   onListenSaid,
   openRoomWith,
   serverNow,
+  touchMember,
 } from "./app/listening";
-import type { ListenInvite } from "./app/ListenOverlay";
-import type { ListenTab } from "./app/ListenPanel";
+import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
+import type { ListenActs, ListenTab } from "./app/ListenPanel";
+import { CALL_CARD_EVERY_MS } from "@/lib/listen";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
 import { GuideSheet } from "./app/GuideDock";
@@ -438,7 +442,8 @@ type Panel =
   | { kind: "visitConfirm"; friendId: string; roach: PublicRoach }
   | { kind: "visitMove"; friendId: string; roach: PublicRoach }
   | { kind: "radar"; radar: Radar | null }
-  | { kind: "safety"; target: string; who: string | null; back: Panel | null }
+  /** listen: opened from someone's card in 一起听, which it goes back to */
+  | { kind: "safety"; target: string; who: string | null; back: Panel | null; listen?: true }
   /** 举报这只蟑螂, from its card on the map */
   | { kind: "roachReport"; roach: PublicRoach }
   /** confirm: a signed-in player confirming it is them by code, for their password, then back to 我的资料 */
@@ -652,7 +657,9 @@ export default function MapApp({
   // its tab: the songs, unless you are in a room of 一起听
   const [listenTab, setListenTab] = useState<ListenTab>("ark");
   // an invitation to 一起听 that came while the page is open, its card over the map (ask: whether to switch rooms first)
-  const [listenCard, setListenCard] = useState<{ invite: ListenInvite; ask: boolean } | null>(null);
+  const [listenCard, setListenCard] = useState<ListenCard | null>(null);
+  /** When this page last showed a 宣言一起听's card: one every CALL_CARD_EVERY_MS at most, the rest in 消息 alone */
+  const callCardAt = useRef(-Infinity);
   // a visitor's, kept in this browser (src/lib/study/guest.ts): the day last drawn for and whether it was played
   const [guestStudied, setGuestStudied] = useState<{ day: string; done: boolean } | null>(null);
   useEffect(() => {
@@ -1472,9 +1479,9 @@ export default function MapApp({
   }, [loadRoaches]);
 
   // While the page is open, the server says when something new arrives: show it unless the player is busy
-  const busyRef = useRef<{ panel: Panel | null; placing: boolean }>({ panel: null, placing: false });
+  const busyRef = useRef<{ panel: Panel | null; placing: boolean; card: boolean }>({ panel: null, placing: false, card: false });
   useEffect(() => {
-    busyRef.current = { panel, placing: Boolean(placing) };
+    busyRef.current = { ...busyRef.current, panel, placing: Boolean(placing) };
   }, [panel, placing]);
 
   const showNew = useCallback(async (onlyDeclarations = false) => {
@@ -1486,15 +1493,26 @@ export default function MapApp({
     if (!fresh.length || fresh.some((i) => i.kind !== "declaration")) await Promise.all([loadFriends(), loadMe()]);
     if (demoRef.current) await loadIdentities();
     if (!items.some((i) => !i.seen)) return;
-    const { panel: open, placing: busy } = busyRef.current;
+    const { panel: open, placing: busy, card: cardOpen } = busyRef.current;
     // an invitation to 一起听: the newest still good comes up as a card over the map (after a roach's card, if one is open)
     const invite = fresh
       .filter((i): i is ListenInvite => i.kind === "listenInvite" && i.state === "open")
       .reduce<ListenInvite | null>((a, i) => (!a || i.at > a.at ? i : a), null);
-    if (invite) setListenCard({ invite, ask: false });
-    // only declarations (or invitations) came: they float down over the dock, and 消息 stays shut
+    if (invite) setListenCard({ kind: "invite", invite, ask: false });
+    // a 宣言一起听 open to go in at: its card, one every CALL_CARD_EVERY_MS at most, never over an invitation, while in a
+    // room, or while a roach's card is open (only in 消息 then)
+    const call = fresh
+      .filter((i): i is ListenCallItem => i.kind === "declaration" && i.listen?.state === "open")
+      .reduce<ListenCallItem | null>((a, i) => (!a || i.at > a.at ? i : a), null);
+    const callCard = Boolean(call && !invite && !cardOpen && !listenRoomNow() && Date.now() - callCardAt.current >= CALL_CARD_EVERY_MS);
+    if (call && callCard) {
+      callCardAt.current = Date.now();
+      setListenCard((c) => (c?.kind === "invite" ? c : { kind: "call", call, ask: false }));
+    }
+    // only declarations (or invitations) came: they float down over the dock, and 消息 stays shut; a 宣言一起听 never
+    // floats (on its card, or only in 消息), for a whole neighbourhood calling at once not to fill the screen
     if (fresh.length && fresh.every((i) => i.kind === "declaration" || i.kind === "listenInvite") && open?.kind !== "inbox") {
-      hearRef.current(fresh);
+      hearRef.current(fresh.filter((i) => !(i.kind === "declaration" && i.listen)));
       return;
     }
     // a touch: your dock avatar reacts first (never pointing anywhere, never saying which roach)
@@ -1764,10 +1782,11 @@ export default function MapApp({
   useEffect(() => {
     if (inListenRoom && !listenRoomNow()) void loadRoom();
   }, [inListenRoom]);
-  // an invitation's card goes when the invitation runs out
+  // an invitation's card goes when the invitation runs out; a 宣言一起听's after as long as the next may take to come
   useEffect(() => {
     if (!listenCard) return;
-    const t = window.setTimeout(() => setListenCard(null), Math.max(0, listenCard.invite.until - serverNow()));
+    const wait = listenCard.kind === "invite" ? listenCard.invite.until - serverNow() : CALL_CARD_EVERY_MS;
+    const t = window.setTimeout(() => setListenCard(null), Math.max(0, wait));
     return () => window.clearTimeout(t);
   }, [listenCard]);
 
@@ -2301,7 +2320,7 @@ export default function MapApp({
   /** In at an invitation (its item id in 消息, li:…), from its card or 消息; within the tap, as it may start a song */
   const joinInvite = async (itemId: string) => {
     const ok = await joinAt(itemId.replace(/^li:/, ""));
-    setListenCard((c) => (c?.invite.id === itemId ? null : c));
+    setListenCard((c) => (c?.kind === "invite" && c.invite.id === itemId ? null : c));
     if (ok) {
       showListenRoom();
       await worldRef.current!.markSeen([itemId]).catch(() => {});
@@ -2311,10 +2330,54 @@ export default function MapApp({
   /** 下次吧: the host sees 没来, as when it runs out */
   const laterInvite = async (itemId: string) => {
     if (!(await laterAt(itemId.replace(/^li:/, "")))) return;
-    setListenCard((c) => (c?.invite.id === itemId ? null : c));
+    setListenCard((c) => (c?.kind === "invite" && c.invite.id === itemId ? null : c));
     await worldRef.current!.markSeen([itemId]).catch(() => {});
     await refreshInbox().catch(() => {});
   };
+  /** In at a 宣言一起听 (its item id in 消息, d:…), from its card, 消息 or 一起听; within the tap, as it may start a song */
+  const joinCallAt = async (itemId: string) => {
+    const ok = await joinCall(itemId.replace(/^d:/, ""));
+    setListenCard((c) => (c?.kind === "call" && c.call.id === itemId ? null : c));
+    if (ok) {
+      showListenRoom();
+      await worldRef.current!.markSeen([itemId]).catch(() => {});
+    }
+    await refreshInbox().catch(() => {});
+  };
+  /** 不了: its card goes, and it is read */
+  const skipCall = async (call: ListenCallItem) => {
+    setListenCard((c) => (c?.kind === "call" && c.call.id === call.id ? null : c));
+    await worldRef.current!.markSeen([call.id]).catch(() => {});
+    await refreshInbox().catch(() => {});
+  };
+  /** 发宣言招附近的人 from 一起听, from these roaches (null: your main one): its card says what it reached */
+  const declareListen = async (from: string[] | null) => {
+    const res = await declareRoom(from, listenRoomNow() ? null : (listenPlayerNow().track?.id ?? null));
+    if (!res) return false;
+    passesDotAfter(res);
+    setToast(fmt(T.map.declare.sent, { reach: res.reach }));
+    // a 宣言 badge it reached
+    await loadMe().catch(() => {});
+    return true;
+  };
+  /** 偷偷碰 or 大胆碰 someone in the room you are in, by their number there: as a touch on the map, without its scene */
+  const touchInRoom = async (h: number, bold: boolean) => {
+    const res = await touchMember(h, bold);
+    if (!res) return;
+    passesDotAfter(res);
+    touchesUsed(res);
+    if (res.newFriend) {
+      befriendedToast(res.newFriend);
+      await Promise.all([loadFriends(), loadInbox()]).catch(() => {});
+    } else touchedToast(bold);
+    if (me?.isNew) await loadMe();
+  };
+  /** 拉黑 or 举报 someone in the room, from their card: 听歌's panel goes meanwhile, and comes back after */
+  const safetyInRoom = (target: string, who: string | null) => {
+    setListenOpen(false);
+    setPanel({ kind: "safety", target, who, back: null, listen: true });
+  };
+
   /**
    * 邀请一起听 on a 触须之交's card or page: a room of your own with TA alone invited, its first song the one you play
    * (or 新歌's first), shown on 一起听; your room already, TA invited to it; someone else's, a line to leave it first.
@@ -2574,13 +2637,23 @@ export default function MapApp({
       // in a room already: its card on the map asks first whether to switch
       if (invite && listenRoomNow()) {
         setPanel(null);
-        setListenCard({ invite, ask: true });
+        setListenCard({ kind: "invite", invite, ask: true });
         return;
       }
       await joinInvite(itemId);
     },
     listenLater: laterInvite,
     listenShow: showListenRoom,
+    listenCall: async (itemId) => {
+      const call = inbox.find((i): i is ListenCallItem => i.id === itemId && i.kind === "declaration" && Boolean(i.listen));
+      // in a room already: its card on the map asks first whether to switch
+      if (call && listenRoomNow()) {
+        setPanel(null);
+        setListenCard({ kind: "call", call, ask: true });
+        return;
+      }
+      await joinCallAt(itemId);
+    },
   };
 
   /** Their games on their page: 复制, 我在游戏里申请了, 想在游戏里加 TA, 游戏里也是好友 */
@@ -2886,9 +2959,10 @@ export default function MapApp({
     await openInbox(false, "friends");
   };
 
-  // After blocking, land back in the inbox, where their messages are now gone
+  // After blocking, land back in the inbox, where their messages are now gone; or in 一起听, which it was opened from
   const afterBlock = async (p: Extract<Panel, { kind: "safety" }>) => {
     await loadFriends();
+    if (p.listen) return showListenRoom();
     await openInbox(false, p.back?.kind === "inbox" ? p.back.tab : "friends");
   };
 
@@ -3382,6 +3456,10 @@ export default function MapApp({
     }
   });
   const picking = Boolean(stack?.open && stackList.length);
+  // a roach's card or their list open: a 宣言一起听 that comes now goes only to 消息, not on a card
+  useEffect(() => {
+    busyRef.current = { ...busyRef.current, card: Boolean(selected || picking) };
+  }, [selected, picking]);
   // Their list open, or open again: the map slides up if it must, for the list not to hide them (where the finger
   // was, or the guide's picture they lie under), as 祀 stands above her card
   const pickingAt = picking ? stack?.at : undefined;
@@ -4711,7 +4789,7 @@ export default function MapApp({
             who={p.who}
             onBlock={() => blockSender(p)}
             onReport={(reason, note) => reportSender(p, reason, note)}
-            onBack={p.back ? () => setPanel(p.back) : undefined}
+            onBack={p.listen ? showListenRoom : p.back ? () => setPanel(p.back) : undefined}
             onClose={() => setPanel(null)}
           />
         );
@@ -4927,6 +5005,22 @@ export default function MapApp({
   const openInvite = inbox
     .filter((i): i is ListenInvite => i.kind === "listenInvite" && i.state === "open")
     .reduce<ListenInvite | null>((a, i) => (!a || i.at > a.at ? i : a), null);
+  // and the newest 宣言一起听 still open to go in at
+  const openCall = inbox
+    .filter((i): i is ListenCallItem => i.kind === "declaration" && i.listen?.state === "open")
+    .reduce<ListenCallItem | null>((a, i) => (!a || i.at > a.at ? i : a), null);
+  const listenActs: ListenActs = {
+    invite: openInvite,
+    call: openCall,
+    onJoin: (i) => void joinInvite(i.id),
+    onLater: (i) => void laterInvite(i.id),
+    onJoinCall: (c) => void joinCallAt(c.id),
+    roaches: me?.roaches ?? [],
+    ink: inkOut,
+    onDeclare: declareListen,
+    onTouch: touchInRoom,
+    onSafety: safetyInRoom,
+  };
   const chrome: ChromeProps = {
     placing: Boolean(placing),
     reported: Boolean(reported),
@@ -5517,9 +5611,7 @@ export default function MapApp({
           mode={me.listen.mode}
           tab={listenTab}
           onTab={setListenTab}
-          invite={openInvite}
-          onJoin={(i) => void joinInvite(i.id)}
-          onLater={(i) => void laterInvite(i.id)}
+          acts={listenActs}
           onClose={closeListen}
         />
       )}
@@ -5528,11 +5620,12 @@ export default function MapApp({
         <ListenOverlay
           panelOpen={listenOpen}
           cardOpen={Boolean(selected || picking || placing)}
-          invite={listenCard?.invite ?? null}
-          ask={listenCard?.ask ?? false}
+          card={listenCard}
           onOpen={showListenRoom}
           onJoin={(i) => void joinInvite(i.id)}
           onLater={(i) => void laterInvite(i.id)}
+          onJoinCall={(c) => void joinCallAt(c.id)}
+          onSkipCall={(c) => void skipCall(c)}
           onDismiss={() => setListenCard(null)}
         />
       )}

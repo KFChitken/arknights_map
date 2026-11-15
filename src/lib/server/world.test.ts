@@ -2053,10 +2053,12 @@ describe("server world", () => {
       simine: { template: "simine" },
       kuye: { template: "kuye" },
       studied: { template: "studied" },
+      // sent from a room of 一起听, as src/app/api/listen/[op]/declare.test.ts does
+      listen: { template: "listen", song: "Song 1", room: "00000000-0000-0000-0000-000000000000" },
     };
     const sendable = [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES];
-    // the sheet's lists hold every sentence but the limited lines, 「…也玩…」 of before and 325大学习's two
-    expect([...sendable, ...STUDY_TEMPLATES, "event", "alsoplay"].sort()).toEqual(Object.keys(EVERY).sort());
+    // the sheet's lists hold every sentence but the limited lines, 「…也玩…」 of before, 325大学习's two and 一起听's
+    expect([...sendable, ...STUDY_TEMPLATES, "event", "alsoplay", "listen"].sort()).toEqual(Object.keys(EVERY).sort());
     await me.saveProfile({
       ...EMPTY_PROFILE,
       anonymous: false,
@@ -2096,6 +2098,8 @@ describe("server world", () => {
     } finally {
       lines.forEach((l, i) => Object.assign(l, saved[i]));
     }
+    // 一起听's only from its panel, for a room
+    await expect(me.declare(EVERY.listen)).rejects.toThrow("这句只能在听歌的「一起听」里发。");
 
     // every food is kept and read back as itself, the three added last too, never as the first
     for (const food of FOODS) {

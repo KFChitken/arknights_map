@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { fmt, T } from "@/i18n";
-import { RX_ROWS } from "@/lib/listen";
+import { fmt, fmtParts, T } from "@/i18n";
+import { RX_ROWS, type ListenCall } from "@/lib/listen";
+import { DECLARATION_RADIUS_KM } from "@/lib/rules";
 import type { InboxItem } from "@/lib/world/types";
-import { listenLabel, NoteIcon, useListenEntry } from "./chrome/parts";
-import { listenRoomNow, sendRx, useListenBubbles, useListenRoom, useListenRx, type ListenBubble } from "./listening";
+import { listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
+import { callLine, listenRoomNow, sendRx, useListenBubbles, useListenRoom, useListenRx, type ListenBubble } from "./listening";
 import "./listenMap.css";
 
 /** An invitation to 一起听, as 消息 has it */
 export type ListenInvite = Extract<InboxItem, { kind: "listenInvite" }>;
+/** A 宣言一起听 you got, as 消息 has it: the declaration, with its room as it is now */
+export type ListenCallItem = Extract<InboxItem, { kind: "declaration" }> & { listen: ListenCall };
+/** The card over the map: an invitation that came, or a 宣言一起听; ask: it asks at once whether to switch rooms */
+export type ListenCard = { kind: "invite"; invite: ListenInvite; ask: boolean } | { kind: "call"; call: ListenCallItem; ask: boolean };
 
 /**
- * 一起听 over the map (MapApp.tsx): the card of an invitation that came while the page is open, the 短评 floating by
- * 听歌's entry (over its panel while that is open), and the small bubble beside the entry that pops the row of 短评 up
+ * 一起听 over the map (MapApp.tsx): the card of an invitation or a 宣言一起听 that came while the page is open, the 短评
+ * floating by 听歌's entry (over its panel while that is open), and the small bubble beside the entry that pops the row of 短评 up
  * over the layout's bottom bar. Placed by what each layout marks (data-listen-anchor on 听歌's entry, data-chrome-bottom
  * on its bottom bar), so the same in all three; where the entry is out of sight (抽屉's tabs make room for the
  * tutorial, a side is folded away), the bubble stands in for it under the top and opens 一起听 instead. None of it
@@ -22,29 +27,33 @@ export type ListenInvite = Extract<InboxItem, { kind: "listenInvite" }>;
 export default function ListenOverlay({
   panelOpen,
   cardOpen,
-  invite,
-  ask,
+  card,
   onOpen,
   onJoin,
   onLater,
+  onJoinCall,
+  onSkipCall,
   onDismiss,
 }: {
   panelOpen: boolean;
   /** A roach's card is open: nothing floats over it */
   cardOpen: boolean;
-  invite: ListenInvite | null;
-  /** Its card asks at once whether to switch rooms (一起听 was tapped in 消息 while in one) */
-  ask: boolean;
+  /** The card of an invitation or a 宣言一起听 (asking at once whether to switch rooms, when tapped in 消息 while in one) */
+  card: ListenCard | null;
   /** 听歌's panel at 一起听, from the bubble where the entry is out of sight */
   onOpen: () => void;
   /** Within the tap (it may start a song) */
   onJoin: (invite: ListenInvite) => void;
   onLater: (invite: ListenInvite) => void;
+  onJoinCall: (call: ListenCallItem) => void;
+  /** 不了 */
+  onSkipCall: (call: ListenCallItem) => void;
+  /** 先不换, or the card gone otherwise */
   onDismiss: () => void;
 }) {
   const room = useListenRoom();
-  const showInvite = Boolean(invite) && !cardOpen;
-  const spot = useSpot(Boolean(room) || showInvite);
+  const showCard = Boolean(card) && !cardOpen;
+  const spot = useSpot(Boolean(room) || showCard);
   const [strip, setStrip] = useState(false);
   const stripRef = useRef<HTMLDivElement>(null);
   const [stripH, setStripH] = useState(0);
@@ -89,14 +98,25 @@ export default function ListenOverlay({
           <Strip />
         </div>
       )}
-      {showInvite && invite && !stripOn && (
+      {showCard && card?.kind === "invite" && !stripOn && (
         <InviteCard
-          key={`${invite.id}${ask ? ":ask" : ""}`}
-          invite={invite}
-          ask={ask}
+          key={`${card.invite.id}${card.ask ? ":ask" : ""}`}
+          invite={card.invite}
+          ask={card.ask}
           bottom={above}
           onJoin={onJoin}
           onLater={onLater}
+          onDismiss={onDismiss}
+        />
+      )}
+      {showCard && card?.kind === "call" && !stripOn && (
+        <CallCard
+          key={`${card.call.id}${card.ask ? ":ask" : ""}`}
+          call={card.call}
+          ask={card.ask}
+          bottom={above}
+          onJoin={onJoinCall}
+          onSkip={onSkipCall}
           onDismiss={onDismiss}
         />
       )}
@@ -213,6 +233,62 @@ function InviteCard({
             </button>
             <button className="dec" onClick={() => onLater(invite)}>
               {T.listen.later}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A 宣言一起听 that came: 进去听 goes in, without the host's say (asked first, when you are in a room already); 不了 lets
+ * it be, read. Who sent it is not said, as of any declaration sent nearby.
+ */
+function CallCard({
+  call,
+  ask,
+  bottom,
+  onJoin,
+  onSkip,
+  onDismiss,
+}: {
+  call: ListenCallItem;
+  ask: boolean;
+  bottom: number;
+  onJoin: (call: ListenCallItem) => void;
+  onSkip: (call: ListenCallItem) => void;
+  onDismiss: () => void;
+}) {
+  const [asking, setAsking] = useState(ask);
+  return (
+    <div className="lm-invite call" role="alert" style={{ bottom }}>
+      <div className="lm-ih">
+        <MegaphoneIcon size={18} />
+        <span>{fmt(T.inbox.declared.near, { km: DECLARATION_RADIUS_KM })}</span>
+      </div>
+      <span className="lm-dq">{fmtParts(T.common.quoted, { text: call.text })}</span>
+      {asking ? (
+        <>
+          <small>{T.listen.switchAsk}</small>
+          <div className="lm-ib">
+            <button className="acc" onClick={() => onJoin(call)}>
+              {T.listen.switchYes}
+            </button>
+            <button className="dec" onClick={onDismiss}>
+              {T.listen.switchNo}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <small>{callLine(call.listen)}</small>
+          <div className="lm-ib">
+            <button className="acc" onClick={() => (listenRoomNow() ? setAsking(true) : onJoin(call))}>
+              {T.listen.call.join}
+            </button>
+            <button className="dec" onClick={() => onSkip(call)}>
+              {T.listen.call.skip}
             </button>
           </div>
         </>

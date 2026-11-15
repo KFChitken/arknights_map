@@ -235,6 +235,27 @@ export function StudyIcon({ size = 24, dot = false }: { size?: number; dot?: boo
   );
 }
 
+/** 宣言一起听's megaphone, drawn as 公告's (NoticeBoard.tsx) */
+export function MegaphoneIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 10.2v3.6c0 .8.6 1.4 1.4 1.4H7l8.5 4.3V4.5L7 8.8H4.9c-.8 0-1.4.6-1.4 1.4z" />
+      <path d="M8.2 15.3l1.2 4.2h2.3l-.9-3.3" />
+      <path d="M18.6 9.3a3.6 3.6 0 0 1 0 5.4" />
+    </svg>
+  );
+}
+
 /** 听歌's note */
 export function NoteIcon({ size = 24 }: { size?: number }) {
   return (

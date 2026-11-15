@@ -2,7 +2,8 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { InviteSent, ListenCatalog, ListenFriend, ListenPlay, ListenRoom, QueueChange } from "./listen";
-import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
+import type { PassesDot } from "./passes";
+import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
  * The browser's side of 听歌 and 一起听 (src/app/api/listen/[op]) for a signed-in player: refusals become the errors the
@@ -55,6 +56,18 @@ export const listenApi = {
   invite: (friends: string[]) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("invite", post({ friends })),
   /** In at an invitation to you */
   join: (invite: string) => call<{ room: ListenRoom; now: number }>("join", post({ invite })),
+  /** In at a 宣言一起听 you got (the declaration's id) */
+  joinCall: (declaration: string) => call<{ room: ListenRoom; now: number }>("join", post({ declaration })),
+  /**
+   * 宣言一起听 for your room, from these roaches (none: your main one); not in a room, one of your own first, with this
+   * song first (null: 新歌's first). reach: as roughly as any declaration says how many it reached
+   */
+  declare: (from: string[] | null, song: string | null) =>
+    call<{ room: ListenRoom | null; reach: string; now: number } & PassesDot>("declare", post({ ...(from ? { from } : {}), song })),
+  /** The host asks someone in the room to leave it, by their number there */
+  kick: (h: number) => call<{ room: ListenRoom | null; now: number }>("kick", post({ h })),
+  /** 偷偷碰 or 大胆碰 someone in the room, by their number there: as a touch on the map answers */
+  touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** 下次吧 */
   later: (invite: string) => call<{ now: number }>("later", post({ invite })),
   /** Out of your room (the host's ends) */

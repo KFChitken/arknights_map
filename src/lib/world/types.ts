@@ -8,7 +8,7 @@ import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { GiftState, PassesDot, PassesMe } from "../passes";
-import type { ListenMe } from "../listen";
+import type { ListenCall, ListenMe } from "../listen";
 import type { StudyMe } from "../study/rules";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
@@ -625,6 +625,8 @@ export type InboxItem =
       from?: PublicProfile;
       friendId?: string;
       waits?: TouchBackWaits;
+      /** 宣言一起听 (template listen): its room as it is now, to go in at (src/lib/server/listenRooms.ts listenCalls) */
+      listen?: ListenCall;
     }
   /** Someone nearby reacted to your declaration; they stay anonymous, unless a 触须之交 reacting to your birthday */
   | {

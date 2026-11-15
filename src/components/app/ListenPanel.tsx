@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { fmt, localPath, T } from "@/i18n";
+import { fmt, fmtParts, localPath, T } from "@/i18n";
 import {
   clock,
   INVITES_PER_DAY,
@@ -14,13 +14,20 @@ import {
   type ListenFriend,
   type ListenRoom,
   type ListenTrack,
+  type RoomMember,
 } from "@/lib/listen";
+import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
+import { INK_FROM } from "@/lib/si";
+import { siteDay } from "@/lib/siteDay";
+import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
-import { useWide } from "./chrome/parts";
-import type { ListenInvite } from "./ListenOverlay";
+import { MegaphoneIcon, useWide } from "./chrome/parts";
+import type { ListenCallItem, ListenInvite } from "./ListenOverlay";
 import {
+  callLine,
   hostQueue,
   inviteMore,
+  kickMember,
   leaveListen,
   listenFriendsList,
   loadSongs,
@@ -37,6 +44,7 @@ import {
   useListenRx,
   useListenSecond,
   useListenSongs,
+  useListenTouched,
   type ListenPlayer,
   type ListenSongs,
 } from "./listening";
@@ -46,12 +54,32 @@ import "./listen.css";
 /** The panel's two tabs: 一起听, and the songs (方舟) */
 export type ListenTab = "together" | "ark";
 
+/** What 一起听 does beyond the songs, and what it needs for it, from the map page (MapApp.tsx) */
+export type ListenActs = {
+  /** An invitation to you still to answer, and the newest 宣言一起听 you got still open (their cards on the map have them too) */
+  invite: ListenInvite | null;
+  call: ListenCallItem | null;
+  /** Within the tap (it may start a song) */
+  onJoin: (invite: ListenInvite) => void;
+  onLater: (invite: ListenInvite) => void;
+  onJoinCall: (call: ListenCallItem) => void;
+  /** Your roaches, and whether 墨小强 is out at 缘缘庄: what a 宣言一起听 may go out from */
+  roaches: OwnRoach[];
+  ink: boolean;
+  /** 发宣言招附近的人 from these (null: your main roach), within the tap: whether it went */
+  onDeclare: (from: string[] | null) => Promise<boolean>;
+  /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
+  onTouch: (h: number, bold: boolean) => Promise<void>;
+  /** 拉黑 or 举报 someone in the room (lr:<room>:<number>), by name when their card is open */
+  onSafety: (target: string, who: string | null) => void;
+};
+
 /**
- * 听歌's panel: its two tabs, the player along its top, and under it either 一起听 (inviting 触须之交, the room you are
- * in, its 短评) or the songs: 新歌, then album by album in the order of the Monster Siren Records site, with a search
- * over the songs' and albums' names. On a phone a sheet from the bottom; on a computer a panel at the left, over the
- * map but clear of its middle, which can be looked round meanwhile. Songs go on playing with it closed
- * (src/components/app/listening.ts).
+ * 听歌's panel: its two tabs, the player along its top, and under it either 一起听 (inviting 触须之交, calling those
+ * nearby, the room you are in, its 短评, and the card of anyone in it) or the songs: 新歌, then album by album in the
+ * order of the Monster Siren Records site, with a search over the songs' and albums' names. On a phone a sheet from
+ * the bottom; on a computer a panel at the left, over the map but clear of its middle, which can be looked round
+ * meanwhile. Songs go on playing with it closed (src/components/app/listening.ts).
  */
 export default function ListenPanel({
   paused,
@@ -59,9 +87,7 @@ export default function ListenPanel({
   mode,
   tab,
   onTab,
-  invite,
-  onJoin,
-  onLater,
+  acts,
   onClose,
 }: {
   /** The 站长 paused 听歌 for now */
@@ -71,11 +97,7 @@ export default function ListenPanel({
   mode: "admins" | "on";
   tab: ListenTab;
   onTab: (tab: ListenTab) => void;
-  /** An invitation to you still to answer (the card on the map has it too) */
-  invite: ListenInvite | null;
-  /** Within the tap (it may start a song) */
-  onJoin: (invite: ListenInvite) => void;
-  onLater: (invite: ListenInvite) => void;
+  acts: ListenActs;
   onClose: () => void;
 }) {
   const wide = useWide();
@@ -84,9 +106,7 @@ export default function ListenPanel({
     markIntro("opened");
   }, []);
   const foot = <p className="lp-foot">{T.listen.copyright}</p>;
-  const body = (
-    <ListenBody paused={paused} roomMax={roomMax} mode={mode} tab={tab} onTab={onTab} invite={invite} onJoin={onJoin} onLater={onLater} />
-  );
+  const body = <ListenBody paused={paused} roomMax={roomMax} mode={mode} tab={tab} onTab={onTab} acts={acts} />;
   if (!wide) {
     return (
       <Sheet title={T.listen.title} className="listen-sheet" onClose={onClose} footer={foot}>
@@ -106,7 +126,7 @@ export default function ListenPanel({
 function FloatPanel({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector(".sheet-backdrop")) onClose();
+      if (e.key === "Escape" && !document.querySelector(".sheet-backdrop, .lr-pcard")) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -130,12 +150,10 @@ type BodyProps = {
   mode: "admins" | "on";
   tab: ListenTab;
   onTab: (tab: ListenTab) => void;
-  invite: ListenInvite | null;
-  onJoin: (invite: ListenInvite) => void;
-  onLater: (invite: ListenInvite) => void;
+  acts: ListenActs;
 };
 
-function ListenBody({ paused, roomMax, mode, tab, onTab, invite, onJoin, onLater }: BodyProps) {
+function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
   const list = useListenSongs();
   const intro = useListenIntro();
   const room = useListenRoom();
@@ -173,7 +191,7 @@ function ListenBody({ paused, roomMax, mode, tab, onTab, invite, onJoin, onLater
         )}
       </div>
       {tab === "together" ? (
-        <Together paused={paused} roomMax={roomMax} mode={mode} invite={invite} onJoin={onJoin} onLater={onLater} onTab={onTab} />
+        <Together paused={paused} roomMax={roomMax} mode={mode} acts={acts} onTab={onTab} />
       ) : list.state === "ok" ? (
         list.tracks.size > 0 ? (
           <>
@@ -289,19 +307,12 @@ function sentWords(sent: InviteSent[]): string {
   return fmt(T.listen.sentSome, { n: bad.length, why: bad[0].why ?? T.map.common.tryAgain });
 }
 
-/** 一起听's tab: the room you are in, or the way to open one (and an invitation to you, while it is good) */
-function Together({
-  paused,
-  roomMax,
-  mode,
-  invite,
-  onJoin,
-  onLater,
-  onTab,
-}: Omit<BodyProps, "tab">) {
+/** 一起听's tab: the room you are in, or the ways to open one (and an invitation or a 宣言一起听 to you, while good) */
+function Together({ paused, roomMax, mode, acts, onTab }: Omit<BodyProps, "tab">) {
   const room = useListenRoom();
   const over = useListenRoomEnd();
-  const [picking, setPicking] = useState(false);
+  const [view, setView] = useState<"main" | "invite" | "declare">("main");
+  const [declaring, setDeclaring] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
     if (!note) return;
@@ -309,11 +320,37 @@ function Together({
     return () => window.clearTimeout(t);
   }, [note]);
   const done = (said: string | null) => {
-    setPicking(false);
+    setView("main");
     if (said) setNote(said);
   };
-  if (picking && (!room || room.host)) return <Picker room={room} roomMax={roomMax} mode={mode} onDone={done} />;
-  if (room) return <RoomView room={room} note={note} onInvite={() => setPicking(true)} onPick={() => onTab("ark")} />;
+  // from your main roach at once, unless there are others to pick from
+  const many = acts.roaches.some((r) => r.slot > 0) || acts.ink;
+  const declare = async (from: string[] | null) => {
+    if (declaring) return;
+    setDeclaring(true);
+    const went = await acts.onDeclare(from);
+    setDeclaring(false);
+    if (went) setView("main");
+  };
+  const onDeclare = () => (many ? setView("declare") : void declare(null));
+  const { invite, call } = acts;
+  if (view === "invite" && (!room || room.host)) return <Picker room={room} roomMax={roomMax} mode={mode} onDone={done} />;
+  if (view === "declare" && (!room || (room.host && !room.declared))) {
+    return <DeclareFrom roaches={acts.roaches} ink={acts.ink} busy={declaring} onSend={(from) => void declare(from)} onCancel={() => setView("main")} />;
+  }
+  if (room) {
+    return (
+      <RoomView
+        room={room}
+        note={note}
+        acts={acts}
+        declaring={declaring}
+        onInvite={() => setView("invite")}
+        onPick={() => onTab("ark")}
+        onDeclare={onDeclare}
+      />
+    );
+  }
   return (
     <div className="lt">
       {invite && (
@@ -321,21 +358,77 @@ function Together({
           <span className="lbl">{fmt(T.listen.invitedYou, { name: invite.from.displayName })}</span>
           <b>{invite.song}</b>
           <small>{fmt(T.listen.inviteFor, { n: invite.n })}</small>
-          <button className="lt-big" onClick={() => onJoin(invite)}>
+          <button className="lt-big" onClick={() => acts.onJoin(invite)}>
             {T.listen.join}
           </button>
-          <button className="lt-big ghost" onClick={() => onLater(invite)}>
+          <button className="lt-big ghost" onClick={() => acts.onLater(invite)}>
             {T.listen.later}
+          </button>
+        </div>
+      )}
+      {!invite && call && (
+        <div className="lr-now call">
+          <span className="lbl">{T.listen.call.label}</span>
+          <b>{fmtParts(T.common.quoted, { text: call.text })}</b>
+          <small>{callLine(call.listen)}</small>
+          <button className="lt-big" onClick={() => acts.onJoinCall(call)}>
+            {T.listen.call.join}
           </button>
         </div>
       )}
       {note && <p className="lr-said">{note}</p>}
       <p className="lp-note left">{T.listen.togetherIntro}</p>
-      <button className="lt-big" disabled={paused} onClick={() => setPicking(true)}>
+      <button className="lt-big" disabled={paused} onClick={() => setView("invite")}>
         {T.listen.inviteFriends}
       </button>
-      <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, n: INVITES_PER_DAY })}</p>
-      {!invite && <p className="lp-note left small">{over ?? T.listen.noOne}</p>}
+      <button className="lt-big alt" disabled={paused || declaring} onClick={onDeclare}>
+        <MegaphoneIcon size={16} />
+        {T.listen.declare}
+      </button>
+      <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, n: INVITES_PER_DAY, d: DECLARATIONS_PER_DAY })}</p>
+      {!invite && !call && <p className="lp-note left small">{over ?? T.listen.noOne}</p>}
+    </div>
+  );
+}
+
+/** Which of your roaches a 宣言一起听 goes out from: your main one picked to begin with, as the map's declarations */
+function DeclareFrom({
+  roaches,
+  ink,
+  busy,
+  onSend,
+  onCancel,
+}: {
+  roaches: OwnRoach[];
+  ink: boolean;
+  busy: boolean;
+  onSend: (from: string[]) => void;
+  onCancel: () => void;
+}) {
+  const main = roaches.find((r) => r.slot === 0);
+  const clones = roaches.filter((r) => r.slot > 0);
+  const [from, setFrom] = useState<string[]>(() => (main ? [main.id] : []));
+  const toggle = (id: string) => setFrom((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+  const chip = (id: string, label: ReactNode) => (
+    <button key={id} className={`chip ${from.includes(id) ? "on" : ""}`} aria-pressed={from.includes(id)} onClick={() => toggle(id)}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="lt">
+      <p className="lp-note left">{fmt(T.listen.declareFrom, { km: DECLARATION_RADIUS_KM })}</p>
+      <div className="chips lt-from" role="group" aria-label={T.declare.from}>
+        {main && chip(main.id, T.common.main)}
+        {clones.map((c, i) => chip(c.id, fmtParts(T.common.cloneN, { n: i + 1 })))}
+        {ink && chip(INK_FROM, T.common.ink)}
+      </div>
+      <button className="lt-big" disabled={!from.length || busy} onClick={() => onSend(from)}>
+        {T.listen.declareSend}
+      </button>
+      <button className="lt-big ghost" disabled={busy} onClick={onCancel}>
+        {T.listen.declareNot}
+      </button>
+      <p className="lp-note left small">{fmt(T.listen.declareNote, { d: DECLARATIONS_PER_DAY })}</p>
     </div>
   );
 }
@@ -421,17 +514,39 @@ function Picker({
       <button className="lt-big ghost" disabled={busy} onClick={() => onDone(null)}>
         {T.listen.notNow}
       </button>
-      {!room && <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, n: INVITES_PER_DAY })}</p>}
+      {!room && <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, n: INVITES_PER_DAY, d: DECLARATIONS_PER_DAY })}</p>}
     </div>
   );
 }
 
-/** The room you are in: who is in it, what plays, the host's buttons, what comes next, and the 短评 */
-function RoomView({ room, note, onInvite, onPick }: { room: ListenRoom; note: string | null; onInvite: () => void; onPick: () => void }) {
+/**
+ * The room you are in: who is in it (each to tap for their card), what plays, the host's buttons (宣言一起听 once), what
+ * comes next, and the 短评
+ */
+function RoomView({
+  room,
+  note,
+  acts,
+  declaring,
+  onInvite,
+  onPick,
+  onDeclare,
+}: {
+  room: ListenRoom;
+  note: string | null;
+  acts: ListenActs;
+  declaring: boolean;
+  onInvite: () => void;
+  onPick: () => void;
+  onDeclare: () => void;
+}) {
   const list = useListenSongs();
   const v = useListenPlayer();
   const second = useListenSecond();
   const [busy, setBusy] = useState(false);
+  // the card of someone in it: gone with them (one hidden from you by blocking is not in your list)
+  const [who, setWho] = useState<number | null>(null);
+  const person = who === null ? null : (room.members.find((m) => m.h === who && m.h !== room.you) ?? null);
   const all = list.state === "ok" ? list.tracks : null;
   const at = all ? roomPlace(room) : null;
   const n = room.members.filter((m) => m.state === "in").length;
@@ -462,15 +577,25 @@ function RoomView({ room, note, onInvite, onPick }: { room: ListenRoom; note: st
         </button>
       </div>
       <div className="lr-ppl">
-        {room.members.map((m) => (
-          <span key={`m${m.h}`} className={`lr-pp ${m.state}`} title={m.card.displayName}>
-            <span className="lp-av">
-              <RoachIcon color={m.card.color} size={30} avatar={m.card.avatar} friend={m.friend} />
+        {room.members.map((m) =>
+          m.h === room.you ? (
+            <span key={`m${m.h}`} className={`lr-pp ${m.state}`} title={m.card.displayName}>
+              <span className="lp-av">
+                <RoachIcon color={m.card.color} size={30} avatar={m.card.avatar} friend={m.friend} />
+              </span>
+              <b>{m.card.displayName}</b>
+              <small>{label(m)}</small>
             </span>
-            <b>{m.card.displayName}</b>
-            <small>{label(m)}</small>
-          </span>
-        ))}
+          ) : (
+            <button key={`m${m.h}`} className={`lr-pp ${m.state}`} title={m.card.displayName} aria-haspopup="dialog" onClick={() => setWho(m.h)}>
+              <span className="lp-av">
+                <RoachIcon color={m.card.color} size={30} avatar={m.card.avatar} friend={m.friend} />
+              </span>
+              <b>{m.card.displayName}</b>
+              <small>{label(m)}</small>
+            </button>
+          ),
+        )}
         {room.invited.map((i, k) => (
           <span key={`i${k}`} className={`lr-pp ${i.state}`} title={i.card.displayName}>
             <span className="lp-av">
@@ -481,6 +606,19 @@ function RoomView({ room, note, onInvite, onPick }: { room: ListenRoom; note: st
           </span>
         ))}
       </div>
+      {room.members.length > 1 && <p className="lp-note left small tight">{room.host ? T.listen.tapNoteHost : T.listen.tapNote}</p>}
+      {room.host &&
+        (room.declared ? (
+          <p className="lr-declok">
+            <MegaphoneIcon size={14} />
+            <span>{fmt(T.listen.declared, { km: DECLARATION_RADIUS_KM })}</span>
+          </p>
+        ) : (
+          <button className="lt-big alt" disabled={busy || declaring} onClick={onDeclare}>
+            <MegaphoneIcon size={16} />
+            {T.listen.declare}
+          </button>
+        ))}
       {at?.phase === "ready" || !at ? (
         <div className="lr-now">
           <span className="lbl">{T.listen.first}</span>
@@ -545,7 +683,89 @@ function RoomView({ room, note, onInvite, onPick }: { room: ListenRoom; note: st
       )}
       <p className="lr-queue">{nextNames.length ? fmt(T.listen.upNext, { songs: nextNames.join(" · ") }) : T.listen.upNone}</p>
       <RxChips />
+      {person && <PersonCard key={person.h} room={room} m={person} acts={acts} onClose={() => setWho(null)} />}
     </div>
+  );
+}
+
+/**
+ * Someone in the room, tapped: who TA is to you (触须之交, or as a stranger sees TA's card), 偷偷碰 and 大胆碰 as on the
+ * map (none for a 触须之交), 拉黑 and 举报; the host may also ask TA to leave (请出去). Escape closes it, before the panel.
+ */
+function PersonCard({ room, m, acts, onClose }: { room: ListenRoom; m: RoomMember; acts: ListenActs; onClose: () => void }) {
+  const touched = useListenTouched();
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const how = touched && touched.room === room.id && touched.day === siteDay() ? touched.by[m.h] : undefined;
+  const sub = (m.friend ? T.listen.person.friend : m.open ? T.listen.person.open : T.listen.person.closed) + (m.host ? T.listen.person.host : "");
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    await fn();
+    setBusy(false);
+  };
+  const kick = () => {
+    if (!window.confirm(fmt(T.listen.person.kickAsk, { name: m.card.displayName }))) return;
+    void run(async () => (await kickMember(m.h)) && onClose());
+  };
+  // a name only where TA showed one, as the map's 拉黑 and 举报 say it
+  const safety = () => acts.onSafety(`lr:${room.id}:${m.h}`, m.open || m.friend ? m.card.displayName : null);
+  return (
+    <>
+      <button className="lr-pback" aria-label={T.common.close} onClick={onClose} />
+      <div className="lr-pcard" role="dialog" aria-label={m.card.displayName}>
+        <div className="lr-ph">
+          <span className="lp-av">
+            <RoachIcon color={m.card.color} size={34} avatar={m.card.avatar} friend={m.friend} />
+          </span>
+          <span className="lr-pw">
+            <b>{m.card.displayName}</b>
+            <small>{sub}</small>
+          </span>
+          <button className="close" onClick={onClose} aria-label={T.common.close}>
+            ×
+          </button>
+        </div>
+        {m.friend ? (
+          <p className="lr-pnote">{T.listen.person.friends}</p>
+        ) : (
+          <>
+            {how && <p className="lr-pnote">{how === "bold" ? T.cards.touched.bold : T.cards.touched.sneaky}</p>}
+            {how !== "bold" && (
+              <div className="lr-pb2">
+                {!how && (
+                  <button disabled={busy} onClick={() => void run(() => acts.onTouch(m.h, false))}>
+                    {T.listen.person.sneaky}
+                  </button>
+                )}
+                <button className="bold" disabled={busy} onClick={() => void run(() => acts.onTouch(m.h, true))}>
+                  {T.listen.person.bold}
+                </button>
+              </div>
+            )}
+            <p className="lr-pnote">{T.listen.person.note}</p>
+          </>
+        )}
+        <div className="lr-plinks">
+          <span>
+            <button onClick={safety}>{T.listen.person.block}</button>
+            <button onClick={safety}>{T.listen.person.report}</button>
+          </span>
+          {room.host && !m.host && m.state === "in" && (
+            <button className="kick" disabled={busy} onClick={kick}>
+              {T.listen.person.kick}
+            </button>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 

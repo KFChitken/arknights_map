@@ -14,6 +14,7 @@ import {
   RX_SHOW_MS,
   SYNC_EVERY_MS,
   type InviteSent,
+  type ListenCall,
   type ListenCatalog,
   type ListenFriend,
   type ListenRoom,
@@ -24,7 +25,9 @@ import {
   type RoomEnd,
 } from "@/lib/listen";
 import { listenApi, ListenRefused } from "@/lib/listenClient";
-import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
+import type { PassesDot } from "@/lib/passes";
+import { siteDay } from "@/lib/siteDay";
+import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "@/lib/world/types";
 import { stopMusic } from "./amiyaMusic";
 import { stopPartyMusic } from "./partyMusic";
 
@@ -42,7 +45,9 @@ import { stopPartyMusic } from "./partyMusic";
  * as the room is told something (heardListen, from the page's event stream), and as the page comes back into view.
  * Between two songs, and before the first, it plays silence, so a phone in a pocket goes on to the next one by itself.
  * A pause is the player's own: the room goes on, and ▶ goes back to where everyone is. 短评 float a moment
- * (useListenBubbles), the same one from several at once shown once, ×N.
+ * (useListenBubbles), the same one from several at once shown once, ×N. Someone in the room is touched (碰) or asked
+ * to leave (请出去) by their number there; how you touched each of them from this page today stays while the room does
+ * (useListenTouched).
  */
 
 /** The next song is fetched this long before the one playing ends */
@@ -138,6 +143,8 @@ const bubbles = kept<Bubble[]>(NO_BUBBLES);
 const rxNow = kept<ListenRxState>(RX_FREE);
 /** What was said as the last room was over for you (ended, or you left), until you are in another */
 const roomEnd = kept<string | null>(null);
+/** How you touched someone in the room from this page today, by their number there: one bold touch is all a day */
+const touchedIn = kept<{ room: string; day: string; by: Readonly<Record<number, "sneaky" | "bold">> } | null>(null);
 const change = (p: Partial<ListenPlayer>) => player.set({ ...player.get(), ...p });
 
 /** What plays, and the list of songs, now; and as hooks, following them */
@@ -155,6 +162,7 @@ export const useListenRoom = () => useSyncExternalStore(room.on, room.get, () =>
 export const useListenBubbles = (): ListenBubble[] => useSyncExternalStore(bubbles.on, bubbles.get, () => NO_BUBBLES);
 export const useListenRx = () => useSyncExternalStore(rxNow.on, rxNow.get, () => RX_FREE);
 export const useListenRoomEnd = () => useSyncExternalStore(roomEnd.on, roomEnd.get, () => null);
+export const useListenTouched = () => useSyncExternalStore(touchedIn.on, touchedIn.get, () => null);
 const inRoom = () => room.get() !== null;
 /** Only whether you are in a room, for what changes with that alone (a layout keeps 听歌's entry through the tutorial) */
 export const useInListenRoom = () => useSyncExternalStore(room.on, inRoom, () => false);
@@ -998,6 +1006,8 @@ export function heardListen(raw: unknown) {
     return;
   }
   if (d.t === "end") return roomOver(endNote(d.why, r));
+  // to you alone: the host asked you to leave, or you blocked the host
+  if (d.t === "you") return roomOver(fmt(d.why === "kicked" ? T.listen.kickedYou : T.listen.leftNote, { name: r.hostName }));
 }
 
 /** What the room's end says, to someone in it */
@@ -1039,6 +1049,7 @@ function roomOver(note: string | null) {
   syncedAt = "";
   bubbles.set(NO_BUBBLES);
   rxNow.set(RX_FREE);
+  touchedIn.set(null);
   const a = audio;
   const sounding = Boolean(a && (holding === "song" || holding === "gap") && !a.paused);
   holding = null;
@@ -1158,6 +1169,86 @@ export async function laterAt(invite: string): Promise<boolean> {
   } catch (e) {
     failed(e);
     return false;
+  }
+}
+
+/** The line under a 宣言一起听 you got (in 消息, on its card, in 一起听), by how its room is now */
+export function callLine(call: ListenCall): string {
+  if (call.state === "open") return fmt(T.listen.call.open, { n: call.n, max: call.max });
+  return T.listen.call[call.state];
+}
+
+/** In at a 宣言一起听 you got (its id, without 消息's d:); within the tap */
+export async function joinCall(declaration: string): Promise<boolean> {
+  if (isGray()) return false;
+  unlockNow();
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  try {
+    const res = await listenApi.joinCall(declaration);
+    if (mine !== roomAsked) return true;
+    enter(res.room, sent, Date.now(), res.now);
+    const at = roomPlace(res.room);
+    if (at?.phase === "playing" && at.offset >= 1) say(fmt(T.listen.following, { at: clock(at.offset) }));
+    return true;
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+}
+
+/**
+ * 发宣言招附近的人, from these roaches (null: your main one): for your room, or, in none, one of your own first with this
+ * song first (null: 新歌's first); within the tap. What it reached, as a declaration says; null: refused (said)
+ */
+export async function declareRoom(from: string[] | null, song: string | null): Promise<({ reach: string } & PassesDot) | null> {
+  if (isGray()) return null;
+  const r = room.get();
+  if (r && !r.host) return null;
+  if (!r) unlockNow();
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  try {
+    const res = await listenApi.declare(from, song);
+    if (res.room && mine === roomAsked) enter(res.room, sent, Date.now(), res.now);
+    return { reach: res.reach, ...(res.passesDot === undefined ? {} : { passesDot: res.passesDot }) };
+  } catch (e) {
+    failed(e);
+    return null;
+  }
+}
+
+/** 请出去: the host asks someone in the room to leave it (h: their number there); said when done */
+export async function kickMember(h: number): Promise<boolean> {
+  const r = room.get();
+  const name = r?.members.find((m) => m.h === h)?.card.displayName;
+  if (!r?.host || !name) return false;
+  const sent = Date.now();
+  try {
+    const res = await listenApi.kick(h);
+    if (res.room && room.get()?.id === res.room.id) enter(res.room, sent, Date.now(), res.now);
+    say(fmt(T.listen.kickedTip, { name }));
+    return true;
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+}
+
+/** 偷偷碰 or 大胆碰 someone in the room (h: their number there): the touch's answer, as on the map; null: refused (said) */
+export async function touchMember(h: number, bold: boolean): Promise<TouchResult | null> {
+  const r = room.get();
+  if (!r) return null;
+  try {
+    const res = await listenApi.touch(h, bold);
+    const day = siteDay();
+    const was = touchedIn.get();
+    const by = was && was.room === r.id && was.day === day ? was.by : {};
+    touchedIn.set({ room: r.id, day, by: { ...by, [h]: bold || by[h] === "bold" ? "bold" : "sneaky" } });
+    return res;
+  } catch (e) {
+    failed(e);
+    return null;
   }
 }
 

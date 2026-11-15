@@ -39,6 +39,7 @@ const sheet = (items: InboxItem[], friends: Friend[] = [], tab: InboxTab = "decl
         listenJoin: nothing,
         listenLater: nothing,
         listenShow: () => {},
+        listenCall: nothing,
       },
       onClose: () => {},
     }),

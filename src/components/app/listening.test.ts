@@ -370,7 +370,7 @@ describe("听歌 on the page", () => {
 // ---- 一起听 ----
 
 const card = (name: string) => ({ displayName: name, games: [], favourites: { arknights: [], endfield: [] }, avatar: "hood" as const, color: "cyan" as const });
-const member = (h: number, name: string, host = false): RoomMember => ({ h, card: card(name), friend: true, host, state: "in" });
+const member = (h: number, name: string, host = false): RoomMember => ({ h, card: card(name), open: true, friend: true, host, state: "in" });
 /** A room of two: 岚 its host (1), and you (2), with One (100 s) then Two (120 s) */
 const roomOf = (over: Partial<ListenRoom> = {}): ListenRoom => ({
   id: "r1",
@@ -382,6 +382,7 @@ const roomOf = (over: Partial<ListenRoom> = {}): ListenRoom => ({
   you: 2,
   host: false,
   hostName: "Dr.岚",
+  declared: false,
   members: [member(1, "Dr.岚", true), member(2, "Dr.桐")],
   invited: [],
   now: serverClock(),
