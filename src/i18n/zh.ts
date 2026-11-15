@@ -2351,6 +2351,7 @@ export const zh = {
       make325: { name: "凑 325", rule: "4 个数用加减乘除凑出 325，每个数用一次", short: "凑 325" },
       catch325: { name: "接住 3、2、5", rule: "左右挪小强，用头上的盘子按 3、2、5 的顺序接住数字，躲开炸弹", short: "接住" },
       trace325: { name: "描红 325", rule: "拖着小强沿虚线描 3、2、5，碰到飞来的东西就重写", short: "描红" },
+      match325: { name: "火柴棒 325", rule: "挪 1 根火柴，让等式成立", short: "火柴棒" },
     },
     stopwatch: {
       start: "开始",
@@ -2540,6 +2541,32 @@ export const zh = {
       hitAll: "碰到了，从 3 重写",
       pass: "写完 325，重写 {n} 次",
       out: "时间到，写到了 {d}",
+    },
+    /** 火柴棒 325 (src/lib/study/match325.ts) */
+    match325: {
+      /** Over the board: how to play, and what a tap just did */
+      rule: "点一根火柴拿起来，再点一个空位放下\n挪 1 根，让等式成立",
+      held: "放到哪个空位？\n再点它一下就放回去",
+      wrong: "还不对",
+      fixed: "等号和加减号的那一横不能动",
+      hinted: "从亮着的那里拿一根",
+      done: "挪对了！",
+      /** 看答案 pressed: the equation as it holds */
+      shown: "答案：{eq}",
+      hint: "提示",
+      answer: "看答案",
+      /** Read out for the board, and for each place a match can be in */
+      boardSr: "火柴摆的等式：{eq}",
+      digitSr: "第 {n} 个数字的{place}",
+      signSr: "加减号的那一竖",
+      spotSr: "{where}，{state}",
+      places: ["上横", "右上竖", "右下竖", "下横", "左下竖", "左上竖", "中横"],
+      litSr: "有火柴",
+      emptySr: "空着",
+      pass: "用了 {s} 秒，挪对了！",
+      seen: "看了答案",
+      result: "用了 {s} 秒，挪对了",
+      resultSeen: "看了答案",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",

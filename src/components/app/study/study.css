@@ -382,6 +382,55 @@
 .mk-tools .st-ghost:disabled { color: #9aa1ab; }
 .mk-tools .mk-help { border-color: var(--st-yellow); background: var(--st-tint); }
 
+/* ---- 火柴棒 325 (Match325.tsx): an equation in matches on a board, as big as the room under the line over it; only
+   the match picked up, the one moved and 提示's box change, and the board shakes once at a wrong move ---- */
+.mc-game { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.mc-said {
+  /* two lines high, whatever is said, so the board under it never moves */
+  flex: none; display: flex; align-items: center; justify-content: center; max-width: 320px; min-height: 46px; margin: 0;
+  color: var(--muted); font-size: 14px; line-height: 1.45; text-align: center; white-space: pre-line; text-wrap: balance;
+}
+.mc-said.mc-bad { color: var(--st-red); font-size: 16px; font-weight: 700; }
+.mc-said.mc-good { color: var(--st-green); font-size: 16px; font-weight: 800; }
+.mc-said.mc-answer { color: #1b1d22; font-size: 17px; font-weight: 800; }
+.mc-room { flex: 1 1 0; min-height: 0; align-self: stretch; display: grid; place-items: center; }
+.mc-board { display: block; cursor: pointer; }
+.mc-game[data-over] .mc-board { cursor: default; }
+.mc-panel { fill: var(--st-soft); }
+.mc-wood { fill: #edc67e; stroke: #a8772e; stroke-width: 0.3; }
+.mc-head { fill: #d5432a; stroke: #93291a; stroke-width: 0.3; }
+.mc-slot { fill: none; stroke: #c4c9d0; stroke-width: 0.32; stroke-dasharray: 1.1 0.9; }
+/* a match picked up: the empty places it can go stand out */
+.mc-holding .mc-slot { stroke: #868d97; }
+.mc-shadow { fill: rgba(27, 29, 34, 0.16); }
+.mc-halo { fill: var(--st-yellow); }
+.mc-halo.mc-won { fill: #8fd4ab; }
+/* 提示: the digit or the sign to take a match from */
+.mc-cell { fill: var(--st-tint); stroke: var(--st-yellow); stroke-width: 0.6; }
+.mc-spot { outline: none; }
+.mc-ring { fill: none; stroke: #1b1d22; stroke-width: 0.45; opacity: 0; }
+.mc-spot:focus-visible .mc-ring { opacity: 1; }
+.mc-tools { flex: none; display: flex; justify-content: center; gap: 8px; width: min(100%, 300px); min-height: 40px; }
+.mc-tools .st-ghost { flex: 1; padding: 9px 8px; font-size: 14px; }
+.mc-tools .st-ghost:disabled { color: #9aa1ab; }
+.mc-tools .mc-help { border-color: var(--st-yellow); background: var(--st-tint); }
+@media (prefers-reduced-motion: no-preference) {
+  .mc-board.mc-shake0 { animation: mc-shake0 360ms ease-in-out; }
+  .mc-board.mc-shake1 { animation: mc-shake1 360ms ease-in-out; }
+}
+@keyframes mc-shake0 {
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes mc-shake1 {
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(2px); }
+}
+
 /* ---- 接住 3、2、5 (Catch325.tsx) and 描红 325 (Trace325.tsx): three slots, how it goes and the time over a field
    drawn on a canvas (arena.ts); the canvas fills what room there is, the field in it is drawn no wider or taller than
    it plays the same ---- */
@@ -483,6 +532,10 @@
   .mk-game { --mk-h: clamp(40px, calc((100vh - 370px) / 2), 84px); --mk-h: clamp(40px, calc((100dvh - 370px) / 2), 84px); gap: 8px; }
   .mk-said { min-height: 56px; font-size: 13px; }
   .mk-op { height: 44px; }
+  .mc-game { gap: 6px; }
+  .mc-said { min-height: 40px; font-size: 13px; }
+  .mc-tools { min-height: 36px; }
+  .mc-tools .st-ghost { padding-block: 7px; }
   .ct-game,
   .tr-game { gap: 6px; }
   .ct-slots b,
