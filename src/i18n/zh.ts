@@ -2400,7 +2400,7 @@ export const zh = {
     /** 找 325 (src/lib/study/find325.ts) */
     find325: {
       start: "开始",
-      rule: "方阵里藏着 {n} 个 325，横、竖、斜都有\n手指从 3 划到 5 圈出来，限时 {s} 秒",
+      rule: "方阵里藏着 {n} 个 325，横、竖、斜、拐弯的都有\n手指从 3 划到 5 圈出来，限时 {s} 秒",
       /** Under the grid while the minute runs */
       tip: "从 3 划到 5，圈出 325",
       count: "找到 {n} / {of}",

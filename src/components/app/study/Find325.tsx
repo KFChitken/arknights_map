@@ -2,29 +2,31 @@
 
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
-import { type Cell, dragTo, FIND_COUNT, FIND_MS, FIND_SIDE, findPuzzle, wordAt, wordEnd } from "@/lib/study/find325";
+import { type Cell, dragOn, FIND_COUNT, FIND_MS, FIND_SIDE, findPuzzle, turns, type Word, wordAt, wordEnd, wordMid } from "@/lib/study/find325";
 import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 
 /**
  * 找 325 (src/lib/study/find325.ts): a round's grid, its digits hidden until 开始. Then a minute to find the five 325s
- * in it: a finger (or a mouse) dragged from a 3 to its 5 rings one, a rounded box along it that stays. All five, or the
- * minute out, end the round, and those not found are shown. Only the boxes and the count change: nothing flashes.
+ * in it: a finger (or a mouse) dragged from a 3 to its 5 rings one, a rounded box along it that stays, an L for one
+ * that turns a corner. The box a drag draws follows the finger, along a straight line or round the corner it turned.
+ * All five, or the minute out, end the round, and those not found are shown. Only the boxes and the count change:
+ * nothing flashes.
  */
 export default function Find325({ seed, onRound }: GameProps) {
   const { grid, words } = useMemo(() => findPuzzle(mulberry32(seed)), [seed]);
   const [phase, setPhase] = useState<"ready" | "run" | "over">("ready");
   /** The 325s found, in the order they were */
   const [found, setFound] = useState<number[]>([]);
-  /** A drag on the way: the cell it began on, and where it has got to */
-  const [drag, setDrag] = useState<{ from: Cell; to: Cell } | null>(null);
+  /** A drag on the way: the cell it began on, where it has got to, and the corner it turned (find325.ts dragOn) */
+  const [drag, setDrag] = useState<Drag | null>(null);
   /** Whole seconds left, as shown */
   const [left, setLeft] = useState(FIND_MS / 1000);
   const gridRef = useRef<HTMLDivElement>(null);
   const roundRef = useRef(onRound);
   roundRef.current = onRound;
   /** The round as the last finger left it, for events faster than the page is drawn; a drag keeps its finger's id */
-  const at = useRef({ over: false, startAt: 0, found: [] as number[], drag: null as { from: Cell; to: Cell; id: number } | null });
+  const at = useRef({ over: false, startAt: 0, found: [] as number[], drag: null as (Drag & { id: number }) | null });
 
   const end = (all: boolean) => {
     const now = at.current;
@@ -59,7 +61,7 @@ export default function Find325({ seed, onRound }: GameProps) {
     if (phase !== "run" || at.current.over || at.current.drag || (e.pointerType === "mouse" && e.button !== 0)) return;
     const { x, y } = point(e);
     const from = { r: clamp(Math.floor(y)), c: clamp(Math.floor(x)) };
-    at.current.drag = { from, to: from, id: e.pointerId };
+    at.current.drag = { from, to: from, passed: null, corner: null, id: e.pointerId };
     setDrag(at.current.drag);
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
@@ -67,9 +69,12 @@ export default function Find325({ seed, onRound }: GameProps) {
     const d = at.current.drag;
     if (!d || e.pointerId !== d.id) return;
     const { x, y } = point(e);
-    const to = dragTo(d.from, x, y);
-    if (to.r === d.to.r && to.c === d.to.c) return;
-    at.current.drag = { ...d, to };
+    const on = dragOn(d.from, d.passed, x, y);
+    if (on.to.r === d.to.r && on.to.c === d.to.c && on.corner === d.corner) {
+      d.passed = on.passed;
+      return;
+    }
+    at.current.drag = { ...d, ...on };
     setDrag(at.current.drag);
   };
   const onUp = (e: PointerEvent<HTMLDivElement>) => {
@@ -111,12 +116,11 @@ export default function Find325({ seed, onRound }: GameProps) {
           <span key={i}>{phase === "ready" ? "" : d}</span>
         ))}
         <svg className="fd-marks" viewBox={`0 0 ${FIND_SIDE} ${FIND_SIDE}`} aria-hidden="true">
-          {phase === "over" &&
-            words.map((w, i) => !found.includes(i) && <Mark key={`m${i}`} a={w} b={wordEnd(w)} className="fd-missed" />)}
+          {phase === "over" && words.map((w, i) => !found.includes(i) && <WordMark key={`m${i}`} w={w} className="fd-missed" />)}
           {found.map((i) => (
-            <Mark key={i} a={words[i]} b={wordEnd(words[i])} className="fd-found" />
+            <WordMark key={i} w={words[i]} className="fd-found" />
           ))}
-          {drag && <Mark a={drag.from} b={drag.to} className="fd-drag" />}
+          {drag && <Mark a={drag.from} corner={drag.corner} b={drag.to} className="fd-drag" />}
         </svg>
         {phase === "ready" && (
           <div className="fd-ready">
@@ -138,20 +142,44 @@ export default function Find325({ seed, onRound }: GameProps) {
   );
 }
 
+type Drag = { from: Cell; to: Cell; passed: Cell | null; corner: Cell | null };
+
 const clamp = (n: number) => Math.max(0, Math.min(FIND_SIDE - 1, n));
 
-/** A rounded box along a run of cells, from the middle of one end to the middle of the other */
-function Mark({ a, b, className }: { a: Cell; b: Cell; className: string }) {
+/** Half a box's width (cells) */
+const HALF = 0.42;
+/**
+ * An L-shaped box, in cells: from the middle of the cell at 0, 0 a step across to 1, 0, then a step down to 1, 1 (a
+ * turn the way the clock goes), round at both ends and outside the corner
+ */
+const L_BOX = `M 0 ${-HALF} L 1 ${-HALF} A ${HALF} ${HALF} 0 0 1 ${1 + HALF} 0 L ${1 + HALF} 1 A ${HALF} ${HALF} 0 0 1 ${1 - HALF} 1 L ${1 - HALF} ${HALF} L 0 ${HALF} A ${HALF} ${HALF} 0 0 1 0 ${-HALF} Z`;
+
+/** The box round a 325 */
+const WordMark = ({ w, className }: { w: Word; className: string }) => (
+  <Mark a={w} corner={turns(w) ? wordMid(w) : null} b={wordEnd(w)} className={className} />
+);
+
+/**
+ * A rounded box along a run of cells, from the middle of one end to the middle of the other; or, with a corner (a cell
+ * beside both ends, which are corner to corner), an L round it
+ */
+function Mark({ a, corner, b, className }: { a: Cell; corner?: Cell | null; b: Cell; className: string }) {
+  if (corner) {
+    // turned to the first step, and turned over when the second goes against the clock
+    const deg = (Math.atan2(corner.r - a.r, corner.c - a.c) * 180) / Math.PI;
+    const clockwise = b.c - corner.c === -(corner.r - a.r) && b.r - corner.r === corner.c - a.c;
+    return <path className={className} d={L_BOX} transform={`translate(${a.c + 0.5} ${a.r + 0.5}) rotate(${deg}) scale(1 ${clockwise ? 1 : -1})`} />;
+  }
   const len = Math.hypot(b.c - a.c, b.r - a.r);
   const deg = (Math.atan2(b.r - a.r, b.c - a.c) * 180) / Math.PI;
   return (
     <rect
       className={className}
-      x={-0.42}
-      y={-0.42}
-      width={len + 0.84}
-      height={0.84}
-      rx={0.42}
+      x={-HALF}
+      y={-HALF}
+      width={len + 2 * HALF}
+      height={2 * HALF}
+      rx={HALF}
       transform={`translate(${a.c + 0.5} ${a.r + 0.5}) rotate(${deg})`}
     />
   );
