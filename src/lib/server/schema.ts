@@ -138,6 +138,11 @@ export const users = pgTable("users", {
   onlyMains: boolean("only_mains").notNull().default(false),
   /** 让触须之交来串门 (src/lib/server/friendly.ts): on unless they switched it off */
   welcomeGuests: boolean("welcome_guests").notNull().default(true),
+  /**
+   * 让触须之交看到我在听什么 (听歌, src/lib/server/listenRooms.ts friendsListening): while they listen, their 触须之交
+   * see the song and may ask to listen with them (想一起听); on unless they switched it off
+   */
+  showListening: boolean("show_listening").notNull().default(true),
   /** They were told once, with their first guest, not to keep the main roach by their door */
   visitTipShown: boolean("visit_tip_shown").notNull().default(false),
   /** 求助 (src/lib/server/help.ts): when they last looked at their 触须之交's requests, for the dot on the 触须之交 card */
@@ -583,6 +588,8 @@ export const friendNotes = pgTable(
     period: text("period").notNull(),
     /** For gameAsk and gameWant */
     game: text("game"),
+    /** For listenAsk (想一起听): the name of the song the one asked was listening to; the note goes a day later */
+    song: text("song"),
     /** Sent while the other slept: hidden from them while they are drunk */
     asleep: boolean("asleep").notNull().default(false),
     /** A gesture sent back: the note it answers */
@@ -1563,6 +1570,20 @@ export const songPlays = pgTable("song_plays", {
 });
 
 /**
+ * How many times each 短评 (by its number, src/lib/listen.ts RX_COUNT) was sent on each song by those listening alone,
+ * everyone together: never who (src/lib/server/songs.ts countSaid). The most sent show under the song (大家都在说).
+ */
+export const songReactions = pgTable(
+  "song_reactions",
+  {
+    song: text("song").notNull(),
+    phrase: smallint("phrase").notNull(),
+    n: bigint("n", { mode: "number" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.song, t.phrase] })],
+);
+
+/**
  * What a player listens to now, one row each (src/lib/server/listen.ts): not a record of what they listened to.
  * until is when the song should end, and LISTEN_GRACE_MS more; written as each song starts, gone once they stop,
  * and swept away by the main process when it is past. room_id: the room of 一起听 they listen in, if any.
@@ -1636,7 +1657,8 @@ export const listenMembers = pgTable(
 
 /**
  * Invitations to a room, from its host to a 触须之交, good for INVITE_MS: in 消息 → 触须之交 (seen_at), and answered
- * joined (went in) or later (下次吧, which the host sees as not come, as one that ran out)
+ * joined (went in) or later (下次吧, which the host sees as not come, as one that ran out). asked: sent at TA's own
+ * 想一起听 (answerAsk), none of the day's INVITES_PER_DAY.
  */
 export const listenInvites = pgTable(
   "listen_invites",
@@ -1655,6 +1677,7 @@ export const listenInvites = pgTable(
     seenAt: at("seen_at"),
     answer: text("answer"),
     answeredAt: at("answered_at"),
+    asked: boolean("asked").notNull().default(false),
   },
   (t) => [
     index("listen_invites_to_idx").on(t.toUserId, t.createdAt),

@@ -142,6 +142,8 @@ import {
 import { AmiyaGreetingSheet, AmiyaIntroSheet, introShown, markIntroShown } from "./app/Amiya";
 import { musicOn, playMusic, preloadMusic, setMusicOn, stopMusic } from "./app/amiyaMusic";
 import {
+  answerAsk,
+  askToListen,
   declareRoom,
   heardListen,
   inviteMore,
@@ -518,6 +520,17 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const guestStyles = (): Partial<Record<MapStyle, string>> =>
   Object.fromEntries(MAP_STYLES.filter((s) => s !== "hidden").map((s) => [s, signInForStyles()]));
+
+/** 在听's note over a 触须之交's roach (globals.css .hear-note): never takes a tap, and keeps still where motion is turned down */
+function hearNote() {
+  const el = document.createElement("div");
+  el.className = "hear-note";
+  el.setAttribute("aria-hidden", "true");
+  const note = document.createElement("span");
+  note.textContent = "♪";
+  el.append(note);
+  return el;
+}
 
 export default function MapApp({
   cn,
@@ -2402,6 +2415,13 @@ export default function MapApp({
     });
   };
 
+  /** 想一起听: ask a 触须之交 who is listening to invite you (TA's 一起听 in 消息 does); the button goes grey for the day */
+  const askListen = async (friend: Friend) => {
+    if (!(await askToListen(friend.id))) return;
+    setToast(fmt(T.listen.askSent, { name: friend.profile.displayName }));
+    await loadFriends().catch(() => {});
+  };
+
   /** 催理智: a bottle flies off the button, 叮！ */
   const remindSanity = async (friend: Friend, at: { x: number; y: number } | null) => {
     if (!(await friendly((w) => w.remindSanity(friend.id)))) return;
@@ -2654,6 +2674,25 @@ export default function MapApp({
       }
       await joinCallAt(itemId);
     },
+    listenAnswer: async (itemId) => {
+      const ask = inbox.find((i): i is Extract<InboxItem, { kind: "listenAsk" }> => i.id === itemId && i.kind === "listenAsk");
+      const sent = await answerAsk(itemId);
+      if (sent) {
+        const bad = sent.find((x) => !x.ok);
+        setToast(bad ? (bad.why ?? T.map.common.tryAgain) : fmt(T.listen.sentTo, { name: ask?.from.displayName ?? "" }));
+        showListenRoom();
+        await worldRef.current!.markSeen([itemId]).catch(() => {});
+      }
+      await refreshInbox().catch(() => {});
+    },
+    // as 听歌's entry shows (listenShown, worked out further down), and not while it is paused
+    listenAsk:
+      lang() === "zh" && me?.listen && !me.listen.paused && !isGray()
+        ? async (friendId) => {
+            const friend = shownFriends.find((f) => f.id === friendId);
+            if (friend) await askListen(friend);
+          }
+        : undefined,
   };
 
   /** Their games on their page: 复制, 我在游戏里申请了, 想在游戏里加 TA, 游戏里也是好友 */
@@ -3379,7 +3418,10 @@ export default function MapApp({
       friends.map((f) =>
         f.id === PERLICA_ID
           ? { ...f, roaches: shownLng !== undefined && shownLat !== undefined ? [perlicaRoach({ lng: shownLng, lat: shownLat }, true)] : [] }
-          : f,
+          : // 在听 is 听歌's, which /en does not have yet
+            f.listening && lang() !== "zh"
+            ? { ...f, listening: undefined }
+            : f,
       ),
     [friends, shownLng, shownLat],
   );
@@ -3604,11 +3646,36 @@ export default function MapApp({
     if (partySpot && partySpot !== mainSpot) endParty();
   }, [partySpot, mainSpot, endParty]);
   const partyOverlays = useMemo<MapOverlay[]>(() => (party ? [{ id: `party-${party.key}`, at: party.at, el: party.el }] : []), [party]);
+  // 在听: a small note over the main roach of each 触须之交 listening now, drawn from the list of them alone (never the
+  // shared roaches), and not on 全员隐匿, where no roach is drawn to be over; each spot's element made once, so the
+  // map keeps it while the list is asked again. The list is asked again as 消息 → 触须之交 opens, 触须之交 starting
+  // and stopping songs meanwhile
+  const hearTab = panel?.kind === "inbox" && panel.tab === "friends" && Boolean(me?.listen);
+  useEffect(() => {
+    if (hearTab) loadFriends().catch(() => {});
+  }, [hearTab, loadFriends]);
+  const hearEls = useRef(new Map<string, HTMLElement>());
+  const hearOverlays = useMemo<MapOverlay[]>(() => {
+    const els = hearEls.current;
+    const list = (hidden ? [] : shownFriends).flatMap((f): MapOverlay[] => {
+      const r = f.listening ? f.roaches.find((x) => !x.clone) : undefined;
+      if (!r) return [];
+      const id = `hear-${f.id}-${r.lng.toFixed(5)},${r.lat.toFixed(5)}`;
+      let el = els.get(id);
+      if (!el) {
+        el = hearNote();
+        els.set(id, el);
+      }
+      return [{ id, at: { lng: r.lng, lat: r.lat }, el }];
+    });
+    for (const id of [...els.keys()]) if (!list.some((o) => o.id === id)) els.delete(id);
+    return list;
+  }, [shownFriends, hidden]);
   // with the admin's marks of 看被举报的蟑螂, while it is open
-  const mapOverlays = useMemo(
-    () => (reportedMarks.overlays.length ? [...partyOverlays, ...reportedMarks.overlays] : partyOverlays),
-    [partyOverlays, reportedMarks],
-  );
+  const mapOverlays = useMemo(() => {
+    const all = [...partyOverlays, ...hearOverlays, ...reportedMarks.overlays];
+    return all.length === partyOverlays.length ? partyOverlays : all;
+  }, [partyOverlays, hearOverlays, reportedMarks]);
   const drunkSeen = useRef<{ id: string; drunk: boolean } | null>(null);
   useEffect(() => {
     if (!me) {
@@ -4586,6 +4653,8 @@ export default function MapApp({
             onlyMains={me.onlyMains}
             onOpenOnlyMains={(draft) => setPanel({ kind: "onlyMains", back: { kind: "profile", draft } })}
             passes={me.passes}
+            // as 听歌's entry: not on /en
+            listen={lang() === "zh" && Boolean(me.listen)}
             onPassOnMap={switchPassOnMap}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
@@ -4848,6 +4917,8 @@ export default function MapApp({
                   onAct={(a, at) => friendAct(friend, a, at, null)}
                   onGift={() => giveTicket(friend)}
                   onListen={listenShown && !me?.listen?.paused ? () => listenWith(friend) : undefined}
+                  listening={friend.listening}
+                  onAsk={listenShown && !me?.listen?.paused ? () => void askListen(friend) : undefined}
                 />
               )
             }
@@ -5390,6 +5461,8 @@ export default function MapApp({
                 onAct={(a, at) => friendAct(selectedFriend, a, at, selected.roach)}
                 onGift={() => giveTicket(selectedFriend)}
                 onListen={listenShown && !me?.listen?.paused ? () => listenWith(selectedFriend) : undefined}
+                listening={selectedFriend.listening}
+                onAsk={listenShown && !me?.listen?.paused ? () => void askListen(selectedFriend) : undefined}
               />
             )
           }

@@ -11,6 +11,7 @@ import {
   roomAt,
   RX_EVERY_MS,
   RX_MERGE_MS,
+  RX_ROOM_FROM,
   RX_SHOW_MS,
   SYNC_EVERY_MS,
   type InviteSent,
@@ -23,6 +24,7 @@ import {
   type QueueChange,
   type RoomAt,
   type RoomEnd,
+  type SongSaid,
 } from "@/lib/listen";
 import { listenApi, ListenRefused } from "@/lib/listenClient";
 import type { PassesDot } from "@/lib/passes";
@@ -48,6 +50,10 @@ import { stopPartyMusic } from "./partyMusic";
  * (useListenBubbles), the same one from several at once shown once, ×N. Someone in the room is touched (碰) or asked
  * to leave (请出去) by their number there; how you touched each of them from this page today stays while the room does
  * (useListenTouched).
+ *
+ * Alone, the first two rows of 短评 may be said to the song playing (sendRx): only how many times each is counted, and
+ * the most said come back with each song played as 大家都在说 under it (useListenSaid). 想一起听 asks a 触须之交 who is
+ * listening to invite you (askToListen); TA's 一起听 at it opens a room, or takes TA's own, and invites you (answerAsk).
  */
 
 /** The next song is fetched this long before the one playing ends */
@@ -133,6 +139,7 @@ const IDLE: ListenPlayer = { track: null, status: "idle", buffering: false, tap:
 const NONE: ListenSongs = { state: "none" };
 const NO_BUBBLES: Bubble[] = [];
 const RX_FREE: ListenRxState = { cool: false, full: false };
+const NO_SAID: SongSaid[] = [];
 const player = kept<ListenPlayer>(IDLE);
 const songs = kept<ListenSongs>(NONE);
 /** The whole seconds the song has got to (in a room, where the room is) */
@@ -145,6 +152,8 @@ const rxNow = kept<ListenRxState>(RX_FREE);
 const roomEnd = kept<string | null>(null);
 /** How you touched someone in the room from this page today, by their number there: one bold touch is all a day */
 const touchedIn = kept<{ room: string; day: string; by: Readonly<Record<number, "sneaky" | "bold">> } | null>(null);
+/** 大家都在说 under each song, as the server last gave it with the song */
+const said = kept<ReadonlyMap<string, SongSaid[]>>(new Map());
 const change = (p: Partial<ListenPlayer>) => player.set({ ...player.get(), ...p });
 
 /** What plays, and the list of songs, now; and as hooks, following them */
@@ -163,6 +172,14 @@ export const useListenBubbles = (): ListenBubble[] => useSyncExternalStore(bubbl
 export const useListenRx = () => useSyncExternalStore(rxNow.on, rxNow.get, () => RX_FREE);
 export const useListenRoomEnd = () => useSyncExternalStore(roomEnd.on, roomEnd.get, () => null);
 export const useListenTouched = () => useSyncExternalStore(touchedIn.on, touchedIn.get, () => null);
+/** 大家都在说 under a song: its most said 短评 (src/lib/listen.ts SongSaid), none before it was played on this page */
+export const listenSaidNow = (song: string): SongSaid[] => said.get().get(song) ?? NO_SAID;
+export const useListenSaid = (song: string | null) =>
+  useSyncExternalStore(
+    said.on,
+    () => (song ? listenSaidNow(song) : NO_SAID),
+    () => NO_SAID,
+  );
 const inRoom = () => room.get() !== null;
 /** Only whether you are in a room, for what changes with that alone (a layout keeps 听歌's entry through the tutorial) */
 export const useInListenRoom = () => useSyncExternalStore(room.on, inRoom, () => false);
@@ -412,12 +429,15 @@ function begin(track: ListenTrack, at: number, url: string | null) {
   lastAt = at;
   second.set(Math.floor(at));
   current = { track, next, nextUrl: null, until: 0, early: false, start: null };
+  // a song of its own: its own 短评
+  if (rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
   change({ track, status: "starting", buffering: true, tap: false, problem: null });
   meta(track);
   if (url) load(url, at);
   const sent = Date.now();
   listenApi.play(track.id, at, next).then(
     (r) => {
+      sawSaid(track.id, r.said);
       if (mine !== asked) return;
       heard(r.now, sent, Date.now());
       counted = true;
@@ -452,6 +472,16 @@ function load(url: string, at: number) {
       change({ status: "paused", buffering: false, tap: true });
     }
   });
+}
+
+/** 大家都在说 under a song, as its play answered (none: nothing said often enough yet) */
+function sawSaid(song: string, list: SongSaid[] | undefined) {
+  const was = said.get();
+  const got = list?.length ? list : NO_SAID;
+  if (JSON.stringify(was.get(song) ?? NO_SAID) === JSON.stringify(got)) return;
+  const next = new Map(was);
+  next.set(song, got);
+  said.set(next);
 }
 
 function heard(now: number, sent: number, got: number) {
@@ -820,6 +850,7 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   // one started within its first second counts as played from its start
   listenApi.play(track.id, at < 1 ? 0 : Math.floor(at), next).then(
     (p) => {
+      sawSaid(track.id, p.said);
       if (mine !== asked) return;
       heard(p.now, sent, Date.now());
       counted = true;
@@ -1296,21 +1327,70 @@ export async function hostQueue(what: QueueChange): Promise<boolean> {
   }
 }
 
-/** A 短评 in the room, by its number: shown here at once, then to everyone in it; one every RX_EVERY_MS */
+/**
+ * A 短评, by its number: in the room, shown here at once, then to everyone in it; alone, one of the first two rows to
+ * the song playing, shown here alone (only how many times each is said is kept). One every RX_EVERY_MS.
+ */
 export function sendRx(x: number) {
   const r = room.get();
   const s = rxNow.get();
-  if (!r || !isRx(x) || s.cool || s.full) return;
+  const song = player.get().track?.id ?? null;
+  if (!isRx(x) || s.cool || s.full) return;
+  if (!r && (x >= RX_ROOM_FROM || !song || !isListening())) return;
   rxNow.set({ cool: true, full: false });
   clearTimeout(rxTimer);
   rxTimer = setTimeout(() => rxNow.set({ ...rxNow.get(), cool: false }), RX_EVERY_MS);
-  showRx(r, r.you, x);
+  if (r) showRx(r, r.you, x);
+  else {
+    const text = rxText(x);
+    if (text) put([...bubbles.get(), { key: ++bubbleKeys, text: fmt(T.listen.rxSay, { name: T.listen.rxYou, text }), kind: "me", r: x, n: 1, first: Date.now() }]);
+  }
   listenApi.react(x).then(
     (res) => {
-      if (!res.sent && res.full && room.get()?.id === r.id) rxNow.set({ ...rxNow.get(), full: true });
+      if (res.sent || !res.full) return;
+      // still where it was said: the room, or the song played alone
+      if (r ? room.get()?.id === r.id : !room.get() && player.get().track?.id === song) rxNow.set({ ...rxNow.get(), full: true });
     },
-    () => {},
+    (e: unknown) => {
+      // alone, the song had stopped counting as played (a long pause): said, as any refusal
+      if (!r) failed(e);
+    },
   );
+}
+
+/** 想一起听: ask a 触须之交 who is listening (their Friend id) to invite you; false: refused (said) */
+export async function askToListen(friend: string): Promise<boolean> {
+  try {
+    await listenApi.ask(friend);
+    return true;
+  } catch (e) {
+    failed(e);
+    return false;
+  }
+}
+
+/**
+ * 一起听 at a 想一起听 to you (its item id in 消息): the room you host, or a new one of yours with what you play (else
+ * the song it asked about), TA invited to it; within the tap. How the invitation went; null: refused (said)
+ */
+export async function answerAsk(item: string): Promise<InviteSent[] | null> {
+  if (isGray()) return null;
+  const r = room.get();
+  if (r && !r.host) {
+    say(T.listen.leaveFirst);
+    return null;
+  }
+  if (!r) unlockNow();
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  try {
+    const res = await listenApi.askOk(item);
+    if (res.room && mine === roomAsked) enter(res.room, sent, Date.now(), res.now);
+    return res.sent;
+  } catch (e) {
+    failed(e);
+    return null;
+  }
 }
 
 /** Your 触须之交 you may invite; null: they could not be asked for (said) */
@@ -1435,4 +1515,5 @@ export function forgetListening() {
   bubbles.set(NO_BUBBLES);
   rxNow.set(RX_FREE);
   roomEnd.set(null);
+  said.set(new Map());
 }

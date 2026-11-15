@@ -4,6 +4,8 @@ import { heardGray } from "@/lib/grayMode";
 import { DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenRoom, type ListenTrack, type RoomMember } from "@/lib/listen";
 import { playMusic } from "./amiyaMusic";
 import {
+  answerAsk,
+  askToListen,
   forgetListening,
   heardListen,
   hostQueue,
@@ -14,6 +16,7 @@ import {
   listenPlayerNow,
   listenRoomNow,
   listenRxNow,
+  listenSaidNow,
   listenSongsNow,
   loadRoom,
   loadSongs,
@@ -634,5 +637,81 @@ describe("一起听 on the page", () => {
     expect(await joinAt("inv-1")).toBe(false);
     expect(said).toEqual(["这场满了。"]);
     expect(listenRoomNow()).toBeNull();
+  });
+});
+
+describe("一个人听, 短评 and 想一起听", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  });
+  afterEach(() => {
+    forgetListening();
+    vi.useRealTimers();
+  });
+
+  it("say the first two rows' to the song playing alone, as yours, one every three seconds; nothing while none plays", async () => {
+    sendRx(0);
+    expect(ops("react")).toEqual([]);
+    playTrack(track("s1"));
+    await tick(0);
+    // the room's own four are a room's
+    sendRx(15);
+    expect(ops("react")).toEqual([]);
+    sendRx(8);
+    sendRx(0);
+    expect(ops("react")).toEqual([{ r: 8 }]);
+    expect(listenBubblesNow().map((b) => [b.kind, b.text])).toEqual([["me", "你：kksk"]]);
+    // this song's used up: grey till another plays
+    answers.react = () => ({ status: 200, json: { sent: false, full: true, now: serverClock() } });
+    await tick(3_000);
+    sendRx(1);
+    await tick(0);
+    expect(listenRxNow().full).toBe(true);
+    playTrack(track("s2"));
+    expect(listenRxNow().full).toBe(false);
+    // paused: not playing, so nothing to say it to
+    await tick(3_000);
+    toggle();
+    await tick(0);
+    sendRx(2);
+    expect(ops("react")).toHaveLength(2);
+  });
+
+  it("keep 大家都在说 by song, as each play answers it, and forget it with the rest", async () => {
+    playAnswer = (body) => ({ ...played(body), json: { ...played(body).json, ...(body.song === "s1" ? { said: [{ r: 8, n: 128 }] } : {}) } });
+    playTrack(track("s1"));
+    await tick(0);
+    expect(listenSaidNow("s1")).toEqual([{ r: 8, n: 128 }]);
+    playTrack(track("s2"));
+    await tick(0);
+    expect(listenSaidNow("s2")).toEqual([]);
+    // the one heard before stays, for when it plays again
+    expect(listenSaidNow("s1")).toEqual([{ r: 8, n: 128 }]);
+    forgetListening();
+    expect(listenSaidNow("s1")).toEqual([]);
+  });
+
+  it("ask a 触须之交 listening to invite you, and answer one within the tap: your room, TA invited, said when refused", async () => {
+    expect(await askToListen("f1")).toBe(true);
+    expect(ops("ask")).toEqual([{ friend: "f1" }]);
+    answers.ask = () => ({ status: 409, json: { error: "今天已经请过 TA 了，北京时间凌晨 4 点以后再请吧。" } });
+    expect(await askToListen("f1")).toBe(false);
+    expect(said.at(-1)).toBe("今天已经请过 TA 了，北京时间凌晨 4 点以后再请吧。");
+
+    answers.askOk = () => ({ status: 200, json: { room: roomOf({ host: true, you: 1, queue: ["s1"] }), sent: [{ id: "f1", ok: true }], now: serverClock() } });
+    const answered = answerAsk("c:1");
+    // within the tap: the element unlocked, for the room to start by itself later
+    expect(audio().src).toMatch(silence);
+    expect(await answered).toEqual([{ id: "f1", ok: true }]);
+    expect(ops("askOk")).toEqual([{ item: "c:1" }]);
+    expect(listenRoomNow()).toMatchObject({ id: "r1", host: true });
+  });
+
+  it("never answer one from someone else's room", async () => {
+    answerRoom("join", () => roomOf());
+    await joinAt("inv-1");
+    expect(await answerAsk("c:1")).toBeNull();
+    expect(ops("askOk")).toEqual([]);
+    expect(said.at(-1)).toBe(T.listen.leaveFirst);
   });
 });

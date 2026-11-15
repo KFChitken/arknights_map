@@ -155,6 +155,15 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .lr-chip.room { border-color: #bfe6e7; background: #e6f6f6; color: #0b6366; }
 .lr-chip:disabled { opacity: 0.45; }
 
+/* 一个人听时的短评: one line above the songs, swiped sideways; 大家都在说 under the song, in the player */
+.lp-rx { margin: 8px 0 2px; }
+.lp-rxh { margin: 0 0 6px; color: #4b5260; font-size: 12.5px; font-weight: 700; }
+.lp-rxs { display: flex; gap: 6px; padding-bottom: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.lp-rxs::-webkit-scrollbar { display: none; }
+.lp-rxs .lr-chip { flex: none; padding: 5px 11px; font-size: 13px; }
+.lp-what small.lp-said { overflow: visible; color: #0f7f83; font-weight: 600; white-space: normal; }
+.lp-said span { white-space: nowrap; }
+
 /*
  * the card of someone in it, over the panel (not under what scrolls): who TA is to you, 偷偷碰 and 大胆碰, 拉黑 and
  * 举报, and the host's 请出去

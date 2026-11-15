@@ -18,7 +18,7 @@ export type ListenCard = { kind: "invite"; invite: ListenInvite; ask: boolean } 
 
 /**
  * 一起听 over the map (MapApp.tsx): the card of an invitation or a 宣言一起听 that came while the page is open, the 短评
- * floating by 听歌's entry (over its panel while that is open), and the small bubble beside the entry that pops the row of 短评 up
+ * floating by 听歌's entry (over its panel while that is open; alone, only there), and the small bubble beside the entry that pops the row of 短评 up
  * over the layout's bottom bar. Placed by what each layout marks (data-listen-anchor on 听歌's entry, data-chrome-bottom
  * on its bottom bar), so the same in all three; where the entry is out of sight (抽屉's tabs make room for the
  * tutorial, a side is folded away), the bubble stands in for it under the top and opens 一起听 instead. None of it
@@ -53,7 +53,9 @@ export default function ListenOverlay({
 }) {
   const room = useListenRoom();
   const showCard = Boolean(card) && !cardOpen;
-  const spot = useSpot(Boolean(room) || showCard);
+  // 一个人听, the panel open: the 短评 said there float over it as yours
+  const alone = !room && panelOpen;
+  const spot = useSpot(Boolean(room) || showCard || alone);
   const [strip, setStrip] = useState(false);
   const stripRef = useRef<HTMLDivElement>(null);
   const [stripH, setStripH] = useState(0);
@@ -92,7 +94,7 @@ export default function ListenOverlay({
         </button>
       )}
       {room && !panelOpen && chat && !spot.anchor && <BackToRoom style={chat} onOpen={onOpen} />}
-      {room && <Bubbles style={bubblesAt(spot, panelOpen, chat, up)} over={panelOpen} centered={panelOpen && !spot.wide} />}
+      {(room || alone) && <Bubbles style={bubblesAt(spot, panelOpen, chat, up)} over={panelOpen} centered={panelOpen && !spot.wide} />}
       {stripOn && (
         <div ref={stripRef} className="lm-strip glass" style={{ bottom: above }}>
           <Strip />

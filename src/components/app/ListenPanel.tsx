@@ -1,11 +1,13 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fmt, fmtParts, localPath, T } from "@/i18n";
+import { fmtNodes } from "@/i18n/nodes";
 import {
   clock,
   INVITES_PER_DAY,
   LISTEN_FULL,
+  RX_ROOM_FROM,
   RX_ROWS,
   songMatches,
   type InviteSent,
@@ -42,6 +44,7 @@ import {
   useListenRoom,
   useListenRoomEnd,
   useListenRx,
+  useListenSaid,
   useListenSecond,
   useListenSongs,
   useListenTouched,
@@ -77,9 +80,10 @@ export type ListenActs = {
 /**
  * 听歌's panel: its two tabs, the player along its top, and under it either 一起听 (inviting 触须之交, calling those
  * nearby, the room you are in, its 短评, and the card of anyone in it) or the songs: 新歌, then album by album in the
- * order of the Monster Siren Records site, with a search over the songs' and albums' names. On a phone a sheet from
- * the bottom; on a computer a panel at the left, over the map but clear of its middle, which can be looked round
- * meanwhile. Songs go on playing with it closed (src/components/app/listening.ts).
+ * order of the Monster Siren Records site, with a search over the songs' and albums' names, and above them, while a
+ * song plays alone, the first two rows of 短评 (only counted: 大家都在说 under each song, in the player). On a phone a
+ * sheet from the bottom; on a computer a panel at the left, over the map but clear of its middle, which can be looked
+ * round meanwhile. Songs go on playing with it closed (src/components/app/listening.ts).
  */
 export default function ListenPanel({
   paused,
@@ -195,7 +199,7 @@ function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
       ) : list.state === "ok" ? (
         list.tracks.size > 0 ? (
           <>
-            {room && <p className="lp-note small">{room.host ? T.listen.addNote : T.listen.hostPicks}</p>}
+            {room ? <p className="lp-note small">{room.host ? T.listen.addNote : T.listen.hostPicks}</p> : <AloneRx />}
             <SongList key={q} catalog={list.catalog} tracks={list.tracks} query={q} room={room} />
           </>
         ) : (
@@ -215,11 +219,12 @@ function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
   );
 }
 
-/** The song playing (or the last one, or the one to go on with), ▶ or ⏸, and how far it got; before any, a line */
+/** The song playing (or the last one, or the one to go on with), ▶ or ⏸, how far it got, and 大家都在说; before any, a line */
 function Player({ paused }: { paused: boolean }) {
   const v = useListenPlayer();
   const at = useListenSecond();
   const t = v.track;
+  const said = useListenSaid(t?.id ?? null);
   if (!t) {
     const full = v.problem?.code === LISTEN_FULL;
     return (
@@ -255,6 +260,19 @@ function Player({ paused }: { paused: boolean }) {
         <small>
           {t.album.name} · {t.artists.join(" / ")}
         </small>
+        {/* each 短评 kept whole where the line wraps */}
+        {said.length > 0 && (
+          <small className="lp-said">
+            {fmtNodes(T.listen.said, {
+              list: said.map((x, i) => (
+                <Fragment key={x.r}>
+                  {i > 0 && " · "}
+                  <span>{fmt(T.listen.saidOne, { text: rxText(x.r), n: x.n.toLocaleString("zh-CN") })}</span>
+                </Fragment>
+              )),
+            })}
+          </small>
+        )}
       </span>
       <button className="lp-btn" aria-label={on ? T.listen.pause : T.listen.play} onClick={() => toggle()}>
         {on ? <PauseIcon /> : <PlayIcon />}
@@ -766,6 +784,35 @@ function PersonCard({ room, m, acts, onClose }: { room: ListenRoom; m: RoomMembe
         </div>
       </div>
     </>
+  );
+}
+
+/** A 短评's words by its number (src/lib/listen.ts RX_ROWS) */
+const rxText = (r: number) => T.listen.rx.flat()[r] ?? "";
+
+/**
+ * 一个人听, while a song plays: the first two rows of 短评 in one line, swiped sideways (the third is a room's); each
+ * floats a moment over the panel as yours, and only how many times it was said to the song is kept
+ */
+function AloneRx() {
+  const v = useListenPlayer();
+  const rx = useListenRx();
+  if (!v.track || !(v.status === "playing" || v.status === "starting")) return null;
+  const off = rx.cool || rx.full;
+  return (
+    <div className="lp-rx">
+      <div className="lp-rxh">{T.listen.rxAloneHead}</div>
+      <div className="lp-rxs">
+        {T.listen.rx
+          .flat()
+          .slice(0, RX_ROOM_FROM)
+          .map((text, i) => (
+            <button key={i} className="lr-chip" disabled={off} onClick={() => sendRx(i)}>
+              {text}
+            </button>
+          ))}
+      </div>
+    </div>
   );
 }
 

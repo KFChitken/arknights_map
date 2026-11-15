@@ -25,6 +25,8 @@ export type Profile = {
   flipWhenAway: boolean;
   /** 让触须之交来串门: their clones may come and sit by your roaches */
   welcomeGuests: boolean;
+  /** 让触须之交看到我在听什么 (听歌): your 触须之交 see the song while you listen, and may ask to listen with you */
+  showListening: boolean;
 };
 
 /**
@@ -62,6 +64,7 @@ export const EMPTY_PROFILE: Profile = {
   support: [],
   flipWhenAway: true,
   welcomeGuests: true,
+  showListening: true,
 };
 
 export function displayName(p: Pick<Profile, "anonymous" | "name" | "drPrefix">) {

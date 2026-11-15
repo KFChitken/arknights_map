@@ -7,10 +7,10 @@ import type { InboxTab } from "@/lib/inboxTabs";
 import { GIFTS_IN_PER_DAY, type GiftState } from "@/lib/passes";
 import type { PublicProfile } from "@/lib/profile";
 import type { Friend, InboxItem } from "@/lib/world/types";
-import InboxSheet from "./InboxSheet";
+import InboxSheet, { type InboxFriendly } from "./InboxSheet";
 
 const nothing = async () => {};
-const sheet = (items: InboxItem[], friends: Friend[] = [], tab: InboxTab = "declarations") =>
+const sheet = (items: InboxItem[], friends: Friend[] = [], tab: InboxTab = "declarations", more: Partial<InboxFriendly> = {}) =>
   renderToStaticMarkup(
     createElement(InboxSheet, {
       items,
@@ -40,6 +40,8 @@ const sheet = (items: InboxItem[], friends: Friend[] = [], tab: InboxTab = "decl
         listenLater: nothing,
         listenShow: () => {},
         listenCall: nothing,
+        listenAnswer: nothing,
+        ...more,
       },
       onClose: () => {},
     }),
@@ -200,5 +202,70 @@ describe("an invitation to 一起听 in 消息", () => {
     const over = sheet([invited("over")], [], "friends");
     expect(read(over).text).toContain(T.inbox.listen.over);
     for (const w of [T.listen.join, T.listen.later, T.inbox.listen.go]) expect(words(over)).not.toContain(w);
+  });
+});
+
+const asking = (state: "open" | "done" | "over", song = "逐星河"): InboxItem => ({
+  kind: "listenAsk",
+  id: "c:7",
+  at: Date.now() - 60_000,
+  seen: false,
+  from: DR_A,
+  friendId: "f:a",
+  song,
+  state,
+  replied: state !== "open",
+});
+
+describe("a 想一起听 in 消息", () => {
+  it("offers 一起听 while it is good today, with the song TA heard you play", () => {
+    const html = sheet([asking("open")], [drA()], "friends");
+    expect(read(html).text).toContain(fmt(T.inbox.listen.ask, { who: "Dr. A", song: "逐星河" }));
+    expect(read(html).text).toContain(T.inbox.listen.askOpen);
+    expect(words(html)).toEqual(expect.arrayContaining([T.listen.join, T.common.seeThem]));
+  });
+
+  it("says once you invited TA, or that the day is over, with nothing to press but 看看 TA", () => {
+    for (const [state, said] of [["done", T.inbox.listen.askDone], ["over", T.inbox.listen.askOver]] as const) {
+      const html = sheet([asking(state)], [drA()], "friends");
+      expect(read(html).text).toContain(said);
+      expect(words(html)).not.toContain(T.listen.join);
+      expect(words(html)).toContain(T.common.seeThem);
+    }
+  });
+
+  it("asks without a song when it has none, and offers no 看看 TA once TA is no longer a 触须之交", () => {
+    const html = sheet([asking("open", "")], [], "friends");
+    expect(read(html).text).toContain(fmt(T.inbox.listen.askNoSong, { who: "Dr. A" }));
+    expect(words(html)).toContain(T.listen.join);
+    expect(words(html)).not.toContain(T.common.seeThem);
+  });
+});
+
+/** Dr. A listening to 逐星河, asked already or not */
+const hearingA = (asked: boolean): Friend => ({ ...drA(), listening: { song: "s:1", name: "逐星河", asked } });
+/** The row's own button, the one that opens TA */
+const rowButton = (html: string) => /<button class="list-row friend-row"[^>]*>(.*?)<\/button>/.exec(html)?.[1] ?? "";
+
+describe("a 触须之交 listening, in 触须之交's list", () => {
+  it("says what TA is listening to, with 想一起听 beside the row, not inside its button", () => {
+    const html = sheet([], [hearingA(false)], "friends", { listenAsk: nothing });
+    expect(read(html).text).toContain(fmt(T.inbox.friendRow.hearing, { song: "逐星河" }));
+    expect(read(html).buttons).toContainEqual([T.friendActs.ask, false]);
+    expect(rowButton(html)).toContain(fmt(T.inbox.friendRow.hearing, { song: "逐星河" }));
+    expect(rowButton(html)).not.toContain("hear-ask");
+    expect(html).toMatch(/<div class="friend-row-wrap"><button class="list-row friend-row"/);
+  });
+
+  it("greys 想一起听 once you asked today", () => {
+    expect(read(sheet([], [hearingA(true)], "friends", { listenAsk: nothing })).buttons).toContainEqual([T.friendActs.asked, true]);
+  });
+
+  it("offers no 想一起听 while 听歌 is not shown, and says nothing of a 触须之交 not listening", () => {
+    expect(words(sheet([], [hearingA(false)], "friends"))).not.toContain(T.friendActs.ask);
+    const quiet = sheet([], [drA()], "friends", { listenAsk: nothing });
+    expect(read(quiet).text).not.toContain("♪");
+    expect(words(quiet)).not.toContain(T.friendActs.ask);
+    expect(quiet).not.toContain("friend-row-wrap");
   });
 });

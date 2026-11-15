@@ -151,7 +151,7 @@ import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
 import { listenMe, listenOpen } from "./listen";
-import { listenCalls, listenInbox, seeListenInvites } from "./listenRooms";
+import { friendsListening, listenCalls, listenInbox, seeListenInvites } from "./listenRooms";
 import { studyMe } from "./study";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
@@ -267,6 +267,7 @@ export function profileOf(u: UserRow): Profile {
     shareUid: u.shareUid,
     flipWhenAway: u.flipWhenAway,
     welcomeGuests: u.welcomeGuests,
+    showListening: u.showListening,
     avatar: ROACH_AVATARS.find((a) => a === u.avatar) ?? "hood",
     color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
     support: checkSupport(u.support),
@@ -288,6 +289,7 @@ export function profileColumns(p: Profile) {
     shareUid: p.shareUid,
     flipWhenAway: p.flipWhenAway,
     welcomeGuests: p.welcomeGuests,
+    showListening: p.showListening,
     avatar: p.avatar,
     color: p.color,
     support: p.support,
@@ -1634,10 +1636,18 @@ export async function friends(userId: string): Promise<Friend[]> {
     });
     met.push({ user: u, since: f.createdAt, at: out.length - 1 });
   }
-  // what the two of you can do for each other, all of them at once
+  // what the two of you can do for each other, all of them at once; and what each listens to now, while TA lets you see
   if (self) {
     const between = await betweenOf(self, met);
     for (const m of met) out[m.at].between = between.get(m.user.id);
+    const listening = await friendsListening(
+      self,
+      met.map((m) => m.user),
+    );
+    for (const m of met) {
+      const l = listening.get(m.user.id);
+      if (l) out[m.at].listening = l;
+    }
   }
   // their ink roaches on the map (not held), by tap number: 只看本体 draws them as their other clones
   if (met.length) {

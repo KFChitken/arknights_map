@@ -1,14 +1,16 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { T } from "@/i18n";
 import type { PassesMe } from "@/lib/passes";
-import { EMPTY_PROFILE } from "@/lib/profile";
+import { EMPTY_PROFILE, type Profile } from "@/lib/profile";
 import ProfileSheet from "./ProfileSheet";
 
-const sheet = (passes?: PassesMe) =>
+const sheet = (passes?: PassesMe, more: { listen?: boolean; profile?: Profile } = {}) =>
   renderToStaticMarkup(
     createElement(ProfileSheet, {
-      profile: EMPTY_PROFILE,
+      profile: more.profile ?? EMPTY_PROFILE,
+      listen: more.listen,
       badges: [],
       wornBadge: null,
       blocked: [],
@@ -39,5 +41,19 @@ describe("我的资料's 通行证", () => {
     const html = sheet();
     expect(html).not.toContain("地图卡片上显示立绘");
     expect(html).not.toContain("省流量：不加载立绘");
+  });
+});
+
+describe("我的资料's 听歌", () => {
+  it("lets 触须之交 see the song by default, and keeps it off once switched off", () => {
+    expect(box(sheet(undefined, { listen: true }), T.profile.hearing.label)?.[1]).toBe(' checked=""');
+    const off = sheet(undefined, { listen: true, profile: { ...EMPTY_PROFILE, showListening: false } });
+    expect(box(off, T.profile.hearing.label)).not.toBeNull();
+    expect(box(off, T.profile.hearing.label)?.[1]).toBeUndefined();
+    expect(off).toContain(T.profile.hearing.note);
+  });
+
+  it("is not there for a player 听歌 is not open to", () => {
+    expect(sheet()).not.toContain(T.profile.hearing.label);
   });
 });

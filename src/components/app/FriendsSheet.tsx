@@ -208,7 +208,8 @@ export default function FriendsSheet({
                   {act && !why && <span className={`tile-tick${on ? " on" : ""}`} aria-hidden="true" />}
                   <RoachIcon color={f.profile.color} size={60} avatar={f.profile.avatar} friend />
                   <strong>{f.profile.displayName}</strong>
-                  <small>{why ?? ago(f.since)}</small>
+                  {/* 在听 (听歌): what TA listens to now, while TA lets you see it */}
+                  {!why && f.listening ? <small className="hearing">{fmt(T.friendActs.hearing, { song: f.listening.name })}</small> : <small>{why ?? ago(f.since)}</small>}
                 </button>
               );
             })}

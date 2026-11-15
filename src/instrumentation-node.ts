@@ -28,7 +28,7 @@ import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
-import { saveSongPlays, startSongs, syncCatalog } from "./lib/server/songs";
+import { saveSongPlays, saveSongReactions, startSongs, syncCatalog } from "./lib/server/songs";
 import { logError, note } from "./lib/server/signals";
 import { saveStatCounts } from "./lib/server/stats";
 import { recordDailyTotals } from "./lib/server/totals";
@@ -110,6 +110,7 @@ const saveCounts = () => {
   void saveAppCounts().catch(failed("counts", "Saving 存到桌面's counts failed"));
   void saveStatCounts().catch(failed("counts", "Saving 数据看板's counts failed"));
   void saveSongPlays().catch(failed("counts", "Saving how often each song was played failed"));
+  void saveSongReactions().catch(failed("counts", "Saving the 短评 said to each song failed"));
 };
 setInterval(saveCounts, MINUTE_MS);
 process.once("SIGTERM", () => void saveCounts());

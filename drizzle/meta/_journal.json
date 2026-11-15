@@ -428,6 +428,13 @@
       "when": 1794722141487,
       "tag": "0061_listen_declarations",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794725772127,
+      "tag": "0062_listen_friends",
+      "breakpoints": true
     }
   ]
 }

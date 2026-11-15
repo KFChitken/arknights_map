@@ -8,7 +8,7 @@ import type { ReportCounts, ReportReason, RoachReportReason } from "../safety";
 import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { GiftState, PassesDot, PassesMe } from "../passes";
-import type { ListenCall, ListenMe } from "../listen";
+import type { FriendListening, ListenCall, ListenMe } from "../listen";
 import type { StudyMe } from "../study/rules";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
@@ -424,6 +424,11 @@ export type Friend = {
    * tapOf), so 只看本体 still draws it. Absent otherwise, and for the guides
    */
   inkTap?: number;
+  /**
+   * What TA listens to now (src/lib/listen.ts FriendListening): there only while TA lets 触须之交 see it and you both
+   * may listen; never on anything a stranger gets, nor in the map's roaches
+   */
+  listening?: FriendListening;
 };
 
 /** Between you and one 触须之交 (src/lib/friendly.ts) */
@@ -683,6 +688,22 @@ export type InboxItem =
       n: number;
       until: number;
       replied: true;
+    }
+  /**
+   * 想一起听: a 触须之交 asks you to invite TA to 一起听 (src/lib/server/listenRooms.ts askToListen); song: what you were
+   * listening to then. state: you may still, the site day it came on ("open"), you did ("done", replied), or that day
+   * is over, or TA may not listen now ("over")
+   */
+  | {
+      kind: "listenAsk";
+      id: string;
+      at: number;
+      seen: boolean;
+      from: PublicProfile;
+      friendId: string;
+      song: string;
+      state: "open" | "done" | "over";
+      replied: boolean;
     }
   /**
    * 串门 news. To the host: a guest came ("came"; tip: the first time, with a word about the main roach; spot:

@@ -77,8 +77,12 @@ export const listenApi = {
   /** What the host does to its songs */
   queue: (change: QueueChange) =>
     call<{ room: ListenRoom | null; now: number }>("queue", post(typeof change === "object" ? { add: change.add } : { [change]: true })),
-  /** A 短评, by its number: sent, or one too many (full: this song's are used up) */
+  /** A 短评, by its number, in your room or to the song you play alone: sent, or one too many (full: this song's are used up) */
   react: (r: number) => call<{ sent: boolean; full?: boolean; now: number }>("react", post({ r })),
+  /** 想一起听: ask a 触须之交 who is listening (their Friend id) to invite you */
+  ask: (friend: string) => call<{ now: number }>("ask", post({ friend })),
+  /** 一起听 at a 想一起听 to you (its item id in 消息): your room, TA invited to it */
+  askOk: (item: string) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("askOk", post({ item })),
   /** The page is going: a beacon, which outlives it, so the server counts the player only a little longer */
   away: () => {
     const body = JSON.stringify({ away: true });

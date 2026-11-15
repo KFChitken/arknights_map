@@ -15,6 +15,7 @@ import {
   type BatchAct,
 } from "../friendly";
 import { isGame, serverName, type Game } from "../games";
+import { LISTEN_ASK } from "../listen";
 import { GIFTS_IN_PER_DAY, type GiftState } from "../passes";
 import { displayName } from "../profile";
 import { outsideOffLimits } from "../offLimits";
@@ -33,6 +34,7 @@ import { listenOpen } from "./listen";
 import { nudge } from "./live";
 import { giftsOpen, passesOpen, receiveGift } from "./passes";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
+import { songList } from "./songs";
 import {
   declarations,
   deliveries,
@@ -863,6 +865,10 @@ export async function friendlyInbox(self: UserRow, blocked: Set<string>, now = D
     .from(visits)
     .where(and(eq(visits.guestId, userId), isNotNull(visits.leftAt)));
   const myGames = profileOf(self);
+  // 想一起听 only while you may listen; the songs they name by the list every process holds
+  const listening = listenOpen(self);
+  const songNames = listening && toMe.some((n) => n.kind === LISTEN_ASK) ? (await songList()).byId : null;
+  const today = siteDay(now);
 
   const items: InboxItem[] = [];
   const base = (n: Note, id: string, at: Date, seen: boolean, who: string) => ({
@@ -906,6 +912,9 @@ export async function friendlyInbox(self: UserRow, blocked: Set<string>, now = D
         answered: n.answer === "added",
         replied: !ask || n.answer === "added",
       });
+    } else if (n.kind === LISTEN_ASK && songNames) {
+      const state = n.answer ? "done" : n.period === today ? "open" : "over";
+      items.push({ kind: "listenAsk", ...b, song: (n.song && songNames.get(n.song)?.name) ?? "", state, replied: state !== "open" });
     }
   }
   for (const n of answered) {
@@ -915,7 +924,6 @@ export async function friendlyInbox(self: UserRow, blocked: Set<string>, now = D
     else if (isGame(n.game)) items.push({ kind: "game", ...b, event: "added", game: n.game, server: "", answered: true, replied: true });
   }
   // given all a day may bring: said once, just above today's last
-  const today = siteDay(now);
   const giftsToday = toMe.filter((n) => n.kind === "gift" && n.period === today);
   if (giftsToday.length) {
     const [w] = await db
@@ -980,9 +988,13 @@ export async function seeFriendly(userId: string, itemIds: string[]) {
   }
 }
 
+/** 想一起听 is kept this long: its site day, and as long again to show it is over (the privacy page) */
+export const KEEP_LISTEN_ASK_MS = 2 * DAY;
+
 /**
  * Old notes go with the rest of the activity, except that two are also friends in a game; who gave whom a 寻访券
- * goes after KEEP_PASS_GIFT_DAYS (the privacy page), its note too; old bans when they end
+ * goes after KEEP_PASS_GIFT_DAYS (the privacy page), its note too; 想一起听, with the song it names, after
+ * KEEP_LISTEN_ASK_MS; old bans when they end
  */
 export async function pruneFriendly(cutoff: Date, now = Date.now()) {
   const gifts = new Date(now - KEEP_PASS_GIFT_DAYS * DAY);
@@ -992,6 +1004,7 @@ export async function pruneFriendly(cutoff: Date, now = Date.now()) {
       or(
         and(lt(friendNotes.createdAt, cutoff), or(sql`${friendNotes.kind} <> 'gameAsk'`, isNull(friendNotes.answer))),
         and(eq(friendNotes.kind, "gift"), lt(friendNotes.createdAt, gifts)),
+        and(eq(friendNotes.kind, LISTEN_ASK), lt(friendNotes.createdAt, new Date(now - KEEP_LISTEN_ASK_MS))),
       ),
     );
   await db.delete(passGifts).where(lt(passGifts.createdAt, gifts));

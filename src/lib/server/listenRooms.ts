@@ -10,10 +10,12 @@ import {
   INVITES_PER_DAY,
   isRx,
   isSongId,
+  LISTEN_ASK,
   LISTEN_GRAY,
   LISTEN_PAUSED,
   NO_ROOM,
   NO_SONG,
+  NOT_LISTENING,
   QUEUE_MAX,
   ROOM_FULL,
   ROOM_GONE,
@@ -24,6 +26,8 @@ import {
   roomAt,
   RX_EVERY_MS,
   RX_PER_SONG,
+  RX_ROOM_FROM,
+  type FriendListening,
   type InviteSent,
   type ListenCall,
   type ListenFriend,
@@ -45,9 +49,9 @@ import { HttpError } from "./http";
 import { listenOpen, refuseIfFull, roomOfPlayer } from "./listen";
 import { nudge, onToldListen, tellListen } from "./live";
 import { allow } from "./rateLimit";
-import { listenInvites, listenMembers, listenNow, listenRooms, roaches, users, type UserRow } from "./schema";
+import { friendNotes, listenInvites, listenMembers, listenNow, listenRooms, roaches, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
-import { firstSong, songList, songOf } from "./songs";
+import { countSaid, firstSong, songList, songOf } from "./songs";
 import { countStat } from "./stats";
 import { cardsOf, declare, friendIdsOf, friendKey, profileOf, touch } from "./world";
 
@@ -63,7 +67,8 @@ import { cardsOf, declare, friendIdsOf, friendKey, profileOf, touch } from "./wo
  * second, and that it ended. 短评 are never written down. A room ends when its host ends or leaves it, goes off for more
  * than AWAY_MS, opens another or goes in at another; when its songs have been over ROOM_IDLE_MS, nobody is left, or it
  * has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the site goes gray. ROOM_KEEP_MS
- * after, the room, who was in it and the invitations to it are deleted.
+ * after, the room, who was in it and the invitations to it are deleted. Your 触须之交 see what you listen to while you
+ * let them (show_listening: friendsListening), and may ask you to invite them (想一起听: askToListen, answerAsk).
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -330,9 +335,10 @@ export async function inviteFriends(user: UserRow, body: Record<string, unknown>
 
 /**
  * Each 触须之交 given gets an invitation, unless TA may not listen (LISTEN, blocking), is in the room already, has one
- * to it still good, or was invited INVITES_PER_DAY times today by this host (a site day, none of the day's touches)
+ * to it still good, or was invited INVITES_PER_DAY times today by this host (a site day, none of the day's touches).
+ * asked: the answer to TA's own 想一起听, which goes however many were sent today, and is none of them.
  */
-async function inviteIn(user: UserRow, roomId: string, given: unknown, now: number): Promise<InviteSent[]> {
+async function inviteIn(user: UserRow, roomId: string, given: unknown, now: number, asked = false): Promise<InviteSent[]> {
   if (!Array.isArray(given)) throw refuse(400, T.server.common.badRequest);
   const keys = [...new Set(given.map(String))].slice(0, INVITE_AT_ONCE);
   if (!keys.length) return [];
@@ -388,12 +394,19 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
       const [{ n }] = await tx
         .select({ n: count() })
         .from(listenInvites)
-        .where(and(eq(listenInvites.fromUserId, user.id), eq(listenInvites.toUserId, to), gte(listenInvites.createdAt, dayStart)));
-      if (n >= INVITES_PER_DAY) {
+        .where(
+          and(
+            eq(listenInvites.fromUserId, user.id),
+            eq(listenInvites.toUserId, to),
+            gte(listenInvites.createdAt, dayStart),
+            eq(listenInvites.asked, false),
+          ),
+        );
+      if (n >= INVITES_PER_DAY && !asked) {
         results.push({ id: key, ok: false, why: fmt(T.server.listen.invitedEnough, { n: INVITES_PER_DAY }) });
         continue;
       }
-      await tx.insert(listenInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now) });
+      await tx.insert(listenInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now), asked });
       results.push({ id: key, ok: true });
       nudged.push(to);
     }
@@ -746,18 +759,39 @@ export async function separateBlocked(blockerId: string, blockedId: string, now 
 /**
  * A 短评 in the room you are in, by its number (src/lib/listen.ts isRx): one every RX_EVERY_MS and RX_PER_SONG to a
  * song, counted in memory alone, and never written down. Those of a second go out together (RX_BATCH_MS), to everyone
- * in the room but those it is hidden from. sent: false when it was one too many (the page greys its buttons).
+ * in the room but those it is hidden from. sent: false when it was one too many (the page greys its buttons). Out of a
+ * room, one said listening alone (reactAlone).
  */
 export async function reactInRoom(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (!isRx(body.r)) throw refuse(400, T.server.common.badRequest);
   const mine = await roomOfPlayer(db, user.id);
-  if (!mine) throw refuse(409, T.server.listen.noRoom, NO_ROOM);
+  if (!mine) return reactAlone(user, body.r, now);
   const at = roomAt(scheduleOf(mine.room), await secondsOf(), now);
   const song = at.phase === "playing" ? `${mine.room.queue[at.i]}@${at.start}` : "between";
   if (!allow(`listen:rx:${user.id}`, 1, RX_EVERY_MS)) return { sent: false, now };
   if (!allow(`listen:rx:${mine.room.id}:${song}:${user.id}`, RX_PER_SONG, ROOM_LIFE_MS)) return { sent: false, full: true, now };
   addRx(mine.room.id, mine.me.handle, body.r);
   countStat(COUNTED.listenRx, 1, now);
+  return { sent: true, now };
+}
+
+/**
+ * A 短评 said listening alone, to the song playing: rows one and two only (the third is a room's), as often as in a
+ * room, and to nobody. Only how many times each is said to each song is kept (songs.ts countSaid: 大家都在说), never
+ * who said it. A song's RX_PER_SONG are counted over as long as it lasts.
+ */
+async function reactAlone(user: Pick<UserRow, "id">, r: number, now: number) {
+  if (r >= RX_ROOM_FROM) throw refuse(409, T.server.listen.noRoom, NO_ROOM);
+  const [playing] = await db
+    .select({ song: listenNow.song })
+    .from(listenNow)
+    .where(and(eq(listenNow.userId, user.id), gt(listenNow.until, new Date(now))));
+  const song = playing && (await songOf(playing.song));
+  if (!song) throw refuse(409, T.server.listen.notListening, NOT_LISTENING);
+  if (!allow(`listen:rx:${user.id}`, 1, RX_EVERY_MS)) return { sent: false, now };
+  if (!allow(`listen:rx:alone:${song.id}:${user.id}`, RX_PER_SONG, Math.max(60_000, song.seconds * 1000))) return { sent: false, full: true, now };
+  countSaid(song.id, r);
+  countStat(COUNTED.listenRxAlone, 1, now);
   return { sent: true, now };
 }
 
@@ -969,7 +1003,7 @@ export async function listenFriends(user: Pick<UserRow, "id">, now = Date.now())
       await db
         .select({ to: listenInvites.toUserId, n: count() })
         .from(listenInvites)
-        .where(and(eq(listenInvites.fromUserId, user.id), gte(listenInvites.createdAt, dayStart)))
+        .where(and(eq(listenInvites.fromUserId, user.id), gte(listenInvites.createdAt, dayStart), eq(listenInvites.asked, false)))
         .groupBy(listenInvites.toUserId)
     ).map((r) => [r.to, r.n]),
   );
@@ -996,4 +1030,113 @@ export async function listenFriends(user: Pick<UserRow, "id">, now = Date.now())
     )
     .sort((a, b) => a.card.displayName.localeCompare(b.card.displayName, "zh"));
   return { friends, now };
+}
+
+// ---- 在听, and 想一起听 ----
+
+/**
+ * What each of these 触须之交 of the player's listens to now (Friend.listening), by user id: only while TA lets 触须之交
+ * see it (show_listening), TA's listen_now is good, and both of you may listen (not while the site is gray or 听歌 is
+ * paused); asked: the player said 想一起听 to TA today. Read for all of them at once.
+ */
+export async function friendsListening(viewer: Pick<UserRow, "id" | "email">, others: UserRow[], now = Date.now()) {
+  const out = new Map<string, FriendListening>();
+  if (!listenOpen(viewer) || grayUntil(now) || listenSettings().paused) return out;
+  const ids = others.filter((u) => u.showListening && listenOpen(u)).map((u) => u.id);
+  if (!ids.length) return out;
+  const rows = await db
+    .select({ userId: listenNow.userId, song: listenNow.song })
+    .from(listenNow)
+    .where(and(inArray(listenNow.userId, ids), gt(listenNow.until, new Date(now))));
+  if (!rows.length) return out;
+  const asked = new Set(
+    (
+      await db
+        .select({ to: friendNotes.toUserId })
+        .from(friendNotes)
+        .where(
+          and(
+            eq(friendNotes.fromUserId, viewer.id),
+            eq(friendNotes.kind, LISTEN_ASK),
+            eq(friendNotes.period, siteDay(now)),
+            inArray(
+              friendNotes.toUserId,
+              rows.map((r) => r.userId),
+            ),
+          ),
+        )
+    ).map((r) => r.to),
+  );
+  const names = (await songList()).byId;
+  for (const r of rows) {
+    const name = names.get(r.song)?.name;
+    // a song no longer in the list: nothing to say of it
+    if (name) out.set(r.userId, { song: r.song, name, asked: asked.has(r.userId) });
+  }
+  return out;
+}
+
+/**
+ * 想一起听: the player asks a 触须之交 who is listening now, as they see it (friendsListening), to invite them; a note
+ * in TA's 消息 → 触须之交 with what TA listens to, once a site day to each (not one of the day's invitations). Not to one
+ * in the same room already.
+ */
+export async function askToListen(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
+  refuseNow(now);
+  const key = String(body.friend ?? "");
+  const other = [...(await friendIdsOf(user.id))].find((id) => friendKey(user.id, id) === key);
+  if (!other) throw refuse(404, T.server.common.notFriends);
+  const [them] = await db.select().from(users).where(eq(users.id, other));
+  const playing = them && (await friendsListening(user, [them], now)).get(them.id);
+  if (!playing) throw refuse(409, T.server.listen.theyStopped, NOT_LISTENING);
+  const [mine, theirs] = await Promise.all([roomOfPlayer(db, user.id), roomOfPlayer(db, other)]);
+  if (mine && mine.room.id === theirs?.room.id) throw refuse(409, T.server.listen.togetherAlready);
+  if (playing.asked) throw refuse(409, T.server.listen.askedToday);
+  const [asked] = await db
+    .insert(friendNotes)
+    .values({ fromUserId: user.id, toUserId: other, kind: LISTEN_ASK, period: siteDay(now), song: playing.song, createdAt: new Date(now) })
+    .onConflictDoNothing()
+    .returning({ id: friendNotes.id });
+  if (!asked) throw refuse(409, T.server.listen.askedToday);
+  countStat(COUNTED.listenAsk, 1, now);
+  nudge([other]);
+  return { now };
+}
+
+/**
+ * 一起听 at a 想一起听 to the player (item: c:<its note>), the site day it came: the room they host, or a new one of
+ * theirs with what they listen to now (else the song it asked about, else 新歌's first), and an invitation in it to the
+ * one who asked, as any other but none of the day's INVITES_PER_DAY. Not while in someone else's room. Again once
+ * done: the room as it is.
+ */
+export async function answerAsk(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
+  refuseNow(now);
+  const id = String(body.item ?? "").replace(/^c:/, "");
+  if (!UUID.test(id)) throw refuse(400, T.server.common.badRequest);
+  const [note] = await db
+    .select()
+    .from(friendNotes)
+    .where(and(eq(friendNotes.id, id), eq(friendNotes.toUserId, user.id), eq(friendNotes.kind, LISTEN_ASK)));
+  if (!note) throw refuse(404, T.server.common.noSuchNote);
+  const mine = await roomOfPlayer(db, user.id);
+  if (note.answer) return { room: mine ? await roomView(mine.room.id, user.id, now) : null, sent: [] as InviteSent[], now };
+  if (note.period !== siteDay(now)) throw refuse(410, T.server.listen.askOver);
+  if (!(await friendIdsOf(user.id)).has(note.fromUserId)) throw refuse(404, T.server.common.notFriends);
+  if (mine && mine.room.hostId !== user.id) throw refuse(409, T.server.listen.leaveFirst);
+  let roomId = mine?.room.id;
+  if (!roomId) {
+    const [playing] = await db
+      .select({ song: listenNow.song })
+      .from(listenNow)
+      .where(and(eq(listenNow.userId, user.id), gt(listenNow.until, new Date(now))));
+    const song = (playing && (await songOf(playing.song))) || (note.song && (await songOf(note.song))) || null;
+    roomId = (await newRoom(user, song?.id ?? null, now)).id;
+    countStat(COUNTED.listenRoom, 1, now);
+  }
+  const sent = await inviteIn(user, roomId, [friendKey(user.id, note.fromUserId)], now, true);
+  await db
+    .update(friendNotes)
+    .set({ answer: "invited", answeredAt: new Date(now), seenAt: sql`coalesce(${friendNotes.seenAt}, now())` })
+    .where(and(eq(friendNotes.id, id), isNull(friendNotes.answer)));
+  return { room: await roomView(roomId, user.id, now), sent, now };
 }

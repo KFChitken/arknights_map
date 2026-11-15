@@ -22,7 +22,7 @@ import { HttpError } from "./http";
 import { musicLink } from "./musicLinks";
 import { listenMembers, listenNow, listenRooms, siteSettings, statCounts, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
-import { countPlay, MUSIC_KEY, songList, songOf } from "./songs";
+import { countPlay, MUSIC_KEY, songList, songOf, songSaid } from "./songs";
 import { countStat, unsavedStats } from "./stats";
 
 /**
@@ -107,8 +107,8 @@ export async function refuseIfFull(userId: string, now = Date.now()): Promise<bo
 
 /**
  * A song played by the player, from `at` seconds in (0: from the start, which alone counts as a play), with the next
- * one's link too when asked for. Refused while the site is gray, while 听歌 is paused, and to a player who is not
- * listening yet when as many as the cap are.
+ * one's link too when asked for, and 大家都在说 under it (songs.ts songSaid). Refused while the site is gray, while 听歌
+ * is paused, and to a player who is not listening yet when as many as the cap are.
  */
 export async function playSong(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()): Promise<ListenPlay> {
   if (grayUntil(now)) throw new HttpError(403, T.server.listen.gray, LISTEN_GRAY);
@@ -131,7 +131,18 @@ export async function playSong(user: Pick<UserRow, "id">, body: Record<string, u
     countStat(COUNTED.listenPlay, 1, now);
   }
   const next = body.next === undefined ? undefined : await songOf(body.next);
-  return { url: musicLink(song.file, now), ...(next ? { nextUrl: musicLink(next.file, now) } : {}), until, now };
+  // the song plays all the same when its 短评 cannot be read
+  const said = await songSaid(song.id, now).catch((e: unknown) => {
+    console.error("listen: reading 大家都在说 failed", e);
+    return [];
+  });
+  return {
+    url: musicLink(song.file, now),
+    ...(next ? { nextUrl: musicLink(next.file, now) } : {}),
+    until,
+    now,
+    ...(said.length ? { said } : {}),
+  };
 }
 
 /**

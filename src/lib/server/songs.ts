@@ -2,12 +2,12 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { and, isNull, notInArray, sql } from "drizzle-orm";
-import { freshSongs, isSongId, SONG_FILE, type ListenAlbum, type ListenCatalog } from "../listen";
+import { and, asc, desc, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
+import { freshSongs, isSongId, SAID_MIN, SAID_TOP, SONG_FILE, type ListenAlbum, type ListenCatalog, type SongSaid } from "../listen";
 import { db } from "./db";
 import { MUSIC_DIR } from "./env";
 import { onReload, reloadEverywhere } from "./live";
-import { siteSettings, songPlays, songs } from "./schema";
+import { siteSettings, songPlays, songReactions, songs } from "./schema";
 import { errorCode, logError, note } from "./signals";
 
 /**
@@ -16,8 +16,9 @@ import { errorCode, logError, note } from "./signals";
  * kept with gone_at. Every process keeps the list in memory (loadSongs), read again when the main says (reload
  * "songs") and every 10 minutes anyway, with what the page gets of it, its ETag and each song's file. A catalogue
  * that cannot be read changes nothing: the list stays as it was, or empty if there never was one. How often each
- * song is played is counted in memory and added to song_plays once a minute (saveSongPlays), with nothing of who.
- * It lives on globalThis because Next.js can load this module once per route bundle.
+ * song is played is counted in memory and added to song_plays once a minute (saveSongPlays), with nothing of who; so
+ * are the 短评 said to each by those listening alone, into song_reactions (saveSongReactions), whose most said make
+ * 大家都在说 under it (songSaid). It lives on globalThis because Next.js can load this module once per route bundle.
  */
 
 /** A song the server plays: its file, how long it is, and its album's name for the lock screen */
@@ -32,9 +33,26 @@ type Held = {
   synced: string | null;
   bad: string | null;
   plays: Map<string, number>;
+  /** 短评 said to a song by those listening alone, by `${song}#${number}`, since they were last saved */
+  said: Map<string, number>;
+  /** 大家都在说 as last read for each song, and when */
+  saidRead: Map<string, { at: number; top: SongSaid[] }>;
 };
 const g = globalThis as unknown as { songsHeld?: Held };
-const held = (g.songsHeld ??= { list: null, loading: null, again: false, started: false, synced: null, bad: null, plays: new Map() });
+const held = (g.songsHeld ??= {
+  list: null,
+  loading: null,
+  again: false,
+  started: false,
+  synced: null,
+  bad: null,
+  plays: new Map(),
+  said: new Map(),
+  saidRead: new Map(),
+});
+// one held from before these were counted (a process that read this module again as it changed)
+held.said ??= new Map();
+held.saidRead ??= new Map();
 
 const RELOAD_MS = 10 * 60_000;
 /** site_settings' row for what the main process last read in (never a setting: only the 管理台 reads it) */
@@ -269,4 +287,57 @@ export async function saveSongPlays() {
     for (const [song, n] of taken) held.plays.set(song, (held.plays.get(song) ?? 0) + n);
     throw e;
   }
+}
+
+// ---- 大家都在说: the 短评 said to each song by those listening alone ----
+
+/** How long 大家都在说 is read once for each song, and for how many songs at most it is kept */
+const SAID_READ_MS = 60_000;
+const SAID_READ_MAX = 5_000;
+
+/** One more 短评 (by its number) said to a song by someone listening alone */
+export function countSaid(song: string, r: number) {
+  const key = `${song}#${r}`;
+  held.said.set(key, (held.said.get(key) ?? 0) + 1);
+}
+
+/** What was counted since last time, added to song_reactions in one statement; kept for next time when that fails */
+export async function saveSongReactions() {
+  const taken = held.said;
+  if (!taken.size) return;
+  held.said = new Map();
+  try {
+    await db
+      .insert(songReactions)
+      .values(
+        [...taken].map(([key, n]) => {
+          const at = key.lastIndexOf("#");
+          return { song: key.slice(0, at), phrase: Number(key.slice(at + 1)), n };
+        }),
+      )
+      .onConflictDoUpdate({ target: [songReactions.song, songReactions.phrase], set: { n: sql`${songReactions.n} + excluded.n` } });
+  } catch (e) {
+    for (const [key, n] of taken) held.said.set(key, (held.said.get(key) ?? 0) + n);
+    throw e;
+  }
+}
+
+/** 大家都在说 under a song: its SAID_TOP 短评 said more than SAID_MIN times, most first; read once a minute at most */
+export async function songSaid(song: string, now = Date.now()): Promise<SongSaid[]> {
+  const kept = held.saidRead.get(song);
+  if (kept && now - kept.at < SAID_READ_MS) return kept.top;
+  const top = await db
+    .select({ r: songReactions.phrase, n: songReactions.n })
+    .from(songReactions)
+    .where(and(eq(songReactions.song, song), gt(songReactions.n, SAID_MIN)))
+    .orderBy(desc(songReactions.n), asc(songReactions.phrase))
+    .limit(SAID_TOP);
+  if (held.saidRead.size >= SAID_READ_MAX) held.saidRead.clear();
+  held.saidRead.set(song, { at: now, top });
+  return top;
+}
+
+/** For the tests: 大家都在说 read afresh next time */
+export function forgetSaid() {
+  held.saidRead.clear();
 }

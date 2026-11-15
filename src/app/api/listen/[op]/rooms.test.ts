@@ -529,9 +529,10 @@ describe("一起听's rooms", () => {
     }
     vi.setSystemTime(Date.now() + RX_EVERY_MS);
     expect((await post(b, "react", { r: 0 })).body).toMatchObject({ sent: false, full: true });
-    // out of a room, there is nobody to say it to
+    // out of a room with no song of their own playing, there is nothing to say it to (friends.test.ts: alone)
     await post(b, "leave");
-    expect(await post(b, "react", { r: 0 })).toMatchObject({ status: 409, body: { error: "你现在不在一起听里。" } });
+    expect(await post(b, "react", { r: 0 })).toMatchObject({ status: 409, body: { error: "先放一首歌，再发短评。", code: "NOT_LISTENING" } });
+    expect(await post(b, "react", { r: 15 })).toMatchObject({ status: 409, body: { error: "你现在不在一起听里。" } });
     await flushRxNow();
     expect(await counted(COUNTED.listenRx)).toBe(11);
   });

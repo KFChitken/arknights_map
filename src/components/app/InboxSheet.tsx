@@ -121,6 +121,10 @@ export type InboxFriendly = {
   listenShow: () => void;
   /** 进去听 at a 宣言一起听 you got (its item id) */
   listenCall: (itemId: string) => Promise<void>;
+  /** 一起听 at a 想一起听 to you (its item id): your room, or a new one, TA invited to it */
+  listenAnswer: (itemId: string) => Promise<void>;
+  /** 想一起听 by a 触须之交 listening (their Friend id), in 触须之交's list; absent while 听歌 is not shown */
+  listenAsk?: (friendId: string) => Promise<void>;
 };
 
 /**
@@ -407,6 +411,32 @@ export default function InboxSheet({
             {item.state === "in" && (
               <button className="pill dark" onClick={() => friendly.listenShow()}>
                 {T.inbox.listen.go}
+              </button>
+            )}
+            {friendIds.has(item.friendId) && (
+              <button className="pill" onClick={() => onOpenFriend(item.friendId)}>
+                {T.common.seeThem}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    // 想一起听: TA asks you to invite TA; 一起听 opens a room (or takes the one you host) with TA invited, the day it came
+    if (item.kind === "listenAsk") {
+      const who = item.from.displayName;
+      const busy = acting === item.id;
+      return (
+        <div key={item.id} className={cls}>
+          <div>{item.song ? fmt(T.inbox.listen.ask, { who, song: item.song }) : fmt(T.inbox.listen.askNoSong, { who })}</div>
+          <p className="hint">
+            {item.state === "open" ? T.inbox.listen.askOpen : item.state === "done" ? T.inbox.listen.askDone : T.inbox.listen.askOver}
+          </p>
+          {meta(item, `friend:${item.friendId}`, who)}
+          <div className="row-actions">
+            {item.state === "open" && (
+              <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.listenAnswer(item.id))}>
+                {T.listen.join}
               </button>
             )}
             {friendIds.has(item.friendId) && (
@@ -726,20 +756,40 @@ export default function InboxSheet({
           {friends.length === 0 && (
             <p className="hint">{T.common.noFriends}</p>
           )}
-          {friends.map((f) => (
-            <button key={f.id} className="list-row friend-row" onClick={() => onOpenFriend(f.id)}>
-              <RoachIcon color={f.profile.color} size={40} avatar={f.profile.avatar} friend />
-              <div>
-                <strong>{f.profile.displayName}</strong>
-                <p className="muted">
-                  {guideById(f.id)
-                    ? fmt(T.inbox.friendRow.guide, { ago: ago(f.since), note: guideById(f.id)!.note })
-                    : fmt(T.inbox.friendRow.player, { ago: ago(f.since), roaches: f.roaches.length, declarations: f.declarations })}
-                </p>
+          {friends.map((f) => {
+            const hearing = f.listening;
+            const row = (
+              <button key={f.id} className="list-row friend-row" onClick={() => onOpenFriend(f.id)}>
+                <RoachIcon color={f.profile.color} size={40} avatar={f.profile.avatar} friend />
+                <div>
+                  <strong>{f.profile.displayName}</strong>
+                  <p className="muted">
+                    {guideById(f.id)
+                      ? fmt(T.inbox.friendRow.guide, { ago: ago(f.since), note: guideById(f.id)!.note })
+                      : fmt(T.inbox.friendRow.player, { ago: ago(f.since), roaches: f.roaches.length, declarations: f.declarations })}
+                  </p>
+                  {hearing && <p className="hearing">{fmt(T.inbox.friendRow.hearing, { song: hearing.name })}</p>}
+                </div>
+                <span className="chev">›</span>
+              </button>
+            );
+            if (!hearing || !friendly.listenAsk) return row;
+            // 想一起听 beside the row, never inside its button
+            const ask = friendly.listenAsk;
+            const key = `ask:${f.id}`;
+            return (
+              <div key={f.id} className="friend-row-wrap">
+                {row}
+                <button
+                  className="listen-pill hear-ask"
+                  disabled={hearing.asked || acting === key}
+                  onClick={() => act(key, () => ask(f.id))}
+                >
+                  {hearing.asked ? T.friendActs.asked : T.friendActs.ask}
+                </button>
               </div>
-              <span className="chev">›</span>
-            </button>
-          ))}
+            );
+          })}
         </>
       )}
     </Sheet>

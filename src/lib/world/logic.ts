@@ -60,6 +60,7 @@ export function normalizeProfile(input: Profile): Profile {
     flipWhenAway: input.flipWhenAway !== false,
     // on unless switched off, so a page from before it existed never turns it off
     welcomeGuests: input.welcomeGuests !== false,
+    showListening: input.showListening !== false,
   };
 }
 

@@ -6,6 +6,8 @@ import { listenMode } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { listenOpen, playSong, stopSong } from "@/lib/server/listen";
 import {
+  answerAsk,
+  askToListen,
   cameBack,
   changeSongs,
   declareRoom,
@@ -41,10 +43,12 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST leave                    out of your room (the host's ends)
  *   POST end                      the host ends it
  *   POST queue {start|next|restart: true, add: song}   what the host does to its songs
- *   POST react {r}                a 短评, by its number
+ *   POST react {r}                a 短评, by its number: in your room, or (rows one and two) to the song you play alone
  *   POST declare {from?, song?}   宣言一起听 for your room, once (not in one: a room of your own first, song first)
  *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
  *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
+ *   POST ask {friend}             想一起听: ask a 触须之交 who is listening to invite you (their Friend id)
+ *   POST askOk {item}             一起听 at a 想一起听 to you (its item in 消息): your room, TA invited to it
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as lr:<room>:<number>).
  * While LISTEN keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -70,9 +74,11 @@ const OPS = {
   declare: { method: "POST", perMinute: 6 },
   kick: { method: "POST", perMinute: 20 },
   touch: { method: "POST", perMinute: 20 },
+  ask: { method: "POST", perMinute: 10 },
+  askOk: { method: "POST", perMinute: 10 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "declare", "touch"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "declare", "touch", "ask", "askOk"]);
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 
@@ -146,6 +152,10 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await kickMember(user, body));
     case "touch":
       return answer(await touchMember(user, body));
+    case "ask":
+      return answer(await askToListen(user, body));
+    case "askOk":
+      return answer(await answerAsk(user, body));
     default:
       throw new HttpError(404, T.server.routes.listen.notHere);
   }

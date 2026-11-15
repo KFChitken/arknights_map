@@ -86,8 +86,8 @@ export function listeningUntil(seconds: number, at: number, now: number): number
   return now + Math.ceil((seconds - from) * 1000) + LISTEN_GRACE_MS;
 }
 
-/** What play answers: the song's link, the next one's to fetch early, and the server's clock */
-export type ListenPlay = { url: string; nextUrl?: string; until: number; now: number };
+/** What play answers: the song's link, the next one's to fetch early, the server's clock, and 大家都在说 under it */
+export type ListenPlay = { url: string; nextUrl?: string; until: number; now: number; said?: SongSaid[] };
 
 /** Why play was refused (the error's code), which the page tells apart: too many listening, paused, gray, no such song */
 export const LISTEN_FULL = "LISTEN_FULL";
@@ -99,6 +99,8 @@ export const ROOM_GONE = "ROOM_GONE";
 export const ROOM_FULL = "ROOM_FULL";
 export const ROOM_SHUT = "ROOM_SHUT";
 export const NO_ROOM = "NO_ROOM";
+/** A 短评 said alone with no song playing, or 想一起听 to a 触须之交 who is not listening (as you may see) any more */
+export const NOT_LISTENING = "NOT_LISTENING";
 
 /** The 管理台's 听歌 (src/lib/server/siteSettings.ts): paused for now, how many may listen at once, how many to a room */
 export type ListenSettings = { paused: boolean; cap: number; roomMax: number };
@@ -236,6 +238,13 @@ export const isRx = (r: unknown): r is number => Number.isInteger(r) && (r as nu
 /** One player's 短评: one every this long at most, and this many to a song */
 export const RX_EVERY_MS = 3_000;
 export const RX_PER_SONG = 10;
+/**
+ * 大家都在说 under a song: the 短评 said most to it by those who listened alone (rows one and two; only how many times
+ * each, never who), the top SAID_TOP said more than SAID_MIN times
+ */
+export const SAID_TOP = 3;
+export const SAID_MIN = 10;
+export type SongSaid = { r: number; n: number };
 /** A 短评 floats this long; the same one from several within RX_MERGE_MS shows once, ×N */
 export const RX_SHOW_MS = 3_000;
 export const RX_MERGE_MS = 2_000;
@@ -299,3 +308,14 @@ export const CALL_CARD_EVERY_MS = 10 * 60_000;
 export type ListenFriend = { id: string; card: PublicProfile; left: number; inRoom: boolean };
 /** How each invitation went (id: the Friend id given): sent (or TA had one, or is in), or why not */
 export type InviteSent = { id: string; ok: boolean; why?: string };
+
+/**
+ * 想一起听: you ask a 触须之交 who is listening to invite you (friend_notes of this kind, one a site day to each); TA's
+ * 一起听 in 消息 opens a room (or takes the one TA hosts) and invites you, as any invitation does
+ */
+export const LISTEN_ASK = "listenAsk";
+/**
+ * A 触须之交 listening now, as you see TA (src/lib/server/world.ts friends): only while TA lets 触须之交 see it
+ * (让触须之交看到我在听什么) and you both may listen. song: its id; asked: you said 想一起听 to TA today
+ */
+export type FriendListening = { song: string; name: string; asked: boolean };

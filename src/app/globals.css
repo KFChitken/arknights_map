@@ -248,6 +248,7 @@ button.danger { border: 1px solid #f1c4bf; border-radius: 12px; padding: 10px 14
   overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 .friend-tile small { color: var(--muted); font-size: 11px; }
+.friend-tile small.hearing { max-width: 100%; overflow: hidden; color: #0f7f83; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .friend-tile { position: relative; }
 .friend-tile.picking { cursor: pointer; }
 .friend-tile.picking.on { border-color: #ff4f8b; background: #ffe3ef; }
@@ -838,6 +839,26 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .seg.tabs button { flex: 1; }
 .friend-row { width: 100%; border: 0; border-bottom: 1px solid #f0f1f3; background: none; text-align: left; color: inherit; }
 .friend-row .chev { color: var(--muted); font-size: 20px; }
+/* 在听 over a 触须之交's main roach on the map (MapApp.tsx hearNote): a teal note just above its head, bobbing */
+.hear-note { pointer-events: none; }
+.hear-note span {
+  position: relative; top: -22px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: #18a0a5; color: #fff; box-shadow: 0 0 0 1.5px #fff, 0 2px 6px #0005; font-size: 13px; font-weight: 800; line-height: 1;
+  animation: hear-bob 1.6s ease-in-out infinite;
+}
+@keyframes hear-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hear-note span { animation: none; }
+}
+/* 在听 (听歌, src/components/app/listening.ts): what a 触须之交 listens to now, teal as 一起听; 想一起听 beside the row */
+.list-row p.hearing { color: #0f7f83; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-row-wrap { position: relative; }
+.friend-row-wrap .friend-row > div { padding-right: 98px; }
+.friend-row-wrap .hear-ask { position: absolute; top: 50%; right: 24px; transform: translateY(-50%); padding: 4px 11px; font-size: 12.5px; }
+.friend-row-wrap .hear-ask:not(:disabled):active { transform: translateY(-50%) scale(0.97); }
 .event { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f0f1f3; font-size: 14px; }
 .event .muted { flex-shrink: 0; font-size: 12px; }
 
@@ -2293,6 +2314,7 @@ button.pill.party-btn { border-color: #1b1d22; background: linear-gradient(100de
 }
 .listen-pill:disabled { border-color: #eef0f3; background: #eef0f3; color: #6b7280; cursor: default; }
 .listen-pill:not(:disabled):active { transform: scale(0.97); }
+.friend-gift .hearing { flex-basis: 100%; overflow: hidden; color: #0f7f83; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .msg.gifts-full .tki { margin-right: 6px; vertical-align: -1px; }
 /* a 寻访券, dark, its two notches cut out */
 .tki {

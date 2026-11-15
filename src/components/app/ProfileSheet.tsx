@@ -84,6 +84,7 @@ export default function ProfileSheet({
   onOpenBadges,
   onOpenSponsor,
   passes,
+  listen = false,
   onPassOnMap,
   onUnblock,
   onSave,
@@ -115,6 +116,8 @@ export default function ProfileSheet({
   onOpenSponsor?: (draft: Profile) => void;
   /** 通行证寻访, when the player may draw: the pass they wear on their card, and 省流量 for passes on this device */
   passes?: PassesMe;
+  /** 听歌 is open to the player (src/lib/server/listen.ts listenOpen): 让触须之交看到我在听什么 shows */
+  listen?: boolean;
   /** Switch 地图卡片上显示立绘; only called when the box was changed and the rest saved */
   onPassOnMap?: (on: boolean) => Promise<boolean>;
   onUnblock: (blockId: string) => void;
@@ -330,6 +333,16 @@ export default function ProfileSheet({
         </label>
         <p className="hint">{T.profile.visits.note}</p>
       </fieldset>
+      {listen && !tutorial && (
+        <fieldset>
+          <legend>{T.profile.hearing.title}</legend>
+          <label className="check">
+            <input type="checkbox" checked={p.showListening} onChange={(e) => set({ showListening: e.target.checked })} />
+            {T.profile.hearing.label}
+          </label>
+          <p className="hint">{T.profile.hearing.note}</p>
+        </fieldset>
+      )}
       {!tutorial && onOpenOnlyMains && <OnlyMainsRow onlyMains={Boolean(onlyMains)} onOpen={() => onOpenOnlyMains(p)} />}
 
       {passes && (
