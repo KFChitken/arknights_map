@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState, type CSSProperties, type DependencyList } from "react";
 import { fmt, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { GUIDES } from "@/lib/guides";
@@ -54,6 +55,9 @@ export default function HudChrome(p: ChromeProps) {
   const inRoom = useInListenRoom();
   const listen = sides && (!p.tutorial || inRoom) ? p.listen : null;
   const bm = p.basemap;
+  const col = useRef<HTMLDivElement>(null);
+  const n = 2 + [p.passes, p.study, bm, ui, listen].filter(Boolean).length;
+  const fit = useColumnFit(col, [sides, n, Boolean(me), Boolean(me?.main), bm?.now]);
   return (
     <div className="chrome chrome-hud">
       <div className="topl">
@@ -111,7 +115,12 @@ export default function HudChrome(p: ChromeProps) {
       )}
 
       {sides && (
-        <div className={`lcol${p.raised ? " raised" : ""}`}>
+        <div
+          ref={col}
+          className={`lcol${p.raised ? " raised" : ""}`}
+          data-fit={fit.level || undefined}
+          style={fit.level === 3 ? ({ "--lcol-max": `${fit.max}px` } as CSSProperties) : undefined}
+        >
           <span className="rb">
             <button className="ob glass" aria-label={T.map.bar.hot} onClick={p.onHot}>
               <HotFlame size={22} />
@@ -261,6 +270,44 @@ export default function HudChrome(p: ChromeProps) {
       {p.disclaimer}
     </div>
   );
+}
+
+/**
+ * The column down the left on a screen too short for all of it (it would run into 触须之交 in the corner, or off the
+ * screen): its buttons without their names (1), then smaller too (2), then in two columns (3), so none is covered.
+ * Measured as it is drawn, and again when the window changes size.
+ */
+function useColumnFit(col: React.RefObject<HTMLDivElement | null>, deps: DependencyList) {
+  const [fit, setFit] = useState({ level: 0, max: 0 });
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = col.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      // 触须之交 where it is under the column (a phone held upright), else the foot of the screen
+      let limit = window.innerHeight - 40;
+      const corner = el.parentElement?.querySelector(".act .fr")?.getBoundingClientRect();
+      if (corner && corner.width && corner.left < el.getBoundingClientRect().left + 90) limit = Math.min(limit, corner.top - 10);
+      let level = 0;
+      for (; level < 3; level++) {
+        // no mark at all while it fits whole, as React draws it then
+        if (level) el.dataset.fit = String(level);
+        else delete el.dataset.fit;
+        if (el.getBoundingClientRect().bottom <= limit) break;
+      }
+      const max = Math.max(Math.floor(limit - top), 120);
+      if (level === 3) {
+        el.dataset.fit = "3";
+        el.style.setProperty("--lcol-max", `${max}px`);
+      }
+      setFit((f) => (f.level === level && (level < 3 || f.max === max) ? f : { level, max }));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return fit;
 }
 
 /** 听歌 at the foot of the column: the note, or three bars and 在听 while a song plays; 新 until first opened */

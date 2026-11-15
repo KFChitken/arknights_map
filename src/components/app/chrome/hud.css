@@ -77,6 +77,16 @@
   flex-direction: column; gap: 9px;
 }
 .chrome-hud .lcol.raised { z-index: 25; }
+/*
+ * Too long for the screen (HudChrome.tsx useColumnFit): without the names under its buttons, then smaller too, then
+ * in two columns, so it never runs under 触须之交 or off the screen
+ */
+.chrome-hud .lcol[data-fit] { gap: 6px; }
+.chrome-hud .lcol[data-fit] .lbl { display: none; }
+.chrome-hud .lcol:is([data-fit="2"], [data-fit="3"]) { gap: 5px; }
+.chrome-hud .lcol:is([data-fit="2"], [data-fit="3"]) .rb .ob { width: 36px; height: 36px; }
+.chrome-hud .lcol:is([data-fit="2"], [data-fit="3"]) .rb .ob svg { max-width: 20px; max-height: 20px; }
+.chrome-hud .lcol[data-fit="3"] { flex-wrap: wrap; align-content: flex-start; column-gap: 8px; max-height: var(--lcol-max); }
 .chrome-hud .rb .bm { font-size: 11.5px; font-weight: 800; letter-spacing: 0.02em; }
 .chrome-hud .rb .ob:disabled { opacity: 0.55; }
 .chrome-hud .style-round .ic { width: 22px; height: 22px; }
