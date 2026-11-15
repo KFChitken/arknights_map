@@ -5,6 +5,7 @@ import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
 import { isOffLimits, offLimitsMessage } from "../offLimits";
 import { isCharacter } from "../operators";
+import { cleanName } from "../playerText";
 import { displayName, EMPTY_PROFILE, type Profile, type PublicProfile } from "../profile";
 import { DECLARATION_RADIUS_KM, MAX_FAVOURITES, NAME_MAX, RADAR_RADIUS_KM, UID_MAX } from "../rules";
 import { checkSupport } from "../support";
@@ -21,9 +22,8 @@ export const DAY = 24 * HOUR;
 
 /** Check and tidy a profile a player wants to save. */
 export function normalizeProfile(input: Profile): Profile {
-  const name = String(input.name ?? "")
-    .trim()
-    .slice(0, NAME_MAX);
+  // as plain words: a right-to-left override or a zero-width space in it would turn or hide what is shown beside it
+  const name = cleanName(String(input.name ?? ""), NAME_MAX);
   const games = GAMES.filter((g) => input.games?.includes(g));
   const favourites = { arknights: [] as string[], endfield: [] as string[] };
   const uid = { arknights: "", endfield: "" };

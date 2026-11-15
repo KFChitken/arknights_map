@@ -215,6 +215,31 @@ describe("looks", () => {
   });
 });
 
+describe("names", () => {
+  const name = (n: string) => normalizeProfile({ ...EMPTY_PROFILE, anonymous: false, name: n }).name;
+  // written out by code point, so this file shows what each one is
+  const [RLO, ZWSP, WIDE_SPACE] = [0x202e, 0x200b, 0x3000].map((c) => String.fromCodePoint(c));
+  const ASTRONAUT = String.fromCodePoint(0x1f9d1, 0x200d, 0x1f680);
+
+  it("keeps a name as plain words: nothing hidden, nothing turning the words around it", () => {
+    expect(name(`${RLO}知通统系`)).toBe("知通统系");
+    expect(name(` 小${ZWSP}明 `)).toBe("小明");
+    expect(name(`小明${"\n"}系统通知`)).toBe("小明 系统通知");
+    expect(() => name(`${ZWSP}${RLO}`)).toThrow();
+  });
+
+  it("keeps the spaces typed inside it and emoji whole", () => {
+    expect(name(`张${WIDE_SPACE}三`)).toBe(`张${WIDE_SPACE}三`);
+    expect(name(`${ASTRONAUT}宇航员`)).toBe(`${ASTRONAUT}宇航员`);
+  });
+
+  it("cuts at 16 as the name box counts, never through an emoji, and what was taken away does not count", () => {
+    expect(name("一".repeat(20))).toBe("一".repeat(16));
+    expect(name(`${ZWSP.repeat(10)}${"一".repeat(20)}`)).toBe("一".repeat(16));
+    expect(name(`${"一".repeat(15)}😀`)).toBe("一".repeat(15));
+  });
+});
+
 describe("characters of the story", () => {
   it("keeps 普瑞赛斯 among a player's Arknights 厨力, to declare with, but not as their 助战", () => {
     const p = normalizeProfile({

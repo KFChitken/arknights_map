@@ -1,6 +1,6 @@
 /**
- * Words a player typed for someone else to read as they are: a report's note, an appeal. Shared by the server,
- * which keeps them cleaned, and the 管理台, which cleans what older rows still hold before showing it.
+ * Words a player typed for someone else to read as they are: a report's note, an appeal, their name. Shared by the
+ * server, which keeps them cleaned, and the 管理台, which cleans what older rows still hold before showing it.
  */
 
 /** Line breaks and tabs, which become spaces */
@@ -26,4 +26,14 @@ export function cleanPlayerText(text: string, max = Infinity): string {
 export function hasHidden(text: string) {
   const spaced = text.replace(BREAKS, " ");
   return spaced.replace(HIDDEN, "") !== spaced || spaced.replace(MANY_MARKS, "$1") !== spaced;
+}
+
+/**
+ * A player's name as it is kept: what cannot be seen or would move the words around it goes, and piles of marks, as
+ * cleanPlayerText takes them, but the spaces inside stay as typed (a full-width one too). At most max UTF-16 units,
+ * as the name box counts them, and never half an emoji where it is cut; what was taken away does not count.
+ */
+export function cleanName(text: string, max: number): string {
+  const plain = (s: string) => s.replace(BREAKS, " ").replace(HIDDEN, "").replace(MANY_MARKS, "$1").trim();
+  return plain(plain(text).slice(0, max));
 }
