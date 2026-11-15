@@ -2504,8 +2504,8 @@ export const zh = {
     trace325: {
       start: "开始",
       /** Over the square before the round: as a touch rubs out the character being written, or all of them */
-      rule: "从红点起，拖着小强沿虚线写 3、2、5\n碰到炸弹、纸飞机、源石虫，这个字重写\n{s} 秒内写完过关",
-      ruleAll: "从红点起，拖着小强沿虚线写 3、2、5\n碰到炸弹、纸飞机、源石虫，从 3 重写\n{s} 秒内写完过关",
+      rule: "从红点起，拖着小强沿虚线写 3、2、5\n碰到飞过来的绝对主角、咕咕嘎嘎，这个字重写\n{s} 秒内写完过关",
+      ruleAll: "从红点起，拖着小强沿虚线写 3、2、5\n碰到飞过来的绝对主角、咕咕嘎嘎，从 3 重写\n{s} 秒内写完过关",
       drag: "手指按住拖，小强在手指上方",
       dragMouse: "按住鼠标拖",
       /** Read out for the three slots */

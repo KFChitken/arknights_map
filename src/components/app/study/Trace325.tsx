@@ -2,11 +2,14 @@
 
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
-import { clamp, touches } from "@/lib/study/field";
+import { clamp } from "@/lib/study/field";
 import { mulberry32 } from "@/lib/prng";
 import {
-  FLIGHT,
+  type Flyer,
   flyerAt,
+  flyerSlope,
+  flyerTouches,
+  planeAt,
   type Pt,
   type Stroke,
   STROKES,
@@ -14,8 +17,8 @@ import {
   TRACE,
   TRACE_BOTTOM,
   TRACE_DIGITS,
+  TRACE_FLYER_BOX,
   TRACE_FLYER_R,
-  TRACE_ROACH_R,
   TRACE_SIDE,
   TRACE_STUN_MS,
   TRACE_TOP,
@@ -24,7 +27,7 @@ import {
   type Writing,
   WRITING_START,
 } from "@/lib/study/trace325";
-import { calmNow, drawObstacle, roundRect, useCanvasSize, useDrag, useFrames, useRoachArt } from "./arena";
+import { calmNow, type FlyerArt, roundRect, useCanvasSize, useDrag, useFlyerArt, useFrames, useRoachArt } from "./arena";
 import type { GameProps, Round } from "./games";
 import { useKeys } from "./taps";
 
@@ -45,6 +48,9 @@ const RULE_ROOM = 110;
 const GRID = "#e8a29a";
 const GUIDE = "#e0675b";
 const INK = "#1b1d22";
+/** 咕咕嘎嘎 on its belly, head first, turned as it slides in on the map (globals.css gg-slide); 绝对主角 leaning into her way (radians) */
+const GUGU_SLIDE = (84 * Math.PI) / 180;
+const IMP_LEAN = 0.12;
 
 /** Where the field is in a canvas of w by h CSS pixels, along its top: u is a copybook unit in pixels, x and y the square's top left */
 function layout(w: number, h: number) {
@@ -82,8 +88,9 @@ function fresh(calm = false) {
 /**
  * 描红 325 (src/lib/study/trace325.ts): 3, 2 and 5 in turn on a copybook square drawn on a canvas (arena.ts), each as
  * dashed lines with a dot where each stroke starts. The player drags their own roach along them, the roach a little
- * above a finger (on a mouse pointer), and the ink goes on along the stroke while the roach keeps near it. A round's
- * bombs, paper planes and slugs fly across from the sides; one that touches the roach leaves it belly up a moment and
+ * above a finger (on a mouse pointer) and on the yellow ground the map marks your own with, and the ink goes on along
+ * the stroke while the roach keeps near it. A round's 咕咕嘎嘎 slide across from the sides on their bellies and its
+ * 绝对主角 drift across after their paper planes; one whose body touches the roach leaves it belly up a moment and
  * rubs out the character being written (TRACE.erase). Three slots over the square show how far it has got. The
  * round's clock stands still while the page is put away. Nothing flashes.
  */
@@ -104,9 +111,12 @@ export default function Trace325({ seed, look, onRound }: GameProps) {
   const box = useRef(size);
   box.current = size;
   const at = layout(size.w, size.h);
-  const art = useRoachArt(look, Math.ceil((ROACH_BOX * at.u * size.dpr) / 8) * 8);
+  const art = useRoachArt(look, Math.ceil((ROACH_BOX * at.u * size.dpr) / 8) * 8, true);
   const artRef = useRef(art);
   artRef.current = art;
+  const flyerArt = useFlyerArt();
+  const flyerArtRef = useRef(flyerArt);
+  flyerArtRef.current = flyerArt;
   // the room for the rule and the start button: the square and the strip over it
   const room = Math.round((TRACE_TOP + 1) * at.u);
 
@@ -144,10 +154,7 @@ export default function Trace325({ seed, look, onRound }: GameProps) {
       }
     }
     flyers.forEach((f, i) => {
-      if (s.gone.has(i)) return;
-      const p = flyerAt(f, s.t, s.calm);
-      if (!p.flying) return;
-      drawObstacle(ctx, f.what, L.x + p.x * u, L.y + p.y * u, TRACE_FLYER_R * u * 1.1, Math.atan2(f.y1 - f.y0, -f.side * FLIGHT));
+      if (!s.gone.has(i) && flyerAt(f, s.t, s.calm).flying) drawFlyer(ctx, f, s.t, s.calm, L, flyerArtRef.current);
     });
     const img = s.t < s.stunTill ? artRef.current.belly : artRef.current.stand;
     const b = ROACH_BOX * u;
@@ -192,9 +199,7 @@ export default function Trace325({ seed, look, onRound }: GameProps) {
     }
     if (s.stunTill < 0)
       for (let i = 0; i < flyers.length; i++) {
-        if (s.gone.has(i)) continue;
-        const p = flyerAt(flyers[i], s.t, s.calm);
-        if (!p.flying || !touches(p.x, p.y, TRACE_FLYER_R, s.pen.x, s.pen.y, TRACE_ROACH_R)) continue;
+        if (s.gone.has(i) || !flyerTouches(flyers[i], s.t, s.pen, s.calm)) continue;
         s.gone.add(i);
         s.writing = touched(s.writing);
         s.stunTill = s.t + TRACE_STUN_MS;
@@ -312,6 +317,55 @@ export default function Trace325({ seed, look, onRound }: GameProps) {
       </p>
     </div>
   );
+}
+
+/**
+ * A flyer at round time t, drawn the way it goes (trace325.ts says where): 咕咕嘎嘎 on its belly with its speed lines
+ * behind it, or 绝对主角 leaning after her paper plane. Before their pictures are in, a dark round body where one touches.
+ */
+function drawFlyer(ctx: CanvasRenderingContext2D, f: Flyer, t: number, calm: boolean, L: { x: number; y: number; u: number }, art: FlyerArt | null) {
+  const { u } = L;
+  const p = flyerAt(f, t, calm);
+  const x = L.x + p.x * u;
+  const y = L.y + p.y * u;
+  const b = TRACE_FLYER_BOX * u;
+  if (!art) {
+    ctx.fillStyle = "#3a3d44";
+    ctx.beginPath();
+    ctx.arc(x, y, TRACE_FLYER_R * u, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  // drawn going to the right, and turned over to go to the left
+  const flip = f.side > 0 ? -1 : 1;
+  if (f.what === "gugu") {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(flip, 1);
+    const lw = b * 0.52;
+    const lh = b * 0.34;
+    ctx.drawImage(art.lines, -b * 0.49 - lw, -lh / 2, lw, lh);
+    ctx.rotate(GUGU_SLIDE);
+    ctx.drawImage(art.gugu, -b / 2, -b / 2, b, b);
+    ctx.restore();
+    return;
+  }
+  const a = flyerSlope(f);
+  const q = planeAt(f, t, calm);
+  const pw = b * 0.46;
+  const ph = (pw * 16) / 26;
+  ctx.save();
+  ctx.translate(L.x + q.x * u, L.y + q.y * u);
+  ctx.scale(flip, 1);
+  ctx.rotate(a);
+  ctx.drawImage(art.plane, -pw / 2, -ph / 2, pw, ph);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(flip, 1);
+  ctx.rotate(a / 2 + IMP_LEAN);
+  ctx.drawImage(art.imp, -b / 2, -b / 2, b, b);
+  ctx.restore();
 }
 
 /** The copybook square: white, a red frame, and a dashed cross through it */

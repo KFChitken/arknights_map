@@ -1,23 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { isObstacle } from "./field";
 import { mulberry32 } from "../prng";
 import {
   FLIGHT,
   flightMs,
   type Flyer,
   flyerAt,
+  flyerSlope,
+  flyerTouches,
   inkAfter,
   nearUnits,
+  planeAt,
   type Pt,
   STROKES,
   type Stroke,
   strokeOf,
   touched,
   TRACE,
+  TRACE_BOB,
+  TRACE_BOB_MS,
   TRACE_CALM,
   TRACE_DIGITS,
-  TRACE_FIRST_MS,
+  TRACE_FLYER_R,
+  TRACE_FLYER_REACH,
+  TRACE_FLYERS,
   TRACE_HIGH,
+  TRACE_PLANE_LEAD,
+  TRACE_PLANE_LIFT,
+  TRACE_ROACH_R,
   TRACE_SIDE,
   traceFlyers,
   write,
@@ -173,34 +182,100 @@ describe("描红 325", () => {
     expect(touched(done)).toBe(done);
   });
 
-  it("flies a flyer across from its side, slower with motion turned down", () => {
-    const f: Flyer = { at: 1000, what: "bomb", side: -1, y0: 0.2, y1: 0.6, speed: 0.25 };
+  it("slides 咕咕嘎嘎 straight across from its side, out of sight to out of sight, slower with motion turned down", () => {
+    const f: Flyer = { at: 1000, what: "gugu", side: -1, y0: 0.4, y1: 0.4, speed: 0.25 };
     const ms = flightMs(f);
     expect(ms).toBeCloseTo((FLIGHT / 0.25) * 1000);
+    // out of sight: its speed lines behind it too, beyond the field's side
+    expect(FLIGHT).toBeCloseTo(1 + 2 * (TRACE_SIDE + TRACE_FLYER_REACH));
     expect(flyerAt(f, 500).flying).toBe(false);
-    expect(flyerAt(f, 1000)).toMatchObject({ x: expect.closeTo(-TRACE_SIDE - 0.055, 5), y: 0.2, flying: true });
-    expect(flyerAt(f, 1000 + ms / 2)).toMatchObject({ x: expect.closeTo(0.5, 5), y: expect.closeTo(0.4, 5) });
+    expect(flyerAt(f, 1000)).toMatchObject({ x: expect.closeTo(-TRACE_SIDE - TRACE_FLYER_REACH, 5), y: 0.4, bob: 0, flying: true });
+    expect(flyerAt(f, 1000 + ms / 2)).toMatchObject({ x: expect.closeTo(0.5, 5), y: 0.4 });
+    for (let t = 1000; t < 1000 + ms; t += 97) expect(flyerAt(f, t).y).toBe(0.4);
     expect(flyerAt(f, 1000 + ms).flying).toBe(false);
     const right = { ...f, side: 1 as const };
-    expect(flyerAt(right, 1000).x).toBeCloseTo(1 + TRACE_SIDE + 0.055, 5);
+    expect(flyerAt(right, 1000).x).toBeCloseTo(1 + TRACE_SIDE + TRACE_FLYER_REACH, 5);
     expect(flyerAt(right, 1000 + ms / 4).x).toBeGreaterThan(0.5);
     // motion turned down: the same way, at 70% of the speed
     expect(TRACE_CALM).toBe(0.7);
     expect(flyerAt(f, (1000 + ms / 2) / TRACE_CALM, true).x).toBeCloseTo(0.5, 5);
   });
 
-  it("is the same flyers from the same seed and others from another; never too many at once; 90 s to write in", () => {
-    expect(TRACE.ms).toBe(90_000);
+  it("drifts 绝对主角 up and down a little along her slanting way, her paper plane gliding on ahead of her", () => {
+    const f: Flyer = { at: 1000, what: "imp", side: 1, y0: 0.2, y1: 0.6, speed: 0.3 };
+    const ms = flightMs(f);
+    const a = flyerSlope(f);
+    expect(a).toBeCloseTo(Math.atan2(0.4, FLIGHT));
+    let most = 0;
+    for (let t = 1000; t < 1000 + ms; t += 37) {
+      const p = flyerAt(f, t);
+      const k = (t - 1000) / ms;
+      // off her straight way by the drift alone, never more than TRACE_BOB
+      expect(p.y - p.bob).toBeCloseTo(0.2 + 0.4 * k, 9);
+      expect(Math.abs(p.bob)).toBeLessThanOrEqual(TRACE_BOB + 1e-12);
+      most = Math.max(most, Math.abs(p.bob));
+      // the plane: ahead of her, the way she goes (to the left), a little higher, and not drifting
+      const q = planeAt(f, t);
+      expect(q.x).toBeCloseTo(p.x - Math.cos(a) * TRACE_PLANE_LEAD, 9);
+      expect(q.y).toBeCloseTo(0.2 + 0.4 * k + Math.sin(a) * TRACE_PLANE_LEAD - TRACE_PLANE_LIFT, 9);
+      // all of it inside TRACE_FLYER_REACH of her middle across
+      expect(Math.abs(q.x - p.x)).toBeLessThan(TRACE_FLYER_REACH);
+    }
+    expect(most).toBeGreaterThan(TRACE_BOB * 0.95);
+    // up and down once in TRACE_BOB_MS
+    expect(flyerAt(f, 1000 + TRACE_BOB_MS / 4).bob).toBeCloseTo(TRACE_BOB, 9);
+    expect(flyerAt(f, 1000 + (3 * TRACE_BOB_MS) / 4).bob).toBeCloseTo(-TRACE_BOB, 9);
+    // slower with motion turned down, the drifting too
+    expect(flyerAt(f, (1000 + TRACE_BOB_MS / 4) / TRACE_CALM, true).bob).toBeCloseTo(TRACE_BOB, 9);
+    expect(flyerAt(f, (1000 + TRACE_BOB_MS / 2) / TRACE_CALM, true).bob).toBeCloseTo(0, 9);
+  });
+
+  it("touches the roach with a flyer's body only: not 咕咕嘎嘎's speed lines, nor 绝对主角's plane", () => {
+    const gugu: Flyer = { at: 0, what: "gugu", side: -1, y0: 0.5, y1: 0.5, speed: 0.25 };
+    const t = flightMs(gugu) / 2;
+    const at = flyerAt(gugu, t);
+    const reach = TRACE_FLYER_R + TRACE_ROACH_R;
+    expect(flyerTouches(gugu, t, { x: at.x, y: at.y })).toBe(true);
+    expect(flyerTouches(gugu, t, { x: at.x + reach * 0.99, y: at.y })).toBe(true);
+    expect(flyerTouches(gugu, t, { x: at.x, y: at.y - reach * 0.99 })).toBe(true);
+    // just out of reach ahead, below, and behind it where its speed lines are
+    expect(flyerTouches(gugu, t, { x: at.x + reach * 1.01, y: at.y })).toBe(false);
+    expect(flyerTouches(gugu, t, { x: at.x, y: at.y + reach * 1.01 })).toBe(false);
+    expect(flyerTouches(gugu, t, { x: at.x - 0.12, y: at.y })).toBe(false);
+    const imp: Flyer = { at: 0, what: "imp", side: 1, y0: 0.3, y1: 0.7, speed: 0.25 };
+    const p = flyerAt(imp, t);
+    const q = planeAt(imp, t);
+    expect(flyerTouches(imp, t, { x: p.x, y: p.y })).toBe(true);
+    expect(flyerTouches(imp, t, q)).toBe(false);
+    // and nothing before it sets off or once it is gone
+    expect(flyerTouches(gugu, -1, flyerAt(gugu, -1))).toBe(false);
+    expect(flyerTouches(gugu, flightMs(gugu), flyerAt(gugu, flightMs(gugu)))).toBe(false);
+  });
+
+  it("is the same flyers from the same seed and others from another; about as many of each; never too many at once; 45 s to write in", () => {
+    expect(TRACE.ms).toBe(45_000);
+    expect(TRACE.first).toBe(2000);
+    expect(TRACE.perMinute).toBe(24);
+    expect(TRACE.atOnce).toBe(3);
     expect(flyersOf(SEEDS[0])).toEqual(flyersOf(SEEDS[0]));
     expect(new Set(SEEDS.slice(0, 100).map((d) => JSON.stringify(flyersOf(d)))).size).toBe(100);
     let count = 0;
+    let gugu = 0;
     for (const seed of SEEDS) {
       const fs = flyersOf(seed);
       count += fs.length;
-      expect(fs[0].at).toBe(TRACE_FIRST_MS);
+      expect(fs[0].at).toBe(TRACE.first);
       for (let i = 0; i < fs.length; i++) {
         const f = fs[i];
-        expect(isObstacle(f.what)).toBe(true);
+        expect(TRACE_FLYERS).toContain(f.what);
+        // 咕咕嘎嘎 straight across, 绝对主角 slanting a quarter to a half of the square
+        if (f.what === "gugu") {
+          gugu++;
+          expect(f.y1).toBe(f.y0);
+        } else {
+          expect(Math.abs(f.y1 - f.y0)).toBeGreaterThanOrEqual(0.249);
+          expect(Math.abs(f.y1 - f.y0)).toBeLessThanOrEqual(0.501);
+        }
         expect(f.at).toBeLessThan(TRACE.ms);
         if (i) expect(f.at).toBeGreaterThan(fs[i - 1].at);
         expect(f.speed).toBeGreaterThanOrEqual(TRACE.speed[0]);
@@ -213,8 +288,10 @@ describe("描红 325", () => {
         expect(fs.filter((g) => g !== f && g.at <= f.at && g.at + flightMs(g) > f.at).length).toBeLessThan(TRACE.atOnce);
       }
     }
-    // about TRACE.perMinute a minute from the first on
-    expect(count / SEEDS.length).toBeGreaterThan(((TRACE.ms - TRACE_FIRST_MS) / 60_000) * TRACE.perMinute * 0.75);
-    expect(count / SEEDS.length).toBeLessThan(((TRACE.ms - TRACE_FIRST_MS) / 60_000) * TRACE.perMinute * 1.05);
+    // about TRACE.perMinute a minute from the first on, about half of them each
+    expect(count / SEEDS.length).toBeGreaterThan(((TRACE.ms - TRACE.first) / 60_000) * TRACE.perMinute * 0.9);
+    expect(count / SEEDS.length).toBeLessThan(((TRACE.ms - TRACE.first) / 60_000) * TRACE.perMinute * 1.05);
+    expect(gugu / count).toBeGreaterThan(0.45);
+    expect(gugu / count).toBeLessThan(0.55);
   });
 });

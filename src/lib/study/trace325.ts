@@ -1,13 +1,14 @@
 /**
  * 描红 325, a course of 325大学习 (src/components/app/study/Trace325.tsx draws it): the player drags their roach along
  * the dashed middle lines of 3, 2 and 5 in a copybook square, a character at a time and stroke by stroke, and the ink
- * goes on along the line as long as the roach keeps near it. Things fly across the square from either side, and one
- * that touches the roach rubs out the character being written.
+ * goes on along the line as long as the roach keeps near it. Two of the site's looks fly across the square from either
+ * side, 咕咕嘎嘎 sliding on its belly and 绝对主角 after her paper plane, and one that touches the roach rubs out the
+ * character being written.
  *
  * Everything here is pure: the strokes, how far the ink goes for a move of the roach, what a touch rubs out, and a
  * round's flyers. Places are in copybook units: the square is 0 to 1 across, and 0 to 1 down.
  */
-import { OBSTACLES, type Obstacle } from "./field";
+import { touches } from "./field";
 
 /**
  * How hard it is, all in one place: after Breeze has played it, only these change. near is a share of the characters'
@@ -18,14 +19,16 @@ export const TRACE = {
   near: 0.12,
   /** How far above a finger the roach is, so the finger does not hide it; with a mouse or a pen it is on the pointer */
   above: 48,
-  /** About how many things fly across in a minute */
-  perMinute: 14,
+  /** About how many fly across in a minute */
+  perMinute: 24,
   /** How fast they fly: the slowest and the fastest */
   speed: [0.22, 0.34],
   /** At most how many fly at once */
-  atOnce: 2,
+  atOnce: 3,
+  /** The first sets off this long after the start (ms) */
+  first: 2000,
   /** The time to write 3, 2 and 5 in (ms) */
-  ms: 90_000,
+  ms: 45_000,
   /** What a touch rubs out: the character being written ("char"), or all of 3, 2 and 5 written so far ("all") */
   erase: "char" as "char" | "all",
 };
@@ -41,11 +44,9 @@ export const TRACE_CALM = 0.7;
 export const TRACE_SIDE = 0.2;
 export const TRACE_TOP = 0.08;
 export const TRACE_BOTTOM = 0.2;
-/** The roach's and a flyer's size for touching: radii in copybook units */
+/** The roach's and a flyer's size for touching: radii in copybook units. Only a flyer's body touches, round its middle */
 export const TRACE_ROACH_R = 0.05;
 export const TRACE_FLYER_R = 0.055;
-/** The first flyer comes this long after the start (ms) */
-export const TRACE_FIRST_MS = 3000;
 
 export type Pt = { x: number; y: number };
 /** A stroke: its middle line as points STEP apart (the last one where it ends), how far along it each is, and its length */
@@ -170,49 +171,96 @@ export function touched(w: Writing, erase = TRACE.erase): Writing {
   return { char: erase === "all" ? 0 : w.char, stroke: 0, ink: 0, rewrites: w.rewrites + 1 };
 }
 
-/** Something flying across the square: when it sets off (ms), what it is, the side it comes from (−1 left, 1 right), its height there and at the other side (copybook units), and how fast it goes (copybook widths a second) */
-export type Flyer = { at: number; what: Obstacle; side: -1 | 1; y0: number; y1: number; speed: number };
+/** Who flies across the square: 咕咕嘎嘎 (the look gugu) sliding straight across on its belly, and 绝对主角 (imp) slanting after her paper plane */
+export const TRACE_FLYERS = ["gugu", "imp"] as const;
+export type TraceFlyer = (typeof TRACE_FLYERS)[number];
+
+/** Something flying across the square: when it sets off (ms), who it is, the side it comes from (−1 left, 1 right), its height there and at the other side (copybook units), and how fast it goes (copybook widths a second) */
+export type Flyer = { at: number; what: TraceFlyer; side: -1 | 1; y0: number; y1: number; speed: number };
+
+/** How big a flyer is drawn (copybook units across): a little smaller than the player's roach */
+export const TRACE_FLYER_BOX = 0.15;
+/** How far 绝对主角 drifts up and down as she flies (copybook units), and how long once up and down takes (ms) */
+export const TRACE_BOB = 0.025;
+export const TRACE_BOB_MS = 1200;
+/** Where her paper plane is from her middle: this far ahead along her way, and this far higher (copybook units) */
+export const TRACE_PLANE_LEAD = 0.12;
+export const TRACE_PLANE_LIFT = 0.045;
+/** How far a flyer's picture reaches from its middle, ahead or behind: her plane before her, its speed lines after it (copybook units) */
+export const TRACE_FLYER_REACH = 0.16;
 
 /** How far a flyer goes, from out of sight on one side to out of sight on the other (copybook units) */
-export const FLIGHT = 1 + 2 * (TRACE_SIDE + TRACE_FLYER_R);
+export const FLIGHT = 1 + 2 * (TRACE_SIDE + TRACE_FLYER_REACH);
 /** How long a flyer is flying (ms, at full speed) */
 export const flightMs = (f: Flyer) => (FLIGHT / f.speed) * 1000;
+/** How steep a flyer's way is: the angle from going straight across, down positive (radians), as drawn going to the right */
+export const flyerSlope = (f: Flyer) => Math.atan2(f.y1 - f.y0, FLIGHT);
 
-/** Where a flyer is at round time t (ms): across and down (copybook units), and whether it is flying then; slower with motion turned down */
-export function flyerAt(f: Flyer, t: number, calm = false): { x: number; y: number; flying: boolean } {
-  const gone = ((calm ? t * TRACE_CALM : t) - f.at) / flightMs(f);
+/**
+ * Where a flyer's body is at round time t (ms): across and down (copybook units), with 绝对主角's drifting up and down
+ * in it (bob), and whether it is flying then; slower with motion turned down, the drifting too
+ */
+export function flyerAt(f: Flyer, t: number, calm = false): { x: number; y: number; bob: number; flying: boolean } {
+  const ms = (calm ? t * TRACE_CALM : t) - f.at;
+  const gone = ms / flightMs(f);
   const k = Math.min(1, Math.max(0, gone));
-  const from = -TRACE_SIDE - TRACE_FLYER_R;
+  const from = -TRACE_SIDE - TRACE_FLYER_REACH;
   const x = f.side < 0 ? from + k * FLIGHT : from + FLIGHT - k * FLIGHT;
-  return { x, y: f.y0 + (f.y1 - f.y0) * k, flying: gone >= 0 && gone < 1 };
+  const bob = f.what === "imp" ? TRACE_BOB * Math.sin((2 * Math.PI * Math.max(0, ms)) / TRACE_BOB_MS) : 0;
+  return { x, y: f.y0 + (f.y1 - f.y0) * k + bob, bob, flying: gone >= 0 && gone < 1 };
+}
+
+/** Where 绝对主角's paper plane is at round time t: ahead of her along her way and a little higher, gliding on as she drifts */
+export function planeAt(f: Flyer, t: number, calm = false): Pt {
+  const p = flyerAt(f, t, calm);
+  const a = flyerSlope(f);
+  return { x: p.x - f.side * Math.cos(a) * TRACE_PLANE_LEAD, y: p.y - p.bob + Math.sin(a) * TRACE_PLANE_LEAD - TRACE_PLANE_LIFT };
+}
+
+/** Whether a flyer touches the roach at pen, at round time t: its body only, not 咕咕嘎嘎's speed lines or 绝对主角's plane */
+export function flyerTouches(f: Flyer, t: number, pen: Pt, calm = false): boolean {
+  const p = flyerAt(f, t, calm);
+  return p.flying && touches(p.x, p.y, TRACE_FLYER_R, pen.x, pen.y, TRACE_ROACH_R);
 }
 
 /**
- * A round's flyers, from its random (mulberry32 of its seed): about TRACE.perMinute a minute from TRACE_FIRST_MS on,
- * through the round, never more than TRACE.atOnce flying at once (one that would be waits until one is gone).
+ * A round's flyers, from its random (mulberry32 of its seed): about TRACE.perMinute a minute from TRACE.first on,
+ * through the round, about as many of each, never more than TRACE.atOnce flying at once (one that would be waits
+ * until one is gone).
  */
 export function traceFlyers(random: () => number): Flyer[] {
   const out: Flyer[] = [];
   const mean = 60_000 / TRACE.perMinute;
   const [slow, fast] = TRACE.speed;
-  let at = TRACE_FIRST_MS;
+  let at = TRACE.first;
   while (at < TRACE.ms) {
     const ends = out.map((f) => f.at + flightMs(f)).filter((end) => end > at).sort((a, b) => a - b);
     if (ends.length >= TRACE.atOnce) at = Math.ceil(ends[ends.length - TRACE.atOnce]);
     if (at >= TRACE.ms) break;
+    const what = TRACE_FLYERS[Math.min(TRACE_FLYERS.length - 1, Math.floor(random() * TRACE_FLYERS.length))];
     const y0 = 0.1 + random() * 0.8;
-    const y1 = Math.min(0.9, Math.max(0.1, y0 + (random() - 0.5) * 0.6));
     out.push({
       at,
-      what: OBSTACLES[Math.floor(random() * OBSTACLES.length)],
+      what,
       side: random() < 0.5 ? -1 : 1,
       y0: round3(y0),
-      y1: round3(y1),
+      y1: round3(what === "imp" ? slant(y0, random) : y0),
       speed: round3(slow + random() * (fast - slow)),
     });
     at += Math.round(mean * (0.6 + random() * 0.8));
   }
   return out;
+}
+
+/** Where 绝对主角 gets to at the other side: a quarter to a half of the square higher or lower than she set off, inside 0.1 to 0.9 */
+function slant(y0: number, random: () => number): number {
+  const d = 0.25 + random() * 0.25;
+  const room = { down: 0.9 - y0, up: y0 - 0.1 };
+  let down = random() < 0.5;
+  // not that far to go that way: the other way, if there is more room there
+  const here = down ? room.down : room.up;
+  if (here < d && (down ? room.up : room.down) > here) down = !down;
+  return down ? y0 + Math.min(d, room.down) : y0 - Math.min(d, room.up);
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;

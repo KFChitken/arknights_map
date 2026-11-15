@@ -3,12 +3,13 @@
 /**
  * The field the games that move the player's roach about are played on (Catch325.tsx, Trace325.tsx): a canvas kept
  * sharp at the screen's pixel ratio, a frame loop whose clock stands still while the page is put away, the player's
- * roach drawn standing and belly up, the obstacles drawn by hand (src/lib/study/field.ts), and a finger, a pen, the
- * mouse or the arrow keys moving it. Places and sizes in the games are in field units, so a field plays the same on any
- * screen. Nothing drawn on it flashes.
+ * roach drawn standing and belly up, 接住's obstacles drawn by hand (src/lib/study/field.ts) and the pictures 描红's
+ * flyers are drawn from, and a finger, a pen, the mouse or the arrow keys moving it. Places and sizes in the games are
+ * in field units, so a field plays the same on any screen. Nothing drawn on it flashes.
  */
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { drawRoach } from "@/lib/roachImages";
+import { paperPlane, speedLines } from "@/lib/lookArt";
+import { AVATAR_PICTURES, drawRoach } from "@/lib/roachImages";
 import type { Obstacle } from "@/lib/study/field";
 import type { Look } from "./games";
 
@@ -77,14 +78,17 @@ export function useFrames(on: boolean, frame: (dt: number) => void) {
   }, [on]);
 }
 
-/** The player's roach drawn standing and belly up, each px pixels square; null until drawn */
-export function useRoachArt(look: Look, px: number): { stand: HTMLCanvasElement | null; belly: HTMLCanvasElement | null } {
+/**
+ * The player's roach drawn standing and belly up, each px pixels square; null until drawn. mine: on the yellow ground
+ * the map marks your own roach with, to tell it from others of its look on the field
+ */
+export function useRoachArt(look: Look, px: number, mine = false): { stand: HTMLCanvasElement | null; belly: HTMLCanvasElement | null } {
   const [art, setArt] = useState<{ stand: HTMLCanvasElement | null; belly: HTMLCanvasElement | null }>({ stand: null, belly: null });
   const { color, avatar, style } = look;
   useEffect(() => {
     if (px < 8) return;
     let live = true;
-    const opts = { avatar, look: style };
+    const opts = { avatar, look: style, mine };
     Promise.all([drawRoach(color, opts, px), drawRoach(color, { ...opts, asleep: true }, px)]).then(
       ([stand, belly]) => live && setArt({ stand, belly }),
       () => {},
@@ -92,9 +96,38 @@ export function useRoachArt(look: Look, px: number): { stand: HTMLCanvasElement 
     return () => {
       live = false;
     };
-  }, [color, avatar, style, px]);
+  }, [color, avatar, style, px, mine]);
   return art;
 }
+
+/** What 描红's flyers are drawn from: the two looks' pictures, 咕咕嘎嘎's speed lines and 绝对主角's paper plane (lookArt.ts) */
+export type FlyerArt = { gugu: HTMLImageElement; imp: HTMLImageElement; lines: HTMLImageElement; plane: HTMLImageElement };
+
+/** Loads FlyerArt once; null until it is in, or if it will not load */
+export function useFlyerArt(): FlyerArt | null {
+  const [art, setArt] = useState<FlyerArt | null>(null);
+  useEffect(() => {
+    let live = true;
+    Promise.all([picture(AVATAR_PICTURES.gugu!), picture(AVATAR_PICTURES.imp!), picture(svgAt(speedLines(), 4)), picture(svgAt(paperPlane(), 4))]).then(
+      ([gugu, imp, lines, plane]) => live && setArt({ gugu, imp, lines, plane }),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  return art;
+}
+
+function picture(src: string): Promise<HTMLImageElement> {
+  const img = new Image();
+  img.src = src;
+  return img.decode().then(() => img);
+}
+
+/** An SVG drawing as an image k times its own size, so it is drawn sharp at any size it is put on the field */
+const svgAt = (svg: string, k: number) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.replace(/ width="([\d.]+)" height="([\d.]+)"/, (_, w: string, h: string) => ` width="${+w * k}" height="${+h * k}"`))}`;
 
 /**
  * Where a finger, a pen or the mouse is on an element while it is pressed there (x, y in the element's CSS pixels; down
