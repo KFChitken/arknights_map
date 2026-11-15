@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 
 /**
- * A tap for the games that take one anywhere (Stopwatch.tsx, React325.tsx), timed by the press itself: a tap or click
- * anywhere on the screen but 不玩了 (which leaves without a round), and Space on a keyboard. onTap is given the press's
- * own time stamp, on performance.now()'s clock, so neither how often the screen is drawn nor a slow phone moves it.
- * Returns what stops listening.
+ * A tap for the games that take one anywhere (Stopwatch.tsx, React325.tsx, Beat325.tsx), timed by the press itself: a
+ * tap or click anywhere on the screen but 不玩了 (which leaves without a round) and a game's own buttons marked
+ * data-no-tap (节拍's 声音), and Space on a keyboard. onTap is given the press's own time stamp, on performance.now()'s
+ * clock, so neither how often the screen is drawn nor a slow phone moves it. Returns what stops listening.
  */
 export function listenTaps(onTap: (at: number) => void): () => void {
   const onPointer = (e: PointerEvent) => {
-    if (e.button > 0 || (e.target instanceof Element && e.target.closest("[data-quit]"))) return;
+    if (e.button > 0 || (e.target instanceof Element && e.target.closest("[data-quit], [data-no-tap]"))) return;
     e.preventDefault();
     onTap(onClock(e.timeStamp));
   };

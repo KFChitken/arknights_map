@@ -2347,7 +2347,7 @@ export const zh = {
       echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
       find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
       mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
-      beat325: { name: "325 节拍", rule: "跟着亮点敲：哒哒哒、哒哒、哒哒哒哒哒", short: "节拍" },
+      beat325: { name: "325 节拍", rule: "跟着一首约 40 秒的曲子敲，音符落到线上就敲一下", short: "节拍" },
       make325: { name: "凑 325", rule: "4 个数用加减乘除凑出 325，每个数用一次", short: "凑 325" },
       catch325: { name: "接住 3、2、5", rule: "左右挪小强，用头上的盘子按 3、2、5 的顺序接住数字，躲开炸弹", short: "接住" },
       trace325: { name: "描红 325", rule: "拖着小强沿虚线描 3、2、5，碰到飞来的东西就重写", short: "描红" },
@@ -2443,23 +2443,34 @@ export const zh = {
     /** 325 节拍 (src/lib/study/beat325.ts) */
     beat325: {
       start: "开始",
-      rule: "亮圈跳到点上就敲，空的地方不敲\n敲对 {pass} 小节过关，敲错 {fails} 小节结束",
-      /** Over the count 3、2、5 */
+      rule: "跟着音乐敲：音符落到线上就敲一下\n打中八成过关",
+      /** Under the rule, while the sound is on */
+      quiet: "听不到声音的话，看看手机是不是静音了",
+      tap: "音符落到线上时，敲屏幕任何地方",
+      tapKeys: "音符落到线上时，敲屏幕任何地方，或按空格",
+      /** The switch at the top right */
+      sound: "声音",
+      /** Over the lane */
+      hits: "打中 {n} / {m}",
+      strays: "乱敲 {k}",
+      /** Read out for the lane */
+      laneSr: "音符从上往下落到线上，一组 3 个、一组 2 个、一组 5 个",
+      /** Under the line: until the tune begins, and a moment after each tap */
       ready: "预备",
-      tap: "跟着亮圈敲屏幕任何地方",
-      tapKeys: "跟着亮圈敲屏幕任何地方，或按空格",
-      right: "敲对",
-      wrong: "敲错",
-      /** Read out for the dots */
-      rightSr: "敲对 {n} 小节，{of} 小节过关",
-      wrongSr: "敲错 {n} 小节，{of} 小节结束",
-      rowSr: "一小节：哒哒哒、哒哒、哒哒哒哒哒",
-      /** After a bar */
-      good: "对了",
-      bad: "差一拍",
-      pass: "敲对 {n} 小节，过关！",
-      out: "敲错 {wrong} 小节，这局到这儿，敲对 {n} 小节",
-      result: "敲对 {n} 小节",
+      exact: "正好",
+      hit: "打中",
+      early: "早了",
+      late: "晚了",
+      stray: "乱敲",
+      /** The page put away in the middle of the round */
+      void: "刚才切走了，这局作废，不算没过",
+      restart: "重新开始",
+      result: "打中 {n} / {m} 拍",
+      resultStrays: "打中 {n} / {m} 拍，乱敲 {k} 下",
+      pass: "打中 {n} / {m} 拍，过关！",
+      passStrays: "打中 {n} / {m} 拍，乱敲 {k} 下，过关！",
+      miss: "打中 {n} / {m} 拍，再试一次",
+      missStrays: "打中 {n} / {m} 拍，乱敲 {k} 下，扣掉后不到八成，再试一次",
     },
     /** 凑 325 (src/lib/study/make325.ts) */
     make325: {

@@ -1,134 +1,297 @@
 import { describe, expect, it } from "vitest";
+import { mulberry32 } from "../prng";
 import {
-  type Bar,
-  BEAT_BEATS,
-  BEAT_COUNT,
-  BEAT_FAILS,
-  BEAT_PASS,
-  BEAT_SLOTS,
-  type BarTaps,
-  barRight,
-  barShut,
-  beatPlan,
-  noTaps,
-  placeTap,
-  SCORE_START,
-  type Score,
-  scored,
-  slotAt,
-  slotMs,
-  tapped,
-  windowMs,
+  BASS,
+  BEAT,
+  BEAT_GROUPS,
+  type Chart,
+  beatChart,
+  beatResult,
+  beatTune,
+  missed,
+  type Note,
+  roundEnd,
+  SING,
+  type Tally,
+  tallyStart,
+  tapAt,
 } from "./beat325";
 
-/** The slots of a bar that are beats */
-const BEATS = BEAT_SLOTS.flatMap((s, k) => (s ? [k] : []));
+const chartOf = (seed: number) => beatChart(mulberry32(seed));
+/** Each note's place on the eighths */
+const eighthsOf = (c: Chart) => c.notes.map((n) => n.at / (c.beat / 2));
+/** A chart's passes, each its notes */
+const passesOf = (c: Chart) => {
+  const passes: Note[][] = [];
+  for (const n of c.notes) (passes[n.pass] ??= []).push(n);
+  return passes;
+};
+/** A chart of a note every beat from the third, and a tally that hit the first n and has these strays */
+const plain = (notes: number): Chart => ({
+  bpm: 120,
+  beat: 500,
+  notes: Array.from({ length: notes }, (_, i) => ({ at: 1000 + 500 * i, digit: 3, pass: 0, k: 0 })),
+  end: 1000 + 500 * (notes - 1) + 1000,
+});
+const tallyOf = (c: Chart, hits: number, strays: number): Tally => ({ got: c.notes.map((_, i) => (i < hits ? 1 : 0)), strays });
 
-/** Taps at these times on a plan's bars, as the game takes them: the taps each bar was given */
-function tapAll(bars: readonly Bar[], times: number[]): BarTaps[] {
-  const taps = bars.map(noTaps);
-  for (const t of times) {
-    const p = placeTap(bars, t);
-    if (p) taps[p.i] = tapped(taps[p.i], p.k, p.hit);
-  }
-  return taps;
-}
-
-/** Each beat of a bar tapped this far off it (ms) */
-const onBeats = (b: Bar, off = 0) => BEATS.map((k) => slotAt(b, k) + off);
-
-/** Bars one after another from the start of a round: how the last one left it */
-function play(bars: boolean[]) {
-  let score: Score = SCORE_START;
-  let end: "pass" | "out" | null = null;
-  for (const right of bars) ({ score, end } = scored(score, right));
-  return { score, end };
-}
-
-describe("325 节拍", () => {
-  it("is three beats, a rest, two, a rest, five and two rests a bar, each bar faster, never under 230 ms a slot", () => {
-    expect(BEAT_SLOTS).toHaveLength(14);
-    expect(BEAT_BEATS).toBe(10);
-    expect(BEAT_SLOTS.join("")).toBe("11101101111100");
-    expect(slotMs(0)).toBe(330);
-    expect(slotMs(1)).toBe(320);
-    for (let n = 1; n < 30; n++) expect(slotMs(n)).toBeLessThanOrEqual(slotMs(n - 1));
-    expect(slotMs(9)).toBe(240);
-    expect(slotMs(10)).toBe(230);
-    expect(slotMs(29)).toBe(230);
-    expect(windowMs(0)).toBe(148.5);
-    expect(windowMs(10)).toBeCloseTo(103.5);
+describe("325 节拍's chart", () => {
+  it("is the same for the same seed and another for another", () => {
+    expect(chartOf(325)).toEqual(chartOf(325));
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 50; seed++) seen.add(JSON.stringify(chartOf(seed).notes.map((n) => n.at)));
+    expect(seen.size).toBe(50);
   });
 
-  it("counts 3、2、5 a slot apart at the first bar's speed, and the bars follow on without a gap", () => {
-    const { count, bars } = beatPlan(0, 1000);
-    expect(BEAT_COUNT).toEqual([3, 2, 5]);
-    expect(count).toEqual([1000, 1330, 1660]);
-    expect(bars[0]).toEqual({ n: 0, start: 1990, slot: 330 });
-    expect(bars[1]).toEqual({ n: 1, start: 1990 + 14 * 330, slot: 320 });
-    // enough bars for any round
-    expect(bars.length).toBeGreaterThanOrEqual(BEAT_PASS + BEAT_FAILS - 1);
-    for (let i = 1; i < bars.length; i++) expect(bars[i].start).toBe(bars[i - 1].start + 14 * bars[i - 1].slot);
-    // back from a page put away: the count again, at the speed of the bar it goes on from
-    const back = beatPlan(4, 0);
-    expect(back.count).toEqual([0, 290, 580]);
-    expect(back.bars[0]).toEqual({ n: 4, start: 870, slot: 290 });
+  it("plays each pass as 3, 2, 5: groups of three, two and five notes in that order, an eighth apart in a group", () => {
+    for (let seed = 1; seed <= 1000; seed++) {
+      const c = chartOf(seed);
+      const e = eighthsOf(c);
+      for (const n of e) expect(Math.abs(n - Math.round(n))).toBeLessThan(1e-9);
+      const passes = passesOf(c);
+      expect(passes.length).toBeGreaterThanOrEqual(5);
+      for (const pass of passes) {
+        expect(pass.map((n) => n.digit)).toEqual(BEAT_GROUPS.flatMap((d) => Array<number>(d).fill(d)));
+        expect(pass.map((n) => n.k)).toEqual([0, 1, 2, 0, 1, 0, 1, 2, 3, 4]);
+        for (let i = 1; i < pass.length; i++) if (pass[i].digit === pass[i - 1].digit) expect(pass[i].at - pass[i - 1].at).toBeCloseTo(c.beat / 2, 6);
+      }
+    }
   });
 
-  it("hits a beat up to its window off, either way, and not a millisecond more", () => {
-    const { bars } = beatPlan(0, 0);
-    const b = bars[0];
-    const at = slotAt(b, 4);
-    const w = windowMs(0);
-    expect(placeTap(bars, at)).toEqual({ i: 0, k: 4, hit: true });
-    expect(placeTap(bars, at - w)).toEqual({ i: 0, k: 4, hit: true });
-    expect(placeTap(bars, at + w)).toEqual({ i: 0, k: 4, hit: true });
-    expect(placeTap(bars, at + w + 1)).toEqual({ i: 0, k: 4, hit: false });
-    expect(placeTap(bars, at - w - 1)).toEqual({ i: 0, k: 4, hit: false });
-    // a rest is never hit
-    expect(placeTap(bars, slotAt(b, 3))).toEqual({ i: 0, k: 3, hit: false });
-    // a tap in the count counts for nothing; one just before the first beat is early, and hits it
-    expect(placeTap(bars, b.start - 200)).toBeNull();
-    expect(placeTap(bars, b.start - 100)).toEqual({ i: 0, k: 0, hit: true });
-    // the last rests are the bar's; the next bar's first beat may be hit a little early
-    expect(placeTap(bars, slotAt(b, 13) + 100)).toEqual({ i: 0, k: 13, hit: false });
-    expect(placeTap(bars, bars[1].start - 100)).toEqual({ i: 1, k: 0, hit: true });
-    expect(barShut(b)).toBe(slotAt(b, 13.5));
+  it("rests between groups and between passes as long as the list says, dealt afresh, a little less later on", () => {
+    const groupRests = new Set<number>();
+    const passRests = new Set<number>();
+    const laterRests = new Set<number>();
+    for (let seed = 1; seed <= 1000; seed++) {
+      const c = chartOf(seed);
+      const eighth = c.beat / 2;
+      const rest = (a: Note, b: Note) => Math.round((b.at - a.at) / eighth) - 1;
+      const passes = passesOf(c);
+      for (const pass of passes)
+        for (let i = 1; i < pass.length; i++) {
+          if (pass[i].digit === pass[i - 1].digit) continue;
+          const r = rest(pass[i - 1], pass[i]);
+          expect(r).toBeGreaterThanOrEqual(BEAT.groupRest[0]);
+          expect(r).toBeLessThanOrEqual(BEAT.groupRest[1]);
+          groupRests.add(r);
+        }
+      for (let p = 1; p < passes.length; p++) {
+        const end = passes[p - 1][passes[p - 1].length - 1];
+        // a pass's rest in beats: a whole number of them, after its last note's eighth
+        const r = rest(end, passes[p][0]) / 2;
+        expect(Number.isInteger(r)).toBe(true);
+        expect(r).toBeGreaterThanOrEqual(BEAT.passRest[0]);
+        expect(r).toBeLessThanOrEqual(BEAT.passRest[1] - (end.at > BEAT.ms / 2 ? 1 : 0));
+        (end.at > BEAT.ms / 2 ? laterRests : passRests).add(r);
+      }
+    }
+    expect([...groupRests].sort()).toEqual([1, 2, 3]);
+    expect([...passRests].sort()).toEqual([2, 3, 4]);
+    expect([...laterRests].sort()).toEqual([2, 3]);
   });
 
-  it("takes a bar as right only with each of its ten beats hit once and no other tap", () => {
-    const { bars } = beatPlan(0, 0);
-    const [b, next] = bars;
-    expect(barRight(tapAll(bars, onBeats(b))[0])).toBe(true);
-    // a little early or late is still right
-    expect(barRight(tapAll(bars, onBeats(b, -120))[0])).toBe(true);
-    expect(barRight(tapAll(bars, onBeats(b, 140))[0])).toBe(true);
-    // one let go by
-    expect(barRight(tapAll(bars, onBeats(b).slice(1))[0])).toBe(false);
-    expect(barRight(tapAll(bars, onBeats(b).slice(0, -1))[0])).toBe(false);
-    // one beat hit twice
-    expect(barRight(tapAll(bars, [...onBeats(b), slotAt(b, 5) + 60])[0])).toBe(false);
-    // a tap in a rest, between the groups or at the end
-    expect(barRight(tapAll(bars, [...onBeats(b), slotAt(b, 3)])[0])).toBe(false);
-    expect(barRight(tapAll(bars, [...onBeats(b), slotAt(b, 12) + 20])[0])).toBe(false);
-    // too late for its beat: that beat is let go by, and the tap is one too many
-    const late = tapAll(bars, onBeats(b).map((t, j) => (j === 6 ? t + 160 : t)))[0];
-    expect(late.hits.filter((h) => h === 1)).toHaveLength(9);
-    expect(barRight(late)).toBe(false);
-    // and none of it is the next bar's
-    expect(barRight(tapAll(bars, [...onBeats(b), ...onBeats(next)])[1])).toBe(true);
-    expect(noTaps().hits).toHaveLength(14);
+  it("leaves the first two beats empty: the first note lands on the third", () => {
+    for (let seed = 1; seed <= 1000; seed++) {
+      const c = chartOf(seed);
+      expect(c.notes[0].at).toBeCloseTo(BEAT.leadBeats * c.beat, 6);
+      for (const n of c.notes) expect(n.at).toBeGreaterThanOrEqual(BEAT.leadBeats * c.beat - 1e-6);
+    }
   });
 
-  it("passes at eight bars right and ends at three wrong, so a round has its result in ten bars", () => {
-    expect(play(Array(BEAT_PASS).fill(true))).toEqual({ score: { right: 8, wrong: 0 }, end: "pass" });
-    expect(play(Array(BEAT_PASS - 1).fill(true)).end).toBeNull();
-    expect(play([false, true, false, true, true]).end).toBeNull();
-    expect(play([false, true, false, true, false])).toEqual({ score: { right: 2, wrong: 3 }, end: "out" });
-    // the longest: seven right and two wrong, then the tenth decides
-    const nine = [true, false, true, true, true, false, true, true, true];
-    expect(play(nine).end).toBeNull();
-    expect(play([...nine, true]).end).toBe("pass");
-    expect(play([...nine, false]).end).toBe("out");
+  it("is a tune of about 40 seconds at 112 to 120 beats a minute, over two beats after its last note", () => {
+    const bpms = new Set<number>();
+    let shortest = Infinity;
+    for (let seed = 1; seed <= 1000; seed++) {
+      const c = chartOf(seed);
+      bpms.add(c.bpm);
+      expect(c.bpm).toBeGreaterThanOrEqual(BEAT.bpm[0]);
+      expect(c.bpm).toBeLessThanOrEqual(BEAT.bpm[1]);
+      expect(c.beat).toBeCloseTo(60_000 / c.bpm, 9);
+      expect(c.end).toBeCloseTo(c.notes[c.notes.length - 1].at + 2 * c.beat, 6);
+      expect(c.end).toBeLessThanOrEqual(BEAT.ms);
+      shortest = Math.min(shortest, c.end);
+      for (let i = 1; i < c.notes.length; i++) expect(c.notes[i].at).toBeGreaterThan(c.notes[i - 1].at);
+    }
+    expect(bpms.size).toBe(BEAT.bpm[1] - BEAT.bpm[0] + 1);
+    expect(shortest).toBeGreaterThan(30_000);
+  });
+});
+
+describe("325 节拍's tune", () => {
+  it("sings each note as its group says: 3 mi, 2 re, 5 sol, as long as it lasts", () => {
+    expect(SING[3]).toBeCloseTo(659.26, 1);
+    expect(SING[2]).toBeCloseTo(587.33, 1);
+    expect(SING[5]).toBeCloseTo(783.99, 1);
+    for (let seed = 1; seed <= 100; seed++) {
+      const c = chartOf(seed);
+      const lead = beatTune(c).filter((s) => s.what === "lead");
+      expect(lead.map((s) => s.at)).toEqual(c.notes.map((n) => n.at));
+      lead.forEach((s, i) => s.what === "lead" && expect(s.hz).toBe(SING[c.notes[i].digit]));
+    }
+  });
+
+  it("keeps time from its first beat with a drum on every beat, a hi-hat every eighth and the bass, then closes", () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const c = chartOf(seed);
+      const tune = beatTune(c);
+      for (let i = 1; i < tune.length; i++) expect(tune[i].at).toBeGreaterThanOrEqual(tune[i - 1].at);
+      const last = c.notes[c.notes.length - 1].at;
+      const crash = tune.filter((s) => s.what === "crash");
+      expect(crash).toHaveLength(1);
+      const close = crash[0].at;
+      // a beat, the first after the last note's eighth, before the tune ends
+      expect(close / c.beat).toBeCloseTo(Math.round(close / c.beat), 6);
+      expect(close).toBeGreaterThanOrEqual(last + c.beat / 2 - 1e-6);
+      expect(close).toBeLessThanOrEqual(last + c.beat + 1e-6);
+      expect(close).toBeLessThan(c.end);
+      const beats = Math.round(close / c.beat);
+      const on = (what: string) => tune.filter((s) => s.what === what && s.at < close - 1e-6).map((s) => Math.round((s.at / c.beat) * 2) / 2);
+      expect(on("kick")).toEqual(Array.from({ length: Math.ceil(beats / 2) }, (_, i) => 2 * i));
+      expect(on("snare")).toEqual(Array.from({ length: Math.floor(beats / 2) }, (_, i) => 2 * i + 1));
+      expect(on("hat")).toEqual(Array.from({ length: 2 * beats }, (_, i) => i / 2));
+      const bass = tune.filter((s) => s.what === "bass" && s.at < close - 1e-6);
+      expect(bass).toHaveLength(beats);
+      bass.forEach((s, b) => s.what === "bass" && expect(s.hz).toBe(BASS[Math.floor(b / 4) % 4] * (b % 2 ? 2 : 1)));
+      // the first two beats only keep time
+      expect(tune.filter((s) => s.what === "lead" && s.at < 2 * c.beat - 1e-6)).toHaveLength(0);
+      expect(tune.filter((s) => s.at < 2 * c.beat - 1e-6).map((s) => s.what)).toContain("kick");
+    }
+  });
+});
+
+describe("325 节拍's taps", () => {
+  const c = chartOf(325);
+  const first = c.notes[0].at;
+
+  /** A note with a rest after it, the last of a pass: nothing but it within reach after it */
+  const lone = c.notes.findIndex((n, i) => i > 0 && n.pass !== c.notes[i - 1].pass) - 1;
+
+  it("hit a note within 100 ms of it, either way, and are 正好 within 45; a little further off, only early or late", () => {
+    expect(c.notes[lone + 1].at - c.notes[lone].at).toBeGreaterThan(2 * BEAT.nearMs);
+    // after the last note of a pass, and before the first of the next: a rest on that side of each
+    for (const [i, d, did] of [
+      [lone, 0, "exact"],
+      [lone, BEAT.exactMs, "exact"],
+      [lone + 1, -BEAT.exactMs, "exact"],
+      [lone, BEAT.exactMs + 1, "hit"],
+      [lone + 1, -BEAT.exactMs - 1, "hit"],
+      [lone, BEAT.hitMs, "hit"],
+      [lone + 1, -BEAT.hitMs, "hit"],
+      [lone, BEAT.hitMs + 1, "late"],
+      [lone + 1, -BEAT.hitMs - 1, "early"],
+      [lone, BEAT.nearMs, "late"],
+      [lone + 1, -BEAT.nearMs, "early"],
+      [lone, BEAT.nearMs + 1, "stray"],
+      [lone + 1, -BEAT.nearMs - 1, "stray"],
+    ] as const) {
+      const r = tapAt(c, tallyStart(c), c.notes[i].at + d);
+      expect(r.did, `${d} ms`).toBe(did);
+      expect(r.i).toBe(did === "stray" ? -1 : i);
+      expect(r.tally.got[i]).toBe(did === "exact" ? 2 : did === "hit" ? 1 : 0);
+      expect(r.tally.strays).toBe(did === "stray" ? 1 : 0);
+    }
+  });
+
+  it("are late for a note let go before early for the next, and early for the next once that one is hit", () => {
+    // two notes an eighth apart, and a tap 150 ms after the first: 100 or so before the second
+    const t = c.notes[0].at + 150;
+    expect(c.notes[1].at - t).toBeGreaterThan(BEAT.hitMs);
+    expect(tapAt(c, tallyStart(c), t)).toMatchObject({ did: "late", i: 0 });
+    const hit = tapAt(c, tallyStart(c), c.notes[0].at).tally;
+    expect(tapAt(c, hit, t)).toMatchObject({ did: "early", i: 1 });
+  });
+
+  it("cost nothing a little off a note: the note can still be hit after", () => {
+    // the first note after a rest
+    const n = c.notes[lone + 1].at;
+    const early = tapAt(c, tallyStart(c), n - 150);
+    expect(early.did).toBe("early");
+    expect(early.i).toBe(lone + 1);
+    expect(early.tally).toEqual(tallyStart(c));
+    const then = tapAt(c, early.tally, n + 10);
+    expect(then.did).toBe("exact");
+    expect(then.i).toBe(lone + 1);
+  });
+
+  it("hit the nearest note not hit yet, and a second tap on a note is a stray", () => {
+    const second = c.notes[1].at;
+    const r = tapAt(c, tallyStart(c), second - 20);
+    expect(r.i).toBe(1);
+    const n = c.notes[lone].at;
+    const once = tapAt(c, tallyStart(c), n);
+    const again = tapAt(c, once.tally, n + 10);
+    expect(again.did).toBe("stray");
+    expect(again.tally.strays).toBe(1);
+    expect(again.tally.got).toEqual(once.tally.got);
+  });
+
+  it("count as strays only while the notes are coming: before them, in the empty beats, and after them, nothing", () => {
+    const s = tallyStart(c);
+    const last = c.notes[c.notes.length - 1].at;
+    for (const t of [-500, 0, first - BEAT.nearMs - 1, last + BEAT.nearMs + 1, c.end]) {
+      const r = tapAt(c, s, t);
+      expect(r.did, `${t}`).toBe("off");
+      expect(r.tally).toBe(s);
+    }
+    // between two passes, well away from both
+    expect(tapAt(c, s, (c.notes[lone].at + c.notes[lone + 1].at) / 2).did).toBe("stray");
+    // a tap on every eighth of the tune, notes or not: as many strays as there are eighths of rest, near enough
+    let all = tallyStart(c);
+    for (let t = 0; t < c.end; t += c.beat / 2) all = tapAt(c, all, t).tally;
+    expect(beatResult(c, all)).toMatchObject({ hits: c.notes.length, won: false });
+    expect(all.strays).toBeGreaterThan(0.8 * c.notes.length);
+  });
+
+  it("leave a note missed once it is past hitting, not before, and never a hit one", () => {
+    const s = tallyStart(c);
+    expect(missed(c, s, 0, first + BEAT.hitMs)).toBe(false);
+    expect(missed(c, s, 0, first + BEAT.hitMs + 1)).toBe(true);
+    expect(missed(c, tapAt(c, s, first).tally, 0, first + 10_000)).toBe(false);
+  });
+});
+
+describe("325 节拍's round", () => {
+  it("passes when hits less strays come to eight in ten of the notes", () => {
+    const c = plain(70);
+    expect(beatResult(c, tallyOf(c, 56, 0))).toMatchObject({ hits: 56, total: 70, won: true });
+    expect(beatResult(c, tallyOf(c, 55, 0)).won).toBe(false);
+    // each stray takes a hit back
+    expect(beatResult(c, tallyOf(c, 57, 1)).won).toBe(true);
+    expect(beatResult(c, tallyOf(c, 57, 2)).won).toBe(false);
+    expect(beatResult(c, tallyOf(c, 70, 14)).won).toBe(true);
+    expect(beatResult(c, tallyOf(c, 70, 15)).won).toBe(false);
+    // 正好 counts as a hit
+    expect(beatResult(c, { got: c.notes.map((_, i) => (i < 56 ? 2 : 0)), strays: 0 }).won).toBe(true);
+  });
+
+  it("names the strays when there are three or more, or any that cost the pass", () => {
+    const c = plain(70);
+    expect(beatResult(c, tallyOf(c, 70, 2)).strayNamed).toBe(false);
+    expect(beatResult(c, tallyOf(c, 70, 3)).strayNamed).toBe(true);
+    // two strays that cost it: 57 hits would pass
+    expect(beatResult(c, tallyOf(c, 57, 2)).strayNamed).toBe(true);
+    // one that does not: 40 hits fail anyway
+    expect(beatResult(c, tallyOf(c, 40, 1)).strayNamed).toBe(false);
+  });
+
+  it("tells nothing when the page was put away: the round is void, neither passed nor failed", () => {
+    const c = plain(70);
+    expect(roundEnd(c, tallyOf(c, 70, 0), "hidden")).toBeNull();
+    expect(roundEnd(c, tallyOf(c, 0, 0), "hidden")).toBeNull();
+    expect(roundEnd(c, tallyOf(c, 70, 0), "played")).toEqual(beatResult(c, tallyOf(c, 70, 0)));
+  });
+
+  it("plays a whole chart through as a tap on each note passes it, and one a little off each fails it, costing nothing more", () => {
+    const c = chartOf(7);
+    let s = tallyStart(c);
+    for (const n of c.notes) s = tapAt(c, s, n.at + 30).tally;
+    expect(beatResult(c, s)).toMatchObject({ hits: c.notes.length, strays: 0, won: true, strayNamed: false });
+    let off = tallyStart(c);
+    for (const n of c.notes) off = tapAt(c, off, n.at + 120).tally;
+    expect(beatResult(c, off)).toMatchObject({ hits: 0, strays: 0, won: false, strayNamed: false });
+    // a tap every 90 ms the whole tune: every note hit, and it fails on the strays
+    let spam = tallyStart(c);
+    for (let t = 0; t < c.end; t += 90) spam = tapAt(c, spam, t).tally;
+    expect(beatResult(c, spam)).toMatchObject({ hits: c.notes.length, won: false, strayNamed: true });
   });
 });

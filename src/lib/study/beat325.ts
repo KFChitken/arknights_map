@@ -1,89 +1,173 @@
 /**
- * 325 节拍 (src/components/app/study/Beat325.tsx): a lit ring steps along a row of slots in time, and the player taps
- * (anywhere, or Space) as it lands on each dot: three, a rest, two, a rest, five, two rests, a bar of fourteen slots,
- * each bar a little faster than the last. A bar is right with each of its ten beats tapped once, in time, and no other
- * tap in it. Eight bars right pass; three wrong end the round. Every slot's time is worked out when the round starts and
- * each tap is judged by when it was made, so a slow screen moves nothing. Nothing in it needs sound.
+ * 325 节拍 (src/components/app/study/Beat325.tsx): a tune about 40 seconds long, made up afresh each round and played
+ * in the browser (beatSound.ts), and its notes falling down a lane to a line; the player taps (anywhere, or Space) as
+ * each reaches the line. A pass of 325 is a group of three notes, then two, then five, an eighth note apart within a
+ * group, each note marked with its group's digit and sung mi, re or sol (numbered notation's 3, 2 and 5); the rests
+ * between the groups and between the passes are dealt each round. A tap within BEAT.hitMs of a note hits it; one a
+ * little further off, within BEAT.nearMs, was only early or late for it; one with no note that near, while the notes
+ * are coming, is a stray, and takes a hit back. Hits less strays of at least BEAT.pass of the notes pass. A round
+ * whose page is put away is void: it neither passes nor fails, and is not told.
+ *
+ * Everything here is pure: the chart, the tune it is sung in, judging a tap, and what a round comes to. Times are ms
+ * from the tune's start.
  */
 
-/** A bar's slots, in order: 1 for a beat, 0 for a rest. Three, two and five beats */
-export const BEAT_SLOTS = [1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0] as const;
-/** The beats in a bar */
-export const BEAT_BEATS = BEAT_SLOTS.filter((s) => s === 1).length;
-/** Bars right that pass, and bars wrong that end the round: so a round has a result in ten bars at most */
-export const BEAT_PASS = 8;
-export const BEAT_FAILS = 3;
-/** Counted in before the first bar, a slot each, at its speed: 3、2、5, not 3、2、1 */
-export const BEAT_COUNT = [3, 2, 5] as const;
-/** How long 预备 shows before the count (ms) */
-export const BEAT_READY_MS = 800;
+/** How it plays, all in one place: after Breeze has played it, only these change */
+export const BEAT = {
+  /** Beats a minute: one for the round, dealt from these, both ends in */
+  bpm: [112, 120],
+  /** About how long the tune is (ms): it ends two beats after its last note, by this */
+  ms: 40_000,
+  /** Beats at the start with no note in them */
+  leadBeats: 2,
+  /** Eighths of rest between the groups of a pass: fewest and most */
+  groupRest: [1, 3],
+  /** Beats of rest between passes: fewest and most, in the tune's second half one fewer at most */
+  passRest: [2, 4],
+  /** How far from a note a tap may be and hit it, and be 正好 (ms, either way) */
+  hitMs: 100,
+  exactMs: 45,
+  /**
+   * How far from a note a tap that missed it may be and be only early or late for it, not a stray (ms, either way):
+   * a note tapped a little off costs it, not a hit more. As BEAT.hitMs, any tap off a note is a stray
+   */
+  nearMs: 200,
+  /** The share of the notes that hits less strays must come to, to pass */
+  pass: 0.8,
+  /** Strays the result names: this many, or any that cost the pass */
+  strayNote: 3,
+};
 
-/** How long a slot of the nth bar is (ms, n from 0): 330, 10 less each bar, never under 230 */
-export const slotMs = (n: number) => Math.max(230, 330 - 10 * n);
-/** How far from its beat a tap may be and still hit it (ms) */
-export const windowMs = (n: number) => Math.min(150, 0.45 * slotMs(n));
+/** A pass's groups, in order: how many notes each has, which is the digit it is marked with */
+export const BEAT_GROUPS = [3, 2, 5] as const;
+export type BeatDigit = (typeof BEAT_GROUPS)[number];
 
-/** A bar as played: which of the round's it is (its speed), when it starts on performance.now()'s clock, its slot */
-export type Bar = { n: number; start: number; slot: number };
-
-/** When a bar's kth slot comes */
-export const slotAt = (b: Bar, k: number) => b.start + k * b.slot;
-/** When no tap can be a bar's any more: half a slot after its last */
-export const barShut = (b: Bar) => b.start + (BEAT_SLOTS.length - 0.5) * b.slot;
+/** A note: when it reaches the line (ms), its group's digit, the pass it is in (from 0), and its place in the group */
+export type Note = { at: number; digit: BeatDigit; pass: number; k: number };
+/** A round's tune: its beats a minute, a beat (ms), its notes in order, and when it ends (ms) */
+export type Chart = { bpm: number; beat: number; notes: Note[]; end: number };
 
 /**
- * The count and the bars after it, from the nth bar on, started at a time: when each count shows, and each bar (as many
- * as could be needed)
+ * A round's chart, from its random (mulberry32 of its seed): no note in the first BEAT.leadBeats beats, then passes of
+ * 3, 2 and 5 notes, an eighth apart in a group, with BEAT.groupRest eighths between groups and BEAT.passRest beats
+ * between passes (fewer at most in the second half), as many as end two beats before BEAT.ms
  */
-export function beatPlan(from: number, at: number): { count: number[]; bars: Bar[] } {
-  const first = slotMs(from);
-  const count = BEAT_COUNT.map((_, k) => at + k * first);
-  const bars: Bar[] = [];
-  let start = at + BEAT_COUNT.length * first;
-  for (let n = from; n < from + BEAT_PASS + BEAT_FAILS; n++) {
-    const slot = slotMs(n);
-    bars.push({ n, start, slot });
-    start += BEAT_SLOTS.length * slot;
+export function beatChart(random: () => number): Chart {
+  const int = (lo: number, hi: number) => lo + Math.min(hi - lo, Math.floor(random() * (hi - lo + 1)));
+  const bpm = int(BEAT.bpm[0], BEAT.bpm[1]);
+  const beat = 60_000 / bpm;
+  const eighth = beat / 2;
+  const last = BEAT.ms - 2 * beat;
+  const notes: Note[] = [];
+  /** The eighth the next pass starts on */
+  let e = 2 * BEAT.leadBeats;
+  for (let pass = 0; ; pass++) {
+    const laid: Note[] = [];
+    let at = e;
+    BEAT_GROUPS.forEach((digit, g) => {
+      if (g) at += int(BEAT.groupRest[0], BEAT.groupRest[1]);
+      for (let k = 0; k < digit; k++) laid.push({ at: at++ * eighth, digit, pass, k });
+    });
+    if (laid[laid.length - 1].at > last) break;
+    notes.push(...laid);
+    const later = laid[laid.length - 1].at > BEAT.ms / 2;
+    e = at + 2 * int(BEAT.passRest[0], BEAT.passRest[1] - (later ? 1 : 0));
   }
-  return { count, bars };
+  return { bpm, beat, notes, end: notes[notes.length - 1].at + 2 * beat };
 }
+
+/** What each group sings (Hz): 3 mi, 2 re, 5 sol, over the C an octave above middle C */
+export const SING: Record<BeatDigit, number> = { 3: 659.26, 2: 587.33, 5: 783.99 };
+/** The bass under each bar of four beats, round and round: C, A, F, G (the chords 1、6、4、5), in Hz */
+export const BASS = [130.81, 110, 87.31, 98];
+
+/** A sound of the tune: when it starts (ms), what plays it, and for the bass and the tune its pitch and length */
+export type Sound =
+  | { at: number; what: "lead" | "bass"; hz: number; ms: number }
+  | { at: number; what: "kick" | "snare" | "crash" }
+  | { at: number; what: "hat"; soft: boolean };
 
 /**
- * Where a tap falls: the bar and slot it is nearest to, and whether it hits that slot's beat; null for a tap before the
- * first bar (in the count) or after the last
+ * The tune a chart is sung in, in order: on every beat a drum (the kick on the first and third of a bar, the snare on
+ * the second and fourth), a hi-hat every eighth, the bass's root and then its octave under each bar's chord; over it
+ * a note for each of the chart's; and a beat after the last of them it closes, on a kick, a crash and a low C
  */
-export function placeTap(bars: readonly Bar[], t: number): { i: number; k: number; hit: boolean } | null {
-  for (let i = 0; i < bars.length; i++) {
-    const b = bars[i];
-    const near = Math.round((t - b.start) / b.slot);
-    if (near < 0 && i === 0) return null;
-    // a few ms between one bar's last half slot and the next one's first, as they are not the same length
-    const k = Math.max(0, near);
-    if (k >= BEAT_SLOTS.length) continue;
-    return { i, k, hit: BEAT_SLOTS[k] === 1 && Math.abs(t - slotAt(b, k)) <= windowMs(b.n) };
+export function beatTune(c: Chart): Sound[] {
+  const eighth = c.beat / 2;
+  const last = Math.round(c.notes[c.notes.length - 1].at / eighth);
+  /** The beat it closes on: the first after the last note's eighth is over */
+  const close = Math.ceil((last + 1) / 2);
+  const out: Sound[] = [];
+  for (let b = 0; b < close; b++) {
+    const at = b * c.beat;
+    const root = BASS[Math.floor(b / 4) % BASS.length];
+    out.push(
+      { at, what: b % 2 ? "snare" : "kick" },
+      { at, what: "hat", soft: false },
+      { at: at + eighth, what: "hat", soft: true },
+      { at, what: "bass", hz: b % 2 ? 2 * root : root, ms: 0.85 * c.beat },
+    );
   }
-  return null;
+  for (const n of c.notes) out.push({ at: n.at, what: "lead", hz: SING[n.digit], ms: 0.9 * eighth });
+  const at = close * c.beat;
+  out.push({ at, what: "kick" }, { at, what: "crash" }, { at, what: "bass", hz: BASS[0], ms: 1.5 * c.beat });
+  return out.sort((a, b) => a.at - b.at);
 }
 
-/** The taps a bar was given, slot by slot: those that hit its beat, and the others */
-export type BarTaps = { hits: number[]; strays: number[] };
-export const noTaps = (): BarTaps => ({ hits: BEAT_SLOTS.map(() => 0), strays: BEAT_SLOTS.map(() => 0) });
+/** How the round is going: each note not hit (0), hit (1) or hit 正好 (2); and the strays */
+export type Tally = { got: readonly (0 | 1 | 2)[]; strays: number };
+export const tallyStart = (c: Chart): Tally => ({ got: c.notes.map(() => 0), strays: 0 });
 
-/** A bar with one more tap at its kth slot */
-export function tapped(b: BarTaps, k: number, hit: boolean): BarTaps {
-  const add = (xs: number[]) => xs.map((x, j) => (j === k ? x + 1 : x));
-  return hit ? { hits: add(b.hits), strays: b.strays } : { hits: b.hits, strays: add(b.strays) };
+/**
+ * What a tap did: hit a note (its index), 正好 or not; missed the nearest one by a little, early or late (its index);
+ * hit nothing, a stray; or came before or after the notes, nothing
+ */
+export type Tapped = { tally: Tally; did: "exact" | "hit" | "early" | "late" | "stray" | "off"; i: number };
+
+/**
+ * A tap at t: on the nearest note not hit yet, if within BEAT.hitMs (正好 within BEAT.exactMs); else early or late for
+ * the first note not hit yet within BEAT.nearMs, so that a tap behind a note let go is late for it, not early for the
+ * next; else a stray, while the notes are coming (from the first's reach to the last's); before them, in the empty
+ * beats, or after, nothing
+ */
+export function tapAt(c: Chart, s: Tally, t: number): Tapped {
+  let best = -1;
+  let off = Infinity;
+  let near = -1;
+  for (let i = 0; i < c.notes.length; i++) {
+    if (s.got[i]) continue;
+    const d = Math.abs(t - c.notes[i].at);
+    if (d < off) {
+      best = i;
+      off = d;
+    }
+    if (near < 0 && d <= BEAT.nearMs) near = i;
+  }
+  if (off > BEAT.hitMs) {
+    if (near >= 0) return { tally: s, did: t < c.notes[near].at ? "early" : "late", i: near };
+    const coming = t >= c.notes[0].at - BEAT.nearMs && t <= c.notes[c.notes.length - 1].at + BEAT.nearMs;
+    return coming ? { tally: { got: s.got, strays: s.strays + 1 }, did: "stray", i: -1 } : { tally: s, did: "off", i: -1 };
+  }
+  const exact = off <= BEAT.exactMs;
+  const got = s.got.slice();
+  got[best] = exact ? 2 : 1;
+  return { tally: { got, strays: s.strays }, did: exact ? "exact" : "hit", i: best };
 }
 
-/** Each beat hit once, and no other tap */
-export const barRight = (b: BarTaps) => BEAT_SLOTS.every((s, k) => (s ? b.hits[k] === 1 : true)) && b.strays.every((n) => n === 0);
+/** Whether a note is past hitting at t, not hit */
+export const missed = (c: Chart, s: Tally, i: number, t: number) => !s.got[i] && t > c.notes[i].at + BEAT.hitMs;
 
-/** Bars right and wrong so far */
-export type Score = { right: number; wrong: number };
-export const SCORE_START: Score = { right: 0, wrong: 0 };
+/** What a round came to: notes hit and all of them, strays, whether it passed, and whether the strays are named */
+export type BeatResult = { hits: number; total: number; strays: number; won: boolean; strayNamed: boolean };
 
-/** A bar over: the score after it, and whether that passed (pass) or ended (out) the round */
-export function scored(s: Score, right: boolean): { score: Score; end: "pass" | "out" | null } {
-  const score = right ? { right: s.right + 1, wrong: s.wrong } : { right: s.right, wrong: s.wrong + 1 };
-  return { score, end: score.right >= BEAT_PASS ? "pass" : score.wrong >= BEAT_FAILS ? "out" : null };
+/** The round once the tune has played: hits less strays against BEAT.pass of the notes */
+export function beatResult(c: Chart, s: Tally): BeatResult {
+  const hits = s.got.filter((g) => g > 0).length;
+  const total = c.notes.length;
+  const won = hits - s.strays >= BEAT.pass * total;
+  const cost = !won && hits >= BEAT.pass * total;
+  return { hits, total, strays: s.strays, won, strayNamed: s.strays >= BEAT.strayNote || (s.strays > 0 && cost) };
 }
+
+/** How a round stopped: the tune played out, or the page was put away first; this one is void, and nothing is told */
+export const roundEnd = (c: Chart, s: Tally, why: "played" | "hidden"): BeatResult | null => (why === "played" ? beatResult(c, s) : null);
