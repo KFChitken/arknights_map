@@ -138,7 +138,8 @@
 .mt-start,
 .bt-start,
 .ct-start,
-.tr-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
+.tr-start,
+.sk-start { min-width: 160px; border: 0; border-radius: 999px; padding: 13px 28px; background: #1b1d22; color: #fff; font-size: 17px; font-weight: 800; }
 .sw-hint,
 .rx-hint,
 .ec-hint { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
@@ -431,6 +432,36 @@
   80% { transform: translateX(2px); }
 }
 
+/* ---- 叠罗汉 (Stack325.tsx): rows of roaches stacked on a canvas, the counts and what a drop did over it; only the row
+   crawling steps, one dropped lands and what falls off falls: nothing flashes, and nothing shakes ---- */
+.sk-game { flex: 1; align-self: stretch; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.sk-side { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.sk-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.sk-count { color: #4b5260; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sk-count.sk-fell { color: var(--st-red); }
+/* a line high whatever is said, so the field under it never moves */
+.sk-said { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.sk-said.sk-good { color: var(--st-green); font-weight: 800; }
+.sk-said.sk-bad { color: var(--st-red); font-weight: 800; }
+.sk-stage { position: relative; flex: 1; min-height: 140px; }
+.sk-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* before the round: a card in the sky over the stack, or over all of it where the sky is low */
+.sk-ready { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.sk-card {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 100%; padding: 14px 16px; border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94); box-shadow: 0 6px 24px rgba(16, 17, 20, 0.12); text-align: center;
+}
+.sk-rule { margin: 0; color: #1b1d22; font-size: 14px; line-height: 1.55; }
+/* each line of the rule its own, a long one broken in two even halves (after a comma) on a narrow screen */
+.sk-rule span { display: block; word-break: keep-all; text-wrap: balance; }
+.sk-hint { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; text-wrap: balance; }
+/* passed: how many stayed, big in the sky over the stack */
+.sk-sum {
+  position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; margin: 0;
+  color: #1b1d22; font-size: clamp(22px, 7vw, 32px); font-weight: 800; pointer-events: none;
+}
+.sk-sum.sk-fate { color: #b88a00; }
+
 /* ---- 接住 3、2、5 (Catch325.tsx) and 描红 325 (Trace325.tsx): three slots, how it goes and the time over a field
    drawn on a canvas (arena.ts); the canvas fills what room there is, the field in it is drawn no wider or taller than
    it plays the same ---- */
@@ -536,6 +567,8 @@
   .mc-said { min-height: 40px; font-size: 13px; }
   .mc-tools { min-height: 36px; }
   .mc-tools .st-ghost { padding-block: 7px; }
+  .sk-card { gap: 8px; padding: 10px 14px; }
+  .sk-rule { font-size: 13px; line-height: 1.5; }
   .ct-game,
   .tr-game { gap: 6px; }
   .ct-slots b,
@@ -598,6 +631,12 @@
   .mk-op { height: 44px; }
   .mk-tools { grid-column: 2; grid-row: 2; width: 100%; }
   .mk-tools .st-ghost { padding-block: 7px; }
+  /* the counts and what a drop did down the left, the field all the height beside them */
+  .sk-game { flex-direction: row; gap: 14px; }
+  .sk-side { align-self: center; width: 132px; gap: 12px; }
+  .sk-top { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .sk-said { min-height: 3em; text-align: left; }
+  .sk-stage { min-height: 0; }
   /* the slots, how it goes and the time down the left, the field all the height beside them */
   .ct-game,
   .tr-game { flex-direction: row; gap: 16px; }

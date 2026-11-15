@@ -2334,6 +2334,7 @@ export const zh = {
       music: "音乐课",
       math: "数学课",
       calligraphy: "书法课",
+      labor: "劳动课",
     },
     courses: {
       stopwatch: {
@@ -2352,6 +2353,7 @@ export const zh = {
       catch325: { name: "接住 3、2、5", rule: "左右挪小强，用头上的盘子按 3、2、5 的顺序接住数字，躲开炸弹", short: "接住" },
       trace325: { name: "描红 325", rule: "拖着小强沿虚线描 3、2、5，碰到飞来的东西就重写", short: "描红" },
       match325: { name: "火柴棒 325", rule: "挪 1 根火柴，让等式成立", short: "火柴棒" },
+      stack325: { name: "叠罗汉", rule: "一排排小强往上叠，每排少一只，没对齐的掉下去", short: "叠罗汉" },
     },
     stopwatch: {
       start: "开始",
@@ -2567,6 +2569,34 @@ export const zh = {
       seen: "看了答案",
       result: "用了 {s} 秒，挪对了",
       resultSeen: "看了答案",
+    },
+    /** 叠罗汉 (src/lib/study/stack325.ts) */
+    stack325: {
+      start: "开始",
+      /** On the card over the field before the round */
+      rule: "上面这排小强左右来回爬，点一下就落下\n没踩住下面那排的，翻着肚皮掉下去\n一排排叠到最顶上一只就过关",
+      tap: "点屏幕任何地方，这排就落下",
+      tapKeys: "点屏幕任何地方或按空格，这排就落下",
+      /** Over the field: the row crawling, the roaches stayed so far and those fallen */
+      row: "第 {k} / {of} 排",
+      kept: "叠住 {n} 只",
+      fell: "掉了 {n} 只",
+      /** Said a moment after a row is dropped, and at the end */
+      middle: "正中间！",
+      whole: "一只没掉",
+      dropped: "掉了 {n} 只",
+      gone: "这排全掉了",
+      top: "叠到顶了！",
+      /** Read out after a row is dropped */
+      droppedSr: "第 {k} 排，{said}",
+      /** Read out for the field */
+      fieldSr: "小强叠罗汉，叠了 {k} 排，叠住 {n} 只",
+      /** Over the stack once it is passed */
+      sum: "叠住 {n} 只",
+      fate: "一只没掉，正好 325 只！",
+      pass: "叠住 {n} 只，过关！",
+      out: "第 {k} 排没叠住，叠住 {n} 只",
+      result: "叠住 {n} 只",
     },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
