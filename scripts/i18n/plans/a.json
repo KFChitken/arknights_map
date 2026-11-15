@@ -16,13 +16,6 @@
         "loading": "地图加载中…",
         "radar": "方舟雷达"
       }
-    },
-    "src/components/app/chrome/DrawerChrome.tsx": {
-      "group": "map",
-      "only": "named",
-      "words": {
-        "beta": "内测版"
-      }
     }
   }
 }

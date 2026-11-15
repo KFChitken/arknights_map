@@ -174,7 +174,6 @@ function Panel(p: ChromeProps) {
         <div className="ph" data-chrome-top>
           {p.brand(30)}
           <span className="nm">{siteName()}</span>
-          <span className="tag">{T.map.beta}</span>
           <span className="grow" />
           <NoticeButton dot={p.noticeDot} onClick={p.onBoard} />
           <UiButton p={p} />

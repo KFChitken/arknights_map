@@ -10,7 +10,6 @@
  */
 export const zh = {
   map: {
-    beta: "内测版",
     loading: "地图加载中…",
     radar: "方舟雷达",
     disclaimer: "非官方同人项目 · 与鹰角网络无关 ·",

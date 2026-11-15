@@ -9,7 +9,6 @@ import type { Draft, Messages } from "./core";
  */
 export const en: Draft<Messages> = {
   map: {
-    beta: "Beta",
     loading: "Loading the map…",
     radar: "Ark Radar",
     disclaimer: "Unofficial fan project · Not affiliated with Hypergryph ·",
