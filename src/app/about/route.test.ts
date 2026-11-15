@@ -24,12 +24,12 @@ const EMBEDS = [
   "https://player.bilibili.com/player.html?",
 ];
 
-const REDDIT_COMMENT = "https://www.reddit.com/r/arknights/comments/1xtpcwp/comment/19slrt5jlwqmb/?context=1";
+const REDDIT_POST = "https://www.reddit.com/r/arknights/comments/1xtpcwp/a_fangenerated_map_of_weak_social_interactions/";
 
 /** Every link that leads off the site: the posts themselves, then the news about the map in Chinese */
 const LINKS_OUT = [
   "https://x.com/bitoUtAkAtA/status/2120355023007920599",
-  REDDIT_COMMENT,
+  REDDIT_POST,
   "https://bbs.ruliweb.com/community/board/300143/read/77349478",
   "https://www.bilibili.com/video/BV13YWN6bEnR/",
   "https://www.bilibili.com/video/BV1qxW86gELW/",
@@ -175,24 +175,24 @@ describe("/about", () => {
     }
   });
 
-  it("shows the Reddit comment through an <object>, which shows our own card instead when Reddit won't", async () => {
+  it("shows the Reddit post through an <object>, which shows our own card instead when Reddit won't", async () => {
     const { html } = await page();
     // the <object> is the whole document of a sandboxed frame, so the embed keeps the frame's sandbox and lazy loading
     const docs = [...html.matchAll(/<iframe\b[^>]*\bsrcdoc="([^"]*)"[^>]*>/g)];
     expect(docs).toHaveLength(1);
-    expect(docs[0][0]).toContain('title="Comment on r/arknights"');
+    expect(docs[0][0]).toContain('title="Post on r/arknights"');
     const doc = unescapeHtml(docs[0][1]);
     const objects = [...doc.matchAll(/<object\b([^>]*)>([\s\S]*?)<\/object>/g)];
     expect(objects).toHaveLength(1);
     const [, attrs, fallback] = objects[0];
-    expect(attrs).toContain("data='https://embed.reddit.com/r/arknights/comments/1xtpcwp/comment/19slrt5jlwqmb/?embed=true&amp;");
+    expect(attrs).toContain("data='https://embed.reddit.com/r/arknights/comments/1xtpcwp/a_fangenerated_map_of_weak_social_interactions/?embed=true&amp;");
     expect(attrs).toContain("type=text/html");
-    // what shows when the load fails (an HTTP error, a network error, a refusal to be framed): a way to the comment
-    expect([...fallback.matchAll(/<a\s+([^>]*)>/g)].map((m) => m[1])).toEqual([`href='${REDDIT_COMMENT}' target=_blank rel=noopener`]);
+    // what shows when the load fails (an HTTP error, a network error, a refusal to be framed): a way to the post
+    expect([...fallback.matchAll(/<a\s+([^>]*)>/g)].map((m) => m[1])).toEqual([`href='${REDDIT_POST}' target=_blank rel=noopener`]);
     // and nothing else is asked of anyone
     const addresses = [...doc.matchAll(/https?:\/\/[^"'\s<>]+/g)].map((m) => m[0]);
     expect(addresses).toHaveLength(2);
-    expect(addresses.filter((a) => !a.startsWith("https://embed.reddit.com/r/arknights/") && a !== REDDIT_COMMENT)).toEqual([]);
+    expect(addresses.filter((a) => !a.startsWith("https://embed.reddit.com/r/arknights/") && a !== REDDIT_POST)).toEqual([]);
   });
 
   it("has every picture it shows", async () => {
