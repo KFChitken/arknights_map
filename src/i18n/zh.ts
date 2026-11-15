@@ -2336,7 +2336,7 @@ export const zh = {
         todayRule: "先过一局看得见的，再过一局藏数字的",
         short: "停表",
       },
-      react325: { name: "3、2、5 反应", rule: "3、2、5 连着出来时，趁 5 还亮着拍一下", short: "反应" },
+      react325: { name: "3、2、5 反应", rule: "数字一个个闪过，按顺序拍出 325799", short: "反应" },
       echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
       find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
       mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
@@ -2365,21 +2365,19 @@ export const zh = {
       start: "开始",
       /** Over the countdown 3、2、5 */
       ready: "预备",
-      rule: "3、2、5 连着出来时，趁 5 还亮着拍屏幕\n拍中 {hits} 次过关，拍错 {slips} 次结束",
-      tap: "看到 3、2、5 的 5 就拍屏幕任何地方",
-      tapKeys: "看到 3、2、5 的 5 就拍屏幕任何地方，或按空格",
-      hits: "拍中",
+      rule: "数字一个个闪过，轮到哪个数字，它亮着时就拍屏幕\n按顺序按出 325799 过关，拍错 {slips} 次结束",
+      tap: "轮到的数字亮着时，拍屏幕任何地方",
+      tapKeys: "轮到的数字亮着时，拍屏幕任何地方，或按空格",
       slips: "拍错",
-      /** Read out for the tallies */
-      hitsSr: "拍中 {n} 次，{of} 次过关",
+      /** Read out for the six places and the tally */
+      codeSr: "325799 按出了 {n} 位，共 6 位",
       slipsSr: "拍错 {n} 次，{of} 次结束",
       hit: "拍中！",
       slip: "拍错了",
-      clean: "一次没拍错，过关！",
-      pass: "过关！",
+      pass: "按出 325799，过关！",
       slipOut: "拍错 {n} 次，这局到这儿",
-      ranOut: "数字出完了，拍中 {n} 次，再试一次",
-      result: "拍中 {hits} 次，拍错 {slips} 次",
+      ranOut: "数字出完了，按出 {n} 位，再试一次",
+      result: "按出 {n} 位，拍错 {slips} 次",
     },
     /** 复读 325 (src/lib/study/echo325.ts) */
     echo325: {

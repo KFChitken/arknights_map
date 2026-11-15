@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import {
   judgeTap,
+  REACT_CODE,
   REACT_COUNT_MS,
   REACT_COUNTDOWN,
-  REACT_HITS,
+  REACT_MAX,
   REACT_SLIPS,
-  reactStream,
+  reactDealer,
   reactTimes,
 } from "@/lib/study/react325";
 import { mulberry32 } from "@/lib/prng";
@@ -16,18 +17,20 @@ import type { GameProps, Round } from "./games";
 import { listenTaps, onClock, useKeys } from "./taps";
 
 /**
- * 3、2、5 反应 (src/lib/study/react325.ts): 开始 counts down 3, 2, 5 (not 3, 2, 1; taps in it count for nothing), then the
- * day's digits come up in the box one at a time. A tap anywhere on the screen (Space on a keyboard, taps.ts) while the 5
- * of a 3、2、5 shows is a hit, at any other digit a slip, each judged by the press's own time against when each digit
- * came up on the screen. Only the digit in the box and the tallies under it change: nothing flashes.
+ * 3、2、5 反应 (src/lib/study/react325.ts): 开始 counts down 3, 2, 5 (not 3, 2, 1; taps in it count for nothing), then
+ * digits come up in the box one at a time, dealt as they come from the round's seed. Six places over the box are
+ * tapped out in order, 3 2 5 7 9 9: a tap anywhere on the screen (Space on a keyboard, taps.ts) while the digit wanted
+ * next shows fills its place, at any other digit it is a slip, each judged by the press's own time against when each
+ * digit came up on the screen, and each digit takes one tap. Only the digit in the box, the places and the slips change:
+ * nothing flashes.
  */
 export default function React325({ seed, onRound }: GameProps) {
-  const stream = useMemo(() => reactStream(mulberry32(seed)), [seed]);
-  const times = useMemo(() => reactTimes(stream.length), [stream]);
+  const times = useMemo(() => reactTimes(), []);
   const [phase, setPhase] = useState<"ready" | "count" | "run" | "over">("ready");
   /** What the box shows: a digit of the countdown or of the round's */
   const [digit, setDigit] = useState<number | null>(null);
-  const [hits, setHits] = useState(0);
+  /** The places filled so far */
+  const [filled, setFilled] = useState(0);
   const [slips, setSlips] = useState(0);
   /** 拍中！ or 拍错了 for a moment after a tap */
   const [said, setSaid] = useState<{ hit: boolean; n: number } | null>(null);
@@ -40,19 +43,23 @@ export default function React325({ seed, onRound }: GameProps) {
   useEffect(() => {
     if (startAt === null) return;
     const runAt = startAt + REACT_COUNTDOWN.length * REACT_COUNT_MS;
-    /** When each of the round's digits came up on the screen, as far as they have */
+    const deal = reactDealer(mulberry32(seed));
+    /** The round's digits dealt so far, and when each came up on the screen */
+    const digits: number[] = [];
     const shown: number[] = [];
-    const hit = new Set<number>();
+    /** The digits a tap counted for already: each takes one */
+    const used = new Set<number>();
+    let places = 0;
     let slipped = 0;
     let counting = -1;
     let frame = 0;
     let over = false;
-    const end = (why: "hits" | "slips" | "out") => {
+    const end = (why: "code" | "slips" | "out") => {
       if (over) return;
       over = true;
       cancelAnimationFrame(frame);
       setPhase("over");
-      roundRef.current(roundOf(hit.size, slipped, why));
+      roundRef.current(roundOf(places, slipped, why));
     };
     const tick = () => {
       const now = performance.now();
@@ -64,14 +71,17 @@ export default function React325({ seed, onRound }: GameProps) {
         }
       } else {
         const t = now - runAt;
-        if (t >= times[stream.length]) return end("out");
-        let i = Math.max(0, shown.length - 1);
-        while (i + 1 < stream.length && times[i + 1] <= t) i++;
-        if (i >= shown.length) {
+        if (t >= times[REACT_MAX]) return end("out");
+        let i = Math.max(0, digits.length - 1);
+        while (i + 1 < REACT_MAX && times[i + 1] <= t) i++;
+        if (i >= digits.length) {
           // a digit a slow frame skipped never showed: it counts as coming up with this one
-          while (shown.length <= i) shown.push(now);
+          while (digits.length <= i) {
+            digits.push(deal(REACT_CODE[places]));
+            shown.push(now);
+          }
           setPhase("run");
-          setDigit(stream[i]);
+          setDigit(digits[i]);
         }
       }
       frame = requestAnimationFrame(tick);
@@ -79,18 +89,20 @@ export default function React325({ seed, onRound }: GameProps) {
     frame = requestAnimationFrame(tick);
     const unlisten = listenTaps((at) => {
       if (over || at < runAt) return;
-      const r = judgeTap(stream, shown, hit, at);
+      const r = judgeTap(digits, shown, used, at, REACT_CODE[places]);
       if (r === null) return;
-      if (r === "slip") {
+      if ("slip" in r) {
+        used.add(r.slip);
         slipped++;
         setSlips(slipped);
-        setSaid({ hit: false, n: hit.size + slipped });
+        setSaid({ hit: false, n: places + slipped });
         if (slipped >= REACT_SLIPS) end("slips");
       } else {
-        hit.add(r.hit);
-        setHits(hit.size);
-        setSaid({ hit: true, n: hit.size + slipped });
-        if (hit.size >= REACT_HITS) end("hits");
+        used.add(r.fill);
+        places++;
+        setFilled(places);
+        setSaid({ hit: true, n: places + slipped });
+        if (places >= REACT_CODE.length) end("code");
       }
     });
     return () => {
@@ -98,7 +110,7 @@ export default function React325({ seed, onRound }: GameProps) {
       cancelAnimationFrame(frame);
       unlisten();
     };
-  }, [startAt, stream, times]);
+  }, [startAt, seed, times]);
 
   // 拍中！ and 拍错了 go after a moment
   useEffect(() => {
@@ -110,12 +122,18 @@ export default function React325({ seed, onRound }: GameProps) {
   const words = T.study.react325;
   return (
     <div className="rx-game" data-phase={phase}>
+      <span className="rx-code" role="img" aria-label={fmt(words.codeSr, { n: filled })}>
+        {REACT_CODE.map((n, i) => (
+          <b key={i} className={i < filled ? "rx-got" : i === filled && phase !== "ready" ? "rx-next" : undefined}>
+            {n}
+          </b>
+        ))}
+      </span>
       <div className="rx-box" aria-hidden="true">
         {phase === "count" && <small className="rx-ready">{words.ready}</small>}
         <span className={`rx-digit${digit === null ? " rx-idle" : ""}`}>{digit ?? "3·2·5"}</span>
       </div>
       <div className="rx-score">
-        <Tally label={words.hits} of={REACT_HITS} n={hits} said={fmt(words.hitsSr, { n: hits, of: REACT_HITS })} />
         <Tally label={words.slips} of={REACT_SLIPS} n={slips} said={fmt(words.slipsSr, { n: slips, of: REACT_SLIPS })} slips />
       </div>
       {/* the same height whatever is in it, so the box stays where it is */}
@@ -134,9 +152,7 @@ export default function React325({ seed, onRound }: GameProps) {
         {phase === "run" && said ? (
           <p className={`rx-said ${said.hit ? "rx-hit" : "rx-slip"}`}>{said.hit ? words.hit : words.slip}</p>
         ) : (
-          phase !== "over" && (
-            <p className="rx-hint">{phase === "ready" ? fmt(words.rule, { hits: REACT_HITS, slips: REACT_SLIPS }) : keys ? words.tapKeys : words.tap}</p>
-          )
+          phase !== "over" && <p className="rx-hint">{phase === "ready" ? fmt(words.rule, { slips: REACT_SLIPS }) : keys ? words.tapKeys : words.tap}</p>
         )}
       </div>
     </div>
@@ -155,12 +171,12 @@ function Tally({ label, of, n, said, slips }: { label: string; of: number; n: nu
   );
 }
 
-function roundOf(hits: number, slips: number, why: "hits" | "slips" | "out"): Round {
+function roundOf(places: number, slips: number, why: "code" | "slips" | "out"): Round {
   const words = T.study.react325;
-  const won = why === "hits";
+  const won = why === "code";
   return {
     won,
-    result: fmt(words.result, { hits, slips }),
-    verdict: won ? (slips ? words.pass : words.clean) : why === "slips" ? fmt(words.slipOut, { n: slips }) : fmt(words.ranOut, { n: hits }),
+    result: fmt(words.result, { n: places, slips }),
+    verdict: won ? words.pass : why === "slips" ? fmt(words.slipOut, { n: slips }) : fmt(words.ranOut, { n: places }),
   };
 }
