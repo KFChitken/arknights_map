@@ -7,6 +7,9 @@ export const dynamic = "force-dynamic";
 
 // A comment line now and then keeps proxies and phones from dropping a quiet connection
 const PING_MS = 25_000;
+// A stream that gave way to a newer page of the same player (STREAMS_EACH in src/lib/server/live.ts): a page
+// still on it waits ten minutes before asking again, so pages past the cap do not keep pushing one another out
+const GAVE_WAY_RETRY_MS = 600_000;
 
 /** Server-sent events for the signed-in player: an "inbox" event whenever something new arrives. */
 export const GET = inLang(async (req: Request) => {
@@ -24,7 +27,17 @@ export const GET = inLang(async (req: Request) => {
           stop();
         }
       };
-      const off = listen(user.id, (event) => send(`event: ${event}\ndata: {}\n\n`));
+      const off = listen(
+        user.id,
+        (event) => send(`event: ${event}\ndata: {}\n\n`),
+        () => {
+          send(`retry: ${GAVE_WAY_RETRY_MS}\n\n`);
+          stop();
+          try {
+            controller.close();
+          } catch {}
+        },
+      );
       const ping = setInterval(() => send(": ping\n\n"), PING_MS);
       stop = () => {
         clearInterval(ping);

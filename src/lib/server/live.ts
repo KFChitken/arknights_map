@@ -35,8 +35,11 @@ const g = globalThis as unknown as {
   liveHeard?: boolean;
   liveListened?: boolean;
   liveReloads?: Map<ReloadKind, Reload>;
+  liveDrops?: WeakMap<Listener, () => void>;
 };
 const listeners = (g.inboxListeners ??= new Map<string, Set<Listener>>());
+/** How each stream is told to give way to a newer one of the same player (STREAMS_EACH) */
+const drops = (g.liveDrops ??= new WeakMap<Listener, () => void>());
 const reloads = (g.liveReloads ??= new Map<ReloadKind, Reload>());
 /** This process, so it does not deliver its own nudges twice */
 const self = (g.liveSelf ??= randomUUID());
@@ -45,10 +48,26 @@ const CHANNEL = "live_nudge";
 const PER_NOTIFY = 150;
 const across = () => process.env.LIVE_ACROSS === "1";
 
-export function listen(userId: string, fn: Listener) {
+/**
+ * Event streams one player may have open on one process (src/app/api/events). One more makes the oldest give
+ * way rather than being turned away: a page whose connection dropped without a word can hold its stream for
+ * many minutes before the server notices, and the page asking now is the one in use (2026-11-14: with no cap,
+ * one signed-in script could open as many as it liked and tie up the process).
+ */
+export const STREAMS_EACH = 8;
+
+/** Hear this player's nudges; drop, when given, is how the stream is told to give way (STREAMS_EACH) */
+export function listen(userId: string, fn: Listener, drop?: () => void) {
   let set = listeners.get(userId);
   if (!set) listeners.set(userId, (set = new Set()));
   set.add(fn);
+  if (drop) drops.set(fn, drop);
+  // a Set keeps the order they came in: the first is the oldest, the newest is last
+  for (const old of set) {
+    if (set.size <= STREAMS_EACH) break;
+    set.delete(old);
+    drops.get(old)?.();
+  }
   return () => {
     set.delete(fn);
     if (!set.size && listeners.get(userId) === set) listeners.delete(userId);
