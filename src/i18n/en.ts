@@ -338,6 +338,9 @@ export const en: Draft<Messages> = {
     account: {
       banned: "The account with this email address has been banned and can't sign in again.",
     },
+    throwawayEmail: {
+      newAccount: "This looks like a temporary email address, which can't be used to sign up. Please use an address you keep, such as Outlook, QQ or 163.",
+    },
     consent: {
       reconsentNeeded: "The Privacy Notice has been updated. Agree to it to continue.",
     },

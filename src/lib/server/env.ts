@@ -34,6 +34,21 @@ export const MAIL_SLOW_PER_ADDRESS = Number(process.env.MAIL_SLOW_PER_ADDRESS) |
  */
 export const MAIL_SLOW_NEW_SHARE = Number(process.env.MAIL_SLOW_NEW_SHARE) || 0.3;
 
+/**
+ * No new account with a throwaway mail service's address (src/lib/server/throwawayEmail.ts): THROWAWAY_CHECK=off lets
+ * them be made again; THROWAWAY_OK_DOMAINS (comma separated, e.g. example.com) lets those domains, and the names under
+ * them, through alone, for one wrongly on the list. An account made before is never refused either way. Read on every
+ * use, so the tests can switch them.
+ */
+export const throwawayCheckOn = () => process.env.THROWAWAY_CHECK !== "off";
+export const throwawayOkDomains = (): ReadonlySet<string> =>
+  new Set(
+    (process.env.THROWAWAY_OK_DOMAINS ?? "")
+      .split(",")
+      .map((d) => d.trim().toLowerCase().replace(/^@/, "").replace(/\.+$/, ""))
+      .filter(Boolean),
+  );
+
 /** Show roaches on the map that belong to nobody (src/lib/world/bots.ts); 0 or unset shows none. */
 export const SHOW_BOTS = Math.min(Math.max(Math.floor(Number(process.env.SHOW_BOTS) || 0), 0), 20_000);
 

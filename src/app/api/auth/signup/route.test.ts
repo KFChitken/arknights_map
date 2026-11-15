@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { THROWAWAY_EMAIL } from "@/lib/rules";
 import { currentSession, readSignupProof, setSignupProof } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { sessions, userBadges, userPasswords, users } from "@/lib/server/schema";
@@ -98,5 +99,28 @@ describe("finishing a sign-up", () => {
     // waking the account up is the other one's to do, not done a second time here
     expect(await badgesOf(other)).toEqual([]);
     expect(await db.select().from(sessions).where(eq(sessions.userId, other))).toHaveLength(1);
+  });
+});
+
+describe("a sign-up at a throwaway mail service", () => {
+  // its code was checked moments before such addresses were turned away (src/app/api/auth/verify)
+  const THROWAWAY = "new.doctor@sharklasers.com";
+  const ofThrowaway = () => db.select({ id: users.id }).from(users).where(eq(users.email, THROWAWAY));
+
+  it("makes no account, and the sign-in sheet goes back to the email by the code", async () => {
+    await setSignupProof(new NextRequest("http://localhost/"), THROWAWAY);
+    const res = await signUp();
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe(THROWAWAY_EMAIL);
+    expect(await ofThrowaway()).toEqual([]);
+    expect(await currentSession()).toBeNull();
+  });
+
+  it("still signs in to the account made with the address already", async () => {
+    const [{ id }] = await db.insert(users).values({ email: THROWAWAY }).returning({ id: users.id });
+    await setSignupProof(new NextRequest("http://localhost/"), THROWAWAY);
+    expect((await signUp()).status).toBe(200);
+    expect(await ofThrowaway()).toEqual([{ id }]);
+    expect((await currentSession())?.userId).toBe(id);
   });
 });

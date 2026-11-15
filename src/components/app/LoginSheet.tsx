@@ -3,12 +3,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
-import { finishSignup, passwordLogin, redeemDeskCode, requestCode, savePassword, verifyCode } from "@/lib/authClient";
+import { finishSignup, passwordLogin, redeemDeskCode, requestCode, savePassword, SignInRefused, verifyCode } from "@/lib/authClient";
 import { adultTick, crossBorderTick } from "@/lib/consent";
 import { DESK_CODE_LENGTH, normalizeDeskCode } from "@/lib/deskCode";
 import { suggestEmail } from "@/lib/emailTypos";
 import { passwordProblem } from "@/lib/passwordRules";
-import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, siteName, waitText } from "@/lib/rules";
+import { LOGIN_CODE_COOLDOWNS_S, LOGIN_CODE_TTL_MIN, siteName, THROWAWAY_EMAIL, waitText } from "@/lib/rules";
 import { isStandalone } from "./HomeScreen";
 import PasswordField, { HiddenUsername } from "./PasswordField";
 import Sheet from "./Sheet";
@@ -211,10 +211,20 @@ export default function LoginSheet({
     });
   };
 
+  // a throwaway mail service's address, new here: no account is made with it, so back to the email to type another
+  const backToEmail = () => {
+    keepPending(null);
+    setCode("");
+    setStep("email");
+  };
+
   const verify = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
-      const r = await verifyCode(email.trim(), code.trim());
+      const r = await verifyCode(email.trim(), code.trim()).catch((err: unknown) => {
+        if (err instanceof SignInRefused && err.code === THROWAWAY_EMAIL) backToEmail();
+        throw err;
+      });
       keepPending(null);
       if (r.status === "signup") return setStep("signup");
       // a player without a password is asked once whether to set one, unless they said 下次再说 lately
@@ -226,7 +236,10 @@ export default function LoginSheet({
   const signup = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
-      await finishSignup({ adult, acceptPolicy: agree, acceptCrossBorder: abroad, password: newPassword || undefined });
+      await finishSignup({ adult, acceptPolicy: agree, acceptCrossBorder: abroad, password: newPassword || undefined }).catch((err: unknown) => {
+        if (err instanceof SignInRefused && err.code === THROWAWAY_EMAIL) backToEmail();
+        throw err;
+      });
       if (newPassword) keepLoginWith("password");
       onDone();
     });

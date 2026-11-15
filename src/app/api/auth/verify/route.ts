@@ -8,10 +8,12 @@ import { redeemLoginCode } from "@/lib/server/loginCodes";
 import { passwordSetAt } from "@/lib/server/passwords";
 import { allow } from "@/lib/server/rateLimit";
 import { users } from "@/lib/server/schema";
+import { isThrowawayEmail, throwawayRefusal } from "@/lib/server/throwawayEmail";
 
 /**
  * Check the emailed code. Known players are signed in (hasPassword: whether they have one, so the page can
- * offer to set one); new ones go on to the sign-up step.
+ * offer to set one); new ones go on to the sign-up step, but not with a throwaway mail service's address
+ * (src/lib/server/throwawayEmail.ts), which only an account made with it before signs in with.
  */
 export const POST = route(async (req) => {
   const body = await readJson(req);
@@ -28,6 +30,8 @@ export const POST = route(async (req) => {
     await startSession(req, user.id);
     return NextResponse.json({ status: "ok", hasPassword: (await passwordSetAt(user.id)) !== null });
   }
+  // told only now, the code having shown the address is theirs, so the answer tells nobody else who has an account
+  if (isThrowawayEmail(email)) throw throwawayRefusal();
   await setSignupProof(req, email);
   return NextResponse.json({ status: "signup" });
 });

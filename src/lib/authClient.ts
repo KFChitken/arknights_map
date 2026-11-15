@@ -2,6 +2,17 @@
 
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
+
+/** A refusal with the code the server gave it (src/lib/server/http.ts HttpError), for the page to act on: rules.ts THROWAWAY_EMAIL */
+export class SignInRefused extends Error {
+  constructor(
+    message: string,
+    public code: string,
+  ) {
+    super(message);
+  }
+}
+
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   let res: Response;
   try {
@@ -13,8 +24,11 @@ async function post<T>(path: string, body: unknown = {}): Promise<T> {
   } catch {
     throw new Error(T.requests.offline);
   }
-  const json = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  if (!res.ok) throw new Error(json?.error ?? T.requests.serverTrouble);
+  const json = (await res.json().catch(() => null)) as (T & { error?: string; code?: string }) | null;
+  if (!res.ok) {
+    const message = json?.error ?? T.requests.serverTrouble;
+    throw typeof json?.code === "string" ? new SignInRefused(message, json.code) : new Error(message);
+  }
   return json as T;
 }
 

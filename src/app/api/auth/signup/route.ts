@@ -9,6 +9,7 @@ import { db } from "@/lib/server/db";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { firstPassword } from "@/lib/server/passwords";
 import { users } from "@/lib/server/schema";
+import { isThrowawayEmail, throwawayRefusal } from "@/lib/server/throwawayEmail";
 import { passwordProblem } from "@/lib/passwordRules";
 
 /**
@@ -21,6 +22,8 @@ export const POST = route(async (req) => {
   if (!email) throw new HttpError(400, T.server.routes.signup.expired);
   // a code sent just before a ban must not open a new account
   if (await isBanned(email)) throw new HttpError(403, banned());
+  // nor one checked before throwaway mail services were turned away (verify), unless its account is made already
+  if (isThrowawayEmail(email) && !(await accountOf(email))) throw throwawayRefusal();
   const body = await readJson(req);
   requireTicks(body, ["adult", "acceptPolicy", "acceptCrossBorder"]);
   // a password that will not do turns the sign-up back before any account is made

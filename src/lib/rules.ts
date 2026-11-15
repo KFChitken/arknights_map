@@ -27,6 +27,11 @@ export const waitText = (s: number) =>
 export const LOGIN_CODE_MAX_ATTEMPTS = 5;
 /** Codes one email address may receive per day, so nobody can use us to flood an inbox. */
 export const LOGIN_CODES_PER_DAY = 10;
+/**
+ * The code of the refusal to make a new account with a throwaway mail service's address
+ * (src/lib/server/throwawayEmail.ts): the sign-in sheet goes back to the email, for another.
+ */
+export const THROWAWAY_EMAIL = "throwawayEmail";
 export const SESSION_DAYS = 30;
 /** 登录码 (src/lib/deskCode.ts): how long one works, how many an account may take an hour, and tries per network per 10 minutes */
 export const DESK_CODE_TTL_MIN = 10;

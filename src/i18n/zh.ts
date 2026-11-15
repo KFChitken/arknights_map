@@ -368,6 +368,10 @@ export const zh = {
     account: {
       banned: "这个邮箱的账号被封了，不能再登录。",
     },
+    throwawayEmail: {
+      /** said once the code has shown the address is theirs, to an address with no account at a throwaway mail service */
+      newAccount: "这个邮箱看起来是临时邮箱，不能用来注册新账号。请换一个常用的邮箱，比如 QQ、163 或 Outlook。",
+    },
     consent: {
       reconsentNeeded: "隐私说明更新了，同意以后才能继续。",
     },
