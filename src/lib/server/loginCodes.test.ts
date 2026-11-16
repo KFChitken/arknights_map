@@ -198,7 +198,11 @@ describe("login codes", () => {
 
   it("stops sending for the whole site once a day's mail is used up", async () => {
     await db.insert(mailSends).values(Array.from({ length: MAIL_DAILY_LIMIT - 1 }, () => ({})));
-    const rs = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => issueLoginCode(`p${i}@example.com`)));
+    // five at once, in one millisecond: one asking with a clock earlier than the last count's has mailRoom count
+    // again (mailQuota.ts), which may come before the code let through has its row, and lets one more through, an
+    // error it takes on purpose; asks a millisecond apart, finishing out of order, made this fail now and then
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    const rs = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => issueLoginCode(`p${i}@example.com`))).finally(() => vi.useRealTimers());
     expect(fulfilled(rs)).toBe(1);
     await expect(issueLoginCode(EMAIL)).rejects.toThrow("验证码邮件发完了");
     // a refused address keeps no cooldown and no count
