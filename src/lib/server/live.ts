@@ -25,10 +25,10 @@ type Listener = (event: LiveEvent, data?: string) => void;
 /**
  * What each process keeps in memory of what the admin changes, read again on every process at once
  * (reloadEverywhere): 公告 (notices.ts), who the moderators are (admins.ts), the places the owner drew (zones.ts),
- * the site's settings such as 全站变灰 (siteSettings.ts), the name blocklist (nameWords.ts), and 听歌's songs
- * (songs.ts). Others add their kind here.
+ * the site's settings such as 全站变灰 (siteSettings.ts), the name blocklist (nameWords.ts), 听歌's songs
+ * (songs.ts) and 325 节拍's clips of them (beatClips.ts). Others add their kind here.
  */
-export type ReloadKind = "notices" | "admins" | "zones" | "settings" | "nameWords" | "songs";
+export type ReloadKind = "notices" | "admins" | "zones" | "settings" | "nameWords" | "songs" | "beat";
 type Reload = () => Promise<void>;
 
 const g = globalThis as unknown as {

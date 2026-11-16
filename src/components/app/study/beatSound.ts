@@ -10,6 +10,10 @@ import type { Sound } from "@/lib/study/beat325";
  * note is heard as it reaches the line on the screen. The tune goes on while the sound is off, unheard, so it can be
  * turned on again in time. voice and noiseOf play into any audio context, an OfflineAudioContext too, so a tune can
  * be rendered to be listened to away from the game.
+ *
+ * Or a round is played to a clip of one of 听歌's songs (playSong): downloaded and decoded before the round
+ * (decodeSong), and started on the same clock, so that its first beat is heard as the notes' time 0 comes; a note hit
+ * then gives a soft tick.
  */
 
 /** How loud it all is, turned on */
@@ -28,19 +32,32 @@ export type Player = {
 type Ctx = typeof AudioContext;
 
 /**
- * Plays a tune whose time 0 is heard at t0 on performance.now()'s clock, the sounds of it still to come; null where
- * the browser has no Web Audio. Called in a press (开始, 声音), since a phone lets a page start sound only then.
+ * The browser's audio, for one round: null where it has no Web Audio. Opened in a press (开始, 声音), since a phone
+ * lets a page start sound only then; a round that waits for its song opens it then and plays into it later.
  */
-export function playTune(tune: readonly Sound[], t0: number, on: boolean): Player | null {
+export function openAudio(): AudioContext | null {
   const Made: Ctx | undefined =
     typeof window === "undefined" ? undefined : (window.AudioContext ?? (window as unknown as { webkitAudioContext?: Ctx }).webkitAudioContext);
   if (!Made) return null;
-  let ctx: AudioContext;
   try {
-    ctx = new Made({ latencyHint: "interactive" });
+    const ctx = new Made({ latencyHint: "interactive" });
+    ctx.resume().catch(() => {});
+    return ctx;
   } catch {
     return null;
   }
+}
+
+/** How long the sound takes to come out of the speakers, as far as the browser tells (s) */
+const lagOf = (ctx: AudioContext) => (ctx.baseLatency || 0) + ((ctx as { outputLatency?: number }).outputLatency || 0);
+
+/**
+ * Plays a tune whose time 0 is heard at t0 on performance.now()'s clock, the sounds of it still to come, into the
+ * audio given or audio of its own; null where the browser has no Web Audio.
+ */
+export function playTune(tune: readonly Sound[], t0: number, on: boolean, audio: AudioContext | null = null): Player | null {
+  const ctx = audio ?? openAudio();
+  if (!ctx) return null;
   const out = ctx.createGain();
   out.gain.value = on ? LOUD : 0;
   out.connect(ctx.destination);
@@ -54,7 +71,7 @@ export function playTune(tune: readonly Sound[], t0: number, on: boolean): Playe
     if (!startFor) {
       // the audio clock goes once the sound has started
       if (ctx.currentTime <= 0) return;
-      const lag = (ctx.baseLatency || 0) + ((ctx as { outputLatency?: number }).outputLatency || 0);
+      const lag = lagOf(ctx);
       const c0 = ctx.currentTime;
       const p0 = performance.now();
       startFor = (ms) => c0 + (ms - p0) / 1000 - lag;
@@ -80,6 +97,99 @@ export function playTune(tune: readonly Sound[], t0: number, on: boolean): Playe
   return {
     setOn(heard) {
       if (!closed) out.gain.setTargetAtTime(heard ? LOUD : 0, ctx.currentTime, 0.01);
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      window.clearInterval(timer);
+      ctx.onstatechange = null;
+      ctx.close().catch(() => {});
+    },
+  };
+}
+
+/** A round played to a song: heard or not, its tick for a note hit, and fading it out once the round is over */
+export type SongPlayer = Player & { tick(): void; fadeOut(ms: number): void };
+
+/** How loud a song is, turned on, and a note's tick over it */
+const SONG_LOUD = 0.75;
+const TICK_LOUD = 0.22;
+/** The AAC encoder's priming, the silence a clip starts with where the browser does not take it away (ms) */
+const PRIMING_MS = (1024 / 44100) * 1000;
+
+/** A clip's file decoded, before the round: rejected where the browser cannot */
+export async function decodeSong(bytes: ArrayBuffer): Promise<AudioBuffer> {
+  type Off = typeof OfflineAudioContext;
+  const Made: Off | undefined = window.OfflineAudioContext ?? (window as unknown as { webkitOfflineAudioContext?: Off }).webkitOfflineAudioContext;
+  if (!Made) throw new Error("no OfflineAudioContext");
+  const ctx = new Made(2, 1, 44100);
+  return await new Promise<AudioBuffer>((ok, no) => {
+    // an old Safari answers only through the callbacks
+    const p = ctx.decodeAudioData(bytes, ok, no) as Promise<AudioBuffer> | undefined;
+    p?.then(ok, no);
+  });
+}
+
+/**
+ * How much later than its list says a decoded clip's sound comes (s): the encoder's priming where this browser left it
+ * in, as it then comes out longer than the list says by at least that much
+ */
+export const primingOf = (buffer: AudioBuffer, ms: number) => (buffer.duration * 1000 - ms >= PRIMING_MS - 0.5 ? PRIMING_MS / 1000 : 0);
+
+/**
+ * Plays a decoded clip so that its moment `at` (s) is heard at t0 on performance.now()'s clock: from its start, or
+ * further in when that has gone by already; started again in time when the audio stopped and went on (a call, the
+ * phone locked). Into the audio given or audio of its own; null where the browser has no Web Audio.
+ */
+export function playSong(buffer: AudioBuffer, t0: number, at: number, on: boolean, audio: AudioContext | null = null): SongPlayer | null {
+  const ctx = audio ?? openAudio();
+  if (!ctx) return null;
+  const out = ctx.createGain();
+  out.gain.value = on ? SONG_LOUD : 0;
+  out.connect(ctx.destination);
+  const noise = noiseOf(ctx);
+  let src: AudioBufferSourceNode | null = null;
+  let closed = false;
+  const begin = () => {
+    if (closed || src || ctx.state !== "running" || ctx.currentTime <= 0) return;
+    // the audio clock's time at which the clip's start would be heard, to have `at` heard at t0
+    const base = ctx.currentTime + (t0 - performance.now()) / 1000 - lagOf(ctx) - at;
+    const when = Math.max(base, ctx.currentTime + 0.02);
+    if (when - base >= buffer.duration) return;
+    src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(out);
+    src.start(when, when - base);
+  };
+  const timer = window.setInterval(() => {
+    begin();
+    if (src) window.clearInterval(timer);
+  }, EVERY);
+  // the audio clock stood still while it was not running: started again where the clip should be by now
+  ctx.onstatechange = () => {
+    if (ctx.state !== "running" || !src) return begin();
+    src.onended = null;
+    src.stop();
+    src.disconnect();
+    src = null;
+    begin();
+  };
+  ctx.resume().then(begin, () => {});
+  begin();
+  return {
+    setOn(heard) {
+      if (!closed) out.gain.setTargetAtTime(heard ? SONG_LOUD : 0, ctx.currentTime, 0.01);
+    },
+    tick() {
+      if (closed || ctx.state !== "running") return;
+      const g = ctx.createGain();
+      g.connect(out);
+      hiss(ctx, noise, 2500, ctx.currentTime, 0.03, g);
+      g.gain.setValueAtTime(TICK_LOUD / SONG_LOUD, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+    },
+    fadeOut(ms) {
+      if (!closed) out.gain.setTargetAtTime(0, ctx.currentTime, ms / 3000);
     },
     close() {
       if (closed) return;

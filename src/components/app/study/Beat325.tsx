@@ -2,14 +2,18 @@
 
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
+import { listenApi } from "@/lib/listenClient";
 import { mulberry32 } from "@/lib/prng";
 import {
   type BeatDigit,
   type BeatResult,
+  type BeatSong,
   beatChart,
   beatTune,
   type Chart,
   missed,
+  playedSong,
+  recentSongs,
   roundEnd,
   type Sound,
   type Tally,
@@ -17,7 +21,7 @@ import {
   tapAt,
 } from "@/lib/study/beat325";
 import { calmNow, roundRect, useCanvasSize } from "./arena";
-import { type Player, playTune } from "./beatSound";
+import { decodeSong, openAudio, type Player, playSong, playTune, primingOf, type SongPlayer } from "./beatSound";
 import type { GameProps, Round } from "./games";
 import { listenTaps, onClock, useKeys } from "./taps";
 
@@ -30,6 +34,8 @@ const RING_MS = 260;
 const RING_OUT_MS = 1500;
 /** Whether the sound is on, kept in the browser: "off" or not */
 const SOUND_KEY = "zhoup.study.beatSound";
+/** How long 开始 waits for the round's song, still coming, before the round has the tune instead (ms) */
+const SONG_WAIT_MS = 10_000;
 /** Each group's colour: fixed, the same every round */
 const FILL: Record<BeatDigit, string> = { 3: "#ffd23f", 2: "#8fd0ff", 5: "#c8b6ff" };
 const INK = "#1b1d22";
@@ -38,13 +44,30 @@ const FONT = 'system-ui, -apple-system, "PingFang SC", "Helvetica Neue", sans-se
 /** What a tap did, said under the line */
 type Said = "exact" | "hit" | "early" | "late" | "stray";
 
-/** A round being played: its chart and tune, how it goes, when the tune's time 0 is (performance.now()), its sound */
+/**
+ * The round's song (with the sound on): not asked for yet, being asked for, coming, here (decoded, with how much later
+ * than its list says its sound comes, s), or none this round, and why, said before it (null: nothing to say, as to a
+ * player 听歌 is not open to)
+ */
+type Music =
+  | { s: "idle" }
+  | { s: "asking" }
+  | { s: "coming"; song: BeatSong }
+  | { s: "here"; song: BeatSong; buffer: AudioBuffer; shift: number }
+  | { s: "none"; why: "none" | "late" | null };
+type Here = Extract<Music, { s: "here" }>;
+
+/**
+ * A round being played: its chart and tune (none, to a song), how it goes, when the tune's time 0 is (performance.now()),
+ * its sound, and its song
+ */
 type Play = {
   chart: Chart;
   tune: Sound[];
   tally: Tally;
   t0: number;
-  player: Player | null;
+  player: Player | SongPlayer | null;
+  song: BeatSong | null;
   /** Notes just hit, for their rings: which, and when (performance.now()) */
   rings: { i: number; at: number }[];
   /** The word under the line: for the last tap, from when */
@@ -62,13 +85,26 @@ type Play = {
  * line, so the screen being drawn late moves nothing; the sound is started ahead to be heard then too. 声音 at the top
  * right turns it off and on, kept in the browser; the game plays the same without it. A page put away makes the round
  * void: nothing is told, and 重新开始 plays another. Nothing flashes.
+ *
+ * With the sound on, the round is played to one of 听歌's songs where the server has a clip for this player
+ * (POST /api/listen/beat, src/lib/server/beatClips.ts), of a song this device did not play to lately: asked for and
+ * fetched while the rule is read, and named with 听歌's copyright on the card and under the lane. 开始 pressed before
+ * it came waits for it SONG_WAIT_MS at most; where there is none, or it does not come, the round has the tune, and the
+ * card says so (to a player 听歌 is not open to, nothing is said). With the sound off, nothing is fetched.
  */
 export default function Beat325({ seed, onRound }: GameProps) {
-  const [phase, setPhase] = useState<"ready" | "play" | "void" | "over">("ready");
+  const [phase, setPhase] = useState<"ready" | "wait" | "play" | "void" | "over">("ready");
   /** Rounds begun again after being made void: each has a chart of its own */
   const [tries, setTries] = useState(0);
   const [hud, setHud] = useState({ hits: 0, strays: 0 });
   const [sound, setSound] = useState(soundKept);
+  const [music, setMusic] = useState<Music>({ s: "idle" });
+  /** Whether the sound was on as the game opened */
+  const soundAtOpen = useRef(sound);
+  /** The song being asked for or fetched, to be let go */
+  const fetching = useRef<AbortController | null>(null);
+  /** 开始 pressed while the song came: the round's number, and the audio opened in the press, to play into */
+  const waiting = useRef<{ n: number; audio: AudioContext | null } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useCanvasSize(canvas);
   const box = useRef(size);
@@ -78,7 +114,10 @@ export default function Beat325({ seed, onRound }: GameProps) {
   const roundRef = useRef(onRound);
   roundRef.current = onRound;
   const keys = useKeys();
-  const total = chartFor(seed, tries).notes.length;
+  const total =
+    (phase === "play" || phase === "over") && play.current
+      ? play.current.chart.notes.length
+      : chartFor(seed, tries, sound && (music.s === "here" || music.s === "coming") ? music.song : undefined).notes.length;
 
   const paint = (t: number, now: number, calm: boolean) => {
     const ctx = canvas.current?.getContext("2d");
@@ -97,15 +136,92 @@ export default function Beat325({ seed, onRound }: GameProps) {
     paint(phase === "over" && p ? p.chart.end : -LEAD_IN, performance.now(), true);
   });
 
-  const start = (stamp: number, n: number) => {
-    const chart = chartFor(seed, n);
-    const tune = beatTune(chart);
+  /** The round's song asked for, of those this device did not play to lately, and fetched: what is still coming let go first */
+  const fetchSong = () => {
+    fetching.current?.abort();
+    const ac = new AbortController();
+    fetching.current = ac;
+    setMusic({ s: "asking" });
+    void (async () => {
+      let song: BeatSong | null;
+      try {
+        song = (await listenApi.beat(recentSongs())).clip;
+      } catch {
+        // 听歌 not open to this player (or the server not reached): the tune, as ever
+        if (!ac.signal.aborted) setMusic({ s: "none", why: null });
+        return;
+      }
+      if (ac.signal.aborted) return;
+      if (!song) return setMusic({ s: "none", why: "none" });
+      setMusic({ s: "coming", song });
+      try {
+        const res = await fetch(song.link, { signal: ac.signal });
+        if (!res.ok) throw new Error(`the song's file: ${res.status}`);
+        const buffer = await decodeSong(await res.arrayBuffer());
+        if (!ac.signal.aborted) setMusic({ s: "here", song, buffer, shift: primingOf(buffer, song.ms) });
+      } catch {
+        if (!ac.signal.aborted) setMusic({ s: "none", why: "late" });
+      }
+    })();
+  };
+
+  /** Asked for as the game opens, the sound on; let go with it */
+  useEffect(() => {
+    if (soundAtOpen.current) fetchSong();
+    return () => fetching.current?.abort();
+  }, []);
+
+  /** The round begun: to its song where it is here and the sound on, into the audio given (opened in a press) or its own */
+  const start = (stamp: number, n: number, m: Here | null, audio: AudioContext | null = null) => {
+    const chart = chartFor(seed, n, m?.song);
+    const tune = m ? [] : beatTune(chart);
     const t0 = stamp + LEAD_IN;
     play.current?.player?.close();
-    play.current = { chart, tune, tally: tallyStart(chart), t0, player: sound ? playTune(tune, t0, true) : null, rings: [], said: null, over: false };
+    const player = m ? playSong(m.buffer, t0, m.song.first / 1000 + m.shift, true, audio) : sound ? playTune(tune, t0, true, audio) : null;
+    if (!player) void audio?.close().catch(() => {});
+    if (m) playedSong(m.song.song);
+    play.current = { chart, tune, tally: tallyStart(chart), t0, player, song: m?.song ?? null, rings: [], said: null, over: false };
     setHud({ hits: 0, strays: 0 });
     setPhase("play");
   };
+  const startRef = useRef(start);
+  startRef.current = start;
+
+  /** 开始: the round now, or once its song is here, if it is still being asked for or coming */
+  const begin = (stamp: number, n: number) => {
+    if (sound && (music.s === "asking" || music.s === "coming")) {
+      // the audio opened in the press, since a phone lets a page start sound only then
+      waiting.current = { n, audio: openAudio() };
+      setPhase("wait");
+      return;
+    }
+    start(stamp, n, sound && music.s === "here" ? music : null);
+  };
+
+  // waited for: begun once the song is here, or with the tune where none was to be had; where it did not come, back
+  // to the card, which says so
+  useEffect(() => {
+    const w = waiting.current;
+    if (phase !== "wait" || !w) return;
+    if (music.s === "here" || (music.s === "none" && music.why === null)) {
+      waiting.current = null;
+      startRef.current(performance.now(), w.n, music.s === "here" ? music : null, w.audio);
+    } else if (music.s === "none" || music.s === "idle") {
+      waiting.current = null;
+      void w.audio?.close().catch(() => {});
+      setPhase("ready");
+    }
+  }, [phase, music]);
+
+  // waited for too long: let go, and the round has the tune
+  useEffect(() => {
+    if (phase !== "wait") return;
+    const timer = window.setTimeout(() => {
+      fetching.current?.abort();
+      setMusic({ s: "none", why: "late" });
+    }, SONG_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
 
   useEffect(() => {
     if (phase !== "play" || !play.current) return;
@@ -121,6 +237,8 @@ export default function Beat325({ seed, onRound }: GameProps) {
       if (r) {
         setPhase("over");
         roundRef.current(roundOf(r));
+        // the song let fade, the tune's closing crash ring
+        if (p.song) (p.player as SongPlayer | null)?.fadeOut(RING_OUT_MS);
         window.setTimeout(() => p.player?.close(), RING_OUT_MS);
       } else {
         p.player?.close();
@@ -143,7 +261,11 @@ export default function Beat325({ seed, onRound }: GameProps) {
       if (r.did === "off") return;
       p.tally = r.tally;
       p.said = { did: r.did, at };
-      if (r.did === "exact" || r.did === "hit") p.rings.push({ i: r.i, at });
+      if (r.did === "exact" || r.did === "hit") {
+        p.rings.push({ i: r.i, at });
+        // over a song, which does not sing the notes, a tick
+        if (p.song) (p.player as SongPlayer | null)?.tick();
+      }
       setHud({ hits: p.tally.got.filter((g) => g > 0).length, strays: p.tally.strays });
     });
     const onShow = () => document.hidden && stop("hidden");
@@ -160,8 +282,14 @@ export default function Beat325({ seed, onRound }: GameProps) {
     };
   }, [phase]);
 
-  // a round's sound goes with the game
-  useEffect(() => () => play.current?.player?.close(), []);
+  // a round's sound goes with the game, and the audio opened for one waited for
+  useEffect(
+    () => () => {
+      play.current?.player?.close();
+      void waiting.current?.audio?.close().catch(() => {});
+    },
+    [],
+  );
 
   const toggleSound = (e: MouseEvent<HTMLButtonElement>) => {
     const on = !sound;
@@ -171,6 +299,12 @@ export default function Beat325({ seed, onRound }: GameProps) {
     if (phase === "play" && p && !p.over) {
       if (p.player) p.player.setOn(on);
       else if (on) p.player = playTune(p.tune, p.t0, true);
+    } else if (phase === "ready" || phase === "wait") {
+      // no song fetched with the sound off: one still being asked for or coming let go, asked for again once it is on
+      if (!on && (music.s === "asking" || music.s === "coming")) {
+        fetching.current?.abort();
+        setMusic({ s: "idle" });
+      } else if (on && music.s === "idle") fetchSong();
     }
     // Space is a tap, not a press of this
     e.currentTarget.blur();
@@ -202,10 +336,21 @@ export default function Beat325({ seed, onRound }: GameProps) {
         {phase === "ready" && (
           <div className="bt-card">
             <p className="bt-rule">{w.rule}</p>
-            <button className="bt-start" onClick={(e) => start(onClock(e.timeStamp), tries)}>
+            {sound && <MusicSaid music={music} />}
+            <button className="bt-start" onClick={(e) => begin(onClock(e.timeStamp), tries)}>
               {w.start}
             </button>
             {sound && <p className="bt-quiet">{w.quiet}</p>}
+          </div>
+        )}
+        {phase === "wait" && (
+          <div className="bt-card">
+            {music.s === "coming" && (
+              <div className="bt-music">
+                <SongNamed song={music.song} before />
+              </div>
+            )}
+            <p className="bt-wait">{w.waiting}</p>
           </div>
         )}
         {phase === "void" && (
@@ -215,7 +360,7 @@ export default function Beat325({ seed, onRound }: GameProps) {
               className="bt-start"
               onClick={(e) => {
                 setTries(tries + 1);
-                start(onClock(e.timeStamp), tries + 1);
+                start(onClock(e.timeStamp), tries + 1, sound && music.s === "here" ? music : null);
               }}
             >
               {w.restart}
@@ -223,13 +368,54 @@ export default function Beat325({ seed, onRound }: GameProps) {
           </div>
         )}
       </div>
-      <p className="bt-hint">{phase === "play" ? (keys ? w.tapKeys : w.tap) : ""}</p>
+      <div className="bt-foot">
+        <p className="bt-hint">{phase === "play" ? (keys ? w.tapKeys : w.tap) : ""}</p>
+        {(phase === "play" || phase === "over") && play.current?.song && (
+          <div className="bt-now">
+            <SongNamed song={play.current.song} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/** The chart of a round: the game's seed, and after a void round another for each time it is begun again */
-const chartFor = (seed: number, tries: number) => beatChart(mulberry32((seed + Math.imul(tries, 0x9e3779b9)) >>> 0));
+/** On the card before the round: its song, and how it is getting on, or why the round has the tune instead */
+function MusicSaid({ music }: { music: Music }) {
+  const w = T.study.beat325;
+  if (music.s === "coming" || music.s === "here")
+    return (
+      <div className="bt-music">
+        <SongNamed song={music.song} before />
+        {music.s === "coming" && <p className="bt-note">{w.songLoading}</p>}
+      </div>
+    );
+  if (music.s === "none" && music.why)
+    return (
+      <div className="bt-music">
+        <p className="bt-note">{music.why === "late" ? w.songLate : w.noSong}</p>
+      </div>
+    );
+  return null;
+}
+
+/** A song's name and album, and 听歌's copyright under them: before the round (这局放…), or while it plays */
+function SongNamed({ song, before = false }: { song: BeatSong; before?: boolean }) {
+  const w = T.study.beat325;
+  const v = { name: song.name, album: song.album };
+  return (
+    <>
+      <p className="bt-song">{fmt(before ? w.song : w.playing, v)}</p>
+      <p className="bt-copy">{T.listen.copyright}</p>
+    </>
+  );
+}
+
+/**
+ * The chart of a round: the game's seed, and after a void round another for each time it is begun again; to a song's
+ * beats, where it has one
+ */
+const chartFor = (seed: number, tries: number, song?: BeatSong) => beatChart(mulberry32((seed + Math.imul(tries, 0x9e3779b9)) >>> 0), song);
 
 function soundKept(): boolean {
   try {
@@ -287,7 +473,7 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number, 
     const last = Math.min(Math.ceil(c.end / c.beat), Math.ceil((t + L.lead) / c.beat));
     for (let b = Math.max(0, Math.floor((t - (h - L.line) / speed) / c.beat)); b <= last; b++) {
       const y = Math.round(yOf(b * c.beat)) + 0.5;
-      ctx.strokeStyle = b % 4 ? "#e3e6ea" : "#d0d4da";
+      ctx.strokeStyle = (b - c.bar) % 4 ? "#e3e6ea" : "#d0d4da";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(L.x, y);

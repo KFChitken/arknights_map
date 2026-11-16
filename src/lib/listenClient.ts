@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { InviteSent, ListenCatalog, ListenFriend, ListenPlay, ListenRoom, QueueChange } from "./listen";
 import type { PassesDot } from "./passes";
+import type { BeatSong } from "./study/beat325";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -83,6 +84,8 @@ export const listenApi = {
   ask: (friend: string) => call<{ now: number }>("ask", post({ friend })),
   /** 一起听 at a 想一起听 to you (its item id in 消息): your room, TA invited to it */
   askOk: (item: string) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("askOk", post({ item })),
+  /** A clip to play a round of 325 节拍 to, of a song not among these where another is left (null: none to be had now) */
+  beat: (not: string[]) => call<{ clip: BeatSong | null; now: number }>("beat", post({ not })),
   /** The page is going: a beacon, which outlives it, so the server counts the player only a little longer */
   away: () => {
     const body = JSON.stringify({ away: true });

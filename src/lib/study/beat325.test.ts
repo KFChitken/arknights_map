@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mulberry32 } from "../prng";
 import {
   BASS,
   BEAT,
   BEAT_GROUPS,
+  type BeatSong,
   type Chart,
   beatChart,
   beatResult,
@@ -30,6 +31,7 @@ const passesOf = (c: Chart) => {
 const plain = (notes: number): Chart => ({
   bpm: 120,
   beat: 500,
+  bar: 0,
   notes: Array.from({ length: notes }, (_, i) => ({ at: 1000 + 500 * i, digit: 3, pass: 0, k: 0 })),
   end: 1000 + 500 * (notes - 1) + 1000,
 });
@@ -114,6 +116,68 @@ describe("325 节拍's chart", () => {
     }
     expect(bpms.size).toBe(BEAT.bpm[1] - BEAT.bpm[0] + 1);
     expect(shortest).toBeGreaterThan(30_000);
+  });
+});
+
+describe("325 节拍's chart to a song", () => {
+  type Clip = Pick<BeatSong, "beat" | "bar" | "first" | "ms">;
+  const clipOf = (beat: number, bar: number, ms = 43_000, first = 1500): Clip => ({ beat, bar, first, ms });
+  const songChart = (seed: number, clip: Clip) => beatChart(mulberry32(seed), clip);
+
+  it("goes at the song's beat, each pass starting on a bar's first beat, the first after two empty beats", () => {
+    for (const beat of [60_000 / 135, 500, 523.4, 60_000 / 100])
+      for (const bar of [0, 1, 2, 3])
+        for (let seed = 1; seed <= 150; seed++) {
+          const c = songChart(seed, clipOf(beat, bar));
+          expect([c.beat, c.bpm, c.bar]).toEqual([beat, 60_000 / beat, bar]);
+          const passes = passesOf(c);
+          expect(passes.length).toBeGreaterThanOrEqual(4);
+          for (const pass of passes) {
+            expect(pass.map((n) => n.digit)).toEqual(BEAT_GROUPS.flatMap((d) => Array<number>(d).fill(d)));
+            const e = pass[0].at / (beat / 2);
+            expect(Math.abs(e - Math.round(e))).toBeLessThan(1e-9);
+            // on a beat, and that beat a bar's first
+            expect(Math.round(e) % 2).toBe(0);
+            expect((((Math.round(e) / 2 - bar) % 4) + 4) % 4).toBe(0);
+          }
+          // the first: on the first bar's first beat from the third beat on
+          expect(passes[0][0].at / beat).toBeCloseTo(BEAT.leadBeats + ((((bar - BEAT.leadBeats) % 4) + 4) % 4), 6);
+          // between passes: at least the fewest beats of rest (one fewer later on), then on to the next bar
+          for (let p = 1; p < passes.length; p++) {
+            const end = passes[p - 1][passes[p - 1].length - 1];
+            const rest = Math.round((passes[p][0].at - end.at) / (beat / 2) - 1) / 2;
+            const least = BEAT.passRest[0] - (end.at > BEAT.ms / 2 ? 1 : 0);
+            expect(rest).toBeGreaterThanOrEqual(least);
+            expect(rest).toBeLessThan(least + 4);
+          }
+          expect(c.end).toBeCloseTo(c.notes[c.notes.length - 1].at + 2 * beat, 6);
+          expect(c.end).toBeLessThanOrEqual(BEAT.ms);
+          // the next pass did not fit: at most its notes and a rest to the next bar short
+          expect(c.end).toBeGreaterThan(BEAT.ms - 14 * beat);
+        }
+  });
+
+  it("is the same for the same seed and song, and leaves the electronic tune's alone", () => {
+    const clip = clipOf(480, 1);
+    expect(songChart(9, clip)).toEqual(songChart(9, clip));
+    expect(songChart(9, clip).notes).not.toEqual(songChart(10, clip).notes);
+    expect(chartOf(9).bar).toBe(0);
+    expect(beatChart(mulberry32(9), undefined)).toEqual(chartOf(9));
+  });
+
+  it("ends two beats before a short clip starts to fade out", () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const c = songChart(seed, clipOf(500, 0, 32_000, 1000));
+      expect(c.end).toBeLessThanOrEqual(32_000 - 1000 - BEAT.songFadeMs);
+      expect(c.notes.length).toBeGreaterThanOrEqual(20);
+    }
+  });
+
+  it("can be played as any chart: each note hit, then the round passed", () => {
+    const c = songChart(3, clipOf(470, 2));
+    let s = tallyStart(c);
+    for (const n of c.notes) s = tapAt(c, s, n.at - 20).tally;
+    expect(beatResult(c, s)).toMatchObject({ hits: c.notes.length, won: true });
   });
 });
 
@@ -293,5 +357,57 @@ describe("325 节拍's round", () => {
     let spam = tallyStart(c);
     for (let t = 0; t < c.end; t += 90) spam = tapAt(c, spam, t).tally;
     expect(beatResult(c, spam)).toMatchObject({ hits: c.notes.length, won: false, strayNamed: true });
+  });
+});
+
+describe("325 节拍's songs played lately, kept on this device", () => {
+  function storage(keeps: boolean) {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => (keeps ? (m.get(k) ?? null) : null),
+      setItem: (k: string, v: string) => {
+        if (!keeps) throw new Error("QuotaExceededError");
+        m.set(k, v);
+      },
+      raw: m,
+    };
+  }
+  // the module keeps what it played last for a browser that keeps nothing: a fresh copy for each test
+  async function load() {
+    vi.resetModules();
+    return import("./beat325");
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the last ten, the latest last, in the browser", async () => {
+    const store = storage(true);
+    vi.stubGlobal("localStorage", store);
+    const { playedSong, recentSongs } = await load();
+    expect(recentSongs()).toEqual([]);
+    for (let k = 0; k < 15; k++) playedSong(`s${k}`);
+    expect(recentSongs()).toEqual(Array.from({ length: BEAT.recentSongs }, (_, i) => `s${5 + i}`));
+    // one played again goes last, once
+    playedSong("s7");
+    expect(recentSongs().at(-1)).toBe("s7");
+    expect(recentSongs().filter((k) => k === "s7")).toHaveLength(1);
+    // a fresh page reads them back; what is not a song's id is let go
+    expect((await load()).recentSongs()).toHaveLength(BEAT.recentSongs);
+    store.raw.set("zhoup.study.beatSongs", JSON.stringify(["a", 3, "bad id!", null, "b"]));
+    expect((await load()).recentSongs()).toEqual(["a", "b"]);
+    store.raw.set("zhoup.study.beatSongs", "{not json");
+    expect((await load()).recentSongs()).toEqual([]);
+  });
+
+  it("keeps them while the page is open where the browser keeps nothing, and where there is no storage at all", async () => {
+    vi.stubGlobal("localStorage", storage(false));
+    const { playedSong, recentSongs } = await load();
+    playedSong("a");
+    playedSong("b");
+    expect(recentSongs()).toEqual(["a", "b"]);
+    expect((await load()).recentSongs()).toEqual([]);
+    vi.stubGlobal("localStorage", undefined);
+    const bare = await load();
+    bare.playedSong("c");
+    expect(bare.recentSongs()).toEqual(["c"]);
   });
 });

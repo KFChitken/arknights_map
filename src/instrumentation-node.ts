@@ -29,6 +29,7 @@ import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
 import { saveSongPlays, saveSongReactions, startSongs, syncCatalog } from "./lib/server/songs";
+import { startBeatClips, syncBeatClips } from "./lib/server/beatClips";
 import { logError, note } from "./lib/server/signals";
 import { saveStatCounts } from "./lib/server/stats";
 import { recordDailyTotals } from "./lib/server/totals";
@@ -91,10 +92,16 @@ await startSettings();
 
 // 听歌's songs (src/lib/server/songs.ts), while LISTEN is not off: the main reads the catalogue the fetch writes
 // (scripts/fetch-msr-music.mjs) into the database first, then every process keeps the list in memory (none, if it
-// cannot be read); the main looks at the catalogue again every 10 minutes, below
+// cannot be read); the main looks at the catalogue again every 10 minutes, below. The same for 325 节拍's clips of
+// them (src/lib/server/beatClips.ts, scripts/beat-music.mjs).
 const listening = listenMode() !== "off";
-if (listening && !helper) await syncCatalog().catch(failed("songs", "Reading the songs' catalogue failed"));
+const syncMusic = () =>
+  syncCatalog()
+    .catch(failed("songs", "Reading the songs' catalogue failed"))
+    .then(() => syncBeatClips().catch(failed("songs", "Reading the beat game's clips failed")));
+if (listening && !helper) await syncMusic();
 if (listening) await startSongs();
+if (listening) await startBeatClips();
 
 // which map visitors from mainland China start with (高德's, or 腾讯's once 高德's map loads ran out this month): kept in
 // memory by every process and read again every minute (高德's, if it cannot be read)
@@ -142,7 +149,7 @@ if (!helper) {
   // changed it
   setInterval(() => sweepListening().catch(failed("listen", "Sweeping away who listened before failed")), MINUTE_MS);
   setInterval(() => sweepRooms().catch(failed("listen", "Sweeping the listening rooms failed")), MINUTE_MS);
-  if (listening) setInterval(() => syncCatalog().catch(failed("songs", "Reading the songs' catalogue failed")), 10 * MINUTE_MS);
+  if (listening) setInterval(() => void syncMusic(), 10 * MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
   const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));

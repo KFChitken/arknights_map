@@ -328,6 +328,20 @@
 .bt-quiet { margin: -4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .bt-void { margin: 0; color: #1b1d22; font-size: 15px; font-weight: 700; line-height: 1.5; text-wrap: balance; }
 .bt-hint { flex: none; min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; text-align: center; }
+/* how to tap, and the song while it plays: each a line of the game's column, or together beside the lane */
+.bt-foot { display: contents; }
+/* a round played to one of 听歌's songs: its name and album and the copyright, on the card before it and under the
+   lane while it plays; on the card, while it comes, how it is getting on, or why the round has the tune instead */
+.bt-music { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
+.bt-music p { margin: 0; max-width: 100%; line-height: 1.45; text-wrap: balance; }
+.bt-song { color: #1b1d22; font-size: 13.5px; font-weight: 700; }
+.bt-copy { color: #8a8f99; font-size: 11.5px; }
+.bt-note { color: var(--muted); font-size: 12.5px; }
+.bt-wait { margin: 0; color: #1b1d22; font-size: 14px; font-weight: 700; line-height: 1.5; }
+.bt-now { flex: none; display: flex; flex-direction: column; align-items: center; gap: 0; margin: -4px 0 0; text-align: center; }
+.bt-now p { margin: 0; max-width: 100%; overflow: hidden; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.bt-now .bt-song { font-size: 12.5px; }
+.bt-now .bt-copy { font-size: 11px; }
 
 /* ---- 凑 325 (Make325.tsx): four cards and four signs; only the cards and the line over them change, nothing flashes ---- */
 .mk-game {
@@ -862,7 +876,10 @@
   .bt-stage { grid-column: 1; grid-row: 1 / 5; min-height: 0; }
   .bt-progress { grid-column: 2; grid-row: 2; }
   .bt-top { grid-column: 2; grid-row: 3; flex-wrap: wrap; gap: 8px 14px; }
-  .bt-hint { grid-column: 2; grid-row: 4; align-self: start; text-align: left; }
+  .bt-foot { grid-column: 2; grid-row: 4; align-self: start; display: flex; flex-direction: column; gap: 10px; }
+  .bt-hint { text-align: left; }
+  .bt-now { align-items: flex-start; margin: 0; text-align: left; }
+  .bt-now p { white-space: normal; }
   /* the four cards in a row over the signs, what is said and the tools beside them */
   .mk-game {
     --mk-h: clamp(40px, calc(100vh - 262px), 72px); --mk-h: clamp(40px, calc(100dvh - 262px), 72px);

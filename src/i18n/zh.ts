@@ -2710,6 +2710,15 @@ export const zh = {
       rule: "跟着音乐敲：音符落到线上就敲一下\n打中八成过关",
       /** Under the rule, while the sound is on */
       quiet: "听不到声音的话，看看手机是不是静音了",
+      /** A round played to one of 听歌's songs: before it (the copyright under it is 听歌's), and while it plays */
+      song: "这局放《{name}》· {album}",
+      playing: "《{name}》· {album}",
+      /** The song still coming before the round; 开始 pressed before it came, waited for at most 10 seconds */
+      songLoading: "歌在下载…",
+      waiting: "等歌下好…",
+      /** No song this round: none to be had now (听歌 paused), or it did not come in time */
+      noSong: "这局用电子曲",
+      songLate: "歌没下好，这局用电子曲",
       tap: "音符落到线上时，敲屏幕任何地方",
       tapKeys: "音符落到线上时，敲屏幕任何地方，或按空格",
       /** The switch at the top right */

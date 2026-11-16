@@ -3,6 +3,7 @@ import { fmt, T } from "@/i18n";
 import { currentUser } from "@/lib/server/auth";
 import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib/server/consent";
 import { listenMode } from "@/lib/server/env";
+import { beatClip } from "@/lib/server/beatClips";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { listenOpen, playSong, stopSong } from "@/lib/server/listen";
 import {
@@ -49,12 +50,14 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
  *   POST ask {friend}             想一起听: ask a 触须之交 who is listening to invite you (their Friend id)
  *   POST askOk {item}             一起听 at a 想一起听 to you (its item in 消息): your room, TA invited to it
+ *   POST beat {not?}              a clip for a round of 325 节拍 (src/lib/server/beatClips.ts), of a song not among
+ *                                 those named where another is left: its link and its beats, or null
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as lr:<room>:<number>).
  * While LISTEN keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
  * updated privacy policy is not agreed yet; one whose 互动 is paused (暂停互动) may listen alone, not with others. Any
- * request but the page's going says the player is back (a room keeps the place of one whose page went a while). The
- * songs' files go out at the links, checked by /api/listen/ok.
+ * request but the page's going and 325 节拍's says the player is back (a room keeps the place of one whose page went a
+ * while). The songs' files, and the clips', go out at the links, checked by /api/listen/ok.
  */
 
 const OPS = {
@@ -76,6 +79,7 @@ const OPS = {
   touch: { method: "POST", perMinute: 20 },
   ask: { method: "POST", perMinute: 10 },
   askOk: { method: "POST", perMinute: 10 },
+  beat: { method: "POST", perMinute: 20 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 /** What reaches others: not while 互动 is paused (暂停互动) */
 const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "declare", "touch", "ask", "askOk"]);
@@ -120,7 +124,7 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
   if (TALKING.has(op) && user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()) {
     throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user.suspendedUntil.getTime()), means: suspendedMeans() }));
   }
-  if (!(op === "stop" && body.away === true)) await cameBack(user.id);
+  if (op !== "beat" && !(op === "stop" && body.away === true)) await cameBack(user.id);
   switch (op) {
     case "play":
       return answer(await playSong(user, body));
@@ -156,6 +160,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await askToListen(user, body));
     case "askOk":
       return answer(await answerAsk(user, body));
+    case "beat":
+      return answer(await beatClip(user, body));
     default:
       throw new HttpError(404, T.server.routes.listen.notHere);
   }

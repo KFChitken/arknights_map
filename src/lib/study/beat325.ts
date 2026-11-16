@@ -1,3 +1,5 @@
+import { isSongId } from "../listen";
+
 /**
  * 325 节拍 (src/components/app/study/Beat325.tsx): a tune about 40 seconds long, made up afresh each round and played
  * in the browser (beatSound.ts), and its notes falling down a lane to a line; the player taps (anywhere, or Space) as
@@ -8,8 +10,11 @@
  * are coming, is a stray, and takes a hit back. Hits less strays of at least BEAT.pass of the notes pass. A round
  * whose page is put away is void: it neither passes nor fails, and is not told.
  *
- * Everything here is pure: the chart, the tune it is sung in, judging a tap, and what a round comes to. Times are ms
- * from the tune's start.
+ * A round may instead be played to a clip of one of 听歌's songs (BeatSong, src/lib/server/beatClips.ts): its notes
+ * then go by the song's beats, each pass starting on a bar's first beat, and nothing is sung.
+ *
+ * Everything here is pure but the songs this device played last (recentSongs): the chart, the tune it is sung in,
+ * judging a tap, and what a round comes to. Times are ms from the tune's start, or a song's first beat.
  */
 
 /** How it plays, all in one place: after Breeze has played it, only these change */
@@ -36,6 +41,10 @@ export const BEAT = {
   pass: 0.8,
   /** Strays the result names: this many, or any that cost the pass */
   strayNote: 3,
+  /** Songs this device played last, asked not to be given again while there are others: this many */
+  recentSongs: 10,
+  /** How long the end of a song's clip fades out, with no note in it (ms) */
+  songFadeMs: 1500,
 };
 
 /** A pass's groups, in order: how many notes each has, which is the digit it is marked with */
@@ -44,23 +53,42 @@ export type BeatDigit = (typeof BEAT_GROUPS)[number];
 
 /** A note: when it reaches the line (ms), its group's digit, the pass it is in (from 0), and its place in the group */
 export type Note = { at: number; digit: BeatDigit; pass: number; k: number };
-/** A round's tune: its beats a minute, a beat (ms), its notes in order, and when it ends (ms) */
-export type Chart = { bpm: number; beat: number; notes: Note[]; end: number };
+/**
+ * A round's tune: its beats a minute, a beat (ms), which of its first four beats starts a bar (its bars are of four),
+ * its notes in order, and when it ends (ms)
+ */
+export type Chart = { bpm: number; beat: number; bar: number; notes: Note[]; end: number };
+
+/**
+ * A clip of one of 听歌's songs to play a round to, as the server gives it (POST /api/listen/beat): its song, the
+ * song's name and album, its link, a beat (ms), its first beat (ms from the clip's start), which of its first four
+ * beats starts a bar, and how long it is (ms)
+ */
+export type BeatSong = { song: string; name: string; album: string; link: string; beat: number; first: number; bar: number; ms: number };
 
 /**
  * A round's chart, from its random (mulberry32 of its seed): no note in the first BEAT.leadBeats beats, then passes of
  * 3, 2 and 5 notes, an eighth apart in a group, with BEAT.groupRest eighths between groups and BEAT.passRest beats
- * between passes (fewer at most in the second half), as many as end two beats before BEAT.ms
+ * between passes (fewer at most in the second half), as many as end two beats before BEAT.ms. To a song's clip, at
+ * its beat, each pass starts on a bar's first beat instead: the first after BEAT.leadBeats, then the first at least
+ * BEAT.passRest's fewest beats after the pass before (one fewer in the second half); and they end two beats before
+ * the clip starts to fade out, where that is sooner.
  */
-export function beatChart(random: () => number): Chart {
+export function beatChart(random: () => number, song?: Pick<BeatSong, "beat" | "bar" | "first" | "ms">): Chart {
   const int = (lo: number, hi: number) => lo + Math.min(hi - lo, Math.floor(random() * (hi - lo + 1)));
-  const bpm = int(BEAT.bpm[0], BEAT.bpm[1]);
-  const beat = 60_000 / bpm;
+  const bpm = song ? 60_000 / song.beat : int(BEAT.bpm[0], BEAT.bpm[1]);
+  const beat = song ? song.beat : 60_000 / bpm;
+  const bar = song ? ((Math.round(song.bar) % 4) + 4) % 4 : 0;
   const eighth = beat / 2;
-  const last = BEAT.ms - 2 * beat;
+  const last = (song ? Math.min(BEAT.ms, song.ms - song.first - BEAT.songFadeMs) : BEAT.ms) - 2 * beat;
+  /** The first eighth at or after e that starts a bar */
+  const onBar = (e: number) => {
+    const b = Math.ceil(e / 2);
+    return 2 * (b + ((((bar - b) % 4) + 4) % 4));
+  };
   const notes: Note[] = [];
   /** The eighth the next pass starts on */
-  let e = 2 * BEAT.leadBeats;
+  let e = song ? onBar(2 * BEAT.leadBeats) : 2 * BEAT.leadBeats;
   for (let pass = 0; ; pass++) {
     const laid: Note[] = [];
     let at = e;
@@ -71,9 +99,11 @@ export function beatChart(random: () => number): Chart {
     if (laid[laid.length - 1].at > last) break;
     notes.push(...laid);
     const later = laid[laid.length - 1].at > BEAT.ms / 2;
-    e = at + 2 * int(BEAT.passRest[0], BEAT.passRest[1] - (later ? 1 : 0));
+    e = song
+      ? onBar(at + 2 * (BEAT.passRest[0] - (later ? 1 : 0)))
+      : at + 2 * int(BEAT.passRest[0], BEAT.passRest[1] - (later ? 1 : 0));
   }
-  return { bpm, beat, notes, end: notes[notes.length - 1].at + 2 * beat };
+  return { bpm, beat, bar, notes, end: notes[notes.length - 1].at + 2 * beat };
 }
 
 /** What each group sings (Hz): 3 mi, 2 re, 5 sol, over the C an octave above middle C */
@@ -152,6 +182,28 @@ export function tapAt(c: Chart, s: Tally, t: number): Tapped {
   const got = s.got.slice();
   got[best] = exact ? 2 : 1;
   return { tally: { got, strays: s.strays }, did: exact ? "exact" : "hit", i: best };
+}
+
+const RECENT_KEY = "zhoup.study.beatSongs";
+/** The songs this page played last, for a browser that keeps nothing (a private window) */
+let held: string[] = [];
+
+/** The songs this device played 325 节拍 to last, the latest last: BEAT.recentSongs at most */
+export function recentSongs(): string[] {
+  let kept: string[] = [];
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    if (Array.isArray(v)) kept = v.filter(isSongId);
+  } catch {}
+  return [...kept.filter((k) => !held.includes(k)), ...held].slice(-BEAT.recentSongs);
+}
+
+/** A song a round was played to on this device: not asked for again until BEAT.recentSongs others were */
+export function playedSong(song: string) {
+  held = [...recentSongs().filter((r) => r !== song), song].slice(-BEAT.recentSongs);
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(held));
+  } catch {}
 }
 
 /** Whether a note is past hitting at t, not hit */
