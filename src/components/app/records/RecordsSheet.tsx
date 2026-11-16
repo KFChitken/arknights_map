@@ -25,6 +25,7 @@ export default function RecordsSheet({
   me,
   passesOpen,
   onBack,
+  onUp,
   onClose,
   onOpenBadges,
 }: {
@@ -32,6 +33,8 @@ export default function RecordsSheet({
   /** 寻访 is open to the player: its rows, its records and its links */
   passesOpen: boolean;
   onBack: () => void;
+  /** Opened as a page of the new 我的资料: ‹ goes back, × closes */
+  onUp?: () => void;
   onClose: () => void;
   onOpenBadges: () => void;
 }) {
@@ -78,7 +81,7 @@ export default function RecordsSheet({
     return <Seen events={summary.seen} offset={offset} onBack={() => setSeen(false)} />;
   }
   return (
-    <Sheet title={T.records.title} className="records" onBack={onBack} onClose={onClose} head={<><h2>{T.records.title}</h2>{tabs}</>}>
+    <Sheet title={T.records.title} className="records" onBack={onUp ? undefined : onBack} onUp={onUp} onClose={onClose} head={<><h2>{T.records.title}</h2>{tabs}</>}>
       {!summary ? (
         <div className="rec-wait">
           {failed ? (

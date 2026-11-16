@@ -528,6 +528,8 @@ export type Me = {
   hiddenNotices: string[];
   /** 「我的记录」 is open to them (RECORDS, src/lib/server/recordsOpen.ts): its row in 我的资料 shows */
   records: boolean;
+  /** The new 「我的资料」 is theirs (PROFILE2, src/lib/server/recordsOpen.ts); the old one otherwise */
+  profile2: boolean;
   /** Back for the first time since their main roach flipped over for their staying away: it stands up again (鲤鱼打挺) */
   wokeFromAway: boolean;
   /** Only on the first visit of a day that comes after at least one whole day away */

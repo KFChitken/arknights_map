@@ -25,7 +25,7 @@ import { WornPassLine, WornPassMini } from "./WornPass";
 import RoachIcon from "../RoachIcon";
 import { characterName } from "@/i18n/names";
 
-const AVATAR_NAMES: Record<RoachAvatar, string> = {
+export const AVATAR_NAMES: Record<RoachAvatar, string> = {
   get hood() {
     return T.profile.avatar.hood;
   },
@@ -46,7 +46,7 @@ const AVATAR_NAMES: Record<RoachAvatar, string> = {
   },
 };
 
-const COLOR_NAMES: Record<RoachColor, string> = {
+export const COLOR_NAMES: Record<RoachColor, string> = {
   get cyan() {
     return T.profile.color.cyan;
   },

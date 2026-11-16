@@ -310,6 +310,8 @@ const UiPicker = dynamic(() => import("./app/chrome/UiPicker"), { ssr: false });
 const Pamphlet = dynamic(() => import("./app/Pamphlet"), { ssr: false });
 // 「我的记录」, from 我的资料: only downloaded when opened
 const RecordsSheet = dynamic(() => import("./app/records/RecordsSheet"), { ssr: false });
+// the new 「我的资料」 (PROFILE2): only downloaded by those who have it
+const ProfileHub = dynamic(() => import("./app/profile/ProfileHub"), { ssr: false });
 // 通行证寻访 (src/lib/passes.ts), with the characters' list, only once it opens
 const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
@@ -405,8 +407,8 @@ const WORLD_VIEW: MapView = { lng: 100, lat: 25, zoom: 1.2 };
 const asksUi = (m: Me | null, uiChoice: boolean) => Boolean(m && uiChoice && !m.ageCheck && !m.mustReconsent && shouldAskUi());
 
 type Panel =
-  /** draft: unsaved changes kept while 我的称号 was open */
-  | { kind: "profile"; draft?: Profile; password?: PasswordForm }
+  /** draft: unsaved changes kept while 我的称号 was open; edit: the new 我的资料 opens at 编辑名片 */
+  | { kind: "profile"; draft?: Profile; password?: PasswordForm; edit?: boolean }
   /** 地图上看哪些蟑螂 (只看本体), from the counts at the top, or from 资料 (back: to it, with its unsaved changes) */
   | { kind: "onlyMains"; back?: Panel }
   | { kind: "badges"; draft: Profile }
@@ -676,6 +678,8 @@ export default function MapApp({
   const [pamphletPress, setPamphletPress] = useState(0);
   // 通行证寻访, over everything (from its button, for a player who may draw)
   const [passesOpen, setPassesOpen] = useState(false);
+  // opened from the new 我的资料's 我的通行证: at that page, and back there once closed
+  const [passesFrom, setPassesFrom] = useState<"button" | "profile">("button");
   // 325大学习 (from its button, where it is open to them); the map's roaches keep still while it is open
   const [studyOpen, setStudyOpen] = useState(false);
   // 听歌's panel (from its button, where it is open to them): the map stays to be used beside it on a computer
@@ -4711,6 +4715,38 @@ export default function MapApp({
         );
       }
       case "profile":
+        if (me.profile2) {
+          return (
+            <ProfileHub
+              me={me}
+              // back from confirming it is them by code: the password, where they were
+              start={p.password ? "account" : p.edit ? "edit" : "home"}
+              draft={p.draft}
+              looks={me.looks}
+              blocked={blocked}
+              listen={lang() === "zh" && Boolean(me.listen)}
+              passwordForm={p.password}
+              onSave={saveProfile}
+              onPerlicaTimer={switchPerlicaTimer}
+              onPassOnMap={switchPassOnMap}
+              onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
+              onOpenOnlyMains={(draft) => setPanel({ kind: "onlyMains", back: { kind: "profile", draft } })}
+              onOpenPasses={() => {
+                setPanel(null);
+                setPassesFrom("profile");
+                setPassesOpen(true);
+              }}
+              onOpenSponsor={sponsor ? (draft) => setPanel({ kind: "sponsor", draft }) : undefined}
+              onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
+              onPasswordSet={() => me.passwordNudge && applyMe({ ...me, passwordNudge: false })}
+              onUnblock={unblock}
+              onSignOut={() => leave("signOut")}
+              onDelete={() => leave("delete")}
+              onToast={setToast}
+              onClose={() => setPanel(null)}
+            />
+          );
+        }
         return (
           <ProfileSheet
             profile={me.profile}
@@ -4902,7 +4938,7 @@ export default function MapApp({
             stayed={me.si.stayed}
             ink={inkOut}
             onSend={declare}
-            onEditProfile={() => setPanel({ kind: "profile" })}
+            onEditProfile={() => setPanel({ kind: "profile", edit: true })}
             onClose={() => setPanel(null)}
           />
         );
@@ -5750,7 +5786,14 @@ export default function MapApp({
         <Passes
           favourites={me.profile.favourites}
           holder={displayName(me.profile)}
-          onClose={() => setPassesOpen(false)}
+          start={passesFrom === "profile" ? "wallet" : "home"}
+          onClose={() => {
+            setPassesOpen(false);
+            if (passesFrom === "profile") {
+              setPassesFrom("button");
+              setPanel({ kind: "profile" });
+            }
+          }}
           onGift={() => {
             setPassesOpen(false);
             void openFriends("gift");

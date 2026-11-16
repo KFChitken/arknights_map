@@ -99,6 +99,11 @@ export const passesMode = (): "on" | "admins" | "off" => (["on", "admins"] as co
  * tests can switch it.
  */
 export const recordsMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.RECORDS) ?? "off";
+/**
+ * The new 「我的资料」 (src/components/app/profile/): PROFILE2=on gives it to everyone, admins to the 站长 and the admins
+ * only, off (the default) to nobody, who keep the old one. Nothing it keeps is new. Read on every use.
+ */
+export const profile2Mode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.PROFILE2) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
 
 /**

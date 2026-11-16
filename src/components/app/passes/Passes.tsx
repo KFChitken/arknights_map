@@ -72,6 +72,7 @@ export default function Passes({
   onGift,
   onRefused,
   onWallet,
+  start = "home",
 }: {
   favourites: Record<Game, string[]>;
   holder: string;
@@ -79,6 +80,8 @@ export default function Passes({
   onGift: () => void;
   onRefused: (e: unknown) => void;
   onWallet: (p: Omit<PassesMe, "onMap">) => void;
+  /** Where it opens: 寻访, or 我的通行证 (from the new 我的资料) */
+  start?: "home" | "wallet";
 }) {
   const art = useOperatorArt();
   const passArt = usePassArt();
@@ -86,7 +89,7 @@ export default function Passes({
   const [st, setSt] = useState<PassState | null>(null);
   const [failed, setFailed] = useState(false);
   const [msg, setMsg] = useState("");
-  const [screen, setScreen] = useState<"home" | "wallet" | "wish" | "odds" | "log">("home");
+  const [screen, setScreen] = useState<"home" | "wallet" | "wish" | "odds" | "log">(start);
   // a wish tapped on 寻访, over it: the catalogue id, and the slot it came from, where the focus goes back
   const [peek, setPeek] = useState<number | null>(null);
   const peekFrom = useRef<HTMLElement | null>(null);

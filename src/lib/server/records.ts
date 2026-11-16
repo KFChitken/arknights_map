@@ -414,7 +414,10 @@ async function lite(user: UserRow, offset: number, now: number): Promise<Records
   for (const t of sent) if (!blocked.has(t.to)) put(out, t.at);
   for (const t of got) if (!blocked.has(t.from)) put(into, t.at);
   for (const d of decl) put(said, d.at);
-  return { today, out, in: into, declared: said };
+  const chars = passesOpen(user)
+    ? (await db.select({ n: sql<number>`count(distinct ${passes.charId})::int` }).from(passes).where(eq(passes.userId, me)))[0].n
+    : undefined;
+  return { today, out, in: into, declared: said, seen: await seenByFriends(user, now), ...(chars === undefined ? {} : { passChars: chars }) };
 }
 
 // ---- the timeline ----

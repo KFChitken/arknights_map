@@ -8,7 +8,8 @@ import { T } from "@/i18n";
  * another one (onBack) goes back to it on ×, Escape or a tap outside, so the
  * player lands where they were, say still able to touch back. head, say tabs,
  * takes the title's place at the top (the title still names the dialog), and
- * className marks a sheet laid out its own way (globals.css).
+ * className marks a sheet laid out its own way (globals.css). onUp, a page within a sheet (the new 我的资料's): a ‹ at
+ * the top left goes up to it, as Escape and a tap outside do, while × closes the whole.
  */
 export default function Sheet({
   title,
@@ -16,6 +17,7 @@ export default function Sheet({
   className,
   onClose,
   onBack,
+  onUp,
   footer,
   children,
 }: {
@@ -24,10 +26,11 @@ export default function Sheet({
   className?: string;
   onClose: () => void;
   onBack?: () => void;
+  onUp?: () => void;
   footer?: ReactNode;
   children: ReactNode;
 }) {
-  const close = onBack ?? onClose;
+  const close = onUp ?? onBack ?? onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
@@ -39,8 +42,13 @@ export default function Sheet({
     <div className={className ? `sheet-backdrop ${className}` : "sheet-backdrop"} onClick={close}>
       <section className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
+          {onUp && (
+            <button className="up" onClick={onUp} aria-label={T.common.back}>
+              ‹
+            </button>
+          )}
           {head ?? <h2>{title}</h2>}
-          <button className="close" onClick={close} aria-label={onBack ? T.common.back : T.common.close}>
+          <button className="close" onClick={onUp ? onClose : close} aria-label={onBack && !onUp ? T.common.back : T.common.close}>
             ×
           </button>
         </header>

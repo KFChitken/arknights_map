@@ -845,6 +845,24 @@ function ProfileDetails({ profile, gameExtra }: { profile: PublicProfile; gameEx
   );
 }
 
+/** Someone's card as those they touched boldly see it: also the new 我的资料's preview of the player's own */
+export function ProfileCard({ profile }: { profile: PublicProfile }) {
+  return (
+    <>
+      <div className="who-card">
+        <RoachIcon color={profile.color} size={52} avatar={profile.avatar} />
+        <div>
+          <strong>{profile.displayName}</strong>
+          <WornPill profile={profile} />
+        </div>
+        {profile.pass && <WornPassMini pass={profile.pass} holder={profile.displayName} />}
+      </div>
+      {profile.pass && <WornPassLine pass={profile.pass} />}
+      <ProfileDetails profile={profile} />
+    </>
+  );
+}
+
 export function ProfileView({
   profile,
   onSafety,
@@ -858,16 +876,7 @@ export function ProfileView({
 }) {
   return (
     <Sheet title={T.inbox.profile.title} onBack={onBack} onClose={onClose}>
-      <div className="who-card">
-        <RoachIcon color={profile.color} size={52} avatar={profile.avatar} />
-        <div>
-          <strong>{profile.displayName}</strong>
-          <WornPill profile={profile} />
-        </div>
-        {profile.pass && <WornPassMini pass={profile.pass} holder={profile.displayName} />}
-      </div>
-      {profile.pass && <WornPassLine pass={profile.pass} />}
-      <ProfileDetails profile={profile} />
+      <ProfileCard profile={profile} />
       <p className="hint" style={{ marginTop: 16 }}>
         {T.inbox.profile.why}
       </p>

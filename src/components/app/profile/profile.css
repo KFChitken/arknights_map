@@ -1,0 +1,64 @@
+/* The new 「我的资料」 (ProfileHub.tsx): the same white sheet, a first page and the pages it opens */
+.p2-lbl { margin: 16px 0 8px; color: #6b7280; font-size: 12.5px; font-weight: 700; }
+.p2-lbl.first { margin-top: 2px; }
+.p2-seg { width: 100%; }
+.p2-seg button { flex: 1; }
+.p2-card { position: relative; margin-top: 12px; padding: 14px 12px 12px; border: 1px solid #eef0f2; border-radius: 14px; }
+.p2-corner { position: absolute; top: -9px; left: 12px; padding: 0 6px; background: #fff; color: #9aa0a8; font-size: 11.5px; }
+.p2-edit { display: flex; justify-content: flex-end; margin-top: 10px; }
+.p2-stranger { display: flex; align-items: center; gap: 12px; }
+.p2-stranger strong { font-size: 16px; }
+.p2-ptag { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 999px; background: #f3efe4; color: #6b5a1e; font-size: 12px; }
+.p2-two { display: flex; gap: 8px; margin-top: 6px; }
+.p2-two span { flex: 1; padding: 9px 0; border: 1px solid #d6d9de; border-radius: 12px; background: #fff; font-size: 14px; font-weight: 600; text-align: center; }
+.p2-two span.dark { border-color: #1b1d22; background: #1b1d22; color: #fff; }
+.p2-hist .event { padding: 6px 0; }
+
+/* 我的记录's card */
+.p2-rec { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: 14px; padding: 12px 14px; border: 0; border-radius: 16px; background: #1b1d22; color: #fff; text-align: left; }
+.p2-rec .top { display: flex; align-items: baseline; justify-content: space-between; }
+.p2-rec .top b { font-size: 15px; }
+.p2-rec .top span { color: #c8ccd4; font-size: 13px; }
+.p2-rec .sub { color: #9aa0aa; font-size: 12px; }
+.p2-rec .nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.p2-rec .nums > span { display: flex; flex-direction: column; }
+.p2-rec .nums b { color: #ffd23f; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.p2-rec .nums span span { color: #c8ccd4; font-size: 11.5px; }
+.p2-rec svg { display: block; width: 100%; height: auto; margin-top: 6px; }
+
+.p2-rows { margin-top: 10px; }
+.p2-row .link-row-end img { display: block; }
+.p2-foot { margin-top: 18px; text-align: center; }
+.p2-foot a { color: var(--muted); font-size: 13px; }
+
+/* 编辑名片's preview, kept in view while scrolling */
+.p2-sticky { position: sticky; top: -6px; z-index: 2; margin: -6px -16px 4px; padding: 6px 16px 8px; background: #fff; box-shadow: 0 6px 8px -8px rgba(0, 0, 0, 0.25); }
+.p2-sticky .who-card { margin: 0; }
+
+/* 蟑螂形象's stage: the main roach and up to three clones */
+.p2-stage { position: relative; height: 150px; margin-top: 4px; border-radius: 14px; background: linear-gradient(#fbf6e8, #f3ead2); }
+.p2-stage .main { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); }
+.p2-stage .clone { position: absolute; opacity: 0.65; }
+.p2-stage .c0 { top: 66px; left: 12%; }
+.p2-stage .c1 { top: 54px; right: 13%; }
+.p2-stage .c2 { top: 100px; right: 30%; }
+.p2-stage .label { position: absolute; bottom: 8px; left: 10px; color: #7b6a45; font-size: 11px; }
+
+/* 设置: a switch for each, kept as soon as it is switched */
+.p2-grp { margin: 18px 0 2px; color: #6b7280; font-size: 12.5px; font-weight: 700; }
+.p2-set { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f1f3; }
+.p2-set > span { flex: 1; min-width: 0; }
+.p2-set b { display: block; font-size: 15px; }
+.p2-set small { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.p2-sw { flex: none; position: relative; width: 46px; height: 28px; margin-top: 2px; border: 0; border-radius: 999px; background: #d6d9de; transition: background 0.15s; }
+.p2-sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform 0.15s; }
+.p2-sw[aria-checked="true"] { background: #1b1d22; }
+.p2-sw[aria-checked="true"]::after { transform: translateX(18px); }
+.p2-sw:focus-visible { outline: 2px solid #1d6fd6; outline-offset: 2px; }
+
+/* 账号与安全: leaving last, 注销 in red at the very bottom */
+.p2-leave { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .p2-sw, .p2-sw::after { transition: none; }
+}

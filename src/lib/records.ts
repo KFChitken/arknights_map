@@ -118,7 +118,16 @@ export type RecordsSummary = {
 };
 
 /** GET /api/records/summary?lite=1: the last 7 days of touches sent, got, and declarations, for 「我的资料」's card */
-export type RecordsLite = { today: number; out: number[]; in: number[]; declared: number[] };
+export type RecordsLite = {
+  today: number;
+  out: number[];
+  in: number[];
+  declared: number[];
+  /** 「触须之交看到的你」, for 我的资料's preview */
+  seen: FriendEvent[];
+  /** Different characters drawn, while 寻访 is open to the player */
+  passChars?: number;
+};
 
 /** The device's offset as the page sends it, kept to real time zones */
 export function readOffset(v: unknown): number {
