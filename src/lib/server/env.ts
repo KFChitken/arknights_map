@@ -93,6 +93,12 @@ export const UI_CHOICE = process.env.UI_CHOICE !== "off";
  * tickets on its own. Read on every use, so the tests can switch them.
  */
 export const passesMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.PASSES) ?? "off";
+/**
+ * 「我的记录」 (src/lib/server/records.ts): RECORDS=on opens it to everyone, admins to the 站长 and the admins only (to try it
+ * on the live site first), off (the default) to nobody. What it reads is kept whichever it is. Read on every use, so the
+ * tests can switch it.
+ */
+export const recordsMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.RECORDS) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
 
 /**

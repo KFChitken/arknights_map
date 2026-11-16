@@ -161,6 +161,7 @@ import { badgeIdsOf, drawnLook, duckShownBetween, ducksOnMapFor, ducksSeenAmong,
 import { lookOf, roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
 import { countCapped, countDeclared, countGuide, countIgnored, countPlaced, countReply, countTouch } from "./stats";
 import { markIfWatched } from "./watchPlaces";
+import { recordsOpen } from "./recordsOpen";
 import {
   clearedValues,
   declarations,
@@ -460,6 +461,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
     onlyMains: u.onlyMains,
     hiddenNotices: u.hiddenNotices,
+    records: recordsOpen(u),
     // a whole day or more away, so not just back the next morning
     homecoming: daysAway >= 2 ? await homecoming(u.id, mine, lastSeen, daysAway) : null,
     mustReconsent: mustReconsent(u),

@@ -526,6 +526,8 @@ export type Me = {
   onlyMains: boolean;
   /** The 公告 they ticked 「以后不再显示」 on (hideNotice), of those still live: none of them pops up for them again */
   hiddenNotices: string[];
+  /** 「我的记录」 is open to them (RECORDS, src/lib/server/recordsOpen.ts): its row in 我的资料 shows */
+  records: boolean;
   /** Back for the first time since their main roach flipped over for their staying away: it stands up again (鲤鱼打挺) */
   wokeFromAway: boolean;
   /** Only on the first visit of a day that comes after at least one whole day away */

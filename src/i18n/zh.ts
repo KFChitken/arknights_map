@@ -576,6 +576,10 @@ export const zh = {
       nothingToClaim: "这一项现在没有能领的券。",
       claimFull: "手上满 {n} 张了，先抽掉一些再来领，今天之内都能领。",
     },
+    records: {
+      /** A 一起听 declaration in 「我的记录」: without the song, which the records never keep */
+      listenLine: "我在听歌，来一起听吗？",
+    },
     study: {
       badCourse: "没有这门课。",
       notToday: "今天抽到的不是这门课。",
@@ -641,6 +645,10 @@ export const zh = {
       listen: {
         notHere: "没有这个功能。",
         tooFast: "点得太快了，歇一会儿再试。",
+      },
+      records: {
+        notHere: "没有这个功能。",
+        tooFast: "刷新得太快了，歇一会儿再看。",
       },
       hot: {
         busy: "人有点多，过一会儿再看。",
