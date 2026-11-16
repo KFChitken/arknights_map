@@ -4,6 +4,7 @@ import {
   dragOn,
   dragTo,
   FIND_COUNT,
+  FIND_MS,
   FIND_SIDE,
   FIND_TURNING,
   FIND_TURNS,
@@ -84,6 +85,8 @@ describe("找 325", () => {
   });
 
   it("hides exactly five 325s every round, three in a line and two turning a corner, and nothing else that bends like one", () => {
+    // to find in 75 seconds
+    expect(FIND_MS).toBe(75_000);
     for (const seed of SEEDS) {
       const { grid, words } = puzzleOf(seed);
       expect(grid).toHaveLength(FIND_SIDE);

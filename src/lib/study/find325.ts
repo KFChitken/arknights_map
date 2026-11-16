@@ -2,9 +2,9 @@
  * 找 325 (src/components/app/study/Find325.tsx): a 10 × 10 grid of digits with five 325s hidden in it: three in a
  * line, across, down or slanting (down to the right, or up to the right, both read left to right), and two that turn a
  * corner, a step across or down to the 2 and a quarter turn to the 5, any of the eight ways round (an L). A finger
- * dragged from a 3 to its 5 rings one; all five, or the minute running out, end the round. The grid is dealt afresh
- * each round (rules.ts newSeed), with 32s, 25s and 352s in it meant to fool the eye, no 325 read any way but the five,
- * and no other 3, 2, 5 through cells that touch, side or corner (a V, or any other bend), that could pass for one.
+ * dragged from a 3 to its 5 rings one; all five, or the time (FIND_MS) running out, end the round. The grid is dealt
+ * afresh each round (rules.ts newSeed), with 32s, 25s and 352s in it meant to fool the eye, no 325 read any way but the
+ * five, and no other 3, 2, 5 through cells that touch, side or corner (a V, or any other bend), that could pass for one.
  */
 
 /** Cells across the grid, and down */
@@ -13,7 +13,7 @@ export const FIND_SIDE = 10;
 export const FIND_COUNT = 5;
 export const FIND_TURNING = 2;
 /** How long a round lasts (ms) */
-export const FIND_MS = 60_000;
+export const FIND_MS = 75_000;
 
 /** A cell: its row from the top and its column from the left */
 export type Cell = { r: number; c: number };

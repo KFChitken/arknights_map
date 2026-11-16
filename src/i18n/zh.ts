@@ -2600,7 +2600,7 @@ export const zh = {
       },
       react325: { name: "3、2、5 反应", rule: "数字一个个闪过，按顺序拍出 325799", short: "反应" },
       echo325: { name: "复读 325", rule: "3、2、5 三个铃按顺序亮，你照着按一遍", short: "复读" },
-      find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，60 秒内圈出来", short: "找 325" },
+      find325: { name: "找 325", rule: "10 × 10 的数字方阵里藏着 5 个 325，75 秒内圈出来", short: "找 325" },
       mental325: { name: "心算快打", rule: "算式一道道飞来，判断等不等于 325", short: "心算" },
       beat325: { name: "325 节拍", rule: "跟着一首约 40 秒的曲子敲，音符落到线上就敲一下", short: "节拍" },
       make325: { name: "凑 325", rule: "4 个数用加减乘除凑出 325，每个数用一次", short: "凑 325" },
@@ -2669,7 +2669,7 @@ export const zh = {
     find325: {
       start: "开始",
       rule: "方阵里藏着 {n} 个 325，横、竖、斜、拐弯的都有\n手指从 3 划到 5 圈出来，限时 {s} 秒",
-      /** Under the grid while the minute runs */
+      /** Under the grid while the clock runs */
       tip: "从 3 划到 5，圈出 325",
       count: "找到 {n} / {of}",
       left: "剩 {s} 秒",
