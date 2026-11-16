@@ -6,20 +6,25 @@ import {
   COVER_PX,
   coverLink,
   DRIFT_OK_S,
+  heardAfter,
   indexCatalog,
   isRx,
   keepUp,
+  nextInList,
   nextOnAlbum,
   roomAt,
   RX_EVERY_MS,
   RX_MERGE_MS,
   RX_ROOM_FROM,
   RX_SHOW_MS,
+  shuffleNext,
   SYNC_EVERY_MS,
+  type HotSong,
   type InviteSent,
   type ListenCall,
   type ListenCatalog,
   type ListenFriend,
+  type ListenFrom,
   type ListenRoom,
   type ListenTell,
   type ListenTrack,
@@ -68,6 +73,14 @@ import { stopPartyMusic } from "./partyMusic";
  * Alone, the first two rows of 短评 may be said to the song playing (sendRx): only how many times each is counted, and
  * the most said come back with each song played as 大家都在说 under it (useListenSaid). 想一起听 asks a 触须之交 who is
  * listening to invite you (askToListen); TA's 一起听 at it opens a room, or takes TA's own, and invites you (answerAsk).
+ *
+ * A song played alone goes on as the list it was tapped in (ListenFrom): 全部, to the next of its album; 收藏 and 热播榜,
+ * to the next in that list, as it showed then, the last one stopping it. 随机播放 (the player's own choice, kept in this
+ * browser, as 省流量 is) goes instead to a song of that list at random, none again until all of it played (a round),
+ * and on for ever; the list's 随机播放 starts one so. ⏭ goes to what would come next by itself. 收藏 (useListenFavs) are
+ * the player's own, kept by the server; 热播榜 (useListenHot) is everyone's. A song heard HEARD_S of (a shorter one, to
+ * its last second), as it played on this page, alone or in a room, counts once for 热播榜 (the server checks it was
+ * played that long).
  */
 
 /** The next song is fetched this long before the one playing ends */
@@ -80,8 +93,6 @@ const SAVED_MS = 12 * 3_600_000;
 const SAVE_EVERY_MS = 5_000;
 /** 新 on the entry until the panel is first opened, and the panel's line on privacy until 知道了 (localStorage) */
 const INTRO_KEY = "zhoup.listenIntro";
-/** The list of songs is asked for again when the panel opens this long after (the browser keeps it: mostly a 304) */
-const SONGS_KEEP_MS = 10 * 60_000;
 /** A song that breaks this often in a minute is given up */
 const FIXES_MAX = 3;
 /** A clip of silence between a room's songs lasts this long at most (seconds); a longer wait is looked at again after */
@@ -106,6 +117,13 @@ const KEPT_MAX = 2;
 const LITE_KEY = "zhoup.listenLite";
 /** A song not sounding this long after it went in the element, or waiting this long for more of it, goes over to its smaller copy */
 const LITE_AFTER_MS = 3_000;
+/** 随机播放 as the player chose it in this browser: on or off (localStorage); off until chosen */
+const SHUFFLE_KEY = "zhoup.listenShuffle";
+/** 收藏 and 热播榜 are asked for again as the panel opens this long after (热播榜 changes every 10 minutes at most) */
+const FAVS_KEEP_MS = 10 * 60_000;
+const HOT_KEEP_MS = 5 * 60_000;
+/** Seconds of a song played between two looks that count as heard: more is a jump, not listening */
+const HEARD_STEP_S = 5;
 
 export type ListenStatus = "idle" | "starting" | "playing" | "paused";
 
@@ -129,6 +147,10 @@ export type ListenSongs =
 
 /** 新: never opened; opened; ok: its line on privacy read (知道了) */
 export type ListenIntro = "new" | "opened" | "ok";
+
+/** Your 收藏 (the latest first), and 热播榜, as the server last gave them */
+export type ListenFavs = { state: "none" | "loading" } | { state: "failed"; message: string } | { state: "ok"; ids: string[] };
+export type ListenHot = { state: "none" | "loading" } | { state: "failed"; message: string } | { state: "ok"; list: HotSong[] };
 
 /** A line floating over the page: a 短评 (yours, someone's, or the same one from n at once), or what happened in the room */
 export type ListenBubble = { key: number; text: string; kind: "me" | "rx" | "agg" | "sys" };
@@ -161,6 +183,8 @@ type Bubble = ListenBubble & { r: number | null; n: number; first: number };
 
 const IDLE: ListenPlayer = { track: null, status: "idle", buffering: false, tap: false, problem: null };
 const NONE: ListenSongs = { state: "none" };
+const NO_FAVS: ListenFavs = { state: "none" };
+const NO_HOT: ListenHot = { state: "none" };
 const NO_BUBBLES: Bubble[] = [];
 const RX_FREE: ListenRxState = { cool: false, full: false };
 const NO_SAID: SongSaid[] = [];
@@ -178,6 +202,10 @@ const roomEnd = kept<string | null>(null);
 const touchedIn = kept<{ room: string; day: string; by: Readonly<Record<number, "sneaky" | "bold">> } | null>(null);
 /** 大家都在说 under each song, as the server last gave it with the song */
 const said = kept<ReadonlyMap<string, SongSaid[]>>(new Map());
+const favs = kept<ListenFavs>(NO_FAVS);
+const hot = kept<ListenHot>(NO_HOT);
+/** The list the song alone was tapped in (null: none yet, as 全部) */
+const fromNow = kept<ListenFrom | null>(null);
 const change = (p: Partial<ListenPlayer>) => player.set({ ...player.get(), ...p });
 
 /** What plays, and the list of songs, now; and as hooks, following them */
@@ -207,6 +235,10 @@ export const useListenSaid = (song: string | null) =>
 const inRoom = () => room.get() !== null;
 /** Only whether you are in a room, for what changes with that alone (a layout keeps 听歌's entry through the tutorial) */
 export const useInListenRoom = () => useSyncExternalStore(room.on, inRoom, () => false);
+/** Your 收藏 and 热播榜, as the server last gave them */
+export const listenFavsNow = favs.get;
+export const useListenFavs = () => useSyncExternalStore(favs.on, favs.get, () => NO_FAVS);
+export const useListenHot = () => useSyncExternalStore(hot.on, hot.get, () => NO_HOT);
 
 /** A song is playing, or about to: the guides' music keeps quiet (src/components/app/amiyaMusic.ts, partyMusic.ts) */
 export function isListening() {
@@ -250,7 +282,9 @@ let savedAt = 0;
 /** How far the server's clock is ahead of ours (ms): the middle one of the last few answers */
 const offsets: number[] = [];
 let offset = 0;
-let songsAt = 0;
+/** The list as last answered (its JSON), and whether it is being asked for */
+let songsText = "";
+let songsAsking = false;
 let refusedTo: ((e: WorldError) => void) | null = null;
 let saidTo: ((text: string) => void) | null = null;
 let watching = false;
@@ -285,6 +319,21 @@ const links = new Map<string, { url: string; lite: string | null; got: number }>
 let held: { song: string; url: string; got: number } | null = null;
 /** Songs left by a tap, all of each downloaded, each paused in an element of its own (the oldest first) */
 let keptSongs: { a: HTMLAudioElement; song: string; url: string; got: number }[] = [];
+
+/** 随机播放 as chosen in this browser (undefined: not read yet); the songs of the list played this round */
+let shuffleHere: "on" | "off" | undefined;
+let played = new Set<string>();
+/** Counts each change of 随机播放, for the hook */
+const shuffleChanged = kept(0);
+/** The song counted for 热播榜 (in a room, with its start): seconds of it heard, where it was at last, sent */
+let heardNow: { song: string; start: number | null; s: number; last: number; sent: boolean } | null = null;
+let favsAt = 0;
+let hotAt = 0;
+/** 收藏 changes asked of the server, one after another; how many are still to answer */
+let favChain: Promise<unknown> = Promise.resolve();
+let favsPending = 0;
+/** Counts 收藏 changes, so a list asked for before one is not taken over what it made */
+let favSeq = 0;
 
 /** 省流量 as chosen in this browser (undefined: not read yet; null: not chosen); come on by itself on this page */
 let liteHere: "on" | "off" | null | undefined;
@@ -479,6 +528,235 @@ export function setLite(on: boolean) {
   else if (!on) clearTimeout(slowTimer);
 }
 
+// ---- 随机播放, and what comes next ----
+
+function shuffleOn(): boolean {
+  if (shuffleHere === undefined) {
+    try {
+      shuffleHere = localStorage.getItem(SHUFFLE_KEY) === "on" ? "on" : "off";
+    } catch {
+      shuffleHere = "off";
+    }
+  }
+  return shuffleHere === "on";
+}
+
+/** 随机播放 is on, and as a hook */
+export const listenShuffleNow = () => shuffleOn();
+export const useListenShuffle = () => useSyncExternalStore(shuffleChanged.on, shuffleOn, () => false);
+
+/** The songs of a list, as its 随机播放 picks from them: 全部 without a search, every song */
+function idsOf(f: ListenFrom | null): readonly string[] {
+  if (f?.ids.length) return f.ids;
+  const all = tracks();
+  return all ? [...all.keys()] : [];
+}
+
+const sameFrom = (a: ListenFrom | null, b: ListenFrom) =>
+  Boolean(a && a.view === b.view && a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i]));
+
+/** The list a song is played from now on (another one: a new round of 随机播放) */
+function goFrom(f: ListenFrom) {
+  if (sameFrom(fromNow.get(), f)) return;
+  fromNow.set(f);
+  played = new Set();
+}
+
+/** The song to go on to after this one alone: at random from its list, else the next in it, or on its album (全部) */
+function upNext(track: ListenTrack): string | null {
+  const f = fromNow.get();
+  if (shuffleOn()) {
+    const pick = shuffleNext(idsOf(f), track.id, played);
+    if (!pick) return null;
+    if (pick.fresh) played = new Set([track.id]);
+    return pick.next;
+  }
+  return f && f.view !== "all" ? nextInList(f.ids, track.id) : nextOnAlbum(track);
+}
+
+/** Whether ⏭ has a song to go to, alone */
+function hasNext(): boolean {
+  const t = player.get().track;
+  if (!t || room.get() || isGray()) return false;
+  if (current?.track === t && current.start === null) return current.next !== null;
+  const f = fromNow.get();
+  if (shuffleOn()) return idsOf(f).some((id) => id !== t.id);
+  return (f && f.view !== "all" ? nextInList(f.ids, t.id) : nextOnAlbum(t)) !== null;
+}
+const nextKey = kept(0);
+const onNext = (fn: () => void) => {
+  const offs = [player.on(fn), shuffleChanged.on(fn), fromNow.on(fn), songs.on(fn), room.on(fn), nextKey.on(fn)];
+  return () => offs.forEach((off) => off());
+};
+/** ⏭ in the player: whether there is a song to go to */
+export const useListenHasNext = () => useSyncExternalStore(onNext, hasNext, () => false);
+
+/**
+ * The player's 随机播放 switch, kept in this browser. The song playing alone goes on to one at random of its list (or,
+ * off, as its list goes) instead of the one it was to go to, whose link is asked for at once, so a phone in a pocket
+ * still goes straight on to it.
+ */
+export function setShuffle(on: boolean) {
+  shuffleHere = on ? "on" : "off";
+  try {
+    localStorage.setItem(SHUFFLE_KEY, shuffleHere);
+  } catch {}
+  shuffleChanged.set(shuffleChanged.get() + 1);
+  const c = current;
+  if (!c || c.start !== null || room.get()) return;
+  const next = upNext(c.track);
+  if (next === c.next) return;
+  current = { ...c, next, nextUrl: null, nextLite: null, early: false };
+  nextKey.set(nextKey.get() + 1);
+  meta(c.track);
+  // before the song's own answer, that answer asks for it
+  const s = player.get().status;
+  if (next && (s === "playing" || s === "starting") && c.until > 0) askAhead(current);
+}
+
+/** The next song's link for the song playing, asked again (the next one changed): as going on with it, which counts nothing */
+function askAhead(c: NonNullable<typeof current>) {
+  const sent = Date.now();
+  listenApi.play(c.track.id, Math.max(1, Math.floor(lastAt)), c.next).then(
+    (r) => {
+      if (c.next && r.nextUrl) remember(c.next, r.nextUrl, r.nextLite ?? null);
+      const now = current;
+      if (!now || now.track !== c.track || now.next !== c.next || now.start !== null) return;
+      heard(r.now, sent, Date.now());
+      current = { ...now, nextUrl: r.nextUrl ?? null, nextLite: r.nextLite ?? null, until: r.until - offset };
+    },
+    // the next song then asks for its link as it starts
+    () => {},
+  );
+}
+
+/** ⏭ in the player, within the tap: the song this one would go on to by itself */
+export function playNext() {
+  const v = player.get();
+  if (!v.track || room.get() || isGray()) return;
+  const id = current?.track === v.track && current.start === null ? current.next : upNext(v.track);
+  const next = id ? tracks()?.get(id) : undefined;
+  if (next) playTrack(next);
+}
+
+/** A list's 随机播放, within the tap: 随机播放 on, and a song of the list at random, not the one playing (where there is another) */
+export function shufflePlay(f: ListenFrom) {
+  if (isGray() || room.get()) return;
+  shuffleHere = "on";
+  try {
+    localStorage.setItem(SHUFFLE_KEY, shuffleHere);
+  } catch {}
+  shuffleChanged.set(shuffleChanged.get() + 1);
+  goFrom(f);
+  const ids = idsOf(f);
+  // the song playing was just heard: not again soon
+  const now = player.get().track?.id ?? "";
+  if (now) played.add(now);
+  const pick = shuffleNext(ids, now, played);
+  if (pick?.fresh) played = new Set(now ? [now] : []);
+  const id = pick?.next ?? (ids.length === 1 ? ids[0] : null);
+  const track = id ? tracks()?.get(id) : undefined;
+  if (track) playTrack(track);
+}
+
+// ---- 收藏 and 热播榜 ----
+
+/** Your 收藏, as the panel opens: asked for once, and again when it is old (what is held stays meanwhile) */
+export function loadFavs() {
+  const f = favs.get();
+  if (f.state === "loading" || (f.state === "ok" && (Date.now() - favsAt < FAVS_KEEP_MS || favsPending > 0))) return;
+  if (f.state !== "ok") favs.set({ state: "loading" });
+  const seq = favSeq;
+  listenApi.favs().then(
+    (r) => {
+      // a change asked meanwhile answers with what it made of them
+      if (seq !== favSeq || favsPending > 0) return;
+      favsAt = Date.now();
+      favs.set({ state: "ok", ids: r.favs });
+    },
+    (e: unknown) => {
+      if (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded) refusedTo?.(e);
+      if (favs.get().state === "ok") return;
+      favs.set({ state: "failed", message: e instanceof WorldError ? e.message : T.requests.serverTrouble });
+    },
+  );
+}
+
+/**
+ * A song put in your 收藏 (on) or taken out: shown so at once, then asked of the server, one change after another;
+ * what the server made of them once all are answered. Refused, it is said, and 收藏 is as the server has it.
+ */
+export function setFav(song: string, on: boolean) {
+  const f = favs.get();
+  const ids = f.state === "ok" ? f.ids : [];
+  if (f.state === "ok") favs.set({ state: "ok", ids: on ? [song, ...ids.filter((x) => x !== song)] : ids.filter((x) => x !== song) });
+  favSeq += 1;
+  favsPending += 1;
+  favChain = favChain.then(() =>
+    listenApi.fav(song, on).then(
+      (r) => {
+        favsPending -= 1;
+        favsAt = Date.now();
+        if (favsPending === 0) favs.set({ state: "ok", ids: r.favs });
+      },
+      (e: unknown) => {
+        favsPending -= 1;
+        failed(e);
+        // as the server has them
+        favsAt = 0;
+        if (favsPending === 0) {
+          if (favs.get().state === "ok") favs.set({ state: "ok", ids: on ? ids.filter((x) => x !== song) : ids });
+          loadFavs();
+        }
+      },
+    ),
+  );
+}
+
+/** 热播榜, as the panel shows it: asked for once, and again when it is old (what is held stays meanwhile) */
+export function loadHot() {
+  const h = hot.get();
+  if (h.state === "loading" || (h.state === "ok" && Date.now() - hotAt < HOT_KEEP_MS)) return;
+  if (h.state !== "ok") hot.set({ state: "loading" });
+  listenApi.hot().then(
+    (r) => {
+      hotAt = Date.now();
+      hot.set({ state: "ok", list: r.hot });
+    },
+    (e: unknown) => {
+      if (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded) refusedTo?.(e);
+      if (hot.get().state === "ok") return;
+      hot.set({ state: "failed", message: e instanceof WorldError ? e.message : T.requests.serverTrouble });
+    },
+  );
+}
+
+// ---- 热播榜: a song heard ----
+
+/** A song begun (in a room, the one starting at start), from at seconds in: counted afresh, unless going on with it alone */
+function hearFrom(track: ListenTrack, start: number | null, at: number) {
+  const h = heardNow;
+  if (h && h.song === track.id && h.start === start && at > 0) {
+    h.last = at;
+    return;
+  }
+  heardNow = { song: track.id, start, s: 0, last: at, sent: false };
+}
+
+/** As the song plays: what of it was heard, told to the server once there is HEARD_S of it */
+function hearing(a: HTMLAudioElement, c: NonNullable<typeof current>) {
+  const h = heardNow;
+  if (!h || h.sent || h.song !== c.track.id || h.start !== c.start) return;
+  const t = a.currentTime;
+  const step = t - h.last;
+  h.last = t;
+  if (a.paused || !(step > 0 && step <= HEARD_STEP_S)) return;
+  h.s += step;
+  if (h.s < heardAfter(c.track.seconds)) return;
+  h.sent = true;
+  listenApi.heard(c.track.id).catch(() => {});
+}
+
 /** The page going, coming back into view, going gray: once a page */
 function watch() {
   if (watching || typeof window === "undefined") return;
@@ -524,10 +802,14 @@ function silent(seconds = 0.1): string {
 
 // ---- what the page does ----
 
-/** A song from the list, from its start or `at` seconds in. Call it within the tap itself, which is what lets a phone play. */
-export function playTrack(track: ListenTrack, at = 0) {
+/**
+ * A song from the list, from its start or `at` seconds in; from: the list it was tapped in, which it goes on as (none:
+ * as the song before it did). Call it within the tap itself, which is what lets a phone play.
+ */
+export function playTrack(track: ListenTrack, at = 0, from?: ListenFrom) {
   // in a room the room's songs play (the host adds to them instead)
   if (isGray() || room.get()) return;
+  if (from) goFrom(from);
   quietOthers();
   unlocked = true;
   // still in an element: on from what of it came
@@ -559,7 +841,7 @@ export function toggle() {
   a.play().catch(() => change({ status: "paused", buffering: false }));
 }
 
-/** The next song of the album, if there is one (the lock screen's ⏭); in a room, the host's 下一首 */
+/** The song this one goes on to by itself, if there is one (the lock screen's ⏭); in a room, the host's 下一首 */
 export function skip() {
   const r = room.get();
   if (r) {
@@ -567,26 +849,34 @@ export function skip() {
     return;
   }
   const v = player.get();
-  const id = v.track && nextOnAlbum(v.track);
+  const id = v.track && current?.track === v.track && current.start === null ? current.next : null;
   const next = id ? tracks()?.get(id) : undefined;
   if (!v.track || !next || isGray()) return;
   quietOthers();
   begin(next, 0, linkFor(next.id));
 }
 
-/** The list of songs, as the panel opens: asked for once, and again when it is old (the list held stays meanwhile) */
+/**
+ * The list of songs, each time the panel opens (mostly a 304: the browser keeps it), so new songs, covers and 省流量's
+ * copies show at once; the list held stays meanwhile, and one answered the same as it changes nothing
+ */
 export function loadSongs() {
   const s = songs.get();
-  if (s.state === "loading" || (s.state === "ok" && Date.now() - songsAt < SONGS_KEEP_MS)) return;
+  if (s.state === "loading" || songsAsking) return;
   if (s.state !== "ok") songs.set({ state: "loading" });
+  songsAsking = true;
   listenApi.songs().then(
     (catalog) => {
-      songsAt = Date.now();
+      songsAsking = false;
+      const text = JSON.stringify(catalog);
+      if (songs.get().state === "ok" && text === songsText) return;
+      songsText = text;
       songs.set({ state: "ok", catalog, tracks: indexCatalog(catalog) });
       offerSaved();
       if (room.get()) syncRoom();
     },
     (e: unknown) => {
+      songsAsking = false;
       if (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded) refusedTo?.(e);
       if (songs.get().state === "ok") return;
       songs.set({ state: "failed", message: e instanceof WorldError ? e.message : T.requests.serverTrouble });
@@ -653,10 +943,12 @@ function quietOthers() {
  */
 function begin(track: ListenTrack, at: number, url: string | null, loaded = false) {
   const mine = ++asked;
-  const next = nextOnAlbum(track);
+  played.add(track.id);
+  const next = upNext(track);
   ended = false;
   lastAt = at;
   second.set(Math.floor(at));
+  hearFrom(track, null, at);
   current = { track, lite: links.get(track.id)?.lite ?? null, next, nextUrl: null, nextLite: null, until: 0, early: false, start: null };
   // a song of its own: its own 短评
   if (rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
@@ -673,16 +965,19 @@ function begin(track: ListenTrack, at: number, url: string | null, loaded = fals
       heard(r.now, sent, Date.now());
       counted = true;
       away = false;
+      // 随机播放 switched meanwhile: the song it now goes on to, whose link is asked for
+      const goes = current?.track === track ? current.next : next;
       current = {
         track,
         lite: r.lite ?? null,
-        next,
-        nextUrl: r.nextUrl ?? null,
-        nextLite: r.nextLite ?? null,
+        next: goes,
+        nextUrl: goes === next ? (r.nextUrl ?? null) : null,
+        nextLite: goes === next ? (r.nextLite ?? null) : null,
         until: r.until - offset,
         early: false,
         start: null,
       };
+      if (goes !== next && goes) askAhead(current);
       if (!url) load(pick(track.id, r.url, r.lite), at, track.id);
     },
     (e: unknown) => {
@@ -940,6 +1235,7 @@ function onError(e: Event) {
 function onTime(e: Event) {
   const a = inUse(e);
   if (!a || holding !== "song" || !current) return;
+  hearing(a, current);
   lastAt = a.currentTime;
   // in a room the bar follows the room's clock (the beat), whatever this phone is at
   if (current.start === null) second.set(Math.floor(lastAt));
@@ -1137,6 +1433,7 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   const given = ahead?.id === track.id ? ahead : null;
   ahead = null;
   current = { track, lite: given?.lite ?? null, next, nextUrl: null, nextLite: null, until: 0, early: false, start };
+  hearFrom(track, start, (serverNow() - start) / 1000);
   stuck = null;
   change({ track, status: "starting", buffering: true, tap: false, problem: null });
   meta(track);
@@ -1598,11 +1895,12 @@ export async function leaveListen(): Promise<boolean> {
   return true;
 }
 
-/** What the host does to the room's songs: 开始, 下一首, 这首从头再来, or one added (点歌); within the tap */
+/** What the host does to the room's songs: 开始, 下一首, 这首从头再来, one added (点歌), or 随机加 10 首; within the tap */
 export async function hostQueue(what: QueueChange): Promise<boolean> {
   const r = room.get();
   if (!r?.host) return false;
-  if (typeof what !== "object") {
+  const adding = typeof what === "object" || what === "random";
+  if (!adding) {
     // the host means to hear it: a pause of their own is over
     selfPaused = false;
     stuck = null;
@@ -1614,12 +1912,19 @@ export async function hostQueue(what: QueueChange): Promise<boolean> {
     // as the room is now: the event stream may have told it the change before this answer came
     const told = room.get();
     if (!res.room || !told) return true;
-    if (enter(res.room, sent, Date.now(), res.now)) announce(typeof what === "object" ? "add" : what, told, room.get()!);
+    // the songs before the tap: 随机加's are none of them
+    const had = new Set(r.queue);
+    if (enter(res.room, sent, Date.now(), res.now)) announce(adding ? "add" : what, told, room.get()!);
+    const after = room.get()!;
+    // started at once (all were over): its line is there already
+    const waits = !(after.startedAt !== null && after.startedAt !== r.startedAt);
     if (typeof what === "object") {
-      const after = room.get()!;
       const name = tracks()?.get(what.add)?.name;
-      // one that waits its turn: the host is told it is in; one that started at once has its line already
-      if (name && !(after.startedAt !== null && after.startedAt !== r.startedAt)) say(fmt(T.listen.added, { name }));
+      // one that waits its turn: the host is told it is in
+      if (name && waits) say(fmt(T.listen.added, { name }));
+    } else if (what === "random") {
+      const n = after.queue.filter((id) => !had.has(id)).length;
+      say(n ? fmt(T.listen.randomAdded, { n }) : T.listen.randomNone);
     }
     return true;
   } catch (e) {
@@ -1774,7 +2079,7 @@ function meta(track: ListenTrack | null) {
   const r = room.get();
   handle("play", track ? () => !isListening() && toggle() : null);
   handle("pause", track ? () => isListening() && toggle() : null);
-  handle("nexttrack", track && (r ? r.host : nextOnAlbum(track)) ? skip : null);
+  handle("nexttrack", track && (r ? r.host : current?.track === track && current.next) ? skip : null);
   for (const action of ["previoustrack", "seekbackward", "seekforward", "seekto", "stop"] as const) handle(action, null);
   if (!track) ms.playbackState = "none";
 }
@@ -1811,6 +2116,18 @@ export function forgetListening() {
   liteFailed.clear();
   clearTimeout(slowTimer);
   liteChanged.set(0);
+  shuffleHere = undefined;
+  played = new Set();
+  shuffleChanged.set(0);
+  fromNow.set(null);
+  heardNow = null;
+  favs.set(NO_FAVS);
+  hot.set(NO_HOT);
+  favsAt = 0;
+  hotAt = 0;
+  favChain = Promise.resolve();
+  favsPending = 0;
+  favSeq = 0;
   counted = false;
   away = false;
   ended = false;
@@ -1819,7 +2136,8 @@ export function forgetListening() {
   savedAt = 0;
   offsets.length = 0;
   offset = 0;
-  songsAt = 0;
+  songsText = "";
+  songsAsking = false;
   introHere = null;
   unlocked = false;
   selfPaused = false;

@@ -28,7 +28,7 @@ import { pruneRoachChanges } from "./lib/server/roachFeed";
 import { drainFile, markStarted } from "./lib/server/ready";
 import { sendReportDigest } from "./lib/server/safety";
 import { innMinute } from "./lib/server/si";
-import { saveSongPlays, saveSongReactions, startSongs, syncCatalog } from "./lib/server/songs";
+import { saveSongHeard, saveSongPlays, saveSongReactions, startSongs, syncCatalog } from "./lib/server/songs";
 import { startBeatClips, syncBeatClips } from "./lib/server/beatClips";
 import { logError, note } from "./lib/server/signals";
 import { saveStatCounts } from "./lib/server/stats";
@@ -118,6 +118,7 @@ const saveCounts = () => {
   void saveStatCounts().catch(failed("counts", "Saving 数据看板's counts failed"));
   void saveSongPlays().catch(failed("counts", "Saving how often each song was played failed"));
   void saveSongReactions().catch(failed("counts", "Saving the 短评 said to each song failed"));
+  void saveSongHeard().catch(failed("counts", "Saving how often each song was heard (热播榜) failed"));
 };
 setInterval(saveCounts, MINUTE_MS);
 process.once("SIGTERM", () => void saveCounts());

@@ -1,15 +1,19 @@
 import "server-only";
-import { and, count, eq, gt, inArray, isNull, lte } from "drizzle-orm";
-import { T } from "@/i18n";
+import { and, count, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { fmt, T } from "@/i18n";
 import { beijingDate } from "../beijing";
 import { COUNTED } from "../dashboard";
 import {
+  FAV_MAX,
+  heardAfter,
+  isSongId,
   LISTEN_FULL,
   LISTEN_GRACE_MS,
   LISTEN_GRAY,
   LISTEN_PAUSED,
   listeningUntil,
   NO_SONG,
+  type HotSong,
   type ListenDesk,
   type ListenMe,
   type ListenPlay,
@@ -20,9 +24,9 @@ import { listenMode } from "./env";
 import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { musicLink } from "./musicLinks";
-import { listenMembers, listenNow, listenRooms, siteSettings, statCounts, type UserRow } from "./schema";
+import { listenMembers, listenNow, listenRooms, siteSettings, songFavourites, statCounts, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
-import { countPlay, MUSIC_KEY, songList, songOf, songSaid } from "./songs";
+import { countHeard, countPlay, hotSongs, MUSIC_KEY, songList, songOf, songSaid } from "./songs";
 import { countStat, unsavedStats } from "./stats";
 
 /**
@@ -31,8 +35,10 @@ import { countStat, unsavedStats } from "./stats";
  * should have ended and LISTEN_GRACE_MS more, gone when they stop. How many listen at once is counted from those
  * rows, every COUNT_MS at most in each process, against the 管理台's cap (siteSettings.ts): someone listening
  * already plays on whatever the count. Nothing about who played what is kept: plays are counted by song (songs.ts)
- * and by day (stats.ts) only. The main process sweeps away the rows that are past (sweepListening). A song of the room
- * of 一起听 the player is in (listenRooms.ts) is written as that room's.
+ * and by day (stats.ts) only, and so is a song heard HEARD_S of (heardSong, for 热播榜), once each time it is played
+ * as its row says (started_at, heard). The main process sweeps away the rows that are past (sweepListening). A song
+ * of the room of 一起听 the player is in (listenRooms.ts) is written as that room's. 收藏 (favourites) are each
+ * player's own, never shown to anyone else.
  */
 
 /** How long a process goes by the count of listeners it last read */
@@ -121,10 +127,21 @@ export async function playSong(user: Pick<UserRow, "id">, body: Record<string, u
   const listening = await refuseIfFull(user.id, now);
   const room = await roomOfPlayer(db, user.id);
   const roomId = room?.room.queue.includes(song.id) ? room.room.id : null;
+  // the same song gone on with from where it got to keeps when it began, and whether it counted for 热播榜
+  const goOn = at > 0;
   await db
     .insert(listenNow)
-    .values({ userId: user.id, song: song.id, roomId, until: new Date(until) })
-    .onConflictDoUpdate({ target: listenNow.userId, set: { song: song.id, roomId, until: new Date(until) } });
+    .values({ userId: user.id, song: song.id, roomId, until: new Date(until), startedAt: new Date(now), heard: false })
+    .onConflictDoUpdate({
+      target: listenNow.userId,
+      set: {
+        song: song.id,
+        roomId,
+        until: new Date(until),
+        startedAt: goOn ? sql`case when ${listenNow.song} = excluded.song then ${listenNow.startedAt} else excluded.started_at end` : new Date(now),
+        heard: goOn ? sql`(${listenNow.song} = excluded.song and ${listenNow.heard})` : false,
+      },
+    });
   // this process's count takes them in at once, so a crowd within COUNT_MS goes over the cap by less
   if (!listening) tally.n += 1;
   if (at === 0) {
@@ -169,6 +186,68 @@ export async function stopSong(user: Pick<UserRow, "id">, body: Record<string, u
     if (gone.some((r) => r.until.getTime() > now) && tally.n > 0) tally.n -= 1;
   }
   return { now };
+}
+
+/** A page counts a song heard by how long it played it, the server by when it began it: this much apart at most */
+const HEARD_SLACK_MS = 3_000;
+
+/**
+ * The song the player plays was heard: HEARD_S of it (a shorter one, to its end), as their page counted it. It counts
+ * for 热播榜 once each time it is played, and only once that long went by since they began it (a few seconds less, for
+ * the network). counted: it did now.
+ */
+export async function heardSong(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()): Promise<{ counted: boolean; now: number }> {
+  const song = await songOf(body.song);
+  if (!song) throw new HttpError(404, T.server.listen.noSong, NO_SONG);
+  const since = new Date(now - Math.max(0, heardAfter(song.seconds) * 1000 - HEARD_SLACK_MS));
+  const done = await db
+    .update(listenNow)
+    .set({ heard: true })
+    .where(and(eq(listenNow.userId, user.id), eq(listenNow.song, song.id), eq(listenNow.heard, false), lte(listenNow.startedAt, since)))
+    .returning({ song: listenNow.song });
+  if (done.length) countHeard(song.id, now);
+  return { counted: done.length > 0, now };
+}
+
+/** 热播榜, as every player who may listen sees it (songs.ts hotSongs): the songs and how many times, never who */
+export async function hotList(now = Date.now()): Promise<{ hot: HotSong[]; now: number }> {
+  return { hot: await hotSongs(now), now };
+}
+
+/** The player's 收藏, the latest first: theirs alone */
+async function favsOf(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ song: songFavourites.song })
+    .from(songFavourites)
+    .where(eq(songFavourites.userId, userId))
+    .orderBy(desc(songFavourites.createdAt), desc(songFavourites.song));
+  return rows.map((r) => r.song);
+}
+
+/** 收藏 as the panel shows it: the player's own, the latest first */
+export async function myFavs(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ favs: string[]; now: number }> {
+  return { favs: await favsOf(user.id), now };
+}
+
+/**
+ * A song put in 收藏 (on), or taken out: one that may be played now, and FAV_MAX at most; out, any (a song gone
+ * from the list too). Put in again, it keeps when it first went in. The player's 收藏 as they are after it.
+ */
+export async function setFav(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()): Promise<{ favs: string[]; now: number }> {
+  if (typeof body.on !== "boolean" || !isSongId(body.song)) throw new HttpError(400, T.server.common.badRequest);
+  if (body.on) {
+    const song = await songOf(body.song);
+    if (!song) throw new HttpError(404, T.server.listen.noSong, NO_SONG);
+    const [{ n }] = await db.select({ n: count() }).from(songFavourites).where(eq(songFavourites.userId, user.id));
+    if (n >= FAV_MAX) throw new HttpError(409, fmt(T.server.listen.favsFull, { n: FAV_MAX }));
+    await db
+      .insert(songFavourites)
+      .values({ userId: user.id, song: song.id, createdAt: new Date(now) })
+      .onConflictDoNothing();
+  } else {
+    await db.delete(songFavourites).where(and(eq(songFavourites.userId, user.id), eq(songFavourites.song, body.song)));
+  }
+  return { favs: await favsOf(user.id), now };
 }
 
 /** Rows that are past, swept away (the main process, every minute). Says how many went. */

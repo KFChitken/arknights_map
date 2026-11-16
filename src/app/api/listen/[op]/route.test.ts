@@ -2,16 +2,16 @@ import { createHash, randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LISTEN_GRACE_MS } from "@/lib/listen";
+import { FAV_MAX, LISTEN_GRACE_MS } from "@/lib/listen";
 import { loadMods } from "@/lib/server/admins";
 import { AGE_CHECK } from "@/lib/server/consent";
 import { db } from "@/lib/server/db";
 import { forgetListeningCount, listenMe, sweepListening } from "@/lib/server/listen";
 import { linkGood } from "@/lib/server/musicLinks";
 import { forgetHits } from "@/lib/server/rateLimit";
-import { admins, listenNow, sessions, siteSettings, songPlays, songs, statCounts, users } from "@/lib/server/schema";
+import { admins, listenNow, sessions, siteSettings, songFavourites, songHeard, songPlays, songs, statCounts, users } from "@/lib/server/schema";
 import { endGray, loadSettings, setGray, setListen } from "@/lib/server/siteSettings";
-import { loadSongs, saveSongPlays } from "@/lib/server/songs";
+import { forgetHot, loadSongs, saveSongHeard, saveSongPlays } from "@/lib/server/songs";
 import { forgetStatCounts, saveStatCounts } from "@/lib/server/stats";
 import { GET as ok } from "../ok/route";
 import { GET, POST } from "./route";
@@ -106,7 +106,10 @@ const counted = async (name: string) => {
 beforeEach(async () => {
   // what an earlier test counted and did not save goes before the tables are emptied
   await saveSongPlays();
-  await db.execute(sql`truncate ${users}, ${sessions}, ${songs}, ${songPlays}, ${listenNow}, ${siteSettings}, ${statCounts}, ${admins} cascade`);
+  forgetHot();
+  await db.execute(
+    sql`truncate ${users}, ${sessions}, ${songs}, ${songPlays}, ${songHeard}, ${songFavourites}, ${listenNow}, ${siteSettings}, ${statCounts}, ${admins} cascade`,
+  );
   await loadSettings();
   await loadMods();
   await loadSongs();
@@ -248,7 +251,7 @@ describe("a song played", () => {
     expect(linkGood(nextLite)).toBe(true);
     expect(b.now).toBeGreaterThanOrEqual(before);
     expect(b.until).toBe(b.now + 200_000 + LISTEN_GRACE_MS);
-    expect(await nowRow(player.id)).toEqual({ userId: player.id, song: "s1", roomId: null, until: new Date(b.until) });
+    expect(await nowRow(player.id)).toEqual({ userId: player.id, song: "s1", roomId: null, until: new Date(b.until), startedAt: expect.any(Date), heard: false });
     // the song plays, counted for the song and for the day, never who
     await saveSongPlays();
     expect(await db.select().from(songPlays)).toEqual([{ song: "s1", plays: 1 }]);
@@ -359,6 +362,105 @@ describe("a song stopped", () => {
     expect(await sweepListening(now)).toBe(1);
     expect(await nowRow(a.id)).toBeNull();
     expect(await nowRow(b.id)).not.toBeNull();
+  });
+});
+
+describe("热播榜", () => {
+  /** The player began the song this long ago, as the server has it */
+  const begunAgo = (userId: string, ms: number) => db.update(listenNow).set({ startedAt: new Date(Date.now() - ms) }).where(eq(listenNow.userId, userId));
+  const heard = async (song: string) => (await call("POST", "heard", { song })).body;
+
+  it("counts a song heard once each time it is played, only 30 s after it began (3 s less, for the network), nothing of who", async () => {
+    vi.stubEnv("LISTEN", "on");
+    await seedSongs();
+    const player = await account("someone@example.com");
+    await signIn(player.id);
+    // nothing played: nothing to count
+    expect(await heard("s1")).toMatchObject({ counted: false });
+    expect(await call("POST", "heard", { song: "s3" })).toMatchObject({ status: 404, body: { code: "NO_SONG" } });
+    await call("POST", "play", { song: "s1", next: "s2" });
+    expect(await heard("s1")).toMatchObject({ counted: false });
+    await begunAgo(player.id, 26_000);
+    expect(await heard("s1")).toMatchObject({ counted: false });
+    // another song than the one playing
+    await begunAgo(player.id, 28_000);
+    expect(await heard("s2")).toMatchObject({ counted: false });
+    expect(await heard("s1")).toMatchObject({ counted: true });
+    expect(await heard("s1")).toMatchObject({ counted: false });
+    // gone on with from where it got to: the same time it is played
+    await call("POST", "play", { song: "s1", at: 100 });
+    expect(await heard("s1")).toMatchObject({ counted: false });
+    // from its start again: once more, 30 s on (and a new minute's worth of asking: 10 a minute)
+    forgetHits();
+    await call("POST", "play", { song: "s1" });
+    expect(await heard("s1")).toMatchObject({ counted: false });
+    await begunAgo(player.id, 31_000);
+    expect(await heard("s1")).toMatchObject({ counted: true });
+    // another song from part way (a page opened again) is begun now
+    await call("POST", "play", { song: "s2", at: 100 });
+    await begunAgo(player.id, 10_000);
+    expect(await heard("s2")).toMatchObject({ counted: false });
+
+    await saveSongHeard();
+    const rows = await db.select().from(songHeard);
+    expect(rows.map((r) => ({ song: r.song, n: r.n }))).toEqual([{ song: "s1", n: 2 }]);
+    // the chart: songs and how many times, never who
+    const hot = await call("POST", "hot");
+    expect(hot).toMatchObject({ status: 200, body: { hot: [{ song: "s1", n: 2 }] } });
+    expect(Object.keys((hot.body!.hot as object[])[0]).sort()).toEqual(["n", "song"]);
+  });
+});
+
+describe("收藏", () => {
+  const favs = async () => (await call("POST", "favs")).body!.favs;
+
+  it("keeps each player's songs, the latest first, theirs alone; out of it, any song; gone with the account", async () => {
+    vi.stubEnv("LISTEN", "on");
+    await seedSongs();
+    const a = await account("a@example.com");
+    const b = await account("b@example.com");
+    await signIn(a.id);
+    expect(await favs()).toEqual([]);
+    expect(await call("POST", "fav", { song: "s1", on: true })).toMatchObject({ status: 200, body: { favs: ["s1"] } });
+    expect((await call("POST", "fav", { song: "s2", on: true })).body!.favs).toEqual(["s2", "s1"]);
+    // put in again: as it was
+    expect((await call("POST", "fav", { song: "s1", on: true })).body!.favs).toEqual(["s2", "s1"]);
+    // a song gone from the list is not put in, and is taken out
+    expect(await call("POST", "fav", { song: "s3", on: true })).toMatchObject({ status: 404, body: { code: "NO_SONG" } });
+    await db.insert(songFavourites).values({ userId: a.id, song: "s3", createdAt: new Date(Date.now() - 60_000) });
+    expect(await favs()).toEqual(["s2", "s1", "s3"]);
+    expect((await call("POST", "fav", { song: "s3", on: false })).body!.favs).toEqual(["s2", "s1"]);
+    expect((await call("POST", "fav", { song: "s2", on: false })).body!.favs).toEqual(["s1"]);
+    expect((await call("POST", "fav", { song: "s1" })).status).toBe(400);
+    expect((await call("POST", "fav", { song: "../x", on: false })).status).toBe(400);
+
+    await signIn(b.id);
+    expect(await favs()).toEqual([]);
+    await call("POST", "fav", { song: "s2", on: true });
+    await signIn(a.id);
+    expect(await favs()).toEqual(["s1"]);
+
+    await db.delete(users).where(eq(users.id, a.id));
+    expect((await db.select().from(songFavourites)).map((r) => r.song)).toEqual(["s2"]);
+  });
+
+  it("holds 2000 songs at most", async () => {
+    vi.stubEnv("LISTEN", "on");
+    await seedSongs();
+    const a = await account("a@example.com");
+    await signIn(a.id);
+    await db.insert(songFavourites).values(Array.from({ length: FAV_MAX }, (_, i) => ({ userId: a.id, song: `x${i}` })));
+    expect(await call("POST", "fav", { song: "s1", on: true })).toMatchObject({ status: 409, body: { error: "收藏最多 2000 首，先取消几首再收藏。" } });
+    expect((await call("POST", "fav", { song: "x1", on: false })).status).toBe(200);
+    expect((await call("POST", "fav", { song: "s1", on: true })).status).toBe(200);
+  });
+
+  it("is only for those who may listen", async () => {
+    vi.stubEnv("LISTEN", "admins");
+    await seedSongs();
+    const a = await account("a@example.com");
+    await signIn(a.id);
+    for (const op of ["favs", "fav", "hot", "heard"]) expect((await call("POST", op, { song: "s1", on: true })).status).toBe(404);
   });
 });
 

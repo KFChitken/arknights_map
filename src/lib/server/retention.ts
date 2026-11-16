@@ -30,6 +30,7 @@ import {
 } from "./schema";
 import { forgetOldSpots } from "./declarationInbox";
 import { pruneDeskCodes } from "./deskCodes";
+import { pruneSongHeard } from "./songs";
 
 const DAY_MS = 86_400_000;
 /** Deleting deliveries a few hundred declarations at a time, with a pause, so the database never stalls */
@@ -82,6 +83,8 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date(now - DAY_MS)));
   // 登录码 that ran out sign nobody in
   await pruneDeskCodes(now);
+  // 热播榜's days it no longer counts
+  await pruneSongHeard(now);
 }
 
 /**

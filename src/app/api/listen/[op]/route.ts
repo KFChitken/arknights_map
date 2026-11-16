@@ -5,7 +5,7 @@ import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib
 import { listenMode } from "@/lib/server/env";
 import { beatClip } from "@/lib/server/beatClips";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { listenOpen, playSong, stopSong } from "@/lib/server/listen";
+import { heardSong, hotList, listenOpen, myFavs, playSong, setFav, stopSong } from "@/lib/server/listen";
 import {
   answerAsk,
   askToListen,
@@ -43,7 +43,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST later {invite}           下次吧
  *   POST leave                    out of your room (the host's ends)
  *   POST end                      the host ends it
- *   POST queue {start|next|restart: true, add: song}   what the host does to its songs
+ *   POST queue {start|next|restart|random: true, add: song}   what the host does to its songs (random: 随机加 10 首)
  *   POST react {r}                a 短评, by its number: in your room, or (rows one and two) to the song you play alone
  *   POST declare {from?, song?}   宣言一起听 for your room, once (not in one: a room of your own first, song first)
  *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
@@ -52,6 +52,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST askOk {item}             一起听 at a 想一起听 to you (its item in 消息): your room, TA invited to it
  *   POST beat {not?}              a clip for a round of 325 节拍 (src/lib/server/beatClips.ts), of a song not among
  *                                 those named where another is left: its link and its beats, or null
+ *   POST heard {song}             30 s of the song you play were heard, for 热播榜 (counted once a time it is played)
+ *   POST hot                      热播榜: the songs heard most in the last 7 days, and how many times (never who)
+ *   POST favs                     your 收藏, the latest first: yours alone
+ *   POST fav {song, on}           a song put in your 收藏 or taken out; your 收藏 after it
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as lr:<room>:<number>).
  * While LISTEN keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -80,6 +84,10 @@ const OPS = {
   ask: { method: "POST", perMinute: 10 },
   askOk: { method: "POST", perMinute: 10 },
   beat: { method: "POST", perMinute: 20 },
+  heard: { method: "POST", perMinute: 10 },
+  hot: { method: "POST", perMinute: 20 },
+  favs: { method: "POST", perMinute: 20 },
+  fav: { method: "POST", perMinute: 60 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 /** What reaches others: not while 互动 is paused (暂停互动) */
 const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "declare", "touch", "ask", "askOk"]);
@@ -162,6 +170,14 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await answerAsk(user, body));
     case "beat":
       return answer(await beatClip(user, body));
+    case "heard":
+      return answer(await heardSong(user, body));
+    case "hot":
+      return answer(await hotList());
+    case "favs":
+      return answer(await myFavs(user));
+    case "fav":
+      return answer(await setFav(user, body));
     default:
       throw new HttpError(404, T.server.routes.listen.notHere);
   }

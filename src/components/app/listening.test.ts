@@ -26,7 +26,14 @@ import {
   openRoomWith,
   playTrack,
   sendRx,
+  listenFavsNow,
+  listenShuffleNow,
+  loadFavs,
+  playNext,
+  setFav,
   setLite,
+  setShuffle,
+  shufflePlay,
   skip,
   toggle,
 } from "./listening";
@@ -182,7 +189,7 @@ beforeAll(() => {
     asked.push({ op, body });
     const a =
       op === "songs"
-        ? { status: 200, json: CATALOG }
+        ? (answers.songs?.(body ?? {}) ?? { status: 200, json: CATALOG })
         : op === "play"
           ? playAnswer(body ?? {})
           : (answers[op]?.(body ?? {}) ?? { status: 200, json: { now: serverClock() } });
@@ -538,6 +545,27 @@ describe("听歌 on the page", () => {
     }
   });
 
+  it("asks for the list each time the panel opens, once at a time: the same list changes nothing, a new one comes in", async () => {
+    const held = listenSongsNow();
+    loadSongs();
+    loadSongs();
+    await settle();
+    expect(ops("songs")).toHaveLength(2);
+    expect(listenSongsNow()).toBe(held);
+    // the songs' smaller copies made meanwhile: 省流量 offered on the next opening
+    answers.songs = () => ({ status: 200, json: { ...CATALOG, lite: true } });
+    loadSongs();
+    await settle();
+    expect(ops("songs")).toHaveLength(3);
+    const now = listenSongsNow();
+    expect(now.state === "ok" && now.catalog.lite).toBe(true);
+    // one that fails keeps the list there was
+    answers.songs = () => ({ status: 503, json: { error: "人有点多" } });
+    loadSongs();
+    await settle();
+    expect(listenSongsNow()).toBe(now);
+  });
+
   it("shows 新 until the panel is opened, and the line on privacy until it is read", () => {
     const read = () => local.getItem("zhoup.listenIntro");
     expect(read()).toBeNull();
@@ -809,6 +837,11 @@ describe("一起听 on the page", () => {
     answerRoom("queue", () => roomOf({ host: true, you: 1, queue: ["s2", "s3"], startedAt: nextAt, version: 3 }));
     await hostQueue({ add: "s3" });
     expect(said.at(-1)).toBe("加到一起听：Three");
+    // 随机加: the server picks them; the host is told how many, and no pause of theirs is over for it
+    answerRoom("queue", () => roomOf({ host: true, you: 1, queue: ["s2", "s3", "s4", "s1"], startedAt: nextAt, version: 4 }));
+    await hostQueue("random");
+    expect(ops("queue").at(-1)).toEqual({ random: true });
+    expect(said.at(-1)).toBe("随机加了 2 首，在「接下来」里。");
   });
 
   it("opens a room of your own within the tap, and its host's ▶ before the start is 开始", async () => {
@@ -1060,5 +1093,131 @@ describe("省流量: each song's smaller copy", () => {
     audio().dispatchEvent(new Event("loadedmetadata"));
     expect(audio().currentTime).toBe(30);
     expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+  });
+});
+
+describe("收藏, 热播榜 and 随机播放", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("go on as the list a song was tapped in: 收藏's next, its last stopping it; ⏭ as it would go on", async () => {
+    playTrack(track("s3"), 0, { view: "fav", ids: ["s3", "s1", "s4"] });
+    await settle();
+    expect(ops("play")).toEqual([{ song: "s3", at: 0, next: "s1" }]);
+    audio().end();
+    // at once, from the link given ahead
+    expect(audio().src).toBe(link("s1"));
+    await settle();
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 0, next: "s4" });
+    // ⏭, within the tap
+    playNext();
+    expect(audio().src).toBe(link("s4"));
+    await settle();
+    expect(listenPlayerNow().track?.id).toBe("s4");
+    expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0 });
+    playNext();
+    audio().end();
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s4" } });
+    // 全部: the album's next, as before
+    playTrack(track("s1"), 0, { view: "all", ids: [] });
+    await settle();
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 0, next: "s2" });
+  });
+
+  it("shuffle in the list: none again until all of it played, then a new round, on for ever; kept in the browser", async () => {
+    expect(listenShuffleNow()).toBe(false);
+    setShuffle(true);
+    expect(local.map.get("zhoup.listenShuffle")).toBe("on");
+    playTrack(track("s1"), 0, { view: "all", ids: [] });
+    await settle();
+    const round = ["s1"];
+    for (let i = 0; i < 3; i++) {
+      const next = String(ops("play").at(-1)!.next);
+      expect(round).not.toContain(next);
+      audio().end();
+      expect(audio().src).toBe(link(next));
+      await settle();
+      round.push(next);
+    }
+    expect([...round].sort()).toEqual(["s1", "s2", "s3", "s4"]);
+    // all four played: on to another round, never the one playing again
+    const next = ops("play").at(-1)!.next;
+    expect(next).toBeTruthy();
+    expect(next).not.toBe(round[3]);
+    setShuffle(false);
+    expect(local.map.get("zhoup.listenShuffle")).toBe("off");
+  });
+
+  it("switched on while a song plays, goes on at random instead, the link asked for at once without counting a play", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    playTrack(track("s1"), 0, { view: "hot", ids: ["s1", "s2", "s3"] });
+    await settle();
+    expect(ops("play")).toEqual([{ song: "s1", at: 0, next: "s2" }]);
+    audio().to(0.4);
+    setShuffle(true);
+    await settle();
+    // as going on with the song, from a second in at least: only a song from its start counts as played
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 1, next: "s3" });
+    audio().end();
+    expect(audio().src).toBe(link("s3"));
+  });
+
+  it("随机播放 of a list: on, and a song of it at random, not the one playing", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    playTrack(track("s1"), 0, { view: "all", ids: [] });
+    await settle();
+    shufflePlay({ view: "fav", ids: ["s1", "s4", "s3"] });
+    expect(listenShuffleNow()).toBe(true);
+    await settle();
+    expect(listenPlayerNow().track?.id).toBe("s4");
+    expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0, next: "s3" });
+  });
+
+  it("tell the server a song was heard once 30 seconds of it played, once; a jump is not listening", async () => {
+    answers.heard = () => ({ status: 200, json: { counted: true, now: serverClock() } });
+    playTrack(track("s1"));
+    await settle();
+    for (let t = 1; t <= 29; t++) audio().to(t);
+    audio().to(60);
+    expect(ops("heard")).toEqual([]);
+    audio().to(61);
+    audio().to(62);
+    expect(ops("heard")).toEqual([{ song: "s1" }]);
+    // from its start again: again
+    playTrack(track("s2"));
+    await settle();
+    for (let t = 1; t <= 30; t++) audio().to(t);
+    expect(ops("heard")).toEqual([{ song: "s1" }, { song: "s2" }]);
+  });
+
+  it("收藏: a song in or out at once, the changes asked one after another, then as the server has it; one refused said and taken back", async () => {
+    let server: string[] = ["s4"];
+    answers.favs = () => ({ status: 200, json: { favs: server, now: serverClock() } });
+    answers.fav = (b) => {
+      server = b.on ? [String(b.song), ...server.filter((x) => x !== b.song)] : server.filter((x) => x !== b.song);
+      return { status: 200, json: { favs: server, now: serverClock() } };
+    };
+    loadFavs();
+    expect(listenFavsNow()).toEqual({ state: "loading" });
+    await settle();
+    expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s4"] });
+    setFav("s2", true);
+    expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s2", "s4"] });
+    setFav("s3", true);
+    setFav("s2", false);
+    expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s3", "s4"] });
+    await settle();
+    expect(ops("fav")).toEqual([
+      { song: "s2", on: true },
+      { song: "s3", on: true },
+      { song: "s2", on: false },
+    ]);
+    expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s3", "s4"] });
+    answers.fav = () => ({ status: 409, json: { error: "收藏最多 2000 首，先取消几首再收藏。" } });
+    setFav("s1", true);
+    expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s1", "s3", "s4"] });
+    await settle();
+    expect(said.at(-1)).toBe("收藏最多 2000 首，先取消几首再收藏。");
+    expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s3", "s4"] });
   });
 });

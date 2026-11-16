@@ -1,4 +1,5 @@
 import "server-only";
+import { randomInt } from "node:crypto";
 import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
@@ -17,6 +18,7 @@ import {
   NO_SONG,
   NOT_LISTENING,
   QUEUE_MAX,
+  RANDOM_ADD,
   ROOM_FULL,
   ROOM_GONE,
   ROOM_IDLE_MS,
@@ -33,6 +35,7 @@ import {
   type ListenFriend,
   type ListenRoom,
   type QueueChange,
+  type QueueEdit,
   type RoomEnd,
   type RoomInvited,
   type RoomMember,
@@ -612,20 +615,35 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
 
 // ---- the songs ----
 
-/** What the host does to the room's songs (src/lib/listen.ts changeQueue): start, next, restart, or add a song */
+/**
+ * What the host does to the room's songs (src/lib/listen.ts changeQueue): start, next, restart, add a song, or add
+ * RANDOM_ADD at random from all of them (随机加: none already in its songs), told as an add
+ */
 export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const change: QueueChange | null =
-    body.start === true ? "start" : body.next === true ? "next" : body.restart === true ? "restart" : isSongId(body.add) ? { add: body.add } : null;
+    body.start === true
+      ? "start"
+      : body.next === true
+        ? "next"
+        : body.restart === true
+          ? "restart"
+          : body.random === true
+            ? "random"
+            : isSongId(body.add)
+              ? { add: body.add }
+              : null;
   if (!change) throw refuse(400, T.server.common.badRequest);
   refuseNow(now);
   if (typeof change === "object" && !(await songOf(change.add))) throw refuse(404, T.server.listen.noSong, NO_SONG);
   const seconds = await secondsOf();
+  const all = change === "random" ? [...(await songList()).byId.keys()] : [];
   const result = await db.transaction(async (tx) => {
     const mine = await roomOfPlayer(tx, user.id);
     if (!mine) throw refuse(409, T.server.listen.noRoom, NO_ROOM);
     if (mine.room.hostId !== user.id) throw refuse(403, T.server.listen.notHost);
     const [room] = await tx.select().from(listenRooms).where(eq(listenRooms.id, mine.room.id)).for("update");
-    const next = changeQueue(scheduleOf(room), change, seconds, now);
+    const edit: QueueEdit = change === "random" ? { adds: pickAtRandom(all, new Set(room.queue), RANDOM_ADD) } : change;
+    const next = changeQueue(scheduleOf(room), edit, seconds, now);
     if (next === "noNext") throw refuse(409, T.server.listen.noNext);
     if (next === "full") throw refuse(409, fmt(T.server.listen.queueFull, { n: QUEUE_MAX }));
     if (next === "same") return { room, next: null };
@@ -636,7 +654,7 @@ export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string
     return { room, next };
   });
   if (result.next) {
-    const how = typeof change === "object" ? "add" : change;
+    const how = typeof change === "object" || change === "random" ? "add" : change;
     const rows = await hearersOf(result.room.id);
     tellListen(
       rows.map((r) => r.userId),
@@ -644,6 +662,19 @@ export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string
     );
   }
   return { room: await roomView(result.room.id, user.id, now), now };
+}
+
+/** n of these songs at random, none of those left out, each once */
+function pickAtRandom(ids: readonly string[], not: ReadonlySet<string>, n: number): string[] {
+  const pool = ids.filter((id) => !not.has(id));
+  const out: string[] = [];
+  while (out.length < n && pool.length) {
+    const i = randomInt(pool.length);
+    out.push(pool[i]);
+    pool[i] = pool[pool.length - 1];
+    pool.pop();
+  }
+  return out;
 }
 
 // ---- someone in the room: 碰, 拉黑, 举报 ----

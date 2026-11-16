@@ -2,7 +2,8 @@ import type { PublicProfile } from "./profile";
 
 /**
  * 听歌, what the page (src/components/app/listening.ts) and the server (src/lib/server/listen.ts, songs.ts,
- * listenRooms.ts) both go by: the list of songs as the page gets it, 新歌, the next song of an album, the limits; and
+ * listenRooms.ts) both go by: the list of songs as the page gets it, 新歌, the next song of an album or of a list
+ * (收藏, 热播榜), 随机播放's, when a song played counts for 热播榜, the limits; and
  * 一起听's rooms: when each of a room's songs starts (roomAt), what the host's changes make of it (changeQueue), the
  * 短评, and what the server tells the room.
  */
@@ -63,6 +64,57 @@ export function indexCatalog(c: ListenCatalog): Map<string, ListenTrack> {
 export function nextOnAlbum(track: ListenTrack): string | null {
   const at = track.album.songs.findIndex((s) => s.id === track.id);
   return at >= 0 && at + 1 < track.album.songs.length ? track.album.songs[at + 1].id : null;
+}
+
+// ---- 收藏, 热播榜, 随机播放 ----
+
+/** 收藏: a player's songs at most */
+export const FAV_MAX = 2_000;
+/**
+ * 热播榜: the HOT_TOP songs heard most over the last HOT_DAYS Beijing days (today with them), everyone's together; a
+ * song is heard once a player played HEARD_S of it (a shorter one, all of it but its last second): once each time
+ * it is played. Each process reads it again every HOT_READ_MS.
+ */
+export const HOT_DAYS = 7;
+export const HOT_TOP = 30;
+export const HEARD_S = 30;
+export const HOT_READ_MS = 10 * 60_000;
+/** How many seconds of a song heard make it count (HEARD_S, or a shorter song to its last second) */
+export const heardAfter = (seconds: number) => Math.min(HEARD_S, Math.max(0, seconds - 1));
+/** A song on 热播榜: how many times it was heard */
+export type HotSong = { song: string; n: number };
+/** 一起听: the songs the host's 随机加 adds, from all of them */
+export const RANDOM_ADD = 10;
+
+/** The panel's lists of songs: all of them (album by album), your 收藏, 热播榜 */
+export type ListenView = "all" | "fav" | "hot";
+/** Where a song played alone was tapped: the list, and its songs as it showed them then, in order */
+export type ListenFrom = { view: ListenView; ids: string[] };
+
+/** The song after this one in a list (收藏, 热播榜), or null after its last, or when it is not in it */
+export function nextInList(ids: readonly string[], id: string): string | null {
+  const at = ids.indexOf(id);
+  return at >= 0 && at + 1 < ids.length ? ids[at + 1] : null;
+}
+
+/**
+ * 随机播放: the song to play after `now`, at random among ids, one not played yet this round (played); once all of
+ * them were, any but `now` again, and a new round begins (fresh). null: there is no other song.
+ */
+export function shuffleNext(
+  ids: readonly string[],
+  now: string,
+  played: ReadonlySet<string>,
+  rand: () => number = Math.random,
+): { next: string; fresh: boolean } | null {
+  let pool = ids.filter((id) => id !== now && !played.has(id));
+  let fresh = false;
+  if (!pool.length) {
+    pool = ids.filter((id) => id !== now);
+    fresh = true;
+  }
+  if (!pool.length) return null;
+  return { next: pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))], fresh };
 }
 
 /** Whether a search finds the song: by its name or its album's, whatever the case or spaces */
@@ -202,8 +254,13 @@ export function roomAt(s: Pick<RoomSchedule, "queue" | "idx" | "startedAt">, sec
   return { phase: "done", end: start };
 }
 
-/** What the host may do to a room's songs: start it, skip to the next, start this one again, or add one at the end */
-export type QueueChange = "start" | "next" | "restart" | { add: string };
+/**
+ * What the host may do to a room's songs: start it, skip to the next, start this one again, add one at the end, or
+ * add RANDOM_ADD at random (随机加, the server picks them)
+ */
+export type QueueChange = "start" | "next" | "restart" | "random" | { add: string };
+/** A change as the server makes it: 随机加's songs picked (adds) */
+export type QueueEdit = Exclude<QueueChange, "random"> | { adds: string[] };
 /** Why a change does nothing: no next song, the queue full (QUEUE_MAX), or nothing to change (started already) */
 export type QueueRefusal = "noNext" | "full" | "same";
 
@@ -211,9 +268,9 @@ export type QueueRefusal = "noNext" | "full" | "same";
  * The room's songs after the host's change at now. What has played is dropped first, the one playing (the last, once
  * all are over) staying first with its start, so every phone goes on as it was. A song skipped to or started again,
  * the room started, or one added when all were over, begins at now and ROOM_LEAD_MS; one added otherwise just waits
- * its turn.
+ * its turn. Several added (随机加) go in as far as QUEUE_MAX lets them; none at all changes nothing.
  */
-export function changeQueue(s: RoomSchedule, change: QueueChange, seconds: (id: string) => number, now: number): RoomSchedule | QueueRefusal {
+export function changeQueue(s: RoomSchedule, change: QueueEdit, seconds: (id: string) => number, now: number): RoomSchedule | QueueRefusal {
   const at = roomAt(s, seconds, now);
   let queue = s.queue.slice(Math.max(0, s.idx));
   let startedAt = s.startedAt;
@@ -229,9 +286,11 @@ export function changeQueue(s: RoomSchedule, change: QueueChange, seconds: (id: 
   if (change === "start") return at.phase === "ready" ? { queue, idx: 0, startedAt: lead, version } : "same";
   if (change === "restart") return at.phase === "ready" || !queue.length ? "same" : { queue, idx: 0, startedAt: lead, version };
   if (change === "next") return at.phase === "playing" && queue.length > 1 ? { queue: queue.slice(1), idx: 0, startedAt: lead, version } : "noNext";
-  if (at.phase === "done") return { queue: [change.add], idx: 0, startedAt: lead, version };
+  const adds = "adds" in change ? change.adds : [change.add];
+  if (!adds.length) return "same";
+  if (at.phase === "done") return { queue: adds.slice(0, QUEUE_MAX), idx: 0, startedAt: lead, version };
   if (queue.length >= QUEUE_MAX) return "full";
-  return { queue: [...queue, change.add], idx: 0, startedAt, version };
+  return { queue: [...queue, ...adds.slice(0, QUEUE_MAX - queue.length)], idx: 0, startedAt, version };
 }
 
 /**

@@ -1594,9 +1594,38 @@ export const songReactions = pgTable(
 );
 
 /**
+ * 热播榜: how many times each song was heard (HEARD_S of it, src/lib/listen.ts) each Beijing day, by everyone
+ * together: never who (src/lib/server/songs.ts countHeard). Only the last days the chart reads are kept.
+ */
+export const songHeard = pgTable(
+  "song_heard",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    song: text("song").notNull(),
+    n: bigint("n", { mode: "number" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.song] })],
+);
+
+/** 收藏: the songs a player keeps to find again, theirs alone to see (src/lib/server/listen.ts); gone with the account */
+export const songFavourites = pgTable(
+  "song_favourites",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    song: text("song").notNull(),
+    createdAt: at("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.song] })],
+);
+
+/**
  * What a player listens to now, one row each (src/lib/server/listen.ts): not a record of what they listened to.
  * until is when the song should end, and LISTEN_GRACE_MS more; written as each song starts, gone once they stop,
  * and swept away by the main process when it is past. room_id: the room of 一起听 they listen in, if any.
+ * started_at: when they began this song (a song gone on with, from where it got to, keeps it), and heard once it
+ * counted for 热播榜, so it counts once a time it is played.
  */
 export const listenNow = pgTable(
   "listen_now",
@@ -1607,6 +1636,8 @@ export const listenNow = pgTable(
     song: text("song").notNull(),
     roomId: uuid("room_id").references((): AnyPgColumn => listenRooms.id, { onDelete: "set null" }),
     until: at("until").notNull(),
+    startedAt: at("started_at").notNull().defaultNow(),
+    heard: boolean("heard").notNull().default(false),
   },
   (t) => [index("listen_now_until_idx").on(t.until)],
 );

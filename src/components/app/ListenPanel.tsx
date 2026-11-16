@@ -7,8 +7,12 @@ import { fmtNodes } from "@/i18n/nodes";
 import {
   clock,
   coverLink,
+  HEARD_S,
+  HOT_DAYS,
+  HOT_READ_MS,
   INVITES_PER_DAY,
   LISTEN_FULL,
+  RANDOM_ADD,
   RX_ROOM_FROM,
   RX_ROWS,
   songMatches,
@@ -16,8 +20,10 @@ import {
   type ListenAlbum,
   type ListenCatalog,
   type ListenFriend,
+  type ListenFrom,
   type ListenRoom,
   type ListenTrack,
+  type ListenView,
   type RoomMember,
 } from "@/lib/listen";
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
@@ -34,14 +40,23 @@ import {
   kickMember,
   leaveListen,
   listenFriendsList,
+  loadFavs,
+  loadHot,
   loadSongs,
   markIntro,
   openRoomWith,
+  playNext,
   playTrack,
   roomPlace,
   sendRx,
+  setFav,
   setLite,
+  setShuffle,
+  shufflePlay,
   toggle,
+  useListenFavs,
+  useListenHasNext,
+  useListenHot,
   useListenIntro,
   useListenLite,
   useListenPlayer,
@@ -50,8 +65,11 @@ import {
   useListenRx,
   useListenSaid,
   useListenSecond,
+  useListenShuffle,
   useListenSongs,
   useListenTouched,
+  type ListenFavs,
+  type ListenHot,
   type ListenPlayer,
   type ListenSongs,
 } from "./listening";
@@ -82,12 +100,13 @@ export type ListenActs = {
 };
 
 /**
- * 听歌's panel: its two tabs, the player along its top, and under it either 一起听 (inviting 触须之交, calling those
- * nearby, the room you are in, its 短评, and the card of anyone in it) or the songs: 新歌, then album by album in the
- * order of the Monster Siren Records site, with a search over the songs' and albums' names, and above them, while a
- * song plays alone, the first two rows of 短评 (only counted: 大家都在说 under each song, in the player). On a phone a
- * sheet from the bottom; on a computer a panel at the left, over the map but clear of its middle, which can be looked
- * round meanwhile. Songs go on playing with it closed (src/components/app/listening.ts).
+ * 听歌's panel: its two tabs, the player along its top (♡ to 收藏, ⏭, 随机播放, 省流量), and under it either 一起听
+ * (inviting 触须之交, calling those nearby, the room you are in, its 短评, and the card of anyone in it) or the songs, in
+ * three lists: 全部 (新歌, then album by album in the order of the Monster Siren Records site, a ♥ by each in your
+ * 收藏), your 收藏, and 热播榜; with a search over the songs' and albums' names in the list shown, the list's 随机播放,
+ * and above them, while a song plays alone, the first two rows of 短评 (only counted: 大家都在说 under each song, in
+ * the player). On a phone a sheet from the bottom; on a computer a panel at the left, over the map but clear of its
+ * middle, which can be looked round meanwhile. Songs go on playing with it closed (src/components/app/listening.ts).
  */
 export default function ListenPanel({
   paused,
@@ -111,6 +130,8 @@ export default function ListenPanel({
   const wide = useWide();
   useEffect(() => {
     loadSongs();
+    // for the ♡ and the ♥ by the songs
+    loadFavs();
     markIntro("opened");
   }, []);
   // the covers' too, once there are some
@@ -164,18 +185,48 @@ type BodyProps = {
   acts: ListenActs;
 };
 
+/** The list of songs shown last (全部, 收藏, 热播榜), for the panel opened again on this page */
+let lastView: ListenView = "all";
+
+/**
+ * The songs a list shows, in its order (only those found while searching; 收藏's and 热播榜's songs gone from the
+ * list left out), how many, and the list a song tapped in it goes on as (全部 unsearched: every song)
+ */
+function viewSongs(view: ListenView, tracks: Map<string, ListenTrack> | null, favs: ListenFavs, hot: ListenHot, q: string) {
+  if (!tracks) return { songs: [] as ListenTrack[], n: 0, from: { view, ids: [] } as ListenFrom };
+  if (view === "all" && !q) return { songs: [] as ListenTrack[], n: tracks.size, from: { view, ids: [] } as ListenFrom };
+  const ids = view === "all" ? [...tracks.keys()] : view === "fav" ? (favs.state === "ok" ? favs.ids : []) : hot.state === "ok" ? hot.list.map((h) => h.song) : [];
+  const songs = ids.map((id) => tracks.get(id)).filter((t): t is ListenTrack => Boolean(t) && songMatches(t!, q));
+  return { songs, n: songs.length, from: { view, ids: songs.map((t) => t.id) } as ListenFrom };
+}
+
 function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
   const list = useListenSongs();
   const intro = useListenIntro();
   const room = useListenRoom();
+  const favs = useListenFavs();
+  const hot = useListenHot();
   const [query, setQuery] = useState("");
-  // another tab starts at its top
+  const [view, setView] = useState<ListenView>(lastView);
+  const show = (v: ListenView) => {
+    lastView = v;
+    setView(v);
+  };
+  // 热播榜 as it is shown (收藏 as the panel opens, for the ♥ and the ♡)
+  useEffect(() => {
+    if (tab === "ark" && view === "hot") loadHot();
+  }, [tab, view]);
+  // another tab, or list, starts at its top
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     box.current?.closest(".sheet-body, .lp-scroll")?.scrollTo({ top: 0 });
-  }, [tab]);
+  }, [tab, view]);
   // the list follows the typing a moment behind, so the box itself never waits on a long list
   const q = useDeferredValue(query.trim());
+  const tracks = list.state === "ok" ? list.tracks : null;
+  const shown = useMemo(() => viewSongs(view, tracks, favs, hot, q), [view, tracks, favs, hot, q]);
+  const favSet = useMemo(() => new Set(favs.state === "ok" ? favs.ids : []), [favs]);
+  const favN = favs.state === "ok" && tracks ? favs.ids.filter((id) => tracks.has(id)).length : null;
   return (
     <div className="lp" ref={box}>
       <div className="lp-top">
@@ -190,15 +241,32 @@ function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
         <Player paused={paused} />
         {intro !== "ok" && <PrivacyLine />}
         {tab === "ark" && list.state === "ok" && list.tracks.size > 0 && (
-          <input
-            className="lp-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={T.listen.search}
-            aria-label={T.listen.search}
-            enterKeyHint="search"
-          />
+          <>
+            <input
+              className="lp-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={T.listen.search}
+              aria-label={T.listen.search}
+              enterKeyHint="search"
+            />
+            <div className="lp-views">
+              {(["all", "fav", "hot"] as const).map((k) => (
+                <button key={k} type="button" className={`lp-view${view === k ? " on" : ""}`} aria-pressed={view === k} onClick={() => show(k)}>
+                  {k === "fav" && <HeartIcon />}
+                  {k === "fav" && favN !== null ? fmt(T.listen.favCount, { n: favN }) : T.listen.views[k]}
+                </button>
+              ))}
+              {/* in a room the host picks its songs */}
+              {!room && (
+                <button type="button" className="lp-rnd" title={T.listen.shufflePlayTip} disabled={shown.n === 0} onClick={() => shufflePlay(shown.from)}>
+                  <ShuffleIcon />
+                  {T.listen.shufflePlay}
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
       {tab === "together" ? (
@@ -207,7 +275,11 @@ function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
         list.tracks.size > 0 ? (
           <>
             {room ? <p className="lp-note small">{room.host ? T.listen.addNote : T.listen.hostPicks}</p> : <AloneRx />}
-            <SongList key={q} catalog={list.catalog} tracks={list.tracks} query={q} room={room} />
+            {view === "all" ? (
+              <SongList key={q} catalog={list.catalog} tracks={list.tracks} query={q} room={room} from={shown.from} favs={favSet} />
+            ) : (
+              <ViewList view={view} songs={shown.songs} from={shown.from} usual={list.catalog.artists} room={room} favs={favs} hot={hot} favN={favN ?? 0} query={q} />
+            )}
           </>
         ) : (
           <p className="lp-note">{T.listen.none}</p>
@@ -226,7 +298,10 @@ function ListenBody({ paused, roomMax, mode, tab, onTab, acts }: BodyProps) {
   );
 }
 
-/** The song playing (or the last one, or the one to go on with), ▶ or ⏸, how far it got, and 大家都在说; before any, a line */
+/**
+ * The song playing (or the last one, or the one to go on with), ♡ (收藏), ▶ or ⏸, ⏭, how far it got, 随机播放 and
+ * 省流量, and 大家都在说; before any, a line. In a room the songs are the host's: no ⏭ nor 随机播放.
+ */
 function Player({ paused }: { paused: boolean }) {
   const v = useListenPlayer();
   const at = useListenSecond();
@@ -236,6 +311,10 @@ function Player({ paused }: { paused: boolean }) {
   const list = useListenSongs();
   const lite = useListenLite();
   const offerLite = list.state === "ok" && list.catalog.lite === true;
+  const room = useListenRoom();
+  const favs = useListenFavs();
+  const shuffle = useListenShuffle();
+  const hasNext = useListenHasNext();
   if (!t) {
     const full = v.problem?.code === LISTEN_FULL;
     return (
@@ -261,8 +340,9 @@ function Player({ paused }: { paused: boolean }) {
   const on = v.status === "playing" || v.status === "starting";
   const done = t.seconds > 0 ? Math.min(100, (at / t.seconds) * 100) : 0;
   const note = v.problem ? v.problem.message : on && v.buffering ? T.listen.buffering : v.tap ? T.listen.tapToGo : null;
+  const fav = favs.state === "ok" && favs.ids.includes(t.id);
   return (
-    <div className="lp-player">
+    <div className={`lp-player${room ? "" : " solo"}`}>
       <PlayerCover key={t.album.cover ?? ""} file={t.album.cover} />
       <span className="lp-what">
         <b>{t.name}</b>
@@ -283,15 +363,35 @@ function Player({ paused }: { paused: boolean }) {
           </small>
         )}
       </span>
+      <button
+        type="button"
+        className={`lp-ic fav${fav ? " on" : ""}`}
+        aria-pressed={fav}
+        aria-label={fmt(fav ? T.listen.unfav : T.listen.fav, { name: t.name })}
+        onClick={() => setFav(t.id, !fav)}
+      >
+        {fav ? <HeartIcon /> : <HeartLineIcon />}
+      </button>
       <button className="lp-btn" aria-label={on ? T.listen.pause : T.listen.play} onClick={() => toggle()}>
         {on ? <PauseIcon /> : <PlayIcon />}
       </button>
+      {!room && (
+        <button type="button" className="lp-ic next" aria-label={T.listen.next} title={T.listen.next} disabled={!hasNext} onClick={() => playNext()}>
+          <NextIcon />
+        </button>
+      )}
       <span className="lp-bar">
         <span>{clock(at)}</span>
         <span className="track">
           <span className="fill" style={{ width: `${done}%` }} />
         </span>
         <span>{clock(t.seconds)}</span>
+        {!room && (
+          <button type="button" className={`lp-shuf${shuffle ? " on" : ""}`} aria-pressed={shuffle} title={T.listen.shuffleTip} onClick={() => setShuffle(!shuffle)}>
+            <ShuffleIcon />
+            {T.listen.shuffle}
+          </button>
+        )}
         {offerLite && (
           <button type="button" className={`lp-lite${lite ? " on" : ""}`} aria-pressed={lite} title={T.listen.liteTip} onClick={() => setLite(!lite)}>
             {T.listen.lite}
@@ -731,6 +831,10 @@ function RoomView({
           <button className="lr-mini" onClick={onPick}>
             {T.listen.pick}
           </button>
+          <button className="lr-mini rnd" disabled={busy} onClick={() => void act(() => hostQueue("random"))}>
+            <ShuffleIcon />
+            {fmt(T.listen.randomAdd, { n: RANDOM_ADD })}
+          </button>
         </div>
       )}
       <p className="lr-queue">{nextNames.length ? fmt(T.listen.upNext, { songs: nextNames.join(" · ") }) : T.listen.upNone}</p>
@@ -881,17 +985,24 @@ function RxChips() {
 /** Albums drawn at first, and as many more each time the list is scrolled near its end */
 const ALBUMS_AT_ONCE = 24;
 
-/** 新歌, then each album; while searching, the albums with a song found (all of an album found by its own name) */
+/**
+ * 全部: 新歌, then each album, a ♥ by the songs in your 收藏; while searching, the albums with a song found (all of an
+ * album found by its own name). from: the list a song tapped here goes on as.
+ */
 function SongList({
   catalog,
   tracks,
   query,
   room,
+  from,
+  favs,
 }: {
   catalog: ListenCatalog;
   tracks: Map<string, ListenTrack>;
   query: string;
   room: ListenRoom | null;
+  from: ListenFrom;
+  favs: ReadonlySet<string>;
 }) {
   const v = useListenPlayer();
   const playing = v.status === "playing" || v.status === "starting";
@@ -922,7 +1033,7 @@ function SongList({
   // in a room: the host adds to its songs, anyone else only looks
   const use: RowUse = room ? (room.host ? "add" : "look") : "play";
   const row = (t: ListenTrack, key: string) => (
-    <Row key={key} track={t} usual={catalog.artists} now={t.id === nowId} playing={playing && t.id === nowId} use={use} />
+    <Row key={key} track={t} usual={catalog.artists} now={t.id === nowId} playing={playing && t.id === nowId} use={use} from={from} fav={favs.has(t.id)} />
   );
   return (
     <div className="lp-list">
@@ -949,53 +1060,173 @@ function SongList({
 const songsOf = (album: ListenAlbum, tracks: Map<string, ListenTrack>) =>
   album.songs.map((s) => tracks.get(s.id)).filter((t): t is ListenTrack => Boolean(t));
 
+/**
+ * 收藏 (yours, the latest first) or 热播榜 (the most heard first, how many times), a line on what it is above; only
+ * the songs found while searching. from: the list a song tapped here goes on as.
+ */
+function ViewList({
+  view,
+  songs,
+  from,
+  usual,
+  room,
+  favs,
+  hot,
+  favN,
+  query,
+}: {
+  view: Exclude<ListenView, "all">;
+  songs: ListenTrack[];
+  from: ListenFrom;
+  usual: string[];
+  room: ListenRoom | null;
+  favs: ListenFavs;
+  hot: ListenHot;
+  favN: number;
+  query: string;
+}) {
+  const v = useListenPlayer();
+  const playing = v.status === "playing" || v.status === "starting";
+  const nowId = v.track?.id ?? null;
+  const ranks = useMemo(() => new Map(hot.state === "ok" ? hot.list.map((h, i) => [h.song, { rank: i + 1, n: h.n }]) : []), [hot]);
+  const state = view === "fav" ? favs : hot;
+  if (state.state === "failed") {
+    return (
+      <p className="lp-note">
+        {state.message}
+        <button className="lp-retry" onClick={view === "fav" ? loadFavs : loadHot}>
+          {T.listen.retry}
+        </button>
+      </p>
+    );
+  }
+  if (state.state !== "ok") return <p className="lp-note">{view === "fav" ? T.listen.favLoading : T.listen.hotLoading}</p>;
+  const hotWords = { days: HOT_DAYS, s: HEARD_S, m: HOT_READ_MS / 60_000 };
+  // in a room: the host adds to its songs, anyone else only looks
+  const use: RowUse = room ? (room.host ? "add" : "look") : "play";
+  return (
+    <div className="lp-list">
+      <p className="lp-cap">
+        <b>{view === "fav" ? fmt(T.listen.favHead, { n: favN }) : T.listen.hotHead}</b>
+        {" · "}
+        {view === "fav" ? T.listen.favCap : fmt(T.listen.hotCap, hotWords)}
+      </p>
+      {songs.length === 0 ? (
+        <p className="lp-note">{query ? T.listen.noMatch : view === "fav" ? T.listen.favNone : fmt(T.listen.hotNone, hotWords)}</p>
+      ) : (
+        songs.map((t) => {
+          const r = view === "hot" ? ranks.get(t.id) : undefined;
+          return (
+            <Row
+              key={t.id}
+              track={t}
+              usual={usual}
+              now={t.id === nowId}
+              playing={playing && t.id === nowId}
+              use={use}
+              from={from}
+              fav={view === "fav"}
+              album
+              rank={r?.rank}
+              times={r?.n}
+            />
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /** What a row does: plays its song, adds it to the room's (the host's ＋), or nothing (someone else's room) */
 type RowUse = "play" | "add" | "look";
 
-/** A song: its name (and its artists where they are not the list's usual ones), how long, ▶ or ＋; the one playing in red */
-function Row({ track, usual, now, playing, use }: { track: ListenTrack; usual: string[]; now: boolean; playing: boolean; use: RowUse }) {
+/**
+ * A song: its place on 热播榜, its name (and its album, in 收藏 and 热播榜; its artists where they are not the list's
+ * usual ones), a ♥ when it is in your 收藏 (tapped, out of it), how many times it was heard (热播榜) or how long it
+ * is, ▶ or ＋; the one playing in red. The row is tapped anywhere but its ♥ (a button over all of it, the ♥ above that).
+ */
+function Row({
+  track,
+  usual,
+  now,
+  playing,
+  use,
+  from,
+  fav,
+  album = false,
+  rank,
+  times,
+}: {
+  track: ListenTrack;
+  usual: string[];
+  now: boolean;
+  playing: boolean;
+  use: RowUse;
+  from: ListenFrom;
+  fav: boolean;
+  album?: boolean;
+  rank?: number;
+  times?: number;
+}) {
   const own = track.artists.join() !== usual.join();
   const [adding, setAdding] = useState(false);
-  const inner = (
-    <>
-      <span className="nm">
-        {track.name}
-        {own && <small>{track.artists.join(" / ")}</small>}
-      </span>
-      <span className="dur">{clock(track.seconds)}</span>
-    </>
-  );
-  if (use === "look") return <div className={`lp-row${now ? " now" : ""}`}>{inner}</div>;
-  if (use === "add") {
-    return (
-      <button
-        className={`lp-row${now ? " now" : ""}`}
-        aria-label={fmt(T.listen.add, { name: track.name })}
-        disabled={adding}
-        onClick={() => {
-          setAdding(true);
-          void hostQueue({ add: track.id }).finally(() => setAdding(false));
-        }}
-      >
-        {inner}
-        <span className="go add" aria-hidden="true">
-          {T.listen.plus}
-        </span>
-      </button>
-    );
-  }
+  const sub = album ? [track.album.name, ...(own ? [track.artists.join(" / ")] : [])].join(" · ") : own ? track.artists.join(" / ") : null;
+  // the button over the row says what it is; what the row shows is not said twice
+  const hide = use === "look" ? undefined : true;
   return (
-    <button
-      className={`lp-row${now ? " now" : ""}`}
-      aria-label={fmt(now ? T.listen.nowSong : T.listen.playSong, { name: track.name })}
-      // the one playing pauses, as its ⏸ says; paused, it goes on from where it got to
-      onClick={() => (now ? toggle() : playTrack(track))}
-    >
-      {inner}
-      <span className="go" aria-hidden="true">
-        {playing ? <PauseIcon /> : <PlayIcon />}
+    <div className={`lp-row${now ? " now" : ""}${use === "look" ? " look" : ""}`}>
+      {use === "add" && (
+        <button
+          type="button"
+          className="lp-hit"
+          aria-label={fmt(T.listen.add, { name: track.name })}
+          disabled={adding}
+          onClick={() => {
+            setAdding(true);
+            void hostQueue({ add: track.id }).finally(() => setAdding(false));
+          }}
+        />
+      )}
+      {use === "play" && (
+        <button
+          type="button"
+          className="lp-hit"
+          aria-label={fmt(now ? T.listen.nowSong : T.listen.playSong, { name: track.name })}
+          // the one playing pauses, as its ⏸ says; paused, it goes on from where it got to
+          onClick={() => (now ? toggle() : playTrack(track, 0, from))}
+        />
+      )}
+      {rank !== undefined && (
+        <span className={`lp-rank${rank <= 3 ? " top" : ""}`} aria-hidden={hide}>
+          {rank}
+        </span>
+      )}
+      <span className="nm" aria-hidden={hide}>
+        {track.name}
+        {sub && <small>{sub}</small>}
       </span>
-    </button>
+      {fav && (
+        <button type="button" className="lp-fav" aria-label={fmt(T.listen.unfav, { name: track.name })} onClick={() => setFav(track.id, false)}>
+          <HeartIcon />
+        </button>
+      )}
+      {times !== undefined ? (
+        <span className="lp-times" aria-hidden={hide}>
+          {fmt(T.listen.hotTimes, { n: times.toLocaleString("zh-CN") })}
+        </span>
+      ) : (
+        !album && (
+          <span className="dur" aria-hidden={hide}>
+            {clock(track.seconds)}
+          </span>
+        )
+      )}
+      {use !== "look" && (
+        <span className={`go${use === "add" ? " add" : ""}`} aria-hidden="true">
+          {use === "add" ? T.listen.plus : playing ? <PauseIcon /> : <PlayIcon />}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1012,6 +1243,45 @@ function PauseIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor" />
       <rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+const HEART = "M12 20.3s-7.6-4.5-7.6-10.1A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.6 2.8c0 5.6-7.6 10.1-7.6 10.1z";
+
+function HeartIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={HEART} fill="currentColor" />
+    </svg>
+  );
+}
+
+function HeartLineIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={HEART} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function NextIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5.5 5.2v13.6L15 12z" fill="currentColor" />
+      <rect x="16.2" y="5.2" width="2.8" height="13.6" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ShuffleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 4h4v4" />
+      <path d="M4 20 20 4" />
+      <path d="M16 20h4v-4" />
+      <path d="m14 14 6 6" />
+      <path d="m4 4 5 5" />
     </svg>
   );
 }

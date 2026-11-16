@@ -2,12 +2,27 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { and, asc, desc, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
-import { COVER_FILE, freshSongs, isSongId, SAID_MIN, SAID_TOP, SONG_FILE, type ListenAlbum, type ListenCatalog, type SongSaid } from "../listen";
+import { and, asc, desc, eq, gt, gte, isNull, lt, notInArray, sql } from "drizzle-orm";
+import { addDays, beijingDate } from "../beijing";
+import {
+  COVER_FILE,
+  freshSongs,
+  HOT_DAYS,
+  HOT_READ_MS,
+  HOT_TOP,
+  isSongId,
+  SAID_MIN,
+  SAID_TOP,
+  SONG_FILE,
+  type HotSong,
+  type ListenAlbum,
+  type ListenCatalog,
+  type SongSaid,
+} from "../listen";
 import { db } from "./db";
 import { MUSIC_DIR } from "./env";
 import { onReload, reloadEverywhere } from "./live";
-import { siteSettings, songPlays, songReactions, songs } from "./schema";
+import { siteSettings, songHeard, songPlays, songReactions, songs } from "./schema";
 import { errorCode, logError, note } from "./signals";
 
 /**
@@ -18,7 +33,9 @@ import { errorCode, logError, note } from "./signals";
  * that cannot be read changes nothing: the list stays as it was, or empty if there never was one. How often each
  * song is played is counted in memory and added to song_plays once a minute (saveSongPlays), with nothing of who; so
  * are the 短评 said to each by those listening alone, into song_reactions (saveSongReactions), whose most said make
- * 大家都在说 under it (songSaid). It lives on globalThis because Next.js can load this module once per route bundle.
+ * 大家都在说 under it (songSaid); and how often each was heard (HEARD_S of it, src/lib/listen.ts) each Beijing day, into
+ * song_heard (saveSongHeard), whose last HOT_DAYS make 热播榜 (hotSongs). It lives on globalThis because Next.js can
+ * load this module once per route bundle.
  */
 
 /**
@@ -50,6 +67,11 @@ type Held = {
   said: Map<string, number>;
   /** 大家都在说 as last read for each song, and when */
   saidRead: Map<string, { at: number; top: SongSaid[] }>;
+  /** Songs heard (热播榜), by `${day}|${song}`, since they were last saved */
+  heard: Map<string, number>;
+  /** 热播榜 as last read, and when; and the reading under way */
+  hot: { at: number; list: HotSong[] } | null;
+  hotAsking: Promise<HotSong[]> | null;
 };
 const g = globalThis as unknown as { songsHeld?: Held };
 const held = (g.songsHeld ??= {
@@ -62,10 +84,16 @@ const held = (g.songsHeld ??= {
   plays: new Map(),
   said: new Map(),
   saidRead: new Map(),
+  heard: new Map(),
+  hot: null,
+  hotAsking: null,
 });
 // one held from before these were counted (a process that read this module again as it changed)
 held.said ??= new Map();
 held.saidRead ??= new Map();
+held.heard ??= new Map();
+held.hot ??= null;
+held.hotAsking ??= null;
 
 const RELOAD_MS = 10 * 60_000;
 /** site_settings' row for what the main process last read in (never a setting: only the 管理台 reads it) */
@@ -377,4 +405,75 @@ export async function songSaid(song: string, now = Date.now()): Promise<SongSaid
 /** For the tests: 大家都在说 read afresh next time */
 export function forgetSaid() {
   held.saidRead.clear();
+}
+
+// ---- 热播榜: how often each song was heard ----
+
+/** One more time a song was heard (HEARD_S of it), on the Beijing day of now */
+export function countHeard(id: string, now = Date.now()) {
+  const key = `${beijingDate(now)}|${id}`;
+  held.heard.set(key, (held.heard.get(key) ?? 0) + 1);
+}
+
+/** What was counted since last time, added to song_heard in one statement; kept for next time when that fails */
+export async function saveSongHeard() {
+  const taken = held.heard;
+  if (!taken.size) return;
+  held.heard = new Map();
+  try {
+    await db
+      .insert(songHeard)
+      .values(
+        [...taken].map(([key, n]) => {
+          const at = key.indexOf("|");
+          return { day: key.slice(0, at), song: key.slice(at + 1), n };
+        }),
+      )
+      .onConflictDoUpdate({ target: [songHeard.day, songHeard.song], set: { n: sql`${songHeard.n} + excluded.n` } });
+  } catch (e) {
+    for (const [key, n] of taken) held.heard.set(key, (held.heard.get(key) ?? 0) + n);
+    throw e;
+  }
+}
+
+/** The first Beijing day 热播榜 counts at now: HOT_DAYS of them with today */
+const hotFrom = (now: number) => addDays(beijingDate(now), 1 - HOT_DAYS);
+
+/**
+ * 热播榜: the HOT_TOP songs heard most over the last HOT_DAYS Beijing days, most first (the same number: by id, so they
+ * stay put), only songs that may be played now; read again every HOT_READ_MS at most
+ */
+export async function hotSongs(now = Date.now()): Promise<HotSong[]> {
+  const kept = held.hot;
+  if (kept && now - kept.at < HOT_READ_MS) return kept.list;
+  held.hotAsking ??= (async () => {
+    try {
+      // more than the chart shows, for songs gone from the list since
+      const rows = await db
+        .select({ song: songHeard.song, n: sql<number>`sum(${songHeard.n})`.mapWith(Number) })
+        .from(songHeard)
+        .where(gte(songHeard.day, hotFrom(now)))
+        .groupBy(songHeard.song)
+        .orderBy(desc(sql`sum(${songHeard.n})`), asc(songHeard.song))
+        .limit(HOT_TOP * 2);
+      const { byId } = await songList();
+      const list = rows.filter((r) => r.n > 0 && byId.has(r.song)).slice(0, HOT_TOP);
+      held.hot = { at: now, list };
+      return list;
+    } finally {
+      held.hotAsking = null;
+    }
+  })();
+  return held.hotAsking;
+}
+
+/** The days 热播榜 no longer counts, gone (the main process, once a day); a day more is kept, for a clock a little off */
+export async function pruneSongHeard(now = Date.now()) {
+  await db.delete(songHeard).where(lt(songHeard.day, addDays(hotFrom(now), -1)));
+}
+
+/** For the tests: 热播榜 read afresh next time, and nothing counted kept */
+export function forgetHot() {
+  held.hot = null;
+  held.heard.clear();
 }

@@ -499,6 +499,50 @@ describe("一起听's rooms", () => {
     expect((await db.select().from(listenNow).where(eq(listenNow.userId, b.id)))[0].roomId).toBe(room.id);
   });
 
+  it("let the host alone add 10 songs at random: none twice, none in it already, none gone; told as any song added", async () => {
+    const { host, b } = await cast();
+    const room = await opened(host, b);
+    await goIn(b);
+    const bHeard = hear(b);
+    expect(await post(b, "queue", { random: true })).toMatchObject({ status: 403, body: { error: "只有发起人能点。" } });
+    // s2 is all there is to add (s3 is gone), then nothing
+    expect((await post(host, "queue", { random: true })).body!.room).toMatchObject({ queue: ["s1", "s2"], version: 2 });
+    expect((await post(host, "queue", { random: true })).body!.room).toMatchObject({ queue: ["s1", "s2"], version: 2 });
+    expect(toldOf(bHeard, "state")).toEqual([{ t: "state", room: room.id, how: "add", queue: ["s1", "s2"], idx: 0, startedAt: null, version: 2 }]);
+
+    await db.insert(songs).values(
+      Array.from({ length: 40 }, (_, i) => ({
+        id: `r${i}`,
+        game: "arknights",
+        name: `More ${i}`,
+        albumId: "a2",
+        album: "More",
+        artists: ["塞壬唱片-MSR"],
+        seconds: 100,
+        file: `${String(i + 10).padStart(16, "0")}.m4a`,
+        bytes: 1000,
+        albumOrder: 1,
+        track: i,
+        addedAt: new Date(),
+      })),
+    );
+    await loadSongs();
+    const once = ((await post(host, "queue", { random: true })).body!.room as ListenRoom).queue;
+    expect(once).toHaveLength(12);
+    expect(once.slice(0, 2)).toEqual(["s1", "s2"]);
+    expect(once.slice(2).every((id) => /^r\d+$/.test(id))).toBe(true);
+    expect(new Set(once).size).toBe(12);
+    const twice = ((await post(host, "queue", { random: true })).body!.room as ListenRoom).queue;
+    expect(twice.slice(0, 12)).toEqual(once);
+    expect(new Set(twice).size).toBe(22);
+    // up to 30, then no more
+    const full = ((await post(host, "queue", { random: true })).body!.room as ListenRoom).queue;
+    expect(full.slice(0, 22)).toEqual(twice);
+    expect(new Set(full).size).toBe(QUEUE_MAX);
+    expect(await post(host, "queue", { random: true })).toMatchObject({ status: 409, body: { error: `一起听的歌单最多 ${QUEUE_MAX} 首。` } });
+    expect(toldOf(bHeard, "state").map((s) => s.how)).toEqual(["add", "add", "add", "add"]);
+  });
+
   it("take 短评 by their number alone, one every 3 s and 10 a song each, sent together to everyone in it a second later", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { host, b } = await cast();

@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { InviteSent, ListenCatalog, ListenFriend, ListenPlay, ListenRoom, QueueChange } from "./listen";
+import type { HotSong, InviteSent, ListenCatalog, ListenFriend, ListenPlay, ListenRoom, QueueChange } from "./listen";
 import type { PassesDot } from "./passes";
 import type { BeatSong } from "./study/beat325";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
@@ -86,6 +86,14 @@ export const listenApi = {
   askOk: (item: string) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("askOk", post({ item })),
   /** A clip to play a round of 325 节拍 to, of a song not among these where another is left (null: none to be had now) */
   beat: (not: string[]) => call<{ clip: BeatSong | null; now: number }>("beat", post({ not })),
+  /** 30 s of the song playing were heard (热播榜): counted, or not (once a time it is played) */
+  heard: (song: string) => call<{ counted: boolean; now: number }>("heard", post({ song })),
+  /** 热播榜: the songs heard most in the last 7 days, most first, and how many times */
+  hot: () => call<{ hot: HotSong[]; now: number }>("hot", post({})),
+  /** Your 收藏, the latest first */
+  favs: () => call<{ favs: string[]; now: number }>("favs", post({})),
+  /** A song put in your 收藏 (on) or taken out: your 收藏 after it */
+  fav: (song: string, on: boolean) => call<{ favs: string[]; now: number }>("fav", post({ song, on })),
   /** The page is going: a beacon, which outlives it, so the server counts the player only a little longer */
   away: () => {
     const body = JSON.stringify({ away: true });

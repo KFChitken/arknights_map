@@ -10,11 +10,12 @@
 
 .lp-top { position: sticky; top: 0; z-index: 1; padding: 2px 0 6px; background: var(--paper); }
 
-/* the player: a block for the game, the song, ▶ or ⏸, how far it got */
+/* the player: a block for the game, the song, ♡, ▶ or ⏸, ⏭ (alone), how far it got */
 .lp-player {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) 38px; align-items: center; gap: 7px 10px; padding: 10px 10px 8px;
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 34px 38px; align-items: center; gap: 7px 10px; padding: 10px 10px 8px;
   border-radius: 12px; background: #f4f4f5;
 }
+.lp-player.solo { grid-template-columns: 40px minmax(0, 1fr) 34px 38px 34px; }
 .lp-player.empty { display: block; padding: 14px 12px; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
 .lp-player.full { background: #fdf0f0; color: #a33a3a; }
 .lp-cover {
@@ -40,6 +41,22 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
   font-size: 11.5px; font-weight: 700; line-height: 1.4;
 }
 .lp-lite.on { border-color: #18a0a5; background: #18a0a5; color: #fff; }
+/* ♡ (收藏) and ⏭ */
+.lp-ic {
+  display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #e1e3e8; border-radius: 50%;
+  background: #fff; color: #5b6274;
+}
+.lp-ic svg { width: 17px; height: 17px; }
+.lp-ic.on { border-color: #f3c9cb; color: #d9363e; }
+.lp-ic.next svg { width: 15px; height: 15px; }
+.lp-ic:disabled { opacity: 0.4; }
+/* 随机播放: on or off, as 省流量 */
+.lp-shuf {
+  display: inline-flex; flex: none; align-items: center; gap: 3px; padding: 2px 8px; border: 1px solid #cfd3da; border-radius: 999px;
+  background: #fff; color: #5b6274; font-size: 11.5px; font-weight: 700; line-height: 1.4;
+}
+.lp-shuf svg { width: 12px; height: 12px; }
+.lp-shuf.on { border-color: #18a0a5; background: #18a0a5; color: #fff; }
 
 /* the first time, what is kept of it */
 .lp-privacy {
@@ -56,14 +73,46 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
   color: var(--ink); font: inherit; font-size: 16px;
 }
 
+/* the lists, 全部, 收藏 and 热播榜, and the one shown's 随机播放 */
+.lp-views { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.lp-view {
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border: 1px solid #e1e3e8; border-radius: 999px;
+  background: #fff; color: var(--ink); font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.lp-view svg { width: 13px; height: 13px; color: #d9363e; }
+.lp-view.on { border-color: var(--ink); background: var(--ink); color: #fff; }
+.lp-view.on svg { color: #ff8a8f; }
+.lp-rnd {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 5px 10px; border: 1px solid #18a0a5;
+  border-radius: 999px; background: #fff; color: #0f7f83; font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.lp-rnd svg { width: 13px; height: 13px; }
+.lp-rnd:disabled { opacity: 0.45; }
+/* what 收藏 and 热播榜 are */
+.lp-cap { margin: 12px 0 4px; color: #6b7280; font-size: 12.5px; line-height: 1.5; }
+.lp-cap b { color: var(--ink); }
+
 /* the songs: an album off screen is not laid out until it comes near */
 .lp-album { content-visibility: auto; contain-intrinsic-size: auto 360px; }
 .lp-album h3 { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
 .lp-album h3 img { flex: none; width: 28px; height: 28px; border-radius: 6px; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06); }
 .lp-row {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 0; border: 0;
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 0; border: 0;
   border-bottom: 1px solid #f0f1f3; background: none; color: var(--ink); text-align: left;
 }
+/* tapped anywhere: a button over all of it, the ♥ above that */
+.lp-hit { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; border-radius: 0; background: none; cursor: pointer; }
+.lp-hit:focus-visible { outline: 2px solid #18a0a5; outline-offset: -2px; }
+.lp-row > :not(.lp-hit, .lp-fav) { pointer-events: none; }
+.lp-fav {
+  position: relative; display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: 0 -6px; padding: 0;
+  border: 0; background: none; color: #d9363e;
+}
+.lp-fav svg { width: 13px; height: 13px; }
+/* 热播榜: its place, and how many times */
+.lp-rank { flex: none; width: 24px; color: #8a8f99; font-size: 14.5px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+.lp-rank.top { color: #d9363e; }
+.lp-times { flex: none; color: #8a8f99; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .lp-row .nm { flex: 1; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .lp-row .nm small { display: block; overflow: hidden; color: #8a8f99; font-size: 11.5px; font-weight: 400; text-overflow: ellipsis; }
 .lp-row.now .nm { color: #d9363e; }
@@ -89,7 +138,7 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
 
 /* in a room: the host's ＋ by a song, and a song anyone else only looks at */
 .lp-row .go.add { border-color: #18a0a5; color: #0f7f83; font-size: 18px; font-weight: 700; line-height: 1; }
-div.lp-row { cursor: default; }
+.lp-row.look { cursor: default; }
 
 /* ---- 一起听 ---- */
 .lt, .lr { padding: 2px 0 8px; }
@@ -152,6 +201,9 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .lr-bar .track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; }
 .lr-bar .fill { display: block; height: 100%; background: #18a0a5; }
 .lr-hostbtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+/* 随机加 10 首 */
+.lr-mini.rnd { display: inline-flex; align-items: center; gap: 5px; border-color: #18a0a5; color: #0f7f83; }
+.lr-mini.rnd svg { width: 13px; height: 13px; }
 .lr-queue { margin: 8px 0 6px; color: #4b5260; font-size: 13px; line-height: 1.5; }
 
 /* the 短评, row by row (the room's own in teal) */
@@ -236,7 +288,7 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid #eef0f2; }
 @media (hover: hover) {
   .lp-row:hover, .lpk-row:hover:not(:disabled), button.lr-pp:hover { background: #f7f8f9; }
-  div.lp-row:hover { background: none; }
+  .lp-row.look:hover { background: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lr-pcard { animation: none; }

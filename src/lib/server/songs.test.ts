@@ -3,10 +3,25 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ListenCatalog } from "../listen";
+import { HOT_READ_MS, HOT_TOP, type ListenCatalog } from "../listen";
 import { db } from "./db";
-import { siteSettings, songPlays, songs } from "./schema";
-import { catalogRows, countPlay, forgetSynced, loadSongs, MUSIC_KEY, saveSongPlays, songList, songOf, syncCatalog } from "./songs";
+import { siteSettings, songHeard, songPlays, songs } from "./schema";
+import {
+  catalogRows,
+  countHeard,
+  countPlay,
+  forgetHot,
+  forgetSynced,
+  hotSongs,
+  loadSongs,
+  MUSIC_KEY,
+  pruneSongHeard,
+  saveSongHeard,
+  saveSongPlays,
+  songList,
+  songOf,
+  syncCatalog,
+} from "./songs";
 
 // Runs against the database named in vitest.config.mts; the catalogue and its files in a folder of their own
 
@@ -58,7 +73,8 @@ const rows = async () =>
   (await db.select().from(songs).orderBy(songs.albumOrder, songs.track)).map((r) => ({ id: r.id, album: r.albumOrder, track: r.track, gone: r.goneAt !== null }));
 
 beforeEach(async () => {
-  await db.execute(sql`truncate ${songs}, ${songPlays}, ${siteSettings}`);
+  forgetHot();
+  await db.execute(sql`truncate ${songs}, ${songPlays}, ${songHeard}, ${siteSettings}`);
   rmSync(filesDir, { recursive: true, force: true });
   rmSync(catalogFile, { force: true });
   mkdirSync(filesDir);
@@ -306,6 +322,90 @@ describe("听歌's songs in the database and in memory", () => {
     expect(got).toEqual([
       { song: "s1", plays: 3 },
       { song: "s2", plays: 1 },
+    ]);
+  });
+});
+
+describe("热播榜", () => {
+  const DAY = 86_400_000;
+  const heardRows = async () =>
+    (await db.select().from(songHeard).orderBy(songHeard.day, songHeard.song)).map((r) => `${r.day} ${r.song} ${r.n}`);
+
+  it("counts each song heard by Beijing day, everyone's together, saved a minute at a time, nothing of who", async () => {
+    // 2026-11-15 10:00 in Beijing, and 23:30 the day before (15:30 UTC)
+    countHeard("s1", NOW);
+    countHeard("s1", NOW);
+    countHeard("s2", Date.UTC(2026, 10, 14, 15, 30));
+    await saveSongHeard();
+    countHeard("s1", NOW);
+    await saveSongHeard();
+    await saveSongHeard();
+    expect(await heardRows()).toEqual(["2026-11-14 s2 1", "2026-11-15 s1 3"]);
+    expect(Object.keys((await db.select().from(songHeard))[0]).sort()).toEqual(["day", "n", "song"]);
+  });
+
+  it("shows the most heard of the last 7 days, today with them, only songs that may be played; read again every 10 minutes", async () => {
+    putFiles(1, 2, 3);
+    writeCatalog(text([album("a1", "First", ["s1", "s2", "s3"])], { s1: entry(1), s2: entry(2), s3: entry(3) }));
+    expect(await syncCatalog(root, NOW)).toBe("updated");
+    countHeard("s1", NOW);
+    countHeard("s1", NOW);
+    countHeard("s2", NOW - DAY);
+    countHeard("s2", NOW - 6 * DAY);
+    countHeard("s2", NOW - 6 * DAY);
+    // a day too early, and a song no longer in the list
+    countHeard("s3", NOW - 7 * DAY);
+    countHeard("gone", NOW);
+    countHeard("gone", NOW);
+    countHeard("gone", NOW);
+    countHeard("gone", NOW);
+    await saveSongHeard();
+    expect(await hotSongs(NOW)).toEqual([
+      { song: "s2", n: 3 },
+      { song: "s1", n: 2 },
+    ]);
+    countHeard("s1", NOW);
+    countHeard("s1", NOW);
+    await saveSongHeard();
+    // as it was read, for 10 minutes
+    expect(await hotSongs(NOW + HOT_READ_MS - 1)).toEqual([
+      { song: "s2", n: 3 },
+      { song: "s1", n: 2 },
+    ]);
+    expect(await hotSongs(NOW + HOT_READ_MS)).toEqual([
+      { song: "s1", n: 4 },
+      { song: "s2", n: 3 },
+    ]);
+  });
+
+  it("shows 30 songs at most, the same number by id", async () => {
+    const n = HOT_TOP + 3;
+    const ids = Array.from({ length: n }, (_, i) => `s${i + 1}`);
+    putFiles(...ids.map((_, i) => i + 1));
+    writeCatalog(text([album("a1", "First", ids)], Object.fromEntries(ids.map((id, i) => [id, entry(i + 1)]))));
+    expect(await syncCatalog(root, NOW)).toBe("updated");
+    for (const id of ids) countHeard(id, NOW);
+    countHeard("s33", NOW);
+    await saveSongHeard();
+    const got = await hotSongs(NOW);
+    expect(got).toHaveLength(HOT_TOP);
+    expect(got[0]).toEqual({ song: "s33", n: 2 });
+    expect(got.slice(1, 4).map((h) => h.song)).toEqual(["s1", "s10", "s11"]);
+  });
+
+  it("keeps only the days it still counts, and one more", async () => {
+    for (let d = 0; d < 10; d++) countHeard("s1", NOW - d * DAY);
+    await saveSongHeard();
+    await pruneSongHeard(NOW);
+    expect(await heardRows()).toEqual([
+      "2026-11-08 s1 1",
+      "2026-11-09 s1 1",
+      "2026-11-10 s1 1",
+      "2026-11-11 s1 1",
+      "2026-11-12 s1 1",
+      "2026-11-13 s1 1",
+      "2026-11-14 s1 1",
+      "2026-11-15 s1 1",
     ]);
   });
 });

@@ -4,11 +4,13 @@ import {
   clock,
   DRIFT_RATE,
   freshSongs,
+  heardAfter,
   indexCatalog,
   isRx,
   keepUp,
   LISTEN_GRACE_MS,
   listeningUntil,
+  nextInList,
   nextOnAlbum,
   NEW_MAX,
   QUEUE_MAX,
@@ -18,6 +20,7 @@ import {
   RX_COUNT,
   RX_ROOM_FROM,
   RX_ROWS,
+  shuffleNext,
   songMatches,
   type ListenAlbum,
   type ListenCatalog,
@@ -133,6 +136,16 @@ describe("一起听's schedule", () => {
     expect(changeQueue(full, { add: "b" }, seconds, t0)).toBe("full");
   });
 
+  it("adds several at once (随机加) as far as the queue holds them, at once after all were over, and nothing for none", () => {
+    expect(changeQueue(room(["a"], t0), { adds: ["b", "c"] }, seconds, t0 + 1_000)).toEqual(room(["a", "b", "c"], t0, 0, 2));
+    const over = t0 + 200_000;
+    expect(changeQueue(room(["a"], t0), { adds: ["b", "c"] }, seconds, over)).toEqual(room(["b", "c"], over + ROOM_LEAD_MS, 0, 2));
+    const nearly = room(Array.from({ length: QUEUE_MAX - 2 }, () => "a"), null);
+    expect(changeQueue(nearly, { adds: ["b", "c", "z"] }, seconds, t0)).toMatchObject({ queue: [...nearly.queue, "b", "c"] });
+    expect(changeQueue(room(Array.from({ length: QUEUE_MAX }, () => "a"), null), { adds: ["b"] }, seconds, t0)).toBe("full");
+    expect(changeQueue(room(["a"], t0), { adds: [] }, seconds, t0)).toBe("same");
+  });
+
   it("keeps a phone in step: a little faster or slower when a little off, until close, and a jump when far off", () => {
     expect(keepUp(0.1)).toEqual({ rate: 1 });
     expect(keepUp(0.4)).toEqual({ rate: 1 - DRIFT_RATE });
@@ -150,5 +163,47 @@ describe("一起听's schedule", () => {
     expect(RX_ROOM_FROM).toBe(RX_ROWS[0] + RX_ROWS[1]);
     expect([0, 18, 5].map(isRx)).toEqual([true, true, true]);
     expect([-1, 19, 1.5, "3", null].map(isRx)).toEqual([false, false, false, false, false]);
+  });
+});
+
+describe("收藏, 热播榜 and 随机播放", () => {
+  it("go on to the next song of a list, and to nothing after its last or for a song not in it", () => {
+    expect(nextInList(["a", "b", "c"], "a")).toBe("b");
+    expect(nextInList(["a", "b", "c"], "c")).toBeNull();
+    expect(nextInList(["a", "b"], "z")).toBeNull();
+  });
+
+  it("shuffle: no song again until all of the list played, then a new round, never the one playing", () => {
+    const ids = ["a", "b", "c", "d"];
+    const seen: string[] = [];
+    let now = "a";
+    const played = new Set([now]);
+    for (let i = 0; i < 3; i++) {
+      const pick = shuffleNext(ids, now, played)!;
+      expect(pick.fresh).toBe(false);
+      expect(pick.next).not.toBe(now);
+      expect(played.has(pick.next)).toBe(false);
+      seen.push(pick.next);
+      played.add(pick.next);
+      now = pick.next;
+    }
+    expect(new Set(seen)).toEqual(new Set(["b", "c", "d"]));
+    // all played: a new round, any but the one playing
+    const again = shuffleNext(ids, now, played, () => 0.99)!;
+    expect(again.fresh).toBe(true);
+    expect(again.next).not.toBe(now);
+    // the pick is as random says: the first, or the last, of those left
+    expect(shuffleNext(ids, "a", new Set(["a"]), () => 0)?.next).toBe("b");
+    expect(shuffleNext(ids, "a", new Set(["a"]), () => 0.999999)?.next).toBe("d");
+    // a list of one: nothing else to go to
+    expect(shuffleNext(["a"], "a", new Set())).toBeNull();
+    expect(shuffleNext([], "a", new Set())).toBeNull();
+  });
+
+  it("count a song heard after 30 seconds of it, a shorter one all but its last second", () => {
+    expect(heardAfter(200)).toBe(30);
+    expect(heardAfter(31)).toBe(30);
+    expect(heardAfter(20)).toBe(19);
+    expect(heardAfter(0.5)).toBe(0);
   });
 });
