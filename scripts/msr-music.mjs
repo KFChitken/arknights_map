@@ -5,7 +5,8 @@
 //   {
 //     v: 1,
 //     updated: "<ISO time of the run that wrote it>",
-//     albums: [{ id: "<album cid>", name, order: 0, songs: ["<song cid>", …] }],      the site's order, newest first
+//     albums: [{ id: "<album cid>", name, order: 0, songs: ["<song cid>", …],         the site's order, newest first
+//                cover: "<16 hex>.jpg" }],
 //     songs: { "<song cid>": { name, album: "<album cid>", artists: [...], seconds: 158.27,
 //                              file: "<16 hex>.m4a", bytes, game: "arknights", added: "<ISO time>",
 //                              lite: "<16 hex>.m4a", liteBytes } }
@@ -13,7 +14,8 @@
 //
 // lite is the song's smaller copy (省流量, 48 kbps HE-AAC) that scripts/make-lite-music.mjs makes of its file, also in
 // music/files/; a song without one yet has neither. A song fetched again (its file was gone) loses it until the
-// next run makes it again.
+// next run makes it again. cover is the album's cover (300×300 JPEG) that scripts/fetch-msr-covers.mjs makes of the
+// site's, also in music/files/; an album without one yet has none.
 //
 // Nothing is ever taken out: a song or an album the site no longer lists stays, with its file, as rooms and
 // declarations may still point at it. Albums the site no longer lists come after the others, in their old order.
@@ -127,7 +129,10 @@ export function orderAlbums(catalog, siteAlbums) {
   return catalog;
 }
 
-/** Albums, songs and their bytes in the catalogue; lite: how many have a smaller copy, liteBytes: theirs */
+/**
+ * Albums, songs and their bytes in the catalogue; lite: how many have a smaller copy, liteBytes: theirs; covers: how
+ * many albums have their cover
+ */
 export function totals(catalog) {
   const songs = Object.values(catalog.songs);
   const lite = songs.filter((s) => s.lite);
@@ -137,6 +142,7 @@ export function totals(catalog) {
     bytes: songs.reduce((n, s) => n + (s.bytes || 0), 0),
     lite: lite.length,
     liteBytes: lite.reduce((n, s) => n + (s.liteBytes || 0), 0),
+    covers: catalog.albums.filter((a) => a.cover).length,
   };
 }
 
@@ -195,5 +201,59 @@ export function liteProblem(probe, seconds) {
   if (Number(a.channels) !== 2) return `${a.channels} channels`;
   const d = Number(probe?.format?.duration);
   if (!(Math.abs(d - seconds) <= 1)) return `${d} s long, the song ${seconds} s`;
+  return null;
+}
+
+// ---- each album's cover (scripts/fetch-msr-covers.mjs) ----
+
+/** A cover as the covers script stores it: 300×300 JPEG, named by the first 16 hex digits of its content's sha256 */
+export const COVER_SIZE = 300;
+export const isCoverName = (name) => typeof name === "string" && /^[0-9a-f]{16}\.jpg$/.test(name);
+
+/** The site's own hosts, the only ones a cover is downloaded from */
+const SITE_HOSTS = /(^|\.)(hycdn\.cn|hypergryph\.com)$/;
+
+/** The albums to get the cover of, in the catalogue's order: they have none, or its file is gone */
+export function albumsToCover(catalog, hasFile) {
+  return catalog.albums.filter((a) => isCid(a.id) && !(isCoverName(a.cover) && hasFile(a.cover))).map((a) => a.id);
+}
+
+/** An album's cover link as the site gives it (in its list of albums, or the album's detail): https on its own hosts, or null */
+export function coverSource(entry) {
+  try {
+    const url = new URL(entry?.coverUrl ?? "");
+    return url.protocol === "https:" && SITE_HOSTS.test(url.hostname) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An album's cover, into the catalogue (the fetch keeps it as it is: scripts/fetch-msr-music.mjs) */
+export function addCover(catalog, id, file) {
+  const a = catalog.albums.find((x) => x.id === id);
+  if (!a) throw new Error(`no album ${id} in the catalogue`);
+  a.cover = file;
+  return catalog;
+}
+
+/**
+ * What sort of picture bytes are, by how they start: the one ffmpeg demuxer the covers script lets read them, so a file
+ * of another kind (a playlist, say, that would have ffmpeg open other files) is never opened as one; null: none of those
+ */
+export function pictureKind(bytes) {
+  const at = (from, ...want) => want.every((b, i) => bytes[from + i] === b);
+  if (at(0, 0xff, 0xd8, 0xff)) return "jpeg_pipe";
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "png_pipe";
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "webp_pipe";
+  return null;
+}
+
+/** Why a made cover will not do, from what ffprobe says of it (-show_entries stream=codec_type,codec_name,width,height -of json); null: it will */
+export function coverProblem(probe) {
+  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
+  if (streams.length !== 1 || streams[0].codec_type !== "video") return `${streams.length} streams, not one picture`;
+  const p = streams[0];
+  if (p.codec_name !== "mjpeg") return `${p.codec_name}, not JPEG`;
+  if (Number(p.width) !== COVER_SIZE || Number(p.height) !== COVER_SIZE) return `${p.width}×${p.height}, not ${COVER_SIZE}×${COVER_SIZE}`;
   return null;
 }

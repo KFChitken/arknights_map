@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { and, asc, desc, eq, gt, isNull, notInArray, sql } from "drizzle-orm";
-import { freshSongs, isSongId, SAID_MIN, SAID_TOP, SONG_FILE, type ListenAlbum, type ListenCatalog, type SongSaid } from "../listen";
+import { COVER_FILE, freshSongs, isSongId, SAID_MIN, SAID_TOP, SONG_FILE, type ListenAlbum, type ListenCatalog, type SongSaid } from "../listen";
 import { db } from "./db";
 import { MUSIC_DIR } from "./env";
 import { onReload, reloadEverywhere } from "./live";
@@ -22,8 +22,8 @@ import { errorCode, logError, note } from "./signals";
  */
 
 /**
- * A song the server plays: its file, its smaller copy for a slow line (省流量; null: none yet), how long it is, and its
- * album's name for the lock screen
+ * A song the server plays: its file, its smaller copy for a slow line (省流量; null: none yet), how long it is, its
+ * album's name for the lock screen, and the album's cover (null: none yet)
  */
 export type HeldSong = {
   id: string;
@@ -33,6 +33,7 @@ export type HeldSong = {
   lite: string | null;
   albumId: string;
   album: string;
+  cover: string | null;
   artists: string[];
 };
 type Held = {
@@ -78,8 +79,9 @@ type Row = typeof songs.$inferInsert;
 
 /**
  * The songs of a catalogue's text whose file is among those present, in the site's order: each album's place, each
- * song's on it; with its smaller copy (lite, scripts/make-lite-music.mjs) where that is present too. Throws when it is
- * not a catalogue this reads; a song that makes no sense is left out.
+ * song's on it; with its smaller copy (lite, scripts/make-lite-music.mjs) and its album's cover
+ * (scripts/fetch-msr-covers.mjs) where those are present too. Throws when it is not a catalogue this reads; a song
+ * that makes no sense is left out.
  */
 export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
   const c = JSON.parse(text) as { v?: unknown; albums?: unknown; songs?: unknown };
@@ -90,8 +92,9 @@ export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
   const rows: Row[] = [];
   const seen = new Set<string>();
   c.albums.forEach((a: unknown, order: number) => {
-    const album = a && typeof a === "object" ? (a as { id?: unknown; name?: unknown; songs?: unknown }) : {};
+    const album = a && typeof a === "object" ? (a as { id?: unknown; name?: unknown; songs?: unknown; cover?: unknown }) : {};
     if (!isSongId(album.id) || typeof album.name !== "string" || !album.name.trim() || !Array.isArray(album.songs)) return;
+    const cover = typeof album.cover === "string" && COVER_FILE.test(album.cover) && present.has(album.cover) ? album.cover : null;
     let track = 0;
     for (const id of album.songs) {
       if (!isSongId(id) || seen.has(id) || !Object.hasOwn(all, id)) continue;
@@ -118,6 +121,7 @@ export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
         file,
         bytes,
         liteFile: lite,
+        coverFile: cover,
         albumOrder: order,
         track: track++,
         addedAt: new Date(added),
@@ -147,6 +151,7 @@ async function writeSongs(rows: Row[], now: number) {
             file: sql`excluded.file`,
             bytes: sql`excluded.bytes`,
             liteFile: sql`excluded.lite_file`,
+            coverFile: sql`excluded.cover_file`,
             albumOrder: sql`excluded.album_order`,
             track: sql`excluded.track`,
             addedAt: sql`excluded.added_at`,
@@ -229,6 +234,7 @@ export function loadSongs(): Promise<void> {
             lite: songs.liteFile,
             albumId: songs.albumId,
             album: songs.album,
+            cover: songs.coverFile,
             artists: songs.artists,
           })
           .from(songs)
@@ -255,7 +261,7 @@ function listOf(rows: HeldSong[]) {
   const byId = new Map<string, HeldSong>();
   for (const r of rows) {
     let album = albums.at(-1);
-    if (album?.id !== r.albumId) albums.push((album = { id: r.albumId, name: r.album, songs: [] }));
+    if (album?.id !== r.albumId) albums.push((album = { id: r.albumId, name: r.album, songs: [], ...(r.cover ? { cover: r.cover } : {}) }));
     const own = JSON.stringify(r.artists);
     album.songs.push(own === usual ? { id: r.id, name: r.name, seconds: r.seconds } : { id: r.id, name: r.name, seconds: r.seconds, artists: r.artists });
     byId.set(r.id, r);

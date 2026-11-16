@@ -17,7 +17,11 @@
 #
 #   30 4 * * 1 $HOME/arknights_map/scripts/fetch-music.sh >> $HOME/music-fetch.log 2>&1; $HOME/arknights_map/scripts/fetch-music.sh lite >> $HOME/music-fetch.log 2>&1
 #
-# The container's name keeps two runs from going at once, the fetch and lite too (both write the catalogue).
+# With covers first, it gets each album's cover instead (scripts/fetch-msr-covers.mjs): covers --dry-run,
+# covers --limit 3, covers; once they are wanted, `; …/fetch-music.sh covers >> $HOME/music-fetch.log 2>&1` at the
+# end of the weekly line gets those of new albums too.
+#
+# The container's name keeps two runs from going at once, the fetch, lite and covers too (all write the catalogue).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT=fetch-msr-music.mjs
@@ -26,6 +30,9 @@ if [ "${1:-}" = lite ]; then
   shift
   SCRIPT=make-lite-music.mjs
   PACKAGES="ffmpeg fdkaac"
+elif [ "${1:-}" = covers ]; then
+  shift
+  SCRIPT=fetch-msr-covers.mjs
 fi
 mkdir -p "$DIR/music"
 echo "== $(date '+%F %T') ${SCRIPT%.mjs} $*"

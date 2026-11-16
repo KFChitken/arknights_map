@@ -1,10 +1,12 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- the albums' covers, small JPEGs of our own, which next/image would only copy */
 
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import {
   clock,
+  coverLink,
   INVITES_PER_DAY,
   LISTEN_FULL,
   RX_ROOM_FROM,
@@ -111,7 +113,10 @@ export default function ListenPanel({
     loadSongs();
     markIntro("opened");
   }, []);
-  const foot = <p className="lp-foot">{T.listen.copyright}</p>;
+  // the covers' too, once there are some
+  const list = useListenSongs();
+  const covers = list.state === "ok" && list.catalog.albums.some((a) => a.cover);
+  const foot = <p className="lp-foot">{covers ? T.listen.copyrightCovers : T.listen.copyright}</p>;
   const body = <ListenBody paused={paused} roomMax={roomMax} mode={mode} tab={tab} onTab={onTab} acts={acts} />;
   if (!wide) {
     return (
@@ -258,9 +263,7 @@ function Player({ paused }: { paused: boolean }) {
   const note = v.problem ? v.problem.message : on && v.buffering ? T.listen.buffering : v.tap ? T.listen.tapToGo : null;
   return (
     <div className="lp-player">
-      <span className="lp-cover" aria-hidden="true">
-        {T.listen.cover}
-      </span>
+      <PlayerCover key={t.album.cover ?? ""} file={t.album.cover} />
       <span className="lp-what">
         <b>{t.name}</b>
         <small>
@@ -302,6 +305,26 @@ function Player({ paused }: { paused: boolean }) {
       )}
     </div>
   );
+}
+
+/** The album's cover by the song playing; without one, or should it not come, a block for the game */
+function PlayerCover({ file }: { file: string | undefined }) {
+  const [broken, setBroken] = useState(false);
+  if (!file || broken) {
+    return (
+      <span className="lp-cover" aria-hidden="true">
+        {T.listen.cover}
+      </span>
+    );
+  }
+  return <img className="lp-cover" src={coverLink(file)} alt="" width={40} height={40} onError={() => setBroken(true)} />;
+}
+
+/** An album's cover by its name in the list, fetched as it comes near (a phone gets those it shows); none should it not come */
+function AlbumCover({ file }: { file: string }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+  return <img src={coverLink(file)} alt="" width={28} height={28} loading="lazy" decoding="async" onError={() => setBroken(true)} />;
 }
 
 /** The first time: what is kept of it, until 知道了 (in this browser) */
@@ -911,7 +934,10 @@ function SongList({
       )}
       {groups.slice(0, shown).map((g) => (
         <section key={g.album.id} className="lp-album">
-          <h3>{g.album.name}</h3>
+          <h3>
+            {g.album.cover && <AlbumCover key={g.album.cover} file={g.album.cover} />}
+            {g.album.name}
+          </h3>
           {g.songs.map((t) => row(t, t.id))}
         </section>
       ))}

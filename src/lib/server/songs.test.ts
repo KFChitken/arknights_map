@@ -82,6 +82,7 @@ describe("听歌's catalogue, read", () => {
     ]);
     expect(got[1]).toMatchObject({ name: "Spaced", artists: ["A", "B"], seconds: 200.13, file: f(1), bytes: 1001, game: "arknights", goneAt: null });
     expect(got[1].liteFile).toBeNull();
+    expect(got[1].coverFile).toBeNull();
     expect(got[1].addedAt).toEqual(new Date("2026-11-15T00:00:00.000Z"));
   });
 
@@ -241,6 +242,56 @@ describe("听歌's songs in the database and in memory", () => {
     writeCatalog(text([album("a1", "First", ["s1"])], { s1: entry(1) }));
     expect(await syncCatalog(root, NOW + 3)).toBe("updated");
     expect((await songList()).catalog.lite).toBeUndefined();
+  });
+
+  it("carry each album's cover once its file is there, in the list and for the lock screen", async () => {
+    const c = (n: number) => `${n.toString(16).padStart(16, "0")}.jpg`;
+    const putCovers = (...ns: number[]) => {
+      for (const n of ns) writeFileSync(path.join(filesDir, c(n)), "x");
+      touch(filesDir);
+    };
+    putFiles(1, 2, 3, 4);
+    putCovers(1, 3);
+    writeCatalog(
+      text(
+        [
+          { ...album("a1", "First", ["s1", "s2"]), cover: c(1) },
+          // its cover not there yet, one whose name makes no sense though its file is there, and none
+          { ...album("a2", "Second", ["s3"]), cover: c(2) },
+          { ...album("a3", "Third", ["s4"]), cover: "../" + c(3) },
+        ],
+        { s1: entry(1), s2: entry(2), s3: entry(3), s4: entry(4) },
+      ),
+    );
+    expect(await syncCatalog(root, NOW)).toBe("updated");
+    expect((await db.select({ id: songs.id, cover: songs.coverFile }).from(songs).orderBy(songs.albumOrder, songs.track)).map((r) => [r.id, r.cover])).toEqual([
+      ["s1", c(1)],
+      ["s2", c(1)],
+      ["s3", null],
+      ["s4", null],
+    ]);
+    expect((await songOf("s2"))?.cover).toBe(c(1));
+    expect((await songOf("s3"))?.cover).toBeNull();
+    const list = await songList();
+    expect(list.catalog.albums.map((a) => [a.id, a.cover])).toEqual([
+      ["a1", c(1)],
+      ["a2", undefined],
+      ["a3", undefined],
+    ]);
+    expect(Object.keys(list.catalog.albums[1])).toEqual(["id", "name", "songs"]);
+    expect(list.json).not.toMatch(/m4a|bytes|file/);
+
+    // its cover got: read in with the files' folder changed, and the list changes with it
+    putCovers(2);
+    expect(await syncCatalog(root, NOW + 1)).toBe("updated");
+    expect((await songOf("s3"))?.cover).toBe(c(2));
+    expect((await songList()).etag).not.toBe(list.etag);
+    // and gone again: the songs play on, without one
+    rmSync(path.join(filesDir, c(1)));
+    touch(filesDir);
+    expect(await syncCatalog(root, NOW + 2)).toBe("updated");
+    expect(await songOf("s1")).toMatchObject({ file: f(1), cover: null });
+    expect((await songList()).catalog.albums[0].cover).toBeUndefined();
   });
 
   it("are counted as they are played, everyone's together, and added to song_plays a minute at a time", async () => {

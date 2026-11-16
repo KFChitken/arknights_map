@@ -3,6 +3,8 @@ import { fmt, T } from "@/i18n";
 import { isGray, onGrayChange } from "@/lib/grayMode";
 import {
   clock,
+  COVER_PX,
+  coverLink,
   DRIFT_OK_S,
   indexCatalog,
   isRx,
@@ -1751,12 +1753,23 @@ function handle(action: MediaSessionAction, fn: (() => void) | null) {
   } catch {}
 }
 
-/** What the lock screen shows (no cover), and its buttons: play and pause, and next where the album has one (in a room, for the host) */
+/**
+ * What the lock screen shows (the album's cover, once there is one), and its buttons: play and pause, and next where
+ * the album has one (in a room, for the host)
+ */
 function meta(track: ListenTrack | null) {
   const ms = session();
   if (!ms) return;
   try {
-    ms.metadata = track ? new MediaMetadata({ title: track.name, artist: track.artists.join(" / "), album: track.album.name }) : null;
+    const cover = track?.album.cover;
+    ms.metadata = track
+      ? new MediaMetadata({
+          title: track.name,
+          artist: track.artists.join(" / "),
+          album: track.album.name,
+          ...(cover ? { artwork: [{ src: coverLink(cover), sizes: `${COVER_PX}x${COVER_PX}`, type: "image/jpeg" }] } : {}),
+        })
+      : null;
   } catch {}
   const r = room.get();
   handle("play", track ? () => !isListening() && toggle() : null);

@@ -1553,6 +1553,7 @@ export const zh = {
     privacyLink: "隐私说明",
     privacyOk: "知道了",
     copyright: "歌曲版权归鹰角网络 · 塞壬唱片-MSR",
+    copyrightCovers: "歌曲和封面版权归鹰角网络 · 塞壬唱片-MSR",
     playSong: "放《{name}》",
     nowSong: "正在放《{name}》",
     tabs: { together: "一起听", ark: "方舟" },

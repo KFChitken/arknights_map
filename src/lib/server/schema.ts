@@ -1563,6 +1563,8 @@ export const songs = pgTable(
     bytes: integer("bytes").notNull(),
     /** Its smaller copy for a slow line (省流量, scripts/make-lite-music.mjs), in the same folder; null: none yet */
     liteFile: text("lite_file"),
+    /** Its album's cover (scripts/fetch-msr-covers.mjs), in the same folder, as every song of the album has; null: none yet */
+    coverFile: text("cover_file"),
     albumOrder: integer("album_order").notNull(),
     track: smallint("track").notNull(),
     addedAt: at("added_at").notNull(),

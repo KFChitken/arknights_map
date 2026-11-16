@@ -26,6 +26,9 @@ const FILE = "00000000000000aa.m4a";
 const BYTES = Buffer.from("0123456789abcdef");
 writeFileSync(path.join(env.dir, "files", FILE), BYTES);
 writeFileSync(path.join(env.dir, "catalog.json"), "{}");
+const COVER = "00000000000000cc.jpg";
+const PICTURE = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
+writeFileSync(path.join(env.dir, "files", COVER), PICTURE);
 
 const get = (file: string, query: string, headers: Record<string, string> = {}) =>
   GET(new Request(`http://localhost/music/${file}${query}`, { headers }), { params: Promise.resolve({ file }) });
@@ -60,6 +63,18 @@ describe("/music in development", () => {
     vi.stubEnv("LISTEN", "off");
     expect((await get(FILE, q)).status).toBe(403);
   });
+
+  it("serves an album's cover to anyone, with no link, kept a year; only one that is there", async () => {
+    // 听歌 off too: a cover is no song
+    vi.stubEnv("LISTEN", "off");
+    const got = await get(COVER, "");
+    expect([got.status, got.headers.get("content-type"), got.headers.get("cache-control")]).toEqual([200, "image/jpeg", "public, max-age=31536000, immutable"]);
+    expect(Buffer.from(await got.arrayBuffer())).toEqual(PICTURE);
+    expect((await get("00000000000000dd.jpg", "")).status).toBe(404);
+    for (const odd of ["00000000000000CC.jpg", "00000000000000cc.jpeg", "00000000000000cc.png", "..%2F00000000000000cc.jpg"]) {
+      expect((await get(odd, "")).status, odd).toBe(404);
+    }
+  });
 });
 
 describe("/music on the live site", () => {
@@ -67,5 +82,6 @@ describe("/music on the live site", () => {
     vi.stubEnv("LISTEN", "on");
     env.prod = true;
     expect((await get(FILE, query(musicLink(FILE)))).status).toBe(404);
+    expect((await get(COVER, "")).status).toBe(404);
   });
 });

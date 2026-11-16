@@ -91,9 +91,9 @@ zhoupmap.com, zhoupmap.com:8443 {
 	}
 	# 听歌's songs (src/lib/server/musicLinks.ts), straight from the server's folder (docker-compose.prod.yml mounts
 	# music/files at /srv/music), in ranges as the player asks: only at a link that carries ?k=<expiry>.<signature>,
-	# which the app checks first (/api/listen/ok, no database), and only a file that is there. Anything else under
-	# /music is a 404, and never reaches the site. To stop the songs going out at once, pause 听歌 in the 管理台
-	# (or LISTEN=off); to stop them for good, take this block out or move music/files away.
+	# which the app checks first (/api/listen/ok, no database), and only a file that is there; and the albums' covers.
+	# Anything else under /music is a 404, and never reaches the site. To stop the songs going out at once, pause 听歌
+	# in the 管理台 (or LISTEN=off); to stop them for good, take this block out or move music/files away.
 	handle /music/* {
 		@song {
 			path_regexp ^/music/[0-9a-f]{16}\.m4a$
@@ -118,6 +118,19 @@ zhoupmap.com, zhoupmap.com:8443 {
 				root * /srv
 				file_server
 			}
+		}
+		# the albums' covers beside them (scripts/fetch-msr-covers.mjs), 300×300 and named by their content: anyone
+		# may have them, with no link to check, kept a year; only a file that is there
+		@cover {
+			path_regexp ^/music/[0-9a-f]{16}\.jpg$
+			file {
+				root /srv
+			}
+		}
+		handle @cover {
+			header Cache-Control "public, max-age=31536000, immutable"
+			root * /srv
+			file_server
 		}
 		handle {
 			header Cache-Control "no-store"

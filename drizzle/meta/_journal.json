@@ -449,6 +449,13 @@
       "when": 1794792868160,
       "tag": "0064_song_lite",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794796358993,
+      "tag": "0065_song_cover",
+      "breakpoints": true
     }
   ]
 }

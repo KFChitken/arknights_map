@@ -1,18 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  addCover,
   addLite,
   addSong,
   albumsToCheck,
+  albumsToCover,
   clean,
   cleanList,
+  COVER_SIZE,
+  coverProblem,
+  coverSource,
   emptyCatalog,
   isArknights,
   isCid,
+  isCoverName,
   isFileName,
   keepAlbum,
   liteProblem,
   moovFirst,
   orderAlbums,
+  pictureKind,
   readCatalog,
   songsToFetch,
   songsToLighten,
@@ -140,7 +147,7 @@ describe("fetching the songs of the Monster Siren Records site", () => {
     // once 5182 is looked at again, the song taken off still comes after the ones the site lists
     keepAlbum(catalog, details["5182"]);
     expect(catalog.albums[1].songs).toEqual(["306861", "880380", "953932"]);
-    expect(totals(catalog)).toEqual({ albums: 3, songs: 5, bytes: 5000, lite: 0, liteBytes: 0 });
+    expect(totals(catalog)).toEqual({ albums: 3, songs: 5, bytes: 5000, lite: 0, liteBytes: 0, covers: 0 });
   });
 
   it("fetches a song again whose file is gone, keeping when it first came", () => {
@@ -277,5 +284,115 @@ describe("making each song's smaller copy (省流量)", () => {
     expect(liteProblem({ ...PROBE, format: { duration: "120.1" } }, 158.34)).toMatch(/120.1 s long/);
     expect(liteProblem({ ...PROBE, format: {} }, 158.34)).toMatch(/NaN s long/);
     expect(liteProblem(null, 158.34)).toMatch(/0 streams/);
+  });
+});
+
+// scripts/fetch-msr-covers.mjs, without the site and ffmpeg: which albums get a cover, from where, and what will do as one
+
+const COVER = (n: number) => `${n.toString(16).padStart(16, "0")}.jpg`;
+
+describe("getting each album's cover", () => {
+  it("gets one for the albums that have none or whose file is gone, in the catalogue's order", () => {
+    const files = new Set<string>();
+    const catalog = emptyCatalog();
+    runOnce(catalog, SITE_ALBUMS, DETAILS, files, new Date("2026-11-16T19:00:00Z"));
+    const hasFile = (f: string) => files.has(f);
+    expect(albumsToCover(catalog, hasFile)).toEqual(["5182", "4527"]);
+
+    addCover(catalog, "4527", COVER(0xc1));
+    files.add(COVER(0xc1));
+    expect(catalog.albums.find((a) => a.id === "4527")).toEqual({ id: "4527", name: "明日方舟OST1", order: 1, songs: ["048703"], cover: COVER(0xc1) });
+    expect(albumsToCover(catalog, hasFile)).toEqual(["5182"]);
+    expect(totals(catalog)).toMatchObject({ albums: 2, covers: 1 });
+
+    // its file gone, or a name the script never makes: got again
+    files.delete(COVER(0xc1));
+    expect(albumsToCover(catalog, hasFile)).toEqual(["5182", "4527"]);
+    files.add(COVER(0xc1));
+    catalog.albums[1].cover = "../x.jpg";
+    files.add("../x.jpg");
+    expect(albumsToCover(catalog, hasFile)).toEqual(["5182", "4527"]);
+    expect(() => addCover(catalog, "7001", COVER(1))).toThrow();
+  });
+
+  it("keeps an album's cover through the weekly fetch, a new album and new names", () => {
+    const files = new Set<string>();
+    const catalog = emptyCatalog();
+    runOnce(catalog, SITE_ALBUMS, DETAILS, files, new Date("2026-11-16T19:00:00Z"));
+    addCover(catalog, "5182", COVER(0xd4));
+    files.add(COVER(0xd4));
+    // a week later a new album first, a song of 5182 gone (so its detail is asked for again), and 5182 renamed
+    files.delete(catalog.songs["880380"].file);
+    const albums: SiteAlbum[] = [{ cid: "9369", name: "时间啊，向前！" }, { ...SITE_ALBUMS[0], name: "卫戍协议OST" }, SITE_ALBUMS[2]];
+    const details: Record<string, SiteAlbumDetail> = {
+      ...DETAILS,
+      "9369": { cid: "9369", name: "时间啊，向前！", belong: "arknights", songs: [{ cid: "119501", name: "火与尘" }] },
+      "5182": { ...DETAILS["5182"], name: "卫戍协议OST" },
+    };
+    expect(runOnce(catalog, albums, details, files, new Date("2026-11-23T20:30:00Z"))).toEqual({ looked: ["9369", "5182"], fetched: ["119501", "880380"] });
+    expect(catalog.albums.map((a) => [a.id, a.order, a.name, a.cover])).toEqual([
+      ["9369", 0, "时间啊，向前！", undefined],
+      ["5182", 1, "卫戍协议OST", COVER(0xd4)],
+      ["4527", 2, "明日方舟OST1", undefined],
+    ]);
+    expect(albumsToCover(catalog, (f) => files.has(f))).toEqual(["9369", "4527"]);
+    // and through the catalogue's text, as each script reads what the one before wrote
+    expect(readCatalog(JSON.stringify(catalog)).albums[1].cover).toBe(COVER(0xd4));
+  });
+
+  it("downloads a cover only over https from the site's own hosts", () => {
+    for (const url of [
+      "https://web.hycdn.cn/siren/pic/20241018/0c4f4a0f3fa2a1b1a1ab3e1bd3c5c9f4.jpg",
+      "https://web.hycdn.cn/siren/pic/20200828/41d2fa2b3f1d4b1d0d4c7e1d6fbc8a31.png",
+      "https://monster-siren.hypergryph.com/x.jpg",
+      "https://hycdn.cn/x.jpg",
+    ]) {
+      expect(coverSource({ coverUrl: url }), url).toBe(url);
+    }
+    for (const url of [
+      "http://web.hycdn.cn/siren/pic/x.jpg",
+      "https://web.hycdn.cn.example.com/x.jpg",
+      "https://xhycdn.cn/x.jpg",
+      "https://example.com/web.hycdn.cn/x.jpg",
+      "file:///etc/passwd",
+      "data:image/png;base64,AAAA",
+      "/siren/pic/x.jpg",
+      "",
+    ]) {
+      expect(coverSource({ coverUrl: url }), url).toBeNull();
+    }
+    expect(coverSource({ coverUrl: 5 })).toBeNull();
+    expect(coverSource({})).toBeNull();
+    expect(coverSource(null)).toBeNull();
+    expect(coverSource(undefined)).toBeNull();
+  });
+
+  it("keeps as a cover only one JPEG picture of 300×300, named by its content", () => {
+    expect(COVER_SIZE).toBe(300);
+    const good = { streams: [{ codec_type: "video", codec_name: "mjpeg", width: 300, height: 300 }] };
+    expect(coverProblem(good)).toBeNull();
+    const one = (s: object) => ({ streams: [{ ...good.streams[0], ...s }] });
+    expect(coverProblem(one({ codec_name: "png" }))).toMatch(/png, not JPEG/);
+    expect(coverProblem(one({ width: 300, height: 299 }))).toMatch(/300×299, not 300×300/);
+    expect(coverProblem(one({ width: 600, height: 600 }))).toMatch(/600×600/);
+    expect(coverProblem(one({ codec_type: "audio" }))).toMatch(/not one picture/);
+    expect(coverProblem({ streams: [...good.streams, ...good.streams] })).toMatch(/2 streams/);
+    expect(coverProblem({ streams: [] })).toMatch(/0 streams/);
+    expect(coverProblem({})).toMatch(/0 streams/);
+    expect(coverProblem(null)).toMatch(/0 streams/);
+
+    // read only as the picture the bytes say they are, whatever the link's name
+    const bytes = (...b: (number | string)[]) => Uint8Array.from(b.flatMap((x) => (typeof x === "string" ? [...x].map((c) => c.charCodeAt(0)) : [x])));
+    expect(pictureKind(bytes(0xff, 0xd8, 0xff, 0xe0, 0, 0x10, "JFIF"))).toBe("jpeg_pipe");
+    expect(pictureKind(bytes(0x89, "PNG", 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, "IHDR"))).toBe("png_pipe");
+    expect(pictureKind(bytes("RIFF", 0x24, 0x10, 0, 0, "WEBPVP8 "))).toBe("webp_pipe");
+    for (const odd of [bytes("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n"), bytes("RIFF", 0, 0, 0, 0, "WAVEfmt "), bytes("GIF89a"), bytes(0xff, 0xd8), bytes("<html>"), bytes()]) {
+      expect(pictureKind(odd)).toBeNull();
+    }
+
+    expect(isCoverName("0123456789abcdef.jpg")).toBe(true);
+    for (const f of ["0123456789ABCDEF.jpg", "0123456789abcdef.png", "0123456789abcdef.m4a", "../0123456789abcdef.jpg", "123.jpg", null]) {
+      expect(isCoverName(f), String(f)).toBe(false);
+    }
   });
 });

@@ -21,6 +21,8 @@
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #2b2f3a, #5b6274);
   color: #fff; font-size: 11px; font-weight: 800;
 }
+/* the album's cover in its place, once there is one */
+img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06); }
 .lp-what { min-width: 0; line-height: 1.3; }
 .lp-what b, .lp-what small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lp-what b { font-size: 15px; }
@@ -56,7 +58,8 @@
 
 /* the songs: an album off screen is not laid out until it comes near */
 .lp-album { content-visibility: auto; contain-intrinsic-size: auto 360px; }
-.lp-album h3 { margin: 14px 0 2px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.lp-album h3 { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.lp-album h3 img { flex: none; width: 28px; height: 28px; border-radius: 6px; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06); }
 .lp-row {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 0; border: 0;
   border-bottom: 1px solid #f0f1f3; background: none; color: var(--ink); text-align: left;

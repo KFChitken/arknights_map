@@ -10,12 +10,16 @@ import type { PublicProfile } from "./profile";
 /** A song's id as the Monster Siren Records site gives it (its cid), and the file the fetch made of it */
 export const SONG_ID = /^[0-9A-Za-z_-]{1,32}$/;
 export const SONG_FILE = /^[0-9a-f]{16}\.m4a$/;
+/** An album's cover as scripts/fetch-msr-covers.mjs made it (300×300), beside the songs; anyone may have it, at coverLink */
+export const COVER_FILE = /^[0-9a-f]{16}\.jpg$/;
+export const COVER_PX = 300;
+export const coverLink = (file: string) => `/music/${file}`;
 export const isSongId = (id: unknown): id is string => typeof id === "string" && SONG_ID.test(id);
 
 /** A song in the list: artists only where they are not the list's usual ones (ListenCatalog.artists) */
 export type ListenSongRow = { id: string; name: string; seconds: number; artists?: string[] };
-/** An album, its songs in its own order */
-export type ListenAlbum = { id: string; name: string; songs: ListenSongRow[] };
+/** An album, its songs in its own order, and its cover (COVER_FILE) once there is one */
+export type ListenAlbum = { id: string; name: string; songs: ListenSongRow[]; cover?: string };
 /**
  * The whole list (GET /api/listen/songs): the albums in the site's order, newest first; the artists most songs have,
  * which the songs then leave out; 新歌, by id; and lite when songs have a smaller copy for a slow line (省流量)

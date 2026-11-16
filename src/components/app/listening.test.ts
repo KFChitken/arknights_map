@@ -128,7 +128,7 @@ const CATALOG: ListenCatalog = {
         { id: "s2", name: "Two", seconds: 120 },
       ],
     },
-    { id: "a2", name: "Second", songs: [{ id: "s3", name: "Three", seconds: 90 }] },
+    { id: "a2", name: "Second", songs: [{ id: "s3", name: "Three", seconds: 90 }], cover: "00000000000000c2.jpg" },
     { id: "a3", name: "Third", songs: [{ id: "s4", name: "Four", seconds: 80 }] },
   ],
   artists: ["塞壬唱片-MSR"],
@@ -498,6 +498,44 @@ describe("听歌 on the page", () => {
     await settle();
     expect(ops("play").at(-1)).toEqual({ song: "s1", at: 33, next: "s2" });
     expect(isListening()).toBe(true);
+  });
+
+  it("shows the song on the lock screen, with its album's cover once there is one", async () => {
+    // the browser's media session, as a phone has it, for this test only
+    const shown: (Record<string, unknown> | null)[] = [];
+    const handlers = new Map<string, unknown>();
+    const media = {
+      playbackState: "none",
+      set metadata(m: { init: Record<string, unknown> } | null) {
+        shown.push(m && m.init);
+      },
+      setActionHandler: (action: string, fn: unknown) => void handlers.set(action, fn),
+      setPositionState: () => {},
+    };
+    const nav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    Object.defineProperty(globalThis, "navigator", { value: { mediaSession: media }, configurable: true });
+    const g = globalThis as { MediaMetadata?: unknown };
+    g.MediaMetadata = class {
+      constructor(public init: Record<string, unknown>) {}
+    };
+    try {
+      playTrack(track("s3"));
+      await settle();
+      expect(shown.at(-1)).toEqual({
+        title: "Three",
+        artist: "塞壬唱片-MSR",
+        album: "Second",
+        artwork: [{ src: "/music/00000000000000c2.jpg", sizes: "300x300", type: "image/jpeg" }],
+      });
+      expect(handlers.get("play")).toBeTypeOf("function");
+      // an album with no cover yet: none, rather than the one before
+      playTrack(track("s1"));
+      await settle();
+      expect(shown.at(-1)).toEqual({ title: "One", artist: "塞壬唱片-MSR", album: "First" });
+    } finally {
+      if (nav) Object.defineProperty(globalThis, "navigator", nav);
+      delete g.MediaMetadata;
+    }
   });
 
   it("shows 新 until the panel is opened, and the line on privacy until it is read", () => {
