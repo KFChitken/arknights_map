@@ -543,6 +543,32 @@ describe("一起听's rooms", () => {
     expect(toldOf(bHeard, "state").map((s) => s.how)).toEqual(["add", "add", "add", "add"]);
   });
 
+  it("let the host alone move everyone to a second of the song playing (its last at most), told as a seek, nothing between songs", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b } = await cast();
+    const room = await opened(host, b);
+    await goIn(b);
+    const bHeard = hear(b);
+    expect(await post(b, "queue", { seek: 30 })).toMatchObject({ status: 403, body: { error: "只有发起人能点。" } });
+    for (const seek of [-1, "30", 86_400, null]) expect((await post(host, "queue", { seek })).status, String(seek)).toBe(400);
+    // not started, then within its first second: nothing plays yet, nothing changes
+    expect((await post(host, "queue", { seek: 30 })).body!.room).toMatchObject({ startedAt: null, version: 1 });
+    const started = (await post(host, "queue", { start: true })).body!.room as ListenRoom;
+    expect((await post(host, "queue", { seek: 30 })).body!.room).toMatchObject({ startedAt: started.startedAt, version: 2 });
+
+    vi.setSystemTime(started.startedAt! + 40_000);
+    const moved = (await post(host, "queue", { seek: 120.5 })).body!.room as ListenRoom;
+    expect(moved).toMatchObject({ queue: ["s1"], idx: 0, startedAt: Date.now() - 120_500, version: 3 });
+    // s1 lasts 200 s: past its end is its last second
+    expect((await post(host, "queue", { seek: 5_000 })).body!.room).toMatchObject({ startedAt: Date.now() - 199_000, version: 4 });
+    const told = toldOf(bHeard, "state");
+    expect(told.map((s) => s.how)).toEqual(["start", "seek", "seek"]);
+    expect(told[1]).toEqual({ t: "state", room: room.id, how: "seek", queue: ["s1"], idx: 0, startedAt: moved.startedAt, version: 3 });
+    // over: nothing to move
+    vi.setSystemTime(Date.now() + 2_000);
+    expect((await post(host, "queue", { seek: 10 })).body!.room).toMatchObject({ version: 4 });
+  });
+
   it("take 短评 by their number alone, one every 3 s and 10 a song each, sent together to everyone in it a second later", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { host, b } = await cast();

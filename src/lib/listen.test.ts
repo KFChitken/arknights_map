@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  barSecond,
   changeQueue,
   clock,
   DRIFT_RATE,
@@ -7,7 +8,9 @@ import {
   heardAfter,
   indexCatalog,
   isRx,
+  isSeek,
   keepUp,
+  keySecond,
   LISTEN_GRACE_MS,
   listeningUntil,
   nextInList,
@@ -20,6 +23,8 @@ import {
   RX_COUNT,
   RX_ROOM_FROM,
   RX_ROWS,
+  SEEK_KEY_S,
+  SEEK_PAGE_S,
   shuffleNext,
   songMatches,
   type ListenAlbum,
@@ -144,6 +149,53 @@ describe("一起听's schedule", () => {
     expect(changeQueue(nearly, { adds: ["b", "c", "z"] }, seconds, t0)).toMatchObject({ queue: [...nearly.queue, "b", "c"] });
     expect(changeQueue(room(Array.from({ length: QUEUE_MAX }, () => "a"), null), { adds: ["b"] }, seconds, t0)).toBe("full");
     expect(changeQueue(room(["a"], t0), { adds: [] }, seconds, t0)).toBe("same");
+  });
+
+  it("moves the song playing to the host's second (its last at most), the songs after it with it, and nothing with none playing", () => {
+    // a plays from t0; at 40 s the host goes to 75 s of it
+    const now = t0 + 40_000;
+    const to = changeQueue(room(["a", "b"], t0), { seek: 75 }, seconds, now);
+    expect(to).toEqual(room(["a", "b"], now - 75_000, 0, 2));
+    expect(roomAt(to as RoomSchedule, seconds, now)).toEqual({ phase: "playing", i: 0, start: now - 75_000, offset: 75 });
+    // b after it, ROOM_GAP_MS after a's new end
+    expect(roomAt(to as RoomSchedule, seconds, now + 25_000 + ROOM_GAP_MS + 1_000)).toMatchObject({ phase: "playing", i: 1, offset: 1 });
+    // back to its start, and past its end: its last second
+    expect(changeQueue(room(["a", "b"], t0), { seek: 0 }, seconds, now)).toEqual(room(["a", "b"], now, 0, 2));
+    expect(changeQueue(room(["a", "b"], t0), { seek: 500 }, seconds, now)).toEqual(room(["a", "b"], now - 99_000, 0, 2));
+    // b playing: a is dropped, as for any change
+    const inB = t0 + 100_000 + ROOM_GAP_MS + 10_000;
+    expect(changeQueue(room(["a", "b"], t0), { seek: 30 }, seconds, inB)).toEqual(room(["b"], inB - 30_000, 0, 2));
+    // before the start, between two songs, after the last
+    expect(changeQueue(room(["a", "b"], null), { seek: 10 }, seconds, now)).toBe("same");
+    expect(changeQueue(room(["a", "b"], t0 + 60_000), { seek: 10 }, seconds, now)).toBe("same");
+    expect(changeQueue(room(["a", "b"], t0), { seek: 10 }, seconds, t0 + 101_000)).toBe("same");
+    expect(changeQueue(room(["a", "b"], t0), { seek: 10 }, seconds, t0 + 500_000)).toBe("same");
+    expect([0, 12.5, 3599, 86_399].map(isSeek)).toEqual([true, true, true, true]);
+    expect([-1, 86_400, Number.NaN, Number.POSITIVE_INFINITY, "10", null, undefined].map(isSeek)).toEqual([false, false, false, false, false, false, false]);
+  });
+
+  it("finds the second under a finger on the bar, and where its keys go, its start to its last second", () => {
+    // a bar from 100 px, 200 px wide, for a song of 180 seconds
+    expect(barSecond(100, 100, 200, 180)).toBe(0);
+    expect(barSecond(200, 100, 200, 180)).toBe(90);
+    expect(barSecond(150, 100, 200, 180)).toBe(45);
+    expect(barSecond(300, 100, 200, 180)).toBe(179);
+    expect(barSecond(20, 100, 200, 180)).toBe(0);
+    expect(barSecond(900, 100, 200, 180)).toBe(179);
+    expect(barSecond(150, 100, 0, 180)).toBe(0);
+    expect(barSecond(150, 100, 200, 0)).toBe(0);
+    expect(barSecond(Number.NaN, 100, 200, 180)).toBe(0);
+    expect(keySecond("ArrowRight", 60, 180)).toBe(60 + SEEK_KEY_S);
+    expect(keySecond("ArrowUp", 60, 180)).toBe(60 + SEEK_KEY_S);
+    expect(keySecond("ArrowLeft", 60, 180)).toBe(60 - SEEK_KEY_S);
+    expect(keySecond("ArrowDown", 2, 180)).toBe(0);
+    expect(keySecond("PageUp", 60, 180)).toBe(60 + SEEK_PAGE_S);
+    expect(keySecond("PageUp", 170, 180)).toBe(179);
+    expect(keySecond("PageDown", 60, 180)).toBe(60 - SEEK_PAGE_S);
+    expect(keySecond("Home", 60, 180)).toBe(0);
+    expect(keySecond("End", 60, 180)).toBe(179);
+    expect(keySecond("Enter", 60, 180)).toBeNull();
+    expect(keySecond("toString", 60, 180)).toBeNull();
   });
 
   it("keeps a phone in step: a little faster or slower when a little off, until close, and a jump when far off", () => {

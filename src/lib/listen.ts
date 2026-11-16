@@ -130,6 +130,48 @@ export function clock(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** The bar under a song, from its keys: ← → (↓ ↑) this many seconds, PageDown PageUp SEEK_PAGE_S */
+export const SEEK_KEY_S = 5;
+export const SEEK_PAGE_S = 30;
+
+/** The second of a song this long under x on its bar (from left, width wide): its start to its last second */
+export function barSecond(x: number, left: number, width: number, seconds: number): number {
+  if (!(width > 0) || !(seconds > 0) || !Number.isFinite(x)) return 0;
+  const f = Math.min(1, Math.max(0, (x - left) / width));
+  return Math.min(f * seconds, Math.max(0, seconds - 1));
+}
+
+/** The second a key on the bar goes to from at (null: not one of its keys): Home its start, End its last second */
+export function keySecond(key: string, at: number, seconds: number): number | null {
+  const last = Math.max(0, seconds - 1);
+  let to: number;
+  switch (key) {
+    case "ArrowLeft":
+    case "ArrowDown":
+      to = at - SEEK_KEY_S;
+      break;
+    case "ArrowRight":
+    case "ArrowUp":
+      to = at + SEEK_KEY_S;
+      break;
+    case "PageDown":
+      to = at - SEEK_PAGE_S;
+      break;
+    case "PageUp":
+      to = at + SEEK_PAGE_S;
+      break;
+    case "Home":
+      to = 0;
+      break;
+    case "End":
+      to = last;
+      break;
+    default:
+      return null;
+  }
+  return Math.min(Math.max(0, to), last);
+}
+
 /**
  * Someone listening (listen_now) counts until the song they play should have ended, and this much after: a player
  * whose page stopped telling (locked, closed) drops out within it
@@ -255,12 +297,14 @@ export function roomAt(s: Pick<RoomSchedule, "queue" | "idx" | "startedAt">, sec
 }
 
 /**
- * What the host may do to a room's songs: start it, skip to the next, start this one again, add one at the end, or
- * add RANDOM_ADD at random (随机加, the server picks them)
+ * What the host may do to a room's songs: start it, skip to the next, start this one again, add one at the end, add
+ * RANDOM_ADD at random (随机加, the server picks them), or go to a second of the one playing (seek, everyone with it)
  */
-export type QueueChange = "start" | "next" | "restart" | "random" | { add: string };
+export type QueueChange = "start" | "next" | "restart" | "random" | { add: string } | { seek: number };
 /** A change as the server makes it: 随机加's songs picked (adds) */
 export type QueueEdit = Exclude<QueueChange, "random"> | { adds: string[] };
+/** Seconds into a song the host may go to (seek): a number of them, never past a day */
+export const isSeek = (s: unknown): s is number => typeof s === "number" && Number.isFinite(s) && s >= 0 && s < 24 * 3600;
 /** Why a change does nothing: no next song, the queue full (QUEUE_MAX), or nothing to change (started already) */
 export type QueueRefusal = "noNext" | "full" | "same";
 
@@ -268,7 +312,9 @@ export type QueueRefusal = "noNext" | "full" | "same";
  * The room's songs after the host's change at now. What has played is dropped first, the one playing (the last, once
  * all are over) staying first with its start, so every phone goes on as it was. A song skipped to or started again,
  * the room started, or one added when all were over, begins at now and ROOM_LEAD_MS; one added otherwise just waits
- * its turn. Several added (随机加) go in as far as QUEUE_MAX lets them; none at all changes nothing.
+ * its turn. Several added (随机加) go in as far as QUEUE_MAX lets them; none at all changes nothing. A seek moves the
+ * start of the one playing so that it is at that second now (its last at most), the songs after it with it; with none
+ * playing (before the start, between two songs, after the last) it changes nothing.
  */
 export function changeQueue(s: RoomSchedule, change: QueueEdit, seconds: (id: string) => number, now: number): RoomSchedule | QueueRefusal {
   const at = roomAt(s, seconds, now);
@@ -286,6 +332,12 @@ export function changeQueue(s: RoomSchedule, change: QueueEdit, seconds: (id: st
   if (change === "start") return at.phase === "ready" ? { queue, idx: 0, startedAt: lead, version } : "same";
   if (change === "restart") return at.phase === "ready" || !queue.length ? "same" : { queue, idx: 0, startedAt: lead, version };
   if (change === "next") return at.phase === "playing" && queue.length > 1 ? { queue: queue.slice(1), idx: 0, startedAt: lead, version } : "noNext";
+  if ("seek" in change) {
+    if (at.phase !== "playing" || at.offset < 0) return "same";
+    const len = seconds(queue[0]);
+    const to = Math.min(Math.max(0, change.seek), Math.max(0, (Number.isFinite(len) ? len : 0) - 1));
+    return { queue, idx: 0, startedAt: Math.round(now - to * 1000), version };
+  }
   const adds = "adds" in change ? change.adds : [change.add];
   if (!adds.length) return "same";
   if (at.phase === "done") return { queue: adds.slice(0, QUEUE_MAX), idx: 0, startedAt: lead, version };
@@ -354,7 +406,7 @@ export type ListenRoom = RoomSchedule & {
 };
 /** What the event stream tells a room (event: listen): never anything of who */
 export type ListenTell =
-  | ({ t: "state"; room: string; how: "start" | "next" | "restart" | "add" } & RoomSchedule)
+  | ({ t: "state"; room: string; how: "start" | "next" | "restart" | "add" | "seek" } & RoomSchedule)
   | { t: "members"; room: string }
   | { t: "rx"; room: string; items: { h: number; r: number }[] }
   | { t: "end"; room: string; why: RoomEnd }

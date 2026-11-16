@@ -5,12 +5,14 @@ import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type 
 import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import {
+  barSecond,
   clock,
   coverLink,
   HEARD_S,
   HOT_DAYS,
   HOT_READ_MS,
   INVITES_PER_DAY,
+  keySecond,
   LISTEN_FULL,
   RANDOM_ADD,
   RX_ROOM_FROM,
@@ -48,6 +50,7 @@ import {
   playNext,
   playTrack,
   roomPlace,
+  seekTo,
   sendRx,
   setFav,
   setLite,
@@ -338,7 +341,9 @@ function Player({ paused }: { paused: boolean }) {
     );
   }
   const on = v.status === "playing" || v.status === "starting";
-  const done = t.seconds > 0 ? Math.min(100, (at / t.seconds) * 100) : 0;
+  // the bar goes where it is tapped alone, and in a room for the host while a song plays (not between two)
+  const place = room ? roomPlace(room) : null;
+  const canSeek = !room || (room.host && place?.phase === "playing" && place.offset >= 0);
   const note = v.problem ? v.problem.message : on && v.buffering ? T.listen.buffering : v.tap ? T.listen.tapToGo : null;
   const fav = favs.state === "ok" && favs.ids.includes(t.id);
   return (
@@ -381,11 +386,16 @@ function Player({ paused }: { paused: boolean }) {
         </button>
       )}
       <span className="lp-bar">
-        <span>{clock(at)}</span>
-        <span className="track">
-          <span className="fill" style={{ width: `${done}%` }} />
-        </span>
-        <span>{clock(t.seconds)}</span>
+        <SeekTrack
+          key={`${t.id}:${canSeek}`}
+          at={at}
+          seconds={t.seconds}
+          can={canSeek}
+          room={Boolean(room)}
+          title={room && !room.host ? T.listen.seekHost : undefined}
+          before={(s) => <span>{clock(s)}</span>}
+          after={() => <span>{clock(t.seconds)}</span>}
+        />
         {!room && (
           <button type="button" className={`lp-shuf${shuffle ? " on" : ""}`} aria-pressed={shuffle} title={T.listen.shuffleTip} onClick={() => setShuffle(!shuffle)}>
             <ShuffleIcon />
@@ -404,6 +414,134 @@ function Player({ paused }: { paused: boolean }) {
         </span>
       )}
     </div>
+  );
+}
+
+/** In a room the bar's keys go there this long after the last one: one change for the room, not one a key */
+const SEEK_KEYS_MS = 500;
+
+/**
+ * How far the song got (at, of seconds). Where `can` (alone; the host's, in a room) a bar to tap or drag: the knob
+ * follows the finger and the song goes there as it lifts (a finger that scrolls instead goes nowhere); ← → 5 seconds,
+ * PageDown PageUp 30, Home End. In a room where it went stays shown until the room answered, and its keys go a moment
+ * after the last one. Otherwise it only shows (title: why). before and after: the times by it. Keyed by its song and
+ * `can`, so a drag goes with either.
+ */
+function SeekTrack({
+  at,
+  seconds,
+  can,
+  room,
+  title,
+  before,
+  after,
+}: {
+  at: number;
+  seconds: number;
+  can: boolean;
+  room: boolean;
+  title?: string;
+  /** How far it got, by the bar (the second the finger has it at, while it drags) */
+  before?: (s: number) => ReactNode;
+  after?: (s: number) => ReactNode;
+}) {
+  const box = useRef<HTMLSpanElement>(null);
+  // where the finger or the keys have it, then where it went until the room answered; null: where the song is
+  const [held, setHeld] = useState<number | null>(null);
+  const [drag, setDrag] = useState(false);
+  const finger = useRef<number | null>(null);
+  const tries = useRef(0);
+  const keys = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(keys.current), []);
+  const shown = held ?? at;
+  const done = seconds > 0 ? Math.min(100, Math.max(0, (shown / seconds) * 100)) : 0;
+  const rail = (
+    <span className="lp-rail">
+      <span className="fill" style={{ width: `${done}%` }} />
+    </span>
+  );
+  if (!can) {
+    return (
+      <>
+        {before?.(shown)}
+        <span className="track" title={title}>
+          {rail}
+        </span>
+        {after?.(shown)}
+      </>
+    );
+  }
+  const under = (x: number) => {
+    const r = box.current?.getBoundingClientRect();
+    return r ? barSecond(x, r.left, r.width, seconds) : shown;
+  };
+  const go = (s: number) => {
+    const mine = ++tries.current;
+    const answered = seekTo(s);
+    if (!answered) return setHeld(null);
+    setHeld(s);
+    void answered.finally(() => {
+      if (mine === tries.current) setHeld(null);
+    });
+  };
+  const letGo = () => {
+    finger.current = null;
+    setDrag(false);
+  };
+  return (
+    <>
+      {before?.(shown)}
+      <span
+        ref={box}
+        className={`track can${drag ? " drag" : ""}`}
+        role="slider"
+        tabIndex={0}
+        aria-label={T.listen.seekBar}
+        aria-valuemin={0}
+        aria-valuemax={Math.floor(seconds)}
+        aria-valuenow={Math.floor(shown)}
+        aria-valuetext={`${clock(shown)} / ${clock(seconds)}`}
+        onPointerDown={(e) => {
+          if (finger.current !== null || e.button !== 0) return;
+          finger.current = e.pointerId;
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {}
+          ++tries.current;
+          clearTimeout(keys.current);
+          setDrag(true);
+          setHeld(under(e.clientX));
+        }}
+        onPointerMove={(e) => {
+          if (finger.current === e.pointerId) setHeld(under(e.clientX));
+        }}
+        onPointerUp={(e) => {
+          if (finger.current !== e.pointerId) return;
+          letGo();
+          go(under(e.clientX));
+        }}
+        onPointerCancel={(e) => {
+          if (finger.current !== e.pointerId) return;
+          letGo();
+          ++tries.current;
+          setHeld(null);
+        }}
+        onKeyDown={(e) => {
+          const to = finger.current === null ? keySecond(e.key, shown, seconds) : null;
+          if (to === null) return;
+          e.preventDefault();
+          clearTimeout(keys.current);
+          if (!room) return go(to);
+          ++tries.current;
+          setHeld(to);
+          keys.current = setTimeout(() => go(to), SEEK_KEYS_MS);
+        }}
+      >
+        {rail}
+        <span className="lp-knob" style={{ left: `${done}%` }} />
+      </span>
+      {after?.(shown)}
+    </>
   );
 }
 
@@ -808,10 +946,15 @@ function RoomView({
           )}
           {now && (
             <span className="lr-bar">
-              <span className="track">
-                <span className="fill" style={{ width: `${now.seconds > 0 ? Math.min(100, (second / now.seconds) * 100) : 0}%` }} />
-              </span>
-              <span>{fmt(T.listen.roomAt, { at: clock(second), len: clock(now.seconds) })}</span>
+              <SeekTrack
+                key={`${now.id}@${at.start}:${room.host && at.offset >= 0}`}
+                at={second}
+                seconds={now.seconds}
+                can={room.host && at.offset >= 0}
+                room
+                title={room.host ? undefined : T.listen.seekHost}
+                after={(s) => <span>{fmt(T.listen.roomAt, { at: clock(s), len: clock(now.seconds) })}</span>}
+              />
             </span>
           )}
         </div>

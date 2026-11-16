@@ -25,6 +25,7 @@ import {
   onListenSaid,
   openRoomWith,
   playTrack,
+  seekTo,
   sendRx,
   listenFavsNow,
   listenShuffleNow,
@@ -880,6 +881,88 @@ describe("一起听 on the page", () => {
     expect(ops("play").at(-1)).toEqual({ song: "s1", at: 30, next: "s2" });
   });
 
+  it("follows the host's bar in the element it plays in: no song asked again, said in a bubble; a guest's bar does nothing", async () => {
+    await joinPlaying(30_000);
+    const el = audio();
+    expect(seekTo(10)).toBeUndefined();
+    expect(ops("queue")).toEqual([]);
+    // the host went to 1:20
+    heardListen({ t: "state", room: "r1", how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: serverClock() - 80_000, version: 2 });
+    expect(audio()).toBe(el);
+    expect(el.src).toBe(link("s1"));
+    expect(el.currentTime).toBe(80);
+    expect(listenBubblesNow().map((b) => b.text)).toEqual(["跳到 1:20：《One》"]);
+    // in step from there on, nothing loaded again
+    el.currentTime = 85;
+    await tick(5_000);
+    expect(el.currentTime).toBe(85);
+    expect(el.playbackRate).toBe(1);
+    expect(ops("play")).toHaveLength(1);
+    // the same word again changes nothing; a room's change missed (no word of it) plays the song from there again
+    const shown = listenBubblesNow().length;
+    heardListen({ t: "state", room: "r1", how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: serverClock() - 85_000, version: 2 });
+    expect(listenBubblesNow()).toHaveLength(shown);
+    expect(el.currentTime).toBe(85);
+    answerRoom("room", () => roomOf({ startedAt: serverClock() - 20_000, version: 3 }));
+    await loadRoom();
+    await tick(0);
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 20, next: "s2" });
+  });
+
+  it("follows the host's bar from a pause of your own at ▶, in the same element", async () => {
+    await joinPlaying(30_000);
+    toggle();
+    heardListen({ t: "state", room: "r1", how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: serverClock() - 5_000, version: 2 });
+    expect(audio().paused).toBe(true);
+    await tick(3_000);
+    toggle();
+    expect(audio().paused).toBe(false);
+    expect(audio().currentTime).toBe(8);
+    expect(said.at(-1)).toBe("跳回大家这里了：0:08");
+    expect(ops("play")).toHaveLength(1);
+  });
+
+  it("lets the host's bar move everyone: the host's own element there once answered, said once however it comes back", async () => {
+    await joinPlaying(30_000, { host: true, you: 1 });
+    const moved = () => roomOf({ host: true, you: 1, startedAt: serverClock() - 75_000, version: 2 });
+    const now = moved();
+    answerRoom("queue", () => now);
+    const seeking = seekTo(75);
+    expect(ops("queue")).toEqual([{ seek: 75 }]);
+    expect(await seeking).toBe(true);
+    expect(audio().currentTime).toBe(75);
+    heardListen({ t: "state", room: "r1", how: "seek", ...now });
+    expect(listenBubblesNow().map((b) => b.text)).toEqual(["跳到 1:15：《One》"]);
+    // a pause of the host's own stays: only the room moved
+    toggle();
+    answerRoom("queue", () => roomOf({ host: true, you: 1, startedAt: serverClock() - 10_000, version: 3 }));
+    await seekTo(10);
+    expect(audio().paused).toBe(true);
+    expect(ops("play")).toHaveLength(1);
+  });
+
+  it("tells the server again when the host's bar makes the song end after it stops counting you, as going on with it", async () => {
+    // counted until the song ends from where it was asked for, and two minutes more (src/lib/listen.ts listeningUntil)
+    playAnswer = (b) => {
+      const a = played(b);
+      return { ...a, json: { ...(a.json as object), until: serverClock() + (100 - Number(b.at)) * 1000 + 120_000 } };
+    };
+    await joinPlaying(30_000);
+    // back to 0:00 at 1:00: it ends 1:40 later, within what is counted
+    await tick(30_000);
+    heardListen({ t: "state", room: "r1", how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: serverClock(), version: 2 });
+    await tick(0);
+    expect(ops("play")).toHaveLength(1);
+    // back to 0:00 again at 1:10: past it
+    await tick(70_000);
+    heardListen({ t: "state", room: "r1", how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: serverClock(), version: 3 });
+    await tick(0);
+    expect(ops("play")).toEqual([
+      { song: "s1", at: 30, next: "s2" },
+      { song: "s1", at: 1, next: "s2" },
+    ]);
+  });
+
   it("says why it could not go in, and stays out", async () => {
     answers.join = () => ({ status: 409, json: { error: "这场满了。", code: "ROOM_FULL" } });
     expect(await joinAt("inv-1")).toBe(false);
@@ -1219,5 +1302,133 @@ describe("收藏, 热播榜 and 随机播放", () => {
     await settle();
     expect(said.at(-1)).toBe("收藏最多 2000 首，先取消几首再收藏。");
     expect(listenFavsNow()).toEqual({ state: "ok", ids: ["s3", "s4"] });
+  });
+});
+
+describe("拖进度条: a second of the song gone to", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("alone, goes there at once, playing or paused, its last second at most, the server not asked", async () => {
+    playTrack(track("s1"));
+    await settle();
+    audio().duration = 100;
+    audio().to(10);
+    seekTo(70);
+    expect(audio().currentTime).toBe(70);
+    expect(listenPlayerNow().status).toBe("playing");
+    seekTo(500);
+    expect(audio().currentTime).toBe(99);
+    seekTo(-5);
+    expect(audio().currentTime).toBe(0);
+    toggle();
+    seekTo(42.5);
+    expect(audio().currentTime).toBe(42.5);
+    expect(audio().paused).toBe(true);
+    toggle();
+    expect(audio().paused).toBe(false);
+    expect(audio().currentTime).toBe(42.5);
+    await settle();
+    expect(ops("play")).toEqual([{ song: "s1", at: 0, next: "s2" }]);
+  });
+
+  it("alone, tells the server again when going back makes the song end after it stops counting the player", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    playAnswer = (b) => {
+      const a = played(b);
+      return { ...a, json: { ...(a.json as object), until: serverClock() + (100 - Number(b.at)) * 1000 + 120_000 } };
+    };
+    playTrack(track("s1"));
+    await settle();
+    audio().duration = 100;
+    vi.setSystemTime(Date.now() + 30_000);
+    audio().to(30);
+    seekTo(10);
+    await settle();
+    expect(ops("play")).toHaveLength(1);
+    vi.setSystemTime(Date.now() + 65_000);
+    audio().to(75);
+    seekTo(0);
+    await settle();
+    // as going on with it, from a second in at least: no play counted
+    expect(ops("play")).toEqual([
+      { song: "s1", at: 0, next: "s2" },
+      { song: "s1", at: 1, next: "s2" },
+    ]);
+  });
+
+  it("before the song's link came, plays it from there once it does", async () => {
+    playTrack(track("s2"));
+    seekTo(50);
+    await settle();
+    expect(ops("play")).toEqual([{ song: "s2", at: 0 }]);
+    expect(audio().src).toBe(link("s2"));
+    audio().dispatchEvent(new Event("loadedmetadata"));
+    expect(audio().currentTime).toBe(50);
+  });
+
+  it("goes on from there at ▶ when the song shown is not playing: the album over, or a page opened again", async () => {
+    playTrack(track("s2"));
+    await settle();
+    audio().duration = 120;
+    audio().end();
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s2" } });
+    seekTo(40);
+    toggle();
+    await settle();
+    expect(ops("play").at(-1)).toEqual({ song: "s2", at: 40 });
+    expect(audio().currentTime).toBe(40);
+
+    audio().to(50);
+    page.dispatchEvent(new Event("pagehide"));
+    forgetListening();
+    loadSongs();
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", tap: true, track: { id: "s2" } });
+    seekTo(90);
+    toggle();
+    await settle();
+    expect(ops("play").at(-1)).toEqual({ song: "s2", at: 90 });
+  });
+
+  it("is not listening: the seconds jumped over do not count for 热播榜", async () => {
+    answers.heard = () => ({ status: 200, json: { counted: true, now: serverClock() } });
+    playTrack(track("s1"));
+    await settle();
+    for (let t = 1; t <= 20; t++) audio().to(t);
+    seekTo(24);
+    for (let t = 25; t <= 33; t++) audio().to(t);
+    expect(ops("heard")).toEqual([]);
+    audio().to(34);
+    expect(ops("heard")).toEqual([{ song: "s1" }]);
+  });
+
+  it("goes from the lock screen's bar too, and shows there where the song is; in a room, the host's alone", async () => {
+    const handlers = new Map<string, ((d: { seekTime?: number }) => void) | null>();
+    const where: unknown[] = [];
+    const media = {
+      playbackState: "none",
+      metadata: null,
+      setActionHandler: (action: string, fn: ((d: { seekTime?: number }) => void) | null) => void handlers.set(action, fn),
+      setPositionState: (p: unknown) => void where.push(p),
+    };
+    const nav = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    Object.defineProperty(globalThis, "navigator", { value: { mediaSession: media }, configurable: true });
+    try {
+      playTrack(track("s1"));
+      await settle();
+      audio().duration = 100;
+      handlers.get("seekto")!({ seekTime: 42 });
+      expect(audio().currentTime).toBe(42);
+      expect(where.at(-1)).toEqual({ duration: 100, position: 42, playbackRate: 1 });
+      handlers.get("seekto")!({});
+      expect(audio().currentTime).toBe(42);
+
+      answerRoom("join", () => roomOf({ startedAt: serverClock() - 30_000 }));
+      await joinAt("inv-1");
+      await settle();
+      expect(handlers.get("seekto")).toBeNull();
+    } finally {
+      if (nav) Object.defineProperty(globalThis, "navigator", nav);
+    }
   });
 });

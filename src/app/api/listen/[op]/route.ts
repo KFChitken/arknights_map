@@ -43,7 +43,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST later {invite}           下次吧
  *   POST leave                    out of your room (the host's ends)
  *   POST end                      the host ends it
- *   POST queue {start|next|restart|random: true, add: song}   what the host does to its songs (random: 随机加 10 首)
+ *   POST queue {start|next|restart|random: true, add: song, seek: seconds}   what the host does to its songs
+ *                                 (random: 随机加 10 首; seek: everyone to that second of the one playing)
  *   POST react {r}                a 短评, by its number: in your room, or (rows one and two) to the song you play alone
  *   POST declare {from?, song?}   宣言一起听 for your room, once (not in one: a room of your own first, song first)
  *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)

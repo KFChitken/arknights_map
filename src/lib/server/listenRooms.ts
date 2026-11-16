@@ -10,6 +10,7 @@ import {
   INVITE_MS,
   INVITES_PER_DAY,
   isRx,
+  isSeek,
   isSongId,
   LISTEN_ASK,
   LISTEN_GRAY,
@@ -616,8 +617,9 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
 // ---- the songs ----
 
 /**
- * What the host does to the room's songs (src/lib/listen.ts changeQueue): start, next, restart, add a song, or add
- * RANDOM_ADD at random from all of them (随机加: none already in its songs), told as an add
+ * What the host does to the room's songs (src/lib/listen.ts changeQueue): start, next, restart, add a song, add
+ * RANDOM_ADD at random from all of them (随机加: none already in its songs; told as an add), or go to a second of the
+ * one playing (seek: everyone with it)
  */
 export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const change: QueueChange | null =
@@ -631,10 +633,12 @@ export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string
             ? "random"
             : isSongId(body.add)
               ? { add: body.add }
-              : null;
+              : isSeek(body.seek)
+                ? { seek: body.seek }
+                : null;
   if (!change) throw refuse(400, T.server.common.badRequest);
   refuseNow(now);
-  if (typeof change === "object" && !(await songOf(change.add))) throw refuse(404, T.server.listen.noSong, NO_SONG);
+  if (typeof change === "object" && "add" in change && !(await songOf(change.add))) throw refuse(404, T.server.listen.noSong, NO_SONG);
   const seconds = await secondsOf();
   const all = change === "random" ? [...(await songList()).byId.keys()] : [];
   const result = await db.transaction(async (tx) => {
@@ -654,7 +658,7 @@ export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string
     return { room, next };
   });
   if (result.next) {
-    const how = typeof change === "object" || change === "random" ? "add" : change;
+    const how = typeof change === "object" ? ("seek" in change ? "seek" : "add") : change === "random" ? "add" : change;
     const rows = await hearersOf(result.room.id);
     tellListen(
       rows.map((r) => r.userId),

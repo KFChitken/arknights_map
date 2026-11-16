@@ -75,9 +75,8 @@ export const listenApi = {
   leave: () => call<{ now: number }>("leave", post({})),
   /** The host ends it */
   end: () => call<{ now: number }>("end", post({})),
-  /** What the host does to its songs */
-  queue: (change: QueueChange) =>
-    call<{ room: ListenRoom | null; now: number }>("queue", post(typeof change === "object" ? { add: change.add } : { [change]: true })),
+  /** What the host does to its songs: a song added ({add}), a second of the one playing gone to ({seek}), or the rest */
+  queue: (change: QueueChange) => call<{ room: ListenRoom | null; now: number }>("queue", post(typeof change === "object" ? change : { [change]: true })),
   /** A 短评, by its number, in your room or to the song you play alone: sent, or one too many (full: this song's are used up) */
   react: (r: number) => call<{ sent: boolean; full?: boolean; now: number }>("react", post({ r })),
   /** 想一起听: ask a 触须之交 who is listening (their Friend id) to invite you */

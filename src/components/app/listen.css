@@ -31,8 +31,28 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
 .lp-btn { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: #fff; }
 .lp-btn svg { width: 16px; height: 16px; }
 .lp-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.lp-bar .track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; }
+/*
+ * how far it got: alone (and the host's, in a room) a bar to tap or drag, its knob following the finger; taller to the
+ * finger than it looks, and a finger that scrolls the list still does (touch-action)
+ */
+.lp-bar .track, .lr-bar .track { position: relative; display: flex; flex: 1; align-items: center; min-width: 0; height: 4px; }
+.lp-rail { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; transition: height 0.12s; }
 .lp-bar .fill { display: block; height: 100%; background: #e0464d; }
+.lp-bar .track.can, .lr-bar .track.can {
+  height: 24px; margin: -10px 0; outline: none; cursor: pointer; touch-action: pan-y; -webkit-tap-highlight-color: transparent;
+}
+.lp-knob {
+  position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e0464d;
+  box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.3); pointer-events: none; transition: transform 0.12s;
+}
+.lr-bar .lp-knob { background: #18a0a5; }
+.track.drag .lp-rail { height: 6px; border-radius: 3px; }
+.track.drag .lp-knob { transform: scale(1.3); }
+.track.can:focus-visible .lp-rail { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #18a0a5; }
+@media (hover: hover) {
+  .track.can:hover .lp-rail { height: 6px; border-radius: 3px; }
+  .track.can:hover .lp-knob { transform: scale(1.3); }
+}
 .lp-hint { grid-column: 1 / -1; margin-top: -2px; color: var(--muted); font-size: 12.5px; text-align: center; }
 .lp-hint.bad { color: #a33a3a; }
 /* 省流量: the songs' smaller copies, on or off */
@@ -198,7 +218,6 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .lr-now.call b { font-size: 15px; }
 .lp-note.tight { margin: -2px 0 8px; }
 .lr-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #4b5260; font-size: 12px; font-variant-numeric: tabular-nums; }
-.lr-bar .track { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; }
 .lr-bar .fill { display: block; height: 100%; background: #18a0a5; }
 .lr-hostbtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 /* 随机加 10 首 */

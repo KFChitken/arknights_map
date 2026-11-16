@@ -81,6 +81,13 @@ import { stopPartyMusic } from "./partyMusic";
  * the player's own, kept by the server; 热播榜 (useListenHot) is everyone's. A song heard HEARD_S of (a shorter one, to
  * its last second), as it played on this page, alone or in a room, counts once for 热播榜 (the server checks it was
  * played that long).
+ *
+ * The bar under the song goes where it is tapped or dragged to (seekTo), and so does the lock screen's: alone, the
+ * element goes there at once (or once the song's link came), the server told again only when going back makes the
+ * song end after it stops counting us; a song shown but not in the element (a page opened again, an album over) plays
+ * from there at ▶. In a room the host's bar alone does: the server moves the start of the song playing, and every
+ * phone in it jumps there in the element it plays in, telling the server again as alone where the song now ends later
+ * (a guest's bar only shows). A jump is never heard (热播榜).
  */
 
 /** The next song is fetched this long before the one playing ends */
@@ -272,6 +279,10 @@ let asked = 0;
 let loads = 0;
 /** Seconds the song got to */
 let lastAt = 0;
+/** Alone: a second gone to on the bar before the song's link came, to start there (null: none) */
+let seekWanted: number | null = null;
+/** In a room: the song playing moved by the host's seek, from its start to another; the element takes it on as it is */
+let seeked: { from: number; to: number } | null = null;
 /** The server counts us as listening, as far as we know; away: told we were going, so only for a little longer */
 let counted = false;
 let away = false;
@@ -614,7 +625,10 @@ export function setShuffle(on: boolean) {
   if (next && (s === "playing" || s === "starting") && c.until > 0) askAhead(current);
 }
 
-/** The next song's link for the song playing, asked again (the next one changed): as going on with it, which counts nothing */
+/**
+ * The song playing asked for again, as going on with it from where it is (which counts nothing): for the next song's
+ * link when the next one changed, and so the server counts us until it ends when a jump back made it end later
+ */
 function askAhead(c: NonNullable<typeof current>) {
   const sent = Date.now();
   listenApi.play(c.track.id, Math.max(1, Math.floor(lastAt)), c.next).then(
@@ -857,6 +871,56 @@ export function skip() {
 }
 
 /**
+ * To s seconds into the song shown (its last second at most), from the bar or the lock screen. Alone: there at once,
+ * as it was (playing or paused); before its link came, from there once it does; a song shown but not in the element
+ * (a page opened again, the album over) plays from there at ▶. In a room the host's moves everyone there (the server
+ * moves the song's start), and what the server answered is what it gives back; a guest's does nothing.
+ */
+export function seekTo(s: number): Promise<boolean> | undefined {
+  if (!Number.isFinite(s) || isGray()) return;
+  const r = room.get();
+  if (r) return r.host ? hostQueue({ seek: Math.max(0, s) }) : undefined;
+  const v = player.get();
+  if (!v.track) return;
+  const at = Math.min(Math.max(0, s), Math.max(0, v.track.seconds - 1));
+  lastAt = at;
+  second.set(Math.floor(at));
+  // a jump is not listening (热播榜)
+  if (heardNow?.song === v.track.id) heardNow.last = at;
+  const c = current;
+  if (c && c.track === v.track && c.start === null) {
+    // its link not come yet (the element silent, or still the song before)
+    if (holding !== "song" || held?.song !== c.track.id) seekWanted = at;
+    else {
+      seekIn(element(), at);
+      const on = v.status === "playing" || v.status === "starting";
+      // the server counts us until the song should have ended: gone back past that, it is told again
+      if (on && c.until > 0 && Date.now() + (v.track.seconds - at) * 1000 > c.until - UNTIL_MARGIN_MS) askAhead(c);
+    }
+  } else ended = false;
+  positionAt(v.track.seconds, at);
+  save();
+}
+
+/** The element to at seconds of its song: at once, or once it knows how long the song is */
+function seekIn(a: HTMLAudioElement, at: number) {
+  const mine = loads;
+  if (a.readyState >= 1) {
+    try {
+      a.currentTime = at;
+    } catch {}
+    return;
+  }
+  a.addEventListener(
+    "loadedmetadata",
+    () => {
+      if (mine === loads) a.currentTime = at;
+    },
+    { once: true },
+  );
+}
+
+/**
  * The list of songs, each time the panel opens (mostly a 304: the browser keeps it), so new songs, covers and 省流量's
  * copies show at once; the list held stays meanwhile, and one answered the same as it changes nothing
  */
@@ -943,6 +1007,7 @@ function quietOthers() {
  */
 function begin(track: ListenTrack, at: number, url: string | null, loaded = false) {
   const mine = ++asked;
+  seekWanted = null;
   played.add(track.id);
   const next = upNext(track);
   ended = false;
@@ -978,7 +1043,9 @@ function begin(track: ListenTrack, at: number, url: string | null, loaded = fals
         start: null,
       };
       if (goes !== next && goes) askAhead(current);
-      if (!url) load(pick(track.id, r.url, r.lite), at, track.id);
+      // gone to another second on the bar meanwhile: from there
+      if (!url) load(pick(track.id, r.url, r.lite), seekWanted ?? at, track.id);
+      seekWanted = null;
     },
     (e: unknown) => {
       if (mine === asked) refused(e);
@@ -1360,12 +1427,54 @@ function syncRoom() {
   if (!unlocked || selfPaused || (stuck?.start === at.start && Date.now() < stuck.until)) return waitRoom(track, at.start);
   if (!track || at.offset < 0) return gap(at.start - now, track);
   const a = element();
-  if (holding === "song" && current?.start === at.start && current.track.id === track.id) {
+  if (inElement(at, track.id)) {
     if (!a.ended) return keepUpNow(a, at.offset);
     // over before the room's clock says (a file a little shorter than its length): silence until the next
     return gap(at.start + track.seconds * 1000 - now, track);
   }
   beginRoom(r, track, at.i, at.start);
+}
+
+/**
+ * The room's song at (queue's id) is the one in the element: started at its start, or moved there by the host's seek
+ * from the start the element had, which it then takes on (the same play, heard on as it was)
+ */
+function inElement(at: { start: number }, id: string): boolean {
+  const c = current;
+  if (holding !== "song" || !c || c.start === null || c.track.id !== id) return false;
+  if (c.start === at.start) return true;
+  if (!seeked || c.start !== seeked.from || at.start !== seeked.to) return false;
+  if (heardNow && heardNow.start === c.start) heardNow.start = at.start;
+  current = { ...c, start: at.start };
+  seeked = null;
+  roomAhead(current);
+  return true;
+}
+
+/**
+ * The room's song moved by the host's seek to end after the server stops counting us: asked for again, as going on
+ * with it from where the room is (which counts nothing), so it counts us until it ends
+ */
+function roomAhead(c: NonNullable<typeof current>) {
+  if (c.start === null || !(c.until > 0)) return;
+  const at = (serverNow() - c.start) / 1000;
+  if (Date.now() + (c.track.seconds - at) * 1000 <= c.until - UNTIL_MARGIN_MS) return;
+  const sent = Date.now();
+  listenApi.play(c.track.id, Math.max(1, Math.floor(at)), c.next).then(
+    (p) => {
+      const now = current;
+      if (!now || now.track !== c.track || now.start !== c.start) return;
+      heard(p.now, sent, Date.now());
+      current = { ...now, until: p.until - offset };
+    },
+    // counted a little less long, at worst: the next song asks again as it starts
+    () => {},
+  );
+}
+
+/** The host went to another second of the song playing: it starts at `to` now, whatever start the element has */
+function sawSeek(to: number | null) {
+  if (to !== null && current?.start != null) seeked = { from: current.start, to };
 }
 
 /** Silence until the room's next song starts (ms from now), so the element goes on by itself; then that song */
@@ -1427,6 +1536,7 @@ function holdRoom(r: ListenRoom, at: RoomAt, all: Map<string, ListenTrack>) {
 function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) {
   const mine = ++asked;
   clearTimeout(gapTimer);
+  seeked = null;
   const next = r.queue[i + 1] ?? null;
   // a song of its own: its own 短评
   if (current?.start !== start && rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
@@ -1449,7 +1559,8 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
       heard(p.now, sent, Date.now());
       counted = true;
       away = false;
-      if (current?.start === start) {
+      // this song, at its start or at the one the host's seek moved it to meanwhile
+      if (current?.track === track && current.start !== null) {
         current = { ...current, lite: p.lite ?? null, nextUrl: p.nextUrl ?? null, nextLite: p.nextLite ?? null, until: p.until - offset };
       }
       ahead = next && p.nextUrl ? { id: next, url: p.nextUrl, lite: p.nextLite ?? null } : null;
@@ -1474,7 +1585,7 @@ function loadRoomSong(url: string, start: number) {
   // joining part way, or a slow network: once it can play, to where the room is by then
   const catchUp = () => {
     if (mine !== loads || a.seeking) return;
-    const want = (serverNow() - start) / 1000;
+    const want = (serverNow() - (current?.start ?? start)) / 1000;
     if (want > DRIFT_OK_S && Math.abs(a.currentTime - want) > DRIFT_OK_S) a.currentTime = want;
   };
   a.addEventListener("loadedmetadata", catchUp, { once: true });
@@ -1511,6 +1622,8 @@ function keepUpNow(a: HTMLAudioElement, want: number) {
     catching = false;
     setRate(a, 1);
     a.currentTime = want;
+    // a jump is not listening (热播榜)
+    if (heardNow) heardNow.last = want;
     return;
   }
   catching = k.rate !== 1;
@@ -1548,7 +1661,8 @@ function roomToggle() {
   // back from a pause of your own, or in at last on a page opened again: where everyone is
   if (was || v.tap) say(fmt(was ? T.listen.jumped : T.listen.following, { at: clock(Math.max(0, at.offset)) }));
   const a = element();
-  if (holding === "song" && current?.start === at.start && !a.ended && at.offset >= 0) {
+  const id = r.queue[at.i];
+  if (id && inElement(at, id) && !a.ended && at.offset >= 0) {
     // the same song, still in the element: on from where the room is, within the tap
     quietOthers();
     unlocked = true;
@@ -1567,9 +1681,13 @@ function roomToggle() {
 }
 
 /** What the room's songs did, as the room is told, or as the host's tap answered: a line for everyone in it */
-function announce(how: "start" | "next" | "restart" | "add", was: ListenRoom, now: ListenRoom) {
+function announce(how: "start" | "next" | "restart" | "add" | "seek", was: ListenRoom, now: ListenRoom) {
   const song = tracks()?.get(now.queue[now.idx] ?? "")?.name;
   if (!song) return;
+  if (how === "seek") {
+    if (now.startedAt !== null) sys(fmt(T.listen.seeked, { at: clock(Math.max(0, (serverNow() - now.startedAt) / 1000)), song }));
+    return;
+  }
   if (how === "start") sys(fmt(T.listen.started, { song }));
   else if (how === "next") sys(fmt(T.listen.nextSong, { song }));
   else if (how === "restart") sys(fmt(T.listen.restarted, { song }));
@@ -1625,6 +1743,7 @@ export function heardListen(raw: unknown) {
   if (d.t === "state") {
     if (!Array.isArray(d.queue) || !(d.version > r.version)) return;
     const next = { ...r, queue: d.queue, idx: d.idx, startedAt: d.startedAt, version: d.version };
+    if (d.how === "seek") sawSeek(d.startedAt);
     room.set(next);
     announce(d.how, r, next);
     return syncRoom();
@@ -1895,12 +2014,15 @@ export async function leaveListen(): Promise<boolean> {
   return true;
 }
 
-/** What the host does to the room's songs: 开始, 下一首, 这首从头再来, one added (点歌), or 随机加 10 首; within the tap */
+/**
+ * What the host does to the room's songs: 开始, 下一首, 这首从头再来, one added (点歌), 随机加 10 首, or a second of the
+ * one playing gone to (its bar: everyone goes there); within the tap
+ */
 export async function hostQueue(what: QueueChange): Promise<boolean> {
   const r = room.get();
   if (!r?.host) return false;
-  const adding = typeof what === "object" || what === "random";
-  if (!adding) {
+  const how = typeof what === "object" ? ("seek" in what ? "seek" : "add") : what === "random" ? "add" : what;
+  if (how !== "add" && how !== "seek") {
     // the host means to hear it: a pause of their own is over
     selfPaused = false;
     stuck = null;
@@ -1914,11 +2036,13 @@ export async function hostQueue(what: QueueChange): Promise<boolean> {
     if (!res.room || !told) return true;
     // the songs before the tap: 随机加's are none of them
     const had = new Set(r.queue);
-    if (enter(res.room, sent, Date.now(), res.now)) announce(adding ? "add" : what, told, room.get()!);
+    // gone to another second of the song playing, and not told so yet: the element takes it on
+    if (how === "seek" && res.room.version > told.version) sawSeek(res.room.startedAt);
+    if (enter(res.room, sent, Date.now(), res.now)) announce(how, told, room.get()!);
     const after = room.get()!;
     // started at once (all were over): its line is there already
     const waits = !(after.startedAt !== null && after.startedAt !== r.startedAt);
-    if (typeof what === "object") {
+    if (typeof what === "object" && "add" in what) {
       const name = tracks()?.get(what.add)?.name;
       // one that waits its turn: the host is told it is in
       if (name && waits) say(fmt(T.listen.added, { name }));
@@ -2052,15 +2176,15 @@ function offerSaved() {
 
 const session = () => (typeof navigator !== "undefined" && "mediaSession" in navigator ? navigator.mediaSession : null);
 
-function handle(action: MediaSessionAction, fn: (() => void) | null) {
+function handle(action: MediaSessionAction, fn: MediaSessionActionHandler | null) {
   try {
     session()?.setActionHandler(action, fn);
   } catch {}
 }
 
 /**
- * What the lock screen shows (the album's cover, once there is one), and its buttons: play and pause, and next where
- * the album has one (in a room, for the host)
+ * What the lock screen shows (the album's cover, once there is one), and its buttons: play and pause, next where the
+ * album has one (in a room, for the host), and its bar to go to a second of the song (in a room, the host's)
  */
 function meta(track: ListenTrack | null) {
   const ms = session();
@@ -2080,7 +2204,8 @@ function meta(track: ListenTrack | null) {
   handle("play", track ? () => !isListening() && toggle() : null);
   handle("pause", track ? () => isListening() && toggle() : null);
   handle("nexttrack", track && (r ? r.host : current?.track === track && current.next) ? skip : null);
-  for (const action of ["previoustrack", "seekbackward", "seekforward", "seekto", "stop"] as const) handle(action, null);
+  handle("seekto", track && (!r || r.host) ? (d) => void seekTo(d.seekTime ?? Number.NaN) : null);
+  for (const action of ["previoustrack", "seekbackward", "seekforward", "stop"] as const) handle(action, null);
   if (!track) ms.playbackState = "none";
 }
 
@@ -2089,8 +2214,13 @@ function state(s: MediaSessionPlaybackState) {
   const a = audio;
   if (!ms || !a) return;
   ms.playbackState = s;
+  if (Number.isFinite(a.duration)) positionAt(a.duration, a.currentTime);
+}
+
+/** Where the lock screen's bar is: at seconds of a song this long */
+function positionAt(duration: number, at: number) {
   try {
-    if (Number.isFinite(a.duration)) ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: 1 });
+    if (duration > 0) session()?.setPositionState({ duration, position: Math.min(Math.max(0, at), duration), playbackRate: 1 });
   } catch {}
 }
 
@@ -2133,6 +2263,8 @@ export function forgetListening() {
   ended = false;
   fixes = [];
   lastAt = 0;
+  seekWanted = null;
+  seeked = null;
   savedAt = 0;
   offsets.length = 0;
   offset = 0;
