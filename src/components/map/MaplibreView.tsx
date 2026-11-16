@@ -45,6 +45,7 @@ import { addMaplibreSi, setMaplibreSi, startSiFlight } from "./siMap";
 import { inksNear, inkTappedAt } from "./inkTap";
 import { inkHit, tapNear } from "./stackTap";
 import { roachTraits, type MapViewProps, type StackHit, type StackUnder } from "./types";
+import { offerStage, type DiscoMark, type DiscoRoach } from "./discoStage";
 import { FeatureCache, LITE_LOOKS, liteFeature, roachFeature } from "./features";
 import { imageSpec, mineImage, neededImages, roachImage, roachRotate, sleepImage, sleepRotate, WALKING } from "./roachIcons";
 import { BADGE_AT, drawBadge, PILE_MAX_PX } from "./piles";
@@ -233,6 +234,9 @@ function heartDots(p: Pick<MapViewProps, "roaches" | "mine" | "mineAsleep" | "hi
  * neither the data nor a filter changes, which would have the map cut all of its roaches into tiles again
  */
 const OFF_STAGE = { "icon-opacity": ["case", ["boolean", ["feature-state", "off"], false], 0, 1] };
+/** Your own roaches: a visitor's preview spot faded; while 听歌's disco dances them in their stead, only it and one asleep shown */
+const MINE_OPACITY = ["case", ["get", "ghost"], 0.55, 1];
+const MINE_HELD = ["case", ["get", "ghost"], 0.55, ["get", "asleep"], 1, 0];
 
 function mineGeoJSON(
   mine: OwnRoach[],
@@ -331,6 +335,10 @@ export default function MaplibreView(props: MapViewProps) {
   const offsetsRef = useRef<[number, number][] | null>(null);
   // over a base map: whether the pointer is over something to tap, by the last time it moved
   const overRef = useRef(false);
+  // 听歌's disco (src/components/disco): the roaches' own layers held see-through while it dances them in their stead,
+  // and its dancers, worked out only when it asks for them
+  const heldRef = useRef(false);
+  const dancersRef = useRef<{ seq: number; dirty: boolean; list: DiscoRoach[] }>({ seq: 0, dirty: true, list: [] });
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -596,8 +604,58 @@ export default function MaplibreView(props: MapViewProps) {
       map.addLayer(heartsRef.current);
     }
     if (mode !== "off") heartsRef.current?.setDots(heartDots(p, featuresRef.current));
-    heartsRef.current?.setMode(mode);
+    // put away while 听歌's disco dances
+    heartsRef.current?.setMode(heldRef.current ? "off" : mode);
   };
+
+  /**
+   * 听歌's disco dancing the roaches in their stead (on), or not (off): the crowd's awake ones and your own awake ones
+   * see-through (still there for taps), still, and no hearts; then all as it was
+   */
+  const hold = (on: boolean) => {
+    if (heldRef.current === on) return;
+    heldRef.current = on;
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    for (const id of ROACH_LAYERS) map.setPaintProperty(id, "icon-opacity", (on ? 0 : OFF_STAGE["icon-opacity"]) as never);
+    map.setPaintProperty("mine", "icon-opacity", (on ? MINE_HELD : MINE_OPACITY) as never);
+    if (on) {
+      crawlRef.current?.stop();
+      for (const id of ROACH_LAYERS) map.setPaintProperty(id, "icon-translate", [0, 0]);
+      offsetsRef.current = null;
+    } else crawlRef.current?.start();
+    showHearts();
+  };
+
+  /** What 听歌's disco dances: the crowd's awake roaches (触须之交 over the others), then your own awake ones over them */
+  const dancers = () => {
+    const d = dancersRef.current;
+    if (!d.dirty) return d;
+    d.dirty = false;
+    const p = propsRef.current;
+    const crowd: DiscoRoach[] = [];
+    const friends: DiscoRoach[] = [];
+    if (crowdModeOf(p.mapStyle) === "all") {
+      for (const r of p.roaches) {
+        if (r.asleep || r.id === p.hiddenId) continue;
+        const seed = (featuresRef.current.traits(r.id) ?? roachTraits(r.id, LAYER_GROUPS, HEADINGS.length)).seed;
+        const icon = r.clone ? (r.friend ? `friendclone-${r.avatar}-${r.color}` : "clone") : `${r.friend ? "friend" : "roach"}-${r.avatar}-${r.color}`;
+        (r.friend ? friends : crowd).push({ lng: r.lng, lat: r.lat, seed, icon, kind: 0 });
+      }
+    }
+    const mine = p.mine
+      .filter((r) => !(r.slot === 0 && p.mineAsleep))
+      .map((r): DiscoRoach => ({
+        lng: r.lng,
+        lat: r.lat,
+        seed: roachTraits(r.id, LAYER_GROUPS, HEADINGS.length).seed,
+        icon: `${r.slot > 0 ? "mineclone" : "mine"}-${p.myAvatar}-${p.myColor}`,
+        kind: r.slot === 0 ? 2 : 1,
+      }));
+    d.list = [...crowd, ...friends, ...mine];
+    return d;
+  };
+
 
   useEffect(() => {
     const { initialView } = propsRef.current;
@@ -821,7 +879,7 @@ export default function MaplibreView(props: MapViewProps) {
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
-        paint: { "icon-opacity": ["case", ["get", "ghost"], 0.55, 1] },
+        paint: { "icon-opacity": MINE_OPACITY as never },
       });
 
       readyRef.current = true;
@@ -839,7 +897,7 @@ export default function MaplibreView(props: MapViewProps) {
     crawlRef.current = {
       start: () => {
         const p = propsRef.current;
-        if (!frame && readyRef.current && p.active !== false && crowdModeOf(p.mapStyle) === "all" && !prefersReducedMotion()) animate();
+        if (!frame && readyRef.current && !heldRef.current && p.active !== false && crowdModeOf(p.mapStyle) === "all" && !prefersReducedMotion()) animate();
       },
       stop: () => {
         cancelAnimationFrame(frame);
@@ -1055,6 +1113,32 @@ export default function MaplibreView(props: MapViewProps) {
     if (props.active === false) crawlRef.current?.stop();
     else crawlRef.current?.start();
   }, [props.active]);
+
+  // 听歌's disco: this map offered to dance on while it is up (src/components/map/discoStage.ts)
+  useEffect(() => {
+    const d = dancersRef.current;
+    d.dirty = true;
+    d.seq++;
+  }, [props.roaches, props.mine, props.mineAsleep, props.hiddenId, props.mapStyle, props.myAvatar, props.myColor]);
+  useEffect(
+    () =>
+      offerStage({
+        kind: "maplibre",
+        shown: () => readyRef.current && propsRef.current.active !== false,
+        look: () => propsRef.current.look,
+        crowd: () => crowdModeOf(propsRef.current.mapStyle),
+        marks: () => ({ seq: 0, list: [...guidesRef.current.values()].map(({ el }): DiscoMark => ({ el, kind: "guide", seed: 0, size: 0 })) }),
+        map: () => (readyRef.current ? mapRef.current : null),
+        dancers: () => {
+          const d = dancers();
+          return { seq: d.seq, list: d.list };
+        },
+        before: { dim: ASLEEP_LAYER, dance: ROACH_LAYERS[0] },
+        hold,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- what it reads is read through refs, as it is now
+    [],
+  );
 
   // over a base map: see-through, the taps going through to the base map below (TencentView)
   if (props.base) return <div ref={el} className="map-over" />;

@@ -59,7 +59,49 @@ export type RoachGl = {
    * opens up instead, hit())
    */
   hits: (x: number, y: number, reach?: number) => { id: string; d: number }[];
+  /** 听歌's disco (src/components/disco): drawn in this layer's frames, under the roaches and instead of them; null: none */
+  setDance: (dance: GlDance | null) => void;
+  /**
+   * The icons with both sleeves up, one URL per style index as setIcons has them (null: as its own icon), put in the
+   * atlas HANDS_AT cells past each icon's own; kept for the icons set after
+   */
+  setHands: (urls: (string | null)[]) => Promise<void>;
   destroy: () => void;
+};
+
+/** What a frame of this layer hands 听歌's disco to draw with (amapDance.ts) */
+export type DanceFrame = {
+  gl: WebGLRenderingContext;
+  vao: Vao;
+  /** The roaches' buffer (GL_LAYOUT), how many are in it, and the list it holds (seq: changes with the list) */
+  buf: WebGLBuffer | null;
+  count: number;
+  list: readonly GlRoach[];
+  seq: number;
+  mvp: Float32Array;
+  /** The icons' size (CSS px), device px to a CSS px, the drawing's size (device px) */
+  size: number;
+  dpr: number;
+  w: number;
+  h: number;
+  thinPow: number;
+  /** The crawl's clock (ms) and whether they crawl */
+  time: number;
+  crawling: boolean;
+  /** How many cells on from its own each icon's sleeves-up copy is (0: none in the atlas) */
+  handsAt: number;
+  /** The largest point this GPU draws (device px) */
+  maxPoint: number;
+  /** 轻量: piles drawn, and only under them */
+  piles: boolean;
+};
+
+/** 听歌's disco in this layer: drawn under everything of a frame, then the roaches if it will (true), else the layer draws them */
+export type GlDance = {
+  under: (f: DanceFrame) => void;
+  roaches: (f: DanceFrame) => boolean;
+  /** A new GPU context: whatever it made on the last one is gone */
+  lost: () => void;
 };
 
 /** A pile tapped: its cluster id, and where it is (as the map has it) */
@@ -81,6 +123,8 @@ const HEART_CELL = MAX_ICONS - HEART_TINTS.length;
  * sharing a cell (iconCells), or the layer gives up
  */
 export const ICON_ROOM = HEART_CELL;
+/** The sleeves-up copies (setHands) are this many cells on from their icons', with room only when the icons take no more */
+export const HANDS_AT = Math.floor(HEART_CELL / 2);
 
 /**
  * The atlas's cells for icons given one per style index, and each index's cell: icons alike share one, as a picture
@@ -106,6 +150,8 @@ const CLOCK_WRAP = 2 ** 23;
 const REORIGIN_M = 150_000;
 /** Floats per roach handed to the GPU: position 2, icon 1, crawl 4 + 1, which zooms draw it 1, hearts 5 */
 const STRIDE = 14;
+/** Where each of a roach's numbers is in the buffer (floats from its start), for a program of the disco's own over it */
+export const GL_LAYOUT = { stride: STRIDE, pos: 0, style: 2, crawl: 3, crawlY: 7, thin: 8 } as const;
 // 舟u本色's hearts, as the design (render-styles) has them: a heart shows for LIFE of its roach's cycle, pops
 // up START_OF_ICON icons above the roach's middle, rises RISE_OF_ICON icons and is HEART_OF_ICON of an icon wide
 const LIFE = 0.82;
@@ -566,6 +612,13 @@ export function roachGl(
   let atlas: HTMLCanvasElement | null = null;
   let atlasSeq = 0;
   let iconsReady = false;
+  // 听歌's disco: what it draws, the list's count (for its own buffer), the sleeves-up icons by style index, and
+  // whether the atlas being built and the one on the GPU have them
+  let dance: GlDance | null = null;
+  let listSeq = 0;
+  let handsUrls: (string | null)[] | null = null;
+  let atlasHands = false;
+  let handsIn = false;
   /** What the last frame drew with, for hits */
   let last: { mvp: Float32Array; size: number; thinPow: number; maxPx: number } | null = null;
   // 轻量: the piles drawn instead of every roach (setPiles), their positions from the origin, and the counts'
@@ -677,6 +730,7 @@ export function roachGl(
     g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
     atlas = null;
     iconsReady = true;
+    handsIn = atlasHands;
   };
 
   // 高德 calls this with its WebGL context before the layer's first frame (and again should it make a new one)
@@ -724,6 +778,8 @@ export function roachGl(
       // everything goes up again with a new context
       dirty = true;
       iconsReady = false;
+      handsIn = false;
+      dance?.lost();
       if (!atlas && iconUrls.length) void buildAtlas();
     } catch (e) {
       fail(e instanceof Error ? e.message : "init");
@@ -929,6 +985,23 @@ export function roachGl(
     frames++;
   };
 
+  /** This frame as the disco draws it */
+  const frameOf = (g: WebGLRenderingContext, v: Vao, f: { mvp: Float32Array; size: number; thinPow: number; w: number; h: number }): DanceFrame => ({
+    gl: g,
+    vao: v,
+    buf,
+    count,
+    list: roaches,
+    seq: listSeq,
+    ...f,
+    dpr: f.w / Math.max(1, map.getContainer().clientWidth),
+    time: (performance.now() - t0) % CLOCK_WRAP,
+    crawling,
+    handsAt: handsIn ? HANDS_AT : 0,
+    maxPoint,
+    piles: Boolean(piles),
+  });
+
   const render = () => {
     const g = gl;
     if (failed || !g || !prog || !vao || g.isContextLost()) return;
@@ -937,7 +1010,15 @@ export function roachGl(
       const was = saveState(g, vao);
       g.bindTexture(g.TEXTURE_2D, tex);
       if (!iconsReady) uploadIcons(g);
+      const w = g.drawingBufferWidth;
+      const h = g.drawingBufferHeight;
       if (piles) {
+        // 听歌's disco: the map darkened under the piles too
+        if (dance) {
+          layerState(g, was);
+          g.viewport(0, 0, w, h);
+          dance.under(frameOf(g, vao, { mvp: mvpOf(cc.getCameraParams()), size: iconPx(map.getZoom() - ZOOM_OFFSET), thinPow: 0, w, h }));
+        }
         drawLite(g, vao, was);
         restoreState(g, vao, was);
         return;
@@ -945,7 +1026,7 @@ export function roachGl(
       vao.bind(vaoObj);
       if (dirty) upload(g);
       else if (patch.length) patchThin(g);
-      if (iconsReady && count) {
+      if ((iconsReady && count) || dance) {
         cc.setCenter(origin);
         const params = cc.getCameraParams();
         const zoom = map.getZoom();
@@ -954,24 +1035,33 @@ export function roachGl(
         const thinPow = level <= opts.thinZoom ? 2 ** (level - 2) : 0;
         const mvp = mvpOf(params);
         last = { mvp, size, thinPow, maxPx: PILE_MAX_PX };
-        const w = g.drawingBufferWidth;
-        const h = g.drawingBufferHeight;
-        g.useProgram(prog);
-        g.uniformMatrix4fv(loc.uMvp, false, mvp);
-        g.uniform2f(loc.uViewport, w, h);
-        g.uniform1f(loc.uDpr, w / Math.max(1, map.getContainer().clientWidth));
-        g.uniform1f(loc.uSize, size);
-        g.uniform1f(loc.uScale, size / 24);
-        g.uniform1f(loc.uTime, (performance.now() - t0) % CLOCK_WRAP);
-        g.uniform1f(loc.uCrawl, crawling ? 1 : 0);
-        g.uniform1f(loc.uThinPow, thinPow);
-        g.uniform1i(loc.uTex, 0);
         // the icons are premultiplied, as 高德's canvas is
         layerState(g, was);
         g.viewport(0, 0, w, h);
-        g.drawArrays(g.POINTS, 0, count);
-        frames++;
-        if (hearts !== "off" && !heartsBroken && (heartProg || makeHearts(g))) drawHearts(g, { mvp, size, thinPow, zoom, w, h });
+        const f = dance ? frameOf(g, vao, { mvp, size, thinPow, w, h }) : null;
+        if (dance && f) {
+          dance.under(f);
+          layerState(g, was);
+        }
+        if (iconsReady && count && !(dance && f && dance.roaches(f))) {
+          g.useProgram(prog);
+          vao.bind(vaoObj);
+          g.uniformMatrix4fv(loc.uMvp, false, mvp);
+          g.uniform2f(loc.uViewport, w, h);
+          g.uniform1f(loc.uDpr, w / Math.max(1, map.getContainer().clientWidth));
+          g.uniform1f(loc.uSize, size);
+          g.uniform1f(loc.uScale, size / 24);
+          g.uniform1f(loc.uTime, (performance.now() - t0) % CLOCK_WRAP);
+          g.uniform1f(loc.uCrawl, crawling ? 1 : 0);
+          g.uniform1f(loc.uThinPow, thinPow);
+          g.uniform1i(loc.uTex, 0);
+          g.drawArrays(g.POINTS, 0, count);
+        }
+        if (iconsReady && count) frames++;
+        // 舟u本色's hearts are put away while the disco is on
+        if (!dance && iconsReady && count && hearts !== "off" && !heartsBroken && (heartProg || makeHearts(g))) {
+          drawHearts(g, { mvp, size, thinPow, zoom, w, h });
+        }
       }
       restoreState(g, vao, was);
     } catch (e) {
@@ -983,8 +1073,11 @@ export function roachGl(
   const buildAtlas = async () => {
     const seq = ++atlasSeq;
     const urls = iconUrls;
+    // 听歌's disco's sleeves-up copies, one for each cell (its first style index's), where there is room for them
+    const hands = handsUrls && urls.length <= HANDS_AT ? urls.map((_, c) => handsUrls?.[cellOf.indexOf(c)] ?? null) : null;
     const imgs = await Promise.all(urls.map((u) => loadImage(u).catch(() => null)));
     const heartImgs = await Promise.all(HEART_TINTS.map((t) => loadImage(heartUrl(t)).catch(() => null)));
+    const handImgs = hands ? await Promise.all(hands.map((u) => (u ? loadImage(u).catch(() => null) : null))) : [];
     if (failed || seq !== atlasSeq) return;
     const canvas = document.createElement("canvas");
     canvas.width = ATLAS_W;
@@ -1000,6 +1093,15 @@ export function roachGl(
       const i = HEART_CELL + t;
       if (img) g.drawImage(img, (i % COLS) * CELL + m, Math.floor(i / COLS) * CELL + m, INNER, INNER);
     });
+    // the sleeves-up copies; an icon with none drawn again as it is, so every cell has its copy
+    if (hands) {
+      imgs.forEach((img, c) => {
+        const up = handImgs[c] ?? img;
+        const i = c + HANDS_AT;
+        if (up) g.drawImage(up, (i % COLS) * CELL + m, Math.floor(i / COLS) * CELL + m, INNER, INNER);
+      });
+    }
+    atlasHands = Boolean(hands);
     atlas = canvas;
     iconsReady = false;
     map.render();
@@ -1024,7 +1126,8 @@ export function roachGl(
     size: f.size,
     thinPow: f.thinPow,
     now: (performance.now() - t0) % CLOCK_WRAP,
-    crawling,
+    // dancing, each roach is taken where it stands (a hop or a sway puts it a little off)
+    crawling: crawling && !dance,
   });
 
   const layer = new AMap.GLCustomLayer({ zIndex: opts.zIndex, init, render });
@@ -1043,6 +1146,7 @@ export function roachGl(
   return {
     setRoaches: (list) => {
       roaches = list;
+      listSeq++;
       // still off stage in the new list, wherever it now is (uploaded with it)
       hiddenIndex = hiddenId === null ? -1 : list.findIndex((r) => r.id === hiddenId);
       crawlOf = list.map((r) => cartoonCrawl(r.seed));
@@ -1151,6 +1255,16 @@ export function roachGl(
         return out;
       }
       return roachesAt(drawnView(last, W, H), roaches, xy, thin, hiddenIndex, x, y, { reach }).map(({ i, d }) => ({ id: roaches[i].id, d }));
+    },
+    setDance: (d) => {
+      if (d === dance) return;
+      dance = d;
+      map.render();
+    },
+    setHands: (urls) => {
+      if (handsUrls && urls.length === handsUrls.length && urls.every((u, i) => u === handsUrls?.[i])) return Promise.resolve();
+      handsUrls = urls;
+      return iconUrls.length ? buildAtlas() : Promise.resolve();
     },
     destroy: () => {
       window.clearInterval(timer);

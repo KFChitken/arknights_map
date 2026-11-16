@@ -112,6 +112,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .mine-hearts i:nth-of-type(2) { margin-left: -4px; animation-delay: -1.3s; }
 .mine-hearts.still i { animation: none; opacity: 1; }
 .mine-hearts.still i:nth-of-type(2) { display: none; }
+/* none while 听歌's disco is out (src/components/disco): the roach dances away from where they rise */
+.app.disco .mine-hearts i { display: none; }
 @keyframes mine-heart {
   0% { opacity: 0; transform: translateY(0) scale(0.3); }
   6.6% { opacity: 1; }

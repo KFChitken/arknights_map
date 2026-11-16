@@ -13,6 +13,7 @@ import {
   Chev,
   countsTap,
   DeskHint,
+  DiscoButton,
   Envelope,
   FoldArrow,
   GuideFace,
@@ -345,6 +346,7 @@ function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> })
       <span className="lbl" aria-hidden="true">
         {listenWord(e)}
       </span>
+      {listen.disco && <DiscoButton kind="round" />}
     </span>
   );
 }

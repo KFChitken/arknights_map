@@ -253,6 +253,28 @@ export function isListening() {
   return s === "playing" || s === "starting";
 }
 
+/**
+ * What 听歌's disco (src/components/disco) dances to, read without changing anything: the song in the element, its table
+ * of beats if the server sent one, whether its smaller copy (省流量) is what plays, where the element is in it (its
+ * currentTime, s) and how fast it goes, and whether it really sounds (playing, and neither waiting for more of it nor
+ * seeking). Null while the element holds no song.
+ */
+export type ListenTap = { song: string; dance: string | null; lite: boolean; at: number; rate: number; sounding: boolean };
+export function listenTap(): ListenTap | null {
+  const a = audio;
+  const c = current;
+  if (!a || !c || holding !== "song") return null;
+  const p = player.get();
+  return {
+    song: c.track.id,
+    dance: dances.get(c.track.id) ?? null,
+    lite: onLite,
+    at: a.currentTime,
+    rate: a.playbackRate || 1,
+    sounding: p.status === "playing" && !p.buffering && !a.paused && !a.seeking,
+  };
+}
+
 // ---- the element, and what it holds ----
 
 let audio: HTMLAudioElement | null = null;
@@ -326,6 +348,8 @@ let bubbleKeys = 0;
  * tapped again starts from its link at once
  */
 const links = new Map<string, { url: string; lite: string | null; got: number }>();
+/** Each song's table of beats for 听歌's disco (src/lib/dance.ts), as the server sent it with the song's links */
+const dances = new Map<string, string>();
 /** The song alone in the element (not a room's), at which link, given when; null: silence, a room's song, or nothing */
 let held: { song: string; url: string; got: number } | null = null;
 /** Songs left by a tap, all of each downloaded, each paused in an element of its own (the oldest first) */
@@ -392,6 +416,14 @@ function remember(song: string, url: string, lite: string | null) {
   links.delete(song);
   links.set(song, { url, lite, got: Date.now() });
   if (links.size > LINKS_MAX) links.delete(links.keys().next().value!);
+}
+
+/** A song's table of beats, kept with its links (the next song's comes with the one before it) */
+function rememberDance(song: string, dance: string | undefined) {
+  if (dance === undefined || dances.get(song) === dance) return;
+  dances.delete(song);
+  dances.set(song, dance);
+  if (dances.size > LINKS_MAX) dances.delete(dances.keys().next().value!);
 }
 
 /** A song's link to play now (its smaller copy's while 省流量 is on), still good */
@@ -634,6 +666,7 @@ function askAhead(c: NonNullable<typeof current>) {
   listenApi.play(c.track.id, Math.max(1, Math.floor(lastAt)), c.next).then(
     (r) => {
       if (c.next && r.nextUrl) remember(c.next, r.nextUrl, r.nextLite ?? null);
+      if (c.next) rememberDance(c.next, r.nextDance);
       const now = current;
       if (!now || now.track !== c.track || now.next !== c.next || now.start !== null) return;
       heard(r.now, sent, Date.now());
@@ -1026,6 +1059,8 @@ function begin(track: ListenTrack, at: number, url: string | null, loaded = fals
       sawSaid(track.id, r.said);
       remember(track.id, r.url, r.lite ?? null);
       if (next && r.nextUrl) remember(next, r.nextUrl, r.nextLite ?? null);
+      rememberDance(track.id, r.dance);
+      if (next) rememberDance(next, r.nextDance);
       if (mine !== asked) return;
       heard(r.now, sent, Date.now());
       counted = true;
@@ -1555,6 +1590,8 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   listenApi.play(track.id, at < 1 ? 0 : Math.floor(at), next).then(
     (p) => {
       sawSaid(track.id, p.said);
+      rememberDance(track.id, p.dance);
+      if (next) rememberDance(next, p.nextDance);
       if (mine !== asked) return;
       heard(p.now, sent, Date.now());
       counted = true;
@@ -2240,6 +2277,7 @@ export function forgetListening() {
   held = null;
   keptSongs = [];
   links.clear();
+  dances.clear();
   liteHere = undefined;
   liteAuto = false;
   onLite = false;

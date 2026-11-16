@@ -75,6 +75,38 @@
 }
 
 /*
+ * 听歌's disco (parts.tsx DiscoButton): a round glass button with a mirror ball beside 听歌 while a song plays (a tab on
+ * 抽屉), edged in pink while the disco is on; the first time, 「点我蹦迪」 in a white bubble beside it
+ */
+.disco-slot { position: absolute; display: flex; align-items: center; }
+.disco-ball {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%;
+  transition: transform 0.15s;
+}
+.disco-ball svg { display: block; }
+.disco-ball:active { transform: scale(0.92); }
+.chrome .glass.disco-on { box-shadow: inset 0 0 0 1.5px #ff4fd8, 0 0 14px #ff4fd88c, 0 4px 16px #00000033; }
+.app.ui-float .chrome .glass.disco-on {
+  box-shadow: inset 0 0 0 1px #ff4fd888, 0 0 0 2px #0d0e10, 0 0 0 3.5px #ff4fd8, 0 0 18px #ff4fd8aa;
+}
+.disco-hint {
+  position: relative; flex: none; margin-left: 10px; padding: 5px 9px; border-radius: 999px; background: #fff; color: #1b1d22;
+  font-size: 12px; font-weight: 600; line-height: 1.3; white-space: nowrap; box-shadow: 0 3px 10px #0003; pointer-events: none;
+  animation: disco-hint 0.3s ease-out;
+}
+.disco-hint::before {
+  content: ""; position: absolute; top: 50%; left: -5px; margin-top: -5px; border: 5px solid transparent; border-left: 0;
+  border-right-color: #fff;
+}
+@keyframes disco-hint {
+  from { opacity: 0; transform: translateX(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .disco-ball, .disco-ball:active { transition: none; transform: none; }
+  .disco-hint { animation: none; }
+}
+
+/*
  * Before the app starts, a device that picked 抽屉 or 游戏风 has 浮岛's buttons hidden, and a side it folded away
  * folded already (earlyUiScript in src/lib/uiChoice.ts), so they do not show for a moment and then change
  */
@@ -229,6 +261,11 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 .chrome-float .listen-tile { position: relative; }
 .chrome-float .ui-tile small { margin-top: 4px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .chrome-float .ui-tile-box .nub { right: -27px; }
+/* 听歌's disco beside its tile; past the arrow that folds the side away where 听歌's is the first; gone with the side */
+.chrome-float .listen-slot { position: relative; }
+.chrome-float .listen-slot .disco-slot { top: 50%; left: calc(100% + 10px); transform: translateY(-50%); transition: opacity 0.15s; }
+.chrome-float .listen-slot:first-child .disco-slot { left: calc(100% + 34px); }
+.chrome-float .ui-tile-box.folded .disco-slot, html[data-fold-l] .chrome-float .disco-slot { opacity: 0; }
 /* once a device: 存到桌面 is in 界面 now, beside it (past its arrow) */
 .chrome-float .ui-tile-box .desk-hint { top: 12px; right: auto; left: calc(100% + 30px); }
 .chrome-float .ui-tile-box .desk-hint::after { top: 10px; right: auto; left: -6px; border: 6px solid transparent; border-left: 0; border-right-color: var(--accent); }

@@ -36,7 +36,8 @@ import { MassCache, STILL, styleIndex, styleSpecs, type MassPoint } from "./mass
 import { PILE_MAX_ZOOM } from "./pileWork";
 import { inkHit, tapNear } from "./stackTap";
 import { BADGE_AT, countBadgeText, PILE_MAX_PX, pileMul, Piles, type Box, type PileItem } from "./piles";
-import type { MapViewProps, StackHit, StackUnder } from "./types";
+import { roachTraits, type MapViewProps, type StackHit, type StackUnder } from "./types";
+import { offerStage, type DiscoMark } from "./discoStage";
 
 // Amap zoom levels assume 256px tiles, one level above MapLibre
 const ZOOM_OFFSET = 1;
@@ -174,6 +175,22 @@ function styleUrls(look: RoachStyle) {
   return p;
 }
 
+/** 听歌's disco: the cartoon look's icons with both sleeves up, one per style index (null: a picture, or asleep), made once */
+let hands: Promise<(string | null)[]> | null = null;
+const handsUrls = () =>
+  (hands ??= Promise.resolve().then(() =>
+    styleSpecs("cartoon").map(([color, opts]) => (usesPicture(opts) || opts.asleep ? null : roachDataUrl(color, { ...opts, hands: true }))),
+  ));
+
+/** 听歌's disco's marks on this map (AmapView marksRef): found again when dirty, from next (ms) on, until want of your own are */
+type MarkSet = { seq: number; dirty: boolean; list: DiscoMark[]; want: number; next: number };
+/** To be found again now; want: how many of your own there are to find */
+const marksChanged = (m: MarkSet, want?: number) => {
+  m.dirty = true;
+  m.next = 0;
+  if (want !== undefined) m.want = want;
+};
+
 /** The roaches' icon size at this 高德 zoom, in whole pixels */
 const massPx = (amapZoom: number) => Math.round(iconPx(amapZoom - ZOOM_OFFSET));
 
@@ -234,7 +251,9 @@ async function mineIcon(
   const lying = asleep && r.slot === 0 && !ghost;
   const url = await iconUrl(color, { avatar, mine: true, clone: r.slot > 0, look, asleep: lying });
   const label = ghost ? T.map.view.placeHere : r.slot > 0 ? T.map.view.myClone : T.map.view.myRoach;
-  const img = `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}" style="cursor:pointer;display:block${ghost ? ";opacity:.55" : ""}"/>`;
+  // 听歌's disco dances those awake (discoStage.ts DiscoMark): which, and the roach's own part of the dance
+  const dances = ghost || lying ? "" : ` data-disco="${r.slot > 0 ? "mine" : "main"}" data-seed="${roachTraits(r.id, 1, 1).seed}"`;
+  const img = `<img src="${url}" width="${MINE_ICON}" height="${MINE_ICON}" alt="${label}"${dances} style="cursor:pointer;display:block${ghost ? ";opacity:.55" : ""}"/>`;
   // 舟u本色: your own roaches have hearts too (globals.css .mine-hearts), but not one lying drunk, nor the preview
   if (hearts === "off" || ghost || lying) return img;
   return `<span class="mine-hearts${hearts === "still" ? " still" : ""}">${img}<i></i><i></i></span>`;
@@ -312,6 +331,9 @@ export default function AmapView(props: MapViewProps) {
   const styledPxRef = useRef(0);
   const propsRef = useRef(props);
   propsRef.current = props;
+  // 听歌's disco: your own roaches' pictures and the guides' markers it dances, found again once they change (your
+  // own as 高德 puts them in the page, which may be a frame or so after they are added)
+  const marksRef = useRef<MarkSet>({ seq: 0, dirty: true, list: [], want: 0, next: 0 });
 
   /**
    * Everything drawn within reach of a point of the map's box (px), for a tap close up (src/lib/stackPick.ts): the
@@ -462,6 +484,7 @@ export default function AmapView(props: MapViewProps) {
         rideIn(g.el, rideStart({ x: at.x + sx + dx, y: at.y + sy + dy }, from, c.clientWidth, c.clientHeight), BIKE_MS);
       }
     }
+    marksChanged(marksRef.current);
   };
 
   // Your shouts: a bubble over each roach a declaration just went out from, taken away as the page says
@@ -575,6 +598,7 @@ export default function AmapView(props: MapViewProps) {
       return marker;
     });
     if (mineRef.current.length) map.add(mineRef.current);
+    marksChanged(marksRef.current, icons.filter((html) => html.includes("data-disco")).length);
   };
 
   useEffect(() => {
@@ -1203,6 +1227,37 @@ export default function AmapView(props: MapViewProps) {
       crawlRef.current?.start();
     }
   }, [props.active]);
+
+  // 听歌's disco: this map offered to dance on while it is up (src/components/map/discoStage.ts)
+  useEffect(
+    () =>
+      offerStage({
+        kind: "amap",
+        shown: () => Boolean(mapRef.current) && propsRef.current.active !== false,
+        look: () => styledRef.current.look,
+        crowd: () => (propsRef.current.mapStyle === "hidden" ? "off" : propsRef.current.mapStyle === "lite" ? "lite" : "all"),
+        gl: () => glRef.current,
+        hands: handsUrls,
+        redraw: () => mapRef.current?.render(),
+        marks: () => {
+          const m = marksRef.current;
+          const now = performance.now();
+          if (m.dirty && now >= m.next) {
+            const mine = [...(el.current?.querySelectorAll<HTMLElement>("img[data-disco]") ?? [])].map(
+              (img): DiscoMark => ({ el: img, kind: img.dataset.disco === "main" ? "main" : "mine", seed: Number(img.dataset.seed) || 0, size: MINE_ICON }),
+            );
+            const guides = [...guidesRef.current.values()].map(({ el: g }): DiscoMark => ({ el: g, kind: "guide", seed: 0, size: 0 }));
+            m.list = [...mine, ...guides];
+            m.seq++;
+            // all found, or looked for again in a little while (高德 may not have put them in the page yet)
+            m.dirty = mine.length < m.want;
+            m.next = now + 300;
+          }
+          return m;
+        },
+      }),
+    [],
+  );
 
   return <div ref={el} className="map" data-basemap="amap" />;
 }

@@ -13,6 +13,7 @@ import {
   BasemapSwitch,
   countsTap,
   DeskHint,
+  DiscoButton,
   Envelope,
   GuideFace,
   GUIDE_ORDER,
@@ -84,6 +85,7 @@ function Phone(p: ChromeProps) {
             <span aria-hidden="true">{T.map.bar.hotShort}</span>
           </button>
           {p.listen && <ListenChip listen={p.listen} />}
+          {p.listen?.disco && <DiscoButton kind="chip" />}
           {p.sponsor && (
             <button className="dchip glass" aria-label={fmt(T.map.bar.sponsor, { site: siteName() })} aria-haspopup="dialog" onClick={p.sponsor.onOpen}>
               <span className="ico">
@@ -205,7 +207,15 @@ function Panel(p: ChromeProps) {
           <>
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
-            {p.listen && <ListenCard listen={p.listen} />}
+            {p.listen &&
+              (p.listen.disco ? (
+                <div className="dlisten-row">
+                  <ListenCard listen={p.listen} />
+                  <DiscoButton kind="chip" />
+                </div>
+              ) : (
+                <ListenCard listen={p.listen} />
+              ))}
             {p.sponsor && (
               <button className="dcard dsponsor" aria-haspopup="dialog" onClick={p.sponsor.onOpen}>
                 <span className="lico">

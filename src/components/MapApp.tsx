@@ -163,6 +163,7 @@ import {
 } from "./app/listening";
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
 import type { ListenActs, ListenTab } from "./app/ListenPanel";
+import DiscoHost from "./app/DiscoHost";
 import { CALL_CARD_EVERY_MS } from "@/lib/listen";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
@@ -279,6 +280,7 @@ import ZoneView from "./admin/ZoneView";
 import { MapPulse, prefillOf, type ZonePrefill, type ZoneTool } from "./admin/zoneAim";
 import { useGrayNow } from "./GrayMode";
 import { isGray } from "@/lib/grayMode";
+import { discoOpenTo, prefetchDisco, useDiscoChosen } from "@/lib/disco";
 import {
   actionMayRun,
   hintsMayCome,
@@ -674,6 +676,9 @@ export default function MapApp({
   const [studyOpen, setStudyOpen] = useState(false);
   // 听歌's panel (from its button, where it is open to them): the map stays to be used beside it on a computer
   const [listenOpen, setListenOpen] = useState(false);
+  // 听歌's disco (src/components/disco), where it is open to them: its switch, and whether its ball and lights are out
+  const discoChosen = useDiscoChosen();
+  const [discoShown, setDiscoShown] = useState(false);
   // its tab: the songs, unless you are in a room of 一起听
   const [listenTab, setListenTab] = useState<ListenTab>("ark");
   // an invitation to 一起听 that came while the page is open, its card over the map (ask: whether to switch rooms first)
@@ -4469,7 +4474,8 @@ export default function MapApp({
   const styleRef = useRef(mapStyle);
   useEffect(() => {
     // and while the owner draws or looks at a 禁放区 (admin/ZoneDraw.tsx, ZoneView.tsx)
-    quietRef.current = Boolean(panel || placing || step || selected || picking || offStage || pwNudgeUp || zoneTool);
+    // and through 听歌's disco, which is not the map being slow
+    quietRef.current = Boolean(panel || placing || step || selected || picking || offStage || pwNudgeUp || zoneTool || discoShown);
     styleRef.current = mapStyle;
   });
   const lagRef = useRef<LagWatch | null>(null);
@@ -5140,6 +5146,11 @@ export default function MapApp({
   const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
   // 听歌: where the server opened it to them (me.listen), and not while the site is gray (全站变灰); not on /en
   const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
+  // its disco, where the server opened that to them too (me.listen.disco: DISCO); fetched ahead once the panel opens
+  const discoOpen = discoOpenTo(listenShown, me?.listen);
+  useEffect(() => {
+    if (listenOpen && discoOpen) prefetchDisco();
+  }, [listenOpen, discoOpen]);
   // 支持舟P地图's button: where the server shows it to them (me.sponsor: SPONSOR, and the owner's switch), not while gray
   const sponsorShown = lang() === "zh" && Boolean(me?.sponsor) && !gray;
   // the newest invitation to 一起听 still to answer, for its tab
@@ -5237,6 +5248,7 @@ export default function MapApp({
             if (!listenOpen && listenRoomNow()) setListenTab("together");
             setListenOpen(!listenOpen);
           },
+          disco: discoOpen,
         }
       : null,
     sponsor: sponsorShown ? { onOpen: openSponsor } : null,
@@ -5297,8 +5309,8 @@ export default function MapApp({
   return (
     <main
       className={`app ui-${layout}${homeOn && !(twoMaps && abroad) ? " on-amap" : ""}${zoneTool ? " zone-tool" : ""}${
-        drawnStyle === "lite" ? " no-blur" : ""
-      }${layout === "drawer" && drawerOpen ? " drawer-open" : ""}${placing ? " placing" : ""}`}
+        drawnStyle === "lite" || discoShown ? " no-blur" : ""
+      }${discoShown ? " disco" : ""}${layout === "drawer" && drawerOpen ? " drawer-open" : ""}${placing ? " placing" : ""}`}
     >
       {layout === "float" && <FloatChrome {...chrome} />}
       {layout === "drawer" && <DrawerChrome {...chrome} />}
@@ -5404,6 +5416,8 @@ export default function MapApp({
             />
           </div>
         )}
+        {/* 听歌's disco over the map, under the buttons: while its switch is on, and not through 舟友的酒 */}
+        {discoOpen && <DiscoHost want={discoChosen && !party} onShown={setDiscoShown} />}
       </div>
 
       {placing && basemap && (

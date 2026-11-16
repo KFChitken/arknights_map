@@ -19,6 +19,7 @@ import {
   listenRxNow,
   listenSaidNow,
   listenSongsNow,
+  listenTap,
   loadRoom,
   loadSongs,
   markIntro,
@@ -1430,5 +1431,58 @@ describe("拖进度条: a second of the song gone to", () => {
     } finally {
       if (nav) Object.defineProperty(globalThis, "navigator", nav);
     }
+  });
+});
+
+describe("听歌's disco: what it dances to", () => {
+  const danced = (body: Record<string, unknown>) => {
+    const a = played(body);
+    const json = a.json as Record<string, unknown>;
+    return { ...a, json: { ...json, dance: `table-${String(body.song)}`, ...(body.next ? { nextDance: `table-${String(body.next)}` } : {}) } };
+  };
+
+  it("tells the song, its table, where the element is in it and whether it sounds, and nothing while no song is in it", async () => {
+    expect(listenTap()).toBeNull();
+    playAnswer = danced;
+    playTrack(track("s1"));
+    // the silence first: no song yet
+    expect(listenTap()).toBeNull();
+    await settle();
+    expect(listenTap()).toMatchObject({ song: "s1", dance: "table-s1", lite: false, rate: 1, sounding: true });
+    audio().to(12.5);
+    expect(listenTap()?.at).toBe(12.5);
+    audio().stall();
+    expect(listenTap()?.sounding).toBe(false);
+    audio().sound();
+    expect(listenTap()?.sounding).toBe(true);
+    audio().seeking = true;
+    expect(listenTap()?.sounding).toBe(false);
+    audio().seeking = false;
+    toggle();
+    await settle();
+    expect(listenTap()).toMatchObject({ song: "s1", sounding: false });
+    forgetListening();
+    expect(listenTap()).toBeNull();
+  });
+
+  it("has the next song's table at once, as it came with the song before it", async () => {
+    playAnswer = danced;
+    playTrack(track("s1"));
+    await settle();
+    // before the next one's own answer comes
+    playAnswer = played;
+    audio().duration = 100;
+    audio().end();
+    expect(listenTap()).toMatchObject({ song: "s2", dance: "table-s2" });
+    await settle();
+    expect(listenTap()).toMatchObject({ song: "s2", dance: "table-s2", sounding: true });
+  });
+
+  it("has no table for a song the server sent none with, and tells when the smaller copy plays", async () => {
+    withLite = new Set(["s1"]);
+    setLite(true);
+    playTrack(track("s1"));
+    await settle();
+    expect(listenTap()).toMatchObject({ song: "s1", dance: null, lite: true, sounding: true });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { fmt, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import { capCount } from "@/lib/inboxTabs";
@@ -9,6 +9,7 @@ import type { Basemap, RoachColor } from "@/lib/types";
 import type { UiFold } from "@/lib/uiChoice";
 import type { Radar } from "@/lib/world/types";
 import type { RoachOpts } from "@/lib/roachSvg";
+import { seeDiscoHint, setDiscoChosen, useDiscoChosen, useDiscoHintSeen } from "@/lib/disco";
 import RoachIcon from "../../RoachIcon";
 import { SpeakerIcon } from "../DockFx";
 import { FriendsMark } from "../FriendsSheet";
@@ -111,8 +112,11 @@ export type ChromeProps = {
    * null for a visitor (their browser counts none)
    */
   study: { dot: boolean; days: number | null; onOpen: () => void } | null;
-  /** 听歌, where the server opened it to them (LISTEN) and the site is not gray; open: its panel is out */
-  listen: { open: boolean; onToggle: () => void } | null;
+  /**
+   * 听歌, where the server opened it to them (LISTEN) and the site is not gray; open: its panel is out; disco: 听歌's
+   * disco is open to them too (DISCO), its button beside 听歌 (DiscoButton)
+   */
+  listen: { open: boolean; onToggle: () => void; disco: boolean } | null;
   /** 支持舟P地图, where the server shows it to them (me.sponsor, SPONSOR) and the site is not gray: opens its card */
   sponsor: { onOpen: () => void } | null;
   onGuide: (id: GuideId) => void;
@@ -317,6 +321,139 @@ export function listenLabel(e: ReturnType<typeof useListenEntry>) {
 export function listenWord(e: ReturnType<typeof useListenEntry>) {
   if (e.together !== null) return fmt(T.map.bar.listenTogether, { n: e.together });
   return e.on ? T.map.bar.listenNow : T.map.bar.listen;
+}
+
+/** 听歌's disco's button stays this long after the song stops (the disco does too, PAUSE_MS in disco/engine.ts) */
+const DISCO_LINGER_MS = 2000;
+/** 「点我蹦迪」 goes after this long, or once the button is tapped */
+const DISCO_HINT_MS = 6000;
+
+/** on, and for ms after it goes off */
+function useLinger(on: boolean, ms: number) {
+  const [late, setLate] = useState(on);
+  useEffect(() => {
+    if (on) {
+      setLate(true);
+      return;
+    }
+    const t = window.setTimeout(() => setLate(false), ms);
+    return () => window.clearTimeout(t);
+  }, [on, ms]);
+  return on || late;
+}
+
+/** 听歌's disco's mirror ball, small (as the design's button) */
+export function DiscoBallIcon({ size = 24 }: { size?: number }) {
+  // gradients by ids of this one's own, as there may be two buttons on the page
+  const id = useId().replace(/[^\w-]/g, "");
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <defs>
+        <radialGradient id={`${id}g`} cx="38%" cy="34%" r="72%">
+          <stop offset="0" stopColor="#fff" />
+          <stop offset=".5" stopColor="#c3c9d4" />
+          <stop offset="1" stopColor="#5a616e" />
+        </radialGradient>
+        <clipPath id={`${id}c`}>
+          <circle cx="12" cy="13.5" r="8.5" />
+        </clipPath>
+      </defs>
+      <line x1="12" y1="0.5" x2="12" y2="5" stroke="#c3c9d4" strokeWidth="1.5" />
+      <circle cx="12" cy="13.5" r="8.5" fill={`url(#${id}g)`} />
+      <g clipPath={`url(#${id}c)`}>
+        <g stroke="#262a31" strokeOpacity=".5" strokeWidth=".8" fill="none">
+          <path d="M3 10h18M3 13.5h18M3 17h18M12 4.5v18M7.6 5.2c-1.7 2.5-1.7 14.1 0 16.6M16.4 5.2c1.7 2.5 1.7 14.1 0 16.6" />
+        </g>
+        <rect x="13" y="14.3" width="2.6" height="2.2" fill="#ff4fd8" />
+        <rect x="8.4" y="10.9" width="2.6" height="2.2" fill="#3fd0ff" />
+        <rect x="13" y="7.4" width="2.6" height="2" fill="#ffd23f" />
+      </g>
+      <circle cx="12" cy="13.5" r="8.5" fill="none" stroke="#0d0e10" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+/** An element in a row that slides sideways, the row slid so all of it is in sight (nothing else is moved) */
+function slideInto(el: HTMLElement | null) {
+  const row = el?.parentElement;
+  if (!el || !row || row.scrollWidth <= row.clientWidth) return;
+  const r = el.getBoundingClientRect();
+  const box = row.getBoundingClientRect();
+  const pad = 10;
+  if (r.right > box.right - pad) row.scrollLeft += r.right - box.right + pad;
+  else if (r.left < box.left + pad) row.scrollLeft -= box.left + pad - r.left;
+}
+
+/**
+ * 听歌's disco's switch, kept in this browser (src/lib/disco.ts): shown while a song plays, and for a moment after it
+ * stops; pink while on. The first time a song sounds, 「点我蹦迪」 beside it, once on this device. round: beside 在听
+ * (浮岛, 游戏风), the words in a bubble; chip: a tab of 抽屉's, the words inside it while they show. What floats beside
+ * 听歌's entry (ListenOverlay.tsx) goes past it (data-listen-beside).
+ */
+export function DiscoButton({ kind }: { kind: "round" | "chip" }) {
+  const e = useListenEntry();
+  const p = useListenPlayer();
+  const shown = useLinger(e.on, DISCO_LINGER_MS);
+  const chosen = useDiscoChosen();
+  const seen = useDiscoHintSeen();
+  const sounding = p.status === "playing" && !p.buffering;
+  const [hint, setHint] = useState(false);
+  const chip = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!shown || !sounding || seen || chosen) return;
+    seeDiscoHint();
+    setHint(true);
+  }, [shown, sounding, seen, chosen]);
+  useEffect(() => {
+    if (!hint) return;
+    // 抽屉's tabs slide sideways: on a narrow phone this one may be past the edge, so the row slides to show its words
+    slideInto(chip.current);
+    const t = window.setTimeout(() => setHint(false), DISCO_HINT_MS);
+    return () => window.clearTimeout(t);
+  }, [hint]);
+  if (!shown) return null;
+  const tap = () => {
+    setHint(false);
+    setDiscoChosen(!chosen);
+  };
+  const label = chosen ? T.map.bar.discoOff : T.map.bar.discoOn;
+  if (kind === "chip") {
+    return (
+      <button
+        ref={chip}
+        className={`dchip glass disco-chip${chosen ? " disco-on" : ""}${hint ? " with-hint" : ""}`}
+        aria-pressed={chosen}
+        aria-label={label}
+        title={label}
+        onClick={tap}
+        data-listen-beside
+      >
+        <span className="ico">
+          <DiscoBallIcon size={22} />
+        </span>
+        {hint && <span aria-hidden="true">{T.map.bar.discoHint}</span>}
+      </button>
+    );
+  }
+  return (
+    <span className="disco-slot">
+      <button
+        className={`disco-ball glass${chosen ? " disco-on" : ""}`}
+        aria-pressed={chosen}
+        aria-label={label}
+        title={label}
+        onClick={tap}
+        data-listen-beside
+      >
+        <DiscoBallIcon size={24} />
+      </button>
+      {hint && (
+        <span className="disco-hint" aria-hidden="true">
+          {T.map.bar.discoHint}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** 消息's envelope */

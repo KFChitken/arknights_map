@@ -23,7 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
-import { listenMode, sponsorMode, studyMode } from "@/lib/server/env";
+import { discoMode, listenMode, sponsorMode, studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -94,7 +94,8 @@ export default async function Privacy() {
             b: <strong>{T.server.privacy.collect.securityB}</strong>,
             sessionDays: SESSION_DAYS,
             b2: <strong>{T.server.privacy.collect.securityB2}</strong>,
-            listen: listen ? T.server.privacy.collect.securityListen : "",
+            // and 听歌's disco, once it too is open to everyone (DISCO=on)
+            listen: listen ? `${T.server.privacy.collect.securityListen}${discoMode() === "on" ? T.server.privacy.collect.securityDisco : ""}` : "",
           })}
         </li>
       </ul>

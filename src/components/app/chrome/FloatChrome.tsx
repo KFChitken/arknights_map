@@ -12,6 +12,7 @@ import {
   Chev,
   countsTap,
   DeskHint,
+  DiscoButton,
   FoldArrow,
   GuideFace,
   GUIDE_ORDER,
@@ -153,7 +154,15 @@ export default function FloatChrome(p: ChromeProps) {
                 <small>{T.ui.button}</small>
               </button>
             )}
-            {listen && <ListenTile listen={listen} folded={folded.l} />}
+            {listen &&
+              (listen.disco ? (
+                <div className="listen-slot">
+                  <ListenTile listen={listen} folded={folded.l} />
+                  <DiscoButton kind="round" />
+                </div>
+              ) : (
+                <ListenTile listen={listen} folded={folded.l} />
+              ))}
             {sponsor && (
               <button
                 className="ui-tile sponsor-tile glass"

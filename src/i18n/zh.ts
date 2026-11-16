@@ -220,6 +220,9 @@ export const zh = {
       listenTogether: "一起 {n} 人",
       listenTogetherLabel: "听歌，一起听 {n} 人",
       listenChat: "发短评",
+      discoOn: "开始蹦迪",
+      discoOff: "停止蹦迪",
+      discoHint: "点我蹦迪",
       sponsor: "支持{site}",
       sponsorShort: "支持",
       placeMine: "放下我的蟑螂",
@@ -746,6 +749,7 @@ export const zh = {
         securityB: "为了安全和正常运行产生的信息。",
         securityB2: "不写进数据库，也不记访问日志",
         securityListen: "听歌面板的说明看没看过、刷新网页前在听哪首放到哪、省流量和随机播放开没开、",
+        securityDisco: "听歌时开没开蹦迪、",
         notCollected: "我不收集手机号、真实姓名、身份证号、设备定位或通讯录。",
       },
       use: {

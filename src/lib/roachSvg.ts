@@ -43,6 +43,8 @@ export type RoachOpts = {
   zzz?: boolean;
   /** Asleep: legs kick, lamps breathe and it rocks (SMIL, so it moves even inside an <img>) */
   anim?: boolean;
+  /** Both sleeves up, as at the top of a jump in 听歌's disco: the hood only */
+  hands?: boolean;
 };
 
 export const FRIEND = "#ff7eb6";
@@ -83,7 +85,7 @@ export function roachSvg(color: RoachColor, opts: RoachOpts = {}) {
   const size = opts.size ?? 64;
   const glow = GLOW[plainClone(opts) ? "white" : color];
   const ground = groundOf(opts);
-  const body = BODIES[shownAvatar(opts)]?.(glow) ?? "";
+  const body = opts.hands && shownAvatar(opts) === "hood" ? hoodBody(glow, { raise: "both" }) : (BODIES[shownAvatar(opts)]?.(glow) ?? "");
   const heart = heartOver(opts);
   const parts =
     opts.part === "ground"

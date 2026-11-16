@@ -328,6 +328,15 @@ function readSpot(): Spot {
     anchor = { ...box(r), side: el.dataset.listenAnchor === "up" ? "up" : "right" };
     break;
   }
+  // what stands right beside the entry (听歌's disco's button, chrome/parts.tsx DiscoButton): the bubble goes past it
+  if (anchor?.side === "right") {
+    for (const el of document.querySelectorAll<HTMLElement>("[data-listen-beside]")) {
+      const r = el.getBoundingClientRect();
+      if (seen(r) && r.left >= anchor.x + anchor.w - 1 && r.top < anchor.y + anchor.h && r.bottom > anchor.y) {
+        anchor.w = Math.max(anchor.w, Math.round(r.right) - anchor.x);
+      }
+    }
+  }
   const bottoms = [...document.querySelectorAll<HTMLElement>("[data-chrome-bottom]")].map((el) => el.getBoundingClientRect()).filter(seen);
   const panelEl = document.querySelector(".listen-sheet .sheet, .listen-float");
   const panel = panelEl ? box(panelEl.getBoundingClientRect()) : null;
