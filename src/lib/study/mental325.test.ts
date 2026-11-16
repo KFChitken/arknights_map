@@ -4,8 +4,8 @@ import {
   MENTAL_COUNT,
   MENTAL_FORMS,
   MENTAL_NEAR,
+  MENTAL_RIGHT,
   MENTAL_SHUFFLED,
-  MENTAL_STREAK,
   MENTAL_WRONGS,
   mentalMs,
   mentalSums,
@@ -118,16 +118,20 @@ describe("心算快打", () => {
     expect(mentalMs(30)).toBe(3000);
   });
 
-  it("passes at ten right in a row, starts the row again at a wrong one, and ends at three wrong", () => {
-    const ten = Array<boolean>(MENTAL_STREAK).fill(true);
-    expect(play(ten)).toEqual({ tally: { streak: 10, best: 10, wrongs: 0 }, end: "pass" });
+  it("passes at ten right in all, a wrong one taking none away, and ends at the third wrong", () => {
+    const ten = Array<boolean>(MENTAL_RIGHT).fill(true);
+    expect(play(ten)).toEqual({ tally: { right: 10, wrongs: 0 }, end: "pass" });
     expect(play(ten.slice(1)).end).toBeNull();
-    // nine right, one wrong: the row starts again
-    expect(play([...ten.slice(1), false])).toEqual({ tally: { streak: 0, best: 9, wrongs: 1 }, end: null });
-    expect(play([...ten.slice(1), false, ...ten]).end).toBe("pass");
-    // three wrong, wherever they come
+    // nine right and one wrong: the nine still count, and one more passes
+    expect(play([...ten.slice(1), false])).toEqual({ tally: { right: 9, wrongs: 1 }, end: null });
+    expect(play([...ten.slice(1), false, true])).toEqual({ tally: { right: 10, wrongs: 1 }, end: "pass" });
+    // two wrong anywhere on the way, and ten right still pass: twelve sums at most
+    expect(play([false, ...ten.slice(5), false, ...ten.slice(5)])).toEqual({ tally: { right: 10, wrongs: 2 }, end: "pass" });
+    // the third wrong, wherever it comes, ends it with what was right
     const out = play([true, false, true, true, false, true, false]);
-    expect(out).toEqual({ tally: { streak: 0, best: 2, wrongs: MENTAL_WRONGS }, end: "out" });
+    expect(out).toEqual({ tally: { right: 4, wrongs: MENTAL_WRONGS }, end: "out" });
+    expect(play([...ten.slice(1), false, false, false]).end).toBe("out");
     expect(play([false, false]).end).toBeNull();
+    expect(MENTAL_WRONGS).toBe(3);
   });
 });

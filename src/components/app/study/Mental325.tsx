@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import {
   answered,
-  MENTAL_STREAK,
+  MENTAL_RIGHT,
   MENTAL_WRONGS,
   mentalMs,
   mentalSums,
@@ -129,12 +129,12 @@ export default function Mental325({ seed, onRound }: GameProps) {
   return (
     <div className="mt-game" data-phase={phase}>
       <div className="mt-score">
-        <Dots label={w.streak} of={MENTAL_STREAK} n={tally.streak} said={fmt(w.streakSr, { n: tally.streak, of: MENTAL_STREAK })} />
+        <Dots label={w.right} of={MENTAL_RIGHT} n={tally.right} said={fmt(w.rightSr, { n: tally.right, of: MENTAL_RIGHT })} />
         <Dots label={w.wrongs} of={MENTAL_WRONGS} n={tally.wrongs} said={fmt(w.wrongsSr, { n: tally.wrongs, of: MENTAL_WRONGS })} wrong />
       </div>
       {phase === "ready" ? (
         <div className="mt-card mt-idle">
-          <p>{fmt(w.rule, { streak: MENTAL_STREAK, wrongs: MENTAL_WRONGS })}</p>
+          <p>{fmt(w.rule, { right: MENTAL_RIGHT, wrongs: MENTAL_WRONGS })}</p>
         </div>
       ) : (
         <div key={shown.i} className={`mt-card${phase === "right" ? " mt-right" : phase === "wrong" ? " mt-wrong" : ""}`}>
@@ -176,7 +176,7 @@ export default function Mental325({ seed, onRound }: GameProps) {
   );
 }
 
-/** Right in a row, or wrong: a dot for each of those that pass or end the round */
+/** Right, or wrong: a dot for each of those that pass or end the round */
 function Dots({ label, of, n, said, wrong }: { label: string; of: number; n: number; said: string; wrong?: boolean }) {
   return (
     <span className={`mt-tally${wrong ? " mt-wrongs" : ""}`} role="img" aria-label={said}>
@@ -192,7 +192,7 @@ function roundOf(t: Tally, end: "pass" | "out"): Round {
   const w = T.study.mental325;
   return {
     won: end === "pass",
-    result: fmt(w.result, { n: t.best }),
-    verdict: end === "pass" ? fmt(w.pass, { n: MENTAL_STREAK }) : fmt(w.out, { wrongs: MENTAL_WRONGS, n: t.best }),
+    result: fmt(w.result, { n: t.right }),
+    verdict: end === "pass" ? fmt(w.pass, { n: MENTAL_RIGHT }) : fmt(w.out, { wrongs: MENTAL_WRONGS, n: t.right }),
   };
 }

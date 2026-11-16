@@ -2683,23 +2683,23 @@ export const zh = {
     /** 心算快打 (src/lib/study/mental325.ts) */
     mental325: {
       start: "开始",
-      rule: "判断每道算式等不等于 325\n每道限时，连对 {streak} 道过关\n答错 {wrongs} 道结束",
+      rule: "判断每道算式等不等于 325\n每道限时，答对 {right} 道过关\n答错 {wrongs} 道结束",
       /** The two answers */
       yes: "= 325",
       no: "≠ 325",
-      streak: "连对",
+      right: "答对",
       wrongs: "答错",
       /** Read out for the dots */
-      streakSr: "连对 {n} 道，{of} 道过关",
+      rightSr: "答对 {n} 道，{of} 道过关",
       wrongsSr: "答错 {n} 道，{of} 道结束",
       /** Over a sum whose time ran out */
       late: "时间到",
       /** Under a sum answered wrong: what it makes */
       not: "= {v}，不是 325",
       is: "= 325，就是 325",
-      pass: "连对 {n} 道，过关！",
-      out: "答错 {wrongs} 道，这局到这儿，最多连对 {n} 道",
-      result: "连对 {n} 道",
+      pass: "答对 {n} 道，过关！",
+      out: "答错 {wrongs} 道，这局到这儿，答对了 {n} 道",
+      result: "答对 {n} 道",
     },
     /** 325 节拍 (src/lib/study/beat325.ts) */
     beat325: {

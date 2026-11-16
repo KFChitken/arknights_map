@@ -1,17 +1,18 @@
 /**
  * 心算快打 (src/components/app/study/Mental325.tsx): sums come one at a time, and for each the player says whether it
- * makes 325 or not, against a clock that gives a little less time for each. Ten right in a row pass; three wrong end the
- * round, a sum left until its time ran out counting as wrong. Each round's sums are dealt afresh
+ * makes 325 or not, against a clock that gives a little less time for each. Ten right pass, in a row or not: a wrong
+ * one takes none of them away, and the third wrong ends the round, a sum left until its time ran out counting as
+ * wrong. Each round's sums are dealt afresh
  * (rules.ts newSeed): half of them make 325, written as a product, a sum, a difference, a quotient, a square and a
  * bit more, two squares, or a product and a bit more or less; the other half are written the same ways but make a
  * number near 325, or 325's digits in another order. Whether a sum makes 325 is worked out from what it shows.
  */
 
-/** Right answers in a row that pass */
-export const MENTAL_STREAK = 10;
+/** Right answers that pass, in all: a wrong one takes none away */
+export const MENTAL_RIGHT = 10;
 /** Wrong answers that end the round */
 export const MENTAL_WRONGS = 3;
-/** The day's sums: more than a round can ask (at most 30: 9 right and one wrong, three times) */
+/** A round's sums: more than a round can ask (at most 12: 9 right and three wrong) */
 export const MENTAL_COUNT = 60;
 
 /** How long the nth sum of a round may be answered in (ms, n from 1): 6 seconds, 0.2 less for each, never under 3 */
@@ -162,16 +163,16 @@ export function mentalSums(random: () => number): Sum[] {
   return out;
 }
 
-/** Where a round is: right answers in a row now, the most in a row so far, and wrong answers */
-export type Tally = { streak: number; best: number; wrongs: number };
-export const TALLY_START: Tally = { streak: 0, best: 0, wrongs: 0 };
+/** Where a round is: right answers so far, and wrong ones */
+export type Tally = { right: number; wrongs: number };
+export const TALLY_START: Tally = { right: 0, wrongs: 0 };
 
 /** A sum answered, right or wrong: the tally after it, and whether that passed (pass) or ended (out) the round */
 export function answered(t: Tally, right: boolean): { tally: Tally; end: "pass" | "out" | null } {
   if (right) {
-    const streak = t.streak + 1;
-    return { tally: { streak, best: Math.max(t.best, streak), wrongs: t.wrongs }, end: streak >= MENTAL_STREAK ? "pass" : null };
+    const tally = { right: t.right + 1, wrongs: t.wrongs };
+    return { tally, end: tally.right >= MENTAL_RIGHT ? "pass" : null };
   }
-  const wrongs = t.wrongs + 1;
-  return { tally: { streak: 0, best: t.best, wrongs }, end: wrongs >= MENTAL_WRONGS ? "out" : null };
+  const tally = { right: t.right, wrongs: t.wrongs + 1 };
+  return { tally, end: tally.wrongs >= MENTAL_WRONGS ? "out" : null };
 }
