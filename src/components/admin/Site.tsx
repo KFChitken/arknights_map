@@ -480,6 +480,11 @@ function SquadPanel() {
               <div className="ac-muted small">房主自己不算</div>
             </div>
             <div className="ac-stat">
+              <div className="ac-muted small">今天放的歌</div>
+              <div className="ac-stat-n">{d.plays} 首</div>
+              <div className="ac-muted small">房主点开始、下一首、重来才算</div>
+            </div>
+            <div className="ac-stat">
               <div className="ac-muted small">今天的快捷语句</div>
               <div className="ac-stat-n">{d.says} 句</div>
               <div className="ac-muted small">只记一共几句，不记谁说的</div>

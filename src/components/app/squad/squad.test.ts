@@ -22,6 +22,7 @@ const room = (more: Partial<SquadListRoom> = {}): SquadListRoom => ({
   keyAt: NOW - 3 * 60_000,
   friend: true,
   mine: false,
+  music: false,
   ...more,
 });
 const html = (r: SquadListRoom) => renderToStaticMarkup(createElement(RoomCard, { room: r, now: NOW, busy: false, onJoin: () => {}, onBack: () => {} }));

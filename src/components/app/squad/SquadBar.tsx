@@ -40,6 +40,7 @@ export default function SquadBar({ hidden, onOpen }: { hidden: boolean; onOpen: 
     <button className="sq-bar glass" style={at} aria-haspopup="dialog" aria-label={fmt(T.squad.inRoomLabel, { n, max: SQUAD_MAX })} onClick={onOpen}>
       <ShieldIcon size={18} />
       <span>{fmt(T.squad.inRoom, { n, max: SQUAD_MAX })}</span>
+      {room.dj && room.startedAt !== null && <span aria-hidden="true">♪</span>}
     </button>
   );
 }

@@ -148,6 +148,7 @@ import {
   declareRoom,
   heardListen,
   inviteMore,
+  isListening,
   joinAt,
   joinCall,
   laterAt,
@@ -159,11 +160,18 @@ import {
   onListenSaid,
   openRoomWith,
   serverNow,
+  toggle as toggleListening,
   touchMember,
 } from "./app/listening";
 import SquadBar from "./app/squad/SquadBar";
 import type { SquadView } from "./app/squad/SquadSheet";
 import { forgetSquadPage, heardSquad, squadStreamBack, startSquad, touchInSquad, useSquadRoom } from "./app/squad/squading";
+import { setQuietListening } from "./app/squad/squadMusic";
+
+// the host's songs in a room of 一起卫戍 starting here quiet 听歌 (and 一起听), so the two never sound together
+setQuietListening(() => {
+  if (isListening()) toggleListening();
+});
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
 import type { ListenActs, ListenTab } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";

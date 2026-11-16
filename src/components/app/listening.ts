@@ -39,6 +39,7 @@ import { siteDay } from "@/lib/siteDay";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "@/lib/world/types";
 import { stopMusic } from "./amiyaMusic";
 import { stopPartyMusic } from "./partyMusic";
+import { stopSquadMusic } from "./squad/squadMusic";
 
 /**
  * 听歌 on the map page: one <audio> for the whole page, never Web Audio (which would hold a song decoded, tens of MB).
@@ -1032,6 +1033,7 @@ const tracks = () => {
 function quietOthers() {
   stopMusic();
   stopPartyMusic();
+  stopSquadMusic();
 }
 
 /**

@@ -1,5 +1,6 @@
 import season from "@/data/squad-season.json";
 import { SERVERS } from "./games";
+import type { QueueChange, RoomSchedule } from "./listen";
 
 /**
  * 一起卫戍: rooms where players of 卫戍协议 find each other for its 联合模拟 (four at most, the host one of them), switched
@@ -145,6 +146,16 @@ export const LIST_IDLE_MS = 5 * MINUTE;
 /** Rooms on the list at most */
 export const LIST_MAX = 30;
 
+// ---- the host's songs ----
+
+/** What the host does to the room's songs: as 一起听's (src/lib/listen.ts), and 停 (stop: nothing plays until they start it again) */
+export type SquadSongChange = QueueChange | "stop";
+/** How the songs changed, as told to the room */
+export type SquadSongHow = "start" | "next" | "restart" | "add" | "seek" | "stop";
+/** Songs asked for (点歌): so many waiting from each at most, and one every REQUEST_EVERY_MS */
+export const REQUESTS_EACH = 3;
+export const REQUEST_EVERY_MS = 20_000;
+
 // ---- what is said in a room ----
 
 /** The set lines (T.squad.say), by row; each is sent by its number */
@@ -152,6 +163,8 @@ export const PHRASE_ROWS = [
   ["team", [1, 2, 3, 4, 5, 6, 7, 8, 9]],
   ["fight", [10, 11, 12, 13, 14, 15, 16]],
   ["after", [17, 18, 19, 20, 21]],
+  /** only while the host's song plays */
+  ["music", [22, 23, 24]],
 ] as const;
 export type PhraseRow = (typeof PHRASE_ROWS)[number][0];
 const PHRASES = new Set<number>(PHRASE_ROWS.flatMap(([, ids]) => ids));
@@ -189,6 +202,8 @@ export type SquadListRoom = {
   friend: boolean;
   /** The viewer is in it */
   mine: boolean;
+  /** A song of the host's plays in it now (♪ 在放歌) */
+  music: boolean;
 };
 
 /** GET /api/squad/list: rooms waiting first (those with 触须之交 first, then those missing fewest, the freshest key first), then those playing */
@@ -234,12 +249,22 @@ export type SquadRoom = {
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
   /** The host: when 等人 may start the wait over again (ms) */
   rewaitAt: number;
+  /**
+   * The host's songs (src/lib/listen.ts RoomSchedule), whether this player may hear them (听歌 open to them and not
+   * paused in the 管理台, the site not gray: dj), the songs asked for (the host's: all, oldest first, with who asked;
+   * anyone else's: their own still waiting), and, to the host alone, how many in it follow the songs now
+   */
+  dj: boolean;
+  requests: { id: number; song: string; name?: string }[];
+  listening: number | null;
   now: number;
-};
+} & RoomSchedule;
 
 /** What a room's phones are told (the event stream's "squad"): look again, with what changed; lines said; it ended; you are out */
 export type SquadTell =
-  | { t: "room"; room: string; what?: { kind: "in" | "game" | "key" | "state"; h?: number; to?: SquadState } }
+  | { t: "room"; room: string; what?: { kind: "in" | "game" | "key" | "state" | "ask"; h?: number; to?: SquadState } }
+  /** The host changed the songs: how, and the songs as they are now */
+  | ({ t: "songs"; room: string; how: SquadSongHow } & RoomSchedule)
   | { t: "say"; room: string; items: { h: number; p: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
@@ -263,6 +288,8 @@ export type SquadDesk = {
   opened: number;
   joins: number;
   says: number;
+  /** Songs its hosts started */
+  plays: number;
 };
 
 // ---- refusals the page acts on (HttpError codes) ----

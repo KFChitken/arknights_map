@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { fmt, T } from "@/i18n";
-import { SAY_MERGE_MS, SAY_SHOW_MS, type SquadCard, type SquadEnd, type SquadMe, type SquadRoom, type SquadTell } from "@/lib/squad";
+import { SAY_MERGE_MS, SAY_SHOW_MS, type SquadCard, type SquadEnd, type SquadMe, type SquadRoom, type SquadSongChange, type SquadTell } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
 import type { TouchResult } from "@/lib/world/types";
+import { loadSquadTracks, squadSongs, squadTrackName, unfollowSquad } from "./squadMusic";
 
 /**
  * 一起卫戍 on the map page (src/lib/squad.ts): the room the player is in, kept here so the bar over the map and the
@@ -69,11 +70,12 @@ function addFloat(f: Omit<Float, "key" | "first">) {
 
 const nameOf = (r: SquadRoom | null, h: number | undefined) => r?.members.find((m) => m.h === h)?.name ?? null;
 
-/** In a room, or out of it: what was said of the last goes once they are in another */
+/** In a room, or out of it: what was said of the last goes once they are in another; its songs to the player */
 function setRoom(next: SquadRoom | null) {
   if (next) notice.set(null);
   if (!next) floats.set(NO_FLOATS);
   room.set(next);
+  squadSongs(next && next.dj ? { id: next.id, queue: next.queue, idx: next.idx, startedAt: next.startedAt, version: next.version } : null, next?.now);
 }
 
 /** The room as the server has it now (null: none) */
@@ -112,6 +114,22 @@ export function heardSquad(raw: unknown) {
   }
   if (tell.t === "end") return over(T.squad.ended[tell.why as SquadEnd] ?? T.squad.ended.host);
   if (tell.t === "you") return over(tell.why === "kicked" ? T.squad.out.kicked : T.squad.out.left);
+  if (tell.t === "songs") {
+    // the songs told, unless a newer answer has them already
+    if (tell.version > r.version) {
+      const next = { ...r, queue: tell.queue, idx: tell.idx, startedAt: tell.startedAt, version: tell.version };
+      room.set(next);
+      if (next.dj) squadSongs({ id: next.id, queue: next.queue, idx: next.idx, startedAt: next.startedAt, version: next.version });
+    }
+    if (!r.host && (tell.how === "start" || tell.how === "next" || tell.how === "restart")) {
+      const first = tell.queue[tell.idx];
+      void loadSquadTracks().then(() => {
+        const name = first ? squadTrackName(first) : null;
+        if (name) addFloat({ p: null, n: 1, name: "", text: fmt(T.squad.float.song, { name }), sys: true });
+      });
+    }
+    return;
+  }
   if (tell.t === "say") {
     for (const it of tell.items) {
       const line = T.squad.say.lines[it.p - 1];
@@ -130,7 +148,9 @@ export function heardSquad(raw: unknown) {
       if ((what.kind === "key" || what.kind === "state") && next.host) return;
       const name = nameOf(next, what.h);
       const text =
-        what.kind === "in" && name
+        what.kind === "ask"
+          ? T.squad.float.ask
+          : what.kind === "in" && name
           ? fmt(T.squad.float.in, { name })
           : what.kind === "game" && name
             ? fmt(T.squad.float.game, { name })
@@ -213,8 +233,16 @@ export async function sayInSquad(p: number): Promise<{ sent: boolean; full?: boo
   return res;
 }
 
+/** What the host does to the room's songs */
+export const squadSongsChange = (change: SquadSongChange) => after(squadApi.music(change));
+/** 点歌, and the host's answer to one */
+export const requestSquadSong = (song: string) => after(squadApi.request(song));
+export const takeSquadRequest = (id: number) => after(squadApi.take(id));
+export const dropSquadRequest = (id: number) => after(squadApi.drop(id));
+
 /** Signed out: nothing kept */
 export function forgetSquadPage() {
+  unfollowSquad();
   setRoom(null);
   notice.set(null);
   card.set(undefined);

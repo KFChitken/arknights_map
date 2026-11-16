@@ -7,12 +7,15 @@ import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import {
+  answerRequest,
   changeKey,
+  changeSquadSongs,
   joinRoom,
   kickMember,
   leaveRoom,
   myRoom,
   openRoom,
+  requestSong,
   saveCard,
   sayInRoom,
   setInGame,
@@ -39,6 +42,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST prefs {card}             your card in this room alone
  *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
  *   POST say {p}                  a set line, by its number
+ *   POST music {start|next|restart|random|stop: true, add: song, seek: seconds}   what the host does to the room's
+ *                                 songs (as 一起听's; stop: nothing plays until started again)
+ *   POST request {song}           点歌: ask the host for a song
+ *   POST take {id} / drop {id}    the host takes a song asked for into the songs, or drops it (nobody told)
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
  * While SQUAD keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -60,11 +67,15 @@ const OPS = {
   prefs: { method: "POST", perMinute: 20 },
   touch: { method: "POST", perMinute: 20 },
   say: { method: "POST", perMinute: 30 },
+  music: { method: "POST", perMinute: 30 },
+  request: { method: "POST", perMinute: 10 },
+  take: { method: "POST", perMinute: 30 },
+  drop: { method: "POST", perMinute: 30 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "touch", "say"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "touch", "say", "music", "request", "take"]);
 
 type Ctx = { params: Promise<{ op: string }> };
 
@@ -131,6 +142,14 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await touchMember(user, body));
     case "say":
       return answer(await sayInRoom(user, body));
+    case "music":
+      return answer(await changeSquadSongs(user, body));
+    case "request":
+      return answer(await requestSong(user, body));
+    case "take":
+      return answer(await answerRequest(user, body, true));
+    case "drop":
+      return answer(await answerRequest(user, body, false));
     default:
       throw new HttpError(404, T.server.routes.squad.notHere);
   }

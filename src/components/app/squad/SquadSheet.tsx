@@ -45,6 +45,7 @@ import {
 import { squadApi, SquadRefused } from "@/lib/squadClient";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../../RoachIcon";
+import DjBar from "./DjBar";
 import Sheet from "../Sheet";
 import {
   changeSquadKey,
@@ -464,6 +465,7 @@ function RoomCard({ room, now, busy, onJoin, onBack }: { room: SquadListRoom; no
       <span className="lvl">{levelName(room.level)}</span>
       <span className="tagline">
         {room.tags.map((t) => T.squad.tags[t - 1]).join(T.squad.dot)}
+        {room.music && <small className="mus">{T.squad.list.music}</small>}
         {room.friendsOnly && <small className="only">{T.squad.list.friendsOnly}</small>}
       </span>
       <div className="seatlist">
@@ -902,7 +904,7 @@ function RoomView({
         </div>
       }
       onClose={onClose}
-      footer={<Dock />}
+      footer={<Dock music={room.dj && room.startedAt !== null} />}
     >
       <Floats />
       {room.host && (
@@ -952,6 +954,7 @@ function RoomView({
           </>
         )}
       </div>
+      <DjBar room={room} busy={busy} run={run} />
       <div className="sq-members">
         {room.members.map((m) => (
           <MemberRow
@@ -1171,8 +1174,8 @@ function Floats() {
   );
 }
 
-/** The set lines, a row at a time, sent by number; a moment's rest after each */
-function Dock() {
+/** The set lines, a row at a time, sent by number; a moment's rest after each. 听歌's row only while the host's songs play */
+function Dock({ music }: { music: boolean }) {
   const [row, setRow] = useState<PhraseRow>("team");
   const [cool, setCool] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -1188,11 +1191,12 @@ function Dock() {
       setNote(e instanceof Error ? e.message : T.requests.serverTrouble);
     }
   };
-  const ids = PHRASE_ROWS.find(([r]) => r === row)![1];
+  const rows = PHRASE_ROWS.filter(([r]) => r !== "music" || music);
+  const ids = (rows.find(([r]) => r === row) ?? rows[0])[1];
   return (
     <div className="sq-dock">
       <div className="dt" role="tablist">
-        {PHRASE_ROWS.map(([r]) => (
+        {rows.map(([r]) => (
           <button key={r} role="tab" aria-selected={r === row} className={r === row ? "on" : ""} onClick={() => setRow(r)}>
             {T.squad.say.rows[r]}
           </button>

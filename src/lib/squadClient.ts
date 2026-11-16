@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { SquadCard, SquadList, SquadRoom } from "./squad";
+import type { SquadCard, SquadList, SquadRoom, SquadSongChange } from "./squad";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -69,4 +69,11 @@ export const squadApi = {
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** A set line, by its number: sent, or one too many (full: the hour's are used up) */
   say: (p: number) => call<{ sent: boolean; full?: boolean; now: number }>("say", post({ p })),
+  /** What the host does to the room's songs */
+  music: (change: SquadSongChange) => call<Room>("music", post(typeof change === "object" ? change : { [change]: true })),
+  /** 点歌 */
+  request: (song: string) => call<Room>("request", post({ song })),
+  /** The host takes a song asked for into the songs, or drops it */
+  take: (id: number) => call<Room>("take", post({ id })),
+  drop: (id: number) => call<Room>("drop", post({ id })),
 };

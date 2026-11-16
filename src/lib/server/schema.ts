@@ -1804,6 +1804,11 @@ export const squadRooms = pgTable(
     stateAt: at("state_at"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
+    /** The host's songs, as 一起听's rooms keep theirs (src/lib/listen.ts RoomSchedule): none until they play one */
+    queue: text("queue").array().notNull().default(emptyArray),
+    idx: smallint("idx").notNull().default(0),
+    startedAt: at("started_at"),
+    version: integer("version").notNull().default(1),
   },
   (t) => [
     index("squad_rooms_open_idx").on(t.createdAt).where(sql`${t.endedAt} is null`),
@@ -1841,6 +1846,24 @@ export const squadMembers = pgTable(
     uniqueIndex("squad_members_one_room").on(t.userId).where(sql`${t.leftAt} is null`),
     index("squad_members_user_idx").on(t.userId, t.joinedAt),
   ],
+);
+
+/**
+ * Songs someone in a room of 一起卫戍 asked its host to play (点歌), by their number there, until the host takes one
+ * into the room's songs or drops it (unsaid): REQUESTS_EACH waiting each at most. Gone with the room.
+ */
+export const squadRequests = pgTable(
+  "squad_requests",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => squadRooms.id, { onDelete: "cascade" }),
+    handle: smallint("handle").notNull(),
+    song: text("song").notNull(),
+    createdAt: at("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("squad_requests_room_idx").on(t.roomId, t.createdAt)],
 );
 
 /**
