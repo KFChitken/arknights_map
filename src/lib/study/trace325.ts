@@ -22,7 +22,7 @@ export const TRACE = {
   /** About how many fly across in a minute */
   perMinute: 24,
   /** How fast they fly: the slowest and the fastest */
-  speed: [0.22, 0.34],
+  speed: [0.3, 0.46],
   /** At most how many fly at once */
   atOnce: 3,
   /** The first sets off this long after the start (ms) */
