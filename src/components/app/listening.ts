@@ -49,6 +49,11 @@ import { stopPartyMusic } from "./partyMusic";
  * tap on it goes on from that. One left part way is let go: kept, it would go on downloading, and on a slow line the
  * song after it would start later.
  *
+ * 省流量: a song with a smaller copy (half the bytes, scripts/make-lite-music.mjs) plays that instead while it is on.
+ * It is the player's own choice, kept in this browser; not chosen either way, it comes on by itself for the page once
+ * a song has not sounded LITE_AFTER_MS after it was put in the element, or has waited that long for more of it: that
+ * song goes over to its copy from where it got to, and the page says so once. Off, it never comes on by itself.
+ *
  * 一起听: in a room the element plays what the room's songs say should play now (src/lib/listen.ts roomAt), by the
  * server's clock as its answers put it, and keeps in step with it (keepUp): every SYNC_EVERY_MS, as each song ends,
  * as the room is told something (heardListen, from the page's event stream), and as the page comes back into view.
@@ -95,6 +100,10 @@ const LINK_KEEP_MS = 5 * 3_600_000;
 const LINKS_MAX = 200;
 /** Songs left by a tap with all of them downloaded, each kept paused in an element of its own: this many */
 const KEPT_MAX = 2;
+/** 省流量 as the player chose it in this browser: on or off; not there, not chosen (localStorage) */
+const LITE_KEY = "zhoup.listenLite";
+/** A song not sounding this long after it went in the element, or waiting this long for more of it, goes over to its smaller copy */
+const LITE_AFTER_MS = 3_000;
 
 export type ListenStatus = "idle" | "starting" | "playing" | "paused";
 
@@ -209,10 +218,20 @@ let audio: HTMLAudioElement | null = null;
 /** The silent clip the element was unlocked with, silence between a room's songs, or a song (current's) */
 let holding: "silent" | "gap" | "song" | null = null;
 /**
- * The song in the element, as the server gave it: the next one (on its album, or in the room), its link, until when the
- * server counts us; and in a room, when the song starts on the server's clock (null: played alone)
+ * The song in the element, as the server gave it: its smaller copy's link (省流量; null: none, or not given yet), the
+ * next one (on its album, or in the room) and its links, until when the server counts us; and in a room, when the song
+ * starts on the server's clock (null: played alone)
  */
-let current: { track: ListenTrack; next: string | null; nextUrl: string | null; until: number; early: boolean; start: number | null } | null = null;
+let current: {
+  track: ListenTrack;
+  lite: string | null;
+  next: string | null;
+  nextUrl: string | null;
+  nextLite: string | null;
+  until: number;
+  early: boolean;
+  start: number | null;
+} | null = null;
 /** Counts what is asked of the server, so an answer that a later tap overtook is dropped */
 let asked = 0;
 /** Counts songs put in the element, so a seek or a fade meant for one is not done to the next */
@@ -239,8 +258,8 @@ let unlocked = false;
 /** In a room: paused by the player (▶ goes to where everyone is); playing a little faster or slower to catch up */
 let selfPaused = false;
 let catching = false;
-/** In a room: the link the server gave ahead for the room's next song */
-let ahead: { id: string; url: string } | null = null;
+/** In a room: the links the server gave ahead for the room's next song */
+let ahead: { id: string; url: string; lite: string | null } | null = null;
 /** In a room: a song that would not start (its start on the server's clock), not tried again before until */
 let stuck: { start: number; until: number } | null = null;
 let beat: ReturnType<typeof setInterval> | null = null;
@@ -255,12 +274,26 @@ let roomAsked = 0;
 let backAt = 0;
 let bubbleKeys = 0;
 
-/** The links the server gave, by song, and when (this page's clock): a song tapped again starts from its link at once */
-const links = new Map<string, { url: string; got: number }>();
+/**
+ * The links the server gave, by song (its smaller copy's too, if it has one), and when (this page's clock): a song
+ * tapped again starts from its link at once
+ */
+const links = new Map<string, { url: string; lite: string | null; got: number }>();
 /** The song alone in the element (not a room's), at which link, given when; null: silence, a room's song, or nothing */
 let held: { song: string; url: string; got: number } | null = null;
 /** Songs left by a tap, all of each downloaded, each paused in an element of its own (the oldest first) */
 let keptSongs: { a: HTMLAudioElement; song: string; url: string; got: number }[] = [];
+
+/** 省流量 as chosen in this browser (undefined: not read yet; null: not chosen); come on by itself on this page */
+let liteHere: "on" | "off" | null | undefined;
+let liteAuto = false;
+/** The element plays a song's smaller copy */
+let onLite = false;
+/** Songs whose smaller copy would not play on this page: their own file instead */
+const liteFailed = new Set<string>();
+let slowTimer: ReturnType<typeof setTimeout> | undefined;
+/** Counts each change of 省流量, for the hook */
+const liteChanged = kept(0);
 
 /** The element in use: made within a tap, the first time */
 function element(): HTMLAudioElement {
@@ -287,21 +320,32 @@ function make(): HTMLAudioElement {
 function source(a: HTMLAudioElement, src: string, song: string | null) {
   a.src = src;
   const l = song ? links.get(song) : undefined;
-  held = song ? { song, url: src, got: l?.url === src ? l.got : Date.now() } : null;
+  held = song ? { song, url: src, got: l && (l.url === src || l.lite === src) ? l.got : Date.now() } : null;
 }
 
-/** A link the server gave for a song (the next one's too), kept to start from at once when the song is tapped again */
-function remember(song: string, url: string) {
-  if (links.get(song)?.url === url) return;
+/** The links the server gave for a song (the next one's too), kept to start from at once when the song is tapped again */
+function remember(song: string, url: string, lite: string | null) {
+  const l = links.get(song);
+  if (l?.url === url && l.lite === lite) return;
   links.delete(song);
-  links.set(song, { url, got: Date.now() });
+  links.set(song, { url, lite, got: Date.now() });
   if (links.size > LINKS_MAX) links.delete(links.keys().next().value!);
 }
 
-/** A song's link, still good */
+/** A song's link to play now (its smaller copy's while 省流量 is on), still good */
 function linkFor(song: string): string | null {
   const l = links.get(song);
-  return l && Date.now() - l.got < LINK_KEEP_MS ? l.url : null;
+  return l && Date.now() - l.got < LINK_KEEP_MS ? pick(song, l.url, l.lite) : null;
+}
+
+/** Which of a song's links to play: its smaller copy's while 省流量 is on, if it has one that plays */
+function pick(song: string, url: string, lite: string | null | undefined): string {
+  return lite && liteOn() && !liteFailed.has(song) ? lite : url;
+}
+
+/** The next song's link, as the server gave it with this one: its smaller copy's while 省流量 is on */
+function nextLink(c: NonNullable<typeof current>): string | null {
+  return c.next && c.nextUrl ? pick(c.next, c.nextUrl, c.nextLite) : null;
 }
 
 /** All of the song came, from its start: kept, it costs the line nothing more */
@@ -363,6 +407,74 @@ function forNew(): HTMLAudioElement {
   const el = keptSongs.length > KEPT_MAX ? keptSongs.shift()!.a : make();
   audio = el;
   return el;
+}
+
+// ---- 省流量 ----
+
+function liteChoice(): "on" | "off" | null {
+  if (liteHere !== undefined) return liteHere;
+  try {
+    const v = localStorage.getItem(LITE_KEY);
+    liteHere = v === "on" || v === "off" ? v : null;
+  } catch {
+    liteHere = null;
+  }
+  return liteHere;
+}
+
+/** 省流量 is on: chosen, or come on by itself on this page (not chosen either way) */
+function liteOn(): boolean {
+  const c = liteChoice();
+  return c === "on" || (c === null && liteAuto);
+}
+
+/**
+ * A song just put in the element (mine: its count), or waiting for more of it: over to its smaller copy if it does not
+ * sound within LITE_AFTER_MS; 省流量 then comes on for the page, said once, unless the player chose it either way
+ */
+function watchSlow(mine: number) {
+  clearTimeout(slowTimer);
+  if (onLite || liteChoice() === "off") return;
+  slowTimer = setTimeout(() => {
+    const p = player.get();
+    // sounding by then, paused, or another song in
+    if (mine !== loads || holding !== "song" || !(p.status === "starting" || (p.status === "playing" && p.buffering))) return;
+    if (!toLite() || liteChoice() !== null || liteAuto) return;
+    liteAuto = true;
+    liteChanged.set(liteChanged.get() + 1);
+    saidTo?.(T.listen.liteAuto);
+  }, LITE_AFTER_MS);
+}
+
+/** The song in the element over to its smaller copy, from where it got to (in a room, to where the room is); false: it has none */
+function toLite(): boolean {
+  const a = audio;
+  const c = current;
+  if (!a || holding !== "song" || !c?.lite || onLite || liteFailed.has(c.track.id)) return false;
+  if (c.start !== null) loadRoomSong(c.lite, c.start);
+  else load(c.lite, Math.max(lastAt, a.currentTime || 0), c.track.id);
+  return true;
+}
+
+/** 省流量 is on now (chosen, or come on by itself), and as a hook */
+export const listenLiteNow = () => liteOn();
+export const useListenLite = () => useSyncExternalStore(liteChanged.on, liteOn, () => false);
+
+/**
+ * The panel's 省流量 switch, within the tap, kept in this browser. On: the song playing goes over to its smaller copy at
+ * once, unless all of it came already. Off: the next song plays its own file, the one playing going on as it is; and
+ * 省流量 never comes on by itself again.
+ */
+export function setLite(on: boolean) {
+  liteHere = on ? "on" : "off";
+  liteAuto = false;
+  try {
+    localStorage.setItem(LITE_KEY, liteHere);
+  } catch {}
+  liteChanged.set(liteChanged.get() + 1);
+  const s = player.get().status;
+  if (on && audio && (s === "playing" || s === "starting") && !allIn(audio)) toLite();
+  else if (!on) clearTimeout(slowTimer);
 }
 
 /** The page going, coming back into view, going gray: once a page */
@@ -543,7 +655,7 @@ function begin(track: ListenTrack, at: number, url: string | null, loaded = fals
   ended = false;
   lastAt = at;
   second.set(Math.floor(at));
-  current = { track, next, nextUrl: null, until: 0, early: false, start: null };
+  current = { track, lite: links.get(track.id)?.lite ?? null, next, nextUrl: null, nextLite: null, until: 0, early: false, start: null };
   // a song of its own: its own 短评
   if (rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
   change({ track, status: "starting", buffering: true, tap: false, problem: null });
@@ -553,14 +665,23 @@ function begin(track: ListenTrack, at: number, url: string | null, loaded = fals
   listenApi.play(track.id, at, next).then(
     (r) => {
       sawSaid(track.id, r.said);
-      remember(track.id, r.url);
-      if (next && r.nextUrl) remember(next, r.nextUrl);
+      remember(track.id, r.url, r.lite ?? null);
+      if (next && r.nextUrl) remember(next, r.nextUrl, r.nextLite ?? null);
       if (mine !== asked) return;
       heard(r.now, sent, Date.now());
       counted = true;
       away = false;
-      current = { track, next, nextUrl: r.nextUrl ?? null, until: r.until - offset, early: false, start: null };
-      if (!url) load(r.url, at, track.id);
+      current = {
+        track,
+        lite: r.lite ?? null,
+        next,
+        nextUrl: r.nextUrl ?? null,
+        nextLite: r.nextLite ?? null,
+        until: r.until - offset,
+        early: false,
+        start: null,
+      };
+      if (!url) load(pick(track.id, r.url, r.lite), at, track.id);
     },
     (e: unknown) => {
       if (mine === asked) refused(e);
@@ -573,6 +694,8 @@ function load(url: string, at: number, song: string) {
   const mine = ++loads;
   holding = "song";
   source(a, url, song);
+  onLite = url === current?.lite;
+  watchSlow(mine);
   if (at > 0) {
     a.addEventListener(
       "loadedmetadata",
@@ -589,6 +712,8 @@ function load(url: string, at: number, song: string) {
 function again(a: HTMLAudioElement, track: ListenTrack, at: number) {
   const mine = ++loads;
   holding = "song";
+  onLite = held!.url === links.get(track.id)?.lite;
+  watchSlow(mine);
   if (a.ended || Math.abs(a.currentTime - at) > 0.5) {
     if (a.readyState >= 1) a.currentTime = at;
     else {
@@ -676,6 +801,8 @@ function unload() {
   holding = null;
   current = null;
   held = null;
+  onLite = false;
+  clearTimeout(slowTimer);
   drop(element());
   meta(null);
 }
@@ -735,12 +862,16 @@ const inUse = (e: Event) => (e.target === audio ? audio : null);
 function onPlaying(e: Event) {
   const a = inUse(e);
   if (!a || holding !== "song" || a.paused) return;
+  clearTimeout(slowTimer);
   change({ status: "playing", buffering: false, tap: false });
   state("playing");
 }
 
 function onWaiting(e: Event) {
-  if (inUse(e) && holding === "song" && player.get().status === "playing") change({ buffering: true });
+  if (!inUse(e) || holding !== "song" || player.get().status !== "playing") return;
+  change({ buffering: true });
+  // waiting for more of it: its smaller copy, if this goes on
+  watchSlow(loads);
 }
 
 function onPause(e: Event) {
@@ -764,7 +895,7 @@ function onEnded(e: Event) {
   if (!next) return finish();
   // at once, in the same element, from the link the server gave ahead, so a phone in a pocket goes on to it; the
   // server is told meanwhile
-  begin(next, 0, current.nextUrl ?? linkFor(next.id));
+  begin(next, 0, nextLink(current) ?? linkFor(next.id));
 }
 
 function onError(e: Event) {
@@ -778,6 +909,8 @@ function onError(e: Event) {
     return;
   }
   if (holding !== "song" || !current) return;
+  // a smaller copy that would not play: the song's own file from now on
+  if (onLite) liteFailed.add(current.track.id);
   // a link gone stale (each lasts 6 to 12 hours), or the network gave way: the song again, from where it got to, at a
   // new link
   links.delete(current.track.id);
@@ -809,10 +942,11 @@ function onTime(e: Event) {
   // in a room the bar follows the room's clock (the beat), whatever this phone is at
   if (current.start === null) second.set(Math.floor(lastAt));
   const left = (Number.isFinite(a.duration) ? a.duration : current.track.seconds) - a.currentTime;
-  if (!current.early && current.nextUrl && left <= EARLY_S) {
+  const early = nextLink(current);
+  if (!current.early && early && left <= EARLY_S) {
     current.early = true;
     // into the browser's cache, which the element then reads from; if it does not, the next song only starts a little later
-    fetch(current.nextUrl)
+    fetch(early)
       .then((r) => (r.ok ? r.blob() : null))
       .catch(() => null);
   }
@@ -998,12 +1132,13 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   const next = r.queue[i + 1] ?? null;
   // a song of its own: its own 短评
   if (current?.start !== start && rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
-  current = { track, next, nextUrl: null, until: 0, early: false, start };
+  const given = ahead?.id === track.id ? ahead : null;
+  ahead = null;
+  current = { track, lite: given?.lite ?? null, next, nextUrl: null, nextLite: null, until: 0, early: false, start };
   stuck = null;
   change({ track, status: "starting", buffering: true, tap: false, problem: null });
   meta(track);
-  const url = ahead?.id === track.id ? ahead.url : null;
-  ahead = null;
+  const url = given ? pick(track.id, given.url, given.lite) : null;
   if (url) loadRoomSong(url, start);
   const sent = Date.now();
   const at = (serverNow() - start) / 1000;
@@ -1015,9 +1150,11 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
       heard(p.now, sent, Date.now());
       counted = true;
       away = false;
-      if (current?.start === start) current = { ...current, nextUrl: p.nextUrl ?? null, until: p.until - offset };
-      ahead = next && p.nextUrl ? { id: next, url: p.nextUrl } : null;
-      if (!url) loadRoomSong(p.url, start);
+      if (current?.start === start) {
+        current = { ...current, lite: p.lite ?? null, nextUrl: p.nextUrl ?? null, nextLite: p.nextLite ?? null, until: p.until - offset };
+      }
+      ahead = next && p.nextUrl ? { id: next, url: p.nextUrl, lite: p.nextLite ?? null } : null;
+      if (!url) loadRoomSong(pick(track.id, p.url, p.lite), start);
     },
     (e: unknown) => {
       if (mine === asked) roomSongRefused(e, track, start);
@@ -1032,6 +1169,8 @@ function loadRoomSong(url: string, start: number) {
   holding = "song";
   catching = false;
   source(a, url, null);
+  onLite = url === current?.lite;
+  watchSlow(mine);
   setRate(a, 1);
   // joining part way, or a slow network: once it can play, to where the room is by then
   const catchUp = () => {
@@ -1653,6 +1792,12 @@ export function forgetListening() {
   held = null;
   keptSongs = [];
   links.clear();
+  liteHere = undefined;
+  liteAuto = false;
+  onLite = false;
+  liteFailed.clear();
+  clearTimeout(slowTimer);
+  liteChanged.set(0);
   counted = false;
   away = false;
   ended = false;

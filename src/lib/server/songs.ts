@@ -21,8 +21,20 @@ import { errorCode, logError, note } from "./signals";
  * 大家都在说 under it (songSaid). It lives on globalThis because Next.js can load this module once per route bundle.
  */
 
-/** A song the server plays: its file, how long it is, and its album's name for the lock screen */
-export type HeldSong = { id: string; name: string; seconds: number; file: string; albumId: string; album: string; artists: string[] };
+/**
+ * A song the server plays: its file, its smaller copy for a slow line (省流量; null: none yet), how long it is, and its
+ * album's name for the lock screen
+ */
+export type HeldSong = {
+  id: string;
+  name: string;
+  seconds: number;
+  file: string;
+  lite: string | null;
+  albumId: string;
+  album: string;
+  artists: string[];
+};
 type Held = {
   list: { catalog: ListenCatalog; json: string; etag: string; byId: Map<string, HeldSong> } | null;
   loading: Promise<void> | null;
@@ -66,7 +78,8 @@ type Row = typeof songs.$inferInsert;
 
 /**
  * The songs of a catalogue's text whose file is among those present, in the site's order: each album's place, each
- * song's on it. Throws when it is not a catalogue this reads; a song that makes no sense is left out.
+ * song's on it; with its smaller copy (lite, scripts/make-lite-music.mjs) where that is present too. Throws when it is
+ * not a catalogue this reads; a song that makes no sense is left out.
  */
 export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
   const c = JSON.parse(text) as { v?: unknown; albums?: unknown; songs?: unknown };
@@ -90,6 +103,7 @@ export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
       const added = Date.parse(String(s.added));
       const file = String(s.file);
       if (!name || s.game !== "arknights" || !SONG_FILE.test(file) || !present.has(file)) continue;
+      const lite = typeof s.lite === "string" && SONG_FILE.test(s.lite) && present.has(s.lite) ? s.lite : null;
       if (!(seconds > 0 && seconds < 24 * 3600) || !Number.isInteger(bytes) || bytes <= 0 || !Number.isFinite(added)) continue;
       const artists = Array.isArray(s.artists) ? s.artists.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean) : [];
       seen.add(id);
@@ -103,6 +117,7 @@ export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
         seconds: Math.round(seconds * 100) / 100,
         file,
         bytes,
+        liteFile: lite,
         albumOrder: order,
         track: track++,
         addedAt: new Date(added),
@@ -131,6 +146,7 @@ async function writeSongs(rows: Row[], now: number) {
             seconds: sql`excluded.seconds`,
             file: sql`excluded.file`,
             bytes: sql`excluded.bytes`,
+            liteFile: sql`excluded.lite_file`,
             albumOrder: sql`excluded.album_order`,
             track: sql`excluded.track`,
             addedAt: sql`excluded.added_at`,
@@ -205,7 +221,16 @@ export function loadSongs(): Promise<void> {
       do {
         held.again = false;
         const rows = await db
-          .select({ id: songs.id, name: songs.name, seconds: songs.seconds, file: songs.file, albumId: songs.albumId, album: songs.album, artists: songs.artists })
+          .select({
+            id: songs.id,
+            name: songs.name,
+            seconds: songs.seconds,
+            file: songs.file,
+            lite: songs.liteFile,
+            albumId: songs.albumId,
+            album: songs.album,
+            artists: songs.artists,
+          })
           .from(songs)
           .where(isNull(songs.goneAt))
           .orderBy(songs.albumOrder, songs.track);
@@ -235,7 +260,13 @@ function listOf(rows: HeldSong[]) {
     album.songs.push(own === usual ? { id: r.id, name: r.name, seconds: r.seconds } : { id: r.id, name: r.name, seconds: r.seconds, artists: r.artists });
     byId.set(r.id, r);
   }
-  const catalog: ListenCatalog = { albums, artists: JSON.parse(usual) as string[], fresh: freshSongs(albums) };
+  const catalog: ListenCatalog = {
+    albums,
+    artists: JSON.parse(usual) as string[],
+    fresh: freshSongs(albums),
+    // the panel offers 省流量 once there are smaller copies to play
+    ...(rows.some((r) => r.lite) ? { lite: true as const } : {}),
+  };
   const json = JSON.stringify(catalog);
   return { catalog, json, etag: `"${createHash("sha256").update(json).digest("base64url").slice(0, 16)}"`, byId };
 }

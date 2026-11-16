@@ -18,9 +18,9 @@ export type ListenSongRow = { id: string; name: string; seconds: number; artists
 export type ListenAlbum = { id: string; name: string; songs: ListenSongRow[] };
 /**
  * The whole list (GET /api/listen/songs): the albums in the site's order, newest first; the artists most songs have,
- * which the songs then leave out; and 新歌, by id
+ * which the songs then leave out; 新歌, by id; and lite when songs have a smaller copy for a slow line (省流量)
  */
-export type ListenCatalog = { albums: ListenAlbum[]; artists: string[]; fresh: string[] };
+export type ListenCatalog = { albums: ListenAlbum[]; artists: string[]; fresh: string[]; lite?: true };
 
 /** A song as the page plays it: its album and artists filled in */
 export type ListenTrack = { id: string; name: string; seconds: number; artists: string[]; album: ListenAlbum };
@@ -86,8 +86,11 @@ export function listeningUntil(seconds: number, at: number, now: number): number
   return now + Math.ceil((seconds - from) * 1000) + LISTEN_GRACE_MS;
 }
 
-/** What play answers: the song's link, the next one's to fetch early, the server's clock, and 大家都在说 under it */
-export type ListenPlay = { url: string; nextUrl?: string; until: number; now: number; said?: SongSaid[] };
+/**
+ * What play answers: the song's link, the next one's to fetch early, each with its smaller copy's (省流量) where it has
+ * one, the server's clock, and 大家都在说 under it
+ */
+export type ListenPlay = { url: string; lite?: string; nextUrl?: string; nextLite?: string; until: number; now: number; said?: SongSaid[] };
 
 /** Why play was refused (the error's code), which the page tells apart: too many listening, paused, gray, no such song */
 export const LISTEN_FULL = "LISTEN_FULL";

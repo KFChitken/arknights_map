@@ -38,8 +38,10 @@ import {
   playTrack,
   roomPlace,
   sendRx,
+  setLite,
   toggle,
   useListenIntro,
+  useListenLite,
   useListenPlayer,
   useListenRoom,
   useListenRoomEnd,
@@ -225,6 +227,10 @@ function Player({ paused }: { paused: boolean }) {
   const at = useListenSecond();
   const t = v.track;
   const said = useListenSaid(t?.id ?? null);
+  // 省流量, once songs have their smaller copies
+  const list = useListenSongs();
+  const lite = useListenLite();
+  const offerLite = list.state === "ok" && list.catalog.lite === true;
   if (!t) {
     const full = v.problem?.code === LISTEN_FULL;
     return (
@@ -283,6 +289,11 @@ function Player({ paused }: { paused: boolean }) {
           <span className="fill" style={{ width: `${done}%` }} />
         </span>
         <span>{clock(t.seconds)}</span>
+        {offerLite && (
+          <button type="button" className={`lp-lite${lite ? " on" : ""}`} aria-pressed={lite} title={T.listen.liteTip} onClick={() => setLite(!lite)}>
+            {T.listen.lite}
+          </button>
+        )}
       </span>
       {note && (
         <span className={`lp-hint${v.problem ? " bad" : ""}`} role="status">

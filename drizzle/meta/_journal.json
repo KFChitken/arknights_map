@@ -442,6 +442,13 @@
       "when": 1794785651123,
       "tag": "0063_hidden_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794792868160,
+      "tag": "0064_song_lite",
+      "breakpoints": true
     }
   ]
 }

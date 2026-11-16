@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addLite,
   addSong,
   albumsToCheck,
   clean,
@@ -9,9 +10,12 @@ import {
   isCid,
   isFileName,
   keepAlbum,
+  liteProblem,
+  moovFirst,
   orderAlbums,
   readCatalog,
   songsToFetch,
+  songsToLighten,
   totals,
   type Catalog,
   type SiteAlbum,
@@ -136,7 +140,7 @@ describe("fetching the songs of the Monster Siren Records site", () => {
     // once 5182 is looked at again, the song taken off still comes after the ones the site lists
     keepAlbum(catalog, details["5182"]);
     expect(catalog.albums[1].songs).toEqual(["306861", "880380", "953932"]);
-    expect(totals(catalog)).toEqual({ albums: 3, songs: 5, bytes: 5000 });
+    expect(totals(catalog)).toEqual({ albums: 3, songs: 5, bytes: 5000, lite: 0, liteBytes: 0 });
   });
 
   it("fetches a song again whose file is gone, keeping when it first came", () => {
@@ -181,5 +185,97 @@ describe("fetching the songs of the Monster Siren Records site", () => {
     expect(readCatalog(JSON.stringify(c))).toEqual(c);
     for (const text of ['{"v":2,"albums":[],"songs":{}}', '{"v":1,"songs":{}}', "[]", "null"]) expect(() => readCatalog(text), text).toThrow();
     expect(() => readCatalog("{")).toThrow();
+  });
+});
+
+// scripts/make-lite-music.mjs, without ffmpeg and fdkaac: which songs get a smaller copy, and what will do as one
+
+/** Top-level boxes of an .m4a, each [type, bytes] (bytes: its whole size, header in) */
+function boxes(...list: [string, number][]) {
+  const out = new Uint8Array(list.reduce((n, [, size]) => n + size, 0));
+  const view = new DataView(out.buffer);
+  let at = 0;
+  for (const [type, size] of list) {
+    view.setUint32(at, size);
+    for (let i = 0; i < 4; i++) out[at + 4 + i] = type.charCodeAt(i);
+    at += size;
+  }
+  return out;
+}
+
+const PROBE = {
+  streams: [{ codec_type: "audio", codec_name: "aac", profile: "HE-AAC", channels: 2 }],
+  format: { duration: "158.341224" },
+};
+
+describe("making each song's smaller copy (省流量)", () => {
+  it("makes one for the songs whose file is there and that have none, in the catalogue's order", () => {
+    const files = new Set<string>();
+    const catalog = emptyCatalog();
+    runOnce(catalog, SITE_ALBUMS, DETAILS, files, new Date("2026-11-16T19:00:00Z"));
+    const hasFile = (f: string) => files.has(f);
+    expect(songsToLighten(catalog, hasFile)).toEqual(["306861", "953932", "880380", "048703"]);
+
+    addLite(catalog, "953932", { file: FILE(0xa1), bytes: 400 });
+    files.add(FILE(0xa1));
+    expect(catalog.songs["953932"]).toMatchObject({ lite: FILE(0xa1), liteBytes: 400, file: FILE(953932 + 1), bytes: 1000 });
+    expect(songsToLighten(catalog, hasFile)).toEqual(["306861", "880380", "048703"]);
+    expect(totals(catalog)).toMatchObject({ songs: 4, bytes: 4000, lite: 1, liteBytes: 400 });
+
+    // its copy gone: made again; its file gone: none made (the fetch gets the file again first)
+    files.delete(FILE(0xa1));
+    files.delete(catalog.songs["048703"].file);
+    expect(songsToLighten(catalog, hasFile)).toEqual(["306861", "953932", "880380"]);
+    // a song on no album (taken off the site, kept) comes last
+    catalog.albums[0].songs = catalog.albums[0].songs.filter((cid) => cid !== "306861");
+    expect(songsToLighten(catalog, hasFile)).toEqual(["953932", "880380", "306861"]);
+    expect(() => addLite(catalog, "999999", { file: FILE(1), bytes: 1 })).toThrow();
+  });
+
+  it("loses a song's copy when the fetch gets the song again, so the next run makes it again", () => {
+    const files = new Set<string>();
+    const catalog = emptyCatalog();
+    runOnce(catalog, SITE_ALBUMS, DETAILS, files, new Date("2026-11-16T19:00:00Z"));
+    addLite(catalog, "880380", { file: FILE(0xb2), bytes: 500 });
+    files.add(FILE(0xb2));
+    // the fetch writes a song only when it gets it, so a run that gets nothing keeps every copy
+    runOnce(catalog, SITE_ALBUMS, DETAILS, files, new Date("2026-11-23T20:30:00Z"));
+    expect(catalog.songs["880380"].lite).toBe(FILE(0xb2));
+    files.delete(catalog.songs["880380"].file);
+    runOnce(catalog, SITE_ALBUMS, DETAILS, files, new Date("2026-11-30T20:30:00Z"));
+    expect(catalog.songs["880380"].lite).toBeUndefined();
+    expect(songsToLighten(catalog, (f) => files.has(f))).toContain("880380");
+  });
+
+  it("tells whether a file's moov box comes before its mdat, so a browser can start it before the rest comes", () => {
+    expect(moovFirst(boxes(["ftyp", 28], ["moov", 900], ["free", 8], ["mdat", 4000]))).toBe(true);
+    expect(moovFirst(boxes(["ftyp", 28], ["free", 8], ["mdat", 4000], ["moov", 900]))).toBe(false);
+    // only the first bytes, as many as hold the headers up to the moov
+    expect(moovFirst(boxes(["ftyp", 28], ["moov", 900]).subarray(0, 36))).toBe(true);
+    expect(moovFirst(new Uint8Array(0))).toBe(false);
+    expect(moovFirst(boxes(["ftyp", 28]))).toBe(false);
+    // a box of 64-bit size (1, then the size after the type)
+    const big = boxes(["ftyp", 28], ["free", 24], ["moov", 100]);
+    new DataView(big.buffer).setUint32(28, 1);
+    new DataView(big.buffer).setBigUint64(36, 24n);
+    expect(moovFirst(big)).toBe(true);
+    // a size that makes no sense ends it
+    const bad = boxes(["ftyp", 28], ["moov", 100]);
+    new DataView(bad.buffer).setUint32(0, 4);
+    expect(moovFirst(bad)).toBe(false);
+  });
+
+  it("takes as a copy only one audio stream of HE-AAC, two channels, as long as the song", () => {
+    expect(liteProblem(PROBE, 158.34)).toBeNull();
+    expect(liteProblem({ ...PROBE, format: { duration: "157.5" } }, 158.34)).toBeNull();
+    const one = (s: object) => ({ ...PROBE, streams: [{ ...PROBE.streams[0], ...s }] });
+    expect(liteProblem(one({ profile: "LC" }), 158.34)).toMatch(/not HE-AAC/);
+    expect(liteProblem(one({ codec_name: "mp3", profile: undefined }), 158.34)).toMatch(/not HE-AAC/);
+    expect(liteProblem(one({ channels: 1 }), 158.34)).toMatch(/1 channels/);
+    expect(liteProblem({ ...PROBE, streams: [...PROBE.streams, { codec_type: "video", codec_name: "mjpeg" }] }, 158.34)).toMatch(/2 streams/);
+    expect(liteProblem({ ...PROBE, streams: [] }, 158.34)).toMatch(/0 streams/);
+    expect(liteProblem({ ...PROBE, format: { duration: "120.1" } }, 158.34)).toMatch(/120.1 s long/);
+    expect(liteProblem({ ...PROBE, format: {} }, 158.34)).toMatch(/NaN s long/);
+    expect(liteProblem(null, 158.34)).toMatch(/0 streams/);
   });
 });

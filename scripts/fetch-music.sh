@@ -11,12 +11,25 @@
 #
 #   30 4 * * 1 $HOME/arknights_map/scripts/fetch-music.sh >> $HOME/music-fetch.log 2>&1
 #
-# The container's name keeps two runs from going at once.
+# With lite first, it makes each song's smaller copy instead (省流量, scripts/make-lite-music.mjs), the container
+# then having fdkaac too: lite --dry-run, lite --limit 3, lite. Once those copies are wanted, the weekly line makes
+# them of what it fetched, after the fetch:
+#
+#   30 4 * * 1 $HOME/arknights_map/scripts/fetch-music.sh >> $HOME/music-fetch.log 2>&1; $HOME/arknights_map/scripts/fetch-music.sh lite >> $HOME/music-fetch.log 2>&1
+#
+# The container's name keeps two runs from going at once, the fetch and lite too (both write the catalogue).
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT=fetch-msr-music.mjs
+PACKAGES=ffmpeg
+if [ "${1:-}" = lite ]; then
+  shift
+  SCRIPT=make-lite-music.mjs
+  PACKAGES="ffmpeg fdkaac"
+fi
 mkdir -p "$DIR/music"
-echo "== $(date '+%F %T') fetch-msr-music $*"
+echo "== $(date '+%F %T') ${SCRIPT%.mjs} $*"
 exec docker run --rm --name zhoupmap-music --cpus 1 --memory 1g \
-  -e OWNER="$(id -u):$(id -g)" \
+  -e OWNER="$(id -u):$(id -g)" -e SCRIPT="$SCRIPT" -e PACKAGES="$PACKAGES" \
   -v "$DIR/scripts:/work/scripts:ro" -v "$DIR/music:/work/music" -w /work \
-  node:22-alpine sh -c 'apk add --no-cache ffmpeg > /dev/null && exec nice -n 19 node scripts/fetch-msr-music.mjs "$@"' sh "$@"
+  node:22-alpine sh -c 'apk add --no-cache $PACKAGES > /dev/null && exec nice -n 19 node "scripts/$SCRIPT" "$@"' sh "$@"

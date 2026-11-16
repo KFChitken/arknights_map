@@ -70,8 +70,10 @@ async function signIn(userId: string | null) {
 }
 
 const FILES = ["0000000000000001.m4a", "0000000000000002.m4a", "0000000000000003.m4a"];
+/** The second song's smaller copy (省流量) */
+const LITE = "00000000000000a2.m4a";
 
-/** Three songs on one album, the last one gone */
+/** Three songs on one album, the last one gone; the second with a smaller copy */
 async function seedSongs() {
   await db.insert(songs).values(
     ["s1", "s2", "s3"].map((id, i) => ({
@@ -84,6 +86,7 @@ async function seedSongs() {
       seconds: 200 + i,
       file: FILES[i],
       bytes: 1000,
+      liteFile: i === 1 ? LITE : null,
       albumOrder: 0,
       track: i,
       addedAt: new Date(),
@@ -207,6 +210,8 @@ describe("听歌's list of songs", () => {
       ],
       artists: ["塞壬唱片-MSR"],
       fresh: ["s1", "s2"],
+      // Two has a smaller copy: the panel offers 省流量
+      lite: true,
     });
     expect(await call("GET", "songs", undefined, { "if-none-match": etag })).toMatchObject({ status: 304, body: null });
     // as a proxy may hand it back: weak, or with what it compressed it with
@@ -236,6 +241,11 @@ describe("a song played", () => {
     expect(b.nextUrl.startsWith(`/music/${FILES[1]}?k=`)).toBe(true);
     expect(linkGood(b.url)).toBe(true);
     expect(linkGood(b.nextUrl)).toBe(true);
+    // the next one's smaller copy too (省流量); this one has none yet
+    expect(b).not.toHaveProperty("lite");
+    const nextLite = (res.body as { nextLite: string }).nextLite;
+    expect(nextLite.startsWith(`/music/${LITE}?k=`)).toBe(true);
+    expect(linkGood(nextLite)).toBe(true);
     expect(b.now).toBeGreaterThanOrEqual(before);
     expect(b.until).toBe(b.now + 200_000 + LISTEN_GRACE_MS);
     expect(await nowRow(player.id)).toEqual({ userId: player.id, song: "s1", roomId: null, until: new Date(b.until) });
@@ -251,7 +261,10 @@ describe("a song played", () => {
     expect(await counted("listen.play")).toBe(1);
 
     // the last song of its album: nothing after it; a song gone, or never there, is no song
-    expect((await call("POST", "play", { song: "s2", next: "s3" })).body).not.toHaveProperty("nextUrl");
+    const last = (await call("POST", "play", { song: "s2", next: "s3" })).body as { lite?: string };
+    expect(last).not.toHaveProperty("nextUrl");
+    expect(last).not.toHaveProperty("nextLite");
+    expect(last.lite?.startsWith(`/music/${LITE}?k=`)).toBe(true);
     expect(await call("POST", "play", { song: "s3" })).toMatchObject({ status: 404, body: { code: "NO_SONG", error: "这首歌现在放不了，换一首吧。" } });
     expect(await call("POST", "play", { song: "nope" })).toMatchObject({ status: 404, body: { code: "NO_SONG" } });
     expect(await call("POST", "play", { song: ["s1"] })).toMatchObject({ status: 404, body: { code: "NO_SONG" } });

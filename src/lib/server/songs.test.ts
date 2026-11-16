@@ -81,6 +81,7 @@ describe("听歌's catalogue, read", () => {
       ["s3", "a2", "Second", 1, 0],
     ]);
     expect(got[1]).toMatchObject({ name: "Spaced", artists: ["A", "B"], seconds: 200.13, file: f(1), bytes: 1001, game: "arknights", goneAt: null });
+    expect(got[1].liteFile).toBeNull();
     expect(got[1].addedAt).toEqual(new Date("2026-11-15T00:00:00.000Z"));
   });
 
@@ -203,6 +204,43 @@ describe("听歌's songs in the database and in memory", () => {
     writeCatalog(text([album("a1", "Newest", ids(1, 8))], all));
     expect(await syncCatalog(root, NOW + 1)).toBe("updated");
     expect((await songList()).etag).not.toBe(list.etag);
+  });
+
+  it("carry each song's smaller copy (省流量) once its file is there, and the list says there are some", async () => {
+    putFiles(1, 2, 3, 101);
+    writeCatalog(
+      text([album("a1", "First", ["s1", "s2", "s3"])], {
+        s1: entry(1, { lite: f(101), liteBytes: 500 }),
+        // its copy not there yet, and one whose name makes no sense
+        s2: entry(2, { lite: f(102), liteBytes: 500 }),
+        s3: entry(3, { lite: "../x.m4a" }),
+      }),
+    );
+    expect(await syncCatalog(root, NOW)).toBe("updated");
+    expect((await db.select({ id: songs.id, lite: songs.liteFile }).from(songs).orderBy(songs.track)).map((r) => [r.id, r.lite])).toEqual([
+      ["s1", f(101)],
+      ["s2", null],
+      ["s3", null],
+    ]);
+    expect((await songOf("s1"))?.lite).toBe(f(101));
+    expect((await songOf("s2"))?.lite).toBeNull();
+    const list = await songList();
+    expect(list.catalog.lite).toBe(true);
+    expect(list.json).not.toMatch(/m4a|bytes|file/);
+
+    // its copy made: read in with the files' folder changed
+    putFiles(102);
+    expect(await syncCatalog(root, NOW + 1)).toBe("updated");
+    expect((await songOf("s2"))?.lite).toBe(f(102));
+    // and gone again: the song plays on, without one
+    dropFile(101);
+    expect(await syncCatalog(root, NOW + 2)).toBe("updated");
+    expect(await songOf("s1")).toMatchObject({ file: f(1), lite: null });
+
+    // none at all: the list does not offer it
+    writeCatalog(text([album("a1", "First", ["s1"])], { s1: entry(1) }));
+    expect(await syncCatalog(root, NOW + 3)).toBe("updated");
+    expect((await songList()).catalog.lite).toBeUndefined();
   });
 
   it("are counted as they are played, everyone's together, and added to song_plays a minute at a time", async () => {

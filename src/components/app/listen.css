@@ -32,6 +32,12 @@
 .lp-bar .fill { display: block; height: 100%; background: #e0464d; }
 .lp-hint { grid-column: 1 / -1; margin-top: -2px; color: var(--muted); font-size: 12.5px; text-align: center; }
 .lp-hint.bad { color: #a33a3a; }
+/* 省流量: the songs' smaller copies, on or off */
+.lp-lite {
+  flex: none; padding: 2px 8px; border: 1px solid #cfd3da; border-radius: 999px; background: #fff; color: #5b6274;
+  font-size: 11.5px; font-weight: 700; line-height: 1.4;
+}
+.lp-lite.on { border-color: #18a0a5; background: #18a0a5; color: #fff; }
 
 /* the first time, what is kept of it */
 .lp-privacy {

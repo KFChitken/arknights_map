@@ -13,6 +13,7 @@ import {
   joinAt,
   leaveListen,
   listenBubblesNow,
+  listenLiteNow,
   listenPlayerNow,
   listenRoomNow,
   listenRxNow,
@@ -25,6 +26,7 @@ import {
   openRoomWith,
   playTrack,
   sendRx,
+  setLite,
   skip,
   toggle,
 } from "./listening";
@@ -38,6 +40,8 @@ const NOTHING_IN = { length: 0, start: () => 0, end: () => 0 };
 class FakeAudio extends EventTarget {
   /** The element made, or played, last: the one in use */
   static last: FakeAudio;
+  /** A song whose link this says yes to does not sound when played: a slow line */
+  static quiet: ((src: string) => boolean) | null = null;
   #src = "";
   currentTime = 0;
   duration = Number.NaN;
@@ -70,8 +74,15 @@ class FakeAudio extends EventTarget {
     FakeAudio.last = this;
     this.paused = false;
     this.ended = false;
-    queueMicrotask(() => this.dispatchEvent(new Event("playing")));
+    if (!FakeAudio.quiet?.(this.#src)) queueMicrotask(() => this.dispatchEvent(new Event("playing")));
     return Promise.resolve();
+  }
+  /** Waiting for more of the song, and going on once it came */
+  stall() {
+    this.dispatchEvent(new Event("waiting"));
+  }
+  sound() {
+    this.dispatchEvent(new Event("playing"));
   }
   pause() {
     if (this.paused) return;
@@ -125,6 +136,9 @@ const CATALOG: ListenCatalog = {
 };
 
 const link = (id: string) => `/music/${id}.m4a?k=1.sig`;
+/** A song's smaller copy (省流量), for the songs that have one (withLite) */
+const liteLink = (id: string) => `/music/${id}-lite.m4a?k=1.sig`;
+let withLite = new Set<string>();
 /** What the page asked the server, op by op */
 let asked: { op: string; body: Record<string, unknown> | null }[] = [];
 /** The songs fetched early */
@@ -140,7 +154,9 @@ const played = (body: Record<string, unknown>) => ({
   status: 200,
   json: {
     url: link(String(body.song)),
+    ...(withLite.has(String(body.song)) ? { lite: liteLink(String(body.song)) } : {}),
     ...(body.next ? { nextUrl: link(String(body.next)) } : {}),
+    ...(body.next && withLite.has(String(body.next)) ? { nextLite: liteLink(String(body.next)) } : {}),
     until: serverClock() + 5 * 60_000,
     now: serverClock(),
   },
@@ -198,6 +214,8 @@ beforeEach(async () => {
   skew = 0;
   answers = {};
   playAnswer = played;
+  withLite = new Set();
+  FakeAudio.quiet = null;
   session.map.clear();
   local.map.clear();
   loadSongs();
@@ -555,6 +573,24 @@ describe("一起听 on the page", () => {
     expect(listenRoomNow()?.id).toBe("r1");
   });
 
+  it("goes over to a song's smaller copy (省流量) when it does not sound, at where the room is", async () => {
+    withLite = new Set(["s1", "s2"]);
+    FakeAudio.quiet = (src) => src === link("s1");
+    await joinPlaying(30_000);
+    expect(audio().src).toBe(link("s1"));
+    await tick(2_900);
+    expect(audio().src).toBe(link("s1"));
+    await tick(100);
+    expect(audio().src).toBe(liteLink("s1"));
+    audio().dispatchEvent(new Event("canplay"));
+    expect(audio().currentTime).toBeCloseTo(33, 0);
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(said.at(-1)).toBe(T.listen.liteAuto);
+    // the same song: the server is not asked again
+    expect(ops("play")).toHaveLength(1);
+  });
+
   it("keeps in step: a little faster or slower when a little off, a jump when far off", async () => {
     await joinPlaying(30_000);
     audio().currentTime = 35.5;
@@ -854,5 +890,137 @@ describe("一个人听, 短评 and 想一起听", () => {
     expect(await answerAsk("c:1")).toBeNull();
     expect(ops("askOk")).toEqual([]);
     expect(said.at(-1)).toBe(T.listen.leaveFirst);
+  });
+});
+
+describe("省流量: each song's smaller copy", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  });
+  afterEach(() => {
+    forgetListening();
+    vi.useRealTimers();
+  });
+
+  it("comes on by itself when a song has not sounded in 3 seconds: over to its copy from where it was, said once", async () => {
+    withLite = new Set(["s1", "s2"]);
+    FakeAudio.quiet = (src) => src === link("s1");
+    playTrack(track("s1"), 12);
+    await tick(0);
+    expect(audio().src).toBe(link("s1"));
+    expect(listenPlayerNow()).toMatchObject({ status: "starting", buffering: true });
+    await tick(2_900);
+    expect(audio().src).toBe(link("s1"));
+    expect(listenLiteNow()).toBe(false);
+    await tick(100);
+    expect(audio().src).toBe(liteLink("s1"));
+    audio().dispatchEvent(new Event("loadedmetadata"));
+    expect(audio().currentTime).toBe(12);
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(said).toEqual([T.listen.liteAuto]);
+    expect(listenLiteNow()).toBe(true);
+    // the same song: the server is not asked again; and nothing is kept in the browser, as nothing was chosen
+    expect(ops("play")).toHaveLength(1);
+    expect(local.map.has("zhoup.listenLite")).toBe(false);
+
+    // the songs after it play their copies, fetched early too; nothing said again
+    audio().duration = 100;
+    audio().to(85);
+    expect(early).toEqual([liteLink("s2")]);
+    audio().end();
+    expect(audio().src).toBe(liteLink("s2"));
+    await tick(5_000);
+    expect(said).toEqual([T.listen.liteAuto]);
+  });
+
+  it("comes on when a song waits 3 seconds for more of it, from where it got to; a shorter wait does nothing", async () => {
+    withLite = new Set(["s1"]);
+    playTrack(track("s1"));
+    await tick(0);
+    expect(listenPlayerNow().status).toBe("playing");
+    audio().to(40);
+    audio().stall();
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", buffering: true });
+    await tick(2_000);
+    audio().sound();
+    await tick(2_000);
+    audio().stall();
+    await tick(2_000);
+    expect(audio().src).toBe(link("s1"));
+    await tick(1_000);
+    expect(audio().src).toBe(liteLink("s1"));
+    audio().dispatchEvent(new Event("loadedmetadata"));
+    expect(audio().currentTime).toBe(40);
+  });
+
+  it("never comes on by itself once turned off, and a song without a copy plays on as it is", async () => {
+    withLite = new Set(["s2"]);
+    FakeAudio.quiet = (src) => !src.startsWith("data:");
+    // One has no copy: it waits
+    playTrack(track("s1"));
+    await tick(5_000);
+    expect(audio().src).toBe(link("s1"));
+    expect(said).toEqual([]);
+    setLite(false);
+    expect(local.map.get("zhoup.listenLite")).toBe("off");
+    playTrack(track("s2"));
+    await tick(5_000);
+    expect(audio().src).toBe(link("s2"));
+    expect(said).toEqual([]);
+    expect(listenLiteNow()).toBe(false);
+  });
+
+  it("turned on, plays the copies, the song playing over at once unless all of it came; kept in the browser", async () => {
+    withLite = new Set(["s1", "s2", "s3"]);
+    playTrack(track("s1"));
+    await tick(0);
+    const one = audio();
+    one.duration = 100;
+    one.whole();
+    setLite(true);
+    expect(local.map.get("zhoup.listenLite")).toBe("on");
+    expect(listenLiteNow()).toBe(true);
+    // all of One came: it goes on as it is
+    expect(one.src).toBe(link("s1"));
+    playTrack(track("s3"));
+    await tick(0);
+    expect(audio().src).toBe(liteLink("s3"));
+    audio().to(10);
+    setLite(false);
+    // the one playing goes on as it is; the next one plays its own file
+    expect(audio().src).toBe(liteLink("s3"));
+    playTrack(track("s2"));
+    expect(audio().src).toBe(link("s2"));
+    await tick(0);
+    audio().to(25);
+    setLite(true);
+    // part way: over to its copy at once, from where it got to
+    expect(audio().src).toBe(liteLink("s2"));
+    audio().dispatchEvent(new Event("loadedmetadata"));
+    expect(audio().currentTime).toBe(25);
+    // tapped again: One, kept whole, plays as it was kept
+    playTrack(track("s1"));
+    expect(audio()).toBe(one);
+    expect(one.src).toBe(link("s1"));
+    // a page opened again: on, as this browser keeps it
+    forgetListening();
+    expect(listenLiteNow()).toBe(true);
+  });
+
+  it("plays the song's own file, from where it got to, when its copy will not play", async () => {
+    withLite = new Set(["s1"]);
+    setLite(true);
+    playTrack(track("s1"));
+    await tick(0);
+    expect(audio().src).toBe(liteLink("s1"));
+    audio().to(30);
+    audio().fail();
+    await tick(0);
+    expect(audio().src).toBe(link("s1"));
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 30, next: "s2" });
+    audio().dispatchEvent(new Event("loadedmetadata"));
+    expect(audio().currentTime).toBe(30);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
   });
 });

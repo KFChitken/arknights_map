@@ -1,0 +1,1 @@
+ALTER TABLE "songs" ADD COLUMN "lite_file" text;

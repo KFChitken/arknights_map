@@ -1561,6 +1561,8 @@ export const songs = pgTable(
     seconds: real("seconds").notNull(),
     file: text("file").notNull(),
     bytes: integer("bytes").notNull(),
+    /** Its smaller copy for a slow line (省流量, scripts/make-lite-music.mjs), in the same folder; null: none yet */
+    liteFile: text("lite_file"),
     albumOrder: integer("album_order").notNull(),
     track: smallint("track").notNull(),
     addedAt: at("added_at").notNull(),

@@ -7,8 +7,13 @@
 //     updated: "<ISO time of the run that wrote it>",
 //     albums: [{ id: "<album cid>", name, order: 0, songs: ["<song cid>", …] }],      the site's order, newest first
 //     songs: { "<song cid>": { name, album: "<album cid>", artists: [...], seconds: 158.27,
-//                              file: "<16 hex>.m4a", bytes, game: "arknights", added: "<ISO time>" } }
+//                              file: "<16 hex>.m4a", bytes, game: "arknights", added: "<ISO time>",
+//                              lite: "<16 hex>.m4a", liteBytes } }
 //   }
+//
+// lite is the song's smaller copy (省流量, 48 kbps HE-AAC) that scripts/make-lite-music.mjs makes of its file, also in
+// music/files/; a song without one yet has neither. A song fetched again (its file was gone) loses it until the
+// next run makes it again.
 //
 // Nothing is ever taken out: a song or an album the site no longer lists stays, with its file, as rooms and
 // declarations may still point at it. Albums the site no longer lists come after the others, in their old order.
@@ -122,8 +127,73 @@ export function orderAlbums(catalog, siteAlbums) {
   return catalog;
 }
 
-/** Albums, songs and their bytes in the catalogue */
+/** Albums, songs and their bytes in the catalogue; lite: how many have a smaller copy, liteBytes: theirs */
 export function totals(catalog) {
   const songs = Object.values(catalog.songs);
-  return { albums: catalog.albums.length, songs: songs.length, bytes: songs.reduce((n, s) => n + (s.bytes || 0), 0) };
+  const lite = songs.filter((s) => s.lite);
+  return {
+    albums: catalog.albums.length,
+    songs: songs.length,
+    bytes: songs.reduce((n, s) => n + (s.bytes || 0), 0),
+    lite: lite.length,
+    liteBytes: lite.reduce((n, s) => n + (s.liteBytes || 0), 0),
+  };
+}
+
+// ---- 省流量: each song's smaller copy (scripts/make-lite-music.mjs) ----
+
+/** The songs to make a smaller copy of, in the catalogue's order: their file is there, and they have no copy, or it is gone */
+export function songsToLighten(catalog, hasFile) {
+  const order = catalog.albums.flatMap((a) => a.songs);
+  const all = [...new Set([...order, ...Object.keys(catalog.songs)])];
+  return all.filter((cid) => {
+    const s = catalog.songs[cid];
+    return s && hasFile(s.file) && !(s.lite && hasFile(s.lite));
+  });
+}
+
+/** A song's smaller copy, into the catalogue: lite: { file, bytes } */
+export function addLite(catalog, cid, lite) {
+  const s = catalog.songs[cid];
+  if (!s) throw new Error(`no song ${cid} in the catalogue`);
+  s.lite = lite.file;
+  s.liteBytes = lite.bytes;
+  return catalog;
+}
+
+/**
+ * Whether an .m4a's moov box comes before its mdat, so a browser can start playing before the rest has come (its
+ * bytes, or as many of the first as hold its top-level boxes' headers)
+ */
+export function moovFirst(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let at = 0; at + 8 <= bytes.length; ) {
+    let size = view.getUint32(at);
+    const type = String.fromCharCode(bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]);
+    if (type === "moov") return true;
+    if (type === "mdat") return false;
+    if (size === 1) {
+      if (at + 16 > bytes.length) return false;
+      size = Number(view.getBigUint64(at + 8));
+    }
+    if (size < 8) return false;
+    at += size;
+  }
+  return false;
+}
+
+/**
+ * Why an encoded copy will not do, from what ffprobe says of it (-show_entries stream=codec_type,codec_name,
+ * profile,channels:format=duration -of json), for a song of `seconds`; null: it will
+ */
+export function liteProblem(probe, seconds) {
+  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
+  const audio = streams.filter((s) => s.codec_type === "audio");
+  if (audio.length !== 1 || streams.length !== 1) return `${streams.length} streams, ${audio.length} of them audio`;
+  const a = audio[0];
+  if (a.codec_name !== "aac" || a.profile !== "HE-AAC") return `${a.codec_name} ${a.profile}, not HE-AAC`;
+  if (Number(a.channels) !== 2) return `${a.channels} channels`;
+  const d = Number(probe?.format?.duration);
+  if (!(Math.abs(d - seconds) <= 1)) return `${d} s long, the song ${seconds} s`;
+  return null;
 }

@@ -9,6 +9,9 @@ export type CatalogSong = {
   bytes: number;
   game: "arknights";
   added: string;
+  /** Its smaller copy (scripts/make-lite-music.mjs), also in music/files/, and its bytes; neither before it is made */
+  lite?: string;
+  liteBytes?: number;
 };
 export type CatalogAlbum = { id: string; name: string; order: number; songs: string[] };
 export type Catalog = { v: 1; updated: string | null; albums: CatalogAlbum[]; songs: Record<string, CatalogSong> };
@@ -38,4 +41,13 @@ export function addSong(
 ): Catalog;
 export function keepAlbum(catalog: Catalog, detail: SiteAlbumDetail): Catalog;
 export function orderAlbums(catalog: Catalog, siteAlbums: SiteAlbum[]): Catalog;
-export function totals(catalog: Catalog): { albums: number; songs: number; bytes: number };
+export function totals(catalog: Catalog): { albums: number; songs: number; bytes: number; lite: number; liteBytes: number };
+export function songsToLighten(catalog: Catalog, hasFile: (file: string) => boolean): string[];
+export function addLite(catalog: Catalog, cid: string, lite: { file: string; bytes: number }): Catalog;
+export function moovFirst(bytes: Uint8Array): boolean;
+/** What ffprobe says of a file (-show_entries stream=codec_type,codec_name,profile,channels:format=duration -of json) */
+export type Probe = {
+  streams?: { codec_type?: string; codec_name?: string; profile?: string; channels?: number }[];
+  format?: { duration?: string };
+};
+export function liteProblem(probe: Probe | null | undefined, seconds: number): string | null;
