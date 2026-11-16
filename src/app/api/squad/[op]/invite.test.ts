@@ -203,6 +203,40 @@ describe("invitations to 一起卫戍", () => {
     expect(await post(a, "invite", { friends: [friendKey(a.id, c.id)] })).toMatchObject({ status: 409, body: { error: "房间满了，不用再叫人了。" } });
   });
 
+  it("lists 触须之交 of one name in the order of their ids, whatever order the database reads them in", async () => {
+    const host = await player("host");
+    await open(host);
+    // all of one name; put in with ids rising and keys falling, so both orders the database may read them in (as put
+    // in, or by id) are the list's own backwards
+    const keys: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      let id: string;
+      do {
+        id = `0000000${i}${crypto.randomUUID().slice(8)}`;
+      } while (keys.length && friendKey(host.id, id) > keys[keys.length - 1]);
+      keys.push(friendKey(host.id, id));
+      const now = new Date();
+      const [twin] = await db
+        .insert(users)
+        .values({
+          id,
+          email: `twin${i}@example.com`,
+          name: "同名",
+          anonymous: false,
+          ageConfirmedAt: now,
+          policyAcceptedAt: now,
+          crossBorderAcceptedAt: now,
+          publicPlaceAcceptedAt: now,
+          squadCore: 0,
+        })
+        .returning();
+      await befriend(host, twin);
+    }
+    const friends = (await post(host, "friends")).body!.friends as SquadFriend[];
+    expect(new Set(friends.map((f) => f.card.displayName)).size).toBe(1);
+    expect(friends.map((f) => f.id)).toEqual([...keys].sort());
+  });
+
   it("say 下次吧 to whoever sent it as 没来; three a day each; none to one blocked, nor while it plays", async () => {
     const host = await player("host");
     const b = await player("b");

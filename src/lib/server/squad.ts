@@ -911,7 +911,8 @@ const mayCome = (u: UserRow) => squadOpen(u) && (u.games.length === 0 || u.games
 /**
  * Your 触须之交 you may invite to the room you are in: those of 明日方舟 (or of no game yet) 一起卫戍 is open to,
  * with the server of their UID; those whose 资料 names another server than the room's last, who may still play on
- * another account. How many more times today, and whether they are in it already.
+ * another account; by name, and those of one name (as all who are anonymous are) by id, so they keep their places.
+ * How many more times today, and whether they are in it already.
  */
 export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ friends: SquadFriend[]; now: number }> {
   const mine = await roomOf(db, user.id);
@@ -954,9 +955,8 @@ export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()):
     ).map((r) => r.to),
   );
   const cards = await cardsOf(people, user.id);
-  const other = (u: UserRow) => u.uidServerArknights !== "" && u.uidServerArknights !== mine.room.server;
+  const other = (server: string) => server !== "" && server !== mine.room.server;
   const friends = people
-    .sort((a, b) => Number(other(a)) - Number(other(b)) || cards.get(a.id)!.displayName.localeCompare(cards.get(b.id)!.displayName, "zh"))
     .map(
       (u): SquadFriend => ({
         id: friendKey(user.id, u.id),
@@ -966,6 +966,12 @@ export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()):
         inRoom: inRoom.has(u.id),
         waiting: waiting.has(u.id),
       }),
+    )
+    .sort(
+      (a, b) =>
+        Number(other(a.server)) - Number(other(b.server)) ||
+        a.card.displayName.localeCompare(b.card.displayName, "zh") ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
   return { friends, now };
 }
