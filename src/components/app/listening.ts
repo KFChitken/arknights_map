@@ -42,6 +42,13 @@ import { stopPartyMusic } from "./partyMusic";
  * (isListening), and the site going gray (全站变灰) fades it out. A page opened again offers the song it played, from
  * where it got to, for a tap.
  *
+ * A song tapped again (or ▶ after a long pause, or after the album's last) starts at once from the link the server gave
+ * for it before, as the next song does, the server told meanwhile; the element still holding it goes on from what of it
+ * came. Chrome keeps what came of a song in its cache, but Safari keeps nothing once the element plays another, so a
+ * song left by a tap with all of it downloaded stays paused in an element of its own, the last two (KEPT_MAX), and a
+ * tap on it goes on from that. One left part way is let go: kept, it would go on downloading, and on a slow line the
+ * song after it would start later.
+ *
  * 一起听: in a room the element plays what the room's songs say should play now (src/lib/listen.ts roomAt), by the
  * server's clock as its answers put it, and keeps in step with it (keepUp): every SYNC_EVERY_MS, as each song ends,
  * as the room is told something (heardListen, from the page's event stream), and as the page comes back into view.
@@ -82,6 +89,12 @@ const RETRY_MS = 10_000;
 const BACK_EVERY_MS = 10_000;
 /** 短评 and what happened in the room: this many kept to show at most (the page shows two of them) */
 const BUBBLES_KEPT = 4;
+/** A link the server gives lasts 6 to 12 hours (src/lib/server/musicLinks.ts): used again for this long after */
+const LINK_KEEP_MS = 5 * 3_600_000;
+/** Links kept, the latest given */
+const LINKS_MAX = 200;
+/** Songs left by a tap with all of them downloaded, each kept paused in an element of its own: this many */
+const KEPT_MAX = 2;
 
 export type ListenStatus = "idle" | "starting" | "playing" | "paused";
 
@@ -242,8 +255,23 @@ let roomAsked = 0;
 let backAt = 0;
 let bubbleKeys = 0;
 
+/** The links the server gave, by song, and when (this page's clock): a song tapped again starts from its link at once */
+const links = new Map<string, { url: string; got: number }>();
+/** The song alone in the element (not a room's), at which link, given when; null: silence, a room's song, or nothing */
+let held: { song: string; url: string; got: number } | null = null;
+/** Songs left by a tap, all of each downloaded, each paused in an element of its own (the oldest first) */
+let keptSongs: { a: HTMLAudioElement; song: string; url: string; got: number }[] = [];
+
+/** The element in use: made within a tap, the first time */
 function element(): HTMLAudioElement {
   if (audio) return audio;
+  audio = make();
+  watch();
+  return audio;
+}
+
+/** Another element, within a tap: its events count only while it is the one in use */
+function make(): HTMLAudioElement {
   const a = new Audio();
   a.preload = "auto";
   a.addEventListener("playing", onPlaying);
@@ -252,9 +280,89 @@ function element(): HTMLAudioElement {
   a.addEventListener("ended", onEnded);
   a.addEventListener("error", onError);
   a.addEventListener("timeupdate", onTime);
-  audio = a;
-  watch();
   return a;
+}
+
+/** What the element in use plays: a song alone (song: its id, so a tap on it again goes on in it), or else silence or a room's song */
+function source(a: HTMLAudioElement, src: string, song: string | null) {
+  a.src = src;
+  const l = song ? links.get(song) : undefined;
+  held = song ? { song, url: src, got: l?.url === src ? l.got : Date.now() } : null;
+}
+
+/** A link the server gave for a song (the next one's too), kept to start from at once when the song is tapped again */
+function remember(song: string, url: string) {
+  if (links.get(song)?.url === url) return;
+  links.delete(song);
+  links.set(song, { url, got: Date.now() });
+  if (links.size > LINKS_MAX) links.delete(links.keys().next().value!);
+}
+
+/** A song's link, still good */
+function linkFor(song: string): string | null {
+  const l = links.get(song);
+  return l && Date.now() - l.got < LINK_KEEP_MS ? l.url : null;
+}
+
+/** All of the song came, from its start: kept, it costs the line nothing more */
+function allIn(a: HTMLAudioElement): boolean {
+  const d = a.duration;
+  const b = a.buffered;
+  return Number.isFinite(d) && d > 0 && b.length === 1 && b.start(0) <= 0.5 && b.end(0) >= d - 0.5;
+}
+
+function drop(a: HTMLAudioElement) {
+  a.pause();
+  a.removeAttribute("src");
+  try {
+    a.load();
+  } catch {}
+}
+
+function dropKept() {
+  for (const k of keptSongs) drop(k.a);
+  keptSongs = [];
+}
+
+/** The element in use, leaving its song for another: kept, paused, if all of the song came */
+function keepNow(): boolean {
+  const a = audio;
+  if (!a || !held || a.error || !allIn(a) || Date.now() - held.got >= LINK_KEEP_MS) return false;
+  a.pause();
+  keptSongs.push({ a, ...held });
+  held = null;
+  return true;
+}
+
+/**
+ * The element that still has the song, its link good, within a tap: the one in use, or one kept, which then is the
+ * one in use (the one it takes over from is kept in turn if all of its song came, else let go); null: none has it
+ */
+function heldIn(song: string): HTMLAudioElement | null {
+  const a = element();
+  const now = Date.now();
+  if (held?.song === song && now - held.got < LINK_KEEP_MS && !a.error) return a;
+  const k = keptSongs.find((x) => x.song === song);
+  if (!k) return null;
+  keptSongs = keptSongs.filter((x) => x !== k);
+  if (now - k.got >= LINK_KEEP_MS || k.a.error) {
+    drop(k.a);
+    return null;
+  }
+  if (!keepNow()) drop(a);
+  audio = k.a;
+  held = { song: k.song, url: k.url, got: k.got };
+  return k.a;
+}
+
+/** The element a new song goes in, within the tap: the one in use, unless its song came whole and is kept; then another */
+function forNew(): HTMLAudioElement {
+  const a = element();
+  if (!keepNow()) return a;
+  // the oldest kept beyond KEPT_MAX makes way: its element plays the new song
+  const el = keptSongs.length > KEPT_MAX ? keptSongs.shift()!.a : make();
+  audio = el;
+  return el;
 }
 
 /** The page going, coming back into view, going gray: once a page */
@@ -306,14 +414,18 @@ function silent(seconds = 0.1): string {
 export function playTrack(track: ListenTrack, at = 0) {
   // in a room the room's songs play (the host adds to them instead)
   if (isGray() || room.get()) return;
-  const a = element();
-  // within the tap: a phone lets an element start only from one, and this one then plays every song after it
-  holding = "silent";
-  a.src = silent();
-  a.play().catch(() => {});
-  unlocked = true;
   quietOthers();
-  begin(track, at, null);
+  unlocked = true;
+  // still in an element: on from what of it came
+  const had = heldIn(track.id);
+  if (had) return again(had, track, at);
+  const a = forNew();
+  // within the tap: a phone lets an element start only from one, and this one then plays every song after it
+  ++loads;
+  holding = "silent";
+  source(a, silent(), null);
+  a.play().catch(() => {});
+  begin(track, at, linkFor(track.id));
 }
 
 /** ▶ or ⏸, within the tap */
@@ -345,7 +457,7 @@ export function skip() {
   const next = id ? tracks()?.get(id) : undefined;
   if (!v.track || !next || isGray()) return;
   quietOthers();
-  begin(next, 0, current?.track.id === v.track.id && current.next === id ? current.nextUrl : null);
+  begin(next, 0, linkFor(next.id));
 }
 
 /** The list of songs, as the panel opens: asked for once, and again when it is old (the list held stays meanwhile) */
@@ -421,8 +533,11 @@ function quietOthers() {
   stopPartyMusic();
 }
 
-/** Ask the server for the song, and play it: from `url` at once where the server gave it ahead, else from its answer */
-function begin(track: ListenTrack, at: number, url: string | null) {
+/**
+ * Ask the server for the song, and play it: from `url` at once where the server gave it before (or ahead), else from
+ * its answer; loaded: the element has it already, playing from `at`
+ */
+function begin(track: ListenTrack, at: number, url: string | null, loaded = false) {
   const mine = ++asked;
   const next = nextOnAlbum(track);
   ended = false;
@@ -433,17 +548,19 @@ function begin(track: ListenTrack, at: number, url: string | null) {
   if (rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
   change({ track, status: "starting", buffering: true, tap: false, problem: null });
   meta(track);
-  if (url) load(url, at);
+  if (url && !loaded) load(url, at, track.id);
   const sent = Date.now();
   listenApi.play(track.id, at, next).then(
     (r) => {
       sawSaid(track.id, r.said);
+      remember(track.id, r.url);
+      if (next && r.nextUrl) remember(next, r.nextUrl);
       if (mine !== asked) return;
       heard(r.now, sent, Date.now());
       counted = true;
       away = false;
       current = { track, next, nextUrl: r.nextUrl ?? null, until: r.until - offset, early: false, start: null };
-      if (!url) load(r.url, at);
+      if (!url) load(r.url, at, track.id);
     },
     (e: unknown) => {
       if (mine === asked) refused(e);
@@ -451,11 +568,11 @@ function begin(track: ListenTrack, at: number, url: string | null) {
   );
 }
 
-function load(url: string, at: number) {
+function load(url: string, at: number, song: string) {
   const a = element();
   const mine = ++loads;
   holding = "song";
-  a.src = url;
+  source(a, url, song);
   if (at > 0) {
     a.addEventListener(
       "loadedmetadata",
@@ -465,6 +582,30 @@ function load(url: string, at: number) {
       { once: true },
     );
   }
+  start(a, mine);
+}
+
+/** The song still in its element (a tap on it again): on from `at` at once, within the tap; the server told meanwhile */
+function again(a: HTMLAudioElement, track: ListenTrack, at: number) {
+  const mine = ++loads;
+  holding = "song";
+  if (a.ended || Math.abs(a.currentTime - at) > 0.5) {
+    if (a.readyState >= 1) a.currentTime = at;
+    else {
+      a.addEventListener(
+        "loadedmetadata",
+        () => {
+          if (mine === loads) a.currentTime = at;
+        },
+        { once: true },
+      );
+    }
+  }
+  start(a, mine);
+  begin(track, at, held!.url, true);
+}
+
+function start(a: HTMLAudioElement, mine: number) {
   a.play().catch((e: unknown) => {
     // the browser would not start it without a tap (the first one did not unlock it): ▶ does
     if (mine === loads && (e as { name?: string } | null)?.name === "NotAllowedError") {
@@ -513,9 +654,11 @@ function finish() {
   forgetSaved();
 }
 
-/** A song refused (or the network failed it): nothing plays, and the player says why */
+/** A song refused (or the network failed it): nothing plays, and the player says why; the next tap asks first */
 function refused(e: unknown) {
   unload();
+  links.clear();
+  dropKept();
   if (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded) {
     player.set(IDLE);
     refusedTo?.(e);
@@ -532,12 +675,8 @@ function unload() {
   ++loads;
   holding = null;
   current = null;
-  const a = element();
-  a.pause();
-  a.removeAttribute("src");
-  try {
-    a.load();
-  } catch {}
+  held = null;
+  drop(element());
   meta(null);
 }
 
@@ -551,6 +690,7 @@ function stopCounting() {
 function silence() {
   if (room.get()) return roomOver(null);
   const a = audio;
+  dropKept();
   if (!a || player.get().status === "idle") return;
   ++asked;
   const was = holding === "song" && !a.paused;
@@ -589,19 +729,23 @@ function fadeOut(a: HTMLAudioElement, ms: number) {
   }, ms / 10);
 }
 
-function onPlaying() {
-  if (holding !== "song" || element().paused) return;
+/** An event of the element in use; one kept, or let go, plays no part */
+const inUse = (e: Event) => (e.target === audio ? audio : null);
+
+function onPlaying(e: Event) {
+  const a = inUse(e);
+  if (!a || holding !== "song" || a.paused) return;
   change({ status: "playing", buffering: false, tap: false });
   state("playing");
 }
 
-function onWaiting() {
-  if (holding === "song" && player.get().status === "playing") change({ buffering: true });
+function onWaiting(e: Event) {
+  if (inUse(e) && holding === "song" && player.get().status === "playing") change({ buffering: true });
 }
 
-function onPause() {
-  const a = element();
-  if (holding !== "song" || a.ended || player.get().status !== "playing") return;
+function onPause(e: Event) {
+  const a = inUse(e);
+  if (!a || holding !== "song" || a.ended || player.get().status !== "playing") return;
   // stopped by the phone itself (a call, the headphones out): in a room, as if the player paused it
   if (room.get()) selfPaused = true;
   change({ status: "paused", buffering: false });
@@ -609,7 +753,8 @@ function onPause() {
   save();
 }
 
-function onEnded() {
+function onEnded(e: Event) {
+  if (!inUse(e)) return;
   if (room.get()) {
     if (holding === "song" || holding === "gap") syncRoom();
     return;
@@ -617,13 +762,26 @@ function onEnded() {
   if (holding !== "song" || !current) return;
   const next = current.next ? tracks()?.get(current.next) : undefined;
   if (!next) return finish();
-  // at once, from the link the server gave ahead, so a phone in a pocket goes on to it; the server is told meanwhile
-  begin(next, 0, current.nextUrl);
+  // at once, in the same element, from the link the server gave ahead, so a phone in a pocket goes on to it; the
+  // server is told meanwhile
+  begin(next, 0, current.nextUrl ?? linkFor(next.id));
 }
 
-function onError() {
+function onError(e: Event) {
+  if (!inUse(e)) {
+    // one kept went wrong: let go
+    const k = keptSongs.find((x) => x.a === e.target);
+    if (k) {
+      keptSongs = keptSongs.filter((x) => x !== k);
+      drop(k.a);
+    }
+    return;
+  }
   if (holding !== "song" || !current) return;
-  // a link gone stale (each lasts 6 to 12 hours), or the network gave way: the song again, from where it got to
+  // a link gone stale (each lasts 6 to 12 hours), or the network gave way: the song again, from where it got to, at a
+  // new link
+  links.delete(current.track.id);
+  held = null;
   const t = Date.now();
   fixes = fixes.filter((x) => t - x < 60_000);
   const inRoom = current.start !== null && room.get();
@@ -644,9 +802,9 @@ function onError() {
   syncRoom();
 }
 
-function onTime() {
-  const a = element();
-  if (holding !== "song" || !current) return;
+function onTime(e: Event) {
+  const a = inUse(e);
+  if (!a || holding !== "song" || !current) return;
   lastAt = a.currentTime;
   // in a room the bar follows the room's clock (the beat), whatever this phone is at
   if (current.start === null) second.set(Math.floor(lastAt));
@@ -705,7 +863,7 @@ function unlockNow() {
   }
   ++loads;
   holding = "silent";
-  a.src = silent();
+  source(a, silent(), null);
   unlocked = true;
   a.play().catch((e: unknown) => {
     if ((e as { name?: string } | null)?.name === "NotAllowedError") unlocked = false;
@@ -722,7 +880,9 @@ function enter(next: ListenRoom, sent: number, got: number, now: number): boolea
   // the room's songs told since this answer was made stay
   if (was?.id === r.id && was.version > r.version) r = { ...r, queue: was.queue, idx: was.idx, startedAt: was.startedAt, version: was.version };
   if (was?.id !== r.id) {
-    // a room new to the page: nothing of one before it is left
+    // a room new to the page: nothing of one before it is left, nor songs kept from playing alone (a room plays in
+    // the element in use)
+    dropKept();
     selfPaused = false;
     catching = false;
     ahead = null;
@@ -790,7 +950,7 @@ function gap(ms: number, track: ListenTrack | null) {
   holding = "gap";
   catching = false;
   setRate(a, 1);
-  a.src = silent(Math.min(GAP_CLIP_S, Math.max(0.1, ms / 1000)));
+  source(a, silent(Math.min(GAP_CLIP_S, Math.max(0.1, ms / 1000))), null);
   a.play().catch(() => {});
 }
 
@@ -871,7 +1031,7 @@ function loadRoomSong(url: string, start: number) {
   const mine = ++loads;
   holding = "song";
   catching = false;
-  a.src = url;
+  source(a, url, null);
   setRate(a, 1);
   // joining part way, or a slow network: once it can play, to where the room is by then
   const catchUp = () => {
@@ -1490,6 +1650,9 @@ export function forgetListening() {
   audio = null;
   holding = null;
   current = null;
+  held = null;
+  keptSongs = [];
+  links.clear();
   counted = false;
   away = false;
   ended = false;

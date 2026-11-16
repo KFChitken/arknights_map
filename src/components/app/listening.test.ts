@@ -33,9 +33,12 @@ import { playPartyMusic } from "./partyMusic";
 // The page's player (listening.ts) with the browser's parts stood in for: an <audio> that plays at once, the server
 // answering /api/listen, and the window and storage a page has
 
+const NOTHING_IN = { length: 0, start: () => 0, end: () => 0 };
+
 class FakeAudio extends EventTarget {
+  /** The element made, or played, last: the one in use */
   static last: FakeAudio;
-  src = "";
+  #src = "";
   currentTime = 0;
   duration = Number.NaN;
   paused = true;
@@ -45,11 +48,26 @@ class FakeAudio extends EventTarget {
   playbackRate = 1;
   readyState = 4;
   seeking = false;
+  error: { code: number } | null = null;
+  /** What of the song came: nothing, until whole() */
+  buffered: { length: number; start: (i: number) => number; end: (i: number) => number } = NOTHING_IN;
   constructor() {
     super();
     FakeAudio.last = this;
   }
+  get src() {
+    return this.#src;
+  }
+  set src(v: string) {
+    this.#src = v;
+    this.buffered = NOTHING_IN;
+  }
+  /** All of the song downloaded */
+  whole() {
+    this.buffered = { length: 1, start: () => 0, end: () => this.duration };
+  }
   play() {
+    FakeAudio.last = this;
     this.paused = false;
     this.ended = false;
     queueMicrotask(() => this.dispatchEvent(new Event("playing")));
@@ -100,6 +118,7 @@ const CATALOG: ListenCatalog = {
       ],
     },
     { id: "a2", name: "Second", songs: [{ id: "s3", name: "Three", seconds: 90 }] },
+    { id: "a3", name: "Third", songs: [{ id: "s4", name: "Four", seconds: 80 }] },
   ],
   artists: ["塞壬唱片-MSR"],
   fresh: ["s1", "s2", "s3"],
@@ -217,8 +236,10 @@ describe("听歌 on the page", () => {
     expect(ops("stop")).toEqual([{}]);
     expect(isListening()).toBe(false);
     expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s2" } });
-    // ▶ plays it again, from its start
+    // ▶ plays it again, from its start, in the element still holding it
     toggle();
+    expect(audio().src).toBe(link("s2"));
+    expect(audio().currentTime).toBe(0);
     await settle();
     expect(ops("play").at(-1)).toEqual({ song: "s2", at: 0 });
     expect(isListening()).toBe(true);
@@ -261,14 +282,116 @@ describe("听歌 on the page", () => {
       toggle();
       vi.setSystemTime(Date.now() + 10 * 60_000);
       toggle();
+      // on in the element, from what of it came: nothing loaded again
+      expect(audio().src).toBe(link("s1"));
+      expect(audio().paused).toBe(false);
       await settle();
       expect(ops("play")).toEqual([
         { song: "s1", at: 0, next: "s2" },
         { song: "s1", at: 30, next: "s2" },
       ]);
+      expect(audio().currentTime).toBe(30);
+      expect(listenPlayerNow().status).toBe("playing");
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("starts a song tapped again at once, from the link the server gave for it before, the server told meanwhile", async () => {
+    playTrack(track("s1"));
+    await settle();
+    // part way: not all of it came, so it is let go, not kept
+    audio().to(30);
+    playTrack(track("s2"));
+    // at once, from the link given ahead with One's
+    expect(audio().src).toBe(link("s2"));
+    await settle();
+    const el = audio();
+    playTrack(track("s1"));
+    expect(audio()).toBe(el);
+    expect(audio().src).toBe(link("s1"));
+    await settle();
+    expect(ops("play")).toEqual([
+      { song: "s1", at: 0, next: "s2" },
+      { song: "s2", at: 0 },
+      { song: "s1", at: 0, next: "s2" },
+    ]);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+  });
+
+  it("keeps a song left whole paused in its own element, and goes on from it when tapped again", async () => {
+    playTrack(track("s1"));
+    await settle();
+    const one = audio();
+    one.duration = 100;
+    one.whole();
+    one.to(60);
+    playTrack(track("s2"));
+    const two = audio();
+    expect(two).not.toBe(one);
+    expect(one.paused).toBe(true);
+    expect(one.src).toBe(link("s1"));
+    await settle();
+    expect(two.src).toBe(link("s2"));
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s2" } });
+
+    playTrack(track("s1"));
+    // within the tap, from its start, with all of it there still: nothing loaded again
+    expect(audio()).toBe(one);
+    expect(one.currentTime).toBe(0);
+    expect(one.paused).toBe(false);
+    expect(one.buffered.length).toBe(1);
+    // Two had not all come: let go
+    expect(two.src).toBe("");
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 0, next: "s2" });
+    // what it plays is the one in use's: Two's element plays no part any more
+    two.dispatchEvent(new Event("ended"));
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+  });
+
+  it("keeps two songs at most: the oldest one's element plays the new song", async () => {
+    const els: FakeAudio[] = [];
+    for (const id of ["s1", "s2", "s3"]) {
+      playTrack(track(id));
+      await settle();
+      els.push(audio());
+      audio().duration = track(id).seconds;
+      audio().whole();
+    }
+    expect(new Set(els).size).toBe(3);
+    playTrack(track("s4"));
+    expect(audio()).toBe(els[0]);
+    await settle();
+    expect(els.map((a) => a.src)).toEqual([link("s4"), link("s2"), link("s3")]);
+    playTrack(track("s2"));
+    expect(audio()).toBe(els[1]);
+    // Four had not all come: let go
+    expect(els[0].src).toBe("");
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s2" } });
+  });
+
+  it("asks the server first after a refusal: nothing kept, no link to start from", async () => {
+    playTrack(track("s1"));
+    await settle();
+    const one = audio();
+    one.duration = 100;
+    one.whole();
+    playTrack(track("s2"));
+    await settle();
+    playAnswer = refusing(LISTEN_FULL, "听歌的人有点多，过几分钟再来。");
+    playTrack(track("s3"));
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "idle", problem: { code: LISTEN_FULL } });
+    expect(one.src).toBe("");
+    playAnswer = played;
+    playTrack(track("s1"));
+    expect(audio().src).toMatch(/^data:audio\/wav;base64,/);
+    await settle();
+    expect(audio().src).toBe(link("s1"));
   });
 
   it("goes on from where the song got to, once its link is answered, when it starts part way", async () => {
@@ -630,6 +753,24 @@ describe("一起听 on the page", () => {
     expect(listenBubblesNow().map((b) => b.text)).toEqual(["开始一起听：《One》"]);
     await tick(1_050);
     expect(ops("play")).toEqual([{ song: "s1", at: 0 }]);
+  });
+
+  it("lets go of the songs kept from listening alone as it goes in, and plays the room's in the element in use", async () => {
+    playTrack(track("s1"));
+    await tick(0);
+    const one = audio();
+    one.duration = 100;
+    one.whole();
+    playTrack(track("s2"));
+    await tick(0);
+    const two = audio();
+    answerRoom("join", () => roomOf({ startedAt: serverClock() - 30_000 }));
+    expect(await joinAt("inv-1")).toBe(true);
+    await tick(0);
+    expect(one.src).toBe("");
+    expect(audio()).toBe(two);
+    expect(two.src).toBe(link("s1"));
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 30, next: "s2" });
   });
 
   it("says why it could not go in, and stays out", async () => {
