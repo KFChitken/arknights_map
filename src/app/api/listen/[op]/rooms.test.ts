@@ -3,7 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COUNTED } from "@/lib/dashboard";
-import { AWAY_MS, INVITE_MS, QUEUE_MAX, ROOM_IDLE_MS, ROOM_KEEP_MS, ROOM_LIFE_MS, RX_EVERY_MS, type ListenRoom } from "@/lib/listen";
+import { AWAY_MS, INVITE_MS, QUEUE_MAX, ROOM_IDLE_MS, ROOM_KEEP_MS, ROOM_LIFE_MS, RX_EVERY_MS, type ListenFriend, type ListenRoom } from "@/lib/listen";
 import { siteDay, siteDayStart } from "@/lib/siteDay";
 import { loadMods } from "@/lib/server/admins";
 import { db, pg } from "@/lib/server/db";
@@ -50,11 +50,11 @@ vi.mock("next/headers", () => ({
 type User = typeof users.$inferSelect;
 type Answer = { status: number; body: Record<string, unknown> | null };
 
-async function account(email: string) {
+async function account(email: string, id?: string) {
   const now = new Date();
   const [u] = await db
     .insert(users)
-    .values({ email, ageConfirmedAt: now, policyAcceptedAt: now, crossBorderAcceptedAt: now, publicPlaceAcceptedAt: now })
+    .values({ id, email, ageConfirmedAt: now, policyAcceptedAt: now, crossBorderAcceptedAt: now, publicPlaceAcceptedAt: now })
     .returning();
   return u;
 }
@@ -291,10 +291,13 @@ describe("一起听's rooms", () => {
       { id: friendKey(host.id, d.id), ok: false, why: "TA 现在用不了听歌。" },
       { id: friendKey(b.id, c.id), ok: false, why: "你们已经不是触须之交了。" },
     ]);
-    expect((await post(host, "friends")).body!.friends).toMatchObject([
-      { id: bKey, left: 0, inRoom: false },
-      { id: friendKey(host.id, c.id), left: 3, inRoom: false },
-    ]);
+    // both anonymous, so of one name: in the order of their ids
+    expect((await post(host, "friends")).body!.friends).toMatchObject(
+      [
+        { id: bKey, left: 0, inRoom: false },
+        { id: friendKey(host.id, c.id), left: 3, inRoom: false },
+      ].sort((x, y) => (x.id < y.id ? -1 : 1)),
+    );
     // a new site day
     vi.setSystemTime(day + 60_000);
     forgetHits();
@@ -303,6 +306,25 @@ describe("一起听's rooms", () => {
     // only the host invites
     await goIn(b);
     expect(await post(b, "invite", { friends: [friendKey(b.id, host.id)] })).toMatchObject({ status: 403, body: { error: "只有发起人能点。" } });
+  });
+
+  it("list 触须之交 of one name in the order of their ids, whatever order the database reads them in", async () => {
+    vi.stubEnv("LISTEN", "on");
+    const host = await account("host@example.com");
+    // all anonymous, so all of one name; put in with ids rising and keys falling, so both orders the database may read
+    // them in (as put in, or by id) are the list's own backwards
+    const keys: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      let id: string;
+      do {
+        id = `0000000${i}${crypto.randomUUID().slice(8)}`;
+      } while (keys.length && friendKey(host.id, id) > keys[keys.length - 1]);
+      keys.push(friendKey(host.id, id));
+      await befriend(host, await account(`f${i}@example.com`, id));
+    }
+    const friends = (await post(host, "friends")).body!.friends as ListenFriend[];
+    expect(new Set(friends.map((f) => f.card.displayName)).size).toBe(1);
+    expect(friends.map((f) => f.id)).toEqual([...keys].sort());
   });
 
   it("invite, while LISTEN is admins, only 触须之交 who are admins too", async () => {

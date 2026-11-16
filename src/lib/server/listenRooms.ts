@@ -1026,7 +1026,10 @@ export async function seeListenInvites(userId: string, itemIds: string[]) {
     .where(and(inArray(listenInvites.id, ids), eq(listenInvites.toUserId, userId), isNull(listenInvites.seenAt)));
 }
 
-/** Your 触须之交 who may listen, to invite: how many times more today, and whether TA is in your room already */
+/**
+ * Your 触须之交 who may listen, to invite: how many times more today, and whether TA is in your room already; by name,
+ * and those of one name (as all who are anonymous are) by id, so they keep their places
+ */
 export async function listenFriends(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ friends: ListenFriend[]; now: number }> {
   const ids = [...(await friendIdsOf(user.id))];
   if (!ids.length) return { friends: [], now };
@@ -1063,7 +1066,7 @@ export async function listenFriends(user: Pick<UserRow, "id">, now = Date.now())
         inRoom: inRoomNow.has(u.id),
       }),
     )
-    .sort((a, b) => a.card.displayName.localeCompare(b.card.displayName, "zh"));
+    .sort((a, b) => a.card.displayName.localeCompare(b.card.displayName, "zh") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { friends, now };
 }
 
