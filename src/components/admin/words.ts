@@ -267,6 +267,8 @@ export function logText(e: AdminLogEntry) {
       return "让全站恢复颜色";
     case "act.listen":
       return `听歌：${d}`;
+    case "act.squad":
+      return `一起卫戍：${d}`;
     default:
       return d || e.what;
   }

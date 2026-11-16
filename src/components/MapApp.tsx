@@ -161,6 +161,9 @@ import {
   serverNow,
   touchMember,
 } from "./app/listening";
+import SquadBar from "./app/squad/SquadBar";
+import type { SquadView } from "./app/squad/SquadSheet";
+import { forgetSquadPage, heardSquad, squadStreamBack, startSquad, touchInSquad, useSquadRoom } from "./app/squad/squading";
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
 import type { ListenActs, ListenTab } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";
@@ -320,6 +323,8 @@ const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
 // 一起听 over the map (the card of an invitation, the 短评), for those who may listen
 const ListenOverlay = dynamic(() => import("./app/ListenOverlay"), { ssr: false });
+// 一起卫戍 (src/lib/squad.ts), only once it opens
+const SquadSheet = dynamic(() => import("./app/squad/SquadSheet"), { ssr: false });
 
 /**
  * Which scene your dock avatar plays for what just came, one at a time: a new 触须之交,
@@ -454,7 +459,9 @@ type Panel =
   | { kind: "visitMove"; friendId: string; roach: PublicRoach }
   | { kind: "radar"; radar: Radar | null }
   /** listen: opened from someone's card in 一起听, which it goes back to */
-  | { kind: "safety"; target: string; who: string | null; back: Panel | null; listen?: true }
+  | { kind: "safety"; target: string; who: string | null; back: Panel | null; listen?: true; squad?: true }
+  /** 一起卫戍, at a view of its own (the room they are in, else the list) */
+  | { kind: "squad"; view?: SquadView }
   /** 举报这只蟑螂, from its card on the map */
   | { kind: "roachReport"; roach: PublicRoach }
   /** confirm: a signed-in player confirming it is them by code, for their password, then back to 我的资料 */
@@ -1703,6 +1710,8 @@ export default function MapApp({
     events.addEventListener("help", () => helpNudgeRef.current());
     // 一起听: what the room you are in is told (src/components/app/listening.ts)
     events.addEventListener("listen", (e) => heardListen((e as MessageEvent).data));
+    // 一起卫戍: what the room you are in is told (src/components/app/squad/squading.ts)
+    events.addEventListener("squad", (e) => heardSquad((e as MessageEvent).data));
     // nudges sent while the connection was down are lost, so look once it is back: spread over a minute, as
     // after a restart every page comes back at once
     events.addEventListener("error", () => (dropped = true));
@@ -1710,6 +1719,7 @@ export default function MapApp({
       if (dropped) {
         later(60_000);
         listenStreamBack();
+        squadStreamBack();
       }
       dropped = false;
     });
@@ -2446,6 +2456,25 @@ export default function MapApp({
     return true;
   };
   /** 偷偷碰 or 大胆碰 someone in the room you are in, by their number there: as a touch on the map, without its scene */
+  // 一起卫戍: the room they are in, read at the page's start and kept by what the room is told; signed out, nothing
+  const squadRoom = useSquadRoom();
+  const squadMe = me?.squad;
+  const squadSignedIn = Boolean(me);
+  useEffect(() => {
+    if (squadMe) startSquad(squadMe);
+    else if (!squadSignedIn) forgetSquadPage();
+  }, [squadMe, squadSignedIn]);
+  /** 偷偷碰 or 大胆碰 someone in a room of 一起卫戍, as on the map: what it used, what it made, said as there */
+  const touchInSquadRoom = async (h: number, bold: boolean) => {
+    const res = await act(() => touchInSquad(h, bold));
+    if (!res) return;
+    touchesUsed(res);
+    if (res.newFriend) {
+      befriendedToast(res.newFriend);
+      await Promise.all([loadFriends(), loadInbox()]).catch(() => {});
+    } else touchedToast(bold);
+    if (me?.isNew) await loadMe();
+  };
   const touchInRoom = async (h: number, bold: boolean) => {
     const res = await touchMember(h, bold);
     if (!res) return;
@@ -3074,6 +3103,7 @@ export default function MapApp({
   const afterBlock = async (p: Extract<Panel, { kind: "safety" }>) => {
     await loadFriends();
     if (p.listen) return showListenRoom();
+    if (p.squad) return setPanel({ kind: "squad" });
     await openInbox(false, p.back?.kind === "inbox" ? p.back.tab : "friends");
   };
 
@@ -4977,13 +5007,26 @@ export default function MapApp({
             onClose={() => setPanel(null)}
           />
         );
+      case "squad":
+        return me?.squad ? (
+          <SquadSheet
+            start={p.view}
+            homeServer={me.profile.uidServer.arknights}
+            card={me.squad.card}
+            onTouch={touchInSquadRoom}
+            onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: null, squad: true })}
+            onError={(e) => void act(() => Promise.reject(e))}
+            onToast={setToast}
+            onClose={() => setPanel(null)}
+          />
+        ) : null;
       case "safety":
         return (
           <SafetySheet
             who={p.who}
             onBlock={() => blockSender(p)}
             onReport={(reason, note) => reportSender(p, reason, note)}
-            onBack={p.listen ? showListenRoom : p.back ? () => setPanel(p.back) : undefined}
+            onBack={p.listen ? showListenRoom : p.squad ? () => setPanel({ kind: "squad" }) : p.back ? () => setPanel(p.back) : undefined}
             onClose={() => setPanel(null)}
           />
         );
@@ -5197,6 +5240,8 @@ export default function MapApp({
   const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
   // 听歌: where the server opened it to them (me.listen), and not while the site is gray (全站变灰); not on /en
   const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
+  // 一起卫戍: where the server shows it to them (me.squad, SQUAD); on the Chinese site, as its words are Chinese only for now
+  const squadShown = lang() === "zh" && Boolean(me?.squad);
   // its disco, where the server opened that to them too (me.listen.disco: DISCO); fetched ahead once the panel opens
   const discoOpen = discoOpenTo(listenShown, me?.listen);
   useEffect(() => {
@@ -5303,6 +5348,7 @@ export default function MapApp({
         }
       : null,
     sponsor: sponsorShown ? { onOpen: openSponsor } : null,
+    squad: squadShown ? { room: squadRoom ? { n: squadRoom.members.length } : null, onOpen: () => setPanel({ kind: "squad" }) } : null,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });
@@ -5846,6 +5892,8 @@ export default function MapApp({
           onDismiss={() => setListenCard(null)}
         />
       )}
+      {/* 一起卫戍: 卫戍中 n/4 over the map, back to the room */}
+      {squadShown && <SquadBar hidden={panel?.kind === "squad" || Boolean(selected || picking || placing)} onOpen={() => setPanel({ kind: "squad" })} />}
       {/* over everything of each layout, the board it was opened from too */}
       {pamphlet && (
         <Pamphlet

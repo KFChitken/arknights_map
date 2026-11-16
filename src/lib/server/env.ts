@@ -104,6 +104,12 @@ export const recordsMode = (): "on" | "admins" | "off" => (["on", "admins"] as c
  * only, off (the default) to nobody, who keep the old one. Nothing it keeps is new. Read on every use.
  */
 export const profile2Mode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.PROFILE2) ?? "off";
+/**
+ * 一起卫戍 (src/lib/server/squad.ts): SQUAD=on opens it to every signed-in player, admins to the 站长 and the admins only
+ * (who then see only one another's rooms), off (the default) to nobody: no way in, and its requests answered 404. Read
+ * on every use, so the tests can switch it.
+ */
+export const squadMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.SQUAD) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
 
 /**

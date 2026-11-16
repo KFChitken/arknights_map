@@ -152,6 +152,7 @@ import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
 import { listenMe, listenOpen } from "./listen";
 import { friendsListening, listenCalls, listenInbox, seeListenInvites } from "./listenRooms";
+import { squadMe } from "./squad";
 import { studyMe } from "./study";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
@@ -482,6 +483,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     passes: await passesMe(u),
     study: studyMe(u),
     listen: await listenMe(u),
+    squad: await squadMe(u),
     sponsor: await sponsorMe(u),
   };
 }

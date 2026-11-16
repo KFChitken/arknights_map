@@ -5,6 +5,7 @@ import { fmt, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
 import { capCount } from "@/lib/inboxTabs";
 import type { ListenTrack } from "@/lib/listen";
+import { SQUAD_MAX } from "@/lib/squad";
 import type { Basemap, RoachColor } from "@/lib/types";
 import type { UiFold } from "@/lib/uiChoice";
 import type { Radar } from "@/lib/world/types";
@@ -112,6 +113,8 @@ export type ChromeProps = {
    * null for a visitor (their browser counts none)
    */
   study: { dot: boolean; days: number | null; onOpen: () => void } | null;
+  /** 一起卫戍, where the server shows it to them (me.squad, SQUAD); room: how many are in the one they are in, if any */
+  squad: { room: { n: number } | null; onOpen: () => void } | null;
   /**
    * 听歌, where the server opened it to them (LISTEN) and the site is not gray; open: its panel is out; disco: 听歌's
    * disco is open to them too (DISCO), its button beside 听歌 (DiscoButton)
@@ -209,6 +212,22 @@ export function HotFlame({ size = 24 }: { size?: number }) {
 }
 
 /** 通行证寻访's ticket, with its notches; dot: a yellow one on it */
+/** 一起卫戍: a small shield, yellow, with a cross */
+export function ShieldIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path d="M12 2.6 4.4 5.5v5.7c0 4.7 3.2 8.7 7.6 10.2 4.4-1.5 7.6-5.5 7.6-10.2V5.5z" fill="#ffd23f" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M12 7v10M8.2 11h7.6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** 一起卫戍's word under its icon: 卫戍, or 卫戍中 n/4 while in a room; and its name for a screen reader */
+export const squadWord = (squad: NonNullable<ChromeProps["squad"]>) =>
+  squad.room ? fmt(T.squad.inRoom, { n: squad.room.n, max: SQUAD_MAX }) : T.squad.entry;
+export const squadLabel = (squad: NonNullable<ChromeProps["squad"]>) =>
+  squad.room ? fmt(T.squad.inRoomLabel, { n: squad.room.n, max: SQUAD_MAX }) : T.squad.entryLabel;
+
 export function TicketIcon({ size = 24, dot = false }: { size?: number; dot?: boolean }) {
   return (
     <span className="ticket-ico">

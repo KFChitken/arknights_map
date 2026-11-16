@@ -28,6 +28,9 @@ import {
   RadarScope,
   SponsorIcon,
   StudyIcon,
+  ShieldIcon,
+  squadLabel,
+  squadWord,
   TicketIcon,
   UiIcon,
   useListenEntry,
@@ -59,7 +62,7 @@ export default function HudChrome(p: ChromeProps) {
   const sponsor = sides && !p.tutorial ? p.sponsor : null;
   const bm = p.basemap;
   const col = useRef<HTMLDivElement>(null);
-  const n = 2 + [p.passes, p.study, bm, ui, listen, sponsor].filter(Boolean).length;
+  const n = 2 + [p.squad, p.passes, p.study, bm, ui, listen, sponsor].filter(Boolean).length;
   const fit = useColumnFit(col, [sides, n, Boolean(me), Boolean(me?.main), bm?.now]);
   return (
     <div className="chrome chrome-hud">
@@ -132,6 +135,16 @@ export default function HudChrome(p: ChromeProps) {
               {T.map.bar.hotShort}
             </span>
           </span>
+          {p.squad && (
+            <span className={`rb${p.squad.room ? " on" : ""}`}>
+              <button className="ob glass" aria-label={squadLabel(p.squad)} aria-haspopup="dialog" onClick={p.squad.onOpen}>
+                <ShieldIcon size={24} />
+              </button>
+              <span className="lbl" aria-hidden="true">
+                {squadWord(p.squad)}
+              </span>
+            </span>
+          )}
           {p.passes && (
             <span className="rb">
               <button className="ob glass" aria-label={p.passes.dot ? T.map.bar.passesNew : T.map.bar.passes} onClick={p.passes.onOpen}>

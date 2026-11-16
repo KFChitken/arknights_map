@@ -163,6 +163,14 @@ export const users = pgTable("users", {
    * see the song and may ask to listen with them (想一起听); on unless they switched it off
    */
   showListening: boolean("show_listening").notNull().default(true),
+  /**
+   * 卫戍名片 (一起卫戍, src/lib/squad.ts), by the season's ids: the core alliance (0: 无偏好; null while never filled
+   * in), a strategy or none, and up to two extra alliances. Shown to nobody until they are in a room, as what that
+   * room starts from.
+   */
+  squadCore: smallint("squad_core"),
+  squadStrategy: smallint("squad_strategy"),
+  squadExtras: smallint("squad_extras").array().notNull().default(sql`'{}'::smallint[]`),
   /** They were told once, with their first guest, not to keep the main roach by their door */
   visitTipShown: boolean("visit_tip_shown").notNull().default(false),
   /** 求助 (src/lib/server/help.ts): when they last looked at their 触须之交's requests, for the dot on the 触须之交 card */
@@ -1764,6 +1772,74 @@ export const listenInvites = pgTable(
     index("listen_invites_to_idx").on(t.toUserId, t.createdAt),
     index("listen_invites_pair_idx").on(t.fromUserId, t.toUserId, t.createdAt),
     index("listen_invites_room_idx").on(t.roomId),
+  ],
+);
+
+/**
+ * 一起卫戍's rooms (src/lib/server/squad.ts): its host, the game's server, 难度 and how they want to play (tags, by
+ * id: src/lib/squad.ts), the 同盟密钥 (pasted at key_at, changed key_changes times), whether only the host's 触须之交 may come in, and
+ * its state: wait (on the list, open), go (playing, closed) or ended. moved_at: someone last came in or went;
+ * waited_at, went_at: 等人 and 开打 last tapped; state_at: the state last changed. Deleted KEEP_MS after it ends,
+ * who was in it with it.
+ */
+export const squadRooms = pgTable(
+  "squad_rooms",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    hostId: uuid("host_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    server: text("server").notNull(),
+    level: smallint("level").notNull(),
+    tags: smallint("tags").array().notNull().default(sql`'{}'::smallint[]`),
+    key: text("key").notNull(),
+    keyAt: at("key_at").notNull().defaultNow(),
+    keyChanges: smallint("key_changes").notNull().default(0),
+    friendsOnly: boolean("friends_only").notNull().default(false),
+    state: text("state").notNull().default("wait"),
+    createdAt: at("created_at").notNull().defaultNow(),
+    movedAt: at("moved_at").notNull().defaultNow(),
+    waitedAt: at("waited_at").notNull().defaultNow(),
+    wentAt: at("went_at"),
+    stateAt: at("state_at"),
+    endedAt: at("ended_at"),
+    endReason: text("end_reason"),
+  },
+  (t) => [
+    index("squad_rooms_open_idx").on(t.createdAt).where(sql`${t.endedAt} is null`),
+    index("squad_rooms_host_idx").on(t.hostId, t.createdAt),
+    index("squad_rooms_ended_idx").on(t.endedAt),
+  ],
+);
+
+/**
+ * Who is, or was, in a room of 一起卫戍: handle is their number in it, from 1 (the host's) and never given to another,
+ * by which the room knows them (never their id). left_at once they left (or it ended); kicked: asked to leave by the
+ * host, never let in again; in_game: 我进同盟了, ticked by them. core, strategy, extras: their card in this room alone,
+ * taken from their 卫戍名片 as they came in. In one room at a time (squad_members_one_room).
+ */
+export const squadMembers = pgTable(
+  "squad_members",
+  {
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => squadRooms.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    handle: smallint("handle").notNull(),
+    joinedAt: at("joined_at").notNull().defaultNow(),
+    leftAt: at("left_at"),
+    kicked: boolean("kicked").notNull().default(false),
+    inGame: boolean("in_game").notNull().default(false),
+    core: smallint("core").notNull().default(0),
+    strategy: smallint("strategy"),
+    extras: smallint("extras").array().notNull().default(sql`'{}'::smallint[]`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roomId, t.userId] }),
+    uniqueIndex("squad_members_one_room").on(t.userId).where(sql`${t.leftAt} is null`),
+    index("squad_members_user_idx").on(t.userId, t.joinedAt),
   ],
 );
 

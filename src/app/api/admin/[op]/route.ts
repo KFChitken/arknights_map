@@ -57,7 +57,8 @@ import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
 import { listenDesk } from "@/lib/server/listen";
 import { endAllRooms } from "@/lib/server/listenRooms";
-import { endGray, grayState, listenSettings, setGray, setListen } from "@/lib/server/siteSettings";
+import { endGray, grayState, listenSettings, setGray, setListen, setSquad, squadSettings, type SquadSettings } from "@/lib/server/siteSettings";
+import { endAllSquadRooms, squadDesk } from "@/lib/server/squad";
 import { sponsorForAdmin } from "@/lib/server/sponsor";
 import { removeSponsorMonth, saveSponsorMonth, saveSponsorSettings, saveSponsorStartup } from "@/lib/server/sponsorAdmin";
 import { ackIncident, siteStatus } from "@/lib/server/watchReport";
@@ -74,6 +75,15 @@ const listenChange = (a: ListenSettings, b: ListenSettings) =>
     a.paused !== b.paused ? (b.paused ? "暂停了听歌" : "恢复了听歌") : "",
     a.cap !== b.cap ? `同时在听上限从 ${a.cap} 人改成 ${b.cap} 人` : "",
     a.roomMax !== b.roomMax ? `一起听一场最多从 ${a.roomMax} 人改成 ${b.roomMax} 人` : "",
+  ]
+    .filter(Boolean)
+    .join("，");
+
+/** What a change to 一起卫戍's settings did, for the 操作记录: empty when it changed nothing */
+const squadChange = (a: SquadSettings, b: SquadSettings) =>
+  [
+    a.closed !== b.closed ? (b.closed ? "暂时关门，开着的房间都结束了" : "重新开门") : "",
+    a.note !== b.note ? (b.note ? `提示改成「${b.note}」` : "去掉了提示") : "",
   ]
     .filter(Boolean)
     .join("，");
@@ -338,6 +348,20 @@ export const POST = route(
         // paused: every room of 一起听 ends now (the sweep would within a minute)
         if (after.paused && !before.paused) await endAllRooms("admin", now);
         result = await listenDesk(now);
+        break;
+      }
+      // 一起卫戍 (the owner's, src/lib/server/squad.ts): how it goes now; closed for now or open, and the line, as args[0] changes them
+      case "squad":
+        result = await squadDesk(now);
+        break;
+      case "setSquad": {
+        const before = squadSettings();
+        const after = await setSquad(actor.id, objectOf(args[0]), now);
+        // closed: every room ends now (the sweep would within a minute)
+        if (after.closed && !before.closed) await endAllSquadRooms("admin", now);
+        const detail = squadChange(before, after);
+        if (detail) await logAdmin(actor, "act", "act.squad", { detail }, now);
+        result = await squadDesk(now);
         break;
       }
 

@@ -27,6 +27,9 @@ import {
   RadarScope,
   SponsorIcon,
   StudyIcon,
+  ShieldIcon,
+  squadLabel,
+  squadWord,
   TicketIcon,
   UiIcon,
   useListenEntry,
@@ -86,6 +89,14 @@ function Phone(p: ChromeProps) {
           </button>
           {p.listen && <ListenChip listen={p.listen} />}
           {p.listen?.disco && <DiscoButton kind="chip" />}
+          {p.squad && (
+            <button className={`dchip glass${p.squad.room ? " on" : ""}`} aria-label={squadLabel(p.squad)} aria-haspopup="dialog" onClick={p.squad.onOpen}>
+              <span className="ico">
+                <ShieldIcon size={22} />
+              </span>
+              <span aria-hidden="true">{squadWord(p.squad)}</span>
+            </button>
+          )}
           {p.sponsor && (
             <button className="dchip glass" aria-label={fmt(T.map.bar.sponsor, { site: siteName() })} aria-haspopup="dialog" onClick={p.sponsor.onOpen}>
               <span className="ico">
@@ -229,6 +240,7 @@ function Panel(p: ChromeProps) {
                 </span>
               </button>
             )}
+            {p.squad && <SquadCard squad={p.squad} />}
             {p.passes && <PassesCard passes={p.passes} />}
             {p.study && <StudyCard study={p.study} />}
             <h4>{T.ui.drawer.guides}</h4>
@@ -435,6 +447,22 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
               ? fmt(T.map.bar.listenSong, { name: e.track.name })
               : T.map.bar.listenIdle}
         </small>
+      </span>
+      <span className="go" aria-hidden="true">
+        ›
+      </span>
+    </button>
+  );
+}
+
+/** 一起卫戍 in the computer's panel, under 热榜: the way in, or back to the room they are in */
+function SquadCard({ squad }: { squad: NonNullable<ChromeProps["squad"]> }) {
+  return (
+    <button className="dcard" aria-label={squadLabel(squad)} aria-haspopup="dialog" onClick={squad.onOpen}>
+      <ShieldIcon size={40} />
+      <span className="tx" aria-hidden="true">
+        <b>{T.squad.title}</b>
+        <small>{squad.room ? squadWord(squad) : T.squad.entrySub}</small>
       </span>
       <span className="go" aria-hidden="true">
         ›

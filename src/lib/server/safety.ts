@@ -55,6 +55,8 @@ import {
 import { roachByFeedId } from "./roachFeed";
 import { canSeeDeclaration } from "./declarationInbox";
 import { roomSender, separateBlocked } from "./listenRooms";
+import { separateSquadBlocked, squadSender } from "./squad";
+import { coreOf, extraOf, NO_CORE, strategyOf } from "../squad";
 import { addNotes } from "./staffNotes";
 import { logError, note as noteSignal } from "./signals";
 import { endFriendship, friendIdsOf, friendKey, profileOf, storedDeclaration } from "./world";
@@ -74,7 +76,7 @@ const forAdmin = <R>(fn: () => R): R => withLang("zh", fn);
 
 /**
  * Who sent an inbox item ("t:", "d:", "x:", "p:" ids), who a friend is ("friend:<id>"), or who has a number in the room
- * of 一起听 they are in ("lr:<room>:<number>"), as far as this player may ask.
+ * of 一起听 ("lr:<room>:<number>") or 一起卫戍 ("sq:<room>:<number>") they are in, as far as this player may ask.
  */
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
   // the page offers neither on the guides; this is the backstop
@@ -140,6 +142,23 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
     const who = await roomSender(userId, id, Number(target.split(":")[2]));
     return who ? { ...who, context: "一起听里" } : null;
   }
+  if (kind === "sq") {
+    const who = await squadSender(userId, id, Number(target.split(":")[2]));
+    if (!who) return null;
+    // the room's 难度 and tags, and TA's card there, for the case
+    const words = forAdmin(() => ({ levels: [...T.squad.levels], tags: [...T.squad.tags], none: T.squad.noCore }));
+    const level = words.levels[who.level - 1] ?? `难度 ${who.level}`;
+    const tags = who.tags.map((t) => words.tags[t - 1]).filter(Boolean);
+    const core = who.card.core === NO_CORE ? words.none : (coreOf(who.card.core)?.name ?? words.none);
+    const strategy = who.card.strategy === null ? null : strategyOf(who.card.strategy);
+    const extras = who.card.extras.map((e) => extraOf(e)?.name).filter(Boolean);
+    const card = [`核心盟约 ${core}`, strategy ? `策略 ${strategy.op}（${strategy.name}）` : null, extras.length ? `附加盟约 ${extras.join("、")}` : null];
+    return {
+      other: who.other,
+      known: who.known,
+      context: `一起卫戍里（${[level, ...tags].join("·")}），TA 在房间里选的：${card.filter(Boolean).join("，")}`,
+    };
+  }
   return null;
 }
 
@@ -153,8 +172,9 @@ async function blockSender(userId: string, who: Sender) {
       set: { known: who.known ? true : blocks.known },
     });
   if ((await friendIdsOf(userId)).has(who.other)) await endFriendship(userId, who.other);
-  // in a room of 一起听 together now: they part there
+  // in a room of 一起听 or 一起卫戍 together now: they part there
   await separateBlocked(userId, who.other);
+  await separateSquadBlocked(userId, who.other);
 }
 
 export async function block(userId: string, target: string) {

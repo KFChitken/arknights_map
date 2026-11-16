@@ -5,6 +5,7 @@ import { BADGES, type Badge } from "@/lib/badges";
 import { GRAY_MAX_DAYS, grayUntilWords, type GrayState } from "@/lib/adminConsole";
 import { addDays, beijingDate, beijingDayWords, beijingMidnight, beijingShort } from "@/lib/beijing";
 import { CAP_RANGE, ROOM_RANGE, type ListenDesk } from "@/lib/listen";
+import type { SquadDesk } from "@/lib/squad";
 import { memorialWords } from "@/lib/memorials";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { RULES, type BanInfo } from "@/lib/safety";
@@ -29,6 +30,7 @@ export default function Site() {
     <div className="ac-site">
       {owner && <GrayPanel />}
       {owner && <ListenPanel />}
+      {owner && <SquadPanel />}
       {owner && <SiteStatusPanel />}
       <NameList added={wordsAdded} onAdded={() => setWordsAdded((n) => n + 1)} />
       {owner && <BanLookup />}
@@ -375,6 +377,160 @@ function ListenPanel() {
           {roomMax && !roomFits && <p className="ac-error">一场最多几人要是 {ROOM_RANGE[0]} 到 {ROOM_RANGE[1]} 之间的整数。</p>}
           <p className="ac-muted small" id="listen-room-why">
             发起人也算在里面。改小了，已经在场里的人不会被请出去，只是满了以后进不来。人多了短评会刷屏。
+          </p>
+        </>
+      )}
+      {d && note && <p className="ac-error">{note}</p>}
+    </section>
+  );
+}
+
+/** The line the list shows while 一起卫戍 is closed, at most this long (siteSettings.ts SQUAD_NOTE_MAX) */
+const SQUAD_NOTE_MAX = 60;
+
+/**
+ * 一起卫戍 (src/lib/server/squad.ts), the owner's: whether SQUAD lets anyone in, the rooms open now, and today's rooms,
+ * comings in and set lines. 暂时关门 (as when the game's season is between parts and no alliance can be made) ends every
+ * room at once and shows the owner's line on the list until it opens again.
+ */
+function SquadPanel() {
+  const { call, say } = useConsole();
+  const [d, setD] = useState<SquadDesk | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [line, setLine] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      call<SquadDesk>("squad")
+        .then((x) => {
+          if (!alive) return;
+          setD(x);
+          setNote(null);
+          setLine((l) => l ?? x.note);
+        })
+        .catch((e) => {
+          if (alive) setNote(`读不出来：${errorWords(e)}`);
+        });
+    void load();
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [call]);
+
+  const change = async (what: { closed?: boolean; note?: string }, done: string) => {
+    setBusy(true);
+    try {
+      const next = await call<SquadDesk>("setSquad", [what]);
+      setD(next);
+      setLine(next.note);
+      setAsking(false);
+      setNote(null);
+      say(done);
+    } catch (e) {
+      setNote(errorWords(e));
+    }
+    setBusy(false);
+  };
+
+  const text = (line ?? "").trim();
+  return (
+    <section className="ac-panel ac-tool wide" aria-label="一起卫戍">
+      <PanelHead title="一起卫戍" aside="只有站长" />
+      <p className="ac-sub">
+        卫戍协议找人组队的房间。游戏进修订期、游戏里组不了队的时候，在这里点「暂时关门」：开着的房间马上全部结束，列表上显示你写的那句提示，谁都开不了、进不了，直到你点「重新开门」。
+      </p>
+      {!d ? (
+        <p className="ac-sub">{note ?? "正在读取…"}</p>
+      ) : (
+        <>
+          <div className="ac-status-line">
+            <span className={`ac-dot${d.mode === "off" ? " gray" : d.closed ? " yellow" : ""}`} aria-hidden="true" />
+            <strong>
+              {d.mode === "off"
+                ? "开关是关的（SQUAD=off）：谁都看不到一起卫戍"
+                : d.closed
+                  ? "一起卫戍暂时关门了：谁都开不了、进不了"
+                  : d.mode === "admins"
+                    ? "一起卫戍开着，只有站长和管理员看得到（SQUAD=admins）"
+                    : "一起卫戍开着，所有登录的舟P都能用（SQUAD=on）"}
+            </strong>
+          </div>
+          <div className="ac-stats">
+            <div className="ac-stat">
+              <div className="ac-muted small">现在开着</div>
+              <div className="ac-stat-n">{d.waiting + d.playing} 个房间</div>
+              <div className="ac-muted small">
+                等人 {d.waiting} 个，开打 {d.playing} 个
+              </div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">今天开了</div>
+              <div className="ac-stat-n">{d.opened} 个房间</div>
+              <div className="ac-muted small">北京时间，每分钟更新</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">今天进了</div>
+              <div className="ac-stat-n">{d.joins} 次</div>
+              <div className="ac-muted small">房主自己不算</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">今天的快捷语句</div>
+              <div className="ac-stat-n">{d.says} 句</div>
+              <div className="ac-muted small">只记一共几句，不记谁说的</div>
+            </div>
+          </div>
+          {d.closed ? (
+            <div>
+              <button type="button" className="ac-btn primary" disabled={busy} onClick={() => change({ closed: false }, "一起卫戍重新开门了。")}>
+                重新开门
+              </button>
+            </div>
+          ) : asking ? (
+            <div className="ac-confirm" role="alert">
+              <span>开着的房间都会马上结束，里面的人会看到「一起卫戍暂时关门，房间结束了」。确定吗？</span>
+              <button type="button" className="ac-btn small primary" disabled={busy} onClick={() => change({ closed: true, note: text }, "一起卫戍暂时关门了。")}>
+                确认关门
+              </button>
+              <button type="button" className="ac-btn small" disabled={busy} onClick={() => setAsking(false)}>
+                先不关
+              </button>
+            </div>
+          ) : (
+            <div>
+              <button type="button" className="ac-btn" disabled={busy} onClick={() => setAsking(true)}>
+                暂时关门
+              </button>
+            </div>
+          )}
+          <form
+            className="ac-inline-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (text !== d.note && text.length <= SQUAD_NOTE_MAX) void change({ note: text }, text ? "提示改好了。" : "提示去掉了。");
+            }}
+          >
+            <label className="ac-inline-label">
+              关门时的提示
+              <input
+                value={line ?? ""}
+                maxLength={SQUAD_NOTE_MAX}
+                placeholder="比如：序列Ⅱ开放后再见"
+                onChange={(e) => setLine(e.target.value)}
+                aria-describedby="squad-note-why"
+              />
+            </label>
+            <button className="ac-btn" type="submit" disabled={busy || text === d.note}>
+              存提示
+            </button>
+          </form>
+          <p className="ac-muted small" id="squad-note-why">
+            最多 {SQUAD_NOTE_MAX} 个字，关门时显示在列表上；不写就显示「一起卫戍暂时关门了，过一阵再来。」
           </p>
         </>
       )}

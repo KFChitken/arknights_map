@@ -23,7 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
-import { discoMode, listenMode, sponsorMode, studyMode } from "@/lib/server/env";
+import { discoMode, listenMode, sponsorMode, squadMode, studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -81,6 +81,12 @@ export default async function Privacy() {
               site: siteName(),
               km: DECLARATION_RADIUS_KM,
             })}
+          </li>
+        )}
+        {/* only once it is open to everyone (SQUAD=on, src/lib/server/env.ts) */}
+        {squadMode() === "on" && (
+          <li>
+            {fmtNodes(T.server.privacy.collect.squad, { b: <strong>{T.server.privacy.collect.squadB}</strong> })}
           </li>
         )}
         <li>

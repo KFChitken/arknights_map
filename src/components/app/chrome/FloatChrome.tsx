@@ -24,6 +24,9 @@ import {
   RadarScope,
   SponsorIcon,
   StudyIcon,
+  ShieldIcon,
+  squadLabel,
+  squadWord,
   TicketIcon,
   UiIcon,
   useListenEntry,
@@ -90,6 +93,18 @@ export default function FloatChrome(p: ChromeProps) {
                 <HotFlame size={22} />
                 <small>{T.map.bar.hotShort}</small>
               </button>
+              {p.squad && (
+                <button
+                  className={`it squad-entry${p.squad.room ? " on" : ""}`}
+                  aria-label={squadLabel(p.squad)}
+                  aria-haspopup="dialog"
+                  onClick={p.squad.onOpen}
+                  tabIndex={folded.r ? -1 : undefined}
+                >
+                  <ShieldIcon size={24} />
+                  <small>{squadWord(p.squad)}</small>
+                </button>
+              )}
               {p.passes && (
                 // not .passes, which is 寻访's own page (passes.css) and would cover the whole rail once that is loaded
                 <button

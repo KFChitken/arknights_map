@@ -14,18 +14,34 @@ import { errorCode } from "./signals";
  * Settings for the whole site that the owner changes in the 管理台 (site_settings), kept in memory by every process
  * and read before the first page asks (src/instrumentation-node.ts): a change reaches every process at once
  * (reloadEverywhere), and each reads them again every RELOAD_MS anyway: 全站变灰, until when everyone sees the site in
- * gray, for a national day of mourning; and 听歌's (src/lib/server/listen.ts), paused or not, how many may listen at
- * once, how many to a room. It lives on globalThis because Next.js can load this module once per route bundle.
+ * gray, for a national day of mourning; 听歌's (src/lib/server/listen.ts), paused or not, how many may listen at
+ * once, how many to a room; and 一起卫戍's (src/lib/server/squad.ts), closed for now or open, with the owner's line. It
+ * lives on globalThis because Next.js can load this module once per route bundle.
  */
 
-type Held = { grayUntil: number | null; listen: ListenSettings; loading: Promise<void> | null; again: boolean; started: boolean };
+/** 一起卫戍's (src/lib/server/squad.ts): closed for now (暂时关门, as when the game's season is between parts), with the owner's line for the list */
+export type SquadSettings = { closed: boolean; note: string };
+const SQUAD_DEFAULTS: SquadSettings = { closed: false, note: "" };
+/** The owner's line, at most this long */
+export const SQUAD_NOTE_MAX = 60;
+
+type Held = {
+  grayUntil: number | null;
+  listen: ListenSettings;
+  squad: SquadSettings;
+  loading: Promise<void> | null;
+  again: boolean;
+  started: boolean;
+};
 const g = globalThis as unknown as { siteSettingsHeld?: Held };
-const held = (g.siteSettingsHeld ??= { grayUntil: null, listen: LISTEN_DEFAULTS, loading: null, again: false, started: false });
+const held = (g.siteSettingsHeld ??= { grayUntil: null, listen: LISTEN_DEFAULTS, squad: SQUAD_DEFAULTS, loading: null, again: false, started: false });
 held.listen ??= LISTEN_DEFAULTS;
+held.squad ??= SQUAD_DEFAULTS;
 const RELOAD_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 const GRAY = "gray";
 const LISTEN = "listen";
+const SQUAD = "squad";
 
 /** gray's value: { until } as an ISO time; anything else is no gray at all */
 function untilOf(value: unknown) {
@@ -46,6 +62,7 @@ export function loadSettings(): Promise<void> {
         const rows = await db.select({ key: siteSettings.key, value: siteSettings.value }).from(siteSettings);
         held.grayUntil = untilOf(rows.find((r) => r.key === GRAY)?.value);
         held.listen = listenOf(rows.find((r) => r.key === LISTEN)?.value);
+        held.squad = squadOf(rows.find((r) => r.key === SQUAD)?.value);
       } while (held.again);
     } finally {
       held.loading = null;
@@ -138,6 +155,47 @@ export async function setListen(byId: string, change: unknown, now = Date.now())
   await db
     .insert(siteSettings)
     .values({ key: LISTEN, ...set })
+    .onConflictDoUpdate({ target: siteSettings.key, set });
+  await reloadEverywhere("settings");
+  return next;
+}
+
+// ---- 一起卫戍 ----
+
+/** squad's value: { closed, note }, each its default where it is missing or makes no sense */
+function squadOf(value: unknown): SquadSettings {
+  const v = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    closed: v.closed === true,
+    note: typeof v.note === "string" ? v.note.trim().slice(0, SQUAD_NOTE_MAX) : "",
+  };
+}
+
+/** 一起卫戍's settings now: from memory, never the database */
+export const squadSettings = (): SquadSettings => held.squad;
+
+/**
+ * 一起卫戍 closed for now or open again (closed), and the owner's line the list shows while it is closed (note), each
+ * only if given, by byId (the owner). On every process at once. Says what they are now; the caller ends the rooms.
+ */
+export async function setSquad(byId: string, change: unknown, now = Date.now()): Promise<SquadSettings> {
+  const c = change && typeof change === "object" ? (change as Record<string, unknown>) : {};
+  const [row] = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, SQUAD));
+  const next = squadOf(row?.value);
+  if ("closed" in c) {
+    if (typeof c.closed !== "boolean") throw new HttpError(400, "暂时关门只能开或关。");
+    next.closed = c.closed;
+  }
+  if ("note" in c) {
+    if (typeof c.note !== "string") throw new HttpError(400, "提示要是一句话。");
+    const note = c.note.trim();
+    if (note.length > SQUAD_NOTE_MAX) throw new HttpError(400, `提示最多 ${SQUAD_NOTE_MAX} 个字。`);
+    next.note = note;
+  }
+  const set = { value: next, updatedAt: new Date(now), updatedBy: byId };
+  await db
+    .insert(siteSettings)
+    .values({ key: SQUAD, ...set })
     .onConflictDoUpdate({ target: siteSettings.key, set });
   await reloadEverywhere("settings");
   return next;

@@ -477,6 +477,13 @@
       "when": 1794851077326,
       "tag": "0068_records_data",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1794860166241,
+      "tag": "0069_squad",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { GiftState, PassesDot, PassesMe } from "../passes";
 import type { FriendListening, ListenCall, ListenMe } from "../listen";
+import type { SquadMe } from "../squad";
 import type { StudyMe } from "../study/rules";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
@@ -577,6 +578,8 @@ export type Me = {
   study?: StudyMe;
   /** 听歌 (src/lib/listen.ts): only for a player who may listen (LISTEN); never in what others get */
   listen?: ListenMe;
+  /** 一起卫戍 (src/lib/squad.ts): only where its way in shows to the player (SQUAD, squadShown); never in what others get */
+  squad?: SquadMe;
   /**
    * 支持舟P地图's button on the map (src/lib/sponsor.ts): only while SPONSOR shows it to this player and the owner has
    * it switched on with an 爱发电 link; never in what others get

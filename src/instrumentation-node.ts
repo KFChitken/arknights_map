@@ -13,6 +13,7 @@ import { seedDemo } from "./lib/server/demo";
 import { demoEnabled, listenMode, watchEnabled } from "./lib/server/env";
 import { sweepListening } from "./lib/server/listen";
 import { sweepRooms } from "./lib/server/listenRooms";
+import { sweepSquad } from "./lib/server/squad";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
 import { startMainlandMap } from "./lib/server/mainlandMap";
@@ -151,6 +152,9 @@ if (!helper) {
   setInterval(() => sweepListening().catch(failed("listen", "Sweeping away who listened before failed")), MINUTE_MS);
   setInterval(() => sweepRooms().catch(failed("listen", "Sweeping the listening rooms failed")), MINUTE_MS);
   if (listening) setInterval(() => void syncMusic(), 10 * MINUTE_MS);
+
+  // 一起卫戍: rooms that waited, played or were open too long ended, and a day after gone (src/lib/server/squad.ts)
+  setInterval(() => sweepSquad().catch(failed("squad", "Sweeping the rooms of 一起卫戍 failed")), MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
   const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));

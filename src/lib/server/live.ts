@@ -15,11 +15,13 @@ import { errorCode } from "./signals";
 /**
  * inbox: something new in 消息; declare: only declarations, which reach a whole neighbourhood at once,
  * so pages take their time (and several in one look); help: only the 求助 dot on the 触须之交 card,
- * which never opens anything; listen: what a room of 一起听 does (tellListen), the one event that carries what
- * happened, as a room's phones act on it at once
+ * which never opens anything; listen: what a room of 一起听 does (tellListen), and squad: what a room of 一起卫戍
+ * does (tellSquad), the events that carry what happened, as a room's phones act on it at once
  */
-export type LiveEvent = "inbox" | "declare" | "help" | "listen";
-/** data: the event's, as JSON (listen only) */
+export type LiveEvent = "inbox" | "declare" | "help" | "listen" | "squad";
+/** The events that carry what happened in a room */
+type Told = "listen" | "squad";
+/** data: the event's, as JSON (listen and squad only) */
 type Listener = (event: LiveEvent, data?: string) => void;
 
 /**
@@ -104,16 +106,25 @@ async function tellOthers(ids: string[], event: LiveEvent) {
 
 /** What one of 一起听's rooms did (src/lib/server/listenRooms.ts), to the players in it: src/lib/listen.ts ListenTell */
 export function tellListen(userIds: Iterable<string>, data: object) {
+  tellWhat("listen", userIds, data);
+}
+
+/** What one of 一起卫戍's rooms did (src/lib/server/squad.ts), to the players in it: src/lib/squad.ts SquadTell */
+export function tellSquad(userIds: Iterable<string>, data: object) {
+  tellWhat("squad", userIds, data);
+}
+
+function tellWhat(event: Told, userIds: Iterable<string>, data: object) {
   const ids = [...new Set(userIds)];
   if (!ids.length) return;
   const d = JSON.stringify(data);
-  deliver(ids, "listen", d);
-  if (across()) void tellOthersWhat(ids, d);
+  deliver(ids, event, d);
+  if (across()) void tellOthersWhat(event, ids, d);
 }
 
 /** The players in as few NOTIFYs as fit what happened, each at most NOTIFY_BYTES */
-async function tellOthersWhat(ids: string[], d: string) {
-  const head = Buffer.byteLength(JSON.stringify({ p: self, e: "listen", ids: [], d: JSON.parse(d) }));
+async function tellOthersWhat(event: Told, ids: string[], d: string) {
+  const head = Buffer.byteLength(JSON.stringify({ p: self, e: event, ids: [], d: JSON.parse(d) }));
   const parts: string[][] = [[]];
   let size = head;
   for (const id of ids) {
@@ -126,16 +137,22 @@ async function tellOthersWhat(ids: string[], d: string) {
     size += more;
   }
   for (const part of parts) {
-    const payload = `{"p":${JSON.stringify(self)},"e":"listen","ids":${JSON.stringify(part)},"d":${d}}`;
+    const payload = `{"p":${JSON.stringify(self)},"e":${JSON.stringify(event)},"ids":${JSON.stringify(part)},"d":${d}}`;
     await pg.notify(CHANNEL, payload).catch((e) => console.error("live: telling the other processes failed", errorCode(e)));
   }
 }
 
 const told = new Set<(data: unknown) => void>();
+const toldSquad = new Set<(data: unknown) => void>();
 /** Hear what other processes tell rooms (tellListen), as their pages do: src/lib/server/listenRooms.ts forgets who is in one */
 export function onToldListen(fn: (data: unknown) => void) {
   told.add(fn);
   return () => void told.delete(fn);
+}
+/** Hear what other processes tell 一起卫戍's rooms (tellSquad): src/lib/server/squad.ts forgets who is in one */
+export function onToldSquad(fn: (data: unknown) => void) {
+  toldSquad.add(fn);
+  return () => void toldSquad.delete(fn);
 }
 
 /**
@@ -153,10 +170,10 @@ export async function hearOthers() {
         if (p === self) return;
         if (typeof reload === "string") return void reloadHere(reload as ReloadKind);
         if (!Array.isArray(ids)) return;
-        if (e === "listen") {
+        if (e === "listen" || e === "squad") {
           if (!d || typeof d !== "object") return;
-          for (const fn of told) fn(d);
-          return void deliver(ids.map(String), "listen", JSON.stringify(d));
+          for (const fn of e === "listen" ? told : toldSquad) fn(d);
+          return void deliver(ids.map(String), e, JSON.stringify(d));
         }
         deliver(ids.map(String), e === "help" || e === "declare" ? e : "inbox");
       } catch {
