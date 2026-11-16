@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { CATALOG_IDS, CATALOG_SIZE, catalogCounts, isPassChar, passChar, passCharNamed, PASS_CATALOG } from "./passCatalog";
 import {
@@ -29,8 +28,36 @@ function chiSquare(counts: readonly number[], expected: number): number {
   return counts.reduce((x, c) => x + (c - expected) ** 2 / expected, 0);
 }
 
-/** Far past the 1-in-a-million mark of a chi-square with df degrees of freedom, so the tests only fail on a real bias */
-const farTail = (df: number) => df + 5 * Math.sqrt(2 * df);
+/**
+ * About the 1-in-a-million mark of a chi-square with df degrees of freedom (Wilson–Hilferty: 37.5 for 5, 635 for 474),
+ * so the tests only fail on a real bias
+ */
+function farTail(df: number): number {
+  const z = 4.7534; // the standard normal's 1-in-a-million mark
+  const v = 2 / (9 * df);
+  return df * (1 - v + z * Math.sqrt(v)) ** 3;
+}
+
+/**
+ * crypto's randomInt(n), but from a seed (mulberry32): the same numbers on every run, so a test of chances has one
+ * answer and cannot fail by bad luck
+ */
+function seededInt(seed: number): (n: number) => number {
+  let s = seed >>> 0;
+  const next = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return (t ^ (t >>> 14)) >>> 0;
+  };
+  return (n) => {
+    // whole numbers below n with no bias: draws past the last full run of n are thrown away
+    const limit = 2 ** 32 - (2 ** 32 % n);
+    let x = next();
+    while (x >= limit) x = next();
+    return x % n;
+  };
+}
 
 describe("通行证寻访's characters", () => {
   it("are both games' lists, story and collaboration characters included, each once", () => {
@@ -56,7 +83,7 @@ describe("rollChars", () => {
   it("gives every character the same chance (chi-square over all 475)", () => {
     const per = 200;
     const counts = new Map(ids.map((id) => [id, 0]));
-    const { picks, miss } = rollChars(ids, [], 0, ids.length * per, randomInt);
+    const { picks, miss } = rollChars(ids, [], 0, ids.length * per, seededInt(1));
     for (const p of picks) counts.set(p.charId, counts.get(p.charId)! + 1);
     expect(counts.size).toBe(ids.length);
     expect(Math.min(...counts.values())).toBeGreaterThan(0);
@@ -99,9 +126,10 @@ describe("rollChars", () => {
     const wish = [1, 145, 300, 442, 450, 475];
     const per = 10_000;
     const counts = new Map(wish.map((id) => [id, 0]));
+    const rand = seededInt(2);
     let allSure = true;
     for (let i = 0; i < wish.length * per; i++) {
-      const { picks, miss } = rollChars(ids, wish, PITY - 1, 1, randomInt);
+      const { picks, miss } = rollChars(ids, wish, PITY - 1, 1, rand);
       allSure &&= picks[0].wish && miss === 0;
       counts.set(picks[0].charId, counts.get(picks[0].charId)! + 1);
     }
