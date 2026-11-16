@@ -86,6 +86,7 @@ export default function ProfileSheet({
   onlyMains,
   onOpenOnlyMains,
   onOpenBadges,
+  onOpenRecords,
   onOpenSponsor,
   passes,
   listen = false,
@@ -118,6 +119,8 @@ export default function ProfileSheet({
   onlyMains?: boolean;
   onOpenOnlyMains?: (draft: Profile) => void;
   onOpenBadges?: (draft: Profile) => void;
+  /** 「我的记录」, only while RECORDS opens it to the player (Me.records); the unsaved changes are kept */
+  onOpenRecords?: (draft: Profile) => void;
   /** 支持舟P地图, only while the owner has it switched on; the unsaved changes are kept */
   onOpenSponsor?: (draft: Profile) => void;
   /** 通行证寻访, when the player may draw: the pass they wear on their card, and 省流量 for passes on this device */
@@ -202,6 +205,17 @@ export default function ProfileSheet({
       </div>
       {passes?.worn && <WornPassLine pass={passes.worn} />}
       {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} onOpen={() => onOpenBadges(p)} />}
+      {!tutorial && onOpenRecords && (
+        <button className="link-row" onClick={() => onOpenRecords(p)}>
+          <span>
+            {T.records.title}
+            <small className="link-row-hint">{T.records.row}</small>
+          </span>
+          <span className="chev" aria-hidden="true">
+            ›
+          </span>
+        </button>
+      )}
       {!tutorial && <HomeScreenRow />}
 
       {held && <p className="held-note">{T.profile.hidden}</p>}

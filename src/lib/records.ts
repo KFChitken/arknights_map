@@ -1,3 +1,5 @@
+import type { FriendEvent } from "./world/types";
+
 /**
  * 「我的记录」 (src/components/app/records/): what a player gets of their own records, from GET /api/records/summary and
  * /api/records/timeline (src/lib/server/records.ts). Days are the player's own, by their device's clock: offset is
@@ -30,9 +32,10 @@ export const DAY_FIELDS = [
   "inClone1",
   "inClone2",
   "inClone3",
-  // of those you got: touched back, and crawled away from
+  // of those you got: touched back, and crawled away from; and how many were bold touches back of yours
   "touchedBack",
   "crawled",
+  "backBold",
   // declarations sent, reactions given, reactions got (not withheld)
   "declared",
   "reactedOut",
@@ -110,6 +113,8 @@ export type RecordsSummary = {
   drinks: DrinkRecord[];
   totals: RecordTotals;
   passes?: PassRecords;
+  /** 「触须之交看到的你」: the player's history as their 触须之交 see it, from one who was in none of it */
+  seen: FriendEvent[];
 };
 
 /** GET /api/records/summary?lite=1: the last 7 days of touches sent, got, and declarations, for 「我的资料」's card */

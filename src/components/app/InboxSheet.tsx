@@ -878,7 +878,8 @@ export function ProfileView({
   );
 }
 
-function eventText(e: Friend["history"][number]) {
+/** A line of a 触须之交's history, as their page shows it (and 「我的记录」's 「触须之交看到的你」) */
+export function eventText(e: Friend["history"][number]) {
   switch (e.kind) {
     case "touched":
       if (e.you) return e.bold ? T.inbox.history.touchedYouBold : T.inbox.history.touchedYouSneaky;

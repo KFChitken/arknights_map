@@ -308,6 +308,8 @@ const HudChrome = dynamic(() => import("./app/chrome/HudChrome"), { ssr: false }
 const UiPicker = dynamic(() => import("./app/chrome/UiPicker"), { ssr: false });
 // 最近更新 (src/lib/pamphlet.ts), only once it opens
 const Pamphlet = dynamic(() => import("./app/Pamphlet"), { ssr: false });
+// 「我的记录」, from 我的资料: only downloaded when opened
+const RecordsSheet = dynamic(() => import("./app/records/RecordsSheet"), { ssr: false });
 // 通行证寻访 (src/lib/passes.ts), with the characters' list, only once it opens
 const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
@@ -408,6 +410,8 @@ type Panel =
   /** 地图上看哪些蟑螂 (只看本体), from the counts at the top, or from 资料 (back: to it, with its unsaved changes) */
   | { kind: "onlyMains"; back?: Panel }
   | { kind: "badges"; draft: Profile }
+  /** 「我的记录」, from 我的资料 (draft: its unsaved changes, kept for going back) */
+  | { kind: "records"; draft: Profile }
   /** 支持舟P地图, opened from 我的资料 (the draft is kept for going back) or from its button on the map (no draft) */
   | { kind: "sponsor"; draft?: Profile }
   /** greeting: 阿米娅向导's of the day, and away: 佩丽卡监督's report of the time away, which this card then carries */
@@ -4715,6 +4719,7 @@ export default function MapApp({
             wornBadge={me.wornBadge}
             looks={me.looks}
             onOpenBadges={(draft) => setPanel({ kind: "badges", draft })}
+            onOpenRecords={me.records ? (draft) => setPanel({ kind: "records", draft }) : undefined}
             onOpenSponsor={sponsor ? (draft) => setPanel({ kind: "sponsor", draft }) : undefined}
             blocked={blocked}
             held={me.profileHeld}
@@ -4768,6 +4773,16 @@ export default function MapApp({
           />
         );
       }
+      case "records":
+        return (
+          <RecordsSheet
+            me={me}
+            passesOpen={Boolean(me.passes)}
+            onBack={() => setPanel({ kind: "profile", draft: p.draft })}
+            onClose={() => setPanel(null)}
+            onOpenBadges={() => setPanel({ kind: "badges", draft: p.draft })}
+          />
+        );
       case "badges":
         return (
           <BadgeWall

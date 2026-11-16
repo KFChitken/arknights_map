@@ -15,7 +15,8 @@ import { RADAR_RADIUS_KM } from "@/lib/rules";
 import type { Homecoming, InboxItem, Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
-const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
+/** 「再 n 次就是…」 for each count a badge is earned by; 「我的记录」 says its nearest ones the same way */
+export const NEXT: Record<BadgeCount, (more: number, name: string) => string> = {
   friends: (n, name) => fmt(T.homecoming.next.friends, { n, name }),
   responders: (n, name) => fmt(T.homecoming.next.responders, { n, name }),
   declareDays: (n, name) => fmt(T.homecoming.next.declareDays, { n, name }),

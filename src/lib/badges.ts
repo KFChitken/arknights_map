@@ -1338,6 +1338,23 @@ const NUDGED: BadgeCount[] = ["friends", "responders", "declareDays", "reactDays
 const NUDGED_DRINKS = ["thousandcups", "bigjar"];
 
 /** The badge earned by one of the NUDGED counts that a player is the fewest steps away from. */
+/**
+ * 「我的记录」's 快拿到的称号: of the badges nextBadge would pick from, the next of each count still to earn, nearest
+ * first, at most n
+ */
+export function nearBadges(earned: ShownBadge[], counts: Record<BadgeCount, number>, n = 3) {
+  const next = new Map<BadgeCount, { id: string; name: string; count: BadgeCount; have: number; need: number; more: number }>();
+  for (const b of BADGES) {
+    const nudged = b.goal && (NUDGED.includes(b.goal.count) || NUDGED_DRINKS.includes(b.id));
+    if (!b.goal || !nudged || earned.some((e) => e.id === b.id)) continue;
+    const have = counts[b.goal.count];
+    const more = b.goal.n - have;
+    const held = next.get(b.goal.count);
+    if (more > 0 && (!held || more < held.more)) next.set(b.goal.count, { id: b.id, name: b.name, count: b.goal.count, have, need: b.goal.n, more });
+  }
+  return [...next.values()].sort((a, b) => a.more - b.more).slice(0, n);
+}
+
 export function nextBadge(earned: ShownBadge[], counts: Record<BadgeCount, number>) {
   let best: { name: string; count: BadgeCount; more: number } | null = null;
   for (const b of BADGES) {

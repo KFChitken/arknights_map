@@ -4,6 +4,8 @@ import { T } from "@/i18n";
 import { declarationText, isDrunkTemplate, replyOf } from "../declarations";
 import type { GuideId } from "../guides";
 import { goldKind } from "../passes";
+import { INBOX_DAYS } from "../rules";
+import type { FriendEvent } from "../world/types";
 import { displayName } from "../profile";
 import {
   DAY_INDEX,
@@ -161,7 +163,7 @@ async function summarize(user: UserRow, offset: number, now: number): Promise<Re
   }
   const got = (
     await db
-      .select({ id: touches.id, at: touches.createdAt, bold: touches.bold, slot: touches.toSlot, from: touches.fromUserId, ignored: touches.ignoredAt })
+      .select({ id: touches.id, at: touches.createdAt, bold: touches.bold, slot: touches.toSlot, from: touches.fromUserId, ignored: touches.ignoredAt, replyTo: touches.replyTo })
       .from(touches)
       .where(and(eq(touches.toUserId, me), eq(touches.withheld, false), gte(touches.createdAt, from)))
   ).filter((t) => !blocked.has(t.from));
@@ -171,6 +173,7 @@ async function summarize(user: UserRow, offset: number, now: number): Promise<Re
     if (t.slot !== null && t.slot >= 0 && t.slot < SLOTS.length) day(t.at, SLOTS[t.slot]);
     if (answered.has(t.id)) day(t.at, "touchedBack");
     if (t.ignored) day(t.at, "crawled");
+    if (t.bold && t.replyTo?.startsWith("t:")) day(t.at, "backBold");
     // a sneaky one never says who, 触须之交 or not
     if (t.bold) forFriend(t.from, "touch", t.at);
   }
@@ -323,6 +326,8 @@ async function summarize(user: UserRow, offset: number, now: number): Promise<Re
     }))
     .sort((a, b) => b.since - a.since);
 
+  const seen = await seenByFriends(user, now);
+
   const byNinety = (a: [string, ByRange], b: [string, ByRange]) => b[1][2] - a[1][2] || b[1][1] - a[1][1] || b[1][0] - a[1][0];
   return {
     today,
@@ -344,7 +349,40 @@ async function summarize(user: UserRow, offset: number, now: number): Promise<Re
       studyDays: user.studyDays,
     },
     ...(passRecords ? { passes: passRecords } : {}),
+    seen,
   };
+}
+
+/**
+ * The player's history as their 触须之交 see it on their page (world.ts friends()), from one who was in none of it:
+ * touches each way, bold or not, declarations, becoming 触须之交, a change of 助战; nobody named
+ */
+async function seenByFriends(user: UserRow, now: number): Promise<FriendEvent[]> {
+  const me = user.id;
+  const since = new Date(now - INBOX_DAYS * 86_400_000);
+  const history: FriendEvent[] = [];
+  const ts = await db
+    .select({ at: touches.createdAt, bold: touches.bold, from: touches.fromUserId })
+    .from(touches)
+    .where(and(or(eq(touches.fromUserId, me), eq(touches.toUserId, me)), gte(touches.createdAt, since)));
+  for (const t of ts) history.push({ kind: t.from === me ? "touched" : "touchedBy", at: t.at.getTime(), bold: t.bold, you: false });
+  const ds = await db
+    .select()
+    .from(declarations)
+    .where(and(eq(declarations.senderId, me), gte(declarations.createdAt, since)));
+  // as everywhere in 「我的记录」, without the song of a 一起听
+  for (const d of ds) {
+    history.push({ kind: "declared", at: d.createdAt.getTime(), text: d.template === "listen" ? T.server.records.listenLine : declarationText(storedDeclaration(d)) });
+  }
+  const fs = await db
+    .select({ at: friendships.createdAt })
+    .from(friendships)
+    .where(or(eq(friendships.a, me), eq(friendships.b, me)));
+  for (const f of fs) history.push({ kind: "befriended", at: f.at.getTime(), you: false });
+  if (user.supportChangedAt && user.supportChangedAt > since && user.games.includes("arknights")) {
+    history.push({ kind: "support", at: user.supportChangedAt.getTime() });
+  }
+  return history.sort((x, y) => y.at - x.at).slice(0, 30);
 }
 
 async function lite(user: UserRow, offset: number, now: number): Promise<RecordsLite> {
