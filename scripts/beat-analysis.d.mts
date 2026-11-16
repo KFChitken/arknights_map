@@ -1,4 +1,4 @@
-// Types of scripts/beat-analysis.mjs, for its tests (src/lib/beatMusic.test.ts)
+// Types of scripts/beat-analysis.mjs, for its tests (src/lib/beatMusic.test.ts, src/lib/danceMap.test.ts)
 import type { Catalog } from "./msr-music.mjs";
 
 export type Rules = {
@@ -10,12 +10,29 @@ export type Rules = {
   contrast: number;
   hits: number;
 };
+export type DanceRules = {
+  bpm: [number, number];
+  weigh: boolean;
+  periodic: number;
+  contrast: number;
+  twice: number;
+  hits: number;
+  wobbleMs: number;
+  minBeats: number;
+  barBeats: number;
+  stepDb: number;
+  quietDb: number;
+  maxChars: number;
+  liteMinMs: number;
+};
 export const SR: number;
 export const HOP: number;
 export const FPS: number;
 export const RULES: Rules;
 export const ANALYSIS_V: number;
 export const ONSET_LAG_S: number;
+export const DANCE: DanceRules;
+export const DANCE_V: number;
 
 export type FftTables = { n: number; rev: Uint32Array; cos: Float64Array; sin: Float64Array };
 export function fftTables(n: number): FftTables;
@@ -23,14 +40,18 @@ export function fft(re: Float64Array, im: Float64Array, t: FftTables): void;
 
 export type Features = { frames: number; env: Float32Array; low: Float32Array; chroma: Float32Array; loud: Float32Array };
 export function features(samples: Float32Array): Features;
-export function tempoOf(env: Float32Array, rules?: Rules): { bpm: number; period: number } | null;
+export function tempoOf(env: Float32Array, rules?: { bpm: [number, number]; weigh?: boolean }): { bpm: number; period: number } | null;
 export function beatFrames(env: Float32Array, period: number, tightness?: number): number[];
 export function beatTimes(env: Float32Array, frames: number[]): Float64Array;
 
 export type Stretch = { first: number; period: number; bpm: number; rms: number; most: number; from: number; to: number };
 export function steadiest(beats: ArrayLike<number>, rules?: Rules): Stretch | null;
 export function clarity(env: Float32Array, w: Stretch): { contrast: number; hits: number };
-export function barOf(f: Features, w: Stretch): { bar: number; waltz: boolean };
+export function barOf(
+  f: Features,
+  w: Pick<Stretch, "first" | "period" | "from" | "to">,
+  times?: ArrayLike<number> | null,
+): { bar: number; bar3: number; waltz: boolean };
 
 /** What a song's samples come to: a clip's beats, or why it has none (with the beats it found, where it got that far) */
 export type Analysis = {
@@ -45,7 +66,23 @@ export type Analysis = {
   hits?: number;
   bar?: number;
 };
-export function analyse(samples: Float32Array, rules?: Rules): Analysis;
+export function analyse(samples: Float32Array, rules?: Rules, f?: Features): Analysis;
+
+export function beatClarity(env: Float32Array, beats: ArrayLike<number>): { contrast: number; hits: number };
+export function periodicity(env: Float32Array, period: number): number;
+export function wobbleOf(beats: ArrayLike<number>): number;
+export function levelsOf(db: number[]): number[];
+/** How a song's beats were, for the log: none with no tempo found at all */
+export type DanceHow = { periodic?: number; wobble?: number; contrast?: number; hits?: number };
+/** What a whole song's samples come to for 听歌's disco: its beats and how loud each is, or why it has none */
+export type Dance = DanceHow &
+  (
+    | { none?: undefined; bpm: number; bar: number; waltz: boolean; beats: Float64Array; energy: number[]; secs: number[] }
+    | { none: "tempo" | "clear"; secs: number[] }
+  );
+export function danceOf(samples: Float32Array, f?: Features): Dance;
+export function danceText(d: Dance, lite?: number | null): string;
+export function shiftOf(a: ArrayLike<number>, b: ArrayLike<number>, reach?: number): number | null;
 
 export function squashName(s: unknown): string;
 export type Candidate = {

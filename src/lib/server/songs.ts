@@ -4,6 +4,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { and, asc, desc, eq, gt, gte, isNull, lt, notInArray, sql } from "drizzle-orm";
 import { addDays, beijingDate } from "../beijing";
+import { readDance } from "../dance";
 import {
   COVER_FILE,
   freshSongs,
@@ -28,9 +29,10 @@ import { errorCode, logError, note } from "./signals";
 /**
  * 听歌's songs. The main process reads the catalogue the fetch writes (scripts/fetch-msr-music.mjs) into the songs
  * table when it changes (syncCatalog, at start and every 10 minutes): only the songs whose file is there, the rest
- * kept with gone_at. Every process keeps the list in memory (loadSongs), read again when the main says (reload
- * "songs") and every 10 minutes anyway, with what the page gets of it, its ETag and each song's file. A catalogue
- * that cannot be read changes nothing: the list stays as it was, or empty if there never was one. How often each
+ * kept with gone_at; and with it each song's table for the disco (music/dance.json, scripts/beat-music.mjs). Every
+ * process keeps the list in memory (loadSongs), read again when the main says (reload "songs") and every 10 minutes
+ * anyway, with what the page gets of it, its ETag and each song's file and table. A catalogue, or tables, that cannot
+ * be read change nothing: the list stays as it was, or empty if there never was one. How often each
  * song is played is counted in memory and added to song_plays once a minute (saveSongPlays), with nothing of who; so
  * are the 短评 said to each by those listening alone, into song_reactions (saveSongReactions), whose most said make
  * 大家都在说 under it (songSaid); and how often each was heard (HEARD_S of it, src/lib/listen.ts) each Beijing day, into
@@ -40,7 +42,8 @@ import { errorCode, logError, note } from "./signals";
 
 /**
  * A song the server plays: its file, its smaller copy for a slow line (省流量; null: none yet), how long it is, its
- * album's name for the lock screen, and the album's cover (null: none yet)
+ * album's name for the lock screen, the album's cover (null: none yet), and its table for the disco (src/lib/dance.ts;
+ * null: none yet), which only play gives, never the list
  */
 export type HeldSong = {
   id: string;
@@ -52,6 +55,7 @@ export type HeldSong = {
   album: string;
   cover: string | null;
   artists: string[];
+  dance: string | null;
 };
 type Held = {
   list: { catalog: ListenCatalog; json: string; etag: string; byId: Map<string, HeldSong> } | null;
@@ -100,6 +104,8 @@ const RELOAD_MS = 10 * 60_000;
 export const MUSIC_KEY = "music";
 /** The catalogue's version this reads (scripts/msr-music.mjs CATALOG_VERSION) */
 const CATALOG_V = 1;
+/** And the disco's tables' (scripts/beat-music.mjs) */
+const DANCES_V = 1;
 
 // ---- the catalogue, into the database (the main process) ----
 
@@ -160,8 +166,22 @@ export function catalogRows(text: string, present: ReadonlySet<string>): Row[] {
   return rows;
 }
 
-/** The songs as they are now, into the table: the others kept, gone since now */
-async function writeSongs(rows: Row[], now: number) {
+/**
+ * The tables of a file of them (music/dance.json) that this reads, by the song's file. Throws when it is not such a
+ * file; a table that makes no sense is left out.
+ */
+export function danceTables(text: string): Map<string, string> {
+  const d = JSON.parse(text) as { v?: unknown; songs?: unknown };
+  if (!d || d.v !== DANCES_V || !d.songs || typeof d.songs !== "object" || Array.isArray(d.songs)) throw new Error("not a file of tables this reads (v1)");
+  const out = new Map<string, string>();
+  for (const [file, table] of Object.entries(d.songs as Record<string, unknown>)) {
+    if (SONG_FILE.test(file) && typeof table === "string" && readDance(table)) out.set(file, table);
+  }
+  return out;
+}
+
+/** The songs as they are now, into the table: the others kept, gone since now; their tables too when there are any */
+async function writeSongs(rows: Row[], now: number, tables: boolean) {
   await db.transaction(async (tx) => {
     for (let i = 0; i < rows.length; i += 500) {
       await tx
@@ -180,6 +200,7 @@ async function writeSongs(rows: Row[], now: number) {
             bytes: sql`excluded.bytes`,
             liteFile: sql`excluded.lite_file`,
             coverFile: sql`excluded.cover_file`,
+            ...(tables ? { dance: sql`excluded.dance` } : {}),
             albumOrder: sql`excluded.album_order`,
             track: sql`excluded.track`,
             addedAt: sql`excluded.added_at`,
@@ -196,16 +217,18 @@ async function writeSongs(rows: Row[], now: number) {
 }
 
 /**
- * Read the catalogue in, if it or the files changed since last time. Says what came of it: same, updated, missing
- * (no catalogue yet: nothing changes) or bad (one that cannot be read: nothing changes, and it is not tried again
- * until it changes). Each process is told to read the list again when it changed.
+ * Read the catalogue in, if it, the files or the disco's tables changed since last time. Says what came of it: same,
+ * updated, missing (no catalogue yet: nothing changes) or bad (one that cannot be read: nothing changes, and it is not
+ * tried again until it changes). Tables that cannot be read, or none, leave each song's as it was; a song whose file
+ * has none there has none. Each process is told to read the list again when it changed.
  */
 export async function syncCatalog(dir = MUSIC_DIR, now = Date.now()): Promise<"same" | "updated" | "missing" | "bad"> {
   const file = path.join(dir, "catalog.json");
   const files = path.join(dir, "files");
-  const [c, f] = await Promise.all([stat(file).catch(() => null), stat(files).catch(() => null)]);
+  const dances = path.join(dir, "dance.json");
+  const [c, f, d] = await Promise.all([stat(file).catch(() => null), stat(files).catch(() => null), stat(dances).catch(() => null)]);
   if (!c?.isFile()) return "missing";
-  const stamp = `${c.mtimeMs}:${c.size}:${f?.mtimeMs ?? 0}`;
+  const stamp = `${c.mtimeMs}:${c.size}:${f?.mtimeMs ?? 0}:${d?.isFile() ? `${d.mtimeMs}:${d.size}` : "-"}`;
   if (stamp === held.synced) return "same";
   if (stamp === held.bad) return "bad";
   let rows: Row[];
@@ -222,7 +245,15 @@ export async function syncCatalog(dir = MUSIC_DIR, now = Date.now()): Promise<"s
     note("job", "songs");
     return "bad";
   }
-  await writeSongs(rows, now);
+  const tables = d?.isFile()
+    ? await readFile(dances, "utf8")
+        .then(danceTables)
+        .catch((e: unknown) => {
+          logError("songs: the disco's tables could not be read, so each song's stays as it was", e);
+          return null;
+        })
+    : null;
+  await writeSongs(tables ? rows.map((r) => ({ ...r, dance: tables.get(r.file) ?? null })) : rows, now, Boolean(tables));
   // for the 管理台's 听歌: when the fetch last ran, and when this read it in
   const value = { updated, readAt: new Date(now).toISOString(), songs: rows.length };
   await db
@@ -264,6 +295,7 @@ export function loadSongs(): Promise<void> {
             album: songs.album,
             cover: songs.coverFile,
             artists: songs.artists,
+            dance: songs.dance,
           })
           .from(songs)
           .where(isNull(songs.goneAt))

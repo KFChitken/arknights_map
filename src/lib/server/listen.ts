@@ -20,7 +20,7 @@ import {
 } from "../listen";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
-import { listenMode } from "./env";
+import { discoMode, listenMode } from "./env";
 import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { musicLink } from "./musicLinks";
@@ -38,7 +38,8 @@ import { countStat, unsavedStats } from "./stats";
  * and by day (stats.ts) only, and so is a song heard HEARD_S of (heardSong, for 热播榜), once each time it is played
  * as its row says (started_at, heard). The main process sweeps away the rows that are past (sweepListening). A song
  * of the room of 一起听 the player is in (listenRooms.ts) is written as that room's. 收藏 (favourites) are each
- * player's own, never shown to anyone else.
+ * player's own, never shown to anyone else. To a player the disco is open to (DISCO, discoOpen), a song played comes
+ * with its table of beats (src/lib/dance.ts), and the next one's.
  */
 
 /** How long a process goes by the count of listeners it last read */
@@ -54,11 +55,23 @@ export function listenOpen(user: Pick<UserRow, "id" | "email">): boolean {
   return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
 }
 
-/** What me() carries for the way in: undefined when the player may not listen */
+/** Whether 听歌's disco is open to this player: one who may listen, and everyone (on) or the 站长 and the admins (admins) */
+export function discoOpen(user: Pick<UserRow, "id" | "email">): boolean {
+  const mode = discoMode();
+  return listenOpen(user) && (mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id))));
+}
+
+/** What me() carries for the way in: undefined when the player may not listen; disco, when the disco is open to them */
 export async function listenMe(user: Pick<UserRow, "id" | "email">): Promise<ListenMe | undefined> {
   if (!listenOpen(user)) return undefined;
   const { paused, roomMax } = listenSettings();
-  return { paused, room: Boolean(await roomOfPlayer(db, user.id)), roomMax, mode: listenMode() === "on" ? "on" : "admins" };
+  return {
+    paused,
+    room: Boolean(await roomOfPlayer(db, user.id)),
+    roomMax,
+    mode: listenMode() === "on" ? "on" : "admins",
+    ...(discoOpen(user) ? { disco: true as const } : {}),
+  };
 }
 
 /** The room of 一起听 a player is in now, with their row in it (listenRooms.ts) */
@@ -114,10 +127,11 @@ export async function refuseIfFull(userId: string, now = Date.now()): Promise<bo
 /**
  * A song played by the player, from `at` seconds in (0: from the start, which alone counts as a play), with the next
  * one's link too when asked for, each with its smaller copy's (省流量) where it has one, and 大家都在说 under it
- * (songs.ts songSaid). Refused while the site is gray, while 听歌 is paused, and to a player who is not listening yet
- * when as many as the cap are.
+ * (songs.ts songSaid); each with its table of beats too where it has one, when the disco is open to the player
+ * (discoOpen). Refused while the site is gray, while 听歌 is paused, and to a player who is not listening yet when as
+ * many as the cap are.
  */
-export async function playSong(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()): Promise<ListenPlay> {
+export async function playSong(user: Pick<UserRow, "id" | "email">, body: Record<string, unknown>, now = Date.now()): Promise<ListenPlay> {
   if (grayUntil(now)) throw new HttpError(403, T.server.listen.gray, LISTEN_GRAY);
   if (listenSettings().paused) throw new HttpError(503, T.server.listen.paused, LISTEN_PAUSED);
   const song = await songOf(body.song);
@@ -154,11 +168,14 @@ export async function playSong(user: Pick<UserRow, "id">, body: Record<string, u
     console.error("listen: reading 大家都在说 failed", e);
     return [];
   });
+  const disco = discoOpen(user);
   return {
     url: musicLink(song.file, now),
     ...(song.lite ? { lite: musicLink(song.lite, now) } : {}),
     ...(next ? { nextUrl: musicLink(next.file, now) } : {}),
     ...(next?.lite ? { nextLite: musicLink(next.lite, now) } : {}),
+    ...(disco && song.dance ? { dance: song.dance } : {}),
+    ...(disco && next?.dance ? { nextDance: next.dance } : {}),
     until,
     now,
     ...(said.length ? { said } : {}),

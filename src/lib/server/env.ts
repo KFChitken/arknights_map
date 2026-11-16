@@ -133,6 +133,15 @@ export const studyMode = (): "on" | "admins" | "off" => (["on", "admins"] as con
 export const listenMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.LISTEN) ?? "off";
 
 /**
+ * 听歌's disco (src/lib/server/listen.ts discoOpen): DISCO=on gives every player who may listen each song's table of
+ * beats (src/lib/dance.ts) with the song, and the way in; admins, only the 站长 and the admins (to try it on the live
+ * site first); off (the default) nobody, and everything is as it was before there was one. Apart from LISTEN, so that
+ * the disco can be taken down alone; the songs' tables stay, whichever it is. Read on every use, so the tests can
+ * switch it.
+ */
+export const discoMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.DISCO) ?? "off";
+
+/**
  * The songs (scripts/fetch-msr-music.mjs): catalog.json and files/ under it. The main process reads the catalogue
  * into the database (src/lib/server/songs.ts); on the live site Caddy serves the files, and src/app/music only in
  * development.

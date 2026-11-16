@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Run scripts/beat-music.mjs on the main server, whose Caddy serves the songs and the clips: in a throwaway container
 # with Node and ffmpeg, as scripts/fetch-music.sh runs the fetch, so nothing is installed on the server itself, on one
-# core at the lowest priority. Its arguments go to the script (--top <clips>, --pick <cid>,<cid>, --limit <songs>), and
-# what it writes belongs to whoever runs this, not to root:
+# core at the lowest priority. It cuts 325 节拍's clips and writes the tables of 听歌's disco (music/dance.json). Its
+# arguments go to the script (--top <clips>, --pick <cid>,<cid>, --limit <songs>), and what it writes belongs to
+# whoever runs this, not to root:
 #
-#   ~/arknights_map/scripts/beat-music.sh --limit 5     try it on five songs (it cuts no clips)
+#   ~/arknights_map/scripts/beat-music.sh --limit 5     try it on five songs (it cuts no clips; their tables are written)
 #   ~/arknights_map/scripts/beat-music.sh               all of them (the first time some tens of minutes: best left
-#                                                       running with nohup … >> ~/beat-music.log 2>&1 &)
+#                                                       running with nohup … >> ~/beat-music.log 2>&1 &); after that,
+#                                                       only the songs added since
 #
 # Not while scripts/fetch-music.sh runs (Mondays from 04:30), nor its lite: the container's name keeps two of these
 # from going at once, not one of each.

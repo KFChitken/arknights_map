@@ -33,9 +33,10 @@ export type ListenTrack = { id: string; name: string; seconds: number; artists: 
 /**
  * What me() says of 听歌 for a player it is open to: whether the 站长 paused it for now (管理台 → 听歌), whether they
  * are in a room of 一起听 (the page then asks for it: a reload never takes anyone out of one), how many a room may
- * hold, and whether it is open to all or to the 站长 and admins alone (LISTEN), which is whom they may invite
+ * hold, whether it is open to all or to the 站长 and admins alone (LISTEN), which is whom they may invite, and whether
+ * the disco is open to them (DISCO)
  */
-export type ListenMe = { paused: boolean; room: boolean; roomMax: number; mode: "admins" | "on" };
+export type ListenMe = { paused: boolean; room: boolean; roomMax: number; mode: "admins" | "on"; disco?: true };
 
 /** 新歌: the songs of this many of the newest albums, at most NEW_MAX of them */
 export const NEW_ALBUMS = 2;
@@ -186,9 +187,20 @@ export function listeningUntil(seconds: number, at: number, now: number): number
 
 /**
  * What play answers: the song's link, the next one's to fetch early, each with its smaller copy's (省流量) where it has
- * one, the server's clock, and 大家都在说 under it
+ * one, and its table of beats for the disco (src/lib/dance.ts) where it has one and the disco is open to the player;
+ * the server's clock, and 大家都在说 under it
  */
-export type ListenPlay = { url: string; lite?: string; nextUrl?: string; nextLite?: string; until: number; now: number; said?: SongSaid[] };
+export type ListenPlay = {
+  url: string;
+  lite?: string;
+  nextUrl?: string;
+  nextLite?: string;
+  dance?: string;
+  nextDance?: string;
+  until: number;
+  now: number;
+  said?: SongSaid[];
+};
 
 /** Why play was refused (the error's code), which the page tells apart: too many listening, paused, gray, no such song */
 export const LISTEN_FULL = "LISTEN_FULL";

@@ -152,6 +152,13 @@ The songs of 听歌 live in `~/arknights_map/music` on the main server, outside 
 
 The main process reads `music/catalog.json` into the database at the start and whenever it changes (`src/lib/server/songs.ts`), and Caddy serves `music/files` at `/music` (`deploy/Caddyfile`), but only at the links the site gives, which carry their own expiry and an HMAC keyed from `AUTH_SECRET` (`src/lib/server/musicLinks.ts`): Caddy asks `/api/listen/ok` before each file goes out. `LISTEN` (`off`, `admins` or `on`) decides who sees 听歌 at all, and the 管理台 can pause it and cap how many listen at once. For local development put a catalogue and its files under `music/` and open the song links as given; `src/app/music` serves them in development only.
 
+`scripts/beat-music.sh` reads each song in the same kind of throwaway container, on one core at the lowest priority: it cuts the clips 325 节拍 plays (`music/beat.json`, read into the database by `src/lib/server/beatClips.ts`) and writes each song's table of beats for 听歌's disco (`music/dance.json`), which the main process reads into the songs table with the catalogue. A later run only reads the songs added since. `DISCO` (`off`, `admins` or `on`) decides who gets the tables with the songs, apart from `LISTEN`:
+
+```bash
+~/arknights_map/scripts/beat-music.sh --limit 5                                  # try it on five songs
+nohup ~/arknights_map/scripts/beat-music.sh >> ~/beat-music.log 2>&1 &           # all of them
+```
+
 Every morning at 09:00 Beijing time GitHub checks that the site opens from mainland China (`.github/workflows/mainland-check.yml`): `scripts/check-mainland.mjs` asks [Globalping](https://globalping.io) to fetch it through each server's address from probes in mainland China and in Hong Kong, and the run fails when most of either cannot through either server, so GitHub emails the repository owner. Run it by hand with `node scripts/check-mainland.mjs`.
 
 Every night at 04:00 `scripts/backup.sh` dumps the database into `~/backups` on the server and keeps 14 days. With `~/.zhoupmap-cos` set up it also uploads each dump to Tencent Cloud object storage and keeps only 3 days on the server. Each deploy also copies the newest dump to `~/zhoupmap-backups` on the Mac. The script writes how it went into the database (`watch_state`), for the checks below.

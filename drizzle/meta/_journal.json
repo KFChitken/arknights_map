@@ -463,6 +463,13 @@
       "when": 1794811856930,
       "tag": "0066_song_favourites_heard",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794817811533,
+      "tag": "0067_song_dance",
+      "breakpoints": true
     }
   ]
 }

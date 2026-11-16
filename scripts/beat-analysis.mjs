@@ -1,6 +1,8 @@
 // What scripts/beat-music.mjs works out from a song's samples, kept apart from its reading and writing so it can be
-// tested (src/lib/beatMusic.test.ts): where the song's beats are, its steadiest RULES.windowS seconds of them at
-// RULES.bpm, which of those beats start a bar, and which songs 325 节拍 plays, the hot ones first.
+// tested (src/lib/beatMusic.test.ts, src/lib/danceMap.test.ts): where the song's beats are, its steadiest
+// RULES.windowS seconds of them at RULES.bpm, which of those beats start a bar, and which songs 325 节拍 plays, the hot
+// ones first; and for 听歌's disco, every beat of the whole song at DANCE.bpm, how loud each is, and how far its smaller
+// copy (省流量) is from it (danceOf, danceText, shiftOf).
 //
 // The beats are found much as librosa finds them (Ellis, "Beat tracking by dynamic programming", 2007): an onset
 // envelope, how much louder each band of the spectrum got from one frame to the next; the tempo its autocorrelation
@@ -183,12 +185,15 @@ function scaled(x) {
 // ---- the tempo and the beats ----
 
 const lagOf = (bpm) => (60 * FPS) / bpm;
+/** How much a tempo is weighed towards 120 beats a minute, as librosa weighs it, by its lag (frames) */
+const prior = (lag) => Math.exp(-0.5 * Math.log2((60 * FPS) / lag / 120) ** 2);
 
 /**
  * The tempo of an onset envelope, at RULES.bpm, or null when its beat lies elsewhere: where its autocorrelation is
  * strongest between 50 and 270 beats a minute, weighed towards 120 as librosa weighs it; taken as it is, or twice or
- * half as fast, whichever of those falls in RULES.bpm and is as strong as most (70 %) of the strongest. period: frames
- * between two beats, to a fraction of one.
+ * half as fast, whichever of those falls in RULES.bpm and is as strong as most (70 %) of the strongest; when more
+ * than one does (a range wider than an octave), the strongest of them as they are, or weighed so too (rules.weigh).
+ * period: frames between two beats, to a fraction of one.
  */
 export function tempoOf(env, rules = RULES) {
   let sum = 0;
@@ -205,8 +210,7 @@ export function tempoOf(env, rules = RULES) {
   let best = -1;
   let bestW = -Infinity;
   for (let lag = lo; lag <= hi; lag++) {
-    const bpm = (60 * FPS) / lag;
-    const w = ac[lag] * Math.exp(-0.5 * Math.log2(bpm / 120) ** 2);
+    const w = ac[lag] * prior(lag);
     if (w > bestW) {
       bestW = w;
       best = lag;
@@ -216,8 +220,9 @@ export function tempoOf(env, rules = RULES) {
   // the strongest lag in the range, and whether it is strong enough
   const inLo = Math.ceil(lagOf(rules.bpm[1]));
   const inHi = Math.floor(lagOf(rules.bpm[0]));
+  const score = rules.weigh ? (l) => ac[l] * prior(l) : (l) => ac[l];
   let lag = -1;
-  for (let l = inLo; l <= inHi; l++) if (lag < 0 || ac[l] > ac[lag]) lag = l;
+  for (let l = inLo; l <= inHi; l++) if (lag < 0 || score(l) > score(lag)) lag = l;
   if (lag < 0 || ac[lag] < 0.7 * ac[best]) return null;
   // between frames: the peak of the parabola through it and its neighbours
   const a = ac[lag - 1];
@@ -410,27 +415,35 @@ export function clarity(env, w) {
     on.push(peakNear(env, t * FPS, 2));
     if (k + 1 < n) off.push(peakNear(env, (t + w.period / 2) * FPS, 2));
   }
+  return clearOf(on, off);
+}
+
+/** The contrast and the hits of the onsets on some beats and of those halfway between them */
+function clearOf(on, off) {
   const mean = (a) => a.reduce((s, v) => s + v, 0) / Math.max(1, a.length);
   const med = median(on);
-  return { contrast: mean(on) / Math.max(1e-9, mean(off)), hits: on.filter((v) => v >= 0.5 * med && v > 0.5).length / n };
+  return { contrast: mean(on) / Math.max(1e-9, mean(off)), hits: on.filter((v) => v >= 0.5 * med && v > 0.5).length / Math.max(1, on.length) };
 }
 
 /**
  * Which of a stretch's first four beats starts a bar (0–3): bars of four, whose first beat has the most kick and bass
  * under it, and the most change in which notes sound since the beat before; and whether its beats go in threes
- * rather than fours (a waltz), as far as those tell
+ * rather than fours (a waltz), as far as those tell, and which of its first three starts a bar of three (bar3). Its
+ * beats are on an even grid (its first beat and period), or where they were found: times, all the song's (s), of
+ * which the stretch's are from to to.
  */
-export function barOf(f, w) {
+export function barOf(f, w, times = null) {
   const n = w.to - w.from + 1;
   const kick = [];
   const change = [];
   let before = null;
   for (let k = 0; k < n; k++) {
-    const t = w.first + w.period * k;
+    const t = times ? times[w.from + k] : w.first + w.period * k;
+    const end = times ? (times[w.from + k + 1] ?? t + w.period) : t + w.period;
     kick.push(peakNear(f.low, t * FPS, 2));
     // the notes over the beat
     const a = Math.max(0, Math.round(t * FPS));
-    const b = Math.min(f.frames, Math.max(a + 1, Math.round((t + w.period) * FPS)));
+    const b = Math.min(f.frames, Math.max(a + 1, Math.round(end * FPS)));
     const c = new Float64Array(12);
     for (let i = a; i < b; i++) for (let p = 0; p < 12; p++) c[p] += f.chroma[i * 12 + p];
     let norm = 0;
@@ -464,16 +477,16 @@ export function barOf(f, w) {
   const threes = by(3);
   const lead = (a) => Math.max(...a) - a.reduce((s, v) => s + v, 0) / a.length;
   const bar = fours.indexOf(Math.max(...fours));
-  return { bar, waltz: lead(threes) > 1.5 * lead(fours) };
+  return { bar, bar3: threes.indexOf(Math.max(...threes)), waltz: lead(threes) > 1.5 * lead(fours) };
 }
 
 /**
  * What a song's samples come to: where its clip would be (its first beat, the time between two, beats a minute),
  * how steady and clear its beats are there, which of the first four starts a bar; or why it has none (none: tempo,
- * no beat at RULES.bpm; steady, none steady enough; clear, not clear enough; waltz, in threes)
+ * no beat at RULES.bpm; steady, none steady enough; clear, not clear enough; waltz, in threes). f: their features,
+ * when they were worked out already.
  */
-export function analyse(samples, rules = RULES) {
-  const f = features(samples);
+export function analyse(samples, rules = RULES, f = features(samples)) {
   const tempo = tempoOf(f.env, rules);
   if (!tempo) return { none: "tempo" };
   const beats = beatTimes(f.env, beatFrames(f.env, tempo.period));
@@ -503,6 +516,185 @@ function median(a) {
   const s = [...a].sort((x, y) => x - y);
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// ---- the whole song, for 听歌's disco ----
+
+/** What a song's table for 听歌's disco is made of, all in one place (src/lib/dance.ts reads the tables) */
+export const DANCE = {
+  /** Beats a minute, both ends in; of two in it an octave apart, the one weighed nearer 120 (tempoOf) */
+  bpm: [60, 180],
+  weigh: true,
+  /** How alike the onsets are a beat apart, at least: their autocorrelation there, of 1 */
+  periodic: 0.2,
+  /** How much stronger the onsets on the beats are than those halfway between them, at least (as clarity) */
+  contrast: 1.1,
+  /** Under this, the beat is twice as fast where that is clearer, and in DANCE.bpm: a kick and a snare in turn */
+  twice: 1.3,
+  /** The share of the beats with an onset on them, at least */
+  hits: 0.45,
+  /** How far a beat is from halfway between the two around it, at most: the median of the song's (ms) */
+  wobbleMs: 15,
+  /** Beats a song must have, at least */
+  minBeats: 16,
+  /** The song's first beats, of which the first of a bar is found */
+  barBeats: 64,
+  /** Of the song's beats (or seconds), the 90th percentile of their loudness is 9, each step down this much less (dB) */
+  stepDb: 2.2,
+  /** Quieter than this is silence: 0, however quiet the whole song is (dB) */
+  quietDb: -60,
+  /** A table longer than this (characters) is the song's loudness alone, as a song's with no beat */
+  maxChars: 6000,
+  /** A smaller copy (省流量) as far from its song as this or more (ms) has it written in the song's table */
+  liteMinMs: 20,
+};
+
+/** What the tables are worked out as, for a cache of them: a newer one has them all done again, and not 325's */
+export const DANCE_V = 1;
+
+/** How clear beats are where they were found (s), as clarity tells it of an even grid: on each, and halfway to the next */
+export function beatClarity(env, beats) {
+  const on = [];
+  const off = [];
+  for (let k = 0; k < beats.length; k++) {
+    on.push(peakNear(env, beats[k] * FPS, 2));
+    if (k + 1 < beats.length) off.push(peakNear(env, ((beats[k] + beats[k + 1]) / 2) * FPS, 2));
+  }
+  return clearOf(on, off);
+}
+
+/** How alike an onset envelope is a period (frames) later: its autocorrelation there, of 1 */
+export function periodicity(env, period) {
+  const lag = Math.round(period);
+  let mean = 0;
+  for (const v of env) mean += v;
+  mean /= env.length;
+  let all = 0;
+  let at = 0;
+  for (let i = 0; i < env.length; i++) {
+    const x = env[i] - mean;
+    all += x * x;
+    if (i + lag < env.length) at += x * (env[i + lag] - mean);
+  }
+  return all > 0 ? at / all : 0;
+}
+
+/** How far beats (s) are from halfway between the two around each: the median (ms) */
+export function wobbleOf(beats) {
+  const off = [];
+  for (let i = 1; i + 1 < beats.length; i++) off.push(Math.abs(beats[i] - (beats[i - 1] + beats[i + 1]) / 2) * 1000);
+  return median(off);
+}
+
+/** Loudness (dB) in steps of 0–9: the 90th percentile of the values 9, a step less for each DANCE.stepDb less, silence 0 */
+export function levelsOf(db) {
+  if (!db.length) return [];
+  const top = [...db].sort((a, b) => b - a)[Math.floor(db.length * 0.1)];
+  return db.map((d) => (d < DANCE.quietDb ? 0 : Math.max(0, Math.min(9, Math.round(9 + (d - top) / DANCE.stepDb)))));
+}
+
+/** The loudest of a song's frames from a to b, b not in (at least the one at a), in dB */
+function loudest(f, a, b) {
+  let m = -Infinity;
+  const from = Math.min(Math.max(0, a), f.frames - 1);
+  for (let i = from; i < Math.min(f.frames, Math.max(from + 1, b)); i++) if (f.loud[i] > m) m = f.loud[i];
+  return m;
+}
+
+/**
+ * What a whole song's samples come to for 听歌's disco: its beats (s), all of them, at DANCE.bpm; beats a minute, by
+ * the median time between two; which of its first four beats starts a bar (of its first three, in threes: waltz); how
+ * loud each beat is (0–9, from it to the next) and each second (secs); or why it has no beats (none: tempo, no beat
+ * at DANCE.bpm, too few, or onsets not alike enough a beat apart; clear, beats not clear or not steady enough), with
+ * each second's loudness alone. How the beats were (periodic, wobble, contrast, hits) comes with either, for the log.
+ * f: the samples' features, when they were worked out already.
+ */
+export function danceOf(samples, f = features(samples)) {
+  const seconds = Math.max(1, Math.ceil(samples.length / SR));
+  const secs = levelsOf(Array.from({ length: seconds }, (_, s) => loudest(f, Math.round(s * FPS), Math.round((s + 1) * FPS))));
+  const tempo = tempoOf(f.env, DANCE);
+  if (!tempo) return { none: "tempo", secs };
+  // the beats laid on a period (frames), and how they are
+  const laid = (period) => {
+    const beats = beatTimes(f.env, beatFrames(f.env, period));
+    return { beats, how: { periodic: periodicity(f.env, period), wobble: wobbleOf(beats), ...beatClarity(f.env, beats) } };
+  };
+  let { beats, how } = laid(tempo.period);
+  // nearly as strong halfway between the beats as on them: the beat is twice as fast, where that is clearer
+  if (how.contrast < DANCE.twice && tempo.bpm * 2 <= DANCE.bpm[1]) {
+    const twice = laid(tempo.period / 2);
+    if (twice.how.contrast >= DANCE.twice && twice.how.contrast > how.contrast) ({ beats, how } = twice);
+  }
+  if (beats.length < DANCE.minBeats || how.periodic < DANCE.periodic) return { none: "tempo", secs, ...how };
+  if (how.contrast < DANCE.contrast || how.hits < DANCE.hits || how.wobble > DANCE.wobbleMs) return { none: "clear", secs, ...how };
+  const gaps = [];
+  for (let i = 1; i < beats.length; i++) gaps.push(beats[i] - beats[i - 1]);
+  const period = median(gaps);
+  // a first beat much nearer the next than a beat is where the song starts, not a beat
+  if (beats[1] - beats[0] < 0.75 * period) beats = beats.subarray(1);
+  const { bar, bar3, waltz } = barOf(f, { first: beats[0], period, from: 0, to: Math.min(beats.length, DANCE.barBeats) - 1 }, beats);
+  const energy = levelsOf(Array.from(beats, (t, i) => loudest(f, Math.round(t * FPS), Math.round((i + 1 < beats.length ? beats[i + 1] : t + period) * FPS))));
+  return { bpm: 60 / period, bar: waltz ? bar3 : bar, waltz, beats, energy, secs, ...how };
+}
+
+/**
+ * A song's table as 听歌 sends it (src/lib/dance.ts readDance): JSON with its beats, each the time from the one before
+ * in 10 ms (the first's from the start), every one rounded where it is so that the last is as near as the first; and
+ * each beat's loudness, a digit; or, with no beats, each second's loudness. lite: ms to add to where its smaller copy
+ * (省流量) is played to get where the song is, written down when it is DANCE.liteMinMs or more either way. A table
+ * longer than DANCE.maxChars is the loudness alone (none: long).
+ */
+export function danceText(d, lite = null) {
+  const alone = (none) => JSON.stringify({ v: 1, none, s: d.secs.join("") });
+  if (d.none) return alone(d.none);
+  const cs = Array.from(d.beats, (t) => Math.round(t * 100));
+  const text = JSON.stringify({
+    v: 1,
+    bpm: Math.round(d.bpm * 10) / 10,
+    bar: d.bar,
+    ...(d.waltz ? { w: 1 } : {}),
+    t: cs.map((c, i) => (i ? c - cs[i - 1] : c)).join(","),
+    e: d.energy.join(""),
+    ...(lite !== null && Math.abs(lite) >= DANCE.liteMinMs ? { lite: Math.round(lite) } : {}),
+  });
+  return text.length <= DANCE.maxChars ? text : alone("long");
+}
+
+/**
+ * How much later b is than a (ms), the onset envelopes of the same sound at its start (a song's and its smaller
+ * copy's): where they are most alike within reach frames either way, to a fraction of a frame; or null when they are
+ * not alike enough (a correlation under 0.5), the most alike is at the end of the reach, or they are too short
+ */
+export function shiftOf(a, b, reach = 30) {
+  const lo = reach;
+  const hi = Math.min(a.length, b.length) - reach;
+  if (hi - lo < 4 * reach) return null;
+  const n = hi - lo;
+  let ma = 0;
+  for (let i = lo; i < hi; i++) ma += a[i];
+  ma /= n;
+  let aa = 0;
+  for (let i = lo; i < hi; i++) aa += (a[i] - ma) ** 2;
+  const r = new Float64Array(2 * reach + 1);
+  for (let lag = -reach; lag <= reach; lag++) {
+    let mb = 0;
+    for (let i = lo; i < hi; i++) mb += b[i + lag];
+    mb /= n;
+    let ab = 0;
+    let bb = 0;
+    for (let i = lo; i < hi; i++) {
+      const x = a[i] - ma;
+      const y = b[i + lag] - mb;
+      ab += x * y;
+      bb += y * y;
+    }
+    r[lag + reach] = aa > 0 && bb > 0 ? ab / Math.sqrt(aa * bb) : 0;
+  }
+  let k = 0;
+  for (let i = 1; i < r.length; i++) if (r[i] > r[k]) k = i;
+  if (r[k] < 0.5 || k === 0 || k === r.length - 1) return null;
+  const d = r[k - 1] - 2 * r[k] + r[k + 1];
+  return ((k - reach + (d < 0 ? (0.5 * (r[k - 1] - r[k + 1])) / d : 0)) / FPS) * 1000;
 }
 
 // ---- which songs are played ----

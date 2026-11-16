@@ -1565,6 +1565,8 @@ export const songs = pgTable(
     liteFile: text("lite_file"),
     /** Its album's cover (scripts/fetch-msr-covers.mjs), in the same folder, as every song of the album has; null: none yet */
     coverFile: text("cover_file"),
+    /** Its table for 听歌's disco (scripts/beat-music.mjs, src/lib/dance.ts): every beat and how loud; null: none yet */
+    dance: text("dance"),
     albumOrder: integer("album_order").notNull(),
     track: smallint("track").notNull(),
     addedAt: at("added_at").notNull(),
