@@ -78,6 +78,26 @@ describe("支持舟P地图's card", () => {
     expect(card(view({ looks: ["duck"] }))).toContain("<ol><li>");
   });
 
+  it("shows 鸭爵 between the badges where the card names him, his moves a tap away, standing still while the site is gray", () => {
+    const duck = T.profile.avatar.duck;
+    expect(card(view())).not.toContain("sf-duck");
+    expect(card(view())).toContain('<div class="sf-badges">');
+    const html = card(view({ looks: ["duck"] }));
+    expect(html).toContain('<div class="sf-badges three">');
+    expect(html.indexOf('src="/badges/feeder.svg"')).toBeLessThan(html.indexOf("sf-duck"));
+    expect(html.indexOf("sf-duck")).toBeLessThan(html.indexOf('src="/badges/volt.svg"'));
+    // his own picture, in the three parts that move apart, and the coins of his shout, waiting for the row to be seen
+    for (const part of ["bcase", "body", "hat"]) expect(html).toContain(`href="/avatars/duck-${part}.webp"`);
+    expect(html).toContain('<div class="sf-dk">');
+    expect(html.match(/class="dk-coin"/g)).toHaveLength(7);
+    expect(html).toContain(`<div class="sf-dk-name">${duck}</div>`);
+    expect(html).toContain(`<button type="button" class="sf-dk-tap" aria-label="${fmt(T.sponsor.duckPlay, { name: duck })}">`);
+
+    const gray = card(view({ looks: ["duck"] }), { grayFirst: true });
+    expect(gray).toContain(`<div class="sf-gift sf-duck calm" role="img" aria-label="${duck}">`);
+    expect(gray).not.toContain("sf-dk-tap");
+  });
+
   it("asks a visitor to sign in instead, with no badges to turn", () => {
     const html = card(view({ email: null }));
     expect(text(html)).toContain(T.sponsor.signIn);

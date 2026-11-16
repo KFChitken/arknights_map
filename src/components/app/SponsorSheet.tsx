@@ -41,7 +41,7 @@ const gifts = (looks: readonly RoachAvatar[]) => [
   fmt(T.sponsor.giftBadges, { badges: named(BADGES.filter((b) => b.sponsor).map((b) => b.name)) }),
 ];
 
-/** What a sponsor is given, under the copy button, and the badges themselves (calm: while the site is gray) */
+/** What a sponsor is given, under the copy button, and how it looks: the badges, and 鸭爵 where he is named (calm: while the site is gray) */
 function Thanks({ calm, looks }: { calm: boolean; looks: readonly RoachAvatar[] }) {
   const list = gifts(looks);
   return (
@@ -53,7 +53,7 @@ function Thanks({ calm, looks }: { calm: boolean; looks: readonly RoachAvatar[] 
           <li key={g}>{g}</li>
         ))}
       </ol>
-      <GiftBadges calm={calm} />
+      <GiftBadges calm={calm} duck={looks.includes("duck")} />
       <p>{T.sponsor.thanksTail}</p>
     </div>
   );

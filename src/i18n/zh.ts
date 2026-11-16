@@ -3069,6 +3069,7 @@ export const zh = {
     badgeTurn: "{name}，点一下翻面",
     badgeBack: "{name}：{quote}",
     hop: "让蟑螂再跳一次",
+    duckPlay: "{name}，点一下看他的招牌动作",
     signIn: "登录后再赞助，才能收到谢礼称号。",
     afdian: "去爱发电赞助（微信、支付宝）",
     kofi: "用 Ko-fi 赞助（海外银行卡、PayPal）",
