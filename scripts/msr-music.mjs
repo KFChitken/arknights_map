@@ -12,7 +12,7 @@
 //                              lite: "<16 hex>.m4a", liteBytes } }
 //   }
 //
-// lite is the song's smaller copy (省流量, 48 kbps HE-AAC) that scripts/make-lite-music.mjs makes of its file, also in
+// lite is the song's smaller copy (省流量, 48 kbps AAC-LC) that scripts/make-lite-music.mjs makes of its file, also in
 // music/files/; a song without one yet has neither. A song fetched again (its file was gone) loses it until the
 // next run makes it again. cover is the album's cover (300×300 JPEG) that scripts/fetch-msr-covers.mjs makes of the
 // site's, also in music/files/; an album without one yet has none.
@@ -197,7 +197,7 @@ export function liteProblem(probe, seconds) {
   const audio = streams.filter((s) => s.codec_type === "audio");
   if (audio.length !== 1 || streams.length !== 1) return `${streams.length} streams, ${audio.length} of them audio`;
   const a = audio[0];
-  if (a.codec_name !== "aac" || a.profile !== "HE-AAC") return `${a.codec_name} ${a.profile}, not HE-AAC`;
+  if (a.codec_name !== "aac" || a.profile !== "LC") return `${a.codec_name} ${a.profile}, not AAC-LC`;
   if (Number(a.channels) !== 2) return `${a.channels} channels`;
   const d = Number(probe?.format?.duration);
   if (!(Math.abs(d - seconds) <= 1)) return `${d} s long, the song ${seconds} s`;

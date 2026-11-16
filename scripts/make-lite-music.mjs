@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Make each song of music/catalog.json a smaller copy too, for a slow line (省流量): 48 kbps HE-AAC, half the bytes of
-// the 96 kbps file the fetch made (scripts/fetch-msr-music.mjs), made from that file, stored in music/files/ the
-// same way (under the first 16 hex digits of its content's sha256) and named in the catalogue as the song's lite
+// Make each song of music/catalog.json a smaller copy too, for a slow line (省流量): 48 kbps AAC-LC at 24 kHz, half the
+// bytes of the 96 kbps file the fetch made (scripts/fetch-msr-music.mjs), made from that file, stored in music/files/
+// the same way (under the first 16 hex digits of its content's sha256) and named in the catalogue as the song's lite
 // (scripts/msr-music.mjs). Run on the main server through scripts/fetch-music.sh, in the throwaway container, which
-// then has fdkaac too (ffmpeg's own AAC encoder makes no HE-AAC):
+// then has fdkaac too: its AAC sounds better than ffmpeg's own at so few bits. Alpine's fdkaac is built on
+// fdk-aac-stripped, which has no HE-AAC (its -p 5 is "unsupported profile"), so the copies are plain AAC-LC:
 //
 //   ~/arknights_map/scripts/fetch-music.sh lite --dry-run    how many songs it would make a copy of
 //   ~/arknights_map/scripts/fetch-music.sh lite --limit 3    three songs, to try it
@@ -11,7 +12,7 @@
 //                                                            best left running with nohup … >> ~/music-fetch.log 2>&1 &)
 //
 // One song at a time: its file decoded to a .wav in music/work-lite/, that encoded, then put in an .m4a with its moov
-// box first (so a browser can start before the end comes), checked (HE-AAC, two channels, as long as the song), and
+// box first (so a browser can start before the end comes), checked (AAC-LC, two channels, as long as the song), and
 // stored; the catalogue is written again after every song (to a new file, renamed over the old one), so a run stopped
 // halfway keeps what it made and the next takes up from there. Nothing else in the catalogue changes: the fetch and
 // this both run under the container's one name (scripts/fetch-music.sh), so never at once.
@@ -30,8 +31,14 @@ const CATALOG = path.join(OUT, "catalog.json");
 const MIN_FREE = 1024 ** 3;
 /** Stop after this many songs failed in a row: something here is wrong */
 const FAILS_IN_A_ROW = 5;
-/** The copy's rate: HE-AAC keeps the highs as a description, so at half the bytes it still sounds like the song */
+/** The copy's rate: half the song's own 96 kbps; at it, fdk-aac keeps the sound up to some 11 kHz (the song's own: 15 kHz) */
 const BITRATE = 48000;
+/**
+ * And its samples a second: at 24 kHz a copy keeps all that 48 kbps can (up to 12 kHz), in half the frames of 44.1 kHz,
+ * so fewer bits go on each frame's own overhead, and its moov box, which a browser waits for before it plays, is half
+ * as big
+ */
+const SAMPLE_RATE = 24000;
 /** A copy must be at most this much of the song's own file, or it saves too little to be worth playing */
 const SMALLER = 0.75;
 
@@ -67,8 +74,9 @@ async function lighten(input, out, seconds, ownBytes) {
   const raw = `${out}.raw.m4a`;
   try {
     // prettier-ignore
-    await run("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", input, "-vn", "-c:a", "pcm_s16le", "-ar", "44100", "-ac", "2", "-threads", "1", wav]);
-    await run("fdkaac", ["-S", "-p", "5", "-b", String(BITRATE), "-o", raw, wav]);
+    await run("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", input, "-vn", "-c:a", "pcm_s16le", "-ar", String(SAMPLE_RATE), "-ac", "2", "-threads", "1", wav]);
+    // -p 2: AAC-LC
+    await run("fdkaac", ["-S", "-p", "2", "-b", String(BITRATE), "-o", raw, wav]);
     // the moov box first, whatever the encoder did, and nothing of the encoder's own tags
     // prettier-ignore
     await run("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", raw, "-map", "0:a", "-c", "copy", "-map_metadata", "-1", "-movflags", "+faststart", out]);

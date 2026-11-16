@@ -211,7 +211,7 @@ function boxes(...list: [string, number][]) {
 }
 
 const PROBE = {
-  streams: [{ codec_type: "audio", codec_name: "aac", profile: "HE-AAC", channels: 2 }],
+  streams: [{ codec_type: "audio", codec_name: "aac", profile: "LC", channels: 2 }],
   format: { duration: "158.341224" },
 };
 
@@ -272,12 +272,14 @@ describe("making each song's smaller copy (省流量)", () => {
     expect(moovFirst(bad)).toBe(false);
   });
 
-  it("takes as a copy only one audio stream of HE-AAC, two channels, as long as the song", () => {
+  it("takes as a copy only one audio stream of AAC-LC, two channels, as long as the song", () => {
     expect(liteProblem(PROBE, 158.34)).toBeNull();
     expect(liteProblem({ ...PROBE, format: { duration: "157.5" } }, 158.34)).toBeNull();
     const one = (s: object) => ({ ...PROBE, streams: [{ ...PROBE.streams[0], ...s }] });
-    expect(liteProblem(one({ profile: "LC" }), 158.34)).toMatch(/not HE-AAC/);
-    expect(liteProblem(one({ codec_name: "mp3", profile: undefined }), 158.34)).toMatch(/not HE-AAC/);
+    // what was asked of fdkaac (-p 2), and nothing else: not HE-AAC either, should an encoder give it unasked
+    expect(liteProblem(one({ profile: "HE-AAC" }), 158.34)).toMatch(/HE-AAC, not AAC-LC/);
+    expect(liteProblem(one({ profile: "Main" }), 158.34)).toMatch(/not AAC-LC/);
+    expect(liteProblem(one({ codec_name: "mp3", profile: undefined }), 158.34)).toMatch(/not AAC-LC/);
     expect(liteProblem(one({ channels: 1 }), 158.34)).toMatch(/1 channels/);
     expect(liteProblem({ ...PROBE, streams: [...PROBE.streams, { codec_type: "video", codec_name: "mjpeg" }] }, 158.34)).toMatch(/2 streams/);
     expect(liteProblem({ ...PROBE, streams: [] }, 158.34)).toMatch(/0 streams/);
