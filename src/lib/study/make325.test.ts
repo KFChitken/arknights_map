@@ -1,18 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  askHint,
   combine,
   fair,
   reaches,
   lastCard,
   MAKE_BANK,
   MAKE_GOAL,
+  MAKE_HINTS,
   MAKE_POOL,
   MAKE_RECENT,
   makePuzzle,
+  nextStep,
+  type Op,
+  OPS,
   put,
   restart,
+  type Step,
+  stepsBack,
   type Table,
   table,
+  type Told,
   undo,
   waysTo,
 } from "./make325";
@@ -209,5 +217,126 @@ describe("凑 325's cards", () => {
     expect(put(t, 2, "+", 2)).toEqual(t);
     step(0, "+", 1);
     expect(put(t, 0, "+", 2)).toEqual(t);
+  });
+});
+
+describe("凑 325's 提示", () => {
+  /** Steps taken from the four, as put takes them (each must be allowed) */
+  const walk = (nums: readonly number[], ...steps: [number, Op, number][]) =>
+    steps.reduce<Table>((t, [from, op, to]) => {
+      const r = put(t, from, op, to);
+      if (typeof r === "string") throw new Error(r);
+      return r;
+    }, table(nums));
+  /** A step as 提示 says it: 先算 a op b */
+  const said = (cards: readonly (number | null)[], s: Step | null) => (s ? `${cards[s.from]} ${s.op} ${cards[s.to]}` : null);
+  /** The steps 提示 tells one after another from the four, each taken as told, and the largest number made on the way */
+  const told = (nums: readonly number[]) => {
+    let t = table(nums);
+    const steps: (string | null)[] = [];
+    let most = 0;
+    for (let s = nextStep(t.cards); s; s = nextStep(t.cards)) {
+      steps.push(said(t.cards, s));
+      t = put(t, s.from, s.op, s.to) as Table;
+      if (lastCard(t) === null) most = Math.max(most, t.cards[s.to]!);
+    }
+    return { steps, most, last: lastCard(t) };
+  };
+
+  it("tells the steps of the way whose numbers stay smallest, one at a time, every puzzle to 325", () => {
+    expect(told([9, 10, 25, 40]).steps).toEqual(["40 ÷ 10", "4 + 9", "13 × 25"]);
+    expect(told([75, 8, 13, 24]).steps).toEqual(["24 ÷ 8", "75 ÷ 3", "13 × 25"]);
+    expect(told([7, 11, 13, 21]).steps).toEqual(["11 − 7", "4 + 21", "13 × 25"]);
+    for (const p of MAKE_BANK) {
+      const way = told(p);
+      expect([p, way.steps.length, way.last]).toEqual([p, 3, MAKE_GOAL]);
+      // the same steps told for the cards in another order: the numbers, not where they lie
+      expect([p, told([...p].reverse()).steps]).toEqual([p, way.steps]);
+    }
+  });
+
+  it("tells no way with a larger number on it than the way that has the smallest, worked out every way afresh", () => {
+    /** The smallest of the largest numbers made on the way, of every way to 325 from these cards */
+    const least = (t: Table): number => {
+      const left = t.cards.filter((c) => c !== null).length;
+      if (left === 1) return lastCard(t) === MAKE_GOAL ? 0 : Infinity;
+      let best = Infinity;
+      for (let i = 0; i < t.cards.length; i++)
+        for (let j = 0; j < t.cards.length; j++)
+          for (const op of OPS) {
+            const r = put(t, i, op, j);
+            if (typeof r === "string" || r === t) continue;
+            best = Math.min(best, Math.max(left === 2 ? 0 : r.cards[j]!, least(r)));
+          }
+      return best;
+    };
+    for (const p of [[9, 10, 25, 40], [75, 8, 13, 24], ...SEEDS.slice(0, 40).map((d) => puzzleOf(d).nums)])
+      expect([p, told(p).most]).toEqual([p, least(table(p))]);
+  });
+
+  it("tells a step wherever 325 can still be made, and only there", () => {
+    const after = (t: Table) =>
+      t.cards.flatMap((_, i) =>
+        t.cards.flatMap((__, j) =>
+          OPS.flatMap((op) => {
+            const r = put(t, i, op, j);
+            return typeof r === "string" || r === t ? [] : [r];
+          }),
+        ),
+      );
+    let tables = [table([9, 10, 25, 40]), table([7, 11, 13, 21]), ...SEEDS.slice(0, 12).map((d) => table(puzzleOf(d).nums))];
+    let seen = 0;
+    for (let depth = 0; depth < 3; depth++) {
+      for (const t of tables) {
+        const left = t.cards.filter((c): c is number => c !== null);
+        const s = nextStep(t.cards);
+        expect([t.cards, s !== null]).toEqual([t.cards, reaches(left, MAKE_GOAL)]);
+        if (s) {
+          const r = put(t, s.from, s.op, s.to) as Table;
+          expect(reaches(r.cards.filter((c): c is number => c !== null), MAKE_GOAL)).toBe(true);
+        }
+        seen++;
+      }
+      tables = tables.flatMap(after);
+    }
+    expect(seen).toBeGreaterThan(1000);
+  });
+
+  it("says how many steps back 325 can be made again", () => {
+    const nums = [9, 10, 25, 40];
+    expect(stepsBack(table(nums))).toBe(0);
+    expect(stepsBack(walk(nums, [0, "×", 3]))).toBe(0);
+    // 9 + 10: one step back
+    expect(stepsBack(walk(nums, [0, "+", 1]))).toBe(1);
+    // 9 × 40, 10 × 25: one; 9 + 10, 19 + 25: two, all there were (重来)
+    expect(stepsBack(walk(nums, [0, "×", 3], [1, "×", 2]))).toBe(1);
+    expect(stepsBack(walk(nums, [0, "+", 1], [1, "+", 2]))).toBe(2);
+    // one card left: 9 × 40, 10 × 25, 250 + 360 = 610 two back; 9 + 10, 19 + 25, 44 + 40 = 84 all three
+    expect(stepsBack(walk(nums, [0, "×", 3], [1, "×", 2], [2, "+", 3]))).toBe(2);
+    expect(stepsBack(walk(nums, [0, "+", 1], [1, "+", 2], [2, "+", 3]))).toBe(3);
+  });
+
+  it("tells MAKE_HINTS steps a round, cards told already again for nothing, and how far back for nothing too", () => {
+    expect(MAKE_HINTS).toBe(2);
+    const nums = [9, 10, 25, 40];
+    const first = askHint([], table(nums));
+    const by10: Step = { from: 3, op: "÷", to: 1 };
+    expect(first).toEqual({ step: by10, told: [{ cards: "9,10,25,40", step: by10 }] });
+    let hints: Told = (first as { told: Told }).told;
+    // asked again for the same cards: the same, nothing more told
+    expect(askHint(hints, table(nums))).toEqual({ step: by10, told: hints });
+    // where 325 cannot be made any more: how far back, nothing told
+    expect(askHint(hints, walk(nums, [0, "+", 1]))).toEqual({ back: 1 });
+    // the step told taken, the next is told
+    let t = walk(nums, [3, "÷", 1]);
+    const second = askHint(hints, t) as { step: Step; told: Told };
+    expect(said(t.cards, second.step)).toBe("4 + 9");
+    expect(second.told).toHaveLength(2);
+    hints = second.told;
+    // a third is not, but cards told already still are, and how far back still is
+    t = put(t, second.step.from, second.step.op, second.step.to) as Table;
+    expect(askHint(hints, t)).toBeNull();
+    expect(askHint(hints, restart(t))).toEqual({ step: by10, told: hints });
+    expect(askHint(hints, walk(nums, [0, "+", 1], [1, "+", 2]))).toEqual({ back: 2 });
   });
 });

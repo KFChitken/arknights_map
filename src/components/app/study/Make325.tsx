@@ -3,10 +3,12 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import {
+  askHint,
   dealtPuzzle,
   lastCard,
   MAKE_GOAL,
   MAKE_HELP_MS,
+  MAKE_HINTS,
   makePuzzle,
   type Op,
   OPS,
@@ -14,19 +16,26 @@ import {
   recentPuzzles,
   type Refusal,
   restart,
+  type Step,
   type Table,
   table,
+  type Told,
   undo,
 } from "@/lib/study/make325";
 import { mulberry32 } from "@/lib/prng";
 import type { GameProps, Round } from "./games";
 
-/** What the line over the cards says: how to play, the last step, why a step was refused, or what one card left makes */
+/**
+ * What the line over the cards says: how to play, the last step, why a step was refused, what one card left makes, 提示's
+ * step, or how far back 325 can be made again
+ */
 type Said =
   | { kind: "rule" }
   | { kind: "step"; a: number; op: Op; b: number; n: number; at: number }
   | { kind: "no"; why: Refusal; at: number; k: number }
   | { kind: "left"; n: number }
+  | { kind: "hint"; a: number; op: Op; b: number }
+  | { kind: "stuck"; back: number; all: boolean }
   | { kind: "done"; at: number }
   | { kind: "answer" };
 
@@ -35,8 +44,10 @@ type Said =
  * sign, another card: the two are put together into one, in the second's place, which is marked until the next step.
  * A step that divides unevenly, or takes away down to nought or below, is refused (the card shakes, when motion is not
  * turned down), and the first card and the sign stay picked. One card left: 325 passes, in the seconds it took with the page in sight; anything else is
- * said, and 撤一步 or 重来 go on. No clock; after a minute 看答案 is offered, which shows a way and ends the round
- * unsolved. Nothing flashes.
+ * said, and 撤一步 or 重来 go on. 提示 tells a step from the cards on the table (nextStep), marking its two cards and its
+ * sign until the table changes, MAKE_HINTS a round: cards it told already are told again for nothing, and where 325
+ * cannot be made any more it says how far back it can, for nothing too. A round passed with it passes, saying how many it
+ * told. No clock; after a minute 看答案 is offered, which shows a way and ends the round unsolved. Nothing flashes.
  */
 export default function Make325({ seed, onRound }: GameProps) {
   // one of the bank's this device did not deal lately, kept as dealt once the round is on
@@ -49,6 +60,9 @@ export default function Make325({ seed, onRound }: GameProps) {
   const [said, setSaid] = useState<Said>({ kind: "rule" });
   const [over, setOver] = useState(false);
   const [help, setHelp] = useState(false);
+  /** The steps 提示 told; and the one marked, until the table changes */
+  const [hints, setHints] = useState<Told>([]);
+  const [lit, setLit] = useState<Step | null>(null);
   const roundRef = useRef(onRound);
   roundRef.current = onRound;
   /** When the round began, and the time the page was put away since, which the seconds it took leave out */
@@ -83,6 +97,7 @@ export default function Make325({ seed, onRound }: GameProps) {
     setOver(true);
     setSel(null);
     setOp(null);
+    setLit(null);
     roundRef.current(r);
   };
 
@@ -104,14 +119,20 @@ export default function Make325({ seed, onRound }: GameProps) {
     setT(next);
     setSel(null);
     setOp(null);
+    setLit(null);
     const left = lastCard(next);
     if (left === null) {
       setSaid({ kind: "step", a, op, b, n: next.cards[i]!, at: i });
     } else if (left === MAKE_GOAL) {
       setSaid({ kind: "done", at: i });
       const s = Math.max(1, Math.round((performance.now() - startAt.current - away.current.total) / 1000));
+      const n = hints.length;
       const w = T.study.make325;
-      finish({ won: true, result: fmt(w.result, { s }), verdict: fmt(w.pass, { s }) });
+      finish(
+        n
+          ? { won: true, result: fmt(w.resultHinted, { s, n }), verdict: fmt(w.passHinted, { s, n }) }
+          : { won: true, result: fmt(w.result, { s }), verdict: fmt(w.pass, { s }) },
+      );
     } else {
       setSaid({ kind: "left", n: left });
     }
@@ -121,7 +142,22 @@ export default function Make325({ seed, onRound }: GameProps) {
     setT(to);
     setSel(null);
     setOp(null);
+    setLit(null);
     setSaid({ kind: "rule" });
+  };
+  const hint = () => {
+    const r = over ? null : askHint(hints, t);
+    if (!r) return;
+    if ("back" in r) {
+      setSaid({ kind: "stuck", back: r.back, all: r.back === t.past.length });
+      return;
+    }
+    const { step } = r;
+    setHints(r.told);
+    setSel(null);
+    setOp(null);
+    setLit(step);
+    setSaid({ kind: "hint", a: t.cards[step.from]!, op: step.op, b: t.cards[step.to]! });
   };
   const showAnswer = () => {
     if (over) return;
@@ -140,13 +176,25 @@ export default function Make325({ seed, onRound }: GameProps) {
           ? w[said.why]
           : said.kind === "left"
             ? fmt(w.notYet, { n: said.n })
-            : said.kind === "done"
-              ? w.done
-              : fmt(w.shown, { way: puzzle.answer });
-  const bad = said.kind === "no" || said.kind === "left";
+            : said.kind === "hint"
+              ? fmt(w.told, { a: said.a, op: said.op, b: said.b })
+              : said.kind === "stuck"
+                ? said.back <= 1
+                  ? w.stuck
+                  : said.all
+                    ? w.stuckAll
+                    : fmt(w.stuckBack, { k: said.back })
+                : said.kind === "done"
+                  ? w.done
+                  : fmt(w.shown, { way: puzzle.answer });
+  const bad = said.kind === "no" || said.kind === "left" || said.kind === "stuck";
+  const marked = (i: number) => !!lit && (lit.from === i || lit.to === i);
   return (
     <div className="mk-game" data-over={over || undefined}>
-      <p className={`mk-said${bad ? " mk-bad" : said.kind === "done" ? " mk-good" : said.kind === "answer" ? " mk-answer" : ""}`} role="status">
+      <p
+        className={`mk-said${bad ? " mk-bad" : said.kind === "done" ? " mk-good" : said.kind === "answer" ? " mk-answer" : said.kind === "hint" ? " mk-told" : ""}`}
+        role="status"
+      >
         {line}
       </p>
       <div className="mk-cards" role="group" aria-label={w.cardsSr}>
@@ -157,7 +205,7 @@ export default function Make325({ seed, onRound }: GameProps) {
             <button
               key={i}
               // a refusal after a refusal shakes under the other of two names, which starts the shake again
-              className={`mk-card${sel === i ? " mk-sel" : ""}${said.kind === "step" && said.at === i ? " mk-new" : ""}${said.kind === "done" && said.at === i ? " mk-win" : ""}${said.kind === "no" && said.at === i ? ` mk-shake${said.k % 2}` : ""}`}
+              className={`mk-card${sel === i ? " mk-sel" : ""}${marked(i) ? " mk-lit" : ""}${said.kind === "step" && said.at === i ? " mk-new" : ""}${said.kind === "done" && said.at === i ? " mk-win" : ""}${said.kind === "no" && said.at === i ? ` mk-shake${said.k % 2}` : ""}`}
               style={{ "--mk-len": String(n).length } as CSSProperties}
               aria-pressed={sel === i}
               disabled={over}
@@ -172,7 +220,7 @@ export default function Make325({ seed, onRound }: GameProps) {
         {OPS.map((o) => (
           <button
             key={o}
-            className={`mk-op${op === o ? " mk-sel" : ""}`}
+            className={`mk-op${op === o ? " mk-sel" : ""}${lit?.op === o ? " mk-lit" : ""}`}
             aria-pressed={op === o}
             disabled={over}
             onClick={() => {
@@ -192,6 +240,14 @@ export default function Make325({ seed, onRound }: GameProps) {
         <button className="st-ghost" disabled={over || !t.past.length} onClick={() => back(restart(t))}>
           {w.restart}
         </button>
+        {hints.length < MAKE_HINTS && (
+          <button className="st-ghost mk-hint" disabled={over} aria-label={fmt(w.hintSr, { n: MAKE_HINTS - hints.length })} onClick={hint}>
+            {w.hint}
+            <b className="mk-left" aria-hidden="true">
+              {MAKE_HINTS - hints.length}
+            </b>
+          </button>
+        )}
         {help && (
           <button className="st-ghost mk-help" disabled={over} onClick={showAnswer}>
             {w.answer}

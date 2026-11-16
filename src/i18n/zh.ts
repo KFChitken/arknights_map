@@ -2739,6 +2739,15 @@ export const zh = {
       undo: "撤一步",
       restart: "重来",
       answer: "看答案",
+      /** 提示, with how many steps it can still tell on it; and that read out */
+      hint: "提示",
+      hintSr: "提示，还能用 {n} 次",
+      /** 提示 pressed: a step after which 325 can still be made */
+      told: "提示：先算 {a} {op} {b}",
+      /** 提示 pressed where 325 cannot be made any more: how far back it can */
+      stuck: "这样凑不出 325 了，撤一步再试",
+      stuckBack: "这样凑不出 325 了，撤 {k} 步再试",
+      stuckAll: "这样凑不出 325 了，重来再试",
       /** The step just taken */
       step: "{a} {op} {b} = {n}",
       uneven: "除不尽",
@@ -2752,8 +2761,11 @@ export const zh = {
       cardsSr: "数字牌",
       opsSr: "运算符号",
       pass: "用了 {s} 秒凑出 325！",
+      /** Passed with 提示 telling n steps */
+      passHinted: "用了 {s} 秒、{n} 次提示凑出 325！",
       seen: "看了答案",
       result: "用了 {s} 秒凑出 325",
+      resultHinted: "用了 {s} 秒、{n} 次提示凑出 325",
       resultSeen: "看了答案",
     },
     /** 接住 3、2、5 (src/lib/study/catch325.ts) */

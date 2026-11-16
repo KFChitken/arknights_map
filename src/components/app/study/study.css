@@ -346,6 +346,7 @@
 .mk-said.mk-bad { color: var(--st-red); font-size: 15px; font-weight: 700; }
 .mk-said.mk-good { color: var(--st-green); font-size: 16px; font-weight: 800; }
 .mk-said.mk-answer { color: #1b1d22; font-size: 17px; font-weight: 800; }
+.mk-said.mk-told { color: #1b1d22; font-size: 16px; font-weight: 800; }
 .mk-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: min(100%, 300px); }
 .mk-card,
 .mk-gone { height: var(--mk-h); border-radius: 16px; }
@@ -357,6 +358,11 @@
 }
 .mk-card.mk-sel { background: var(--st-yellow); }
 .mk-card.mk-new:not(.mk-sel) { background: var(--st-tint); }
+/* 提示's two cards and sign: ringed in yellow until the table changes */
+.mk-card.mk-lit,
+.mk-op.mk-lit { box-shadow: 0 0 0 3px var(--st-yellow); }
+.mk-card.mk-lit:not(.mk-sel),
+.mk-op.mk-lit:not(.mk-sel) { background: var(--st-tint); }
 .mk-card.mk-win { border-color: var(--st-green); background: #e7f6ed; color: var(--st-green); opacity: 1; }
 .mk-card:disabled { cursor: default; }
 .mk-gone { border: 2px dashed var(--st-line); }
@@ -381,9 +387,16 @@
 .mk-op.mk-sel { background: #1b1d22; color: #fff; }
 .mk-op:disabled { border-color: var(--st-line); color: #9aa1ab; }
 .mk-tools { display: flex; justify-content: center; gap: 8px; width: min(100%, 300px); }
-.mk-tools .st-ghost { flex: 1; padding: 9px 8px; font-size: 14px; }
+.mk-tools .st-ghost { flex: 1; padding: 9px 8px; font-size: 14px; white-space: nowrap; }
 .mk-tools .st-ghost:disabled { color: #9aa1ab; }
 .mk-tools .mk-help { border-color: var(--st-yellow); background: var(--st-tint); }
+/* 提示, with how many it can still tell in a badge at its corner */
+.mk-tools .mk-hint { position: relative; }
+.mk-left {
+  position: absolute; top: -7px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--st-yellow); color: #1b1d22; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+}
+.mk-hint:disabled .mk-left { background: var(--st-line); color: #6b7280; }
 
 /* ---- 火柴棒 325 (Match325.tsx): an equation in matches on a board, as big as the room under the line over it; only
    the match picked up, the one moved and 提示's box change, and the board shakes once at a wrong move ---- */
@@ -862,7 +875,7 @@
   .mk-ops { grid-column: 1; grid-row: 2; width: 100%; gap: 8px; }
   .mk-op { height: 44px; }
   .mk-tools { grid-column: 2; grid-row: 2; width: 100%; }
-  .mk-tools .st-ghost { padding-block: 7px; }
+  .mk-tools .st-ghost { padding: 7px 4px; }
   /* the counts and what a drop did down the left, the field all the height beside them */
   .sk-game { flex-direction: row; gap: 14px; }
   .sk-side { align-self: center; width: 132px; gap: 12px; }

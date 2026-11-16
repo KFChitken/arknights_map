@@ -14,6 +14,8 @@ export const MAKE_POOL: readonly number[] = [...Array.from({ length: 24 }, (_, i
 export const MAKE_GOAL = 325;
 /** How long before 看答案 is offered (ms) */
 export const MAKE_HELP_MS = 60_000;
+/** How many steps 提示 tells a round (nextStep): asked again for cards it told already, it tells them again for nothing */
+export const MAKE_HINTS = 2;
 /**
  * Every fair four of MAKE_POOL, smallest first (fair below): src/data/make325-bank.json, written by
  * scripts/build-make325-bank.mts, so that no phone searches for one
@@ -173,6 +175,87 @@ export function put(t: Table, from: number, op: Op, to: number): Table | Refusal
   const n = combine(a, op, b);
   if (typeof n !== "number") return n;
   return { cards: t.cards.map((c, i) => (i === from ? null : i === to ? n : c)), past: [...t.past, t.cards] };
+}
+
+/** A step on the table: the card at from put together with the card at to, as put does */
+export type Step = { from: number; op: Op; to: number };
+
+/** The cards left on a table, by place, smallest first (equal ones in place order) */
+const placesOf = (cards: readonly (number | null)[]) =>
+  cards.flatMap((c, i) => (c === null ? [] : [i])).sort((x, y) => cards[x]! - cards[y]! || x - y);
+
+/** Every step from the cards on a table, in the order the game would come on them (as waysTo), with what it makes */
+function stepsFrom(cards: readonly (number | null)[]): { step: Step; n: number; next: (number | null)[] }[] {
+  const at = placesOf(cards);
+  const out: { step: Step; n: number; next: (number | null)[] }[] = [];
+  for (let i = 0; i < at.length; i++)
+    for (let j = i + 1; j < at.length; j++)
+      for (const op of OPS)
+        for (const [from, to] of op === "+" || op === "×" ? [[at[i], at[j]]] : [[at[i], at[j]], [at[j], at[i]]]) {
+          const n = combine(cards[from]!, op, cards[to]!);
+          if (typeof n === "number") out.push({ step: { from, op, to }, n, next: cards.map((c, k) => (k === from ? null : k === to ? n : c)) });
+        }
+  return out;
+}
+
+/** How hard a way is to work out in one's head: the largest number it makes on the way (every step's but the last), then all of them added up */
+type Cost = { most: number; sum: number };
+const easier = (a: Cost, b: Cost) => a.most < b.most || (a.most === b.most && a.sum < b.sum);
+
+/** What the easiest way on from the cards on a table to a goal costs, or null where there is none */
+function easiest(cards: readonly (number | null)[], goal: number): Cost | null {
+  const left = cards.filter((c) => c !== null).length;
+  if (left === 1) return cards.includes(goal) ? { most: 0, sum: 0 } : null;
+  let best: Cost | null = null;
+  for (const { n, next } of stepsFrom(cards)) {
+    const rest = easiest(next, goal);
+    if (!rest) continue;
+    const c = left === 2 ? rest : { most: Math.max(n, rest.most), sum: n + rest.sum };
+    if (!best || easier(c, best)) best = c;
+  }
+  return best;
+}
+
+/**
+ * 提示: the first step of the easiest way on to 325 from the cards on the table (the numbers on the way smallest:
+ * 40 ÷ 10, 4 + 9, 13 × 25 sooner than 9 × 40, 10 + 25, 360 − 35), the first the game would come on of those (as waysTo,
+ * the cards taken smallest first, so that the same numbers in another order are told the same step); or null, where 325
+ * cannot be made any more
+ */
+export function nextStep(cards: readonly (number | null)[], goal: number = MAKE_GOAL): Step | null {
+  const last = cards.filter((c) => c !== null).length === 2;
+  let best: { step: Step; cost: Cost } | null = null;
+  for (const { step, n, next } of stepsFrom(cards)) {
+    const rest = easiest(next, goal);
+    if (!rest) continue;
+    const cost = last ? rest : { most: Math.max(n, rest.most), sum: n + rest.sum };
+    if (!best || easier(cost, best.cost)) best = { step, cost };
+  }
+  return best?.step ?? null;
+}
+
+/** How many steps back 325 can be made again, where it cannot from the cards on the table: 0 where it can */
+export function stepsBack(t: Table, goal: number = MAKE_GOAL): number {
+  const can = (cards: readonly (number | null)[]) => reaches(cards.filter((c): c is number => c !== null), goal);
+  for (let k = 0; k < t.past.length; k++) if (can(k ? t.past[t.past.length - k] : t.cards)) return k;
+  return t.past.length;
+}
+
+/** The steps 提示 told a round, each with the cards on the table it told it for (their numbers, a place each, joined) */
+export type Told = readonly { cards: string; step: Step }[];
+
+/**
+ * 提示 pressed: the step to tell, with the steps told after it (for cards told already, the same again for nothing); how
+ * many steps back 325 can be made again, where it cannot from the cards on the table (for nothing too); or null, where
+ * MAKE_HINTS were told already
+ */
+export function askHint(told: Told, t: Table): { step: Step; told: Told } | { back: number } | null {
+  const cards = t.cards.join();
+  const again = told.find((h) => h.cards === cards);
+  if (again) return { step: again.step, told };
+  const step = nextStep(t.cards);
+  if (!step) return { back: stepsBack(t) };
+  return told.length < MAKE_HINTS ? { step, told: [...told, { cards, step }] } : null;
 }
 
 /** One step back */
