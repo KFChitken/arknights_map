@@ -166,6 +166,7 @@ import {
   declarations,
   declarationSpots,
   deliveries,
+  drinks,
   reactions,
   friendCuts,
   friendships,
@@ -399,7 +400,13 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
   const today = beijingDate();
   const lastSeen = lastVisitOn(u);
   const daysAway = daysBetween(lastSeen, today);
-  if (u.lastSeenOn !== today) await db.update(users).set({ lastSeenOn: today }).where(eq(users.id, u.id));
+  // a new day counts once, however many pages open on it at once (users.visit_days)
+  if (u.lastSeenOn !== today) {
+    await db
+      .update(users)
+      .set({ lastSeenOn: today, visitDays: sql`${users.visitDays} + 1` })
+      .where(and(eq(users.id, u.id), sql`${users.lastSeenOn} is distinct from ${today}::date`));
+  }
   if (daysAway >= AWAY_DAYS) await wakeUp(u.id);
   const mine = await ownRoaches(u.id);
   // the thanks for sponsoring only while SPONSOR shows them to this player (src/lib/server/sponsor.ts)
@@ -642,7 +649,10 @@ export async function writePlacement(
     if (slot > 0) await checkCloneRoom(tx, userId, (await clonesOut(tx, userId)) - 1);
   }
   // a roach has to stand up to walk: moving the main roach sobers it up, and wakes it from staying away
-  if (slot === 0) await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
+  if (slot === 0) {
+    await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
+    await drinkEnds(tx, userId);
+  }
   await tx.insert(moves).values({
     userId,
     slot,
@@ -771,7 +781,10 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
     for (const r of gone) await roachMoved(tx, r.id, "removed");
     await tx.delete(roaches).where(inArray(roaches.id, gone.map((r) => r.id)));
     await tx.insert(moves).values(gone.map((r) => ({ userId, slot: r.slot, fromLng: r.lng, fromLat: r.lat })));
-    if (roach.slot === 0) await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
+    if (roach.slot === 0) {
+      await tx.update(users).set({ drunkUntil: null, drunkAt: null, sleptAwayOn: null }).where(eq(users.id, userId));
+      await drinkEnds(tx, userId);
+    }
   });
   roachesChanged();
   return ownRoaches(userId);
@@ -781,6 +794,20 @@ export async function removeRoach(userId: string, roachId: string): Promise<OwnR
 const DRINK_GAP_MS = 10_000;
 
 /** 摄入酒精: the main roach falls asleep drunk until the next morning where it lies. Every real drink counts for the 酒神 badges. */
+/**
+ * The drink still running ends now (drinks.sober_at), for 「我的记录」: 醒酒, or the main roach moved or taken off the
+ * map while it slept. One that ran out by itself keeps only its until.
+ */
+async function drinkEnds(tx: Exec, userId: string, now = new Date()) {
+  const running = tx
+    .select({ id: drinks.id })
+    .from(drinks)
+    .where(and(eq(drinks.userId, userId), isNull(drinks.soberAt), gt(drinks.until, now)))
+    .orderBy(desc(drinks.at))
+    .limit(1);
+  await tx.update(drinks).set({ soberAt: now }).where(inArray(drinks.id, running));
+}
+
 export async function drink(userId: string): Promise<{ until: number }> {
   const u = await userById(userId);
   if (!u) throw new WorldError(T.server.world.noAccount);
@@ -795,11 +822,16 @@ export async function drink(userId: string): Promise<{ until: number }> {
   const until = nextMorning(main, now.getTime());
   // the last sleep ran out by itself before 二次呼吸's round came by: given now, before drunkAt is the new one's
   if (u.drunkAt) await sleptItOff(now.getTime());
-  const [row] = await db
-    .update(users)
-    .set({ drunkUntil: new Date(until), drunkAt: now, drinksTotal: sql`${users.drinksTotal} + 1` })
-    .where(and(eq(users.id, userId), or(isNull(users.drunkUntil), lt(users.drunkUntil, now))))
-    .returning({ total: users.drinksTotal });
+  // with its own row, for 「我的记录」 (drinks)
+  const row = await db.transaction(async (tx) => {
+    const [got] = await tx
+      .update(users)
+      .set({ drunkUntil: new Date(until), drunkAt: now, drinksTotal: sql`${users.drinksTotal} + 1` })
+      .where(and(eq(users.id, userId), or(isNull(users.drunkUntil), lt(users.drunkUntil, now))))
+      .returning({ total: users.drinksTotal });
+    if (got) await tx.insert(drinks).values({ userId, at: now, until: new Date(until) });
+    return got;
+  });
   if (!row) throw new WorldError(drunk);
   await drank(userId, row.total);
   roachesChanged();
@@ -819,11 +851,15 @@ export async function setOnlyMains(userId: string, on: boolean) {
 /** 醒酒: the main roach stands up at once. */
 export async function sober(userId: string) {
   const [before] = await db.select({ drunkAt: users.drunkAt }).from(users).where(eq(users.id, userId));
-  const woke = await db
-    .update(users)
-    .set({ drunkUntil: null, drunkAt: null })
-    .where(and(eq(users.id, userId), isNotNull(users.drunkUntil)))
-    .returning({ id: users.id });
+  const woke = await db.transaction(async (tx) => {
+    const got = await tx
+      .update(users)
+      .set({ drunkUntil: null, drunkAt: null })
+      .where(and(eq(users.id, userId), isNotNull(users.drunkUntil)))
+      .returning({ id: users.id });
+    if (got.length) await drinkEnds(tx, userId);
+    return got;
+  });
   if (!woke.length) return;
   roachesChanged();
   await soberedUp(userId, before?.drunkAt ?? null);

@@ -84,6 +84,11 @@ export const users = pgTable("users", {
 
   /** The Beijing date of the player's latest visit; only the day, never the time */
   lastSeenOn: date("last_seen_on", { mode: "string" }),
+  /**
+   * On how many Beijing dates they came (me(), with lastSeenOn): only the number. scripts/backfill-visit-days.mts counts
+   * the days before it was kept from what they did on them
+   */
+  visitDays: integer("visit_days").notNull().default(0),
   /** Declarations shown to them by where their roaches are count as read up to this one's time (src/lib/server/declarationInbox.ts) */
   declarationsSeenAt: at("declarations_seen_at"),
   /** The badge shown under their name, if they wear one */
@@ -94,6 +99,16 @@ export const users = pgTable("users", {
   drunkUntil: at("drunk_until"),
   /** Times they really got drunk; never goes down, for the 酒神 badges */
   drinksTotal: integer("drinks_total").notNull().default(0),
+  /**
+   * What the clean-up after KEEP_ACTIVITY_DAYS deleted of theirs (src/lib/server/retention.ts), counted as it went, so
+   * 「我的记录」's totals are these plus what is still kept: touches they sent, and received (not the withheld ones),
+   * declarations they sent, and reactions to them they got (not the withheld ones), and gave. Only numbers: not who or when
+   */
+  oldTouchesOut: integer("old_touches_out").notNull().default(0),
+  oldTouchesIn: integer("old_touches_in").notNull().default(0),
+  oldDeclarations: integer("old_declarations").notNull().default(0),
+  oldReactionsIn: integer("old_reactions_in").notNull().default(0),
+  oldReactionsOut: integer("old_reactions_out").notNull().default(0),
   /**
    * The 宣言 and 回应 badges: Beijing days they declared, and responded to a declaration, on (twenty in
    * a day count once, and they never go down, as the records themselves go after 90 days), the day
@@ -448,6 +463,10 @@ export const touches = pgTable(
     index("touches_to_idx").on(t.toUserId, t.createdAt),
     index("touches_from_idx").on(t.fromUserId, t.createdAt),
     uniqueIndex("touches_reply_idx").on(t.fromUserId, t.replyTo),
+    // the clean-up after KEEP_ACTIVITY_DAYS takes them an hour at a time (src/lib/server/retention.ts): they are written in
+    // time order, so a BRIN index finds an hour in a few blocks, and costs next to nothing to keep; each block range is
+    // summed up as it fills
+    index("touches_created_brin").using("brin", t.createdAt).with({ autosummarize: true }),
   ],
 );
 
@@ -1436,6 +1455,25 @@ export const statSnapshots = pgTable("stat_snapshots", {
 });
 
 /** Placements, moves and removals, for the radar. */
+/**
+ * Each drink (摄入酒精, src/lib/server/world.ts drink): when, until when the main roach was to sleep, and when it woke
+ * before that (醒酒, or the main roach moved or taken off the map). Only for the player's own 「我的记录」, and deleted
+ * after KEEP_ACTIVITY_DAYS like their other activity; users.drinks_total keeps how many there ever were.
+ */
+export const drinks = pgTable(
+  "drinks",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    at: at("at").notNull().defaultNow(),
+    until: at("until").notNull(),
+    soberAt: at("sober_at"),
+  },
+  (t) => [index("drinks_user_at_idx").on(t.userId, t.at)],
+);
+
 export const moves = pgTable(
   "moves",
   {

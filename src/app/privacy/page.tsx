@@ -60,7 +60,7 @@ export default async function Privacy() {
           {fmtNodes(T.server.privacy.collect.acts, { b: <strong>{T.server.privacy.collect.actsB}</strong>, declarationDays: DECLARATION_DAYS, site: siteName() })}
         </li>
         <li>
-          {fmtNodes(T.server.privacy.collect.drunk, { b: <strong>{T.server.privacy.collect.drunkB}</strong> })}
+          {fmtNodes(T.server.privacy.collect.drunk, { b: <strong>{T.server.privacy.collect.drunkB}</strong>, keepActivityDays: KEEP_ACTIVITY_DAYS })}
         </li>
         <li>
           {fmtNodes(T.server.privacy.collect.visits, { b: <strong>{T.server.privacy.collect.visitsB}</strong>, site: siteName(), b2: <strong>{T.server.privacy.collect.visitsB2}</strong> })}
@@ -140,6 +140,9 @@ export default async function Privacy() {
         </li>
         <li>
           {fmtNodes(T.server.privacy.seen.friends, { b: <strong>{T.server.privacy.seen.friendsB}</strong> })}
+        </li>
+        <li>
+          {fmtNodes(T.server.privacy.seen.records, { b: <strong>{T.server.privacy.seen.recordsB}</strong> })}
         </li>
         <li>
           {fmtNodes(T.server.privacy.seen.block, { b: <strong>{T.server.privacy.seen.blockB}</strong> })}
