@@ -38,7 +38,7 @@ export const isNoteKind = (k: unknown): k is NoteKind => (NOTE_KINDS as readonly
  *   listen.ask: a 想一起听 to a 触须之交 listening
  * - squad.room: a room of 一起卫戍 opened, squad.join: a player who went in at one (not its host), squad.say: a set line
  *   said in one (src/lib/server/squad.ts), never who said it; squad.play: a song its host started (开始, ⏭, 重来, or
- *   one added with none playing)
+ *   one added with none playing); squad.invite: an invitation to one, squad.joinDecl: a player who went in at a 宣言招人
  * Written only by the one-time backfill (src/lib/server/dashboard.ts), for the days before daily_totals was kept:
  * - signups, friendships: accounts made and pairs who became 触须之交 that day, of those still there
  * - backfill.done (on OPEN_DAY): when the backfill ran, so it runs once
@@ -69,6 +69,8 @@ export const COUNTED = {
   squadJoin: "squad.join",
   squadSay: "squad.say",
   squadPlay: "squad.play",
+  squadInvite: "squad.invite",
+  squadJoinDecl: "squad.joinDecl",
   signups: "signups",
   friendships: "friendships",
   backfilled: "backfill.done",

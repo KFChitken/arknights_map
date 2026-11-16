@@ -31,6 +31,7 @@ import { db } from "./db";
 import { isUniqueViolation, lockPlayer, type Exec } from "./guides";
 import { HttpError } from "./http";
 import { listenOpen } from "./listen";
+import { squadShown } from "./squadOpen";
 import { nudge } from "./live";
 import { giftsOpen, passesOpen, receiveGift } from "./passes";
 import { roachByFeedId, roachesChanged, sleeping } from "./roachFeed";
@@ -727,6 +728,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
   // 送 1 张寻访券: whom you gave one today, and who was given all a day may bring; only while you may give at all
   const giving = giftsOpen(self);
   const listening = listenOpen(self);
+  const squading = squadShown(self);
   const gaveTo = new Set(
     giving
       ? (
@@ -791,6 +793,7 @@ export async function betweenOf(self: UserRow, others: { user: UserRow; since: D
       anniversary: isFriendAnniversary(day) ? day : null,
       ...(gift ? { gift } : {}),
       ...(listening && listenOpen(o) ? { listen: true as const } : {}),
+      ...(squading && squadShown(o) ? { squad: true as const } : {}),
     });
   }
   return out;

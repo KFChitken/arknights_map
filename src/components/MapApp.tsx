@@ -163,9 +163,19 @@ import {
   toggle as toggleListening,
   touchMember,
 } from "./app/listening";
-import SquadBar from "./app/squad/SquadBar";
-import type { SquadView } from "./app/squad/SquadSheet";
-import { forgetSquadPage, heardSquad, squadStreamBack, startSquad, touchInSquad, useSquadRoom } from "./app/squad/squading";
+import SquadBar, { SquadPop, type SquadCallItem, type SquadInviteItem, type SquadPopCard } from "./app/squad/SquadBar";
+import type { SquadJoin, SquadView } from "./app/squad/SquadSheet";
+import {
+  forgetSquadPage,
+  heardSquad,
+  inviteToSquad,
+  laterSquadInvite,
+  squadRoomNow,
+  squadStreamBack,
+  startSquad,
+  touchInSquad,
+  useSquadRoom,
+} from "./app/squad/squading";
 import { setQuietListening } from "./app/squad/squadMusic";
 
 // the host's songs in a room of 一起卫戍 starting here quiet 听歌 (and 一起听), so the two never sound together
@@ -176,6 +186,7 @@ import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverl
 import type { ListenActs, ListenTab } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";
 import { CALL_CARD_EVERY_MS } from "@/lib/listen";
+import { SQUAD_MAX } from "@/lib/squad";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
 import { GuideSheet } from "./app/GuideDock";
@@ -469,7 +480,7 @@ type Panel =
   /** listen: opened from someone's card in 一起听, which it goes back to */
   | { kind: "safety"; target: string; who: string | null; back: Panel | null; listen?: true; squad?: true }
   /** 一起卫戍, at a view of its own (the room they are in, else the list) */
-  | { kind: "squad"; view?: SquadView }
+  | { kind: "squad"; view?: SquadView; join?: SquadJoin }
   /** 举报这只蟑螂, from its card on the map */
   | { kind: "roachReport"; roach: PublicRoach }
   /** confirm: a signed-in player confirming it is them by code, for their password, then back to 我的资料 */
@@ -706,6 +717,8 @@ export default function MapApp({
   const [listenTab, setListenTab] = useState<ListenTab>("ark");
   // an invitation to 一起听 that came while the page is open, its card over the map (ask: whether to switch rooms first)
   const [listenCard, setListenCard] = useState<ListenCard | null>(null);
+  // 一起卫戍: the card of an invitation that came, or one tapped in 消息 while in another room
+  const [squadPop, setSquadPop] = useState<SquadPopCard | null>(null);
   /** When this page last showed a 宣言一起听's card: one every CALL_CARD_EVERY_MS at most, the rest in 消息 alone */
   const callCardAt = useRef(-Infinity);
   // a visitor's, kept in this browser (src/lib/study/guest.ts): the day last drawn for and whether it was played
@@ -1581,6 +1594,11 @@ export default function MapApp({
       .filter((i): i is ListenInvite => i.kind === "listenInvite" && i.state === "open")
       .reduce<ListenInvite | null>((a, i) => (!a || i.at > a.at ? i : a), null);
     if (invite) setListenCard({ kind: "invite", invite, ask: false });
+    // an invitation to 一起卫戍: the newest still good, its room open to go in at, as a card over the map
+    const squadInvite = fresh
+      .filter((i): i is SquadInviteItem => i.kind === "squadInvite" && i.state === "open" && i.call.state === "open")
+      .reduce<SquadInviteItem | null>((a, i) => (!a || i.at > a.at ? i : a), null);
+    if (squadInvite) setSquadPop({ kind: "invite", item: squadInvite, ask: false });
     // a 宣言一起听 open to go in at: its card, one every CALL_CARD_EVERY_MS at most, never over an invitation, while in a
     // room, or while a roach's card is open (only in 消息 then)
     const call = fresh
@@ -1593,7 +1611,7 @@ export default function MapApp({
     }
     // only declarations (or invitations) came: they float down over the dock, and 消息 stays shut; a 宣言一起听 never
     // floats (on its card, or only in 消息), for a whole neighbourhood calling at once not to fill the screen
-    if (fresh.length && fresh.every((i) => i.kind === "declaration" || i.kind === "listenInvite") && open?.kind !== "inbox") {
+    if (fresh.length && fresh.every((i) => i.kind === "declaration" || i.kind === "listenInvite" || i.kind === "squadInvite") && open?.kind !== "inbox") {
       hearRef.current(fresh.filter((i) => !(i.kind === "declaration" && i.listen)));
       return;
     }
@@ -1885,6 +1903,13 @@ export default function MapApp({
     if (inListenRoom && !listenRoomNow()) void loadRoom();
   }, [inListenRoom]);
   // an invitation's card goes when the invitation runs out; a 宣言一起听's after as long as the next may take to come
+  // an invitation's card goes when it runs out; one asking, after a while
+  useEffect(() => {
+    if (!squadPop) return;
+    const wait = squadPop.kind === "invite" && !squadPop.ask ? squadPop.item.until - serverNow() : CALL_CARD_EVERY_MS;
+    const t = window.setTimeout(() => setSquadPop(null), Math.max(0, wait));
+    return () => window.clearTimeout(t);
+  }, [squadPop]);
   useEffect(() => {
     if (!listenCard) return;
     const wait = listenCard.kind === "invite" ? listenCard.invite.until - serverNow() : CALL_CARD_EVERY_MS;
@@ -2463,6 +2488,34 @@ export default function MapApp({
     await loadMe().catch(() => {});
     return true;
   };
+  /** In at an invitation or a 宣言招人 (its item in 消息): 一起卫戍's sheet goes in, the card first when there is none */
+  const joinSquadAt = (item: string) => {
+    const by = item.startsWith("qi:") ? { invite: item.slice(3) } : { declaration: item.replace(/^d:/, "") };
+    setSquadPop(null);
+    setPanel({ kind: "squad", join: { item, ...by } });
+  };
+  /** 下次吧: whoever sent it sees 没来, as when it runs out */
+  const laterSquadAt = async (item: string) => {
+    try {
+      await laterSquadInvite(item.replace(/^qi:/, ""));
+    } catch (e) {
+      void act(() => Promise.reject(e));
+      return;
+    }
+    setSquadPop((c) => (c?.item.id === item ? null : c));
+    await worldRef.current!.markSeen([item]).catch(() => {});
+    await refreshInbox().catch(() => {});
+  };
+  /** 邀请 TA 一起卫戍, from TA's card, to the room you are in */
+  const inviteFriendToSquad = async (friend: Friend) => {
+    try {
+      const sent = await inviteToSquad([friend.id]);
+      const bad = sent.find((x) => !x.ok);
+      setToast(bad ? (bad.why ?? T.map.common.tryAgain) : fmt(T.squad.call.sentTo, { name: friend.profile.displayName }));
+    } catch (e) {
+      void act(() => Promise.reject(e));
+    }
+  };
   /** 偷偷碰 or 大胆碰 someone in the room you are in, by their number there: as a touch on the map, without its scene */
   // 一起卫戍: the room they are in, read at the page's start and kept by what the room is told; signed out, nothing
   const squadRoom = useSquadRoom();
@@ -2793,6 +2846,27 @@ export default function MapApp({
         await worldRef.current!.markSeen([itemId]).catch(() => {});
       }
       await refreshInbox().catch(() => {});
+    },
+    squadJoin: async (itemId) => {
+      const item = inbox.find((i): i is SquadInviteItem => i.id === itemId && i.kind === "squadInvite");
+      // in another room: its card on the map asks first whether to leave it
+      if (item && squadRoomNow()) {
+        setPanel(null);
+        setSquadPop({ kind: "invite", item, ask: true });
+        return;
+      }
+      joinSquadAt(itemId);
+    },
+    squadLater: laterSquadAt,
+    squadShow: () => setPanel({ kind: "squad" }),
+    squadCall: async (itemId) => {
+      const item = inbox.find((i): i is SquadCallItem => i.id === itemId && i.kind === "declaration" && Boolean(i.squad));
+      if (item && squadRoomNow()) {
+        setPanel(null);
+        setSquadPop({ kind: "call", item, ask: true });
+        return;
+      }
+      joinSquadAt(itemId);
     },
     // as 听歌's entry shows (listenShown, worked out further down), and not while it is paused
     listenAsk:
@@ -5021,6 +5095,19 @@ export default function MapApp({
             start={p.view}
             homeServer={me.profile.uidServer.arknights}
             card={me.squad.card}
+            join={p.join}
+            roaches={me.roaches}
+            ink={inkOut}
+            onDeclared={(res) => {
+              passesDotAfter(res);
+              setToast(fmt(T.map.declare.sent, { reach: res.reach }));
+              // a 宣言 badge it reached
+              void loadMe().catch(() => {});
+            }}
+            onJoined={(item) => {
+              void worldRef.current?.markSeen([item]).catch(() => {});
+              void refreshInbox().catch(() => {});
+            }}
             onTouch={touchInSquadRoom}
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: null, squad: true })}
             onError={(e) => void act(() => Promise.reject(e))}
@@ -5095,6 +5182,7 @@ export default function MapApp({
                   onListen={listenShown && !me?.listen?.paused ? () => listenWith(friend) : undefined}
                   listening={friend.listening}
                   onAsk={listenShown && !me?.listen?.paused ? () => void askListen(friend) : undefined}
+                  onSquad={squadInviting ? () => void inviteFriendToSquad(friend) : undefined}
                 />
               )
             }
@@ -5250,6 +5338,8 @@ export default function MapApp({
   const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
   // 一起卫戍: where the server shows it to them (me.squad, SQUAD); on the Chinese site, as its words are Chinese only for now
   const squadShown = lang() === "zh" && Boolean(me?.squad);
+  // 邀请 TA 一起卫戍 from a 触须之交's card: in a room waiting for players with a seat
+  const squadInviting = squadShown && Boolean(squadRoom && squadRoom.state === "wait" && squadRoom.members.length < SQUAD_MAX);
   // its disco, where the server opened that to them too (me.listen.disco: DISCO); fetched ahead once the panel opens
   const discoOpen = discoOpenTo(listenShown, me?.listen);
   useEffect(() => {
@@ -5653,6 +5743,7 @@ export default function MapApp({
                 onListen={listenShown && !me?.listen?.paused ? () => listenWith(selectedFriend) : undefined}
                 listening={selectedFriend.listening}
                 onAsk={listenShown && !me?.listen?.paused ? () => void askListen(selectedFriend) : undefined}
+                onSquad={squadInviting ? () => void inviteFriendToSquad(selectedFriend) : undefined}
               />
             )
           }
@@ -5900,8 +5991,18 @@ export default function MapApp({
           onDismiss={() => setListenCard(null)}
         />
       )}
-      {/* 一起卫戍: 卫戍中 n/4 over the map, back to the room */}
-      {squadShown && <SquadBar hidden={panel?.kind === "squad" || Boolean(selected || picking || placing)} onOpen={() => setPanel({ kind: "squad" })} />}
+      {/* 一起卫戍: 卫戍中 n/4 over the map, back to the room; away while a panel is open, not to cover it on a phone */}
+      {squadShown && <SquadBar hidden={Boolean(panel || listenOpen || selected || picking || placing)} onOpen={() => setPanel({ kind: "squad" })} />}
+      {/* 一起卫戍: the card of an invitation that came, or one tapped in 消息 while in another room; away while a panel is open */}
+      {squadShown && (
+        <SquadPop
+          card={squadPop}
+          hidden={Boolean(panel || listenOpen || selected || picking || placing)}
+          onGo={(c) => joinSquadAt(c.item.id)}
+          onLater={(i) => void laterSquadAt(i.id)}
+          onDismiss={() => setSquadPop(null)}
+        />
+      )}
       {/* over everything of each layout, the board it was opened from too */}
       {pamphlet && (
         <Pamphlet

@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { fmt, T } from "@/i18n";
+import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { serverName } from "@/lib/games";
+import { INVITES_PER_DAY } from "@/lib/listen";
+import type { PassesDot } from "@/lib/passes";
+import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
+import { INK_FROM } from "@/lib/si";
 import {
   CORES,
   coreOf,
@@ -36,6 +40,7 @@ import {
   TAGS_MAX,
   type PhraseRow,
   type SquadCard,
+  type SquadFriend,
   type SquadList,
   type SquadListRoom,
   type SquadMember,
@@ -44,18 +49,25 @@ import {
 } from "@/lib/squad";
 import { squadApi, SquadRefused } from "@/lib/squadClient";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
+import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import DjBar from "./DjBar";
+import { MegaphoneIcon } from "../chrome/parts";
 import Sheet from "../Sheet";
 import {
   changeSquadKey,
   clearSquadNotice,
+  declareSquadRoom,
+  inviteToSquad,
+  joinSquadBy,
   joinSquadRoom,
   kickFromSquad,
   leaveSquadRoom,
+  loadSquadFriends,
   openSquadRoom,
   saveSquadCard,
   sayInSquad,
+  sentWords,
   setSquadInGame,
   setSquadPrefs,
   squadState,
@@ -75,6 +87,8 @@ import "./squad.css";
  */
 
 export type SquadView = "list" | "open" | "card" | "room";
+/** Going in at an invitation to you, or a 宣言招人 you got: its item in 消息 (qi:… or d:…), and its id */
+export type SquadJoin = { item: string } & ({ invite: string } | { declaration: string });
 
 type Props = {
   /** Where it opens: the room they are in when there is one, else the list */
@@ -83,6 +97,15 @@ type Props = {
   homeServer: string;
   /** Their 卫戍名片 as me() gave it */
   card: SquadCard | null;
+  /** Opened to go in at an invitation or a 宣言招人 you got, from 消息 or the card over the map */
+  join?: SquadJoin;
+  /** Your roaches, and whether your ink roach is out: where 宣言招人 may go out from */
+  roaches: OwnRoach[];
+  ink: boolean;
+  /** 宣言招人 sent: what it reached */
+  onDeclared: (res: { reach: string } & PassesDot) => void;
+  /** Gone in at an invitation or a 宣言招人: its item in 消息, to be read */
+  onJoined: (item: string) => void;
   onTouch: (h: number, bold: boolean) => Promise<void>;
   onSafety: (target: string, who: string) => void;
   /** A refusal the map page handles (signing in, the age question, …), or any other error */
@@ -164,6 +187,22 @@ export default function SquadSheet(props: Props) {
     setThen(() => go);
     setView("card");
   };
+
+  // opened to go in at an invitation or a 宣言招人: once; the card first when there is none, then in
+  const { join, onJoined } = props;
+  const joinedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (!join || joinedAt.current === join.item) return;
+    joinedAt.current = join.item;
+    const by = "invite" in join ? { invite: join.invite } : { declaration: join.declaration };
+    const go = async () => {
+      const got = await run(() => joinSquadBy(by), () => void go());
+      if (!got) return;
+      setView("room");
+      onJoined(join.item);
+    };
+    void go();
+  }, [join, run, onJoined]);
 
   if (view === "card") {
     return (
@@ -841,7 +880,11 @@ function RoomView({
   onTouch,
   onSafety,
   onToast,
+  onError,
   onClose,
+  roaches,
+  ink,
+  onDeclared,
 }: Props & {
   room: SquadRoom;
   busy: boolean;
@@ -851,7 +894,7 @@ function RoomView({
 }) {
   const [editing, setEditing] = useState<SquadCard | null>(null);
   const [pop, setPop] = useState<{ h: number; kind: "touch" | "more" } | null>(null);
-  const [asking, setAsking] = useState<"end" | "key" | null>(null);
+  const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | null>(null);
   const [, tick] = useState(0);
   // the clock of what it shows: the server's when the room came, gone on since on this device
   const cameAt = useRef({ server: room.now, device: Date.now() });
@@ -877,6 +920,16 @@ function RoomView({
         : fmt(T.squad.room.endsLife, { t: leftWords });
   const pill = room.state === "go" ? T.squad.room.go : n >= SQUAD_MAX ? fmt(T.squad.room.full, { n, max: SQUAD_MAX }) : fmt(T.squad.room.wait, { n, max: SQUAD_MAX });
   const host = room.members.find((m) => m.host);
+  // calling others in, while it waits for players and has a seat: anyone's invitations to their 触须之交 (who come in
+  // even where only the host's may), and the host's 宣言招人, once a room, where anyone may come
+  const mayInvite = room.state === "wait" && n < SQUAD_MAX;
+  const mayDeclare = mayInvite && room.host && !room.friendsOnly && !room.declared;
+  const declare = async (from: string[] | null) => {
+    const res = await run(() => declareSquadRoom(from));
+    if (!res) return;
+    setAsking(null);
+    onDeclared(res);
+  };
 
   const copy = async () => {
     try {
@@ -992,9 +1045,37 @@ function RoomView({
               +
             </span>
             <span className="nm">{T.squad.room.empty}</span>
+            {i === 0 && mayInvite && (
+              <span className="acts">
+                <button className="small dark" disabled={busy} onClick={() => setAsking("invite")}>
+                  {T.squad.call.invite}
+                </button>
+              </span>
+            )}
           </div>
         ))}
       </div>
+      {room.invited.length > 0 && (
+        <p className="hint sq-invited">
+          {fmt(T.squad.call.invited, {
+            list: room.invited
+              .map((x) => fmt(x.state === "waiting" ? T.squad.call.waitingName : T.squad.call.missedName, { name: x.card.displayName }))
+              .join(T.common.listSep),
+          })}
+        </p>
+      )}
+      {room.host && room.state === "wait" && (mayDeclare || room.declared) && (
+        <div className="sq-call">
+          {room.declared ? (
+            <p className="hint">{T.squad.call.declared}</p>
+          ) : (
+            <button className="small ghost" disabled={busy} onClick={() => setAsking("declare")}>
+              <MegaphoneIcon size={14} />
+              {T.squad.call.declare}
+            </button>
+          )}
+        </div>
+      )}
       <p className="hint sq-tip">
         <button className="link" onClick={onCard}>
           {T.squad.list.card}
@@ -1020,6 +1101,23 @@ function RoomView({
           </div>
         </Ask>
       )}
+      {asking === "invite" && (
+        <InvitePicker
+          room={room}
+          busy={busy}
+          onSend={async (picked) => {
+            const sent = await run(() => inviteToSquad(picked));
+            if (!sent) return;
+            setAsking(null);
+            onToast(sentWords(sent));
+          }}
+          onError={onError}
+          onClose={() => setAsking(null)}
+        />
+      )}
+      {asking === "declare" && (
+        <DeclareAsk roaches={roaches} ink={ink} need={SQUAD_MAX - n} busy={busy} onSend={(from) => void declare(from)} onNo={() => setAsking(null)} />
+      )}
       {asking === "key" && (
         <RekeyAsk
           left={room.keyLeft}
@@ -1032,6 +1130,153 @@ function RoomView({
         />
       )}
     </Sheet>
+  );
+}
+
+// ---- calling others in ----
+
+/**
+ * Whom to invite: your 触须之交 who may come, ticked; each with the server of their 资料's UID (another than the room's
+ * said, and last: TA may play on another account) and how many more times today; those in it or invited already
+ * can't be ticked.
+ */
+function InvitePicker({
+  room,
+  busy,
+  onSend,
+  onError,
+  onClose,
+}: {
+  room: SquadRoom;
+  busy: boolean;
+  onSend: (picked: string[]) => void;
+  onError: (e: unknown) => void;
+  onClose: () => void;
+}) {
+  const [friends, setFriends] = useState<SquadFriend[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    loadSquadFriends().then(
+      (f) => {
+        if (alive) setFriends(f);
+      },
+      (e: unknown) => {
+        if (!alive) return;
+        setFriends([]);
+        onError(e);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+    // once, as it opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  return (
+    <div className="sq-ask-bg" onClick={onClose}>
+      <div className="sq-ask sq-pick sq-inv" role="dialog" aria-modal="true" aria-label={T.squad.call.inviteTitle} onClick={(e) => e.stopPropagation()}>
+        <h3>{T.squad.call.inviteTitle}</h3>
+        <p className="hint">{fmt(T.squad.call.inviteNote, { n: INVITES_PER_DAY })}</p>
+        <div className="friends">
+          {!friends ? (
+            <p className="hint">{T.squad.call.loading}</p>
+          ) : !friends.length ? (
+            <p className="hint">{T.squad.call.none}</p>
+          ) : (
+            friends.map((f) => {
+              const other = f.server !== "" && f.server !== room.server;
+              const where = f.server === "" ? T.squad.call.noUid : other ? fmt(T.squad.call.otherServer, { server: srv(f.server) }) : srv(f.server);
+              const state = f.inRoom
+                ? T.squad.call.inRoom
+                : f.waiting
+                  ? T.squad.call.waiting
+                  : f.left <= 0
+                    ? T.squad.call.noneLeft
+                    : fmt(T.squad.call.left, { n: f.left });
+              const on = picked.includes(f.id);
+              return (
+                <div key={f.id} className={`sq-friend${other ? " other" : ""}`}>
+                  <span className="av" aria-hidden="true">
+                    <RoachIcon color={f.card.color as RoachColor} avatar={f.card.avatar as RoachAvatar} size={28} />
+                  </span>
+                  <span className="nm">
+                    {f.card.displayName}
+                    <small>{`${where}${T.squad.dot}${state}`}</small>
+                  </span>
+                  <button
+                    className={`small${on ? " dark" : ""}`}
+                    disabled={busy || f.inRoom || f.waiting || f.left <= 0}
+                    aria-pressed={on}
+                    onClick={() => toggle(f.id)}
+                  >
+                    {on ? T.squad.call.picked : T.squad.call.pick}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+        <div className="row">
+          <button className="dark grow" disabled={busy || !picked.length} onClick={() => onSend(picked)}>
+            {fmt(T.squad.call.send, { n: picked.length })}
+          </button>
+          <button className="ghost" onClick={onClose}>
+            {T.squad.call.close}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 宣言招人: what goes out to whom, and from which of your roaches (your main one picked to begin with) */
+function DeclareAsk({
+  roaches,
+  ink,
+  need,
+  busy,
+  onSend,
+  onNo,
+}: {
+  roaches: OwnRoach[];
+  ink: boolean;
+  need: number;
+  busy: boolean;
+  onSend: (from: string[] | null) => void;
+  onNo: () => void;
+}) {
+  const main = roaches.find((r) => r.slot === 0);
+  const clones = roaches.filter((r) => r.slot > 0);
+  const many = clones.length > 0 || ink;
+  const [from, setFrom] = useState<string[]>(() => (main ? [main.id] : []));
+  const toggle = (id: string) => setFrom((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+  const chip = (id: string, label: ReactNode) => (
+    <button key={id} type="button" className={`chip${from.includes(id) ? " on" : ""}`} aria-pressed={from.includes(id)} onClick={() => toggle(id)}>
+      {label}
+    </button>
+  );
+  return (
+    <Ask title={T.squad.call.declareTitle} onNo={onNo}>
+      <p>{fmt(T.squad.call.declareFrom, { km: DECLARATION_RADIUS_KM, n: need })}</p>
+      {many && (
+        <div className="chips" role="group" aria-label={T.declare.from}>
+          {main && chip(main.id, T.common.main)}
+          {clones.map((c, i) => chip(c.id, fmtParts(T.common.cloneN, { n: i + 1 })))}
+          {ink && chip(INK_FROM, T.common.ink)}
+        </div>
+      )}
+      <p className="sq-ask-sub">{fmt(T.squad.call.declareNote, { d: DECLARATIONS_PER_DAY })}</p>
+      <div className="row">
+        <button className="dark grow" disabled={busy || (many && !from.length)} onClick={() => onSend(many ? from : null)}>
+          {T.squad.call.declareSend}
+        </button>
+        <button className="ghost" disabled={busy} onClick={onNo}>
+          {T.squad.call.declareNot}
+        </button>
+      </div>
+    </Ask>
   );
 }
 

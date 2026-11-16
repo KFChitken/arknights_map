@@ -205,3 +205,14 @@
 .sq-pick .song { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #eceef1; font-size: 13.5px; }
 .sq-pick .song span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sq-pick .song small { margin-left: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* calling others in: whom you invited, 宣言招人, the list of 触须之交 to invite */
+.sq-invited { margin: 2px 0 0; }
+.sq-call { display: flex; justify-content: center; }
+.sq-call .hint { margin: 0; }
+.sq-call button { display: inline-flex; align-items: center; gap: 5px; }
+.sq-inv .friends { flex: 1; min-height: 120px; overflow-y: auto; }
+.sq-friend { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid #eceef1; }
+.sq-friend .nm { display: flex; flex-direction: column; min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.sq-friend .nm small { overflow: hidden; color: var(--muted); font-size: 11.5px; font-weight: 400; text-overflow: ellipsis; }
+.sq-friend.other .nm small { color: #8a5a00; }

@@ -34,6 +34,7 @@ import { BadgePill, TheirBadges } from "./Badges";
 import OperatorNames from "./OperatorNames";
 import Sheet from "./Sheet";
 import { callLine } from "./listening";
+import { squadCallLine } from "./squad/squading";
 import { WornPassLine, WornPassMini } from "./WornPass";
 import RoachIcon from "../RoachIcon";
 
@@ -125,6 +126,12 @@ export type InboxFriendly = {
   listenAnswer: (itemId: string) => Promise<void>;
   /** 想一起听 by a 触须之交 listening (their Friend id), in 触须之交's list; absent while 听歌 is not shown */
   listenAsk?: (friendId: string) => Promise<void>;
+  /** 一起卫戍 at an invitation (its item id), 下次吧, and to the room you are in (src/components/app/squad/SquadSheet.tsx) */
+  squadJoin: (itemId: string) => Promise<void>;
+  squadLater: (itemId: string) => Promise<void>;
+  squadShow: () => void;
+  /** 进房间 at a 宣言招人 you got (its item id) */
+  squadCall: (itemId: string) => Promise<void>;
 };
 
 /**
@@ -422,6 +429,50 @@ export default function InboxSheet({
         </div>
       );
     }
+    // an invitation to 一起卫戍: go in or 下次吧 while it is good and its room open (whoever sent it sees 下次吧 as 没来)
+    if (item.kind === "squadInvite") {
+      const who = item.from.displayName;
+      const busy = acting === item.id;
+      return (
+        <div key={item.id} className={cls}>
+          <div>{fmt(T.inbox.squad.invite, { who })}</div>
+          <p className="hint">
+            {item.state === "in"
+              ? T.inbox.squad.in
+              : item.state === "over"
+                ? T.inbox.squad.over
+                : item.call.state !== "open"
+                  ? squadCallLine(item.call)
+                  : item.state === "later"
+                    ? T.inbox.squad.later
+                    : fmt(T.inbox.squad.open, { line: squadCallLine(item.call) })}
+          </p>
+          {meta(item, `friend:${item.friendId}`, who)}
+          <div className="row-actions">
+            {(item.state === "open" || item.state === "later") && item.call.state === "open" && (
+              <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.squadJoin(item.id))}>
+                {T.squad.call.go}
+              </button>
+            )}
+            {item.state === "open" && (
+              <button className="pill" disabled={busy} onClick={() => act(item.id, () => friendly.squadLater(item.id))}>
+                {T.squad.call.later}
+              </button>
+            )}
+            {item.state === "in" && (
+              <button className="pill dark" onClick={() => friendly.squadShow()}>
+                {T.squad.call.back}
+              </button>
+            )}
+            {friendIds.has(item.friendId) && (
+              <button className="pill" onClick={() => onOpenFriend(item.friendId)}>
+                {T.common.seeThem}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
     // 想一起听: TA asks you to invite TA; 一起听 opens a room (or takes the one you host) with TA invited, the day it came
     if (item.kind === "listenAsk") {
       const who = item.from.displayName;
@@ -703,6 +754,8 @@ export default function InboxSheet({
         {item.from && !item.reaction && <p className="hint">{T.inbox.seesYou}</p>}
         {/* a 宣言一起听: how its room is now, and the way in while it is open */}
         {item.listen && <p className="hint">{callLine(item.listen)}</p>}
+        {/* a 宣言招人 of 一起卫戍: its room as it is now, and the way in while it is open */}
+        {item.squad && <p className="hint">{squadCallLine(item.squad)}</p>}
         <div className="row-actions">
           {item.listen?.state === "open" && (
             <button className="pill dark" disabled={acting === item.id} onClick={() => act(item.id, () => friendly.listenCall(item.id))}>
@@ -712,6 +765,16 @@ export default function InboxSheet({
           {item.listen?.state === "in" && (
             <button className="pill dark" onClick={() => friendly.listenShow()}>
               {T.inbox.listen.go}
+            </button>
+          )}
+          {item.squad?.state === "open" && (
+            <button className="pill dark" disabled={acting === item.id} onClick={() => act(item.id, () => friendly.squadCall(item.id))}>
+              {T.squad.call.join}
+            </button>
+          )}
+          {item.squad?.state === "in" && (
+            <button className="pill dark" onClick={() => friendly.squadShow()}>
+              {T.squad.call.back}
             </button>
           )}
           {replyButtons(item, T.inbox.touchThem)}

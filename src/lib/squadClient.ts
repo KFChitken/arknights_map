@@ -1,7 +1,8 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { SquadCard, SquadList, SquadRoom, SquadSongChange } from "./squad";
+import type { PassesDot } from "./passes";
+import type { SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadRoom, SquadSongChange } from "./squad";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -76,4 +77,14 @@ export const squadApi = {
   /** The host takes a song asked for into the songs, or drops it */
   take: (id: number) => call<Room>("take", post({ id })),
   drop: (id: number) => call<Room>("drop", post({ id })),
+  /** In at an invitation to you (its id) or a 宣言招人 you got (its declaration's id) */
+  joinBy: (by: { invite: string } | { declaration: string }) => call<{ room: SquadRoom; now: number }>("join", post(by)),
+  /** Your 触须之交 to invite to your room */
+  friends: () => call<{ friends: SquadFriend[]; now: number }>("friends", post({})),
+  /** Invitations to them (their Friend ids): what each came to */
+  invite: (friends: string[]) => call<{ room: SquadRoom | null; sent: SquadInviteSent[]; now: number }>("invite", post({ friends })),
+  /** 下次吧, to an invitation to you */
+  later: (invite: string) => call<{ now: number }>("later", post({ invite })),
+  /** 宣言招人 from these roaches (null: your main one): what it reached */
+  declare: (from: string[] | null) => call<{ reach: string; room: SquadRoom | null; now: number } & PassesDot>("declare", post(from ? { from } : {})),
 };

@@ -10,8 +10,11 @@ import {
   answerRequest,
   changeKey,
   changeSquadSongs,
+  declareSquad,
+  inviteToSquad,
   joinRoom,
   kickMember,
+  laterSquadInvite,
   leaveRoom,
   myRoom,
   openRoom,
@@ -21,6 +24,7 @@ import {
   setInGame,
   setPrefs,
   setState,
+  squadFriends,
   squadList,
   touchMember,
 } from "@/lib/server/squad";
@@ -33,7 +37,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST room                     the room you are in, as you see it (null: none)
  *   POST card {card}              your 卫戍名片
  *   POST open {key, server, level, tags?, friendsOnly?}   a new room of yours
- *   POST join {room}              in at a room from the list
+ *   POST join {room} / {invite} / {declaration}   in at a room from the list, at an invitation to you, or at a
+ *                                 宣言招人 you see in 消息 (the host's invitation opens one only for 触须之交)
  *   POST leave                    out of your room (the host's ends)
  *   POST state {to}               the host: wait (等人), go (开打) or end (结束)
  *   POST key {key}                the host changes the 同盟密钥
@@ -46,6 +51,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *                                 songs (as 一起听's; stop: nothing plays until started again)
  *   POST request {song}           点歌: ask the host for a song
  *   POST take {id} / drop {id}    the host takes a song asked for into the songs, or drops it (nobody told)
+ *   POST friends                  your 触须之交 to invite to your room
+ *   POST invite {friends}         invitations to them (their Friend ids): what each came to
+ *   POST later {invite}           下次吧, to an invitation to you (whoever sent it sees 没来)
+ *   POST declare {from?}          宣言招人: the host calls those nearby, once a room, from the roaches given
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
  * While SQUAD keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -71,11 +80,15 @@ const OPS = {
   request: { method: "POST", perMinute: 10 },
   take: { method: "POST", perMinute: 30 },
   drop: { method: "POST", perMinute: 30 },
+  friends: { method: "POST", perMinute: 20 },
+  invite: { method: "POST", perMinute: 10 },
+  later: { method: "POST", perMinute: 20 },
+  declare: { method: "POST", perMinute: 4 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "touch", "say", "music", "request", "take"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "touch", "say", "music", "request", "take", "invite", "declare"]);
 
 type Ctx = { params: Promise<{ op: string }> };
 
@@ -150,6 +163,14 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await answerRequest(user, body, true));
     case "drop":
       return answer(await answerRequest(user, body, false));
+    case "friends":
+      return answer(await squadFriends(user));
+    case "invite":
+      return answer(await inviteToSquad(user, body));
+    case "later":
+      return answer(await laterSquadInvite(user, body));
+    case "declare":
+      return answer(await declareSquad(user, body));
     default:
       throw new HttpError(404, T.server.routes.squad.notHere);
   }

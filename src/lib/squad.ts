@@ -1,6 +1,7 @@
 import season from "@/data/squad-season.json";
 import { SERVERS } from "./games";
 import type { QueueChange, RoomSchedule } from "./listen";
+import type { PublicProfile } from "./profile";
 
 /**
  * 一起卫戍: rooms where players of 卫戍协议 find each other for its 联合模拟 (four at most, the host one of them), switched
@@ -249,6 +250,10 @@ export type SquadRoom = {
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
   /** The host: when 等人 may start the wait over again (ms) */
   rewaitAt: number;
+  /** Its 宣言招人 was sent (once a room) */
+  declared: boolean;
+  /** Your own invitations to it, to those not in it: still good (waiting), or not come (missed: ran out or 下次吧, never told apart) */
+  invited: SquadInvited[];
   /**
    * The host's songs (src/lib/listen.ts RoomSchedule), whether this player may hear them (听歌 open to them and not
    * paused in the 管理台, the site not gray: dj), the songs asked for (the host's: all, oldest first, with who asked;
@@ -290,7 +295,30 @@ export type SquadDesk = {
   says: number;
   /** Songs its hosts started */
   plays: number;
+  /** Invitations sent, and players who went in at a 宣言招人 */
+  invites: number;
+  called: number;
 };
+
+// ---- calling others in ----
+
+/**
+ * A room as a 宣言招人 to it (or an invitation) is now, to one who got it: open to go in at, full, playing (开打),
+ * they are in it, closed to them (asked to leave it, someone they blocked or who blocked them in it), or over; with
+ * its server and 难度, and how many are in it
+ */
+export type SquadCall = { state: "open" | "full" | "playing" | "in" | "shut" | "over"; n: number; server: string; level: number };
+
+/**
+ * One of your 触须之交 to invite: their key (friendKey), card, the server of their 明日方舟 UID ("" when not given),
+ * how many more times you may invite them today, whether they are in your room already, and whether an invitation of
+ * yours to it is still good
+ */
+export type SquadFriend = { id: string; card: PublicProfile; server: string; left: number; inRoom: boolean; waiting: boolean };
+/** One you invited to the room you are in, as you see TA there */
+export type SquadInvited = { card: PublicProfile; state: "waiting" | "missed" };
+/** What each invitation came to: sent (or there already), or why not */
+export type SquadInviteSent = { id: string; ok: boolean; why?: string };
 
 // ---- refusals the page acts on (HttpError codes) ----
 

@@ -152,7 +152,8 @@ import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
 import { listenMe, listenOpen } from "./listen";
 import { friendsListening, listenCalls, listenInbox, seeListenInvites } from "./listenRooms";
-import { squadMe } from "./squad";
+import { seeSquadInvites, squadCalls, squadInbox, squadMe } from "./squad";
+import { squadOpen, squadShown } from "./squadOpen";
 import { studyMe } from "./study";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
@@ -1192,10 +1193,19 @@ async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<
     userId,
     ds.flatMap((x) => (x.d.template === "listen" && x.d.roomId ? [x.d.roomId] : [])),
   );
+  // and 一起卫戍's 宣言招人 alike
+  const squadCalled = await squadCalls(
+    userId,
+    ds.flatMap((x) => (x.d.template === "squad" && x.d.squadRoomId ? [x.d.squadRoomId] : [])),
+  );
   return ds.map(({ d, seen, toFriend }) => {
     const id = `d:${d.id}`;
     const stored = storedDeclaration(d);
     const call = d.template === "listen" ? ((d.roomId && calls.get(d.roomId)) || { state: "over" as const, n: 0, max: 0 }) : null;
+    const squad =
+      stored.template === "squad"
+        ? (d.squadRoomId && squadCalled.get(d.squadRoomId)) || { state: "over" as const, n: 0, server: stored.server, level: stored.level }
+        : null;
     return {
       kind: "declaration",
       id,
@@ -1208,6 +1218,7 @@ async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<
       ...asFriend.sender(d.senderId, toFriend),
       ...(!done.has(id) && waits.has(d.senderId) ? { waits: waits.get(d.senderId)! } : {}),
       ...(call ? { listen: call } : {}),
+      ...(squad ? { squad } : {}),
     };
   });
 }
@@ -1366,8 +1377,9 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
     });
   }
   if (self) items.push(...(await friendlyInbox(self, blocked)));
-  // invitations to 一起听, while this player may listen
+  // invitations to 一起听, while this player may listen; to 一起卫戍, while it is open to them
   if (self && listenOpen(self)) items.push(...(await listenInbox(userId, blocked)));
+  if (self && squadOpen(self)) items.push(...(await squadInbox(userId, blocked)));
   for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
   items.push(...(await staffItems(userId, since)));
   return items.sort((x, y) => y.at - x.at);
@@ -1417,6 +1429,11 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
     // the room it called to is gone a day after it ended (null), the song's name stays as it was
     case "listen":
       return { template: "listen", song: d.song ?? "", room: d.roomId };
+    // the room it called to is gone a day after it ended (null), what it said of it stays as it was
+    case "squad": {
+      const [server = "", level = "0", need = "1"] = (d.squadCall ?? "").split(":");
+      return { template: "squad", server, level: Number(level) || 0, need: Number(need) || 1, room: d.squadRoomId };
+    }
     default: {
       // Every sentence needs its case above, or it reads as 「明日方舟，启动！」 to all (as 缘缘庄's two did):
       // tsc fails here when one has none
@@ -1454,6 +1471,7 @@ export async function markSeen(userId: string, itemIds: string[]) {
   for (const id of GUIDE_IDS) await GUIDE_WORLD[id].see(userId, itemIds);
   await seeFriendly(userId, itemIds);
   await seeListenInvites(userId, itemIds);
+  await seeSquadInvites(userId, itemIds);
   await seeStaff(userId, itemIds);
   const p = ids("p:");
   if (p.length) {
@@ -1492,13 +1510,14 @@ export async function declare(
   from?: string[],
   study = false,
   listen = false,
+  squad = false,
 ): Promise<{ reach: string } & PassesDot> {
   const u = await userById(userId);
   if (!u) throw new WorldError(T.server.common.signIn);
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
   const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
-  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study, listen);
+  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study, listen, squad);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   if (!mine.some((r) => r.slot === 0)) throw new WorldError(T.server.world.mainBeforeDeclaring);
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;
@@ -1531,11 +1550,11 @@ export async function declare(
   // nudged, for clones alone
   const rows = (
     await db
-      .selectDistinct({ id: roaches.userId, email: users.email })
+      .selectDistinct({ id: roaches.userId, email: users.email, games: users.games })
       .from(roaches)
       .innerJoin(users, eq(users.id, roaches.userId))
       .where(and(ne(roaches.userId, userId), or(...near), or(eq(roaches.slot, 0), eq(users.onlyMains, false))))
-  ).filter((r) => !blocked.has(r.id) && (d.template !== "listen" || listenOpen(r)));
+  ).filter((r) => !blocked.has(r.id) && (d.template !== "listen" || listenOpen(r)) && (d.template !== "squad" || squadShown(r)));
   // 「祝我生日快乐」 also reaches every 触须之交 however far, as theirs (once in FRIEND_BIRTHDAY_DAYS); one each
   const friendsToo = new Set(d.template === "birthday" ? await birthdayFriends(userId, blocked) : []);
   const nearby = new Set(rows.map((r) => r.id));
@@ -1554,6 +1573,8 @@ export async function declare(
         line: d.template === "event" ? d.line : null,
         roomId: d.template === "listen" ? d.room : null,
         song: d.template === "listen" ? d.song : null,
+        squadRoomId: d.template === "squad" ? d.room : null,
+        squadCall: d.template === "squad" ? `${d.server}:${d.level}:${d.need}` : null,
         recipients: everyone.length,
       })
       .returning({ id: declarations.id, createdAt: declarations.createdAt });

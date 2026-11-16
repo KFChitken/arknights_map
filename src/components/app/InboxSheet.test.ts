@@ -6,6 +6,7 @@ import { repliesFor, replyOf, type Declaration } from "@/lib/declarations";
 import type { InboxTab } from "@/lib/inboxTabs";
 import { GIFTS_IN_PER_DAY, type GiftState } from "@/lib/passes";
 import type { PublicProfile } from "@/lib/profile";
+import type { SquadCall } from "@/lib/squad";
 import type { Friend, InboxItem } from "@/lib/world/types";
 import InboxSheet, { type InboxFriendly } from "./InboxSheet";
 
@@ -41,6 +42,10 @@ const sheet = (items: InboxItem[], friends: Friend[] = [], tab: InboxTab = "decl
         listenShow: () => {},
         listenCall: nothing,
         listenAnswer: nothing,
+        squadJoin: nothing,
+        squadLater: nothing,
+        squadShow: () => {},
+        squadCall: nothing,
         ...more,
       },
       onClose: () => {},
@@ -202,6 +207,66 @@ describe("an invitation to 一起听 in 消息", () => {
     const over = sheet([invited("over")], [], "friends");
     expect(read(over).text).toContain(T.inbox.listen.over);
     for (const w of [T.listen.join, T.listen.later, T.inbox.listen.go]) expect(words(over)).not.toContain(w);
+  });
+});
+
+const squadInvited = (state: "open" | "later" | "in" | "over", room: SquadCall["state"] = "open"): InboxItem => ({
+  kind: "squadInvite",
+  id: "qi:1",
+  at: Date.now() - 60_000,
+  seen: false,
+  from: DR_A,
+  friendId: "f:a",
+  call: { state: room, n: room === "open" ? 2 : room === "full" ? 4 : 0, server: "bili", level: 4 },
+  state,
+  until: Date.now() + 29 * 60_000,
+  replied: true,
+});
+
+describe("an invitation to 一起卫戍 in 消息", () => {
+  it("names the room's 难度 and server, and offers 进去 and 下次吧 while it is good; after 下次吧 still 进去", () => {
+    const open = sheet([squadInvited("open")], [drA()], "friends");
+    expect(read(open).text).toContain(fmt(T.inbox.squad.invite, { who: "Dr. A" }));
+    expect(read(open).text).toContain(fmt(T.squad.call.line.open, { level: T.squad.levels[3], server: "B服", n: 2, max: 4 }));
+    expect(words(open)).toEqual(expect.arrayContaining([T.squad.call.go, T.squad.call.later, T.common.seeThem]));
+    const later = sheet([squadInvited("later")], [drA()], "friends");
+    expect(read(later).text).toContain(T.inbox.squad.later);
+    expect(words(later)).toContain(T.squad.call.go);
+    expect(words(later)).not.toContain(T.squad.call.later);
+  });
+
+  it("says a full room is full and one playing is playing, with no 进去; in it, 回房间; over, nothing", () => {
+    const full = sheet([squadInvited("open", "full")], [], "friends");
+    expect(read(full).text).toContain(fmt(T.squad.call.line.full, { level: T.squad.levels[3], server: "B服" }));
+    expect(words(full)).not.toContain(T.squad.call.go);
+    const playing = sheet([squadInvited("open", "playing")], [], "friends");
+    expect(read(playing).text).toContain(fmt(T.squad.call.line.playing, { level: T.squad.levels[3], server: "B服" }));
+    expect(words(playing)).not.toContain(T.squad.call.go);
+    const inIt = sheet([squadInvited("in", "in")], [], "friends");
+    expect(read(inIt).text).toContain(T.inbox.squad.in);
+    expect(words(inIt)).toContain(T.squad.call.back);
+    for (const w of [T.squad.call.go, T.squad.call.later]) expect(words(inIt)).not.toContain(w);
+    const over = sheet([squadInvited("over", "over")], [], "friends");
+    expect(read(over).text).toContain(T.inbox.squad.over);
+    for (const w of [T.squad.call.go, T.squad.call.later, T.squad.call.back]) expect(words(over)).not.toContain(w);
+  });
+});
+
+describe("a 宣言招人 in 消息", () => {
+  const call = (state: SquadCall["state"]): InboxItem => ({
+    ...(declared({ template: "squad", server: "cn", level: 3, need: 2, room: null }) as Extract<InboxItem, { kind: "declaration" }>),
+    squad: { state, n: state === "open" ? 2 : 0, server: "cn", level: 3 },
+  });
+  it("shows its room as it is now, with 进房间 while open and 回房间 once you are in it", () => {
+    const open = sheet([call("open")]);
+    expect(read(open).text).toContain(fmt(T.squad.call.line.open, { level: T.squad.levels[2], server: "官服", n: 2, max: 4 }));
+    expect(words(open)).toContain(T.squad.call.join);
+    const inIt = sheet([call("in")]);
+    expect(words(inIt)).toContain(T.squad.call.back);
+    expect(words(inIt)).not.toContain(T.squad.call.join);
+    const over = sheet([call("over")]);
+    expect(read(over).text).toContain(T.squad.call.line.over);
+    for (const w of [T.squad.call.join, T.squad.call.back]) expect(words(over)).not.toContain(w);
   });
 });
 

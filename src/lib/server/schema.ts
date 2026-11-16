@@ -502,6 +502,12 @@ export const declarations = pgTable(
      */
     roomId: uuid("room_id").references((): AnyPgColumn => listenRooms.id, { onDelete: "set null" }),
     song: text("song"),
+    /**
+     * 一起卫戍's (template squad, src/lib/server/squad.ts declareSquad): the room it calls to, null once that is gone,
+     * and what it said of it then, as "<server>:<level>:<seats missing>"
+     */
+    squadRoomId: uuid("squad_room_id").references((): AnyPgColumn => squadRooms.id, { onDelete: "set null" }),
+    squadCall: text("squad_call"),
     recipients: integer("recipients").notNull(),
     createdAt: createdAt(),
   },
@@ -510,6 +516,7 @@ export const declarations = pgTable(
     index("declarations_created_idx").on(t.createdAt),
     // a room deleted sets them null: only the few that have one
     index("declarations_room_idx").on(t.roomId).where(sql`${t.roomId} is not null`),
+    index("declarations_squad_room_idx").on(t.squadRoomId).where(sql`${t.squadRoomId} is not null`),
   ],
 );
 
@@ -1804,6 +1811,8 @@ export const squadRooms = pgTable(
     stateAt: at("state_at"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
+    /** 宣言招人 sent for it (once a room) */
+    declaredAt: at("declared_at"),
     /** The host's songs, as 一起听's rooms keep theirs (src/lib/listen.ts RoomSchedule): none until they play one */
     queue: text("queue").array().notNull().default(emptyArray),
     idx: smallint("idx").notNull().default(0),
@@ -1845,6 +1854,36 @@ export const squadMembers = pgTable(
     primaryKey({ columns: [t.roomId, t.userId] }),
     uniqueIndex("squad_members_one_room").on(t.userId).where(sql`${t.leftAt} is null`),
     index("squad_members_user_idx").on(t.userId, t.joinedAt),
+  ],
+);
+
+/**
+ * Invitations to a room of 一起卫戍, from someone in it to a 触须之交 of theirs, good for INVITE_MS: in 消息 →
+ * 触须之交 (seen_at), and answered joined (went in) or later (下次吧, which the inviter sees as not come). Gone with
+ * the room.
+ */
+export const squadInvites = pgTable(
+  "squad_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => squadRooms.id, { onDelete: "cascade" }),
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: at("created_at").notNull().defaultNow(),
+    seenAt: at("seen_at"),
+    answer: text("answer"),
+    answeredAt: at("answered_at"),
+  },
+  (t) => [
+    index("squad_invites_to_idx").on(t.toUserId, t.createdAt),
+    index("squad_invites_pair_idx").on(t.fromUserId, t.toUserId, t.createdAt),
+    index("squad_invites_room_idx").on(t.roomId),
   ],
 );
 

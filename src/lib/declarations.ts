@@ -57,7 +57,8 @@ export type Declaration =
   | { template: "simine" }
   | { template: "kuye" }
   | { template: "studied" }
-  | { template: "listen"; song: string; room: string | null };
+  | { template: "listen"; song: string; room: string | null }
+  | { template: "squad"; server: string; level: number; need: number; room: string | null };
 
 export type Template = Declaration["template"];
 
@@ -84,6 +85,8 @@ export const isStudyTemplate = (t: unknown): t is StudyTemplate => (STUDY_TEMPLA
 
 /** 一起听's (我在听《…》，来一起听吗？), which its panel alone sends, once a room; the sheet never lists it */
 export const LISTEN_TEMPLATE = "listen";
+/** 一起卫戍's (卫戍协议，启动！还差 N 个，来吗？), which a room's host alone sends, once a room; the sheet never lists it */
+export const SQUAD_TEMPLATE = "squad";
 
 export function declarationText(d: Declaration): string {
   switch (d.template) {
@@ -135,6 +138,8 @@ export function declarationText(d: Declaration): string {
       return T.declare.line.studied;
     case "listen":
       return fmt(T.lib.declarations.text.listen, { song: d.song });
+    case "squad":
+      return fmt(T.lib.declarations.text.squad, { n: d.need });
   }
 }
 

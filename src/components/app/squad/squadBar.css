@@ -21,3 +21,33 @@
   outline: 2px solid #ffd23f;
   outline-offset: 2px;
 }
+
+/* an invitation that came, or one tapped in 消息 while in another room (SquadPop): a card above the bar's place */
+.sq-popcard {
+  position: fixed;
+  z-index: 31;
+  left: 10px;
+  right: 10px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 12px 13px;
+  border-radius: 14px;
+  background: #fff;
+  color: #1b1d22;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.33);
+  line-height: 1.4;
+  animation: sq-popcard-up 0.25s ease-out;
+}
+.sq-popcard .h { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 800; }
+.sq-popcard .h svg { flex: none; color: #b7791f; }
+.sq-popcard small { display: block; margin: 4px 0 10px; color: #6b7280; font-size: 13px; }
+.sq-popcard .b { display: flex; gap: 8px; }
+.sq-popcard .b button { flex: 1; padding: 9px 0; border: 0; border-radius: 10px; font: inherit; font-size: 14.5px; font-weight: 800; cursor: pointer; }
+.sq-popcard .acc { background: #ffd23f; color: #1b1d22; }
+.sq-popcard .dec { background: #f1f2f4; color: #4b5260; }
+@keyframes sq-popcard-up {
+  from { transform: translateY(12px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq-popcard { animation: none; }
+}

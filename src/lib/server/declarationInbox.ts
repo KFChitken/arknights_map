@@ -6,6 +6,7 @@ import { INK_DECLARATIONS } from "../si";
 import { INN_CENTER } from "../siInn";
 import { db } from "./db";
 import { listenOpen } from "./listen";
+import { squadShown } from "./squadOpen";
 import { declarations, declarationSpots, deliveries, users } from "./schema";
 
 /**
@@ -21,7 +22,8 @@ import { declarations, declarationSpots, deliveries, users } from "./schema";
  *   c. a 「祝我生日快乐」 sent to them as a 触须之交 (a delivery row with to_friend), within INBOX_DAYS;
  *   and, the week after declarations started keeping their spots, any delivered to them the old way.
  * Never their own, nor any between players who blocked one another, nor 一起听's (template listen) to one who may
- * not listen now (LISTEN, src/lib/server/listen.ts listenOpen). Read: a delivery row's seen_at, else whether it is
+ * not listen now (LISTEN, src/lib/server/listen.ts listenOpen), nor 一起卫戍's (template squad) to one it does not
+ * show to (src/lib/server/squadOpen.ts squadShown). Read: a delivery row's seen_at, else whether it is
  * no newer than users.declarations_seen_at, so old ones a move brings in come read.
  *
  * Finding a: the spots are kept by square of the map (0.1° each way) and time, so only the squares within
@@ -96,6 +98,8 @@ type Row = {
   line: string | null;
   room_id: string | null;
   song: string | null;
+  squad_room_id: string | null;
+  squad_call: string | null;
   recipients: number;
   created_at: string | Date;
   seen: boolean;
@@ -116,6 +120,8 @@ const seenOf = (r: Row): SeenDeclaration => ({
     line: r.line,
     roomId: r.room_id,
     song: r.song,
+    squadRoomId: r.squad_room_id,
+    squadCall: r.squad_call,
     recipients: Number(r.recipients),
     createdAt: new Date(r.created_at),
   },
@@ -180,11 +186,12 @@ export async function visibleDeclarations(
   // the player's roaches (their main roach alone with 只看本体 on), and when spots began (or, once a week has gone by,
   // about a week ago): anything sent before has none; and whether their ink roach is on the map (src/lib/server/si.ts
   // inkOnMap), which finds none with 只看本体 on either
-  const [start] = await db.execute<{ places: [number, number][] | string; first: string | null; ink: boolean; email: string | null }>(sql`
+  const [start] = await db.execute<{ places: [number, number][] | string; first: string | null; ink: boolean; email: string | null; games: string[] | null }>(sql`
     with me as (select coalesce((select only_mains from users where id = ${userId}), false) as only_mains)
     select coalesce(json_agg(json_build_array(r.lng, r.lat)), '[]'::json) as places,
       (select min(created_at) from declaration_spots) as first,
       (select email from users where id = ${userId}) as email,
+      (select games from users where id = ${userId}) as games,
       not (select only_mains from me)
         and exists (select 1 from si_inks i where i.user_id = ${userId} and i.ticket is not null and i.recalled_at is null) as ink
     from roaches r where r.user_id = ${userId} and (r.slot = 0 or not (select only_mains from me))`);
@@ -192,6 +199,8 @@ export async function visibleDeclarations(
   const spotsFrom = start.first ? new Date(start.first).getTime() : Infinity;
   // 一起听's call: to everyone, to the 站长 and the admins, or to nobody, as LISTEN says
   const hearsListen = listenOpen({ id: userId, email: start.email });
+  // 一起卫戍's 宣言招人: to those its way in shows to (SQUAD, and 明日方舟 or no game yet)
+  const hearsSquad = squadShown({ id: userId, email: start.email, games: start.games ?? [] });
   const ids = opts.ids ? uuidArray(opts.ids) : null;
   // a. near one of the player's roaches
   const near = nearAny(places);
@@ -268,7 +277,7 @@ export async function visibleDeclarations(
           union all select id, false from delivered
         ) x group by id
       )
-      select d.id, d.sender_id, d.template, d.game, d.character, d.title, d.food, d.name, d.held_name, d.line, d.room_id, d.song,
+      select d.id, d.sender_id, d.template, d.game, d.character, d.title, d.food, d.name, d.held_name, d.line, d.room_id, d.song, d.squad_room_id, d.squad_call,
         d.recipients, d.created_at,
         case when dv.declaration_id is not null then dv.seen_at is not null
           else coalesce(d.created_at <= u.declarations_seen_at, false) end as seen,
@@ -284,6 +293,7 @@ export async function visibleDeclarations(
         ${ids ? sql`and d.id = any(${ids}::uuid[])` : sql``}
         and (not c.near or d.created_at > ${localSince}::timestamptz)
         ${hearsListen ? sql`` : sql`and d.template <> 'listen'`}
+        ${hearsSquad ? sql`` : sql`and d.template <> 'squad'`}
       order by d.created_at desc, d.id
       limit ${ids || !ink ? limit : limit + INK_DECLARATIONS}::int`);
   };

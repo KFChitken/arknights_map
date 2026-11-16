@@ -1,6 +1,19 @@
 import { useSyncExternalStore } from "react";
 import { fmt, T } from "@/i18n";
-import { SAY_MERGE_MS, SAY_SHOW_MS, type SquadCard, type SquadEnd, type SquadMe, type SquadRoom, type SquadSongChange, type SquadTell } from "@/lib/squad";
+import { serverName } from "@/lib/games";
+import {
+  SAY_MERGE_MS,
+  SAY_SHOW_MS,
+  SQUAD_MAX,
+  type SquadCall,
+  type SquadCard,
+  type SquadEnd,
+  type SquadInviteSent,
+  type SquadMe,
+  type SquadRoom,
+  type SquadSongChange,
+  type SquadTell,
+} from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
 import type { TouchResult } from "@/lib/world/types";
 import { loadSquadTracks, squadSongs, squadTrackName, unfollowSquad } from "./squadMusic";
@@ -239,6 +252,46 @@ export const squadSongsChange = (change: SquadSongChange) => after(squadApi.musi
 export const requestSquadSong = (song: string) => after(squadApi.request(song));
 export const takeSquadRequest = (id: number) => after(squadApi.take(id));
 export const dropSquadRequest = (id: number) => after(squadApi.drop(id));
+
+// ---- calling others in ----
+
+/** How the room of an invitation or a 宣言招人 is now, in a line (消息, the card over the map) */
+export function squadCallLine(call: SquadCall): string {
+  const level = T.squad.levels[call.level - 1] ?? "";
+  const server = serverName("arknights", call.server) ?? call.server;
+  if (call.state === "open") return fmt(T.squad.call.line.open, { level, server, n: call.n, max: SQUAD_MAX });
+  if (call.state === "full" || call.state === "playing") return fmt(T.squad.call.line[call.state], { level, server });
+  return T.squad.call.line[call.state];
+}
+
+/** In at an invitation to you (its id, without 消息's qi:) or a 宣言招人 you got (its declaration's id, without d:) */
+export async function joinSquadBy(by: { invite: string } | { declaration: string }) {
+  const { room: r } = await squadApi.joinBy(by);
+  setRoom(r);
+  return r;
+}
+/** Your 触须之交 to invite to the room you are in */
+export const loadSquadFriends = async () => (await squadApi.friends()).friends;
+/** Invitations to these 触须之交 (their Friend ids): what each came to; your list of whom you invited, read again */
+export async function inviteToSquad(friends: string[]) {
+  const res = await squadApi.invite(friends);
+  if (res.room) setRoom(res.room);
+  return res.sent;
+}
+/** What invitations came to, said once: all sent, or how many were not and the first one's why */
+export function sentWords(sent: SquadInviteSent[]) {
+  const bad = sent.filter((x) => !x.ok);
+  if (!bad.length) return T.squad.call.sent;
+  return fmt(T.squad.call.sentSome, { n: bad.length, why: bad[0].why ?? T.map.common.tryAgain });
+}
+/** 下次吧: whoever sent it sees 没来, as when it runs out */
+export const laterSquadInvite = (invite: string) => squadApi.later(invite);
+/** 宣言招人 from these roaches (null: your main one): what it reached */
+export async function declareSquadRoom(from: string[] | null) {
+  const res = await squadApi.declare(from);
+  if (res.room) setRoom(res.room);
+  return res;
+}
 
 /** Signed out: nothing kept */
 export function forgetSquadPage() {

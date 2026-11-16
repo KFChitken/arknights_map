@@ -1,5 +1,5 @@
 import { fmt, T } from "@/i18n";
-import { FOODS, isDrunkTemplate, isStayTemplate, isStudyTemplate, LISTEN_TEMPLATE, SPOUSES, stayNeeded, type Declaration } from "../declarations";
+import { FOODS, isDrunkTemplate, isStayTemplate, isStudyTemplate, LISTEN_TEMPLATE, SPOUSES, SQUAD_TEMPLATE, stayNeeded, type Declaration } from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
@@ -108,6 +108,7 @@ export function checkDeclaration(
   stayed = false,
   study = false,
   listen = false,
+  squad = false,
 ): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
@@ -119,6 +120,7 @@ export function checkDeclaration(
   if (isStayTemplate(d?.template) && !stayed) throw new WorldError(stayNeeded());
   if (isStudyTemplate(d?.template) && !study) throw new WorldError(T.checks.studyOnly);
   if (d?.template === LISTEN_TEMPLATE && !listen) throw new WorldError(T.checks.listenOnly);
+  if (d?.template === SQUAD_TEMPLATE && !squad) throw new WorldError(T.checks.squadOnly);
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -161,6 +163,11 @@ export function checkDeclaration(
     }
     case "listen":
       if (typeof d.song === "string" && d.song && typeof d.room === "string") return { template: "listen", song: d.song, room: d.room };
+      break;
+    case "squad":
+      if (typeof d.server === "string" && Number.isInteger(d.level) && Number.isInteger(d.need) && typeof d.room === "string") {
+        return { template: "squad", server: d.server, level: d.level, need: d.need, room: d.room };
+      }
       break;
     case "event": {
       const found = findLine(String(d.line ?? ""));

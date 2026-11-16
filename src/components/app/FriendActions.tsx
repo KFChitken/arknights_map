@@ -6,7 +6,7 @@ import { FRIEND_ACTS_PER_DAY, GESTURE_DONE, GESTURE_NAMES, isAwakeGesture, type 
 import { INVITES_PER_DAY, type FriendListening } from "@/lib/listen";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { FriendBetween } from "@/lib/world/types";
-import { NoteIcon } from "./chrome/parts";
+import { NoteIcon, ShieldIcon } from "./chrome/parts";
 
 /** One button of the row: 做客, 催理智, 戳一戳, or one of the gestures */
 export type FriendAct = "visit" | "sanity" | "poke" | Gesture;
@@ -96,7 +96,8 @@ const NAMES: Record<FriendAct, string> = {
  * once those are used; 催理智 once a day, 盖被子 and 放杯白开水 once a sleep. Under it, while TA
  * may be given 寻访券 (between.gift): 送 1 张寻访券, none of the day's FRIEND_ACTS_PER_DAY, once a day. While you may
  * both listen (between.listen): 邀请一起听, none of them either (INVITES_PER_DAY times a day); and while TA listens, as
- * TA lets you see (listening), what, with 想一起听 (once a day).
+ * TA lets you see (listening), what, with 想一起听 (once a day). While 一起卫戍 shows to you both (between.squad) and
+ * you are in a room you may invite to: 邀请 TA 一起卫戍, none of them either (INVITES_PER_DAY times a day).
  */
 export default function FriendActions({
   between,
@@ -108,6 +109,7 @@ export default function FriendActions({
   onListen,
   listening,
   onAsk,
+  onSquad,
 }: {
   between: FriendBetween;
   /** You poked them lately: when you may again */
@@ -126,6 +128,8 @@ export default function FriendActions({
   listening?: FriendListening;
   /** 想一起听: ask TA to invite you */
   onAsk?: () => void;
+  /** 邀请 TA 一起卫戍, to the room you are in; absent while you are in none you may invite to */
+  onSquad?: () => void;
 }) {
   const now = Date.now();
   const days = (t: number) => Math.max(1, Math.ceil((t - now) / 86_400_000));
@@ -207,6 +211,15 @@ export default function FriendActions({
             {listening.asked ? T.friendActs.asked : T.friendActs.ask}
           </button>
           <span>{T.friendActs.askFree}</span>
+        </div>
+      )}
+      {between.squad && onSquad && (
+        <div className="friend-gift">
+          <button type="button" className="listen-pill" disabled={busy} onClick={onSquad}>
+            <ShieldIcon size={14} />
+            {T.friendActs.squad}
+          </button>
+          <span>{fmt(T.friendActs.squadFree, { n: INVITES_PER_DAY })}</span>
         </div>
       )}
       {notes.map((n) => (

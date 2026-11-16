@@ -118,7 +118,8 @@ export default function DeclareSheet({
       case "kuye":
       case "studied":
       case "listen":
-        // 325大学习's own and 一起听's, never offered here
+      case "squad":
+        // 325大学习's own, 一起听's and 一起卫戍's, never offered here
         return { template: "launch", game };
     }
   })();

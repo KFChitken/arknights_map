@@ -100,6 +100,7 @@ import {
   siteSettings,
   songFavourites,
   squadMembers,
+  squadInvites,
   squadRequests,
   squadRooms,
   staffNotes,
@@ -232,7 +233,7 @@ async function publicAt(viewer: Player, at: LngLat) {
 let me: Player;
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}, ${declarationSpots}, ${userPasswords}, ${notices}, ${siTouches}, ${siTickets}, ${siInks}, ${admins}, ${adminBackupCodes}, ${adminLog}, ${adminNotes}, ${adminRequests}, ${offLimitsAreas}, ${siteSettings}, ${passes}, ${passWallets}, ${passGifts}, ${passCounters}, ${listenNow}, ${listenRooms}, ${listenMembers}, ${listenInvites}, ${songFavourites}, ${drinks}, ${squadRooms}, ${squadMembers}, ${squadRequests}`,
+    sql`truncate ${users}, ${sessions}, ${roaches}, ${touches}, ${declarations}, ${deliveries}, ${reactions}, ${friendships}, ${friendCuts}, ${moves}, ${blocks}, ${reports}, ${bannedEmails}, ${radarScans}, ${userBadges}, ${dailyTotals}, ${nameWords}, ${pokes}, ${amiyaTouches}, ${perlicaTouches}, ${talulahTouches}, ${mingheTouches}, ${friendNotes}, ${visits}, ${visitBans}, ${friendStars}, ${helpRequests}, ${helpAnswers}, ${clearedValues}, ${modActions}, ${staffNotes}, ${deskCodes}, ${declarationSpots}, ${userPasswords}, ${notices}, ${siTouches}, ${siTickets}, ${siInks}, ${admins}, ${adminBackupCodes}, ${adminLog}, ${adminNotes}, ${adminRequests}, ${offLimitsAreas}, ${siteSettings}, ${passes}, ${passWallets}, ${passGifts}, ${passCounters}, ${listenNow}, ${listenRooms}, ${listenMembers}, ${listenInvites}, ${songFavourites}, ${drinks}, ${squadRooms}, ${squadMembers}, ${squadRequests}, ${squadInvites}`,
   );
   // no 明河快进一天 left over, and nothing the radar read for the test before
   (globalThis as { __mingheShift?: number }).__mingheShift = 0;
@@ -2062,10 +2063,12 @@ describe("server world", () => {
       studied: { template: "studied" },
       // sent from a room of 一起听, as src/app/api/listen/[op]/declare.test.ts does
       listen: { template: "listen", song: "Song 1", room: "00000000-0000-0000-0000-000000000000" },
+      // 宣言招人, sent from a room of 一起卫戍, as src/app/api/squad/[op]/invite.test.ts does
+      squad: { template: "squad", server: "bili", level: 4, need: 2, room: "00000000-0000-0000-0000-000000000000" },
     };
     const sendable = [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES];
-    // the sheet's lists hold every sentence but the limited lines, 「…也玩…」 of before, 325大学习's two and 一起听's
-    expect([...sendable, ...STUDY_TEMPLATES, "event", "alsoplay", "listen"].sort()).toEqual(Object.keys(EVERY).sort());
+    // the sheet's lists hold every sentence but the limited lines, 「…也玩…」 of before, 325大学习's two, 一起听's and 一起卫戍's
+    expect([...sendable, ...STUDY_TEMPLATES, "event", "alsoplay", "listen", "squad"].sort()).toEqual(Object.keys(EVERY).sort());
     await me.saveProfile({
       ...EMPTY_PROFILE,
       anonymous: false,
@@ -2107,6 +2110,8 @@ describe("server world", () => {
     }
     // 一起听's only from its panel, for a room
     await expect(me.declare(EVERY.listen)).rejects.toThrow("这句只能在听歌的「一起听」里发。");
+    // 一起卫戍's only from a room of it
+    await expect(me.declare(EVERY.squad)).rejects.toThrow("这句只能在一起卫戍的房间里发。");
 
     // every food is kept and read back as itself, the three added last too, never as the first
     for (const food of FOODS) {

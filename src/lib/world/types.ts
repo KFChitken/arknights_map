@@ -9,7 +9,7 @@ import type { DrawnAvatar, LngLat, RoachAvatar, RoachColor } from "../types";
 import type { HelpAsk } from "../help";
 import type { GiftState, PassesDot, PassesMe } from "../passes";
 import type { FriendListening, ListenCall, ListenMe } from "../listen";
-import type { SquadMe } from "../squad";
+import type { SquadCall, SquadMe } from "../squad";
 import type { StudyMe } from "../study/rules";
 import type { Area, Box } from "./area";
 import type { PackedRoaches } from "./packed";
@@ -462,6 +462,8 @@ export type FriendBetween = {
   gift?: GiftState;
   /** 邀请一起听: there while you and TA may both listen (LISTEN, src/lib/server/listen.ts) */
   listen?: true;
+  /** 邀请 TA 一起卫戍: there while 一起卫戍 shows to you both (SQUAD, src/lib/server/squadOpen.ts squadShown) */
+  squad?: true;
 };
 
 /**
@@ -655,6 +657,8 @@ export type InboxItem =
       waits?: TouchBackWaits;
       /** 宣言一起听 (template listen): its room as it is now, to go in at (src/lib/server/listenRooms.ts listenCalls) */
       listen?: ListenCall;
+      /** 宣言招人 of 一起卫戍 (template squad): its room as it is now, to go in at (src/lib/server/squad.ts squadCalls) */
+      squad?: SquadCall;
     }
   /** Someone nearby reacted to your declaration; they stay anonymous, unless a 触须之交 reacting to your birthday */
   | {
@@ -709,6 +713,23 @@ export type InboxItem =
       song: string;
       state: "open" | "later" | "in" | "over";
       n: number;
+      until: number;
+      replied: true;
+    }
+  /**
+   * A 触须之交 invites you to a room of 一起卫戍 (src/lib/server/squad.ts): the room as it is now (its server, 难度, how
+   * many are in it), and the invitation: good to go in at until `until` ("open"; "later": you said 下次吧, and still
+   * may), you are in it ("in"), or over (the room ended or is closed to you, or the invitation ran out)
+   */
+  | {
+      kind: "squadInvite";
+      id: string;
+      at: number;
+      seen: boolean;
+      from: PublicProfile;
+      friendId: string;
+      call: SquadCall;
+      state: "open" | "later" | "in" | "over";
       until: number;
       replied: true;
     }

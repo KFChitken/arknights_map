@@ -1,10 +1,13 @@
 import "server-only";
 import { createHash, randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
+import { SQUAD_TEMPLATE } from "../declarations";
 import {
   changeQueue,
+  INVITE_MS,
+  INVITES_PER_DAY,
   isSeek,
   isSongId,
   LISTEN_GRAY,
@@ -54,9 +57,13 @@ import {
   STATE_EVERY_MS,
   TAGS_MAX,
   WAIT_IDLE_MS,
+  type SquadCall,
   type SquadCard,
   type SquadDesk,
   type SquadEnd,
+  type SquadFriend,
+  type SquadInvited,
+  type SquadInviteSent,
   type SquadList,
   type SquadListRoom,
   type SquadMe,
@@ -69,22 +76,23 @@ import {
   type SquadTell,
 } from "../squad";
 import { ROACH_COLORS } from "../types";
-import { WorldError, type TouchResult } from "../world/types";
+import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { blockedWith } from "./blocks";
+import { canSeeDeclaration } from "./declarationInbox";
 import { db } from "./db";
 import { lockPlayer, type Exec } from "./guides";
 import { squadMode } from "./env";
 import { HttpError } from "./http";
 import { listenOpen } from "./listen";
-import { onToldSquad, tellSquad } from "./live";
+import { nudge, onToldSquad, tellSquad } from "./live";
 import { drawnLook } from "./looks";
 import { allow } from "./rateLimit";
-import { listenNow, roaches, squadMembers, squadRequests, squadRooms, statCounts, users, type UserRow } from "./schema";
+import { listenNow, roaches, squadInvites, squadMembers, squadRequests, squadRooms, statCounts, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songList, songOf } from "./songs";
-import { squadShown } from "./squadOpen";
+import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
-import { cardsOf, friendIdsOf, touch } from "./world";
+import { cardsOf, declare, friendIdsOf, friendKey, touch } from "./world";
 
 /**
  * 一起卫戍 on the server (src/lib/squad.ts), through src/app/api/squad/[op]. A host opens a room with the game's
@@ -273,6 +281,24 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
   const requests = asked
     .filter((r) => byHandle.has(r.handle))
     .map((r) => (host ? { id: r.id, song: r.song, name: byHandle.get(r.handle)! } : { id: r.id, song: r.song }));
+  // your own invitations to it, the latest to each not in it, never one TA went in at
+  const sent = await db
+    .select({ i: squadInvites, u: users })
+    .from(squadInvites)
+    .innerJoin(users, eq(users.id, squadInvites.toUserId))
+    .where(and(eq(squadInvites.roomId, roomId), eq(squadInvites.fromUserId, viewerId)))
+    .orderBy(desc(squadInvites.createdAt));
+  const latest = new Map<string, (typeof sent)[number]>();
+  for (const s of sent) if (!latest.has(s.u.id)) latest.set(s.u.id, s);
+  const out = [...latest.values()].filter((s) => s.i.answer !== "joined" && !rows.some((r) => r.u.id === s.u.id));
+  const theirCards = await cardsOf(
+    out.map((s) => s.u),
+    viewerId,
+  );
+  const invited: SquadInvited[] = out.map(({ i, u }) => ({
+    card: theirCards.get(u.id)!,
+    state: !i.answer && i.createdAt.getTime() > now - INVITE_MS ? "waiting" : "missed",
+  }));
   // to the host alone: how many in it hear one of its songs now (听歌's own row of what each plays, never who)
   let listening: number | null = null;
   if (host) {
@@ -286,6 +312,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
   }
   return {
     ...scheduleOf(room),
+    declared: Boolean(room.declaredAt),
+    invited,
     dj: djFor(rows.find((r) => r.u.id === viewerId)!.u, now),
     requests,
     listening,
@@ -458,8 +486,8 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
   refuseClosed();
   const card = cardOf(user);
   if (!card) throw refuse(409, T.server.squad.needCard, NEED_CARD);
-  const roomId = uuid(body.room);
-  if (!roomId) throw refuse(400, T.server.common.badRequest);
+  const called = await calledTo(user.id, body, now);
+  const roomId = called.roomId;
   const already = await roomOf(db, user.id);
   if (already?.room.id === roomId) return { room: await roomView(roomId, user.id, now), now };
   const [{ n }] = await db
@@ -479,7 +507,8 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
     if (mine?.kicked) throw refuse(403, T.server.squad.shut, ROOM_SHUT);
     const inNow = rows.filter((m) => !m.leftAt);
     if (inNow.some((m) => blocked.has(m.userId))) throw refuse(403, T.server.squad.shut, ROOM_SHUT);
-    if (room.friendsOnly && !friends.has(room.hostId)) throw refuse(403, T.server.squad.friendsOnly, ROOM_SHUT);
+    // an invitation lets one in where only the host's 触须之交 may come (it was someone in it who asked TA)
+    if (room.friendsOnly && !friends.has(room.hostId) && !called.invite) throw refuse(403, T.server.squad.friendsOnly, ROOM_SHUT);
     if (inNow.length >= SQUAD_MAX) throw refuse(409, T.server.squad.full, ROOM_FULL);
     const left = await leaveIn(tx, user.id, now);
     const at = new Date(now);
@@ -495,15 +524,54 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
       await tx.insert(squadMembers).values({ roomId: room.id, userId: user.id, handle, joinedAt: at, ...card });
     }
     await tx.update(squadRooms).set({ movedAt: at }).where(eq(squadRooms.id, room.id));
+    if (called.invite) {
+      await tx
+        .update(squadInvites)
+        .set({ answer: "joined", answeredAt: at, seenAt: sql`coalesce(${squadInvites.seenAt}, now())` })
+        .where(eq(squadInvites.id, called.invite));
+    }
     return { left, handle };
   });
   await told(left);
   forgetList();
   countStat(COUNTED.squadJoin, 1, now);
+  if (called.declaration) countStat(COUNTED.squadJoinDecl, 1, now);
   await tellRoom(roomId, { kind: "in", h: handle });
   const room = await roomView(roomId, user.id, now);
   if (!room) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
   return { room, now };
+}
+
+/**
+ * The room one goes in at: from the list (room), an invitation to them still good (invite), or a 宣言招人 they see in
+ * 消息 now (declaration, src/lib/server/declarationInbox.ts)
+ */
+async function calledTo(
+  userId: string,
+  body: Record<string, unknown>,
+  now: number,
+): Promise<{ roomId: string; invite: string | null; declaration: boolean }> {
+  if (body.declaration !== undefined) {
+    const id = uuid(body.declaration);
+    const d = id ? await canSeeDeclaration(userId, id, now) : null;
+    if (!d || d.template !== SQUAD_TEMPLATE) throw refuse(404, T.server.squad.declarationGone, ROOM_GONE);
+    if (!d.squadRoomId) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
+    return { roomId: d.squadRoomId, invite: null, declaration: true };
+  }
+  if (body.invite !== undefined) {
+    const id = uuid(body.invite);
+    const [invite] = id
+      ? await db
+          .select()
+          .from(squadInvites)
+          .where(and(eq(squadInvites.id, id), eq(squadInvites.toUserId, userId)))
+      : [];
+    if (!invite || invite.createdAt.getTime() <= now - INVITE_MS) throw refuse(410, T.server.squad.inviteGone, ROOM_GONE);
+    return { roomId: invite.roomId, invite: invite.id, declaration: false };
+  }
+  const roomId = uuid(body.room);
+  if (!roomId) throw refuse(400, T.server.common.badRequest);
+  return { roomId, invite: null, declaration: false };
 }
 
 /** Out of the room you are in: the host's ends */
@@ -832,6 +900,307 @@ export async function answerRequest(user: UserRow, body: Record<string, unknown>
   return { room: await roomView(mine.room.id, user.id, now), now };
 }
 
+// ---- calling others in: invitations, 宣言招人 ----
+
+/** An invitation to as many at once at most */
+const INVITE_AT_ONCE = 30;
+
+/** Plays 明日方舟, or no game yet, and 一起卫戍 is open to them */
+const mayCome = (u: UserRow) => squadOpen(u) && (u.games.length === 0 || u.games.includes("arknights"));
+
+/**
+ * Your 触须之交 you may invite to the room you are in: those of 明日方舟 (or of no game yet) 一起卫戍 is open to,
+ * with the server of their UID; those whose 资料 names another server than the room's last, who may still play on
+ * another account. How many more times today, and whether they are in it already.
+ */
+export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ friends: SquadFriend[]; now: number }> {
+  const mine = await roomOf(db, user.id);
+  if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  const ids = [...(await friendIdsOf(user.id))];
+  if (!ids.length) return { friends: [], now };
+  const blocked = await blockedWith(user.id);
+  const people = (await db.select().from(users).where(inArray(users.id, ids))).filter((u) => !blocked.has(u.id) && mayCome(u));
+  const dayStart = new Date(siteDayStart(siteDay(now)));
+  const used = new Map(
+    (
+      await db
+        .select({ to: squadInvites.toUserId, n: count() })
+        .from(squadInvites)
+        .where(and(eq(squadInvites.fromUserId, user.id), gte(squadInvites.createdAt, dayStart)))
+        .groupBy(squadInvites.toUserId)
+    ).map((r) => [r.to, r.n]),
+  );
+  const inRoom = new Set(
+    (
+      await db
+        .select({ id: squadMembers.userId })
+        .from(squadMembers)
+        .where(and(eq(squadMembers.roomId, mine.room.id), isNull(squadMembers.leftAt)))
+    ).map((r) => r.id),
+  );
+  const waiting = new Set(
+    (
+      await db
+        .select({ to: squadInvites.toUserId })
+        .from(squadInvites)
+        .where(
+          and(
+            eq(squadInvites.roomId, mine.room.id),
+            eq(squadInvites.fromUserId, user.id),
+            isNull(squadInvites.answer),
+            gt(squadInvites.createdAt, new Date(now - INVITE_MS)),
+          ),
+        )
+    ).map((r) => r.to),
+  );
+  const cards = await cardsOf(people, user.id);
+  const other = (u: UserRow) => u.uidServerArknights !== "" && u.uidServerArknights !== mine.room.server;
+  const friends = people
+    .sort((a, b) => Number(other(a)) - Number(other(b)) || cards.get(a.id)!.displayName.localeCompare(cards.get(b.id)!.displayName, "zh"))
+    .map(
+      (u): SquadFriend => ({
+        id: friendKey(user.id, u.id),
+        card: cards.get(u.id)!,
+        server: u.uidServerArknights,
+        left: Math.max(0, INVITES_PER_DAY - (used.get(u.id) ?? 0)),
+        inRoom: inRoom.has(u.id),
+        waiting: waiting.has(u.id),
+      }),
+    );
+  return { friends, now };
+}
+
+/**
+ * Invitations from anyone in a room to their 触须之交 given (friends: their Friend ids), while it waits for players and
+ * is not full; one lets TA in even where only the host's 触须之交 may come. Each gets one unless TA may not come
+ * (SQUAD, blocking), is in the room already, has one to it still good, or was invited INVITES_PER_DAY times today by
+ * them (a site day). TA hears of it as of anything new in 消息.
+ */
+export async function inviteToSquad(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
+  refuseClosed();
+  if (!Array.isArray(body.friends)) throw refuse(400, T.server.common.badRequest);
+  const keys = [...new Set(body.friends.map(String))].slice(0, INVITE_AT_ONCE);
+  const mine = await roomOf(db, user.id);
+  if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  if (mine.room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
+  const roomId = mine.room.id;
+  const [{ there }] = await db
+    .select({ there: count() })
+    .from(squadMembers)
+    .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)));
+  if (there >= SQUAD_MAX) throw refuse(409, T.server.squad.fullNoCall, ROOM_FULL);
+  const byKey = new Map([...(await friendIdsOf(user.id))].map((id) => [friendKey(user.id, id), id]));
+  const ids = keys.map((k) => byKey.get(k)).filter((id): id is string => Boolean(id));
+  const people = ids.length ? await db.select().from(users).where(inArray(users.id, ids)) : [];
+  const blocked = await blockedWith(user.id);
+  const dayStart = new Date(siteDayStart(siteDay(now)));
+  const sent: SquadInviteSent[] = [];
+  const nudged: string[] = [];
+  await db.transaction(async (tx) => {
+    // one player's invitations one at a time, so two taps cannot both find room for a fourth today
+    await lockPlayer(tx, user.id);
+    const inNow = new Set(
+      (
+        await tx
+          .select({ id: squadMembers.userId })
+          .from(squadMembers)
+          .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)))
+      ).map((r) => r.id),
+    );
+    for (const key of keys) {
+      const to = byKey.get(key);
+      const u = people.find((p) => p.id === to);
+      if (!to || !u) {
+        sent.push({ id: key, ok: false, why: T.server.common.notFriends });
+        continue;
+      }
+      if (blocked.has(to) || !mayCome(u)) {
+        sent.push({ id: key, ok: false, why: T.server.squad.cantInvite });
+        continue;
+      }
+      if (inNow.has(to)) {
+        sent.push({ id: key, ok: true });
+        continue;
+      }
+      const [still] = await tx
+        .select({ id: squadInvites.id })
+        .from(squadInvites)
+        .where(and(eq(squadInvites.roomId, roomId), eq(squadInvites.toUserId, to), isNull(squadInvites.answer), gt(squadInvites.createdAt, new Date(now - INVITE_MS))))
+        .limit(1);
+      if (still) {
+        sent.push({ id: key, ok: true });
+        continue;
+      }
+      const [{ n }] = await tx
+        .select({ n: count() })
+        .from(squadInvites)
+        .where(and(eq(squadInvites.fromUserId, user.id), eq(squadInvites.toUserId, to), gte(squadInvites.createdAt, dayStart)));
+      if (n >= INVITES_PER_DAY) {
+        sent.push({ id: key, ok: false, why: fmt(T.server.squad.invitedEnough, { n: INVITES_PER_DAY }) });
+        continue;
+      }
+      await tx.insert(squadInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now) });
+      sent.push({ id: key, ok: true });
+      nudged.push(to);
+    }
+  });
+  if (nudged.length) {
+    countStat(COUNTED.squadInvite, nudged.length, now);
+    nudge(nudged);
+    // your own list of who is invited, on your other pages
+    tellSquad([user.id], { t: "room", room: roomId });
+  }
+  return { room: await roomView(roomId, user.id, now), sent, now };
+}
+
+/** 下次吧: the one who invited sees TA as not come, as an invitation that ran out; never as said no */
+export async function laterSquadInvite(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  const id = uuid(body.invite);
+  if (!id) throw refuse(400, T.server.common.badRequest);
+  const [done] = await db
+    .update(squadInvites)
+    .set({ answer: "later", answeredAt: new Date(now), seenAt: sql`coalesce(${squadInvites.seenAt}, now())` })
+    .where(and(eq(squadInvites.id, id), eq(squadInvites.toUserId, user.id), isNull(squadInvites.answer)))
+    .returning({ from: squadInvites.fromUserId, room: squadInvites.roomId });
+  if (done) tellSquad([done.from], { t: "room", room: done.room });
+  return { now };
+}
+
+/**
+ * The rooms of these 宣言招人 and invitations (by room id; one deleted, a day after it ended, is not there) as they are
+ * now to this player: open, full, playing, they are in it, closed to them, or over (src/lib/squad.ts SquadCall)
+ */
+export async function squadCalls(userId: string, roomIds: string[]): Promise<Map<string, SquadCall>> {
+  const ids = [...new Set(roomIds.filter((id) => UUID.test(id)))];
+  const out = new Map<string, SquadCall>();
+  if (!ids.length) return out;
+  const [rooms, members, blocked] = await Promise.all([
+    db
+      .select({ id: squadRooms.id, endedAt: squadRooms.endedAt, state: squadRooms.state, server: squadRooms.server, level: squadRooms.level })
+      .from(squadRooms)
+      .where(inArray(squadRooms.id, ids)),
+    db
+      .select({ roomId: squadMembers.roomId, userId: squadMembers.userId, leftAt: squadMembers.leftAt, kicked: squadMembers.kicked })
+      .from(squadMembers)
+      .where(inArray(squadMembers.roomId, ids)),
+    blockedWith(userId),
+  ]);
+  for (const r of rooms) {
+    const inIt = members.filter((m) => m.roomId === r.id);
+    const mine = inIt.find((m) => m.userId === userId);
+    const there = inIt.filter((m) => !m.leftAt);
+    const state: SquadCall["state"] = r.endedAt
+      ? "over"
+      : mine && !mine.leftAt
+        ? "in"
+        : mine?.kicked || there.some((m) => blocked.has(m.userId))
+          ? "shut"
+          : r.state === "go"
+            ? "playing"
+            : there.length >= SQUAD_MAX
+              ? "full"
+              : "open";
+    out.set(r.id, { state, n: state === "over" ? 0 : there.length, server: r.server, level: r.level });
+  }
+  return out;
+}
+
+/** The invitations to you in 消息 → 触须之交 (qi:<id>), with their rooms as they are now; none from those blocked */
+export async function squadInbox(userId: string, blocked: Set<string>, now = Date.now()): Promise<InboxItem[]> {
+  const rows = (
+    await db
+      .select({ i: squadInvites, from: users })
+      .from(squadInvites)
+      .innerJoin(users, eq(users.id, squadInvites.fromUserId))
+      .where(eq(squadInvites.toUserId, userId))
+      .orderBy(desc(squadInvites.createdAt))
+      .limit(20)
+  ).filter((r) => !blocked.has(r.from.id));
+  if (!rows.length) return [];
+  const cards = await cardsOf(
+    rows.map((r) => r.from),
+    userId,
+  );
+  const calls = await squadCalls(
+    userId,
+    rows.map((r) => r.i.roomId),
+  );
+  return rows.map(({ i, from }): InboxItem => {
+    const call = calls.get(i.roomId) ?? { state: "over" as const, n: 0, server: "", level: 0 };
+    const state =
+      call.state === "over" || call.state === "shut"
+        ? "over"
+        : call.state === "in"
+          ? "in"
+          : i.createdAt.getTime() <= now - INVITE_MS
+            ? "over"
+            : i.answer === "later"
+              ? "later"
+              : "open";
+    return {
+      kind: "squadInvite",
+      id: `qi:${i.id}`,
+      at: i.createdAt.getTime(),
+      seen: Boolean(i.seenAt),
+      from: cards.get(from.id)!,
+      friendId: friendKey(userId, from.id),
+      call,
+      state,
+      until: i.createdAt.getTime() + INVITE_MS,
+      replied: true,
+    };
+  });
+}
+
+/** Seen in 消息 (qi:<id>) */
+export async function seeSquadInvites(userId: string, itemIds: string[]) {
+  const ids = itemIds
+    .filter((i) => typeof i === "string" && i.startsWith("qi:"))
+    .map((i) => i.slice(3))
+    .filter((i) => UUID.test(i));
+  if (!ids.length) return;
+  await db
+    .update(squadInvites)
+    .set({ seenAt: new Date() })
+    .where(and(inArray(squadInvites.id, ids), eq(squadInvites.toUserId, userId), isNull(squadInvites.seenAt)));
+}
+
+/**
+ * 宣言招人: the host calls those nearby to their room, once a room, with 卫戍协议，启动！还差 N 个，来吗？
+ * (src/lib/server/world.ts declare: from their main roach, within today's twenty, a minute apart; to those near enough,
+ * never to those blocked). Only a room waiting for players, open to all, not full. A declaration refused leaves the
+ * room free to call again.
+ */
+export async function declareSquad(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
+  refuseClosed();
+  const mine = await hostedBy(user.id);
+  if (mine.room.friendsOnly) throw refuse(409, T.server.squad.declareFriendsOnly);
+  if (mine.room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(squadMembers)
+    .where(and(eq(squadMembers.roomId, mine.room.id), isNull(squadMembers.leftAt)));
+  if (n >= SQUAD_MAX) throw refuse(409, T.server.squad.fullNoCall, ROOM_FULL);
+  // once a room, however many taps come at once
+  const [claimed] = await db
+    .update(squadRooms)
+    .set({ declaredAt: new Date(now) })
+    .where(and(eq(squadRooms.id, mine.room.id), isNull(squadRooms.declaredAt), isNull(squadRooms.endedAt)))
+    .returning({ id: squadRooms.id });
+  if (!claimed) throw refuse(409, T.server.squad.declaredAlready);
+  const from = Array.isArray(body.from) ? body.from.map(String) : undefined;
+  let sent: Awaited<ReturnType<typeof declare>>;
+  try {
+    sent = await declare(user.id, { template: SQUAD_TEMPLATE, server: mine.room.server, level: mine.room.level, need: SQUAD_MAX - n, room: mine.room.id }, from, false, false, true);
+  } catch (e) {
+    await db.update(squadRooms).set({ declaredAt: null }).where(eq(squadRooms.id, mine.room.id));
+    throw e;
+  }
+  // the host's other pages show it sent
+  tellSquad([user.id], { t: "room", room: mine.room.id });
+  return { ...sent, room: await roomView(mine.room.id, user.id, now), now };
+}
+
 // ---- 拉黑, 举报 ----
 
 /**
@@ -1109,7 +1478,7 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
 /** What the 管理台 shows of 一起卫戍: the switch, closed or not, rooms open now, and today's rooms, comings in and lines */
 export async function squadDesk(now = Date.now()): Promise<SquadDesk> {
   const day = beijingDate(now);
-  const names = [COUNTED.squadRoom, COUNTED.squadJoin, COUNTED.squadSay, COUNTED.squadPlay];
+  const names = [COUNTED.squadRoom, COUNTED.squadJoin, COUNTED.squadSay, COUNTED.squadPlay, COUNTED.squadInvite, COUNTED.squadJoinDecl];
   const [open, counted] = await Promise.all([
     db.select({ state: squadRooms.state, n: count() }).from(squadRooms).where(isNull(squadRooms.endedAt)).groupBy(squadRooms.state),
     db
@@ -1131,6 +1500,8 @@ export async function squadDesk(now = Date.now()): Promise<SquadDesk> {
     joins: today(COUNTED.squadJoin),
     says: today(COUNTED.squadSay),
     plays: today(COUNTED.squadPlay),
+    invites: today(COUNTED.squadInvite),
+    called: today(COUNTED.squadJoinDecl),
   };
 }
 
