@@ -28,7 +28,7 @@ export async function fetchSponsor(): Promise<SponsorView | null> {
   }
 }
 
-/** Names as the card lists them: 「服务器饲养员」和「？！电电？！」 */
+/** Names as the card lists them: 「服务器饲养员」和「?!电电!?」 */
 const named = (names: string[]) => names.map((name) => fmt(T.sponsor.badgeName, { name })).join(T.sponsor.and);
 
 /**

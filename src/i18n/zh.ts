@@ -3410,7 +3410,7 @@ export const zh = {
         quote: "服务器吃饱啦，谢谢你帮{site}加餐！",
       },
       volt: {
-        name: "？！电电？！",
+        name: "?!电电!?",
         condition: "赞助过{site}的服务器，站长颁发的谢礼",
         lockedHint: "站长颁发",
         quote: "？！为爱发电的服务器，被你充上电了？！",

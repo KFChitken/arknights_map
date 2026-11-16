@@ -8,7 +8,7 @@ import { admins, roaches, userBadges, users, type UserRow } from "./schema";
 
 /**
  * Who wears which look. 鸭爵 is the thanks for sponsoring (SPONSOR_AVATARS, src/lib/sponsor.ts), and DUCK (env.ts)
- * decides who sees him. On, a 服务器饲养员 (the badge given with 「？！电电？！」) may pick him, and the 站长 and the
+ * decides who sees him. On, a 服务器饲养员 (the badge given with 「?!电电!?」) may pick him, and the 站长 and the
  * admins, and everyone sees him. Admins, only the 站长 and the admins may pick him, and they alone see him, on
  * themselves and on one another (duckShownBetween): on their cards, in their lists of 触须之交, and on the map, where
  * the feed, the same for all, draws him as the plain hood and the 站长 and the admins are told which main roaches are

@@ -53,9 +53,9 @@ describe("badges", () => {
   it("gives by hand only 内测功臣 and the two thanks for sponsoring, which nothing in play earns", () => {
     expect(BADGES.filter((b) => b.byHand).map((b) => b.id)).toEqual(["beta", "feeder", "volt"]);
     for (const b of BADGES.filter((b) => b.byHand)) expect([b.goal, b.days, b.series]).toEqual([undefined, undefined, "memorial"]);
-    // 服务器饲养员 and ？！电电？！ go together, off the wall until had
+    // 服务器饲养员 and ?!电电!? go together, off the wall until had
     const thanks = BADGES.filter((b) => b.sponsor);
-    expect(thanks.map((b) => b.name)).toEqual(["服务器饲养员", "？！电电？！"]);
+    expect(thanks.map((b) => b.name)).toEqual(["服务器饲养员", "?!电电!?"]);
     for (const b of thanks) expect([b.byHand, b.unlisted]).toEqual([true, true]);
   });
 

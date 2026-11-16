@@ -2252,7 +2252,7 @@ export const en: Draft<Messages> = {
         quote: "The servers are well fed. Thanks for treating {site} to a meal!",
       },
       volt: {
-        name: "?!Zap Zap?!",
+        name: "?!Zap Zap!?",
         condition: "Given by the Admin as thanks to those who sponsored {site}'s servers",
         lockedHint: "Given by the Admin",
         quote: "?! Servers that run on love, charged up by you ?!",
