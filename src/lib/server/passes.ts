@@ -1,11 +1,13 @@
 import "server-only";
-import { randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql, type AnyColumn } from "drizzle-orm";
+import { randomInt, timingSafeEqual } from "node:crypto";
+import { and, asc, count, desc, eq, exists, gte, inArray, isNull, lt, max, min, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import type { ArtFrame } from "../passArt";
 import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed, poolIds } from "../passCatalog";
 import {
   claimable,
+  FOLLOW_TICKETS,
+  followCode,
   GIFTS_IN_PER_DAY,
   isDrawSize,
   isFancy,
@@ -24,7 +26,9 @@ import {
   type CharCopies,
   type Collection,
   type Drawn,
+  type FollowTask,
   type LogPage,
+  type PassFollowDesk,
   type PassesDot,
   type PassesMe,
   type PassOnCard,
@@ -34,7 +38,7 @@ import {
   type TaskState,
   type WornPass,
 } from "../passes";
-import { nextSiteDayAt, siteDay } from "../siteDay";
+import { nextSiteDayAt, siteDay, siteDayStart } from "../siteDay";
 import { WorldError } from "../world/types";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
@@ -43,9 +47,11 @@ import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
 import { artFrame, passArtIndex } from "./passArt";
+import { allow, hasRoom } from "./rateLimit";
 import { roachByFeedId } from "./roachFeed";
 import { passCounters, passes, passGifts, passWallets, users, type UserRow } from "./schema";
 import { errorCode } from "./signals";
+import { followShown, passFollow } from "./siteSettings";
 
 /**
  * 通行证寻访 (src/lib/passes.ts): tickets a player earns by playing, through 每日任务: what they do is counted
@@ -244,7 +250,16 @@ async function stateOf(w: Wallet, games: readonly string[], now: number, welcome
     worn,
     gifts: passGiftsOn(),
     pool: passPoolOf(w.pool, games),
+    follow: followOf(w, now),
   };
+}
+
+/** 关注 B 站领券 as 寻访 shows it: while it is on with all of it filled, until the site day after the player claimed it */
+function followOf(w: Wallet, now: number): FollowTask | null {
+  const f = passFollow();
+  if (!followShown(f)) return null;
+  if (w.followGot && siteDay(w.followGot.getTime()) !== siteDay(now)) return null;
+  return { name: f.name, url: f.url, got: w.followGot !== null };
 }
 
 /** A player's wallet, and the games they play (users.games) */
@@ -383,6 +398,56 @@ export async function setPool(user: UserRow, pool: unknown, now = Date.now()): P
     .returning({ userId: passWallets.userId });
   if (!set) throw new HttpError(409, T.server.passes.openFirst);
   return passState(user.id, now);
+}
+
+/** Wrong codes of 关注 B 站领券 an account may type in an hour, and an address (a network), before none is compared for the rest of it */
+const FOLLOW_WRONG_ACCOUNT = 5;
+const FOLLOW_WRONG_ADDRESS = 20;
+const FOLLOW_WRONG_MS = 3_600_000;
+
+/**
+ * 关注 B 站领券: the code the owner's B 站 account sends, typed (spaces left out, in capitals), brings FOLLOW_TICKETS
+ * once for each account, past TICKETS_CAP too. Only while the task shows (followShown), and the code as it is now:
+ * one changed is refused at once. Wrong ones count, on this process, against the account and the address it came
+ * from (ip), as the sign-in's do; past either's, nothing is compared till an hour after the first of them.
+ */
+export async function claimFollow(user: UserRow, code: unknown, ip: string, now = Date.now()): Promise<PassState> {
+  const f = passFollow();
+  if (!followShown(f)) throw new HttpError(409, T.server.passes.followOff);
+  const typed = typeof code === "string" ? followCode(code) : "";
+  if (!typed) throw new HttpError(400, T.server.passes.followEmpty);
+  const mine = `passes:followWrong:${user.id}`;
+  const theirs = `passes:followWrongAt:${ip}`;
+  if (!hasRoom(mine, FOLLOW_WRONG_ACCOUNT, FOLLOW_WRONG_MS) || !hasRoom(theirs, FOLLOW_WRONG_ADDRESS, FOLLOW_WRONG_MS)) {
+    throw new HttpError(429, T.server.passes.followTooMany);
+  }
+  const a = Buffer.from(typed);
+  const b = Buffer.from(f.code);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    allow(mine, FOLLOW_WRONG_ACCOUNT, FOLLOW_WRONG_MS);
+    allow(theirs, FOLLOW_WRONG_ADDRESS, FOLLOW_WRONG_MS);
+    throw new HttpError(400, T.server.passes.followWrong);
+  }
+  const [got] = await db
+    .update(passWallets)
+    .set({ tickets: sql`${passWallets.tickets} + ${FOLLOW_TICKETS}`, followGot: new Date(now) })
+    .where(and(eq(passWallets.userId, user.id), eq(passWallets.welcomed, true), isNull(passWallets.followGot)))
+    .returning({ userId: passWallets.userId });
+  if (!got) {
+    const [w] = await db.select({ welcomed: passWallets.welcomed }).from(passWallets).where(eq(passWallets.userId, user.id));
+    throw new HttpError(409, w?.welcomed ? T.server.passes.followGot : T.server.passes.openFirst);
+  }
+  return passState(user.id, now);
+}
+
+/** 关注 B 站领券 for the 管理台 (the owner's): as kept, the code too, whether 寻访 shows it, and the accounts that claimed it, today's too */
+export async function passFollowDesk(now = Date.now()): Promise<PassFollowDesk> {
+  const settings = passFollow();
+  const since = new Date(siteDayStart(siteDay(now)));
+  const [c] = await db
+    .select({ claimed: count(passWallets.followGot), today: sql<number>`(count(*) filter (where ${gte(passWallets.followGot, since)}))::int` })
+    .from(passWallets);
+  return { settings, shown: followShown(settings), passes: passesMode(), claimed: c?.claimed ?? 0, today: c?.today ?? 0 };
 }
 
 /** 我的通行证: each character the player has, how many and the number of their first, and how many passes in all */

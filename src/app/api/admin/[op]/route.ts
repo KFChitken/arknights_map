@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { grayUntilWords, maskEmails, MOD_ONLY, MOD_OPS, OWNER_ONLY } from "@/lib/adminConsole";
 import type { ListenSettings } from "@/lib/listen";
 import { parseNameWords } from "@/lib/nameRules";
+import type { PassFollow } from "@/lib/passes";
 import { isRuleCode, type AdminAction, type CaseQuery } from "@/lib/safety";
 import {
   account,
@@ -57,7 +58,19 @@ import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
 import { listenDesk } from "@/lib/server/listen";
 import { endAllRooms } from "@/lib/server/listenRooms";
-import { endGray, grayState, listenSettings, setGray, setListen, setSquad, squadSettings, type SquadSettings } from "@/lib/server/siteSettings";
+import { passFollowDesk } from "@/lib/server/passes";
+import {
+  endGray,
+  grayState,
+  listenSettings,
+  passFollow,
+  setGray,
+  setListen,
+  setPassFollow,
+  setSquad,
+  squadSettings,
+  type SquadSettings,
+} from "@/lib/server/siteSettings";
 import { endAllSquadRooms, squadDesk } from "@/lib/server/squad";
 import { sponsorForAdmin } from "@/lib/server/sponsor";
 import { removeSponsorMonth, saveSponsorMonth, saveSponsorSettings, saveSponsorStartup } from "@/lib/server/sponsorAdmin";
@@ -84,6 +97,17 @@ const squadChange = (a: SquadSettings, b: SquadSettings) =>
   [
     a.closed !== b.closed ? (b.closed ? "暂时关门，开着的房间都结束了" : "重新开门") : "",
     a.note !== b.note ? (b.note ? `提示改成「${b.note}」` : "去掉了提示") : "",
+  ]
+    .filter(Boolean)
+    .join("，");
+
+/** What a change to 关注 B 站领券 did, for the 操作记录, never the code itself: empty when it changed nothing */
+const followChange = (a: PassFollow, b: PassFollow) =>
+  [
+    a.on !== b.on ? (b.on ? "打开了" : "关掉了") : "",
+    a.name !== b.name ? (b.name ? `账号改成「${b.name}」` : "去掉了账号") : "",
+    a.url !== b.url ? (b.url ? `链接改成 ${b.url}` : "去掉了链接") : "",
+    a.code !== b.code ? (b.code ? "换了口令" : "去掉了口令") : "",
   ]
     .filter(Boolean)
     .join("，");
@@ -362,6 +386,19 @@ export const POST = route(
         const detail = squadChange(before, after);
         if (detail) await logAdmin(actor, "act", "act.squad", { detail }, now);
         result = await squadDesk(now);
+        break;
+      }
+
+      // 关注 B 站领券 (the owner's, src/lib/server/passes.ts claimFollow): as kept, the code too, and who claimed it; args[0] changes it
+      case "passFollow":
+        result = await passFollowDesk(now);
+        break;
+      case "setPassFollow": {
+        const before = passFollow();
+        const after = await setPassFollow(actor.id, objectOf(args[0]), now);
+        const detail = followChange(before, after);
+        if (detail) await logAdmin(actor, "act", "act.passFollow", { detail }, now);
+        result = await passFollowDesk(now);
         break;
       }
 

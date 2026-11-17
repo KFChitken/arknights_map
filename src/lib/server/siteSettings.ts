@@ -4,6 +4,7 @@ import { GRAY_MAX_DAYS, type GrayState } from "../adminConsole";
 import { beijingDate } from "../beijing";
 import { CAP_RANGE, LISTEN_DEFAULTS, ROOM_RANGE, type ListenSettings } from "../listen";
 import { nextMemorial } from "../memorials";
+import { FOLLOW_CODE_MAX, FOLLOW_NAME_MAX, followCode, type PassFollow } from "../passes";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { onReload, reloadEverywhere } from "./live";
@@ -15,8 +16,9 @@ import { errorCode } from "./signals";
  * and read before the first page asks (src/instrumentation-node.ts): a change reaches every process at once
  * (reloadEverywhere), and each reads them again every RELOAD_MS anyway: 全站变灰, until when everyone sees the site in
  * gray, for a national day of mourning; 听歌's (src/lib/server/listen.ts), paused or not, how many may listen at
- * once, how many to a room; and 一起卫戍's (src/lib/server/squad.ts), closed for now or open, with the owner's line. It
- * lives on globalThis because Next.js can load this module once per route bundle.
+ * once, how many to a room; 一起卫戍's (src/lib/server/squad.ts), closed for now or open, with the owner's line; and
+ * 关注 B 站领券's (src/lib/server/passes.ts claimFollow), whose code changed is the old one refused at once. It lives
+ * on globalThis because Next.js can load this module once per route bundle.
  */
 
 /** 一起卫戍's (src/lib/server/squad.ts): closed for now (暂时关门, as when the game's season is between parts), with the owner's line for the list */
@@ -25,23 +27,37 @@ const SQUAD_DEFAULTS: SquadSettings = { closed: false, note: "" };
 /** The owner's line, at most this long */
 export const SQUAD_NOTE_MAX = 60;
 
+/** 关注 B 站领券's: off, and nothing filled, until the owner fills it */
+const PASS_FOLLOW_DEFAULTS: PassFollow = { on: false, name: "", url: "", code: "" };
+
 type Held = {
   grayUntil: number | null;
   listen: ListenSettings;
   squad: SquadSettings;
+  passFollow: PassFollow;
   loading: Promise<void> | null;
   again: boolean;
   started: boolean;
 };
 const g = globalThis as unknown as { siteSettingsHeld?: Held };
-const held = (g.siteSettingsHeld ??= { grayUntil: null, listen: LISTEN_DEFAULTS, squad: SQUAD_DEFAULTS, loading: null, again: false, started: false });
+const held = (g.siteSettingsHeld ??= {
+  grayUntil: null,
+  listen: LISTEN_DEFAULTS,
+  squad: SQUAD_DEFAULTS,
+  passFollow: PASS_FOLLOW_DEFAULTS,
+  loading: null,
+  again: false,
+  started: false,
+});
 held.listen ??= LISTEN_DEFAULTS;
 held.squad ??= SQUAD_DEFAULTS;
+held.passFollow ??= PASS_FOLLOW_DEFAULTS;
 const RELOAD_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 const GRAY = "gray";
 const LISTEN = "listen";
 const SQUAD = "squad";
+const PASS_FOLLOW = "pass_follow";
 
 /** gray's value: { until } as an ISO time; anything else is no gray at all */
 function untilOf(value: unknown) {
@@ -63,6 +79,7 @@ export function loadSettings(): Promise<void> {
         held.grayUntil = untilOf(rows.find((r) => r.key === GRAY)?.value);
         held.listen = listenOf(rows.find((r) => r.key === LISTEN)?.value);
         held.squad = squadOf(rows.find((r) => r.key === SQUAD)?.value);
+        held.passFollow = passFollowOf(rows.find((r) => r.key === PASS_FOLLOW)?.value);
       } while (held.again);
     } finally {
       held.loading = null;
@@ -196,6 +213,76 @@ export async function setSquad(byId: string, change: unknown, now = Date.now()):
   await db
     .insert(siteSettings)
     .values({ key: SQUAD, ...set })
+    .onConflictDoUpdate({ target: siteSettings.key, set });
+  await reloadEverywhere("settings");
+  return next;
+}
+
+// ---- 关注 B 站领券 (通行证寻访) ----
+
+/** A link to a B 站 page: https, on bilibili.com (space.bilibili.com/…, m.bilibili.com/…) or its short links, b23.tv */
+export function isBilibiliUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    return u.protocol === "https:" && !u.username && !u.password && (host === "bilibili.com" || host.endsWith(".bilibili.com") || host === "b23.tv");
+  } catch {
+    return false;
+  }
+}
+
+/** pass_follow's value: { on, name, url, code }, each as it may be kept, else as if never filled */
+function passFollowOf(value: unknown): PassFollow {
+  const v = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const name = typeof v.name === "string" ? v.name.trim() : "";
+  const url = typeof v.url === "string" ? v.url.trim() : "";
+  const code = typeof v.code === "string" ? followCode(v.code) : "";
+  return {
+    on: v.on === true,
+    name: name.length <= FOLLOW_NAME_MAX ? name : "",
+    url: isBilibiliUrl(url) ? url : "",
+    code: code.length <= FOLLOW_CODE_MAX ? code : "",
+  };
+}
+
+/** 关注 B 站领券's settings now, the code too, for the server and the 管理台 alone: from memory, never the database */
+export const passFollow = (): PassFollow => held.passFollow;
+
+/** Whether 寻访 shows the task: on, with the account, its link and a code all filled */
+export const followShown = (f: PassFollow) => f.on && Boolean(f.name && f.url && f.code);
+
+/**
+ * 关注 B 站领券 changed by byId (the owner): on, name, url, code, each only if given (the code as it is compared:
+ * no spaces, capitals). On every process at once, so an old code is refused from then on everywhere. Says what they
+ * are now.
+ */
+export async function setPassFollow(byId: string, change: unknown, now = Date.now()): Promise<PassFollow> {
+  const c = change && typeof change === "object" ? (change as Record<string, unknown>) : {};
+  const [row] = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, PASS_FOLLOW));
+  const next = passFollowOf(row?.value);
+  if ("on" in c) {
+    if (typeof c.on !== "boolean") throw new HttpError(400, "开关只能开或关。");
+    next.on = c.on;
+  }
+  if ("name" in c) {
+    const name = typeof c.name === "string" ? c.name.trim() : null;
+    if (name === null || name.length > FOLLOW_NAME_MAX) throw new HttpError(400, `账号最多 ${FOLLOW_NAME_MAX} 个字。`);
+    next.name = name;
+  }
+  if ("url" in c) {
+    const url = typeof c.url === "string" ? c.url.trim() : null;
+    if (url === null || (url && !isBilibiliUrl(url))) throw new HttpError(400, "链接要是 B 站的 https 链接，比如 https://space.bilibili.com/…，或者 https://b23.tv/…。");
+    next.url = url;
+  }
+  if ("code" in c) {
+    const code = typeof c.code === "string" ? followCode(c.code) : null;
+    if (code === null || code.length > FOLLOW_CODE_MAX) throw new HttpError(400, `口令最多 ${FOLLOW_CODE_MAX} 个字，空格不算。`);
+    next.code = code;
+  }
+  const set = { value: next, updatedAt: new Date(now), updatedBy: byId };
+  await db
+    .insert(siteSettings)
+    .values({ key: PASS_FOLLOW, ...set })
     .onConflictDoUpdate({ target: siteSettings.key, set });
   await reloadEverywhere("settings");
   return next;

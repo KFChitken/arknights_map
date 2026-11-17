@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/server/db";
 import { forgetRoachPasses } from "@/lib/server/passes";
 import { passCounters, passes, passWallets, roaches, sessions, users } from "@/lib/server/schema";
+import { loadSettings, setPassFollow } from "@/lib/server/siteSettings";
 import { GET, POST, PUT } from "./route";
 
 vi.mock("@/lib/server/env", async (original) => ({ ...(await original<typeof import("@/lib/server/env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -43,6 +44,7 @@ const EVERY: [Method, string, unknown?, string?][] = [
   ["POST", "draw", { n: 1 }],
   ["PUT", "wish", { ids: [1] }],
   ["PUT", "pool", { pool: "ef" }],
+  ["POST", "follow", { code: "K7MQ2X" }],
   ["PUT", "look", { charId: 1, plain: true }],
   ["PUT", "wear", { passId: null }],
   ["PUT", "map", { on: true }],
@@ -52,7 +54,7 @@ const EVERY: [Method, string, unknown?, string?][] = [
   ["GET", "roach", undefined, "?id=0123abcd"],
 ];
 /** Those that wait for the age check and the privacy policy */
-const CHANGING = 6;
+const CHANGING = 7;
 
 async function account(email: string) {
   const now = new Date();
@@ -71,7 +73,9 @@ async function signIn(userId: string) {
 }
 
 beforeEach(async () => {
+  // site_settings goes with users: 关注 B 站领券 off again
   await db.execute(sql`truncate ${users}, ${sessions}, ${passCounters} cascade`);
+  await loadSettings();
   jar.token = null;
   forgetRoachPasses();
 });
@@ -224,6 +228,26 @@ describe("通行证寻访's requests", () => {
     expect((await call("PUT", "map", { on: false })).status).toBe(404);
     await signIn(boss);
     expect(await ask(bossMain.id)).toMatchObject({ status: 200, body: { pass: { charId: 9 } } });
+  });
+
+  it("let a player claim 关注 B 站领券's 10 once with its code, never telling the page the code", async () => {
+    vi.stubEnv("PASSES", "on");
+    const id = await account("player@example.com");
+    await signIn(id);
+    await call("POST", "open");
+    expect(await call("POST", "follow", { code: "K7MQ2X" })).toMatchObject({ status: 409, body: { error: "现在没有关注领券。" } });
+    expect((await call("POST", "open")).body.follow).toBeNull();
+
+    await setPassFollow(id, { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345", code: "K7MQ2X" });
+    const opened = await call("POST", "open");
+    expect(opened.body.follow).toEqual({ name: "Breeze青嵐", url: "https://space.bilibili.com/12345", got: false });
+    expect(JSON.stringify(opened.body)).not.toContain("K7MQ2X");
+    expect(await call("POST", "follow", {})).toMatchObject({ status: 400, body: { error: "先填口令。" } });
+    expect(await call("POST", "follow", { code: "N8P4ZR" })).toMatchObject({ status: 400, body: { error: "口令不对，看看 B 站私信或置顶动态里的最新口令。" } });
+    const got = await call("POST", "follow", { code: " k7m q2x " });
+    expect(got).toMatchObject({ status: 200, body: { tickets: 20, follow: { name: "Breeze青嵐", got: true } }, cache: "no-store" });
+    expect(JSON.stringify(got.body)).not.toContain("K7MQ2X");
+    expect(await call("POST", "follow", { code: "K7MQ2X" })).toMatchObject({ status: 409, body: { error: "这个账号已经领过了，每个账号只能领一次。" } });
   });
 
   it("slow down a player who asks too fast", async () => {

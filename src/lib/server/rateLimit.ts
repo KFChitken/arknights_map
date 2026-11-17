@@ -30,6 +30,15 @@ export function allow(key: string, limit: number, windowMs: number) {
 }
 
 /**
+ * Whether allow would let key through now, counting nothing: for a limit on what failed alone, asked before trying,
+ * and allow called once it did fail
+ */
+export function hasRoom(key: string, limit: number, windowMs: number) {
+  const now = Date.now();
+  return (hits.get(key)?.times ?? []).filter((t) => now - t < windowMs).length < limit;
+}
+
+/**
  * Clear out the keys whose last hit is a whole window old, each by its own window, so a short limit never
  * clears a daily one. Times are kept in order, so the last one says.
  */

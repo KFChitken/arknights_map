@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
   type ReactNode,
@@ -21,6 +22,8 @@ import {
   bestOf,
   claimable,
   DAY_TICKETS,
+  FOLLOW_CODE_MAX,
+  FOLLOW_TICKETS,
   GIFTS_IN_PER_DAY,
   goldLeft,
   gotToday,
@@ -38,6 +41,7 @@ import {
   type Collection,
   type Drawn,
   type DrawSize,
+  type FollowTask,
   type LogRow,
   type OwnedChar,
   type PassCopy,
@@ -201,6 +205,29 @@ export default function Passes({
     });
   };
 
+  // 关注 B 站领券: the code sent after any claim on its way, as a draw waits for those. Answers null once claimed (the
+  // focus goes on as after a claim), else why not: "" when the map page says it
+  const follow = (code: string) => {
+    setMsg("");
+    return new Promise<string | null>((said) => {
+      claims.current = claims.current.then(async () => {
+        try {
+          const was = stRef.current?.tickets ?? 0;
+          const s = await passesApi.follow(code);
+          if (live.current) {
+            took(s);
+            if (!stillMotion()) setBump({ n: Math.max(0, s.tickets - was), key: Date.now() });
+            setClaimed((k) => k + 1);
+          }
+          said(null);
+        } catch (e) {
+          if (mapsOwn(e)) refusedRef.current(e);
+          said(mapsOwn(e) ? "" : sayWhy(e));
+        }
+      });
+    });
+  };
+
   const pulling = useRef(false);
   const pull = async (n: DrawSize) => {
     if (busy || pulling.current) return;
@@ -310,6 +337,7 @@ export default function Passes({
               pool={poolNow ?? st.pool ?? "both"}
               onPull={pull}
               onClaim={claim}
+              onFollow={follow}
               onPool={pickPool}
               onPeek={openPeek}
               onScreen={setScreen}
@@ -502,8 +530,8 @@ export function WishSlots({
   );
 }
 
-/** The small pictures of 每日任务: a roach, a speech bubble, an arrow back, a star (the NPC), a gift */
-const TASK_ICON: Record<Task | "gift", ReactNode> = {
+/** The small pictures of 每日任务: a roach, a speech bubble, an arrow back, a star (the NPC), a gift, a television (B 站) */
+const TASK_ICON: Record<Task | "gift" | "follow", ReactNode> = {
   touch: (
     <>
       <ellipse cx="6.5" cy="8.7" rx="2.4" ry="3.1" />
@@ -524,9 +552,16 @@ const TASK_ICON: Record<Task | "gift", ReactNode> = {
       <path d="M1.4 3.3h10.2v1.9H1.4zM6.5 3.3v8.2M6.5 3.3C5.6 1.5 3.6 1.5 3.9 2.7c.3.6 1.6.6 2.6.6m0 0c.9-1.8 2.9-1.8 2.6-.6-.3.6-1.6.6-2.6.6" />
     </>
   ),
+  follow: (
+    <>
+      <rect x="1.4" y="3.6" width="10.2" height="7.4" rx="1.7" />
+      <path d="M4.2 1.5 5.9 3.5M8.8 1.5 7.1 3.5" />
+      <path d="M5.6 6v3.1l2.6-1.55z" fill="currentColor" />
+    </>
+  ),
 };
 
-function TaskIcon({ k }: { k: Task | "gift" }) {
+function TaskIcon({ k }: { k: Task | "gift" | "follow" }) {
   return (
     <svg viewBox="0 0 13 13" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round">
       {TASK_ICON[k]}
@@ -535,11 +570,76 @@ function TaskIcon({ k }: { k: Task | "gift" }) {
 }
 
 /**
+ * 关注 B 站领券, at the top of 每日任务: the owner's B 站 account (去 B 站, in a new window), and the code it sends its
+ * followers, typed and claimed; once claimed, 已领 until the next site day. onClaim answers null once claimed, else
+ * why not ("": the map page says it).
+ */
+export function FollowRow({ f, onClaim }: { f: FollowTask; onClaim: (code: string) => Promise<string | null> }) {
+  const t = T.passes.tasks.follow;
+  const [code, setCode] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const send = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (!code.trim()) return setMsg(t.empty);
+    setBusy(true);
+    setMsg("");
+    const why = await onClaim(code);
+    setBusy(false);
+    if (why !== null) return setMsg(why);
+    setMsg(fmt(t.ok, { n: FOLLOW_TICKETS }));
+    setCode("");
+  };
+  return (
+    <div className={`gt-follow${f.got ? " got" : ""}`}>
+      <div className="gf-r">
+        <TaskIcon k="follow" />
+        <span className="gf-t">
+          <b>{fmt(t.title, { name: f.name })}</b>
+          <span>{t.dm}</span>
+          <small>{fmt(t.once, { n: FOLLOW_TICKETS })}</small>
+        </span>
+        {f.got ? (
+          <span className="gt-x ok">{t.got}</span>
+        ) : (
+          <a className="gf-go" href={f.url} target="_blank" rel="noopener noreferrer" aria-label={fmt(t.goLabel, { name: f.name })}>
+            {t.go}
+          </a>
+        )}
+      </div>
+      {!f.got && (
+        <form className="gf-code" onSubmit={(e) => void send(e)}>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            maxLength={FOLLOW_CODE_MAX + 8}
+            placeholder={t.placeholder}
+            aria-label={t.label}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            enterKeyHint="done"
+          />
+          <button type="submit" disabled={busy}>
+            {t.claim}
+          </button>
+        </form>
+      )}
+      <p className="gf-msg" role="status">
+        {msg}
+      </p>
+    </div>
+  );
+}
+
+/**
  * 每日任务: a row a task, its little boxes its tickets of the day (solid: claimed, outlined: done and not claimed
  * yet, grey: not done); a row with tickets to claim is the button that claims them (as many as TICKETS_CAP leaves
- * room for: 满 50 张 when none). Under them, while 触须之交 may give them, the tickets given today: theirs at once.
+ * room for: 满 50 张 when none). Above them, while it is on, 关注 B 站领券 (FollowRow); under them, while 触须之交 may
+ * give them, the tickets given today: theirs at once.
  */
-export function Tasks({ st, onClaim }: { st: PassState; onClaim: (task: Task) => void }) {
+export function Tasks({ st, onClaim, onFollow }: { st: PassState; onClaim: (task: Task) => void; onFollow: (code: string) => Promise<string | null> }) {
   const t = T.passes.tasks;
   return (
     <div className="g-task">
@@ -550,6 +650,7 @@ export function Tasks({ st, onClaim }: { st: PassState; onClaim: (task: Task) =>
         </b>
         <em>{fmtNodes(t.got, { b: <b>{gotToday(st.tasks)}</b>, n: DAY_TICKETS })}</em>
       </div>
+      {st.follow && <FollowRow f={st.follow} onClaim={onFollow} />}
       {st.tasks.map((k) => {
         const name = t.name[k.task];
         const n = claimable(k, st.tickets);
@@ -634,6 +735,7 @@ function Home({
   hidden,
   onPull,
   onClaim,
+  onFollow,
   onPool,
   onPeek,
   onScreen,
@@ -655,6 +757,8 @@ function Home({
   hidden: boolean;
   onPull: (n: DrawSize) => void;
   onClaim: (task: Task) => void;
+  /** 关注 B 站领券's code: null once claimed, else why not ("": the map page says it) */
+  onFollow: (code: string) => Promise<string | null>;
   onPool: (pool: PassPool) => void;
   /** a wish tapped: their pass over 寻访 */
   onPeek: (id: number, from: HTMLElement) => void;
@@ -715,7 +819,7 @@ function Home({
             )}
           </div>
         </div>
-        <Tasks st={st} onClaim={onClaim} />
+        <Tasks st={st} onClaim={onClaim} onFollow={onFollow} />
         <div className="g-btns">
           {/* too few tickets: dimmed, and pressed, says how to get more */}
           <button className={st.tickets < 1 ? "dim" : ""} onClick={() => onPull(1)} disabled={busy}>

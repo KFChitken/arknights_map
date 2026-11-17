@@ -4,8 +4,23 @@ import { currentUser } from "@/lib/server/auth";
 import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib/server/consent";
 import { passesMode } from "@/lib/server/env";
 import { giftTicket } from "@/lib/server/friendly";
-import { HttpError, readJson, route } from "@/lib/server/http";
-import { claim, collection, copiesOf, draw, openWallet, passesOpen, passLog, roachPass, setLook, setOnMap, setPool, setWish, wear } from "@/lib/server/passes";
+import { clientIp, HttpError, readJson, route } from "@/lib/server/http";
+import {
+  claim,
+  claimFollow,
+  collection,
+  copiesOf,
+  draw,
+  openWallet,
+  passesOpen,
+  passLog,
+  roachPass,
+  setLook,
+  setOnMap,
+  setPool,
+  setWish,
+  wear,
+} from "@/lib/server/passes";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
@@ -16,6 +31,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST draw {n}    a draw of 1 or 10
  *   POST claim {task}          每日任务: the tickets of one task done today, as many as may be held
  *   POST gift {friendId}       送 1 张寻访券 to a 触须之交 (src/lib/server/friendly.ts giftTicket); 一键 is world's friendsAct
+ *   POST follow {code}         关注 B 站领券: the code the owner's B 站 account sent, for its tickets once
  *   PUT  wish {ids}  the wish list
  *   PUT  pool {pool} 卡池: both games (both), or one (ak, ef), from the next draw on
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
@@ -38,6 +54,7 @@ const OPS = {
   // the rows of 每日任务 tapped one after the other never wait
   claim: { method: "POST", perSecond: 5, agreed: true },
   gift: { method: "POST", perMinute: 30, agreed: true },
+  follow: { method: "POST", perMinute: 20, agreed: true },
   wish: { method: "PUT", perMinute: 20, agreed: true },
   pool: { method: "PUT", perMinute: 30, agreed: true },
   look: { method: "PUT", perMinute: 30, agreed: true },
@@ -98,6 +115,7 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
     return answer({ ok: true });
   }
   if (op === "claim") return answer(await claim(user, body.task));
+  if (op === "follow") return answer(await claimFollow(user, body.code, clientIp(req)));
   return answer(await draw(user, body.n));
 });
 

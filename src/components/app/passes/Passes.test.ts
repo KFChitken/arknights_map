@@ -2,7 +2,7 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { passCharNamed } from "@/lib/passCatalog";
-import { TASK_MAX, TICKETS_CAP, type PassState, type Task, type WishOwned } from "@/lib/passes";
+import { TASK_MAX, TICKETS_CAP, type FollowTask, type PassState, type Task, type WishOwned } from "@/lib/passes";
 import { Detail, layout, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishSlots } from "./Passes";
 
 /** Room under a card for its name (Passes.tsx CAPTION) */
@@ -52,9 +52,10 @@ const state = (tasks: PassState["tasks"], more: Partial<PassState> = {}): PassSt
   worn: null,
   gifts: true,
   pool: "both",
+  follow: null,
   ...more,
 });
-const tasksOf = (st: PassState) => renderToStaticMarkup(createElement(Tasks, { st, onClaim: () => {} }));
+const tasksOf = (st: PassState) => renderToStaticMarkup(createElement(Tasks, { st, onClaim: () => {}, onFollow: async () => null }));
 /** A row's little boxes, in order: g claimed, d done and not claimed yet, - not done */
 const boxes = (html: string) =>
   [...html.matchAll(/<span class="gt-p" aria-hidden="true">(.*?)<\/span>/g)].map((m) =>
@@ -83,6 +84,34 @@ describe("每日任务 on the 寻访 page", () => {
     expect(full).not.toContain("<button");
     expect(full).toContain('<span class="gt-x full">满 50 张</span>');
     expect(full).not.toContain("触须之交送的");
+  });
+});
+
+describe("关注 B 站领券 on the 寻访 page", () => {
+  const f: FollowTask = { name: "Breeze青嵐", url: "https://space.bilibili.com/12345", got: false };
+
+  it("comes first in 每日任务 while it is on: the account, 去 B 站 in a new window, and where to type its code", () => {
+    const html = tasksOf(state([task("touch", 0, 0), task("declare", 0, 0)], { follow: f }));
+    const at = html.indexOf('<div class="gt-follow">');
+    expect(at).toBeGreaterThan(html.indexOf('class="gt-h"'));
+    expect(at).toBeLessThan(html.indexOf("碰一碰别人"));
+    expect(html).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><span>（已关注的请私信UP）</span><small>一次性 · 10 张</small></span>');
+    expect(html).toContain(
+      '<a class="gf-go" href="https://space.bilibili.com/12345" target="_blank" rel="noopener noreferrer" aria-label="去 B 站关注Breeze青嵐（新窗口）">去 B 站</a>',
+    );
+    expect(html).toMatch(/<form class="gf-code"><input [^>]*placeholder="填 B 站拿到的口令" aria-label="B 站拿到的口令"[^>]*\/><button type="submit">领取<\/button><\/form>/);
+    expect(html).toContain('<p class="gf-msg" role="status"></p>');
+    // its tickets are not the day's: 今天领了 counts the tasks under it
+    expect(html).toContain("今天领了<b>0</b>/ 10");
+  });
+
+  it("says 已领 the day it was claimed, with nothing to type and no way to B 站, and is not there while it is off", () => {
+    const got = tasksOf(state([task("touch", 0, 0)], { follow: { ...f, got: true } }));
+    expect(got).toContain('<div class="gt-follow got">');
+    expect(got).toContain('<span class="gt-x ok">已领</span>');
+    expect(got).not.toContain("<form");
+    expect(got).not.toContain("gf-go");
+    expect(tasksOf(state([task("touch", 0, 0)]))).not.toContain("gt-follow");
   });
 });
 

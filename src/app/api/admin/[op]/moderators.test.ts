@@ -194,7 +194,7 @@ const OWNER_OPS = [
   "takeBadge",
   "roachesNear",
   "takeBackRoaches",
-  // 公告, the sponsor desk, the off-limits zones, 一键变灰 and 听歌: the owner's whenever they come
+  // 公告, the sponsor desk, the off-limits zones, 一键变灰, 听歌 and 关注 B 站领券: the owner's whenever they come
   "notices",
   "saveNotice",
   "publishNotice",
@@ -214,6 +214,8 @@ const OWNER_OPS = [
   "endGray",
   "listen",
   "setListen",
+  "passFollow",
+  "setPassFollow",
 ];
 /** Arguments that leave things as they are, for the owner's turn at each op */
 const HARMLESS: Record<string, unknown[]> = { resetAdminTotp: [NOBODY], removeAdmin: [{ userId: NOBODY }], unpauseAdmin: [{ userId: NOBODY }] };

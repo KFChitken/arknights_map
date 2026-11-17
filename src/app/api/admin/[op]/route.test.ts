@@ -9,9 +9,24 @@ import { db } from "@/lib/server/db";
 import { sendAdminMail } from "@/lib/server/mail";
 import { forgetNameWords } from "@/lib/server/nameWords";
 import { resetRoachFeed } from "@/lib/server/roachFeed";
-import { grayUntil, listenSettings, loadSettings } from "@/lib/server/siteSettings";
+import { grayUntil, listenSettings, loadSettings, passFollow } from "@/lib/server/siteSettings";
 import { loadZones } from "@/lib/server/zones";
-import { adminBackupCodes, adminLog, admins, bannedEmails, clearedValues, modActions, nameWords, reports, roaches, sessions, songs, statCounts, users } from "@/lib/server/schema";
+import {
+  adminBackupCodes,
+  adminLog,
+  admins,
+  bannedEmails,
+  clearedValues,
+  modActions,
+  nameWords,
+  passWallets,
+  reports,
+  roaches,
+  sessions,
+  songs,
+  statCounts,
+  users,
+} from "@/lib/server/schema";
 import { loadSongs } from "@/lib/server/songs";
 import { staffItems } from "@/lib/server/staffNotes";
 import { totpCode, totpStep } from "@/lib/server/totp";
@@ -155,6 +170,8 @@ const OPS = [
   "endGray",
   "listen",
   "setListen",
+  "passFollow",
+  "setPassFollow",
   "nope",
 ];
 
@@ -726,6 +743,56 @@ describe("禁放区 and 全站变灰, the owner's", () => {
         ["act.listen", "恢复了听歌"],
         ["act.listen", "一起听一场最多从 20 人改成 8 人"],
       ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("fills 关注 B 站领券 and counts who claimed it, the code never in the 操作记录", async () => {
+    const boss = await owner();
+    // site_settings went with users: as every process would read it now
+    await loadSettings();
+    vi.stubEnv("PASSES", "admins");
+    try {
+      expect((await call("passFollow")).body.result).toEqual({
+        settings: { on: false, name: "", url: "", code: "" },
+        shown: false,
+        passes: "admins",
+        claimed: 0,
+        today: 0,
+      });
+      expect((await call("setPassFollow", [{ url: "https://example.com/x" }])).body.error).toBe(
+        "链接要是 B 站的 https 链接，比如 https://space.bilibili.com/…，或者 https://b23.tv/…。",
+      );
+      const filled = await call("setPassFollow", [{ on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345", code: "k7m q2x" }]);
+      expect(filled.body.result).toMatchObject({
+        settings: { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345", code: "K7MQ2X" },
+        shown: true,
+      });
+      expect(passFollow().code).toBe("K7MQ2X");
+      // the same again changes nothing, and adds nothing to the log
+      expect((await call("setPassFollow", [{ code: "K7MQ2X" }])).status).toBe(200);
+      expect((await call("setPassFollow", [{ code: "N8P4ZR" }])).body.result.settings.code).toBe("N8P4ZR");
+      expect((await call("setPassFollow", [{ on: false }])).body.result).toMatchObject({ shown: false });
+
+      // claimed: by one account yesterday and one today (the site's day turns at 4:00 in Beijing)
+      const one = await account("one@example.com");
+      const two = await account("two@example.com");
+      await db.insert(passWallets).values([
+        { userId: one.id, day: "2026-11-16", welcomed: true, followGot: new Date(Date.now() - DAY) },
+        { userId: two.id, day: "2026-11-16", welcomed: true, followGot: new Date() },
+        { userId: boss.user.id, day: "2026-11-16", welcomed: true },
+      ]);
+      expect((await call("passFollow")).body.result).toMatchObject({ claimed: 2, today: 1 });
+
+      const log = (await db.select().from(adminLog).orderBy(adminLog.id)).map((l) => [l.what, l.detail]);
+      expect(log).toEqual([
+        ["gate.setup", null],
+        ["act.passFollow", "打开了，账号改成「Breeze青嵐」，链接改成 https://space.bilibili.com/12345，换了口令"],
+        ["act.passFollow", "换了口令"],
+        ["act.passFollow", "关掉了"],
+      ]);
+      expect(JSON.stringify(log)).not.toMatch(/K7MQ2X|N8P4ZR/);
     } finally {
       vi.unstubAllEnvs();
     }

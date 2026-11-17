@@ -1,0 +1,1 @@
+ALTER TABLE "pass_wallets" ADD COLUMN "follow_got" timestamp with time zone;

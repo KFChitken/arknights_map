@@ -269,6 +269,8 @@ export function logText(e: AdminLogEntry) {
       return `听歌：${d}`;
     case "act.squad":
       return `一起卫戍：${d}`;
+    case "act.passFollow":
+      return `关注 B 站领券：${d}`;
     default:
       return d || e.what;
   }

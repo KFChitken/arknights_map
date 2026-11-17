@@ -1586,6 +1586,8 @@ export const passWallets = pgTable("pass_wallets", {
   drawnAt: at("drawn_at"),
   /** 卡池 (src/lib/passes.ts PassPool): null until picked, which follows users.games (passPoolOf) */
   pool: text("pool").$type<PassPool>(),
+  /** When 关注 B 站领券's tickets were claimed (src/lib/server/passes.ts claimFollow): once an account; null, never */
+  followGot: at("follow_got"),
 });
 
 /** A ticket one 触须之交 gave another, once a site day each way; kept a week */

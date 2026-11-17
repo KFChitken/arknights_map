@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { allow, forgetHits, keptKeys, MAX_KEYS, prune } from "./rateLimit";
+import { allow, forgetHits, hasRoom, keptKeys, MAX_KEYS, prune } from "./rateLimit";
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -20,6 +20,18 @@ describe("allow", () => {
     expect(allow("a", 2, MINUTE)).toBe(false);
     vi.advanceTimersByTime(MINUTE);
     expect(allow("a", 2, MINUTE)).toBe(true);
+  });
+
+  it("says whether a key has room left, counting nothing: for a limit on what failed alone", () => {
+    vi.useFakeTimers();
+    for (let i = 0; i < 5; i++) expect(hasRoom("wrong", 2, MINUTE)).toBe(true);
+    allow("wrong", 2, MINUTE);
+    expect(hasRoom("wrong", 2, MINUTE)).toBe(true);
+    allow("wrong", 2, MINUTE);
+    expect(hasRoom("wrong", 2, MINUTE)).toBe(false);
+    vi.advanceTimersByTime(MINUTE);
+    expect(hasRoom("wrong", 2, MINUTE)).toBe(true);
+    expect(keptKeys()).toBe(1);
   });
 
   it("keeps a daily count when a flood of short-window keys is cleared", () => {
