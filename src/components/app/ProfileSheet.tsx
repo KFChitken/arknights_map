@@ -127,7 +127,7 @@ export default function ProfileSheet({
   passes?: PassesMe;
   /** 听歌 is open to the player (src/lib/server/listen.ts listenOpen): 让触须之交看到我在听什么 shows */
   listen?: boolean;
-  /** Switch 地图卡片上显示立绘; only called when the box was changed and the rest saved */
+  /** Switch 地图卡片上挂出通行证; only called when the box was changed and the rest saved */
   onPassOnMap?: (on: boolean) => Promise<boolean>;
   onUnblock: (blockId: string) => void;
   onSave: (p: Profile) => Promise<boolean>;

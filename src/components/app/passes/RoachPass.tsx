@@ -1,22 +1,29 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { fmt, T } from "@/i18n";
 import { characterName } from "@/i18n/names";
 import { artBoxVars, passArtUrl } from "@/lib/passArt";
 import type { RoachPass } from "@/lib/passes";
 import { passesApi } from "@/lib/passesClient";
+import { setPassFolded, usePassFolded } from "@/lib/passFold";
 import { useLeanArt } from "@/lib/passLean";
 import { SI_ID } from "@/lib/si";
 import type { PublicRoach } from "@/lib/world/types";
 import "./roachPass.css";
 
 /**
- * The pass the owner of a main roach wears, on the roach's card on the map (RoachPass, GET /api/passes/roach): the
- * 立绘 peeking out of the card's top right, behind what the card says, and 「通行证 · 能天使」 on the card's edge. No
- * number, nothing gold. To save data (src/lib/passLean.ts), and where there is no 立绘, the glow and the name alone:
- * a blur standing free over the map would be a smudge, not a picture.
+ * The pass the owner of a main roach wears, on the roach's card on the map (RoachPass, GET /api/passes/roach): hung
+ * whole over the card (RoachPassHang.tsx, fetched only for a card with one, as most have none), printed with its
+ * number, day and gold but nobody's name; folded by whoever looks (src/lib/passFold.ts), and where the window has no
+ * room for it, the 立绘 peeking out of the card's top right, behind what the card says, and 「通行证 · 能天使」 on the
+ * card's edge, which hangs it out again. To save data (src/lib/passLean.ts), the hung pass is its blur, and the peek
+ * the glow and the name alone, as it is where there is no 立绘: a blur standing free over the map would be a smudge,
+ * not a picture.
  */
+
+const RoachPassHang = dynamic(() => import("./RoachPassHang"), { ssr: false });
 
 /** How long what a roach's card was told is kept on this page before it asks again (the server keeps it as long) */
 const KEEP_MS = 60_000;
@@ -80,11 +87,92 @@ export function useRoachPass(id: string | null): RoachPass | null {
   return id ? heardRoachPass(id) : null;
 }
 
-export function RoachPassPeek({ pass }: { pass: RoachPass }) {
+/**
+ * How a pass hangs over a roach's card (hangFor): w wide (a 长条挂牌 0.644 of it), beside the card on its right, or
+ * over its top right
+ */
+export type Hang = { w: number; beside: boolean };
+
+/** Above this, the bars along the top of the map stay clear of a hung pass */
+const TOP_CLEAR = 140;
+
+/**
+ * Where a pass hangs, for a card at r in a window vw wide: beside the card, its foot a little above the card's (收起
+ * under it), where the window has room for one 150 to 178 wide (as one popped up from a profile card); else over the
+ * card's top right, 116 wide, or three tenths of a phone's screen, as on the design; else, with no room for that
+ * either, nowhere (the peek shows). tall: a 长条挂牌, 0.644 as wide.
+ */
+export function hangFor(r: { top: number; right: number; bottom: number }, vw: number, tall: boolean): Hang | null {
+  // the strap or clip above the pass, and the pass, for each of its width
+  const per = (tall ? 0.56 : 0.64) + 380 / 236;
+  const wide = tall ? 0.644 : 1;
+  const beside = Math.floor(Math.min(178, (vw - r.right - 18 - 12) / wide, (r.bottom - 28 - TOP_CLEAR) / per));
+  if (beside >= 150) return { w: beside, beside: true };
+  const over = Math.floor(Math.min(116, vw * 0.3, (r.top - 8 - TOP_CLEAR) / per));
+  return over >= 84 ? { w: over, beside: false } : null;
+}
+
+const same = (a: Hang | null | undefined, b: Hang | null) => a === b || (a != null && b !== null && a.w === b.w && a.beside === b.beside);
+
+/** Where the pass hangs over the card the anchor is in, as it is laid out now; undefined until it is measured */
+function useHang(at: RefObject<HTMLElement | null>, tall: boolean): Hang | null | undefined {
+  const [hang, setHang] = useState<Hang | null | undefined>(undefined);
+  useLayoutEffect(() => {
+    const card = at.current?.closest<HTMLElement>(".card");
+    if (!card) return setHang(null);
+    const place = () => {
+      const next = hangFor(card.getBoundingClientRect(), window.innerWidth, tall);
+      setHang((was) => (same(was, next) ? was : next));
+    };
+    place();
+    // the card grows and shrinks with what it says, its foot staying where it is
+    const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    watch?.observe(card);
+    window.addEventListener("resize", place);
+    return () => {
+      watch?.disconnect();
+      window.removeEventListener("resize", place);
+    };
+  }, [at, tall]);
+  return hang;
+}
+
+/**
+ * The pass on another player's main roach's card: hung out, unless folded on this device or there is no room for it;
+ * peeking out of the card until it is measured. Whichever was pressed to switch, the other takes the keyboard after it.
+ */
+export function RoachPassOn({ pass }: { pass: RoachPass }) {
+  const at = useRef<HTMLElement>(null);
+  const hang = useHang(at, pass.game === "ef");
+  const folded = usePassFolded();
+  const [pressed, setPressed] = useState(false);
+  const fold = (on: boolean) => {
+    setPressed(true);
+    setPassFolded(on);
+  };
+  return (
+    <>
+      <i ref={at} className="rp-at" hidden />
+      {hang && !folded ? (
+        <RoachPassHang pass={pass} hang={hang} focus={pressed} onFold={() => fold(true)} />
+      ) : (
+        <RoachPassPeek pass={pass} focus={pressed} onUnfold={hang ? () => fold(false) : undefined} />
+      )}
+    </>
+  );
+}
+
+/** The 立绘 peeking out of the card; onUnfold: its tag a button hanging the pass out (focus: taking the keyboard) */
+export function RoachPassPeek({ pass, onUnfold, focus }: { pass: RoachPass; onUnfold?: () => void; focus?: boolean }) {
   const lean = useLeanArt();
   // the picture rises into view once it is here, not bit by bit
   const [shown, setShown] = useState<string | null>(null);
   const file = lean ? null : pass.art;
+  const unfold = useRef<HTMLButtonElement>(null);
+  const tag = fmt(T.passes.onMap.tag, { name: characterName(pass.name) });
+  useEffect(() => {
+    if (focus) unfold.current?.focus({ preventScroll: true });
+  }, [focus]);
   return (
     <>
       <i className="rp-glow" style={{ "--pc": pass.color } as CSSProperties} aria-hidden="true" />
@@ -96,7 +184,13 @@ export function RoachPassPeek({ pass }: { pass: RoachPass }) {
           </picture>
         </span>
       )}
-      <span className="rp-tag">{fmt(T.passes.onMap.tag, { name: characterName(pass.name) })}</span>
+      {onUnfold ? (
+        <button ref={unfold} type="button" className="rp-tag" aria-label={fmt(T.passes.onMap.unfold, { name: characterName(pass.name) })} onClick={onUnfold}>
+          {tag}
+        </button>
+      ) : (
+        <span className="rp-tag">{tag}</span>
+      )}
     </>
   );
 }

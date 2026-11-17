@@ -3545,7 +3545,7 @@ export default function MapApp({
     return Boolean(done);
   };
 
-  /** 地图卡片上显示立绘, saved with the rest of 我的资料 */
+  /** 地图卡片上挂出通行证, saved with the rest of 我的资料 */
   const switchPassOnMap = async (on: boolean) => {
     const done = await act(() => passesApi.onMap(on));
     if (done) await loadMe();

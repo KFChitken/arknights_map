@@ -553,14 +553,29 @@ describe("the pass on a main roach's card on the map", () => {
     return { a, main: roaches.find((r) => r.slot === 0)!.publicId, clone: roaches.find((r) => r.slot > 0)!.publicId };
   }
 
-  it("shows the character of the pass the owner wears, by the roach's id in the feed: no number, nothing gold", async () => {
-    const { main } = await wearer("a@example.com", 1);
+  it("shows the pass the owner wears as it is printed, by the roach's id in the feed: never how many they have, or whose", async () => {
+    const { a, main } = await wearer("a@example.com", 1);
+    await db.update(users).set({ anonymous: false, name: "布丁大王" }).where(eq(users.id, a.id));
     const c = passChar(1)!;
     const shown = await roachPass(main, NOON);
-    expect(shown).toEqual({ charId: 1, name: c.name, rarity: c.rarity, color: c.color, art: null });
-    // No.000001 of ten copies: neither the number, how many, the special look, nor gold
-    expect(Object.keys(shown!).sort()).toEqual(["art", "charId", "color", "name", "rarity"]);
-    expect(JSON.stringify(shown)).not.toMatch(/"(no|copies|fancy|foil|gold|drawnAt|passId)"/);
+    // No.000001 of ten copies: its number (gold, one of the first hundred) and day, and the special look ten bring
+    expect(shown).toEqual({
+      game: c.game,
+      charId: 1,
+      name: c.name,
+      en: c.en,
+      rarity: c.rarity,
+      no: 1,
+      fancy: true,
+      color: c.color,
+      art: null,
+      avatar: expect.toBeOneOf([null, expect.any(String)]),
+      drawnAt: NOON,
+    });
+    expect(Object.keys(shown!).sort()).toEqual(["art", "avatar", "charId", "color", "drawnAt", "en", "fancy", "game", "name", "no", "rarity"]);
+    // not how many, which of their passes, or anything of the player's own: the map names nobody
+    expect(JSON.stringify(shown)).not.toMatch(/"(copies|passId|userId|plain|onMap)"|布丁大王|a@example\.com/);
+    expect(JSON.stringify(shown)).not.toContain(a.id);
     // the short form of the id the feed gives, too
     forgetRoachPasses();
     expect(await roachPass(main.slice(0, 8), NOON)).toEqual(shown);
@@ -573,7 +588,7 @@ describe("the pass on a main roach's card on the map", () => {
     // and where it is moved in its boxes, for a picture that is (src/data/pass-framing.json)
     forgetRoachPasses();
     vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[1, { file: MOVED, color: "#7d338a" }]]));
-    expect(await roachPass(main, NOON)).toEqual({ charId: 1, name: c.name, rarity: c.rarity, color: "#7d338a", art: MOVED, frame: MOVED_FRAME });
+    expect(await roachPass(main, NOON)).toEqual({ ...shown, color: "#7d338a", art: MOVED, frame: MOVED_FRAME });
     vi.stubEnv("PASS_FRAMING", "off");
     forgetRoachPasses();
     expect(Object.keys((await roachPass(main, NOON))!)).not.toContain("frame");

@@ -174,7 +174,7 @@ describe("通行证寻访's requests", () => {
     expect(await call("PUT", "wear", { passId: null })).toMatchObject({ status: 200, body: { worn: null } });
   });
 
-  it("show anyone 寻访 is open to the character of the pass worn on a main roach's card, and let its owner switch that off", async () => {
+  it("show anyone 寻访 is open to the pass worn on a main roach's card, and let its owner switch that off", async () => {
     vi.stubEnv("PASSES", "on");
     vi.stubEnv("PASS_ART", "off");
     const owner = await account("player@example.com");
@@ -193,8 +193,9 @@ describe("通行证寻访's requests", () => {
     expect((await ask(main.id)).status).toBe(401);
     await signIn(await account("someone@example.com"));
     const shown = await ask(main.id);
-    expect(shown).toMatchObject({ status: 200, body: { pass: { charId: 7, rarity: expect.anything() } }, cache: "no-store" });
-    expect(Object.keys(shown.body.pass as object).sort()).toEqual(["art", "charId", "color", "name", "rarity"]);
+    expect(shown).toMatchObject({ status: 200, body: { pass: { charId: 7, rarity: expect.anything(), no: 1 } }, cache: "no-store" });
+    // the pass as printed, but never how many they have, which of their passes it is, or whose
+    expect(Object.keys(shown.body.pass as object).sort()).toEqual(["art", "avatar", "charId", "color", "drawnAt", "en", "fancy", "game", "name", "no", "rarity"]);
     expect(await ask(clone.id)).toMatchObject({ status: 200, body: { pass: null } });
     expect(await ask("")).toMatchObject({ status: 200, body: { pass: null } });
     expect((await call("GET", "roach")).body).toEqual({ pass: null });

@@ -239,6 +239,26 @@ describe("a whole pass", () => {
   });
 });
 
+describe("a stranger's view of a pass (anon)", () => {
+  it("prints —— for the holder, and the number, the day and any gold as they are, in either game's look", () => {
+    const at = Date.parse("2026-11-16T21:30:00+08:00");
+    const ra = whole({ c: exu, no: 1799, holder: "布丁大王", at, anon: true });
+    expect(ra).toContain("持证 ——<br/>2026.11.16");
+    expect(ra).toContain("<small>No.</small>001799");
+    expect(ra).toContain('<span class="zfoil">靓号</span>');
+    expect(ra).not.toContain("布丁大王");
+    // no stamp: it is a pass someone drew, only not named
+    expect(ra).not.toContain("zsmp");
+    const tag = whole({ c: admin, no: 42, holder: "布丁大王", at, anon: true, fancy: true });
+    expect(tag).toContain("持证 —— · 2026.11.16");
+    expect(tag).toContain('<span class="zfoil">前 100</span>');
+    expect(tag).toContain('class="zc tag tagx"');
+    expect(tag).not.toContain("布丁大王");
+    // named, as everywhere else
+    expect(whole({ c: exu, holder: "布丁大王", at })).toContain("持证 布丁大王<br/>2026.11.16");
+  });
+});
+
 describe("a 样张", () => {
   it("prints ?????? for the number, —— for the holder and the day, never gold, and a stamp across it, in every look", () => {
     for (const [c, fancy, look] of [

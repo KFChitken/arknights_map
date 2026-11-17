@@ -27,19 +27,19 @@ const sheet = (passes?: PassesMe, more: { listen?: boolean; profile?: Profile } 
 const box = (html: string, label: string) => new RegExp(`<label class="check"><input type="checkbox"( checked="")?/>${label}</label>`).exec(html);
 
 describe("我的资料's 通行证", () => {
-  it("switches 地图卡片上显示立绘 as the player left it, above 省流量", () => {
+  it("switches 地图卡片上挂出通行证 as the player left it, above 省流量", () => {
     const on = sheet({ tickets: 3, dot: false, worn: null, onMap: true });
     const off = sheet({ tickets: 3, dot: false, worn: null, onMap: false });
-    expect(box(on, "地图卡片上显示立绘")?.[1]).toBe(' checked=""');
-    expect(box(off, "地图卡片上显示立绘")).not.toBeNull();
-    expect(box(off, "地图卡片上显示立绘")?.[1]).toBeUndefined();
-    expect(on).toContain("地图上点开你的本体时，卡片上露出你戴的通行证的立绘，不显示编号；克隆体不显示。");
-    expect(on.indexOf("地图卡片上显示立绘")).toBeLessThan(on.indexOf("省流量：不加载立绘"));
+    expect(box(on, "地图卡片上挂出通行证")?.[1]).toBe(' checked=""');
+    expect(box(off, "地图卡片上挂出通行证")).not.toBeNull();
+    expect(box(off, "地图卡片上挂出通行证")?.[1]).toBeUndefined();
+    expect(on).toContain("地图上点开你的本体时，卡片上挂出你戴的通行证，编号和日期照印，不印你的名字；克隆体不挂。");
+    expect(on.indexOf("地图卡片上挂出通行证")).toBeLessThan(on.indexOf("省流量：不加载立绘"));
   });
 
   it("is not there for a player 寻访 is not open to", () => {
     const html = sheet();
-    expect(html).not.toContain("地图卡片上显示立绘");
+    expect(html).not.toContain("地图卡片上挂出通行证");
     expect(html).not.toContain("省流量：不加载立绘");
   });
 });

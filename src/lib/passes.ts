@@ -143,10 +143,10 @@ export type PassOnCard = {
 export type WornPass = PassOnCard & { passId: number };
 /**
  * The pass the owner of a main roach wears, as its card on the map shows it to anyone else (GET /api/passes/roach):
- * the character, the colour and the picture's files (and where it is moved, for the few that are), never the
- * number, how many they have, or anything gold
+ * hung over the card whole, with its number and the day drawn (gold where the number is), never how many they
+ * have; and printed with no holder's name, as the map names nobody (FullPass anon)
  */
-export type RoachPass = Pick<PassOnCard, "charId" | "name" | "rarity" | "color" | "art" | "frame">;
+export type RoachPass = Omit<PassOnCard, "copies">;
 /** 我的通行证: every character the player has, and how many passes in all */
 export type Collection = { chars: OwnedChar[]; passes: number };
 /** A line of 寻访记录, newest first */
@@ -160,7 +160,7 @@ export type PassesMe = {
   dot: boolean;
   /** the pass they wear, for 我的资料 */
   worn: WornPass | null;
-  /** 地图卡片上显示立绘: the 立绘 of the pass they wear shows on their main roach's card on the map (RoachPass) */
+  /** 地图卡片上挂出通行证: the pass they wear hangs over their main roach's card on the map (RoachPass) */
   onMap: boolean;
 };
 

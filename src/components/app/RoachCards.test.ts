@@ -129,12 +129,26 @@ describe("a card's touches for today", () => {
 });
 
 describe("the pass the owner of a main roach wears, on its card", () => {
-  const pass: RoachPass = { charId: 1, name: "能天使", rarity: 6, color: "#d63829", art: "0123456789abcdef" };
+  const pass: RoachPass = {
+    game: "ak",
+    charId: 1,
+    name: "能天使",
+    en: "Exusiai",
+    rarity: 6,
+    no: 1799,
+    fancy: false,
+    color: "#d63829",
+    art: "0123456789abcdef",
+    avatar: null,
+    drawnAt: Date.parse("2026-11-16T21:30:00+08:00"),
+  };
   const at = Date.now() + 5 * 3_600_000;
 
-  it("has its 立绘 peek out of the card, and the character's name on the card's edge: no number", () => {
+  it("has its 立绘 peek out of the card, and the character's name on the card's edge, until it is hung", () => {
     const html = card({ left: 57, at }, { pass });
     expect(html).toContain('class="card stack with-pass"');
+    // where it hangs is measured from the card, once the card is on the screen (passes/RoachPass.tsx)
+    expect(html).toContain('<i class="rp-at" hidden=""></i>');
     expect(text(html)).toContain("通行证 · 能天使");
     expect(html).toContain('<source type="image/avif" srcSet="/operator-art/pass/0123456789abcdef.avif"/>');
     expect(html).toContain('src="/operator-art/pass/0123456789abcdef.webp"');

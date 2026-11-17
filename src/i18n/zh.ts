@@ -1847,7 +1847,7 @@ export const zh = {
     strangerSub: "地图上不写是谁的",
     touchAsk: "伸出触须碰一下 TA：",
     strangerNote: "路人在地图上点你的本体，只看到这些；点克隆体写「某舟P的克隆体」。",
-    strangerPass: "通行证只露立绘、不写编号，设置里能关。",
+    strangerPass: "通行证挂出整张，编号和日期照印、不印名字，设置里能关。",
     passTag: "通行证 · {name}",
     friendTitle: "触须之交 · {name}",
     friendSince: "成为触须之交的那天起，TA 就能看到这些",
@@ -2845,9 +2845,13 @@ export const zh = {
       hint: "通行证上只显示模糊的底和角色名，只在这台设备上。手机开着省流量模式时自动这样。",
     },
     onMap: {
-      label: "地图卡片上显示立绘",
-      hint: "地图上点开你的本体时，卡片上露出你戴的通行证的立绘，不显示编号；克隆体不显示。",
+      label: "地图卡片上挂出通行证",
+      hint: "地图上点开你的本体时，卡片上挂出你戴的通行证，编号和日期照印，不印你的名字；克隆体不挂。",
       tag: "通行证 · {name}",
+      /** On the pass hung over a stranger's card, folding it back to the 立绘 peeking out; the peek's tag hangs it again */
+      fold: "收起",
+      foldLabel: "收起通行证",
+      unfold: "挂出{name}的通行证",
     },
     wish: {
       title: "改心愿单",

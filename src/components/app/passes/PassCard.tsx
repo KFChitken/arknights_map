@@ -268,9 +268,12 @@ function HangTag() {
 /** no null: a 样张, as a wish not drawn yet shows (SamplePass) */
 type FaceProps = { c: PassChar; no: number | null; color: string; pic: PassPic; holder: string; at: number };
 
+/** Printed where a pass names nobody, or has no day */
+const BLANK = "——";
+
 /** What a pass prints of whose it is: its number, holder and day, or ??????, —— and —— on a 样张 */
 const printed = (no: number | null, holder: string, at: number) =>
-  no === null ? { num: "?".repeat(PRINTED_DIGITS), holder: "——", date: "——" } : { num: padNo(no), holder, date: issued(at) };
+  no === null ? { num: "?".repeat(PRINTED_DIGITS), holder: BLANK, date: BLANK } : { num: padNo(no), holder, date: issued(at) };
 
 /** The rubber stamp across a 样张 */
 function Stamp() {
@@ -414,7 +417,8 @@ const stillMotion = () => typeof window !== "undefined" && window.matchMedia("(p
 /**
  * A whole pass, w wide (a 长条挂牌 0.644 of it, as tall); hang: with its strap or clip above it, as one that pops up;
  * tilt: leaning after the pointer, its shine moving, unless the player asked for less motion. Its picture and colour
- * as MiniPass's: given (a profile card's), else from the 立绘 there are. no null: a 样张 (SamplePass).
+ * as MiniPass's: given (a profile card's), else from the 立绘 there are. no null: a 样张 (SamplePass). anon: printed
+ * with —— for the holder, number, day and gold as they are, as a stranger sees it on the map (RoachPassHang.tsx).
  */
 export function FullPass({
   c,
@@ -428,6 +432,7 @@ export function FullPass({
   w,
   hang,
   tilt,
+  anon,
   label,
   children,
 }: Omit<FaceProps, "color" | "pic"> & {
@@ -438,6 +443,7 @@ export function FullPass({
   w: number;
   hang?: boolean;
   tilt?: boolean;
+  anon?: boolean;
   label?: string;
   children?: ReactNode;
 }) {
@@ -458,7 +464,7 @@ export function FullPass({
   const rest = () => {
     for (const v of ["--rx", "--ry", "--hx"]) self.current?.style.removeProperty(v);
   };
-  const face: FaceProps = { c, no, color: color ?? passColor(passArt, c), pic: pic ?? picOf(c, passArt, art), holder, at };
+  const face: FaceProps = { c, no, color: color ?? passColor(passArt, c), pic: pic ?? picOf(c, passArt, art), holder: anon ? BLANK : holder, at };
   return (
     <div
       ref={self}
@@ -486,6 +492,13 @@ export function SamplePass(props: { c: PassChar; fancy: boolean; art?: Art | nul
 }
 
 /** A character as the catalogue has them, from what a worn pass carries (profile cards have no catalogue) */
-export const charOfCard = (p: PassOnCard): PassChar => ({ id: p.charId, game: p.game, name: p.name, en: p.en, rarity: p.rarity, color: p.color });
+export const charOfCard = (p: Pick<PassOnCard, "charId" | "game" | "name" | "en" | "rarity" | "color">): PassChar => ({
+  id: p.charId,
+  game: p.game,
+  name: p.name,
+  en: p.en,
+  rarity: p.rarity,
+  color: p.color,
+});
 /** A worn pass's picture */
-export const picOfCard = (p: PassOnCard): PassPic => ({ file: p.art, avatar: p.avatar ? `/operator-art/${p.avatar}` : null, frame: p.frame });
+export const picOfCard = (p: Pick<PassOnCard, "art" | "avatar" | "frame">): PassPic => ({ file: p.art, avatar: p.avatar ? `/operator-art/${p.avatar}` : null, frame: p.frame });

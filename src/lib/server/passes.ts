@@ -484,10 +484,11 @@ const roachPassKept = new Map<string, { at: number; pass: RoachPass | null }>();
 
 /**
  * The pass the owner of a roach wears, as the roach's card on the map shows it to anyone else (RoachPass): on their
- * main roach alone, as the same picture on a clone would tell whose clone it is, and only while they let it show
- * (on_map); never the number, how many they have, or anything gold. Null for a clone, a guide, a demo roach, a roach
- * not there, nothing worn, or on_map off. id is the one the map's feed gave the roach (roachByFeedId). Kept
- * ROACH_PASS_MS for whoever asks next, so a pass changed or on_map switched shows within that.
+ * main roach alone, as the same pass on a clone would tell whose clone it is, and only while they let it show
+ * (on_map); the pass as printed, its number and day too, but never how many they have, and no name (the card has
+ * none to print). Null for a clone, a guide, a demo roach, a roach not there, nothing worn, or on_map off. id is the
+ * one the map's feed gave the roach (roachByFeedId). Kept ROACH_PASS_MS for whoever asks next, so a pass changed or
+ * on_map switched shows within that.
  */
 export async function roachPass(id: string, now = Date.now()): Promise<RoachPass | null> {
   // no roach's id is longer (a public id): nothing longer is looked up, or kept
@@ -504,17 +505,19 @@ export async function roachPass(id: string, now = Date.now()): Promise<RoachPass
 async function roachPassNow(id: string): Promise<RoachPass | null> {
   const roach = await roachByFeedId(id);
   if (!roach || roach.slot !== 0) return null;
+  // the worn pass and its owner's on_map, in the one statement
   const [r] = await db
-    .select({ charId: passes.charId, onMap: passWallets.onMap })
+    .select({ ...wornColumns, onMap: passWallets.onMap })
     .from(users)
     .innerJoin(passes, eq(passes.id, users.wornPass))
     .leftJoin(passWallets, eq(passWallets.userId, users.id))
     .where(eq(users.id, roach.userId))
     .limit(1);
-  const c = r && r.onMap !== false ? passChar(r.charId) : null;
-  if (!c) return null;
-  const a = (await passArtIndex()).get(c.id);
-  return { charId: c.id, name: c.name, rarity: c.rarity, color: a?.color ?? c.color, art: a?.file ?? null, ...framed(a?.file) };
+  const card = r && r.onMap !== false ? cardOf(r, await pictures()) : null;
+  if (!card) return null;
+  // named one by one, so nothing added to a card later goes to strangers unasked (how many they have never does)
+  const { game, charId, name, en, rarity, no, fancy, color, art, frame, avatar, drawnAt } = card;
+  return { game, charId, name, en, rarity, no, fancy, color, art, ...(frame && { frame }), avatar, drawnAt };
 }
 
 /** For tests: the roaches' passes kept, forgotten, as in a fresh process */
@@ -523,7 +526,7 @@ export function forgetRoachPasses() {
 }
 
 /**
- * 地图卡片上显示立绘, switched in 我的资料 (on_map). The wallet is made for a player who never opened 寻访 (as a gift
+ * 地图卡片上挂出通行证, switched in 我的资料 (on_map). The wallet is made for a player who never opened 寻访 (as a gift
  * makes it: the first tickets still come when they do). Never waits for an agreement, so it can always be switched off.
  */
 export async function setOnMap(user: UserRow, on: unknown, now = Date.now()): Promise<{ onMap: boolean }> {

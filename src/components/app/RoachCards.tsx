@@ -16,7 +16,7 @@ import type { OwnRoach, PublicRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 import { DRAW_HERE } from "../admin/ZoneDraw";
 import { MingheRoute } from "./Minghe";
-import { RoachPassPeek } from "./passes/RoachPass";
+import { RoachPassOn } from "./passes/RoachPass";
 import { inkLine } from "./Si";
 import { touchesNow, turnsAtText, useTick, waitParts } from "./dayTurns";
 import type { inkNow } from "@/lib/siInn";
@@ -282,7 +282,7 @@ export function OtherRoachCard({
           )}
         </div>
       </div>
-      {showPass && <RoachPassPeek pass={showPass} />}
+      {showPass && <RoachPassOn pass={showPass} />}
       {onOpenFriend && (
         <div className="row-actions">
           <button className="pill" onClick={onOpenFriend}>

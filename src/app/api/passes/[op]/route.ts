@@ -19,7 +19,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   PUT  wish {ids}  the wish list
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
  *   PUT  wear {passId}         the pass worn on their profile card (null: none)
- *   PUT  map {on}    地图卡片上显示立绘 (我的资料)
+ *   PUT  map {on}    地图卡片上挂出通行证 (我的资料)
  *   GET  collection  我的通行证
  *   GET  copies      their passes of one character, ?char= its id
  *   GET  log         寻访记录, ?before= the id of the last row shown
