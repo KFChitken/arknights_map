@@ -16,7 +16,7 @@ import { fmt, T } from "@/i18n";
 import { characterName, nameMatches } from "@/i18n/names";
 import { fmtNodes } from "@/i18n/nodes";
 import type { Game } from "@/lib/games";
-import { CATALOG_SIZE, catalogCounts, PASS_CATALOG, passChar, passCharNamed, type PassChar } from "@/lib/passCatalog";
+import { CATALOG_SIZE, catalogCounts, PASS_CATALOG, passChar, passCharNamed, poolSize, type PassChar } from "@/lib/passCatalog";
 import {
   bestOf,
   claimable,
@@ -26,6 +26,7 @@ import {
   gotToday,
   isFancy,
   padNo,
+  PASS_POOLS,
   passesDot,
   PITY,
   pityLeft,
@@ -41,6 +42,7 @@ import {
   type OwnedChar,
   type PassCopy,
   type PassesMe,
+  type PassPool,
   type PassState,
   type Task,
   type Tier,
@@ -181,6 +183,24 @@ export default function Passes({
     return () => window.clearTimeout(t);
   }, [bump]);
 
+  // 卡池: shown picked at once, and asked after any claim on its way, so a draw (which waits for those) draws from it
+  const [poolNow, setPoolNow] = useState<PassPool | null>(null);
+  const pickPool = (pool: PassPool) => {
+    if (pool === (poolNow ?? stRef.current?.pool)) return;
+    setPoolNow(pool);
+    setMsg("");
+    claims.current = claims.current.then(async () => {
+      try {
+        const s = await passesApi.pool(pool);
+        if (live.current) took(s);
+      } catch (e) {
+        refuse(e);
+      } finally {
+        if (live.current) setPoolNow((p) => (p === pool ? null : p));
+      }
+    });
+  };
+
   const pulling = useRef(false);
   const pull = async (n: DrawSize) => {
     if (busy || pulling.current) return;
@@ -286,8 +306,11 @@ export default function Passes({
               busy={busy}
               bump={bump}
               claimed={claimed}
+              // an answer from a process not updated yet has none
+              pool={poolNow ?? st.pool ?? "both"}
               onPull={pull}
               onClaim={claim}
+              onPool={pickPool}
               onPeek={openPeek}
               onScreen={setScreen}
               onGift={onGift}
@@ -577,6 +600,28 @@ export function Tasks({ st, onClaim }: { st: PassState; onClaim: (task: Task) =>
   );
 }
 
+/** The banner's line on whom a draw picks from: everyone, each as likely, or one game's 卡池 */
+export const poolLine = (pool: PassPool) =>
+  pool === "both" ? fmt(T.passes.pool, { n: CATALOG_SIZE }) : fmt(T.passes.poolOne, { pick: T.passes.poolPick[pool], n: poolSize(pool) });
+
+/** 卡池: both games, or one game's (a line under it says the wish list comes all the same) */
+export function PoolPick({ pool, onPick }: { pool: PassPool; onPick: (pool: PassPool) => void }) {
+  const t = T.passes.poolPick;
+  return (
+    <div className="g-pool">
+      <b aria-hidden="true">{t.title}</b>
+      <div className="gp-sw" role="radiogroup" aria-label={t.title}>
+        {PASS_POOLS.map((p) => (
+          <button key={p} type="button" role="radio" aria-checked={p === pool} onClick={() => onPick(p)}>
+            {t[p]}
+          </button>
+        ))}
+      </div>
+      <p>{t.note}</p>
+    </div>
+  );
+}
+
 function Home({
   st,
   art,
@@ -585,9 +630,11 @@ function Home({
   busy,
   bump,
   claimed,
+  pool,
   hidden,
   onPull,
   onClaim,
+  onPool,
   onPeek,
   onScreen,
   onGift,
@@ -602,10 +649,13 @@ function Home({
   bump: { n: number; key: number } | null;
   /** claims answered so far: each moves the focus on */
   claimed: number;
+  /** the 卡池 as picked, its answer on its way or not */
+  pool: PassPool;
   /** 刷券 is over it */
   hidden: boolean;
   onPull: (n: DrawSize) => void;
   onClaim: (task: Task) => void;
+  onPool: (pool: PassPool) => void;
   /** a wish tapped: their pass over 寻访 */
   onPeek: (id: number, from: HTMLElement) => void;
   onScreen: (s: "wallet" | "wish" | "odds" | "log") => void;
@@ -636,7 +686,7 @@ function Home({
           <div className="hb-t">
             <em>{T.passes.kicker}</em>
             <b>{T.passes.banner}</b>
-            <span>{fmt(T.passes.pool, { n: CATALOG_SIZE })}</span>
+            <span>{poolLine(pool)}</span>
           </div>
           <div className="hb-w">
             <WishSlots st={st} art={art} onPeek={onPeek} onEdit={() => onScreen("wish")} />
@@ -683,6 +733,7 @@ function Home({
         <p className="sr" role="status">
           {said}
         </p>
+        <PoolPick pool={pool} onPick={onPool} />
         <div className="g-links">
           <button onClick={() => onScreen("odds")}>{T.passes.links.odds}</button>
           <button onClick={() => onScreen("log")}>{T.passes.links.log}</button>
@@ -1654,6 +1705,7 @@ function Odds({ gifts, onBack }: { gifts: boolean; onBack: () => void }) {
       <div className="od-body">
         <p>{fmt(o.pool, { n: CATALOG_SIZE, ak: counts.ak, ef: counts.ef })}</p>
         <p>{fmt(o.each, { n: CATALOG_SIZE, pct: (100 / CATALOG_SIZE).toFixed(2) })}</p>
+        <p>{fmt(o.poolOne, { n: CATALOG_SIZE, pity: PITY })}</p>
         <p>{fmt(o.pity, { max: WISH_MAX, miss: PITY - 1, pity: PITY })}</p>
         <p>{o.wish}</p>
         <p>

@@ -3,15 +3,17 @@ import { randomInt } from "node:crypto";
 import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import type { ArtFrame } from "../passArt";
-import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed } from "../passCatalog";
+import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed, poolIds } from "../passCatalog";
 import {
   claimable,
   GIFTS_IN_PER_DAY,
   isDrawSize,
   isFancy,
   isFoil,
+  isPassPool,
   isTask,
   passesDot,
+  passPoolOf,
   rollChars,
   TASK_MAX,
   TASKS,
@@ -49,9 +51,10 @@ import { errorCode } from "./signals";
  * 通行证寻访 (src/lib/passes.ts): tickets a player earns by playing, through 每日任务: what they do is counted
  * (didTask), up to TASK_MAX of each a site day (src/lib/siteDay.ts, from 04:00 Beijing time), and claimed on the page
  * (claim), up to TICKETS_CAP held; spent on draws of one or ten (draw), each pass numbered in the order the whole
- * site drew its character; the wish list, PITY draws at most from one of it. Who was drawn is decided here, by
- * crypto.randomInt, before the page shows anything. No ticket is sold or given for money; 触须之交 may give each
- * other one a day (receiveGift, from friendly.ts giftTicket). Switched by PASSES and PASS_GIFTS (env.ts).
+ * site drew its character; the wish list, PITY draws at most from one of it; the 卡池, both games or one, for whoever
+ * else comes. Who was drawn is decided here, by crypto.randomInt, before the page shows anything. No ticket is sold
+ * or given for money; 触须之交 may give each other one a day (receiveGift, from friendly.ts giftTicket). Switched by
+ * PASSES and PASS_GIFTS (env.ts).
  */
 
 type Wallet = typeof passWallets.$inferSelect;
@@ -184,7 +187,7 @@ export async function openWallet(user: UserRow, now = Date.now()): Promise<PassS
     .values({ userId: user.id, tickets: WELCOME_TICKETS, day, welcomed: true, wish: wishFromFavourites(user) })
     .onConflictDoNothing()
     .returning();
-  if (made) return stateOf(made, now, true);
+  if (made) return stateOf(made, user.games, now, true);
   const [late] = await db
     .update(passWallets)
     .set({
@@ -194,15 +197,16 @@ export async function openWallet(user: UserRow, now = Date.now()): Promise<PassS
     })
     .where(and(eq(passWallets.userId, user.id), eq(passWallets.welcomed, false)))
     .returning();
-  if (late) return stateOf(late, now, true);
-  return stateOf(await walletOf(user.id), now);
+  if (late) return stateOf(late, user.games, now, true);
+  return passState(user.id, now);
 }
 
 /**
  * The page's view of a wallet: the day's counts (none yet, for a row of a past day), the wish list, what of it they
- * own (with their first pass of each, so a tap on one there opens it at once) and how many of each the site has drawn
+ * own (with their first pass of each, so a tap on one there opens it at once), how many of each the site has drawn,
+ * and the 卡池 (games: what they play, users.games, for one never picked)
  */
-async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassState> {
+async function stateOf(w: Wallet, games: readonly string[], now: number, welcomed = false): Promise<PassState> {
   const day = siteDay(now);
   const same = w.day === day;
   const wish = w.wish.filter(isPassChar);
@@ -239,18 +243,26 @@ async function stateOf(w: Wallet, now: number, welcomed = false): Promise<PassSt
     nextDayAt: nextSiteDayAt(now),
     worn,
     gifts: passGiftsOn(),
+    pool: passPoolOf(w.pool, games),
   };
 }
 
-async function walletOf(userId: string): Promise<Wallet> {
-  const [w] = await db.select().from(passWallets).where(eq(passWallets.userId, userId)).limit(1);
-  if (!w) throw new HttpError(409, T.server.passes.openFirst);
-  return w;
+/** A player's wallet, and the games they play (users.games) */
+async function walletOf(userId: string): Promise<{ w: Wallet; games: string[] }> {
+  const [r] = await db
+    .select({ w: passWallets, games: users.games })
+    .from(passWallets)
+    .innerJoin(users, eq(users.id, passWallets.userId))
+    .where(eq(passWallets.userId, userId))
+    .limit(1);
+  if (!r) throw new HttpError(409, T.server.passes.openFirst);
+  return r;
 }
 
 /** The page's view of a player's wallet, as after any change */
 export async function passState(userId: string, now = Date.now()): Promise<PassState> {
-  return stateOf(await walletOf(userId), now);
+  const { w, games } = await walletOf(userId);
+  return stateOf(w, games, now);
 }
 
 /**
@@ -290,6 +302,7 @@ const sqlIds = (ids: readonly number[]) => sql`${`{${ids.map((i) => Math.trunc(i
  * (tiersOf: their copies before it); then the numbers, taken from each character's counter in order of charId, so
  * two draws never wait on each other the wrong way round, and last, so those rows are held the shortest. Returns the
  * passes in the order drawn, and the wallet after. rand: the dice (crypto.randomInt, a test's own in the tests).
+ * The 卡池 is the wallet's as it was locked, so one picked while a draw is on its way counts from the next.
  */
 export async function draw(
   user: UserRow,
@@ -305,7 +318,7 @@ export async function draw(
     if (since >= 0 && since < DRAW_GAP_MS) throw new HttpError(429, T.server.passes.tooFast);
     if (w.tickets < size) throw new HttpError(409, T.server.passes.notEnough);
 
-    const { picks, miss } = rollChars(CATALOG_IDS, w.wish.filter(isPassChar), w.miss, size, rand);
+    const { picks, miss } = rollChars(CATALOG_IDS, w.wish.filter(isPassChar), w.miss, size, rand, poolIds(passPoolOf(w.pool, user.games)));
     const chars = [...new Set(picks.map((p) => p.charId))].sort((a, b) => a - b);
     const had = await tx
       .select({ charId: passes.charId, n: count() })
@@ -357,6 +370,18 @@ export async function setWish(user: UserRow, ids: unknown, now = Date.now()): Pr
       .set({ wish: ids, ...(first ? {} : { wishDay: day }) })
       .where(eq(passWallets.userId, user.id));
   });
+  return passState(user.id, now);
+}
+
+/** 卡池: both games, or one (src/lib/passes.ts PassPool), from the next draw on; the wish list's chance stays as it was */
+export async function setPool(user: UserRow, pool: unknown, now = Date.now()): Promise<PassState> {
+  if (!isPassPool(pool)) throw new HttpError(400, T.server.passes.badPool);
+  const [set] = await db
+    .update(passWallets)
+    .set({ pool })
+    .where(and(eq(passWallets.userId, user.id), eq(passWallets.welcomed, true)))
+    .returning({ userId: passWallets.userId });
+  if (!set) throw new HttpError(409, T.server.passes.openFirst);
   return passState(user.id, now);
 }
 

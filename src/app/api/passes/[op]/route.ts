@@ -5,7 +5,7 @@ import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib
 import { passesMode } from "@/lib/server/env";
 import { giftTicket } from "@/lib/server/friendly";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { claim, collection, copiesOf, draw, openWallet, passesOpen, passLog, roachPass, setLook, setOnMap, setWish, wear } from "@/lib/server/passes";
+import { claim, collection, copiesOf, draw, openWallet, passesOpen, passLog, roachPass, setLook, setOnMap, setPool, setWish, wear } from "@/lib/server/passes";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
@@ -17,6 +17,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST claim {task}          每日任务: the tickets of one task done today, as many as may be held
  *   POST gift {friendId}       送 1 张寻访券 to a 触须之交 (src/lib/server/friendly.ts giftTicket); 一键 is world's friendsAct
  *   PUT  wish {ids}  the wish list
+ *   PUT  pool {pool} 卡池: both games (both), or one (ak, ef), from the next draw on
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
  *   PUT  wear {passId}         the pass worn on their profile card (null: none)
  *   PUT  map {on}    地图卡片上挂出通行证 (我的资料)
@@ -38,6 +39,7 @@ const OPS = {
   claim: { method: "POST", perSecond: 5, agreed: true },
   gift: { method: "POST", perMinute: 30, agreed: true },
   wish: { method: "PUT", perMinute: 20, agreed: true },
+  pool: { method: "PUT", perMinute: 30, agreed: true },
   look: { method: "PUT", perMinute: 30, agreed: true },
   wear: { method: "PUT", perMinute: 30, agreed: true },
   // what others see of them: always theirs to switch off
@@ -105,5 +107,6 @@ export const PUT = route(async (req: NextRequest, { params }: Ctx) => {
   if (op === "look") return answer(await setLook(user, body.charId, body.plain));
   if (op === "wear") return answer(await wear(user, body.passId));
   if (op === "map") return answer(await setOnMap(user, body.on));
+  if (op === "pool") return answer(await setPool(user, body.pool));
   return answer(await setWish(user, body.ids));
 });

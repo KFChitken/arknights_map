@@ -22,6 +22,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { StatSnapshot } from "../dashboard";
+import type { PassPool } from "../passes";
 import type { RadarScan } from "../world/types";
 
 /** PostGIS geography; only ever written through the generated column below. */
@@ -1583,6 +1584,8 @@ export const passWallets = pgTable("pass_wallets", {
   onMap: boolean("on_map").notNull().default(true),
   plain: smallint("plain").array().notNull().default(sql`'{}'::smallint[]`),
   drawnAt: at("drawn_at"),
+  /** 卡池 (src/lib/passes.ts PassPool): null until picked, which follows users.games (passPoolOf) */
+  pool: text("pool").$type<PassPool>(),
 });
 
 /** A ticket one 触须之交 gave another, once a site day each way; kept a week */

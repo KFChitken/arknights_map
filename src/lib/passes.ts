@@ -51,6 +51,22 @@ export const WISH_MAX = 6;
 export const DRAW_SIZES = [1, 10] as const;
 export type DrawSize = (typeof DRAW_SIZES)[number];
 export const isDrawSize = (n: unknown): n is DrawSize => n === 1 || n === 10;
+/**
+ * 卡池: whom a pull brings when it brings nobody from the wish list: anyone of both games (both), or of one game alone
+ * (Breeze, 2026-11-17). The wish list comes as often whichever (rollChars), its other game's characters too. Until a
+ * player picks one, they draw from the game 我的资料's 在玩 says they play, or both when it says both or neither
+ * (passPoolOf).
+ */
+export const PASS_POOLS = ["both", "ak", "ef"] as const;
+export type PassPool = (typeof PASS_POOLS)[number];
+export const isPassPool = (p: unknown): p is PassPool => typeof p === "string" && (PASS_POOLS as readonly string[]).includes(p);
+/** The 卡池 a player draws from: the one they picked, else as users.games has it (arknights, endfield) */
+export function passPoolOf(picked: PassPool | null, games: readonly string[]): PassPool {
+  if (isPassPool(picked)) return picked;
+  const ak = games.includes("arknights");
+  const ef = games.includes("endfield");
+  return ak === ef ? "both" : ak ? "ak" : "ef";
+}
 
 /**
  * What a pass was to its player when drawn: someone on their wish list (whichever copy), a character new to them,
@@ -103,6 +119,8 @@ export type PassState = {
   worn: WornPass | null;
   /** 触须之交 may give each other tickets (PASS_GIFTS): 送来的 y / 3 and 送券 show */
   gifts: boolean;
+  /** the 卡池 they draw from: the one they picked, else as their 在玩 has it (passPoolOf) */
+  pool: PassPool;
 };
 
 /** One character in 我的通行证 */
@@ -201,6 +219,9 @@ export const pityLeft = (miss: number) => Math.max(1, PITY - miss);
  * has already included (Breeze, 2026-11-13: a player who wants no copies takes them off). Anyone from the wish list
  * starts the count again, however they came. An empty wish list keeps no count. rand(n) is a whole number from 0
  * to n - 1 (crypto.randomInt on the server).
+ * game: the characters of the one game a 卡池 of one game draws from (none: both, the draw just as before). A pull
+ * short of PITY then brings someone from the wish list as often as with both, wish.length in ids.length, each of
+ * them as likely; else anyone of that game who is not on it, each as likely.
  */
 export function rollChars(
   ids: readonly number[],
@@ -208,11 +229,20 @@ export function rollChars(
   miss: number,
   n: number,
   rand: (n: number) => number,
+  game?: readonly number[] | null,
 ): { picks: { charId: number; wish: boolean }[]; miss: number } {
   const wished = new Set(wish);
+  const rest = game?.filter((id) => !wished.has(id));
   const picks: { charId: number; wish: boolean }[] = [];
   for (let i = 0; i < n; i++) {
-    const charId = wish.length && miss >= PITY - 1 ? wish[rand(wish.length)] : ids[rand(ids.length)];
+    let charId: number;
+    if (wish.length && miss >= PITY - 1) charId = wish[rand(wish.length)];
+    else if (!rest) charId = ids[rand(ids.length)];
+    else {
+      const r = rand(ids.length);
+      // a game with nobody off the wish list (none has so few) draws as both
+      charId = r < wish.length ? wish[r] : rest.length ? rest[rand(rest.length)] : ids[r];
+    }
     const hit = wished.has(charId);
     miss = hit || !wish.length ? 0 : miss + 1;
     picks.push({ charId, wish: hit });

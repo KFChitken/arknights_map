@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { passCharNamed } from "@/lib/passCatalog";
 import { TASK_MAX, TICKETS_CAP, type PassState, type Task, type WishOwned } from "@/lib/passes";
-import { Detail, layout, Peek, sampleWidth, Tasks, WishSlots } from "./Passes";
+import { Detail, layout, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishSlots } from "./Passes";
 
 /** Room under a card for its name (Passes.tsx CAPTION) */
 const CAPTION = 20;
@@ -51,6 +51,7 @@ const state = (tasks: PassState["tasks"], more: Partial<PassState> = {}): PassSt
   nextDayAt: 0,
   worn: null,
   gifts: true,
+  pool: "both",
   ...more,
 });
 const tasksOf = (st: PassState) => renderToStaticMarkup(createElement(Tasks, { st, onClaim: () => {} }));
@@ -82,6 +83,33 @@ describe("每日任务 on the 寻访 page", () => {
     expect(full).not.toContain("<button");
     expect(full).toContain('<span class="gt-x full">满 50 张</span>');
     expect(full).not.toContain("触须之交送的");
+  });
+});
+
+describe("卡池 on the 寻访 page", () => {
+  type Pick = ReactElement<{ children: ReactElement<{ "aria-checked": boolean; onClick: () => void; children: string }>[] }>;
+
+  it("picks both games or one, the one picked checked, and says the wish list comes all the same", () => {
+    const html = renderToStaticMarkup(createElement(PoolPick, { pool: "ef", onPick: () => {} }));
+    expect(html).toContain('<b aria-hidden="true">卡池</b><div class="gp-sw" role="radiogroup" aria-label="卡池">');
+    expect([...html.matchAll(/<button type="button" role="radio" aria-checked="(\w+)">(.*?)<\/button>/g)].map((m) => [m[2], m[1]])).toEqual([
+      ["两边都抽", "false"],
+      ["只抽方舟", "false"],
+      ["只抽终末地", "true"],
+    ]);
+    expect(html).toContain("<p>卡池只影响不是心愿的那些，心愿单里的角色照样会出。</p>");
+
+    const onPick = vi.fn();
+    const buttons = ((PoolPick({ pool: "both", onPick }) as ReactElement<{ children: ReactElement[] }>).props.children[1] as Pick).props.children;
+    expect(buttons.map((b) => b.props["aria-checked"])).toEqual([true, false, false]);
+    buttons[1].props.onClick();
+    expect(onPick).toHaveBeenCalledWith("ak");
+  });
+
+  it("says on the banner whom a draw picks from", () => {
+    expect(poolLine("both")).toBe("475 位角色 · 每位概率一样");
+    expect(poolLine("ak")).toBe("只抽方舟 · 441 位角色");
+    expect(poolLine("ef")).toBe("只抽终末地 · 34 位角色");
   });
 });
 

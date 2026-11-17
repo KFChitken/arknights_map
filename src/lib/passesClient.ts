@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassState, RoachPass, Task } from "./passes";
+import type { CharCopies, Collection, Drawn, DrawSize, LogPage, PassPool, PassState, RoachPass, Task } from "./passes";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -33,6 +33,8 @@ export const passesApi = {
   /** 每日任务: claim the tickets of one task done today */
   claim: (task: Task) => call<PassState>("POST", "claim", { task }),
   wish: (ids: number[]) => call<PassState>("PUT", "wish", { ids }),
+  /** 卡池: both games, or one, from the next draw on */
+  pool: (pool: PassPool) => call<PassState>("PUT", "pool", { pool }),
   collection: () => call<Collection>("GET", "collection"),
   log: (before?: number) => call<LogPage>("GET", "log", undefined, before ? `?before=${before}` : ""),
   copies: (charId: number) => call<CharCopies>("GET", "copies", undefined, `?char=${charId}`),

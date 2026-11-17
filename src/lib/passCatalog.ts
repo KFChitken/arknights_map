@@ -1,11 +1,12 @@
 import catalog from "@/data/pass-catalog.json";
 import type { Game } from "./games";
-import type { PassGame } from "./passes";
+import type { PassGame, PassPool } from "./passes";
 
 /**
  * Every character a pass can be drawn for (src/data/pass-catalog.json, written by scripts/build-pass-catalog.mjs):
  * the two lists players pick their 厨力 from, characters of the story and collaborations included. Each has the same
- * chance in a draw. id is how passes are stored: given once, never changed or given again.
+ * chance in a draw from both games (a 卡池 of one game: rollChars). id is how passes are stored: given once, never
+ * changed or given again.
  */
 export type PassChar = {
   id: number;
@@ -41,3 +42,12 @@ export const catalogCounts = (): Record<PassGame, number> => ({
   ak: PASS_CATALOG.filter((c) => c.game === "ak").length,
   ef: PASS_CATALOG.filter((c) => c.game === "ef").length,
 });
+
+const IDS_OF: Record<PassGame, readonly number[]> = {
+  ak: PASS_CATALOG.filter((c) => c.game === "ak").map((c) => c.id),
+  ef: PASS_CATALOG.filter((c) => c.game === "ef").map((c) => c.id),
+};
+/** The characters a 卡池 of one game draws from, besides the wish list (rollChars game); null for both: the whole catalogue */
+export const poolIds = (pool: PassPool): readonly number[] | null => (pool === "both" ? null : IDS_OF[pool]);
+/** How many characters a 卡池 holds */
+export const poolSize = (pool: PassPool) => poolIds(pool)?.length ?? CATALOG_SIZE;

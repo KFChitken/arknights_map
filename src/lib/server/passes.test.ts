@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AMIYA_ID } from "../amiya";
-import { CATALOG_IDS, passChar, passCharNamed } from "../passCatalog";
+import { CATALOG_IDS, passChar, passCharNamed, poolIds } from "../passCatalog";
 import { PITY, WELCOME_TICKETS } from "../passes";
 import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
@@ -22,6 +22,7 @@ import {
   roachPass,
   setLook,
   setOnMap,
+  setPool,
   setWish,
   wear,
   wishFromFavourites,
@@ -252,6 +253,79 @@ describe("a draw", () => {
     expect(await db.select().from(passWallets).where(eq(passWallets.userId, a.id))).toEqual([]);
     const { drawn } = await draw(b, 1, NOON, always(7));
     expect(drawn[0]).toMatchObject({ charId: 7, no: 11, tier: "new" });
+  });
+});
+
+describe("卡池", () => {
+  /** Dice that never land on the wish list by chance: the catalogue's last, then the first of whomever is left */
+  const offWish = (n: number) => (n === CATALOG_IDS.length ? n - 1 : 0);
+  const ef = poolIds("ef")!;
+  const plays = async (u: UserRow, games: string[]) => {
+    const [row] = await db.update(users).set({ games }).where(eq(users.id, u.id)).returning();
+    return row;
+  };
+
+  it("follows the games the player plays until they pick one, then keeps what they picked", async () => {
+    const a = await plays(await player("a@example.com"), ["endfield"]);
+    expect((await openWallet(a, NOON)).pool).toBe("ef");
+    expect((await wallet(a.id)).pool).toBeNull();
+    // 在玩 changed, nothing picked: the 卡池 follows
+    await plays(a, ["arknights", "endfield"]);
+    expect((await passState(a.id, NOON)).pool).toBe("both");
+    await plays(a, ["arknights"]);
+    expect((await passState(a.id, NOON)).pool).toBe("ak");
+    await plays(a, []);
+    expect((await passState(a.id, NOON)).pool).toBe("both");
+    // picked: kept, whatever 在玩 says
+    expect((await setPool(a, "ef", NOON)).pool).toBe("ef");
+    await plays(a, ["arknights"]);
+    expect((await passState(a.id, NOON)).pool).toBe("ef");
+    expect((await setPool(a, "both", NOON)).pool).toBe("both");
+    expect((await wallet(a.id)).pool).toBe("both");
+  });
+
+  it("is both, ak or ef, once the page was opened", async () => {
+    const a = await player("a@example.com");
+    expect(await refusal(setPool(a, "ef", NOON))).toEqual({ status: 409, message: "先打开寻访页。" });
+    await openWallet(a, NOON);
+    for (const p of ["", "arknights", "endfield", "EF", "toString", null, undefined, 1, ["ef"]]) {
+      expect(await refusal(setPool(a, p, NOON)), String(p)).toEqual({ status: 400, message: "卡池只能选两边都抽、只抽方舟或只抽终末地。" });
+    }
+    expect((await wallet(a.id)).pool).toBeNull();
+  });
+
+  it("draws everyone off the wish list from the game picked, the wish list's other game all the same", async () => {
+    const amiya = id("arknights", "阿米娅");
+    const a = await player("a@example.com", { ak: ["阿米娅"] });
+    await openWallet(a, NOON);
+    await setWallet(a.id, { tickets: 50 });
+    await setPool(a, "ef", NOON);
+    const ten = await draw(a, 10, NOON, offWish);
+    expect(ten.drawn.map((d) => d.charId)).toEqual(Array(10).fill(ef[0]));
+    expect(ten.state.miss).toBe(10);
+    // a die under the wish list's length brings the wish: 方舟's 阿米娅, though the 卡池 is 终末地's
+    const one = await draw(a, 1, NOON + 1000, () => 0);
+    expect(one.drawn[0]).toMatchObject({ charId: amiya, tier: "wish" });
+    expect(one.state.miss).toBe(0);
+    // the sure one too
+    await setWallet(a.id, { miss: PITY - 1 });
+    expect((await draw(a, 1, NOON + 2000, offWish)).drawn[0]).toMatchObject({ charId: amiya, tier: "wish" });
+    // both again: the same dice as ever
+    await setPool(a, "both", NOON);
+    expect((await draw(a, 1, NOON + 3000, always(1))).drawn[0].charId).toBe(1);
+    expect((await draw(a, 1, NOON + 4000, offWish)).drawn[0].charId).toBe(CATALOG_IDS[CATALOG_IDS.length - 1]);
+  });
+
+  it("draws from the one game a player plays when they never picked", async () => {
+    const a = await plays(await player("a@example.com"), ["endfield"]);
+    await openWallet(a, NOON);
+    const { drawn } = await draw(a, 10, NOON, offWish);
+    expect(drawn.every((d) => passChar(d.charId)!.game === "ef")).toBe(true);
+    expect(drawn[0].charId).toBe(ef[0]);
+    // both games, or none said: everyone
+    const b = await plays(await player("b@example.com"), ["arknights", "endfield"]);
+    await openWallet(b, NOON);
+    expect((await draw(b, 1, NOON, offWish)).drawn[0].charId).toBe(CATALOG_IDS[CATALOG_IDS.length - 1]);
   });
 });
 

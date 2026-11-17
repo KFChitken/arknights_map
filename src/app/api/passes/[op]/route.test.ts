@@ -42,6 +42,7 @@ const EVERY: [Method, string, unknown?, string?][] = [
   ["POST", "open"],
   ["POST", "draw", { n: 1 }],
   ["PUT", "wish", { ids: [1] }],
+  ["PUT", "pool", { pool: "ef" }],
   ["PUT", "look", { charId: 1, plain: true }],
   ["PUT", "wear", { passId: null }],
   ["PUT", "map", { on: true }],
@@ -51,7 +52,7 @@ const EVERY: [Method, string, unknown?, string?][] = [
   ["GET", "roach", undefined, "?id=0123abcd"],
 ];
 /** Those that wait for the age check and the privacy policy */
-const CHANGING = 5;
+const CHANGING = 6;
 
 async function account(email: string) {
   const now = new Date();
@@ -115,6 +116,8 @@ describe("通行证寻访's requests", () => {
     expect(drew.body.state).toMatchObject({ tickets: 9 });
     expect(await call("POST", "draw", { n: 3 })).toMatchObject({ status: 400, body: { error: "一次只能寻访 1 次或 10 次。" } });
     expect(await call("PUT", "wish", { ids: [1, 2] })).toMatchObject({ status: 200, body: { wish: [1, 2] } });
+    expect(await call("PUT", "pool", { pool: "ef" })).toMatchObject({ status: 200, body: { pool: "ef", wish: [1, 2] } });
+    expect(await call("PUT", "pool", { pool: "endfield" })).toMatchObject({ status: 400, body: { error: "卡池只能选两边都抽、只抽方舟或只抽终末地。" } });
     expect(await call("GET", "collection")).toMatchObject({ status: 200, body: { passes: 1 }, cache: "no-store" });
     const log = await call("GET", "log");
     expect(log).toMatchObject({ status: 200, body: { more: false } });

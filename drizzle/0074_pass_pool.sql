@@ -1,0 +1,1 @@
+ALTER TABLE "pass_wallets" ADD COLUMN "pool" text;

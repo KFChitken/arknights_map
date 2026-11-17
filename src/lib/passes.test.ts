@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATALOG_IDS, CATALOG_SIZE, catalogCounts, isPassChar, passChar, passCharNamed, PASS_CATALOG } from "./passCatalog";
+import { CATALOG_IDS, CATALOG_SIZE, catalogCounts, isPassChar, passChar, passCharNamed, PASS_CATALOG, poolIds, poolSize } from "./passCatalog";
 import {
   bestOf,
   claimable,
@@ -9,9 +9,12 @@ import {
   isDrawSize,
   isFancy,
   isFoil,
+  isPassPool,
   isTask,
   padNo,
+  PASS_POOLS,
   passesDot,
+  passPoolOf,
   PITY,
   pityLeft,
   rollChars,
@@ -142,6 +145,131 @@ describe("rollChars", () => {
     const rand = () => ids.indexOf(400);
     expect(rollChars(ids, [], 0, 100, rand).miss).toBe(0);
     expect(rollChars(ids, [], PITY - 1, 10, rand).picks.every((p) => p.charId === 400 && !p.wish)).toBe(true);
+  });
+});
+
+/** rollChars as it drew before 卡池 (2026-11-17): what both games' must still draw, die for die */
+function rollBefore(ids: readonly number[], wish: readonly number[], miss: number, n: number, rand: (n: number) => number) {
+  const wished = new Set(wish);
+  const picks: { charId: number; wish: boolean }[] = [];
+  for (let i = 0; i < n; i++) {
+    const charId = wish.length && miss >= PITY - 1 ? wish[rand(wish.length)] : ids[rand(ids.length)];
+    const hit = wished.has(charId);
+    miss = hit || !wish.length ? 0 : miss + 1;
+    picks.push({ charId, wish: hit });
+  }
+  return { picks, miss };
+}
+
+describe("卡池", () => {
+  const ids = CATALOG_IDS;
+  const ak = poolIds("ak")!;
+  const ef = poolIds("ef")!;
+
+  it("is both games, 方舟's 441 or 终末地's 34", () => {
+    expect(PASS_POOLS).toEqual(["both", "ak", "ef"]);
+    expect(poolIds("both")).toBeNull();
+    expect([poolSize("both"), poolSize("ak"), poolSize("ef")]).toEqual([475, 441, 34]);
+    expect(ak.every((i) => passChar(i)!.game === "ak")).toBe(true);
+    expect(ef.every((i) => passChar(i)!.game === "ef")).toBe(true);
+    expect(new Set([...ak, ...ef]).size).toBe(CATALOG_SIZE);
+    for (const p of PASS_POOLS) expect(isPassPool(p)).toBe(true);
+    for (const x of ["", "arknights", "endfield", "EF", "toString", null, undefined, 1, ["ef"]]) expect(isPassPool(x), String(x)).toBe(false);
+  });
+
+  it("follows 在玩 until the player picks one: one game alone, else both", () => {
+    expect(passPoolOf(null, ["endfield"])).toBe("ef");
+    expect(passPoolOf(null, ["arknights"])).toBe("ak");
+    expect(passPoolOf(null, ["arknights", "endfield"])).toBe("both");
+    expect(passPoolOf(null, ["endfield", "arknights"])).toBe("both");
+    expect(passPoolOf(null, [])).toBe("both");
+    expect(passPoolOf("both", ["endfield"])).toBe("both");
+    expect(passPoolOf("ak", ["endfield"])).toBe("ak");
+    expect(passPoolOf("ef", [])).toBe("ef");
+  });
+
+  it("draws with both games just as before: the same dice bring the same passes, the sure ones too", () => {
+    const wishes = [[], [5], [1, 145, 300, 442, 450, 475], [ef[0], ak[3]]];
+    for (let seed = 1; seed <= 40; seed++) {
+      const wish = wishes[seed % wishes.length];
+      const miss = (seed * 7) % PITY;
+      const before = rollBefore(ids, wish, miss, 300, seededInt(seed));
+      expect(rollChars(ids, wish, miss, 300, seededInt(seed)), String(seed)).toEqual(before);
+      expect(rollChars(ids, wish, miss, 300, seededInt(seed), poolIds("both")), String(seed)).toEqual(before);
+      if (wish.length) expect(before.picks.some((p) => p.wish)).toBe(true);
+    }
+  });
+
+  it("brings only 终末地's off the wish list, and the wish list, 方舟's too, as often as with both: 6 in 475", () => {
+    const wish = [ak[0], ak[200], ak[440], ef[0], ef[17], ef[33]];
+    const pulls = 300_000;
+    const rand = seededInt(3);
+    const wished = new Map(wish.map((i) => [i, 0]));
+    const others = new Map(ef.filter((i) => !wish.includes(i)).map((i) => [i, 0]));
+    let stray = 0;
+    for (let i = 0; i < pulls; i++) {
+      // a count of 0 each time: the chance alone, no sure pull
+      const [p] = rollChars(ids, wish, 0, 1, rand, ef).picks;
+      const seen = p.wish ? wished : others;
+      if (seen.has(p.charId)) seen.set(p.charId, seen.get(p.charId)! + 1);
+      else stray++;
+    }
+    expect(stray).toBe(0);
+    const hits = [...wished.values()].reduce((a, b) => a + b, 0);
+    const chance = wish.length / CATALOG_SIZE;
+    expect(Math.abs(hits - pulls * chance)).toBeLessThan(4.75 * Math.sqrt(pulls * chance * (1 - chance)));
+    // each of the wish list as likely, 方舟's as 终末地's; and everyone else of 终末地 as likely
+    expect(chiSquare([...wished.values()], hits / wish.length)).toBeLessThan(farTail(wish.length - 1));
+    expect(Math.min(...others.values())).toBeGreaterThan(0);
+    expect(chiSquare([...others.values()], (pulls - hits) / others.size)).toBeLessThan(farTail(others.size - 1));
+
+    // 只抽方舟 the same way round
+    const theirs = rollChars(ids, [ef[5]], 0, 20_000, seededInt(4), ak).picks;
+    expect(theirs.every((p) => (p.wish ? p.charId === ef[5] : ak.includes(p.charId)))).toBe(true);
+    expect(theirs.some((p) => p.wish)).toBe(true);
+  });
+
+  it("takes the chance of a wish first, wish.length in all 475, then someone of the game off the wish list", () => {
+    const wish = [ak[9], ef[4]];
+    const rest = ef.filter((i) => !wish.includes(i));
+    // dice: the first under wish.length brings that wish; past it, the next picks among the rest
+    const script = [1, 474, 0, 300, 31, 0];
+    let i = 0;
+    const rand = (n: number) => {
+      const x = script[i++];
+      expect(x).toBeLessThan(n);
+      return x;
+    };
+    const { picks, miss } = rollChars(ids, wish, 3, 4, rand, ef);
+    expect(picks).toEqual([
+      { charId: ef[4], wish: true },
+      { charId: rest[0], wish: false },
+      { charId: rest[31], wish: false },
+      { charId: ak[9], wish: true },
+    ]);
+    expect(miss).toBe(0);
+    expect(i).toBe(script.length);
+  });
+
+  it("keeps pity as it was: the 30th pull without a wish brings one of the list, whatever the 卡池", () => {
+    const wish = [ak[5], ef[2]];
+    const rest = ef.filter((i) => !wish.includes(i));
+    // the chance never comes; the sure pull takes the first of the list, 方舟's
+    const never = (n: number) => (n === ids.length ? n - 1 : 0);
+    const run = rollChars(ids, wish, 0, PITY + 3, never, ef);
+    expect(run.picks.findIndex((p) => p.wish)).toBe(PITY - 1);
+    expect(run.picks[PITY - 1].charId).toBe(ak[5]);
+    expect(run.picks.filter((p) => !p.wish).every((p) => p.charId === rest[0])).toBe(true);
+    expect(run.miss).toBe(3);
+    expect(rollChars(ids, wish, 28, 10, never, ef).picks.map((p) => p.wish)).toEqual(rollBefore(ids, wish, 28, 10, never).picks.map((p) => p.wish));
+    // an empty wish list keeps no count
+    expect(rollChars(ids, [], PITY - 1, 10, never, ef)).toEqual({ picks: Array(10).fill({ charId: ef[0], wish: false }), miss: 0 });
+  });
+
+  it("draws as both when a game has nobody off the wish list", () => {
+    const { picks } = rollChars(ids, [5, 6], 0, 200, seededInt(5), [5, 6]);
+    expect(picks.every((p) => isPassChar(p.charId))).toBe(true);
+    expect(picks.some((p) => ![5, 6].includes(p.charId))).toBe(true);
   });
 });
 
