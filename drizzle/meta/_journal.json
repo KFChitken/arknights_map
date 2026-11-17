@@ -498,6 +498,13 @@
       "when": 1794863416021,
       "tag": "0071_squad_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1794884689941,
+      "tag": "0072_squad_show_name",
+      "breakpoints": true
     }
   ]
 }

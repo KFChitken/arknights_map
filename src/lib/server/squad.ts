@@ -346,21 +346,32 @@ export async function myRoom(user: Pick<UserRow, "id">, now = Date.now()) {
 export async function squadMe(user: UserRow): Promise<SquadMe | undefined> {
   if (!squadShown(user)) return undefined;
   const s = squadSettings();
-  return { card: cardOf(user), room: Boolean(await roomOf(db, user.id)), closed: s.closed ? s.note : null };
+  return { card: cardOf(user), showName: user.squadShowName, room: Boolean(await roomOf(db, user.id)), closed: s.closed ? s.note : null };
 }
 
 // ---- 卫戍名片 ----
 
-/** The player's 卫戍名片, as given (card), kept for the rooms they open or go in at from now on; null clears it */
+/**
+ * The player's 卫戍名片, as given (card), kept for the rooms they open or go in at from now on; null clears it, and
+ * 列表上显示我的名字 with it. showName, when given: that switch, which the lists follow from their next asking.
+ */
 export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  if (body.showName !== undefined && typeof body.showName !== "boolean") throw refuse(400, T.server.common.badRequest);
   if (body.card === null) {
-    await db.update(users).set({ squadCore: null, squadStrategy: null, squadExtras: [] }).where(eq(users.id, user.id));
-    return { card: null, now };
+    await db.update(users).set({ squadCore: null, squadStrategy: null, squadExtras: [], squadShowName: false }).where(eq(users.id, user.id));
+    forgetList();
+    return { card: null, showName: false, now };
   }
   const card = readCard(body.card);
   if (!card) throw refuse(400, T.server.common.badRequest);
-  await db.update(users).set({ squadCore: card.core, squadStrategy: card.strategy, squadExtras: card.extras }).where(eq(users.id, user.id));
-  return { card, now };
+  const showName = typeof body.showName === "boolean" ? body.showName : undefined;
+  const [saved] = await db
+    .update(users)
+    .set({ squadCore: card.core, squadStrategy: card.strategy, squadExtras: card.extras, ...(showName === undefined ? {} : { squadShowName: showName }) })
+    .where(eq(users.id, user.id))
+    .returning({ showName: users.squadShowName });
+  if (showName !== undefined) forgetList();
+  return { card, showName: saved?.showName ?? false, now };
 }
 
 // ---- in and out ----
@@ -1323,7 +1334,8 @@ type Snap = {
   keyAt: number;
   /** The host's songs, for ♪ 在放歌 */
   songs: RoomSchedule;
-  members: { userId: string; h: number; name: string; avatar: string; color: string; card: SquadCard }[];
+  /** showName: 列表上显示我的名字, from their 卫戍名片 */
+  members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadCard }[];
 };
 
 const snapHeld = (g.squadSnap ??= { at: -Infinity, rooms: null, loading: null });
@@ -1339,7 +1351,15 @@ async function snapshot(now: number): Promise<Snap[]> {
         .select({
           r: squadRooms,
           m: squadMembers,
-          u: { id: users.id, anonymous: users.anonymous, name: users.name, drPrefix: users.drPrefix, avatar: users.avatar, color: users.color },
+          u: {
+            id: users.id,
+            anonymous: users.anonymous,
+            name: users.name,
+            drPrefix: users.drPrefix,
+            avatar: users.avatar,
+            color: users.color,
+            showName: users.squadShowName,
+          },
         })
         .from(squadRooms)
         .innerJoin(squadMembers, and(eq(squadMembers.roomId, squadRooms.id), isNull(squadMembers.leftAt)))
@@ -1368,6 +1388,7 @@ async function snapshot(now: number): Promise<Snap[]> {
           userId: u.id,
           h: m.handle,
           name: displayName(u),
+          showName: u.showName,
           avatar: drawnLook(u.avatar),
           color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
           card: roomCard(m),
@@ -1404,10 +1425,10 @@ export function forgetSquad() {
 }
 
 /**
- * Whether a teammate is named on the list to this viewer: only their own 触须之交 (the host always is). The one place
- * this is decided, as Breeze may want every name shown.
+ * Whether a teammate is named on the list to this viewer: one who chose 列表上显示我的名字 on their 卫戍名片, to
+ * everyone; any other to their own 触须之交 alone (the host always is). The one place this is decided.
  */
-const isNamed = (memberId: string, friends: Set<string>) => friends.has(memberId);
+const isNamed = (m: Snap["members"][number], friends: Set<string>) => m.showName || friends.has(m.userId);
 
 /**
  * Rooms waiting first: those with a 触须之交 of the viewer's first, then those missing fewest, and of those the one
@@ -1424,8 +1445,8 @@ function byOrder(a: SquadListRoom, b: SquadListRoom) {
 function listRoom(s: Snap, viewerId: string, friends: Set<string>, seconds: (id: string) => number, now: number): SquadListRoom {
   const host = s.members.find((m) => m.userId === s.hostId);
   const seats: SquadSeat[] = s.members.map((m) => {
-    const role: SquadSeat["role"] = m.userId === s.hostId ? "host" : m.userId === viewerId ? "you" : isNamed(m.userId, friends) ? "friend" : "mate";
-    return { role, ...(role === "friend" ? { name: m.name } : {}), ...m.card };
+    const role: SquadSeat["role"] = m.userId === s.hostId ? "host" : m.userId === viewerId ? "you" : friends.has(m.userId) ? "friend" : "mate";
+    return { role, ...((role === "friend" || role === "mate") && isNamed(m, friends) ? { name: m.name } : {}), ...m.card };
   });
   return {
     id: s.id,

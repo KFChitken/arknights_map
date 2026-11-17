@@ -53,14 +53,16 @@ const room = kept<SquadRoom | null>(null);
 const floats = kept<Float[]>(NO_FLOATS);
 /** What was said as the last room was over for them (it ended, they were asked to leave), until they are in another */
 const notice = kept<string | null>(null);
-/** Their 卫戍名片 as last saved (undefined: as me() gave it) */
+/** Their 卫戍名片 as last saved, and its 列表上显示我的名字 (undefined: as me() gave them) */
 const card = kept<SquadCard | null | undefined>(undefined);
+const showName = kept<boolean | undefined>(undefined);
 
 export const squadRoomNow = room.get;
 export const useSquadRoom = () => useSyncExternalStore(room.on, room.get, () => null);
 export const useSquadFloats = (): SquadFloat[] => useSyncExternalStore(floats.on, floats.get, () => NO_FLOATS);
 export const useSquadNotice = () => useSyncExternalStore(notice.on, notice.get, () => null);
 export const useSquadCard = () => useSyncExternalStore(card.on, card.get, () => undefined);
+export const useSquadShowName = () => useSyncExternalStore(showName.on, showName.get, () => undefined);
 export const clearSquadNotice = () => notice.set(null);
 
 let floatKey = 0;
@@ -101,6 +103,7 @@ export async function loadSquadRoom(): Promise<SquadRoom | null> {
 /** At the page's start (me().squad): their card, and the room they are in, read */
 export function startSquad(me: SquadMe) {
   if (card.get() === undefined) card.set(me.card);
+  if (showName.get() === undefined) showName.set(me.showName);
   if (me.room && !room.get()) void loadSquadRoom().catch(() => {});
   if (!me.room && room.get()) setRoom(null);
 }
@@ -186,11 +189,12 @@ export function squadStreamBack() {
 
 // ---- what the player does ----
 
-/** Their 卫戍名片 saved (null clears it) */
-export async function saveSquadCard(next: SquadCard | null) {
-  const { card: saved } = await squadApi.card(next);
-  card.set(saved);
-  return saved;
+/** Their 卫戍名片 saved (null clears it, and 列表上显示我的名字 with it), with that switch when given */
+export async function saveSquadCard(next: SquadCard | null, show?: boolean) {
+  const res = await squadApi.card(next, show);
+  card.set(res.card);
+  showName.set(res.showName);
+  return res.card;
 }
 
 export async function openSquadRoom(form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) {
@@ -299,4 +303,5 @@ export function forgetSquadPage() {
   setRoom(null);
   notice.set(null);
   card.set(undefined);
+  showName.set(undefined);
 }

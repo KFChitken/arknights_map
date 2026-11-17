@@ -5095,6 +5095,7 @@ export default function MapApp({
             start={p.view}
             homeServer={me.profile.uidServer.arknights}
             card={me.squad.card}
+            showName={me.squad.showName}
             join={p.join}
             roaches={me.roaches}
             ink={inkOut}

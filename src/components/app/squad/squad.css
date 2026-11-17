@@ -216,3 +216,9 @@
 .sq-friend .nm { display: flex; flex-direction: column; min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .sq-friend .nm small { overflow: hidden; color: var(--muted); font-size: 11.5px; font-weight: 400; text-overflow: ellipsis; }
 .sq-friend.other .nm small { color: #8a5a00; }
+
+/* 卫戍名片's 列表上显示我的名字 */
+.sq-show { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #f6f7f9; font-size: 14px; font-weight: 600; cursor: pointer; }
+.sq-show input { margin-top: 3px; }
+.sq-show span { display: flex; flex-direction: column; gap: 2px; }
+.sq-show small { color: var(--muted); font-size: 12px; font-weight: 400; }

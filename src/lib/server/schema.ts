@@ -171,6 +171,8 @@ export const users = pgTable("users", {
   squadCore: smallint("squad_core"),
   squadStrategy: smallint("squad_strategy"),
   squadExtras: smallint("squad_extras").array().notNull().default(sql`'{}'::smallint[]`),
+  /** 卫戍名片's 列表上显示我的名字: named on 一起卫戍's list as a teammate, to everyone (src/lib/server/squad.ts) */
+  squadShowName: boolean("squad_show_name").notNull().default(false),
   /** They were told once, with their first guest, not to keep the main roach by their door */
   visitTipShown: boolean("visit_tip_shown").notNull().default(false),
   /** 求助 (src/lib/server/help.ts): when they last looked at their 触须之交's requests, for the dot on the 触须之交 card */

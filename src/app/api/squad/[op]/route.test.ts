@@ -184,7 +184,7 @@ describe("who 一起卫戍 is open to", () => {
     vi.stubEnv("SQUAD", "on");
     expect((await post(someone, "room")).status).toBe(200);
     expect((await post(null, "room")).status).toBe(401);
-    expect(await squadMe(await row(someone))).toEqual({ card: CARD, room: false, closed: null });
+    expect(await squadMe(await row(someone))).toEqual({ card: CARD, showName: false, room: false, closed: null });
   });
 
   it("shows its way in to players of 明日方舟 and of no game yet, never to those of 终末地 alone", async () => {
@@ -205,11 +205,15 @@ describe("卫戍名片", () => {
     for (const bad of [{ core: 11 }, { core: 1, strategy: 99 }, { core: 1, extras: [1, 2, 3] }, { core: 1, extras: [1, 1] }, { strategy: 1 }]) {
       expect((await post(blank, "card", { card: bad })).status, JSON.stringify(bad)).toBe(400);
     }
-    expect(await post(blank, "card", { card: { core: 0 } })).toMatchObject({ status: 200, body: { card: { core: 0, strategy: null, extras: [] } } });
+    expect(await post(blank, "card", { card: { core: 0 } })).toMatchObject({ status: 200, body: { card: { core: 0, strategy: null, extras: [] }, showName: false } });
     expect((await goIn(blank, room)).members.find((m) => m.you)).toMatchObject({ core: 0, strategy: null, extras: [] });
+    // 列表上显示我的名字: off until turned on, kept with the card, and off again once the card is cleared
+    expect((await post(blank, "card", { card: { core: 0 }, showName: "yes" })).status).toBe(400);
+    expect(await post(blank, "card", { card: { core: 0 }, showName: true })).toMatchObject({ status: 200, body: { showName: true } });
+    expect(await post(blank, "card", { card: { core: 1 } })).toMatchObject({ status: 200, body: { card: { core: 1 }, showName: true } });
     // cleared, it is filled in again before the next room
-    expect(await post(blank, "card", { card: null })).toMatchObject({ status: 200, body: { card: null } });
-    expect((await row(blank)).squadCore).toBeNull();
+    expect(await post(blank, "card", { card: null })).toMatchObject({ status: 200, body: { card: null, showName: false } });
+    expect(await row(blank)).toMatchObject({ squadCore: null, squadShowName: false });
   });
 
   it("has the season's 44 general strategies and 17 of a core alliance, by ids never given twice", () => {
@@ -385,6 +389,13 @@ describe("the list", () => {
     expect(byFriend.seats[1]).toEqual({ role: "friend", name: "mate", ...CARD });
     expect(byFriend.friend).toBe(true);
     expect((await roomsOf(mate))[0].seats[1].role).toBe("you");
+    // 列表上显示我的名字, off at first: turned on, everyone's next list names TA; off again, only TA's 触须之交
+    expect((await post(mate, "card", { card: CARD, showName: true })).status).toBe(200);
+    expect((await roomsOf(stranger))[0].seats[1]).toEqual({ role: "mate", name: "mate", ...CARD });
+    expect((await roomsOf(friend))[0].seats[1]).toEqual({ role: "friend", name: "mate", ...CARD });
+    expect((await post(mate, "card", { card: CARD, showName: false })).status).toBe(200);
+    expect((await roomsOf(stranger))[0].seats[1]).toEqual({ role: "mate", ...CARD });
+    expect((await roomsOf(friend))[0].seats[1]).toEqual({ role: "friend", name: "mate", ...CARD });
   });
 
   it("puts rooms with 触须之交 first, then those missing fewest, then the freshest key; those playing last", async () => {

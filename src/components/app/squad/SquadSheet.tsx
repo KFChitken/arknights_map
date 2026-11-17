@@ -75,6 +75,7 @@ import {
   useSquadFloats,
   useSquadNotice,
   useSquadRoom,
+  useSquadShowName,
 } from "./squading";
 import "./squad.css";
 
@@ -95,8 +96,9 @@ type Props = {
   start?: SquadView;
   /** The server of their 明日方舟 UID in 资料 (""/unknown: 官服) */
   homeServer: string;
-  /** Their 卫戍名片 as me() gave it */
+  /** Their 卫戍名片 as me() gave it, and its 列表上显示我的名字 */
   card: SquadCard | null;
+  showName: boolean;
   /** Opened to go in at an invitation or a 宣言招人 you got, from 消息 or the card over the map */
   join?: SquadJoin;
   /** Your roaches, and whether your ink roach is out: where 宣言招人 may go out from */
@@ -142,6 +144,8 @@ export default function SquadSheet(props: Props) {
   const room = useSquadRoom();
   const saved = useSquadCard();
   const card = saved === undefined ? props.card : saved;
+  const savedShow = useSquadShowName();
+  const showName = savedShow === undefined ? props.showName : savedShow;
   const [view, setView] = useState<SquadView>(props.start ?? (room ? "room" : "list"));
   // what the card was asked for, to go on with once it is filled in
   const [then, setThen] = useState<(() => void) | null>(null);
@@ -208,10 +212,11 @@ export default function SquadSheet(props: Props) {
     return (
       <CardView
         card={card}
+        showName={showName}
         first={!card}
         busy={busy}
-        onSave={async (c) => {
-          const ok = await run(() => saveSquadCard(c));
+        onSave={async (c, show) => {
+          const ok = await run(() => saveSquadCard(c, c ? show : undefined));
           if (ok === undefined) return;
           onToast(c ? T.squad.card.saved : T.squad.card.cleared);
           const go = then;
@@ -249,6 +254,7 @@ export default function SquadSheet(props: Props) {
     <ListView
       home={home}
       room={room}
+      showName={showName}
       busy={busy}
       ask={listAsk}
       onJoin={(r) =>
@@ -271,6 +277,7 @@ export default function SquadSheet(props: Props) {
 function ListView({
   home,
   room,
+  showName,
   busy,
   ask,
   onJoin,
@@ -282,6 +289,8 @@ function ListView({
 }: {
   home: string;
   room: SquadRoom | null;
+  /** 列表上显示我的名字, said in the join box */
+  showName: boolean;
   busy: boolean;
   /** Asked again each time this goes up */
   ask: number;
@@ -456,6 +465,7 @@ function ListView({
           room={asking}
           home={home}
           inRoom={Boolean(room)}
+          showName={showName}
           busy={busy}
           onYes={() => {
             const r = asking;
@@ -534,8 +544,9 @@ function RoomCard({ room, now, busy, onJoin, onBack }: { room: SquadListRoom; no
 
 /** A seat on the list: who (房主, 你, a 触须之交 by name, 队友) and what they want */
 function SeatLine({ seat }: { seat: SquadSeat }) {
+  // a teammate by name to their 触须之交, and to everyone once they chose it on their 卫戍名片
   const role =
-    seat.role === "host" ? T.squad.list.host : seat.role === "you" ? T.squad.list.you : seat.role === "friend" ? (seat.name ?? T.squad.list.friend) : T.squad.list.mate;
+    seat.role === "host" ? T.squad.list.host : seat.role === "you" ? T.squad.list.you : (seat.name ?? (seat.role === "friend" ? T.squad.list.friend : T.squad.list.mate));
   return (
     <div className="seat">
       <span className={`role${seat.role === "friend" ? " fr" : ""}`}>{role}</span>
@@ -587,6 +598,7 @@ function JoinAsk({
   room,
   home,
   inRoom,
+  showName,
   busy,
   onYes,
   onNo,
@@ -594,6 +606,7 @@ function JoinAsk({
   room: SquadListRoom;
   home: string;
   inRoom: boolean;
+  showName: boolean;
   busy: boolean;
   onYes: () => void;
   onNo: () => void;
@@ -602,7 +615,7 @@ function JoinAsk({
     <Ask title={fmt(T.squad.join.title, { host: room.host.name })} onNo={onNo}>
       <p className="sq-ask-sub">{fmt(T.squad.join.sub, { server: srv(room.server), level: levelName(room.level), n: room.seats.length, max: SQUAD_MAX })}</p>
       {room.server !== home && <p className="sq-warn">{fmt(T.squad.join.otherServer, { server: srv(room.server) })}</p>}
-      <p>{T.squad.join.note}</p>
+      <p>{fmt(T.squad.join.note, { now: showName ? T.squad.join.nameOn : T.squad.join.nameOff })}</p>
       {inRoom && <p className="hint">{T.squad.join.leaveOld}</p>}
       <div className="row">
         <button className="dark grow" disabled={busy} onClick={onYes}>
@@ -829,6 +842,7 @@ export function PrefsPicker({ card, onChange }: { card: SquadCard | null; onChan
 
 function CardView({
   card,
+  showName,
   first,
   busy,
   onSave,
@@ -836,13 +850,15 @@ function CardView({
   onClose,
 }: {
   card: SquadCard | null;
+  showName: boolean;
   first: boolean;
   busy: boolean;
-  onSave: (c: SquadCard | null) => void;
+  onSave: (c: SquadCard | null, showName: boolean) => void;
   onUp: () => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<SquadCard | null>(card);
+  const [show, setShow] = useState(showName);
   return (
     <Sheet
       title={T.squad.card.title}
@@ -851,11 +867,11 @@ function CardView({
       onClose={onClose}
       footer={
         <div className="sq-foot">
-          <button className="primary grow" disabled={busy || !draft} onClick={() => draft && onSave(draft)}>
+          <button className="primary grow" disabled={busy || !draft} onClick={() => draft && onSave(draft, show)}>
             {T.squad.card.save}
           </button>
           {card && (
-            <button className="ghost" disabled={busy} onClick={() => onSave(null)}>
+            <button className="ghost" disabled={busy} onClick={() => onSave(null, false)}>
               {T.squad.card.clear}
             </button>
           )}
@@ -865,6 +881,13 @@ function CardView({
       {first && <p className="tip">{T.squad.card.first}</p>}
       <p className="hint">{T.squad.card.note}</p>
       <PrefsPicker card={draft} onChange={setDraft} />
+      <label className="sq-show">
+        <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
+        <span>
+          {T.squad.card.showName}
+          <small>{T.squad.card.showNameHint}</small>
+        </span>
+      </label>
     </Sheet>
   );
 }

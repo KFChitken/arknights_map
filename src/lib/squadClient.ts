@@ -52,8 +52,9 @@ export const squadApi = {
   },
   /** The room you are in, as you see it (null: none) */
   room: () => call<Room>("room", post({})),
-  /** Your 卫戍名片 (null clears it) */
-  card: (card: SquadCard | null) => call<{ card: SquadCard | null; now: number }>("card", post({ card })),
+  /** Your 卫戍名片 (null clears it), and 列表上显示我的名字 when given */
+  card: (card: SquadCard | null, showName?: boolean) =>
+    call<{ card: SquadCard | null; showName: boolean; now: number }>("card", post(showName === undefined ? { card } : { card, showName })),
   open: (form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) => call<Room>("open", post(form)),
   join: (room: string) => call<{ room: SquadRoom; now: number }>("join", post({ room })),
   /** Out of your room (the host's ends) */

@@ -277,6 +277,8 @@ export type SquadTell =
 /** What me() carries, to a player 一起卫戍 is open to (SQUAD) who plays 明日方舟 or no game yet */
 export type SquadMe = {
   card: SquadCard | null;
+  /** 列表上显示我的名字: named on the list as a teammate, to everyone (else to their own 触须之交 alone) */
+  showName: boolean;
   /** In a room now */
   room: boolean;
   /** Closed for now, with the 站长's line */
