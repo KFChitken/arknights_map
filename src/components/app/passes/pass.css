@@ -24,11 +24,19 @@
   isolation: isolate;
 }
 
-/* the character's picture: the 立绘 over its blur while it comes (and the blur alone, to save data); else a small one */
+/*
+ * the character's picture: the 立绘 over its blur while it comes (and the blur alone, to save data); else a small one.
+ * A 立绘 fills its box from the top, or, for the few moved (src/data/pass-framing.json), is laid out as the rectangle
+ * --al --at --aw --ah (PassCard.tsx), which the box clips: not moved by transform, as cover would have cut the
+ * picture to the box first
+ */
 .mp .art img,
 .zp .art img { display: block; width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
 .art.lh { overflow: hidden; }
-.art.lh img { position: absolute; inset: 0; object-position: 50% 0; }
+.art.lh img {
+  position: absolute; left: var(--al, 0%); top: var(--at, 0%); width: var(--aw, 100%); height: var(--ah, 100%); max-width: none;
+  object-position: 50% 0;
+}
 .art.lh .bl { filter: blur(3px); transform: scale(1.06); opacity: 0.9; }
 .art.lh .fg { opacity: 0; transition: opacity 0.35s ease; }
 .art.lh.in .fg { opacity: 1; }

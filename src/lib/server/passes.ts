@@ -2,6 +2,7 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, count, desc, eq, exists, inArray, lt, max, min, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
+import type { ArtFrame } from "../passArt";
 import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed } from "../passCatalog";
 import {
   claimable,
@@ -39,7 +40,7 @@ import { passesMode, passGiftsOn } from "./env";
 import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
-import { passArtIndex } from "./passArt";
+import { artFrame, passArtIndex } from "./passArt";
 import { roachByFeedId } from "./roachFeed";
 import { passCounters, passes, passGifts, passWallets, users, type UserRow } from "./schema";
 import { errorCode } from "./signals";
@@ -418,9 +419,16 @@ function cardOf(r: WornRow, { art, avatars }: Pictures): PassOnCard | null {
     fancy: isFancy(r.copies, (r.plain ?? []).includes(c.id)),
     color: a?.color ?? c.color,
     art: a?.file ?? null,
+    ...framed(a?.file),
     avatar: avatars[GAME_OF[c.game]][c.name] ?? null,
     drawnAt: r.drawnAt.getTime(),
   };
+}
+
+/** frame, for a picture moved in its boxes (artFrame); nothing at all for the others */
+function framed(file: string | undefined): { frame?: ArtFrame } {
+  const frame = artFrame(file);
+  return frame ? { frame } : {};
 }
 
 /** The pass a player wears, as their own pages show it */
@@ -506,7 +514,7 @@ async function roachPassNow(id: string): Promise<RoachPass | null> {
   const c = r && r.onMap !== false ? passChar(r.charId) : null;
   if (!c) return null;
   const a = (await passArtIndex()).get(c.id);
-  return { charId: c.id, name: c.name, rarity: c.rarity, color: a?.color ?? c.color, art: a?.file ?? null };
+  return { charId: c.id, name: c.name, rarity: c.rarity, color: a?.color ?? c.color, art: a?.file ?? null, ...framed(a?.file) };
 }
 
 /** For tests: the roaches' passes kept, forgotten, as in a fresh process */

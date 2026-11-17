@@ -133,6 +133,11 @@ export const passArtSkipped = (): ReadonlySet<number> =>
       .map((s) => Number(s.trim()))
       .filter((n) => Number.isInteger(n) && n > 0),
   );
+/**
+ * Where some 立绘 are moved in their boxes on passes (src/data/pass-framing.json, src/lib/server/passArt.ts):
+ * PASS_FRAMING=off sends none of it, so every picture fills its box from the top as before. Read on every use.
+ */
+export const passFramingOn = () => process.env.PASS_FRAMING !== "off";
 
 /**
  * 325大学习 (src/lib/server/study.ts): STUDY=on lets every player, and visitors too, play a course a day; admins, only

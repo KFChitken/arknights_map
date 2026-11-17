@@ -1,9 +1,10 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import framing from "@/data/pass-framing.json";
 import { isPassChar } from "../passCatalog";
-import type { PassArtList } from "../passArt";
-import { OPERATOR_ART_DIR, passArtOn, passArtSkipped } from "./env";
+import type { ArtFrame, PassArtList } from "../passArt";
+import { OPERATOR_ART_DIR, passArtOn, passArtSkipped, passFramingOn } from "./env";
 
 /**
  * The characters' pictures (立绘) on passes (src/lib/passArt.ts): made by scripts/fetch-pass-art.mjs into the pass
@@ -11,8 +12,18 @@ import { OPERATOR_ART_DIR, passArtOn, passArtSkipped } from "./env";
  * (scripts/deploy.sh; deploy/Caddyfile hands the files out itself). index.json there: catalogue id → the files'
  * name and the pass's colour. PASS_ART and PASS_ART_SKIP (env.ts) take all or some down: the pages stop asking for
  * them, and this server stops sending them (Caddy's straight copy goes on until the files are taken away too).
+ * Where a few are moved in their boxes travels with their file (artFrame).
  */
 export type PassArt = { file: string; color: string | null };
+
+/** src/data/pass-framing.json, by the pictures' file names */
+const FRAMES: ReadonlyMap<string, ArtFrame> = new Map(Object.entries(framing.framing as unknown as Record<string, ArtFrame>));
+
+/**
+ * Where a picture is moved in its boxes (src/lib/passArt.ts ArtFrame), by its file's name, so a picture made again
+ * is never moved by what was worked out for the one before; null for the others, and for all while PASS_FRAMING is off
+ */
+export const artFrame = (file: string | null | undefined): ArtFrame | null => (file && passFramingOn() && FRAMES.get(file)) || null;
 
 const DIR = path.join(OPERATOR_ART_DIR, "pass");
 // named by their content, so a name never points at a different picture
@@ -50,7 +61,10 @@ export async function passArtIndex(): Promise<ReadonlyMap<number, PassArt>> {
 /** As the page gets them (/api/pass-art) */
 export async function passArtList(): Promise<PassArtList> {
   const list: PassArtList = {};
-  for (const [id, a] of await passArtIndex()) list[id] = [a.file, a.color];
+  for (const [id, a] of await passArtIndex()) {
+    const frame = artFrame(a.file);
+    list[id] = frame ? [a.file, a.color, frame] : [a.file, a.color];
+  }
   return list;
 }
 

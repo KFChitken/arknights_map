@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { T } from "@/i18n";
-import { passArtUrl, passColor, type PassArtList } from "@/lib/passArt";
+import { artBoxVars, passArtUrl, passColor, type ArtFrame, type PassArtList } from "@/lib/passArt";
 import { GAME_OF, type PassChar } from "@/lib/passCatalog";
 import { goldKind, isFoil, padNo, PRINTED_DIGITS, styleFor, type PassOnCard } from "@/lib/passes";
 import { useLeanArt } from "@/lib/passLean";
@@ -17,8 +17,9 @@ import "./pass.css";
  * numbers (goldKind) add a gold corner or chip, nothing else. Everything inside is sized in cqw (pass.css), so one looks
  * the same at any width.
  * The picture is the character's 立绘 (src/lib/passArt.ts), its blur first and the picture fading in over it, or the
- * blur alone to save data (src/lib/passLean.ts); without one, their small picture (/operator-art), else a figure in
- * their colour. Which characters have a 立绘 comes once a page (usePassArt), handed to the passes inside PassArtProvider.
+ * blur alone to save data (src/lib/passLean.ts), filling its box from the top, or laid out where its frame says for
+ * the few moved; without one, their small picture (/operator-art), else a figure in their colour. Which characters
+ * have a 立绘 comes once a page (usePassArt), handed to the passes inside PassArtProvider.
  */
 
 let artPending: Promise<PassArtList> | null = null;
@@ -68,11 +69,15 @@ export function artUrl(c: PassChar, art: Art | null): string | null {
   return file ? `/operator-art/${file}` : null;
 }
 
-/** What a pass's picture is made of: the 立绘's files (null: none), else the small picture's address */
-export type PassPic = { file: string | null; avatar: string | null };
+/**
+ * What a pass's picture is made of: the 立绘's files (null: none) and where it is moved in its boxes, if anywhere,
+ * else the small picture's address
+ */
+export type PassPic = { file: string | null; avatar: string | null; frame?: ArtFrame };
 export const picOf = (c: PassChar, passArt: PassArtList | null, art: Art | null): PassPic => ({
   file: passArt?.[c.id]?.[0] ?? null,
   avatar: artUrl(c, art),
+  frame: passArt?.[c.id]?.[2],
 });
 
 /** The address to fetch ahead for a pass about to be shown small */
@@ -85,7 +90,7 @@ function Picture({ pic, big }: { pic: PassPic; big?: boolean }) {
     const on = lean || shown === pic.file;
     const file = pic.file;
     return (
-      <div className={`art lh${on ? " in" : ""}${lean ? " lean" : ""}`}>
+      <div className={`art lh${on ? " in" : ""}${lean ? " lean" : ""}`} style={artBoxVars(pic.frame?.[big ? "f" : "m"])}>
         <img className="bl" src={passArtUrl(file, "blur")} alt="" draggable={false} />
         {!lean &&
           (big ? (
@@ -483,4 +488,4 @@ export function SamplePass(props: { c: PassChar; fancy: boolean; art?: Art | nul
 /** A character as the catalogue has them, from what a worn pass carries (profile cards have no catalogue) */
 export const charOfCard = (p: PassOnCard): PassChar => ({ id: p.charId, game: p.game, name: p.name, en: p.en, rarity: p.rarity, color: p.color });
 /** A worn pass's picture */
-export const picOfCard = (p: PassOnCard): PassPic => ({ file: p.art, avatar: p.avatar ? `/operator-art/${p.avatar}` : null });
+export const picOfCard = (p: PassOnCard): PassPic => ({ file: p.art, avatar: p.avatar ? `/operator-art/${p.avatar}` : null, frame: p.frame });

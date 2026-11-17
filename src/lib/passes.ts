@@ -1,3 +1,5 @@
+import type { ArtFrame } from "./passArt";
+
 /**
  * 通行证寻访: tickets earned by playing (每日任务), spent to draw passes of the game characters, each pass numbered in the order
  * the whole site drew that character. The rules both sides go by; the server's part is src/lib/server/passes.ts,
@@ -131,6 +133,8 @@ export type PassOnCard = {
   /** the colour of the pass, and its picture's files (src/lib/passArt.ts; null: none here, or switched off) */
   color: string;
   art: string | null;
+  /** where the picture is moved in its boxes, for the few that are (src/lib/passArt.ts ArtFrame) */
+  frame?: ArtFrame;
   /** the character's small round picture's file (/operator-art), shown where there is no 立绘 */
   avatar: string | null;
   drawnAt: number;
@@ -139,9 +143,10 @@ export type PassOnCard = {
 export type WornPass = PassOnCard & { passId: number };
 /**
  * The pass the owner of a main roach wears, as its card on the map shows it to anyone else (GET /api/passes/roach):
- * the character, the colour and the picture's files, never the number, how many they have, or anything gold
+ * the character, the colour and the picture's files (and where it is moved, for the few that are), never the
+ * number, how many they have, or anything gold
  */
-export type RoachPass = Pick<PassOnCard, "charId" | "name" | "rarity" | "color" | "art">;
+export type RoachPass = Pick<PassOnCard, "charId" | "name" | "rarity" | "color" | "art" | "frame">;
 /** 我的通行证: every character the player has, and how many passes in all */
 export type Collection = { chars: OwnedChar[]; passes: number };
 /** A line of 寻访记录, newest first */

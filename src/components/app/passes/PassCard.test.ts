@@ -107,6 +107,30 @@ describe("a pass's picture", () => {
     expect(html).toContain(`src="/operator-art/pass/${LH}.webp"`);
     expect(html).toContain(`src="/operator-art/pass/${LH}.b.webp"`);
   });
+
+  it("fills its box from the top, or is laid out where its frame says: small and whole passes each their own box", () => {
+    const frame = { m: [4.8, -10.2, 152.7, 100], f: [0, -15, 100, 238.4] } as const;
+    const moved: PassArtList = { [amiya.id]: [LH, "#336699", frame], [admin.id]: [LH, null, { f: [-78.7, 0, 211.3, 100] }] };
+    const box = (html: string) => /<div class="art lh"( style="[^"]*")?>/.exec(html)?.[1] ?? "";
+    expect(box(within(moved, createElement(MiniPass, { c: amiya, no: 7, fancy: false, art: null })))).toBe(
+      ' style="--al:4.8%;--at:-10.2%;--aw:152.7%;--ah:100%"',
+    );
+    expect(box(within(moved, createElement(FullPass, { c: amiya, no: 7, fancy: true, holder: "", at: 0, w: 178 })))).toBe(
+      ' style="--al:0%;--at:-15%;--aw:100%;--ah:238.4%"',
+    );
+    // a box not given fills as before, and so does every picture with no frame
+    expect(box(within(moved, createElement(MiniPass, { c: admin, no: 7, fancy: false, art: null })))).toBe("");
+    expect(box(within(moved, createElement(FullPass, { c: admin, no: 7, fancy: false, holder: "", at: 0, w: 178 })))).toBe(
+      ' style="--al:-78.7%;--at:0%;--aw:211.3%;--ah:100%"',
+    );
+    expect(box(within(LIST, createElement(MiniPass, { c: amiya, no: 7, fancy: false, art: null })))).toBe("");
+    expect(box(within(LIST, createElement(FullPass, { c: amiya, no: 7, fancy: false, holder: "", at: 0, w: 178 })))).toBe("");
+    // what a worn pass brings with it, as for the 立绘 there are
+    expect(picOf(amiya, moved, null)).toEqual({ file: LH, avatar: null, frame });
+    expect(within(null, createElement(MiniPass, { c: amiya, no: 7, fancy: false, art: null, pic: { file: LH, avatar: null, frame } }))).toContain(
+      'style="--al:4.8%;--at:-10.2%;--aw:152.7%;--ah:100%"',
+    );
+  });
 });
 
 const whole = (props: Partial<Parameters<typeof FullPass>[0]> & Pick<Parameters<typeof FullPass>[0], "c">) =>
@@ -204,6 +228,8 @@ describe("a whole pass", () => {
     expect(charOfCard(card)).toEqual({ ...passChar(exu.id), color: "#aa3344" });
     expect(picOfCard(card)).toEqual({ file: LH, avatar: "/operator-art/0123456789abcdef.webp" });
     expect(picOfCard({ ...card, art: null, avatar: null })).toEqual({ file: null, avatar: null });
+    const frame = { f: [0, -15, 100, 238.4] } as const;
+    expect(picOfCard({ ...card, frame })).toEqual({ file: LH, avatar: "/operator-art/0123456789abcdef.webp", frame });
     const html = renderToStaticMarkup(
       createElement(FullPass, { c: charOfCard(card), no: card.no, fancy: card.fancy, pic: picOfCard(card), color: card.color, holder: "x", at: 0, w: 178 }),
     );

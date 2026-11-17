@@ -37,6 +37,9 @@ vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env"
 
 /** Noon, Beijing time: well inside a site day */
 const NOON = Date.parse("2026-11-14T12:00:00+08:00");
+/** One of the pictures moved in their boxes (src/data/pass-framing.json: 风笛's), and where */
+const MOVED = "9f8c7a61d2a0df8b";
+const MOVED_FRAME = { m: [0, -13.8, 100, 140.4], f: [0, -20.3, 100, 207.8], p: [0, -16.7, 100, 170.2] };
 const HOUR = 3_600_000;
 const id = (game: "arknights" | "endfield", name: string) => passCharNamed(game, name)!.id;
 
@@ -514,6 +517,12 @@ describe("wearing a pass", () => {
     expect(shown).toMatchObject({ charId: 3, no: 3, copies: 10, fancy: true, drawnAt: NOON });
     // which of their passes it is stays theirs
     expect(Object.keys(shown!)).not.toContain("passId");
+    // a picture is moved in its boxes on a card as on the passes page, for the few that are
+    expect(Object.keys(shown!)).not.toContain("frame");
+    const index = vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[3, { file: MOVED, color: null }]]));
+    expect(await card(someone.id)).toMatchObject({ art: MOVED, frame: MOVED_FRAME });
+    expect((await passesMe(row, NOON))?.worn).toMatchObject({ art: MOVED, frame: MOVED_FRAME });
+    index.mockRestore();
     expect((await world.cardsOf([bare], a.id)).get(someone.id)!.pass).toBeUndefined();
     // nobody is looking (a card in a reply to their own ink)
     expect(await card(null)).toBeUndefined();
@@ -560,6 +569,14 @@ describe("the pass on a main roach's card on the map", () => {
     forgetRoachPasses();
     vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[1, { file: "0123456789abcdef", color: "#7d338a" }]]));
     expect(await roachPass(main, NOON)).toMatchObject({ art: "0123456789abcdef", color: "#7d338a" });
+
+    // and where it is moved in its boxes, for one of the few pictures that are (src/data/pass-framing.json)
+    forgetRoachPasses();
+    vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[1, { file: MOVED, color: "#7d338a" }]]));
+    expect(await roachPass(main, NOON)).toEqual({ charId: 1, name: c.name, rarity: c.rarity, color: "#7d338a", art: MOVED, frame: MOVED_FRAME });
+    vi.stubEnv("PASS_FRAMING", "off");
+    forgetRoachPasses();
+    expect(Object.keys((await roachPass(main, NOON))!)).not.toContain("frame");
   });
 
   it("is nothing on a clone, a guide, a demo roach, a roach not there, or a main roach whose owner wears none", async () => {

@@ -3,7 +3,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { characterName } from "@/i18n/names";
-import { passArtUrl } from "@/lib/passArt";
+import { artBoxVars, passArtUrl } from "@/lib/passArt";
 import type { RoachPass } from "@/lib/passes";
 import { passesApi } from "@/lib/passesClient";
 import { useLeanArt } from "@/lib/passLean";
@@ -89,7 +89,7 @@ export function RoachPassPeek({ pass }: { pass: RoachPass }) {
     <>
       <i className="rp-glow" style={{ "--pc": pass.color } as CSSProperties} aria-hidden="true" />
       {file && (
-        <span className={`rp-art${shown === file ? " in" : ""}`} aria-hidden="true">
+        <span className={`rp-art${shown === file ? " in" : ""}`} style={artBoxVars(pass.frame?.p)} aria-hidden="true">
           <picture>
             <source type="image/avif" srcSet={passArtUrl(file, "big", "avif")} />
             <img src={passArtUrl(file, "big")} alt="" decoding="async" draggable={false} onLoad={() => setShown(file)} />

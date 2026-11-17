@@ -2,6 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import framing from "@/data/pass-framing.json";
+import type { ArtBox, ArtFrame } from "@/lib/passArt";
 
 // what scripts/fetch-pass-art.mjs leaves: an index and each picture's files, named by their content
 const dir = mkdtempSync(path.join(tmpdir(), "pass-art-"));
@@ -83,5 +85,45 @@ describe("the pictures on passes", () => {
     expect(ok.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(await ok.text()).toBe(`${A}.avif`);
     expect((await file("index.json")).status).toBe(404);
+  });
+});
+
+describe("where a few pictures are moved in their boxes (src/data/pass-framing.json)", () => {
+  const frames = framing.framing as unknown as Record<string, ArtFrame>;
+  // 风笛's picture, moved in all three boxes
+  const MOVED = "9f8c7a61d2a0df8b";
+  const moved = mkdtempSync(path.join(tmpdir(), "pass-art-"));
+  mkdirSync(path.join(moved, "pass"));
+  writeFileSync(path.join(moved, "pass", "index.json"), JSON.stringify({ art: { 21: { file: MOVED, color: "#5a7a3c" }, 1: { file: A, color: null } } }));
+
+  it("are written by the pictures' file names, each box [left, top, width, height] never zoomed, nothing showing below", () => {
+    expect(Object.keys(frames).length).toBeGreaterThan(0);
+    for (const [file, frame] of Object.entries(frames)) {
+      expect(file).toMatch(/^[0-9a-f]{16}$/);
+      expect(Object.keys(frame).length, file).toBeGreaterThan(0);
+      for (const [where, box] of Object.entries(frame) as [string, ArtBox][]) {
+        const at = `${file} ${where}`;
+        expect(["m", "f", "p"], at).toContain(where);
+        expect(box, at).toHaveLength(4);
+        expect(box.every(Number.isFinite), at).toBe(true);
+        const [, top, width, height] = box;
+        // as big as filling the box makes it (100% one way, more the other), only moved
+        expect(Math.min(width, height), at).toBe(100);
+        expect(top, at).toBeLessThanOrEqual(0);
+        expect(top + height, at).toBeGreaterThanOrEqual(100 - 1e-9);
+      }
+    }
+    expect(frames[MOVED]).toEqual({ m: [0, -13.8, 100, 140.4], f: [0, -20.3, 100, 207.8], p: [0, -16.7, 100, 170.2] });
+  });
+
+  it("go with those pictures alone, and with none while PASS_FRAMING is off", async () => {
+    const art = await load({ OPERATOR_ART_DIR: moved });
+    expect(await art.passArtList()).toEqual({ 21: [MOVED, "#5a7a3c", frames[MOVED]], 1: [A, null] });
+    expect(art.artFrame(MOVED)).toEqual(frames[MOVED]);
+    for (const none of [A, null, undefined, "", MOVED.toUpperCase()]) expect(art.artFrame(none), String(none)).toBeNull();
+
+    const off = await load({ OPERATOR_ART_DIR: moved, PASS_FRAMING: "off" });
+    expect(await off.passArtList()).toEqual({ 21: [MOVED, "#5a7a3c"], 1: [A, null] });
+    expect(off.artFrame(MOVED)).toBeNull();
   });
 });

@@ -149,6 +149,13 @@ describe("the pass the owner of a main roach wears, on its card", () => {
     }
   });
 
+  it("lays the 立绘 out where its frame says, for the few moved, and fills its box from the top for the others", () => {
+    const moved = card({ left: 57, at }, { pass: { ...pass, frame: { m: [0, -10.2, 100, 161], p: [0, -12.3, 100, 195.3] } } });
+    expect(moved).toMatch(/<span class="rp-art" style="--al:0%;--at:-12.3%;--aw:100%;--ah:195.3%" aria-hidden="true">/);
+    // its small pass's box is not this one
+    expect(card({ left: 57, at }, { pass: { ...pass, frame: { m: [0, -10.2, 100, 161] } } })).toMatch(/<span class="rp-art" aria-hidden="true">/);
+  });
+
   it("is the name alone where there is no 立绘", () => {
     const html = card({ left: 57, at }, { pass: { ...pass, art: null } });
     expect(text(html)).toContain("通行证 · 能天使");
