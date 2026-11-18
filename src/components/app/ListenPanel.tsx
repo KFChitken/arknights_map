@@ -8,6 +8,7 @@ import {
   barSecond,
   clock,
   coverLink,
+  dragLetGo,
   HEARD_S,
   HOT_DAYS,
   HOT_READ_MS,
@@ -17,6 +18,7 @@ import {
   RANDOM_ADD,
   RX_ROOM_FROM,
   RX_ROWS,
+  seekBarKey,
   songMatches,
   type InviteSent,
   type ListenAlbum,
@@ -387,7 +389,7 @@ function Player({ paused }: { paused: boolean }) {
       )}
       <span className="lp-bar">
         <SeekTrack
-          key={`${t.id}:${canSeek}`}
+          key={seekBarKey(t.id, canSeek)}
           at={at}
           seconds={t.seconds}
           can={canSeek}
@@ -424,8 +426,9 @@ const SEEK_KEYS_MS = 500;
  * How far the song got (at, of seconds). Where `can` (alone; the host's, in a room) a bar to tap or drag: the knob
  * follows the finger and the song goes there as it lifts (a finger that scrolls instead goes nowhere); ← → 5 seconds,
  * PageDown PageUp 30, Home End. In a room where it went stays shown until the room answered, and its keys go a moment
- * after the last one. Otherwise it only shows (title: why). before and after: the times by it. Keyed by its song and
- * `can`, so a drag goes with either.
+ * after the last one. Otherwise it only shows (title: why). before and after: the times by it. Keyed by seekBarKey: a
+ * drag goes with its song or with `can`, never with a seek answered meanwhile. Let go of where it never heard (a mouse
+ * back with no button down, the pointer taken from it), it goes where the finger had it.
  */
 function SeekTrack({
   at,
@@ -450,6 +453,8 @@ function SeekTrack({
   const [held, setHeld] = useState<number | null>(null);
   const [drag, setDrag] = useState(false);
   const finger = useRef<number | null>(null);
+  // the second the finger had it at last
+  const fingerAt = useRef(0);
   const tries = useRef(0);
   const keys = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(keys.current), []);
@@ -484,6 +489,10 @@ function SeekTrack({
       if (mine === tries.current) setHeld(null);
     });
   };
+  const follow = (s: number) => {
+    fingerAt.current = s;
+    setHeld(s);
+  };
   const letGo = () => {
     finger.current = null;
     setDrag(false);
@@ -510,15 +519,23 @@ function SeekTrack({
           ++tries.current;
           clearTimeout(keys.current);
           setDrag(true);
-          setHeld(under(e.clientX));
+          follow(under(e.clientX));
         }}
         onPointerMove={(e) => {
-          if (finger.current === e.pointerId) setHeld(under(e.clientX));
+          if (finger.current !== e.pointerId) return;
+          if (!dragLetGo(e.pointerType, e.buttons)) return follow(under(e.clientX));
+          letGo();
+          go(fingerAt.current);
         }}
         onPointerUp={(e) => {
           if (finger.current !== e.pointerId) return;
           letGo();
           go(under(e.clientX));
+        }}
+        onLostPointerCapture={(e) => {
+          if (finger.current !== e.pointerId) return;
+          letGo();
+          go(fingerAt.current);
         }}
         onPointerCancel={(e) => {
           if (finger.current !== e.pointerId) return;
@@ -947,7 +964,7 @@ function RoomView({
           {now && (
             <span className="lr-bar">
               <SeekTrack
-                key={`${now.id}@${at.start}:${room.host && at.offset >= 0}`}
+                key={seekBarKey(now.id, room.host && at.offset >= 0)}
                 at={second}
                 seconds={now.seconds}
                 can={room.host && at.offset >= 0}

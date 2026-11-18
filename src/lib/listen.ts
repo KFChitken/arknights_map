@@ -174,6 +174,15 @@ export function keySecond(key: string, at: number, seconds: number): number | nu
 }
 
 /**
+ * What the bar under a song is known by, so the page keeps it while it is dragged: its song and whether it may be
+ * dragged, never where the song started (a seek answered moves that, and a bar made anew drops the finger on it)
+ */
+export const seekBarKey = (song: string, can: boolean) => `${song}:${can}`;
+
+/** A mouse dragging the bar moves with no button down: let go of where the bar never heard it (off the window, say) */
+export const dragLetGo = (pointerType: string, buttons: number) => pointerType === "mouse" && buttons === 0;
+
+/**
  * Someone listening (listen_now) counts until the song they play should have ended, and this much after: a player
  * whose page stopped telling (locked, closed) drops out within it
  */

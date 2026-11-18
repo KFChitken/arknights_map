@@ -33,13 +33,15 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
 .lp-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 /*
  * how far it got: alone (and the host's, in a room) a bar to tap or drag, its knob following the finger; taller to the
- * finger than it looks, and a finger that scrolls the list still does (touch-action)
+ * finger than it looks, and a finger that scrolls the list still does (touch-action); nothing on it to select or to
+ * hold for a menu, so a drag stays the bar's
  */
 .lp-bar .track, .lr-bar .track { position: relative; display: flex; flex: 1; align-items: center; min-width: 0; height: 4px; }
 .lp-rail { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; transition: height 0.12s; }
 .lp-bar .fill { display: block; height: 100%; background: #e0464d; }
 .lp-bar .track.can, .lr-bar .track.can {
   height: 24px; margin: -10px 0; outline: none; cursor: pointer; touch-action: pan-y; -webkit-tap-highlight-color: transparent;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .lp-knob {
   position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e0464d;

@@ -3,6 +3,7 @@ import {
   barSecond,
   changeQueue,
   clock,
+  dragLetGo,
   DRIFT_RATE,
   freshSongs,
   heardAfter,
@@ -25,6 +26,7 @@ import {
   RX_ROWS,
   SEEK_KEY_S,
   SEEK_PAGE_S,
+  seekBarKey,
   shuffleNext,
   songMatches,
   type ListenAlbum,
@@ -196,6 +198,20 @@ describe("一起听's schedule", () => {
     expect(keySecond("End", 60, 180)).toBe(179);
     expect(keySecond("Enter", 60, 180)).toBeNull();
     expect(keySecond("toString", 60, 180)).toBeNull();
+  });
+
+  it("keeps the bar a finger drags through a seek answered, and ends a mouse's drag let go of where the bar never heard", () => {
+    // its song and whether it may be dragged, and nothing of where the song started, which each seek moves
+    expect(seekBarKey("s1", true)).toBe("s1:true");
+    expect(new Set([seekBarKey("s1", true), seekBarKey("s2", true), seekBarKey("s1", false)]).size).toBe(3);
+    // a mouse back over the bar with no button down was let go of somewhere else
+    expect(dragLetGo("mouse", 0)).toBe(true);
+    expect(dragLetGo("mouse", 1)).toBe(false);
+    expect(dragLetGo("mouse", 2)).toBe(false);
+    // a finger or a pen lifted says so itself
+    expect(dragLetGo("touch", 0)).toBe(false);
+    expect(dragLetGo("touch", 1)).toBe(false);
+    expect(dragLetGo("pen", 0)).toBe(false);
   });
 
   it("keeps a phone in step: a little faster or slower when a little off, until close, and a jump when far off", () => {
