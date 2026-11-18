@@ -59,7 +59,11 @@ type User = typeof users.$inferSelect;
 type Answer = { status: number; body: Record<string, unknown> | null; etag?: string | null };
 
 const KEY = "8di6kbgf9neg7e";
-const CARD = { core: 5, strategy: 18, extras: [4] };
+const CARD = { core: 5, strategy: 18, level: 3 };
+/** What the card brings into a room: its picks */
+const PICKS = { core: CARD.core, strategy: CARD.strategy };
+/** A seat on the list: its roach as drawn, and the picks */
+const SEAT = { ...PICKS, avatar: expect.any(String), color: expect.any(String) };
 
 async function account(name: string, more: Partial<typeof users.$inferInsert> = {}) {
   const now = new Date();
@@ -80,7 +84,7 @@ async function account(name: string, more: Partial<typeof users.$inferInsert> = 
 }
 /** One with a card filled in */
 const player = (name: string, more: Partial<typeof users.$inferInsert> = {}) =>
-  account(name, { squadCore: CARD.core, squadStrategy: CARD.strategy, squadExtras: CARD.extras, ...more });
+  account(name, { squadCore: CARD.core, squadStrategy: CARD.strategy, squadLevel: CARD.level, ...more });
 const row = async (u: Pick<User, "id">) => (await db.select().from(users).where(eq(users.id, u.id)))[0];
 
 const tokens = new Map<string, string>();
@@ -196,24 +200,30 @@ describe("who 一起卫戍 is open to", () => {
 });
 
 describe("卫戍名片", () => {
-  it("must be filled in before opening or going in; core needed (or 无偏好), a strategy at most, two extras at most", async () => {
+  it("must be filled in before opening or going in; core needed (or 随机应变), a strategy or none, a 难度 or none", async () => {
     const host = await player("host");
     const room = await opened(host);
     const blank = await account("blank");
     expect(await post(blank, "open", { key: KEY, server: "cn", level: 3 })).toMatchObject({ status: 409, body: { code: "squadCard" } });
     expect(await post(blank, "join", { room: room.id })).toMatchObject({ status: 409, body: { code: "squadCard" } });
-    for (const bad of [{ core: 11 }, { core: 1, strategy: 99 }, { core: 1, extras: [1, 2, 3] }, { core: 1, extras: [1, 1] }, { strategy: 1 }]) {
+    for (const bad of [{ core: 11 }, { core: 1, strategy: 99 }, { core: 1, level: 6 }, { core: 1, level: 0 }, { core: 1, level: "3" }, { strategy: 1 }]) {
       expect((await post(blank, "card", { card: bad })).status, JSON.stringify(bad)).toBe(400);
     }
-    expect(await post(blank, "card", { card: { core: 0 } })).toMatchObject({ status: 200, body: { card: { core: 0, strategy: null, extras: [] }, showName: false } });
-    expect((await goIn(blank, room)).members.find((m) => m.you)).toMatchObject({ core: 0, strategy: null, extras: [] });
+    // the extras a card of before had are ignored, never refused
+    expect(await post(blank, "card", { card: { core: 1, extras: [1, 2, 3] } })).toMatchObject({ status: 200, body: { card: { core: 1, strategy: null, level: null } } });
+    expect(await post(blank, "card", { card: { core: 0, level: 4 } })).toMatchObject({ status: 200, body: { card: { core: 0, strategy: null, level: 4 }, showName: false } });
+    expect(await squadMe(await row(blank))).toMatchObject({ card: { core: 0, strategy: null, level: 4 } });
+    // into a room go the picks, never extras (those of before stay in their column, neither read nor written)
+    await db.update(users).set({ squadExtras: [3, 4] }).where(eq(users.id, blank.id));
+    expect((await goIn(blank, room)).members.find((m) => m.you)).toEqual(expect.objectContaining({ core: 0, strategy: null }));
+    expect((await db.select().from(squadMembers).where(eq(squadMembers.userId, blank.id)))[0].extras).toEqual([]);
     // 列表上显示我的名字: off until turned on, kept with the card, and off again once the card is cleared
     expect((await post(blank, "card", { card: { core: 0 }, showName: "yes" })).status).toBe(400);
     expect(await post(blank, "card", { card: { core: 0 }, showName: true })).toMatchObject({ status: 200, body: { showName: true } });
     expect(await post(blank, "card", { card: { core: 1 } })).toMatchObject({ status: 200, body: { card: { core: 1 }, showName: true } });
     // cleared, it is filled in again before the next room
     expect(await post(blank, "card", { card: null })).toMatchObject({ status: 200, body: { card: null, showName: false } });
-    expect(await row(blank)).toMatchObject({ squadCore: null, squadShowName: false });
+    expect(await row(blank)).toMatchObject({ squadCore: null, squadLevel: null, squadShowName: false, squadExtras: [3, 4] });
   });
 
   it("has the season's 44 general strategies and 17 of a core alliance, by ids never given twice", () => {
@@ -248,7 +258,7 @@ describe("a room", () => {
     const room = await opened(host, { key: "同盟密钥 | 8DI6KBGF9NEG7E", server: "bili" });
     expect(room).toMatchObject({ key: KEY, server: "bili", level: 3, tags: [2], state: "wait", you: 1, host: true, keyLeft: KEY_CHANGES });
     expect(room.keyAt).toBeGreaterThanOrEqual(t - 1000);
-    expect(room.members).toMatchObject([{ h: 1, host: true, you: true, name: "host", ...CARD }]);
+    expect(room.members).toMatchObject([{ h: 1, host: true, you: true, name: "host", ...PICKS }]);
     expect(await counted(COUNTED.squadRoom)).toBe(1);
     expect((await squadMe(await row(host)))!.room).toBe(true);
   });
@@ -350,7 +360,7 @@ describe("a room", () => {
     expect((await post(a, "game", { on: true })).body!.room).toMatchObject({ members: [{ inGame: false }, { inGame: true }] });
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "game", h: 2 } });
     const prefs = await post(a, "prefs", { card: { core: 1, strategy: 46, extras: [] } });
-    expect((prefs.body!.room as SquadRoom).members[1]).toMatchObject({ core: 1, strategy: 46, extras: [] });
+    expect((prefs.body!.room as SquadRoom).members[1]).toMatchObject({ core: 1, strategy: 46 });
     expect((await row(a)).squadCore).toBe(CARD.core);
     // again within ten seconds
     expect((await post(a, "prefs", { card: { core: 2 } })).status).toBe(429);
@@ -382,20 +392,20 @@ describe("the list", () => {
     const [byStranger] = await roomsOf(stranger);
     expect(byStranger).toMatchObject({ id: room.id, host: { name: "host", friend: false }, friend: false, mine: false });
     expect(byStranger.seats).toEqual([
-      { role: "host", ...CARD },
-      { role: "mate", ...CARD },
+      { role: "host", ...SEAT },
+      { role: "mate", ...SEAT },
     ]);
     const [byFriend] = await roomsOf(friend);
-    expect(byFriend.seats[1]).toEqual({ role: "friend", name: "mate", ...CARD });
+    expect(byFriend.seats[1]).toEqual({ role: "friend", name: "mate", ...SEAT });
     expect(byFriend.friend).toBe(true);
     expect((await roomsOf(mate))[0].seats[1].role).toBe("you");
     // 列表上显示我的名字, off at first: turned on, everyone's next list names TA; off again, only TA's 触须之交
     expect((await post(mate, "card", { card: CARD, showName: true })).status).toBe(200);
-    expect((await roomsOf(stranger))[0].seats[1]).toEqual({ role: "mate", name: "mate", ...CARD });
-    expect((await roomsOf(friend))[0].seats[1]).toEqual({ role: "friend", name: "mate", ...CARD });
+    expect((await roomsOf(stranger))[0].seats[1]).toEqual({ role: "mate", name: "mate", ...SEAT });
+    expect((await roomsOf(friend))[0].seats[1]).toEqual({ role: "friend", name: "mate", ...SEAT });
     expect((await post(mate, "card", { card: CARD, showName: false })).status).toBe(200);
-    expect((await roomsOf(stranger))[0].seats[1]).toEqual({ role: "mate", ...CARD });
-    expect((await roomsOf(friend))[0].seats[1]).toEqual({ role: "friend", name: "mate", ...CARD });
+    expect((await roomsOf(stranger))[0].seats[1]).toEqual({ role: "mate", ...SEAT });
+    expect((await roomsOf(friend))[0].seats[1]).toEqual({ role: "friend", name: "mate", ...SEAT });
   });
 
   it("puts rooms with 触须之交 first, then those missing fewest, then the freshest key; those playing last", async () => {
@@ -493,7 +503,7 @@ describe("blocking", () => {
     await report(a.id, `sq:${room.id}:1`, "spam", "");
     const [r] = await db.select().from(reports);
     expect(r.targetId).toBe(host.id);
-    expect(r.context).toBe("一起卫戍里（险境模拟·冲奖杯），TA 在房间里选的：核心盟约 阿戈尔，策略 老鲤（得闲饮茶），附加盟约 坚守");
+    expect(r.context).toBe("一起卫戍里（险境模拟·冲奖杯），TA 在房间里选的：核心盟约 阿戈尔，策略 老鲤（得闲饮茶）");
     // not by someone in no room, nor of a number nobody has
     await expect(report((await player("outsider")).id, `sq:${room.id}:1`, "spam", "")).rejects.toThrow();
     await expect(report(a.id, `sq:${room.id}:9`, "spam", "")).rejects.toThrow();

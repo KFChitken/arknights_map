@@ -505,6 +505,13 @@
       "when": 1794884689941,
       "tag": "0072_squad_show_name",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1794970551221,
+      "tag": "0073_squad_level",
+      "breakpoints": true
     }
   ]
 }

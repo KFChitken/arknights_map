@@ -1,10 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { KEY_OLD_MS, type SquadListRoom } from "@/lib/squad";
-import { Prefs, RoomCard } from "./SquadSheet";
+import { KEY_OLD_MS, type SquadListRoom, type SquadSeat } from "@/lib/squad";
+import { RoomCard, SeatTile } from "./SquadSheet";
 
 const NOW = Date.parse("2026-11-16T20:30:00+08:00");
+const LOOK = { avatar: "hood", color: "cyan" };
 const room = (more: Partial<SquadListRoom> = {}): SquadListRoom => ({
   id: "r1",
   host: { name: "小龙", friend: false, avatar: "hood", color: "cyan" },
@@ -14,9 +15,9 @@ const room = (more: Partial<SquadListRoom> = {}): SquadListRoom => ({
   state: "wait",
   friendsOnly: false,
   seats: [
-    { role: "host", core: 5, strategy: 18, extras: [4] },
-    { role: "friend", name: "红豆", core: 1, strategy: null, extras: [] },
-    { role: "mate", core: 0, strategy: null, extras: [1, 2] },
+    { role: "host", core: 5, strategy: 18, ...LOOK },
+    { role: "friend", name: "红豆", core: 1, strategy: null, ...LOOK },
+    { role: "mate", core: 0, strategy: null, ...LOOK },
   ],
   at: NOW - 20 * 60_000,
   keyAt: NOW - 3 * 60_000,
@@ -25,24 +26,35 @@ const room = (more: Partial<SquadListRoom> = {}): SquadListRoom => ({
   music: false,
   ...more,
 });
-const html = (r: SquadListRoom) => renderToStaticMarkup(createElement(RoomCard, { room: r, now: NOW, busy: false, onJoin: () => {}, onBack: () => {} }));
+const html = (r: SquadListRoom, myStrategy: number | null = null) =>
+  renderToStaticMarkup(createElement(RoomCard, { room: r, now: NOW, busy: false, art: null, myStrategy, onJoin: () => {}, onBack: () => {} }));
 
 describe("a room on the list", () => {
-  it("names the host, and a teammate only as the viewer's 触须之交; every seat's card, the strategy by its operator", () => {
+  it("shows its 难度's badge and four seats: the host by name, a teammate only where TA may be named, every seat's picks", () => {
     const out = html(room());
-    expect(out).toContain("小龙");
-    expect(out).toContain("险境模拟");
+    expect(out).toContain('<span class="sq-lv lv3">险境模拟</span>');
     expect(out).toContain("冲奖杯 · 稳一点");
+    expect(out).toContain("小龙");
     expect(out).toContain("红豆");
     expect(out).toContain("队友");
-    expect(out).toContain("<b class=\"\">阿戈尔</b>");
-    // the operator shown, the strategy's name only to a screen reader until tapped
-    expect(out).toContain(">老鲤</button>");
-    expect(out).not.toContain("<small>得闲饮茶</small>");
-    expect(out).toContain("<b class=\"none\">无偏好</b>");
-    expect(out).toContain("精准 迅捷");
+    expect(out).toContain('<span class="sq-core">阿戈尔</span>');
+    expect(out).toContain('<span class="sq-core none">随机应变</span>');
+    // with no picture yet, the strategy's operator by name; the strategy's own name only once tapped
+    expect(out).toContain("老鲤");
+    expect(out).not.toContain("得闲饮茶</small>");
+    // one empty seat, dashed
+    expect(out.match(/sq-seat empty/g)).toHaveLength(1);
     expect(out).toContain("三缺一");
     expect(out).toContain("加入");
+  });
+
+  it("marks a seat whose strategy is the viewer's card's, and says so under the room; 无偏好 never clashes", () => {
+    const clash = html(room(), 18);
+    expect(clash).toContain('<i class="tag">撞</i>');
+    expect(clash).toContain("和你的策略撞了");
+    for (const mine of [null, 19]) {
+      expect(html(room(), mine)).not.toContain("撞");
+    }
   });
 
   it("says how old its key is, and that it may be gone once the game's alliance may be", () => {
@@ -59,9 +71,10 @@ describe("a room on the list", () => {
     expect(html(room({ mine: true }))).toContain("回房间");
   });
 
-  it("keeps a card the season no longer has as none", () => {
-    expect(renderToStaticMarkup(createElement(Prefs, { card: { core: 5, strategy: 999, extras: [999] } }))).toBe(
-      '<span class="prefs"><b class="">阿戈尔</b></span>',
-    );
+  it("keeps a pick the season no longer has as none", () => {
+    const seat: SquadSeat = { role: "mate", core: 5, strategy: 999, ...LOOK };
+    const out = renderToStaticMarkup(createElement(SeatTile, { seat, hostName: "", hostFriend: false, art: null, clash: false }));
+    expect(out).toContain('<span class="sq-core">阿戈尔</span>');
+    expect(out).toContain("sq-face none");
   });
 });

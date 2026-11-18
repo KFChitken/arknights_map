@@ -29,10 +29,8 @@ export const CORES: readonly SquadNamed[] = season.cores;
 export const EXTRAS: readonly SquadNamed[] = season.extras;
 export const STRATEGIES: readonly SquadStrategy[] = season.strategies;
 
-/** 无偏好: a core alliance chosen as none in particular (the card needs one or this) */
+/** 随机应变: a core alliance chosen as none in particular (the card needs one or this) */
 export const NO_CORE = 0;
-/** A card's extra alliances, at most */
-export const EXTRAS_MAX = 2;
 
 const byId = <T extends { id: number; gone?: boolean }>(list: readonly T[]) => new Map(list.filter((x) => !x.gone).map((x) => [x.id, x]));
 const coreById = byId(CORES);
@@ -43,31 +41,54 @@ export const coreOf = (id: number) => coreById.get(id) ?? null;
 export const extraOf = (id: number) => extraById.get(id) ?? null;
 export const strategyOf = (id: number) => strategyById.get(id) ?? null;
 
-/** 卫戍名片: a core alliance (or NO_CORE), a strategy or none, and up to EXTRAS_MAX extra alliances, all by id */
-export type SquadCard = { core: number; strategy: number | null; extras: number[] };
+/** What a seat shows, on the list and in a room: a core alliance (or NO_CORE) and a strategy or none (无偏好), by id */
+export type SquadPicks = { core: number; strategy: number | null };
+/** 卫戍名片: the picks a player takes into the rooms they open or go in at, and a 难度 or none (无偏好) */
+export type SquadCard = SquadPicks & { level: number | null };
 
 const isId = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 32_767;
 
-/** A card as a request gives it, or null when it is not one of this season's */
-export function readCard(v: unknown): SquadCard | null {
+/** Picks as a request gives them, or null when they are not this season's; anything else in it is ignored */
+export function readPicks(v: unknown): SquadPicks | null {
   if (!v || typeof v !== "object") return null;
-  const { core, strategy, extras } = v as Record<string, unknown>;
+  const { core, strategy } = v as Record<string, unknown>;
   if (!isId(core) || (core !== NO_CORE && !coreOf(core))) return null;
   if (strategy !== null && strategy !== undefined && (!isId(strategy) || !strategyOf(strategy))) return null;
-  if (extras !== undefined && !Array.isArray(extras)) return null;
-  const list = (extras ?? []) as unknown[];
-  if (list.length > EXTRAS_MAX || !list.every((e) => isId(e) && extraOf(e)) || new Set(list).size !== list.length) return null;
-  return { core, strategy: (strategy as number | null | undefined) ?? null, extras: list as number[] };
+  return { core, strategy: (strategy as number | null | undefined) ?? null };
 }
 
-/** A card as kept (null: never filled in), read against this season: what it no longer has reads as none */
-export function cardNow(core: number | null, strategy: number | null, extras: readonly number[]): SquadCard | null {
+/** A card as a request gives it, or null when it is not one of this season's (the extras a card of before had are ignored) */
+export function readCard(v: unknown): SquadCard | null {
+  const picks = readPicks(v);
+  if (!picks) return null;
+  const { level } = v as Record<string, unknown>;
+  if (level !== null && level !== undefined && !isLevel(level)) return null;
+  return { ...picks, level: (level as number | null | undefined) ?? null };
+}
+
+/** Picks as kept, read against this season: what it no longer has reads as none */
+export const picksNow = (core: number, strategy: number | null): SquadPicks => ({
+  core: core === NO_CORE || coreOf(core) ? core : NO_CORE,
+  strategy: strategy !== null && strategyOf(strategy) ? strategy : null,
+});
+
+/** A card as kept (null: never filled in), read against this season */
+export function cardNow(core: number | null, strategy: number | null, level: number | null): SquadCard | null {
   if (core === null) return null;
-  return {
-    core: core === NO_CORE || coreOf(core) ? core : NO_CORE,
-    strategy: strategy !== null && strategyOf(strategy) ? strategy : null,
-    extras: extras.filter((e) => extraOf(e)).slice(0, EXTRAS_MAX),
-  };
+  return { ...picksNow(core, strategy), level: level !== null && isLevel(level) ? level : null };
+}
+
+/**
+ * Two picks clash when they name the same strategy (a strategy's operator joins one player a round); none (无偏好)
+ * never does, nor one core alliance taken twice. The one rule, for the page and the server alike.
+ */
+export const sameStrategy = (a: number | null, b: number | null) => a !== null && a === b;
+
+/** Every pair in a room whose strategies clash (sameStrategy), each once */
+export function squadClash<T extends { strategy: number | null }>(members: readonly T[]): [T, T][] {
+  const pairs: [T, T][] = [];
+  members.forEach((a, i) => members.slice(i + 1).forEach((b) => sameStrategy(a.strategy, b.strategy) && pairs.push([a, b])));
+  return pairs;
 }
 
 // ---- a room ----
@@ -187,7 +208,7 @@ export const SAY_SHOW_MS = 3_000;
 export type SquadLook = { avatar: string; color: string };
 
 /** A seat on the list: the host; the viewer; one of the viewer's 触须之交, named; or a teammate, never named */
-export type SquadSeat = { role: "host" | "you" | "friend" | "mate"; name?: string } & SquadCard;
+export type SquadSeat = { role: "host" | "you" | "friend" | "mate"; name?: string } & SquadLook & SquadPicks;
 
 export type SquadListRoom = {
   id: string;
@@ -229,7 +250,7 @@ export type SquadMember = {
   /** 我进同盟了: ticked by them */
   inGame: boolean;
 } & SquadLook &
-  SquadCard;
+  SquadPicks;
 
 /** The room as one in it sees it */
 export type SquadRoom = {

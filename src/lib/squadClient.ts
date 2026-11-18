@@ -2,7 +2,7 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
-import type { SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadRoom, SquadSongChange } from "./squad";
+import type { SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadPicks, SquadRoom, SquadSongChange } from "./squad";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -65,8 +65,8 @@ export const squadApi = {
   kick: (h: number) => call<Room>("kick", post({ h })),
   /** 我进同盟了 */
   game: (on: boolean) => call<Room>("game", post({ on })),
-  /** Your card in this room alone */
-  prefs: (card: SquadCard) => call<Room>("prefs", post({ card })),
+  /** Your picks in this room alone */
+  prefs: (card: SquadPicks) => call<Room>("prefs", post({ card })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** A set line, by its number: sent, or one too many (full: the hour's are used up) */

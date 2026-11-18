@@ -9,12 +9,7 @@ import type { PassesDot } from "@/lib/passes";
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
 import {
-  CORES,
-  coreOf,
   DEFAULT_SERVER,
-  EXTRAS,
-  EXTRAS_MAX,
-  extraOf,
   findKey,
   KEY_OLD_MS,
   KEY_WARN_MS,
@@ -34,16 +29,16 @@ import {
   SQUAD_CLOSED,
   SQUAD_MAX,
   SQUAD_SERVERS,
-  STRATEGIES,
-  strategyOf,
   TAGS,
   TAGS_MAX,
   type PhraseRow,
+  sameStrategy,
   type SquadCard,
   type SquadFriend,
   type SquadList,
   type SquadListRoom,
   type SquadMember,
+  type SquadPicks,
   type SquadRoom,
   type SquadSeat,
 } from "@/lib/squad";
@@ -52,7 +47,9 @@ import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import DjBar from "./DjBar";
+import { CoreBadge, CoreChips, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { MegaphoneIcon } from "../chrome/parts";
+import { useOperatorArt, type Art } from "../OperatorNames";
 import Sheet from "../Sheet";
 import {
   changeSquadKey,
@@ -120,7 +117,6 @@ const LIST_SERVER = "squad.server";
 /** Refusals that mean the list is out of date: it is asked again */
 const STALE: ReadonlySet<string> = new Set([ROOM_GONE, ROOM_FULL, ROOM_PLAYING, ROOM_SHUT, SQUAD_CLOSED]);
 const minutes = (ms: number) => Math.max(0, Math.floor(ms / 60_000));
-const levelName = (level: number) => T.squad.levels[level - 1] ?? "";
 const srv = (id: string) => serverName("arknights", id) ?? id;
 const homeOf = (s: string) => (SQUAD_SERVERS.includes(s) ? s : DEFAULT_SERVER);
 
@@ -236,6 +232,7 @@ export default function SquadSheet(props: Props) {
     return (
       <OpenView
         home={home}
+        card={card}
         busy={busy}
         inRoom={inRoom}
         onOpen={async (form) => {
@@ -254,6 +251,7 @@ export default function SquadSheet(props: Props) {
     <ListView
       home={home}
       room={room}
+      card={card}
       showName={showName}
       busy={busy}
       ask={listAsk}
@@ -277,6 +275,7 @@ export default function SquadSheet(props: Props) {
 function ListView({
   home,
   room,
+  card: myCard,
   showName,
   busy,
   ask,
@@ -289,6 +288,8 @@ function ListView({
 }: {
   home: string;
   room: SquadRoom | null;
+  /** The viewer's 卫戍名片: its 难度 is the list's first, its strategy marks the seats it clashes with */
+  card: SquadCard | null;
   /** 列表上显示我的名字, said in the join box */
   showName: boolean;
   busy: boolean;
@@ -302,7 +303,9 @@ function ListView({
   onClose: () => void;
 }) {
   const [server, setServer] = useState(() => readListServer(home));
-  const [level, setLevel] = useState<number | null>(null);
+  // the card's 难度 until another is picked this time (none: every 难度)
+  const [level, setLevel] = useState<number | null>(myCard?.level ?? null);
+  const art = useOperatorArt();
   const [list, setList] = useState<SquadList | null>(null);
   const [failed, setFailed] = useState(false);
   const [idle, setIdle] = useState(false);
@@ -362,7 +365,18 @@ function ListView({
   const others = waiting.filter((r) => !r.friend);
   const going = rooms.filter((r) => r.state === "go");
   const closed = list?.closed ?? null;
-  const card = (r: SquadListRoom) => <RoomCard key={r.id} room={r} now={nowOf()} busy={busy || closed !== null} onJoin={() => setAsking(r)} onBack={onBack} />;
+  const roomCard = (r: SquadListRoom) => (
+    <RoomCard
+      key={r.id}
+      room={r}
+      now={nowOf()}
+      busy={busy || closed !== null}
+      art={art}
+      myStrategy={myCard?.strategy ?? null}
+      onJoin={() => setAsking(r)}
+      onBack={onBack}
+    />
+  );
   return (
     <Sheet
       title={T.squad.title}
@@ -447,15 +461,15 @@ function ListView({
         ) : (
           <>
             {withFriends.length > 0 && <h4 className="sq-grp">{T.squad.list.friends}</h4>}
-            {withFriends.map(card)}
+            {withFriends.map(roomCard)}
             {others.length > 0 && <h4 className="sq-grp">{T.squad.list.waiting}</h4>}
-            {others.map(card)}
+            {others.map(roomCard)}
             {going.length > 0 && (
               <button className="sq-fold" aria-expanded={showGo} onClick={() => setShowGo((s) => !s)}>
                 {fmt(T.squad.list.going, { n: going.length })} {showGo ? "▴" : "▸"}
               </button>
             )}
-            {showGo && going.map(card)}
+            {showGo && going.map(roomCard)}
           </>
         )}
         {idle ? <p className="hint">{T.squad.list.idle}</p> : <p className="hint sq-tip">{T.squad.list.tip}</p>}
@@ -479,17 +493,6 @@ function ListView({
   );
 }
 
-/** Four seats, filled as many as are in */
-function Seats({ n }: { n: number }) {
-  return (
-    <span className="sq-seats" aria-label={`${n}/${SQUAD_MAX}`}>
-      {Array.from({ length: SQUAD_MAX }, (_, i) => (
-        <i key={i} className={i < n ? "f" : ""} />
-      ))}
-    </span>
-  );
-}
-
 const needWords = (n: number) => (n >= SQUAD_MAX ? T.squad.list.full : n === SQUAD_MAX - 1 ? T.squad.list.lastOne : fmt(T.squad.list.need, { n: SQUAD_MAX - n }));
 
 /** How old the key is, on the list: gray and 可能过期 once the game's alliance may be gone */
@@ -499,33 +502,56 @@ function KeyAge({ at, now }: { at: number; now: number }) {
   return <span className={`sq-age${old ? " old" : ""}`}>{fmt(old ? T.squad.list.keyOld : T.squad.list.keyAge, { n })}</span>;
 }
 
-function RoomCard({ room, now, busy, onJoin, onBack }: { room: SquadListRoom; now: number; busy: boolean; onJoin: () => void; onBack: () => void }) {
+/**
+ * A room on the list: its 难度's badge, tags and how many it lacks; four seats, each with its roach, who and the picks
+ * (a seat whose strategy clashes with the viewer's card marked 撞, and said under the room, only to tell); the key's
+ * age, and the way in.
+ */
+function RoomCard({
+  room,
+  now,
+  busy,
+  art,
+  myStrategy,
+  onJoin,
+  onBack,
+}: {
+  room: SquadListRoom;
+  now: number;
+  busy: boolean;
+  art: Art | null;
+  /** The viewer's card's strategy */
+  myStrategy: number | null;
+  onJoin: () => void;
+  onBack: () => void;
+}) {
   const n = room.seats.length;
   const go = room.state === "go";
+  const clashing = (seat: SquadSeat) => seat.role !== "you" && sameStrategy(seat.strategy, myStrategy);
   return (
     <div className={`sq-room${room.friend ? " friend" : ""}${go ? " go" : ""}`}>
-      <span className="av">
-        <RoachIcon color={room.host.color as RoachColor} avatar={room.host.avatar as RoachAvatar} size={30} />
-      </span>
-      <span className="host">
-        {room.host.name}
-        {room.host.friend && <small className="fr">{T.squad.list.friend}</small>}
-      </span>
-      <span className="lvl">{levelName(room.level)}</span>
-      <span className="tagline">
-        {room.tags.map((t) => T.squad.tags[t - 1]).join(T.squad.dot)}
-        {room.music && <small className="mus">{T.squad.list.music}</small>}
-        {room.friendsOnly && <small className="only">{T.squad.list.friendsOnly}</small>}
-      </span>
-      <div className="seatlist">
-        {room.seats.map((s, i) => (
-          <SeatLine key={i} seat={s} />
+      <div className="top">
+        <LevelBadge level={room.level} />
+        <span className="tagline">
+          {room.tags.map((t) => T.squad.tags[t - 1]).join(T.squad.dot)}
+          {room.music && <small className="mus">{T.squad.list.music}</small>}
+          {room.friendsOnly && <small className="only">{T.squad.list.friendsOnly}</small>}
+        </span>
+        {go ? <span className="gonote">{T.squad.list.playing}</span> : <span className={`need${n === SQUAD_MAX - 1 ? " one" : ""}`}>{needWords(n)}</span>}
+      </div>
+      <div className="sq-seats4">
+        {room.seats.map((seat, i) => (
+          <SeatTile key={i} seat={seat} hostName={room.host.name} hostFriend={room.host.friend} art={art} clash={clashing(seat)} />
+        ))}
+        {Array.from({ length: Math.max(0, SQUAD_MAX - n) }, (_, i) => (
+          <span key={`e${i}`} className="sq-seat empty" aria-hidden="true">
+            +
+          </span>
         ))}
       </div>
       <span className="row3">
-        <Seats n={n} />
-        {go ? <span className="gonote">{T.squad.list.playing}</span> : <span className={`need${n === SQUAD_MAX - 1 ? " one" : ""}`}>{needWords(n)}</span>}
         <KeyAge at={room.keyAt} now={now} />
+        {room.seats.some(clashing) && <span className="sq-clash">{T.squad.list.clash}</span>}
         {room.mine ? (
           <button className="small dark" onClick={onBack}>
             {T.squad.list.mine}
@@ -542,55 +568,23 @@ function RoomCard({ room, now, busy, onJoin, onBack }: { room: SquadListRoom; no
   );
 }
 
-/** A seat on the list: who (房主, 你, a 触须之交 by name, 队友) and what they want */
-function SeatLine({ seat }: { seat: SquadSeat }) {
+/** A seat on the list: the roach, who (the host by name, a teammate where TA may be named, else 队友) and the picks */
+function SeatTile({ seat, hostName, hostFriend, art, clash }: { seat: SquadSeat; hostName: string; hostFriend: boolean; art: Art | null; clash: boolean }) {
   // a teammate by name to their 触须之交, and to everyone once they chose it on their 卫戍名片
-  const role =
-    seat.role === "host" ? T.squad.list.host : seat.role === "you" ? T.squad.list.you : (seat.name ?? (seat.role === "friend" ? T.squad.list.friend : T.squad.list.mate));
+  const name =
+    seat.role === "host" ? hostName : seat.role === "you" ? T.squad.list.you : (seat.name ?? (seat.role === "friend" ? T.squad.list.friend : T.squad.list.mate));
+  const friend = seat.role === "friend" || (seat.role === "host" && hostFriend);
+  const named = seat.role === "host" || seat.role === "you" || Boolean(seat.name);
   return (
-    <div className="seat">
-      <span className={`role${seat.role === "friend" ? " fr" : ""}`}>{role}</span>
-      <Prefs card={seat} />
-    </div>
-  );
-}
-
-const coreName = (id: number) => (id === NO_CORE ? T.squad.noCore : (coreOf(id)?.name ?? T.squad.noCore));
-
-/** A card in a line: the core alliance bold, the strategy's operator (a tap shows the strategy), the extras */
-function Prefs({ card, labels = false }: { card: SquadCard; labels?: boolean }) {
-  const s = card.strategy === null ? null : strategyOf(card.strategy);
-  const extras = card.extras.map((e) => extraOf(e)?.name).filter(Boolean);
-  return (
-    <span className="prefs">
-      {labels && <span className="lab">{T.squad.room.core}</span>}
-      <b className={card.core === NO_CORE ? "none" : ""}>{coreName(card.core)}</b>
-      {s && (
-        <>
-          {T.squad.dot}
-          {labels && <span className="lab">{T.squad.room.strategy}</span>}
-          <StrategyName op={s.op} name={s.name} />
-        </>
-      )}
-      {extras.length > 0 && (
-        <>
-          {T.squad.dot}
-          {labels && <span className="lab">{T.squad.room.extras}</span>}
-          {extras.join(" ")}
-        </>
-      )}
+    <span className={`sq-seat${clash ? " clash" : ""}`}>
+      {clash && <i className="tag">{T.squad.list.clashTag}</i>}
+      <RoachIcon color={seat.color as RoachColor} avatar={seat.avatar as RoachAvatar} size={34} />
+      <span className={`nm${friend ? " fr" : ""}${named ? "" : " anon"}`}>{name}</span>
+      <span className="pk">
+        <CoreBadge core={seat.core} />
+        <StrategyPic id={seat.strategy} art={art} />
+      </span>
     </span>
-  );
-}
-
-/** The operator alone; a tap shows the strategy's name too */
-function StrategyName({ op, name }: { op: string; name: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <button type="button" className="strat" aria-expanded={open} aria-label={`${op}${T.squad.dot}${name}`} onClick={() => setOpen((o) => !o)}>
-      {op}
-      {open && <small>{name}</small>}
-    </button>
   );
 }
 
@@ -680,6 +674,7 @@ const toggleIn = (list: number[], v: number, max: number) =>
 
 function OpenView({
   home,
+  card,
   busy,
   inRoom,
   onOpen,
@@ -687,6 +682,8 @@ function OpenView({
   onClose,
 }: {
   home: string;
+  /** The opener's 卫戍名片: its 难度 picked to begin with */
+  card: SquadCard | null;
   busy: boolean;
   inRoom: boolean;
   onOpen: (form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) => void;
@@ -695,7 +692,7 @@ function OpenView({
 }) {
   const [pasted, setPasted] = useState("");
   const [server, setServer] = useState(home);
-  const [level, setLevel] = useState(3);
+  const [level, setLevel] = useState(card?.level ?? 3);
   const [tags, setTags] = useState<number[]>([]);
   const [friendsOnly, setFriendsOnly] = useState(false);
   const key = findKey(pasted);
@@ -778,68 +775,6 @@ function OpenView({
 
 // ---- the card ----
 
-/** The three choices: a core alliance (or 无偏好), a strategy or none (two groups, those of the core first), extras */
-export function PrefsPicker({ card, onChange }: { card: SquadCard | null; onChange: (c: SquadCard) => void }) {
-  const [openStrat, setOpenStrat] = useState(false);
-  const c: SquadCard = card ?? { core: -1, strategy: null, extras: [] };
-  const set = (p: Partial<SquadCard>) => onChange({ ...c, core: c.core < 0 ? NO_CORE : c.core, ...p });
-  const general = STRATEGIES.filter((s) => !s.core && !s.gone);
-  const covenant = STRATEGIES.filter((s) => s.core && !s.gone).sort((a, b) => Number(b.core === c.core) - Number(a.core === c.core));
-  const chosen = c.strategy === null ? null : strategyOf(c.strategy);
-  const stratChip = (s: (typeof STRATEGIES)[number]) => (
-    <button key={s.id} type="button" className={`chip${c.strategy === s.id ? " on" : ""}`} aria-pressed={c.strategy === s.id} onClick={() => set({ strategy: s.id })}>
-      {s.op}
-      <small>{s.name}</small>
-    </button>
-  );
-  return (
-    <div className="sq-prefs">
-      <div className="lab">
-        {T.squad.card.core}
-        <small>{T.squad.card.coreHint}</small>
-      </div>
-      <Chips
-        options={[NO_CORE, ...CORES.filter((x) => !x.gone).map((x) => x.id)]}
-        on={(id) => id === c.core}
-        label={coreName}
-        onPick={(id) => onChange({ ...c, core: id })}
-      />
-      <div className="lab">
-        {T.squad.card.strategy}
-        <small>{T.squad.card.strategyHint}</small>
-      </div>
-      <div className="chips">
-        <button type="button" className={`chip${chosen ? " on" : ""}`} aria-expanded={openStrat} onClick={() => setOpenStrat((o) => !o)}>
-          {chosen ? `${chosen.op}${T.squad.dot}${chosen.name}` : T.squad.card.strategyNone} {openStrat ? "▴" : "▾"}
-        </button>
-      </div>
-      {openStrat && (
-        <div className="sq-strats">
-          <div className="chips">
-            <button type="button" className={`chip${c.strategy === null ? " on" : ""}`} aria-pressed={c.strategy === null} onClick={() => set({ strategy: null })}>
-              {T.squad.card.strategyNone}
-            </button>
-          </div>
-          <div className="sgrp">{T.squad.card.general}</div>
-          <div className="chips">{general.map(stratChip)}</div>
-          <div className="sgrp">{T.squad.card.covenant}</div>
-          <div className="chips">{covenant.map(stratChip)}</div>
-        </div>
-      )}
-      <div className="lab">
-        {T.squad.card.extras}
-        <small>{fmt(T.squad.card.extrasHint, { n: EXTRAS_MAX })}</small>
-      </div>
-      <Chips
-        options={EXTRAS.filter((x) => !x.gone).map((x) => x.id)}
-        on={(id) => c.extras.includes(id)}
-        label={(id) => extraOf(id)?.name ?? ""}
-        onPick={(id) => set({ extras: toggleIn(c.extras, id, EXTRAS_MAX) })}
-      />
-    </div>
-  );
-}
-
 function CardView({
   card,
   showName,
@@ -859,6 +794,10 @@ function CardView({
 }) {
   const [draft, setDraft] = useState<SquadCard | null>(card);
   const [show, setShow] = useState(showName);
+  const art = useOperatorArt();
+  // a strategy or 难度 picked first, with no core alliance yet, takes 随机应变 with it
+  const d: SquadCard = draft ?? { core: NO_CORE, strategy: null, level: null };
+  const set = (p: Partial<SquadCard>) => setDraft({ ...d, ...p });
   return (
     <Sheet
       title={T.squad.card.title}
@@ -880,7 +819,23 @@ function CardView({
     >
       {first && <p className="tip">{T.squad.card.first}</p>}
       <p className="hint">{T.squad.card.note}</p>
-      <PrefsPicker card={draft} onChange={setDraft} />
+      <div className="sq-prefs">
+        <div className="lab">
+          {T.squad.card.core}
+          <small>{T.squad.card.coreHint}</small>
+        </div>
+        <CoreChips value={draft ? draft.core : null} onPick={(core) => set({ core })} />
+        <div className="lab">
+          {T.squad.card.strategy}
+          <small>{T.squad.card.strategyHint}</small>
+        </div>
+        <StrategyGrid value={d.strategy} core={d.core} art={art} onPick={(strategy) => set({ strategy })} />
+        <div className="lab">
+          {T.squad.card.level}
+          <small>{T.squad.card.levelHint}</small>
+        </div>
+        <LevelChips value={d.level} onPick={(level) => set({ level })} />
+      </div>
       <label className="sq-show">
         <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
         <span>
@@ -915,8 +870,10 @@ function RoomView({
   onList: () => void;
   onCard: () => void;
 }) {
-  const [editing, setEditing] = useState<SquadCard | null>(null);
-  const [pop, setPop] = useState<{ h: number; kind: "touch" | "more" } | null>(null);
+  const [picking, setPicking] = useState<"core" | "strategy" | null>(null);
+  // another's tile tapped: what can be done to TA
+  const [menu, setMenu] = useState<number | null>(null);
+  const art = useOperatorArt();
   const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | null>(null);
   const [, tick] = useState(0);
   // the clock of what it shows: the server's when the room came, gone on since on this device
@@ -943,6 +900,7 @@ function RoomView({
         : fmt(T.squad.room.endsLife, { t: leftWords });
   const pill = room.state === "go" ? T.squad.room.go : n >= SQUAD_MAX ? fmt(T.squad.room.full, { n, max: SQUAD_MAX }) : fmt(T.squad.room.wait, { n, max: SQUAD_MAX });
   const host = room.members.find((m) => m.host);
+  const menuOf = menu === null ? null : (room.members.find((m) => m.h === menu && !m.you) ?? null);
   // calling others in, while it waits for players and has a seat: anyone's invitations to their 触须之交 (who come in
   // even where only the host's may), and the host's 宣言招人, once a room, where anyone may come
   const mayInvite = room.state === "wait" && n < SQUAD_MAX;
@@ -1031,53 +989,60 @@ function RoomView({
         )}
       </div>
       <DjBar room={room} busy={busy} run={run} />
-      <div className="sq-members">
+      <div className="sq-tiles">
         {room.members.map((m) => (
-          <MemberRow
+          <MemberTile
             key={m.h}
             m={m}
-            host={room.host}
-            editing={m.you ? editing : null}
-            pop={pop?.h === m.h ? pop.kind : null}
-            busy={busy}
-            onEdit={() => {
-              if (!editing) return setEditing({ core: me.core, strategy: me.strategy, extras: me.extras });
-              const changed = editing.core !== me.core || editing.strategy !== me.strategy || editing.extras.join() !== me.extras.join();
-              setEditing(null);
-              if (changed) void run(() => setSquadPrefs(editing));
-            }}
-            onEditChange={setEditing}
-            onPop={(kind) => setPop((p) => (p?.h === m.h && p.kind === kind ? null : { h: m.h, kind }))}
-            onTouch={(bold) => {
-              setPop(null);
-              void onTouch(m.h, bold);
-            }}
-            onKick={() => {
-              setPop(null);
-              void run(() => kickFromSquad(m.h));
-            }}
-            onSafety={() => {
-              setPop(null);
-              onSafety(`sq:${room.id}:${m.h}`, m.name);
-            }}
+            art={art}
+            open={menu === m.h}
+            onCore={() => setPicking("core")}
+            onStrategy={() => setPicking("strategy")}
+            onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
           />
         ))}
         {Array.from({ length: Math.max(0, SQUAD_MAX - n) }, (_, i) => (
-          <div key={`slot${i}`} className="sq-mem slot">
-            <span className="av slot" aria-hidden="true">
+          <div key={`slot${i}`} className="sq-tile empty">
+            <span className="plus" aria-hidden="true">
               +
             </span>
             <span className="nm">{T.squad.room.empty}</span>
             {i === 0 && mayInvite && (
-              <span className="acts">
-                <button className="small dark" disabled={busy} onClick={() => setAsking("invite")}>
-                  {T.squad.call.invite}
-                </button>
-              </span>
+              <button className="small" disabled={busy} onClick={() => setAsking("invite")}>
+                {T.squad.call.invite}
+              </button>
             )}
           </div>
         ))}
       </div>
+      {menuOf && (
+        <div className="sq-pop" role="group" aria-label={menuOf.name}>
+          <small className="pn">{menuOf.name}</small>
+          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, false))}>
+            <b>{T.squad.room.sneak}</b>
+            {T.squad.room.sneakSub}
+          </button>
+          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, true))}>
+            <b>{T.squad.room.bold}</b>
+            {T.squad.room.boldSub}
+          </button>
+          <small>{T.squad.room.touchNote}</small>
+          {room.host && (
+            <button onClick={() => (setMenu(null), void run(() => kickFromSquad(menuOf.h)))}>
+              <b>{T.squad.room.kick}</b>
+              {T.squad.room.kickSub}
+            </button>
+          )}
+          <button onClick={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}>
+            <b>{T.squad.room.block}</b>
+            {T.squad.room.blockSub}
+          </button>
+          <button onClick={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}>
+            <b>{T.squad.room.report}</b>
+            {T.squad.room.reportSub}
+          </button>
+        </div>
+      )}
       {room.invited.length > 0 && (
         <p className="hint sq-invited">
           {fmt(T.squad.call.invited, {
@@ -1123,6 +1088,19 @@ function RoomView({
             </button>
           </div>
         </Ask>
+      )}
+      {picking && (
+        <PicksAsk
+          kind={picking}
+          me={me}
+          art={art}
+          busy={busy}
+          onPick={async (p) => {
+            const r = await run(() => setSquadPrefs({ core: me.core, strategy: me.strategy, ...p }));
+            if (r) setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
       )}
       {asking === "invite" && (
         <InvitePicker
@@ -1333,97 +1311,80 @@ function RekeyAsk({ left, busy, onSave, onNo }: { left: number; busy: boolean; o
   );
 }
 
-function MemberRow({
+/**
+ * One in the room, as a tile: the roach, the name (房主, 你, 触须之交), the core alliance and the strategy (your own
+ * tapped to change them for this room), and 我进同盟了. Another's tile, tapped, opens what can be done to TA.
+ */
+function MemberTile({
   m,
-  host,
-  editing,
-  pop,
-  busy,
-  onEdit,
-  onEditChange,
-  onPop,
-  onTouch,
-  onKick,
-  onSafety,
+  art,
+  open,
+  onCore,
+  onStrategy,
+  onMenu,
 }: {
   m: SquadMember;
-  host: boolean;
-  editing: SquadCard | null;
-  pop: "touch" | "more" | null;
-  busy: boolean;
-  onEdit: () => void;
-  onEditChange: (c: SquadCard) => void;
-  onPop: (kind: "touch" | "more") => void;
-  onTouch: (bold: boolean) => void;
-  onKick: () => void;
-  onSafety: () => void;
+  art: Art | null;
+  open: boolean;
+  onCore: () => void;
+  onStrategy: () => void;
+  onMenu: () => void;
 }) {
   return (
-    <div className="sq-mem">
-      <span className="av">
-        <RoachIcon color={m.color as RoachColor} avatar={m.avatar as RoachAvatar} size={30} />
-      </span>
+    <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}`}>
+      {!m.you && <button type="button" className="hit" aria-label={m.name} aria-expanded={open} onClick={onMenu} />}
+      <RoachIcon color={m.color as RoachColor} avatar={m.avatar as RoachAvatar} size={44} />
       <span className="nm">
         {m.name}
         {m.host && <small>{T.squad.room.host}</small>}
         {m.you && <small>{T.squad.room.you}</small>}
         {m.friend && <small className="fr">{T.squad.room.friend}</small>}
-        {m.inGame && !m.host && <span className="ok">{T.squad.room.inGameTag}</span>}
       </span>
-      <Prefs card={m} labels />
-      <span className="acts">
-        {m.you ? (
-          <button className={`small${editing ? " dark" : ""}`} disabled={busy} onClick={onEdit}>
-            {editing ? T.squad.room.done : T.squad.room.edit}
-          </button>
-        ) : (
-          <>
-            <button className="small" aria-expanded={pop === "touch"} onClick={() => onPop("touch")}>
-              {T.squad.room.touch}
-            </button>
-            <button className="small ghost" aria-label={T.squad.room.more} aria-expanded={pop === "more"} onClick={() => onPop("more")}>
-              ⋯
-            </button>
-          </>
-        )}
+      <span className="pk">
+        <CoreBadge core={m.core} onClick={m.you ? onCore : undefined} />
+        <StrategyPic id={m.strategy} art={art} onClick={m.you ? onStrategy : undefined} />
       </span>
-      {pop === "touch" && (
-        <div className="sq-pop">
-          <button onClick={() => onTouch(false)}>
-            <b>{T.squad.room.sneak}</b>
-            {T.squad.room.sneakSub}
-          </button>
-          <button onClick={() => onTouch(true)}>
-            <b>{T.squad.room.bold}</b>
-            {T.squad.room.boldSub}
-          </button>
-          <small>{T.squad.room.touchNote}</small>
-        </div>
-      )}
-      {pop === "more" && (
-        <div className="sq-pop">
-          {host && (
-            <button onClick={onKick}>
-              <b>{T.squad.room.kick}</b>
-              {T.squad.room.kickSub}
-            </button>
+      {m.inGame && !m.host && <span className="st ok">{T.squad.room.inGameTag}</span>}
+      {m.you && <small className="hint">{T.squad.room.tapToChange}</small>}
+    </div>
+  );
+}
+
+/** Your core alliance or strategy in this room alone (your card stays as it is) */
+function PicksAsk({
+  kind,
+  me,
+  art,
+  busy,
+  onPick,
+  onClose,
+}: {
+  kind: "core" | "strategy";
+  me: SquadMember;
+  art: Art | null;
+  busy: boolean;
+  onPick: (p: Partial<SquadPicks>) => void;
+  onClose: () => void;
+}) {
+  const title = kind === "core" ? T.squad.room.pickCore : T.squad.room.pickStrategy;
+  return (
+    <div className="sq-ask-bg" onClick={onClose}>
+      <div className="sq-ask sq-pick" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        <p className="hint">{T.squad.room.editNote}</p>
+        <div className="songs">
+          {kind === "core" ? (
+            <CoreChips value={me.core} onPick={(core) => !busy && onPick({ core })} />
+          ) : (
+            <StrategyGrid value={me.strategy} core={me.core} art={art} onPick={(strategy) => !busy && onPick({ strategy })} />
           )}
-          <button onClick={onSafety}>
-            <b>{T.squad.room.block}</b>
-            {T.squad.room.blockSub}
-          </button>
-          <button onClick={onSafety}>
-            <b>{T.squad.room.report}</b>
-            {T.squad.room.reportSub}
+        </div>
+        <div className="row">
+          <button className="ghost grow" onClick={onClose}>
+            {T.squad.call.close}
           </button>
         </div>
-      )}
-      {editing && (
-        <div className="sq-edit">
-          <PrefsPicker card={editing} onChange={onEditChange} />
-          <p className="hint">{T.squad.room.editNote}</p>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1483,5 +1444,5 @@ function Dock({ music }: { music: boolean }) {
 }
 
 // for the page's own bar over the map, and the tests
-export { Prefs, RoomCard };
+export { RoomCard, SeatTile };
 export type { SquadMember };

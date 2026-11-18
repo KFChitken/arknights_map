@@ -170,7 +170,10 @@ export const users = pgTable("users", {
    */
   squadCore: smallint("squad_core"),
   squadStrategy: smallint("squad_strategy"),
+  /** 卫戍名片's extra alliances of before: neither read nor written since 第 4 版, kept until Breeze says they may go */
   squadExtras: smallint("squad_extras").array().notNull().default(sql`'{}'::smallint[]`),
+  /** 卫戍名片's 难度 (src/lib/squad.ts LEVELS), null: 无偏好 */
+  squadLevel: smallint("squad_level"),
   /** 卫戍名片's 列表上显示我的名字: named on 一起卫戍's list as a teammate, to everyone (src/lib/server/squad.ts) */
   squadShowName: boolean("squad_show_name").notNull().default(false),
   /** They were told once, with their first guest, not to keep the main roach by their door */

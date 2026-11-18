@@ -43,6 +43,8 @@ import {
   OPENS_PER_DAY,
   PREFS_EVERY_MS,
   readCard,
+  readPicks,
+  picksNow,
   REQUEST_EVERY_MS,
   REQUESTS_EACH,
   REWAIT_MS,
@@ -59,6 +61,7 @@ import {
   WAIT_IDLE_MS,
   type SquadCall,
   type SquadCard,
+  type SquadPicks,
   type SquadDesk,
   type SquadEnd,
   type SquadFriend,
@@ -140,9 +143,12 @@ function refuseClosed() {
   if (squadSettings().closed) throw refuse(503, T.server.squad.closed, SQUAD_CLOSED);
 }
 
-const cardOf = (u: Pick<UserRow, "squadCore" | "squadStrategy" | "squadExtras">) => cardNow(u.squadCore, u.squadStrategy, u.squadExtras);
+const cardOf = (u: Pick<UserRow, "squadCore" | "squadStrategy" | "squadLevel">) => cardNow(u.squadCore, u.squadStrategy, u.squadLevel);
 /** A card as a room keeps it, read against this season */
-const roomCard = (m: { core: number; strategy: number | null; extras: number[] }): SquadCard => cardNow(m.core, m.strategy, m.extras)!;
+/** One's picks in a room, as kept there */
+const roomCard = (m: { core: number; strategy: number | null }): SquadPicks => picksNow(m.core, m.strategy);
+/** What one brings into a room from their card: its picks, and no extras (those are marked for a round, 第 4 版) */
+const intoRoom = (card: SquadCard) => ({ core: card.core, strategy: card.strategy, extras: [] as number[] });
 
 /** Kept oldest first: set anew at the end, and the oldest dropped while there are too many */
 function hold<K, V>(map: Map<K, V>, key: K, value: V) {
@@ -358,7 +364,7 @@ export async function squadMe(user: UserRow): Promise<SquadMe | undefined> {
 export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (body.showName !== undefined && typeof body.showName !== "boolean") throw refuse(400, T.server.common.badRequest);
   if (body.card === null) {
-    await db.update(users).set({ squadCore: null, squadStrategy: null, squadExtras: [], squadShowName: false }).where(eq(users.id, user.id));
+    await db.update(users).set({ squadCore: null, squadStrategy: null, squadLevel: null, squadShowName: false }).where(eq(users.id, user.id));
     forgetList();
     return { card: null, showName: false, now };
   }
@@ -367,7 +373,7 @@ export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, u
   const showName = typeof body.showName === "boolean" ? body.showName : undefined;
   const [saved] = await db
     .update(users)
-    .set({ squadCore: card.core, squadStrategy: card.strategy, squadExtras: card.extras, ...(showName === undefined ? {} : { squadShowName: showName }) })
+    .set({ squadCore: card.core, squadStrategy: card.strategy, squadLevel: card.level, ...(showName === undefined ? {} : { squadShowName: showName }) })
     .where(eq(users.id, user.id))
     .returning({ showName: users.squadShowName });
   if (showName !== undefined) forgetList();
@@ -479,7 +485,7 @@ export async function openRoom(user: UserRow, body: Record<string, unknown>, now
       .insert(squadRooms)
       .values({ hostId: user.id, server, level, tags, key, keyAt: at, friendsOnly, createdAt: at, movedAt: at, waitedAt: at })
       .returning({ id: squadRooms.id });
-    await tx.insert(squadMembers).values({ roomId: room.id, userId: user.id, handle: 1, joinedAt: at, ...card });
+    await tx.insert(squadMembers).values({ roomId: room.id, userId: user.id, handle: 1, joinedAt: at, ...intoRoom(card) });
     return { id: room.id, left };
   });
   await told(left);
@@ -528,11 +534,11 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
       handle = mine.handle;
       await tx
         .update(squadMembers)
-        .set({ leftAt: null, joinedAt: at, inGame: false, ...card })
+        .set({ leftAt: null, joinedAt: at, inGame: false, ...intoRoom(card) })
         .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.userId, user.id)));
     } else {
       handle = rows.reduce((h, m) => Math.max(h, m.handle), 0) + 1;
-      await tx.insert(squadMembers).values({ roomId: room.id, userId: user.id, handle, joinedAt: at, ...card });
+      await tx.insert(squadMembers).values({ roomId: room.id, userId: user.id, handle, joinedAt: at, ...intoRoom(card) });
     }
     await tx.update(squadRooms).set({ movedAt: at }).where(eq(squadRooms.id, room.id));
     if (called.invite) {
@@ -731,14 +737,14 @@ export async function setInGame(user: Pick<UserRow, "id">, body: Record<string, 
 
 /** The player's card in this room alone (card), their 卫戍名片 as it was; every PREFS_EVERY_MS at most */
 export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
-  const card = readCard(body.card);
-  if (!card) throw refuse(400, T.server.common.badRequest);
+  const picks = readPicks(body.card);
+  if (!picks) throw refuse(400, T.server.common.badRequest);
   const mine = await roomOf(db, user.id);
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
   if (!allow(`squad:prefsEvery:${user.id}`, 1, PREFS_EVERY_MS)) throw refuse(429, T.server.squad.tooFast);
   await db
     .update(squadMembers)
-    .set(card)
+    .set({ core: picks.core, strategy: picks.strategy })
     .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, user.id)));
   forgetList();
   await tellRoom(mine.room.id);
@@ -1235,7 +1241,7 @@ export async function squadSender(userId: string, roomId: string, h: number) {
   const me = rows.find((r) => r.m.userId === userId);
   const them = rows.find((r) => r.m.handle === h && r.m.userId !== userId);
   if (!me || me.ended || !them) return null;
-  return { other: them.m.userId, known: true, level: them.level, tags: them.tags, card: roomCard(them.m) };
+  return { other: them.m.userId, known: true, level: them.level, tags: them.tags, card: { ...roomCard(them.m), extras: them.m.extras } };
 }
 
 /**
@@ -1335,7 +1341,7 @@ type Snap = {
   /** The host's songs, for ♪ 在放歌 */
   songs: RoomSchedule;
   /** showName: 列表上显示我的名字, from their 卫戍名片 */
-  members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadCard }[];
+  members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadPicks }[];
 };
 
 const snapHeld = (g.squadSnap ??= { at: -Infinity, rooms: null, loading: null });
@@ -1446,7 +1452,13 @@ function listRoom(s: Snap, viewerId: string, friends: Set<string>, seconds: (id:
   const host = s.members.find((m) => m.userId === s.hostId);
   const seats: SquadSeat[] = s.members.map((m) => {
     const role: SquadSeat["role"] = m.userId === s.hostId ? "host" : m.userId === viewerId ? "you" : friends.has(m.userId) ? "friend" : "mate";
-    return { role, ...((role === "friend" || role === "mate") && isNamed(m, friends) ? { name: m.name } : {}), ...m.card };
+    return {
+      role,
+      ...((role === "friend" || role === "mate") && isNamed(m, friends) ? { name: m.name } : {}),
+      avatar: m.avatar,
+      color: m.color,
+      ...m.card,
+    };
   });
   return {
     id: s.id,

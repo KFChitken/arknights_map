@@ -10,6 +10,7 @@ import {
   type SquadEnd,
   type SquadInviteSent,
   type SquadMe,
+  type SquadPicks,
   type SquadRoom,
   type SquadSongChange,
   type SquadTell,
@@ -230,7 +231,7 @@ const after = async (p: Promise<{ room: SquadRoom | null }>) => {
 export const changeSquadKey = (key: string) => after(squadApi.key(key));
 export const kickFromSquad = (h: number) => after(squadApi.kick(h));
 export const setSquadInGame = (on: boolean) => after(squadApi.game(on));
-export const setSquadPrefs = (c: SquadCard) => after(squadApi.prefs(c));
+export const setSquadPrefs = (c: SquadPicks) => after(squadApi.prefs(c));
 
 /** 偷偷碰 or 大胆碰 someone in the room; made 触须之交 by it, the room read again */
 export async function touchInSquad(h: number, bold: boolean): Promise<TouchResult> {
