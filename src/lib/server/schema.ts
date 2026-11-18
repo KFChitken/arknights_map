@@ -1795,8 +1795,9 @@ export const listenInvites = pgTable(
 /**
  * 一起卫戍's rooms (src/lib/server/squad.ts): its host, the game's server, 难度 and how they want to play (tags, by
  * id: src/lib/squad.ts), the 同盟密钥 (pasted at key_at, changed key_changes times), whether only the host's 触须之交 may come in, and
- * its state: wait (on the list, open), go (playing, closed) or ended. moved_at: someone last came in or went;
- * waited_at, went_at: 等人 and 开打 last tapped; state_at: the state last changed. Deleted KEEP_MS after it ends,
+ * its state: wait (on the list, open), go (playing, closed) or ended. moved_at: something last happened (someone came
+ * in or went, readied, changed their picks); waited_at, went_at: a round last ended (结束这局) and started (开始游戏);
+ * state_at: the state last changed. Deleted KEEP_MS after it ends,
  * who was in it with it.
  */
 export const squadRooms = pgTable(
@@ -1839,8 +1840,9 @@ export const squadRooms = pgTable(
 /**
  * Who is, or was, in a room of 一起卫戍: handle is their number in it, from 1 (the host's) and never given to another,
  * by which the room knows them (never their id). left_at once they left (or it ended); kicked: asked to leave by the
- * host, never let in again; in_game: 我进同盟了, ticked by them. core, strategy, extras: their card in this room alone,
- * taken from their 卫戍名片 as they came in. In one room at a time (squad_members_one_room).
+ * host, never let in again; in_game: 准备, ticked by them. core, strategy: their picks in this room alone, taken from
+ * their 卫戍名片 as they came in; extras: the 附加盟约 they mark while a round plays, none again once it ends. pose:
+ * what their roach keeps doing there (src/lib/squad.ts POSES). In one room at a time (squad_members_one_room).
  */
 export const squadMembers = pgTable(
   "squad_members",
@@ -1859,6 +1861,7 @@ export const squadMembers = pgTable(
     core: smallint("core").notNull().default(0),
     strategy: smallint("strategy"),
     extras: smallint("extras").array().notNull().default(sql`'{}'::smallint[]`),
+    pose: smallint("pose").notNull().default(0),
   },
   (t) => [
     primaryKey({ columns: [t.roomId, t.userId] }),

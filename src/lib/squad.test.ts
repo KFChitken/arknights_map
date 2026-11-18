@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { T } from "@/i18n";
-import { isPhrase, mayStart, notYet, PHRASE_ROWS, sameStrategy, squadClash } from "./squad";
+import { extrasNow, isMove, isPhrase, isPose, mayStart, MOVES, movesTo, notYet, PHRASE_ROWS, POSES, readRound, ROUND_EXTRAS_MAX, sameStrategy, squadClash } from "./squad";
 
 describe("一起卫戍's set lines", () => {
   it("go by numbers that never change: 开局's 25–31 and 局内's 32–35 after those of before", () => {
@@ -38,5 +38,29 @@ describe("starting a round (开始游戏)", () => {
     expect(squadClash(none)).toEqual([]);
     expect(mayStart(notYet([host, ...none]))).toBe(true);
     expect(sameStrategy(null, null)).toBe(false);
+  });
+});
+
+describe("a round (这局)", () => {
+  it("reads the 附加盟约 of a round: four at most, none twice, none not of the season; none given is none", () => {
+    expect(readRound({ core: 1, strategy: null })).toEqual({ core: 1, strategy: null, extras: [] });
+    expect(readRound({ core: 1, strategy: 46, extras: [1, 2, 3, 4] })).toEqual({ core: 1, strategy: 46, extras: [1, 2, 3, 4] });
+    expect(ROUND_EXTRAS_MAX).toBe(4);
+    expect(readRound({ core: 1, strategy: null, extras: [1, 2, 3, 4, 5] })).toBeNull();
+    expect(readRound({ core: 1, strategy: null, extras: [2, 2] })).toBeNull();
+    expect(readRound({ core: 1, strategy: null, extras: [999] })).toBeNull();
+    expect(readRound({ core: 1, strategy: null, extras: "1" })).toBeNull();
+    expect(readRound({ core: 99, strategy: null, extras: [] })).toBeNull();
+    expect(extrasNow([1, 999, 2])).toEqual([1, 2]);
+  });
+
+  it("keeps three poses and three moves, two of them with a teammate", () => {
+    expect([0, 1, 2].every(isPose)).toBe(true);
+    expect([3, -1, "1", null].some(isPose)).toBe(false);
+    expect(MOVES.filter(movesTo)).toEqual(["five", "hug"]);
+    expect(isMove("wave") && !isMove("kick")).toBe(true);
+    expect(T.squad.talk.poses).toHaveLength(POSES.length);
+    expect(T.squad.fight.poses).toHaveLength(POSES.length);
+    for (const m of MOVES) expect(T.squad.talk.moves[m]).toBeTruthy();
   });
 });

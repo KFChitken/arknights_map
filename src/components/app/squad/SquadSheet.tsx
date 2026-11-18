@@ -18,19 +18,16 @@ import {
   NEED_CARD,
   NO_CORE,
   OPENS_PER_DAY,
-  PHRASE_ROWS,
   ROOM_FULL,
   ROOM_GONE,
   ROOM_PLAYING,
   ROOM_SHUT,
-  SAY_EVERY_MS,
   SEASON_NAME,
   SQUAD_CLOSED,
   SQUAD_MAX,
   SQUAD_SERVERS,
   TAGS,
   TAGS_MAX,
-  type PhraseRow,
   mayStart,
   notYet,
   sameStrategy,
@@ -49,7 +46,9 @@ import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import DjBar from "./DjBar";
-import { CoreBadge, CoreChips, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
+import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
+import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
+import SquadTalk from "./SquadTalk";
 import { useOperatorArt, type Art } from "../OperatorNames";
 import Sheet from "../Sheet";
 import {
@@ -64,17 +63,21 @@ import {
   loadSquadFriends,
   openSquadRoom,
   saveSquadCard,
-  sayInSquad,
   sentWords,
   setSquadInGame,
   setSquadPrefs,
   squadState,
   useSquadCard,
   useSquadFloats,
+  useSquadLines,
+  useSquadMoves,
   useSquadNotice,
   useSquadRoom,
   useSquadShowName,
+  type SquadLine,
+  type SquadMoveDone,
 } from "./squading";
+import { squadSoundReady } from "./squadSound";
 import "./squad.css";
 
 /**
@@ -878,6 +881,15 @@ function RoomView({
   const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | "hostMenu" | null>(null);
   // the host asking someone to leave: whom (their number), asked first
   const [kicking, setKicking] = useState<number | null>(null);
+  // 说话 / 动作 (and 这局 while it plays), from your own roach at the foot
+  const [talking, setTalking] = useState(false);
+  const lines = useSquadLines();
+  const moves = useSquadMoves();
+  const lifts = liftsOf(
+    lines,
+    room.members.map((m) => m.h),
+    28,
+  );
   const [, tick] = useState(0);
   // the clock of what it shows: the server's when the room came, gone on since on this device
   const cameAt = useRef({ server: room.now, device: Date.now() });
@@ -955,7 +967,13 @@ function RoomView({
         </div>
       }
       onClose={onClose}
-      footer={<Dock music={room.dj && room.startedAt !== null} />}
+      footer={
+        <button type="button" className="sq-saybar" onClick={() => setTalking(true)}>
+          <SquadRoach m={me} size={32} />
+          <b>{T.squad.talk.open}</b>
+          <small>{T.squad.talk.openSub}</small>
+        </button>
+      }
     >
       <Floats />
       {room.host && asking === "hostMenu" && (
@@ -1002,6 +1020,11 @@ function RoomView({
             key={m.h}
             m={m}
             art={art}
+            playing={room.state === "go"}
+            line={lines.find((l) => l.h === m.h)}
+            lift={lifts.get(m.h) ?? 0}
+            move={moves.find((x) => x.h === m.h)}
+            toMe={moves.find((x) => x.to === m.h)}
             open={menu === m.h}
             onCore={() => setPicking("core")}
             onStrategy={() => setPicking("strategy")}
@@ -1049,7 +1072,7 @@ function RoomView({
         room.state === "wait" ? (
           <div className="sq-go">
             {!mayStart(blocks) && <p className="sq-need">{fmt(T.squad.room.needLine, { list: need })}</p>}
-            <button className="primary grow" disabled={busy || !mayStart(blocks)} onClick={() => void run(() => squadState("go"))}>
+            <button className="primary grow" disabled={busy || !mayStart(blocks)} onClick={() => (squadSoundReady(), void run(() => squadState("go")))}>
               {T.squad.room.start}
             </button>
           </div>
@@ -1063,7 +1086,7 @@ function RoomView({
       ) : (
         room.state === "wait" && (
           <div className="sq-go">
-            <button className={me.inGame ? "ghost grow" : "primary grow"} disabled={busy} onClick={() => void run(() => setSquadInGame(!me.inGame))}>
+            <button className={me.inGame ? "ghost grow" : "primary grow"} disabled={busy} onClick={() => (squadSoundReady(), void run(() => setSquadInGame(!me.inGame)))}>
               {me.inGame ? T.squad.room.inGameOn : T.squad.room.inGame}
             </button>
           </div>
@@ -1130,7 +1153,7 @@ function RoomView({
           art={art}
           busy={busy}
           onPick={async (p) => {
-            const r = await run(() => setSquadPrefs({ core: me.core, strategy: me.strategy, ...p }));
+            const r = await run(() => setSquadPrefs({ core: me.core, strategy: me.strategy, extras: me.extras, ...p }));
             if (r) setPicking(null);
           }}
           onClose={() => setPicking(null)}
@@ -1164,6 +1187,7 @@ function RoomView({
           onNo={() => setAsking(null)}
         />
       )}
+      {talking && <SquadTalk room={room} onClose={() => setTalking(false)} onError={onError} />}
     </Sheet>
   );
 }
@@ -1347,6 +1371,11 @@ function RekeyAsk({ left, busy, onSave, onNo }: { left: number; busy: boolean; o
 function MemberTile({
   m,
   art,
+  playing,
+  line,
+  lift,
+  move,
+  toMe,
   open,
   onCore,
   onStrategy,
@@ -1355,6 +1384,13 @@ function MemberTile({
 }: {
   m: SquadMember;
   art: Art | null;
+  playing: boolean;
+  /** Their last line, over the tile a few seconds, up by lift px when another's shows beside it */
+  line?: SquadLine;
+  lift: number;
+  /** A move of theirs, and one done to them */
+  move?: SquadMoveDone;
+  toMe?: SquadMoveDone;
   open: boolean;
   onCore: () => void;
   onStrategy: () => void;
@@ -1362,10 +1398,12 @@ function MemberTile({
   /** The host's 请出去, asked first */
   onKick?: () => void;
 }) {
+  const extras = extraNames(m.extras);
   return (
     <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}`}>
       {!m.you && <button type="button" className="hit" aria-label={m.name} aria-expanded={open} onClick={onMenu} />}
-      <RoachIcon color={m.color as RoachColor} avatar={m.avatar as RoachAvatar} size={44} />
+      <Bubble line={line} lift={lift} />
+      <SquadRoach m={m} size={44} line={line} move={move} toMe={toMe} />
       <span className="nm">
         {m.name}
         {m.you && <small>{T.squad.room.you}</small>}
@@ -1380,7 +1418,15 @@ function MemberTile({
           {T.squad.room.kick}
         </button>
       )}
-      {m.host ? <span className="st host">{T.squad.room.host}</span> : m.inGame ? <span className="st ok">{T.squad.room.inGameTag}</span> : <span className="st">{T.squad.room.notReadyTag}</span>}
+      {playing ? (
+        <span className={`xs${extras.length ? "" : " no"}`}>{extras.length ? extras.join(T.squad.dot) : T.squad.fight.extrasNone}</span>
+      ) : m.host ? (
+        <span className="st host">{T.squad.room.host}</span>
+      ) : m.inGame ? (
+        <span className="st ok">{T.squad.room.inGameTag}</span>
+      ) : (
+        <span className="st">{T.squad.room.notReadyTag}</span>
+      )}
       {m.you && <small className="hint">{T.squad.room.tapToChange}</small>}
     </div>
   );
@@ -1425,56 +1471,16 @@ function PicksAsk({
   );
 }
 
-/** The set lines and what the site says, floating over the room a few seconds each */
+/** What the site says in the room (someone came in, a new key, a song), floating a few seconds each */
 function Floats() {
   const floats = useSquadFloats();
   return (
     <div className="sq-floats" aria-live="polite">
       {floats.map((f) => (
-        <span key={f.key} className={`sq-float${f.sys ? " sys" : ""}`}>
+        <span key={f.key} className="sq-float sys">
           {f.text}
         </span>
       ))}
-    </div>
-  );
-}
-
-/** The set lines, a row at a time, sent by number; a moment's rest after each. 听歌's row only while the host's songs play */
-function Dock({ music }: { music: boolean }) {
-  const [row, setRow] = useState<PhraseRow>("team");
-  const [cool, setCool] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const say = async (p: number) => {
-    if (cool) return;
-    setCool(true);
-    window.setTimeout(() => setCool(false), SAY_EVERY_MS);
-    try {
-      const res = await sayInSquad(p);
-      if (!res.sent) setNote(res.full ? T.squad.say.enough : T.squad.say.slow);
-      else setNote(null);
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : T.requests.serverTrouble);
-    }
-  };
-  const rows = PHRASE_ROWS.filter(([r]) => r !== "music" || music);
-  const ids = (rows.find(([r]) => r === row) ?? rows[0])[1];
-  return (
-    <div className="sq-dock">
-      <div className="dt" role="tablist">
-        {rows.map(([r]) => (
-          <button key={r} role="tab" aria-selected={r === row} className={r === row ? "on" : ""} onClick={() => setRow(r)}>
-            {T.squad.say.rows[r]}
-          </button>
-        ))}
-        <small>{note ?? T.squad.say.hint}</small>
-      </div>
-      <div className="say">
-        {ids.map((p) => (
-          <button key={p} disabled={cool} onClick={() => void say(p)}>
-            {T.squad.say.lines[p - 1]}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

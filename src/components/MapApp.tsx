@@ -164,6 +164,7 @@ import {
   touchMember,
 } from "./app/listening";
 import SquadBar, { SquadPop, type SquadCallItem, type SquadInviteItem, type SquadPopCard } from "./app/squad/SquadBar";
+import SquadFight from "./app/squad/SquadFight";
 import type { SquadJoin, SquadView } from "./app/squad/SquadSheet";
 import {
   forgetSquadPage,
@@ -175,6 +176,7 @@ import {
   startSquad,
   touchInSquad,
   useSquadRoom,
+  useSquadRounds,
 } from "./app/squad/squading";
 import { setQuietListening } from "./app/squad/squadMusic";
 
@@ -2525,6 +2527,14 @@ export default function MapApp({
     if (squadMe) startSquad(squadMe);
     else if (!squadSignedIn) forgetSquadPage();
   }, [squadMe, squadSignedIn]);
+  // a round started in sight: the room's sheet makes way for the bar of the round (展开 brings it back)
+  const squadRounds = useSquadRounds();
+  const squadRoundsSeen = useRef(squadRounds);
+  useEffect(() => {
+    if (squadRounds === squadRoundsSeen.current) return;
+    squadRoundsSeen.current = squadRounds;
+    setPanel((p) => (p?.kind === "squad" ? null : p));
+  }, [squadRounds]);
   /** 偷偷碰 or 大胆碰 someone in a room of 一起卫戍, as on the map: what it used, what it made, said as there */
   const touchInSquadRoom = async (h: number, bold: boolean) => {
     const res = await act(() => touchInSquad(h, bold));
@@ -5994,6 +6004,15 @@ export default function MapApp({
       )}
       {/* 一起卫戍: 卫戍中 n/4 over the map, back to the room; away while a panel is open, not to cover it on a phone */}
       {squadShown && <SquadBar hidden={Boolean(panel || listenOpen || selected || picking || placing)} onOpen={() => setPanel({ kind: "squad" })} />}
+      {/* 一起卫戍: while the room plays, the bar of the round in that place, a tile each; away as the other is */}
+      {squadShown && (
+        <SquadFight
+          hidden={Boolean(panel || listenOpen || selected || picking || placing)}
+          onOpen={() => setPanel({ kind: "squad" })}
+          onTouch={(h, bold) => void touchInSquadRoom(h, bold)}
+          onError={(e) => void act(() => Promise.reject(e))}
+        />
+      )}
       {/* 一起卫戍: the card of an invitation that came, or one tapped in 消息 while in another room; away while a panel is open */}
       {squadShown && (
         <SquadPop

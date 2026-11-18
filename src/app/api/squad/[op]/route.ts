@@ -16,12 +16,14 @@ import {
   kickMember,
   laterSquadInvite,
   leaveRoom,
+  moveInRoom,
   myRoom,
   openRoom,
   requestSong,
   saveCard,
   sayInRoom,
   setInGame,
+  setPose,
   setPrefs,
   setState,
   squadFriends,
@@ -44,7 +46,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST key {key}                the host changes the 同盟密钥
  *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
  *   POST game {on}                准备 (in the game's alliance, ready), ticked or not
- *   POST prefs {card}             your card in this room alone
+ *   POST prefs {round} / {card}   your picks in this room alone, with the round's 附加盟约 while it plays (round);
+ *                                 a page of before sends its picks alone (card)
+ *   POST pose {pose}              what your roach keeps doing in the room (站着, 蹦迪, 醉倒睡觉)
+ *   POST move {move, to?}         your roach waves, or gives a teammate (to: their number) 击掌 or 贴贴
  *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
  *   POST say {p}                  a set line, by its number
  *   POST music {start|next|restart|random|stop: true, add: song, seek: seconds}   what the host does to the room's
@@ -73,7 +78,9 @@ const OPS = {
   key: { method: "POST", perMinute: 10 },
   kick: { method: "POST", perMinute: 20 },
   game: { method: "POST", perMinute: 20 },
-  prefs: { method: "POST", perMinute: 20 },
+  prefs: { method: "POST", perMinute: 60 },
+  pose: { method: "POST", perMinute: 40 },
+  move: { method: "POST", perMinute: 30 },
   touch: { method: "POST", perMinute: 20 },
   say: { method: "POST", perMinute: 30 },
   music: { method: "POST", perMinute: 30 },
@@ -88,7 +95,7 @@ const OPS = {
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "touch", "say", "music", "request", "take", "invite", "declare"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "music", "request", "take", "invite", "declare"]);
 
 type Ctx = { params: Promise<{ op: string }> };
 
@@ -151,6 +158,10 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await setInGame(user, body));
     case "prefs":
       return answer(await setPrefs(user, body));
+    case "pose":
+      return answer(await setPose(user, body));
+    case "move":
+      return answer(await moveInRoom(user, body));
     case "touch":
       return answer(await touchMember(user, body));
     case "say":

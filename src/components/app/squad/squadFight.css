@@ -1,0 +1,182 @@
+/*
+ * 一起卫戍 on the map page as well as in its sheet: the badges and pictures of a pick, a roach in a room's tile and what
+ * it does (SquadRoach.tsx), the black bubble of a line, the bar of a round (SquadFight.tsx) with a teammate's card, and
+ * the panel of what one says, does and marks for a round (SquadTalk.tsx).
+ */
+
+/* badges for a core alliance and a 难度, a strategy's picture (the sheet's tiles, the bar of a round, the talk panel) */
+.sq-core { display: inline-flex; align-items: center; gap: 2px; padding: 1px 7px; border: 0; border-radius: 6px; background: var(--ink); color: #fff; font: inherit; font-size: 11.5px; font-weight: 700; line-height: 1.6; white-space: nowrap; }
+.sq-core.none { background: #e5e7eb; color: #4b5160; }
+.sq-core.pick { cursor: pointer; }
+.sq-core.pick i { font-size: 9px; font-style: normal; opacity: 0.7; }
+.sq-lv { flex: none; padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.sq-lv.lv1 { background: #dcf3e6; color: #1f6b41; }
+.sq-lv.lv2 { background: #e3edf7; color: #1f4366; }
+.sq-lv.lv3 { background: #ffedd5; color: #9a3412; }
+.sq-lv.lv4 { background: #fde2e1; color: #9b1c1c; }
+.sq-lv.lv5 { background: #ede4fb; color: #5b2c9a; }
+.sq-face { display: inline-grid; flex: none; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: #e5e7eb; }
+.sq-face.letter { background: #d1d5db; color: #374151; font-weight: 700; }
+.sq-face.none { border: 1px dashed #b8bdc5; background: #fff; color: #9ca3af; font-size: 11px; font-weight: 700; }
+.sq-opname { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.sq-strat { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
+.sq-strat.pick .sq-face, .sq-strat.pick .sq-opname { box-shadow: 0 0 0 2px #ffd23f; border-radius: 999px; }
+.sq-tip-pop { position: absolute; z-index: 6; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); padding: 3px 8px; border-radius: 7px; background: var(--ink); color: #fff; font-size: 11.5px; white-space: nowrap; }
+
+/* the strategies as pictures, in the card, a room's picker and 这局 */
+.sq-stgrid { display: flex; flex-direction: column; gap: 7px; }
+.sq-stnow { margin: 0; font-size: 12.5px; font-weight: 700; }
+.sq-stgrid .search { padding: 7px 10px; border: 1px solid #d6d9de; border-radius: 10px; font: inherit; font-size: 13px; }
+.sq-stgrid .sgrp { margin: 0; color: var(--muted); font-size: 11.5px; font-weight: 700; }
+.sq-sts { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px 4px; }
+.sq-st { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 4px 2px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.sq-st small { max-width: 100%; overflow: hidden; color: #4b5160; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.sq-st .sq-face { width: 40px; height: 40px; }
+.sq-st.on .sq-face { box-shadow: 0 0 0 2.5px var(--ink); }
+.sq-st.on small { color: var(--ink); font-weight: 700; }
+.sq-more { padding: 7px; border: 1px dashed #c9cdd3; border-radius: 10px; background: none; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+
+/* a roach in a tile: its pose, its shout, a move */
+.sq-roach { position: relative; display: inline-block; flex: none; line-height: 0; }
+.sq-roach img { display: block; width: 100%; height: 100%; }
+.sq-roach.dance { animation: sqr-hop 0.4s ease-in-out infinite alternate; }
+.sqr-dance { position: relative; display: block; width: 100%; height: 100%; }
+.sqr-dance .a, .sqr-dance .b { position: absolute; inset: 0; }
+.sqr-dance .a { animation: sqr-flip-a 0.8s steps(1) infinite; }
+.sqr-dance .b { animation: sqr-flip-b 0.8s steps(1) infinite; }
+.sq-roach.yell { animation: sqr-shout 0.6s ease-out; }
+.sq-roach.yell-imp { animation: sqr-spin 0.8s ease-in-out; }
+.sq-roach.yell-gugu { animation: sqr-waddle 0.3s ease-in-out 3 alternate; }
+.sq-roach.lean { animation: sqr-lean 0.4s ease-in-out 4 alternate; }
+.sqr-prop { position: absolute; z-index: 1; line-height: 0; pointer-events: none; animation: sqr-prop 0.9s ease-out forwards; }
+.sqr-prop svg { width: 100%; height: 100%; }
+.sqr-term { top: 24%; right: -34%; }
+.sqr-pole { right: -40%; bottom: 0; }
+.sqr-pole svg { width: auto; height: 100%; }
+.sqr-gugu { top: -13px; left: -20px; right: -20px; color: #1b1d22; font-size: 10px; font-weight: 900; line-height: 1; text-align: center; text-shadow: 0 0 2px #fff, 0 0 2px #fff; white-space: nowrap; }
+.sqr-coin { top: 28%; left: 38%; animation: sqr-coin 0.9s ease-out forwards; }
+.sqr-fx { position: absolute; z-index: 2; top: -8px; left: 50%; line-height: 0; pointer-events: none; animation: sqr-fx 1.5s ease-out forwards; }
+.sqr-pa svg { width: 36px; height: auto; }
+@keyframes sqr-hop { to { transform: translateY(-4px); } }
+@keyframes sqr-flip-a { 50% { opacity: 0; } }
+@keyframes sqr-flip-b { 0% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes sqr-shout { 30% { transform: translateY(-6px) scale(1.08); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(5deg); } }
+@keyframes sqr-spin { to { transform: rotate(360deg); } }
+@keyframes sqr-waddle { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@keyframes sqr-lean { to { transform: rotate(9deg) translateX(3px); } }
+@keyframes sqr-prop { 0% { opacity: 0; transform: translateY(6px); } 20%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes sqr-coin { 0% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), -30px); } }
+@keyframes sqr-fx {
+  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.6); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  80% { opacity: 1; transform: translate(-50%, -4px); }
+  100% { opacity: 0; transform: translate(-50%, -10px); }
+}
+
+/* a line said: black with yellow words, a white edge, its tail on the one who said it, as a 宣言's; after the roach's shout */
+.sq-bub { position: absolute; z-index: 4; width: max-content; max-width: 132px; padding: 5px 9px; border-radius: 11px; background: #1b1d22; color: #ffd23f; font-size: 12px; font-weight: 800; line-height: 1.35; text-align: center; box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, 0.27); pointer-events: none; animation: sq-bub-in 0.25s ease-out 0.3s both, sq-bub-out 0.35s ease-in 3.65s forwards; }
+.sq-bub::after { content: ""; position: absolute; width: 9px; height: 9px; background: #1b1d22; }
+.sq-bub.up { bottom: calc(100% + 4px + var(--lift, 0px)); left: 50%; transform: translateX(-50%); }
+.sq-bub.up::after { top: 100%; left: 50%; transform: translate(-50%, -55%) rotate(45deg); box-shadow: 2px 2px 0 #fff; }
+.edge-l > .sq-bub.up { left: 0; transform: none; }
+.edge-l > .sq-bub.up::after { left: 24px; }
+.edge-r > .sq-bub.up { left: auto; right: 0; transform: none; }
+.edge-r > .sq-bub.up::after { left: auto; right: 18px; transform: translate(0, -55%) rotate(45deg); }
+.sq-bub.left { top: 50%; right: calc(100% + 12px); max-width: 220px; transform: translateY(-50%); }
+.sq-bub.left::after { top: 50%; left: 100%; transform: translate(-55%, -50%) rotate(-45deg); box-shadow: 2px 2px 0 #fff; }
+@keyframes sq-bub-in { from { opacity: 0; } }
+@keyframes sq-bub-out { to { opacity: 0; } }
+
+/* the bar of a round: on a phone a row of four above the bottom bar, on a computer a column beside 卫戍 */
+.sq-fight { position: fixed; z-index: 30; display: flex; flex-direction: column; gap: 5px; padding: 6px 6px 7px; border-radius: 16px; background: rgba(255, 255, 255, 0.96); color: #1b1d22; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.27); }
+.sq-fight.row { left: 8px; right: 8px; max-width: 520px; margin: 0 auto; }
+.sq-fight.col { width: 276px; }
+.sq-fight .fh { display: flex; align-items: center; gap: 5px; padding: 0 3px; font-size: 12px; font-weight: 800; }
+.sq-fight .fh svg { flex: none; }
+.sq-fight .fh .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sq-fight .fh button { flex: none; padding: 1px 8px; border: 1px solid #e6e8eb; border-radius: 8px; background: #fff; color: inherit; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.sq-fight .ft4 { display: grid; gap: 5px; }
+.sq-fight.row .ft4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sq-ft { position: relative; display: grid; justify-items: center; gap: 1px; min-width: 0; padding: 5px 2px; border: 0; border-radius: 12px; background: #f4f5f7; color: inherit; font: inherit; text-align: center; cursor: pointer; }
+.sq-ft.me { background: #fff6cf; box-shadow: inset 0 0 0 1.5px #ffd23f; }
+.sq-ft.flash { animation: sq-flash 1s ease-out; }
+.sq-ft .rw { position: relative; width: 42px; height: 42px; }
+.sq-ft .rw > .sq-strat, .sq-ft .rw > .opq { position: absolute; right: -9px; bottom: -3px; z-index: 1; }
+.sq-ft .rw .sq-face { width: 21px; height: 21px; box-shadow: 0 0 0 1.5px #fff; }
+.sq-ft .opq { display: inline-grid; place-items: center; width: 21px; height: 21px; border: 1.5px dashed #9aa1ab; border-radius: 50%; background: #fff; color: #6b7280; font-size: 10px; font-weight: 800; }
+.sq-ft.me .opq { border-color: #c58a00; background: #fff3c2; color: #8a5a00; animation: sq-nudge 1.2s ease-in-out infinite; }
+.sq-ft .nm { max-width: 100%; overflow: hidden; font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.sq-ft .cr { display: flex; align-items: center; justify-content: center; gap: 3px; max-width: 100%; min-height: 16px; }
+.sq-ft .cr .sq-core { padding: 0 5px; font-size: 10px; }
+.sq-ft .xs, .sq-ft .last { max-width: 100%; min-height: 13px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sq-ft .xs { color: #374151; font-weight: 700; }
+.sq-ft .xs.no { color: #9aa1ab; font-weight: 600; }
+.sq-ft .last { color: #6b7280; }
+.sq-ft .tapme, .sq-ft .hostt { position: absolute; top: 2px; z-index: 2; padding: 0 4px; border-radius: 5px; font-size: 9.5px; font-weight: 800; }
+.sq-ft .tapme { right: 3px; background: #1b1d22; color: #ffd23f; }
+.sq-ft .hostt { left: 3px; background: #eceef1; color: #4b5563; }
+.sq-fight.row .sq-ft .sq-bub.up { bottom: calc(100% + 30px + var(--lift, 0px)); }
+.sq-fight.col .sq-ft { grid-template-columns: 50px minmax(0, 1fr); justify-items: start; align-items: center; gap: 1px 8px; padding: 6px 8px; text-align: left; }
+.sq-fight.col .sq-ft .rw { grid-row: span 4; width: 46px; height: 46px; }
+.sq-fight.col .sq-ft .cr { justify-content: flex-start; }
+.sq-fight.col .sq-ft .tapme { top: 4px; right: 5px; }
+@keyframes sq-flash { 0%, 40% { background: #e3f6f6; box-shadow: inset 0 0 0 2px #18a0a5; } }
+@keyframes sq-nudge { 50% { transform: scale(1.12); } }
+
+/* a teammate's round, tapped on the bar */
+.sq-peek { position: fixed; z-index: 32; display: grid; gap: 5px; width: min(calc(100vw - 20px), 340px); padding: 10px 12px; border-radius: 14px; background: #fff; color: #1b1d22; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.33); font-size: 12.5px; }
+.sq-peek b { padding-right: 20px; font-size: 13.5px; }
+.sq-peek .r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sq-peek .r > i { flex: none; width: 56px; color: #6b7280; font-size: 11.5px; font-style: normal; }
+.sq-peek .r .sq-face { width: 26px; height: 26px; }
+.sq-peek .x { position: absolute; top: 4px; right: 8px; padding: 0 4px; border: 0; background: none; color: #6b7280; font-size: 18px; cursor: pointer; }
+.sq-peek .b { display: flex; gap: 6px; margin-top: 3px; }
+.sq-peek .b button { flex: 1; padding: 6px 0; border: 1px solid #e6e8eb; border-radius: 9px; background: #fff; color: inherit; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+
+/* 说话 / 动作 / 这局: from your own roach */
+.sq-talk-bg { position: fixed; inset: 0; z-index: 85; display: grid; place-items: end center; background: rgba(13, 14, 16, 0.35); }
+.sq-talk { display: flex; flex-direction: column; gap: 8px; width: min(100%, 440px); max-height: min(82vh, 660px); padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)); border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22; box-shadow: 0 -8px 26px rgba(0, 0, 0, 0.33); }
+.sq-talk > * { flex-shrink: 0; }
+.sq-talk .ph { display: flex; align-items: center; gap: 8px; }
+.sq-talk .ph b { font-size: 14.5px; }
+.sq-talk .ph .x { margin-left: auto; padding: 0 6px; border: 0; background: none; color: #6b7280; font-size: 22px; line-height: 1; cursor: pointer; }
+.sq-talk .note { margin: 0; color: #6b7280; font-size: 12px; }
+.sq-talk .chip { padding: 3px 10px; font-size: 12.5px; }
+.sq-talk .chip:disabled { opacity: 0.4; }
+.sq-tabs3 { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 3px; padding: 3px; border-radius: 10px; background: #f4f5f7; }
+.sq-tabs3 button { padding: 6px; border: 0; border-radius: 8px; background: none; color: #6b7280; font: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer; }
+.sq-tabs3 button.on { background: #fff; color: #1b1d22; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.13); }
+.sq-tabs3 .dot { display: inline-block; width: 7px; height: 7px; margin-left: 4px; border-radius: 50%; background: #e5484d; vertical-align: 2px; }
+.sq-rows { display: flex; gap: 5px; overflow-x: auto; }
+.sq-rows button { flex: none; padding: 3px 11px; border: 1px solid #e6e8eb; border-radius: 999px; background: #fff; color: inherit; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.sq-rows button.on { border-color: #1b1d22; background: #1b1d22; color: #fff; }
+.sq-say2 { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 6px; min-height: 0; flex-shrink: 1; overflow-y: auto; }
+.sq-say2 .lab, .sq-acts .lab { grid-column: 1 / -1; color: #6b7280; font-size: 11.5px; font-weight: 700; }
+.sq-say2 button, .sq-acts .three button { padding: 8px 6px; border: 1.5px solid #1b1d22; border-radius: 11px; background: #fff; color: inherit; font: inherit; font-size: 13px; font-weight: 800; line-height: 1.3; cursor: pointer; }
+.sq-say2 button:active { background: #ffd23f; }
+.sq-say2 button:disabled, .sq-acts button:disabled { opacity: 0.45; }
+.sq-acts { display: flex; flex-direction: column; gap: 7px; }
+.sq-acts .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sq-acts .three button.on { border-color: #ffd23f; background: #ffd23f; }
+.sq-acts .mates { display: flex; flex-wrap: wrap; gap: 6px; }
+.sq-round { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex-shrink: 1; overflow-y: auto; }
+.sq-round .lab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 800; }
+.sq-round .lab small { color: #6b7280; font-size: 11px; font-weight: 600; }
+.sq-round .hey { margin: 0; padding: 6px 9px; border-radius: 9px; background: #fff3c2; color: #8a5a00; font-size: 12.5px; font-weight: 700; }
+.sq-round .now { margin: 0; font-size: 12.5px; font-weight: 700; }
+.sq-round .foot { margin: 0; color: #6b7280; font-size: 11.5px; line-height: 1.5; }
+.sq-round .sq-stnow { display: none; }
+.sq-st.taken { opacity: 0.38; cursor: not-allowed; }
+
+/* the room's sheet: 说点什么 at its foot, in place of the row of lines */
+.sq-saybar { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 10px 4px 4px; border: 1.5px solid #1b1d22; border-radius: 14px; background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sq-saybar b { font-size: 13.5px; }
+.sq-saybar small { margin-left: auto; color: #6b7280; font-size: 11.5px; white-space: nowrap; }
+
+@media (min-width: 900px) {
+  .sq-talk-bg { place-items: center; }
+  .sq-talk { border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq-roach, .sq-roach *, .sq-bub, .sq-ft, .sq-ft .opq { animation: none !important; }
+}

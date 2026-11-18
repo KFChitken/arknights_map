@@ -25,10 +25,13 @@ import { siteDay, siteDayStart } from "../siteDay";
 import {
   cardNow,
   DEFAULT_SERVER,
+  extrasNow,
   findKey,
   GO_MAX_MS,
   isLevel,
+  isMove,
   isPhrase,
+  isPose,
   isSquadServer,
   isTag,
   JOINS_PER_HOUR,
@@ -37,6 +40,8 @@ import {
   KEY_EVERY_MS,
   LIFE_MS,
   LIST_MAX,
+  MOVE_EVERY_MS,
+  movesTo,
   NEED_CARD,
   NOT_IN_ROOM,
   NOT_READY,
@@ -44,9 +49,11 @@ import {
   mayStart,
   OPEN_EVERY_MS,
   OPENS_PER_DAY,
+  POSE_EVERY_MS,
+  POSES_PER_HOUR,
   PREFS_EVERY_MS,
   readCard,
-  readPicks,
+  readRound,
   picksNow,
   REQUEST_EVERY_MS,
   REQUESTS_EACH,
@@ -56,9 +63,11 @@ import {
   ROOM_SHUT,
   SAY_EVERY_MS,
   SAY_PER_HOUR,
+  sameStrategy,
   SQUAD_CLOSED,
   SQUAD_MAX,
   STATE_EVERY_MS,
+  STRATEGY_TAKEN,
   TAGS_MAX,
   WAIT_IDLE_MS,
   type SquadCall,
@@ -73,6 +82,7 @@ import {
   type SquadListRoom,
   type SquadMe,
   type SquadMember,
+  type SquadMove,
   type SquadRoom,
   type SquadSeat,
   type SquadSongChange,
@@ -198,9 +208,12 @@ function endsOf(r: Room): { at: number; why: "idle" | "go" | "life" } {
 // ---- who is in a room, for what is told to it ----
 
 type Hearer = { userId: string; handle: number };
+type Moved = { h: number; move: SquadMove; to?: number };
+/** The lines said and moves done in a room in the last SAY_BATCH_MS, told to it at once */
+type Said = { items: { h: number; p: number }[]; moves: Moved[]; timer: ReturnType<typeof setTimeout> };
 const g = globalThis as unknown as {
   squadHearers?: Map<string, { at: number; rows: Hearer[] }>;
-  squadSays?: Map<string, { items: { h: number; p: number }[]; timer: ReturnType<typeof setTimeout> }>;
+  squadSays?: Map<string, Said>;
   squadSnap?: { at: number; rooms: Snap[] | null; loading: Promise<Snap[]> | null };
   squadLists?: Map<string, { at: number; key: string; list: SquadList; etag: string }>;
   squadTold?: boolean;
@@ -275,7 +288,9 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         you: u.id === viewerId,
         friend: friends.has(u.id),
         inGame: m.inGame,
+        pose: isPose(m.pose) ? m.pose : 0,
         ...roomCard(m),
+        extras: extrasNow(m.extras),
       };
     });
   const ends = endsOf(room);
@@ -635,8 +650,12 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
       const blocks = notYet(rows.map((m) => ({ host: m.userId === room.hostId, inGame: m.inGame, strategy: roomCard(m).strategy })));
       if (!mayStart(blocks)) throw refuse(409, T.server.squad.notReady, NOT_READY);
     } else {
-      // the round over: everyone readies again, for the next
+      // the round over: everyone readies again for the next, and marks its extras anew (the picks stay)
       await tx.update(squadMembers).set({ inGame: false }).where(others);
+      await tx
+        .update(squadMembers)
+        .set({ extras: [] })
+        .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
     }
     const at = new Date(now);
     await tx
@@ -747,20 +766,61 @@ export async function setInGame(user: Pick<UserRow, "id">, body: Record<string, 
   return { room: await roomView(mine.room.id, user.id, now), now };
 }
 
-/** The player's card in this room alone (card), their 卫戍名片 as it was; every PREFS_EVERY_MS at most */
+/**
+ * The player's picks in this room alone, their 卫戍名片 as it was: round (SquadRound) from a page of now, card (the
+ * picks alone) from one of before. While it waits, the core alliance and the strategy (two the same are fine until
+ * 开始游戏); while a round plays (这局), the 附加盟约 too, and never a strategy a teammate plays the round with
+ * (sameStrategy: 409 STRATEGY_TAKEN), counted inside the room's lock. Every PREFS_EVERY_MS at most.
+ */
 export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
-  const picks = readPicks(body.card);
-  if (!picks) throw refuse(400, T.server.common.badRequest);
+  const round = readRound(body.round ?? body.card);
+  if (!round) throw refuse(400, T.server.common.badRequest);
   const mine = await roomOf(db, user.id);
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
   if (!allow(`squad:prefsEvery:${user.id}`, 1, PREFS_EVERY_MS)) throw refuse(429, T.server.squad.tooFast);
-  await db
-    .update(squadMembers)
-    .set({ core: picks.core, strategy: picks.strategy })
-    .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, user.id)));
-  await db.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id));
+  const told = await db.transaction(async (tx) => {
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id)).for("update");
+    if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
+    const playing = room.state === "go";
+    if (playing && round.strategy !== null) {
+      const others = await tx
+        .select()
+        .from(squadMembers)
+        .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt), ne(squadMembers.userId, user.id)));
+      if (others.some((o) => sameStrategy(round.strategy, roomCard(o).strategy))) throw refuse(409, T.server.squad.strategyTaken, STRATEGY_TAKEN);
+    }
+    // a page of before sends no extras: those marked stay
+    const extras = playing && body.round !== undefined ? round.extras : null;
+    const [me] = await tx
+      .update(squadMembers)
+      .set({ core: round.core, strategy: round.strategy, ...(extras ? { extras } : {}) })
+      .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.userId, user.id)))
+      .returning();
+    // something happening: the wait starts over
+    await tx.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, room.id));
+    return { ...roomCard(me), extras: extrasNow(me.extras) };
+  });
   forgetList();
-  await tellRoom(mine.room.id);
+  await tellRoom(mine.room.id, { kind: "round", h: mine.me.handle, round: told });
+  return { room: await roomView(mine.room.id, user.id, now), now };
+}
+
+/** What the player's roach keeps doing in the room (pose: src/lib/squad.ts POSES); every POSE_EVERY_MS, POSES_PER_HOUR an hour */
+export async function setPose(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  const pose = body.pose;
+  if (!isPose(pose)) throw refuse(400, T.server.common.badRequest);
+  const mine = await roomOf(db, user.id);
+  if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  if (!allow(`squad:poseEvery:${user.id}`, 1, POSE_EVERY_MS) || !allow(`squad:poseHour:${user.id}`, POSES_PER_HOUR, HOUR)) {
+    throw refuse(429, T.server.squad.tooFast);
+  }
+  if (mine.me.pose !== pose) {
+    await db
+      .update(squadMembers)
+      .set({ pose })
+      .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, user.id)));
+    await tellRoom(mine.room.id, { kind: "pose", h: mine.me.handle, pose });
+  }
   return { room: await roomView(mine.room.id, user.id, now), now };
 }
 
@@ -1250,7 +1310,7 @@ export async function squadSender(userId: string, roomId: string, h: number) {
   const me = rows.find((r) => r.m.userId === userId);
   const them = rows.find((r) => r.m.handle === h && r.m.userId !== userId);
   if (!me || me.ended || !them) return null;
-  return { other: them.m.userId, known: true, level: them.level, tags: them.tags, card: { ...roomCard(them.m), extras: them.m.extras } };
+  return { other: them.m.userId, known: true, level: them.level, tags: them.tags, card: { ...roomCard(them.m), extras: extrasNow(them.m.extras) } };
 }
 
 /**
@@ -1301,27 +1361,48 @@ export async function sayInRoom(user: Pick<UserRow, "id">, body: Record<string, 
   return { sent: true, now };
 }
 
-function addSay(roomId: string, h: number, p: number) {
+/**
+ * A move of the player's roach (动作: move, and to, the number of the teammate for 击掌 and 贴贴), never written down:
+ * told to the room with its lines, one every MOVE_EVERY_MS and counted with the lines (SAY_PER_HOUR). sent: false
+ * when it was one too many (full: the hour's are used up).
+ */
+export async function moveInRoom(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  const move = body.move;
+  if (!isMove(move)) throw refuse(400, T.server.common.badRequest);
+  const to = movesTo(move) ? handleOf(body.to) : null;
+  if (movesTo(move) ? to === null : body.to !== undefined) throw refuse(400, T.server.common.badRequest);
+  // with a teammate: TA must be in the room (memberAt), never yourself
+  const mine = to === null ? await roomOf(db, user.id) : (await memberAt(user.id, to)).mine;
+  if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  if (!allow(`squad:moveEvery:${user.id}`, 1, MOVE_EVERY_MS)) return { sent: false, now };
+  if (!allow(`squad:sayHour:${user.id}`, SAY_PER_HOUR, HOUR)) return { sent: false, full: true, now };
+  batchOf(mine.room.id).moves.push({ h: mine.me.handle, move, ...(to === null ? {} : { to }) });
+  return { sent: true, now };
+}
+
+/** The room's batch of what is said and done, told to it SAY_BATCH_MS after the first */
+function batchOf(roomId: string) {
   let b = says.get(roomId);
   if (!b) {
-    b = { items: [], timer: setTimeout(() => void flushSay(roomId), SAY_BATCH_MS) };
+    b = { items: [], moves: [], timer: setTimeout(() => void flushSay(roomId), SAY_BATCH_MS) };
     b.timer.unref?.();
     says.set(roomId, b);
   }
-  b.items.push({ h, p });
+  return b;
+}
+
+function addSay(roomId: string, h: number, p: number) {
+  batchOf(roomId).items.push({ h, p });
 }
 
 async function flushSay(roomId: string) {
   const b = says.get(roomId);
   says.delete(roomId);
-  if (!b?.items.length) return;
+  if (!b || (!b.items.length && !b.moves.length)) return;
   try {
-    const rows = await hearersOf(roomId);
-    const tell: SquadTell = { t: "say", room: roomId, items: b.items };
-    tellSquad(
-      rows.map((r) => r.userId),
-      tell,
-    );
+    const ids = (await hearersOf(roomId)).map((r) => r.userId);
+    if (b.items.length) tellSquad(ids, { t: "say", room: roomId, items: b.items } satisfies SquadTell);
+    if (b.moves.length) tellSquad(ids, { t: "move", room: roomId, items: b.moves } satisfies SquadTell);
   } catch (e) {
     console.error("squad: telling a room its lines failed", e);
   }

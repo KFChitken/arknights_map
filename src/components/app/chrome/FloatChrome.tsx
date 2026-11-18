@@ -96,6 +96,7 @@ export default function FloatChrome(p: ChromeProps) {
               {p.squad && (
                 <button
                   className={`it squad-entry${p.squad.room ? " on" : ""}`}
+                  data-squad-entry
                   aria-label={squadLabel(p.squad)}
                   aria-haspopup="dialog"
                   onClick={p.squad.onOpen}

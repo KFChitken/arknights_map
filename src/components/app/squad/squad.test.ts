@@ -1,8 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { KEY_OLD_MS, type SquadListRoom, type SquadSeat } from "@/lib/squad";
+import { BUBBLE_MS, KEY_OLD_MS, type SquadListRoom, type SquadMember, type SquadSeat } from "@/lib/squad";
+import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import { RoomCard, SeatTile } from "./SquadSheet";
+import type { SquadLine } from "./squading";
 
 const NOW = Date.parse("2026-11-16T20:30:00+08:00");
 const LOOK = { avatar: "hood", color: "cyan" };
@@ -76,5 +78,54 @@ describe("a room on the list", () => {
     const out = renderToStaticMarkup(createElement(SeatTile, { seat, hostName: "", hostFriend: false, art: null, clash: false }));
     expect(out).toContain('<span class="sq-core">阿戈尔</span>');
     expect(out).toContain("sq-face none");
+  });
+});
+
+describe("a roach in a room's tile", () => {
+  const member = (more: Partial<SquadMember> = {}): SquadMember => ({
+    h: 2,
+    name: "红豆",
+    host: false,
+    you: false,
+    friend: false,
+    inGame: true,
+    pose: 0,
+    core: 1,
+    strategy: null,
+    extras: [],
+    ...LOOK,
+    ...more,
+  });
+  const roach = (m: SquadMember, line?: SquadLine) => renderToStaticMarkup(createElement(SquadRoach, { m, size: 42, line }));
+
+  it("dances with its sleeves going up and down, lies asleep, and shouts as its line comes", () => {
+    expect(roach(member({ pose: 1 }))).toContain('class="sq-roach dance"');
+    expect(roach(member({ pose: 1 })).match(/<img /g)).toHaveLength(2);
+    expect(roach(member({ pose: 2 }))).toContain('class="sq-roach sleep"');
+    const now = Date.now();
+    expect(roach(member(), { key: 1, h: 2, p: 14, at: now })).toContain("sq-roach yell yell-hood");
+    // asleep, it does not shout
+    expect(roach(member({ pose: 2 }), { key: 1, h: 2, p: 14, at: now })).not.toContain("yell");
+    expect(roach(member(), { key: 1, h: 2, p: 14, at: now - 5_000 })).not.toContain("yell");
+  });
+
+  it("says a line in a bubble for 4 s, a later one beside it higher up", () => {
+    const now = Date.now();
+    const bubble = (at: number) => renderToStaticMarkup(createElement(Bubble, { line: { key: 1, h: 2, p: 14, at }, lift: 28 }));
+    expect(bubble(now)).toContain("大的来了");
+    expect(bubble(now)).toContain("--lift:28px");
+    expect(bubble(now - BUBBLE_MS - 1)).toBe("");
+    const lines = [
+      { key: 1, h: 1, p: 14, at: now - 2_000 },
+      { key: 2, h: 2, p: 15, at: now - 1_000 },
+      { key: 3, h: 4, p: 16, at: now - 500 },
+      { key: 4, h: 3, p: 17, at: now - 10_000 },
+    ];
+    // 1 and 2 sit side by side: 2, the later, goes up; 4 is two tiles from 1 and above none; 3's is over
+    expect([...liftsOf(lines, [1, 2, 3, 4], 28, now)]).toEqual([
+      [1, 0],
+      [2, 28],
+      [4, 0],
+    ]);
   });
 });

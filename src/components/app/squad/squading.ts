@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
 import {
-  SAY_MERGE_MS,
+  isPhrase,
+  LAST_LINE_MS,
   SAY_SHOW_MS,
   SQUAD_MAX,
   type SquadCall,
@@ -10,20 +11,25 @@ import {
   type SquadEnd,
   type SquadInviteSent,
   type SquadMe,
-  type SquadPicks,
+  type SquadMember,
+  type SquadMove,
+  type SquadPose,
   type SquadRoom,
+  type SquadRound,
   type SquadSongChange,
   type SquadTell,
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
 import type { TouchResult } from "@/lib/world/types";
 import { loadSquadTracks, squadSongs, squadTrackName, unfollowSquad } from "./squadMusic";
+import { squadPop } from "./squadSound";
 
 /**
- * 一起卫戍 on the map page (src/lib/squad.ts): the room the player is in, kept here so the bar over the map and the
+ * 一起卫戍 on the map page (src/lib/squad.ts): the room the player is in, kept here so the bars over the map and the
  * sheet (SquadSheet.tsx, loaded only when opened) read the same; what the room is told (the event stream's "squad",
- * MapApp.tsx) read again or shown; the set lines and what the site says floating a few seconds each; and why the last
- * room was over for them. Requests go through src/lib/squadClient.ts, and their refusals are thrown to the caller.
+ * MapApp.tsx) read again, taken as it is, or shown; the set lines over the roaches that said them (with 啵,
+ * squadSound.ts) and the moves they do; what the site says floating a few seconds each; and why the last room was over
+ * for them. Requests go through src/lib/squadClient.ts, and their refusals are thrown to the caller.
  */
 
 function kept<S>(first: S) {
@@ -45,13 +51,24 @@ function kept<S>(first: S) {
   };
 }
 
-/** A line floating in the room: one said (by a number of the room, merged ×n), or what the site says (sys) */
-export type SquadFloat = { key: number; text: string; sys: boolean };
-type Float = SquadFloat & { p: number | null; n: number; first: number; name: string };
+/** What the site says in the room (someone came in, a new key, a song), floating a few seconds */
+export type SquadFloat = { key: number; text: string };
+/** A line said, over its roach (BUBBLE_MS) and under it (刚才, LAST_LINE_MS); key tells one from the next */
+export type SquadLine = { key: number; h: number; p: number; at: number };
+/** A move done (动作) by h, with the teammate to for 击掌 and 贴贴, shown on the roaches MOVE_SHOW_MS */
+export type SquadMoveDone = { key: number; h: number; move: SquadMove; to?: number; at: number };
 
-const NO_FLOATS: Float[] = [];
+const NO_FLOATS: SquadFloat[] = [];
+const NO_LINES: SquadLine[] = [];
+const NO_MOVES: SquadMoveDone[] = [];
 const room = kept<SquadRoom | null>(null);
-const floats = kept<Float[]>(NO_FLOATS);
+const floats = kept<SquadFloat[]>(NO_FLOATS);
+const lines = kept<SquadLine[]>(NO_LINES);
+const moves = kept<SquadMoveDone[]>(NO_MOVES);
+/** How many rounds have started in sight of this page (开始游戏): the sheet makes way for the bar of the round */
+const rounds = kept(0);
+/** A round started while the player marked no strategy for it: 这局 opens first, with a dot, until they look */
+const roundUnseen = kept(false);
 /** What was said as the last room was over for them (it ended, they were asked to leave), until they are in another */
 const notice = kept<string | null>(null);
 /** Their 卫戍名片 as last saved, and its 列表上显示我的名字 (undefined: as me() gave them) */
@@ -61,6 +78,11 @@ const showName = kept<boolean | undefined>(undefined);
 export const squadRoomNow = room.get;
 export const useSquadRoom = () => useSyncExternalStore(room.on, room.get, () => null);
 export const useSquadFloats = (): SquadFloat[] => useSyncExternalStore(floats.on, floats.get, () => NO_FLOATS);
+export const useSquadLines = (): SquadLine[] => useSyncExternalStore(lines.on, lines.get, () => NO_LINES);
+export const useSquadMoves = (): SquadMoveDone[] => useSyncExternalStore(moves.on, moves.get, () => NO_MOVES);
+export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
+export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
+export const seeSquadRound = () => roundUnseen.set(false);
 export const useSquadNotice = () => useSyncExternalStore(notice.on, notice.get, () => null);
 export const useSquadCard = () => useSyncExternalStore(card.on, card.get, () => undefined);
 export const useSquadShowName = () => useSyncExternalStore(showName.on, showName.get, () => undefined);
@@ -69,36 +91,92 @@ export const clearSquadNotice = () => notice.set(null);
 let floatKey = 0;
 const FLOATS_SHOWN = 3;
 
-function addFloat(f: Omit<Float, "key" | "first">) {
-  const now = Date.now();
-  const list = floats.get();
-  // the same line again soon: one float, ×n
-  const same = f.p !== null ? list.find((x) => x.p === f.p && now - x.first < SAY_MERGE_MS) : undefined;
-  if (same) {
-    const n = same.n + 1;
-    floats.set(list.map((x) => (x === same ? { ...x, n, text: fmt(T.squad.say.times, { line: T.squad.say.lines[f.p! - 1], n }) } : x)));
-    return;
-  }
+function addFloat(text: string) {
   const key = ++floatKey;
-  floats.set([...list, { ...f, key, first: now }].slice(-FLOATS_SHOWN));
+  floats.set([...floats.get(), { key, text }].slice(-FLOATS_SHOWN));
   window.setTimeout(() => floats.set(floats.get().filter((x) => x.key !== key)), SAY_SHOW_MS);
 }
 
-const nameOf = (r: SquadRoom | null, h: number | undefined) => r?.members.find((m) => m.h === h)?.name ?? null;
+/** A move shows this long on the roaches */
+export const MOVE_SHOW_MS = 1_600;
+/** Your own line or move, shown as you sent it, is not shown again as the room tells it back within this long */
+const ECHO_MS = 4_000;
+let talkKey = 0;
 
-/** In a room, or out of it: what was said of the last goes once they are in another; its songs to the player */
+/** The seat of h in the room (0 the first), for the pitch of its 啵 */
+const seatOf = (r: SquadRoom, h: number) => Math.max(0, r.members.findIndex((m) => m.h === h));
+
+/** A line said by h: its bubble takes the place of their last, its 刚才 stays LAST_LINE_MS; 啵 */
+function showLine(r: SquadRoom, h: number, p: number) {
+  const key = ++talkKey;
+  lines.set([...lines.get().filter((l) => l.h !== h), { key, h, p, at: Date.now() }]);
+  window.setTimeout(() => lines.set(lines.get().filter((l) => l.key !== key)), LAST_LINE_MS);
+  squadPop(seatOf(r, h));
+}
+
+function showMove(h: number, move: SquadMove, to?: number) {
+  const key = ++talkKey;
+  moves.set([...moves.get().filter((m) => m.h !== h), { key, h, move, ...(to === undefined ? {} : { to }), at: Date.now() }]);
+  window.setTimeout(() => moves.set(moves.get().filter((m) => m.key !== key)), MOVE_SHOW_MS);
+}
+
+/** The round the player marked (这局) and not yet sent: kept on their own tile over what the server says meanwhile */
+let roundWant: SquadRound | null = null;
+let roundTimer = 0;
+/** Taps on 这局 are sent once they stop this long, the round as it is then */
+export const ROUND_SEND_MS = 600;
+const withWant = (r: SquadRoom): SquadRoom => (roundWant ? { ...r, members: r.members.map((m) => (m.you ? { ...m, ...roundWant } : m)) } : r);
+
+/**
+ * In a room, or out of it: what was said of the last goes once they are in another; its songs to the player; a round
+ * that starts in sight counted (rounds), and noted for 这局 when the player marked no strategy for it
+ */
 function setRoom(next: SquadRoom | null) {
+  const before = room.get();
   if (next) notice.set(null);
-  if (!next) floats.set(NO_FLOATS);
-  room.set(next);
+  if (!next || next.id !== before?.id) {
+    floats.set(NO_FLOATS);
+    lines.set(NO_LINES);
+    moves.set(NO_MOVES);
+  }
+  if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
+    rounds.set(rounds.get() + 1);
+    roundUnseen.set(next.members.find((m) => m.you)?.strategy === null);
+  }
+  if (!next || next.state !== "go") roundUnseen.set(false);
+  room.set(next && withWant(next));
   squadSongs(next && next.dj ? { id: next.id, queue: next.queue, idx: next.idx, startedAt: next.startedAt, version: next.version } : null, next?.now);
 }
 
-/** The room as the server has it now (null: none) */
+let loading: Promise<SquadRoom | null> | null = null;
+let again = false;
+
+/** The room as the server has it now (null: none); asked for while an answer is on its way, asked once more after it */
 export async function loadSquadRoom(): Promise<SquadRoom | null> {
-  const { room: r } = await squadApi.room();
-  setRoom(r);
-  return r;
+  if (loading) {
+    again = true;
+    return loading;
+  }
+  loading = (async () => {
+    try {
+      let r: SquadRoom | null;
+      do {
+        again = false;
+        r = (await squadApi.room()).room;
+        setRoom(r);
+      } while (again);
+      return r;
+    } finally {
+      loading = null;
+    }
+  })();
+  return loading;
+}
+
+/** One in the room changed as told (round, pose): taken as it is, or the room read again when they are not known yet */
+function patchMember(r: SquadRoom, h: number | undefined, change: Partial<SquadMember>) {
+  if (!r.members.some((m) => m.h === h)) return void loadSquadRoom().catch(() => {});
+  room.set(withWant({ ...r, members: r.members.map((m) => (m.h === h ? { ...m, ...change } : m)) }));
 }
 
 /** At the page's start (me().squad): their card, and the room they are in, read */
@@ -131,6 +209,8 @@ export function heardSquad(raw: unknown) {
   }
   if (tell.t === "end") return over(T.squad.ended[tell.why as SquadEnd] ?? T.squad.ended.host);
   if (tell.t === "you") return over(tell.why === "kicked" ? T.squad.out.kicked : T.squad.out.left);
+  if (tell.t === "room" && tell.what?.kind === "round" && tell.what.round) return patchMember(r, tell.what.h, tell.what.round);
+  if (tell.t === "room" && tell.what?.kind === "pose" && tell.what.pose !== undefined) return patchMember(r, tell.what.h, { pose: tell.what.pose });
   if (tell.t === "songs") {
     // the songs told, unless a newer answer has them already
     if (tell.version > r.version) {
@@ -142,20 +222,30 @@ export function heardSquad(raw: unknown) {
       const first = tell.queue[tell.idx];
       void loadSquadTracks().then(() => {
         const name = first ? squadTrackName(first) : null;
-        if (name) addFloat({ p: null, n: 1, name: "", text: fmt(T.squad.float.song, { name }), sys: true });
+        if (name) addFloat(fmt(T.squad.float.song, { name }));
       });
     }
     return;
   }
   if (tell.t === "say") {
     for (const it of tell.items) {
-      const line = T.squad.say.lines[it.p - 1];
-      const name = nameOf(r, it.h);
-      if (!line || !name) continue;
-      addFloat({ p: it.p, n: 1, name, text: fmt(T.squad.say.who, { name, line }), sys: false });
+      if (!isPhrase(it.p) || !r.members.some((m) => m.h === it.h)) continue;
+      // your own, shown as you said it
+      if (it.h === r.you && lines.get().some((l) => l.h === it.h && l.p === it.p && Date.now() - l.at < ECHO_MS)) continue;
+      showLine(r, it.h, it.p);
     }
     return;
   }
+  if (tell.t === "move") {
+    for (const it of tell.items) {
+      if (!r.members.some((m) => m.h === it.h)) continue;
+      if (it.h === r.you && moves.get().some((m) => m.h === it.h && m.move === it.move && Date.now() - m.at < ECHO_MS)) continue;
+      showMove(it.h, it.move, it.to);
+    }
+    return;
+  }
+  // what a page of now does not know of: nothing to do
+  if (tell.t !== "room") return;
   void loadSquadRoom()
     .then((next) => {
       const what = tell.t === "room" ? tell.what : undefined;
@@ -163,7 +253,7 @@ export function heardSquad(raw: unknown) {
       // what you did yourself is not said back to you
       if ((what.kind === "in" || what.kind === "game") && what.h === next.you) return;
       if ((what.kind === "key" || what.kind === "state") && next.host) return;
-      const name = nameOf(next, what.h);
+      const name = next.members.find((m) => m.h === what.h)?.name ?? null;
       const text =
         what.kind === "ask"
           ? T.squad.float.ask
@@ -178,7 +268,7 @@ export function heardSquad(raw: unknown) {
                   ? T.squad.float.go
                   : T.squad.float.wait
                 : null;
-      if (text) addFloat({ p: null, n: 1, name: "", text, sys: true });
+      if (text) addFloat(text);
     })
     .catch(() => {});
 }
@@ -231,7 +321,47 @@ const after = async (p: Promise<{ room: SquadRoom | null }>) => {
 export const changeSquadKey = (key: string) => after(squadApi.key(key));
 export const kickFromSquad = (h: number) => after(squadApi.kick(h));
 export const setSquadInGame = (on: boolean) => after(squadApi.game(on));
-export const setSquadPrefs = (c: SquadPicks) => after(squadApi.prefs(c));
+/** Your picks in the room, sent at once (while it waits) */
+export const setSquadPrefs = (c: SquadRound) => after(squadApi.prefs(c));
+
+/**
+ * 这局: your round as you mark it, shown on your tile at once and sent once the taps stop (ROUND_SEND_MS), the whole
+ * of it; refused (a teammate took the strategy meanwhile, too fast), the room is read again and the refusal given to
+ * onError
+ */
+export function markSquadRound(next: SquadRound, onError: (e: unknown) => void) {
+  const r = room.get();
+  if (!r) return;
+  roundWant = next;
+  room.set(withWant(r));
+  window.clearTimeout(roundTimer);
+  roundTimer = window.setTimeout(() => {
+    const want = roundWant;
+    if (!want) return;
+    squadApi
+      .prefs(want)
+      .then(({ room: next }) => {
+        if (roundWant === want) roundWant = null;
+        setRoom(next);
+      })
+      .catch((e) => {
+        if (roundWant === want) roundWant = null;
+        void loadSquadRoom().catch(() => {});
+        onError(e);
+      });
+  }, ROUND_SEND_MS);
+}
+
+/** What your roach keeps doing in the room */
+export const setSquadPose = (pose: SquadPose) => after(squadApi.pose(pose));
+
+/** Your roach waves, or gives a teammate 击掌 or 贴贴: false when it was one too many (full: the hour's are used up); shown at once */
+export async function moveInSquad(move: SquadMove, to?: number): Promise<{ sent: boolean; full?: boolean }> {
+  const res = await squadApi.move(move, to);
+  const r = room.get();
+  if (res.sent && r) showMove(r.you, move, to);
+  return res;
+}
 
 /** 偷偷碰 or 大胆碰 someone in the room; made 触须之交 by it, the room read again */
 export async function touchInSquad(h: number, bold: boolean): Promise<TouchResult> {
@@ -240,15 +370,36 @@ export async function touchInSquad(h: number, bold: boolean): Promise<TouchResul
   return res;
 }
 
-/** A set line: false when it was one too many (full: the hour's are used up); shown to them at once */
+/** A set line: false when it was one too many (full: the hour's are used up); shown to them at once, and kept for 常用 */
 export async function sayInSquad(p: number): Promise<{ sent: boolean; full?: boolean }> {
   const res = await squadApi.say(p);
   const r = room.get();
   if (res.sent && r) {
-    const name = nameOf(r, r.you) ?? "";
-    addFloat({ p, n: 1, name, text: fmt(T.squad.say.who, { name, line: T.squad.say.lines[p - 1] }), sys: false });
+    showLine(r, r.you, p);
+    keepRecent(p);
   }
   return res;
+}
+
+const RECENT_KEY = "squad.recent";
+/** 常用: the lines this device said last, the latest first */
+export const RECENT_MAX = 3;
+
+export function recentLines(): number[] {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter(isPhrase).slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function keepRecent(p: number) {
+  try {
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify([p, ...recentLines().filter((x) => x !== p)].slice(0, RECENT_MAX)));
+  } catch {
+    // remembered for no longer than the page
+  }
 }
 
 /** What the host does to the room's songs */
@@ -301,6 +452,8 @@ export async function declareSquadRoom(from: string[] | null) {
 /** Signed out: nothing kept */
 export function forgetSquadPage() {
   unfollowSquad();
+  roundWant = null;
+  window.clearTimeout(roundTimer);
   setRoom(null);
   notice.set(null);
   card.set(undefined);

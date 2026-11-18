@@ -526,6 +526,13 @@
       "when": 1794979497190,
       "tag": "0075_pass_follow",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794984291439,
+      "tag": "0076_squad_pose",
+      "breakpoints": true
     }
   ]
 }

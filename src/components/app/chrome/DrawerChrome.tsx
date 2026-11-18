@@ -458,7 +458,7 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
 /** 一起卫戍 in the computer's panel, under 热榜: the way in, or back to the room they are in */
 function SquadCard({ squad }: { squad: NonNullable<ChromeProps["squad"]> }) {
   return (
-    <button className="dcard" aria-label={squadLabel(squad)} aria-haspopup="dialog" onClick={squad.onOpen}>
+    <button className="dcard" aria-label={squadLabel(squad)} aria-haspopup="dialog" onClick={squad.onOpen} data-squad-entry>
       <ShieldIcon size={40} />
       <span className="tx" aria-hidden="true">
         <b>{T.squad.title}</b>

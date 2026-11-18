@@ -1,0 +1,1 @@
+ALTER TABLE "squad_members" ADD COLUMN "pose" smallint DEFAULT 0 NOT NULL;

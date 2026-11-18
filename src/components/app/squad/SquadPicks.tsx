@@ -3,19 +3,21 @@
 
 import { useState } from "react";
 import { fmt, T } from "@/i18n";
-import { CORES, coreOf, LEVELS, NO_CORE, STRATEGIES, strategyOf, type SquadStrategy } from "@/lib/squad";
+import { CORES, coreOf, EXTRAS, extraOf, LEVELS, NO_CORE, ROUND_EXTRAS_MAX, STRATEGIES, strategyOf, type SquadStrategy } from "@/lib/squad";
 import type { Art } from "../OperatorNames";
 
 /**
  * How 一起卫戍 shows a pick (src/lib/squad.ts): a core alliance as a badge (black; 随机应变 grey), a 难度 as a badge of
  * its colour, a strategy as its operator's small round picture (src/lib/server/operatorArt.ts) or, where there is
- * none, the operator's name; and the pickers of the card and of a room: core alliances, 难度, and the strategies as a
- * grid of pictures with those of the core alliance first and a search.
+ * none, the operator's name; and the pickers of the card, of a room and of a round (这局): core alliances, 难度, the
+ * 附加盟约, and the strategies as a grid of pictures with those of the core alliance first and a search.
  */
 
 export const coreName = (id: number) => (id === NO_CORE ? T.squad.noCore : (coreOf(id)?.name ?? T.squad.noCore));
 export const levelName = (level: number) => T.squad.levels[level - 1] ?? "";
-const strategyWords = (s: SquadStrategy) => `${s.op}${T.squad.dot}${s.name}`;
+export const strategyWords = (s: SquadStrategy) => `${s.op}${T.squad.dot}${s.name}`;
+/** The 附加盟约 by name, those this season still has */
+export const extraNames = (ids: readonly number[]) => ids.map((id) => extraOf(id)?.name).filter((n): n is string => Boolean(n));
 
 /** A core alliance's badge; a button where it can be changed (onClick) */
 export function CoreBadge({ core, onClick }: { core: number; onClick?: () => void }) {
@@ -43,6 +45,12 @@ function Face({ op, art, size }: { op: string; art: Art | null; size: number }) 
       {art ? [...op.replace(/[\u201c\u201d"]/g, "")][0] : ""}
     </span>
   );
+}
+
+/** A strategy's picture alone, where the tile around it is the button (the bar of a round); none: nothing */
+export function StrategyFace({ id, art, size = 21 }: { id: number | null; art: Art | null; size?: number }) {
+  const s = id === null ? null : strategyOf(id);
+  return s ? <Face op={s.op} art={art} size={size} /> : null;
 }
 
 /**
@@ -111,15 +119,47 @@ export function LevelChips({ value, onPick }: { value: number | null; onPick: (l
   );
 }
 
+/** The 附加盟约 of a round, ROUND_EXTRAS_MAX at most: the others grey once that many are on */
+export function ExtrasChips({ value, onToggle }: { value: readonly number[]; onToggle: (id: number) => void }) {
+  const full = value.length >= ROUND_EXTRAS_MAX;
+  return (
+    <div className="chips">
+      {EXTRAS.filter((x) => !x.gone).map((x) => {
+        const on = value.includes(x.id);
+        return (
+          <button key={x.id} type="button" className={`chip${on ? " on" : ""}`} aria-pressed={on} disabled={!on && full} onClick={() => onToggle(x.id)}>
+            {x.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** How many of the grid show before 还有 N 个 */
 const FOLDED = 16;
 
 /**
  * The strategies to pick one from, as pictures with the operator's name under each: 无偏好 first, then those of the
  * core alliance (core), the other alliances', and the 44 general ones; folded after FOLDED until opened or searched
- * (by the operator's name or the strategy's).
+ * (by the operator's name or the strategy's). In a round, those a teammate plays it with (taken) are grey, 队友在用,
+ * and a tap on one says so (onTaken).
  */
-export function StrategyGrid({ value, core, art, onPick }: { value: number | null; core: number; art: Art | null; onPick: (id: number | null) => void }) {
+export function StrategyGrid({
+  value,
+  core,
+  art,
+  onPick,
+  taken,
+  onTaken,
+}: {
+  value: number | null;
+  core: number;
+  art: Art | null;
+  onPick: (id: number | null) => void;
+  taken?: ReadonlySet<number>;
+  onTaken?: (s: SquadStrategy) => void;
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const live = STRATEGIES.filter((s) => !s.gone);
@@ -135,8 +175,17 @@ export function StrategyGrid({ value, core, art, onPick }: { value: number | nul
   const shown = needle || open ? found : chosen && !folded.includes(chosen) ? [chosen, ...folded.slice(0, -1)] : folded;
   const tile = (s: SquadStrategy | null) => {
     const on = (s?.id ?? null) === value;
+    const off = Boolean(s && !on && taken?.has(s.id));
     return (
-      <button key={s?.id ?? 0} type="button" className={`sq-st${on ? " on" : ""}`} aria-pressed={on} aria-label={s ? strategyWords(s) : T.squad.card.strategyNone} onClick={() => onPick(s?.id ?? null)}>
+      <button
+        key={s?.id ?? 0}
+        type="button"
+        className={`sq-st${on ? " on" : ""}${off ? " taken" : ""}`}
+        aria-pressed={on}
+        aria-disabled={off || undefined}
+        aria-label={s ? (off ? `${strategyWords(s)}${T.squad.dot}${T.squad.talk.taken}` : strategyWords(s)) : T.squad.card.strategyNone}
+        onClick={() => (off && s ? onTaken?.(s) : onPick(s?.id ?? null))}
+      >
         {s ? (
           <Face op={s.op} art={art} size={40} />
         ) : (
@@ -144,7 +193,7 @@ export function StrategyGrid({ value, core, art, onPick }: { value: number | nul
             {T.squad.card.noneShort}
           </span>
         )}
-        <small>{s ? s.op : T.squad.card.strategyNone}</small>
+        <small>{s ? (off ? T.squad.talk.taken : s.op) : T.squad.card.strategyNone}</small>
       </button>
     );
   };

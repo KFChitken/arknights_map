@@ -137,7 +137,7 @@ export default function HudChrome(p: ChromeProps) {
           </span>
           {p.squad && (
             <span className={`rb${p.squad.room ? " on" : ""}`}>
-              <button className="ob glass" aria-label={squadLabel(p.squad)} aria-haspopup="dialog" onClick={p.squad.onOpen}>
+              <button className="ob glass" aria-label={squadLabel(p.squad)} aria-haspopup="dialog" onClick={p.squad.onOpen} data-squad-entry>
                 <ShieldIcon size={24} />
               </button>
               <span className="lbl" aria-hidden="true">

@@ -157,7 +157,7 @@
 .sq-pop small { padding: 0 4px; color: var(--muted); font-size: 11.5px; }
 .sq-edit { grid-column: 1 / 4; padding: 8px; border-radius: 11px; background: #fffbea; }
 
-/* what floats in the room, and the set lines */
+/* what the site says in the room, floating (the lines said are bubbles over the tiles: squadFight.css) */
 .sq-floats { position: sticky; top: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 0; overflow: visible; pointer-events: none; }
 .sq-float { padding: 4px 11px; border-radius: 999px; background: rgba(27, 29, 34, 0.86); color: #fff; font-size: 12.5px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); animation: sq-float-in 0.2s ease-out; }
 .sq-float.sys { background: rgba(255, 243, 194, 0.96); color: #6a4f00; }
@@ -168,15 +168,6 @@
 @media (prefers-reduced-motion: reduce) {
   .sq-float { animation: none; }
 }
-.sq-dock { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.sq-dock .dt { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
-.sq-dock .dt button { padding: 3px 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 12.5px; font-weight: 700; }
-.sq-dock .dt button.on { background: var(--ink); color: #fff; }
-.sq-dock .dt small { margin-left: auto; color: var(--muted); font-size: 11px; }
-.sq-dock .say { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-.sq-dock .say::-webkit-scrollbar { display: none; }
-.sq-dock .say button { flex: none; padding: 6px 11px; border: 1px solid #d6d9de; border-radius: 999px; background: var(--paper); color: var(--ink); font-size: 13px; white-space: nowrap; }
-.sq-dock .say button:disabled { opacity: 0.45; }
 
 /* the host's songs (DjBar.tsx) */
 .sq-room .tagline .mus { margin-left: 6px; color: #7c3aed; font-weight: 700; }
@@ -225,25 +216,7 @@
 .sq-show span { display: flex; flex-direction: column; gap: 2px; }
 .sq-show small { color: var(--muted); font-size: 12px; font-weight: 400; }
 
-/* 第 4 版: badges for a core alliance and a 难度, a strategy's picture, seats as tiles */
-.sq-core { display: inline-flex; align-items: center; gap: 2px; padding: 1px 7px; border: 0; border-radius: 6px; background: var(--ink); color: #fff; font: inherit; font-size: 11.5px; font-weight: 700; line-height: 1.6; white-space: nowrap; }
-.sq-core.none { background: #e5e7eb; color: #4b5160; }
-.sq-core.pick { cursor: pointer; }
-.sq-core.pick i { font-size: 9px; font-style: normal; opacity: 0.7; }
-.sq-lv { flex: none; padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
-.sq-lv.lv1 { background: #dcf3e6; color: #1f6b41; }
-.sq-lv.lv2 { background: #e3edf7; color: #1f4366; }
-.sq-lv.lv3 { background: #ffedd5; color: #9a3412; }
-.sq-lv.lv4 { background: #fde2e1; color: #9b1c1c; }
-.sq-lv.lv5 { background: #ede4fb; color: #5b2c9a; }
-.sq-face { display: inline-grid; flex: none; place-items: center; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: #e5e7eb; }
-.sq-face.letter { background: #d1d5db; color: #374151; font-weight: 700; }
-.sq-face.none { border: 1px dashed #b8bdc5; background: #fff; color: #9ca3af; font-size: 11px; font-weight: 700; }
-.sq-opname { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
-.sq-strat { position: relative; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
-.sq-strat.pick .sq-face, .sq-strat.pick .sq-opname { box-shadow: 0 0 0 2px #ffd23f; border-radius: 999px; }
-.sq-tip-pop { position: absolute; z-index: 6; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); padding: 3px 8px; border-radius: 7px; background: var(--ink); color: #fff; font-size: 11.5px; white-space: nowrap; }
-
+/* 第 4 版: seats as tiles (the badges and pictures are in squadFight.css, which the map page loads too) */
 .sq-seats4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .sq-seat { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 6px 3px; border-radius: 10px; background: #f6f7f9; }
 .sq-seat .nm { max-width: 100%; overflow: hidden; font-size: 11.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -273,19 +246,6 @@
 .sq-tile.empty .plus { font-size: 22px; line-height: 1; }
 .sq-tile.empty .nm { font-weight: 600; }
 .sq-pop .pn { padding: 0 4px; color: var(--ink); font-weight: 700; }
-
-/* the strategies as pictures, in the card and a room's picker */
-.sq-stgrid { display: flex; flex-direction: column; gap: 7px; }
-.sq-stnow { margin: 0; font-size: 12.5px; font-weight: 700; }
-.sq-stgrid .search { padding: 7px 10px; border: 1px solid #d6d9de; border-radius: 10px; font: inherit; font-size: 13px; }
-.sq-stgrid .sgrp { margin: 0; color: var(--muted); font-size: 11.5px; font-weight: 700; }
-.sq-sts { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px 4px; }
-.sq-st { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 4px 2px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; cursor: pointer; }
-.sq-st small { max-width: 100%; overflow: hidden; color: #4b5160; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.sq-st .sq-face { width: 40px; height: 40px; }
-.sq-st.on .sq-face { box-shadow: 0 0 0 2.5px var(--ink); }
-.sq-st.on small { color: var(--ink); font-weight: 700; }
-.sq-more { padding: 7px; border: 1px dashed #c9cdd3; border-radius: 10px; background: none; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
 
 /* 准备, 开始游戏, 结束这局; the host's menu; 请出去 in a tile's corner; the key in a line once ready */
 .sq-go { display: flex; flex-direction: column; gap: 6px; }

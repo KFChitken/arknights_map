@@ -72,6 +72,26 @@ export const picksNow = (core: number, strategy: number | null): SquadPicks => (
   strategy: strategy !== null && strategyOf(strategy) ? strategy : null,
 });
 
+/**
+ * What one plays a round with (这局), marked in the room while it plays: the picks, and the 附加盟约 (extras) chosen in
+ * the game, ROUND_EXTRAS_MAX at most. Only the room has it: the card stays as it is.
+ */
+export type SquadRound = SquadPicks & { extras: number[] };
+export const ROUND_EXTRAS_MAX = 4;
+
+/** A round as a request gives it (extras missing: none), or null when it is not this season's, or its extras too many or one twice */
+export function readRound(v: unknown): SquadRound | null {
+  const picks = readPicks(v);
+  if (!picks) return null;
+  const extras = (v as Record<string, unknown>).extras ?? [];
+  if (!Array.isArray(extras) || extras.length > ROUND_EXTRAS_MAX || new Set(extras).size !== extras.length) return null;
+  if (!extras.every((x) => isId(x) && extraOf(x))) return null;
+  return { ...picks, extras: [...(extras as number[])] };
+}
+
+/** Extras as kept, read against this season: those it no longer has are left out */
+export const extrasNow = (extras: readonly number[]) => extras.filter((x) => extraOf(x) !== null);
+
 /** A card as kept (null: never filled in), read against this season */
 export function cardNow(core: number | null, strategy: number | null, level: number | null): SquadCard | null {
   if (core === null) return null;
@@ -160,8 +180,8 @@ export const LIFE_MS = 6 * HOUR;
 export const KEEP_MS = 24 * HOUR;
 /** The host starts a round (开始游戏) or ends it (结束这局) this often at most */
 export const STATE_EVERY_MS = 10_000;
-/** One's picks in a room changed this often at most */
-export const PREFS_EVERY_MS = 10_000;
+/** One's picks in a room (and the round's extras) changed this often at most; the page sends the last of a few taps */
+export const PREFS_EVERY_MS = 1_000;
 
 /** Opening rooms: this often at most, and so many a site day (04:00 Beijing) */
 export const OPEN_EVERY_MS = 2 * MINUTE;
@@ -208,6 +228,30 @@ export const SAY_PER_HOUR = 60;
 export const SAY_MERGE_MS = 1_500;
 /** A line, or what the site says there, floats this long */
 export const SAY_SHOW_MS = 3_000;
+/** A line said shows over its roach (a bubble) this long, and under it (刚才) this long */
+export const BUBBLE_MS = 4_000;
+export const LAST_LINE_MS = 60_000;
+
+// ---- what the roaches do in a room ----
+
+/** What one's roach keeps doing in the room until changed (动作): 0 stands, 1 dances (蹦迪), 2 lies asleep (醉倒睡觉) */
+export const POSES = [0, 1, 2] as const;
+export type SquadPose = (typeof POSES)[number];
+export const isPose = (v: unknown): v is SquadPose => POSES.includes(v as SquadPose);
+/** A pose changed once every POSE_EVERY_MS and POSES_PER_HOUR an hour at most, each player */
+export const POSE_EVERY_MS = 2_000;
+export const POSES_PER_HOUR = 120;
+/**
+ * What one's roach does once and is done with: 挥手 (wave, the look's own move), 击掌 (five) and 贴贴 (hug) with a
+ * teammate (to). Never written down: told to the room as the lines are, and counted with them (SAY_PER_HOUR).
+ */
+export const MOVES = ["wave", "five", "hug"] as const;
+export type SquadMove = (typeof MOVES)[number];
+export const isMove = (v: unknown): v is SquadMove => MOVES.includes(v as SquadMove);
+/** The moves done with a teammate */
+export const movesTo = (m: SquadMove) => m !== "wave";
+/** One move every MOVE_EVERY_MS, each player */
+export const MOVE_EVERY_MS = 3_000;
 
 // ---- what the page gets ----
 
@@ -256,8 +300,9 @@ export type SquadMember = {
   friend: boolean;
   /** 准备 (in the game's alliance and ready): ticked by them; the host needs none */
   inGame: boolean;
+  pose: SquadPose;
 } & SquadLook &
-  SquadPicks;
+  SquadRound;
 
 /** The room as one in it sees it */
 export type SquadRoom = {
@@ -296,10 +341,17 @@ export type SquadRoom = {
 
 /** What a room's phones are told (the event stream's "squad"): look again, with what changed; lines said; it ended; you are out */
 export type SquadTell =
-  | { t: "room"; room: string; what?: { kind: "in" | "game" | "key" | "state" | "ask"; h?: number; to?: SquadState } }
+  | {
+      t: "room";
+      room: string;
+      /** round, pose: one's as it is now, which a page of now takes as it is, without asking again */
+      what?: { kind: "in" | "game" | "key" | "state" | "ask" | "round" | "pose"; h?: number; to?: SquadState; round?: SquadRound; pose?: SquadPose };
+    }
   /** The host changed the songs: how, and the songs as they are now */
   | ({ t: "songs"; room: string; how: SquadSongHow } & RoomSchedule)
   | { t: "say"; room: string; items: { h: number; p: number }[] }
+  /** Moves done (动作), batched as the lines are; a page of before skips them */
+  | { t: "move"; room: string; items: { h: number; move: SquadMove; to?: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
 
@@ -361,3 +413,5 @@ export const ROOM_PLAYING = "squadPlaying";
 /** 开始游戏 refused: someone is not ready, strategies clash, or nobody is in it but the host */
 export const NOT_READY = "squadNotReady";
 export const NOT_IN_ROOM = "squadNotIn";
+/** A strategy marked for the round (这局) that a teammate plays it with already */
+export const STRATEGY_TAKEN = "squadStrategyTaken";

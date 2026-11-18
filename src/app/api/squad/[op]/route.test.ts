@@ -377,7 +377,7 @@ describe("a room", () => {
     const prefs = await post(a, "prefs", { card: { core: 1, strategy: 46, extras: [] } });
     expect((prefs.body!.room as SquadRoom).members[1]).toMatchObject({ core: 1, strategy: 46 });
     expect((await row(a)).squadCore).toBe(CARD.core);
-    // again within ten seconds
+    // again within a second
     expect((await post(a, "prefs", { card: { core: 2 } })).status).toBe(429);
     expect((await roomsOf(host))[0].seats[1]).toMatchObject({ core: 1, strategy: 46 });
   });
@@ -522,6 +522,87 @@ describe("blocking", () => {
     // not by someone in no room, nor of a number nobody has
     await expect(report((await player("outsider")).id, `sq:${room.id}:1`, "spam", "")).rejects.toThrow();
     await expect(report(a.id, `sq:${room.id}:9`, "spam", "")).rejects.toThrow();
+  });
+});
+
+describe("这局: the picks of a round", () => {
+  it("are the picks alone while it waits; while it plays the 附加盟约 too, never a strategy a teammate plays it with; 结束这局 clears the extras", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const room = await opened(host);
+    await goIn(a, room);
+    const heard = hear(host);
+    // waiting: no extras yet, and two strategies the same are fine until 开始游戏
+    const waiting = await post(a, "prefs", { round: { core: 2, strategy: CARD.strategy, extras: [1, 2] } });
+    expect((waiting.body!.room as SquadRoom).members[1]).toMatchObject({ core: 2, strategy: CARD.strategy, extras: [], pose: 0 });
+    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "round", h: 2, round: { core: 2, strategy: CARD.strategy, extras: [] } } });
+    // ready, a strategy of their own, and the round starts
+    forgetHits();
+    expect((await post(a, "prefs", { round: { core: 2, strategy: 46, extras: [] } })).status).toBe(200);
+    await post(a, "game", { on: true });
+    expect((await post(host, "state", { to: "go" })).status).toBe(200);
+    // playing: the host's strategy is refused, none (无偏好) never is
+    forgetHits();
+    expect(await post(a, "prefs", { round: { core: 2, strategy: CARD.strategy, extras: [] } })).toMatchObject({ status: 409, body: { code: "squadStrategyTaken" } });
+    forgetHits();
+    const marked = await post(a, "prefs", { round: { core: 3, strategy: null, extras: [3, 1, 4, 5] } });
+    expect((marked.body!.room as SquadRoom).members[1]).toMatchObject({ core: 3, strategy: null, extras: [3, 1, 4, 5] });
+    expect((await roomsOf(host)).find((r) => r.id === room.id)!.seats[1]).toMatchObject({ core: 3, strategy: null });
+    // five, one twice, or one not of the season
+    for (const extras of [[1, 2, 3, 4, 6], [1, 1], [999]]) {
+      forgetHits();
+      expect((await post(a, "prefs", { round: { core: 3, strategy: null, extras } })).status).toBe(400);
+    }
+    // a page of before sends its picks alone: the extras stay
+    forgetHits();
+    expect(((await post(a, "prefs", { card: { core: 3, strategy: 46 } })).body!.room as SquadRoom).members[1]).toMatchObject({ strategy: 46, extras: [3, 1, 4, 5] });
+    // the card is as it was
+    expect(await row(a)).toMatchObject({ squadCore: CARD.core, squadStrategy: CARD.strategy });
+    // 结束这局: the extras go, the picks stay
+    await setState(host, { to: "wait" }, Date.now() + 11_000);
+    expect(((await post(a, "room")).body!.room as SquadRoom).members[1]).toMatchObject({ core: 3, strategy: 46, extras: [] });
+  });
+});
+
+describe("what the roaches do in a room", () => {
+  it("keeps a pose till it is changed, every 2 s at most, told to everyone in it", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const room = await opened(host);
+    await goIn(a, room);
+    const heard = hear(host);
+    expect((await post(a, "pose", { pose: 3 })).status).toBe(400);
+    expect((await post(a, "pose", { pose: "1" })).status).toBe(400);
+    const res = await post(a, "pose", { pose: 2 });
+    expect((res.body!.room as SquadRoom).members.map((m) => m.pose)).toEqual([0, 2]);
+    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "pose", h: 2, pose: 2 } });
+    // again at once
+    expect((await post(a, "pose", { pose: 1 })).status).toBe(429);
+    // kept in the room alone
+    expect(((await post(host, "room")).body!.room as SquadRoom).members[1].pose).toBe(2);
+    expect(await post(await player("c"), "pose", { pose: 1 })).toMatchObject({ status: 409, body: { code: "squadNotIn" } });
+  });
+
+  it("tells moves to everyone in it with the lines, one every 3 s; 击掌 and 贴贴 only to a teammate in it", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const room = await opened(host);
+    await goIn(a, room);
+    const heard = hear(host);
+    expect((await post(a, "move", { move: "five" })).status).toBe(400);
+    expect((await post(a, "move", { move: "wave", to: 1 })).status).toBe(400);
+    expect((await post(a, "move", { move: "kick" })).status).toBe(400);
+    // never yourself, nor a number nobody in it has
+    expect((await post(a, "move", { move: "hug", to: 2 })).status).toBe(409);
+    expect((await post(a, "move", { move: "hug", to: 3 })).status).toBe(409);
+    expect((await post(a, "move", { move: "five", to: 1 })).body).toMatchObject({ sent: true });
+    expect((await post(a, "move", { move: "wave" })).body).toMatchObject({ sent: false });
+    expect((await post(a, "say", { p: 4 })).body).toMatchObject({ sent: true });
+    await flushSaysNow();
+    expect(heard).toContainEqual({ t: "move", room: room.id, items: [{ h: 2, move: "five", to: 1 }] });
+    expect(heard).toContainEqual({ t: "say", room: room.id, items: [{ h: 2, p: 4 }] });
+    // never written down
+    expect(Object.keys((await db.select().from(squadMembers))[0])).not.toContain("move");
   });
 });
 

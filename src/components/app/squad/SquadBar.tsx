@@ -16,7 +16,7 @@ export type SquadCallItem = Extract<InboxItem, { kind: "declaration" }> & { squa
 export type SquadPopCard = { kind: "invite"; item: SquadInviteItem; ask: boolean } | { kind: "call"; item: SquadCallItem; ask: boolean };
 
 /** Where to stand over the map: above the layout's bottom bar (data-chrome-bottom) by `up` more, else under the top */
-function useAbove(shown: boolean, up: number) {
+export function useAbove(shown: boolean, up: number) {
   const [at, setAt] = useState<CSSProperties | null>(null);
   useEffect(() => {
     if (!shown) return;
@@ -41,12 +41,13 @@ function useAbove(shown: boolean, up: number) {
 }
 
 /**
- * Over the map while the player is in a room of 一起卫戍 and its sheet is shut: 卫戍中 n/4, back to the room at a tap.
- * Just above the layout's bottom bar (data-chrome-bottom), else under the top.
+ * Over the map while the player is in a room of 一起卫戍 that waits and its sheet is shut: 卫戍中 n/4, back to the room
+ * at a tap (while it plays, the bar of the round has its place: SquadFight.tsx). Just above the layout's bottom bar
+ * (data-chrome-bottom), else under the top.
  */
 export default function SquadBar({ hidden, onOpen }: { hidden: boolean; onOpen: () => void }) {
   const room = useSquadRoom();
-  const shown = Boolean(room) && !hidden;
+  const shown = Boolean(room) && room?.state !== "go" && !hidden;
   const at = useAbove(shown, 0);
   if (!room || !shown || !at) return null;
   const n = room.members.length;
@@ -80,7 +81,8 @@ export function SquadPop({
 }) {
   const room = useSquadRoom();
   const shown = Boolean(card) && !hidden;
-  const at = useAbove(shown, room ? 46 : 0);
+  // above the bar of a round, which is taller, or 卫戍中 n/4
+  const at = useAbove(shown, room?.state === "go" ? 176 : room ? 46 : 0);
   if (!card || !shown || !at) return null;
   return <PopCard key={`${card.item.id}:${card.ask}`} card={card} at={at} inRoom={Boolean(room)} onGo={onGo} onLater={onLater} onDismiss={onDismiss} />;
 }
