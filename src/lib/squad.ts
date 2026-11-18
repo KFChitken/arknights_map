@@ -91,6 +91,15 @@ export function squadClash<T extends { strategy: number | null }>(members: reado
   return pairs;
 }
 
+/**
+ * What keeps a room from starting its round (开始游戏): nobody in it but the host (alone), those not ready (准备, the
+ * host needs not), and strategies that clash. The one rule, for the page and the server alike.
+ */
+export function notYet<T extends { host: boolean; inGame: boolean; strategy: number | null }>(members: readonly T[]) {
+  return { alone: members.length < 2, notReady: members.filter((m) => !m.host && !m.inGame), clashes: squadClash(members) };
+}
+export const mayStart = (y: ReturnType<typeof notYet>) => !y.alone && y.notReady.length === 0 && y.clashes.length === 0;
+
 // ---- a room ----
 
 export const SQUAD_MAX = 4;
@@ -132,28 +141,26 @@ export const KEY_CHANGES = 30;
 
 /** wait: on the list, open to come in; go: playing, at the bottom of the list, closed */
 export type SquadState = "wait" | "go";
-/** Why a room ended: its host (结束, leaving), nobody came or went (idle), played on too long (go), open too long (life), the 管理台 (admin) */
+/** Why a room ended: its host (销毁房间, or leaving), nothing happened (idle), played on too long (go), open too long (life), the 管理台 (admin) */
 export type SquadEnd = "host" | "idle" | "go" | "life" | "admin";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 /**
- * Waiting this long with nothing happening, the room ends: someone coming in or going, the host pasting a new key or
- * tapping 等人 again starts it over. As long as the game's alliance lasts (KEY_OLD_MS), so the list holds few rooms
- * whose key is gone.
+ * Waiting this long with nothing happening, the room ends: someone coming in or going, readying (准备) or changing
+ * their picks, the host pasting a new key or ending a round (结束这局) starts it over. As long as the game's alliance
+ * lasts (KEY_OLD_MS), so the list holds few rooms whose key is gone.
  */
 export const WAIT_IDLE_MS = KEY_OLD_MS;
-/** 等人 tapped again, to start the wait over, this often at most */
-export const REWAIT_MS = 10 * MINUTE;
-/** Playing (开打) this long since it was last tapped, the room ends */
+/** Playing this long since its round started (开始游戏), the room ends */
 export const GO_MAX_MS = 3 * HOUR;
 /** Open this long, a room ends whatever it does */
 export const LIFE_MS = 6 * HOUR;
 /** An ended room, who was in it and what they chose there, is deleted this long after */
 export const KEEP_MS = 24 * HOUR;
-/** The host switches between 等人 and 开打 this often at most */
+/** The host starts a round (开始游戏) or ends it (结束这局) this often at most */
 export const STATE_EVERY_MS = 10_000;
-/** A room's own card changed this often at most */
+/** One's picks in a room changed this often at most */
 export const PREFS_EVERY_MS = 10_000;
 
 /** Opening rooms: this often at most, and so many a site day (04:00 Beijing) */
@@ -247,7 +254,7 @@ export type SquadMember = {
   host: boolean;
   you: boolean;
   friend: boolean;
-  /** 我进同盟了: ticked by them */
+  /** 准备 (in the game's alliance and ready): ticked by them; the host needs none */
   inGame: boolean;
 } & SquadLook &
   SquadPicks;
@@ -272,8 +279,6 @@ export type SquadRoom = {
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
-  /** The host: when 等人 may start the wait over again (ms) */
-  rewaitAt: number;
   /** Its 宣言招人 was sent (once a room) */
   declared: boolean;
   /** Your own invitations to it, to those not in it: still good (waiting), or not come (missed: ran out or 下次吧, never told apart) */
@@ -354,4 +359,6 @@ export const ROOM_GONE = "squadGone";
 export const ROOM_FULL = "squadFull";
 export const ROOM_SHUT = "squadShut";
 export const ROOM_PLAYING = "squadPlaying";
+/** 开始游戏 refused: someone is not ready, strategies clash, or nobody is in it but the host */
+export const NOT_READY = "squadNotReady";
 export const NOT_IN_ROOM = "squadNotIn";

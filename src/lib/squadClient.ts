@@ -59,11 +59,11 @@ export const squadApi = {
   join: (room: string) => call<{ room: SquadRoom; now: number }>("join", post({ room })),
   /** Out of your room (the host's ends) */
   leave: () => call<{ now: number }>("leave", post({})),
-  /** The host's 等人, 开打 or 结束 */
+  /** The host's 开始游戏 (go), 结束这局 (wait) or 销毁房间 (end) */
   state: (to: "wait" | "go" | "end") => call<Room>("state", post({ to })),
   key: (key: string) => call<Room>("key", post({ key })),
   kick: (h: number) => call<Room>("kick", post({ h })),
-  /** 我进同盟了 */
+  /** 准备, ticked or not */
   game: (on: boolean) => call<Room>("game", post({ on })),
   /** Your picks in this room alone */
   prefs: (card: SquadPicks) => call<Room>("prefs", post({ card })),

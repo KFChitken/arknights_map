@@ -275,7 +275,10 @@ describe("invitations to 一起卫戍", () => {
       { id: bKey, ok: false, why: "今天已经邀请 TA 3 次了，北京时间凌晨 4 点以后再邀请吧。" },
     ]);
 
-    // playing (开打): nobody is called
+    // playing (开始游戏, with someone ready): nobody is called
+    const e = await player("e");
+    expect((await post(e, "join", { room: room.id })).status).toBe(200);
+    await post(e, "game", { on: true });
     expect((await post(host, "state", { to: "go" })).status).toBe(200);
     expect(await post(host, "invite", { friends: [bKey] })).toMatchObject({ status: 409, body: { error: "房间在「等人」的时候才能叫人。" } });
   });

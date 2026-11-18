@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
 import { SQUAD_TEMPLATE } from "../declarations";
@@ -39,6 +39,9 @@ import {
   LIST_MAX,
   NEED_CARD,
   NOT_IN_ROOM,
+  NOT_READY,
+  notYet,
+  mayStart,
   OPEN_EVERY_MS,
   OPENS_PER_DAY,
   PREFS_EVERY_MS,
@@ -47,7 +50,6 @@ import {
   picksNow,
   REQUEST_EVERY_MS,
   REQUESTS_EACH,
-  REWAIT_MS,
   ROOM_FULL,
   ROOM_GONE,
   ROOM_PLAYING,
@@ -100,18 +102,18 @@ import { cardsOf, declare, friendIdsOf, friendKey, touch } from "./world";
 /**
  * 一起卫戍 on the server (src/lib/squad.ts), through src/app/api/squad/[op]. A host opens a room with the game's
  * 同盟密钥 and what it is for; others come in at it from the list, four at most, and see the key, each other's names
- * and the card each chose for the room (taken from their 卫戍名片, changed there for the room alone). The host
- * switches it between 等人 (on the list, open) and 开打 (closed, at the bottom of the list), ends it, asks someone to
- * leave for good, and changes the key a few times. Whoever goes in is known in the room by a number of its own
- * (handle), never by an id, and by it is touched (碰), blocked or reported there (sq:<room>:<number>,
- * src/lib/server/safety.ts). What a room does goes to the phones in it at once (live.ts tellSquad, SquadTell): that it
- * changed (each phone asks again), the set lines of the last second, that it ended. The lines are never written down,
- * only how many a day.
+ * and the card each chose for the room (taken from their 卫戍名片, changed there for the room alone). Each readies
+ * (准备) once in the game's alliance; the host starts a round when all are (开始游戏: closed, at the bottom of the
+ * list), ends it (结束这局: open again, everyone readies anew), destroys the room (销毁房间), asks someone to leave for
+ * good, and changes the key a few times. Whoever goes in is known in the room by a number of its own (handle), never
+ * by an id, and by it is touched (碰), blocked or reported there (sq:<room>:<number>, src/lib/server/safety.ts). What
+ * a room does goes to the phones in it at once (live.ts tellSquad, SquadTell): that it changed (each phone asks
+ * again), the set lines of the last second, that it ended. The lines are never written down, only how many a day.
  *
- * A room ends when its host ends or leaves it, opens another or goes in at another; when it waited WAIT_IDLE_MS with
- * nobody coming or going (or since 等人 last started the wait over), played GO_MAX_MS since 开打, or was open LIFE_MS,
- * whether or not its host's page is there (they play in the game meanwhile); and every room ends when it is closed for
- * now in the 管理台. KEEP_MS after, it is deleted with who was in it (sweepSquad, on the main process).
+ * A room ends when its host destroys or leaves it, opens another or goes in at another; when it waited WAIT_IDLE_MS
+ * with nothing happening (endsOf), played GO_MAX_MS since its round started, or was open LIFE_MS, whether or not its
+ * host's page is there (they play in the game meanwhile); and every room ends when it is closed for now in the 管理台.
+ * KEEP_MS after, it is deleted with who was in it (sweepSquad, on the main process).
  *
  * The list is read from one snapshot each process takes every SNAP_MS of the rooms open and who is in them; each
  * player's is cut from it: their server and 难度, rooms only for 触须之交 shown only to the host's, nothing with anyone
@@ -183,7 +185,7 @@ async function secondsOf() {
 /** Whether this player may hear the host's songs: 听歌 open to them, not paused in the 管理台, the site not gray */
 const djFor = (user: Pick<UserRow, "id" | "email">, now: number) => listenOpen(user) && !listenSettings().paused && !grayUntil(now);
 
-/** When a room ends by itself unless something happens (someone in or out, a new key, 等人 again), and why it would */
+/** When a room ends by itself unless something happens (someone in or out, ready or picks changed, a new key, a round ended), and why it would */
 function endsOf(r: Room): { at: number; why: "idle" | "go" | "life" } {
   const life = r.createdAt.getTime() + LIFE_MS;
   const own: { at: number; why: "idle" | "go" } =
@@ -337,7 +339,6 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     members,
     endsAt: ends.at,
     endsWhy: ends.why,
-    rewaitAt: room.waitedAt.getTime() + REWAIT_MS,
     now,
   };
 }
@@ -423,7 +424,7 @@ async function endIn(tx: Exec, roomId: string, why: SquadEnd, now: number): Prom
   return gone.map((r) => r.userId);
 }
 
-/** End a room (the host's 结束, the sweep, the 管理台) and tell everyone in it */
+/** End a room (the host's 销毁房间, the sweep, the 管理台) and tell everyone in it */
 export async function endSquadRoom(roomId: string, why: SquadEnd, now = Date.now()) {
   const ids = await db.transaction((tx) => endIn(tx, roomId, why, now));
   if (!ids) return false;
@@ -495,7 +496,7 @@ export async function openRoom(user: UserRow, body: Record<string, unknown>, now
 }
 
 /**
- * In at a room from the list (room: its id), with the 卫戍名片 as this room's card: while it waits for players (等人)
+ * In at a room from the list (room: its id), with the 卫戍名片 as this room's card: while it waits for players
  * and is not full; never one asked to leave it, nor with anyone in it either has blocked; one only for 触须之交, only
  * by a 触须之交 of its host. JOINS_PER_HOUR rooms an hour at most. Out of the room they were in first.
  */
@@ -610,9 +611,9 @@ async function hostedBy(userId: string) {
 }
 
 /**
- * The host's row of three (to): 等人 (wait: on the list and open; tapped while waiting, the wait starts over, every
- * REWAIT_MS at most), 开打 (go: closed, at the bottom of the list) or 结束 (end). Between 等人 and 开打 every
- * STATE_EVERY_MS at most.
+ * The host's 开始游戏 (go: closed, at the bottom of the list; only with someone in it, everyone else ready and no two
+ * strategies the same, src/lib/squad.ts notYet), 结束这局 (wait: open again, everyone readying again for the next) and
+ * 销毁房间 (end). Between the first two every STATE_EVERY_MS at most.
  */
 export async function setState(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const to = body.to;
@@ -625,14 +626,18 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
   const changed = await db.transaction(async (tx) => {
     const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id)).for("update");
     if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
-    if (room.state === to) {
-      if (to === "go") return false;
-      const again = room.waitedAt.getTime() + REWAIT_MS;
-      if (again > now) throw refuse(429, fmt(T.server.squad.rewaitLater, { m: Math.ceil((again - now) / 60_000) }));
-      await tx.update(squadRooms).set({ waitedAt: new Date(now) }).where(eq(squadRooms.id, room.id));
-      return false;
-    }
+    if (room.state === to) return false;
     if (room.stateAt && room.stateAt.getTime() > now - STATE_EVERY_MS) throw refuse(429, T.server.squad.tooFast);
+    const others = and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt), ne(squadMembers.userId, room.hostId));
+    if (to === "go") {
+      // someone with the host, everyone else ready, no two strategies the same
+      const rows = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
+      const blocks = notYet(rows.map((m) => ({ host: m.userId === room.hostId, inGame: m.inGame, strategy: roomCard(m).strategy })));
+      if (!mayStart(blocks)) throw refuse(409, T.server.squad.notReady, NOT_READY);
+    } else {
+      // the round over: everyone readies again, for the next
+      await tx.update(squadMembers).set({ inGame: false }).where(others);
+    }
     const at = new Date(now);
     await tx
       .update(squadRooms)
@@ -666,6 +671,11 @@ export async function changeKey(user: Pick<UserRow, "id">, body: Record<string, 
       .update(squadRooms)
       .set({ key, keyAt: new Date(now), keyChanges: room.keyChanges + 1 })
       .where(eq(squadRooms.id, room.id));
+    // a new alliance in the game: everyone but the host goes in again, and readies again
+    await tx
+      .update(squadMembers)
+      .set({ inGame: false })
+      .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt), ne(squadMembers.userId, room.hostId)));
     return true;
   });
   if (changed) await tellRoom(mine.room.id, { kind: "key" });
@@ -720,7 +730,7 @@ async function kickIn(roomId: string, hostId: string, h: number, now: number) {
   return gone;
 }
 
-/** 我进同盟了 (on), ticked by the player for everyone in the room to see; told to them when it comes on */
+/** 准备 (on: in the game's alliance and ready), ticked by the player for everyone in the room to see; told to them when it comes on */
 export async function setInGame(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (typeof body.on !== "boolean") throw refuse(400, T.server.common.badRequest);
   const mine = await roomOf(db, user.id);
@@ -730,6 +740,8 @@ export async function setInGame(user: Pick<UserRow, "id">, body: Record<string, 
       .update(squadMembers)
       .set({ inGame: body.on })
       .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, user.id)));
+    // something happening: the wait starts over
+    await db.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id));
     await tellRoom(mine.room.id, body.on ? { kind: "game", h: mine.me.handle } : undefined);
   }
   return { room: await roomView(mine.room.id, user.id, now), now };
@@ -746,6 +758,7 @@ export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, u
     .update(squadMembers)
     .set({ core: picks.core, strategy: picks.strategy })
     .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, user.id)));
+  await db.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id));
   forgetList();
   await tellRoom(mine.room.id);
   return { room: await roomView(mine.room.id, user.id, now), now };

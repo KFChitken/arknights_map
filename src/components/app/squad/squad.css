@@ -286,3 +286,14 @@
 .sq-st.on .sq-face { box-shadow: 0 0 0 2.5px var(--ink); }
 .sq-st.on small { color: var(--ink); font-weight: 700; }
 .sq-more { padding: 7px; border: 1px dashed #c9cdd3; border-radius: 10px; background: none; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+
+/* 准备, 开始游戏, 结束这局; the host's menu; 请出去 in a tile's corner; the key in a line once ready */
+.sq-go { display: flex; flex-direction: column; gap: 6px; }
+.sq-go button { padding: 11px; font-size: 15px; }
+.sq-need { margin: 0; padding: 8px 10px; border-radius: 10px; background: #fff4e6; color: #9a3412; font-size: 12.5px; line-height: 1.5; }
+.sq-hostmenu button.end b { color: #b42318; }
+.sq-tile .kick { position: absolute; top: 6px; right: 6px; z-index: 2; padding: 1px 7px; border: 1px solid #d6d9de; border-radius: 7px; background: #fff; color: #4b5160; font: inherit; font-size: 11px; cursor: pointer; }
+.sq-tile .st { padding: 0 7px; border-radius: 6px; background: #f1f2f4; color: var(--muted); font-size: 11.5px; font-weight: 700; }
+.sq-tile .st.host { background: #fff3c2; color: #6a4f00; }
+.sq-key.one { grid-template-columns: auto minmax(0, 1fr); }
+.sq-key.one .kl small { display: none; }

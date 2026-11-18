@@ -40,10 +40,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST join {room} / {invite} / {declaration}   in at a room from the list, at an invitation to you, or at a
  *                                 宣言招人 you see in 消息 (the host's invitation opens one only for 触须之交)
  *   POST leave                    out of your room (the host's ends)
- *   POST state {to}               the host: wait (等人), go (开打) or end (结束)
+ *   POST state {to}               the host: go (开始游戏), wait (结束这局) or end (销毁房间)
  *   POST key {key}                the host changes the 同盟密钥
  *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
- *   POST game {on}                我进同盟了, ticked or not
+ *   POST game {on}                准备 (in the game's alliance, ready), ticked or not
  *   POST prefs {card}             your card in this room alone
  *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
  *   POST say {p}                  a set line, by its number

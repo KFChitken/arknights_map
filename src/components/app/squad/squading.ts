@@ -215,7 +215,7 @@ export async function leaveSquadRoom() {
   setRoom(null);
 }
 
-/** The host's 等人, 开打 or 结束 */
+/** The host's 开始游戏 (go), 结束这局 (wait) or 销毁房间 (end) */
 export async function squadState(to: "wait" | "go" | "end") {
   const { room: r } = await squadApi.state(to);
   setRoom(r);

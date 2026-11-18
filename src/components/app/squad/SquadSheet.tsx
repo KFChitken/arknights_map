@@ -32,7 +32,10 @@ import {
   TAGS,
   TAGS_MAX,
   type PhraseRow,
+  mayStart,
+  notYet,
   sameStrategy,
+  strategyOf,
   type SquadCard,
   type SquadFriend,
   type SquadList,
@@ -48,7 +51,6 @@ import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import DjBar from "./DjBar";
 import { CoreBadge, CoreChips, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
-import { MegaphoneIcon } from "../chrome/parts";
 import { useOperatorArt, type Art } from "../OperatorNames";
 import Sheet from "../Sheet";
 import {
@@ -874,7 +876,9 @@ function RoomView({
   // another's tile tapped: what can be done to TA
   const [menu, setMenu] = useState<number | null>(null);
   const art = useOperatorArt();
-  const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | null>(null);
+  const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | "hostMenu" | null>(null);
+  // the host asking someone to leave: whom (their number), asked first
+  const [kicking, setKicking] = useState<number | null>(null);
   const [, tick] = useState(0);
   // the clock of what it shows: the server's when the room came, gone on since on this device
   const cameAt = useRef({ server: room.now, device: Date.now() });
@@ -905,6 +909,15 @@ function RoomView({
   // even where only the host's may), and the host's 宣言招人, once a room, where anyone may come
   const mayInvite = room.state === "wait" && n < SQUAD_MAX;
   const mayDeclare = mayInvite && room.host && !room.friendsOnly && !room.declared;
+  // what keeps the round from starting, in a line (the server says no the same way)
+  const blocks = notYet(room.members);
+  const nameOf = (m: SquadMember) => (m.you ? T.squad.room.youName : m.name);
+  const need = [
+    ...(blocks.alone ? [T.squad.room.alone] : []),
+    ...blocks.notReady.map((m) => fmt(T.squad.room.notReadyOne, { name: nameOf(m) })),
+    ...blocks.clashes.map(([a, b]) => fmt(T.squad.room.clashPair, { a: nameOf(a), b: nameOf(b), s: strategyOf(a.strategy!)?.op ?? "" })),
+  ].join(T.squad.room.needSep);
+  const kickOf = kicking === null ? null : (room.members.find((m) => m.h === kicking && !m.you) ?? null);
   const declare = async (from: string[] | null) => {
     const res = await run(() => declareSquadRoom(from));
     if (!res) return;
@@ -931,29 +944,36 @@ function RoomView({
             {T.squad.room.back}
           </button>
           <h2>{`${levelName(room.level)}${T.squad.dot}${srv(room.server)}`}</h2>
-          {room.host ? <span className="lock">{T.squad.room.youHost}</span> : null}
-          <button className="ghost small" disabled={busy} onClick={leave}>
-            {T.squad.room.leave}
-          </button>
+          {room.host ? (
+            <button className="ghost small" aria-label={T.squad.room.hostMenu} aria-expanded={asking === "hostMenu"} onClick={() => setAsking((a) => (a === "hostMenu" ? null : "hostMenu"))}>
+              ⋯
+            </button>
+          ) : (
+            <button className="ghost small" disabled={busy} onClick={leave}>
+              {T.squad.room.leave}
+            </button>
+          )}
         </div>
       }
       onClose={onClose}
       footer={<Dock music={room.dj && room.startedAt !== null} />}
     >
       <Floats />
-      {room.host && (
-        <div className="sq-seg" role="group" aria-label={T.squad.room.go}>
-          <button className={room.state === "wait" ? "on" : ""} aria-pressed={room.state === "wait"} disabled={busy} onClick={() => void run(() => squadState("wait"))}>
-            {T.squad.room.stateWait}
-            <small>{T.squad.room.stateWaitSub}</small>
+      {room.host && asking === "hostMenu" && (
+        <div className="sq-pop sq-hostmenu" role="group" aria-label={T.squad.room.hostMenu}>
+          <button disabled={busy || room.keyLeft <= 0} onClick={() => setAsking("key")}>
+            <b>{T.squad.room.rekey}</b>
+            {room.keyLeft > 0 ? fmt(T.squad.room.rekeyLeft, { n: room.keyLeft }) : T.squad.room.rekeyNone}
           </button>
-          <button className={room.state === "go" ? "on" : ""} aria-pressed={room.state === "go"} disabled={busy} onClick={() => void run(() => squadState("go"))}>
-            {T.squad.room.stateGo}
-            <small>{T.squad.room.stateGoSub}</small>
-          </button>
+          {!room.friendsOnly && room.state === "wait" && (
+            <button disabled={busy || !mayDeclare} onClick={() => setAsking("declare")}>
+              <b>{T.squad.call.declare}</b>
+              {room.declared ? T.squad.call.declared : n >= SQUAD_MAX ? T.squad.room.fullNoCall : ""}
+            </button>
+          )}
           <button className="end" disabled={busy} onClick={() => setAsking("end")}>
-            {T.squad.room.stateEnd}
-            <small>{T.squad.room.stateEndSub}</small>
+            <b>{T.squad.room.destroy}</b>
+            {T.squad.room.endNote}
           </button>
         </div>
       )}
@@ -962,7 +982,7 @@ function RoomView({
         <span>{host ? fmt(T.squad.room.hostLine, { name: host.name, server: srv(room.server) }) : srv(room.server)}</span>
         <small className="ends">{ends}</small>
       </div>
-      <div className="sq-key">
+      <div className={`sq-key${!room.host && me.inGame ? " one" : ""}`}>
         <div className="kl">
           {fmt(T.squad.room.keyLabel, { server: srv(room.server) })}
           <small>{keyAge < 60_000 ? T.squad.room.keyAgeNow : fmt(T.squad.room.keyAge, { n: minutes(keyAge) })}</small>
@@ -972,21 +992,9 @@ function RoomView({
           <button className="small" onClick={() => void copy()}>
             {T.squad.room.copy}
           </button>
-          {room.host && (
-            <button className="small ghost" disabled={busy || room.keyLeft <= 0} onClick={() => setAsking("key")}>
-              {T.squad.room.rekey}
-            </button>
-          )}
         </div>
         {room.host && room.state === "wait" && keyAge >= KEY_WARN_MS && <p className="sq-warn small">{T.squad.room.keyWarn}</p>}
-        {!room.host && (
-          <>
-            <p className="hint">{T.squad.room.keyHint}</p>
-            <button className={`small${me.inGame ? " ghost" : " dark"}`} disabled={busy} onClick={() => void run(() => setSquadInGame(!me.inGame))}>
-              {me.inGame ? T.squad.room.inGameOn : T.squad.room.inGame}
-            </button>
-          </>
-        )}
+        {!room.host && !me.inGame && <p className="hint">{T.squad.room.keyHint}</p>}
       </div>
       <DjBar room={room} busy={busy} run={run} />
       <div className="sq-tiles">
@@ -999,6 +1007,7 @@ function RoomView({
             onCore={() => setPicking("core")}
             onStrategy={() => setPicking("strategy")}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
+            onKick={room.host && !m.you ? () => setKicking(m.h) : undefined}
           />
         ))}
         {Array.from({ length: Math.max(0, SQUAD_MAX - n) }, (_, i) => (
@@ -1027,12 +1036,6 @@ function RoomView({
             {T.squad.room.boldSub}
           </button>
           <small>{T.squad.room.touchNote}</small>
-          {room.host && (
-            <button onClick={() => (setMenu(null), void run(() => kickFromSquad(menuOf.h)))}>
-              <b>{T.squad.room.kick}</b>
-              {T.squad.room.kickSub}
-            </button>
-          )}
           <button onClick={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}>
             <b>{T.squad.room.block}</b>
             {T.squad.room.blockSub}
@@ -1043,6 +1046,30 @@ function RoomView({
           </button>
         </div>
       )}
+      {room.host ? (
+        room.state === "wait" ? (
+          <div className="sq-go">
+            {!mayStart(blocks) && <p className="sq-need">{fmt(T.squad.room.needLine, { list: need })}</p>}
+            <button className="primary grow" disabled={busy || !mayStart(blocks)} onClick={() => void run(() => squadState("go"))}>
+              {T.squad.room.start}
+            </button>
+          </div>
+        ) : (
+          <div className="sq-go">
+            <button className="dark grow" disabled={busy} onClick={() => void run(() => squadState("wait"))}>
+              {T.squad.room.endRound}
+            </button>
+          </div>
+        )
+      ) : (
+        room.state === "wait" && (
+          <div className="sq-go">
+            <button className={me.inGame ? "ghost grow" : "primary grow"} disabled={busy} onClick={() => void run(() => setSquadInGame(!me.inGame))}>
+              {me.inGame ? T.squad.room.inGameOn : T.squad.room.inGame}
+            </button>
+          </div>
+        )
+      )}
       {room.invited.length > 0 && (
         <p className="hint sq-invited">
           {fmt(T.squad.call.invited, {
@@ -1051,18 +1078,6 @@ function RoomView({
               .join(T.common.listSep),
           })}
         </p>
-      )}
-      {room.host && room.state === "wait" && (mayDeclare || room.declared) && (
-        <div className="sq-call">
-          {room.declared ? (
-            <p className="hint">{T.squad.call.declared}</p>
-          ) : (
-            <button className="small ghost" disabled={busy} onClick={() => setAsking("declare")}>
-              <MegaphoneIcon size={14} />
-              {T.squad.call.declare}
-            </button>
-          )}
-        </div>
       )}
       <p className="hint sq-tip">
         <button className="link" onClick={onCard}>
@@ -1084,6 +1099,26 @@ function RoomView({
               {T.squad.room.endYes}
             </button>
             <button className="ghost" onClick={() => setAsking(null)}>
+              {T.squad.room.endNo}
+            </button>
+          </div>
+        </Ask>
+      )}
+      {kickOf && (
+        <Ask title={fmt(T.squad.room.kickAsk, { name: kickOf.name })} onNo={() => setKicking(null)}>
+          <p>{T.squad.room.kickSub}</p>
+          <div className="row">
+            <button
+              className="dark grow"
+              disabled={busy}
+              onClick={() => {
+                setKicking(null);
+                void run(() => kickFromSquad(kickOf.h));
+              }}
+            >
+              {T.squad.room.kick}
+            </button>
+            <button className="ghost" onClick={() => setKicking(null)}>
               {T.squad.room.endNo}
             </button>
           </div>
@@ -1313,7 +1348,8 @@ function RekeyAsk({ left, busy, onSave, onNo }: { left: number; busy: boolean; o
 
 /**
  * One in the room, as a tile: the roach, the name (房主, 你, 触须之交), the core alliance and the strategy (your own
- * tapped to change them for this room), and 我进同盟了. Another's tile, tapped, opens what can be done to TA.
+ * tapped to change them for this room), and whether they are ready (准备). Another's tile, tapped, opens what can be
+ * done to TA, and the host's 请出去 sits in its corner.
  */
 function MemberTile({
   m,
@@ -1322,6 +1358,7 @@ function MemberTile({
   onCore,
   onStrategy,
   onMenu,
+  onKick,
 }: {
   m: SquadMember;
   art: Art | null;
@@ -1329,6 +1366,8 @@ function MemberTile({
   onCore: () => void;
   onStrategy: () => void;
   onMenu: () => void;
+  /** The host's 请出去, asked first */
+  onKick?: () => void;
 }) {
   return (
     <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}`}>
@@ -1336,7 +1375,6 @@ function MemberTile({
       <RoachIcon color={m.color as RoachColor} avatar={m.avatar as RoachAvatar} size={44} />
       <span className="nm">
         {m.name}
-        {m.host && <small>{T.squad.room.host}</small>}
         {m.you && <small>{T.squad.room.you}</small>}
         {m.friend && <small className="fr">{T.squad.room.friend}</small>}
       </span>
@@ -1344,7 +1382,12 @@ function MemberTile({
         <CoreBadge core={m.core} onClick={m.you ? onCore : undefined} />
         <StrategyPic id={m.strategy} art={art} onClick={m.you ? onStrategy : undefined} />
       </span>
-      {m.inGame && !m.host && <span className="st ok">{T.squad.room.inGameTag}</span>}
+      {onKick && (
+        <button type="button" className="kick" onClick={onKick}>
+          {T.squad.room.kick}
+        </button>
+      )}
+      {m.host ? <span className="st host">{T.squad.room.host}</span> : m.inGame ? <span className="st ok">{T.squad.room.inGameTag}</span> : <span className="st">{T.squad.room.notReadyTag}</span>}
       {m.you && <small className="hint">{T.squad.room.tapToChange}</small>}
     </div>
   );

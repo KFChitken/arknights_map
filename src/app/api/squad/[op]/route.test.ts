@@ -15,7 +15,6 @@ import {
   LIFE_MS,
   OPEN_EVERY_MS,
   OPENS_PER_DAY,
-  REWAIT_MS,
   STRATEGIES,
   WAIT_IDLE_MS,
   type SquadList,
@@ -306,27 +305,40 @@ describe("a room", () => {
     expect(heard).toContainEqual({ t: "end", room: second.id, why: "host" });
   });
 
-  it("等人 / 开打 / 结束: playing, it is closed and at the bottom of the list; 等人 starts the wait over once every 10 minutes", async () => {
+  it("开始游戏 only with a teammate, everyone ready and no two strategies the same; 结束这局 opens it again, all readying again", async () => {
     const host = await player("host");
     const a = await player("a");
+    const b = await player("b");
     const room = await opened(host);
     const other = await opened(await player("other"));
     expect((await post(a, "state", { to: "go" })).status).toBe(409);
+    const refused = { status: 409, body: { code: "squadNotReady" } };
+    // alone
+    expect(await post(host, "state", { to: "go" })).toMatchObject(refused);
+    // a teammate not ready
+    await goIn(a, room);
+    expect(await post(host, "state", { to: "go" })).toMatchObject(refused);
+    // ready (and that is something happening: the wait starts over), but with the host's strategy
+    const t0 = Date.now();
+    expect((await post(a, "game", { on: true })).status).toBe(200);
+    expect((await roomRow(room.id))!.movedAt.getTime()).toBeGreaterThanOrEqual(t0 - 1000);
+    expect(await post(host, "state", { to: "go" })).toMatchObject(refused);
+    // 无偏好 clashes with nobody
+    expect((await post(a, "prefs", { card: { core: 1, strategy: null } })).status).toBe(200);
     expect((await post(host, "state", { to: "go" })).body!.room).toMatchObject({ state: "go", endsWhy: "go" });
-    expect(await post(a, "join", { room: room.id })).toMatchObject({ status: 409, body: { code: "squadPlaying" } });
-    expect((await roomsOf(a)).map((r) => [r.id, r.state])).toEqual([
+    expect(await post(b, "join", { room: room.id })).toMatchObject({ status: 409, body: { code: "squadPlaying" } });
+    expect((await roomsOf(b)).map((r) => [r.id, r.state])).toEqual([
       [other.id, "wait"],
       [room.id, "go"],
     ]);
-    // back to 等人 again too soon
+    // 结束这局 too soon after
     expect((await post(host, "state", { to: "wait" })).status).toBe(429);
     const t = Date.now();
     await setState(host, { to: "wait" }, t + 11_000);
-    expect((await roomRow(room.id))!.state).toBe("wait");
-    // 等人 tapped again: not before 10 minutes, then the wait starts over
-    await expect(setState(host, { to: "wait" }, t + 60_000)).rejects.toMatchObject({ status: 429 });
-    await setState(host, { to: "wait" }, t + 11_000 + REWAIT_MS);
-    expect((await roomRow(room.id))!.waitedAt.getTime()).toBe(t + 11_000 + REWAIT_MS);
+    expect(await roomRow(room.id)).toMatchObject({ state: "wait", waitedAt: new Date(t + 11_000) });
+    // everyone readies again for the next round
+    expect((await post(a, "room")).body!.room).toMatchObject({ members: [{ inGame: false }, { inGame: false }] });
+    // 销毁房间
     await post(host, "state", { to: "end" });
     expect((await roomRow(room.id))!.endReason).toBe("host");
   });
@@ -340,7 +352,10 @@ describe("a room", () => {
     // pasted at once after opening: a minute first
     expect((await post(host, "key", { key: "zz12cd34ef56gh" })).status).toBe(429);
     const t = Date.now() + KEY_EVERY_MS;
+    await post(a, "game", { on: true });
     expect(await changeKey(host, { key: "zz12cd34ef56gh" }, t)).toMatchObject({ room: { key: "zz12cd34ef56gh", keyAt: t, keyLeft: KEY_CHANGES - 1 } });
+    // into the new alliance, everyone readies again
+    expect((await post(a, "room")).body!.room).toMatchObject({ members: [{ inGame: false }, { inGame: false }] });
     await expect(changeKey(host, { key: "yy12cd34ef56gh" }, t + KEY_EVERY_MS - 1000)).rejects.toMatchObject({ status: 429 });
     expect(heard.filter((x) => x.t === "room" && (x.what as { kind?: string })?.kind === "key")).toHaveLength(1);
     await db.update(squadRooms).set({ keyChanges: KEY_CHANGES }).where(eq(squadRooms.id, room.id));
@@ -576,6 +591,9 @@ describe("the sweep", () => {
     const t = Date.now();
     const idle = (await openRoom(await row(await player("idle")), { key: KEY, server: "cn", level: 3 }, t)).room!;
     const playing = (await openRoom(await row(await player("playing")), { key: KEY, server: "cn", level: 3 }, t)).room!;
+    const mate = await player("mate", { squadStrategy: null });
+    await goIn(mate, playing);
+    await post(mate, "game", { on: true });
     await setState(await row((await db.select().from(users).where(eq(users.name, "playing")))[0]), { to: "go" }, t);
     const old = (await openRoom(await row(await player("old")), { key: KEY, server: "cn", level: 3 }, t)).room!;
     // the old room kept busy: someone comes in now and then

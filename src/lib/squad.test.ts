@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { T } from "@/i18n";
-import { isPhrase, PHRASE_ROWS } from "./squad";
+import { isPhrase, mayStart, notYet, PHRASE_ROWS, sameStrategy, squadClash } from "./squad";
 
 describe("一起卫戍's set lines", () => {
   it("go by numbers that never change: 开局's 25–31 and 局内's 32–35 after those of before", () => {
@@ -19,5 +19,24 @@ describe("一起卫戍's set lines", () => {
     expect(T.squad.say.lines[10 - 1]).toBe("我是漏勺我是区");
     expect(T.squad.say.lines[30 - 1]).toBe("卫卫卫，能听到吗？！");
     for (const [row] of PHRASE_ROWS) expect(T.squad.say.rows[row], row).toBeTruthy();
+  });
+});
+
+describe("starting a round (开始游戏)", () => {
+  const host = { host: true, inGame: false, strategy: 18 };
+  it("needs a teammate, everyone but the host ready, and no strategy twice; none (无偏好) clashes with nobody", () => {
+    expect(mayStart(notYet([host]))).toBe(false);
+    expect(notYet([host]).alone).toBe(true);
+    const a = { host: false, inGame: false, strategy: 20 };
+    expect(notYet([host, a]).notReady).toEqual([a]);
+    const ready = { ...a, inGame: true };
+    expect(mayStart(notYet([host, ready]))).toBe(true);
+    const same = { host: false, inGame: true, strategy: 18 };
+    expect(notYet([host, same]).clashes).toEqual([[host, same]]);
+    expect(mayStart(notYet([host, same]))).toBe(false);
+    const none = [{ host: false, inGame: true, strategy: null }, { host: false, inGame: true, strategy: null }];
+    expect(squadClash(none)).toEqual([]);
+    expect(mayStart(notYet([host, ...none]))).toBe(true);
+    expect(sameStrategy(null, null)).toBe(false);
   });
 });
