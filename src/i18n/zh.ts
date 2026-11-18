@@ -2143,7 +2143,40 @@ export const zh = {
       peekExtrasNone: "还没标",
       touch: "碰一下",
       close: "关上",
+      /** The fight on the map (SquadStage.tsx): hidden or shown on this device */
+      map: "看地图",
+      show: "看打怪",
+      mapLabel: "收起打怪画面，看地图",
+      showLabel: "打开地图上的打怪画面",
+      /** What pops up in the fight: one for all three versions */
+      miss: "漏！",
+      bigDown: "大的倒了！",
+      ko: "击破！",
+      boom: "轰！",
+      thud: "咚！",
+      big: "大的",
+      /** B: one big monster */
+      grow: "变大了！",
+      combo: "合击！",
+      defDown: "防御↓",
+      ouch: ["哎！", "嗷！", "吱！"],
+      /** C: the brawl cloud */
+      words: ["啪！", "咚！", "砰！", "嘎！", "吱！", "？！", "嘭！", "咔！", "哐！"],
+      splat: "啪叽！",
+      crack: "碎！",
+      crash: "哐当！",
+      howl: "嗷呜～",
+      whoosh: "嗖！",
+      flyAway: "飞了！",
+      run: "跑啊！",
+      drop: "空投！",
+      yay: "好耶！",
+      dots: "……",
+      bang: "砰！！",
+      help: ["啊——", "吱——", "救命！"],
     },
+    /** The monsters of the fight on the map, as the game names them (B's bar) */
+    foe: { slug: "源石虫", acid: "酸液源石虫", infused: "高能源石虫", hound: "猎狗", drone: "妖怪" },
     /** What one says and does in a room, and marks for a round (SquadTalk.tsx) */
     talk: {
       open: "说点什么",

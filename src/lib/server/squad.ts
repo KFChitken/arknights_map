@@ -352,6 +352,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     you: me.handle,
     host: room.hostId === viewerId,
     members,
+    wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
     endsAt: ends.at,
     endsWhy: ends.why,
     now,

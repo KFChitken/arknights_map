@@ -83,6 +83,48 @@ export const useSquadMoves = (): SquadMoveDone[] => useSyncExternalStore(moves.o
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
+
+/** 说话 / 动作 / 这局, open (from your tile on the bar, or your roach in the fight on the map) */
+const talkOpen = kept(false);
+export const useSquadTalkOpen = () => useSyncExternalStore(talkOpen.on, talkOpen.get, () => false);
+export const openSquadTalk = () => talkOpen.set(true);
+export const closeSquadTalk = () => talkOpen.set(false);
+
+/** The fight on the map, on this device: 看打怪 (on, unless this device said 看地图), kept in its storage */
+const SCENE_KEY = "squad.scene";
+let sceneOnNow: boolean | null = null;
+const sceneFns = new Set<() => void>();
+function sceneOnGet() {
+  if (sceneOnNow === null) {
+    try {
+      sceneOnNow = typeof window === "undefined" || window.localStorage.getItem(SCENE_KEY) !== "0";
+    } catch {
+      sceneOnNow = true;
+    }
+  }
+  return sceneOnNow;
+}
+const sceneOnSub = (fn: () => void) => {
+  sceneFns.add(fn);
+  return () => {
+    sceneFns.delete(fn);
+  };
+};
+export const useSquadSceneOn = () => useSyncExternalStore(sceneOnSub, sceneOnGet, () => true);
+export function setSquadSceneOn(on: boolean) {
+  sceneOnNow = on;
+  try {
+    if (on) window.localStorage.removeItem(SCENE_KEY);
+    else window.localStorage.setItem(SCENE_KEY, "0");
+  } catch {
+    // for this page alone
+  }
+  for (const fn of [...sceneFns]) fn();
+}
+/** The fight shows on the map now: lines come out of its roaches, not the bar's tiles */
+const sceneShows = kept(false);
+export const useSquadSceneShows = () => useSyncExternalStore(sceneShows.on, sceneShows.get, () => false);
+export const setSquadSceneShows = (on: boolean) => sceneShows.set(on);
 export const useSquadNotice = () => useSyncExternalStore(notice.on, notice.get, () => null);
 export const useSquadCard = () => useSyncExternalStore(card.on, card.get, () => undefined);
 export const useSquadShowName = () => useSyncExternalStore(showName.on, showName.get, () => undefined);
@@ -454,6 +496,7 @@ export function forgetSquadPage() {
   unfollowSquad();
   roundWant = null;
   window.clearTimeout(roundTimer);
+  talkOpen.set(false);
   setRoom(null);
   notice.set(null);
   card.set(undefined);

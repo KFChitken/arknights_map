@@ -325,7 +325,8 @@ describe("a room", () => {
     expect(await post(host, "state", { to: "go" })).toMatchObject(refused);
     // 无偏好 clashes with nobody
     expect((await post(a, "prefs", { card: { core: 1, strategy: null } })).status).toBe(200);
-    expect((await post(host, "state", { to: "go" })).body!.room).toMatchObject({ state: "go", endsWhy: "go" });
+    // the round's start, for the fight on the map each page draws (the same one for everyone in it)
+    expect((await post(host, "state", { to: "go" })).body!.room).toMatchObject({ state: "go", endsWhy: "go", wentAt: expect.any(Number) });
     expect(await post(b, "join", { room: room.id })).toMatchObject({ status: 409, body: { code: "squadPlaying" } });
     expect((await roomsOf(b)).map((r) => [r.id, r.state])).toEqual([
       [other.id, "wait"],
@@ -336,8 +337,8 @@ describe("a room", () => {
     const t = Date.now();
     await setState(host, { to: "wait" }, t + 11_000);
     expect(await roomRow(room.id)).toMatchObject({ state: "wait", waitedAt: new Date(t + 11_000) });
-    // everyone readies again for the next round
-    expect((await post(a, "room")).body!.room).toMatchObject({ members: [{ inGame: false }, { inGame: false }] });
+    // everyone readies again for the next round, and no round is on
+    expect((await post(a, "room")).body!.room).toMatchObject({ wentAt: null, members: [{ inGame: false }, { inGame: false }] });
     // 销毁房间
     await post(host, "state", { to: "end" });
     expect((await roomRow(room.id))!.endReason).toBe("host");

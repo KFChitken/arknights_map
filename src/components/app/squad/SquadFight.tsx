@@ -10,7 +10,17 @@ import { useOperatorArt, type Art } from "../OperatorNames";
 import { useAbove } from "./SquadBar";
 import { CoreBadge, extraNames, StrategyFace, strategyWords } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
-import { useSquadLines, useSquadMoves, useSquadRoom } from "./squading";
+import {
+  closeSquadTalk,
+  openSquadTalk,
+  setSquadSceneOn,
+  useSquadLines,
+  useSquadMoves,
+  useSquadRoom,
+  useSquadSceneOn,
+  useSquadSceneShows,
+  useSquadTalkOpen,
+} from "./squading";
 import { setSquadMuted, squadSoundReady, useSquadMuted } from "./squadSound";
 import "./squadFight.css";
 
@@ -22,8 +32,10 @@ const SquadTalk = dynamic(() => import("./SquadTalk"), { ssr: false });
  * marked; yours nudges, with 标策略), the name, the core alliance's badge, the 附加盟约 (two, then +n), and the last
  * line for a minute; the host's says 房主, yours is yellow. A line said comes as a bubble over its tile, a change of
  * someone's round as a flash of theirs. Your tile opens 说话 / 动作 / 这局 (SquadTalk.tsx); another's, a card of TA's
- * round with 碰. Above it 🔔 (the sound, this device) and 展开 (the room's sheet, where the host ends the round). On a
- * phone a row of four above the layout's bottom bar; on a computer a column beside 卫戍 (data-squad-entry).
+ * round with 碰. Above it 看地图 / 看打怪 (the fight on the map, this device: SquadStage.tsx; while it shows, lines come
+ * out of its roaches instead of the tiles), 🔔 (the sound, this device) and 展开 (the room's sheet, where the host ends
+ * the round). On a phone a row of four above the layout's bottom bar; on a computer a column beside 卫戍
+ * (data-squad-entry).
  */
 
 /** Wide enough for the column beside 卫戍 */
@@ -111,8 +123,10 @@ export default function SquadFight({
   const lines = useSquadLines();
   const moves = useSquadMoves();
   const muted = useSquadMuted();
+  const sceneOn = useSquadSceneOn();
+  const sceneShows = useSquadSceneShows();
   const flashing = useFlashes(playing ? room : null);
-  const [talking, setTalking] = useState(false);
+  const talking = useSquadTalkOpen();
   // a teammate's card: whose, and where (over the row on a phone, beside the column on a computer)
   const [peek, setPeek] = useState<{ h: number; at: CSSProperties } | null>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -165,13 +179,13 @@ export default function SquadFight({
         aria-label={m.you ? T.squad.fight.youTile : fmt(T.squad.fight.mateTile, { name: m.name })}
         onClick={() => {
           squadSoundReady();
-          if (m.you) setTalking(true);
+          if (m.you) openSquadTalk();
           else setPeek((p) => (p?.h === m.h ? null : { h: m.h, at: peekAt() }));
         }}
       >
         {m.you && <span className="tapme">{m.strategy === null ? T.squad.fight.mark : T.squad.fight.tapMe}</span>}
         {m.host && !m.you && <span className="hostt">{T.squad.fight.host}</span>}
-        <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "left" : "up"} />
+        {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "left" : "up"} />}
         <span className="rw">
           <SquadRoach m={m} size={wide ? 46 : 42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} />
           {m.strategy === null ? (
@@ -200,6 +214,11 @@ export default function SquadFight({
           <div className="fh">
             <ShieldIcon size={16} />
             <span className="t">{head}</span>
+            {room.wentAt !== null && (
+              <button type="button" aria-label={sceneOn ? T.squad.fight.mapLabel : T.squad.fight.showLabel} aria-pressed={!sceneOn} onClick={() => setSquadSceneOn(!sceneOn)}>
+                {sceneOn ? T.squad.fight.map : T.squad.fight.show}
+              </button>
+            )}
             <button
               type="button"
               aria-label={muted ? T.squad.fight.soundOffLabel : T.squad.fight.soundOnLabel}
@@ -216,7 +235,7 @@ export default function SquadFight({
         </div>
       )}
       {shown && peek && peekOf && <Peek m={peekOf} at={peek.at} art={art} onTouch={(bold) => (setPeek(null), onTouch(peekOf.h, bold))} onClose={() => setPeek(null)} />}
-      {talking && <SquadTalk room={room} onClose={() => setTalking(false)} onError={onError} />}
+      {talking && <SquadTalk room={room} onClose={closeSquadTalk} onError={onError} />}
     </>
   );
 }

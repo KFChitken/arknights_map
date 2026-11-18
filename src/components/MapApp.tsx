@@ -165,6 +165,7 @@ import {
 } from "./app/listening";
 import SquadBar, { SquadPop, type SquadCallItem, type SquadInviteItem, type SquadPopCard } from "./app/squad/SquadBar";
 import SquadFight from "./app/squad/SquadFight";
+import SquadStage from "./app/squad/SquadStage";
 import type { SquadJoin, SquadView } from "./app/squad/SquadSheet";
 import {
   forgetSquadPage,
@@ -6004,6 +6005,8 @@ export default function MapApp({
       )}
       {/* 一起卫戍: 卫戍中 n/4 over the map, back to the room; away while a panel is open, not to cover it on a phone */}
       {squadShown && <SquadBar hidden={Boolean(panel || listenOpen || selected || picking || placing)} onOpen={() => setPanel({ kind: "squad" })} />}
+      {/* 一起卫戍: while the room plays, the fight over the dimmed map, under the buttons; off while anything covers it */}
+      {squadShown && <SquadStage hidden={Boolean(panel || listenOpen || selected || picking || placing)} />}
       {/* 一起卫戍: while the room plays, the bar of the round in that place, a tile each; away as the other is */}
       {squadShown && (
         <SquadFight

@@ -83,7 +83,7 @@ export default function FloatChrome(p: ChromeProps) {
 
       {sides && (
         <>
-          <nav className={`rail glass${folded.r ? " folded" : ""}`} aria-label={T.common.guides} aria-hidden={folded.r || undefined} {...swipeRight}>
+          <nav className={`rail glass${folded.r ? " folded" : ""}`} aria-label={T.common.guides} aria-hidden={folded.r || undefined} data-chrome-side {...swipeRight}>
             <div className="rail-in">
               <button className="it scan" onClick={p.onRadar} tabIndex={folded.r ? -1 : undefined}>
                 <RadarScope still={folded.r} />
@@ -156,7 +156,7 @@ export default function FloatChrome(p: ChromeProps) {
 
       {tiles > 0 && (
         <>
-          <div className={`ui-tile-box n${tiles}${folded.l ? " folded" : ""}`} aria-hidden={folded.l || undefined} {...swipeLeft}>
+          <div className={`ui-tile-box n${tiles}${folded.l ? " folded" : ""}`} aria-hidden={folded.l || undefined} data-chrome-side {...swipeLeft}>
             {ui && (
               <button
                 className={`ui-tile glass${ui.open ? " pressed" : ""}`}

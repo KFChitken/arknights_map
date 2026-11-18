@@ -124,6 +124,7 @@ export default function HudChrome(p: ChromeProps) {
         <div
           ref={col}
           className={`lcol${p.raised ? " raised" : ""}`}
+          data-chrome-side
           data-fit={fit.level || undefined}
           style={fit.level === 3 ? ({ "--lcol-max": `${fit.max}px` } as CSSProperties) : undefined}
         >

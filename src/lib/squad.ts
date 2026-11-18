@@ -253,6 +253,39 @@ export const movesTo = (m: SquadMove) => m !== "wave";
 /** One move every MOVE_EVERY_MS, each player */
 export const MOVE_EVERY_MS = 3_000;
 
+// ---- the fight on the map while a round plays (step 5: the page alone, nothing sent) ----
+
+/**
+ * The fight drawn over the map while the room plays: 0 slugs crawl in from both sides (A), 1 one big monster in the
+ * middle (B), 2 a cartoon brawl cloud (C). One a round, picked from the room and the round's start, so everyone in it
+ * sees the same one, a reload too, and the next round picks again.
+ */
+export const SCENES = 3;
+export function sceneOf(roomId: string, wentAt: number): number {
+  // FNV-1a, enough to spread rooms and rounds over three
+  let h = 0x811c9dc5;
+  for (const c of `${roomId}:${wentAt}`) {
+    h ^= c.codePointAt(0)!;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % SCENES;
+}
+
+/** What a set line does to the fight besides its bubble (by its number, PHRASE_ROWS): the one table of them */
+export type SceneEgg = "boss" | "slip" | "push" | "cheer" | "glitch" | "ring" | "frenzy" | "wave";
+export const SCENE_EGGS: Readonly<Record<number, SceneEgg>> = {
+  14: "boss", // 大的来了
+  10: "slip", // 我是漏勺我是区
+  32: "push", // 我全防出去了啊
+  33: "cheer", // 这波神了
+  15: "cheer", // 这把稳了
+  12: "glitch", // 信号影响了我的操作
+  30: "ring", // 卫卫卫，能听到吗？！
+  35: "frenzy", // 剩下的交给我吧
+  25: "wave", // 四区车队，启动！
+  31: "wave", // 喂鼠协议，启动！
+};
+
 // ---- what the page gets ----
 
 /** How a roach looks, for a seat or a member */
@@ -321,6 +354,8 @@ export type SquadRoom = {
   you: number;
   host: boolean;
   members: SquadMember[];
+  /** When its round started (开始游戏, ms), while it plays; null while it waits */
+  wentAt: number | null;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;

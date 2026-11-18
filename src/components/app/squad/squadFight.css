@@ -90,7 +90,7 @@
 /* the bar of a round: on a phone a row of four above the bottom bar, on a computer a column beside 卫戍 */
 .sq-fight { position: fixed; z-index: 30; display: flex; flex-direction: column; gap: 5px; padding: 6px 6px 7px; border-radius: 16px; background: rgba(255, 255, 255, 0.96); color: #1b1d22; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.27); }
 .sq-fight.row { left: 8px; right: 8px; max-width: 520px; margin: 0 auto; }
-.sq-fight.col { width: 276px; }
+.sq-fight.col { width: 304px; }
 .sq-fight .fh { display: flex; align-items: center; gap: 5px; padding: 0 3px; font-size: 12px; font-weight: 800; }
 .sq-fight .fh svg { flex: none; }
 .sq-fight .fh .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
