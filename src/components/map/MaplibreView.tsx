@@ -1135,6 +1135,39 @@ export default function MaplibreView(props: MapViewProps) {
         },
         before: { dim: ASLEEP_LAYER, dance: ROACH_LAYERS[0] },
         hold,
+        // over a base map (腾讯's), the base map is the camera, and this one follows it
+        camera: {
+          view: () => {
+            const base = propsRef.current.base;
+            if (base) return base.view();
+            const map = mapRef.current;
+            if (!map) return null;
+            const c = map.getCenter();
+            return { lng: c.lng, lat: c.lat, zoom: map.getZoom() };
+          },
+          size: () => {
+            const c = mapRef.current?.getContainer();
+            return c ? { w: c.clientWidth, h: c.clientHeight } : null;
+          },
+          zooms: () => {
+            const map = mapRef.current;
+            return propsRef.current.base?.zooms ?? (map ? [map.getMinZoom(), map.getMaxZoom()] : [0, 22]);
+          },
+          go: (v, ms) => {
+            const base = propsRef.current.base;
+            if (base) return ms > 0 ? base.easeTo(v, ms) : base.jumpTo(v);
+            const map = mapRef.current;
+            if (!map) return;
+            if (ms > 0) map.flyTo({ center: [v.lng, v.lat], zoom: v.zoom, duration: ms });
+            else map.jumpTo({ center: [v.lng, v.lat], zoom: v.zoom });
+          },
+          at: (lng, lat) => {
+            const map = mapRef.current;
+            if (!map) return null;
+            const p = map.project([lng + 360 * Math.round((map.getCenter().lng - lng) / 360), lat]);
+            return { x: p.x, y: p.y };
+          },
+        },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- what it reads is read through refs, as it is now
     [],

@@ -45,7 +45,7 @@ import {
 import { loadSettings, setGray, setListen } from "@/lib/server/siteSettings";
 import { loadSongs, saveSongPlays } from "@/lib/server/songs";
 import { forgetStatCounts, saveStatCounts } from "@/lib/server/stats";
-import { friendKey } from "@/lib/server/world";
+import { friendKey, friends as friendList } from "@/lib/server/world";
 import type { InboxItem } from "@/lib/world/types";
 import { POST } from "./route";
 
@@ -284,6 +284,44 @@ describe("一起听's rooms", () => {
     expect((await post(c, "leave")).status).toBe(200);
     expect((await roomOf(b))!.members.map((m) => m.state)).toEqual(["in", "in", "left"]);
     expect(await roomOf(c)).toBeNull();
+  });
+
+  it("give each in it, for a 触须之交 of TA's there, that one as TA's own list of 触须之交 has TA (for 拉远), and nothing more", async () => {
+    const { host, b, c } = await cast();
+    await opened(host, b, c);
+    await goIn(b);
+    await goIn(c);
+    const keys = async (u: User) => (await roomOf(u))!.members.map((m) => [m.h, m.friendId ?? null]);
+    // the host's two 触须之交, each as the host's own list has TA; none for the host
+    expect(await keys(host)).toEqual([
+      [1, null],
+      [2, friendKey(host.id, b.id)],
+      [3, friendKey(host.id, c.id)],
+    ]);
+    // b's: the host alone, by b's own key for TA (never the host's for b); c, not b's 触须之交, nothing
+    expect(await keys(b)).toEqual([
+      [1, friendKey(b.id, host.id)],
+      [2, null],
+      [3, null],
+    ]);
+    expect(friendKey(b.id, host.id)).not.toBe(friendKey(host.id, b.id));
+    expect(await keys(c)).toEqual([
+      [1, friendKey(c.id, host.id)],
+      [2, null],
+      [3, null],
+    ]);
+    // the very id of TA in the list b's page already has (where TA's roaches are)
+    expect((await friendList(b.id)).map((f) => f.id)).toEqual([friendKey(b.id, host.id)]);
+    // and nobody's place, in what the room sends
+    const sent = JSON.stringify([await post(host, "room"), await post(b, "room"), await post(c, "room")]);
+    expect(sent).not.toMatch(/"lng"|"lat"/);
+    // a 触须之交 no longer: nothing
+    await db.execute(sql`truncate ${friendships}`);
+    expect(await keys(b)).toEqual([
+      [1, null],
+      [2, null],
+      [3, null],
+    ]);
   });
 
   it("keep an invitation good 30 minutes; 下次吧 shows the host only that TA has not come, and TA may still", async () => {

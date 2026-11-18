@@ -464,6 +464,11 @@ export type RoomMember = {
   open: boolean;
   /** A 触须之交 of the one looking */
   friend: boolean;
+  /**
+   * Only where TA is a 触须之交 of the one looking: TA as their own list of 触须之交 has TA (Friend.id there), for 拉远 to
+   * find TA's main roach in it (src/components/app/ListenFar.tsx). No place of anyone's comes with a room
+   */
+  friendId?: string;
   host: boolean;
   /** In it now, or left it (kicked: asked to leave, as only the host sees it) */
   state: "in" | "left" | "kicked";

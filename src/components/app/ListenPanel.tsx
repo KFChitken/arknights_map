@@ -4,6 +4,7 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
+import { useDiscoChosen } from "@/lib/disco";
 import {
   ALONE_MS,
   barSecond,
@@ -38,7 +39,7 @@ import { INK_FROM } from "@/lib/si";
 import { siteDay } from "@/lib/siteDay";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
-import { ChatIcon, DiscoBallIcon, MegaphoneIcon, useDiscoSwitch, useWide } from "./chrome/parts";
+import { ChatIcon, DiscoBallIcon, DiscoModeSwitch, MegaphoneIcon, useDiscoSwitch, useWide } from "./chrome/parts";
 import type { ListenCallItem, ListenInvite } from "./ListenOverlay";
 import {
   answerSongAsk,
@@ -493,13 +494,14 @@ function Vinyl({ track, spinning, room }: { track: ListenTrack | null; spinning:
 /**
  * The round buttons, as the ball beside 听歌's entry: 蹦迪 (where the disco is open to them); 一起听, off: a room of your
  * own at once, you its host (the song playing goes on as its own), lit while you are in one: 结束 (离开) asked under
- * it; and in a room 短评, its row out or back in
+ * it; and in a room 短评, its row out or back in, and with the disco on 舞台 | 拉远 last
  */
 function Rounds({ paused, disco, asking, onAsk }: { paused: boolean; disco: boolean; asking: boolean; onAsk: () => void }) {
   const room = useListenRoom();
   const v = useListenPlayer();
   const list = useListenSongs();
   const rxOpen = useListenRxOpen();
+  const dancing = useDiscoChosen();
   const [opening, setOpening] = useState(false);
   const first = room ? null : firstSong(v, list);
   const open = async () => {
@@ -534,6 +536,7 @@ function Rounds({ paused, disco, asking, onAsk }: { paused: boolean; disco: bool
           <small aria-hidden="true">{T.listen.rxButton}</small>
         </span>
       )}
+      {room && disco && dancing && <DiscoModeSwitch inPanel />}
     </div>
   );
 }

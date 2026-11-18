@@ -110,6 +110,8 @@ export type BaseMap = {
   /** Glide to a view (ms long), or go there at once */
   easeTo(v: MapView, ms?: number): void;
   jumpTo(v: MapView): void;
+  /** The zooms it can go to, as MapView's */
+  zooms: [number, number];
   setCursor(cursor: string): void;
 };
 

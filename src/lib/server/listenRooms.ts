@@ -222,6 +222,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
       card: cards.get(u.id)!,
       open: !p.anonymous && p.name.trim() !== "",
       friend: friends.has(u.id),
+      // TA as your own list of 触须之交 has TA, and only there: nothing for anyone else
+      ...(friends.has(u.id) && u.id !== viewerId ? { friendId: friendKey(viewerId, u.id) } : {}),
       host: u.id === room.hostId,
       state: !m.leftAt ? "in" : m.kicked && host ? "kicked" : "left",
     };

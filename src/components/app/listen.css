@@ -137,6 +137,8 @@ img.lp-cover { display: block; object-fit: cover; }
 /* ---- the round buttons, as the disco's ball on the map: 蹦迪 pink, 一起听 teal (filled while in a room), 短评 ---- */
 .lp-tgs { display: flex; align-items: flex-start; justify-content: center; gap: 18px; padding-top: 2px; }
 .lp-tgl { display: grid; justify-items: center; gap: 3px; }
+/* 舞台 | 拉远, last of the round buttons in a room with the disco on: grey under it, as the player is white */
+.lp-tgs .lf-mode { align-self: center; background: rgba(127, 127, 127, 0.16); color: #1b1d22; }
 .lp-tgl small { color: #4b5260; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .lp-tgl.hint small { color: #c026a8; }
 .lp-tg {

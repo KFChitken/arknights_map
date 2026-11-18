@@ -396,6 +396,13 @@ const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
 const MAP_WAIT_MS = 1500;
 /** The map's view settles this long before a new area of roaches is asked for (world/area.ts) */
 const AREA_SETTLE_MS = 250;
+/** 拉远 out: none of these on the map (the same empty lists each time, so the maps see nothing change) */
+const NO_ROACHES: OwnRoach[] = [];
+const NO_SHOUTS: ShoutMark[] = [];
+const NO_GUIDES: GuideMark[] = [];
+const NO_TRAIL: LngLat[] = [];
+const NO_OVERLAYS: MapOverlay[] = [];
+const NO_LINES: MapLine[] = [];
 /** The overview is asked for again, while the map shows it, once this old */
 const OVERVIEW_AGAIN_MS = 5 * 60_000;
 /** Whether a view has moved away from another (more than about 100 m, or half a zoom level) */
@@ -626,6 +633,10 @@ export default function MapApp({
   // 全员隐匿 is drawn: nobody's roaches are, so only how many there are is asked for (and have come)
   const hiddenRef = useRef(false);
   const countsInRef = useRef(false);
+  // 一起听's 拉远 (ListenFar.tsx) out, or the map flying back from it: nothing of the area asked for meanwhile, and the
+  // area for the view asked for once it is over, where anything was not
+  const farHoldRef = useRef(false);
+  const farMissedRef = useRef(false);
   const [fakeFeed, setFakeFeed] = useState(false);
   const [basemap, setBasemap] = useState<Basemap | null>(null);
   // Visitors from mainland China: the home map wherever China is in view, our own map abroad (src/lib/chinaView.ts).
@@ -745,6 +756,10 @@ export default function MapApp({
   // 听歌's disco (src/components/disco), where it is open to them: its switch, and whether its ball and lights are out
   const discoChosen = useDiscoChosen();
   const [discoShown, setDiscoShown] = useState(false);
+  // 一起听's 拉远 (ListenFar.tsx): out ("on": the map's roaches, yours too, and all over them away, ListenFar.tsx drawing
+  // yours and your 触须之交's in the room in their place), the map flying back ("back"), or over
+  const [farState, setFarState] = useState<"on" | "back" | "off">("off");
+  const discoFar = farState === "on";
   // an invitation to 一起听 that came while the page is open, its card over the map (ask: whether to switch rooms first)
   const [listenCard, setListenCard] = useState<ListenCard | null>(null);
   // 一起卫戍: the card of an invitation that came, or one tapped in 消息 while in another room
@@ -1158,6 +1173,11 @@ export default function MapApp({
    */
   const loadRoaches = useCallback(
     async (why: "poll" | "view" = "poll"): Promise<void> => {
+      // 拉远: the map drawn out over the world, its roaches away; nothing until it is back
+      if (farHoldRef.current) {
+        farMissedRef.current = true;
+        return;
+      }
       wholeRef.current ??= new URLSearchParams(window.location.search).has("whole");
       if (wholeRef.current) return why === "poll" && !fakeFeedRef.current && worldRef.current ? loadWhole() : undefined;
       const copy = areaRef.current;
@@ -1259,6 +1279,21 @@ export default function MapApp({
       areaTimerRef.current = { timer: window.setTimeout(() => void loadRoaches("view").catch(() => {}), AREA_SETTLE_MS), at };
     },
     [loadRoaches],
+  );
+  /**
+   * 一起听's 拉远 (ListenFar.tsx): out ("on": the roaches away, nothing of the area asked for), flying back ("back": the
+   * roaches back, still nothing asked for until the map lands where it was), over ("off": the area for the view, if
+   * anything was not asked for meanwhile)
+   */
+  const onDiscoFar = useCallback(
+    (state: "on" | "back" | "off") => {
+      setFarState(state);
+      farHoldRef.current = state !== "off";
+      if (state !== "off" || !farMissedRef.current) return;
+      farMissedRef.current = false;
+      askAreaSoon(viewRef.current);
+    },
+    [askAreaSoon],
   );
   // A fly somewhere starts: the area is asked for where it lands, not where it set off from. With motion turned down
   // MapLibre's fly is a jump, made in the map's own effect, which runs before this one: the ask set off where it
@@ -1861,8 +1896,13 @@ export default function MapApp({
   }, [hideClones, loadRoaches]);
 
   useEffect(() => {
-    if (boundsRef.current) countVisible(boundsRef.current);
+    if (boundsRef.current && !farHoldRef.current) countVisible(boundsRef.current);
   }, [countVisible]);
+  // 拉远 over: counted where the map is now
+  useEffect(() => {
+    if (farState === "off" && boundsRef.current) countVisible(boundsRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farState]);
 
   // The block list is only shown on the profile sheet, so it is fetched when that opens
   const profileOpen = panel?.kind === "profile";
@@ -2160,7 +2200,8 @@ export default function MapApp({
     viewRef.current = v;
     boundsRef.current = bounds;
     pulse.rest(v);
-    countVisible(bounds);
+    // 拉远 (or flying back from it): the count as it was, nothing asked for; counted again once it is over
+    if (!farHoldRef.current) countVisible(bounds);
     // the roaches of the area the map shows now, if the ones held do not cover it
     askAreaSoon(v);
     // 缘缘庄 in view (or nearly), close enough to be more than a blot: its numbers and, close up, its ink roaches
@@ -3924,7 +3965,7 @@ export default function MapApp({
   const hearEls = useRef(new Map<string, HTMLElement>());
   const hearOverlays = useMemo<MapOverlay[]>(() => {
     const els = hearEls.current;
-    const list = (hidden ? [] : shownFriends).flatMap((f): MapOverlay[] => {
+    const list = (hidden || discoFar ? [] : shownFriends).flatMap((f): MapOverlay[] => {
       const r = f.listening ? f.roaches.find((x) => !x.clone) : undefined;
       if (!r) return [];
       const id = `hear-${f.id}-${r.lng.toFixed(5)},${r.lat.toFixed(5)}`;
@@ -3937,7 +3978,7 @@ export default function MapApp({
     });
     for (const id of [...els.keys()]) if (!list.some((o) => o.id === id)) els.delete(id);
     return list;
-  }, [shownFriends, hidden]);
+  }, [shownFriends, hidden, discoFar]);
   // with the admin's marks of 看被举报的蟑螂, while it is open
   const mapOverlays = useMemo(() => {
     const all = [...partyOverlays, ...hearOverlays, ...reportedMarks.overlays];
@@ -4851,6 +4892,8 @@ export default function MapApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [siInnKey, siInks.key, siMineKey, siTier],
   );
+  // 拉远: 缘缘庄 with no ink roach on it, yours neither (keys of its own, which the maps see change both ways)
+  const farSi = useMemo<SiMapData>(() => ({ ...siMap, inks: [], mine: null, inksKey: -1, mineKey: "far" }), [siMap]);
 
   // your ink roach's card, where it is now; it goes once the ink roach is off the map (recalled on another screen)
   const myInk = selected?.kind === "myInk" ? myInkNow() : null;
@@ -4863,23 +4906,26 @@ export default function MapApp({
   const ignoreTap = () => {};
   const mapProps = {
     roaches: mapRoaches,
-    si: siMap,
     // whoever acts out a scene over the map is left out of it meanwhile, the list itself kept as it is
     hiddenId: offStage ?? null,
-    guides,
-    trail,
-    shouts,
-    overlays: mapOverlays,
-    lines: zoneLines.length ? [...reportedMarks.lines, ...zoneLines] : reportedMarks.lines,
-    // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out
-    mine: (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
+    // 拉远: nobody on the map but those ListenFar.tsx draws over it (the guides, their trail, the ink roaches of
+    // 缘缘庄, the marks and lines over the map, a roach saying anything)
+    guides: discoFar ? NO_GUIDES : guides,
+    trail: discoFar ? NO_TRAIL : trail,
+    si: discoFar ? farSi : siMap,
+    shouts: discoFar ? NO_SHOUTS : shouts,
+    overlays: discoFar ? NO_OVERLAYS : mapOverlays,
+    lines: discoFar ? NO_LINES : zoneLines.length ? [...reportedMarks.lines, ...zoneLines] : reportedMarks.lines,
+    // while one of your roaches acts out a scene over the map (摄入酒精, a shout), the map leaves it out; 拉远 all of them
+    mine: discoFar ? NO_ROACHES : (me?.roaches ?? []).filter((r) => (!acting || r.slot > 0) && r.id !== shouting?.roach),
     mineAsleep: Boolean(me?.drunkUntil),
     // where the roach would go: a visitor's pick, or the spot a card is asking about
     ghost: me ? (panel?.kind === "placeConfirm" ? panel.spot : null) : preview,
     myAvatar,
     myColor,
     look,
-    mapStyle: drawnStyle,
+    // 拉远: the crowd as 全员隐匿 draws it (none), the area held kept as it is for the way back
+    mapStyle: discoFar ? "hidden" : drawnStyle,
     onHeartsUnavailable: () => setHeartsOff(true),
     onNoGpuLayer: () => setNoGpu(true),
     onMoving,
@@ -5800,7 +5846,15 @@ export default function MapApp({
           </div>
         )}
         {/* 听歌's disco over the map, under the buttons: while its switch is on, and not through 舟友的酒 */}
-        {discoOpen && <DiscoHost want={discoChosen && !party} onShown={setDiscoShown} />}
+        {discoOpen && (
+          <DiscoHost
+            want={discoChosen && !party}
+            onShown={setDiscoShown}
+            main={me?.roaches.find((r) => r.slot === 0) ?? null}
+            friends={friends}
+            onFar={onDiscoFar}
+          />
+        )}
       </div>
 
       {placing && basemap && (
@@ -6194,6 +6248,7 @@ export default function MapApp({
         <ListenOverlay
           panelOpen={listenOpen}
           cardOpen={Boolean(selected || picking || placing)}
+          disco={discoOpen}
           card={listenCard}
           onOpen={showListenRoom}
           onJoin={(i) => void joinInvite(i.id)}

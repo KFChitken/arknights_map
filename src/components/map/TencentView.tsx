@@ -270,6 +270,7 @@ export default function TencentView(props: MapViewProps) {
           onMoving: (f) => listen(movings, f),
           easeTo,
           jumpTo,
+          zooms: [MIN_ZOOM - ZOOM_OFFSET, MAX_ZOOM - ZOOM_OFFSET],
           setCursor: cursor,
         });
         undo.push(() => {

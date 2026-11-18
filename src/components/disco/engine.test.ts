@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AmapStage, offerRoomStage, offerStage, type StageDancer } from "@/components/map/discoStage";
+import { type AmapStage, type FarFrame, offerRoomFar, offerRoomStage, offerStage, type StageDancer } from "@/components/map/discoStage";
 import type { RoachGl } from "@/components/map/roachGl";
 import { BOB, FREE, SWAY } from "./choreo";
 import { startDisco } from "./engine";
@@ -86,6 +86,13 @@ function stage(over: Partial<AmapStage> = {}) {
     gl: () => gl as unknown as RoachGl,
     hands: () => Promise.resolve([]),
     redraw: () => {},
+    camera: {
+      view: () => ({ lng: 121.47, lat: 31.23, zoom: 10 }),
+      size: () => ({ w: 400, h: 800 }),
+      zooms: () => [2, 18],
+      go: () => {},
+      at: () => ({ x: 0, y: 0 }),
+    },
     ...over,
   });
 }
@@ -117,6 +124,12 @@ function roomStage(n: number) {
   const list: StageDancer[] = figs.map((f, i) => ({ el: f.el, seed: 7 * i + 3, size: 46, sleeves: true, alt: i % 2 === 1 }));
   const back = offerRoomStage({ el: root.el, dancers: () => list });
   return { root, figs, back };
+}
+/** 一起听's 拉远 (ListenFar.tsx): each frame it was given */
+function roomFar() {
+  const frames: FarFrame[] = [];
+  const back = offerRoomFar({ draw: (f) => void frames.push({ ...f }) });
+  return { frames, back, last: () => frames[frames.length - 1] };
 }
 
 beforeEach(() => {
@@ -388,5 +401,71 @@ describe("一起听's stage", () => {
     expect(st.figs.every((f) => !f.props.has("transform"))).toBe(true);
     expect(st.root.el.style.opacity).toBe("");
     st.back();
+  });
+});
+
+describe("一起听's 拉远", () => {
+  it("is drawn in the stage's place each frame with the lights, the beat and its notes going; the ball with no beams", () => {
+    const st = roomStage(2);
+    const far = roomFar();
+    start(false, false);
+    play(10);
+    run(3000);
+    expect(far.last().shown).toBeCloseTo(1, 3);
+    expect(far.last().moving).toBe(true);
+    expect(far.last().beat).toBeCloseTo(last().beat, 6);
+    expect(last().fx).toBe("lite");
+    expect(last().dim).toBeCloseTo(0.8, 3);
+    // the map's roaches stand, and no stage is drawn
+    expect(dance().on).toBe(0);
+    expect(st.root.el.style.opacity).toBe("");
+    expect(st.figs.every((f) => !f.props.has("transform"))).toBe(true);
+    far.back();
+    st.back();
+  });
+
+  it("stands with less motion asked for: its notes lit, not going", () => {
+    const far = roomFar();
+    start(true, false);
+    play(10);
+    run(3000);
+    expect(far.last().shown).toBeCloseTo(1, 3);
+    expect(far.last().moving).toBe(false);
+    expect(last().fx).toBe("still");
+    far.back();
+  });
+
+  it("steps down on a slow phone to 省电版 and no further, its notes standing there", () => {
+    const far = roomFar();
+    start(false, false);
+    play(10);
+    run(15_000, 12);
+    expect(last().fx).toBe("lite");
+    expect(far.last().moving).toBe(false);
+    far.back();
+  });
+
+  it("goes with the lights, faded out with them", () => {
+    const far = roomFar();
+    start(false, false);
+    play(10);
+    run(3000);
+    pause();
+    run(3500);
+    expect(drawn.removed).toBe(1);
+    const shown = far.frames.map((f) => f.shown);
+    expect(Math.min(...shown.slice(-10))).toBeLessThan(0.05);
+    far.back();
+  });
+
+  it("is drawn only in a room: alone the map's roaches dance as ever", () => {
+    const far = roomFar();
+    start();
+    play(10);
+    run(3000);
+    expect(far.frames).toHaveLength(0);
+    expect(dance().on).toBeGreaterThan(0.9);
+    expect(last().fx).toBe("full");
+    far.back();
   });
 });

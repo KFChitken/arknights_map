@@ -1255,6 +1255,31 @@ export default function AmapView(props: MapViewProps) {
           }
           return m;
         },
+        // 高德 draws in GCJ-02 inside China, and its zoom is ours + ZOOM_OFFSET
+        camera: {
+          view: () => {
+            const map = mapRef.current;
+            if (!map) return null;
+            const c = map.getCenter();
+            return { ...fromGcj(c.getLng(), c.getLat()), zoom: map.getZoom() - ZOOM_OFFSET };
+          },
+          size: () => {
+            const s = mapRef.current?.getSize();
+            return s ? { w: s.getWidth(), h: s.getHeight() } : null;
+          },
+          zooms: () => [2 - ZOOM_OFFSET, 20 - ZOOM_OFFSET],
+          go: (v, ms) => mapRef.current?.setZoomAndCenter(Math.max(2, Math.min(20, v.zoom + ZOOM_OFFSET)), toGcj(v), ms <= 0, ms > 0 ? ms : undefined),
+          at: (lng, lat) => {
+            const map = mapRef.current;
+            const AMap = amapRef.current;
+            if (!map || !AMap) return null;
+            const [x, y] = toGcj({ lng, lat });
+            // the copy of the world nearest the middle, kept as it is (not brought back between -180 and 180)
+            const near = x + 360 * Math.round((map.getCenter().getLng() - x) / 360);
+            const px = map.lngLatToContainer(new AMap.LngLat(near, y, true));
+            return { x: px.getX(), y: px.getY() };
+          },
+        },
       }),
     [],
   );

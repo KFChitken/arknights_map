@@ -3,10 +3,13 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Disco } from "@/components/disco/engine";
-import { loadDisco } from "@/lib/disco";
+import { loadDisco, useDiscoRoomMode } from "@/lib/disco";
+import type { LngLat } from "@/lib/types";
+import type { Friend } from "@/lib/world/types";
 import { useListenPlayer, useListenRoom } from "./listening";
 
 const ListenStage = dynamic(() => import("./ListenStage"), { ssr: false });
+const ListenFar = dynamic(() => import("./ListenFar"), { ssr: false });
 
 const STILL = "(prefers-reduced-motion: reduce)";
 const onStill = (changed: () => void) => {
@@ -20,10 +23,24 @@ const stillNow = () => window.matchMedia(STILL).matches;
  * 听歌's disco on the map (MapApp.tsx puts it in the map's box, where it is open to the player): its part of the page
  * fetched (src/lib/disco.ts) and started the first time it is wanted with a song going, then told what is wanted,
  * whether less motion is asked for and whether you are in 一起听 (the room's stage, ListenStage.tsx, dancing then in
- * place of the map's roaches, up while the ball and lights are), and to look again whenever the player changes; gone
- * at once with this. want: its switch on, and no 舟友的酒; onShown: its ball and lights are out, or gone
+ * place of the map's roaches, or 拉远 as picked, ListenFar.tsx, up while the ball and lights are), and to look again
+ * whenever the player changes; gone at once with this. want: its switch on, and no 舟友的酒; onShown: its ball and
+ * lights are out, or gone; main, friends: your main roach and your list of 触须之交, where 拉远 finds the room's;
+ * onFar: 拉远 out, flying back or over (MapApp.tsx onDiscoFar)
  */
-export default function DiscoHost({ want, onShown }: { want: boolean; onShown: (on: boolean) => void }) {
+export default function DiscoHost({
+  want,
+  onShown,
+  main,
+  friends,
+  onFar,
+}: {
+  want: boolean;
+  onShown: (on: boolean) => void;
+  main: LngLat | null;
+  friends: Friend[];
+  onFar: (state: "on" | "back" | "off") => void;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const disco = useRef<Disco | null>(null);
   const shownRef = useRef(onShown);
@@ -32,6 +49,7 @@ export default function DiscoHost({ want, onShown }: { want: boolean; onShown: (
   const p = useListenPlayer();
   const room = useListenRoom();
   const inRoom = Boolean(room);
+  const far = useDiscoRoomMode() === "far";
   const still = useSyncExternalStore(onStill, stillNow, () => false);
   const going = p.status === "playing" || p.status === "starting";
 
@@ -81,7 +99,8 @@ export default function DiscoHost({ want, onShown }: { want: boolean; onShown: (
   return (
     <>
       <div className="disco-host" ref={host} />
-      {shown && room && <ListenStage room={room} />}
+      {shown && room && !far && <ListenStage room={room} />}
+      {shown && room && far && <ListenFar room={room} main={main} friends={friends} leaving={!want} onFar={onFar} />}
     </>
   );
 }

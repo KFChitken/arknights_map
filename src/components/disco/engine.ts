@@ -2,6 +2,7 @@ import type { Map as MaplibreMap } from "maplibre-gl";
 import { isListening, listenTap } from "@/components/app/listening";
 import {
   offered,
+  roomFarNow,
   roomStageNow,
   stageNow,
   type AmapStage,
@@ -26,8 +27,10 @@ import { BALL_UP, overlay, type Overlay } from "./overlay";
  * frames, 30 a second at most (20 in 省电版), that reads where the song is (listening.ts listenTap), works out the dance
  * (choreo.ts) and hands it to the map on screen (src/components/map/discoStage.ts), the ball and lights (overlay.ts)
  * and the roaches drawn as page elements (marks.ts). In 一起听 the map's roaches stand, and the room's own stage
- * (src/components/app/ListenStage.tsx) dances in their place. It comes in once the song really sounds; it goes when it
- * is no longer wanted, or two seconds after the song stops (the next song keeps it). Nothing is sent anywhere.
+ * (src/components/app/ListenStage.tsx) dances in their place; or, with 拉远 picked, the map is drawn out to yours and
+ * your 触须之交's in the room (src/components/app/ListenFar.tsx), the ball there with no beams or spots. It comes in
+ * once the song really sounds; it goes when it is no longer wanted, or two seconds after the song stops (the next song
+ * keeps it). Nothing is sent anywhere.
  */
 
 export type DiscoWish = {
@@ -478,10 +481,13 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
     if (!f) return;
     const mode = modeOf(wish.still, gear.gear, f.dances());
     // in 一起听 the map's roaches stand, and the room's stage dances in their place: page elements, which can wherever
-    // anything dances (not with less motion asked for, nor on a phone down to the lights alone)
-    const room = wish.crowd ? null : roomStageNow();
+    // anything dances (not with less motion asked for, nor on a phone down to the lights alone); or 拉远, its notes and
+    // roaches moving only with all of the disco drawn (not in 省电版 either)
+    const far = wish.crowd ? null : roomFarNow();
+    const room = wish.crowd || far ? null : roomStageNow();
     const crowd: Mode = wish.crowd ? mode : { ...mode, dance: false };
     const stageDances = room !== null && modeOf(wish.still, gear.gear, true).dance;
+    const farMoves = far !== null && modeOf(wish.still, gear.gear, true).fx === "full";
     const lite = mode.fx !== "full";
     const ready = phase === "on" && Boolean(tap?.sounding) && !(onBeat && raw < startBeat - 0.001);
     danceOn = toward(danceOn, ready && crowd.dance, dt);
@@ -514,7 +520,8 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
       ballY,
       ballOpacity: wish.still ? shown : 1,
       swing: wish.still ? 0 : Math.sin(t / 900) * 2.2,
-      fx: mode.fx,
+      // 拉远: the ball and its glow over the map drawn out, no beams or spots across it
+      fx: far && mode.fx === "full" ? "lite" : mode.fx,
       onBeat,
       phase: onBeat ? frac(raw) : 0,
       beat: onBeat ? raw : pace,
@@ -532,8 +539,9 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
       } else marks.reset();
     } else marks.reset();
     drawStage(room);
-    // the frames counted while anyone dances, the map's or the stage's
-    if ((now.on > 0.001 || stageOn > 0.001) && document.visibilityState === "visible") gear.frame(t);
+    far?.draw({ shown, beat: now.lightBeat, moving: farMoves });
+    // the frames counted while anyone dances, the map's or the stage's, or 拉远's notes go
+    if ((now.on > 0.001 || stageOn > 0.001 || farMoves) && document.visibilityState === "visible") gear.frame(t);
   };
 
   const seen = () => {

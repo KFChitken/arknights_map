@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { offerRoomStage, type StageDancer } from "@/components/map/discoStage";
 import { fmt, T } from "@/i18n";
 import type { ListenRoom } from "@/lib/listen";
 import { shownAvatar } from "@/lib/roachSvg";
 import RoachIcon from "../RoachIcon";
+import { useSpot } from "./listenSpot";
 import "./listenStage.css";
 
 /** On the stage at most (as many as a room holds), and in a row before a second one */
@@ -20,13 +21,8 @@ const GAP = 6;
 const PAD = 12;
 /** The floor no wider than this much of the part of the screen it stands in */
 const WIDE = 0.92;
-/** Over what it stands on */
+/** Over what it stands on (listenSpot.ts) */
 const OVER = 10;
-/** Looked at again this often (what it stands on moves: the little bar pulled out, the row of 短评 popping up) */
-const LOOK_MS = 250;
-
-/** Where it stands: its bottom (px up from the window's), and the part of the screen across it is in the middle of */
-type Spot = { bottom: number; left: number; width: number };
 
 /** Each roach's own part of the dance (choreo.ts danceTraits), from its number in the room */
 const seedOf = (h: number) => Math.imul(h + 1, 0x9e3779b1) >>> 0;
@@ -73,7 +69,7 @@ export default function ListenStage({ room }: { room: ListenRoom }) {
   }, []);
 
   const style: CSSProperties = spot
-    ? { bottom: spot.bottom, left: spot.left, width: spot.width }
+    ? { bottom: spot.bottom + OVER, left: spot.left, width: spot.width }
     : { visibility: "hidden", bottom: 0, left: 0, right: 0 };
   return (
     <div ref={el} className="ls-stage" style={style} aria-hidden="true">
@@ -96,53 +92,4 @@ export default function ListenStage({ room }: { room: ListenRoom }) {
       </div>
     </div>
   );
-}
-
-/**
- * Where the stage stands: across, in the middle of the map's own part of the screen (beside 抽屉's drawer on a
- * computer), right of the player where it is open at the left; up, OVER above the highest of what stands at the bottom
- * under it: what each layout marks along its bottom (data-chrome-bottom: its bar, 听歌's little bar and its handle,
- * 抽屉's tabs, 游戏风's round buttons; in the lower half, as 抽屉's drawer down the side of a computer is marked too),
- * and what stands on that (the row of 短评, ListenOverlay.tsx; 卫戍中, SquadBar.tsx). Looked at again every LOOK_MS
- * and as the window changes.
- */
-function readSpot(): Spot {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const seen = (r: DOMRect) => r.width > 0 && r.height > 0 && r.right > 0 && r.left < vw && r.bottom > 0 && r.top < vh;
-  const wrap = document.querySelector(".map-wrap")?.getBoundingClientRect();
-  let left = wrap ? Math.max(0, wrap.left) : 0;
-  const right = wrap && wrap.width > 0 ? Math.min(vw, wrap.right) : vw;
-  const player = document.querySelector(".listen-float")?.getBoundingClientRect();
-  if (player && seen(player) && player.left < (left + right) / 2) left = Math.max(left, player.right + 12);
-  const tops = [...document.querySelectorAll<HTMLElement>("[data-chrome-bottom], .lm-strip, .sq-bar")]
-    .map((e) => e.getBoundingClientRect())
-    .filter((r) => seen(r) && r.top > vh / 2 && r.right > left && r.left < right)
-    .map((r) => r.top);
-  const floor = tops.length ? Math.min(...tops) : vh - 16;
-  return { bottom: Math.round(vh - floor + OVER), left: Math.round(left), width: Math.round(Math.max(0, right - left)) };
-}
-
-function useSpot(): Spot | null {
-  const [spot, setSpot] = useState<Spot | null>(null);
-  useLayoutEffect(() => {
-    let last = "";
-    const look = () => {
-      const s = readSpot();
-      const k = `${s.bottom}|${s.left}|${s.width}`;
-      if (k === last) return;
-      last = k;
-      setSpot(s);
-    };
-    look();
-    const t = window.setInterval(look, LOOK_MS);
-    window.addEventListener("resize", look);
-    window.visualViewport?.addEventListener("resize", look);
-    return () => {
-      window.clearInterval(t);
-      window.removeEventListener("resize", look);
-      window.visualViewport?.removeEventListener("resize", look);
-    };
-  }, []);
-  return spot;
 }

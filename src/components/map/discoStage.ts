@@ -1,5 +1,5 @@
 import type { Map as MaplibreMap } from "maplibre-gl";
-import type { RoachStyle } from "@/lib/types";
+import type { MapView, RoachStyle } from "@/lib/types";
 import type { RoachGl } from "./roachGl";
 
 /**
@@ -13,6 +13,19 @@ export type DiscoMark = { el: HTMLElement; kind: "main" | "mine" | "guide"; seed
 /** One roach as the OSM map's disco layer draws it: its icon (MaplibreView's ids, roachIcons.ts); kind 1 your clone, 2 your main roach */
 export type DiscoRoach = { lng: number; lat: number; seed: number; icon: string; kind: 0 | 1 | 2 };
 
+/**
+ * A map's camera, as 一起听's 拉远 moves it (src/components/app/ListenFar.tsx): where it is and how big, the zooms it
+ * can go to, going somewhere (over ms; 0: at once), and where a place is on it (px from its top left, the copy of the
+ * world nearest its middle). Views and zooms as MapView's, whatever the map's own.
+ */
+export type MapCamera = {
+  view: () => MapView | null;
+  size: () => { w: number; h: number } | null;
+  zooms: () => [number, number];
+  go: (v: MapView, ms: number) => void;
+  at: (lng: number, lat: number) => { x: number; y: number } | null;
+};
+
 type Stage = {
   /** On screen (not hidden, nor under a panel that covers the map) and drawn */
   shown: () => boolean;
@@ -21,6 +34,7 @@ type Stage = {
   crowd: () => "all" | "lite" | "off";
   /** The page elements to dance; seq changes whenever they do */
   marks: () => { seq: number; list: DiscoMark[] };
+  camera: MapCamera;
 };
 
 export type AmapStage = Stage & {
@@ -61,7 +75,35 @@ export type RoomStage = {
  */
 export type StageDancer = { el: HTMLElement; seed: number; size: number; sleeves: boolean; alt: boolean };
 
+/** What the disco tells 拉远 each frame it draws */
+export type FarFrame = {
+  /** How far its lights are on (0..1): 拉远 fades in and out with them */
+  shown: number;
+  /** The beat the notes go on (the lights' clock where the song has no beats) */
+  beat: number;
+  /** Things move (the notes, the roaches bobbing, the camera flying); not in 省电版, the lights alone or with less motion asked for */
+  moving: boolean;
+};
+
+/**
+ * 一起听's 拉远 (src/components/app/ListenFar.tsx), up while the disco is out in a room and 拉远 is picked: the map drawn
+ * out to yours and your 触须之交's roaches there, the music going between them; drawn by the disco each frame
+ */
+export type RoomFar = { draw: (f: FarFrame) => void };
+
 let roomStage: RoomStage | null = null;
+let roomFar: RoomFar | null = null;
+
+/** 拉远 up: offered until the call given back */
+export function offerRoomFar(f: RoomFar) {
+  roomFar = f;
+  return () => {
+    if (roomFar === f) roomFar = null;
+  };
+}
+
+/** 拉远 up, if it is */
+export const roomFarNow = (): RoomFar | null => roomFar;
 
 /** The stage up: offered until the call given back */
 export function offerRoomStage(s: RoomStage) {

@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
+import { useDiscoChosen } from "@/lib/disco";
 import { RX_ROWS, type ListenCall } from "@/lib/listen";
 import { DECLARATION_RADIUS_KM } from "@/lib/rules";
 import type { InboxItem } from "@/lib/world/types";
-import { AsksDot, ChatIcon, listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
+import { AsksDot, ChatIcon, DiscoModeSwitch, listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
 import { callLine, listenRoomNow, sendRx, setListenRxOpen, useListenBubbles, useListenRoom, useListenRx, useListenRxOpen, type ListenBubble } from "./listening";
 import "./listenMap.css";
 
@@ -19,7 +20,7 @@ export type ListenCard = { kind: "invite"; invite: ListenInvite; ask: boolean } 
 /**
  * 一起听 over the map (MapApp.tsx): the card of an invitation or a 宣言一起听 that came while the page is open, the 短评
  * floating by 听歌's entry (over its panel while that is open; alone, only there), and the small bubble beside the entry that pops the row of 短评 up
- * over the layout's bottom bar. Placed by what each layout marks (data-listen-anchor on 听歌's entry, data-chrome-bottom
+ * over the layout's bottom bar, and after it 舞台 | 拉远 while the disco is on. Placed by what each layout marks (data-listen-anchor on 听歌's entry, data-chrome-bottom
  * on its bottom bar), so the same in all three; where the entry is out of sight (抽屉's tabs make room for the
  * tutorial, a side is folded away), the bubble stands in for it under the top and opens 一起听 instead. None of it
  * shows while a roach's card is open, and a 短评 that came meanwhile is not shown after.
@@ -27,6 +28,7 @@ export type ListenCard = { kind: "invite"; invite: ListenInvite; ask: boolean } 
 export default function ListenOverlay({
   panelOpen,
   cardOpen,
+  disco,
   card,
   onOpen,
   onJoin,
@@ -38,6 +40,8 @@ export default function ListenOverlay({
   panelOpen: boolean;
   /** A roach's card is open: nothing floats over it */
   cardOpen: boolean;
+  /** 听歌's disco is there for the player (src/lib/disco.ts discoOpenTo) */
+  disco: boolean;
   /** The card of an invitation or a 宣言一起听 (asking at once whether to switch rooms, when tapped in 消息 while in one) */
   card: ListenCard | null;
   /** 听歌's panel at 一起听, from the bubble where the entry is out of sight */
@@ -52,6 +56,7 @@ export default function ListenOverlay({
   onDismiss: () => void;
 }) {
   const room = useListenRoom();
+  const dancing = useDiscoChosen() && disco;
   const showCard = Boolean(card) && !cardOpen;
   // 一个人听, the panel open: the 短评 said there float over it as yours
   const alone = !room && panelOpen;
@@ -90,6 +95,7 @@ export default function ListenOverlay({
           <ChatIcon />
         </button>
       )}
+      {room && !panelOpen && chat && spot.anchor && dancing && <DiscoModeSwitch style={afterChat(chat)} />}
       {room && !panelOpen && chat && !spot.anchor && <BackToRoom style={chat} onOpen={onOpen} />}
       {(room || alone) && <Bubbles style={bubblesAt(spot, panelOpen, chat, up)} over={panelOpen} centered={panelOpen && !spot.wide} />}
       {stripOn && (
@@ -121,6 +127,18 @@ export default function ListenOverlay({
       )}
     </>
   );
+}
+
+/** 💬's size, 舞台 | 拉远's height (listenMap.css, chrome.css) and the room between them */
+const CHAT = 34;
+const MODE_H = 30;
+const MODE_GAP = 6;
+
+/** 舞台 | 拉远 right after 💬, its middle level with 💬's */
+function afterChat(chat: CSSProperties): CSSProperties {
+  const left = Number(chat.left) + CHAT + MODE_GAP;
+  const lift = (CHAT - MODE_H) / 2;
+  return chat.top !== undefined ? { left, top: Number(chat.top) + lift } : { left, bottom: Number(chat.bottom) + lift };
 }
 
 /** In for 听歌's entry while it is out of sight: the note, lit, opening 一起听 (whose panel has the 短评 too) */

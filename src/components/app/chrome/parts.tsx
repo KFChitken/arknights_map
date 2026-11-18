@@ -10,7 +10,7 @@ import type { Basemap, RoachColor } from "@/lib/types";
 import type { UiFold } from "@/lib/uiChoice";
 import type { Radar } from "@/lib/world/types";
 import type { RoachOpts } from "@/lib/roachSvg";
-import { seeDiscoHint, setDiscoChosen, useDiscoChosen, useDiscoHintSeen } from "@/lib/disco";
+import { seeDiscoHint, setDiscoChosen, setDiscoRoomMode, useDiscoChosen, useDiscoHintSeen, useDiscoRoomMode } from "@/lib/disco";
 import RoachIcon from "../../RoachIcon";
 import { SpeakerIcon } from "../DockFx";
 import { FriendsMark } from "../FriendsSheet";
@@ -523,6 +523,24 @@ export function DiscoButton({ kind }: { kind: "round" | "chip" }) {
           {T.map.bar.discoHint}
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * 一起听's disco, 舞台 or 拉远, as picked on this device (src/lib/disco.ts): over the map after 💬 by 听歌's entry while
+ * the player is shut (ListenOverlay.tsx), and last of the player's round buttons while it is open (ListenPanel.tsx)
+ */
+export function DiscoModeSwitch({ style, inPanel = false }: { style?: CSSProperties; inPanel?: boolean }) {
+  const mode = useDiscoRoomMode();
+  return (
+    <span className={`lf-mode${inPanel ? " in-panel" : " glass"}`} role="group" aria-label={T.listen.far.switch} style={style}>
+      <button type="button" aria-pressed={mode === "stage"} onClick={() => setDiscoRoomMode("stage")}>
+        {T.listen.far.stage}
+      </button>
+      <button type="button" aria-pressed={mode === "far"} onClick={() => setDiscoRoomMode("far")}>
+        {T.listen.far.far}
+      </button>
     </span>
   );
 }

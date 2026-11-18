@@ -4,16 +4,22 @@ import { useSyncExternalStore } from "react";
 
 /**
  * 听歌's disco on this device: whether its switch (the ball by 在听) is on, kept in this browser; whether 「点我蹦迪」 has
- * been shown; and the disco itself (src/components/disco), a part of the page of its own, fetched when first wanted or,
- * once 听歌 opens, ahead of that while the page has nothing else to do (but not on a phone saving data).
+ * been shown; how it dances in 一起听 (舞台 or 拉远, kept too); and the disco itself (src/components/disco), a part of the
+ * page of its own, fetched when first wanted or, once 听歌 opens, ahead of that while the page has nothing else to do
+ * (but not on a phone saving data).
  */
 const KEY = "zhoup.disco";
 const HINT_KEY = "zhoup.discoHint";
+const ROOM_KEY = "zhoup.discoRoom";
 const CHANGED = "zhoup:disco";
+
+/** 一起听's disco: the room's roaches on a stage over the bottom of the map, or the map drawn out to yours and your 触须之交's */
+export type DiscoRoomMode = "stage" | "far";
 
 /** What was said on this page, kept for it where the browser keeps nothing */
 let chosenHere: boolean | null = null;
 let hintHere = false;
+let roomHere: DiscoRoomMode | null = null;
 
 const read = (key: string) => {
   try {
@@ -47,6 +53,15 @@ export function setDiscoChosen(on: boolean) {
 
 export const discoHintSeen = (): boolean => hintHere || read(HINT_KEY) === "1";
 
+/** 舞台 unless 拉远 was picked on this device */
+export const discoRoomMode = (): DiscoRoomMode => roomHere ?? (read(ROOM_KEY) === "far" ? "far" : "stage");
+
+export function setDiscoRoomMode(mode: DiscoRoomMode) {
+  roomHere = mode;
+  write(ROOM_KEY, mode);
+  told();
+}
+
 /** 「点我蹦迪」 shown: never again on this device */
 export function seeDiscoHint() {
   if (discoHintSeen()) return;
@@ -66,6 +81,7 @@ function subscribe(changed: () => void) {
 
 export const useDiscoChosen = () => useSyncExternalStore(subscribe, discoChosen, () => false);
 export const useDiscoHintSeen = () => useSyncExternalStore(subscribe, discoHintSeen, () => true);
+export const useDiscoRoomMode = () => useSyncExternalStore(subscribe, discoRoomMode, (): DiscoRoomMode => "stage");
 
 type Engine = typeof import("@/components/disco/engine");
 let loading: Promise<Engine> | null = null;
@@ -92,5 +108,6 @@ export function prefetchDisco() {
 export function forgetDisco() {
   chosenHere = null;
   hintHere = false;
+  roomHere = null;
   loading = null;
 }

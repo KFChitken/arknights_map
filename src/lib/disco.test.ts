@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { discoChosen, discoHintSeen, discoOpenTo, forgetDisco, prefetchDisco, seeDiscoHint, setDiscoChosen } from "./disco";
+import { discoChosen, discoHintSeen, discoOpenTo, discoRoomMode, forgetDisco, prefetchDisco, seeDiscoHint, setDiscoChosen, setDiscoRoomMode } from "./disco";
 
 /** This browser's storage as the page sees it; blocked: one that throws on every use (a private window, say) */
 function storage(blocked = false) {
@@ -58,6 +58,34 @@ describe("听歌's disco's switch", () => {
     expect(discoChosen()).toBe(true);
     forgetDisco();
     expect(discoChosen()).toBe(false);
+  });
+});
+
+describe("一起听's disco, 舞台 or 拉远", () => {
+  it("is 舞台 until 拉远 is picked, and is kept in this browser as it was left", () => {
+    const s = storage();
+    page(s);
+    expect(discoRoomMode()).toBe("stage");
+    setDiscoRoomMode("far");
+    expect(s.kept.get("zhoup.discoRoom")).toBe("far");
+    expect(told).toBe(1);
+    forgetDisco();
+    expect(discoRoomMode()).toBe("far");
+    setDiscoRoomMode("stage");
+    forgetDisco();
+    expect(discoRoomMode()).toBe("stage");
+    // anything else kept there (an older page's, say) is 舞台
+    s.kept.set("zhoup.discoRoom", "globe");
+    expect(discoRoomMode()).toBe("stage");
+  });
+
+  it("with the browser's storage blocked, is 舞台, and kept for this page alone, never an error", () => {
+    page(storage(true));
+    expect(discoRoomMode()).toBe("stage");
+    expect(() => setDiscoRoomMode("far")).not.toThrow();
+    expect(discoRoomMode()).toBe("far");
+    forgetDisco();
+    expect(discoRoomMode()).toBe("stage");
   });
 });
 
