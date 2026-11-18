@@ -46,7 +46,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST join {invite|declaration}   in at an invitation to you, or at a 宣言一起听 you got
  *   POST later {invite}           下次吧
  *   POST leave                    out of your room (the host's ends)
- *   POST end                      the host ends it
+ *   POST end {alone?}             the host ends it; alone: their page counted 5 minutes alone in it down, so it ends
+ *                                 as the sweep would, only once that is so by the server's clock (else nothing)
  *   POST queue {start|next|restart|random: true, add: song, seek: seconds, remove: place + song}   what the host
  *                                 does to its songs (random: 随机加 10 首; seek: everyone to that second of the one
  *                                 playing; remove: a song out of 待播, by its place in the songs and its id)
@@ -165,7 +166,7 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
     case "leave":
       return answer(await leaveRoom(user));
     case "end":
-      return answer(await endByHost(user));
+      return answer(await endByHost(user, body));
     case "queue":
       return answer(await changeSongs(user, body));
     case "request":

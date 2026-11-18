@@ -284,7 +284,11 @@ describe("宣言一起听", () => {
     await db.insert(declarations).values({ senderId: host.id, template: "launch", game: "arknights", recipients: 0, createdAt: new Date(Date.now() - 30_000) });
     expect(await post(host, "declare", {})).toMatchObject({ status: 400, body: { error: "刚刚才发过宣言，歇一会儿再发吧。" } });
     vi.setSystemTime(Date.now() + 60_000);
-    expect((await declared(host, {})).declared).toBe(true);
+    const sent = await declared(host, {});
+    expect(sent.declared).toBe(true);
+    // the host alone in it: 5 minutes from now, for those it called to come
+    expect(sent.aloneSince).toBe(Date.now());
+    expect((await roomRow(room.id))!.aloneSince!.getTime()).toBe(Date.now());
     expect(twenty).toHaveLength(DECLARATIONS_PER_DAY);
   });
 

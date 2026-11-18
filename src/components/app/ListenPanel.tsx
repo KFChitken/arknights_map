@@ -5,6 +5,7 @@ import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type 
 import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import {
+  ALONE_MS,
   barSecond,
   clock,
   coverLink,
@@ -59,6 +60,7 @@ import {
   roomPlace,
   seekTo,
   sendRx,
+  serverNow,
   setFav,
   setLite,
   setListenRxOpen,
@@ -553,6 +555,7 @@ function DiscoRound() {
 function EndAsk({ room, onDone }: { room: ListenRoom; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const words = room.host ? T.listen.endAsk : T.listen.leaveAsk;
+  const more = room.host ? T.listen.endAskMore : T.listen.leaveAskMore;
   const yes = async () => {
     setBusy(true);
     const out = await leaveListen();
@@ -561,7 +564,10 @@ function EndAsk({ room, onDone }: { room: ListenRoom; onDone: () => void }) {
   };
   return (
     <div className="lp-ask" role="group" aria-label={words}>
-      <b>{words}</b>
+      <span className="w">
+        <b>{words}</b>
+        <small>{more}</small>
+      </span>
       <span className="acts">
         <button type="button" className="lp-mini warn" disabled={busy} onClick={() => void yes()}>
           {room.host ? T.listen.end : T.listen.leave}
@@ -946,6 +952,7 @@ function RoomBlock({
           </span>
         ))}
       </div>
+      {room.host && room.aloneSince !== null && <AloneLine since={room.aloneSince} />}
       {room.members.length > 1 && <p className="lp-note left small tight">{room.host ? T.listen.tapNoteHost : T.listen.tapNote}</p>}
       {room.host && view === "invite" && (
         <Picker
@@ -976,6 +983,24 @@ function RoomBlock({
         ))}
       {person && <PersonCard key={person.h} room={room} m={person} acts={acts} onClose={() => setWho(null)} />}
     </section>
+  );
+}
+
+/**
+ * The host alone in the room since `since` (the server's clock): it ends ALONE_MS on, the song going on alone; its last
+ * minute counted down. Only here, in the open player: nothing pops up, nothing is pushed
+ */
+function AloneLine({ since }: { since: number }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => tick((n) => n + 1), 1_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const left = Math.max(0, Math.ceil((since + ALONE_MS - serverNow()) / 1000));
+  return (
+    <p className="lr-alone" role="status">
+      {left <= 60 ? fmt(T.listen.aloneSoon, { at: clock(left) }) : T.listen.aloneNow}
+    </p>
   );
 }
 
@@ -1421,6 +1446,7 @@ function queueWords(up: ListenUpNext, room: ListenRoom | null): { head: string; 
 
 /** The list 待播 goes by, as its line names it: 全部's goes by the song's album, its round over all of them */
 function listWord(f: ListenFrom | null, track: ListenTrack | null, round: boolean): string {
+  if (f?.view === "left") return T.listen.lists.left;
   if (f?.view === "fav") return T.listen.lists.fav;
   if (f?.view === "hot") return T.listen.lists.hot;
   if (f?.ids.length) return T.listen.lists.found;

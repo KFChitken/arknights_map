@@ -1,0 +1,1 @@
+ALTER TABLE "listen_rooms" ADD COLUMN "alone_since" timestamp with time zone;

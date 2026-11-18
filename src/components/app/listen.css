@@ -161,6 +161,8 @@ img.lp-cover { display: block; object-fit: cover; }
   font-size: 13.5px;
 }
 .lp-ask .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.lp-ask .w { display: grid; gap: 2px; }
+.lp-ask .w small { color: #5f6470; font-size: 12.5px; }
 
 /* small buttons in a line: 邀请触须之交, 结束 (red), 发宣言 (yellow), 发出邀请 (teal) */
 .lp-mini {
@@ -331,6 +333,8 @@ button.lp-qrow:focus-visible { outline: 2px solid #18a0a5; outline-offset: 1px; 
   color: #6f5300; font-size: 12.5px; line-height: 1.45;
 }
 .lr-declok svg { flex: none; margin-top: 2px; }
+/* the host alone in it: 5 minutes, then back to listening alone */
+.lr-alone { margin: 0; padding: 8px 12px; border-radius: 10px; background: #eef1f5; color: #3d4350; font-size: 12.5px; line-height: 1.5; text-wrap: pretty; }
 /* what the invitations came to */
 .lr-said { margin: 0; padding: 9px 12px; border-radius: 10px; background: #e6f6f6; color: #0b6366; font-size: 13px; line-height: 1.5; }
 .lr-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }

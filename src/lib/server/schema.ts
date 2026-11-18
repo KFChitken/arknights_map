@@ -1777,7 +1777,9 @@ export const listenNow = pgTable(
  * to them moves on. queue_by: who put each song of queue in, place for place (RoomSchedule by: the number in the room
  * of one who asked for it, 点歌; the host's for theirs; 0 at random; places missing, of songs put in before it was
  * kept, count as the host's). declared_at once its host called the players nearby to it (宣言一起听, once a room).
- * ended_at and end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in it and the
+ * alone_since while its host is alone in it (from its opening, and each time all the others are out; null once anyone
+ * comes in): ALONE_MS after, it ends, unless the host calls anyone meanwhile (an invitation, 宣言一起听), which starts it
+ * over. ended_at and end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in it and the
  * invitations to it.
  */
 export const listenRooms = pgTable(
@@ -1794,6 +1796,7 @@ export const listenRooms = pgTable(
     queueBy: smallint("queue_by").array().notNull().default(sql`'{}'::smallint[]`),
     version: integer("version").notNull().default(1),
     declaredAt: at("declared_at"),
+    aloneSince: at("alone_since"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
   },

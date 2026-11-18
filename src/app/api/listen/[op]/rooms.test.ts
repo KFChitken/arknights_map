@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COUNTED } from "@/lib/dashboard";
 import {
+  ALONE_EARLY_MS,
+  ALONE_MS,
   AWAY_MS,
   INVITE_MS,
   QUEUE_MAX,
@@ -514,10 +516,12 @@ describe("一起听's rooms", () => {
     await post(host, "leave");
     expect(await roomRow(two.id)).toMatchObject({ endReason: "host" });
 
-    // songs over with none to add (s2 gone too, s1 all there is): 10 minutes on, without a new one
+    // songs over with none to add (s2 gone too, s1 all there is): 10 minutes on, without a new one (B in it too, as
+    // a host alone in it would end before)
     await db.update(songs).set({ goneAt: new Date() }).where(eq(songs.id, "s2"));
     await loadSongs();
-    const three = await opened(host);
+    const three = await opened(host, b);
+    await goIn(b);
     expect((await post(host, "queue", { start: true })).body!.room).toMatchObject({ queue: ["s1"], version: 2 });
     expect(await post(host, "queue", { next: true })).toMatchObject({ status: 409, body: { error: "待播里没有下一首了，先在选歌里点 ＋ 加几首。" } });
     const end = (await roomRow(three.id))!.startedAt!.getTime() + 200_000;
@@ -525,8 +529,9 @@ describe("一起听's rooms", () => {
     expect(await sweepRooms(end + ROOM_IDLE_MS + 1_000)).toBe(1);
     expect(await roomRow(three.id)).toMatchObject({ endReason: "idle" });
 
-    // never started, the host there all along: 6 hours at most
-    const four = await opened(host);
+    // never started, the host there all along (and B): 6 hours at most
+    const four = await opened(host, b);
+    await goIn(b);
     const opening = (await roomRow(four.id))!.createdAt.getTime();
     expect(await sweepRooms(opening + ROOM_LIFE_MS - 60_000)).toBe(0);
     expect(await sweepRooms(opening + ROOM_LIFE_MS)).toBe(1);
@@ -544,6 +549,143 @@ describe("一起听's rooms", () => {
     expect(await db.select().from(listenRooms)).toEqual([]);
     expect(await db.select().from(listenMembers)).toEqual([]);
     expect(await db.select().from(listenInvites)).toEqual([]);
+  });
+
+  it("count a host alone in it from its opening and each time all the others are out, not while anyone is in; inviting starts it over", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b, c } = await cast();
+    const aloneOf = async (id: string) => (await roomRow(id))!.aloneSince?.getTime() ?? null;
+    const t0 = Date.now();
+    const room = await opened(host, b, c);
+    // from its opening: those invited are nobody yet; nobody else sees it
+    expect(await aloneOf(room.id)).toBe(t0);
+    expect(room.aloneSince).toBe(t0);
+    vi.setSystemTime(t0 + 60_000);
+    const bIn = await goIn(b);
+    expect(await aloneOf(room.id)).toBeNull();
+    expect(bIn.aloneSince).toBeNull();
+    expect((await roomOf(host))!.aloneSince).toBeNull();
+    await goIn(c);
+    // one of the two out: not alone
+    vi.setSystemTime(t0 + 120_000);
+    expect((await post(c, "leave")).status).toBe(200);
+    expect(await aloneOf(room.id)).toBeNull();
+    // the last one out: alone from then, the host told
+    const hostHeard = hear(host);
+    vi.setSystemTime(t0 + 180_000);
+    expect((await post(b, "leave")).status).toBe(200);
+    expect(await aloneOf(room.id)).toBe(t0 + 180_000);
+    expect(toldOf(hostHeard, "members")).toHaveLength(1);
+    expect((await roomOf(host))!.aloneSince).toBe(t0 + 180_000);
+    // in again: not alone; asked to leave: alone from then
+    await goIn(b);
+    expect(await aloneOf(room.id)).toBeNull();
+    vi.setSystemTime(t0 + 240_000);
+    expect((await post(host, "kick", { h: bIn.you })).status).toBe(200);
+    expect(await aloneOf(room.id)).toBe(t0 + 240_000);
+    // inviting, even one invited already, gives TA 5 minutes from now to come
+    vi.setSystemTime(t0 + 300_000);
+    const again = await post(host, "invite", { friends: [friendKey(host.id, c.id)] });
+    expect(again.body!.room).toMatchObject({ aloneSince: t0 + 300_000 });
+    expect(await aloneOf(room.id)).toBe(t0 + 300_000);
+    // parted by a block, either way: as though TA left
+    await goIn(c);
+    expect(await aloneOf(room.id)).toBeNull();
+    const { separateBlocked } = await import("@/lib/server/listenRooms");
+    vi.setSystemTime(t0 + 360_000);
+    await separateBlocked(host.id, c.id);
+    expect(await aloneOf(room.id)).toBe(t0 + 360_000);
+    // another room, B in it: inviting counts nothing meanwhile; B blocking the host takes TA out, as leaving would
+    const other = await opened(host, b);
+    await goIn(b);
+    expect((await post(host, "invite", { friends: [friendKey(host.id, c.id)] })).body!.room).toMatchObject({ aloneSince: null });
+    expect(await aloneOf(other.id)).toBeNull();
+    vi.setSystemTime(t0 + 420_000);
+    await separateBlocked(b.id, host.id);
+    expect(await aloneOf(other.id)).toBe(t0 + 420_000);
+  });
+
+  it("end a room its host has been alone in for 5 minutes, not seconds before; the host's own page at 0 only once it is so", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b } = await cast();
+    const t0 = Date.now();
+    const one = await opened(host, b);
+    const hostHeard = hear(host);
+    // the sweep a few seconds short of it: nothing
+    expect(await sweepRooms(t0 + ALONE_MS - 3_000)).toBe(0);
+    expect(await roomRow(one.id)).toMatchObject({ endedAt: null });
+    // the page's own, short of it by more than a few seconds: as though never sent
+    vi.setSystemTime(t0 + ALONE_MS - ALONE_EARLY_MS - 1_000);
+    expect(await post(host, "end", { alone: true })).toMatchObject({ status: 200, body: { ended: false } });
+    expect(await roomRow(one.id)).toMatchObject({ endedAt: null });
+    expect(toldOf(hostHeard, "end")).toEqual([]);
+    // within a few seconds of it: over, as the sweep would end it, those it was told to hearing why
+    vi.setSystemTime(t0 + ALONE_MS - 2_000);
+    expect(await post(host, "end", { alone: true })).toMatchObject({ status: 200, body: { ended: true } });
+    expect(await roomRow(one.id)).toMatchObject({ endReason: "alone" });
+    expect(toldOf(hostHeard, "end")).toEqual([{ t: "end", room: one.id, why: "alone" }]);
+    // an invitation to it not answered yet: over, as for any room that ended
+    expect(await post(b, "join", { invite: await inviteOf(b) })).toMatchObject({ status: 410, body: { error: "这次一起听已经结束了。" } });
+
+    // by the sweep: the first minute 5 minutes after the last one went out
+    const two = await opened(host, b);
+    await goIn(b);
+    expect(await post(b, "end", { alone: true })).toMatchObject({ status: 403 });
+    const t1 = Date.now() + 60_000;
+    vi.setSystemTime(t1);
+    expect((await post(b, "leave")).status).toBe(200);
+    expect(await sweepRooms(t1 + ALONE_MS - 1_000)).toBe(0);
+    expect(await sweepRooms(t1 + ALONE_MS)).toBe(1);
+    expect(await roomRow(two.id)).toMatchObject({ endReason: "alone" });
+
+    // never with anyone else in it, whatever was counted (two going at once): put right instead
+    vi.setSystemTime(t1 + ALONE_MS + 60_000);
+    const three = await opened(host, b);
+    await goIn(b);
+    await db
+      .update(listenRooms)
+      .set({ aloneSince: new Date(Date.now() - ALONE_MS - 60_000) })
+      .where(eq(listenRooms.id, three.id));
+    expect((await roomOf(host))!.aloneSince).toBeNull();
+    expect(await post(host, "end", { alone: true })).toMatchObject({ body: { ended: false } });
+    expect(await roomRow(three.id)).toMatchObject({ endedAt: null, aloneSince: null });
+    // a host alone and not counted (each of two going saw the other still in): from the next sweep on, the host told
+    await db
+      .update(listenMembers)
+      .set({ leftAt: new Date() })
+      .where(and(eq(listenMembers.roomId, three.id), eq(listenMembers.userId, b.id)));
+    const heard = hear(host);
+    const t2 = Date.now();
+    expect(await sweepRooms(t2)).toBe(0);
+    expect((await roomRow(three.id))!.aloneSince!.getTime()).toBe(t2);
+    expect(toldOf(heard, "members")).toEqual([{ t: "members", room: three.id }]);
+    expect(await sweepRooms(t2 + ALONE_MS)).toBe(1);
+    expect(await roomRow(three.id)).toMatchObject({ endReason: "alone" });
+  });
+
+  it("let those in a room that ended go on with its song alone at once, as the same play, however many listen", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b, c } = await cast();
+    const owner = await account("owner@example.com");
+    const room = await opened(host, b);
+    await goIn(b);
+    const started = (await post(host, "queue", { start: true })).body!.room as ListenRoom;
+    vi.setSystemTime(started.startedAt! + 40_000);
+    for (const u of [host, b]) expect((await post(u, "play", { song: "s1", at: 40, next: started.queue[1] })).status).toBe(200);
+    const was = (await db.select().from(listenNow).where(eq(listenNow.userId, b.id)))[0];
+    expect(was.roomId).toBe(room.id);
+    // as many listen as may: nobody else gets in
+    await setListen(owner.id, { cap: 2 });
+    forgetListeningCount();
+    expect(await post(c, "play", { song: "s1" })).toMatchObject({ status: 503 });
+    expect((await post(host, "end")).status).toBe(200);
+    // within the half minute they are still counted for: the same song from the same second, alone
+    vi.setSystemTime(Date.now() + 1_000);
+    for (const u of [host, b]) expect((await post(u, "play", { song: "s1", at: 41, next: started.queue[1] })).status).toBe(200);
+    const now = (await db.select().from(listenNow).where(eq(listenNow.userId, b.id)))[0];
+    expect(now).toMatchObject({ song: "s1", roomId: null, startedAt: was.startedAt });
+    expect(now.until.getTime()).toBeGreaterThan(Date.now() + 100_000);
+    expect(await post(c, "play", { song: "s1" })).toMatchObject({ status: 503 });
   });
 
   it("let the host alone change its songs, and tell everyone in it at once what to play, nothing of who", async () => {

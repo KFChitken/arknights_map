@@ -89,8 +89,11 @@ export const RANDOM_ADD = 10;
 
 /** The panel's lists of songs: all of them (album by album), your 收藏, 热播榜 */
 export type ListenView = "all" | "fav" | "hot";
-/** Where a song played alone was tapped: the list, and its songs as it showed them then, in order */
-export type ListenFrom = { view: ListenView; ids: string[] };
+/**
+ * Where a song played alone was tapped: the list, and its songs as it showed them then, in order; or (left) the songs
+ * of a room of 一起听 that ended as one of them played, from it on, which it goes on as
+ */
+export type ListenFrom = { view: ListenView | "left"; ids: string[] };
 
 /** The songs after this one in a list (收藏, 热播榜, those found), in its order: none after its last, or when it is not in it */
 export function restOfList(ids: readonly string[], id: string): string[] {
@@ -278,6 +281,14 @@ export const QUIET_AFTER_LATER_MS = 30 * 60_000;
 export const AWAY_MS = 2 * 60_000;
 /** A room whose songs are over ends this long after, unless the host adds more */
 export const ROOM_IDLE_MS = 10 * 60_000;
+/**
+ * A room with its host alone in it (nobody came yet, or all who did left; those invited are nobody until they come)
+ * ends this long after, the host going on alone (RoomEnd alone); an invitation or a 宣言一起听 they send meanwhile
+ * starts it over, for the one called to answer
+ */
+export const ALONE_MS = 5 * 60_000;
+/** The host's page counts ALONE_MS down and ends the room itself at 0 (end alone): taken this much early at most, as clocks go */
+export const ALONE_EARLY_MS = 5_000;
 /** Every room ends this long after it was opened */
 export const ROOM_LIFE_MS = 6 * 3_600_000;
 /** A room that ended, who was in it and the invitations to it, are deleted this long after */
@@ -459,8 +470,11 @@ export type RoomMember = {
 };
 /** Someone the host invited who is not in: waiting for an answer, or not come (said 下次吧, or the invitation ran out) */
 export type RoomInvited = { card: PublicProfile; state: "waiting" | "missed" };
-/** Why a room ended: the host (ended it, left, went off), nothing more to play or nobody left, the 管理台, 全站变灰 */
-export type RoomEnd = "host" | "idle" | "admin" | "gray";
+/**
+ * Why a room ended: the host (ended it, left, went off), its host alone in it ALONE_MS, nothing more to play or nobody
+ * left, the 管理台, 全站变灰
+ */
+export type RoomEnd = "host" | "alone" | "idle" | "admin" | "gray";
 /** A room as someone in it sees it (POST /api/listen/room) */
 export type ListenRoom = RoomSchedule & {
   id: string;
@@ -473,6 +487,11 @@ export type ListenRoom = RoomSchedule & {
   hostName: string;
   /** Its host sent 宣言一起听 for it (once a room) */
   declared: boolean;
+  /**
+   * The host's alone, while nobody else is in it: since when (the server's clock), as it ends ALONE_MS after; null
+   * while anyone else is in, and to anyone else
+   */
+  aloneSince: number | null;
   members: RoomMember[];
   /** The host's alone */
   invited: RoomInvited[];

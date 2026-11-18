@@ -1812,7 +1812,9 @@ export const zh = {
     rxButton: "短评",
     openRoom: "开一场一起听，你是房主",
     endAsk: "结束这场一起听？",
+    endAskMore: "大家都接着各自听，歌不停。",
     leaveAsk: "离开这场一起听？",
+    leaveAskMore: "你接着自己听这首，歌不停。",
     askNot: "先不",
     startTap: "点 ▶ 开始，人没到齐也能先开始",
     roomHeadOf: "{name} 开的一起听 · {n}/{max} 人",
@@ -1829,7 +1831,7 @@ export const zh = {
     queueAfterAny: "一直随机放下去",
     queueAfterRoom: "放完以后：从全部歌里随机接着放",
     queuePlay: "放《{name}》，之后照它那一栏接着放",
-    lists: { album: "专辑《{name}》", all: "全部歌", found: "搜到的歌", fav: "收藏", hot: "热播榜" },
+    lists: { album: "专辑《{name}》", all: "全部歌", found: "搜到的歌", fav: "收藏", hot: "热播榜", left: "刚才那场一起听" },
     // the little bar under the shut player (chrome/ListenMini.tsx), and its handle in each 界面
     mini: {
       open: "打开播放器：{name}",
@@ -1941,6 +1943,15 @@ export const zh = {
     endedHost: "{name} 结束了这次一起听。",
     endedIdle: "这次一起听结束了。",
     endedAdmin: "听歌暂时停了，这次一起听结束了。",
+    // out of a room, its song going on alone (listening.ts goOnAlone)
+    leftOn: "你离开了，接着自己听这首",
+    endedMine: "一起听结束了，大家各自接着听",
+    endedHostOn: "{name} 结束了这次一起听，你接着自己听这首",
+    endedIdleOn: "这次一起听结束了，你接着自己听这首",
+    endedAlone: "没人来，一起听先关了，你接着自己听",
+    // the host alone in the room: it ends ALONE_MS after (its last minute counted down)
+    aloneNow: "现在只有你。5 分钟内没人来，就变回自己听，歌不停。",
+    aloneSoon: "没人来的话，{at} 后变回自己听，歌不停。",
     came: "{name} 来了！",
     went: "{name} 走了",
     started: "开始一起听：《{song}》",

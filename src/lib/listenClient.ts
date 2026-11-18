@@ -74,8 +74,8 @@ export const listenApi = {
   later: (invite: string) => call<{ now: number }>("later", post({ invite })),
   /** Out of your room (the host's ends) */
   leave: () => call<{ now: number }>("leave", post({})),
-  /** The host ends it */
-  end: () => call<{ now: number }>("end", post({})),
+  /** The host ends it; alone: as their page counted 5 minutes alone in it down (ended: it was so, by the server's clock) */
+  end: (alone = false) => call<{ ended: boolean; now: number }>("end", post(alone ? { alone } : {})),
   /**
    * What the host does to its songs: a song added ({add}), a second of the one playing gone to ({seek}), a song taken
    * out of 待播 ({remove, song}), or the rest

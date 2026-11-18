@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { T } from "@/i18n";
 import { heardGray } from "@/lib/grayMode";
-import { DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenFrom, type ListenRoom, type ListenTrack, type RoomMember } from "@/lib/listen";
+import { ALONE_MS, DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenFrom, type ListenRoom, type ListenTrack, type RoomMember } from "@/lib/listen";
 import { playMusic } from "./amiyaMusic";
 import {
   answerAsk,
@@ -630,6 +630,7 @@ const roomOf = (over: Partial<ListenRoom> = {}): ListenRoom => ({
   host: false,
   hostName: "Dr.岚",
   declared: false,
+  aloneSince: null,
   members: [member(1, "Dr.岚", true), member(2, "Dr.桐")],
   invited: [],
   requests: [],
@@ -831,12 +832,87 @@ describe("一起听 on the page", () => {
     expect(listenBubblesNow().map((b) => b.text)).toContain("夜班博士 走了");
   });
 
-  it("fades out when the room ends, says who ended it, and leaves the server counting nobody", async () => {
-    await joinPlaying(30_000);
+  it("goes on alone as the room ends: the same song from the same second in the same element, 待播 the room's songs after it", async () => {
+    await joinPlaying(30_000, { queue: ["s1", "s3", "s4"] });
+    const el = audio();
+    el.duration = 100;
+    el.to(42.5);
+    // catching up with the room as it ended
+    el.playbackRate = 1 + DRIFT_RATE;
     heardListen({ t: "end", room: "r1", why: "host" });
     expect(listenRoomNow()).toBeNull();
+    expect(audio()).toBe(el);
+    expect(el).toMatchObject({ src: link("s1"), paused: false, currentTime: 42.5, playbackRate: 1, volume: 1 });
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", buffering: false, track: { id: "s1" } });
+    expect(said.at(-1)).toBe("Dr.岚 结束了这次一起听，你接着自己听这首");
+    expect(listenUpNextNow()).toMatchObject({ how: "list", ids: ["s3", "s4"], from: { view: "left", ids: ["s1", "s3", "s4"] } });
+    expect(listenHasNextNow()).toBe(true);
+    await tick(0);
+    // the server told at once, as going on with it (never stopped, so the cap on players never turns it away)
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 42.5, next: "s3" });
+    expect(ops("stop")).toEqual([]);
+    expect(isListening()).toBe(true);
+    // nothing of the room's clock moves it any more
+    await tick(6_000);
+    expect(el.currentTime).toBe(42.5);
+    // on to the room's next as a list goes, from the link given with it
+    el.end();
+    expect(audio().src).toBe(link("s3"));
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s3" } });
+    expect(ops("play").at(-1)).toEqual({ song: "s3", at: 0, next: "s4" });
+    // after the room's last: from all of them at random, as after any list
+    audio().end();
+    await tick(0);
+    expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0, next: expect.stringMatching(/^s2$/) });
+  });
+
+  it("goes on alone with the room's next song from its start when it ends between two, without a tap", async () => {
+    await joinPlaying(99_000);
+    audio().duration = 100;
+    await tick(1_000);
+    audio().end();
+    expect(audio().src).toMatch(silence);
+    heardListen({ t: "end", room: "r1", why: "idle" });
+    // the link given ahead, at once
+    expect(audio().src).toBe(link("s2"));
+    expect(audio().paused).toBe(false);
+    expect(said.at(-1)).toBe("这次一起听结束了，你接着自己听这首");
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s2" } });
+    expect(ops("play").at(-1)).toEqual({ song: "s2", at: 0, next: expect.stringMatching(/^s[34]$/) });
+    expect(ops("stop")).toEqual([]);
+  });
+
+  it("keeps a song paused by you paused as the room ends, where you left it; ▶ goes on from there, in the same element", async () => {
+    await joinPlaying(30_000);
+    const el = audio();
+    el.to(31);
+    toggle();
+    expect(el.paused).toBe(true);
+    // the room goes on meanwhile, as the bar shows
+    await tick(5_000);
+    heardListen({ t: "end", room: "r1", why: "host" });
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s1" } });
+    expect(el.paused).toBe(true);
+    await tick(0);
+    // not listening meanwhile
+    expect(ops("stop")).toEqual([{}]);
+    expect(listenUpNextNow()).toMatchObject({ how: "list", ids: ["s2"] });
+    toggle();
+    expect(audio()).toBe(el);
+    expect(el).toMatchObject({ src: link("s1"), paused: false, currentTime: 31 });
+    await tick(0);
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 31, next: "s2" });
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+  });
+
+  it("fades out when the 站长 pauses 听歌 or the site goes gray, and leaves the server counting nobody", async () => {
+    await joinPlaying(30_000);
+    heardListen({ t: "end", room: "r1", why: "admin" });
+    expect(listenRoomNow()).toBeNull();
     expect(listenPlayerNow().status).toBe("idle");
-    expect(said.at(-1)).toBe("Dr.岚 结束了这次一起听。");
+    expect(said.at(-1)).toBe("听歌暂时停了，这次一起听结束了。");
     await tick(0);
     expect(ops("stop")).toEqual([{}]);
     await tick(1_000);
@@ -844,9 +920,22 @@ describe("一起听 on the page", () => {
     await tick(1_100);
     expect(audio().paused).toBe(true);
     expect(audio().volume).toBe(1);
+    // the site gone gray while in one: the same
+    forgetListening();
+    await joinPlaying(30_000);
+    heardGray(String(Date.now() + 60_000));
+    try {
+      expect(listenRoomNow()).toBeNull();
+      expect(listenPlayerNow().status).toBe("idle");
+      await tick(2_100);
+      expect(audio().paused).toBe(true);
+      expect(ops("play").filter((b) => b?.song === "s1")).toHaveLength(2);
+    } finally {
+      heardGray("0");
+    }
   });
 
-  it("leaves, and tells the server as the page goes so the room keeps your place a while", async () => {
+  it("leaves, going on alone, and tells the server as the page goes so the room keeps your place a while", async () => {
     await joinPlaying(30_000);
     page.dispatchEvent(new Event("pagehide"));
     await tick(0);
@@ -854,7 +943,43 @@ describe("一起听 on the page", () => {
     expect(await leaveListen()).toBe(true);
     expect(ops("leave")).toEqual([{}]);
     expect(listenRoomNow()).toBeNull();
-    expect(said.at(-1)).toBe("你离开了 Dr.岚 的一起听。");
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(said.at(-1)).toBe("你离开了，接着自己听这首");
+    // asked to leave: the same, said as before
+    forgetListening();
+    await joinPlaying(30_000);
+    heardListen({ t: "you", room: "r1", why: "kicked" });
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(said.at(-1)).toBe("Dr.岚 请你离开了这场一起听，这一场进不去了。别的场照常。");
+  });
+
+  it("ends the host's room by itself 5 minutes after TA is alone in it, as the server takes it; asked again when not yet", async () => {
+    const since = serverClock() - ALONE_MS + 3_000;
+    await joinPlaying(30_000, { host: true, you: 1, members: [member(1, "Dr.岚", true)], aloneSince: since });
+    answers.end = () => ({ status: 200, json: { ended: false, now: serverClock() } });
+    answerRoom("room", () => roomOf({ host: true, you: 1, members: [member(1, "Dr.岚", true)], aloneSince: since, startedAt: listenRoomNow()!.startedAt }));
+    await tick(2_900);
+    expect(ops("end")).toEqual([]);
+    await tick(200);
+    // not yet, by the server's clock: the room asked for again, and tried again 10 seconds on at the soonest
+    expect(ops("end")).toEqual([{ alone: true }]);
+    expect(ops("room")).toHaveLength(1);
+    await tick(9_000);
+    expect(ops("end")).toHaveLength(1);
+    answers.end = () => ({ status: 200, json: { ended: true, now: serverClock() } });
+    await tick(1_100);
+    expect(ops("end")).toEqual([{ alone: true }, { alone: true }]);
+    expect(listenRoomNow()).toBeNull();
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(said.at(-1)).toBe("没人来，一起听先关了，你接着自己听");
+    // the room's own word on it, after: nothing more
+    heardListen({ t: "end", room: "r1", why: "alone" });
+    expect(said.filter((x) => x === "没人来，一起听先关了，你接着自己听")).toHaveLength(1);
+    // someone came meanwhile (no longer alone): nothing counted
+    forgetListening();
+    await joinPlaying(30_000, { host: true, you: 1, aloneSince: null });
+    await tick(ALONE_MS);
+    expect(ops("end")).toHaveLength(2);
   });
 
   it("lets the host skip to the next song, said to everyone once however the change comes back", async () => {

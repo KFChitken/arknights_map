@@ -2,6 +2,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import { fmt, T } from "@/i18n";
 import { isGray, onGrayChange } from "@/lib/grayMode";
 import {
+  ALONE_MS,
   clock,
   COVER_PX,
   coverLink,
@@ -72,7 +73,9 @@ import { stopSquadMusic } from "./squad/squadMusic";
  * A pause is the player's own: the room goes on, and ▶ goes back to where everyone is. 短评 float a moment
  * (useListenBubbles), the same one from several at once shown once, ×N. Someone in the room is touched (碰) or asked
  * to leave (请出去) by their number there; how you touched each of them from this page today stays while the room does
- * (useListenTouched).
+ * (useListenTouched). Out of a room (its host ended it, nobody came to the host alone in it, you left or were asked
+ * to), what played in it goes on alone from the same second, its 待播 the room's songs after it (goOnAlone); the 站长's
+ * pause and 全站变灰 alone fade it out. A host alone in the room has its page end it ALONE_MS on (countAlone).
  *
  * Alone, the first two rows of 短评 may be said to the song playing (sendRx): only how many times each is counted, and
  * the most said come back with each song played as 大家都在说 under it (useListenSaid). 想一起听 asks a 触须之交 who is
@@ -118,6 +121,8 @@ const MEMBERS_AFTER_MS = [250, 1_500] as const;
 const RETRY_MS = 10_000;
 /** The room is asked again as the page comes back into view, at most this often */
 const BACK_EVERY_MS = 10_000;
+/** The host alone in the room, whose page's end of it the server would not take yet (clocks a little apart): tried again this much later at the soonest */
+const ALONE_RETRY_MS = 10_000;
 /** 短评 and what happened in the room: this many kept to show at most (the page shows two of them) */
 const BUBBLES_KEPT = 4;
 /** A link the server gives lasts 6 to 12 hours (src/lib/server/musicLinks.ts): used again for this long after */
@@ -364,6 +369,9 @@ let syncedAt = "";
 let gapTimer: ReturnType<typeof setTimeout> | undefined;
 let membersTimer: ReturnType<typeof setTimeout> | undefined;
 let rxTimer: ReturnType<typeof setTimeout> | undefined;
+/** The host alone in the room: when the page ends it (ALONE_MS on), and when it last tried, not again before ALONE_RETRY_MS */
+let aloneTimer: ReturnType<typeof setTimeout> | undefined;
+let aloneTried = 0;
 /** Counts what is asked of the server about the room, so an answer that a later one overtook is dropped */
 let roomAsked = 0;
 let backAt = 0;
@@ -1397,7 +1405,7 @@ function stopCounting() {
 
 /** The site went gray: the song fades out and nothing plays until it is over (the entry is gone meanwhile); a room ends */
 function silence() {
-  if (room.get()) return roomOver(null);
+  if (room.get()) return roomOver("gray");
   const a = audio;
   dropKept();
   if (!a || player.get().status === "idle") return;
@@ -1611,6 +1619,7 @@ function enter(next: ListenRoom, sent: number, got: number, now: number): boolea
   } else cameWent(was, r);
   roomEnd.set(null);
   room.set(r);
+  countAlone(r);
   startBeat();
   // the songs' lengths are what the room's clock goes by: asked for first, if they are not in
   syncRoom();
@@ -1812,6 +1821,8 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   if (current?.start !== start && rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
   const given = ahead?.id === track.id ? ahead : null;
   ahead = null;
+  // kept as a song alone's are, so it goes on alone from its link once the room is over (goOnAlone)
+  if (given) remember(track.id, given.url, given.lite);
   lately(track.id);
   current = { track, lite: given?.lite ?? null, next, nextUrl: null, nextLite: null, until: 0, early: false, start };
   hearFrom(track, start, (serverNow() - start) / 1000);
@@ -1826,6 +1837,7 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   listenApi.play(track.id, at < 1 ? 0 : Math.floor(at), next).then(
     (p) => {
       sawSaid(track.id, p.said);
+      remember(track.id, p.url, p.lite ?? null);
       rememberDance(track.id, p.dance);
       if (next) rememberDance(next, p.nextDance);
       if (mine !== asked) return;
@@ -2037,17 +2049,57 @@ export function heardListen(raw: unknown) {
     for (const x of Array.isArray(d.items) ? d.items : []) if (x.h !== r.you && isRx(x.r)) showRx(r, x.h, x.r);
     return;
   }
-  if (d.t === "end") return roomOver(endNote(d.why, r));
+  if (d.t === "end") return roomOver(d.why);
   // to you alone: the host asked you to leave, or you blocked the host
-  if (d.t === "you") return roomOver(fmt(d.why === "kicked" ? T.listen.kickedYou : T.listen.leftNote, { name: r.hostName }));
+  if (d.t === "you") return roomOver(d.why === "kicked" ? "kicked" : "parted");
 }
 
-/** What the room's end says, to someone in it */
-function endNote(why: RoomEnd, r: ListenRoom): string | null {
-  if (why === "host") return r.host ? null : fmt(T.listen.endedHost, { name: r.hostName });
-  if (why === "admin") return T.listen.endedAdmin;
-  if (why === "idle") return T.listen.endedIdle;
-  return null;
+/**
+ * How one is out of a room: it ended (RoomEnd: why), you left it (leave), its host asked you to (kicked), you are out by
+ * blocking its host (parted), or it was found over (gone: it ended while the page was not told)
+ */
+type Out = RoomEnd | "leave" | "kicked" | "parted" | "gone";
+
+/** What being out of the room says, to someone in it: its song going on alone (on), or not */
+function outNote(out: Out, r: ListenRoom, on: boolean): string | null {
+  const name = r.hostName;
+  if (out === "admin") return T.listen.endedAdmin;
+  if (out === "gray") return null;
+  if (out === "alone") return T.listen.endedAlone;
+  if (out === "kicked") return fmt(T.listen.kickedYou, { name });
+  // the host's own 结束 (or leaving it, or going off)
+  if (out === "host" && r.host) return on ? T.listen.endedMine : null;
+  if (out === "host") return fmt(on ? T.listen.endedHostOn : T.listen.endedHost, { name });
+  if (out === "leave" || out === "parted") return on ? T.listen.leftOn : fmt(T.listen.leftNote, { name });
+  return on ? T.listen.endedIdleOn : T.listen.endedIdle;
+}
+
+/**
+ * The host alone in the room (aloneSince): their page ends it ALONE_MS on, by the server's clock, without waiting for
+ * the sweep's minute. The server takes it only once that is so (a few seconds early at most); else the room is asked
+ * for again (someone came, or the clocks are apart), and it is tried again ALONE_RETRY_MS on at the soonest
+ */
+function countAlone(r: ListenRoom) {
+  clearTimeout(aloneTimer);
+  aloneTimer = undefined;
+  if (!r.host || r.aloneSince === null) return;
+  const wait = Math.max(r.aloneSince + ALONE_MS - serverNow(), aloneTried + ALONE_RETRY_MS - Date.now(), 0);
+  aloneTimer = setTimeout(() => void endAlone(r.id), wait);
+}
+
+async function endAlone(id: string) {
+  aloneTimer = undefined;
+  if (room.get()?.id !== id) return;
+  aloneTried = Date.now();
+  const sent = Date.now();
+  try {
+    const res = await listenApi.end(true);
+    heard(res.now, sent, Date.now());
+    if (res.ended && room.get()?.id === id) return roomOver("alone");
+  } catch {
+    // the sweep ends it within a minute all the same
+  }
+  if (room.get()?.id === id) void loadRoom();
 }
 
 /** Who is in the room changed: asked again in a moment, each page at its own */
@@ -2063,9 +2115,15 @@ function membersLater() {
   );
 }
 
-/** Out of the room: its song fades out, and nothing of it is left; note: what the page says of it */
-function roomOver(note: string | null) {
-  if (!room.get()) return;
+/**
+ * Out of the room (out: how): what played in it goes on alone (alonePlan, goOnAlone), but for the 管理台's pause and
+ * 全站变灰, when its song fades out and the player is empty; nothing else of the room is left. What it says is said.
+ */
+function roomOver(out: Out) {
+  const r = room.get();
+  if (!r) return;
+  // worked out from the room as it was, before anything of it goes
+  const plan = out === "admin" || out === "gray" || isGray() ? null : alonePlan(r);
   ++roomAsked;
   ++asked;
   room.set(null);
@@ -2074,15 +2132,27 @@ function roomOver(note: string | null) {
   clearTimeout(membersTimer);
   membersTimer = undefined;
   clearTimeout(rxTimer);
+  clearTimeout(aloneTimer);
+  aloneTimer = undefined;
   selfPaused = false;
   catching = false;
   ahead = null;
   stuck = null;
+  seeked = null;
   syncedAt = "";
   bubbles.set(NO_BUBBLES);
   rxNow.set(RX_FREE);
   rxOpen.set(false);
   touchedIn.set(null);
+  if (plan) goOnAlone(plan);
+  else stopRoomSong();
+  const note = outNote(out, r, plan !== null);
+  roomEnd.set(note);
+  if (note) say(note);
+}
+
+/** The room's song fades out (or stops), the player empty, the server counting nobody */
+function stopRoomSong() {
   const a = audio;
   const sounding = Boolean(a && (holding === "song" || holding === "gap") && !a.paused);
   holding = null;
@@ -2096,8 +2166,79 @@ function roomOver(note: string | null) {
     ++loads;
     a.pause();
   }
-  roomEnd.set(note);
-  if (note) say(note);
+}
+
+/**
+ * What of a room goes on alone, as it was as it ended: the song in the element, from where it is, sounding or paused
+ * (on); between two songs (silence sounding till the next, or after one whose file ended early), the next from its
+ * start (next); else the room's song shown where the room was, for ▶ (shown: not let play yet, paused across songs,
+ * the host not started). Its 待播: the room's songs from it on. null: nothing to go on with (the songs not in, all over)
+ */
+type AlonePlan =
+  | { how: "on"; track: ListenTrack; at: number; ids: string[]; playing: boolean }
+  | { how: "next"; track: ListenTrack; ids: string[]; url: string | null }
+  | { how: "shown"; track: ListenTrack; at: number; ids: string[] };
+function alonePlan(r: ListenRoom): AlonePlan | null {
+  const all = tracks();
+  const at = all ? roomAt(r, lengthOf(all), serverNow()) : null;
+  if (!all || !at || at.phase === "done") return null;
+  const i = at.phase === "playing" ? at.i : Math.max(0, r.idx);
+  const track = all.get(r.queue[i] ?? "");
+  if (!track) return null;
+  const from = (n: number) => r.queue.slice(n).filter((id) => all.has(id));
+  const a = audio;
+  if (at.phase === "playing" && a && holding === "song" && current?.track.id === track.id && !a.ended) {
+    // the song in the element, from where it is (too little of it in yet to say: where the room is, as it goes there)
+    return { how: "on", track, at: a.readyState >= 1 ? a.currentTime : Math.max(0, at.offset), ids: from(i), playing: !a.paused };
+  }
+  if (at.phase === "playing" && a && holding === "gap" && !a.paused) {
+    const n = at.offset < 0 ? i : i + 1;
+    const id = r.queue[n] ?? anyFrom(track.id).ids[0];
+    const next = id ? all.get(id) : undefined;
+    if (next) return { how: "next", track: next, ids: r.queue[n] ? from(n) : [next.id], url: ahead?.id === next.id ? pick(next.id, ahead.url, ahead.lite) : linkFor(next.id) };
+  }
+  return { how: "shown", track, at: at.phase === "playing" ? Math.max(0, Math.min(at.offset, track.seconds - 1)) : 0, ids: from(i) };
+}
+
+/**
+ * The room's song goes on alone, as alonePlan has it, 待播 going on as the room's songs after it (刚才那场一起听), then as
+ * any list does, from all of them at random. One sounding is told to the server at once as played alone from where it
+ * is (the same play, as 热播榜 counts it), within END_GRACE_MS of the room's end, so the cap on players at once never
+ * turns it away; at the room's speed again. One paused, or not in the element, waits for ▶, the server counting nobody.
+ */
+function goOnAlone(p: AlonePlan) {
+  const a = element();
+  fromNow.set({ view: "left", ids: p.ids });
+  going.set(LIST);
+  steppedOn = null;
+  setRate(a, 1);
+  if (p.how === "next") return begin(p.track, 0, p.url);
+  if (p.how === "on") {
+    // the same play goes on: what of it was heard counts on (热播榜)
+    if (heardNow?.song === p.track.id) heardNow.start = null;
+    const l = links.get(p.track.id);
+    held = { song: p.track.id, url: (l && (onLite && l.lite ? l.lite : l.url)) || a.src, got: l?.got ?? Date.now() };
+    if (p.playing) {
+      const was = player.get();
+      begin(p.track, p.at, held.url, true);
+      // sounding already: nothing comes to say it plays
+      if (was.status === "playing") change({ status: "playing", buffering: was.buffering });
+      return;
+    }
+  } else if (holding === "song" || holding === "gap") {
+    ++loads;
+    holding = null;
+    a.pause();
+  }
+  // shown where it is, ▶ going on from there (in the element still holding it)
+  current = null;
+  ended = false;
+  lastAt = p.at;
+  second.set(Math.floor(p.at));
+  player.set({ track: p.track, status: "paused", buffering: false, tap: false, problem: null });
+  meta(p.track);
+  state("paused");
+  stopCounting();
 }
 
 function startBeat() {
@@ -2135,7 +2276,7 @@ export function loadRoom(): Promise<void> {
       if (mine !== roomAsked) return;
       if (res.room) return void enter(res.room, sent, Date.now(), res.now);
       // it ended while this page was not told (asleep, offline)
-      roomOver(T.listen.endedIdle);
+      roomOver("gone");
     },
     (e: unknown) => {
       if (mine === roomAsked && (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded)) refusedTo?.(e);
@@ -2304,7 +2445,7 @@ export async function leaveListen(): Promise<boolean> {
     failed(e);
     return false;
   }
-  roomOver(r.host ? null : fmt(T.listen.leftNote, { name: r.hostName }));
+  roomOver(r.host ? "host" : "leave");
   return true;
 }
 
@@ -2563,6 +2704,9 @@ export function forgetListening() {
   clearTimeout(membersTimer);
   membersTimer = undefined;
   clearTimeout(rxTimer);
+  clearTimeout(aloneTimer);
+  aloneTimer = undefined;
+  aloneTried = 0;
   audio = null;
   holding = null;
   current = null;

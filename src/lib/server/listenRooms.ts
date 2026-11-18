@@ -1,10 +1,12 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, notExists, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
 import { LISTEN_TEMPLATE } from "../declarations";
 import {
+  ALONE_EARLY_MS,
+  ALONE_MS,
   AWAY_MS,
   changeQueue,
   INVITE_MS,
@@ -77,9 +79,11 @@ import { cardsOf, declare, friendIdsOf, friendKey, profileOf, touch } from "./wo
  * of who), that who is in it changed (each phone asks again, as each sees the others its own way), the 短评 of the last
  * second, and that it ended. 短评 are never written down. Its songs never run out: one playing the last of them is given
  * another at the end, at random (toppedUp, as the host changes them and every minute). A room ends when its host ends
- * or leaves it, goes off for more than AWAY_MS, opens another or goes in at another; when its songs have been over
- * ROOM_IDLE_MS (none could be added in time), nobody is left, or it has gone on ROOM_LIFE_MS; and every room ends when
- * 听歌 is paused in the 管理台 or the site goes gray. ROOM_KEEP_MS
+ * or leaves it, goes off for more than AWAY_MS, opens another or goes in at another; when its host has been alone in it
+ * ALONE_MS (alone_since: nobody came, or all who did left), its songs have been over ROOM_IDLE_MS (none could be added
+ * in time), nobody is left, or it has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the
+ * site goes gray. Whoever was in a room that ended (but by the 管理台 or 全站变灰) goes on with its song alone, on their
+ * own page (src/components/app/listening.ts). ROOM_KEEP_MS
  * after, the room, who was in it and the invitations to it are deleted. Your 触须之交 see what you listen to while you
  * let them (show_listening: friendsListening), and may ask you to invite them (想一起听: askToListen, answerAsk).
  */
@@ -250,6 +254,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     .where(host ? eq(listenRequests.roomId, roomId) : and(eq(listenRequests.roomId, roomId), eq(listenRequests.handle, me.handle)))
     .orderBy(asc(listenRequests.createdAt), asc(listenRequests.id));
   const hostRow = rows.find((r) => r.u.id === room.hostId);
+  // only while nobody else is in it: a count left from two going at once is not shown (sweepRooms puts it right)
+  const alone = host && room.aloneSince && rows.filter((r) => !r.m.leftAt).length === 1 ? room.aloneSince.getTime() : null;
   return {
     id: room.id,
     ...scheduleOf(room),
@@ -258,6 +264,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     host,
     hostName: hostRow ? displayName(profileOf(hostRow.u)) : "",
     declared: Boolean(room.declaredAt),
+    aloneSince: alone,
     members,
     invited,
     requests,
@@ -286,6 +293,7 @@ async function leaveIn(tx: Exec, userId: string, now: number, why: RoomEnd = "ho
     .set({ leftAt: new Date(now), awayAt: null })
     .where(and(eq(listenMembers.roomId, mine.room.id), eq(listenMembers.userId, userId)));
   await dropRequests(tx, mine.room.id, mine.me.handle);
+  await aloneFrom(tx, mine.room.id, now);
   await tx
     .update(listenNow)
     .set({ roomId: null, until: soonest(now) })
@@ -321,6 +329,59 @@ async function endIn(tx: Exec, roomId: string, why: RoomEnd, now: number): Promi
 /** The 点歌 waiting in a room: those of the number h there (out of it), or all of them (it ended) */
 async function dropRequests(tx: Exec, roomId: string, h?: number) {
   await tx.delete(listenRequests).where(h === undefined ? eq(listenRequests.roomId, roomId) : and(eq(listenRequests.roomId, roomId), eq(listenRequests.handle, h)));
+}
+
+/**
+ * Someone out of a room (left, asked to leave, parted by a block): its host alone in it from now on, when nobody else is
+ * in (those invited are nobody yet), so it ends ALONE_MS after unless anyone comes. true: they are
+ */
+async function aloneFrom(tx: Exec, roomId: string, now: number): Promise<boolean> {
+  const set = await tx
+    .update(listenRooms)
+    .set({ aloneSince: new Date(now) })
+    .where(
+      and(
+        eq(listenRooms.id, roomId),
+        isNull(listenRooms.endedAt),
+        notExists(
+          tx
+            .select({ one: sql`1` })
+            .from(listenMembers)
+            .where(and(eq(listenMembers.roomId, roomId), isNull(listenMembers.leftAt), ne(listenMembers.userId, listenRooms.hostId))),
+        ),
+      ),
+    )
+    .returning({ id: listenRooms.id });
+  return set.length > 0;
+}
+
+/** The host called someone while alone in their room (an invitation, 宣言一起听): ALONE_MS from now, for TA to answer */
+async function aloneAgain(roomId: string, now: number) {
+  await db
+    .update(listenRooms)
+    .set({ aloneSince: new Date(now) })
+    .where(and(eq(listenRooms.id, roomId), isNotNull(listenRooms.aloneSince), isNull(listenRooms.endedAt)));
+}
+
+/**
+ * The room its host has been alone in ALONE_MS ends (alone), as they go on alone: by the sweep, or by the host's own
+ * page as it counts down (early: so much sooner at most, as clocks go). Read again under the room's lock, after anyone
+ * coming in at once (joinRoom): not with anyone else in it (a count left from two going at once, put right). true: ended
+ */
+async function endAlone(roomId: string, now: number, early = 0): Promise<boolean> {
+  const ids = await db.transaction(async (tx) => {
+    const [room] = await tx.select().from(listenRooms).where(eq(listenRooms.id, roomId)).for("update");
+    if (!room || room.endedAt || !room.aloneSince || room.aloneSince.getTime() > now - ALONE_MS + early) return null;
+    const [{ n }] = await tx
+      .select({ n: count() })
+      .from(listenMembers)
+      .where(and(eq(listenMembers.roomId, roomId), isNull(listenMembers.leftAt)));
+    if (n <= 1) return endIn(tx, roomId, "alone", now);
+    await tx.update(listenRooms).set({ aloneSince: null }).where(eq(listenRooms.id, roomId));
+    return null;
+  });
+  if (ids) tellEnd(roomId, ids, "alone");
+  return Boolean(ids);
 }
 
 /** Listening to a room's song stops counting END_GRACE_MS after one is out of it, at most */
@@ -382,7 +443,15 @@ async function newRoom(user: UserRow, given: unknown, now: number, at?: unknown)
     const left = await leaveIn(tx, user.id, now);
     const [room] = await tx
       .insert(listenRooms)
-      .values({ hostId: user.id, createdAt: new Date(now), queue: songs.queue, queueBy: songs.by, startedAt: startedAt === null ? null : new Date(startedAt) })
+      .values({
+        hostId: user.id,
+        createdAt: new Date(now),
+        queue: songs.queue,
+        queueBy: songs.by,
+        startedAt: startedAt === null ? null : new Date(startedAt),
+        // alone in it until anyone comes
+        aloneSince: new Date(now),
+      })
       .returning({ id: listenRooms.id });
     await tx.insert(listenMembers).values({ roomId: room.id, userId: user.id, handle: 1, via: "host", joinedAt: new Date(now) });
     return { id: room.id, left };
@@ -405,7 +474,8 @@ export async function inviteFriends(user: UserRow, body: Record<string, unknown>
  * Each 触须之交 given gets an invitation, unless TA may not listen (LISTEN, blocking), is in the room already, or has
  * one to it still good; as many as the host likes, none of the day's touches. One TA said 下次吧 to lately (from this
  * host, to 一起听) goes quietly (QUIET_AFTER_LATER_MS): seen at once and never pushed to TA, the host told the same.
- * asked: the answer to TA's own 想一起听, never quiet.
+ * asked: the answer to TA's own 想一起听, never quiet. A host alone in the room who invites anyone (or again) has
+ * ALONE_MS from now for TA to come.
  */
 async function inviteIn(user: UserRow, roomId: string, given: unknown, now: number, asked = false): Promise<InviteSent[]> {
   if (!Array.isArray(given)) throw refuse(400, T.server.common.badRequest);
@@ -418,6 +488,8 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
   const results: InviteSent[] = [];
   const made: string[] = [];
   const nudged: string[] = [];
+  // invited now, or still: anyone called to come
+  let called = false;
   await db.transaction(async (tx) => {
     // one host's invitations one at a time, so two taps cannot both send TA one to the room
     await lockPlayer(tx, user.id);
@@ -458,6 +530,7 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
         .limit(1);
       if (still) {
         results.push({ id: key, ok: true });
+        called = true;
         continue;
       }
       // TA said 下次吧 to one of this host's lately: this one goes quietly
@@ -477,10 +550,12 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
             .limit(1);
       await tx.insert(listenInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now), asked, seenAt: later ? new Date(now) : null });
       results.push({ id: key, ok: true });
+      called = true;
       made.push(to);
       if (!later) nudged.push(to);
     }
   });
+  if (called) await aloneAgain(roomId, now);
   if (made.length) {
     countStat(COUNTED.listenInvite, made.length, now);
     if (nudged.length) nudge(nudged);
@@ -533,6 +608,8 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
         .set({ answer: "joined", answeredAt: new Date(now), seenAt: sql`coalesce(${listenInvites.seenAt}, now())` })
         .where(eq(listenInvites.id, called.invite));
     }
+    // the host is alone no more
+    if (room.aloneSince) await tx.update(listenRooms).set({ aloneSince: null }).where(eq(listenRooms.id, room.id));
     return { left };
   });
   await told(left);
@@ -591,13 +668,17 @@ export async function leaveRoom(user: Pick<UserRow, "id">, now = Date.now()) {
   return { now };
 }
 
-/** The host's 结束 */
-export async function endByHost(user: Pick<UserRow, "id">, now = Date.now()) {
+/**
+ * The host's 结束. alone: their page counted down ALONE_MS alone in the room, and ends it as the sweep would (alone),
+ * only when that is so by the server's clock (ALONE_EARLY_MS early at most); else nothing. ended: it ended now
+ */
+export async function endByHost(user: Pick<UserRow, "id">, body: Record<string, unknown> = {}, now = Date.now()) {
   const mine = await roomOfPlayer(db, user.id);
-  if (!mine) return { now };
+  if (!mine) return { ended: false, now };
   if (mine.room.hostId !== user.id) throw refuse(403, T.server.listen.notHost);
+  if (body.alone === true) return { ended: await endAlone(mine.room.id, now, ALONE_EARLY_MS), now };
   await endRoom(mine.room.id, "host", now);
-  return { now };
+  return { ended: true, now };
 }
 
 /**
@@ -641,6 +722,8 @@ export async function declareRoom(user: UserRow, body: Record<string, unknown>, 
     throw e;
   }
   if (opened) countStat(COUNTED.listenRoom, 1, now);
+  // alone in it: ALONE_MS from now, for those called to come
+  else await aloneAgain(roomId, now);
   // the host's own page shows it sent
   tellListen([user.id], { t: "members", room: roomId });
   return { ...sent, room: await roomView(roomId, user.id, now), now };
@@ -670,6 +753,7 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
       .set({ kicked: true, leftAt: new Date(now), awayAt: null })
       .where(and(eq(listenMembers.roomId, mine.room.id), eq(listenMembers.userId, them.userId)));
     await dropRequests(tx, mine.room.id, them.handle);
+    await aloneFrom(tx, mine.room.id, now);
     await tx
       .update(listenNow)
       .set({ roomId: null, until: soonest(now) })
@@ -990,6 +1074,7 @@ export async function separateBlocked(blockerId: string, blockedId: string, now 
       .returning({ id: listenMembers.userId });
     if (!gone.length) return;
     await dropRequests(db, roomId, b.m.handle);
+    await aloneFrom(db, roomId, now);
     await db
       .update(listenNow)
       .set({ roomId: null, until: soonest(now) })
@@ -1099,9 +1184,11 @@ export async function cameBack(userId: string) {
 
 /**
  * The main process, every minute: those gone off longer than AWAY_MS leave (a host's room ends); rooms end that are
- * over (ROOM_IDLE_MS after their last song), empty, older than ROOM_LIFE_MS, or all of them while 听歌 is paused or the
- * site is gray; a room going on that plays its last song (or whose songs are over) is given one more (topUp); and rooms
- * over for ROOM_KEEP_MS go, with who was in them and the invitations to them. Says how many ended.
+ * over (ROOM_IDLE_MS after their last song), empty, older than ROOM_LIFE_MS, their host alone in them ALONE_MS
+ * (endAlone), or all of them while 听歌 is paused or the site is gray; a room going on that plays its last song (or
+ * whose songs are over) is given one more (topUp); and rooms over for ROOM_KEEP_MS go, with who was in them and the
+ * invitations to them. A host alone in a room not counted so (two going at once: each saw the other still in) is from
+ * now. Says how many ended.
  */
 export async function sweepRooms(now = Date.now()) {
   const away = await db
@@ -1130,13 +1217,14 @@ export async function sweepRooms(now = Date.now()) {
   let all: string[] | null = null;
   for (const room of open) {
     const at = roomAt(scheduleOf(room), seconds, now);
-    const over =
-      why ??
-      (!counts.get(room.id) ||
-      room.createdAt.getTime() <= now - ROOM_LIFE_MS ||
-      (at.phase === "done" && at.end <= now - ROOM_IDLE_MS)
-        ? "idle"
-        : null);
+    const n = counts.get(room.id) ?? 0;
+    const over = why ?? (!n || room.createdAt.getTime() <= now - ROOM_LIFE_MS || (at.phase === "done" && at.end <= now - ROOM_IDLE_MS) ? "idle" : null);
+    if (!over && n === 1 && room.aloneSince && room.aloneSince.getTime() <= now - ALONE_MS && (await endAlone(room.id, now))) {
+      ended += 1;
+      continue;
+    }
+    // the host's page shows it from now
+    if (!over && n === 1 && !room.aloneSince && (await aloneFrom(db, room.id, now))) tellListen([room.hostId], { t: "members", room: room.id });
     if (!over) {
       sawPlayed(room, seconds, now);
       if (needsTopUp(scheduleOf(room), seconds, now)) await topUp(room.id, (all ??= [...(await songList()).byId.keys()]), seconds, now);
