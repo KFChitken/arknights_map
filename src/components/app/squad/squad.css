@@ -262,3 +262,9 @@
 .sq-room .tagline .tst { margin-left: 6px; padding: 0 6px; border-radius: 6px; background: #eceef1; color: #4b5160; }
 .sq-tile .bt { position: absolute; top: 6px; left: 6px; padding: 0 6px; border-radius: 6px; background: #eceef1; color: #5b6170; font-size: 10.5px; font-weight: 700; }
 .sq-seatbtns { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+
+/* 停止加入: the host's switch at the right of the room's state, its pill gray, the seats locked */
+.sq-status .sq-stopbtn { margin-left: auto; }
+.sq-status .pill.stop { background: #eceef1; color: #4b5160; }
+.sq-status .sq-stopline { color: #4b5160; }
+.sq-tile.empty.shut { background: #f6f7f9; }

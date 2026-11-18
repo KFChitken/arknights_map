@@ -684,6 +684,10 @@ export const zh = {
       declaredAlready: "这个房间已经发过宣言了，一个房间只能发一次。",
       botsNoDeclare: "有人机的房间不能宣言招人。",
       botsStaff: "只有站长和管理员能加人机。",
+      stopped: "房主停止了加入。",
+      inviteStopped: "先点「恢复加入」再邀请。",
+      declareStopped: "先点「恢复加入」再发宣言。",
+      botStopped: "先点「恢复加入」再加人机。",
     },
     routes: {
       world: {
@@ -2246,6 +2250,13 @@ export const zh = {
       touch: "碰",
       more: "更多",
       kick: "请出去",
+      /** 停止加入 (the host's), at the right of the room's state */
+      stop: "停止加入",
+      resume: "恢复加入",
+      stoppedPill: "停止加入 {n}/{max}",
+      stoppedLine: "列表上别人看不到这个房间，宣言和邀请也进不来",
+      stoppedSeat: "停止加入",
+      stoppedNoCall: "停止加入了，先点「恢复加入」",
       kickSub: "TA 再也进不了这个房间",
       block: "拉黑",
       blockSub: "以后不在同一个房间",
@@ -2475,6 +2486,7 @@ export const zh = {
         playing: "{level} · {server} · 开打了，现在进不了",
         in: "你在这个房间里",
         shut: "这个房间你进不去了",
+        stopped: "房主停止了加入",
         over: "这个房间已经结束了",
       },
       join: "进房间",
@@ -2494,6 +2506,8 @@ export const zh = {
       key: "房主换了新密钥",
       go: "房主开始游戏了",
       wait: "这局结束了，房间重新开门",
+      stopped: "房主停止了加入",
+      resumed: "房主恢复了加入",
     },
     /** The room ended: why, to everyone in it */
     ended: {

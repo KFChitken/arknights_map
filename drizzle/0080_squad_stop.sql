@@ -1,0 +1,1 @@
+ALTER TABLE "squad_rooms" ADD COLUMN "stopped_at" timestamp with time zone;

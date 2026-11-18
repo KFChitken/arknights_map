@@ -379,6 +379,8 @@ export type SquadRoom = {
   tags: number[];
   state: SquadState;
   friendsOnly: boolean;
+  /** 停止加入: its host keeps everyone else out (the list, invitations, 宣言招人), till they let them in again */
+  stopped: boolean;
   key: string;
   /** When it was pasted (ms) */
   keyAt: number;
@@ -415,8 +417,8 @@ export type SquadTell =
   | {
       t: "room";
       room: string;
-      /** round, pose: one's as it is now, which a page of now takes as it is, without asking again */
-      what?: { kind: "in" | "game" | "key" | "state" | "ask" | "round" | "pose"; h?: number; to?: SquadState; round?: SquadRound; pose?: SquadPose };
+      /** round, pose: one's as it is now, which a page of now takes as it is, without asking again; stop: 停止加入 (on) or 恢复加入 */
+      what?: { kind: "in" | "game" | "key" | "state" | "ask" | "round" | "pose" | "stop"; h?: number; to?: SquadState; round?: SquadRound; pose?: SquadPose; on?: boolean };
     }
   /** The host changed the songs: how, and the songs as they are now */
   | ({ t: "songs"; room: string; how: SquadSongHow } & RoomSchedule)
@@ -460,10 +462,10 @@ export type SquadDesk = {
 
 /**
  * A room as a 宣言招人 to it (or an invitation) is now, to one who got it: open to go in at, full, playing (开打),
- * they are in it, closed to them (asked to leave it, someone they blocked or who blocked them in it), or over; with
- * its server and 难度, and how many are in it
+ * they are in it, closed to them (asked to leave it, someone they blocked or who blocked them in it), its host
+ * stopped anyone coming in (停止加入), or over; with its server and 难度, and how many are in it
  */
-export type SquadCall = { state: "open" | "full" | "playing" | "in" | "shut" | "over"; n: number; server: string; level: number };
+export type SquadCall = { state: "open" | "full" | "playing" | "in" | "shut" | "stopped" | "over"; n: number; server: string; level: number };
 
 /**
  * One of your 触须之交 to invite: their key (friendKey), card, the server of their 明日方舟 UID ("" when not given),

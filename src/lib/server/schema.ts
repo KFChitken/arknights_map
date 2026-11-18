@@ -1861,8 +1861,8 @@ export const listenInvites = pgTable(
  * id: src/lib/squad.ts), the 同盟密钥 (pasted at key_at, changed key_changes times), whether only the host's 触须之交 may come in, and
  * its state: wait (on the list, open), go (playing, closed) or ended. moved_at: something last happened (someone came
  * in or went, readied, changed their picks); waited_at, went_at: a round last ended (结束这局) and started (开始游戏);
- * state_at: the state last changed. Deleted KEEP_MS after it ends,
- * who was in it with it.
+ * state_at: the state last changed; stopped_at: its host stopped others coming in (停止加入: null, anyone may), till
+ * they let them again. Deleted KEEP_MS after it ends, who was in it with it.
  */
 export const squadRooms = pgTable(
   "squad_rooms",
@@ -1884,6 +1884,7 @@ export const squadRooms = pgTable(
     waitedAt: at("waited_at").notNull().defaultNow(),
     wentAt: at("went_at"),
     stateAt: at("state_at"),
+    stoppedAt: at("stopped_at"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */

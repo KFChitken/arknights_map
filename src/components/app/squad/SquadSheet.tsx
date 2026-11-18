@@ -67,6 +67,7 @@ import {
   sentWords,
   setSquadInGame,
   setSquadPrefs,
+  setSquadStopped,
   squadBot,
   squadState,
   useSquadCard,
@@ -921,12 +922,19 @@ function RoomView({
       : room.endsWhy === "go"
         ? fmt(T.squad.room.endsGo, { t: leftWords })
         : fmt(T.squad.room.endsLife, { t: leftWords });
-  const pill = room.state === "go" ? T.squad.room.go : n >= SQUAD_MAX ? fmt(T.squad.room.full, { n, max: SQUAD_MAX }) : fmt(T.squad.room.wait, { n, max: SQUAD_MAX });
+  const pill =
+    room.state === "go"
+      ? T.squad.room.go
+      : room.stopped
+        ? fmt(T.squad.room.stoppedPill, { n, max: SQUAD_MAX })
+        : n >= SQUAD_MAX
+          ? fmt(T.squad.room.full, { n, max: SQUAD_MAX })
+          : fmt(T.squad.room.wait, { n, max: SQUAD_MAX });
   const host = room.members.find((m) => m.host);
   const menuOf = menu === null ? null : (room.members.find((m) => m.h === menu && !m.you) ?? null);
   // calling others in, while it waits for players and has a seat: anyone's invitations to their 触须之交 (who come in
   // even where only the host's may), and the host's 宣言招人, once a room, where anyone may come
-  const mayInvite = room.state === "wait" && n < SQUAD_MAX;
+  const mayInvite = room.state === "wait" && n < SQUAD_MAX && !room.stopped;
   const mayDeclare = mayInvite && room.host && !room.friendsOnly && !room.declared && !room.members.some((m) => m.bot);
   // 人机, to try the room alone: the 站长 and the admins as its host, while it waits
   const mayBot = mayInvite && room.host && room.staff;
@@ -1016,7 +1024,15 @@ function RoomView({
           {!room.friendsOnly && room.state === "wait" && (
             <button disabled={busy || !mayDeclare} onClick={() => setAsking("declare")}>
               <b>{T.squad.call.declare}</b>
-              {room.declared ? T.squad.call.declared : n >= SQUAD_MAX ? T.squad.room.fullNoCall : room.members.some((m) => m.bot) ? T.squad.bot.noDeclare : ""}
+              {room.declared
+                ? T.squad.call.declared
+                : n >= SQUAD_MAX
+                  ? T.squad.room.fullNoCall
+                  : room.stopped
+                    ? T.squad.room.stoppedNoCall
+                    : room.members.some((m) => m.bot)
+                      ? T.squad.bot.noDeclare
+                      : ""}
             </button>
           )}
           <button className="end" disabled={busy} onClick={() => setAsking("end")}>
@@ -1026,9 +1042,20 @@ function RoomView({
         </div>
       )}
       <div className="sq-status">
-        <span className={`pill ${room.state === "go" ? "go" : n >= SQUAD_MAX ? "full" : "wait"}`}>{pill}</span>
+        <span className={`pill ${room.state === "go" ? "go" : room.stopped ? "stop" : n >= SQUAD_MAX ? "full" : "wait"}`}>{pill}</span>
         <span>{host ? fmt(T.squad.room.hostLine, { name: host.name, server: srv(room.server) }) : srv(room.server)}</span>
+        {room.host && (
+          <button
+            className={`small sq-stopbtn${room.stopped ? " dark" : " ghost"}`}
+            aria-pressed={room.stopped}
+            disabled={busy}
+            onClick={() => void run(() => setSquadStopped(!room.stopped))}
+          >
+            {room.stopped ? T.squad.room.resume : T.squad.room.stop}
+          </button>
+        )}
         <small className="ends">{ends}</small>
+        {room.stopped && <small className="ends sq-stopline">{T.squad.room.stoppedLine}</small>}
       </div>
       <div className={`sq-key${!room.host && me.inGame ? " one" : ""}`}>
         <div className="kl">
@@ -1064,11 +1091,11 @@ function RoomView({
           />
         ))}
         {Array.from({ length: Math.max(0, SQUAD_MAX - n) }, (_, i) => (
-          <div key={`slot${i}`} className="sq-tile empty">
+          <div key={`slot${i}`} className={`sq-tile empty${room.stopped ? " shut" : ""}`}>
             <span className="plus" aria-hidden="true">
-              +
+              {room.stopped ? "🔒" : "+"}
             </span>
-            <span className="nm">{T.squad.room.empty}</span>
+            <span className="nm">{room.stopped ? T.squad.room.stoppedSeat : T.squad.room.empty}</span>
             {i === 0 && (mayInvite || mayBot) && (
               <span className="sq-seatbtns">
                 {mayInvite && (

@@ -302,7 +302,7 @@ export function heardSquad(raw: unknown) {
       if (!next || !what) return;
       // what you did yourself is not said back to you
       if ((what.kind === "in" || what.kind === "game") && what.h === next.you) return;
-      if ((what.kind === "key" || what.kind === "state") && next.host) return;
+      if ((what.kind === "key" || what.kind === "state" || what.kind === "stop") && next.host) return;
       const name = next.members.find((m) => m.h === what.h)?.name ?? null;
       const text =
         what.kind === "ask"
@@ -313,7 +313,11 @@ export function heardSquad(raw: unknown) {
             ? fmt(T.squad.float.game, { name })
             : what.kind === "key"
               ? T.squad.float.key
-              : what.kind === "state"
+              : what.kind === "stop"
+                ? what.on
+                  ? T.squad.float.stopped
+                  : T.squad.float.resumed
+                : what.kind === "state"
                 ? what.to === "go"
                   ? T.squad.float.go
                   : T.squad.float.wait
@@ -404,6 +408,9 @@ export function markSquadRound(next: SquadRound, onError: (e: unknown) => void) 
 
 /** What your roach keeps doing in the room */
 export const setSquadPose = (pose: SquadPose) => after(squadApi.pose(pose));
+
+/** The host's 停止加入 (on) and 恢复加入 */
+export const setSquadStopped = (on: boolean) => after(squadApi.stop(on));
 
 /** 人机, for the 站长 and the admins as host: one added, or what the one numbered h does */
 export const squadBot = (what: SquadBotDo, h?: number) => after(squadApi.bot(what, h));

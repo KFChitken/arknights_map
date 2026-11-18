@@ -69,6 +69,8 @@ export const squadApi = {
   prefs: (round: SquadRound) => call<Room>("prefs", post({ round })),
   /** What your roach keeps doing in the room */
   pose: (pose: SquadPose) => call<Room>("pose", post({ pose })),
+  /** The host's 停止加入 (on) and 恢复加入 */
+  stop: (on: boolean) => call<Room>("stop", post({ on })),
   /** 人机, for the 站长 and the admins as host: add one, or what the one numbered h does */
   bot: (what: SquadBotDo, h?: number) => call<Room>("bot", post(h === undefined ? { do: what } : { do: what, h })),
   /** Your roach waves, or gives a teammate (to: their number) 击掌 or 贴贴: sent, or one too many (full: the hour's are used up) */

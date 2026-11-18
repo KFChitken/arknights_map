@@ -554,6 +554,13 @@
       "when": 1795008145469,
       "tag": "0079_squad_bots",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1795008193207,
+      "tag": "0080_squad_stop",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,7 @@ import {
   setPose,
   setPrefs,
   setState,
+  setStopped,
   squadFriends,
   squadList,
   touchMember,
@@ -61,6 +62,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST invite {friends}         invitations to them (their Friend ids): what each came to
  *   POST later {invite}           下次吧, to an invitation to you (whoever sent it sees 没来)
  *   POST declare {from?}          宣言招人: the host calls those nearby, once a room, from the roaches given
+ *   POST stop {on}                the host: 停止加入 (on) or 恢复加入: nobody else comes in meanwhile
  *   POST bot {do, h?}             人机, for the 站长 and the admins as host: add one (add), or tick its 准备 (ready),
  *                                 give it another strategy, have it say a line, change its pose, or ask it out (kick)
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
@@ -95,6 +97,7 @@ const OPS = {
   later: { method: "POST", perMinute: 20 },
   declare: { method: "POST", perMinute: 4 },
   bot: { method: "POST", perMinute: 30 },
+  stop: { method: "POST", perMinute: 6 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -188,6 +191,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await declareSquad(user, body));
     case "bot":
       return answer(await botInRoom(user, body));
+    case "stop":
+      return answer(await setStopped(user, body));
     default:
       throw new HttpError(404, T.server.routes.squad.notHere);
   }

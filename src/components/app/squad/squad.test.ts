@@ -6,7 +6,7 @@ import { BUBBLE_MS, KEY_OLD_MS, type SquadListRoom, type SquadMember, type Squad
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SquadMateCard from "./SquadMateCard";
 import { MemberTile, RoomCard, SeatTile } from "./SquadSheet";
-import type { SquadLine } from "./squading";
+import { squadCallLine, type SquadLine } from "./squading";
 
 const NOW = Date.parse("2026-11-16T20:30:00+08:00");
 const LOOK = { avatar: "hood", color: "cyan" };
@@ -71,6 +71,11 @@ describe("a room on the list", () => {
   it("is marked 测试 with 人机 in it (to the 站长 and the admins alone)", () => {
     expect(html(room({ test: true }))).toContain('<small class="tst">测试</small>');
     expect(html(room())).not.toContain("测试");
+  });
+
+  it("says in 消息 that its host stopped anyone coming in (停止加入)", () => {
+    expect(squadCallLine({ state: "stopped", n: 2, server: "cn", level: 3 })).toBe("房主停止了加入");
+    expect(squadCallLine({ state: "open", n: 2, server: "cn", level: 3 })).toBe("险境模拟 · 官服 · 现在 2/4");
   });
 
   it("is closed while playing, and leads back to one's own room", () => {

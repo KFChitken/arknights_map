@@ -424,6 +424,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     tags: room.tags,
     state: room.state as SquadState,
     friendsOnly: room.friendsOnly,
+    stopped: Boolean(room.stoppedAt),
     key: room.key,
     keyAt: room.keyAt.getTime(),
     keyLeft: Math.max(0, KEY_CHANGES - room.keyChanges),
@@ -614,6 +615,8 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
     // the room's row first, so two coming in at once are counted one after the other
     const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
     if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
+    // 停止加入: nobody, from the list, an invitation or a 宣言招人, nor one who was in it before
+    if (room.stoppedAt) throw refuse(403, T.server.squad.stopped, ROOM_SHUT);
     if (room.state !== "wait") throw refuse(409, T.server.squad.playing, ROOM_PLAYING);
     const rows = await tx.select().from(squadMembers).where(eq(squadMembers.roomId, room.id));
     const mine = rows.find((m) => m.userId === user.id);
@@ -826,6 +829,27 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
   return { room: await roomView(mine.room.id, user.id, now), now };
 }
 
+/**
+ * 停止加入 (on) and 恢复加入: the host keeps everyone else out of the room, from the list, invitations and 宣言招人
+ * alike (joinRoom), whether it waits or plays, till they let them in again; those in it go on as before. It counts as
+ * something happening, and the room is told.
+ */
+export async function setStopped(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  if (typeof body.on !== "boolean") throw refuse(400, T.server.common.badRequest);
+  const on = body.on;
+  const mine = await hostedBy(user.id);
+  const [changed] = await db
+    .update(squadRooms)
+    .set({ stoppedAt: on ? new Date(now) : null, movedAt: new Date(now) })
+    .where(and(eq(squadRooms.id, mine.room.id), isNull(squadRooms.endedAt), on ? isNull(squadRooms.stoppedAt) : sql`${squadRooms.stoppedAt} is not null`))
+    .returning({ id: squadRooms.id });
+  if (changed) {
+    forgetList();
+    await tellRoom(mine.room.id, { kind: "stop", on });
+  }
+  return { room: await roomView(mine.room.id, user.id, now), now };
+}
+
 /** Out for good, by its host: the one with the number h in the room (never the host), or null when nobody is */
 async function kickIn(roomId: string, hostId: string, h: number, now: number) {
   const gone = await db.transaction(async (tx) => {
@@ -877,6 +901,7 @@ async function addBot(roomId: string, now: number) {
     const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
     if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
     if (room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
+    if (room.stoppedAt) throw refuse(409, T.server.squad.botStopped, ROOM_SHUT);
     const members = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)));
     const all = await tx.select().from(squadBots).where(eq(squadBots.roomId, roomId));
     const bots = all.filter((b) => !b.goneAt);
@@ -1284,6 +1309,8 @@ export async function inviteToSquad(user: UserRow, body: Record<string, unknown>
   const keys = [...new Set(body.friends.map(String))].slice(0, INVITE_AT_ONCE);
   const mine = await roomOf(db, user.id);
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  // 停止加入: nobody would come in at one (the host may let them in first)
+  if (mine.room.stoppedAt) throw refuse(409, mine.room.hostId === user.id ? T.server.squad.inviteStopped : T.server.squad.stopped, ROOM_SHUT);
   if (mine.room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
   const roomId = mine.room.id;
   const [{ there }] = await db
@@ -1384,7 +1411,7 @@ export async function squadCalls(userId: string, roomIds: string[]): Promise<Map
   if (!ids.length) return out;
   const [rooms, members, blocked, bots] = await Promise.all([
     db
-      .select({ id: squadRooms.id, endedAt: squadRooms.endedAt, state: squadRooms.state, server: squadRooms.server, level: squadRooms.level })
+      .select({ id: squadRooms.id, endedAt: squadRooms.endedAt, stoppedAt: squadRooms.stoppedAt, state: squadRooms.state, server: squadRooms.server, level: squadRooms.level })
       .from(squadRooms)
       .where(inArray(squadRooms.id, ids)),
     db
@@ -1405,11 +1432,13 @@ export async function squadCalls(userId: string, roomIds: string[]): Promise<Map
         ? "in"
         : mine?.kicked || there.some((m) => blocked.has(m.userId))
           ? "shut"
-          : r.state === "go"
-            ? "playing"
-            : n >= SQUAD_MAX
-              ? "full"
-              : "open";
+          : r.stoppedAt
+            ? "stopped"
+            : r.state === "go"
+              ? "playing"
+              : n >= SQUAD_MAX
+                ? "full"
+                : "open";
     out.set(r.id, { state, n: state === "over" ? 0 : n, server: r.server, level: r.level });
   }
   return out;
@@ -1485,8 +1514,9 @@ export async function declareSquad(user: UserRow, body: Record<string, unknown>,
   refuseClosed();
   const mine = await hostedBy(user.id);
   if (mine.room.friendsOnly) throw refuse(409, T.server.squad.declareFriendsOnly);
-  // a room tried with 人机 calls nobody nearby
+  // a room tried with 人机 calls nobody nearby, nor one stopped (停止加入)
   if ((await botsOf(db, mine.room.id)).length) throw refuse(409, T.server.squad.botsNoDeclare);
+  if (mine.room.stoppedAt) throw refuse(409, T.server.squad.declareStopped, ROOM_SHUT);
   if (mine.room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
   const [{ n }] = await db
     .select({ n: count() })
@@ -1646,6 +1676,8 @@ type Snap = {
   tags: number[];
   state: SquadState;
   friendsOnly: boolean;
+  /** 停止加入: on the list of those in it alone */
+  stopped: boolean;
   at: number;
   keyAt: number;
   /** The host's songs, for ♪ 在放歌 */
@@ -1695,6 +1727,7 @@ async function snapshot(now: number): Promise<Snap[]> {
             tags: r.tags,
             state: r.state as SquadState,
             friendsOnly: r.friendsOnly,
+            stopped: Boolean(r.stoppedAt),
             at: r.createdAt.getTime(),
             keyAt: r.keyAt.getTime(),
             songs: scheduleOf(r),
@@ -1820,8 +1853,9 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
     .filter((r) => !r.members.some((m) => blocked.has(m.userId)))
     // a room only for 触须之交, to the host's alone (and those in it)
     .filter((r) => !r.friendsOnly || friends.has(r.hostId) || r.members.some((m) => m.userId === user.id))
-    // one tried with 人机, to the 站长 and the admins alone (and those in it)
+    // one tried with 人机, to the 站长 and the admins alone (and those in it); one stopped (停止加入) to those in it alone
     .filter((r) => !r.bots.length || staff || r.members.some((m) => m.userId === user.id))
+    .filter((r) => !r.stopped || r.members.some((m) => m.userId === user.id))
     .map((r) => listRoom(r, user.id, friends, seconds, now))
     .sort(byOrder)
     .slice(0, LIST_MAX);
