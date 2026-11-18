@@ -1,6 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
 import { LISTEN_TEMPLATE } from "../declarations";
@@ -8,7 +8,6 @@ import {
   AWAY_MS,
   changeQueue,
   INVITE_MS,
-  INVITES_PER_DAY,
   isRx,
   isSeek,
   isSongId,
@@ -19,6 +18,7 @@ import {
   NO_SONG,
   NOT_LISTENING,
   QUEUE_MAX,
+  QUIET_AFTER_LATER_MS,
   RANDOM_ADD,
   ROOM_FULL,
   ROOM_GONE,
@@ -43,7 +43,7 @@ import {
   type RoomSchedule,
 } from "../listen";
 import { displayName } from "../profile";
-import { siteDay, siteDayStart } from "../siteDay";
+import { siteDay } from "../siteDay";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { blockedWith } from "./blocks";
 import { canSeeDeclaration } from "./declarationInbox";
@@ -338,9 +338,10 @@ export async function inviteFriends(user: UserRow, body: Record<string, unknown>
 }
 
 /**
- * Each 触须之交 given gets an invitation, unless TA may not listen (LISTEN, blocking), is in the room already, has one
- * to it still good, or was invited INVITES_PER_DAY times today by this host (a site day, none of the day's touches).
- * asked: the answer to TA's own 想一起听, which goes however many were sent today, and is none of them.
+ * Each 触须之交 given gets an invitation, unless TA may not listen (LISTEN, blocking), is in the room already, or has
+ * one to it still good; as many as the host likes, none of the day's touches. One TA said 下次吧 to lately (from this
+ * host, to 一起听) goes quietly (QUIET_AFTER_LATER_MS): seen at once and never pushed to TA, the host told the same.
+ * asked: the answer to TA's own 想一起听, never quiet.
  */
 async function inviteIn(user: UserRow, roomId: string, given: unknown, now: number, asked = false): Promise<InviteSent[]> {
   if (!Array.isArray(given)) throw refuse(400, T.server.common.badRequest);
@@ -350,11 +351,11 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
   const ids = keys.map((k) => byKey.get(k)).filter((id): id is string => Boolean(id));
   const people = ids.length ? await db.select().from(users).where(inArray(users.id, ids)) : [];
   const blocked = await blockedWith(user.id);
-  const dayStart = new Date(siteDayStart(siteDay(now)));
   const results: InviteSent[] = [];
+  const made: string[] = [];
   const nudged: string[] = [];
   await db.transaction(async (tx) => {
-    // one host's invitations one at a time, so two taps cannot both find room for a fourth today
+    // one host's invitations one at a time, so two taps cannot both send TA one to the room
     await lockPlayer(tx, user.id);
     const inNow = new Set(
       (
@@ -395,29 +396,30 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
         results.push({ id: key, ok: true });
         continue;
       }
-      const [{ n }] = await tx
-        .select({ n: count() })
-        .from(listenInvites)
-        .where(
-          and(
-            eq(listenInvites.fromUserId, user.id),
-            eq(listenInvites.toUserId, to),
-            gte(listenInvites.createdAt, dayStart),
-            eq(listenInvites.asked, false),
-          ),
-        );
-      if (n >= INVITES_PER_DAY && !asked) {
-        results.push({ id: key, ok: false, why: fmt(T.server.listen.invitedEnough, { n: INVITES_PER_DAY }) });
-        continue;
-      }
-      await tx.insert(listenInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now), asked });
+      // TA said 下次吧 to one of this host's lately: this one goes quietly
+      const [later] = asked
+        ? []
+        : await tx
+            .select({ id: listenInvites.id })
+            .from(listenInvites)
+            .where(
+              and(
+                eq(listenInvites.fromUserId, user.id),
+                eq(listenInvites.toUserId, to),
+                eq(listenInvites.answer, "later"),
+                gt(listenInvites.answeredAt, new Date(now - QUIET_AFTER_LATER_MS)),
+              ),
+            )
+            .limit(1);
+      await tx.insert(listenInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now), asked, seenAt: later ? new Date(now) : null });
       results.push({ id: key, ok: true });
-      nudged.push(to);
+      made.push(to);
+      if (!later) nudged.push(to);
     }
   });
-  if (nudged.length) {
-    countStat(COUNTED.listenInvite, nudged.length, now);
-    nudge(nudged);
+  if (made.length) {
+    countStat(COUNTED.listenInvite, made.length, now);
+    if (nudged.length) nudge(nudged);
     // the host's own list of who is invited
     tellListen([user.id], { t: "members", room: roomId });
   }
@@ -1027,24 +1029,14 @@ export async function seeListenInvites(userId: string, itemIds: string[]) {
 }
 
 /**
- * Your 触须之交 who may listen, to invite: how many times more today, and whether TA is in your room already; by name,
- * and those of one name (as all who are anonymous are) by id, so they keep their places
+ * Your 触须之交 who may listen, to invite, and whether TA is in your room already; by name, and those of one name (as
+ * all who are anonymous are) by id, so they keep their places
  */
 export async function listenFriends(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ friends: ListenFriend[]; now: number }> {
   const ids = [...(await friendIdsOf(user.id))];
   if (!ids.length) return { friends: [], now };
   const blocked = await blockedWith(user.id);
   const people = (await db.select().from(users).where(inArray(users.id, ids))).filter((u) => !blocked.has(u.id) && listenOpen(u));
-  const dayStart = new Date(siteDayStart(siteDay(now)));
-  const used = new Map(
-    (
-      await db
-        .select({ to: listenInvites.toUserId, n: count() })
-        .from(listenInvites)
-        .where(and(eq(listenInvites.fromUserId, user.id), gte(listenInvites.createdAt, dayStart), eq(listenInvites.asked, false)))
-        .groupBy(listenInvites.toUserId)
-    ).map((r) => [r.to, r.n]),
-  );
   const mine = await roomOfPlayer(db, user.id);
   const inRoomNow = new Set(
     mine
@@ -1062,7 +1054,6 @@ export async function listenFriends(user: Pick<UserRow, "id">, now = Date.now())
       (u): ListenFriend => ({
         id: friendKey(user.id, u.id),
         card: cards.get(u.id)!,
-        left: Math.max(0, INVITES_PER_DAY - (used.get(u.id) ?? 0)),
         inRoom: inRoomNow.has(u.id),
       }),
     )
@@ -1144,7 +1135,7 @@ export async function askToListen(user: UserRow, body: Record<string, unknown>, 
 /**
  * 一起听 at a 想一起听 to the player (item: c:<its note>), the site day it came: the room they host, or a new one of
  * theirs with what they listen to now (else the song it asked about, else 新歌's first), and an invitation in it to the
- * one who asked, as any other but none of the day's INVITES_PER_DAY. Not while in someone else's room. Again once
+ * one who asked, as any other but never quiet (QUIET_AFTER_LATER_MS). Not while in someone else's room. Again once
  * done: the room as it is.
  */
 export async function answerAsk(user: UserRow, body: Record<string, unknown>, now = Date.now()) {

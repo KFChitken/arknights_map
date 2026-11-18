@@ -258,8 +258,13 @@ export const ROOM_GAP_MS = 2_000;
 export const ROOM_LEAD_MS = 1_000;
 /** An invitation holds this long */
 export const INVITE_MS = 30 * 60_000;
-/** A player invites the same 触须之交 this often a site day at most (src/lib/siteDay.ts), none of the day's touches */
-export const INVITES_PER_DAY = 3;
+/**
+ * Inviting a 触须之交 has no limit, and none of the day's touches. Once TA says 下次吧 to one from a player (its
+ * answered_at), those the same player sends TA (to 一起听 or 一起卫戍, each its own) for this long go quietly: in
+ * 消息 as any, good to go in at, but seen already (no card, no red dot) and never pushed to TA's page; the one who
+ * invites sees nothing different. A 下次吧 to a quiet one starts it over. Never one at TA's own 想一起听 (asked).
+ */
+export const QUIET_AFTER_LATER_MS = 30 * 60_000;
 /** A page gone (closed, reloaded) keeps its player's place in the room this long; a host's, the room */
 export const AWAY_MS = 2 * 60_000;
 /** A room whose songs are over ends this long after, unless the host adds more */
@@ -443,8 +448,8 @@ export type ListenCall = { state: "open" | "full" | "in" | "shut" | "over"; n: n
 /** A page shows the card of a 宣言一起听 that came this often at most; the rest go to 消息 alone */
 export const CALL_CARD_EVERY_MS = 10 * 60_000;
 
-/** One of your 触须之交 who may listen, to invite (id: their Friend id): how many times more today, and whether TA is in your room */
-export type ListenFriend = { id: string; card: PublicProfile; left: number; inRoom: boolean };
+/** One of your 触须之交 who may listen, to invite (id: their Friend id), and whether TA is in your room */
+export type ListenFriend = { id: string; card: PublicProfile; inRoom: boolean };
 /** How each invitation went (id: the Friend id given): sent (or TA had one, or is in), or why not */
 export type InviteSent = { id: string; ok: boolean; why?: string };
 

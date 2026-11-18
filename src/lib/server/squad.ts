@@ -7,13 +7,13 @@ import { SQUAD_TEMPLATE } from "../declarations";
 import {
   changeQueue,
   INVITE_MS,
-  INVITES_PER_DAY,
   isSeek,
   isSongId,
   LISTEN_GRAY,
   LISTEN_PAUSED,
   NO_SONG,
   QUEUE_MAX,
+  QUIET_AFTER_LATER_MS,
   RANDOM_ADD,
   roomAt,
   type QueueEdit,
@@ -951,16 +951,6 @@ export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()):
   if (!ids.length) return { friends: [], now };
   const blocked = await blockedWith(user.id);
   const people = (await db.select().from(users).where(inArray(users.id, ids))).filter((u) => !blocked.has(u.id) && mayCome(u));
-  const dayStart = new Date(siteDayStart(siteDay(now)));
-  const used = new Map(
-    (
-      await db
-        .select({ to: squadInvites.toUserId, n: count() })
-        .from(squadInvites)
-        .where(and(eq(squadInvites.fromUserId, user.id), gte(squadInvites.createdAt, dayStart)))
-        .groupBy(squadInvites.toUserId)
-    ).map((r) => [r.to, r.n]),
-  );
   const inRoom = new Set(
     (
       await db
@@ -992,7 +982,6 @@ export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()):
         id: friendKey(user.id, u.id),
         card: cards.get(u.id)!,
         server: u.uidServerArknights,
-        left: Math.max(0, INVITES_PER_DAY - (used.get(u.id) ?? 0)),
         inRoom: inRoom.has(u.id),
         waiting: waiting.has(u.id),
       }),
@@ -1009,8 +998,9 @@ export async function squadFriends(user: Pick<UserRow, "id">, now = Date.now()):
 /**
  * Invitations from anyone in a room to their 触须之交 given (friends: their Friend ids), while it waits for players and
  * is not full; one lets TA in even where only the host's 触须之交 may come. Each gets one unless TA may not come
- * (SQUAD, blocking), is in the room already, has one to it still good, or was invited INVITES_PER_DAY times today by
- * them (a site day). TA hears of it as of anything new in 消息.
+ * (SQUAD, blocking), is in the room already, or has one to it still good; as many as they like, none of the day's
+ * touches. TA hears of it as of anything new in 消息, but quietly (seen at once, never pushed, the one who invites told
+ * the same) when TA said 下次吧 to one of theirs lately (QUIET_AFTER_LATER_MS, to 一起卫戍).
  */
 export async function inviteToSquad(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
   refuseClosed();
@@ -1029,11 +1019,11 @@ export async function inviteToSquad(user: UserRow, body: Record<string, unknown>
   const ids = keys.map((k) => byKey.get(k)).filter((id): id is string => Boolean(id));
   const people = ids.length ? await db.select().from(users).where(inArray(users.id, ids)) : [];
   const blocked = await blockedWith(user.id);
-  const dayStart = new Date(siteDayStart(siteDay(now)));
   const sent: SquadInviteSent[] = [];
+  const made: string[] = [];
   const nudged: string[] = [];
   await db.transaction(async (tx) => {
-    // one player's invitations one at a time, so two taps cannot both find room for a fourth today
+    // one player's invitations one at a time, so two taps cannot both send TA one to the room
     await lockPlayer(tx, user.id);
     const inNow = new Set(
       (
@@ -1067,22 +1057,28 @@ export async function inviteToSquad(user: UserRow, body: Record<string, unknown>
         sent.push({ id: key, ok: true });
         continue;
       }
-      const [{ n }] = await tx
-        .select({ n: count() })
+      // TA said 下次吧 to one of this player's lately: this one goes quietly
+      const [later] = await tx
+        .select({ id: squadInvites.id })
         .from(squadInvites)
-        .where(and(eq(squadInvites.fromUserId, user.id), eq(squadInvites.toUserId, to), gte(squadInvites.createdAt, dayStart)));
-      if (n >= INVITES_PER_DAY) {
-        sent.push({ id: key, ok: false, why: fmt(T.server.squad.invitedEnough, { n: INVITES_PER_DAY }) });
-        continue;
-      }
-      await tx.insert(squadInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now) });
+        .where(
+          and(
+            eq(squadInvites.fromUserId, user.id),
+            eq(squadInvites.toUserId, to),
+            eq(squadInvites.answer, "later"),
+            gt(squadInvites.answeredAt, new Date(now - QUIET_AFTER_LATER_MS)),
+          ),
+        )
+        .limit(1);
+      await tx.insert(squadInvites).values({ roomId, fromUserId: user.id, toUserId: to, createdAt: new Date(now), seenAt: later ? new Date(now) : null });
       sent.push({ id: key, ok: true });
-      nudged.push(to);
+      made.push(to);
+      if (!later) nudged.push(to);
     }
   });
-  if (nudged.length) {
-    countStat(COUNTED.squadInvite, nudged.length, now);
-    nudge(nudged);
+  if (made.length) {
+    countStat(COUNTED.squadInvite, made.length, now);
+    if (nudged.length) nudge(nudged);
     // your own list of who is invited, on your other pages
     tellSquad([user.id], { t: "room", room: roomId });
   }

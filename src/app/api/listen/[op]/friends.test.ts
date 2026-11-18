@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COUNTED } from "@/lib/dashboard";
-import { INVITES_PER_DAY, LISTEN_ASK, RX_EVERY_MS, RX_PER_SONG, SAID_MIN, type ListenRoom } from "@/lib/listen";
+import { INVITE_MS, LISTEN_ASK, QUIET_AFTER_LATER_MS, RX_EVERY_MS, RX_PER_SONG, SAID_MIN, type ListenRoom } from "@/lib/listen";
 import { EMPTY_PROFILE } from "@/lib/profile";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
@@ -28,6 +28,8 @@ import {
   songPlays,
   songReactions,
   songs,
+  squadInvites,
+  squadRooms,
   statCounts,
   users,
 } from "@/lib/server/schema";
@@ -260,29 +262,29 @@ describe("想一起听", () => {
     );
   });
 
-  it("is answered past the day's invitations, into the room TA hosts; over the next day; never from someone else's room", async () => {
+  it("is answered into the room TA hosts, coming up as any though TA said 下次吧 to its host; over the next day; never from someone else's room", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-15T10:00:00Z"));
     const { tong, lan } = await cast();
     const third = await account("third@example.com");
     await befriend(tong, third);
-    // 桐 invites 岚 as often as a day allows, 岚 says 下次吧 each time
+    // 桐 invites 岚, who says 下次吧: 桐's next would go quietly, but never one answering 岚's own 想一起听
     const opened = await post(tong, "open", { song: "s2", invite: [friendKey(tong.id, lan.id)] });
     const roomId = (opened.body!.room as ListenRoom).id;
-    for (let i = 0; i < INVITES_PER_DAY; i++) {
-      // a second apart, so the newest is the one answered
-      vi.setSystemTime(Date.now() + 1000);
-      if (i > 0) expect((await post(tong, "invite", { friends: [friendKey(tong.id, lan.id)] })).body!.sent).toEqual([{ id: friendKey(tong.id, lan.id), ok: true }]);
-      expect((await post(lan, "later", { invite: (await invitesTo(lan))[0].id.slice(3) })).status).toBe(200);
-    }
-    expect((await post(tong, "invite", { friends: [friendKey(tong.id, lan.id)] })).body!.sent).toMatchObject([{ ok: false }]);
+    vi.setSystemTime(Date.now() + 1000);
+    expect((await post(lan, "later", { invite: (await invitesTo(lan))[0].id.slice(3) })).status).toBe(200);
     await post(tong, "play", { song: "s2" });
     await post(lan, "ask", { friend: friendKey(lan.id, tong.id) });
     const [ask] = await asksTo(tong);
+    const lanHeard = hear(lan);
     const res = await post(tong, "askOk", { item: ask.id });
     expect(res.body).toMatchObject({ sent: [{ id: friendKey(tong.id, lan.id), ok: true }] });
     expect((res.body!.room as ListenRoom).id).toBe(roomId);
-    expect((await invitesTo(lan)).filter((i) => i.state === "open")).toHaveLength(1);
+    const open = (await invitesTo(lan)).filter((i) => i.state === "open");
+    expect(open).toHaveLength(1);
+    // a red dot, and TA's page told
+    expect(open[0].seen).toBe(false);
+    expect(lanHeard).toContain("inbox");
 
     // over once its site day is
     await post(tong, "end");
@@ -307,27 +309,60 @@ describe("想一起听", () => {
     expect(await post(lan, "askOk", { item: "c:not-an-id" })).toMatchObject({ status: 400 });
   });
 
-  it("is answered with an invitation that is none of the day's three", async () => {
+  it("goes quietly for 30 minutes from the host TA said 下次吧 to: in 消息 and good to go in at, never pushed, the same to the host", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-11-15T10:00:00Z"));
+    const t0 = Date.parse("2026-11-15T10:00:00Z");
+    vi.setSystemTime(t0);
     const { tong, lan } = await cast();
+    const third = await account("third@example.com");
+    await befriend(third, lan);
     const key = friendKey(tong.id, lan.id);
-    const left = async () => ((await post(tong, "friends")).body!.friends as { id: string; left: number }[]).find((f) => f.id === key)?.left;
-    await post(tong, "play", { song: "s1" });
-    await post(lan, "ask", { friend: friendKey(lan.id, tong.id) });
-    const [ask] = await asksTo(tong);
-    expect((await post(tong, "askOk", { item: ask.id })).body).toMatchObject({ sent: [{ id: key, ok: true }] });
-    expect(await left()).toBe(INVITES_PER_DAY);
-    // 岚 says 下次吧 each time, and 桐 invites again as often as a day allows
-    for (let i = 0; i < INVITES_PER_DAY; i++) {
-      vi.setSystemTime(Date.now() + 1000);
-      expect((await post(lan, "later", { invite: (await invitesTo(lan))[0].id.slice(3) })).status).toBe(200);
-      expect((await post(tong, "invite", { friends: [key] })).body!.sent).toEqual([{ id: key, ok: true }]);
-    }
-    expect(await left()).toBe(0);
-    vi.setSystemTime(Date.now() + 1000);
-    await post(lan, "later", { invite: (await invitesTo(lan))[0].id.slice(3) });
-    expect((await post(tong, "invite", { friends: [key] })).body!.sent).toMatchObject([{ ok: false }]);
+    // 下次吧 to 桐's 一起卫戍 a minute ago: nothing to 一起听
+    const [squad] = await db.insert(squadRooms).values({ hostId: tong.id, server: "cn", level: 3, key: "8di6kbgf9neg7e", endedAt: new Date(t0) }).returning();
+    await db.insert(squadInvites).values({ roomId: squad.id, fromUserId: tong.id, toUserId: lan.id, answer: "later", answeredAt: new Date(t0 - 60_000) });
+    const lanHeard = hear(lan);
+    const pushed = () => lanHeard.filter((e) => e === "inbox").length;
+    const latest = async () => (await invitesTo(lan)).sort((x, y) => y.at - x.at)[0];
+    const room = (await post(tong, "open", { song: "s1", invite: [key] })).body!.room as ListenRoom;
+    expect(pushed()).toBe(1);
+    vi.setSystemTime(t0 + 1_000);
+    expect((await post(lan, "later", { invite: (await latest()).id.slice(3) })).status).toBe(200);
+
+    // within 30 minutes: sent, but quietly; the host sees it waiting as any
+    vi.setSystemTime(t0 + 60_000);
+    const res = await post(tong, "invite", { friends: [key] });
+    expect(res.body!.sent).toEqual([{ id: key, ok: true }]);
+    expect((res.body!.room as ListenRoom).invited.map((i) => i.state)).toEqual(["waiting"]);
+    expect(pushed()).toBe(1);
+    expect(await latest()).toMatchObject({ state: "open", seen: true });
+    expect(await counted(COUNTED.listenInvite)).toBe(2);
+
+    // 下次吧 to the quiet one: 30 minutes from then; another host's comes up as any meanwhile
+    const again = t0 + 20 * 60_000;
+    vi.setSystemTime(again);
+    await post(lan, "later", { invite: (await latest()).id.slice(3) });
+    vi.setSystemTime(again + 60_000);
+    await post(third, "open", { song: "s2", invite: [friendKey(third.id, lan.id)] });
+    expect(pushed()).toBe(2);
+    expect(await latest()).toMatchObject({ seen: false });
+    // well past the first 下次吧's 30 minutes, within the second's: quiet, and TA goes in at it
+    vi.setSystemTime(again + QUIET_AFTER_LATER_MS - 10 * 60_000);
+    await post(tong, "invite", { friends: [key] });
+    expect(pushed()).toBe(2);
+    const quiet = await latest();
+    expect(quiet).toMatchObject({ seen: true, state: "open" });
+    const joined = await post(lan, "join", { invite: quiet.id.slice(3) });
+    expect(joined.status, JSON.stringify(joined.body)).toBe(200);
+    expect((joined.body!.room as ListenRoom).id).toBe(room.id);
+    expect((await post(lan, "leave")).status).toBe(200);
+
+    // past those 30 minutes: as any again
+    vi.setSystemTime(again + QUIET_AFTER_LATER_MS + 1_000);
+    await post(tong, "invite", { friends: [key] });
+    expect(pushed()).toBe(3);
+    expect(await latest()).toMatchObject({ seen: false });
+    expect(await counted(COUNTED.listenInvite)).toBe(5);
+    expect(QUIET_AFTER_LATER_MS).toBeLessThanOrEqual(INVITE_MS);
   });
 
   it("is not for one in the same room already, nor while 互动 is paused, nor when TA stopped", async () => {

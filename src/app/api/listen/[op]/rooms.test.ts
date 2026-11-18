@@ -267,9 +267,9 @@ describe("一起听's rooms", () => {
     expect((await roomView(room.id, host.id, later))!.invited.map((i) => i.state)).toEqual(["missed"]);
   });
 
-  it("invite the same 触须之交 3 times a site day at most, none of the day's touches; never one who is not, blocked, or may not listen", async () => {
+  it("invite the same 触须之交 as often as the host likes, none of the day's touches; never one who is not, blocked, or may not listen", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    // 03:00 in Beijing: the site's day turns at 04:00
+    // 03:00 in Beijing: the site's day turns at 04:00, and changes nothing
     const day = siteDayStart(siteDay(Date.parse("2026-11-16T12:00:00+08:00")));
     vi.setSystemTime(day - 3_600_000);
     const { host, b, c } = await cast();
@@ -277,31 +277,33 @@ describe("一起听's rooms", () => {
     await befriend(host, d);
     await db.insert(blocks).values({ blockerId: d.id, blockedId: host.id });
     const bKey = friendKey(host.id, b.id);
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       await opened(host, b);
       // an invitation still good is not sent again
       expect((await post(host, "invite", { friends: [bKey] })).body!.sent).toEqual([{ id: bKey, ok: true }]);
       expect((await post(host, "end")).status).toBe(200);
     }
-    expect(await db.select().from(listenInvites)).toHaveLength(3);
+    expect(await db.select().from(listenInvites)).toHaveLength(5);
     const room = await opened(host);
     const sent = (await post(host, "invite", { friends: [bKey, friendKey(host.id, d.id), friendKey(b.id, c.id)] })).body!.sent;
     expect(sent).toEqual([
-      { id: bKey, ok: false, why: "今天已经邀请 TA 3 次了，北京时间凌晨 4 点以后再邀请吧。" },
+      { id: bKey, ok: true },
       { id: friendKey(host.id, d.id), ok: false, why: "TA 现在用不了听歌。" },
       { id: friendKey(b.id, c.id), ok: false, why: "你们已经不是触须之交了。" },
     ]);
-    // both anonymous, so of one name: in the order of their ids
-    expect((await post(host, "friends")).body!.friends).toMatchObject(
+    expect(await db.select().from(listenInvites)).toHaveLength(6);
+    // both anonymous, so of one name: in the order of their ids; nothing of how many times
+    expect((await post(host, "friends")).body!.friends).toEqual(
       [
-        { id: bKey, left: 0, inRoom: false },
-        { id: friendKey(host.id, c.id), left: 3, inRoom: false },
+        { id: bKey, card: expect.any(Object), inRoom: false },
+        { id: friendKey(host.id, c.id), card: expect.any(Object), inRoom: false },
       ].sort((x, y) => (x.id < y.id ? -1 : 1)),
     );
-    // a new site day
+    // a new site day changes nothing: the last ran out, so another goes
     vi.setSystemTime(day + 60_000);
     forgetHits();
     expect((await post(host, "invite", { friends: [bKey] })).body!.sent).toEqual([{ id: bKey, ok: true }]);
+    expect(await db.select().from(listenInvites)).toHaveLength(7);
     expect((await roomOf(host))!.id).toBe(room.id);
     // only the host invites
     await goIn(b);

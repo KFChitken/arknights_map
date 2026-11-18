@@ -3,8 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COUNTED, declName } from "@/lib/dashboard";
-import { INVITE_MS, INVITES_PER_DAY } from "@/lib/listen";
-import { siteDay, siteDayStart } from "@/lib/siteDay";
+import { INVITE_MS, QUIET_AFTER_LATER_MS } from "@/lib/listen";
 import type { SquadFriend, SquadRoom } from "@/lib/squad";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
@@ -16,6 +15,8 @@ import {
   declarations,
   declarationSpots,
   friendships,
+  listenInvites,
+  listenRooms,
   roaches,
   sessions,
   siteSettings,
@@ -26,7 +27,7 @@ import {
   users,
 } from "@/lib/server/schema";
 import { loadSettings } from "@/lib/server/siteSettings";
-import { flushSaysNow, forgetSquad, inviteToSquad } from "@/lib/server/squad";
+import { flushSaysNow, forgetSquad, inviteToSquad, laterSquadInvite } from "@/lib/server/squad";
 import { forgetStatCounts, saveStatCounts } from "@/lib/server/stats";
 import { friendKey, inbox } from "@/lib/server/world";
 import type { InboxItem } from "@/lib/world/types";
@@ -161,7 +162,8 @@ describe("invitations to 一起卫戍", () => {
     const { friends } = (await post(a, "friends")).body as { friends: SquadFriend[] };
     expect(friends.map((f) => f.card.displayName)).toEqual(["host", "b"]);
     expect(friends[0]).toMatchObject({ id: friendKey(a.id, host.id), inRoom: true });
-    expect(friends[1]).toMatchObject({ id: friendKey(a.id, b.id), server: "bili", left: INVITES_PER_DAY, inRoom: false, waiting: false });
+    // as often as a likes: nothing of how many times
+    expect(friends[1]).toEqual({ id: friendKey(a.id, b.id), card: expect.objectContaining({ displayName: "b" }), server: "bili", inRoom: false, waiting: false });
 
     const bHeard = hear(b);
     const sent = await post(a, "invite", { friends: [friendKey(a.id, b.id), "not-a-friend"] });
@@ -171,7 +173,7 @@ describe("invitations to 一起卫戍", () => {
     ]);
     expect(roomOf(sent).invited).toEqual([{ card: expect.objectContaining({ displayName: "b" }), state: "waiting" }]);
     expect(bHeard.inbox).toBe(1);
-    expect(((await post(a, "friends")).body!.friends as SquadFriend[])[1]).toMatchObject({ waiting: true, left: INVITES_PER_DAY - 1 });
+    expect(((await post(a, "friends")).body!.friends as SquadFriend[])[1]).toMatchObject({ waiting: true });
     // the host sees none of a's invitations as theirs
     expect(roomOf(await post(host, "room")).invited).toEqual([]);
 
@@ -237,7 +239,7 @@ describe("invitations to 一起卫戍", () => {
     expect(friends.map((f) => f.id)).toEqual([...keys].sort());
   });
 
-  it("say 下次吧 to whoever sent it as 没来; three a day each; none to one blocked, nor while it plays", async () => {
+  it("say 下次吧 to whoever sent it as 没来; as many as they like; none to one blocked, nor while it plays", async () => {
     const host = await player("host");
     const b = await player("b");
     const d = await player("d");
@@ -250,10 +252,7 @@ describe("invitations to 一起卫戍", () => {
     // one who blocked the host, or was blocked, is never invited, and never told why
     expect((await post(host, "invite", { friends: [dKey] })).body!.sent).toEqual([{ id: dKey, ok: false, why: "TA 现在用不了一起卫戍。" }]);
 
-    // now, unless the site day ends within two hours: then an hour into the next, for all four to be of one day
-    const now = Date.now();
-    const dayEnds = siteDayStart(siteDay(now)) + 86_400_000;
-    const t = dayEnds - now > 2 * 3_600_000 ? now : dayEnds + 3_600_000;
+    const t = Date.now();
     await inviteToSquad(host, { friends: [bKey] }, t);
     // while it is good, another is none
     await inviteToSquad(host, { friends: [bKey] }, t + 1_000);
@@ -268,12 +267,9 @@ describe("invitations to 一起卫戍", () => {
     // someone else's 下次吧 is nothing
     expect((await post(d, "later", { invite: invite.id.slice(3) })).status).toBe(200);
 
-    // after 下次吧 a second may go; a third once that one ran out; not a fourth that day
-    expect((await inviteToSquad(host, { friends: [bKey] }, t + 2_000)).sent).toEqual([{ id: bKey, ok: true }]);
-    expect((await inviteToSquad(host, { friends: [bKey] }, t + 3_000 + INVITE_MS)).sent).toEqual([{ id: bKey, ok: true }]);
-    expect((await inviteToSquad(host, { friends: [bKey] }, t + 4_000 + 2 * INVITE_MS)).sent).toEqual([
-      { id: bKey, ok: false, why: "今天已经邀请 TA 3 次了，北京时间凌晨 4 点以后再邀请吧。" },
-    ]);
+    // after 下次吧 another may go, and once each runs out the next: a fourth and a fifth the same day too
+    for (let i = 1; i <= 4; i++) expect((await inviteToSquad(host, { friends: [bKey] }, t + 1_000 * i + INVITE_MS * (i - 1))).sent).toEqual([{ id: bKey, ok: true }]);
+    expect(await db.select().from(squadInvites)).toHaveLength(5);
 
     // playing (开始游戏, with someone ready): nobody is called
     const e = await player("e");
@@ -281,6 +277,87 @@ describe("invitations to 一起卫戍", () => {
     await post(e, "game", { on: true });
     expect((await post(host, "state", { to: "go" })).status).toBe(200);
     expect(await post(host, "invite", { friends: [bKey] })).toMatchObject({ status: 409, body: { error: "房间在「等人」的时候才能叫人。" } });
+  });
+
+  it("go quietly for 30 minutes from one TA said 下次吧 to: in 消息 and good to go in at, never popped up or pushed, the same to the one who invites", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const b = await player("b");
+    await befriend(host, a);
+    await befriend(host, b);
+    await befriend(a, b);
+    const room = await open(host);
+    expect((await post(a, "join", { room: room.id })).status).toBe(200);
+    const bKey = friendKey(host.id, b.id);
+    const t = Date.now();
+    const bHeard = hear(b);
+    await inviteToSquad(host, { friends: [bKey] }, t);
+    expect(bHeard.inbox).toBe(1);
+    const latest = async () => (await invitesTo(b)).sort((x, y) => y.at - x.at)[0];
+    await laterSquadInvite(b, { invite: (await latest()).id.slice(3) }, t + 1_000);
+
+    // within 30 minutes: sent, but quietly
+    const quiet = await inviteToSquad(host, { friends: [bKey] }, t + 60_000);
+    expect(quiet.sent).toEqual([{ id: bKey, ok: true }]);
+    expect(quiet.room!.invited).toEqual([{ card: expect.objectContaining({ displayName: "b" }), state: "waiting" }]);
+    expect(bHeard.inbox).toBe(1);
+    expect(await latest()).toMatchObject({ state: "open", seen: true, call: { state: "open" } });
+    // counted all the same
+    expect(await counted(COUNTED.squadInvite)).toBe(2);
+
+    // 下次吧 to the quiet one: 30 minutes from then
+    const again = t + 20 * 60_000;
+    await laterSquadInvite(b, { invite: (await latest()).id.slice(3) }, again);
+    // a teammate's comes up as any meanwhile: only the one TA said 下次吧 to is quiet
+    await inviteToSquad(a, { friends: [friendKey(a.id, b.id)] }, t + 21 * 60_000);
+    expect(bHeard.inbox).toBe(2);
+    expect(await latest()).toMatchObject({ from: { displayName: "a" }, seen: false });
+    await laterSquadInvite(b, { invite: (await latest()).id.slice(3) }, t + 22 * 60_000);
+    // well past the first 下次吧's 30 minutes, within the second's
+    const quietAgain = again + QUIET_AFTER_LATER_MS - 10 * 60_000;
+    await inviteToSquad(host, { friends: [bKey] }, quietAgain);
+    expect(bHeard.inbox).toBe(2);
+    expect(await latest()).toMatchObject({ from: { displayName: "host" }, seen: true });
+
+    // past those 30 minutes, the quiet one let run out: as any again
+    await inviteToSquad(host, { friends: [bKey] }, quietAgain + INVITE_MS + 1_000);
+    expect(bHeard.inbox).toBe(3);
+    expect(await latest()).toMatchObject({ seen: false });
+    expect(await counted(COUNTED.squadInvite)).toBe(5);
+  });
+
+  it("go quietly only after 下次吧 to 一起卫戍: one TA went in at, or 下次吧 to 一起听, leaves the next as any; a quiet one lets TA in", async () => {
+    const host = await player("host");
+    const b = await player("b");
+    await befriend(host, b);
+    const bKey = friendKey(host.id, b.id);
+    const bHeard = hear(b);
+    // 下次吧 to the host's 一起听 a minute ago: nothing to 一起卫戍
+    const [listenRoom] = await db.insert(listenRooms).values({ hostId: host.id, endedAt: new Date() }).returning();
+    await db.insert(listenInvites).values({ roomId: listenRoom.id, fromUserId: host.id, toUserId: b.id, answer: "later", answeredAt: new Date(Date.now() - 60_000) });
+    const room = await open(host);
+    await post(host, "invite", { friends: [bKey] });
+    expect(bHeard.inbox).toBe(1);
+    const [first] = await invitesTo(b);
+    expect(first).toMatchObject({ seen: false });
+
+    // went in at it, left: the next comes up as any
+    expect((await post(b, "join", { invite: first.id.slice(3) })).status).toBe(200);
+    expect((await post(b, "leave")).status).toBe(200);
+    await post(host, "invite", { friends: [bKey] });
+    expect(bHeard.inbox).toBe(2);
+
+    // 下次吧, and the next goes quietly; TA goes in at it all the same
+    const open1 = (await invitesTo(b)).find((i) => i.state === "open")!;
+    expect((await post(b, "later", { invite: open1.id.slice(3) })).status).toBe(200);
+    forgetHits();
+    await post(host, "invite", { friends: [bKey] });
+    expect(bHeard.inbox).toBe(2);
+    const quiet = (await invitesTo(b)).find((i) => i.state === "open")!;
+    expect(quiet).toMatchObject({ seen: true });
+    const joined = await post(b, "join", { invite: quiet.id.slice(3) });
+    expect(joined.status, JSON.stringify(joined.body)).toBe(200);
+    expect(roomOf(joined).id).toBe(room.id);
   });
 });
 

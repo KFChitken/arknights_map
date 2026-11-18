@@ -342,10 +342,9 @@ export type SquadCall = { state: "open" | "full" | "playing" | "in" | "shut" | "
 
 /**
  * One of your 触须之交 to invite: their key (friendKey), card, the server of their 明日方舟 UID ("" when not given),
- * how many more times you may invite them today, whether they are in your room already, and whether an invitation of
- * yours to it is still good
+ * whether they are in your room already, and whether an invitation of yours to it is still good
  */
-export type SquadFriend = { id: string; card: PublicProfile; server: string; left: number; inRoom: boolean; waiting: boolean };
+export type SquadFriend = { id: string; card: PublicProfile; server: string; inRoom: boolean; waiting: boolean };
 /** One you invited to the room you are in, as you see TA there */
 export type SquadInvited = { card: PublicProfile; state: "waiting" | "missed" };
 /** What each invitation came to: sent (or there already), or why not */

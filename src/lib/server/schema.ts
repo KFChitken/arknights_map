@@ -1764,7 +1764,7 @@ export const listenMembers = pgTable(
 /**
  * Invitations to a room, from its host to a 触须之交, good for INVITE_MS: in 消息 → 触须之交 (seen_at), and answered
  * joined (went in) or later (下次吧, which the host sees as not come, as one that ran out). asked: sent at TA's own
- * 想一起听 (answerAsk), none of the day's INVITES_PER_DAY.
+ * 想一起听 (answerAsk), never quiet (src/lib/listen.ts QUIET_AFTER_LATER_MS).
  */
 export const listenInvites = pgTable(
   "listen_invites",

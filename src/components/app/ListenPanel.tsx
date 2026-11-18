@@ -12,7 +12,6 @@ import {
   HEARD_S,
   HOT_DAYS,
   HOT_READ_MS,
-  INVITES_PER_DAY,
   keySecond,
   LISTEN_FULL,
   RANDOM_ADD,
@@ -692,7 +691,7 @@ function Together({ paused, roomMax, mode, acts, onTab }: Omit<BodyProps, "tab">
         <MegaphoneIcon size={16} />
         {T.listen.declare}
       </button>
-      <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, n: INVITES_PER_DAY, d: DECLARATIONS_PER_DAY })}</p>
+      <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, d: DECLARATIONS_PER_DAY })}</p>
       {!invite && !call && <p className="lp-note left small">{over ?? T.listen.noOne}</p>}
     </div>
   );
@@ -740,7 +739,7 @@ function DeclareFrom({
   );
 }
 
-/** Whom to invite: your 触须之交 who may listen, ticked, with how many times more today; a new room, or more to yours */
+/** Whom to invite: your 触须之交 who may listen, ticked (those in your room already grey); a new room, or more to yours */
 function Picker({
   room,
   roomMax,
@@ -794,7 +793,7 @@ function Picker({
       ) : (
         <div className="lpk" role="group" aria-label={T.listen.inviteFriends}>
           {friends.map((f) => {
-            const off = f.inRoom || f.left <= 0;
+            const off = f.inRoom;
             const on = picked.has(f.id) && !off;
             return (
               <button key={f.id} className={`lpk-row${on ? " on" : ""}`} role="checkbox" aria-checked={on} disabled={off || busy} onClick={() => pick(f.id)}>
@@ -806,9 +805,7 @@ function Picker({
                 </span>
                 <span className="lpk-who">
                   <b>{f.card.displayName}</b>
-                  <small>
-                    {f.inRoom ? T.listen.pickIn : f.left > 0 ? fmt(T.listen.pickLeft, { n: f.left }) : fmt(T.listen.pickUsed, { n: INVITES_PER_DAY })}
-                  </small>
+                  {f.inRoom && <small>{T.listen.pickIn}</small>}
                 </span>
               </button>
             );
@@ -821,7 +818,7 @@ function Picker({
       <button className="lt-big ghost" disabled={busy} onClick={() => onDone(null)}>
         {T.listen.notNow}
       </button>
-      {!room && <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, n: INVITES_PER_DAY, d: DECLARATIONS_PER_DAY })}</p>}
+      {!room && <p className="lp-note left small">{fmt(T.listen.togetherNote, { max: roomMax, d: DECLARATIONS_PER_DAY })}</p>}
     </div>
   );
 }

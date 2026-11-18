@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { fmt, fmtParts, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { serverName } from "@/lib/games";
-import { INVITES_PER_DAY } from "@/lib/listen";
 import type { PassesDot } from "@/lib/passes";
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
@@ -1214,7 +1213,7 @@ function InvitePicker({
     <div className="sq-ask-bg" onClick={onClose}>
       <div className="sq-ask sq-pick sq-inv" role="dialog" aria-modal="true" aria-label={T.squad.call.inviteTitle} onClick={(e) => e.stopPropagation()}>
         <h3>{T.squad.call.inviteTitle}</h3>
-        <p className="hint">{fmt(T.squad.call.inviteNote, { n: INVITES_PER_DAY })}</p>
+        <p className="hint">{T.squad.call.inviteNote}</p>
         <div className="friends">
           {!friends ? (
             <p className="hint">{T.squad.call.loading}</p>
@@ -1224,13 +1223,7 @@ function InvitePicker({
             friends.map((f) => {
               const other = f.server !== "" && f.server !== room.server;
               const where = f.server === "" ? T.squad.call.noUid : other ? fmt(T.squad.call.otherServer, { server: srv(f.server) }) : srv(f.server);
-              const state = f.inRoom
-                ? T.squad.call.inRoom
-                : f.waiting
-                  ? T.squad.call.waiting
-                  : f.left <= 0
-                    ? T.squad.call.noneLeft
-                    : fmt(T.squad.call.left, { n: f.left });
+              const state = f.inRoom ? T.squad.call.inRoom : f.waiting ? T.squad.call.waiting : null;
               const on = picked.includes(f.id);
               return (
                 <div key={f.id} className={`sq-friend${other ? " other" : ""}`}>
@@ -1239,11 +1232,11 @@ function InvitePicker({
                   </span>
                   <span className="nm">
                     {f.card.displayName}
-                    <small>{`${where}${T.squad.dot}${state}`}</small>
+                    <small>{state ? `${where}${T.squad.dot}${state}` : where}</small>
                   </span>
                   <button
                     className={`small${on ? " dark" : ""}`}
-                    disabled={busy || f.inRoom || f.waiting || f.left <= 0}
+                    disabled={busy || f.inRoom || f.waiting}
                     aria-pressed={on}
                     onClick={() => toggle(f.id)}
                   >

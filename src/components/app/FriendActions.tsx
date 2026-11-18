@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { fmt, fmtParts, T } from "@/i18n";
 import { FRIEND_ACTS_PER_DAY, GESTURE_DONE, GESTURE_NAMES, isAwakeGesture, type Gesture } from "@/lib/friendly";
-import { INVITES_PER_DAY, type FriendListening } from "@/lib/listen";
+import type { FriendListening } from "@/lib/listen";
 import { POKE_EVERY_DAYS } from "@/lib/rules";
 import type { FriendBetween } from "@/lib/world/types";
 import { NoteIcon, ShieldIcon } from "./chrome/parts";
@@ -95,9 +95,9 @@ const NAMES: Record<FriendAct, string> = {
  * 盖被子 · 放杯白开水. 催理智 and the gestures share FRIEND_ACTS_PER_DAY a day and all turn grey
  * once those are used; 催理智 once a day, 盖被子 and 放杯白开水 once a sleep. Under it, while TA
  * may be given 寻访券 (between.gift): 送 1 张寻访券, none of the day's FRIEND_ACTS_PER_DAY, once a day. While you may
- * both listen (between.listen): 邀请一起听, none of them either (INVITES_PER_DAY times a day); and while TA listens, as
+ * both listen (between.listen): 邀请一起听, none of them either (and as often as you like); and while TA listens, as
  * TA lets you see (listening), what, with 想一起听 (once a day). While 一起卫戍 shows to you both (between.squad) and
- * you are in a room you may invite to: 邀请 TA 一起卫戍, none of them either (INVITES_PER_DAY times a day).
+ * you are in a room you may invite to: 邀请 TA 一起卫戍, none of them either (as often as you like).
  */
 export default function FriendActions({
   between,
@@ -201,7 +201,7 @@ export default function FriendActions({
             <NoteIcon size={14} />
             {T.friendActs.listen}
           </button>
-          <span>{fmt(T.friendActs.listenFree, { n: INVITES_PER_DAY })}</span>
+          <span>{T.friendActs.listenFree}</span>
         </div>
       )}
       {between.listen && listening && onAsk && (
@@ -219,7 +219,7 @@ export default function FriendActions({
             <ShieldIcon size={14} />
             {T.friendActs.squad}
           </button>
-          <span>{fmt(T.friendActs.squadFree, { n: INVITES_PER_DAY })}</span>
+          <span>{T.friendActs.squadFree}</span>
         </div>
       )}
       {notes.map((n) => (
