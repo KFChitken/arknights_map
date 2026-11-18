@@ -713,11 +713,74 @@ button.hm-st-again:disabled { opacity: 0.45; }
 /* 试玩, for 站长 and the admins alone */
 .hm-st-trial { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .hm-st-foot + .hm-st-trial { margin-top: 8px; }
+/*
+ * 转 ALL (HaimaoWheel.tsx): the design's wheel, one fixed look whatever the theme; what she says beside it on a
+ * computer, under it on a phone, the wheel no taller than leaves room for her. Her hand comes in from past its edge.
+ */
+@media (min-width: 720px) {
+  .hm-wheel .sheet { width: min(760px, calc(100vw - 48px)); max-width: none; }
+}
+.hm-wh {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: center; overflow: hidden;
+  padding: 16px; border-radius: 16px; background: #14203a; color: #e9eef7;
+}
+@media (min-width: 720px) { .hm-wh { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px 24px; padding: 20px; } }
+.hm-wh-stage { position: relative; width: 100%; max-width: min(360px, calc(var(--vv-h, 100svh) * 0.45)); aspect-ratio: 1 / 1; margin: 0 auto; }
+.hm-wh-stage > svg { display: block; width: 100%; height: 100%; }
+.hm-wh-ws { transition: fill 0.35s ease; }
+.hm-wh-l { font-size: 16px; font-weight: 800; fill: #22386b; }
+.hm-wh-l.gold { fill: #3b2a00; }
+.hm-wh-all { font-size: 31px; font-weight: 900; fill: #3b2a00; }
+button.hm-wh-spin {
+  position: absolute; left: 50%; top: 50%; width: 22%; aspect-ratio: 1 / 1; padding: 0; transform: translate(-50%, -50%);
+  border: 3px solid #0d0e10; border-radius: 50%; background: #cf3668; color: #fff; font-size: clamp(18px, 3.6vw, 26px); font-weight: 900;
+}
+button.hm-wh-spin:disabled { opacity: 1; background: #7a3150; cursor: default; }
+button.hm-wh-spin.done { font-size: clamp(13px, 2.6vw, 18px); }
+button.hm-wh-spin:focus-visible { outline: 3px solid #f2c230; outline-offset: 3px; }
+.hm-wh-hand {
+  position: absolute; z-index: 2; left: -14%; top: 2%; width: 46%; opacity: 0; pointer-events: none; transform: translateX(-40%);
+  transition: transform 0.32s cubic-bezier(0.3, 1.5, 0.5, 1), opacity 0.2s;
+}
+.hm-wh-hand svg { display: block; width: 100%; height: auto; }
+.hm-wh-hand.in { opacity: 1; transform: translateX(0); }
+.hm-wh-hand.push { opacity: 1; transform: translateX(22%); }
+.hm-wh-god {
+  position: absolute; z-index: 3; left: 50%; top: 44%; opacity: 0; pointer-events: none; transform: translate(-50%, -50%) scale(0.6);
+  color: #f2c230; font-size: clamp(22px, 5vw, 34px); font-weight: 900; white-space: nowrap;
+  text-shadow: 0 2px 0 #0d0e10, 0 0 10px rgba(0, 0, 0, 0.6); transition: opacity 0.2s, transform 0.3s;
+}
+.hm-wh-god.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.hm-wh-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.hm-wh-side p { margin: 0; }
+.hm-wh-host { position: relative; display: flex; align-items: flex-end; gap: 10px; }
+.hm-wh-host > :first-child { flex: none; width: 84px; height: 84px; }
+.hm-wh-side .hm-wh-say { padding: 8px 12px; border-radius: 14px; background: #fff; color: #1c2440; font-size: 15px; line-height: 1.55; }
+.hm-wh-side .hm-wh-res { min-height: 1.3em; color: #f2c230; font-size: 30px; font-weight: 900; line-height: 1.3; }
+.hm-wh-prizes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.hm-wh-prize {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border: 1px solid #2c3b5c; border-radius: 12px;
+  background: #1d2c4d; color: #e9eef7; font-size: 13.5px; line-height: 1.4; opacity: 0; transform: translateY(8px) scale(0.94);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.hm-wh-prize.on { opacity: 1; transform: none; }
+.hm-wh-prize svg { flex: none; width: 44px; height: 30px; }
+.hm-wh-prize span { min-width: 0; overflow-wrap: anywhere; }
+.hm-wh-prize b { display: block; color: #f2c230; font-weight: 600; }
+.hm-wh-side .hm-wh-count { color: #c3cde0; font-size: 14px; }
+.hm-wh-side .hm-wh-note { padding-top: 10px; border-top: 1px solid #2c3b5c; color: #aab6cc; font-size: 13.5px; line-height: 1.5; }
+.hm-wh-float {
+  position: absolute; z-index: 1; left: 4px; top: -18px; color: #ff7aa2; font-size: 22px; font-weight: 900; opacity: 0; pointer-events: none;
+  text-shadow: 0 2px 0 #14203a; animation: hm-st-float 1.3s ease forwards;
+}
+/* her card's: spun, it still opens what it gave */
+.hm-acts .pill.hm-wheel-btn.spun { border-color: #d6d9de; color: var(--muted); font-weight: 400; }
 @media (prefers-reduced-motion: reduce) {
   .hm-st-bg.dusk, .hm-st-lh img, .hm-st-prop, .hm-st-eggs .top, .hm-st-eggs text, .hm-st-bar i { transition: none; }
   .hm-st-more { animation: none; }
-  .hm-st-float { animation: hm-st-float-still 1.3s linear forwards; }
+  .hm-st-float, .hm-wh-float { animation: hm-st-float-still 1.3s linear forwards; }
   @keyframes hm-st-float-still { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+  .hm-wh-ws, .hm-wh-hand, .hm-wh-god, .hm-wh-prize { transition: none; }
 }
 /* 佩丽卡监督's 鬼火 under her as she rides up (guideMarker.ts), fading once she stops */
 .guide-bike { position: absolute; z-index: -1; left: -25%; bottom: -16%; width: 150%; height: 70%; opacity: 0; transition: opacity 0.6s; pointer-events: none; }
@@ -1108,6 +1171,10 @@ button.hm-st-again:disabled { opacity: 0.45; }
 .stay-tag { display: inline-block; margin: 0 0 6px 2px; padding: 1px 8px; border-radius: 999px; background: #b8321f; color: #fff; font-size: 11px; font-weight: 700; }
 .stay-group .tpl { border-color: #ecd6cc; background: #fff; }
 .stay-group .stay-note { margin: -2px 2px 8px; }
+/* the two lines 香艳制作人's ALL 转盘 gave */
+.stay-group.wheel-group { background: #fff6dc; }
+.wheel-group .stay-tag { background: #22386b; color: #ffe08a; }
+.wheel-group .tpl { border-color: #f1dc9c; }
 .drunk-group .tpl.on { border-color: #c23a5e; background: #fff5f8; }
 .tpl-long { flex: 1; min-width: 0; }
 .shout {

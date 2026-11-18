@@ -796,7 +796,7 @@ export const zh = {
         listenB: "听歌：",
         squad: "{b}你开房间时选的服务器、难度和标签，和房间里每个人选的核心盟约和策略，登录的舟P在列表上能看到（显示房主的名字，和在卫戍名片里选了『列表上显示我的名字』的人的名字）；同盟密钥只给进了房间的人看。谁进过哪个房间、谁邀请了谁、谁请谁离开了房间、谁点了『准备』、每人这局标的核心盟约、策略和附加盟约、每人的蟑螂在房间里一直保持的动作、房间里放过和点过的歌，房间结束 24 小时后删除。快捷语句不保存，只记每天一共发了多少句；挥手、击掌、贴贴这些一下就完的动作也不保存。卫戍名片（核心盟约、策略、难度偏好，和列表上显示不显示名字）存在你的账号里，你进了房间才给别人看，清空或注销账号就删除。",
         squadB: "一起卫戍：",
-        haimao: "{b}你和她之间的触碰（偷偷还是大胆、什么时候）和她回你的话、你们成为触须之交的时间；她对你的好感度（0 到 100，只涨不掉），和今天大胆碰她加过好感度没有；和她聊剧情聊到第几天、每天选了哪个回答、看没看过 ALL END、每天一句轮到第几句。香艳制作人不是真人，是粉丝玩梗，不是本人，和鹰角没关系；这些记录只有你自己看得到。",
+        haimao: "{b}你和她之间的触碰（偷偷还是大胆、什么时候）和她回你的话、你们成为触须之交的时间；她对你的好感度（0 到 100，只涨不掉），和今天大胆碰她加过好感度没有；和她聊剧情聊到第几天、每天选了哪个回答、看没看过 ALL END、每天一句轮到第几句；她的 ALL 转盘你转过没有、什么时候转的、指针先停在哪一格。香艳制作人不是真人，是粉丝玩梗，不是本人，和鹰角没关系；这些记录只有你自己看得到。",
         haimaoB: "香艳制作人：",
         away: "{b}佩丽卡监督第一次出现时，会问你能不能记时间。你点「好」以后，{site}会记下你最后一次在看网站的时间，精确到秒：网页开着的时候，大约每分钟告诉服务器一声「还在」，切走或关掉时再说一声「走了」。这个时间只存一个，每次覆盖旧的，只用来让她告诉你离开了多久；她报时的消息只留最近 5 条。别人看不到，管理页也不显示，不记 IP。在「资料」里关掉「佩丽卡的离开计时」，就不再记，已经存的时间和她报时的消息和监督周报也一起删掉。",
         awayB: "佩丽卡监督的离开计时（你同意了才记）。",
@@ -987,6 +987,8 @@ export const zh = {
     studyOnly: "这句只能在325大学习里发。",
     listenOnly: "这句只能在听歌的「一起听」里发。",
     squadOnly: "这句只能在一起卫戍的房间里发。",
+    /** 香艳制作人's wheel's two, asked of the server before the spin (the sheet lists them only after) */
+    spinFirst: "转过香艳制作人的 ALL 转盘才能发这句。",
     cannotPlaceHere: "这个位置放不了蟑螂。",
   },
   ageCheck: {
@@ -1102,6 +1104,47 @@ export const zh = {
         again: "再来一句？连点三下试试",
         /** Across the whole screen after three taps close together, on this screen alone */
         danmaku: ["全场 damedane", "damedane", "dame dame～", "全场 damedane！", "damedane damedane", "dame～", "全场一起 damedane"],
+      },
+      /** 转 ALL, her wheel (src/lib/haimaoWheel.ts): one spin a player, for good */
+      wheel: {
+        /** On her card, before and after the spin, and the title of what it opens */
+        button: "转 ALL（一次）",
+        spun: "已经 all 过了",
+        title: "ALL 转盘",
+        /** The wheel, for a screen reader */
+        aria: "ALL 转盘，七格，指针在最上面",
+        /** The words drawn on the slices' pictures of a ticket and a title */
+        icon: { ticket: "寻访券", title: "称号" },
+        /** The slices clockwise from the top, as the wheel reads them */
+        slice: { all: "ALL", ticket: "寻访券×1", title: "称号×1", say1: "宣言 #1", say2: "宣言 #2" },
+        /** As she asks after the slice the pointer stopped on: ……寻访券？ */
+        sliceShort: { all: "ALL", ticket: "寻访券", title: "称号", say1: "宣言 #1", say2: "宣言 #2" },
+        /** The button in the middle of the wheel, before and once spun */
+        spin: "转",
+        done: "已 all",
+        /** What she says beside it: before, as it turns, once it stops ({slice}), and once it is all ALL */
+        sayBefore: "每人只能转一次。指针落下的位置便是幸福……",
+        saySpinning: "指针落下的位置便是幸福……",
+        sayLanded: "……{slice}？",
+        sayDone: "……而你一定知道它将落在何处。",
+        /** Her hand pushing the pointer on to ALL */
+        god: "神之一手",
+        result: "ALL！七格全给你",
+        /** Under it, what the spin gave, in turn */
+        prizes: {
+          tickets: "寻访券 ×{n}",
+          ticketsNote: "进你的通行证",
+          title: "称号",
+          titleNote: "「all 门信徒」",
+          say1: "宣言 #1",
+          say1Note: "「all 门🙏」",
+          say2: "宣言 #2",
+          say2Note: "「指针落下的位置，便是幸福。」",
+        },
+        notYet: "还没转过。",
+        once: "已经 all 过了。站上每人只能转一次。",
+        /** Under what it gave, word for word as Breeze asked */
+        note: "这些都是舟P站上的东西，不是游戏里的道具。",
       },
       stage: {
         /** The corner of the stage: which scene this is */
@@ -1260,6 +1303,9 @@ export const zh = {
       /** 325大学习's two (STUDY_TEMPLATES), sent from it alone */
       kuye: "苦也！",
       studied: "已完成今日的325大学习",
+      /** 香艳制作人's wheel's two (WHEEL_TEMPLATES), theirs once they spun it */
+      allmen: "all 门🙏",
+      allhappy: "指针落下的位置，便是幸福。",
     },
     spouseLabel: "老婆还是老公",
     limitedTitle: "{event}限定宣言",
@@ -1268,6 +1314,11 @@ export const zh = {
     inn: {
       title: "缘缘庄住客的宣言",
       tag: "缘缘庄住客",
+    },
+    /** 香艳制作人's wheel's two, listed only once they spun it */
+    wheel: {
+      title: "ALL 转盘给的宣言",
+      tag: "ALL 转盘",
     },
     needsCharacter: "带角色的句子要先在资料里选厨力角色。",
     toProfile: "去资料",
@@ -4471,6 +4522,12 @@ export const zh = {
         lockedHint: "每天去漕河泾找香艳制作人聊一段，聊满 12 天",
         quote: "那就……all 吧。",
       },
+      haimaoallmen: {
+        name: "all 门信徒",
+        condition: "转过香艳制作人的 ALL 转盘",
+        lockedHint: "去漕河泾找香艳制作人，转一次 ALL 转盘",
+        quote: "指针落下的位置，便是幸福。",
+      },
       daysLeft: "还剩 {n} 天",
     },
     beijing: {
@@ -4640,6 +4697,18 @@ export const zh = {
           r2: "我也学完了",
           r3: "今天学的哪门？",
           r4: "碰我一下，沾沾学气",
+        },
+        allmen: {
+          r1: "all 门🙏",
+          r2: "转盘又被推了吧",
+          r3: "今天也是 ALL",
+          r4: "一起 all，碰我一下",
+        },
+        allhappy: {
+          r1: "而我知道它落在何处",
+          r2: "它停哪都是 ALL",
+          r3: "很可怕吗？是的",
+          r4: "幸福的人碰我一下",
         },
       },
       fill: {

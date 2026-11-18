@@ -216,9 +216,9 @@ export function HaimaoDanmaku({ flying }: { flying: Danmaku }) {
 
 /**
  * Her card, the same for everyone who opens it: who she is (and who she is not, word for word), her 个性签名, the
- * 好感度 she keeps for you once you are signed in, 今日剧情, dame dame, and the two touches, with her sounds' 静音 kept
- * in this browser. Visitors see it all but her 好感度, and are asked to sign in as they touch her or open her story;
- * dame dame asks nobody.
+ * 好感度 she keeps for you once you are signed in, 今日剧情, dame dame, 转 ALL (for those 寻访 is open to), and the two
+ * touches, with her sounds' 静音 kept in this browser. Visitors see it all but her 好感度 and her wheel, and are asked to
+ * sign in as they touch her or open her story; dame dame asks nobody.
  */
 export function HaimaoCard({
   me,
@@ -233,6 +233,7 @@ export function HaimaoCard({
   onStory,
   onReview,
   onDame,
+  onWheel,
   onOpenFriend,
   under,
   onClose,
@@ -253,6 +254,8 @@ export function HaimaoCard({
   onReview: () => void;
   /** dame dame, within the tap */
   onDame: () => void;
+  /** 转 ALL: her wheel, there while 寻访 is open to them (me.wheel), spun or not (me.spun) */
+  onWheel: () => void;
   onOpenFriend?: () => void;
   /** Roaches under her picture: to pick one of them (StackUnderGuide) */
   under?: ReactNode;
@@ -320,6 +323,11 @@ export function HaimaoCard({
         <button type="button" className="pill" onClick={onDame}>
           {T.guides.haimao.dame.button}
         </button>
+        {signedIn && me?.wheel && (
+          <button type="button" className={me.spun ? "pill hm-wheel-btn spun" : "pill hm-wheel-btn"} disabled={waiting} onClick={onWheel}>
+            {me.spun ? T.guides.haimao.wheel.spun : T.guides.haimao.wheel.button}
+          </button>
+        )}
       </div>
       {onOpenFriend && (
         <div className="row-actions">

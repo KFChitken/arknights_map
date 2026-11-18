@@ -29,7 +29,8 @@ export const WELCOME_NAMES: Record<Game, string> = {
  * can no longer be sent, but older ones still show. The DRUNK_TEMPLATES can only be
  * sent while your main roach lies drunk (摄入酒精); the STAY_TEMPLATES once your ink roach
  * has had a room at 祀掌柜's 缘缘庄 (src/lib/si.ts), and for good from then on; the STUDY_TEMPLATES
- * only from 325大学习 (src/lib/server/studySay.ts), never from the sheet; "listen" only from 一起听's panel
+ * only from 325大学习 (src/lib/server/studySay.ts), never from the sheet; the WHEEL_TEMPLATES once they spun
+ * 香艳制作人's wheel (src/lib/haimaoWheel.ts), for good, while she shows to them; "listen" only from 一起听's panel
  * (src/lib/server/listenRooms.ts declareRoom), calling those nearby to the room (null once it is gone) with the
  * song's name as it was.
  */
@@ -57,6 +58,8 @@ export type Declaration =
   | { template: "simine" }
   | { template: "kuye" }
   | { template: "studied" }
+  | { template: "allmen" }
+  | { template: "allhappy" }
   | { template: "listen"; song: string; room: string | null }
   | { template: "squad"; server: string; level: number; need: number; room: string | null };
 
@@ -82,6 +85,13 @@ export const stayNeeded = () => T.lib.declarations.stayNeeded;
 export const STUDY_TEMPLATES = ["kuye", "studied"] as const;
 export type StudyTemplate = (typeof STUDY_TEMPLATES)[number];
 export const isStudyTemplate = (t: unknown): t is StudyTemplate => (STUDY_TEMPLATES as readonly unknown[]).includes(t);
+
+/**
+ * 香艳制作人's two (all 门🙏, 指针落下的位置，便是幸福。), theirs from the moment they spin her wheel (src/lib/haimaoWheel.ts),
+ * for good, while she shows to them; the sheet lists them only then
+ */
+export const WHEEL_TEMPLATES = ["allmen", "allhappy"] as const;
+export const isWheelTemplate = (t: unknown) => (WHEEL_TEMPLATES as readonly unknown[]).includes(t);
 
 /** 一起听's (我在听《…》，来一起听吗？), which its panel alone sends, once a room; the sheet never lists it */
 export const LISTEN_TEMPLATE = "listen";
@@ -136,6 +146,10 @@ export function declarationText(d: Declaration): string {
       return T.declare.line.kuye;
     case "studied":
       return T.declare.line.studied;
+    case "allmen":
+      return T.declare.line.allmen;
+    case "allhappy":
+      return T.declare.line.allhappy;
     case "listen":
       return fmt(T.lib.declarations.text.listen, { song: d.song });
     case "squad":
@@ -266,6 +280,12 @@ const OWN_REPLIES: Partial<Record<Template, readonly [string, string, string, st
   },
   get studied() {
     return [T.lib.declarations.replies.studied.r1, T.lib.declarations.replies.studied.r2, T.lib.declarations.replies.studied.r3, T.lib.declarations.replies.studied.r4] as const;
+  },
+  get allmen() {
+    return [T.lib.declarations.replies.allmen.r1, T.lib.declarations.replies.allmen.r2, T.lib.declarations.replies.allmen.r3, T.lib.declarations.replies.allmen.r4] as const;
+  },
+  get allhappy() {
+    return [T.lib.declarations.replies.allhappy.r1, T.lib.declarations.replies.allhappy.r2, T.lib.declarations.replies.allhappy.r3, T.lib.declarations.replies.allhappy.r4] as const;
   },
 };
 

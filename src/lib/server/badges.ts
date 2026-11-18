@@ -44,10 +44,18 @@ export async function award(userId: string, badges: string[]) {
     .values(badges.map((badge) => ({ userId, badge })))
     .onConflictDoNothing()
     .returning({ badge: userBadges.badge });
-  if (made.length) nudge([userId]);
-  // 罗德岛正式干员 and 精英干员 go by what they hold, so they are looked at after anything else is given
-  if (made.some((m) => !MEMORIAL_BY_HELD.includes(m.badge))) await memorialBadges(userId);
+  await afterAward(userId, made.map((m) => m.badge));
   return made.map((m) => m.badge);
+}
+
+/**
+ * What follows badges just given (by award, or written within a caller's own transaction, as 香艳制作人's wheel does,
+ * once it is done): a page they have open hears of them, and 罗德岛正式干员 and 精英干员, which go by what they hold,
+ * are looked at after anything else is given.
+ */
+export async function afterAward(userId: string, made: string[]) {
+  if (made.length) nudge([userId]);
+  if (made.some((m) => !MEMORIAL_BY_HELD.includes(m))) await memorialBadges(userId);
 }
 
 /** The two given by the badges a player holds */

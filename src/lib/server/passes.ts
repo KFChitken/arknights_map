@@ -308,6 +308,22 @@ export async function receiveGift(tx: Exec, fromId: string, toId: string, now = 
     .where(eq(passWallets.userId, toId));
 }
 
+/**
+ * Tickets given outright (香艳制作人's wheel, src/lib/server/haimao.ts spinWheel), within the caller's transaction: the
+ * wallet made if they never opened 寻访 (the first ten still come when they do), then n more, past TICKETS_CAP too.
+ * The dot of the 寻访 button after it.
+ */
+export async function addTickets(tx: Exec, userId: string, n: number, now = Date.now()): Promise<PassesDot> {
+  const day = siteDay(now);
+  await tx.insert(passWallets).values({ userId, day }).onConflictDoNothing();
+  const [w] = await tx
+    .update(passWallets)
+    .set({ tickets: sql`${passWallets.tickets} + ${n}` })
+    .where(eq(passWallets.userId, userId))
+    .returning();
+  return { passesDot: passesDot(w.welcomed, w.tickets, tasksOf(w, day)) };
+}
+
 /** A list of catalogue ids as a smallint[] for the database */
 const sqlIds = (ids: readonly number[]) => sql`${`{${ids.map((i) => Math.trunc(i)).join(",")}}`}::smallint[]`;
 

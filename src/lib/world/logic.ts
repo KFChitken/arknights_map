@@ -1,5 +1,16 @@
 import { fmt, T } from "@/i18n";
-import { FOODS, isDrunkTemplate, isStayTemplate, isStudyTemplate, LISTEN_TEMPLATE, SPOUSES, SQUAD_TEMPLATE, stayNeeded, type Declaration } from "../declarations";
+import {
+  FOODS,
+  isDrunkTemplate,
+  isStayTemplate,
+  isStudyTemplate,
+  isWheelTemplate,
+  LISTEN_TEMPLATE,
+  SPOUSES,
+  SQUAD_TEMPLATE,
+  stayNeeded,
+  type Declaration,
+} from "../declarations";
 import { findLine } from "../events";
 import { distanceKm } from "../geo";
 import { GAME_NAMES, GAMES, isGame, SERVERS, type Game } from "../games";
@@ -98,7 +109,8 @@ export function publicProfileOf(p: Profile): PublicProfile {
 /**
  * drunk: their main roach lies drunk now (摄入酒精); stayed: their ink roach has had a room at 缘缘庄; study: sent by
  * 325大学习 (src/lib/server/studySay.ts), the only one that may send its two; listen: sent by 一起听 for a room
- * (src/lib/server/listenRooms.ts declareRoom), the only one that may send 我在听《…》
+ * (src/lib/server/listenRooms.ts declareRoom), the only one that may send 我在听《…》; spun: they spun 香艳制作人's
+ * wheel, and she shows to them (src/lib/server/haimao.ts hasSpun), which her two need
  */
 export function checkDeclaration(
   profile: Profile,
@@ -109,6 +121,7 @@ export function checkDeclaration(
   study = false,
   listen = false,
   squad = false,
+  spun = false,
 ): Declaration {
   const favourite = (character: unknown) => {
     const name = String(character ?? "");
@@ -121,6 +134,7 @@ export function checkDeclaration(
   if (isStudyTemplate(d?.template) && !study) throw new WorldError(T.checks.studyOnly);
   if (d?.template === LISTEN_TEMPLATE && !listen) throw new WorldError(T.checks.listenOnly);
   if (d?.template === SQUAD_TEMPLATE && !squad) throw new WorldError(T.checks.squadOnly);
+  if (isWheelTemplate(d?.template) && !spun) throw new WorldError(T.checks.spinFirst);
   switch (d?.template) {
     case "launch":
     case "welcome":
@@ -153,6 +167,8 @@ export function checkDeclaration(
     case "simine":
     case "kuye":
     case "studied":
+    case "allmen":
+    case "allhappy":
       return { template: d.template };
     case "drunklove":
       return { template: "drunklove", character: favourite(d.character).character };

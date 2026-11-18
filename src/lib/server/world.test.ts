@@ -7,7 +7,19 @@ import { AMIYA_AT, AMIYA_ID } from "../amiya";
 import { PERLICA_ID } from "../perlica";
 import { FIRE_AT, TALULAH_ID } from "../talulah";
 import { metresApart, MINGHE_ID, queueSpot, stationOf, stopOf } from "../minghe";
-import { declarationText, DRUNK_TEMPLATES, FOODS, isStudyTemplate, repliesFor, STAY_TEMPLATES, STUDY_TEMPLATES, TEMPLATES, type Declaration, type Template } from "../declarations";
+import {
+  declarationText,
+  DRUNK_TEMPLATES,
+  FOODS,
+  isStudyTemplate,
+  repliesFor,
+  STAY_TEMPLATES,
+  STUDY_TEMPLATES,
+  TEMPLATES,
+  WHEEL_TEMPLATES,
+  type Declaration,
+  type Template,
+} from "../declarations";
 import { FIRST_BATCH, SURVIVOR_DAYS } from "../badges";
 import { beijingDate } from "../beijing";
 import { EVENTS } from "../events";
@@ -2064,12 +2076,14 @@ describe("server world", () => {
       simine: { template: "simine" },
       kuye: { template: "kuye" },
       studied: { template: "studied" },
+      allmen: { template: "allmen" },
+      allhappy: { template: "allhappy" },
       // sent from a room of 一起听, as src/app/api/listen/[op]/declare.test.ts does
       listen: { template: "listen", song: "Song 1", room: "00000000-0000-0000-0000-000000000000" },
       // 宣言招人, sent from a room of 一起卫戍, as src/app/api/squad/[op]/invite.test.ts does
       squad: { template: "squad", server: "bili", level: 4, need: 2, room: "00000000-0000-0000-0000-000000000000" },
     };
-    const sendable = [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES];
+    const sendable = [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...WHEEL_TEMPLATES];
     // the sheet's lists hold every sentence but the limited lines, 「…也玩…」 of before, 325大学习's two, 一起听's and 一起卫戍's
     expect([...sendable, ...STUDY_TEMPLATES, "event", "alsoplay", "listen", "squad"].sort()).toEqual(Object.keys(EVERY).sort());
     await me.saveProfile({
@@ -2081,8 +2095,10 @@ describe("server world", () => {
       favourites: { arknights: ["阿米娅"], endfield: [] },
     });
     await me.placeRoach({ kind: "main" }, PEOPLES_SQUARE);
-    // drunk till tomorrow, and a guest of 缘缘庄 before: every sentence can be sent
+    // drunk till tomorrow, a guest of 缘缘庄 before, and 香艳制作人's wheel spun, where she shows: every sentence can be sent
     await db.update(users).set({ drunkUntil: new Date(Date.now() + 86_400_000), siStayedAt: new Date() }).where(eq(users.id, me.id));
+    await db.insert(haimaoSpins).values({ userId: me.id, landed: 3 });
+    process.env.HAIMAO = "on";
     const t2 = await demo("t2");
     // every limited line, on now
     const lines = EVENTS.flatMap((e) => e.lines);
@@ -2110,6 +2126,15 @@ describe("server world", () => {
       }
     } finally {
       lines.forEach((l, i) => Object.assign(l, saved[i]));
+      delete process.env.HAIMAO;
+    }
+    // her two no more while she does not show, nor for one who never spun her wheel
+    await expect(me.declare(EVERY.allmen)).rejects.toThrow("转过香艳制作人的 ALL 转盘才能发这句。");
+    process.env.HAIMAO = "on";
+    try {
+      await expect(t2.declare(EVERY.allhappy)).rejects.toThrow("转过香艳制作人的 ALL 转盘才能发这句。");
+    } finally {
+      delete process.env.HAIMAO;
     }
     // 一起听's only from its panel, for a room
     await expect(me.declare(EVERY.listen)).rejects.toThrow("这句只能在听歌的「一起听」里发。");
@@ -2140,7 +2165,8 @@ describe("server world", () => {
     expect((await t2.inbox())[0]).toMatchObject({ id: inn.id, reaction: { id: "launch.1", text: "上号！" } });
     expect((await me.inbox()).find((i) => i.kind === "reaction")).toMatchObject({ text: "疯狂新妻祀是我的！", reaction: { text: "上号！" } });
     await expect((await demo("t1")).react(inn.id, "launch.1")).rejects.toThrow("不能这样回应");
-  });
+    // some sixty sentences sent and answered one after another: more than the usual 5 seconds on a busy machine
+  }, 20_000);
 
   it("says no name in 「我要玩…！」, nor in a 「我是<名字>，我要玩…」 of before, whose replies read as picked", async () => {
     await me.saveProfile({ ...EMPTY_PROFILE, anonymous: false, name: "Breeze", drPrefix: true, games: ["arknights"] });

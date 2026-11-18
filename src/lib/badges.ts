@@ -128,7 +128,10 @@ export type Badge = {
   pictureArt?: string;
   /** Handed out by the owner by login email (src/lib/server/admin.ts setBadge), never earned by playing */
   byHand?: true;
-  /** Left off the wall until it is had, so no one is shown a way to get it: the thanks for sponsoring */
+  /**
+   * Left off the wall until it is had, so no one is shown a way to get it: the thanks for sponsoring, and 香艳制作人's
+   * wheel's, which only those 寻访 is open to may spin
+   */
   unlisted?: true;
   /** A thanks for sponsoring the servers (支持舟P地图, src/lib/sponsor.ts): the owner gives these together, whatever was given */
   sponsor?: true;
@@ -1307,6 +1310,29 @@ export const BADGES: Badge[] = [
     },
     pill: { background: "#fff4d1", color: "#7a1f42", border: "1.5px solid #f2c230" },
     guide: "haimao",
+  },
+  // the title her wheel gives (src/lib/haimaoWheel.ts): the wheel all ALL, her ribbon under it. Off the wall till had,
+  // as only those 寻访 is open to may spin it
+  {
+    id: "haimaoallmen",
+    get name() {
+      return T.lib.badges.haimaoallmen.name;
+    },
+    code: "GD-HAIMAO-WHEEL",
+    series: "guides",
+    get condition() {
+      return T.lib.badges.haimaoallmen.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.haimaoallmen.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.haimaoallmen.quote;
+    },
+    // the design's pill for it
+    pill: { background: "#fff4d1", color: "#8a5a00", border: "1.5px solid #f2c230" },
+    guide: "haimao",
+    unlisted: true,
   },
 ];
 

@@ -3,12 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GUIDE_TOUCHES_PER_DAY } from "../guides";
 import { HAIMAO, HAIMAO_ID, HAIMAO_LINES, HAIMAO_LOVE_MAX, haimaoText } from "../haimao";
 import { answerLove, HAIMAO_BADGE, HAIMAO_DAYS } from "../haimaoStory";
+import { HAIMAO_WHEEL_BADGE, HAIMAO_WHEEL_LOVE, HAIMAO_WHEEL_TICKETS, WHEEL_SLICES } from "../haimaoWheel";
+import { TICKETS_CAP, WELCOME_TICKETS } from "../passes";
 import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
 import { db } from "./db";
-import { answerKind, endStory, openStory, pickStory, todayOf, tryStory } from "./haimao";
+import { answerKind, endStory, hasSpun, openStory, pickStory, spinWheel, todayOf, tryStory, wheelOpen } from "./haimao";
 import { pretend } from "./demo";
-import { admins, haimaoPlayers, haimaoSpins, haimaoTouches, userBadges, users } from "./schema";
+import { openWallet } from "./passes";
+import { admins, haimaoPlayers, haimaoSpins, haimaoTouches, passWallets, userBadges, users } from "./schema";
 import * as world from "./world";
 
 vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -349,5 +352,107 @@ describe("香艳制作人's story", () => {
     await pretend(me, "haimao");
     expect(await hasBadge(me)).toBe(false);
     expect((await openStory(me)).today).toEqual({ kind: "scene", day: 1, picked: null });
+  });
+});
+
+// ---- 转 ALL ----
+
+const wallet = async (id: string) => (await db.select().from(passWallets).where(eq(passWallets.userId, id)))[0];
+const badgesOf = async (id: string) => (await db.select().from(userBadges).where(eq(userBadges.userId, id))).map((b) => b.badge).sort();
+const account = async (id: string) => (await db.select().from(users).where(eq(users.id, id)))[0];
+
+describe("香艳制作人's wheel", () => {
+  beforeEach(() => vi.stubEnv("PASSES", "on"));
+
+  it("is there only where she shows and 寻访 is open too: on her card, and to spin", async () => {
+    const owner = await signUp("owner@example.com");
+    const someone = await signUp("someone@example.com");
+    expect(await herCard(someone)).toEqual({ friend: false, love: 0, plusToday: false, days: 0, wheel: true });
+    vi.stubEnv("PASSES", "admins");
+    expect(await herCard(someone)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
+    expect(wheelOpen(await account(someone))).toBe(false);
+    await expect(spinWheel(someone)).rejects.toThrow("没有这个功能。");
+    expect((await herCard(owner))?.wheel).toBe(true);
+    vi.stubEnv("PASSES", "on");
+    vi.stubEnv("HAIMAO", "admins");
+    await expect(spinWheel(someone)).rejects.toThrow("没有这个功能。");
+    expect(await herCard(someone)).toBeUndefined();
+    // nothing was given, nor kept
+    expect(await db.select().from(haimaoSpins)).toEqual([]);
+    expect(await wallet(someone)).toBeUndefined();
+    expect(await badgesOf(someone)).toEqual([]);
+  });
+
+  it("gives it all at the one spin: three tickets, the badge, 好感度 +5, her two lines; her card says where it stopped", async () => {
+    const me = await signUp("me@example.com");
+    expect(await hasSpun(await account(me))).toBe(false);
+    const spin = await spinWheel(me);
+    expect(spin.landed).toBeGreaterThanOrEqual(1);
+    expect(spin.landed).toBeLessThan(WHEEL_SLICES.length);
+    // a wallet made for one who never opened 寻访 lights its dot
+    expect(spin).toEqual({ landed: spin.landed, love: HAIMAO_WHEEL_LOVE, plus: HAIMAO_WHEEL_LOVE, again: false, passesDot: true });
+    expect(await wallet(me)).toMatchObject({ tickets: HAIMAO_WHEEL_TICKETS, welcomed: false });
+    expect(await badgesOf(me)).toEqual([HAIMAO_WHEEL_BADGE]);
+    expect(await herCard(me)).toEqual({ friend: false, love: HAIMAO_WHEEL_LOVE, plusToday: false, days: 0, wheel: true, spun: spin.landed });
+    expect(await hasSpun(await account(me))).toBe(true);
+    // the first ten still come when they open 寻访
+    expect((await openWallet(await account(me))).tickets).toBe(HAIMAO_WHEEL_TICKETS + WELCOME_TICKETS);
+  });
+
+  it("gives nothing more asked again, but answers with where it stopped", async () => {
+    const me = await signUp("me@example.com");
+    const first = await spinWheel(me);
+    const again = await spinWheel(me);
+    expect(again).toEqual({ landed: first.landed, love: HAIMAO_WHEEL_LOVE, plus: 0, again: true });
+    expect((await wallet(me)).tickets).toBe(HAIMAO_WHEEL_TICKETS);
+    expect(await badgesOf(me)).toEqual([HAIMAO_WHEEL_BADGE]);
+    expect((await player(me)).love).toBe(HAIMAO_WHEEL_LOVE);
+  });
+
+  it("is spun once however many taps come at once", async () => {
+    const me = await signUp("me@example.com");
+    // and a touch of hers at the same time, which moves her 好感度 too
+    const [spins] = await Promise.all([Promise.all(Array.from({ length: 6 }, () => spinWheel(me))), touch(me, true)]);
+    expect(spins.filter((s) => !s.again)).toHaveLength(1);
+    expect(new Set(spins.map((s) => s.landed)).size).toBe(1);
+    expect((await wallet(me)).tickets).toBe(HAIMAO_WHEEL_TICKETS);
+    expect(await badgesOf(me)).toEqual([HAIMAO_WHEEL_BADGE]);
+    expect((await player(me)).love).toBe(HAIMAO_WHEEL_LOVE + 1);
+  });
+
+  it("adds the tickets past the cap, and her 好感度 only up to 100", async () => {
+    const me = await signUp("me@example.com");
+    await openWallet(await account(me));
+    await db.update(passWallets).set({ tickets: TICKETS_CAP }).where(eq(passWallets.userId, me));
+    await openStory(me);
+    await db.update(haimaoPlayers).set({ love: HAIMAO_LOVE_MAX - 2 }).where(eq(haimaoPlayers.userId, me));
+    const spin = await spinWheel(me);
+    expect(spin).toMatchObject({ love: HAIMAO_LOVE_MAX, plus: 2, again: false, passesDot: true });
+    expect((await wallet(me)).tickets).toBe(TICKETS_CAP + HAIMAO_WHEEL_TICKETS);
+  });
+
+  it("goes with what is forgotten of her, but for the tickets, and with their account", async () => {
+    const me = await signUp("me@example.com");
+    await spinWheel(me);
+    await pretend(me, "haimao");
+    expect(await db.select().from(haimaoSpins)).toEqual([]);
+    expect(await badgesOf(me)).toEqual([]);
+    expect((await wallet(me)).tickets).toBe(HAIMAO_WHEEL_TICKETS);
+    expect((await herCard(me))?.spun).toBeUndefined();
+    await spinWheel(me);
+    await deleteAccount(await account(me));
+    expect(await db.select().from(haimaoSpins)).toEqual([]);
+  });
+
+  it("keeps her two lines theirs only while she shows to them", async () => {
+    const me = await signUp("me@example.com");
+    await spinWheel(me);
+    vi.stubEnv("HAIMAO", "off");
+    expect(await hasSpun(await account(me))).toBe(false);
+    vi.stubEnv("HAIMAO", "on");
+    // 寻访 closed again, the spin stays theirs and so do the lines
+    vi.stubEnv("PASSES", "off");
+    expect(await hasSpun(await account(me))).toBe(true);
+    expect((await herCard(me))?.spun).toBeGreaterThan(0);
   });
 });

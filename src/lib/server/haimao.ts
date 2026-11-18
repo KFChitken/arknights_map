@@ -1,16 +1,19 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { T } from "@/i18n";
 import { addLove, HAIMAO, HAIMAO_BOLD_LOVE, HAIMAO_LIFT_FROM, HAIMAO_LIFT_ONE_IN, HAIMAO_LOVE_MAX, haimaoRoach } from "../haimao";
 import { answerLove, HAIMAO_BADGE, HAIMAO_DAYS, type HaimaoStep, type HaimaoStory, type HaimaoToday } from "../haimaoStory";
+import { HAIMAO_WHEEL_BADGE, HAIMAO_WHEEL_LOVE, HAIMAO_WHEEL_TICKETS, WHEEL_SLICES, type HaimaoSpin } from "../haimaoWheel";
 import { WorldError, type HaimaoItem, type HaimaoMe, type TouchResult } from "../world/types";
 import { isModHere, isOwnerEmail } from "./admins";
-import { award } from "./badges";
+import { afterAward, award } from "./badges";
 import { db } from "./db";
 import { haimaoMode } from "./env";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type Exec, type GuideRow, type GuideTable } from "./guides";
+import { addTickets, passesOpen } from "./passes";
 import { haimaoPlayers, haimaoSpins, haimaoTouches, userBadges, users, type UserRow } from "./schema";
+import { errorCode } from "./signals";
 
 /**
  * 香艳制作人 on the server (src/lib/haimao.ts): her answers to each player's touches, kept in
@@ -153,18 +156,24 @@ export async function unfriendHaimao(userId: string) {
   await db.update(users).set({ haimaoFriendSince: null }).where(eq(users.id, userId));
 }
 
-/** What me() says about her: nothing for a player she does not show to. */
+/**
+ * What me() says about her: nothing for a player she does not show to. wheel: her wheel is there for them (寻访 is
+ * open to them too); spun: the slice its pointer stopped on, once they spun it (a spin makes their row, so it is there).
+ */
 export async function haimaoOf(u: Pick<UserRow, "id" | "email" | "haimaoFriendSince">, offsetMin?: unknown): Promise<HaimaoMe | undefined> {
   if (!haimaoOpen(u)) return undefined;
   const [p] = await db
-    .select({ love: haimaoPlayers.love, plusOn: haimaoPlayers.plusOn, days: haimaoPlayers.days })
+    .select({ love: haimaoPlayers.love, plusOn: haimaoPlayers.plusOn, days: haimaoPlayers.days, landed: haimaoSpins.landed })
     .from(haimaoPlayers)
+    .leftJoin(haimaoSpins, eq(haimaoSpins.userId, haimaoPlayers.userId))
     .where(eq(haimaoPlayers.userId, u.id));
   return {
     friend: Boolean(u.haimaoFriendSince),
     love: p?.love ?? 0,
     plusToday: p?.plusOn === deviceDay(offsetMin).day,
     days: p?.days ?? 0,
+    ...(passesOpen(u) ? { wheel: true as const } : {}),
+    ...(p?.landed ? { spun: p.landed } : {}),
     ...(haimaoTrier(u) ? { trial: true as const } : {}),
   };
 }
@@ -277,13 +286,64 @@ export async function tryStory(userId: string, what: "next" | "restart", offsetM
   return storyOf(p, today);
 }
 
-/** 清掉我和香艳制作人的记录 (local testing only): as if they had never met her, her badge gone too. */
+// ---- 转 ALL: her wheel (src/lib/haimaoWheel.ts) ----
+
+/** Whether her wheel is there for this player: she shows to them, and 寻访 is open to them (PASSES) */
+export const wheelOpen = (user: Pick<UserRow, "id" | "email">) => haimaoOpen(user) && passesOpen(user);
+
+/** Whether they spun her wheel, while she shows to them: then her two declarations are theirs (src/lib/declarations.ts) */
+export async function hasSpun(u: Pick<UserRow, "id" | "email">) {
+  if (!haimaoOpen(u)) return false;
+  const [s] = await db.select({ landed: haimaoSpins.landed }).from(haimaoSpins).where(eq(haimaoSpins.userId, u.id));
+  return Boolean(s);
+}
+
+/**
+ * Their one spin of her wheel, for good: where the pointer stops (any slice but ALL, at random), kept in haimao_spins
+ * in the same transaction as all it gives, so a second tap or a retry after a lost answer gives nothing twice and
+ * nothing is ever half given: HAIMAO_WHEEL_TICKETS tickets into their wallet (made if need be; past the cap too), the
+ * badge all 门信徒, HAIMAO_WHEEL_LOVE more 好感度; her two declarations are theirs by the row itself. Asked again, it
+ * answers with that spin and gives nothing more (again).
+ */
+export async function spinWheel(userId: string, now = Date.now()): Promise<HaimaoSpin> {
+  const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, userId));
+  if (!u || !wheelOpen(u)) throw new WorldError(T.server.haimao.notHere);
+  const { badge, ...spin } = await db.transaction(async (tx) => {
+    // their row first, as their touches and story lock it (lockPlayer), so her 好感度 moves one way at a time; but
+    // leaving others its key, so a draw of theirs that holds their wallet still writes its passes and never waits on this
+    await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
+    const p = await haimaoRow(tx, userId);
+    const [made] = await tx
+      .insert(haimaoSpins)
+      .values({ userId, landed: randomInt(1, WHEEL_SLICES.length), spunAt: new Date(now) })
+      .onConflictDoNothing()
+      .returning({ landed: haimaoSpins.landed });
+    if (!made) {
+      const [s] = await tx.select({ landed: haimaoSpins.landed }).from(haimaoSpins).where(eq(haimaoSpins.userId, userId));
+      return { landed: s.landed, love: p.love, plus: 0, again: true, badge: false };
+    }
+    const dot = await addTickets(tx, userId, HAIMAO_WHEEL_TICKETS, now);
+    const given = await tx
+      .insert(userBadges)
+      .values({ userId, badge: HAIMAO_WHEEL_BADGE })
+      .onConflictDoNothing()
+      .returning({ badge: userBadges.badge });
+    const love = addLove(p.love, HAIMAO_WHEEL_LOVE);
+    if (love !== p.love) await setPlayer(tx, userId, { love });
+    return { landed: made.landed, love, plus: love - p.love, again: false, ...dot, badge: given.length > 0 };
+  });
+  // the badge's 获得新称号 and what goes by the badges held: the spin is kept whatever becomes of this
+  if (badge) await afterAward(userId, [HAIMAO_WHEEL_BADGE]).catch((e) => console.error("haimao: after the wheel's badge", errorCode(e)));
+  return spin;
+}
+
+/** 清掉我和香艳制作人的记录 (local testing only): as if they had never met her, her badges gone too (not the wheel's tickets). */
 export async function forgetHaimao(userId: string) {
   await db.transaction(async (tx) => {
     await tx.update(users).set({ haimaoFriendSince: null }).where(eq(users.id, userId));
     await tx.delete(haimaoTouches).where(eq(haimaoTouches.userId, userId));
     await tx.delete(haimaoPlayers).where(eq(haimaoPlayers.userId, userId));
     await tx.delete(haimaoSpins).where(eq(haimaoSpins.userId, userId));
-    await tx.delete(userBadges).where(and(eq(userBadges.userId, userId), eq(userBadges.badge, HAIMAO_BADGE)));
+    await tx.delete(userBadges).where(and(eq(userBadges.userId, userId), inArray(userBadges.badge, [HAIMAO_BADGE, HAIMAO_WHEEL_BADGE])));
   });
 }

@@ -2,10 +2,11 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { HaimaoStep, HaimaoStory } from "./haimaoStory";
+import type { HaimaoSpin } from "./haimaoWheel";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
- * The browser's side of 香艳制作人's 今日剧情 (src/app/api/haimao/[op]): refusals become the errors the map page
+ * The browser's side of 香艳制作人's 今日剧情 and her wheel (src/app/api/haimao/[op]): refusals become the errors the map page
  * already tells apart (src/lib/world/types.ts), as ServerWorld's do. Each sends the device's clock offset, by which
  * the player's day turns at 04:00.
  */
@@ -37,4 +38,6 @@ export const haimaoApi = {
   end: () => call<HaimaoStep>("end"),
   /** 试玩 (站长 and admins): the next day at once, or the story from its start; what today then holds */
   trial: (what: "next" | "restart") => call<HaimaoStory>(what),
+  /** 转 ALL: their one spin of her wheel, or the one they had */
+  spin: () => call<HaimaoSpin>("spin"),
 };

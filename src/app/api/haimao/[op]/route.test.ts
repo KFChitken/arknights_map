@@ -82,7 +82,7 @@ describe("今日剧情's requests", () => {
     vi.stubEnv("HAIMAO", "on");
     for (const [op, body] of EVERY) expect((await call(op, body)).status, op).toBe(401);
     await signIn(await account("someone@example.com"));
-    expect((await call("spin")).status).toBe(404);
+    expect((await call("wheel")).status).toBe(404);
     expect((await call("toString")).status).toBe(404);
   });
 
@@ -120,5 +120,28 @@ describe("今日剧情's requests", () => {
     });
     expect((await call("pick", { day: 1, answer: 7, offset: -480 })).status).toBe(400);
     expect(await call("end", { offset: -480 })).toMatchObject({ status: 200, body: { end: false, plus: 0 } });
+  });
+});
+
+describe("转 ALL's request", () => {
+  it("is answered 404 to a player 寻访 is not open to, and spins her wheel once for good for one it is", async () => {
+    vi.stubEnv("HAIMAO", "on");
+    vi.stubEnv("PASSES", "admins");
+    expect((await call("spin")).status).toBe(401);
+    await signIn(await account("someone@example.com"));
+    expect(await call("spin")).toMatchObject({ status: 404, body: { error: "没有这个功能。" } });
+    await signIn(await account("owner@example.com"));
+    const first = await call("spin");
+    expect(first).toMatchObject({ status: 200, cache: "no-store", body: { love: 5, plus: 5, again: false, passesDot: true } });
+    expect(await call("spin")).toMatchObject({ status: 200, body: { landed: first.body.landed, love: 5, plus: 0, again: true } });
+  });
+
+  it("waits, as 寻访 does, while the player is asked to say again they are 18 or older", async () => {
+    vi.stubEnv("HAIMAO", "on");
+    vi.stubEnv("PASSES", "on");
+    const me = await account("someone@example.com");
+    await db.update(users).set({ ageCheckAt: new Date() }).where(eq(users.id, me));
+    await signIn(me);
+    expect(await call("spin")).toMatchObject({ status: 428, body: { code: "age" } });
   });
 });

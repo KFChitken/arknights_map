@@ -4,7 +4,19 @@ import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne,
 import { fmt, T } from "@/i18n";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
-import { canReply, declarationText, FOODS, isStayTemplate, repliesFor, replyOf, SPOUSES, type Declaration, type Food, type Template } from "../declarations";
+import {
+  canReply,
+  declarationText,
+  FOODS,
+  isStayTemplate,
+  isWheelTemplate,
+  repliesFor,
+  replyOf,
+  SPOUSES,
+  type Declaration,
+  type Food,
+  type Template,
+} from "../declarations";
 import { AWAY_DAYS, badgeById, badgesOwned, seriesCovered } from "../badges";
 import { beijingDate, beijingMidnight, daysBetween } from "../beijing";
 import { findLine } from "../events";
@@ -106,7 +118,7 @@ import {
   unfriendTalulah,
 } from "./talulah";
 import { clonesOut, hasStayed, ignoreSi, inkOnMap, inkSeen, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
-import { haimaoFriend, haimaoInbox, haimaoOf, ignoreHaimao, replyHaimao, seeHaimao, touchHaimao, unfriendHaimao } from "./haimao";
+import { haimaoFriend, haimaoInbox, haimaoOf, hasSpun, ignoreHaimao, replyHaimao, seeHaimao, touchHaimao, unfriendHaimao } from "./haimao";
 import { inkTapped } from "./siInk";
 import { sponsorMe, sponsorOpen, thanksShownTo } from "./sponsor";
 import {
@@ -1433,6 +1445,8 @@ export function storedDeclaration(d: typeof declarations.$inferSelect): Declarat
     case "simine":
     case "kuye":
     case "studied":
+    case "allmen":
+    case "allhappy":
       return { template };
     case "drunklove":
       return { template: "drunklove", character };
@@ -1529,7 +1543,9 @@ export async function declare(
   const drunk = Boolean(u.drunkUntil && u.drunkUntil.getTime() > Date.now());
   // 缘缘庄's two only once their ink roach has had a room (src/lib/server/si.ts)
   const stayed = isStayTemplate(input?.template) ? await hasStayed(u.id, u.siStayedAt) : false;
-  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study, listen, squad);
+  // 香艳制作人's two only once they spun her wheel, while she shows to them (src/lib/server/haimao.ts)
+  const spun = isWheelTemplate(input?.template) ? await hasSpun(u) : false;
+  const d = checkDeclaration(profileOf(u), input, Date.now(), drunk, stayed, study, listen, squad, spun);
   const mine = await db.select().from(roaches).where(eq(roaches.userId, userId));
   if (!mine.some((r) => r.slot === 0)) throw new WorldError(T.server.world.mainBeforeDeclaring);
   const wanted = Array.isArray(from) ? [...new Set(from.map(String))] : null;

@@ -40,6 +40,7 @@ import {
 } from "@/lib/perlica";
 import { answerLine, firstSentence, INK_FROM, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_ZOOM, siRoach } from "@/lib/si";
 import { HAIMAO, HAIMAO_AT, HAIMAO_BOLD_LOVE, HAIMAO_ID, HAIMAO_LINES, HAIMAO_ZOOM, haimaoRoach, haimaoTouchLine } from "@/lib/haimao";
+import type { HaimaoSpin } from "@/lib/haimaoWheel";
 import { brushOf, INN_CENTER, inkNow, innNumbers, toXY } from "@/lib/siInn";
 import { INK_LOOKS, variantOf } from "./map/inkArt";
 import type { InkTapped } from "./map/inkTap";
@@ -243,6 +244,7 @@ import {
   useHaimaoDame,
 } from "./app/Haimao";
 import HaimaoStorySheet from "./app/HaimaoStory";
+import HaimaoWheelSheet from "./app/HaimaoWheel";
 import { allowClip, playSound, primeSound } from "./app/haimaoSound";
 import { SiBookSheet } from "./app/SiBook";
 import { useSiInks, type SiView } from "./useSiInks";
@@ -477,6 +479,7 @@ type Panel =
   | { kind: "haimaoIntro" }
   /** 今日剧情 with 香艳制作人: the day's part of her story */
   | { kind: "haimaoStory"; review: boolean }
+  | { kind: "haimaoWheel" }
   /** Your 集章本 from 祀掌柜: her portrait of you first, then this round's seals */
   | { kind: "siBook" }
   | { kind: "mine" }
@@ -4483,6 +4486,19 @@ export default function MapApp({
     setPanel((p) => (p?.kind === "haimaoStory" ? null : p));
     void loadMe();
   };
+  /** 转 ALL, from her card: her sounds woken within the tap, for the wheel's clicks once the server answers */
+  const openHaimaoWheel = () => {
+    primeSound();
+    setPanel({ kind: "haimaoWheel" });
+  };
+  /** Her wheel spun: what it gave, on the page at once (her 好感度, her two declarations); the badge comes as badges do */
+  const haimaoSpun = (spin: HaimaoSpin) =>
+    setMe((m) => (m?.haimao ? { ...m, haimao: { ...m.haimao, love: Math.max(m.haimao.love, spin.love), spun: spin.landed } } : m));
+  /** Out of the wheel (unless a refusal opened something else), the badge and the tickets fetched */
+  const closeHaimaoWheel = () => {
+    setPanel((p) => (p?.kind === "haimaoWheel" ? null : p));
+    void loadMe();
+  };
   /** A visitor reaches for her: the sign-in */
   const haimaoSignIn = () =>
     waitingMe
@@ -5166,6 +5182,9 @@ export default function MapApp({
             onClose={closeHaimaoStory}
           />
         );
+      case "haimaoWheel":
+        if (!me?.haimao?.wheel) return null;
+        return <HaimaoWheelSheet spun={me.haimao.spun ?? null} run={(call) => act(() => call())} onSpun={haimaoSpun} onClose={closeHaimaoWheel} />;
       case "siBook":
         if (!me) return null;
         return (
@@ -5198,6 +5217,7 @@ export default function MapApp({
             initialFrom={p.from}
             drunk={Boolean(me.drunkUntil)}
             stayed={me.si.stayed}
+            spun={Boolean(me.haimao?.spun)}
             ink={inkOut}
             onSend={declare}
             onEditProfile={() => setPanel({ kind: "profile", edit: true })}
@@ -5843,6 +5863,7 @@ export default function MapApp({
           onStory={() => openHaimaoStory()}
           onReview={() => openHaimaoStory(true)}
           onDame={() => haimaoDame.dame((line, ms) => say(HAIMAO_ID, line, ms))}
+          onWheel={openHaimaoWheel}
           onOpenFriend={me?.haimao?.friend ? () => setPanel({ kind: "friend", friendId: HAIMAO_ID, back: null }) : undefined}
           under={stackUnder}
           onClose={() => {

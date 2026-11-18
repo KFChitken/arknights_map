@@ -8,6 +8,7 @@ import {
   declarationText,
   FOODS,
   isStayTemplate,
+  isWheelTemplate,
   SPOUSES,
   stayNeeded,
   WELCOME_NAMES,
@@ -34,6 +35,7 @@ export default function DeclareSheet({
   initial,
   drunk = false,
   stayed = false,
+  spun = false,
   ink = false,
   initialFrom,
   onSend,
@@ -48,6 +50,8 @@ export default function DeclareSheet({
   drunk?: boolean;
   /** Their ink roach has had a room at 缘缘庄 (src/lib/si.ts): 祀掌柜's two are theirs; everyone sees them, greyed till then */
   stayed?: boolean;
+  /** They spun 香艳制作人's wheel (src/lib/haimaoWheel.ts), and she shows to them: her two are theirs, listed only then */
+  spun?: boolean;
   /** Their ink roach is on the map at 缘缘庄: it goes out from there too, as INK_FROM, when picked */
   ink?: boolean;
   /** Picked to begin with (墨小强's card opens this with it) */
@@ -108,6 +112,8 @@ export default function DeclareSheet({
       case "rental":
       case "sihouse":
       case "simine":
+      case "allmen":
+      case "allhappy":
         return { template };
       case "launch":
       case "welcome":
@@ -124,7 +130,7 @@ export default function DeclareSheet({
     }
   })();
   const blocked = (t: Template) =>
-    (WITH_CHARACTER.includes(t) && !favourites.length) || (isStayTemplate(t) && !stayed);
+    (WITH_CHARACTER.includes(t) && !favourites.length) || (isStayTemplate(t) && !stayed) || (isWheelTemplate(t) && !spun);
   const canSend = Boolean(main) && from.length > 0 && !blocked(template);
 
   const send = async () => {
@@ -330,6 +336,14 @@ export default function DeclareSheet({
         {row("simine", <>{T.declare.line.innSi}</>)}
         {!stayed && <p className="hint stay-note">{stayNeeded()}</p>}
       </div>
+
+      {spun && (
+        <div className="stay-group wheel-group" role="group" aria-label={T.declare.wheel.title}>
+          <div className="stay-tag">{T.declare.wheel.tag}</div>
+          {row("allmen", <>{T.declare.line.allmen}</>)}
+          {row("allhappy", <>{T.declare.line.allhappy}</>)}
+        </div>
+      )}
 
       {!favourites.length && (
         <p className="hint" style={{ marginTop: -2, marginBottom: 8 }}>

@@ -1,7 +1,21 @@
 import { fmt, T } from "@/i18n";
 import { beijingDate } from "@/lib/beijing";
 import { CITIES, NOTE_KINDS, type CityId, type NoteKind } from "@/lib/dashboard";
-import { declarationText, DRUNK_TEMPLATES, isReaction, isStayTemplate, isStudyTemplate, REACTIONS, replyOf, STAY_TEMPLATES, STUDY_TEMPLATES, TEMPLATES, type Declaration } from "@/lib/declarations";
+import {
+  declarationText,
+  DRUNK_TEMPLATES,
+  isReaction,
+  isStayTemplate,
+  isStudyTemplate,
+  isWheelTemplate,
+  REACTIONS,
+  replyOf,
+  STAY_TEMPLATES,
+  STUDY_TEMPLATES,
+  TEMPLATES,
+  WHEEL_TEMPLATES,
+  type Declaration,
+} from "@/lib/declarations";
 import { EVENTS } from "@/lib/events";
 import { GESTURE_NAMES } from "@/lib/friendly";
 
@@ -119,6 +133,7 @@ export function templateWords(template: string): string {
   const drunk = (DRUNK_TEMPLATES as readonly string[]).includes(template) ? "（醉酒限定）" : "";
   const stay = isStayTemplate(template) ? "（住过缘缘庄才能发）" : "";
   const study = isStudyTemplate(template) ? "（325大学习里发的）" : "";
+  const wheel = isWheelTemplate(template) ? "（转过香艳制作人的转盘才能发）" : "";
   switch (template) {
     case "launch":
       return spaced(fmt(x.launch, { game: BLANK }));
@@ -145,8 +160,8 @@ export function templateWords(template: string): string {
     case "listen":
       return fmt(x.listen, { song: BLANK }) + "（一起听里发的）";
     default:
-      if ([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES].includes(template as never)) {
-        return declarationText(blankOf(template)) + drunk + stay + study;
+      if ([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES, ...WHEEL_TEMPLATES].includes(template as never)) {
+        return declarationText(blankOf(template)) + drunk + stay + study + wheel;
       }
       return template;
   }
@@ -158,7 +173,7 @@ export function replyWords(id: string): string {
   const dot = id.lastIndexOf(".");
   const key = dot > 0 ? id.slice(0, dot) : id;
   const n = Number(id.slice(dot + 1));
-  if ([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES].includes(key as never)) {
+  if ([...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES, ...WHEEL_TEMPLATES].includes(key as never)) {
     const r = replyOf(blankOf(key), id);
     if (r) return spaced(r.text);
   }

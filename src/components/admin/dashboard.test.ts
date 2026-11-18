@@ -4,7 +4,17 @@ import { describe, expect, it } from "vitest";
 import { BADGES } from "@/lib/badges";
 import { addDays } from "@/lib/beijing";
 import { CITIES, OPEN_DAY, type DashboardData, type DashDay, type StatSnapshot } from "@/lib/dashboard";
-import { DRUNK_TEMPLATES, FUN_REACTIONS, GENERIC_REACTIONS, repliesFor, STAY_TEMPLATES, STUDY_TEMPLATES, TEMPLATES, type Declaration } from "@/lib/declarations";
+import {
+  DRUNK_TEMPLATES,
+  FUN_REACTIONS,
+  GENERIC_REACTIONS,
+  repliesFor,
+  STAY_TEMPLATES,
+  STUDY_TEMPLATES,
+  TEMPLATES,
+  WHEEL_TEMPLATES,
+  type Declaration,
+} from "@/lib/declarations";
 import { EVENTS } from "@/lib/events";
 import { colTop, highest, layout, niceTicks, tickWords } from "./chartMath";
 import { Board } from "./Dashboard";
@@ -68,7 +78,7 @@ describe("数据看板's words", () => {
     expect(actsCover()).toBe(true);
     const blank = (template: string) =>
       ({ template, game: "arknights", character: "X", title: "X", name: "X", food: "X", spouse: "老婆", line: "" }) as unknown as Declaration;
-    for (const t of [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES]) {
+    for (const t of [...TEMPLATES, ...DRUNK_TEMPLATES, ...STAY_TEMPLATES, ...STUDY_TEMPLATES, ...WHEEL_TEMPLATES]) {
       const words = templateWords(t);
       expect(words, t).not.toBe(t);
       expect(words, t).not.toMatch(/[{}]|undefined/);
@@ -81,6 +91,11 @@ describe("数据看板's words", () => {
     expect(templateWords("listen")).toBe("我在听《___》，来一起听吗？（一起听里发的）");
     expect(STUDY_TEMPLATES.map(templateWords)).toEqual(["苦也！（325大学习里发的）", "已完成今日的325大学习（325大学习里发的）"]);
     expect(replyWords("kuye.4")).toBe("同是苦学人，碰我一下");
+    expect(WHEEL_TEMPLATES.map(templateWords)).toEqual([
+      "all 门🙏（转过香艳制作人的转盘才能发）",
+      "指针落下的位置，便是幸福。（转过香艳制作人的转盘才能发）",
+    ]);
+    expect(["allmen.2", "allhappy.3"].map(replyWords)).toEqual(["转盘又被推了吧", "很可怕吗？是的"]);
     for (const id of [...GENERIC_REACTIONS, ...FUN_REACTIONS]) expect(replyWords(id), id).not.toBe(id);
     // what 「我是<名字>，我要玩…」 was answered with before it became 「我要玩…！」
     expect(["myname.1", "myname.4"].map(replyWords)).toEqual(["好名字！", "你好，碰我一下"]);
