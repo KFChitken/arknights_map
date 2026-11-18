@@ -61,10 +61,10 @@ export function indexCatalog(c: ListenCatalog): Map<string, ListenTrack> {
   return out;
 }
 
-/** The song after this one on its album, or null after its last */
-export function nextOnAlbum(track: ListenTrack): string | null {
+/** The songs after this one on its album, in its order (none after its last) */
+export function restOfAlbum(track: ListenTrack): string[] {
   const at = track.album.songs.findIndex((s) => s.id === track.id);
-  return at >= 0 && at + 1 < track.album.songs.length ? track.album.songs[at + 1].id : null;
+  return at >= 0 ? track.album.songs.slice(at + 1).map((s) => s.id) : [];
 }
 
 // ---- 收藏, 热播榜, 随机播放 ----
@@ -92,30 +92,37 @@ export type ListenView = "all" | "fav" | "hot";
 /** Where a song played alone was tapped: the list, and its songs as it showed them then, in order */
 export type ListenFrom = { view: ListenView; ids: string[] };
 
-/** The song after this one in a list (收藏, 热播榜), or null after its last, or when it is not in it */
-export function nextInList(ids: readonly string[], id: string): string | null {
+/** The songs after this one in a list (收藏, 热播榜, those found), in its order: none after its last, or when it is not in it */
+export function restOfList(ids: readonly string[], id: string): string[] {
   const at = ids.indexOf(id);
-  return at >= 0 && at + 1 < ids.length ? ids[at + 1] : null;
+  return at >= 0 ? ids.slice(at + 1) : [];
 }
 
 /**
- * 随机播放: the song to play after `now`, at random among ids, one not played yet this round (played); once all of
- * them were, any but `now` again, and a new round begins (fresh). null: there is no other song.
+ * 待播 alone, once a list played through: songs from all of them at random, those played lately (the latest last)
+ * after all the others; this many of them
  */
-export function shuffleNext(
-  ids: readonly string[],
-  now: string,
-  played: ReadonlySet<string>,
-  rand: () => number = Math.random,
-): { next: string; fresh: boolean } | null {
-  let pool = ids.filter((id) => id !== now && !played.has(id));
-  let fresh = false;
-  if (!pool.length) {
-    pool = ids.filter((id) => id !== now);
-    fresh = true;
-  }
-  if (!pool.length) return null;
-  return { next: pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))], fresh };
+export const RECENT_AVOID = 20;
+/** 待播 lists this many songs at most, then says how many more */
+export const UPNEXT_SHOWN = 30;
+
+/** 随机播放's round of a list: its songs but `now`, each once, in an order drawn at random ahead */
+export function drawRound(ids: readonly string[], now: string, rand: () => number = Math.random): string[] {
+  const pool = [...new Set(ids)].filter((id) => id !== now);
+  const out: string[] = [];
+  while (pool.length) out.push(pool.splice(Math.min(pool.length - 1, Math.floor(rand() * pool.length)), 1)[0]);
+  return out;
+}
+
+/**
+ * Songs from all of them at random (a list played through, or none chosen yet): every one but `now`, in an order
+ * drawn ahead, the last RECENT_AVOID played (recent, the latest last) after all the others, the longest ago first
+ */
+export function drawAny(all: readonly string[], now: string, recent: readonly string[], rand: () => number = Math.random): string[] {
+  const has = new Set(all);
+  const late = [...new Set(recent.slice(-RECENT_AVOID))].filter((id) => id !== now && has.has(id));
+  const lately = new Set(late);
+  return [...drawRound(all.filter((id) => !lately.has(id)), now, rand), ...late];
 }
 
 /** Whether a search finds the song: by its name or its album's, whatever the case or spaces */
@@ -369,6 +376,15 @@ export function changeQueue(s: RoomSchedule, change: QueueEdit, seconds: (id: st
   if (at.phase === "done") return { queue: adds.slice(0, QUEUE_MAX), idx: 0, startedAt: lead, version };
   if (queue.length >= QUEUE_MAX) return "full";
   return { queue: [...queue, ...adds.slice(0, QUEUE_MAX - queue.length)], idx: 0, startedAt, version };
+}
+
+/**
+ * 一起听's 待播 never runs out: a room started and playing the last of its songs (or about to, between it and the one
+ * before), or with all of them over, is given one more at the end, from all of them at random (src/lib/server/listenRooms.ts)
+ */
+export function needsTopUp(s: Pick<RoomSchedule, "queue" | "idx" | "startedAt">, seconds: (id: string) => number, now: number): boolean {
+  const at = roomAt(s, seconds, now);
+  return at.phase === "done" || (at.phase === "playing" && at.i >= s.queue.length - 1);
 }
 
 /**

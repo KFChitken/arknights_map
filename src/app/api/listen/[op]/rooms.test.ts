@@ -370,6 +370,23 @@ describe("一起听's rooms", () => {
     expect(await post(b, "open", { song: "" })).toMatchObject({ status: 404 });
   });
 
+  it("open at a second of the song (one playing alone): playing from there at once, and given one more after it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b } = await cast();
+    const now = Date.now();
+    const res = await post(host, "open", { song: "s1", invite: [], at: 42.5 });
+    expect(res.status).toBe(200);
+    const room = res.body!.room as ListenRoom;
+    expect(room).toMatchObject({ host: true, idx: 0, startedAt: now - 42_500 });
+    expect(room.queue).toEqual(["s1", "s2"]);
+    expect((await roomRow(room.id))?.startedAt?.getTime()).toBe(now - 42_500);
+    // a second not in the song, or not a number: waiting for its start, as ever
+    for (const at of [200, "42", -1, null]) {
+      const other = (await post(b, "open", { song: "s1", at })).body!.room as ListenRoom;
+      expect(other, String(at)).toMatchObject({ queue: ["s1"], startedAt: null });
+    }
+  });
+
   it("take one at a time: opening or going in at another leaves the first, and the host's ends with TA", async () => {
     const { host, b, c } = await cast();
     const first = await opened(host, b);
@@ -463,9 +480,12 @@ describe("一起听's rooms", () => {
     await post(host, "leave");
     expect(await roomRow(two.id)).toMatchObject({ endReason: "host" });
 
-    // songs over: 10 minutes on, without a new one
+    // songs over with none to add (s2 gone too, s1 all there is): 10 minutes on, without a new one
+    await db.update(songs).set({ goneAt: new Date() }).where(eq(songs.id, "s2"));
+    await loadSongs();
     const three = await opened(host);
-    expect((await post(host, "queue", { start: true })).status).toBe(200);
+    expect((await post(host, "queue", { start: true })).body!.room).toMatchObject({ queue: ["s1"], version: 2 });
+    expect(await post(host, "queue", { next: true })).toMatchObject({ status: 409, body: { error: "歌单里没有下一首了，先点「点歌」加几首。" } });
     const end = (await roomRow(three.id))!.startedAt!.getTime() + 200_000;
     expect(await sweepRooms(end + ROOM_IDLE_MS - 60_000)).toBe(0);
     expect(await sweepRooms(end + ROOM_IDLE_MS + 1_000)).toBe(1);
@@ -504,19 +524,19 @@ describe("一起听's rooms", () => {
     const before = Date.now();
     const started = (await post(host, "queue", { start: true })).body!.room as ListenRoom;
     expect(started.startedAt).toBeGreaterThanOrEqual(before + 1_000);
+    // its one song started, 待播 given one more in the same change (s2, all there is besides): told once, as the start
     const [state] = toldOf(bHeard, "state");
-    expect(state).toEqual({ t: "state", room: room.id, how: "start", queue: ["s1"], idx: 0, startedAt: started.startedAt, version: 2 });
+    expect(state).toEqual({ t: "state", room: room.id, how: "start", queue: ["s1", "s2"], idx: 0, startedAt: started.startedAt, version: 2 });
     // starting again changes nothing
     expect((await post(host, "queue", { start: true })).body!.room).toMatchObject({ version: 2 });
-    expect(await post(host, "queue", { next: true })).toMatchObject({ status: 409, body: { error: "歌单里没有下一首了，先点「点歌」加几首。" } });
-    expect((await post(host, "queue", { add: "s2" })).body!.room).toMatchObject({ queue: ["s1", "s2"], startedAt: started.startedAt, version: 3 });
+    expect((await post(host, "queue", { add: "s1" })).body!.room).toMatchObject({ queue: ["s1", "s2", "s1"], startedAt: started.startedAt, version: 3 });
     const next = (await post(host, "queue", { next: true })).body!.room as ListenRoom;
-    expect(next).toMatchObject({ queue: ["s2"], idx: 0, version: 4 });
-    expect((await post(host, "queue", { restart: true })).body!.room).toMatchObject({ queue: ["s2"], version: 5 });
+    expect(next).toMatchObject({ queue: ["s2", "s1"], idx: 0, version: 4 });
+    expect((await post(host, "queue", { restart: true })).body!.room).toMatchObject({ queue: ["s2", "s1"], version: 5 });
     expect(toldOf(bHeard, "state").map((s) => s.how)).toEqual(["start", "add", "next", "restart"]);
     for (const s of toldOf(bHeard, "state")) expect(Object.keys(s).sort()).toEqual(["how", "idx", "queue", "room", "startedAt", "t", "version"]);
     // 30 songs at most
-    for (let i = 1; i < QUEUE_MAX; i++) await changeSongs(host, { add: "s1" });
+    for (let i = 2; i < QUEUE_MAX; i++) await changeSongs(host, { add: "s1" });
     expect(await post(host, "queue", { add: "s1" })).toMatchObject({ status: 409, body: { error: `一起听的歌单最多 ${QUEUE_MAX} 首。` } });
     // what is played in it is the room's
     expect((await post(b, "play", { song: "s2" })).status).toBe(200);
@@ -567,6 +587,89 @@ describe("一起听's rooms", () => {
     expect(toldOf(bHeard, "state").map((s) => s.how)).toEqual(["add", "add", "add", "add"]);
   });
 
+  it("never run out of songs: one more at random once the last plays, in the host's change or within a minute, told as added", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b } = await cast();
+    await db.insert(songs).values(
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `r${i}`,
+        game: "arknights",
+        name: `More ${i}`,
+        albumId: "a2",
+        album: "More",
+        artists: ["塞壬唱片-MSR"],
+        seconds: 100,
+        file: `${String(i + 10).padStart(16, "0")}.m4a`,
+        bytes: 1000,
+        albumOrder: 1,
+        track: i,
+        addedAt: new Date(),
+      })),
+    );
+    await loadSongs();
+    const len = (id: string) => (id === "s1" ? 200 : id === "s2" ? 201 : 100);
+    const room = await opened(host, b);
+    await goIn(b);
+    const bHeard = hear(b);
+    // not started: nothing added, however long
+    vi.setSystemTime(Date.now() + 5 * 60_000);
+    await sweepRooms();
+    expect(await roomRow(room.id)).toMatchObject({ queue: ["s1"], version: 1 });
+
+    // started with its one song: one more at once, in the same change, told once as the start
+    const started = (await post(host, "queue", { start: true })).body!.room as ListenRoom;
+    expect(started).toMatchObject({ idx: 0, version: 2 });
+    expect(started.queue).toHaveLength(2);
+    expect(started.queue[0]).toBe("s1");
+    expect(started.queue[1]).not.toBe("s1");
+    expect(toldOf(bHeard, "state")).toEqual([{ t: "state", room: room.id, how: "start", queue: started.queue, idx: 0, startedAt: started.startedAt, version: 2 }]);
+    // s1 plays: nothing more yet
+    vi.setSystemTime(started.startedAt! + 100_000);
+    expect(await sweepRooms()).toBe(0);
+    expect(await roomRow(room.id)).toMatchObject({ queue: started.queue, version: 2 });
+
+    // the second, the last, plays: the sweep gives one more, none played there, told as added (s1 dropped, as played)
+    const second = started.startedAt! + 200_000 + 2_000;
+    vi.setSystemTime(second + 10_000);
+    expect(await sweepRooms()).toBe(0);
+    const row = (await roomRow(room.id))!;
+    expect(row).toMatchObject({ idx: 0, version: 3, startedAt: new Date(second) });
+    expect(row.queue).toHaveLength(2);
+    expect(row.queue[0]).toBe(started.queue[1]);
+    expect(["s1", started.queue[1]]).not.toContain(row.queue[1]);
+    expect(toldOf(bHeard, "state").at(-1)).toEqual({ t: "state", room: room.id, how: "add", queue: row.queue, idx: 0, startedAt: second, version: 3 });
+    // a minute on, the third waiting its turn: nothing more
+    vi.setSystemTime(Date.now() + 60_000);
+    await sweepRooms();
+    expect((await roomRow(room.id))!.version).toBe(3);
+
+    // ⏭ to the last: one more after it in the same change, one version more, told once as 下一首
+    const next = (await post(host, "queue", { next: true })).body!.room as ListenRoom;
+    expect(next).toMatchObject({ idx: 0, version: 4 });
+    expect(next.queue).toHaveLength(2);
+    expect(next.queue[0]).toBe(row.queue[1]);
+    expect(["s1", ...row.queue]).not.toContain(next.queue[1]);
+    expect(toldOf(bHeard, "state").map((s) => s.how)).toEqual(["start", "add", "next"]);
+
+    // a room of before with nothing after its last (ROOM_IDLE_MS left to end it): ⏭ to the one 待播 gives it
+    await db.update(listenRooms).set({ queue: [next.queue[0]] }).where(eq(listenRooms.id, room.id));
+    const on = (await post(host, "queue", { next: true })).body!.room as ListenRoom;
+    expect(on).toMatchObject({ idx: 0, version: 5 });
+    expect(on.queue[0]).not.toBe(next.queue[0]);
+    expect(on.queue).toHaveLength(2);
+
+    // all over, a sweep missed: on at once with one more, instead of ending 10 minutes on
+    const over = on.startedAt! + (len(on.queue[0]) + len(on.queue[1])) * 1000 + 2_000 + 5 * 60_000;
+    vi.setSystemTime(over);
+    expect(await sweepRooms()).toBe(0);
+    const again = (await roomRow(room.id))!;
+    expect(again).toMatchObject({ idx: 0, version: 6, startedAt: new Date(over + 1_000) });
+    expect(again.queue).toHaveLength(1);
+    expect(on.queue).not.toContain(again.queue[0]);
+    expect(toldOf(bHeard, "state").at(-1)).toMatchObject({ how: "add", queue: again.queue, startedAt: over + 1_000, version: 6 });
+    expect(await roomRow(room.id)).toMatchObject({ endedAt: null });
+  });
+
   it("let the host alone move everyone to a second of the song playing (its last at most), told as a seek, nothing between songs", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { host, b } = await cast();
@@ -582,12 +685,13 @@ describe("一起听's rooms", () => {
 
     vi.setSystemTime(started.startedAt! + 40_000);
     const moved = (await post(host, "queue", { seek: 120.5 })).body!.room as ListenRoom;
-    expect(moved).toMatchObject({ queue: ["s1"], idx: 0, startedAt: Date.now() - 120_500, version: 3 });
+    // s2 as 待播 gave it at the start, after it
+    expect(moved).toMatchObject({ queue: ["s1", "s2"], idx: 0, startedAt: Date.now() - 120_500, version: 3 });
     // s1 lasts 200 s: past its end is its last second
     expect((await post(host, "queue", { seek: 5_000 })).body!.room).toMatchObject({ startedAt: Date.now() - 199_000, version: 4 });
     const told = toldOf(bHeard, "state");
     expect(told.map((s) => s.how)).toEqual(["start", "seek", "seek"]);
-    expect(told[1]).toEqual({ t: "state", room: room.id, how: "seek", queue: ["s1"], idx: 0, startedAt: moved.startedAt, version: 3 });
+    expect(told[1]).toEqual({ t: "state", room: room.id, how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: moved.startedAt, version: 3 });
     // over: nothing to move
     vi.setSystemTime(Date.now() + 2_000);
     expect((await post(host, "queue", { seek: 10 })).body!.room).toMatchObject({ version: 4 });

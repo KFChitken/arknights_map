@@ -1,88 +1,211 @@
 /*
- * 听歌's panel (ListenPanel.tsx), loaded with it: a sheet on a phone (Sheet.tsx), a panel at the left on a computer.
- * The player, the line on privacy and the search stay at its top while the songs scroll under them.
+ * 听歌's player (ListenPanel.tsx), loaded with it: a sheet on a phone (Sheet.tsx), a panel at the left on a computer.
+ * White whatever else is around it, the top taking a little of the song's cover's colour (--lp-tint, set by the
+ * panel); the record stays black. All of it scrolls as one: the player, the round buttons, 这场, 待播, 选歌.
  */
 
 /* the same height whatever is found, so the search box stays put while typing (as 公告's sheet, globals.css .board) */
 .listen-sheet .sheet { position: relative; height: 88vh; height: calc(var(--vv-h, 100svh) * 0.88); }
+.listen-sheet .sheet, .listen-float {
+  background: #fff; background: linear-gradient(180deg, var(--lp-tint, #fff) 0, #fff 260px); color: var(--ink);
+}
+/* a grip along its top, as a sheet that comes up from the bottom; ⌄ shuts it into the layout's bottom bar */
+.listen-sheet .sheet::before {
+  content: ""; flex: none; width: 40px; height: 5px; margin: 8px auto 0; border-radius: 3px; background: currentColor; opacity: 0.18;
+}
+.listen-sheet .sheet-head { padding-top: 4px; }
+.listen-sheet .sheet-head .close.shut {
+  display: grid; place-items: center; width: 36px; height: 36px; margin: -4px -8px -4px 0; padding: 0; border-radius: 50%;
+  color: var(--ink);
+}
+.listen-sheet .sheet-head .close.shut svg { width: 26px; height: 26px; }
 .listen-sheet .sheet-body { flex: 1; min-height: 0; padding-top: 0; }
 .listen-sheet .sheet-foot { padding-top: 8px; }
 
-.lp-top { position: sticky; top: 0; z-index: 1; padding: 2px 0 6px; background: var(--paper); }
+.lp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 2px 0 6px; }
 
-/* the player: a block for the game, the song, ♡, ▶ or ⏸, ⏭ (alone), how far it got */
-.lp-player {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) 34px 38px; align-items: center; gap: 7px 10px; padding: 10px 10px 8px;
-  border-radius: 12px; background: #f4f4f5;
+/* ---- the player: the record, the song, ♡; the bar; a line on what holds it up; ▶ ⏭ 随机 省流量 ---- */
+.lp-player { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.lp-now { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 6px 2px 0 0; }
+
+/* the record: fine grooves, the cover its label, a little shine that stays still while it turns, and its arm */
+.lp-vinyl {
+  position: relative; flex: none; width: 92px; height: 92px; border-radius: 50%;
+  background: repeating-radial-gradient(circle at 50% 50%, #111 0 2px, #1c1c1f 2px 3.5px);
+  box-shadow: 0 0 0 2px #2b2d33, 0 10px 22px rgba(20, 24, 40, 0.3);
 }
-.lp-player.solo { grid-template-columns: 40px minmax(0, 1fr) 34px 38px 34px; }
-.lp-player.empty { display: block; padding: 14px 12px; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
-.lp-player.full { background: #fdf0f0; color: #a33a3a; }
+.lp-vinyl .spin { position: absolute; inset: 0; border-radius: 50%; animation: lp-spin 6s linear infinite; animation-play-state: paused; }
+.lp-vinyl.go .spin { animation-play-state: running; }
+.lp-vinyl .lab { position: absolute; inset: 27px; overflow: hidden; border-radius: 50%; }
+.lp-vinyl .lab .lp-cover { width: 100%; height: 100%; border-radius: 50%; font-size: 0; box-shadow: none; }
+.lp-vinyl .hole { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #0b0b0c; }
+.lp-vinyl .shine {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 30deg, transparent 0 20%, rgba(255, 255, 255, 0.08) 25%, transparent 30% 70%, rgba(255, 255, 255, 0.06) 75%, transparent 80%);
+}
+/* in a room, up to four roaches riding it, round it as it turns */
+.lp-vinyl .rider { position: absolute; width: 22px; height: 22px; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px rgba(255, 255, 255, 0.8)); }
+.lp-vinyl .rider img { display: block; }
+.lp-vinyl .rider.r0 { top: 50.5px; left: 61.8px; }
+.lp-vinyl .rider.r1 { top: 61.8px; left: 19.5px; }
+.lp-vinyl .rider.r2 { top: 19.5px; left: 8.2px; }
+.lp-vinyl .rider.r3 { top: 8.2px; left: 50.5px; }
+.lp-vinyl .arm {
+  position: absolute; top: -8px; right: -10px; width: 46px; height: 46px; pointer-events: none;
+  transform: rotate(-24deg); transform-origin: 38px 8px; transition: transform 0.5s;
+}
+.lp-vinyl.go .arm { transform: none; }
+@keyframes lp-spin { to { transform: rotate(360deg); } }
+
+.lp-what { display: grid; gap: 1px; min-width: 0; line-height: 1.3; }
+.lp-what b, .lp-what small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-what b { font-size: 16px; }
+.lp-what b.none { color: #4b5260; font-size: 14.5px; line-height: 1.45; white-space: normal; }
+.lp-what small { margin-top: 1px; color: var(--muted); font-size: 12.5px; }
+.lp-what small.lp-said { overflow: visible; color: #0f7f83; font-size: 11.5px; font-weight: 600; white-space: normal; }
+.lp-said span { white-space: nowrap; }
+/* 一起听中, over the song's name */
+.lp-roomtag {
+  justify-self: start; margin-bottom: 2px; padding: 0 7px; border-radius: 999px; background: #18a0a5; color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 1.7;
+}
 .lp-cover {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #2b2f3a, #5b6274);
   color: #fff; font-size: 11px; font-weight: 800;
 }
 /* the album's cover in its place, once there is one */
-img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06); }
-.lp-what { min-width: 0; line-height: 1.3; }
-.lp-what b, .lp-what small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lp-what b { font-size: 15px; }
-.lp-what small { margin-top: 1px; color: var(--muted); font-size: 12px; }
-.lp-btn { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: #fff; }
-.lp-btn svg { width: 16px; height: 16px; }
-.lp-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+img.lp-cover { display: block; object-fit: cover; }
+
 /*
  * how far it got: alone (and the host's, in a room) a bar to tap or drag, its knob following the finger; taller to the
  * finger than it looks, and a finger that scrolls the list still does (touch-action); nothing on it to select or to
- * hold for a menu, so a drag stays the bar's
+ * hold for a menu, so a drag stays the bar's. Red, and in a room teal.
  */
-.lp-bar .track, .lr-bar .track { position: relative; display: flex; flex: 1; align-items: center; min-width: 0; height: 4px; }
-.lp-rail { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: #dcdfe4; transition: height 0.12s; }
+.lp-bar { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.lp-bar > span:first-child, .lp-bar > span:last-child { flex: none; min-width: 30px; }
+.lp-bar > span:last-child { text-align: right; }
+.lp-bar .track { position: relative; display: flex; flex: 1; align-items: center; min-width: 0; height: 4px; }
+.lp-rail { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: rgba(127, 127, 127, 0.3); transition: height 0.12s; }
 .lp-bar .fill { display: block; height: 100%; background: #e0464d; }
-.lp-bar .track.can, .lr-bar .track.can {
+.lp-bar .track.can {
   height: 24px; margin: -10px 0; outline: none; cursor: pointer; touch-action: pan-y; -webkit-tap-highlight-color: transparent;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 .lp-knob {
-  position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #e0464d;
-  box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.3); pointer-events: none; transition: transform 0.12s;
+  position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #e0464d;
+  box-shadow: 0 0 0 3px #fff, 0 1px 3px rgba(0, 0, 0, 0.3); pointer-events: none; transition: transform 0.12s;
 }
-.lr-bar .lp-knob { background: #18a0a5; }
+.lp.in-room .lp-bar .fill, .lp.in-room .lp-knob { background: #18a0a5; }
 .track.drag .lp-rail { height: 6px; border-radius: 3px; }
-.track.drag .lp-knob { transform: scale(1.3); }
+.track.drag .lp-knob { transform: scale(1.25); }
 .track.can:focus-visible .lp-rail { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #18a0a5; }
 @media (hover: hover) {
   .track.can:hover .lp-rail { height: 6px; border-radius: 3px; }
-  .track.can:hover .lp-knob { transform: scale(1.3); }
+  .track.can:hover .lp-knob { transform: scale(1.25); }
 }
-.lp-hint { grid-column: 1 / -1; margin-top: -2px; color: var(--muted); font-size: 12.5px; text-align: center; }
+/* one line, always there (empty, unseen), so what is under it never moves as it comes and goes */
+.lp-hint {
+  height: 18px; margin: -2px 0 0; overflow: hidden; color: var(--muted); font-size: 12.5px; line-height: 18px; text-align: center;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 .lp-hint.bad { color: #a33a3a; }
-/* 省流量: the songs' smaller copies, on or off */
-.lp-lite {
-  flex: none; padding: 2px 8px; border: 1px solid #cfd3da; border-radius: 999px; background: #fff; color: #5b6274;
-  font-size: 11.5px; font-weight: 700; line-height: 1.4;
+.lp-hint.quiet { visibility: hidden; }
+
+/* 随机 at the left, ▶ and ⏭ in the middle, 省流量 at the right */
+.lp-ctl { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.lp-side { display: flex; min-width: 0; }
+.lp-side.end { justify-content: flex-end; }
+.lp-mid { display: flex; align-items: center; gap: 14px; }
+.lp-big { display: grid; place-items: center; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: #fff; }
+.lp-big svg { width: 26px; height: 26px; }
+.lp-big:disabled { opacity: 0.4; }
+.lp-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 4px 10px; border: 1px solid #cfd3da; border-radius: 999px;
+  background: #fff; color: #4b5260; font-size: 12.5px; font-weight: 700; white-space: nowrap;
 }
-.lp-lite.on { border-color: #18a0a5; background: #18a0a5; color: #fff; }
+.lp-chip svg { width: 14px; height: 14px; }
+.lp-chip.on { border-color: #18a0a5; background: #18a0a5; color: #fff; }
 /* ♡ (收藏) and ⏭ */
 .lp-ic {
-  display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #e1e3e8; border-radius: 50%;
+  display: grid; place-items: center; flex: none; width: 38px; height: 38px; padding: 0; border: 1px solid #dfe2e7; border-radius: 50%;
   background: #fff; color: #5b6274;
 }
-.lp-ic svg { width: 17px; height: 17px; }
+.lp-ic svg { width: 19px; height: 19px; }
 .lp-ic.on { border-color: #f3c9cb; color: #d9363e; }
-.lp-ic.next svg { width: 15px; height: 15px; }
-.lp-ic:disabled { opacity: 0.4; }
-/* 随机播放: on or off, as 省流量 */
-.lp-shuf {
-  display: inline-flex; flex: none; align-items: center; gap: 3px; padding: 2px 8px; border: 1px solid #cfd3da; border-radius: 999px;
-  background: #fff; color: #5b6274; font-size: 11.5px; font-weight: 700; line-height: 1.4;
+.lp-ic:disabled { opacity: 0.35; }
+
+/* ---- the round buttons, as the disco's ball on the map: 蹦迪 pink, 一起听 teal (filled while in a room), 短评 ---- */
+.lp-tgs { display: flex; align-items: flex-start; justify-content: center; gap: 18px; padding-top: 2px; }
+.lp-tgl { display: grid; justify-items: center; gap: 3px; }
+.lp-tgl small { color: #4b5260; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.lp-tgl.hint small { color: #c026a8; }
+.lp-tg {
+  --tgc: #ffd23f;
+  position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(24, 26, 31, 0.9); color: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); transition: box-shadow 0.2s, background 0.2s, transform 0.15s;
 }
-.lp-shuf svg { width: 12px; height: 12px; }
-.lp-shuf.on { border-color: #18a0a5; background: #18a0a5; color: #fff; }
+.lp-tg svg { width: 24px; height: 24px; }
+.lp-tg.disco { --tgc: #ff4fd8; }
+.lp-tg.room { --tgc: #18a0a5; }
+.lp-tg.chat { --tgc: #1b1d22; }
+.lp-tg.on { box-shadow: 0 0 0 2.5px var(--tgc), 0 2px 8px rgba(0, 0, 0, 0.25); }
+.lp-tg.on { box-shadow: 0 0 0 2.5px var(--tgc), 0 0 14px color-mix(in srgb, var(--tgc) 60%, transparent), 0 2px 8px rgba(0, 0, 0, 0.25); }
+.lp-tg.room.on { background: #18a0a5; }
+.lp-tg.chat.on { background: #fff; color: var(--ink); }
+.lp-tg:active { transform: scale(0.94); }
+.lp-tg:disabled { opacity: 0.45; }
+
+/* 结束这场一起听？ (离开…), under what asked it */
+.lp-ask {
+  display: grid; gap: 8px; padding: 10px 12px; border: 1px solid rgba(229, 72, 77, 0.35); border-radius: 12px; background: rgba(229, 72, 77, 0.08);
+  font-size: 13.5px;
+}
+.lp-ask .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* small buttons in a line: 邀请触须之交, 结束 (red), 发宣言 (yellow), 发出邀请 (teal) */
+.lp-mini {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 4px 11px; border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 999px; background: #fff; color: var(--ink); font-size: 12.5px; font-weight: 700; white-space: nowrap;
+}
+.lp-mini svg { flex: none; width: 14px; height: 14px; }
+.lp-mini.go { border-color: #18a0a5; background: #18a0a5; color: #fff; }
+.lp-mini.warn { border-color: rgba(229, 72, 77, 0.5); color: #d02f35; }
+.lp-mini.end { font-weight: 800; }
+.lp-mini.y { border-color: var(--accent); background: var(--accent); color: #222; }
+.lp-mini.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.lp-mini:disabled { opacity: 0.45; }
+
+/* ---- the blocks: 这场, 待播, 选歌 ---- */
+.lp-blk { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 12px; border-radius: 14px; background: rgba(242, 243, 245, 0.85); }
+.lp-blkh { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.lp-blkh b { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 待播: shut to one line of what comes next; open, the songs in order and what comes after them */
+.lp-chev {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; min-height: 30px; padding: 0; border: 0; background: none;
+  color: inherit; text-align: left;
+}
+.lp-chev b { flex: none; font-size: 14px; }
+.lp-chev .peek { flex: 1; min-width: 0; overflow: hidden; color: #6b7280; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.lp-chev i { flex: none; color: #8a8f99; font-style: normal; transition: transform 0.2s; }
+.lp-chev[aria-expanded="true"] i { transform: rotate(90deg); }
+.lp-qrule { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: #5b6274; font-size: 12.5px; line-height: 1.45; }
+.lp-qrule svg { flex: none; width: 14px; height: 14px; }
+.lp-qrows { display: grid; margin: 0; padding: 0; list-style: none; }
+.lp-qrow {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; padding: 4px 0; border: 0;
+  border-radius: 6px; background: none; color: inherit; font-size: 13.5px; text-align: left;
+}
+.lp-qrow .n { color: #8a8f99; font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.lp-qrow .nm { min-width: 0; overflow: hidden; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.lp-qrow .nm small { display: block; overflow: hidden; color: #8a8f99; font-size: 11px; text-overflow: ellipsis; }
+.lp-qrow .dur { color: #8a8f99; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+button.lp-qrow { cursor: pointer; }
+button.lp-qrow:focus-visible { outline: 2px solid #18a0a5; outline-offset: 1px; }
 
 /* the first time, what is kept of it */
 .lp-privacy {
-  display: flex; align-items: center; gap: 10px; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff7d6;
+  display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 10px; border-radius: 10px; background: #fff7d6;
   font-size: 12.5px; line-height: 1.5;
 }
 .lp-privacy span { flex: 1; min-width: 0; }
@@ -91,14 +214,14 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
 
 /* 16px, so a phone does not zoom in on it */
 .lp-search {
-  display: block; width: 100%; margin-top: 8px; padding: 8px 12px; border: 1px solid #e1e3e8; border-radius: 10px; background: #fafafa;
+  display: block; width: 100%; padding: 8px 12px; border: 1px solid #dfe2e7; border-radius: 10px; background: #fff;
   color: var(--ink); font: inherit; font-size: 16px;
 }
 
 /* the lists, 全部, 收藏 and 热播榜, and the one shown's 随机播放 */
-.lp-views { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.lp-views { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .lp-view {
-  display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border: 1px solid #e1e3e8; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border: 1px solid #dfe2e7; border-radius: 999px;
   background: #fff; color: var(--ink); font-size: 13px; font-weight: 700; white-space: nowrap;
 }
 .lp-view svg { width: 13px; height: 13px; color: #d9363e; }
@@ -111,16 +234,16 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
 .lp-rnd svg { width: 13px; height: 13px; }
 .lp-rnd:disabled { opacity: 0.45; }
 /* what 收藏 and 热播榜 are */
-.lp-cap { margin: 12px 0 4px; color: #6b7280; font-size: 12.5px; line-height: 1.5; }
+.lp-cap { margin: 4px 0; color: #6b7280; font-size: 12.5px; line-height: 1.5; }
 .lp-cap b { color: var(--ink); }
 
 /* the songs: an album off screen is not laid out until it comes near */
 .lp-album { content-visibility: auto; contain-intrinsic-size: auto 360px; }
-.lp-album h3 { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.lp-album h3 { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
 .lp-album h3 img { flex: none; width: 28px; height: 28px; border-radius: 6px; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06); }
 .lp-row {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 0; border: 0;
-  border-bottom: 1px solid #f0f1f3; background: none; color: var(--ink); text-align: left;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.15); background: none; color: var(--ink); text-align: left;
 }
 /* tapped anywhere: a button over all of it, the ♥ above that */
 .lp-hit { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; border-radius: 0; background: none; cursor: pointer; }
@@ -139,69 +262,49 @@ img.lp-cover { display: block; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 
 .lp-row .nm small { display: block; overflow: hidden; color: #8a8f99; font-size: 11.5px; font-weight: 400; text-overflow: ellipsis; }
 .lp-row.now .nm { color: #d9363e; }
 .lp-row .dur { flex: none; color: #8a8f99; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.lp-row .go { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border: 1px solid #e1e3e8; border-radius: 50%; }
+.lp-row .go { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border: 1px solid #dfe2e7; border-radius: 50%; background: #fff; }
 .lp-row .go svg { width: 12px; height: 12px; }
 .lp-row.now .go { border-color: #d9363e; color: #d9363e; }
 .lp-end { height: 1px; }
-.lp-note { margin: 18px 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; text-align: center; }
+.lp-note { margin: 12px 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; text-align: center; }
 .lp-retry { display: block; margin: 8px auto 0; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; }
 .lp-foot { margin: 0; color: #8a8f99; font-size: 11.5px; text-align: center; }
-.lp-note.left { margin: 10px 0; text-align: left; }
-.lp-note.small { margin: 8px 0; font-size: 12.5px; }
-
-/* the two tabs, 一起听 and the songs; a dot on 一起听 while you are in a room */
-.lp-tabs { display: flex; gap: 4px; margin: 2px 0 8px; padding: 3px; border-radius: 10px; background: #f1f2f4; }
-.lp-tabs button {
-  position: relative; flex: 1; padding: 8px 0; border: 0; border-radius: 8px; background: none; color: #4b5260;
-  font-size: 14px; font-weight: 700;
-}
-.lp-tabs button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px #0002; }
-.lp-tabs .dot { position: absolute; top: 6px; right: 18%; width: 7px; height: 7px; border-radius: 50%; background: #18a0a5; }
+.lp-note.left { margin: 4px 0; text-align: left; }
+.lp-note.small { font-size: 12.5px; }
+.lp-note.tight { margin: -2px 0 0; }
 
 /* in a room: the host's ＋ by a song, and a song anyone else only looks at */
 .lp-row .go.add { border-color: #18a0a5; color: #0f7f83; font-size: 18px; font-weight: 700; line-height: 1; }
 .lp-row.look { cursor: default; }
 
 /* ---- 一起听 ---- */
-.lt, .lr { padding: 2px 0 8px; }
+.lt { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .lt-big {
-  display: block; width: 100%; margin: 10px 0 0; padding: 12px 0; border: 0; border-radius: 12px; background: var(--accent);
+  display: block; width: 100%; margin: 4px 0 0; padding: 12px 0; border: 0; border-radius: 12px; background: var(--accent);
   color: var(--ink); font-size: 15px; font-weight: 800;
 }
-.lt-big.ghost { background: #f1f2f4; color: #4b5260; font-weight: 700; }
-/* 发宣言招附近的人: white, outlined, the megaphone before it */
-.lt-big.alt { display: flex; align-items: center; justify-content: center; gap: 6px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--ink); }
-.lt-big.alt svg { flex: none; }
+.lt-big.ghost { background: #fff; color: #4b5260; font-weight: 700; }
 .lt-big:disabled { opacity: 0.45; }
 /* which of your roaches it goes out from, as the map's 宣言 picks them */
-.lt-from { margin: 6px 0 2px; }
+.lt-from { margin: 2px 0; }
 /* the host's line once it went out */
 .lr-declok {
-  display: flex; align-items: flex-start; gap: 6px; margin: 2px 0 8px; padding: 8px 10px; border-radius: 10px; background: #fff3c2;
+  display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 10px; background: #fff3c2;
   color: #6f5300; font-size: 12.5px; line-height: 1.45;
 }
 .lr-declok svg { flex: none; margin-top: 2px; }
 /* what the invitations came to */
-.lr-said { margin: 4px 0 10px; padding: 9px 12px; border-radius: 10px; background: #e6f6f6; color: #0b6366; font-size: 13px; line-height: 1.5; }
-
-/* the room: how many, the host's 邀请 and 结束 (anyone else's 离开) */
-.lr-head { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
-.lr-head b { flex: 1; font-size: 15.5px; }
-.lr-mini {
-  padding: 6px 13px; border: 1px solid #e1e3e8; border-radius: 999px; background: #fff; color: var(--ink);
-  font-size: 13px; font-weight: 700;
-}
-.lr-mini.warn { color: #b23a3a; }
-.lr-mini:disabled { opacity: 0.45; }
+.lr-said { margin: 0; padding: 9px 12px; border-radius: 10px; background: #e6f6f6; color: #0b6366; font-size: 13px; line-height: 1.5; }
+.lr-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 
 /* who is in it, and who was invited: swiped sideways */
-.lr-ppl { display: flex; gap: 4px; margin-bottom: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.lr-ppl { display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .lr-ppl::-webkit-scrollbar { display: none; }
 .lr-pp { display: flex; flex: none; flex-direction: column; align-items: center; gap: 3px; width: 68px; padding: 4px 0 3px; text-align: center; }
 /* anyone else in it: tapped for their card */
 button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit; }
 .lp-av {
-  display: grid; place-items: center; flex: none; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; background: #f1f2f4;
+  display: grid; place-items: center; flex: none; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; background: #fff;
   box-shadow: 0 0 0 2px #d5d8de;
 }
 .lr-pp b { max-width: 66px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -209,42 +312,31 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .lr-pp.waiting small { color: #0f7f83; }
 .lr-pp.missed .lp-av, .lr-pp.left .lp-av, .lr-pp.kicked .lp-av { opacity: 0.45; }
 
-/* what plays: 第一首, 正在一起听, 歌单放完了 (and an invitation to you, before any room) */
-.lr-now { margin-bottom: 8px; padding: 11px 12px; border-radius: 12px; background: #f6f7f9; }
+/* out of a room: an invitation to you, or a 宣言一起听 you got */
+.lr-now { padding: 11px 12px; border-radius: 12px; background: rgba(242, 243, 245, 0.85); }
 .lr-now .lbl { display: block; color: #0f7f83; font-size: 12px; font-weight: 800; }
-.lr-now b { display: block; margin-top: 1px; font-size: 16.5px; line-height: 1.35; }
+.lr-now b { display: block; margin-top: 1px; font-size: 16px; line-height: 1.35; }
 .lr-now small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.lr-now .lp-note { margin-bottom: 0; }
-/* a 宣言一起听 you got, before any room: its words, and how its room is now */
 .lr-now.call .lbl { color: #b7791f; }
 .lr-now.call b { font-size: 15px; }
-.lp-note.tight { margin: -2px 0 8px; }
-.lr-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #4b5260; font-size: 12px; font-variant-numeric: tabular-nums; }
-.lr-bar .fill { display: block; height: 100%; background: #18a0a5; }
-.lr-hostbtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-/* 随机加 10 首 */
-.lr-mini.rnd { display: inline-flex; align-items: center; gap: 5px; border-color: #18a0a5; color: #0f7f83; }
-.lr-mini.rnd svg { width: 13px; height: 13px; }
-.lr-queue { margin: 8px 0 6px; color: #4b5260; font-size: 13px; line-height: 1.5; }
 
 /* the 短评, row by row (the room's own in teal) */
-.lr-rxh { margin: 14px 0 4px; color: #4b5260; font-size: 13px; font-weight: 800; }
+.lr-rx { padding: 8px 12px 2px; border-radius: 14px; background: rgba(242, 243, 245, 0.85); }
+.lr-rxh { margin: 2px 0 4px; color: #4b5260; font-size: 13px; font-weight: 800; }
 .lr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .lr-chip {
-  padding: 6px 12px; border: 1px solid #e1e3e8; border-radius: 999px; background: #f7f8f9; color: var(--ink);
+  padding: 6px 12px; border: 1px solid #dfe2e7; border-radius: 999px; background: #fff; color: var(--ink);
   font-size: 14px; font-weight: 700;
 }
 .lr-chip.room { border-color: #bfe6e7; background: #e6f6f6; color: #0b6366; }
 .lr-chip:disabled { opacity: 0.45; }
 
-/* 一个人听时的短评: one line above the songs, swiped sideways; 大家都在说 under the song, in the player */
-.lp-rx { margin: 8px 0 2px; }
+/* 一个人听时的短评: one line, swiped sideways; 大家都在说 under the song, in the player */
+.lp-rx { margin: 0; }
 .lp-rxh { margin: 0 0 6px; color: #4b5260; font-size: 12.5px; font-weight: 700; }
 .lp-rxs { display: flex; gap: 6px; padding-bottom: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .lp-rxs::-webkit-scrollbar { display: none; }
 .lp-rxs .lr-chip { flex: none; padding: 5px 11px; font-size: 13px; }
-.lp-what small.lp-said { overflow: visible; color: #0f7f83; font-weight: 600; white-space: normal; }
-.lp-said span { white-space: nowrap; }
 
 /*
  * the card of someone in it, over the panel (not under what scrolls): who TA is to you, 偷偷碰 and 大胆碰, 拉黑 and
@@ -272,16 +364,16 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .lr-plinks .kick { color: #b23a3a; }
 
 /* whom to invite: ticked one by one */
-.lpk { margin: 4px 0 2px; }
+.lpk { margin: 0; }
 .lpk-row {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 0; border: 0; border-bottom: 1px solid #f0f1f3;
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 0; border: 0; border-bottom: 1px solid rgba(127, 127, 127, 0.15);
   background: none; color: var(--ink); text-align: left;
 }
 .lpk-ck {
   display: grid; place-items: center; flex: none; width: 22px; height: 22px; border: 1.5px solid #c5c9d0; border-radius: 6px;
-  font-size: 14px; font-weight: 800;
+  background: #fff; font-size: 14px; font-weight: 800;
 }
-.lpk-row.on .lpk-ck { border-color: var(--ink); background: var(--ink); color: var(--accent); }
+.lpk-row.on .lpk-ck { border-color: #18a0a5; background: #18a0a5; color: #fff; }
 .lpk-who { flex: 1; min-width: 0; }
 .lpk-who b { display: block; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .lpk-who small { color: #8a8f99; font-size: 12px; }
@@ -295,22 +387,26 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .listen-float {
   --lf-top: 64px; --lf-left: 84px; --lf-bottom: 24px;
   position: absolute; z-index: 20; top: calc(var(--lf-top) + var(--safe-top)); left: calc(var(--lf-left) + var(--safe-left));
-  display: flex; flex-direction: column; width: 360px;
+  display: flex; flex-direction: column; width: 372px;
   max-height: calc(100% - var(--lf-top) - var(--safe-top) - var(--lf-bottom) - var(--safe-bottom));
-  border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: 0 8px 28px #0005;
+  border-radius: 18px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28);
 }
 .app.ui-float .listen-float { --lf-bottom: 96px; }
 .app.ui-drawer .listen-float { --lf-top: 132px; --lf-left: 352px; }
 .app.ui-hud .listen-float { --lf-top: 160px; --lf-left: 76px; }
 .listen-float .lp-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px 16px; }
 .listen-float .lp-head h2 { flex: 1; margin: 0; font-size: 17px; }
-.listen-float .lp-head .close { border: 0; background: none; color: var(--muted); font-size: 24px; line-height: 1; }
-.listen-float .lp-scroll { flex: 1; min-height: 0; padding: 0 16px 6px; overflow-y: auto; overscroll-behavior: contain; }
-.listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid #eef0f2; }
+.listen-float .lp-head .close { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 24px; line-height: 1; }
+.listen-float .lp-scroll { flex: 1; min-height: 0; padding: 0 14px 6px; overflow-y: auto; overscroll-behavior: contain; }
+.listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid rgba(127, 127, 127, 0.18); }
 @media (hover: hover) {
-  .lp-row:hover, .lpk-row:hover:not(:disabled), button.lr-pp:hover { background: #f7f8f9; }
+  .lp-row:hover, .lpk-row:hover:not(:disabled), button.lr-pp:hover, button.lp-qrow:hover { background: rgba(255, 255, 255, 0.7); }
   .lp-row.look:hover { background: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lr-pcard { animation: none; }
+  /* the record still, its arm where it is */
+  .lp-vinyl .spin { animation: none; }
+  .lp-vinyl .arm, .lp-vinyl.go .arm { transform: none; transition: none; }
+  .lp-chev i, .lp-tg { transition: none; }
 }

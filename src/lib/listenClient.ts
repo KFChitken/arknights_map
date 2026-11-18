@@ -52,7 +52,8 @@ export const listenApi = {
   /** Your 触须之交 you may invite */
   friends: () => call<{ friends: ListenFriend[]; now: number }>("friends", post({})),
   /** A room of your own, with this song first (null: 新歌's first), and invitations to these 触须之交 (their Friend ids) */
-  open: (song: string | null, invite: string[]) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("open", post({ song, invite })),
+  open: (song: string | null, invite: string[], at?: number) =>
+    call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("open", post(at === undefined ? { song, invite } : { song, invite, at })),
   /** More invitations to your room */
   invite: (friends: string[]) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("invite", post({ friends })),
   /** In at an invitation to you */

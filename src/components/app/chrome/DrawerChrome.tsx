@@ -7,7 +7,9 @@ import { GUIDES } from "@/lib/guides";
 import { HOT_BOARDS, type HotList } from "@/lib/hotList";
 import { RADAR_RADIUS_KM, siteName } from "@/lib/rules";
 import { FriendsMark } from "../FriendsSheet";
+import { useInListenRoom } from "../listening";
 import { NoticeButton } from "../NoticeBoard";
+import { DrawerMiniPill, MiniStrip } from "./ListenMini";
 import {
   ActButtons,
   BasemapSwitch,
@@ -59,6 +61,16 @@ function Phone(p: ChromeProps) {
   const swipe = useDrawerSwipe(open, p.onDrawer);
   // the tabs make room for a roach's card, the tutorial, the 站长's panel, and what the open drawer shows itself
   const chips = !open && !p.placing && !p.card && !p.tutorial && !p.reported;
+  // 听歌's little bar: tucked, a capsule at the left of the drawer's top; pulled out, the drawer's first row (MapApp.tsx
+  // makes the drawer that much taller), nothing over the map, whose foot shows Amap's mark
+  const mini = p.listen?.mini ?? null;
+  // with a song on, 听歌 and what stands beside it lead the row of tabs (in a room, 💬 and more come beside it)
+  const listenTabs = p.listen && (
+    <>
+      <ListenChip listen={p.listen} />
+      {p.listen.disco && !p.listen.open && <DiscoButton kind="chip" />}
+    </>
+  );
   return (
     <div className="chrome chrome-drawer">
       <header className={`tb glass${p.raised ? " raised" : ""}`} data-chrome-top>
@@ -76,6 +88,7 @@ function Phone(p: ChromeProps) {
 
       {chips && (
         <nav className="dchips" aria-label={T.common.guides} data-chrome-bottom>
+          {p.listen?.song && listenTabs}
           <button className="dchip glass" onClick={p.onRadar}>
             <RadarScope />
             <span>{T.map.radar}</span>
@@ -86,8 +99,7 @@ function Phone(p: ChromeProps) {
             </span>
             <span aria-hidden="true">{T.map.bar.hotShort}</span>
           </button>
-          {p.listen && <ListenChip listen={p.listen} />}
-          {p.listen?.disco && <DiscoButton kind="chip" />}
+          {!p.listen?.song && listenTabs}
           {p.squad && (
             <button className={`dchip glass${p.squad.room ? " on" : ""}`} aria-label={squadLabel(p.squad)} aria-haspopup="dialog" onClick={p.squad.onOpen}>
               <span className="ico">
@@ -130,15 +142,23 @@ function Phone(p: ChromeProps) {
       )}
 
       {/* while a roach is being put down, the drawer stays (the map keeps its size) but waits */}
-      <section className={`dock${open ? " open" : ""}${p.placing ? " idle" : ""}`} inert={p.placing || undefined} data-chrome-bottom>
+      <section
+        className={`dock${open ? " open" : ""}${p.placing ? " idle" : ""}${mini ? " with-mini" : ""}`}
+        inert={p.placing || undefined}
+        data-chrome-bottom
+      >
         <div className="dtop" {...swipe.area}>
-          <button
-            className="handle"
-            aria-label={open ? T.ui.drawer.close : T.ui.drawer.open}
-            aria-expanded={open}
-            onClick={swipe.tap(() => p.onDrawer(!open))}
-          />
+          <div className="dhead">
+            <button
+              className="handle"
+              aria-label={open ? T.ui.drawer.close : T.ui.drawer.open}
+              aria-expanded={open}
+              onClick={swipe.tap(() => p.onDrawer(!open))}
+            />
+            {mini && <DrawerMiniPill out={mini === "out"} tap={swipe.tap} />}
+          </div>
           {/* a swipe that starts on them only moves the drawer */}
+          {mini === "out" && p.listen && <MiniStrip onOpen={p.listen.onToggle} tap={swipe.tap} />}
           <PhoneCounts counts={p.counts} onTap={p.onCounts && swipe.tap(p.onCounts)} />
         </div>
         {open && (
@@ -217,15 +237,7 @@ function Panel(p: ChromeProps) {
           <>
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
-            {p.listen &&
-              (p.listen.disco ? (
-                <div className="dlisten-row">
-                  <ListenCard listen={p.listen} />
-                  <DiscoButton kind="chip" />
-                </div>
-              ) : (
-                <ListenCard listen={p.listen} />
-              ))}
+            {p.listen && <ListenCards listen={p.listen} />}
             {p.sponsor && (
               <button className="dcard dsponsor" aria-haspopup="dialog" onClick={p.sponsor.onOpen}>
                 <span className="lico">
@@ -419,7 +431,30 @@ function ListenChip({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
   );
 }
 
-/** 听歌 in the computer's panel, under 热榜: the song playing, if one is; its own panel opens beside this one */
+/**
+ * 听歌 in the computer's panel, under 热榜. With a song on and the player shut, the card is 听歌's little bar (edged in
+ * yellow, teal in a room: in the panel it covers nothing, so it is neither tucked nor pulled), the round buttons in a row
+ * under it, 💬 and more coming beside them (ListenOverlay.tsx, from data-listen-anchor); else the card that opens the
+ * player beside the panel, edged in yellow while that is open.
+ */
+function ListenCards({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) {
+  const inRoom = useInListenRoom();
+  if (!listen.mini) return <ListenCard listen={listen} />;
+  return (
+    <>
+      <div className={`dcard dlisten mini${inRoom ? " room-on" : ""}`}>
+        <MiniStrip onOpen={listen.onToggle} />
+      </div>
+      {(listen.disco || inRoom) && (
+        <div className="dlisten-tg" data-listen-anchor="right">
+          {listen.disco && <DiscoButton kind="chip" />}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 听歌's card in the computer's panel: the song playing, if one is; its own panel opens beside this one */
 function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) {
   const e = useListenEntry();
   return (
@@ -441,7 +476,7 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
         </b>
         <small>
           {e.together !== null
-            ? fmt(T.map.bar.listenTogether, { n: e.together })
+            ? fmt(T.listen.mini.together, { n: e.together })
             : e.on && e.track
               ? fmt(T.map.bar.listenSong, { name: e.track.name })
               : T.map.bar.listenIdle}

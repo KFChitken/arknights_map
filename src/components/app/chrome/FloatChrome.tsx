@@ -6,6 +6,7 @@ import { GUIDES } from "@/lib/guides";
 import { siteName } from "@/lib/rules";
 import { useInListenRoom } from "../listening";
 import { NoticeButton } from "../NoticeBoard";
+import { FloatMiniTab, MiniStrip } from "./ListenMini";
 import {
   ActButtons,
   BasemapSwitch,
@@ -173,7 +174,8 @@ export default function FloatChrome(p: ChromeProps) {
               (listen.disco ? (
                 <div className="listen-slot">
                   <ListenTile listen={listen} folded={folded.l} />
-                  <DiscoButton kind="round" />
+                  {/* in the player too while that is open */}
+                  {!listen.open && <DiscoButton kind="round" />}
                 </div>
               ) : (
                 <ListenTile listen={listen} folded={folded.l} />
@@ -302,13 +304,24 @@ export function CountsLine({ counts: c }: { counts: Counts }) {
   );
 }
 
-/** Along the bottom: your look and name, 消息 and 触须之交, then 我的蟑螂 and 我宣布个事儿; before signing in, the way in */
+/**
+ * Along the bottom: your look and name, 消息 and 触须之交, then 我的蟑螂 and 我宣布个事儿; before signing in, the way in.
+ * With a song on and the player shut, 听歌's little bar is tucked into it: a handle on its top edge, which pulls the bar
+ * out of it, growing up (the row along the bottom stays where it is).
+ */
 function BottomBar(p: ChromeProps) {
   if (p.me) {
+    const mini = p.listen?.mini ?? null;
     return (
-      <div className="bar glass" data-chrome-bottom>
-        <MeSlots me={p.me} />
-        <ActButtons me={p.me} />
+      <div className={`bar-box${mini ? ` tabbed mini-${mini}` : ""}`}>
+        <div className="bar glass" data-chrome-bottom>
+          {mini === "out" && p.listen && <MiniStrip onOpen={p.listen.onToggle} />}
+          <div className="bar-row">
+            <MeSlots me={p.me} />
+            <ActButtons me={p.me} />
+          </div>
+        </div>
+        {mini && <FloatMiniTab out={mini === "out"} />}
       </div>
     );
   }

@@ -37,7 +37,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST stop {away?}             not listening any more; away: the page is going, so only soon
  *   POST room                     the room you are in, as you see it (null: none)
  *   POST friends                  your 触须之交 you may invite
- *   POST open {song, invite?}     a new room of yours, with invitations to the 触须之交 given (their Friend ids)
+ *   POST open {song, invite?, at?}   a new room of yours, with invitations to the 触须之交 given (their Friend ids);
+ *                                 at: seconds into the song, which plays from there at once (else it waits for start)
  *   POST invite {friends}         more invitations to your room
  *   POST join {invite|declaration}   in at an invitation to you, or at a 宣言一起听 you got
  *   POST later {invite}           下次吧

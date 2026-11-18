@@ -5,8 +5,8 @@ import { fmt, fmtParts, T } from "@/i18n";
 import { RX_ROWS, type ListenCall } from "@/lib/listen";
 import { DECLARATION_RADIUS_KM } from "@/lib/rules";
 import type { InboxItem } from "@/lib/world/types";
-import { listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
-import { callLine, listenRoomNow, sendRx, useListenBubbles, useListenRoom, useListenRx, type ListenBubble } from "./listening";
+import { ChatIcon, listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
+import { callLine, listenRoomNow, sendRx, setListenRxOpen, useListenBubbles, useListenRoom, useListenRx, useListenRxOpen, type ListenBubble } from "./listening";
 import "./listenMap.css";
 
 /** An invitation to 一起听, as 消息 has it */
@@ -56,23 +56,20 @@ export default function ListenOverlay({
   // 一个人听, the panel open: the 短评 said there float over it as yours
   const alone = !room && panelOpen;
   const spot = useSpot(Boolean(room) || showCard || alone);
-  const [strip, setStrip] = useState(false);
+  // the row of 短评, out or not as the player's 短评 left it too (in the player while it is open, which has its own)
+  const strip = useListenRxOpen();
   const stripRef = useRef<HTMLDivElement>(null);
   const [stripH, setStripH] = useState(0);
   const inRoom = Boolean(room);
-  const anchored = Boolean(spot?.anchor);
-  // the row of 短评 goes when the room does, the panel opens (which has its own), or the entry it was opened by goes
+  // over the map by the entry it opens from, and not while that is out of sight
+  const stripOn = strip && inRoom && !panelOpen && Boolean(spot?.anchor);
   useEffect(() => {
-    if (!inRoom || panelOpen || !anchored) setStrip(false);
-  }, [inRoom, panelOpen, anchored]);
-  useEffect(() => {
-    if (!strip) return setStripH(0);
+    if (!stripOn) return setStripH(0);
     const el = stripRef.current;
     if (el) setStripH(el.offsetHeight);
-  }, [strip, spot]);
+  }, [stripOn, spot]);
   if (!spot || cardOpen) return null;
   const up = spot.anchor?.side === "up";
-  const stripOn = strip && inRoom && !panelOpen;
   // over the layout's bottom bar; on 抽屉, the row of 短评 sits under the bubble and the 短评 above it
   const above = spot.vh - spot.bottom + 8;
   const chat: CSSProperties | null = spot.anchor
@@ -88,7 +85,7 @@ export default function ListenOverlay({
           style={chat}
           aria-label={T.map.bar.listenChat}
           aria-expanded={stripOn}
-          onClick={() => setStrip((o) => !o)}
+          onClick={() => setListenRxOpen(!strip)}
         >
           <ChatIcon />
         </button>
@@ -375,21 +372,4 @@ function useSpot(on: boolean): Spot | null {
     };
   }, [on]);
   return spot;
-}
-
-function ChatIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-7.5L7 20v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <circle cx="8.5" cy="11" r="1.1" fill="currentColor" />
-      <circle cx="12" cy="11" r="1.1" fill="currentColor" />
-      <circle cx="15.5" cy="11" r="1.1" fill="currentColor" />
-    </svg>
-  );
 }

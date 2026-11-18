@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { T } from "@/i18n";
 import { heardGray } from "@/lib/grayMode";
-import { DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenRoom, type ListenTrack, type RoomMember } from "@/lib/listen";
+import { DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type ListenFrom, type ListenRoom, type ListenTrack, type RoomMember } from "@/lib/listen";
 import { playMusic } from "./amiyaMusic";
 import {
   answerAsk,
@@ -29,8 +29,12 @@ import {
   seekTo,
   sendRx,
   listenFavsNow,
+  listenHasNextNow,
   listenShuffleNow,
+  listenUpNextNow,
   loadFavs,
+  playAny,
+  playFromUpNext,
   playNext,
   setFav,
   setLite,
@@ -144,6 +148,11 @@ const CATALOG: ListenCatalog = {
   fresh: ["s1", "s2", "s3"],
 };
 
+/** A list of songs with one song alone: nothing else to go on to */
+const ONE: ListenCatalog = { albums: [{ id: "a1", name: "First", songs: [{ id: "s2", name: "Two", seconds: 120 }] }], artists: ["塞壬唱片-MSR"], fresh: ["s2"] };
+/** A song tapped in 全部 */
+const ALL: ListenFrom = { view: "all", ids: [] };
+
 const link = (id: string) => `/music/${id}.m4a?k=1.sig`;
 /** A song's smaller copy (省流量), for the songs that have one (withLite) */
 const liteLink = (id: string) => `/music/${id}-lite.m4a?k=1.sig`;
@@ -214,6 +223,13 @@ const track = (id: string): ListenTrack => {
   return s.tracks.get(id)!;
 };
 const audio = () => FakeAudio.last;
+/** The page opened again with the list of songs ONE */
+async function onlyOne() {
+  forgetListening();
+  answers.songs = () => ({ status: 200, json: ONE });
+  loadSongs();
+  await settle();
+}
 
 beforeEach(async () => {
   forgetListening();
@@ -245,8 +261,8 @@ describe("听歌 on the page", () => {
     expect(await playPartyMusic()).toBeNull();
   });
 
-  it("goes on to the album's next song at once, from the link given ahead, and stops after its last", async () => {
-    playTrack(track("s1"));
+  it("goes on to the album's next song at once, from the link given ahead, and after its last to one from all at random", async () => {
+    playTrack(track("s1"), 0, ALL);
     await settle();
     audio().end();
     // before the server is told: so a phone in a pocket goes on to it
@@ -254,10 +270,25 @@ describe("听歌 on the page", () => {
     await settle();
     expect(ops("play")).toEqual([
       { song: "s1", at: 0, next: "s2" },
-      { song: "s2", at: 0 },
+      // the album's last: one from all of them, not one just played
+      { song: "s2", at: 0, next: expect.stringMatching(/^s[34]$/) },
     ]);
     expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s2" } });
+    const after = String(ops("play")[1]!.next);
+    audio().end();
+    expect(audio().src).toBe(link(after));
+    await settle();
+    expect(ops("stop")).toEqual([]);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: after } });
+    expect(ops("play").at(-1)).toEqual({ song: after, at: 0, next: expect.stringMatching(/^s[34]$/) });
+    expect(ops("play").at(-1)!.next).not.toBe(after);
+  });
 
+  it("stops after the last song when there is no other at all; ▶ plays it again from its start", async () => {
+    await onlyOne();
+    playTrack(track("s2"), 0, ALL);
+    await settle();
+    expect(ops("play").at(-1)).toEqual({ song: "s2", at: 0 });
     audio().end();
     await settle();
     expect(ops("stop")).toEqual([{}]);
@@ -285,10 +316,11 @@ describe("听歌 on the page", () => {
     expect(audio().src).toBe(link("s2"));
     await settle();
     expect(listenPlayerNow().track?.id).toBe("s2");
-    // the album's last: nothing after it
+    // the album's last: on to one from all of them at random
     skip();
     await settle();
-    expect(ops("play")).toHaveLength(2);
+    expect(ops("play")).toHaveLength(3);
+    expect(listenPlayerNow().track?.id).toMatch(/^s[34]$/);
   });
 
   it("goes on after a pause without asking while the server still counts the player, and asks again after a long one", async () => {
@@ -325,29 +357,29 @@ describe("听歌 on the page", () => {
   });
 
   it("starts a song tapped again at once, from the link the server gave for it before, the server told meanwhile", async () => {
-    playTrack(track("s1"));
+    playTrack(track("s1"), 0, ALL);
     await settle();
     // part way: not all of it came, so it is let go, not kept
     audio().to(30);
-    playTrack(track("s2"));
+    playTrack(track("s2"), 0, ALL);
     // at once, from the link given ahead with One's
     expect(audio().src).toBe(link("s2"));
     await settle();
     const el = audio();
-    playTrack(track("s1"));
+    playTrack(track("s1"), 0, ALL);
     expect(audio()).toBe(el);
     expect(audio().src).toBe(link("s1"));
     await settle();
     expect(ops("play")).toEqual([
       { song: "s1", at: 0, next: "s2" },
-      { song: "s2", at: 0 },
+      { song: "s2", at: 0, next: expect.stringMatching(/^s[34]$/) },
       { song: "s1", at: 0, next: "s2" },
     ]);
     expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
   });
 
   it("keeps a song left whole paused in its own element, and goes on from it when tapped again", async () => {
-    playTrack(track("s1"));
+    playTrack(track("s1"), 0, ALL);
     await settle();
     const one = audio();
     one.duration = 100;
@@ -362,7 +394,7 @@ describe("听歌 on the page", () => {
     expect(two.src).toBe(link("s2"));
     expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s2" } });
 
-    playTrack(track("s1"));
+    playTrack(track("s1"), 0, ALL);
     // within the tap, from its start, with all of it there still: nothing loaded again
     expect(audio()).toBe(one);
     expect(one.currentTime).toBe(0);
@@ -864,6 +896,49 @@ describe("一起听 on the page", () => {
     expect(ops("play")).toEqual([{ song: "s1", at: 0 }]);
   });
 
+  it("opens a room with the song playing alone, which goes on as the room's: from where it got to, nothing loaded again", async () => {
+    playTrack(track("s1"));
+    await tick(0);
+    const el = audio();
+    expect(el.src).toBe(link("s1"));
+    el.to(42.4);
+    answerRoom("open", () => roomOf({ host: true, you: 1, queue: ["s1", "s3"], startedAt: serverClock() - 42_400 }));
+    expect(await openRoomWith("s1", [])).toEqual([]);
+    expect(ops("open")).toEqual([{ song: "s1", invite: [], at: 42.4 }]);
+    await tick(0);
+    expect(audio()).toBe(el);
+    expect(el.src).toBe(link("s1"));
+    expect(el.paused).toBe(false);
+    expect(el.currentTime).toBe(42.4);
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
+    expect(listenRoomNow()?.id).toBe("r1");
+    // the song after it is the room's: its link asked for, as going on with the one playing from where it is
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 42, next: "s3" });
+    // over where the room's clock says: the two seconds between, then that link at once
+    el.duration = 100;
+    await tick(57_600);
+    el.end();
+    expect(audio().src).toMatch(silence);
+    await tick(2_050);
+    expect(audio().src).toBe(link("s3"));
+    await tick(0);
+    expect(ops("play").slice(-2)).toEqual([
+      { song: "s1", at: 42, next: "s3" },
+      { song: "s3", at: 0 },
+    ]);
+  });
+
+  it("opens a room with another song than the one playing alone (or none playing) as ever: waiting for its start", async () => {
+    playTrack(track("s1"));
+    await tick(0);
+    audio().to(10);
+    answerRoom("open", () => roomOf({ host: true, you: 1, queue: ["s2"] }));
+    await openRoomWith("s2", []);
+    expect(ops("open")).toEqual([{ song: "s2", invite: [] }]);
+    await tick(0);
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s2" } });
+  });
+
   it("lets go of the songs kept from listening alone as it goes in, and plays the room's in the element in use", async () => {
     playTrack(track("s1"));
     await tick(0);
@@ -1183,7 +1258,7 @@ describe("省流量: each song's smaller copy", () => {
 describe("收藏, 热播榜 and 随机播放", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("go on as the list a song was tapped in: 收藏's next, its last stopping it; ⏭ as it would go on", async () => {
+  it("go on as the list a song was tapped in: 收藏's next, then from all at random, those just played last; ⏭ as it would go on", async () => {
     playTrack(track("s3"), 0, { view: "fav", ids: ["s3", "s1", "s4"] });
     await settle();
     expect(ops("play")).toEqual([{ song: "s3", at: 0, next: "s1" }]);
@@ -1197,13 +1272,17 @@ describe("收藏, 热播榜 and 随机播放", () => {
     expect(audio().src).toBe(link("s4"));
     await settle();
     expect(listenPlayerNow().track?.id).toBe("s4");
-    expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0 });
+    // 收藏 played through: s2 is all there is not played just now, then those played, the longest ago first
+    expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0, next: "s2" });
     playNext();
+    await settle();
+    expect(ops("play").at(-1)).toEqual({ song: "s2", at: 0, next: "s3" });
     audio().end();
     await settle();
-    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s4" } });
+    expect(ops("play").at(-1)).toEqual({ song: "s3", at: 0, next: "s1" });
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s3" } });
     // 全部: the album's next, as before
-    playTrack(track("s1"), 0, { view: "all", ids: [] });
+    playTrack(track("s1"), 0, ALL);
     await settle();
     expect(ops("play").at(-1)).toEqual({ song: "s1", at: 0, next: "s2" });
   });
@@ -1255,6 +1334,87 @@ describe("收藏, 热播榜 and 随机播放", () => {
     await settle();
     expect(listenPlayerNow().track?.id).toBe("s4");
     expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0, next: "s3" });
+  });
+
+  it("待播: shuffle drawn ahead, played in that order, a round each song once; another list, another round", async () => {
+    setShuffle(true);
+    playTrack(track("s1"), 0, ALL);
+    await settle();
+    const first = listenUpNextNow();
+    expect(first).toMatchObject({ how: "round", from: ALL, track: { id: "s1" } });
+    expect([...first.ids].sort()).toEqual(["s2", "s3", "s4"]);
+    expect(ops("play").at(-1)).toEqual({ song: "s1", at: 0, next: first.ids[0] });
+    // each on in the order drawn, 待播 going on without it
+    for (const [i, id] of first.ids.entries()) {
+      audio().end();
+      expect(audio().src).toBe(link(id));
+      await settle();
+      if (i < 2) expect(listenUpNextNow().ids).toEqual(first.ids.slice(i + 1));
+    }
+    // the round played through: another, without the one playing
+    const again = listenUpNextNow();
+    expect(again.how).toBe("round");
+    expect([...again.ids].sort()).toEqual(["s1", "s2", "s3", "s4"].filter((id) => id !== first.ids[2]));
+    // a song tapped in another list: a round of that one
+    playTrack(track("s4"), 0, { view: "fav", ids: ["s4", "s2", "s3"] });
+    await settle();
+    expect(listenUpNextNow()).toMatchObject({ how: "round", from: { view: "fav" } });
+    expect([...listenUpNextNow().ids].sort()).toEqual(["s2", "s3"]);
+    // off: as the list goes from the song playing
+    setShuffle(false);
+    expect(listenUpNextNow()).toMatchObject({ how: "list", ids: ["s2", "s3"] });
+    // the server told of it (as going on with the song) unless the round had it first already
+    expect(ops("play").at(-1)).toMatchObject({ song: "s4", next: "s2" });
+  });
+
+  it("待播: a song tapped in it plays, and 待播 goes on after it; as a list goes, from it", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    setShuffle(true);
+    playTrack(track("s1"), 0, ALL);
+    await settle();
+    expect(listenUpNextNow().ids).toEqual(["s2", "s3", "s4"]);
+    playFromUpNext("s3");
+    await settle();
+    expect(audio().src).toBe(link("s3"));
+    expect(listenUpNextNow().ids).toEqual(["s4"]);
+    expect(ops("play").at(-1)).toEqual({ song: "s3", at: 0, next: "s4" });
+    setShuffle(false);
+    playTrack(track("s1"), 0, { view: "hot", ids: ["s1", "s2", "s3", "s4"] });
+    await settle();
+    expect(listenUpNextNow()).toMatchObject({ how: "list", ids: ["s2", "s3", "s4"] });
+    playFromUpNext("s3");
+    await settle();
+    expect(listenUpNextNow()).toMatchObject({ how: "list", ids: ["s4"] });
+    // the list's last: songs from all of them, those played lately last
+    playFromUpNext("s4");
+    await settle();
+    expect(listenUpNextNow()).toMatchObject({ how: "any", ids: ["s2", "s1", "s3"] });
+    expect(ops("play").at(-1)).toEqual({ song: "s4", at: 0, next: "s2" });
+  });
+
+  it("▶ with no song: one from all of them at random, and on at random; ⏭ there while there is any other song", async () => {
+    expect(listenUpNextNow()).toMatchObject({ how: "none", ids: [] });
+    expect(listenHasNextNow()).toBe(false);
+    toggle();
+    await settle();
+    expect(audio().src).toMatch(/\/music\/s[1-4]\.m4a/);
+    const now = listenPlayerNow().track!.id;
+    const up = listenUpNextNow();
+    expect(up.how).toBe("any");
+    expect([...up.ids].sort()).toEqual(["s1", "s2", "s3", "s4"].filter((id) => id !== now));
+    expect(ops("play")).toEqual([{ song: now, at: 0, next: up.ids[0] }]);
+    expect(listenHasNextNow()).toBe(true);
+    playNext();
+    await settle();
+    expect(listenPlayerNow().track?.id).toBe(up.ids[0]);
+    expect(listenUpNextNow().ids).toEqual(up.ids.slice(1));
+    // none other at all: no ⏭
+    await onlyOne();
+    playAny();
+    await settle();
+    expect(listenPlayerNow().track?.id).toBe("s2");
+    expect(listenHasNextNow()).toBe(false);
+    expect(listenUpNextNow()).toMatchObject({ how: "any", ids: [] });
   });
 
   it("tell the server a song was heard once 30 seconds of it played, once; a jump is not listening", async () => {
@@ -1358,16 +1518,17 @@ describe("拖进度条: a second of the song gone to", () => {
   });
 
   it("before the song's link came, plays it from there once it does", async () => {
-    playTrack(track("s2"));
+    playTrack(track("s1"));
     seekTo(50);
     await settle();
-    expect(ops("play")).toEqual([{ song: "s2", at: 0 }]);
-    expect(audio().src).toBe(link("s2"));
+    expect(ops("play")).toEqual([{ song: "s1", at: 0, next: "s2" }]);
+    expect(audio().src).toBe(link("s1"));
     audio().dispatchEvent(new Event("loadedmetadata"));
     expect(audio().currentTime).toBe(50);
   });
 
-  it("goes on from there at ▶ when the song shown is not playing: the album over, or a page opened again", async () => {
+  it("goes on from there at ▶ when the song shown is not playing: the last over (none other at all), or a page opened again", async () => {
+    await onlyOne();
     playTrack(track("s2"));
     await settle();
     audio().duration = 120;

@@ -117,9 +117,11 @@ export type ChromeProps = {
   squad: { room: { n: number } | null; onOpen: () => void } | null;
   /**
    * 听歌, where the server opened it to them (LISTEN) and the site is not gray; open: its panel is out; disco: 听歌's
-   * disco is open to them too (DISCO), its button beside 听歌 (DiscoButton)
+   * disco is open to them too (DISCO), its button beside 听歌 (DiscoButton); song: a song is on (playing or not);
+   * mini: its little bar, while a song is on and the player shut: tucked into the buttons along the bottom or pulled
+   * out of them (ListenMini.tsx), null without one
    */
-  listen: { open: boolean; onToggle: () => void; disco: boolean } | null;
+  listen: { open: boolean; onToggle: () => void; disco: boolean; song: boolean; mini: "tuck" | "out" | null } | null;
   /** 支持舟P地图, where the server shows it to them (me.sponsor, SPONSOR) and the site is not gray: opens its card */
   sponsor: { onOpen: () => void } | null;
   /** The guides to list, in their order: GUIDE_ORDER, and 香艳制作人 after them where she shows (HAIMAO) */
@@ -406,20 +408,16 @@ function slideInto(el: HTMLElement | null) {
 }
 
 /**
- * 听歌's disco's switch, kept in this browser (src/lib/disco.ts): shown while a song plays, and for a moment after it
- * stops; pink while on. The first time a song sounds, 「点我蹦迪」 beside it, once on this device. round: beside 在听
- * (浮岛, 游戏风), the words in a bubble; chip: a tab of 抽屉's, the words inside it while they show. What floats beside
- * 听歌's entry (ListenOverlay.tsx) goes past it (data-listen-beside).
+ * 听歌's disco's switch, kept in this browser (src/lib/disco.ts), as each of its buttons has it: on or off, its name for
+ * a screen reader, and 「点我蹦迪」 by it the first time a song sounds while it shows (once on this device), gone after
+ * DISCO_HINT_MS or once it is tapped
  */
-export function DiscoButton({ kind }: { kind: "round" | "chip" }) {
-  const e = useListenEntry();
+export function useDiscoSwitch(shown: boolean) {
   const p = useListenPlayer();
-  const shown = useLinger(e.on, DISCO_LINGER_MS);
   const chosen = useDiscoChosen();
   const seen = useDiscoHintSeen();
   const sounding = p.status === "playing" && !p.buffering;
   const [hint, setHint] = useState(false);
-  const chip = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!shown || !sounding || seen || chosen) return;
     seeDiscoHint();
@@ -427,17 +425,50 @@ export function DiscoButton({ kind }: { kind: "round" | "chip" }) {
   }, [shown, sounding, seen, chosen]);
   useEffect(() => {
     if (!hint) return;
-    // 抽屉's tabs slide sideways: on a narrow phone this one may be past the edge, so the row slides to show its words
-    slideInto(chip.current);
     const t = window.setTimeout(() => setHint(false), DISCO_HINT_MS);
     return () => window.clearTimeout(t);
   }, [hint]);
-  if (!shown) return null;
   const tap = () => {
     setHint(false);
     setDiscoChosen(!chosen);
   };
-  const label = chosen ? T.map.bar.discoOff : T.map.bar.discoOn;
+  return { chosen, hint, tap, label: chosen ? T.map.bar.discoOff : T.map.bar.discoOn };
+}
+
+/** 短评: a speech bubble, three dots in it (💬 beside 听歌's entry in a room, and the player's 短评) */
+export function ChatIcon({ size }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path
+        d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-7.5L7 20v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.5" cy="11" r="1.1" fill="currentColor" />
+      <circle cx="12" cy="11" r="1.1" fill="currentColor" />
+      <circle cx="15.5" cy="11" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * 听歌's disco's switch beside 听歌's entry (the player has its own): shown while a song plays, and for a moment after it
+ * stops; pink while on. The first time a song sounds, 「点我蹦迪」 beside it, once on this device. round: beside 在听
+ * (浮岛, 游戏风), the words in a bubble; chip: a tab of 抽屉's, the words inside it while they show. What floats beside
+ * 听歌's entry (ListenOverlay.tsx) goes past it (data-listen-beside).
+ */
+export function DiscoButton({ kind }: { kind: "round" | "chip" }) {
+  const e = useListenEntry();
+  const shown = useLinger(e.on, DISCO_LINGER_MS);
+  const { chosen, hint, tap, label } = useDiscoSwitch(shown);
+  const chip = useRef<HTMLButtonElement>(null);
+  // 抽屉's tabs slide sideways: on a narrow phone this one may be past the edge, so the row slides to show its words
+  useEffect(() => {
+    if (hint) slideInto(chip.current);
+  }, [hint]);
+  if (!shown) return null;
   if (kind === "chip") {
     return (
       <button

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { fmt, T } from "@/i18n";
 import { isGray, onGrayChange } from "@/lib/grayMode";
 import {
@@ -9,15 +9,17 @@ import {
   heardAfter,
   indexCatalog,
   isRx,
+  drawAny,
+  drawRound,
   keepUp,
-  nextInList,
-  nextOnAlbum,
+  RECENT_AVOID,
+  restOfAlbum,
+  restOfList,
   roomAt,
   RX_EVERY_MS,
   RX_MERGE_MS,
   RX_ROOM_FROM,
   RX_SHOW_MS,
-  shuffleNext,
   SYNC_EVERY_MS,
   type HotSong,
   type InviteSent,
@@ -44,13 +46,13 @@ import { stopSquadMusic } from "./squad/squadMusic";
 /**
  * 听歌 on the map page: one <audio> for the whole page, never Web Audio (which would hold a song decoded, tens of MB).
  * It is made, and first played, within a tap, which is what lets a phone play it at all; every song after plays in
- * it too, so a phone asks for a tap only once a page. A song goes on to the next of its album by itself, which is
- * fetched early so it starts at once, and the album's last one stops it; the lock screen shows the song, with play,
- * pause and next. The page's other music (阿米娅向导's dance, ⚡舟友的酒⚡) keeps quiet while a song plays
+ * it too, so a phone asks for a tap only once a page. A song goes on to the next by itself (待播, below), which is
+ * fetched early so it starts at once, never stopping while there is another song; the lock screen shows the song, with
+ * play, pause and next. The page's other music (阿米娅向导's dance, ⚡舟友的酒⚡) keeps quiet while a song plays
  * (isListening), and the site going gray (全站变灰) fades it out. A page opened again offers the song it played, from
  * where it got to, for a tap.
  *
- * A song tapped again (or ▶ after a long pause, or after the album's last) starts at once from the link the server gave
+ * A song tapped again (or ▶ after a long pause, or after the last there was) starts at once from the link the server gave
  * for it before, as the next song does, the server told meanwhile; the element still holding it goes on from what of it
  * came. Chrome keeps what came of a song in its cache, but Safari keeps nothing once the element plays another, so a
  * song left by a tap with all of it downloaded stays paused in an element of its own, the last two (KEPT_MAX), and a
@@ -75,13 +77,15 @@ import { stopSquadMusic } from "./squad/squadMusic";
  * the most said come back with each song played as 大家都在说 under it (useListenSaid). 想一起听 asks a 触须之交 who is
  * listening to invite you (askToListen); TA's 一起听 at it opens a room, or takes TA's own, and invites you (answerAsk).
  *
- * A song played alone goes on as the list it was tapped in (ListenFrom): 全部, to the next of its album; 收藏 and 热播榜,
- * to the next in that list, as it showed then, the last one stopping it. 随机播放 (the player's own choice, kept in this
- * browser, as 省流量 is) goes instead to a song of that list at random, none again until all of it played (a round),
- * and on for ever; the list's 随机播放 starts one so. ⏭ goes to what would come next by itself. 收藏 (useListenFavs) are
- * the player's own, kept by the server; 热播榜 (useListenHot) is everyone's. A song heard HEARD_S of (a shorter one, to
- * its last second), as it played on this page, alone or in a room, counts once for 热播榜 (the server checks it was
- * played that long).
+ * A song played alone goes on as the list it was tapped in (ListenFrom): 全部, to the next of its album; 收藏, 热播榜 and
+ * those found, to the next in that list, as it showed then; after the last, to songs from all of them at random, in an
+ * order drawn ahead, the last RECENT_AVOID played after all the others, and on for ever (▶ with no song chosen starts
+ * so). 随机播放 (the player's own choice, kept in this browser, as 省流量 is) goes instead through the list in an order
+ * drawn ahead at random, each song once (a round), then another round, and on for ever; the list's 随机播放 starts one
+ * so. 待播 (useListenUpNext) shows what comes, in order, and a song tapped in it plays, 待播 going on after it as it did.
+ * ⏭ goes to what would come next by itself. 收藏 (useListenFavs) are the player's own, kept by the server; 热播榜
+ * (useListenHot) is everyone's. A song heard HEARD_S of (a shorter one, to its last second), as it played on this page,
+ * alone or in a room, counts once for 热播榜 (the server checks it was played that long).
  *
  * The bar under the song goes where it is tapped or dragged to (seekTo), and so does the lock screen's: alone, the
  * element goes there at once (or once the song's link came), the server told again only when going back makes the
@@ -127,6 +131,8 @@ const LITE_KEY = "zhoup.listenLite";
 const LITE_AFTER_MS = 3_000;
 /** 随机播放 as the player chose it in this browser: on or off (localStorage); off until chosen */
 const SHUFFLE_KEY = "zhoup.listenShuffle";
+/** 听歌's little bar under the shut player: pulled out of the buttons along the bottom, or tucked into them (localStorage, one for every 界面); tucked until pulled out */
+const MINI_KEY = "zhoup.listenMini";
 /** 收藏 and 热播榜 are asked for again as the panel opens this long after (热播榜 changes every 10 minutes at most) */
 const FAVS_KEEP_MS = 10 * 60_000;
 const HOT_KEEP_MS = 5 * 60_000;
@@ -204,6 +210,8 @@ const intro = kept(0);
 const room = kept<ListenRoom | null>(null);
 const bubbles = kept<Bubble[]>(NO_BUBBLES);
 const rxNow = kept<ListenRxState>(RX_FREE);
+/** The row of 短评 out (短评 in the player, 💬 beside 听歌's entry): in the player while it is open, over the map once shut */
+const rxOpen = kept(false);
 /** What was said as the last room was over for you (ended, or you left), until you are in another */
 const roomEnd = kept<string | null>(null);
 /** How you touched someone in the room from this page today, by their number there: one bold touch is all a day */
@@ -214,6 +222,14 @@ const favs = kept<ListenFavs>(NO_FAVS);
 const hot = kept<ListenHot>(NO_HOT);
 /** The list the song alone was tapped in (null: none yet, as 全部) */
 const fromNow = kept<ListenFrom | null>(null);
+/**
+ * 待播 alone, how the songs after the one playing come: list, as its list goes (fromNow: 全部, the rest of its album;
+ * 收藏, 热播榜, those found, the rest of that list); round, 随机播放's order of the list, drawn ahead; any, songs from all
+ * of them at random, drawn ahead (the list played through, or ▶ with none chosen). ids: the songs drawn, in order.
+ */
+export type ListenGoing = { how: "list" } | { how: "round" | "any"; ids: string[] };
+const LIST: ListenGoing = { how: "list" };
+const going = kept<ListenGoing>(LIST);
 const change = (p: Partial<ListenPlayer>) => player.set({ ...player.get(), ...p });
 
 /** What plays, and the list of songs, now; and as hooks, following them */
@@ -232,6 +248,9 @@ export const useListenBubbles = (): ListenBubble[] => useSyncExternalStore(bubbl
 export const useListenRx = () => useSyncExternalStore(rxNow.on, rxNow.get, () => RX_FREE);
 export const useListenRoomEnd = () => useSyncExternalStore(roomEnd.on, roomEnd.get, () => null);
 export const useListenTouched = () => useSyncExternalStore(touchedIn.on, touchedIn.get, () => null);
+/** The row of 短评, out or not: a room's alone (gone with it) */
+export const useListenRxOpen = () => useSyncExternalStore(rxOpen.on, rxOpen.get, () => false);
+export const setListenRxOpen = (on: boolean) => rxOpen.set(on && inRoom());
 /** 大家都在说 under a song: its most said 短评 (src/lib/listen.ts SongSaid), none before it was played on this page */
 export const listenSaidNow = (song: string): SongSaid[] => said.get().get(song) ?? NO_SAID;
 export const useListenSaid = (song: string | null) =>
@@ -243,6 +262,9 @@ export const useListenSaid = (song: string | null) =>
 const inRoom = () => room.get() !== null;
 /** Only whether you are in a room, for what changes with that alone (a layout keeps 听歌's entry through the tutorial) */
 export const useInListenRoom = () => useSyncExternalStore(room.on, inRoom, () => false);
+const hasSong = () => player.get().track !== null;
+/** Only whether there is a song (playing, paused, or the room's), for what shows with one alone: 听歌's little bar */
+export const useListenHasSong = () => useSyncExternalStore(player.on, hasSong, () => false);
 /** Your 收藏 and 热播榜, as the server last gave them */
 export const listenFavsNow = favs.get;
 export const useListenFavs = () => useSyncExternalStore(favs.on, favs.get, () => NO_FAVS);
@@ -306,6 +328,8 @@ let lastAt = 0;
 let seekWanted: number | null = null;
 /** In a room: the song playing moved by the host's seek, from its start to another; the element takes it on as it is */
 let seeked: { from: number; to: number } | null = null;
+/** The song playing alone that the room just opened with it goes on with, as it is (openRoomWith): its start there */
+let adopted: { song: string; start: number } | null = null;
 /** The server counts us as listening, as far as we know; away: told we were going, so only for a little longer */
 let counted = false;
 let away = false;
@@ -356,9 +380,11 @@ let held: { song: string; url: string; got: number } | null = null;
 /** Songs left by a tap, all of each downloaded, each paused in an element of its own (the oldest first) */
 let keptSongs: { a: HTMLAudioElement; song: string; url: string; got: number }[] = [];
 
-/** 随机播放 as chosen in this browser (undefined: not read yet); the songs of the list played this round */
+/** 随机播放 as chosen in this browser (undefined: not read yet) */
 let shuffleHere: "on" | "off" | undefined;
-let played = new Set<string>();
+/** The song 待播 was last worked out from (null: none since a song was tapped in a list), and the songs played lately, the latest last */
+let steppedOn: string | null = null;
+let recent: string[] = [];
 /** Counts each change of 随机播放, for the hook */
 const shuffleChanged = kept(0);
 /** The song counted for 热播榜 (in a room, with its start): seconds of it heard, where it was at last, sent */
@@ -589,43 +615,116 @@ function shuffleOn(): boolean {
 export const listenShuffleNow = () => shuffleOn();
 export const useListenShuffle = () => useSyncExternalStore(shuffleChanged.on, shuffleOn, () => false);
 
+// ---- 听歌's little bar, pulled out or tucked in ----
+
+let miniHere: boolean | undefined;
+const miniChanged = kept(0);
+
+function miniOut(): boolean {
+  if (miniHere === undefined) {
+    try {
+      miniHere = localStorage.getItem(MINI_KEY) === "out";
+    } catch {
+      miniHere = false;
+    }
+  }
+  return miniHere;
+}
+
+/** The little bar under the shut player is pulled out (kept in this browser for every 界面), and as a hook */
+export const listenMiniOutNow = () => miniOut();
+export const useListenMiniOut = () => useSyncExternalStore(miniChanged.on, miniOut, () => false);
+
+/** The little bar pulled out of the buttons along the bottom, or tucked back in */
+export function setListenMiniOut(out: boolean) {
+  if (miniOut() === out) return;
+  miniHere = out;
+  try {
+    localStorage.setItem(MINI_KEY, out ? "out" : "tuck");
+  } catch {}
+  miniChanged.set(miniChanged.get() + 1);
+}
+
 /** The songs of a list, as its 随机播放 picks from them: 全部 without a search, every song */
 function idsOf(f: ListenFrom | null): readonly string[] {
   if (f?.ids.length) return f.ids;
+  return allIds();
+}
+
+const allIds = (): string[] => {
   const all = tracks();
   return all ? [...all.keys()] : [];
-}
+};
 
 const sameFrom = (a: ListenFrom | null, b: ListenFrom) =>
   Boolean(a && a.view === b.view && a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i]));
 
-/** The list a song is played from now on (another one: a new round of 随机播放) */
+/**
+ * The list a song tapped in it is played from now on: it goes on as that list again (随机播放's round of the same list
+ * going on as it was), its 待播 worked out afresh as it starts
+ */
 function goFrom(f: ListenFrom) {
-  if (sameFrom(fromNow.get(), f)) return;
-  fromNow.set(f);
-  played = new Set();
+  const same = sameFrom(fromNow.get(), f);
+  if (!same) fromNow.set(f);
+  if (!same || going.get().how !== "round") going.set(LIST);
+  steppedOn = null;
 }
 
-/** The song to go on to after this one alone: at random from its list, else the next in it, or on its album (全部) */
-function upNext(track: ListenTrack): string | null {
-  const f = fromNow.get();
-  if (shuffleOn()) {
-    const pick = shuffleNext(idsOf(f), track.id, played);
-    if (!pick) return null;
-    if (pick.fresh) played = new Set([track.id]);
-    return pick.next;
+/** The songs after this one as its list goes: 全部, the rest of its album; any other list, the rest of it */
+function listAfter(track: ListenTrack, f = fromNow.get()): string[] {
+  return f && f.view !== "all" ? restOfList(f.ids, track.id) : restOfAlbum(track);
+}
+
+/** 随机播放's round of the list, without this song; a list of it alone, songs from all of them instead */
+function roundFrom(track: ListenTrack): ListenGoing {
+  const ids = drawRound(idsOf(fromNow.get()), track.id);
+  return ids.length ? { how: "round", ids } : anyFrom(track.id);
+}
+
+/** As the list goes from this song; after its last, songs from all of them at random */
+function listFrom(track: ListenTrack): ListenGoing {
+  return listAfter(track).length ? LIST : anyFrom(track.id);
+}
+
+const anyFrom = (now: string): ListenGoing & { how: "any" } => ({ how: "any", ids: drawAny(allIds(), now, recent) });
+
+/** A song heard: the latest of those played lately */
+function lately(id: string) {
+  recent = [...recent.filter((x) => x !== id), id].slice(-RECENT_AVOID);
+}
+
+/**
+ * A song alone starts: 待播 goes on past it. The songs drawn go on without it (once they are all played: 随机播放's
+ * round drawn again, or more songs from all of them); as the list goes, after its last, songs from all of them. The same
+ * song again (▶ after it, a link that failed) changes nothing.
+ */
+function step(track: ListenTrack) {
+  lately(track.id);
+  if (steppedOn === track.id) return;
+  steppedOn = track.id;
+  const g = going.get();
+  if (g.how !== "list") {
+    const ids = g.ids.filter((id) => id !== track.id);
+    if (ids.length) return going.set({ how: g.how, ids });
+    if (g.how === "any" && !shuffleOn()) return going.set(anyFrom(track.id));
   }
-  return f && f.view !== "all" ? nextInList(f.ids, track.id) : nextOnAlbum(track);
+  going.set(shuffleOn() ? roundFrom(track) : listFrom(track));
 }
 
-/** Whether ⏭ has a song to go to, alone */
+/** The song to go on to after this one alone, as 待播 has it (null: there is no other song at all) */
+function upNext(track: ListenTrack): string | null {
+  const g = going.get();
+  if (g.how !== "list") return g.ids[0] ?? null;
+  return listAfter(track)[0] ?? anyFrom(track.id).ids[0] ?? null;
+}
+
+/** Whether ⏭ has a song to go to, alone: any other song there is */
 function hasNext(): boolean {
   const t = player.get().track;
   if (!t || room.get() || isGray()) return false;
   if (current?.track === t && current.start === null) return current.next !== null;
-  const f = fromNow.get();
-  if (shuffleOn()) return idsOf(f).some((id) => id !== t.id);
-  return (f && f.view !== "all" ? nextInList(f.ids, t.id) : nextOnAlbum(t)) !== null;
+  const all = tracks();
+  return Boolean(all && [...all.keys()].some((id) => id !== t.id));
 }
 const nextKey = kept(0);
 const onNext = (fn: () => void) => {
@@ -636,18 +735,56 @@ const onNext = (fn: () => void) => {
 export const useListenHasNext = () => useSyncExternalStore(onNext, hasNext, () => false);
 
 /**
- * The player's 随机播放 switch, kept in this browser. The song playing alone goes on to one at random of its list (or,
- * off, as its list goes) instead of the one it was to go to, whose link is asked for at once, so a phone in a pocket
- * still goes straight on to it.
+ * 待播 as the player shows it: the songs to come, in order, and how they come (ListenGoing's, or room: the room's, after
+ * the one playing; none: no song yet, ▶ plays one from all of them at random), and for list and round, the list
+ */
+export type ListenUpNext = { how: "list" | "round" | "any" | "room" | "none"; ids: string[]; from: ListenFrom | null; track: ListenTrack | null };
+function upNextOf(track: ListenTrack | null, r: ListenRoom | null, i: number, g: ListenGoing, from: ListenFrom | null): ListenUpNext {
+  if (r) return { how: "room", ids: r.queue.slice(i + 1), from: null, track };
+  if (!track) return { how: "none", ids: [], from: null, track };
+  if (g.how !== "list") return { how: g.how, ids: g.ids, from, track };
+  return { how: "list", ids: listAfter(track, from), from, track };
+}
+/** In a room, where in its songs it is now: the one playing (or next), all of them once over, its first before it starts */
+function roomIndex(r: ListenRoom | null, all: Map<string, ListenTrack> | null): number {
+  if (!r) return 0;
+  const at = all ? roomAt(r, lengthOf(all), serverNow()) : null;
+  return at?.phase === "playing" ? at.i : at?.phase === "done" ? r.queue.length : r.idx;
+}
+/** 待播 now, and as a hook (in a room, following its songs as each starts: its track changes then) */
+export const listenUpNextNow = () => upNextOf(player.get().track, room.get(), roomIndex(room.get(), tracks()), going.get(), fromNow.get());
+const useGoing = () => useSyncExternalStore(going.on, going.get, () => LIST);
+const useFromNow = () => useSyncExternalStore(fromNow.on, fromNow.get, () => null);
+export function useListenUpNext(): ListenUpNext {
+  const { track } = useListenPlayer();
+  const r = useListenRoom();
+  const g = useGoing();
+  const from = useFromNow();
+  const list = useListenSongs();
+  const i = roomIndex(r, list.state === "ok" ? list.tracks : null);
+  return useMemo(() => upNextOf(track, r, i, g, from), [track, r, i, g, from]);
+}
+/** ⏭'s song there is, alone: any other song at all */
+export const listenHasNextNow = () => hasNext();
+
+/**
+ * The player's 随机播放 switch, kept in this browser. 待播 is worked out again from the song shown: a round of its list
+ * drawn (on), or as its list goes from it (off); the song playing alone then goes on to the first of it instead of the
+ * one it was to go to, whose link is asked for at once, so a phone in a pocket still goes straight on to it.
  */
 export function setShuffle(on: boolean) {
+  const was = shuffleOn();
   shuffleHere = on ? "on" : "off";
   try {
     localStorage.setItem(SHUFFLE_KEY, shuffleHere);
   } catch {}
   shuffleChanged.set(shuffleChanged.get() + 1);
+  const t = player.get().track;
+  if (was === on || !t || room.get()) return;
+  steppedOn = t.id;
+  going.set(on ? roundFrom(t) : listFrom(t));
   const c = current;
-  if (!c || c.start !== null || room.get()) return;
+  if (!c || c.start !== null || c.track !== t) return;
   const next = upNext(c.track);
   if (next === c.next) return;
   current = { ...c, next, nextUrl: null, nextLite: null, early: false };
@@ -678,16 +815,52 @@ function askAhead(c: NonNullable<typeof current>) {
   );
 }
 
-/** ⏭ in the player, within the tap: the song this one would go on to by itself */
+/** ⏭ in the player, within the tap: the song this one would go on to by itself (待播's first) */
 export function playNext() {
   const v = player.get();
   if (!v.track || room.get() || isGray()) return;
+  // a song shown but not played on this page yet (a page opened again): 待播 worked out from it first
+  if (steppedOn !== v.track.id && !(current?.track === v.track && current.start === null)) step(v.track);
   const id = current?.track === v.track && current.start === null ? current.next : upNext(v.track);
   const next = id ? tracks()?.get(id) : undefined;
   if (next) playTrack(next);
 }
 
-/** A list's 随机播放, within the tap: 随机播放 on, and a song of the list at random, not the one playing (where there is another) */
+/**
+ * A song tapped in 待播, within the tap: it plays, and 待播 goes on as it did after it (the songs drawn before it
+ * left out; as the list goes, from it)
+ */
+export function playFromUpNext(id: string) {
+  if (isGray() || room.get()) return;
+  const track = tracks()?.get(id);
+  if (!track) return;
+  const g = going.get();
+  if (g.how !== "list") {
+    const at = g.ids.indexOf(id);
+    if (at >= 0) going.set({ how: g.how, ids: g.ids.slice(at + 1) });
+  }
+  playTrack(track);
+}
+
+/**
+ * ▶ with no song chosen yet, within the tap: songs from all of them at random, in an order drawn ahead (those played
+ * lately last), from the first of it
+ */
+export function playAny() {
+  if (isGray() || room.get()) return;
+  const ids = drawAny(allIds(), "", recent);
+  const track = ids.length ? tracks()?.get(ids[0]) : undefined;
+  if (!track) return;
+  fromNow.set({ view: "all", ids: [] });
+  going.set({ how: "any", ids: ids.slice(1) });
+  steppedOn = null;
+  playTrack(track);
+}
+
+/**
+ * A list's 随机播放, within the tap: 随机播放 on, a round of the list drawn without the song playing (just heard), and
+ * its first played (a list of that song alone: it again)
+ */
 export function shufflePlay(f: ListenFrom) {
   if (isGray() || room.get()) return;
   shuffleHere = "on";
@@ -695,16 +868,15 @@ export function shufflePlay(f: ListenFrom) {
     localStorage.setItem(SHUFFLE_KEY, shuffleHere);
   } catch {}
   shuffleChanged.set(shuffleChanged.get() + 1);
-  goFrom(f);
-  const ids = idsOf(f);
-  // the song playing was just heard: not again soon
-  const now = player.get().track?.id ?? "";
-  if (now) played.add(now);
-  const pick = shuffleNext(ids, now, played);
-  if (pick?.fresh) played = new Set(now ? [now] : []);
-  const id = pick?.next ?? (ids.length === 1 ? ids[0] : null);
+  if (!sameFrom(fromNow.get(), f)) fromNow.set(f);
+  const list = idsOf(f);
+  const ids = drawRound(list, player.get().track?.id ?? "");
+  const id = ids[0] ?? (list.length === 1 ? list[0] : null);
   const track = id ? tracks()?.get(id) : undefined;
-  if (track) playTrack(track);
+  if (!track) return;
+  going.set({ how: "round", ids: ids.slice(1) });
+  steppedOn = null;
+  playTrack(track);
 }
 
 // ---- 收藏 and 热播榜 ----
@@ -872,11 +1044,11 @@ export function playTrack(track: ListenTrack, at = 0, from?: ListenFrom) {
   begin(track, at, linkFor(track.id));
 }
 
-/** ▶ or ⏸, within the tap */
+/** ▶ or ⏸, within the tap; ▶ with no song yet, one from all of them at random (playAny) */
 export function toggle() {
   if (room.get()) return roomToggle();
   const v = player.get();
-  if (!v.track) return;
+  if (!v.track) return playAny();
   if (v.status === "playing" || v.status === "starting") return pauseNow();
   if (isGray()) return;
   const a = element();
@@ -1043,7 +1215,7 @@ function quietOthers() {
 function begin(track: ListenTrack, at: number, url: string | null, loaded = false) {
   const mine = ++asked;
   seekWanted = null;
-  played.add(track.id);
+  step(track);
   const next = upNext(track);
   ended = false;
   lastAt = at;
@@ -1167,7 +1339,7 @@ function pauseNow() {
   save();
 }
 
-/** The album is over: the song stays shown, ▶ plays it again from its start */
+/** No other song to go on to (the list of songs has this one alone): the song stays shown, ▶ plays it again from its start */
 function finish() {
   ++asked;
   ++loads;
@@ -1465,6 +1637,7 @@ function syncRoom() {
   if (!track || at.offset < 0) return gap(at.start - now, track);
   const a = element();
   if (inElement(at, track.id)) {
+    roomNext(r, at.i);
     if (!a.ended) return keepUpNow(a, at.offset);
     // over before the room's clock says (a file a little shorter than its length): silence until the next
     return gap(at.start + track.seconds * 1000 - now, track);
@@ -1478,7 +1651,8 @@ function syncRoom() {
  */
 function inElement(at: { start: number }, id: string): boolean {
   const c = current;
-  if (holding !== "song" || !c || c.start === null || c.track.id !== id) return false;
+  if (holding !== "song" || !c || c.track.id !== id) return false;
+  if (c.start === null) return adoptAlone(c, at.start);
   if (c.start === at.start) return true;
   if (!seeked || c.start !== seeked.from || at.start !== seeked.to) return false;
   if (heardNow && heardNow.start === c.start) heardNow.start = at.start;
@@ -1486,6 +1660,48 @@ function inElement(at: { start: number }, id: string): boolean {
   seeked = null;
   roomAhead(current);
   return true;
+}
+
+/**
+ * The song playing alone, which the room just opened with it plays from where it got to (openRoomWith): the same play
+ * goes on as the room's, nothing loaded again (the song after it is the room's, its link asked for as roomNext does)
+ */
+function adoptAlone(c: NonNullable<typeof current>, start: number): boolean {
+  const a = adopted;
+  if (!a || a.song !== c.track.id || a.start !== start) return false;
+  adopted = null;
+  if (heardNow && heardNow.song === a.song && heardNow.start === null) heardNow.start = start;
+  current = { ...c, start, next: null, nextUrl: null, nextLite: null, early: false };
+  return true;
+}
+
+/**
+ * The room's songs changed as one plays (the host added one, or 待播 was given one more as its last plays): the song
+ * after it now, whose link is asked for at once, as going on with the one playing from where the room is (which counts
+ * nothing), so it starts straight after
+ */
+function roomNext(r: ListenRoom, i: number) {
+  const c = current;
+  const next = r.queue[i + 1] ?? null;
+  if (!c || c.start === null || c.next === next) return;
+  current = { ...c, next, nextUrl: null, nextLite: null, early: false };
+  ahead = null;
+  if (!next) return;
+  const start = c.start;
+  const sent = Date.now();
+  listenApi.play(c.track.id, Math.max(1, Math.floor((serverNow() - start) / 1000)), next).then(
+    (p) => {
+      if (p.nextUrl) remember(next, p.nextUrl, p.nextLite ?? null);
+      rememberDance(next, p.nextDance);
+      const now = current;
+      if (!now || now.track !== c.track || now.start !== start || now.next !== next) return;
+      heard(p.now, sent, Date.now());
+      current = { ...now, nextUrl: p.nextUrl ?? null, nextLite: p.nextLite ?? null, until: p.until - offset };
+      ahead = p.nextUrl ? { id: next, url: p.nextUrl, lite: p.nextLite ?? null } : null;
+    },
+    // the next song then asks for its link as it starts
+    () => {},
+  );
 }
 
 /**
@@ -1579,6 +1795,7 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
   if (current?.start !== start && rxNow.get().full) rxNow.set({ ...rxNow.get(), full: false });
   const given = ahead?.id === track.id ? ahead : null;
   ahead = null;
+  lately(track.id);
   current = { track, lite: given?.lite ?? null, next, nextUrl: null, nextLite: null, until: 0, early: false, start };
   hearFrom(track, start, (serverNow() - start) / 1000);
   stuck = null;
@@ -1599,10 +1816,13 @@ function beginRoom(r: ListenRoom, track: ListenTrack, i: number, start: number) 
       counted = true;
       away = false;
       // this song, at its start or at the one the host's seek moved it to meanwhile
-      if (current?.track === track && current.start !== null) {
-        current = { ...current, lite: p.lite ?? null, nextUrl: p.nextUrl ?? null, nextLite: p.nextLite ?? null, until: p.until - offset };
+      const c = current;
+      // the one after it changed meanwhile (roomNext asks for that one's link): its link is not this answer's
+      const same = c?.track !== track || c.start === null || c.next === next;
+      if (c?.track === track && c.start !== null) {
+        current = { ...c, lite: p.lite ?? null, until: p.until - offset, ...(same ? { nextUrl: p.nextUrl ?? null, nextLite: p.nextLite ?? null } : {}) };
       }
-      ahead = next && p.nextUrl ? { id: next, url: p.nextUrl, lite: p.nextLite ?? null } : null;
+      if (same) ahead = next && p.nextUrl ? { id: next, url: p.nextUrl, lite: p.nextLite ?? null } : null;
       if (!url) loadRoomSong(pick(track.id, p.url, p.lite), start);
     },
     (e: unknown) => {
@@ -1836,6 +2056,7 @@ function roomOver(note: string | null) {
   syncedAt = "";
   bubbles.set(NO_BUBBLES);
   rxNow.set(RX_FREE);
+  rxOpen.set(false);
   touchedIn.set(null);
   const a = audio;
   const sounding = Boolean(a && (holding === "song" || holding === "gap") && !a.paused);
@@ -1899,16 +2120,25 @@ export function loadRoom(): Promise<void> {
 
 /**
  * A room of your own, song first (null: 新歌's first, as the server has it), with invitations to these 触须之交 (their
- * Friend ids); within the tap. null: refused
+ * Friend ids); within the tap. The song playing alone, as it is: it goes on as the room's from where it got to, at once.
+ * null: refused
  */
 export async function openRoomWith(song: string | null, invite: string[]): Promise<InviteSent[] | null> {
   if (isGray()) return null;
   unlockNow();
   const mine = ++roomAsked;
   const sent = Date.now();
+  const p = player.get();
+  const on = !room.get() && p.track?.id === song && (p.status === "playing" || p.status === "starting") && current?.track === p.track;
   try {
-    const res = await listenApi.open(song, invite);
-    if (res.room && mine === roomAsked) enter(res.room, sent, Date.now(), res.now);
+    const res = await listenApi.open(song, invite, on ? Math.max(0, audio?.currentTime ?? lastAt) : undefined);
+    if (res.room && mine === roomAsked) {
+      // still the song it was opened with, playing alone: it goes on as it is
+      const c = current;
+      adopted = on && song && res.room.startedAt !== null && c?.track.id === song && c.start === null ? { song, start: res.room.startedAt } : null;
+      enter(res.room, sent, Date.now(), res.now);
+      adopted = null;
+    }
     return res.sent;
   } catch (e) {
     failed(e);
@@ -2287,8 +2517,12 @@ export function forgetListening() {
   clearTimeout(slowTimer);
   liteChanged.set(0);
   shuffleHere = undefined;
-  played = new Set();
+  steppedOn = null;
+  recent = [];
+  going.set(LIST);
   shuffleChanged.set(0);
+  miniHere = undefined;
+  miniChanged.set(0);
   fromNow.set(null);
   heardNow = null;
   favs.set(NO_FAVS);
@@ -2305,6 +2539,7 @@ export function forgetListening() {
   lastAt = 0;
   seekWanted = null;
   seeked = null;
+  adopted = null;
   savedAt = 0;
   offsets.length = 0;
   offset = 0;
@@ -2325,6 +2560,7 @@ export function forgetListening() {
   room.set(null);
   bubbles.set(NO_BUBBLES);
   rxNow.set(RX_FREE);
+  rxOpen.set(false);
   roomEnd.set(null);
   said.set(new Map());
 }

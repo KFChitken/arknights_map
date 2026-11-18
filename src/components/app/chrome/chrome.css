@@ -197,7 +197,7 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 .chrome-float .rail {
   --rail-top: calc(140px + var(--safe-top));
   position: absolute; z-index: 10; right: calc(10px + var(--safe-right)); top: var(--rail-top); display: flex; flex-direction: column;
-  width: 62px; max-height: calc(100% - var(--rail-top) - var(--rail-bottom, 96px) - var(--safe-bottom));
+  width: 62px; max-height: calc(100% - var(--rail-top) - var(--rail-bottom, 96px) - var(--mini-h, 0px) - var(--safe-bottom));
   border-radius: 16px; line-height: 1;
   transition: transform 0.2s ease-out, visibility 0s;
 }
@@ -302,17 +302,102 @@ html[data-fold-l] .chrome-float .ui-tile-box { transform: translateX(calc(-100% 
   .chrome-float .tab-r, .chrome-float .tab-l { top: calc(64px + var(--safe-top)); }
 }
 
-/* one bar along the bottom: your look and name, 消息 and 触须之交, and the pair that act */
-.chrome-float .bar {
+/*
+ * one bar along the bottom: your look and name, 消息 and 触须之交, and the pair that act (its row); placed by its box,
+ * which holds the handle of 听歌's little bar on top of it too (below)
+ */
+.chrome-float .bar-box {
   position: absolute; z-index: 11; left: calc(8px + var(--safe-left)); right: calc(8px + var(--safe-right));
-  bottom: calc(26px + var(--safe-bottom)); display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  height: 60px; padding: 0 7px 0 5px; border-radius: 22px;
+  bottom: calc(26px + var(--safe-bottom));
 }
+.chrome-float .bar { position: relative; display: flex; flex-direction: column; border-radius: 22px; }
+.chrome-float .bar-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 60px; padding: 0 7px 0 5px; }
 @media (min-width: 560px) {
-  .chrome-float .bar { left: 50%; right: auto; width: 540px; padding: 0 8px; transform: translateX(-50%); }
+  .chrome-float .bar-box { left: 50%; right: auto; width: 540px; transform: translateX(-50%); }
+  .chrome-float .bar-row { padding: 0 8px; }
 }
 /* before signing in, or while who is signed in has not come: one or two buttons in the middle */
-.chrome-float .bar.solo { left: 50%; right: auto; width: auto; gap: 8px; padding: 0 9px; transform: translateX(-50%); }
+.chrome-float .bar.solo {
+  position: absolute; z-index: 11; left: 50%; bottom: calc(26px + var(--safe-bottom)); flex-direction: row; align-items: center;
+  gap: 8px; height: 60px; padding: 0 9px; transform: translateX(-50%);
+}
+
+/*
+ * 听歌's little bar in 浮岛 (ListenMini.tsx): with a song on and the player shut, a handle on the middle of the bar's top
+ * edge, 23px over it (the tab's box --tab-half wide each side of the middle), the same glass and one piece with it: two
+ * curves of glass join it to the bar, the bar's edge drawn by its ::before and left out under them. Pulled out, the little
+ * bar grows up inside the bar's glass, the row along the bottom where it was, and the handle is only ⌄.
+ */
+.chrome-float .bar-box.tabbed { --tab-half: min(88px, 28%); }
+.chrome-float .bar-box.mini-out { --tab-half: 26px; }
+.chrome-float .bar-box.tabbed .bar.glass { box-shadow: none; }
+.chrome-float .bar-box.tabbed .bar::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px #ffffff24, inset 0 1px 0 #ffffff14, 0 0 0 2px #0d0e10, 0 0 0 3px rgba(255, 255, 255, 0.85), 0 4px 16px #00000033;
+  clip-path: polygon(
+    -24px -24px, calc(50% - var(--tab-half) - 12px) -24px, calc(50% - var(--tab-half) - 12px) 2px, calc(50% + var(--tab-half) + 12px) 2px,
+    calc(50% + var(--tab-half) + 12px) -24px, calc(100% + 24px) -24px, calc(100% + 24px) calc(100% + 28px), -24px calc(100% + 28px)
+  );
+}
+.chrome-float .lmini-tabw {
+  position: absolute; left: 0; right: 0; bottom: 100%; display: flex; align-items: flex-end; justify-content: center;
+  pointer-events: none;
+}
+.chrome-float .lmini-tab {
+  flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; width: calc(var(--tab-half) * 2); height: 23px;
+  padding: 2px 12px 0; border: 0; border-radius: 12px 12px 0 0; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap;
+  pointer-events: auto; background: rgba(20, 22, 27, 0.66); -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  backdrop-filter: blur(14px) saturate(1.6); box-shadow: 0 0 0 2px #0d0e10, 0 0 0 3px rgba(255, 255, 255, 0.85);
+  /* its edge down its sides as far as the curves, which carry it on round into the bar's */
+  clip-path: polygon(
+    -4px -4px, calc(100% + 4px) -4px, calc(100% + 4px) calc(100% - 12px), 100% calc(100% - 12px), 100% 100%, 0 100%,
+    0 calc(100% - 12px), -4px calc(100% - 12px)
+  );
+}
+.chrome-float .lmini-tab .tt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chrome-float .lmini-tab .chev { flex: none; width: 14px; height: 14px; opacity: 0.75; }
+.chrome-float .mini-out .lmini-tab { padding: 1px 0 0; }
+.chrome-float .mini-out .lmini-tab .chev { width: 18px; height: 18px; opacity: 0.9; }
+/* the curves: glass, a hole of the map in their outer corner, edged as the bar is (white outside, black inside) */
+.chrome-float .lmini-curve {
+  --c: rgba(20, 22, 27, 0.66);
+  flex: none; width: 12px; height: 12px; -webkit-backdrop-filter: blur(14px) saturate(1.6); backdrop-filter: blur(14px) saturate(1.6);
+}
+.chrome-float .lmini-curve.l {
+  background: radial-gradient(circle at 0 0, transparent 8.6px, rgba(255, 255, 255, 0.85) 9px 9.6px, #0d0e10 10px 11.6px, var(--c) 12px);
+  -webkit-mask: radial-gradient(circle at 0 0, transparent 8.6px, #000 9px);
+  mask: radial-gradient(circle at 0 0, transparent 8.6px, #000 9px);
+}
+.chrome-float .lmini-curve.r {
+  background: radial-gradient(circle at 100% 0, transparent 8.6px, rgba(255, 255, 255, 0.85) 9px 9.6px, #0d0e10 10px 11.6px, var(--c) 12px);
+  -webkit-mask: radial-gradient(circle at 100% 0, transparent 8.6px, #000 9px);
+  mask: radial-gradient(circle at 100% 0, transparent 8.6px, #000 9px);
+}
+/* where the glass is not blurred (as .glass above), the firmer black */
+.app.no-blur .chrome-float :is(.lmini-tab, .lmini-curve) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.app.no-blur .chrome-float .lmini-tab { background: rgba(27, 29, 34, 0.86); }
+.app.no-blur .chrome-float .lmini-curve { --c: rgba(27, 29, 34, 0.86); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .chrome-float .lmini-tab { background: rgba(27, 29, 34, 0.86); }
+  .chrome-float .lmini-curve { --c: rgba(27, 29, 34, 0.86); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .chrome-float :is(.lmini-tab, .lmini-curve) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .chrome-float .lmini-tab { background: rgba(27, 29, 34, 0.86); }
+  .chrome-float .lmini-curve { --c: rgba(27, 29, 34, 0.86); }
+}
+
+/*
+ * How much higher 听歌's little bar makes the buttons along the bottom, for what sits over them (the cards, the hints,
+ * the column on the right): 浮岛's handle, and the little bar pulled out under it; 游戏风's, pulled out over its round
+ * buttons. 抽屉 makes its drawer taller instead (--dock-h, on a phone; on a computer it is a card in the panel).
+ */
+.app.ui-float.mini-tuck { --mini-h: 23px; }
+.app.ui-float.mini-out { --mini-h: 81px; }
+.app.ui-hud.mini-out { --mini-h: 74px; }
+@media (max-width: 899px) {
+  .app.ui-drawer.mini-out:not(.drawer-open) { --dock-h: 184px; }
+}
 
 /* those buttons, in 浮岛's bar and 抽屉's drawer alike (MeSlots and ActButtons in parts.tsx) */
 .chrome .slots { display: flex; gap: 2px; min-width: 0; }
@@ -361,7 +446,7 @@ html[data-fold-l] .chrome-float .ui-tile-box { transform: translateX(calc(-100% 
 /* the map's own buttons: on a phone no + and −, and OpenStreetMap's (i) on the left, over the bottom bar */
 @media (max-width: 899px) {
   .app .map .maplibregl-ctrl-group, .app .map .amap-toolbar, .app .map .tmap-corner-right { display: none !important; }
-  .app.ui-float .map .maplibregl-ctrl-bottom-right { left: var(--safe-left); right: auto; bottom: calc(84px + var(--safe-bottom)); }
+  .app.ui-float .map .maplibregl-ctrl-bottom-right { left: var(--safe-left); right: auto; bottom: calc(84px + var(--mini-h, 0px) + var(--safe-bottom)); }
 }
 @media (min-width: 900px) {
   .app.ui-float .map .maplibregl-ctrl-bottom-right { bottom: calc(16px + var(--safe-bottom)); }
@@ -376,14 +461,14 @@ html[data-fold-l] .chrome-float .ui-tile-box { transform: translateX(calc(-100% 
 .app.on-amap.ui-float .disclaimer { left: auto; right: calc(10px + var(--safe-right)); text-align: right; }
 @media (max-width: 759px) {
   .app.on-amap.ui-float .disclaimer { bottom: calc(22px + var(--safe-bottom)); }
-  .app.on-amap.ui-float .bar { bottom: calc(42px + var(--safe-bottom)); }
+  .app.on-amap.ui-float :is(.bar-box, .bar.solo) { bottom: calc(42px + var(--safe-bottom)); }
   .app.on-amap.ui-float .rail { --rail-bottom: 112px; }
-  .app.on-amap.ui-float :is(.card, .lite-hint, .pw-nudge) { bottom: calc(112px + var(--safe-bottom)); }
-  .app.on-amap.ui-float .heard-stack { bottom: calc(128px + var(--safe-bottom)); }
+  .app.on-amap.ui-float :is(.card, .lite-hint, .pw-nudge) { bottom: calc(112px + var(--mini-h, 0px) + var(--safe-bottom)); }
+  .app.on-amap.ui-float .heard-stack { bottom: calc(128px + var(--mini-h, 0px) + var(--safe-bottom)); }
 }
 
 /* 圈禁放区 and 看一处 (an owner's tools): the map to the tool, only the islands along the top */
-.app.zone-tool :is(.chrome-float .hud, .rail, .tab-r, .ui-tile-box, .tab-l, .bar, .heard-stack, .disclaimer, .style-hint) { display: none; }
+.app.zone-tool :is(.chrome-float .hud, .rail, .tab-r, .ui-tile-box, .tab-l, .bar-box, .bar, .heard-stack, .disclaimer, .style-hint) { display: none; }
 
 /* ---- 界面's menu: the three layouts as small pictures, then 存到桌面 ---- */
 .uimenu { position: absolute; z-index: 30; width: 266px; padding: 12px 12px 10px; border-radius: 18px; }

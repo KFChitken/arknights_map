@@ -164,6 +164,8 @@ import {
   serverNow,
   toggle as toggleListening,
   touchMember,
+  useListenHasSong,
+  useListenMiniOut,
 } from "./app/listening";
 import SquadBar, { SquadPop, type SquadCallItem, type SquadInviteItem, type SquadPopCard } from "./app/squad/SquadBar";
 import SquadFight from "./app/squad/SquadFight";
@@ -190,7 +192,7 @@ setQuietListening(() => {
   if (isListening()) toggleListening();
 });
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
-import type { ListenActs, ListenTab } from "./app/ListenPanel";
+import type { ListenActs } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";
 import { CALL_CARD_EVERY_MS } from "@/lib/listen";
 import { SQUAD_MAX } from "@/lib/squad";
@@ -743,8 +745,6 @@ export default function MapApp({
   // 听歌's disco (src/components/disco), where it is open to them: its switch, and whether its ball and lights are out
   const discoChosen = useDiscoChosen();
   const [discoShown, setDiscoShown] = useState(false);
-  // its tab: the songs, unless you are in a room of 一起听
-  const [listenTab, setListenTab] = useState<ListenTab>("ark");
   // an invitation to 一起听 that came while the page is open, its card over the map (ask: whether to switch rooms first)
   const [listenCard, setListenCard] = useState<ListenCard | null>(null);
   // 一起卫戍: the card of an invitation that came, or one tapped in 消息 while in another room
@@ -2476,10 +2476,9 @@ export default function MapApp({
 
   // ---- 一起听 (src/components/app/listening.ts) ----
 
-  /** 听歌's panel, on 一起听 */
+  /** 听歌's player (一起听 is in it) */
   const showListenRoom = () => {
     setPanel(null);
-    setListenTab("together");
     setListenOpen(true);
   };
   /** In at an invitation (its item id in 消息, li:…), from its card or 消息; within the tap, as it may start a song */
@@ -5528,6 +5527,11 @@ export default function MapApp({
   useEffect(() => {
     if (listenOpen && discoOpen) prefetchDisco();
   }, [listenOpen, discoOpen]);
+  // 听歌's little bar, while a song is on and the player shut: tucked into the buttons along the bottom, or pulled out
+  // of them (kept so on this device); not while a 蟑螂 is being placed or an owner's tool has the screen
+  const listenSong = useListenHasSong();
+  const listenMiniOut = useListenMiniOut();
+  const listenMini = listenShown && listenSong && !listenOpen && !placing && !zoneTool ? (listenMiniOut ? "out" : "tuck") : null;
   // 支持舟P地图's button: where the server shows it to them (me.sponsor: SPONSOR, and the owner's switch), not while gray
   const sponsorShown = lang() === "zh" && Boolean(me?.sponsor) && !gray;
   // the newest invitation to 一起听 still to answer, for its tab
@@ -5620,12 +5624,10 @@ export default function MapApp({
     listen: listenShown
       ? {
           open: listenOpen,
-          onToggle: () => {
-            // opened while in a room of 一起听: on it
-            if (!listenOpen && listenRoomNow()) setListenTab("together");
-            setListenOpen(!listenOpen);
-          },
+          onToggle: () => setListenOpen(!listenOpen),
           disco: discoOpen,
+          song: listenSong,
+          mini: listenMini,
         }
       : null,
     sponsor: sponsorShown ? { onOpen: openSponsor } : null,
@@ -5689,7 +5691,9 @@ export default function MapApp({
     <main
       className={`app ui-${layout}${homeOn && !(twoMaps && abroad) ? " on-amap" : ""}${zoneTool ? " zone-tool" : ""}${
         drawnStyle === "lite" || discoShown ? " no-blur" : ""
-      }${discoShown ? " disco" : ""}${layout === "drawer" && drawerOpen ? " drawer-open" : ""}${placing ? " placing" : ""}`}
+      }${discoShown ? " disco" : ""}${layout === "drawer" && drawerOpen ? " drawer-open" : ""}${placing ? " placing" : ""}${
+        listenMini ? ` mini-${listenMini}` : ""
+      }`}
     >
       {layout === "float" && <FloatChrome {...chrome} />}
       {layout === "drawer" && <DrawerChrome {...chrome} />}
@@ -6180,8 +6184,7 @@ export default function MapApp({
           paused={me.listen.paused}
           roomMax={me.listen.roomMax}
           mode={me.listen.mode}
-          tab={listenTab}
-          onTab={setListenTab}
+          disco={discoOpen}
           acts={listenActs}
           onClose={closeListen}
         />

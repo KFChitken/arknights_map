@@ -138,7 +138,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .banner button { margin-left: auto; border: 0; border-radius: 8px; padding: 4px 10px; background: var(--ink); color: #fff; flex-shrink: 0; }
 
 .card {
-  position: absolute; z-index: 11; left: 12px; right: 12px; bottom: calc(96px + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
+  position: absolute; z-index: 11; left: 12px; right: 12px; bottom: calc(96px + var(--mini-h, 0px) + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
   display: flex; gap: 12px; align-items: center; padding: 12px 40px 12px 12px;
   border-radius: var(--radius); background: var(--paper); box-shadow: 0 4px 16px #0004;
 }
@@ -146,14 +146,14 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .card .close { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 22px; color: var(--muted); }
 
 .toast {
-  position: absolute; z-index: 40; left: 50%; bottom: calc(150px + var(--safe-bottom)); transform: translateX(-50%);
+  position: absolute; z-index: 40; left: 50%; bottom: calc(150px + var(--mini-h, 0px) + var(--safe-bottom)); transform: translateX(-50%);
   max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px;
   background: #000c; color: #fff; font-size: 14px; text-align: center;
 }
 .toast.high { bottom: auto; top: calc(110px + var(--safe-top)); }
 /* 卡了提醒一次 (try 轻量), and the ask to set a password (PasswordNudge.tsx): a card over the bottom buttons */
 .lite-hint, .pw-nudge {
-  position: absolute; z-index: 30; left: 12px; right: 12px; bottom: calc(96px + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
+  position: absolute; z-index: 30; left: 12px; right: 12px; bottom: calc(96px + var(--mini-h, 0px) + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
   padding: 12px 14px; border-radius: var(--radius); background: #1b1d22; color: #fff; box-shadow: 0 4px 16px #0006;
 }
 .lite-hint p, .pw-nudge p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
@@ -1358,7 +1358,7 @@ a.pill { display: inline-block; border: 1px solid #d6d9de; border-radius: 999px;
 .rep-btn.icon { width: 40px; padding: 0; font-size: 22px; line-height: 1; }
 .rep-btn.small { min-height: 32px; padding: 0 10px; font-size: 13px; }
 .rep-card {
-  position: absolute; z-index: 11; left: 12px; right: 12px; bottom: calc(96px + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
+  position: absolute; z-index: 11; left: 12px; right: 12px; bottom: calc(96px + var(--mini-h, 0px) + var(--safe-bottom)); margin: 0 auto; max-width: 420px;
   padding: 12px 14px; border-radius: var(--radius); background: var(--paper); box-shadow: 0 4px 16px #0004;
   display: flex; flex-direction: column; gap: 10px; color: #1b1f24; font-size: 14px; line-height: 1.5;
 }
@@ -2780,7 +2780,7 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 .dock-hearts { display: flex; gap: 6px; }
 .dock-av { display: block; transform-origin: 50% 90%; }
 .heard-stack {
-  position: absolute; z-index: 12; left: calc(12px + var(--safe-left)); bottom: calc(112px + var(--safe-bottom));
+  position: absolute; z-index: 12; left: calc(12px + var(--safe-left)); bottom: calc(112px + var(--mini-h, 0px) + var(--safe-bottom));
   display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
 }
 .heard-stack .ta-heard { transition: transform 0.3s, opacity 0.3s; }

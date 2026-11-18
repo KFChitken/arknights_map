@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { T } from "@/i18n";
 
 /**
@@ -8,25 +8,30 @@ import { T } from "@/i18n";
  * another one (onBack) goes back to it on ×, Escape or a tap outside, so the
  * player lands where they were, say still able to touch back. head, say tabs,
  * takes the title's place at the top (the title still names the dialog), and
- * className marks a sheet laid out its own way (globals.css). onUp, a page within a sheet (the new 我的资料's): a ‹ at
- * the top left goes up to it, as Escape and a tap outside do, while × closes the whole.
+ * className marks a sheet laid out its own way (globals.css), and style is the sheet's own. onUp, a page within a sheet
+ * (the new 我的资料's): a ‹ at the top left goes up to it, as Escape and a tap outside do, while × closes the whole.
+ * shut: what the × is instead, for a sheet that shuts into something rather than closing (听歌's ⌄, into its bar).
  */
 export default function Sheet({
   title,
   head,
   className,
+  style,
   onClose,
   onBack,
   onUp,
+  shut,
   footer,
   children,
 }: {
   title: string;
   head?: ReactNode;
   className?: string;
+  style?: CSSProperties;
   onClose: () => void;
   onBack?: () => void;
   onUp?: () => void;
+  shut?: { icon: ReactNode; label: string };
   footer?: ReactNode;
   children: ReactNode;
 }) {
@@ -40,7 +45,7 @@ export default function Sheet({
 
   return (
     <div className={className ? `sheet-backdrop ${className}` : "sheet-backdrop"} onClick={close}>
-      <section className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <section className="sheet" role="dialog" aria-modal="true" aria-label={title} style={style} onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
           {onUp && (
             <button className="up" onClick={onUp} aria-label={T.common.back}>
@@ -48,8 +53,12 @@ export default function Sheet({
             </button>
           )}
           {head ?? <h2>{title}</h2>}
-          <button className="close" onClick={onUp ? onClose : close} aria-label={onBack && !onUp ? T.common.back : T.common.close}>
-            ×
+          <button
+            className={shut ? "close shut" : "close"}
+            onClick={onUp ? onClose : close}
+            aria-label={shut?.label ?? (onBack && !onUp ? T.common.back : T.common.close)}
+          >
+            {shut?.icon ?? "×"}
           </button>
         </header>
         <div className="sheet-body">{children}</div>

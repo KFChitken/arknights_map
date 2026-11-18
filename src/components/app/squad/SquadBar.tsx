@@ -23,8 +23,12 @@ export function useAbove(shown: boolean, up: number) {
     if (!shown) return;
     let last = "";
     const look = () => {
-      const r = document.querySelector("[data-chrome-bottom]")?.getBoundingClientRect();
-      const next: CSSProperties = r && r.height ? { bottom: Math.round(window.innerHeight - r.top + 10 + up) } : { top: 76 + up };
+      // the highest of all the layout marks along the bottom (听歌's little bar and its handle among them), as ListenOverlay
+      const tops = [...document.querySelectorAll("[data-chrome-bottom]")]
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.height > 0)
+        .map((r) => r.top);
+      const next: CSSProperties = tops.length ? { bottom: Math.round(window.innerHeight - Math.min(...tops) + 10 + up) } : { top: 76 + up };
       const k = JSON.stringify(next);
       if (k === last) return;
       last = k;

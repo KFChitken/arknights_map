@@ -14,12 +14,14 @@ import {
   LISTEN_ASK,
   LISTEN_GRAY,
   LISTEN_PAUSED,
+  needsTopUp,
   NO_ROOM,
   NO_SONG,
   NOT_LISTENING,
   QUEUE_MAX,
   QUIET_AFTER_LATER_MS,
   RANDOM_ADD,
+  RECENT_AVOID,
   ROOM_FULL,
   ROOM_GONE,
   ROOM_IDLE_MS,
@@ -68,9 +70,11 @@ import { cardsOf, declare, friendIdsOf, friendKey, profileOf, touch } from "./wo
  * never by an id, and by it is touched (碰), blocked or reported there (拉黑, 举报: src/lib/server/safety.ts). What a
  * room does goes to the phones in it at once, with what happened in it (live.ts tellListen): its songs (never anything
  * of who), that who is in it changed (each phone asks again, as each sees the others its own way), the 短评 of the last
- * second, and that it ended. 短评 are never written down. A room ends when its host ends or leaves it, goes off for more
- * than AWAY_MS, opens another or goes in at another; when its songs have been over ROOM_IDLE_MS, nobody is left, or it
- * has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the site goes gray. ROOM_KEEP_MS
+ * second, and that it ended. 短评 are never written down. Its songs never run out: one playing the last of them is given
+ * another at the end, at random (toppedUp, as the host changes them and every minute). A room ends when its host ends
+ * or leaves it, goes off for more than AWAY_MS, opens another or goes in at another; when its songs have been over
+ * ROOM_IDLE_MS (none could be added in time), nobody is left, or it has gone on ROOM_LIFE_MS; and every room ends when
+ * 听歌 is paused in the 管理台 or the site goes gray. ROOM_KEEP_MS
  * after, the room, who was in it and the invitations to it are deleted. Your 触须之交 see what you listen to while you
  * let them (show_listening: friendsListening), and may ask you to invite them (想一起听: askToListen, answerAsk).
  */
@@ -117,9 +121,16 @@ const handleOf = (v: unknown): number | null => (Number.isInteger(v) && (v as nu
 type Hearer = { userId: string; handle: number; hiddenFrom: number[] };
 type Held = { at: number; rows: Hearer[] };
 type Batch = { items: { h: number; r: number }[]; timer: ReturnType<typeof setTimeout> };
-const g = globalThis as unknown as { listenRoomMembers?: Map<string, Held>; listenRx?: Map<string, Batch>; listenToldHeard?: boolean };
+const g = globalThis as unknown as {
+  listenRoomMembers?: Map<string, Held>;
+  listenRx?: Map<string, Batch>;
+  listenToldHeard?: boolean;
+  listenRoomLately?: Map<string, string[]>;
+};
 const hearersHeld: Map<string, Held> = (g.listenRoomMembers ??= new Map());
 const batches: Map<string, Batch> = (g.listenRx ??= new Map());
+/** The songs each room played lately, as this process saw them (its songs drop those played as they change), the latest last */
+const lately: Map<string, string[]> = (g.listenRoomLately ??= new Map());
 
 async function hearersOf(roomId: string, now = Date.now()): Promise<Hearer[]> {
   const held = hearersHeld.get(roomId);
@@ -277,6 +288,7 @@ const soonest = (now: number) => sql`least(${listenNow.until}, ${new Date(now + 
 function tellEnd(roomId: string, ids: string[], why: RoomEnd) {
   forget(roomId);
   batches.delete(roomId);
+  lately.delete(roomId);
   tellListen(ids, { t: "end", room: roomId, why });
 }
 
@@ -300,26 +312,36 @@ async function mayListen(userId: string, now: number) {
 
 /**
  * A new room, the player its host, with the song given first (the one they play, or 新歌's first; 新歌's first when none
- * is), and invitations to the 触须之交 given (invite: their Friend ids). Out of the room they were in first.
+ * is), and invitations to the 触须之交 given (invite: their Friend ids). Out of the room they were in first. at: seconds
+ * into that song, which plays at once from there (a song playing alone goes on as the room's); else it waits for 开始.
  */
 export async function openRoom(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
   refuseNow(now);
-  const { id: roomId } = await newRoom(user, body.song, now);
+  const { id: roomId } = await newRoom(user, body.song, now, body.at);
   countStat(COUNTED.listenRoom, 1, now);
   const sent = body.invite === undefined ? [] : await inviteIn(user, roomId, body.invite, now);
   return { room: await roomView(roomId, user.id, now), sent, now };
 }
 
-/** A room of the player's own, with the song given first (新歌's first when none is), out of the one they were in first */
-async function newRoom(user: UserRow, given: unknown, now: number) {
+/**
+ * A room of the player's own, with the song given first (新歌's first when none is), out of the one they were in first;
+ * at: seconds into it, playing from there at once (and so given one more after it, as 待播 never runs out)
+ */
+async function newRoom(user: UserRow, given: unknown, now: number, at?: unknown) {
   // no song named (a 触须之交's card, before the list was looked at): 新歌's first
   const song = given == null ? await firstSong() : await songOf(given);
   if (!song) throw refuse(404, T.server.listen.noSong, NO_SONG);
   await mayListen(user.id, now);
+  const startedAt = typeof at === "number" && Number.isFinite(at) && at >= 0 && at < song.seconds ? now - Math.floor(at * 1000) : null;
+  const first: RoomSchedule = { queue: [song.id], idx: 0, startedAt, version: 0 };
+  const queue = startedAt === null ? first.queue : (toppedUp(first, "", [...(await songList()).byId.keys()], await secondsOf(), now) ?? first).queue;
   const { id, left } = await db.transaction(async (tx) => {
     await lockPlayer(tx, user.id);
     const left = await leaveIn(tx, user.id, now);
-    const [room] = await tx.insert(listenRooms).values({ hostId: user.id, createdAt: new Date(now), queue: [song.id] }).returning({ id: listenRooms.id });
+    const [room] = await tx
+      .insert(listenRooms)
+      .values({ hostId: user.id, createdAt: new Date(now), queue, startedAt: startedAt === null ? null : new Date(startedAt) })
+      .returning({ id: listenRooms.id });
     await tx.insert(listenMembers).values({ roomId: room.id, userId: user.id, handle: 1, via: "host", joinedAt: new Date(now) });
     return { id: room.id, left };
   });
@@ -621,7 +643,8 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
 /**
  * What the host does to the room's songs (src/lib/listen.ts changeQueue): start, next, restart, add a song, add
  * RANDOM_ADD at random from all of them (随机加: none already in its songs; told as an add), or go to a second of the
- * one playing (seek: everyone with it)
+ * one playing (seek: everyone with it). The last song playing after it is given one more in the same change (toppedUp:
+ * one version more in all, told once as the host's); ⏭ on the last song goes to the one it is given.
  */
 export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const change: QueueChange | null =
@@ -642,17 +665,22 @@ export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string
   refuseNow(now);
   if (typeof change === "object" && "add" in change && !(await songOf(change.add))) throw refuse(404, T.server.listen.noSong, NO_SONG);
   const seconds = await secondsOf();
-  const all = change === "random" ? [...(await songList()).byId.keys()] : [];
+  const all = [...(await songList()).byId.keys()];
   const result = await db.transaction(async (tx) => {
     const mine = await roomOfPlayer(tx, user.id);
     if (!mine) throw refuse(409, T.server.listen.noRoom, NO_ROOM);
     if (mine.room.hostId !== user.id) throw refuse(403, T.server.listen.notHost);
     const [room] = await tx.select().from(listenRooms).where(eq(listenRooms.id, mine.room.id)).for("update");
+    sawPlayed(room, seconds, now);
+    const was = scheduleOf(room);
+    // ⏭ on the last song: to the one 待播 gives it
+    const from = change === "next" && roomAt(was, seconds, now).phase === "playing" ? (toppedUp(was, room.id, all, seconds, now) ?? was) : was;
     const edit: QueueEdit = change === "random" ? { adds: pickAtRandom(all, new Set(room.queue), RANDOM_ADD) } : change;
-    const next = changeQueue(scheduleOf(room), edit, seconds, now);
-    if (next === "noNext") throw refuse(409, T.server.listen.noNext);
-    if (next === "full") throw refuse(409, fmt(T.server.listen.queueFull, { n: QUEUE_MAX }));
-    if (next === "same") return { room, next: null };
+    const changed = changeQueue(from, edit, seconds, now);
+    if (changed === "noNext") throw refuse(409, T.server.listen.noNext);
+    if (changed === "full") throw refuse(409, fmt(T.server.listen.queueFull, { n: QUEUE_MAX }));
+    if (changed === "same") return { room, next: null };
+    const next = toppedUp(changed, room.id, all, seconds, now) ?? changed;
     await tx
       .update(listenRooms)
       .set({ queue: next.queue, idx: next.idx, startedAt: next.startedAt === null ? null : new Date(next.startedAt), version: next.version })
@@ -681,6 +709,56 @@ function pickAtRandom(ids: readonly string[], not: ReadonlySet<string>, n: numbe
     pool.pop();
   }
   return out;
+}
+
+/**
+ * 待播 never runs out: a room playing the last of its songs, or with all of them over (needsTopUp), given one more at
+ * the end, as a change of its own (changeQueue: one added after all were over starts at once). From all of them at
+ * random: none of its songs from the one playing on, nor those it played lately (lately); none such left, any but the
+ * one playing. Its version as it was; null: none needed, or none to give.
+ */
+function toppedUp(s: RoomSchedule, roomId: string, all: readonly string[], seconds: (id: string) => number, now: number): RoomSchedule | null {
+  if (!needsTopUp(s, seconds, now)) return null;
+  const at = roomAt(s, seconds, now);
+  const i = at.phase === "playing" ? at.i : s.queue.length - 1;
+  const pick =
+    pickAtRandom(all, new Set([...s.queue.slice(i), ...(lately.get(roomId) ?? [])]), 1)[0] ?? pickAtRandom(all, new Set([s.queue[i]]), 1)[0];
+  if (!pick) return null;
+  const more = changeQueue(s, { adds: [pick] }, seconds, now);
+  return typeof more === "string" ? null : { ...more, version: s.version };
+}
+
+/** What a room played up to the song it is at now, kept by this process (the last RECENT_AVOID) so toppedUp passes over it */
+function sawPlayed(room: Room, seconds: (id: string) => number, now: number) {
+  const at = roomAt(scheduleOf(room), seconds, now);
+  if (at.phase === "ready") return;
+  const played = room.queue.slice(Math.max(0, room.idx), (at.phase === "playing" ? at.i : room.queue.length - 1) + 1);
+  const was = lately.get(room.id) ?? [];
+  lately.delete(room.id);
+  lately.set(room.id, [...was.filter((id) => !played.includes(id)), ...played].slice(-RECENT_AVOID));
+  if (lately.size > 5_000) lately.delete(lately.keys().next().value as string);
+}
+
+/** The sweep's: a room in need of a song (needsTopUp) given one, a version more, told as one added */
+async function topUp(roomId: string, all: readonly string[], seconds: (id: string) => number, now: number) {
+  const next = await db.transaction(async (tx) => {
+    const [room] = await tx.select().from(listenRooms).where(eq(listenRooms.id, roomId)).for("update");
+    if (!room || room.endedAt) return null;
+    const more = toppedUp(scheduleOf(room), room.id, all, seconds, now);
+    if (!more) return null;
+    const next = { ...more, version: room.version + 1 };
+    await tx
+      .update(listenRooms)
+      .set({ queue: next.queue, idx: next.idx, startedAt: next.startedAt === null ? null : new Date(next.startedAt), version: next.version })
+      .where(eq(listenRooms.id, room.id));
+    return next;
+  });
+  if (!next) return;
+  const rows = await hearersOf(roomId);
+  tellListen(
+    rows.map((r) => r.userId),
+    { t: "state", room: roomId, how: "add", ...next },
+  );
 }
 
 // ---- someone in the room: 碰, 拉黑, 举报 ----
@@ -881,8 +959,8 @@ export async function cameBack(userId: string) {
 /**
  * The main process, every minute: those gone off longer than AWAY_MS leave (a host's room ends); rooms end that are
  * over (ROOM_IDLE_MS after their last song), empty, older than ROOM_LIFE_MS, or all of them while 听歌 is paused or the
- * site is gray; and rooms over for ROOM_KEEP_MS go, with who was in them and the invitations to them. Says how many
- * ended.
+ * site is gray; a room going on that plays its last song (or whose songs are over) is given one more (topUp); and rooms
+ * over for ROOM_KEEP_MS go, with who was in them and the invitations to them. Says how many ended.
  */
 export async function sweepRooms(now = Date.now()) {
   const away = await db
@@ -908,6 +986,7 @@ export async function sweepRooms(now = Date.now()) {
     ).map((r) => [r.id, r.n]),
   );
   const seconds = await secondsOf();
+  let all: string[] | null = null;
   for (const room of open) {
     const at = roomAt(scheduleOf(room), seconds, now);
     const over =
@@ -917,7 +996,11 @@ export async function sweepRooms(now = Date.now()) {
       (at.phase === "done" && at.end <= now - ROOM_IDLE_MS)
         ? "idle"
         : null);
-    if (!over) continue;
+    if (!over) {
+      sawPlayed(room, seconds, now);
+      if (needsTopUp(scheduleOf(room), seconds, now)) await topUp(room.id, (all ??= [...(await songList()).byId.keys()]), seconds, now);
+      continue;
+    }
     await endRoom(room.id, over, now);
     ended += 1;
   }

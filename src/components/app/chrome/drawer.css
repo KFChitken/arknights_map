@@ -59,9 +59,15 @@
 /* 听歌's disco: a round tab after 听歌's, 「点我蹦迪」 inside it while that shows (the row would cut a bubble off) */
 .chrome-drawer .disco-chip { padding: 0 5px; }
 .chrome-drawer .disco-chip.with-hint { padding-right: 13px; }
-/* on a computer, beside 听歌's card in the panel */
-.chrome-drawer .dlisten-row { display: flex; align-items: center; gap: 8px; }
-.chrome-drawer .dlisten-row > .dcard { flex: 1 1 auto; width: auto; min-width: 0; }
+/*
+ * on a computer, 听歌's card is its little bar while a song is on and the player shut (ListenMini.tsx), edged in yellow,
+ * teal in a room; the round buttons in a row under it (their row is where 💬 and more go beside them, data-listen-anchor)
+ */
+.chrome-drawer .dlisten.mini { display: block; padding: 0; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.chrome-drawer .dlisten.mini.room-on { box-shadow: inset 0 0 0 1.5px #18a0a5; }
+.chrome-drawer .dlisten.mini .lmini-row { height: 54px; padding: 0 6px 0 8px; }
+.chrome-drawer .dlisten.mini .lmini-line { margin: 0 12px 8px; }
+.chrome-drawer .dlisten-tg { display: flex; align-items: center; gap: 8px; width: fit-content; min-width: 1px; min-height: 38px; }
 
 /* ---- the drawer ---- */
 .chrome-drawer .dock {
@@ -72,7 +78,23 @@
 /* while a roach is being put down: there, waiting */
 .chrome-drawer .idle > * { opacity: 0.4; }
 .chrome-drawer .dtop { flex: none; touch-action: none; }
+.chrome-drawer .dhead { position: relative; }
 .chrome-drawer .handle { display: block; width: 100%; height: 17px; padding: 0; border: 0; background: none; }
+/*
+ * 听歌's little bar (ListenMini.tsx): its handle a capsule at the left of this row, the bar across the middle where it
+ * was (the row 9px taller, out of the room left over above the buttons, so the drawer is not); pulled out, the little
+ * bar is the drawer's first row, under this one
+ */
+.chrome-drawer .with-mini .handle { height: 26px; }
+.chrome-drawer .lmini-pill {
+  position: absolute; z-index: 1; top: 3px; left: 0; display: inline-flex; align-items: center; gap: 5px; max-width: calc(50% - 26px);
+  height: 22px; padding: 0 8px 0 4px; border: 0; border-radius: 11px; background: #ffffff1f; color: #fff; font-size: 11.5px;
+  font-weight: 700; white-space: nowrap;
+}
+.chrome-drawer .lmini-pill .tt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chrome-drawer .lmini-pill .chev { flex: none; width: 13px; height: 13px; opacity: 0.8; }
+.chrome-drawer .lmini-pill.out { padding: 0 9px 0 6px; }
+.chrome-drawer .dtop .lmini { flex: none; }
 .chrome-drawer .handle::before { content: ""; display: block; width: 36px; height: 4px; margin: 7px auto 6px; border-radius: 2px; background: #ffffff3d; }
 .chrome-drawer .dstats {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 6px; font-size: 15px; font-weight: 700;

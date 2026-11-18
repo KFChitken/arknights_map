@@ -9,6 +9,7 @@ import RoachIcon from "../../RoachIcon";
 import { FriendsMark } from "../FriendsSheet";
 import { useInListenRoom } from "../listening";
 import { NoticeButton } from "../NoticeBoard";
+import { HudMiniRound, MiniStrip } from "./ListenMini";
 import {
   Chev,
   countsTap,
@@ -59,6 +60,8 @@ export default function HudChrome(p: ChromeProps) {
   const inRoom = useInListenRoom();
   const listen = sides && (!p.tutorial || inRoom) ? p.listen : null;
   const sponsor = sides && !p.tutorial ? p.sponsor : null;
+  // 听歌's little bar, tucked into the round buttons along the bottom or pulled out over them (MapApp.tsx says which)
+  const mini = p.listen?.mini ?? null;
   const bm = p.basemap;
   const col = useRef<HTMLDivElement>(null);
   const n = 2 + [p.squad, p.passes, p.study, bm, ui, listen, sponsor].filter(Boolean).length;
@@ -263,6 +266,13 @@ export default function HudChrome(p: ChromeProps) {
               {T.map.bar.friends}
             </span>
           </span>
+          {/* 听歌's little bar: its handle between 触须之交 and 我的蟑螂, and pulled out, over them all */}
+          {mini && <HudMiniRound out={mini === "out"} />}
+          {mini === "out" && p.listen && (
+            <div className="lmini-hud glass" data-chrome-bottom>
+              <MiniStrip onOpen={p.listen.onToggle} />
+            </div>
+          )}
           {me.main && (
             <span className="rb">
               <button className="ob glass" aria-label={T.map.bar.mine} onClick={me.onMine}>
@@ -359,7 +369,8 @@ function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> })
       <span className="lbl" aria-hidden="true">
         {listenWord(e)}
       </span>
-      {listen.disco && <DiscoButton kind="round" />}
+      {/* in the player too while that is open */}
+      {listen.disco && !listen.open && <DiscoButton kind="round" />}
     </span>
   );
 }
