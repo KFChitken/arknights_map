@@ -90,6 +90,7 @@ export default function ProfileSheet({
   onOpenSponsor,
   passes,
   listen = false,
+  haimao = false,
   onPassOnMap,
   onUnblock,
   onSave,
@@ -127,6 +128,8 @@ export default function ProfileSheet({
   passes?: PassesMe;
   /** 听歌 is open to the player (src/lib/server/listen.ts listenOpen): 让触须之交看到我在听什么 shows */
   listen?: boolean;
+  /** 香艳制作人 shows to the player (Me.haimao): her badge is counted in 我的称号 */
+  haimao?: boolean;
   /** Switch 地图卡片上挂出通行证; only called when the box was changed and the rest saved */
   onPassOnMap?: (on: boolean) => Promise<boolean>;
   onUnblock: (blockId: string) => void;
@@ -204,7 +207,7 @@ export default function ProfileSheet({
         {passes?.worn && <WornPassMini pass={passes.worn} holder={displayName(p)} />}
       </div>
       {passes?.worn && <WornPassLine pass={passes.worn} />}
-      {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} onOpen={() => onOpenBadges(p)} />}
+      {!tutorial && onOpenBadges && <MyBadgesRow badges={badges} worn={wornBadge} haimao={haimao} onOpen={() => onOpenBadges(p)} />}
       {!tutorial && onOpenRecords && (
         <button className="link-row" onClick={() => onOpenRecords(p)}>
           <span>

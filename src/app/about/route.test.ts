@@ -109,7 +109,8 @@ describe("/about", () => {
     for (const said of [
       `within ${DECLARATION_RADIUS_KM}&nbsp;km`,
       `up to ${MAX_CLONES} clones`,
-      `${BADGES.filter((b) => !b.unlisted).length} titles to earn`,
+      // 香艳制作人's not yet: HAIMAO is off here
+      `${BADGES.filter((b) => !b.unlisted && !b.guide).length} titles to earn`,
       `for ${DECLARATION_DAYS}&nbsp;days`,
       `up to ${RADAR_RADIUS_KM}&nbsp;km`,
       `after ${HELP_HOURS}&nbsp;hours`,

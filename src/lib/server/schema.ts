@@ -910,7 +910,7 @@ export const haimaoTouches = pgTable("haimao_touches", guideTouchColumns(), (t) 
  * (0–100, never going down) and the device day (from 04:00, deviceDay) a bold touch last raised it; how
  * many of her twelve scenes they have seen, the device day of the latest, and the answer they picked in
  * each (picks[i], 0–2, for day i + 1); when they first saw ALL END; and how many of her daily lines since
- * they have heard, with the device day of the latest.
+ * they have heard, with the device day of the latest (ALL END's own day, before the first).
  */
 export const haimaoPlayers = pgTable("haimao_players", {
   userId: uuid("user_id")

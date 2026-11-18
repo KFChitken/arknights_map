@@ -2,12 +2,13 @@ import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GUIDE_TOUCHES_PER_DAY } from "../guides";
 import { HAIMAO, HAIMAO_ID, HAIMAO_LINES, HAIMAO_LOVE_MAX, haimaoText } from "../haimao";
+import { answerLove, HAIMAO_BADGE, HAIMAO_DAYS } from "../haimaoStory";
 import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
 import { db } from "./db";
-import { answerKind } from "./haimao";
+import { answerKind, endStory, openStory, pickStory, todayOf } from "./haimao";
 import { pretend } from "./demo";
-import { admins, haimaoPlayers, haimaoSpins, haimaoTouches, users } from "./schema";
+import { admins, haimaoPlayers, haimaoSpins, haimaoTouches, userBadges, users } from "./schema";
 import * as world from "./world";
 
 vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -171,5 +172,141 @@ describe("香艳制作人 on the server", () => {
     await deleteAccount((await db.select().from(users).where(eq(users.id, me)))[0]);
     expect(await db.select().from(haimaoPlayers)).toEqual([]);
     expect(await db.select().from(haimaoTouches)).toEqual([]);
+  });
+});
+
+// ---- 今日剧情 ----
+
+/** The day their story last moved on, and their line of the day, a day back: their next look is a new day's */
+async function storyNextDay(id: string) {
+  await db.update(haimaoPlayers).set({ dayOn: "2000-01-01", chatOn: "2000-01-01" }).where(eq(haimaoPlayers.userId, id));
+}
+const hasBadge = async (id: string) =>
+  (await db.select().from(userBadges).where(eq(userBadges.userId, id))).some((b) => b.badge === HAIMAO_BADGE);
+/** Twelve scenes answered (the last today), as a player who came every day */
+async function twelveDone(id: string, love = 60) {
+  await openStory(id);
+  await db
+    .update(haimaoPlayers)
+    .set({ love, days: HAIMAO_DAYS, dayOn: "2000-01-01", picks: Array.from({ length: HAIMAO_DAYS }, (_, i) => i % 3) })
+    .where(eq(haimaoPlayers.userId, id));
+}
+
+describe("香艳制作人's story", () => {
+  it("opens day 1 to a new player and takes one answer, with the 好感度 it brings; another changes nothing", async () => {
+    const me = await signUp("me@example.com");
+    expect(await openStory(me)).toEqual({ love: 0, days: 0, picks: [], end: false, today: { kind: "scene", day: 1, picked: null } });
+    // the scene opened is not a day used: nothing changes until it is answered
+    expect(await player(me)).toMatchObject({ days: 0, dayOn: null });
+    expect(await pickStory(me, 1, 0)).toEqual({
+      love: answerLove(1, 0),
+      days: 1,
+      picks: [0],
+      end: false,
+      today: { kind: "scene", day: 1, picked: 0 },
+      plus: 8,
+    });
+    // a second tap, another answer, or the next day's scene the same day: as things stand, nothing more
+    expect(await pickStory(me, 1, 2)).toMatchObject({ love: 8, picks: [0], plus: 0 });
+    expect(await pickStory(me, 2, 0)).toMatchObject({ love: 8, days: 1, plus: 0 });
+    expect((await openStory(me)).today).toEqual({ kind: "scene", day: 1, picked: 0 });
+    expect((await herCard(me))!.love).toBe(8);
+  });
+
+  it("opens the next scene the next day, however many days later, and adds what each answer brings", async () => {
+    const me = await signUp("me@example.com");
+    await openStory(me);
+    await pickStory(me, 1, 1);
+    await storyNextDay(me);
+    expect((await openStory(me)).today).toEqual({ kind: "scene", day: 2, picked: null });
+    // yesterday's page, left open: its answer is not taken today
+    expect(await pickStory(me, 1, 0)).toMatchObject({ days: 1, love: 5, plus: 0 });
+    expect(await pickStory(me, 2, 2)).toMatchObject({ love: 8, days: 2, picks: [1, 2], plus: 3 });
+    // a bold touch the same day still adds its own
+    await touch(me, true);
+    expect((await openStory(me)).love).toBe(9);
+  });
+
+  it("refuses what is not an answer to a scene", async () => {
+    const me = await signUp("me@example.com");
+    for (const [day, answer] of [
+      [0, 0],
+      [13, 0],
+      [1, 3],
+      [1, -1],
+      [1.5, 0],
+      ["1", "x"],
+      [null, null],
+    ]) {
+      await expect(pickStory(me, day, answer), `${day} ${answer}`).rejects.toThrow("请求格式不对。");
+    }
+  });
+
+  it("waits after the twelfth for ALL END, on any day: her 好感度 to 100 and the badge, once", async () => {
+    const me = await signUp("me@example.com");
+    await twelveDone(me);
+    await db.update(haimaoPlayers).set({ days: HAIMAO_DAYS - 1 }).where(eq(haimaoPlayers.userId, me));
+    expect((await openStory(me)).today).toEqual({ kind: "scene", day: 12, picked: null });
+    // not before the twelfth is answered
+    expect(await endStory(me)).toMatchObject({ end: false, love: 60, plus: 0 });
+    expect(await pickStory(me, 12, 1)).toMatchObject({ love: 65, days: 12, today: { kind: "scene", day: 12, picked: 1 }, plus: 5 });
+    // days later it still waits
+    await storyNextDay(me);
+    expect((await openStory(me)).today).toEqual({ kind: "scene", day: 12, picked: 1 });
+    expect(await hasBadge(me)).toBe(false);
+    expect(await endStory(me)).toMatchObject({ love: HAIMAO_LOVE_MAX, end: true, today: { kind: "end" }, plus: 35 });
+    expect(await hasBadge(me)).toBe(true);
+    // again: nothing more, and the day is ALL END's
+    expect(await endStory(me)).toMatchObject({ love: HAIMAO_LOVE_MAX, end: true, plus: 0 });
+    expect((await openStory(me)).today).toEqual({ kind: "end" });
+    expect(await pickStory(me, 12, 0)).toMatchObject({ love: HAIMAO_LOVE_MAX, picks: expect.arrayContaining([1]), plus: 0 });
+    expect((await herCard(me))!.love).toBe(HAIMAO_LOVE_MAX);
+  });
+
+  it("then has one line a day, the ten in turn from the first, the same one all day", async () => {
+    const me = await signUp("me@example.com");
+    await twelveDone(me);
+    await endStory(me);
+    expect((await openStory(me)).today).toEqual({ kind: "end" });
+    const lines: number[] = [];
+    for (let day = 0; day < 3; day++) {
+      await storyNextDay(me);
+      const first = (await openStory(me)).today;
+      expect((await openStory(me)).today).toEqual(first);
+      if (first.kind === "chat") lines.push(first.line);
+    }
+    expect(lines).toEqual([0, 1, 2]);
+    // nothing to answer, and her 好感度 stays full
+    expect(await pickStory(me, 1, 0)).toMatchObject({ love: HAIMAO_LOVE_MAX, plus: 0 });
+    // the badge, had it failed to come with ALL END, comes at the next look
+    await db.delete(userBadges).where(eq(userBadges.userId, me));
+    await openStory(me);
+    expect(await hasBadge(me)).toBe(true);
+  });
+
+  it("knows what today holds from what is kept", () => {
+    const p = { days: 0, dayOn: null, picks: [] as number[], endAt: null, chats: 0, chatOn: null };
+    expect(todayOf(p, "2026-11-18")).toEqual({ kind: "scene", day: 1, picked: null });
+    expect(todayOf({ ...p, days: 3, dayOn: "2026-11-18", picks: [0, 1, 2] }, "2026-11-18")).toEqual({ kind: "scene", day: 3, picked: 2 });
+    expect(todayOf({ ...p, days: 3, dayOn: "2026-11-17", picks: [0, 1, 2] }, "2026-11-18")).toEqual({ kind: "scene", day: 4, picked: null });
+    expect(todayOf({ ...p, days: 12, dayOn: "2026-11-01", picks: Array(12).fill(0) }, "2026-11-18")).toEqual({ kind: "scene", day: 12, picked: 0 });
+    const ended = { ...p, days: 12, dayOn: "2026-11-01", endAt: new Date(), chatOn: "2026-11-17" };
+    expect(todayOf(ended, "2026-11-17")).toEqual({ kind: "end" });
+    expect(todayOf(ended, "2026-11-18")).toEqual({ kind: "chat", line: 0 });
+    expect(todayOf({ ...ended, chats: 4, chatOn: "2026-11-18" }, "2026-11-18")).toEqual({ kind: "chat", line: 3 });
+  });
+
+  it("is not there for a player she does not show to, and forgets their story with them", async () => {
+    const me = await signUp("me@example.com");
+    await twelveDone(me);
+    await endStory(me);
+    vi.stubEnv("HAIMAO", "admins");
+    await expect(openStory(me)).rejects.toThrow("没有这个功能。");
+    await expect(pickStory(me, 1, 0)).rejects.toThrow("没有这个功能。");
+    await expect(endStory(me)).rejects.toThrow("没有这个功能。");
+    vi.stubEnv("HAIMAO", "on");
+    await pretend(me, "haimao");
+    expect(await hasBadge(me)).toBe(false);
+    expect((await openStory(me)).today).toEqual({ kind: "scene", day: 1, picked: null });
   });
 });

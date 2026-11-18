@@ -1,7 +1,8 @@
 import { en } from "@/i18n/en";
-import { BADGES } from "@/lib/badges";
+import { earnableCount } from "@/lib/badges";
 import { GRAY_CSS } from "@/lib/grayMode";
 import { HELP_HOURS } from "@/lib/help";
+import { haimaoMode } from "@/lib/server/env";
 import { DECLARATION_DAYS, DECLARATION_RADIUS_KM, KEEP_ACTIVITY_DAYS, MAX_CLONES, MIN_SIGNUP_AGE, RADAR_RADIUS_KM } from "@/lib/rules";
 import { INTRO_TEMPLATE } from "./introTemplate";
 
@@ -37,8 +38,8 @@ export function introFills(english: boolean, gray: boolean, name = siteName()): 
     declDays: String(DECLARATION_DAYS),
     radarKm: String(RADAR_RADIUS_KM),
     helpHours: String(HELP_HOURS),
-    // the thanks for sponsoring are left out: they are not earned in play
-    badgeCount: String(BADGES.filter((b) => !b.unlisted).length),
+    // the thanks for sponsoring are left out: they are not earned in play; and 香艳制作人's until she is out for everyone
+    badgeCount: String(earnableCount(haimaoMode() === "on")),
     keepDays: String(KEEP_ACTIVITY_DAYS),
   };
 }

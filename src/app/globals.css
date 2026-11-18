@@ -522,6 +522,117 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 /* her face in her introduction, cut from her picture as she was first drawn */
 .hm-intro-pic { position: relative; display: block; width: 96px; height: 96px; border: 2px solid #d5dde8; border-radius: 50%; background: #eee8f8; overflow: hidden; }
 .hm-intro-pic img { position: absolute; left: -104%; top: -10.4%; width: 300%; max-width: none; height: auto; }
+/* her card's own buttons: 今日剧情 first */
+.hm-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.hm-acts .pill { padding: 6px 14px; border-color: #e98aab; color: #a3264f; font-weight: 700; }
+/*
+ * 今日剧情 (HaimaoStory.tsx): a stage as the design's, one fixed look whatever the theme. 16:10, square on a phone,
+ * the street behind cut to fit from its middle; her picture to the right, what she says along the bottom.
+ */
+@media (min-width: 720px) {
+  .hm-story .sheet { width: min(760px, calc(100vw - 48px), calc((var(--vv-h, 100svh) * 0.82 - 150px) * 1.6 + 32px)); max-width: none; }
+}
+.hm-st {
+  position: relative; overflow: hidden; isolation: isolate; width: 100%; aspect-ratio: 16 / 10; border-radius: 16px;
+  background: #8ccbf0; color: #16213b; -webkit-user-select: none; user-select: none;
+}
+@media (max-width: 560px) { .hm-st { aspect-ratio: 1 / 1; } }
+.hm-st-bg { position: absolute; inset: 0; z-index: 0; background-position: center; background-size: cover; background-repeat: no-repeat; }
+.hm-st-bg.dusk { opacity: 0; background-color: #e8a27c; transition: opacity 0.8s; }
+.hm-st-bg.dusk.on { opacity: 1; }
+.hm-st-hud {
+  position: absolute; z-index: 3; top: 3.5%; left: 3%; right: 3%; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; pointer-events: none;
+}
+.hm-st-meter {
+  display: flex; align-items: center; gap: 7px; min-width: 0; padding: 4px 12px 4px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92); color: #7a1f42; font-size: 13px; font-weight: 700;
+}
+.hm-st-meter svg { flex: none; width: 16px; height: 15px; }
+.hm-st-meter b { font-variant-numeric: tabular-nums; }
+.hm-st-bar { flex: none; width: clamp(48px, 13vw, 120px); height: 8px; border-radius: 99px; background: #f5cddb; overflow: hidden; }
+.hm-st-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ff7aa2, #e0447a); transition: width 0.6s ease; }
+.hm-st-day { padding: 4px 12px; border-radius: 999px; background: rgba(22, 33, 59, 0.8); color: #fff; font-size: 13px; white-space: nowrap; }
+.hm-st-lh { position: absolute; z-index: 1; right: 1%; top: 5%; height: 118%; aspect-ratio: 625 / 750; pointer-events: none; }
+.hm-st-lh img { position: absolute; left: 0; top: 0; width: 100%; height: auto; opacity: 0; transition: opacity 0.18s; }
+.hm-st-lh img.on { opacity: 1; }
+@media (max-width: 560px) { .hm-st-lh { height: 100%; right: -10%; top: 9%; } }
+/* her Q figure, where her pictures are off */
+.hm-st-q { position: absolute; z-index: 1; right: 8%; bottom: 24%; width: 36%; aspect-ratio: 1; }
+.hm-st-prop {
+  position: absolute; z-index: 2; right: 37%; bottom: 16%; width: 12%; opacity: 0; pointer-events: none;
+  transform: translateY(12px) rotate(-12deg); transition: opacity 0.3s, transform 0.4s;
+}
+.hm-st-prop.on { opacity: 1; transform: rotate(-12deg); }
+.hm-st-prop svg { display: block; width: 100%; height: auto; }
+.hm-st-prop.dice { right: 38%; bottom: 30%; width: 11%; }
+.hm-st-prop.hammer { right: 35%; bottom: 27%; width: 17%; }
+/* on a square stage the staff would stand behind what she says */
+@media (max-width: 560px) { .hm-st-prop.staff { bottom: 28%; } }
+.hm-st-eggs { position: absolute; z-index: 2; left: 6%; bottom: 33%; width: 42%; display: flex; justify-content: space-between; pointer-events: none; }
+.hm-st-eggs svg { width: 30%; height: auto; overflow: visible; }
+.hm-st-eggs .top { transform-box: fill-box; transform-origin: 50% 100%; transition: transform 0.35s ease; }
+.hm-st-eggs .cracked .top { transform: translate(0, -16px) rotate(-22deg); }
+.hm-st-eggs text { opacity: 0; transition: opacity 0.25s; }
+.hm-st-eggs .cracked text { opacity: 1; }
+.hm-st-choices {
+  position: absolute; z-index: 5; left: 50%; top: 15%; width: min(78%, 440px); transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+}
+@media (max-width: 560px) { .hm-st-choices { top: 21%; } }
+.hm-st-choices button {
+  padding: 7px 14px; border: 2px solid #e98aab; border-radius: 12px; background: rgba(255, 255, 255, 0.96); color: #1c2440;
+  font-size: clamp(13.5px, 2vw, 15.5px); line-height: 1.4; text-align: center; cursor: pointer;
+}
+.hm-st-choices button:hover, .hm-st-choices button:focus-visible { border-color: #d13a6b; background: #ffeef4; outline: none; }
+.hm-st-box {
+  position: absolute; z-index: 4; left: 3%; right: 3%; bottom: 3.5%; display: block; width: auto; min-height: 28%;
+  padding: 18px 16px 22px; border: 2px solid #e98aab; border-radius: 14px; background: rgba(255, 253, 254, 0.95);
+  color: #1c2440; font-size: clamp(14px, 2.1vw, 16.5px); font-weight: 400; line-height: 1.6; text-align: left; cursor: pointer;
+}
+.hm-st-box:focus-visible { outline: 3px solid #1b5e8f; outline-offset: 2px; }
+.hm-st-name {
+  position: absolute; left: 14px; top: -15px; padding: 3px 12px; border-radius: 8px; background: #d13a6b; color: #fff;
+  font-size: 15px; font-weight: 800; line-height: 1.3;
+}
+.hm-st-text { display: block; }
+.hm-st-text.narr { color: #5a6681; }
+.hm-st-more { position: absolute; right: 12px; bottom: 5px; color: #c0577c; font-size: 12px; animation: hm-st-blink 1.1s steps(2, end) infinite; }
+@keyframes hm-st-blink { 50% { opacity: 0; } }
+.hm-st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.hm-st-float {
+  position: absolute; z-index: 6; left: 5%; top: 13%; color: #e0447a; font-size: 24px; font-weight: 900; opacity: 0; pointer-events: none;
+  text-shadow: 0 2px 0 #fff, 0 0 8px #fff; animation: hm-st-float 1.3s ease forwards;
+}
+@keyframes hm-st-float {
+  0% { opacity: 0; transform: translateY(10px) scale(0.8); }
+  20% { opacity: 1; transform: translateY(0) scale(1.12); }
+  100% { opacity: 0; transform: translateY(-28px) scale(1); }
+}
+.hm-st-dm { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
+.hm-st-dm span {
+  position: absolute; left: 100%; color: #fff; font-size: clamp(14px, 2.4vw, 19px); font-weight: 700; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); animation: hm-st-dm 5s linear both;
+}
+.hm-st-dm span.still { animation: none; }
+@keyframes hm-st-dm { from { transform: translateX(0); } to { transform: translateX(calc(-1 * var(--w, 800px) - 100%)); } }
+.hm-st-end {
+  position: absolute; inset: 0; z-index: 7; display: grid; place-items: center; padding: 16px; text-align: center;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 244, 210, 0.97), rgba(255, 214, 231, 0.95));
+}
+.hm-st-end > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hm-st-end p { margin: 0; }
+.hm-st-end img { width: 120px; height: 120px; }
+@media (max-width: 560px) { .hm-st-end img { width: 96px; height: 96px; } }
+.hm-st-end-t { color: #7a1f42; font-size: clamp(26px, 5vw, 42px); font-weight: 900; line-height: 1.1; }
+.hm-st-end-s { color: #4a1a30; font-size: 15px; font-weight: 700; }
+.hm-st-end-n { color: #6b4a58; font-size: 13px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) {
+  .hm-st-bg.dusk, .hm-st-lh img, .hm-st-prop, .hm-st-eggs .top, .hm-st-eggs text, .hm-st-bar i { transition: none; }
+  .hm-st-more { animation: none; }
+  .hm-st-float { animation: hm-st-float-still 1.3s linear forwards; }
+  @keyframes hm-st-float-still { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+}
 /* 佩丽卡监督's 鬼火 under her as she rides up (guideMarker.ts), fading once she stops */
 .guide-bike { position: absolute; z-index: -1; left: -25%; bottom: -16%; width: 150%; height: 70%; opacity: 0; transition: opacity 0.6s; pointer-events: none; }
 .guide-bike svg { display: block; width: 100%; height: 100%; overflow: visible; }

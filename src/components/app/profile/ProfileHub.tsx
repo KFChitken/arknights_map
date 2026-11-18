@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { fmt, fmtParts, localPath, T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { logoutOthers } from "@/lib/authClient";
-import { AWAY_DAYS, badgeById, BADGES } from "@/lib/badges";
+import { AWAY_DAYS, badgeById, badgeTotal } from "@/lib/badges";
 import { GAME_NAMES, GAMES, SERVERS, type Game } from "@/lib/games";
 import { REAL_LOOK_OFFERED } from "@/lib/look";
 import { CHARACTERS } from "@/lib/operators";
@@ -158,8 +158,8 @@ function HomePage({
           title={t.rows.badges}
           hint={
             worn
-              ? fmt(t.rows.badgesWorn, { n: me.badges.length, all: BADGES.length, name: badgeById(worn.id)?.name ?? "" })
-              : fmt(t.rows.badgesHint, { n: me.badges.length, all: BADGES.length })
+              ? fmt(t.rows.badgesWorn, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao)), name: badgeById(worn.id)?.name ?? "" })
+              : fmt(t.rows.badgesHint, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao)) })
           }
           side={worn ? <BadgePill badge={worn} /> : undefined}
           onClick={() => onOpenBadges(edit)}

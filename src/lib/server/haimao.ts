@@ -1,14 +1,16 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { T } from "@/i18n";
 import { addLove, HAIMAO, HAIMAO_BOLD_LOVE, HAIMAO_LIFT_FROM, HAIMAO_LIFT_ONE_IN, HAIMAO_LOVE_MAX, haimaoRoach } from "../haimao";
+import { answerLove, HAIMAO_BADGE, HAIMAO_DAYS, type HaimaoStep, type HaimaoStory, type HaimaoToday } from "../haimaoStory";
 import { WorldError, type HaimaoItem, type HaimaoMe, type TouchResult } from "../world/types";
 import { isModHere, isOwnerEmail } from "./admins";
+import { award } from "./badges";
 import { db } from "./db";
 import { haimaoMode } from "./env";
 import { deviceDay, guideFriend, guideTouches, isUniqueViolation, lockPlayer, type Exec, type GuideRow, type GuideTable } from "./guides";
-import { haimaoPlayers, haimaoSpins, haimaoTouches, users, type UserRow } from "./schema";
+import { haimaoPlayers, haimaoSpins, haimaoTouches, userBadges, users, type UserRow } from "./schema";
 
 /**
  * 香艳制作人 on the server (src/lib/haimao.ts): her answers to each player's touches, kept in
@@ -159,12 +161,103 @@ export async function haimaoOf(u: Pick<UserRow, "id" | "email" | "haimaoFriendSi
   };
 }
 
-/** 清掉我和香艳制作人的记录 (local testing only): as if they had never met her. */
+// ---- 今日剧情: her story (src/lib/haimaoStory.ts) ----
+
+type PlayerRow = typeof haimaoPlayers.$inferSelect;
+
+/**
+ * What today holds for a player, by their row and their device day: after ALL END, ALL END itself on its own day,
+ * then their line of the day (chats counts the lines heard, chat_on the day of the latest; a day not looked at yet
+ * holds the next one); before it, their scene of the day, the twelfth's waiting for ALL END on any day.
+ */
+export function todayOf(p: Pick<PlayerRow, "days" | "dayOn" | "picks" | "endAt" | "chats" | "chatOn">, day: string): HaimaoToday {
+  if (p.endAt) {
+    if (p.chatOn !== day) return { kind: "chat", line: p.chats };
+    return p.chats > 0 ? { kind: "chat", line: p.chats - 1 } : { kind: "end" };
+  }
+  const seenToday = p.days > 0 && (p.dayOn === day || p.days >= HAIMAO_DAYS);
+  if (seenToday) return { kind: "scene", day: p.days, picked: p.picks[p.days - 1] ?? null };
+  return { kind: "scene", day: p.days + 1, picked: null };
+}
+
+const storyOf = (p: PlayerRow, day: string): HaimaoStory => ({
+  love: p.love,
+  days: p.days,
+  picks: p.picks.slice(0, p.days),
+  end: Boolean(p.endAt),
+  today: todayOf(p, day),
+});
+
+/** One of the player's story moves, on their row locked until it is done (lockPlayer, as their touches take it) */
+async function withPlayer<R>(userId: string, fn: (tx: Exec, p: PlayerRow) => Promise<R>) {
+  return db.transaction(async (tx) => {
+    await lockPlayer(tx, userId);
+    return fn(tx, await haimaoRow(tx, userId));
+  });
+}
+
+const setPlayer = async (tx: Exec, userId: string, values: Partial<PlayerRow>) =>
+  (await tx.update(haimaoPlayers).set(values).where(eq(haimaoPlayers.userId, userId)).returning())[0];
+
+/**
+ * 今日剧情 opened: what today holds. After ALL END, the day's first look moves their line on to the next, which the
+ * day then keeps; the badge is looked to as well, in case giving it failed when ALL END was seen.
+ */
+export async function openStory(userId: string, offsetMin?: unknown): Promise<HaimaoStory> {
+  await mustBeOpen(userId);
+  const { day } = deviceDay(offsetMin);
+  const p = await withPlayer(userId, (tx, p) =>
+    p.endAt && p.chatOn !== day ? setPlayer(tx, userId, { chats: p.chats + 1, chatOn: day }) : Promise.resolve(p),
+  );
+  if (p.endAt) await award(userId, [HAIMAO_BADGE]);
+  return storyOf(p, day);
+}
+
+/**
+ * Their answer (0–2) to day n's scene: kept, with the 好感度 it brings (src/lib/haimaoStory.ts answerLove), only when
+ * that is the scene today holds and it is not answered yet; anything else (a second tap, a page left open from
+ * yesterday) changes nothing, and is told how things stand.
+ */
+export async function pickStory(userId: string, n: unknown, k: unknown, offsetMin?: unknown): Promise<HaimaoStep> {
+  await mustBeOpen(userId);
+  const day = Number(n);
+  const pick = Number(k);
+  if (!Number.isInteger(day) || day < 1 || day > HAIMAO_DAYS || !Number.isInteger(pick) || pick < 0 || pick > 2) {
+    throw new WorldError(T.server.common.badRequest);
+  }
+  const today = deviceDay(offsetMin).day;
+  return withPlayer(userId, async (tx, p) => {
+    const now = todayOf(p, today);
+    if (now.kind !== "scene" || now.day !== day || now.picked !== null) return { ...storyOf(p, today), plus: 0 };
+    const love = addLove(p.love, answerLove(day, pick));
+    const q = await setPlayer(tx, userId, { love, days: day, dayOn: today, picks: [...p.picks.slice(0, day - 1), pick] });
+    return { ...storyOf(q, today), plus: love - p.love };
+  });
+}
+
+/**
+ * ALL END, once the twelfth scene is answered, on that day or any after: her 好感度 to the top, the day theirs for it
+ * (their lines of a day start the next), and the badge 被海猫 all 了. Once; asked again, it changes nothing.
+ */
+export async function endStory(userId: string, offsetMin?: unknown): Promise<HaimaoStep> {
+  await mustBeOpen(userId);
+  const today = deviceDay(offsetMin).day;
+  const { p, plus } = await withPlayer(userId, async (tx, p) => {
+    if (p.endAt || p.days < HAIMAO_DAYS) return { p, plus: 0 };
+    const q = await setPlayer(tx, userId, { love: HAIMAO_LOVE_MAX, endAt: new Date(), chats: 0, chatOn: today });
+    return { p: q, plus: HAIMAO_LOVE_MAX - p.love };
+  });
+  if (p.endAt) await award(userId, [HAIMAO_BADGE]);
+  return { ...storyOf(p, today), plus };
+}
+
+/** 清掉我和香艳制作人的记录 (local testing only): as if they had never met her, her badge gone too. */
 export async function forgetHaimao(userId: string) {
   await db.transaction(async (tx) => {
     await tx.update(users).set({ haimaoFriendSince: null }).where(eq(users.id, userId));
     await tx.delete(haimaoTouches).where(eq(haimaoTouches.userId, userId));
     await tx.delete(haimaoPlayers).where(eq(haimaoPlayers.userId, userId));
     await tx.delete(haimaoSpins).where(eq(haimaoSpins.userId, userId));
+    await tx.delete(userBadges).where(and(eq(userBadges.userId, userId), eq(userBadges.badge, HAIMAO_BADGE)));
   });
 }

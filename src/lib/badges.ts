@@ -132,6 +132,11 @@ export type Badge = {
   unlisted?: true;
   /** A thanks for sponsoring the servers (支持舟P地图, src/lib/sponsor.ts): the owner gives these together, whatever was given */
   sponsor?: true;
+  /**
+   * 香艳制作人's (src/lib/haimao.ts): on the wall, and counted on the intro page, only where she shows (HAIMAO,
+   * src/lib/server/env.ts), and for anyone who holds it
+   */
+  guide?: "haimao";
 };
 
 /** 千里传须: the two main roaches this far apart when two players become 触须之交 */
@@ -1282,6 +1287,27 @@ export const BADGES: Badge[] = [
     goal: { count: "guideFriends", n: 4 },
     pictureArt: "badge-fullsquad",
   },
+  // ALL END of 香艳制作人's story (src/lib/haimaoStory.ts): a gold medal, her gull on top
+  {
+    id: "haimaoall",
+    get name() {
+      return T.lib.badges.haimaoall.name;
+    },
+    code: "GD-HAIMAO-ALL",
+    series: "guides",
+    get condition() {
+      return T.lib.badges.haimaoall.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.haimaoall.lockedHint;
+    },
+    // her last line of ALL END, word for word
+    get quote() {
+      return T.lib.badges.haimaoall.quote;
+    },
+    pill: { background: "#fff4d1", color: "#7a1f42", border: "1.5px solid #f2c230" },
+    guide: "haimao",
+  },
 ];
 
 export function badgeById(id: string) {
@@ -1321,12 +1347,22 @@ export const lockedText = (b: Badge, counts: Record<BadgeCount, number>) =>
 /**
  * The badges the wall lists: every lasting one, of the event badges only those
  * earned or on offer now, a timed one only while it is held, and an unlisted one
- * only once had. Past events nobody earned stay out of sight.
+ * only once had. Past events nobody earned stay out of sight, and 香艳制作人's
+ * where she does not show (haimao: she shows to this player).
  */
-export function wallBadges(earned: Set<string>, now = Date.now()) {
+export function wallBadges(earned: Set<string>, now = Date.now(), haimao = false) {
   const onNow = new Set(activeEvents(now).flatMap((e) => (e.badge ? [e.badge] : [])));
-  return BADGES.filter((b) => earned.has(b.id) || (b.series === "event" ? onNow.has(b.id) : !b.days && !b.unlisted));
+  return BADGES.filter(
+    (b) => earned.has(b.id) || ((haimao || b.guide !== "haimao") && (b.series === "event" ? onNow.has(b.id) : !b.days && !b.unlisted)),
+  );
 }
+
+/** How many badges there are to earn, as the intro page counts them: not the thanks for sponsoring, nor hers where she does not show */
+export const earnableCount = (haimao: boolean) => BADGES.filter((b) => !b.unlisted && (haimao || b.guide !== "haimao")).length;
+
+/** How many badges there are, as 我的资料 and 我的记录 count them: 香艳制作人's only for a player she shows to (haimao), or who holds it */
+export const badgeTotal = (earned: { id: string }[], haimao: boolean) =>
+  BADGES.filter((b) => haimao || b.guide !== "haimao" || earned.some((e) => e.id === b.id)).length;
 
 /**
  * Counts a player is nudged about: 触须之交, responders, and days (of declaring, responding, the radar, nights by

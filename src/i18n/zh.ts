@@ -796,7 +796,7 @@ export const zh = {
         listenB: "听歌：",
         squad: "{b}你开房间时选的服务器、难度和标签，和房间里每个人选的核心盟约和策略，登录的舟P在列表上能看到（显示房主的名字，和在卫戍名片里选了『列表上显示我的名字』的人的名字）；同盟密钥只给进了房间的人看。谁进过哪个房间、谁邀请了谁、谁请谁离开了房间、谁点了『准备』、每人这局标的核心盟约、策略和附加盟约、每人的蟑螂在房间里一直保持的动作、房间里放过和点过的歌，房间结束 24 小时后删除。快捷语句不保存，只记每天一共发了多少句；挥手、击掌、贴贴这些一下就完的动作也不保存。卫戍名片（核心盟约、策略、难度偏好，和列表上显示不显示名字）存在你的账号里，你进了房间才给别人看，清空或注销账号就删除。",
         squadB: "一起卫戍：",
-        haimao: "{b}你和她之间的触碰（偷偷还是大胆、什么时候）和她回你的话、你们成为触须之交的时间；她对你的好感度（0 到 100，只涨不掉），和今天大胆碰她加过好感度没有。香艳制作人不是真人，是粉丝玩梗，不是本人，和鹰角没关系；这些记录只有你自己看得到。",
+        haimao: "{b}你和她之间的触碰（偷偷还是大胆、什么时候）和她回你的话、你们成为触须之交的时间；她对你的好感度（0 到 100，只涨不掉），和今天大胆碰她加过好感度没有；和她聊剧情聊到第几天、每天选了哪个回答、看没看过 ALL END、每天一句轮到第几句。香艳制作人不是真人，是粉丝玩梗，不是本人，和鹰角没关系；这些记录只有你自己看得到。",
         haimaoB: "香艳制作人：",
         away: "{b}佩丽卡监督第一次出现时，会问你能不能记时间。你点「好」以后，{site}会记下你最后一次在看网站的时间，精确到秒：网页开着的时候，大约每分钟告诉服务器一声「还在」，切走或关掉时再说一声「走了」。这个时间只存一个，每次覆盖旧的，只用来让她告诉你离开了多久；她报时的消息只留最近 5 条。别人看不到，管理页也不显示，不记 IP。在「资料」里关掉「佩丽卡的离开计时」，就不再记，已经存的时间和她报时的消息和监督周报也一起删掉。",
         awayB: "佩丽卡监督的离开计时（你同意了才记）。",
@@ -1083,6 +1083,26 @@ export const zh = {
       gull: "点她头上的海鸥",
       introTitle: "香艳制作人来了",
       goSee: "去找她",
+      /** On her card, and the title of what it opens: the day's scene of her story, or after ALL END the day's line */
+      today: "今日剧情",
+      stage: {
+        /** The corner of the stage: which scene this is */
+        day: "第 {n} 天 · {title}",
+        end: "ALL END",
+        /** The corner of the stage after ALL END, for the day's line */
+        daily: "今天的一句",
+        more: "点一下继续 ▼",
+        /** Told once the day's scene is over */
+        done: "（今天的剧情看完了。明天再来，开下一段。）",
+        /** Told once the twelfth is over, before ALL END */
+        last: "（12 段都看完了。怎么选都是 ALL END，点下面的「看 ALL END」。）",
+        seeEnd: "看 ALL END →",
+        badge: "获得徽章「被海猫 all 了」",
+        /** Under the badge on the ALL END card: what 今日剧情 holds from the next day on */
+        endNote: "明天起，每天来「今日剧情」，她和你说一句。",
+        /** What flies across the stage when everyone sings along (day 9) */
+        danmaku: ["全场 damedane", "damedane", "dame dame～", "全场一起 damedane", "dame～", "damedane damedane"],
+      },
     },
     dock: {
       find: "在地图上找到{them}",
@@ -4412,6 +4432,12 @@ export const zh = {
         lockedHint: "{n} / 4 位向导",
         quote: "四位向导都认得你了。小队满编，出发！",
       },
+      haimaoall: {
+        name: "被海猫 all 了",
+        condition: "和香艳制作人聊完 12 天剧情，看到 ALL END",
+        lockedHint: "每天去漕河泾找香艳制作人聊一段，聊满 12 天",
+        quote: "那就……all 吧。",
+      },
       daysLeft: "还剩 {n} 天",
     },
     beijing: {
@@ -4775,6 +4801,110 @@ export const zh = {
       introCard: "上海漕河泾，鹰角网络楼下的马路边，来了一位香艳制作人，头上顶着一只黑尾鸥（日语叫「海猫」）。每天去找她聊一段剧情，好感度满了有 ALL END。她的转盘每人能转一次，怎么转都是 ALL。",
       /** Her gull, tapped */
       meow: "喵～",
+      /**
+       * Her story (src/lib/haimaoStory.ts), word for word as Breeze approved it: twelve scenes, each ending in three
+       * answers and how she takes each one (replies, in the same order), ALL END, and the ten lines of a day after it.
+       * A line in （） is told, not said.
+       */
+      story: {
+        days: [
+          {
+            title: "初遇",
+            lines: [
+              "这位博士，下班路过漕河泾？",
+              "我在楼下等一个人。等谁？等一个愿意 all 的人。",
+              "先自我介绍。我的座右铭是：try one first, get all always.",
+              "（她头上的海鸥「喵」了一声。）",
+            ],
+            choices: ["先抽一个试试，然后全都要？", "头上那只是你养的？", "下班不回家，dame dame。"],
+            replies: [["你已经懂了一半。另一半是：all。"], ["日语里黑尾鸥叫「海猫」，叫起来像猫。所以它也叫海猫。"], ["dame dame～（她居然接上了）"]],
+          },
+          {
+            title: "神之一手",
+            lines: ["你知道我为什么总能转到 ALL 吗？", "一周年那次，指针没停在 ALL。", "我就……伸手帮了它一把。"],
+            choices: ["七星推拉干员！", "这就是神之一手？", "你这是作弊，dame dame。"],
+            replies: [["推拉干员最高六星。我是第七颗星。"], ["嘘。只在周年直播用。"], ["dame dame～ 是指针自己滑过去的。"]],
+          },
+          {
+            title: "苦难陈述者",
+            lines: ["今天给你念一段剧情。", "「感染者……整合运动……这片大地……」", "（她念得一字一顿，听的人都跟着沉重起来。）"],
+            choices: ["很可怕吗？", "苦难陈述者！", "念快点，dame dame。"],
+            replies: [["是的，很可怕。"], ["这个外号……我收下了。"], ["dame dame～ 苦难要慢慢陈述。"]],
+          },
+          {
+            title: "漫展潜行",
+            lines: ["2021 年元旦，我去逛了一趟漫展。", "没人认出我。摄影师还给我拍了照。", "（她从外套里掏出一根法杖。）"],
+            choices: ["安哲拉！", "这就是「漫展潜行者」？", "偷偷混进去，dame dame。"],
+            replies: [["嘘，小声点，会被认出来的。"], ["是我的天赋，被动的。"], ["dame dame～ 我是正经逛展的。"]],
+          },
+          {
+            title: "六面都是 all",
+            lines: [
+              "今天带了个小东西。你掷一下试试。",
+              "（她递过来一颗骰子。骰子滚了两圈，停在 ALL。）",
+              "3.5 周年那颗，六面都是 all。",
+              "后来换过甜甜圈、驼兽、老虎机。道具年年换，结果年年一样。",
+            ],
+            choices: ["灌铅骰子！", "明年换什么？", "六面都一样，dame dame。"],
+            replies: [["铅是灌了，灌的是 all。"], ["还没想好。反正结果你知道。"], ["dame dame～ 六面都是幸福。"]],
+          },
+          {
+            title: "被举报了",
+            lines: ["前几天我去踢球，匹配到一位博士。", "对面看到我的名字……", "反手点了个举报。"],
+            choices: ["谁让你名字叫海猫。", "那后来呢？", "举报得好，dame dame。"],
+            replies: [["可我就是海猫。"], ["我发了条微博，说是我本人。", "听说对面那位博士，当场汗流浃背。"], ["dame dame～ 不许学。"]],
+          },
+          {
+            title: "六星撼地者",
+            lines: ["今天我带了锤子。", "六星撼地者。我技能还没发动，等着吧。", "小 all 四十，大 all 八十！", "（咚、咚、咚。三个蛋全敲开了，里面都是 ALL。）"],
+            choices: ["撼地者，砸得好！", "要是敲出别的呢？", "浪费鸡蛋，dame dame。"],
+            replies: [["一锤一个 ALL。"], ["那就再敲一下。"], ["dame dame～ 这是 ALL 蛋，不能吃。"]],
+          },
+          {
+            title: "法老大气",
+            lines: ["有件事，你别往外说。", "2021 年拜年祭，我在直播间打赏了 36888。", "（那天晚上，弹幕刷了一整屏「法老大气」。）"],
+            choices: ["法老大气！", "为什么是 36888？", "下次打赏我，dame？"],
+            replies: [["……法老是谁？我不认识。"], ["图个吉利。剩下的别问。"], ["dame dame～"]],
+          },
+          {
+            title: "唱一句",
+            lines: ["今天想唱一句。", "就一句。你别录。"],
+            choices: ["全场一起！", "我偷偷录了。", "跑调了，dame dame。"],
+            replies: [["dame dame～", "（不知道哪来的弹幕，飘了一整屏 damedane。）"], ["……那就当你没录。"], ["dame dame～ 这叫个人风格。"]],
+          },
+          {
+            title: "ocean cat",
+            lines: ["Hello. My English name is ocean cat.", "头上这只也叫海猫。我们俩合在一起……"],
+            choices: ["就是海猫络合物！", "Very good English!", "English，dame dame。"],
+            replies: [["对。中心原子是海猫，配体也是海猫。"], ["Thank you. All."], ["dame dame～ 这叫国际化。"]],
+          },
+          {
+            title: "自制力",
+            lines: ["我是一个很有自制力的人。", "（她转过身，all 了两次。）"],
+            choices: ["再 all 一次！", "我都看见了。", "自制力，dame dame。"],
+            replies: [["……好吧，最后一次。"], ["你什么都没看见。"], ["dame dame～"]],
+          },
+          {
+            title: "周年",
+            lines: ["又到周年了。每次这个时候，我都要转一次转盘。", "指针落下的位置便是幸福……", "……而你一定知道它将落在何处。"],
+            choices: ["ALL！", "这次换我来转。", "我猜是 dame。"],
+            replies: [["对。"], ["（她把转盘推给你）那就……all 一个。"], ["dame dame～ 转盘上没有这一格。"]],
+          },
+        ],
+        end: ["这些天，你每天都来漕河泾找我。", "我想了想，没什么能送你的。", "那就……all 吧。"],
+        daily: [
+          "又见面了。今天路过鹰角楼下，顺手 all 了一下。",
+          "头上这只今天没喵，大概在攒抽数。",
+          "try one first……先试一个。剩下的，你懂的。",
+          "今天的歌只唱一句：dame dame～",
+          "我是一个很有自制力的人。今天只 all 了一次。",
+          "指针落下的位置，便是幸福。今天它落在你这儿。",
+          "触须今天打了个结。很可怕吗？是的，很可怕。",
+          "转盘我替你看着呢，谁也别想推它。……除了我。",
+          "漕河泾今天风好大，头上这只差点被吹走。",
+          "好感度已经满了。再来，就要溢出来了。",
+        ],
+      },
     },
     help: {
       names: {

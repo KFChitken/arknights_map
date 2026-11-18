@@ -234,6 +234,7 @@ import {
 import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroShown } from "./app/Minghe";
 import { forgetSiHere, markSiIntroShown, peekedToday, rememberPeek, SiCard, SiIntroSheet, siIntroShown } from "./app/Si";
 import { forgetHaimaoHere, HaimaoCard, HaimaoIntroSheet, haimaoIntroShown, markHaimaoIntroShown } from "./app/Haimao";
+import HaimaoStorySheet from "./app/HaimaoStory";
 import { playSound, primeSound } from "./app/haimaoSound";
 import { SiBookSheet } from "./app/SiBook";
 import { useSiInks, type SiView } from "./useSiInks";
@@ -466,6 +467,8 @@ type Panel =
   | { kind: "siIntro" }
   /** 香艳制作人 stands in 漕河泾 (only where HAIMAO shows her), said once */
   | { kind: "haimaoIntro" }
+  /** 今日剧情 with 香艳制作人: the day's part of her story */
+  | { kind: "haimaoStory" }
   /** Your 集章本 from 祀掌柜: her portrait of you first, then this round's seals */
   | { kind: "siBook" }
   | { kind: "mine" }
@@ -4452,6 +4455,16 @@ export default function MapApp({
     setPanel(null);
     openHaimao(HAIMAO_ZOOM);
   };
+  /** 今日剧情, opened from her card: her sounds woken within the tap, for what she says once the server answers */
+  const openHaimaoStory = () => {
+    primeSound();
+    setPanel({ kind: "haimaoStory" });
+  };
+  /** Out of 今日剧情 (unless a refusal opened something else), her 好感度 and any new badge fetched */
+  const closeHaimaoStory = () => {
+    setPanel((p) => (p?.kind === "haimaoStory" ? null : p));
+    void loadMe();
+  };
   /** A visitor reaches for her: the sign-in */
   const haimaoSignIn = () =>
     waitingMe
@@ -4984,6 +4997,7 @@ export default function MapApp({
             passes={me.passes}
             // as 听歌's entry: not on /en
             listen={lang() === "zh" && Boolean(me.listen)}
+            haimao={Boolean(me.haimao)}
             onPassOnMap={switchPassOnMap}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}
@@ -5123,6 +5137,9 @@ export default function MapApp({
         return <SiIntroSheet onGo={showSi} onLater={() => setPanel(null)} />;
       case "haimaoIntro":
         return <HaimaoIntroSheet onGo={showHaimao} onLater={() => setPanel(null)} />;
+      case "haimaoStory":
+        if (!me?.haimao) return null;
+        return <HaimaoStorySheet run={(call) => act(() => call())} onClose={closeHaimaoStory} />;
       case "siBook":
         if (!me) return null;
         return (
@@ -5796,6 +5813,7 @@ export default function MapApp({
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           onTouch={(bold) => touch(selected.roach, bold)}
           onSignIn={haimaoSignIn}
+          onStory={openHaimaoStory}
           onOpenFriend={me?.haimao?.friend ? () => setPanel({ kind: "friend", friendId: HAIMAO_ID, back: null }) : undefined}
           under={stackUnder}
           onClose={() => {

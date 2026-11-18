@@ -69,8 +69,8 @@ function GullButton({ size, friend }: { size: number; friend: boolean }) {
 
 /**
  * Her card, the same for everyone who opens it: who she is (and who she is not, word for word), her 个性签名, the
- * 好感度 she keeps for you once you are signed in, and the two touches, with her sounds' 静音 kept in this browser.
- * Visitors see it all but her 好感度, and are asked to sign in as they touch her.
+ * 好感度 she keeps for you once you are signed in, 今日剧情, and the two touches, with her sounds' 静音 kept in this
+ * browser. Visitors see it all but her 好感度, and are asked to sign in as they touch her or open her story.
  */
 export function HaimaoCard({
   me,
@@ -81,6 +81,7 @@ export function HaimaoCard({
   sharesUid,
   onTouch,
   onSignIn,
+  onStory,
   onOpenFriend,
   under,
   onClose,
@@ -93,6 +94,8 @@ export function HaimaoCard({
   sharesUid: boolean;
   onTouch: (bold: boolean) => void;
   onSignIn: () => void;
+  /** 今日剧情: her story, the day's part of it */
+  onStory: () => void;
   onOpenFriend?: () => void;
   /** Roaches under her picture: to pick one of them (StackUnderGuide) */
   under?: ReactNode;
@@ -144,6 +147,11 @@ export function HaimaoCard({
           <span className="muted">/{HAIMAO_LOVE_MAX}</span>
         </div>
       )}
+      <div className="hm-acts">
+        <button type="button" className="pill" disabled={waiting} onClick={() => (signedIn ? onStory() : onSignIn())}>
+          {T.guides.haimao.today}
+        </button>
+      </div>
       {onOpenFriend && (
         <div className="row-actions">
           <button className="pill" onClick={onOpenFriend}>

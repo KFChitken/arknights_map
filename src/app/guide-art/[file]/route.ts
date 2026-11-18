@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { HAIMAO_FACES } from "@/lib/haimaoStory";
 import {
   AMIYA_DANCE,
   AMIYA_PICTURE,
@@ -41,15 +42,19 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   // 香艳制作人's Q figure whole (where she is drawn still) and in its five layers (her tentacles and her gull move),
   // and her portrait for her introduction: only while HAIMAO shows her to anyone
   ...haimaoArt(["haimao", "haimao-shadow", "haimao-tl", "haimao-tr", "haimao-body", "haimao-gull", "haimao-base"]),
+  // her faces in 今日剧情 (src/lib/haimaoStory.ts HAIMAO_FACES), as her other pictures
+  ...haimaoArt(HAIMAO_FACES.map((face) => `haimao-${face}`)),
+  // the street outside her tower behind 今日剧情, by day and at dusk: painted for it, so shown even while her pictures are off
+  ...haimaoArt(["haimao-day", "haimao-dusk"], false),
 };
 
-function haimaoArt(names: string[]) {
+function haimaoArt(names: string[], picture = true) {
   return Object.fromEntries(
     names.map((name) => [
       `${name}.webp`,
       {
         get on() {
-          return HAIMAO_PICTURE && haimaoMode() !== "off";
+          return (!picture || HAIMAO_PICTURE) && haimaoMode() !== "off";
         },
         type: "image/webp",
       },

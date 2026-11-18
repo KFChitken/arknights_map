@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, T } from "@/i18n";
-import { BADGES, nearBadges } from "@/lib/badges";
+import { BADGES, badgeTotal, nearBadges } from "@/lib/badges";
 import { CATALOG_SIZE } from "@/lib/passCatalog";
 import { displayName } from "@/lib/profile";
 import { DAY_INDEX, localDay, RECORD_DAYS, RECORDS_FROM, type DayField, type RecordsSummary, type TimelineKindFilter } from "@/lib/records";
@@ -274,7 +274,7 @@ export default function Overview({
       [
         [
           r.badges,
-          fmt(u.of, { n: me.badges.length, all: BADGES.length }),
+          fmt(u.of, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao)) }),
           <button key="b" onClick={onOpenBadges}>
             {o.links.badges}
           </button>,
