@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, gte, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { siteDay, siteDayStart } from "../siteDay";
-import { COURSE_IDS, isCourse } from "../study/courses";
+import { coursesFor, isCourse } from "../study/courses";
 import { drawCourse } from "../study/draw";
 import type { PassesDot } from "../passes";
 import { GIVE_UP_AFTER, NOT_TODAY, NOT_YET, type StudyDone, type StudyMe, type StudySaid, type StudyToday } from "../study/rules";
@@ -49,9 +49,10 @@ type Kept = { course: string | null; courseOn: string | null; studiedOn: string 
 
 /**
  * The player's course today, drawn now if it was not yet (drawCourse, from those not drawn this round, never the last
- * one), with none of its rounds lost yet. Two asks at once draw one course: the write only takes while today's is not
- * drawn, and the other then reads it. A course stored that this server no longer has is drawn again. Once it is done,
- * whether 已完成今日的325大学习 was said today as well.
+ * one), with none of its rounds lost yet: of every course for one who may pick, of those not held back (courses.ts
+ * HELD) for anyone else. Two asks at once draw one course: the write only takes while today's is not drawn, and the
+ * other then reads it. A course stored that this server no longer has is drawn again, and so is one held back from a
+ * player who may not pick. Once it is done, whether 已完成今日的325大学习 was said today as well.
  */
 export async function studyToday(user: Pick<UserRow, "id" | "email">, now = Date.now(), random: () => number = Math.random): Promise<StudyToday> {
   const t = await drawnToday(user, now, random);
@@ -61,17 +62,18 @@ export async function studyToday(user: Pick<UserRow, "id" | "email">, now = Date
 async function drawnToday(user: Pick<UserRow, "id" | "email">, now: number, random: () => number): Promise<StudyToday> {
   const day = siteDay(now);
   const pick = mayPick(user);
+  const courses = coursesFor(pick);
   const [u] = await db.select({ ...STUDY_COLUMNS, bag: users.studyBag }).from(users).where(eq(users.id, user.id));
   if (!u) throw new HttpError(401, T.server.common.signIn);
-  if (u.courseOn === day && isCourse(u.course)) return todayOf(u, day, pick);
-  const { course, bag } = drawCourse({ bag: u.bag, last: u.course }, COURSE_IDS, random);
+  if (u.courseOn === day && isCourse(u.course) && courses.includes(u.course)) return todayOf(u, day, pick);
+  const { course, bag } = drawCourse({ bag: u.bag, last: u.course }, courses, random);
   const [drawn] = await db
     .update(users)
     .set({ studyCourse: course, studyCourseOn: day, studyBag: bag, studyFails: 0 })
     .where(
       and(
         eq(users.id, user.id),
-        or(isNull(users.studyCourseOn), ne(users.studyCourseOn, day), isNull(users.studyCourse), notInArray(users.studyCourse, [...COURSE_IDS])),
+        or(isNull(users.studyCourseOn), ne(users.studyCourseOn, day), isNull(users.studyCourse), notInArray(users.studyCourse, [...courses])),
       ),
     )
     .returning(STUDY_COLUMNS);

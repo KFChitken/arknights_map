@@ -9,10 +9,10 @@ import { studyDone, studyToday } from "./study";
 import { studyAnnounce, studyGiveUpSaying } from "./studySay";
 import * as world from "./world";
 
-// four courses: what is tested here is what is said, not the games
+// four courses, none held back: what is tested here is what is said, not the games
 vi.mock("../study/courses", () => {
   const COURSE_IDS = ["stopwatch", "react325", "echo325", "find325"];
-  return { COURSE_IDS, isCourse: (v: unknown) => typeof v === "string" && COURSE_IDS.includes(v) };
+  return { COURSE_IDS, coursesFor: () => COURSE_IDS, isCourse: (v: unknown) => typeof v === "string" && COURSE_IDS.includes(v) };
 });
 
 const SQUARE: LngLat = { lng: 121.4737, lat: 31.2304 };

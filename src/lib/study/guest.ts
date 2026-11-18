@@ -1,13 +1,14 @@
 import { siteDay } from "../siteDay";
-import { COURSE_IDS, isCourse, type CourseId } from "./courses";
+import { coursesFor, isCourse, type CourseId } from "./courses";
 import { drawCourse } from "./draw";
 import { GIVE_UP_AFTER, type StudyMe } from "./rules";
 
 /**
  * 325大学习 for a visitor who has not signed in (while STUDY is on): the day's course is drawn and kept in this browser
- * alone, as the server would draw it (draw.ts), and so are the rounds of it lost and whether it was passed or given up.
- * Nothing of it goes to the server, and nothing counts towards days studied, then or after signing in. Where the
- * browser keeps nothing (a private window), this page keeps it while it is open.
+ * alone, as the server would draw it for a player who may not pick (draw.ts, of the courses not held back), and so are
+ * the rounds of it lost and whether it was passed or given up. Nothing of it goes to the server, and nothing counts
+ * towards days studied, then or after signing in. Where the browser keeps nothing (a private window), this page keeps
+ * it while it is open.
  */
 
 const KEY = "zhoup.study";
@@ -46,13 +47,19 @@ function write(k: Kept) {
 
 const shown = ({ day, course, done, fails, skipped }: Kept): GuestToday => ({ day, course, done, fails, skipped });
 
-/** The visitor's course today, drawn now if it was not yet today, whether they passed it, and the rounds of it lost */
+/**
+ * The visitor's course today, drawn now if it was not yet today, whether they passed it, and the rounds of it lost. One
+ * kept today that is held back (courses.ts HELD) is drawn again, as the server does it: passed or given up today stays
+ * so, and no round of the new one is lost yet.
+ */
 export function guestToday(now = Date.now(), random = Math.random): GuestToday {
   const day = siteDay(now);
   const kept = read();
-  if (kept?.day === day) return shown(kept);
-  const { course, bag } = drawCourse({ bag: kept?.bag ?? [], last: kept?.course ?? null }, COURSE_IDS, random);
-  const k = { day, course, bag, done: false, fails: 0, skipped: false };
+  const courses = coursesFor(false);
+  if (kept?.day === day && courses.includes(kept.course)) return shown(kept);
+  const { course, bag } = drawCourse({ bag: kept?.bag ?? [], last: kept?.course ?? null }, courses, random);
+  const again = kept?.day === day ? kept : null;
+  const k = { day, course, bag, done: again?.done ?? false, fails: 0, skipped: again?.skipped ?? false };
   write(k);
   return shown(k);
 }

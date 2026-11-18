@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { siteDayStart } from "../siteDay";
-import { COURSE_IDS, isCourse } from "./courses";
+import { COURSE_IDS, coursesFor, HELD, isCourse } from "./courses";
 
 /** A browser's storage, or one that keeps nothing (a private window) */
 function storage(keeps: boolean) {
@@ -115,6 +115,24 @@ describe("325大学习 for a visitor, kept in their browser", () => {
     expect(guestToday(at("2026-11-21"))).toEqual({ ...again, fails: 0 });
     store.raw.set("zhoup.study", JSON.stringify({ day: "2026-11-21", course: again.course, bag: [again.course], done: false, fails: 2.5, skipped: "yes" }));
     expect(guestToday(at("2026-11-21"))).toEqual({ ...again, fails: 0, skipped: false });
+  });
+
+  it("never draws a course held back (courses.ts HELD), whatever the random, day after day", async () => {
+    const { guestToday } = await load();
+    const drawn: string[] = [];
+    for (let i = 0; i < 1000; i++) drawn.push(guestToday(at("2026-11-21") + i * DAY, () => ((i * 7919) % 1000) / 1000).course);
+    expect(drawn.filter((c) => HELD.includes(c as never))).toEqual([]);
+    expect(new Set(drawn)).toEqual(new Set(coursesFor(false)));
+  });
+
+  it("draws again a course held back kept as today's: passed stays passed, no round of the new one lost", async () => {
+    const held = HELD[0];
+    store.raw.set("zhoup.study", JSON.stringify({ day: "2026-11-21", course: held, bag: [held], done: true, fails: 2, skipped: false }));
+    const { guestToday } = await load();
+    const t = guestToday(at("2026-11-21", 2), () => 0);
+    expect(t).toEqual({ day: "2026-11-21", course: coursesFor(false)[0], done: true, fails: 0, skipped: false });
+    expect(JSON.parse(store.raw.get("zhoup.study")!).bag).toEqual([t.course]);
+    expect(guestToday(at("2026-11-21", 3))).toEqual(t);
   });
 
   it("still plays in a browser that keeps nothing, for as long as the page is open", async () => {

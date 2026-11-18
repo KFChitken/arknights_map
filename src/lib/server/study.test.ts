@@ -8,10 +8,11 @@ import { studyDone, studyGiveUp, studyMe, studyToday } from "./study";
 
 vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
 
-// four courses, as the first batch will have: what is tested here is the draw and what is written, not the games
+// four courses, as the first batch will have, none held back (studyHeld.test.ts has those): what is tested here is the
+// draw and what is written, not the games
 vi.mock("../study/courses", () => {
   const COURSE_IDS = ["stopwatch", "react325", "echo325", "find325"];
-  return { COURSE_IDS, isCourse: (v: unknown) => typeof v === "string" && COURSE_IDS.includes(v) };
+  return { COURSE_IDS, coursesFor: () => COURSE_IDS, isCourse: (v: unknown) => typeof v === "string" && COURSE_IDS.includes(v) };
 });
 
 const HOUR = 3_600_000;

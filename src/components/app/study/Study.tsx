@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
-import { COURSE_IDS, isCourse, subjectOf, type CourseId } from "@/lib/study/courses";
+import { isCourse, otherCourses, subjectOf, type CourseId } from "@/lib/study/courses";
 import { drawCourse } from "@/lib/study/draw";
 import { guestDone, guestGiveUp, guestToday, type GuestToday } from "@/lib/study/guest";
 import type { PassesDot } from "@/lib/passes";
@@ -17,12 +17,13 @@ import "./study.css";
 /**
  * 325大学习 (src/lib/study): the course drawn for today with the days studied and the seals towards which they count,
  * the rounds of it lost and, after GIVE_UP_AFTER of them, the way to give it up; the other courses, any of them for
- * those who may pick (the 站长 and the admins), and for everyone else one at random once today's is done; and 下课's
- * page after a round. A round is played on a layer of its own over everything (the whole screen on a phone, a card in
- * the middle on a computer), so that tapping and swiping in a game never closes or scrolls a sheet. Each round is
- * dealt from a seed of its own; a round of today's course counts the moment it is over (won: today's is passed; lost:
- * one more lost; a step on the way: nothing), and leaving before that counts nothing. A player (never a visitor) says
- * 苦也！ as they give today's course up, and may say 已完成今日的325大学习 once a day after passing it.
+ * those who may pick (the 站长 and the admins), and for everyone else one at random once today's is done, never one
+ * held back (courses.ts HELD); and 下课's page after a round. A round is played on a layer of its own over everything
+ * (the whole screen on a phone, a card in the middle on a computer), so that tapping and swiping in a game never closes
+ * or scrolls a sheet. Each round is dealt from a seed of its own; a round of today's course counts the moment it is
+ * over (won: today's is passed; lost: one more lost; a step on the way: nothing), and leaving before that counts
+ * nothing. A player (never a visitor) says 苦也！ as they give today's course up, and may say 已完成今日的325大学习 once a
+ * day after passing it.
  * signedIn: the server draws and counts (src/lib/studyClient.ts); otherwise this browser draws, and counts no days
  * (src/lib/study/guest.ts). look: the player's roach, lying belly up after a round lost. onState: what the server last
  * said of the player's study (the dot on the way in, 抽屉's card); onGuestDone: a visitor passed the day's course (or
@@ -235,7 +236,7 @@ export default function Study({
   /** Another course at random, for one who may not pick, once today's is done: none dealt since this was opened, until all the others have been */
   const dealAnother = () => {
     if (!today) return;
-    const others = COURSE_IDS.filter((c) => c !== today.course);
+    const others = otherCourses(today.pick, today.course);
     if (!others.length) return;
     const { course, bag } = drawCourse({ bag: dealt.current, last: lastPlayed.current }, others, Math.random);
     dealt.current = bag;
@@ -425,7 +426,7 @@ export default function Study({
     );
   }
 
-  const others = today ? COURSE_IDS.filter((c) => c !== today.course) : [];
+  const others = today ? otherCourses(today.pick, today.course) : [];
   return (
     <Sheet title={T.study.title} className="study" onClose={onClose}>
       {!today ? (
