@@ -5142,7 +5142,14 @@ export default function MapApp({
         return <HaimaoIntroSheet onGo={showHaimao} onLater={() => setPanel(null)} />;
       case "haimaoStory":
         if (!me?.haimao) return null;
-        return <HaimaoStorySheet run={(call) => act(() => call())} review={p.review} onClose={closeHaimaoStory} />;
+        return (
+          <HaimaoStorySheet
+            run={(call) => act(() => call())}
+            review={p.review}
+            trial={Boolean(me.haimao.trial)}
+            onClose={closeHaimaoStory}
+          />
+        );
       case "siBook":
         if (!me) return null;
         return (

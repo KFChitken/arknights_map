@@ -24,8 +24,11 @@ const her = guideTouches(HAIMAO, haimaoTouches as unknown as GuideTable);
 /** Whether she shows to this player: HAIMAO=on, everyone; admins, the 站长 and the admins; off, nobody */
 export function haimaoOpen(user: Pick<UserRow, "id" | "email">): boolean {
   const mode = haimaoMode();
-  return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
+  return mode === "on" || (mode === "admins" && haimaoTrier(user));
 }
+
+/** 站长 and the admins: those she shows to first, who may try her story out (tryStory) whatever HAIMAO says */
+export const haimaoTrier = (user: Pick<UserRow, "id" | "email">) => isOwnerEmail(user.email) || isModHere(user.id);
 
 /** Whether she shows to the player with this id */
 async function openTo(userId: string) {
@@ -162,6 +165,7 @@ export async function haimaoOf(u: Pick<UserRow, "id" | "email" | "haimaoFriendSi
     love: p?.love ?? 0,
     plusToday: p?.plusOn === deviceDay(offsetMin).day,
     days: p?.days ?? 0,
+    ...(haimaoTrier(u) ? { trial: true as const } : {}),
   };
 }
 
@@ -253,6 +257,24 @@ export async function endStory(userId: string, offsetMin?: unknown): Promise<Hai
   });
   if (p.endAt) await award(userId, [HAIMAO_BADGE]);
   return { ...storyOf(p, today), plus };
+}
+
+/**
+ * 试玩, for 站长 and the admins alone (haimaoTrier), on their own story, to see it all without waiting days: next, the
+ * next day come at once (today's scene kept as seen yesterday, or ALL END's day or the day's line as yesterday's);
+ * restart, the story from its first day as for a new player, her 好感度 (today's bold touch with it) and the badge gone
+ * too. What today then holds.
+ */
+export async function tryStory(userId: string, what: "next" | "restart", offsetMin?: unknown): Promise<HaimaoStory> {
+  const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, userId));
+  if (!u || !haimaoOpen(u) || !haimaoTrier(u)) throw new WorldError(T.server.haimao.notHere);
+  const today = deviceDay(offsetMin).day;
+  const p = await withPlayer(userId, async (tx, p) => {
+    if (what === "next") return setPlayer(tx, userId, p.endAt ? { chatOn: null } : { dayOn: null });
+    await tx.delete(userBadges).where(and(eq(userBadges.userId, userId), eq(userBadges.badge, HAIMAO_BADGE)));
+    return setPlayer(tx, userId, { love: 0, plusOn: null, days: 0, dayOn: null, picks: [], endAt: null, chats: 0, chatOn: null });
+  });
+  return storyOf(p, today);
 }
 
 /** 清掉我和香艳制作人的记录 (local testing only): as if they had never met her, her badge gone too. */

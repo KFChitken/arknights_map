@@ -880,9 +880,10 @@ export type HaimaoItem = {
 
 /**
  * 香艳制作人 for one player: whether you are 触须之交, her 好感度 (0–100), whether today's bold touch raised it yet, and
- * how many scenes of her story they have seen (0–12), the days 回顾剧情 lists
+ * how many scenes of her story they have seen (0–12), the days 回顾剧情 lists; trial, for 站长 and the admins, who may
+ * try the story out (试玩: the next day at once, or from the start)
  */
-export type HaimaoMe = { friend: boolean; love: number; plusToday: boolean; days: number };
+export type HaimaoMe = { friend: boolean; love: number; plusToday: boolean; days: number; trial?: true };
 
 /**
  * 佩丽卡监督 touching you: back after your touch (what "touch", or "friend" when it

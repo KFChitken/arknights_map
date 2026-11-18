@@ -94,6 +94,18 @@ describe("今日剧情's requests", () => {
     for (const [op, body] of EVERY) expect(await call(op, body), op).toMatchObject({ status: 428, body: { code: "age" } });
   });
 
+  it("let only 站长 and the admins try the story out (试玩)", async () => {
+    vi.stubEnv("HAIMAO", "on");
+    await signIn(await account("me@example.com"));
+    for (const op of ["next", "restart"]) expect((await call(op, { offset: -480 })).status).toBe(404);
+    await signIn(await account("owner@example.com"));
+    expect((await call("story", { offset: -480 })).status).toBe(200);
+    expect((await call("pick", { day: 1, answer: 2, offset: -480 })).body).toMatchObject({ days: 1, plus: 3 });
+    const next = await call("next", { offset: -480 });
+    expect(next).toMatchObject({ status: 200, cache: "no-store", body: { days: 1, today: { kind: "scene", day: 2, picked: null } } });
+    expect((await call("restart", { offset: -480 })).body).toEqual({ love: 0, days: 0, picks: [], end: false, today: { kind: "scene", day: 1, picked: null } });
+  });
+
   it("tell the day's scene, take its answer, and refuse one that is not", async () => {
     vi.stubEnv("HAIMAO", "on");
     await signIn(await account("someone@example.com"));

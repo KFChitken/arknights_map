@@ -6,7 +6,7 @@ import { answerLove, HAIMAO_BADGE, HAIMAO_DAYS } from "../haimaoStory";
 import { deleteAccount } from "./account";
 import { loadMods } from "./admins";
 import { db } from "./db";
-import { answerKind, endStory, openStory, pickStory, todayOf } from "./haimao";
+import { answerKind, endStory, openStory, pickStory, todayOf, tryStory } from "./haimao";
 import { pretend } from "./demo";
 import { admins, haimaoPlayers, haimaoSpins, haimaoTouches, userBadges, users } from "./schema";
 import * as world from "./world";
@@ -65,8 +65,9 @@ describe("香艳制作人 on the server", () => {
     await db.insert(admins).values({ userId: mod, role: "mod", alias: "小管" });
     await loadMods();
     vi.stubEnv("HAIMAO", "admins");
-    expect(await herCard(owner)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
-    expect(await herCard(mod)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
+    // the two may try her story out (试玩)
+    expect(await herCard(owner)).toEqual({ friend: false, love: 0, plusToday: false, days: 0, trial: true });
+    expect(await herCard(mod)).toEqual({ friend: false, love: 0, plusToday: false, days: 0, trial: true });
     expect(await herCard(someone)).toBeUndefined();
     await expect(touch(someone, true)).rejects.toThrow("没有这个功能。");
     expect((await touch(owner, true)).newFriend).toBe(HAIMAO.name);
@@ -264,6 +265,43 @@ describe("香艳制作人's story", () => {
     // the twelve all there to see again, with the answers picked then
     expect(await herCard(me)).toMatchObject({ love: HAIMAO_LOVE_MAX, days: HAIMAO_DAYS });
     expect((await openStory(me)).picks).toHaveLength(HAIMAO_DAYS);
+  });
+
+  it("lets 站长 and the admins try it out: the next day at once, or from the start as for a new player", async () => {
+    const owner = await signUp("owner@example.com");
+    const me = await signUp("me@example.com");
+    expect(await herCard(me)).not.toHaveProperty("trial");
+    await expect(tryStory(me, "next")).rejects.toThrow("没有这个功能。");
+    await expect(tryStory(me, "restart")).rejects.toThrow("没有这个功能。");
+    await openStory(owner);
+    await pickStory(owner, 1, 0);
+    await touch(owner, true);
+    expect(await herCard(owner)).toMatchObject({ plusToday: true });
+    expect((await tryStory(owner, "next")).today).toEqual({ kind: "scene", day: 2, picked: null });
+    // a day not seen yet is not skipped
+    expect((await tryStory(owner, "next")).today).toEqual({ kind: "scene", day: 2, picked: null });
+    for (let n = 2; n <= HAIMAO_DAYS; n++) {
+      expect(await pickStory(owner, n, 1)).toMatchObject({ days: n, plus: 5 });
+      if (n < HAIMAO_DAYS) await tryStory(owner, "next");
+    }
+    // nor is ALL END
+    expect((await tryStory(owner, "next")).today).toEqual({ kind: "scene", day: 12, picked: 1 });
+    expect(await endStory(owner)).toMatchObject({ end: true, love: HAIMAO_LOVE_MAX });
+    expect(await hasBadge(owner)).toBe(true);
+    // then her lines, a day at once
+    expect((await tryStory(owner, "next")).today).toEqual({ kind: "chat", line: 0 });
+    expect((await openStory(owner)).today).toEqual({ kind: "chat", line: 0 });
+    expect((await openStory(owner)).today).toEqual({ kind: "chat", line: 0 });
+    await tryStory(owner, "next");
+    expect((await openStory(owner)).today).toEqual({ kind: "chat", line: 1 });
+    // from the start: no 好感度, no badge, day 1 today, today's bold touch to come again
+    expect(await tryStory(owner, "restart")).toEqual({ love: 0, days: 0, picks: [], end: false, today: { kind: "scene", day: 1, picked: null } });
+    expect(await hasBadge(owner)).toBe(false);
+    expect(await herCard(owner)).toMatchObject({ love: 0, plusToday: false, days: 0, trial: true });
+    await touch(owner, true);
+    expect(await herCard(owner)).toMatchObject({ love: 1, plusToday: true });
+    // and nothing of anyone else's
+    expect(await player(me)).toBeUndefined();
   });
 
   it("then has one line a day, the ten in turn from the first, the same one all day", async () => {

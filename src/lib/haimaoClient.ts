@@ -35,4 +35,6 @@ export const haimaoApi = {
   pick: (day: number, answer: number) => call<HaimaoStep>("pick", { day, answer }),
   /** ALL END, after the twelfth */
   end: () => call<HaimaoStep>("end"),
+  /** 试玩 (站长 and admins): the next day at once, or the story from its start; what today then holds */
+  trial: (what: "next" | "restart") => call<HaimaoStory>(what),
 };

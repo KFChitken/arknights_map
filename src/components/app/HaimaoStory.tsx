@@ -135,8 +135,21 @@ function facesOf(view: View | null): HaimaoFace[] {
   return [...new Set<HaimaoFace>(["smile", ...lines.flatMap((l) => (l.face ? [l.face] : []))])];
 }
 
-/** review: opened as 回顾剧情, with the list of the scenes seen first */
-export default function HaimaoStorySheet({ run, review = false, onClose }: { run: HaimaoRun; review?: boolean; onClose: () => void }) {
+/**
+ * review: opened as 回顾剧情, with the list of the scenes seen first; trial: for 站长 and the admins, 试玩 under the
+ * stage, the next day at once or the story from its start (their own)
+ */
+export default function HaimaoStorySheet({
+  run,
+  review = false,
+  trial = false,
+  onClose,
+}: {
+  run: HaimaoRun;
+  review?: boolean;
+  trial?: boolean;
+  onClose: () => void;
+}) {
   const S = T.guides.haimao.stage;
   const [story, setStory] = useState<HaimaoStory | null>(null);
   const [view, setView] = useState<View | null>(null);
@@ -412,6 +425,20 @@ export default function HaimaoStorySheet({ run, review = false, onClose }: { run
     if (!reviewing) void run(() => haimaoApi.pick(scene.day, k)).then((step) => step && took(step));
   };
 
+  /** 试玩: the next day, or the story from its start, then what today holds from its beginning */
+  const tryOut = async (what: "next" | "restart") => {
+    setBusy(true);
+    const s = await run(() => haimaoApi.trial(what));
+    setBusy(false);
+    if (!s) return;
+    setStory(s);
+    setListOpen(false);
+    setReviewing(false);
+    setHeld(null);
+    setFloat(null);
+    toToday(s, false);
+  };
+
   const seeEnd = async () => {
     setBusy(true);
     const step = await run(() => haimaoApi.end());
@@ -443,6 +470,23 @@ export default function HaimaoStorySheet({ run, review = false, onClose }: { run
       {T.guides.haimao.review}
     </button>
   );
+  const foot = reviewing ? (
+    <div className="hm-st-foot">
+      <button type="button" className="primary" onClick={backToToday}>
+        {S.back}
+      </button>
+      {again}
+    </div>
+  ) : toEnd || again ? (
+    <div className="hm-st-foot">
+      {toEnd && (
+        <button type="button" className="primary" disabled={busy} onClick={() => void seeEnd()}>
+          {S.seeEnd}
+        </button>
+      )}
+      {again}
+    </div>
+  ) : null;
 
   return (
     <Sheet
@@ -450,22 +494,21 @@ export default function HaimaoStorySheet({ run, review = false, onClose }: { run
       className="hm-story"
       onClose={onClose}
       footer={
-        reviewing ? (
-          <div className="hm-st-foot">
-            <button type="button" className="primary" onClick={backToToday}>
-              {S.back}
-            </button>
-            {again}
-          </div>
-        ) : toEnd || again ? (
-          <div className="hm-st-foot">
-            {toEnd && (
-              <button type="button" className="primary" disabled={busy} onClick={() => void seeEnd()}>
-                {S.seeEnd}
-              </button>
+        foot || trial ? (
+          <>
+            {foot}
+            {trial && (
+              <div className="hm-st-trial">
+                <span>{T.guides.haimao.trial.label}</span>
+                <button type="button" className="pill" disabled={busy || !story} onClick={() => void tryOut("next")}>
+                  {T.guides.haimao.trial.next}
+                </button>
+                <button type="button" className="pill" disabled={busy || !story} onClick={() => void tryOut("restart")}>
+                  {T.guides.haimao.trial.restart}
+                </button>
+              </div>
             )}
-            {again}
-          </div>
+          </>
         ) : undefined
       }
     >

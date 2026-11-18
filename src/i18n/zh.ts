@@ -1087,6 +1087,12 @@ export const zh = {
       today: "今日剧情",
       /** On her card once the first scene is seen, and under the stage: the scenes seen, to see again */
       review: "回顾剧情",
+      /** Under the stage for 站长 and the admins alone: their own story, without waiting days */
+      trial: {
+        label: "试玩（只有站长和管理员看得到）：",
+        next: "跳到下一天",
+        restart: "从第 1 天重来",
+      },
       stage: {
         /** The corner of the stage: which scene this is */
         day: "第 {n} 天 · {title}",

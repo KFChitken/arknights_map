@@ -673,6 +673,9 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .hm-st-foot > button { flex: 1 1 0; min-width: 0; }
 button.hm-st-again { border: 1.5px solid #e98aab; border-radius: 12px; padding: 11px 16px; background: #fff; color: #a3264f; font-weight: 700; }
 button.hm-st-again:disabled { opacity: 0.45; }
+/* 试玩, for 站长 and the admins alone */
+.hm-st-trial { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.hm-st-foot + .hm-st-trial { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) {
   .hm-st-bg.dusk, .hm-st-lh img, .hm-st-prop, .hm-st-eggs .top, .hm-st-eggs text, .hm-st-bar i { transition: none; }
   .hm-st-more { animation: none; }
