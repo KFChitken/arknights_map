@@ -570,7 +570,7 @@ describe("the pass on a main roach's card on the map", () => {
     vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[1, { file: "0123456789abcdef", color: "#7d338a" }]]));
     expect(await roachPass(main, NOON)).toMatchObject({ art: "0123456789abcdef", color: "#7d338a" });
 
-    // and where it is moved in its boxes, for one of the few pictures that are (src/data/pass-framing.json)
+    // and where it is moved in its boxes, for a picture that is (src/data/pass-framing.json)
     forgetRoachPasses();
     vi.spyOn(passArt, "passArtIndex").mockResolvedValue(new Map([[1, { file: MOVED, color: "#7d338a" }]]));
     expect(await roachPass(main, NOON)).toEqual({ charId: 1, name: c.name, rarity: c.rarity, color: "#7d338a", art: MOVED, frame: MOVED_FRAME });

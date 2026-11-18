@@ -88,7 +88,7 @@ describe("the pictures on passes", () => {
   });
 });
 
-describe("where a few pictures are moved in their boxes (src/data/pass-framing.json)", () => {
+describe("where the pictures are moved in their boxes (src/data/pass-framing.json)", () => {
   const frames = framing.framing as unknown as Record<string, ArtFrame>;
   // 风笛's picture, moved in all three boxes
   const MOVED = "9f8c7a61d2a0df8b";
@@ -96,7 +96,7 @@ describe("where a few pictures are moved in their boxes (src/data/pass-framing.j
   mkdirSync(path.join(moved, "pass"));
   writeFileSync(path.join(moved, "pass", "index.json"), JSON.stringify({ art: { 21: { file: MOVED, color: "#5a7a3c" }, 1: { file: A, color: null } } }));
 
-  it("are written by the pictures' file names, each box [left, top, width, height] never zoomed, nothing showing below", () => {
+  it("are written by the pictures' file names, each box [left, top, width, height] zoomed at most 2x, nothing showing below", () => {
     expect(Object.keys(frames).length).toBeGreaterThan(0);
     for (const [file, frame] of Object.entries(frames)) {
       expect(file).toMatch(/^[0-9a-f]{16}$/);
@@ -107,9 +107,11 @@ describe("where a few pictures are moved in their boxes (src/data/pass-framing.j
         expect(box, at).toHaveLength(4);
         expect(box.every(Number.isFinite), at).toBe(true);
         const [, top, width, height] = box;
-        // as big as filling the box makes it (100% one way, more the other), only moved
-        expect(Math.min(width, height), at).toBe(100);
-        expect(top, at).toBeLessThanOrEqual(0);
+        // at least as big as filling the box makes it (100% one way, more the other), at most twice that; moved down
+        // at most 20% (the card shows above the picture there), and never so far that the box shows below it
+        expect(Math.min(width, height), at).toBeGreaterThanOrEqual(100);
+        expect(Math.min(width, height), at).toBeLessThanOrEqual(200);
+        expect(top, at).toBeLessThanOrEqual(20);
         expect(top + height, at).toBeGreaterThanOrEqual(100 - 1e-9);
       }
     }
