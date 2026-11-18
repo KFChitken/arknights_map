@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AmapStage, offerStage } from "@/components/map/discoStage";
+import { type AmapStage, offerRoomStage, offerStage, type StageDancer } from "@/components/map/discoStage";
 import type { RoachGl } from "@/components/map/roachGl";
 import { BOB, FREE, SWAY } from "./choreo";
 import { startDisco } from "./engine";
@@ -91,10 +91,32 @@ function stage(over: Partial<AmapStage> = {}) {
 }
 const host = { getBoundingClientRect: () => ({ left: 0, width: 400 }) } as unknown as HTMLElement;
 let onShown: ReturnType<typeof vi.fn<(on: boolean) => void>>;
-function start(still = false) {
+function start(still = false, alone = true) {
   disco = startDisco(host, { onShown });
-  disco.set({ want: true, still });
+  disco.set({ want: true, still, crowd: alone });
   return disco;
+}
+
+/** A page element as the stage's are moved: its inline style (what was set on it), its classes */
+function element() {
+  const props = new Map<string, string>();
+  const classes = new Set<string>();
+  const el = {
+    style: { opacity: "", setProperty: (k: string, v: string) => void props.set(k, v), removeProperty: (k: string) => void props.delete(k) },
+    classList: { contains: (c: string) => classes.has(c), toggle: (c: string, on: boolean) => void (on ? classes.add(c) : classes.delete(c)) },
+    isConnected: true,
+    offsetWidth: 46,
+    getBoundingClientRect: () => ({ left: 100, width: 300, top: 500, height: 80 }),
+  };
+  return { el: el as unknown as HTMLElement, props, classes };
+}
+/** 一起听's stage with n roaches up (ListenStage.tsx), the hood each (its copy with the sleeves up) */
+function roomStage(n: number) {
+  const root = element();
+  const figs = Array.from({ length: n }, () => element());
+  const list: StageDancer[] = figs.map((f, i) => ({ el: f.el, seed: 7 * i + 3, size: 46, sleeves: true, alt: i % 2 === 1 }));
+  const back = offerRoomStage({ el: root.el, dancers: () => list });
+  return { root, figs, back };
 }
 
 beforeEach(() => {
@@ -186,11 +208,11 @@ describe("听歌's disco coming in and going", () => {
     const d = start();
     play(10);
     run(3000);
-    d.set({ want: false, still: false });
+    d.set({ want: false, still: false, crowd: true });
     run(1300);
     expect(drawn.removed).toBe(1);
     expect(onShown).toHaveBeenLastCalledWith(false);
-    d.set({ want: true, still: false });
+    d.set({ want: true, still: false, crowd: true });
     run(500);
     expect(drawn.made).toBe(2);
     expect(onShown).toHaveBeenLastCalledWith(true);
@@ -205,7 +227,7 @@ describe("听歌's disco coming in and going", () => {
     expect(onShown).toHaveBeenLastCalledWith(false);
     expect(rafs.size).toBe(0);
     play();
-    d.set({ want: true, still: false });
+    d.set({ want: true, still: false, crowd: true });
     run(1000);
     expect(drawn.made).toBe(1);
   });
@@ -222,7 +244,7 @@ describe("听歌's disco coming in and going", () => {
     expect(gl.setDance).toHaveBeenLastCalledWith(null);
     expect(warn).toHaveBeenCalled();
     song.broken = false;
-    d.set({ want: true, still: false });
+    d.set({ want: true, still: false, crowd: true });
     d.poke();
     run(1000);
     expect(drawn.made).toBe(1);
@@ -284,5 +306,87 @@ describe("what it draws", () => {
     expect(dance().on).toBe(0);
     run(10_000, 60);
     expect(last().fx).toBe("calm");
+  });
+});
+
+describe("一起听's stage", () => {
+  it("in a room the map's roaches stand, darkened, the ball and lights as ever; the room's stage dances in their place", () => {
+    const st = roomStage(3);
+    start(false, false);
+    play(10);
+    run(3000);
+    // the map: darkened all over by the page, its roaches too, nobody dancing on it, no lights at their feet
+    expect(last().dim).toBeCloseTo(0.8, 3);
+    expect(dance().dim).toBe(0);
+    expect(dance().on).toBe(0);
+    expect(dance().light).toBe(0);
+    expect(last().fx).toBe("full");
+    expect(last().ballY).toBeCloseTo(0, 3);
+    // the stage: in with the lights, each roach moved about its feet, every other one with its sleeves up
+    expect(st.root.el.style.opacity).toBe("1.000");
+    for (const f of st.figs) {
+      expect(f.props.get("transform")).toMatch(/^translate\(/);
+      expect(f.props.get("transform-origin")).toBe("50% 92%");
+    }
+    expect(st.figs.map((f) => f.classes.has("up"))).toEqual([false, true, false]);
+    st.back();
+  });
+
+  it("stands with less motion asked for: the lights alone, and the stage there with them", () => {
+    const st = roomStage(2);
+    start(true, false);
+    play(10);
+    run(3000);
+    expect(st.root.el.style.opacity).toBe("1.000");
+    expect(st.figs.every((f) => !f.props.has("transform") && !f.classes.has("up"))).toBe(true);
+    expect(last().fx).toBe("still");
+    st.back();
+  });
+
+  it("goes with the lights: its roaches standing again, sleeves down, and it faded out", () => {
+    const st = roomStage(2);
+    start(false, false);
+    play(10);
+    run(3000);
+    expect(st.figs[1].classes.has("up")).toBe(true);
+    pause();
+    run(3500);
+    expect(drawn.removed).toBe(1);
+    expect(st.root.el.style.opacity).toBe("0");
+    expect(st.figs.every((f) => !f.props.has("transform") && !f.classes.has("up"))).toBe(true);
+    st.back();
+  });
+
+  it("dances where the map cannot draw its roaches dancing (轻量's piles): page elements can", () => {
+    crowd = "lite";
+    const st = roomStage(2);
+    start(false, false);
+    play(10);
+    run(3000);
+    expect(dance().on).toBe(0);
+    expect(st.figs.every((f) => f.props.has("transform"))).toBe(true);
+    st.back();
+  });
+
+  it("steps down on a slow phone while only the stage dances, and stands at the lights alone", () => {
+    const st = roomStage(2);
+    start(false, false);
+    play(10);
+    run(15_000, 12);
+    expect(last().fx).toBe("calm");
+    expect(st.figs.every((f) => !f.props.has("transform") && !f.classes.has("up"))).toBe(true);
+    expect(st.root.el.style.opacity).toBe("1.000");
+    st.back();
+  });
+
+  it("is danced only in a room: alone, the map's roaches dance as ever", () => {
+    const st = roomStage(2);
+    start();
+    play(10);
+    run(3000);
+    expect(dance().on).toBeGreaterThan(0.9);
+    expect(st.figs.every((f) => !f.props.has("transform"))).toBe(true);
+    expect(st.root.el.style.opacity).toBe("");
+    st.back();
   });
 });

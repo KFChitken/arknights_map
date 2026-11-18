@@ -1,10 +1,19 @@
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { isListening, listenTap } from "@/components/app/listening";
-import { offered, stageNow, type AmapStage, type DiscoStage, type MaplibreStage } from "@/components/map/discoStage";
+import {
+  offered,
+  roomStageNow,
+  stageNow,
+  type AmapStage,
+  type DiscoStage,
+  type MaplibreStage,
+  type RoomStage,
+  type StageDancer,
+} from "@/components/map/discoStage";
 import type { RoachGl } from "@/components/map/roachGl";
 import { readDance } from "@/lib/dance";
 import { amapDance } from "./amapDance";
-import { FREE_STEP, freeAmp, liteMove, nextBar, planOf, stepAt, type Plan, type Step } from "./choreo";
+import { danceTraits, FREE_STEP, freeAmp, JUMP, liteMove, nextBar, planOf, stepAt, WILD, wildMove, type Plan, type Step } from "./choreo";
 import { beatAt, FREE_S, pictureTime, SongClock } from "./clock";
 import { BACK_MS, fpsCap, GearWatch, modeOf, type Mode } from "./gear";
 import { type DanceNow, STANDING } from "./glsl";
@@ -16,8 +25,9 @@ import { BALL_UP, overlay, type Overlay } from "./overlay";
  * 听歌's disco on this page (src/lib/disco.ts fetches it, src/components/app/DiscoHost.tsx starts it): one loop of
  * frames, 30 a second at most (20 in 省电版), that reads where the song is (listening.ts listenTap), works out the dance
  * (choreo.ts) and hands it to the map on screen (src/components/map/discoStage.ts), the ball and lights (overlay.ts)
- * and the roaches drawn as page elements (marks.ts). It comes in once the song really sounds; it goes when it is no
- * longer wanted, or two seconds after the song stops (the next song keeps it). Nothing is sent anywhere.
+ * and the roaches drawn as page elements (marks.ts). In 一起听 the map's roaches stand, and the room's own stage
+ * (src/components/app/ListenStage.tsx) dances in their place. It comes in once the song really sounds; it goes when it
+ * is no longer wanted, or two seconds after the song stops (the next song keeps it). Nothing is sent anywhere.
  */
 
 export type DiscoWish = {
@@ -25,6 +35,8 @@ export type DiscoWish = {
   want: boolean;
   /** Less motion asked for: the lights alone, still */
   still: boolean;
+  /** Everyone on the map dances (listening alone); not in 一起听, where the room's own stage dances in their place */
+  crowd: boolean;
 };
 
 export type Disco = {
@@ -49,10 +61,18 @@ const DANCE_MS = 250;
 const POLL_MS = 400;
 /** Where the GPU cannot darken the map under its roaches, a page element darkens the whole of it, this much fainter */
 const PAGE_DIM = 0.6;
+/** In 一起听 the page element darkens the whole map this much, its roaches with it (they stand, the stage dancing) */
+const ROOM_DIM = 0.8;
 /** Songs' dances kept, by their tables */
 const PLANS_KEPT = 6;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+/** A step toward dancing (1) or standing (0), there over about DANCE_MS */
+const toward = (v: number, on: boolean, dt: number) => {
+  const to = on ? 1 : 0;
+  const next = v + (to - v) * Math.min(1, dt / DANCE_MS);
+  return Math.abs(to - next) < 0.002 ? to : next;
+};
 const ease = (k: number) => (1 - Math.cos(Math.PI * clamp01(k))) / 2;
 const easeIn = (k: number) => clamp01(k) ** 2;
 /** Over the end and back: the ball's bounce as it stops */
@@ -77,7 +97,7 @@ type Floor = {
 };
 
 export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => void }): Disco {
-  let wish: DiscoWish = { want: false, still: false };
+  let wish: DiscoWish = { want: false, still: false, crowd: true };
   let phase: "off" | "on" | "out" = "off";
   let phaseAt = 0;
   // what the phase started from (the lights, the ball), and where they are now
@@ -86,6 +106,7 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
   let shown = 0;
   let ballY = BALL_UP;
   let danceOn = 0;
+  let stageOn = 0;
   let pausedAt: number | null = null;
   // dancing starts all together on the next bar of the song it was turned on to; any other song at once
   let startSong: string | null = null;
@@ -105,6 +126,11 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
   const gear = new GearWatch();
   const marks = new DanceMarks();
   const now: DanceNow = { ...STANDING };
+  // 一起听's stage: the one drawn (put back when it goes), how faded in, and its roaches' dance (the map's, on for them)
+  const stageMarks = new DanceMarks();
+  let stageWas: RoomStage | null = null;
+  let stageFade = "";
+  const stageN: DanceNow = { ...STANDING };
   const plans = new Map<string, SongDance>();
 
   const danceOf = (text: string | null): SongDance => {
@@ -269,6 +295,58 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
     return s ? floor : null;
   };
 
+  // ---- 一起听's stage ----
+
+  /** A roach of the stage with its sleeves up (its second copy shown), or down */
+  const sleeves = (d: StageDancer, up: boolean) => {
+    if (d.el.classList.contains("up") !== up) d.el.classList.toggle("up", up);
+  };
+  /**
+   * The stage this frame: faded in and out with the lights; its roaches, while they dance, as the map's would (each its
+   * own part of the dance, the wave along the stage), every other one with its sleeves up, and all of them at the top
+   * of a climax's big jumps (as the map's, glsl.ts danceVert); standing, as they were
+   */
+  const drawStage = (s: RoomStage | null) => {
+    if (s !== stageWas) leaveStage();
+    stageWas = s;
+    if (!s) return;
+    const fade = shown.toFixed(3);
+    if (fade !== stageFade) {
+      stageFade = fade;
+      s.el.style.opacity = fade;
+    }
+    const list = s.dancers();
+    if (stageOn <= 0.001 || !list.length) {
+      stageMarks.reset();
+      for (const d of list) sleeves(d, false);
+      return;
+    }
+    Object.assign(stageN, now);
+    stageN.on = stageOn;
+    const r = s.el.getBoundingClientRect();
+    stageMarks.draw(
+      list.map((d) => ({ el: d.el, kind: "mine" as const, seed: d.seed, size: d.size })),
+      stageN,
+      { left: r.left, width: r.width },
+    );
+    const p = frac(stageN.beat);
+    const climax = stageN.hands * stageOn > 0.5 && stageN.mix > 0.5 && Math.floor(stageN.beat) % 2 === 0 && p > 0.12 && p < 0.62;
+    for (const d of list) {
+      const b = stageN.b === WILD ? wildMove(danceTraits(d.seed), stageN.beat) : stageN.b;
+      sleeves(d, d.sleeves && stageOn > 0.5 && (d.alt || (climax && b === JUMP)));
+    }
+  };
+  /** The stage as it was: its roaches standing, sleeves down, faded out (it goes with the lights) */
+  const leaveStage = () => {
+    stageMarks.reset();
+    if (stageWas) {
+      for (const d of stageWas.dancers()) sleeves(d, false);
+      stageWas.el.style.opacity = "0";
+    }
+    stageWas = null;
+    stageFade = "";
+  };
+
   // ---- coming in and going ----
 
   const loop = () => {
@@ -315,6 +393,7 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
     floor?.leave();
     floor = null;
     marks.reset();
+    leaveStage();
     ov?.remove();
     ov = null;
     const was = phase !== "off";
@@ -322,6 +401,7 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
     shown = 0;
     ballY = BALL_UP;
     danceOn = 0;
+    stageOn = 0;
     drewWas = "";
     Object.assign(now, STANDING);
     if (was) opts.onShown(false);
@@ -397,30 +477,36 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
     const f = floorNow();
     if (!f) return;
     const mode = modeOf(wish.still, gear.gear, f.dances());
+    // in 一起听 the map's roaches stand, and the room's stage dances in their place: page elements, which can wherever
+    // anything dances (not with less motion asked for, nor on a phone down to the lights alone)
+    const room = wish.crowd ? null : roomStageNow();
+    const crowd: Mode = wish.crowd ? mode : { ...mode, dance: false };
+    const stageDances = room !== null && modeOf(wish.still, gear.gear, true).dance;
     const lite = mode.fx !== "full";
-    const wanted = phase === "on" && mode.dance && Boolean(tap?.sounding) && !(onBeat && raw < startBeat - 0.001);
-    danceOn += ((wanted ? 1 : 0) - danceOn) * Math.min(1, dt / DANCE_MS);
-    if (Math.abs((wanted ? 1 : 0) - danceOn) < 0.002) danceOn = wanted ? 1 : 0;
+    const ready = phase === "on" && Boolean(tap?.sounding) && !(onBeat && raw < startBeat - 0.001);
+    danceOn = toward(danceOn, ready && crowd.dance, dt);
+    stageOn = toward(stageOn, ready && stageDances, dt);
 
     now.beat = plan && Number.isFinite(raw) ? Math.max(0, raw) : 0;
     now.free = songT / FREE_S;
-    now.on = mode.dance ? danceOn : 0;
+    now.on = crowd.dance ? danceOn : 0;
     now.a = lite ? liteMove(step.a) : step.a;
     now.b = lite ? liteMove(step.b) : step.b;
     now.mix = step.mix;
     now.amp = step.amp;
     now.hands = !lite && step.climax ? 1 : 0;
     now.drop = !lite && step.drop ? 1 : 0;
-    now.light = mode.dance && mode.fx === "full" ? shown * (0.5 + 0.5 * step.level) : 0;
+    now.light = crowd.dance && mode.fx === "full" ? shown * (0.5 + 0.5 * step.level) : 0;
     now.lightBeat = onBeat ? raw : pace;
     now.pulse = onBeat ? 1 : 0;
     // the GPU darkens the map under the roaches where it can (the map's own frame reads it, after this one), and is
-    // asked for a frame only when what it draws changes: dancing, the floor lights, the darkening coming or going
-    now.dim = shown;
+    // asked for a frame only when what it draws changes: dancing, the floor lights, the darkening coming or going; in
+    // 一起听 the page darkens all of it instead, the standing roaches too
+    now.dim = wish.crowd ? shown : 0;
     const drew = `${now.on}|${now.light}|${now.dim}`;
     const changed = now.on > 0 || now.light > 0 || drew !== drewWas;
     drewWas = drew;
-    const gpuDim = f.frame(mode, changed);
+    const gpuDim = f.frame(crowd, changed);
     if (!gpuDim) now.dim = 0;
 
     ov?.draw({
@@ -435,7 +521,7 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
       pace,
       level: step.level,
       drop: now.drop > 0,
-      dim: gpuDim ? 0 : shown * PAGE_DIM,
+      dim: !wish.crowd ? shown * ROOM_DIM : gpuDim ? 0 : shown * PAGE_DIM,
     });
 
     if (now.on > 0.001) {
@@ -444,8 +530,10 @@ export function startDisco(host: HTMLElement, opts: { onShown: (on: boolean) => 
         const r = host.getBoundingClientRect();
         marks.draw(list, now, { left: r.left, width: r.width });
       } else marks.reset();
-      if (mode.dance && document.visibilityState === "visible") gear.frame(t);
     } else marks.reset();
+    drawStage(room);
+    // the frames counted while anyone dances, the map's or the stage's
+    if ((now.on > 0.001 || stageOn > 0.001) && document.visibilityState === "visible") gear.frame(t);
   };
 
   const seen = () => {

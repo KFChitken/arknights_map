@@ -1,0 +1,31 @@
+/*
+ * 一起听's stage while 听歌's disco is out in a room (ListenStage.tsx): over the map, under the buttons and the row of
+ * 短评; faded in and out by the disco with its lights (it starts unseen), its roaches moved by it alone. Takes no taps.
+ */
+.ls-stage {
+  position: fixed; z-index: 6; display: grid; justify-items: center; align-content: end; gap: 4px;
+  pointer-events: none; opacity: 0; transition: bottom 0.2s ease;
+}
+.ls-lbl {
+  font-size: 11px; font-weight: 800; line-height: 1.5; color: #fff; white-space: nowrap;
+  padding: 1px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.45);
+}
+.ls-floor {
+  display: grid; grid-template-columns: repeat(var(--ls-cols), var(--ls-col)); gap: 2px 6px; justify-content: center;
+  align-items: end; max-width: 92%; padding: 8px 12px 6px; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(48, 16, 72, 0.78), rgba(14, 18, 40, 0.86));
+  box-shadow: 0 0 0 1px rgba(255, 79, 216, 0.35), 0 0 30px rgba(255, 79, 216, 0.4);
+}
+.ls-d { display: grid; justify-items: center; min-width: 0; }
+/* both copies of the roach in one place, the second (its sleeves up) shown while the disco says so */
+.ls-fig { position: relative; display: block; width: var(--ls-size); height: var(--ls-size); }
+.ls-fig > * { position: absolute; inset: 0; }
+.ls-fig > img + img, .ls-fig.up > img:first-child { visibility: hidden; }
+.ls-fig.up > img + img { visibility: visible; }
+.ls-d b {
+  max-width: 100%; overflow: hidden; font-size: 10.5px; font-weight: 700; line-height: 1.35; color: #fff;
+  text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px #000;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ls-stage { transition: none; }
+}

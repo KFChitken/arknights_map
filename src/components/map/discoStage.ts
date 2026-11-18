@@ -46,6 +46,34 @@ export type MaplibreStage = Stage & {
 
 export type DiscoStage = AmapStage | MaplibreStage;
 
+/**
+ * 一起听's own stage (src/components/app/ListenStage.tsx), up while the disco is out in a room: faded in and out with
+ * its lights, its roaches danced in place of the map's
+ */
+export type RoomStage = {
+  el: HTMLElement;
+  /** Its roaches as they stand now, in a row (a second row after the first) */
+  dancers: () => StageDancer[];
+};
+/**
+ * One of them: its picture (both copies of it, the second with its sleeves up, inside); its own part of the dance;
+ * how big it is drawn; sleeves: it has the second copy (the hood); alt: every other one, which dances with its sleeves up
+ */
+export type StageDancer = { el: HTMLElement; seed: number; size: number; sleeves: boolean; alt: boolean };
+
+let roomStage: RoomStage | null = null;
+
+/** The stage up: offered until the call given back */
+export function offerRoomStage(s: RoomStage) {
+  roomStage = s;
+  return () => {
+    if (roomStage === s) roomStage = null;
+  };
+}
+
+/** The stage up, if any */
+export const roomStageNow = (): RoomStage | null => roomStage;
+
 const stages = new Set<DiscoStage>();
 
 /** A map up: offered until the call given back */

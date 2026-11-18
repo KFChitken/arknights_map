@@ -1840,6 +1840,8 @@ export const zh = {
       tuck: { float: "把小条收回底栏", drawer: "把小条收回抽屉", hud: "把小条收回去" },
       tuckWord: "收起",
     },
+    // 蹦迪 in 一起听: the room's roaches dancing in a row over the bottom of the map (ListenStage.tsx)
+    stage: { label: "舞台 · 这场 {n} 人一起跳", you: "你" },
     // 点歌: someone in a room asks its host for a song, who lets it into 待播 or leaves it out (ListenPanel.tsx)
     asks: {
       ask: "点歌",
