@@ -17,6 +17,12 @@
 // Arknights pictures come from PRTS, named by the same Chinese names as our list; Endfield
 // ones from endfield.wiki.gg, whose pages give each character's Chinese name. sharp comes
 // with Next.js.
+//
+// 一起卫戍's strategies (src/data/squad-season.json) show the operator or character who offers
+// each: most are on the operators' list; the others (歌利亚, 大帝 and more, whom no player can
+// have) get the middle of their round 「策略发起人」 portrait on PRTS, without the word in its
+// corner. PRTS's picture server drops many connections from abroad: run it again until none
+// is missing.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -32,10 +38,18 @@ const COLLAB = new Set(["灰烬", "闪击", "战车", "霜华", "麒麟R夜刀",
 const args = process.argv.slice(2);
 const refresh = args.includes("--refresh");
 const names = (file) => JSON.parse(readFileSync(file, "utf8")).operators.map((o) => o.name);
+const operators = names("src/data/arknights-operators.json");
+// 一起卫戍's strategy initiators who are not operators: their 策略发起人 portrait instead
+const initiators = JSON.parse(readFileSync("src/data/squad-season.json", "utf8"))
+  .strategies.map((s) => s.op)
+  .filter((n) => !operators.includes(n));
+const INITIATORS = new Set(initiators);
 const lists = {
-  arknights: names("src/data/arknights-operators.json"),
+  arknights: [...operators, ...new Set(initiators)],
   endfield: names("src/data/endfield-operators.json"),
 };
+/** How much of a 策略发起人 portrait is kept, around its middle */
+const MIDDLE = 0.8;
 const old = existsSync(INDEX) ? JSON.parse(readFileSync(INDEX, "utf8")) : {};
 const index = { arknights: {}, endfield: {} };
 
@@ -74,11 +88,15 @@ async function imageUrls(api, titles) {
   return urls;
 }
 
-/** Our Arknights name → its picture on PRTS, 「头像_<name>.png」 with plain brackets. */
+/**
+ * Our Arknights name → its picture on PRTS: 「头像_<name>.png」 with plain brackets, or for one of
+ * 一起卫戍's strategy initiators who is no operator, 「卫戍协议：盟约 策略发起人 <name>.png」, of which
+ * only the middle is kept (middle).
+ */
 async function arknightsUrls(wanted) {
-  const title = (n) => `文件:头像_${n.replace(/（/g, "(").replace(/）/g, ")")}.png`;
+  const title = (n) => (INITIATORS.has(n) ? `文件:卫戍协议：盟约 策略发起人 ${n}.png` : `文件:头像_${n.replace(/（/g, "(").replace(/）/g, ")")}.png`);
   const urls = await imageUrls("https://prts.wiki/api.php", wanted.map(title));
-  return new Map(wanted.flatMap((n) => (urls.has(title(n)) ? [[n, urls.get(title(n))]] : [])));
+  return new Map(wanted.flatMap((n) => (urls.has(title(n)) ? [[n, { url: urls.get(title(n)), middle: INITIATORS.has(n) }]] : [])));
 }
 
 /** Our Endfield name → its picture on endfield.wiki.gg, found through the Chinese name on each character's page. */
@@ -105,7 +123,7 @@ async function endfieldUrls(wanted) {
   const icon = (n) => `File:${byChinese.get(n)} icon.png`;
   const known = wanted.filter((n) => byChinese.has(n));
   const urls = await imageUrls(api, known.map(icon));
-  return new Map(known.flatMap((n) => (urls.has(icon(n)) ? [[n, urls.get(icon(n))]] : [])));
+  return new Map(known.flatMap((n) => (urls.has(icon(n)) ? [[n, { url: urls.get(icon(n)), middle: false }]] : [])));
 }
 
 /** Store a picture as a small WebP named by its content; returns the file name. */
@@ -119,11 +137,21 @@ async function storePicture(input) {
   return file;
 }
 
-/** Download one picture and store it; returns the file name. */
-async function store(url) {
+/** The middle MIDDLE of a square-ish picture: of a 策略发起人 portrait, the face without the word in its corner */
+async function middleOf(input) {
+  const { width = 0, height = 0 } = await sharp(input).metadata();
+  const side = Math.round(Math.min(width, height) * MIDDLE);
+  return sharp(input)
+    .extract({ left: Math.round((width - side) / 2), top: Math.round((height - side) / 2), width: side, height: side })
+    .toBuffer();
+}
+
+/** Download one picture (its middle alone, middle) and store it; returns the file name. */
+async function store({ url, middle }) {
   const res = await get(url);
   if (!(res.headers.get("content-type") ?? "").startsWith("image/")) throw new Error(`not a picture: ${url}`);
-  return storePicture(Buffer.from(await res.arrayBuffer()));
+  const input = Buffer.from(await res.arrayBuffer());
+  return storePicture(middle ? await middleOf(input) : input);
 }
 
 /** The picture a character has here already, while its file is still there */
@@ -166,10 +194,10 @@ for (const [game, find] of [
   for (let i = 0; i < todo.length; i += 4) {
     await Promise.all(
       todo.slice(i, i + 4).map(async (n) => {
-        const url = urls.get(n);
+        const found = urls.get(n);
         try {
-          if (!url) throw new Error("none on the wiki");
-          index[game][n] = await store(url);
+          if (!found) throw new Error("none on the wiki");
+          index[game][n] = await store(found);
         } catch (e) {
           const kept = keptFile(game, n);
           if (!kept) return missing.push(`${game}: ${n} (${e.message})`);
