@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BUBBLE_MS, KEY_OLD_MS, type SquadListRoom, type SquadMember, type SquadSeat } from "@/lib/squad";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
-import { RoomCard, SeatTile } from "./SquadSheet";
+import { MemberTile, RoomCard, SeatTile } from "./SquadSheet";
 import type { SquadLine } from "./squading";
 
 const NOW = Date.parse("2026-11-16T20:30:00+08:00");
@@ -66,6 +66,11 @@ describe("a room on the list", () => {
     expect(old).toContain("sq-age old");
   });
 
+  it("is marked 测试 with 人机 in it (to the 站长 and the admins alone)", () => {
+    expect(html(room({ test: true }))).toContain('<small class="tst">测试</small>');
+    expect(html(room())).not.toContain("测试");
+  });
+
   it("is closed while playing, and leads back to one's own room", () => {
     const go = html(room({ state: "go" }));
     expect(go).toContain("开打中");
@@ -107,6 +112,27 @@ describe("a roach in a room's tile", () => {
     // asleep, it does not shout
     expect(roach(member({ pose: 2 }), { key: 1, h: 2, p: 14, at: now })).not.toContain("yell");
     expect(roach(member(), { key: 1, h: 2, p: 14, at: now - 5_000 })).not.toContain("yell");
+  });
+
+  it("marks a 人机's tile 人机, its 准备 as anyone's", () => {
+    const tile = (m: SquadMember) =>
+      renderToStaticMarkup(
+        createElement(MemberTile, {
+          m,
+          art: null,
+          playing: false,
+          lift: 0,
+          open: false,
+          onCore: () => {},
+          onStrategy: () => {},
+          onMenu: () => {},
+        }),
+      );
+    const bot = tile(member({ h: -1, name: "人机 1", bot: true }));
+    expect(bot).toContain('class="sq-tile bot"');
+    expect(bot).toContain('<span class="bt">人机</span>');
+    expect(bot).toContain("✓ 准备好了");
+    expect(tile(member())).not.toContain('class="bt"');
   });
 
   it("says a line in a bubble for 4 s, a later one beside it higher up", () => {

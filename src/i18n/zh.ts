@@ -682,6 +682,8 @@ export const zh = {
       fullNoCall: "房间满了，不用再叫人了。",
       declareFriendsOnly: "这个房间只给房主的触须之交，不能发宣言招附近的人。",
       declaredAlready: "这个房间已经发过宣言了，一个房间只能发一次。",
+      botsNoDeclare: "有人机的房间不能宣言招人。",
+      botsStaff: "只有站长和管理员能加人机。",
     },
     routes: {
       world: {
@@ -2106,6 +2108,24 @@ export const zh = {
       levelPick: "选难度",
       clash: "和你的策略撞了",
       clashTag: "撞",
+      /** A room with 人机 in it, on the list of the 站长 and the admins */
+      test: "测试",
+    },
+    /** 人机: made-up teammates the 站长 and the admins put in a room to try it alone */
+    bot: {
+      name: "人机 {n}",
+      add: "＋人机",
+      tag: "人机",
+      touchNote: "只放动画，不算次数",
+      touched: "{name}挥了挥手（人机只放动画，不算次数）",
+      row: "人机（只有站长和管理员能点这一排）",
+      ready: "准备好了",
+      readyOn: "✓ 准备好了",
+      strategy: "换策略",
+      say: "说一句",
+      pose: "换动作",
+      kick: "请出去",
+      noDeclare: "有人机的房间不能宣言招人",
     },
     join: {
       title: "加入 {host} 的房间？",

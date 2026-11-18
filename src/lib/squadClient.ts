@@ -2,7 +2,7 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
-import type { SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound, SquadSongChange } from "./squad";
+import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound, SquadSongChange } from "./squad";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -69,6 +69,8 @@ export const squadApi = {
   prefs: (round: SquadRound) => call<Room>("prefs", post({ round })),
   /** What your roach keeps doing in the room */
   pose: (pose: SquadPose) => call<Room>("pose", post({ pose })),
+  /** 人机, for the 站长 and the admins as host: add one, or what the one numbered h does */
+  bot: (what: SquadBotDo, h?: number) => call<Room>("bot", post(h === undefined ? { do: what } : { do: what, h })),
   /** Your roach waves, or gives a teammate (to: their number) 击掌 or 贴贴: sent, or one too many (full: the hour's are used up) */
   move: (move: SquadMove, to?: number) => call<{ sent: boolean; full?: boolean; now: number }>("move", post(to === undefined ? { move } : { move, to })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */

@@ -185,6 +185,7 @@ export default function SquadFight({
       >
         {m.you && <span className="tapme">{m.strategy === null ? T.squad.fight.mark : T.squad.fight.tapMe}</span>}
         {m.host && !m.you && <span className="hostt">{T.squad.fight.host}</span>}
+        {m.bot && <span className="hostt">{T.squad.bot.tag}</span>}
         {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "left" : "up"} />}
         <span className="rw">
           <SquadRoach m={m} size={wide ? 46 : 42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} />
@@ -279,6 +280,7 @@ function Peek({ m, at, art, onTouch, onClose }: { m: SquadMember; at: CSSPropert
           {T.squad.room.bold}
         </button>
       </div>
+      {m.bot && <small className="bn">{T.squad.bot.touchNote}</small>}
     </div>
   );
 }

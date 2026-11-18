@@ -5,6 +5,7 @@ import { fmt, T } from "@/i18n";
 import { SQUAD_MAX, type SquadCall } from "@/lib/squad";
 import type { InboxItem } from "@/lib/world/types";
 import { ShieldIcon } from "../chrome/parts";
+import { useSquadBotsActing } from "./squadBots";
 import { squadCallLine, useSquadRoom } from "./squading";
 import "./squadBar.css";
 
@@ -47,6 +48,8 @@ export function useAbove(shown: boolean, up: number) {
  */
 export default function SquadBar({ hidden, onOpen }: { hidden: boolean; onOpen: () => void }) {
   const room = useSquadRoom();
+  // the 人机 of a room the 站长 or an admin hosts, now and then (mounted while 一起卫戍 shows on the map)
+  useSquadBotsActing();
   const shown = Boolean(room) && room?.state !== "go" && !hidden;
   const at = useAbove(shown, 0);
   if (!room || !shown || !at) return null;

@@ -174,6 +174,7 @@ import {
   heardSquad,
   inviteToSquad,
   laterSquadInvite,
+  squadBotTouched,
   squadRoomNow,
   squadStreamBack,
   startSquad,
@@ -2570,6 +2571,13 @@ export default function MapApp({
   }, [squadRounds]);
   /** 偷偷碰 or 大胆碰 someone in a room of 一起卫戍, as on the map: what it used, what it made, said as there */
   const touchInSquadRoom = async (h: number, bold: boolean) => {
+    // a 人机 is touched on this page alone (it waves): nothing sent, nothing counted
+    if (h < 0) {
+      const bot = squadRoomNow()?.members.find((m) => m.h === h);
+      if (!bot) return;
+      squadBotTouched(h);
+      return setToast(fmt(T.squad.bot.touched, { name: bot.name }));
+    }
     const res = await act(() => touchInSquad(h, bold));
     if (!res) return;
     touchesUsed(res);

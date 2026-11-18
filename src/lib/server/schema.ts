@@ -1935,6 +1935,33 @@ export const squadMembers = pgTable(
 );
 
 /**
+ * 人机 in a room of 一起卫戍 (src/lib/squad.ts BOT_DOS): made-up teammates its host, the 站长 or an admin, put in to
+ * try it alone; nobody's. handle: its number in the room, below 0 (-1, -2…: a member's is above), never given again
+ * there; no: the number in its name (人机 1, 2…), the smallest not in use; gone_at once asked to leave. Its look,
+ * 准备, picks, the round's 附加盟约 and pose as a member's are (squad_members). Gone with the room.
+ */
+export const squadBots = pgTable(
+  "squad_bots",
+  {
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => squadRooms.id, { onDelete: "cascade" }),
+    handle: smallint("handle").notNull(),
+    no: smallint("no").notNull(),
+    avatar: text("avatar").notNull(),
+    color: text("color").notNull(),
+    inGame: boolean("in_game").notNull().default(true),
+    core: smallint("core").notNull().default(0),
+    strategy: smallint("strategy"),
+    extras: smallint("extras").array().notNull().default(sql`'{}'::smallint[]`),
+    pose: smallint("pose").notNull().default(0),
+    addedAt: at("added_at").notNull().defaultNow(),
+    goneAt: at("gone_at"),
+  },
+  (t) => [primaryKey({ columns: [t.roomId, t.handle] })],
+);
+
+/**
  * Invitations to a room of 一起卫戍, from someone in it to a 触须之交 of theirs, good for INVITE_MS: in 消息 →
  * 触须之交 (seen_at), and answered joined (went in) or later (下次吧, which the inviter sees as not come). Gone with
  * the room.

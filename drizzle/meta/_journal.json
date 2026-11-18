@@ -547,6 +547,13 @@
       "when": 1795004654893,
       "tag": "0078_handwriting",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1795008145469,
+      "tag": "0079_squad_bots",
+      "breakpoints": true
     }
   ]
 }

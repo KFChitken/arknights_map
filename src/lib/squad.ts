@@ -195,6 +195,30 @@ export const LIST_IDLE_MS = 5 * MINUTE;
 /** Rooms on the list at most */
 export const LIST_MAX = 30;
 
+// ---- 人机, for the 站长 and the admins to try a room alone ----
+
+/**
+ * 人机 (bots): made-up teammates the 站长 or an admin, as a room's host, puts in its empty seats (＋人机) to try it
+ * alone. Nobody's: no account, nothing counted, kept or told anywhere but in the room; each known there by a number of
+ * its own below 0 (a member's is above), named 人机 1, 2…, ready from the start, its picks at random (a strategy nobody
+ * in the room has). Counted as one in the room wherever who is in it is counted (full, 开始游戏, strategies that clash).
+ * A room with one shows on the list of the 站长 and the admins alone (测试), and calls nobody nearby (宣言招人).
+ * The host's page has them say a line or change their pose now and then; the host does the rest from their tile.
+ */
+export const BOT_DOS = ["add", "ready", "strategy", "say", "pose", "kick"] as const;
+export type SquadBotDo = (typeof BOT_DOS)[number];
+export const isBotDo = (v: unknown): v is SquadBotDo => BOT_DOS.includes(v as SquadBotDo);
+/** A 人机's number in its room: below 0, never a member's */
+export const isBotHandle = (v: unknown): v is number => Number.isInteger(v) && (v as number) <= -1 && (v as number) >= -32_768;
+/** 附加盟约 a 人机 comes in with, at most (some at random) */
+export const BOT_EXTRAS_MAX = 2;
+/** A line from the 人机 of a room once every BOT_SAY_EVERY_MS at most */
+export const BOT_SAY_EVERY_MS = 5_000;
+/** The host's page has one of them do something this often (somewhere between the two), while the page is in sight */
+export const BOT_ACT_MS = [20_000, 40_000] as const;
+/** Of what they do by themselves, this share is a line, the rest a pose */
+export const BOT_SAY_SHARE = 0.7;
+
 // ---- the host's songs ----
 
 /** What the host does to the room's songs: as 一起听's (src/lib/listen.ts), and 停 (stop: nothing plays until they start it again) */
@@ -313,6 +337,8 @@ export type SquadListRoom = {
   mine: boolean;
   /** A song of the host's plays in it now (♪ 在放歌) */
   music: boolean;
+  /** 人机 are in it (shown to the 站长 and the admins alone, and to those in it), marked 测试 */
+  test?: true;
 };
 
 /** GET /api/squad/list: rooms waiting first (those with 触须之交 first, then those missing fewest, the freshest key first), then those playing */
@@ -334,6 +360,8 @@ export type SquadMember = {
   /** 准备 (in the game's alliance and ready): ticked by them; the host needs none */
   inGame: boolean;
   pose: SquadPose;
+  /** A 人机 (its number below 0), after everyone else */
+  bot?: true;
 } & SquadLook &
   SquadRound;
 
@@ -353,6 +381,8 @@ export type SquadRoom = {
   /** Your number in it */
   you: number;
   host: boolean;
+  /** You are the 站长 or an admin: as its host, you may put 人机 in its empty seats */
+  staff: boolean;
   members: SquadMember[];
   /** When its round started (开始游戏, ms), while it plays; null while it waits */
   wentAt: number | null;
@@ -416,6 +446,8 @@ export type SquadDesk = {
   /** Invitations sent, and players who went in at a 宣言招人 */
   invites: number;
   called: number;
+  /** Rooms open now with 人机 in them */
+  botRooms: number;
 };
 
 // ---- calling others in ----

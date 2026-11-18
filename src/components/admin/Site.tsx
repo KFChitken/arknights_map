@@ -499,6 +499,7 @@ function SquadPanel() {
               <div className="ac-muted small">只记一共几句，不记谁说的</div>
             </div>
           </div>
+          <p className="ac-sub">现在有 {d.botRooms} 个房间里有人机（测试用，只有站长和管理员加得了）</p>
           {d.closed ? (
             <div>
               <button type="button" className="ac-btn primary" disabled={busy} onClick={() => change({ closed: false }, "一起卫戍重新开门了。")}>

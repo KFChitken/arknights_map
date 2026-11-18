@@ -66,6 +66,7 @@ import {
   sentWords,
   setSquadInGame,
   setSquadPrefs,
+  squadBot,
   squadState,
   useSquadCard,
   useSquadFloats,
@@ -540,6 +541,7 @@ function RoomCard({
           {room.tags.map((t) => T.squad.tags[t - 1]).join(T.squad.dot)}
           {room.music && <small className="mus">{T.squad.list.music}</small>}
           {room.friendsOnly && <small className="only">{T.squad.list.friendsOnly}</small>}
+          {room.test && <small className="tst">{T.squad.list.test}</small>}
         </span>
         {go ? <span className="gonote">{T.squad.list.playing}</span> : <span className={`need${n === SQUAD_MAX - 1 ? " one" : ""}`}>{needWords(n)}</span>}
       </div>
@@ -919,7 +921,9 @@ function RoomView({
   // calling others in, while it waits for players and has a seat: anyone's invitations to their 触须之交 (who come in
   // even where only the host's may), and the host's 宣言招人, once a room, where anyone may come
   const mayInvite = room.state === "wait" && n < SQUAD_MAX;
-  const mayDeclare = mayInvite && room.host && !room.friendsOnly && !room.declared;
+  const mayDeclare = mayInvite && room.host && !room.friendsOnly && !room.declared && !room.members.some((m) => m.bot);
+  // 人机, to try the room alone: the 站长 and the admins as its host, while it waits
+  const mayBot = mayInvite && room.host && room.staff;
   // what keeps the round from starting, in a line (the server says no the same way)
   const blocks = notYet(room.members);
   const nameOf = (m: SquadMember) => (m.you ? T.squad.room.youName : m.name);
@@ -985,7 +989,7 @@ function RoomView({
           {!room.friendsOnly && room.state === "wait" && (
             <button disabled={busy || !mayDeclare} onClick={() => setAsking("declare")}>
               <b>{T.squad.call.declare}</b>
-              {room.declared ? T.squad.call.declared : n >= SQUAD_MAX ? T.squad.room.fullNoCall : ""}
+              {room.declared ? T.squad.call.declared : n >= SQUAD_MAX ? T.squad.room.fullNoCall : room.members.some((m) => m.bot) ? T.squad.bot.noDeclare : ""}
             </button>
           )}
           <button className="end" disabled={busy} onClick={() => setAsking("end")}>
@@ -1038,15 +1042,60 @@ function RoomView({
               +
             </span>
             <span className="nm">{T.squad.room.empty}</span>
-            {i === 0 && mayInvite && (
-              <button className="small" disabled={busy} onClick={() => setAsking("invite")}>
-                {T.squad.call.invite}
-              </button>
+            {i === 0 && (mayInvite || mayBot) && (
+              <span className="sq-seatbtns">
+                {mayInvite && (
+                  <button className="small" disabled={busy} onClick={() => setAsking("invite")}>
+                    {T.squad.call.invite}
+                  </button>
+                )}
+                {mayBot && (
+                  <button className="small ghost" disabled={busy} onClick={() => void run(() => squadBot("add"))}>
+                    {T.squad.bot.add}
+                  </button>
+                )}
+              </span>
             )}
           </div>
         ))}
       </div>
-      {menuOf && (
+      {menuOf?.bot && (
+        <div className="sq-pop" role="group" aria-label={menuOf.name}>
+          <small className="pn">{menuOf.name}</small>
+          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, false))}>
+            <b>{T.squad.room.sneak}</b>
+            {T.squad.room.sneakSub}
+          </button>
+          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, true))}>
+            <b>{T.squad.room.bold}</b>
+            {T.squad.room.boldSub}
+          </button>
+          <small>{T.squad.bot.touchNote}</small>
+          {room.host && room.staff && (
+            <div className="sq-botrow" role="group" aria-label={T.squad.bot.row}>
+              <small>{T.squad.bot.row}</small>
+              <span>
+                <button aria-pressed={menuOf.inGame} disabled={busy} onClick={() => void run(() => squadBot("ready", menuOf.h))}>
+                  {menuOf.inGame ? T.squad.bot.readyOn : T.squad.bot.ready}
+                </button>
+                <button disabled={busy} onClick={() => void run(() => squadBot("strategy", menuOf.h))}>
+                  {T.squad.bot.strategy}
+                </button>
+                <button disabled={busy} onClick={() => void run(() => squadBot("say", menuOf.h))}>
+                  {T.squad.bot.say}
+                </button>
+                <button disabled={busy} onClick={() => void run(() => squadBot("pose", menuOf.h))}>
+                  {T.squad.bot.pose}
+                </button>
+                <button className="out" disabled={busy} onClick={() => (setMenu(null), void run(() => squadBot("kick", menuOf.h)))}>
+                  {T.squad.bot.kick}
+                </button>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {menuOf && !menuOf.bot && (
         <div className="sq-pop" role="group" aria-label={menuOf.name}>
           <small className="pn">{menuOf.name}</small>
           <button onClick={() => (setMenu(null), void onTouch(menuOf.h, false))}>
@@ -1400,8 +1449,9 @@ function MemberTile({
 }) {
   const extras = extraNames(m.extras);
   return (
-    <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}`}>
+    <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}${m.bot ? " bot" : ""}`}>
       {!m.you && <button type="button" className="hit" aria-label={m.name} aria-expanded={open} onClick={onMenu} />}
+      {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} />
       <SquadRoach m={m} size={44} line={line} move={move} toMe={toMe} />
       <span className="nm">
@@ -1486,5 +1536,5 @@ function Floats() {
 }
 
 // for the page's own bar over the map, and the tests
-export { RoomCard, SeatTile };
+export { MemberTile, RoomCard, SeatTile };
 export type { SquadMember };

@@ -257,3 +257,13 @@
 .sq-tile .st.host { background: #fff3c2; color: #6a4f00; }
 .sq-key.one { grid-template-columns: auto minmax(0, 1fr); }
 .sq-key.one .kl small { display: none; }
+
+/* 人机 (the 站长's and the admins' tries): 测试 on the list, 人机 in a tile's corner, ＋人机 by 邀请, the host's row of what it does */
+.sq-room .tagline .tst { margin-left: 6px; padding: 0 6px; border-radius: 6px; background: #eceef1; color: #4b5160; }
+.sq-tile .bt { position: absolute; top: 6px; left: 6px; padding: 0 6px; border-radius: 6px; background: #eceef1; color: #5b6170; font-size: 10.5px; font-weight: 700; }
+.sq-seatbtns { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.sq-botrow { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; padding: 6px; border-radius: 10px; background: #fff7d6; }
+.sq-botrow > span { display: flex; flex-wrap: wrap; gap: 5px; }
+.sq-pop .sq-botrow button { flex-direction: row; align-items: center; padding: 5px 9px; background: #fff; color: var(--ink); font-size: 12.5px; font-weight: 600; }
+.sq-pop .sq-botrow button[aria-pressed="true"] { background: #dcf3e6; color: #1f6b41; }
+.sq-pop .sq-botrow button.out { color: #b3261e; }

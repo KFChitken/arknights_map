@@ -8,6 +8,7 @@ import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import {
   answerRequest,
+  botInRoom,
   changeKey,
   changeSquadSongs,
   declareSquad,
@@ -60,6 +61,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST invite {friends}         invitations to them (their Friend ids): what each came to
  *   POST later {invite}           下次吧, to an invitation to you (whoever sent it sees 没来)
  *   POST declare {from?}          宣言招人: the host calls those nearby, once a room, from the roaches given
+ *   POST bot {do, h?}             人机, for the 站长 and the admins as host: add one (add), or tick its 准备 (ready),
+ *                                 give it another strategy, have it say a line, change its pose, or ask it out (kick)
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
  * While SQUAD keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -91,11 +94,12 @@ const OPS = {
   invite: { method: "POST", perMinute: 10 },
   later: { method: "POST", perMinute: 20 },
   declare: { method: "POST", perMinute: 4 },
+  bot: { method: "POST", perMinute: 30 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "music", "request", "take", "invite", "declare"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "music", "request", "take", "invite", "declare", "bot"]);
 
 type Ctx = { params: Promise<{ op: string }> };
 
@@ -182,6 +186,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await laterSquadInvite(user, body));
     case "declare":
       return answer(await declareSquad(user, body));
+    case "bot":
+      return answer(await botInRoom(user, body));
     default:
       throw new HttpError(404, T.server.routes.squad.notHere);
   }

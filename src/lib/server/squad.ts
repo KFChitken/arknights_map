@@ -23,11 +23,17 @@ import { displayName } from "../profile";
 import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import {
+  BOT_EXTRAS_MAX,
+  BOT_SAY_EVERY_MS,
   cardNow,
+  CORES,
   DEFAULT_SERVER,
+  EXTRAS,
   extrasNow,
   findKey,
   GO_MAX_MS,
+  isBotDo,
+  isBotHandle,
   isLevel,
   isMove,
   isPhrase,
@@ -49,7 +55,9 @@ import {
   mayStart,
   OPEN_EVERY_MS,
   OPENS_PER_DAY,
+  PHRASE_ROWS,
   POSE_EVERY_MS,
+  POSES,
   POSES_PER_HOUR,
   PREFS_EVERY_MS,
   readCard,
@@ -67,9 +75,11 @@ import {
   SQUAD_CLOSED,
   SQUAD_MAX,
   STATE_EVERY_MS,
+  STRATEGIES,
   STRATEGY_TAKEN,
   TAGS_MAX,
   WAIT_IDLE_MS,
+  type SquadBotDo,
   type SquadCall,
   type SquadCard,
   type SquadPicks,
@@ -90,8 +100,9 @@ import {
   type SquadState,
   type SquadTell,
 } from "../squad";
-import { ROACH_COLORS } from "../types";
+import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
+import { isModHere, isOwnerEmail } from "./admins";
 import { blockedWith } from "./blocks";
 import { canSeeDeclaration } from "./declarationInbox";
 import { db } from "./db";
@@ -102,7 +113,7 @@ import { listenOpen } from "./listen";
 import { nudge, onToldSquad, tellSquad } from "./live";
 import { drawnLook } from "./looks";
 import { allow } from "./rateLimit";
-import { listenNow, roaches, squadInvites, squadMembers, squadRequests, squadRooms, statCounts, users, type UserRow } from "./schema";
+import { listenNow, roaches, squadBots, squadInvites, squadMembers, squadRequests, squadRooms, statCounts, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songList, songOf } from "./songs";
 import { squadOpen, squadShown } from "./squadOpen";
@@ -161,6 +172,64 @@ const cardOf = (u: Pick<UserRow, "squadCore" | "squadStrategy" | "squadLevel">) 
 const roomCard = (m: { core: number; strategy: number | null }): SquadPicks => picksNow(m.core, m.strategy);
 /** What one brings into a room from their card: its picks, and no extras (those are marked for a round, 第 4 版) */
 const intoRoom = (card: SquadCard) => ({ core: card.core, strategy: card.strategy, extras: [] as number[] });
+
+// ---- 人机 (src/lib/squad.ts BOT_DOS) ----
+
+type Bot = typeof squadBots.$inferSelect;
+
+/** The 站长 or an admin: who may put 人机 in a room they host (as SQUAD=admins lets them in) */
+const isStaff = (u: Pick<UserRow, "id" | "email">) => isOwnerEmail(u.email) || isModHere(u.id);
+
+/** The 人机 in these rooms now (not asked to leave), by room, in the order they came */
+async function botsIn(exec: Exec, roomIds: readonly string[]): Promise<Map<string, Bot[]>> {
+  const out = new Map<string, Bot[]>();
+  if (!roomIds.length) return out;
+  const rows = await exec
+    .select()
+    .from(squadBots)
+    .where(and(inArray(squadBots.roomId, [...roomIds]), isNull(squadBots.goneAt)))
+    .orderBy(asc(squadBots.addedAt), desc(squadBots.handle));
+  for (const b of rows) out.set(b.roomId, [...(out.get(b.roomId) ?? []), b]);
+  return out;
+}
+
+const botsOf = async (exec: Exec, roomId: string) => (await botsIn(exec, [roomId])).get(roomId) ?? [];
+
+/** The looks a 人机 comes in, at random: those anyone may pick on their card (鸭爵 is a thanks, never theirs) */
+const BOT_LOOKS = ROACH_AVATARS.filter((a) => a !== "duck");
+
+const botLook = (b: Pick<Bot, "avatar" | "color">) => ({ avatar: drawnLook(b.avatar), color: ROACH_COLORS.find((c) => c === b.color) ?? "cyan" });
+
+/** A 人机 as the room shows it: after everyone else, known by its number below 0 */
+const botMember = (b: Bot): SquadMember => ({
+  h: b.handle,
+  name: fmt(T.squad.bot.name, { n: b.no }),
+  ...botLook(b),
+  host: false,
+  you: false,
+  friend: false,
+  inGame: b.inGame,
+  pose: isPose(b.pose) ? b.pose : 0,
+  ...roomCard(b),
+  extras: extrasNow(b.extras),
+  bot: true,
+});
+
+const pickOne = <V>(list: readonly V[]): V => list[randomInt(list.length)];
+
+/** n of these at random, each once */
+function pickSome<V>(list: readonly V[], n: number): V[] {
+  const left = [...list];
+  const out: V[] = [];
+  while (out.length < n && left.length) out.push(left.splice(randomInt(left.length), 1)[0]);
+  return out;
+}
+
+/** A strategy of this season at random that none in the room has, nor the one it had (none left: none) */
+function freeStrategy(taken: readonly (number | null)[], had: number | null = null): number | null {
+  const free = STRATEGIES.filter((s) => !s.gone && s.id !== had && !taken.some((t) => sameStrategy(t, s.id)));
+  return free.length ? pickOne(free).id : null;
+}
 
 /** Kept oldest first: set anew at the end, and the oldest dropped while there are too many */
 function hold<K, V>(map: Map<K, V>, key: K, value: V) {
@@ -275,7 +344,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     rows.map((r) => r.u),
     viewerId,
   );
-  const members: SquadMember[] = rows
+  const bots = await botsOf(db, roomId);
+  const people: SquadMember[] = rows
     .sort((a, b) => a.m.handle - b.m.handle)
     .map(({ m, u }) => {
       const card = cards.get(u.id)!;
@@ -293,6 +363,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         extras: extrasNow(m.extras),
       };
     });
+  // the 人机 after everyone else
+  const members = [...people, ...bots.map(botMember)];
   const ends = endsOf(room);
   const host = room.hostId === viewerId;
   const byHandle = new Map(members.map((m) => [m.h, m.name]));
@@ -333,11 +405,12 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
       : [];
     listening = playing.filter((p) => room.queue.includes(p.song)).length;
   }
+  const viewer = rows.find((r) => r.u.id === viewerId)!.u;
   return {
     ...scheduleOf(room),
     declared: Boolean(room.declaredAt),
     invited,
-    dj: djFor(rows.find((r) => r.u.id === viewerId)!.u, now),
+    dj: djFor(viewer, now),
     requests,
     listening,
     id: room.id,
@@ -351,6 +424,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     keyLeft: Math.max(0, KEY_CHANGES - room.keyChanges),
     you: me.handle,
     host: room.hostId === viewerId,
+    staff: isStaff(viewer),
     members,
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
     endsAt: ends.at,
@@ -543,7 +617,8 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
     if (inNow.some((m) => blocked.has(m.userId))) throw refuse(403, T.server.squad.shut, ROOM_SHUT);
     // an invitation lets one in where only the host's 触须之交 may come (it was someone in it who asked TA)
     if (room.friendsOnly && !friends.has(room.hostId) && !called.invite) throw refuse(403, T.server.squad.friendsOnly, ROOM_SHUT);
-    if (inNow.length >= SQUAD_MAX) throw refuse(409, T.server.squad.full, ROOM_FULL);
+    // the 人机 in it take seats as anyone does
+    if (inNow.length + (await botsOf(tx, room.id)).length >= SQUAD_MAX) throw refuse(409, T.server.squad.full, ROOM_FULL);
     const left = await leaveIn(tx, user.id, now);
     const at = new Date(now);
     let handle: number;
@@ -648,7 +723,11 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
     if (to === "go") {
       // someone with the host, everyone else ready, no two strategies the same
       const rows = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
-      const blocks = notYet(rows.map((m) => ({ host: m.userId === room.hostId, inGame: m.inGame, strategy: roomCard(m).strategy })));
+      const bots = await botsOf(tx, room.id);
+      const blocks = notYet([
+        ...rows.map((m) => ({ host: m.userId === room.hostId, inGame: m.inGame, strategy: roomCard(m).strategy })),
+        ...bots.map((b) => ({ host: false, inGame: b.inGame, strategy: roomCard(b).strategy })),
+      ]);
       if (!mayStart(blocks)) throw refuse(409, T.server.squad.notReady, NOT_READY);
     } else {
       // the round over: everyone readies again for the next, and marks its extras anew (the picks stay)
@@ -657,6 +736,11 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
         .update(squadMembers)
         .set({ extras: [] })
         .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
+      // the 人机 are ready again at once
+      await tx
+        .update(squadBots)
+        .set({ inGame: true, extras: [] })
+        .where(and(eq(squadBots.roomId, room.id), isNull(squadBots.goneAt)));
     }
     const at = new Date(now);
     await tx
@@ -714,8 +798,21 @@ async function memberAt(userId: string, h: number) {
   return { mine, them };
 }
 
-/** 请出去: the host asks someone in the room to leave it (h), for good; TA alone is told so */
+/** The room the player is in, with the 人机 numbered h in it */
+async function withBot(userId: string, h: number) {
+  const mine = await roomOf(db, userId);
+  if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  if (!(await botsOf(db, mine.room.id)).some((b) => b.handle === h)) throw refuse(409, T.server.squad.notThere);
+  return mine;
+}
+
+/** 请出去: the host asks someone in the room to leave it (h), for good; TA alone is told so. A 人机 (h below 0) goes as its own */
 export async function kickMember(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  if (isBotHandle(body.h)) {
+    const mine = await hostedBy(user.id);
+    await botDoes(mine.room.id, body.h, "kick", now);
+    return { room: await roomView(mine.room.id, user.id, now), now };
+  }
   const h = handleOf(body.h);
   if (h === null) throw refuse(400, T.server.common.badRequest);
   const mine = await hostedBy(user.id);
@@ -748,6 +845,118 @@ async function kickIn(roomId: string, hostId: string, h: number, now: number) {
   tellSquad([gone], tell);
   await tellRoom(roomId);
   return gone;
+}
+
+/**
+ * 人机 in the room the player hosts (src/lib/squad.ts BOT_DOS), for the 站长 and the admins alone (do): add one to an
+ * empty seat while it waits (add), ready from the start, its look and picks at random (a strategy nobody in it has, a
+ * core alliance, 0–BOT_EXTRAS_MAX 附加盟约); or, of the one with the number h: tick its 准备 (ready), give it another
+ * strategy nobody has (strategy), have it say a line (say: 组队 or 开局 while it waits, 局内 while it plays; from the
+ * room's 人机 one every BOT_SAY_EVERY_MS), change its pose or wave (pose), ask it to leave (kick). Told to the room as
+ * anyone's is; nothing of theirs is counted.
+ */
+export async function botInRoom(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
+  const what = body.do;
+  if (!isBotDo(what) || (what !== "add" && !isBotHandle(body.h))) throw refuse(400, T.server.common.badRequest);
+  if (!isStaff(user)) throw refuse(403, T.server.squad.botsStaff);
+  const mine = await hostedBy(user.id);
+  if (what === "add") await addBot(mine.room.id, now);
+  else await botDoes(mine.room.id, body.h as number, what, now);
+  return { room: await roomView(mine.room.id, user.id, now), now };
+}
+
+/** A 人机 in an empty seat of a room waiting for players: its number the next below 0, its name's the smallest free */
+async function addBot(roomId: string, now: number) {
+  const h = await db.transaction(async (tx) => {
+    // after any coming in at once, as they count it (joinRoom)
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
+    if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
+    if (room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
+    const members = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)));
+    const all = await tx.select().from(squadBots).where(eq(squadBots.roomId, roomId));
+    const bots = all.filter((b) => !b.goneAt);
+    if (members.length + bots.length >= SQUAD_MAX) throw refuse(409, T.server.squad.full, ROOM_FULL);
+    const used = new Set(bots.map((b) => b.no));
+    let no = 1;
+    while (used.has(no)) no += 1;
+    const handle = -(all.length + 1);
+    const at = new Date(now);
+    await tx.insert(squadBots).values({
+      roomId,
+      handle,
+      no,
+      avatar: pickOne(BOT_LOOKS),
+      color: pickOne(ROACH_COLORS),
+      core: pickOne(CORES.filter((c) => !c.gone)).id,
+      strategy: freeStrategy([...members, ...bots].map((m) => roomCard(m).strategy)),
+      extras: pickSome(
+        EXTRAS.filter((x) => !x.gone).map((x) => x.id),
+        randomInt(BOT_EXTRAS_MAX + 1),
+      ),
+      addedAt: at,
+    });
+    await tx.update(squadRooms).set({ movedAt: at }).where(eq(squadRooms.id, roomId));
+    return handle;
+  });
+  forgetList();
+  await tellRoom(roomId, { kind: "in", h });
+}
+
+type RoomWhat = Extract<SquadTell, { t: "room" }>["what"];
+
+/** What a 人机 in the room (h) does at its host's tap, or by itself from the host's page (BOT_ACT_MS) */
+async function botDoes(roomId: string, h: number, what: Exclude<SquadBotDo, "add">, now: number) {
+  // what the room is told (what: undefined, only that it changed), and whether the list shows it changed
+  const done = await db.transaction(async (tx): Promise<{ what: RoomWhat; list: boolean } | null> => {
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
+    if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
+    const [bot] = await tx
+      .select()
+      .from(squadBots)
+      .where(and(eq(squadBots.roomId, roomId), eq(squadBots.handle, h), isNull(squadBots.goneAt)));
+    if (!bot) throw refuse(409, T.server.squad.notThere);
+    const at = new Date(now);
+    const it = and(eq(squadBots.roomId, roomId), eq(squadBots.handle, h));
+    const moved = () => tx.update(squadRooms).set({ movedAt: at }).where(eq(squadRooms.id, roomId));
+    if (what === "say") {
+      if (!allow(`squad:botSay:${roomId}`, 1, BOT_SAY_EVERY_MS)) throw refuse(429, T.server.squad.tooFast);
+      const rows = room.state === "go" ? ["fight"] : ["team", "open"];
+      addSay(roomId, h, pickOne(PHRASE_ROWS.filter(([row]) => rows.includes(row)).flatMap(([, ids]) => ids)));
+      return null;
+    }
+    if (what === "pose") {
+      // another pose, or a wave (挥手, done once)
+      const next = pickOne([...POSES.filter((p) => p !== bot.pose), "wave" as const]);
+      if (next === "wave") {
+        batchOf(roomId).moves.push({ h, move: "wave" });
+        return null;
+      }
+      await tx.update(squadBots).set({ pose: next }).where(it);
+      return { what: { kind: "pose", h, pose: next }, list: false };
+    }
+    if (what === "ready") {
+      await tx.update(squadBots).set({ inGame: !bot.inGame }).where(it);
+      await moved();
+      return { what: bot.inGame ? undefined : { kind: "game", h }, list: false };
+    }
+    if (what === "strategy") {
+      const members = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)));
+      const others = (await botsOf(tx, roomId)).filter((b) => b.handle !== h);
+      const strategy = freeStrategy(
+        [...members, ...others].map((m) => roomCard(m).strategy),
+        bot.strategy,
+      );
+      await tx.update(squadBots).set({ strategy }).where(it);
+      await moved();
+      return { what: { kind: "round", h, round: { ...roomCard({ core: bot.core, strategy }), extras: extrasNow(bot.extras) } }, list: true };
+    }
+    await tx.update(squadBots).set({ goneAt: at }).where(it);
+    await moved();
+    return { what: undefined, list: true };
+  });
+  if (!done) return;
+  if (done.list) forgetList();
+  await tellRoom(roomId, done.what);
 }
 
 /** 准备 (on: in the game's alliance and ready), ticked by the player for everyone in the room to see; told to them when it comes on */
@@ -788,7 +997,8 @@ export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, u
         .select()
         .from(squadMembers)
         .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt), ne(squadMembers.userId, user.id)));
-      if (others.some((o) => sameStrategy(round.strategy, roomCard(o).strategy))) throw refuse(409, T.server.squad.strategyTaken, STRATEGY_TAKEN);
+      const bots = await botsOf(tx, room.id);
+      if ([...others, ...bots].some((o) => sameStrategy(round.strategy, roomCard(o).strategy))) throw refuse(409, T.server.squad.strategyTaken, STRATEGY_TAKEN);
     }
     // a page of before sends no extras: those marked stay
     const extras = playing && body.round !== undefined ? round.extras : null;
@@ -1075,7 +1285,7 @@ export async function inviteToSquad(user: UserRow, body: Record<string, unknown>
     .select({ there: count() })
     .from(squadMembers)
     .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)));
-  if (there >= SQUAD_MAX) throw refuse(409, T.server.squad.fullNoCall, ROOM_FULL);
+  if (there + (await botsOf(db, roomId)).length >= SQUAD_MAX) throw refuse(409, T.server.squad.fullNoCall, ROOM_FULL);
   const byKey = new Map([...(await friendIdsOf(user.id))].map((id) => [friendKey(user.id, id), id]));
   const ids = keys.map((k) => byKey.get(k)).filter((id): id is string => Boolean(id));
   const people = ids.length ? await db.select().from(users).where(inArray(users.id, ids)) : [];
@@ -1167,7 +1377,7 @@ export async function squadCalls(userId: string, roomIds: string[]): Promise<Map
   const ids = [...new Set(roomIds.filter((id) => UUID.test(id)))];
   const out = new Map<string, SquadCall>();
   if (!ids.length) return out;
-  const [rooms, members, blocked] = await Promise.all([
+  const [rooms, members, blocked, bots] = await Promise.all([
     db
       .select({ id: squadRooms.id, endedAt: squadRooms.endedAt, state: squadRooms.state, server: squadRooms.server, level: squadRooms.level })
       .from(squadRooms)
@@ -1177,11 +1387,13 @@ export async function squadCalls(userId: string, roomIds: string[]): Promise<Map
       .from(squadMembers)
       .where(inArray(squadMembers.roomId, ids)),
     blockedWith(userId),
+    botsIn(db, ids),
   ]);
   for (const r of rooms) {
     const inIt = members.filter((m) => m.roomId === r.id);
     const mine = inIt.find((m) => m.userId === userId);
     const there = inIt.filter((m) => !m.leftAt);
+    const n = there.length + (bots.get(r.id)?.length ?? 0);
     const state: SquadCall["state"] = r.endedAt
       ? "over"
       : mine && !mine.leftAt
@@ -1190,10 +1402,10 @@ export async function squadCalls(userId: string, roomIds: string[]): Promise<Map
           ? "shut"
           : r.state === "go"
             ? "playing"
-            : there.length >= SQUAD_MAX
+            : n >= SQUAD_MAX
               ? "full"
               : "open";
-    out.set(r.id, { state, n: state === "over" ? 0 : there.length, server: r.server, level: r.level });
+    out.set(r.id, { state, n: state === "over" ? 0 : n, server: r.server, level: r.level });
   }
   return out;
 }
@@ -1261,13 +1473,15 @@ export async function seeSquadInvites(userId: string, itemIds: string[]) {
 /**
  * 宣言招人: the host calls those nearby to their room, once a room, with 卫戍协议，启动！还差 N 个，来吗？
  * (src/lib/server/world.ts declare: from their main roach, within today's twenty, a minute apart; to those near enough,
- * never to those blocked). Only a room waiting for players, open to all, not full. A declaration refused leaves the
- * room free to call again.
+ * never to those blocked). Only a room waiting for players, open to all, not full, with no 人机 in it. A declaration
+ * refused leaves the room free to call again.
  */
 export async function declareSquad(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
   refuseClosed();
   const mine = await hostedBy(user.id);
   if (mine.room.friendsOnly) throw refuse(409, T.server.squad.declareFriendsOnly);
+  // a room tried with 人机 calls nobody nearby
+  if ((await botsOf(db, mine.room.id)).length) throw refuse(409, T.server.squad.botsNoDeclare);
   if (mine.room.state !== "wait") throw refuse(409, T.server.squad.notWaiting, ROOM_PLAYING);
   const [{ n }] = await db
     .select({ n: count() })
@@ -1370,10 +1584,10 @@ export async function sayInRoom(user: Pick<UserRow, "id">, body: Record<string, 
 export async function moveInRoom(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const move = body.move;
   if (!isMove(move)) throw refuse(400, T.server.common.badRequest);
-  const to = movesTo(move) ? handleOf(body.to) : null;
+  const to = movesTo(move) ? (handleOf(body.to) ?? (isBotHandle(body.to) ? body.to : null)) : null;
   if (movesTo(move) ? to === null : body.to !== undefined) throw refuse(400, T.server.common.badRequest);
-  // with a teammate: TA must be in the room (memberAt), never yourself
-  const mine = to === null ? await roomOf(db, user.id) : (await memberAt(user.id, to)).mine;
+  // with a teammate: TA must be in the room (memberAt; a 人机 too), never yourself
+  const mine = to === null ? await roomOf(db, user.id) : to < 0 ? await withBot(user.id, to) : (await memberAt(user.id, to)).mine;
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
   if (!allow(`squad:moveEvery:${user.id}`, 1, MOVE_EVERY_MS)) return { sent: false, now };
   if (!allow(`squad:sayHour:${user.id}`, SAY_PER_HOUR, HOUR)) return { sent: false, full: true, now };
@@ -1433,6 +1647,8 @@ type Snap = {
   songs: RoomSchedule;
   /** showName: 列表上显示我的名字, from their 卫戍名片 */
   members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadPicks }[];
+  /** The 人机 in it, after them */
+  bots: { avatar: string; color: string; card: SquadPicks }[];
 };
 
 const snapHeld = (g.squadSnap ??= { at: -Infinity, rooms: null, loading: null });
@@ -1478,6 +1694,7 @@ async function snapshot(now: number): Promise<Snap[]> {
             keyAt: r.keyAt.getTime(),
             songs: scheduleOf(r),
             members: [],
+            bots: [],
           };
           byRoom.set(r.id, s);
         }
@@ -1492,6 +1709,10 @@ async function snapshot(now: number): Promise<Snap[]> {
         });
       }
       for (const s of byRoom.values()) s.members.sort((a, b) => a.h - b.h);
+      for (const [id, bots] of await botsIn(db, [...byRoom.keys()])) {
+        const s = byRoom.get(id);
+        if (s) s.bots = bots.map((b) => ({ ...botLook(b), card: roomCard(b) }));
+      }
       const rooms = [...byRoom.values()];
       snapHeld.rooms = rooms;
       snapHeld.at = now;
@@ -1528,8 +1749,8 @@ export function forgetSquad() {
 const isNamed = (m: Snap["members"][number], friends: Set<string>) => m.showName || friends.has(m.userId);
 
 /**
- * Rooms waiting first: those with a 触须之交 of the viewer's first, then those missing fewest, and of those the one
- * whose key was pasted last (the likelier to work still); then those playing, the newest first
+ * Rooms waiting first: those with a 触须之交 of the viewer's first, then those missing fewest (人机 fill seats too),
+ * and of those the one whose key was pasted last (the likelier to work still); then those playing, the newest first
  */
 function byOrder(a: SquadListRoom, b: SquadListRoom) {
   if (a.state !== b.state) return a.state === "wait" ? -1 : 1;
@@ -1551,6 +1772,8 @@ function listRoom(s: Snap, viewerId: string, friends: Set<string>, seconds: (id:
       ...m.card,
     };
   });
+  // a 人机 sits as a teammate, never named
+  for (const b of s.bots) seats.push({ role: "mate", avatar: b.avatar, color: b.color, ...b.card });
   return {
     id: s.id,
     host: { name: host?.name ?? "", friend: friends.has(s.hostId), avatar: host?.avatar ?? "hood", color: host?.color ?? "cyan" },
@@ -1565,6 +1788,7 @@ function listRoom(s: Snap, viewerId: string, friends: Set<string>, seconds: (id:
     music: s.songs.startedAt !== null && roomAt(s.songs, seconds, now).phase === "playing",
     friend: s.members.some((m) => m.userId !== viewerId && friends.has(m.userId)),
     mine: s.members.some((m) => m.userId === viewerId),
+    ...(s.bots.length ? { test: true as const } : {}),
   };
 }
 
@@ -1573,7 +1797,8 @@ const serverOf = (user: Pick<UserRow, "uidServerArknights">) => (isSquadServer(u
 
 /**
  * The list for this player (src/lib/squad.ts SquadList): the rooms of a server (as asked, else their own) and of one
- * 难度 (level, or all), cut from the snapshot for them; LIST_MAX at most. Asked again within LIST_MIN_MS, the same.
+ * 难度 (level, or all), cut from the snapshot for them (one with 人机 in it to the 站长 and the admins alone, and to
+ * those in it); LIST_MAX at most. Asked again within LIST_MIN_MS, the same.
  * With an ETag over what it holds.
  */
 export async function squadList(user: UserRow, query: { server?: unknown; level?: unknown }, now = Date.now()) {
@@ -1583,12 +1808,15 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
   const last = listsHeld.get(user.id);
   if (last && last.key === ask && now - last.at < LIST_MIN_MS && now >= last.at) return last;
   const [rooms, friends, blocked, seconds] = await Promise.all([snapshot(now), friendIdsOf(user.id), blockedWith(user.id), secondsOf()]);
+  const staff = isStaff(user);
   const shown = rooms
     .filter((r) => r.server === server && (level === null || r.level === level))
     // nothing with anyone they blocked, or who blocked them, in it
     .filter((r) => !r.members.some((m) => blocked.has(m.userId)))
     // a room only for 触须之交, to the host's alone (and those in it)
     .filter((r) => !r.friendsOnly || friends.has(r.hostId) || r.members.some((m) => m.userId === user.id))
+    // one tried with 人机, to the 站长 and the admins alone (and those in it)
+    .filter((r) => !r.bots.length || staff || r.members.some((m) => m.userId === user.id))
     .map((r) => listRoom(r, user.id, friends, seconds, now))
     .sort(byOrder)
     .slice(0, LIST_MAX);
@@ -1609,12 +1837,17 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
 export async function squadDesk(now = Date.now()): Promise<SquadDesk> {
   const day = beijingDate(now);
   const names = [COUNTED.squadRoom, COUNTED.squadJoin, COUNTED.squadSay, COUNTED.squadPlay, COUNTED.squadInvite, COUNTED.squadJoinDecl];
-  const [open, counted] = await Promise.all([
+  const [open, counted, [tried]] = await Promise.all([
     db.select({ state: squadRooms.state, n: count() }).from(squadRooms).where(isNull(squadRooms.endedAt)).groupBy(squadRooms.state),
     db
       .select({ name: statCounts.name, n: statCounts.n })
       .from(statCounts)
       .where(and(eq(statCounts.day, day), inArray(statCounts.name, names))),
+    db
+      .select({ n: sql<number>`count(distinct ${squadBots.roomId})::int` })
+      .from(squadBots)
+      .innerJoin(squadRooms, eq(squadRooms.id, squadBots.roomId))
+      .where(and(isNull(squadBots.goneAt), isNull(squadRooms.endedAt))),
   ]);
   // what this process counted and has not saved yet goes on top (another process's shows within a minute)
   const unsaved = unsavedStats();
@@ -1632,6 +1865,7 @@ export async function squadDesk(now = Date.now()): Promise<SquadDesk> {
     plays: today(COUNTED.squadPlay),
     invites: today(COUNTED.squadInvite),
     called: today(COUNTED.squadJoinDecl),
+    botRooms: Number(tried?.n ?? 0),
   };
 }
 

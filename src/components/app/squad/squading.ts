@@ -6,6 +6,7 @@ import {
   LAST_LINE_MS,
   SAY_SHOW_MS,
   SQUAD_MAX,
+  type SquadBotDo,
   type SquadCall,
   type SquadCard,
   type SquadEnd,
@@ -396,6 +397,12 @@ export function markSquadRound(next: SquadRound, onError: (e: unknown) => void) 
 
 /** What your roach keeps doing in the room */
 export const setSquadPose = (pose: SquadPose) => after(squadApi.pose(pose));
+
+/** 人机, for the 站长 and the admins as host: one added, or what the one numbered h does */
+export const squadBot = (what: SquadBotDo, h?: number) => after(squadApi.bot(what, h));
+
+/** A 人机 touched (碰): on this page alone, it waves; nothing is sent */
+export const squadBotTouched = (h: number) => showMove(h, "wave");
 
 /** Your roach waves, or gives a teammate 击掌 or 贴贴: false when it was one too many (full: the hour's are used up); shown at once */
 export async function moveInSquad(move: SquadMove, to?: number): Promise<{ sent: boolean; full?: boolean }> {
