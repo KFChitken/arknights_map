@@ -58,12 +58,15 @@ import { HttpError, readJson, route } from "@/lib/server/http";
 import { addNameWords, listNameWords, namesHit, removeNameWord, removeNameWords, testName } from "@/lib/server/nameWords";
 import { listenDesk } from "@/lib/server/listen";
 import { endAllRooms } from "@/lib/server/listenRooms";
+import { boardChanged, boardDesk } from "@/lib/server/handwriting";
 import { passFollowDesk } from "@/lib/server/passes";
 import {
+  boardSettings,
   endGray,
   grayState,
   listenSettings,
   passFollow,
+  setBoard,
   setGray,
   setListen,
   setPassFollow,
@@ -399,6 +402,18 @@ export const POST = route(
         const detail = followChange(before, after);
         if (detail) await logAdmin(actor, "act", "act.passFollow", { detail }, now);
         result = await passFollowDesk(now);
+        break;
+      }
+      // 手写榜 (the owner's, src/lib/server/handwriting.ts): how it goes now; paused or going again, as args[0] says
+      case "board":
+        result = await boardDesk(now);
+        break;
+      case "setBoard": {
+        const before = boardSettings();
+        const after = await setBoard(actor.id, objectOf(args[0]), now);
+        if (after.paused !== before.paused) await logAdmin(actor, "act", "act.board", { detail: after.paused ? "暂停了手写榜" : "恢复了手写榜" }, now);
+        boardChanged();
+        result = await boardDesk(now);
         break;
       }
 

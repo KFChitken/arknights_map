@@ -334,14 +334,17 @@ async function suspendIfNew(target: UserRow, now: number) {
 /** The reasons of reports about a roach on the map, which are cases of their own (src/lib/server/admin.ts) */
 export const ROACH_KEYS = Object.keys(ROACH_REPORT_REASONS) as (keyof typeof ROACH_REPORT_REASONS)[];
 
+/** What a report of a paper on the 手写榜 says it was about, for the admin: put up anonymously or named (src/lib/server/handwriting.ts) */
+export const paperContext = (show: string) => (show === "named" ? "手写榜上的字（署名）" : "手写榜上的字（匿名）");
+
 /** The reported player's name as a report keeps it: while held, anonymous is the hold's doing, and what they had chosen is kept beside it */
 export function nameThen(u: UserRow) {
   const anonymous = u.profileHeldAt ? (u.heldAnonymous ?? u.anonymous) : u.anonymous;
   return u.name ? `${u.name}${anonymous ? "（当时是匿名）" : ""}` : "（没有名字）";
 }
 
-/** Reports made in the last day, of players and roaches alike, against REPORTS_PER_DAY */
-async function reportedToday(userId: string) {
+/** Reports made in the last day, of players, roaches and papers on the 手写榜 alike, against REPORTS_PER_DAY */
+export async function reportedToday(userId: string) {
   const [today] = await db
     .select({ n: count() })
     .from(reports)

@@ -335,6 +335,8 @@ export type AdminAccountReport = {
   watch?: string;
   /** About one of their roaches: whether it was the main one */
   roach: { main: boolean } | null;
+  /** About their paper on the 手写榜 */
+  writing: boolean;
   /** Handled: when, how (reports.resolution), and who in the 管理台 when that can be told */
   resolvedAt: number | null;
   resolution: string | null;
@@ -350,6 +352,8 @@ export type AdminMadeReport = {
   name: string;
   /** About one of their roaches: whether it was the main one */
   roach: { main: boolean } | null;
+  /** About their paper on the 手写榜 */
+  writing: boolean;
   resolvedAt: number | null;
   resolution: string | null;
 };

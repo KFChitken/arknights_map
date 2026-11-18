@@ -17,7 +17,9 @@ import {
 } from "@/lib/safety";
 import { LURE_TAG, lureFlags, type BanRequestCard, type DoneToday } from "@/lib/adminConsole";
 import { beijingShort } from "@/lib/beijing";
+import { BOARD } from "@/lib/study/board";
 import { ago } from "../app/InboxSheet";
+import Paper from "../app/study/Paper";
 import { errorWords } from "./api";
 import BanBox, { BanRequestBox } from "./BanBox";
 import { useConsole } from "./context";
@@ -109,6 +111,7 @@ function caseTags(c: AdminCase) {
 function suggestOf(c: AdminCase): AdminAction {
   if (c.reports.length && c.reliable === 0) return "dismiss";
   if (c.kind === "roach") return c.roach?.state === "gone" ? "warn" : "removeRoach";
+  if (c.kind === "writing") return c.writing ? "removeWriting" : "warn";
   if (!c.reports.length) return "warn";
   const n = new Map<AnyReason, number>();
   for (const r of c.reports) n.set(r.reason, (n.get(r.reason) ?? 0) + 1);
@@ -130,6 +133,13 @@ function actsOf(c: AdminCase): Act[] {
       ...(gone ? [] : [{ action: "removeRoach" as const, label: c.roach?.main ? "收回本体（克隆体也一起收回，一张黄牌）" : "收回这只蟑螂（一张黄牌）" }]),
     ];
   }
+  if (c.kind === "writing") {
+    return [
+      { action: "dismiss", label: c.writing?.hidden ? "没问题，放回手写榜" : "没问题", kbd: "D" },
+      { action: "warn", label: "警告（一张黄牌）", kbd: "W" },
+      ...(c.writing ? [{ action: "removeWriting" as const, label: "撤下这张字（分一起清掉，一张黄牌）" }] : []),
+    ];
+  }
   const uid = hasUid(c);
   return [
     { action: "dismiss", label: c.heldAt ? "没问题，恢复名字和 UID" : "没问题", kbd: "D" },
@@ -140,6 +150,36 @@ function actsOf(c: AdminCase): Act[] {
     { action: "suspend", label: ACTION_WORDS.suspend, kbd: "S" },
     { action: "ageCheck", label: "请 TA 确认年龄", off: Boolean(c.ageCheckAt) },
   ];
+}
+
+/**
+ * A paper's case on the 手写榜: the paper as the board shows it, how it is shown (匿名舟P or named), the machine's
+ * mark, its score on the board and how many rated it, and whether it is hidden; or that it is gone
+ */
+function PaperBox({ w }: { w: NonNullable<AdminCase["writing"]> | null }) {
+  if (!w) {
+    return (
+      <div className="ac-spot">
+        <strong>这张字已经不在榜上了</strong>
+        <span>写的人自己撤下了，或者放了新的一张换掉了它（字和分都删了）。还能警告或者封号。</span>
+      </div>
+    );
+  }
+  const board = w.n >= BOARD.minRaters ? `榜上 ${w.score} 分，${w.n} 人评过` : `${w.n} 人评过，还不满 ${BOARD.minRaters} 人，没上榜`;
+  return (
+    <div className="ac-spot">
+      <Paper sheet={w.sheet} size={96} label="被举报的这张字" />
+      <strong>
+        {w.show === "named" ? "署名放的（榜上显示 TA 在地图上的名字）" : "匿名放的（榜上显示「匿名舟P」）"}
+        {w.hidden ? "，举报够了，已经先藏起来" : ""}
+      </strong>
+      <span>
+        机器认的分 {w.mark}；{board}
+        {w.n799 ? `，${w.n799} 个 799` : ""}；{beijingShort(w.at)} 放上去的。
+        {w.hidden ? "藏起来的时候不上榜，也不发给别人打分；点「没问题」就放回去。" : ""}
+      </span>
+    </div>
+  );
 }
 
 const heldText = (c: AdminCase, action: Settle) =>
@@ -710,13 +750,14 @@ function CaseDetail({
   onReporter: (id: string) => void;
 }) {
   const roach = c.kind === "roach" ? c.roach : undefined;
+  const paper = c.kind === "writing";
   const suggest = suggestOf(c);
   const stalk = c.reports.find((r) => r.reason === "stalk");
   return (
     <div className="ac-stack">
       <PersonHead
         name={c.name}
-        heading={roach ? `${roach.main ? "本体" : "一只克隆体"}（主人：${savedName(c)}）` : savedName(c)}
+        heading={roach ? `${roach.main ? "本体" : "一只克隆体"}（主人：${savedName(c)}）` : paper ? `手写榜上的字（写的人：${savedName(c)}）` : savedName(c)}
         color={c.color}
         level={c.level}
         tags={caseTags(c)}
@@ -739,6 +780,8 @@ function CaseDetail({
           <Link href={`/?case=${encodeURIComponent(c.caseId)}`}>在舟P地图上看它（跳过去，标出它现在和举报时的位置）</Link>
         </div>
       )}
+
+      {paper && <PaperBox w={c.writing ?? null} />}
 
       <div className="ac-act-box">
         <label className="ac-field">
@@ -785,7 +828,7 @@ function CaseDetail({
             </div>
             {r.note && <PlayerWords label="举报人自己写的" text={r.note} what="举报" />}
             <div className="ac-report-context">
-              {[r.context, `${roach ? "主人当时的名字" : "当时的名字"}：${r.name || "（没有名字）"}`].filter(Boolean).join(" · ")}
+              {[r.context, `${roach ? "主人当时的名字" : paper ? "写的人当时的名字" : "当时的名字"}：${r.name || "（没有名字）"}`].filter(Boolean).join(" · ")}
               {r.place && roach && (r.place.lng !== roach.lng || r.place.lat !== roach.lat) && " · 这次举报时它在别处"}
             </div>
             <ReporterLine r={r.reporter} watch={r.watch} onOpen={onReporter} />

@@ -3,7 +3,7 @@ import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { beijingDayWords } from "../beijing";
 import { cleanPlayerText } from "../playerText";
-import { APPEAL_MAX, APPEAL_MIN, APPEALABLE, isRoachReportReason, isRuleCode, reasonWords, RULES, type AdminAction } from "../safety";
+import { APPEAL_MAX, APPEAL_MIN, APPEALABLE, isRoachReportReason, isRuleCode, isWritingReportReason, reasonWords, RULES, type AdminAction } from "../safety";
 import { INBOX_DAYS, SUSPEND_DAYS, YELLOW_DAYS, YELLOWS_TO_WORRY } from "../rules";
 import { WorldError, type InboxItem, type StaffAppeal } from "../world/types";
 import { db } from "./db";
@@ -65,6 +65,8 @@ export function actionWords(action: string, rule: string | null, until: Date | n
   switch (action) {
     case "removeRoach":
       return fmt(T.server.staffNotes.action.removeRoach, { why, roach: slot === 0 ? T.server.staffNotes.roach.main : T.server.staffNotes.roach.clone });
+    case "removeWriting":
+      return fmt(T.server.staffNotes.action.removeWriting, { why });
     case "warn":
       return fmt(T.server.staffNotes.action.warn, { why, days: YELLOW_DAYS, yellows: YELLOWS_TO_WORRY });
     case "suspend":
@@ -86,6 +88,9 @@ const REVERTED: Partial<Record<AdminAction, string>> = {
     return T.server.staffNotes.reverted.yellow;
   },
   get removeRoach() {
+    return T.server.staffNotes.reverted.yellow;
+  },
+  get removeWriting() {
     return T.server.staffNotes.reverted.yellow;
   },
   get suspend() {
@@ -121,14 +126,16 @@ export const OFF_LIMITS_WORDS = {
 /** The words of one note */
 export function noteText(n: typeof staffNotes.$inferSelect, action?: typeof modActions.$inferSelect | null) {
   const when = n.reportedOn ? fmt(T.server.staffNotes.note.reportedOn, { day: shortDay(n.reportedOn) }) : "";
-  // a roach's report blocks nobody, so there is nobody blocked to mention
+  // a roach's report blocks nobody, nor does a paper's, so there is nobody blocked to mention
   const roach = isRoachReportReason(n.reason);
-  const reported = fmt(T.server.staffNotes.note.reported, { when, what: roach ? T.server.staffNotes.note.reportedRoach : T.server.staffNotes.note.reportedPlayer, reason: reasonWords(n.reason) });
+  const paper = isWritingReportReason(n.reason);
+  const what = roach ? T.server.staffNotes.note.reportedRoach : paper ? T.server.staffNotes.note.reportedWriting : T.server.staffNotes.note.reportedPlayer;
+  const reported = fmt(T.server.staffNotes.note.reported, { when, what, reason: reasonWords(n.reason) });
   switch (n.kind) {
     case "reportUpheld":
       return fmt(T.server.staffNotes.note.reportUpheld, { seen: reported });
     case "reportDismissed":
-      return roach ? fmt(T.server.staffNotes.note.reportDismissed, { seen: reported }) : fmt(T.server.staffNotes.note.reportDismissedBlocked, { seen: reported });
+      return roach || paper ? fmt(T.server.staffNotes.note.reportDismissed, { seen: reported }) : fmt(T.server.staffNotes.note.reportDismissedBlocked, { seen: reported });
     case "action":
       return actionWords(action?.action ?? "", n.rule ?? action?.rule ?? null, n.until ?? action?.until ?? null, action?.roachSlot ?? null);
     case "appealKept":

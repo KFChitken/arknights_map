@@ -43,6 +43,7 @@ const RESOLUTION_WORDS: Record<string, string> = {
   suspended: "暂停了 TA 的互动",
   age_check: "请 TA 确认年龄",
   roach_removed: "收回了蟑螂",
+  writing_removed: "撤下了手写榜上的字",
 };
 
 /** How a report went: waiting, or handled how (and by whom, when that can be told) */
@@ -275,7 +276,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
           : "没举报过",
     },
   ];
-  const personOpen = a.reports.some((r) => !r.resolvedAt && !r.roach);
+  const personOpen = a.reports.some((r) => !r.resolvedAt && !r.roach && !r.writing);
   const ACTS: { action: AccountAct; show: boolean }[] = [
     { action: "warn", show: true },
     { action: "suspend", show: !suspended },
@@ -371,7 +372,7 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
                   <div className="ac-report-head">
                     <strong>
                       {reasonWords(r.reason)}
-                      {r.roach ? `（${r.roach.main ? "本体" : "一只克隆体"}）` : ""}
+                      {r.roach ? `（${r.roach.main ? "本体" : "一只克隆体"}）` : r.writing ? "（手写榜上的字）" : ""}
                     </strong>
                     <span className="ac-muted small">{beijingShort(r.at)}</span>
                   </div>
@@ -392,14 +393,14 @@ function AccountDetail({ id, onRead, onGone }: { id: string; onRead: (a: AdminAc
                   <div className="ac-report-head">
                     <strong>
                       {reasonWords(r.reason)}
-                      {r.roach ? `（${r.roach.main ? "本体" : "一只克隆体"}）` : ""}
+                      {r.roach ? `（${r.roach.main ? "本体" : "一只克隆体"}）` : r.writing ? "（手写榜上的字）" : ""}
                     </strong>
                     <span className="ac-muted small">{beijingShort(r.at)}</span>
                   </div>
                   {r.note && <PlayerWords label="TA 自己写的" text={r.note} what="举报" />}
                   <div className="ac-reporter small">
                     <span className={r.resolvedAt ? "ac-muted" : "ac-open-text"}>
-                      {r.roach ? "蟑螂的主人" : "举报的是"}：{cleanPlayerText(r.name) || "（没有名字）"} · {outcomeWords(r, by)}
+                      {r.roach ? "蟑螂的主人" : r.writing ? "写字的人" : "举报的是"}：{cleanPlayerText(r.name) || "（没有名字）"} · {outcomeWords(r, by)}
                     </span>
                     <button type="button" className="ac-btn small" onClick={() => go({ page: "accounts", account: r.targetId })}>
                       看被举报的人

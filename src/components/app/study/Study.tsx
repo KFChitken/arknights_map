@@ -7,11 +7,15 @@ import { drawCourse } from "@/lib/study/draw";
 import { guestDone, guestGiveUp, guestToday, type GuestToday } from "@/lib/study/guest";
 import type { PassesDot } from "@/lib/passes";
 import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, roundTells, SEALS, type StudyMe, type StudySaid, type StudyToday } from "@/lib/study/rules";
+import type { Sheet as Paper325, Show } from "@/lib/study/board";
 import { NotToday, StaleToday, studyApi } from "@/lib/studyClient";
-import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "@/lib/world/types";
+import { BoardPaused, writingApi } from "@/lib/writingClient";
+import { WorldError } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
 import Sheet from "../Sheet";
+import Board, { PutUp, type PaperUp } from "./Board";
 import { loadGame, type Game, type Look, type Round } from "./games";
+import { mapsOwn, sayWhy } from "./refused";
 import "./study.css";
 
 /**
@@ -23,7 +27,9 @@ import "./study.css";
  * or scrolls a sheet. Each round is dealt from a seed of its own; a round of today's course counts the moment it is
  * over (won: today's is passed; lost: one more lost; a step on the way: nothing), and leaving before that counts
  * nothing. A player (never a visitor) says 苦也！ as they give today's course up, and may say 已完成今日的325大学习 once a
- * day after passing it.
+ * day after passing it. 徒手写's 手写榜 (Board.tsx) opens from the course list and from 下课's page after 徒手写; a
+ * round of 徒手写 passed by a player sends the paper for the server to mark again (so they may rate others'), and 下课's
+ * page then offers to put it up.
  * signedIn: the server draws and counts (src/lib/studyClient.ts); otherwise this browser draws, and counts no days
  * (src/lib/study/guest.ts). look: the player's roach, lying belly up after a round lost. onState: what the server last
  * said of the player's study (the dot on the way in, 抽屉's card); onGuestDone: a visitor passed the day's course (or
@@ -51,7 +57,9 @@ export default function Study({
   const [failed, setFailed] = useState<string | null>(null);
   /** Said over the course list: the day turned, so today's course is another */
   const [note, setNote] = useState("");
-  const [screen, setScreen] = useState<"home" | "play" | "finish">("home");
+  const [screen, setScreen] = useState<"home" | "play" | "finish" | "board">("home");
+  /** Where the 手写榜 was opened from, and goes back to */
+  const [boardFrom, setBoardFrom] = useState<"home" | "finish">("home");
   const [game, setGame] = useState<{ id: CourseId; Game: Game; key: number; seed: number; mode?: string } | null>(null);
   /** A game being fetched, and one that could not be */
   const [opening, setOpening] = useState<CourseId | null>(null);
@@ -66,6 +74,8 @@ export default function Study({
   const [said, setSaid] = useState<StudySaid | null>(null);
   /** 已完成今日的325大学习: on its way, how far it reached, or what went wrong */
   const [announcing, setAnnouncing] = useState<"saving" | StudySaid | null>(null);
+  /** The round just over's paper of 徒手写, passed by a player: marked again by the server, and maybe put up */
+  const [paper, setPaper] = useState<PaperUp | null>(null);
 
   const live = useRef(true);
   useEffect(() => {
@@ -220,6 +230,7 @@ export default function Study({
         if (!live.current) return;
         setOpening(null);
         setEnded(null);
+        setPaper(null);
         setSave((s) => (s === "saving" ? s : null));
         setGame({ id, Game, key: ++playNo.current, seed: newSeed(), mode });
         lastPlayed.current = id;
@@ -243,16 +254,55 @@ export default function Study({
     start(course);
   };
 
-  const roundOver = (id: CourseId, r: Round) => {
+  const roundOver = (id: CourseId, r: Round, key: number) => {
     if (!today) return;
     setEnded({ id, r, day: today.day });
     // a step on the way tells nothing; once today's is passed nothing more counts; no other course does
     if (roundTells(r, id === today.course && !today.done)) record(id, today.day, r.won);
+    // 徒手写 passed: the server marks the paper again, and knows the player passed (to rate others'); a visitor's stays here
+    if (r.paper && r.won && signedIn) sendPaper(key, r.paper);
+  };
+
+  /** 徒手写's paper passed sent to be marked again, and what the server says of it: their own up already, how many more may go up today */
+  const sendPaper = (key: number, sheet: Paper325) => {
+    setPaper({ key, sheet, pass: "sending", put: null });
+    const mine = (p: PaperUp | null): p is PaperUp => p !== null && p.key === key;
+    writingApi.pass(sheet).then(
+      (passed) => live.current && setPaper((p) => (mine(p) ? { ...p, pass: passed } : p)),
+      (e) => {
+        if (!live.current) return;
+        if (mapsOwn(e)) return refusedRef.current(e);
+        setPaper((p) => (mine(p) ? { ...p, pass: { failed: sayWhy(e) } } : p));
+      },
+    );
+  };
+
+  /** That paper put on the 手写榜, as 匿名舟P or named */
+  const putUp = (show: Show) => {
+    if (!paper || paper.put === "sending") return;
+    const { key, sheet } = paper;
+    const mine = (p: PaperUp | null): p is PaperUp => p !== null && p.key === key;
+    setPaper((p) => (mine(p) ? { ...p, put: "sending" } : p));
+    writingApi.publish(sheet, show).then(
+      ({ mine: up }) => live.current && setPaper((p) => (mine(p) ? { ...p, put: { mine: up } } : p)),
+      (e) => {
+        if (!live.current) return;
+        if (mapsOwn(e)) return refusedRef.current(e);
+        const why = e instanceof BoardPaused ? T.study.board.paused : sayWhy(e);
+        setPaper((p) => (mine(p) ? { ...p, put: { failed: why } } : p));
+      },
+    );
+  };
+
+  const openBoard = (from: "home" | "finish") => {
+    setBoardFrom(from);
+    setScreen("board");
   };
 
   const replay = () => {
     const mode = ended?.r.again?.mode ?? game?.mode;
     setEnded(null);
+    setPaper(null);
     setSave((s) => (s === "saving" ? s : null));
     setGiving((g) => (g === "saving" ? g : null));
     setGame((g) => g && { ...g, key: ++playNo.current, seed: newSeed(), mode });
@@ -331,7 +381,7 @@ export default function Study({
               mode={game.mode}
               todays={game.id === today.course && !today.done}
               look={look}
-              onRound={(r) => roundOver(game.id, r)}
+              onRound={(r) => roundOver(game.id, r, game.key)}
             />
           </div>
           <footer className={`sp-end${armed ? " armed" : ""}`} role="status">
@@ -353,6 +403,11 @@ export default function Study({
                   </button>
                 </div>
                 {canQuit && giveUpButton(today, "st-link sp-giveup")}
+                {ended.r.paper && ended.r.won && signedIn && (
+                  <button className="st-link sp-giveup" onClick={() => setScreen("finish")}>
+                    {T.study.board.put.title}
+                  </button>
+                )}
               </>
             )}
           </footer>
@@ -360,6 +415,8 @@ export default function Study({
       </div>
     );
   }
+
+  if (screen === "board") return <Board signedIn={signedIn} onUp={() => setScreen(boardFrom)} onClose={onClose} onRefused={(e) => refusedRef.current(e)} />;
 
   if (screen === "finish" && today) {
     // today's course, played on the day it was drawn for (or given up without a round)
@@ -389,6 +446,13 @@ export default function Study({
             </>
           )}
           {ended && <p className="st-round">{fmt(T.study.finish.round, { result: ended.r.result })}</p>}
+          {ended?.r.paper &&
+            ended.r.won &&
+            (signedIn ? (
+              paper && <PutUp paper={paper} onRetry={() => sendPaper(paper.key, paper.sheet)} onPut={putUp} onBoard={() => openBoard("finish")} />
+            ) : (
+              <p className="st-sub wb-sign-in">{T.study.board.put.signIn}</p>
+            ))}
           {notYet && <p className="st-again">{ended?.r.step ? T.study.finish.stepped : T.study.finish.notYet}</p>}
           {todays && ended && save === "saving" && ended.r.won && !ended.r.step && <p className="st-sub">{T.study.saving}</p>}
           {todays && ended && save && save !== "saving" && <Unsaved why={save.why} onResend={() => record(ended.id, ended.day, ended.r.won)} />}
@@ -418,6 +482,11 @@ export default function Study({
             </button>
           )}
           {openFailed && <p className="st-err">{T.study.failed}</p>}
+          {ended?.r.paper && !(paper?.put && paper.put !== "sending" && "mine" in paper.put) && (
+            <button className="st-ghost wide" onClick={() => openBoard("finish")}>
+              {T.study.board.see}
+            </button>
+          )}
           <button className="st-ghost wide" onClick={onClose}>
             {T.study.finish.back}
           </button>
@@ -502,6 +571,9 @@ export default function Study({
               {openFailed && openFailed !== today.course && <p className="st-err">{T.study.failed}</p>}
             </div>
           )}
+          <button className="st-ghost st-board" onClick={() => openBoard("home")}>
+            {T.study.board.open}
+          </button>
         </>
       )}
     </Sheet>
@@ -549,14 +621,4 @@ function Unsaved({ why, onResend }: { why: string; onResend: () => void }) {
       </button>
     </p>
   );
-}
-
-/** The refusals the map page answers itself: sign in, say again they are 18, agree to the updated privacy policy */
-const mapsOwn = (e: unknown) => e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded;
-
-/** What to say of any other refusal */
-function sayWhy(e: unknown): string {
-  if (e instanceof WorldError) return e.message;
-  console.error(e);
-  return T.map.common.tryAgain;
 }

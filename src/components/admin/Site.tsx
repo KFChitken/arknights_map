@@ -11,6 +11,7 @@ import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
 import { FOLLOW_CODE_MAX, FOLLOW_NAME_MAX, FOLLOW_TICKETS, followCode, randomFollowCode, type PassFollow, type PassFollowDesk } from "@/lib/passes";
 import { RULES, type BanInfo } from "@/lib/safety";
 import { lasted, LEVEL_MARK, mainlandWords, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
+import { BOARD, type BoardDesk } from "@/lib/study/board";
 import { ago } from "../app/InboxSheet";
 import { errorWords } from "./api";
 import { useConsole } from "./context";
@@ -33,6 +34,7 @@ export default function Site() {
       {owner && <ListenPanel />}
       {owner && <SquadPanel />}
       {owner && <PassFollowPanel />}
+      {owner && <BoardPanel />}
       {owner && <SiteStatusPanel />}
       <NameList added={wordsAdded} onAdded={() => setWordsAdded((n) => n + 1)} />
       {owner && <BanLookup />}
@@ -672,6 +674,112 @@ function PassFollowPanel() {
             </button>
           </div>
           <p className="ac-muted small">改了口令，旧的马上失效。已经领过的人不受影响。</p>
+        </>
+      )}
+      {d && note && <p className="ac-error">{note}</p>}
+    </section>
+  );
+}
+
+/**
+ * 手写榜 (src/lib/server/handwriting.ts), the owner's: whether STUDY lets anyone see it (it goes with 325大学习), the
+ * papers up, on the board and hidden, and the ratings given. 暂停 closes the board, putting papers up and rating, for
+ * when something goes wrong; what is up and its ratings stay, and are as they were again once it goes on.
+ */
+function BoardPanel() {
+  const { call, say } = useConsole();
+  const [d, setD] = useState<BoardDesk | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      call<BoardDesk>("board")
+        .then((x) => {
+          if (!alive) return;
+          setD(x);
+          setNote(null);
+        })
+        .catch((e) => {
+          if (alive) setNote(`读不出来：${errorWords(e)}`);
+        });
+    void load();
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [call]);
+
+  const change = async (paused: boolean) => {
+    setBusy(true);
+    try {
+      setD(await call<BoardDesk>("setBoard", [{ paused }]));
+      setNote(null);
+      say(paused ? "手写榜暂停了。" : "手写榜恢复了。");
+    } catch (e) {
+      setNote(errorWords(e));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <section className="ac-panel ac-tool wide" aria-label="手写榜">
+      <PanelHead title="手写榜" aside="只有站长" />
+      <p className="ac-sub">
+        325大学习里徒手写的手写榜：过了 60 分的字可以放上去，过过 60 分的人给别人的字打 0 到 {BOARD.max} 分。有人乱放、乱打分或者出了毛病，先点「暂停手写榜」：看榜、放字、打分都关掉，已经放上去的字和分都留着，点「恢复手写榜」就跟原来一样。
+      </p>
+      {!d ? (
+        <p className="ac-sub">{note ?? "正在读取…"}</p>
+      ) : (
+        <>
+          <div className="ac-status-line">
+            <span className={`ac-dot${d.mode === "off" ? " gray" : d.paused ? " yellow" : ""}`} aria-hidden="true" />
+            <strong>
+              {d.mode === "off"
+                ? "325大学习的开关是关的（STUDY=off）：谁都看不到手写榜"
+                : d.paused
+                  ? "手写榜暂停了：看不了榜，放不了字，打不了分"
+                  : d.mode === "admins"
+                    ? "手写榜开着，只有站长和管理员看得到（跟着 STUDY=admins）"
+                    : "手写榜开着：所有人都能看，登录的舟P能放字、打分（STUDY=on）"}
+            </strong>
+          </div>
+          <div className="ac-stats">
+            <div className="ac-stat">
+              <div className="ac-muted small">放上去的字</div>
+              <div className="ac-stat-n">{d.papers} 张</div>
+              <div className="ac-muted small">每人最多一张</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">上了榜的</div>
+              <div className="ac-stat-n">{d.ranked} 张</div>
+              <div className="ac-muted small">评满 {BOARD.minRaters} 人才上榜，每分钟更新</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">被举报藏起来的</div>
+              <div className="ac-stat-n">{d.hidden} 张</div>
+              <div className="ac-muted small">在「待处理」里处理</div>
+            </div>
+            <div className="ac-stat">
+              <div className="ac-muted small">一共打过的分</div>
+              <div className="ac-stat-n">{d.ratings} 次</div>
+              <div className="ac-muted small">这里不显示谁给谁打了几分</div>
+            </div>
+          </div>
+          <div>
+            {d.paused ? (
+              <button type="button" className="ac-btn primary" disabled={busy} onClick={() => change(false)}>
+                恢复手写榜
+              </button>
+            ) : (
+              <button type="button" className="ac-btn" disabled={busy} onClick={() => change(true)}>
+                暂停手写榜
+              </button>
+            )}
+          </div>
         </>
       )}
       {d && note && <p className="ac-error">{note}</p>}

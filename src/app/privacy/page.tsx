@@ -241,6 +241,8 @@ export default async function Privacy() {
         <li>{fmtParts(T.server.privacy.rules.rule, { rule: RULES.harass })}</li>
         <li>{fmtParts(T.server.privacy.rules.rule, { rule: RULES.age })}</li>
         <li>{fmtParts(T.server.privacy.rules.roach, { rule: RULES.roach })}</li>
+        {/* 325大学习's 手写榜, only once it is open to everyone (STUDY=on) */}
+        {studyMode() === "on" && <li>{fmtParts(T.server.privacy.rules.writing, { rule: RULES.writing })}</li>}
       </ul>
       <p>{T.server.privacy.rules.names}</p>
 

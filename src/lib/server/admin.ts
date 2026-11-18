@@ -45,6 +45,7 @@ import {
   FIND_PLAYERS_MAX,
   isRoachReportReason,
   isRuleCode,
+  isWritingReportReason,
   REPORT_LEVEL,
   REPORT_REASONS,
   ROACH_REPORT_REASONS,
@@ -73,6 +74,7 @@ import { banAccount, banOf } from "./account";
 import { isModHere, logAdmin, staffRoles, type Actor } from "./admins";
 import { award } from "./badges";
 import { db } from "./db";
+import { boardChanged, scoreNow, WRITING_KEYS } from "./handwriting";
 import { ADMIN_EMAILS, duckMode, sponsorMode } from "./env";
 import { HttpError } from "./http";
 import { nameJudgeNow } from "./nameWords";
@@ -89,6 +91,7 @@ import {
   dailyTotals,
   declarations,
   friendships,
+  handwritings,
   modActions,
   offLimitsAreas,
   reports,
@@ -159,6 +162,7 @@ const RESOLUTION: Record<Exclude<AdminAction, "ban">, string> = {
   suspend: "suspended",
   ageCheck: "age_check",
   removeRoach: "roach_removed",
+  removeWriting: "writing_removed",
 };
 
 /** Each way of settling (and lifting a pause) in the 管理台's words */
@@ -171,21 +175,29 @@ const ACTION_WORDS: Record<AdminAction | "unsuspend", string> = {
   suspend: `暂停互动 ${SUSPEND_DAYS} 天`,
   ageCheck: "请 TA 确认年龄",
   removeRoach: "收回蟑螂",
+  removeWriting: "撤下手写榜上的字",
   ban: "封号",
   unsuspend: "解除暂停",
 };
 
-/** The ways of settling a roach's case */
+/** The ways of settling a roach's case, and a paper's on the 手写榜 */
 const ROACH_ACTIONS: readonly AdminAction[] = ["dismiss", "warn", "removeRoach", "ban"];
+const WRITING_ACTIONS: readonly AdminAction[] = ["dismiss", "warn", "removeWriting", "ban"];
+
+/** The reasons of reports that are cases of their own (a roach's, a paper's), never in the player's own */
+const APART_KEYS: string[] = [...ROACH_KEYS, ...WRITING_KEYS];
 
 /** Before mod_actions (2026-11), a case's settling was only on its reports: once per moment it was settled */
 const LEGACY: Record<string, keyof AdminPerson["settled"]> = { dismissed: "dismissed", name_cleared: "nameCleared", uid_cleared: "uidCleared" };
 
 /** Whether a case id names a roach's case rather than a player's */
 const isRoachCase = (caseId: string) => caseId.startsWith("roach:") || caseId.startsWith("report:");
+/** Whether a case id names a paper's case on the 手写榜 (writing:<id>, or wreport:<id> once it is gone) */
+const isWritingCase = (caseId: string) => caseId.startsWith("writing:") || caseId.startsWith("wreport:");
 
 /** The case an open report is part of, as the queue's SQL (caseTable) works it out */
 function caseOf(r: typeof reports.$inferSelect) {
+  if (isWritingReportReason(r.reason)) return r.writingId ? `writing:${r.writingId}` : `wreport:${r.id}`;
   if (!isRoachReportReason(r.reason)) return r.targetId;
   return r.roachId ? `roach:${r.roachId}` : `report:${r.id}`;
 }
@@ -212,8 +224,9 @@ const reasonsOfLevel = (l: CaseLevel) => ALL_REASONS.filter((r) => REPORT_LEVEL[
 
 /**
  * Every case open now, worked out in SQL so the queue pages at any size: one per player with open reports
- * about them (or blocked by BLOCKS_TO_REVIEW different players lately, since the admin last looked), and
- * one per roach with open reports about it (per report once the roach is gone). For each: its most
+ * about them (or blocked by BLOCKS_TO_REVIEW different players lately, since the admin last looked), one
+ * per roach with open reports about it (per report once the roach is gone), and one per paper on the 手写榜
+ * with open reports about it (per report once it is gone). For each: its most
  * pressing level (0 red, 1 yellow, 2 green), how many reporters and how many reliable ones (as
  * reliableReporter() has it), the oldest open report, whether it is only about a name, and its reasons.
  */
@@ -221,13 +234,16 @@ function caseTable(now: number) {
   const oldEnough = new Date(now - RELIABLE_AFTER_DAYS * MS_DAY).toISOString();
   const lately = new Date(now - BLOCKS_WINDOW_DAYS * MS_DAY).toISOString();
   const roachy = inArray(reports.reason, ROACH_KEYS);
+  const writy = inArray(reports.reason, WRITING_KEYS);
   return sql`
     with r as (
       select
         case when ${roachy} then coalesce('roach:' || ${reports.roachId}::text, 'report:' || ${reports.id}::text)
+          when ${writy} then coalesce('writing:' || ${reports.writingId}::text, 'wreport:' || ${reports.id}::text)
           else ${reports.targetId}::text end as key,
         ${reports.targetId}::text as target,
         ${roachy} as roachy,
+        ${writy} as writy,
         ${reports.reporterId} as reporter,
         ${reports.reason} as reason,
         ${reports.createdAt} as at,
@@ -251,15 +267,15 @@ function caseTable(now: number) {
       having count(distinct ${blocks.blockerId}) >= ${BLOCKS_TO_REVIEW}::int
     ),
     c as (
-      select key, min(target) as target, bool_or(roachy) as roachy, min(lvl) as lvl,
+      select key, min(target) as target, bool_or(roachy) as roachy, bool_or(writy) as writy, min(lvl) as lvl,
         count(distinct reporter)::int as reporters,
         (count(distinct reporter) filter (where reliable))::int as reliable,
         min(at) as since,
-        bool_and(reason = 'name') and not bool_or(roachy) as name_only,
+        bool_and(reason = 'name') and not bool_or(roachy) and not bool_or(writy) as name_only,
         array_agg(distinct reason) as reasons
       from r group by key
       union all
-      select target, target, false, ${rank(BLOCKS_LEVEL)}::int, 0, 0, null::timestamptz, false, '{}'::text[]
+      select target, target, false, false, ${rank(BLOCKS_LEVEL)}::int, 0, 0, null::timestamptz, false, '{}'::text[]
       from many where not exists (select 1 from r where r.key = many.target)
     )`;
 }
@@ -345,7 +361,7 @@ async function people(ids: string[], now: number, staff?: Map<string, AdminRole>
   for (const u of rows) {
     const theirActions = actions.filter((a) => a.userId === u.id);
     const firstAction = Math.min(...theirActions.map((a) => a.createdAt.getTime()));
-    const settled = { dismissed: 0, nameCleared: 0, uidCleared: 0, warned: 0, suspended: 0, ageChecks: 0, roachesRemoved: 0 };
+    const settled = { dismissed: 0, nameCleared: 0, uidCleared: 0, warned: 0, suspended: 0, ageChecks: 0, roachesRemoved: 0, writingsRemoved: 0 };
     // what was undone in the 管理台 counts no more
     for (const a of theirActions.filter((x) => !x.auto && !x.undoneAt)) {
       if (a.action === "dismiss") settled.dismissed++;
@@ -355,6 +371,7 @@ async function people(ids: string[], now: number, staff?: Map<string, AdminRole>
       if (a.action === "suspend") settled.suspended++;
       if (a.action === "ageCheck") settled.ageChecks++;
       if (a.action === "removeRoach") settled.roachesRemoved++;
+      if (a.action === "removeWriting") settled.writingsRemoved++;
     }
     for (const l of legacy.filter((x) => x.id === u.id)) {
       if (!l.at || l.at.getTime() >= firstAction) continue;
@@ -424,7 +441,7 @@ function casesSeenBy(viewer: Viewer | null | undefined, staff: Map<string, Admin
     and not exists (select 1 from ${adminRequests} where ${adminRequests.userId}::text = target and ${adminRequests.answeredAt} is null)`;
 }
 
-type CaseRow = { key: string; target: string; roachy: boolean; lvl: number; reporters: number; reliable: number; since: Date | string | null };
+type CaseRow = { key: string; target: string; roachy: boolean; writy: boolean; lvl: number; reporters: number; reliable: number; since: Date | string | null };
 
 /**
  * Who made these reports, as this viewer is shown them (ReporterInfo), and each reporter's account as kept, for
@@ -495,7 +512,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
         (count(*) filter (where ${filter}))::int as total
       from c where ${seen}`),
     db.execute<CaseRow>(sql`${table}
-      select key, target, roachy, lvl, reporters, reliable, since from c where ${seen} and ${filter}
+      select key, target, roachy, writy, lvl, reporters, reliable, since from c where ${seen} and ${filter}
       order by lvl, reliable desc, since asc nulls last, key
       limit ${CASES_PER_PAGE}::int offset ${(page - 1) * CASES_PER_PAGE}::int`),
   ]);
@@ -505,7 +522,8 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
   const targets = [...new Set(rows.map((r) => r.target))];
   const keys = new Set(rows.map((r) => r.key));
   const roachIds = rows.filter((r) => r.key.startsWith("roach:")).map((r) => r.key.slice("roach:".length));
-  const [who, open, spots] = await Promise.all([
+  const paperIds = rows.filter((r) => r.key.startsWith("writing:")).map((r) => r.key.slice("writing:".length));
+  const [who, open, spots, papers] = await Promise.all([
     people(targets, now, staff),
     db
       .select()
@@ -513,8 +531,22 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
       .where(and(isNull(reports.resolvedAt), inArray(reports.targetId, targets)))
       .orderBy(asc(reports.createdAt)),
     roachIds.length ? db.select({ id: roaches.id, lng: roaches.lng, lat: roaches.lat }).from(roaches).where(inArray(roaches.id, roachIds)) : [],
+    paperIds.length ? db.select().from(handwritings).where(inArray(handwritings.id, paperIds)) : [],
   ]);
   const inPage = open.filter((r) => keys.has(caseOf(r)));
+  const paperOf = new Map<string, NonNullable<AdminCase["writing"]>>();
+  for (const w of papers) {
+    paperOf.set(`writing:${w.id}`, {
+      sheet: w.strokes,
+      show: w.show === "named" ? "named" : "anon",
+      mark: w.mark,
+      score: await scoreNow(w.sum, w.n, now),
+      n: w.n,
+      n799: w.n799,
+      hidden: w.hiddenAt !== null,
+      at: w.createdAt.getTime(),
+    });
+  }
   const [{ accounts: reporters, of: reporterOf }, watchLabels] = await Promise.all([reportersOf(inPage, now, staff, viewer), watchLabelsOf(inPage)]);
 
   summary.cases = rows.flatMap((row): AdminCase[] => {
@@ -548,13 +580,13 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
     return [
       {
         ...person,
-        kind: row.roachy ? "roach" : "person",
+        kind: row.roachy ? "roach" : row.writy ? "writing" : "person",
         caseId: row.key,
         level: CASE_LEVELS[row.lvl] ?? "green",
         reporters: row.reporters,
         reliable: row.reliable,
         brigade,
-        rule: row.roachy ? "roach" : theirs.length ? autoRule(null, theirs.map((r) => r.reason)) : "harass",
+        rule: row.roachy ? "roach" : row.writy ? "writing" : theirs.length ? autoRule(null, theirs.map((r) => r.reason)) : "harass",
         since: row.since ? new Date(row.since).getTime() : now,
         reports: theirs.map((r) => ({
           reason: asReason(r.reason),
@@ -567,6 +599,7 @@ export async function openCases(query: CaseQuery = {}, now = Date.now(), viewer:
           ...watchOf(watchLabels, r),
         })),
         ...(roach ? { roach } : {}),
+        ...(row.writy ? { writing: paperOf.get(row.key) ?? null } : {}),
       },
     ];
   });
@@ -604,7 +637,11 @@ async function tellReporters(tx: Pick<typeof db, "update" | "insert">, open: (ty
 export async function settleCase(caseId: string, action: AdminAction, opts: SettleOptions = {}, now = Date.now()): Promise<Settled> {
   const id = String(caseId);
   if (action === "ban" && isMod(opts.by)) throw new HttpError(403, MOD_NO_BAN);
-  const done = await (isRoachCase(id) ? settleRoach(id, action, opts, now) : settlePerson(id, action, opts, now));
+  const done = await (isRoachCase(id)
+    ? settleRoach(id, action, opts, now)
+    : isWritingCase(id)
+      ? settleWriting(id, action, opts, now)
+      : settlePerson(id, action, opts, now));
   if (opts.by) {
     const detail = done.action === "dismiss" ? `没问题，关掉了 ${done.closed} 条举报` : `违反：${RULES[done.rule]}`;
     await logAdmin(opts.by, "act", `act.${done.action}`, { targetId: done.targetId, actionId: done.actionId, detail }, now);
@@ -630,10 +667,11 @@ async function settlePerson(targetId: string, action: AdminAction, opts: SettleO
   if (!u || (await hiddenFrom(opts.by, u.id))) throw new HttpError(400, "这个账号已经不在了。");
   if (action !== "ban" && !Object.hasOwn(RESOLUTION, action)) throw new HttpError(400, "不知道要怎么处理。");
   if (action === "removeRoach") throw new HttpError(400, "移走蟑螂只用在地图上蟑螂的举报。");
+  if (action === "removeWriting") throw new HttpError(400, "撤下字只用在手写榜上的字的举报。");
   const open = await db
     .select()
     .from(reports)
-    .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt), notInArray(reports.reason, ROACH_KEYS)))
+    .where(and(eq(reports.targetId, u.id), isNull(reports.resolvedAt), notInArray(reports.reason, APART_KEYS)))
     .orderBy(asc(reports.createdAt));
   if (isMod(opts.by) && open.some((r) => r.reporterId === opts.by!.id)) throw new HttpError(403, THEIR_OWN_REPORT);
   const rule = isRuleCode(opts.rule) ? opts.rule : autoRule(action, open.map((r) => r.reason));
@@ -744,6 +782,65 @@ async function settleRoach(caseId: string, action: AdminAction, opts: SettleOpti
   return { targetId: u.id, actionId, action, rule, closed: open.length };
 }
 
+/**
+ * A paper's case on the 手写榜 (writing:<id>, or wreport:<id> once it is gone): nothing wrong (a hidden paper goes back
+ * on the board), a warning (the paper stays, back on the board too), taking it off the board (its ratings with it; a
+ * yellow card, told to its writer), or a ban. As with a roach, its writer hears only of a warning or the paper taken
+ * down.
+ */
+async function settleWriting(caseId: string, action: AdminAction, opts: SettleOptions, now: number): Promise<Settled> {
+  const [kind, id] = caseId.split(":");
+  if (!UUID.test(id ?? "")) throw new HttpError(400, "找不到这个案子了。");
+  if (!WRITING_ACTIONS.includes(action)) throw new HttpError(400, "手写榜上的字的举报只能：没问题、警告、撤下这张字或者封号。");
+  const open = await db
+    .select()
+    .from(reports)
+    .where(and(isNull(reports.resolvedAt), inArray(reports.reason, WRITING_KEYS), kind === "writing" ? eq(reports.writingId, id) : eq(reports.id, id)))
+    .orderBy(asc(reports.createdAt));
+  if (!open.length) throw new HttpError(400, "这些举报已经处理过了。");
+  const [u] = await db.select().from(users).where(eq(users.id, open[0].targetId)).limit(1);
+  if (!u) throw new HttpError(400, "这个账号已经不在了。");
+  if (await hiddenFrom(opts.by, u.id)) throw new HttpError(400, "找不到这个案子了。");
+  if (isMod(opts.by) && open.some((r) => r.reporterId === opts.by!.id)) throw new HttpError(403, THEIR_OWN_REPORT);
+  const rule = isRuleCode(opts.rule) ? opts.rule : "writing";
+  if (action === "ban") {
+    if (u.demoKey) throw new HttpError(400, "测试玩家不能封号。");
+    await banAccount(u, rule);
+    boardChanged();
+    return { targetId: u.id, actionId: null, action, rule, closed: open.length };
+  }
+  const paperId = kind === "writing" ? id : null;
+  if (action === "removeWriting" && !paperId) throw new HttpError(400, "这张字已经撤下了。");
+  const at = new Date(now);
+  const actionId = await db.transaction(async (tx) => {
+    if (action === "removeWriting") {
+      const gone = await tx
+        .delete(handwritings)
+        .where(and(eq(handwritings.id, paperId!), eq(handwritings.userId, u.id)))
+        .returning({ id: handwritings.id });
+      if (!gone.length) throw new HttpError(400, "这张字已经撤下了。");
+    } else if (paperId) {
+      // looked at, and kept: back on the board, and dealt again
+      await tx.update(handwritings).set({ hiddenAt: null }).where(eq(handwritings.id, paperId));
+    }
+    const [record] = await tx
+      .insert(modActions)
+      .values({ userId: u.id, action, rule, yellow: action !== "dismiss", createdAt: at, ...byColumns(opts.by) })
+      .returning({ id: modActions.id });
+    // by id: taking the paper down emptied their writing_id
+    await tx
+      .update(reports)
+      .set({ resolvedAt: at, resolution: RESOLUTION[action] })
+      .where(inArray(reports.id, open.map((r) => r.id)));
+    const notes = await tellReporters(tx, open, action === "dismiss");
+    if (action !== "dismiss") notes.push({ userId: u.id, kind: "action", actionId: record.id, rule });
+    await addNotes(notes, tx);
+    return record.id;
+  });
+  boardChanged();
+  return { targetId: u.id, actionId, action, rule, closed: open.length };
+}
+
 /** Several cases at once, each settled on its own; never a ban. A way that does not fit a case (清名字 on a roach) passes it by. */
 export async function settleCases(caseIds: unknown, action: AdminAction, by: Actor | null = null) {
   if (!BATCH_ACTIONS.includes(action)) throw new HttpError(400, "这个处理不能批量做。");
@@ -751,6 +848,7 @@ export async function settleCases(caseIds: unknown, action: AdminAction, by: Act
   let done = 0;
   for (const id of ids) {
     if (isRoachCase(id) && !ROACH_ACTIONS.includes(action)) continue;
+    if (isWritingCase(id) && !WRITING_ACTIONS.includes(action)) continue;
     try {
       await settleCase(id, action, { by });
       done++;
@@ -968,16 +1066,16 @@ export async function findPlayers(q: unknown): Promise<FoundPlayers> {
   return { players: rows.map(playerOf), total: n.n };
 }
 
-/** Per account, the cases about them waiting in 待处理 (a roach's case for each roach, as the queue counts them) */
+/** Per account, the cases about them waiting in 待处理 (a roach's case for each roach, a paper's for their paper, as the queue counts them) */
 async function openCaseCounts(ids: string[]): Promise<Map<string, number>> {
   if (!ids.length) return new Map();
   const roachy = inArray(reports.reason, ROACH_KEYS);
+  const writy = inArray(reports.reason, WRITING_KEYS);
   const rows = await db
     .select({
       id: reports.targetId,
-      n: sql<number>`count(distinct case when ${roachy} then coalesce('roach:' || ${reports.roachId}::text, 'report:' || ${reports.id}::text) else 'person' end)`.mapWith(
-        Number,
-      ),
+      n: sql<number>`count(distinct case when ${roachy} then coalesce('roach:' || ${reports.roachId}::text, 'report:' || ${reports.id}::text)
+        when ${writy} then coalesce('writing:' || ${reports.writingId}::text, 'wreport:' || ${reports.id}::text) else 'person' end)`.mapWith(Number),
     })
     .from(reports)
     .where(and(isNull(reports.resolvedAt), inArray(reports.targetId, ids)))
@@ -1170,10 +1268,11 @@ const tallyOf = (reasons: string[]) => {
  * someone's roaches are, only while reports are open, only to judge whether it was on purpose.
  */
 export async function reportedRoaches(): Promise<ReportedRoach[]> {
+  // a paper's on the 手写榜 tells nothing of where its writer's roaches were put
   const open = await db
     .select({ id: reports.id, targetId: reports.targetId, reason: reports.reason, roachId: reports.roachId, roachSlot: reports.roachSlot, at: reports.createdAt })
     .from(reports)
-    .where(isNull(reports.resolvedAt))
+    .where(and(isNull(reports.resolvedAt), notInArray(reports.reason, WRITING_KEYS)))
     .orderBy(asc(reports.createdAt));
   if (!open.length) return [];
   const why = new Map<string, Set<string>>();
@@ -1397,6 +1496,7 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
         reporter: reporters.of(r.reporterId),
         ...watchOf(watchLabels, r),
         roach: isRoachReportReason(r.reason) ? { main: r.roachSlot === 0 } : null,
+        writing: isWritingReportReason(r.reason),
         resolvedAt: r.resolvedAt?.getTime() ?? null,
         resolution: r.resolution,
         by: settled && !settled.auto ? (settled.byAlias ?? OWNER_ALIAS) : null,
@@ -1411,6 +1511,7 @@ export async function account(id: unknown, now = Date.now(), viewer: Viewer | nu
         targetId: r.targetId,
         name: r.targetName,
         roach: isRoachReportReason(r.reason) ? { main: r.roachSlot === 0 } : null,
+        writing: isWritingReportReason(r.reason),
         resolvedAt: r.resolvedAt?.getTime() ?? null,
         resolution: r.resolution,
       }),
@@ -1540,7 +1641,7 @@ export async function doneToday(viewer: Viewer, now = Date.now()): Promise<DoneT
     .sort((a, b) => Number(b.you) - Number(a.you) || b.n - a.n);
 }
 
-/** Steps taken on the site rather than on an account: 知道了, the name blocklist, 禁放区, 全站变灰, 听歌, 一起卫戍, 关注 B 站领券 and 支持舟P地图 */
+/** Steps taken on the site rather than on an account: 知道了, the name blocklist, 禁放区, 全站变灰, 听歌, 一起卫戍, 关注 B 站领券, 手写榜 and 支持舟P地图 */
 const SITE_ACTS = new Set([
   "act.ack",
   "act.nameWords",
@@ -1551,6 +1652,7 @@ const SITE_ACTS = new Set([
   "act.listen",
   "act.squad",
   "act.passFollow",
+  "act.board",
   "act.sponsor",
 ]);
 /** Lines of the log that are always about one account, so one without an account now was about one since gone */

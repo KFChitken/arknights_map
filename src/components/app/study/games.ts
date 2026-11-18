@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import type { Sheet } from "@/lib/study/board";
 import type { CourseId } from "@/lib/study/courses";
 import type { DrawnAvatar, RoachColor, RoachStyle } from "@/lib/types";
 
@@ -21,6 +22,8 @@ export type Round = {
   again?: { label: string; mode: string };
   /** Passed at exactly 325, 命运的 325 (叠罗汉: none fell, 325 roaches stacked; 控分肉鸽: 325 at the top); nothing reads it yet */
   fate?: boolean;
+  /** 徒手写: the paper handed in, as it is sent (src/lib/study/board.ts tidySheet) and as it was marked, for the 手写榜 */
+  paper?: Sheet;
 };
 
 /** The player's roach as the map shows it */

@@ -44,23 +44,42 @@ export const ROACH_REPORT_REASONS = {
 } as const;
 
 export type RoachReportReason = keyof typeof ROACH_REPORT_REASONS;
-export type AnyReason = ReportReason | RoachReportReason;
 
 export const isRoachReportReason = (r: unknown): r is RoachReportReason => typeof r === "string" && Object.hasOwn(ROACH_REPORT_REASONS, r);
 
-/** A stored reason as one of ours: anything else (older data) as 其他 */
-export const asReason = (r: unknown): AnyReason => (isReportReason(r) || isRoachReportReason(r) ? r : "other");
+/** Why one player may report a paper on 徒手写's 手写榜 (src/lib/study/board.ts): what is drawn, never who drew it */
+export const WRITING_REPORT_REASONS = {
+  get scrawl() {
+    return T.lib.safety.writingReasons.scrawl;
+  },
+  get rude() {
+    return T.lib.safety.writingReasons.rude;
+  },
+  get writingOther() {
+    return T.lib.safety.writingReasons.misc;
+  },
+} as const;
 
-/** A reason in words, a player's or a roach's; anything else (older data) as 其他 */
+export type WritingReportReason = keyof typeof WRITING_REPORT_REASONS;
+export type AnyReason = ReportReason | RoachReportReason | WritingReportReason;
+
+export const isWritingReportReason = (r: unknown): r is WritingReportReason => typeof r === "string" && Object.hasOwn(WRITING_REPORT_REASONS, r);
+
+/** A stored reason as one of ours: anything else (older data) as 其他 */
+export const asReason = (r: unknown): AnyReason => (isReportReason(r) || isRoachReportReason(r) || isWritingReportReason(r) ? r : "other");
+
+/** A reason in words, a player's, a roach's or a paper's; anything else (older data) as 其他 */
 export function reasonWords(r: unknown) {
   const reason = asReason(r);
-  return isRoachReportReason(reason) ? ROACH_REPORT_REASONS[reason] : REPORT_REASONS[reason];
+  if (isRoachReportReason(reason)) return ROACH_REPORT_REASONS[reason];
+  return isWritingReportReason(reason) ? WRITING_REPORT_REASONS[reason] : REPORT_REASONS[reason];
 }
 
 /** Every reason, a player's first, in the order the report sheets show them */
 export const ALL_REASONS: readonly AnyReason[] = [
   ...(Object.keys(REPORT_REASONS) as ReportReason[]),
   ...(Object.keys(ROACH_REPORT_REASONS) as RoachReportReason[]),
+  ...(Object.keys(WRITING_REPORT_REASONS) as WritingReportReason[]),
 ];
 
 /** Reports about what a player wrote about themselves: enough different reporters hold their name and UIDs for the admin */
@@ -69,8 +88,8 @@ export const PROFILE_REASONS: readonly ReportReason[] = ["name", "contact", "imp
 /** Reports the admin is emailed about within the hour, even after the day's reminder went out */
 export const URGENT_REASONS: readonly AnyReason[] = ["minor", "contact", "stalk", "place"];
 
-/** A report for 「其他」 must say what happened; the note is counted in characters, emoji as one */
-export const noteMissing = (reason: ReportReason, note: string) => reason === "other" && [...note.trim()].length < OTHER_NOTE_MIN;
+/** A report for 「其他」 (a player's, or a paper's 「别的」) must say what happened; the note is counted in characters, emoji as one */
+export const noteMissing = (reason: AnyReason, note: string) => (reason === "other" || reason === "writingOther") && [...note.trim()].length < OTHER_NOTE_MIN;
 
 /** How soon a case wants the admin: red first, then yellow, then green */
 export type CaseLevel = "red" | "yellow" | "green";
@@ -85,6 +104,9 @@ export const REPORT_LEVEL: Record<AnyReason, CaseLevel> = {
   stalk: "red",
   place: "red",
   pattern: "red",
+  scrawl: "green",
+  rude: "yellow",
+  writingOther: "green",
 };
 /** Being blocked by many is no report, but a case of its own */
 export const BLOCKS_LEVEL: CaseLevel = "yellow";
@@ -112,6 +134,9 @@ export const RULES = {
   get roach() {
     return T.lib.safety.rules.roach;
   },
+  get writing() {
+    return T.lib.safety.rules.writing;
+  },
 } as const;
 export type RuleCode = keyof typeof RULES;
 export const isRuleCode = (r: unknown): r is RuleCode => typeof r === "string" && Object.hasOwn(RULES, r);
@@ -127,6 +152,9 @@ export const RULE_OF_REASON: Record<AnyReason, RuleCode> = {
   stalk: "roach",
   place: "roach",
   pattern: "roach",
+  scrawl: "writing",
+  rude: "writing",
+  writingOther: "writing",
 };
 
 /**
@@ -187,8 +215,9 @@ export type AdminPerson = {
     suspended: number;
     ageChecks: number;
     roachesRemoved: number;
+    writingsRemoved: number;
   };
-  /** Yellow cards (warnings, roaches taken back) in the last YELLOW_DAYS, but those undone on appeal */
+  /** Yellow cards (warnings, roaches taken back, papers taken off the 手写榜) in the last YELLOW_DAYS, but those undone on appeal */
   yellow: number;
   /** 暂停互动 until then (auto: the reports did it), or null */
   suspendedUntil: number | null;
@@ -222,11 +251,15 @@ export type AdminReport = {
 
 /**
  * One case in the admin's queue: a player's open reports (or their being blocked by many), or the open
- * reports about one of their roaches on the map, which is a case of its own so neither settles the other.
+ * reports about one of their roaches on the map, or about their paper on the 手写榜, each a case of its own
+ * so none settles another.
  */
 export type AdminCase = AdminPerson & {
-  kind: "person" | "roach";
-  /** What settling it names: the player's id for a person, roach:<id> (or report:<id> once it is gone) for a roach */
+  kind: "person" | "roach" | "writing";
+  /**
+   * What settling it names: the player's id for a person, roach:<id> (or report:<id> once it is gone) for a roach,
+   * writing:<id> (or wreport:<id> once it is gone) for a paper
+   */
   caseId: string;
   /** The most pressing of its open reports (or being blocked by many, for a case without any) */
   level: CaseLevel;
@@ -245,15 +278,21 @@ export type AdminCase = AdminPerson & {
    * whether it is still there, moved since, or gone. Never where the owner's other roaches are.
    */
   roach?: { main: boolean; lng: number; lat: number; state: "here" | "moved" | "gone" };
+  /**
+   * For a paper's case: the paper as the board keeps it (src/lib/study/board.ts Sheet), shown as 匿名舟P or named,
+   * the machine's mark, its score on the board now, how many rated it and how many gave 799, whether it is hidden
+   * while the reports wait; null once it is gone (taken down or replaced by its writer)
+   */
+  writing?: { sheet: number[][][]; show: "anon" | "named"; mark: number; score: number; n: number; n799: number; hidden: boolean; at: number } | null;
 };
 
 /**
- * dismiss also lets a held name and UIDs out again; the clearing ones keep what they cleared from coming
- * back on that account; warn is a yellow card; suspend stops their interactions for SUSPEND_DAYS;
- * ageCheck asks them to say again they are 18 or older. Only dismiss, clearName and warn go in batches,
- * and ban never.
+ * dismiss also lets a held name and UIDs out again (and a hidden paper back on the 手写榜); the clearing ones keep
+ * what they cleared from coming back on that account; warn is a yellow card; suspend stops their interactions for
+ * SUSPEND_DAYS; ageCheck asks them to say again they are 18 or older; removeRoach and removeWriting take a roach
+ * back, a paper off the 手写榜, a yellow card each. Only dismiss, clearName and warn go in batches, and ban never.
  */
-export type AdminAction = "dismiss" | "clearName" | "clearUid" | "clearBoth" | "warn" | "suspend" | "ageCheck" | "removeRoach" | "ban";
+export type AdminAction = "dismiss" | "clearName" | "clearUid" | "clearBoth" | "warn" | "suspend" | "ageCheck" | "removeRoach" | "removeWriting" | "ban";
 export const BATCH_ACTIONS: readonly AdminAction[] = ["dismiss", "clearName", "warn"];
 
 /** The admin's corner of the map: open reports, how many of them are for URGENT_REASONS, and appeals waiting */
@@ -280,7 +319,7 @@ export type CasePage = {
 };
 
 /** What a player told of an action in 站长通知 may appeal, once, within INBOX_DAYS: never an automatic step */
-export const APPEALABLE: readonly AdminAction[] = ["warn", "suspend", "clearName", "clearUid", "clearBoth", "removeRoach"];
+export const APPEALABLE: readonly AdminAction[] = ["warn", "suspend", "clearName", "clearUid", "clearBoth", "removeRoach", "removeWriting"];
 /** An appeal's length, in characters (emoji as one) */
 export const APPEAL_MIN = 2;
 export const APPEAL_MAX = 100;

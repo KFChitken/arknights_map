@@ -19,6 +19,7 @@ export const ACTION_WORDS: Record<AdminAction | "unsuspend", string> = {
   suspend: `暂停互动 ${SUSPEND_DAYS} 天`,
   ageCheck: "请 TA 确认年龄",
   removeRoach: "收回蟑螂（一张黄牌）",
+  removeWriting: "撤下手写榜上的字（一张黄牌）",
   ban: "封号",
   unsuspend: "解除暂停",
 };
@@ -33,12 +34,14 @@ export const HELD_WORDS: Record<Exclude<AdminAction, "ban">, string> = {
   suspend: `已暂停互动 ${SUSPEND_DAYS} 天`,
   ageCheck: "已请 TA 确认年龄",
   removeRoach: "已收回这只",
+  removeWriting: "已撤下这张字",
 };
 
 /** What 撤销 gives back, by what was done */
 export const UNDO_WORDS: Partial<Record<AdminAction, string>> = {
   warn: "这张黄牌不算了",
   removeRoach: "这张黄牌不算了（蟑螂不会自己回去，TA 可以重新放）",
+  removeWriting: "这张黄牌不算了（字不会回到榜上，TA 可以重新放一张）",
   suspend: "还在暂停的话，马上恢复互动",
   clearName: "TA 可以再用原来的名字（要自己重新填）",
   clearUid: "TA 可以再填原来的 UID（要自己重新填）",
@@ -55,8 +58,9 @@ export const shownName = (p: Pick<AdminPerson, "name" | "anonymous" | "drPrefix"
 /** The name as saved, or that there is none */
 export const savedName = (p: Pick<AdminPerson, "name" | "drPrefix">) => (p.name ? `${p.drPrefix ? "Dr. " : ""}${p.name}` : "（没有名字）");
 
-/** A case's line in the list: the player, or the roach and whose */
-export const caseTitle = (c: AdminCase) => (c.kind === "roach" ? `${c.roach?.main ? "本体" : "克隆体"} · 主人 ${shownName(c)}` : shownName(c));
+/** A case's line in the list: the player, the roach and whose, or the paper on the 手写榜 and whose */
+export const caseTitle = (c: AdminCase) =>
+  c.kind === "roach" ? `${c.roach?.main ? "本体" : "克隆体"} · 主人 ${shownName(c)}` : c.kind === "writing" ? `手写榜上的字 · 写的人 ${shownName(c)}` : shownName(c);
 
 /** The round mark beside a name: its first character, on the colour of the player's roach */
 const COLOR_HEX: Record<RoachColor, string> = {
@@ -99,6 +103,7 @@ export function settledWords(s: AdminPerson["settled"]) {
     s.uidCleared && `清过 UID ${s.uidCleared} 次`,
     s.ageChecks && `请 TA 确认过 ${s.ageChecks} 次年龄`,
     s.roachesRemoved && `收回过 ${s.roachesRemoved} 只蟑螂`,
+    s.writingsRemoved && `撤下过 ${s.writingsRemoved} 张手写榜上的字`,
   ].filter(Boolean);
   return parts.length ? parts.join("，") : "没有";
 }
@@ -223,6 +228,7 @@ const SETTLED: Record<string, string> = {
   "act.suspend": `暂停互动 ${SUSPEND_DAYS} 天`,
   "act.ageCheck": "请 TA 确认年龄",
   "act.removeRoach": "收回蟑螂（一张黄牌）",
+  "act.removeWriting": "撤下手写榜上的字（一张黄牌）",
   "act.ban": "封号",
 };
 
@@ -271,6 +277,8 @@ export function logText(e: AdminLogEntry) {
       return `一起卫戍：${d}`;
     case "act.passFollow":
       return `关注 B 站领券：${d}`;
+    case "act.board":
+      return `手写榜：${d}`;
     default:
       return d || e.what;
   }

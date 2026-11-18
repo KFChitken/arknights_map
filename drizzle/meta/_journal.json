@@ -540,6 +540,13 @@
       "when": 1794996624386,
       "tag": "0077_haimao",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1795004654893,
+      "tag": "0078_handwriting",
+      "breakpoints": true
     }
   ]
 }

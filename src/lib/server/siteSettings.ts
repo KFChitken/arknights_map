@@ -16,9 +16,10 @@ import { errorCode } from "./signals";
  * and read before the first page asks (src/instrumentation-node.ts): a change reaches every process at once
  * (reloadEverywhere), and each reads them again every RELOAD_MS anyway: 全站变灰, until when everyone sees the site in
  * gray, for a national day of mourning; 听歌's (src/lib/server/listen.ts), paused or not, how many may listen at
- * once, how many to a room; 一起卫戍's (src/lib/server/squad.ts), closed for now or open, with the owner's line; and
- * 关注 B 站领券's (src/lib/server/passes.ts claimFollow), whose code changed is the old one refused at once. It lives
- * on globalThis because Next.js can load this module once per route bundle.
+ * once, how many to a room; 一起卫戍's (src/lib/server/squad.ts), closed for now or open, with the owner's line;
+ * 关注 B 站领券's (src/lib/server/passes.ts claimFollow), whose code changed is the old one refused at once; and
+ * 手写榜's (src/lib/server/handwriting.ts), paused or not. It lives on globalThis because Next.js can load this module
+ * once per route bundle.
  */
 
 /** 一起卫戍's (src/lib/server/squad.ts): closed for now (暂时关门, as when the game's season is between parts), with the owner's line for the list */
@@ -29,12 +30,16 @@ export const SQUAD_NOTE_MAX = 60;
 
 /** 关注 B 站领券's: off, and nothing filled, until the owner fills it */
 const PASS_FOLLOW_DEFAULTS: PassFollow = { on: false, name: "", url: "", code: "" };
+/** 手写榜's (src/lib/server/handwriting.ts): paused (no board shown, nothing put up, nothing rated; what is up and its ratings stay) */
+export type BoardSettings = { paused: boolean };
+const BOARD_DEFAULTS: BoardSettings = { paused: false };
 
 type Held = {
   grayUntil: number | null;
   listen: ListenSettings;
   squad: SquadSettings;
   passFollow: PassFollow;
+  board: BoardSettings;
   loading: Promise<void> | null;
   again: boolean;
   started: boolean;
@@ -45,6 +50,7 @@ const held = (g.siteSettingsHeld ??= {
   listen: LISTEN_DEFAULTS,
   squad: SQUAD_DEFAULTS,
   passFollow: PASS_FOLLOW_DEFAULTS,
+  board: BOARD_DEFAULTS,
   loading: null,
   again: false,
   started: false,
@@ -52,12 +58,14 @@ const held = (g.siteSettingsHeld ??= {
 held.listen ??= LISTEN_DEFAULTS;
 held.squad ??= SQUAD_DEFAULTS;
 held.passFollow ??= PASS_FOLLOW_DEFAULTS;
+held.board ??= BOARD_DEFAULTS;
 const RELOAD_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 const GRAY = "gray";
 const LISTEN = "listen";
 const SQUAD = "squad";
 const PASS_FOLLOW = "pass_follow";
+const BOARD = "handwriting";
 
 /** gray's value: { until } as an ISO time; anything else is no gray at all */
 function untilOf(value: unknown) {
@@ -80,6 +88,7 @@ export function loadSettings(): Promise<void> {
         held.listen = listenOf(rows.find((r) => r.key === LISTEN)?.value);
         held.squad = squadOf(rows.find((r) => r.key === SQUAD)?.value);
         held.passFollow = passFollowOf(rows.find((r) => r.key === PASS_FOLLOW)?.value);
+        held.board = boardOf(rows.find((r) => r.key === BOARD)?.value);
       } while (held.again);
     } finally {
       held.loading = null;
@@ -283,6 +292,28 @@ export async function setPassFollow(byId: string, change: unknown, now = Date.no
   await db
     .insert(siteSettings)
     .values({ key: PASS_FOLLOW, ...set })
+    .onConflictDoUpdate({ target: siteSettings.key, set });
+  await reloadEverywhere("settings");
+  return next;
+}
+
+// ---- 手写榜 ----
+
+/** handwriting's value: { paused }, not paused where it is missing or makes no sense */
+const boardOf = (value: unknown): BoardSettings => ({ paused: Boolean(value && typeof value === "object" && (value as { paused?: unknown }).paused === true) });
+
+/** 手写榜's settings now: from memory, never the database */
+export const boardSettings = (): BoardSettings => held.board;
+
+/** 手写榜 paused or going again (paused), by byId (the owner): on every process at once. Says what it is now. */
+export async function setBoard(byId: string, change: unknown, now = Date.now()): Promise<BoardSettings> {
+  const c = change && typeof change === "object" ? (change as Record<string, unknown>) : {};
+  if (typeof c.paused !== "boolean") throw new HttpError(400, "手写榜暂停只能开或关。");
+  const next: BoardSettings = { paused: c.paused };
+  const set = { value: next, updatedAt: new Date(now), updatedBy: byId };
+  await db
+    .insert(siteSettings)
+    .values({ key: BOARD, ...set })
     .onConflictDoUpdate({ target: siteSettings.key, set });
   await reloadEverywhere("settings");
   return next;

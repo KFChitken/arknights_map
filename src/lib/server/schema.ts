@@ -226,6 +226,17 @@ export const users = pgTable("users", {
   studyBag: text("study_bag").array().notNull().default(emptyArray),
   studyFails: integer("study_fails").notNull().default(0),
   studySkippedOn: text("study_skipped_on"),
+  /**
+   * 徒手写's 手写榜 (src/lib/server/handwriting.ts): when the server last read a paper of theirs as passed (60 or more),
+   * which lets them rate others'; the paper dealt them to rate now, if any; and on the site day write_day, how many
+   * papers they rated, skipped and put on the board
+   */
+  writePassedAt: at("write_passed_at"),
+  writeDeal: uuid("write_deal").references((): AnyPgColumn => handwritings.id, { onDelete: "set null" }),
+  writeDay: text("write_day"),
+  writeRates: smallint("write_rates").notNull().default(0),
+  writeSkips: smallint("write_skips").notNull().default(0),
+  writePublishes: smallint("write_publishes").notNull().default(0),
 
   /** Demo players seeded in development: "t1".."t5" for testers, "n<index>" for passers-by */
   demoKey: text("demo_key").unique(),
@@ -1079,8 +1090,15 @@ export const reports = pgTable(
     nearM: integer("near_m"),
     /** Made by the site, with no reporter: the roach was put in this 提醒区 (src/lib/server/watchPlaces.ts) */
     watchAreaId: uuid("watch_area_id").references(() => offLimitsAreas.id, { onDelete: "set null" }),
+    /** A report of a paper on 徒手写's 手写榜 (src/lib/safety.ts WRITING_REPORT_REASONS): which one (null once it is gone) */
+    writingId: uuid("writing_id").references((): AnyPgColumn => handwritings.id, { onDelete: "set null" }),
   },
-  (t) => [index("reports_target_idx").on(t.targetId), index("reports_reporter_idx").on(t.reporterId, t.createdAt), index("reports_roach_idx").on(t.roachId)],
+  (t) => [
+    index("reports_target_idx").on(t.targetId),
+    index("reports_reporter_idx").on(t.reporterId, t.createdAt),
+    index("reports_roach_idx").on(t.roachId),
+    index("reports_writing_idx").on(t.writingId),
+  ],
 );
 
 /**
@@ -2000,6 +2018,55 @@ export const sponsorMonths = pgTable(
     check("sponsor_months_month", sql`${t.month} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
     check("sponsor_months_sums", sql`${t.spentFen} >= 0 and ${t.receivedFen} >= 0`),
   ],
+);
+
+/**
+ * 徒手写's 手写榜 (src/lib/server/handwriting.ts): the paper a player put on it, one apiece (a new one takes its
+ * place): its strokes simplified (src/lib/study/board.ts: each square's strokes, each as x, y, x, y… in thousandths of
+ * the square), the server's own mark of it, and whether the board names them (named) or shows 匿名舟P (anon). Hidden
+ * from the board and from rating while three reliable players' reports of it are open, until the admin looks. How
+ * many rated it, their scores summed and how many gave 799, kept as ratings come, and by a trigger as they go with
+ * their raters' accounts. Gone with its writer's account, and its ratings with it.
+ */
+export const handwritings = pgTable(
+  "handwritings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    strokes: jsonb("strokes").$type<number[][][]>().notNull(),
+    mark: smallint("mark").notNull(),
+    show: text("show").notNull(),
+    createdAt: createdAt(),
+    hiddenAt: at("hidden_at"),
+    n: integer("n").notNull().default(0),
+    sum: integer("sum").notNull().default(0),
+    n799: integer("n799").notNull().default(0),
+  },
+  (t) => [index("handwritings_deal_idx").on(t.n, t.createdAt), check("handwritings_show", sql`${t.show} in ('anon', 'named')`)],
+);
+
+/**
+ * A rating of a paper on the 手写榜, 0 to 800, once a rater a paper, and whether it was the one that lights 325799
+ * (src/lib/study/board.ts BOARD.meme), for the trigger that takes it off its paper's counts as it goes. Who gave which
+ * is never shown to anyone.
+ */
+export const handwritingRatings = pgTable(
+  "handwriting_ratings",
+  {
+    writingId: uuid("writing_id")
+      .notNull()
+      .references(() => handwritings.id, { onDelete: "cascade" }),
+    raterId: uuid("rater_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    score: smallint("score").notNull(),
+    meme: boolean("meme").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.writingId, t.raterId] }), index("handwriting_ratings_rater_idx").on(t.raterId, t.createdAt)],
 );
 
 export type UserRow = typeof users.$inferSelect;

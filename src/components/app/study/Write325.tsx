@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
+import { strokesOf, tidySheet } from "@/lib/study/board";
 import { canHandIn, markPaper, type Reading, type Stroke, WRITE, WRITE_DIGITS, written } from "@/lib/study/write325";
 import { calmNow, useCanvasSize } from "./arena";
 import type { GameProps, Round } from "./games";
@@ -34,10 +35,12 @@ type Ink = { pts: InkPt[]; done: boolean };
  * 徒手写 325 (src/lib/study/write325.ts): three copybook squares in a row, 3, 2 and 5 over them and no dashed lines to
  * go along. The player writes each in its square with a finger or the mouse, the ink a brush's, thick where it goes
  * slowly and thin where quickly; 擦掉 under a square wipes it. 交卷, once all three are written in, reads them on the
- * device (nothing written leaves the page) and marks them in red one after another: a ring round a square of 90 or
- * more, a tick on one under that, a cross on one read as another digit or as none (scribbled), or under 60, and its
- * mark under it. Then the round's verdict: the word for the average, and the average. With less motion the marks are
- * all on at once, and the verdict with them. Nothing flashes.
+ * device and marks them in red one after another: a ring round a square of 90 or more, a tick on one under that, a
+ * cross on one read as another digit or as none (scribbled), or under 60, and its mark under it. Then the round's
+ * verdict: the word for the average, and the average. With less motion the marks are all on at once, and the verdict
+ * with them. Nothing flashes. What is marked is the paper as it would be sent (board.ts tidySheet), so that the server,
+ * marking it again for the 手写榜, finds what the page found; the round hands it on, and only a paper passed, by a
+ * player, ever leaves the page (Study.tsx).
  */
 export default function Write325({ onRound }: GameProps) {
   const keys = useKeys();
@@ -78,7 +81,8 @@ export default function Write325({ onRound }: GameProps) {
   const ready = canHandIn(papers);
   const handIn = () => {
     if (marked || !ready) return;
-    const m = markPaper(papers);
+    const paper = tidySheet(papers);
+    const m = markPaper(strokesOf(paper));
     const still = calmNow();
     setMarked(m);
     setCalm(still);
@@ -87,7 +91,7 @@ export default function Write325({ onRound }: GameProps) {
     const w = T.study.write325;
     const text = fmt(w.result, { word: w.words[m.word], n: m.mark });
     // the verdict once the red marks are on
-    const done = () => roundRef.current({ won: m.word !== "ghost", result: text, verdict: text } satisfies Round);
+    const done = () => roundRef.current({ won: m.word !== "ghost", result: text, verdict: text, paper } satisfies Round);
     if (still) done();
     else timers.current.push(window.setTimeout(done, WRITE_DIGITS.length * MARK_MS));
   };

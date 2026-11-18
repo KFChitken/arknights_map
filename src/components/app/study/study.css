@@ -787,6 +787,99 @@
 .wr-note { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .study-play:has(.wr-game[data-phase="write"]) { touch-action: none; overscroll-behavior: none; }
 
+/* ---- 徒手写's 手写榜 (Board.tsx): a page of it, the player's own paper and 去打分 fixed under it; rating a paper dealt,
+   325799 lit over one rated 799; and 放上手写榜 on 下课's page. Nothing flashes. ---- */
+.study .st-board { display: block; margin: 18px 2px 0; }
+.wb-list { display: flex; flex-direction: column; gap: 12px; }
+.wb-board { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.wb-board[aria-busy] { opacity: 0.55; }
+/* its place, the paper with its writer's name under it, the score and counts, and its … */
+.wb-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 28px; gap: 8px; align-items: center; }
+.wb-own { margin: -5px -6px; padding: 5px 6px; border-radius: 10px; background: var(--st-tint); }
+.wb-rank { color: var(--muted); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; }
+.wb-who { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wb-who small { overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.wb-score { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.wb-score b { font-size: 17px; line-height: 1.15; }
+.wb-score small { color: var(--muted); font-size: 11.5px; line-height: 1.45; white-space: nowrap; }
+.wb-menu { position: relative; align-self: start; display: flex; justify-content: flex-end; }
+.wb-dots { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 14px; background: none; color: var(--muted); font-size: 16px; line-height: 1; }
+.wb-report {
+  position: absolute; top: 30px; right: 0; z-index: 1; padding: 7px 14px; border: 1.5px solid var(--st-line); border-radius: 10px;
+  background: #fff; color: var(--st-red); font-size: 13.5px; font-weight: 700; white-space: nowrap; box-shadow: 0 6px 18px rgba(16, 17, 20, 0.12);
+}
+.wb-empty { margin: 14px 0; color: var(--muted); font-size: 14px; text-align: center; }
+.wb-pages { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wb-pages .st-ghost { padding: 8px 14px; font-size: 14px; }
+.wb-pages span { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.wb-mini { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+/* under the board, fixed: the player's own paper and 撤下, then 去打分 or why not */
+.wb-foot { display: flex; flex-direction: column; gap: 8px; }
+.wb-mine { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; font-size: 13px; line-height: 1.5; }
+.wb-mine-btns { display: flex; gap: 6px; }
+.wb-small {
+  padding: 3px 10px; border: 1.5px solid var(--st-line); border-radius: 8px; background: #fff; color: #1b1d22; font-size: 12.5px;
+  font-weight: 600; white-space: nowrap;
+}
+.wb-small.wb-danger { border-color: #f1c4bf; color: var(--st-red); }
+.wb-why { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.study .wb-foot .st-err { margin: 0; }
+/* rating: the paper, the score as it stands between − and +, the slider from 0 to 满分, and 交分 跳过 举报 */
+.wb-rate { display: flex; flex-direction: column; gap: 10px; }
+.wb-paper { position: relative; }
+.wb-meme {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 4px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9); pointer-events: none; animation: wb-veil 0.25s both;
+}
+.wb-meme i {
+  display: grid; place-items: center; width: 14%; max-width: 40px; aspect-ratio: 1; border-radius: 10px; color: #1b1d22;
+  font-size: clamp(18px, 6vw, 26px); font-style: normal; font-weight: 800; line-height: 1;
+  animation: wb-pop 0.34s cubic-bezier(0.3, 1.6, 0.5, 1) both; animation-delay: calc(var(--k) * 90ms);
+}
+.wb-meme .wb-m3 { background: #ffd23f; }
+.wb-meme .wb-m2 { background: #8fd0ff; }
+.wb-meme .wb-m5 { background: #c8b6ff; }
+.wb-meme .wb-mk { background: #1b1d22; color: #fff; }
+@keyframes wb-veil { from { opacity: 0; } }
+@keyframes wb-pop { from { opacity: 0; transform: scale(0.4); } }
+.wb-num { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.wb-num b { min-width: 2.4em; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; }
+.wb-num span { color: var(--muted); font-weight: 700; }
+.wb-nudge {
+  display: grid; place-items: center; width: 40px; height: 40px; margin: 0 10px; padding: 0; border: 1.5px solid var(--st-line);
+  border-radius: 50%; background: #fff; color: #1b1d22; font-size: 22px; font-weight: 800; line-height: 1;
+}
+.wb-slider { width: 100%; margin: 0; accent-color: #1b1d22; }
+.wb-ends { display: flex; justify-content: space-between; margin-top: -6px; color: var(--muted); font-size: 12px; }
+.wb-btns { display: flex; gap: 8px; }
+.wb-btns button { flex: 1; padding-inline: 6px; }
+.wb-btns .wb-warn { color: var(--muted); }
+.wb-toast { margin: 0; color: var(--st-green); font-size: 13px; line-height: 1.5; }
+.study .wb-said { min-height: 1.5em; margin: 0; text-align: center; }
+.wb-left { margin: 0; font-size: 13px; font-weight: 700; text-align: center; }
+.wb-rest { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 0 4px; font-size: 14.5px; text-align: center; }
+.wb-rest p { margin: 0; }
+/* 放上手写榜, on 下课's page: the paper as the board would keep it, three choices, and 放上去 */
+.wb-put { display: flex; flex-direction: column; align-self: stretch; gap: 8px; margin: 6px 0 4px; text-align: left; }
+.wb-put-paper { margin: 0 auto; max-width: 340px; }
+.wb-choices { display: flex; flex-direction: column; gap: 6px; }
+.wb-choice {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1.5px solid var(--st-line); border-radius: 12px; font-size: 14px;
+  line-height: 1.45; cursor: pointer;
+}
+.wb-choice.wb-on { border-color: #1b1d22; background: var(--st-tint); }
+.wb-choice input { flex: none; margin: 3px 0 0; accent-color: #1b1d22; }
+.wb-choice small { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.wb-replace { margin: 0; padding: 8px 12px; border-radius: 10px; background: #fff3c4; font-size: 13px; line-height: 1.5; }
+.wb-put-note { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.wb-put-done { margin: 0; color: var(--st-green); font-size: 14.5px; font-weight: 700; line-height: 1.5; text-align: center; }
+.study .wb-put .st-err { margin: 0; }
+.study .wb-sign-in { margin: 4px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .wb-meme,
+  .wb-meme i { animation: none; }
+}
+
 /* a phone on its side: less room above and below */
 @media (max-height: 520px) {
   .sp-end { min-height: 112px; padding-bottom: 10px; }

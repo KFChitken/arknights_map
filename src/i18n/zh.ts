@@ -500,6 +500,7 @@ export const zh = {
       suspendedMeans: "这期间你还能看地图和消息，但不能碰人、发宣言、回应、戳一戳和做客。",
       action: {
         removeRoach: "{why}站长把你的一只{roach}收回到你手里了，记一张黄牌。",
+        removeWriting: "{why}站长撤下了你放在手写榜上的字，记一张黄牌。",
         warn: "{why}站长提醒你一次，记一张黄牌。{days} 天内 {yellows} 张黄牌可能会被封号。",
         suspend: "{why}站长暂停了你的互动，到 {until}。{means}",
         clearName: "{why}站长清掉了你的名字。这个名字以后不能再用了。",
@@ -529,6 +530,7 @@ export const zh = {
         reportedOn: " {day} ",
         reportedRoach: "只蟑螂",
         reportedPlayer: "位舟P",
+        reportedWriting: "张手写榜上的字",
         reportUpheld: "{seen}已经处理了，谢谢你。",
         reportDismissed: "{seen}这次没发现问题。",
         reportDismissedBlocked: "{seen}这次没发现违规。TA 已经被你拉黑了，不会再打扰你。",
@@ -596,6 +598,30 @@ export const zh = {
       /** 已完成今日的325大学习 asked before today's course was passed, or a second time today */
       notDone: "今天这门上完了才能发这句。",
       announced: "今天已经发过这句了。",
+    },
+    /** 徒手写's 手写榜 (src/lib/server/handwriting.ts) */
+    board: {
+      notPassed: "服务器认出来没过 60 分",
+      tooBig: "这张字太大了，擦掉重写一张吧。",
+      badPaper: "这张字没传对，再交一次试试。",
+      pickShow: "选匿名放还是署名放。",
+      publishedEnough: "今天放了 {n} 次了，明天再来。",
+      suspendedPublish: "你的互动暂停到 {until}，这期间不能放字。",
+      suspendedRate: "你的互动暂停到 {until}，这期间不能打分。",
+      cannotRate: {
+        pass: "徒手写过了 60 分才能打分。",
+        young: "注册满 {days} 天才能打分。",
+        full: "今天打满 {n} 张了，明天再来。",
+        signIn: "登录后才能打分。",
+      },
+      badScore: "分数要是 0 到 {max} 的整数。",
+      staleDeal: "这张已经换过了。",
+      ratedAlready: "这张你打过分了。",
+      skippedEnough: "今天跳过 {n} 次了，明天再跳。",
+      sayWhatOther: "选了「别的」的话，写一句是什么事吧。",
+      gone: "这张字已经不在榜上了。",
+      yourOwn: "这是你自己的字。",
+      paused: "手写榜暂停了，过一阵再来。",
     },
     listen: {
       full: "听歌的人有点多，过几分钟再来。",
@@ -681,6 +707,10 @@ export const zh = {
         tooFast: "点得太快了，歇一会儿再试。",
       },
       study: {
+        notHere: "没有这个功能。",
+        tooFast: "点得太快了，歇一会儿再试。",
+      },
+      writing: {
         notHere: "没有这个功能。",
         tooFast: "点得太快了，歇一会儿再试。",
       },
@@ -790,7 +820,7 @@ export const zh = {
         visitsB2: "不记 IP",
         passes: "{b}你抽到的每张通行证（哪个角色、编号、什么时候抽的）、你的心愿单和送券记录存在服务器上，只用来显示和防作弊。送券记录 7 天后删掉，其余的注销账号时一起删掉。",
         passesB: "寻访：",
-        study: "{b}只记你一共学了几天、最近一次是哪天、今天抽到哪门课、今天这门没过关几次、是不是跳过了，和这一轮抽过哪几门（好让每门课轮完一遍才重复）；没登录时，这些只存在你自己的浏览器里。每一局只告诉服务器过没过关，成绩不上传；停表要先过一局看得见数字的，过没过只记在你自己的浏览器里，凑 325 最近出过的题（最多 200 道，好让它们先不重复）也是。地图上和触须之交都看不到你学没学，除非你自己发「苦也！」或「已完成今日的325大学习」这两句宣言，它们和别的宣言一样，附近的人看得到。",
+        study: "{b}只记你一共学了几天、最近一次是哪天、今天抽到哪门课、今天这门没过关几次、是不是跳过了，和这一轮抽过哪几门（好让每门课轮完一遍才重复）；没登录时，这些只存在你自己的浏览器里。每一局只告诉服务器过没过关，成绩不上传（徒手写见下）；停表要先过一局看得见数字的，过没过只记在你自己的浏览器里，凑 325 最近出过的题（最多 200 道，好让它们先不重复）也是。地图上和触须之交都看不到你学没学，除非你自己发「苦也！」或「已完成今日的325大学习」这两句宣言，它们和别的宣言一样，附近的人看得到。徒手写：过了 60 分时，这张字会传给服务器再认一遍，只记下你过过，用来判断能不能给别人打分，字不存。你选了放上手写榜，才把这张字的笔画存下来，所有人都能看到，署名的话显示你在地图上的名字；撤下就删掉，注销账号也一起删。你给别人打的分，别人看不到是谁打的；作者只看到平均分、几个人评过和几个 799。",
         studyB: "325大学习：",
         listen: "{b}听歌时，你的手机从{site}的服务器下载歌。我们只记你现在在听哪首（给一起听和触须之交看「在听」用），不留听歌记录；每首歌只记一共放了多少次、每天一共被听满 30 秒多少次（做热播榜用，只留最近 8 天），都不记是谁。你收藏的歌存在服务器上，只有你自己看得见，取消收藏或注销账号就删掉。你的触须之交能看到你在听哪首，陌生人看不到；在「资料」里关掉「让触须之交看到我在听什么」，触须之交也看不到了。触须之交点「想一起听」时，你会收到一条消息，记下是谁、那时你在听哪首，两三天后删掉。一个人听时发的短评，只记这首歌每句一共被点了几次，不记是谁。一起听里，同一场的人能看到你的头像和名字（不是触须之交的人，看到的是陌生人能看到的样子）；短评只发给当时在这场的人，服务器不存。一起听散了一天后，这场有谁、放了哪些歌也删掉。发宣言一起听时，附近 {km} 公里内的舟P会看到你在听哪首；点「进去听」进来的人，和同一场的其他人一样能看到你。",
         listenB: "听歌：",
@@ -896,6 +926,7 @@ export const zh = {
         rule: "{rule}。",
         contact: "{rule}（QQ、微信、手机号、真名、学校）：为了你自己的安全，这类能找到你的信息都别写。",
         roach: "{rule}：不要放在学校、部队、别人家门口，不要一直贴着别人的蟑螂放，也不要几只摆成字或图案。",
+        writing: "{rule}：放上 325大学习手写榜的只写 325，不要乱画，也不要画脏东西或冒犯人的。",
         names: "存名字时会自动检查一遍，用不了的会请你换一个；违反了，我会清掉名字或者封号。",
       },
       enforce: {
@@ -3964,6 +3995,107 @@ export const zh = {
       words: { neat: "字迹工整", like: "还挺像", doctor: "医生体", ghost: "鬼画符" },
       result: "{word}，{n} 分",
     },
+    /** 徒手写's 手写榜 (Board.tsx): the papers put up, ranked; another's rated; one's own put up from 下课's page */
+    board: {
+      /** On the course list */
+      open: "手写榜",
+      /** On 下课's page after a round of 徒手写 */
+      see: "看手写榜",
+      title: "手写榜",
+      loading: "正在翻手写榜…",
+      failed: "手写榜没翻开，连不上服务器。",
+      paused: "手写榜暂停了，过一阵再来。",
+      empty: "榜上还没有字。",
+      /** Under the board */
+      note: "评过的人满 {n} 个才上榜。",
+      /** A row: its paper read out, how many rated it and how many gave 799 */
+      paperSr: "第 {rank} 名的 325",
+      raters: "{n} 人评过",
+      memes: "799 ×{n}",
+      more: "更多",
+      report: "举报",
+      prev: "上一页",
+      next: "下一页",
+      pageOf: "第 {page} / {pages} 页",
+      /** The player's own paper, under the board: on it, not rated by enough yet, or hidden while reports of it wait */
+      mine: "我的字：第 {rank} 名 · {score} 分 · {n} 人评过",
+      mineMemes: " · 799 ×{n}",
+      mineWaiting: "我的字：评满 {min} 人才上榜，现在 {n} 人",
+      mineHidden: "我的字：被举报了，先藏起来等管理员看",
+      withdraw: "撤下",
+      withdrawAsk: "撤下这张字？它收到的分也一起清掉。",
+      withdrawNo: "先不撤",
+      withdrawing: "正在撤下…",
+      withdrawn: "撤下了。",
+      /** Under the board: to rating, with how many are left today; or why not */
+      rate: "去打分（今天还能打 {left} 张）",
+      why: {
+        pass: "徒手写过了 {pass} 分才能打分",
+        young: "注册满 {days} 天才能打分",
+        full: "今天打满 {n} 张了，明天再来",
+        signIn: "登录后才能打分",
+        suspended: "你的互动暂停到 {until}，这期间不能打分",
+      },
+      /** Rating a paper dealt */
+      rating: {
+        title: "给别人的字打分",
+        paperSr: "等你打分的 325",
+        loading: "正在发一张字…",
+        /** Beside the rating as it stands */
+        of: "/ {max} 分",
+        less: "少 1 分",
+        more: "多 1 分",
+        slider: "打分，0 到 {max}",
+        /** At the slider's two ends */
+        bottom: "0",
+        top: "满分 {max}",
+        go: "交分",
+        skip: "跳过",
+        report: "举报",
+        left: "今天还能打 {left} 张",
+        /** Once a rating is in, or a paper skipped */
+        sent: "交了 {v} 分",
+        sentMeme: "交了 {v} 分：325799！",
+        sentFull: "交了 {v} 分，满分！",
+        skipped: "跳过了，换一张",
+        stale: "这张换过了，换一张",
+        none: "暂时没有能打的字了",
+        back: "回手写榜",
+        rule: "一天最多 {n} 张，发哪张由网站随机挑，不知道是谁写的，自己的不会发给自己。",
+      },
+      /** Reporting a paper, from the board or while rating it */
+      reportTitle: "举报这张字",
+      reportNote: "只有站长能看到。不会拉黑写字的人，也不会告诉你是谁写的。",
+      reported: "收到了，站长会看看这张字。",
+      /** Putting one's own paper up, on 下课's page after a round of 徒手写 passed */
+      put: {
+        title: "放上手写榜",
+        paperSr: "你写的 325",
+        no: "不放上去",
+        noSub: "跟现在一样，字只在这台手机上",
+        anon: "匿名放上手写榜",
+        anonSub: "榜上显示「匿名舟P」",
+        named: "署名放上手写榜",
+        namedSub: "显示你在地图上用的名字，不显示 UID 和位置",
+        hint: "每人榜上只留一张，放新的会换掉旧的。随时能撤下，撤下就删掉。",
+        go: "放上去",
+        going: "正在放…",
+        /** Before putting it up in place of the player's last */
+        replace: "榜上已经有你一张（第 {rank} 名，{score} 分，{n} 人评过），放这张会换掉它，它收到的分也一起清掉",
+        replaceWaiting: "榜上已经有你一张（{n} 人评过，还没上榜），放这张会换掉它，它收到的分也一起清掉",
+        replaceHidden: "榜上已经有你一张（被举报了，先藏起来了），放这张会换掉它，它收到的分也一起清掉",
+        done: "放上去了。评满 {n} 个人才上榜",
+        toBoard: "去手写榜",
+        enough: "今天放了 {n} 次了，明天再来。",
+        /** Sent to the server to be marked again, before anything can go up */
+        checking: "正在交给服务器再认一遍…",
+        failed: "服务器没认上：{why}",
+        retry: "再试一次",
+        failedPut: "没放上去：{why}",
+        /** A visitor's, instead of the choices */
+        signIn: "登录后能把字放上手写榜",
+      },
+    },
     facts: [
       "1 + 2 + 3 + … + 25 = 325",
       "325 = 13 × 25",
@@ -5341,6 +5473,11 @@ export const zh = {
         place: "放在学校、部队、别人家门口等不合适的地方",
         pattern: "好几只摆成字或图案",
       },
+      writingReasons: {
+        scrawl: "不是 325，乱画",
+        rude: "画了脏东西或冒犯人的",
+        misc: "别的",
+      },
       rules: {
         name: "名字和资料里不能有违法、涉政、色情、赌博、广告引流的内容",
         contact: "不能留联系方式或个人信息",
@@ -5348,6 +5485,7 @@ export const zh = {
         harass: "不能骚扰别人",
         age: "只对满 18 岁开放",
         roach: "蟑螂不能放在不合适的地方",
+        writing: "手写榜上不能放不合适的字",
       },
     },
     si: {
