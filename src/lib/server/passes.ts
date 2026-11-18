@@ -620,10 +620,26 @@ async function roachPassNow(id: string): Promise<RoachPass | null> {
     .where(eq(users.id, roach.userId))
     .limit(1);
   const card = r && r.onMap !== false ? cardOf(r, await pictures()) : null;
-  if (!card) return null;
-  // named one by one, so nothing added to a card later goes to strangers unasked (how many they have never does)
+  return card ? asRoachPass(card) : null;
+}
+
+/** A worn pass as a card shows it to anyone else (RoachPass): named one by one, so nothing added to a card later goes to strangers unasked (how many they have never does) */
+export function asRoachPass(card: PassOnCard): RoachPass {
   const { game, charId, name, en, rarity, no, fancy, color, art, frame, avatar, drawnAt } = card;
   return { game, charId, name, en, rarity, no, fancy, color, art, ...(frame && { frame }), avatar, drawnAt };
+}
+
+/**
+ * Of these players, those who keep the pass they wear off their cards (地图卡片上挂出通行证 switched off, on_map): on
+ * the map and in a room of 一起卫戍 alike. One who never opened 寻访 has it on.
+ */
+export async function passesOffCards(userIds: readonly string[]): Promise<Set<string>> {
+  if (!userIds.length) return new Set();
+  const rows = await db
+    .select({ userId: passWallets.userId })
+    .from(passWallets)
+    .where(and(inArray(passWallets.userId, [...userIds]), eq(passWallets.onMap, false)));
+  return new Set(rows.map((r) => r.userId));
 }
 
 /** For tests: the roaches' passes kept, forgotten, as in a fresh process */

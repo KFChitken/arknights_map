@@ -1,6 +1,7 @@
 import season from "@/data/squad-season.json";
 import { SERVERS } from "./games";
 import type { QueueChange, RoomSchedule } from "./listen";
+import type { RoachPass } from "./passes";
 import type { PublicProfile } from "./profile";
 
 /**
@@ -362,6 +363,11 @@ export type SquadMember = {
   pose: SquadPose;
   /** A 人机 (its number below 0), after everyone else */
   bot?: true;
+  /**
+   * The pass TA wears, hung on TA's card in the room as on a main roach's card on the map (number and day printed,
+   * never how many): to a viewer 寻访 shows to, unless TA keeps it off the cards (地图卡片上挂出通行证); never a 人机's
+   */
+  pass?: RoachPass;
 } & SquadLook &
   SquadRound;
 

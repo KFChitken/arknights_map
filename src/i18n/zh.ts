@@ -2127,6 +2127,17 @@ export const zh = {
       kick: "请出去",
       noDeclare: "有人机的房间不能宣言招人",
     },
+    /** The card of someone in the room (SquadMateCard.tsx), as the map's card of another's roach */
+    mate: {
+      label: "{name}的卡片",
+      notReady: "还没准备（还没进同盟）",
+      hostNone: "房主不用准备",
+      round: "这局：",
+      blockAsk: "拉黑 {name}？",
+      reportAsk: "举报 {name}？",
+      reportYes: "去举报",
+      cancel: "算了",
+    },
     join: {
       title: "加入 {host} 的房间？",
       sub: "{server} · {level} · 现在 {n}/{max}",
@@ -2234,11 +2245,6 @@ export const zh = {
       pickStrategy: "这个房间的策略",
       touch: "碰",
       more: "更多",
-      sneak: "偷偷碰",
-      sneakSub: "TA 不知道是谁碰的",
-      bold: "大胆碰",
-      boldSub: "亮明你是谁；都大胆碰过就成触须之交",
-      touchNote: "和地图上碰一样算次数",
       kick: "请出去",
       kickSub: "TA 再也进不了这个房间",
       block: "拉黑",
@@ -2317,14 +2323,11 @@ export const zh = {
       poses: ["", "蹦迪中", "醉倒睡觉"],
       youTile: "你：点一下说话、换动作、标这局的盟约",
       mateTile: "{name}：点一下看 TA 这局的策略和盟约",
-      peekTitle: "{name} 这局",
       peekStrategy: "策略",
       peekCore: "核心盟约",
       peekExtras: "附加盟约",
       peekNone: "还没标（名片是无偏好）",
       peekExtrasNone: "还没标",
-      touch: "碰一下",
-      close: "关上",
       /** The fight on the map (SquadStage.tsx): hidden or shown on this device */
       map: "看地图",
       show: "看打怪",
@@ -3142,7 +3145,7 @@ export const zh = {
     },
     onMap: {
       label: "地图卡片上挂出通行证",
-      hint: "地图上点开你的本体时，卡片上挂出你戴的通行证，编号和日期照印，不印你的名字；克隆体不挂。",
+      hint: "地图上点开你的本体时，卡片上挂出你戴的通行证，编号和日期照印，不印你的名字；克隆体不挂。一起卫戍的房间里点你也挂，那里看得到你的名字。",
       tag: "通行证 · {name}",
       /** On the pass hung over a stranger's card, folding it back to the 立绘 peeking out; the peek's tag hangs it again */
       fold: "收起",

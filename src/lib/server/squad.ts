@@ -107,6 +107,7 @@ import { blockedWith } from "./blocks";
 import { canSeeDeclaration } from "./declarationInbox";
 import { db } from "./db";
 import { lockPlayer, type Exec } from "./guides";
+import { asRoachPass, passesOffCards } from "./passes";
 import { squadMode } from "./env";
 import { HttpError } from "./http";
 import { listenOpen } from "./listen";
@@ -345,10 +346,13 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     viewerId,
   );
   const bots = await botsOf(db, roomId);
+  // the pass each wears (cardsOf: only to a viewer 寻访 shows to), hung on their card in the room as on the map's, unless they keep it off
+  const offCards = await passesOffCards(rows.flatMap((r) => (cards.get(r.u.id)?.pass ? [r.u.id] : [])));
   const people: SquadMember[] = rows
     .sort((a, b) => a.m.handle - b.m.handle)
     .map(({ m, u }) => {
       const card = cards.get(u.id)!;
+      const pass = card.pass && !offCards.has(u.id) ? asRoachPass(card.pass) : null;
       return {
         h: m.handle,
         name: card.displayName,
@@ -361,6 +365,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         pose: isPose(m.pose) ? m.pose : 0,
         ...roomCard(m),
         extras: extrasNow(m.extras),
+        ...(pass ? { pass } : {}),
       };
     });
   // the 人机 after everyone else

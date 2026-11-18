@@ -174,6 +174,7 @@ import {
   heardSquad,
   inviteToSquad,
   laterSquadInvite,
+  markSquadTouched,
   squadBotTouched,
   squadRoomNow,
   squadStreamBack,
@@ -2580,6 +2581,7 @@ export default function MapApp({
     }
     const res = await act(() => touchInSquad(h, bold));
     if (!res) return;
+    markSquadTouched(h, bold);
     touchesUsed(res);
     if (res.newFriend) {
       befriendedToast(res.newFriend);
@@ -5288,6 +5290,7 @@ export default function MapApp({
               void refreshInbox().catch(() => {});
             }}
             onTouch={touchInSquadRoom}
+            touches={touchesFor()}
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: null, squad: true })}
             onError={(e) => void act(() => Promise.reject(e))}
             onToast={setToast}
@@ -6205,8 +6208,10 @@ export default function MapApp({
       {squadShown && (
         <SquadFight
           hidden={Boolean(panel || listenOpen || selected || picking || placing)}
+          touches={touchesFor()}
           onOpen={() => setPanel({ kind: "squad" })}
-          onTouch={(h, bold) => void touchInSquadRoom(h, bold)}
+          onTouch={touchInSquadRoom}
+          onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: null, squad: true })}
           onError={(e) => void act(() => Promise.reject(e))}
         />
       )}

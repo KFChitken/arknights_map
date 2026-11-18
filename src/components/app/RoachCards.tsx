@@ -633,7 +633,7 @@ export function OtherInkCard({
   );
 }
 
-type Quota = { left: number; at: number; friendLeft?: number };
+export type Quota = { left: number; at: number; friendLeft?: number };
 
 /** 「你们是触须之交，今天还能碰 TA n 次。」 */
 const friendsLeft = (n: number) => fmtNodes(T.cards.touched.friendsLeft, { n: <b>{n}</b> });
@@ -647,9 +647,10 @@ function quotaHint(quota: Quota | null): ReactNode {
 
 /**
  * The two touches, and under them how many are left today and when the day turns (quota, as touchesNow() gives
- * it; none for the guides). With none left, on anyone or on this 触须之交, both wait for the day to turn
+ * it; none for the guides). With none left, on anyone or on this 触须之交, both wait for the day to turn. The card of
+ * someone in a room of 一起卫戍 has them too (squad/SquadMateCard.tsx)
  */
-function TouchButtons({
+export function TouchButtons({
   quota,
   touched,
   busy,
@@ -681,7 +682,7 @@ function TouchButtons({
 }
 
 /** 「今天总共还能碰 n 次 · 凌晨 4 点刷新」; with none left, 「凌晨 4 点刷新 · 还有 2 小时 40 分」 */
-function TouchesLine({ left, at }: { left: number; at: number }) {
+export function TouchesLine({ left, at }: { left: number; at: number }) {
   const when = turnsAtText(at);
   if (left > 0) return <p className="touch-quota">{fmtNodes(T.cards.touchesLeft, { n: <b>{left}</b>, at: when })}</p>;
   const { h, m } = waitParts(at);

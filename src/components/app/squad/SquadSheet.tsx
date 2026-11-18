@@ -48,6 +48,7 @@ import RoachIcon from "../../RoachIcon";
 import DjBar from "./DjBar";
 import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
+import SquadMateCard from "./SquadMateCard";
 import SquadTalk from "./SquadTalk";
 import { useOperatorArt, type Art } from "../OperatorNames";
 import Sheet from "../Sheet";
@@ -75,6 +76,7 @@ import {
   useSquadNotice,
   useSquadRoom,
   useSquadShowName,
+  useSquadTouched,
   type SquadLine,
   type SquadMoveDone,
 } from "./squading";
@@ -111,6 +113,8 @@ type Props = {
   /** Gone in at an invitation or a 宣言招人: its item in 消息, to be read */
   onJoined: (item: string) => void;
   onTouch: (h: number, bold: boolean) => Promise<void>;
+  /** Today's touches left and when the day turns, for a teammate's card (Me.touchesLeft, Me.dayTurnsAt) */
+  touches?: { left: number; at: number };
   onSafety: (target: string, who: string) => void;
   /** A refusal the map page handles (signing in, the age question, …), or any other error */
   onError: (e: unknown) => void;
@@ -862,6 +866,7 @@ function RoomView({
   onList,
   onCard,
   onTouch,
+  touches,
   onSafety,
   onToast,
   onError,
@@ -877,8 +882,9 @@ function RoomView({
   onCard: () => void;
 }) {
   const [picking, setPicking] = useState<"core" | "strategy" | null>(null);
-  // another's tile tapped: what can be done to TA
+  // another's tile tapped: TA's card
   const [menu, setMenu] = useState<number | null>(null);
+  const touched = useSquadTouched();
   const art = useOperatorArt();
   const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | "hostMenu" | null>(null);
   // the host asking someone to leave: whom (their number), asked first
@@ -972,11 +978,32 @@ function RoomView({
       }
       onClose={onClose}
       footer={
-        <button type="button" className="sq-saybar" onClick={() => setTalking(true)}>
-          <SquadRoach m={me} size={32} />
-          <b>{T.squad.talk.open}</b>
-          <small>{T.squad.talk.openSub}</small>
-        </button>
+        <>
+          <button type="button" className="sq-saybar" onClick={() => setTalking(true)}>
+            <SquadRoach m={me} size={32} />
+            <b>{T.squad.talk.open}</b>
+            <small>{T.squad.talk.openSub}</small>
+          </button>
+          {/* a teammate's card, over the foot (and whatever it covers as the room scrolls under it) */}
+          {menuOf && (
+            <SquadMateCard
+              m={menuOf}
+              host={room.host}
+              staff={room.staff}
+              playing={room.state === "go"}
+              art={art}
+              touches={touches}
+              touched={touched[menuOf.h]}
+              busy={busy}
+              className="in-sheet"
+              onTouch={(bold) => onTouch(menuOf.h, bold)}
+              onKick={() => (setMenu(null), void run(() => kickFromSquad(menuOf.h)))}
+              onSafety={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}
+              onBot={(what) => void run(() => squadBot(what, menuOf.h)).then(() => what === "kick" && setMenu(null))}
+              onClose={() => setMenu(null)}
+            />
+          )}
+        </>
       }
     >
       <Floats />
@@ -1059,64 +1086,6 @@ function RoomView({
           </div>
         ))}
       </div>
-      {menuOf?.bot && (
-        <div className="sq-pop" role="group" aria-label={menuOf.name}>
-          <small className="pn">{menuOf.name}</small>
-          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, false))}>
-            <b>{T.squad.room.sneak}</b>
-            {T.squad.room.sneakSub}
-          </button>
-          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, true))}>
-            <b>{T.squad.room.bold}</b>
-            {T.squad.room.boldSub}
-          </button>
-          <small>{T.squad.bot.touchNote}</small>
-          {room.host && room.staff && (
-            <div className="sq-botrow" role="group" aria-label={T.squad.bot.row}>
-              <small>{T.squad.bot.row}</small>
-              <span>
-                <button aria-pressed={menuOf.inGame} disabled={busy} onClick={() => void run(() => squadBot("ready", menuOf.h))}>
-                  {menuOf.inGame ? T.squad.bot.readyOn : T.squad.bot.ready}
-                </button>
-                <button disabled={busy} onClick={() => void run(() => squadBot("strategy", menuOf.h))}>
-                  {T.squad.bot.strategy}
-                </button>
-                <button disabled={busy} onClick={() => void run(() => squadBot("say", menuOf.h))}>
-                  {T.squad.bot.say}
-                </button>
-                <button disabled={busy} onClick={() => void run(() => squadBot("pose", menuOf.h))}>
-                  {T.squad.bot.pose}
-                </button>
-                <button className="out" disabled={busy} onClick={() => (setMenu(null), void run(() => squadBot("kick", menuOf.h)))}>
-                  {T.squad.bot.kick}
-                </button>
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-      {menuOf && !menuOf.bot && (
-        <div className="sq-pop" role="group" aria-label={menuOf.name}>
-          <small className="pn">{menuOf.name}</small>
-          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, false))}>
-            <b>{T.squad.room.sneak}</b>
-            {T.squad.room.sneakSub}
-          </button>
-          <button onClick={() => (setMenu(null), void onTouch(menuOf.h, true))}>
-            <b>{T.squad.room.bold}</b>
-            {T.squad.room.boldSub}
-          </button>
-          <small>{T.squad.room.touchNote}</small>
-          <button onClick={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}>
-            <b>{T.squad.room.block}</b>
-            {T.squad.room.blockSub}
-          </button>
-          <button onClick={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}>
-            <b>{T.squad.room.report}</b>
-            {T.squad.room.reportSub}
-          </button>
-        </div>
-      )}
       {room.host ? (
         room.state === "wait" ? (
           <div className="sq-go">

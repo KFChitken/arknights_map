@@ -62,10 +62,13 @@ export type SquadMoveDone = { key: number; h: number; move: SquadMove; to?: numb
 const NO_FLOATS: SquadFloat[] = [];
 const NO_LINES: SquadLine[] = [];
 const NO_MOVES: SquadMoveDone[] = [];
+const NO_TOUCHED: Readonly<Record<number, "sneaky" | "bold">> = {};
 const room = kept<SquadRoom | null>(null);
 const floats = kept<SquadFloat[]>(NO_FLOATS);
 const lines = kept<SquadLine[]>(NO_LINES);
 const moves = kept<SquadMoveDone[]>(NO_MOVES);
+/** Who in the room this page touched (碰), by their number: sneakily (a bold touch may follow) or boldly */
+const touched = kept(NO_TOUCHED);
 /** How many rounds have started in sight of this page (开始游戏): the sheet makes way for the bar of the round */
 const rounds = kept(0);
 /** A round started while the player marked no strategy for it: 这局 opens first, with a dot, until they look */
@@ -81,6 +84,9 @@ export const useSquadRoom = () => useSyncExternalStore(room.on, room.get, () => 
 export const useSquadFloats = (): SquadFloat[] => useSyncExternalStore(floats.on, floats.get, () => NO_FLOATS);
 export const useSquadLines = (): SquadLine[] => useSyncExternalStore(lines.on, lines.get, () => NO_LINES);
 export const useSquadMoves = (): SquadMoveDone[] => useSyncExternalStore(moves.on, moves.get, () => NO_MOVES);
+export const useSquadTouched = () => useSyncExternalStore(touched.on, touched.get, () => NO_TOUCHED);
+/** A touch of someone in the room went (by their number): their card says so */
+export const markSquadTouched = (h: number, bold: boolean) => touched.set({ ...touched.get(), [h]: bold ? "bold" : "sneaky" });
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
@@ -181,6 +187,7 @@ function setRoom(next: SquadRoom | null) {
     floats.set(NO_FLOATS);
     lines.set(NO_LINES);
     moves.set(NO_MOVES);
+    touched.set(NO_TOUCHED);
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
     rounds.set(rounds.get() + 1);

@@ -4,15 +4,18 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
-import { SQUAD_MAX, strategyOf, type SquadMember, type SquadRoom } from "@/lib/squad";
+import { SQUAD_MAX, type SquadMember, type SquadRoom } from "@/lib/squad";
 import { ShieldIcon } from "../chrome/parts";
-import { useOperatorArt, type Art } from "../OperatorNames";
+import { useOperatorArt } from "../OperatorNames";
 import { useAbove } from "./SquadBar";
-import { CoreBadge, extraNames, StrategyFace, strategyWords } from "./SquadPicks";
+import SquadMateCard from "./SquadMateCard";
+import { CoreBadge, extraNames, StrategyFace } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import {
   closeSquadTalk,
+  kickFromSquad,
   openSquadTalk,
+  squadBot,
   setSquadSceneOn,
   useSquadLines,
   useSquadMoves,
@@ -20,6 +23,7 @@ import {
   useSquadSceneOn,
   useSquadSceneShows,
   useSquadTalkOpen,
+  useSquadTouched,
 } from "./squading";
 import { setSquadMuted, squadSoundReady, useSquadMuted } from "./squadSound";
 import "./squadFight.css";
@@ -31,8 +35,8 @@ const SquadTalk = dynamic(() => import("./SquadTalk"), { ssr: false });
  * 卫戍中 n/4. A tile each: the roach as its pose has it, this round's strategy at its foot (a dashed ? while none is
  * marked; yours nudges, with 标策略), the name, the core alliance's badge, the 附加盟约 (two, then +n), and the last
  * line for a minute; the host's says 房主, yours is yellow. A line said comes as a bubble over its tile, a change of
- * someone's round as a flash of theirs. Your tile opens 说话 / 动作 / 这局 (SquadTalk.tsx); another's, a card of TA's
- * round with 碰. Above it 看地图 / 看打怪 (the fight on the map, this device: SquadStage.tsx; while it shows, lines come
+ * someone's round as a flash of theirs. Your tile opens 说话 / 动作 / 这局 (SquadTalk.tsx); another's, TA's card with
+ * TA's round (SquadMateCard.tsx), over the row (beside the column on a computer) till its × or the tile again. Above it 看地图 / 看打怪 (the fight on the map, this device: SquadStage.tsx; while it shows, lines come
  * out of its roaches instead of the tiles), 🔔 (the sound, this device) and 展开 (the room's sheet, where the host ends
  * the round). On a phone a row of four above the layout's bottom bar; on a computer a column beside 卫戍
  * (data-squad-entry).
@@ -40,8 +44,6 @@ const SquadTalk = dynamic(() => import("./SquadTalk"), { ssr: false });
 
 /** Wide enough for the column beside 卫戍 */
 const WIDE = "(min-width: 900px)";
-/** A teammate's card goes by itself this long after */
-const PEEK_MS = 5_000;
 /** A tile flashes this long once its round changed */
 const FLASH_MS = 1_000;
 
@@ -101,15 +103,21 @@ function useFlashes(room: SquadRoom | null) {
 
 export default function SquadFight({
   hidden,
+  touches,
   onOpen,
   onTouch,
+  onSafety,
   onError,
 }: {
   hidden: boolean;
+  /** Today's touches left and when the day turns, for a teammate's card */
+  touches?: { left: number; at: number };
   /** 展开: the room's sheet */
   onOpen: () => void;
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
-  onTouch: (h: number, bold: boolean) => void;
+  onTouch: (h: number, bold: boolean) => Promise<void>;
+  /** 拉黑 and 举报 someone in the room (sq:<room>:<number>), with their name */
+  onSafety: (target: string, who: string) => void;
   onError: (e: unknown) => void;
 }) {
   const room = useSquadRoom();
@@ -127,22 +135,12 @@ export default function SquadFight({
   const sceneShows = useSquadSceneShows();
   const flashing = useFlashes(playing ? room : null);
   const talking = useSquadTalkOpen();
-  // a teammate's card: whose, and where (over the row on a phone, beside the column on a computer)
+  const touched = useSquadTouched();
+  // a teammate's card: whose, and where (over the row on a phone, beside the column on a computer); it stays till
+  // its × or the tile again, and goes as the bar does
   const [peek, setPeek] = useState<{ h: number; at: CSSProperties } | null>(null);
+  const [busy, setBusy] = useState(false);
   const bar = useRef<HTMLDivElement>(null);
-  // a teammate's card: away by itself, at a tap elsewhere, or as the round ends
-  useEffect(() => {
-    if (peek === null) return;
-    const t = window.setTimeout(() => setPeek(null), PEEK_MS);
-    const away = (e: PointerEvent) => {
-      if (!(e.target as Element | null)?.closest?.(".sq-peek")) setPeek(null);
-    };
-    document.addEventListener("pointerdown", away, true);
-    return () => {
-      window.clearTimeout(t);
-      document.removeEventListener("pointerdown", away, true);
-    };
-  }, [peek]);
   useEffect(() => {
     if (!shown) setPeek(null);
   }, [shown]);
@@ -151,12 +149,24 @@ export default function SquadFight({
   const order = room.members.map((m) => m.h);
   const lifts = liftsOf(lines, order, 30);
   const peekOf = peek === null ? null : (room.members.find((m) => m.h === peek.h && !m.you) ?? null);
+  // the card's place: 8 px over the row, the width of the screen less 12 px each side (420 at most); on a computer
+  // beside the column, its top level with the column's
   const peekAt = (): CSSProperties => {
     const r = bar.current?.getBoundingClientRect();
-    if (!r) return { left: 10, bottom: 120 };
-    if (wide && r.left > window.innerWidth / 2) return { right: Math.round(window.innerWidth - r.left + 10), top: Math.round(r.top) };
-    if (wide) return { left: Math.round(r.right + 10), top: Math.round(r.top) };
-    return { left: Math.max(10, Math.round(r.left + r.width / 2 - 170)), bottom: Math.round(window.innerHeight - r.top + 8) };
+    if (!r) return { left: 12, right: 12, top: "auto", bottom: 120 };
+    if (wide && r.left > window.innerWidth / 2) return { left: "auto", right: Math.round(window.innerWidth - r.left + 10), top: Math.round(r.top), bottom: "auto" };
+    if (wide) return { left: Math.round(r.right + 10), right: "auto", top: Math.round(r.top), bottom: "auto" };
+    return { left: 12, right: 12, top: "auto", bottom: Math.round(window.innerHeight - r.top + 8) };
+  };
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
   };
   const head = fmt(T.squad.fight.head, {
     dot: T.squad.dot,
@@ -235,52 +245,26 @@ export default function SquadFight({
           <div className="ft4">{room.members.map(tile)}</div>
         </div>
       )}
-      {shown && peek && peekOf && <Peek m={peekOf} at={peek.at} art={art} onTouch={(bold) => (setPeek(null), onTouch(peekOf.h, bold))} onClose={() => setPeek(null)} />}
+      {shown && peek && peekOf && (
+        <SquadMateCard
+          m={peekOf}
+          host={room.host}
+          staff={room.staff}
+          playing
+          art={art}
+          touches={touches}
+          touched={touched[peekOf.h]}
+          busy={busy}
+          className={`on-bar${wide ? " beside" : ""}`}
+          style={peek.at}
+          onTouch={(bold) => onTouch(peekOf.h, bold)}
+          onKick={() => (setPeek(null), void act(() => kickFromSquad(peekOf.h)))}
+          onSafety={() => (setPeek(null), onSafety(`sq:${room.id}:${peekOf.h}`, peekOf.name))}
+          onBot={(what) => void act(() => squadBot(what, peekOf.h)).then(() => what === "kick" && setPeek(null))}
+          onClose={() => setPeek(null)}
+        />
+      )}
       {talking && <SquadTalk room={room} onClose={closeSquadTalk} onError={onError} />}
     </>
-  );
-}
-
-/** A teammate's round: the strategy, the core alliance, all the 附加盟约; and 碰 */
-function Peek({ m, at, art, onTouch, onClose }: { m: SquadMember; at: CSSProperties; art: Art | null; onTouch: (bold: boolean) => void; onClose: () => void }) {
-  const s = m.strategy === null ? null : strategyOf(m.strategy);
-  const extras = extraNames(m.extras);
-  return (
-    <div className="sq-peek" style={at} role="dialog" aria-label={fmt(T.squad.fight.peekTitle, { name: m.name })}>
-      <b>{fmt(T.squad.fight.peekTitle, { name: m.name })}</b>
-      <button type="button" className="x" aria-label={T.squad.fight.close} onClick={onClose}>
-        ×
-      </button>
-      <div className="r">
-        <i>{T.squad.fight.peekStrategy}</i>
-        {s && <StrategyFace id={m.strategy} art={art} size={26} />}
-        <span>{s ? strategyWords(s) : T.squad.fight.peekNone}</span>
-      </div>
-      <div className="r">
-        <i>{T.squad.fight.peekCore}</i>
-        <CoreBadge core={m.core} />
-      </div>
-      <div className="r">
-        <i>{T.squad.fight.peekExtras}</i>
-        {extras.length ? (
-          extras.map((x) => (
-            <span key={x} className="sq-core none">
-              {x}
-            </span>
-          ))
-        ) : (
-          <span>{T.squad.fight.peekExtrasNone}</span>
-        )}
-      </div>
-      <div className="b">
-        <button type="button" onClick={() => onTouch(false)}>
-          {T.squad.room.sneak}
-        </button>
-        <button type="button" onClick={() => onTouch(true)}>
-          {T.squad.room.bold}
-        </button>
-      </div>
-      {m.bot && <small className="bn">{T.squad.bot.touchNote}</small>}
-    </div>
   );
 }
