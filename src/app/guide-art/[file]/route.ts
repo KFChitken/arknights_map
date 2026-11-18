@@ -6,6 +6,7 @@ import {
   AMIYA_PICTURE,
   GUIDE_ART_DIR,
   HAIMAO_PICTURE,
+  haimaoClips,
   haimaoMode,
   MINGHE_PICTURE,
   PARTY_MUSIC,
@@ -14,8 +15,11 @@ import {
   TALULAH_PICTURE,
 } from "@/lib/server/env";
 
-/** The guides' pictures (src/lib/guides.ts) and whether each is switched on; only these files are ever served */
-const PICTURES: Record<string, { on: boolean; type: string }> = {
+/**
+ * The guides' pictures (src/lib/guides.ts) and whether each is switched on; only these files are ever served. maxAge:
+ * how long a browser keeps one (seconds), a month unless said
+ */
+const PICTURES: Record<string, { on: boolean; type: string; maxAge?: number }> = {
   // WebP for pages now, PNG still for pages from before
   "amiya.webp": { on: AMIYA_PICTURE, type: "image/webp" },
   "perlica.webp": { on: PERLICA_PICTURE, type: "image/webp" },
@@ -46,6 +50,15 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   ...haimaoArt(HAIMAO_FACES.map((face) => `haimao-${face}`)),
   // the street outside her tower behind 今日剧情, by day and at dusk: painted for it, so shown even while her pictures are off
   ...haimaoArt(["haimao-day", "haimao-dusk"], false),
+  // her dame dame: six seconds of damedane (Breeze's), while HAIMAO_CLIPS lets it; kept an hour, so a new cut put in
+  // the folder reaches everyone within one
+  "haimao-damedane.m4a": {
+    get on() {
+      return haimaoClips() && haimaoMode() !== "off";
+    },
+    type: "audio/mp4",
+    maxAge: 3600,
+  },
 };
 
 function haimaoArt(names: string[], picture = true) {
@@ -78,7 +91,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ file: s
     headers: {
       "content-type": picture.type,
       // a month: a new picture comes under a new ?v (src/lib/roachImages.ts)
-      "cache-control": "public, max-age=2592000",
+      "cache-control": `public, max-age=${picture.maxAge ?? 2592000}`,
       // a picture, nothing more, even opened on its own
       ...(picture.type === "image/svg+xml" ? { "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'" } : {}),
     },

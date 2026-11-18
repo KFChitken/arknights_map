@@ -135,6 +135,8 @@ export type GuideMark = {
   acting?: boolean;
   /** 香艳制作人's 好感度 went up by n just now (at, ms): it floats up over her once */
   plus?: { n: number; at: number };
+  /** 香艳制作人 sings dame dame, her microphone in hand: since when the latest notes rose from her (ms) */
+  sing?: number;
 };
 
 /**

@@ -142,6 +142,28 @@ function floatPlus(el: HTMLElement, plus: { n: number; at: number }) {
   window.setTimeout(() => chip.remove(), 2000);
 }
 
+/** Notes rising from 香艳制作人 as she sings, once for each time they rise (none where motion is turned down) */
+function singNotes(el: HTMLElement, at: number) {
+  if (el.dataset.sing === String(at)) return;
+  el.dataset.sing = String(at);
+  if (Date.now() - at > PLUS_FRESH_MS || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const notes = document.createElement("span");
+  notes.className = "hm-notes";
+  notes.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 4; i++) {
+    const note = document.createElement("i");
+    note.textContent = i % 2 ? "♪" : "♫";
+    // from about her microphone
+    note.style.left = `${40 + Math.random() * 24}%`;
+    note.style.top = `${30 + Math.random() * 18}%`;
+    note.style.setProperty("--dx", `${Math.round((Math.random() - 0.5) * 90)}px`);
+    note.style.animationDelay = `${i * 0.25}s`;
+    notes.append(note);
+  }
+  el.append(notes);
+  window.setTimeout(() => notes.remove(), 2800);
+}
+
 /** How long 佩丽卡监督 rides her 鬼火 to where the main roach moved */
 export const BIKE_MS = 1200;
 
@@ -290,6 +312,10 @@ export function updateGuide(el: HTMLElement, zoom: number, mark: GuideMark) {
     el.classList.toggle("friend", mark.friend);
     if (el.classList.contains("plain")) plainHaimao(el);
     if (mark.plus) floatPlus(el, mark.plus);
+    // dame dame: her microphone in hand, swaying, her tentacles and gull quicker, notes rising
+    el.classList.toggle("singing", Boolean(mark.sing));
+    el.querySelector(".hm-fig")?.classList.toggle("singing", Boolean(mark.sing));
+    if (mark.sing) singNotes(el, mark.sing);
     return;
   }
   if (mark.ride) {

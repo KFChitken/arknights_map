@@ -480,6 +480,43 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .haimao-marker .hm-plain { display: none; }
 .haimao-marker.plain .hm-plain { display: block; }
 .haimao-marker.plain .hm-fig { display: none; }
+/*
+ * dame dame (Haimao.tsx useHaimaoDame), on the map and her card: her microphone in hand, swaying about her feet, her
+ * tentacles and gull quicker, notes rising from her microphone. Where motion is turned down she only takes it up.
+ */
+.hm-fig .hm-mic { display: none; }
+.hm-fig.singing .hm-mic { display: inline; }
+/* she sways inside her figure (painted on its own, as above), about her feet */
+.hm-sway { transform-box: view-box; transform-origin: 50% 92%; }
+@media (prefers-reduced-motion: no-preference) {
+  .hm-fig.singing .hm-sway { animation: hm-sway 0.55s ease-in-out infinite alternate; }
+  .haimao-marker.plain.singing .hm-plain { transform-origin: 50% 92%; animation: hm-sway 0.55s ease-in-out infinite alternate; }
+  .hm-fig.singing .hm-tl { animation-duration: 0.55s; }
+  .hm-fig.singing .hm-tr { animation-duration: 0.55s; animation-delay: -0.27s; }
+  .hm-fig.singing .hm-gl { animation: hm-glf 0.55s ease-in-out infinite alternate; }
+}
+@keyframes hm-sway { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes hm-glf { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+.hm-notes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.hm-notes i {
+  position: absolute; color: #ffd76a; font-size: 17px; font-style: normal; font-weight: 700; line-height: 1;
+  -webkit-text-stroke: 0.8px #7a1f42; paint-order: stroke fill; animation: hm-note 1.7s ease-out both;
+}
+/* on her card they rise less, before its top edge */
+.hm-avatar .hm-notes i { --dy: -34px; font-size: 14px; }
+@keyframes hm-note { from { opacity: 1; transform: translate(0, 0); } to { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, -60px)); } }
+@media (prefers-reduced-motion: reduce) {
+  .hm-notes { display: none; }
+}
+/* 全场 damedane across the whole screen, over the map and her card, letting taps through; still where motion is turned down */
+.hm-dm-screen { position: fixed; inset: 0; z-index: 25; overflow: hidden; pointer-events: none; }
+.hm-dm-screen span {
+  position: absolute; left: 100%; color: #fff; font-size: clamp(16px, 2.6vw, 24px); font-weight: 800; white-space: nowrap;
+  /* an outline all round, to read on the map and on her white card alike */
+  text-shadow: -1px -1px 0 #000a, 1px -1px 0 #000a, -1px 1px 0 #000a, 1px 1px 0 #000a, 0 0 4px #000a;
+  animation: hm-st-dm 5s linear both;
+}
+.hm-dm-screen span.still { animation: none; }
 /* her 好感度 going up: floats up beside her and fades, clear of what she says over her head */
 .hm-plus {
   position: absolute; left: calc(100% + 2px); top: 50%; z-index: 1; padding: 1px 8px; border-radius: 999px; background: #fff;

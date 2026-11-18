@@ -3,7 +3,7 @@ import { preconnect } from "react-dom";
 import GrayMode from "@/components/GrayMode";
 import MapApp from "@/components/MapApp";
 import { countAmapLoad } from "@/lib/server/amapLoads";
-import { haimaoMode, isProd, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_DOMAINS, studyMode, UI_CHOICE } from "@/lib/server/env";
+import { haimaoClips, haimaoMode, isProd, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_DOMAINS, studyMode, UI_CHOICE } from "@/lib/server/env";
 import { ipFrom } from "@/lib/server/http";
 import { mainlandMap } from "@/lib/server/mainlandMap";
 import { noticeList } from "@/lib/server/notices";
@@ -40,7 +40,17 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
       {/* a layout other than 浮岛 picked on this device: 浮岛's buttons stay out of sight until the app draws its own */}
       <script dangerouslySetInnerHTML={{ __html: earlyUiScript(UI_CHOICE) }} />
       {/* 325大学习 and 香艳制作人 for visitors too, only once out for everyone (STUDY=on, HAIMAO=on); a player learns of them from me() */}
-      <MapApp cn={cn} home={home} mailPaused={mailPaused} notices={{ stamp, notices }} uiChoice={UI_CHOICE} studyGuests={studyMode() === "on"} haimaoGuests={haimaoMode() === "on"} />
+      {/* her dame dame as her damedane clip, or sung in code (HAIMAO_CLIPS) */}
+      <MapApp
+        cn={cn}
+        home={home}
+        mailPaused={mailPaused}
+        notices={{ stamp, notices }}
+        uiChoice={UI_CHOICE}
+        studyGuests={studyMode() === "on"}
+        haimaoGuests={haimaoMode() === "on"}
+        haimaoClips={haimaoClips() && haimaoMode() !== "off"}
+      />
     </>
   );
 }

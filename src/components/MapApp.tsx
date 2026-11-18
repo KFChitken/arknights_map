@@ -233,9 +233,17 @@ import {
 } from "./app/Perlica";
 import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroShown } from "./app/Minghe";
 import { forgetSiHere, markSiIntroShown, peekedToday, rememberPeek, SiCard, SiIntroSheet, siIntroShown } from "./app/Si";
-import { forgetHaimaoHere, HaimaoCard, HaimaoIntroSheet, haimaoIntroShown, markHaimaoIntroShown } from "./app/Haimao";
+import {
+  forgetHaimaoHere,
+  HaimaoCard,
+  HaimaoDanmaku,
+  HaimaoIntroSheet,
+  haimaoIntroShown,
+  markHaimaoIntroShown,
+  useHaimaoDame,
+} from "./app/Haimao";
 import HaimaoStorySheet from "./app/HaimaoStory";
-import { playSound, primeSound } from "./app/haimaoSound";
+import { allowClip, playSound, primeSound } from "./app/haimaoSound";
 import { SiBookSheet } from "./app/SiBook";
 import { useSiInks, type SiView } from "./useSiInks";
 import type { InkPoint } from "@/lib/siTiles";
@@ -563,6 +571,7 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * uiChoice: players may pick one of the three layouts (src/lib/uiChoice.ts); off (UI_CHOICE=off), everyone has 浮岛.
  * studyGuests: 325大学习 is open to visitors who have not signed in as well (STUDY=on); a player has it from me.study.
  * haimaoGuests: 香艳制作人 shows to visitors who have not signed in as well (HAIMAO=on); a player learns it from me.haimao.
+ * haimaoClips: her dame dame is her damedane clip (HAIMAO_CLIPS), not sung in code.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const guestStyles = (): Partial<Record<MapStyle, string>> =>
@@ -587,6 +596,7 @@ export default function MapApp({
   uiChoice = true,
   studyGuests = false,
   haimaoGuests = false,
+  haimaoClips = false,
 }: {
   cn: boolean;
   home?: MainlandMap;
@@ -595,6 +605,7 @@ export default function MapApp({
   uiChoice?: boolean;
   studyGuests?: boolean;
   haimaoGuests?: boolean;
+  haimaoClips?: boolean;
 }) {
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
@@ -939,6 +950,10 @@ export default function MapApp({
   const siTouched = useRef(false);
   // 香艳制作人's 好感度 went up just now, by so much: it floats up over her on the map
   const [haimaoPlus, setHaimaoPlus] = useState<{ n: number; at: number } | null>(null);
+  // her dame dame: she sings on the map and on her card, and 全场 damedane flies across the screen after three taps
+  const haimaoDame = useHaimaoDame();
+  // as her damedane clip, or sung in code, as the page says (HAIMAO_CLIPS)
+  useEffect(() => allowClip(haimaoClips), [haimaoClips]);
   // the map's view while it shows 宏村 (within a few km of the inn), for drawing 缘缘庄; null elsewhere
   const [siView, setSiView] = useState<SiView | null>(null);
   // she drew your ink roach just now, since then: her brush draws it in on the map
@@ -4689,6 +4704,7 @@ export default function MapApp({
             friend: Boolean(me?.haimao?.friend),
             bubble: says.haimao ?? null,
             ...(haimaoPlus ? { plus: haimaoPlus } : {}),
+            ...(haimaoDame.sing ? { sing: haimaoDame.sing.at } : {}),
             ...(offStage === HAIMAO_ID ? { acting: true } : {}),
           },
         ]
@@ -5823,8 +5839,10 @@ export default function MapApp({
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           onTouch={(bold) => touch(selected.roach, bold)}
           onSignIn={haimaoSignIn}
+          sing={haimaoDame.sing}
           onStory={() => openHaimaoStory()}
           onReview={() => openHaimaoStory(true)}
+          onDame={() => haimaoDame.dame((line, ms) => say(HAIMAO_ID, line, ms))}
           onOpenFriend={me?.haimao?.friend ? () => setPanel({ kind: "friend", friendId: HAIMAO_ID, back: null }) : undefined}
           under={stackUnder}
           onClose={() => {
@@ -5833,6 +5851,8 @@ export default function MapApp({
           }}
         />
       )}
+      {/* 全场 damedane after three taps of her dame dame, on this screen alone; it flies on if her card closes */}
+      {haimaoDame.flying && <HaimaoDanmaku flying={haimaoDame.flying} />}
       {!placing && selected?.kind === "other" && selected.roach.id !== SI_ID && selected.roach.id !== HAIMAO_ID && (
         <OtherRoachCard
           roach={selected.roach}

@@ -1093,6 +1093,16 @@ export const zh = {
         next: "跳到下一天",
         restart: "从第 1 天重来",
       },
+      /** On her card: she takes up her microphone and sings a line */
+      dame: {
+        button: "dame dame",
+        /** Over her head on the map while she sings */
+        singing: "dame dame～",
+        /** Over her head once she stops */
+        again: "再来一句？连点三下试试",
+        /** Across the whole screen after three taps close together, on this screen alone */
+        danmaku: ["全场 damedane", "damedane", "dame dame～", "全场 damedane！", "damedane damedane", "dame～", "全场一起 damedane"],
+      },
       stage: {
         /** The corner of the stage: which scene this is */
         day: "第 {n} 天 · {title}",

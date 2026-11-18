@@ -56,16 +56,24 @@ const MOVES: Partial<Record<HaimaoPart, string>> = { tl: "hm-l hm-tl", tr: "hm-l
 export const haimaoLayerClass = (part: HaimaoPart) => MOVES[part] ?? `hm-${part}`;
 
 /**
- * Her figure as SVG markup, for her map marker and her card: the five layers, a pink ground in place of her shadow
- * and a heart over her for a 触须之交 (shown under .friend, globals.css). Fixed markup, nothing a player wrote in it.
+ * The silver microphone in her hand as she sings dame dame (the design's #hm-sing, drawn in code): over her body,
+ * under her gull, shown under .singing (globals.css). Fixed markup.
+ */
+export const HAIMAO_MIC = `<g class="hm-mic" transform="translate(19.6 23.6) rotate(27) scale(1.3)"><rect x="-.6" y="-.95" width="8.2" height="1.9" rx=".9" fill="#7b3fe0" stroke="#0d0e10" stroke-width=".5"/><rect x="5.5" y="-1.15" width="1.3" height="2.3" rx=".3" fill="#f4f2f7" stroke="#0d0e10" stroke-width=".4"/><circle cx="9.4" cy="0" r="2.3" fill="#cfccd8" stroke="#0d0e10" stroke-width=".55"/><path d="M7.6 -1.2 Q9.4 -.4 11.2 -1.2 M7.3 0 H11.5 M7.6 1.2 Q9.4 .4 11.2 1.2 M9.4 -2.2 V2.2" stroke="#8a8596" stroke-width=".3" fill="none"/><circle cx="8.6" cy="-1" r=".6" fill="#ffffff" opacity=".9"/></g>`;
+
+/**
+ * Her figure as SVG markup, for her map marker: her shadow, then the other four layers with her microphone between
+ * her body and her gull, in a group that sways as she sings (.hm-sway: inside the figure, which is painted on its own),
+ * a pink ground in place of her shadow and a heart over her for a 触须之交 (shown under .friend, globals.css). Fixed
+ * markup, nothing a player wrote in it.
  */
 export function haimaoFigureSvg() {
-  const layers = HAIMAO_LAYERS.map(
-    (l) =>
-      `<image class="${haimaoLayerClass(l.part)}" href="${haimaoLayerUrl(l.part)}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="none"/>`,
-  ).join("");
+  const layer = (l: (typeof HAIMAO_LAYERS)[number]) =>
+    `${l.part === "gull" ? HAIMAO_MIC : ""}<image class="${haimaoLayerClass(l.part)}" href="${haimaoLayerUrl(l.part)}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="none"/>`;
+  const shadow = HAIMAO_LAYERS.filter((l) => l.part === "shadow").map(layer).join("");
+  const her = HAIMAO_LAYERS.filter((l) => l.part !== "shadow").map(layer).join("");
   const ground = `<ellipse class="hm-ground" cx="32" cy="54.4" rx="15" ry="3.2" fill="${FRIEND}" stroke="#1b1d22" stroke-width="1.2"/>`;
-  return `<svg class="hm-fig" viewBox="${HAIMAO_VIEWBOX}" aria-hidden="true">${ground}${layers}<g class="hm-heart">${HEART}</g></svg>`;
+  return `<svg class="hm-fig" viewBox="${HAIMAO_VIEWBOX}" aria-hidden="true">${ground}${shadow}<g class="hm-sway">${her}</g><g class="hm-heart">${HEART}</g></svg>`;
 }
 
 /** Her 好感度 never goes past this */

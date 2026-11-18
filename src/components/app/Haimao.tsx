@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { T } from "@/i18n";
-import { HAIMAO, HAIMAO_LAYERS, HAIMAO_LINES, HAIMAO_LOVE_MAX, HAIMAO_VIEWBOX, haimaoLayerClass, haimaoLayerUrl } from "@/lib/haimao";
+import {
+  HAIMAO,
+  HAIMAO_LAYERS,
+  HAIMAO_LINES,
+  HAIMAO_LOVE_MAX,
+  HAIMAO_MIC,
+  HAIMAO_VIEWBOX,
+  haimaoLayerClass,
+  haimaoLayerUrl,
+} from "@/lib/haimao";
 import { FRIEND, HEART } from "@/lib/roachSvg";
 import type { HaimaoMe } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
-import { playSound, setSoundOn, soundOn } from "./haimaoSound";
+import { playSound, preloadClip, setSoundOn, soundOn } from "./haimaoSound";
 import Sheet from "./Sheet";
 
 /** 香艳制作人 (src/lib/haimao.ts) on the page: her Q figure, her card, and the card that tells players she is here. */
@@ -14,33 +23,54 @@ import Sheet from "./Sheet";
 /**
  * Her Q figure, size px square, its tentacles and gull moving (globals.css .hm-l); her still picture, or the hood when
  * that is off too, once a layer will not load. friend: a 触须之交's pink ground in place of her shadow, and a heart.
+ * singing: her microphone in hand, swaying, her tentacles and gull quicker (dame dame).
  */
-export function HaimaoFigure({ size, friend = false }: { size: number; friend?: boolean }) {
+export function HaimaoFigure({ size, friend = false, singing = false }: { size: number; friend?: boolean; singing?: boolean }) {
   const [plain, setPlain] = useState(false);
   if (plain) return <RoachIcon color={HAIMAO.color} size={size} avatar={HAIMAO.avatar} friend={friend} />;
+  const layer = (l: (typeof HAIMAO_LAYERS)[number]) => (
+    <Fragment key={l.part}>
+      {/* her microphone over her body, under her gull */}
+      {l.part === "gull" && <g dangerouslySetInnerHTML={{ __html: HAIMAO_MIC }} />}
+      <image
+        className={haimaoLayerClass(l.part)}
+        href={haimaoLayerUrl(l.part)}
+        x={l.x}
+        y={l.y}
+        width={l.w}
+        height={l.h}
+        preserveAspectRatio="none"
+        onError={() => setPlain(true)}
+      />
+    </Fragment>
+  );
   return (
-    <svg className="hm-fig" viewBox={HAIMAO_VIEWBOX} width={size} height={size} aria-hidden="true">
+    <svg className={singing ? "hm-fig singing" : "hm-fig"} viewBox={HAIMAO_VIEWBOX} width={size} height={size} aria-hidden="true">
       {friend && <ellipse cx="32" cy="54.4" rx="15" ry="3.2" fill={FRIEND} stroke="#1b1d22" strokeWidth="1.2" />}
-      {HAIMAO_LAYERS.filter((l) => !(friend && l.part === "shadow")).map((l) => (
-        <image
-          key={l.part}
-          className={haimaoLayerClass(l.part)}
-          href={haimaoLayerUrl(l.part)}
-          x={l.x}
-          y={l.y}
-          width={l.w}
-          height={l.h}
-          preserveAspectRatio="none"
-          onError={() => setPlain(true)}
-        />
-      ))}
+      {!friend && HAIMAO_LAYERS.filter((l) => l.part === "shadow").map(layer)}
+      {/* swaying as she sings, inside the figure: the whole of it moving, Chromium drawing without a graphics card put
+          her card's head at the top of the screen as a dark box */}
+      <g className="hm-sway">{HAIMAO_LAYERS.filter((l) => l.part !== "shadow").map(layer)}</g>
       {friend && <g dangerouslySetInnerHTML={{ __html: HEART }} />}
     </svg>
   );
 }
 
-/** Her figure on her card, a button: her gull says 喵, out loud and in a bubble */
-function GullButton({ size, friend }: { size: number; friend: boolean }) {
+/** Notes rising from her as she sings (none where motion is turned down), a new few each time sing moves on */
+function SingNotes({ sing }: { sing: HaimaoSing }) {
+  return (
+    <span className="hm-notes" aria-hidden="true">
+      {sing.notes.map((n, i) => (
+        <i key={`${sing.at}-${i}`} style={{ left: `${n.left}%`, top: `${n.top}%`, "--dx": `${n.dx}px`, animationDelay: `${n.delay}s` } as CSSProperties}>
+          {i % 2 ? "♪" : "♫"}
+        </i>
+      ))}
+    </span>
+  );
+}
+
+/** Her figure on her card, a button: her gull says 喵, out loud and in a bubble. sing: she sings dame dame */
+function GullButton({ size, friend, sing }: { size: number; friend: boolean; sing: HaimaoSing | null }) {
   const [meowing, setMeowing] = useState(0);
   useEffect(() => {
     if (!meowing) return;
@@ -57,7 +87,8 @@ function GullButton({ size, friend }: { size: number; friend: boolean }) {
         setMeowing(Date.now());
       }}
     >
-      <HaimaoFigure size={size} friend={friend} />
+      <HaimaoFigure size={size} friend={friend} singing={Boolean(sing)} />
+      {sing && <SingNotes sing={sing} />}
       {meowing > 0 && (
         <span key={meowing} className="hm-meow" aria-live="polite">
           {HAIMAO_LINES.meow}
@@ -67,10 +98,127 @@ function GullButton({ size, friend }: { size: number; friend: boolean }) {
   );
 }
 
+// ---- dame dame ----
+
+/** She sings at least this long (the design's), or as long as her song */
+const SING_MS = 2400;
+/** While she sings, a few notes rise from her this often, if they have the time to rise before she stops */
+const NOTES_EVERY_MS = 1800;
+const NOTE_MS = 1700;
+/** Three taps within this, and 全场 damedane flies across the screen */
+const TAPS_MS = 2600;
+/** How long what she says after her song stays over her head */
+const AGAIN_MS = 3000;
+
+/** She sings dame dame: since when the latest notes rose from her, and where they rise from (shares of her figure) */
+export type HaimaoSing = { at: number; notes: { left: number; top: number; dx: number; delay: number }[] };
+/** 全场 damedane across the screen: each line where, how fast and when; still, where motion is turned down */
+type Danmaku = { at: number; still: boolean; w: number; lines: { text: string; top: number; left: number; dur: number; delay: number }[] };
+
+/** A few notes from about her microphone, drifting right, away from the edge of her card */
+const notesFrom = (at: number): HaimaoSing => ({
+  at,
+  notes: Array.from({ length: 4 }, (_, i) => ({
+    left: 40 + Math.random() * 24,
+    top: 34 + Math.random() * 14,
+    dx: Math.round(Math.random() * 60),
+    delay: i * 0.25,
+  })),
+});
+
+/**
+ * dame dame, her card's button: she takes up her microphone and sings (her clip, or her song made in code, over
+ * whatever of hers plays), swaying, notes rising from her, a tap starting her song again; three taps close together
+ * and 全场 damedane flies across this screen, nobody else's. Nothing goes to the server: her 好感度 stays as it is.
+ * sing: she sings (null: she does not); flying: the lines across the screen.
+ */
+export function useHaimaoDame() {
+  const [sing, setSing] = useState<HaimaoSing | null>(null);
+  const [flying, setFlying] = useState<Danmaku | null>(null);
+  const taps = useRef<number[]>([]);
+  const timers = useRef<number[]>([]);
+  const flyTimer = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      timers.current.forEach((t) => window.clearTimeout(t));
+      window.clearTimeout(flyTimer.current);
+    },
+    [],
+  );
+
+  const fly = () => {
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const at = Date.now();
+    const words = T.guides.haimao.dame.danmaku;
+    setFlying({
+      at,
+      still,
+      w: window.innerWidth,
+      lines: Array.from({ length: 14 }, (_, i) => ({
+        text: words[i % words.length],
+        top: 4 + Math.random() * 72,
+        left: 4 + Math.random() * 56,
+        dur: 4 + Math.random() * 2.5,
+        delay: Math.random() * 1.2,
+      })),
+    });
+    window.clearTimeout(flyTimer.current);
+    flyTimer.current = window.setTimeout(() => setFlying(null), still ? 3000 : 8500);
+  };
+
+  /** A tap of dame dame, within the tap itself (which is what lets a browser play her song). say: over her head, so long */
+  const dame = (say: (line: string, ms: number) => void) => {
+    const now = Date.now();
+    const ms = Math.max(SING_MS, playSound("dame", true) * 1000);
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+    setSing(notesFrom(now));
+    for (let t = NOTES_EVERY_MS; t + NOTE_MS <= ms; t += NOTES_EVERY_MS) {
+      timers.current.push(window.setTimeout(() => setSing(notesFrom(Date.now())), t));
+    }
+    timers.current.push(
+      window.setTimeout(() => {
+        setSing(null);
+        say(T.guides.haimao.dame.again, AGAIN_MS);
+      }, ms),
+    );
+    say(T.guides.haimao.dame.singing, ms);
+    taps.current = [...taps.current.filter((t) => now - t < TAPS_MS), now];
+    if (taps.current.length >= 3) {
+      taps.current = [];
+      fly();
+    }
+  };
+
+  return { sing, flying, dame };
+}
+
+/** 全场 damedane across the whole screen, over the map and her card, letting taps through */
+export function HaimaoDanmaku({ flying }: { flying: Danmaku }) {
+  return (
+    <div className="hm-dm-screen" aria-hidden="true">
+      {flying.lines.map((l, i) => (
+        <span
+          key={`${flying.at}-${i}`}
+          className={flying.still ? "still" : undefined}
+          style={
+            (flying.still
+              ? { top: `${l.top}%`, left: `${l.left}%` }
+              : { top: `${l.top}%`, "--w": `${flying.w}px`, animationDuration: `${l.dur.toFixed(2)}s`, animationDelay: `${l.delay.toFixed(2)}s` }) as CSSProperties
+          }
+        >
+          {l.text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Her card, the same for everyone who opens it: who she is (and who she is not, word for word), her 个性签名, the
- * 好感度 she keeps for you once you are signed in, 今日剧情, and the two touches, with her sounds' 静音 kept in this
- * browser. Visitors see it all but her 好感度, and are asked to sign in as they touch her or open her story.
+ * 好感度 she keeps for you once you are signed in, 今日剧情, dame dame, and the two touches, with her sounds' 静音 kept
+ * in this browser. Visitors see it all but her 好感度, and are asked to sign in as they touch her or open her story;
+ * dame dame asks nobody.
  */
 export function HaimaoCard({
   me,
@@ -79,10 +227,12 @@ export function HaimaoCard({
   waiting,
   touching,
   sharesUid,
+  sing,
   onTouch,
   onSignIn,
   onStory,
   onReview,
+  onDame,
   onOpenFriend,
   under,
   onClose,
@@ -93,25 +243,32 @@ export function HaimaoCard({
   waiting: boolean;
   touching: boolean;
   sharesUid: boolean;
+  /** She sings dame dame (useHaimaoDame) */
+  sing: HaimaoSing | null;
   onTouch: (bold: boolean) => void;
   onSignIn: () => void;
   /** 今日剧情: her story, the day's part of it */
   onStory: () => void;
   /** 回顾剧情: the scenes of it seen, to see again */
   onReview: () => void;
+  /** dame dame, within the tap */
+  onDame: () => void;
   onOpenFriend?: () => void;
   /** Roaches under her picture: to pick one of them (StackUnderGuide) */
   under?: ReactNode;
   onClose: () => void;
 }) {
   const [sound, setSound] = useState(true);
-  // what this browser keeps, read once in it
-  useEffect(() => setSound(soundOn()), []);
+  // what this browser keeps, read once in it; her damedane on its way, for dame dame
+  useEffect(() => {
+    setSound(soundOn());
+    preloadClip();
+  }, []);
   const love = me ? Math.min(HAIMAO_LOVE_MAX, Math.max(0, me.love)) : null;
   return (
     <div className="card stack haimao-card" role="dialog" aria-label={HAIMAO.name}>
       <div className="card-head">
-        <GullButton size={56} friend={friend} />
+        <GullButton size={56} friend={friend} sing={sing} />
         <div>
           <strong>{HAIMAO.name}</strong>
           <p className="muted">{HAIMAO.note}</p>
@@ -122,6 +279,7 @@ export function HaimaoCard({
             onClick={() => {
               setSoundOn(!sound);
               setSound(!sound);
+              if (!sound) preloadClip();
             }}
           >
             {sound ? T.guides.haimao.mute : T.guides.haimao.unmute}
@@ -159,6 +317,9 @@ export function HaimaoCard({
             {T.guides.haimao.review}
           </button>
         )}
+        <button type="button" className="pill" onClick={onDame}>
+          {T.guides.haimao.dame.button}
+        </button>
       </div>
       {onOpenFriend && (
         <div className="row-actions">

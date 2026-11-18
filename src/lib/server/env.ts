@@ -119,6 +119,12 @@ export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
  * her is refused. What she keeps of each player stays whichever it is. Read on every use, so the tests can switch it.
  */
 export const haimaoMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.HAIMAO) ?? "off";
+/**
+ * HAIMAO_CLIPS=off: her dame dame is sung in code (src/components/app/haimaoSound.ts), not as the six seconds of
+ * damedane from the server's own folder (guide-art/haimao-damedane.m4a), which then answers 404: for when the song's
+ * owners ask, or Breeze says to stop. Read on every use, so the tests can switch it.
+ */
+export const haimaoClips = () => process.env.HAIMAO_CLIPS !== "off";
 
 /**
  * 鸭爵, the look kept as the thanks for sponsoring (src/lib/server/looks.ts): DUCK=on lets a 服务器饲养员 pick him, and

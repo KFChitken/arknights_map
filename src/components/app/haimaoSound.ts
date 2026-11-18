@@ -1,11 +1,12 @@
 /**
- * 香艳制作人's sounds (src/lib/haimao.ts), made in the browser through Web Audio: no sound files. Each plays only
- * from a tap (on her card, her gull, a touch of her), never on its own, and not at all while it is switched off in
- * this browser (her card's 静音), the site is gray (全站变灰, src/lib/grayMode.ts) or a song of 听歌 plays. They stop
- * as the page goes out of sight.
+ * 香艳制作人's sounds (src/lib/haimao.ts), made in the browser through Web Audio, but for dame dame while the page lets
+ * it (HAIMAO_CLIPS, allowClip): six seconds of damedane (Breeze's), from the server's own folder. Each plays only from
+ * a tap (on her card, her gull, a touch of her), never on its own, and not at all while it is switched off in this
+ * browser (her card's 静音), the site is gray (全站变灰, src/lib/grayMode.ts) or a song of 听歌 plays. They stop as the
+ * page goes out of sight.
  *
- * dame: a little music box under a robot voice singing "da-me da-me da-me"; all: three bells and a shout; tick: a
- * click; ding: a bell; boing: a spring; meow: her gull.
+ * dame: the clip, or, made in code, a little music box under a robot voice singing "da-me da-me da-me"; all: three
+ * bells and a shout; tick: a click; ding: a bell; boing: a spring; meow: her gull.
  */
 
 import { isGray } from "@/lib/grayMode";
@@ -19,12 +20,60 @@ const VOLUME = 0.55;
 
 type Bus = { in: GainNode; kill: () => void };
 
+/** Her damedane clip (src/app/guide-art), cut from the start of Breeze's: 48 kbps AAC, as 听歌's 省流量 copies */
+const CLIP_URL = "/guide-art/haimao-damedane.m4a";
+/** As loud as 阿米娅向导's dance music: the two files are as loud, and hers plays at this (src/components/app/amiyaMusic.ts) */
+const CLIP_VOLUME = 0.3;
+/** How long it lasts, said before it is in */
+const CLIP_SECONDS = 6;
+
 let ctx: AudioContext | null = null;
 let out: GainNode | null = null;
 let wet: GainNode | null = null;
 let noise: AudioBuffer | null = null;
 const buses = new Set<Bus>();
 const plucks = new Map<string, { buf: AudioBuffer; rate: number }>();
+
+// the clip: whether the page lets it play, fetched and decoded once; null while it is not in (or will not come)
+let clipOn = false;
+let clipLoad: Promise<AudioBuffer | null> | null = null;
+let clip: AudioBuffer | null = null;
+
+/**
+ * Whether dame dame is her clip (HAIMAO_CLIPS, as the page says) or made in code. Off, a clip already in is let go of,
+ * and nothing more of it is fetched.
+ */
+export function allowClip(on: boolean) {
+  clipOn = on;
+  if (on) return;
+  clipLoad = null;
+  clip = null;
+}
+
+/**
+ * Fetch and decode her clip ahead of a tap (her card or her story opening), unless it is not let play, is switched off
+ * here or the site is gray. Decoded without the page's sound, which only a tap may start, so the first tap has it.
+ */
+export function preloadClip() {
+  if (!clipOn || clipLoad || !soundOn() || isGray()) return;
+  const Offline =
+    window.OfflineAudioContext ?? (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+  const load = fetch(CLIP_URL)
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((bytes) => {
+      // decoding takes the bytes over, so it is fetched once and decoded once
+      const decoder = ctx ?? (Offline ? new Offline(2, 1, 44100) : null);
+      return bytes && decoder ? decoder.decodeAudioData(bytes) : null;
+    })
+    .catch(() => null);
+  clipLoad = load;
+  void load.then((b) => {
+    if (clipLoad !== load) return;
+    clip = b;
+    // one that failed is fetched again the next time her card opens
+    if (!b) clipLoad = null;
+  });
+}
 
 export function soundOn() {
   try {
@@ -89,14 +138,17 @@ function ready() {
   return ctx;
 }
 
-function bus(c: AudioContext, level = 1, verb = 1): Bus {
+/** A sound's way out, which stopSounds fades: into the room (verb, how much of it) and the squeeze, or straight to "to" */
+function bus(c: AudioContext, level = 1, verb = 1, to: AudioNode = out!): Bus {
   const g = c.createGain();
   g.gain.value = level;
-  g.connect(out!);
+  g.connect(to);
   const s = c.createGain();
   s.gain.value = verb;
-  g.connect(s);
-  s.connect(wet!);
+  if (verb > 0) {
+    g.connect(s);
+    s.connect(wet!);
+  }
   const b: Bus = {
     in: g,
     kill: () => {
@@ -454,6 +506,15 @@ const SOUNDS: Record<HaimaoSound, (c: AudioContext, b: Bus, t: number) => number
     ),
 };
 
+/** Her clip from its start at t, through b; how long it lasts */
+function playClip(c: AudioContext, b: Bus, sung: AudioBuffer, t: number) {
+  const src = c.createBufferSource();
+  src.buffer = sung;
+  src.connect(b.in);
+  src.start(t);
+  return sung.duration || CLIP_SECONDS;
+}
+
 /**
  * One of her sounds; solo: over whatever of hers plays, which stops. Call it within the tap itself, which is what lets
  * a browser play sound. Resolves nothing; returns how long it lasts (seconds), 0 when it does not play.
@@ -462,11 +523,15 @@ export function playSound(name: HaimaoSound, solo = false) {
   const c = ready();
   if (!c) return 0;
   if (solo) stopSounds();
+  // dame dame is her clip once it is in; made in code until then (it is fetched now, if her card did not already)
+  const sung = name === "dame" ? clip : null;
+  if (name === "dame" && !sung) preloadClip();
   // the music box's strings are made the first time, before the clock starts
-  if (name === "dame") for (const f of BOX) for (let v = 0; v < 3; v++) ks(c, f, f < 200 ? 1.9 : 1.3, 0.5, v);
+  if (name === "dame" && !sung) for (const f of BOX) for (let v = 0; v < 3; v++) ks(c, f, f < 200 ? 1.9 : 1.3, 0.5, v);
   const light = name === "tick";
-  const b = bus(c, light ? 0.8 : 1, light ? 0.2 : 1);
-  const d = SOUNDS[name](c, b, c.currentTime + 0.05) || 1;
+  // the clip straight out, as loud as 阿米娅向导's music: none of the room or the squeeze that the made sounds go through
+  const b = sung ? bus(c, CLIP_VOLUME, 0, c.destination) : bus(c, light ? 0.8 : 1, light ? 0.2 : 1);
+  const d = sung ? playClip(c, b, sung, c.currentTime + 0.05) : SOUNDS[name](c, b, c.currentTime + 0.05) || 1;
   window.setTimeout(
     () => {
       if (!buses.has(b)) return;

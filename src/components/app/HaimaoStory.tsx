@@ -21,7 +21,7 @@ import {
 } from "@/lib/haimaoStory";
 import { BadgeImg } from "./Badges";
 import { HaimaoFigure } from "./Haimao";
-import { playSound } from "./haimaoSound";
+import { playSound, preloadClip } from "./haimaoSound";
 import Sheet from "./Sheet";
 
 /**
@@ -372,9 +372,10 @@ export default function HaimaoStorySheet({
     if (step.plus > 0) setFloat({ n: step.plus, at: Date.now() });
   };
 
-  // what today holds, as the server keeps it
+  // what today holds, as the server keeps it; her damedane on its way, for her dame dame replies
   useEffect(() => {
     let gone = false;
+    preloadClip();
     void run(() => haimaoApi.story()).then((s) => {
       if (gone) return;
       if (!s) return onClose();
