@@ -5,6 +5,8 @@ import { DRIFT_RATE, LISTEN_FULL, LISTEN_PAUSED, type ListenCatalog, type Listen
 import { playMusic } from "./amiyaMusic";
 import {
   answerAsk,
+  answerSongAsk,
+  askSong,
   askToListen,
   forgetListening,
   heardListen,
@@ -42,6 +44,7 @@ import {
   shufflePlay,
   skip,
   toggle,
+  withdrawAsk,
 } from "./listening";
 import { playPartyMusic } from "./partyMusic";
 
@@ -629,6 +632,7 @@ const roomOf = (over: Partial<ListenRoom> = {}): ListenRoom => ({
   declared: false,
   members: [member(1, "Dr.岚", true), member(2, "Dr.桐")],
   invited: [],
+  requests: [],
   now: serverClock(),
   ...over,
 });
@@ -1037,6 +1041,72 @@ describe("一起听 on the page", () => {
       { song: "s1", at: 30, next: "s2" },
       { song: "s1", at: 1, next: "s2" },
     ]);
+  });
+
+  it("asks the host for a song (点歌): said as sent, the host's 同意 or 不要 said and the room asked for again; taken back", async () => {
+    const startedAt = await joinPlaying(30_000);
+    answerRoom("request", () => roomOf({ startedAt, requests: [{ id: 7, h: 2, song: "s2" }] }));
+    expect(await askSong("s2")).toBe(true);
+    expect(ops("request")).toEqual([{ song: "s2" }]);
+    expect(listenRoomNow()!.requests).toEqual([{ id: 7, h: 2, song: "s2" }]);
+    expect(said.at(-1)).toBe("发给房主了，等 TA 同意");
+    // 同意: said, and the room asked for again (待播 itself comes as the songs change)
+    answerRoom("room", () => roomOf({ startedAt, requests: [] }));
+    heardListen({ t: "answered", room: "r1", song: "s2", yes: true });
+    expect(said.at(-1)).toBe("Dr.岚 同意了《Two》，排进待播了");
+    await tick(0);
+    expect(ops("room")).toHaveLength(1);
+    expect(listenRoomNow()!.requests).toEqual([]);
+    heardListen({ t: "answered", room: "r1", song: "s2", yes: false });
+    expect(said.at(-1)).toBe("房主这次没加《Two》");
+    // another room's word is not this one's
+    heardListen({ t: "answered", room: "r9", song: "s1", yes: true });
+    expect(said.at(-1)).toBe("房主这次没加《Two》");
+    // refused: said why, and the room asked for again
+    answers.request = () => ({ status: 409, json: { error: "同时最多等 3 首，等房主回了再点。" } });
+    expect(await askSong("s1")).toBe(false);
+    expect(said.at(-1)).toBe("同时最多等 3 首，等房主回了再点。");
+    await tick(0);
+    expect(ops("room").length).toBeGreaterThan(1);
+    answerRoom("withdraw", () => roomOf({ startedAt }));
+    expect(await withdrawAsk(7)).toBe(true);
+    expect(ops("withdraw")).toEqual([{ id: 7 }]);
+    expect(said.at(-1)).toBe("撤回了");
+    // a guest's 同意 is nobody's
+    expect(await answerSongAsk(7, true)).toBe(false);
+    expect(ops("answer")).toEqual([]);
+  });
+
+  it("says to the host each song newly asked for, once; TA lets it in, takes one out, and 待播 knows who put each in", async () => {
+    const startedAt = await joinPlaying(30_000, { host: true, you: 1 });
+    answerRoom("room", () => roomOf({ host: true, you: 1, startedAt, requests: [{ id: 7, h: 2, song: "s2" }] }));
+    heardListen({ t: "asks", room: "r1" });
+    await tick(0);
+    expect(said.at(-1)).toBe("Dr.桐 想点《Two》");
+    const n = said.length;
+    heardListen({ t: "asks", room: "r1" });
+    await tick(0);
+    expect(said).toHaveLength(n);
+    // the host never asks
+    expect(await askSong("s1")).toBe(false);
+    expect(ops("request")).toEqual([]);
+
+    answerRoom("answer", () => roomOf({ host: true, you: 1, startedAt, queue: ["s1", "s2", "s2"], by: [1, 0, 2], version: 2 }));
+    expect(await answerSongAsk(7, true)).toBe(true);
+    expect(ops("answer")).toEqual([{ id: 7, yes: true }]);
+    expect(listenRoomNow()).toMatchObject({ requests: [], by: [1, 0, 2], version: 2 });
+    expect(said).toHaveLength(n);
+    expect(listenUpNextNow()).toMatchObject({ how: "room", ids: ["s2", "s2"], by: [0, 2], at: 1 });
+    // ×: by its place in the room's songs, nothing said of it to anyone
+    answerRoom("queue", () => roomOf({ host: true, you: 1, startedAt, queue: ["s1", "s2"], by: [1, 0], version: 3 }));
+    const bubbles = listenBubblesNow().length;
+    expect(await hostQueue({ remove: 2, song: "s2" })).toBe(true);
+    expect(ops("queue")).toEqual([{ remove: 2, song: "s2" }]);
+    expect(listenRoomNow()).toMatchObject({ queue: ["s1", "s2"], by: [1, 0], version: 3 });
+    heardListen({ t: "state", room: "r1", how: "remove", queue: ["s1"], by: [1], idx: 0, startedAt, version: 4 });
+    expect(listenRoomNow()).toMatchObject({ queue: ["s1"], by: [1], version: 4 });
+    expect(listenBubblesNow()).toHaveLength(bubbles);
+    expect(said).toHaveLength(n);
   });
 
   it("says why it could not go in, and stays out", async () => {

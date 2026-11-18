@@ -259,6 +259,8 @@ export const ROOM_RANGE = [2, 50] as const;
 
 /** A room's songs at most: the one playing and those still to come (what has played is dropped as the host changes it) */
 export const QUEUE_MAX = 30;
+/** 点歌: songs someone in a room (not its host) asked for and waits on its host to answer, so many each at most */
+export const REQUESTS_EACH = 3;
 /** Between one song of a room and the next */
 export const ROOM_GAP_MS = 2_000;
 /** What the host starts, skips to or starts again begins this long after, so it reaches every phone in time */
@@ -300,8 +302,12 @@ export function keepUp(drift: number, catching = false): { rate: number } | "see
   return { rate: 1 };
 }
 
-/** A room's songs; queue[idx] started at startedAt (the server's clock, ms), null until the host starts; its version */
-export type RoomSchedule = { queue: string[]; idx: number; startedAt: number | null; version: number };
+/**
+ * A room's songs; queue[idx] started at startedAt (the server's clock, ms), null until the host starts; its version.
+ * by (一起听's rooms): who put each song in, place for place: the room's number of one who asked for it (点歌) and
+ * the host let in, the host's own for theirs, 0 for one added at random (随机加, and as 待播 never runs out).
+ */
+export type RoomSchedule = { queue: string[]; idx: number; startedAt: number | null; version: number; by?: number[] };
 
 /** Where a room's songs are at a moment */
 export type RoomAt =
@@ -334,8 +340,15 @@ export function roomAt(s: Pick<RoomSchedule, "queue" | "idx" | "startedAt">, sec
  * RANDOM_ADD at random (随机加, the server picks them), or go to a second of the one playing (seek, everyone with it)
  */
 export type QueueChange = "start" | "next" | "restart" | "random" | { add: string } | { seek: number };
+/**
+ * 一起听's host takes a song out of 待播 (×): the one at that place in the songs as the host saw them, or else the first
+ * like it after the one playing; never the one playing (nor the first, before the start)
+ */
+export type QueueRemove = { remove: number; song: string };
+export const isQueueRemove = (v: Record<string, unknown>): boolean =>
+  Number.isInteger(v.remove) && (v.remove as number) >= 0 && (v.remove as number) < 10_000 && isSongId(v.song);
 /** A change as the server makes it: 随机加's songs picked (adds) */
-export type QueueEdit = Exclude<QueueChange, "random"> | { adds: string[] };
+export type QueueEdit = Exclude<QueueChange, "random"> | { adds: string[] } | QueueRemove;
 /** Seconds into a song the host may go to (seek): a number of them, never past a day */
 export const isSeek = (s: unknown): s is number => typeof s === "number" && Number.isFinite(s) && s >= 0 && s < 24 * 3600;
 /** Why a change does nothing: no next song, the queue full (QUEUE_MAX), or nothing to change (started already) */
@@ -347,35 +360,55 @@ export type QueueRefusal = "noNext" | "full" | "same";
  * the room started, or one added when all were over, begins at now and ROOM_LEAD_MS; one added otherwise just waits
  * its turn. Several added (随机加) go in as far as QUEUE_MAX lets them; none at all changes nothing. A seek moves the
  * start of the one playing so that it is at that second now (its last at most), the songs after it with it; with none
- * playing (before the start, between two songs, after the last) it changes nothing.
+ * playing (before the start, between two songs, after the last) it changes nothing. One taken out (remove) is gone,
+ * the rest as they were; none such (played already, or taken out) changes nothing. Where the schedule says who put
+ * each song in (by), it says so after the change too, those added put in by `by` (0: at random).
  */
-export function changeQueue(s: RoomSchedule, change: QueueEdit, seconds: (id: string) => number, now: number): RoomSchedule | QueueRefusal {
+export function changeQueue(s: RoomSchedule, change: QueueEdit, seconds: (id: string) => number, now: number, by = 0): RoomSchedule | QueueRefusal {
   const at = roomAt(s, seconds, now);
-  let queue = s.queue.slice(Math.max(0, s.idx));
-  let startedAt = s.startedAt;
-  if (at.phase === "playing") {
-    queue = s.queue.slice(at.i);
-    startedAt = at.start;
-  } else if (at.phase === "done") {
-    queue = s.queue.slice(-1);
-    startedAt = null;
-  }
+  // what has played is dropped: from the one playing on (the last, once all are over; the first, before the start)
+  const from = at.phase === "playing" ? at.i : at.phase === "done" ? Math.max(0, s.queue.length - 1) : Math.max(0, s.idx);
+  const queue = s.queue.slice(from);
+  const who = s.by ? s.queue.map((_, i) => s.by![i] ?? 0).slice(from) : null;
+  const startedAt = at.phase === "playing" ? at.start : at.phase === "done" ? null : s.startedAt;
   const lead = now + ROOM_LEAD_MS;
   const version = s.version + 1;
-  if (change === "start") return at.phase === "ready" ? { queue, idx: 0, startedAt: lead, version } : "same";
-  if (change === "restart") return at.phase === "ready" || !queue.length ? "same" : { queue, idx: 0, startedAt: lead, version };
-  if (change === "next") return at.phase === "playing" && queue.length > 1 ? { queue: queue.slice(1), idx: 0, startedAt: lead, version } : "noNext";
+  const to = (q: string[], w: number[] | null, start: number | null): RoomSchedule =>
+    w ? { queue: q, idx: 0, startedAt: start, version, by: w } : { queue: q, idx: 0, startedAt: start, version };
+  if (change === "start") return at.phase === "ready" ? to(queue, who, lead) : "same";
+  if (change === "restart") return at.phase === "ready" || !queue.length ? "same" : to(queue, who, lead);
+  if (change === "next") return at.phase === "playing" && queue.length > 1 ? to(queue.slice(1), who?.slice(1) ?? null, lead) : "noNext";
   if ("seek" in change) {
     if (at.phase !== "playing" || at.offset < 0) return "same";
     const len = seconds(queue[0]);
-    const to = Math.min(Math.max(0, change.seek), Math.max(0, (Number.isFinite(len) ? len : 0) - 1));
-    return { queue, idx: 0, startedAt: Math.round(now - to * 1000), version };
+    const sec = Math.min(Math.max(0, change.seek), Math.max(0, (Number.isFinite(len) ? len : 0) - 1));
+    return to(queue, who, Math.round(now - sec * 1000));
+  }
+  if ("remove" in change) {
+    if (at.phase === "done") return "same";
+    let j = change.remove - from;
+    if (!(j >= 1 && queue[j] === change.song)) j = queue.findIndex((id, n) => n >= 1 && id === change.song);
+    if (j < 1) return "same";
+    return to(
+      queue.filter((_, n) => n !== j),
+      who?.filter((_, n) => n !== j) ?? null,
+      startedAt,
+    );
   }
   const adds = "adds" in change ? change.adds : [change.add];
   if (!adds.length) return "same";
-  if (at.phase === "done") return { queue: adds.slice(0, QUEUE_MAX), idx: 0, startedAt: lead, version };
+  if (at.phase === "done") return to(adds.slice(0, QUEUE_MAX), who && adds.slice(0, QUEUE_MAX).map(() => by), lead);
   if (queue.length >= QUEUE_MAX) return "full";
-  return { queue: [...queue, ...adds.slice(0, QUEUE_MAX - queue.length)], idx: 0, startedAt, version };
+  const room = adds.slice(0, QUEUE_MAX - queue.length);
+  return to([...queue, ...room], who && [...who, ...room.map(() => by)], startedAt);
+}
+
+/** The songs from the one playing on (the first, before the start; none once all are over), and who put each in */
+export function songsAhead(s: RoomSchedule, seconds: (id: string) => number, now: number): { ids: string[]; by: number[] } {
+  const at = roomAt(s, seconds, now);
+  if (at.phase === "done") return { ids: [], by: [] };
+  const from = at.phase === "playing" ? at.i : Math.max(0, s.idx);
+  return { ids: s.queue.slice(from), by: s.queue.map((_, i) => s.by?.[i] ?? 0).slice(from) };
 }
 
 /**
@@ -443,17 +476,25 @@ export type ListenRoom = RoomSchedule & {
   members: RoomMember[];
   /** The host's alone */
   invited: RoomInvited[];
+  /** 点歌 waiting on the host: all of them to the host, the oldest first; to anyone else, only their own */
+  requests: RoomRequest[];
   /** The server's clock, which a room's times are on */
   now: number;
 };
+/** A song someone in the room asked its host for (点歌), by their number there, waiting on the host's answer */
+export type RoomRequest = { id: number; h: number; song: string };
 /** What the event stream tells a room (event: listen): never anything of who */
 export type ListenTell =
-  | ({ t: "state"; room: string; how: "start" | "next" | "restart" | "add" | "seek" } & RoomSchedule)
+  | ({ t: "state"; room: string; how: "start" | "next" | "restart" | "add" | "seek" | "remove" } & RoomSchedule)
   | { t: "members"; room: string }
   | { t: "rx"; room: string; items: { h: number; r: number }[] }
   | { t: "end"; room: string; why: RoomEnd }
   /** To one alone: the host asked you to leave (kicked), or you are out of it by blocking its host (left) */
-  | { t: "you"; room: string; why: "kicked" | "left" };
+  | { t: "you"; room: string; why: "kicked" | "left" }
+  /** To the host: the songs asked for changed (one asked for, or taken back); the room is asked for again */
+  | { t: "asks"; room: string }
+  /** To the one who asked alone: the host let the song into 待播 (yes), or left it out */
+  | { t: "answered"; room: string; song: string; yes: boolean };
 
 /**
  * 宣言一起听 (template listen) as one who got it sees its room, in 消息 → 宣言 and on its card on the map: open to go

@@ -8,6 +8,7 @@ import { HttpError, readJson, route } from "@/lib/server/http";
 import { heardSong, hotList, listenOpen, myFavs, playSong, setFav, stopSong } from "@/lib/server/listen";
 import {
   answerAsk,
+  answerRequest,
   askToListen,
   cameBack,
   changeSongs,
@@ -22,7 +23,9 @@ import {
   myRoom,
   openRoom,
   reactInRoom,
+  requestSong,
   touchMember,
+  withdrawRequest,
 } from "@/lib/server/listenRooms";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
@@ -44,8 +47,12 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST later {invite}           下次吧
  *   POST leave                    out of your room (the host's ends)
  *   POST end                      the host ends it
- *   POST queue {start|next|restart|random: true, add: song, seek: seconds}   what the host does to its songs
- *                                 (random: 随机加 10 首; seek: everyone to that second of the one playing)
+ *   POST queue {start|next|restart|random: true, add: song, seek: seconds, remove: place + song}   what the host
+ *                                 does to its songs (random: 随机加 10 首; seek: everyone to that second of the one
+ *                                 playing; remove: a song out of 待播, by its place in the songs and its id)
+ *   POST request {song}           点歌: ask the host of your room for a song (not the host's own)
+ *   POST withdraw {id}            take back a song you asked for, not answered yet
+ *   POST answer {id, yes}         the host lets a song asked for into 待播 (yes), or leaves it out
  *   POST react {r}                a 短评, by its number: in your room, or (rows one and two) to the song you play alone
  *   POST declare {from?, song?}   宣言一起听 for your room, once (not in one: a room of your own first, song first)
  *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
@@ -79,6 +86,9 @@ const OPS = {
   leave: { method: "POST", perMinute: 10 },
   end: { method: "POST", perMinute: 10 },
   queue: { method: "POST", perMinute: 30 },
+  request: { method: "POST", perMinute: 10 },
+  withdraw: { method: "POST", perMinute: 20 },
+  answer: { method: "POST", perMinute: 30 },
   react: { method: "POST", perMinute: 30 },
   declare: { method: "POST", perMinute: 6 },
   kick: { method: "POST", perMinute: 20 },
@@ -92,7 +102,7 @@ const OPS = {
   fav: { method: "POST", perMinute: 60 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "declare", "touch", "ask", "askOk"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "request", "answer", "declare", "touch", "ask", "askOk"]);
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 
@@ -158,6 +168,12 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await endByHost(user));
     case "queue":
       return answer(await changeSongs(user, body));
+    case "request":
+      return answer(await requestSong(user, body));
+    case "withdraw":
+      return answer(await withdrawRequest(user, body));
+    case "answer":
+      return answer(await answerRequest(user, body));
     case "react":
       return answer(await reactInRoom(user, body));
     case "declare":

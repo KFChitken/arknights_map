@@ -1,7 +1,7 @@
 import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
-import type { HotSong, InviteSent, ListenCatalog, ListenFriend, ListenPlay, ListenRoom, QueueChange } from "./listen";
+import type { HotSong, InviteSent, ListenCatalog, ListenFriend, ListenPlay, ListenRoom, QueueChange, QueueRemove } from "./listen";
 import type { PassesDot } from "./passes";
 import type { BeatSong } from "./study/beat325";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
@@ -76,8 +76,18 @@ export const listenApi = {
   leave: () => call<{ now: number }>("leave", post({})),
   /** The host ends it */
   end: () => call<{ now: number }>("end", post({})),
-  /** What the host does to its songs: a song added ({add}), a second of the one playing gone to ({seek}), or the rest */
-  queue: (change: QueueChange) => call<{ room: ListenRoom | null; now: number }>("queue", post(typeof change === "object" ? change : { [change]: true })),
+  /**
+   * What the host does to its songs: a song added ({add}), a second of the one playing gone to ({seek}), a song taken
+   * out of 待播 ({remove, song}), or the rest
+   */
+  queue: (change: QueueChange | QueueRemove) =>
+    call<{ room: ListenRoom | null; now: number }>("queue", post(typeof change === "object" ? change : { [change]: true })),
+  /** 点歌: ask the host of your room for a song */
+  request: (song: string) => call<{ room: ListenRoom | null; now: number }>("request", post({ song })),
+  /** Take back a song you asked for (its id), not answered yet */
+  withdraw: (id: number) => call<{ room: ListenRoom | null; now: number }>("withdraw", post({ id })),
+  /** The host lets a song asked for (its id) into 待播 (yes), or leaves it out */
+  answer: (id: number, yes: boolean) => call<{ room: ListenRoom | null; now: number }>("answer", post({ id, yes })),
   /** A 短评, by its number, in your room or to the song you play alone: sent, or one too many (full: this song's are used up) */
   react: (r: number) => call<{ sent: boolean; full?: boolean; now: number }>("react", post({ r })),
   /** 想一起听: ask a 触须之交 who is listening (their Friend id) to invite you */

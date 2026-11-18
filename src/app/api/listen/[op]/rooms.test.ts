@@ -3,7 +3,19 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COUNTED } from "@/lib/dashboard";
-import { AWAY_MS, INVITE_MS, QUEUE_MAX, ROOM_IDLE_MS, ROOM_KEEP_MS, ROOM_LIFE_MS, RX_EVERY_MS, type ListenFriend, type ListenRoom } from "@/lib/listen";
+import {
+  AWAY_MS,
+  INVITE_MS,
+  QUEUE_MAX,
+  REQUESTS_EACH,
+  ROOM_GAP_MS,
+  ROOM_IDLE_MS,
+  ROOM_KEEP_MS,
+  ROOM_LIFE_MS,
+  RX_EVERY_MS,
+  type ListenFriend,
+  type ListenRoom,
+} from "@/lib/listen";
 import { siteDay, siteDayStart } from "@/lib/siteDay";
 import { loadMods } from "@/lib/server/admins";
 import { db, pg } from "@/lib/server/db";
@@ -19,6 +31,7 @@ import {
   listenInvites,
   listenMembers,
   listenNow,
+  listenRequests,
   listenRooms,
   sessions,
   siteSettings,
@@ -96,6 +109,27 @@ async function seedSongs() {
       track: i,
       addedAt: new Date(),
       goneAt: i === 2 ? new Date() : null,
+    })),
+  );
+  await loadSongs();
+}
+
+/** n more songs, r0, r1 and on, of 100 s each, on a second album */
+async function moreSongs(n: number) {
+  await db.insert(songs).values(
+    Array.from({ length: n }, (_, i) => ({
+      id: `r${i}`,
+      game: "arknights",
+      name: `More ${i}`,
+      albumId: "a2",
+      album: "More",
+      artists: ["塞壬唱片-MSR"],
+      seconds: 100,
+      file: `${String(i + 10).padStart(16, "0")}.m4a`,
+      bytes: 1000,
+      albumOrder: 1,
+      track: i,
+      addedAt: new Date(),
     })),
   );
   await loadSongs();
@@ -485,7 +519,7 @@ describe("一起听's rooms", () => {
     await loadSongs();
     const three = await opened(host);
     expect((await post(host, "queue", { start: true })).body!.room).toMatchObject({ queue: ["s1"], version: 2 });
-    expect(await post(host, "queue", { next: true })).toMatchObject({ status: 409, body: { error: "歌单里没有下一首了，先点「点歌」加几首。" } });
+    expect(await post(host, "queue", { next: true })).toMatchObject({ status: 409, body: { error: "待播里没有下一首了，先在选歌里点 ＋ 加几首。" } });
     const end = (await roomRow(three.id))!.startedAt!.getTime() + 200_000;
     expect(await sweepRooms(end + ROOM_IDLE_MS - 60_000)).toBe(0);
     expect(await sweepRooms(end + ROOM_IDLE_MS + 1_000)).toBe(1);
@@ -524,17 +558,18 @@ describe("一起听's rooms", () => {
     const before = Date.now();
     const started = (await post(host, "queue", { start: true })).body!.room as ListenRoom;
     expect(started.startedAt).toBeGreaterThanOrEqual(before + 1_000);
-    // its one song started, 待播 given one more in the same change (s2, all there is besides): told once, as the start
+    // its one song started, 待播 given one more in the same change (s2, all there is besides): told once, as the start;
+    // who put each in by their number in the room (the host's first, 待播's own nobody's)
     const [state] = toldOf(bHeard, "state");
-    expect(state).toEqual({ t: "state", room: room.id, how: "start", queue: ["s1", "s2"], idx: 0, startedAt: started.startedAt, version: 2 });
+    expect(state).toEqual({ t: "state", room: room.id, how: "start", queue: ["s1", "s2"], by: [1, 0], idx: 0, startedAt: started.startedAt, version: 2 });
     // starting again changes nothing
     expect((await post(host, "queue", { start: true })).body!.room).toMatchObject({ version: 2 });
-    expect((await post(host, "queue", { add: "s1" })).body!.room).toMatchObject({ queue: ["s1", "s2", "s1"], startedAt: started.startedAt, version: 3 });
+    expect((await post(host, "queue", { add: "s1" })).body!.room).toMatchObject({ queue: ["s1", "s2", "s1"], by: [1, 0, 1], startedAt: started.startedAt, version: 3 });
     const next = (await post(host, "queue", { next: true })).body!.room as ListenRoom;
-    expect(next).toMatchObject({ queue: ["s2", "s1"], idx: 0, version: 4 });
+    expect(next).toMatchObject({ queue: ["s2", "s1"], by: [0, 1], idx: 0, version: 4 });
     expect((await post(host, "queue", { restart: true })).body!.room).toMatchObject({ queue: ["s2", "s1"], version: 5 });
     expect(toldOf(bHeard, "state").map((s) => s.how)).toEqual(["start", "add", "next", "restart"]);
-    for (const s of toldOf(bHeard, "state")) expect(Object.keys(s).sort()).toEqual(["how", "idx", "queue", "room", "startedAt", "t", "version"]);
+    for (const s of toldOf(bHeard, "state")) expect(Object.keys(s).sort()).toEqual(["by", "how", "idx", "queue", "room", "startedAt", "t", "version"]);
     // 30 songs at most
     for (let i = 2; i < QUEUE_MAX; i++) await changeSongs(host, { add: "s1" });
     expect(await post(host, "queue", { add: "s1" })).toMatchObject({ status: 409, body: { error: `一起听的歌单最多 ${QUEUE_MAX} 首。` } });
@@ -552,7 +587,7 @@ describe("一起听's rooms", () => {
     // s2 is all there is to add (s3 is gone), then nothing
     expect((await post(host, "queue", { random: true })).body!.room).toMatchObject({ queue: ["s1", "s2"], version: 2 });
     expect((await post(host, "queue", { random: true })).body!.room).toMatchObject({ queue: ["s1", "s2"], version: 2 });
-    expect(toldOf(bHeard, "state")).toEqual([{ t: "state", room: room.id, how: "add", queue: ["s1", "s2"], idx: 0, startedAt: null, version: 2 }]);
+    expect(toldOf(bHeard, "state")).toEqual([{ t: "state", room: room.id, how: "add", queue: ["s1", "s2"], by: [1, 0], idx: 0, startedAt: null, version: 2 }]);
 
     await db.insert(songs).values(
       Array.from({ length: 40 }, (_, i) => ({
@@ -622,7 +657,9 @@ describe("一起听's rooms", () => {
     expect(started.queue).toHaveLength(2);
     expect(started.queue[0]).toBe("s1");
     expect(started.queue[1]).not.toBe("s1");
-    expect(toldOf(bHeard, "state")).toEqual([{ t: "state", room: room.id, how: "start", queue: started.queue, idx: 0, startedAt: started.startedAt, version: 2 }]);
+    expect(toldOf(bHeard, "state")).toEqual([
+      { t: "state", room: room.id, how: "start", queue: started.queue, by: [1, 0], idx: 0, startedAt: started.startedAt, version: 2 },
+    ]);
     // s1 plays: nothing more yet
     vi.setSystemTime(started.startedAt! + 100_000);
     expect(await sweepRooms()).toBe(0);
@@ -637,7 +674,8 @@ describe("一起听's rooms", () => {
     expect(row.queue).toHaveLength(2);
     expect(row.queue[0]).toBe(started.queue[1]);
     expect(["s1", started.queue[1]]).not.toContain(row.queue[1]);
-    expect(toldOf(bHeard, "state").at(-1)).toEqual({ t: "state", room: room.id, how: "add", queue: row.queue, idx: 0, startedAt: second, version: 3 });
+    expect(row.queueBy).toEqual([0, 0]);
+    expect(toldOf(bHeard, "state").at(-1)).toEqual({ t: "state", room: room.id, how: "add", queue: row.queue, by: [0, 0], idx: 0, startedAt: second, version: 3 });
     // a minute on, the third waiting its turn: nothing more
     vi.setSystemTime(Date.now() + 60_000);
     await sweepRooms();
@@ -691,10 +729,197 @@ describe("一起听's rooms", () => {
     expect((await post(host, "queue", { seek: 5_000 })).body!.room).toMatchObject({ startedAt: Date.now() - 199_000, version: 4 });
     const told = toldOf(bHeard, "state");
     expect(told.map((s) => s.how)).toEqual(["start", "seek", "seek"]);
-    expect(told[1]).toEqual({ t: "state", room: room.id, how: "seek", queue: ["s1", "s2"], idx: 0, startedAt: moved.startedAt, version: 3 });
+    expect(told[1]).toEqual({ t: "state", room: room.id, how: "seek", queue: ["s1", "s2"], by: [1, 0], idx: 0, startedAt: moved.startedAt, version: 3 });
     // over: nothing to move
     vi.setSystemTime(Date.now() + 2_000);
     expect((await post(host, "queue", { seek: 10 })).body!.room).toMatchObject({ version: 4 });
+  });
+
+  it("let anyone in it but the host ask for a song, 3 waiting each at most: the host sees them all and is told, each asker only their own", async () => {
+    const { host, b, c } = await cast();
+    await moreSongs(6);
+    const room = await opened(host, b, c);
+    const bIn = await goIn(b);
+    const cIn = await goIn(c);
+    const hostHeard = hear(host);
+    const cHeard = hear(c);
+    // not in it, its host, a song not there (or gone), one in 待播 already (the first, before the start)
+    const d = await account("d@example.com");
+    expect(await post(d, "request", { song: "r0" })).toMatchObject({ status: 409, body: { error: "你现在不在一起听里。" } });
+    expect(await post(host, "request", { song: "r0" })).toMatchObject({ status: 409, body: { error: "你是发起人，点 ＋ 直接加进待播就行。" } });
+    for (const song of ["s3", "nope", 5, null]) expect((await post(b, "request", { song })).status, String(song)).toBe(404);
+    expect(await post(b, "request", { song: "s1" })).toMatchObject({ status: 409, body: { error: "这首已经在待播里了。" } });
+
+    for (const song of ["r0", "r1", "r2"]) expect((await post(b, "request", { song })).status).toBe(200);
+    expect(await post(b, "request", { song: "r3" })).toMatchObject({ status: 409, body: { error: `同时最多等 ${REQUESTS_EACH} 首，等房主回了再点。` } });
+    // one somebody asked for already
+    expect(await post(c, "request", { song: "r1" })).toMatchObject({ status: 409, body: { error: "这首已经有人点了，等房主回。" } });
+    const mine = (await post(c, "request", { song: "r3" })).body!.room as ListenRoom;
+    // the host sees all of them, the oldest first; each who asked only their own, by their own number
+    expect(mine.requests).toEqual([{ id: expect.any(Number), h: cIn.you, song: "r3" }]);
+    expect((await roomOf(b))!.requests.map((q) => [q.h, q.song])).toEqual([
+      [bIn.you, "r0"],
+      [bIn.you, "r1"],
+      [bIn.you, "r2"],
+    ]);
+    expect((await roomOf(host))!.requests.map((q) => [q.h, q.song])).toEqual([
+      [bIn.you, "r0"],
+      [bIn.you, "r1"],
+      [bIn.you, "r2"],
+      [cIn.you, "r3"],
+    ]);
+    // the host is told each time (nothing of what: TA asks for the room again); nobody else is told anything
+    expect(toldOf(hostHeard, "asks")).toEqual(Array.from({ length: 4 }, () => ({ t: "asks", room: room.id })));
+    expect(toldOf(cHeard)).toEqual([]);
+
+    // 撤回: one's own alone, while it waits
+    const [r0, r1, r2] = (await roomOf(b))!.requests;
+    for (const id of ["x", String(r1.id), true, 0]) expect((await post(b, "withdraw", { id })).status).toBe(400);
+    expect(await post(c, "withdraw", { id: r1.id })).toMatchObject({ status: 409, body: { error: "这首已经不在点歌里了。" } });
+    expect(((await post(b, "withdraw", { id: r1.id })).body!.room as ListenRoom).requests.map((q) => q.song)).toEqual(["r0", "r2"]);
+    expect(toldOf(hostHeard, "asks")).toHaveLength(5);
+    expect((await post(b, "withdraw", { id: r1.id })).status).toBe(409);
+
+    // the host alone answers
+    expect(await post(b, "answer", { id: r0.id, yes: true })).toMatchObject({ status: 403, body: { error: "只有发起人能点。" } });
+    for (const bad of [{ id: r0.id }, { id: r0.id, yes: "yes" }, { id: 0, yes: true }, { id: String(r0.id), yes: true }])
+      expect((await post(host, "answer", bad)).status).toBe(400);
+    const bHeard = hear(b);
+    // 不要: told to the one who asked alone; 待播 as it was
+    const no = (await post(host, "answer", { id: mine.requests[0].id, yes: false })).body!.room as ListenRoom;
+    expect(no).toMatchObject({ queue: ["s1"], version: 1 });
+    expect(toldOf(cHeard)).toEqual([{ t: "answered", room: room.id, song: "r3", yes: false }]);
+    expect(toldOf(bHeard)).toEqual([]);
+    // 同意: at the end of 待播 as b's, told to everyone as a song added, and to b alone that it was let in
+    const yes = (await post(host, "answer", { id: r0.id, yes: true })).body!.room as ListenRoom;
+    expect(yes).toMatchObject({ queue: ["s1", "r0"], by: [1, bIn.you], version: 2 });
+    expect(yes.requests.map((q) => q.song)).toEqual(["r2"]);
+    const added = { t: "state", room: room.id, how: "add", queue: ["s1", "r0"], by: [1, bIn.you], idx: 0, startedAt: null, version: 2 };
+    expect(toldOf(bHeard)).toEqual([added, { t: "answered", room: room.id, song: "r0", yes: true }]);
+    expect(toldOf(cHeard).slice(1)).toEqual([added]);
+    expect((await roomOf(b))!.by).toEqual([1, bIn.you]);
+    // answered once only; in 待播 now, it is not to be asked for
+    expect(await post(host, "answer", { id: r0.id, yes: true })).toMatchObject({ status: 409, body: { error: "这首已经不在点歌里了。" } });
+    expect(await post(c, "request", { song: "r0" })).toMatchObject({ status: 409, body: { error: "这首已经在待播里了。" } });
+    // b waits on one now: room for two more (a minute on, past the 10 asks a minute each, refused ones too)
+    forgetHits();
+    expect((await post(b, "request", { song: "r1" })).status).toBe(200);
+    expect((await post(b, "request", { song: "r4" })).status).toBe(200);
+    expect((await post(b, "request", { song: "r5" })).status).toBe(409);
+    expect((await roomOf(b))!.requests.map((q) => q.id)).toEqual([r2.id, expect.any(Number), expect.any(Number)]);
+  });
+
+  it("let one in nothing when 待播 is full: no asking, and the host's 同意 refused with what was asked for kept", async () => {
+    const { host, b } = await cast();
+    await moreSongs(3);
+    await opened(host, b);
+    await goIn(b);
+    for (let i = 1; i < QUEUE_MAX - 1; i++) await changeSongs(host, { add: "s1" });
+    expect((await post(b, "request", { song: "r0" })).status).toBe(200);
+    await changeSongs(host, { add: "s2" });
+    expect(await post(b, "request", { song: "r1" })).toMatchObject({ status: 409, body: { error: `待播满 ${QUEUE_MAX} 首了。` } });
+    const [asked] = (await roomOf(host))!.requests;
+    expect(await post(host, "answer", { id: asked.id, yes: true })).toMatchObject({ status: 409, body: { error: `一起听的歌单最多 ${QUEUE_MAX} 首。` } });
+    expect((await roomOf(host))!.requests).toEqual([asked]);
+    // the host takes one out: in it goes
+    const room = (await roomOf(host))!;
+    const out = (await post(host, "queue", { remove: QUEUE_MAX - 1, song: "s2" })).body!.room as ListenRoom;
+    expect(out.queue).toHaveLength(QUEUE_MAX - 1);
+    expect(out.version).toBe(room.version + 1);
+    const yes = (await post(host, "answer", { id: asked.id, yes: true })).body!.room as ListenRoom;
+    expect(yes.queue).toHaveLength(QUEUE_MAX);
+    expect(yes.queue.at(-1)).toBe("r0");
+    expect(yes.requests).toEqual([]);
+  });
+
+  it("drop what someone asked for once TA leaves, is asked to leave, blocks the host or the room ends", async () => {
+    const { host, b, c } = await cast();
+    await moreSongs(4);
+    const one = await opened(host, b, c);
+    const bIn = await goIn(b);
+    const cIn = await goIn(c);
+    const waiting = async (roomId: string) => (await db.select().from(listenRequests).where(eq(listenRequests.roomId, roomId))).map((r) => [r.handle, r.song]);
+    expect((await post(b, "request", { song: "r0" })).status).toBe(200);
+    expect((await post(c, "request", { song: "r1" })).status).toBe(200);
+    expect((await post(c, "request", { song: "r2" })).status).toBe(200);
+    expect((await post(b, "leave")).status).toBe(200);
+    expect(await waiting(one.id)).toEqual([
+      [cIn.you, "r1"],
+      [cIn.you, "r2"],
+    ]);
+    expect((await post(host, "kick", { h: cIn.you })).status).toBe(200);
+    expect(await waiting(one.id)).toEqual([]);
+    expect(bIn.you).not.toBe(cIn.you);
+
+    // blocking the host, or the host blocking one: as though TA left
+    const { separateBlocked } = await import("@/lib/server/listenRooms");
+    await post(host, "end");
+    const two = await opened(host, b, c);
+    await goIn(b);
+    await goIn(c);
+    expect((await post(b, "request", { song: "r0" })).status).toBe(200);
+    expect((await post(c, "request", { song: "r1" })).status).toBe(200);
+    await separateBlocked(b.id, host.id);
+    await separateBlocked(host.id, c.id);
+    expect(await waiting(two.id)).toEqual([]);
+
+    // over: all of them go
+    await post(host, "end");
+    const three = await opened(host, b);
+    await goIn(b);
+    expect((await post(b, "request", { song: "r3" })).status).toBe(200);
+    expect(await waiting(three.id)).toHaveLength(1);
+    expect((await post(host, "end")).status).toBe(200);
+    expect(await waiting(three.id)).toEqual([]);
+  });
+
+  it("keep who put each song in lined up with 待播: as songs play on, after 下一首, a song taken out; the host's × alone", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b } = await cast();
+    await moreSongs(4);
+    const room = await opened(host, b);
+    const bIn = await goIn(b);
+    const bHeard = hear(b);
+    const ask = async (song: string) => {
+      expect((await post(b, "request", { song })).status).toBe(200);
+      const q = (await roomOf(host))!.requests.find((x) => x.song === song)!;
+      return (await post(host, "answer", { id: q.id, yes: true })).body!.room as ListenRoom;
+    };
+    await ask("r0");
+    await changeSongs(host, { add: "r1" });
+    await ask("r2");
+    const row = (await roomRow(room.id))!;
+    expect(row.queue).toEqual(["s1", "r0", "r1", "r2"]);
+    expect(row.queueBy).toEqual([1, bIn.you, 1, bIn.you]);
+    // started: s1 plays, then r0 (b's); a change as r0 plays drops s1 and who put it in
+    const started = (await post(host, "queue", { start: true })).body!.room as ListenRoom;
+    vi.setSystemTime(started.startedAt! + 200_000 + ROOM_GAP_MS + 5_000);
+    await changeSongs(host, { add: "r3" });
+    expect(await roomRow(room.id)).toMatchObject({ queue: ["r0", "r1", "r2", "r3"], queueBy: [bIn.you, 1, bIn.you, 1] });
+    // 下一首: r1 (the host's) plays
+    await changeSongs(host, { next: true });
+    expect(await roomRow(room.id)).toMatchObject({ queue: ["r1", "r2", "r3"], queueBy: [1, bIn.you, 1] });
+    // × on r2 (b's), by its place in the room's songs: told as taken out, nothing else changed
+    expect(await post(b, "queue", { remove: 1, song: "r2" })).toMatchObject({ status: 403, body: { error: "只有发起人能点。" } });
+    for (const bad of [{ remove: -1, song: "r2" }, { remove: "1", song: "r2" }, { remove: 1 }]) expect((await post(host, "queue", bad)).status).toBe(400);
+    const before = (await roomRow(room.id))!;
+    const out = (await post(host, "queue", { remove: 1, song: "r2" })).body!.room as ListenRoom;
+    expect(out).toMatchObject({ queue: ["r1", "r3"], by: [1, 1], startedAt: before.startedAt!.getTime(), version: before.version + 1 });
+    expect(toldOf(bHeard, "state").at(-1)).toEqual({ t: "state", room: room.id, how: "remove", queue: ["r1", "r3"], by: [1, 1], idx: 0, startedAt: out.startedAt, version: out.version });
+    // the one playing, or one not in 待播: nothing
+    expect((await post(host, "queue", { remove: 0, song: "r1" })).body!.room).toMatchObject({ version: out.version });
+    expect((await post(host, "queue", { remove: 1, song: "r0" })).body!.room).toMatchObject({ version: out.version });
+    // b's own song, b gone: it stays, nobody's in particular (the page says 已离开的人点的)
+    await ask("r0");
+    expect((await post(b, "leave")).status).toBe(200);
+    expect(await roomRow(room.id)).toMatchObject({ queue: ["r1", "r3", "r0"], queueBy: [1, 1, bIn.you] });
+    // a room open from before who put each in was kept: its songs are the host's (not 随机放的), what comes after as it is
+    await db.update(listenRooms).set({ queueBy: [] }).where(eq(listenRooms.id, room.id));
+    expect((await roomOf(host))!.by).toEqual([1, 1, 1]);
+    await changeSongs(host, { random: true });
+    const row2 = (await roomRow(room.id))!;
+    expect(row2.queue).toHaveLength(6);
+    expect(row2.queueBy).toEqual([1, 1, 1, 0, 0, 0]);
   });
 
   it("take 短评 by their number alone, one every 3 s and 10 a song each, sent together to everyone in it a second later", async () => {

@@ -273,9 +273,47 @@ button.lp-qrow:focus-visible { outline: 2px solid #18a0a5; outline-offset: 1px; 
 .lp-note.small { font-size: 12.5px; }
 .lp-note.tight { margin: -2px 0 0; }
 
-/* in a room: the host's ＋ by a song, and a song anyone else only looks at */
+/*
+ * in a room: the host's ＋ by a song, anyone else's 〔点歌〕 (teal), and a song whose row does nothing saying why
+ * (正在放, 在待播, 已申请)
+ */
 .lp-row .go.add { border-color: #18a0a5; color: #0f7f83; font-size: 18px; font-weight: 700; line-height: 1; }
+.lp-row .go:is(.ask, .says) {
+  width: auto; min-width: 52px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.lp-row .go.ask { border-color: #18a0a5; color: #0f7f83; }
+.lp-row .go.says, .lp-row.now .go.says { border-color: #e5e7eb; background: none; color: #8a8f99; }
 .lp-row.look { cursor: default; }
+
+/*
+ * 点歌 in 待播: by its name, the host's 点歌 N (red), anyone else's 你点的 N (teal); open, the songs asked for at its top,
+ * each a white card (dashed for your own), who put each song in where its album would be, the host's × to take one out
+ */
+.lp-qhead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lp-qhead .lp-chev { flex: 1; width: auto; }
+.lp-reqbadge {
+  flex: none; padding: 0 7px; border-radius: 999px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 800; line-height: 1.7;
+  white-space: nowrap;
+}
+.lp-reqbadge.mine { background: #18a0a5; }
+.lp-asks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.lp-ask1 {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 10px; padding: 8px 10px;
+  border: 1px solid rgba(24, 160, 165, 0.35); border-radius: 10px; background: #fff;
+}
+.lp-ask1.mine { border-style: dashed; }
+.lp-ask1 .lp-av { grid-row: span 2; width: 34px; height: 34px; }
+.lp-ask1 .w { min-width: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.lp-ask1 .w b { font-weight: 800; }
+.lp-ask1 .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.lp-ask1 .acts .lp-mini { min-height: 28px; padding: 3px 12px; }
+.lp-qrow .nm small.by { color: #0f7f83; font-weight: 700; }
+.lp-qx {
+  display: grid; place-items: center; width: 30px; height: 30px; margin: -4px -6px -4px 0; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: #6b7280; font-size: 18px; line-height: 1;
+}
+.lp-qx:disabled { opacity: 0.4; }
+.lp-qx:focus-visible { outline: 2px solid #18a0a5; outline-offset: -2px; }
 
 /* ---- 一起听 ---- */
 .lt { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
@@ -401,6 +439,7 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .listen-float .lp-foot { padding: 8px 16px 12px; border-top: 1px solid rgba(127, 127, 127, 0.18); }
 @media (hover: hover) {
   .lp-row:hover, .lpk-row:hover:not(:disabled), button.lr-pp:hover, button.lp-qrow:hover { background: rgba(255, 255, 255, 0.7); }
+  .lp-qx:hover:not(:disabled) { background: rgba(229, 72, 77, 0.1); color: #d02f35; }
   .lp-row.look:hover { background: none; }
 }
 @media (prefers-reduced-motion: reduce) {

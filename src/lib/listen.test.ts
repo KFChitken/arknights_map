@@ -8,6 +8,7 @@ import {
   freshSongs,
   heardAfter,
   indexCatalog,
+  isQueueRemove,
   isRx,
   isSeek,
   keepUp,
@@ -32,6 +33,7 @@ import {
   SEEK_PAGE_S,
   seekBarKey,
   songMatches,
+  songsAhead,
   type ListenAlbum,
   type ListenCatalog,
   type RoomSchedule,
@@ -192,6 +194,63 @@ describe("一起听's schedule", () => {
     expect(changeQueue(room(["a", "b"], t0), { seek: 10 }, seconds, t0 + 500_000)).toBe("same");
     expect([0, 12.5, 3599, 86_399].map(isSeek)).toEqual([true, true, true, true]);
     expect([-1, 86_400, Number.NaN, Number.POSITIVE_INFINITY, "10", null, undefined].map(isSeek)).toEqual([false, false, false, false, false, false, false]);
+  });
+
+  it("keeps who put each song in beside it: through 下一首, the songs played dropped, adds, and one taken out", () => {
+    const by = (queue: string[], who: number[], startedAt: number | null, idx = 0): RoomSchedule => ({ ...room(queue, startedAt, idx), by: who });
+    const now = t0 + 30_000;
+    // the host (1) added a and c, someone (2) asked for b; 随机加's and 待播's own are nobody's (0)
+    expect(changeQueue(by(["a", "b"], [1, 2], t0), { add: "c" }, seconds, now, 1)).toEqual({ ...room(["a", "b", "c"], t0, 0, 2), by: [1, 2, 1] });
+    expect(changeQueue(by(["a", "b"], [1, 2], t0), { adds: ["c", "c"] }, seconds, now)).toEqual({ ...room(["a", "b", "c", "c"], t0, 0, 2), by: [1, 2, 0, 0] });
+    expect(changeQueue(by(["a", "b", "c"], [1, 2, 3], t0), "next", seconds, now)).toEqual({ ...room(["b", "c"], now + ROOM_LEAD_MS, 0, 2), by: [2, 3] });
+    // b plays: a dropped with whoever put it in
+    const inB = t0 + 100_000 + ROOM_GAP_MS + 5_000;
+    expect(changeQueue(by(["a", "b", "c"], [1, 2, 3], t0), { seek: 10 }, seconds, inB)).toEqual({ ...room(["b", "c"], inB - 10_000, 0, 2), by: [2, 3] });
+    // idx past what played, as a room of before has it
+    expect(changeQueue(by(["a", "b", "c"], [1, 2, 3], t0, 1), { add: "a" }, seconds, t0 + 10_000, 4)).toEqual({ ...room(["b", "c", "a"], t0, 0, 2), by: [2, 3, 4] });
+    // all over: one added starts at once, alone, the one who put it in with it
+    const over = t0 + 400_000;
+    expect(changeQueue(by(["a", "b"], [1, 2], t0), { add: "c" }, seconds, over, 2)).toEqual({ ...room(["c"], over + ROOM_LEAD_MS, 0, 2), by: [2] });
+    // fewer numbers than songs (a room of before): the rest nobody's
+    expect(changeQueue(by(["a", "b"], [1], t0), { add: "c" }, seconds, now, 1)).toEqual({ ...room(["a", "b", "c"], t0, 0, 2), by: [1, 0, 1] });
+    // a room without them (一起卫戍's) stays without
+    expect(changeQueue(room(["a", "b"], t0), { add: "c" }, seconds, now, 1)).toEqual(room(["a", "b", "c"], t0, 0, 2));
+  });
+
+  it("takes a song out of 待播 by its place (by the song, should the place have moved on), never the one playing", () => {
+    const s: RoomSchedule = { ...room(["a", "b", "c", "b"], t0), by: [1, 2, 3, 4] };
+    const now = t0 + 30_000;
+    expect(changeQueue(s, { remove: 2, song: "c" }, seconds, now)).toEqual({ ...room(["a", "b", "b"], t0, 0, 2), by: [1, 2, 4] });
+    expect(changeQueue(s, { remove: 3, song: "b" }, seconds, now)).toEqual({ ...room(["a", "b", "c"], t0, 0, 2), by: [1, 2, 3] });
+    // the place no longer the song's (the songs played on): the first of it after the one playing
+    expect(changeQueue(s, { remove: 2, song: "b" }, seconds, now)).toEqual({ ...room(["a", "c", "b"], t0, 0, 2), by: [1, 3, 4] });
+    // b plays now (a dropped): c, at 2 in the room's songs as they were, is at 1 of what is left
+    const inB = t0 + 100_000 + ROOM_GAP_MS + 5_000;
+    expect(changeQueue(s, { remove: 2, song: "c" }, seconds, inB)).toEqual({ ...room(["b", "b"], t0 + 100_000 + ROOM_GAP_MS, 0, 2), by: [2, 4] });
+    // the one playing, one not there, or all over: nothing
+    expect(changeQueue(s, { remove: 0, song: "a" }, seconds, now)).toBe("same");
+    expect(changeQueue(s, { remove: 1, song: "z" }, seconds, now)).toBe("same");
+    expect(changeQueue(s, { remove: 1, song: "b" }, seconds, t0 + 900_000)).toBe("same");
+    // before the start: the first is the one to play
+    expect(changeQueue({ ...s, startedAt: null }, { remove: 0, song: "a" }, seconds, now)).toBe("same");
+    expect(changeQueue({ ...s, startedAt: null }, { remove: 1, song: "b" }, seconds, now)).toEqual({ ...room(["a", "c", "b"], null, 0, 2), by: [1, 3, 4] });
+    expect([{ remove: 1, song: "s1" }, { remove: 0, song: "x" }].map(isQueueRemove)).toEqual([true, true]);
+    expect([{ remove: -1, song: "s1" }, { remove: 1.5, song: "s1" }, { remove: "1", song: "s1" }, { remove: 1, song: 5 }, { remove: 10_000, song: "s1" }].map(isQueueRemove)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("says which songs are 待播's from the one playing on, and who put each in; none once all are over", () => {
+    const s: RoomSchedule = { ...room(["a", "b", "c"], t0), by: [1, 2] };
+    expect(songsAhead(s, seconds, t0 + 10_000)).toEqual({ ids: ["a", "b", "c"], by: [1, 2, 0] });
+    expect(songsAhead(s, seconds, t0 + 100_000 + ROOM_GAP_MS + 5_000)).toEqual({ ids: ["b", "c"], by: [2, 0] });
+    expect(songsAhead({ ...s, startedAt: null, idx: 1 }, seconds, t0)).toEqual({ ids: ["b", "c"], by: [2, 0] });
+    expect(songsAhead(s, seconds, t0 + 900_000)).toEqual({ ids: [], by: [] });
+    expect(songsAhead(room(["a"], t0), seconds, t0)).toEqual({ ids: ["a"], by: [0] });
   });
 
   it("finds the second under a finger on the bar, and where its keys go, its start to its last second", () => {

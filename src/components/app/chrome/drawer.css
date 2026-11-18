@@ -54,8 +54,9 @@
 .chrome-drawer .dchip .radar-scope { width: 28px; height: 28px; }
 .chrome-drawer .dchip .ico { display: grid; place-items: center; width: 28px; height: 28px; }
 .chrome-drawer .dchip img { display: block; }
-/* 听歌's 新 inside its tab, which the row would cut off above it */
+/* 听歌's 新 inside its tab, which the row would cut off above it; and so the host's 点歌 count */
 .chrome-drawer .dchip .listen-new { position: static; margin-left: -2px; box-shadow: none; }
+.chrome-drawer .dchip .listen-asks { position: static; margin-left: -2px; box-shadow: none; }
 /* 听歌's disco: a round tab after 听歌's, 「点我蹦迪」 inside it while that shows (the row would cut a bubble off) */
 .chrome-drawer .disco-chip { padding: 0 5px; }
 .chrome-drawer .disco-chip.with-hint { padding-right: 13px; }
@@ -94,6 +95,7 @@
 .chrome-drawer .lmini-pill .tt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chrome-drawer .lmini-pill .chev { flex: none; width: 13px; height: 13px; opacity: 0.8; }
 .chrome-drawer .lmini-pill.out { padding: 0 9px 0 6px; }
+.chrome-drawer .lmini-pill .listen-asks { position: static; flex: none; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; box-shadow: none; }
 .chrome-drawer .dtop .lmini { flex: none; }
 .chrome-drawer .handle::before { content: ""; display: block; width: 36px; height: 4px; margin: 7px auto 6px; border-radius: 2px; background: #ffffff3d; }
 .chrome-drawer .dstats {
@@ -132,6 +134,7 @@
 /* 听歌 and 支持 in the computer's panel, each icon on a square of its own; 听歌 edged in yellow while its panel is out */
 .chrome-drawer :is(.dlisten, .dsponsor) .lico { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: #ffffff14; }
 .chrome-drawer .dlisten .listen-new { position: static; display: inline-block; margin-left: 6px; vertical-align: 1px; box-shadow: none; }
+.chrome-drawer .dlisten .listen-asks { position: static; display: inline-block; margin-left: 6px; padding: 0 7px; vertical-align: 1px; box-shadow: none; }
 .chrome-drawer .dlisten.open { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .chrome-drawer .dhot { display: block; }
 .chrome-drawer .dhot .kick {

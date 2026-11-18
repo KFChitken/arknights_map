@@ -1774,8 +1774,11 @@ export const listenNow = pgTable(
 /**
  * 一起听's rooms (src/lib/server/listenRooms.ts): the host's, with its songs (src/lib/listen.ts RoomSchedule: queue
  * from idx on, queue[idx] starting at started_at, null until the host starts it) and their version, which every change
- * to them moves on. declared_at once its host called the players nearby to it (宣言一起听, once a room). ended_at and
- * end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in it and the invitations to it.
+ * to them moves on. queue_by: who put each song of queue in, place for place (RoomSchedule by: the number in the room
+ * of one who asked for it, 点歌; the host's for theirs; 0 at random; places missing, of songs put in before it was
+ * kept, count as the host's). declared_at once its host called the players nearby to it (宣言一起听, once a room).
+ * ended_at and end_reason (RoomEnd) once it is over; then it goes ROOM_KEEP_MS after, with who was in it and the
+ * invitations to it.
  */
 export const listenRooms = pgTable(
   "listen_rooms",
@@ -1788,6 +1791,7 @@ export const listenRooms = pgTable(
     startedAt: at("started_at"),
     idx: smallint("idx").notNull().default(0),
     queue: text("queue").array().notNull().default(emptyArray),
+    queueBy: smallint("queue_by").array().notNull().default(sql`'{}'::smallint[]`),
     version: integer("version").notNull().default(1),
     declaredAt: at("declared_at"),
     endedAt: at("ended_at"),
@@ -1854,6 +1858,25 @@ export const listenInvites = pgTable(
     index("listen_invites_pair_idx").on(t.fromUserId, t.toUserId, t.createdAt),
     index("listen_invites_room_idx").on(t.roomId),
   ],
+);
+
+/**
+ * Songs someone in a room of 一起听 asked its host for (点歌), by their number there, until the host lets one into
+ * 待播 or leaves it out, or they take it back: REQUESTS_EACH waiting each at most. Gone as they leave the room
+ * (or are asked to), and all of them as it ends.
+ */
+export const listenRequests = pgTable(
+  "listen_requests",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => listenRooms.id, { onDelete: "cascade" }),
+    handle: smallint("handle").notNull(),
+    song: text("song").notNull(),
+    createdAt: at("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("listen_requests_room_idx").on(t.roomId, t.createdAt)],
 );
 
 /**

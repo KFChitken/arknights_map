@@ -5,7 +5,7 @@ import { fmt, fmtParts, T } from "@/i18n";
 import { RX_ROWS, type ListenCall } from "@/lib/listen";
 import { DECLARATION_RADIUS_KM } from "@/lib/rules";
 import type { InboxItem } from "@/lib/world/types";
-import { ChatIcon, listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
+import { AsksDot, ChatIcon, listenLabel, MegaphoneIcon, NoteIcon, useListenEntry } from "./chrome/parts";
 import { callLine, listenRoomNow, sendRx, setListenRxOpen, useListenBubbles, useListenRoom, useListenRx, useListenRxOpen, type ListenBubble } from "./listening";
 import "./listenMap.css";
 
@@ -129,6 +129,7 @@ function BackToRoom({ style, onOpen }: { style: CSSProperties; onOpen: () => voi
   return (
     <button className="lm-chat lm-back glass" style={style} aria-label={listenLabel(e)} aria-haspopup="dialog" onClick={onOpen}>
       <NoteIcon size={18} />
+      <AsksDot n={e.asks} />
     </button>
   );
 }

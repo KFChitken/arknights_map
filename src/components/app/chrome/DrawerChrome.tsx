@@ -12,6 +12,7 @@ import { NoticeButton } from "../NoticeBoard";
 import { DrawerMiniPill, MiniStrip } from "./ListenMini";
 import {
   ActButtons,
+  AsksDot,
   BasemapSwitch,
   countsTap,
   DeskHint,
@@ -422,10 +423,14 @@ function ListenChip({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
         <ListenIcon on={e.on} size={20} />
       </span>
       <span aria-hidden="true">{listenWord(e)}</span>
-      {e.fresh && (
-        <span className="listen-new" aria-hidden="true">
-          {T.map.bar.listenNew}
-        </span>
+      {e.asks > 0 ? (
+        <AsksDot n={e.asks} />
+      ) : (
+        e.fresh && (
+          <span className="listen-new" aria-hidden="true">
+            {T.map.bar.listenNew}
+          </span>
+        )
       )}
     </button>
   );
@@ -472,7 +477,11 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
       <span className="tx" aria-hidden="true">
         <b>
           {T.map.bar.listen}
-          {e.fresh && <span className="listen-new">{T.map.bar.listenNew}</span>}
+          {e.asks > 0 ? (
+            <span className="badge listen-asks">{fmt(T.listen.asks.badge, { n: e.asks })}</span>
+          ) : (
+            e.fresh && <span className="listen-new">{T.map.bar.listenNew}</span>
+          )}
         </b>
         <small>
           {e.together !== null

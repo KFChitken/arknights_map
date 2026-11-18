@@ -28,7 +28,9 @@ import {
   type ListenRoom,
   type ListenTrack,
   type ListenView,
+  type QueueRemove,
   type RoomMember,
+  type RoomRequest,
 } from "@/lib/listen";
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
@@ -38,6 +40,8 @@ import RoachIcon from "../RoachIcon";
 import { ChatIcon, DiscoBallIcon, MegaphoneIcon, useDiscoSwitch, useWide } from "./chrome/parts";
 import type { ListenCallItem, ListenInvite } from "./ListenOverlay";
 import {
+  answerSongAsk,
+  askSong,
   callLine,
   hostQueue,
   inviteMore,
@@ -77,6 +81,7 @@ import {
   useListenSongs,
   useListenTouched,
   useListenUpNext,
+  withdrawAsk,
   type ListenFavs,
   type ListenHot,
   type ListenPlayer,
@@ -1190,7 +1195,9 @@ let queueOpen = false;
  * 待播: what comes after the song playing, and how (alone: as its list goes, a round of 随机播放's drawn ahead, or songs
  * from all of them at random; in a room, its songs), shut to a line of the next three; open, the songs in order
  * (UPNEXT_SHOWN at most, then how many more), each tapped to play alone, and what comes once they are played; the
- * host's 随机加 10 首
+ * host's 随机加 10 首. In a room: who put each song in, the host's × to take one out, and 点歌: to the host, the songs
+ * asked for (点歌 N by its name, red), each to let in or leave out; to anyone else, their own still to be answered
+ * (你点的 N, teal), each to take back
  */
 function UpNext() {
   const up = useListenUpNext();
@@ -1199,9 +1206,14 @@ function UpNext() {
   const [open, setOpen] = useState(queueOpen);
   const [busy, setBusy] = useState(false);
   const all = list.state === "ok" ? list.tracks : null;
-  const songs = useMemo(() => (all ? up.ids.map((id) => all.get(id)).filter((t): t is ListenTrack => Boolean(t)) : []), [all, up.ids]);
+  // each with its place in 待播 (one gone from the list is left out, the rest keep theirs)
+  const songs = useMemo(
+    () => (all ? up.ids.flatMap((id, k) => (all.has(id) ? [{ t: all.get(id)!, k }] : [])) : []),
+    [all, up.ids],
+  );
   const { head, tail } = queueWords(up, room);
-  const peek = up.how === "none" ? T.listen.noSong : songs.length ? fmt(T.listen.upNext, { songs: songs.slice(0, 3).map((t) => t.name).join(" · ") }) : tail;
+  const peek = up.how === "none" ? T.listen.noSong : songs.length ? fmt(T.listen.upNext, { songs: songs.slice(0, 3).map((s) => s.t.name).join(" · ") }) : tail;
+  const asks = room ? room.requests : [];
   const flip = () => {
     queueOpen = !open;
     setOpen(!open);
@@ -1213,18 +1225,42 @@ function UpNext() {
   };
   return (
     <section className="lp-blk lp-q">
-      <button type="button" className="lp-chev" aria-expanded={open} onClick={flip}>
-        <b>{T.listen.queue}</b>
-        <span className="peek">{peek}</span>
-        <i aria-hidden="true">›</i>
-      </button>
+      <div className="lp-qhead">
+        <button type="button" className="lp-chev" aria-expanded={open} onClick={flip}>
+          <b>{T.listen.queue}</b>
+          <span className="peek">{peek}</span>
+          <i aria-hidden="true">›</i>
+        </button>
+        {asks.length > 0 &&
+          (room?.host ? (
+            <span className="lp-reqbadge" title={fmt(T.listen.asks.badgeLabel, { n: asks.length })}>
+              {fmt(T.listen.asks.badge, { n: asks.length })}
+            </span>
+          ) : (
+            <span className="lp-reqbadge mine">{fmt(T.listen.asks.mine, { n: asks.length })}</span>
+          ))}
+      </div>
       {open && (
         <>
+          {room && asks.length > 0 && (
+            <ul className="lp-asks">
+              {asks.map((q) => (
+                <AskRow key={q.id} ask={q} room={room} track={all?.get(q.song) ?? null} />
+              ))}
+            </ul>
+          )}
           {head && <p className="lp-qrule">{songs.length ? `${head} · ${fmt(T.listen.queueMore, { n: songs.length })}` : head}</p>}
           {songs.length > 0 && (
             <ol className="lp-qrows">
-              {songs.slice(0, UPNEXT_SHOWN).map((t, i) => (
-                <QueueRow key={`${i}-${t.id}`} track={t} n={i + 1} play={!room} />
+              {songs.slice(0, UPNEXT_SHOWN).map(({ t, k }, i) => (
+                <QueueRow
+                  key={`${k}-${t.id}`}
+                  track={t}
+                  n={i + 1}
+                  play={!room}
+                  by={room ? byWord(room, up.by?.[k] ?? 0) : null}
+                  remove={room?.host && up.at !== undefined ? { remove: up.at + k, song: t.id } : null}
+                />
               ))}
             </ol>
           )}
@@ -1249,16 +1285,97 @@ function UpNext() {
   );
 }
 
-/** A song in 待播, by its place: alone, tapped, it plays (and 待播 goes on from it); in a room it only shows */
-function QueueRow({ track, n, play }: { track: ListenTrack; n: number; play: boolean }) {
+/**
+ * Who put a song of the room's in, as 待播 says it: nothing for the host's own, 你点的, {name} 点的 (by the name they
+ * have in the room), 随机放的 (0: drawn at random, or added to keep 待播 going), or 已离开的人点的
+ */
+function byWord(room: ListenRoom, h: number): string | null {
+  if (h === 0) return T.listen.asks.byRandom;
+  const m = room.members.find((x) => x.h === h);
+  if (m?.host) return null;
+  if (h === room.you) return T.listen.asks.byYou;
+  return m?.state === "in" ? fmt(T.listen.asks.by, { name: m.card.displayName }) : T.listen.asks.byLeft;
+}
+
+/**
+ * A song asked for (点歌), at the top of 待播 open: to the host, who asked for it, 〔同意〕 and 〔不要〕; to the one who
+ * asked, 等房主同意 and 〔撤回〕
+ */
+function AskRow({ ask, room, track }: { ask: RoomRequest; room: ListenRoom; track: ListenTrack | null }) {
+  const [busy, setBusy] = useState(false);
+  const who = room.members.find((m) => m.h === ask.h);
+  const song = track?.name ?? ask.song;
+  const send = (go: () => Promise<boolean>) => {
+    setBusy(true);
+    void go().finally(() => setBusy(false));
+  };
+  const face = who && (
+    <span className="lp-av" aria-hidden="true">
+      <RoachIcon color={who.card.color} size={24} avatar={who.card.avatar} friend={who.friend} />
+    </span>
+  );
+  if (!room.host) {
+    return (
+      <li className="lp-ask1 mine">
+        {face}
+        <span className="w">{fmt(T.listen.asks.waiting, { song })}</span>
+        <span className="acts">
+          <button type="button" className="lp-mini" disabled={busy} aria-label={fmt(T.listen.asks.withdrawLabel, { song })} onClick={() => send(() => withdrawAsk(ask.id))}>
+            {T.listen.asks.withdraw}
+          </button>
+        </span>
+      </li>
+    );
+  }
+  const name = who?.card.displayName ?? "";
+  return (
+    <li className="lp-ask1">
+      {face}
+      <span className="w">{fmtNodes(T.listen.asks.came, { name: <b>{name}</b>, song })}</span>
+      <span className="acts">
+        <button
+          type="button"
+          className="lp-mini go"
+          disabled={busy}
+          aria-label={fmt(T.listen.asks.okLabel, { name, song })}
+          onClick={() => send(() => answerSongAsk(ask.id, true))}
+        >
+          {T.listen.asks.ok}
+        </button>
+        <button type="button" className="lp-mini" disabled={busy} aria-label={fmt(T.listen.asks.notOkLabel, { name, song })} onClick={() => send(() => answerSongAsk(ask.id, false))}>
+          {T.listen.asks.notOk}
+        </button>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * A song in 待播, by its place: alone, tapped, it plays (and 待播 goes on from it); in a room it only shows, with who
+ * put it in (by) where its album would be, and for the host a × to take it out (remove) where its length would be
+ */
+function QueueRow({
+  track,
+  n,
+  play,
+  by = null,
+  remove = null,
+}: {
+  track: ListenTrack;
+  n: number;
+  play: boolean;
+  by?: string | null;
+  remove?: QueueRemove | null;
+}) {
+  const [busy, setBusy] = useState(false);
   const body = (
     <>
       <span className="n">{n}</span>
       <span className="nm">
         {track.name}
-        <small>{track.album.name}</small>
+        {by ? <small className="by">{by}</small> : <small>{track.album.name}</small>}
       </span>
-      <span className="dur">{clock(track.seconds)}</span>
+      {!remove && <span className="dur">{clock(track.seconds)}</span>}
     </>
   );
   return (
@@ -1268,7 +1385,23 @@ function QueueRow({ track, n, play }: { track: ListenTrack; n: number; play: boo
           {body}
         </button>
       ) : (
-        <span className="lp-qrow">{body}</span>
+        <span className="lp-qrow">
+          {body}
+          {remove && (
+            <button
+              type="button"
+              className="lp-qx"
+              disabled={busy}
+              aria-label={fmt(T.listen.asks.remove, { name: track.name })}
+              onClick={() => {
+                setBusy(true);
+                void hostQueue(remove).finally(() => setBusy(false));
+              }}
+            >
+              ×
+            </button>
+          )}
+        </span>
       )}
     </li>
   );
@@ -1348,7 +1481,7 @@ function Library() {
       <div className="lp-blkh">
         <b>{T.listen.library}</b>
       </div>
-      {room && <p className="lp-note left small tight">{room.host ? T.listen.addNote : T.listen.hostPicks}</p>}
+      {room && <p className="lp-note left small tight">{room.host ? T.listen.addNote : T.listen.askNote}</p>}
       {list.state === "ok" ? (
         list.tracks.size > 0 ? (
           <>
@@ -1424,6 +1557,7 @@ function SongList({
   const v = useListenPlayer();
   const playing = v.status === "playing" || v.status === "starting";
   const nowId = v.track?.id ?? null;
+  const rowDoes = useRowUse(room, nowId);
   const [shown, setShown] = useState(ALBUMS_AT_ONCE);
   const groups = useMemo(() => {
     const all = catalog.albums.map((album) => ({ album, songs: songsOf(album, tracks) }));
@@ -1447,10 +1581,8 @@ function SongList({
     return () => io.disconnect();
   }, [more, shown]);
   if (groups.length === 0 && fresh.length === 0) return <p className="lp-note">{T.listen.noMatch}</p>;
-  // in a room: the host adds to its songs, anyone else only looks
-  const use: RowUse = room ? (room.host ? "add" : "look") : "play";
   const row = (t: ListenTrack, key: string) => (
-    <Row key={key} track={t} usual={catalog.artists} now={t.id === nowId} playing={playing && t.id === nowId} use={use} from={from} fav={favs.has(t.id)} />
+    <Row key={key} track={t} usual={catalog.artists} now={t.id === nowId} playing={playing && t.id === nowId} use={rowDoes(t.id)} from={from} fav={favs.has(t.id)} />
   );
   return (
     <div className="lp-list">
@@ -1505,6 +1637,7 @@ function ViewList({
   const v = useListenPlayer();
   const playing = v.status === "playing" || v.status === "starting";
   const nowId = v.track?.id ?? null;
+  const rowDoes = useRowUse(room, nowId);
   const ranks = useMemo(() => new Map(hot.state === "ok" ? hot.list.map((h, i) => [h.song, { rank: i + 1, n: h.n }]) : []), [hot]);
   const state = view === "fav" ? favs : hot;
   if (state.state === "failed") {
@@ -1519,8 +1652,6 @@ function ViewList({
   }
   if (state.state !== "ok") return <p className="lp-note">{view === "fav" ? T.listen.favLoading : T.listen.hotLoading}</p>;
   const hotWords = { days: HOT_DAYS, s: HEARD_S, m: HOT_READ_MS / 60_000 };
-  // in a room: the host adds to its songs, anyone else only looks
-  const use: RowUse = room ? (room.host ? "add" : "look") : "play";
   return (
     <div className="lp-list">
       <p className="lp-cap">
@@ -1540,7 +1671,7 @@ function ViewList({
               usual={usual}
               now={t.id === nowId}
               playing={playing && t.id === nowId}
-              use={use}
+              use={rowDoes(t.id)}
               from={from}
               fav={view === "fav"}
               album
@@ -1554,13 +1685,34 @@ function ViewList({
   );
 }
 
-/** What a row does: plays its song, adds it to the room's (the host's ＋), or nothing (someone else's room) */
-type RowUse = "play" | "add" | "look";
+/**
+ * What a row does: plays its song (alone); in a room, adds it to 待播 (the host's ＋) or asks the host for it (点歌), or
+ * nothing, saying why: the song playing, one in 待播 already, or one you asked for (still to be answered)
+ */
+type RowUse = "play" | "add" | "ask" | "playing" | "queued" | "asked";
+
+/** What each song's row does, by its id: as RowUse says, from the room's songs and what you asked for (nowId: the song on) */
+function useRowUse(room: ListenRoom | null, nowId: string | null): (id: string) => RowUse {
+  const up = useListenUpNext();
+  return useMemo(() => {
+    if (!room) return () => "play";
+    const queued = new Set(up.ids);
+    // the host's are others' (the host adds a song at once); anyone else's are their own
+    const asked = new Set(room.host ? [] : room.requests.map((q) => q.song));
+    const free: RowUse = room.host ? "add" : "ask";
+    return (id) => (id === nowId ? "playing" : queued.has(id) ? "queued" : asked.has(id) ? "asked" : free);
+  }, [room, up.ids, nowId]);
+}
+
+/** What a row that does nothing says instead (read as the row is drawn: the words are the page's language) */
+const rowSays = (use: RowUse): string | null =>
+  use === "playing" ? T.listen.asks.playing : use === "queued" ? T.listen.asks.inQueue : use === "asked" ? T.listen.asks.asked : null;
 
 /**
  * A song: its place on 热播榜, its name (and its album, in 收藏 and 热播榜; its artists where they are not the list's
  * usual ones), a ♥ when it is in your 收藏 (tapped, out of it), how many times it was heard (热播榜) or how long it
- * is, ▶ or ＋; the one playing in red. The row is tapped anywhere but its ♥ (a button over all of it, the ♥ above that).
+ * is, ▶, ＋ or 〔点歌〕 (or, in a room, why it does nothing: 正在放, 在待播, 已申请); the one playing in red. The row is
+ * tapped anywhere but its ♥ (a button over all of it, the ♥ above that).
  */
 function Row({
   track,
@@ -1586,23 +1738,22 @@ function Row({
   times?: number;
 }) {
   const own = track.artists.join() !== usual.join();
-  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
   const sub = album ? [track.album.name, ...(own ? [track.artists.join(" / ")] : [])].join(" · ") : own ? track.artists.join(" / ") : null;
+  const says = rowSays(use);
   // the button over the row says what it is; what the row shows is not said twice
-  const hide = use === "look" ? undefined : true;
+  const hide = says ? undefined : true;
+  const send = (go: () => Promise<boolean>) => {
+    setBusy(true);
+    void go().finally(() => setBusy(false));
+  };
   return (
-    <div className={`lp-row${now ? " now" : ""}${use === "look" ? " look" : ""}`}>
+    <div className={`lp-row${now ? " now" : ""}${says ? " look" : ""}`}>
       {use === "add" && (
-        <button
-          type="button"
-          className="lp-hit"
-          aria-label={fmt(T.listen.add, { name: track.name })}
-          disabled={adding}
-          onClick={() => {
-            setAdding(true);
-            void hostQueue({ add: track.id }).finally(() => setAdding(false));
-          }}
-        />
+        <button type="button" className="lp-hit" aria-label={fmt(T.listen.add, { name: track.name })} disabled={busy} onClick={() => send(() => hostQueue({ add: track.id }))} />
+      )}
+      {use === "ask" && (
+        <button type="button" className="lp-hit" aria-label={fmt(T.listen.asks.askLabel, { name: track.name })} disabled={busy} onClick={() => send(() => askSong(track.id))} />
       )}
       {use === "play" && (
         <button
@@ -1638,7 +1789,13 @@ function Row({
           </span>
         )
       )}
-      {use !== "look" && (
+      {says ? (
+        <span className="go says">{says}</span>
+      ) : use === "ask" ? (
+        <span className="go ask" aria-hidden="true">
+          {T.listen.asks.ask}
+        </span>
+      ) : (
         <span className={`go${use === "add" ? " add" : ""}`} aria-hidden="true">
           {use === "add" ? T.listen.plus : playing ? <PauseIcon /> : <PlayIcon />}
         </span>

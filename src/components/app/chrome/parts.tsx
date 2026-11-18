@@ -323,21 +323,40 @@ export function ListenIcon({ on, size }: { on: boolean; size: number }) {
 
 /**
  * What 听歌's entry shows, from what plays (src/components/app/listening.ts): on while a song plays; together: how many
- * are in your room of 一起听 (null: none), which keeps it lit; 新 until its panel is first opened
+ * are in your room of 一起听 (null: none), which keeps it lit; 新 until its panel is first opened; asks: to the host of
+ * the room, how many songs asked for (点歌) wait on an answer
  */
-export function useListenEntry(): { on: boolean; lit: boolean; together: number | null; track: ListenTrack | null; fresh: boolean } {
+export function useListenEntry(): { on: boolean; lit: boolean; together: number | null; track: ListenTrack | null; fresh: boolean; asks: number } {
   const p = useListenPlayer();
   const intro = useListenIntro();
   const room = useListenRoom();
   const on = p.status === "playing" || p.status === "starting";
   const together = room ? room.members.filter((m) => m.state === "in").length : null;
-  return { on, lit: on || together !== null, together, track: p.track, fresh: intro === "new" };
+  return { on, lit: on || together !== null, together, track: p.track, fresh: intro === "new", asks: room?.host ? room.requests.length : 0 };
 }
 
-/** 听歌's name for a screen reader, with the song while one plays, or how many listen together */
+/** 听歌's name for a screen reader, with the song while one plays, or how many listen together (and 点歌 waiting) */
 export function listenLabel(e: ReturnType<typeof useListenEntry>) {
-  if (e.together !== null) return fmt(T.map.bar.listenTogetherLabel, { n: e.together });
-  return e.on && e.track ? fmt(T.map.bar.listenNowLabel, { name: e.track.name }) : T.map.bar.listen;
+  const label =
+    e.together !== null
+      ? fmt(T.map.bar.listenTogetherLabel, { n: e.together })
+      : e.on && e.track
+        ? fmt(T.map.bar.listenNowLabel, { name: e.track.name })
+        : T.map.bar.listen;
+  return withAsks(label, e.asks);
+}
+
+/** A name for a screen reader, and the host's 点歌 waiting on an answer (n), if any */
+export const withAsks = (label: string, n: number) => (n > 0 ? fmt(T.listen.asks.withLabel, { label, n }) : label);
+
+/** To the host, the 点歌 waiting on an answer: a red count on 听歌's entry and the little bar's handles (said in their names) */
+export function AsksDot({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span className="badge listen-asks" aria-hidden="true">
+      {n}
+    </span>
+  );
 }
 
 /** 听歌's word under its icon: 在听 while a song plays, 一起 N 人 in a room */

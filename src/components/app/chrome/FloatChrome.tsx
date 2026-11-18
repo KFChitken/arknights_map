@@ -9,6 +9,7 @@ import { NoticeButton } from "../NoticeBoard";
 import { FloatMiniTab, MiniStrip } from "./ListenMini";
 import {
   ActButtons,
+  AsksDot,
   BasemapSwitch,
   Chev,
   countsTap,
@@ -233,10 +234,14 @@ function ListenTile({ listen, folded }: { listen: NonNullable<ChromeProps["liste
     >
       <ListenIcon on={e.on} size={26} />
       <small aria-hidden="true">{listenWord(e)}</small>
-      {e.fresh && (
-        <span className="listen-new" aria-hidden="true">
-          {T.map.bar.listenNew}
-        </span>
+      {e.asks > 0 ? (
+        <AsksDot n={e.asks} />
+      ) : (
+        e.fresh && (
+          <span className="listen-new" aria-hidden="true">
+            {T.map.bar.listenNew}
+          </span>
+        )
       )}
     </button>
   );

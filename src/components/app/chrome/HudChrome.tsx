@@ -11,6 +11,7 @@ import { useInListenRoom } from "../listening";
 import { NoticeButton } from "../NoticeBoard";
 import { HudMiniRound, MiniStrip } from "./ListenMini";
 import {
+  AsksDot,
   Chev,
   countsTap,
   DeskHint,
@@ -360,10 +361,14 @@ function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> })
         data-listen-anchor="right"
       >
         <ListenIcon on={e.on} size={22} />
-        {e.fresh && (
-          <span className="listen-new" aria-hidden="true">
-            {T.map.bar.listenNew}
-          </span>
+        {e.asks > 0 ? (
+          <AsksDot n={e.asks} />
+        ) : (
+          e.fresh && (
+            <span className="listen-new" aria-hidden="true">
+              {T.map.bar.listenNew}
+            </span>
+          )
         )}
       </button>
       <span className="lbl" aria-hidden="true">

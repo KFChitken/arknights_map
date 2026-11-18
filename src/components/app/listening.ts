@@ -31,6 +31,7 @@ import {
   type ListenTell,
   type ListenTrack,
   type QueueChange,
+  type QueueRemove,
   type RoomAt,
   type RoomEnd,
   type SongSaid,
@@ -738,9 +739,17 @@ export const useListenHasNext = () => useSyncExternalStore(onNext, hasNext, () =
  * 待播 as the player shows it: the songs to come, in order, and how they come (ListenGoing's, or room: the room's, after
  * the one playing; none: no song yet, ▶ plays one from all of them at random), and for list and round, the list
  */
-export type ListenUpNext = { how: "list" | "round" | "any" | "room" | "none"; ids: string[]; from: ListenFrom | null; track: ListenTrack | null };
+export type ListenUpNext = {
+  how: "list" | "round" | "any" | "room" | "none";
+  ids: string[];
+  from: ListenFrom | null;
+  track: ListenTrack | null;
+  /** In a room: who put each song in (RoomSchedule by), and the place of the first in the room's songs */
+  by?: number[];
+  at?: number;
+};
 function upNextOf(track: ListenTrack | null, r: ListenRoom | null, i: number, g: ListenGoing, from: ListenFrom | null): ListenUpNext {
-  if (r) return { how: "room", ids: r.queue.slice(i + 1), from: null, track };
+  if (r) return { how: "room", ids: r.queue.slice(i + 1), from: null, track, by: r.queue.map((_, n) => r.by?.[n] ?? 0).slice(i + 1), at: i + 1 };
   if (!track) return { how: "none", ids: [], from: null, track };
   if (g.how !== "list") return { how: g.how, ids: g.ids, from, track };
   return { how: "list", ids: listAfter(track, from), from, track };
@@ -1586,7 +1595,7 @@ function enter(next: ListenRoom, sent: number, got: number, now: number): boolea
   const was = room.get();
   let r = next;
   // the room's songs told since this answer was made stay
-  if (was?.id === r.id && was.version > r.version) r = { ...r, queue: was.queue, idx: was.idx, startedAt: was.startedAt, version: was.version };
+  if (was?.id === r.id && was.version > r.version) r = { ...r, queue: was.queue, idx: was.idx, startedAt: was.startedAt, version: was.version, by: was.by };
   if (was?.id !== r.id) {
     // a room new to the page: nothing of one before it is left, nor songs kept from playing alone (a room plays in
     // the element in use)
@@ -1608,8 +1617,16 @@ function enter(next: ListenRoom, sent: number, got: number, now: number): boolea
   return Boolean(was && was.id === r.id && r.version > was.version);
 }
 
-/** Who came in and who went, since the room was last asked for */
+/** Who came in and who went, since the room was last asked for; to the host, each song newly asked for (点歌) */
 function cameWent(was: ListenRoom, now: ListenRoom) {
+  if (now.host) {
+    const had = new Set((was.requests ?? []).map((q) => q.id));
+    const fresh = (now.requests ?? []).filter((q) => !had.has(q.id));
+    const last = fresh[fresh.length - 1];
+    const name = last && now.members.find((m) => m.h === last.h)?.card.displayName;
+    const song = last && tracks()?.get(last.song)?.name;
+    if (name && song) say(fmt(T.listen.asks.came, { name, song }));
+  }
   const inBefore = new Set(was.members.filter((m) => m.state === "in").map((m) => m.h));
   const inNow = new Set(now.members.filter((m) => m.state === "in").map((m) => m.h));
   for (const m of now.members) {
@@ -1940,9 +1957,10 @@ function roomToggle() {
 }
 
 /** What the room's songs did, as the room is told, or as the host's tap answered: a line for everyone in it */
-function announce(how: "start" | "next" | "restart" | "add" | "seek", was: ListenRoom, now: ListenRoom) {
+function announce(how: "start" | "next" | "restart" | "add" | "seek" | "remove", was: ListenRoom, now: ListenRoom) {
   const song = tracks()?.get(now.queue[now.idx] ?? "")?.name;
-  if (!song) return;
+  // a song taken out of 待播 changes nothing that plays
+  if (!song || how === "remove") return;
   if (how === "seek") {
     if (now.startedAt !== null) sys(fmt(T.listen.seeked, { at: clock(Math.max(0, (serverNow() - now.startedAt) / 1000)), song }));
     return;
@@ -2001,13 +2019,20 @@ export function heardListen(raw: unknown) {
   if (!d || typeof d !== "object" || !r || d.room !== r.id) return;
   if (d.t === "state") {
     if (!Array.isArray(d.queue) || !(d.version > r.version)) return;
-    const next = { ...r, queue: d.queue, idx: d.idx, startedAt: d.startedAt, version: d.version };
+    const next = { ...r, queue: d.queue, idx: d.idx, startedAt: d.startedAt, version: d.version, by: Array.isArray(d.by) ? d.by : undefined };
     if (d.how === "seek") sawSeek(d.startedAt);
     room.set(next);
     announce(d.how, r, next);
     return syncRoom();
   }
   if (d.t === "members") return membersLater();
+  // the songs asked for changed (to the host), or the host answered yours
+  if (d.t === "asks") return void loadRoom();
+  if (d.t === "answered") {
+    const song = tracks()?.get(d.song)?.name;
+    if (song) say(d.yes ? fmt(T.listen.asks.yes, { name: r.hostName, song }) : fmt(T.listen.asks.no, { song }));
+    return void loadRoom();
+  }
   if (d.t === "rx") {
     for (const x of Array.isArray(d.items) ? d.items : []) if (x.h !== r.you && isRx(x.r)) showRx(r, x.h, x.r);
     return;
@@ -2287,11 +2312,11 @@ export async function leaveListen(): Promise<boolean> {
  * What the host does to the room's songs: 开始, 下一首, 这首从头再来, one added (点歌), 随机加 10 首, or a second of the
  * one playing gone to (its bar: everyone goes there); within the tap
  */
-export async function hostQueue(what: QueueChange): Promise<boolean> {
+export async function hostQueue(what: QueueChange | QueueRemove): Promise<boolean> {
   const r = room.get();
   if (!r?.host) return false;
-  const how = typeof what === "object" ? ("seek" in what ? "seek" : "add") : what === "random" ? "add" : what;
-  if (how !== "add" && how !== "seek") {
+  const how = typeof what === "object" ? ("seek" in what ? "seek" : "remove" in what ? "remove" : "add") : what === "random" ? "add" : what;
+  if (how !== "add" && how !== "seek" && how !== "remove") {
     // the host means to hear it: a pause of their own is over
     selfPaused = false;
     stuck = null;
@@ -2324,6 +2349,41 @@ export async function hostQueue(what: QueueChange): Promise<boolean> {
     failed(e);
     return false;
   }
+}
+
+/** What an answer about 点歌 says of the room: taken in as any answer is; what it is said to have done, said */
+async function asking(call: () => Promise<{ room: ListenRoom | null; now: number }>, done: string | null): Promise<boolean> {
+  const sent = Date.now();
+  try {
+    const res = await call();
+    if (res.room) enter(res.room, sent, Date.now(), res.now);
+    if (done) say(done);
+    return true;
+  } catch (e) {
+    failed(e);
+    // what the server holds of it: asked for again
+    void loadRoom();
+    return false;
+  }
+}
+
+/** 点歌: someone in the room (not its host) asks its host for a song */
+export function askSong(song: string): Promise<boolean> {
+  const r = room.get();
+  if (!r || r.host) return Promise.resolve(false);
+  return asking(() => listenApi.request(song), T.listen.asks.sent);
+}
+
+/** A song you asked for (its id) taken back, while the host has not answered */
+export function withdrawAsk(id: number): Promise<boolean> {
+  if (!room.get()) return Promise.resolve(false);
+  return asking(() => listenApi.withdraw(id), T.listen.asks.withdrawn);
+}
+
+/** The host lets a song asked for (its id) into 待播 (yes), or leaves it out: the one who asked is told, alone */
+export function answerSongAsk(id: number, yes: boolean): Promise<boolean> {
+  if (!room.get()?.host) return Promise.resolve(false);
+  return asking(() => listenApi.answer(id, yes), null);
 }
 
 /**

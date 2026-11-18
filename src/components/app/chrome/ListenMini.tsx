@@ -5,6 +5,7 @@ import { useState } from "react";
 import { fmt, T } from "@/i18n";
 import { coverLink, type ListenRoom } from "@/lib/listen";
 import RoachIcon from "../../RoachIcon";
+import { AsksDot, withAsks } from "./parts";
 import {
   hostQueue,
   playNext,
@@ -41,11 +42,11 @@ const asIs: Tap = (fn) => fn;
 const peopleOf = (room: ListenRoom) =>
   room.members.filter((m) => m.state === "in").sort((a, b) => Number(b.host) - Number(a.host) || a.h - b.h);
 
-/** The song on and whether it plays, as the handles and the little bar show it */
+/** The song on and whether it plays, as the handles and the little bar show it; to the room's host, the 点歌 waiting */
 function useSong() {
   const v = useListenPlayer();
   const room = useListenRoom();
-  return { track: v.track, on: v.status === "playing" || v.status === "starting", room };
+  return { track: v.track, on: v.status === "playing" || v.status === "starting", room, asks: room?.host ? room.requests.length : 0 };
 }
 
 /** A small record, turning while the song plays, the song's cover its label; edged in teal in a room */
@@ -62,12 +63,12 @@ export function MiniDisc({ file, size, go, room }: { file: string | undefined; s
 }
 
 /**
- * The little bar, the same in every 界面: the record and the song (alone, its album under it; in a room, who is in it),
- * a tap on them opens the player; ▶/⏸; ⏭ alone, or for the room's host (not a guest's); a thin line of how far the song
- * is, teal in a room. tap: what each tap goes through.
+ * The little bar, the same in every 界面: the record and the song (alone, its album under it; in a room, who is in it,
+ * or to the host with 点歌 waiting, 点歌 N where their faces were), a tap on them opens the player; ▶/⏸; ⏭ alone, or
+ * for the room's host (not a guest's); a thin line of how far the song is, teal in a room. tap: what each tap goes through.
  */
 export function MiniStrip({ onOpen, tap = asIs }: { onOpen: () => void; tap?: Tap }) {
-  const { track: t, on, room } = useSong();
+  const { track: t, on, room, asks } = useSong();
   const at = useListenSecond();
   const hasNext = useListenHasNext();
   const [busy, setBusy] = useState(false);
@@ -85,18 +86,23 @@ export function MiniStrip({ onOpen, tap = asIs }: { onOpen: () => void; tap?: Ta
   return (
     <div className={`lmini${room ? " room-on" : ""}${grow ? " grow" : ""}`}>
       <div className="lmini-row">
-        <button type="button" className="lmini-open" aria-label={fmt(T.listen.mini.open, { name: t.name })} onClick={tap(onOpen)}>
+        <button type="button" className="lmini-open" aria-label={withAsks(fmt(T.listen.mini.open, { name: t.name }), asks)} onClick={tap(onOpen)}>
           <MiniDisc file={t.album.cover} size={40} go={on} room={Boolean(room)} />
           <span className="lmini-tt" aria-hidden="true">
             <b>{t.name}</b>
             <small>
               {room ? (
                 <>
-                  <span className="heads">
-                    {people.slice(0, 4).map((m) => (
-                      <RoachIcon key={m.h} color={m.card.color} size={16} avatar={m.card.avatar} />
-                    ))}
-                  </span>
+                  {/* 点歌 waiting takes the place of their faces, so the line stays short */}
+                  {asks > 0 ? (
+                    <span className="badge lmini-asks">{fmt(T.listen.asks.badge, { n: asks })}</span>
+                  ) : (
+                    <span className="heads">
+                      {people.slice(0, 4).map((m) => (
+                        <RoachIcon key={m.h} color={m.card.color} size={16} avatar={m.card.avatar} />
+                      ))}
+                    </span>
+                  )}
                   {fmt(T.listen.mini.together, { n: people.length })}
                 </>
               ) : (
@@ -139,7 +145,7 @@ export function MiniStrip({ onOpen, tap = asIs }: { onOpen: () => void; tap?: Ta
  * bar's edge left out under them, chrome.css): tucked, the turning record, the song and ⌃; pulled out, only ⌄
  */
 export function FloatMiniTab({ out }: { out: boolean }) {
-  const { track: t, on, room } = useSong();
+  const { track: t, on, room, asks } = useSong();
   if (!t) return null;
   return (
     <span className={`lmini-tabw${out ? " out" : ""}${room ? " room-on" : ""}`} data-chrome-bottom>
@@ -148,7 +154,7 @@ export function FloatMiniTab({ out }: { out: boolean }) {
         type="button"
         className="lmini-tab"
         aria-expanded={out}
-        aria-label={out ? T.listen.mini.tuck.float : fmt(T.listen.mini.pull.float, { name: t.name })}
+        aria-label={out ? T.listen.mini.tuck.float : withAsks(fmt(T.listen.mini.pull.float, { name: t.name }), asks)}
         onClick={() => pullMini(!out)}
       >
         {out ? (
@@ -162,6 +168,8 @@ export function FloatMiniTab({ out }: { out: boolean }) {
         )}
       </button>
       <span className="lmini-curve r" aria-hidden="true" />
+      {/* at the tab's corner, out of its edge's clip (pulled out, the little bar says it) */}
+      {!out && <AsksDot n={asks} />}
     </span>
   );
 }
@@ -171,14 +179,14 @@ export function FloatMiniTab({ out }: { out: boolean }) {
  * shows Amap's mark); its taps go through the drawer's swipe
  */
 export function DrawerMiniPill({ out, tap }: { out: boolean; tap: Tap }) {
-  const { track: t, on, room } = useSong();
+  const { track: t, on, room, asks } = useSong();
   if (!t) return null;
   return (
     <button
       type="button"
       className={`lmini-pill${out ? " out" : ""}`}
       aria-expanded={out}
-      aria-label={out ? T.listen.mini.tuck.drawer : fmt(T.listen.mini.pull.drawer, { name: t.name })}
+      aria-label={out ? T.listen.mini.tuck.drawer : withAsks(fmt(T.listen.mini.pull.drawer, { name: t.name }), asks)}
       onClick={tap(() => pullMini(!out))}
     >
       {out ? (
@@ -195,6 +203,7 @@ export function DrawerMiniPill({ out, tap }: { out: boolean; tap: Tap }) {
             {t.name}
           </span>
           <ChevIcon dir="up" />
+          <AsksDot n={asks} />
         </>
       )}
     </button>
@@ -203,7 +212,7 @@ export function DrawerMiniPill({ out, tap }: { out: boolean; tap: Tap }) {
 
 /** 游戏风's handle: a round button between 触须之交 and 我的蟑螂, the turning record in it and the song under it */
 export function HudMiniRound({ out }: { out: boolean }) {
-  const { track: t, on, room } = useSong();
+  const { track: t, on, room, asks } = useSong();
   if (!t) return null;
   return (
     <span className="rb lmini-rb">
@@ -211,10 +220,17 @@ export function HudMiniRound({ out }: { out: boolean }) {
         type="button"
         className="ob glass"
         aria-expanded={out}
-        aria-label={out ? T.listen.mini.tuck.hud : fmt(T.listen.mini.pull.hud, { name: t.name })}
+        aria-label={out ? T.listen.mini.tuck.hud : withAsks(fmt(T.listen.mini.pull.hud, { name: t.name }), asks)}
         onClick={() => pullMini(!out)}
       >
-        {out ? <ChevIcon dir="down" /> : <MiniDisc file={t.album.cover} size={30} go={on} room={Boolean(room)} />}
+        {out ? (
+          <ChevIcon dir="down" />
+        ) : (
+          <>
+            <MiniDisc file={t.album.cover} size={30} go={on} room={Boolean(room)} />
+            <AsksDot n={asks} />
+          </>
+        )}
       </button>
       <span className="lbl" aria-hidden="true">
         {out ? T.listen.mini.tuckWord : t.name}
