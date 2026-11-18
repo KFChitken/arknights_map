@@ -67,6 +67,7 @@ export const OPERATOR_ART_DIR = process.env.OPERATOR_ART_DIR || "operator-art";
  * TALULAH_PICTURE=off, 塔露拉干员's (an orange-lit hood, her fire still burning).
  * MINGHE_PICTURE=off, 明河都尉's (a white-lit hood riding his horse, which is drawn in code).
  * SI_PICTURE=off, 祀掌柜's (a red-lit hood; her scroll, ink butterflies and inn are drawn in code and stay).
+ * HAIMAO_PICTURE=off, 香艳制作人's: her Q figure on the map and her card and her portraits (a purple-lit hood instead).
  * AMIYA_DANCE=off takes down 阿米娅向导's dance and its music (from a video by a bilibili
  * artist, 疚刃), and tapping her only opens her card again. PARTY_MUSIC=off takes down
  * ⚡舟友的酒⚡'s music (by 活跃黑江乐 on bilibili); the phantoms then dance in silence.
@@ -76,6 +77,7 @@ export const PERLICA_PICTURE = process.env.PERLICA_PICTURE !== "off";
 export const TALULAH_PICTURE = process.env.TALULAH_PICTURE !== "off";
 export const MINGHE_PICTURE = process.env.MINGHE_PICTURE !== "off";
 export const SI_PICTURE = process.env.SI_PICTURE !== "off";
+export const HAIMAO_PICTURE = process.env.HAIMAO_PICTURE !== "off";
 export const AMIYA_DANCE = AMIYA_PICTURE && process.env.AMIYA_DANCE !== "off";
 export const PARTY_MUSIC = process.env.PARTY_MUSIC !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
@@ -111,6 +113,12 @@ export const profile2Mode = (): "on" | "admins" | "off" => (["on", "admins"] as 
  */
 export const squadMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.SQUAD) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
+/**
+ * 香艳制作人 (src/lib/server/haimao.ts), a guide: HAIMAO=on shows her to everyone, visitors too; admins, only to the 站长
+ * and the admins (to try her on the live site first); off (the default) to nobody: she is not on the map, and touching
+ * her is refused. What she keeps of each player stays whichever it is. Read on every use, so the tests can switch it.
+ */
+export const haimaoMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.HAIMAO) ?? "off";
 
 /**
  * 鸭爵, the look kept as the thanks for sponsoring (src/lib/server/looks.ts): DUCK=on lets a 服务器饲养员 pick him, and

@@ -223,7 +223,7 @@ function fixture(): DashboardData {
     },
     friendships: { pairs: 13_602, withSome: 6_792, most: 28, oldestDays: 22 },
     badges: { total: 81_240, by: [{ key: "trainee", n: 6_792 }, { key: "amiya", n: 6_120 }] },
-    guides: { friends: { amiya: 6_120, perlica: 3_387, talulah: 2_845, minghe: 1_924, si: 1_240 }, inksStayed: 1_240, inksQueued: 388 },
+    guides: { friends: { amiya: 6_120, perlica: 3_387, talulah: 2_845, minghe: 1_924, si: 1_240, haimao: 0 }, inksStayed: 1_240, inksQueued: 388 },
     where: { china: 9_588, abroad: 900, cities: [{ key: "shanghai", n: 986 }, { key: "tokyo", n: 41 }] },
     reach: { n: 231, day: "2026-11-11" },
   };
@@ -238,7 +238,7 @@ function fixture(): DashboardData {
       touches: { sneaky: sum((d) => d.sneaky), bold: sum((d) => d.bold) },
       decl: sum((d) => d.decl),
       replies: sum((d) => d.replies),
-      guides: { amiya: 38_820, perlica: 20_140, talulah: 15_290, minghe: 9_630, si: 7_180 },
+      guides: { amiya: 38_820, perlica: 20_140, talulah: 15_290, minghe: 9_630, si: 7_180, haimao: 0 },
     },
     today: {
       day: TODAY,

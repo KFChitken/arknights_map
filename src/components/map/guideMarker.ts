@@ -1,4 +1,6 @@
+import { fmt, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
+import { haimaoFigureSvg } from "@/lib/haimao";
 import { hoodOnHorse } from "@/lib/horseArt";
 import { AVATAR_PICTURES, roachIconUrl } from "@/lib/roachImages";
 import { HEART } from "@/lib/roachSvg";
@@ -62,6 +64,21 @@ export function guideElement(id: GuideId) {
   el.className = "guide-marker";
   el.dataset.guide = id;
   const name = GUIDES[id].name;
+  if (id === "haimao") {
+    // her Q figure in five layers, tentacles swaying and gull nodding; her still picture (or the hood) once they will not load
+    el.classList.add("haimao-marker");
+    el.innerHTML = `<p class="guide-bubble" hidden></p>${haimaoFigureSvg()}<img class="hm-plain" alt="${name}" draggable="false"/><span class="guide-name">${name}</span>`;
+    el.addEventListener(
+      "error",
+      (e) => {
+        if ((e.target as Element).tagName !== "image") return;
+        el.classList.add("plain");
+        plainHaimao(el);
+      },
+      true,
+    );
+    return el;
+  }
   if (id !== "minghe") {
     el.innerHTML = `<p class="guide-bubble" hidden></p><img alt="${name}" draggable="false"/><span class="guide-name">${name}</span>`;
     return el;
@@ -94,6 +111,36 @@ export function guideShift(mark: GuideMark, box: number): [number, number] {
 
 const drawn = new WeakMap<HTMLElement, number>();
 let seq = 0;
+
+/** 香艳制作人 as one picture, in place of her layers that would not load: drawn as every guide's, the hood when it is off */
+function plainHaimao(el: HTMLElement) {
+  const img = el.querySelector<HTMLImageElement>(".hm-plain")!;
+  const friend = el.classList.contains("friend");
+  const want = friend ? "friend" : "plain";
+  if (img.dataset.look === want) return;
+  img.dataset.look = want;
+  const mine = ++seq;
+  drawn.set(el, mine);
+  roachIconUrl(GUIDES.haimao.color, { avatar: GUIDES.haimao.avatar, friend }, 128)
+    .then((url) => {
+      if (drawn.get(el) === mine) img.src = url;
+    })
+    .catch(() => {});
+}
+
+/** A gain of hers older than this was for a map that is gone, and does not float up again */
+const PLUS_FRESH_MS = 3000;
+/** 香艳制作人's 好感度 going up: "+n ♥" floats up over her, once for each time it went up */
+function floatPlus(el: HTMLElement, plus: { n: number; at: number }) {
+  if (el.dataset.plus === String(plus.at)) return;
+  el.dataset.plus = String(plus.at);
+  if (Date.now() - plus.at > PLUS_FRESH_MS) return;
+  const chip = document.createElement("span");
+  chip.className = "hm-plus";
+  chip.textContent = fmt(T.guides.haimao.plus, { n: plus.n });
+  el.append(chip);
+  window.setTimeout(() => chip.remove(), 2000);
+}
 
 /** How long 佩丽卡监督 rides her 鬼火 to where the main roach moved */
 export const BIKE_MS = 1200;
@@ -237,6 +284,13 @@ export function updateGuide(el: HTMLElement, zoom: number, mark: GuideMark) {
       el.append(fire);
     }
     fire.className = `guide-fire fire-${mark.fire}`;
+  }
+  if (mark.id === "haimao") {
+    // her layers show a 触须之交's pink ground and heart by this class
+    el.classList.toggle("friend", mark.friend);
+    if (el.classList.contains("plain")) plainHaimao(el);
+    if (mark.plus) floatPlus(el, mark.plus);
+    return;
   }
   if (mark.ride) {
     // he faces the way he goes, with a pink ground and a heart for a 触须之交

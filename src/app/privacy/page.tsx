@@ -23,7 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
-import { discoMode, listenMode, sponsorMode, squadMode, studyMode } from "@/lib/server/env";
+import { discoMode, haimaoMode, listenMode, sponsorMode, squadMode, studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -87,6 +87,12 @@ export default async function Privacy() {
         {squadMode() === "on" && (
           <li>
             {fmtNodes(T.server.privacy.collect.squad, { b: <strong>{T.server.privacy.collect.squadB}</strong> })}
+          </li>
+        )}
+        {/* only once she is out for everyone (HAIMAO=on, src/lib/server/env.ts) */}
+        {haimaoMode() === "on" && (
+          <li>
+            {fmtNodes(T.server.privacy.collect.haimao, { b: <strong>{T.server.privacy.collect.haimaoB}</strong> })}
           </li>
         )}
         <li>

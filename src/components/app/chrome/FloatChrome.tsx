@@ -15,7 +15,6 @@ import {
   DiscoButton,
   FoldArrow,
   GuideFace,
-  GUIDE_ORDER,
   HotFlame,
   ListenIcon,
   listenLabel,
@@ -130,7 +129,7 @@ export default function FloatChrome(p: ChromeProps) {
                 </button>
               )}
               <span className="sep" aria-hidden="true" />
-              {GUIDE_ORDER.map((id) => (
+              {p.guides.map((id) => (
                 <button key={id} className="it guide" aria-label={GUIDES[id].name} onClick={() => p.onGuide(id)} tabIndex={folded.r ? -1 : undefined}>
                   <GuideFace id={id} size={30} />
                   <small>{GUIDES[id].short}</small>

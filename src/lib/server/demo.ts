@@ -9,6 +9,7 @@ import { db } from "./db";
 import { fastForward, forgetMinghe, moveMingheRiders } from "./minghe";
 import { askAgain, pretendAway, pretendBirthday, pretendFriendDays, pretendWeek } from "./perlica";
 import { forgetTalulah } from "./talulah";
+import { forgetHaimao } from "./haimao";
 import { clearInn, fastForwardSi, forgetSi, innMinute, pretendCrowd, pretendVisitors, wrongNext } from "./si";
 import { STAY_MS } from "../siInn";
 import {
@@ -16,6 +17,9 @@ import {
   declarations,
   friendCuts,
   friendships,
+  haimaoPlayers,
+  haimaoSpins,
+  haimaoTouches,
   moves,
   mingheTouches,
   perlicaTouches,
@@ -84,6 +88,10 @@ export async function resetDemo() {
   await db.delete(talulahTouches);
   await db.delete(mingheTouches);
   await db.delete(siTouches);
+  await db.delete(haimaoTouches);
+  await db.delete(haimaoPlayers);
+  await db.delete(haimaoSpins);
+  await db.update(users).set({ haimaoFriendSince: null }).where(isNotNull(users.haimaoFriendSince));
   await db.delete(siTickets);
   await db.delete(siInks);
   // only the rows she touched: rewriting every player's row would take seconds
@@ -181,7 +189,8 @@ export async function identities(currentId: string, homeId: string | null): Prom
  * 明河快进一天 (his journey a day on, and his riders moved along at once) and 清掉我和明河的记录, 明河都尉's;
  * 假装触须之交第 30 天, 假装今天是佩丽卡生日 and 假装过了一周, 佩丽卡监督's second step; 祀快进
  * (her clock moved on, and 缘缘庄's check-ins and check-outs told at once), 假装今天来了 n 人,
- * 假装已经有 n 人碰过她, 清掉缘缘庄, 下次一定拿错 and 清掉我和祀的记录, 祀掌柜's (si.ts).
+ * 假装已经有 n 人碰过她, 清掉缘缘庄, 下次一定拿错 and 清掉我和祀的记录, 祀掌柜's (si.ts); 清掉我和香艳制作人的记录,
+ * 香艳制作人's (haimao.ts).
  */
 export async function pretend(userId: string, what: PretendWhat, seconds = 0) {
   if (what === "left") return pretendAway(userId, seconds);
@@ -201,6 +210,7 @@ export async function pretend(userId: string, what: PretendWhat, seconds = 0) {
   if (what === "siClearInn") return clearInn();
   if (what === "siWrong") return wrongNext();
   if (what === "si") return forgetSi(userId);
+  if (what === "haimao") return forgetHaimao(userId);
   if (what === "mingheDay") {
     fastForward();
     await moveMingheRiders();

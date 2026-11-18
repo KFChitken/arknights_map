@@ -56,6 +56,8 @@ const TIPS: Partial<Record<DrawnAvatar, { left: [number, number]; right: [number
   talulah: { left: [16, 8], right: [48, 8] },
   minghe: { left: [16, 8], right: [48, 8] },
   si: { left: [16, 8], right: [48, 8] },
+  // 香艳制作人's feelers are her purple tentacles: their tips, low by her feet
+  haimao: { left: [15, 49], right: [49, 53] },
 };
 
 function tip(look: DrawnAvatar, side: "left" | "right", box: readonly number[]): [number, number] {

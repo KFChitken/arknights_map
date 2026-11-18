@@ -449,6 +449,79 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .minghe-route li.past { color: var(--muted); }
 .minghe-route li.today { font-weight: 800; color: var(--ink); background: #eef4ff; border-radius: 6px; }
 .minghe-trip { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+/*
+ * 香艳制作人 (src/lib/haimao.ts): her Q figure in five layers, on the map (guideMarker.ts) and on her cards (Haimao.tsx).
+ * Her tentacles sway and her gull nods now and then, about the pivots Breeze's original has them turn on, all still when
+ * motion is turned down. A 触须之交 sees a pink ground in place of her shadow, and a heart.
+ */
+/* painted on its own (contain): drawn without a graphics card, Chromium put her card's moving layers at the top of the
+   screen as a dark box */
+.hm-fig { display: block; width: 100%; height: 100%; contain: paint; }
+.hm-fig :is(.hm-ground, .hm-heart) { display: none; }
+.friend > .hm-fig :is(.hm-ground, .hm-heart) { display: inline; }
+.friend > .hm-fig .hm-shadow { display: none; }
+.hm-l { transform-box: fill-box; }
+.hm-tl { transform-origin: 85.9% 35.9%; animation: hm-tl 3.4s ease-in-out infinite alternate; }
+.hm-tr { transform-origin: 17.4% 10.6%; animation: hm-tr 2.9s ease-in-out -1.2s infinite alternate; }
+.hm-gl { transform-origin: 41.6% 91.6%; animation: hm-gl 6.5s ease-in-out infinite; }
+@keyframes hm-tl { from { transform: rotate(-5deg); } to { transform: rotate(6deg); } }
+@keyframes hm-tr { from { transform: rotate(5deg); } to { transform: rotate(-6deg); } }
+@keyframes hm-gl {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  66% { transform: rotate(-9deg); }
+  72% { transform: rotate(0deg); }
+  77% { transform: rotate(-7deg); }
+  83% { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-l { animation: none; }
+}
+/* on the map: her still picture (or the hood) where the layers will not load */
+.haimao-marker .hm-plain { display: none; }
+.haimao-marker.plain .hm-plain { display: block; }
+.haimao-marker.plain .hm-fig { display: none; }
+/* her 好感度 going up: floats up beside her and fades, clear of what she says over her head */
+.hm-plus {
+  position: absolute; left: calc(100% + 2px); top: 50%; z-index: 1; padding: 1px 8px; border-radius: 999px; background: #fff;
+  box-shadow: 0 1px 4px #0003; color: #c93466; font-size: 13px; font-weight: 800; white-space: nowrap; pointer-events: none;
+  transform: translateY(-50%); animation: hm-plus 1.8s ease-out forwards;
+}
+@keyframes hm-plus {
+  0% { opacity: 0; transform: translateY(-20%) scale(0.7); }
+  15% { opacity: 1; transform: translateY(-50%) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(calc(-50% - 10px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-plus { animation: hm-plus-still 1.8s linear forwards; }
+  @keyframes hm-plus-still { 0%, 70% { opacity: 1; transform: translateY(-50%); } 100% { opacity: 0; transform: translateY(-50%); } }
+}
+/* her card: as tall as 祀掌柜's at most, scrolling on a short screen with the touches in sight at its foot */
+.haimao-card { max-height: min(68vh, 560px, calc(100% - 242px - var(--safe-top) - var(--safe-bottom))); overflow-y: auto; overscroll-behavior: contain; }
+.haimao-card .touch-buttons { position: sticky; bottom: -12px; margin: 0 -12px -12px; padding: 6px 12px 12px; background: var(--paper); }
+.haimao-card .card-head strong { font-size: 17px; }
+.hm-avatar { position: relative; flex-shrink: 0; width: 64px; height: 64px; padding: 4px; border: 0; border-radius: 50%; background: #efe8fb; cursor: pointer; }
+.hm-avatar svg, .hm-avatar img { display: block; }
+.hm-meow {
+  position: absolute; left: 58%; top: -10px; padding: 1px 9px; border: 1.5px solid #d5dde8; border-radius: 12px; background: #fff;
+  color: var(--ink); font-size: 14px; font-weight: 700; white-space: nowrap; pointer-events: none; animation: guide-say 0.2s ease-out;
+}
+.hm-mute { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-decoration: underline dotted; }
+.hm-sign { display: flex; gap: 8px; align-items: baseline; font-size: 14px; line-height: 1.5; }
+.card .hm-sign { margin: 0; font-size: 14px; }
+.hm-sign span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.hm-sign b { font-weight: 600; }
+.hm-note { align-self: flex-start; margin: 0; padding: 2px 8px; border: 1px dashed #c93466; border-radius: 8px; color: #c93466; font-size: 12.5px; line-height: 1.5; }
+.card .hm-note { margin: 0; font-size: 12.5px; }
+.hm-note-c { display: table; margin: 8px auto 0; }
+.hm-love { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.hm-bar { flex: 1; min-width: 60px; height: 8px; border-radius: 99px; background: #fbe4ec; overflow: hidden; }
+.hm-bar i { display: block; height: 100%; border-radius: 99px; background: #c93466; transition: width 0.4s; }
+.hm-love b { font-variant-numeric: tabular-nums; }
+.hm-love .muted { margin-left: -6px; color: var(--muted); }
+/* her face in her introduction, cut from her picture as she was first drawn */
+.hm-intro-pic { position: relative; display: block; width: 96px; height: 96px; border: 2px solid #d5dde8; border-radius: 50%; background: #eee8f8; overflow: hidden; }
+.hm-intro-pic img { position: absolute; left: -104%; top: -10.4%; width: 300%; max-width: none; height: auto; }
 /* 佩丽卡监督's 鬼火 under her as she rides up (guideMarker.ts), fading once she stops */
 .guide-bike { position: absolute; z-index: -1; left: -25%; bottom: -16%; width: 150%; height: 70%; opacity: 0; transition: opacity 0.6s; pointer-events: none; }
 .guide-bike svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -2450,7 +2523,7 @@ button.link.desk-sign-in { margin-left: 6px; color: var(--ink); text-decoration:
 .heard-stack .ta-heard.landed { animation: none; }
 .heard-stack .ta-heard.older { transform: scale(0.94); transform-origin: 0 100%; opacity: 0.8; }
 /* a guide acting out a scene over the map steps off it meanwhile; 塔露拉干员's fire burns on */
-.guide-marker.acting > img, .guide-marker.acting .guide-name, .guide-marker.acting .guide-bubble, .guide-marker.acting.minghe-marker > * { visibility: hidden; }
+.guide-marker.acting > img, .guide-marker.acting .guide-name, .guide-marker.acting .guide-bubble, .guide-marker.acting:is(.minghe-marker, .haimao-marker) > * { visibility: hidden; }
 
 /* the cards of a sleeping main roach */
 .zz { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #e8edf9; color: #2b3a67; font-size: 11px; font-weight: 700; vertical-align: 2px; }

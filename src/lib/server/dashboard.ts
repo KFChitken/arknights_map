@@ -47,6 +47,7 @@ import {
   siInks,
   siTickets,
   siTouches,
+  haimaoTouches,
   statCounts,
   statSnapshots,
   talulahTouches,
@@ -70,9 +71,10 @@ const FRESH_MS = 2 * MINUTE;
 /** The 05:00 snapshot from this Beijing hour on; the backfill only before the next */
 const MORNING_HOUR = 5;
 const GUIDE_IDS = Object.keys(GUIDES) as GuideId[];
-const GUIDE_TABLES = { amiya: amiyaTouches, perlica: perlicaTouches, talulah: talulahTouches, minghe: mingheTouches, si: siTouches };
+const GUIDE_TABLES = { amiya: amiyaTouches, perlica: perlicaTouches, talulah: talulahTouches, minghe: mingheTouches, si: siTouches, haimao: haimaoTouches };
 /** Each guide's 触须之交 as the snapshot counts them: holders of her badge (祀掌柜's: her inn's, 塔卫二最好的客栈) */
-const GUIDE_BADGES: Record<GuideId, string> = { amiya: "amiya", perlica: "perlica", talulah: "talulah", minghe: "minghe", si: "siinn" };
+// 香艳制作人's: 被海猫 all 了, for ALL END, none until her story is here
+const GUIDE_BADGES: Record<GuideId, string> = { amiya: "amiya", perlica: "perlica", talulah: "talulah", minghe: "minghe", si: "siinn", haimao: "haimaoall" };
 /** The players' rankings show this many */
 const TOP = 10;
 

@@ -4,6 +4,8 @@ import {
   AMIYA_DANCE,
   AMIYA_PICTURE,
   GUIDE_ART_DIR,
+  HAIMAO_PICTURE,
+  haimaoMode,
   MINGHE_PICTURE,
   PARTY_MUSIC,
   PERLICA_PICTURE,
@@ -36,7 +38,24 @@ const PICTURES: Record<string, { on: boolean; type: string }> = {
   ...badgeArt(["minghe", "sevenstops"], MINGHE_PICTURE),
   ...badgeArt(["siqueue", "siinn", "sibook"], SI_PICTURE),
   ...badgeArt(["fullsquad"], AMIYA_PICTURE && PERLICA_PICTURE && TALULAH_PICTURE && MINGHE_PICTURE),
+  // 香艳制作人's Q figure whole (where she is drawn still) and in its five layers (her tentacles and her gull move),
+  // and her portrait for her introduction: only while HAIMAO shows her to anyone
+  ...haimaoArt(["haimao", "haimao-shadow", "haimao-tl", "haimao-tr", "haimao-body", "haimao-gull", "haimao-base"]),
 };
+
+function haimaoArt(names: string[]) {
+  return Object.fromEntries(
+    names.map((name) => [
+      `${name}.webp`,
+      {
+        get on() {
+          return HAIMAO_PICTURE && haimaoMode() !== "off";
+        },
+        type: "image/webp",
+      },
+    ]),
+  );
+}
 
 function badgeArt(ids: string[], on: boolean) {
   return Object.fromEntries(

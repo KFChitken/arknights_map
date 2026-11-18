@@ -477,7 +477,7 @@ describe("数据看板's 05:00 snapshot", () => {
           { key: "survivor", n: 1 },
         ],
       },
-      guides: { friends: { amiya: 2, perlica: 0, talulah: 0, minghe: 0, si: 1 }, inksStayed: 1, inksQueued: 1 },
+      guides: { friends: { amiya: 2, perlica: 0, talulah: 0, minghe: 0, si: 1, haimao: 0 }, inksStayed: 1, inksQueued: 1 },
       where: {
         china: 2,
         abroad: 1,
@@ -593,7 +593,7 @@ describe("数据看板's answer", () => {
       touches: { sneaky: 56, bold: 3 },
       decl: 1,
       replies: 3,
-      guides: { amiya: 3, perlica: 0, talulah: 0, minghe: 0, si: 0 },
+      guides: { amiya: 3, perlica: 0, talulah: 0, minghe: 0, si: 0, haimao: 0 },
     });
     expect(d.today).toEqual({ day: today, counts: { "touch.bold": 1, "guide.amiya": 1 }, online: 3, peak: { n: 7, at: hourAt(today, 3).getTime() } });
     expect(d.hours.today).toEqual(Array.from({ length: 24 }, (_, h) => (h === 3 ? 7 : h === 4 ? 6 : null)));

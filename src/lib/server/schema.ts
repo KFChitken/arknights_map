@@ -209,6 +209,8 @@ export const users = pgTable("users", {
   siStamps: integer("si_stamps").notNull().default(0),
   siStampedOn: text("si_stamped_on"),
   siStayedAt: at("si_stayed_at"),
+  /** 香艳制作人 (src/lib/haimao.ts): when they became 触须之交, cleared on 解除; the rest she keeps is in haimao_players */
+  haimaoFriendSince: at("haimao_friend_since"),
   /** 通行证寻访 (src/lib/server/passes.ts): the pass they wear, if any; gone with the pass */
   wornPass: bigint("worn_pass", { mode: "number" }).references((): AnyPgColumn => passes.id, { onDelete: "set null" }),
   /**
@@ -892,6 +894,50 @@ export const siTouches = pgTable(
     index("si_touches_today_idx").on(t.createdAt, t.userId).where(sql`${t.direction} = 'to_si'`),
   ],
 );
+
+/**
+ * 香艳制作人 (src/lib/haimao.ts). Her kinds: "touch" (her answer to a sneaky touch), "friend" (her answer
+ * that made them 触须之交), "plus" (her answer to their first bold touch of a day, which raised her 好感度)
+ * and "lift" (her line now and then once her 好感度 is past HAIMAO_LIFT_FROM).
+ */
+export const haimaoTouches = pgTable("haimao_touches", guideTouchColumns(), (t) => [
+  index("haimao_touches_user_idx").on(t.userId, t.createdAt),
+  uniqueIndex("haimao_touches_reply_idx").on(t.replyTo),
+]);
+
+/**
+ * What 香艳制作人 keeps for one player, from the first time anything raised or recorded it: her 好感度
+ * (0–100, never going down) and the device day (from 04:00, deviceDay) a bold touch last raised it; how
+ * many of her twelve scenes they have seen, the device day of the latest, and the answer they picked in
+ * each (picks[i], 0–2, for day i + 1); when they first saw ALL END; and how many of her daily lines since
+ * they have heard, with the device day of the latest.
+ */
+export const haimaoPlayers = pgTable("haimao_players", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  love: smallint("love").notNull().default(0),
+  plusOn: text("plus_on"),
+  days: smallint("days").notNull().default(0),
+  dayOn: text("day_on"),
+  picks: smallint("picks").array().notNull().default(sql`'{}'::smallint[]`),
+  endAt: at("end_at"),
+  chats: smallint("chats").notNull().default(0),
+  chatOn: text("chat_on"),
+  createdAt: createdAt(),
+});
+
+/**
+ * Her wheel (转 ALL): one spin a player, for good, its prizes given in the same transaction as this row.
+ * landed: the slice (1–6) the pointer stopped on before 神之一手 pushed it on to ALL.
+ */
+export const haimaoSpins = pgTable("haimao_spins", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  landed: smallint("landed").notNull(),
+  spunAt: at("spun_at").notNull().defaultNow(),
+});
 
 /** Where the map's copy of the ink roaches has read up to (src/lib/server/siInk.ts): si_inks.changed */
 export const siInksChanged = pgSequence("si_inks_changed_seq");

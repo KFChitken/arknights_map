@@ -533,6 +533,13 @@
       "when": 1794984291439,
       "tag": "0076_squad_pose",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794996624386,
+      "tag": "0077_haimao",
+      "breakpoints": true
     }
   ]
 }

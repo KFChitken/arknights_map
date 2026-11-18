@@ -39,6 +39,7 @@ import {
   weightSentence,
 } from "@/lib/perlica";
 import { answerLine, firstSentence, INK_FROM, inLine, MINGHE_NEAR, paintingTier, SI_AT, SI_ID, SI_LINES, SI_ZOOM, siRoach } from "@/lib/si";
+import { HAIMAO, HAIMAO_AT, HAIMAO_BOLD_LOVE, HAIMAO_ID, HAIMAO_LINES, HAIMAO_ZOOM, haimaoRoach, haimaoTouchLine } from "@/lib/haimao";
 import { brushOf, INN_CENTER, inkNow, innNumbers, toXY } from "@/lib/siInn";
 import { INK_LOOKS, variantOf } from "./map/inkArt";
 import type { InkTapped } from "./map/inkTap";
@@ -232,6 +233,8 @@ import {
 } from "./app/Perlica";
 import { forgetMingheHere, markMingheIntroShown, MingheIntroSheet, mingheIntroShown } from "./app/Minghe";
 import { forgetSiHere, markSiIntroShown, peekedToday, rememberPeek, SiCard, SiIntroSheet, siIntroShown } from "./app/Si";
+import { forgetHaimaoHere, HaimaoCard, HaimaoIntroSheet, haimaoIntroShown, markHaimaoIntroShown } from "./app/Haimao";
+import { playSound, primeSound } from "./app/haimaoSound";
 import { SiBookSheet } from "./app/SiBook";
 import { useSiInks, type SiView } from "./useSiInks";
 import type { InkPoint } from "@/lib/siTiles";
@@ -321,7 +324,7 @@ import NoMap from "./app/NoMap";
 import FloatChrome from "./app/chrome/FloatChrome";
 import "./app/chrome/chrome.css";
 import UiMenu from "./app/chrome/UiMenu";
-import type { ChromeProps, Counts } from "./app/chrome/parts";
+import { GUIDE_ORDER, type ChromeProps, type Counts } from "./app/chrome/parts";
 import { DEFAULT_UI, EARLY_UI_MARKS, loadFold, markUiAsked, saveFold, saveUi, shouldAskUi, storedUi, UNFOLDED, type UiFold, type UiName } from "@/lib/uiChoice";
 
 const MaplibreView = dynamic(() => import("./map/MaplibreView"), { ssr: false });
@@ -461,6 +464,8 @@ type Panel =
   | { kind: "mingheMove" }
   /** 祀掌柜 opened 缘缘庄 on the map, said once */
   | { kind: "siIntro" }
+  /** 香艳制作人 stands in 漕河泾 (only where HAIMAO shows her), said once */
+  | { kind: "haimaoIntro" }
   /** Your 集章本 from 祀掌柜: her portrait of you first, then this round's seals */
   | { kind: "siBook" }
   | { kind: "mine" }
@@ -554,6 +559,7 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * notices: 公告 everyone sees (src/lib/server/notices.ts), as they were when the page was made.
  * uiChoice: players may pick one of the three layouts (src/lib/uiChoice.ts); off (UI_CHOICE=off), everyone has 浮岛.
  * studyGuests: 325大学习 is open to visitors who have not signed in as well (STUDY=on); a player has it from me.study.
+ * haimaoGuests: 香艳制作人 shows to visitors who have not signed in as well (HAIMAO=on); a player learns it from me.haimao.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const guestStyles = (): Partial<Record<MapStyle, string>> =>
@@ -577,6 +583,7 @@ export default function MapApp({
   notices: firstNotices = { stamp: "", notices: [] },
   uiChoice = true,
   studyGuests = false,
+  haimaoGuests = false,
 }: {
   cn: boolean;
   home?: MainlandMap;
@@ -584,6 +591,7 @@ export default function MapApp({
   notices?: NoticeList;
   uiChoice?: boolean;
   studyGuests?: boolean;
+  haimaoGuests?: boolean;
 }) {
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
@@ -926,6 +934,8 @@ export default function MapApp({
   // 祀掌柜: 缘缘庄's numbers as last fetched, and whether her card was touched since it opened (else 「点开又走了」)
   const [siState, setSiState] = useState<SiState | null>(null);
   const siTouched = useRef(false);
+  // 香艳制作人's 好感度 went up just now, by so much: it floats up over her on the map
+  const [haimaoPlus, setHaimaoPlus] = useState<{ n: number; at: number } | null>(null);
   // the map's view while it shows 宏村 (within a few km of the inn), for drawing 缘缘庄; null elsewhere
   const [siView, setSiView] = useState<SiView | null>(null);
   // she drew your ink roach just now, since then: her brush draws it in on the map
@@ -2072,6 +2082,7 @@ export default function MapApp({
     if (id === TALULAH_ID) return openTalulah();
     if (id === MINGHE_ID) return setSelected({ kind: "other", roach: mingheRoach(day, Boolean(me?.minghe.friend)) });
     if (id === SI_ID) return openSi();
+    if (id === HAIMAO_ID) return openHaimao();
     const roach = roaches.find((r) => r.id === id);
     if (roach) setSelected({ kind: "other", roach });
   };
@@ -2969,14 +2980,16 @@ export default function MapApp({
 
   /**
    * What a guide says as she touches back, as far as a speech bubble has room: 塔露拉干员's handshake only begins
-   * there, and 祀掌柜's first sentence (si: the rest of what came of touching her).
+   * there, and 祀掌柜's first sentence (si: the rest of what came of touching her); 香艳制作人 says what the server
+   * picked (haimao).
    */
-  const guideLine = (g: NonNullable<TouchResult["guide"]>, si?: TouchResult["si"]) => {
+  const guideLine = (g: NonNullable<TouchResult["guide"]>, si?: TouchResult["si"], haimao?: TouchResult["haimao"]) => {
     const games = me?.profile.games ?? [];
     if (g.id === PERLICA_ID) return touchBackLine(g.kind, g.bold, g.times, g.others, g.line);
     if (g.id === TALULAH_ID) return g.kind === "friend" ? TALULAH_LINES.hello : talulahTouchLine("touch", g.bold, games);
     if (g.id === MINGHE_ID) return mingheTouchLine(g.kind === "friend" ? "friend" : "touch", g.bold);
     if (g.id === SI_ID) return firstSentence(answerLine(si?.answer ?? (g.kind === "friend" ? "friend" : "touch"), g.bold, g.line));
+    if (g.id === HAIMAO_ID) return haimaoTouchLine(haimao?.answer ?? (g.kind === "friend" ? "friend" : "touch"));
     return amiyaLine(g.bold ? "bold" : "sneaky", games);
   };
 
@@ -2991,7 +3004,17 @@ export default function MapApp({
   /** Touch a guide on the map: she touches back at once, and says so over her head once the scene is over. */
   const touchGuide = async (roach: PublicRoach, bold: boolean) => {
     const id = roach.id as GuideId;
-    const res = await once("touch", () => act((w) => w.touch(id, bold)));
+    // her sounds come once the server answers: woken within the tap, which is what lets a browser play them
+    if (id === HAIMAO_ID) primeSound();
+    const res = await once("touch", () =>
+      act((w) =>
+        w.touch(id, bold).catch((e: unknown) => {
+          // a touch of 香艳制作人's too many: she sings her dame dame as she says so
+          if (id === HAIMAO_ID && e instanceof WorldError && e.message === HAIMAO_LINES.tooMany) playSound("dame", true);
+          throw e;
+        }),
+      ),
+    );
     if (!res?.guide) return;
     if (id === SI_ID) {
       siTouched.current = true;
@@ -3006,7 +3029,7 @@ export default function MapApp({
     const innLine = res.si ? siInnLine(res.si) : null;
     const siSays = id === SI_ID && Boolean(res.guide.itemId || innLine);
     if (siSays) setSiAboutToSay(true);
-    const loading = res.newFriend || res.si ? Promise.all([loadFriends(), loadMe()]) : null;
+    const loading = res.newFriend || res.si || res.haimao?.plus ? Promise.all([loadFriends(), loadMe()]) : null;
     // should the page not catch up, she says nothing more, and the badge need not wait
     if (siSays) loading?.catch(() => setSiAboutToSay(false));
     const played = await playTouch(roach, res.newFriend ? "friend" : bold ? "bold" : "sneaky");
@@ -3031,11 +3054,26 @@ export default function MapApp({
     }
     // she touched back once already today: nothing more from her
     if (!itemId) return;
-    const line = guideLine(res.guide, res.si);
+    const line = guideLine(res.guide, res.si, res.haimao);
     const at =
-      id === PERLICA_ID ? perlicaShown : id === TALULAH_ID ? FIRE_AT : id === MINGHE_ID ? mingheAt : id === SI_ID ? SI_AT : AMIYA_AT;
+      id === PERLICA_ID
+        ? perlicaShown
+        : id === TALULAH_ID
+          ? FIRE_AT
+          : id === MINGHE_ID
+            ? mingheAt
+            : id === SI_ID
+              ? SI_AT
+              : id === HAIMAO_ID
+                ? HAIMAO_AT
+                : AMIYA_AT;
     window.setTimeout(async () => {
       say(id, line);
+      // she answers out loud as well: her gull to a sneaky touch, a bell to a bold one; her 好感度 floats up as it goes up
+      if (id === HAIMAO_ID) {
+        playSound(bold ? "ding" : "meow");
+        if (res.haimao?.plus) setHaimaoPlus({ n: HAIMAO_BOLD_LOVE, at: Date.now() });
+      }
       if (siSays) setSiAboutToSay(false);
       if (innLine) window.setTimeout(() => say(SI_ID, innLine), 3800);
       // she gave you a portrait as you became 触须之交 (perhaps her own, by mistake): the book opens on it
@@ -3122,7 +3160,8 @@ export default function MapApp({
     else if (res.guide?.itemId) setToast(fmt(T.map.inbox.guideReplied, { name: GUIDES[res.guide.id].name }));
     else if (res.guide) quietGuideToast(res.guide.id);
     else repliedToast(bold);
-    if (res.guide?.itemId) say(res.guide.id, guideLine(res.guide, res.si));
+    if (res.guide?.itemId) say(res.guide.id, guideLine(res.guide, res.si, res.haimao));
+    if (res.haimao?.plus) setHaimaoPlus({ n: HAIMAO_BOLD_LOVE, at: Date.now() });
     if (res.si) {
       const innLine = siInnLine(res.si);
       if (innLine) window.setTimeout(() => say(SI_ID, innLine), res.guide?.itemId ? 3800 : 0);
@@ -3131,7 +3170,7 @@ export default function MapApp({
     if (res.aside) queueNote({ lines: [PERLICA_MORE.aside] });
     const [items] = await Promise.all([loadInbox(), loadFriends()]);
     keepSnapshot(items);
-    if (me?.isNew || res.newFriend || res.si) await loadMe();
+    if (me?.isNew || res.newFriend || res.si || res.haimao?.plus) await loadMe();
     if (demoRef.current) await loadIdentities();
   };
 
@@ -3148,6 +3187,8 @@ export default function MapApp({
       ? FIRE_ZOOM
       : roach.id === SI_ID
         ? SI_ZOOM
+        : roach.id === HAIMAO_ID
+        ? HAIMAO_ZOOM
         : roach.id === MINGHE_ID
         ? MINGHE_ZOOM
         : // abroad, visitors from mainland China see our own map, which draws Rhode Island close up
@@ -3163,7 +3204,8 @@ export default function MapApp({
 
   const unfriend = async (friend: Friend) => {
     const guide = guideById(friend.id);
-    const question = guide
+    // 香艳制作人 has no line of her own for it: asked as of anyone
+    const question = guide && guide.id !== HAIMAO_ID
       ? guide.id === AMIYA_ID
         ? amiyaUnfriend()
         : guide.id === PERLICA_ID
@@ -4281,6 +4323,7 @@ export default function MapApp({
     }
     if (id === MINGHE_ID) return showMinghe();
     if (id === SI_ID) return showSi();
+    if (id === HAIMAO_ID) return showHaimao();
     if (!perlicaShown) return;
     setFocus({ lng: perlicaShown.lng, lat: perlicaShown.lat, zoom: 13, nonce: Date.now() });
     setSelected({ kind: "other", roach: perlicaRoach(perlicaShown, Boolean(me?.perlica.friend)) });
@@ -4365,16 +4408,17 @@ export default function MapApp({
   }, [siWanted, loadSiState]);
 
   /**
-   * Where to centre the map, at a zoom, so she stands in the open space above her card, which is taller
-   * than the others' (MapLibre levels; 512 px tiles)
+   * Where to centre the map, at a zoom, so a guide standing at `at` is in the open space above her card, at most
+   * cardPx tall (MapLibre levels; 512 px tiles), and below what lies along the top: for 祀掌柜's card and 香艳制作人's
    */
-  const aboveSiCard = (zoom: number) => {
+  const aboveCard = (at: LngLat, zoom: number, cardPx: number) => {
     const h = wrapRef.current?.clientHeight ?? window.innerHeight;
-    const card = Math.min(h * 0.68, 560) + 96;
+    const card = Math.min(h * 0.68, cardPx) + 96;
     const dy = Math.max(0, h / 2 - Math.max(90, (h - card) / 2 + 30));
-    const metresPerPx = (78271.517 * Math.cos((SI_AT.lat * Math.PI) / 180)) / 2 ** zoom;
-    return { lng: SI_AT.lng, lat: SI_AT.lat - (dy * metresPerPx) / 111_320, zoom, nonce: Date.now() };
+    const metresPerPx = (78271.517 * Math.cos((at.lat * Math.PI) / 180)) / 2 ** zoom;
+    return { lng: at.lng, lat: at.lat - (dy * metresPerPx) / 111_320, zoom, nonce: Date.now() };
   };
+  const aboveSiCard = (zoom: number) => aboveCard(SI_AT, zoom, 560);
   /** Her card, and what she says as it opens: put out at being remembered so late, or at being looked at and left today */
   const openSi = (zoom = viewRef.current.zoom) => {
     setFocus(aboveSiCard(zoom));
@@ -4393,6 +4437,44 @@ export default function MapApp({
     setPanel(null);
     openSi(SI_ZOOM);
   };
+
+  // ---- 香艳制作人 (src/lib/haimao.ts) ----
+
+  /** She shows to this player (me.haimao, as HAIMAO says), or to visitors too once she is out for everyone (HAIMAO=on) */
+  const haimaoHere = me ? Boolean(me.haimao) : haimaoGuests && visitorShown;
+  /** Her card, the map moving so she stands above it */
+  const openHaimao = (zoom = viewRef.current.zoom) => {
+    setFocus(aboveCard(HAIMAO_AT, zoom, 250));
+    setSelected({ kind: "other", roach: haimaoRoach(Boolean(me?.haimao?.friend)) });
+  };
+  /** To her, with her card open */
+  const showHaimao = () => {
+    setPanel(null);
+    openHaimao(HAIMAO_ZOOM);
+  };
+  /** A visitor reaches for her: the sign-in */
+  const haimaoSignIn = () =>
+    waitingMe
+      ? setToast(T.map.common.readingAccount)
+      : setPanel({ kind: "login", reason: fmt(T.map.touch.signInGuide, { them: HAIMAO.pronoun }) });
+  /** 清掉我和香艳制作人的记录 (development only), then a fresh visit */
+  const forgetHaimao = async () => {
+    const done = await act((w) => w.pretend("haimao").then(() => true));
+    if (!done || !me) return;
+    forgetHaimaoHere(me.id);
+    window.location.reload();
+  };
+  // she tells of herself once in this browser to each player with a roach she shows to, after the other guides
+  // have had their turns (one card a visit: introduced), and never during the tutorial
+  const haimaoTells = Boolean(
+    settled && idle && !perlicaBusy && main && me?.haimao && !me.mustReconsent && !newBadges.length && !unseenBadges,
+  );
+  useEffect(() => {
+    if (!haimaoTells || !meIdForIntro || introduced.current || haimaoIntroShown(meIdForIntro)) return;
+    markHaimaoIntroShown(meIdForIntro);
+    introduced.current = true;
+    setPanel({ kind: "haimaoIntro" });
+  }, [haimaoTells, meIdForIntro]);
 
   // 最近更新's buttons: there once what waited for the booklet has had its turn (src/lib/pamphlet.ts actionMayRun),
   // 消息 waiting for 佩丽卡监督's notes too
@@ -4583,6 +4665,18 @@ export default function MapApp({
       bubble: says.si ?? null,
       ...(offStage === SI_ID ? { acting: true } : {}),
     },
+    ...(haimaoHere
+      ? [
+          {
+            id: HAIMAO_ID,
+            at: HAIMAO_AT,
+            friend: Boolean(me?.haimao?.friend),
+            bubble: says.haimao ?? null,
+            ...(haimaoPlus ? { plus: haimaoPlus } : {}),
+            ...(offStage === HAIMAO_ID ? { acting: true } : {}),
+          },
+        ]
+      : []),
     ...(perlicaShown && me
       ? [
           {
@@ -5027,6 +5121,8 @@ export default function MapApp({
         return <MingheIntroSheet station={stationOf(day).name} onGo={showMinghe} onLater={() => setPanel(null)} />;
       case "siIntro":
         return <SiIntroSheet onGo={showSi} onLater={() => setPanel(null)} />;
+      case "haimaoIntro":
+        return <HaimaoIntroSheet onGo={showHaimao} onLater={() => setPanel(null)} />;
       case "siBook":
         if (!me) return null;
         return (
@@ -5292,6 +5388,7 @@ export default function MapApp({
             }}
             onForgetMinghe={forgetMinghe}
             onSi={siPretend}
+            onForgetHaimao={me?.haimao ? forgetHaimao : undefined}
             onPerlicaMore={perlicaMore}
             onClose={() => setPanel(null)}
           />
@@ -5459,6 +5556,7 @@ export default function MapApp({
       : null,
     sponsor: sponsorShown ? { onOpen: openSponsor } : null,
     squad: squadShown ? { room: squadRoom ? { n: squadRoom.members.length } : null, onOpen: () => setPanel({ kind: "squad" }) } : null,
+    guides: haimaoHere ? [...GUIDE_ORDER, HAIMAO_ID] : GUIDE_ORDER,
     onGuide: (id) => {
       setSelected(null);
       setPanel({ kind: "guide", id });
@@ -5688,7 +5786,25 @@ export default function MapApp({
           onClose={closeSi}
         />
       )}
-      {!placing && selected?.kind === "other" && selected.roach.id !== SI_ID && (
+      {!placing && selected?.kind === "other" && selected.roach.id === HAIMAO_ID && (
+        <HaimaoCard
+          me={me?.haimao ?? null}
+          friend={Boolean(me?.haimao?.friend)}
+          signedIn={Boolean(me)}
+          waiting={waitingMe}
+          touching={touching}
+          sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
+          onTouch={(bold) => touch(selected.roach, bold)}
+          onSignIn={haimaoSignIn}
+          onOpenFriend={me?.haimao?.friend ? () => setPanel({ kind: "friend", friendId: HAIMAO_ID, back: null }) : undefined}
+          under={stackUnder}
+          onClose={() => {
+            setSelected(null);
+            runAfterReport();
+          }}
+        />
+      )}
+      {!placing && selected?.kind === "other" && selected.roach.id !== SI_ID && selected.roach.id !== HAIMAO_ID && (
         <OtherRoachCard
           roach={selected.roach}
           look={look}

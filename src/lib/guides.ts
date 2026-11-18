@@ -5,14 +5,15 @@ import type { GuideAvatar, RoachColor } from "./types";
 /**
  * The site's own guide roaches: 阿米娅向导 (src/lib/amiya.ts), 佩丽卡监督
  * (src/lib/perlica.ts), 塔露拉干员 (src/lib/talulah.ts), 明河都尉
- * (src/lib/minghe.ts) and 祀掌柜 (src/lib/si.ts). None is an account. Every page draws them for itself,
+ * (src/lib/minghe.ts), 祀掌柜 (src/lib/si.ts) and 香艳制作人 (src/lib/haimao.ts,
+ * only where HAIMAO lets her be). None is an account. Every page draws them for itself,
  * they are never in the shared roach list, and the server knows each only by
  * their id and the prefix of their inbox items, with their touches with each player
  * in a table of their own that only that player reads. Nothing of theirs counts
  * between players: the touch quota, 触须之交 badges, the radar or the admin's numbers.
  */
 
-export type GuideId = "amiya" | "perlica" | "talulah" | "minghe" | "si";
+export type GuideId = "amiya" | "perlica" | "talulah" | "minghe" | "si" | "haimao";
 
 export type Guide = {
   id: GuideId;
@@ -132,6 +133,31 @@ export const GUIDES: Record<GuideId, Guide> = {
     },
     get tooMany() {
       return T.lib.guides.si.tooMany;
+    },
+  },
+  // purple, for the tentacles under her
+  haimao: {
+    id: "haimao",
+    get name() {
+      return T.lib.guides.haimao.name;
+    },
+    get short() {
+      return T.lib.guides.haimao.short;
+    },
+    avatar: "haimao",
+    color: "purple",
+    prefix: "k:",
+    get note() {
+      return T.lib.guides.haimao.note;
+    },
+    get card() {
+      return T.lib.guides.haimao.card;
+    },
+    get pronoun() {
+      return T.lib.guides.she;
+    },
+    get tooMany() {
+      return T.lib.guides.haimao.tooMany;
     },
   },
 };

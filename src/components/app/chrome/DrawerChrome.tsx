@@ -16,7 +16,6 @@ import {
   DiscoButton,
   Envelope,
   GuideFace,
-  GUIDE_ORDER,
   HotFlame,
   ListenIcon,
   listenLabel,
@@ -121,7 +120,7 @@ function Phone(p: ChromeProps) {
               <span aria-hidden="true">{T.map.bar.study}</span>
             </button>
           )}
-          {GUIDE_ORDER.map((id) => (
+          {p.guides.map((id) => (
             <button key={id} className="dchip glass" aria-label={GUIDES[id].name} onClick={() => p.onGuide(id)}>
               <GuideFace id={id} size={28} />
               <span aria-hidden="true">{GUIDES[id].short}</span>
@@ -147,7 +146,7 @@ function Phone(p: ChromeProps) {
             <RadarCard p={p} />
             <HotCard onOpen={p.onHot} />
             <div className="dguides">
-              {GUIDE_ORDER.map((id) => (
+              {p.guides.map((id) => (
                 <button key={id} aria-label={GUIDES[id].name} onClick={() => p.onGuide(id)}>
                   <GuideFace id={id} size={42} />
                   <small aria-hidden="true">{GUIDES[id].short}</small>
@@ -245,7 +244,7 @@ function Panel(p: ChromeProps) {
             {p.study && <StudyCard study={p.study} />}
             <h4>{T.ui.drawer.guides}</h4>
             <div className="glist">
-              {GUIDE_ORDER.map((id) => (
+              {p.guides.map((id) => (
                 <button key={id} onClick={() => p.onGuide(id)}>
                   <GuideFace id={id} size={30} />
                   <span>

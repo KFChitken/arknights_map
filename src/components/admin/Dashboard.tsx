@@ -891,6 +891,16 @@ const GUIDE_CARDS: { id: GuideId; name: string; place?: string; rows: (d: Dashbo
       ["正在排队", amount(d.snapshot?.guides.inksQueued, "只")],
     ],
   },
+  // only for those HAIMAO shows her to, so few while it is admins
+  {
+    id: "haimao",
+    name: "香艳制作人",
+    place: "漕河泾",
+    rows: (d) => [
+      ["一共被碰过", times(d.totals.guides.haimao)],
+      ["今天被碰", times(d.today.counts[guideName("haimao")] ?? 0)],
+    ],
+  },
 ];
 
 /** A guide's picture, or the hood in her colour while it is switched off */

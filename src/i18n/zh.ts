@@ -559,6 +559,9 @@ export const zh = {
       portraitSettled: "这幅画已经说好了。",
       notOnMap: "墨小强已经不在地图上了。",
     },
+    haimao: {
+      notHere: "没有这个功能。",
+    },
     passes: {
       openFirst: "先打开寻访页。",
       badDraw: "一次只能寻访 1 次或 10 次。",
@@ -793,6 +796,8 @@ export const zh = {
         listenB: "听歌：",
         squad: "{b}你开房间时选的服务器、难度和标签，和房间里每个人选的核心盟约和策略，登录的舟P在列表上能看到（显示房主的名字，和在卫戍名片里选了『列表上显示我的名字』的人的名字）；同盟密钥只给进了房间的人看。谁进过哪个房间、谁邀请了谁、谁请谁离开了房间、谁点了『准备』、每人这局标的核心盟约、策略和附加盟约、每人的蟑螂在房间里一直保持的动作、房间里放过和点过的歌，房间结束 24 小时后删除。快捷语句不保存，只记每天一共发了多少句；挥手、击掌、贴贴这些一下就完的动作也不保存。卫戍名片（核心盟约、策略、难度偏好，和列表上显示不显示名字）存在你的账号里，你进了房间才给别人看，清空或注销账号就删除。",
         squadB: "一起卫戍：",
+        haimao: "{b}你和她之间的触碰（偷偷还是大胆、什么时候）和她回你的话、你们成为触须之交的时间；她对你的好感度（0 到 100，只涨不掉），和今天大胆碰她加过好感度没有。香艳制作人不是真人，是粉丝玩梗，不是本人，和鹰角没关系；这些记录只有你自己看得到。",
+        haimaoB: "香艳制作人：",
         away: "{b}佩丽卡监督第一次出现时，会问你能不能记时间。你点「好」以后，{site}会记下你最后一次在看网站的时间，精确到秒：网页开着的时候，大约每分钟告诉服务器一声「还在」，切走或关掉时再说一声「走了」。这个时间只存一个，每次覆盖旧的，只用来让她告诉你离开了多久；她报时的消息只留最近 5 条。别人看不到，管理页也不显示，不记 IP。在「资料」里关掉「佩丽卡的离开计时」，就不再记，已经存的时间和她报时的消息和监督周报也一起删掉。",
         awayB: "佩丽卡监督的离开计时（你同意了才记）。",
         age: "{b}注册时请你确认已满 {minSignupAge} 岁，我只记下你确认的时间，{b2}。你同意这份说明、同意信息存放和发信、同意公开蟑螂位置、打开或关掉佩丽卡监督的离开计时，也都只记下当时的时间。",
@@ -1058,6 +1063,26 @@ export const zh = {
       bold: "她能看到你的资料",
       introTitle: "祀来{site}啦",
       goSee: "去宏村看看",
+    },
+    haimao: {
+      about: {
+        home: "在上海漕河泾，鹰角网络楼下的马路边，头上顶着一只黑尾鸥（日语叫「海猫」）。",
+        touch: "碰她，她每天会碰回你一次；大胆碰她就成为触须之交，每天第一次大胆碰她，好感度 +1。",
+      },
+      signature: "个性签名",
+      love: "好感度",
+      /** Floats up over her as her 好感度 goes up */
+      plus: "+{n} ♥",
+      sneakyNote: "她只知道被碰了一下",
+      boldUid: "她能看到你的资料和 UID",
+      bold: "她能看到你的资料",
+      /** Her sounds, on or off in this browser */
+      mute: "静音",
+      unmute: "取消静音",
+      /** Her figure on her card, a button: her gull says 喵 */
+      gull: "点她头上的海鸥",
+      introTitle: "香艳制作人来了",
+      goSee: "去找她",
     },
     dock: {
       find: "在地图上找到{them}",
@@ -1398,6 +1423,7 @@ export const zh = {
       button: "解除触须之交",
       minghe: "解除后他还会在各地走，大胆碰他一下就能再成为触须之交。",
       si: "解除后画像、集章本和墨小强都留着，大胆碰她一下就能再成为触须之交。",
+      haimao: "解除后她还在漕河泾，好感度也留着，大胆碰她一下就能再成为触须之交。",
       talulah: "解除后她还在太阳岛守着火，大胆碰她一下就能再握一次手。",
       player: "解除后你们互相看不到对方的蟑螂和记录了；想再成为触须之交，要重新互相大胆碰一次。",
     },
@@ -1455,6 +1481,7 @@ export const zh = {
       siCheckin: "你的墨小强住进缘缘庄了！",
       siCheckout: "你的墨小强从缘缘庄退房了",
       si: "祀掌柜回了你！",
+      haimao: "香艳制作人回了你！",
       reaction: "有舟P回应了你的宣言！",
       declaration: "附近有舟P发了宣言！",
     },
@@ -2499,7 +2526,7 @@ export const zh = {
         in: "{guide}碰了碰你",
         greet: "{guide}跟你打了招呼",
       },
-      guides: { amiya: "阿米娅向导", perlica: "佩丽卡监督", talulah: "塔露拉干员", minghe: "明河都尉", si: "祀掌柜" },
+      guides: { amiya: "阿米娅向导", perlica: "佩丽卡监督", talulah: "塔露拉干员", minghe: "明河都尉", si: "祀掌柜", haimao: "香艳制作人" },
       drink: "摄入酒精，醉倒翻肚皮",
       drinkUntil: "醉到 {time}",
       drinkSober: "{time} 醒了",
@@ -4724,8 +4751,30 @@ export const zh = {
         card: "在宏村开缘缘庄，不是真人",
         tooMany: "碰、碰够了没有！今天不许再碰了，明天再来。",
       },
+      haimao: {
+        name: "香艳制作人",
+        short: "制作人",
+        note: "住在上海漕河泾，鹰角网络楼下",
+        card: "住在上海漕河泾，鹰角网络楼下。粉丝玩梗，不是本人，和鹰角没关系",
+        tooMany: "dame dame～ 今天碰够啦，明天再来。",
+      },
       answered: "{name}回了你：「{line}」",
       says: "{name}：「{line}」",
+    },
+    haimao: {
+      /** What she says back to a touch, word for word as Breeze approved it */
+      line: {
+        sneaky: "欸？刚才是海鸥啄我吗？",
+        friend: "从今天起，你就是我的触须之交了。很可怕吗？是的，很可怕。",
+        plus: "好感度 +1。别告诉海鸥。",
+        lift: "你来得比下班的电梯还准时。",
+      },
+      /** On her card, her introduction and her sheet among the guides, word for word */
+      disclaimer: "粉丝玩梗，不是本人，和鹰角没关系",
+      signature: "try one first, get all always",
+      introCard: "上海漕河泾，鹰角网络楼下的马路边，来了一位香艳制作人，头上顶着一只黑尾鸥（日语叫「海猫」）。每天去找她聊一段剧情，好感度满了有 ALL END。她的转盘每人能转一次，怎么转都是 ALL。",
+      /** Her gull, tapped */
+      meow: "喵～",
     },
     help: {
       names: {

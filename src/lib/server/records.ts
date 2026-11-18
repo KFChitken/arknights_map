@@ -51,6 +51,7 @@ import {
   reactions,
   siInks,
   siTouches,
+  haimaoTouches,
   talulahTouches,
   touches,
   userBadges,
@@ -69,7 +70,7 @@ export { recordsOpen };
 
 /** The 小动作 and 催理智 among the notes between 触须之交 */
 const GESTURES = ["hug", "highfive", "luck", "sanity", "blanket", "water"];
-const GUIDE_TABLES = [amiyaTouches, perlicaTouches, talulahTouches, mingheTouches, siTouches] as const;
+const GUIDE_TABLES = [amiyaTouches, perlicaTouches, talulahTouches, mingheTouches, siTouches, haimaoTouches] as const;
 
 // a minute's answers kept, so a page reopened at once asks the database nothing. A summary is 25 to 35 kB in memory,
 // so the answers are held oldest first, each goes once its minute is up, and never more than KEEP_MAX are held
@@ -423,7 +424,7 @@ async function lite(user: UserRow, offset: number, now: number): Promise<Records
 // ---- the timeline ----
 
 /** Where each item comes from, and its place among items of the same moment (later in this list, earlier in the page) */
-const SOURCES = ["bd", "dr", "de", "fn", "fs", "ga", "gm", "gp", "gs", "gt", "ik", "mv", "pk", "ps", "ro", "rx", "ti", "to"] as const;
+const SOURCES = ["bd", "dr", "de", "fn", "fs", "ga", "gh", "gm", "gp", "gs", "gt", "ik", "mv", "pk", "ps", "ro", "rx", "ti", "to"] as const;
 type Src = (typeof SOURCES)[number];
 const isSrc = (v: unknown): v is Src => (SOURCES as readonly unknown[]).includes(v);
 
@@ -477,6 +478,7 @@ const GUIDE_SOURCES: [Src, GuideId, (typeof GUIDE_TABLES)[number]][] = [
   ["gt", "talulah", talulahTouches],
   ["gm", "minghe", mingheTouches],
   ["gs", "si", siTouches],
+  ["gh", "haimao", haimaoTouches],
 ];
 
 /** A page of the player's records, newest first, as the inbox would name everyone in them */

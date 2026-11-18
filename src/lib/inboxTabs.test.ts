@@ -52,6 +52,7 @@ const ONE_OF_EACH: [InboxItem, InboxTab, () => string][] = [
   [item("si", { line: "again" }), "touches", () => T.inbox.headline.siCheckin],
   [item("si", { line: "checkout" }), "touches", () => T.inbox.headline.siCheckout],
   [item("si", { line: "touch" }), "touches", () => T.inbox.headline.si],
+  [item("haimao", { line: "plus", bold: true, ignored: false }), "touches", () => T.inbox.headline.haimao],
   [reaction(), "replies", () => T.inbox.headline.reaction],
   [nearby(), "declarations", () => T.inbox.headline.declaration],
 ];
@@ -66,7 +67,7 @@ describe("消息's tabs", () => {
     const kinds: Record<InboxItem["kind"], true> = {
       staff: true, touch: true, declaration: true, reaction: true, friend: true, poke: true, pokeWoke: true, sanity: true,
       sanityThanks: true, gesture: true, gift: true, giftsFull: true, visit: true, game: true, anniversary: true, amiya: true,
-      perlica: true, talulah: true, minghe: true, si: true, listenInvite: true, listenAsk: true, squadInvite: true,
+      perlica: true, talulah: true, minghe: true, si: true, haimao: true, listenInvite: true, listenAsk: true, squadInvite: true,
     };
     expect(new Set(ONE_OF_EACH.map(([i]) => i.kind))).toEqual(new Set(Object.keys(kinds)));
     for (const [message, tab, title] of ONE_OF_EACH) {

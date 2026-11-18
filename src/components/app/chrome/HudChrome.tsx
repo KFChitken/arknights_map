@@ -17,7 +17,6 @@ import {
   Envelope,
   FoldArrow,
   GuideFace,
-  GUIDE_ORDER,
   HotFlame,
   ListenIcon,
   listenLabel,
@@ -223,7 +222,7 @@ export default function HudChrome(p: ChromeProps) {
       {sides && (
         <>
           <nav className={`etabs${folded ? " folded" : ""}`} aria-label={T.common.guides} aria-hidden={folded || undefined} {...swipe}>
-            {GUIDE_ORDER.map((id) => (
+            {p.guides.map((id) => (
               <button key={id} className="etab glass" aria-label={GUIDES[id].name} onClick={() => p.onGuide(id)} tabIndex={folded ? -1 : undefined}>
                 <GuideFace id={id} size={32} />
                 <small aria-hidden="true">{GUIDES[id].short}</small>
@@ -242,12 +241,12 @@ export default function HudChrome(p: ChromeProps) {
           >
             <Chev dir="left" />
             <span className="stack" aria-hidden="true">
-              {GUIDE_ORDER.slice(0, 3).map((id) => (
+              {p.guides.slice(0, 3).map((id) => (
                 <GuideFace key={id} id={id} size={24} />
               ))}
             </span>
             <span className="cnt" aria-hidden="true">
-              {fmt(T.ui.fold.guides5, { n: GUIDE_ORDER.length })}
+              {fmt(T.ui.fold.guides5, { n: p.guides.length })}
             </span>
           </button>
         </>

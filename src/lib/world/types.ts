@@ -190,7 +190,8 @@ export type PretendWhat =
   | "siCrowd"
   | "siClearInn"
   | "siWrong"
-  | "si";
+  | "si"
+  | "haimao";
 
 export type PlayerId = string;
 
@@ -300,7 +301,15 @@ export type TouchResult = PassesDot & {
   aside?: { id: "perlica"; itemId: string };
   /** Touching 祀掌柜 (src/lib/si.ts): what else came of it */
   si?: SiTouch;
+  /** Touching 香艳制作人 (src/lib/haimao.ts): how she answered, and her 好感度 now */
+  haimao?: HaimaoTouch;
 };
+
+/**
+ * What came of a touch of 香艳制作人: her answer's kind (null when she had answered today already), her
+ * 好感度 after it, and whether this touch raised it (the day's first bold one)
+ */
+export type HaimaoTouch = { answer: HaimaoItem["line"] | null; love: number; plus: boolean };
 
 /**
  * What came of a touch of 祀掌柜 besides her answer: the stamp she put in your 集章本 (which of STAMPS,
@@ -557,6 +566,8 @@ export type Me = {
   minghe: { friend: boolean; riding: { roachId: string; since: number; stops: number } | null; dayShift: number };
   /** 祀掌柜: 触须之交, her portrait, your 集章本 and your ink roach at 缘缘庄 */
   si: SiMe;
+  /** 香艳制作人 (src/lib/haimao.ts): only for a player she shows to (HAIMAO); never in what others get */
+  haimao?: HaimaoMe;
   /** 求助: your 触须之交's requests up since you last looked, and answers to yours you have not seen (the dot on 触须之交) */
   help: { asks: number; answers: number };
   /** Reports held their name and UIDs until the admin looks: hidden from others, and locked in 资料 */
@@ -791,7 +802,8 @@ export type InboxItem =
   | PerlicaItem
   | TalulahItem
   | MingheItem
-  | SiItem;
+  | SiItem
+  | HaimaoItem;
 
 /**
  * 祀掌柜 answering your touch (line "touch", variant: which of her three for how you touched her; or
@@ -849,6 +861,25 @@ export type TalulahItem = {
   replied: boolean;
   ignored: boolean;
 };
+
+/**
+ * 香艳制作人 answering your touch: "touch" (her line to a sneaky touch), "friend" (the one that made you
+ * 触须之交), "plus" (your first bold touch of the day, which raised her 好感度) or "lift" (her line now and
+ * then once her 好感度 is past HAIMAO_LIFT_FROM, src/lib/haimao.ts). bold: how you touched her.
+ */
+export type HaimaoItem = {
+  kind: "haimao";
+  id: string;
+  at: number;
+  seen: boolean;
+  line: "touch" | "friend" | "plus" | "lift";
+  bold: boolean;
+  replied: boolean;
+  ignored: boolean;
+};
+
+/** 香艳制作人 for one player: whether you are 触须之交, her 好感度 (0–100), and whether today's bold touch raised it yet */
+export type HaimaoMe = { friend: boolean; love: number; plusToday: boolean };
 
 /**
  * 佩丽卡监督 touching you: back after your touch (what "touch", or "friend" when it

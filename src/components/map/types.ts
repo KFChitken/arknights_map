@@ -133,6 +133,8 @@ export type GuideMark = {
   arrive?: { from: LngLat | null; nonce: number };
   dance?: number;
   acting?: boolean;
+  /** 香艳制作人's 好感度 went up by n just now (at, ms): it floats up over her once */
+  plus?: { n: number; at: number };
 };
 
 /**

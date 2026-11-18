@@ -24,6 +24,7 @@ import {
   reports,
   sessions,
   siTouches,
+  haimaoTouches,
   staffNotes,
   talulahTouches,
   touches,
@@ -61,6 +62,8 @@ export async function pruneOldActivity(now = Date.now()) {
   await db.delete(mingheTouches).where(lt(mingheTouches.createdAt, cutoff));
   // 祀掌柜's lines go like any guide's; her ink roaches and their tickets stay, as the painting they make
   await db.delete(siTouches).where(lt(siTouches.createdAt, cutoff));
+  // 香艳制作人's too; her 好感度 and the rest in haimao_players stay, as the privacy page says
+  await db.delete(haimaoTouches).where(lt(haimaoTouches.createdAt, cutoff));
   await pruneDeclarations(cutoff);
   await db.delete(moves).where(lt(moves.at, cutoff));
   await db.delete(drinks).where(lt(drinks.at, cutoff));

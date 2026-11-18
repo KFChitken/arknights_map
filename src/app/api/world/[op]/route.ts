@@ -319,6 +319,7 @@ export const POST = route(async (req, { params }: { params: Promise<{ op: string
         "siClearInn",
         "siWrong",
         "si",
+        "haimao",
       ];
       const what = kinds.find((k) => k === args[0]) ?? "day";
       await pretend(uid(), what, Number(args[1]) || 0);

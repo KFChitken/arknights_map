@@ -2,11 +2,12 @@
 
 import { fmtParts, T } from "@/i18n";
 import { GUIDES, type GuideId } from "@/lib/guides";
+import { HAIMAO_LINES } from "@/lib/haimao";
 import RoachIcon from "../RoachIcon";
 import Sheet from "./Sheet";
 
 /**
- * One of the five guides (src/lib/guides.ts), opened from wherever the layout puts them (src/components/app/chrome):
+ * One of the guides (src/lib/guides.ts), opened from wherever the layout puts them (src/components/app/chrome):
  * what they do, with a button that takes the map to them.
  */
 
@@ -35,6 +36,12 @@ const about = (): Record<GuideId, string[]> => ({
     T.guides.si.about.home,
     T.guides.si.about.stamps,
     T.guides.si.about.friends,
+  ],
+  // and, as on her card, who she is not
+  haimao: [
+    T.guides.haimao.about.home,
+    T.guides.haimao.about.touch,
+    HAIMAO_LINES.disclaimer,
   ],
 });
 

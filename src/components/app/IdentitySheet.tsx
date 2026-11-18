@@ -31,6 +31,7 @@ export default function IdentitySheet({
   onFakeRiders,
   onForgetMinghe,
   onSi,
+  onForgetHaimao,
   onPerlicaMore,
   onClose,
 }: {
@@ -57,6 +58,8 @@ export default function IdentitySheet({
   onPerlicaMore: (what: "drank" | "days" | "birthday" | "week") => void;
   /** 祀掌柜's (src/lib/si.ts): her clock on, pretend visitors and crowds, clear the inn or yourself; then reload */
   onSi: (what: PretendWhat, n?: number) => void;
+  /** 清掉我和香艳制作人的记录 (src/lib/haimao.ts), then reload; left out where she does not show to you (HAIMAO) */
+  onForgetHaimao?: () => void;
   onClose: () => void;
 }) {
   return (
@@ -208,6 +211,19 @@ export default function IdentitySheet({
           清掉我和祀的记录
         </button>
       </div>
+      {onForgetHaimao && (
+        <>
+          <h3>香艳制作人</h3>
+          <p className="hint" style={{ marginTop: 0 }}>
+            「清掉记录」以后，好感度回到 0，可以重新试触须之交、每天第一次大胆碰 +1 和介绍卡。
+          </p>
+          <div className="row-actions" style={{ flexWrap: "wrap" }}>
+            <button className="pill" onClick={onForgetHaimao}>
+              清掉我和香艳制作人的记录
+            </button>
+          </div>
+        </>
+      )}
       <button className="danger wide" style={{ marginTop: 20 }} onClick={onReset}>
         清空测试数据，从头开始
       </button>

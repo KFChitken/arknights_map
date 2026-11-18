@@ -21,7 +21,7 @@ import { useListenIntro, useListenPlayer, useListenRoom } from "../listening";
  * out three ways. MapApp.tsx says what each does; FloatChrome.tsx, DrawerChrome.tsx and HudChrome.tsx draw them.
  */
 
-/** The guides, in the order they are listed everywhere */
+/** The guides everyone has, in the order they are listed everywhere (香艳制作人 follows them where she shows: ChromeProps.guides) */
 export const GUIDE_ORDER: GuideId[] = ["amiya", "perlica", "talulah", "minghe", "si"];
 
 /** Where a layout puts its buttons the way a computer's wide screen has room for */
@@ -122,6 +122,8 @@ export type ChromeProps = {
   listen: { open: boolean; onToggle: () => void; disco: boolean } | null;
   /** 支持舟P地图, where the server shows it to them (me.sponsor, SPONSOR) and the site is not gray: opens its card */
   sponsor: { onOpen: () => void } | null;
+  /** The guides to list, in their order: GUIDE_ORDER, and 香艳制作人 after them where she shows (HAIMAO) */
+  guides: GuideId[];
   onGuide: (id: GuideId) => void;
   /** 界面, unless there is nothing in its menu here */
   ui: { open: boolean; onToggle: () => void; deskHint: boolean; onDeskHintDone: () => void } | null;

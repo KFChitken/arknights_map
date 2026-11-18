@@ -94,6 +94,7 @@ const GUIDE_NAMES: Record<string, () => string> = {
   talulah: () => T.records.timeline.guides.talulah,
   minghe: () => T.records.timeline.guides.minghe,
   si: () => T.records.timeline.guides.si,
+  haimao: () => T.records.timeline.guides.haimao,
 };
 
 /** An item's line */

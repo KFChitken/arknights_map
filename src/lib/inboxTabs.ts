@@ -29,6 +29,7 @@ const TAB_OF: Record<Exclude<InboxItem["kind"], "declaration">, InboxTab> = {
   talulah: "touches",
   minghe: "touches",
   si: "touches",
+  haimao: "touches",
   reaction: "replies",
   staff: "replies",
   friend: "friends",
@@ -85,6 +86,7 @@ const NOTICES: { is: (item: InboxItem) => boolean; title: () => string }[] = [
   { is: (i) => i.kind === "si" && (i.line === "checkin" || i.line === "again"), title: () => T.inbox.headline.siCheckin },
   { is: (i) => i.kind === "si" && i.line === "checkout", title: () => T.inbox.headline.siCheckout },
   { is: (i) => i.kind === "si", title: () => T.inbox.headline.si },
+  { is: (i) => i.kind === "haimao", title: () => T.inbox.headline.haimao },
   { is: (i) => i.kind === "reaction", title: () => T.inbox.headline.reaction },
   { is: (i) => i.kind === "declaration", title: () => T.inbox.headline.declaration },
 ];

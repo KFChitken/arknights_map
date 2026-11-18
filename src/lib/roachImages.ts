@@ -24,6 +24,8 @@ export const AVATAR_PICTURES: Partial<Record<DrawnAvatar, string>> = {
   talulah: "/guide-art/talulah.webp?v=1",
   minghe: "/guide-art/minghe.webp?v=1",
   si: "/guide-art/si.webp?v=1",
+  // her Q figure whole, where it is drawn still; on the map and her card it moves, in five layers (src/components/app/Haimao.tsx)
+  haimao: "/guide-art/haimao.webp?v=1",
 };
 
 /** What a picture that will not load gives way to, instead of the plain hood: 明河都尉 keeps his horse */

@@ -40,7 +40,7 @@ export type RoachAvatar = (typeof ROACH_AVATARS)[number];
 /** Looks given only as the thanks for sponsoring (支持舟P地图, src/lib/sponsor.ts), listed on its card */
 export const SPONSOR_AVATARS: readonly RoachAvatar[] = ["duck"];
 /** The guides' own looks (src/lib/guides.ts): drawn like the others, never offered to players */
-export const GUIDE_AVATARS = ["amiya", "perlica", "talulah", "minghe", "si"] as const;
+export const GUIDE_AVATARS = ["amiya", "perlica", "talulah", "minghe", "si", "haimao"] as const;
 export type GuideAvatar = (typeof GUIDE_AVATARS)[number];
 /** Every look the map can draw */
 export type DrawnAvatar = RoachAvatar | GuideAvatar;

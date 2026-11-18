@@ -106,6 +106,7 @@ import {
   unfriendTalulah,
 } from "./talulah";
 import { clonesOut, hasStayed, ignoreSi, inkOnMap, inkSeen, replySi, seeSi, siFriend, siInbox, siOf, touchSi, unfriendSi } from "./si";
+import { haimaoFriend, haimaoInbox, haimaoOf, ignoreHaimao, replyHaimao, seeHaimao, touchHaimao, unfriendHaimao } from "./haimao";
 import { inkTapped } from "./siInk";
 import { sponsorMe, sponsorOpen, thanksShownTo } from "./sponsor";
 import {
@@ -244,6 +245,16 @@ const GUIDE_WORLD: Record<GuideId, GuideWorld> = {
     inbox: siInbox,
     friend: (u) => (u.siFriendSince ? siFriend(u.siFriendSince) : null),
     unfriend: unfriendSi,
+  },
+  // only where HAIMAO shows her (src/lib/server/haimao.ts): to anyone else, touching her is refused and she has nothing
+  haimao: {
+    touch: (userId, bold, offsetMin) => touchHaimao(userId, bold, offsetMin),
+    reply: (userId, itemId, bold, offsetMin) => replyHaimao(userId, itemId, bold, offsetMin),
+    ignore: ignoreHaimao,
+    see: seeHaimao,
+    inbox: haimaoInbox,
+    friend: haimaoFriend,
+    unfriend: unfriendHaimao,
   },
 };
 /** In the order they are listed */
@@ -476,6 +487,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     talulah: talulahOf(u),
     minghe: await mingheOf(u),
     si: await siOf(u, offsetMin),
+    haimao: await haimaoOf(u, offsetMin),
     help: await helpCounts(u),
     profileHeld: Boolean(u.profileHeldAt),
     suspendedUntil: u.suspendedUntil && u.suspendedUntil.getTime() > Date.now() ? u.suspendedUntil.getTime() : null,

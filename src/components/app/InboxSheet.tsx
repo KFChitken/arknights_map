@@ -23,6 +23,7 @@ import { capCount, INBOX_TABS, noticeTitle, tabLabel, tabOf, type InboxTab } fro
 import { GIFTS_IN_PER_DAY } from "@/lib/passes";
 import { PERLICA_ID, perlicaText, perlicaUnfriend } from "@/lib/perlica";
 import { MINGHE_ID, mingheText, tripStops } from "@/lib/minghe";
+import { HAIMAO_ID, haimaoText } from "@/lib/haimao";
 import { SI_ID, siText } from "@/lib/si";
 import { talulahText } from "@/lib/talulah";
 import type { PublicProfile } from "@/lib/profile";
@@ -627,7 +628,14 @@ export default function InboxSheet({
         </div>
       );
     }
-    if (item.kind === "amiya" || item.kind === "perlica" || item.kind === "talulah" || item.kind === "minghe" || item.kind === "si") {
+    if (
+      item.kind === "amiya" ||
+      item.kind === "perlica" ||
+      item.kind === "talulah" ||
+      item.kind === "minghe" ||
+      item.kind === "si" ||
+      item.kind === "haimao"
+    ) {
       const text =
         item.kind === "amiya"
           ? amiyaText(item, games)
@@ -637,7 +645,9 @@ export default function InboxSheet({
               ? talulahText(item, games)
               : item.kind === "minghe"
                 ? mingheText(item)
-                : siText(item);
+                : item.kind === "si"
+                  ? siText(item)
+                  : haimaoText(item);
       return (
         <div key={item.id} className={cls}>
           <div>{text}</div>
@@ -1063,7 +1073,9 @@ export function FriendView({
               ? T.inbox.unfriend.minghe
               : friend.id === SI_ID
                 ? T.inbox.unfriend.si
-                : guide
+                : friend.id === HAIMAO_ID
+                  ? T.inbox.unfriend.haimao
+                  : guide
                   ? T.inbox.unfriend.talulah
                   : T.inbox.unfriend.player}
       </p>
