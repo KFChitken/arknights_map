@@ -468,7 +468,7 @@ type Panel =
   /** 香艳制作人 stands in 漕河泾 (only where HAIMAO shows her), said once */
   | { kind: "haimaoIntro" }
   /** 今日剧情 with 香艳制作人: the day's part of her story */
-  | { kind: "haimaoStory" }
+  | { kind: "haimaoStory"; review: boolean }
   /** Your 集章本 from 祀掌柜: her portrait of you first, then this round's seals */
   | { kind: "siBook" }
   | { kind: "mine" }
@@ -4455,10 +4455,13 @@ export default function MapApp({
     setPanel(null);
     openHaimao(HAIMAO_ZOOM);
   };
-  /** 今日剧情, opened from her card: her sounds woken within the tap, for what she says once the server answers */
-  const openHaimaoStory = () => {
+  /**
+   * 今日剧情, opened from her card (review: as 回顾剧情, its list of the scenes seen first): her sounds woken within the
+   * tap, for what she says once the server answers
+   */
+  const openHaimaoStory = (review = false) => {
     primeSound();
-    setPanel({ kind: "haimaoStory" });
+    setPanel({ kind: "haimaoStory", review });
   };
   /** Out of 今日剧情 (unless a refusal opened something else), her 好感度 and any new badge fetched */
   const closeHaimaoStory = () => {
@@ -5139,7 +5142,7 @@ export default function MapApp({
         return <HaimaoIntroSheet onGo={showHaimao} onLater={() => setPanel(null)} />;
       case "haimaoStory":
         if (!me?.haimao) return null;
-        return <HaimaoStorySheet run={(call) => act(() => call())} onClose={closeHaimaoStory} />;
+        return <HaimaoStorySheet run={(call) => act(() => call())} review={p.review} onClose={closeHaimaoStory} />;
       case "siBook":
         if (!me) return null;
         return (
@@ -5813,7 +5816,8 @@ export default function MapApp({
           sharesUid={Boolean(me?.profile.shareUid && me.profile.games.some((g) => me.profile.uid[g]))}
           onTouch={(bold) => touch(selected.roach, bold)}
           onSignIn={haimaoSignIn}
-          onStory={openHaimaoStory}
+          onStory={() => openHaimaoStory()}
+          onReview={() => openHaimaoStory(true)}
           onOpenFriend={me?.haimao?.friend ? () => setPanel({ kind: "friend", friendId: HAIMAO_ID, back: null }) : undefined}
           under={stackUnder}
           onClose={() => {

@@ -1085,6 +1085,8 @@ export const zh = {
       goSee: "去找她",
       /** On her card, and the title of what it opens: the day's scene of her story, or after ALL END the day's line */
       today: "今日剧情",
+      /** On her card once the first scene is seen, and under the stage: the scenes seen, to see again */
+      review: "回顾剧情",
       stage: {
         /** The corner of the stage: which scene this is */
         day: "第 {n} 天 · {title}",
@@ -1093,7 +1095,7 @@ export const zh = {
         daily: "今天的一句",
         more: "点一下继续 ▼",
         /** Told once the day's scene is over */
-        done: "（今天的剧情看完了。明天再来，开下一段。）",
+        done: "（今天的剧情看完了。明天再来，开下一段。看过的几天，点「回顾剧情」能重看。）",
         /** Told once the twelfth is over, before ALL END */
         last: "（12 段都看完了。怎么选都是 ALL END，点下面的「看 ALL END」。）",
         seeEnd: "看 ALL END →",
@@ -1102,6 +1104,21 @@ export const zh = {
         endNote: "明天起，每天来「今日剧情」，她和你说一句。",
         /** What flies across the stage when everyone sings along (day 9) */
         danmaku: ["全场 damedane", "damedane", "dame dame～", "全场一起 damedane", "dame～", "damedane damedane"],
+        /** The corner of the stage while a scene seen is seen again: {what} is its day and title, or ALL END */
+        reviewing: "回顾 · {what}",
+        /** Under the title of the list of scenes seen */
+        reviewHint: "看过的每一天都能重看。你当时选的回答会标出来；重看时点别的回答也行，不涨好感。",
+        /** A scene in that list, before its title */
+        listDay: "第 {n} 天",
+        /** ALL END in that list, before its name */
+        listEnd: "结局",
+        close: "关掉",
+        /** The answer picked the day the scene was first seen, marked when it is seen again */
+        was: "你当时选的",
+        /** Told once a scene seen again is over */
+        reviewDone: "（回顾完了。点下面的「回到今天」，或者再点「回顾剧情」看别的一天。）",
+        /** Under the stage while a scene seen is seen again: back to where today's was */
+        back: "回到今天",
       },
     },
     dock: {

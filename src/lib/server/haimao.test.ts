@@ -65,8 +65,8 @@ describe("香艳制作人 on the server", () => {
     await db.insert(admins).values({ userId: mod, role: "mod", alias: "小管" });
     await loadMods();
     vi.stubEnv("HAIMAO", "admins");
-    expect(await herCard(owner)).toEqual({ friend: false, love: 0, plusToday: false });
-    expect(await herCard(mod)).toEqual({ friend: false, love: 0, plusToday: false });
+    expect(await herCard(owner)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
+    expect(await herCard(mod)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
     expect(await herCard(someone)).toBeUndefined();
     await expect(touch(someone, true)).rejects.toThrow("没有这个功能。");
     expect((await touch(owner, true)).newFriend).toBe(HAIMAO.name);
@@ -80,7 +80,7 @@ describe("香艳制作人 on the server", () => {
     const again = await touch(me, false);
     expect(again.guide!.itemId).toBeNull();
     expect(again.haimao).toEqual({ answer: null, love: 0, plus: false });
-    expect(await herCard(me)).toEqual({ friend: false, love: 0, plusToday: false });
+    expect(await herCard(me)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
     // in the inbox in her own words
     const [item] = (await world.inbox(me)).filter((i) => i.kind === "haimao");
     expect(item).toMatchObject({ id: first.guide!.itemId, line: "touch", bold: false, seen: false, replied: false });
@@ -94,7 +94,7 @@ describe("香艳制作人 on the server", () => {
     const bold = await touch(me, true);
     expect(bold).toMatchObject({ newFriend: HAIMAO.name, guide: { kind: "friend" }, haimao: { answer: "friend", love: 1, plus: true } });
     expect(bold.guide!.itemId).toMatch(/^k:/);
-    expect(await herCard(me)).toEqual({ friend: true, love: 1, plusToday: true });
+    expect(await herCard(me)).toEqual({ friend: true, love: 1, plusToday: true, days: 0 });
     // another bold touch that day: nothing more
     expect((await touch(me, true)).haimao).toEqual({ answer: null, love: 1, plus: false });
     expect((await hers(me)).map((r) => r.kind)).toEqual(["touch", "friend"]);
@@ -103,7 +103,7 @@ describe("香艳制作人 on the server", () => {
     expect(await herCard(me)).toMatchObject({ love: 1, plusToday: false });
     const next = await touch(me, true);
     expect(next).toMatchObject({ newFriend: null, guide: { kind: "touch" }, haimao: { answer: "plus", love: 2, plus: true } });
-    expect(await herCard(me)).toEqual({ friend: true, love: 2, plusToday: true });
+    expect(await herCard(me)).toEqual({ friend: true, love: 2, plusToday: true, days: 0 });
     const friends = await world.friends(me);
     expect(friends.find((f) => f.id === HAIMAO_ID)).toMatchObject({ profile: { displayName: HAIMAO.name } });
   });
@@ -150,7 +150,7 @@ describe("香艳制作人 on the server", () => {
     const me = await signUp("me@example.com");
     await touch(me, true);
     await world.unfriend(me, HAIMAO_ID);
-    expect(await herCard(me)).toEqual({ friend: false, love: 1, plusToday: true });
+    expect(await herCard(me)).toEqual({ friend: false, love: 1, plusToday: true, days: 0 });
     expect((await world.friends(me)).map((f) => f.id)).not.toContain(HAIMAO_ID);
     // answered though it is not the day's first, and her 好感度 is not raised twice in a day
     expect(await touch(me, true)).toMatchObject({ newFriend: HAIMAO.name, haimao: { answer: "friend", love: 1, plus: false } });
@@ -166,7 +166,7 @@ describe("香艳制作人 on the server", () => {
     const me = await signUp("me@example.com");
     await touch(me, true);
     await pretend(me, "haimao");
-    expect(await herCard(me)).toEqual({ friend: false, love: 0, plusToday: false });
+    expect(await herCard(me)).toEqual({ friend: false, love: 0, plusToday: false, days: 0 });
     expect(await db.select().from(haimaoTouches).where(eq(haimaoTouches.userId, me))).toEqual([]);
     await touch(me, true);
     await deleteAccount((await db.select().from(users).where(eq(users.id, me)))[0]);
@@ -210,7 +210,8 @@ describe("香艳制作人's story", () => {
     expect(await pickStory(me, 1, 2)).toMatchObject({ love: 8, picks: [0], plus: 0 });
     expect(await pickStory(me, 2, 0)).toMatchObject({ love: 8, days: 1, plus: 0 });
     expect((await openStory(me)).today).toEqual({ kind: "scene", day: 1, picked: 0 });
-    expect((await herCard(me))!.love).toBe(8);
+    // her card counts it seen: 回顾剧情 has a day to list
+    expect(await herCard(me)).toMatchObject({ love: 8, days: 1 });
   });
 
   it("opens the next scene the next day, however many days later, and adds what each answer brings", async () => {
@@ -260,7 +261,9 @@ describe("香艳制作人's story", () => {
     expect(await endStory(me)).toMatchObject({ love: HAIMAO_LOVE_MAX, end: true, plus: 0 });
     expect((await openStory(me)).today).toEqual({ kind: "end" });
     expect(await pickStory(me, 12, 0)).toMatchObject({ love: HAIMAO_LOVE_MAX, picks: expect.arrayContaining([1]), plus: 0 });
-    expect((await herCard(me))!.love).toBe(HAIMAO_LOVE_MAX);
+    // the twelve all there to see again, with the answers picked then
+    expect(await herCard(me)).toMatchObject({ love: HAIMAO_LOVE_MAX, days: HAIMAO_DAYS });
+    expect((await openStory(me)).picks).toHaveLength(HAIMAO_DAYS);
   });
 
   it("then has one line a day, the ten in turn from the first, the same one all day", async () => {

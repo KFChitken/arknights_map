@@ -29,6 +29,9 @@ import Sheet from "./Sheet";
  * line at a time, her face changing with what she says, until its three answers; after the twelfth ALL END, at dusk;
  * after that, her line of the day. What the server keeps (src/lib/server/haimao.ts) decides what today holds: an
  * answer shows at once, and the 好感度 it brought once the server has it.
+ *
+ * 回顾剧情: once today's part is over, any scene seen (and ALL END) from its first line again, the answer picked then
+ * marked; another may be picked to hear her reply, which keeps nothing. 回到今天 goes back to where today was.
  */
 
 /** A server call made as the map makes them: a refusal said, or the sign-in asked for; undefined then */
@@ -132,7 +135,8 @@ function facesOf(view: View | null): HaimaoFace[] {
   return [...new Set<HaimaoFace>(["smile", ...lines.flatMap((l) => (l.face ? [l.face] : []))])];
 }
 
-export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onClose: () => void }) {
+/** review: opened as 回顾剧情, with the list of the scenes seen first */
+export default function HaimaoStorySheet({ run, review = false, onClose }: { run: HaimaoRun; review?: boolean; onClose: () => void }) {
   const S = T.guides.haimao.stage;
   const [story, setStory] = useState<HaimaoStory | null>(null);
   const [view, setView] = useState<View | null>(null);
@@ -149,6 +153,11 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
   const [plain, setPlain] = useState(false);
   // the streets fetched so far: each only once it is wanted
   const [streets, setStreets] = useState({ day: false, dusk: false });
+  // 回顾剧情: its list over the stage; a scene seen being seen again; today's new scene, waiting while the list was
+  // opened first
+  const [listOpen, setListOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [held, setHeld] = useState<StoryScene | null>(null);
   const queue = useRef<StoryLine[]>([]);
   // when the line now typing began: its characters come at TYPE_MS each however slowly the page draws
   const typingFrom = useRef(0);
@@ -156,6 +165,7 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
   const stage = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLButtonElement>(null);
   const firstAnswer = useRef<HTMLButtonElement>(null);
+  const firstDay = useRef<HTMLButtonElement>(null);
 
   const chars = useMemo(() => Array.from(line?.text ?? ""), [line]);
   const typing = typed < chars.length;
@@ -185,6 +195,10 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
   useEffect(() => {
     if (mode === "choose") firstAnswer.current?.focus({ preventScroll: true });
   }, [mode]);
+
+  useEffect(() => {
+    if (listOpen) firstDay.current?.focus({ preventScroll: true });
+  }, [listOpen]);
 
   /** A line said (or told), with what it sets off: her face, what she takes out, the eggs, her gull */
   const say = (l: StoryLine, instant = false) => {
@@ -230,7 +244,10 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
     later(still ? 3000 : 8500, () => setFlying((f) => (f?.[0]?.key.startsWith(`${at}-`) ? null : f)));
   };
 
+  /** A scene set (or none): its prop out and its eggs open if it is over; what the last one had going, stopped */
   const setting = (scene: StoryScene | null, over: boolean) => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
     setPropOn(over && Boolean(scene?.prop));
     setCracked(over && scene?.eggs ? 3 : 0);
     setFlying(null);
@@ -276,12 +293,65 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
     setLine(null);
   };
 
-  const playChat = (i: number) => {
+  const playChat = (i: number, instant = false) => {
     setView({ kind: "chat", line: i });
     setMode("chat");
     setting(null, false);
     queue.current = [];
-    say(dailyLine(i));
+    say(dailyLine(i), instant);
+  };
+
+  /** Where today is, as the server keeps it; instant: back to it, as it stands */
+  const toToday = (s: HaimaoStory, instant: boolean) => {
+    const t = s.today;
+    if (t.kind === "end") endCard();
+    else if (t.kind === "chat") playChat(t.line, instant);
+    else if (t.picked === null) playScene(storyScene(t.day));
+    else sceneDone(storyScene(t.day), true);
+  };
+
+  /** Today's new scene, behind the list it was opened with: on its street, not begun */
+  const hold = (scene: StoryScene) => {
+    setHeld(scene);
+    setView({ kind: "scene", scene });
+    setMode("lines");
+    setting(scene, false);
+    queue.current = [];
+    setLine(null);
+  };
+
+  /** 回顾剧情's list, closed: today's new scene begins, if it was waiting */
+  const closeList = () => {
+    setListOpen(false);
+    if (held && !reviewing) {
+      setHeld(null);
+      playScene(held);
+    } else box.current?.focus({ preventScroll: true });
+  };
+
+  /** A scene seen (n), or ALL END (0), from its first line again */
+  const seeAgain = (n: number) => {
+    setListOpen(false);
+    setReviewing(true);
+    if (n > 0) playScene(storyScene(n));
+    else playEnd();
+    box.current?.focus({ preventScroll: true });
+  };
+
+  const backToToday = () => {
+    setReviewing(false);
+    if (held) {
+      setHeld(null);
+      playScene(held);
+    } else if (story) toToday(story, true);
+    box.current?.focus({ preventScroll: true });
+  };
+
+  /** A scene seen again, over */
+  const seenAgain = () => {
+    setMode("done");
+    queue.current = [];
+    say({ text: S.reviewDone, face: null });
   };
 
   const took = (step: HaimaoStep) => {
@@ -297,10 +367,11 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
       if (!s) return onClose();
       setStory(s);
       const t = s.today;
-      if (t.kind === "end") endCard();
-      else if (t.kind === "chat") playChat(t.line);
-      else if (t.picked === null) playScene(storyScene(t.day));
-      else sceneDone(storyScene(t.day), true);
+      if (review && s.days > 0) {
+        setListOpen(true);
+        if (t.kind === "scene" && t.picked === null) return hold(storyScene(t.day));
+      }
+      toToday(s, false);
     });
     return () => {
       gone = true;
@@ -317,14 +388,14 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
     const next = queue.current.shift();
     if (next) return say(next);
     if (mode === "lines") return setMode("choose");
-    if (mode === "react" && view?.kind === "scene") return sceneDone(view.scene, false);
+    if (mode === "react" && view?.kind === "scene") return reviewing ? seenAgain() : sceneDone(view.scene, false);
     if (mode === "end") {
       setMode("endCard");
       playSound("all", true);
     }
   };
 
-  /** Their answer: her reply at once, and the 好感度 it brings once the server has kept it */
+  /** Their answer: her reply at once, and the 好感度 it brings once the server has kept it; seen again, nothing kept */
   const pick = (k: number) => {
     if (view?.kind !== "scene" || mode !== "choose") return;
     const { scene } = view;
@@ -338,7 +409,7 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
     queue.current = a.reply.slice(1);
     say(a.reply[0]);
     box.current?.focus({ preventScroll: true });
-    void run(() => haimaoApi.pick(scene.day, k)).then((step) => step && took(step));
+    if (!reviewing) void run(() => haimaoApi.pick(scene.day, k)).then((step) => step && took(step));
   };
 
   const seeEnd = async () => {
@@ -352,15 +423,26 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
 
   const love = Math.min(HAIMAO_LOVE_MAX, Math.max(0, story?.love ?? 0));
   const scene = view?.kind === "scene" ? view.scene : null;
-  const label = !view
+  const where = !view
     ? null
     : view.kind === "scene"
       ? fmt(S.day, { n: view.scene.day, title: view.scene.title })
       : view.kind === "end"
         ? S.end
         : S.daily;
-  const more = !typing && (mode === "lines" || mode === "react" || mode === "end");
-  const toEnd = mode === "done" && scene?.day === HAIMAO_DAYS && story && !story.end;
+  const label = where && reviewing ? fmt(S.reviewing, { what: where }) : where;
+  const more = !typing && Boolean(line) && (mode === "lines" || mode === "react" || mode === "end");
+  const toEnd = mode === "done" && !reviewing && scene?.day === HAIMAO_DAYS && story && !story.end;
+  const seen = story?.days ?? 0;
+  // 回顾剧情 once today's part (or the scene seen again) is over
+  const canReview = seen > 0 && !listOpen && (mode === "done" || mode === "endCard" || mode === "chat");
+  // the answer picked the day the scene was first seen
+  const was = reviewing && scene ? story?.picks[scene.day - 1] : undefined;
+  const again = seen > 0 && (
+    <button type="button" className="hm-st-again" disabled={!canReview} onClick={() => setListOpen(true)}>
+      {T.guides.haimao.review}
+    </button>
+  );
 
   return (
     <Sheet
@@ -368,10 +450,22 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
       className="hm-story"
       onClose={onClose}
       footer={
-        toEnd ? (
-          <button type="button" className="primary wide" disabled={busy} onClick={() => void seeEnd()}>
-            {S.seeEnd}
-          </button>
+        reviewing ? (
+          <div className="hm-st-foot">
+            <button type="button" className="primary" onClick={backToToday}>
+              {S.back}
+            </button>
+            {again}
+          </div>
+        ) : toEnd || again ? (
+          <div className="hm-st-foot">
+            {toEnd && (
+              <button type="button" className="primary" disabled={busy} onClick={() => void seeEnd()}>
+                {S.seeEnd}
+              </button>
+            )}
+            {again}
+          </div>
         ) : undefined
       }
     >
@@ -457,8 +551,15 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
         {mode === "choose" && scene && (
           <div className="hm-st-choices">
             {scene.answers.map((a, k) => (
-              <button key={k} ref={k === 0 ? firstAnswer : undefined} type="button" onClick={() => pick(k)}>
+              <button
+                key={k}
+                ref={k === 0 ? firstAnswer : undefined}
+                type="button"
+                className={k === was ? "was" : undefined}
+                onClick={() => pick(k)}
+              >
                 {a.text}
+                {k === was && <span className="hm-st-was">{S.was}</span>}
               </button>
             ))}
           </div>
@@ -483,7 +584,32 @@ export default function HaimaoStorySheet({ run, onClose }: { run: HaimaoRun; onC
               <p className="hm-st-end-t">{S.end}</p>
               <BadgeImg id={HAIMAO_BADGE} size={120} alt="" />
               <p className="hm-st-end-s">{S.badge}</p>
-              <p className="hm-st-end-n">{S.endNote}</p>
+              {!reviewing && <p className="hm-st-end-n">{S.endNote}</p>}
+            </div>
+          </div>
+        )}
+        {listOpen && story && (
+          <div className="hm-st-list">
+            <div className="hm-st-list-in" role="dialog" aria-label={T.guides.haimao.review}>
+              <p className="hm-st-list-t">{T.guides.haimao.review}</p>
+              <p className="hm-st-list-s">{S.reviewHint}</p>
+              <div className="hm-st-list-days">
+                {Array.from({ length: Math.min(seen, HAIMAO_DAYS) }, (_, i) => (
+                  <button key={i} ref={i === 0 ? firstDay : undefined} type="button" onClick={() => seeAgain(i + 1)}>
+                    <b>{fmt(S.listDay, { n: i + 1 })}</b>
+                    {storyScene(i + 1).title}
+                  </button>
+                ))}
+                {story.end && (
+                  <button type="button" onClick={() => seeAgain(0)}>
+                    <b>{S.listEnd}</b>
+                    {S.end}
+                  </button>
+                )}
+              </div>
+              <button type="button" className="hm-st-list-x" onClick={closeList}>
+                {S.close}
+              </button>
             </div>
           </div>
         )}

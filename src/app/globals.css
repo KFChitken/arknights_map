@@ -552,7 +552,16 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .hm-st-meter b { font-variant-numeric: tabular-nums; }
 .hm-st-bar { flex: none; width: clamp(48px, 13vw, 120px); height: 8px; border-radius: 99px; background: #f5cddb; overflow: hidden; }
 .hm-st-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ff7aa2, #e0447a); transition: width 0.6s ease; }
-.hm-st-day { padding: 4px 12px; border-radius: 999px; background: rgba(22, 33, 59, 0.8); color: #fff; font-size: 13px; white-space: nowrap; }
+.hm-st-day {
+  min-width: 0; padding: 4px 12px; border-radius: 999px; background: rgba(22, 33, 59, 0.8); color: #fff; font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hm-st-meter span { white-space: nowrap; }
+@media (max-width: 560px) {
+  .hm-st-meter { flex: none; gap: 5px; padding: 3px 9px 3px 7px; font-size: 12px; }
+  .hm-st-day { padding: 3px 9px; font-size: 12px; }
+  .hm-st-bar { width: 40px; }
+}
 .hm-st-lh { position: absolute; z-index: 1; right: 1%; top: 5%; height: 118%; aspect-ratio: 625 / 750; pointer-events: none; }
 .hm-st-lh img { position: absolute; left: 0; top: 0; width: 100%; height: auto; opacity: 0; transition: opacity 0.18s; }
 .hm-st-lh img.on { opacity: 1; }
@@ -627,6 +636,43 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
 .hm-st-end-t { color: #7a1f42; font-size: clamp(26px, 5vw, 42px); font-weight: 900; line-height: 1.1; }
 .hm-st-end-s { color: #4a1a30; font-size: 15px; font-weight: 700; }
 .hm-st-end-n { color: #6b4a58; font-size: 13px; line-height: 1.5; }
+/* 回顾剧情: the scenes seen, listed over the stage as the design's; the answer picked then, marked */
+.hm-st-list { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: 12px; background: rgba(24, 18, 40, 0.62); }
+.hm-st-list-in {
+  width: min(94%, 470px); max-height: 100%; overflow: auto; padding: 14px 14px 12px; border-radius: 16px; background: #fffaf3;
+  text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+.hm-st-list-in p { margin: 0; }
+.hm-st-list-t { color: #7a1f42; font-size: clamp(20px, 3.6vw, 26px); font-weight: 900; line-height: 1.2; }
+.hm-st-list-in .hm-st-list-s { margin: 4px 0 10px; color: #5b4a55; font-size: 13px; line-height: 1.5; }
+.hm-st-list-days { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.hm-st-list-days button {
+  padding: 6px 9px; border: 1.5px solid #e98aab; border-radius: 10px; background: #fff; color: #1c2440; font-size: 13.5px;
+  line-height: 1.35; text-align: left; cursor: pointer;
+}
+.hm-st-list-days button b { margin-right: 6px; color: #d13a6b; }
+.hm-st-list-days button:hover, .hm-st-list-days button:focus-visible { border-color: #d13a6b; background: #ffeef4; outline: none; }
+.hm-st-list-x { margin-top: 8px; padding: 7px 18px; border: 0; border-radius: 999px; background: #d13a6b; color: #fff; font-size: 14.5px; cursor: pointer; }
+/* on a square stage all twelve and ALL END fit: 关掉 moves up beside the title */
+@media (max-width: 560px) {
+  .hm-st-list { padding: 8px; }
+  .hm-st-list-in { position: relative; width: 100%; padding: 10px 10px 9px; }
+  .hm-st-list-t { font-size: 20px; }
+  .hm-st-list-in .hm-st-list-s { margin: 2px 0 8px; font-size: 12px; line-height: 1.45; }
+  .hm-st-list-days { gap: 5px; }
+  .hm-st-list-days button { padding: 4px 8px; font-size: 13px; }
+  .hm-st-list-x { position: absolute; top: 9px; right: 9px; margin: 0; padding: 3px 11px; font-size: 13px; }
+}
+.hm-st-choices button.was { border-color: #d13a6b; background: #fff1f6; }
+.hm-st-was {
+  display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 999px; background: #d13a6b; color: #fff; font-size: 11.5px;
+  line-height: 1.5; vertical-align: 1px; white-space: nowrap;
+}
+/* under the stage: 看 ALL END or 回到今天, and 回顾剧情 */
+.hm-st-foot { display: flex; gap: 8px; }
+.hm-st-foot > button { flex: 1 1 0; min-width: 0; }
+button.hm-st-again { border: 1.5px solid #e98aab; border-radius: 12px; padding: 11px 16px; background: #fff; color: #a3264f; font-weight: 700; }
+button.hm-st-again:disabled { opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) {
   .hm-st-bg.dusk, .hm-st-lh img, .hm-st-prop, .hm-st-eggs .top, .hm-st-eggs text, .hm-st-bar i { transition: none; }
   .hm-st-more { animation: none; }

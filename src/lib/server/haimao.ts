@@ -153,11 +153,15 @@ export async function unfriendHaimao(userId: string) {
 /** What me() says about her: nothing for a player she does not show to. */
 export async function haimaoOf(u: Pick<UserRow, "id" | "email" | "haimaoFriendSince">, offsetMin?: unknown): Promise<HaimaoMe | undefined> {
   if (!haimaoOpen(u)) return undefined;
-  const [p] = await db.select({ love: haimaoPlayers.love, plusOn: haimaoPlayers.plusOn }).from(haimaoPlayers).where(eq(haimaoPlayers.userId, u.id));
+  const [p] = await db
+    .select({ love: haimaoPlayers.love, plusOn: haimaoPlayers.plusOn, days: haimaoPlayers.days })
+    .from(haimaoPlayers)
+    .where(eq(haimaoPlayers.userId, u.id));
   return {
     friend: Boolean(u.haimaoFriendSince),
     love: p?.love ?? 0,
     plusToday: p?.plusOn === deviceDay(offsetMin).day,
+    days: p?.days ?? 0,
   };
 }
 

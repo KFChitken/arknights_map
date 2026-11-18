@@ -82,6 +82,7 @@ export function HaimaoCard({
   onTouch,
   onSignIn,
   onStory,
+  onReview,
   onOpenFriend,
   under,
   onClose,
@@ -96,6 +97,8 @@ export function HaimaoCard({
   onSignIn: () => void;
   /** 今日剧情: her story, the day's part of it */
   onStory: () => void;
+  /** 回顾剧情: the scenes of it seen, to see again */
+  onReview: () => void;
   onOpenFriend?: () => void;
   /** Roaches under her picture: to pick one of them (StackUnderGuide) */
   under?: ReactNode;
@@ -151,6 +154,11 @@ export function HaimaoCard({
         <button type="button" className="pill" disabled={waiting} onClick={() => (signedIn ? onStory() : onSignIn())}>
           {T.guides.haimao.today}
         </button>
+        {signedIn && me && me.days > 0 && (
+          <button type="button" className="pill" disabled={waiting} onClick={onReview}>
+            {T.guides.haimao.review}
+          </button>
+        )}
       </div>
       {onOpenFriend && (
         <div className="row-actions">
