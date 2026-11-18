@@ -277,7 +277,8 @@ describe("the 管理台's door", () => {
     expect(paused.status).toBe(423);
     expect(paused.body.code).toBe("ADMIN_PAUSED");
     expect(paused.body.until! - Date.now()).toBe(15 * MINUTE);
-    expect(paused.body.error).toMatch(/^输错太多次，先暂停 15 分钟（到 \d\d:\d\d）。已经发邮件到你的邮箱。/);
+    // the Beijing clock it ends at, the day in front of it when that is past midnight there (src/lib/adminConsole.test.ts)
+    expect(paused.body.error).toMatch(/^输错太多次，先暂停 15 分钟（到 (\d{1,2}\/\d{1,2} )?\d\d:\d\d）。已经发邮件到你的邮箱。/);
     expect(vi.mocked(sendAdminMail).mock.calls.at(-1)![1]).toMatch(/^舟P 管理台：站长 连续输错验证码，暂停到 /);
     // paused: even the right code, and everything else
     use(a);
