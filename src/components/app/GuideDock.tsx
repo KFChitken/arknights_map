@@ -37,9 +37,9 @@ const about = (): Record<GuideId, string[]> => ({
     T.guides.si.about.stamps,
     T.guides.si.about.friends,
   ],
-  // and, as on her card, who she is not
+  // who she is and the line under it, as on her card and her introduction
   haimao: [
-    T.guides.haimao.about.home,
+    HAIMAO_LINES.introCard,
     T.guides.haimao.about.touch,
     HAIMAO_LINES.disclaimer,
   ],

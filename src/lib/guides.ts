@@ -150,8 +150,9 @@ export const GUIDES: Record<GuideId, Guide> = {
     get note() {
       return T.lib.guides.haimao.note;
     },
+    // who she is, as her card and her introduction say it, and the line under it
     get card() {
-      return T.lib.guides.haimao.card;
+      return `${T.lib.haimao.introCard}\n${T.lib.haimao.disclaimer}`;
     },
     get pronoun() {
       return T.lib.guides.she;

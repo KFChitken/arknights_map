@@ -1110,8 +1110,8 @@ export const zh = {
       goSee: "去宏村看看",
     },
     haimao: {
+      /** Her sheet among the guides, under who she is (src/lib/haimao.ts introCard) */
       about: {
-        home: "在上海漕河泾，鹰角网络楼下的马路边，头上顶着一只黑尾鸥（日语叫「海猫」）。",
         touch: "碰她，她每天会碰回你一次；大胆碰她就成为触须之交，每天第一次大胆碰她，好感度 +1。",
       },
       signature: "个性签名",
@@ -5128,7 +5128,6 @@ export const zh = {
         name: "香艳制作人",
         short: "制作人",
         note: "住在上海漕河泾，鹰角网络楼下",
-        card: "住在上海漕河泾，鹰角网络楼下。粉丝玩梗，不是本人，和鹰角没关系",
         tooMany: "dame dame～ 今天碰够啦，明天再来。",
       },
       answered: "{name}回了你：「{line}」",
@@ -5142,10 +5141,11 @@ export const zh = {
         plus: "好感度 +1。别告诉海鸥。",
         lift: "你来得比下班的电梯还准时。",
       },
-      /** On her card, her introduction and her sheet among the guides, word for word */
-      disclaimer: "粉丝玩梗，不是本人，和鹰角没关系",
+      /** Under who she is, on her card, her introduction and her sheet among the guides, word for word as Breeze gave it */
+      disclaimer: "*与鹰角网络无关",
       signature: "try one first, get all always",
-      introCard: "上海漕河泾，鹰角网络楼下的马路边，来了一位香艳制作人，头上顶着一只黑尾鸥（日语叫「海猫」）。每天去找她聊一段剧情，好感度满了有 ALL END。她的转盘每人能转一次，怎么转都是 ALL。",
+      /** Who she is, word for word as Breeze gave it: her introduction's, and on her card under her name */
+      introCard: "上海漕河泾来了一位香艳制作人，头上顶着一只黑尾鸥。每天去找她聊聊，说不定能增进感情。",
       /** Her gull, tapped */
       meow: "喵～",
       /**

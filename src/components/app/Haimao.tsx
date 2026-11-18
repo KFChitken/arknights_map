@@ -274,7 +274,7 @@ export function HaimaoCard({
         <GullButton size={56} friend={friend} sing={sing} />
         <div>
           <strong>{HAIMAO.name}</strong>
-          <p className="muted">{HAIMAO.note}</p>
+          <p className="muted">{HAIMAO_LINES.introCard}</p>
           <button
             type="button"
             className="hm-mute"

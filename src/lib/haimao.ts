@@ -104,13 +104,14 @@ export const HAIMAO_LINES = {
   get tooMany() {
     return T.lib.guides.haimao.tooMany;
   },
-  /** On her card and her introduction, word for word */
+  /** Under who she is, on her card and her introduction, word for word */
   get disclaimer() {
     return T.lib.haimao.disclaimer;
   },
   get signature() {
     return T.lib.haimao.signature;
   },
+  /** Who she is: her introduction's words, and her card's under her name */
   get introCard() {
     return T.lib.haimao.introCard;
   },

@@ -1026,7 +1026,14 @@ export function FriendView({
         {profile.pass && <WornPassMini pass={profile.pass} holder={profile.displayName} />}
       </div>
       {profile.pass && <WornPassLine pass={profile.pass} />}
-      {guideOf ? <p className="hint">{guideOf.card ?? guideOf.note}</p> : <ProfileDetails profile={profile} gameExtra={gameExtra} />}
+      {guideOf ? (
+        // a line of its own where it has one (香艳制作人's, under who she is)
+        <p className="hint" style={{ whiteSpace: "pre-line" }}>
+          {guideOf.card ?? guideOf.note}
+        </p>
+      ) : (
+        <ProfileDetails profile={profile} gameExtra={gameExtra} />
+      )}
       {help}
       {actions}
 
