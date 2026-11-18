@@ -162,7 +162,10 @@ export const REQUEST_EVERY_MS = 20_000;
 /** The set lines (T.squad.say), by row; each is sent by its number */
 export const PHRASE_ROWS = [
   ["team", [1, 2, 3, 4, 5, 6, 7, 8, 9]],
-  ["fight", [10, 11, 12, 13, 14, 15, 16]],
+  /** 开局, as a round starts: numbers go on from the last, those of before never change */
+  ["open", [25, 26, 27, 28, 29, 30, 31]],
+  /** 28 is in this row too: one line, one number */
+  ["fight", [10, 11, 12, 13, 14, 15, 16, 32, 33, 34, 35, 28]],
   ["after", [17, 18, 19, 20, 21]],
   /** only while the host's song plays */
   ["music", [22, 23, 24]],
