@@ -6,6 +6,7 @@ import { BUBBLE_MS, KEY_OLD_MS, type SquadListRoom, type SquadMember, type Squad
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SquadMateCard from "./SquadMateCard";
 import { MemberTile, RoomCard, SeatTile } from "./SquadSheet";
+import { StrategyFace } from "./SquadPicks";
 import { squadCallLine, type SquadLine } from "./squading";
 
 const NOW = Date.parse("2026-11-16T20:30:00+08:00");
@@ -251,5 +252,15 @@ describe("a teammate's card", () => {
   it("is said in 我的资料 by the switch that hangs the pass, where the name shows", () => {
     expect(T.passes.onMap.hint).toContain("一起卫戍的房间里点你也挂，那里看得到你的名字。");
     expect(T.passes.onMap.label).toBe("地图卡片上挂出通行证");
+  });
+});
+
+describe("a strategy's picture", () => {
+  // 18 老鲤, an operator of the list; 2 歌利亚, none: the game's own 策略发起人 portrait
+  const face = (id: number) => renderToStaticMarkup(createElement(StrategyFace, { id, art: { arknights: { 老鲤: "a.webp", 歌利亚: "b.webp" }, endfield: {} }, size: 40 }));
+
+  it("is green and holographic: an operator's usual picture made so, the game's own as it is", () => {
+    expect(face(18)).toBe('<span class="sq-face pic holo"><img src="/operator-art/a.webp" alt="" width="40" height="40" loading="lazy"/></span>');
+    expect(face(2)).toBe('<span class="sq-face pic"><img src="/operator-art/b.webp" alt="" width="40" height="40" loading="lazy"/></span>');
   });
 });

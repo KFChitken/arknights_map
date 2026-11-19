@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { fmt, T } from "@/i18n";
+import { CHARACTERS } from "@/lib/operators";
 import { CORES, coreOf, EXTRAS, extraOf, LEVELS, NO_CORE, ROUND_EXTRAS_MAX, STRATEGIES, strategyOf, type SquadStrategy } from "@/lib/squad";
 import type { Art } from "../OperatorNames";
 
@@ -11,6 +12,10 @@ import type { Art } from "../OperatorNames";
  * its colour, a strategy as its operator's small round picture (src/lib/server/operatorArt.ts) or, where there is
  * none, the operator's name; and the pickers of the card, of a room and of a round (这局): core alliances, 难度, the
  * 附加盟约, and the strategies as a grid of pictures with those of the core alliance first and a search.
+ *
+ * A strategy's picture is green and holographic, as the game draws its strategies in 卫戍协议: those whose operator is
+ * no operator of the list have the game's own 策略发起人 portrait, so already (scripts/fetch-operator-art.mjs); the
+ * usual round picture of an operator on the list is made so here (holo).
  */
 
 export const coreName = (id: number) => (id === NO_CORE ? T.squad.noCore : (coreOf(id)?.name ?? T.squad.noCore));
@@ -36,10 +41,22 @@ export function LevelBadge({ level }: { level: number }) {
   return <span className={`sq-lv lv${level}`}>{levelName(level)}</span>;
 }
 
-/** An operator's small round picture, or the first character of their name while there is none */
+/** Operators on the list (their usual picture, made holographic for a strategy); any other has the game's 策略发起人 */
+const LISTED: ReadonlySet<string> = new Set(CHARACTERS.arknights);
+
+/**
+ * A strategy's operator as a small round picture, green and holographic (the game's own, or the usual one made so),
+ * or the first character of their name while there is none
+ */
 function Face({ op, art, size }: { op: string; art: Art | null; size: number }) {
   const file = art?.arknights?.[op];
-  if (file) return <img className="sq-face" src={`/operator-art/${file}`} alt="" width={size} height={size} loading="lazy" />;
+  if (file) {
+    return (
+      <span className={`sq-face pic${LISTED.has(op) ? " holo" : ""}`}>
+        <img src={`/operator-art/${file}`} alt="" width={size} height={size} loading="lazy" />
+      </span>
+    );
+  }
   return (
     <span className="sq-face letter" style={{ width: size, height: size, fontSize: Math.round(size * 0.46) }} aria-hidden="true">
       {art ? [...op.replace(/[\u201c\u201d"]/g, "")][0] : ""}
