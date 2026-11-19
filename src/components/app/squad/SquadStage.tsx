@@ -5,6 +5,7 @@ import { SCENE_EGGS, type SquadRoom } from "@/lib/squad";
 import { ROACH_AVATARS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import { T } from "@/i18n";
 import { makeScene, type FightMember, type SceneApi } from "./scene";
+import { seatFor } from "./scene/geometry";
 import { openSquadTalk, setSquadSceneShows, useSquadLines, useSquadRoom, useSquadSceneOn } from "./squading";
 import "./scene/squadScene.css";
 
@@ -21,8 +22,9 @@ const END_MS = 1_200;
 const FADE_MS = 450;
 
 const lookOf = (avatar: string): RoachAvatar => (ROACH_AVATARS.includes(avatar as RoachAvatar) ? (avatar as RoachAvatar) : "hood");
-const fighters = (room: SquadRoom): FightMember[] =>
-  room.members.map((m) => ({ h: m.h, name: m.name, you: m.you, friend: m.friend, look: lookOf(m.avatar), color: m.color as RoachColor, pose: m.pose }));
+// each at the seat of their place in the room (the host first), whatever their number there
+export const fighters = (room: Pick<SquadRoom, "members">): FightMember[] =>
+  room.members.map((m, i) => ({ h: m.h, seat: seatFor(i), name: m.name, you: m.you, friend: m.friend, look: lookOf(m.avatar), color: m.color as RoachColor, pose: m.pose }));
 
 /** The stage's box: within what the map shows, clear of the page's top, its bottom bar and the bar of the round */
 function useBox(shown: boolean) {

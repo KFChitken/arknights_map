@@ -1,7 +1,8 @@
 /**
  * The fight on the map (src/components/app/squad/scene): where each of the room's four stands and what it may hit,
- * worked out from the stage's size alone, so it can be tested without a page. Seats go by the room's numbers (h, 1
- * the host's); W and H are the stage's size in px; rs a roach's size, ss a monster's (rs × 1.4).
+ * worked out from the stage's size alone, so it can be tested without a page. Each stands at a seat, 1 to 4, given by
+ * its place in the room (seatFor), never by its number there (h: one who came in after another left has 5 or more,
+ * a 人机 one below 0); W and H are the stage's size in px; rs a roach's size, ss a monster's (rs × 1.4).
  */
 
 export type Foe = "slug" | "acid" | "infused" | "hound" | "drone";
@@ -14,9 +15,16 @@ export function sizesOf(W: number, H: number) {
   return { rs, ss: Math.round(rs * 1.4) };
 }
 
+/**
+ * The seats of the room's first, second, third and fourth (the host first, as the room lists them): 1 and 3 first, so
+ * two face both sides (A's columns, B's and C's left and right), then 2 and 4.
+ */
+export const SEAT_ORDER: readonly number[] = [1, 3, 2, 4];
+export const seatFor = (i: number) => SEAT_ORDER[i] ?? SEAT_ORDER[SEAT_ORDER.length - 1];
+
 // ---- A: slugs crawl in from both sides ----
 
-/** Where each stands, as parts of the stage: 1 and 2 on the left, 3 and 4 on the right */
+/** Where each seat is, as parts of the stage: 1 and 2 on the left, 3 and 4 on the right */
 export const SEAT_A: Readonly<Record<number, readonly [number, number]>> = { 1: [0.36, 0.38], 2: [0.36, 0.69], 3: [0.64, 0.38], 4: [0.64, 0.69] };
 /** The side a seat faces its slugs from: -1 left, 1 right */
 export const sideOf = (h: number) => (h <= 2 ? -1 : 1);
@@ -24,7 +32,7 @@ export const seatA = (h: number, W: number, H: number): [number, number] => {
   const [x, y] = SEAT_A[h] ?? SEAT_A[1];
   return [x * W, y * H];
 };
-/** Where a slug coming for h stops: just short of it, on its side */
+/** Where a slug coming for seat h stops: just short of it, on its side */
 export const stopA = (h: number, W: number, rs: number, ss: number, big: boolean) => seatA(h, W, 1)[0] + sideOf(h) * (rs * 0.5 + ss * (big ? 0.85 : 0.5) * 0.9);
 /** A slug waits this long in front of a roach that never hits it (asleep), then slips past; a big one never does */
 export const SLIP_AFTER_S = 3.4;
@@ -68,7 +76,7 @@ export const bossAt = (i: number) => BOSSES[((i % BOSSES.length) + BOSSES.length
 export const ANG_B: Readonly<Record<number, number>> = { 1: 222, 2: 138, 3: 318, 4: 42 };
 /** The monster's width: 40% of the stage's width or 50% of its height, 100–240 px */
 export const bossWidth = (W: number, H: number) => Math.round(Math.max(100, Math.min(240, Math.min(W * 0.4, H * 0.5))));
-/** Where h stands round the monster: on an ellipse round its foot (cx, gy), wider as it grows */
+/** Where seat h is round the monster: on an ellipse round its foot (cx, gy), wider as it grows */
 export function seatB(h: number, g: { cx: number; gy: number; bw: number; rs: number; grow: number }): [number, number] {
   const a = ((ANG_B[h] ?? ANG_B[1]) * Math.PI) / 180;
   const rx = g.bw * 0.5 * g.grow + g.rs * 0.85;
@@ -84,7 +92,7 @@ export const behindB = (h: number) => h === 1 || h === 3;
 export const ANG_C: Readonly<Record<number, number>> = { 1: 200, 2: 153, 3: 340, 4: 27 };
 /** The cloud's size: R is 25% of the stage's width or 27% of its height, 54–140 px; the cloud is 2.5R wide, 2R high */
 export const cloudR = (W: number, H: number) => Math.round(Math.max(54, Math.min(140, Math.min(W * 0.25, H * 0.27))));
-/** Where h stands at the cloud's rim; one asleep lies further out */
+/** Where seat h is at the cloud's rim; one asleep lies further out */
 export function seatC(h: number, g: { cx: number; cy: number; R: number }, awake: boolean): [number, number] {
   const a = ((ANG_C[h] ?? ANG_C[1]) * Math.PI) / 180;
   const far = awake ? 1.04 : 1.45;

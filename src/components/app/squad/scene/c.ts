@@ -48,7 +48,8 @@ export function sceneC(stage: HTMLElement, opt: SceneOpts): SceneApi {
     cloud.style.width = `${2.5 * G.R}px`;
     cloud.style.height = `${2 * G.R}px`;
   };
-  const seat = (h: number) => seatC(h, G, K.awake(K.who(h)));
+  // where the one numbered h stands: their seat's place at the rim
+  const seat = (h: number) => seatC(K.seatOf(h), G, K.awake(K.who(h)));
   const draw = () => {
     K.prune();
     for (const m of K.members()) {
@@ -310,7 +311,7 @@ export function sceneC(stage: HTMLElement, opt: SceneOpts): SceneApi {
       const m = pick(ms);
       const el = K.els[m.h];
       const dog = sprite("hound", K.ss * 0.95, "run", stage);
-      const a0 = ((ANG_C[m.h] ?? 0) * Math.PI) / 180;
+      const a0 = ((ANG_C[m.seat] ?? 0) * Math.PI) / 180;
       away[m.h] = { phase: "chase", x: 0, y: 0, vx: 0, vy: 0, rot: 0, vr: 0, ground: 0, t: 0, fx: 0, fy: 0 };
       el.classList.remove("flail");
       K.pop(...K.pos(el), T.squad.fight.run);

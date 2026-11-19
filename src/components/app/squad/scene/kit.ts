@@ -13,8 +13,8 @@ import { sizesOf, type Foe } from "./geometry";
  * only the roaches' poses and lines come from the room.
  */
 
-/** One of the room as the fight draws them */
-export type FightMember = { h: number; name: string; you: boolean; friend: boolean; look: RoachAvatar; color: RoachColor; pose: number };
+/** One of the room as the fight draws them: h, their number in the room (who they are); seat, where they stand (geometry.ts seatFor) */
+export type FightMember = { h: number; seat: number; name: string; you: boolean; friend: boolean; look: RoachAvatar; color: RoachColor; pose: number };
 
 export type SceneOpts = {
   members: () => FightMember[];
@@ -98,6 +98,8 @@ export function kit(stage: HTMLElement, opt: SceneOpts) {
     },
     members: () => opt.members(),
     who: (h: number) => opt.members().find((m) => m.h === h),
+    /** The seat of the one numbered h (1 while they are not there) */
+    seatOf: (h: number) => opt.members().find((m) => m.h === h)?.seat ?? 1,
     awake: awakeOf,
     measure() {
       K.W = stage.clientWidth;

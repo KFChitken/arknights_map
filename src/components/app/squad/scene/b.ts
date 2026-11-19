@@ -69,8 +69,8 @@ export function sceneB(stage: HTMLElement, opt: SceneOpts): SceneApi {
   const draw = () => {
     K.prune();
     for (const m of K.members()) {
-      const [x, y] = seat(m.h);
-      K.roach(m, x, y).style.zIndex = behindB(m.h) ? "1" : "3";
+      const [x, y] = seat(m.seat);
+      K.roach(m, x, y).style.zIndex = behindB(m.seat) ? "1" : "3";
     }
   };
   // the middle of the monster as it is on screen now (pushed, grown or not)

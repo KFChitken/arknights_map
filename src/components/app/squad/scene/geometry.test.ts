@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isPhrase, SCENE_EGGS, sceneOf, SCENES } from "@/lib/squad";
+import { isPhrase, SCENE_EGGS, sceneOf, SCENES, type SquadMember } from "@/lib/squad";
+import { fighters } from "../SquadStage";
 import {
+  ANG_B,
+  ANG_C,
   ASPECT,
   behindB,
   bossAt,
@@ -12,6 +15,7 @@ import {
   seatA,
   seatB,
   seatC,
+  seatFor,
   sideOf,
   sizesOf,
   slips,
@@ -46,6 +50,51 @@ describe("the fight on the map", () => {
     expect(sizesOf(100, 100).rs).toBe(38);
     expect(sizesOf(2000, 2000).rs).toBe(70);
     expect(Object.values(ASPECT).every((a) => a > 0.5 && a < 1)).toBe(true);
+  });
+});
+
+describe("who stands where", () => {
+  const member = (h: number): SquadMember => ({
+    h,
+    name: `n${h}`,
+    host: h === 1,
+    you: false,
+    friend: false,
+    inGame: true,
+    pose: 0,
+    core: 0,
+    strategy: null,
+    extras: [],
+    avatar: "hood",
+    color: "cyan",
+    ...(h < 0 ? { bot: true as const } : {}),
+  });
+
+  it("seats the room by its order, never by its numbers: one who came in after another left, and 人机 (below 0), stand apart", () => {
+    // numbers as a room has them after one left and two 人机 came in
+    const seats = fighters({ members: [1, 5, -1, -2].map(member) }).map((f) => [f.h, f.seat]);
+    expect(seats).toEqual([
+      [1, 1],
+      [5, 3],
+      [-1, 2],
+      [-2, 4],
+    ]);
+  });
+
+  it("puts two on both sides, then fills the rest; in A, B and C each of two, three or four has its own place", () => {
+    expect([0, 1, 2, 3].map(seatFor)).toEqual([1, 3, 2, 4]);
+    expect([0, 1].map(seatFor).map(sideOf)).toEqual([-1, 1]);
+    const g = { cx: 200, gy: 210, bw: 150, rs: 50, grow: 1 };
+    const cloud = { cx: 200, cy: 168, R: 81 };
+    for (const n of [2, 3, 4]) {
+      const seats = Array.from({ length: n }, (_, i) => seatFor(i));
+      const apart = (spots: [number, number][]) => new Set(spots.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`)).size;
+      expect(apart(seats.map((s) => seatA(s, 400, 300)))).toBe(n);
+      expect(apart(seats.map((s) => seatB(s, g)))).toBe(n);
+      expect(apart(seats.map((s) => seatC(s, cloud, true)))).toBe(n);
+      // every seat one of the drawn ones (none falling back to the host's)
+      expect(seats.every((s) => ANG_B[s] !== undefined && ANG_C[s] !== undefined)).toBe(true);
+    }
   });
 });
 
