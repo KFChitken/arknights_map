@@ -4344,8 +4344,9 @@ describe("declarations by where the roaches are", () => {
 
 describe("the day turning at 04:00 Beijing time", () => {
   // the site's day (src/lib/siteDay.ts): 03:59 is still the day before, 04:00 the new one. The clock is set by hand,
-  // and what the day counts is written at its own moments: what the code writes takes the database's clock
-  const TURN = new Date("2026-11-20T04:00+08:00").getTime();
+  // and what the day counts is written at its own moments: what the code writes takes the database's clock, which must
+  // never be on the day this pretends it is (so a day long after any run of these)
+  const TURN = new Date("2099-11-20T04:00+08:00").getTime();
   const MIN = 60_000;
   const clock = (t: number) => vi.useFakeTimers({ now: t, toFake: ["Date"] });
   afterEach(() => {
@@ -4380,7 +4381,7 @@ describe("the day turning at 04:00 Beijing time", () => {
     // (the touch just made, at the database's own clock, which is not the day this test pretends it is)
     await touchedAt(me, c, TURN, 1);
     await expect(me.touch(clone.publicId, true)).rejects.toThrow("今天的触须用完啦");
-    expect(unsavedStats().get("2026-11-20|touch.capped")).toBe(1);
+    expect(unsavedStats().get("2099-11-20|touch.capped")).toBe(1);
   });
 
   it("lets a roach touched at 03:59 be touched again at 04:00, and not before", async () => {
