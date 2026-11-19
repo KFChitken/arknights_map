@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
-import { SQUAD_MAX, type SquadMember, type SquadRoom } from "@/lib/squad";
+import { SQUAD_MAX, type SquadMember, type SquadMove, type SquadRoom } from "@/lib/squad";
 import { ShieldIcon } from "../chrome/parts";
 import { useOperatorArt } from "../OperatorNames";
 import { useAbove } from "./SquadBar";
@@ -16,21 +16,27 @@ import {
   closeSquadTalk,
   kickFromSquad,
   lineWords,
+  moveInSquad,
   openSquadTalk,
   squadBot,
   setSquadSceneOn,
   useSquadLines,
   useSquadMoves,
   useSquadRoom,
+  useSquadRoundUnseen,
+  useSquadRounds,
+  seeSquadRound,
   useSquadSceneOn,
   useSquadSceneShows,
   useSquadTalkOpen,
   useSquadTouched,
 } from "./squading";
+import { dockFolded, keepDockFolded, tabAtRound, tileTap, type DockTab } from "./dockState";
 import { setSquadMuted, squadSoundReady, useSquadMuted } from "./squadSound";
 import "./squadFight.css";
 
 const SquadTalk = dynamic(() => import("./SquadTalk"), { ssr: false });
+const SquadDock = dynamic(() => import("./SquadDock"), { ssr: false });
 
 /**
  * 卫戍条: the bar of a round of 一起卫戍, over the map while the player's room plays and its sheet is shut, in place of
@@ -43,6 +49,13 @@ const SquadTalk = dynamic(() => import("./SquadTalk"), { ssr: false });
  * first), 🔔 (the sound, this device) and 展开 (the room's sheet, where the host ends the round). On a phone a row of
  * four above the layout's bottom bar (the cards of 一起听 over the map keep above it: data-listen-over); on a computer
  * a column beside 卫戍 (data-squad-entry), which stays while 听歌's player is open beside it.
+ *
+ * On a computer the column is two by two (grid2), and under the tiles sits a panel (SquadDock.tsx) of 说话 · 动作 ·
+ * 这局 in place of the phone's dialog, which stays open as one taps, folds down to its tabs (kept on this computer:
+ * dockState.ts) and turns to 这局 as a round starts that the player marked no strategy for. Your own tile turns it
+ * to 这局; 击掌 or 贴贴 in 动作 has the teammates' tiles glow (点 TA) for one to be tapped, Esc, 算了 or your own tile
+ * stopping it; a teammate's card there has 击掌 and 贴贴 too, and it and 一起听's card take turns in their place.
+ * Lines come out of the tiles themselves there (Bubble in).
  */
 
 /** Wide enough for the column beside 卫戍 */
@@ -62,7 +75,14 @@ function useWide() {
   return wide;
 }
 
-/** On a computer: beside 卫戍 (left of it on the right of the screen, else right of it), the top of the column by its own */
+/** The column's width on a computer (.sq-fight.col) */
+const COL_W = 340;
+
+/**
+ * On a computer: beside 卫戍 (left of it on the right of the screen, else right of it), the top of the column by its
+ * own; as tall as it may be: down to 10 px over the highest of the layout's bottom bars under it (data-chrome-bottom,
+ * across the column's width), else 16 px over the window's bottom
+ */
 function useBeside(shown: boolean) {
   const [at, setAt] = useState<CSSProperties | null>(null);
   useEffect(() => {
@@ -71,8 +91,18 @@ function useBeside(shown: boolean) {
     const look = () => {
       const entry = [...document.querySelectorAll<HTMLElement>("[data-squad-entry]")].find((e) => e.getClientRects().length > 0);
       const r = entry?.getBoundingClientRect();
-      const top = Math.round(Math.max(70, (r?.top ?? 76) - 70));
-      const next: CSSProperties = !r ? { right: 16, top: 76 } : r.left > window.innerWidth / 2 ? { right: Math.round(window.innerWidth - r.left + 10), top } : { left: Math.round(r.right + 10), top };
+      const W = window.innerWidth;
+      const top = r ? Math.round(Math.max(70, r.top - 70)) : 76;
+      const onRight = !r || r.left > W / 2;
+      const edge = !r ? 16 : onRight ? Math.round(W - r.left + 10) : Math.round(r.right + 10);
+      const side = onRight ? { right: edge } : { left: edge };
+      // where the column's left edge is
+      const from = onRight ? W - edge - COL_W : edge;
+      const under = [...document.querySelectorAll("[data-chrome-bottom]")]
+        .map((e) => e.getBoundingClientRect())
+        .filter((b) => b.height && b.top > top && b.left < from + COL_W && b.right > from);
+      const floor = under.length ? Math.min(...under.map((b) => b.top)) - 10 : window.innerHeight - 16;
+      const next: CSSProperties = { ...side, top, maxHeight: Math.max(160, Math.round(floor - top)) };
       const k = JSON.stringify(next);
       if (k === last) return;
       last = k;
@@ -154,12 +184,47 @@ export default function SquadFight({
   const [listenCard, setListenCard] = useState<CSSProperties | null>(null);
   const [busy, setBusy] = useState(false);
   const bar = useRef<HTMLDivElement>(null);
+  // on a computer: the panel's tab, folded or not (as this computer keeps it), and the move a teammate is picked for
+  const [tab, setTab] = useState<DockTab>("say");
+  const [folded, setFolded] = useState(false);
+  useEffect(() => setFolded(dockFolded()), []);
+  const [picking, setPicking] = useState<SquadMove | null>(null);
+  const rounds = useSquadRounds();
+  const unseen = useSquadRoundUnseen();
   useEffect(() => {
     if (!shown) {
       setPeek(null);
       setListenCard(null);
+      setPicking(null);
     }
   }, [shown]);
+  // a round starts in sight: 这局 once, for one who marked no strategy for it, when the panel is open
+  useEffect(() => {
+    if (!wide) return;
+    const turn = tabAtRound(folded, unseen);
+    if (turn) setTab(turn);
+    // the round's start alone, not the panel folded or opened later
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rounds, wide]);
+  useEffect(() => {
+    if (wide && !folded && tab === "round") seeSquadRound();
+  }, [wide, folded, tab, unseen]);
+  // your roach in the fight tapped (说话 / 动作 / 这局): on a computer the panel, on 说话, and no dialog
+  useEffect(() => {
+    if (!wide || !talking) return;
+    closeSquadTalk();
+    setTab("say");
+    setPicking(null);
+    setFolded(false);
+    keepDockFolded(false);
+  }, [wide, talking]);
+  // Esc stops picking a teammate
+  useEffect(() => {
+    if (!picking) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setPicking(null);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [picking]);
   if (!room || !playing) return null;
   const n = room.members.length;
   const order = room.members.map((m) => m.h);
@@ -184,6 +249,27 @@ export default function SquadFight({
       setBusy(false);
     }
   };
+  // 击掌 or 贴贴 to the one with the number h, shown on the tiles; one too many said so
+  const moveTo = (move: SquadMove, h: number) =>
+    void act(async () => {
+      const res = await moveInSquad(move, h);
+      if (!res.sent) onToast(res.full ? T.squad.say.enough : T.squad.say.slow);
+    });
+  const fold = (f: boolean) => {
+    setFolded(f);
+    keepDockFolded(f);
+    if (f) setPicking(null);
+  };
+  const toTab = (k: DockTab) => {
+    if (k !== tab) setPicking(null);
+    setTab(k);
+    if (folded) fold(false);
+  };
+  // a teammate's card, and 一起听's from ♪: one at a time in their place
+  const openCard = (h: number) => {
+    setListenCard(null);
+    setPeek((p) => (p?.h === h ? null : { h, at: peekAt() }));
+  };
   const head = fmt(T.squad.fight.head, {
     dot: T.squad.dot,
     level: T.squad.levelsShort[room.level - 1] ?? "",
@@ -197,24 +283,42 @@ export default function SquadFight({
     const xs = extras.length ? `${extras.slice(0, 2).join(T.squad.dot)}${extras.length > 2 ? ` ${fmt(T.squad.fight.extrasMore, { n: extras.length - 2 })}` : ""}` : T.squad.fight.extrasNone;
     const said = line ? lineWords(line.p, line.s) : null;
     const edge = wide ? "" : i === 0 ? " edge-l" : i === n - 1 ? " edge-r" : "";
+    // on a computer while a teammate is picked: the teammates glow, yours fades
+    const pick = wide && picking !== null;
+    const label = !wide
+      ? m.you
+        ? T.squad.fight.youTile
+        : fmt(T.squad.fight.mateTile, { name: m.name })
+      : m.you
+        ? T.squad.fight.youTileDock
+        : pick
+          ? fmt(T.squad.fight.mateTilePick, { name: m.name, move: T.squad.talk.moves[picking!] })
+          : fmt(T.squad.fight.mateTile, { name: m.name });
     return (
       <button
         key={m.h}
         type="button"
-        className={`sq-ft${m.you ? " me" : ""}${flashing.has(m.h) ? " flash" : ""}${edge}`}
-        aria-label={m.you ? T.squad.fight.youTile : fmt(T.squad.fight.mateTile, { name: m.name })}
+        className={`sq-ft${m.you ? " me" : ""}${flashing.has(m.h) ? " flash" : ""}${pick ? (m.you ? " dim" : " pickme") : ""}${edge}`}
+        aria-label={label}
         onClick={() => {
           squadSoundReady();
-          if (m.you) openSquadTalk();
-          else setPeek((p) => (p?.h === m.h ? null : { h: m.h, at: peekAt() }));
+          if (!wide) return m.you ? openSquadTalk() : openCard(m.h);
+          const what = tileTap(m.you, pick);
+          if (what === "round") toTab("round");
+          else if (what === "cancel") setPicking(null);
+          else if (what === "pick") {
+            setPicking(null);
+            moveTo(picking!, m.h);
+          } else openCard(m.h);
         }}
       >
-        {m.you && <span className="tapme">{m.strategy === null ? T.squad.fight.mark : T.squad.fight.tapMe}</span>}
+        {m.you && (!wide || m.strategy === null) && <span className="tapme">{m.strategy === null ? T.squad.fight.mark : T.squad.fight.tapMe}</span>}
         {m.host && !m.you && <span className="hostt">{T.squad.fight.host}</span>}
         {m.bot && <span className="hostt">{T.squad.bot.tag}</span>}
-        {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "left" : "up"} to={line?.to === undefined ? null : room.members.find((x) => x.h === line.to)} />}
+        {pick && !m.you && <span className="pickt">{T.squad.fight.pickMe}</span>}
+        {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "in" : "up"} to={line?.to === undefined ? null : room.members.find((x) => x.h === line.to)} />}
         <span className="rw">
-          <SquadRoach m={m} size={wide ? 46 : 42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} />
+          <SquadRoach m={m} size={42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} />
           {m.strategy === null ? (
             <span className="opq" aria-hidden="true">
               ?
@@ -239,7 +343,7 @@ export default function SquadFight({
       {shown && at && (
         <div
           ref={bar}
-          className={`sq-fight ${wide ? "col" : "row"}`}
+          className={`sq-fight ${wide ? "col grid2" : "row"}`}
           style={at}
           role="group"
           aria-label={fmt(T.squad.fight.label, { n, max: SQUAD_MAX })}
@@ -259,7 +363,10 @@ export default function SquadFight({
                 setListenCard(null);
                 onListen();
               }}
-              onCard={() => setListenCard((c) => (c ? null : peekAt()))}
+              onCard={() => {
+                setPeek(null);
+                setListenCard((c) => (c ? null : peekAt()));
+              }}
             />
             <button
               type="button"
@@ -274,6 +381,19 @@ export default function SquadFight({
             </button>
           </div>
           <div className="ft4">{room.members.map(tile)}</div>
+          {wide && (
+            <SquadDock
+              room={room}
+              tab={tab}
+              folded={folded}
+              unseen={unseen}
+              picking={picking}
+              onTab={toTab}
+              onFold={fold}
+              onPick={setPicking}
+              onError={onError}
+            />
+          )}
         </div>
       )}
       {shown && listenCard && (
@@ -304,10 +424,18 @@ export default function SquadFight({
           onKick={() => (setPeek(null), void act(() => kickFromSquad(peekOf.h)))}
           onSafety={() => (setPeek(null), onSafety(`sq:${room.id}:${peekOf.h}`, peekOf.name))}
           onBot={(what) => void act(() => squadBot(what, peekOf.h)).then(() => what === "kick" && setPeek(null))}
+          onMove={
+            wide
+              ? (move) => {
+                  setPeek(null);
+                  moveTo(move, peekOf.h);
+                }
+              : undefined
+          }
           onClose={() => setPeek(null)}
         />
       )}
-      {talking && <SquadTalk room={room} onClose={closeSquadTalk} onError={onError} />}
+      {talking && !wide && <SquadTalk room={room} onClose={closeSquadTalk} onError={onError} />}
     </>
   );
 }

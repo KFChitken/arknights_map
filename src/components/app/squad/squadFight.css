@@ -109,7 +109,7 @@
 /* the bar of a round: on a phone a row of four above the bottom bar, on a computer a column beside 卫戍 */
 .sq-fight { position: fixed; z-index: 30; display: flex; flex-direction: column; gap: 5px; padding: 6px 6px 7px; border-radius: 16px; background: rgba(255, 255, 255, 0.96); color: #1b1d22; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.27); }
 .sq-fight.row { left: 8px; right: 8px; max-width: 520px; margin: 0 auto; }
-.sq-fight.col { width: 304px; }
+.sq-fight.col { width: 340px; overflow-y: auto; }
 .sq-fight .fh { display: flex; align-items: center; gap: 5px; padding: 0 3px; font-size: 12px; font-weight: 800; }
 .sq-fight .fh svg { flex: none; }
 .sq-fight .fh .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -139,6 +139,39 @@
 .sq-fight.col .sq-ft .rw { grid-row: span 4; width: 46px; height: 46px; }
 .sq-fight.col .sq-ft .cr { justify-content: flex-start; }
 .sq-fight.col .sq-ft .tapme { top: 4px; right: 5px; }
+/*
+ * on a computer: two by two (grid2), each tile a small row of its own, and under them the panel (SquadDock.tsx) of
+ * 说话 · 动作 · 这局, folding down to its tabs; the column as tall as it may be (its max-height), the panel's page
+ * scrolling in it (120 px at least: shorter, the whole column scrolls)
+ */
+.sq-fight.grid2 > .fh, .sq-fight.grid2 > .ft4 { flex: none; }
+.sq-fight.grid2 .ft4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sq-fight.grid2 .sq-ft { grid-template-columns: 44px minmax(0, 1fr); justify-items: start; align-items: center; gap: 0 7px; padding: 7px 7px 6px; text-align: left; }
+.sq-fight.grid2 .sq-ft .rw { grid-row: span 4; width: 42px; height: 42px; }
+.sq-fight.grid2 .sq-ft .cr { justify-content: flex-start; }
+.sq-fight.grid2 .sq-ft .tapme { top: 3px; right: 4px; }
+/* a teammate to pick for 击掌 or 贴贴: the teammates' tiles glow, yours fades */
+.sq-ft.pickme { background: #fff; box-shadow: inset 0 0 0 2px #18a0a5; animation: sq-pick 1.1s ease-in-out infinite; }
+.sq-ft .pickt { position: absolute; top: 3px; right: 4px; z-index: 2; padding: 0 5px; border-radius: 5px; background: #18a0a5; color: #fff; font-size: 9.5px; font-weight: 800; line-height: 1.5; }
+.sq-ft.dim { opacity: 0.45; }
+@keyframes sq-pick { 50% { box-shadow: inset 0 0 0 2px #18a0a5, 0 0 0 3px rgba(24, 160, 165, 0.25); } }
+/* a line said, inside its tile: over the three rows under the name (taller if it takes more), right of the roach */
+.sq-bub.in { top: 23px; left: 56px; right: 5px; display: flex; flex-direction: column; justify-content: center; width: auto; max-width: none; min-height: calc(100% - 28px); padding: 4px 8px; overflow-wrap: anywhere; transform: none; text-align: left; }
+.sq-bub.in::after { display: none; }
+.sq-dock { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; padding-top: 6px; border-top: 1px solid #eceef1; }
+.sq-dock.folded { flex: none; }
+.sq-dock .tabs { flex: none; display: flex; gap: 4px; align-items: center; }
+.sq-dock .tabs .sq-tabs3 { flex: 1; }
+.sq-dock .fold { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid #e6e8eb; border-radius: 9px; background: #fff; color: #4b5160; cursor: pointer; }
+.sq-dock .fold svg { width: 16px; height: 16px; }
+.sq-dock .body { flex: 1 1 auto; display: flex; flex-direction: column; gap: 7px; min-height: 120px; max-height: 420px; overflow-y: auto; padding: 0 2px 2px; }
+.sq-dock .body > .sq-say2 { overflow: visible; }
+.sq-dock .note { margin: 0; color: #6b7280; font-size: 12px; }
+.sq-dock .note.cool { color: #8a5a00; }
+.sq-dock .sq-rows { flex-wrap: wrap; overflow: visible; }
+.sq-acts .pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 9px 10px; border-radius: 12px; background: #e6f6f6; color: #0d555a; font-size: 12.5px; font-weight: 700; }
+.sq-acts .pick b { flex: 1 1 auto; }
+.sq-acts .pick button { padding: 3px 12px; border: 1px solid #9fd6d8; border-radius: 9px; background: #fff; color: inherit; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
 @keyframes sq-flash { 0%, 40% { background: #e3f6f6; box-shadow: inset 0 0 0 2px #18a0a5; } }
 @keyframes sq-nudge { 50% { transform: scale(1.12); } }
 

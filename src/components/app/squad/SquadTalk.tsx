@@ -92,23 +92,34 @@ export default function SquadTalk({
   );
 }
 
-/** The set lines, a row at a time, 常用 above; a moment's rest after each */
-function SayTab({ room, onDone }: { room: SquadRoom; onDone: () => void }) {
+/**
+ * The set lines, a row at a time (the row of the room's state first, again as it changes), 常用 above, read as it
+ * opens; a moment's rest after each. docked: in the bar of a round on a computer, where it stays open after a line,
+ * saying so while the lines rest
+ */
+export function SayTab({ room, onDone, docked = false }: { room: SquadRoom; onDone: () => void; docked?: boolean }) {
   // 听歌's row, while you are in 卫戍的一起听
   const music = room.listen?.you === "in";
   // 对 TA 说 is said from a teammate's card
   const rows = PHRASE_ROWS.filter(([r]) => r !== "to" && (r !== "music" || music));
-  const [row, setRow] = useState<PhraseRow>(room.state === "go" ? "fight" : "team");
+  const first: PhraseRow = room.state === "go" ? "fight" : "team";
+  const [row, setRow] = useState<PhraseRow>(first);
+  useEffect(() => setRow(first), [first]);
   const [cool, setCool] = useState(false);
+  const [said, setSaid] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [recent] = useState(recentLines);
   const say = async (p: number) => {
     if (cool) return;
     setCool(true);
-    window.setTimeout(() => setCool(false), SAY_EVERY_MS);
+    setNote(null);
+    window.setTimeout(() => {
+      setCool(false);
+      setSaid(false);
+    }, SAY_EVERY_MS);
     try {
       const res = await sayInSquad(p);
-      if (res.sent) return onDone();
+      if (res.sent) return docked ? setSaid(true) : onDone();
       setNote(res.full ? T.squad.say.enough : T.squad.say.slow);
     } catch (e) {
       setNote(e instanceof Error ? e.message : T.requests.serverTrouble);
@@ -122,6 +133,7 @@ function SayTab({ room, onDone }: { room: SquadRoom; onDone: () => void }) {
   );
   return (
     <>
+      {docked && said && <p className="note cool">{T.squad.talk.sentCool}</p>}
       <div className="sq-rows" role="tablist">
         {rows.map(([r]) => (
           <button key={r} type="button" role="tab" aria-selected={r === row} className={r === row ? "on" : ""} onClick={() => setRow(r)}>
@@ -144,8 +156,26 @@ function SayTab({ room, onDone }: { room: SquadRoom; onDone: () => void }) {
   );
 }
 
-/** What the roach keeps doing, and moves done at once; 击掌 and 贴贴 ask which teammate next */
-function ActTab({ room, onDone, onError }: { room: SquadRoom; onDone: () => void; onError: (e: unknown) => void }) {
+/**
+ * What the roach keeps doing, and moves done at once; 击掌 and 贴贴 ask which teammate next. docked: in the bar of a
+ * round on a computer, where it stays open, and the teammate is picked on the bar's own tiles (onPick, picking)
+ */
+export function ActTab({
+  room,
+  onDone,
+  onError,
+  docked = false,
+  picking = null,
+  onPick,
+}: {
+  room: SquadRoom;
+  onDone: () => void;
+  onError: (e: unknown) => void;
+  docked?: boolean;
+  /** The move a teammate is being picked for on the bar's tiles (docked) */
+  picking?: SquadMove | null;
+  onPick?: (move: SquadMove | null) => void;
+}) {
   const me = room.members.find((m) => m.you)!;
   const mates = room.members.filter((m) => !m.you);
   const [busy, setBusy] = useState(false);
@@ -154,9 +184,10 @@ function ActTab({ room, onDone, onError }: { room: SquadRoom; onDone: () => void
   const run = async (fn: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
+    setNote(null);
     try {
       await fn();
-      onDone();
+      if (!docked) onDone();
     } catch (e) {
       onError(e);
     } finally {
@@ -196,18 +227,27 @@ function ActTab({ room, onDone, onError }: { room: SquadRoom; onDone: () => void
         ))}
       </div>
       <span className="lab">{T.squad.talk.once}</span>
-      <div className="three">
-        {(["wave", "five", "hug"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            disabled={busy}
-            onClick={() => (m === "wave" ? move(m) : mates.length ? setToWhom(m) : setNote(T.squad.talk.noMate))}
-          >
-            {T.squad.talk.moves[m]}
+      {docked && picking ? (
+        <div className="pick" role="status">
+          <b>{fmt(T.squad.talk.pickTile, { move: T.squad.talk.moves[picking] })}</b>
+          <button type="button" onClick={() => onPick?.(null)}>
+            {T.squad.talk.cancel}
           </button>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="three">
+          {(["wave", "five", "hug"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              disabled={busy}
+              onClick={() => (m === "wave" ? move(m) : !mates.length ? setNote(T.squad.talk.noMate) : docked ? onPick?.(m) : setToWhom(m))}
+            >
+              {T.squad.talk.moves[m]}
+            </button>
+          ))}
+        </div>
+      )}
       {note && <p className="note">{note}</p>}
     </div>
   );

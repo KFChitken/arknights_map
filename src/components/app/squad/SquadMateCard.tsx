@@ -47,6 +47,7 @@ export default function SquadMateCard({
   style,
   me,
   onSay,
+  onMove,
   onTouch,
   onKick,
   onSafety,
@@ -71,6 +72,8 @@ export default function SquadMateCard({
   me?: SquadMember;
   /** While the room waits: a line said to TA alone, by its number */
   onSay?: (p: number) => void;
+  /** On a computer, the bar of a round's: 击掌 or 贴贴 to TA, from the card */
+  onMove?: (move: "five" | "hug") => void;
   onTouch: (bold: boolean) => Promise<void> | void;
   onKick: () => void;
   /** 拉黑 and 举报: the map page's sheet for them (sq:<room>:<number>) */
@@ -138,6 +141,16 @@ export default function SquadMateCard({
               <span>{T.squad.fight.peekExtrasNone}</span>
             )}
           </div>
+        </div>
+      )}
+      {onMove && (
+        <div className="sq-mmove">
+          <button type="button" className="dark" disabled={busy} onClick={() => onMove("five")}>
+            {T.squad.talk.moves.five}
+          </button>
+          <button type="button" className="dark" disabled={busy} onClick={() => onMove("hug")}>
+            {T.squad.talk.moves.hug}
+          </button>
         </div>
       )}
       {!playing && onSay && (

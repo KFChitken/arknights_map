@@ -91,10 +91,11 @@ export function SquadRoach({ m, size, line, move, toMe }: { m: SquadMember; size
 }
 
 /**
- * A line said, over the tile of the one who said it, BUBBLE_MS; up by `lift` px when another's shows beside it. One said
- * to someone (对 TA 说) names TA over it, 「对你」 to the viewer (to: TA, as the room has TA now).
+ * A line said, over the tile of the one who said it, BUBBLE_MS; up by `lift` px when another's shows beside it (in:
+ * inside the tile, over what is under the name, as the bar of a round on a computer has it). One said to someone
+ * (对 TA 说) names TA over it, 「对你」 to the viewer (to: TA, as the room has TA now).
  */
-export function Bubble({ line, lift = 0, side = "up", to }: { line: SquadLine | null | undefined; lift?: number; side?: "up" | "left"; to?: SquadMember | null }) {
+export function Bubble({ line, lift = 0, side = "up", to }: { line: SquadLine | null | undefined; lift?: number; side?: "up" | "left" | "in"; to?: SquadMember | null }) {
   const still = useStill(line?.at ?? null, BUBBLE_MS);
   if (!line || !still || !T.squad.say.lines[line.p - 1]) return null;
   const named = line.to === undefined || !to ? null : to.you ? T.squad.say.toYou : fmt(T.squad.say.toName, { name: to.name });
