@@ -12,9 +12,10 @@ import {
   type SquadMove,
   type SquadRoom,
   type SquadRound,
+  type SquadStrategy,
 } from "@/lib/squad";
 import { useOperatorArt } from "../OperatorNames";
-import { CoreChips, ExtrasChips, extraNames, strategyWords, StrategyGrid } from "./SquadPicks";
+import { CoreChips, ExtrasChips, extraNames, StrategyFace, strategyWords, StrategyGrid } from "./SquadPicks";
 import { SquadRoach } from "./SquadRoach";
 import { markSquadRound, moveInSquad, recentLines, sayInSquad, seeSquadRound, setSquadPose, useSquadRoundUnseen } from "./squading";
 import { squadSoundReady } from "./squadSound";
@@ -25,17 +26,29 @@ import "./squadFight.css";
  * by row (组队 first while it waits, 局内 while it plays; 听歌 only while the host's songs play), two to a row, with
  * 常用, the three this device said last, above; one sent, the panel closes. 动作: what the roach keeps doing (站着,
  * 蹦迪, 醉倒睡觉), and moves done at once (挥手; 击掌 and 贴贴 with a teammate, picked next). 这局, while a round plays:
- * the strategy (those teammates play it with grey), the core alliance and the 附加盟约 of this round alone, shown at
- * once and sent as the taps stop; the panel stays open for them. One who marked no strategy for a round that started
- * meets 这局 first, with a dot, once.
+ * the strategy, locked as the round started (one whose card says 无偏好 fills a free one once: 补位, asked first, those
+ * teammates play grey), the core alliance and the 附加盟约 of this round alone, shown at once and sent as the taps
+ * stop; the panel stays open for them. One who marked no strategy for a round that started meets 这局 first, with a
+ * dot, once. The lines said to one alone (对 TA 说) are on a teammate's card, not here.
  */
 
 type Tab = "say" | "act" | "round";
 
-export default function SquadTalk({ room, onClose, onError }: { room: SquadRoom; onClose: () => void; onError: (e: unknown) => void }) {
+export default function SquadTalk({
+  room,
+  start,
+  onClose,
+  onError,
+}: {
+  room: SquadRoom;
+  /** Opened on 这局 (one's own strategy tapped while a round plays) */
+  start?: "round";
+  onClose: () => void;
+  onError: (e: unknown) => void;
+}) {
   const playing = room.state === "go";
   const unseen = useSquadRoundUnseen();
-  const [tab, setTab] = useState<Tab>(playing && unseen ? "round" : "say");
+  const [tab, setTab] = useState<Tab>(playing && (unseen || start === "round") ? "round" : "say");
   const me = room.members.find((m) => m.you)!;
   useEffect(() => {
     // opening the panel is a press: sounds may play from now on
@@ -82,7 +95,8 @@ export default function SquadTalk({ room, onClose, onError }: { room: SquadRoom;
 /** The set lines, a row at a time, 常用 above; a moment's rest after each */
 function SayTab({ room, onDone }: { room: SquadRoom; onDone: () => void }) {
   const music = room.dj && room.startedAt !== null;
-  const rows = PHRASE_ROWS.filter(([r]) => r !== "music" || music);
+  // 对 TA 说 is said from a teammate's card
+  const rows = PHRASE_ROWS.filter(([r]) => r !== "to" && (r !== "music" || music));
   const [row, setRow] = useState<PhraseRow>(room.state === "go" ? "fight" : "team");
   const [cool, setCool] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -198,13 +212,37 @@ function ActTab({ room, onDone, onError }: { room: SquadRoom; onDone: () => void
   );
 }
 
-/** 这局: the strategy, core alliance and 附加盟约 of this round alone, sent as the taps stop */
-function RoundTab({ room, onError }: { room: SquadRoom; onError: (e: unknown) => void }) {
+/** 补位, asked first: the strategy tapped, filled (and locked) at 补位, or another picked at 再想想 */
+export function FillAsk({ s, onYes, onNo }: { s: SquadStrategy; onYes: () => void; onNo: () => void }) {
+  const ask = fmt(T.squad.talk.fillAsk, { s: s.op });
+  return (
+    <div className="sq-fillask" role="alertdialog" aria-label={ask}>
+      <b>{ask}</b>
+      <span className="acts">
+        <button type="button" className="dark" onClick={onYes}>
+          {T.squad.talk.fillYes}
+        </button>
+        <button type="button" className="ghost" onClick={onNo}>
+          {T.squad.talk.fillNo}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 这局: the strategy, core alliance and 附加盟约 of this round alone, sent as the taps stop. The strategy is locked as
+ * the round started (the server says no the same way); one who has none fills one nobody plays, once (补位), asked first.
+ */
+export function RoundTab({ room, onError }: { room: SquadRoom; onError: (e: unknown) => void }) {
   const art = useOperatorArt();
   const me = room.members.find((m) => m.you)!;
   const [note, setNote] = useState<string | null>(null);
+  // the strategy tapped to fill, asked first
+  const [filling, setFilling] = useState<SquadStrategy | null>(null);
   const round: SquadRound = { core: me.core, strategy: me.strategy, extras: me.extras };
-  const taken = new Set(room.members.filter((m) => !m.you && m.strategy !== null).map((m) => m.strategy!));
+  const holders = room.members.filter((m) => !m.you && m.strategy !== null);
+  const taken = new Set(holders.map((m) => m.strategy!));
   const mark = (change: Partial<SquadRound>) => {
     setNote(null);
     markSquadRound({ ...round, ...change }, onError);
@@ -213,17 +251,52 @@ function RoundTab({ room, onError }: { room: SquadRoom; onError: (e: unknown) =>
   return (
     <div className="sq-round">
       {chosen ? <p className="now">{fmt(T.squad.talk.roundNow, { s: strategyWords(chosen) })}</p> : <p className="hey">{T.squad.talk.roundNone}</p>}
-      <span className="lab">{T.squad.talk.strategy}</span>
-      <StrategyGrid
-        value={me.strategy}
-        core={me.core}
-        art={art}
-        taken={taken}
-        onTaken={(s) => setNote(fmt(T.squad.talk.takenSay, { s: strategyWords(s) }))}
-        onPick={(strategy) => mark({ strategy })}
-      />
+      <span className="lab">
+        {T.squad.talk.strategy}
+        <i className={chosen ? "lk" : "ok"}>{chosen ? T.squad.talk.lockedTag : T.squad.talk.fillTag}</i>
+      </span>
+      {chosen ? (
+        <div className="sq-lockrow">
+          <StrategyFace id={chosen.id} art={art} size={38} />
+          <span>
+            <b>{strategyWords(chosen)}</b>
+            <small>{T.squad.talk.locked}</small>
+          </span>
+          <span className="lk" aria-hidden="true">
+            🔒
+          </span>
+        </div>
+      ) : filling ? (
+        <FillAsk
+          s={filling}
+          onYes={() => {
+            setFilling(null);
+            mark({ strategy: filling.id });
+          }}
+          onNo={() => setFilling(null)}
+        />
+      ) : (
+        <>
+          <p className="fillnote">{T.squad.talk.fillHint}</p>
+          <StrategyGrid
+            value={null}
+            core={me.core}
+            art={art}
+            taken={taken}
+            onTaken={(s) => setNote(fmt(T.squad.room.takenBy, { s: s.op, name: holders.find((m) => m.strategy === s.id)?.name ?? "" }))}
+            onPick={(id) => {
+              const s = id === null ? null : strategyOf(id);
+              setNote(null);
+              if (s) setFilling(s);
+            }}
+          />
+        </>
+      )}
       {note && <p className="hey">{note}</p>}
-      <span className="lab">{T.squad.talk.core}</span>
+      <span className="lab">
+        {T.squad.talk.core}
+        <i className="ok">{T.squad.talk.coreFree}</i>
+      </span>
       <CoreChips value={me.core} onPick={(core) => mark({ core })} />
       <span className="lab">
         {T.squad.talk.extras}
@@ -232,6 +305,7 @@ function RoundTab({ room, onError }: { room: SquadRoom; onError: (e: unknown) =>
           {T.squad.dot}
           {fmt(T.squad.talk.extrasMax, { max: ROUND_EXTRAS_MAX })}
         </small>
+        <i className="ok">{T.squad.talk.extrasFree}</i>
       </span>
       <ExtrasChips value={me.extras} onToggle={(id) => mark({ extras: me.extras.includes(id) ? me.extras.filter((x) => x !== id) : [...me.extras, id] })} />
       {me.extras.length > 0 && <p className="note">{extraNames(me.extras).join(T.common.listSep)}</p>}

@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
-import { strategyOf, type SquadBotDo, type SquadMember } from "@/lib/squad";
+import { sameStrategy, strategyOf, TO, type SquadBotDo, type SquadMember } from "@/lib/squad";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import RoachIcon from "../../RoachIcon";
 import { touchesNow, useTick } from "../dayTurns";
@@ -10,15 +10,26 @@ import type { Art } from "../OperatorNames";
 import { RoachPassOn } from "../passes/RoachPass";
 import { TouchButtons } from "../RoachCards";
 import { CoreBadge, extraNames, StrategyFace, strategyWords } from "./SquadPicks";
+import { lineWords } from "./squading";
 import "./squadMate.css";
 
 /** What a tap on the card's foot asks first */
 type Asking = "kick" | "block" | "report";
 
 /**
+ * What may be said to TA alone (对 TA 说), by the line's number, as things stand: asked to change a strategy that
+ * clashes with yours, else to give up TA's, else to pick one; to get ready (TA not the host, not ready); thanks.
+ */
+export function linesTo(m: Pick<SquadMember, "strategy" | "host" | "inGame">, me: Pick<SquadMember, "strategy"> | undefined) {
+  const first = sameStrategy(m.strategy, me?.strategy ?? null) ? TO.change : m.strategy !== null ? TO.giveUp : TO.pick;
+  return [first, ...(!m.host && !m.inGame ? [TO.ready] : []), TO.thanks];
+}
+
+/**
  * The card of someone else in the room (a tap on TA's tile, in the room's sheet or on the bar of a round), made as the
  * map's card of another's roach (RoachCards.tsx): TA's roach, name and 房主 / 触须之交 / 人机; under it 准备 while
- * the room waits, TA's round while it plays (strategy, core alliance, 附加盟约); the two touches as on the map, with
+ * the room waits, with TA's strategy and the lines that may be said to TA alone (对 TA 说, onSay), TA's round while
+ * it plays (strategy, core alliance, 附加盟约); the two touches as on the map, with
  * today's touches left; and at its foot 请出去 (the host's), 拉黑 and 举报, each asked first. The pass TA wears hangs on
  * it as on the map's (passes/RoachPass.tsx), folded or not as there. A 人机's: touches played on this page alone, no
  * foot, and to the 站长 or an admin hosting the room, a row of what it does. Goes at its × or a tap on the tile again.
@@ -34,6 +45,8 @@ export default function SquadMateCard({
   busy,
   className,
   style,
+  me,
+  onSay,
   onTouch,
   onKick,
   onSafety,
@@ -54,6 +67,10 @@ export default function SquadMateCard({
   /** Where it stands: in the room's sheet, or over the bar of a round */
   className: string;
   style?: CSSProperties;
+  /** The viewer as the room has them (whose strategy TA's may clash with) */
+  me?: SquadMember;
+  /** While the room waits: a line said to TA alone, by its number */
+  onSay?: (p: number) => void;
   onTouch: (bold: boolean) => Promise<void> | void;
   onKick: () => void;
   /** 拉黑 and 举报: the map page's sheet for them (sq:<room>:<number>) */
@@ -122,6 +139,27 @@ export default function SquadMateCard({
             )}
           </div>
         </div>
+      )}
+      {!playing && onSay && (
+        <>
+          <div className="sq-mround">
+            <div className="r">
+              <i>{T.squad.fight.peekStrategy}</i>
+              {s && <StrategyFace id={m.strategy} art={art} size={26} />}
+              <span>{s ? strategyWords(s) : T.squad.card.strategyNone}</span>
+            </div>
+          </div>
+          <div className="sq-sayto" role="group" aria-label={T.squad.mate.sayTo}>
+            <small>{T.squad.mate.sayTo}</small>
+            <span className="chips">
+              {linesTo(m, me).map((p) => (
+                <button key={p} type="button" disabled={busy} onClick={() => onSay(p)}>
+                  {lineWords(p, m.strategy)}
+                </button>
+              ))}
+            </span>
+          </div>
+        </>
       )}
       {m.pass && <RoachPassOn pass={m.pass} />}
       {m.bot ? (

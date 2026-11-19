@@ -51,3 +51,35 @@
 @media (prefers-reduced-motion: reduce) {
   .sq-popcard { animation: none; }
 }
+
+/* a line said to you in the room (SquadToMe.tsx): dark as a 宣言's, its answers under it; in the room's sheet at the
+   top of what scrolls, or over the map above 卫戍中 */
+.sq-tome {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: #1b1d22;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  line-height: 1.35;
+  animation: sq-popcard-up 0.25s ease-out;
+}
+.sq-tome .ri { display: grid; place-items: center; width: 36px; height: 36px; }
+.sq-tome .tx { min-width: 0; padding-right: 20px; }
+.sq-tome .tx small { display: block; color: #c8ccd2; font-size: 11.5px; font-weight: 600; }
+.sq-tome .tx b { color: #ffd23f; font-size: 16px; font-weight: 800; }
+.sq-tome .acts { grid-column: 1 / -1; display: flex; gap: 8px; }
+.sq-tome .acts button { flex: 1; min-width: 0; padding: 8px 6px; border: 0; border-radius: 10px; background: #34373f; color: #fff; font: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer; }
+.sq-tome .acts button.acc { background: #ffd23f; color: #1b1d22; }
+.sq-tome .acts button:disabled { opacity: 0.6; cursor: default; }
+.sq-tome .note { grid-column: 1 / -1; margin: 0; color: #ffd8a8; font-size: 12px; }
+.sq-tome .x { position: absolute; top: 2px; right: 6px; padding: 2px 6px; border: 0; background: none; color: #9aa0aa; font: inherit; font-size: 20px; line-height: 1.2; cursor: pointer; }
+.sq-tome.in-sheet { position: sticky; top: 0; z-index: 6; margin-bottom: 10px; }
+.sq-tome.on-map { position: fixed; z-index: 31; left: 10px; right: 10px; max-width: 420px; margin: 0 auto; }
+@media (prefers-reduced-motion: reduce) {
+  .sq-tome { animation: none; }
+}

@@ -76,7 +76,10 @@ import {
   SQUAD_MAX,
   STATE_EVERY_MS,
   STRATEGIES,
+  STRATEGY_LOCKED,
   STRATEGY_TAKEN,
+  TO,
+  isToPhrase,
   TAGS_MAX,
   WAIT_IDLE_MS,
   type SquadBotDo,
@@ -280,7 +283,7 @@ function endsOf(r: Room): { at: number; why: "idle" | "go" | "life" } {
 type Hearer = { userId: string; handle: number };
 type Moved = { h: number; move: SquadMove; to?: number };
 /** The lines said and moves done in a room in the last SAY_BATCH_MS, told to it at once */
-type Said = { items: { h: number; p: number }[]; moves: Moved[]; timer: ReturnType<typeof setTimeout> };
+type Said = { items: { h: number; p: number; to?: number }[]; moves: Moved[]; timer: ReturnType<typeof setTimeout> };
 const g = globalThis as unknown as {
   squadHearers?: Map<string, { at: number; rows: Hearer[] }>;
   squadSays?: Map<string, Said>;
@@ -1013,6 +1016,7 @@ async function botDoes(roomId: string, h: number, what: Exclude<SquadBotDo, "add
       return { what: bot.inGame ? undefined : { kind: "game", h }, list: false };
     }
     if (what === "strategy") {
+      if (room.state === "go" && bot.strategy !== null) throw refuse(409, T.server.squad.strategyLocked, STRATEGY_LOCKED);
       const members = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)));
       const others = (await botsOf(tx, roomId)).filter((b) => b.handle !== h);
       const strategy = freeStrategy(
@@ -1051,9 +1055,10 @@ export async function setInGame(user: Pick<UserRow, "id">, body: Record<string, 
 
 /**
  * The player's picks in this room alone, their 卫戍名片 as it was: round (SquadRound) from a page of now, card (the
- * picks alone) from one of before. While it waits, the core alliance and the strategy (two the same are fine until
- * 开始游戏); while a round plays (这局), the 附加盟约 too, and never a strategy a teammate plays the round with
- * (sameStrategy: 409 STRATEGY_TAKEN), counted inside the room's lock. Every PREFS_EVERY_MS at most.
+ * picks alone) from one of before. Never a strategy someone else in it has (sameStrategy, a 人机's too: 409
+ * STRATEGY_TAKEN), counted inside the room's lock; none (无偏好) always. While it waits, the core alliance and the
+ * strategy; while a round plays (这局), the 附加盟约 too, and the strategy is locked till 结束这局 (409
+ * STRATEGY_LOCKED): one who has none may fill one in (补位), once. Every PREFS_EVERY_MS at most.
  */
 export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const round = readRound(body.round ?? body.card);
@@ -1065,7 +1070,10 @@ export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, u
     const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id)).for("update");
     if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
     const playing = room.state === "go";
-    if (playing && round.strategy !== null) {
+    const [self] = await tx.select().from(squadMembers).where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.userId, user.id)));
+    if (!self || self.leftAt) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+    const had = roomCard(self).strategy;
+    if (round.strategy !== null && round.strategy !== had) {
       const others = await tx
         .select()
         .from(squadMembers)
@@ -1073,6 +1081,8 @@ export async function setPrefs(user: Pick<UserRow, "id">, body: Record<string, u
       const bots = await botsOf(tx, room.id);
       if ([...others, ...bots].some((o) => sameStrategy(round.strategy, roomCard(o).strategy))) throw refuse(409, T.server.squad.strategyTaken, STRATEGY_TAKEN);
     }
+    // a round playing: the strategy stays as it is (none may be filled in once)
+    if (playing && had !== null && round.strategy !== had) throw refuse(409, T.server.squad.strategyLocked, STRATEGY_LOCKED);
     // a page of before sends no extras: those marked stay
     const extras = playing && body.round !== undefined ? round.extras : null;
     const [me] = await tx
@@ -1641,17 +1651,74 @@ export async function separateSquadBlocked(blockerId: string, blockedId: string,
 /**
  * A set line in the room you are in, by its number (src/lib/squad.ts isPhrase): one every SAY_EVERY_MS and
  * SAY_PER_HOUR an hour, counted in memory alone, and never written down but as how many a day. Those of a second go
- * out together (SAY_BATCH_MS) to everyone in the room. sent: false when it was one too many.
+ * out together (SAY_BATCH_MS) to everyone in the room. sent: false when it was one too many. 对 TA 说's lines (the
+ * row "to") go to one in the room (to: their number there, a 人机's too), only while it waits, everyone in it seeing
+ * them; a 人机 answers by itself (answerBot).
  */
 export async function sayInRoom(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
-  if (!isPhrase(body.p)) throw refuse(400, T.server.common.badRequest);
-  const mine = await roomOf(db, user.id);
+  const p = body.p;
+  if (!isPhrase(p) || isToPhrase(p) !== (body.to !== undefined)) throw refuse(400, T.server.common.badRequest);
+  const to = body.to === undefined ? null : (handleOf(body.to) ?? (isBotHandle(body.to) ? body.to : null));
+  if (body.to !== undefined && to === null) throw refuse(400, T.server.common.badRequest);
+  // to one in the room, never yourself: a 人机 (withBot) or a member (memberAt)
+  const mine = to === null ? await roomOf(db, user.id) : to < 0 ? await withBot(user.id, to) : (await memberAt(user.id, to)).mine;
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
+  if (to !== null && mine.room.state !== "wait") throw refuse(409, T.server.squad.toPlaying, ROOM_PLAYING);
   if (!allow(`squad:sayEvery:${user.id}`, 1, SAY_EVERY_MS)) return { sent: false, now };
   if (!allow(`squad:sayHour:${user.id}`, SAY_PER_HOUR, HOUR)) return { sent: false, full: true, now };
-  addSay(mine.room.id, mine.me.handle, body.p);
+  addSay(mine.room.id, mine.me.handle, p, to ?? undefined);
   countStat(COUNTED.squadSay, 1, now);
+  if (to !== null && to < 0) answerLater(mine.room.id, to, mine.me.handle, p);
   return { sent: true, now };
+}
+
+// ---- 人机 named (对 TA 说): an answer by itself, BOT_ANSWER_MS after ----
+
+/** A 人机 named answers this long after */
+const BOT_ANSWER_MS = 2_000;
+const g2 = globalThis as unknown as { squadBotAnswers?: Map<ReturnType<typeof setTimeout>, () => Promise<void>> };
+const botAnswers = (g2.squadBotAnswers ??= new Map());
+
+function answerLater(roomId: string, bot: number, asker: number, p: number) {
+  const run = () => answerBot(roomId, bot, asker, p).catch((e) => console.error("squad: a 人机's answer failed", e));
+  const t = setTimeout(() => {
+    botAnswers.delete(t);
+    void run();
+  }, BOT_ANSWER_MS);
+  t.unref?.();
+  botAnswers.set(t, run);
+}
+
+/** For tests: the answers waiting, given now */
+export async function answerBotsNow() {
+  for (const [t, run] of [...botAnswers]) {
+    clearTimeout(t);
+    botAnswers.delete(t);
+    await run();
+  }
+}
+
+/**
+ * What a 人机 named says back, to the one who said it (none once the round started or the 人机 left): asked to
+ * change or give theirs up (36, 37), 好，我换 and another strategy nobody has; asked to pick one (38), 好嘞 and one
+ * picked when it had none; asked to ready (39), 好嘞 (they always are); thanked (40), nothing.
+ */
+async function answerBot(roomId: string, bot: number, asker: number, p: number) {
+  if (p === TO.thanks || !isToPhrase(p) || p > TO.thanks) return;
+  const [room] = await db.select().from(squadRooms).where(eq(squadRooms.id, roomId));
+  if (!room || room.endedAt || room.state !== "wait") return;
+  const [b] = await db
+    .select()
+    .from(squadBots)
+    .where(and(eq(squadBots.roomId, roomId), eq(squadBots.handle, bot), isNull(squadBots.goneAt)));
+  if (!b) return;
+  if (p === TO.change || p === TO.giveUp) {
+    addSay(roomId, bot, TO.ok, asker);
+    await botDoes(roomId, bot, "strategy", Date.now());
+    return;
+  }
+  addSay(roomId, bot, TO.sure, asker);
+  if (p === TO.pick && b.strategy === null) await botDoes(roomId, bot, "strategy", Date.now());
 }
 
 /**
@@ -1684,8 +1751,8 @@ function batchOf(roomId: string) {
   return b;
 }
 
-function addSay(roomId: string, h: number, p: number) {
-  batchOf(roomId).items.push({ h, p });
+function addSay(roomId: string, h: number, p: number, to?: number) {
+  batchOf(roomId).items.push({ h, p, ...(to === undefined ? {} : { to }) });
 }
 
 async function flushSay(roomId: string) {

@@ -8,6 +8,7 @@ import type { PassesDot } from "@/lib/passes";
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
 import {
+  BUBBLE_MS,
   DEFAULT_SERVER,
   findKey,
   KEY_OLD_MS,
@@ -28,6 +29,7 @@ import {
   SQUAD_SERVERS,
   TAGS,
   TAGS_MAX,
+  TO,
   mayStart,
   notYet,
   sameStrategy,
@@ -40,6 +42,7 @@ import {
   type SquadPicks,
   type SquadRoom,
   type SquadSeat,
+  type SquadStrategy,
 } from "@/lib/squad";
 import { squadApi, SquadRefused } from "@/lib/squadClient";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
@@ -50,6 +53,7 @@ import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, St
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SquadMateCard from "./SquadMateCard";
 import SquadTalk from "./SquadTalk";
+import SquadToMe from "./SquadToMe";
 import { useOperatorArt, type Art } from "../OperatorNames";
 import Sheet from "../Sheet";
 import {
@@ -64,8 +68,10 @@ import {
   loadSquadFriends,
   openSquadRoom,
   saveSquadCard,
+  sayInSquad,
   sentWords,
   setSquadInGame,
+  setSquadPickNext,
   setSquadPrefs,
   setSquadStopped,
   squadBot,
@@ -75,6 +81,7 @@ import {
   useSquadLines,
   useSquadMoves,
   useSquadNotice,
+  useSquadPickNext,
   useSquadRoom,
   useSquadShowName,
   useSquadTouched,
@@ -891,7 +898,18 @@ function RoomView({
   // the host asking someone to leave: whom (their number), asked first
   const [kicking, setKicking] = useState<number | null>(null);
   // 说话 / 动作 (and 这局 while it plays), from your own roach at the foot
-  const [talking, setTalking] = useState(false);
+  const [talking, setTalking] = useState<false | "say" | "round">(false);
+  // 好，我换 tapped over the map: the strategy picker opens with the sheet
+  const pickNext = useSquadPickNext();
+  useEffect(() => {
+    if (!pickNext) return;
+    setSquadPickNext(false);
+    if (room.state === "wait") setPicking("strategy");
+  }, [pickNext, room.state]);
+  // the round started: the strategy is locked, its picker goes (这局 has the rest)
+  useEffect(() => {
+    if (room.state === "go") setPicking((k) => (k === "strategy" ? null : k));
+  }, [room.state]);
   const lines = useSquadLines();
   const moves = useSquadMoves();
   const lifts = liftsOf(
@@ -947,6 +965,16 @@ function RoomView({
     ...blocks.clashes.map(([a, b]) => fmt(T.squad.room.clashPair, { a: nameOf(a), b: nameOf(b), s: strategyOf(a.strategy!)?.op ?? "" })),
   ].join(T.squad.room.needSep);
   const kickOf = kicking === null ? null : (room.members.find((m) => m.h === kicking && !m.you) ?? null);
+  // the strategies teammates play, and those on the tiles of a clash
+  const holders = room.members.filter((m) => !m.you && m.strategy !== null);
+  const taken = new Set(holders.map((m) => m.strategy!));
+  const clashing = new Set(blocks.clashes.flat().map((m) => m.h));
+  // a line said to one in the room (对 TA 说), refused as any line is (too fast, the hour's used up)
+  const sayTo = async (p: number, h: number) => {
+    const res = await run(() => sayInSquad(p, h));
+    if (res && !res.sent) onToast(res.full ? T.squad.say.enough : T.squad.say.slow);
+    return Boolean(res?.sent);
+  };
   const declare = async (from: string[] | null) => {
     const res = await run(() => declareSquadRoom(from));
     if (!res) return;
@@ -989,7 +1017,7 @@ function RoomView({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="sq-saybar" onClick={() => setTalking(true)}>
+          <button type="button" className="sq-saybar" onClick={() => setTalking("say")}>
             <SquadRoach m={me} size={32} />
             <b>{T.squad.talk.open}</b>
             <small>{T.squad.talk.openSub}</small>
@@ -1006,6 +1034,8 @@ function RoomView({
               touched={touched[menuOf.h]}
               busy={busy}
               className="in-sheet"
+              me={me}
+              onSay={room.state === "wait" ? (p) => void sayTo(p, menuOf.h).then((sent) => sent && setMenu(null)) : undefined}
               onTouch={(bold) => onTouch(menuOf.h, bold)}
               onKick={() => (setMenu(null), void run(() => kickFromSquad(menuOf.h)))}
               onSafety={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}
@@ -1017,6 +1047,7 @@ function RoomView({
       }
     >
       <Floats />
+      <SquadToMe room={room} className="in-sheet" onPick={() => setPicking("strategy")} />
       {room.host && asking === "hostMenu" && (
         <div className="sq-pop sq-hostmenu" role="group" aria-label={T.squad.room.hostMenu}>
           <button disabled={busy || room.keyLeft <= 0} onClick={() => setAsking("key")}>
@@ -1081,13 +1112,16 @@ function RoomView({
             m={m}
             art={art}
             playing={room.state === "go"}
+            clash={room.state === "wait" && clashing.has(m.h)}
             line={lines.find((l) => l.h === m.h)}
+            lineTo={(h) => room.members.find((x) => x.h === h)}
+            named={lines.find((l) => l.to === m.h && Date.now() - l.at < BUBBLE_MS)}
             lift={lifts.get(m.h) ?? 0}
             move={moves.find((x) => x.h === m.h)}
             toMe={moves.find((x) => x.to === m.h)}
             open={menu === m.h}
             onCore={() => setPicking("core")}
-            onStrategy={() => setPicking("strategy")}
+            onStrategy={() => (room.state === "go" ? setTalking("round") : setPicking("strategy"))}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
             onKick={room.host && !m.you && (room.state !== "go" || m.bot) ? () => setKicking(m.h) : undefined}
           />
@@ -1115,6 +1149,29 @@ function RoomView({
           </div>
         ))}
       </div>
+      {room.state === "wait" && blocks.clashes.length > 0 && (
+        <div className="sq-clines">
+          {blocks.clashes.map(([a, b]) => {
+            const other = a.you ? b : b.you ? a : null;
+            return (
+              <div key={`${a.h}:${b.h}`} className="sq-cline">
+                <b>{T.squad.room.clashBadge}</b>
+                <span className="tx">{fmt(T.squad.room.clashPair, { a: nameOf(a), b: nameOf(b), s: strategyOf(a.strategy!)?.op ?? "" })}</span>
+                {other && (
+                  <span className="acts">
+                    <button className="small dark" disabled={busy} onClick={() => void sayTo(TO.change, other.h)}>
+                      {T.squad.room.askChange}
+                    </button>
+                    <button className="small" disabled={busy} onClick={() => setPicking("strategy")}>
+                      {T.squad.room.iChange}
+                    </button>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {room.host ? (
         room.state === "wait" ? (
           <div className="sq-go">
@@ -1233,6 +1290,9 @@ function RoomView({
           me={me}
           art={art}
           busy={busy}
+          taken={taken}
+          holders={holders}
+          onAsk={room.state === "wait" ? (h) => void sayTo(TO.giveUp, h).then((sent) => sent && setPicking(null)) : undefined}
           onPick={async (p) => {
             const r = await run(() => setSquadPrefs({ core: me.core, strategy: me.strategy, extras: me.extras, ...p }));
             if (r) setPicking(null);
@@ -1268,7 +1328,7 @@ function RoomView({
           onNo={() => setAsking(null)}
         />
       )}
-      {talking && <SquadTalk room={room} onClose={() => setTalking(false)} onError={onError} />}
+      {talking && <SquadTalk room={room} start={talking === "round" ? "round" : undefined} onClose={() => setTalking(false)} onError={onError} />}
     </Sheet>
   );
 }
@@ -1453,7 +1513,10 @@ function MemberTile({
   m,
   art,
   playing,
+  clash = false,
   line,
+  lineTo,
+  named,
   lift,
   move,
   toMe,
@@ -1466,8 +1529,14 @@ function MemberTile({
   m: SquadMember;
   art: Art | null;
   playing: boolean;
+  /** TA's strategy is another's in the room too: a red ring and 撞 */
+  clash?: boolean;
   /** Their last line, over the tile a few seconds, up by lift px when another's shows beside it */
   line?: SquadLine;
+  /** The one in the room a line was said to (对 TA 说), by number */
+  lineTo?: (h: number) => SquadMember | undefined;
+  /** A line said to TA a moment ago: the tile flashes */
+  named?: SquadLine;
   lift: number;
   /** A move of theirs, and one done to them */
   move?: SquadMoveDone;
@@ -1483,8 +1552,9 @@ function MemberTile({
   return (
     <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}${m.bot ? " bot" : ""}`}>
       {!m.you && <button type="button" className="hit" aria-label={m.name} aria-expanded={open} onClick={onMenu} />}
+      {named && <span key={named.key} className="sq-named" aria-hidden="true" />}
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
-      <Bubble line={line} lift={lift} />
+      <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
       <SquadRoach m={m} size={44} line={line} move={move} toMe={toMe} />
       <span className="nm">
         {m.name}
@@ -1493,7 +1563,10 @@ function MemberTile({
       </span>
       <span className="pk">
         <CoreBadge core={m.core} onClick={m.you ? onCore : undefined} />
-        <StrategyPic id={m.strategy} art={art} onClick={m.you ? onStrategy : undefined} />
+        <span className={`sq-stw${clash ? " clash" : ""}`}>
+          <StrategyPic id={m.strategy} art={art} onClick={m.you ? onStrategy : undefined} />
+          {clash && <i className="ctag">{T.squad.list.clashTag}</i>}
+        </span>
       </span>
       {onKick && (
         <button type="button" className="kick" onClick={onKick}>
@@ -1514,12 +1587,18 @@ function MemberTile({
   );
 }
 
-/** Your core alliance or strategy in this room alone (your card stays as it is) */
+/**
+ * Your core alliance or strategy in this room alone (your card stays as it is). A strategy a teammate plays is grey
+ * (队友在用); tapped, it says who, and while the room waits offers to ask TA for it (能把「…」让给我吗？).
+ */
 function PicksAsk({
   kind,
   me,
   art,
   busy,
+  taken,
+  holders = [],
+  onAsk,
   onPick,
   onClose,
 }: {
@@ -1527,9 +1606,15 @@ function PicksAsk({
   me: SquadMember;
   art: Art | null;
   busy: boolean;
+  taken?: ReadonlySet<number>;
+  /** Those in the room playing a strategy, to say whose a grey one is */
+  holders?: readonly SquadMember[];
+  /** Ask the one by number for theirs */
+  onAsk?: (h: number) => void;
   onPick: (p: Partial<SquadPicks>) => void;
   onClose: () => void;
 }) {
+  const [held, setHeld] = useState<{ s: SquadStrategy; who: SquadMember } | null>(null);
   const title = kind === "core" ? T.squad.room.pickCore : T.squad.room.pickStrategy;
   return (
     <div className="sq-ask-bg" onClick={onClose}>
@@ -1540,9 +1625,29 @@ function PicksAsk({
           {kind === "core" ? (
             <CoreChips value={me.core} onPick={(core) => !busy && onPick({ core })} />
           ) : (
-            <StrategyGrid value={me.strategy} core={me.core} art={art} onPick={(strategy) => !busy && onPick({ strategy })} />
+            <StrategyGrid
+              value={me.strategy}
+              core={me.core}
+              art={art}
+              taken={taken}
+              onTaken={(s) => {
+                const who = holders.find((m) => m.strategy === s.id);
+                setHeld(who ? { s, who } : null);
+              }}
+              onPick={(strategy) => !busy && (setHeld(null), onPick({ strategy }))}
+            />
           )}
         </div>
+        {held && (
+          <p className="sq-pnote">
+            <span>{fmt(T.squad.room.takenBy, { s: held.s.op, name: held.who.name })}</span>
+            {onAsk && (
+              <button className="small dark" disabled={busy} onClick={() => onAsk(held.who.h)}>
+                {T.squad.room.askGiveUp}
+              </button>
+            )}
+          </p>
+        )}
         <div className="row">
           <button className="ghost grow" onClick={onClose}>
             {T.squad.call.close}

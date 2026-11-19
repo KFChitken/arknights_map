@@ -527,32 +527,38 @@ describe("blocking", () => {
 });
 
 describe("这局: the picks of a round", () => {
-  it("are the picks alone while it waits; while it plays the 附加盟约 too, never a strategy a teammate plays it with; 结束这局 clears the extras", async () => {
+  it("are the picks alone while it waits, never a strategy another plays; while it plays the 附加盟约 too, the strategy locked; 结束这局 clears the extras", async () => {
     const host = await player("host");
     const a = await player("a");
     const room = await opened(host);
     await goIn(a, room);
     const heard = hear(host);
-    // waiting: no extras yet, and two strategies the same are fine until 开始游戏
+    // waiting: no extras yet; one who came in with the host's strategy (from their card) keeps it as it is, a clash to
+    // sort out before 开始游戏
     const waiting = await post(a, "prefs", { round: { core: 2, strategy: CARD.strategy, extras: [1, 2] } });
     expect((waiting.body!.room as SquadRoom).members[1]).toMatchObject({ core: 2, strategy: CARD.strategy, extras: [], pose: 0 });
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "round", h: 2, round: { core: 2, strategy: CARD.strategy, extras: [] } } });
-    // ready, a strategy of their own, and the round starts
+    // a strategy of their own, and the host's no more once left
     forgetHits();
     expect((await post(a, "prefs", { round: { core: 2, strategy: 46, extras: [] } })).status).toBe(200);
+    forgetHits();
+    expect(await post(a, "prefs", { round: { core: 2, strategy: CARD.strategy, extras: [] } })).toMatchObject({ status: 409, body: { code: "squadStrategyTaken" } });
+    // ready, and the round starts
     await post(a, "game", { on: true });
     expect((await post(host, "state", { to: "go" })).status).toBe(200);
-    // playing: the host's strategy is refused, none (无偏好) never is
+    // playing: the host's strategy is taken, any other (or none, 无偏好) locked out
     forgetHits();
     expect(await post(a, "prefs", { round: { core: 2, strategy: CARD.strategy, extras: [] } })).toMatchObject({ status: 409, body: { code: "squadStrategyTaken" } });
     forgetHits();
-    const marked = await post(a, "prefs", { round: { core: 3, strategy: null, extras: [3, 1, 4, 5] } });
-    expect((marked.body!.room as SquadRoom).members[1]).toMatchObject({ core: 3, strategy: null, extras: [3, 1, 4, 5] });
-    expect((await roomsOf(host)).find((r) => r.id === room.id)!.seats[1]).toMatchObject({ core: 3, strategy: null });
+    expect(await post(a, "prefs", { round: { core: 2, strategy: null, extras: [] } })).toMatchObject({ status: 409, body: { code: "squadStrategyLocked" } });
+    forgetHits();
+    const marked = await post(a, "prefs", { round: { core: 3, strategy: 46, extras: [3, 1, 4, 5] } });
+    expect((marked.body!.room as SquadRoom).members[1]).toMatchObject({ core: 3, strategy: 46, extras: [3, 1, 4, 5] });
+    expect((await roomsOf(host)).find((r) => r.id === room.id)!.seats[1]).toMatchObject({ core: 3, strategy: 46 });
     // five, one twice, or one not of the season
     for (const extras of [[1, 2, 3, 4, 6], [1, 1], [999]]) {
       forgetHits();
-      expect((await post(a, "prefs", { round: { core: 3, strategy: null, extras } })).status).toBe(400);
+      expect((await post(a, "prefs", { round: { core: 3, strategy: 46, extras } })).status).toBe(400);
     }
     // a page of before sends its picks alone: the extras stay
     forgetHits();

@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { SCENE_EGGS, type SquadRoom } from "@/lib/squad";
 import { ROACH_AVATARS, type RoachAvatar, type RoachColor } from "@/lib/types";
-import { T } from "@/i18n";
 import { makeScene, type FightMember, type SceneApi } from "./scene";
 import { seatFor } from "./scene/geometry";
-import { openSquadTalk, setSquadSceneShows, useSquadLines, useSquadRoom, useSquadSceneOn } from "./squading";
+import { lineWords, openSquadTalk, setSquadSceneShows, useSquadLines, useSquadRoom, useSquadSceneOn } from "./squading";
 import "./scene/squadScene.css";
 
 /**
@@ -165,7 +164,7 @@ export default function SquadStage({ hidden }: { hidden: boolean }) {
       heard.current.add(l.key);
       // lines from before the fight was made (its first look) only mark what was heard
       if (Date.now() - l.at > 2_000) continue;
-      s.say(l.h, T.squad.say.lines[l.p - 1] ?? "", SCENE_EGGS[l.p]);
+      s.say(l.h, lineWords(l.p, l.s), SCENE_EGGS[l.p]);
     }
   }, [lines, round, boxReady]);
 

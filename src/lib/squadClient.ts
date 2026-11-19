@@ -77,8 +77,8 @@ export const squadApi = {
   move: (move: SquadMove, to?: number) => call<{ sent: boolean; full?: boolean; now: number }>("move", post(to === undefined ? { move } : { move, to })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
-  /** A set line, by its number: sent, or one too many (full: the hour's are used up) */
-  say: (p: number) => call<{ sent: boolean; full?: boolean; now: number }>("say", post({ p })),
+  /** A set line, by its number (to: the one in the room it is said to, 对 TA 说): sent, or one too many (full: the hour's are used up) */
+  say: (p: number, to?: number) => call<{ sent: boolean; full?: boolean; now: number }>("say", post(to === undefined ? { p } : { p, to })),
   /** What the host does to the room's songs */
   music: (change: SquadSongChange) => call<Room>("music", post(typeof change === "object" ? change : { [change]: true })),
   /** 点歌 */

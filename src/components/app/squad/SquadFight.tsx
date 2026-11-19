@@ -14,6 +14,7 @@ import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import {
   closeSquadTalk,
   kickFromSquad,
+  lineWords,
   openSquadTalk,
   squadBot,
   setSquadSceneOn,
@@ -179,7 +180,7 @@ export default function SquadFight({
     const line = lines.find((l) => l.h === m.h);
     const extras = extraNames(m.extras);
     const xs = extras.length ? `${extras.slice(0, 2).join(T.squad.dot)}${extras.length > 2 ? ` ${fmt(T.squad.fight.extrasMore, { n: extras.length - 2 })}` : ""}` : T.squad.fight.extrasNone;
-    const said = line ? T.squad.say.lines[line.p - 1] : null;
+    const said = line ? lineWords(line.p, line.s) : null;
     const edge = wide ? "" : i === 0 ? " edge-l" : i === n - 1 ? " edge-r" : "";
     return (
       <button
@@ -196,7 +197,7 @@ export default function SquadFight({
         {m.you && <span className="tapme">{m.strategy === null ? T.squad.fight.mark : T.squad.fight.tapMe}</span>}
         {m.host && !m.you && <span className="hostt">{T.squad.fight.host}</span>}
         {m.bot && <span className="hostt">{T.squad.bot.tag}</span>}
-        {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "left" : "up"} />}
+        {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "left" : "up"} to={line?.to === undefined ? null : room.members.find((x) => x.h === line.to)} />}
         <span className="rw">
           <SquadRoach m={m} size={wide ? 46 : 42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} />
           {m.strategy === null ? (

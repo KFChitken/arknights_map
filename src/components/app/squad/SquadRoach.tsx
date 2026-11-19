@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
-import { T } from "@/i18n";
+import { fmt, T } from "@/i18n";
 import { coin, loudspeaker, terminal } from "@/lib/lookArt";
 import { BUBBLE_MS, type SquadMember } from "@/lib/squad";
 import { burst, miniHeart } from "@/lib/touchArt";
 import { ROACH_AVATARS, type RoachAvatar, type RoachColor } from "@/lib/types";
 import RoachIcon from "../../RoachIcon";
-import { MOVE_SHOW_MS, type SquadLine, type SquadMoveDone } from "./squading";
+import { lineWords, MOVE_SHOW_MS, type SquadLine, type SquadMoveDone } from "./squading";
 import "./squadFight.css";
 
 /**
@@ -90,15 +90,18 @@ export function SquadRoach({ m, size, line, move, toMe }: { m: SquadMember; size
   );
 }
 
-/** A line said, over the tile of the one who said it, BUBBLE_MS; up by `lift` px when another's shows beside it */
-export function Bubble({ line, lift = 0, side = "up" }: { line: SquadLine | null | undefined; lift?: number; side?: "up" | "left" }) {
+/**
+ * A line said, over the tile of the one who said it, BUBBLE_MS; up by `lift` px when another's shows beside it. One said
+ * to someone (对 TA 说) names TA over it, 「对你」 to the viewer (to: TA, as the room has TA now).
+ */
+export function Bubble({ line, lift = 0, side = "up", to }: { line: SquadLine | null | undefined; lift?: number; side?: "up" | "left"; to?: SquadMember | null }) {
   const still = useStill(line?.at ?? null, BUBBLE_MS);
-  if (!line || !still) return null;
-  const text = T.squad.say.lines[line.p - 1];
-  if (!text) return null;
+  if (!line || !still || !T.squad.say.lines[line.p - 1]) return null;
+  const named = line.to === undefined || !to ? null : to.you ? T.squad.say.toYou : fmt(T.squad.say.toName, { name: to.name });
   return (
     <span key={line.key} className={`sq-bub ${side}`} style={side === "up" ? ({ "--lift": `${lift}px` } as CSSProperties) : undefined} aria-hidden="true">
-      {text}
+      {named && <small className="sq-bto">{named}</small>}
+      {lineWords(line.p, line.s)}
     </span>
   );
 }

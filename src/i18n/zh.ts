@@ -672,7 +672,9 @@ export const zh = {
       notThere: "TA 已经不在这个房间里了。",
       tooFast: "点得太快了，过几秒再试。",
       notReady: "还有人没准备好，或者有两位选了同一个策略。",
-      strategyTaken: "队友这局已经用了这个策略，换一个吧。",
+      strategyTaken: "队友已经在用这个策略了，换一个吧。",
+      strategyLocked: "开打了，策略锁住了，「结束这局」以后才能换。",
+      toPlaying: "开打以后不能点名说了。",
       keyEnough: "一个房间的密钥最多改 {n} 次。",
       keyWait: "刚改过密钥，{s} 秒后再改。",
       noRoachToTouch: "TA 现在地图上没有本体蟑螂，碰不了。",
@@ -2215,6 +2217,8 @@ export const zh = {
       notReady: "还没准备（还没进同盟）",
       hostNone: "房主不用准备",
       round: "这局：",
+      /** While the room waits: the lines said to TA alone (each seen by everyone in the room) */
+      sayTo: "对 TA 说 · 房间里的人都看得到",
       blockAsk: "拉黑 {name}？",
       reportAsk: "举报 {name}？",
       reportYes: "去举报",
@@ -2307,6 +2311,14 @@ export const zh = {
       needSep: "；",
       notReadyOne: "{name} 没准备",
       clashPair: "{a} 和 {b} 都选了「{s}」，有一位换一下",
+      /** Under the tiles while the room waits, a line for each two whose strategies clash */
+      clashBadge: "撞了",
+      /** After a clash's line, to the two of it: ask the other to change (says 能换个策略吗？ to TA), or change one's own */
+      askChange: "请 TA 换",
+      iChange: "我换",
+      /** A strategy a teammate plays, tapped in the picker; while the room waits, ask TA for it (能把「…」让给我吗？) */
+      takenBy: "「{s}」{name} 在用。",
+      askGiveUp: "问问 TA 能不能让给你",
       alone: "还没有队友进来",
       youName: "你",
       hostMenu: "房主的操作",
@@ -2357,7 +2369,7 @@ export const zh = {
       endNo: "算了",
     },
     say: {
-      rows: { team: "组队", open: "开局", fight: "局内", after: "打完", music: "听歌" },
+      rows: { team: "组队", open: "开局", fight: "局内", after: "打完", music: "听歌", to: "对 TA 说" },
       /** The set lines, by number from 1 (src/lib/squad.ts PHRASE_ROWS) */
       lines: [
         "我进同盟了",
@@ -2395,9 +2407,23 @@ export const zh = {
         "这波神了",
         "小刻来了都能过",
         "剩下的交给我吧",
+        "能换个策略吗？",
+        "能把「{s}」让给我吗？",
+        "选个策略吧",
+        "快准备呀",
+        "谢谢！",
+        "好，我换",
+        "不换啦，你换一个？",
+        "好嘞",
       ],
       slow: "说得太快了，歇几秒",
       enough: "这一小时说得够多了",
+      /** Over the line's bubble, a line said to one (对 TA 说) */
+      toName: "对 {name}",
+      toYou: "对你",
+      /** A line said to you: over the room's sheet, or over 卫戍中 on the map, answered there */
+      toMe: "{name} 对你说",
+      toMeClose: "收起",
     },
     /** The bar of a round (SquadFight.tsx): a tile each, over the map while the room plays */
     fight: {
@@ -2409,7 +2435,7 @@ export const zh = {
       soundOffLabel: "提示音关了，点一下打开",
       expand: "展开",
       host: "房主",
-      mark: "标策略",
+      mark: "补位",
       tapMe: "点我",
       extrasNone: "附加 —",
       extrasMore: "+{n}",
@@ -2421,7 +2447,7 @@ export const zh = {
       peekStrategy: "策略",
       peekCore: "核心盟约",
       peekExtras: "附加盟约",
-      peekNone: "还没标（名片是无偏好）",
+      peekNone: "还没补位（名片是无偏好）",
       peekExtrasNone: "还没标",
       /** The fight on the map (SquadStage.tsx): hidden or shown on this device */
       map: "看地图",
@@ -2473,8 +2499,8 @@ export const zh = {
       noMate: "房间里还没有队友",
       cancel: "算了",
       roundNow: "这局用的：{s}",
-      roundNone: "你名片是「无偏好」，标一下这局用了谁，队友就看到了",
-      roundNoneYet: "这局还没标策略",
+      roundNone: "你名片是「无偏好」：补一个没人用的策略，队友就看到了",
+      roundNoneYet: "这局还没补位",
       strategy: "策略",
       core: "核心盟约",
       extras: "附加盟约",
@@ -2482,7 +2508,17 @@ export const zh = {
       extrasMax: "最多 {max} 个",
       foot: "只改这一局，名片不变；点了马上同步给队友。「结束这局」以后附加盟约清空。",
       taken: "队友在用",
-      takenSay: "队友这局已经用了「{s}」",
+      /** Once a round has started: a strategy marked stays till 结束这局; core alliance and 附加盟约 change as before */
+      locked: "开打了，策略锁住；「结束这局」以后才能换",
+      lockedTag: "锁住了",
+      coreFree: "照旧能换",
+      extrasFree: "照旧能改",
+      /** One whose card says 无偏好: once, a strategy nobody in the room plays (补位), locked from then on */
+      fillTag: "补位",
+      fillHint: "补一个没人用的；补了就锁住，「结束这局」以后才能换",
+      fillAsk: "就补「{s}」？补了这局就不能换了",
+      fillYes: "补位",
+      fillNo: "再想想",
       close: "关上",
     },
     /** The host's songs in a room (DjBar.tsx) */
@@ -2594,6 +2630,8 @@ export const zh = {
       resumed: "房主恢复了加入",
       host: "房主走了，{name}成了房主",
       youHost: "房主走了，你成了房主",
+      /** One you asked (能换个策略吗？, 能把「…」让给我吗？) changed TA's strategy within a minute */
+      freed: "{name} 换了，「{s}」空出来了",
     },
     /** The room ended: why, to everyone in it */
     ended: {

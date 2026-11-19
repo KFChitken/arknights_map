@@ -3,9 +3,12 @@ import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
 import {
   isPhrase,
+  isToPhrase,
   LAST_LINE_MS,
   SAY_SHOW_MS,
   SQUAD_MAX,
+  strategyOf,
+  TO,
   type SquadBotDo,
   type SquadCall,
   type SquadCard,
@@ -23,7 +26,7 @@ import {
 import { squadApi } from "@/lib/squadClient";
 import type { TouchResult } from "@/lib/world/types";
 import { loadSquadTracks, squadSongs, squadTrackName, unfollowSquad } from "./squadMusic";
-import { squadPop } from "./squadSound";
+import { squadDing, squadPop } from "./squadSound";
 
 /**
  * 一起卫戍 on the map page (src/lib/squad.ts): the room the player is in, kept here so the bars over the map and the
@@ -54,8 +57,13 @@ function kept<S>(first: S) {
 
 /** What the site says in the room (someone came in, a new key, a song), floating a few seconds */
 export type SquadFloat = { key: number; text: string };
-/** A line said, over its roach (BUBBLE_MS) and under it (刚才, LAST_LINE_MS); key tells one from the next */
-export type SquadLine = { key: number; h: number; p: number; at: number };
+/**
+ * A line said by h, by its number, over its roach (BUBBLE_MS) and under it (刚才, LAST_LINE_MS); key tells one from
+ * the next; to: the one it was said to (对 TA 说), s: TA's strategy as it was said (its 「…」)
+ */
+export type SquadLine = { key: number; h: number; p: number; at: number; to?: number; s?: number | null };
+/** A line said to you (对 TA 说, 36–40) by h: over the room or the map till answered, closed, or the round starts; s: your strategy as it was said */
+export type SquadToMe = { key: number; h: number; p: number; at: number; s: number | null };
 /** A move done (动作) by h, with the teammate to for 击掌 and 贴贴, shown on the roaches MOVE_SHOW_MS */
 export type SquadMoveDone = { key: number; h: number; move: SquadMove; to?: number; at: number };
 
@@ -69,6 +77,14 @@ const lines = kept<SquadLine[]>(NO_LINES);
 const moves = kept<SquadMoveDone[]>(NO_MOVES);
 /** Who in the room this page touched (碰), by their number: sneakily (a bold touch may follow) or boldly */
 const touched = kept(NO_TOUCHED);
+const toMe = kept<SquadToMe | null>(null);
+/** Asked to change or give up a strategy (36, 37) by you: whom, the strategy TA had, and when; TA's change said within ASKED_MS */
+const asked = new Map<number, { s: number; at: number }>();
+const ASKED_MS = 60_000;
+/** A line said to you with nothing to answer (谢谢！) closes by itself this long after */
+const TO_ME_THANKS_MS = 5_000;
+/** The strategy picker to open as the room's sheet opens (好，我换 tapped over the map) */
+const pickNext = kept(false);
 /** How many rounds have started in sight of this page (开始游戏): the sheet makes way for the bar of the round */
 const rounds = kept(0);
 /** A round started while the player marked no strategy for it: 这局 opens first, with a dot, until they look */
@@ -85,6 +101,19 @@ export const useSquadFloats = (): SquadFloat[] => useSyncExternalStore(floats.on
 export const useSquadLines = (): SquadLine[] => useSyncExternalStore(lines.on, lines.get, () => NO_LINES);
 export const useSquadMoves = (): SquadMoveDone[] => useSyncExternalStore(moves.on, moves.get, () => NO_MOVES);
 export const useSquadTouched = () => useSyncExternalStore(touched.on, touched.get, () => NO_TOUCHED);
+export const useSquadToMe = () => useSyncExternalStore(toMe.on, toMe.get, () => null);
+export const closeSquadToMe = () => toMe.set(null);
+export const useSquadPickNext = () => useSyncExternalStore(pickNext.on, pickNext.get, () => false);
+/** The strategy picker opens with the room's sheet (asked to from the map), or that was done */
+export const setSquadPickNext = (on: boolean) => pickNext.set(on);
+
+/** A line's words as they show: 能把「{s}」让给我吗？ with the strategy s (its operator); with none known, 能换个策略吗？ */
+export function lineWords(p: number, s?: number | null) {
+  const text = T.squad.say.lines[p - 1] ?? "";
+  if (!text.includes("{s}")) return text;
+  const op = s == null ? null : strategyOf(s)?.op;
+  return op ? fmt(text, { s: op }) : (T.squad.say.lines[TO.change - 1] ?? "");
+}
 /** A touch of someone in the room went (by their number): their card says so */
 export const markSquadTouched = (h: number, bold: boolean) => touched.set({ ...touched.get(), [h]: bold ? "bold" : "sneaky" });
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
@@ -155,12 +184,34 @@ let talkKey = 0;
 /** The seat of h in the room (0 the first), for the pitch of its 啵 */
 const seatOf = (r: SquadRoom, h: number) => Math.max(0, r.members.findIndex((m) => m.h === h));
 
-/** A line said by h: its bubble takes the place of their last, its 刚才 stays LAST_LINE_MS; 啵 */
-function showLine(r: SquadRoom, h: number, p: number) {
+/** A line said by h (to: the one it is said to): its bubble takes the place of their last, its 刚才 stays LAST_LINE_MS; 啵 */
+function showLine(r: SquadRoom, h: number, p: number, to?: number) {
   const key = ++talkKey;
-  lines.set([...lines.get().filter((l) => l.h !== h), { key, h, p, at: Date.now() }]);
+  const said = to === undefined ? {} : { to, s: r.members.find((m) => m.h === to)?.strategy ?? null };
+  lines.set([...lines.get().filter((l) => l.h !== h), { key, h, p, at: Date.now(), ...said }]);
   window.setTimeout(() => lines.set(lines.get().filter((l) => l.key !== key)), LAST_LINE_MS);
   squadPop(seatOf(r, h));
+  // said to you, and not an answer: over the room or the map till answered (谢谢！ goes by itself)
+  if (to === r.you && h !== r.you && p >= TO.change && p <= TO.thanks) {
+    toMe.set({ key, h, p, at: Date.now(), s: said.s ?? null });
+    squadDing();
+    if (p === TO.thanks) window.setTimeout(() => toMe.get()?.key === key && toMe.set(null), TO_ME_THANKS_MS);
+  }
+}
+
+/** Those you asked to change or give up their strategy who did, within ASKED_MS: 「X 换了，「s」空出来了」 */
+function freedBy(before: SquadRoom | null, next: SquadRoom) {
+  if (!asked.size || before?.id !== next.id) return;
+  for (const [h, a] of [...asked]) {
+    if (Date.now() - a.at > ASKED_MS) {
+      asked.delete(h);
+      continue;
+    }
+    const m = next.members.find((x) => x.h === h);
+    if (!m || m.strategy === a.s) continue;
+    asked.delete(h);
+    addFloat(fmt(T.squad.float.freed, { name: m.name, s: strategyOf(a.s)?.op ?? "" }));
+  }
 }
 
 function showMove(h: number, move: SquadMove, to?: number) {
@@ -188,11 +239,16 @@ function setRoom(next: SquadRoom | null) {
     lines.set(NO_LINES);
     moves.set(NO_MOVES);
     touched.set(NO_TOUCHED);
+    toMe.set(null);
+    asked.clear();
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
     rounds.set(rounds.get() + 1);
     roundUnseen.set(next.members.find((m) => m.you)?.strategy === null);
   }
+  // a line to you closes as the round starts
+  if (next?.state === "go") toMe.set(null);
+  if (next) freedBy(before, next);
   if (!next || next.state !== "go") roundUnseen.set(false);
   room.set(next && withWant(next));
   squadSongs(next && next.dj ? { id: next.id, queue: next.queue, idx: next.idx, startedAt: next.startedAt, version: next.version } : null, next?.now);
@@ -226,7 +282,9 @@ export async function loadSquadRoom(): Promise<SquadRoom | null> {
 /** One in the room changed as told (round, pose): taken as it is, or the room read again when they are not known yet */
 function patchMember(r: SquadRoom, h: number | undefined, change: Partial<SquadMember>) {
   if (!r.members.some((m) => m.h === h)) return void loadSquadRoom().catch(() => {});
-  room.set(withWant({ ...r, members: r.members.map((m) => (m.h === h ? { ...m, ...change } : m)) }));
+  const next = withWant({ ...r, members: r.members.map((m) => (m.h === h ? { ...m, ...change } : m)) });
+  room.set(next);
+  freedBy(r, next);
 }
 
 /** At the page's start (me().squad): their card, and the room they are in, read */
@@ -282,7 +340,7 @@ export function heardSquad(raw: unknown) {
       if (!isPhrase(it.p) || !r.members.some((m) => m.h === it.h)) continue;
       // your own, shown as you said it
       if (it.h === r.you && lines.get().some((l) => l.h === it.h && l.p === it.p && Date.now() - l.at < ECHO_MS)) continue;
-      showLine(r, it.h, it.p);
+      showLine(r, it.h, it.p, it.to);
     }
     return;
   }
@@ -434,13 +492,22 @@ export async function touchInSquad(h: number, bold: boolean): Promise<TouchResul
   return res;
 }
 
-/** A set line: false when it was one too many (full: the hour's are used up); shown to them at once, and kept for 常用 */
-export async function sayInSquad(p: number): Promise<{ sent: boolean; full?: boolean }> {
-  const res = await squadApi.say(p);
+/**
+ * A set line: false when it was one too many (full: the hour's are used up); shown to them at once, and kept for 常用.
+ * to: said to that one alone (对 TA 说), never kept for 常用; asking TA to change or give up a strategy is kept a minute
+ * (「…空出来了」), and an answer closes what TA said to you.
+ */
+export async function sayInSquad(p: number, to?: number): Promise<{ sent: boolean; full?: boolean }> {
+  const res = await squadApi.say(p, to);
   const r = room.get();
   if (res.sent && r) {
-    showLine(r, r.you, p);
-    keepRecent(p);
+    showLine(r, r.you, p, to);
+    if (to === undefined) keepRecent(p);
+    const m = to === undefined ? undefined : r.members.find((x) => x.h === to);
+    if (m && m.strategy !== null && (p === TO.change || p === TO.giveUp)) asked.set(m.h, { s: m.strategy, at: Date.now() });
+    // answered what was said to you
+    const open = toMe.get();
+    if (open && open.h === to) toMe.set(null);
   }
   return res;
 }
@@ -452,7 +519,8 @@ export const RECENT_MAX = 3;
 export function recentLines(): number[] {
   try {
     const v = JSON.parse(window.localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
-    return Array.isArray(v) ? v.filter(isPhrase).slice(0, RECENT_MAX) : [];
+    // 对 TA 说 is never one of them (said from a teammate's card, to TA)
+    return Array.isArray(v) ? v.filter((p) => isPhrase(p) && !isToPhrase(p)).slice(0, RECENT_MAX) : [];
   } catch {
     return [];
   }

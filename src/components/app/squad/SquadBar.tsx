@@ -6,7 +6,8 @@ import { SQUAD_MAX, type SquadCall } from "@/lib/squad";
 import type { InboxItem } from "@/lib/world/types";
 import { ShieldIcon } from "../chrome/parts";
 import { useSquadBotsActing } from "./squadBots";
-import { squadCallLine, useSquadRoom } from "./squading";
+import { setSquadPickNext, squadCallLine, useSquadRoom, useSquadToMe } from "./squading";
+import SquadToMe from "./SquadToMe";
 import "./squadBar.css";
 
 /** An invitation to 一起卫戍, as 消息 has it */
@@ -48,22 +49,38 @@ export function useAbove(shown: boolean, up: number) {
 /**
  * Over the map while the player is in a room of 一起卫戍 that waits and its sheet is shut: 卫戍中 n/4, back to the room
  * at a tap (while it plays, the bar of the round has its place: SquadFight.tsx). Just above the layout's bottom bar
- * (data-chrome-bottom), else under the top.
+ * (data-chrome-bottom), else under the top. A line said to you in the room (SquadToMe.tsx) shows above it, answered
+ * there; 好，我换 opens the room's sheet on its strategy picker.
  */
 export default function SquadBar({ hidden, onOpen }: { hidden: boolean; onOpen: () => void }) {
   const room = useSquadRoom();
+  const toMe = useSquadToMe();
   // the 人机 of a room the 站长 or an admin hosts, now and then (mounted while 一起卫戍 shows on the map)
   useSquadBotsActing();
   const shown = Boolean(room) && room?.state !== "go" && !hidden;
   const at = useAbove(shown, 0);
+  const above = useAbove(shown && Boolean(toMe), 46);
   if (!room || !shown || !at) return null;
   const n = room.members.length;
   return (
-    <button className="sq-bar glass" style={at} aria-haspopup="dialog" aria-label={fmt(T.squad.inRoomLabel, { n, max: SQUAD_MAX })} onClick={onOpen}>
-      <ShieldIcon size={18} />
-      <span>{fmt(T.squad.inRoom, { n, max: SQUAD_MAX })}</span>
-      {room.dj && room.startedAt !== null && <span aria-hidden="true">♪</span>}
-    </button>
+    <>
+      <button className="sq-bar glass" style={at} aria-haspopup="dialog" aria-label={fmt(T.squad.inRoomLabel, { n, max: SQUAD_MAX })} onClick={onOpen}>
+        <ShieldIcon size={18} />
+        <span>{fmt(T.squad.inRoom, { n, max: SQUAD_MAX })}</span>
+        {room.dj && room.startedAt !== null && <span aria-hidden="true">♪</span>}
+      </button>
+      {toMe && above && (
+        <SquadToMe
+          room={room}
+          className="on-map"
+          style={above}
+          onPick={() => {
+            setSquadPickNext(true);
+            onOpen();
+          }}
+        />
+      )}
+    </>
   );
 }
 

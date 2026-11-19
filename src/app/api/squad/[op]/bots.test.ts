@@ -285,7 +285,11 @@ describe("人机: what they do", () => {
     const posed = (await botRows(room.id))[0].pose;
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "pose", h: -1, pose: posed } });
     expect(heard.filter((t) => t.t === "move")).toEqual(heard.filter((t) => t.t === "move").map(() => ({ t: "move", room: room.id, items: [{ h: -1, move: "wave" }] })));
-    // another strategy, nobody's
+    // its strategy stays while it plays; once 结束这局, another, nobody's
+    expect(await bot(owner, "strategy", -1)).toMatchObject({ status: 409, body: { code: "squadStrategyLocked" } });
+    await later(room.id);
+    expect((await post(owner, "state", { to: "wait" })).status).toBe(200);
+    forgetHits();
     const changed = roomOf(await bot(owner, "strategy", -1)).members;
     const s = changed.find((m) => m.h === -1)!.strategy;
     expect(s).not.toBe(before.strategy);

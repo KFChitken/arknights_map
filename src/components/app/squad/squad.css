@@ -234,6 +234,8 @@
 .sq-tile.open { box-shadow: 0 0 0 2px var(--ink); }
 .sq-tile .hit { position: absolute; inset: 0; z-index: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
 .sq-tile > :not(.hit) { position: relative; z-index: 1; pointer-events: none; }
+/* a line's bubble stays over the tile, out of its flow (squadFight.css .sq-bub), above the tiles beside it */
+.sq-tile > .sq-bub { position: absolute; z-index: 4; }
 .sq-tile .sq-strat, .sq-tile .sq-core.pick, .sq-tile button:not(.hit) { pointer-events: auto; }
 .sq-tile .nm { max-width: 100%; overflow: hidden; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .sq-tile .nm small { margin-left: 4px; color: var(--muted); font-weight: 600; }
@@ -268,3 +270,25 @@
 .sq-status .pill.stop { background: #eceef1; color: #4b5160; }
 .sq-status .sq-stopline { color: #4b5160; }
 .sq-tile.empty.shut { background: #f6f7f9; }
+
+/* strategies that clash while the room waits: the two tiles' pictures ringed red with 撞, and a line under the tiles
+   for everyone, 请 TA 换 and 我换 at its end for the two of it */
+.sq-tile .sq-stw { position: relative; display: inline-flex; }
+.sq-tile .sq-stw.clash .sq-strat .sq-face, .sq-tile .sq-stw.clash .sq-strat .sq-opname { border-radius: 999px; box-shadow: 0 0 0 2.5px #e5484d; }
+.sq-tile .sq-stw .ctag { position: absolute; top: -7px; right: -11px; padding: 0 4px; border-radius: 5px; background: #dc2626; color: #fff; font-size: 10px; font-style: normal; font-weight: 700; line-height: 15px; }
+.sq-clines { display: flex; flex-direction: column; gap: 6px; }
+.sq-cline { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #f6c9c6; border-radius: 12px; background: #fff1f0; font-size: 12.5px; }
+.sq-cline > b { padding: 0 6px; border-radius: 6px; background: #e5484d; color: #fff; font-size: 11px; line-height: 18px; }
+.sq-cline .tx { flex: 1 1 210px; min-width: 0; font-weight: 600; line-height: 1.45; }
+.sq-cline .acts { display: flex; gap: 6px; margin-left: auto; }
+/* a tile a line was just said to (对 TA 说) flashes */
+.sq-tile > .sq-named { position: absolute; inset: -1px; z-index: 0; border-radius: inherit; pointer-events: none; animation: sq-named 1s ease-out 3; }
+@keyframes sq-named {
+  0% { box-shadow: 0 0 0 0 rgba(255, 210, 63, 0.95); }
+  100% { box-shadow: 0 0 0 12px rgba(255, 210, 63, 0); }
+}
+/* the picker: a strategy a teammate plays, tapped */
+.sq-pnote { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; padding: 8px 10px; border-radius: 10px; background: #f6f7f9; font-size: 12.5px; }
+@media (prefers-reduced-motion: reduce) {
+  .sq-tile > .sq-named { animation: none; }
+}

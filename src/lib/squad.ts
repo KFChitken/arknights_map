@@ -242,10 +242,21 @@ export const PHRASE_ROWS = [
   ["after", [17, 18, 19, 20, 21]],
   /** only while the host's song plays */
   ["music", [22, 23, 24]],
+  /**
+   * 对 TA 说: said to one in the room (to), only while it waits; never among 说话's rows, never by a 人机 at random.
+   * 36 能换个策略吗？ 37 能把「{s}」让给我吗？ (s: TA's strategy, filled in where it shows) 38 选个策略吧 39 快准备呀
+   * 40 谢谢！; the answers 41 好，我换 42 不换啦，你换一个？ 43 好嘞
+   */
+  ["to", [36, 37, 38, 39, 40, 41, 42, 43]],
 ] as const;
 export type PhraseRow = (typeof PHRASE_ROWS)[number][0];
 const PHRASES = new Set<number>(PHRASE_ROWS.flatMap(([, ids]) => ids));
 export const isPhrase = (v: unknown): v is number => Number.isInteger(v) && PHRASES.has(v as number);
+const TO_PHRASES = new Set<number>(PHRASE_ROWS.find(([r]) => r === "to")![1]);
+/** A line said to one in the room (对 TA 说) */
+export const isToPhrase = (p: number) => TO_PHRASES.has(p);
+/** 对 TA 说's lines by what they are: asked to change (36), to give up TA's strategy (37), to pick one (38), to ready (39), thanks (40); the answers (41–43) */
+export const TO = { change: 36, giveUp: 37, pick: 38, ready: 39, thanks: 40, ok: 41, no: 42, sure: 43 } as const;
 /** One line every SAY_EVERY_MS, and SAY_PER_HOUR an hour, each player */
 export const SAY_EVERY_MS = 3_000;
 export const SAY_PER_HOUR = 60;
@@ -425,7 +436,8 @@ export type SquadTell =
     }
   /** The host changed the songs: how, and the songs as they are now */
   | ({ t: "songs"; room: string; how: SquadSongHow } & RoomSchedule)
-  | { t: "say"; room: string; items: { h: number; p: number }[] }
+  /** to: said to the one with that number (对 TA 说) */
+  | { t: "say"; room: string; items: { h: number; p: number; to?: number }[] }
   /** Moves done (动作), batched as the lines are; a page of before skips them */
   | { t: "move"; room: string; items: { h: number; move: SquadMove; to?: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
@@ -491,5 +503,7 @@ export const ROOM_PLAYING = "squadPlaying";
 /** 开始游戏 refused: someone is not ready, strategies clash, or nobody is in it but the host */
 export const NOT_READY = "squadNotReady";
 export const NOT_IN_ROOM = "squadNotIn";
-/** A strategy marked for the round (这局) that a teammate plays it with already */
+/** A strategy someone else in the room has already (a teammate's or a 人机's) */
 export const STRATEGY_TAKEN = "squadStrategyTaken";
+/** A strategy changed while a round plays: locked till 结束这局 (one with none may fill one in, once) */
+export const STRATEGY_LOCKED = "squadStrategyLocked";

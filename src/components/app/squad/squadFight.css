@@ -76,6 +76,8 @@
 /* a line said: black with yellow words, a white edge, its tail on the one who said it, as a 宣言's; after the roach's shout */
 .sq-bub { position: absolute; z-index: 4; width: max-content; max-width: 132px; padding: 5px 9px; border-radius: 11px; background: #1b1d22; color: #ffd23f; font-size: 12px; font-weight: 800; line-height: 1.35; text-align: center; box-shadow: 0 0 0 2px #fff, 0 4px 12px rgba(0, 0, 0, 0.27); pointer-events: none; animation: sq-bub-in 0.25s ease-out 0.3s both, sq-bub-out 0.35s ease-in 3.65s forwards; }
 .sq-bub::after { content: ""; position: absolute; width: 9px; height: 9px; background: #1b1d22; }
+/* said to one (对 TA 说): TA named over the line */
+.sq-bub .sq-bto { display: block; color: #c8ccd2; font-size: 10px; font-weight: 700; line-height: 1.25; }
 .sq-bub.up { bottom: calc(100% + 4px + var(--lift, 0px)); left: 50%; transform: translateX(-50%); }
 .sq-bub.up::after { top: 100%; left: 50%; transform: translate(-50%, -55%) rotate(45deg); box-shadow: 2px 2px 0 #fff; }
 .edge-l > .sq-bub.up { left: 0; transform: none; }
@@ -170,3 +172,20 @@
 @media (prefers-reduced-motion: reduce) {
   .sq-roach, .sq-roach *, .sq-bub, .sq-ft, .sq-ft .opq { animation: none !important; }
 }
+
+/* 这局 once a round has started: the strategy locked in a row, or (无偏好) filled once from those nobody plays, asked
+   first; core alliance and 附加盟约 change as before, said so beside their names */
+.sq-round .lab i { padding: 0 6px; border-radius: 6px; font-size: 11px; font-style: normal; font-weight: 700; line-height: 17px; }
+.sq-round .lab i.lk { background: #eceef1; color: #3f4651; }
+.sq-round .lab i.ok { background: #dcf3e6; color: #1f6b41; }
+.sq-lockrow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #f6f7f9; }
+.sq-lockrow .sq-face { width: 38px; height: 38px; }
+.sq-lockrow b { display: block; font-size: 13.5px; }
+.sq-lockrow small { display: block; color: #6b7280; font-size: 11.5px; line-height: 1.4; }
+.sq-lockrow .lk { margin-left: auto; font-size: 18px; }
+.sq-round .fillnote { margin: 0; color: #6b5a1e; font-size: 12px; }
+.sq-fillask { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 10px 12px; border: 1px solid #f0d27a; border-radius: 12px; background: #fff8db; }
+.sq-fillask b { flex: 1 1 100%; font-size: 14px; }
+.sq-fillask .acts { display: flex; gap: 6px; }
+.sq-fillask .acts button { padding: 7px 18px; border: 1px solid #d6d9de; border-radius: 10px; background: #fff; color: #1b1d22; font: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer; }
+.sq-fillask .acts button.dark { border-color: #1b1d22; background: #1b1d22; color: #fff; }
