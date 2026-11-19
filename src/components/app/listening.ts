@@ -43,7 +43,6 @@ import { siteDay } from "@/lib/siteDay";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "@/lib/world/types";
 import { stopMusic } from "./amiyaMusic";
 import { stopPartyMusic } from "./partyMusic";
-import { stopSquadMusic } from "./squad/squadMusic";
 
 /**
  * 听歌 on the map page: one <audio> for the whole page, never Web Audio (which would hold a song decoded, tens of MB).
@@ -1222,7 +1221,6 @@ const tracks = () => {
 function quietOthers() {
   stopMusic();
   stopPartyMusic();
-  stopSquadMusic();
 }
 
 /**
@@ -2325,14 +2323,50 @@ export async function inviteMore(friends: string[]): Promise<InviteSent[] | null
   }
 }
 
+/**
+ * 「邀请大家一起听」 in a room of 一起卫戍 you host: your own room (opened now when you have none, the song you play alone
+ * going on in it from where it got to, else 新歌's first), everyone in the room of 一起卫戍 invited (only: those of
+ * these numbers there); within the tap. opened: a room was made for it. null: refused
+ */
+export async function inviteSquadToListen(only?: number[]): Promise<{ sent: InviteSent[]; opened: boolean } | null> {
+  if (isGray()) return null;
+  unlockNow();
+  const mine = ++roomAsked;
+  const sent = Date.now();
+  const hosting = room.get()?.host === true;
+  const p = player.get();
+  const song = !room.get() && p.track ? p.track.id : null;
+  const on = song !== null && (p.status === "playing" || p.status === "starting") && current?.track === p.track;
+  try {
+    const res = await listenApi.squad(song, on ? Math.max(0, audio?.currentTime ?? lastAt) : undefined, only);
+    if (res.room && mine === roomAsked) {
+      // the song playing alone goes on as it is, as the room's
+      const c = current;
+      adopted = on && song && res.room.startedAt !== null && c?.track.id === song && c.start === null ? { song, start: res.room.startedAt } : null;
+      enter(res.room, sent, Date.now(), res.now);
+      adopted = null;
+    }
+    return { sent: res.sent, opened: !hosting };
+  } catch (e) {
+    failed(e);
+    return null;
+  }
+}
+
+/** In at 卫戍的一起听 of the room of 一起卫戍 you are in (its host's 一起听); within the tap */
+export const joinSquadListen = () => joinWith(() => listenApi.joinSquad());
+
 /** In at an invitation to you (its id, without 消息's li:); within the tap */
-export async function joinAt(invite: string): Promise<boolean> {
+export const joinAt = (invite: string) => joinWith(() => listenApi.join(invite));
+
+/** In at a room as asked (an invitation, 卫戍的一起听), from everyone's place in its song; within the tap */
+async function joinWith(ask: () => Promise<{ room: ListenRoom; now: number }>): Promise<boolean> {
   if (isGray()) return false;
   unlockNow();
   const mine = ++roomAsked;
   const sent = Date.now();
   try {
-    const res = await listenApi.join(invite);
+    const res = await ask();
     if (mine !== roomAsked) return true;
     enter(res.room, sent, Date.now(), res.now);
     const at = roomPlace(res.room);

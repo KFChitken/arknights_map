@@ -9,6 +9,7 @@ import { ShieldIcon } from "../chrome/parts";
 import { useOperatorArt } from "../OperatorNames";
 import { useAbove } from "./SquadBar";
 import SquadMateCard from "./SquadMateCard";
+import { ListenAsk, ListenNote } from "./SquadListen";
 import { CoreBadge, extraNames, StrategyFace } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import {
@@ -38,9 +39,10 @@ const SquadTalk = dynamic(() => import("./SquadTalk"), { ssr: false });
  * line for a minute; the host's says 房主, yours is yellow. A line said comes as a bubble over its tile, a change of
  * someone's round as a flash of theirs. Your tile opens 说话 / 动作 / 这局 (SquadTalk.tsx); another's, TA's card with
  * TA's round (SquadMateCard.tsx), over the row (beside the column on a computer) till its × or the tile again. Above it 看地图 / 看打怪 (the fight on the map, this device: SquadStage.tsx; while it shows, lines come
- * out of its roaches instead of the tiles), 🔔 (the sound, this device) and 展开 (the room's sheet, where the host ends
- * the round). On a phone a row of four above the layout's bottom bar; on a computer a column beside 卫戍
- * (data-squad-entry).
+ * out of its roaches instead of the tiles), ♪ (卫戍的一起听, SquadListen.tsx: 听歌's player, or a card over the bar
+ * first), 🔔 (the sound, this device) and 展开 (the room's sheet, where the host ends the round). On a phone a row of
+ * four above the layout's bottom bar (the cards of 一起听 over the map keep above it: data-listen-over); on a computer
+ * a column beside 卫戍 (data-squad-entry), which stays while 听歌's player is open beside it.
  */
 
 /** Wide enough for the column beside 卫戍 */
@@ -104,27 +106,35 @@ function useFlashes(room: SquadRoom | null) {
 
 export default function SquadFight({
   hidden,
+  listenOpen,
   touches,
   onOpen,
+  onListen,
   onTouch,
   onSafety,
+  onToast,
   onError,
 }: {
   hidden: boolean;
+  /** 听歌's player is open: over the row on a phone (it goes), beside the column on a computer (it stays) */
+  listenOpen: boolean;
   /** Today's touches left and when the day turns, for a teammate's card */
   touches?: { left: number; at: number };
   /** 展开: the room's sheet */
   onOpen: () => void;
+  /** 听歌's player (卫戍的一起听 is in it) */
+  onListen: () => void;
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
   onTouch: (h: number, bold: boolean) => Promise<void>;
   /** 拉黑 and 举报 someone in the room (sq:<room>:<number>), with their name */
   onSafety: (target: string, who: string) => void;
+  onToast: (text: string) => void;
   onError: (e: unknown) => void;
 }) {
   const room = useSquadRoom();
   const playing = room?.state === "go";
-  const shown = Boolean(playing) && !hidden;
   const wide = useWide();
+  const shown = Boolean(playing) && !hidden && (wide || !listenOpen);
   const above = useAbove(shown && !wide, 0);
   const beside = useBeside(shown && wide);
   const at = wide ? beside : above;
@@ -140,10 +150,15 @@ export default function SquadFight({
   // a teammate's card: whose, and where (over the row on a phone, beside the column on a computer); it stays till
   // its × or the tile again, and goes as the bar does
   const [peek, setPeek] = useState<{ h: number; at: CSSProperties } | null>(null);
+  // 卫戍的一起听's card from ♪, where it stands
+  const [listenCard, setListenCard] = useState<CSSProperties | null>(null);
   const [busy, setBusy] = useState(false);
   const bar = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!shown) setPeek(null);
+    if (!shown) {
+      setPeek(null);
+      setListenCard(null);
+    }
   }, [shown]);
   if (!room || !playing) return null;
   const n = room.members.length;
@@ -222,7 +237,14 @@ export default function SquadFight({
   return (
     <>
       {shown && at && (
-        <div ref={bar} className={`sq-fight ${wide ? "col" : "row"}`} style={at} role="group" aria-label={fmt(T.squad.fight.label, { n, max: SQUAD_MAX })}>
+        <div
+          ref={bar}
+          className={`sq-fight ${wide ? "col" : "row"}`}
+          style={at}
+          role="group"
+          aria-label={fmt(T.squad.fight.label, { n, max: SQUAD_MAX })}
+          {...(wide ? {} : { "data-listen-over": "" })}
+        >
           <div className="fh">
             <ShieldIcon size={16} />
             <span className="t">{head}</span>
@@ -231,6 +253,14 @@ export default function SquadFight({
                 {sceneOn ? T.squad.fight.map : T.squad.fight.show}
               </button>
             )}
+            <ListenNote
+              room={room}
+              onListen={() => {
+                setListenCard(null);
+                onListen();
+              }}
+              onCard={() => setListenCard((c) => (c ? null : peekAt()))}
+            />
             <button
               type="button"
               aria-label={muted ? T.squad.fight.soundOffLabel : T.squad.fight.soundOnLabel}
@@ -245,6 +275,18 @@ export default function SquadFight({
           </div>
           <div className="ft4">{room.members.map(tile)}</div>
         </div>
+      )}
+      {shown && listenCard && (
+        <ListenAsk
+          room={room}
+          style={listenCard}
+          onListen={() => {
+            setListenCard(null);
+            onListen();
+          }}
+          onToast={onToast}
+          onClose={() => setListenCard(null)}
+        />
       )}
       {shown && peek && peekOf && (
         <SquadMateCard

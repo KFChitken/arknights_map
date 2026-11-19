@@ -1915,7 +1915,10 @@ export const squadRooms = pgTable(
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */
     declaredAt: at("declared_at"),
-    /** The host's songs, as 一起听's rooms keep theirs (src/lib/listen.ts RoomSchedule): none until they play one */
+    /**
+     * The host's songs of before, as 一起听's rooms keep theirs (src/lib/listen.ts RoomSchedule): no longer written
+     * since the room's songs are 卫戍的一起听 (src/lib/server/listenRooms.ts), kept for a later clean-up
+     */
     queue: text("queue").array().notNull().default(emptyArray),
     idx: smallint("idx").notNull().default(0),
     startedAt: at("started_at"),
@@ -2019,8 +2022,8 @@ export const squadInvites = pgTable(
 );
 
 /**
- * Songs someone in a room of 一起卫戍 asked its host to play (点歌), by their number there, until the host takes one
- * into the room's songs or drops it (unsaid): REQUESTS_EACH waiting each at most. Gone with the room.
+ * Songs someone in a room of 一起卫戍 asked its host to play (点歌) in the host's songs of before: no longer written
+ * since the room's songs are 卫戍的一起听 (its 点歌 is 一起听's own), kept for a later clean-up. Gone with the room.
  */
 export const squadRequests = pgTable(
   "squad_requests",

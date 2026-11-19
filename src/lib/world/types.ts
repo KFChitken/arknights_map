@@ -712,7 +712,8 @@ export type InboxItem =
   /**
    * A 触须之交 invites you to 一起听 (src/lib/server/listenRooms.ts): song, what the room plays now; state: you may go
    * in until `until` ("open", n: how many are in it; "later": you said 下次吧, and still may), you are in it ("in"), or
-   * it is over (the room ended, or the invitation ran out)
+   * it is over (the room ended, or the invitation ran out). squad: from the host of the room of 一起卫戍 you are in (卫戍的
+   * 一起听), who may be no 触须之交 of yours (friendId only where TA is)
    */
   | {
       kind: "listenInvite";
@@ -720,7 +721,8 @@ export type InboxItem =
       at: number;
       seen: boolean;
       from: PublicProfile;
-      friendId: string;
+      friendId?: string;
+      squad?: true;
       song: string;
       state: "open" | "later" | "in" | "over";
       n: number;

@@ -41,6 +41,7 @@ import {
   blocks,
   clearedValues,
   declarations,
+  listenInvites,
   mailSends,
   modActions,
   pokes,
@@ -75,7 +76,7 @@ type Sender = { other: string; known: boolean; context: string };
 const forAdmin = <R>(fn: () => R): R => withLang("zh", fn);
 
 /**
- * Who sent an inbox item ("t:", "d:", "x:", "p:" ids), who a friend is ("friend:<id>"), or who has a number in the room
+ * Who sent an inbox item ("t:", "d:", "x:", "p:", "li:" ids), who a friend is ("friend:<id>"), or who has a number in the room
  * of 一起听 ("lr:<room>:<number>") or 一起卫戍 ("sq:<room>:<number>") they are in, as far as this player may ask.
  */
 async function whoSent(userId: string, target: string): Promise<Sender | null> {
@@ -141,6 +142,15 @@ async function whoSent(userId: string, target: string): Promise<Sender | null> {
   if (kind === "lr") {
     const who = await roomSender(userId, id, Number(target.split(":")[2]));
     return who ? { ...who, context: "一起听里" } : null;
+  }
+  if (kind === "li") {
+    // an invitation to 一起听 the reporter got: from a 触须之交, or from the host of the room of 一起卫戍 they were in
+    const [i] = await db
+      .select({ from: listenInvites.fromUserId })
+      .from(listenInvites)
+      .where(and(eq(listenInvites.id, id), eq(listenInvites.toUserId, userId)))
+      .limit(1);
+    return i ? { other: i.from, known: true, context: "邀请举报人一起听" } : null;
   }
   if (kind === "sq") {
     const who = await squadSender(userId, id, Number(target.split(":")[2]));

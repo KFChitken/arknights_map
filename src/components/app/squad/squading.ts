@@ -20,12 +20,10 @@ import {
   type SquadPose,
   type SquadRoom,
   type SquadRound,
-  type SquadSongChange,
   type SquadTell,
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
 import type { TouchResult } from "@/lib/world/types";
-import { loadSquadTracks, squadSongs, squadTrackName, unfollowSquad } from "./squadMusic";
 import { squadDing, squadPop } from "./squadSound";
 
 /**
@@ -55,7 +53,7 @@ function kept<S>(first: S) {
   };
 }
 
-/** What the site says in the room (someone came in, a new key, a song), floating a few seconds */
+/** What the site says in the room (someone came in, a new key, a strategy freed), floating a few seconds */
 export type SquadFloat = { key: number; text: string };
 /**
  * A line said by h, by its number, over its roach (BUBBLE_MS) and under it (刚才, LAST_LINE_MS); key tells one from
@@ -228,8 +226,8 @@ export const ROUND_SEND_MS = 600;
 const withWant = (r: SquadRoom): SquadRoom => (roundWant ? { ...r, members: r.members.map((m) => (m.you ? { ...m, ...roundWant } : m)) } : r);
 
 /**
- * In a room, or out of it: what was said of the last goes once they are in another; its songs to the player; a round
- * that starts in sight counted (rounds), and noted for 这局 when the player marked no strategy for it
+ * In a room, or out of it: what was said of the last goes once they are in another; a round that starts in sight
+ * counted (rounds), and noted for 这局 when the player marked no strategy for it
  */
 function setRoom(next: SquadRoom | null) {
   const before = room.get();
@@ -251,7 +249,6 @@ function setRoom(next: SquadRoom | null) {
   if (next) freedBy(before, next);
   if (!next || next.state !== "go") roundUnseen.set(false);
   room.set(next && withWant(next));
-  squadSongs(next && next.dj ? { id: next.id, queue: next.queue, idx: next.idx, startedAt: next.startedAt, version: next.version } : null, next?.now);
 }
 
 let loading: Promise<SquadRoom | null> | null = null;
@@ -319,22 +316,6 @@ export function heardSquad(raw: unknown) {
   if (tell.t === "you") return over(tell.why === "kicked" ? T.squad.out.kicked : T.squad.out.left);
   if (tell.t === "room" && tell.what?.kind === "round" && tell.what.round) return patchMember(r, tell.what.h, tell.what.round);
   if (tell.t === "room" && tell.what?.kind === "pose" && tell.what.pose !== undefined) return patchMember(r, tell.what.h, { pose: tell.what.pose });
-  if (tell.t === "songs") {
-    // the songs told, unless a newer answer has them already
-    if (tell.version > r.version) {
-      const next = { ...r, queue: tell.queue, idx: tell.idx, startedAt: tell.startedAt, version: tell.version };
-      room.set(next);
-      if (next.dj) squadSongs({ id: next.id, queue: next.queue, idx: next.idx, startedAt: next.startedAt, version: next.version });
-    }
-    if (!r.host && (tell.how === "start" || tell.how === "next" || tell.how === "restart")) {
-      const first = tell.queue[tell.idx];
-      void loadSquadTracks().then(() => {
-        const name = first ? squadTrackName(first) : null;
-        if (name) addFloat(fmt(T.squad.float.song, { name }));
-      });
-    }
-    return;
-  }
   if (tell.t === "say") {
     for (const it of tell.items) {
       if (!isPhrase(it.p) || !r.members.some((m) => m.h === it.h)) continue;
@@ -364,9 +345,7 @@ export function heardSquad(raw: unknown) {
       if (what.kind === "host") return addFloat(what.h === next.you ? T.squad.float.youHost : fmt(T.squad.float.host, { name: next.members.find((m) => m.h === what.h)?.name ?? "" }));
       const name = next.members.find((m) => m.h === what.h)?.name ?? null;
       const text =
-        what.kind === "ask"
-          ? T.squad.float.ask
-          : what.kind === "in" && name
+        what.kind === "in" && name
           ? fmt(T.squad.float.in, { name })
           : what.kind === "game" && name
             ? fmt(T.squad.float.game, { name })
@@ -534,13 +513,6 @@ function keepRecent(p: number) {
   }
 }
 
-/** What the host does to the room's songs */
-export const squadSongsChange = (change: SquadSongChange) => after(squadApi.music(change));
-/** 点歌, and the host's answer to one */
-export const requestSquadSong = (song: string) => after(squadApi.request(song));
-export const takeSquadRequest = (id: number) => after(squadApi.take(id));
-export const dropSquadRequest = (id: number) => after(squadApi.drop(id));
-
 // ---- calling others in ----
 
 /** How the room of an invitation or a 宣言招人 is now, in a line (消息, the card over the map) */
@@ -583,7 +555,6 @@ export async function declareSquadRoom(from: string[] | null) {
 
 /** Signed out: nothing kept */
 export function forgetSquadPage() {
-  unfollowSquad();
   roundWant = null;
   window.clearTimeout(roundTimer);
   talkOpen.set(false);

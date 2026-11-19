@@ -4,21 +4,7 @@ import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, ne, sql } from
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
 import { SQUAD_TEMPLATE } from "../declarations";
-import {
-  changeQueue,
-  INVITE_MS,
-  isSeek,
-  isSongId,
-  LISTEN_GRAY,
-  LISTEN_PAUSED,
-  NO_SONG,
-  QUEUE_MAX,
-  QUIET_AFTER_LATER_MS,
-  RANDOM_ADD,
-  roomAt,
-  type QueueEdit,
-  type RoomSchedule,
-} from "../listen";
+import { INVITE_MS, QUIET_AFTER_LATER_MS } from "../listen";
 import { displayName } from "../profile";
 import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
@@ -63,8 +49,6 @@ import {
   readCard,
   readRound,
   picksNow,
-  REQUEST_EVERY_MS,
-  REQUESTS_EACH,
   ROOM_FULL,
   ROOM_GONE,
   ROOM_PLAYING,
@@ -98,8 +82,6 @@ import {
   type SquadMove,
   type SquadRoom,
   type SquadSeat,
-  type SquadSongChange,
-  type SquadSongHow,
   type SquadState,
   type SquadTell,
 } from "../squad";
@@ -117,9 +99,9 @@ import { listenOpen } from "./listen";
 import { nudge, onToldSquad, tellSquad } from "./live";
 import { drawnLook } from "./looks";
 import { allow } from "./rateLimit";
-import { listenNow, roaches, squadBots, squadInvites, squadMembers, squadRequests, squadRooms, statCounts, users, type UserRow } from "./schema";
+import { kickFromHostListen, squadListensPlaying, squadListenView } from "./listenRooms";
+import { roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
-import { songList, songOf } from "./songs";
 import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
 import { cardsOf, declare, friendIdsOf, friendKey, touch } from "./world";
@@ -257,16 +239,14 @@ async function roomOf(exec: Exec, userId: string) {
   return r ?? null;
 }
 
-const scheduleOf = (r: Room): RoomSchedule => ({ queue: r.queue, idx: r.idx, startedAt: r.startedAt?.getTime() ?? null, version: r.version });
+/** Whether 卫戍的一起听 shows to this player: 听歌 open to them, not paused in the 管理台, the site not gray */
+const hearFor = (user: Pick<UserRow, "id" | "email">, now: number) => listenOpen(user) && !listenSettings().paused && !grayUntil(now);
 
-/** How long each song lasts, by the list every process holds (one no longer in it lasts nothing, so a room passes over it) */
-async function secondsOf() {
-  const list = await songList();
-  return (id: string) => list.byId.get(id)?.seconds ?? Number.NaN;
-}
-
-/** Whether this player may hear the host's songs: 听歌 open to them, not paused in the 管理台, the site not gray */
-const djFor = (user: Pick<UserRow, "id" | "email">, now: number) => listenOpen(user) && !listenSettings().paused && !grayUntil(now);
+/**
+ * What a page of before (with the host's own songs, gone since 卫戍的一起听) reads in a room: nothing playing, nothing
+ * asked for, the songs' bar not shown (dj)
+ */
+const SONGS_BEFORE = { dj: false, queue: [] as string[], idx: 0, startedAt: null, version: 0, requests: [] as never[], listening: null };
 
 /** When a room ends by itself unless something happens (someone in or out, ready or picks changed, a new key, a round ended), and why it would */
 function endsOf(r: Room): { at: number; why: "idle" | "go" | "life" } {
@@ -374,16 +354,6 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
   // the 人机 after everyone else
   const members = [...people, ...bots.map(botMember)];
   const ends = endsOf(room);
-  const host = room.hostId === viewerId;
-  const byHandle = new Map(members.map((m) => [m.h, m.name]));
-  const asked = await db
-    .select({ id: squadRequests.id, handle: squadRequests.handle, song: squadRequests.song })
-    .from(squadRequests)
-    .where(and(eq(squadRequests.roomId, roomId), host ? undefined : eq(squadRequests.handle, me.handle)))
-    .orderBy(asc(squadRequests.createdAt));
-  const requests = asked
-    .filter((r) => byHandle.has(r.handle))
-    .map((r) => (host ? { id: r.id, song: r.song, name: byHandle.get(r.handle)! } : { id: r.id, song: r.song }));
   // your own invitations to it, the latest to each not in it, never one TA went in at
   const sent = await db
     .select({ i: squadInvites, u: users })
@@ -402,25 +372,23 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     card: theirCards.get(u.id)!,
     state: !i.answer && i.createdAt.getTime() > now - INVITE_MS ? "waiting" : "missed",
   }));
-  // to the host alone: how many in it hear one of its songs now (听歌's own row of what each plays, never who)
-  let listening: number | null = null;
-  if (host) {
-    const playing = room.queue.length
-      ? await db
-          .select({ song: listenNow.song })
-          .from(listenNow)
-          .where(and(inArray(listenNow.userId, rows.map((r) => r.u.id)), gt(listenNow.until, new Date(now))))
-      : [];
-    listening = playing.filter((p) => room.queue.includes(p.song)).length;
-  }
   const viewer = rows.find((r) => r.u.id === viewerId)!.u;
+  // 卫戍的一起听, to one 听歌 is open to
+  const hear = hearFor(viewer, now);
+  const listen = hear
+    ? await squadListenView(
+        room,
+        rows.map((r) => ({ userId: r.u.id, h: r.m.handle })),
+        viewerId,
+        now,
+      )
+    : null;
   return {
-    ...scheduleOf(room),
+    ...SONGS_BEFORE,
     declared: Boolean(room.declaredAt),
     invited,
-    dj: djFor(viewer, now),
-    requests,
-    listening,
+    hear,
+    listen,
     id: room.id,
     server: room.server,
     level: room.level,
@@ -495,8 +463,6 @@ async function leaveIn(tx: Exec, userId: string, now: number): Promise<Left> {
     .set({ leftAt: new Date(now) })
     .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, userId)));
   await tx.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id));
-  // the songs they asked for go with them
-  await tx.delete(squadRequests).where(and(eq(squadRequests.roomId, mine.room.id), eq(squadRequests.handle, mine.me.handle)));
   return { roomId: mine.room.id, ended: null };
 }
 
@@ -696,8 +662,9 @@ async function calledTo(
 
 /**
  * Out of the room you are in: anyone else's goes on without you; the host's ends, unless they hand it to one in it
- * first (to: TA's number there), who is its host from then on (its key, songs, 开始游戏, everything a host does), the
- * room going on as it was, whether it waits or plays. A 人机 never hosts.
+ * first (to: TA's number there), who is its host from then on (its key, 开始游戏, everything a host does; 卫戍的一起听
+ * stays the old host's own, the room's again once the new host invites it), the room going on as it was, whether it
+ * waits or plays. A 人机 never hosts.
  */
 export async function leaveRoom(user: Pick<UserRow, "id">, body: Record<string, unknown> = {}, now = Date.now()) {
   if (body.to !== undefined) return handOver(user, body.to, now);
@@ -733,8 +700,6 @@ async function handOver(user: Pick<UserRow, "id">, to: unknown, now: number) {
       .update(squadMembers)
       .set({ leftAt: at })
       .where(and(eq(squadMembers.roomId, roomId), eq(squadMembers.userId, user.id)));
-    // the songs they asked for go with them
-    await tx.delete(squadRequests).where(and(eq(squadRequests.roomId, roomId), eq(squadRequests.handle, mine.me.handle)));
     return them.handle;
   });
   forgetList();
@@ -896,7 +861,10 @@ export async function setStopped(user: Pick<UserRow, "id">, body: Record<string,
   return { room: await roomView(mine.room.id, user.id, now), now };
 }
 
-/** Out for good, by its host: the one with the number h in the room (never the host), or null when nobody is */
+/**
+ * Out for good, by its host: the one with the number h in the room (never the host), or null when nobody is; out of
+ * the host's 一起听 too, when TA is in it (卫戍的一起听)
+ */
 async function kickIn(roomId: string, hostId: string, h: number, now: number) {
   const gone = await db.transaction(async (tx) => {
     // after any coming in at once, as they count it (joinRoom)
@@ -911,10 +879,10 @@ async function kickIn(roomId: string, hostId: string, h: number, now: number) {
       return null;
     }
     await tx.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, roomId));
-    await tx.delete(squadRequests).where(and(eq(squadRequests.roomId, roomId), eq(squadRequests.handle, h)));
     return them.userId;
   });
   if (!gone) return null;
+  await kickFromHostListen(hostId, gone, now).catch((e) => console.error("squad: asking someone out of the host's 一起听 failed", e));
   forgetList();
   const tell: SquadTell = { t: "you", room: roomId, why: "kicked" };
   tellSquad([gone], tell);
@@ -1139,149 +1107,6 @@ export async function touchMember(user: Pick<UserRow, "id">, body: Record<string
     tellSquad([user.id, them.userId], tell);
   }
   return { ...res, now };
-}
-
-// ---- the host's songs ----
-
-/** Nothing new while the site is gray (全站变灰) or 听歌 is paused in the 管理台 */
-function refuseSongsNow(now: number) {
-  if (grayUntil(now)) throw refuse(403, T.server.listen.gray, LISTEN_GRAY);
-  if (listenSettings().paused) throw refuse(503, T.server.listen.paused, LISTEN_PAUSED);
-}
-
-/** n of these songs at random, none of those left out, each once */
-function pickAtRandom(ids: readonly string[], not: ReadonlySet<string>, n: number): string[] {
-  const pool = ids.filter((id) => !not.has(id));
-  const out: string[] = [];
-  while (out.length < n && pool.length) {
-    const i = randomInt(pool.length);
-    out.push(pool[i]);
-    pool[i] = pool[pool.length - 1];
-    pool.pop();
-  }
-  return out;
-}
-
-/** 停: nothing plays until the host starts it again, the one playing first then (what has played is dropped) */
-function stopQueue(s: RoomSchedule, seconds: (id: string) => number, now: number): RoomSchedule | "same" {
-  const at = roomAt(s, seconds, now);
-  if (at.phase === "ready") return "same";
-  const queue = at.phase === "playing" ? s.queue.slice(at.i) : s.queue.slice(-1);
-  return { queue, idx: 0, startedAt: null, version: s.version + 1 };
-}
-
-/** A change to a room's songs, written and told to everyone in it; null when it changed nothing */
-async function changeSongsIn(roomId: string, change: SquadSongChange, now: number): Promise<RoomSchedule | null> {
-  const seconds = await secondsOf();
-  const all = change === "random" ? [...(await songList()).byId.keys()] : [];
-  const next = await db.transaction(async (tx) => {
-    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
-    if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
-    const s = scheduleOf(room);
-    const edit: QueueEdit | "stop" = change === "random" ? { adds: pickAtRandom(all, new Set(room.queue), RANDOM_ADD) } : change;
-    const next = edit === "stop" ? stopQueue(s, seconds, now) : changeQueue(s, edit, seconds, now);
-    if (next === "noNext") throw refuse(409, T.server.listen.noNext);
-    if (next === "full") throw refuse(409, fmt(T.server.listen.queueFull, { n: QUEUE_MAX }));
-    if (next === "same") return null;
-    await tx
-      .update(squadRooms)
-      .set({ queue: next.queue, idx: next.idx, startedAt: next.startedAt === null ? null : new Date(next.startedAt), version: next.version })
-      .where(eq(squadRooms.id, roomId));
-    return { next, playedBefore: s.startedAt !== null && roomAt(s, seconds, now).phase === "playing" };
-  });
-  if (!next) return null;
-  const how: SquadSongHow = typeof change === "object" ? ("seek" in change ? "seek" : "add") : change === "random" ? "add" : change;
-  // a song started: by 开始, ⏭, 重来, or added with none playing
-  if (how === "start" || how === "next" || how === "restart" || (how === "add" && !next.playedBefore && next.next.startedAt !== null)) {
-    countStat(COUNTED.squadPlay, 1, now);
-  }
-  forgetList();
-  const rows = await hearersOf(roomId);
-  const tell: SquadTell = { t: "songs", room: roomId, how, ...next.next };
-  tellSquad(
-    rows.map((r) => r.userId),
-    tell,
-  );
-  return next.next;
-}
-
-/**
- * What the host does to the room's songs (src/lib/listen.ts changeQueue): start, next, restart, add a song, add
- * RANDOM_ADD at random (随机加: none already in its songs), go to a second of the one playing (seek), or 停 (stop).
- * Only where 听歌 is open to the host, not paused, and the site not gray.
- */
-export async function changeSquadSongs(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
-  const change: SquadSongChange | null =
-    body.start === true
-      ? "start"
-      : body.next === true
-        ? "next"
-        : body.restart === true
-          ? "restart"
-          : body.random === true
-            ? "random"
-            : body.stop === true
-              ? "stop"
-              : isSongId(body.add)
-                ? { add: body.add }
-                : isSeek(body.seek)
-                  ? { seek: body.seek }
-                  : null;
-  if (!change) throw refuse(400, T.server.common.badRequest);
-  if (!listenOpen(user)) throw refuse(403, T.server.squad.noMusic);
-  refuseSongsNow(now);
-  if (typeof change === "object" && "add" in change && !(await songOf(change.add))) throw refuse(404, T.server.listen.noSong, NO_SONG);
-  const mine = await hostedBy(user.id);
-  await changeSongsIn(mine.room.id, change, now);
-  return { room: await roomView(mine.room.id, user.id, now), now };
-}
-
-/**
- * 点歌: someone in the room (not its host, who plays what they like) asks for a song: REQUESTS_EACH waiting each at
- * most, one every REQUEST_EVERY_MS. The host alone is told, and takes it into the songs or drops it, unsaid.
- */
-export async function requestSong(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
-  refuseSongsNow(now);
-  const song = await songOf(body.song);
-  if (!song) throw refuse(404, T.server.listen.noSong, NO_SONG);
-  const mine = await roomOf(db, user.id);
-  if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
-  if (mine.room.hostId === user.id) throw refuse(409, T.server.squad.hostAdds);
-  if (!listenOpen(user)) throw refuse(403, T.server.squad.noMusic);
-  await db.transaction(async (tx) => {
-    await lockPlayer(tx, user.id);
-    const waiting = await tx
-      .select({ at: squadRequests.createdAt })
-      .from(squadRequests)
-      .where(and(eq(squadRequests.roomId, mine.room.id), eq(squadRequests.handle, mine.me.handle)))
-      .orderBy(desc(squadRequests.createdAt));
-    if (waiting.length >= REQUESTS_EACH) throw refuse(429, fmt(T.server.squad.asked, { n: waiting.length }));
-    const last = waiting[0]?.at.getTime();
-    if (last !== undefined && last > now - REQUEST_EVERY_MS) throw refuse(429, fmt(T.server.squad.askWait, { s: Math.ceil((last + REQUEST_EVERY_MS - now) / 1000) }));
-    await tx.insert(squadRequests).values({ roomId: mine.room.id, handle: mine.me.handle, song: song.id, createdAt: new Date(now) });
-  });
-  const tell: SquadTell = { t: "room", room: mine.room.id, what: { kind: "ask" } };
-  tellSquad([mine.room.hostId], tell);
-  return { room: await roomView(mine.room.id, user.id, now), now };
-}
-
-/** The host takes a song asked for (id) into the room's songs, or drops it (nobody told); either way it is no longer asked */
-export async function answerRequest(user: UserRow, body: Record<string, unknown>, take: boolean, now = Date.now()) {
-  const id = Number(body.id);
-  if (!Number.isSafeInteger(id) || id < 1) throw refuse(400, T.server.common.badRequest);
-  const mine = await hostedBy(user.id);
-  const [asked] = await db
-    .delete(squadRequests)
-    .where(and(eq(squadRequests.id, id), eq(squadRequests.roomId, mine.room.id)))
-    .returning({ song: squadRequests.song });
-  if (!asked) throw refuse(409, T.server.squad.noRequest);
-  if (take) {
-    if (!listenOpen(user)) throw refuse(403, T.server.squad.noMusic);
-    refuseSongsNow(now);
-    if (!(await songOf(asked.song))) throw refuse(404, T.server.listen.noSong, NO_SONG);
-    await changeSongsIn(mine.room.id, { add: asked.song }, now);
-  }
-  return { room: await roomView(mine.room.id, user.id, now), now };
 }
 
 // ---- calling others in: invitations, 宣言招人 ----
@@ -1790,8 +1615,8 @@ type Snap = {
   stopped: boolean;
   at: number;
   keyAt: number;
-  /** The host's songs, for ♪ 在放歌 */
-  songs: RoomSchedule;
+  /** 卫戍的一起听 plays a song now (♪) */
+  music: boolean;
   /** showName: 列表上显示我的名字, from their 卫戍名片 */
   members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadPicks }[];
   /** The 人机 in it, after them */
@@ -1840,7 +1665,7 @@ async function snapshot(now: number): Promise<Snap[]> {
             stopped: Boolean(r.stoppedAt),
             at: r.createdAt.getTime(),
             keyAt: r.keyAt.getTime(),
-            songs: scheduleOf(r),
+            music: false,
             members: [],
             bots: [],
           };
@@ -1862,6 +1687,11 @@ async function snapshot(now: number): Promise<Snap[]> {
         if (s) s.bots = bots.map((b) => ({ ...botLook(b), card: roomCard(b) }));
       }
       const rooms = [...byRoom.values()];
+      const playing = await squadListensPlaying(
+        rooms.map((s) => ({ id: s.id, hostId: s.hostId, people: s.members.map((m) => m.userId) })),
+        now,
+      );
+      for (const s of rooms) s.music = playing.has(s.id);
       snapHeld.rooms = rooms;
       snapHeld.at = now;
       return rooms;
@@ -1908,7 +1738,7 @@ function byOrder(a: SquadListRoom, b: SquadListRoom) {
   return b.keyAt - a.keyAt;
 }
 
-function listRoom(s: Snap, viewerId: string, friends: Set<string>, seconds: (id: string) => number, now: number): SquadListRoom {
+function listRoom(s: Snap, viewerId: string, friends: Set<string>): SquadListRoom {
   const host = s.members.find((m) => m.userId === s.hostId);
   const seats: SquadSeat[] = s.members.map((m) => {
     const role: SquadSeat["role"] = m.userId === s.hostId ? "host" : m.userId === viewerId ? "you" : friends.has(m.userId) ? "friend" : "mate";
@@ -1933,7 +1763,7 @@ function listRoom(s: Snap, viewerId: string, friends: Set<string>, seconds: (id:
     seats,
     at: s.at,
     keyAt: s.keyAt,
-    music: s.songs.startedAt !== null && roomAt(s.songs, seconds, now).phase === "playing",
+    music: s.music,
     friend: s.members.some((m) => m.userId !== viewerId && friends.has(m.userId)),
     mine: s.members.some((m) => m.userId === viewerId),
     ...(s.bots.length ? { test: true as const } : {}),
@@ -1955,7 +1785,7 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
   const ask = `${server}|${level ?? ""}`;
   const last = listsHeld.get(user.id);
   if (last && last.key === ask && now - last.at < LIST_MIN_MS && now >= last.at) return last;
-  const [rooms, friends, blocked, seconds] = await Promise.all([snapshot(now), friendIdsOf(user.id), blockedWith(user.id), secondsOf()]);
+  const [rooms, friends, blocked] = await Promise.all([snapshot(now), friendIdsOf(user.id), blockedWith(user.id)]);
   const staff = isStaff(user);
   const shown = rooms
     .filter((r) => r.server === server && (level === null || r.level === level))
@@ -1966,7 +1796,7 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
     // one tried with 人机, to the 站长 and the admins alone (and those in it); one stopped (停止加入) to those in it alone
     .filter((r) => !r.bots.length || staff || r.members.some((m) => m.userId === user.id))
     .filter((r) => !r.stopped || r.members.some((m) => m.userId === user.id))
-    .map((r) => listRoom(r, user.id, friends, seconds, now))
+    .map((r) => listRoom(r, user.id, friends))
     .sort(byOrder)
     .slice(0, LIST_MAX);
   const s = squadSettings();

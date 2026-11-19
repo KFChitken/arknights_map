@@ -48,10 +48,10 @@ import { squadApi, SquadRefused } from "@/lib/squadClient";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
-import DjBar from "./DjBar";
 import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SquadMateCard from "./SquadMateCard";
+import { ListenRow } from "./SquadListen";
 import SquadTalk from "./SquadTalk";
 import SquadToMe from "./SquadToMe";
 import { useOperatorArt, type Art } from "../OperatorNames";
@@ -127,6 +127,8 @@ type Props = {
   /** A refusal the map page handles (signing in, the age question, …), or any other error */
   onError: (e: unknown) => void;
   onToast: (text: string) => void;
+  /** 听歌's player (卫戍的一起听 is in it) */
+  onListen: () => void;
   onClose: () => void;
 };
 
@@ -878,6 +880,7 @@ function RoomView({
   onSafety,
   onToast,
   onError,
+  onListen,
   onClose,
   roaches,
   ink,
@@ -1104,7 +1107,7 @@ function RoomView({
         {room.host && room.state === "wait" && keyAge >= KEY_WARN_MS && <p className="sq-warn small">{T.squad.room.keyWarn}</p>}
         {!room.host && !me.inGame && <p className="hint">{T.squad.room.keyHint}</p>}
       </div>
-      <DjBar room={room} busy={busy} run={run} />
+      <ListenRow room={room} onListen={onListen} onToast={onToast} />
       <div className="sq-tiles">
         {room.members.map((m) => (
           <MemberTile
@@ -1658,7 +1661,7 @@ function PicksAsk({
   );
 }
 
-/** What the site says in the room (someone came in, a new key, a song), floating a few seconds each */
+/** What the site says in the room (someone came in, a new key, a strategy freed), floating a few seconds each */
 function Floats() {
   const floats = useSquadFloats();
   return (

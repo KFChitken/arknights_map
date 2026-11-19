@@ -7,10 +7,8 @@ import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
 import {
-  answerRequest,
   botInRoom,
   changeKey,
-  changeSquadSongs,
   declareSquad,
   inviteToSquad,
   joinRoom,
@@ -20,7 +18,6 @@ import {
   moveInRoom,
   myRoom,
   openRoom,
-  requestSong,
   saveCard,
   sayInRoom,
   setInGame,
@@ -53,11 +50,9 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST pose {pose}              what your roach keeps doing in the room (站着, 蹦迪, 醉倒睡觉)
  *   POST move {move, to?}         your roach waves, or gives a teammate (to: their number) 击掌 or 贴贴
  *   POST touch {h, bold}          偷偷碰 or 大胆碰 someone in your room, as on the map
- *   POST say {p}                  a set line, by its number
- *   POST music {start|next|restart|random|stop: true, add: song, seek: seconds}   what the host does to the room's
- *                                 songs (as 一起听's; stop: nothing plays until started again)
- *   POST request {song}           点歌: ask the host for a song
- *   POST take {id} / drop {id}    the host takes a song asked for into the songs, or drops it (nobody told)
+ *   POST say {p, to?}             a set line, by its number (to: said to that one in the room, 对 TA 说)
+ *   POST music / request / take / drop   the host's songs of before: gone (410), the room's songs are 卫戍的一起听
+ *                                 now (src/app/api/listen/[op] squad)
  *   POST friends                  your 触须之交 to invite to your room
  *   POST invite {friends}         invitations to them (their Friend ids): what each came to
  *   POST later {invite}           下次吧, to an invitation to you (whoever sent it sees 没来)
@@ -102,7 +97,7 @@ const OPS = {
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "music", "request", "take", "invite", "declare", "bot"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "invite", "declare", "bot"]);
 
 type Ctx = { params: Promise<{ op: string }> };
 
@@ -173,14 +168,12 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await touchMember(user, body));
     case "say":
       return answer(await sayInRoom(user, body));
+    // a page of before: its songs' buttons say to look again
     case "music":
-      return answer(await changeSquadSongs(user, body));
     case "request":
-      return answer(await requestSong(user, body));
     case "take":
-      return answer(await answerRequest(user, body, true));
     case "drop":
-      return answer(await answerRequest(user, body, false));
+      throw new HttpError(410, T.server.squad.songsGone);
     case "friends":
       return answer(await squadFriends(user));
     case "invite":

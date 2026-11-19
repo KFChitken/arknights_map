@@ -1,6 +1,5 @@
 import season from "@/data/squad-season.json";
 import { SERVERS } from "./games";
-import type { QueueChange, RoomSchedule } from "./listen";
 import type { RoachPass } from "./passes";
 import type { PublicProfile } from "./profile";
 
@@ -220,15 +219,29 @@ export const BOT_ACT_MS = [20_000, 40_000] as const;
 /** Of what they do by themselves, this share is a line, the rest a pose */
 export const BOT_SAY_SHARE = 0.7;
 
-// ---- the host's songs ----
+// ---- 一起听 in a room (卫戍的一起听) ----
 
-/** What the host does to the room's songs: as 一起听's (src/lib/listen.ts), and 停 (stop: nothing plays until they start it again) */
-export type SquadSongChange = QueueChange | "stop";
-/** How the songs changed, as told to the room */
-export type SquadSongHow = "start" | "next" | "restart" | "add" | "seek" | "stop";
-/** Songs asked for (点歌): so many waiting from each at most, and one every REQUEST_EVERY_MS */
-export const REQUESTS_EACH = 3;
-export const REQUEST_EVERY_MS = 20_000;
+/**
+ * 一起听 in a room of 一起卫戍: its host's own 一起听 (src/lib/listen.ts, src/lib/server/listenRooms.ts), with those
+ * in the room invited, as to a 触须之交; on once its host invited anyone now in the room to it, or anyone of the room
+ * but its host is in it. 人机 never listen. What the room shows of it: the 一起听's id (room), the song it is at now
+ * (by name) and whether one plays (playing); how many are in it (n, 触须之交 of its host too) and how many of the room
+ * (ours, its host too); those of the room not in it (out, by number); the viewer in it (in), invited to it still
+ * (invited: an invitation still good and unanswered, invite its id), or neither (out: 下次吧, run out, never invited);
+ * and to its host, those of the room who said 下次吧 to it (later) and those never invited to it (uninvited).
+ */
+export type SquadListen = {
+  room: string;
+  song: string;
+  playing: boolean;
+  n: number;
+  ours: number;
+  out: number[];
+  you: "in" | "invited" | "out";
+  invite?: string;
+  later?: number[];
+  uninvited?: number[];
+};
 
 // ---- what is said in a room ----
 
@@ -240,7 +253,7 @@ export const PHRASE_ROWS = [
   /** 28 is in this row too: one line, one number */
   ["fight", [10, 11, 12, 13, 14, 15, 16, 32, 33, 34, 35, 28]],
   ["after", [17, 18, 19, 20, 21]],
-  /** only while the host's song plays */
+  /** only while one is in 卫戍的一起听 */
   ["music", [22, 23, 24]],
   /**
    * 对 TA 说: said to one in the room (to), only while it waits; never among 说话's rows, never by a 人机 at random.
@@ -347,7 +360,7 @@ export type SquadListRoom = {
   friend: boolean;
   /** The viewer is in it */
   mine: boolean;
-  /** A song of the host's plays in it now (♪ 在放歌) */
+  /** 卫戍的一起听 is on and plays a song now (♪) */
   music: boolean;
   /** 人机 are in it (shown to the 站长 and the admins alone, and to those in it), marked 测试 */
   test?: true;
@@ -412,16 +425,12 @@ export type SquadRoom = {
   declared: boolean;
   /** Your own invitations to it, to those not in it: still good (waiting), or not come (missed: ran out or 下次吧, never told apart) */
   invited: SquadInvited[];
-  /**
-   * The host's songs (src/lib/listen.ts RoomSchedule), whether this player may hear them (听歌 open to them and not
-   * paused in the 管理台, the site not gray: dj), the songs asked for (the host's: all, oldest first, with who asked;
-   * anyone else's: their own still waiting), and, to the host alone, how many in it follow the songs now
-   */
-  dj: boolean;
-  requests: { id: number; song: string; name?: string }[];
-  listening: number | null;
+  /** 听歌 is open to this player (open to them, not paused in the 管理台, the site not gray); else nothing of 一起听 shows */
+  hear: boolean;
+  /** 卫戍的一起听 while it is on (and hear), else null */
+  listen: SquadListen | null;
   now: number;
-} & RoomSchedule;
+};
 
 /** What a room's phones are told (the event stream's "squad"): look again, with what changed; lines said; it ended; you are out */
 export type SquadTell =
@@ -430,12 +439,18 @@ export type SquadTell =
       room: string;
       /**
        * round, pose: one's as it is now, which a page of now takes as it is, without asking again; stop: 停止加入 (on)
-       * or 恢复加入; host: the host left, handing the room to h
+       * or 恢复加入; host: the host left, handing the room to h; listen: 卫戍的一起听 changed (on, over, someone in or
+       * out of it, invited, 下次吧)
        */
-      what?: { kind: "in" | "game" | "key" | "state" | "ask" | "round" | "pose" | "stop" | "host"; h?: number; to?: SquadState; round?: SquadRound; pose?: SquadPose; on?: boolean };
+      what?: {
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen";
+        h?: number;
+        to?: SquadState;
+        round?: SquadRound;
+        pose?: SquadPose;
+        on?: boolean;
+      };
     }
-  /** The host changed the songs: how, and the songs as they are now */
-  | ({ t: "songs"; room: string; how: SquadSongHow } & RoomSchedule)
   /** to: said to the one with that number (对 TA 说) */
   | { t: "say"; room: string; items: { h: number; p: number; to?: number }[] }
   /** Moves done (动作), batched as the lines are; a page of before skips them */

@@ -2,7 +2,7 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
-import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound, SquadSongChange } from "./squad";
+import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound } from "./squad";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -79,13 +79,6 @@ export const squadApi = {
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** A set line, by its number (to: the one in the room it is said to, 对 TA 说): sent, or one too many (full: the hour's are used up) */
   say: (p: number, to?: number) => call<{ sent: boolean; full?: boolean; now: number }>("say", post(to === undefined ? { p } : { p, to })),
-  /** What the host does to the room's songs */
-  music: (change: SquadSongChange) => call<Room>("music", post(typeof change === "object" ? change : { [change]: true })),
-  /** 点歌 */
-  request: (song: string) => call<Room>("request", post({ song })),
-  /** The host takes a song asked for into the songs, or drops it */
-  take: (id: number) => call<Room>("take", post({ id })),
-  drop: (id: number) => call<Room>("drop", post({ id })),
   /** In at an invitation to you (its id) or a 宣言招人 you got (its declaration's id) */
   joinBy: (by: { invite: string } | { declaration: string }) => call<{ room: SquadRoom; now: number }>("join", post(by)),
   /** Your 触须之交 to invite to your room */

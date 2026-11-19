@@ -77,6 +77,8 @@ export default function ListenOverlay({
   const up = spot.anchor?.side === "up";
   // over the layout's bottom bar; on 抽屉, the row of 短评 sits under the bubble and the 短评 above it
   const above = spot.vh - spot.bottom + 8;
+  // the cards of an invitation or a 宣言一起听: above the bar of a round of 一起卫戍 too, where it stands
+  const cardsAbove = spot.vh - spot.cards + 8;
   const chat: CSSProperties | null = spot.anchor
     ? up
       ? { left: spot.anchor.x + spot.anchor.w / 2 - 17, bottom: stripOn ? above + stripH + 6 : spot.vh - spot.anchor.y + 8 }
@@ -108,7 +110,7 @@ export default function ListenOverlay({
           key={`${card.invite.id}${card.ask ? ":ask" : ""}`}
           invite={card.invite}
           ask={card.ask}
-          bottom={above}
+          bottom={cardsAbove}
           onJoin={onJoin}
           onLater={onLater}
           onDismiss={onDismiss}
@@ -119,7 +121,7 @@ export default function ListenOverlay({
           key={`${card.call.id}${card.ask ? ":ask" : ""}`}
           call={card.call}
           ask={card.ask}
-          bottom={above}
+          bottom={cardsAbove}
           onJoin={onJoinCall}
           onSkip={onSkipCall}
           onDismiss={onDismiss}
@@ -205,7 +207,7 @@ function Strip() {
 
 /**
  * The invitation that came: 一起听 goes in (asked first, when you are in a room already: 换过去 or 先不换); 下次吧
- * lets it be (the host sees 没来, as when it runs out)
+ * lets it be (the host sees 没来, as when it runs out). One to 卫戍的一起听 (squad) says so, and that not joining is fine.
  */
 function InviteCard({
   invite,
@@ -228,8 +230,9 @@ function InviteCard({
     <div className="lm-invite" role="alert" style={{ bottom }}>
       <div className="lm-ih">
         <NoteIcon size={18} />
-        <span>{fmt(T.listen.invitedYou, { name: who })}</span>
+        <span>{fmt(invite.squad ? T.squad.listen.invited : T.listen.invitedYou, invite.squad ? { host: who } : { name: who })}</span>
       </div>
+      {invite.squad && !asking && <small className="lm-either">{T.squad.listen.either}</small>}
       {asking ? (
         <>
           <small>{T.listen.switchAsk}</small>
@@ -324,6 +327,8 @@ type Spot = {
   /** The top of the layout's bottom bar, and the bottom of what stands at the top */
   bottom: number;
   top: number;
+  /** The top of what the cards keep above (the bar of a round of 一起卫戍 on a phone: data-listen-over), else bottom */
+  cards: number;
   /** 听歌's panel, while it is open */
   panel: Box | null;
   vw: number;
@@ -354,11 +359,14 @@ function readSpot(): Spot {
     }
   }
   const bottoms = [...document.querySelectorAll<HTMLElement>("[data-chrome-bottom]")].map((el) => el.getBoundingClientRect()).filter(seen);
+  const overs = [...document.querySelectorAll<HTMLElement>("[data-listen-over]")].map((el) => el.getBoundingClientRect()).filter(seen);
   const panelEl = document.querySelector(".listen-sheet .sheet, .listen-float");
   const panel = panelEl ? box(panelEl.getBoundingClientRect()) : null;
+  const bottom = bottoms.length ? Math.round(Math.min(...bottoms.map((r) => r.top))) : vh - 16;
   return {
     anchor,
-    bottom: bottoms.length ? Math.round(Math.min(...bottoms.map((r) => r.top))) : vh - 16,
+    bottom,
+    cards: overs.length ? Math.min(bottom, Math.round(Math.min(...overs.map((r) => r.top)))) : bottom,
     top: Math.round(document.querySelector("[data-chrome-top]")?.getBoundingClientRect().bottom ?? 0),
     panel,
     vw,

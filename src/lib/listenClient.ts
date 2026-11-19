@@ -56,8 +56,16 @@ export const listenApi = {
     call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("open", post(at === undefined ? { song, invite } : { song, invite, at })),
   /** More invitations to your room */
   invite: (friends: string[]) => call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("invite", post({ friends })),
+  /**
+   * 「邀请大家一起听」, by the host of a room of 一起卫戍: your room (opened when you have none, with this song first,
+   * at: seconds in), everyone in the room of 一起卫戍 invited (only: those of these numbers there; sent: by number)
+   */
+  squad: (song: string | null, at?: number, only?: number[]) =>
+    call<{ room: ListenRoom | null; sent: InviteSent[]; now: number }>("squad", post({ song, ...(at === undefined ? {} : { at }), ...(only ? { only } : {}) })),
   /** In at an invitation to you */
   join: (invite: string) => call<{ room: ListenRoom; now: number }>("join", post({ invite })),
+  /** In at 卫戍的一起听 of the room of 一起卫戍 you are in */
+  joinSquad: () => call<{ room: ListenRoom; now: number }>("join", post({ squad: true })),
   /** In at a 宣言一起听 you got (the declaration's id) */
   joinCall: (declaration: string) => call<{ room: ListenRoom; now: number }>("join", post({ declaration })),
   /**

@@ -169,29 +169,8 @@
   .sq-float { animation: none; }
 }
 
-/* the host's songs (DjBar.tsx) */
-.sq-room .tagline .mus { margin-left: 6px; color: #7c3aed; font-weight: 700; }
-.sq-dj { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid #e3e5e8; border-radius: 13px; background: #faf8ff; }
-.sq-dj .top { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; align-items: center; }
-.sq-dj .cover { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: #7c3aed; color: #fff; font-size: 17px; }
-.sq-dj .cover.off { background: #e5e7eb; color: var(--muted); }
-.sq-dj .t { display: flex; flex-direction: column; min-width: 0; }
-.sq-dj .t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sq-dj .t small { color: var(--muted); font-size: 12px; }
-.sq-dj .acts { display: flex; gap: 4px; }
-.sq-dj .prog { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.sq-dj .prog input[type="range"] { flex: 1; accent-color: #7c3aed; }
-.sq-dj .prog .bar { flex: 1; height: 4px; border-radius: 4px; background: #e5e7eb; overflow: hidden; }
-.sq-dj .prog .bar i { display: block; height: 100%; background: #7c3aed; }
-.sq-dj .phone,
-.sq-dj .asked { margin: 0; color: var(--muted); font-size: 12px; }
-.sq-dj .lite { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-.sq-dj .host { display: flex; flex-wrap: wrap; gap: 6px; }
-.sq-dj .reqs { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px dashed #ddd6fe; }
-.sq-dj .reqs .lab { color: var(--muted); font-size: 11.5px; font-weight: 700; }
-.sq-dj .req { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.sq-dj .req span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sq-dj .req small { margin-left: 6px; color: var(--muted); }
+/* ♪ on the list: 卫戍的一起听 plays (SquadListen.tsx) */
+.sq-room .tagline .mus { margin-left: 6px; color: #18a0a5; font-weight: 700; }
 .sq-pick { display: flex; flex-direction: column; gap: 8px; max-height: min(78vh, 640px); }
 .sq-pick .search { padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px; font: inherit; }
 .sq-pick .songs { flex: 1; min-height: 120px; overflow-y: auto; }

@@ -531,7 +531,7 @@ export const CALL_CARD_EVERY_MS = 10 * 60_000;
 
 /** One of your 触须之交 who may listen, to invite (id: their Friend id), and whether TA is in your room */
 export type ListenFriend = { id: string; card: PublicProfile; inRoom: boolean };
-/** How each invitation went (id: the Friend id given): sent (or TA had one, or is in), or why not */
+/** How each invitation went (id: the Friend id given, or the number in the room of 一起卫戍): sent (or TA had one, or is in), or why not */
 export type InviteSent = { id: string; ok: boolean; why?: string };
 
 /**

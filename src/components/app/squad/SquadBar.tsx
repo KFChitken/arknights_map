@@ -64,10 +64,11 @@ export default function SquadBar({ hidden, onOpen }: { hidden: boolean; onOpen: 
   const n = room.members.length;
   return (
     <>
-      <button className="sq-bar glass" style={at} aria-haspopup="dialog" aria-label={fmt(T.squad.inRoomLabel, { n, max: SQUAD_MAX })} onClick={onOpen}>
+      {/* 一起听's cards over the map keep above it (ListenOverlay.tsx data-listen-over) */}
+      <button className="sq-bar glass" style={at} aria-haspopup="dialog" aria-label={fmt(T.squad.inRoomLabel, { n, max: SQUAD_MAX })} onClick={onOpen} data-listen-over="">
         <ShieldIcon size={18} />
         <span>{fmt(T.squad.inRoom, { n, max: SQUAD_MAX })}</span>
-        {room.dj && room.startedAt !== null && <span aria-hidden="true">♪</span>}
+        {room.hear && room.listen?.playing && <span aria-hidden="true">♪</span>}
       </button>
       {toMe && above && (
         <SquadToMe

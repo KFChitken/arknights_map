@@ -1,0 +1,40 @@
+/*
+ * 卫戍的一起听 (SquadListen.tsx): a row in the room's sheet, teal as 一起听 (listen.css); ♪ on the bar of a round; a
+ * card over the bar; the questions asked first, in the row or the card
+ */
+.sq-lsn { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid #e3e5e8; border-radius: 13px; background: #fff; }
+.sq-lsn.on { border-color: #bfe6e7; background: #f2fbfb; }
+.sq-lsn .top { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.sq-lsn .dot { width: 10px; height: 10px; border-radius: 50%; background: #c7ccd3; }
+.sq-lsn.on .dot { background: #18a0a5; }
+.sq-lsn .dot.go { box-shadow: 0 0 0 4px rgba(24, 160, 165, 0.18); animation: sq-lsn-beat 1.2s ease-in-out infinite; }
+.sq-lsn .t { display: flex; flex-direction: column; min-width: 0; }
+.sq-lsn .t b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.sq-lsn .t small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.sq-lsn .acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.sq-lsn .acts button, .sq-lcard .b button, .sq-lask .b button { padding: 6px 12px; border: 1px solid #d6d9de; border-radius: 10px; background: #fff; color: #1b1d22; font: inherit; font-size: 13px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.sq-lsn .acts button.dark, .sq-lcard .b button.dark, .sq-lask .b button.dark { border-color: #1b1d22; background: #1b1d22; color: #fff; }
+.sq-lsn .acts button.acc, .sq-lcard .b button.acc { border-color: #18a0a5; background: #18a0a5; color: #fff; }
+.sq-lsn .acts button:disabled, .sq-lcard .b button:disabled, .sq-lask .b button:disabled { opacity: 0.6; cursor: default; }
+.sq-lsn .note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+@keyframes sq-lsn-beat { 50% { box-shadow: 0 0 0 7px rgba(24, 160, 165, 0); } }
+
+/* a question first: out of another's 一起听 (the host), over to this one (anyone else) */
+.sq-lask { display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; border-radius: 11px; background: #f4f5f7; font-size: 13px; }
+.sq-lask small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.sq-lask .b { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+
+/* ♪ on the bar of a round, between 看打怪 / 看地图 and 🔔: teal once in 一起听, 加入 while it goes on without you */
+.sq-note.in { border-color: #18a0a5 !important; background: #18a0a5 !important; color: #fff !important; }
+.sq-note.join { border-color: #18a0a5 !important; color: #0d777b !important; }
+
+/* the card over the bar of a round, from ♪ */
+.sq-lcard { position: fixed; z-index: 32; display: flex; flex-direction: column; gap: 4px; max-width: 420px; margin: 0 auto; padding: 12px 13px; border-radius: 14px; background: #fff; color: #1b1d22; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); line-height: 1.4; }
+.sq-lcard b { font-size: 15px; }
+.sq-lcard small { color: #6b7280; font-size: 13px; }
+.sq-lcard small.either { font-size: 12px; }
+.sq-lcard .b { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.sq-lcard .b button { flex: 1; padding: 9px 6px; font-size: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .sq-lsn .dot.go { animation: none; }
+}

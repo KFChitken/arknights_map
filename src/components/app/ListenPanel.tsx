@@ -37,6 +37,7 @@ import {
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
 import { siteDay } from "@/lib/siteDay";
+import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../RoachIcon";
 import { ChatIcon, DiscoBallIcon, DiscoModeSwitch, MegaphoneIcon, useDiscoSwitch, useWide } from "./chrome/parts";
@@ -47,6 +48,7 @@ import {
   callLine,
   hostQueue,
   inviteMore,
+  inviteSquadToListen,
   kickMember,
   leaveListen,
   listenFriendsList,
@@ -92,6 +94,8 @@ import {
   type ListenUpNext,
 } from "./listening";
 import Sheet from "./Sheet";
+import { squadSentWords } from "./squad/SquadListen";
+import { loadSquadRoom, useSquadRoom } from "./squad/squading";
 import "./listen.css";
 
 /** What 一起听 does beyond the songs, and what it needs for it, from the map page (MapApp.tsx) */
@@ -864,7 +868,9 @@ function DeclareFrom({
 /**
  * 这场, while you are in a room: how many are in it (whose it is, when not yours), 〔邀请触须之交〕 (the host's) and a red
  * 〔结束〕 (anyone else's 〔离开〕), asked first under it; who is in it (each to tap for their card) and who was invited;
- * whom to invite, there; and the host's 宣言一起听 (once a room)
+ * whom to invite, there; and the host's 宣言一起听 (once a room). When it is 卫戍的一起听 of the room of 一起卫戍 you are
+ * in (src/lib/squad.ts SquadListen): those of that room not in it, grey (to its host, those never invited: the others
+ * are among the invited), and to its host a line under them: all were invited, or 〔邀请卫戍队友〕 for the rest.
  */
 function RoomBlock({
   room,
@@ -908,6 +914,21 @@ function RoomBlock({
     if (went) setView("main");
   };
   const head = room.host ? fmt(T.listen.roomHead, { n, max: room.max }) : fmt(T.listen.roomHeadOf, { name: room.hostName, n, max: room.max });
+  // 卫戍的一起听: those of the room of 一起卫戍 not in it
+  const squad = useSquadRoom();
+  const ours = squad?.hear && squad.listen?.room === room.id ? squad.listen : null;
+  const uninvited = room.host ? (ours?.uninvited ?? []) : [];
+  const outOfIt = (room.host ? uninvited : (ours?.out ?? [])).flatMap((h) => squad?.members.filter((m) => m.h === h) ?? []);
+  const [inviting, setInviting] = useState(false);
+  const inviteRest = async () => {
+    if (inviting) return;
+    setInviting(true);
+    const res = await inviteSquadToListen(uninvited);
+    setInviting(false);
+    if (!res) return;
+    setNote(squadSentWords(res.sent));
+    void loadSquadRoom().catch(() => {});
+  };
   const label = (m: RoomMember) =>
     m.host ? T.listen.labels.host : m.state === "in" ? (m.h === room.you && pausedHere ? T.listen.labels.paused : T.listen.labels.in) : m.state === "kicked" ? T.listen.labels.kicked : T.listen.labels.left;
   return (
@@ -954,7 +975,27 @@ function RoomBlock({
             <small>{i.state === "waiting" ? T.listen.labels.waiting : T.listen.labels.missed}</small>
           </span>
         ))}
+        {outOfIt.map((m) => (
+          <span key={`s${m.h}`} className="lr-pp out" title={m.name}>
+            <span className="lp-av">
+              <RoachIcon color={m.color as RoachColor} size={30} avatar={m.avatar as RoachAvatar} friend={m.friend} />
+            </span>
+            <b>{m.name}</b>
+            <small>{T.squad.listen.outTag}</small>
+          </span>
+        ))}
       </div>
+      {ours && room.host && (
+        <p className="lp-note left small tight lr-squad">
+          {uninvited.length ? (
+            <button type="button" className="lp-mini" disabled={inviting} onClick={() => void inviteRest()}>
+              {T.squad.listen.askRest}
+            </button>
+          ) : (
+            T.squad.listen.allAsked
+          )}
+        </p>
+      )}
       {room.host && room.aloneSince !== null && <AloneLine since={room.aloneSince} />}
       {room.members.length > 1 && <p className="lp-note left small tight">{room.host ? T.listen.tapNoteHost : T.listen.tapNote}</p>}
       {room.host && view === "invite" && (

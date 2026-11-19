@@ -53,6 +53,7 @@ import {
 } from "../listen";
 import { displayName } from "../profile";
 import { siteDay } from "../siteDay";
+import type { SquadListen, SquadTell } from "../squad";
 import { WorldError, type InboxItem, type TouchResult } from "../world/types";
 import { blockedWith } from "./blocks";
 import { canSeeDeclaration } from "./declarationInbox";
@@ -60,9 +61,9 @@ import { db } from "./db";
 import { lockPlayer, type Exec } from "./guides";
 import { HttpError } from "./http";
 import { listenOpen, refuseIfFull, roomOfPlayer } from "./listen";
-import { nudge, onToldListen, tellListen } from "./live";
+import { nudge, onToldListen, tellListen, tellSquad } from "./live";
 import { allow } from "./rateLimit";
-import { friendNotes, listenInvites, listenMembers, listenNow, listenRequests, listenRooms, roaches, users, type UserRow } from "./schema";
+import { friendNotes, listenInvites, listenMembers, listenNow, listenRequests, listenRooms, roaches, squadMembers, squadRooms, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
 import { countSaid, firstSong, songList, songOf } from "./songs";
 import { countStat } from "./stats";
@@ -185,11 +186,148 @@ if (!g.listenToldHeard) {
   });
 }
 
-/** Tell everyone in the room that who is in it changed: each asks again */
+/** Tell everyone in the room that who is in it changed: each asks again (and the room of 一起卫戍 its host hosts) */
 async function tellMembers(roomId: string, also: string[] = []) {
   forget(roomId);
   const rows = await hearersOf(roomId);
   tellListen([...rows.map((r) => r.userId), ...also], { t: "members", room: roomId });
+  void tellSquadOf(roomId);
+}
+
+// ---- 卫戍的一起听: a 卫戍 host's own 一起听, with those in their room of 一起卫戍 invited (src/lib/squad.ts SquadListen) ----
+
+/** The room of 一起卫戍 the player hosts now, if any */
+async function squadHostedBy(userId: string): Promise<string | null> {
+  const [r] = await db
+    .select({ id: squadRooms.id })
+    .from(squadRooms)
+    .where(and(eq(squadRooms.hostId, userId), isNull(squadRooms.endedAt)))
+    .limit(1);
+  return r?.id ?? null;
+}
+
+/** The room of 一起卫戍 the player is in now, with its host */
+async function squadOfPlayer(userId: string): Promise<{ id: string; hostId: string } | null> {
+  const [r] = await db
+    .select({ id: squadRooms.id, hostId: squadRooms.hostId })
+    .from(squadMembers)
+    .innerJoin(squadRooms, eq(squadRooms.id, squadMembers.roomId))
+    .where(and(eq(squadMembers.userId, userId), isNull(squadMembers.leftAt), isNull(squadRooms.endedAt)))
+    .limit(1);
+  return r ?? null;
+}
+
+/** Those in a room of 一起卫戍 now, by id with their number there (人机 never listen) */
+function squadPeople(squadId: string) {
+  return db
+    .select({ userId: squadMembers.userId, h: squadMembers.handle })
+    .from(squadMembers)
+    .where(and(eq(squadMembers.roomId, squadId), isNull(squadMembers.leftAt)));
+}
+
+/**
+ * 卫戍的一起听 of each room of 一起卫戍 given (its id, its host, those in it): its host's 一起听 going on, once they
+ * invited anyone now in the room to it, or anyone of the room but them is in it; read for all of them at once
+ */
+async function squadListens(rooms: readonly { id: string; hostId: string; people: readonly string[] }[]): Promise<Map<string, Room>> {
+  const out = new Map<string, Room>();
+  const hosts = [...new Set(rooms.map((r) => r.hostId))];
+  if (!hosts.length) return out;
+  const open = await db
+    .select()
+    .from(listenRooms)
+    .where(and(inArray(listenRooms.hostId, hosts), isNull(listenRooms.endedAt)))
+    .orderBy(desc(listenRooms.createdAt));
+  if (!open.length) return out;
+  const ids = open.map((l) => l.id);
+  const [asked, inIt] = await Promise.all([
+    db
+      .select({ roomId: listenInvites.roomId, from: listenInvites.fromUserId, to: listenInvites.toUserId })
+      .from(listenInvites)
+      .where(inArray(listenInvites.roomId, ids)),
+    db
+      .select({ roomId: listenMembers.roomId, userId: listenMembers.userId })
+      .from(listenMembers)
+      .where(and(inArray(listenMembers.roomId, ids), isNull(listenMembers.leftAt))),
+  ]);
+  for (const r of rooms) {
+    const l = open.find((x) => x.hostId === r.hostId);
+    if (!l) continue;
+    const others = new Set(r.people.filter((id) => id !== r.hostId));
+    if (asked.some((a) => a.roomId === l.id && a.from === r.hostId && others.has(a.to)) || inIt.some((m) => m.roomId === l.id && others.has(m.userId))) {
+      out.set(r.id, l);
+    }
+  }
+  return out;
+}
+
+/** The rooms of 一起卫戍 given whose 卫戍的一起听 plays a song now (the list's ♪) */
+export async function squadListensPlaying(rooms: readonly { id: string; hostId: string; people: readonly string[] }[], now = Date.now()): Promise<Set<string>> {
+  const on = await squadListens(rooms);
+  if (!on.size) return new Set();
+  const seconds = await secondsOf();
+  return new Set([...on].filter(([, l]) => roomAt(scheduleOf(l), seconds, now).phase === "playing").map(([id]) => id));
+}
+
+/** 卫戍的一起听 as viewerId, in the room of 一起卫戍 given (with those in it, by id and number), sees it; null while it is not on */
+export async function squadListenView(
+  squad: { id: string; hostId: string },
+  people: readonly { userId: string; h: number }[],
+  viewerId: string,
+  now = Date.now(),
+): Promise<SquadListen | null> {
+  const l = (await squadListens([{ id: squad.id, hostId: squad.hostId, people: people.map((p) => p.userId) }])).get(squad.id);
+  if (!l) return null;
+  const [inIt, asked, seconds, list] = await Promise.all([
+    db
+      .select({ userId: listenMembers.userId })
+      .from(listenMembers)
+      .where(and(eq(listenMembers.roomId, l.id), isNull(listenMembers.leftAt))),
+    db.select().from(listenInvites).where(eq(listenInvites.roomId, l.id)).orderBy(desc(listenInvites.createdAt)),
+    secondsOf(),
+    songList(),
+  ]);
+  const listening = new Set(inIt.map((m) => m.userId));
+  const mine = asked.find((a) => a.toUserId === viewerId && !a.answer && a.createdAt.getTime() > now - INVITE_MS);
+  const you = listening.has(viewerId) ? "in" : mine ? "invited" : "out";
+  const out = people.filter((p) => !listening.has(p.userId));
+  const view: SquadListen = {
+    room: l.id,
+    song: list.byId.get(songNow(l, seconds, now))?.name ?? "",
+    playing: roomAt(scheduleOf(l), seconds, now).phase === "playing",
+    n: listening.size,
+    ours: people.length - out.length,
+    out: out.map((p) => p.h),
+    you,
+    ...(you === "invited" && mine ? { invite: mine.id } : {}),
+  };
+  if (viewerId === squad.hostId) {
+    // the latest invitation of the host's to each of the room not in it: said 下次吧 to, or none ever
+    const latest = new Map<string, (typeof asked)[number]>();
+    for (const a of asked) if (a.fromUserId === squad.hostId && !latest.has(a.toUserId)) latest.set(a.toUserId, a);
+    view.later = out.filter((p) => latest.get(p.userId)?.answer === "later").map((p) => p.h);
+    view.uninvited = out.filter((p) => !latest.has(p.userId)).map((p) => p.h);
+  }
+  return view;
+}
+
+/**
+ * Something of an 一起听 changed (it began or ended, someone came or went, invitations, 下次吧): the room of 一起卫戍
+ * its host hosts, if any, is told to look again (卫戍的一起听 may have begun, ended or changed)
+ */
+async function tellSquadOf(listenRoomId: string) {
+  try {
+    const [l] = await db.select({ hostId: listenRooms.hostId }).from(listenRooms).where(eq(listenRooms.id, listenRoomId));
+    const squadId = l ? await squadHostedBy(l.hostId) : null;
+    if (!squadId) return;
+    const people = await squadPeople(squadId);
+    tellSquad(
+      people.map((p) => p.userId),
+      { t: "room", room: squadId, what: { kind: "listen" } } satisfies SquadTell,
+    );
+  } catch (e) {
+    console.error("listen: telling a room of 一起卫戍 failed", e);
+  }
 }
 
 // ---- what a room looks like to someone in it ----
@@ -394,6 +532,7 @@ function tellEnd(roomId: string, ids: string[], why: RoomEnd) {
   batches.delete(roomId);
   lately.delete(roomId);
   tellListen(ids, { t: "end", room: roomId, why });
+  void tellSquadOf(roomId);
 }
 
 /** End a room (the host's 结束, the sweep, the 管理台's pause, 全站变灰) and tell everyone in it */
@@ -484,7 +623,24 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
   const keys = [...new Set(given.map(String))].slice(0, INVITE_AT_ONCE);
   if (!keys.length) return [];
   const byKey = new Map([...(await friendIdsOf(user.id))].map((id) => [friendKey(user.id, id), id]));
-  const ids = keys.map((k) => byKey.get(k)).filter((id): id is string => Boolean(id));
+  return sendInvites(
+    user,
+    roomId,
+    keys.map((key) => ({ key, to: byKey.get(key) ?? null })),
+    now,
+    asked,
+  );
+}
+
+/**
+ * The invitations themselves, to those given (key: what each answer is known by; to: their id, null when they are not
+ * one the host may invite): the rules of inviteIn, whether they are 触须之交 (inviteIn) or in the host's room of
+ * 一起卫戍 (inviteSquad)
+ */
+async function sendInvites(user: UserRow, roomId: string, given: readonly { key: string; to: string | null }[], now: number, asked: boolean): Promise<InviteSent[]> {
+  const keys = given.map((g) => g.key);
+  const byKey = new Map(given.flatMap((g) => (g.to ? [[g.key, g.to] as const] : [])));
+  const ids = [...byKey.values()];
   const people = ids.length ? await db.select().from(users).where(inArray(users.id, ids)) : [];
   const blocked = await blockedWith(user.id);
   const results: InviteSent[] = [];
@@ -563,8 +719,41 @@ async function inviteIn(user: UserRow, roomId: string, given: unknown, now: numb
     if (nudged.length) nudge(nudged);
     // the host's own list of who is invited
     tellListen([user.id], { t: "members", room: roomId });
+    void tellSquadOf(roomId);
   }
   return results;
+}
+
+/**
+ * 「邀请大家一起听」, by the host of a room of 一起卫戍 (卫戍的一起听): their own 一起听, opened now when they have none
+ * going (with the song they play alone and where it got to, else 新歌's first; out of another's first, as openRoom),
+ * and an invitation to each person in their room of 一起卫戍 (人机 never listen), as to a 触须之交 (sendInvites: never
+ * to one 听歌 is closed to, nor blocked either way; quietly after their 下次吧); only: to those of these numbers in the
+ * room alone (〔邀请卫戍队友〕, those never invited). The room of 一起卫戍 is told.
+ */
+export async function inviteSquad(user: UserRow, body: Record<string, unknown>, now = Date.now()) {
+  if (body.only !== undefined && (!Array.isArray(body.only) || !body.only.every((h) => Number.isInteger(h)))) throw refuse(400, T.server.common.badRequest);
+  const only = Array.isArray(body.only) ? new Set(body.only as number[]) : null;
+  refuseNow(now);
+  const squadId = await squadHostedBy(user.id);
+  if (!squadId) throw refuse(409, T.server.listen.squadHostOnly, NO_ROOM);
+  const mine = await roomOfPlayer(db, user.id);
+  let roomId = mine && mine.room.hostId === user.id ? mine.room.id : null;
+  if (!roomId) {
+    roomId = (await newRoom(user, body.song, now, body.at)).id;
+    countStat(COUNTED.listenRoom, 1, now);
+  }
+  const people = (await squadPeople(squadId)).filter((p) => p.userId !== user.id && (!only || only.has(p.h))).sort((a, b) => a.h - b.h);
+  const sent = await sendInvites(
+    user,
+    roomId,
+    people.map((p) => ({ key: String(p.h), to: p.userId })),
+    now,
+    false,
+  );
+  // told even when nobody was invited anew: the room of 一起卫戍 has it from now on
+  await tellSquadOf(roomId);
+  return { room: await roomView(roomId, user.id, now), sent, now };
 }
 
 /**
@@ -602,7 +791,7 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
       const handle = rows.reduce((h, m) => Math.max(h, m.handle), 0) + 1;
       await tx
         .insert(listenMembers)
-        .values({ roomId: room.id, userId: user.id, handle, via: called.invite ? "invite" : "declaration", joinedAt: new Date(now) });
+        .values({ roomId: room.id, userId: user.id, handle, via: called.via, joinedAt: new Date(now) });
     }
     if (called.invite) {
       await tx
@@ -616,7 +805,7 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
   });
   await told(left);
   if (already?.room.id !== roomId) {
-    countStat(called.invite ? COUNTED.listenJoin : COUNTED.listenJoinDecl, 1, now);
+    countStat(called.via === "declaration" ? COUNTED.listenJoinDecl : COUNTED.listenJoin, 1, now);
     await tellMembers(roomId);
   }
   const room = await roomView(roomId, user.id, now);
@@ -624,8 +813,16 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
   return { room, now };
 }
 
-/** The room an invitation to the player (invite) or a 宣言一起听 they see (declaration) lets them in at */
-async function calledTo(userId: string, body: Record<string, unknown>, now: number): Promise<{ roomId: string; invite: string | null }> {
+/**
+ * The room an invitation to the player (invite), a 宣言一起听 they see (declaration), or the room of 一起卫戍 they are
+ * in (squad: its 卫戍的一起听, while it is on; whatever invitation to it they have left unanswered, of any age, is
+ * answered by their coming in) lets them in at
+ */
+async function calledTo(
+  userId: string,
+  body: Record<string, unknown>,
+  now: number,
+): Promise<{ roomId: string; invite: string | null; via: "invite" | "declaration" | "squad" }> {
   const uuid = (v: unknown) => (typeof v === "string" && UUID.test(v) ? v.toLowerCase() : null);
   if (body.declaration !== undefined) {
     const id = uuid(body.declaration);
@@ -633,7 +830,20 @@ async function calledTo(userId: string, body: Record<string, unknown>, now: numb
     if (!d || d.template !== LISTEN_TEMPLATE) throw refuse(404, T.server.listen.declarationGone, ROOM_GONE);
     // its room is gone a day after it ended
     if (!d.roomId) throw refuse(410, T.server.listen.roomGone, ROOM_GONE);
-    return { roomId: d.roomId, invite: null };
+    return { roomId: d.roomId, invite: null, via: "declaration" };
+  }
+  if (body.squad === true) {
+    const squad = await squadOfPlayer(userId);
+    const people = squad ? await squadPeople(squad.id) : [];
+    const l = squad && squad.hostId !== userId ? (await squadListens([{ id: squad.id, hostId: squad.hostId, people: people.map((p) => p.userId) }])).get(squad.id) : undefined;
+    if (!l) throw refuse(410, T.server.listen.squadOver, ROOM_GONE);
+    const [invite] = await db
+      .select({ id: listenInvites.id })
+      .from(listenInvites)
+      .where(and(eq(listenInvites.roomId, l.id), eq(listenInvites.toUserId, userId), isNull(listenInvites.answer)))
+      .orderBy(desc(listenInvites.createdAt))
+      .limit(1);
+    return { roomId: l.id, invite: invite?.id ?? null, via: "squad" };
   }
   const id = uuid(body.invite);
   const [invite] = id
@@ -644,7 +854,7 @@ async function calledTo(userId: string, body: Record<string, unknown>, now: numb
     : [];
   if (!invite) throw refuse(404, T.server.listen.inviteGone, ROOM_GONE);
   if (invite.createdAt.getTime() <= now - INVITE_MS) throw refuse(410, T.server.listen.inviteGone, ROOM_GONE);
-  return { roomId: invite.roomId, invite: invite.id };
+  return { roomId: invite.roomId, invite: invite.id, via: "invite" };
 }
 
 /** 下次吧: the host sees TA as not come, as an invitation that ran out; never as said no */
@@ -656,7 +866,10 @@ export async function laterInvite(user: Pick<UserRow, "id">, body: Record<string
     .set({ answer: "later", answeredAt: new Date(now), seenAt: sql`coalesce(${listenInvites.seenAt}, now())` })
     .where(and(eq(listenInvites.id, id), eq(listenInvites.toUserId, user.id), isNull(listenInvites.answer)))
     .returning({ from: listenInvites.fromUserId, room: listenInvites.roomId });
-  if (done) tellListen([done.from], { t: "members", room: done.room });
+  if (done) {
+    tellListen([done.from], { t: "members", room: done.room });
+    void tellSquadOf(done.room);
+  }
   return { now };
 }
 
@@ -765,6 +978,20 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
   tellListen([out.them], { t: "you", room: out.roomId, why: "kicked" });
   await tellMembers(out.roomId);
   return { room: await roomView(out.roomId, user.id, now), now };
+}
+
+/**
+ * One asked to leave a room of 一起卫戍 by its host (userId) is asked to leave the host's 一起听 too, when TA is in it:
+ * as the host's own 请出去 there (kicked: TA comes in no more)
+ */
+export async function kickFromHostListen(hostId: string, userId: string, now = Date.now()) {
+  const mine = await roomOfPlayer(db, hostId);
+  if (!mine || mine.room.hostId !== hostId) return;
+  const [them] = await db
+    .select({ h: listenMembers.handle })
+    .from(listenMembers)
+    .where(and(eq(listenMembers.roomId, mine.room.id), eq(listenMembers.userId, userId), isNull(listenMembers.leftAt)));
+  if (them) await kickMember({ id: hostId }, { h: them.h }, now);
 }
 
 // ---- the songs ----
@@ -1243,7 +1470,8 @@ export async function sweepRooms(now = Date.now()) {
 
 /**
  * The invitations to you in 消息 → 触须之交: still good to go in at (open; later: you said 下次吧, and may still), in
- * (you are in the room), or over (the room ended, or the invitation ran out)
+ * (you are in the room), or over (the room ended, or the invitation ran out). One from the host of the room of
+ * 一起卫戍 you are in is said to be its 卫戍的一起听 (squad); its host is named your 触须之交 (friendId) only where TA is.
  */
 export async function listenInbox(userId: string, blocked: Set<string>, now = Date.now()): Promise<InboxItem[]> {
   const rows = (
@@ -1268,6 +1496,7 @@ export async function listenInbox(userId: string, blocked: Set<string>, now = Da
     .where(and(inArray(listenMembers.roomId, roomIds), isNull(listenMembers.leftAt)));
   const seconds = await secondsOf();
   const names = (await songList()).byId;
+  const [squad, friends] = await Promise.all([squadOfPlayer(userId), friendIdsOf(userId)]);
   return rows.map(({ i, room, from }): InboxItem => {
     const inIt = members.filter((m) => m.roomId === room.id);
     const song = songNow(room, seconds, now);
@@ -1286,7 +1515,8 @@ export async function listenInbox(userId: string, blocked: Set<string>, now = Da
       at: i.createdAt.getTime(),
       seen: Boolean(i.seenAt),
       from: cards.get(from.id)!,
-      friendId: friendKey(userId, from.id),
+      ...(friends.has(from.id) ? { friendId: friendKey(userId, from.id) } : {}),
+      ...(squad?.hostId === from.id ? { squad: true as const } : {}),
       song: names.get(song)?.name ?? "",
       state,
       n: state === "open" || state === "later" ? inIt.length : 0,

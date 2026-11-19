@@ -23,7 +23,7 @@ import "./squadFight.css";
 
 /**
  * 说话 / 动作 / 这局, opened from one's own roach (the bar of a round, 说点什么 in the room's sheet). 说话: the set lines
- * by row (组队 first while it waits, 局内 while it plays; 听歌 only while the host's songs play), two to a row, with
+ * by row (组队 first while it waits, 局内 while it plays; 听歌 only while you are in 卫戍的一起听), two to a row, with
  * 常用, the three this device said last, above; one sent, the panel closes. 动作: what the roach keeps doing (站着,
  * 蹦迪, 醉倒睡觉), and moves done at once (挥手; 击掌 and 贴贴 with a teammate, picked next). 这局, while a round plays:
  * the strategy, locked as the round started (one whose card says 无偏好 fills a free one once: 补位, asked first, those
@@ -94,7 +94,8 @@ export default function SquadTalk({
 
 /** The set lines, a row at a time, 常用 above; a moment's rest after each */
 function SayTab({ room, onDone }: { room: SquadRoom; onDone: () => void }) {
-  const music = room.dj && room.startedAt !== null;
+  // 听歌's row, while you are in 卫戍的一起听
+  const music = room.listen?.you === "in";
   // 对 TA 说 is said from a teammate's card
   const rows = PHRASE_ROWS.filter(([r]) => r !== "to" && (r !== "music" || music));
   const [row, setRow] = useState<PhraseRow>(room.state === "go" ? "fight" : "team");

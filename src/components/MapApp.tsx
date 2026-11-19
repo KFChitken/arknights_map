@@ -150,7 +150,6 @@ import {
   declareRoom,
   heardListen,
   inviteMore,
-  isListening,
   joinAt,
   joinCall,
   laterAt,
@@ -162,7 +161,6 @@ import {
   onListenSaid,
   openRoomWith,
   serverNow,
-  toggle as toggleListening,
   touchMember,
   useListenHasSong,
   useListenMiniOut,
@@ -185,12 +183,6 @@ import {
   useSquadRoom,
   useSquadRounds,
 } from "./app/squad/squading";
-import { setQuietListening } from "./app/squad/squadMusic";
-
-// the host's songs in a room of 一起卫戍 starting here quiet 听歌 (and 一起听), so the two never sound together
-setQuietListening(() => {
-  if (isListening()) toggleListening();
-});
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
 import type { ListenActs } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";
@@ -5339,6 +5331,7 @@ export default function MapApp({
             onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: null, squad: true })}
             onError={(e) => void act(() => Promise.reject(e))}
             onToast={setToast}
+            onListen={showListenRoom}
             onClose={() => setPanel(null)}
           />
         ) : null;
@@ -6265,11 +6258,14 @@ export default function MapApp({
       {/* 一起卫戍: while the room plays, the bar of the round in that place, a tile each; away as the other is */}
       {squadShown && (
         <SquadFight
-          hidden={Boolean(panel || listenOpen || selected || picking || placing)}
+          hidden={Boolean(panel || selected || picking || placing)}
+          listenOpen={listenOpen}
           touches={touchesFor()}
           onOpen={() => setPanel({ kind: "squad" })}
+          onListen={showListenRoom}
           onTouch={touchInSquadRoom}
           onSafety={(target, who) => setPanel({ kind: "safety", target, who, back: null, squad: true })}
+          onToast={setToast}
           onError={(e) => void act(() => Promise.reject(e))}
         />
       )}

@@ -404,7 +404,8 @@ export default function InboxSheet({
                   ? T.inbox.listen.in
                   : T.inbox.listen.over}
           </p>
-          {meta(item, `friend:${item.friendId}`, who)}
+          {/* 卫戍的一起听's host may be no 触须之交: then known by the invitation itself */}
+          {meta(item, item.friendId ? `friend:${item.friendId}` : item.id, who)}
           <div className="row-actions">
             {(item.state === "open" || item.state === "later") && (
               <button className="pill dark" disabled={busy} onClick={() => act(item.id, () => friendly.listenJoin(item.id))}>
@@ -421,8 +422,8 @@ export default function InboxSheet({
                 {T.inbox.listen.go}
               </button>
             )}
-            {friendIds.has(item.friendId) && (
-              <button className="pill" onClick={() => onOpenFriend(item.friendId)}>
+            {item.friendId && friendIds.has(item.friendId) && (
+              <button className="pill" onClick={() => onOpenFriend(item.friendId!)}>
                 {T.common.seeThem}
               </button>
             )}

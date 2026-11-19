@@ -354,7 +354,9 @@ button.lr-pp { border: 0; border-radius: 10px; background: none; color: inherit;
 .lr-pp b { max-width: 66px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .lr-pp small { color: #8a8f99; font-size: 11px; }
 .lr-pp.waiting small { color: #0f7f83; }
-.lr-pp.missed .lp-av, .lr-pp.left .lp-av, .lr-pp.kicked .lp-av { opacity: 0.45; }
+.lr-pp.missed .lp-av, .lr-pp.left .lp-av, .lr-pp.kicked .lp-av, .lr-pp.out .lp-av { opacity: 0.45; }
+/* 卫戍的一起听: the host's line under those of the room of 一起卫戍 not in it */
+.lr-squad .lp-mini { margin: 0; }
 
 /* out of a room: an invitation to you, or a 宣言一起听 you got */
 .lr-now { padding: 11px 12px; border-radius: 12px; background: rgba(242, 243, 245, 0.85); }

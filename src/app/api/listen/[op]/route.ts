@@ -15,6 +15,7 @@ import {
   declareRoom,
   endByHost,
   inviteFriends,
+  inviteSquad,
   joinRoom,
   kickMember,
   laterInvite,
@@ -43,7 +44,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST open {song, invite?, at?}   a new room of yours, with invitations to the 触须之交 given (their Friend ids);
  *                                 at: seconds into the song, which plays from there at once (else it waits for start)
  *   POST invite {friends}         more invitations to your room
- *   POST join {invite|declaration}   in at an invitation to you, or at a 宣言一起听 you got
+ *   POST squad {song?, at?}       「邀请大家一起听」 by the host of a room of 一起卫戍: their own room (opened as open
+ *                                 does when there is none), with everyone in the room of 一起卫戍 invited
+ *   POST join {invite|declaration|squad}   in at an invitation to you, at a 宣言一起听 you got, or (squad: true) at
+ *                                 卫戍的一起听 of the room of 一起卫戍 you are in
  *   POST later {invite}           下次吧
  *   POST leave                    out of your room (the host's ends)
  *   POST end {alone?}             the host ends it; alone: their page counted 5 minutes alone in it down, so it ends
@@ -82,6 +86,7 @@ const OPS = {
   friends: { method: "POST", perMinute: 10 },
   open: { method: "POST", perMinute: 6 },
   invite: { method: "POST", perMinute: 10 },
+  squad: { method: "POST", perMinute: 6 },
   join: { method: "POST", perMinute: 10 },
   later: { method: "POST", perMinute: 20 },
   leave: { method: "POST", perMinute: 10 },
@@ -103,7 +108,7 @@ const OPS = {
   fav: { method: "POST", perMinute: 60 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "join", "react", "queue", "request", "answer", "declare", "touch", "ask", "askOk"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "squad", "join", "react", "queue", "request", "answer", "declare", "touch", "ask", "askOk"]);
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 
@@ -159,6 +164,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await openRoom(user, body));
     case "invite":
       return answer(await inviteFriends(user, body));
+    case "squad":
+      return answer(await inviteSquad(user, body));
     case "join":
       return answer(await joinRoom(user, body));
     case "later":
