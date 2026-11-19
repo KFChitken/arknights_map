@@ -25,33 +25,45 @@ const lookOf = (avatar: string): RoachAvatar => (ROACH_AVATARS.includes(avatar a
 export const fighters = (room: Pick<SquadRoom, "members">): FightMember[] =>
   room.members.map((m, i) => ({ h: m.h, seat: seatFor(i), name: m.name, you: m.you, friend: m.friend, look: lookOf(m.avatar), color: m.color as RoachColor, pose: m.pose }));
 
+/** A box on the screen, in px from the window's top left */
+type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+
+/**
+ * The stage's box (left, right, top and bottom as CSS insets) from where things stand on the screen: below the page's
+ * top bar and what hangs under it (tops; those in the screen's upper third), above the layout's bottom bar (lows;
+ * those in its lower half), and clear of the bar of a round: on a phone above its row along the bottom, on a
+ * computer left of its column beside 卫戍 (bar.column, however few are in it, so however short the column is), and
+ * there clear of the buttons down the sides within its height (sides)
+ */
+export function stageBox(W: number, H: number, tops: Rect[], lows: Rect[], bar: (Rect & { column: boolean }) | null, sides: Rect[]) {
+  const top = Math.max(...tops.filter((r) => r.height && r.top < H / 3).map((r) => r.bottom), 60) + 10;
+  const low = lows.filter((r) => r.height && r.top > H / 2);
+  const bottomBar = low.length ? Math.min(...low.map((r) => r.top)) : H - 10;
+  const wide = Boolean(bar?.column);
+  const bottom = Math.round(H - (wide || !bar?.height ? bottomBar : bar.top) + 10);
+  // on a computer, clear of the buttons down the sides within its height; a phone has no room to spare, and the
+  // monsters come in from behind them
+  let left = wide ? 16 : 8;
+  let right = wide && bar ? Math.round(W - bar.left + 16) : 8;
+  for (const r of wide ? sides : []) {
+    if (!r.width || r.right <= 0 || r.left >= W || r.bottom <= top || r.top >= H - bottom) continue;
+    if (r.left + r.width / 2 < W / 2) left = Math.max(left, Math.round(r.right + 6));
+    else right = Math.max(right, Math.round(W - r.left + 6));
+  }
+  return { left, right, top, bottom };
+}
+
 /** The stage's box: within what the map shows, clear of the page's top, its bottom bar and the bar of the round */
 function useBox(shown: boolean) {
   const [box, setBox] = useState<CSSProperties | null>(null);
   useEffect(() => {
     if (!shown) return;
     let last = "";
+    const rects = (selector: string) => [...document.querySelectorAll(selector)].map((e) => e.getBoundingClientRect());
     const look = () => {
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      // below the page's top bar and what hangs under it (the counts, a notice: .hud)
-      const top = Math.max(...[...document.querySelectorAll("[data-chrome-top], .hud > *")].map((e) => e.getBoundingClientRect()).filter((r) => r.height && r.top < H / 3).map((r) => r.bottom), 60) + 10;
-      const low = [...document.querySelectorAll("[data-chrome-bottom]")].map((e) => e.getBoundingClientRect()).filter((r) => r.height && r.top > H / 2);
-      const bottomBar = low.length ? Math.min(...low.map((r) => r.top)) : H - 10;
-      const bar = document.querySelector(".sq-fight")?.getBoundingClientRect();
-      const wide = Boolean(bar && bar.height > bar.width);
-      const bottom = Math.round(H - (wide || !bar?.height ? bottomBar : bar.top) + 10);
-      // on a computer, clear of the buttons down the sides (data-chrome-side) within its height; a phone has no room
-      // to spare, and the monsters come in from behind them
-      let left = wide ? 16 : 8;
-      let right = wide ? Math.round(W - bar!.left + 16) : 8;
-      for (const e of wide ? document.querySelectorAll("[data-chrome-side]") : []) {
-        const r = e.getBoundingClientRect();
-        if (!r.width || r.right <= 0 || r.left >= W || r.bottom <= top || r.top >= H - bottom) continue;
-        if (r.left + r.width / 2 < W / 2) left = Math.max(left, Math.round(r.right + 6));
-        else right = Math.max(right, Math.round(W - r.left + 6));
-      }
-      const next: CSSProperties = { left, right, top, bottom };
+      const barEl = document.querySelector(".sq-fight");
+      const bar = barEl ? Object.assign(barEl.getBoundingClientRect().toJSON() as Rect, { column: barEl.classList.contains("col") }) : null;
+      const next: CSSProperties = stageBox(window.innerWidth, window.innerHeight, rects("[data-chrome-top], .hud > *"), rects("[data-chrome-bottom]"), bar, rects("[data-chrome-side]"));
       const k = JSON.stringify(next);
       if (k === last) return;
       last = k;
