@@ -887,7 +887,7 @@ function RoomView({
   const [menu, setMenu] = useState<number | null>(null);
   const touched = useSquadTouched();
   const art = useOperatorArt();
-  const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | "hostMenu" | null>(null);
+  const [asking, setAsking] = useState<"end" | "key" | "invite" | "declare" | "hostMenu" | "hostLeave" | null>(null);
   // the host asking someone to leave: whom (their number), asked first
   const [kicking, setKicking] = useState<number | null>(null);
   // 说话 / 动作 (and 这局 while it plays), from your own roach at the foot
@@ -962,7 +962,10 @@ function RoomView({
       onToast(T.squad.room.copyFailed);
     }
   };
-  const leave = () => (room.host ? setAsking("end") : void run(() => leaveSquadRoom()));
+  // the host's 离开 asks first: hand the room to one in it, or destroy it
+  const leave = () => (room.host ? setAsking("hostLeave") : void run(() => leaveSquadRoom()));
+  // whom the host may hand the room to: anyone else in it but a 人机
+  const heirs = room.members.filter((m) => !m.you && !m.bot);
   return (
     <Sheet
       title={`${levelName(room.level)}${T.squad.dot}${srv(room.server)}`}
@@ -973,15 +976,14 @@ function RoomView({
             {T.squad.room.back}
           </button>
           <h2>{`${levelName(room.level)}${T.squad.dot}${srv(room.server)}`}</h2>
-          {room.host ? (
+          {room.host && (
             <button className="ghost small" aria-label={T.squad.room.hostMenu} aria-expanded={asking === "hostMenu"} onClick={() => setAsking((a) => (a === "hostMenu" ? null : "hostMenu"))}>
               ⋯
             </button>
-          ) : (
-            <button className="ghost small" disabled={busy} onClick={leave}>
-              {T.squad.room.leave}
-            </button>
           )}
+          <button className="ghost small" disabled={busy} onClick={leave}>
+            {T.squad.room.leave}
+          </button>
         </div>
       }
       onClose={onClose}
@@ -1087,7 +1089,7 @@ function RoomView({
             onCore={() => setPicking("core")}
             onStrategy={() => setPicking("strategy")}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
-            onKick={room.host && !m.you ? () => setKicking(m.h) : undefined}
+            onKick={room.host && !m.you && (room.state !== "go" || m.bot) ? () => setKicking(m.h) : undefined}
           />
         ))}
         {Array.from({ length: Math.max(0, SQUAD_MAX - n) }, (_, i) => (
@@ -1151,6 +1153,40 @@ function RoomView({
           {T.squad.list.card}
         </button>
       </p>
+      {asking === "hostLeave" && (
+        <Ask title={T.squad.room.hostLeaveAsk} onNo={() => setAsking(null)}>
+          <p>{heirs.length ? T.squad.room.hostLeaveSub : T.squad.room.hostLeaveAlone}</p>
+          {heirs.map((m) => (
+            <div key={m.h} className="row">
+              <button
+                className="dark grow"
+                disabled={busy}
+                onClick={() => {
+                  setAsking(null);
+                  void run(() => leaveSquadRoom(m.h));
+                }}
+              >
+                {fmt(T.squad.room.handTo, { name: m.name })}
+              </button>
+            </div>
+          ))}
+          <div className="row">
+            <button
+              className={heirs.length ? "ghost grow" : "dark grow"}
+              disabled={busy}
+              onClick={() => {
+                setAsking(null);
+                void run(() => squadState("end"));
+              }}
+            >
+              {T.squad.room.leaveDestroy}
+            </button>
+            <button className="ghost" onClick={() => setAsking(null)}>
+              {T.squad.room.endNo}
+            </button>
+          </div>
+        </Ask>
+      )}
       {asking === "end" && (
         <Ask title={T.squad.room.endAsk} onNo={() => setAsking(null)}>
           <p>{T.squad.room.endNote}</p>

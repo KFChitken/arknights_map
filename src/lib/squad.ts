@@ -417,8 +417,11 @@ export type SquadTell =
   | {
       t: "room";
       room: string;
-      /** round, pose: one's as it is now, which a page of now takes as it is, without asking again; stop: 停止加入 (on) or 恢复加入 */
-      what?: { kind: "in" | "game" | "key" | "state" | "ask" | "round" | "pose" | "stop"; h?: number; to?: SquadState; round?: SquadRound; pose?: SquadPose; on?: boolean };
+      /**
+       * round, pose: one's as it is now, which a page of now takes as it is, without asking again; stop: 停止加入 (on)
+       * or 恢复加入; host: the host left, handing the room to h
+       */
+      what?: { kind: "in" | "game" | "key" | "state" | "ask" | "round" | "pose" | "stop" | "host"; h?: number; to?: SquadState; round?: SquadRound; pose?: SquadPose; on?: boolean };
     }
   /** The host changed the songs: how, and the songs as they are now */
   | ({ t: "songs"; room: string; how: SquadSongHow } & RoomSchedule)

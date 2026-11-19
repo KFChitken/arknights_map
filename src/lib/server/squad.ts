@@ -691,13 +691,51 @@ async function calledTo(
   return { roomId, invite: null, declaration: false };
 }
 
-/** Out of the room you are in: the host's ends */
-export async function leaveRoom(user: Pick<UserRow, "id">, now = Date.now()) {
+/**
+ * Out of the room you are in: anyone else's goes on without you; the host's ends, unless they hand it to one in it
+ * first (to: TA's number there), who is its host from then on (its key, songs, 开始游戏, everything a host does), the
+ * room going on as it was, whether it waits or plays. A 人机 never hosts.
+ */
+export async function leaveRoom(user: Pick<UserRow, "id">, body: Record<string, unknown> = {}, now = Date.now()) {
+  if (body.to !== undefined) return handOver(user, body.to, now);
   const left = await db.transaction(async (tx) => {
     await lockPlayer(tx, user.id);
     return leaveIn(tx, user.id, now);
   });
   await told(left);
+  return { now };
+}
+
+/** The host hands the room to the one numbered to, and leaves it; told to the room */
+async function handOver(user: Pick<UserRow, "id">, to: unknown, now: number) {
+  if (isBotHandle(to)) throw refuse(409, T.server.squad.botNoHost);
+  const h = handleOf(to);
+  if (h === null) throw refuse(400, T.server.common.badRequest);
+  const mine = await hostedBy(user.id);
+  const roomId = mine.room.id;
+  const handed = await db.transaction(async (tx) => {
+    await lockPlayer(tx, user.id);
+    // after any coming in or going at once, as they count it (joinRoom, kickIn)
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
+    if (!room || room.endedAt) throw refuse(410, T.server.squad.roomGone, ROOM_GONE);
+    if (room.hostId !== user.id) throw refuse(403, T.server.squad.notHost);
+    const [them] = await tx
+      .select()
+      .from(squadMembers)
+      .where(and(eq(squadMembers.roomId, roomId), eq(squadMembers.handle, h), isNull(squadMembers.leftAt)));
+    if (!them || them.userId === user.id) throw refuse(409, T.server.squad.notThere);
+    const at = new Date(now);
+    await tx.update(squadRooms).set({ hostId: them.userId, movedAt: at }).where(eq(squadRooms.id, roomId));
+    await tx
+      .update(squadMembers)
+      .set({ leftAt: at })
+      .where(and(eq(squadMembers.roomId, roomId), eq(squadMembers.userId, user.id)));
+    // the songs they asked for go with them
+    await tx.delete(squadRequests).where(and(eq(squadRequests.roomId, roomId), eq(squadRequests.handle, mine.me.handle)));
+    return them.handle;
+  });
+  forgetList();
+  await tellRoom(roomId, { kind: "host", h: handed });
   return { now };
 }
 
@@ -814,7 +852,10 @@ async function withBot(userId: string, h: number) {
   return mine;
 }
 
-/** 请出去: the host asks someone in the room to leave it (h), for good; TA alone is told so. A 人机 (h below 0) goes as its own */
+/**
+ * 请出去: the host asks someone in the room to leave it (h), for good, while it waits (not once a round has started);
+ * TA alone is told so. A 人机 (h below 0) goes as its own, whenever.
+ */
 export async function kickMember(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (isBotHandle(body.h)) {
     const mine = await hostedBy(user.id);
@@ -824,6 +865,8 @@ export async function kickMember(user: Pick<UserRow, "id">, body: Record<string,
   const h = handleOf(body.h);
   if (h === null) throw refuse(400, T.server.common.badRequest);
   const mine = await hostedBy(user.id);
+  // once the round has started, nobody is asked out till it ends (a 人机 still may be, above)
+  if (mine.room.state === "go") throw refuse(409, T.server.squad.noKickPlaying, ROOM_PLAYING);
   const them = await kickIn(mine.room.id, user.id, h, now);
   if (!them) throw refuse(409, T.server.squad.notThere);
   return { room: await roomView(mine.room.id, user.id, now), now };

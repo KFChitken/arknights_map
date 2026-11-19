@@ -176,7 +176,7 @@ export default function SquadMateCard({
           </div>
         ) : (
           <div className="sq-mfoot">
-            {host && (
+            {host && !playing && (
               <button className="link out" onClick={() => setAsking("kick")}>
                 {T.squad.room.kick}
               </button>

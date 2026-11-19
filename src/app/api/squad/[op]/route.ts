@@ -43,10 +43,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST open {key, server, level, tags?, friendsOnly?}   a new room of yours
  *   POST join {room} / {invite} / {declaration}   in at a room from the list, at an invitation to you, or at a
  *                                 宣言招人 you see in 消息 (the host's invitation opens one only for 触须之交)
- *   POST leave                    out of your room (the host's ends)
+ *   POST leave {to?}              out of your room (the host's ends, unless they hand it first to: one's number in it)
  *   POST state {to}               the host: go (开始游戏), wait (结束这局) or end (销毁房间)
  *   POST key {key}                the host changes the 同盟密钥
- *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room)
+ *   POST kick {h}                 the host asks someone in it to leave (h: their number in the room), while it waits
  *   POST game {on}                准备 (in the game's alliance, ready), ticked or not
  *   POST prefs {round} / {card}   your picks in this room alone, with the round's 附加盟约 while it plays (round);
  *                                 a page of before sends its picks alone (card)
@@ -154,7 +154,7 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
     case "join":
       return answer(await joinRoom(user, body));
     case "leave":
-      return answer(await leaveRoom(user));
+      return answer(await leaveRoom(user, body));
     case "state":
       return answer(await setState(user, body));
     case "key":

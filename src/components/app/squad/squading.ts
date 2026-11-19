@@ -303,6 +303,7 @@ export function heardSquad(raw: unknown) {
       // what you did yourself is not said back to you
       if ((what.kind === "in" || what.kind === "game") && what.h === next.you) return;
       if ((what.kind === "key" || what.kind === "state" || what.kind === "stop") && next.host) return;
+      if (what.kind === "host") return addFloat(what.h === next.you ? T.squad.float.youHost : fmt(T.squad.float.host, { name: next.members.find((m) => m.h === what.h)?.name ?? "" }));
       const name = next.members.find((m) => m.h === what.h)?.name ?? null;
       const text =
         what.kind === "ask"
@@ -354,8 +355,8 @@ export async function joinSquadRoom(id: string) {
   return r;
 }
 
-export async function leaveSquadRoom() {
-  await squadApi.leave();
+export async function leaveSquadRoom(to?: number) {
+  await squadApi.leave(to);
   setRoom(null);
 }
 

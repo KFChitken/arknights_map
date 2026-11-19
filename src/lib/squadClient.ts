@@ -57,8 +57,8 @@ export const squadApi = {
     call<{ card: SquadCard | null; showName: boolean; now: number }>("card", post(showName === undefined ? { card } : { card, showName })),
   open: (form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) => call<Room>("open", post(form)),
   join: (room: string) => call<{ room: SquadRoom; now: number }>("join", post({ room })),
-  /** Out of your room (the host's ends) */
-  leave: () => call<{ now: number }>("leave", post({})),
+  /** Out of your room (the host's ends, unless handed first to the one numbered to) */
+  leave: (to?: number) => call<{ now: number }>("leave", post(to === undefined ? {} : { to })),
   /** The host's 开始游戏 (go), 结束这局 (wait) or 销毁房间 (end) */
   state: (to: "wait" | "go" | "end") => call<Room>("state", post({ to })),
   key: (key: string) => call<Room>("key", post({ key })),

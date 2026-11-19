@@ -217,6 +217,11 @@ describe("a teammate's card", () => {
     expect(card(mate({ host: true }))).toContain("房主不用准备");
   });
 
+  it("offers 请出去 to the host while the room waits, never once a round has started", () => {
+    expect(card(mate(), { host: true })).toContain("请出去");
+    expect(card(mate(), { host: true, playing: true })).not.toContain("请出去");
+  });
+
   it("shows TA's round while it plays, and today's touch done", () => {
     const out = card(mate(), { playing: true });
     expect(out).toContain("这局：");

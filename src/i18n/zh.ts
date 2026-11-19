@@ -691,6 +691,8 @@ export const zh = {
       botsNoDeclare: "有人机的房间不能宣言招人。",
       botsStaff: "只有站长和管理员能加人机。",
       stopped: "房主停止了加入。",
+      noKickPlaying: "开始游戏以后不能请人出去，这局结束再说。",
+      botNoHost: "人机不能当房主。",
       inviteStopped: "先点「恢复加入」再邀请。",
       declareStopped: "先点「恢复加入」再发宣言。",
       botStopped: "先点「恢复加入」再加人机。",
@@ -2333,6 +2335,12 @@ export const zh = {
       stoppedLine: "列表上别人看不到这个房间，宣言和邀请也进不来",
       stoppedSeat: "停止加入",
       stoppedNoCall: "停止加入了，先点「恢复加入」",
+      /** The host's 离开: hand the room to one in it, or destroy it */
+      hostLeaveAsk: "离开房间？",
+      hostLeaveSub: "你是房主：可以把房主交给房间里的一位再走，房间照旧；也可以销毁房间，大家都会退出。",
+      hostLeaveAlone: "房间里没有别的人（人机不能当房主），离开就会销毁房间。",
+      handTo: "交给 {name}，我离开",
+      leaveDestroy: "销毁房间",
       kickSub: "TA 再也进不了这个房间",
       block: "拉黑",
       blockSub: "以后不在同一个房间",
@@ -2584,6 +2592,8 @@ export const zh = {
       wait: "这局结束了，房间重新开门",
       stopped: "房主停止了加入",
       resumed: "房主恢复了加入",
+      host: "房主走了，{name}成了房主",
+      youHost: "房主走了，你成了房主",
     },
     /** The room ended: why, to everyone in it */
     ended: {
