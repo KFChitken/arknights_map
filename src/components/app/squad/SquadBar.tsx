@@ -17,6 +17,22 @@ export type SquadCallItem = Extract<InboxItem, { kind: "declaration" }> & { squa
 /** The card over the map: an invitation that came, or one (or a 宣言招人) tapped in 消息; ask: it asks at once whether to leave your room */
 export type SquadPopCard = { kind: "invite"; item: SquadInviteItem; ask: boolean } | { kind: "call"; item: SquadCallItem; ask: boolean };
 
+/** Wide enough for the column beside 卫戍 (SquadFight.tsx), in place of 卫戍中 n/4 */
+const WIDE = "(min-width: 900px)";
+
+/** Whether the screen is wide enough for the column beside 卫戍 (a computer) */
+export function useWide() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia(WIDE);
+    const look = () => setWide(q.matches);
+    look();
+    q.addEventListener("change", look);
+    return () => q.removeEventListener("change", look);
+  }, []);
+  return wide;
+}
+
 /** Where to stand over the map: above the layout's bottom bar (data-chrome-bottom) by `up` more, else under the top */
 export function useAbove(shown: boolean, up: number) {
   const [at, setAt] = useState<CSSProperties | null>(null);
@@ -47,17 +63,18 @@ export function useAbove(shown: boolean, up: number) {
 }
 
 /**
- * Over the map while the player is in a room of 一起卫戍 that waits and its sheet is shut: 卫戍中 n/4, back to the room
- * at a tap (while it plays, the bar of the round has its place: SquadFight.tsx). Just above the layout's bottom bar
- * (data-chrome-bottom), else under the top. A line said to you in the room (SquadToMe.tsx) shows above it, answered
- * there; 好，我换 opens the room's sheet on its strategy picker.
+ * Over the map while the player is in a room of 一起卫戍 that waits and its sheet is shut, on a phone: 卫戍中 n/4, back
+ * to the room at a tap (while it plays, and on a computer all the time, the bar beside 卫戍 has its place:
+ * SquadFight.tsx). Just above the layout's bottom bar (data-chrome-bottom), else under the top. A line said to you in
+ * the room (SquadToMe.tsx) shows above it, answered there; 好，我换 opens the room's sheet on its strategy picker.
  */
 export default function SquadBar({ hidden, onOpen }: { hidden: boolean; onOpen: () => void }) {
   const room = useSquadRoom();
   const toMe = useSquadToMe();
+  const wide = useWide();
   // the 人机 of a room the 站长 or an admin hosts, now and then (mounted while 一起卫戍 shows on the map)
   useSquadBotsActing();
-  const shown = Boolean(room) && room?.state !== "go" && !hidden;
+  const shown = Boolean(room) && room?.state !== "go" && !hidden && !wide;
   const at = useAbove(shown, 0);
   const above = useAbove(shown && Boolean(toMe), 46);
   if (!room || !shown || !at) return null;

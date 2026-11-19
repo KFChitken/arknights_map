@@ -72,7 +72,7 @@ export default function SquadMateCard({
   me?: SquadMember;
   /** While the room waits: a line said to TA alone, by its number */
   onSay?: (p: number) => void;
-  /** On a computer, the bar of a round's: 击掌 or 贴贴 to TA, from the card */
+  /** On a computer, the bar beside 卫戍's: 击掌 or 贴贴 to TA, from the card (under TA's round, or 对 TA 说 while waiting) */
   onMove?: (move: "five" | "hug") => void;
   onTouch: (bold: boolean) => Promise<void> | void;
   onKick: () => void;
@@ -143,16 +143,6 @@ export default function SquadMateCard({
           </div>
         </div>
       )}
-      {onMove && (
-        <div className="sq-mmove">
-          <button type="button" className="dark" disabled={busy} onClick={() => onMove("five")}>
-            {T.squad.talk.moves.five}
-          </button>
-          <button type="button" className="dark" disabled={busy} onClick={() => onMove("hug")}>
-            {T.squad.talk.moves.hug}
-          </button>
-        </div>
-      )}
       {!playing && onSay && (
         <>
           <div className="sq-mround">
@@ -173,6 +163,16 @@ export default function SquadMateCard({
             </span>
           </div>
         </>
+      )}
+      {onMove && (
+        <div className="sq-mmove">
+          <button type="button" className="dark" disabled={busy} onClick={() => onMove("five")}>
+            {T.squad.talk.moves.five}
+          </button>
+          <button type="button" className="dark" disabled={busy} onClick={() => onMove("hug")}>
+            {T.squad.talk.moves.hug}
+          </button>
+        </div>
       )}
       {m.pass && <RoachPassOn pass={m.pass} />}
       {m.bot ? (

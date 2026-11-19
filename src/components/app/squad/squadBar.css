@@ -80,6 +80,8 @@
 .sq-tome .x { position: absolute; top: 2px; right: 6px; padding: 2px 6px; border: 0; background: none; color: #9aa0aa; font: inherit; font-size: 20px; line-height: 1.2; cursor: pointer; }
 .sq-tome.in-sheet { position: sticky; top: 0; z-index: 6; margin-bottom: 10px; }
 .sq-tome.on-map { position: fixed; z-index: 31; left: 10px; right: 10px; max-width: 420px; margin: 0 auto; }
+/* in the bar beside 卫戍 on a computer, under its top line */
+.sq-tome.in-bar { flex: none; box-shadow: none; }
 @media (prefers-reduced-motion: reduce) {
   .sq-tome { animation: none; }
 }

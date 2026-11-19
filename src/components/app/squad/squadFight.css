@@ -158,6 +158,14 @@
 /* a line said, inside its tile: over the three rows under the name (taller if it takes more), right of the roach */
 .sq-bub.in { top: 23px; left: 56px; right: 5px; display: flex; flex-direction: column; justify-content: center; width: auto; max-width: none; min-height: calc(100% - 28px); padding: 4px 8px; overflow-wrap: anywhere; transform: none; text-align: left; }
 .sq-bub.in::after { display: none; }
+/* while the room waits (a computer): its empty seats, who is ready under each name, your ? quiet (no 补位 yet) */
+.sq-ft.empty { background: transparent; box-shadow: inset 0 0 0 1.5px #dfe2e6; color: #9aa1ab; }
+.sq-ft.empty .rw { display: grid; place-items: center; }
+.sq-ft.empty .hole { display: grid; place-items: center; width: 34px; height: 34px; border: 1.5px dashed #c3c8cf; border-radius: 50%; color: #9aa1ab; font-size: 18px; font-weight: 700; line-height: 1; }
+.sq-ft.empty.shut .hole { font-size: 14px; }
+.sq-ft.empty .nm { color: #6b7280; }
+.sq-ft .xs.ok { color: #1f6b41; }
+.sq-fight.wait .sq-ft.me .opq { animation: none; }
 .sq-dock { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; padding-top: 6px; border-top: 1px solid #eceef1; }
 .sq-dock.folded { flex: none; }
 .sq-dock .tabs { flex: none; display: flex; gap: 4px; align-items: center; }
