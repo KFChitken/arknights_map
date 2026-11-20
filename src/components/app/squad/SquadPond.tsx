@@ -63,7 +63,19 @@ const clock = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export default function SquadPond({ look, onRefused }: { look: { color: string; avatar: string; style?: RoachStyle }; onRefused: (e: unknown) => void }) {
+export default function SquadPond({
+  look,
+  holder,
+  onRefused,
+  onPasses,
+}: {
+  look: { color: string; avatar: string; style?: RoachStyle };
+  /** The name printed on the player's passes (a 漂流瓶's) */
+  holder: string;
+  onRefused: (e: unknown) => void;
+  /** A 寻访券 went into the wallet */
+  onPasses: (p: { tickets: number; dot: boolean }) => void;
+}) {
   const open = useSquadPondOpen();
   const room = useSquadRoom();
   const lines = useSquadLines();
@@ -104,6 +116,8 @@ export default function SquadPond({ look, onRefused }: { look: { color: string; 
   return (
     <Fish
       look={look}
+      holder={holder}
+      onPasses={onPasses}
       pond={{
         seats,
         flags,

@@ -31,9 +31,9 @@
     { "no": 24, "key": "deepfish", "cat": "game", "tier": 5, "at": { "pond": "rare", "pier": "rare" }, "off": true },
     { "no": 25, "key": "gourd", "cat": "junk", "tier": 3, "fam": "junk", "at": { "pier": "small", "pond": "small" } },
     { "no": 26, "key": "glowstick", "cat": "junk", "tier": 2, "fam": "junk", "at": { "pond": "small" }, "when": { "dance": true }, "off": true },
-    { "no": 27, "key": "ticket", "cat": "junk", "tier": 5, "at": { "pond": "rare", "pier": "rare" }, "kind": "ticket", "off": true },
+    { "no": 27, "key": "ticket", "cat": "junk", "tier": 5, "at": { "pond": "rare", "pier": "rare" }, "kind": "ticket" },
     { "no": 28, "key": "halo", "cat": "junk", "tier": 5, "fam": "junk", "at": { "pier": "rare", "pond": "rare" }, "off": true },
     { "no": 29, "key": "moonfish", "cat": "fish", "tier": 5, "fam": "fish", "at": { "pier": "rare" }, "cm": [30, 70], "when": { "hours": [3, 4] }, "off": true },
-    { "no": 30, "key": "bottle", "cat": "junk", "tier": 6, "at": { "pond": "rare", "pier": "rare" }, "kind": "bottle", "off": true }
+    { "no": 30, "key": "bottle", "cat": "junk", "tier": 6, "at": { "pond": "rare", "pier": "rare" }, "kind": "bottle" }
   ]
 }

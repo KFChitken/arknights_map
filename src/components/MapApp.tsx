@@ -1933,6 +1933,9 @@ export default function MapApp({
     });
   };
 
+  /** 钓鳞's 寻访券, in the wallet: the 寻访 button's count and dot at once */
+  const fishTickets = (p: { tickets: number; dot: boolean }) => setMe((m) => (m?.passes ? { ...m, passes: { ...m.passes, ...p } } : m));
+
   /** 每日任务: a touch, a declaration or a reply that counted lights the dot on the 寻访 button at once (src/lib/passes.ts) */
   const passesDotAfter = (result: unknown) => {
     const dot = (result as PassesDot | null | undefined)?.passesDot;
@@ -6234,6 +6237,8 @@ export default function MapApp({
       {fishOpen && me?.fish && (
         <Fish
           look={{ color: myColor, avatar: myAvatar, style: look }}
+          holder={displayName(me.profile)}
+          onPasses={fishTickets}
           onClose={() => setFishOpen(false)}
           onRefused={(e) => {
             setFishOpen(false);
@@ -6245,6 +6250,8 @@ export default function MapApp({
       {squadShown && (
         <SquadPond
           look={{ color: myColor, avatar: myAvatar, style: look }}
+          holder={me ? displayName(me.profile) : ""}
+          onPasses={fishTickets}
           onRefused={(e) => void act(() => Promise.reject(e))}
         />
       )}

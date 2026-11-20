@@ -324,6 +324,82 @@ export async function addTickets(tx: Exec, userId: string, n: number, now = Date
   return { passesDot: passesDot(w.welcomed, w.tickets, tasksOf(w, day)) };
 }
 
+/**
+ * A 寻访券 fished (钓鳞, src/lib/server/fish.ts reelIn), within its transaction: in while the wallet holds fewer than
+ * TICKETS_CAP, the wallet made if they never opened 寻访 (the first ten still come when they do). The tickets after it
+ * and the dot of the 寻访 button; null, and nothing changed, when the wallet is full.
+ */
+export async function fishTicket(tx: Exec, userId: string, now = Date.now()): Promise<{ tickets: number; passesDot: boolean } | null> {
+  const day = siteDay(now);
+  await tx.insert(passWallets).values({ userId, day }).onConflictDoNothing();
+  const [w] = await tx
+    .update(passWallets)
+    .set({ tickets: sql`${passWallets.tickets} + 1` })
+    .where(and(eq(passWallets.userId, userId), lt(passWallets.tickets, TICKETS_CAP)))
+    .returning();
+  return w ? { tickets: w.tickets, passesDot: passesDot(w.welcomed, w.tickets, tasksOf(w, day)) } : null;
+}
+
+/** Whether a 寻访券 fished now would go in (fishTicket): the wallet holds fewer than TICKETS_CAP, or there is none yet */
+export async function ticketRoom(exec: Exec, userId: string): Promise<boolean> {
+  const [w] = await exec.select({ tickets: passWallets.tickets }).from(passWallets).where(eq(passWallets.userId, userId)).limit(1);
+  return (w?.tickets ?? 0) < TICKETS_CAP;
+}
+
+/**
+ * The pass in a 漂流瓶 (钓鳞, src/lib/server/fishBottle.ts openBottle), within its transaction: one pass as a draw of one
+ * brings it, from the player's 卡池 with the wish list as often (rollChars), numbered in the same order as every draw's
+ * (the character's counter last, held the shortest); but no draw: no ticket spent, the count towards PITY neither
+ * moved nor started again (a wish among it too), the time of the last draw as it was. The wallet's wish list, 卡池
+ * and looks are read, not locked; one who never opened 寻访 has none (their 在玩's 卡池, no wishes).
+ */
+export async function passFromBottle(
+  tx: Exec,
+  user: Pick<UserRow, "id" | "games">,
+  now = Date.now(),
+  rand: (n: number) => number = randomInt,
+): Promise<{ passId: number; drawn: Drawn }> {
+  const [w] = await tx
+    .select({ wish: passWallets.wish, plain: passWallets.plain, pool: passWallets.pool })
+    .from(passWallets)
+    .where(eq(passWallets.userId, user.id))
+    .limit(1);
+  // a count of 0: never the pull PITY brings
+  const { picks } = rollChars(CATALOG_IDS, (w?.wish ?? []).filter(isPassChar), 0, 1, rand, poolIds(passPoolOf(w?.pool ?? null, user.games)));
+  const [pick] = picks;
+  const [had] = await tx
+    .select({ n: count() })
+    .from(passes)
+    .where(and(eq(passes.userId, user.id), eq(passes.charId, pick.charId)));
+  const [tier] = tiersOf(picks, new Map([[pick.charId, had?.n ?? 0]]), w?.plain ?? []);
+  const [counter] = await tx
+    .insert(passCounters)
+    .values({ charId: pick.charId, lastNo: 1 })
+    .onConflictDoUpdate({ target: passCounters.charId, set: { lastNo: sql`${passCounters.lastNo} + 1` } })
+    .returning();
+  const [row] = await tx
+    .insert(passes)
+    .values({ userId: user.id, charId: pick.charId, no: counter.lastNo, wish: pick.wish, drawnAt: new Date(now) })
+    .returning({ id: passes.id });
+  return { passId: row.id, drawn: { charId: pick.charId, no: counter.lastNo, ...tier, foil: isFoil(counter.lastNo) } };
+}
+
+/** A pass as it was when it came (a 漂流瓶's, shown again): what it was to the player then, from the copies they had before it */
+export async function drawnOf(exec: Exec, userId: string, passId: number): Promise<Drawn | null> {
+  const [p] = await exec
+    .select({ charId: passes.charId, no: passes.no, wish: passes.wish })
+    .from(passes)
+    .where(and(eq(passes.id, passId), eq(passes.userId, userId)));
+  if (!p) return null;
+  const [had] = await exec
+    .select({ n: count() })
+    .from(passes)
+    .where(and(eq(passes.userId, userId), eq(passes.charId, p.charId), lt(passes.id, passId)));
+  const [w] = await exec.select({ plain: passWallets.plain }).from(passWallets).where(eq(passWallets.userId, userId)).limit(1);
+  const [tier] = tiersOf([{ charId: p.charId, wish: p.wish }], new Map([[p.charId, had?.n ?? 0]]), w?.plain ?? []);
+  return { charId: p.charId, no: p.no, ...tier, foil: isFoil(p.no) };
+}
+
 /** A list of catalogue ids as a smallint[] for the database */
 const sqlIds = (ids: readonly number[]) => sql`${`{${ids.map((i) => Math.trunc(i)).join(",")}}`}::smallint[]`;
 

@@ -2,7 +2,7 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { FishSpot } from "./fish/items";
-import type { FishCatch, FishDex, FishLine, FishState } from "./fish/rules";
+import type { FishBottle, FishCatch, FishDex, FishLine, FishState } from "./fish/rules";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -43,7 +43,9 @@ const tz = () => -new Date().getTimezoneOffset();
 export const fishApi = {
   state: (after?: number) => call<FishState & { lastShout: number }>("state", after === undefined ? {} : { after }),
   cast: (spot: FishSpot) => call<{ now: number; casts: number; line: FishLine }>("cast", { spot, tz: tz() }),
-  reel: () => call<{ now: number; caught: FishCatch; admiral: boolean }>("reel"),
+  reel: () => call<{ now: number; caught: FishCatch; admiral: boolean; passesDot?: boolean }>("reel"),
   pull: () => call<{ now: number }>("pull"),
   dex: () => call<FishDex>("dex"),
+  open: (id: number) => call<FishBottle>("open", { id }),
+  throwBack: (id: number, say: number) => call<FishBottle>("throw", { id, say }),
 };

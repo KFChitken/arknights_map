@@ -1,3 +1,4 @@
+import type { Drawn } from "../passes";
 import type { FishSpot } from "./items";
 
 /**
@@ -35,6 +36,24 @@ export const SCHOOL_CHANCE = 0.2;
 export const SCHOOL_MS = 30_000;
 export const SCHOOLS_A_ROUND = 2;
 export const SCHOOL_BOOST = 2;
+/**
+ * 寻访券 from 钓鳞 a site day at most, the bank and 卫戍池塘 together; each only while the wallet holds fewer than
+ * TICKETS_CAP (src/lib/passes.ts), else that cast brings something else of its tier, or of the tier under it
+ */
+export const TICKETS_A_DAY = 3;
+/** 漂流瓶 a site day at most; never from 自动钓 */
+export const BOTTLES_A_DAY = 1;
+/** A 纸条 thrown back waits this many days for someone's bottle, then goes */
+export const NOTE_DAYS = 30;
+/**
+ * The lines a 纸条 may say (zh.ts fish.bottle.says, numbered from 1 in that order), so many in each of its groups
+ * (fish.bottle.groups); nothing else may be written on one
+ */
+export const SAY_GROUPS = [4, 4, 4, 3, 2] as const;
+export const SAYS = SAY_GROUPS.reduce<number>((n, k) => n + k, 0);
+export const isSay = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= SAYS;
+/** How far a 纸条's writer is, as told: to the nearest 10 km, 0 under 10 km (附近) */
+export const noteKm = (km: number) => (km < 10 ? 0 : Math.round(km / 10) * 10);
 /** How often the bank's page asks how things stand there */
 export const BANK_POLL_MS = 15_000;
 /** 吱, the player's own roach, once every so often (only they hear it) */
@@ -77,6 +96,10 @@ export type FishCatch = {
   n: number;
   /** The site's biggest of this one now, for those measured (who caught it is never said) */
   top: number | null;
+  /** A 寻访券: the tickets in the wallet now, this one with them */
+  wallet?: number;
+  /** A 漂流瓶: kept to open (POST /api/fish/open), by this id */
+  bottle?: number;
 };
 
 /** A purple-or-better catch said on the bank, nobody named: what and how big */
@@ -96,6 +119,22 @@ export type FishState = {
   /** 空军司令 today */
   admiral: boolean;
   shouts: FishShout[];
+  /** 漂流瓶 caught and not opened yet, by id, the oldest first (none while 寻访 is not open to the player) */
+  bottles: number[];
+  /** 漂流瓶 caught today (BOTTLES_A_DAY at most) */
+  bottlesToday: number;
+};
+
+/**
+ * An opened 漂流瓶 (POST /api/fish/open, throw): the pass in it, as a draw tells one; the 纸条 tucked in (which line,
+ * how far its writer was: 0 near, null far), if any; the line thrown back from it, if any; bottles caught today
+ */
+export type FishBottle = {
+  id: number;
+  pass: Drawn;
+  note: { say: number; km: number | null } | null;
+  thrown: number | null;
+  today: number;
 };
 
 /** The player's dex: each cell caught (item, variant), and the site's biggest of each measured one */

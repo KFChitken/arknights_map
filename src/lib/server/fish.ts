@@ -6,6 +6,7 @@ import { dryAfter, junkAfter, rollCatch } from "../fish/roll";
 import {
   ADMIRAL_AFTER,
   biteAfter,
+  BOTTLES_A_DAY,
   CASTS_A_DAY,
   FISH_FULL,
   FISH_NO_LINE,
@@ -15,6 +16,7 @@ import {
   SCHOOL_MS,
   SCHOOLS_A_ROUND,
   SHOUT_TIER,
+  TICKETS_A_DAY,
   type FishCatch,
   type FishDex,
   type FishLine,
@@ -27,7 +29,8 @@ import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
 import { fishMode } from "./env";
 import { HttpError } from "./http";
-import { fishDays, fishDex as dexRows, fishLines, fishRecords, fishShouts, squadMembers, squadRooms, type UserRow } from "./schema";
+import { fishTicket, passesOpen, ticketRoom } from "./passes";
+import { fishBottles, fishDays, fishDex as dexRows, fishLines, fishRecords, fishShouts, squadMembers, squadRooms, type UserRow } from "./schema";
 import { sayFishInRoom, tellSquadPond } from "./squad";
 import { squadOpen } from "./squadOpen";
 
@@ -37,7 +40,9 @@ import { squadOpen } from "./squadOpen";
  * dex (fish_dex) and the site's biggest of each (fish_records, no names); purple-or-better catches said on the bank for
  * a while with no name (fish_shouts). The bank (pier) is switched by FISH (env.ts); 卫戍池塘 (pond), a room of
  * 一起卫戍's own, goes with SQUAD: a line there tells the room, purple and better is said to it with the name, its 鳞
- * count for 爆护, and a 鱼群 comes now and then once all its real players fish. The net (auto) comes later.
+ * count for 爆护, and a 鱼群 comes now and then once all its real players fish. For a player PASSES lets draw, a 寻访券
+ * goes into the wallet (TICKETS_A_DAY a site day, while it holds fewer than TICKETS_CAP) and a 漂流瓶 is kept to open
+ * (BOTTLES_A_DAY; src/lib/server/fishBottle.ts). The net (auto) comes later.
  */
 
 const DAY = 86_400_000;
@@ -47,6 +52,8 @@ const SHOUT_KEEP_MS = 5 * 60_000;
 const BANK_FRESH_MS = 5_000;
 /** fish_days kept this many days back */
 const DAYS_KEPT = 7;
+/** Unopened 漂流瓶 told the page, at most (the oldest first) */
+const BOTTLES_KEPT_SHOWN = 50;
 
 const refuse = (status: number, message: string, code?: string) => new HttpError(status, message, code);
 
@@ -149,13 +156,21 @@ async function ownedCells(userId: string): Promise<number> {
  * whether they are today's 空军司令, and the purple-or-better catches said there since `after` (a shout's id; none
  * given, none said, only the newest id to go on from)
  */
-export async function fishState(user: Pick<UserRow, "id">, after: unknown, now = Date.now()): Promise<FishState & { lastShout: number }> {
+export async function fishState(user: Pick<UserRow, "id" | "email">, after: unknown, now = Date.now()): Promise<FishState & { lastShout: number }> {
   const day = siteDay(now);
-  const [[today], [line], owned, bank] = await Promise.all([
+  const [[today], [line], owned, bank, bottles] = await Promise.all([
     db.select().from(fishDays).where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day))),
     db.select().from(fishLines).where(eq(fishLines.userId, user.id)),
     ownedCells(user.id),
     bankCount(now),
+    passesOpen(user)
+      ? db
+          .select({ id: fishBottles.id })
+          .from(fishBottles)
+          .where(and(eq(fishBottles.userId, user.id), isNull(fishBottles.openedAt)))
+          .orderBy(fishBottles.id)
+          .limit(BOTTLES_KEPT_SHOWN)
+      : [],
   ]);
   const since = typeof after === "number" && Number.isInteger(after) && after >= 0 ? after : null;
   const recent = await db
@@ -179,6 +194,8 @@ export async function fishState(user: Pick<UserRow, "id">, after: unknown, now =
     bank: Math.max(0, bank - (line?.spot === "pier" ? 1 : 0)),
     admiral: today?.admiral ?? false,
     shouts: shouts.reverse(),
+    bottles: bottles.map((b) => b.id),
+    bottlesToday: today?.bottles ?? 0,
     lastShout,
   };
 }
@@ -209,9 +226,12 @@ export async function castLine(
   return cast;
 }
 
-/** The cast itself, in one go: the day's count, the draw, the line in */
+/**
+ * The cast itself, in one go: the day's count, the draw, the line in. A 寻访券 may be on the hook while PASSES lets
+ * the player draw, the day's TICKETS_A_DAY are not all given and the wallet has room; a 漂流瓶 while none came today.
+ */
 async function castIn(
-  user: Pick<UserRow, "id">,
+  user: Pick<UserRow, "id" | "email">,
   spot: FishSpot,
   pond: Awaited<ReturnType<typeof pondOf>>,
   body: Record<string, unknown>,
@@ -233,7 +253,7 @@ async function castIn(
         set: { casts: sql`${fishDays.casts} + 1` },
         setWhere: lt(fishDays.casts, CASTS_A_DAY),
       })
-      .returning({ casts: fishDays.casts, dry: fishDays.dry });
+      .returning({ casts: fishDays.casts, dry: fishDays.dry, tickets: fishDays.tickets, bottles: fishDays.bottles });
     if (!today) throw refuse(429, fmt(T.server.fish.full, { n: CASTS_A_DAY }), FISH_FULL);
     if (today.casts === 1) await tx.delete(fishDays).where(and(eq(fishDays.userId, user.id), lt(fishDays.day, siteDay(now - DAYS_KEPT * DAY))));
     const caught = new Map<number, number>();
@@ -245,6 +265,7 @@ async function castIn(
         .groupBy(dexRows.item);
       for (const r of rows) caught.set(r.item, r.n);
     }
+    const passes = passesOpen(user);
     const roll = rollCatch({
       spot,
       dry: today.dry,
@@ -252,6 +273,8 @@ async function castIn(
       crowd,
       caught: (no) => caught.get(no) ?? 0,
       ...(pond ? { together: pond.othersIn + 1, school: pond.school } : {}),
+      ticket: passes && today.tickets < TICKETS_A_DAY && (await ticketRoom(tx, user.id)),
+      bottle: passes && today.bottles < BOTTLES_A_DAY,
       random,
     });
     await tx
@@ -280,10 +303,16 @@ export async function pullBack(user: Pick<UserRow, "id">, now = Date.now()) {
 /**
  * The pull, once it has bitten: on time or not by the server's clock (onTime), a tenth bigger if it was, then the
  * catch told, kept in the dex (first time, biggest), the site's biggest, the day's junk run (空军司令 at
- * ADMIRAL_AFTER), and said on the bank with no name when purple or better. A line taken by another tab's pull, or none,
- * is refused; one not bitten yet stays in.
+ * ADMIRAL_AFTER), and said on the bank with no name when purple or better. A 寻访券 goes into the wallet and a 漂流瓶 is
+ * kept to open (src/lib/server/fishBottle.ts), counted on the day's row; one that may no longer come (the wallet filled
+ * since the cast, PASSES off, the day's given) is something else of its tier, or of the tier under it. A line taken by
+ * another tab's pull, or none, is refused; one not bitten yet stays in.
  */
-export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ now: number; caught: FishCatch; admiral: boolean }> {
+export async function reelIn(
+  user: Pick<UserRow, "id" | "email">,
+  now = Date.now(),
+  random: () => number = Math.random,
+): Promise<{ now: number; caught: FishCatch; admiral: boolean; passesDot?: boolean }> {
   const day = siteDay(now);
   const pondTold: { roomId: string; h: number; shout: boolean }[] = [];
   const res = await db.transaction(async (tx) => {
@@ -295,23 +324,26 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
       const [waiting] = await tx.select({ biteAt: fishLines.biteAt }).from(fishLines).where(eq(fishLines.userId, user.id));
       throw refuse(409, waiting ? T.server.fish.notYet : T.server.fish.noLine, waiting ? FISH_NOT_YET : FISH_NO_LINE);
     }
-    const item = itemOf(line.item);
+    const got = await passesIn(tx, user, line, day, now, random);
+    const no = got.no;
+    const variant = got.variant;
+    const item = itemOf(no);
     const timed = onTime(now - line.biteAt.getTime());
-    const cm = line.cm === null ? null : timed ? Math.round(line.cm * SIZE_PERFECT) : line.cm;
+    const cm = got.cm === null ? null : timed ? Math.round(got.cm * SIZE_PERFECT) : got.cm;
     const [was] = await tx
       .select({ n: dexRows.n, best: dexRows.best })
       .from(dexRows)
-      .where(and(eq(dexRows.userId, user.id), eq(dexRows.item, line.item), eq(dexRows.variant, line.variant)))
+      .where(and(eq(dexRows.userId, user.id), eq(dexRows.item, no), eq(dexRows.variant, variant)))
       .for("update");
     if (was) {
       await tx
         .update(dexRows)
         .set({ n: sql`${dexRows.n} + 1`, best: cm === null ? dexRows.best : sql`greatest(${dexRows.best}, ${cm})` })
-        .where(and(eq(dexRows.userId, user.id), eq(dexRows.item, line.item), eq(dexRows.variant, line.variant)));
+        .where(and(eq(dexRows.userId, user.id), eq(dexRows.item, no), eq(dexRows.variant, variant)));
     } else {
       await tx
         .insert(dexRows)
-        .values({ userId: user.id, item: line.item, variant: line.variant, n: 1, best: cm, firstAt: new Date(now), firstSpot: line.spot })
+        .values({ userId: user.id, item: no, variant, n: 1, best: cm, firstAt: new Date(now), firstSpot: line.spot })
         .onConflictDoUpdate({
           target: [dexRows.userId, dexRows.item, dexRows.variant],
           set: { n: sql`${dexRows.n} + 1`, best: sql`greatest(${dexRows.best}, excluded.best)` },
@@ -321,12 +353,12 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
     if (cm !== null) {
       await tx
         .insert(fishRecords)
-        .values({ item: line.item, variant: line.variant, cm, at: new Date(now) })
+        .values({ item: no, variant, cm, at: new Date(now) })
         .onConflictDoUpdate({ target: [fishRecords.item, fishRecords.variant], set: { cm, at: new Date(now) }, setWhere: lt(fishRecords.cm, cm) });
       const [site] = await tx
         .select({ cm: fishRecords.cm })
         .from(fishRecords)
-        .where(and(eq(fishRecords.item, line.item), eq(fishRecords.variant, line.variant)));
+        .where(and(eq(fishRecords.item, no), eq(fishRecords.variant, variant)));
       top = site?.cm ?? cm;
     }
     // the day's junk run; ten in a row, 空军司令 for the rest of it
@@ -348,15 +380,16 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
       if (member) pondTold.push({ roomId: member.roomId, h: member.h, shout: tier >= SHOUT_TIER });
     }
     if (tier >= SHOUT_TIER && line.spot === "pier") {
-      await tx.insert(fishShouts).values({ userId: user.id, spot: line.spot, item: line.item, variant: line.variant, cm, at: new Date(now) });
+      await tx.insert(fishShouts).values({ userId: user.id, spot: line.spot, item: no, variant, cm, at: new Date(now) });
       await tx.delete(fishShouts).where(lt(fishShouts.at, new Date(now - 12 * SHOUT_KEEP_MS)));
     }
     return {
       now,
       admiral,
+      ...(got.wallet ? { passesDot: got.wallet.passesDot } : {}),
       caught: {
-        no: line.item,
-        variant: line.variant,
+        no,
+        variant,
         cm,
         tier,
         onTime: timed,
@@ -364,6 +397,8 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
         record: Boolean(was && cm !== null && (was.best === null || cm > was.best)),
         n: (was?.n ?? 0) + 1,
         top,
+        ...(got.wallet ? { wallet: got.wallet.tickets } : {}),
+        ...(got.bottle !== null ? { bottle: got.bottle } : {}),
       },
     };
   });
@@ -372,6 +407,47 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
     await tellSquadPond(p.roomId, p.h);
   }
   return res;
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Got = { no: number; variant: number; cm: number | null; wallet: { tickets: number; passesDot: boolean } | null; bottle: number | null };
+
+/**
+ * What the pull brings, within its transaction: the line's catch; a 寻访券 into the wallet, a 漂流瓶 kept to open, each
+ * counted on the day's row (locked first, so the day's are never passed); one that may no longer come is something
+ * else of its tier, else of the tier under it (drawn as at no hour, with nobody else by: only what bites any time)
+ */
+async function passesIn(tx: Tx, user: Pick<UserRow, "id" | "email">, line: typeof fishLines.$inferSelect, day: string, now: number, random: () => number): Promise<Got> {
+  const kind = itemOf(line.item)?.kind;
+  const plain: Got = { no: line.item, variant: line.variant, cm: line.cm, wallet: null, bottle: null };
+  if (!kind) return plain;
+  await tx.insert(fishDays).values({ userId: user.id, day }).onConflictDoNothing();
+  const [today] = await tx
+    .select({ tickets: fishDays.tickets, bottles: fishDays.bottles })
+    .from(fishDays)
+    .where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day)))
+    .for("update");
+  const open = passesOpen(user);
+  if (kind === "ticket" && open && today.tickets < TICKETS_A_DAY) {
+    const wallet = await fishTicket(tx, user.id, now);
+    if (wallet) {
+      await tx
+        .update(fishDays)
+        .set({ tickets: sql`${fishDays.tickets} + 1` })
+        .where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day)));
+      return { ...plain, wallet };
+    }
+  }
+  if (kind === "bottle" && open && today.bottles < BOTTLES_A_DAY) {
+    const [kept] = await tx.insert(fishBottles).values({ userId: user.id, caughtAt: new Date(now) }).returning({ id: fishBottles.id });
+    await tx
+      .update(fishDays)
+      .set({ bottles: sql`${fishDays.bottles} + 1` })
+      .where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day)));
+    return { ...plain, bottle: kept.id };
+  }
+  const swap = rollCatch({ spot: line.spot as FishSpot, dry: 0, hour: -1, crowd: 0, caught: () => 0, random }, FISH_ITEMS, itemOf(line.item)!.tier);
+  return { no: swap.no, variant: swap.variant, cm: swap.cm, wallet: null, bottle: null };
 }
 
 /** The player's dex (each cell caught, how often, the biggest, first when and where) and the site's biggest of each */

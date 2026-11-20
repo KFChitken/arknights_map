@@ -99,6 +99,28 @@ describe("what bites", () => {
     }
   });
 
+  it("lets 寻访券 and 漂流瓶 bite only while the server says they may, never from the net; a tier given is drawn from, else the one under it", () => {
+    const base = { spot: "pier" as const, hour: 12, crowd: 0, caught: () => 0 };
+    const ticket = itemOf(27)!;
+    const bottle = itemOf(30)!;
+    expect([ticket.kind, bottle.kind]).toEqual(["ticket", "bottle"]);
+    expect(mayBite(ticket, base)).toBe(false);
+    expect(mayBite(ticket, { ...base, ticket: true })).toBe(true);
+    expect(mayBite(ticket, { ...base, bottle: true })).toBe(false);
+    expect(mayBite(bottle, { ...base, bottle: true })).toBe(true);
+    expect(mayBite(bottle, { ...base, spot: "auto", bottle: true })).toBe(false);
+    const random = mulberry32(5);
+    for (let i = 0; i < 500; i++) {
+      expect(rollCatch(ask(random, { ticket: true }), FISH_ITEMS, 5).no).toBe(27);
+      expect(rollCatch(ask(random, { bottle: true }), FISH_ITEMS, 6).no).toBe(30);
+      // one that may not come: the tier under it
+      expect(rollCatch(ask(random), FISH_ITEMS, 5).tier).toBe(4);
+    }
+    // no hour at all: nothing held to one, even one that runs past midnight
+    const late: FishItem = { no: 1, key: "d", cat: "fish", tier: 2, at: { pier: "mid" }, when: { hours: [23, 2] } };
+    expect(mayBite(late, { ...base, hour: -1 })).toBe(false);
+  });
+
   it("drops a tier with nothing that may bite to the one under it", () => {
     const random = mulberry32(9);
     const thin = FULL.filter((x) => x.tier !== 6);

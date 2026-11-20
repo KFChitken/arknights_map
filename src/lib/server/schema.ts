@@ -2227,6 +2227,48 @@ export const fishShouts = pgTable(
   (t) => [index("fish_shouts_at_idx").on(t.at)],
 );
 
+/**
+ * 漂流瓶 a player caught (src/lib/server/fishBottle.ts; one a site day at most, fish_days.bottles), kept till they open
+ * it (opened_at): then the pass in it (pass_id, a row of passes, as a draw makes, though it was none), the 纸条 tucked
+ * in when the sea had one for them (note_say: which of the 17 lines; note_km: how far its writer's main roach was, to
+ * 10 km, 0 under 10, null when either had none; who wrote it is not kept), and the line thrown back from it (thrown,
+ * one a bottle).
+ */
+export const fishBottles = pgTable(
+  "fish_bottles",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    caughtAt: at("caught_at").notNull().defaultNow(),
+    openedAt: at("opened_at"),
+    passId: bigint("pass_id", { mode: "number" }),
+    noteSay: smallint("note_say"),
+    noteKm: integer("note_km"),
+    thrown: smallint("thrown"),
+  },
+  (t) => [index("fish_bottles_user_idx").on(t.userId, t.openedAt)],
+);
+
+/**
+ * 纸条 thrown back into the sea from an opened 漂流瓶 (fish_bottles.thrown): one of the 17 lines by number, waiting
+ * for a bottle someone else opens, the oldest first, never to whoever wrote it or between two who blocked each other;
+ * taken by one, it goes from here; one waiting 30 days goes too. The writer is kept for those two rules alone.
+ */
+export const fishNotes = pgTable(
+  "fish_notes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    fromId: uuid("from_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    say: smallint("say").notNull(),
+    at: at("at").notNull().defaultNow(),
+  },
+  (t) => [index("fish_notes_at_idx").on(t.at)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;

@@ -609,6 +609,11 @@ export const zh = {
       notYet: "还没咬钩，再等等。",
       badSpot: "这里钓不了。",
       noPond: "你不在卫戍房间里，钓不了卫戍池塘。",
+      /** 漂流瓶 (src/lib/server/fishBottle.ts) */
+      noBottle: "没有这个漂流瓶。",
+      notOpened: "先打开这个漂流瓶。",
+      thrownAlready: "这个瓶子已经扔回去 1 句了。",
+      badSay: "只能从那 17 句里挑一句。",
     },
     /** 徒手写's 手写榜 (src/lib/server/handwriting.ts) */
     board: {
@@ -3787,6 +3792,71 @@ export const zh = {
       lineFirst: "No.{no} · 稀有度 {tier} · 第一次钓到这一种",
       lineFirstVariant: "No.{no} · 稀有度 {tier} · 变异「{v}」第一次钓到",
       lineNth: "No.{no} · 稀有度 {tier} · 第 {n} 次钓到",
+    },
+    /** A 寻访券 caught: where it went */
+    ticketIn: "进了券包 · 现在 {n} / {cap} 张",
+    /**
+     * 漂流瓶's page (src/components/app/fish/Bottle.tsx): caught, or from 有 n 个漂流瓶没打开 on the fishing page; 拔开瓶塞,
+     * the paper unrolled to a pass face down, turned over as on 寻访; a 纸条 in it, if any; one of the 17 lines thrown back
+     */
+    bottle: {
+      title: "漂流瓶",
+      titleEn: "DRIFT BOTTLE",
+      today: "今天 {n} / {max} 个",
+      closedTitle: "瓶里卷着一张纸",
+      closedLine: "稀有度 6，每天最多漂来 {n} 个。",
+      closedLine2: "里面一定有一张通行证，有时还夹着别的舟P写的一句话。",
+      uncork: "拔开瓶塞",
+      uncorking: "正在拔塞子…",
+      unrolled: "纸展开了，里面是一张通行证",
+      turn: "点一下翻过来",
+      turnLabel: "把通行证翻过来",
+      fromBottle: "漂流瓶里的",
+      passLine: "通行认证 · No.{no}",
+      samePool: "和寻访同一个池子、同一套编号。不算进心愿单保底。",
+      holdLabel: "看整张通行证",
+      putDown: "点一下放下",
+      noteHead: "瓶里还夹着一张纸条",
+      quote: "「{say}」",
+      fromKm: "—— 一位 {km} 公里外的舟P",
+      fromNear: "—— 一位附近的舟P",
+      fromFar: "—— 一位远方的舟P",
+      anon: "不署名，只说多远",
+      keep: "收进我的通行证",
+      write: "写一句扔回去",
+      thrown: "已扔回 1 句",
+      writeHint: "挑一句扔回海里。不能自己打字，不署名。",
+      send: "扔回海里",
+      pickFirst: "先挑一句",
+      cancel: "算了",
+      sent: "你扔回去的「{say}」漂走了，会夹进别的舟P钓到的瓶子里。",
+      /** On the page of the catch, under its line */
+      next: "点一下，拔开瓶塞",
+      /** On the fishing page, for bottles caught and not opened */
+      waiting: "有 {n} 个漂流瓶没打开",
+      close: "关上",
+      /** The five groups of the lines below, in order (src/lib/fish/rules.ts SAY_GROUPS: how many each) */
+      groups: ["打招呼", "钓鳞", "寻访", "卫戍", "打气"],
+      /** The 17 lines a 纸条 may say, numbered from 1 in this order: kept by number, so never reorder them */
+      says: [
+        "晚上好，博士",
+        "今天也辛苦了",
+        "你那边天气怎么样",
+        "别熬夜了，早点睡",
+        "今天钓到大的了",
+        "空军了，但心情不错",
+        "祝你也捡到漂流瓶",
+        "这片水里真的有锦鲤吗",
+        "歪了，但没关系",
+        "寻访出六星了！",
+        "理智又溢出了",
+        "祝你下一抽就出",
+        "有人一起卫戍吗",
+        "这局卫戍打得很顺",
+        "四个人一起钓到鱼群了",
+        "明天也会是好天气",
+        "一起加油吧",
+      ],
     },
     /** The variants' words before an item's name (src/lib/fish/items.ts VARIANT_KEYS), 0 none */
     variants: ["", "金色的", "源石结晶的", "月夜的", "透明的", "冻住的", "迷你", "巨大的", "崭新的"],

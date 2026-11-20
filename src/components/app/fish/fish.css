@@ -233,6 +233,7 @@
 .fish-got .recrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cfcfcf; }
 .fish-got .rec { display: inline-flex; align-items: center; height: 20px; padding: 0 18px 0 8px; font-size: 12px; font-weight: 700; color: #1f170a; background: linear-gradient(90deg, #f0b43c 0%, #d9951c 70%, rgba(217, 149, 28, 0) 100%); }
 .fish-got .ln { font-size: 12px; color: #8e8e8e; }
+.fish-got .ln-in { margin-top: -4px; color: #f0c96a; }
 .fish-got .ok {
   position: absolute; left: 50%; top: 572px; width: 56px; height: 56px; margin-left: -28px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
   border: 2px solid #8d8d8d; background: radial-gradient(circle at 50% 40%, #3b3b3b, #232323); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); box-sizing: border-box;
@@ -337,6 +338,96 @@
   .fish-dex .cells { grid-template-columns: repeat(5, 112px); gap: 12px; }
   .fish-dex .tile { width: 112px; height: 112px; }
 }
+
+/* ---- 漂流瓶 (Bottle.tsx): over the fishing page, its pass turned over as 寻访's (passes.css .cardx, .t-hl) ---- */
+.fish-bottle {
+  /* 寻访's colours for what a pass is to the player (passes.css .passes) */
+  --t-new: #f5b81c;
+  --t-dup: #8fd3ff;
+  --t-up: #e4ebff;
+  --pearl: linear-gradient(120deg, #f0f9ff, #c9d8ff 35%, #ecd9ff 65%, #c8f5e2);
+  --rainbow: linear-gradient(90deg, #ff5d8f, #ffb43f, #f4f05c, #5dff9b, #5dc8ff, #b07bff, #ff5d8f);
+  position: absolute; inset: 0; z-index: 7; overflow: hidden; color: #fff; background: rgba(10, 11, 13, 0.8);
+}
+.fish-bottle .fb-sheet {
+  position: absolute; left: 0; right: 0; top: calc(max(40px, 8%) + var(--safe-top)); bottom: max(40px, 8%); display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(30, 31, 35, 0.97), rgba(20, 21, 24, 0.98)); border-top: 1px solid rgba(255, 255, 255, 0.35); border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+}
+.fish-bottle .hazard { display: block; flex: none; height: 3px; background: repeating-linear-gradient(90deg, #ff6a3a 0 18px, rgba(0, 0, 0, 0) 18px 26px); opacity: 0.85; }
+.fish-bottle .hd { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 16px 14px 0 20px; }
+.fish-bottle .hd .sq { width: 10px; height: 10px; align-self: center; background: #ff6a3a; }
+.fish-bottle .hd b { font-size: 20px; letter-spacing: 0.08em; }
+.fish-bottle .hd .en { font-family: var(--fish-num); font-size: 12px; font-weight: 700; letter-spacing: 0.22em; color: #9aa0aa; }
+.fish-bottle .hd .ct { margin-left: auto; font-size: 12px; color: #9aa0aa; }
+.fish-bottle .hd .x { align-self: center; width: 30px; height: 30px; margin: -6px 0 0; padding: 0; border: 0; background: none; color: #c8ccd2; font-size: 22px; line-height: 1; }
+.fish-bottle .tl { position: relative; font-size: 17px; }
+.fish-bottle .sub { position: relative; color: #9aa0aa; font-size: 12.5px; line-height: 1.7; text-align: center; }
+.fish-bottle .closed, .fish-bottle .fb-card { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 0 24px 20px; }
+.fish-bottle .closed .glow {
+  position: absolute; left: 50%; top: 50%; width: 280px; height: 280px; margin: -190px 0 0 -140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 106, 58, 0.5) 0%, rgba(255, 106, 58, 0) 68%); animation: fish-breathe 1.8s ease-in-out infinite;
+}
+.fish-bottle .jar { position: relative; width: 150px; height: 150px; flex: none; animation: fb-shake 0.6s ease-in-out infinite; }
+.fish-bottle .jar .ring {
+  position: absolute; inset: -13px; border-radius: 50%; border: 1px solid rgba(255, 214, 170, 0.6);
+  box-shadow: 0 0 22px 5px rgba(255, 110, 60, 0.45), inset 0 0 14px rgba(255, 140, 80, 0.35);
+}
+.fish-bottle .go {
+  position: relative; width: 220px; height: 52px; margin-top: 6px; border: 0; border-radius: 4px; background: #ffd23f; color: #16181c;
+  font-size: 17px; font-weight: 900; box-shadow: 0 4px 0 #c9a200;
+}
+.fish-bottle .go:disabled { opacity: 0.7; }
+.fish-bottle .fb-card { gap: 16px; }
+.fish-bottle .fb-card .tl { font-size: 15px; }
+.fish-bottle .unroll, .fish-bottle .note, .fish-bottle .write { animation: fb-unroll 0.4s ease-out both; transform-origin: 50% 0; }
+.fish-bottle .unroll { display: block; }
+/* a single card in the flow, not laid out in a draw's grid */
+.fish-bottle .cardx { position: relative; }
+.fish-bottle .pass { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 20px; overflow-y: auto; }
+.fish-bottle .pass .top { display: flex; gap: 14px; align-items: center; width: 100%; }
+.fish-bottle .pass .cardx { flex: none; }
+.fish-bottle .fb-who { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fish-bottle .fb-who .from { align-self: flex-start; padding: 1px 8px; background: #ff6a3a; color: #16181c; font-size: 11px; font-weight: 900; font-style: normal; }
+.fish-bottle .fb-who b { font-size: 20px; }
+.fish-bottle .fb-who .no { color: #c8ccd2; font-size: 12.5px; }
+.fish-bottle .fb-who .pool { color: #9aa0aa; font-size: 12px; line-height: 1.6; }
+.fish-bottle .note {
+  position: relative; width: 100%; padding: 12px 14px 10px; box-sizing: border-box; background: #f3ecd9; color: #2b2418; border-radius: 2px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4); rotate: -1deg;
+}
+.fish-bottle .note .nh { position: absolute; right: 10px; top: 8px; color: #8a7a5a; font-size: 11px; }
+.fish-bottle .note p { margin: 14px 0 6px; font-size: 16px; font-weight: 700; line-height: 1.5; }
+.fish-bottle .note .by { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b5d43; }
+.fish-bottle .note .anon { margin-left: auto; color: #8a7a5a; }
+.fish-bottle .acts { display: flex; gap: 8px; width: 100%; margin-top: 4px; }
+.fish-bottle .acts button { height: 46px; border-radius: 4px; font-weight: 900; }
+.fish-bottle .acts .keep { flex: 1.3; border: 0; background: #ffd23f; color: #16181c; font-size: 15px; }
+.fish-bottle .acts .wr { flex: 1; border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.06); color: #fff; font-size: 14px; font-weight: 700; }
+.fish-bottle .acts .wr:disabled { color: #6b7079; cursor: default; }
+.fish-bottle .sent { width: 100%; color: #9aa0aa; font-size: 11.5px; line-height: 1.6; }
+.fish-bottle .write { width: 100%; padding: 10px; box-sizing: border-box; background: rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; gap: 8px; }
+.fish-bottle .write .fb-hint { color: #9aa0aa; font-size: 11.5px; }
+.fish-bottle .write .groups { display: flex; gap: 4px; flex-wrap: wrap; }
+.fish-bottle .write .groups button { padding: 3px 9px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.08); color: #c8ccd2; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.fish-bottle .write .groups button.on { background: #f3ecd9; color: #2b2418; }
+.fish-bottle .write .fb-says { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; min-height: 58px; }
+.fish-bottle .write .fb-says button { padding: 4px 8px; border: 0; background: #f3ecd9; color: #2b2418; font-size: 12px; white-space: nowrap; }
+.fish-bottle .write .fb-says button.on { background: #fff6dc; box-shadow: 0 0 0 2px #ffd23f; }
+.fish-bottle .write .btns { display: flex; gap: 8px; }
+.fish-bottle .write .send { flex: 1; height: 36px; border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.12); color: #6b7079; font-size: 14px; font-weight: 900; }
+.fish-bottle .write .send.on { background: #ffd23f; color: #16181c; }
+.fish-bottle .write .cancel { width: 72px; height: 36px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; background: none; color: #fff; font-size: 13px; font-weight: 700; }
+.fish-bottle .fb-msg { flex: none; margin: 0 16px 12px; color: #ffb4a0; font-size: 12.5px; text-align: center; }
+/* 有 n 个漂流瓶没打开, on the fishing page */
+.fish-bottles {
+  position: absolute; z-index: 3; left: 12px; top: calc(84px + var(--safe-top)); display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px;
+  border: 1px solid rgba(255, 150, 110, 0.55); border-radius: 999px; background: rgba(28, 18, 16, 0.82); color: #ffd9c8; font-size: 12px; font-weight: 700;
+  box-shadow: 0 0 12px rgba(255, 106, 58, 0.35);
+}
+/* under the catch's strip while it shows */
+.fish-strip ~ .fish-bottles { top: calc(150px + var(--safe-top)); }
+@keyframes fb-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+@keyframes fb-unroll { 0% { transform: scaleY(0.1); opacity: 0; } 100% { transform: scaleY(1); opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   .fish *, .fish-scene * { animation: none !important; }

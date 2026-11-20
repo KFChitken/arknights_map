@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { itemOf } from "@/lib/fish/items";
 import type { FishCatch } from "@/lib/fish/rules";
+import { TICKETS_CAP } from "@/lib/passes";
 import FishCard, { cmText, nameOf, wordsOf } from "./FishCard";
 
 /**
@@ -13,6 +14,7 @@ import FishCard, { cmText, nameOf, wordsOf } from "./FishCard";
  * black box, 新纪录 under it for a record, a grey line of its number, rarity and how many; a round ✓ at the bottom, and
  * a tap anywhere closes it. Purple and better: gold light behind it, beams, orange triangles and motes drifting, white
  * triangles rising by the ✓; grey, green and blue a little white light alone. In a box of the design's 390 × 700.
+ * A 寻访券 says where it went; a 漂流瓶, that the tap opens it.
  */
 
 const UP = "5,1 9.5,9 0.5,9";
@@ -106,6 +108,8 @@ export default function CatchPage({ caught, onClose }: { caught: FishCatch; onCl
             </span>
           )}
           <span className="ln">{line}</span>
+          {caught.wallet !== undefined && <span className="ln ln-in">{fmt(T.fish.ticketIn, { n: caught.wallet, cap: TICKETS_CAP })}</span>}
+          {caught.bottle !== undefined && <span className="ln ln-in">{T.fish.bottle.next}</span>}
         </span>
         <span className="ok" aria-hidden="true">
           <svg width="26" height="20" viewBox="0 0 26 20">

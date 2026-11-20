@@ -6,6 +6,7 @@ import { fmt, T } from "@/i18n";
 import { itemOf } from "@/lib/fish/items";
 import { BANK_POLL_MS, CASTS_A_DAY, FISH_FULL, RING_MS, ZHI_EVERY_MS, type FishCatch, type FishLine, type FishShadow, type FishShout, type FishState } from "@/lib/fish/rules";
 import { fishApi, FishRefused } from "@/lib/fishClient";
+import { TICKETS_CAP } from "@/lib/passes";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import { roachDataUrl } from "@/lib/roachSvg";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
@@ -18,6 +19,7 @@ import { CAST_MS, LEAP_MS, REEL_MS, type FishPhase } from "./pose";
 import "./fish.css";
 
 const FishDex = dynamic(() => import("./FishDex"), { ssr: false });
+const Bottle = dynamic(() => import("./Bottle"), { ssr: false });
 
 /**
  * 钓鳞, the bank (菜单 → 钓鳞): over everything on the map, the whole screen on a phone, a card in the middle on a
@@ -26,7 +28,9 @@ const FishDex = dynamic(() => import("./FishDex"), { ssr: false });
  * ring closes in on it every 1.4 s; 拉杆 pulls (on time in the ring's last 0.4 s, by the server's clock), the line comes
  * in, the catch leaps out by the roach, and a strip says what it is, a page of its own for the first of one, a record
  * size, or purple and better. The page asks how the bank stands every 15 s: the others there (no names), and anything
- * purple or better caught there, said with nobody named. 吱 is the player's own roach, heard by them alone.
+ * purple or better caught there, said with nobody named. 吱 is the player's own roach, heard by them alone. A 寻访券
+ * goes into the wallet (the map's 寻访 button told); a 漂流瓶 opens on a page of its own (Bottle.tsx) once its catch is
+ * put down, or later from 有 n 个漂流瓶没打开.
  */
 
 type Look = { color: string; avatar: string; style?: RoachStyle };
@@ -76,14 +80,20 @@ function useRoachPic(look: Look) {
 export default function Fish({
   look,
   pond,
+  holder,
   onClose,
   onRefused,
+  onPasses,
 }: {
   look: Look;
   /** 卫戍池塘 rather than the bank */
   pond?: PondView;
+  /** The name printed on the player's passes (a 漂流瓶's) */
+  holder: string;
   onClose: () => void;
   onRefused: (e: unknown) => void;
+  /** A 寻访券 went into the wallet: the tickets now, and the dot of the map's 寻访 button */
+  onPasses?: (p: { tickets: number; dot: boolean }) => void;
 }) {
   const spot = pond ? "pond" : "pier";
   const roach = useRoachPic(look);
@@ -100,6 +110,10 @@ export default function Fish({
   const [zhi, setZhi] = useState(false);
   const [shout, setShout] = useState<FishShout | null>(null);
   const [dex, setDex] = useState(false);
+  // a 漂流瓶 open on its page, by id
+  const [bottle, setBottle] = useState<number | null>(null);
+  // the one just caught, opened once its catch is put down
+  const bottleNext = useRef<number | null>(null);
   // the server's clock against this one's, from each answer
   const offset = useRef(0);
   const zhiAt = useRef(0);
@@ -272,9 +286,22 @@ export default function Fish({
     setNote(null);
     try {
       const res = await timed(() => fishApi.reel());
-      setCaught(res.caught);
+      const got = res.caught;
+      setCaught(got);
       setLine(null);
-      setSt((s) => (s ? { ...s, line: null, admiral: res.admiral, owned: s.owned + (res.caught.first ? 1 : 0) } : s));
+      setSt((s) =>
+        s
+          ? {
+              ...s,
+              line: null,
+              admiral: res.admiral,
+              owned: s.owned + (got.first ? 1 : 0),
+              ...(got.bottle === undefined ? {} : { bottles: [...s.bottles, got.bottle], bottlesToday: s.bottlesToday + 1 }),
+            }
+          : s,
+      );
+      if (got.wallet !== undefined) onPasses?.({ tickets: got.wallet, dot: res.passesDot ?? true });
+      bottleNext.current = got.bottle ?? null;
       setMs(0);
       setPhase("reel");
     } catch (e) {
@@ -289,6 +316,20 @@ export default function Fish({
   useEffect(() => {
     if (phase === "caught" && caught && (caught.first || caught.record || caught.tier >= 4)) setFull(true);
   }, [phase, caught]);
+
+  /** The catch's page put down: a 漂流瓶 just caught opens on its own */
+  const putDown = () => {
+    setFull(false);
+    if (bottleNext.current !== null) setBottle(bottleNext.current);
+    bottleNext.current = null;
+  };
+  /** The 漂流瓶's page closed: the bottles not opened yet, as they are now */
+  const bottleDone = () => {
+    setBottle(null);
+    void timed(() => fishApi.state(lastShout.current))
+      .then((s) => take(s, false))
+      .catch(() => {});
+  };
 
   const sayZhi = () => {
     const now = Date.now();
@@ -391,9 +432,19 @@ export default function Fish({
                   {caught.cm !== null && `${fmt(T.fish.cm, { cm: cmText(caught.cm) })} · `}
                   {caught.first ? T.fish.firstTime : fmt(T.fish.nth, { n: caught.n })}
                 </small>
-                <small className={caught.onTime ? "on" : "off"}>{caught.onTime ? T.fish.onTime : T.fish.offTime}</small>
+                {caught.wallet !== undefined ? (
+                  <small className="on">{fmt(T.fish.ticketIn, { n: caught.wallet, cap: TICKETS_CAP })}</small>
+                ) : (
+                  <small className={caught.onTime ? "on" : "off"}>{caught.onTime ? T.fish.onTime : T.fish.offTime}</small>
+                )}
               </span>
             </div>
+          )}
+          {st && st.bottles.length > 0 && bottle === null && (
+            <button type="button" className="fish-bottles" onClick={() => setBottle(st.bottles[0])}>
+              <FishCard no={30} size={22} />
+              {fmt(T.fish.bottle.waiting, { n: st.bottles.length })}
+            </button>
           )}
           {!st && (
             <div className="fish-wait">
@@ -434,8 +485,9 @@ export default function Fish({
             </button>
           </div>
         </div>
-        {full && caught && <CatchPage caught={caught} onClose={() => setFull(false)} />}
+        {full && caught && <CatchPage caught={caught} onClose={putDown} />}
         {dex && st && <FishDex owned={st.owned} cells={st.cells} casts={st.casts} onClose={() => setDex(false)} onRefused={refused} />}
+        {bottle !== null && <Bottle id={bottle} today={st?.bottlesToday ?? 0} holder={holder} onClose={bottleDone} onRefused={onRefused} />}
       </div>
     </div>
   );
