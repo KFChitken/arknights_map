@@ -1,10 +1,62 @@
-# Roach Map
+# Arkmap (舟P地图)
+
+[![Check](https://github.com/KFChitken/arknights_map/actions/workflows/check.yml/badge.svg)](https://github.com/KFChitken/arknights_map/actions/workflows/check.yml)
 
 A friend-finding map for **Arknights** and **Arknights: Endfield** players.
 
-Players in the community jokingly call themselves "roaches" because there seem to be so many of them, yet most never meet another player offline. Roach Map gives every player a small cartoon roach that sits on a world map, so you can see how many players are around you and make friends nearby.
+Players in the community jokingly call themselves "roaches" because there seem to be so many of them, yet most never meet another player offline. Arkmap gives every player a small cartoon roach that sits on a world map, so you can see how many players are around you and make friends nearby.
+
+**Live at [zhoupmap.com](https://zhoupmap.com)** (in Chinese) · [English version](https://zhoupmap.com/en) · [About Arkmap, in English](https://zhoupmap.com/about)
+
+![The map on a computer, shown with demo players](public/screenshot-wide.webp)
+
+*The map on a computer, shown with demo players.*
+
+- Live since 2026-10-22, with about 197,000 registered players by 2026-11-19
+- From about 300 to over 100,000 players in three days, on two servers ([how](docs/scaling.md))
+- About 2,000 automated tests, run against a real PostgreSQL + PostGIS database on every push
+- Chinese and English, with a basemap of its own for visitors in mainland China
+
+Product design, decisions, releases and operations: [KFChitken](https://github.com/KFChitken).
 
 > Unofficial fan project. Not affiliated with or endorsed by Hypergryph. Non-commercial.
+
+## Engineering highlights
+
+- **Growth on a budget.** From about 300 to over 100,000 players in three days. Each bottleneck was measured before it was fixed: one shared roach list sent as changes, our own GPU layer for drawing, a second server as a second way in, and the slowest queries found in PostgreSQL's statistics. See [docs/scaling.md](docs/scaling.md).
+- **Tested against a real database.** About 2,000 tests run on every push in GitHub Actions, against PostgreSQL with PostGIS, after type checking and linting (`.github/workflows/check.yml`).
+- **A site that watches itself.** Checks every 5 minutes that sort problems into urgent, daily digest and quiet (`src/lib/server/watch.ts`), an outside uptime check every 10 minutes, a daily check from mainland China, and nightly backups kept off the server. See [Checks and alerts](#checks-and-alerts).
+- **Privacy by design.** No GPS, anonymous by default, counts instead of distances, and activity deleted after 90 days. See [Privacy by design](#privacy-by-design).
+- **Incidents written up.** Four postmortems, each ending in a change that catches the same kind of problem sooner. See [docs/incidents.md](docs/incidents.md).
+- **Decisions on record.** The product decisions and the reason for each. See [docs/decisions.md](docs/decisions.md).
+
+## How it works
+
+```mermaid
+flowchart TB
+  user(["Players' browsers"])
+  subgraph serverB [Second server]
+    relay[nginx relay]
+    web2[Three app processes]
+  end
+  subgraph serverA [Main server]
+    caddy[Caddy<br/>HTTPS and load balancing]
+    web1[App process]
+    db[(PostgreSQL + PostGIS)]
+  end
+  user -- "HTTPS, DNS lists both servers" --> caddy
+  user -- HTTPS --> relay
+  relay -- "private network, PROXY protocol" --> caddy
+  caddy --> web1
+  caddy -- private network --> web2
+  web1 --> db
+  web2 -- private network --> db
+  db -. nightly backup .-> backup[(Object storage)]
+  web1 -.-> mail[Mail service<br/>sign-in codes]
+  web2 -.-> mail
+```
+
+The app is one Next.js project, frontend and API together; news for a player, such as a touch, arrives at once over a server-sent event stream while the page is open. Basemaps come from the map services and are not drawn above: Amap, or Tencent's map as a backup, for visitors from mainland China, OpenFreeMap elsewhere, and our own OpenStreetMap build for mainland visitors looking abroad (see [Tech stack](#tech-stack)). Every push to `main` builds the app image in GitHub Actions, and a deploy updates both servers (see [Deploy](#deploy)).
 
 ## Features
 
@@ -208,14 +260,19 @@ Reports of a minor or of contact details are emailed to `ADMIN_EMAILS` within th
 
 A site that is down cannot email anyone, so GitHub also asks `GET /api/health` from outside every 10 minutes (`.github/workflows/uptime.yml`), through each server by its address, three tries a minute apart, and emails the repository owner when it fails. The endpoint answers 503 when the database is unreachable, when sign-in code emails are failing (the urgent problem is open), or when the checks' own emails have not gone out for half an hour. GitHub pauses scheduled workflows after 60 days without a push. `WATCH=off` turns the checks off; `WATCH=1` turns them on in development, where they print instead of emailing unless `WATCH_EMAILS` or `ADMIN_EMAILS` is set.
 
-## Roadmap
+## Timeline
 
-The project is built in daily iterations, each ending with a playable version:
+| Date | |
+|---|---|
+| 2026-10-20 | Plan cut from twelve weeks to one, with a playable version every evening |
+| 2026-10-22 | Live on one server in Hong Kong |
+| 2026-10-31 | Changes from a review of the rules for mainland China: sign-up for adults only, a separate consent to storage and mail, Amap for every mainland visitor |
+| 2026-11-05 | Reachable from mainland China after the server's address changed (see [docs/incidents.md](docs/incidents.md)) |
+| 2026-11-09 | A video introduces the site: about 300 players that evening, about 20,000 the next day |
+| 2026-11-10 | A second server as a second way in |
+| 2026-11-11 | Password sign-in; app processes on both servers; visitors who are not signed in see totals only |
+| 2026-11-12 | Past 100,000 registered players |
+| 2026-11-14 | English version at `/en` and an English introduction at `/about`; new features go to admins first |
+| 2026-11-19 | About 197,000 registered players |
 
-1. Prototype: dual basemaps, demo roaches, place your own roach
-2. MVP: email sign-in, server-side roaches, profiles, touches, declarations, clones, friends, radar
-3. Roach customizer and profile cards
-4. Follow, block, report, radar, travel trail, public venues
-5. Deploy, closed beta
-6. Feature freeze, privacy policy, security review
-7. Public launch
+The product decisions behind these steps are in [docs/decisions.md](docs/decisions.md).

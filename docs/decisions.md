@@ -1,0 +1,19 @@
+# Product decisions
+
+The decisions that shaped Arkmap, in the order they were made, each with the reason recorded at the time. The project owner made each one, usually by choosing between written proposals.
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-20 | Launch in one week instead of the twelve first planned: a playable version every evening for a beta group, and every next day starts with three fixes from their feedback before anything new | Twelve weeks was too long. Daily versions in front of real players decide what to build next |
+| 2026-10-20 | No GPS. Players place their roach by hand, and are reminded not to put it at home | Positions plus a social feature are a stalking risk, so where a roach sits is the player's own choice |
+| 2026-10-20 | One address for everyone, with two basemaps: Amap for visitors from mainland China, MapLibre with OpenStreetMap elsewhere. Positions are stored in WGS-84 and converted to GCJ-02 for Amap | Maps shown in mainland China need an official approval number, which Amap's maps carry, and use GCJ-02 coordinates; a foreign basemap shown there is a compliance risk |
+| 2026-10-23 | Every roach is drawn, even with the whole world in view; the map is never replaced by a heat map | The sight of roaches covering the world is the point of the product. Holding to it later called for a GPU layer of our own and a compact overview for zoomed-out views (see [scaling.md](scaling.md)) |
+| 2026-10-27 | No linking of game accounts. Players may type their game UID, shown only to players they touch boldly, and only if they choose | The only way to verify an account is an unofficial sign-in through the game's companion app, which hands over the keys to the account, breaks the publisher's terms and covers only some servers |
+| 2026-10-29 | Sign-up for adults only, by a tick box rather than a birth date, and a separate consent to storage and mail | A review against the rules for sites used from mainland China, including stricter rules for minors' personal data. A tick box collects the least; a birth date stays an option if the audience grows |
+| 2026-11-11 | No native app. "Save to the desktop" (an installable web app) instead | App stores in mainland China, mini programs and Apple's China store all require an ICP filing, which needs a mainland server and, for a social app, usually a company |
+| 2026-11-11 | Password sign-in, fewer resends (a cooldown of 2, then 5, then 10 minutes) and longer sessions | Mail data showed that 95% of codes went to new players and 30% were resends. Passwords alone would cut only about 5% of the mail, so fewer resends was the bigger lever |
+| 2026-11-11 | Visitors who are not signed in see totals only, never other players' roaches | It removed the last way to see exact positions without an account, and a visitor's page no longer downloads the whole world's roaches (about 1.2 MB at 150,000 roaches) |
+| 2026-11-11 | Each declaration is stored once with its position and looked up by area, instead of one row per player within 10 km (direction agreed on 10-23) | Storage grew with the audience: about 0.7 GB a day, heading for 10 GB a day at 100,000 players |
+| 2026-11-12 | One release at a time, watched for ten minutes, and rolled back first if anything looks wrong | So a regression points at one change (see the 11-12 incident in [incidents.md](incidents.md)) |
+| 2026-11-13 | 4 of 11 player suggestions declined after a written evaluation, among them push notifications and free-text messages | Web push would reach iPhones only, since most Android phones in mainland China cannot receive it. Free text beside exact positions needs moderation and is a safety risk |
+| 2026-11-14 | New features go to admins first behind a switch (`off`, `admins` or `on`); fixes and optimizations go to everyone at once | The owner tries each new feature in real use before everyone gets it |
