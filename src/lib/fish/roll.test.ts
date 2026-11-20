@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mulberry32 } from "../prng";
-import { FAMILY, FISH_ITEMS, GIANT, KIND_ODDS, MINI, MOON, TIER_ODDS, dexCells, itemOf, type FishItem } from "./items";
+import { FAMILY, FISH_ITEMS, GIANT, KIND_ODDS, MINI, MOON, TIER_ODDS, dexCells, inDex, itemOf, type FishItem } from "./items";
 import { dryAfter, junkAfter, mayBite, rollCatch, type RollAsk } from "./roll";
 import { ADMIRAL_AFTER, PERFECT_GRACE_MS, PITY_AFTER, RING_MS, biteAfter, onTime } from "./rules";
 
@@ -165,6 +165,10 @@ describe("what bites", () => {
     const [t3, b3] = share(FISH_ITEMS, 33, { spot: "pond", ticket: true, bottle: true, school: true });
     expect(Math.abs(t3 - 1.7)).toBeLessThan(0.1);
     expect(Math.abs(b3 - 0.4)).toBeLessThan(0.05);
+    // nor the 方舟原物 in the table (eight of them gold)
+    const [t4, b4] = share(FISH_ITEMS, 34, { ticket: true, bottle: true, game: true });
+    expect(Math.abs(t4 - 1.7)).toBeLessThan(0.1);
+    expect(Math.abs(b4 - 0.4)).toBeLessThan(0.05);
   });
 
   it("drops a tier with nothing that may bite to the one under it", () => {
@@ -194,6 +198,30 @@ describe("what bites", () => {
       expect(r.variant).toBe(0);
       expect(itemOf(r.no)!.kind).toBeUndefined();
     }
+  });
+
+  it("lets the 方舟原物 bite only for a player FISH_GAME lets have them, on the bank and in the pond, never from the net", () => {
+    const base = { spot: "pier" as const, hour: 12, crowd: 0, caught: () => 0 };
+    const game = FISH_ITEMS.filter((i) => i.cat === "game");
+    for (const item of game) {
+      expect(mayBite(item, base), item.key).toBe(false);
+      expect(mayBite(item, { ...base, game: true }), item.key).toBe(true);
+      expect(mayBite(item, { ...base, spot: "pond", game: true }), item.key).toBe(true);
+      expect(mayBite(item, { ...base, spot: "auto", game: true }), item.key).toBe(false);
+    }
+    const count = (more: Partial<RollAsk>, seed: number) => {
+      const random = mulberry32(seed);
+      let n = 0;
+      for (let i = 0; i < 20_000; i++) if (itemOf(rollCatch(ask(random, more)).no)!.cat === "game") n++;
+      return n;
+    };
+    expect(count({}, 41)).toBe(0);
+    expect(count({ game: true }, 42)).toBeGreaterThan(1_000);
+    expect(count({ spot: "auto", game: true }, 43)).toBe(0);
+    // the dex: their column only for such a player, a cell each (no variants)
+    expect(inDex(game[0])).toBe(false);
+    expect(inDex(game[0], true)).toBe(true);
+    expect(dexCells(FISH_ITEMS, true)).toBe(dexCells() + 64);
   });
 
   it("runs on the real table: the bank's items only, and the dex counts a cell for each item and variant", () => {

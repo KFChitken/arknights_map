@@ -30,6 +30,8 @@ export type FishItem = {
   off?: boolean;
   /** 盟约徽章: a cell of its own, with this many to collect in it */
   badges?: number;
+  /** 方舟原物: its picture's file in fish-art/ (the game's, never in the repository) */
+  pic?: string;
 };
 
 type Table = {
@@ -78,12 +80,12 @@ export const FAMILY: Readonly<Record<FishFam, readonly number[]>> = {
 };
 export const variantsOf = (item: FishItem): readonly number[] => (item.fam ? FAMILY[item.fam] : []);
 
-/** The dex shows the 方舟原物 only once their pictures and words may be (none yet) */
-export const inDex = (item: FishItem) => item.cat !== "game";
+/** Whether the dex shows an item: the 方舟原物 only to a player FISH_GAME lets have them (game) */
+export const inDex = (item: FishItem, game = false) => item.cat !== "game" || game;
 
-/** The dex's cells: an item and each of its variants, a cell each */
-export function dexCells(items: readonly FishItem[] = FISH_ITEMS): number {
-  return items.filter(inDex).reduce((n, i) => n + 1 + variantsOf(i).length, 0);
+/** The dex's cells: an item and each of its variants, a cell each (the 方舟原物's too, for game) */
+export function dexCells(items: readonly FishItem[] = FISH_ITEMS, game = false): number {
+  return items.filter((i) => inDex(i, game)).reduce((n, i) => n + 1 + variantsOf(i).length, 0);
 }
 
 /** Night for 月夜的: from 20:00 to 06:00 by the player's own clock */

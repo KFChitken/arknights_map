@@ -17,6 +17,8 @@ x-web: &web
     # the character pictures, kept out of the repository and the image; scripts/deploy.sh copies them here
     - ./operator-art:/app/operator-art:ro
     - ./guide-art:/app/guide-art:ro
+    # 钓鳞's 方舟原物 pictures, the game's, kept out of the repository and the image like the two above
+    - ./fish-art:/app/fish-art:ro
     # where each process writes down how far its roach list has got (FEED_STATE), to take up from
     # there after a restart instead of sending every open page the whole list again (src/lib/server/roachFeed.ts)
     - feed-state:/app/feed-state
@@ -29,6 +31,7 @@ x-web-env: &web-env
   DATABASE_URL: postgres://roach:${DB_PASSWORD}@db:5432/roach
   OPERATOR_ART_DIR: /app/operator-art
   GUIDE_ART_DIR: /app/guide-art
+  FISH_ART_DIR: /app/fish-art
   MUSIC_DIR: /app/music
   # never link a test inbox on the live site
   DEV_MAILBOX_PORT: ""
@@ -126,6 +129,8 @@ services:
       - ./tiles:/srv/tiles:ro
       # the characters' pictures, which scripts/deploy.sh copies here, served by Caddy too (deploy/Caddyfile)
       - ./operator-art:/srv/operator-art:ro
+      # and 钓鳞's 方舟原物 pictures, which it serves while their names are asked for (deploy/Caddyfile)
+      - ./fish-art:/srv/fish-art:ro
       # 听歌's songs, only the files (not the catalogue), served by Caddy at the links the app gives (deploy/Caddyfile)
       - ./music/files:/srv/music:ro
       - caddy-data:/data

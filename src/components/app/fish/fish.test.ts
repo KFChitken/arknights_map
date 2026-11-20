@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -13,7 +13,7 @@ const poseAt = (phase: FishPhase, ms: number) => at(phase, ms, SPOTS);
 
 describe("钓鳞's items", () => {
   it("have words for each item in the dex, a name and both lines for each that can bite, and a picture each", () => {
-    for (const item of FISH_ITEMS.filter(inDex)) {
+    for (const item of FISH_ITEMS.filter((i) => inDex(i, true))) {
       const w = wordsOf(item.key);
       expect(w, item.key).not.toBeNull();
       if (!item.off) {
@@ -21,7 +21,9 @@ describe("钓鳞's items", () => {
         expect(w!.use, item.key).not.toBe("");
         expect(w!.flavor, item.key).not.toBe("");
       } else if (!w!.name) expect(w!.hint, item.key).toBeTruthy();
-      expect(existsSync(path.join(process.cwd(), "public", "fish", `${item.key}.webp`)), item.key).toBe(true);
+      // ours in public/fish; a 方舟原物's only by its file's name in fish-art/, kept on the servers
+      if (item.cat === "game") expect(item.pic, item.key).toMatch(/^[0-9a-f]{16}\.webp$/);
+      else expect(existsSync(path.join(process.cwd(), "public", "fish", `${item.key}.webp`)), item.key).toBe(true);
     }
     // numbered from 1, once each
     const nos = FISH_ITEMS.map((i) => i.no);
@@ -67,6 +69,46 @@ describe("钓鳞's items", () => {
     expect(purple).toContain('<b class="rec">新纪录</b>No.021 · 稀有度 4 · 第 3 次钓到');
     expect(purple).toContain('class="halo gold"');
     expect(page({ no: 21, variant: 2, tier: 4, cm: 6320 })).toContain("变异「源石结晶的」第一次钓到");
+  });
+});
+
+describe("钓鳞's 方舟原物", () => {
+  const game = FISH_ITEMS.filter((i) => i.cat === "game");
+
+  it("are 64, grey 6, green 6, blue 21, purple 23, gold 8, rare on the bank and in the pond, none from the net, no variants or sizes", () => {
+    expect(game).toHaveLength(64);
+    const tiers = [1, 2, 3, 4, 5].map((t) => game.filter((i) => i.tier === t).length);
+    expect(tiers).toEqual([6, 6, 21, 23, 8]);
+    for (const i of game) {
+      expect(i.at, i.key).toEqual({ pier: "rare", pond: "rare" });
+      expect(i.fam, i.key).toBeUndefined();
+      expect(i.cm, i.key).toBeUndefined();
+    }
+  });
+
+  it("keep their pictures out of the repository: none anywhere under public/, and fish-art/ ignored", () => {
+    const pics = new Set(game.map((i) => i.pic!));
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((f) => {
+        const p = path.join(dir, f);
+        return statSync(p).isDirectory() ? walk(p) : [f];
+      });
+    const files = walk(path.join(process.cwd(), "public"));
+    expect(files.filter((f) => pics.has(f) || f.startsWith("g_"))).toEqual([]);
+    expect(readFileSync(path.join(process.cwd(), ".gitignore"), "utf8").split("\n")).toContain("/fish-art");
+  });
+
+  it("show the game's own disc from fish-art/, darkened whole while not caught, our bare mark alone as the rarity", () => {
+    const orirock = game[0];
+    const disc = renderToStaticMarkup(createElement(FishCard, { no: orirock.no, size: 66 }));
+    expect(disc).toContain(`class="fish-disc r${orirock.tier} game `);
+    expect(disc).toContain(`src="/fish-art/${orirock.pic}"`);
+    expect(renderToStaticMarkup(createElement(FishCard, { no: orirock.no, size: 66, locked: true }))).toContain("game locked");
+    const bare = renderToStaticMarkup(createElement(FishCard, { no: orirock.no, size: 14, bare: true }));
+    expect(bare).not.toContain("<img");
+    expect(bare).not.toContain("game");
+    // ours stay ours
+    expect(renderToStaticMarkup(createElement(FishCard, { no: 1, size: 66 }))).toContain('src="/fish/hejian.webp"');
   });
 });
 

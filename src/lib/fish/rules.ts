@@ -121,9 +121,11 @@ export type FishState = {
   day: string;
   casts: number;
   line: FishLine | null;
-  /** Dex cells caught, and all of them */
+  /** Dex cells caught, and all of them (the 方舟原物's only where the player has them) */
   owned: number;
   cells: number;
+  /** FISH_GAME lets the player have the 方舟原物: their column in the dex, and their bites */
+  game: boolean;
   /** Others on the bank with a line in the water */
   bank: number;
   /** 空军司令 today */

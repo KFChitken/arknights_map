@@ -9,8 +9,8 @@ import FishCard, { cmText, nameOf, picOf, wordsOf } from "./FishCard";
 
 /**
  * 钓鳞图鉴, as the game's 藏品图鉴 (傀影's issue) in the bank's night blue and pale gold: tabs 全部 / 已钓到 / 没钓到 and
- * how many came in new since the dex was last looked at (this device), the items in groups (鳞, 杂物, 卫戍限定; 方舟原物
- * once they show), a tile each with its number (NEW for one new), its disc and how many of its variants are in (◆◇); the
+ * how many came in new since the dex was last looked at (this device), the items in groups (鳞, 杂物, 卫戍限定, and
+ * 方舟原物 for a player FISH_GAME lets have them), a tile each with its number (NEW for one new), its disc and how many of its variants are in (◆◇); the
  * one picked in detail: its name, big picture, number and rarity, what it is for and the line in italics, where it bites
  * and how likely, the biggest the player caught and the site's biggest (no names), its variants, how often and when it
  * was first caught. Not caught: ???, a dark shape, a hint, and 「未知还潜伏在水面之下。」 On a phone the detail sits over
@@ -49,12 +49,15 @@ export default function FishDex({
   owned,
   cells,
   casts,
+  game,
   onClose,
   onRefused,
 }: {
   owned: number;
   cells: number;
   casts: number;
+  /** FISH_GAME lets the player have the 方舟原物: their column shows */
+  game: boolean;
   onClose: () => void;
   onRefused: (e: unknown) => void;
 }) {
@@ -95,7 +98,7 @@ export default function FishDex({
     for (const r of dex?.records ?? []) by.set(r.no, Math.max(by.get(r.no) ?? 0, r.cm));
     return by;
   }, [dex]);
-  const shown = FISH_ITEMS.filter(inDex);
+  const shown = FISH_ITEMS.filter((i) => inDex(i, game));
   const has = (i: FishItem) => (mine.get(i.no)?.n ?? 0) > 0;
   const fresh = [...mine.values()].filter((m) => m.fresh).length;
   const inTab = (i: FishItem) => (tab === "all" ? true : tab === "have" ? has(i) : !has(i));

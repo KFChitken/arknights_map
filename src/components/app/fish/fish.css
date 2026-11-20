@@ -49,6 +49,11 @@
   filter: drop-shadow(0 0 calc(var(--d) * 0.08) rgba(255, 110, 60, 0.7));
 }
 .fish-disc.locked { opacity: 0.55; }
+/* 方舟原物 (FishCard.tsx): the game's picture is a disc of its own, grey and ring and shadow, sized so its ring meets ours
+   (210 px, its ring's outer edge 82.75 from the middle; ours at 0.536 of the disc: 210 × 0.536 / 82.75 ≈ 1.36) */
+.fish-disc.game { background: none; box-shadow: none; }
+.fish-disc.game img { left: -18%; top: -18%; width: 136%; height: 136%; }
+.fish-disc.game.locked img { filter: grayscale(1) brightness(0.4); }
 .fish-disc.locked img { filter: brightness(0) opacity(0.8); }
 /* the size where the game writes how many: white, outlined, over the ring */
 .fish-disc .cnt {

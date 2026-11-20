@@ -27,7 +27,7 @@ import {
 import { siteDay } from "../siteDay";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
-import { fishMode } from "./env";
+import { fishGameMode, fishMode } from "./env";
 import { HttpError } from "./http";
 import { fishTicket, passesOpen, ticketRoom } from "./passes";
 import { fishBottles, fishDays, fishDex as dexRows, fishLines, fishNets, fishRecords, fishShouts, squadMembers, squadRooms, type UserRow } from "./schema";
@@ -60,6 +60,12 @@ const refuse = (status: number, message: string, code?: string) => new HttpError
 /** Whether this player may fish on the bank: everyone signed in (on), the 站长 and the admins (admins), or nobody (off) */
 export function fishOpen(user: Pick<UserRow, "id" | "email">): boolean {
   const mode = fishMode();
+  return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
+}
+
+/** Whether the 方舟原物 are this player's: everyone who fishes (on), the 站长 and the admins (admins), or nobody (off) */
+export function fishGameOpen(user: Pick<UserRow, "id" | "email">): boolean {
+  const mode = fishGameMode();
   return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
 }
 
@@ -141,9 +147,9 @@ const lineOf = (row: typeof fishLines.$inferSelect): FishLine => ({
   shadow: row.shadow as FishShadow,
 });
 
-/** The dex's cells caught: each item shown in it, and each variant */
-async function ownedCells(userId: string): Promise<number> {
-  const shown = FISH_ITEMS.filter(inDex).map((i) => i.no);
+/** The dex's cells caught: each item shown in it (the 方舟原物 for game), and each variant */
+async function ownedCells(userId: string, game: boolean): Promise<number> {
+  const shown = FISH_ITEMS.filter((i) => inDex(i, game)).map((i) => i.no);
   const [row] = await db
     .select({ n: count() })
     .from(dexRows)
@@ -157,11 +163,12 @@ async function ownedCells(userId: string): Promise<number> {
  * given, none said, only the newest id to go on from)
  */
 export async function fishState(user: Pick<UserRow, "id" | "email">, after: unknown, now = Date.now()): Promise<FishState & { lastShout: number }> {
+  const game = fishGameOpen(user);
   const day = siteDay(now);
   const [[today], [line], owned, bank, bottles, [net]] = await Promise.all([
     db.select().from(fishDays).where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day))),
     db.select().from(fishLines).where(eq(fishLines.userId, user.id)),
-    ownedCells(user.id),
+    ownedCells(user.id, game),
     bankCount(now),
     passesOpen(user)
       ? db
@@ -183,14 +190,19 @@ export async function fishState(user: Pick<UserRow, "id" | "email">, after: unkn
   // the first ask goes on from the newest said, not from what was said before the page opened
   const [newest] = since === null ? await db.select({ id: max(fishShouts.id) }).from(fishShouts) : [];
   const lastShout = Math.max(since ?? 0, Number(newest?.id ?? 0), ...recent.map((r) => r.id));
-  const shouts: FishShout[] = since === null ? [] : recent.filter((r) => r.userId !== user.id).map(({ id, no, variant, cm }) => ({ id, no, variant, cm }));
+  // the 方舟原物 are said only to a player who has them
+  const shouts: FishShout[] =
+    since === null
+      ? []
+      : recent.filter((r) => r.userId !== user.id && (game || itemOf(r.no)?.cat !== "game")).map(({ id, no, variant, cm }) => ({ id, no, variant, cm }));
   return {
     now,
     day,
     casts: today?.casts ?? 0,
     line: line ? lineOf(line) : null,
     owned,
-    cells: dexCells(),
+    cells: dexCells(FISH_ITEMS, game),
+    game,
     // the others: the player's own line on the bank is not one of them
     bank: Math.max(0, bank - (line?.spot === "pier" ? 1 : 0)),
     admiral: today?.admiral ?? false,
@@ -277,6 +289,7 @@ async function castIn(
       ...(pond ? { together: pond.othersIn + 1, school: pond.school } : {}),
       ticket: passes && today.tickets < TICKETS_A_DAY && (await ticketRoom(tx, user.id)),
       bottle: passes && today.bottles < BOTTLES_A_DAY,
+      game: fishGameOpen(user),
       random,
     });
     await tx
@@ -416,12 +429,20 @@ type Got = { no: number; variant: number; cm: number | null; wallet: { tickets: 
 
 /**
  * What the pull brings, within its transaction: the line's catch; a 寻访券 into the wallet, a 漂流瓶 kept to open, each
- * counted on the day's row (locked first, so the day's are never passed); one that may no longer come is something
- * else of its tier, else of the tier under it (drawn as at no hour, with nobody else by: only what bites any time)
+ * counted on the day's row (locked first, so the day's are never passed); one that may no longer come, or a 方舟原物
+ * with FISH_GAME off for the player since the cast, is something else of its tier, else of the tier under it (drawn as
+ * at no hour, with nobody else by: only what bites any time)
  */
 async function passesIn(tx: Tx, user: Pick<UserRow, "id" | "email">, line: typeof fishLines.$inferSelect, day: string, now: number, random: () => number): Promise<Got> {
-  const kind = itemOf(line.item)?.kind;
+  const item = itemOf(line.item);
+  const kind = item?.kind;
+  const game = fishGameOpen(user);
   const plain: Got = { no: line.item, variant: line.variant, cm: line.cm, wallet: null, bottle: null };
+  const swapped = (): Got => {
+    const swap = rollCatch({ spot: line.spot as FishSpot, dry: 0, hour: -1, crowd: 0, caught: () => 0, game, random }, FISH_ITEMS, item!.tier);
+    return { no: swap.no, variant: swap.variant, cm: swap.cm, wallet: null, bottle: null };
+  };
+  if (item?.cat === "game" && !game) return swapped();
   if (!kind) return plain;
   await tx.insert(fishDays).values({ userId: user.id, day }).onConflictDoNothing();
   const [today] = await tx
@@ -448,18 +469,27 @@ async function passesIn(tx: Tx, user: Pick<UserRow, "id" | "email">, line: typeo
       .where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day)));
     return { ...plain, bottle: kept.id };
   }
-  const swap = rollCatch({ spot: line.spot as FishSpot, dry: 0, hour: -1, crowd: 0, caught: () => 0, random }, FISH_ITEMS, itemOf(line.item)!.tier);
-  return { no: swap.no, variant: swap.variant, cm: swap.cm, wallet: null, bottle: null };
+  return swapped();
 }
 
-/** The player's dex (each cell caught, how often, the biggest, first when and where) and the site's biggest of each */
-export async function fishDexOf(user: Pick<UserRow, "id">): Promise<FishDex> {
+/**
+ * The player's dex (each cell caught, how often, the biggest, first when and where) and the site's biggest of each; the
+ * 方舟原物 only for a player who has them (kept all the same, shown again once FISH_GAME lets them)
+ */
+export async function fishDexOf(user: Pick<UserRow, "id" | "email">): Promise<FishDex> {
+  const game = fishGameOpen(user);
+  const shown = (no: number) => {
+    const item = itemOf(no);
+    return Boolean(item && inDex(item, game));
+  };
   const [mine, records] = await Promise.all([
     db.select().from(dexRows).where(eq(dexRows.userId, user.id)),
     db.select({ no: fishRecords.item, variant: fishRecords.variant, cm: fishRecords.cm }).from(fishRecords),
   ]);
   return {
-    mine: mine.map((r) => ({ no: r.item, variant: r.variant, n: r.n, best: r.best, firstAt: r.firstAt.getTime(), firstSpot: r.firstSpot as FishSpot })),
-    records,
+    mine: mine
+      .filter((r) => shown(r.item))
+      .map((r) => ({ no: r.item, variant: r.variant, n: r.n, best: r.best, firstAt: r.firstAt.getTime(), firstSpot: r.firstSpot as FishSpot })),
+    records: records.filter((r) => shown(r.no)),
   };
 }

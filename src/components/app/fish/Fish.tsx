@@ -639,7 +639,7 @@ export default function Fish({
           </button>
         </div>
       </div>
-      {dex && st && <FishDex owned={st.owned} cells={st.cells} casts={st.casts} onClose={() => setDex(false)} onRefused={refused} />}
+      {dex && st && <FishDex owned={st.owned} cells={st.cells} casts={st.casts} game={st.game} onClose={() => setDex(false)} onRefused={refused} />}
       {bottle !== null && <Bottle id={bottle} today={st?.bottlesToday ?? 0} holder={holder} onClose={bottleDone} onRefused={onRefused} />}
     </>
   );

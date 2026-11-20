@@ -55,6 +55,13 @@ if [ -f guide-art/amiya.png ]; then
   ssh "$HOST2" 'mkdir -p ~/zhoupmap-b/guide-art'
   rsync -a --delete guide-art/ "$HOST2:zhoupmap-b/guide-art/"
 fi
+# and so do 钓鳞's 方舟原物 pictures (the game's: copied here by hand from the shared folder, never in git)
+if [ -f fish-art/index.json ]; then
+  ssh "$HOST" 'mkdir -p ~/arknights_map/fish-art'
+  rsync -a --delete fish-art/ "$HOST:arknights_map/fish-art/"
+  ssh "$HOST2" 'mkdir -p ~/zhoupmap-b/fish-art'
+  rsync -a --delete fish-art/ "$HOST2:zhoupmap-b/fish-art/"
+fi
 # the overseas map's fonts and icons; never the map file itself, which the server fetches on its own
 for d in fonts sprites; do
   if [ -d "tiles/$d" ]; then
@@ -69,7 +76,7 @@ cd ~/arknights_map
 git pull --ff-only
 # made by us, not by Docker as root, should the pictures, the map or the songs not be there yet
 # (scripts/fetch-music.sh writes into music/ as us)
-mkdir -p operator-art guide-art tiles music/files
+mkdir -p operator-art guide-art fish-art tiles music/files
 IMAGE=ghcr.io/kfchitken/arknights_map
 compose() { docker compose -f docker-compose.prod.yml "$@"; }
 # :latest on the server is always the image that runs, so plain compose commands keep using it
@@ -101,7 +108,7 @@ ssh "$HOST" 'cat ~/arknights_map/.env' | ssh "$HOST2" 'umask 077 && cat > ~/zhou
 ssh "$HOST2" "SHA=$sha bash -s" <<'REMOTE2'
 set -e
 cd ~/zhoupmap-b
-mkdir -p operator-art guide-art
+mkdir -p operator-art guide-art fish-art
 IMAGE=ghcr.io/kfchitken/arknights_map
 if ! docker pull -q "$IMAGE:$SHA" >/dev/null; then
   echo "The second server could not download ${SHA:0:7}: web2 and web3 keep running the version before."

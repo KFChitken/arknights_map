@@ -10,6 +10,8 @@ next-env.d.ts
 /operator-art
 # and so does the guide's picture (src/lib/amiya.ts), cut out with scripts/cutout.mjs
 /guide-art
+# and so do 钓鳞's 方舟原物 (src/lib/fish/items.ts, cat "game"), cut out of a screenshot of them
+/fish-art
 # Our own overseas map: tens of GB, kept on the server (see the README)
 /tiles
 

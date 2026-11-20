@@ -18,6 +18,7 @@ x-web: &web
   volumes:
     - ./operator-art:/app/operator-art:ro
     - ./guide-art:/app/guide-art:ro
+    - ./fish-art:/app/fish-art:ro
     # how far each process's roach list has got, as on the main server (docker-compose.prod.yml)
     - feed-state:/app/feed-state
   restart: unless-stopped
@@ -27,6 +28,7 @@ x-web-env: &web-env
   DATABASE_URL: postgres://roach:${DB_PASSWORD:?set DB_PASSWORD in .env}@10.5.0.6:5432/roach
   OPERATOR_ART_DIR: /app/operator-art
   GUIDE_ART_DIR: /app/guide-art
+  FISH_ART_DIR: /app/fish-art
   # never link a test inbox on the live site
   DEV_MAILBOX_PORT: ""
   # nudges go between the processes through the database

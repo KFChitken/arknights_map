@@ -81,6 +81,11 @@ export const HAIMAO_PICTURE = process.env.HAIMAO_PICTURE !== "off";
 export const AMIYA_DANCE = AMIYA_PICTURE && process.env.AMIYA_DANCE !== "off";
 export const PARTY_MUSIC = process.env.PARTY_MUSIC !== "off";
 export const GUIDE_ART_DIR = process.env.GUIDE_ART_DIR || "guide-art";
+/**
+ * 钓鳞's 方舟原物 pictures (src/lib/server/fishArt.ts): the game's, cut out of a screenshot, so kept outside the repository
+ * like the guides' and brought to the servers by scripts/deploy.sh
+ */
+export const FISH_ART_DIR = process.env.FISH_ART_DIR || "fish-art";
 
 /**
  * The map page's three layouts (src/lib/uiChoice.ts): UI_CHOICE=off puts everyone on 浮岛 and asks nobody which they
@@ -166,6 +171,14 @@ export const studyMode = (): "on" | "admins" | "off" => (["on", "admins"] as con
  * answers its requests 404. What was caught stays, whichever it is. Read on every use, so the tests can switch it.
  */
 export const fishMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.FISH) ?? "off";
+
+/**
+ * 钓鳞's 方舟原物 (cat "game" in src/data/fish-items.json), the game's own pictures with words of our own: FISH_GAME=on
+ * lets every player who fishes catch them and see their column in the dex; admins, only the 站长 and the admins (to
+ * try it on the live site first); off (the default) nobody, and their pictures (FISH_ART_DIR) are not served. Ones
+ * caught stay in the dex, shown again once it is on. Read on every use, so the tests can switch it.
+ */
+export const fishGameMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.FISH_GAME) ?? "off";
 
 /**
  * 听歌 (src/lib/server/listen.ts): LISTEN=on lets every signed-in player play the site's songs, alone and together;

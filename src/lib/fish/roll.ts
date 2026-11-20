@@ -44,6 +44,8 @@ export type RollAsk = {
   together?: number;
   /** 卫戍池塘: a 鱼群 is on, blue and better SCHOOL_BOOST times as likely */
   school?: boolean;
+  /** 方舟原物 may bite: FISH_GAME lets the player have them */
+  game?: boolean;
   random: () => number;
 };
 
@@ -51,7 +53,7 @@ export type Roll = { no: number; variant: number; cm: number | null; tier: numbe
 
 /** Whether an item may bite here and now */
 export function mayBite(item: FishItem, ask: Omit<RollAsk, "dry" | "random">): boolean {
-  if (item.off || item.cat === "game" || !item.at[ask.spot]) return false;
+  if (item.off || (item.cat === "game" && !ask.game) || !item.at[ask.spot]) return false;
   if ((item.kind === "ticket" && !ask.ticket) || (item.kind === "bottle" && !ask.bottle)) return false;
   // 自动钓: grey, green and blue only, no 通行证 things
   if (ask.spot === "auto" && (item.tier > 3 || item.kind)) return false;
