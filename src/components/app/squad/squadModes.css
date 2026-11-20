@@ -1,67 +1,50 @@
 /*
- * 玩点什么 (SquadModes.tsx), the line asking one to join the mode playing (SquadModeInvite.tsx), 龙门广场舞's card
- * (SquadDance.tsx), 凯尔希随堂测's (SquadQuiz.tsx) and W 的礼物's (SquadGift.tsx). 玩点什么 is over the map as 篝火's card is (35: at the foot on a
- * phone, in the middle on a computer); a mode's card sits at the map's foot with nothing over the rest (34, under
- * 钓鳞's window and the cards); the line asking is at the top over them all (38), under the toast (40). Each mode's
- * colours are its own (k-dance, k-quiz).
+ * 「玩」's tiles (SquadPlays.tsx, in the room's sheet and the bar's panel), the line asking one to join the mode playing
+ * (SquadModeInvite.tsx), 龙门广场舞's card (SquadDance.tsx), 凯尔希随堂测's (SquadQuiz.tsx) and W 的礼物's
+ * (SquadGift.tsx). A mode's card sits at the map's foot with nothing over the rest (34, under 钓鳞's window and the
+ * cards); the line asking is at the top over them all (38), under the toast (40). Each game's colours are its own
+ * (k-fish, k-fire, k-dance, k-quiz, k-gift).
  */
 
-/* ---- 玩点什么 ---- */
-.sq-modes {
-  position: fixed; inset: 0; z-index: 35; display: flex; align-items: flex-end; justify-content: center; background: rgba(16, 17, 20, 0.45);
-  -webkit-tap-highlight-color: transparent;
+/* ---- 「玩」's tiles (SquadPlays.tsx): every game, an icon and its name ---- */
+.sq-pg .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sq-pg .tile {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 10px 4px 8px; border: 1px solid #e3e5e8; border-radius: 14px;
+  background: #fff; color: #1b1d22; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
-.sq-modes .box {
-  width: min(420px, 100%); max-height: calc(100% - 24px); overflow-y: auto; display: flex; flex-direction: column; padding: 14px 12px calc(16px + var(--safe-bottom, 0px));
-  box-sizing: border-box; border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14);
+.sq-pg .tile:hover:not(:disabled) { background: #f8f9fa; }
+.sq-pg .tile:disabled { opacity: 1; cursor: default; }
+.sq-pg .tile.off .pic, .sq-pg .tile.off b { opacity: 0.45; }
+.sq-pg .tile b { max-width: 100%; overflow: hidden; font-size: 12.5px; line-height: 1.25; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+.sq-pg .pic { position: relative; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; }
+.sq-pg .k-fish .pic { background: #e6f4fd; }
+.sq-pg .k-fire .pic { background: #fff1e0; }
+.sq-pg .k-dance .pic { background: #ffe4ec; }
+.sq-pg .k-quiz .pic { background: #e3edf7; }
+.sq-pg .k-gift .pic { background: #fff1d6; }
+.sq-pg .pg-ico { display: block; width: 40px; height: 40px; }
+.sq-pg .pic em {
+  position: absolute; padding: 0 5px; border-radius: 999px; font-size: 10px; font-style: normal; font-weight: 800; line-height: 16px; white-space: nowrap; box-shadow: 0 0 0 2px #fff;
+  font-variant-numeric: tabular-nums;
 }
-@media (min-width: 720px) {
-  .sq-modes { align-items: center; }
-  .sq-modes .box { border-radius: 18px; padding-bottom: 16px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35); }
+.sq-pg .pic .lv { top: -6px; right: -14px; background: #ff6a1f; color: #fff; }
+.sq-pg .pic .wood { bottom: -6px; right: -12px; display: flex; align-items: center; gap: 2px; background: #7a4a22; color: #fff; }
+.sq-pg .pic .wood i { display: block; width: 9px; height: 4px; border-radius: 2px; background: #e0aa70; transform: rotate(-20deg); }
+.sq-pg .pic .tag { top: -6px; right: -12px; background: #eceef1; color: #5b6170; }
+.sq-pg .pic .tag.join { background: #ffd23f; color: #1b1d22; }
+.sq-pg .pic .tag.in { background: #2fa36b; color: #fff; }
+.sq-pg .tile.alert .pic::after {
+  content: ""; position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: #ff8a1f; box-shadow: 0 0 0 2px #fff;
+  animation: sqp-pulse 1s ease-in-out infinite;
 }
-.sq-modes header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 0 36px 0 4px; position: relative; }
-.sq-modes header b { font-size: 18px; }
-.sq-modes header span { color: #6b7280; font-size: 12px; }
-.sq-modes header .x {
-  position: absolute; right: 0; top: -4px; width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1;
-  cursor: pointer;
-}
-.sq-modes .now { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; padding: 8px 10px; border-radius: 10px; background: #fff7d6; color: #6b5300; font-size: 12.5px; }
-.sq-modes .now i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #e0a400; }
-.sq-modes .now span { flex: 1; min-width: 0; }
-.sq-modes .now small { flex: none; font-size: 12px; font-weight: 700; }
-.sq-modes .now.k-dance { background: #ffe4ec; color: #8a1d47; }
-.sq-modes .now.k-dance i { background: #d63a7a; }
-.sq-modes .now.k-quiz { background: #e3edf7; color: #1f4366; }
-.sq-modes .now.k-quiz i { background: #3d8fbf; }
-.sq-modes .now.k-gift { background: #fff1d6; color: #7a4600; }
-.sq-modes .now.k-gift i { background: #ff8a3a; }
-.sq-modes .rows { display: flex; flex-direction: column; margin-top: 6px; }
-.sq-modes .row {
-  display: flex; align-items: center; gap: 12px; padding: 9px 6px; border: 0; border-radius: 12px; background: none; color: #1b1d22; font: inherit; text-align: left;
-  cursor: pointer;
-}
-.sq-modes .row:hover:not(:disabled) { background: #f6f7f9; }
-.sq-modes .row:disabled { cursor: default; }
-.sq-modes .gl { flex: none; display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 12px; font-size: 20px; font-weight: 900; }
-.sq-modes .k-dance .gl { background: #ffe4ec; color: #b4235a; }
-.sq-modes .k-quiz .gl { background: #e3edf7; color: #1f4366; }
-.sq-modes .k-gift .gl { background: #fff1d6; color: #a15c00; }
-.sq-modes .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sq-modes .nm { display: flex; align-items: center; gap: 6px; }
-.sq-modes .nm b { font-size: 15px; white-space: nowrap; }
-.sq-modes .nm em { padding: 0 6px; border-radius: 6px; background: #dcf3e6; color: #1f6b41; font-size: 10.5px; font-style: normal; font-weight: 900; white-space: nowrap; }
-.sq-modes .tx small { color: #6b7280; font-size: 12px; line-height: 1.45; }
-.sq-modes .go { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-.sq-modes .go small { color: #4b5160; font-size: 11.5px; font-weight: 700; }
-.sq-modes .btn {
-  height: 26px; display: flex; align-items: center; padding: 0 10px; border-radius: 8px; background: #f1f2f4; color: #9aa0aa; font-size: 12px; font-weight: 700; white-space: nowrap;
-}
-.sq-modes .btn.on { background: #1b1d22; color: #fff; }
-.sq-modes .btn.join { background: #ffd23f; color: #1b1d22; }
-.sq-modes .mmsg { margin: 8px 4px 0; color: #b42318; font-size: 12.5px; }
-.sq-modes .note { margin: 14px 4px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
-
+.sq-pg .fish.line .float { animation: sqp-bob 1.6s ease-in-out infinite; }
+.sq-pg .fish.bite .float { animation: sqp-tug 0.35s ease-in-out infinite; }
+.sq-pg .gift .spark { transform-box: fill-box; transform-origin: 50% 50%; animation: sqg-spark 0.3s linear infinite; }
+.sq-pg .now { margin: 8px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.45; }
+.sq-pg .pmsg { margin: 6px 2px 0; color: #b42318; font-size: 12px; }
+@keyframes sqp-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(1.8px); } }
+@keyframes sqp-tug { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2.6px); } }
+@keyframes sqp-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
 /* ---- the line asking one to join ---- */
 .sq-minv {
   position: fixed; z-index: 38; left: 50%; top: calc(10px + var(--safe-top, 0px)); width: min(358px, calc(100% - 20px)); transform: translateX(-50%);
@@ -123,13 +106,12 @@
 }
 .sq-dance .judge.ok { color: #ffd23f; }
 .sq-dance .mv { position: absolute; left: 0; right: 0; bottom: 10px; color: #c9b8d6; font-size: 11px; text-align: center; }
-/* the beats coming to the line, their words under them */
+/* the beats coming to the line */
 .sq-dance .strip { position: relative; height: 52px; margin-top: 12px; overflow: hidden; border-radius: 12px; background: #1b1d22; }
 .sq-dance .strip i {
   position: absolute; left: -7px; top: 11px; width: 14px; height: 14px; border-radius: 50%; background: #ff7ac0; opacity: 0; will-change: transform;
 }
 .sq-dance .strip .hit { position: absolute; left: 39px; top: 5px; width: 3px; height: 26px; border-radius: 2px; background: #ffd23f; box-shadow: 0 0 10px #ffd23f; }
-.sq-dance .strip span { position: absolute; right: 10px; bottom: 4px; color: #9aa0aa; font-size: 10.5px; pointer-events: none; }
 .sq-dance .acts { display: flex; gap: 8px; margin-top: 10px; }
 .sq-dance .tap {
   flex: 1; height: 64px; border: 0; border-radius: 14px; background: #ff4f9a; color: #fff; font: inherit; font-size: 22px; font-weight: 900; cursor: pointer;
@@ -348,6 +330,7 @@
 @keyframes sqm-light { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.8; } }
 @keyframes sqm-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
+  .sq-pg .fish .float, .sq-pg .tile.alert .pic::after, .sq-pg .gift .spark,
   .sq-minv, .sq-dance .judge, .sq-dance .lt, .sq-quiz .eq.on i, .sq-quiz .stage .lead, .sq-quiz .res span { animation: none; }
   .sq-gift .drum.on::before, .sq-gift .gw .spark, .sq-gift .gw .bang, .sq-gift .gw .ladle, .sq-gift .gw .box, .sq-gift .boom { animation: none; }
 }

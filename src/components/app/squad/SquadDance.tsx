@@ -304,7 +304,6 @@ export function DanceView({
           <i key={i} />
         ))}
         <b className="hit" />
-        <span>{t.beats}</span>
       </div>
       <div className="acts">
         {me ? (

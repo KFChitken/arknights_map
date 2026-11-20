@@ -5,7 +5,7 @@ import type { SquadMember, SquadRoom } from "@/lib/squad";
 import { GIFT_GAP_MS, GIFT_HOLD_MS, GIFT_LEAD_MS, giftAt, type GiftMode, type GiftRound } from "@/lib/squadMode";
 import type { DanceMusic } from "./SquadDance";
 import { GiftView, giftHits, giftPhase, hitLine, seatOf } from "./SquadGift";
-import { modeRow } from "./SquadModes";
+import { modeRow } from "./SquadPlays";
 import { forgetSquadPage, loadSquadRoom, squadGiftPass, squadRoomNow } from "./squading";
 
 const NOW = Date.parse("2026-11-20T13:00:00+08:00");

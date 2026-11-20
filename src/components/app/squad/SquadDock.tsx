@@ -3,8 +3,7 @@
 import { T } from "@/i18n";
 import type { SquadMove, SquadRoom } from "@/lib/squad";
 import { dockTabs, type DockTab } from "./dockState";
-import { openFishWin } from "../fish/winStore";
-import { fireSub, modesSub, openSquadFire, openSquadModes } from "./squading";
+import SquadPlays from "./SquadPlays";
 import { ActTab, RoundTab, SayTab } from "./SquadTalk";
 import "./squadFight.css";
 
@@ -74,21 +73,8 @@ export default function SquadDock({
           ) : tab === "act" ? (
             <ActTab room={room} onDone={() => {}} onError={onError} docked picking={picking} onPick={onPick} />
           ) : tab === "play" ? (
-            // what there is to play in the room: 钓鳞 (卫戍池塘) so far, more as each is made
-            <div className="sq-plays">
-              <button type="button" onClick={openFishWin}>
-                <b>{T.fish.pond.fish}</b>
-                <small>{T.fish.pond.fishSub}</small>
-              </button>
-              <button type="button" onClick={openSquadFire}>
-                <b>{T.squad.fire.play}</b>
-                <small>{fireSub(room)}</small>
-              </button>
-              <button type="button" onClick={openSquadModes}>
-                <b>{T.squad.modes.play}</b>
-                <small>{modesSub(room)}</small>
-              </button>
-            </div>
+            // every game there is in the room, a tile each
+            <SquadPlays room={room} />
           ) : (
             <RoundTab room={room} onError={onError} />
           )}

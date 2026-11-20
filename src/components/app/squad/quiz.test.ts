@@ -5,7 +5,7 @@ import type { SquadMember, SquadRoom } from "@/lib/squad";
 import { QUIZ_ANSWER_MS, QUIZ_INTRO_MS, QUIZ_REVEAL_MS, QUIZ_RESULT_MS, quizTimes, type QuizAsk, type QuizKind, type QuizMode, type QuizQuestion } from "@/lib/squadMode";
 import { QuizView, ladleLine, quizPhase, quizRanks, resultLine, type QuizSound } from "./SquadQuiz";
 import { forgetSquadPage, loadSquadRoom, squadModeIn, squadQuizAnswer, squadQuizPicksNow, type QuizPicks } from "./squading";
-import { modeRow } from "./SquadModes";
+import { modeRow } from "./SquadPlays";
 
 const NOW = Date.parse("2026-11-20T13:00:00+08:00");
 const member = (h: number, more: Partial<SquadMember> = {}): SquadMember => ({

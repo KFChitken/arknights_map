@@ -23,7 +23,7 @@ import {
   type SquadTell,
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
-import { BALL_BACK_MS, fireLevel, throwOf, WOOD_MAX, woodNow, type SquadOn } from "@/lib/squadFire";
+import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
 import { beatOff, DANCE_TAP_EVERY_MS, DANCE_WINDOW_MS, danceEnds, type SquadModeKind } from "@/lib/squadMode";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
@@ -130,12 +130,6 @@ export const markSquadTouched = (h: number, bold: boolean) => touched.set({ ...t
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
-
-/** 玩点什么's card (SquadModes.tsx), over the map: 「玩」 → 玩点什么 opens it */
-const modesOpen = kept(false);
-export const useSquadModesOpen = () => useSyncExternalStore(modesOpen.on, modesOpen.get, () => false);
-export const openSquadModes = () => modesOpen.set(true);
-export const closeSquadModes = () => modesOpen.set(false);
 
 /**
  * The card of the mode playing (SquadDance.tsx, SquadQuiz.tsx), over the map's foot: open for the mode as it was
@@ -337,7 +331,6 @@ function setRoom(next: SquadRoom | null) {
     asked.clear();
     // out of the room: its fire goes too, and what it played
     fireOpen.set(false);
-    modesOpen.set(false);
     modeCard.set(null);
     danceJudge.set(null);
     quizPicks.set(null);
@@ -609,12 +602,6 @@ export const setSquadStopped = (on: boolean) => after(squadApi.stop(on));
 /** 人机, for the 站长 and the admins as host: one added, or what the one numbered h does */
 export const squadBot = (what: SquadBotDo, h?: number) => after(squadApi.bot(what, h));
 
-/** 「玩」's line under 添柴: the fire's level now, and the sticks in your hand */
-export function fireSub(r: SquadRoom, now = Date.now()) {
-  const me = r.members.find((m) => m.you);
-  return fmt(T.squad.fire.playSub, { level: fireLevel(r.fire.level, r.fire.at, now), n: woodNow(me?.wood ?? WOOD_MAX, me?.woodAt ?? null, now) });
-}
-
 /** How long a 篝火 burnt, in words: 47 分钟, 1 小时 12 分, 不到 1 分钟 */
 export function fireTime(ms: number) {
   const m = Math.floor(ms / 60_000);
@@ -692,7 +679,6 @@ export const squadServerNow = () => Date.now() + off;
 export async function squadOpenMode(kind: SquadModeKind) {
   await timed(() => squadApi.mode(kind));
   const r = await loadSquadRoom();
-  modesOpen.set(false);
   if (r?.mode) modeAsked.set(r.mode.at);
   if (r?.mode) modeCard.set(r.mode.at);
   return r;
@@ -710,7 +696,6 @@ export async function squadModeIn(into: boolean) {
   // in a quiz, one who joins answers from the next question on
   if (into && r?.mode?.kind === "quiz") quizPicks.set({ ...picksOf(r.mode.at), joinedAt: res.now });
   if (into) {
-    modesOpen.set(false);
     if (r?.mode) modeCard.set(r.mode.at);
   }
   return r;
@@ -758,12 +743,6 @@ export async function squadDanceTap(beats: ArrayLike<number> | null) {
   else if (danceJudge.get()?.ok !== res.ok) danceJudge.set({ ok: res.ok, at: here });
   ownCombo(res.combo, res.counted ? res.now : null);
   return res;
-}
-
-/** 「玩」's line under 玩点什么: the mode playing and how many are in it, else what there is */
-export function modesSub(r: SquadRoom, now = squadServerNow()) {
-  const m = r.mode && r.mode.endsAt > now ? r.mode : null;
-  return m ? fmt(T.squad.modes.playingNoBy, { mode: T.squad.modes.names[m.kind], n: m.in.length }) : T.squad.modes.playSub;
 }
 
 /** 龙门广场舞's song for this page: its beats, and its link where 听歌 is open to the player */

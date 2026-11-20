@@ -7,23 +7,23 @@ import type { SquadRoom } from "@/lib/squad";
 import type { SquadMode } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { SquadRoach } from "./SquadRoach";
-import { dismissSquadMode, squadModeIn, useSquadModeCard, useSquadModeAsked, useSquadModesOpen, useSquadRoom } from "./squading";
+import { dismissSquadMode, squadModeIn, useSquadModeCard, useSquadModeAsked, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
 /**
  * 「XX 开了龙门广场舞（2 人在跳），加入？」 (玩点什么, src/lib/squadMode.ts): a line at the top, over the map and the
  * room, to everyone in the room not in the mode playing, those who come in while it plays too. 加入 joins it (its card
- * opens), 不了 puts it away for that mode; not shown to its opener, nor while its card or 玩点什么 is open, nor to one
+ * opens), 不了 puts it away for that mode; not shown to its opener, nor while its card is open, nor to one
  * who was in it and went to watch.
  */
 
 /**
  * The mode the player is asked to join now, or null: one playing they are not in and did not open, not put away
- * (asked: the start of the one put away, or joined or left), its card (danceAt) and 玩点什么 not open
+ * (asked: the start of the one put away, or joined or left), its card (danceAt) not open
  */
-export function inviteOf(room: SquadRoom | null, asked: number | null, danceAt: number | null, modesOpen: boolean): SquadMode | null {
+export function inviteOf(room: SquadRoom | null, asked: number | null, danceAt: number | null): SquadMode | null {
   const mode = room?.mode;
-  if (!room || !mode || modesOpen || danceAt === mode.at || asked === mode.at) return null;
+  if (!room || !mode || danceAt === mode.at || asked === mode.at) return null;
   if (mode.by === room.you || mode.in.some((m) => m.h === room.you)) return null;
   return mode;
 }
@@ -75,10 +75,9 @@ export default function SquadModeInvite() {
   const room = useSquadRoom();
   const asked = useSquadModeAsked();
   const danceAt = useSquadModeCard();
-  const modesOpen = useSquadModesOpen();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ at: number; text: string } | null>(null);
-  const mode = inviteOf(room, asked, danceAt, modesOpen);
+  const mode = inviteOf(room, asked, danceAt);
   if (!room || !mode) return null;
   const join = async () => {
     setBusy(true);

@@ -50,13 +50,13 @@ import type { SquadModeKind } from "@/lib/squadMode";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
-import { openFishWin } from "../fish/winStore";
 import { useTick } from "../dayTurns";
 import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SmallFlame from "./SmallFlame";
 import SquadMateCard from "./SquadMateCard";
 import { ListenRow } from "./SquadListen";
+import SquadPlays from "./SquadPlays";
 import SquadTalk from "./SquadTalk";
 import SquadToMe from "./SquadToMe";
 import { useOperatorArt, type Art } from "../OperatorNames";
@@ -71,10 +71,6 @@ import {
   kickFromSquad,
   leaveSquadRoom,
   loadSquadFriends,
-  openSquadFire,
-  fireSub,
-  openSquadModes,
-  modesSub,
   openSquadRoom,
   saveSquadCard,
   sayInSquad,
@@ -1070,46 +1066,14 @@ function RoomView({
               <b>{T.squad.talk.open}</b>
               <small>{T.squad.talk.openSub}</small>
             </button>
-            {/* 「玩」: what there is to play in the room (钓鳞 so far) */}
+            {/* 「玩」: every game there is in the room */}
             <button type="button" className="sq-playbtn" aria-expanded={playing} aria-label={T.fish.pond.playLabel} onClick={() => setPlaying((p) => !p)}>
               {T.fish.pond.play}
             </button>
           </div>
           {playing && (
-            <div className="sq-playmenu" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setPlaying(false);
-                  openFishWin();
-                }}
-              >
-                <b>{T.fish.pond.fish}</b>
-                <small>{T.fish.pond.fishSub}</small>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setPlaying(false);
-                  openSquadFire();
-                }}
-              >
-                <b>{T.squad.fire.play}</b>
-                <small>{fireSub(room)}</small>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setPlaying(false);
-                  openSquadModes();
-                }}
-              >
-                <b>{T.squad.modes.play}</b>
-                <small>{modesSub(room)}</small>
-              </button>
+            <div className="sq-playmenu">
+              <SquadPlays room={room} onDone={() => setPlaying(false)} />
             </div>
           )}
           {/* a teammate's card, over the foot (and whatever it covers as the room scrolls under it) */}

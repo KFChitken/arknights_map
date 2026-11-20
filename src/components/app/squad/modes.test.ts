@@ -5,7 +5,7 @@ import type { SquadMember, SquadRoom } from "@/lib/squad";
 import type { DanceMode, SquadMode } from "@/lib/squadMode";
 import { DanceView, danceRow, musicWords, type DanceMusic } from "./SquadDance";
 import { InviteLine, inviteOf } from "./SquadModeInvite";
-import { ModesCard, modeRow } from "./SquadModes";
+import { PlayGrid, fireLook, modeRow, type FishLook } from "./SquadPlays";
 import { forgetSquadPage, heardSquad, loadSquadRoom, squadDanceJudgeNow, squadDanceTap, squadRoomNow } from "./squading";
 
 const NOW = Date.parse("2026-11-20T13:00:00+08:00");
@@ -65,57 +65,87 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
 });
 const nothing = () => {};
 
-describe("玩点什么", () => {
+describe("「玩」's tiles", () => {
   it("offers 开 while nothing plays, and says how long one who opened the last waits", () => {
     expect(modeRow(room(), "dance", NOW)).toEqual({ kind: "dance", label: "开", does: "open" });
     expect(modeRow(room({ modeAgain: NOW + 44_200 }), "dance", NOW)).toEqual({ kind: "dance", label: "45 秒后能再开", does: null });
     // its minute over, or the mode playing over (its end passed): 开 again
     expect(modeRow(room({ modeAgain: NOW - 1 }), "dance", NOW).does).toBe("open");
     expect(modeRow(room({ mode: dance({ endsAt: NOW }) }), "dance", NOW).does).toBe("open");
-  });
-
-  it("has the one playing joined, or its card opened by one in it, and says who opened it and how many are in it", () => {
     expect(modeRow(room({ mode: dance() }), "dance", NOW)).toEqual({ kind: "dance", label: "正在玩 · 加入", does: "join" });
     const mine = room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 3 }] }) });
     expect(modeRow(mine, "dance", NOW)).toEqual({ kind: "dance", label: "在玩 · 打开", does: "look" });
-    const html = (r: SquadRoom) => renderToStaticMarkup(createElement(ModesCard, { room: r, now: NOW, busy: false, msg: null, onAct: nothing, onClose: nothing }));
-    const out = html(room({ mode: dance() }));
-    expect(out).toContain("正在玩：龙门广场舞（企鹅物流开的，1 人）");
-    expect(out).toContain("<small>随时能加入</small>");
-    expect(out).toContain('<span class="btn join">正在玩 · 加入</span>');
-    // in it: no 随时能加入; its opener gone from the room: no name
-    expect(html(mine)).not.toContain("随时能加入");
-    expect(html(room({ mode: dance(), members: [member(1), member(3)] }))).toContain("正在玩：龙门广场舞（1 人）");
+    expect(modeRow(mine, "quiz", NOW)).toEqual({ kind: "quiz", label: "等这局完", does: null });
   });
 
-  it("says, while the room waits for its round, that one may play from coming in and how one joins late; in a round, how each ends", () => {
-    const html = (r: SquadRoom) => renderToStaticMarkup(createElement(ModesCard, { room: r, now: NOW, busy: false, msg: null, onAct: nothing, onClose: nothing }));
-    const waiting = html(room({ state: "wait", wentAt: null }));
-    expect(waiting).toContain("进房间就能玩，1 个人也能开");
-    expect(waiting).toContain("<em>随时加入</em>");
-    expect(waiting).toContain("1 个人就能跳，后来的人插进队里接着跳");
-    expect(waiting).toContain("开打时正在玩的不打断");
-    expect(waiting).not.toContain("一首歌");
-    const playing = html(room());
-    expect(playing).toContain("同一时间只玩一个，别人自己选加不加入");
-    expect(playing).toContain("<small>一首歌</small>");
-    expect(playing).toContain("广场舞：踩方舟歌的拍子跳，自己的音乐能关");
-    expect(playing).not.toContain("<em>");
+  const grid = (r: SquadRoom, fish: FishLook = "rest", msg: string | null = null) =>
+    renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish, busy: false, msg, onFish: nothing, onFire: nothing, onMode: nothing }));
+
+  it("shows every game as an icon and its name, nothing more", () => {
+    const html = grid(room({ fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 } }));
+    expect(html.match(/<button type="button" class="tile/g)).toHaveLength(5);
+    expect(html).toContain("<b>钓鳞</b>");
+    expect(html).toContain("<b>添柴</b>");
+    expect(html).toContain("<b>龙门广场舞</b>");
+    expect(html).toContain("<b>凯尔希随堂测</b>");
+    expect(html).toContain("<b>W 的礼物</b>");
+    expect(html).not.toContain("<small>");
+    expect(html).not.toContain('class="now"');
+  });
+
+  it("draws 钓鳞 as its line stands, and the fire as it burns with its level and the sticks in your hand", () => {
+    expect(grid(room(), "rest")).toContain('class="pg-ico fish rest"');
+    expect(grid(room(), "line")).toContain('class="pg-ico fish line"');
+    const bite = grid(room(), "bite");
+    expect(bite).toContain('class="pg-ico fish bite"');
+    expect(bite).toContain('class="tile k-fish alert"');
+    expect(bite).toContain('aria-label="钓鳞：咬钩了"');
+    expect([0, 1, 9, 10, 49, 50, 300].map(fireLook)).toEqual(["out", "small", "small", "big", "big", "roar", "roar"]);
+    const fire = (level: number, wood?: number) =>
+      grid(
+        room({
+          fire: { level, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 },
+          members: [member(1, wood === undefined ? {} : { wood, woodAt: NOW }), member(2), member(3), member(4)],
+        }),
+      );
+    const out = fire(0, 0);
+    expect(out).toContain('class="pg-ico fire out"');
+    expect(out).not.toContain('class="lv"');
+    expect(out).toContain('<em class="wood"><i aria-hidden="true"></i>0</em>');
+    const big = fire(23, 2);
+    expect(big).toContain('class="pg-ico fire big"');
+    expect(big).toContain('<em class="lv">Lv.23</em>');
+    expect(big).toContain('<em class="wood"><i aria-hidden="true"></i>2</em>');
+    expect(big).toContain('aria-label="篝火 Lv.23 · 手里 2 根柴"');
+    // a full hand never used
+    expect(fire(60)).toContain('<em class="wood"><i aria-hidden="true"></i>3</em>');
+  });
+
+  it("marks the mode playing (in it, or to join), the others off till it ends, and your wait after opening one", () => {
+    const playing = grid(room({ mode: dance() }));
+    expect(playing).toContain('<em class="tag join">加入</em>');
+    expect(playing).toContain('class="tile k-quiz off"');
+    expect(playing).toContain('<p class="now">正在玩：龙门广场舞（1 人）· 一次只能玩一个</p>');
+    const mine = grid(room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 3 }] }) }));
+    expect(mine).toContain('<em class="tag in">在玩</em>');
+    const waiting = grid(room({ modeAgain: NOW + 44_200 }));
+    expect(waiting.match(/<em class="tag">45s<\/em>/g)).toHaveLength(3);
+    expect(waiting).toContain('aria-label="龙门广场舞 · 45 秒后能再开"');
+    expect(grid(room(), "rest", "等这局完")).toContain('<p class="pmsg" role="status">等这局完</p>');
   });
 });
 
 describe("the line asking one to join", () => {
-  it("asks everyone in the room not in it, never its opener, nor one who put it away, joined or went to watch, nor over its card or 玩点什么", () => {
+  it("asks everyone in the room not in it, never its opener, nor one who put it away, joined or went to watch, nor over its card", () => {
     const m = dance();
-    expect(inviteOf(room({ mode: m }), null, null, false)).toBe(m);
-    expect(inviteOf(room({ mode: m }), m.at, null, false)).toBeNull();
-    expect(inviteOf(room({ mode: m }), null, m.at, false)).toBeNull();
-    expect(inviteOf(room({ mode: m }), null, null, true)).toBeNull();
-    expect(inviteOf(room({ mode: dance({ by: 1, in: [{ h: 1, combo: 0 }] }) }), null, null, false)).toBeNull();
-    expect(inviteOf(room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 0 }] }) }), null, null, false)).toBeNull();
+    expect(inviteOf(room({ mode: m }), null, null)).toBe(m);
+    expect(inviteOf(room({ mode: m }), m.at, null)).toBeNull();
+    expect(inviteOf(room({ mode: m }), null, m.at)).toBeNull();
+    expect(inviteOf(room({ mode: dance({ by: 1, in: [{ h: 1, combo: 0 }] }) }), null, null)).toBeNull();
+    expect(inviteOf(room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 0 }] }) }), null, null)).toBeNull();
     // a dance put away, and another opened later: asked again
-    expect(inviteOf(room({ mode: dance({ at: m.at + 90_000 }) }), m.at, null, false)).not.toBeNull();
-    expect(inviteOf(room(), null, null, false)).toBeNull();
+    expect(inviteOf(room({ mode: dance({ at: m.at + 90_000 }) }), m.at, null)).not.toBeNull();
+    expect(inviteOf(room(), null, null)).toBeNull();
   });
 
   it("names its opener and the mode, and how many dance", () => {

@@ -2862,40 +2862,13 @@ export const zh = {
     },
     /** 玩点什么 (src/components/app/squad/SquadModes.tsx): the modes, one at a time in a room; 「玩」 → 玩点什么 opens it */
     modes: {
-      title: "玩点什么",
-      sub: "同一时间只玩一个，别人自己选加不加入",
-      /** While the room waits for its round */
-      subWait: "进房间就能玩，1 个人也能开",
-      /** 「玩」's item for it */
-      play: "玩点什么",
-      playSub: "龙门广场舞、凯尔希随堂测、W 的礼物 · 一次玩一个",
-      playing: "正在玩：{mode}（{name}开的，{n} 人）",
-      /** Its opener gone from the room */
-      playingNoBy: "正在玩：{mode}（{n} 人）",
-      joinAny: "随时能加入",
+      /** What a mode's tile in 「玩」 does now (src/components/app/squad/SquadPlays.tsx), said when it cannot */
       open: "开",
       join: "正在玩 · 加入",
       in: "在玩 · 打开",
       wait: "等这局完",
       again: "{s} 秒后能再开",
-      note: "没加入的蟑螂在旁边围观，照样能钓鳞、扔东西、添柴、说话。同一个人开完一个，要等 1 分钟才能再开。",
-      noteWait: "钓鳞（卫戍池塘）、扔东西、添柴进房间就能用。开打时正在玩的不打断，接着玩完；房主点开始也不用等它。新进来的人收到一行邀请，自己选加不加入。",
-      close: "关上玩点什么",
       names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物" },
-      glyphs: { dance: "舞", quiz: "测", gift: "礼" },
-      lines: {
-        dance: "广场舞：踩方舟歌的拍子跳，自己的音乐能关",
-        quiz: "三秒抢答：干员剪影、立绘局部、BGM 前奏、方舟梗",
-        gift: "击鼓传花：传引线在烧的礼物盒，歌一停谁拿着谁被炸",
-      },
-      /** Each one's line while the room waits, with how one joins it late */
-      waitLines: {
-        dance: "1 个人就能跳，后来的人插进队里接着跳",
-        quiz: "1 个人自己练（不扣漏勺），2 人起比名次",
-        gift: "人不够人机来凑，后来的人下一轮坐进来",
-      },
-      tags: { dance: "随时加入", quiz: "下一题加入", gift: "下一轮加入" },
-      ends: { dance: "一首歌", quiz: "5 题", gift: "5 轮" },
       /** On a tile of the room, for one in it */
       tileTags: { dance: "在跳", quiz: "在答", gift: "在传" },
       /** Said to those who were in it or looking at it, as it ends */
@@ -2911,6 +2884,20 @@ export const zh = {
       inviteNo: "不了",
       inviteNoLabel: "不加入{mode}",
     },
+    /** 「玩」's tiles (src/components/app/squad/SquadPlays.tsx): every game there is, its icon and its name */
+    plays: {
+      /** 钓鳞's tile read out ({state}: how its line stands) */
+      fishLabel: "钓鳞：{state}",
+      fishStates: { rest: "没在钓", line: "浮漂在水里", bite: "咬钩了" },
+      /** 添柴's fire level on its tile */
+      level: "Lv.{n}",
+      /** On a mode's tile: you in it, it playing (join), or your wait after opening one ({s} seconds) */
+      in: "在玩",
+      join: "加入",
+      again: "{s}s",
+      /** Under the tiles while a mode plays */
+      playing: "正在玩：{mode}（{n} 人）· 一次只能玩一个",
+    },
     /** 龙门广场舞 (src/components/app/squad/SquadDance.tsx), a mode of 玩点什么 */
     dance: {
       title: "龙门广场舞",
@@ -2923,7 +2910,6 @@ export const zh = {
       ok: "准！",
       miss: "歪了",
       moves: { sway: "连击 5 以下：原地晃", hop: "连击 5 以上：跳起来", spin: "连击 10 以上：转圈" },
-      beats: "拍子从听歌蹦迪那套拍子表来",
       tap: "跳",
       tapLabel: "在拍子上点一下：跳",
       watching: "你在围观，点「加入一起跳」就能跳",
@@ -4190,9 +4176,8 @@ export const zh = {
       school: "鱼群来了 · {left}",
       protect: "爆护",
       play: "玩",
-      playLabel: "玩：钓鳞",
+      playLabel: "玩：钓鳞、添柴和小游戏",
       fish: "钓鳞",
-      fishSub: "卫戍池塘，等人时也能钓",
     },
     /** 卫戍池塘: a teammate's purple or better, to the whole room, with TA's name */
     roomShout: "{name} 钓到了 {item}{size}",
