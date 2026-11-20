@@ -162,7 +162,7 @@ async function quizOf(userId: string) {
   if (!mine) throw notInRoom();
   const [room] = await db.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id));
   if (!room || room.mode !== "quiz" || !room.modeData || !room.modeUntil) throw refuse(409, T.server.squad.noMode);
-  return { room, data: room.modeData, me: mine.me };
+  return { room, data: room.modeData as QuizData, me: mine.me };
 }
 
 const questionOf = (data: QuizData, n: unknown) => (Number.isInteger(n) && (n as number) >= 0 && (n as number) < data.qs.length ? data.qs[n as number] : null);
@@ -216,7 +216,7 @@ export async function answerQuiz(user: Pick<UserRow, "id">, body: Record<string,
   if (right) {
     first = await db.transaction(async (tx: Tx) => {
       const [locked] = await tx.select().from(squadRooms).where(eq(squadRooms.id, room.id)).for("update");
-      const fresh = locked?.mode === "quiz" ? locked.modeData : null;
+      const fresh = locked?.mode === "quiz" ? (locked.modeData as QuizData | null) : null;
       const fq = fresh?.qs[body.n as number];
       if (!fresh || !fq || fq.first) return false;
       fq.first = { h: me.handle, ms: Math.max(0, Math.round(t - q.at)) };

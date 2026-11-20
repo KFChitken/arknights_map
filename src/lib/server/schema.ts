@@ -24,7 +24,7 @@ import {
 import type { StatSnapshot } from "../dashboard";
 import type { PassPool } from "../passes";
 import type { RadarScan } from "../world/types";
-import type { QuizData } from "../squadMode";
+import type { GiftData, QuizData } from "../squadMode";
 
 /** PostGIS geography; only ever written through the generated column below. */
 const geography = customType<{ data: string }>({ dataType: () => "geography" });
@@ -1947,8 +1947,11 @@ export const squadRooms = pgTable(
     modeSongAt: at("mode_song_at"),
     modeUntil: at("mode_until"),
     modeLast: at("mode_last"),
-    /** 凯尔希随堂测's questions, answers and who got each first (src/lib/server/squadQuiz.ts QuizData), never sent as it is */
-    modeData: jsonb("mode_data").$type<QuizData>(),
+    /**
+     * The mode's own, never sent as it is: 凯尔希随堂测's questions, answers and who got each first (squadQuiz.ts QuizData);
+     * W 的礼物's rounds, seats and passes (squadGift.ts GiftData)
+     */
+    modeData: jsonb("mode_data").$type<QuizData | GiftData>(),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */

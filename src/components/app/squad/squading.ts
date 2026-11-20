@@ -769,6 +769,30 @@ export function modesSub(r: SquadRoom, now = squadServerNow()) {
 /** 龙门广场舞's song for this page: its beats, and its link where 听歌 is open to the player */
 export const squadDanceSong = () => timed(() => squadApi.song());
 
+/**
+ * 传 in W 的礼物, now on the server's clock as this page has it: shown at once (the gift goes on from your seat in the
+ * round as the page has it), then as the server took it; refused (it was not in your hands, or the song stopped), the
+ * room read again. Null when nothing was sent (no round going, or your seat not in it).
+ */
+export async function squadGiftPass() {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "gift") return null;
+  const at = squadServerNow();
+  const i = mode.rounds.findLastIndex((x) => x.at <= at);
+  const round = mode.rounds[i];
+  const seat = round ? round.seats.indexOf(r.you) : -1;
+  if (!round || round.hit !== undefined || seat < 0) return null;
+  const rounds = mode.rounds.map((x, k) => (k === i ? { ...x, taps: [...x.taps, { at, seat }] } : x));
+  room.set(withWant({ ...r, mode: { ...mode, rounds } }));
+  try {
+    return await timed(() => squadApi.pass(at));
+  } catch (e) {
+    void loadSquadRoom().catch(() => {});
+    throw e;
+  }
+}
+
 /** 凯尔希随堂测's question n for this page: its three, and its picture or (where 听歌 is open to the player) its song */
 export const squadQuizAsk = (n: number) => timed(() => squadApi.question(n));
 

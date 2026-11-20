@@ -12,7 +12,7 @@
  */
 
 /** The modes there are (⑦ adds them one by one) */
-export const MODE_KINDS = ["dance", "quiz"] as const;
+export const MODE_KINDS = ["dance", "quiz", "gift"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
 
@@ -70,7 +70,12 @@ type ModeBase = { by: number; at: number; in: { h: number; combo: number }[]; en
 export type DanceMode = ModeBase & { kind: "dance"; song: string; name: string; songAt: number };
 /** 凯尔希随堂测: its questions, each as far as it has gone (QuizQuestion) */
 export type QuizMode = ModeBase & { kind: "quiz"; questions: QuizQuestion[] };
-export type SquadMode = DanceMode | QuizMode;
+/**
+ * W 的礼物: its song as 龙门广场舞's (its 0 at songAt on the server's clock); the seed its 人机 pass by; the rounds
+ * begun (GiftRound); the mode's own 人机 (GiftBot). Its points (in) are how often each was hit.
+ */
+export type GiftMode = ModeBase & { kind: "gift"; song: string; name: string; songAt: number; seed: number; rounds: GiftRound[]; bots: GiftBot[] };
+export type SquadMode = DanceMode | QuizMode | GiftMode;
 
 // ---- 凯尔希随堂测 ----
 
@@ -170,3 +175,114 @@ export type QuizAnswered = { right: boolean; first: boolean; answer: number; now
  * only to one 听歌 is open to (LISTEN), while it is not paused and the site not gray
  */
 export type DanceSong = { song: string; dance: string; url?: string; lite?: string; now: number };
+
+// ---- W 的礼物 ----
+
+/**
+ * W 的礼物 (gift): 击鼓传花 with W's gift, a box with its fuse lit, round GIFT_SEATS seats about a drum: those in it
+ * first (as they came), the room's 人机, then the mode's own (in it alone, numbered from GIFT_BOT_FROM down) to fill
+ * them; one coming in takes a seat from the next round. The drum beats to a song as 龙门广场舞's. Each round the song
+ * plays GIFT_ROUND_MIN_MS–GIFT_ROUND_MAX_MS (decided as it opens, never told to the pages) while the gift goes round:
+ * one holding it passes it (传) to the next seat, or it goes by itself GIFT_HOLD_MS on; a 人机 passes it after
+ * giftBotHold. The song stops: 砰, the one holding it is turned over and, with two or more players in it, wears 漏勺
+ * GIFT_LADLE_MS (one alone practises); the next round starts GIFT_GAP_MS on, from them. GIFT_ROUNDS rounds, then
+ * GIFT_RESULT_MS of results.
+ */
+export const GIFT_SEATS = 4;
+export const GIFT_ROUNDS = 5;
+export const GIFT_LEAD_MS = 3_000;
+export const GIFT_ROUND_MIN_MS = 8_000;
+export const GIFT_ROUND_MAX_MS = 20_000;
+export const GIFT_GAP_MS = 4_000;
+export const GIFT_RESULT_MS = 6_000;
+export const GIFT_HOLD_MS = 2_000;
+export const GIFT_BOT_MIN_MS = 500;
+export const GIFT_BOT_MAX_MS = 1_200;
+export const GIFT_LADLE_MS = 60_000;
+/** A pass's own time, as the page sends it on the server's clock, taken within this before the server's now (as 跳's) */
+export const GIFT_EARLY_MS = 400;
+/** The mode's own 人机 are numbered from this down (the room's own are -1, -2, …) */
+export const GIFT_BOT_FROM = -100;
+
+/** A 传 by a player: when (on the server's clock), from which seat */
+export type GiftTap = { at: number; seat: number };
+/**
+ * A round as the pages have it: when it starts, who sits where (by number, GIFT_SEATS of them, in the order the gift
+ * goes), the seat it starts from, the passes players made; once its song stopped, when, and the seat hit (砰)
+ */
+export type GiftRound = { at: number; seats: number[]; from: number; taps: GiftTap[]; stop?: number; hit?: number };
+/** One of the mode's own 人机: its number, the number in its name, its look */
+export type GiftBot = { h: number; no: number; avatar: string; color: string };
+/**
+ * W 的礼物 as the server keeps it (squad_rooms.mode_data), never sent as it is: each round's start and stop decided as
+ * it opened, the rounds begun (a round's hit once its song stopped), the seed, the mode's own 人机
+ */
+export type GiftData = { seed: number; plan: { at: number; stop: number }[]; rounds: Omit<GiftRound, "stop">[]; bots: GiftBot[] };
+
+/** How long a 人机 holds the gift before passing it on: its k-th pass in round r, from the mode's seed, the same everywhere */
+export function giftBotHold(seed: number, r: number, k: number): number {
+  let x = (seed ^ Math.imul(r + 1, 0x9e3779b1) ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x7feb352d) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x846ca68b) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  return GIFT_BOT_MIN_MS + (x % (GIFT_BOT_MAX_MS - GIFT_BOT_MIN_MS + 1));
+}
+
+/**
+ * Where the gift is at t (the server's clock) in round r: the seat holding it, since when, and how many passes so far.
+ * Before the round starts, at its first seat. A player's seat (a number 0 or above) passes it at their own 传 (one from
+ * that seat within GIFT_HOLD_MS of getting it) or GIFT_HOLD_MS on; a 人机's at giftBotHold. A pass at t has happened.
+ */
+export function giftAt(round: Pick<GiftRound, "at" | "seats" | "from" | "taps">, seed: number, r: number, t: number) {
+  let seat = round.from;
+  let since = round.at;
+  let k = 0;
+  // passes take some time each, so this many is far past any round's end
+  for (let guard = 0; guard < 2_000; guard++) {
+    const h = round.seats[seat];
+    const tap = h < 0 ? undefined : round.taps.find((x) => x.seat === seat && x.at >= since && x.at <= since + GIFT_HOLD_MS);
+    const next = h < 0 ? since + giftBotHold(seed, r, k) : tap ? tap.at : since + GIFT_HOLD_MS;
+    if (next > t) break;
+    seat = (seat + 1) % round.seats.length;
+    since = next;
+    k += 1;
+  }
+  return { seat, since, k };
+}
+
+/**
+ * The seats of the next round from these (null: none yet): those gone from the mode (players) or the room (its 人机)
+ * leave theirs; players in it not seated yet (as they came), then the room's 人机, take the empty seats and those of
+ * the mode's own 人机; the mode's own 人机 fill the rest. Everyone else keeps their seat.
+ */
+export function giftSeats(prev: readonly (number | null)[], players: readonly number[], roomBots: readonly number[], bots: readonly number[]): number[] {
+  const seats: (number | null)[] = Array.from({ length: GIFT_SEATS }, (_, i) => prev[i] ?? null);
+  const here = new Set([...players, ...roomBots]);
+  for (let i = 0; i < seats.length; i++) {
+    const h = seats[i];
+    if (h !== null && h > GIFT_BOT_FROM && !here.has(h)) seats[i] = null;
+  }
+  for (const h of [...players, ...roomBots]) {
+    if (seats.includes(h)) continue;
+    let i = seats.indexOf(null);
+    if (i < 0) i = seats.findIndex((x) => x !== null && x <= GIFT_BOT_FROM);
+    if (i < 0) break;
+    seats[i] = h;
+  }
+  const free = bots.filter((h) => !seats.includes(h));
+  return seats.map((h) => (h === null ? free.shift()! : h));
+}
+
+/** The times of the rounds from a start (opened at `at`): each GIFT_GAP_MS after the last one's stop, lens their lengths */
+export function giftPlan(at: number, lens: readonly number[]) {
+  let t = at + GIFT_LEAD_MS;
+  return lens.map((len) => {
+    const r = { at: t, stop: t + len };
+    t = r.stop + GIFT_GAP_MS;
+    return r;
+  });
+}
+/** When W 的礼物 is over (its results shown): after its last round's 砰 */
+export const giftUntil = (plan: readonly { stop: number }[]) => (plan.at(-1)?.stop ?? 0) + GIFT_GAP_MS + GIFT_RESULT_MS;
+/** As late as it could be over, from its first round's start: what the pages are told till its last round's song has stopped */
+export const giftLatest = (first: number) => first + GIFT_ROUNDS * (GIFT_ROUND_MAX_MS + GIFT_GAP_MS) + GIFT_RESULT_MS;

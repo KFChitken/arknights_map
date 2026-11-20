@@ -32,7 +32,7 @@ import {
 import { squadOpen } from "@/lib/server/squadOpen";
 import { fireBoard } from "@/lib/server/fireBoard";
 import { answerQuiz, askQuestion } from "@/lib/server/squadQuiz";
-import { danceSong, danceTap, joinMode, openMode } from "@/lib/server/squadModes";
+import { danceSong, danceTap, joinMode, openMode, passGift } from "@/lib/server/squadModes";
 import { addWood, hitBack, shakeOff, throwAt } from "@/lib/server/squadPlay";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 
@@ -119,6 +119,7 @@ const OPS = {
   fireboard: { method: "POST", perMinute: 30 },
   question: { method: "POST", perMinute: 40 },
   answer: { method: "POST", perMinute: 40 },
+  pass: { method: "POST", perMinute: 120 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -143,6 +144,7 @@ const TALKING: ReadonlySet<Op> = new Set<Op>([
   "modein",
   "tap",
   "answer",
+  "pass",
 ]);
 
 type Ctx = { params: Promise<{ op: string }> };
@@ -232,6 +234,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await askQuestion(user, body));
     case "answer":
       return answer(await answerQuiz(user, body));
+    case "pass":
+      return answer(await passGift(user, body));
     case "fireboard":
       return answer(await fireBoard(user, body.week === "last" ? "last" : "this", { hidden: T.squad.fireBoard.hidden, you: T.squad.room.you }));
     case "say":

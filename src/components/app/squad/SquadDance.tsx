@@ -35,14 +35,14 @@ const DRIFT_S = 0.3;
 const JUDGE_MS = 600;
 
 const MUSIC_KEY = "squad.danceMusic";
-function musicWanted() {
+export function musicWanted() {
   try {
     return window.localStorage.getItem(MUSIC_KEY) !== "off";
   } catch {
     return true;
   }
 }
-function keepMusicWanted(on: boolean) {
+export function keepMusicWanted(on: boolean) {
   try {
     if (on) window.localStorage.removeItem(MUSIC_KEY);
     else window.localStorage.setItem(MUSIC_KEY, "off");
@@ -133,7 +133,7 @@ type Music = { can: boolean; want: boolean; src: string | null; songAt: number; 
  * drifts; it waits for the song's start. Says whether the browser refused to play it without a tap, and gives what
  * plays it from one (start; on: as the switch is about to be, else as it is), which also lets it play later on.
  */
-function useDanceMusic(m: Music) {
+export function useDanceMusic(m: Music) {
   const [blocked, setBlocked] = useState(false);
   const latest = useRef(m);
   useEffect(() => {

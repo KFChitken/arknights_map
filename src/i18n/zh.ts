@@ -741,6 +741,11 @@ export const zh = {
       answered: "这题你答过了。",
       answerLate: "这题时间到了。",
       notAnswering: "先加入才能答。",
+      notHolding: "礼物不在你手上。",
+      notPassing: "先加入才能传。",
+      giftStopped: "这一轮已经停了。",
+      giftNotYet: "这一轮还没开始。",
+      noGiftSong: "现在没有能跟着打鼓的歌。",
     },
     routes: {
       world: {
@@ -2863,7 +2868,7 @@ export const zh = {
       subWait: "进房间就能玩，1 个人也能开",
       /** 「玩」's item for it */
       play: "玩点什么",
-      playSub: "龙门广场舞、凯尔希随堂测 · 一次玩一个",
+      playSub: "龙门广场舞、凯尔希随堂测、W 的礼物 · 一次玩一个",
       playing: "正在玩：{mode}（{name}开的，{n} 人）",
       /** Its opener gone from the room */
       playingNoBy: "正在玩：{mode}（{n} 人）",
@@ -2876,20 +2881,32 @@ export const zh = {
       note: "没加入的蟑螂在旁边围观，照样能钓鳞、扔东西、添柴、说话。同一个人开完一个，要等 1 分钟才能再开。",
       noteWait: "钓鳞（卫戍池塘）、扔东西、添柴进房间就能用。开打时正在玩的不打断，接着玩完；房主点开始也不用等它。新进来的人收到一行邀请，自己选加不加入。",
       close: "关上玩点什么",
-      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测" },
-      glyphs: { dance: "舞", quiz: "测" },
-      lines: { dance: "广场舞：踩方舟歌的拍子跳，自己的音乐能关", quiz: "三秒抢答：干员剪影、立绘局部、BGM 前奏、方舟梗" },
+      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物" },
+      glyphs: { dance: "舞", quiz: "测", gift: "礼" },
+      lines: {
+        dance: "广场舞：踩方舟歌的拍子跳，自己的音乐能关",
+        quiz: "三秒抢答：干员剪影、立绘局部、BGM 前奏、方舟梗",
+        gift: "击鼓传花：传引线在烧的礼物盒，歌一停谁拿着谁被炸",
+      },
       /** Each one's line while the room waits, with how one joins it late */
-      waitLines: { dance: "1 个人就能跳，后来的人插进队里接着跳", quiz: "1 个人自己练（不扣漏勺），2 人起比名次" },
-      tags: { dance: "随时加入", quiz: "下一题加入" },
-      ends: { dance: "一首歌", quiz: "5 题" },
+      waitLines: {
+        dance: "1 个人就能跳，后来的人插进队里接着跳",
+        quiz: "1 个人自己练（不扣漏勺），2 人起比名次",
+        gift: "人不够人机来凑，后来的人下一轮坐进来",
+      },
+      tags: { dance: "随时加入", quiz: "下一题加入", gift: "下一轮加入" },
+      ends: { dance: "一首歌", quiz: "5 题", gift: "5 轮" },
       /** On a tile of the room, for one in it */
-      tileTags: { dance: "在跳", quiz: "在答" },
+      tileTags: { dance: "在跳", quiz: "在答", gift: "在传" },
       /** Said to those who were in it or looking at it, as it ends */
-      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了" },
+      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了" },
       /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
-      invites: { dance: "{name} 开了{mode}（{n} 人在跳），加入？", quiz: "{name} 开了{mode}（{n} 人在答），加入？" },
-      invitesNoBy: { dance: "{mode}正在跳（{n} 人），加入？", quiz: "{mode}正在答（{n} 人），加入？" },
+      invites: {
+        dance: "{name} 开了{mode}（{n} 人在跳），加入？",
+        quiz: "{name} 开了{mode}（{n} 人在答），加入？",
+        gift: "{name} 开了{mode}（{n} 人在传），加入？",
+      },
+      invitesNoBy: { dance: "{mode}正在跳（{n} 人），加入？", quiz: "{mode}正在答（{n} 人），加入？", gift: "{mode}正在传（{n} 人），加入？" },
       inviteJoin: "加入",
       inviteNo: "不了",
       inviteNoLabel: "不加入{mode}",
@@ -2931,6 +2948,41 @@ export const zh = {
       ended: "广场舞散场了",
     },
     /** 凯尔希随堂测 (src/components/app/squad/SquadQuiz.tsx), a mode of 玩点什么 */
+    /** W 的礼物 (src/components/app/squad/SquadGift.tsx), a mode of 玩点什么 */
+    gift: {
+      title: "W 的礼物",
+      count: "W 的礼物 · 第 {n} / {of} 轮",
+      startsIn: "W 的礼物 · {s} 秒后开始",
+      done: "W 的礼物 · 这一局完了",
+      /** Over the drum: the song playing ({name}), none known, or stopped */
+      drum: "♪ 咚 咚 咚 · {name}",
+      drumFree: "♪ 咚 咚 咚",
+      stopped: "♪ 歌停了",
+      /** The drum's own word */
+      dong: "咚",
+      yours: "W 的礼物在你手上，引线在烧！2 秒不传会自动传出去",
+      pass: "传",
+      passLabel: "把礼物传给下一个",
+      waiting: "等礼物转回来…",
+      nextIn: "下一轮 {s} 秒后",
+      startIn: "{s} 秒后开始",
+      boom: "砰！",
+      hit: "砰！{name} 被礼物炸翻了，扣漏勺 1 分钟",
+      hitYou: "砰！你被礼物炸翻了，扣漏勺 1 分钟",
+      /** A 人机 hit: it turns over in here alone */
+      hitBot: "砰！{name} 被礼物炸翻了",
+      hitPractice: "砰！你被礼物炸翻了（自己练，不扣漏勺）",
+      results: "这一局",
+      hits: "被炸 {n} 次",
+      none: "一次没被炸",
+      practice: "一个人自己练，不扣漏勺",
+      join: "下一轮加入",
+      joining: "下一轮坐进来",
+      watching: "你在围观，加入以后下一轮坐进来",
+      leave: "不玩了，去围观",
+      note: "W 的礼物（引线在烧的礼物盒）在一圈 4 个座位之间传，轮到你就点「传」，2 秒不传会自动传。鼓点跟着歌走：房主开着一起听就是那首，没开就从听歌里挑一首方舟歌。歌一停，礼物「砰」一声，拿着的蟑螂翻肚皮、头上扣漏勺 1 分钟。人不够人机来凑，一局 5 轮；1 个人时是自己练，不扣漏勺。",
+      close: "关上 W 的礼物",
+    },
     quiz: {
       title: "凯尔希随堂测",
       count: "凯尔希随堂测 · 第 {n} / {of} 题",

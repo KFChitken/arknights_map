@@ -12,11 +12,14 @@ import {
   DANCE_TAP_EVERY_MS,
   DANCE_TAP_LATE_MS,
   DANCE_WINDOW_MS,
+  GIFT_LEAD_MS,
+  giftUntil,
   isModeKind,
   MODE_AGAIN_MS,
   modeEnds,
   quizUntil,
   type DanceSong,
+  type GiftData,
   type QuizData,
 } from "../squadMode";
 import { db } from "./db";
@@ -28,6 +31,7 @@ import { squadMembers, squadRooms, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
 import { songList, songOf, type HeldSong } from "./songs";
 import { danceInRoom, roomOf, tellSquadPlay } from "./squad";
+import { forgetGift, giftRooms, makeGift, passIn, reseatGift, settleGift, watchGift } from "./squadGift";
 import { endQuiz, makeQuiz } from "./squadQuiz";
 
 /**
@@ -72,6 +76,7 @@ const endsOfMode = (room: Pick<RoomRow, "mode" | "modeUntil" | "modeLast">) =>
  */
 async function endModeIn(tx: Tx, room: Pick<RoomRow, "id" | "modeBy" | "mode">, at: number) {
   if (room.mode === "quiz") await endQuiz(tx, room.id, at);
+  if (room.mode === "gift") forgetGift(room.id);
   await tx
     .update(squadRooms)
     .set({ mode: null, modeBy: null, modeAt: null, modeSong: null, modeSongAt: null, modeUntil: null, modeLast: null, modeData: null })
@@ -102,10 +107,12 @@ function beatsOf(song: Pick<HeldSong, "id" | "dance">): DanceBeats | null {
   return beats;
 }
 
-/** One of 听歌's songs with beats to dance to, at random, or undefined when there is none */
-async function anyDanceSong(rand: (n: number) => number): Promise<HeldSong | undefined> {
+/** One of 听歌's songs with beats to dance to, at random (one of those at least `ms` long, where there are any), or undefined when there is none */
+async function anyDanceSong(rand: (n: number) => number, ms = 0): Promise<HeldSong | undefined> {
   const songs = [...(await songList()).byId.values()].filter((s) => beatsOf(s));
-  return songs.length ? songs[rand(songs.length)] : undefined;
+  const long = songs.filter((s) => s.seconds * 1000 >= ms);
+  const from = long.length ? long : songs;
+  return from.length ? from[rand(from.length)] : undefined;
 }
 
 /** For the tests: the songs' beats read afresh */
@@ -131,6 +138,7 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
     .innerJoin(users, eq(users.id, squadMembers.userId))
     .where(and(eq(squadMembers.roomId, mine.room.id), isNull(squadMembers.leftAt)));
   let fields: Pick<RoomRow, "modeSong" | "modeSongAt" | "modeUntil" | "modeLast" | "modeData">;
+  let gift: GiftData | null = null;
   if (body.kind === "quiz") {
     const quiz: QuizData | null = await makeQuiz(
       people.map((p) => p.u),
@@ -140,6 +148,17 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
     if (!quiz) throw refuse(409, T.server.squad.noQuiz);
     const until = new Date(quizUntil(quiz.qs));
     fields = { modeSong: null, modeSongAt: null, modeUntil: until, modeLast: until, modeData: quiz };
+  } else if (body.kind === "gift") {
+    // its rounds, and a song to drum to: 一起听's while one plays (from where it is), else one long enough at random
+    gift = await makeGift(mine.room.id, mine.me.handle, now, rand);
+    const until = giftUntil(gift.plan);
+    const [host] = await db.select({ hostId: squadRooms.hostId }).from(squadRooms).where(eq(squadRooms.id, mine.room.id));
+    const together = host ? await squadListenSongNow({ id: mine.room.id, hostId: host.hostId, people: people.map((p) => p.u.id) }, now) : null;
+    const listenSong = together ? await songOf(together.song) : undefined;
+    const song = together && listenSong && beatsOf(listenSong) ? listenSong : await anyDanceSong(rand, until - now - GIFT_LEAD_MS);
+    if (!song) throw refuse(409, T.server.squad.noGiftSong);
+    const songAt = song === listenSong && together ? together.start : now + GIFT_LEAD_MS;
+    fields = { modeSong: song.id, modeSongAt: new Date(songAt), modeUntil: new Date(until), modeLast: new Date(until), modeData: gift };
   } else {
     const [host] = await db.select({ hostId: squadRooms.hostId }).from(squadRooms).where(eq(squadRooms.id, mine.room.id));
     const together = host ? await squadListenSongNow({ id: mine.room.id, hostId: host.hostId, people: people.map((p) => p.u.id) }, now) : null;
@@ -178,10 +197,11 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
       .where(eq(squadRooms.id, room.id));
     await tx
       .update(squadMembers)
-      .set({ modeIn: true, modeCombo: 0, modeTapAt: null })
+      .set({ modeIn: true, modeCombo: 0, modeTapAt: body.kind === "gift" ? new Date(now) : null })
       .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt)));
     return { roomId: room.id, h: me.handle };
   });
+  if (gift) watchGift(done.roomId, gift, (id) => settleRoom(id));
   await tellSquadPlay(done.roomId, { kind: "mode", h: done.h, on: true });
   return { now };
 }
@@ -193,11 +213,16 @@ export async function joinMode(user: Pick<UserRow, "id">, body: Record<string, u
     const { room, me } = await lockedMine(tx, user.id);
     const ends = endsOfMode(room);
     if (ends === null || ends <= now) throw refuse(409, T.server.squad.noMode);
-    // in a quiz, one coming in answers from the next question on (as having answered this one)
+    // in a quiz, one coming in answers from the next question on (as having answered this one); in W 的礼物, when one
+    // came is where they sit, from the next round on
     await tx
       .update(squadMembers)
-      .set({ modeIn: into, modeCombo: 0, modeTapAt: into && room.mode === "quiz" ? new Date(now) : null })
+      .set({ modeIn: into, modeCombo: 0, modeTapAt: into && (room.mode === "quiz" || room.mode === "gift") ? new Date(now) : null })
       .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt)));
+    if (room.mode === "gift" && room.modeData) {
+      const data = structuredClone(room.modeData as GiftData);
+      if (await reseatGift(tx, room.id, data, now)) await tx.update(squadRooms).set({ modeData: data }).where(eq(squadRooms.id, room.id));
+    }
     return { roomId: room.id, h: me.handle };
   });
   await tellSquadPlay(done.roomId, { kind: "mode", h: done.h, on: into });
@@ -249,7 +274,7 @@ export async function danceSong(user: Pick<UserRow, "id" | "email">, now = Date.
   const mine = await roomOf(db, user.id);
   if (!mine) throw notInRoom();
   const [room] = await db.select({ mode: squadRooms.mode, song: squadRooms.modeSong }).from(squadRooms).where(eq(squadRooms.id, mine.room.id));
-  const song = room?.mode === "dance" && room.song ? await songOf(room.song) : undefined;
+  const song = (room?.mode === "dance" || room?.mode === "gift") && room.song ? await songOf(room.song) : undefined;
   if (!song || !song.dance) throw refuse(409, T.server.squad.noMode);
   const hear = listenOpen(user) && !listenSettings().paused && !grayUntil(now);
   return {
@@ -267,6 +292,8 @@ export async function danceSong(user: Pick<UserRow, "id" | "email">, now = Date.
  * cleared, and their rooms told. Says how many.
  */
 export async function sweepModes(now = Date.now()) {
+  // W 的礼物's rounds whose song stopped with no one there to see it (their own timers gone with a process)
+  for (const id of await giftRooms()) await settleRoom(id, now);
   const over = await db
     .select()
     .from(squadRooms)
@@ -292,4 +319,47 @@ export async function sweepModes(now = Date.now()) {
     }
   }
   return n;
+}
+
+// ---- W 的礼物 ----
+
+/**
+ * The rounds of W 的礼物 in this room whose song has stopped by now settled (squadGift.ts settleGift), and the room
+ * told; it ends when no player is left in it. Each round's own timer, the sweep and every 传 come here.
+ */
+export async function settleRoom(roomId: string, now = Date.now()) {
+  const done = await db.transaction(async (tx) => {
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
+    if (!room || room.endedAt || room.mode !== "gift" || !room.modeData) return { changed: false, ended: false };
+    const data = structuredClone(room.modeData as GiftData);
+    const { changed, empty } = await settleGift(tx, roomId, data, now);
+    if (changed) await tx.update(squadRooms).set({ modeData: data }).where(eq(squadRooms.id, roomId));
+    if (empty) await endModeIn(tx, room, now);
+    return { changed, ended: empty };
+  });
+  if (done.ended) await tellSquadPlay(roomId, { kind: "mode", on: false });
+  else if (done.changed) await tellSquadPlay(roomId, { kind: "gift" });
+  return done;
+}
+
+/**
+ * 传 in W 的礼物 (at: the server's clock as the page has it): the rounds settled first, then the gift, in the
+ * player's hands, on to the next seat; the room told. Its time as taken.
+ */
+export async function passGift(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  const mine = await roomOf(db, user.id);
+  if (!mine) throw notInRoom();
+  await settleRoom(mine.room.id, now);
+  const done = await db.transaction(async (tx) => {
+    const { room, me } = await lockedMine(tx, user.id);
+    const ends = endsOfMode(room);
+    if (room.mode !== "gift" || !room.modeData || ends === null || ends <= now) throw refuse(409, T.server.squad.noMode);
+    if (!me.modeIn) throw refuse(409, T.server.squad.notPassing);
+    const data = structuredClone(room.modeData as GiftData);
+    const passed = passIn(data, me.handle, body.at, now);
+    await tx.update(squadRooms).set({ modeData: data }).where(eq(squadRooms.id, room.id));
+    return { roomId: room.id, h: me.handle, at: passed.at };
+  });
+  await tellSquadPlay(done.roomId, { kind: "gift", h: done.h });
+  return { now, at: done.at };
 }

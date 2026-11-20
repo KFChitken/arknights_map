@@ -10,7 +10,7 @@ import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { modeEnds, type SquadMode } from "../squadMode";
+import { modeEnds, type GiftData, type QuizData, type SquadMode } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -106,6 +106,7 @@ import { kickFromHostListen, squadListensPlaying, squadListenView } from "./list
 import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, userBadges, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songOf } from "./songs";
+import { giftShownUntil, giftView } from "./squadGift";
 import { quizView } from "./squadQuiz";
 import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
@@ -510,7 +511,24 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
     endsAt,
     until: room.modeUntil.getTime(),
   };
-  if (room.mode === "quiz" && room.modeData) return { kind: "quiz", ...base, questions: await quizView(room.modeData, now) };
+  if (room.mode === "quiz" && room.modeData) return { kind: "quiz", ...base, questions: await quizView(room.modeData as QuizData, now) };
+  if (room.mode === "gift" && room.modeData && room.modeSong && room.modeSongAt) {
+    // its last round's stop not given away by its end
+    const data = room.modeData as GiftData;
+    const until = giftShownUntil(data, base.until, now);
+    return {
+      kind: "gift",
+      ...base,
+      endsAt: until,
+      until,
+      song: room.modeSong,
+      name: (await songOf(room.modeSong))?.name ?? "",
+      songAt: room.modeSongAt.getTime(),
+      seed: data.seed,
+      rounds: giftView(data, now),
+      bots: data.bots,
+    };
+  }
   if (room.mode !== "dance" || !room.modeSong || !room.modeSongAt) return null;
   return { kind: "dance", ...base, song: room.modeSong, name: (await songOf(room.modeSong))?.name ?? "", songAt: room.modeSongAt.getTime() };
 }
