@@ -30,6 +30,7 @@ import {
   touchMember,
 } from "@/lib/server/squad";
 import { squadOpen } from "@/lib/server/squadOpen";
+import { fireBoard } from "@/lib/server/fireBoard";
 import { danceSong, danceTap, joinMode, openMode } from "@/lib/server/squadModes";
 import { addWood, hitBack, shakeOff, throwAt } from "@/lib/server/squadPlay";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
@@ -70,6 +71,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST modein {in}              加入 the mode playing (in), or 不跳了，去围观 (in false)
  *   POST tap {at?}                跳: a tap in 龙门广场舞, at the server's clock as the page has it
  *   POST song                     龙门广场舞's song: its beats, and its link to one 听歌 is open to
+ *   POST fireboard {week}         火焰周榜 (src/lib/server/fireBoard.ts): this week's or last week's, and your room on it
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
  * While SQUAD keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -111,6 +113,7 @@ const OPS = {
   modein: { method: "POST", perMinute: 20 },
   tap: { method: "POST", perMinute: 400 },
   song: { method: "POST", perMinute: 20 },
+  fireboard: { method: "POST", perMinute: 30 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -219,6 +222,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await danceTap(user, body));
     case "song":
       return answer(await danceSong(user));
+    case "fireboard":
+      return answer(await fireBoard(user, body.week === "last" ? "last" : "this", { hidden: T.squad.fireBoard.hidden, you: T.squad.room.you }));
     case "say":
       return answer(await sayInRoom(user, body));
     // a page of before: its songs' buttons say to look again

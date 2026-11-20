@@ -4,12 +4,13 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { itemOf } from "@/lib/fish/items";
 import { type SquadRoom } from "@/lib/squad";
-import { BALL_BACK_MS, FIRE_DROP_MS, FIRE_MAX, fireLevel, THROW_EVERY_MS, WOOD_EVERY_MS, WOOD_MAX, woodNow } from "@/lib/squadFire";
+import { WEEK, weekStartOf } from "@/lib/hotList";
+import { BALL_BACK_MS, FIRE_DROP_MS, fireNow, THROW_EVERY_MS, WOOD_EVERY_MS, WOOD_MAX, woodNow } from "@/lib/squadFire";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
 import { listen } from "@/lib/server/live";
 import { forgetHits } from "@/lib/server/rateLimit";
-import { blocks, sessions, siteSettings, squadMembers, squadRooms, users } from "@/lib/server/schema";
+import { blocks, sessions, siteSettings, squadFireRooms, squadFireSticks, squadMembers, squadRooms, users } from "@/lib/server/schema";
 import { loadSettings } from "@/lib/server/siteSettings";
 import { flushSaysNow, forgetSquad } from "@/lib/server/squad";
 import { throwAt } from "@/lib/server/squadPlay";
@@ -97,7 +98,7 @@ function hear(u: Pick<User, "id">) {
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-20T06:00:00Z"));
-  await db.execute(sql`truncate ${users}, ${sessions}, ${squadRooms}, ${squadMembers}, ${siteSettings}, ${blocks} cascade`);
+  await db.execute(sql`truncate ${users}, ${sessions}, ${squadRooms}, ${squadMembers}, ${siteSettings}, ${blocks}, ${squadFireRooms}, ${squadFireSticks} cascade`);
   await loadSettings();
   await loadMods();
   forgetHits();
@@ -115,16 +116,16 @@ afterEach(async () => {
 });
 
 describe("篝火", () => {
-  it("goes up one a stick, from a hand of three growing one each 30 s, up to 5, and down one each minute left alone", async () => {
+  it("takes a stick a level up to Lv.10 and more after, with no top, from a hand of three growing one each 30 s", async () => {
     const host = await player("host");
     const a = await player("a");
     const room = await opened(host);
     await goIn(a, room);
     const heard = hear(a);
     const first = (await squad(host, "fire")).body!;
-    expect(first).toMatchObject({ fire: { level: 1, by: room.you }, wood: WOOD_MAX - 1 });
+    expect(first).toMatchObject({ fire: { level: 1, prog: 0, by: room.you, top: 1 }, up: true, wood: WOOD_MAX - 1 });
     expect(heard.some((t) => t.t === "room" && (t.what as { kind?: string })?.kind === "fire")).toBe(true);
-    expect((await view(a)).fire).toMatchObject({ level: 1, by: room.you, at: Date.now() });
+    expect((await view(a)).fire).toMatchObject({ level: 1, prog: 0, by: room.you, at: Date.now() });
     // the host's sticks are the host's alone
     expect((await view(a)).members.find((m) => !m.you)).not.toHaveProperty("wood");
     expect((await view(a)).members.find((m) => m.you)).toMatchObject({ wood: WOOD_MAX, woodAt: null });
@@ -136,16 +137,20 @@ describe("篝火", () => {
     const mine = (await view(host)).members.find((m) => m.you)!;
     expect(woodNow(mine.wood!, mine.woodAt!, Date.now())).toBe(1);
     expect((await squad(host, "fire")).body).toMatchObject({ fire: { level: 4 }, wood: 0 });
-    expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: FIRE_MAX } });
-    expect(await squad(a, "fire")).toMatchObject({ status: 409, body: { error: "火已经最大了。" } });
-    // left alone: down one a minute
+    // from Lv.10, two sticks a level: the first on towards it, the second puts it up; no top past the old 5
+    await db.update(squadRooms).set({ fireLevel: 10, fireProg: 0, fireAt: new Date(), fireTop: 10 }).where(eq(squadRooms.id, room.id));
+    expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: 10, prog: 1, top: 10 }, up: false });
+    expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: 11, prog: 0, top: 11 }, up: true });
+    expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: 11, prog: 1 }, up: false });
+    // left alone: down one a minute, the stick on towards Lv.12 burnt with it
     later(2 * FIRE_DROP_MS + 1_000);
     const f = (await view(a)).fire;
-    expect(fireLevel(f.level, f.at, Date.now())).toBe(FIRE_MAX - 2);
-    expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: FIRE_MAX - 1 } });
+    expect(fireNow(f.level, f.prog, f.at, Date.now())).toEqual({ level: 9, prog: 0 });
+    later(WOOD_EVERY_MS);
+    expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: 10, prog: 0, top: 11 }, up: true });
   });
 
-  it("counts how long it burnt in a 局 at the round's end, and keeps the room's longest", async () => {
+  it("keeps each 局's highest level and how long it burnt at the round's end, the last 局's and the room's highest", async () => {
     const host = await player("host");
     const a = await player("a");
     const room = await opened(host);
@@ -153,7 +158,7 @@ describe("篝火", () => {
     await squad(host, "fire");
     await squad(host, "fire");
     await squad(host, "fire");
-    // level 3: burns 3 minutes; a round in between
+    // Lv.3: burns 3 minutes; a round in between
     await db.update(squadMembers).set({ inGame: true }).where(eq(squadMembers.roomId, room.id));
     await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
     expect((await squad(host, "state", { to: "go" })).status).toBe(200);
@@ -161,16 +166,59 @@ describe("篝火", () => {
     await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
     expect((await squad(host, "state", { to: "wait" })).status).toBe(200);
     const after = await roomRow(room.id);
-    expect(after).toMatchObject({ fireLast: 90_000, fireBest: 90_000, fireLevel: 2 });
-    expect((await view(a)).fire).toMatchObject({ last: 90_000, best: 90_000 });
-    // it burns on into the next 局: the rest of its 3 minutes, and no more
+    expect(after).toMatchObject({ fireLast: 90_000, fireLevel: 2, fireProg: 0, fireTop: 2, fireLastTop: 3, fireBestTop: 3 });
+    expect((await view(a)).fire).toMatchObject({ last: 90_000, lastTop: 3, bestTop: 3, top: 2 });
+    // the next 局: half a minute on it is down to Lv.1, and a's three sticks put it up to Lv.4
+    later(WOOD_EVERY_MS);
+    await squad(a, "fire");
+    await squad(a, "fire");
+    await squad(a, "fire");
+    await db.update(squadMembers).set({ inGame: true }).where(eq(squadMembers.roomId, room.id));
+    await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
+    expect((await squad(host, "state", { to: "go" })).status).toBe(200);
+    await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
+    expect((await squad(host, "state", { to: "wait" })).status).toBe(200);
+    expect(await roomRow(room.id)).toMatchObject({ fireLastTop: 4, fireBestTop: 4, fireTop: 4 });
     later(10 * 60_000);
     await db.update(squadMembers).set({ inGame: true }).where(eq(squadMembers.roomId, room.id));
     await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
     expect((await squad(host, "state", { to: "go" })).status).toBe(200);
     await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
     expect((await squad(host, "state", { to: "wait" })).status).toBe(200);
-    expect(await roomRow(room.id)).toMatchObject({ fireLast: 90_000, fireBest: 90_000, fireLevel: 0 });
+    expect(await roomRow(room.id)).toMatchObject({ fireLevel: 0, fireLastTop: 4, fireBestTop: 4, fireTop: 0 });
+  });
+
+  it("counts each stick for 火焰周榜 with the room's highest that week, while the week it was opened lasts", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const room = await opened(host);
+    await goIn(a, room);
+    await squad(host, "fire");
+    later(1_000);
+    await squad(a, "fire");
+    await squad(a, "fire");
+    const week = new Date(weekStartOf(Date.now()));
+    expect(await db.select().from(squadFireRooms)).toEqual([{ roomId: room.id, week, peak: 3, peakAt: new Date(Date.now()) }]);
+    const sticks = await db.select().from(squadFireSticks);
+    expect(sticks.map((r) => [r.userId, r.sticks, r.week])).toEqual(
+      expect.arrayContaining([
+        [host.id, 1, week],
+        [a.id, 2, week],
+      ]),
+    );
+    // down and up again to the same height: the first time it got there stays
+    const firstAt = (await db.select().from(squadFireRooms))[0].peakAt;
+    later(2 * FIRE_DROP_MS);
+    later(WOOD_EVERY_MS * 3);
+    await squad(a, "fire");
+    expect((await db.select().from(squadFireRooms))[0]).toMatchObject({ peak: 3, peakAt: firstAt });
+    // past Monday 04:00: the room was opened last week, and counts no more
+    vi.setSystemTime(new Date(week.getTime() + WEEK + 60_000));
+    await db.update(squadRooms).set({ fireAt: new Date(), fireLevel: 3 }).where(eq(squadRooms.id, room.id));
+    await squad(host, "fire");
+    await squad(host, "fire");
+    expect((await db.select().from(squadFireRooms))[0].peak).toBe(3);
+    expect((await db.select().from(squadFireSticks)).find((r) => r.userId === host.id)?.sticks).toBe(1);
   });
 });
 

@@ -15,6 +15,7 @@ import {
   type EarnedBadge,
   type ShownBadge,
 } from "@/lib/badges";
+import { beijingDate } from "@/lib/beijing";
 import type { Me } from "@/lib/world/types";
 import Sheet from "./Sheet";
 
@@ -45,7 +46,7 @@ export function BadgePill({ badge }: { badge: ShownBadge }) {
     <span className="badge-pill" style={b.pill}>
       <BadgeImg id={b.id} size={22} alt="" />
       {b.name}
-      {badge.serial && <span className="serial">{serialText(badge.serial)}</span>}
+      {badge.serial && !b.ranked && <span className="serial">{serialText(badge.serial)}</span>}
     </span>
   );
 }
@@ -196,7 +197,13 @@ export function BadgeWall({
                         <BadgeImg id={b.id} size={54} alt="" />
                         <span className="badge-name">{b.name}</span>
                         <span className={e.serial ? "cell-note serial" : "cell-note"}>
-                          {e.until ? daysLeft(e.until) : e.serial ? serialText(e.serial) : fmt(T.badges.gotOn, { day: day(e.at) })}
+                          {e.until
+                            ? b.ranked
+                              ? fmt(T.lib.badges.ranked.cell, { left: daysLeft(e.until) })
+                              : daysLeft(e.until)
+                            : e.serial
+                              ? serialText(e.serial)
+                              : fmt(T.badges.gotOn, { day: day(e.at) })}
                         </span>
                       </button>
                     );
@@ -342,6 +349,12 @@ const CONFETTI: { x: number; y: number; w: number; h: number; c: string; r: numb
   { x: 0.71, y: 0.15, w: 10, h: 4, c: "#ff7eb6", r: 62 },
 ];
 
+/** 「11/30」: the Beijing day a time falls on, month and day */
+const monthDay = (at: number) => {
+  const [, m, d] = beijingDate(at).split("-");
+  return `${Number(m)}/${Number(d)}`;
+};
+
 /** 获得新称号: shown once per badge, over everything else. */
 export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onWear: () => void; onLater: () => void }) {
   const b = badgeById(earned.id);
@@ -367,7 +380,7 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
       ))}
       <div className="new-badge-body">
         <span className="new-badge-kicker">NEW TITLE</span>
-        <span className="new-badge-sub">{T.badges.newTitle}</span>
+        <span className="new-badge-sub">{b.ranked ? T.lib.badges.ranked.sub : T.badges.newTitle}</span>
         <div className="new-badge-art">
           <div className="rays" aria-hidden="true" />
           <div className="glow" aria-hidden="true" />
@@ -376,9 +389,12 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
         <div className="new-badge-banner">
           <strong>{b.name}</strong>
           <span>
-            {earned.serial ? serialText(earned.serial) : b.code} · {series?.code}
+            {b.ranked && earned.serial
+              ? fmt(T.lib.badges.ranked.place, { n: earned.serial })
+              : `${earned.serial ? serialText(earned.serial) : b.code} · ${series?.code ?? ""}`}
           </span>
         </div>
+        {b.ranked && earned.until && <p className="new-badge-until">{fmt(T.lib.badges.ranked.until, { date: monthDay(earned.until) })}</p>}
         <p className="new-badge-quote">{fmtParts(T.common.quoted, { text: quoteOf(b, earned.serial) })}</p>
         <p className="new-badge-condition">{b.condition}</p>
         <div className="new-badge-actions">

@@ -45,7 +45,7 @@ import {
   type SquadStrategy,
 } from "@/lib/squad";
 import { squadApi, SquadRefused } from "@/lib/squadClient";
-import { FIRE_DROP_MS, fireLevel } from "@/lib/squadFire";
+import { FIRE_DROP_MS, fireLevel, fireWarm } from "@/lib/squadFire";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
@@ -53,6 +53,7 @@ import { openFishWin } from "../fish/winStore";
 import { useTick } from "../dayTurns";
 import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
+import SmallFlame from "./SmallFlame";
 import SquadMateCard from "./SquadMateCard";
 import { ListenRow } from "./SquadListen";
 import SquadTalk from "./SquadTalk";
@@ -92,6 +93,7 @@ import {
   useSquadRoom,
   useSquadShowName,
   useSquadNoThrow,
+  useSquadFireHide,
   useSquadTouched,
   type SquadLine,
   type SquadMoveDone,
@@ -171,6 +173,7 @@ export default function SquadSheet(props: Props) {
   const showName = savedShow === undefined ? props.showName : savedShow;
   // 别人扔我 turned off (as me() gave it, or as saved since)
   const noThrow = useSquadNoThrow() ?? false;
+  const fireHide = useSquadFireHide() ?? false;
   const [view, setView] = useState<SquadView>(props.start ?? (room ? "room" : "list"));
   // what the card was asked for, to go on with once it is filled in
   const [then, setThen] = useState<(() => void) | null>(null);
@@ -239,10 +242,11 @@ export default function SquadSheet(props: Props) {
         card={card}
         showName={showName}
         noThrow={noThrow}
+        fireHide={fireHide}
         first={!card}
         busy={busy}
-        onSave={async (c, show, off) => {
-          const ok = await run(() => saveSquadCard(c, c ? show : undefined, off));
+        onSave={async (c, show, off, hide) => {
+          const ok = await run(() => saveSquadCard(c, c ? show : undefined, off, hide));
           if (ok === undefined) return;
           onToast(c ? T.squad.card.saved : T.squad.card.cleared);
           const go = then;
@@ -810,6 +814,7 @@ function CardView({
   card,
   showName,
   noThrow,
+  fireHide,
   first,
   busy,
   onSave,
@@ -820,15 +825,18 @@ function CardView({
   showName: boolean;
   /** 别人扔我 turned off */
   noThrow: boolean;
+  /** 火焰周榜写我的名字 turned off */
+  fireHide: boolean;
   first: boolean;
   busy: boolean;
-  onSave: (c: SquadCard | null, showName: boolean, noThrow: boolean) => void;
+  onSave: (c: SquadCard | null, showName: boolean, noThrow: boolean, fireHide: boolean) => void;
   onUp: () => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<SquadCard | null>(card);
   const [show, setShow] = useState(showName);
   const [off, setOff] = useState(noThrow);
+  const [hide, setHide] = useState(fireHide);
   const art = useOperatorArt();
   // a strategy or 难度 picked first, with no core alliance yet, takes 随机应变 with it
   const d: SquadCard = draft ?? { core: NO_CORE, strategy: null, level: null };
@@ -841,11 +849,11 @@ function CardView({
       onClose={onClose}
       footer={
         <div className="sq-foot">
-          <button className="primary grow" disabled={busy || !draft} onClick={() => draft && onSave(draft, show, off)}>
+          <button className="primary grow" disabled={busy || !draft} onClick={() => draft && onSave(draft, show, off, hide)}>
             {T.squad.card.save}
           </button>
           {card && (
-            <button className="ghost" disabled={busy} onClick={() => onSave(null, false, off)}>
+            <button className="ghost" disabled={busy} onClick={() => onSave(null, false, off, hide)}>
               {T.squad.card.clear}
             </button>
           )}
@@ -883,6 +891,13 @@ function CardView({
         <span>
           {T.squad.card.throwMe}
           <small>{T.squad.card.throwMeHint}</small>
+        </span>
+      </label>
+      <label className="sq-show">
+        <input type="checkbox" checked={!hide} onChange={(e) => setHide(!e.target.checked)} />
+        <span>
+          {T.squad.card.fireHide}
+          <small>{T.squad.card.fireHideHint}</small>
         </span>
       </label>
     </Sheet>
@@ -1028,7 +1043,7 @@ function RoomView({
     <Sheet
       title={`${levelName(room.level)}${T.squad.dot}${srv(room.server)}`}
       className="sq-sheet sq-in"
-      style={{ "--sq-warm": (warmth * 0.045).toFixed(3) } as CSSProperties}
+      style={{ "--sq-warm": fireWarm(warmth).toFixed(4) } as CSSProperties}
       head={
         <div className="sq-head">
           <button className="link" onClick={onList}>
@@ -1637,6 +1652,7 @@ function MemberTile({
       {dancing && <span className="dz">{T.squad.dance.tileTag}</span>}
       <span className="nm">
         {m.name}
+        {m.fireTop && <SmallFlame label={T.lib.badges.firewatch.name} />}
         {m.you && <small>{T.squad.room.you}</small>}
         {m.friend && <small className="fr">{T.squad.room.friend}</small>}
       </span>

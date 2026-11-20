@@ -52,7 +52,7 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   staff: false,
   members: [member(1), member(2), member(3), member(4)],
   wentAt: NOW - 600_000,
-  fire: { level: 0, at: NOW, by: null, best: 0, last: null },
+  fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 },
   mode: null,
   endsAt: NOW + 3_600_000,
   endsWhy: "idle",

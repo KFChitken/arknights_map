@@ -1,14 +1,14 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { FISH_ITEMS } from "../fish/items";
 import { NOT_IN_ROOM } from "../squad";
+import { weekStartOf } from "../hotList";
 import {
   BALL_BACK_MS,
-  FIRE_MAX,
   shakes,
-  fireLevel,
+  fireAdd,
   fireLit,
   THROW_EVERY_MS,
   throwOf,
@@ -22,12 +22,13 @@ import { blockedBetween } from "./blocks";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { allow, hasRoom } from "./rateLimit";
-import { squadMembers, squadRooms, users, type UserRow } from "./schema";
+import { squadFireRooms, squadFireSticks, squadMembers, squadRooms, users, type UserRow } from "./schema";
 import { roomOf, tellSquadPlay, throwInRoom } from "./squad";
 
 /**
  * 篝火 and 扔东西 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑤; the rules in src/lib/squadFire.ts). 添一根: a stick from the
- * hand (WOOD_MAX, one growing each WOOD_EVERY_MS) puts the fire up one, FIRE_MAX at most; the room is told. 扔: one of
+ * hand (WOOD_MAX, one growing each WOOD_EVERY_MS) goes on the fire, up one level once enough are on (fireNeed); the
+ * room is told, and 火焰周榜 counts it (src/lib/server/fireBoard.ts) while the room's week lasts. 扔: one of
  * THROWS at someone in the room, THROW_EVERY_MS apart and THROWS_AT_A_MINUTE a minute at the same one at most, never
  * at one who turned 别人扔我 off or between two who blocked each other; told to the room with its lines, nothing kept
  * but what stays a while (on the head, asleep, dancing, a ball to send back). A ball comes back with a tap
@@ -58,31 +59,63 @@ async function lockedMine(tx: Tx, userId: string) {
   return { room, me };
 }
 
-/** 添一根: the fire one up, a stick less in hand; the room told */
-export async function addWood(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ now: number; fire: SquadFire; wood: number; woodAt: number }> {
+/**
+ * 添一根: a stick on the fire as it is now (fireAdd), up one level once enough are on; a stick less in hand; the room
+ * told. 火焰周榜, in the same transaction, while the room's week lasts (a room opened before this Monday 04:00 counts
+ * no more): the stick to the player, and the room's highest that week when this is higher.
+ */
+export async function addWood(
+  user: Pick<UserRow, "id">,
+  now = Date.now(),
+): Promise<{ now: number; fire: SquadFire; up: boolean; wood: number; woodAt: number }> {
   const done = await db.transaction(async (tx) => {
     const { room, me } = await lockedMine(tx, user.id);
     const woodAt = me.woodAt?.getTime() ?? null;
     if (woodNow(me.wood, woodAt, now) < 1) throw refuse(409, T.server.squad.noWood);
     const at = room.fireAt?.getTime() ?? null;
-    const level = at === null ? 0 : fireLevel(room.fireLevel, at, now);
-    if (level >= FIRE_MAX) throw refuse(409, T.server.squad.fireFull);
+    const next = fireAdd(room.fireLevel, room.fireProg, at, now);
     // what it burnt since it was last put, counted to this 局 before it is put again
     const burn = room.fireBurn + (at === null ? 0 : fireLit(room.fireLevel, at, now));
+    const top = Math.max(room.fireTop, next.level);
     const hand = woodAfter(me.wood, woodAt, now);
     await tx
       .update(squadRooms)
-      .set({ fireLevel: level + 1, fireAt: new Date(now), fireBy: me.handle, fireBurn: burn })
+      .set({ fireLevel: next.level, fireProg: next.prog, fireAt: new Date(now), fireBy: me.handle, fireBurn: burn, fireTop: top })
       .where(eq(squadRooms.id, room.id));
     await tx
       .update(squadMembers)
       .set({ wood: hand.wood, woodAt: new Date(hand.at) })
       .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.userId, user.id), isNull(squadMembers.leftAt)));
-    const fire: SquadFire = { level: level + 1, at: now, by: me.handle, best: room.fireBest, last: room.fireLast };
-    return { roomId: room.id, h: me.handle, fire, hand };
+    const week = weekStartOf(room.createdAt.getTime());
+    if (week === weekStartOf(now)) {
+      const when = new Date(week);
+      await tx
+        .insert(squadFireSticks)
+        .values({ roomId: room.id, userId: user.id, week: when, sticks: 1, firstAt: new Date(now) })
+        .onConflictDoUpdate({ target: [squadFireSticks.roomId, squadFireSticks.userId], set: { sticks: sql`${squadFireSticks.sticks} + 1` } });
+      await tx
+        .insert(squadFireRooms)
+        .values({ roomId: room.id, week: when, peak: next.level, peakAt: new Date(now) })
+        .onConflictDoUpdate({
+          target: squadFireRooms.roomId,
+          set: { peak: next.level, peakAt: new Date(now) },
+          setWhere: sql`${squadFireRooms.peak} < ${next.level}`,
+        });
+    }
+    const fire: SquadFire = {
+      level: next.level,
+      prog: next.prog,
+      at: now,
+      by: me.handle,
+      top,
+      last: room.fireLast,
+      lastTop: room.fireLastTop,
+      bestTop: room.fireBestTop,
+    };
+    return { roomId: room.id, h: me.handle, fire, up: next.up, hand };
   });
   await tellSquadPlay(done.roomId, { kind: "fire", h: done.h });
-  return { now, fire: done.fire, wood: done.hand.wood, woodAt: done.hand.at };
+  return { now, fire: done.fire, up: done.up, wood: done.hand.wood, woodAt: done.hand.at };
 }
 
 /** 扔: item (THROWS, by number) at the one numbered to in the room; what stays on TA is kept a while; the room told */

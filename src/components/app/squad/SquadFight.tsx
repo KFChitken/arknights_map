@@ -9,6 +9,7 @@ import { shakes } from "@/lib/squadFire";
 import { ShieldIcon } from "../chrome/parts";
 import { useOperatorArt } from "../OperatorNames";
 import { useAbove, useWide } from "./SquadBar";
+import SmallFlame from "./SmallFlame";
 import SquadMateCard from "./SquadMateCard";
 import { ListenAsk, ListenNote } from "./SquadListen";
 import { CoreBadge, extraNames, StrategyFace } from "./SquadPicks";
@@ -353,7 +354,10 @@ export default function SquadFight({
             </span>
           )}
         </span>
-        <span className="nm">{m.name}</span>
+        <span className="nm">
+          {m.name}
+          {m.fireTop && <SmallFlame label={T.lib.badges.firewatch.name} />}
+        </span>
         <span className="cr">
           <CoreBadge core={m.core} />
         </span>

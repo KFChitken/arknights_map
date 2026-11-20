@@ -179,6 +179,8 @@ export const users = pgTable("users", {
   squadShowName: boolean("squad_show_name").notNull().default(false),
   /** 卫戍名片's 别人扔我 turned off: nothing may be thrown at them in a room (src/lib/server/squadPlay.ts) */
   squadNoThrow: boolean("squad_no_throw").notNull().default(false),
+  /** 火焰周榜写我的名字 turned off: the board writes 「一位舟P」 for them, their place and 篝火守夜人 as before */
+  squadFireHide: boolean("squad_fire_hide").notNull().default(false),
   /** They were told once, with their first guest, not to keep the main roach by their door */
   visitTipShown: boolean("visit_tip_shown").notNull().default(false),
   /** 求助 (src/lib/server/help.ts): when they last looked at their 触须之交's requests, for the dot on the 触须之交 card */
@@ -1917,16 +1919,21 @@ export const squadRooms = pgTable(
     schoolUntil: at("school_until"),
     schools: smallint("schools").notNull().default(0),
     /**
-     * 篝火 (src/lib/squadFire.ts, src/lib/server/squadPlay.ts): its level as put at fire_at (null: never lit), by one's
-     * number in the room; how long it burnt this 局 before fire_at (ms; below 0 by what of fire_at's burning was the
-     * last 局's); the room's longest 局 and the last one's (ms)
+     * 篝火 (src/lib/squadFire.ts, src/lib/server/squadPlay.ts): its level as put at fire_at (null: never lit), with
+     * fire_prog sticks on towards the next, by one's number in the room; how long it burnt this 局 before fire_at (ms;
+     * below 0 by what of fire_at's burning was the last 局's); the room's longest 局 and the last one's (ms, no longer
+     * shown); the highest level this 局, the last 局's, and the room's
      */
     fireLevel: smallint("fire_level").notNull().default(0),
+    fireProg: smallint("fire_prog").notNull().default(0),
     fireAt: at("fire_at"),
     fireBy: smallint("fire_by"),
     fireBurn: integer("fire_burn").notNull().default(0),
     fireBest: integer("fire_best").notNull().default(0),
     fireLast: integer("fire_last"),
+    fireTop: smallint("fire_top").notNull().default(0),
+    fireLastTop: smallint("fire_last_top").notNull().default(0),
+    fireBestTop: smallint("fire_best_top").notNull().default(0),
     /**
      * 玩点什么 (src/lib/squadMode.ts, src/lib/server/squadModes.ts): the one mode playing (null: none), opened by one's
      * number at mode_at; 龙门广场舞's song, where its start is on the server's clock (mode_song_at, the song's 0), and
@@ -2327,6 +2334,48 @@ export const fishNets = pgTable("fish_nets", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   since: at("since").notNull(),
+});
+
+/**
+ * 火焰周榜 (src/lib/server/fireBoard.ts): each room's fire, for the week the room was opened in (from Monday 04:00
+ * Beijing time, src/lib/hotList.ts weekStartOf), at its highest that week and when it first got there (the earlier
+ * first among those as high; never shown). No key to the room: it stays after the room is gone, till the board of
+ * its week is settled and the week after.
+ */
+export const squadFireRooms = pgTable(
+  "squad_fire_rooms",
+  {
+    roomId: uuid("room_id").primaryKey(),
+    week: at("week").notNull(),
+    peak: smallint("peak").notNull().default(0),
+    peakAt: at("peak_at"),
+  },
+  (t) => [index("squad_fire_rooms_week_idx").on(t.week, t.peak)],
+);
+
+/** 火焰周榜: how many sticks each player put on each room's fire, that room's week; and when they put their first */
+export const squadFireSticks = pgTable(
+  "squad_fire_sticks",
+  {
+    roomId: uuid("room_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    week: at("week").notNull(),
+    sticks: integer("sticks").notNull().default(0),
+    firstAt: at("first_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.roomId, t.userId] }), index("squad_fire_sticks_week_idx").on(t.week)],
+);
+
+/**
+ * 火焰周榜's weeks settled (each once, by the main process after its Monday 04:00): when, and its board as it was then
+ * (each row's place, level, room and the players named, by id; names are looked up as it is shown)
+ */
+export const squadFireWeeks = pgTable("squad_fire_weeks", {
+  week: at("week").primaryKey(),
+  settledAt: at("settled_at").notNull().defaultNow(),
+  board: jsonb("board").$type<{ rank: number; peak: number; room: string; users: string[] }[]>().notNull(),
 });
 
 export type UserRow = typeof users.$inferSelect;

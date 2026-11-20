@@ -8,6 +8,7 @@ import { INVITE_MS, QUIET_AFTER_LATER_MS } from "../listen";
 import { displayName } from "../profile";
 import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
+import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
 import { danceEnds, type SquadMode } from "../squadMode";
 import {
@@ -102,7 +103,7 @@ import { nudge, onToldSquad, tellSquad } from "./live";
 import { drawnLook } from "./looks";
 import { allow } from "./rateLimit";
 import { kickFromHostListen, squadListensPlaying, squadListenView } from "./listenRooms";
-import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, users, type UserRow } from "./schema";
+import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, userBadges, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songOf } from "./songs";
 import { squadOpen, squadShown } from "./squadOpen";
@@ -389,11 +390,12 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         ...(pass ? { pass } : {}),
       };
     });
-  // 卫戍池塘: who has a line in it, the 鳞 of this 局, today's 空军司令
+  // 卫戍池塘: who has a line in it, the 鳞 of this 局, today's 空军司令; and who wears 篝火守夜人 this week
   const ids = rows.map((r) => r.u.id);
-  const [inPond, admirals] = await Promise.all([
+  const [inPond, admirals, watching] = await Promise.all([
     db.select({ userId: fishLines.userId }).from(fishLines).where(and(inArray(fishLines.userId, ids), eq(fishLines.spot, "pond"))),
     db.select({ userId: fishDays.userId }).from(fishDays).where(and(inArray(fishDays.userId, ids), eq(fishDays.day, siteDay(now)), eq(fishDays.admiral, true))),
+    fireWatchers(ids, now),
   ]);
   const fishing = new Set(inPond.map((r) => r.userId));
   const admiral = new Set(admirals.map((r) => r.userId));
@@ -401,6 +403,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     if (fishing.has(u.id)) people[i].fishing = true;
     if (m.fishN) people[i].fishN = m.fishN;
     if (admiral.has(u.id)) people[i].admiral = true;
+    if (watching.has(u.id)) people[i].fireTop = true;
     // 篝火's sticks, yours alone; 扔东西: what of it stays on each, while it does
     if (u.id === viewerId) Object.assign(people[i], { wood: m.wood, woodAt: m.woodAt?.getTime() ?? null });
     Object.assign(people[i], playOn(m, now));
@@ -460,13 +463,32 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     members,
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
     ...(room.schoolUntil && room.schoolUntil.getTime() > now ? { school: room.schoolUntil.getTime() } : {}),
-    fire: { level: room.fireLevel, at: room.fireAt?.getTime() ?? now, by: room.fireBy, best: room.fireBest, last: room.fireLast },
+    fire: {
+      level: room.fireLevel,
+      prog: room.fireProg,
+      at: room.fireAt?.getTime() ?? now,
+      by: room.fireBy,
+      top: room.fireTop,
+      last: room.fireLast,
+      lastTop: room.fireLastTop,
+      bestTop: room.fireBestTop,
+    },
     mode: await modeView(room, rows, now),
     ...(me.modeAgainAt && me.modeAgainAt.getTime() > now ? { modeAgain: me.modeAgainAt.getTime() } : {}),
     endsAt: ends.at,
     endsWhy: ends.why,
     now,
   };
+}
+
+/** Of these players, those wearing 篝火守夜人 now (src/lib/server/fireBoard.ts: given for a week each Monday 04:00) */
+async function fireWatchers(ids: string[], now: number) {
+  if (!ids.length) return new Set<string>();
+  const rows = await db
+    .select({ userId: userBadges.userId })
+    .from(userBadges)
+    .where(and(inArray(userBadges.userId, ids), eq(userBadges.badge, FIREWATCH), gt(userBadges.earnedAt, new Date(now - FIREWATCH_DAYS * 86_400_000))));
+  return new Set(rows.map((r) => r.userId));
 }
 
 /**
@@ -507,6 +529,7 @@ export async function squadMe(user: UserRow): Promise<SquadMe | undefined> {
     card: cardOf(user),
     showName: user.squadShowName,
     noThrow: user.squadNoThrow,
+    fireHide: user.squadFireHide,
     room: Boolean(await roomOf(db, user.id)),
     closed: s.closed ? s.note : null,
   };
@@ -517,20 +540,25 @@ export async function squadMe(user: UserRow): Promise<SquadMe | undefined> {
 /**
  * The player's 卫戍名片, as given (card), kept for the rooms they open or go in at from now on; null clears it, and
  * 列表上显示我的名字 with it. showName, when given: that switch, which the lists follow from their next asking.
- * noThrow, when given: 别人扔我 turned off (true) or on, kept whatever the card (clearing it leaves it as it is).
+ * noThrow, when given: 别人扔我 turned off (true) or on; fireHide: 火焰周榜写我的名字 turned off (true) or on; both kept
+ * whatever the card (clearing it leaves them as they are).
  */
 export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (body.showName !== undefined && typeof body.showName !== "boolean") throw refuse(400, T.server.common.badRequest);
   if (body.noThrow !== undefined && typeof body.noThrow !== "boolean") throw refuse(400, T.server.common.badRequest);
-  const noThrow = typeof body.noThrow === "boolean" ? { squadNoThrow: body.noThrow } : {};
+  if (body.fireHide !== undefined && typeof body.fireHide !== "boolean") throw refuse(400, T.server.common.badRequest);
+  const noThrow = {
+    ...(typeof body.noThrow === "boolean" ? { squadNoThrow: body.noThrow } : {}),
+    ...(typeof body.fireHide === "boolean" ? { squadFireHide: body.fireHide } : {}),
+  };
   if (body.card === null) {
     const [kept] = await db
       .update(users)
       .set({ squadCore: null, squadStrategy: null, squadLevel: null, squadShowName: false, ...noThrow })
       .where(eq(users.id, user.id))
-      .returning({ noThrow: users.squadNoThrow });
+      .returning({ noThrow: users.squadNoThrow, fireHide: users.squadFireHide });
     forgetList();
-    return { card: null, showName: false, noThrow: kept?.noThrow ?? false, now };
+    return { card: null, showName: false, noThrow: kept?.noThrow ?? false, fireHide: kept?.fireHide ?? false, now };
   }
   const card = readCard(body.card);
   if (!card) throw refuse(400, T.server.common.badRequest);
@@ -539,9 +567,9 @@ export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, u
     .update(users)
     .set({ squadCore: card.core, squadStrategy: card.strategy, squadLevel: card.level, ...(showName === undefined ? {} : { squadShowName: showName }), ...noThrow })
     .where(eq(users.id, user.id))
-    .returning({ showName: users.squadShowName, noThrow: users.squadNoThrow });
+    .returning({ showName: users.squadShowName, noThrow: users.squadNoThrow, fireHide: users.squadFireHide });
   if (showName !== undefined) forgetList();
-  return { card, showName: saved?.showName ?? false, noThrow: saved?.noThrow ?? false, now };
+  return { card, showName: saved?.showName ?? false, noThrow: saved?.noThrow ?? false, fireHide: saved?.fireHide ?? false, now };
 }
 
 // ---- in and out ----
@@ -858,17 +886,22 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
         .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
     }
     const at = new Date(now);
-    // 篝火: how long it burnt this 局, the room's longest kept; the fire goes on into the next as it is
-    const fire = fireEnd({ level: room.fireLevel, at: room.fireAt?.getTime() ?? null, burn: room.fireBurn }, now);
+    // 篝火: how long it burnt this 局 and how high it went, the room's highest kept; the fire goes on into the next as
+    // it is, the next 局's highest from where it is now
+    const fire = fireEnd({ level: room.fireLevel, prog: room.fireProg, at: room.fireAt?.getTime() ?? null, burn: room.fireBurn }, now);
     const ended = {
       waitedAt: at,
       schools: 0,
       schoolUntil: null,
       fireLevel: fire.level,
+      fireProg: fire.prog,
       fireAt: fire.at === null ? null : new Date(fire.at),
       fireBurn: fire.burn,
       fireLast: fire.burnt,
       fireBest: Math.max(room.fireBest, fire.burnt),
+      fireTop: fire.level,
+      fireLastTop: room.fireTop,
+      fireBestTop: Math.max(room.fireBestTop, room.fireTop),
     };
     await tx
       .update(squadRooms)

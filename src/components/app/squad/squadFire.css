@@ -20,39 +20,11 @@
 .sq-fire header { display: flex; align-items: center; padding: 0 2px 8px; }
 .sq-fire header b { flex: 1; font-size: 16px; }
 .sq-fire header .x { width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1; cursor: pointer; }
-.sq-fire .scene {
-  position: relative; height: 300px; overflow: hidden; border-radius: 16px; background: linear-gradient(180deg, #151a28 0%, #232a3b 70%, #2e2a2a 100%);
-}
-.sq-fire .glow {
-  position: absolute; left: 50%; top: 58%; width: 420px; height: 420px; margin: -210px 0 0 -210px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 140, 50, var(--glow)) 0%, rgba(255, 140, 50, 0) 62%); transition: background 0.4s;
-}
-.sq-fire .tag { position: absolute; left: 12px; top: 10px; padding: 1px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); color: #f1e3cf; font-size: 11px; font-weight: 700; }
-.sq-fire .lv { position: absolute; right: 12px; top: 10px; display: flex; gap: 3px; align-items: center; }
-.sq-fire .lv i { width: 16px; height: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
-.sq-fire .lv i.on { background: #ff8a3a; }
-.sq-fire .lv b { margin-left: 6px; color: #f1e3cf; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.sq-fire .flame { position: absolute; left: 50%; bottom: 74px; width: 160px; height: 170px; margin-left: -80px; display: flex; align-items: flex-end; justify-content: center; }
-.sq-fire .fl { position: relative; width: 160px; height: 170px; transform: scale(var(--flame)); transform-origin: 50% 100%; transition: transform 0.4s ease-out; }
-.sq-fire .fl .a, .sq-fire .fl .b { position: absolute; border-radius: 50% 50% 46% 46% / 64% 64% 36% 36%; transform-origin: 50% 100%; }
-.sq-fire .fl .a {
-  left: 30px; bottom: 6px; width: 100px; height: 150px; filter: blur(1px); animation: sqf-flick 0.7s ease-in-out infinite;
-  background: radial-gradient(60% 70% at 50% 80%, #fff3b0 0%, #ffb341 40%, #ff6a2a 70%, rgba(255, 80, 30, 0) 100%);
-}
-.sq-fire .fl .b {
-  left: 52px; bottom: 8px; width: 56px; height: 96px; animation: sqf-flick 0.9s ease-in-out infinite reverse;
-  background: radial-gradient(60% 70% at 50% 80%, #ffffff 0%, #fff0a0 45%, rgba(255, 200, 80, 0) 100%);
-}
-.sq-fire .fl .e1, .sq-fire .fl .e2 { position: absolute; border-radius: 50%; background: #ffcf6b; animation: sqf-ember 2.2s ease-out infinite; }
-.sq-fire .fl .e1 { left: 66px; bottom: 120px; width: 4px; height: 4px; }
-.sq-fire .fl .e2 { left: 96px; bottom: 100px; width: 3px; height: 3px; animation-delay: 0.8s; }
-.sq-fire .out { position: absolute; left: 12px; right: 12px; bottom: 116px; color: #8f97a8; font-size: 13px; text-align: center; }
-.sq-fire .logs { position: absolute; left: 50%; bottom: 62px; margin-left: -70px; }
-.sq-fire .seat { position: absolute; line-height: 0; }
-.sq-fire .seat.flip { transform: scaleX(-1); }
-.sq-fire .last { position: absolute; right: 18px; bottom: 94px; padding: 2px 8px; border-radius: 9px; background: rgba(255, 255, 255, 0.92); font-size: 11px; font-weight: 700; }
-.sq-fire .plus { position: absolute; left: 50%; top: 40px; margin-left: -24px; color: #ffd23f; font-size: 20px; font-weight: 800; animation: sqf-pop 0.4s ease-out both; }
-.sq-fire .drop { position: absolute; left: 12px; right: 12px; bottom: 8px; color: #a9b0bf; font-size: 11px; text-align: center; }
+.sq-fire .prog { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 0 2px; }
+.sq-fire .prog .bar { flex: 1; height: 10px; overflow: hidden; border-radius: 5px; background: #eceef1; }
+.sq-fire .prog .bar i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #ffb341, #ff6a2a); transition: width 0.3s; }
+.sq-fire .prog b { flex: none; font-size: 12.5px; }
+.sq-fire .tier { margin: 3px 2px 0; color: #6b7280; font-size: 11.5px; }
 .sq-fire .hand { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 12px; border: 1px solid #e3e5e8; border-radius: 14px; }
 .sq-fire .sticks { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sq-fire .sticks b { font-size: 14px; }
@@ -63,10 +35,18 @@
 .sq-fire .add { flex: none; width: 120px; height: 52px; border: 0; border-radius: 12px; background: #1b1d22; color: #fff; font-size: 16px; font-weight: 900; cursor: pointer; }
 .sq-fire .add:disabled { background: #e3e5e8; color: #9aa0aa; cursor: default; }
 .sq-fire .fmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
-.sq-fire .rec { margin: 10px 2px 0; color: #7a3d0c; font-size: 12.5px; font-weight: 700; }
+.sq-fire .rec { margin: 8px 2px 0; color: #7a3d0c; font-size: 12px; font-weight: 700; }
+/* 火焰周榜's way in, under 添一根 */
+.sq-fire .board-way {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 10px 12px; border: 0; border-radius: 14px; background: #2a1f4a; color: #ffe1b0;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.sq-fire .board-way span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sq-fire .board-way b { font-size: 13.5px; }
+.sq-fire .board-way small { color: #c9bfe6; font-size: 11.5px; }
+.sq-fire .board-way i { font-size: 18px; font-style: normal; }
+.sq-flame { flex: none; vertical-align: -1px; }
 .sq-fire .note { margin: 8px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
-@keyframes sqf-flick { 0%, 100% { transform: scaleY(1) scaleX(1); } 30% { transform: scaleY(1.08) scaleX(0.95); } 60% { transform: scaleY(0.95) scaleX(1.04); } }
-@keyframes sqf-ember { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-70px); opacity: 0; } }
 @keyframes sqf-pop { 0% { transform: translateY(4px) scale(0.6); opacity: 0; } 100% { transform: translateY(-10px) scale(1); opacity: 1; } }
 
 /* the room's sheet warmer as the fire is bigger (the warmth set on the sheet itself, Sheet's style) */
@@ -135,3 +115,129 @@
 @media (prefers-reduced-motion: reduce) {
   .sq-fire *, .sqr-land *, .sqr-say, .sqr-stars, .sqr-tap, .sq-roach img.sqr-on, .sq-roach img.sqr-thing { animation: none !important; }
 }
+
+/* ---- 篝火's scene at any level (FireScene.tsx): 366 × 300 as designed, scaled to the card's width ---- */
+.sqff-box { position: relative; overflow: hidden; border-radius: 16px; }
+.sqff { position: absolute; left: 0; top: 0; width: 366px; height: 300px; overflow: hidden; transform-origin: 0 0; }
+.sqff .sqff-at { position: absolute; }
+.sqff-star { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff; opacity: 0.7; }
+.sqff-glow { position: absolute; left: 50%; border-radius: 50%; pointer-events: none; }
+.sqff-flame { position: absolute; left: 50%; bottom: 74px; width: 160px; height: 170px; margin-left: -80px; transform-origin: 50% 100%; }
+.sqff-flame i { position: absolute; display: block; border-radius: 50% 50% 46% 46% / 64% 64% 36% 36%; transform-origin: 50% 100%; }
+.sqff-flame .a { left: 30px; bottom: 6px; width: 100px; height: 150px; filter: blur(1px); animation: sqff-flick 0.7s ease-in-out infinite; }
+.sqff-flame .b { left: 52px; bottom: 8px; width: 56px; height: 96px; animation: sqff-flick 0.9s ease-in-out infinite reverse; }
+.sqff-flame .c { left: 12px; bottom: 2px; width: 62px; height: 104px; filter: blur(1px); animation: sqff-flickL 0.8s ease-in-out infinite; }
+.sqff-flame .d { left: 86px; bottom: 2px; width: 62px; height: 104px; filter: blur(1px); animation: sqff-flickR 0.75s ease-in-out infinite; }
+.sqff-flame .e { left: -10px; bottom: 0; width: 52px; height: 78px; filter: blur(1.5px); animation: sqff-flickLL 1s ease-in-out infinite; }
+.sqff-flame .f { left: 118px; bottom: 0; width: 52px; height: 78px; filter: blur(1.5px); animation: sqff-flickRR 0.95s ease-in-out infinite; }
+.sqff-ember { position: absolute; border-radius: 50%; animation: sqff-ember 2.2s ease-out infinite; }
+.sqff-roach { position: absolute; line-height: 0; }
+.sqff-roach.flip { transform: scaleX(-1); }
+.sqff-roach.hop { animation: sqff-hop 0.7s ease-in-out infinite; }
+.sqff-roach.hopf { animation: sqff-hopf 0.7s ease-in-out infinite; }
+.sqff-walker { filter: brightness(0) opacity(0.55); animation: sqff-walk 4s linear infinite; }
+.sqff-walker.flip { animation-name: sqff-walkf; }
+.sqff-pin { overflow: visible; animation: sqff-pin 1.6s ease-in-out infinite; }
+.sqff-smoke { top: 190px; width: 16px; height: 16px; border-radius: 50%; background: rgba(200, 205, 215, 0.35); animation: sqff-smoke 2.6s ease-out infinite; }
+.sqff-out { left: 12px; right: 12px; top: 150px; color: #8f97a8; font-size: 13px; text-align: center; }
+.sqff .sqff-slug { left: 118px; top: 150px; width: 40px; height: 40px; transform: rotate(-26deg); filter: sepia(0.5) saturate(1.25) brightness(0.92); }
+.sqff-sizzle { left: 96px; top: 136px; padding: 0 5px; border-radius: 6px; background: rgba(0, 0, 0, 0.35); color: #ffd9a0; font-size: 10px; font-weight: 700; }
+.sqff-steam {
+  top: 120px; width: 10px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); border-left-color: transparent; border-bottom-color: transparent;
+  animation: sqff-steam 1.8s ease-out infinite;
+}
+.sqff-siren { left: 303px; top: 88px; width: 12px; height: 8px; border-radius: 4px 4px 1px 1px; border: 1.5px solid #14161b; animation: sqff-blink 1s steps(1) infinite; }
+.sqff-shimmer {
+  left: 0; right: 0; top: 110px; height: 120px; background: repeating-linear-gradient(0deg, rgba(255, 180, 90, 0.1) 0 3px, rgba(0, 0, 0, 0) 3px 9px);
+  animation: sqff-shimmer 1.4s ease-in-out infinite;
+}
+.sqff-ship { left: 0; top: 0; width: 366px; height: 300px; animation: sqff-ship 9s ease-in-out infinite alternate; }
+.sqff-bubble { left: 12px; top: 36px; padding: 3px 9px; border-radius: 9px; background: #fff; color: #1b1d22; font-size: 10.5px; font-weight: 800; white-space: nowrap; }
+.sqff-bubble-tail { left: 40px; top: 56px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #fff; }
+.sqff-sun { left: 12px; top: 36px; padding: 2px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.92); color: #1b1d22; font-size: 10.5px; font-weight: 800; }
+.sqff-tag { left: 12px; top: 10px; padding: 1px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.14); color: #f1e3cf; font-size: 11px; font-weight: 700; }
+.sqff-lv {
+  right: 12px; top: 9px; padding: 1px 8px; border-radius: 7px; background: rgba(0, 0, 0, 0.35); color: #ffe1b0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.sqff-pop {
+  left: 0; right: 0; top: 66px; color: #ffd23f; font-size: 20px; font-weight: 800; text-align: center; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  animation: sqf-pop 0.4s ease-out both;
+}
+.sqff-foot { left: 12px; right: 12px; bottom: 6px; color: #c9ced8; font-size: 11px; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+@keyframes sqff-flick { 0%, 100% { transform: scaleY(1) scaleX(1); } 30% { transform: scaleY(1.08) scaleX(0.95); } 60% { transform: scaleY(0.95) scaleX(1.04); } }
+@keyframes sqff-flickL { 0%, 100% { transform: rotate(-16deg) scaleY(1); } 40% { transform: rotate(-12deg) scaleY(1.1); } 70% { transform: rotate(-18deg) scaleY(0.94); } }
+@keyframes sqff-flickR { 0%, 100% { transform: rotate(16deg) scaleY(1); } 35% { transform: rotate(19deg) scaleY(0.93); } 65% { transform: rotate(13deg) scaleY(1.09); } }
+@keyframes sqff-flickLL { 0%, 100% { transform: rotate(-30deg) scaleY(1); } 50% { transform: rotate(-24deg) scaleY(1.12); } }
+@keyframes sqff-flickRR { 0%, 100% { transform: rotate(30deg) scaleY(1); } 50% { transform: rotate(25deg) scaleY(1.12); } }
+@keyframes sqff-ember { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-110px); opacity: 0; } }
+@keyframes sqff-smoke { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 25% { opacity: 0.5; } 100% { transform: translate(10px, -70px) scale(1.4); opacity: 0; } }
+@keyframes sqff-steam { 0% { transform: translateY(0) scaleX(1); opacity: 0; } 30% { opacity: 0.75; } 100% { transform: translateY(-34px) scaleX(1.5); opacity: 0; } }
+@keyframes sqff-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+@keyframes sqff-hopf { 0%, 100% { transform: translateY(0) scaleX(-1); } 50% { transform: translateY(-9px) scaleX(-1); } }
+@keyframes sqff-blink { 0%, 49% { background: #ff3b3b; } 50%, 100% { background: #3b7bff; } }
+@keyframes sqff-walk { 0% { transform: translateX(0); } 100% { transform: translateX(var(--dx)); } }
+@keyframes sqff-walkf { 0% { transform: translateX(0) scaleX(-1); } 100% { transform: translateX(var(--dx)) scaleX(-1); } }
+@keyframes sqff-pin { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes sqff-shimmer { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.6; } }
+@keyframes sqff-ship { 0% { transform: translateX(0); } 100% { transform: translateX(-26px); } }
+@media (prefers-reduced-motion: reduce) {
+  .sqff *, .sqff-box * { animation: none !important; }
+}
+
+/* ---- 火焰周榜 (SquadFireBoard.tsx), in 篝火's card's place ---- */
+.sq-fire .box.fb { display: flex; flex-direction: column; height: min(720px, calc(100% - 24px)); padding-bottom: 0; overflow: hidden; }
+.sq-fire .fb-sub { margin: -4px 2px 0; color: #6b7280; font-size: 11.5px; }
+.sq-fire .fb-banner {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 14px; background: #2a1f4a; color: #ffe1b0; font: inherit;
+  text-align: left; cursor: pointer;
+}
+.sq-fire .fb-banner span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sq-fire .fb-banner b { font-size: 13.5px; }
+.sq-fire .fb-banner strong { color: #ffd23f; font-size: 15px; font-weight: 900; }
+.sq-fire .fb-banner i { font-size: 18px; font-style: normal; }
+.sq-fire .fb-tabs { display: flex; gap: 18px; margin: 8px 2px 0; border-bottom: 1px solid #e3e5e8; }
+.sq-fire .fb-tabs button { padding: 6px 0; border: 0; border-bottom: 2.5px solid transparent; background: none; color: #9aa0aa; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.sq-fire .fb-tabs button.on { border-bottom-color: #1b1d22; color: #1b1d22; }
+.sq-fire .fb-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 0 12px; }
+.sq-fire .fb-list .note { margin: 10px 14px 0; }
+.sq-fire .fb-empty, .sq-fire .fb-lead { margin: 12px 14px 4px; color: #4b5160; font-size: 12.5px; line-height: 1.6; }
+.sq-fire .fb-empty .link { padding: 0; border: 0; background: none; color: #1c3fae; font: inherit; text-decoration: underline; cursor: pointer; }
+.fb-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid #eef0f3; }
+.fb-row.mine { background: #fffbea; }
+.fb-row .rk {
+  flex: none; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1.5px solid transparent; border-radius: 50%; color: #4b5160;
+  font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.fb-row .rk.r1 { border-color: #1b1d22; background: #f6c343; color: #1b1d22; }
+.fb-row .rk.r2 { border-color: #1b1d22; background: #c9ced8; color: #1b1d22; }
+.fb-row .rk.r3 { border-color: #1b1d22; background: #e0a46b; color: #1b1d22; }
+.fb-row .lv {
+  flex: none; display: inline-flex; align-items: center; gap: 3px; min-width: 58px; padding: 2px 7px; box-sizing: border-box; border-radius: 8px; background: #2a1f4a;
+  color: #ffe1b0; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.fb-row .names { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 3px 10px; }
+.fb-row .names small { color: #9aa0aa; font-size: 12px; }
+.fb-row .nm { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
+.fb-row .nm.you { font-weight: 800; }
+.fb-row .nm img { flex: none; }
+.fb-row .nm .anon { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #e3e5e8; }
+.sq-fire .fb-line { position: relative; margin: 6px 12px; text-align: center; }
+.sq-fire .fb-line::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px dashed #ff8a3a; }
+.sq-fire .fb-line span { position: relative; padding: 0 8px; background: #fff; color: #b5541c; font-size: 11.5px; font-weight: 800; }
+.sq-fire .fb-mine { flex: none; margin: 0 -12px; padding: 6px 0 calc(10px + var(--safe-bottom, 0px)); border-top: 1px solid #e3e5e8; background: #fff; box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.06); }
+@media (min-width: 720px) {
+  .sq-fire .fb-mine { padding-bottom: 10px; border-radius: 0 0 18px 18px; }
+}
+.sq-fire .fb-mine > small { display: block; padding: 0 12px; color: #6b7280; font-size: 11px; font-weight: 700; }
+.sq-fire .fb-mine .fb-row { border-bottom: 0; }
+.sq-fire .fb-mine p { margin: 0 12px; color: #7a3d0c; font-size: 12px; font-weight: 700; }
+/* 篝火守夜人, from the banner */
+.sq-fire .fb-title { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-bottom: 14px; }
+.sq-fire .fb-title .back { align-self: flex-start; padding: 0; border: 0; background: none; color: #6b7280; font: inherit; font-size: 12px; cursor: pointer; }
+.sq-fire .fb-title-head { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 16px; background: linear-gradient(180deg, #2a1f4a, #1b1530); color: #fff; }
+.sq-fire .fb-title-head span { display: flex; flex-direction: column; gap: 3px; }
+.sq-fire .fb-title-head b { color: #ffd23f; font-size: 17px; font-weight: 900; }
+.sq-fire .fb-title-head small { color: #c9bfe6; font-size: 12px; }
+.sq-fire .fb-title-head i { color: #e8e2f8; font-size: 11.5px; }
+.sq-fire .fb-title ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; }
+.sq-fire .fb-title .note { margin: 0; padding: 8px 10px; border-radius: 10px; background: #f6f7f9; color: #4b5160; font-size: 12px; line-height: 1.6; }

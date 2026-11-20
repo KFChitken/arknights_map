@@ -14,6 +14,7 @@ import { demoEnabled, listenMode, watchEnabled } from "./lib/server/env";
 import { sweepListening } from "./lib/server/listen";
 import { sweepRooms } from "./lib/server/listenRooms";
 import { sweepSquad } from "./lib/server/squad";
+import { settleFireWeek } from "./lib/server/fireBoard";
 import { sweepModes } from "./lib/server/squadModes";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
@@ -158,6 +159,11 @@ if (!helper) {
   setInterval(() => sweepSquad().catch(failed("squad", "Sweeping the rooms of 一起卫戍 failed")), MINUTE_MS);
   // 玩点什么: a mode over (its song ended, nobody tapped a while) cleared and its room told (src/lib/server/squadModes.ts)
   setInterval(() => sweepModes().catch(failed("squad", "Sweeping the rooms' modes failed")), 5_000);
+  // 火焰周榜: the week just ended settled once, the first look after Monday 04:00 Beijing time, and 篝火守夜人 given to
+  // the named of its top 100 rooms (src/lib/server/fireBoard.ts); every other look finds it done
+  const settleFire = () => settleFireWeek().catch(failed("squad", "Settling 火焰周榜's week failed"));
+  settleFire();
+  setInterval(settleFire, 5 * MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
   const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));

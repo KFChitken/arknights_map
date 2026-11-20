@@ -103,6 +103,7 @@ const notice = kept<string | null>(null);
 const card = kept<SquadCard | null | undefined>(undefined);
 const showName = kept<boolean | undefined>(undefined);
 const noThrow = kept<boolean | undefined>(undefined);
+const fireHide = kept<boolean | undefined>(undefined);
 
 export const squadRoomNow = room.get;
 export const useSquadRoom = () => useSyncExternalStore(room.on, room.get, () => null);
@@ -209,6 +210,7 @@ export const useSquadNotice = () => useSyncExternalStore(notice.on, notice.get, 
 export const useSquadCard = () => useSyncExternalStore(card.on, card.get, () => undefined);
 export const useSquadShowName = () => useSyncExternalStore(showName.on, showName.get, () => undefined);
 export const useSquadNoThrow = () => useSyncExternalStore(noThrow.on, noThrow.get, () => undefined);
+export const useSquadFireHide = () => useSyncExternalStore(fireHide.on, fireHide.get, () => undefined);
 export const clearSquadNotice = () => notice.set(null);
 
 let floatKey = 0;
@@ -376,6 +378,7 @@ export function startSquad(me: SquadMe) {
   if (card.get() === undefined) card.set(me.card);
   if (showName.get() === undefined) showName.set(me.showName);
   if (noThrow.get() === undefined) noThrow.set(me.noThrow);
+  if (fireHide.get() === undefined) fireHide.set(me.fireHide);
   if (me.room && !room.get()) void loadSquadRoom().catch(() => {});
   if (!me.room && room.get()) setRoom(null);
 }
@@ -468,8 +471,8 @@ export function heardSquad(raw: unknown) {
       }
       // what you did yourself is not said back to you
       if ((what.kind === "in" || what.kind === "game") && what.h === next.you) return;
-      // 结束这局: how long the 篝火 burnt in it, to everyone, the host too
-      if (what.kind === "state" && what.to === "wait" && next.fire.last) addFloat(fireEndLine(next.fire.last, next.fire.best));
+      // 结束这局: how high the 篝火 went in it and how long it burnt, to everyone, the host too
+      if (what.kind === "state" && what.to === "wait" && next.fire.last) addFloat(fireEndLine(next.fire.last, next.fire.lastTop, next.fire.bestTop));
       if ((what.kind === "key" || what.kind === "state" || what.kind === "stop") && next.host) return;
       if (what.kind === "host") return addFloat(what.h === next.you ? T.squad.float.youHost : fmt(T.squad.float.host, { name: next.members.find((m) => m.h === what.h)?.name ?? "" }));
       const name = next.members.find((m) => m.h === what.h)?.name ?? null;
@@ -501,14 +504,21 @@ export function squadStreamBack() {
 
 // ---- what the player does ----
 
-/** Their 卫戍名片 saved (null clears it, and 列表上显示我的名字 with it), with those switches when given (别人扔我 off: noThrow) */
-export async function saveSquadCard(next: SquadCard | null, show?: boolean, off?: boolean) {
-  const res = await squadApi.card(next, show, off);
+/**
+ * Their 卫戍名片 saved (null clears it, and 列表上显示我的名字 with it), with those switches when given (别人扔我 off:
+ * noThrow; 火焰周榜写我的名字 off: hide)
+ */
+export async function saveSquadCard(next: SquadCard | null, show?: boolean, off?: boolean, hide?: boolean) {
+  const res = await squadApi.card(next, show, off, hide);
   card.set(res.card);
   showName.set(res.showName);
   noThrow.set(res.noThrow);
+  fireHide.set(res.fireHide);
   return res.card;
 }
+
+/** 火焰周榜 (src/lib/server/fireBoard.ts): this week's or last week's, and the room the player is in on it */
+export const loadFireBoard = (week: "this" | "last") => squadApi.fireBoard(week);
 
 export async function openSquadRoom(form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) {
   const { room: r } = await squadApi.open(form);
@@ -595,11 +605,13 @@ export function fireTime(ms: number) {
   if (m < 1) return T.squad.fire.seconds;
   return m < 60 ? fmt(T.squad.fire.minutes, { m }) : fmt(T.squad.fire.hours, { h: Math.floor(m / 60), m: m % 60 });
 }
-/** 结束这局's line of the 篝火: this 局's, and the room's longest when it is longer */
-export const fireEndLine = (last: number, best: number) =>
-  best > last ? fmt(T.squad.fire.endedBest, { time: fireTime(last), best: fireTime(best) }) : fmt(T.squad.fire.ended, { time: fireTime(last) });
+/** 结束这局's line of the 篝火: this 局's highest and how long it burnt, and the room's highest when it is higher */
+export const fireEndLine = (last: number, top: number, best: number) =>
+  best > top
+    ? fmt(T.squad.fire.endedBest, { top, time: fireTime(last), best })
+    : fmt(T.squad.fire.ended, { top, time: fireTime(last) });
 
-/** 添一根: the room's fire one up, a stick less in your hand, at once */
+/** 添一根: the stick on the room's fire (up a level once enough are on), a stick less in your hand, at once */
 export async function squadAddWood() {
   const res = await squadApi.fire();
   const r = room.get();
@@ -849,4 +861,5 @@ export function forgetSquadPage() {
   card.set(undefined);
   showName.set(undefined);
   noThrow.set(undefined);
+  fireHide.set(undefined);
 }

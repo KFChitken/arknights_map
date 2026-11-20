@@ -617,6 +617,13 @@
       "when": 1795149676590,
       "tag": "0088_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1795154115394,
+      "tag": "0089_fire_board",
+      "breakpoints": true
     }
   ]
 }

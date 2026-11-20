@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { badgeById, BADGES, wallBadges, type EarnedBadge } from "@/lib/badges";
 import type { Me } from "@/lib/world/types";
-import { BadgePeek, BadgeWall } from "./Badges";
+import { BadgePeek, BadgePill, BadgeWall, NewBadge } from "./Badges";
 
 /** Every count a badge is earned by, at 0 but those given */
 const countsOf = (some: Partial<Me["counts"]> = {}) =>
@@ -85,5 +85,32 @@ describe("我的称号", () => {
   it("wears an earned badge that is not worn on a tap", () => {
     const html = wall([twins], null);
     expect(html).toContain(`aria-label="戴上${badgeById("twins")!.name}"`);
+  });
+});
+
+describe("篝火守夜人, a title worn a week by a place on 火焰周榜", () => {
+  // given at the Monday 04:00 that settled last week (Beijing time), held till the next
+  const at = Date.parse("2026-11-16T04:00:00+08:00");
+  const until = at + 7 * 86_400_000;
+  const earned: EarnedBadge = { id: "firewatch", serial: 7, at, seen: false, until };
+
+  it("pops up as a title for a week, saying the place it was won with and till when it is worn, never a number", () => {
+    const html = renderToStaticMarkup(createElement(NewBadge, { earned, onWear: () => {}, onLater: () => {} }));
+    expect(text(html)).toContain("获得新称号 · 限定一周");
+    expect(text(html)).toContain("篝火守夜人");
+    expect(text(html)).toContain("上周火焰周榜第 7 名");
+    expect(text(html)).toContain("戴到 11/23（周一）凌晨 4 点");
+    expect(text(html)).toContain("卫戍的夜很长，你们那堆火烧到了天亮。");
+    expect(html).not.toContain("No.0007");
+  });
+
+  it("is listed on 我的称号 only while held, outside the count, as 限定 with the days left; on cards, without its place", () => {
+    const now = at + 4 * 86_400_000;
+    expect(wallBadges(new Set(), now).some((b) => b.id === "firewatch")).toBe(false);
+    expect(wallBadges(new Set(["firewatch"]), now).some((b) => b.id === "firewatch")).toBe(true);
+    const html = wall([earned], null);
+    expect(text(html)).toContain("篝火守夜人");
+    expect(text(html)).toMatch(/限定 · 还剩 \d+ 天/);
+    expect(renderToStaticMarkup(createElement(BadgePill, { badge: { id: "firewatch", serial: 7 } }))).not.toContain("No.");
   });
 });

@@ -1630,6 +1630,8 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .new-badge-banner strong { font-size: min(30px, 6.8vw); line-height: 1.2; font-weight: 900; letter-spacing: 0.04em; text-align: center; }
 .new-badge-banner span { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.24em; color: #9aa1ab; }
 .new-badge-quote { max-width: 340px; margin: 22px 16px 0; font-size: 15px; font-weight: 700; line-height: 1.5; color: #ffe48a; text-align: center; text-wrap: balance; }
+/* a title worn a week by a place on a board (篝火守夜人): till when */
+.new-badge-until { margin: 6px 16px 0; font-size: 13px; font-weight: 700; color: #ffd23f; text-align: center; }
 .new-badge-condition { margin: 8px 16px 0; font-size: 13px; color: #9aa1ab; text-align: center; }
 .new-badge-actions { display: flex; gap: 10px; margin-top: 26px; }
 .new-badge-actions button { height: 46px; border-radius: 12px; font-size: 15px; }

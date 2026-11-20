@@ -407,6 +407,8 @@ export type SquadMember = {
   ball?: SquadBall;
   /** TA turned 别人扔我 off: nothing may be thrown at TA */
   noThrow?: true;
+  /** TA wears 篝火守夜人 this week (火焰周榜's top 100 rooms): a small flame by TA's name; never a 人机 */
+  fireTop?: true;
 } & SquadLook &
   SquadRound;
 
@@ -498,6 +500,8 @@ export type SquadMe = {
   showName: boolean;
   /** 别人扔我 turned off: nothing may be thrown at them in a room */
   noThrow: boolean;
+  /** 火焰周榜写我的名字 turned off: the board writes 「一位舟P」 for them */
+  fireHide: boolean;
   /** In a room now */
   room: boolean;
   /** Closed for now, with the 站长's line */

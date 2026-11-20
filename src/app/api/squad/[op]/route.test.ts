@@ -187,7 +187,7 @@ describe("who 一起卫戍 is open to", () => {
     vi.stubEnv("SQUAD", "on");
     expect((await post(someone, "room")).status).toBe(200);
     expect((await post(null, "room")).status).toBe(401);
-    expect(await squadMe(await row(someone))).toEqual({ card: CARD, showName: false, noThrow: false, room: false, closed: null });
+    expect(await squadMe(await row(someone))).toEqual({ card: CARD, showName: false, noThrow: false, fireHide: false, room: false, closed: null });
   });
 
   it("shows its way in to players of 明日方舟 and of no game yet, never to those of 终末地 alone", async () => {

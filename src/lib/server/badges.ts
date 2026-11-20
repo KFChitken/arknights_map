@@ -480,9 +480,10 @@ export async function catchUpBadges() {
   );
   await give("delivery", sql`select ${visits.guestId} from ${visits}`);
   await comrades(Date.now(), false);
-  // last, by the badges held now: five besides 罗德岛正式干员 itself (石棺里的苏醒 left out, as it may have run out, and
-  // the thanks for sponsoring, as badgesOwned leaves them out), and one of each of ELITE_SERIES
-  const uncounted = ["regular", "survivor", ...BADGES.filter((b) => b.sponsor).map((b) => b.id)];
+  // last, by the badges held now: five besides 罗德岛正式干员 itself (the timed ones, 石棺里的苏醒 and 篝火守夜人, left
+  // out, as they may have run out, and the thanks for sponsoring, as badgesOwned leaves them out), and one of each of
+  // ELITE_SERIES
+  const uncounted = ["regular", ...BADGES.filter((b) => b.days || b.sponsor).map((b) => b.id)];
   await give(
     "regular",
     sql`select ${userBadges.userId} from ${userBadges} where ${userBadges.badge} not in (${sql.join(
@@ -527,7 +528,8 @@ export async function shownBadges(people: UserRow[], thanksShown: () => Promise<
       if (hideThanks && b.sponsor) return [];
       const r = rows.find((x) => x.userId === u.id && x.badge === b.id);
       if (!r || !stillHeld(b, r.earnedAt.getTime())) return [];
-      return [r.serial ? { id: b.id, serial: r.serial } : { id: b.id }];
+      // a place on a board (篝火守夜人's) is said as it is given, never on cards
+      return [r.serial && !b.ranked ? { id: b.id, serial: r.serial } : { id: b.id }];
     });
     const worn = theirs.some((b) => b.id === u.wornBadge) ? u.wornBadge : null;
     shown.set(u.id, { badges: theirs.sort((x, y) => Number(y.id === worn) - Number(x.id === worn)), worn });

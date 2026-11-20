@@ -122,6 +122,11 @@ export type Badge = {
   /** Held only this many days from when it was given; the wall lists it only meanwhile, outside the tally */
   days?: number;
   /**
+   * Its serial is a place on a board (火焰周榜's), not a number: said as it pops up (「上周火焰周榜第 7 名」), and
+   * nowhere else (no 「No.0007」 on cards)
+   */
+  ranked?: true;
+  /**
    * Also drawn with the guide's own picture, served from the server's own folder while that guide's
    * picture is switched on (src/app/guide-art/[file]/route.ts): /guide-art/<file>(-mini).svg, else the drawn one
    */
@@ -146,6 +151,9 @@ export type Badge = {
 export const FAR_FRIEND_KM = 1000;
 /** 首批蟑螂: the first this many players to sign up, numbered */
 export const FIRST_BATCH = 1000;
+/** 篝火守夜人: given each Monday 04:00 to those named in 火焰周榜's top 100 rooms (src/lib/server/fireBoard.ts), worn a week */
+export const FIREWATCH = "firewatch";
+export const FIREWATCH_DAYS = 7;
 /** 石棺里的苏醒: back after this many days away, or just signed up */
 export const AWAY_DAYS = 14;
 /** 石棺里的苏醒 is held this many days, then it goes until the next time */
@@ -733,6 +741,26 @@ export const BADGES: Badge[] = [
       return T.lib.badges.secondwind.quote;
     },
     pill: { background: "#ffe3a8", color: "#c23a5e", border: "1.5px solid #c23a5e" },
+  },
+  {
+    id: FIREWATCH,
+    get name() {
+      return T.lib.badges.firewatch.name;
+    },
+    code: "EVT-FIRE100",
+    series: "event",
+    get condition() {
+      return T.lib.badges.firewatch.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.firewatch.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.firewatch.quote;
+    },
+    pill: { background: "#2a1f4a", color: "#ffd23f", border: "1.5px solid #ff8a3a" },
+    days: FIREWATCH_DAYS,
+    ranked: true,
   },
   {
     // each event brings its own badge, named in events.ts
