@@ -359,6 +359,8 @@ const SquadQuiz = dynamic(() => import("./app/squad/SquadQuiz"), { ssr: false })
 const SquadGift = dynamic(() => import("./app/squad/SquadGift"), { ssr: false });
 const SquadRace = dynamic(() => import("./app/squad/SquadRace"), { ssr: false });
 const SquadStack = dynamic(() => import("./app/squad/SquadStack"), { ssr: false });
+const SquadMiniPage = dynamic(() => import("./app/squad/SquadMini").then((m) => m.SquadMiniPage), { ssr: false });
+const SquadPip = dynamic(() => import("./app/squad/SquadMini").then((m) => m.SquadPip), { ssr: false });
 const SquadModeInvite = dynamic(() => import("./app/squad/SquadModeInvite"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
@@ -6257,13 +6259,16 @@ export default function MapApp({
       )}
       {/* 篝火, the room's own, over everything when 「玩」 → 添柴 opens it */}
       {squadShown && <SquadFire />}
-      {/* 玩点什么's modes (opened from 「玩」's tiles): the one playing at the map's foot (龙门广场舞, 凯尔希随堂测, W 的礼物, 企鹅物流急件赛), and the line asking the others to join it */}
+      {/* 玩点什么's modes (opened from 「玩」's tiles): the one playing at the map's foot (龙门广场舞, 凯尔希随堂测, W 的礼物, 企鹅物流急件赛, 基建加盖), and the line asking the others to join it */}
       {squadShown && <SquadDance />}
       {squadShown && <SquadQuiz />}
       {squadShown && <SquadGift />}
       {squadShown && <SquadRace />}
       {squadShown && <SquadStack />}
       {squadShown && <SquadModeInvite />}
+      {/* the room small: as the whole page while the page is small (after the modes' cards, over them), and in the window over everything from 弹出小窗 */}
+      {squadShown && <SquadMiniPage onListen={showListenRoom} onToast={setToast} />}
+      {squadShown && <SquadPip onListen={showListenRoom} onToast={setToast} />}
       {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}
       {listenOpen && listenShown && me?.listen && (
         <ListenPanel

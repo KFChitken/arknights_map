@@ -1,0 +1,115 @@
+/*
+ * The room of 一起卫戍 small (SquadMini.tsx): in the window over the game (sq-pipbody, its document's body) and as the
+ * whole page while the page is small (sq-minipage, over the map and the modes' cards, under 钓鳞's window, the dialogs
+ * and the toast). The mode's strip takes its game's colour (k-*), lit when it is your turn.
+ */
+.sq-pipbody { margin: 0; height: 100vh; overflow: hidden; background: #fff; }
+.sq-minipage {
+  position: fixed; z-index: 34; inset: 0; display: flex; overflow-y: auto; background: #fff;
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px) var(--safe-left, 0px);
+}
+.sq-mini {
+  display: flex; flex-direction: column; flex: 1; min-height: 100%; min-width: 0; box-sizing: border-box; background: #fff; color: #1b1d22;
+  -webkit-tap-highlight-color: transparent;
+}
+.sq-mini.pip { height: 100vh; overflow-y: auto; }
+/* a wide page (a phone on its side, a short window on a computer): one column in the middle */
+.sq-mini.page { width: 100%; max-width: 460px; margin: 0 auto; }
+.sq-mini button { font: inherit; color: inherit; cursor: pointer; }
+.sq-mini button:disabled { cursor: default; }
+.sq-mini .mh { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; }
+.sq-mini .mh b { flex: 1; min-width: 0; overflow: hidden; font-size: 13.5px; white-space: nowrap; text-overflow: ellipsis; }
+.sq-mini .mh .clk { flex: none; color: #6b7280; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* the mode's strip */
+.sq-mini .ms { margin: 0 10px; padding: 7px 10px; border-radius: 10px; background: #f1f2f4; }
+.sq-mini .ms.k-dance { background: #ffe4ec; }
+.sq-mini .ms.k-quiz { background: #e3edf7; }
+.sq-mini .ms.k-gift { background: #fff1d6; }
+.sq-mini .ms.k-race { background: #dcf3e6; }
+.sq-mini .ms.k-stack { background: #ede4fb; }
+.sq-mini .ms.lit { animation: sqm-lit 1.2s ease-out infinite; }
+.sq-mini .mt { display: flex; align-items: center; gap: 6px; }
+.sq-mini .mt .tx { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.sq-mini .ms.k-gift .tx { color: #6b4a14; }
+.sq-mini .ms.k-race .tx { color: #1f6b41; }
+.sq-mini .ms.k-stack .tx { color: #4a2690; }
+.sq-mini .ma {
+  flex: none; height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: #1b1d22; color: #fff; font-size: 12.5px; font-weight: 900;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.sq-mini .ma.a-join { background: #ffd23f; color: #1b1d22; }
+.sq-mini .ma.a-pass { background: #ff8a3a; }
+.sq-mini .ma.a-jump { background: #2f6fd6; }
+.sq-mini .ma.a-cheer { background: #2fa36b; }
+.sq-mini .ma.a-danceTap { background: #b4235a; }
+.sq-mini .ma.a-drop { background: #7a4fd0; }
+.sq-mini .ma:active:not(:disabled) { transform: translateY(1px); }
+.sq-mini .ma:disabled { background: #e3e5e8; color: #9aa0aa; }
+.sq-mini .ma.a-join:disabled, .sq-mini .ma.a-raceAgain:disabled, .sq-mini .ma.a-stackAgain:disabled { opacity: 0.6; }
+/* 基建加盖: the top block and your roach over it */
+.sq-mini .trk { position: relative; flex: none; width: 64px; height: 14px; border-radius: 7px; background: rgba(74, 38, 144, 0.14); }
+.sq-mini .trk i { position: absolute; display: block; transform: translateX(-50%); }
+.sq-mini .trk .top { top: 2px; width: 4px; height: 10px; border-radius: 2px; background: #8a6b45; }
+.sq-mini .trk .you { top: 2px; width: 10px; height: 10px; border-radius: 50%; background: #7a4fd0; will-change: left; }
+/* 凯尔希随堂测: the question and its three */
+.sq-mini .qz { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.sq-mini .qa { display: flex; align-items: center; gap: 8px; color: #1f4366; font-size: 12px; font-weight: 700; line-height: 1.4; }
+.sq-mini .qa img { flex: none; width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: #fff; }
+.sq-mini .qo { display: grid; gap: 4px; }
+.sq-mini .qo button {
+  display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 8px; border: 1px solid #c9d6e4; border-radius: 8px; background: #fff; font-size: 12.5px;
+  font-weight: 700; text-align: left;
+}
+.sq-mini .qo button b { flex: none; width: 16px; color: #1f4366; }
+.sq-mini .qo button span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sq-mini .qo button:disabled { opacity: 1; }
+.sq-mini .qo button.mine { border-color: #1f4366; box-shadow: inset 0 0 0 1px #1f4366; }
+.sq-mini .qo button.ok { border-color: #2fa36b; background: #e8f7ef; }
+.sq-mini .qo button.bad { border-color: #d2342a; background: #fdecea; }
+.sq-mini .qr { color: #4b5160; font-size: 11.5px; }
+.sq-mini .qr.ok { color: #1f7a4e; }
+.sq-mini .qr.bad { color: #b42318; }
+/* the four, what they said over them */
+.sq-mini .mr4 { display: flex; justify-content: center; gap: 4px; padding: 26px 8px 4px; }
+.sq-mini .mr { position: relative; display: flex; flex: 0 1 25%; flex-direction: column; align-items: center; gap: 1px; min-width: 0; line-height: 0; }
+.sq-mini .mr .nm { max-width: 100%; overflow: hidden; font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap; text-overflow: ellipsis; }
+.sq-mini .mr.you .nm { color: #8a5a00; }
+.sq-mini .mr .sq-bub { max-width: 110px; font-size: 11px; line-height: 1.35; }
+.sq-mini .ml { display: flex; flex-direction: column; margin: 6px 10px 0; padding: 6px 8px; border-radius: 8px; background: #f6f7f9; color: #4b5160; font-size: 11.5px; line-height: 1.5; }
+.sq-mini .ml span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 钓鳞 */
+.sq-mini .mf {
+  position: relative; display: flex; align-items: center; gap: 8px; min-height: 48px; margin: 8px 10px 0; padding: 6px 10px; box-sizing: border-box; border-radius: 10px;
+  background: linear-gradient(180deg, #3d8fbf, #2a6f9e); color: #e6f4ff;
+}
+.sq-mini .mf .fl { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.sq-mini .mf.bite .fl { flex: 0 1 auto; padding: 1px 8px; border-radius: 9px; background: #fff; color: #1b1d22; font-weight: 900; }
+.sq-mini .mf .flt { flex: none; width: 10px; height: 18px; border-radius: 5px 5px 4px 4px; background: linear-gradient(180deg, #ff5a3c 0 50%, #fff 50% 100%); animation: sqm-dip 1.6s ease-in-out infinite; }
+.sq-mini .mf.bite .flt { animation-duration: 0.6s; }
+.sq-mini .mf.bite .flt { order: -1; }
+.sq-mini .mf button { flex: none; margin-left: auto; height: 34px; padding: 0 16px; border: 0; border-radius: 10px; font-size: 14px; font-weight: 900; }
+.sq-mini .mf .pull { background: #ffd23f; color: #1b1d22; animation: sqm-lit 1.2s ease-out infinite; }
+.sq-mini .mf .cast { background: rgba(255, 255, 255, 0.92); color: #1b1d22; font-size: 13px; }
+/* a page in place of the rest: 说话, 扔东西, 跟着听 */
+.sq-mini .mp { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; padding: 2px 10px 0; }
+.sq-mini .mp .back { align-self: flex-start; padding: 2px 8px; border: 0; border-radius: 8px; background: #f1f2f4; font-size: 12.5px; font-weight: 700; }
+.sq-mini .mp .sq-say2 { overflow: visible; }
+.sq-mini .mp .sq-rows { flex-wrap: wrap; }
+.sq-mini .mp .note { margin: 0; color: #6b7280; font-size: 12px; }
+.sq-mini .who { display: flex; flex-direction: column; gap: 6px; }
+.sq-mini .who > b { font-size: 14px; }
+.sq-mini .who button { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #e3e5e8; border-radius: 10px; background: #fff; font-size: 13px; font-weight: 700; text-align: left; line-height: 0; }
+.sq-mini .who button span { line-height: 1.4; }
+.sq-mini .who button small { margin-left: auto; color: #6b7280; font-size: 11px; font-weight: 600; line-height: 1.4; }
+.sq-mini .who button:disabled { opacity: 0.55; }
+.sq-mini .who > small { color: #6b7280; font-size: 12.5px; }
+.sq-mini .mm { margin: 6px 12px 0; color: #b42318; font-size: 12px; }
+/* the three at the foot */
+.sq-mini .mb { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin-top: auto; padding: 10px; }
+.sq-mini .mb button { height: 36px; border: 1px solid #d6d9de; border-radius: 10px; background: #fff; font-size: 13px; font-weight: 700; }
+.sq-mini .mb button.on { border-color: #1b1d22; background: #1b1d22; color: #fff; }
+@keyframes sqm-lit { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 210, 63, 0.8); } 50% { box-shadow: 0 0 0 6px rgba(255, 210, 63, 0); } }
+@keyframes sqm-dip { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .sq-mini .ms.lit, .sq-mini .mf .flt, .sq-mini .mf .pull { animation: none; }
+}

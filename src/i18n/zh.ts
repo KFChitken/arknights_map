@@ -3004,6 +3004,39 @@ export const zh = {
       note: "每只蟑螂背一个企鹅物流的快递，在龙门街上跑 300 米，先送到大帝手里的赢。镜头跟着你走，前面有什么要跑近了才看到；上面那条只画四个人在哪。狂点「加油」跑得快（每秒最多算 6 下）；看到白开水、源石虫、近卫局路障就点「跳」，理智顶液别跳，吃到冲一下。空道人机来跑，最多 30 秒；第一个签收的头上小冠 1 分钟，1 个人时是自己练。",
       close: "关上急件赛",
     },
+    /**
+     * The room small (src/components/app/squad/SquadMini.tsx): in a window of its own over the game (电脑小窗, from
+     * 弹出小窗 on a computer), or as the whole page while the page is small (a phone's floating window, a squeezed window)
+     */
+    mini: {
+      pip: "弹出小窗",
+      pipLabel: "把房间弹到一个小窗里，一直浮在最上面",
+      pipOn: "收回小窗",
+      pipOnLabel: "关上浮在最上面的小窗",
+      /** Each mode's name, short, on its strip: {mode} · {what} */
+      short: { dance: "广场舞", quiz: "随堂测", gift: "W 的礼物", race: "急件赛", stack: "基建加盖" },
+      line: "{mode} · {what}",
+      /** One not in the mode: how many are */
+      people: "{n} 人在玩",
+      danceCombo: "COMBO {n}",
+      quizNo: "第 {n} / {of} 题",
+      giftYours: "在你手上！",
+      raceRun: "第 {rank} · 还差 {m} m",
+      raceNext: "下一场你在里面",
+      startsIn: "{s} 秒后开始",
+      done: "这一局完了",
+      stackNow: "{n} 层 · 手里 {k} 块",
+      /** 钓鳞's strip: the pull at the bite */
+      pull: "收竿",
+      /** The three at the foot, and their pages */
+      say: "说话",
+      throw: "扔东西",
+      listen: "跟着听",
+      throwWho: "扔给谁？",
+      /** A line in the box under the roaches */
+      said: "{name}：{line}",
+      back: "返回",
+    },
     /** 基建加盖 (src/components/app/squad/SquadStack.tsx), a mode of 玩点什么 */
     stack: {
       title: "基建加盖",

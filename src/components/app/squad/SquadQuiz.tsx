@@ -409,7 +409,7 @@ function placeIntro(src: string, at: number, len: number, refused: () => void, p
 }
 
 /** An intro's music while src is given (null: none, or not now): kept where it is, stopped at its end; and what plays it from a tap */
-function useIntro(src: string | null, at: number, len: number) {
+export function useIntro(src: string | null, at: number, len: number) {
   const [blocked, setBlocked] = useState<string | null>(null);
   useEffect(() => {
     if (!src) return;
@@ -437,30 +437,17 @@ function useIntro(src: string | null, at: number, len: number) {
   };
 }
 
-export default function SquadQuiz() {
-  const openAt = useSquadModeCard();
-  const room = useSquadRoom();
-  const picks = useSquadQuizPicks();
-  useListenPlayer();
-  const [now, setNow] = useState(() => squadServerNow());
+/**
+ * Each question of the quiz playing asked for from just before it starts (its three, its picture or song), and the
+ * room read again once its time is up, for its answer; failed: why one could not be had, after its tries
+ */
+export function useQuizAsks(mode: QuizMode | null, now: number, failed: (text: string) => void) {
   const [asks, setAsks] = useState<{ at: number; got: Record<number, QuizAsk> }>({ at: 0, got: {} });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [still] = useState(() => typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches));
   const asking = useRef(new Map<string, number>());
   const looked = useRef(new Set<string>());
-  const mode = room?.mode?.kind === "quiz" && room.mode.at === openAt ? room.mode : null;
-  const open = Boolean(mode);
+  const fail = useRef(failed);
+  fail.current = failed;
   const got = mode && asks.at === mode.at ? asks.got : NO_ASKS;
-
-  useEffect(() => {
-    if (!open) return;
-    setNow(squadServerNow());
-    const t = window.setInterval(() => setNow(squadServerNow()), TICK_MS);
-    return () => window.clearInterval(t);
-  }, [open]);
-
-  // each question asked for from just before it starts; the room again once its time is up, for its answer
   useEffect(() => {
     if (!mode) return;
     for (const q of mode.questions) {
@@ -476,7 +463,7 @@ export default function SquadQuiz() {
           })
           .catch((e: unknown) => {
             window.setTimeout(() => asking.current.set(key, tries + 1), ASK_AGAIN_MS);
-            if (tries + 1 >= ASK_TRIES) setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain);
+            if (tries + 1 >= ASK_TRIES) fail.current(e instanceof WorldError ? e.message : T.map.common.tryAgain);
           });
       }
       if (q.answer === undefined && now >= q.ends + ANSWER_AFTER_MS && !looked.current.has(key)) {
@@ -485,6 +472,28 @@ export default function SquadQuiz() {
       }
     }
   }, [mode, now, got]);
+  return got;
+}
+
+export default function SquadQuiz() {
+  const openAt = useSquadModeCard();
+  const room = useSquadRoom();
+  const picks = useSquadQuizPicks();
+  useListenPlayer();
+  const [now, setNow] = useState(() => squadServerNow());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [still] = useState(() => typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches));
+  const mode = room?.mode?.kind === "quiz" && room.mode.at === openAt ? room.mode : null;
+  const open = Boolean(mode);
+  const got = useQuizAsks(mode, now, setMsg);
+
+  useEffect(() => {
+    if (!open) return;
+    setNow(squadServerNow());
+    const t = window.setInterval(() => setNow(squadServerNow()), TICK_MS);
+    return () => window.clearInterval(t);
+  }, [open]);
 
   const phase = mode ? quizPhase(mode, now) : null;
   const q = phase && phase.at !== "results" ? phase.q : null;

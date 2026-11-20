@@ -9,7 +9,7 @@ import { useSquadRoom } from "../squad/squading";
 import { squadDing, useSquadMuted } from "../squad/squadSound";
 import Fish, { type PondView } from "./Fish";
 import { boxOf, dragOf, dropOf, goesOnLeaving, NO_PLACE, sceneOf, TAP_PX, WIDE, type Place } from "./winPlace";
-import { bigFishWin, dropFishWin, hideFishWin, setFishLine, smallFishWin, useFishWin } from "./winStore";
+import { bigFishWin, dropFishWin, hideFishWin, setFishLine, setFishTap, smallFishWin, useFishWin } from "./winStore";
 import "./fish.css";
 
 /**
@@ -100,6 +100,11 @@ export default function FishWin({
     const t = window.setTimeout(() => setNotice(null), 2_600);
     return () => window.clearTimeout(t);
   }, [notice]);
+  // the room small (SquadMini.tsx) pulls at the bite as the strip and the ball do
+  useEffect(() => {
+    setFishTap(() => tapRef.current?.());
+    return () => setFishTap(null);
+  }, []);
   // out of the room with the bank not open to them: gone once its line is done
   useEffect(() => {
     if (goesOnLeaving({ kept: win.kept, fishOk, inRoom, line: win.line })) dropFishWin();

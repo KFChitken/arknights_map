@@ -7,6 +7,7 @@ import type { SquadRoom } from "@/lib/squad";
 import type { SquadMode } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { SquadRoach } from "./SquadRoach";
+import { useMiniPage } from "./miniState";
 import { dismissSquadMode, squadModeIn, useSquadModeCard, useSquadModeAsked, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
@@ -77,8 +78,10 @@ export default function SquadModeInvite() {
   const danceAt = useSquadModeCard();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ at: number; text: string } | null>(null);
+  // the room small as the whole page has 加入 on its strip
+  const small = useMiniPage();
   const mode = inviteOf(room, asked, danceAt);
-  if (!room || !mode) return null;
+  if (!room || !mode || small) return null;
   const join = async () => {
     setBusy(true);
     try {

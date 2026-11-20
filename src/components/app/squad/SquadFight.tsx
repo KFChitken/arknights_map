@@ -11,6 +11,7 @@ import { useOperatorArt } from "../OperatorNames";
 import { useAbove, useWide } from "./SquadBar";
 import SmallFlame from "./SmallFlame";
 import SquadMateCard from "./SquadMateCard";
+import SquadPipButton from "./SquadPipButton";
 import { ListenAsk, ListenNote } from "./SquadListen";
 import { CoreBadge, extraNames, StrategyFace } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
@@ -416,6 +417,7 @@ export default function SquadFight({
             >
               {muted ? T.squad.fight.soundOff : T.squad.fight.soundOn}
             </button>
+            {wide && <SquadPipButton onError={onError} />}
             <button type="button" aria-haspopup="dialog" onClick={onOpen}>
               {T.squad.fight.expand}
             </button>

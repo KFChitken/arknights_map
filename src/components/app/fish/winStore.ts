@@ -55,6 +55,13 @@ export const setFishLine = (line: FishSpot | null, bite: boolean, casts: number 
 /** Signed out: nothing kept */
 export const forgetFishWin = () => set(FIRST);
 
+/** The window's own tap (its strip's, its ball's: at the bite the pull, and the window open), for the room small's 收竿 */
+let tap: (() => void) | null = null;
+export const setFishTap = (fn: (() => void) | null) => {
+  tap = fn;
+};
+export const tapFishNow = () => tap?.();
+
 /** The word by 钓鳞 in the menu (FishNote) */
 export type FishNote = {
   text: string;
