@@ -1,0 +1,1 @@
+ALTER TABLE "squad_rooms" ADD COLUMN "stack_best" smallint DEFAULT 0 NOT NULL;

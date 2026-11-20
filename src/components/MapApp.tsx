@@ -358,6 +358,7 @@ const SquadDance = dynamic(() => import("./app/squad/SquadDance"), { ssr: false 
 const SquadQuiz = dynamic(() => import("./app/squad/SquadQuiz"), { ssr: false });
 const SquadGift = dynamic(() => import("./app/squad/SquadGift"), { ssr: false });
 const SquadRace = dynamic(() => import("./app/squad/SquadRace"), { ssr: false });
+const SquadStack = dynamic(() => import("./app/squad/SquadStack"), { ssr: false });
 const SquadModeInvite = dynamic(() => import("./app/squad/SquadModeInvite"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
@@ -6261,6 +6262,7 @@ export default function MapApp({
       {squadShown && <SquadQuiz />}
       {squadShown && <SquadGift />}
       {squadShown && <SquadRace />}
+      {squadShown && <SquadStack />}
       {squadShown && <SquadModeInvite />}
       {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}
       {listenOpen && listenShown && me?.listen && (

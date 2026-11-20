@@ -10,7 +10,7 @@ import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { modeEnds, type GiftData, type QuizData, type RaceData, type SquadMode } from "../squadMode";
+import { modeEnds, type GiftData, type QuizData, type RaceData, type SquadMode, type StackData } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -107,6 +107,7 @@ import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, sq
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songOf } from "./songs";
 import { giftShownUntil, giftView } from "./squadGift";
+import { stackView } from "./squadStack";
 import { quizView } from "./squadQuiz";
 import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
@@ -512,7 +513,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
       lastTop: room.fireLastTop,
       bestTop: room.fireBestTop,
     },
-    mode: await modeView(room, rows, now),
+    mode: await modeView(room, rows, me.handle, now),
     ...(me.modeAgainAt && me.modeAgainAt.getTime() > now ? { modeAgain: me.modeAgainAt.getTime() } : {}),
     endsAt: ends.at,
     endsWhy: ends.why,
@@ -532,9 +533,10 @@ async function fireWatchers(ids: string[], now: number) {
 
 /**
  * 玩点什么's mode as the room's pages have it (src/lib/squadMode.ts), while it plays (one over is cleared by the next
- * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order
+ * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order; 基建加盖's hand the
+ * viewer's (numbered `viewer`)
  */
-async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], now: number): Promise<SquadMode | null> {
+async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], viewer: number, now: number): Promise<SquadMode | null> {
   if (!room.mode || !room.modeAt || !room.modeUntil || !room.modeLast) return null;
   const endsAt = modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime());
   if (endsAt <= now) return null;
@@ -579,6 +581,7 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
       ...(data.end ? { end: data.end } : {}),
     };
   }
+  if (room.mode === "stack" && room.modeData) return { kind: "stack", ...base, ...stackView(room.modeData as StackData, room.stackBest, viewer) };
   if (room.mode !== "dance" || !room.modeSong || !room.modeSongAt) return null;
   return { kind: "dance", ...base, song: room.modeSong, name: (await songOf(room.modeSong))?.name ?? "", songAt: room.modeSongAt.getTime() };
 }

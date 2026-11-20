@@ -119,6 +119,18 @@ export function ModePlayIcon({ kind }: { kind: SquadModeKind }) {
         <path d="M31 21.5l2.2 2.2-2.2 2.2" fill="none" stroke="#1b1d22" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
+  if (kind === "stack")
+    return (
+      <svg className="pg-ico stack" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M27 2.5v4.5" stroke="#5b2fa8" strokeWidth="1.2" opacity="0.5" />
+        <rect x="21.5" y="7" width="11" height="6.5" rx="3.2" fill="#7a4fd0" />
+        <rect x="11.5" y="15" width="13" height="6.5" rx="3.2" fill="#5b2fa8" />
+        <rect x="14.5" y="21.5" width="13" height="6.5" rx="3.2" fill="#7a4fd0" />
+        <rect x="12" y="28" width="13" height="6.5" rx="3.2" fill="#5b2fa8" />
+        <rect x="7" y="34.5" width="26" height="3" rx="1.2" fill="#8a6b45" />
+        <path d="M18.5 7l-3 1.5M35 9.5l-3-1" stroke="#7a4fd0" strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
+      </svg>
+    );
   return (
     <svg className="pg-ico gift" viewBox="0 0 40 40" aria-hidden="true">
       <path d="M20 15 Q18.5 7 25 4" stroke="#3a3f47" strokeWidth="2" fill="none" />

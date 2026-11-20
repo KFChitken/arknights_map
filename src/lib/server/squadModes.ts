@@ -18,10 +18,13 @@ import {
   MODE_AGAIN_MS,
   modeEnds,
   quizUntil,
+  STACK_IDLE_MS,
+  STACK_MOST_MS,
   type DanceSong,
   type GiftData,
   type QuizData,
   type RaceData,
+  type StackData,
 } from "../squadMode";
 import { db } from "./db";
 import { HttpError } from "./http";
@@ -35,6 +38,7 @@ import { danceInRoom, raceInRoom, roomOf, tellSquadPlay } from "./squad";
 import { forgetGift, giftRooms, makeGift, passIn, reseatGift, settleGift, watchGift } from "./squadGift";
 import { forgetRace, makeRace, raceLatest, relaneRace, runIn, settleRace, watchRace } from "./squadRace";
 import { endQuiz, makeQuiz } from "./squadQuiz";
+import { againIn, dropIn, makeStack, type StackPut } from "./squadStack";
 
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥; the rules in src/lib/squadMode.ts), kept on the room's row and its
@@ -175,6 +179,9 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
     );
     const until = new Date(raceLatest(race.start));
     fields = { modeSong: null, modeSongAt: null, modeUntil: until, modeLast: until, modeData: race };
+  } else if (body.kind === "stack") {
+    // its first round from now; it ends STACK_IDLE_MS after the last block put (or round begun), STACK_MOST_MS on at the latest
+    fields = { modeSong: null, modeSongAt: null, modeUntil: new Date(now + STACK_MOST_MS), modeLast: new Date(now), modeData: makeStack(now) };
   } else if (body.kind === "gift") {
     // its rounds, and a song to drum to: 一起听's while one plays (from where it is), else one long enough at random
     gift = await makeGift(mine.room.id, mine.me.handle, now, rand);
@@ -334,8 +341,8 @@ export async function danceSong(user: Pick<UserRow, "id" | "email">, now = Date.
 // ---- the sweep ----
 
 /**
- * The main process, every few seconds: the modes over (their song ended, or DANCE_IDLE_MS since the last tap)
- * cleared, and their rooms told. Says how many.
+ * The main process, every few seconds: the modes over (their song ended, or DANCE_IDLE_MS since the last tap; 基建加盖
+ * STACK_IDLE_MS since the last block) cleared, and their rooms told. Says how many.
  */
 export async function sweepModes(now = Date.now()) {
   let n = 0;
@@ -349,7 +356,11 @@ export async function sweepModes(now = Date.now()) {
       and(
         isNull(squadRooms.endedAt),
         isNotNull(squadRooms.mode),
-        or(lte(squadRooms.modeUntil, new Date(now)), lte(squadRooms.modeLast, new Date(now - DANCE_IDLE_MS))),
+        or(
+          lte(squadRooms.modeUntil, new Date(now)),
+          and(ne(squadRooms.mode, "stack"), lte(squadRooms.modeLast, new Date(now - DANCE_IDLE_MS))),
+          and(eq(squadRooms.mode, "stack"), lte(squadRooms.modeLast, new Date(now - STACK_IDLE_MS))),
+        ),
       ),
     );
   for (const r of over) {
@@ -466,4 +477,33 @@ export async function runRace(user: Pick<UserRow, "id">, body: Record<string, un
   });
   raceInRoom(done.roomId, done.did);
   return { now, ...done.did };
+}
+
+// ---- 基建加盖 ----
+
+/**
+ * 基建加盖 (squadStack.ts): 放 (do: drop, at: the server's clock as the page has it) your roach on the tower, or 再来一轮
+ * (do: again) once it fell, in the round the page has (round); the opening lives on STACK_IDLE_MS from either, and the
+ * room keeps its highest tower (stack_best). The room told.
+ */
+export async function stackDo(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
+  if (body.do !== "drop" && body.do !== "again") throw refuse(400, T.server.squad.badMode);
+  const done = await db.transaction(async (tx) => {
+    const { room, me } = await lockedMine(tx, user.id);
+    const ends = endsOfMode(room);
+    if (room.mode !== "stack" || !room.modeData || ends === null || ends <= now) throw refuse(409, T.server.squad.noMode);
+    if (!me.modeIn) throw refuse(409, T.server.squad.notStacking);
+    const data = structuredClone(room.modeData as StackData);
+    if (body.do === "again") {
+      const begun = againIn(data, body, now);
+      if (begun) await tx.update(squadRooms).set({ modeData: data, modeLast: new Date(now) }).where(eq(squadRooms.id, room.id));
+      return { roomId: room.id, h: me.handle, told: begun, put: null as StackPut | null, best: room.stackBest, round: data.round };
+    }
+    const put = dropIn(data, me.handle, body, now);
+    const best = Math.max(room.stackBest, put.height);
+    await tx.update(squadRooms).set({ modeData: data, modeLast: new Date(now), stackBest: best }).where(eq(squadRooms.id, room.id));
+    return { roomId: room.id, h: me.handle, told: true, put, best, round: data.round };
+  });
+  if (done.told) await tellSquadPlay(done.roomId, { kind: "stack", h: done.h });
+  return { now, round: done.round, best: done.best, ...(done.put ?? {}) };
 }

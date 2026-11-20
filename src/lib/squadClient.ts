@@ -109,6 +109,12 @@ export const squadApi = {
   pass: (at: number) => call<{ now: number; at: number }>("pass", post({ at })),
   /** 企鹅物流急件赛: 加油 (tap: how many since the last) or 跳 (jump), at the server's clock as this page has it; as taken */
   run: (body: { tap: number; at: number } | { jump: true; at: number }) => call<{ now: number; h: number; tap?: [number, number]; jump?: number }>("run", post(body)),
+  /**
+   * 基建加盖: 放 your roach on the tower (drop, at the server's clock as this page has it) or 再来一轮 (again), in the round
+   * this page has; where it went, whether the tower fell or sways, and how high it stands (a drop), the room's highest
+   */
+  stack: (body: { do: "drop"; round: number; at: number } | { do: "again"; round: number }) =>
+    call<{ now: number; round: number; best: number; x?: number; falls?: boolean; wobbles?: boolean; height?: number }>("stack", post(body)),
   /** 火焰周榜: this week's or last week's, and your room on it */
   fireBoard: (week: "this" | "last") => call<FireBoard>("fireboard", post({ week })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */

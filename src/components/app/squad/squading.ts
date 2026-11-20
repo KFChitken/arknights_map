@@ -23,8 +23,20 @@ import {
   type SquadTell,
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
-import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
-import { beatOff, DANCE_TAP_EVERY_MS, DANCE_WINDOW_MS, danceEnds, RACE_TAPS_MAX, type SquadModeKind } from "@/lib/squadMode";
+import { BALL_BACK_MS, throwOf, woodAfter, type SquadOn } from "@/lib/squadFire";
+import {
+  beatOff,
+  DANCE_TAP_EVERY_MS,
+  DANCE_WINDOW_MS,
+  danceEnds,
+  RACE_TAPS_MAX,
+  STACK_HAND_EVERY_MS,
+  STACK_HAND_MAX,
+  STACK_IDLE_MS,
+  stackPut,
+  stackSwing,
+  type SquadModeKind,
+} from "@/lib/squadMode";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
 import { cmText, nameOf } from "../fish/words";
@@ -830,6 +842,47 @@ export async function squadRaceJump() {
   ownLane({ jump: at });
   try {
     return await timed(() => squadApi.run({ jump: true, at }));
+  } catch (e) {
+    void loadSquadRoom().catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * 基建加盖's 放, now on the server's clock as this page has it, in the round this page has: your roach on the tower at
+ * once where the swing is (as the server will put it, the tower falling as it will), a block out of your hand, then the
+ * room as the server has it (it tells the room). Refused (too soon, an empty hand, the tower fell or another round
+ * began meanwhile), the room read again. Null when nothing was sent (none playing, or the tower down).
+ */
+export async function squadStackDrop() {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "stack" || mode.fell) return null;
+  const at = Math.max(squadServerNow(), mode.roundAt);
+  const x = Math.round(stackSwing(mode.roundAt, at)) || 0;
+  const put = stackPut(mode.blocks, x);
+  const blocks = [...mode.blocks, { h: r.you, x, at }];
+  const after = woodAfter(mode.hand?.n ?? STACK_HAND_MAX, mode.hand?.at ?? null, at, STACK_HAND_MAX, STACK_HAND_EVERY_MS);
+  const fell = put.falls ? { fell: { at, height: mode.blocks.length } } : {};
+  const best = put.falls ? mode.best : Math.max(mode.best, blocks.length);
+  room.set(withWant({ ...r, mode: { ...mode, blocks, ...fell, best, hand: { n: after.wood, at: after.at }, endsAt: Math.min(mode.until, at + STACK_IDLE_MS) } }));
+  try {
+    return await timed(() => squadApi.stack({ do: "drop", round: mode.round, at }));
+  } catch (e) {
+    void loadSquadRoom().catch(() => {});
+    throw e;
+  }
+}
+
+/** 基建加盖's 再来一轮, in the round this page has (one another began first is nothing): the room as it is then */
+export async function squadStackAgain() {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "stack") return null;
+  try {
+    const res = await timed(() => squadApi.stack({ do: "again", round: mode.round }));
+    await loadSquadRoom();
+    return res;
   } catch (e) {
     void loadSquadRoom().catch(() => {});
     throw e;

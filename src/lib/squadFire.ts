@@ -89,17 +89,20 @@ export const fireWarm = (level: number) => Math.min(level, 50) * 0.0045;
 /** 卫戍池塘's campfire in 钓鳞's window (0–5): Lv.1 as its 1, Lv.50 and up as its 5 */
 export const fireCamp = (level: number) => (level <= 0 ? 0 : 1 + (4 * (Math.min(level, 50) - 1)) / 49);
 
-/** Sticks in hand now: `wood` at `at` (null: never used, a full hand) */
-export const woodNow = (wood: number, at: number | null, now: number) =>
-  at === null ? Math.min(WOOD_MAX, wood) : Math.min(WOOD_MAX, wood + Math.floor(Math.max(0, now - at) / WOOD_EVERY_MS));
+/**
+ * Sticks in hand now: `wood` at `at` (null: never used, a full hand). The hand holds `max` at most, one more growing
+ * each `every` (篝火's unless given: 基建加盖's blocks are held the same way)
+ */
+export const woodNow = (wood: number, at: number | null, now: number, max = WOOD_MAX, every = WOOD_EVERY_MS) =>
+  at === null ? Math.min(max, wood) : Math.min(max, wood + Math.floor(Math.max(0, now - at) / every));
 /** Till the next stick grows (null: the hand is full) */
-export const woodIn = (wood: number, at: number | null, now: number) =>
-  at === null || woodNow(wood, at, now) >= WOOD_MAX ? null : WOOD_EVERY_MS - (Math.max(0, now - at) % WOOD_EVERY_MS);
+export const woodIn = (wood: number, at: number | null, now: number, max = WOOD_MAX, every = WOOD_EVERY_MS) =>
+  at === null || woodNow(wood, at, now, max, every) >= max ? null : every - (Math.max(0, now - at) % every);
 /** The hand after one is put on: one less, and the next growing from where it was (from now, off a full hand) */
-export function woodAfter(wood: number, at: number | null, now: number): { wood: number; at: number } {
-  const have = woodNow(wood, at, now);
-  if (at === null || have >= WOOD_MAX) return { wood: have - 1, at: now };
-  return { wood: have - 1, at: at + Math.floor(Math.max(0, now - at) / WOOD_EVERY_MS) * WOOD_EVERY_MS };
+export function woodAfter(wood: number, at: number | null, now: number, max = WOOD_MAX, every = WOOD_EVERY_MS): { wood: number; at: number } {
+  const have = woodNow(wood, at, now, max, every);
+  if (at === null || have >= max) return { wood: have - 1, at: now };
+  return { wood: have - 1, at: at + Math.floor(Math.max(0, now - at) / every) * every };
 }
 
 /**

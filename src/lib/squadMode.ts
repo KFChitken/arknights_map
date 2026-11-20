@@ -1,3 +1,5 @@
+import { woodIn, woodNow } from "./squadFire";
+
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥): one mode at a time, opened by anyone in the room, the others told
  * and free to join or only watch (fishing, throwing, the fire and talking all go on beside it); each ends on its own,
@@ -12,7 +14,7 @@
  */
 
 /** The modes there are (⑦ adds them one by one) */
-export const MODE_KINDS = ["dance", "quiz", "gift", "race"] as const;
+export const MODE_KINDS = ["dance", "quiz", "gift", "race", "stack"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
 
@@ -57,8 +59,9 @@ export function beatOff(beats: ArrayLike<number>, tMs: number): number {
 
 /** When a dance ends by itself: its song over, or DANCE_IDLE_MS after its last tap, whichever comes first */
 export const danceEnds = (until: number, last: number) => Math.min(until, last + DANCE_IDLE_MS);
-/** When a mode ends by itself: a dance as danceEnds, the others at their end (until) */
-export const modeEnds = (kind: string, until: number, last: number) => (kind === "dance" ? danceEnds(until, last) : until);
+/** When a mode ends by itself: a dance as danceEnds, 基建加盖 STACK_IDLE_MS after the last block put, the others at their end (until) */
+export const modeEnds = (kind: string, until: number, last: number) =>
+  kind === "dance" ? danceEnds(until, last) : kind === "stack" ? Math.min(until, last + STACK_IDLE_MS) : until;
 
 /**
  * The mode a room is playing, as its pages have it (SquadRoom.mode): which, opened by whom (one's number) and when;
@@ -80,7 +83,20 @@ export type GiftMode = ModeBase & { kind: "gift"; song: string; name: string; so
  * the mode's own 人机; once it is over and the server settled it, the order they signed in (RaceEnd)
  */
 export type RaceMode = ModeBase & { kind: "race"; start: number; seed: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
-export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode;
+/**
+ * 基建加盖: its round (from 1) and when it began, the tower's blocks, how it fell (once it has), the room's highest, and
+ * the blocks in your hand (n at `at`, as 篝火's sticks; none while you are not in it)
+ */
+export type StackMode = ModeBase & {
+  kind: "stack";
+  round: number;
+  roundAt: number;
+  blocks: StackBlock[];
+  fell?: StackFell;
+  best: number;
+  hand?: { n: number; at: number | null };
+};
+export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | StackMode;
 
 // ---- 凯尔希随堂测 ----
 
@@ -496,4 +512,71 @@ export function raceOrder(r: Pick<RaceNow, "x" | "done">): number[] {
       if (db !== null) return 1;
       return r.x[b] - r.x[a] || a - b;
     });
+}
+
+// ---- 基建加盖 ----
+
+/**
+ * 基建加盖 (stack): a tower of roaches. Your roach swings over the tower's top, STACK_SWING_PX each way and back each
+ * STACK_SWING_MS, the same for everyone on the server's clock; 放 lets it fall where it is (the page's time, taken within
+ * STACK_EARLY_MS of the server's). One more than STACK_MISS_PX off the one under it, or a tower whose middle is more than
+ * STACK_TIP_PX off the base's, falls: the round is over (its height counted), and anyone may start the next. More than
+ * STACK_WOBBLE_PX off, it only sways. Each has a hand held as 篝火's sticks are (squadFire.ts woodNow: STACK_HAND_MAX
+ * at most, one more each STACK_HAND_EVERY_MS), full as one first comes in after it opened, and kept from round to round
+ * till it ends; the server takes one block each STACK_EVERY_MS from each. STACK_IDLE_MS with no block put (nor a round
+ * begun), it is over. The room keeps its highest tower (squad_rooms.stack_best). 人机 put none; nothing is won.
+ */
+export const STACK_SWING_MS = 1_600;
+export const STACK_SWING_PX = 60;
+/** Each block raises the tower this much (px on the page) */
+export const STACK_BLOCK_H = 34;
+export const STACK_MISS_PX = 40;
+export const STACK_TIP_PX = 30;
+export const STACK_WOBBLE_PX = 18;
+export const STACK_EVERY_MS = 1_000;
+export const STACK_HAND_MAX = 3;
+export const STACK_HAND_EVERY_MS = 30_000;
+/**
+ * The tower stays where it is on the page till it is this many blocks high, and then goes down as it grows (the
+ * canvas's six would put the swinging roach over the line at the top right)
+ */
+export const STACK_SHOWN = 5;
+export const STACK_IDLE_MS = 60_000;
+export const STACK_EARLY_MS = 400;
+/** It is over by this long after it opened at the latest, whatever is put */
+export const STACK_MOST_MS = 3_600_000;
+
+/** A block on the tower: whose roach it is (their number), where it is from the base's middle (px), put when (the server's clock) */
+export type StackBlock = { h: number; x: number; at: number };
+/** A round's end: when the tower fell, and how high it had been */
+export type StackFell = { at: number; height: number };
+/**
+ * 基建加盖 as the server keeps it (squad_rooms.mode_data): the round, when it began, its blocks, how it fell, and each
+ * one's hand (by number: n at `at`, as 篝火's sticks; their last block's time)
+ */
+export type StackData = { round: number; at: number; blocks: StackBlock[]; fell?: StackFell; hands: Record<string, { n: number; at: number | null; last: number }> };
+
+/** Where the swinging block is at t (the server's clock) in a round begun at `at`: px from the base's middle */
+export function stackSwing(at: number, t: number): number {
+  const p = (((t - at) % STACK_SWING_MS) + STACK_SWING_MS) % STACK_SWING_MS;
+  return -STACK_SWING_PX * Math.cos((2 * Math.PI * p) / STACK_SWING_MS);
+}
+
+/** A hand as it is now ({n, at} as kept; none yet: a full one), and till the next block grows in it (null: full) */
+export function stackHand(hand: { n: number; at: number | null } | undefined, now: number): { n: number; next: number | null } {
+  const n = hand ? woodNow(hand.n, hand.at, now, STACK_HAND_MAX, STACK_HAND_EVERY_MS) : STACK_HAND_MAX;
+  const next = hand ? woodIn(hand.n, hand.at, now, STACK_HAND_MAX, STACK_HAND_EVERY_MS) : null;
+  return { n, next };
+}
+
+/** How high the tower stands: its blocks, or as high as it was when it fell (the one that made it fall not counted) */
+export const stackHeight = (s: { blocks: readonly unknown[]; fell?: StackFell }) => (s.fell ? s.fell.height : s.blocks.length);
+
+/** A block put at x on a tower: how far off the one under it (the base's middle for the first), and whether the tower falls, or sways */
+export function stackPut(blocks: readonly { x: number }[], x: number): { off: number; falls: boolean; wobbles: boolean } {
+  const under = blocks.length ? blocks[blocks.length - 1].x : 0;
+  const off = x - under;
+  const middle = (blocks.reduce((sum, b) => sum + b.x, 0) + x) / (blocks.length + 1);
+  const falls = Math.abs(off) > STACK_MISS_PX || Math.abs(middle) > STACK_TIP_PX;
+  return { off, falls, wobbles: !falls && Math.abs(off) > STACK_WOBBLE_PX };
 }

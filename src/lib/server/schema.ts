@@ -24,7 +24,7 @@ import {
 import type { StatSnapshot } from "../dashboard";
 import type { PassPool } from "../passes";
 import type { RadarScan } from "../world/types";
-import type { GiftData, QuizData, RaceData } from "../squadMode";
+import type { GiftData, QuizData, RaceData, StackData } from "../squadMode";
 
 /** PostGIS geography; only ever written through the generated column below. */
 const geography = customType<{ data: string }>({ dataType: () => "geography" });
@@ -1949,9 +1949,12 @@ export const squadRooms = pgTable(
     modeLast: at("mode_last"),
     /**
      * The mode's own, never sent as it is: 凯尔希随堂测's questions, answers and who got each first (squadQuiz.ts QuizData);
-     * W 的礼物's rounds, seats and passes (squadGift.ts GiftData); 企鹅物流急件赛's lanes and what each did (squadRace.ts RaceData)
+     * W 的礼物's rounds, seats and passes (squadGift.ts GiftData); 企鹅物流急件赛's lanes and what each did (squadRace.ts
+     * RaceData); 基建加盖's tower and each one's hand (squadStack.ts StackData)
      */
-    modeData: jsonb("mode_data").$type<QuizData | GiftData | RaceData>(),
+    modeData: jsonb("mode_data").$type<QuizData | GiftData | RaceData | StackData>(),
+    /** 基建加盖's highest tower in this room (blocks; src/lib/server/squadStack.ts) */
+    stackBest: smallint("stack_best").notNull().default(0),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */

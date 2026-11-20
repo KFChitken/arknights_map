@@ -751,6 +751,12 @@ export const zh = {
       notRacing: "先加入才能跑。",
       raceIn: "你已经到了。",
       inAir: "还在空中。",
+      notStacking: "先加入才能放。",
+      stackFell: "塔已经塌了，点「再来一轮」接着搭。",
+      stackStanding: "这一轮还没塌，接着放吧。",
+      stackNewRound: "刚开了新的一轮，看准了再放。",
+      stackSlow: "慢点，每秒只收 1 块。",
+      stackEmpty: "手里没块了，等它长出来。",
     },
     routes: {
       world: {
@@ -2875,23 +2881,25 @@ export const zh = {
       in: "在玩 · 打开",
       wait: "等这局完",
       again: "{s} 秒后能再开",
-      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛" },
+      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛", stack: "基建加盖" },
       /** On a tile of the room, for one in it */
-      tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑" },
+      tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑", stack: "在搭" },
       /** Said to those who were in it or looking at it, as it ends */
-      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了" },
+      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了", stack: "基建加盖散场了" },
       /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
       invites: {
         dance: "{name} 开了{mode}（{n} 人在跳），加入？",
         quiz: "{name} 开了{mode}（{n} 人在答），加入？",
         gift: "{name} 开了{mode}（{n} 人在传），加入？",
         race: "{name} 开了{mode}（{n} 人在跑），加入？",
+        stack: "{name} 开了{mode}（{n} 人在搭），加入？",
       },
       invitesNoBy: {
         dance: "{mode}正在跳（{n} 人），加入？",
         quiz: "{mode}正在答（{n} 人），加入？",
         gift: "{mode}正在传（{n} 人），加入？",
         race: "{mode}正在跑（{n} 人），加入？",
+        stack: "{mode}正在搭（{n} 人），加入？",
       },
       inviteJoin: "加入",
       inviteNo: "不了",
@@ -2946,7 +2954,6 @@ export const zh = {
       close: "关上广场舞",
       ended: "广场舞散场了",
     },
-    /** 凯尔希随堂测 (src/components/app/squad/SquadQuiz.tsx), a mode of 玩点什么 */
     /** 企鹅物流急件赛 (src/components/app/squad/SquadRace.tsx), a mode of 玩点什么 */
     race: {
       title: "企鹅物流急件赛",
@@ -2997,6 +3004,38 @@ export const zh = {
       note: "每只蟑螂背一个企鹅物流的快递，在龙门街上跑 300 米，先送到大帝手里的赢。镜头跟着你走，前面有什么要跑近了才看到；上面那条只画四个人在哪。狂点「加油」跑得快（每秒最多算 6 下）；看到白开水、源石虫、近卫局路障就点「跳」，理智顶液别跳，吃到冲一下。空道人机来跑，最多 30 秒；第一个签收的头上小冠 1 分钟，1 个人时是自己练。",
       close: "关上急件赛",
     },
+    /** 基建加盖 (src/components/app/squad/SquadStack.tsx), a mode of 玩点什么 */
+    stack: {
+      title: "基建加盖",
+      /** The pill by the room's name, and the card's head */
+      count: "基建加盖 · 第 {n} 轮",
+      people: "{n} 人在搭",
+      /** The tower's height ({n} big, its unit small after it), the room's highest */
+      unit: "层",
+      best: "房间纪录 {n} 层",
+      /** Top right: till it ends with no block put ({left}: m:ss), or once the tower fell */
+      idle: "1 分钟没人放就结束 · 还剩 {left}",
+      idleFell: "没人接着搭 · {left} 后散场",
+      /** Your hand: its blocks ({n} of {max}), the next one's growing */
+      hand: "手里",
+      handCount: "{n} / {max}",
+      handLabel: "手里 {n} 块，最多 {max} 块",
+      full: "满了，一口气放完再等",
+      next: "下一块 {left} 后长出来",
+      drop: "放",
+      dropLabel: "放下你的蟑螂",
+      empty: "没块了",
+      again: "再来一轮",
+      /** Said over the tower */
+      fell: "塌了！这一轮 {n} 层",
+      wobble: "歪了，塔在晃",
+      slow: "慢点，每秒只收 1 块",
+      join: "加入一起搭",
+      watching: "你在围观，加入就能放块",
+      leave: "不搭了，去围观",
+      note: "块就是你的蟑螂：它在塔顶左右晃，点「放」落下。放歪了塔会晃，重心出了塔底就塌。每人最多攒 3 块、30 秒长 1 块；服务器每人每秒最多收 1 块。塌了这一轮结束，记下层数，点「再来一轮」接着搭；1 分钟没人放就散场。房间记最高。",
+      close: "关上基建加盖",
+    },
     /** W 的礼物 (src/components/app/squad/SquadGift.tsx), a mode of 玩点什么 */
     gift: {
       title: "W 的礼物",
@@ -3032,6 +3071,7 @@ export const zh = {
       note: "W 的礼物（引线在烧的礼物盒）在一圈 4 个座位之间传，轮到你就点「传」，2 秒不传会自动传。鼓点跟着歌走：房主开着一起听就是那首，没开就从听歌里挑一首方舟歌。歌一停，礼物「砰」一声，拿着的蟑螂翻肚皮、头上扣漏勺 1 分钟。人不够人机来凑，一局 5 轮；1 个人时是自己练，不扣漏勺。",
       close: "关上 W 的礼物",
     },
+    /** 凯尔希随堂测 (src/components/app/squad/SquadQuiz.tsx), a mode of 玩点什么 */
     quiz: {
       title: "凯尔希随堂测",
       count: "凯尔希随堂测 · 第 {n} / {of} 题",
