@@ -2,6 +2,7 @@ import {
   FISH_ITEMS,
   GIANT,
   isNight,
+  KIND_ODDS,
   MINI,
   MOON,
   ODDS_WEIGHT,
@@ -16,11 +17,12 @@ import {
 import { PITY_AFTER, SCHOOL_BOOST, type FishShadow } from "./rules";
 
 /**
- * What is on the hook, drawn as the line goes in (src/lib/server/fish.ts cast): first the tier (TIER_ODDS; blue or
- * better once PITY_AFTER casts in a row had none), then an item of it that may bite there and then, by its odds; a
- * tier with none drops to the one under it. Fish, junk and 卫戍限定 come as a variant now and then (月夜的 only at
- * night); measured ones get a size, smaller more often than not. The shadow by the float follows the size, else the
- * tier. 寻访券 and 漂流瓶 bite only while the server says they may (the day's, the wallet's room, PASSES).
+ * What is on the hook, drawn as the line goes in (src/lib/server/fish.ts cast). 寻访券 and 漂流瓶 first, each at its
+ * own chance (KIND_ODDS) while the server says it may come (the day's, the wallet's room, PASSES), never from the net,
+ * whatever the pity or a 鱼群; one that may not come is no share at all. Else the tier (TIER_ODDS; blue or better once
+ * PITY_AFTER casts in a row had none), then an item of it that may bite there and then, by its odds; a tier with none
+ * drops to the one under it. Fish, junk and 卫戍限定 come as a variant now and then (月夜的 only at night); measured
+ * ones get a size, smaller more often than not. The shadow by the float follows the size, else the tier.
  */
 
 /** What decides a cast */
@@ -78,6 +80,9 @@ function pick<T>(list: readonly T[], weight: (t: T) => number, r: number): T {
   return list[list.length - 1];
 }
 
+/** The shadow by the float of an item with no size, by its tier */
+const shadowOf = (tier: number): FishShadow => (tier <= 2 ? "s" : tier <= 4 ? "m" : "l");
+
 /** Casts in a row with nothing blue or better, after one more of this tier */
 export const dryAfter = (dry: number, tier: number) => (tier >= 3 ? 0 : dry + 1);
 /** Junk catches in a row, after one more of this item (寻访券 and 漂流瓶 are not junk here) */
@@ -88,6 +93,17 @@ export const junkAfter = (run: number, item: Pick<FishItem, "cat" | "kind">) => 
  * tier, else under it)
  */
 export function rollCatch(ask: RollAsk, items: readonly FishItem[] = FISH_ITEMS, tier?: number): Roll {
+  // the 通行证 things, on their own (a draw spent only where one may come)
+  if (tier === undefined) {
+    const kinds = items.filter((i) => i.kind && KIND_ODDS[i.kind] && mayBite(i, ask));
+    if (kinds.length) {
+      let x = ask.random() * 100;
+      for (const item of kinds) {
+        x -= KIND_ODDS[item.kind!]!;
+        if (x < 0) return { no: item.no, variant: 0, cm: null, tier: item.tier, shadow: shadowOf(item.tier) };
+      }
+    }
+  }
   const pity = ask.dry >= PITY_AFTER;
   // 自动钓 never goes past blue; after a dry spell, nothing under blue
   const top = ask.spot === "auto" ? 3 : 6;
@@ -98,7 +114,7 @@ export function rollCatch(ask: RollAsk, items: readonly FishItem[] = FISH_ITEMS,
   const order = [...tiers.filter((t) => t <= drawn).reverse(), ...tiers.filter((t) => t > drawn)];
   let can: FishItem[] = [];
   for (const t of order) {
-    can = items.filter((i) => i.tier === t && mayBite(i, ask));
+    can = items.filter((i) => i.tier === t && !i.kind && mayBite(i, ask));
     if (can.length) break;
   }
   if (!can.length) throw new Error(`nothing bites at ${ask.spot}`);
@@ -108,7 +124,7 @@ export function rollCatch(ask: RollAsk, items: readonly FishItem[] = FISH_ITEMS,
   const fam = ask.spot === "auto" ? [] : variantsOf(item).filter((v) => v !== MOON || (ask.hour >= 0 && isNight(ask.hour)));
   if (fam.length && ask.random() < VARIANT_CHANCE) variant = fam[Math.min(fam.length - 1, Math.floor(ask.random() * fam.length))];
   let cm: number | null = null;
-  let shadow: FishShadow = item.tier <= 2 ? "s" : item.tier <= 4 ? "m" : "l";
+  let shadow = shadowOf(item.tier);
   if (item.cm) {
     const [lo, hi] = item.cm;
     const f = Math.pow(ask.random(), 2);

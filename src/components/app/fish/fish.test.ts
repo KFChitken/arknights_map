@@ -33,7 +33,8 @@ describe("钓鳞's items", () => {
     expect(nameOf(21)).toBe("炎国锦鲤");
     expect(nameOf(21, 2)).toBe("源石结晶的炎国锦鲤");
     expect(nameOf(1, 7)).toBe("巨大的河鳞");
-    expect(nameOf(8)).toBe("???");
+    expect(nameOf(8)).toBe("落日鳞");
+    expect(nameOf(999)).toBe("???");
   });
 
   it("sit on a disc of their rarity, the size where the game writes how many, dark and pale before they are caught", () => {

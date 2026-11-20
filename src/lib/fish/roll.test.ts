@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mulberry32 } from "../prng";
-import { FAMILY, FISH_ITEMS, GIANT, MINI, MOON, TIER_ODDS, dexCells, itemOf, type FishItem } from "./items";
+import { FAMILY, FISH_ITEMS, GIANT, KIND_ODDS, MINI, MOON, TIER_ODDS, dexCells, itemOf, type FishItem } from "./items";
 import { dryAfter, junkAfter, mayBite, rollCatch, type RollAsk } from "./roll";
 import { ADMIRAL_AFTER, PERFECT_GRACE_MS, PITY_AFTER, RING_MS, biteAfter, onTime } from "./rules";
 
@@ -18,7 +18,9 @@ describe("what bites", () => {
     const seen = [0, 0, 0, 0, 0, 0];
     const N = 100_000;
     for (let i = 0; i < N; i++) seen[rollCatch(ask(random), FULL).tier - 1]++;
-    seen.forEach((n, i) => expect(Math.abs((n / N) * 100 - TIER_ODDS[i])).toBeLessThan(0.5));
+    // the odds need not add up to 100
+    const sum = TIER_ODDS.reduce((a, b) => a + b, 0);
+    seen.forEach((n, i) => expect(Math.abs((n / N) * 100 - (TIER_ODDS[i] * 100) / sum)).toBeLessThan(0.5));
   });
 
   it("never lets more than eight casts in a row go without blue, and makes 空军司令 of ten junk in a row", () => {
@@ -111,20 +113,87 @@ describe("what bites", () => {
     expect(mayBite(bottle, { ...base, spot: "auto", bottle: true })).toBe(false);
     const random = mulberry32(5);
     for (let i = 0; i < 500; i++) {
-      expect(rollCatch(ask(random, { ticket: true }), FISH_ITEMS, 5).no).toBe(27);
-      expect(rollCatch(ask(random, { bottle: true }), FISH_ITEMS, 6).no).toBe(30);
-      // one that may not come: the tier under it
-      expect(rollCatch(ask(random), FISH_ITEMS, 5).tier).toBe(4);
+      // a tier given (one that may no longer come by the pull): something else of it, never one of the two
+      const gold = rollCatch(ask(random, { ticket: true, bottle: true }), FISH_ITEMS, 5);
+      expect(gold.tier).toBe(5);
+      expect(itemOf(gold.no)!.kind).toBeUndefined();
+      // nothing else red: gold
+      expect(rollCatch(ask(random), FISH_ITEMS, 6).tier).toBe(5);
+      // nothing else of the tier at all: the one under it
+      expect(rollCatch(ask(random), FULL.filter((x) => x.tier !== 5), 5).tier).toBe(4);
     }
     // no hour at all: nothing held to one, even one that runs past midnight
     const late: FishItem = { no: 1, key: "d", cat: "fish", tier: 2, at: { pier: "mid" }, when: { hours: [23, 2] } };
     expect(mayBite(late, { ...base, hour: -1 })).toBe(false);
   });
 
+  it("draws 寻访券 and 漂流瓶 on their own, at their own odds wherever they may come, the same with more gold in the table", () => {
+    const ticket = itemOf(27)!;
+    const bottle = itemOf(30)!;
+    expect([KIND_ODDS.ticket, KIND_ODDS.bottle]).toEqual([1.7, 0.4]);
+    // by a draw in a hundred: the ticket's 1.7 first, then the bottle's 0.4, then the rest
+    const fixed = (r: number, more: Partial<RollAsk> = { ticket: true, bottle: true }) => rollCatch(ask(() => r, more)).no;
+    expect(fixed(0.0169)).toBe(ticket.no);
+    expect(fixed(0.0171)).toBe(bottle.no);
+    expect(fixed(0.0209)).toBe(bottle.no);
+    expect([ticket.no, bottle.no]).not.toContain(fixed(0.0211));
+    // one that may not come is no share at all: the other keeps its own
+    expect(fixed(0.0039, { bottle: true })).toBe(bottle.no);
+    expect(fixed(0.0041, { bottle: true })).not.toBe(bottle.no);
+    expect(fixed(0.0169, { ticket: false, bottle: false })).not.toBe(ticket.no);
+    const share = (items: readonly FishItem[], seed: number, more: Partial<RollAsk>) => {
+      const random = mulberry32(seed);
+      const N = 200_000;
+      let t = 0;
+      let b = 0;
+      for (let i = 0; i < N; i++) {
+        const no = rollCatch(ask(random, more), items).no;
+        if (no === ticket.no) t++;
+        else if (no === bottle.no) b++;
+      }
+      return [(t / N) * 100, (b / N) * 100];
+    };
+    const [t, b] = share(FISH_ITEMS, 31, { ticket: true, bottle: true });
+    expect(Math.abs(t - 1.7)).toBeLessThan(0.1);
+    expect(Math.abs(b - 0.4)).toBeLessThan(0.05);
+    // eight more gold things: the same
+    const more: FishItem[] = Array.from({ length: 8 }, (_, k) => ({ no: 900 + k, key: `gold${k}`, cat: "fish", tier: 5, at: { pier: "big" } }));
+    const [t2, b2] = share([...FISH_ITEMS, ...more], 32, { ticket: true, bottle: true, dry: PITY_AFTER });
+    expect(Math.abs(t2 - 1.7)).toBeLessThan(0.1);
+    expect(Math.abs(b2 - 0.4)).toBeLessThan(0.05);
+    // and a 鱼群 in the pond changes neither
+    const [t3, b3] = share(FISH_ITEMS, 33, { spot: "pond", ticket: true, bottle: true, school: true });
+    expect(Math.abs(t3 - 1.7)).toBeLessThan(0.1);
+    expect(Math.abs(b3 - 0.4)).toBeLessThan(0.05);
+  });
+
   it("drops a tier with nothing that may bite to the one under it", () => {
     const random = mulberry32(9);
     const thin = FULL.filter((x) => x.tier !== 6);
     for (let i = 0; i < 5_000; i++) expect(rollCatch(ask(random), thin).tier).toBeLessThan(6);
+  });
+
+  it("holds 龙门霓虹鳞 to the night, 泰拉巨鳞 to a 龙门跃鲤 caught first, the net to blue, and 黑胶 and 荧光棒 back for now", () => {
+    const base = { spot: "pier" as const, hour: 12, crowd: 0, caught: () => 0 };
+    const byKey = (key: string) => FISH_ITEMS.find((i) => i.key === key)!;
+    const neon = byKey("neonfish");
+    for (const hour of [19, 22, 0, 4]) expect(mayBite(neon, { ...base, hour }), String(hour)).toBe(true);
+    for (const hour of [5, 12, 18]) expect(mayBite(neon, { ...base, hour }), String(hour)).toBe(false);
+    const terra = byKey("terrafish");
+    const carp = byKey("dragoncarp");
+    expect(mayBite(terra, base)).toBe(false);
+    expect(mayBite(terra, { ...base, caught: (no) => (no === carp.no ? 1 : 0) })).toBe(true);
+    for (const key of ["vinyl", "glowstick"]) {
+      expect(byKey(key).off, key).toBe(true);
+      for (const spot of ["pier", "pond"] as const) expect(mayBite(byKey(key), { ...base, spot, together: 4 })).toBe(false);
+    }
+    const random = mulberry32(13);
+    for (let i = 0; i < 20_000; i++) {
+      const r = rollCatch({ ...ask(random, { hour: i % 24 }), spot: "auto" });
+      expect(r.tier).toBeLessThanOrEqual(3);
+      expect(r.variant).toBe(0);
+      expect(itemOf(r.no)!.kind).toBeUndefined();
+    }
   });
 
   it("runs on the real table: the bank's items only, and the dex counts a cell for each item and variant", () => {

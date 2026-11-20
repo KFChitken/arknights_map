@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { T } from "@/i18n";
+import { itemOf } from "@/lib/fish/items";
 import { BOTTLES_A_DAY, NOTE_DAYS, noteKm, SAY_GROUPS, SAYS, TICKETS_A_DAY } from "@/lib/fish/rules";
 import { PASS_CATALOG, passChar } from "@/lib/passCatalog";
 import { TICKETS_CAP, WELCOME_TICKETS } from "@/lib/passes";
@@ -96,7 +97,6 @@ const caughtNo = (a: Answer) => (a.body.caught as { no: number }).no;
 
 const TICKET = 27;
 const BOTTLE = 30;
-const KOI = 21;
 
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -139,19 +139,21 @@ describe("钓鳞's 寻访券", () => {
   it("never comes while the wallet holds 50: the cast draws something else, and one on the hook as it filled is swapped at the pull", async () => {
     const a = await account("a@example.com");
     await signIn(a);
-    // a draw of 0.99 every time: tier 5, where the 寻访券 is
-    const high = () => 0.99;
-    await castLine(a, { spot: "pier" }, Date.now(), high);
+    // a draw of 0.01 every time: inside the 寻访券's own 1.7 in a hundred
+    const low = () => 0.01;
+    await castLine(a, { spot: "pier" }, Date.now(), low);
     expect(await lineItem(a.id)).toBe(TICKET);
     await db.insert(passWallets).values({ userId: a.id, day: siteDay(), tickets: TICKETS_CAP, welcomed: true });
-    await castLine(a, { spot: "pier" }, Date.now(), high);
-    // nothing else of tier 5 bites yet: the tier under it
-    expect(await lineItem(a.id)).toBe(KOI);
+    await castLine(a, { spot: "pier" }, Date.now(), low);
+    // the wallet full: no share of the draw, so the same draw is something plain
+    expect(await lineItem(a.id)).not.toBe(TICKET);
 
     await hooked(a.id, TICKET);
     const reel = await call("reel");
     expect(reel.status).toBe(200);
-    expect(caughtNo(reel)).toBe(KOI);
+    // swapped for something else of its tier
+    expect(caughtNo(reel)).not.toBe(TICKET);
+    expect(itemOf(caughtNo(reel))!.tier).toBe(itemOf(TICKET)!.tier);
     expect((await wallet(a.id)).tickets).toBe(TICKETS_CAP);
     expect((await dayRow(a.id)).tickets).toBe(0);
   });
@@ -160,8 +162,8 @@ describe("钓鳞's 寻访券", () => {
     vi.stubEnv("PASSES", "admins");
     const a = await account("a@example.com");
     await signIn(a);
-    await castLine(a, { spot: "pier" }, Date.now(), () => 0.99);
-    expect(await lineItem(a.id)).toBe(KOI);
+    await castLine(a, { spot: "pier" }, Date.now(), () => 0.01);
+    expect([TICKET, BOTTLE]).not.toContain(await lineItem(a.id));
     await hooked(a.id, TICKET);
     expect(caughtNo(await call("reel"))).not.toBe(TICKET);
     expect(await wallet(a.id)).toBeUndefined();
@@ -174,8 +176,8 @@ describe("钓鳞's 漂流瓶", () => {
   it("is kept to open, one a site day: a second on the hook that day is something else", async () => {
     const a = await account("a@example.com");
     await signIn(a);
-    // a draw of 0.999 every time: tier 6, the bottle
-    await castLine(a, { spot: "pier" }, Date.now(), () => 0.999);
+    // a draw of 0.019 every time: past the 寻访券's 1.7 in a hundred, inside the 漂流瓶's 0.4 after it
+    await castLine(a, { spot: "pier" }, Date.now(), () => 0.019);
     expect(await lineItem(a.id)).toBe(BOTTLE);
     await hooked(a.id, BOTTLE);
     const reel = await call("reel");
@@ -186,8 +188,8 @@ describe("钓鳞's 漂流瓶", () => {
     expect((await call("state")).body).toMatchObject({ bottles: [id] });
 
     // the day's one came: the cast draws no other, and one on the hook is swapped
-    await castLine(a, { spot: "pier" }, Date.now(), () => 0.999);
-    expect(await lineItem(a.id)).toBe(TICKET);
+    await castLine(a, { spot: "pier" }, Date.now(), () => 0.019);
+    expect([TICKET, BOTTLE]).not.toContain(await lineItem(a.id));
     await hooked(a.id, BOTTLE);
     const second = await call("reel");
     expect(caughtNo(second)).not.toBe(BOTTLE);

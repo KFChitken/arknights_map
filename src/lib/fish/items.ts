@@ -34,6 +34,7 @@ export type FishItem = {
 
 type Table = {
   tiers: number[];
+  kinds: Partial<Record<NonNullable<FishItem["kind"]>, number>>;
   weights: Record<FishOdds, number>;
   variantChance: number;
   sizes: { mini: number; giant: number; perfect: number };
@@ -43,8 +44,13 @@ type Table = {
 const TABLE = table as Table;
 
 export const FISH_ITEMS: readonly FishItem[] = TABLE.items;
-/** The chance of each tier on a cast, 1 to 6, in percent */
+/** The chance of each tier on a cast, 1 to 6, in percent, for everything but the 通行证 things (KIND_ODDS) */
 export const TIER_ODDS: readonly number[] = TABLE.tiers;
+/**
+ * 寻访券 and 漂流瓶, each its own chance a cast in percent, drawn before the rest wherever it may come: the same
+ * whatever else the table holds
+ */
+export const KIND_ODDS: Readonly<Partial<Record<NonNullable<FishItem["kind"]>, number>>> = TABLE.kinds;
 export const ODDS_WEIGHT: Readonly<Record<FishOdds, number>> = TABLE.weights;
 /** How often a fish, junk or 卫戍限定 item comes as a variant */
 export const VARIANT_CHANCE = TABLE.variantChance;
