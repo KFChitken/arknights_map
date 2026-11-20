@@ -24,6 +24,7 @@ import {
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
 import { BALL_BACK_MS, fireLevel, throwOf, WOOD_MAX, woodNow, type SquadOn } from "@/lib/squadFire";
+import { beatOff, DANCE_TAP_EVERY_MS, DANCE_WINDOW_MS, danceEnds, type SquadModeKind } from "@/lib/squadMode";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
 import { cmText, nameOf } from "../fish/words";
@@ -128,6 +129,34 @@ export const markSquadTouched = (h: number, bold: boolean) => touched.set({ ...t
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
+
+/** 玩点什么's card (SquadModes.tsx), over the map: 「玩」 → 玩点什么 opens it */
+const modesOpen = kept(false);
+export const useSquadModesOpen = () => useSyncExternalStore(modesOpen.on, modesOpen.get, () => false);
+export const openSquadModes = () => modesOpen.set(true);
+export const closeSquadModes = () => modesOpen.set(false);
+
+/**
+ * 龙门广场舞's card (SquadDance.tsx), over the map's foot: open for the dance playing as it was opened (its start, at),
+ * as the player opened or joined it; another dance, or none, and it is shut
+ */
+const danceOpen = kept<number | null>(null);
+export const useSquadDanceOpen = () => useSyncExternalStore(danceOpen.on, danceOpen.get, () => null);
+export function openSquadDance() {
+  const mode = room.get()?.mode;
+  if (mode?.kind === "dance") danceOpen.set(mode.at);
+}
+export const closeSquadDance = () => danceOpen.set(null);
+
+/** 「XX 开了龙门广场舞，加入？」 answered 不了: by the mode's start, not asked again for it */
+const modeAsked = kept<number | null>(null);
+export const useSquadModeAsked = () => useSyncExternalStore(modeAsked.on, modeAsked.get, () => null);
+export const dismissSquadMode = (at: number) => modeAsked.set(at);
+
+/** 跳's answers as they come (the player's own judge, 准！ or 歪了), by when */
+const danceJudge = kept<{ ok: boolean; at: number } | null>(null);
+export const useSquadDanceJudge = () => useSyncExternalStore(danceJudge.on, danceJudge.get, () => null);
+export const squadDanceJudgeNow = danceJudge.get;
 
 /** 篝火's card (SquadFire.tsx), over the map: 「玩」 → 添柴 opens it */
 const fireOpen = kept(false);
@@ -289,8 +318,11 @@ function setRoom(next: SquadRoom | null) {
     touched.set(NO_TOUCHED);
     toMe.set(null);
     asked.clear();
-    // out of the room: its fire goes too
+    // out of the room: its fire goes too, and what it played
     fireOpen.set(false);
+    modesOpen.set(false);
+    danceOpen.set(null);
+    danceJudge.set(null);
     throws.set(NO_THROWS);
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
@@ -318,7 +350,9 @@ export async function loadSquadRoom(): Promise<SquadRoom | null> {
       let r: SquadRoom | null;
       do {
         again = false;
+        const sent = Date.now();
         r = (await squadApi.room()).room;
+        if (r) clocked(r.now, sent, Date.now());
         setRoom(r);
       } while (again);
       return r;
@@ -396,6 +430,20 @@ export function heardSquad(raw: unknown) {
     }
     return;
   }
+  // 龙门广场舞: each one's combo as it is now, and the dance living on from their tap
+  if (tell.t === "dance") {
+    const mode = r.mode;
+    if (!mode) return;
+    let endsAt = mode.endsAt;
+    const dancers = mode.in.map((m) => {
+      const it = tell.items.findLast((x) => x.h === m.h);
+      if (it) endsAt = Math.max(endsAt, danceEnds(mode.until, it.at));
+      // your own as your taps' answers had it, newer than the batch's
+      return it && m.h !== r.you ? { ...m, combo: it.combo } : m;
+    });
+    room.set(withWant({ ...r, mode: { ...mode, in: dancers, endsAt } }));
+    return;
+  }
   // 卫戍池塘: a teammate's purple or better, to the whole room by name (your own has its page)
   if (tell.t === "fish") {
     for (const it of tell.items) {
@@ -407,10 +455,17 @@ export function heardSquad(raw: unknown) {
   }
   // what a page of now does not know of: nothing to do
   if (tell.t !== "room") return;
+  // in the dance, or looking at it, as it was before this
+  const danced = Boolean(r.mode && (danceOpen.get() === r.mode.at || r.mode.in.some((m) => m.h === r.you)));
   void loadSquadRoom()
     .then((next) => {
       const what = tell.t === "room" ? tell.what : undefined;
       if (!next || !what) return;
+      // 玩点什么: a mode over (by itself) is said to those who were in it or looking at it; one opened asks the others itself
+      if (what.kind === "mode") {
+        if (!next.mode && what.on === false && what.h === undefined && danced) addFloat(T.squad.dance.ended);
+        return;
+      }
       // what you did yourself is not said back to you
       if ((what.kind === "in" || what.kind === "game") && what.h === next.you) return;
       // 结束这局: how long the 篝火 burnt in it, to everyone, the host too
@@ -583,6 +638,106 @@ export async function squadShakeOff() {
   const r = room.get();
   if (r) room.set(withWant({ ...r, members: r.members.map((m) => (m.you ? { ...m, head: undefined } : m)) }));
 }
+
+// ---- 玩点什么 ----
+
+/** The server's clock less this page's (ms): the middle of the last few answers', each less half its way there and back */
+const offs: number[] = [];
+let off = 0;
+function clocked(now: number, sent: number, got: number) {
+  if (!Number.isFinite(now)) return;
+  offs.push(now - (sent + got) / 2);
+  if (offs.length > 5) offs.shift();
+  const sorted = [...offs].sort((a, b) => a - b);
+  off = sorted[Math.floor(sorted.length / 2)];
+}
+async function timed<R extends { now: number }>(ask: () => Promise<R>): Promise<R> {
+  const sent = Date.now();
+  const res = await ask();
+  clocked(res.now, sent, Date.now());
+  return res;
+}
+/** The server's clock now (ms), as the room's answers put it: what 龙门广场舞's song and its taps go by */
+export const squadServerNow = () => Date.now() + off;
+
+/** 开 a mode from 玩点什么: 玩点什么 shut, the room as it is then, and the mode's own card open */
+export async function squadOpenMode(kind: SquadModeKind) {
+  await timed(() => squadApi.mode(kind));
+  const r = await loadSquadRoom();
+  modesOpen.set(false);
+  if (r?.mode) modeAsked.set(r.mode.at);
+  if (r?.mode?.kind === "dance") danceOpen.set(r.mode.at);
+  return r;
+}
+
+/**
+ * 加入 the mode playing (into), its card open; or 不跳了，去围观, the card left open to watch. Either way, not asked
+ * to join it again
+ */
+export async function squadModeIn(into: boolean) {
+  await timed(() => squadApi.modeIn(into));
+  danceJudge.set(null);
+  const r = await loadSquadRoom();
+  if (r?.mode) modeAsked.set(r.mode.at);
+  if (into) {
+    modesOpen.set(false);
+    if (r?.mode?.kind === "dance") danceOpen.set(r.mode.at);
+  }
+  return r;
+}
+
+/** Your own combo in the dance (as your taps' answers have it), and the dance living on from a tap at `at` */
+function ownCombo(combo: number, at: number | null) {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || !mode) return;
+  const endsAt = at === null ? mode.endsAt : Math.max(mode.endsAt, danceEnds(mode.until, at));
+  room.set(withWant({ ...r, mode: { ...mode, in: mode.in.map((m) => (m.h === r.you ? { ...m, combo } : m)), endsAt } }));
+}
+
+let tapAt = 0;
+/**
+ * 跳, now, on the server's clock as this page has it. Judged here at once against the song's beats (s from its start,
+ * when the page has them), as the server judges it, and put right by its answer where that differs; taps closer
+ * together than DANCE_TAP_EVERY_MS are one (nothing sent). Null when nothing was sent.
+ */
+export async function squadDanceTap(beats: ArrayLike<number> | null) {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "dance") return null;
+  const here = Date.now();
+  if (here - tapAt < DANCE_TAP_EVERY_MS) return null;
+  tapAt = here;
+  const at = squadServerNow();
+  const mine = mode.in.find((m) => m.h === r.you);
+  if (beats && mine) {
+    const ok = beatOff(beats, at - mode.songAt) <= DANCE_WINDOW_MS;
+    danceJudge.set({ ok, at: here });
+    ownCombo(ok ? mine.combo + 1 : 0, at);
+  }
+  let res: Awaited<ReturnType<typeof squadApi.tap>>;
+  try {
+    res = await timed(() => squadApi.tap(at));
+  } catch (e) {
+    // refused (the dance over, or you out of it): the room as it is
+    danceJudge.set(null);
+    void loadSquadRoom().catch(() => {});
+    throw e;
+  }
+  if (!res.counted) danceJudge.set(null);
+  else if (danceJudge.get()?.ok !== res.ok) danceJudge.set({ ok: res.ok, at: here });
+  ownCombo(res.combo, res.counted ? res.now : null);
+  return res;
+}
+
+/** 「玩」's line under 玩点什么: the mode playing and how many are in it, else what there is */
+export function modesSub(r: SquadRoom, now = squadServerNow()) {
+  const m = r.mode && r.mode.endsAt > now ? r.mode : null;
+  return m ? fmt(T.squad.modes.playingNoBy, { mode: T.squad.modes.names[m.kind], n: m.in.length }) : T.squad.modes.playSub;
+}
+
+/** 龙门广场舞's song for this page: its beats, and its link where 听歌 is open to the player */
+export const squadDanceSong = () => timed(() => squadApi.song());
 
 /** A 人机 touched (碰): on this page alone, it waves; nothing is sent */
 export const squadBotTouched = (h: number) => showMove(h, "wave");

@@ -269,6 +269,21 @@ export async function squadListensPlaying(rooms: readonly { id: string; hostId: 
   return new Set([...on].filter(([, l]) => roomAt(scheduleOf(l), seconds, now).phase === "playing").map(([id]) => id));
 }
 
+/**
+ * The song 卫戍的一起听 of the room of 一起卫戍 given is playing now (龙门广场舞 dances to it): its id, when it starts and
+ * ends on the server's clock; null while none plays
+ */
+export async function squadListenSongNow(squad: { id: string; hostId: string; people: readonly string[] }, now = Date.now()) {
+  const l = (await squadListens([squad])).get(squad.id);
+  if (!l) return null;
+  const seconds = await secondsOf();
+  const s = scheduleOf(l);
+  const at = roomAt(s, seconds, now);
+  if (at.phase !== "playing") return null;
+  const song = s.queue[at.i];
+  return { song, start: at.start, end: at.start + seconds(song) * 1000 };
+}
+
 /** 卫戍的一起听 as viewerId, in the room of 一起卫戍 given (with those in it, by id and number), sees it; null while it is not on */
 export async function squadListenView(
   squad: { id: string; hostId: string },

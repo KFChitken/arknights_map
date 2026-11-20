@@ -9,6 +9,7 @@ import { displayName } from "../profile";
 import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { fireEnd, playOn } from "../squadFire";
+import { danceEnds, type SquadMode } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -103,6 +104,7 @@ import { allow } from "./rateLimit";
 import { kickFromHostListen, squadListensPlaying, squadListenView } from "./listenRooms";
 import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
+import { songOf } from "./songs";
 import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
 import { cardsOf, declare, friendIdsOf, friendKey, touch } from "./world";
@@ -266,7 +268,15 @@ type Moved = { h: number; move: SquadMove; to?: number };
 /** The lines said and moves done in a room in the last SAY_BATCH_MS, told to it at once */
 type Fished = { h: number; no: number; variant: number; cm: number | null };
 type Thrown = Extract<SquadTell, { t: "throw" }>["items"][number];
-type Said = { items: { h: number; p: number; to?: number }[]; moves: Moved[]; fish?: Fished[]; throws?: Thrown[]; timer: ReturnType<typeof setTimeout> };
+type Danced = Extract<SquadTell, { t: "dance" }>["items"][number];
+type Said = {
+  items: { h: number; p: number; to?: number }[];
+  moves: Moved[];
+  fish?: Fished[];
+  throws?: Thrown[];
+  dance?: Danced[];
+  timer: ReturnType<typeof setTimeout>;
+};
 const g = globalThis as unknown as {
   squadHearers?: Map<string, { at: number; rows: Hearer[] }>;
   squadSays?: Map<string, Said>;
@@ -312,6 +322,15 @@ export const tellSquadPlay = (roomId: string, what: Extract<SquadTell, { t: "roo
 /** For 扔东西 (src/lib/server/squadPlay.ts): told to the whole room with the next batch */
 export function throwInRoom(roomId: string, thrown: Thrown) {
   (batchOf(roomId).throws ??= []).push(thrown);
+}
+
+/** For 龙门广场舞 (src/lib/server/squadModes.ts): a tap, told to the whole room with the next batch (the latest of each one's) */
+export function danceInRoom(roomId: string, danced: Danced) {
+  const batch = batchOf(roomId);
+  const b: Danced[] = (batch.dance ??= []);
+  const i = b.findIndex((d) => d.h === danced.h);
+  if (i >= 0) b.splice(i, 1);
+  b.push(danced);
 }
 
 /** For 卫戍池塘 (src/lib/server/fish.ts): tell the room someone's line went in or came out, or a 鱼群 came */
@@ -442,9 +461,35 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
     ...(room.schoolUntil && room.schoolUntil.getTime() > now ? { school: room.schoolUntil.getTime() } : {}),
     fire: { level: room.fireLevel, at: room.fireAt?.getTime() ?? now, by: room.fireBy, best: room.fireBest, last: room.fireLast },
+    mode: await modeView(room, rows, now),
+    ...(me.modeAgainAt && me.modeAgainAt.getTime() > now ? { modeAgain: me.modeAgainAt.getTime() } : {}),
     endsAt: ends.at,
     endsWhy: ends.why,
     now,
+  };
+}
+
+/**
+ * 玩点什么's mode as the room's pages have it (src/lib/squadMode.ts), while it plays (one over is cleared by the next
+ * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order
+ */
+async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], now: number): Promise<SquadMode | null> {
+  if (room.mode !== "dance" || !room.modeAt || !room.modeSong || !room.modeSongAt || !room.modeUntil || !room.modeLast) return null;
+  const endsAt = danceEnds(room.modeUntil.getTime(), room.modeLast.getTime());
+  if (endsAt <= now) return null;
+  return {
+    kind: "dance",
+    by: room.modeBy ?? 0,
+    at: room.modeAt.getTime(),
+    in: rows
+      .filter((r) => r.m.modeIn)
+      .sort((a, b) => a.m.handle - b.m.handle)
+      .map((r) => ({ h: r.m.handle, combo: r.m.modeCombo })),
+    endsAt,
+    song: room.modeSong,
+    name: (await songOf(room.modeSong))?.name ?? "",
+    songAt: room.modeSongAt.getTime(),
+    until: room.modeUntil.getTime(),
   };
 }
 
@@ -1651,13 +1696,14 @@ function addSay(roomId: string, h: number, p: number, to?: number) {
 async function flushSay(roomId: string) {
   const b = says.get(roomId);
   says.delete(roomId);
-  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length && !b.throws?.length)) return;
+  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length && !b.throws?.length && !b.dance?.length)) return;
   try {
     const ids = (await hearersOf(roomId)).map((r) => r.userId);
     if (b.items.length) tellSquad(ids, { t: "say", room: roomId, items: b.items } satisfies SquadTell);
     if (b.moves.length) tellSquad(ids, { t: "move", room: roomId, items: b.moves } satisfies SquadTell);
     if (b.fish?.length) tellSquad(ids, { t: "fish", room: roomId, items: b.fish } satisfies SquadTell);
     if (b.throws?.length) tellSquad(ids, { t: "throw", room: roomId, items: b.throws } satisfies SquadTell);
+    if (b.dance?.length) tellSquad(ids, { t: "dance", room: roomId, items: b.dance } satisfies SquadTell);
   } catch (e) {
     console.error("squad: telling a room its lines failed", e);
   }

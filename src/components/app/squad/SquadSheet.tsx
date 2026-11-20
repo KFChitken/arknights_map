@@ -71,6 +71,8 @@ import {
   loadSquadFriends,
   openSquadFire,
   fireSub,
+  openSquadModes,
+  modesSub,
   openSquadRoom,
   saveSquadCard,
   sayInSquad,
@@ -1081,6 +1083,17 @@ function RoomView({
                 <b>{T.squad.fire.play}</b>
                 <small>{fireSub(room)}</small>
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setPlaying(false);
+                  openSquadModes();
+                }}
+              >
+                <b>{T.squad.modes.play}</b>
+                <small>{modesSub(room)}</small>
+              </button>
             </div>
           )}
           {/* a teammate's card, over the foot (and whatever it covers as the room scrolls under it) */}
@@ -1181,6 +1194,7 @@ function RoomView({
             move={moves.find((x) => x.h === m.h)}
             toMe={moves.find((x) => x.to === m.h)}
             open={menu === m.h}
+            dancing={room.mode?.kind === "dance" && room.mode.in.some((x) => x.h === m.h)}
             onCore={() => setPicking("core")}
             onStrategy={() => (room.state === "go" ? setTalking("round") : setPicking("strategy"))}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
@@ -1582,6 +1596,7 @@ function MemberTile({
   move,
   toMe,
   open,
+  dancing = false,
   onCore,
   onStrategy,
   onMenu,
@@ -1603,6 +1618,8 @@ function MemberTile({
   move?: SquadMoveDone;
   toMe?: SquadMoveDone;
   open: boolean;
+  /** In 龙门广场舞 (玩点什么): 在跳, its roach dancing */
+  dancing?: boolean;
   onCore: () => void;
   onStrategy: () => void;
   onMenu: () => void;
@@ -1616,7 +1633,8 @@ function MemberTile({
       {named && <span key={named.key} className="sq-named" aria-hidden="true" />}
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
-      <SquadRoach m={m} size={44} line={line} move={move} toMe={toMe} play="tile" />
+      <SquadRoach m={dancing && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
+      {dancing && <span className="dz">{T.squad.dance.tileTag}</span>}
       <span className="nm">
         {m.name}
         {m.you && <small>{T.squad.room.you}</small>}

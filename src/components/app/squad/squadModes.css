@@ -1,0 +1,150 @@
+/*
+ * 玩点什么 (SquadModes.tsx), the line asking one to join the mode playing (SquadModeInvite.tsx) and 龙门广场舞's card
+ * (SquadDance.tsx). 玩点什么 is over the map as 篝火's card is (35: at the foot on a phone, in the middle on a computer);
+ * the dance sits at the map's foot with nothing over the rest (34, under 钓鳞's window and the cards); the line asking
+ * is at the top over them all (38), under the toast (40). Each mode's colours are its own (k-dance).
+ */
+
+/* ---- 玩点什么 ---- */
+.sq-modes {
+  position: fixed; inset: 0; z-index: 35; display: flex; align-items: flex-end; justify-content: center; background: rgba(16, 17, 20, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+.sq-modes .box {
+  width: min(420px, 100%); max-height: calc(100% - 24px); overflow-y: auto; display: flex; flex-direction: column; padding: 14px 12px calc(16px + var(--safe-bottom, 0px));
+  box-sizing: border-box; border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14);
+}
+@media (min-width: 720px) {
+  .sq-modes { align-items: center; }
+  .sq-modes .box { border-radius: 18px; padding-bottom: 16px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35); }
+}
+.sq-modes header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 0 36px 0 4px; position: relative; }
+.sq-modes header b { font-size: 18px; }
+.sq-modes header span { color: #6b7280; font-size: 12px; }
+.sq-modes header .x {
+  position: absolute; right: 0; top: -4px; width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1;
+  cursor: pointer;
+}
+.sq-modes .now { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; padding: 8px 10px; border-radius: 10px; background: #fff7d6; color: #6b5300; font-size: 12.5px; }
+.sq-modes .now i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #e0a400; }
+.sq-modes .now span { flex: 1; min-width: 0; }
+.sq-modes .now small { flex: none; font-size: 12px; font-weight: 700; }
+.sq-modes .now.k-dance { background: #ffe4ec; color: #8a1d47; }
+.sq-modes .now.k-dance i { background: #d63a7a; }
+.sq-modes .rows { display: flex; flex-direction: column; margin-top: 6px; }
+.sq-modes .row {
+  display: flex; align-items: center; gap: 12px; padding: 9px 6px; border: 0; border-radius: 12px; background: none; color: #1b1d22; font: inherit; text-align: left;
+  cursor: pointer;
+}
+.sq-modes .row:hover:not(:disabled) { background: #f6f7f9; }
+.sq-modes .row:disabled { cursor: default; }
+.sq-modes .gl { flex: none; display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 12px; font-size: 20px; font-weight: 900; }
+.sq-modes .k-dance .gl { background: #ffe4ec; color: #b4235a; }
+.sq-modes .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sq-modes .nm { display: flex; align-items: center; gap: 6px; }
+.sq-modes .nm b { font-size: 15px; white-space: nowrap; }
+.sq-modes .nm em { padding: 0 6px; border-radius: 6px; background: #dcf3e6; color: #1f6b41; font-size: 10.5px; font-style: normal; font-weight: 900; white-space: nowrap; }
+.sq-modes .tx small { color: #6b7280; font-size: 12px; line-height: 1.45; }
+.sq-modes .go { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.sq-modes .go small { color: #4b5160; font-size: 11.5px; font-weight: 700; }
+.sq-modes .btn {
+  height: 26px; display: flex; align-items: center; padding: 0 10px; border-radius: 8px; background: #f1f2f4; color: #9aa0aa; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sq-modes .btn.on { background: #1b1d22; color: #fff; }
+.sq-modes .btn.join { background: #ffd23f; color: #1b1d22; }
+.sq-modes .mmsg { margin: 8px 4px 0; color: #b42318; font-size: 12.5px; }
+.sq-modes .note { margin: 14px 4px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+
+/* ---- the line asking one to join ---- */
+.sq-minv {
+  position: fixed; z-index: 38; left: 50%; top: calc(10px + var(--safe-top, 0px)); width: min(358px, calc(100% - 20px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; box-sizing: border-box; border-radius: 14px; background: #1b1d22; color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); animation: sqm-drop 0.35s ease-out both;
+}
+.sq-minv .ri { flex: none; display: grid; place-items: center; width: 34px; height: 34px; }
+.sq-minv .tx { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
+.sq-minv .tx .md { color: #ffd23f; }
+.sq-minv .tx small { display: block; color: #ffb4a8; font-size: 11.5px; }
+.sq-minv button { flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 9px; font: inherit; font-size: 13px; cursor: pointer; }
+.sq-minv .acc { background: #ffd23f; color: #1b1d22; font-weight: 900; }
+.sq-minv .acc:disabled { opacity: 0.6; cursor: default; }
+.sq-minv .no { padding: 0 10px; background: rgba(255, 255, 255, 0.12); color: #fff; }
+@keyframes sqm-drop { 0% { transform: translate(-50%, -30px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
+
+/* ---- 龙门广场舞 ---- */
+.sq-dance {
+  position: fixed; z-index: 34; left: 50%; bottom: 0; width: min(420px, 100%); max-height: calc(100% - 56px - var(--safe-top, 0px)); overflow-y: auto; transform: translateX(-50%);
+  padding: 10px 12px calc(14px + var(--safe-bottom, 0px)); box-sizing: border-box; border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14); -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 720px) {
+  .sq-dance { bottom: 16px; border-radius: 18px; padding-bottom: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3); }
+}
+.sq-dance header { display: flex; align-items: center; padding: 0 2px 8px; }
+.sq-dance header b { flex: 1; padding: 1px 0; color: #b4235a; font-size: 15px; }
+.sq-dance header .x { width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1; cursor: pointer; }
+.sq-dance .stage {
+  position: relative; height: 300px; overflow: hidden; border-radius: 16px; background: linear-gradient(180deg, #2a1636 0%, #3a1d4a 55%, #241a2e 100%);
+}
+.sq-dance .lt { position: absolute; top: -60px; width: 220px; height: 300px; animation: sqm-light 1.2s ease-in-out infinite; pointer-events: none; }
+.sq-dance .lt.l { left: -40px; background: linear-gradient(160deg, rgba(255, 120, 200, 0.45), rgba(255, 120, 200, 0) 70%); transform: rotate(18deg); }
+.sq-dance .lt.r { right: -40px; background: linear-gradient(200deg, rgba(120, 200, 255, 0.4), rgba(120, 200, 255, 0) 70%); transform: rotate(-18deg); animation-delay: 0.6s; }
+.sq-dance .floor {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 90px; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 30px, rgba(255, 255, 255, 0.02) 30px 60px);
+}
+.sq-dance .song {
+  position: absolute; left: 12px; top: 10px; max-width: calc(100% - 100px); overflow: hidden; padding: 1px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.14);
+  color: #ffe4f1; font-size: 11px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+}
+.sq-dance .combo { position: absolute; right: 12px; top: 8px; display: flex; flex-direction: column; align-items: flex-end; }
+.sq-dance .combo b { color: #ffd23f; font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.sq-dance .combo small { color: #ffe4f1; font-size: 10.5px; font-weight: 700; letter-spacing: 0.2em; }
+.sq-dance .line { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; align-items: flex-end; gap: 22px; }
+.sq-dance .dancer { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.sq-dance .dancer em { padding: 0 6px; border-radius: 6px; background: #ffd23f; color: #1b1d22; font-size: 10px; font-style: normal; font-weight: 900; }
+.sq-dance .dancer .body { display: block; line-height: 0; transform-origin: 50% 90%; will-change: transform; }
+.sq-dance .dancer .nm { max-width: 72px; overflow: hidden; color: #ffe4f1; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.sq-dance .dancer.you .nm { color: #fff; font-size: 11.5px; font-weight: 700; }
+.sq-dance .watch { position: absolute; display: flex; flex-direction: column; align-items: center; opacity: 0.75; }
+.sq-dance .watch small { color: #c9b8d6; font-size: 10px; white-space: nowrap; }
+.sq-dance .watch.w0 { right: 8px; bottom: 100px; }
+.sq-dance .watch.w1 { left: 8px; bottom: 100px; }
+.sq-dance .watch.w2 { right: 8px; bottom: 160px; }
+.sq-dance .judge {
+  position: absolute; left: 50%; top: 92px; width: 80px; margin-left: -40px; color: #c9b8d6; font-size: 20px; font-weight: 900; text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); animation: sqm-pop 0.25s ease-out both;
+}
+.sq-dance .judge.ok { color: #ffd23f; }
+.sq-dance .mv { position: absolute; left: 0; right: 0; bottom: 10px; color: #c9b8d6; font-size: 11px; text-align: center; }
+/* the beats coming to the line, their words under them */
+.sq-dance .strip { position: relative; height: 52px; margin-top: 12px; overflow: hidden; border-radius: 12px; background: #1b1d22; }
+.sq-dance .strip i {
+  position: absolute; left: -7px; top: 11px; width: 14px; height: 14px; border-radius: 50%; background: #ff7ac0; opacity: 0; will-change: transform;
+}
+.sq-dance .strip .hit { position: absolute; left: 39px; top: 5px; width: 3px; height: 26px; border-radius: 2px; background: #ffd23f; box-shadow: 0 0 10px #ffd23f; }
+.sq-dance .strip span { position: absolute; right: 10px; bottom: 4px; color: #9aa0aa; font-size: 10.5px; pointer-events: none; }
+.sq-dance .acts { display: flex; gap: 8px; margin-top: 10px; }
+.sq-dance .tap {
+  flex: 1; height: 64px; border: 0; border-radius: 14px; background: #ff4f9a; color: #fff; font: inherit; font-size: 22px; font-weight: 900; cursor: pointer;
+  box-shadow: 0 4px 0 #c22c6f; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.sq-dance .tap:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 #c22c6f; }
+.sq-dance .tap.join { font-size: 18px; }
+.sq-dance .tap:disabled { background: #e3e5e8; color: #9aa0aa; box-shadow: none; cursor: default; }
+.sq-dance .music {
+  width: 110px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0 4px; border: 1px solid #d6d9de;
+  border-radius: 14px; background: #fff; color: #1b1d22; font: inherit; font-size: 13px; font-weight: 700; line-height: 1.3; cursor: pointer;
+}
+.sq-dance .music small { color: #6b7280; font-size: 11px; font-weight: 500; }
+.sq-dance .music:disabled { color: #6b7280; cursor: default; }
+.sq-dance .leave {
+  width: 100%; height: 34px; margin-top: 8px; border: 0; border-radius: 10px; background: #f1f2f4; color: #1b1d22; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.sq-dance .leave:disabled { opacity: 0.6; cursor: default; }
+.sq-dance .dmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
+.sq-dance .note { margin: 12px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+@keyframes sqm-light { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.8; } }
+@keyframes sqm-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .sq-minv, .sq-dance .judge, .sq-dance .lt { animation: none; }
+}

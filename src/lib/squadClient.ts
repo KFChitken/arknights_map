@@ -4,6 +4,7 @@ import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
 import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound } from "./squad";
 import type { SquadFire } from "./squadFire";
+import type { DanceSong, SquadModeKind } from "./squadMode";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -87,6 +88,14 @@ export const squadApi = {
   hit: () => call<{ now: number; n: number }>("hit", post({})),
   /** 甩掉: what crawled onto your roach's head */
   shake: () => call<{ now: number }>("shake", post({})),
+  /** 玩点什么: open a mode (none playing) */
+  mode: (kind: SquadModeKind) => call<{ now: number }>("mode", post({ kind })),
+  /** 加入 the mode playing (in), or 不跳了，去围观 */
+  modeIn: (into: boolean) => call<{ now: number }>("modein", post({ in: into })),
+  /** 跳: a tap in 龙门广场舞, at the server's clock as this page has it; on the beat or not, the combo after it */
+  tap: (at: number) => call<{ now: number; combo: number; ok: boolean; counted: boolean }>("tap", post({ at })),
+  /** 龙门广场舞's song: its beats, and its link to one 听歌 is open to */
+  song: () => call<DanceSong>("song", post({})),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** A set line, by its number (to: the one in the room it is said to, 对 TA 说): sent, or one too many (full: the hour's are used up) */

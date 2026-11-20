@@ -1927,6 +1927,18 @@ export const squadRooms = pgTable(
     fireBurn: integer("fire_burn").notNull().default(0),
     fireBest: integer("fire_best").notNull().default(0),
     fireLast: integer("fire_last"),
+    /**
+     * 玩点什么 (src/lib/squadMode.ts, src/lib/server/squadModes.ts): the one mode playing (null: none), opened by one's
+     * number at mode_at; 龙门广场舞's song, where its start is on the server's clock (mode_song_at, the song's 0), and
+     * till when it plays (mode_until); the last tap (mode_last), DANCE_IDLE_MS after which it ends
+     */
+    mode: text("mode"),
+    modeBy: smallint("mode_by"),
+    modeAt: at("mode_at"),
+    modeSong: text("mode_song"),
+    modeSongAt: at("mode_song_at"),
+    modeUntil: at("mode_until"),
+    modeLast: at("mode_last"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */
@@ -1990,6 +2002,14 @@ export const squadMembers = pgTable(
     ballFrom: smallint("ball_from"),
     ballN: smallint("ball_n").notNull().default(0),
     ballUntil: at("ball_until"),
+    /**
+     * 玩点什么: in the mode playing (not only watching it); 龙门广场舞's combo and the last tap that counted; when one may
+     * open a mode again (MODE_AGAIN_MS after the one they opened ended)
+     */
+    modeIn: boolean("mode_in").notNull().default(false),
+    modeCombo: smallint("mode_combo").notNull().default(0),
+    modeTapAt: at("mode_tap_at"),
+    modeAgainAt: at("mode_again_at"),
   },
   (t) => [
     primaryKey({ columns: [t.roomId, t.userId] }),

@@ -728,6 +728,14 @@ export const zh = {
       throwEnough: "这一分钟已经扔了 TA {n} 次，过一会儿再扔。",
       noBall: "球已经落地了。",
       nothingOnHead: "头上没有要甩掉的。",
+      /** 玩点什么 and 龙门广场舞 (src/lib/server/squadModes.ts) */
+      badMode: "没有这个玩法。",
+      modeOn: "正在玩一个，玩完才能开下一个。",
+      modeAgain: "刚开过一个，{s} 秒后才能再开。",
+      noMode: "现在没有在玩的。",
+      notDancing: "先加入才能跳。",
+      noDanceSong: "现在没有能跳的歌。",
+      danceSongEnding: "一起听的这首快放完了，下一首开始后再开吧。",
     },
     routes: {
       world: {
@@ -2757,6 +2765,79 @@ export const zh = {
         parcel: { name: "企鹅物流的快递", say: "拆开：{item}" },
         vinyl: { name: "塞壬唱片的黑胶", say: "跳了一小段" },
       },
+    },
+    /** 玩点什么 (src/components/app/squad/SquadModes.tsx): the modes, one at a time in a room; 「玩」 → 玩点什么 opens it */
+    modes: {
+      title: "玩点什么",
+      sub: "同一时间只玩一个，别人自己选加不加入",
+      /** While the room waits for its round */
+      subWait: "进房间就能玩，1 个人也能开",
+      /** 「玩」's item for it */
+      play: "玩点什么",
+      playSub: "龙门广场舞 · 一次玩一个",
+      playing: "正在玩：{mode}（{name}开的，{n} 人）",
+      /** Its opener gone from the room */
+      playingNoBy: "正在玩：{mode}（{n} 人）",
+      joinAny: "随时能加入",
+      open: "开",
+      join: "正在玩 · 加入",
+      in: "在玩 · 打开",
+      wait: "等这局完",
+      again: "{s} 秒后能再开",
+      note: "没加入的蟑螂在旁边围观，照样能钓鳞、扔东西、添柴、说话。同一个人开完一个，要等 1 分钟才能再开。",
+      noteWait: "钓鳞（卫戍池塘）、扔东西、添柴进房间就能用。开打时正在玩的不打断，接着玩完；房主点开始也不用等它。新进来的人收到一行邀请，自己选加不加入。",
+      close: "关上玩点什么",
+      names: { dance: "龙门广场舞" },
+      glyphs: { dance: "舞" },
+      lines: { dance: "广场舞：踩方舟歌的拍子跳，自己的音乐能关" },
+      /** Each one's line while the room waits, with how one joins it late */
+      waitLines: { dance: "1 个人就能跳，后来的人插进队里接着跳" },
+      tags: { dance: "随时加入" },
+      ends: { dance: "一首歌" },
+      /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
+      invites: { dance: "{name} 开了{mode}（{n} 人在跳），加入？" },
+      invitesNoBy: { dance: "{mode}正在跳（{n} 人），加入？" },
+      inviteJoin: "加入",
+      inviteNo: "不了",
+      inviteNoLabel: "不加入{mode}",
+    },
+    /** 龙门广场舞 (src/components/app/squad/SquadDance.tsx), a mode of 玩点什么 */
+    dance: {
+      title: "龙门广场舞",
+      count: "龙门广场舞 · {n} 人",
+      song: "♪ {name} · {at} / {len}",
+      startsIn: "♪ {name} · {s} 秒后开始",
+      combo: "COMBO",
+      lead: "领舞",
+      watch: "围观",
+      ok: "准！",
+      miss: "歪了",
+      moves: { sway: "连击 5 以下：原地晃", hop: "连击 5 以上：跳起来", spin: "连击 10 以上：转圈" },
+      beats: "拍子从听歌蹦迪那套拍子表来",
+      tap: "跳",
+      tapLabel: "在拍子上点一下：跳",
+      /** On a tile of the room, for one in the dance */
+      tileTag: "在跳",
+      watching: "你在围观，点「加入一起跳」就能跳",
+      join: "加入一起跳",
+      musicOn: "音乐：开",
+      musicOff: "音乐：关",
+      musicOnly: "只关你自己的",
+      /** The browser plays it only from a tap */
+      musicBlocked: "音乐：点一下放",
+      /** 听歌 not open to them: no music, the beats all the same */
+      musicNone: "音乐：没有",
+      musicNoneSub: "听歌还没开给你",
+      /** 听歌 plays another song on this page: the dance's waits */
+      musicElse: "音乐：先不放",
+      musicElseSub: "听歌在放别的歌",
+      /** 听歌 plays this very song (卫戍的一起听) */
+      musicHere: "音乐：听歌在放",
+      musicHereSub: "就是一起听这首",
+      leave: "不跳了，去围观",
+      note: "开的人领舞，加入的蟑螂排成一排。踩准了连击往上涨，动作越来越花（晃 → 跳 → 转圈）；踩不准就原地晃。歌用听歌里的方舟歌；房主开着一起听就跳那一首。关了音乐照样跳、照样踩拍子。一首歌放完，或者 15 秒没人点，就散场。",
+      close: "关上广场舞",
+      ended: "广场舞散场了",
     },
   },
   /** 「我的记录」 (src/components/app/records/): the player's own records, for them alone */

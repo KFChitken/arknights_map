@@ -3,6 +3,7 @@ import { SERVERS } from "./games";
 import type { RoachPass } from "./passes";
 import type { PublicProfile } from "./profile";
 import type { SquadBall, SquadFire, SquadOn } from "./squadFire";
+import type { SquadMode } from "./squadMode";
 
 /**
  * 一起卫戍: rooms where players of 卫戍协议 find each other for its 联合模拟 (four at most, the host one of them), switched
@@ -436,6 +437,10 @@ export type SquadRoom = {
   school?: number;
   /** 篝火 (src/lib/squadFire.ts): its level as put then, by whom; the room's longest 局 and the last one's (ms) */
   fire: SquadFire;
+  /** 玩点什么 (src/lib/squadMode.ts): the mode playing, while one does */
+  mode: SquadMode | null;
+  /** You opened a mode and may open another from then (ms), while that is still to come */
+  modeAgain?: number;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
@@ -461,7 +466,7 @@ export type SquadTell =
        * out of it, invited, 下次吧)
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode";
         h?: number;
         to?: SquadState;
         round?: SquadRound;
@@ -481,6 +486,8 @@ export type SquadTell =
    * ball) comes with the room as well.
    */
   | { t: "throw"; room: string; items: { h: number; to: number; item: number; out?: number; n?: number; back?: true }[] }
+  /** 龙门广场舞's taps, batched as the lines are: h's combo now, whether the tap was on the beat, and when (the server's clock) */
+  | { t: "dance"; room: string; items: { h: number; combo: number; ok: boolean; at: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
 
