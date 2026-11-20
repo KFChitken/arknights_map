@@ -23,6 +23,7 @@ import {
   type SquadTell,
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
+import { BALL_BACK_MS, fireLevel, throwOf, WOOD_MAX, woodNow, type SquadOn } from "@/lib/squadFire";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
 import { cmText, nameOf } from "../fish/words";
@@ -65,15 +66,22 @@ export type SquadLine = { key: number; h: number; p: number; at: number; to?: nu
 export type SquadToMe = { key: number; h: number; p: number; at: number; s: number | null };
 /** A move done (动作) by h, with the teammate to for 击掌 and 贴贴, shown on the roaches MOVE_SHOW_MS */
 export type SquadMoveDone = { key: number; h: number; move: SquadMove; to?: number; at: number };
+/**
+ * 扔东西: item (src/lib/squadFire.ts THROWS) landing on the one numbered to, thrown by h (sent back: back), shown on
+ * TA's tile THROW_SHOW_MS; out: what a parcel held (a 钓鳞 item's number); n: a ball's rally so far
+ */
+export type SquadThrown = { key: number; h: number; to: number; item: number; out?: number; n?: number; back?: true; at: number };
 
 const NO_FLOATS: SquadFloat[] = [];
 const NO_LINES: SquadLine[] = [];
 const NO_MOVES: SquadMoveDone[] = [];
 const NO_TOUCHED: Readonly<Record<number, "sneaky" | "bold">> = {};
+const NO_THROWS: SquadThrown[] = [];
 const room = kept<SquadRoom | null>(null);
 const floats = kept<SquadFloat[]>(NO_FLOATS);
 const lines = kept<SquadLine[]>(NO_LINES);
 const moves = kept<SquadMoveDone[]>(NO_MOVES);
+const throws = kept<SquadThrown[]>(NO_THROWS);
 /** Who in the room this page touched (碰), by their number: sneakily (a bold touch may follow) or boldly */
 const touched = kept(NO_TOUCHED);
 const toMe = kept<SquadToMe | null>(null);
@@ -93,12 +101,14 @@ const notice = kept<string | null>(null);
 /** Their 卫戍名片 as last saved, and its 列表上显示我的名字 (undefined: as me() gave them) */
 const card = kept<SquadCard | null | undefined>(undefined);
 const showName = kept<boolean | undefined>(undefined);
+const noThrow = kept<boolean | undefined>(undefined);
 
 export const squadRoomNow = room.get;
 export const useSquadRoom = () => useSyncExternalStore(room.on, room.get, () => null);
 export const useSquadFloats = (): SquadFloat[] => useSyncExternalStore(floats.on, floats.get, () => NO_FLOATS);
 export const useSquadLines = (): SquadLine[] => useSyncExternalStore(lines.on, lines.get, () => NO_LINES);
 export const useSquadMoves = (): SquadMoveDone[] => useSyncExternalStore(moves.on, moves.get, () => NO_MOVES);
+export const useSquadThrows = (): SquadThrown[] => useSyncExternalStore(throws.on, throws.get, () => NO_THROWS);
 export const useSquadTouched = () => useSyncExternalStore(touched.on, touched.get, () => NO_TOUCHED);
 export const useSquadToMe = () => useSyncExternalStore(toMe.on, toMe.get, () => null);
 export const closeSquadToMe = () => toMe.set(null);
@@ -118,6 +128,12 @@ export const markSquadTouched = (h: number, bold: boolean) => touched.set({ ...t
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
+
+/** 篝火's card (SquadFire.tsx), over the map: 「玩」 → 添柴 opens it */
+const fireOpen = kept(false);
+export const useSquadFireOpen = () => useSyncExternalStore(fireOpen.on, fireOpen.get, () => false);
+export const openSquadFire = () => fireOpen.set(true);
+export const closeSquadFire = () => fireOpen.set(false);
 
 /** 说话 / 动作 / 这局, open (from your tile on the bar, or your roach in the fight on the map) */
 const talkOpen = kept(false);
@@ -163,6 +179,7 @@ export const setSquadSceneShows = (on: boolean) => sceneShows.set(on);
 export const useSquadNotice = () => useSyncExternalStore(notice.on, notice.get, () => null);
 export const useSquadCard = () => useSyncExternalStore(card.on, card.get, () => undefined);
 export const useSquadShowName = () => useSyncExternalStore(showName.on, showName.get, () => undefined);
+export const useSquadNoThrow = () => useSyncExternalStore(noThrow.on, noThrow.get, () => undefined);
 export const clearSquadNotice = () => notice.set(null);
 
 let floatKey = 0;
@@ -176,6 +193,38 @@ function addFloat(text: string) {
 
 /** A move shows this long on the roaches */
 export const MOVE_SHOW_MS = 1_600;
+/** A throw shows on the tile it lands on this long */
+export const THROW_SHOW_MS = 2_600;
+
+/**
+ * Something thrown lands (by the one numbered h at to): shown on TA's tile, and what stays put on TA as the room has
+ * it (on the head, asleep, dancing, a ball; 白开水 wakes TA from 令的酒), till the room is read again
+ */
+function showThrow(r: SquadRoom, t: Omit<SquadThrown, "key" | "at">) {
+  const key = ++talkKey;
+  const now = Date.now();
+  throws.set([...throws.get().filter((x) => x.to !== t.to), { ...t, key, at: now }]);
+  window.setTimeout(() => throws.set(throws.get().filter((x) => x.key !== key)), THROW_SHOW_MS);
+  const item = throwOf(t.item);
+  if (!item) return;
+  const on = (ms: number): SquadOn => ({ item: item.no, until: now + ms });
+  const change: Partial<SquadMember> =
+    item.fx === "head"
+      ? { head: on(item.ms) }
+      : item.fx === "faint" || item.fx === "dance"
+        ? { fx: on(item.ms) }
+        : item.fx === "ball"
+          ? { ball: { item: item.no, from: t.h, n: t.n ?? 1, until: now + BALL_BACK_MS } }
+          : item.fx === "wake"
+            ? { fx: undefined }
+            : {};
+  // a ball sent back is gone from the one who sent it
+  const members = r.members.map((m) =>
+    m.h === t.to ? { ...m, ...change } : t.back && m.h === t.h && m.ball ? { ...m, ball: undefined } : m,
+  );
+  room.set(withWant({ ...r, members }));
+}
+
 /** Your own line or move, shown as you sent it, is not shown again as the room tells it back within this long */
 const ECHO_MS = 4_000;
 let talkKey = 0;
@@ -240,6 +289,9 @@ function setRoom(next: SquadRoom | null) {
     touched.set(NO_TOUCHED);
     toMe.set(null);
     asked.clear();
+    // out of the room: its fire goes too
+    fireOpen.set(false);
+    throws.set(NO_THROWS);
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
     rounds.set(rounds.get() + 1);
@@ -289,6 +341,7 @@ function patchMember(r: SquadRoom, h: number | undefined, change: Partial<SquadM
 export function startSquad(me: SquadMe) {
   if (card.get() === undefined) card.set(me.card);
   if (showName.get() === undefined) showName.set(me.showName);
+  if (noThrow.get() === undefined) noThrow.set(me.noThrow);
   if (me.room && !room.get()) void loadSquadRoom().catch(() => {});
   if (!me.room && room.get()) setRoom(null);
 }
@@ -334,6 +387,15 @@ export function heardSquad(raw: unknown) {
     }
     return;
   }
+  // 扔东西: what lands where (your own, shown as the server took it, not twice)
+  if (tell.t === "throw") {
+    for (const it of tell.items) {
+      if (!r.members.some((m) => m.h === it.to) || !r.members.some((m) => m.h === it.h)) continue;
+      if (it.h === r.you && throws.get().some((x) => x.h === it.h && x.to === it.to && x.item === it.item && Date.now() - x.at < ECHO_MS)) continue;
+      showThrow(room.get() ?? r, it);
+    }
+    return;
+  }
   // 卫戍池塘: a teammate's purple or better, to the whole room by name (your own has its page)
   if (tell.t === "fish") {
     for (const it of tell.items) {
@@ -351,6 +413,8 @@ export function heardSquad(raw: unknown) {
       if (!next || !what) return;
       // what you did yourself is not said back to you
       if ((what.kind === "in" || what.kind === "game") && what.h === next.you) return;
+      // 结束这局: how long the 篝火 burnt in it, to everyone, the host too
+      if (what.kind === "state" && what.to === "wait" && next.fire.last) addFloat(fireEndLine(next.fire.last, next.fire.best));
       if ((what.kind === "key" || what.kind === "state" || what.kind === "stop") && next.host) return;
       if (what.kind === "host") return addFloat(what.h === next.you ? T.squad.float.youHost : fmt(T.squad.float.host, { name: next.members.find((m) => m.h === what.h)?.name ?? "" }));
       const name = next.members.find((m) => m.h === what.h)?.name ?? null;
@@ -382,11 +446,12 @@ export function squadStreamBack() {
 
 // ---- what the player does ----
 
-/** Their 卫戍名片 saved (null clears it, and 列表上显示我的名字 with it), with that switch when given */
-export async function saveSquadCard(next: SquadCard | null, show?: boolean) {
-  const res = await squadApi.card(next, show);
+/** Their 卫戍名片 saved (null clears it, and 列表上显示我的名字 with it), with those switches when given (别人扔我 off: noThrow) */
+export async function saveSquadCard(next: SquadCard | null, show?: boolean, off?: boolean) {
+  const res = await squadApi.card(next, show, off);
   card.set(res.card);
   showName.set(res.showName);
+  noThrow.set(res.noThrow);
   return res.card;
 }
 
@@ -462,6 +527,62 @@ export const setSquadStopped = (on: boolean) => after(squadApi.stop(on));
 
 /** 人机, for the 站长 and the admins as host: one added, or what the one numbered h does */
 export const squadBot = (what: SquadBotDo, h?: number) => after(squadApi.bot(what, h));
+
+/** 「玩」's line under 添柴: the fire's level now, and the sticks in your hand */
+export function fireSub(r: SquadRoom, now = Date.now()) {
+  const me = r.members.find((m) => m.you);
+  return fmt(T.squad.fire.playSub, { level: fireLevel(r.fire.level, r.fire.at, now), n: woodNow(me?.wood ?? WOOD_MAX, me?.woodAt ?? null, now) });
+}
+
+/** How long a 篝火 burnt, in words: 47 分钟, 1 小时 12 分, 不到 1 分钟 */
+export function fireTime(ms: number) {
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return T.squad.fire.seconds;
+  return m < 60 ? fmt(T.squad.fire.minutes, { m }) : fmt(T.squad.fire.hours, { h: Math.floor(m / 60), m: m % 60 });
+}
+/** 结束这局's line of the 篝火: this 局's, and the room's longest when it is longer */
+export const fireEndLine = (last: number, best: number) =>
+  best > last ? fmt(T.squad.fire.endedBest, { time: fireTime(last), best: fireTime(best) }) : fmt(T.squad.fire.ended, { time: fireTime(last) });
+
+/** 添一根: the room's fire one up, a stick less in your hand, at once */
+export async function squadAddWood() {
+  const res = await squadApi.fire();
+  const r = room.get();
+  if (r) room.set(withWant({ ...r, fire: res.fire, members: r.members.map((m) => (m.you ? { ...m, wood: res.wood, woodAt: res.woodAt } : m)) }));
+  return res;
+}
+
+/**
+ * 扔: one of THROWS at the one numbered to, shown as the server took it; at a 人机, on this page alone (a parcel's
+ * pick made here), nothing sent
+ */
+export async function squadThrowAt(to: number, item: number, junk: readonly number[]) {
+  const r = room.get();
+  if (!r) return;
+  const ball = throwOf(item)?.fx === "ball" ? { n: 1 } : {};
+  if (to < 0) {
+    const out = throwOf(item)?.fx === "parcel" ? { out: junk[Math.floor(Math.random() * junk.length)] } : {};
+    return showThrow(r, { h: r.you, to, item, ...out, ...ball });
+  }
+  const res = await squadApi.throwAt(to, item);
+  showThrow(room.get() ?? r, { h: r.you, to, item, ...(res.out === undefined ? {} : { out: res.out }), ...ball });
+}
+
+/** 打回去: the ball on your tile back to whoever sent it */
+export async function squadHitBack() {
+  const r = room.get();
+  const ball = r?.members.find((m) => m.you)?.ball;
+  if (!r || !ball) return;
+  const res = await squadApi.hit();
+  showThrow(room.get() ?? r, { h: r.you, to: ball.from, item: ball.item, n: res.n, back: true });
+}
+
+/** 甩掉: what crawled onto your roach's head off it */
+export async function squadShakeOff() {
+  await squadApi.shake();
+  const r = room.get();
+  if (r) room.set(withWant({ ...r, members: r.members.map((m) => (m.you ? { ...m, head: undefined } : m)) }));
+}
 
 /** A 人机 touched (碰): on this page alone, it waves; nothing is sent */
 export const squadBotTouched = (h: number) => showMove(h, "wave");
@@ -572,4 +693,5 @@ export function forgetSquadPage() {
   notice.set(null);
   card.set(undefined);
   showName.set(undefined);
+  noThrow.set(undefined);
 }

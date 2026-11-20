@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { T } from "@/i18n";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
 import { dockFolded, dockTabs, keepDockFolded, readyOf, tabAtRound, tileTap } from "./dockState";
 import SquadDock from "./SquadDock";
@@ -152,8 +153,10 @@ describe("the panel of the bar of a round on a computer", () => {
           onClose: () => {},
         }),
       );
-    expect(card(() => {})).toContain('<div class="sq-mmove">');
-    expect(card()).not.toContain("sq-mmove");
+    expect(card(() => {})).toContain(`>${T.squad.talk.moves.five}</button>`);
+    // without them (a phone's card): 扔 alone in that row
+    expect(card()).not.toContain(`>${T.squad.talk.moves.five}</button>`);
+    expect(card()).toContain(`>${T.squad.throw.open}</button>`);
     // while the room waits: TA's strategy and 对 TA 说 first, then 击掌 and 贴贴
     const waiting = renderToStaticMarkup(
       createElement(SquadMateCard, {

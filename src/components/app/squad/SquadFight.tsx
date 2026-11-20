@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
 import { SQUAD_MAX, type SquadMember, type SquadMove, type SquadRoom } from "@/lib/squad";
+import { shakes } from "@/lib/squadFire";
 import { ShieldIcon } from "../chrome/parts";
 import { useOperatorArt } from "../OperatorNames";
 import { useAbove, useWide } from "./SquadBar";
@@ -18,6 +19,8 @@ import {
   lineWords,
   moveInSquad,
   openSquadTalk,
+  squadHitBack,
+  squadShakeOff,
   sayInSquad,
   squadBot,
   setSquadPickNext,
@@ -319,6 +322,9 @@ export default function SquadFight({
         aria-label={label}
         onClick={() => {
           squadSoundReady();
+          // your own tile with a ball on it, or a 源石虫 on your roach's head: the tap sends it back, or shakes it off
+          if (m.you && m.ball && m.ball.until > Date.now()) return void squadHitBack().catch(() => {});
+          if (m.you && m.head && m.head.until > Date.now() && shakes(m.head.item)) return void squadShakeOff().catch(() => {});
           if (!wide) return m.you ? openSquadTalk() : openCard(m.h);
           const what = tileTap(m.you, pick, waiting);
           if (what === "round") toTab("round");
@@ -336,7 +342,7 @@ export default function SquadFight({
         {pick && !m.you && <span className="pickt">{T.squad.fight.pickMe}</span>}
         {!sceneShows && <Bubble line={line} lift={lifts.get(m.h) ?? 0} side={wide ? "in" : "up"} to={line?.to === undefined ? null : room.members.find((x) => x.h === line.to)} />}
         <span className="rw">
-          <SquadRoach m={m} size={42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} />
+          <SquadRoach m={m} size={42} line={line} move={moves.find((x) => x.h === m.h)} toMe={moves.find((x) => x.to === m.h)} play="bar" />
           {m.strategy === null ? (
             <span className="opq" aria-hidden="true">
               ?

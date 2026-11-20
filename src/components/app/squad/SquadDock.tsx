@@ -4,6 +4,7 @@ import { T } from "@/i18n";
 import type { SquadMove, SquadRoom } from "@/lib/squad";
 import { dockTabs, type DockTab } from "./dockState";
 import { openFishWin } from "../fish/winStore";
+import { fireSub, openSquadFire } from "./squading";
 import { ActTab, RoundTab, SayTab } from "./SquadTalk";
 import "./squadFight.css";
 
@@ -78,6 +79,10 @@ export default function SquadDock({
               <button type="button" onClick={openFishWin}>
                 <b>{T.fish.pond.fish}</b>
                 <small>{T.fish.pond.fishSub}</small>
+              </button>
+              <button type="button" onClick={openSquadFire}>
+                <b>{T.squad.fire.play}</b>
+                <small>{fireSub(room)}</small>
               </button>
             </div>
           ) : (

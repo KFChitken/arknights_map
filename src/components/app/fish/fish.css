@@ -177,6 +177,10 @@
 .sheet-backdrop.over-fish { z-index: 37; }
 /* the first time: where to hold it (under the window, and so under the dex it opens) */
 .fw-hint { position: fixed; z-index: 34; padding: 3px 9px; border-radius: 6px; background: #1b1d22; color: #ffd23f; font-size: 12px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+/* 篝火 by the pond (WinScene.tsx Camp): its flames flicker from their foot, its glow breathes */
+.fw-flick { transform-box: fill-box; transform-origin: 50% 100%; animation: fw-flick 0.9s ease-in-out infinite alternate; }
+.fw-camp-glow { animation: fish-breathe 2.6s ease-in-out infinite; }
+@keyframes fw-flick { 0% { transform: scaleY(1) skewX(0deg); } 50% { transform: scaleY(1.12) skewX(-3deg); } 100% { transform: scaleY(0.92) skewX(3deg); } }
 @keyframes fw-pulse { 0%, 100% { box-shadow: 0 3px 0 #c23a14, 0 0 0 0 rgba(255, 90, 44, 0.55); } 50% { box-shadow: 0 3px 0 #c23a14, 0 0 0 6px rgba(255, 90, 44, 0); } }
 @keyframes fw-shake { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-2.2deg); } 40% { transform: rotate(2deg); } 60% { transform: rotate(-1.4deg); } 80% { transform: rotate(1.2deg); } }
 @keyframes fw-ripple { 0% { transform: scale(0.85); opacity: 0.9; } 100% { transform: scale(1.35); opacity: 0; } }
@@ -435,5 +439,5 @@
 @keyframes fb-unroll { 0% { transform: scaleY(0.1); opacity: 0; } 100% { transform: scaleY(1); opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .fish *, .fish-scene * { animation: none !important; }
+  .fish-root *, .fish-scene * { animation: none !important; }
 }

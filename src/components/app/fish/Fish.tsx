@@ -69,6 +69,8 @@ export type PondView = {
   tally: string;
   /** What the room is saying now (a teammate's purple catch, someone in or out) */
   toast: string | null;
+  /** The room's 篝火 by the pond, its level now */
+  camp: number;
 };
 type Said = FishState & { lastShout: number };
 
@@ -553,6 +555,7 @@ export default function Fish({
             flags={pond?.flags}
             fire={pond?.fire}
             school={pond?.school}
+            camp={pond?.camp}
           />
           {pending && (lineSpot || phase === "cast") && <p className="fw-pend">{pending === "pond" ? w.toPond : w.toPier}</p>}
           {!pending && word && (

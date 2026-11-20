@@ -156,11 +156,37 @@ const PondBack = memo(function PondBack({ glow, school }: { glow: boolean; schoo
           ))}
         </g>
       )}
-      <circle cx="336" cy="170" r="14" fill="#ffb05a" opacity="0.25" />
-      <path d="M330 178 L336 160 L342 178 Z" fill="#ff9a4a" />
     </>
   );
 });
+
+/** The room's 篝火 by the pond (src/lib/squadFire.ts): two logs, and flames as big as its level, none once it is out */
+function Camp({ level }: { level: number }) {
+  const s = 0.55 + level * 0.15;
+  return (
+    <g>
+      {level > 0 && (
+        <>
+          <defs>
+            <radialGradient id="pcamp">
+              <stop offset="0" stopColor="#ffb05a" stopOpacity="0.8" />
+              <stop offset="1" stopColor="#ffb05a" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <circle className="fw-camp-glow" cx="336" cy="172" r={14 + level * 5} fill="url(#pcamp)" fillOpacity={0.35 + level * 0.13} />
+        </>
+      )}
+      <rect x="325" y="176" width="22" height="4" rx="2" fill="#6b4426" transform="rotate(-14 336 178)" />
+      <rect x="325" y="176" width="22" height="4" rx="2" fill="#7d5130" transform="rotate(14 336 178)" />
+      {level > 0 && (
+        <g transform={`translate(336 178) scale(${s.toFixed(2)}) translate(-336 -178)`}>
+          <path className="fw-flick" d="M336 156 C 343 164, 346 170, 342 178 L 330 178 C 326 170, 329 164, 336 156 Z" fill="#ff8a2a" />
+          <path className="fw-flick" d="M336 166 C 340 170, 341 174, 339 178 L 333 178 C 331 174, 332 170, 336 166 Z" fill="#ffd36a" style={{ animationDelay: "-0.2s" }} />
+        </g>
+      )}
+    </g>
+  );
+}
 
 const SHADOW: Record<FishShadow, [number, number]> = { s: [26, 7], m: [36, 10], l: [52, 14] };
 
@@ -204,6 +230,7 @@ export default function WinScene({
   flags = [],
   fire = false,
   school = false,
+  camp = 0,
 }: {
   /** 卫戍池塘 rather than the bank */
   pond: boolean;
@@ -221,6 +248,8 @@ export default function WinScene({
   flags?: PondFlag[];
   fire?: boolean;
   school?: boolean;
+  /** 卫戍池塘: the room's 篝火, its level now (0: out) */
+  camp?: number;
 }) {
   const G = pond ? WIN_POND : WIN_PIER;
   const p = poseAt(phase, ms, G);
@@ -231,6 +260,7 @@ export default function WinScene({
   return (
     <svg className="fish-scene fw-scene" viewBox="0 0 360 190" aria-hidden="true">
       {pond ? <PondBack glow={fire} school={school} /> : <PierBack />}
+      {pond && <Camp level={camp} />}
       {pond &&
         flags.slice(0, POLES.length).map((f, i) => (
           <g key={i}>

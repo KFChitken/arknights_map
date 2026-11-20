@@ -8,6 +8,7 @@ import { INVITE_MS, QUIET_AFTER_LATER_MS } from "../listen";
 import { displayName } from "../profile";
 import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
+import { fireEnd, playOn } from "../squadFire";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -230,7 +231,7 @@ function hold<K, V>(map: Map<K, V>, key: K, value: V) {
 // ---- the room a player is in ----
 
 /** The open room a player is in now, with their row in it */
-async function roomOf(exec: Exec, userId: string) {
+export async function roomOf(exec: Exec, userId: string) {
   const [r] = await exec
     .select({ room: squadRooms, me: squadMembers })
     .from(squadMembers)
@@ -264,7 +265,8 @@ type Hearer = { userId: string; handle: number };
 type Moved = { h: number; move: SquadMove; to?: number };
 /** The lines said and moves done in a room in the last SAY_BATCH_MS, told to it at once */
 type Fished = { h: number; no: number; variant: number; cm: number | null };
-type Said = { items: { h: number; p: number; to?: number }[]; moves: Moved[]; fish?: Fished[]; timer: ReturnType<typeof setTimeout> };
+type Thrown = Extract<SquadTell, { t: "throw" }>["items"][number];
+type Said = { items: { h: number; p: number; to?: number }[]; moves: Moved[]; fish?: Fished[]; throws?: Thrown[]; timer: ReturnType<typeof setTimeout> };
 const g = globalThis as unknown as {
   squadHearers?: Map<string, { at: number; rows: Hearer[] }>;
   squadSays?: Map<string, Said>;
@@ -302,6 +304,14 @@ async function tellRoom(roomId: string, what?: Extract<SquadTell, { t: "room" }>
   const rows = await hearersOf(roomId);
   const tell: SquadTell = { t: "room", room: roomId, ...(what ? { what } : {}) };
   tellSquad([...rows.map((r) => r.userId), ...also], tell);
+}
+
+/** For 篝火 (src/lib/server/squadPlay.ts): tell the room a stick went on, or one's roach was woken by 白开水 (pose) */
+export const tellSquadPlay = (roomId: string, what: Extract<SquadTell, { t: "room" }>["what"]) => tellRoom(roomId, what);
+
+/** For 扔东西 (src/lib/server/squadPlay.ts): told to the whole room with the next batch */
+export function throwInRoom(roomId: string, thrown: Thrown) {
+  (batchOf(roomId).throws ??= []).push(thrown);
 }
 
 /** For 卫戍池塘 (src/lib/server/fish.ts): tell the room someone's line went in or came out, or a 鱼群 came */
@@ -372,6 +382,10 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     if (fishing.has(u.id)) people[i].fishing = true;
     if (m.fishN) people[i].fishN = m.fishN;
     if (admiral.has(u.id)) people[i].admiral = true;
+    // 篝火's sticks, yours alone; 扔东西: what of it stays on each, while it does
+    if (u.id === viewerId) Object.assign(people[i], { wood: m.wood, woodAt: m.woodAt?.getTime() ?? null });
+    Object.assign(people[i], playOn(m, now));
+    if (u.squadNoThrow) people[i].noThrow = true;
   }
   // the 人机 after everyone else
   const members = [...people, ...bots.map(botMember)];
@@ -427,6 +441,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     members,
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
     ...(room.schoolUntil && room.schoolUntil.getTime() > now ? { school: room.schoolUntil.getTime() } : {}),
+    fire: { level: room.fireLevel, at: room.fireAt?.getTime() ?? now, by: room.fireBy, best: room.fireBest, last: room.fireLast },
     endsAt: ends.at,
     endsWhy: ends.why,
     now,
@@ -443,7 +458,13 @@ export async function myRoom(user: Pick<UserRow, "id">, now = Date.now()) {
 export async function squadMe(user: UserRow): Promise<SquadMe | undefined> {
   if (!squadShown(user)) return undefined;
   const s = squadSettings();
-  return { card: cardOf(user), showName: user.squadShowName, room: Boolean(await roomOf(db, user.id)), closed: s.closed ? s.note : null };
+  return {
+    card: cardOf(user),
+    showName: user.squadShowName,
+    noThrow: user.squadNoThrow,
+    room: Boolean(await roomOf(db, user.id)),
+    closed: s.closed ? s.note : null,
+  };
 }
 
 // ---- 卫戍名片 ----
@@ -451,24 +472,31 @@ export async function squadMe(user: UserRow): Promise<SquadMe | undefined> {
 /**
  * The player's 卫戍名片, as given (card), kept for the rooms they open or go in at from now on; null clears it, and
  * 列表上显示我的名字 with it. showName, when given: that switch, which the lists follow from their next asking.
+ * noThrow, when given: 别人扔我 turned off (true) or on, kept whatever the card (clearing it leaves it as it is).
  */
 export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (body.showName !== undefined && typeof body.showName !== "boolean") throw refuse(400, T.server.common.badRequest);
+  if (body.noThrow !== undefined && typeof body.noThrow !== "boolean") throw refuse(400, T.server.common.badRequest);
+  const noThrow = typeof body.noThrow === "boolean" ? { squadNoThrow: body.noThrow } : {};
   if (body.card === null) {
-    await db.update(users).set({ squadCore: null, squadStrategy: null, squadLevel: null, squadShowName: false }).where(eq(users.id, user.id));
+    const [kept] = await db
+      .update(users)
+      .set({ squadCore: null, squadStrategy: null, squadLevel: null, squadShowName: false, ...noThrow })
+      .where(eq(users.id, user.id))
+      .returning({ noThrow: users.squadNoThrow });
     forgetList();
-    return { card: null, showName: false, now };
+    return { card: null, showName: false, noThrow: kept?.noThrow ?? false, now };
   }
   const card = readCard(body.card);
   if (!card) throw refuse(400, T.server.common.badRequest);
   const showName = typeof body.showName === "boolean" ? body.showName : undefined;
   const [saved] = await db
     .update(users)
-    .set({ squadCore: card.core, squadStrategy: card.strategy, squadLevel: card.level, ...(showName === undefined ? {} : { squadShowName: showName }) })
+    .set({ squadCore: card.core, squadStrategy: card.strategy, squadLevel: card.level, ...(showName === undefined ? {} : { squadShowName: showName }), ...noThrow })
     .where(eq(users.id, user.id))
-    .returning({ showName: users.squadShowName });
+    .returning({ showName: users.squadShowName, noThrow: users.squadNoThrow });
   if (showName !== undefined) forgetList();
-  return { card, showName: saved?.showName ?? false, now };
+  return { card, showName: saved?.showName ?? false, noThrow: saved?.noThrow ?? false, now };
 }
 
 // ---- in and out ----
@@ -785,9 +813,21 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
         .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
     }
     const at = new Date(now);
+    // 篝火: how long it burnt this 局, the room's longest kept; the fire goes on into the next as it is
+    const fire = fireEnd({ level: room.fireLevel, at: room.fireAt?.getTime() ?? null, burn: room.fireBurn }, now);
+    const ended = {
+      waitedAt: at,
+      schools: 0,
+      schoolUntil: null,
+      fireLevel: fire.level,
+      fireAt: fire.at === null ? null : new Date(fire.at),
+      fireBurn: fire.burn,
+      fireLast: fire.burnt,
+      fireBest: Math.max(room.fireBest, fire.burnt),
+    };
     await tx
       .update(squadRooms)
-      .set({ state: to, stateAt: at, ...(to === "go" ? { wentAt: at } : { waitedAt: at, schools: 0, schoolUntil: null }) })
+      .set({ state: to, stateAt: at, ...(to === "go" ? { wentAt: at } : ended) })
       .where(eq(squadRooms.id, room.id));
     return true;
   });
@@ -1611,12 +1651,13 @@ function addSay(roomId: string, h: number, p: number, to?: number) {
 async function flushSay(roomId: string) {
   const b = says.get(roomId);
   says.delete(roomId);
-  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length)) return;
+  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length && !b.throws?.length)) return;
   try {
     const ids = (await hearersOf(roomId)).map((r) => r.userId);
     if (b.items.length) tellSquad(ids, { t: "say", room: roomId, items: b.items } satisfies SquadTell);
     if (b.moves.length) tellSquad(ids, { t: "move", room: roomId, items: b.moves } satisfies SquadTell);
     if (b.fish?.length) tellSquad(ids, { t: "fish", room: roomId, items: b.fish } satisfies SquadTell);
+    if (b.throws?.length) tellSquad(ids, { t: "throw", room: roomId, items: b.throws } satisfies SquadTell);
   } catch (e) {
     console.error("squad: telling a room its lines failed", e);
   }

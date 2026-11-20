@@ -2,6 +2,7 @@ import season from "@/data/squad-season.json";
 import { SERVERS } from "./games";
 import type { RoachPass } from "./passes";
 import type { PublicProfile } from "./profile";
+import type { SquadBall, SquadFire, SquadOn } from "./squadFire";
 
 /**
  * 一起卫戍: rooms where players of 卫戍协议 find each other for its 联合模拟 (four at most, the host one of them), switched
@@ -396,6 +397,15 @@ export type SquadMember = {
   fishing?: true;
   fishN?: number;
   admiral?: true;
+  /** 篝火's sticks (src/lib/squadFire.ts): in your hand at woodAt (null: a full hand never used), yours alone */
+  wood?: number;
+  woodAt?: number | null;
+  /** 扔东西: what sits on TA's head, TA's roach asleep or dancing, a ball for TA to send back, while they last */
+  head?: SquadOn;
+  fx?: SquadOn;
+  ball?: SquadBall;
+  /** TA turned 别人扔我 off: nothing may be thrown at TA */
+  noThrow?: true;
 } & SquadLook &
   SquadRound;
 
@@ -424,6 +434,8 @@ export type SquadRoom = {
   wentAt: number | null;
   /** 鱼群 in 卫戍池塘 till then (ms), while one is on */
   school?: number;
+  /** 篝火 (src/lib/squadFire.ts): its level as put then, by whom; the room's longest 局 and the last one's (ms) */
+  fire: SquadFire;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
@@ -449,7 +461,7 @@ export type SquadTell =
        * out of it, invited, 下次吧)
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake";
         h?: number;
         to?: SquadState;
         round?: SquadRound;
@@ -463,6 +475,12 @@ export type SquadTell =
   | { t: "move"; room: string; items: { h: number; move: SquadMove; to?: number }[] }
   /** Purple or better caught in 卫戍池塘, by the one with the number h: said to the whole room with TA's name */
   | { t: "fish"; room: string; items: { h: number; no: number; variant: number; cm: number | null }[] }
+  /**
+   * 扔东西, batched as the lines are: h threw item (src/lib/squadFire.ts THROWS) at to; out: what a parcel held (a 钓鳞
+   * item's number); n: a ball's rally so far; back: a ball sent back. What stays (on the head, asleep, dancing, a
+   * ball) comes with the room as well.
+   */
+  | { t: "throw"; room: string; items: { h: number; to: number; item: number; out?: number; n?: number; back?: true }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
 
@@ -471,6 +489,8 @@ export type SquadMe = {
   card: SquadCard | null;
   /** 列表上显示我的名字: named on the list as a teammate, to everyone (else to their own 触须之交 alone) */
   showName: boolean;
+  /** 别人扔我 turned off: nothing may be thrown at them in a room */
+  noThrow: boolean;
   /** In a room now */
   room: boolean;
   /** Closed for now, with the 站长's line */

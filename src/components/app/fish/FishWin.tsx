@@ -56,7 +56,7 @@ function useViewport() {
 }
 
 /** 卫戍池塘 with the line still in it once one has left the room: the pond alone */
-const BARE_POND: PondView = { seats: [], flags: [], fire: false, school: false, fishing: "", schoolBadge: null, tally: "", toast: null };
+const BARE_POND: PondView = { seats: [], flags: [], fire: false, school: false, fishing: "", schoolBadge: null, tally: "", toast: null, camp: 0 };
 
 export default function FishWin({
   look,

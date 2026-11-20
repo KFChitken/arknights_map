@@ -10,6 +10,7 @@ import type { Art } from "../OperatorNames";
 import { RoachPassOn } from "../passes/RoachPass";
 import { TouchButtons } from "../RoachCards";
 import { CoreBadge, extraNames, StrategyFace, strategyWords } from "./SquadPicks";
+import ThrowPicker from "./SquadThrow";
 import { lineWords } from "./squading";
 import "./squadMate.css";
 
@@ -32,7 +33,8 @@ export function linesTo(m: Pick<SquadMember, "strategy" | "host" | "inGame">, me
  * it plays (strategy, core alliance, 附加盟约); the two touches as on the map, with
  * today's touches left; and at its foot 请出去 (the host's), 拉黑 and 举报, each asked first. The pass TA wears hangs on
  * it as on the map's (passes/RoachPass.tsx), folded or not as there. A 人机's: touches played on this page alone, no
- * foot, and to the 站长 or an admin hosting the room, a row of what it does. Goes at its × or a tap on the tile again.
+ * foot, and to the 站长 or an admin hosting the room, a row of what it does. 扔 (after 击掌 and 贴贴) turns it into
+ * 扔东西's picker (SquadThrow.tsx), unless TA turned 别人扔我 off. Goes at its × or a tap on the tile again.
  */
 export default function SquadMateCard({
   m,
@@ -83,6 +85,7 @@ export default function SquadMateCard({
 }) {
   const [asking, setAsking] = useState<Asking | null>(null);
   const [touching, setTouching] = useState(false);
+  const [throwing, setThrowing] = useState(false);
   const quota = touches && !m.bot ? touchesNow(touches) : null;
   // with none left, it draws again now and then, so the buttons come back as the day turns
   useTick(quota?.left === 0 ? 30_000 : null);
@@ -106,6 +109,16 @@ export default function SquadMateCard({
         : asking === "report"
           ? { title: fmt(T.squad.mate.reportAsk, { name: m.name }), sub: T.squad.room.reportSub, yes: T.squad.mate.reportYes, go: onSafety }
           : null;
+  if (throwing) {
+    return (
+      <div className={`card stack sq-mate ${className}`} style={style} role="dialog" aria-label={fmt(T.squad.throw.title, { name: m.name })}>
+        <ThrowPicker m={m} onBack={() => setThrowing(false)} />
+        <button className="close" onClick={onClose} aria-label={T.common.close}>
+          ×
+        </button>
+      </div>
+    );
+  }
   return (
     <div className={`card stack sq-mate ${className}${m.pass ? " with-pass" : ""}`} style={style} role="dialog" aria-label={fmt(T.squad.mate.label, { name: m.name })}>
       <div className="card-head">
@@ -164,16 +177,28 @@ export default function SquadMateCard({
           </div>
         </>
       )}
-      {onMove && (
-        <div className="sq-mmove">
-          <button type="button" className="dark" disabled={busy} onClick={() => onMove("five")}>
-            {T.squad.talk.moves.five}
-          </button>
-          <button type="button" className="dark" disabled={busy} onClick={() => onMove("hug")}>
-            {T.squad.talk.moves.hug}
-          </button>
-        </div>
-      )}
+      <div className="sq-mmove">
+        {onMove && (
+          <>
+            <button type="button" className="dark" disabled={busy} onClick={() => onMove("five")}>
+              {T.squad.talk.moves.five}
+            </button>
+            <button type="button" className="dark" disabled={busy} onClick={() => onMove("hug")}>
+              {T.squad.talk.moves.hug}
+            </button>
+          </>
+        )}
+        {/* 扔东西: a picker in the card's place; not at one who turned 别人扔我 off */}
+        <button
+          type="button"
+          className="dark throw"
+          disabled={busy || Boolean(m.noThrow)}
+          aria-label={m.noThrow ? T.squad.throw.off : fmt(T.squad.throw.openLabel, { name: m.name })}
+          onClick={() => setThrowing(true)}
+        >
+          {m.noThrow ? T.squad.throw.off : T.squad.throw.open}
+        </button>
+      </div>
       {m.pass && <RoachPassOn pass={m.pass} />}
       {m.bot ? (
         <div className="touch-buttons">

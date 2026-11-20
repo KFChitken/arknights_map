@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
 import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound } from "./squad";
+import type { SquadFire } from "./squadFire";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -52,9 +53,12 @@ export const squadApi = {
   },
   /** The room you are in, as you see it (null: none) */
   room: () => call<Room>("room", post({})),
-  /** Your 卫戍名片 (null clears it), and 列表上显示我的名字 when given */
-  card: (card: SquadCard | null, showName?: boolean) =>
-    call<{ card: SquadCard | null; showName: boolean; now: number }>("card", post(showName === undefined ? { card } : { card, showName })),
+  /** Your 卫戍名片 (null clears it), and 列表上显示我的名字 and 别人扔我 (off: noThrow) when given */
+  card: (card: SquadCard | null, showName?: boolean, noThrow?: boolean) =>
+    call<{ card: SquadCard | null; showName: boolean; noThrow: boolean; now: number }>(
+      "card",
+      post({ card, ...(showName === undefined ? {} : { showName }), ...(noThrow === undefined ? {} : { noThrow }) }),
+    ),
   open: (form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) => call<Room>("open", post(form)),
   join: (room: string) => call<{ room: SquadRoom; now: number }>("join", post({ room })),
   /** Out of your room (the host's ends, unless handed first to the one numbered to) */
@@ -75,6 +79,14 @@ export const squadApi = {
   bot: (what: SquadBotDo, h?: number) => call<Room>("bot", post(h === undefined ? { do: what } : { do: what, h })),
   /** Your roach waves, or gives a teammate (to: their number) 击掌 or 贴贴: sent, or one too many (full: the hour's are used up) */
   move: (move: SquadMove, to?: number) => call<{ sent: boolean; full?: boolean; now: number }>("move", post(to === undefined ? { move } : { move, to })),
+  /** 添一根: a stick from your hand on the room's 篝火; the fire after it, and your hand */
+  fire: () => call<{ now: number; fire: SquadFire; wood: number; woodAt: number }>("fire", post({})),
+  /** 扔: one of the things (src/lib/squadFire.ts THROWS, by number) at the one numbered to; out: what a parcel held */
+  throwAt: (to: number, item: number) => call<{ now: number; out?: number }>("throw", post({ to, item })),
+  /** 打回去: the ball on your tile, back to whoever sent it; the rally after it */
+  hit: () => call<{ now: number; n: number }>("hit", post({})),
+  /** 甩掉: what crawled onto your roach's head */
+  shake: () => call<{ now: number }>("shake", post({})),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** A set line, by its number (to: the one in the room it is said to, 对 TA 说): sent, or one too many (full: the hour's are used up) */

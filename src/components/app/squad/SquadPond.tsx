@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { POND_PROTECT } from "@/lib/fish/rules";
+import { fireLevel } from "@/lib/squadFire";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
 import { roachDataUrl } from "@/lib/roachSvg";
 import { BUBBLE_MS, CORES, type SquadMember } from "@/lib/squad";
@@ -105,5 +106,6 @@ export function usePondView(): PondView | null {
     schoolBadge: school ? fmt(T.fish.pond.school, { left: clock(room.school! - now) }) : null,
     tally: caught >= POND_PROTECT ? fmt(T.fish.win.roundDone, { n: caught }) : fmt(T.fish.win.round, { n: caught, left: POND_PROTECT - caught }),
     toast: floats.at(-1)?.text ?? null,
+    camp: fireLevel(room.fire.level, room.fire.at, now),
   };
 }

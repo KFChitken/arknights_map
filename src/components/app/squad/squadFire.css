@@ -1,0 +1,137 @@
+/*
+ * 篝火's card (SquadFire.tsx), 扔东西's picker in a teammate's card (SquadThrow.tsx), and what is thrown, drawn on the
+ * room's roaches (SquadRoach.tsx Play). The card is over the map as the pond's page is (the sides ≤ 25, sheets 30),
+ * under the toast (40): at the foot on a phone, in the middle on a computer.
+ */
+
+/* ---- 篝火 ---- */
+.sq-fire {
+  position: fixed; inset: 0; z-index: 35; display: flex; align-items: flex-end; justify-content: center; background: rgba(16, 17, 20, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+.sq-fire .box {
+  width: min(420px, 100%); max-height: calc(100% - 24px); overflow-y: auto; padding: 12px 12px calc(14px + var(--safe-bottom, 0px)); box-sizing: border-box;
+  border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22; box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+}
+@media (min-width: 720px) {
+  .sq-fire { align-items: center; }
+  .sq-fire .box { border-radius: 18px; padding-bottom: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35); }
+}
+.sq-fire header { display: flex; align-items: center; padding: 0 2px 8px; }
+.sq-fire header b { flex: 1; font-size: 16px; }
+.sq-fire header .x { width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1; cursor: pointer; }
+.sq-fire .scene {
+  position: relative; height: 300px; overflow: hidden; border-radius: 16px; background: linear-gradient(180deg, #151a28 0%, #232a3b 70%, #2e2a2a 100%);
+}
+.sq-fire .glow {
+  position: absolute; left: 50%; top: 58%; width: 420px; height: 420px; margin: -210px 0 0 -210px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 140, 50, var(--glow)) 0%, rgba(255, 140, 50, 0) 62%); transition: background 0.4s;
+}
+.sq-fire .tag { position: absolute; left: 12px; top: 10px; padding: 1px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); color: #f1e3cf; font-size: 11px; font-weight: 700; }
+.sq-fire .lv { position: absolute; right: 12px; top: 10px; display: flex; gap: 3px; align-items: center; }
+.sq-fire .lv i { width: 16px; height: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
+.sq-fire .lv i.on { background: #ff8a3a; }
+.sq-fire .lv b { margin-left: 6px; color: #f1e3cf; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sq-fire .flame { position: absolute; left: 50%; bottom: 74px; width: 160px; height: 170px; margin-left: -80px; display: flex; align-items: flex-end; justify-content: center; }
+.sq-fire .fl { position: relative; width: 160px; height: 170px; transform: scale(var(--flame)); transform-origin: 50% 100%; transition: transform 0.4s ease-out; }
+.sq-fire .fl .a, .sq-fire .fl .b { position: absolute; border-radius: 50% 50% 46% 46% / 64% 64% 36% 36%; transform-origin: 50% 100%; }
+.sq-fire .fl .a {
+  left: 30px; bottom: 6px; width: 100px; height: 150px; filter: blur(1px); animation: sqf-flick 0.7s ease-in-out infinite;
+  background: radial-gradient(60% 70% at 50% 80%, #fff3b0 0%, #ffb341 40%, #ff6a2a 70%, rgba(255, 80, 30, 0) 100%);
+}
+.sq-fire .fl .b {
+  left: 52px; bottom: 8px; width: 56px; height: 96px; animation: sqf-flick 0.9s ease-in-out infinite reverse;
+  background: radial-gradient(60% 70% at 50% 80%, #ffffff 0%, #fff0a0 45%, rgba(255, 200, 80, 0) 100%);
+}
+.sq-fire .fl .e1, .sq-fire .fl .e2 { position: absolute; border-radius: 50%; background: #ffcf6b; animation: sqf-ember 2.2s ease-out infinite; }
+.sq-fire .fl .e1 { left: 66px; bottom: 120px; width: 4px; height: 4px; }
+.sq-fire .fl .e2 { left: 96px; bottom: 100px; width: 3px; height: 3px; animation-delay: 0.8s; }
+.sq-fire .out { position: absolute; left: 12px; right: 12px; bottom: 116px; color: #8f97a8; font-size: 13px; text-align: center; }
+.sq-fire .logs { position: absolute; left: 50%; bottom: 62px; margin-left: -70px; }
+.sq-fire .seat { position: absolute; line-height: 0; }
+.sq-fire .seat.flip { transform: scaleX(-1); }
+.sq-fire .last { position: absolute; right: 18px; bottom: 94px; padding: 2px 8px; border-radius: 9px; background: rgba(255, 255, 255, 0.92); font-size: 11px; font-weight: 700; }
+.sq-fire .plus { position: absolute; left: 50%; top: 40px; margin-left: -24px; color: #ffd23f; font-size: 20px; font-weight: 800; animation: sqf-pop 0.4s ease-out both; }
+.sq-fire .drop { position: absolute; left: 12px; right: 12px; bottom: 8px; color: #a9b0bf; font-size: 11px; text-align: center; }
+.sq-fire .hand { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 12px; border: 1px solid #e3e5e8; border-radius: 14px; }
+.sq-fire .sticks { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sq-fire .sticks b { font-size: 14px; }
+.sq-fire .sticks i { width: 24px; height: 8px; border-radius: 4px; background: #e3e5e8; }
+.sq-fire .sticks i.on { background: #8a5a2b; }
+.sq-fire .sticks span { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sq-fire .sticks small { flex-basis: 100%; color: #6b7280; font-size: 12px; }
+.sq-fire .add { flex: none; width: 120px; height: 52px; border: 0; border-radius: 12px; background: #1b1d22; color: #fff; font-size: 16px; font-weight: 900; cursor: pointer; }
+.sq-fire .add:disabled { background: #e3e5e8; color: #9aa0aa; cursor: default; }
+.sq-fire .fmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
+.sq-fire .rec { margin: 10px 2px 0; color: #7a3d0c; font-size: 12.5px; font-weight: 700; }
+.sq-fire .note { margin: 8px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+@keyframes sqf-flick { 0%, 100% { transform: scaleY(1) scaleX(1); } 30% { transform: scaleY(1.08) scaleX(0.95); } 60% { transform: scaleY(0.95) scaleX(1.04); } }
+@keyframes sqf-ember { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-70px); opacity: 0; } }
+@keyframes sqf-pop { 0% { transform: translateY(4px) scale(0.6); opacity: 0; } 100% { transform: translateY(-10px) scale(1); opacity: 1; } }
+
+/* the room's sheet warmer as the fire is bigger (the warmth set on the sheet itself, Sheet's style) */
+.sq-sheet.sq-in .sheet { background-image: linear-gradient(180deg, rgba(255, 150, 70, 0) 30%, rgba(255, 150, 70, var(--sq-warm, 0)) 100%); }
+
+/* ---- 扔东西's picker, in a teammate's card ---- */
+.sq-throw { display: flex; flex-direction: column; gap: 8px; }
+.sq-throw .hd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding-right: 28px; }
+.sq-throw .hd b { flex: 1 0 auto; font-size: 16px; }
+.sq-throw .cool { color: #6b7280; font-size: 12px; }
+.sq-throw .grp { display: flex; flex-direction: column; gap: 4px; }
+.sq-throw .gn { font-size: 12px; font-weight: 700; }
+.sq-throw .gn small { margin-left: 6px; color: #9aa0aa; font-weight: 500; }
+.sq-throw .g-praise .gn { color: #1f6b41; }
+.sq-throw .g-tease .gn { color: #9b1c1c; }
+.sq-throw .g-rally .gn { color: #1f4366; }
+.sq-throw .g-effect .gn { color: #7a3fd0; }
+.sq-throw .its { display: flex; flex-wrap: wrap; gap: 6px; }
+.sq-throw .its button {
+  width: 66px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0 5px; border: 0; border-radius: 10px;
+  background: #f6f7f9; color: #4b5160; font: inherit; cursor: pointer;
+}
+.sq-throw .its button:hover:not(:disabled) { background: #eef0f3; }
+.sq-throw .its button.on { background: #fff4c2; }
+.sq-throw .its button:disabled { cursor: default; opacity: 0.55; }
+.sq-throw .its img { width: 42px; height: 42px; }
+.sq-throw .its span { font-size: 10.5px; line-height: 1.25; text-align: center; }
+.sq-throw .tmsg { margin: 0; color: #b42318; font-size: 12.5px; }
+.sq-throw .note { margin: 0; padding: 8px 10px; border-radius: 10px; background: #f6f7f9; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+.sq-throw .back { align-self: flex-start; }
+.sq-mmove .throw { min-width: 64px; }
+
+/* ---- what is thrown, on the room's roaches ---- */
+.sq-roach img.sqr-on { position: absolute; z-index: 3; height: auto; pointer-events: none; }
+.sq-roach img.head-halo { left: 15%; top: -38%; }
+.sq-roach img.head-ladle { left: 15%; top: -34%; transform: rotate(160deg); }
+.sq-roach img.head-slug { left: 18%; top: -26%; animation: sqr-crawl 1.4s ease-in-out infinite alternate; }
+.sq-roach img.ball { right: -34%; bottom: -6%; animation: sqr-ball 0.6s ease-in-out infinite alternate; }
+.sqr-land { position: absolute; z-index: 4; left: 50%; bottom: 40%; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); pointer-events: none; }
+/* what lands beside it (not on the head), a moment */
+.sq-roach img.sqr-thing { position: absolute; z-index: 3; right: -42%; bottom: -4%; height: auto; pointer-events: none; animation: sqr-drop 0.5s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+.sqr-say {
+  position: absolute; bottom: 100%; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 9px; border-radius: 10px;
+  background: #1b1d22; color: #fff; font-size: 11.5px; font-weight: 700; line-height: 1.35; white-space: nowrap; animation: sqr-rise 1.2s ease-out both;
+}
+.sqr-say small { color: #c8ccd2; font-size: 10px; font-weight: 500; }
+.sqr-stars { position: absolute; z-index: 3; left: 50%; top: -30%; margin-left: -18px; width: 36px; color: #f4c040; font-size: 12px; line-height: 1; text-align: center; animation: sqr-stars 1.2s linear infinite; }
+/* beside your own roach, clear of the name under it */
+.sqr-tap {
+  position: absolute; z-index: 5; left: calc(100% + 18px); top: 50%; transform: translateY(-50%); padding: 2px 8px; border: 0; border-radius: 9px;
+  background: #ffd23f; color: #16181c; font: inherit; font-size: 10.5px; font-weight: 800; line-height: 1.5; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18); animation: sqr-nudge 0.9s ease-in-out infinite;
+}
+/* in the bar's tiles, the roach at the tile's left: the line runs right over the tile, the hint sits on the roach */
+.sqr-land.in-bar { left: 0; align-items: flex-start; transform: none; }
+.sqr-land.in-bar .sqr-say { align-items: flex-start; }
+.sqr-tap.in-bar { left: 50%; top: auto; bottom: -6px; transform: translateX(-50%); animation-name: sqr-nudge-bar; }
+@keyframes sqr-nudge-bar { 50% { transform: translateX(-50%) scale(1.08); } }
+@keyframes sqr-drop { 0% { transform: translateY(-60px) rotate(-90deg) scale(1.2); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes sqr-rise { 0% { transform: translateY(6px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-12px); opacity: 1; } }
+@keyframes sqr-crawl { from { transform: translateX(-3px) rotate(-6deg); } to { transform: translateX(3px) rotate(6deg); } }
+@keyframes sqr-ball { from { transform: translateY(0); } to { transform: translateY(-6px); } }
+@keyframes sqr-stars { to { transform: rotate(360deg); } }
+@keyframes sqr-nudge { 50% { transform: translateY(-50%) scale(1.08); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sq-fire *, .sqr-land *, .sqr-say, .sqr-stars, .sqr-tap, .sq-roach img.sqr-on, .sq-roach img.sqr-thing { animation: none !important; }
+}

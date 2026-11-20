@@ -177,6 +177,8 @@ export const users = pgTable("users", {
   squadLevel: smallint("squad_level"),
   /** 卫戍名片's 列表上显示我的名字: named on 一起卫戍's list as a teammate, to everyone (src/lib/server/squad.ts) */
   squadShowName: boolean("squad_show_name").notNull().default(false),
+  /** 卫戍名片's 别人扔我 turned off: nothing may be thrown at them in a room (src/lib/server/squadPlay.ts) */
+  squadNoThrow: boolean("squad_no_throw").notNull().default(false),
   /** They were told once, with their first guest, not to keep the main roach by their door */
   visitTipShown: boolean("visit_tip_shown").notNull().default(false),
   /** 求助 (src/lib/server/help.ts): when they last looked at their 触须之交's requests, for the dot on the 触须之交 card */
@@ -1914,6 +1916,17 @@ export const squadRooms = pgTable(
     /** 鱼群 in 卫戍池塘 (src/lib/server/fish.ts) till then, and how many came this 局 (from the last round's end) */
     schoolUntil: at("school_until"),
     schools: smallint("schools").notNull().default(0),
+    /**
+     * 篝火 (src/lib/squadFire.ts, src/lib/server/squadPlay.ts): its level as put at fire_at (null: never lit), by one's
+     * number in the room; how long it burnt this 局 before fire_at (ms; below 0 by what of fire_at's burning was the
+     * last 局's); the room's longest 局 and the last one's (ms)
+     */
+    fireLevel: smallint("fire_level").notNull().default(0),
+    fireAt: at("fire_at"),
+    fireBy: smallint("fire_by"),
+    fireBurn: integer("fire_burn").notNull().default(0),
+    fireBest: integer("fire_best").notNull().default(0),
+    fireLast: integer("fire_last"),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */
@@ -1961,6 +1974,22 @@ export const squadMembers = pgTable(
     pose: smallint("pose").notNull().default(0),
     /** 鳞 caught in 卫戍池塘 this 局 (from the last round's end): 爆护 at ten */
     fishN: smallint("fish_n").notNull().default(0),
+    /** 篝火's sticks in hand at wood_at (null: never put one on, a full hand), one more each WOOD_EVERY_MS */
+    wood: smallint("wood").notNull().default(3),
+    woodAt: at("wood_at"),
+    /**
+     * 扔东西 (src/lib/squadFire.ts THROWS), what was thrown at them that stays a while: on their head (head, by number)
+     * and till when; their roach asleep or dancing (fx) till when; a ball to send back (from: the thrower's number,
+     * n: the rally so far) till when
+     */
+    head: smallint("head"),
+    headUntil: at("head_until"),
+    fx: smallint("fx"),
+    fxUntil: at("fx_until"),
+    ball: smallint("ball"),
+    ballFrom: smallint("ball_from"),
+    ballN: smallint("ball_n").notNull().default(0),
+    ballUntil: at("ball_until"),
   },
   (t) => [
     primaryKey({ columns: [t.roomId, t.userId] }),

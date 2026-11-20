@@ -353,6 +353,7 @@ const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
 const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
 const FishWin = dynamic(() => import("./app/fish/FishWin"), { ssr: false });
+const SquadFire = dynamic(() => import("./app/squad/SquadFire"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
 // 一起听 over the map (the card of an invitation, the 短评), for those who may listen
@@ -6248,6 +6249,8 @@ export default function MapApp({
           }}
         />
       )}
+      {/* 篝火, the room's own, over everything when 「玩」 → 添柴 opens it */}
+      {squadShown && <SquadFire />}
       {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}
       {listenOpen && listenShown && me?.listen && (
         <ListenPanel

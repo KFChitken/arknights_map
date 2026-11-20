@@ -30,6 +30,7 @@ import {
   touchMember,
 } from "@/lib/server/squad";
 import { squadOpen } from "@/lib/server/squadOpen";
+import { addWood, hitBack, shakeOff, throwAt } from "@/lib/server/squadPlay";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 
 /**
@@ -60,6 +61,10 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST stop {on}                the host: 停止加入 (on) or 恢复加入: nobody else comes in meanwhile
  *   POST bot {do, h?}             人机, for the 站长 and the admins as host: add one (add), or tick its 准备 (ready),
  *                                 give it another strategy, have it say a line, change its pose, or ask it out (kick)
+ *   POST fire                     添一根: a stick from your hand on the room's 篝火 (src/lib/server/squadPlay.ts)
+ *   POST throw {to, item}         扔: one of the things (src/lib/squadFire.ts THROWS, by number) at the one numbered to
+ *   POST hit                      打回去: the ball on your tile sent back to whoever sent it
+ *   POST shake                    甩掉: what crawled onto your roach's head (源石虫) off it
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
  * While SQUAD keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -93,11 +98,15 @@ const OPS = {
   declare: { method: "POST", perMinute: 4 },
   bot: { method: "POST", perMinute: 30 },
   stop: { method: "POST", perMinute: 6 },
+  fire: { method: "POST", perMinute: 20 },
+  throw: { method: "POST", perMinute: 20 },
+  hit: { method: "POST", perMinute: 40 },
+  shake: { method: "POST", perMinute: 20 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
-const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "invite", "declare", "bot"]);
+const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "join", "key", "game", "prefs", "pose", "move", "touch", "say", "invite", "declare", "bot", "fire", "throw", "hit"]);
 
 type Ctx = { params: Promise<{ op: string }> };
 
@@ -166,6 +175,14 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await moveInRoom(user, body));
     case "touch":
       return answer(await touchMember(user, body));
+    case "fire":
+      return answer(await addWood(user));
+    case "throw":
+      return answer(await throwAt(user, body));
+    case "hit":
+      return answer(await hitBack(user));
+    case "shake":
+      return answer(await shakeOff(user));
     case "say":
       return answer(await sayInRoom(user, body));
     // a page of before: its songs' buttons say to look again
