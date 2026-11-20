@@ -16,6 +16,7 @@ import {
   DeskHint,
   DiscoButton,
   FishIcon,
+  fishLabel,
   FoldArrow,
   GuideFace,
   HotFlame,
@@ -132,8 +133,8 @@ export default function FloatChrome(p: ChromeProps) {
                 </button>
               )}
               {p.fish && (
-                <button className="it fish-entry" aria-label={T.map.bar.fishLabel} onClick={p.fish.onOpen} tabIndex={folded.r ? -1 : undefined}>
-                  <FishIcon size={24} />
+                <button className="it fish-entry" aria-label={fishLabel(p.fish)} onClick={p.fish.onOpen} tabIndex={folded.r ? -1 : undefined}>
+                  <FishIcon size={24} note={p.fish.note} />
                   <small>{T.map.bar.fish}</small>
                 </button>
               )}

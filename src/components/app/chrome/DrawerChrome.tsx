@@ -19,6 +19,7 @@ import {
   DiscoButton,
   Envelope,
   FishIcon,
+  fishLabel,
   GuideFace,
   HotFlame,
   ListenIcon,
@@ -135,9 +136,9 @@ function Phone(p: ChromeProps) {
             </button>
           )}
           {p.fish && (
-            <button className="dchip glass" aria-label={T.map.bar.fishLabel} onClick={p.fish.onOpen}>
+            <button className="dchip glass" aria-label={fishLabel(p.fish)} onClick={p.fish.onOpen}>
               <span className="ico">
-                <FishIcon size={22} />
+                <FishIcon size={22} note={p.fish.note} />
               </span>
               <span aria-hidden="true">{T.map.bar.fish}</span>
             </button>
@@ -543,11 +544,11 @@ function PassesCard({ passes }: { passes: NonNullable<ChromeProps["passes"]> }) 
 /** 钓鳞 in the computer's panel, under 325大学习: the bank */
 function FishEntryCard({ fish }: { fish: NonNullable<ChromeProps["fish"]> }) {
   return (
-    <button className="dcard" aria-label={T.map.bar.fishLabel} onClick={fish.onOpen}>
-      <FishIcon size={40} />
+    <button className="dcard" aria-label={fishLabel(fish)} onClick={fish.onOpen}>
+      <FishIcon size={40} note={fish.note} />
       <span className="tx" aria-hidden="true">
         <b>{T.map.bar.fish}</b>
-        <small>{T.map.bar.fishSub}</small>
+        <small className={fish.note?.bite ? "bite" : undefined}>{fish.note?.text ?? T.map.bar.fishSub}</small>
       </span>
       <span className="go" aria-hidden="true">
         ›

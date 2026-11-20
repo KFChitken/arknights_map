@@ -42,7 +42,7 @@ export default function SafetySheet({
   const missing = reason !== null && noteMissing(reason, note);
 
   return (
-    <Sheet title={T.safety.title} onBack={onBack} onClose={onClose}>
+    <Sheet title={T.safety.title} className="over-fish" onBack={onBack} onClose={onClose}>
       <h3 style={{ marginTop: 0 }}>{fmtParts(T.safety.blockThem, { them: them })}</h3>
       <p className="hint" style={{ marginBottom: 10 }}>
         {T.safety.blockNote}

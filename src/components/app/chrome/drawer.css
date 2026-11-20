@@ -127,6 +127,8 @@
 .chrome-drawer .dcard .tx { flex: 1; min-width: 0; line-height: 1.35; }
 .chrome-drawer .dcard .tx b { display: block; font-size: 14px; }
 .chrome-drawer .dcard .tx small { display: block; color: #ffffff8c; font-size: 11.5px; }
+/* 钓鳞's: bitten while its window is put away */
+.chrome-drawer .dcard .tx small.bite { color: #ff9a3c; font-weight: 700; }
 .chrome-drawer .dcard .go { color: #ffffff73; font-size: 20px; line-height: 1; }
 @media (max-width: 359px) {
   .chrome-drawer .dcard .tx b { font-size: 13px; }

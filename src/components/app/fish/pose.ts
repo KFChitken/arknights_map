@@ -1,8 +1,8 @@
 /**
- * The bank's rod, line, float and catch at a moment of each step (the design's Pier canvas): the rod a bent quadratic
- * curve from its pivot, the line a sagging one from its tip; the cast swings back and throws (CAST_MS), the reel bends
- * the rod and drags the catch in under the water (REEL_MS), and it leaps out to land by the roach (LEAP_MS). In the
- * scene's own units: the bank's (SPOTS) or 卫戍池塘's (POND).
+ * The rod, line, float and catch at a moment of each step (the design's Pier canvas): the rod a bent quadratic curve
+ * from its pivot, the line a sagging one from its tip; the cast swings back and throws (CAST_MS), the reel bends the
+ * rod and drags the catch in under the water (REEL_MS), and it leaps out to land by the roach (LEAP_MS). In a scene's
+ * own units (WinScene.tsx: the window's bank and 卫戍池塘).
  */
 
 export type FishPhase = "idle" | "cast" | "wait" | "bite" | "reel" | "leap" | "caught";
@@ -18,10 +18,6 @@ type Pt = [number, number];
  * in the water, where the catch surfaces and where it lands, the line's sag while it waits, how far the rod pulls up
  */
 export type Geo = { P: Pt; L: number; a0: number; back: number; B: Pt; S: Pt; K: Pt; sag: number; pull: number };
-/** The bank (the design's Pier, 390 × 560) */
-export const SPOTS: Geo = { P: [150, 392], L: 165, a0: -55, back: 70, B: [318, 336], S: [200, 438], K: [128, 292], sag: 20, pull: 28 };
-/** 卫戍池塘 (the design's Main, 366 × 470) */
-export const POND: Geo = { P: [66, 388], L: 134, a0: -50, back: 62, B: [240, 302], S: [132, 354], K: [42, 314], sag: 18, pull: 26 };
 
 export type Pose = {
   rod: string;
@@ -44,7 +40,7 @@ const q = (p0: Pt, c: Pt, p1: Pt, u: number): Pt => [
 ];
 const curve = (a: Pt, b: Pt, sag: number) => `M${f1(a[0])} ${f1(a[1])} Q${f1((a[0] + b[0]) / 2)} ${f1((a[1] + b[1]) / 2 + sag)} ${f1(b[0])} ${f1(b[1])}`;
 
-export function poseAt(phase: FishPhase, ms: number, G: Geo = SPOTS): Pose {
+export function poseAt(phase: FishPhase, ms: number, G: Geo): Pose {
   const tipAt = (a: number): Pt => [G.P[0] + G.L * Math.cos(a * D), G.P[1] + G.L * Math.sin(a * D)];
   let ang = G.a0;
   let bend = 5;

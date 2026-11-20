@@ -3,7 +3,7 @@
 import { T } from "@/i18n";
 import type { SquadMove, SquadRoom } from "@/lib/squad";
 import { dockTabs, type DockTab } from "./dockState";
-import { openSquadPond } from "./squading";
+import { openFishWin } from "../fish/winStore";
 import { ActTab, RoundTab, SayTab } from "./SquadTalk";
 import "./squadFight.css";
 
@@ -75,7 +75,7 @@ export default function SquadDock({
           ) : tab === "play" ? (
             // what there is to play in the room: 钓鳞 (卫戍池塘) so far, more as each is made
             <div className="sq-plays">
-              <button type="button" onClick={openSquadPond}>
+              <button type="button" onClick={openFishWin}>
                 <b>{T.fish.pond.fish}</b>
                 <small>{T.fish.pond.fishSub}</small>
               </button>

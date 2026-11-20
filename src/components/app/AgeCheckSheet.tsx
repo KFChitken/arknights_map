@@ -29,7 +29,7 @@ export default function AgeCheckSheet({
     }
   };
   return (
-    <Sheet title={T.ageCheck.title} onClose={onClose}>
+    <Sheet title={T.ageCheck.title} className="over-fish" onClose={onClose}>
       <p style={{ marginTop: 0 }}>
         {fmtParts(T.ageCheck.ask, { age: MIN_SIGNUP_AGE, site: siteName() })}
       </p>

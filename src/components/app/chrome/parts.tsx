@@ -9,6 +9,7 @@ import { SQUAD_MAX } from "@/lib/squad";
 import type { Basemap, RoachColor } from "@/lib/types";
 import type { UiFold } from "@/lib/uiChoice";
 import type { Radar } from "@/lib/world/types";
+import type { FishNote } from "../fish/winStore";
 import type { RoachOpts } from "@/lib/roachSvg";
 import { seeDiscoHint, setDiscoChosen, setDiscoRoomMode, useDiscoChosen, useDiscoHintSeen, useDiscoRoomMode } from "@/lib/disco";
 import RoachIcon from "../../RoachIcon";
@@ -113,8 +114,11 @@ export type ChromeProps = {
    * null for a visitor (their browser counts none)
    */
   study: { dot: boolean; days: number | null; onOpen: () => void } | null;
-  /** 钓鳞, where it is open to them (me.fish, FISH): the bank */
-  fish: { onOpen: () => void } | null;
+  /**
+   * 钓鳞, where it is open to them (me.fish, FISH): its small window; note, how it stands (the window open or small, a
+   * line in the water, bitten), for a word and a dot by it
+   */
+  fish: { onOpen: () => void; note?: FishNote | null } | null;
   /** 一起卫戍, where the server shows it to them (me.squad, SQUAD); room: how many are in the one they are in, if any */
   squad: { room: { n: number } | null; onOpen: () => void } | null;
   /**
@@ -253,10 +257,11 @@ export function TicketIcon({ size = 24, dot = false }: { size?: number; dot?: bo
 }
 
 /** 325大学习's notebook, a few lines written in it; dot: a red one, while today's course is not played */
-/** 钓鳞's way in: a float on the water, red over white, its line going up */
-export function FishIcon({ size = 24 }: { size?: number }) {
+/** 钓鳞's way in: a float on the water, red over white, its line going up; note: a dot for a line in the water (orange, bitten) */
+export function FishIcon({ size = 24, note = null }: { size?: number; note?: FishNote | null }) {
   return (
     <span className="fish-ico">
+      {note?.dot && <span className={note.bite ? "dot bite" : "dot"} aria-hidden="true" />}
       <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
         <path d="M12 1.8v6.4" stroke="#1b1d22" strokeWidth="1.4" strokeLinecap="round" />
         <path d="M5.2 14.4a6.8 6.6 0 0 1 13.6 0Z" fill="#ff4a2e" />
@@ -757,3 +762,6 @@ export function VisitorButtons({ visitor }: { visitor: NonNullable<ChromeProps["
     </>
   );
 }
+
+/** 钓鳞's way in, as read out: with how it stands, when there is something to say */
+export const fishLabel = (fish: NonNullable<ChromeProps["fish"]>) => (fish.note ? fmt(T.map.bar.fishLabelNote, { note: fish.note.text }) : T.map.bar.fishLabel);

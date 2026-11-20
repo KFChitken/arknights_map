@@ -48,6 +48,7 @@ import { squadApi, SquadRefused } from "@/lib/squadClient";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
+import { openFishWin } from "../fish/winStore";
 import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SquadMateCard from "./SquadMateCard";
@@ -66,7 +67,6 @@ import {
   kickFromSquad,
   leaveSquadRoom,
   loadSquadFriends,
-  openSquadPond,
   openSquadRoom,
   saveSquadCard,
   sayInSquad,
@@ -1041,7 +1041,7 @@ function RoomView({
                 role="menuitem"
                 onClick={() => {
                   setPlaying(false);
-                  openSquadPond();
+                  openFishWin();
                 }}
               >
                 <b>{T.fish.pond.fish}</b>

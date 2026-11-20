@@ -18,6 +18,7 @@ import {
   DiscoButton,
   Envelope,
   FishIcon,
+  fishLabel,
   FoldArrow,
   GuideFace,
   HotFlame,
@@ -172,8 +173,8 @@ export default function HudChrome(p: ChromeProps) {
           )}
           {p.fish && (
             <span className="rb">
-              <button className="ob glass" aria-label={T.map.bar.fishLabel} onClick={p.fish.onOpen}>
-                <FishIcon size={24} />
+              <button className="ob glass" aria-label={fishLabel(p.fish)} onClick={p.fish.onOpen}>
+                <FishIcon size={24} note={p.fish.note} />
               </button>
               <span className="lbl" aria-hidden="true">
                 {T.map.bar.fish}

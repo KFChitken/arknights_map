@@ -178,6 +178,36 @@ describe("卫戍池塘", () => {
     expect((await view(host)).members.find((m) => m.h === 2)).toMatchObject({ admiral: true });
   });
 
+  it("leaves a line in the pond as its player leaves the room: still pulled in, or taken back, with nothing counted to the room", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const room = await opened(host);
+    await goIn(a, room);
+    expect((await fish(a, "cast", { spot: "pond" })).status).toBe(200);
+    expect((await squad(a, "leave")).status).toBe(200);
+    const heard = hear(host);
+    const pondNews = () => heard.filter((e) => e.t === "fish" || (e.what as { kind?: string } | undefined)?.kind === "pond");
+    // out of the room, the line still in: pulled in once bitten, a purple one said to no room
+    expect((await fish(a, "state")).body!.line).toMatchObject({ spot: "pond" });
+    await hooked(a, 21, 5831);
+    const got = await fish(a, "reel");
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    expect(got.body!.caught).toMatchObject({ no: 21 });
+    await flushSaysNow();
+    expect(pondNews()).toEqual([]);
+    // and taken back before a bite
+    await goIn(a, room);
+    expect((await fish(a, "cast", { spot: "pond" })).status).toBe(200);
+    expect((await squad(a, "leave")).status).toBe(200);
+    heard.length = 0;
+    expect((await fish(a, "pull")).status).toBe(200);
+    expect((await fish(a, "state")).body!.line).toBeNull();
+    await flushSaysNow();
+    expect(pondNews()).toEqual([]);
+    // none of it counted to the room it left
+    expect((await view(host)).members.map((m) => m.h)).toEqual([1]);
+  });
+
   it("brings a 鱼群 only once every real player has a line in, at most twice a 局, and starts the 局 over at the round's end", async () => {
     const host = await player("host");
     const a = await player("a");

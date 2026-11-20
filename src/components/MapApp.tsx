@@ -329,6 +329,7 @@ import {
 import RoachIcon from "./RoachIcon";
 import NoMap from "./app/NoMap";
 import FloatChrome from "./app/chrome/FloatChrome";
+import { fishMenuNote, forgetFishWin, hideFishWin, openFishWin, useFishWin } from "./app/fish/winStore";
 import "./app/chrome/chrome.css";
 import UiMenu from "./app/chrome/UiMenu";
 import { GUIDE_ORDER, type ChromeProps, type Counts } from "./app/chrome/parts";
@@ -351,8 +352,7 @@ const ProfileHub = dynamic(() => import("./app/profile/ProfileHub"), { ssr: fals
 const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
 const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
-const Fish = dynamic(() => import("./app/fish/Fish"), { ssr: false });
-const SquadPond = dynamic(() => import("./app/squad/SquadPond"), { ssr: false });
+const FishWin = dynamic(() => import("./app/fish/FishWin"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
 // 一起听 over the map (the card of an invitation, the 短评), for those who may listen
@@ -745,8 +745,8 @@ export default function MapApp({
   const [passesFrom, setPassesFrom] = useState<"button" | "profile">("button");
   // 325大学习 (from its button, where it is open to them); the map's roaches keep still while it is open
   const [studyOpen, setStudyOpen] = useState(false);
-  // 钓鳞's bank, over the map (paused behind it)
-  const [fishOpen, setFishOpen] = useState(false);
+  // 钓鳞's small window, over the map and never in its way (its own store: app/fish/winStore.ts)
+  const fishWin = useFishWin();
   // 听歌's panel (from its button, where it is open to them): the map stays to be used beside it on a computer
   const [listenOpen, setListenOpen] = useState(false);
   // 听歌's disco (src/components/disco), where it is open to them: its switch, and whether its ball and lights are out
@@ -1766,6 +1766,8 @@ export default function MapApp({
     if (open === "friends" || open === "friend") loadHelp().catch(() => {});
   };
   const meId = me?.id;
+  // signed out, or another player in: 钓鳞's window as at the start
+  useEffect(() => forgetFishWin(), [meId]);
   useEffect(() => {
     if (!meId) return;
     const events = new EventSource("/api/events");
@@ -5667,7 +5669,7 @@ export default function MapApp({
           onOpen: () => setStudyOpen(true),
         }
       : null,
-    fish: me?.fish ? { onOpen: () => setFishOpen(true) } : null,
+    fish: me?.fish ? { onOpen: openFishWin, note: fishMenuNote(fishWin) } : null,
     listen: listenShown
       ? {
           open: listenOpen,
@@ -5756,7 +5758,7 @@ export default function MapApp({
             <AmapView
               key="amap"
               {...mapProps}
-              active={!(twoMaps && abroad) && !studyOpen && !fishOpen}
+              active={!(twoMaps && abroad) && !studyOpen}
               jump={homeJump}
               onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
               onReady={onHomeReady}
@@ -5769,7 +5771,7 @@ export default function MapApp({
               key="tencent"
               {...mapProps}
               onFailed={ownMap}
-              active={!(twoMaps && abroad) && !studyOpen && !fishOpen}
+              active={!(twoMaps && abroad) && !studyOpen}
               jump={homeJump}
               onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
               onReady={onHomeReady}
@@ -5784,7 +5786,7 @@ export default function MapApp({
               style={overseas.style}
               cover={overseas.cover}
               slowNote={T.map.style.slow}
-              active={abroad && !studyOpen && !fishOpen}
+              active={abroad && !studyOpen}
               jump={overseasJump}
               onViewChange={abroad ? onOverseasView : ignoreView}
               onReady={onOverseasReady}
@@ -5792,9 +5794,9 @@ export default function MapApp({
           </div>
         )}
         {!noGl && basemap === "amap" && homeMap === "own" && overseas && (
-          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} active={!studyOpen && !fishOpen} />
+          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} active={!studyOpen} />
         )}
-        {!noGl && basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen && !fishOpen} />}
+        {!noGl && basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen} />}
         {poking && (
           <div className="actor-stage">
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
@@ -6169,7 +6171,7 @@ export default function MapApp({
 
       {panel && renderPanel(panel)}
       {/* one that came as the page opened, just before 最近更新 popped up, waits for it to be closed */}
-      {newBadges[0] && !gray && !pamphlet && !passesOpen && !studyOpen && !fishOpen && (
+      {newBadges[0] && !gray && !pamphlet && !passesOpen && !studyOpen && (
         <NewBadge
           key={newBadges[0].id}
           earned={newBadges[0]}
@@ -6233,26 +6235,17 @@ export default function MapApp({
           }}
         />
       )}
-      {/* 钓鳞's bank over everything of each layout, the map paused behind it; what it cannot do itself closes it */}
-      {fishOpen && me?.fish && (
-        <Fish
+      {/* 钓鳞's small window (the bank, or 卫戍池塘 in a room), over the map and never in its way; what it cannot do itself, the map does */}
+      {me && (me.fish || squadShown) && (
+        <FishWin
           look={{ color: myColor, avatar: myAvatar, style: look }}
           holder={displayName(me.profile)}
+          fishOk={Boolean(me.fish)}
           onPasses={fishTickets}
-          onClose={() => setFishOpen(false)}
           onRefused={(e) => {
-            setFishOpen(false);
+            hideFishWin();
             void act(() => Promise.reject(e));
           }}
-        />
-      )}
-      {/* 卫戍池塘, the room's own pond, over everything when 「玩」 → 钓鳞 opens it */}
-      {squadShown && (
-        <SquadPond
-          look={{ color: myColor, avatar: myAvatar, style: look }}
-          holder={me ? displayName(me.profile) : ""}
-          onPasses={fishTickets}
-          onRefused={(e) => void act(() => Promise.reject(e))}
         />
       )}
       {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}

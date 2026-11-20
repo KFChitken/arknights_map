@@ -119,12 +119,6 @@ export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, 
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
 
-/** 卫戍池塘's page (SquadPond.tsx), open (from 「玩」 in the room's sheet or the computer's bar panel) */
-const pondOpen = kept(false);
-export const useSquadPondOpen = () => useSyncExternalStore(pondOpen.on, pondOpen.get, () => false);
-export const openSquadPond = () => pondOpen.set(true);
-export const closeSquadPond = () => pondOpen.set(false);
-
 /** 说话 / 动作 / 这局, open (from your tile on the bar, or your roach in the fight on the map) */
 const talkOpen = kept(false);
 export const useSquadTalkOpen = () => useSyncExternalStore(talkOpen.on, talkOpen.get, () => false);
@@ -246,8 +240,6 @@ function setRoom(next: SquadRoom | null) {
     touched.set(NO_TOUCHED);
     toMe.set(null);
     asked.clear();
-    // out of the room: its pond goes too
-    pondOpen.set(false);
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
     rounds.set(rounds.get() + 1);

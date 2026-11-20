@@ -26,7 +26,7 @@ export default function RoachReportSheet({
     setBusy(false);
   };
   return (
-    <Sheet title={clone ? T.safety.reportClone : T.safety.reportRoach} onClose={onClose}>
+    <Sheet title={clone ? T.safety.reportClone : T.safety.reportRoach} className="over-fish" onClose={onClose}>
       <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
         {T.safety.reportNote}
       </p>

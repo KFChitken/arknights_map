@@ -37,7 +37,7 @@ export default function ConsentSheet({
 
   if (underage) {
     return (
-      <Sheet title={T.consent.update.title} onClose={onClose}>
+      <Sheet className="over-fish" title={T.consent.update.title} onClose={onClose}>
         <p className="consent-sorry">
           {fmtParts(T.consent.update.sorry, { site: siteName(), age: MIN_SIGNUP_AGE })}
         </p>
@@ -63,7 +63,7 @@ export default function ConsentSheet({
   };
 
   return (
-    <Sheet title={T.consent.update.title} onClose={onClose}>
+    <Sheet className="over-fish" title={T.consent.update.title} onClose={onClose}>
       <p className="hint" style={{ marginTop: 0 }}>
         {T.consent.update.changes}
       </p>
@@ -116,7 +116,7 @@ export default function ConsentSheet({
  */
 export function PlaceConfirm({ consent, onConfirm, onRethink }: { consent: boolean; onConfirm: () => void; onRethink: () => void }) {
   return (
-    <Sheet title={consent ? T.consent.place.before : T.consent.place.title} onClose={onRethink}>
+    <Sheet className="over-fish" title={consent ? T.consent.place.before : T.consent.place.title} onClose={onRethink}>
       <p className="consent-place">{consent ? publicPlaceNote() : T.consent.place.ask}</p>
       <div className="consent-actions">
         <button className="primary wide" onClick={onConfirm}>

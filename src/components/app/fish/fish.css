@@ -1,8 +1,8 @@
 /*
- * 钓鳞 (Fish.tsx): the bank over everything on the map, as 325大学习's rounds are (the sides ≤ 25, sheets 30), under the
- * toast (40): the whole screen on a phone, a card in the middle on a computer. Its items sit on the game's warehouse
- * discs (FishCard.tsx), whose colours and glows are all in "the discs" below, and nowhere else; the page that pops up
- * for a catch is the game's 获得物资, the dex its 藏品图鉴 in the bank's night blue and pale gold.
+ * 钓鳞 (Fish.tsx in FishWin.tsx): a small window over the map, its bars, sheets (30) and drawers, under the dialogs that
+ * must be answered (37) and the toast (40); the dex and the bottle open over the whole page from it. Its items sit on
+ * the game's warehouse discs (FishCard.tsx), whose colours and glows are all in "the discs" below, and nowhere else; the
+ * page that pops up for a catch is the game's 获得物资, inside the window, the dex its 藏品图鉴 in night blue and pale gold.
  */
 
 /* ---- the discs: the rarity colours, once ---- */
@@ -73,85 +73,113 @@
   background: linear-gradient(90deg, #8a6a2e 0%, #c8a259 35%, rgba(200, 162, 89, 0.55) 72%, rgba(200, 162, 89, 0) 100%);
 }
 
-/* ---- the page ---- */
-.fish {
-  position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(16, 17, 20, 0.55);
+/* ---- the small window (FishWin.tsx): over the map, never in its way ---- */
+.fish-win {
+  position: fixed; z-index: 35; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: #101318; color: #1b1d22;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(0, 0, 0, 0.25);
   -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation;
 }
-.fish button { font-family: inherit; cursor: pointer; }
-.fish-box {
-  position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; background: #1b2340; color: #1b1d22;
-  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+.fish-win[hidden] { display: none; }
+.fish-win button { font-family: inherit; cursor: pointer; }
+/* the title bar, its whole length the handle (but its buttons) */
+.fw-bar {
+  flex: none; height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 10px; background: #1b1e25; color: #fff; cursor: grab; touch-action: none;
 }
-@media (min-width: 600px) and (min-height: 640px) {
-  .fish-box { width: 420px; height: min(860px, calc(100% - 40px)); padding: 0; border-radius: 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+.fish-win.phone .fw-bar { height: 32px; gap: 5px; padding-left: 8px; }
+.fw-bar:active { cursor: grabbing; }
+.fw-bar .grip, .fish-win .strip-grip { color: #6b7280; font-size: 13px; letter-spacing: -3px; margin-right: 3px; }
+.fw-bar b { font-size: 13.5px; white-space: nowrap; }
+.fw-bar small { min-width: 0; overflow: hidden; color: #9aa0aa; font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.fw-bar .casts { margin-left: auto; color: #9aa0aa; font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fw-bar .tb {
+  flex: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08); color: #d6d9de; font-size: 14px; line-height: 1;
 }
-/* the scene keeps its shape at the full width, down on the panel: a tall screen gets more night sky over it, a short
-   one loses sky first */
-.fish-view { position: relative; flex: 1; min-height: 0; overflow: hidden; background: linear-gradient(180deg, #120f2b, #1f1c45); }
-.fish-scene { position: absolute; left: 0; bottom: 0; width: 100%; height: auto; display: block; }
-.fish-head {
-  position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: calc(12px + var(--safe-top)) 12px 0; color: #fff;
+.fw-bar .tb:hover { background: rgba(255, 255, 255, 0.18); }
+.fish-win.phone .fw-bar .tb { width: 24px; height: 24px; }
+/* the scene, the design's 360 × 190, smaller on a phone as a whole */
+.fw-view { position: relative; flex: none; width: 100%; aspect-ratio: 360 / 190; overflow: hidden; background: #1b2340; }
+.fw-stage { position: absolute; left: 0; top: 0; width: 360px; height: 190px; transform-origin: 0 0; }
+.fish-win.phone .fw-stage { transform: scale(0.7333); }
+.fish-scene.fw-scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.fw-pend {
+  position: absolute; z-index: 4; left: 10px; right: 10px; top: 8px; margin: 0; padding: 5px 10px; border-radius: 6px; background: #ffd23f; color: #1b1d22;
+  font-size: 12px; font-weight: 700; animation: fish-pop 0.22s ease-out both;
 }
-@media (min-width: 600px) and (min-height: 640px) {
-  .fish-head { padding-top: 12px; }
+.fw-word {
+  position: absolute; z-index: 4; left: 50%; top: 8px; max-width: calc(100% - 20px); margin: 0; padding: 4px 12px; border-radius: 999px; background: rgba(27, 29, 34, 0.9);
+  color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: translateX(-50%); animation: fish-shout 0.3s ease-out both;
 }
-.fish-head .back { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 22px; line-height: 1; }
-.fish-head .tt { display: flex; flex-direction: column; line-height: 1.2; }
-.fish-head .tt b { font-size: 16px; letter-spacing: 0.06em; }
-.fish-head .tt small { color: #f1d9e6; font-size: 11px; }
-.fish-head .bank { margin-left: auto; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); font-size: 11.5px; white-space: nowrap; }
-/* what someone else caught on the bank, over the water, clear of the strip at the top */
-.fish-shout {
-  position: absolute; z-index: 2; left: 50%; bottom: 30px; transform: translateX(-50%); max-width: calc(100% - 32px); margin: 0; padding: 5px 12px;
-  border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #1b1d22; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; animation: fish-shout 0.3s ease-out both;
-}
-/* 卫戍池塘: what the room says now (a teammate's purple catch), at the top */
-.fish-toast {
-  position: absolute; z-index: 3; left: 50%; top: calc(52px + var(--safe-top)); transform: translateX(-50%); max-width: calc(100% - 24px); margin: 0;
-  padding: 4px 12px; border-radius: 999px; background: rgba(27, 29, 34, 0.88); color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden;
-  text-overflow: ellipsis; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); animation: fish-shout 0.3s ease-out both;
-}
-/* 卫戍池塘: a 鱼群 and its time left, under the header */
-.fish-school {
-  position: absolute; right: 12px; top: calc(84px + var(--safe-top)); padding: 2px 9px; border-radius: 6px; background: #ffd23f; color: #1b1d22;
-  font-size: 11.5px; font-weight: 900; animation: fish-pop 0.25s ease-out both;
+.fw-school { position: absolute; z-index: 3; right: 8px; top: 8px; padding: 2px 8px; border-radius: 6px; background: #ffd23f; color: #1b1d22; font-size: 11px; font-weight: 900; }
+.fw-shout {
+  position: absolute; z-index: 3; left: 50%; bottom: 8px; max-width: calc(100% - 20px); margin: 0; padding: 4px 11px; border-radius: 999px; background: rgba(255, 255, 255, 0.92);
+  color: #1b1d22; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: translateX(-50%); animation: fish-shout 0.3s ease-out both;
 }
 /* the strip of a catch, over the scene */
 .fish-strip {
-  position: absolute; left: 14px; right: 14px; top: calc(64px + var(--safe-top)); display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 4px;
-  background: rgba(20, 21, 24, 0.92); color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); animation: fish-pop 0.25s ease-out both;
+  position: absolute; z-index: 3; left: 10px; right: 10px; top: 10px; display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 4px;
+  background: rgba(20, 21, 24, 0.92); color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); animation: fish-pop 0.25s ease-out both;
 }
-.fish-strip .fish-disc { margin: 3px 4px 3px 3px; }
-.fish-strip .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.fish-strip .tx b { font-size: 15px; }
-.fish-strip .tx small { color: #c8ccd2; font-size: 12px; }
+.fish-strip .fish-disc { margin: 2px 3px 2px 2px; }
+.fish-strip .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fish-strip .tx b { font-size: 14px; }
+.fish-strip .tx small { color: #c8ccd2; font-size: 11.5px; }
 .fish-strip .tx small.on { color: #7fe0a4; font-weight: 700; }
 .fish-strip .tx small.off { color: #9aa0aa; }
-.fish-wait { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #fff; font-size: 14px; }
+.fish-wait { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #fff; font-size: 13px; }
 .fish-wait p { margin: 0; }
-.fish-wait button { padding: 8px 18px; border: 0; border-radius: 999px; background: #ffd23f; color: #1b1d22; font-weight: 800; }
-/* the controls along the bottom */
-.fish-panel {
-  position: relative; flex: none; display: flex; flex-direction: column; gap: 10px; margin-top: -16px; padding: 14px 14px 16px; border-radius: 18px 18px 0 0; background: #fff;
+.fish-wait button { padding: 6px 16px; border: 0; border-radius: 999px; background: #ffd23f; color: #1b1d22; font-weight: 800; }
+/* the buttons under the scene */
+.fw-panel { flex: none; padding: 8px 10px 10px; background: #fff; }
+.fw-panel .row1 { display: flex; align-items: center; gap: 6px; min-height: 18px; color: #5b6270; font-size: 11.5px; }
+.fw-panel .row1 > span { flex: 0 1 auto; display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw-panel .row1 > span.auto { display: inline-flex; align-items: center; gap: 6px; }
+.fw-panel .row1 i { margin: 0 5px; font-style: normal; }
+.fw-panel .row1 .st { flex: none; margin-left: auto; color: #1b1d22; font-size: 12px; text-align: right; white-space: nowrap; }
+.fw-panel .haul { height: 20px; padding: 0 8px; border: 0; border-radius: 5px; background: #ffd23f; color: #1b1d22; font-size: 11.5px; font-weight: 900; }
+.fw-panel .row2 { display: flex; gap: 8px; margin-top: 6px; }
+.fish-win.phone .fw-panel { padding: 6px 8px 8px; }
+.fish-win.phone .fw-panel .row1 { font-size: 11px; }
+.fish-win.phone .fw-panel .row2 { gap: 6px; margin-top: 5px; }
+.fw-panel .go {
+  flex: 1; min-width: 0; height: 40px; border: 0; border-radius: 8px; font-size: 16px; font-weight: 900; background: #ffd23f; color: #1b1d22; box-shadow: 0 3px 0 #c9a200;
 }
-.fish-panel .row1 { display: flex; align-items: center; gap: 8px; color: #6b7280; font-size: 12px; }
-.fish-panel .row1 .st { margin-left: auto; color: #1b1d22; font-size: 12px; text-align: right; }
-.fish-go { height: 56px; border: 0; border-radius: 14px; font-size: 18px; font-weight: 900; box-shadow: 0 4px 0 #000; background: #1b1d22; color: #fff; }
-.fish-go.soft { background: #f1f2f4; color: #1b1d22; box-shadow: 0 4px 0 #d6d9de; }
-.fish-go.bite { background: #ffd23f; color: #1b1d22; box-shadow: 0 4px 0 #c9a200; animation: fish-nudge 0.7s ease-in-out infinite; }
-.fish-go.off, .fish-go:disabled { background: #e3e5e8; color: #6b7280; box-shadow: 0 4px 0 #c9cdd3; cursor: default; animation: none; }
-.fish-panel .row2 { display: flex; gap: 6px; }
-.fish-panel .row2 button { flex: 1; height: 40px; border: 1px solid #d6d9de; border-radius: 12px; background: #fff; color: #1b1d22; font-size: 13px; font-weight: 700; }
-.fish-panel .row2 button:disabled { opacity: 0.5; cursor: default; }
-/* 自动钓, the bank's: on (green), holding casts to pull in (gold) */
-.fish-panel .row2 .net { flex: 1.6; min-width: 0; padding: 0 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fish-panel .row2 .net.on { border-color: #8fd1b6; background: #effaf5; color: #116149; }
-.fish-panel .row2 .net.held { border-color: #e7c35c; background: #fff7dc; color: #7a5300; font-weight: 800; }
-.fish-panel .row2 .mid { flex: 1.6; display: flex; align-items: center; justify-content: center; border: 1px solid #d6d9de; border-radius: 12px; color: #4b5160; font-size: 12px; text-align: center; }
-/* 卫戍池塘's night under its sky */
-.fish-view:has(.fish-scene.pond) { background: linear-gradient(180deg, #060a16, #0a0f1f); }
+.fw-panel .go.soft { background: #e9ebef; color: #1b1d22; box-shadow: 0 3px 0 #c9ccd3; }
+.fw-panel .go.bite { background: #ff5a2c; color: #fff; box-shadow: 0 3px 0 #c23a14; animation: fw-pulse 1s ease-in-out infinite; }
+.fw-panel .go.off, .fw-panel .go:disabled { background: #e3e5e8; color: #6b7280; box-shadow: 0 3px 0 #c9cdd3; cursor: default; animation: none; }
+.fw-panel .sm {
+  flex: none; height: 40px; padding: 0 14px; border: 0; border-radius: 8px; background: #272b33; color: #e6e8ec; font-size: 14px; font-weight: 700; white-space: nowrap;
+}
+.fish-win.phone .fw-panel .sm { padding: 0 10px; font-size: 13px; }
+.fw-panel .sm.on { background: #ffd23f; color: #1b1d22; }
+.fw-panel .sm:disabled { opacity: 0.5; cursor: default; }
+/* 有 n 个漂流瓶没打开, at the scene's top left while nothing else is there */
+.fish-bottles.fw-bottles { left: 8px; top: 8px; bottom: auto; padding: 3px 10px 3px 4px; font-size: 11.5px; }
+/* small, on a computer: a strip */
+.fish-win.strip { flex-direction: row; align-items: center; height: 42px; border-radius: 21px; background: #16181c; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+.fish-win.strip .strip-grip { flex: none; width: 30px; height: 42px; display: flex; align-items: center; justify-content: center; margin: 0; cursor: grab; touch-action: none; opacity: 0.8; }
+.fw-strip-in { flex: 1; min-width: 0; height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 0; border: 0; background: none; color: #fff; text-align: left; }
+.fw-strip-in b { min-width: 0; overflow: hidden; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+.fw-strip-in .big { margin-left: auto; font-size: 15px; }
+.fish-win.strip.bite { background: #ffd23f; animation: fw-shake 0.6s ease-in-out infinite; }
+.fish-win.strip.bite .fw-strip-in { color: #1b1d22; }
+/* small, on a phone: a ball against the edge */
+.fish-win.fw-ball { height: 58px; border-radius: 50%; overflow: visible; background: #16181c; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35); touch-action: none; cursor: grab; }
+.fw-ball-in { position: relative; width: 58px; height: 58px; display: flex; align-items: center; justify-content: center; color: #1b1d22; }
+.fw-ball-in .ring { position: absolute; inset: -6px; border: 2px solid rgba(110, 200, 255, 0.7); border-radius: 50%; animation: fw-ripple 1.8s ease-out infinite; }
+.fish-win.fw-ball.bite { background: #ffd23f; animation: fw-shake 0.6s ease-in-out infinite; }
+.fw-ball-in .say {
+  position: absolute; top: 50%; right: calc(100% + 8px); padding: 4px 9px; border-radius: 8px; background: #1b1d22; color: #ffd23f; font-size: 12px; font-weight: 900;
+  white-space: nowrap; transform: translateY(-50%);
+}
+.fish-win.fw-ball.at-left .fw-ball-in .say { right: auto; left: calc(100% + 8px); }
+/* what must be answered (a report, the agreement, the age check) comes over the window, as the dialogs in the middle do */
+.sheet-backdrop.over-fish { z-index: 37; }
+/* the first time: where to hold it */
+.fw-hint { position: fixed; z-index: 35; padding: 3px 9px; border-radius: 6px; background: #1b1d22; color: #ffd23f; font-size: 12px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+@keyframes fw-pulse { 0%, 100% { box-shadow: 0 3px 0 #c23a14, 0 0 0 0 rgba(255, 90, 44, 0.55); } 50% { box-shadow: 0 3px 0 #c23a14, 0 0 0 6px rgba(255, 90, 44, 0); } }
+@keyframes fw-shake { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-2.2deg); } 40% { transform: rotate(2deg); } 60% { transform: rotate(-1.4deg); } 80% { transform: rotate(1.2deg); } }
+@keyframes fw-ripple { 0% { transform: scale(0.85); opacity: 0.9; } 100% { transform: scale(1.35); opacity: 0; } }
 
 /* ---- the scene's moving bits ---- */
 .fish-scene .fs-twinkle { animation: fs-twinkle 2.4s ease-in-out infinite; }
@@ -168,30 +196,11 @@
 .fish-scene .fs-label { fill: rgba(0, 0, 0, 0.45); }
 .fish-scene .fs-label-t { fill: #fff; font-size: 10.5px; font-weight: 700; }
 .fish-scene .fs-bubble-t { fill: #1b1d22; font-size: 13px; font-weight: 900; }
+.fish-scene .fw-twinkle { animation: fs-twinkle 2.6s ease-in-out infinite; }
+.fish-scene .fw-glow { animation: fish-breathe 2.4s ease-in-out infinite; }
+.fish-scene .fw-school { animation: fish-breathe 1.6s ease-in-out infinite; }
 .fish-scene text { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
 /* 卫戍池塘's own: the fight's glow, its flashes, smoke and searchlights past the wall, the campfire, a 鱼群 */
-.fish-scene .ps-glow { animation: ps-glow 2.6s ease-in-out infinite; }
-.fish-scene .ps-flash { animation: ps-flash 3.2s linear infinite; }
-.fish-scene .ps-rise { transform-box: fill-box; transform-origin: 50% 50%; animation: ps-rise 3.4s ease-out infinite; }
-.fish-scene .ps-sweep { transform-box: fill-box; transform-origin: 50% 100%; animation: ps-sweep 6s ease-in-out infinite alternate; }
-.fish-scene .ps-school { animation: ps-school 3.4s ease-in-out infinite alternate; }
-.fish-scene .ps-drift { animation: ps-drift 2.8s ease-in-out infinite alternate; }
-.fish-scene .ps-flick { transform-box: fill-box; transform-origin: 50% 100%; animation: ps-flick 0.45s ease-in-out infinite alternate; }
-.fish-scene .ps-ember { animation: ps-ember 1.6s ease-out infinite; }
-.fish-scene .ps-tag { fill: rgba(0, 0, 0, 0.5); }
-.fish-scene .ps-tag.protect { fill: #ffedd5; }
-.fish-scene .ps-tag.said { fill: #fff; }
-.fish-scene .ps-tag-t { fill: #fff; font-size: 10px; font-weight: 700; }
-.fish-scene .ps-tag-t.protect { fill: #9a3412; font-weight: 900; }
-.fish-scene .ps-tag-t.said { fill: #1b1d22; font-size: 11px; }
-@keyframes ps-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.95; } }
-@keyframes ps-flash { 0%, 100% { opacity: 0; } 8% { opacity: 1; } 30% { opacity: 0; } }
-@keyframes ps-rise { 0% { transform: translateY(0) scale(1); opacity: 0.45; } 100% { transform: translateY(-30px) scale(1.7); opacity: 0; } }
-@keyframes ps-sweep { 0% { transform: rotate(-18deg); } 100% { transform: rotate(18deg); } }
-@keyframes ps-school { 0% { transform: translateX(-22px); } 100% { transform: translateX(22px); } }
-@keyframes ps-drift { 0% { transform: translateX(-5px); } 100% { transform: translateX(5px); } }
-@keyframes ps-flick { 0% { transform: scale(1.04, 0.88); } 100% { transform: scale(0.96, 1.08); } }
-@keyframes ps-ember { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-22px); opacity: 0; } }
 @keyframes fs-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.9; } }
 @keyframes fs-steam { 0% { transform: translateY(0) scale(1); opacity: 0.35; } 100% { transform: translateY(-26px) scale(1.6); opacity: 0; } }
 @keyframes fs-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2.5px); } }
@@ -203,62 +212,44 @@
 @keyframes fs-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 @keyframes fish-pop { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes fish-shout { 0% { transform: translate(-50%, 8px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
-@keyframes fish-nudge { 50% { transform: scale(1.03); } }
 
-/* ---- 获得物资: the page of a catch worth one ---- */
+/* ---- 获得物资: the page of a catch worth one, over the window's scene (the design's 360 × 190) ---- */
 .fish-got {
   position: absolute; inset: 0; z-index: 5; display: block; padding: 0; border: 0; overflow: hidden; color: #fff; text-align: center;
-  background: rgba(24, 24, 26, 0.86); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  background: rgba(24, 24, 26, 0.9); cursor: pointer; animation: fish-pop 0.22s ease-out both;
 }
-.fish-got::before { content: ""; position: absolute; inset: 0; background: radial-gradient(rgba(255, 255, 255, 0.075) 1px, rgba(0, 0, 0, 0) 1.3px) 0 0 / 11px 11px; }
-.fish-got::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0) 14px), linear-gradient(270deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0) 14px);
+.fish-got::before { content: ""; position: absolute; inset: 0; background: radial-gradient(rgba(255, 255, 255, 0.08) 1px, rgba(0, 0, 0, 0) 1.3px) 0 0 / 9px 9px; }
+.fish-got .halo { position: absolute; left: 50%; top: 22px; width: 190px; height: 150px; margin-left: -95px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 66%); }
+.fish-got .halo.gold { background: radial-gradient(circle, rgba(255, 188, 104, 0.4) 0%, rgba(255, 160, 80, 0.14) 42%, rgba(255, 160, 80, 0) 68%); animation: fish-breathe 2.6s ease-in-out infinite; }
+.fish-got .ttl { position: absolute; left: 0; right: 0; top: 8px; color: #d4d4d4; font-size: 12.5px; letter-spacing: 0.12em; }
+.fish-got .item { position: absolute; left: 136px; top: 32px; width: 88px; height: 88px; animation: fish-popin 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.fish-got .item .fish-new { left: -8px; top: 8px; height: 16px; padding: 0 18px 0 6px; font-size: 10px; }
+.fish-got .item .cnt { font-size: 15px; }
+.fish-got .nm {
+  position: absolute; left: 50%; top: 128px; max-width: 300px; padding: 2px 10px; background: rgba(14, 14, 14, 0.94); border: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: translateX(-50%);
 }
-/* the design's box, 390 × 700, in the middle whatever the screen */
-.fish-got .in { position: absolute; left: 50%; top: 50%; width: 390px; height: 700px; margin: -370px 0 0 -195px; }
-.fish-got .box { position: absolute; left: 0; right: 0; top: 84px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.fish-got .box span { font-size: 18px; letter-spacing: 0.12em; color: #d4d4d4; }
-.fish-got .halo { position: absolute; left: 50%; top: 240px; width: 240px; height: 240px; margin-left: -120px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 66%); }
-.fish-got .halo.gold {
-  top: 180px; width: 320px; height: 320px; margin-left: -160px;
-  background: radial-gradient(circle, rgba(255, 188, 104, 0.34) 0%, rgba(255, 160, 80, 0.12) 42%, rgba(255, 160, 80, 0) 68%); animation: fish-breathe 2.6s ease-in-out infinite;
-}
-.fish-got .streak { position: absolute; }
-.fish-got .tri, .fish-got .mote { position: absolute; }
-.fish-got .tri { overflow: visible; filter: drop-shadow(0 0 3px rgba(255, 140, 70, 0.95)); }
-.fish-got .tri.white { filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
-.fish-got .mote { border-radius: 50%; background: #ffd9a0; box-shadow: 0 0 6px 2px rgba(255, 190, 110, 0.8); }
-.fish-got .item { position: absolute; left: 50%; top: 265px; width: 150px; height: 150px; margin-left: -75px; animation: fish-popin 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
-.fish-got .item .fish-new { left: -10px; top: 12px; height: 21px; padding: 0 26px 0 9px; font-size: 13px; }
-.fish-got .item .cnt { font-size: 24px; }
-.fish-got .words { position: absolute; left: 0; right: 0; top: 438px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.fish-got .nm { padding: 3px 12px; background: rgba(14, 14, 14, 0.94); border: 1px solid rgba(255, 255, 255, 0.3); font-size: 16px; letter-spacing: 0.02em; white-space: nowrap; }
-.fish-got .recrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cfcfcf; }
-.fish-got .rec { display: inline-flex; align-items: center; height: 20px; padding: 0 18px 0 8px; font-size: 12px; font-weight: 700; color: #1f170a; background: linear-gradient(90deg, #f0b43c 0%, #d9951c 70%, rgba(217, 149, 28, 0) 100%); }
-.fish-got .ln { font-size: 12px; color: #8e8e8e; }
-.fish-got .ln-in { margin-top: -4px; color: #f0c96a; }
+.fish-got .ln { position: absolute; left: 10px; right: 10px; top: 154px; color: #8e8e8e; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fish-got .ln .rec { margin-right: 6px; color: #f0b43c; }
+.fish-got .ln-in { top: 170px; color: #f0c96a; }
 .fish-got .ok {
-  position: absolute; left: 50%; top: 572px; width: 56px; height: 56px; margin-left: -28px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
-  border: 2px solid #8d8d8d; background: radial-gradient(circle at 50% 40%, #3b3b3b, #232323); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); box-sizing: border-box;
+  position: absolute; right: 12px; bottom: 12px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  border: 2px solid #8d8d8d; background: radial-gradient(circle at 50% 40%, #3b3b3b, #232323); box-sizing: border-box;
 }
-@keyframes fish-rise { 0% { transform: translateY(0); opacity: 0; } 12% { opacity: 1; } 80% { opacity: 0.85; } 100% { transform: translateY(-150px); opacity: 0; } }
-@keyframes fish-drift { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(70px); opacity: 0; } }
 @keyframes fish-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 @keyframes fish-popin { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); } }
 
-/* 收网's page (NetPage.tsx): the catch page's backdrop, its items in rows */
-.fish-netgot .box small { font-size: 12.5px; color: #9a9a9a; letter-spacing: 0.04em; }
-.fish-netgot .halo { top: 230px; width: 300px; height: 300px; margin-left: -150px; }
-.fish-netgot .haul { position: absolute; left: 20px; right: 20px; top: 250px; display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 16px; }
-.fish-netgot .one { width: 92px; display: flex; flex-direction: column; align-items: center; gap: 8px; animation: fish-popin 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+/* 收网's page (NetPage.tsx): the same, its items in a row */
+.fish-netgot .haul { position: absolute; left: 10px; right: 54px; top: 32px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 10px; }
+.fish-netgot .one { width: 66px; display: flex; flex-direction: column; align-items: center; gap: 4px; animation: fish-popin 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
 .fish-netgot .one .dk { position: relative; }
-.fish-netgot .one .fish-new { left: -8px; top: 4px; }
-.fish-netgot .one .nm { max-width: 100%; padding: 2px 6px; background: rgba(14, 14, 14, 0.94); border: 1px solid rgba(255, 255, 255, 0.25); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fish-netgot .one .fish-new { left: -6px; top: 2px; height: 14px; padding: 0 14px 0 5px; font-size: 9px; }
+.fish-netgot .one .nm { position: static; max-width: 100%; padding: 1px 5px; transform: none; background: rgba(14, 14, 14, 0.94); border: 1px solid rgba(255, 255, 255, 0.25); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- the dex: the game's 藏品图鉴, in the bank's night blue and pale gold ---- */
+/* the whole screen, over the window and the map */
 .fish-dex {
-  position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; overflow: hidden; color: #ece8e1; background: #0b1015;
+  position: fixed; inset: 0; z-index: 36; display: flex; flex-direction: column; overflow: hidden; color: #ece8e1; background: #0b1015;
   background-image: radial-gradient(48% 62% at 24% 36%, rgba(42, 70, 86, 0.62), rgba(11, 16, 21, 0) 70%), radial-gradient(60% 70% at 78% 30%, rgba(28, 40, 50, 0.45), rgba(11, 16, 21, 0) 72%);
 }
 .fish-dex .top { position: relative; flex: none; display: flex; align-items: center; gap: 10px; padding: calc(10px + var(--safe-top)) 12px 6px; }
@@ -340,7 +331,6 @@
 .fish-dex .empty { margin: 18px 0; color: #7b8389; font-size: 13px; text-align: center; }
 /* a computer: the detail on the left, the grid on the right */
 @media (min-width: 900px) {
-  .fish-dex { position: fixed; inset: 0; z-index: 36; }
   .fish-dex .top { padding-top: 18px; }
   .fish-dex .top .ttl { font-size: 58px; top: 4px; right: 40px; }
   .fish-dex .body { flex-direction: row; overflow: hidden; }
@@ -360,11 +350,15 @@
   --t-up: #e4ebff;
   --pearl: linear-gradient(120deg, #f0f9ff, #c9d8ff 35%, #ecd9ff 65%, #c8f5e2);
   --rainbow: linear-gradient(90deg, #ff5d8f, #ffb43f, #f4f05c, #5dff9b, #5dc8ff, #b07bff, #ff5d8f);
-  position: absolute; inset: 0; z-index: 7; overflow: hidden; color: #fff; background: rgba(10, 11, 13, 0.8);
+  position: fixed; inset: 0; z-index: 36; overflow: hidden; color: #fff; background: rgba(10, 11, 13, 0.8);
 }
 .fish-bottle .fb-sheet {
   position: absolute; left: 0; right: 0; top: calc(max(40px, 8%) + var(--safe-top)); bottom: max(40px, 8%); display: flex; flex-direction: column;
   background: linear-gradient(180deg, rgba(30, 31, 35, 0.97), rgba(20, 21, 24, 0.98)); border-top: 1px solid rgba(255, 255, 255, 0.35); border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+}
+/* a computer: a phone's width in the middle */
+@media (min-width: 720px) {
+  .fish-bottle .fb-sheet { left: calc(50% - 210px); right: auto; width: 420px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 14px; }
 }
 .fish-bottle .hazard { display: block; flex: none; height: 3px; background: repeating-linear-gradient(90deg, #ff6a3a 0 18px, rgba(0, 0, 0, 0) 18px 26px); opacity: 0.85; }
 .fish-bottle .hd { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 16px 14px 0 20px; }
@@ -437,8 +431,6 @@
   border: 1px solid rgba(255, 150, 110, 0.55); border-radius: 999px; background: rgba(28, 18, 16, 0.82); color: #ffd9c8; font-size: 12px; font-weight: 700;
   box-shadow: 0 0 12px rgba(255, 106, 58, 0.35);
 }
-/* under the catch's strip while it shows */
-.fish-strip ~ .fish-bottles { top: calc(150px + var(--safe-top)); }
 @keyframes fb-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
 @keyframes fb-unroll { 0% { transform: scaleY(0.1); opacity: 0; } 100% { transform: scaleY(1); opacity: 1; } }
 

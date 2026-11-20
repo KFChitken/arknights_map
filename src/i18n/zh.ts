@@ -214,6 +214,8 @@ export const zh = {
       fish: "钓鳞",
       fishLabel: "钓鳞：去龙门外环的河堤钓鳞",
       fishSub: "龙门外环河堤，甩一竿",
+    /** 钓鳞's way in, read out with how its window stands */
+    fishLabelNote: "钓鳞：{note}",
       listen: "听歌",
       listenNow: "在听",
       listenNowLabel: "听歌，正在听《{name}》",
@@ -3721,21 +3723,20 @@ export const zh = {
     reportAndBlock: "举报并拉黑",
   },
   /** 325大学习 (src/lib/study): a course a site day for each player, and the rest to play once it is done */
-  /** 钓鳞 (src/components/app/fish): the bank in the menu, what comes up, the dex */
+  /** 钓鳞 (src/components/app/fish): its small window from the menu, the bank, what comes up, the dex */
   fish: {
     title: "钓鳞",
+    /** The bank, in the window's title bar */
     place: "龙门外环 · 河堤",
-    back: "回地图",
     loading: "正在去河堤…",
     failed: "没走到河堤，连不上服务器。",
     retry: "再试一次",
     bank: "河堤上还有 {n} 个舟P在钓",
     bankNone: "河堤上就你一个",
+    /** The day's casts, over a phone's buttons */
     casts: "今天 {n} / {max} 竿",
-    dexCount: "图鉴 {n} / {max}",
     you: "你",
     admiral: "空军司令",
-    admiralLabel: "今天的空军司令：连着钓上来 10 样杂物",
     buttons: {
       cast: "甩竿",
       casting: "甩出去了…",
@@ -3768,15 +3769,8 @@ export const zh = {
     /** 卫戍池塘 (src/components/app/squad/SquadPond.tsx), in a room of 一起卫戍; its way in is 「玩」 */
     pond: {
       title: "卫戍池塘",
-      place: "一起卫戍 · {server} · {level}",
-      fishing: "卫戍池塘 · {n} 个人在钓",
-      fishingAll: "卫戍池塘 · {n} 个人都在钓",
-      nobody: "卫戍池塘 · 还没人在钓",
       school: "鱼群来了 · {left}",
       protect: "爆护",
-      round: "这局 {n} 条",
-      toProtect: "再钓 {n} 条就「爆护」",
-      protected: "这局爆护了",
       play: "玩",
       playLabel: "玩：钓鳞",
       fish: "钓鳞",
@@ -3796,15 +3790,53 @@ export const zh = {
       lineFirstVariant: "No.{no} · 稀有度 {tier} · 变异「{v}」第一次钓到",
       lineNth: "No.{no} · 稀有度 {tier} · 第 {n} 次钓到",
     },
-    /** 自动钓 on the bank (④): its button under 甩竿, and 收网's page (NetPage.tsx) */
+    /**
+     * 钓鳞's small window (FishWin.tsx), over the map: dragged by its title bar, small as a strip (a computer) or a ball (a
+     * phone); the bank or 卫戍池塘 as one is in a room or not, the line in the water done first
+     */
+    win: {
+      pondSub: "{n} 个人在钓",
+      pondSubNone: "还没人在钓",
+      casts: "{n} / {max}",
+      hint: "按住标题栏，拖到哪里都行",
+      drag: "按住拖动钓鳞小窗",
+      small: "收起",
+      big: "展开",
+      close: "关上",
+      stripHand: "钓鳞 · 浮漂在手里",
+      stripPier: "河堤 · 浮漂在水里",
+      stripPond: "卫戍池塘 · 浮漂在水里",
+      stripGot: "钓上来了：{name}",
+      stripBite: "咕咚！点这里拉杆",
+      ballBite: "咕咚！点一下拉杆",
+      toPond: "进了卫戍：这一竿收上来就换到卫戍池塘",
+      toPier: "离开了卫戍：这一竿收上来就换回河堤",
+      statusToPond: "这一竿收上来就换到卫戍池塘",
+      statusToPier: "这一竿收上来就换回河堤",
+      inPond: "进了卫戍：换到卫戍池塘了",
+      inPier: "离开卫戍：换回河堤了",
+      menuLine: "浮漂在水里",
+      menuBite: "咬钩了",
+      menuOpen: "开着",
+      menuSmall: "收起着",
+      left: "今天还能钓 {n} 竿",
+      bank: "河堤上还有 {n} 个舟P",
+      round: "这局 {n} 条，再钓 {left} 条爆护",
+      roundDone: "这局 {n} 条，爆护了",
+      wait: "等鱼咬钩，可以先去地图上逛",
+      auto: "自动",
+      autoOn: "自动 ●",
+      autoLabel: "自动钓：开着时关掉网页也接着钓，3 分钟一竿，只出灰、绿、蓝，最多攒 {max} 竿",
+      autoHeld: "自动钓攒了 {n} 竿",
+      autoIdle: "自动钓开着 · 3 分钟一竿",
+      haul: "收网",
+      autoStarted: "自动钓开了：关掉网页也接着钓",
+      autoStopped: "自动钓关了",
+      hauled: "收网：{n} 竿都记进图鉴了",
+      ballLabel: "钓鳞，点一下展开",
+    },
+    /** 收网 with nothing in the net yet */
     net: {
-      off: "自动钓：关",
-      on: "自动钓：开",
-      held: "攒了 {n} 竿，收网",
-      full: "攒满 {n} 竿了，收网",
-      label: "自动钓：开着时关掉网页也接着钓，3 分钟一竿，只出灰、绿、蓝，最多攒 {max} 竿，回来点「收网」。现在：{now}",
-      title: "收网了",
-      pulled: "自动钓 · {n} 竿",
       empty: "网里还是空的，3 分钟攒一竿。",
     },
     /** A 寻访券 caught: where it went */

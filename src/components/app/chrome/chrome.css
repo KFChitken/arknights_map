@@ -255,6 +255,11 @@ html[data-ui-early="drawer"] .map-wrap, .app.ui-drawer .map-wrap { bottom: calc(
 .study-ico .dot {
   position: absolute; top: -3px; right: -4px; width: 10px; height: 10px; border: 2px solid var(--ink); border-radius: 50%; background: #ff4d4f;
 }
+/* 钓鳞's float (parts.tsx FishIcon): a dot while its line is in the water, orange at the bite */
+.fish-ico { position: relative; display: inline-flex; }
+.fish-ico .dot { position: absolute; top: -3px; right: -4px; width: 10px; height: 10px; border: 2px solid var(--ink); border-radius: 50%; background: #ffb300; }
+.fish-ico .dot.bite { background: #ff6a1a; animation: fish-ico-bite 0.9s ease-in-out infinite; }
+@keyframes fish-ico-bite { 50% { transform: scale(1.25); } }
 /* wide enough, the bottom bar is in the middle and the column can come down to the bottom */
 @media (min-width: 704px) {
   .chrome-float .rail { --rail-bottom: 16px; }

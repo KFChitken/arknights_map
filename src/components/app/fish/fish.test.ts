@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import { FISH_ITEMS, inDex } from "@/lib/fish/items";
 import CatchPage from "./CatchPage";
 import FishCard, { nameOf, wordsOf } from "./FishCard";
-import { CAST_MS, LEAP_MS, poseAt, REEL_MS, SPOTS } from "./pose";
+import { CAST_MS, LEAP_MS, poseAt as at, REEL_MS, type FishPhase } from "./pose";
+import { WIN_PIER as SPOTS } from "./WinScene";
+
+const poseAt = (phase: FishPhase, ms: number) => at(phase, ms, SPOTS);
 
 describe("钓鳞's items", () => {
   it("have words for each item in the dex, a name and both lines for each that can bite, and a picture each", () => {
@@ -44,7 +47,7 @@ describe("钓鳞's items", () => {
     expect(renderToStaticMarkup(createElement(FishCard, { no: 5, size: 14, bare: true }))).not.toContain("<img");
   });
 
-  it("get a page of their own with NEW the first time, 新纪录 with the site's biggest, and gold dust from purple up", () => {
+  it("get a page of their own in the window with NEW the first time, 新纪录 with the site's biggest, and a gold light from purple up", () => {
     const page = (c: Partial<Parameters<typeof CatchPage>[0]["caught"]>) =>
       renderToStaticMarkup(
         createElement(CatchPage, {
@@ -55,13 +58,13 @@ describe("钓鳞's items", () => {
     const first = page({});
     expect(first).toContain(">NEW</em>");
     expect(first).toContain("No.005 · 稀有度 3 · 第一次钓到这一种");
-    expect(first).not.toContain("mote");
+    expect(first).toContain('class="halo"');
     const purple = page({ no: 21, tier: 4, cm: 7106, first: false, record: true, n: 3, top: 7106 });
     expect(purple).not.toContain(">NEW</em>");
     expect(purple).toContain("新纪录");
     expect(purple).toContain("你钓过最大的炎国锦鲤，全站最大 71.06 cm");
-    expect(purple).toContain("No.021 · 稀有度 4 · 第 3 次钓到");
-    expect(purple).toContain('class="mote"');
+    expect(purple).toContain('<b class="rec">新纪录</b>No.021 · 稀有度 4 · 第 3 次钓到');
+    expect(purple).toContain('class="halo gold"');
     expect(page({ no: 21, variant: 2, tier: 4, cm: 6320 })).toContain("变异「源石结晶的」第一次钓到");
   });
 });

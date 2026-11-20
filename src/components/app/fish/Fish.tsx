@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
-import { itemOf } from "@/lib/fish/items";
+import { itemOf, type FishSpot } from "@/lib/fish/items";
 import {
   BANK_POLL_MS,
   CASTS_A_DAY,
@@ -27,47 +27,46 @@ import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded } from "@/lib/world/types";
 import CatchPage from "./CatchPage";
 import FishCard, { cmText, nameOf, picOf } from "./FishCard";
-import FishScene from "./FishScene";
 import NetPage from "./NetPage";
-import PondScene, { type PondFlag, type PondSeat } from "./PondScene";
 import { CAST_MS, LEAP_MS, REEL_MS, type FishPhase } from "./pose";
+import WinScene, { type PondFlag, type PondSeat } from "./WinScene";
 import "./fish.css";
 
 const FishDex = dynamic(() => import("./FishDex"), { ssr: false });
 const Bottle = dynamic(() => import("./Bottle"), { ssr: false });
 
 /**
- * 钓鳞, the bank (菜单 → 钓鳞): over everything on the map, the whole screen on a phone, a card in the middle on a
- * computer, the map still behind it. 甩竿 puts a line in (the server keeps the day's 100 and draws what is on it); while
+ * 钓鳞, inside its small window (FishWin.tsx), over the map and never in its way: the bank, or 卫戍池塘 (pond) while
+ * one is in a room of 一起卫戍, as the window says; open (the scene, and under it the buttons), or small (a strip, a
+ * ball). 甩竿 puts a line in (the server keeps the day's 100 and draws what is on it); while
  * it waits, shadows pass the float, the bigger the bigger the catch; at the server's bite 咕咚, the float dips and a yellow
  * ring closes in on it every 1.4 s; 拉杆 pulls (on time in the ring's last 0.4 s, by the server's clock), the line comes
  * in, the catch leaps out by the roach, and a strip says what it is, a page of its own for the first of one, a record
- * size, or purple and better. The page asks how the bank stands every 15 s: the others there (no names), and anything
- * purple or better caught there, said with nobody named. 吱 is the player's own roach, heard by them alone. A 寻访券
+ * size, or purple and better. While the window is open it asks how the bank stands every 15 s (and once as it opens
+ * again): the others there (no names), and anything purple or better caught there, said with nobody named. 吱 is the player's own roach, heard by them alone. A 寻访券
  * goes into the wallet (the map's 寻访 button told); a 漂流瓶 opens on a page of its own (Bottle.tsx) once its catch is
- * put down, or later from 有 n 个漂流瓶没打开. 自动钓 (the bank's alone) counts a cast every 3 min while it is on, the
- * page open or not; its button says how many it holds, and a tap pulls them in (NetPage.tsx), or switches it.
+ * put down, or later from 有 n 个漂流瓶没打开. 自动钓 (the bank's alone, 自动) counts a cast every 3 min while it is on,
+ * the page open or not; the line over the buttons says how many it holds, and 收网 pulls them in (NetPage.tsx). The
+ * catch's strip, its 获得物资 and 收网's page come up over the scene; the dex and a 漂流瓶 take the whole screen.
  */
 
 type Look = { color: string; avatar: string; style?: RoachStyle };
 
 /**
- * 卫戍池塘's page (SquadPond.tsx): the room round the pond, its header, and in the panel this 局's 鳞 and how far to
- * 爆护; the bank's page has none
+ * 卫戍池塘 as the room has it (SquadPond.tsx usePondView): the room round the pond, the window's title's line (who
+ * fishes), and over the buttons this 局's 鳞 and how far to 爆护; the bank has none
  */
 export type PondView = {
   seats: PondSeat[];
   flags: PondFlag[];
   fire: boolean;
   school: boolean;
-  place: string;
-  /** Over the water: who fishes, a 鱼群 */
-  badge: string;
+  /** Who fishes, for the title bar's small line */
+  fishing: string;
+  /** A 鱼群 on, and its time left */
   schoolBadge: string | null;
-  round: string;
-  toProtect: string;
-  /** Said at the bite, even with the page out of sight (the browser may not let it) */
-  onBite: () => void;
+  /** This 局's 鳞, and how far to 爆护 */
+  tally: string;
   /** What the room is saying now (a teammate's purple catch, someone in or out) */
   toast: string | null;
 };
@@ -97,21 +96,45 @@ export default function Fish({
   look,
   pond,
   holder,
-  onClose,
+  view,
+  awake,
+  phone,
+  pending,
+  notice,
   onRefused,
   onPasses,
+  onLine,
+  onBite,
+  onExpand,
+  tapRef,
 }: {
   look: Look;
   /** 卫戍池塘 rather than the bank */
   pond?: PondView;
   /** The name printed on the player's passes (a 漂流瓶's) */
   holder: string;
-  onClose: () => void;
+  /** The window open (the scene and its buttons), or small (a strip on a computer, a ball on a phone) */
+  view: "open" | "small";
+  /** The window open: the bank asked how it stands now and then (not while small or hidden) */
+  awake: boolean;
+  phone: boolean;
+  /** The scene the window goes to once this line is done (a room joined or left meanwhile) */
+  pending: FishSpot | null;
+  /** The window's own word over the scene a moment (a scene changed) */
+  notice: string | null;
   onRefused: (e: unknown) => void;
   /** A 寻访券 went into the wallet: the tickets now, and the dot of the map's 寻访 button */
   onPasses?: (p: { tickets: number; dot: boolean }) => void;
+  /** How the line stands: where it is (null: none, its catch put down), whether it has bitten; the day's casts */
+  onLine: (spot: FishSpot | null, bite: boolean, casts: number | null) => void;
+  /** 咕咚 out loud, as the window would have it */
+  onBite: () => void;
+  /** The strip or ball tapped: the window open again */
+  onExpand: () => void;
+  /** What a tap on the ball does (the window tells it from a drag) */
+  tapRef: { current: (() => void) | null };
 }) {
-  const spot = pond ? "pond" : "pier";
+  const spot: FishSpot = pond ? "pond" : "pier";
   const roach = useRoachPic(look);
   const [st, setSt] = useState<Said | null>(null);
   const [failed, setFailed] = useState(false);
@@ -138,9 +161,15 @@ export default function Fish({
   const queue = useRef<FishShout[]>([]);
   const lastShout = useRef<number | undefined>(undefined);
   const serverNow = () => Date.now() + offset.current;
-  // 卫戍池塘's sound at the bite, as the page has it now
-  const biteSound = useRef(pond?.onBite);
-  biteSound.current = pond?.onBite;
+  // 咕咚's sound at the bite, as the window has it now
+  const biteSound = useRef(onBite);
+  biteSound.current = onBite;
+  // the window's own word, and 自动钓's: over the scene a moment
+  const [said, setSaid] = useState<string | null>(null);
+  const sayWin = (text: string) => {
+    setSaid(text);
+    window.setTimeout(() => setSaid((x) => (x === text ? null : x)), 2_600);
+  };
 
   /** An answer's time taken as the server's now at the middle of the ask */
   const timed = useCallback(async <R extends { now: number }>(ask: () => Promise<R>): Promise<R> => {
@@ -188,17 +217,29 @@ export default function Fish({
     void load();
   }, [load]);
 
-  // every 15 s while open: the others on the bank, and anything purple or better said there
+  // every 15 s while the window is open, and once as it opens again: the others on the bank, and anything purple or
+  // better said there
+  const loaded = st !== null;
+  const slept = useRef(false);
   useEffect(() => {
-    if (!st) return;
-    const t = window.setInterval(() => {
-      if (document.hidden) return;
+    if (!loaded) return;
+    if (!awake) {
+      slept.current = true;
+      return;
+    }
+    const ask = () =>
       void timed(() => fishApi.state(lastShout.current))
         .then((s) => take(s, false))
         .catch(() => {});
+    if (slept.current) {
+      slept.current = false;
+      ask();
+    }
+    const t = window.setInterval(() => {
+      if (!document.hidden) ask();
     }, BANK_POLL_MS);
     return () => window.clearInterval(t);
-  }, [st, take, timed]);
+  }, [loaded, awake, take, timed]);
 
   // what was said on the bank, one at a time, 5 s each
   useEffect(() => {
@@ -238,7 +279,7 @@ export default function Fish({
     const bite = window.setTimeout(
       () => {
         setPhase("bite");
-        // 卫戍池塘: 咕咚 out loud, the player likely in the game
+        // 咕咚 out loud, the player likely in the game or the window put away
         biteSound.current?.();
       },
       Math.max(0, line.biteAt - serverNow()),
@@ -349,26 +390,43 @@ export default function Fish({
       .catch(() => {});
   };
 
-  /**
-   * 自动钓's button: off, on; on with casts held, 收网 (it stays on); on with none, off (pulled in first, should one have
-   * come meanwhile)
-   */
-  const netTap = async (held: number) => {
+  /** 自动 (the bank's alone): switched on, or off (what it holds pulled in first); 收网: what it holds, it staying on */
+  const net = async (what: "on" | "off" | "haul") => {
     if (busy || !st) return;
     setBusy(true);
     setNote(null);
     try {
-      const res = await timed(() => (st.net === null ? fishApi.net(true) : held > 0 ? fishApi.haul() : fishApi.net(false)));
+      const res = await timed(() => (what === "haul" ? fishApi.haul() : fishApi.net(what === "on")));
       const fresh = res.haul?.items.filter((i) => i.first).length ?? 0;
       setSt((s) => (s ? { ...s, net: res.net, casts: res.casts, owned: s.owned + fresh } : s));
-      if (res.haul && res.haul.casts > 0) setHaul(res.haul);
-      else if (res.haul && held > 0) setNote(T.fish.net.empty);
+      if (res.haul && res.haul.casts > 0) {
+        setHaul(res.haul);
+        sayWin(fmt(T.fish.win.hauled, { n: res.haul.casts }));
+      } else if (what === "haul") setNote(T.fish.net.empty);
+      if (what === "on") sayWin(T.fish.win.autoStarted);
+      if (what === "off" && !(res.haul && res.haul.casts > 0)) sayWin(T.fish.win.autoStopped);
     } catch (e) {
       refused(e);
     } finally {
       setBusy(false);
     }
   };
+
+  // how the line stands, for the window: in the water (or still coming in), bitten; none once its catch is out
+  const lineSpot = line ? line.spot : phase === "cast" || phase === "reel" || phase === "leap" ? spot : null;
+  const lineRef = useRef(onLine);
+  lineRef.current = onLine;
+  const casts = st?.casts ?? null;
+  useEffect(() => {
+    lineRef.current(lineSpot, phase === "bite", casts);
+  }, [lineSpot, phase, casts]);
+
+  // a tap on the strip or the ball: the window open again, and at the bite, the pull
+  const tap = () => {
+    if (phase === "bite") void reel();
+    onExpand();
+  };
+  tapRef.current = tap;
 
   const sayZhi = () => {
     const now = Date.now();
@@ -407,68 +465,110 @@ export default function Fish({
   const label = st?.admiral ? `${T.fish.you} · ${T.fish.admiral}` : T.fish.you;
   // 自动钓, the bank's: what it holds now, by the server's clock
   const held = st && st.net !== null ? netHeld(st.net, serverNow(), st.casts) : 0;
-  const netText =
-    !st || st.net === null ? T.fish.net.off : held >= NET_MAX ? fmt(T.fish.net.full, { n: NET_MAX }) : held > 0 ? fmt(T.fish.net.held, { n: held }) : T.fish.net.on;
+  const w = T.fish.win;
+  const statusNow = pending && (phase === "wait" || phase === "bite") ? (pending === "pond" ? w.statusToPond : w.statusToPier) : phase === "wait" && !note && !shadow ? w.wait : status;
+  // over the scene, one at a time: the window's word or 自动钓's, else the room's (卫戍池塘)
+  const word = notice ?? said ?? pond?.toast ?? null;
+  // the scene's top in use (the yellow bar, a word, a catch's strip): 有 n 个漂流瓶没打开 waits
+  const topTaken = Boolean((pending && (lineSpot || phase === "cast")) || word || (phase === "caught" && caught && !full));
+
+  if (view === "small") {
+    const text =
+      phase === "bite"
+        ? phone
+          ? w.ballBite
+          : w.stripBite
+        : lineSpot
+          ? lineSpot === "pond"
+            ? w.stripPond
+            : w.stripPier
+          : phase === "caught" && caught
+            ? fmt(w.stripGot, { name: nameOf(caught.no, caught.variant) })
+            : w.stripHand;
+    if (phone) {
+      // the ball: the float, ringed while it waits; the window tells a tap from a drag (tapRef)
+      return (
+        <span className={`fw-ball-in${phase === "bite" ? " bite" : phase === "wait" ? " wait" : ""}`} aria-label={phase === "bite" ? text : w.ballLabel} role="img">
+          {phase === "wait" && <i className="ring" aria-hidden="true" />}
+          <svg viewBox="0 0 24 32" width="22" height="30" aria-hidden="true">
+            <path d="M12 2 L12 9" stroke="currentColor" strokeWidth="1.6" />
+            <path d="M5 18 A7 9 0 0 1 19 18 Z" fill="#ff4a2e" />
+            <path d="M5 18 A7 9 0 0 0 19 18 Z" fill="#ffffff" />
+          </svg>
+          {phase === "bite" && <b className="say">{text}</b>}
+        </span>
+      );
+    }
+    return (
+      <button type="button" className="fw-strip-in" title={w.big} onClick={tap}>
+        <b>{text}</b>
+        <span className="big" aria-hidden="true">
+          ▢
+        </span>
+      </button>
+    );
+  }
+
+  const rowLeft =
+    !pond && st && st.net !== null ? (
+      <span className="auto">
+        {held > 0 ? fmt(w.autoHeld, { n: held }) : w.autoIdle}
+        {held > 0 && (
+          <button type="button" className="haul" disabled={busy} onClick={() => void net("haul")}>
+            {w.haul}
+          </button>
+        )}
+      </span>
+    ) : phone ? (
+      st && <span>{fmt(T.fish.casts, { n: st.casts, max: CASTS_A_DAY })}</span>
+    ) : (
+      st && (
+        <span>
+          {fmt(w.left, { n: left })}
+          {(!pond || pond.tally) && (
+            <>
+              <i aria-hidden="true">·</i>
+              {pond ? pond.tally : st.bank > 0 ? fmt(w.bank, { n: st.bank }) : T.fish.bankNone}
+            </>
+          )}
+        </span>
+      )
+    );
 
   return (
-    <div className="fish fish-root" role="dialog" aria-label={T.fish.title}>
-      <div className="fish-box">
-        <div className="fish-view">
-          {pond ? (
-            <PondScene
-              phase={phase}
-              ms={ms}
-              shadow={shadow}
-              ringDelay={ringDelay}
-              catchPic={catchItem ? picOf(catchItem.key) : null}
-              roach={roach}
-              label={label}
-              zhi={zhi}
-              seats={pond.seats}
-              flags={pond.flags}
-              fire={pond.fire}
-              school={pond.school}
-            />
-          ) : (
-            <FishScene
-              phase={phase}
-              ms={ms}
-              shadow={shadow}
-              ringDelay={ringDelay}
-              catchPic={catchItem ? picOf(catchItem.key) : null}
-              roach={roach}
-              label={label}
-              zhi={zhi}
-            />
-          )}
-          <header className="fish-head">
-            <button type="button" className="back" onClick={onClose} aria-label={T.fish.back}>
-              ‹
-            </button>
-            <span className="tt">
-              <b>{pond ? T.fish.pond.title : T.fish.title}</b>
-              <small>{pond ? pond.place : T.fish.place}</small>
-            </span>
-            {pond ? (
-              <span className="bank">{pond.badge}</span>
-            ) : (
-              st && <span className="bank">{st.bank > 0 ? fmt(T.fish.bank, { n: st.bank }) : T.fish.bankNone}</span>
-            )}
-          </header>
-          {pond?.schoolBadge && <span className="fish-school">{pond.schoolBadge}</span>}
-          {pond?.toast && (
-            <p key={pond.toast} className="fish-toast" role="status">
-              {pond.toast}
+    <>
+      <div className="fw-view">
+        <div className="fw-stage">
+          <WinScene
+            pond={Boolean(pond)}
+            phase={phase}
+            ms={ms}
+            shadow={shadow}
+            ringDelay={ringDelay}
+            catchPic={catchItem ? picOf(catchItem.key) : null}
+            roach={roach}
+            label={label}
+            zhi={zhi}
+            seats={pond?.seats}
+            flags={pond?.flags}
+            fire={pond?.fire}
+            school={pond?.school}
+          />
+          {pending && (lineSpot || phase === "cast") && <p className="fw-pend">{pending === "pond" ? w.toPond : w.toPier}</p>}
+          {!pending && word && (
+            <p key={word} className="fw-word" role="status">
+              {word}
             </p>
           )}
+          {pond?.schoolBadge && <span className="fw-school">{pond.schoolBadge}</span>}
           {shout && (
-            <p className="fish-shout" role="status">
+            <p className="fw-shout" role="status">
               {fmt(T.fish.shout, { name: nameOf(shout.no, shout.variant), size: shout.cm === null ? "" : fmt(T.fish.sized, { cm: cmText(shout.cm) }) })}
             </p>
           )}
-          {phase === "caught" && caught && catchItem && (
-            <div className="fish-strip" role="status">
-              <FishCard no={caught.no} variant={caught.variant} size={54} />
+          {phase === "caught" && caught && catchItem && !full && (
+            <div className="fish-strip fw-strip" role="status">
+              <FishCard no={caught.no} variant={caught.variant} size={44} />
               <span className="tx">
                 <b>{nameOf(caught.no, caught.variant)}</b>
                 <small>
@@ -483,14 +583,14 @@ export default function Fish({
               </span>
             </div>
           )}
-          {st && st.bottles.length > 0 && bottle === null && (
-            <button type="button" className="fish-bottles" onClick={() => setBottle(st.bottles[0])}>
-              <FishCard no={30} size={22} />
+          {st && st.bottles.length > 0 && bottle === null && !topTaken && (
+            <button type="button" className="fish-bottles fw-bottles" onClick={() => setBottle(st.bottles[0])}>
+              <FishCard no={30} size={20} />
               {fmt(T.fish.bottle.waiting, { n: st.bottles.length })}
             </button>
           )}
           {!st && (
-            <div className="fish-wait">
+            <div className="fish-wait fw-wait">
               {failed ? (
                 <>
                   <p>{T.fish.failed}</p>
@@ -503,48 +603,41 @@ export default function Fish({
               )}
             </div>
           )}
+          {full && caught && <CatchPage caught={caught} onClose={putDown} />}
+          {haul && <NetPage haul={haul} onClose={() => setHaul(null)} />}
         </div>
-        <div className="fish-panel">
-          <div className="row1">
-            {st && (
-              <>
-                <span>{fmt(T.fish.casts, { n: st.casts, max: CASTS_A_DAY })}</span>
-                <span aria-hidden="true">·</span>
-                <span>{pond ? pond.round : fmt(T.fish.dexCount, { n: st.owned, max: st.cells })}</span>
-              </>
-            )}
-            <b className="st">{status}</b>
-          </div>
-          <button type="button" className={`fish-go ${button.kind}`} disabled={!st || !button.go || busy} onClick={() => void button.go?.()}>
+      </div>
+      <div className="fw-panel">
+        <div className="row1">
+          {rowLeft}
+          <b className="st">{statusNow}</b>
+        </div>
+        <div className="row2">
+          <button type="button" className={`go ${button.kind}`} disabled={!st || !button.go || busy} onClick={() => void button.go?.()}>
             {button.text}
           </button>
-          <div className="row2">
-            <button type="button" onClick={sayZhi}>
-              {T.fish.zhi}
+          <button type="button" className="sm" onClick={sayZhi}>
+            {T.fish.zhi}
+          </button>
+          {!pond && (
+            <button
+              type="button"
+              className={`sm${st?.net != null ? " on" : ""}`}
+              disabled={!st || busy}
+              aria-label={fmt(w.autoLabel, { max: NET_MAX })}
+              aria-pressed={st?.net != null}
+              onClick={() => void net(st?.net != null ? "off" : "on")}
+            >
+              {st?.net != null ? w.autoOn : w.auto}
             </button>
-            {pond ? (
-              <span className="mid">{pond.toProtect}</span>
-            ) : (
-              <button
-                type="button"
-                className={`net${st?.net != null ? (held > 0 ? " held" : " on") : ""}`}
-                disabled={!st || busy}
-                aria-label={fmt(T.fish.net.label, { max: NET_MAX, now: netText })}
-                onClick={() => void netTap(held)}
-              >
-                {netText}
-              </button>
-            )}
-            <button type="button" onClick={() => setDex(true)} disabled={!st}>
-              {T.fish.dex}
-            </button>
-          </div>
+          )}
+          <button type="button" className="sm" onClick={() => setDex(true)} disabled={!st}>
+            {T.fish.dex}
+          </button>
         </div>
-        {full && caught && <CatchPage caught={caught} onClose={putDown} />}
-        {haul && <NetPage haul={haul} onClose={() => setHaul(null)} />}
-        {dex && st && <FishDex owned={st.owned} cells={st.cells} casts={st.casts} onClose={() => setDex(false)} onRefused={refused} />}
-        {bottle !== null && <Bottle id={bottle} today={st?.bottlesToday ?? 0} holder={holder} onClose={bottleDone} onRefused={onRefused} />}
       </div>
-    </div>
+      {dex && st && <FishDex owned={st.owned} cells={st.cells} casts={st.casts} onClose={() => setDex(false)} onRefused={refused} />}
+      {bottle !== null && <Bottle id={bottle} today={st?.bottlesToday ?? 0} holder={holder} onClose={bottleDone} onRefused={onRefused} />}
+    </>
   );
 }
