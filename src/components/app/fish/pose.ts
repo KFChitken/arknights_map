@@ -2,7 +2,7 @@
  * The bank's rod, line, float and catch at a moment of each step (the design's Pier canvas): the rod a bent quadratic
  * curve from its pivot, the line a sagging one from its tip; the cast swings back and throws (CAST_MS), the reel bends
  * the rod and drags the catch in under the water (REEL_MS), and it leaps out to land by the roach (LEAP_MS). In the
- * scene's own units (390 × 560).
+ * scene's own units: the bank's (SPOTS) or 卫戍池塘's (POND).
  */
 
 export type FishPhase = "idle" | "cast" | "wait" | "bite" | "reel" | "leap" | "caught";
@@ -13,8 +13,15 @@ export const LEAP_MS = 700;
 
 type Pt = [number, number];
 
-/** The rod's pivot and length, its resting angle, the float in the water, where the catch surfaces, where it lands */
-export const SPOTS = { P: [150, 392] as Pt, L: 165, a0: -55, B: [318, 336] as Pt, S: [200, 438] as Pt, K: [128, 292] as Pt };
+/**
+ * A scene's rod and water: the rod's pivot and length, its resting angle and how far back it swings to cast, the float
+ * in the water, where the catch surfaces and where it lands, the line's sag while it waits, how far the rod pulls up
+ */
+export type Geo = { P: Pt; L: number; a0: number; back: number; B: Pt; S: Pt; K: Pt; sag: number; pull: number };
+/** The bank (the design's Pier, 390 × 560) */
+export const SPOTS: Geo = { P: [150, 392], L: 165, a0: -55, back: 70, B: [318, 336], S: [200, 438], K: [128, 292], sag: 20, pull: 28 };
+/** 卫戍池塘 (the design's Main, 366 × 470) */
+export const POND: Geo = { P: [66, 388], L: 134, a0: -50, back: 62, B: [240, 302], S: [132, 354], K: [42, 314], sag: 18, pull: 26 };
 
 export type Pose = {
   rod: string;
@@ -37,8 +44,7 @@ const q = (p0: Pt, c: Pt, p1: Pt, u: number): Pt => [
 ];
 const curve = (a: Pt, b: Pt, sag: number) => `M${f1(a[0])} ${f1(a[1])} Q${f1((a[0] + b[0]) / 2)} ${f1((a[1] + b[1]) / 2 + sag)} ${f1(b[0])} ${f1(b[1])}`;
 
-export function poseAt(phase: FishPhase, ms: number): Pose {
-  const G = SPOTS;
+export function poseAt(phase: FishPhase, ms: number, G: Geo = SPOTS): Pose {
   const tipAt = (a: number): Pt => [G.P[0] + G.L * Math.cos(a * D), G.P[1] + G.L * Math.sin(a * D)];
   let ang = G.a0;
   let bend = 5;
@@ -46,9 +52,9 @@ export function poseAt(phase: FishPhase, ms: number): Pose {
   let line: string | null = null;
   let fish: Pose["fish"] = null;
   if (phase === "cast") {
-    if (ms < 350) ang = G.a0 - 70 * easeOut(ms / 350);
-    else if (ms < 480) ang = G.a0 - 70;
-    else if (ms < 620) ang = G.a0 - 70 + 86 * easeIn((ms - 480) / 140);
+    if (ms < 350) ang = G.a0 - G.back * easeOut(ms / 350);
+    else if (ms < 480) ang = G.a0 - G.back;
+    else if (ms < 620) ang = G.a0 - G.back + (G.back + 16) * easeIn((ms - 480) / 140);
     else if (ms < 850) ang = G.a0 + 16 - 16 * easeOut((ms - 620) / 230);
     const tip = tipAt(ang);
     if (ms < 600) bob = [tip[0] + 2, tip[1] + 16];
@@ -60,9 +66,9 @@ export function poseAt(phase: FishPhase, ms: number): Pose {
     line = curve(tip, bob, 4);
   } else if (phase === "wait" || phase === "bite") {
     bob = G.B;
-    line = curve(tipAt(G.a0), [G.B[0], G.B[1] - 4], 20);
+    line = curve(tipAt(G.a0), [G.B[0], G.B[1] - 4], G.sag);
   } else if (phase === "reel") {
-    ang = G.a0 - 28 * easeOut(Math.min(1, ms / 180)) + 2.2 * Math.sin(ms / 28);
+    ang = G.a0 - G.pull * easeOut(Math.min(1, ms / 180)) + 2.2 * Math.sin(ms / 28);
     bend = 26;
     const u = easeInOut(Math.min(1, ms / REEL_MS));
     const dx = G.S[0] - G.B[0];
@@ -74,7 +80,7 @@ export function poseAt(phase: FishPhase, ms: number): Pose {
     line = curve(tipAt(ang), at, 0);
   } else if (phase === "leap") {
     const u = Math.min(1, ms / LEAP_MS);
-    ang = G.a0 - 28 + 18 * easeOut(u);
+    ang = G.a0 - G.pull + 18 * easeOut(u);
     bend = 26 - 18 * u;
     const at = q(G.S, [G.S[0] - 16, G.S[1] - 170], G.K, easeOut(u));
     fish = { at, under: false, rot: -30 + 390 * u, scale: 0.7 + 0.4 * u };

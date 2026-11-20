@@ -66,6 +66,7 @@ import {
   kickFromSquad,
   leaveSquadRoom,
   loadSquadFriends,
+  openSquadPond,
   openSquadRoom,
   saveSquadCard,
   sayInSquad,
@@ -902,6 +903,8 @@ function RoomView({
   const [kicking, setKicking] = useState<number | null>(null);
   // 说话 / 动作 (and 这局 while it plays), from your own roach at the foot
   const [talking, setTalking] = useState<false | "say" | "round">(false);
+  // 「玩」's list, out
+  const [playing, setPlaying] = useState(false);
   // 好，我换 tapped over the map: the strategy picker opens with the sheet
   const pickNext = useSquadPickNext();
   useEffect(() => {
@@ -1020,11 +1023,32 @@ function RoomView({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="sq-saybar" onClick={() => setTalking("say")}>
-            <SquadRoach m={me} size={32} />
-            <b>{T.squad.talk.open}</b>
-            <small>{T.squad.talk.openSub}</small>
-          </button>
+          <div className="sq-footrow">
+            <button type="button" className="sq-saybar" onClick={() => setTalking("say")}>
+              <SquadRoach m={me} size={32} />
+              <b>{T.squad.talk.open}</b>
+              <small>{T.squad.talk.openSub}</small>
+            </button>
+            {/* 「玩」: what there is to play in the room (钓鳞 so far) */}
+            <button type="button" className="sq-playbtn" aria-expanded={playing} aria-label={T.fish.pond.playLabel} onClick={() => setPlaying((p) => !p)}>
+              {T.fish.pond.play}
+            </button>
+          </div>
+          {playing && (
+            <div className="sq-playmenu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setPlaying(false);
+                  openSquadPond();
+                }}
+              >
+                <b>{T.fish.pond.fish}</b>
+                <small>{T.fish.pond.fishSub}</small>
+              </button>
+            </div>
+          )}
           {/* a teammate's card, over the foot (and whatever it covers as the room scrolls under it) */}
           {menuOf && (
             <SquadMateCard

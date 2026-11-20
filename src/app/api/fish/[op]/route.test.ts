@@ -148,7 +148,9 @@ describe("钓鳞's requests", () => {
     expect((await call("POST", "cast", { spot: "pier" })).status).toBe(429);
     vi.setSystemTime(new Date(nextSiteDayAt()));
     expect((await call("POST", "cast", { spot: "pier" })).body).toMatchObject({ casts: 1 });
-    expect((await call("POST", "cast", { spot: "pond" })).status).toBe(400);
+    // 卫戍池塘 is for one in a room of 一起卫戍; anywhere else is no spot at all
+    expect(await call("POST", "cast", { spot: "pond" })).toMatchObject({ status: 409, body: { error: "你不在卫戍房间里，钓不了卫戍池塘。" } });
+    expect((await call("POST", "cast", { spot: "sea" })).status).toBe(400);
   });
 
   it("makes a pull in a ring's last 0.4 s on time and a tenth bigger, by the server's clock", async () => {

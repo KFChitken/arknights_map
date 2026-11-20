@@ -25,6 +25,7 @@ import {
 import { squadApi } from "@/lib/squadClient";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
+import { cmText, nameOf } from "../fish/words";
 
 /**
  * 一起卫戍 on the map page (src/lib/squad.ts): the room the player is in, kept here so the bars over the map and the
@@ -117,6 +118,12 @@ export const markSquadTouched = (h: number, bold: boolean) => touched.set({ ...t
 export const useSquadRounds = () => useSyncExternalStore(rounds.on, rounds.get, () => 0);
 export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, roundUnseen.get, () => false);
 export const seeSquadRound = () => roundUnseen.set(false);
+
+/** 卫戍池塘's page (SquadPond.tsx), open (from 「玩」 in the room's sheet or the computer's bar panel) */
+const pondOpen = kept(false);
+export const useSquadPondOpen = () => useSyncExternalStore(pondOpen.on, pondOpen.get, () => false);
+export const openSquadPond = () => pondOpen.set(true);
+export const closeSquadPond = () => pondOpen.set(false);
 
 /** 说话 / 动作 / 这局, open (from your tile on the bar, or your roach in the fight on the map) */
 const talkOpen = kept(false);
@@ -239,6 +246,8 @@ function setRoom(next: SquadRoom | null) {
     touched.set(NO_TOUCHED);
     toMe.set(null);
     asked.clear();
+    // out of the room: its pond goes too
+    pondOpen.set(false);
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
     rounds.set(rounds.get() + 1);
@@ -330,6 +339,15 @@ export function heardSquad(raw: unknown) {
       if (!r.members.some((m) => m.h === it.h)) continue;
       if (it.h === r.you && moves.get().some((m) => m.h === it.h && m.move === it.move && Date.now() - m.at < ECHO_MS)) continue;
       showMove(it.h, it.move, it.to);
+    }
+    return;
+  }
+  // 卫戍池塘: a teammate's purple or better, to the whole room by name (your own has its page)
+  if (tell.t === "fish") {
+    for (const it of tell.items) {
+      const m = r.members.find((x) => x.h === it.h);
+      if (!m || it.h === r.you) continue;
+      addFloat(fmt(T.fish.roomShout, { name: m.name, item: nameOf(it.no, it.variant), size: it.cm === null ? "" : fmt(T.fish.sized, { cm: cmText(it.cm) }) }));
     }
     return;
   }

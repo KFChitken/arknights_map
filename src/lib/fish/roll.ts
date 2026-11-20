@@ -13,7 +13,7 @@ import {
   type FishItem,
   type FishSpot,
 } from "./items";
-import { PITY_AFTER, type FishShadow } from "./rules";
+import { PITY_AFTER, SCHOOL_BOOST, type FishShadow } from "./rules";
 
 /**
  * What is on the hook, drawn as the line goes in (src/lib/server/fish.ts cast): first the tier (TIER_ODDS; blue or
@@ -36,6 +36,10 @@ export type RollAsk = {
   caught: (no: number) => number;
   /** 寻访券 and 漂流瓶 may come (PASSES lets the player draw); none of them yet in this part */
   passes?: boolean;
+  /** 卫戍池塘: real players in the room with a line in, this cast's included */
+  together?: number;
+  /** 卫戍池塘: a 鱼群 is on, blue and better SCHOOL_BOOST times as likely */
+  school?: boolean;
   random: () => number;
 };
 
@@ -52,8 +56,10 @@ export function mayBite(item: FishItem, ask: Omit<RollAsk, "dry" | "random">): b
   if (w.hours && !inHours(ask.hour, w.hours)) return false;
   if (w.crowd && (ask.spot !== "pier" || ask.crowd < w.crowd)) return false;
   if (w.after && ask.caught(w.after[0]) < w.after[1]) return false;
-  // the room's own: four together, 一起听, after 龙门广场舞 (later parts)
-  if (w.squad4 || w.listen || w.dance) return false;
+  // four fishing together in 卫戍池塘
+  if (w.squad4 && (ask.spot !== "pond" || (ask.together ?? 0) < 4)) return false;
+  // 一起听, after 龙门广场舞 (later parts)
+  if (w.listen || w.dance) return false;
   return true;
 }
 
@@ -81,7 +87,7 @@ export function rollCatch(ask: RollAsk, items: readonly FishItem[] = FISH_ITEMS)
   const top = ask.spot === "auto" ? 3 : 6;
   const floor = pity ? 3 : 1;
   const tiers = [1, 2, 3, 4, 5, 6].filter((t) => t <= top && t >= floor);
-  const drawn = pick(tiers, (t) => TIER_ODDS[t - 1], ask.random());
+  const drawn = pick(tiers, (t) => TIER_ODDS[t - 1] * (ask.school && t >= 3 ? SCHOOL_BOOST : 1), ask.random());
   // a tier with nothing that may bite: the one under it, else (down to the floor) the one over it
   const order = [...tiers.filter((t) => t <= drawn).reverse(), ...tiers.filter((t) => t > drawn)];
   let can: FishItem[] = [];

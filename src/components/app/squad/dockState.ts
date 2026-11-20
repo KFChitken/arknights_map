@@ -10,10 +10,10 @@ import type { SquadMember } from "@/lib/squad";
 /** Folded: "0" in this computer's storage, nothing while open (as squad.scene) */
 const DOCK_KEY = "squad.dock";
 
-export type DockTab = "say" | "act" | "round";
+export type DockTab = "say" | "act" | "round" | "play";
 
-/** The panel's tabs: 这局 only while a round plays */
-export const dockTabs = (playing: boolean): DockTab[] => (playing ? ["say", "act", "round"] : ["say", "act"]);
+/** The panel's tabs: 这局 only while a round plays; 「玩」 last (钓鳞 so far) */
+export const dockTabs = (playing: boolean): DockTab[] => (playing ? ["say", "act", "round", "play"] : ["say", "act", "play"]);
 
 /** Whether the panel is folded down to its tabs on this computer; open where nothing (or no storage) says */
 export function dockFolded(): boolean {

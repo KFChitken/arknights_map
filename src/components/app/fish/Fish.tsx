@@ -13,6 +13,7 @@ import { AgeCheckNeeded, ConsentNeeded, SignInNeeded } from "@/lib/world/types";
 import CatchPage from "./CatchPage";
 import FishCard, { cmText, nameOf, picOf } from "./FishCard";
 import FishScene from "./FishScene";
+import PondScene, { type PondFlag, type PondSeat } from "./PondScene";
 import { CAST_MS, LEAP_MS, REEL_MS, type FishPhase } from "./pose";
 import "./fish.css";
 
@@ -29,6 +30,27 @@ const FishDex = dynamic(() => import("./FishDex"), { ssr: false });
  */
 
 type Look = { color: string; avatar: string; style?: RoachStyle };
+
+/**
+ * 卫戍池塘's page (SquadPond.tsx): the room round the pond, its header, and in the panel this 局's 鳞 and how far to
+ * 爆护; the bank's page has none
+ */
+export type PondView = {
+  seats: PondSeat[];
+  flags: PondFlag[];
+  fire: boolean;
+  school: boolean;
+  place: string;
+  /** Over the water: who fishes, a 鱼群 */
+  badge: string;
+  schoolBadge: string | null;
+  round: string;
+  toProtect: string;
+  /** Said at the bite, even with the page out of sight (the browser may not let it) */
+  onBite: () => void;
+  /** What the room is saying now (a teammate's purple catch, someone in or out) */
+  toast: string | null;
+};
 type Said = FishState & { lastShout: number };
 
 /** The player's roach as a picture, as RoachIcon draws it */
@@ -51,7 +73,19 @@ function useRoachPic(look: Look) {
   return src;
 }
 
-export default function Fish({ look, onClose, onRefused }: { look: Look; onClose: () => void; onRefused: (e: unknown) => void }) {
+export default function Fish({
+  look,
+  pond,
+  onClose,
+  onRefused,
+}: {
+  look: Look;
+  /** 卫戍池塘 rather than the bank */
+  pond?: PondView;
+  onClose: () => void;
+  onRefused: (e: unknown) => void;
+}) {
+  const spot = pond ? "pond" : "pier";
   const roach = useRoachPic(look);
   const [st, setSt] = useState<Said | null>(null);
   const [failed, setFailed] = useState(false);
@@ -72,6 +106,9 @@ export default function Fish({ look, onClose, onRefused }: { look: Look; onClose
   const queue = useRef<FishShout[]>([]);
   const lastShout = useRef<number | undefined>(undefined);
   const serverNow = () => Date.now() + offset.current;
+  // 卫戍池塘's sound at the bite, as the page has it now
+  const biteSound = useRef(pond?.onBite);
+  biteSound.current = pond?.onBite;
 
   /** An answer's time taken as the server's now at the middle of the ask */
   const timed = useCallback(async <R extends { now: number }>(ask: () => Promise<R>): Promise<R> => {
@@ -166,7 +203,14 @@ export default function Fish({ look, onClose, onRefused }: { look: Look; onClose
   // waiting: the bite when the server said, and now and then a shadow by the float
   useEffect(() => {
     if (phase !== "wait" || !line) return;
-    const bite = window.setTimeout(() => setPhase("bite"), Math.max(0, line.biteAt - serverNow()));
+    const bite = window.setTimeout(
+      () => {
+        setPhase("bite");
+        // 卫戍池塘: 咕咚 out loud, the player likely in the game
+        biteSound.current?.();
+      },
+      Math.max(0, line.biteAt - serverNow()),
+    );
     let shade = 0;
     const pass = () => {
       shade = window.setTimeout(
@@ -195,7 +239,7 @@ export default function Fish({ look, onClose, onRefused }: { look: Look; onClose
     setCaught(null);
     setFull(false);
     try {
-      const res = await timed(() => fishApi.cast("pier"));
+      const res = await timed(() => fishApi.cast(spot));
       setLine(res.line);
       setSt((s) => (s ? { ...s, casts: res.casts, line: res.line } : s));
       setMs(0);
@@ -286,26 +330,53 @@ export default function Fish({ look, onClose, onRefused }: { look: Look; onClose
     <div className="fish fish-root" role="dialog" aria-label={T.fish.title}>
       <div className="fish-box">
         <div className="fish-view">
-          <FishScene
-            phase={phase}
-            ms={ms}
-            shadow={shadow}
-            ringDelay={ringDelay}
-            catchPic={catchItem ? picOf(catchItem.key) : null}
-            roach={roach}
-            label={label}
-            zhi={zhi}
-          />
+          {pond ? (
+            <PondScene
+              phase={phase}
+              ms={ms}
+              shadow={shadow}
+              ringDelay={ringDelay}
+              catchPic={catchItem ? picOf(catchItem.key) : null}
+              roach={roach}
+              label={label}
+              zhi={zhi}
+              seats={pond.seats}
+              flags={pond.flags}
+              fire={pond.fire}
+              school={pond.school}
+            />
+          ) : (
+            <FishScene
+              phase={phase}
+              ms={ms}
+              shadow={shadow}
+              ringDelay={ringDelay}
+              catchPic={catchItem ? picOf(catchItem.key) : null}
+              roach={roach}
+              label={label}
+              zhi={zhi}
+            />
+          )}
           <header className="fish-head">
             <button type="button" className="back" onClick={onClose} aria-label={T.fish.back}>
               ‹
             </button>
             <span className="tt">
-              <b>{T.fish.title}</b>
-              <small>{T.fish.place}</small>
+              <b>{pond ? T.fish.pond.title : T.fish.title}</b>
+              <small>{pond ? pond.place : T.fish.place}</small>
             </span>
-            {st && <span className="bank">{st.bank > 0 ? fmt(T.fish.bank, { n: st.bank }) : T.fish.bankNone}</span>}
+            {pond ? (
+              <span className="bank">{pond.badge}</span>
+            ) : (
+              st && <span className="bank">{st.bank > 0 ? fmt(T.fish.bank, { n: st.bank }) : T.fish.bankNone}</span>
+            )}
           </header>
+          {pond?.schoolBadge && <span className="fish-school">{pond.schoolBadge}</span>}
+          {pond?.toast && (
+            <p key={pond.toast} className="fish-toast" role="status">
+              {pond.toast}
+            </p>
+          )}
           {shout && (
             <p className="fish-shout" role="status">
               {fmt(T.fish.shout, { name: nameOf(shout.no, shout.variant), size: shout.cm === null ? "" : fmt(T.fish.sized, { cm: cmText(shout.cm) }) })}
@@ -345,7 +416,7 @@ export default function Fish({ look, onClose, onRefused }: { look: Look; onClose
               <>
                 <span>{fmt(T.fish.casts, { n: st.casts, max: CASTS_A_DAY })}</span>
                 <span aria-hidden="true">·</span>
-                <span>{fmt(T.fish.dexCount, { n: st.owned, max: st.cells })}</span>
+                <span>{pond ? pond.round : fmt(T.fish.dexCount, { n: st.owned, max: st.cells })}</span>
               </>
             )}
             <b className="st">{status}</b>
@@ -357,6 +428,7 @@ export default function Fish({ look, onClose, onRefused }: { look: Look; onClose
             <button type="button" onClick={sayZhi}>
               {T.fish.zhi}
             </button>
+            {pond && <span className="mid">{pond.toProtect}</span>}
             <button type="button" onClick={() => setDex(true)} disabled={!st}>
               {T.fish.dex}
             </button>

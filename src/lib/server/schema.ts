@@ -1911,6 +1911,9 @@ export const squadRooms = pgTable(
     wentAt: at("went_at"),
     stateAt: at("state_at"),
     stoppedAt: at("stopped_at"),
+    /** 鱼群 in 卫戍池塘 (src/lib/server/fish.ts) till then, and how many came this 局 (from the last round's end) */
+    schoolUntil: at("school_until"),
+    schools: smallint("schools").notNull().default(0),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */
@@ -1956,6 +1959,8 @@ export const squadMembers = pgTable(
     strategy: smallint("strategy"),
     extras: smallint("extras").array().notNull().default(sql`'{}'::smallint[]`),
     pose: smallint("pose").notNull().default(0),
+    /** 鳞 caught in 卫戍池塘 this 局 (from the last round's end): 爆护 at ten */
+    fishN: smallint("fish_n").notNull().default(0),
   },
   (t) => [
     primaryKey({ columns: [t.roomId, t.userId] }),

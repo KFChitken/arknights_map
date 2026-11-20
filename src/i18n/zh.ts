@@ -608,6 +608,7 @@ export const zh = {
       noLine: "水里没有你的竿，先甩一竿。",
       notYet: "还没咬钩，再等等。",
       badSpot: "这里钓不了。",
+      noPond: "你不在卫戍房间里，钓不了卫戍池塘。",
     },
     /** 徒手写's 手写榜 (src/lib/server/handwriting.ts) */
     board: {
@@ -2517,7 +2518,7 @@ export const zh = {
       open: "说点什么",
       openSub: "说话、换动作",
       title: "说话 / 动作",
-      tabs: { say: "说话", act: "动作", round: "这局" },
+      tabs: { say: "说话", act: "动作", round: "这局", play: "玩" },
       recent: "常用",
       /** By pose (src/lib/squad.ts POSES) */
       poses: ["站着", "蹦迪", "醉倒睡觉"],
@@ -3756,6 +3757,25 @@ export const zh = {
     nth: "第 {n} 次钓到",
     firstTime: "第一次钓到",
     shout: "有个舟P钓到了 {name}{size}",
+    /** 卫戍池塘 (src/components/app/squad/SquadPond.tsx), in a room of 一起卫戍; its way in is 「玩」 */
+    pond: {
+      title: "卫戍池塘",
+      place: "一起卫戍 · {server} · {level}",
+      fishing: "卫戍池塘 · {n} 个人在钓",
+      fishingAll: "卫戍池塘 · {n} 个人都在钓",
+      nobody: "卫戍池塘 · 还没人在钓",
+      school: "鱼群来了 · {left}",
+      protect: "爆护",
+      round: "这局 {n} 条",
+      toProtect: "再钓 {n} 条就「爆护」",
+      protected: "这局爆护了",
+      play: "玩",
+      playLabel: "玩：钓鳞",
+      fish: "钓鳞",
+      fishSub: "卫戍池塘，等人时也能钓",
+    },
+    /** 卫戍池塘: a teammate's purple or better, to the whole room, with TA's name */
+    roomShout: "{name} 钓到了 {item}{size}",
     sized: " · {cm} cm",
     cm: "{cm} cm",
     /** The page of a catch worth one (the game's 获得物资) */

@@ -3,6 +3,7 @@
 import { T } from "@/i18n";
 import type { SquadMove, SquadRoom } from "@/lib/squad";
 import { dockTabs, type DockTab } from "./dockState";
+import { openSquadPond } from "./squading";
 import { ActTab, RoundTab, SayTab } from "./SquadTalk";
 import "./squadFight.css";
 
@@ -40,7 +41,14 @@ export default function SquadDock({
       <div className="tabs">
         <div className="sq-tabs3" role="tablist">
           {tabs.map((k) => (
-            <button key={k} type="button" role="tab" aria-selected={!folded && tab === k} className={!folded && tab === k ? "on" : ""} onClick={() => onTab(k)}>
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={!folded && tab === k}
+              className={`${!folded && tab === k ? "on" : ""}${k === "play" ? " play" : ""}`}
+              onClick={() => onTab(k)}
+            >
               {T.squad.talk.tabs[k]}
               {k === "round" && unseen && <span className="dot" aria-hidden="true" />}
             </button>
@@ -64,6 +72,14 @@ export default function SquadDock({
             <SayTab room={room} onDone={() => {}} docked />
           ) : tab === "act" ? (
             <ActTab room={room} onDone={() => {}} onError={onError} docked picking={picking} onPick={onPick} />
+          ) : tab === "play" ? (
+            // what there is to play in the room: 钓鳞 (卫戍池塘) so far, more as each is made
+            <div className="sq-plays">
+              <button type="button" onClick={openSquadPond}>
+                <b>{T.fish.pond.fish}</b>
+                <small>{T.fish.pond.fishSub}</small>
+              </button>
+            </div>
           ) : (
             <RoundTab room={room} onError={onError} />
           )}

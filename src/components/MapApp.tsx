@@ -352,6 +352,7 @@ const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
 const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
 const Fish = dynamic(() => import("./app/fish/Fish"), { ssr: false });
+const SquadPond = dynamic(() => import("./app/squad/SquadPond"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
 // 一起听 over the map (the card of an invitation, the 短评), for those who may listen
@@ -6238,6 +6239,13 @@ export default function MapApp({
             setFishOpen(false);
             void act(() => Promise.reject(e));
           }}
+        />
+      )}
+      {/* 卫戍池塘, the room's own pond, over everything when 「玩」 → 钓鳞 opens it */}
+      {squadShown && (
+        <SquadPond
+          look={{ color: myColor, avatar: myAvatar, style: look }}
+          onRefused={(e) => void act(() => Promise.reject(e))}
         />
       )}
       {/* a sheet on a phone; on a computer beside the buttons at the left, the map still to be used */}

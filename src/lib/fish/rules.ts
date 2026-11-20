@@ -24,6 +24,17 @@ export const PITY_AFTER = 8;
 export const ADMIRAL_AFTER = 10;
 /** Purple or better: said on the bank (no name), and in the room in 卫戍池塘 */
 export const SHOUT_TIER = 4;
+/** 卫戍池塘: ten 鳞 in a 局 (from the last round's end) are 爆护 */
+export const POND_PROTECT = 10;
+/**
+ * 鱼群 in 卫戍池塘: once every real player in the room has a line in and there are two of them or more, a cast there
+ * brings one SCHOOL_CHANCE of the time (my call), SCHOOL_MS long, SCHOOLS_A_ROUND a 局 at most; blue and better come
+ * SCHOOL_BOOST times as often while it is on
+ */
+export const SCHOOL_CHANCE = 0.2;
+export const SCHOOL_MS = 30_000;
+export const SCHOOLS_A_ROUND = 2;
+export const SCHOOL_BOOST = 2;
 /** How often the bank's page asks how things stand there */
 export const BANK_POLL_MS = 15_000;
 /** 吱, the player's own roach, once every so often (only they hear it) */

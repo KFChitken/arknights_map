@@ -392,6 +392,10 @@ export type SquadMember = {
    * never how many): to a viewer 寻访 shows to, unless TA keeps it off the cards (地图卡片上挂出通行证); never a 人机's
    */
   pass?: RoachPass;
+  /** 卫戍池塘 (src/lib/server/fish.ts): a line in it now; 鳞 caught this 局 (爆护 at POND_PROTECT); today's 空军司令 */
+  fishing?: true;
+  fishN?: number;
+  admiral?: true;
 } & SquadLook &
   SquadRound;
 
@@ -418,6 +422,8 @@ export type SquadRoom = {
   members: SquadMember[];
   /** When its round started (开始游戏, ms), while it plays; null while it waits */
   wentAt: number | null;
+  /** 鱼群 in 卫戍池塘 till then (ms), while one is on */
+  school?: number;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
@@ -443,7 +449,7 @@ export type SquadTell =
        * out of it, invited, 下次吧)
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond";
         h?: number;
         to?: SquadState;
         round?: SquadRound;
@@ -455,6 +461,8 @@ export type SquadTell =
   | { t: "say"; room: string; items: { h: number; p: number; to?: number }[] }
   /** Moves done (动作), batched as the lines are; a page of before skips them */
   | { t: "move"; room: string; items: { h: number; move: SquadMove; to?: number }[] }
+  /** Purple or better caught in 卫戍池塘, by the one with the number h: said to the whole room with TA's name */
+  | { t: "fish"; room: string; items: { h: number; no: number; variant: number; cm: number | null }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
 

@@ -100,7 +100,7 @@ import { nudge, onToldSquad, tellSquad } from "./live";
 import { drawnLook } from "./looks";
 import { allow } from "./rateLimit";
 import { kickFromHostListen, squadListensPlaying, squadListenView } from "./listenRooms";
-import { roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, users, type UserRow } from "./schema";
+import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
@@ -263,7 +263,8 @@ function endsOf(r: Room): { at: number; why: "idle" | "go" | "life" } {
 type Hearer = { userId: string; handle: number };
 type Moved = { h: number; move: SquadMove; to?: number };
 /** The lines said and moves done in a room in the last SAY_BATCH_MS, told to it at once */
-type Said = { items: { h: number; p: number; to?: number }[]; moves: Moved[]; timer: ReturnType<typeof setTimeout> };
+type Fished = { h: number; no: number; variant: number; cm: number | null };
+type Said = { items: { h: number; p: number; to?: number }[]; moves: Moved[]; fish?: Fished[]; timer: ReturnType<typeof setTimeout> };
 const g = globalThis as unknown as {
   squadHearers?: Map<string, { at: number; rows: Hearer[] }>;
   squadSays?: Map<string, Said>;
@@ -301,6 +302,14 @@ async function tellRoom(roomId: string, what?: Extract<SquadTell, { t: "room" }>
   const rows = await hearersOf(roomId);
   const tell: SquadTell = { t: "room", room: roomId, ...(what ? { what } : {}) };
   tellSquad([...rows.map((r) => r.userId), ...also], tell);
+}
+
+/** For 卫戍池塘 (src/lib/server/fish.ts): tell the room someone's line went in or came out, or a 鱼群 came */
+export const tellSquadPond = (roomId: string, h?: number) => tellRoom(roomId, { kind: "pond", ...(h === undefined ? {} : { h }) });
+
+/** For 卫戍池塘: purple or better caught there by the one with the number h, said to the whole room with the next batch */
+export function sayFishInRoom(roomId: string, fished: Fished) {
+  (batchOf(roomId).fish ??= []).push(fished);
 }
 
 function tellEnd(roomId: string, ids: string[], why: SquadEnd) {
@@ -351,6 +360,19 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         ...(pass ? { pass } : {}),
       };
     });
+  // 卫戍池塘: who has a line in it, the 鳞 of this 局, today's 空军司令
+  const ids = rows.map((r) => r.u.id);
+  const [inPond, admirals] = await Promise.all([
+    db.select({ userId: fishLines.userId }).from(fishLines).where(and(inArray(fishLines.userId, ids), eq(fishLines.spot, "pond"))),
+    db.select({ userId: fishDays.userId }).from(fishDays).where(and(inArray(fishDays.userId, ids), eq(fishDays.day, siteDay(now)), eq(fishDays.admiral, true))),
+  ]);
+  const fishing = new Set(inPond.map((r) => r.userId));
+  const admiral = new Set(admirals.map((r) => r.userId));
+  for (const [i, { m, u }] of rows.sort((a, b) => a.m.handle - b.m.handle).entries()) {
+    if (fishing.has(u.id)) people[i].fishing = true;
+    if (m.fishN) people[i].fishN = m.fishN;
+    if (admiral.has(u.id)) people[i].admiral = true;
+  }
   // the 人机 after everyone else
   const members = [...people, ...bots.map(botMember)];
   const ends = endsOf(room);
@@ -404,6 +426,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     staff: isStaff(viewer),
     members,
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
+    ...(room.schoolUntil && room.schoolUntil.getTime() > now ? { school: room.schoolUntil.getTime() } : {}),
     endsAt: ends.at,
     endsWhy: ends.why,
     now,
@@ -755,11 +778,16 @@ export async function setState(user: Pick<UserRow, "id">, body: Record<string, u
         .update(squadBots)
         .set({ inGame: true, extras: [] })
         .where(and(eq(squadBots.roomId, room.id), isNull(squadBots.goneAt)));
+      // 卫戍池塘: a new 局 from here, its 鳞 counted and its 鱼群 come anew
+      await tx
+        .update(squadMembers)
+        .set({ fishN: 0 })
+        .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt)));
     }
     const at = new Date(now);
     await tx
       .update(squadRooms)
-      .set({ state: to, stateAt: at, ...(to === "go" ? { wentAt: at } : { waitedAt: at }) })
+      .set({ state: to, stateAt: at, ...(to === "go" ? { wentAt: at } : { waitedAt: at, schools: 0, schoolUntil: null }) })
       .where(eq(squadRooms.id, room.id));
     return true;
   });
@@ -1583,11 +1611,12 @@ function addSay(roomId: string, h: number, p: number, to?: number) {
 async function flushSay(roomId: string) {
   const b = says.get(roomId);
   says.delete(roomId);
-  if (!b || (!b.items.length && !b.moves.length)) return;
+  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length)) return;
   try {
     const ids = (await hearersOf(roomId)).map((r) => r.userId);
     if (b.items.length) tellSquad(ids, { t: "say", room: roomId, items: b.items } satisfies SquadTell);
     if (b.moves.length) tellSquad(ids, { t: "move", room: roomId, items: b.moves } satisfies SquadTell);
+    if (b.fish?.length) tellSquad(ids, { t: "fish", room: roomId, items: b.fish } satisfies SquadTell);
   } catch (e) {
     console.error("squad: telling a room its lines failed", e);
   }

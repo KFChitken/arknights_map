@@ -58,8 +58,8 @@ describe("the panel of the bar of a round on a computer", () => {
     expect(tileTap(true, true, true)).toBe("cancel");
     expect(tileTap(false, false, true)).toBe("card");
     expect(tileTap(false, true, true)).toBe("pick");
-    expect(dockTabs(true)).toEqual(["say", "act", "round"]);
-    expect(dockTabs(false)).toEqual(["say", "act"]);
+    expect(dockTabs(true)).toEqual(["say", "act", "round", "play"]);
+    expect(dockTabs(false)).toEqual(["say", "act", "play"]);
     expect(readyOf({ you: true, host: true, inGame: false })).toEqual({ text: "你是房主", ok: false });
     expect(readyOf({ you: false, host: true, inGame: false })).toEqual({ text: "房主不用准备", ok: false });
     expect(readyOf({ you: false, host: false, inGame: true })).toEqual({ text: "✓ 准备好了", ok: true });

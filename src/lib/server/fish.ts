@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, desc, eq, gt, inArray, lt, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, lt, max, ne, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { dexCells, FISH_ITEMS, inDex, itemOf, SIZE_PERFECT, type FishSpot } from "../fish/items";
 import { dryAfter, junkAfter, rollCatch } from "../fish/roll";
@@ -11,6 +11,9 @@ import {
   FISH_NO_LINE,
   FISH_NOT_YET,
   onTime,
+  SCHOOL_CHANCE,
+  SCHOOL_MS,
+  SCHOOLS_A_ROUND,
   SHOUT_TIER,
   type FishCatch,
   type FishDex,
@@ -24,14 +27,17 @@ import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
 import { fishMode } from "./env";
 import { HttpError } from "./http";
-import { fishDays, fishDex as dexRows, fishLines, fishRecords, fishShouts, type UserRow } from "./schema";
+import { fishDays, fishDex as dexRows, fishLines, fishRecords, fishShouts, squadMembers, squadRooms, type UserRow } from "./schema";
+import { sayFishInRoom, tellSquadPond } from "./squad";
+import { squadOpen } from "./squadOpen";
 
 /**
  * 钓鳞: a line in the water at a time for each player (fish_lines), its catch drawn as it goes in (src/lib/fish/roll.ts)
  * and told only once it is pulled in; the day's casts and streaks (fish_days, a site day from 04:00 Beijing time); the
  * dex (fish_dex) and the site's biggest of each (fish_records, no names); purple-or-better catches said on the bank for
- * a while with no name (fish_shouts). This part is the bank (pier); 卫戍池塘 (pond) and the net (auto) come later.
- * Switched by FISH (env.ts).
+ * a while with no name (fish_shouts). The bank (pier) is switched by FISH (env.ts); 卫戍池塘 (pond), a room of
+ * 一起卫戍's own, goes with SQUAD: a line there tells the room, purple and better is said to it with the name, its 鳞
+ * count for 爆护, and a 鱼群 comes now and then once all its real players fish. The net (auto) comes later.
  */
 
 const DAY = 86_400_000;
@@ -44,10 +50,60 @@ const DAYS_KEPT = 7;
 
 const refuse = (status: number, message: string, code?: string) => new HttpError(status, message, code);
 
-/** Whether this player may fish: everyone signed in (on), the 站长 and the admins (admins), or nobody (off) */
+/** Whether this player may fish on the bank: everyone signed in (on), the 站长 and the admins (admins), or nobody (off) */
 export function fishOpen(user: Pick<UserRow, "id" | "email">): boolean {
   const mode = fishMode();
   return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
+}
+
+/** Whether 钓鳞's requests are this player's at all: the bank's (FISH), or 卫戍池塘's (SQUAD) */
+export const fishAny = (user: Pick<UserRow, "id" | "email">) => fishOpen(user) || squadOpen(user);
+
+/** The room of 一起卫戍 the player is in, for 卫戍池塘: its id, the player's number in it, its real players, its 鱼群 */
+async function pondOf(userId: string, now: number) {
+  const [mine] = await db
+    .select({ roomId: squadMembers.roomId, h: squadMembers.handle, schoolUntil: squadRooms.schoolUntil, schools: squadRooms.schools })
+    .from(squadMembers)
+    .innerJoin(squadRooms, eq(squadRooms.id, squadMembers.roomId))
+    .where(and(eq(squadMembers.userId, userId), isNull(squadMembers.leftAt), isNull(squadRooms.endedAt)));
+  if (!mine) return null;
+  const people = await db
+    .select({ userId: squadMembers.userId })
+    .from(squadMembers)
+    .where(and(eq(squadMembers.roomId, mine.roomId), isNull(squadMembers.leftAt)));
+  const ids = people.map((p) => p.userId);
+  const [others] = await db
+    .select({ n: count() })
+    .from(fishLines)
+    .where(and(inArray(fishLines.userId, ids), ne(fishLines.userId, userId), eq(fishLines.spot, "pond")));
+  return {
+    roomId: mine.roomId,
+    h: mine.h,
+    real: ids.length,
+    othersIn: Number(others?.n ?? 0),
+    school: Boolean(mine.schoolUntil && mine.schoolUntil.getTime() > now),
+    schools: mine.schools,
+  };
+}
+
+/**
+ * 鱼群: every real player in the room with a line in, two or more, none on now and fewer than SCHOOLS_A_ROUND this 局:
+ * a cast brings one SCHOOL_CHANCE of the time, SCHOOL_MS long, and the room is told
+ */
+async function maybeSchool(pond: NonNullable<Awaited<ReturnType<typeof pondOf>>>, now: number, random: () => number) {
+  if (pond.school || pond.schools >= SCHOOLS_A_ROUND || pond.real < 2 || pond.othersIn + 1 < pond.real || random() >= SCHOOL_CHANCE) return;
+  const [came] = await db
+    .update(squadRooms)
+    .set({ schoolUntil: new Date(now + SCHOOL_MS), schools: sql`${squadRooms.schools} + 1` })
+    .where(
+      and(
+        eq(squadRooms.id, pond.roomId),
+        lt(squadRooms.schools, SCHOOLS_A_ROUND),
+        or(isNull(squadRooms.schoolUntil), lt(squadRooms.schoolUntil, new Date(now))),
+      ),
+    )
+    .returning({ id: squadRooms.id });
+  if (came) await tellSquadPond(pond.roomId);
 }
 
 /** The player's hour by their own clock, from minutes east of UTC as the page gives them (nothing given: Beijing) */
@@ -133,13 +189,35 @@ export async function fishState(user: Pick<UserRow, "id">, after: unknown, now =
  * bank (pier) in this part. tz: the page's minutes east of UTC, for the hours some things bite in.
  */
 export async function castLine(
-  user: Pick<UserRow, "id">,
+  user: Pick<UserRow, "id" | "email">,
   body: Record<string, unknown>,
   now = Date.now(),
   random: () => number = Math.random,
 ): Promise<{ now: number; casts: number; line: FishLine }> {
-  if (body.spot !== "pier") throw refuse(400, T.server.fish.badSpot);
-  const spot: FishSpot = "pier";
+  if (body.spot !== "pier" && body.spot !== "pond") throw refuse(400, T.server.fish.badSpot);
+  const spot: FishSpot = body.spot;
+  // the bank is FISH's; 卫戍池塘 is the room's, for one in a room
+  const pond = spot === "pond" ? await pondOf(user.id, now) : null;
+  if (spot === "pond" && !pond) throw refuse(409, T.server.fish.noPond);
+  if (spot === "pier" && !fishOpen(user)) throw refuse(404, T.server.routes.fish.notHere);
+  const cast = await castIn(user, spot, pond, body, now, random);
+  // 卫戍池塘: the room sees the float by the caster, and a 鱼群 may come
+  if (pond) {
+    await tellSquadPond(pond.roomId, pond.h);
+    await maybeSchool(pond, now, random);
+  }
+  return cast;
+}
+
+/** The cast itself, in one go: the day's count, the draw, the line in */
+async function castIn(
+  user: Pick<UserRow, "id">,
+  spot: FishSpot,
+  pond: Awaited<ReturnType<typeof pondOf>>,
+  body: Record<string, unknown>,
+  now: number,
+  random: () => number,
+): Promise<{ now: number; casts: number; line: FishLine }> {
   const day = siteDay(now);
   // the others on the bank: the player's own line there is not one of them
   const [[own], bank] = await Promise.all([db.select({ spot: fishLines.spot }).from(fishLines).where(eq(fishLines.userId, user.id)), bankCount(now)]);
@@ -167,7 +245,15 @@ export async function castLine(
         .groupBy(dexRows.item);
       for (const r of rows) caught.set(r.item, r.n);
     }
-    const roll = rollCatch({ spot, dry: today.dry, hour: localHour(now, body.tz), crowd, caught: (no) => caught.get(no) ?? 0, random });
+    const roll = rollCatch({
+      spot,
+      dry: today.dry,
+      hour: localHour(now, body.tz),
+      crowd,
+      caught: (no) => caught.get(no) ?? 0,
+      ...(pond ? { together: pond.othersIn + 1, school: pond.school } : {}),
+      random,
+    });
     await tx
       .update(fishDays)
       .set({ dry: dryAfter(today.dry, roll.tier) })
@@ -181,9 +267,13 @@ export async function castLine(
   });
 }
 
-/** The line taken back before (or without) pulling: nothing caught, the cast not given back */
+/** The line taken back before (or without) pulling: nothing caught, the cast not given back; 卫戍池塘's room told */
 export async function pullBack(user: Pick<UserRow, "id">, now = Date.now()) {
-  await db.delete(fishLines).where(eq(fishLines.userId, user.id));
+  const [gone] = await db.delete(fishLines).where(eq(fishLines.userId, user.id)).returning({ spot: fishLines.spot });
+  if (gone?.spot === "pond") {
+    const pond = await pondOf(user.id, now);
+    if (pond) await tellSquadPond(pond.roomId, pond.h);
+  }
   return { now };
 }
 
@@ -195,7 +285,8 @@ export async function pullBack(user: Pick<UserRow, "id">, now = Date.now()) {
  */
 export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ now: number; caught: FishCatch; admiral: boolean }> {
   const day = siteDay(now);
-  return db.transaction(async (tx) => {
+  const pondTold: { roomId: string; h: number; shout: boolean }[] = [];
+  const res = await db.transaction(async (tx) => {
     const [line] = await tx
       .delete(fishLines)
       .where(and(eq(fishLines.userId, user.id), lt(fishLines.biteAt, new Date(now + 1))))
@@ -247,6 +338,15 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
       .values({ userId: user.id, day, junk, admiral })
       .onConflictDoUpdate({ target: [fishDays.userId, fishDays.day], set: { junk, admiral } });
     const tier = item?.tier ?? 1;
+    // 卫戍池塘: the 鳞 of this 局 (爆护), and the room told; purple and up said to it with the name
+    if (line.spot === "pond") {
+      const [member] = await tx
+        .update(squadMembers)
+        .set(item?.cat === "fish" ? { fishN: sql`${squadMembers.fishN} + 1` } : { fishN: squadMembers.fishN })
+        .where(and(eq(squadMembers.userId, user.id), isNull(squadMembers.leftAt)))
+        .returning({ roomId: squadMembers.roomId, h: squadMembers.handle });
+      if (member) pondTold.push({ roomId: member.roomId, h: member.h, shout: tier >= SHOUT_TIER });
+    }
     if (tier >= SHOUT_TIER && line.spot === "pier") {
       await tx.insert(fishShouts).values({ userId: user.id, spot: line.spot, item: line.item, variant: line.variant, cm, at: new Date(now) });
       await tx.delete(fishShouts).where(lt(fishShouts.at, new Date(now - 12 * SHOUT_KEEP_MS)));
@@ -267,6 +367,11 @@ export async function reelIn(user: Pick<UserRow, "id">, now = Date.now()): Promi
       },
     };
   });
+  for (const p of pondTold) {
+    if (p.shout) sayFishInRoom(p.roomId, { h: p.h, no: res.caught.no, variant: res.caught.variant, cm: res.caught.cm });
+    await tellSquadPond(p.roomId, p.h);
+  }
+  return res;
 }
 
 /** The player's dex (each cell caught, how often, the biggest, first when and where) and the site's biggest of each */

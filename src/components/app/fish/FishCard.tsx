@@ -1,8 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { T } from "@/i18n";
 import { itemOf, VARIANT_KEYS } from "@/lib/fish/items";
+import { cmText, picOf } from "./words";
 
 /**
  * 钓鳞's items on the game's warehouse discs: round, cement grey inside (dark with its colour rising from below for
@@ -11,22 +11,7 @@ import { itemOf, VARIANT_KEYS } from "@/lib/fish/items";
  * A variant is the same picture through its filter or scale; one not caught yet, its dark shape on a paler disc.
  */
 
-type Words = { name: string; use: string; flavor: string; hint?: string };
-
-/** An item's words (zh.ts fish.items), by its key */
-export const wordsOf = (key: string): Words | null => (T.fish.items as Record<string, Words | undefined>)[key] ?? null;
-
-/** An item's name with its variant before it, or ？？？ for one with no words yet */
-export function nameOf(no: number, variant = 0): string {
-  const w = wordsOf(itemOf(no)?.key ?? "");
-  return w?.name ? `${T.fish.variants[variant] ?? ""}${w.name}` : T.fish.dexPage.unknown;
-}
-
-/** Its picture, by key (public/fish) */
-export const picOf = (key: string) => `/fish/${key}.webp`;
-
-/** A size in hundredths of a cm, as 38.07 */
-export const cmText = (cm: number) => (cm / 100).toFixed(2);
+export { cmText, nameOf, picOf, wordsOf } from "./words";
 
 export default function FishCard({
   no,
