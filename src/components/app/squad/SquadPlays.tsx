@@ -108,6 +108,17 @@ export function ModePlayIcon({ kind }: { kind: SquadModeKind }) {
         <path d="M27 27.5l2.6 2.6 5.4-6.4" fill="none" stroke="#d2342a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
+  if (kind === "race")
+    return (
+      <svg className="pg-ico race" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M2.5 15h7M1 21.5h8M3 28h6.5" stroke="#b8860b" strokeWidth="2.2" strokeLinecap="round" />
+        <rect x="11" y="10" width="26" height="22" rx="2.6" fill="#d9a066" stroke="#7a4a22" strokeWidth="1.8" />
+        <rect x="21" y="10" width="6" height="22" fill="#ffd23f" />
+        <path d="M11 16.5h26" stroke="#7a4a22" strokeWidth="1.4" opacity="0.6" />
+        <rect x="14" y="21" width="5" height="6" rx="1" fill="#fff" stroke="#7a4a22" strokeWidth="1.2" />
+        <path d="M31 21.5l2.2 2.2-2.2 2.2" fill="none" stroke="#1b1d22" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
   return (
     <svg className="pg-ico gift" viewBox="0 0 40 40" aria-hidden="true">
       <path d="M20 15 Q18.5 7 25 4" stroke="#3a3f47" strokeWidth="2" fill="none" />

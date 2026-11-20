@@ -107,6 +107,8 @@ export const squadApi = {
   answer: (n: number, pick: number, at: number) => call<QuizAnswered>("answer", post({ n, pick, at })),
   /** W 的礼物: 传, the gift in your hands on to the next seat, at the server's clock as this page has it; its time as taken */
   pass: (at: number) => call<{ now: number; at: number }>("pass", post({ at })),
+  /** 企鹅物流急件赛: 加油 (tap: how many since the last) or 跳 (jump), at the server's clock as this page has it; as taken */
+  run: (body: { tap: number; at: number } | { jump: true; at: number }) => call<{ now: number; h: number; tap?: [number, number]; jump?: number }>("run", post(body)),
   /** 火焰周榜: this week's or last week's, and your room on it */
   fireBoard: (week: "this" | "last") => call<FireBoard>("fireboard", post({ week })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */

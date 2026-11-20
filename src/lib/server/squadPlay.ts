@@ -5,19 +5,7 @@ import { fmt, T } from "@/i18n";
 import { FISH_ITEMS } from "../fish/items";
 import { NOT_IN_ROOM } from "../squad";
 import { weekStartOf } from "../hotList";
-import {
-  BALL_BACK_MS,
-  shakes,
-  fireAdd,
-  fireLit,
-  THROW_EVERY_MS,
-  throwOf,
-  THROWS,
-  THROWS_AT_A_MINUTE,
-  woodAfter,
-  woodNow,
-  type SquadFire,
-} from "../squadFire";
+import { BALL_BACK_MS, fireAdd, fireLit, shakes, THROW_EVERY_MS, throwable, THROWS, THROWS_AT_A_MINUTE, woodAfter, woodNow, type SquadFire } from "../squadFire";
 import { blockedBetween } from "./blocks";
 import { db } from "./db";
 import { HttpError } from "./http";
@@ -120,7 +108,8 @@ export async function addWood(
 
 /** 扔: item (THROWS, by number) at the one numbered to in the room; what stays on TA is kept a while; the room told */
 export async function throwAt(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now(), rand: (n: number) => number = randomInt) {
-  const item = throwOf(body.item);
+  // a prize (急件赛's crown) is worn, never thrown
+  const item = throwable(body.item);
   const to = handleOf(body.to);
   if (!item || to === null) throw refuse(400, T.server.squad.badThrow);
   const mine = await roomOf(db, user.id);

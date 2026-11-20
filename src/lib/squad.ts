@@ -468,7 +468,7 @@ export type SquadTell =
        * out of it, invited, 下次吧)
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race";
         h?: number;
         to?: SquadState;
         round?: SquadRound;
@@ -490,6 +490,8 @@ export type SquadTell =
   | { t: "throw"; room: string; items: { h: number; to: number; item: number; out?: number; n?: number; back?: true }[] }
   /** 龙门广场舞's taps, batched as the lines are: h's combo now, whether the tap was on the beat, and when (the server's clock) */
   | { t: "dance"; room: string; items: { h: number; combo: number; ok: boolean; at: number }[] }
+  /** 企鹅物流急件赛's 加油 counts ([when, how many]) and 跳s (when), each quarter second (the server's clock) */
+  | { t: "race"; room: string; items: { h: number; tap?: [number, number]; jump?: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
 

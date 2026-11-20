@@ -83,12 +83,14 @@ describe("「玩」's tiles", () => {
 
   it("shows every game as an icon and its name, nothing more", () => {
     const html = grid(room({ fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 } }));
-    expect(html.match(/<button type="button" class="tile/g)).toHaveLength(5);
+    expect(html.match(/<button type="button" class="tile/g)).toHaveLength(6);
     expect(html).toContain("<b>钓鳞</b>");
     expect(html).toContain("<b>添柴</b>");
     expect(html).toContain("<b>龙门广场舞</b>");
     expect(html).toContain("<b>凯尔希随堂测</b>");
     expect(html).toContain("<b>W 的礼物</b>");
+    expect(html).toContain("<b>企鹅物流急件赛</b>");
+    expect(html).toContain('class="pg-ico race"');
     expect(html).not.toContain("<small>");
     expect(html).not.toContain('class="now"');
   });
@@ -129,7 +131,7 @@ describe("「玩」's tiles", () => {
     const mine = grid(room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 3 }] }) }));
     expect(mine).toContain('<em class="tag in">在玩</em>');
     const waiting = grid(room({ modeAgain: NOW + 44_200 }));
-    expect(waiting.match(/<em class="tag">45s<\/em>/g)).toHaveLength(3);
+    expect(waiting.match(/<em class="tag">45s<\/em>/g)).toHaveLength(4);
     expect(waiting).toContain('aria-label="龙门广场舞 · 45 秒后能再开"');
     expect(grid(room(), "rest", "等这局完")).toContain('<p class="pmsg" role="status">等这局完</p>');
   });

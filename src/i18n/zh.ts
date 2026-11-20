@@ -746,6 +746,11 @@ export const zh = {
       giftStopped: "这一轮已经停了。",
       giftNotYet: "这一轮还没开始。",
       noGiftSong: "现在没有能跟着打鼓的歌。",
+      raceNotYet: "还没开跑。",
+      raceOver: "这一场已经跑完了。",
+      notRacing: "先加入才能跑。",
+      raceIn: "你已经到了。",
+      inAir: "还在空中。",
     },
     routes: {
       world: {
@@ -2844,6 +2849,8 @@ export const zh = {
       /** Each thing: its name in the picker, and what shows over TA's tile as it lands */
       items: {
         halo: { name: "拉特兰的光环", say: "光环扣头上 1 分钟" },
+        /** Not thrown: 企鹅物流急件赛's winner wears it */
+        crown: { name: "急件赛小冠", say: "小冠戴 1 分钟" },
         glowstick: { name: "应援棒", say: "应援！" },
         applepie: { name: "能天使的苹果派", say: "一块苹果派" },
         coins: { name: "一把龙门币", say: "老板大气" },
@@ -2868,18 +2875,24 @@ export const zh = {
       in: "在玩 · 打开",
       wait: "等这局完",
       again: "{s} 秒后能再开",
-      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物" },
+      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛" },
       /** On a tile of the room, for one in it */
-      tileTags: { dance: "在跳", quiz: "在答", gift: "在传" },
+      tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑" },
       /** Said to those who were in it or looking at it, as it ends */
-      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了" },
+      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了" },
       /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
       invites: {
         dance: "{name} 开了{mode}（{n} 人在跳），加入？",
         quiz: "{name} 开了{mode}（{n} 人在答），加入？",
         gift: "{name} 开了{mode}（{n} 人在传），加入？",
+        race: "{name} 开了{mode}（{n} 人在跑），加入？",
       },
-      invitesNoBy: { dance: "{mode}正在跳（{n} 人），加入？", quiz: "{mode}正在答（{n} 人），加入？", gift: "{mode}正在传（{n} 人），加入？" },
+      invitesNoBy: {
+        dance: "{mode}正在跳（{n} 人），加入？",
+        quiz: "{mode}正在答（{n} 人），加入？",
+        gift: "{mode}正在传（{n} 人），加入？",
+        race: "{mode}正在跑（{n} 人），加入？",
+      },
       inviteJoin: "加入",
       inviteNo: "不了",
       inviteNoLabel: "不加入{mode}",
@@ -2934,6 +2947,56 @@ export const zh = {
       ended: "广场舞散场了",
     },
     /** 凯尔希随堂测 (src/components/app/squad/SquadQuiz.tsx), a mode of 玩点什么 */
+    /** 企鹅物流急件赛 (src/components/app/squad/SquadRace.tsx), a mode of 玩点什么 */
+    race: {
+      title: "企鹅物流急件赛",
+      count: "企鹅物流急件赛 · {n} 人",
+      startsIn: "{s} 秒后开跑",
+      /** The bar over the street: your place and how far is left, your time in, or one watching (the leader's) */
+      status: "第 {rank} · 离大帝还有 {m} m",
+      statusIn: "送到了！你第 {rank} 个签收",
+      statusWatch: "跑在最前面的离大帝还有 {m} m",
+      checking: "终点核对中…",
+      won: "{name} 第一个签收！",
+      wonYou: "你第一个签收！小冠戴 1 分钟",
+      wonPractice: "你第一个签收！（自己练，不戴小冠）",
+      youPlace: "你第 {rank}",
+      /** One out of sight, at the edge of the street */
+      behind: "◀ {name} 落后 {m} m",
+      ahead: "{name} 领先 {m} m ▶",
+      /** The shops' signs along the street */
+      signs: ["企鹅物流", "龙门近卫局", "可露希尔商店", "罗德岛 · 招人", "塞壬唱片", "龙门外环"],
+      metres: "{m} m",
+      finish: "终点 · 大帝签收",
+      signed: "已签收",
+      van: "企鹅物流",
+      vanEn: "PENGUIN LOGISTICS",
+      /** Said over your roach at an obstacle */
+      tips: {
+        potion: "喝了理智顶液，冲！",
+        potionMissed: "跳过头了，理智顶液没吃到",
+        jumped: "跳过去了",
+        water: "踩到白开水，滑了一下",
+        slug: "被源石虫挡住了",
+        bar: "撞上近卫局路障，摔了一跤",
+      },
+      rate: "加油每秒最多算 6 下",
+      jump: "跳",
+      cheer: "加油！",
+      join: "下一场加入",
+      queued: "下一场开跑时你就在里面",
+      watching: "你在围观这一场，加入以后下一场开跑时就在里面",
+      leave: "不跑了，去围观",
+      results: "这一场",
+      place: "第 {n}",
+      time: "{s} 秒",
+      notIn: "没跑完 · {m} m",
+      crown: "小冠",
+      practice: "一个人自己练，不戴小冠",
+      again: "再来一场",
+      note: "每只蟑螂背一个企鹅物流的快递，在龙门街上跑 300 米，先送到大帝手里的赢。镜头跟着你走，前面有什么要跑近了才看到；上面那条只画四个人在哪。狂点「加油」跑得快（每秒最多算 6 下）；看到白开水、源石虫、近卫局路障就点「跳」，理智顶液别跳，吃到冲一下。空道人机来跑，最多 30 秒；第一个签收的头上小冠 1 分钟，1 个人时是自己练。",
+      close: "关上急件赛",
+    },
     /** W 的礼物 (src/components/app/squad/SquadGift.tsx), a mode of 玩点什么 */
     gift: {
       title: "W 的礼物",

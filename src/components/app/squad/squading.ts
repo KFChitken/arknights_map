@@ -24,7 +24,7 @@ import {
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
 import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
-import { beatOff, DANCE_TAP_EVERY_MS, DANCE_WINDOW_MS, danceEnds, type SquadModeKind } from "@/lib/squadMode";
+import { beatOff, DANCE_TAP_EVERY_MS, DANCE_WINDOW_MS, danceEnds, RACE_TAPS_MAX, type SquadModeKind } from "@/lib/squadMode";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
 import { cmText, nameOf } from "../fish/words";
@@ -456,6 +456,22 @@ export function heardSquad(raw: unknown) {
     room.set(withWant({ ...r, mode: { ...mode, in: dancers, endsAt } }));
     return;
   }
+  // 企鹅物流急件赛: what the others did, into their lanes (your own went in as you did it)
+  if (tell.t === "race") {
+    const mode = r.mode;
+    if (mode?.kind !== "race") return;
+    const lanes = mode.lanes.map((l) => {
+      const mine = tell.items.filter((x) => x.h === l.h && x.h !== r.you);
+      if (!mine.length) return l;
+      return {
+        ...l,
+        taps: [...l.taps, ...mine.flatMap((x) => (x.tap ? [x.tap] : []))],
+        jumps: [...l.jumps, ...mine.flatMap((x) => (x.jump === undefined ? [] : [x.jump]))],
+      };
+    });
+    room.set(withWant({ ...r, mode: { ...mode, lanes } }));
+    return;
+  }
   // 卫戍池塘: a teammate's purple or better, to the whole room by name (your own has its page)
   if (tell.t === "fish") {
     for (const it of tell.items) {
@@ -476,6 +492,12 @@ export function heardSquad(raw: unknown) {
       // 玩点什么: a mode over (by itself) is said to those who were in it or looking at it; one opened asks the others itself
       if (what.kind === "mode") {
         if (!next.mode && what.on === false && what.h === undefined && was) addFloat(T.squad.modes.ended[was]);
+        // a race opened with you in it (you asked for the next one): its card opens
+        const m = next.mode;
+        if (what.on && m?.kind === "race" && m.by !== next.you && m.in.some((x) => x.h === next.you)) {
+          modeAsked.set(m.at);
+          modeCard.set(m.at);
+        }
         return;
       }
       // what you did yourself is not said back to you
@@ -772,6 +794,48 @@ export async function squadGiftPass() {
   }
 }
 
+/** 企鹅物流急件赛's 加油 since the last sent, sent every RACE_SEND_MS (a lane's run counts them by the second) */
+const RACE_SEND_MS = 250;
+let raceTaps = 0;
+let raceTimer = 0;
+
+/** Your own lane in the race playing, what you did added at once (as the server will take it) */
+function ownLane(add: { tap?: [number, number]; jump?: number }) {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "race") return;
+  const lanes = mode.lanes.map((l) =>
+    l.h === r.you ? { ...l, taps: add.tap ? [...l.taps, add.tap] : l.taps, jumps: add.jump === undefined ? l.jumps : [...l.jumps, add.jump] } : l,
+  );
+  room.set(withWant({ ...r, mode: { ...mode, lanes } }));
+}
+
+/** 加油: counted here, sent with the others of the next quarter second (your lane runs on them as they go) */
+export function squadRaceTap() {
+  raceTaps += 1;
+  if (raceTimer) return;
+  raceTimer = window.setTimeout(() => {
+    raceTimer = 0;
+    const n = Math.min(RACE_TAPS_MAX, raceTaps);
+    raceTaps = 0;
+    const at = squadServerNow();
+    ownLane({ tap: [at, n] });
+    timed(() => squadApi.run({ tap: n, at })).catch(() => void loadSquadRoom().catch(() => {}));
+  }, RACE_SEND_MS);
+}
+
+/** 跳, now on the server's clock as this page has it: your roach in the air at once; refused, the room read again */
+export async function squadRaceJump() {
+  const at = squadServerNow();
+  ownLane({ jump: at });
+  try {
+    return await timed(() => squadApi.run({ jump: true, at }));
+  } catch (e) {
+    void loadSquadRoom().catch(() => {});
+    throw e;
+  }
+}
+
 /** 凯尔希随堂测's question n for this page: its three, and its picture or (where 听歌 is open to the player) its song */
 export const squadQuizAsk = (n: number) => timed(() => squadApi.question(n));
 
@@ -906,6 +970,9 @@ export async function declareSquadRoom(from: string[] | null) {
 /** Signed out: nothing kept */
 export function forgetSquadPage() {
   roundWant = null;
+  raceTaps = 0;
+  if (raceTimer) window.clearTimeout(raceTimer);
+  raceTimer = 0;
   window.clearTimeout(roundTimer);
   talkOpen.set(false);
   setRoom(null);

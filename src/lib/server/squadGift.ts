@@ -40,7 +40,7 @@ const LADLE = THROWS.find((t) => t.key === "ladle")!.no;
 const BOT_LOOKS = ROACH_AVATARS.filter((a) => a !== "duck");
 
 /** The room's own 人机 now, by number, in the order they came */
-async function roomBotsOf(exec: Tx | typeof db, roomId: string): Promise<{ h: number; no: number }[]> {
+export async function roomBotsOf(exec: Tx | typeof db, roomId: string): Promise<{ h: number; no: number }[]> {
   return exec
     .select({ h: squadBots.handle, no: squadBots.no })
     .from(squadBots)
@@ -49,12 +49,23 @@ async function roomBotsOf(exec: Tx | typeof db, roomId: string): Promise<{ h: nu
 }
 
 /** Those playing it now (not 人机), as they came (each one's coming kept in mode_tap_at) */
-async function playersOf(exec: Tx | typeof db, roomId: string): Promise<number[]> {
+export async function playersOf(exec: Tx | typeof db, roomId: string): Promise<number[]> {
   const rows = await exec
     .select({ h: squadMembers.handle, at: squadMembers.modeTapAt })
     .from(squadMembers)
     .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt), eq(squadMembers.modeIn, true)));
   return rows.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0) || a.h - b.h).map((r) => r.h);
+}
+
+/** The mode's own 人机 (enough for every seat but one), numbered after the room's, each its look */
+export function modeBots(roomBots: readonly { no: number }[], rand: (n: number) => number): GiftBot[] {
+  const used = new Set(roomBots.map((b) => b.no));
+  const bots: GiftBot[] = [];
+  for (let no = 1; bots.length < GIFT_SEATS - 1; no++) {
+    if (used.has(no)) continue;
+    bots.push({ h: GIFT_BOT_FROM - bots.length, no, avatar: BOT_LOOKS[rand(BOT_LOOKS.length)], color: ROACH_COLORS[rand(ROACH_COLORS.length)] });
+  }
+  return bots;
 }
 
 /**
@@ -66,12 +77,7 @@ export async function makeGift(roomId: string, opener: number, now: number, rand
   const lens = Array.from({ length: GIFT_ROUNDS }, () => GIFT_ROUND_MIN_MS + rand(GIFT_ROUND_MAX_MS - GIFT_ROUND_MIN_MS + 1));
   const plan = giftPlan(now, lens);
   const roomBots = await roomBotsOf(db, roomId);
-  const used = new Set(roomBots.map((b) => b.no));
-  const bots: GiftBot[] = [];
-  for (let no = 1; bots.length < GIFT_SEATS - 1; no++) {
-    if (used.has(no)) continue;
-    bots.push({ h: GIFT_BOT_FROM - bots.length, no, avatar: BOT_LOOKS[rand(BOT_LOOKS.length)], color: ROACH_COLORS[rand(ROACH_COLORS.length)] });
-  }
+  const bots = modeBots(roomBots, rand);
   const seats = giftSeats(
     [],
     [opener],

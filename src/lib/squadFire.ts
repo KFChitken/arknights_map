@@ -184,10 +184,18 @@ export const THROWS = [
   { no: 13, key: "potion_full", group: "effect", fx: "side" },
   { no: 14, key: "parcel", group: "effect", fx: "parcel" },
   { no: 15, key: "vinyl", group: "effect", fx: "dance", ms: 6_000 },
+  // never thrown (no group the picker shows): 企鹅物流急件赛's winner wears it
+  { no: 16, key: "crown", group: "prize", fx: "head", ms: 60_000 },
 ] as const satisfies readonly { no: number; key: string; group: string; fx: string; ms?: number; shake?: boolean }[];
 export type ThrowItem = (typeof THROWS)[number];
-export type ThrowGroup = ThrowItem["group"];
+/** The picker's groups (a prize is never thrown) */
+export type ThrowGroup = Exclude<ThrowItem["group"], "prize">;
 export const THROW_GROUPS: readonly ThrowGroup[] = ["praise", "tease", "rally", "effect"];
+/** One of the things that may be thrown (by number), or null: none, or a prize only worn */
+export const throwable = (no: unknown): ThrowItem | null => {
+  const t = throwOf(no);
+  return t && (THROW_GROUPS as readonly string[]).includes(t.group) ? t : null;
+};
 export const throwOf = (no: unknown): ThrowItem | null => THROWS.find((t) => t.no === no) ?? null;
 /** Whether what sits on a head (by number) stays till its one shakes it off (源石虫) */
 export const shakes = (no: number) => {

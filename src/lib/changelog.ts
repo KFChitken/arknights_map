@@ -10,6 +10,7 @@ export const CHANGELOG: readonly ChangeRow[] = [
   { date: "2026-11-20", kind: "chore", text: "后台调整" },
   { date: "2026-11-20", kind: "chore", text: "后台调整" },
   { date: "2026-11-20", kind: "chore", text: "后台调整" },
+  { date: "2026-11-20", kind: "chore", text: "后台调整" },
   { date: "2026-11-20", kind: "new", text: "介绍页有了中文版，开头显示现在的人数" },
   { date: "2026-11-20", kind: "chore", text: "后台调整" },
   { date: "2026-11-20", kind: "chore", text: "后台调整" },

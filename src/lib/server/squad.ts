@@ -10,7 +10,7 @@ import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { modeEnds, type GiftData, type QuizData, type SquadMode } from "../squadMode";
+import { modeEnds, type GiftData, type QuizData, type RaceData, type SquadMode } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -336,6 +336,43 @@ export function danceInRoom(roomId: string, danced: Danced) {
   b.push(danced);
 }
 
+/** 企鹅物流急件赛's own batches: what each did, told to the room RACE_BATCH_MS after the first */
+type Raced = Extract<SquadTell, { t: "race" }>["items"][number];
+const RACE_BATCH_MS = 250;
+const gr = globalThis as unknown as { squadRaces?: Map<string, { items: Raced[]; timer: ReturnType<typeof setTimeout> }> };
+const raced = (gr.squadRaces ??= new Map());
+
+/** For 企鹅物流急件赛 (src/lib/server/squadModes.ts): a 加油 count or a 跳, told to the whole room with the next quarter second's */
+export function raceInRoom(roomId: string, did: Raced) {
+  let b = raced.get(roomId);
+  if (!b) {
+    b = { items: [], timer: setTimeout(() => void flushRace(roomId), RACE_BATCH_MS) };
+    b.timer.unref?.();
+    raced.set(roomId, b);
+  }
+  b.items.push(did);
+}
+
+async function flushRace(roomId: string) {
+  const b = raced.get(roomId);
+  raced.delete(roomId);
+  if (!b?.items.length) return;
+  try {
+    const ids = (await hearersOf(roomId)).map((r) => r.userId);
+    tellSquad(ids, { t: "race", room: roomId, items: b.items } satisfies SquadTell);
+  } catch (e) {
+    console.error("squad: telling a room its race failed", e);
+  }
+}
+
+/** For tests: the race's batches waiting to go out now, gone */
+export async function flushRacesNow() {
+  for (const [roomId, b] of [...raced]) {
+    clearTimeout(b.timer);
+    await flushRace(roomId);
+  }
+}
+
 /** For 卫戍池塘 (src/lib/server/fish.ts): tell the room someone's line went in or came out, or a 鱼群 came */
 export const tellSquadPond = (roomId: string, h?: number) => tellRoom(roomId, { kind: "pond", ...(h === undefined ? {} : { h }) });
 
@@ -527,6 +564,19 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
       seed: data.seed,
       rounds: giftView(data, now),
       bots: data.bots,
+    };
+  }
+  if (room.mode === "race" && room.modeData) {
+    const data = room.modeData as RaceData;
+    return {
+      kind: "race",
+      ...base,
+      start: data.start,
+      seed: data.seed,
+      lanes: data.lanes.map((l) => ({ h: l.h, taps: [...l.taps], jumps: [...l.jumps] })),
+      obs: data.obs,
+      bots: data.bots,
+      ...(data.end ? { end: data.end } : {}),
     };
   }
   if (room.mode !== "dance" || !room.modeSong || !room.modeSongAt) return null;

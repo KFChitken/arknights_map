@@ -12,7 +12,7 @@
  */
 
 /** The modes there are (⑦ adds them one by one) */
-export const MODE_KINDS = ["dance", "quiz", "gift"] as const;
+export const MODE_KINDS = ["dance", "quiz", "gift", "race"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
 
@@ -75,7 +75,12 @@ export type QuizMode = ModeBase & { kind: "quiz"; questions: QuizQuestion[] };
  * begun (GiftRound); the mode's own 人机 (GiftBot). Its points (in) are how often each was hit.
  */
 export type GiftMode = ModeBase & { kind: "gift"; song: string; name: string; songAt: number; seed: number; rounds: GiftRound[]; bots: GiftBot[] };
-export type SquadMode = DanceMode | QuizMode | GiftMode;
+/**
+ * 企鹅物流急件赛: its start, the lanes with what their players did (RaceLane), the obstacles, the seed its 人机 run by,
+ * the mode's own 人机; once it is over and the server settled it, the order they signed in (RaceEnd)
+ */
+export type RaceMode = ModeBase & { kind: "race"; start: number; seed: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
+export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode;
 
 // ---- 凯尔希随堂测 ----
 
@@ -286,3 +291,209 @@ export function giftPlan(at: number, lens: readonly number[]) {
 export const giftUntil = (plan: readonly { stop: number }[]) => (plan.at(-1)?.stop ?? 0) + GIFT_GAP_MS + GIFT_RESULT_MS;
 /** As late as it could be over, from its first round's start: what the pages are told till its last round's song has stopped */
 export const giftLatest = (first: number) => first + GIFT_ROUNDS * (GIFT_ROUND_MAX_MS + GIFT_GAP_MS) + GIFT_RESULT_MS;
+
+// ---- 企鹅物流急件赛 ----
+
+/**
+ * 企鹅物流急件赛 (race): RACE_LANES roaches, each with a 企鹅物流 parcel, run RACE_M metres down a street of 龙门
+ * (10 px a metre on the page) to 大帝 at its end: those in it, then the room's 人机, then the mode's own to fill the
+ * lanes. A player runs RACE_BASE m/s, and RACE_PER_TAP more for each 加油 in the last second (RACE_TAPS_MAX at most);
+ * a 人机 takes a speed between RACE_BOT_MIN and RACE_BOT_MAX every RACE_BOT_EVERY_MS. On the way, the same in every
+ * lane: 理智顶液 (run RACE_POTION_PLUS faster RACE_POTION_MS, unless jumped over), 白开水 (RACE_WATER_SLOW of the speed
+ * RACE_WATER_MS), 源石虫 (stopped RACE_SLUG_MS) and 近卫局路障 (stopped RACE_BAR_MS), none of which hurt one in the
+ * air (a jump: RACE_JUMP_MS); a 人机 jumps RACE_BOT_JUMPS of the time RACE_BOT_SEE_M before an obstacle. Speeds
+ * change smoothly (RACE_EASE). It starts RACE_LEAD_MS after it opens and ends when all are in, or RACE_MAX_MS on;
+ * the server settles the order (from what each did, by the same rule the pages draw it by) and RACE_RESULT_MS later
+ * it is over. The first in, a player, with two or more players in it, wears a small crown RACE_CROWN_MS.
+ */
+export const RACE_LANES = 4;
+export const RACE_M = 300;
+export const RACE_LEAD_MS = 3_000;
+export const RACE_MAX_MS = 30_000;
+export const RACE_RESULT_MS = 5_000;
+export const RACE_BASE = 7;
+export const RACE_PER_TAP = 2.4;
+export const RACE_TAPS_MAX = 6;
+export const RACE_BOT_EVERY_MS = 800;
+export const RACE_BOT_MIN = 12.5;
+export const RACE_BOT_MAX = 20;
+export const RACE_POTION_MS = 1_500;
+export const RACE_POTION_PLUS = 9;
+export const RACE_WATER_MS = 700;
+export const RACE_WATER_SLOW = 0.35;
+export const RACE_SLUG_MS = 600;
+export const RACE_BAR_MS = 900;
+export const RACE_JUMP_MS = 560;
+export const RACE_BOT_SEE_M = 4.6;
+export const RACE_BOT_JUMPS = 0.6;
+export const RACE_EASE = 6;
+export const RACE_CROWN_MS = 60_000;
+/** The rule runs in steps of this (ms), the same on the server and the pages */
+export const RACE_STEP_MS = 50;
+/** A 加油 count or a 跳's own time, as the page sends it on the server's clock, taken within this before the server's now */
+export const RACE_EARLY_MS = 400;
+/** The obstacles of a race: 白开水 twice, 源石虫, 理智顶液, 近卫局路障, at random between these (m), this far apart at least */
+export const RACE_OBSTACLES = ["water", "water", "slug", "potion", "bar"] as const;
+export const RACE_OBS_FROM = 40;
+export const RACE_OBS_TO = 270;
+export const RACE_OBS_GAP = 30;
+
+export type RaceKind = (typeof RACE_OBSTACLES)[number];
+export type RaceObstacle = { m: number; k: RaceKind };
+/** A lane: who runs it (a player's number, a 人机's below 0), the 加油 they sent ([when, how many]) and their 跳s (when) */
+export type RaceLane = { h: number; taps: [number, number][]; jumps: number[] };
+/** A race settled: when it ended, the lanes in the order they signed in, each one's time in (null: not in) and metres run */
+export type RaceEnd = { at: number; order: number[]; times: (number | null)[]; metres: number[] };
+/** As the server keeps it (squad_rooms.mode_data) */
+export type RaceData = { seed: number; start: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
+
+/** A number in [0, 1) from the race's seed and two more, the same everywhere */
+export function raceRand(seed: number, a: number, b: number): number {
+  let x = (seed ^ Math.imul(a + 1, 0x9e3779b1) ^ Math.imul(b + 7, 0x85ebca6b)) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x7feb352d) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x846ca68b) >>> 0;
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+}
+
+/** The race's obstacles from its seed: RACE_OBSTACLES in a random order, at random places RACE_OBS_GAP apart at least */
+export function raceObstacles(seed: number): RaceObstacle[] {
+  const kinds = [...RACE_OBSTACLES];
+  for (let i = kinds.length - 1; i > 0; i--) {
+    const j = Math.floor(raceRand(seed, 900, i) * (i + 1));
+    [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+  }
+  // places: the room left over shared out at random between the gaps
+  const spare = RACE_OBS_TO - RACE_OBS_FROM - RACE_OBS_GAP * (kinds.length - 1);
+  const cuts = kinds.map((_, i) => raceRand(seed, 901, i) * spare).sort((a, b) => a - b);
+  return kinds.map((k, i) => ({ m: Math.round(RACE_OBS_FROM + cuts[i] + i * RACE_OBS_GAP), k }));
+}
+
+export type RaceEffect = "" | "boost" | "slip" | "block" | "fall";
+/** Where everyone is at a moment of the race (t: ms from its start), as the rule has it */
+export type RaceNow = {
+  t: number;
+  x: number[];
+  v: number[];
+  effect: RaceEffect[];
+  air: boolean[];
+  /** How far into a jump each is (ms), or null on the ground */
+  airT: (number | null)[];
+  /** When each signed in (ms from the start), or null */
+  done: (number | null)[];
+  /** The 理智顶液 each has drunk */
+  ate: boolean[];
+  /** What happened to each at an obstacle last, and when (ms from the start) */
+  last: ({ k: RaceKind; jumped: boolean; t: number } | null)[];
+  over: boolean;
+};
+
+/** 加油 counted at t (absolute) from a lane's: those of the last second, RACE_TAPS_MAX at most */
+const tapsAt = (taps: readonly [number, number][], t: number) => {
+  let n = 0;
+  for (const [at, k] of taps) if (at > t - 1_000 && at <= t) n += k;
+  return Math.min(RACE_TAPS_MAX, n);
+};
+
+/**
+ * The race as it is at `now` (the server's clock): every lane run step by step from its start by the rule, from what
+ * its player did (players: lanes with a number 0 or above) or the seed (人机)
+ */
+export function raceRun(race: Pick<RaceData, "seed" | "start" | "lanes" | "obs">, now: number): RaceNow {
+  const n = race.lanes.length;
+  const until = Math.max(0, Math.min(now - race.start, RACE_MAX_MS));
+  const x = Array<number>(n).fill(0);
+  const v = Array<number>(n).fill(0);
+  const boost = Array<number>(n).fill(0);
+  const slow = Array<number>(n).fill(0);
+  const stun = Array<number>(n).fill(0);
+  const effect = Array<RaceEffect>(n).fill("");
+  const botJump = Array<number>(n).fill(-1);
+  const done = Array<number | null>(n).fill(null);
+  const ate = Array<boolean>(n).fill(false);
+  const last: RaceNow["last"] = Array(n).fill(null);
+  const decided = race.lanes.map(() => new Set<number>());
+  const dt = RACE_STEP_MS / 1_000;
+  /** How far into a jump lane i is at t (ms from the start), or null */
+  const jumpT = (i: number, t: number): number | null => {
+    const lane = race.lanes[i];
+    if (lane.h < 0) return botJump[i] >= 0 && t - botJump[i] < RACE_JUMP_MS ? t - botJump[i] : null;
+    const abs = race.start + t;
+    const j = lane.jumps.find((x) => x <= abs && abs < x + RACE_JUMP_MS);
+    return j === undefined ? null : abs - j;
+  };
+  const inAir = (i: number, t: number) => jumpT(i, t) !== null;
+  let t = 0;
+  for (; t < until; ) {
+    t += RACE_STEP_MS;
+    for (let i = 0; i < n; i++) {
+      if (done[i] !== null) continue;
+      const lane = race.lanes[i];
+      if (lane.h < 0 && !inAir(i, t)) {
+        const ahead = race.obs.findIndex((o) => o.k !== "potion" && o.m - x[i] > 0 && o.m - x[i] <= RACE_BOT_SEE_M);
+        if (ahead >= 0 && !decided[i].has(ahead)) {
+          decided[i].add(ahead);
+          if (raceRand(race.seed, i, 1_000 + ahead) < RACE_BOT_JUMPS) botJump[i] = t;
+        }
+      }
+      let base = lane.h < 0 ? RACE_BOT_MIN + (RACE_BOT_MAX - RACE_BOT_MIN) * raceRand(race.seed, i, Math.floor((t - RACE_STEP_MS) / RACE_BOT_EVERY_MS)) : RACE_BASE + RACE_PER_TAP * tapsAt(lane.taps, race.start + t);
+      if (boost[i] > 0) {
+        boost[i] -= RACE_STEP_MS;
+        base += RACE_POTION_PLUS;
+      }
+      if (slow[i] > 0) {
+        slow[i] -= RACE_STEP_MS;
+        base *= RACE_WATER_SLOW;
+      }
+      if (stun[i] > 0) {
+        stun[i] -= RACE_STEP_MS;
+        base = 0;
+      }
+      if (boost[i] <= 0 && slow[i] <= 0 && stun[i] <= 0) effect[i] = "";
+      v[i] += (base - v[i]) * Math.min(1, dt * RACE_EASE);
+      const before = x[i];
+      x[i] = Math.min(RACE_M, x[i] + v[i] * dt);
+      const air = inAir(i, t);
+      for (const o of race.obs) {
+        if (!(before < o.m && x[i] >= o.m)) continue;
+        if (o.k === "potion") {
+          if (!air) {
+            boost[i] = RACE_POTION_MS;
+            effect[i] = "boost";
+            ate[i] = true;
+          }
+        } else if (!air && o.k === "water") {
+          slow[i] = RACE_WATER_MS;
+          effect[i] = "slip";
+        } else if (!air && o.k === "slug") {
+          stun[i] = RACE_SLUG_MS;
+          effect[i] = "block";
+        } else if (!air && o.k === "bar") {
+          stun[i] = RACE_BAR_MS;
+          effect[i] = "fall";
+        }
+        last[i] = { k: o.k, jumped: air, t };
+      }
+      if (x[i] >= RACE_M) {
+        done[i] = t;
+        effect[i] = "";
+      }
+    }
+    if (done.every((d) => d !== null)) break;
+  }
+  const airT = race.lanes.map((_, i) => (done[i] === null ? jumpT(i, t) : null));
+  return { t, x, v, effect, air: airT.map((a) => a !== null), airT, done, ate, last, over: done.every((d) => d !== null) || t >= RACE_MAX_MS };
+}
+
+/** The lanes in the order they came in: those in first by their time, then the others by how far they ran */
+export function raceOrder(r: Pick<RaceNow, "x" | "done">): number[] {
+  return r.x
+    .map((_, i) => i)
+    .sort((a, b) => {
+      const da = r.done[a];
+      const db = r.done[b];
+      if (da !== null && db !== null) return da - db || a - b;
+      if (da !== null) return -1;
+      if (db !== null) return 1;
+      return r.x[b] - r.x[a] || a - b;
+    });
+}
