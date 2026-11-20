@@ -15,12 +15,15 @@ export type PondSeat = {
   admiral: boolean;
   said: string | null;
 };
-/** A flag on the wall for a core alliance picked in the room: its first character, its colours */
-export type PondFlag = { text: string; bg: string; fg: string };
+/**
+ * A flag on the wall for a strategy picked in the room: its operator's picture (pic), else the first character of
+ * their name (text); its colours (its core alliance's)
+ */
+export type PondFlag = { text: string; pic: string | null; bg: string; fg: string };
 
 /**
  * 钓鳞's two scenes in its small window (FishWin.tsx), 360 × 190 (the design's FishWin canvas): the bank (龙门外环's
- * sky, the city, the river, the pier with its lamp) and 卫戍池塘 (the defence wall with a flag for each core alliance
+ * sky, the city, the river, the pier with its lamp) and 卫戍池塘 (the defence wall with a flag for each strategy
  * picked, the fight's glow past it while a round plays, the pond, the room round it, the campfire). The rod, line,
  * float, shadows, the bite's ring and 咕咚, the reel and the leap are the full scenes' own (pose.ts), at this size.
  */
@@ -129,6 +132,10 @@ const PondBack = memo(function PondBack({ glow, school }: { glow: boolean; schoo
           <stop offset="0.55" stopColor="#23607f" />
           <stop offset="1" stopColor="#143850" />
         </radialGradient>
+        {/* a flag's operator picture, round */}
+        <clipPath id="pflag" clipPathUnits="objectBoundingBox">
+          <circle cx="0.5" cy="0.5" r="0.5" />
+        </clipPath>
       </defs>
       <rect x="0" y="0" width="360" height="40" fill="url(#psky)" />
       {glow && <ellipse className="fw-glow" cx="240" cy="40" rx="150" ry="34" fill="url(#pfire)" />}
@@ -264,10 +271,17 @@ export default function WinScene({
       {pond &&
         flags.slice(0, POLES.length).map((f, i) => (
           <g key={i}>
-            <polygon points={`${POLES[i] - 11},38 ${POLES[i] + 11},38 ${POLES[i] + 11},62 ${POLES[i]},57 ${POLES[i] - 11},62`} fill={f.bg} />
-            <text x={POLES[i]} y="54" textAnchor="middle" fontSize="11" fontWeight="900" fill={f.fg}>
-              {f.text}
-            </text>
+            <polygon points={`${POLES[i] - 13},38 ${POLES[i] + 13},38 ${POLES[i] + 13},66 ${POLES[i]},61 ${POLES[i] - 13},66`} fill={f.bg} />
+            {f.pic ? (
+              <>
+                <circle cx={POLES[i]} cy="49" r="10.2" fill={f.fg} />
+                <image href={f.pic} x={POLES[i] - 9.3} y="39.7" width="18.6" height="18.6" clipPath="url(#pflag)" />
+              </>
+            ) : (
+              <text x={POLES[i]} y="55" textAnchor="middle" fontSize="12.5" fontWeight="900" fill={f.fg}>
+                {f.text}
+              </text>
+            )}
           </g>
         ))}
       {pond &&

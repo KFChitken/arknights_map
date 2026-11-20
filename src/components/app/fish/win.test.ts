@@ -2,7 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FishIcon } from "../chrome/parts";
+import { pondFlags } from "../squad/SquadPond";
 import FishWin from "./FishWin";
+import WinScene from "./WinScene";
 import { boxOf, dragOf, dropOf, goesOnLeaving, NO_PLACE, PHONE, sceneOf } from "./winPlace";
 import { dropFishWin, fishMenuNote, fishWinNow, forgetFishWin, hideFishWin, openFishWin, setFishLine, smallFishWin } from "./winStore";
 
@@ -18,6 +20,28 @@ const drawn = () =>
 beforeEach(() => forgetFishWin());
 
 describe("钓鳞's small window", () => {
+  it("hangs a flag on 卫戍池塘's wall for each strategy picked, not each core alliance: its operator's picture, else the first character of their name", () => {
+    const art = { arknights: { 老鲤: "aaaa000011112222.webp" }, endfield: {} };
+    // 18 老鲤 (of no alliance), 45 望 (炎's), 25 “变形者集群” (its quotes left off); one twice, and one with none: a flag each
+    const flags = pondFlags([{ strategy: 18 }, { strategy: 45 }, { strategy: 18 }, { strategy: null }, { strategy: 25 }], art);
+    expect(flags).toEqual([
+      { text: "老", pic: "/operator-art/aaaa000011112222.webp", bg: "#38383e", fg: "#d9b36a" },
+      { text: "望", pic: null, bg: "#b3312a", fg: "#f4c040" },
+      { text: "变", pic: null, bg: "#38383e", fg: "#d9b36a" },
+    ]);
+    // the pictures not known yet, or off: the characters alone; nobody with one, or one the season has no more: no flag
+    expect(pondFlags([{ strategy: 18 }], null)).toEqual([{ text: "老", pic: null, bg: "#38383e", fg: "#d9b36a" }]);
+    expect(pondFlags([{ strategy: null }, { strategy: 9999 }], art)).toEqual([]);
+    const svg = renderToStaticMarkup(
+      createElement(WinScene, { pond: true, phase: "idle", ms: 0, shadow: null, ringDelay: 0, catchPic: null, roach: null, label: "", zhi: false, flags }),
+    );
+    expect(svg).toContain('href="/operator-art/aaaa000011112222.webp"');
+    expect(svg).toContain('clip-path="url(#pflag)"');
+    expect(svg).toContain(">望</text>");
+    expect(svg).toContain(">变</text>");
+    expect(svg).not.toContain(">老</text>");
+  });
+
   it("opens first at a computer's bottom right, and stays inside the page however far it is dragged", () => {
     const first = boxOf(PC_VP, NO_PLACE, pc);
     expect(first).toMatchObject({ left: 1280 - 360 - 24, top: 800 - 308 - 24, w: 360, h: 308 });
