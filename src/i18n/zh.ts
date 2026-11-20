@@ -614,6 +614,9 @@ export const zh = {
       notOpened: "先打开这个漂流瓶。",
       thrownAlready: "这个瓶子已经扔回去 1 句了。",
       badSay: "只能从那 17 句里挑一句。",
+      /** 自动钓 (src/lib/server/fishNet.ts) */
+      netOff: "自动钓没开着。",
+      badNet: "自动钓只能开或关。",
     },
     /** 徒手写's 手写榜 (src/lib/server/handwriting.ts) */
     board: {
@@ -3792,6 +3795,17 @@ export const zh = {
       lineFirst: "No.{no} · 稀有度 {tier} · 第一次钓到这一种",
       lineFirstVariant: "No.{no} · 稀有度 {tier} · 变异「{v}」第一次钓到",
       lineNth: "No.{no} · 稀有度 {tier} · 第 {n} 次钓到",
+    },
+    /** 自动钓 on the bank (④): its button under 甩竿, and 收网's page (NetPage.tsx) */
+    net: {
+      off: "自动钓：关",
+      on: "自动钓：开",
+      held: "攒了 {n} 竿，收网",
+      full: "攒满 {n} 竿了，收网",
+      label: "自动钓：开着时关掉网页也接着钓，3 分钟一竿，只出灰、绿、蓝，最多攒 {max} 竿，回来点「收网」。现在：{now}",
+      title: "收网了",
+      pulled: "自动钓 · {n} 竿",
+      empty: "网里还是空的，3 分钟攒一竿。",
     },
     /** A 寻访券 caught: where it went */
     ticketIn: "进了券包 · 现在 {n} / {cap} 张",

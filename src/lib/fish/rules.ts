@@ -43,6 +43,16 @@ export const SCHOOL_BOOST = 2;
 export const TICKETS_A_DAY = 3;
 /** 漂流瓶 a site day at most; never from 自动钓 */
 export const BOTTLES_A_DAY = 1;
+/**
+ * 自动钓 on the bank: once switched on, a cast every NET_EVERY_MS, held till 收网 and NET_MAX at most; each one of the
+ * day's CASTS_A_DAY when it is pulled in (src/lib/server/fishNet.ts). Grey, green and blue only, no variants, no
+ * 寻访券 or 漂流瓶 (src/lib/fish/roll.ts, spot auto).
+ */
+export const NET_EVERY_MS = 180_000;
+export const NET_MAX = 20;
+/** Casts the net holds now: one for each NET_EVERY_MS since, at most NET_MAX, and no more than the day's left */
+export const netHeld = (since: number, now: number, casts: number) =>
+  Math.max(0, Math.min(NET_MAX, Math.floor((now - since) / NET_EVERY_MS), CASTS_A_DAY - casts));
 /** A 纸条 thrown back waits this many days for someone's bottle, then goes */
 export const NOTE_DAYS = 30;
 /**
@@ -123,6 +133,14 @@ export type FishState = {
   bottles: number[];
   /** 漂流瓶 caught today (BOTTLES_A_DAY at most) */
   bottlesToday: number;
+  /** 自动钓: since when it counts casts (the server's clock), null while off */
+  net: number | null;
+};
+
+/** What 收网 brought: the casts it took, and each item once with how many came (and the biggest), new to the dex or not */
+export type FishHaul = {
+  casts: number;
+  items: { no: number; variant: number; n: number; cm: number | null; first: boolean }[];
 };
 
 /**

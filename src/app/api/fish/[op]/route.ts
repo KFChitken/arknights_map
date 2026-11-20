@@ -5,6 +5,7 @@ import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib
 import { fishMode, squadMode } from "@/lib/server/env";
 import { castLine, fishAny, fishDexOf, fishState, pullBack, reelIn } from "@/lib/server/fish";
 import { openBottle, throwNote } from "@/lib/server/fishBottle";
+import { haulNet, setNet } from "@/lib/server/fishNet";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
@@ -23,6 +24,8 @@ import type { UserRow } from "@/lib/server/schema";
  *   POST open {id}            拔开瓶塞: a 漂流瓶 the player caught opened, the pass in it and a 纸条 if the sea had one
  *                             (src/lib/server/fishBottle.ts); one opened already, as it was
  *   POST throw {id, say}      one of the 17 lines thrown back from an opened 漂流瓶, once a bottle
+ *   POST net {on, tz}         自动钓 on the bank switched on (a cast every 3 min from now) or off (pulled in first)
+ *   POST haul {tz}            收网: what 自动钓 holds, drawn and kept all at once (src/lib/server/fishNet.ts)
  * (open and throw only for a player PASSES lets draw, else 404)
  * While neither FISH (the bank) nor SQUAD (卫戍池塘, in a room) lets this player in (src/lib/server/env.ts), every
  * request is answered 404, as if nothing were here; a cast on the bank needs FISH, one in 卫戍池塘 a room to be in.
@@ -38,6 +41,8 @@ const OPS = {
   dex: { perMinute: 20 },
   open: { perMinute: 20 },
   throw: { perMinute: 20 },
+  net: { perMinute: 20 },
+  haul: { perMinute: 20 },
 } as const satisfies Record<string, { perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -78,5 +83,7 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
   if (op === "cast") return answer(await castLine(user, body));
   if (op === "open") return answer(await openBottle(user, body.id));
   if (op === "throw") return answer(await throwNote(user, body.id, body.say));
+  if (op === "net") return answer(await setNet(user, body));
+  if (op === "haul") return answer(await haulNet(user, body));
   return answer(await fishState(user, body.after));
 });

@@ -145,6 +145,10 @@
 .fish-panel .row2 { display: flex; gap: 6px; }
 .fish-panel .row2 button { flex: 1; height: 40px; border: 1px solid #d6d9de; border-radius: 12px; background: #fff; color: #1b1d22; font-size: 13px; font-weight: 700; }
 .fish-panel .row2 button:disabled { opacity: 0.5; cursor: default; }
+/* 自动钓, the bank's: on (green), holding casts to pull in (gold) */
+.fish-panel .row2 .net { flex: 1.6; min-width: 0; padding: 0 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fish-panel .row2 .net.on { border-color: #8fd1b6; background: #effaf5; color: #116149; }
+.fish-panel .row2 .net.held { border-color: #e7c35c; background: #fff7dc; color: #7a5300; font-weight: 800; }
 .fish-panel .row2 .mid { flex: 1.6; display: flex; align-items: center; justify-content: center; border: 1px solid #d6d9de; border-radius: 12px; color: #4b5160; font-size: 12px; text-align: center; }
 /* 卫戍池塘's night under its sky */
 .fish-view:has(.fish-scene.pond) { background: linear-gradient(180deg, #060a16, #0a0f1f); }
@@ -242,6 +246,15 @@
 @keyframes fish-drift { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(70px); opacity: 0; } }
 @keyframes fish-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 @keyframes fish-popin { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); } }
+
+/* 收网's page (NetPage.tsx): the catch page's backdrop, its items in rows */
+.fish-netgot .box small { font-size: 12.5px; color: #9a9a9a; letter-spacing: 0.04em; }
+.fish-netgot .halo { top: 230px; width: 300px; height: 300px; margin-left: -150px; }
+.fish-netgot .haul { position: absolute; left: 20px; right: 20px; top: 250px; display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 16px; }
+.fish-netgot .one { width: 92px; display: flex; flex-direction: column; align-items: center; gap: 8px; animation: fish-popin 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.fish-netgot .one .dk { position: relative; }
+.fish-netgot .one .fish-new { left: -8px; top: 4px; }
+.fish-netgot .one .nm { max-width: 100%; padding: 2px 6px; background: rgba(14, 14, 14, 0.94); border: 1px solid rgba(255, 255, 255, 0.25); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- the dex: the game's 藏品图鉴, in the bank's night blue and pale gold ---- */
 .fish-dex {

@@ -4,7 +4,21 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, T } from "@/i18n";
 import { itemOf } from "@/lib/fish/items";
-import { BANK_POLL_MS, CASTS_A_DAY, FISH_FULL, RING_MS, ZHI_EVERY_MS, type FishCatch, type FishLine, type FishShadow, type FishShout, type FishState } from "@/lib/fish/rules";
+import {
+  BANK_POLL_MS,
+  CASTS_A_DAY,
+  FISH_FULL,
+  NET_MAX,
+  netHeld,
+  RING_MS,
+  ZHI_EVERY_MS,
+  type FishCatch,
+  type FishHaul,
+  type FishLine,
+  type FishShadow,
+  type FishShout,
+  type FishState,
+} from "@/lib/fish/rules";
 import { fishApi, FishRefused } from "@/lib/fishClient";
 import { TICKETS_CAP } from "@/lib/passes";
 import { roachIconUrl, usesPicture } from "@/lib/roachImages";
@@ -14,6 +28,7 @@ import { AgeCheckNeeded, ConsentNeeded, SignInNeeded } from "@/lib/world/types";
 import CatchPage from "./CatchPage";
 import FishCard, { cmText, nameOf, picOf } from "./FishCard";
 import FishScene from "./FishScene";
+import NetPage from "./NetPage";
 import PondScene, { type PondFlag, type PondSeat } from "./PondScene";
 import { CAST_MS, LEAP_MS, REEL_MS, type FishPhase } from "./pose";
 import "./fish.css";
@@ -30,7 +45,8 @@ const Bottle = dynamic(() => import("./Bottle"), { ssr: false });
  * size, or purple and better. The page asks how the bank stands every 15 s: the others there (no names), and anything
  * purple or better caught there, said with nobody named. 吱 is the player's own roach, heard by them alone. A 寻访券
  * goes into the wallet (the map's 寻访 button told); a 漂流瓶 opens on a page of its own (Bottle.tsx) once its catch is
- * put down, or later from 有 n 个漂流瓶没打开.
+ * put down, or later from 有 n 个漂流瓶没打开. 自动钓 (the bank's alone) counts a cast every 3 min while it is on, the
+ * page open or not; its button says how many it holds, and a tap pulls them in (NetPage.tsx), or switches it.
  */
 
 type Look = { color: string; avatar: string; style?: RoachStyle };
@@ -112,6 +128,8 @@ export default function Fish({
   const [dex, setDex] = useState(false);
   // a 漂流瓶 open on its page, by id
   const [bottle, setBottle] = useState<number | null>(null);
+  // 收网's page
+  const [haul, setHaul] = useState<FishHaul | null>(null);
   // the one just caught, opened once its catch is put down
   const bottleNext = useRef<number | null>(null);
   // the server's clock against this one's, from each answer
@@ -331,6 +349,27 @@ export default function Fish({
       .catch(() => {});
   };
 
+  /**
+   * 自动钓's button: off, on; on with casts held, 收网 (it stays on); on with none, off (pulled in first, should one have
+   * come meanwhile)
+   */
+  const netTap = async (held: number) => {
+    if (busy || !st) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await timed(() => (st.net === null ? fishApi.net(true) : held > 0 ? fishApi.haul() : fishApi.net(false)));
+      const fresh = res.haul?.items.filter((i) => i.first).length ?? 0;
+      setSt((s) => (s ? { ...s, net: res.net, casts: res.casts, owned: s.owned + fresh } : s));
+      if (res.haul && res.haul.casts > 0) setHaul(res.haul);
+      else if (res.haul && held > 0) setNote(T.fish.net.empty);
+    } catch (e) {
+      refused(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sayZhi = () => {
     const now = Date.now();
     if (now - zhiAt.current < ZHI_EVERY_MS) return;
@@ -366,6 +405,10 @@ export default function Fish({
         : T.fish.status[phase === "idle" ? "idle" : phase]);
   const catchItem = caught ? itemOf(caught.no) : null;
   const label = st?.admiral ? `${T.fish.you} · ${T.fish.admiral}` : T.fish.you;
+  // 自动钓, the bank's: what it holds now, by the server's clock
+  const held = st && st.net !== null ? netHeld(st.net, serverNow(), st.casts) : 0;
+  const netText =
+    !st || st.net === null ? T.fish.net.off : held >= NET_MAX ? fmt(T.fish.net.full, { n: NET_MAX }) : held > 0 ? fmt(T.fish.net.held, { n: held }) : T.fish.net.on;
 
   return (
     <div className="fish fish-root" role="dialog" aria-label={T.fish.title}>
@@ -479,13 +522,26 @@ export default function Fish({
             <button type="button" onClick={sayZhi}>
               {T.fish.zhi}
             </button>
-            {pond && <span className="mid">{pond.toProtect}</span>}
+            {pond ? (
+              <span className="mid">{pond.toProtect}</span>
+            ) : (
+              <button
+                type="button"
+                className={`net${st?.net != null ? (held > 0 ? " held" : " on") : ""}`}
+                disabled={!st || busy}
+                aria-label={fmt(T.fish.net.label, { max: NET_MAX, now: netText })}
+                onClick={() => void netTap(held)}
+              >
+                {netText}
+              </button>
+            )}
             <button type="button" onClick={() => setDex(true)} disabled={!st}>
               {T.fish.dex}
             </button>
           </div>
         </div>
         {full && caught && <CatchPage caught={caught} onClose={putDown} />}
+        {haul && <NetPage haul={haul} onClose={() => setHaul(null)} />}
         {dex && st && <FishDex owned={st.owned} cells={st.cells} casts={st.casts} onClose={() => setDex(false)} onRefused={refused} />}
         {bottle !== null && <Bottle id={bottle} today={st?.bottlesToday ?? 0} holder={holder} onClose={bottleDone} onRefused={onRefused} />}
       </div>

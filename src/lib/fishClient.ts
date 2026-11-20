@@ -2,7 +2,7 @@ import { T } from "@/i18n";
 import { apiFetch } from "@/lib/apiFetch";
 import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { FishSpot } from "./fish/items";
-import type { FishBottle, FishCatch, FishDex, FishLine, FishState } from "./fish/rules";
+import type { FishBottle, FishCatch, FishDex, FishHaul, FishLine, FishState } from "./fish/rules";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError } from "./world/types";
 
 /**
@@ -37,6 +37,9 @@ async function call<R>(op: string, body?: unknown): Promise<R> {
   return json as R;
 }
 
+/** 自动钓 after a switch or 收网: since when it counts (null off), the day's casts, and what was pulled in */
+type Netted = { now: number; net: number | null; casts: number; haul: FishHaul | null };
+
 /** The page's minutes east of UTC, for what bites only at some hours of the player's own day */
 const tz = () => -new Date().getTimezoneOffset();
 
@@ -48,4 +51,6 @@ export const fishApi = {
   dex: () => call<FishDex>("dex"),
   open: (id: number) => call<FishBottle>("open", { id }),
   throwBack: (id: number, say: number) => call<FishBottle>("throw", { id, say }),
+  net: (on: boolean) => call<Netted>("net", { on, tz: tz() }),
+  haul: () => call<Netted>("haul", { tz: tz() }),
 };

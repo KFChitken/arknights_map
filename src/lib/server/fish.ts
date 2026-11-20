@@ -30,7 +30,7 @@ import { db } from "./db";
 import { fishMode } from "./env";
 import { HttpError } from "./http";
 import { fishTicket, passesOpen, ticketRoom } from "./passes";
-import { fishBottles, fishDays, fishDex as dexRows, fishLines, fishRecords, fishShouts, squadMembers, squadRooms, type UserRow } from "./schema";
+import { fishBottles, fishDays, fishDex as dexRows, fishLines, fishNets, fishRecords, fishShouts, squadMembers, squadRooms, type UserRow } from "./schema";
 import { sayFishInRoom, tellSquadPond } from "./squad";
 import { squadOpen } from "./squadOpen";
 
@@ -158,7 +158,7 @@ async function ownedCells(userId: string): Promise<number> {
  */
 export async function fishState(user: Pick<UserRow, "id" | "email">, after: unknown, now = Date.now()): Promise<FishState & { lastShout: number }> {
   const day = siteDay(now);
-  const [[today], [line], owned, bank, bottles] = await Promise.all([
+  const [[today], [line], owned, bank, bottles, [net]] = await Promise.all([
     db.select().from(fishDays).where(and(eq(fishDays.userId, user.id), eq(fishDays.day, day))),
     db.select().from(fishLines).where(eq(fishLines.userId, user.id)),
     ownedCells(user.id),
@@ -171,6 +171,7 @@ export async function fishState(user: Pick<UserRow, "id" | "email">, after: unkn
           .orderBy(fishBottles.id)
           .limit(BOTTLES_KEPT_SHOWN)
       : [],
+    db.select({ since: fishNets.since }).from(fishNets).where(eq(fishNets.userId, user.id)),
   ]);
   const since = typeof after === "number" && Number.isInteger(after) && after >= 0 ? after : null;
   const recent = await db
@@ -196,6 +197,7 @@ export async function fishState(user: Pick<UserRow, "id" | "email">, after: unkn
     shouts: shouts.reverse(),
     bottles: bottles.map((b) => b.id),
     bottlesToday: today?.bottles ?? 0,
+    net: net ? net.since.getTime() : null,
     lastShout,
   };
 }

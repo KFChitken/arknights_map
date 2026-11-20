@@ -19,6 +19,7 @@ export default function FishCard({
   size,
   locked = false,
   cm = null,
+  count,
   bare = false,
   className = "",
 }: {
@@ -28,6 +29,8 @@ export default function FishCard({
   locked?: boolean;
   /** Written where the game writes how many, in hundredths of a cm */
   cm?: number | null;
+  /** How many, written there instead (自动钓's 收网) */
+  count?: number;
   /** The disc alone, no picture (the rarity's mark) */
   bare?: boolean;
   className?: string;
@@ -40,11 +43,17 @@ export default function FishCard({
         // eslint-disable-next-line @next/next/no-img-element -- small pictures of our own, already sized
         <img src={picOf(item.key)} alt="" className={variant ? `v-${VARIANT_KEYS[variant]}` : undefined} loading="lazy" />
       )}
-      {cm !== null && (
-        <span className="cnt" style={{ fontSize: Math.round(size * 0.16) }}>
-          {cmText(cm)}
-          <small>cm</small>
+      {count !== undefined ? (
+        <span className="cnt" style={{ fontSize: Math.round(size * 0.22) }}>
+          {count}
         </span>
+      ) : (
+        cm !== null && (
+          <span className="cnt" style={{ fontSize: Math.round(size * 0.16) }}>
+            {cmText(cm)}
+            <small>cm</small>
+          </span>
+        )
       )}
     </span>
   );

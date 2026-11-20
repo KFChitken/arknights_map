@@ -2269,6 +2269,17 @@ export const fishNotes = pgTable(
   (t) => [index("fish_notes_at_idx").on(t.at)],
 );
 
+/**
+ * 自动钓 on the bank (src/lib/server/fishNet.ts), for each player who switched it on: since when its casts are counted
+ * (one each NET_EVERY_MS, NET_MAX at most held), moved on by every 收网. No row: off.
+ */
+export const fishNets = pgTable("fish_nets", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  since: at("since").notNull(),
+});
+
 export type UserRow = typeof users.$inferSelect;
 export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;
