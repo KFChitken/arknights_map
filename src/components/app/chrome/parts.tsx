@@ -113,6 +113,8 @@ export type ChromeProps = {
    * null for a visitor (their browser counts none)
    */
   study: { dot: boolean; days: number | null; onOpen: () => void } | null;
+  /** 钓鳞, where it is open to them (me.fish, FISH): the bank */
+  fish: { onOpen: () => void } | null;
   /** 一起卫戍, where the server shows it to them (me.squad, SQUAD); room: how many are in the one they are in, if any */
   squad: { room: { n: number } | null; onOpen: () => void } | null;
   /**
@@ -251,6 +253,21 @@ export function TicketIcon({ size = 24, dot = false }: { size?: number; dot?: bo
 }
 
 /** 325大学习's notebook, a few lines written in it; dot: a red one, while today's course is not played */
+/** 钓鳞's way in: a float on the water, red over white, its line going up */
+export function FishIcon({ size = 24 }: { size?: number }) {
+  return (
+    <span className="fish-ico">
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+        <path d="M12 1.8v6.4" stroke="#1b1d22" strokeWidth="1.4" strokeLinecap="round" />
+        <path d="M5.2 14.4a6.8 6.6 0 0 1 13.6 0Z" fill="#ff4a2e" />
+        <path d="M5.2 14.4a6.8 6.6 0 0 0 13.6 0Z" fill="#fff" />
+        <path d="M5.2 14.4a6.8 6.6 0 0 1 13.6 0a6.8 6.6 0 0 1-13.6 0Z" fill="none" stroke="#1b1d22" strokeWidth="1.3" />
+        <path d="M2.5 21.2q2.4-1.4 4.8 0t4.8 0t4.8 0t4.6 0" fill="none" stroke="#3ea6ee" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
 export function StudyIcon({ size = 24, dot = false }: { size?: number; dot?: boolean }) {
   return (
     <span className="study-ico">

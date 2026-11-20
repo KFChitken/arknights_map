@@ -2126,6 +2126,102 @@ export const handwritingRatings = pgTable(
   (t) => [primaryKey({ columns: [t.writingId, t.raterId] }), index("handwriting_ratings_rater_idx").on(t.raterId, t.createdAt)],
 );
 
+/**
+ * 钓鳞 (src/lib/server/fish.ts): each player's line in the water, one at most, on the bank (pier) or in 卫戍池塘
+ * (pond): when it went in and bites, and what is on the hook, drawn as it went in (item, variant, size in hundredths of
+ * a cm for those measured), with the shadow the page shows. Gone once pulled in or taken back.
+ */
+export const fishLines = pgTable(
+  "fish_lines",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    spot: text("spot").notNull(),
+    castAt: at("cast_at").notNull(),
+    biteAt: at("bite_at").notNull(),
+    item: smallint("item").notNull(),
+    variant: smallint("variant").notNull().default(0),
+    cm: integer("cm"),
+    shadow: text("shadow").notNull(),
+  },
+  (t) => [index("fish_lines_spot_idx").on(t.spot)],
+);
+
+/**
+ * A player's 钓鳞 of a site day (src/lib/siteDay.ts, from 04:00 Beijing time): the casts (CASTS_A_DAY at most), the
+ * casts in a row with nothing blue or better (dry), the junk caught in a row (junk), whether that made them the day's
+ * 空军司令 (admiral), and the 寻访券 and 漂流瓶 it gave. A week of them is kept.
+ */
+export const fishDays = pgTable(
+  "fish_days",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    casts: smallint("casts").notNull().default(0),
+    dry: smallint("dry").notNull().default(0),
+    junk: smallint("junk").notNull().default(0),
+    admiral: boolean("admiral").notNull().default(false),
+    tickets: smallint("tickets").notNull().default(0),
+    bottles: smallint("bottles").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] })],
+);
+
+/**
+ * A player's 钓鳞 dex: each item and variant they caught (0, the plain one), how many times, the biggest (hundredths of
+ * a cm, for those measured), and the first time and where.
+ */
+export const fishDex = pgTable(
+  "fish_dex",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    item: smallint("item").notNull(),
+    variant: smallint("variant").notNull().default(0),
+    n: integer("n").notNull().default(0),
+    best: integer("best"),
+    firstAt: at("first_at").notNull().defaultNow(),
+    firstSpot: text("first_spot").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.item, t.variant] })],
+);
+
+/** The site's biggest of each measured 钓鳞 item and variant: the size alone, nobody's name */
+export const fishRecords = pgTable(
+  "fish_records",
+  {
+    item: smallint("item").notNull(),
+    variant: smallint("variant").notNull().default(0),
+    cm: integer("cm").notNull(),
+    at: at("at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.item, t.variant] })],
+);
+
+/**
+ * Purple-or-better catches on the bank, said there with no name for a while (src/lib/server/fish.ts SHOUT_KEEP_MS):
+ * what and how big; who caught it kept only so that their own is not said back to them.
+ */
+export const fishShouts = pgTable(
+  "fish_shouts",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    spot: text("spot").notNull(),
+    item: smallint("item").notNull(),
+    variant: smallint("variant").notNull().default(0),
+    cm: integer("cm"),
+    at: at("at").notNull().defaultNow(),
+  },
+  (t) => [index("fish_shouts_at_idx").on(t.at)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type NoticeRow = typeof notices.$inferSelect;
 export type RoachRow = typeof roaches.$inferSelect;

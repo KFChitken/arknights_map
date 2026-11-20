@@ -15,6 +15,7 @@ import {
   countsTap,
   DeskHint,
   DiscoButton,
+  FishIcon,
   FoldArrow,
   GuideFace,
   HotFlame,
@@ -128,6 +129,12 @@ export default function FloatChrome(p: ChromeProps) {
                 >
                   <StudyIcon size={24} dot={p.study.dot} />
                   <small>{T.map.bar.studyShort}</small>
+                </button>
+              )}
+              {p.fish && (
+                <button className="it fish-entry" aria-label={T.map.bar.fishLabel} onClick={p.fish.onOpen} tabIndex={folded.r ? -1 : undefined}>
+                  <FishIcon size={24} />
+                  <small>{T.map.bar.fish}</small>
                 </button>
               )}
               <span className="sep" aria-hidden="true" />

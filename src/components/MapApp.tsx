@@ -351,6 +351,7 @@ const ProfileHub = dynamic(() => import("./app/profile/ProfileHub"), { ssr: fals
 const Passes = dynamic(() => import("./app/passes/Passes"), { ssr: false });
 // 325大学习 (src/lib/study), only once it opens; each course's game only once it is played
 const Study = dynamic(() => import("./app/study/Study"), { ssr: false });
+const Fish = dynamic(() => import("./app/fish/Fish"), { ssr: false });
 // 听歌's panel, only once it opens; the songs play from src/components/app/listening.ts, with it closed too
 const ListenPanel = dynamic(() => import("./app/ListenPanel"), { ssr: false });
 // 一起听 over the map (the card of an invitation, the 短评), for those who may listen
@@ -743,6 +744,8 @@ export default function MapApp({
   const [passesFrom, setPassesFrom] = useState<"button" | "profile">("button");
   // 325大学习 (from its button, where it is open to them); the map's roaches keep still while it is open
   const [studyOpen, setStudyOpen] = useState(false);
+  // 钓鳞's bank, over the map (paused behind it)
+  const [fishOpen, setFishOpen] = useState(false);
   // 听歌's panel (from its button, where it is open to them): the map stays to be used beside it on a computer
   const [listenOpen, setListenOpen] = useState(false);
   // 听歌's disco (src/components/disco), where it is open to them: its switch, and whether its ball and lights are out
@@ -5660,6 +5663,7 @@ export default function MapApp({
           onOpen: () => setStudyOpen(true),
         }
       : null,
+    fish: me?.fish ? { onOpen: () => setFishOpen(true) } : null,
     listen: listenShown
       ? {
           open: listenOpen,
@@ -5748,7 +5752,7 @@ export default function MapApp({
             <AmapView
               key="amap"
               {...mapProps}
-              active={!(twoMaps && abroad) && !studyOpen}
+              active={!(twoMaps && abroad) && !studyOpen && !fishOpen}
               jump={homeJump}
               onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
               onReady={onHomeReady}
@@ -5761,7 +5765,7 @@ export default function MapApp({
               key="tencent"
               {...mapProps}
               onFailed={ownMap}
-              active={!(twoMaps && abroad) && !studyOpen}
+              active={!(twoMaps && abroad) && !studyOpen && !fishOpen}
               jump={homeJump}
               onViewChange={twoMaps ? (abroad ? ignoreView : onHomeView) : onViewChange}
               onReady={onHomeReady}
@@ -5776,7 +5780,7 @@ export default function MapApp({
               style={overseas.style}
               cover={overseas.cover}
               slowNote={T.map.style.slow}
-              active={abroad && !studyOpen}
+              active={abroad && !studyOpen && !fishOpen}
               jump={overseasJump}
               onViewChange={abroad ? onOverseasView : ignoreView}
               onReady={onOverseasReady}
@@ -5784,9 +5788,9 @@ export default function MapApp({
           </div>
         )}
         {!noGl && basemap === "amap" && homeMap === "own" && overseas && (
-          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} active={!studyOpen} />
+          <MaplibreView key="fallback" {...mapProps} style={overseas.style} slowNote={T.map.style.slow} active={!studyOpen && !fishOpen} />
         )}
-        {!noGl && basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen} />}
+        {!noGl && basemap === "osm" && <MaplibreView key="osm" {...mapProps} active={!studyOpen && !fishOpen} />}
         {poking && (
           <div className="actor-stage">
             <PokeActor avatar={poking.avatar} color={poking.color} look={look} onDone={() => setPoking(null)} />
@@ -6161,7 +6165,7 @@ export default function MapApp({
 
       {panel && renderPanel(panel)}
       {/* one that came as the page opened, just before 最近更新 popped up, waits for it to be closed */}
-      {newBadges[0] && !gray && !pamphlet && !passesOpen && !studyOpen && (
+      {newBadges[0] && !gray && !pamphlet && !passesOpen && !studyOpen && !fishOpen && (
         <NewBadge
           key={newBadges[0].id}
           earned={newBadges[0]}
@@ -6221,6 +6225,17 @@ export default function MapApp({
           onPassesDot={passesDotAfter}
           onRefused={(e) => {
             setStudyOpen(false);
+            void act(() => Promise.reject(e));
+          }}
+        />
+      )}
+      {/* 钓鳞's bank over everything of each layout, the map paused behind it; what it cannot do itself closes it */}
+      {fishOpen && me?.fish && (
+        <Fish
+          look={{ color: myColor, avatar: myAvatar, style: look }}
+          onClose={() => setFishOpen(false)}
+          onRefused={(e) => {
+            setFishOpen(false);
             void act(() => Promise.reject(e));
           }}
         />

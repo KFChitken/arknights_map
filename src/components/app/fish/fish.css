@@ -1,0 +1,306 @@
+/*
+ * 钓鳞 (Fish.tsx): the bank over everything on the map, as 325大学习's rounds are (the sides ≤ 25, sheets 30), under the
+ * toast (40): the whole screen on a phone, a card in the middle on a computer. Its items sit on the game's warehouse
+ * discs (FishCard.tsx), whose colours and glows are all in "the discs" below, and nowhere else; the page that pops up
+ * for a catch is the game's 获得物资, the dex its 藏品图鉴 in the bank's night blue and pale gold.
+ */
+
+/* ---- the discs: the rarity colours, once ---- */
+.fish-root {
+  --fish-r1: #9a9a9a;
+  --fish-r2: #d8e02e;
+  --fish-r3: #04a6fb;
+  --fish-r4: #d0bdd1;
+  --fish-r5: #fbbf0a;
+  --fish-r6: #ff5a2c;
+  --fish-gold: #c9a874;
+  --fish-num: "DIN Alternate", "Bahnschrift", "Arial Narrow", system-ui, sans-serif;
+  --fish-serif: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  --fish-latin: "Cinzel", "Trajan Pro", "Times New Roman", serif;
+}
+.fish-disc {
+  --rc: var(--fish-r1);
+  position: relative; flex: none; display: inline-block; border-radius: 50%;
+  background:
+    radial-gradient(34% 26% at 30% 28%, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(30% 22% at 72% 66%, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0) 70%),
+    radial-gradient(24% 18% at 40% 80%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(20% 16% at 74% 28%, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0) 70%),
+    radial-gradient(circle at 50% 46%, #727272 0%, #858585 58%, #9b9b9b 100%);
+  box-shadow: inset 0 0 0 calc(var(--d) * 0.024) #0c0c0c, 0 0 0 calc(var(--d) * 0.036) var(--rc), 0 calc(var(--d) * 0.03) calc(var(--d) * 0.1) rgba(0, 0, 0, 0.3);
+}
+/* the picture a little bigger than the disc and up to the left, over its edge, as the game's are */
+.fish-disc img { position: absolute; left: -7%; top: -9%; width: 114%; height: 114%; pointer-events: none; }
+.fish-disc.r1 { --rc: var(--fish-r1); }
+.fish-disc.r2 { --rc: var(--fish-r2); }
+.fish-disc.r3 { --rc: var(--fish-r3); }
+.fish-disc.r4 {
+  --rc: var(--fish-r4);
+  background: linear-gradient(0deg, rgba(124, 106, 156, 0.95) 0%, rgba(84, 72, 106, 0.6) 30%, rgba(60, 57, 66, 0) 62%), radial-gradient(circle at 50% 40%, #4a4752, #3a3840);
+}
+.fish-disc.r5 {
+  --rc: var(--fish-r5);
+  background: linear-gradient(0deg, rgba(160, 132, 66, 0.95) 0%, rgba(104, 86, 44, 0.6) 30%, rgba(0, 0, 0, 0) 62%), radial-gradient(circle at 50% 40%, #2a2826, #1d1c1c);
+}
+.fish-disc.r6 {
+  --rc: var(--fish-r6);
+  background: linear-gradient(0deg, rgba(170, 70, 44, 0.95) 0%, rgba(112, 46, 28, 0.6) 30%, rgba(0, 0, 0, 0) 62%), radial-gradient(circle at 50% 40%, #2a2422, #1d1a1a);
+  /* 漂流瓶: a ring of light more */
+  filter: drop-shadow(0 0 calc(var(--d) * 0.08) rgba(255, 110, 60, 0.7));
+}
+.fish-disc.locked { opacity: 0.55; }
+.fish-disc.locked img { filter: brightness(0) opacity(0.8); }
+/* the size where the game writes how many: white, outlined, over the ring */
+.fish-disc .cnt {
+  position: absolute; z-index: 2; right: 2%; bottom: 5%; font-family: var(--fish-num); font-weight: 600; color: #fff; line-height: 1; white-space: nowrap;
+  text-shadow: 0 0 2px #000, 0 0 2px #000, 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+.fish-disc .cnt small { margin-left: 1px; font-size: 0.55em; }
+/* the variants, drawn with filters and scales, never pictures of their own */
+.fish-disc img.v-gold { filter: sepia(1) saturate(3.2) hue-rotate(-8deg) brightness(1.05); }
+.fish-disc img.v-crystal { filter: hue-rotate(250deg) saturate(1.5); }
+.fish-disc img.v-moon { filter: hue-rotate(200deg) saturate(1.4) brightness(0.9); }
+.fish-disc img.v-clear { filter: opacity(0.5) drop-shadow(0 0 6px #bfe9ff); }
+.fish-disc img.v-frozen { filter: saturate(0.3) brightness(1.25); }
+.fish-disc img.v-fresh { filter: saturate(1.35) brightness(1.12); }
+.fish-disc img.v-mini { transform: scale(0.6); }
+.fish-disc img.v-giant { transform: scale(1.32); }
+.fish-disc.locked img[class^="v-"] { filter: brightness(0) opacity(0.8); }
+/* 新获得: a gold flag over the corner */
+.fish-new {
+  position: absolute; z-index: 3; left: -4px; top: 7px; height: 19px; padding: 0 24px 0 8px; display: flex; align-items: center;
+  font-family: var(--fish-latin); font-weight: 700; font-size: 12px; font-style: normal; letter-spacing: 0.06em; color: #fff6df;
+  background: linear-gradient(90deg, #8a6a2e 0%, #c8a259 35%, rgba(200, 162, 89, 0.55) 72%, rgba(200, 162, 89, 0) 100%);
+}
+
+/* ---- the page ---- */
+.fish {
+  position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: rgba(16, 17, 20, 0.55);
+  -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+}
+.fish button { font-family: inherit; cursor: pointer; }
+.fish-box {
+  position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; background: #1b2340; color: #1b1d22;
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+@media (min-width: 600px) and (min-height: 640px) {
+  .fish-box { width: 420px; height: min(860px, calc(100% - 40px)); padding: 0; border-radius: 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45); }
+}
+/* the scene keeps its shape at the full width, down on the panel: a tall screen gets more night sky over it, a short
+   one loses sky first */
+.fish-view { position: relative; flex: 1; min-height: 0; overflow: hidden; background: linear-gradient(180deg, #120f2b, #1f1c45); }
+.fish-scene { position: absolute; left: 0; bottom: 0; width: 100%; height: auto; display: block; }
+.fish-head {
+  position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: calc(12px + var(--safe-top)) 12px 0; color: #fff;
+}
+@media (min-width: 600px) and (min-height: 640px) {
+  .fish-head { padding-top: 12px; }
+}
+.fish-head .back { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 22px; line-height: 1; }
+.fish-head .tt { display: flex; flex-direction: column; line-height: 1.2; }
+.fish-head .tt b { font-size: 16px; letter-spacing: 0.06em; }
+.fish-head .tt small { color: #f1d9e6; font-size: 11px; }
+.fish-head .bank { margin-left: auto; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); font-size: 11.5px; white-space: nowrap; }
+/* what someone else caught on the bank, over the water, clear of the strip at the top */
+.fish-shout {
+  position: absolute; z-index: 2; left: 50%; bottom: 30px; transform: translateX(-50%); max-width: calc(100% - 32px); margin: 0; padding: 5px 12px;
+  border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #1b1d22; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; animation: fish-shout 0.3s ease-out both;
+}
+/* the strip of a catch, over the scene */
+.fish-strip {
+  position: absolute; left: 14px; right: 14px; top: calc(64px + var(--safe-top)); display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 4px;
+  background: rgba(20, 21, 24, 0.92); color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); animation: fish-pop 0.25s ease-out both;
+}
+.fish-strip .fish-disc { margin: 3px 4px 3px 3px; }
+.fish-strip .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.fish-strip .tx b { font-size: 15px; }
+.fish-strip .tx small { color: #c8ccd2; font-size: 12px; }
+.fish-strip .tx small.on { color: #7fe0a4; font-weight: 700; }
+.fish-strip .tx small.off { color: #9aa0aa; }
+.fish-wait { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #fff; font-size: 14px; }
+.fish-wait p { margin: 0; }
+.fish-wait button { padding: 8px 18px; border: 0; border-radius: 999px; background: #ffd23f; color: #1b1d22; font-weight: 800; }
+/* the controls along the bottom */
+.fish-panel {
+  position: relative; flex: none; display: flex; flex-direction: column; gap: 10px; margin-top: -16px; padding: 14px 14px 16px; border-radius: 18px 18px 0 0; background: #fff;
+}
+.fish-panel .row1 { display: flex; align-items: center; gap: 8px; color: #6b7280; font-size: 12px; }
+.fish-panel .row1 .st { margin-left: auto; color: #1b1d22; font-size: 12px; text-align: right; }
+.fish-go { height: 56px; border: 0; border-radius: 14px; font-size: 18px; font-weight: 900; box-shadow: 0 4px 0 #000; background: #1b1d22; color: #fff; }
+.fish-go.soft { background: #f1f2f4; color: #1b1d22; box-shadow: 0 4px 0 #d6d9de; }
+.fish-go.bite { background: #ffd23f; color: #1b1d22; box-shadow: 0 4px 0 #c9a200; animation: fish-nudge 0.7s ease-in-out infinite; }
+.fish-go.off, .fish-go:disabled { background: #e3e5e8; color: #6b7280; box-shadow: 0 4px 0 #c9cdd3; cursor: default; animation: none; }
+.fish-panel .row2 { display: flex; gap: 6px; }
+.fish-panel .row2 button { flex: 1; height: 40px; border: 1px solid #d6d9de; border-radius: 12px; background: #fff; color: #1b1d22; font-size: 13px; font-weight: 700; }
+.fish-panel .row2 button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- the scene's moving bits ---- */
+.fish-scene .fs-twinkle { animation: fs-twinkle 2.4s ease-in-out infinite; }
+.fish-scene .fs-steam { transform-box: fill-box; transform-origin: 50% 50%; animation: fs-steam 3s ease-out infinite; }
+.fish-scene .fs-bob { animation: fs-bob 1.6s ease-in-out infinite; }
+.fish-scene .fs-dip { animation: fs-dip 0.5s ease-out forwards; }
+.fish-scene .fs-ring { transform-box: fill-box; transform-origin: 50% 50%; animation: fs-ring 1.4s linear infinite; }
+.fish-scene .fs-ripple { transform-box: fill-box; transform-origin: 50% 50%; animation: fs-ripple 1.6s ease-out infinite; }
+.fish-scene .fs-swim { animation: fs-swim 1.6s ease-out forwards; }
+.fish-scene .fs-thrash { transform-box: fill-box; transform-origin: 50% 50%; animation: fs-thrash 0.18s linear infinite; }
+.fish-scene .fs-dark { filter: brightness(0.15) opacity(0.75); }
+.fish-scene .fs-float { animation: fs-float 1.4s ease-in-out infinite; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4)); }
+.fish-scene .fs-pop { animation: fish-pop 0.25s ease-out both; transform-box: fill-box; transform-origin: 50% 100%; }
+.fish-scene .fs-label { fill: rgba(0, 0, 0, 0.45); }
+.fish-scene .fs-label-t { fill: #fff; font-size: 10.5px; font-weight: 700; }
+.fish-scene .fs-bubble-t { fill: #1b1d22; font-size: 13px; font-weight: 900; }
+.fish-scene text { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+@keyframes fs-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.9; } }
+@keyframes fs-steam { 0% { transform: translateY(0) scale(1); opacity: 0.35; } 100% { transform: translateY(-26px) scale(1.6); opacity: 0; } }
+@keyframes fs-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2.5px); } }
+@keyframes fs-dip { 0% { transform: translateY(0); } 35% { transform: translateY(9px); } 65% { transform: translateY(5px); } 100% { transform: translateY(8px); } }
+@keyframes fs-ring { 0% { transform: scale(2.6); opacity: 0.25; } 85% { transform: scale(1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes fs-ripple { 0% { transform: scale(0.3); opacity: 0.9; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes fs-swim { 0% { transform: translateX(-70px); opacity: 0; } 30% { opacity: 0.6; } 100% { transform: translateX(0); opacity: 0.6; } }
+@keyframes fs-thrash { 0%, 100% { transform: rotate(-14deg); } 50% { transform: rotate(14deg); } }
+@keyframes fs-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes fish-pop { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes fish-shout { 0% { transform: translate(-50%, 8px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
+@keyframes fish-nudge { 50% { transform: scale(1.03); } }
+
+/* ---- 获得物资: the page of a catch worth one ---- */
+.fish-got {
+  position: absolute; inset: 0; z-index: 5; display: block; padding: 0; border: 0; overflow: hidden; color: #fff; text-align: center;
+  background: rgba(24, 24, 26, 0.86); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+}
+.fish-got::before { content: ""; position: absolute; inset: 0; background: radial-gradient(rgba(255, 255, 255, 0.075) 1px, rgba(0, 0, 0, 0) 1.3px) 0 0 / 11px 11px; }
+.fish-got::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0) 14px), linear-gradient(270deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0) 14px);
+}
+/* the design's box, 390 × 700, in the middle whatever the screen */
+.fish-got .in { position: absolute; left: 50%; top: 50%; width: 390px; height: 700px; margin: -370px 0 0 -195px; }
+.fish-got .box { position: absolute; left: 0; right: 0; top: 84px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.fish-got .box span { font-size: 18px; letter-spacing: 0.12em; color: #d4d4d4; }
+.fish-got .halo { position: absolute; left: 50%; top: 240px; width: 240px; height: 240px; margin-left: -120px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 66%); }
+.fish-got .halo.gold {
+  top: 180px; width: 320px; height: 320px; margin-left: -160px;
+  background: radial-gradient(circle, rgba(255, 188, 104, 0.34) 0%, rgba(255, 160, 80, 0.12) 42%, rgba(255, 160, 80, 0) 68%); animation: fish-breathe 2.6s ease-in-out infinite;
+}
+.fish-got .streak { position: absolute; }
+.fish-got .tri, .fish-got .mote { position: absolute; }
+.fish-got .tri { overflow: visible; filter: drop-shadow(0 0 3px rgba(255, 140, 70, 0.95)); }
+.fish-got .tri.white { filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
+.fish-got .mote { border-radius: 50%; background: #ffd9a0; box-shadow: 0 0 6px 2px rgba(255, 190, 110, 0.8); }
+.fish-got .item { position: absolute; left: 50%; top: 265px; width: 150px; height: 150px; margin-left: -75px; animation: fish-popin 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.fish-got .item .fish-new { left: -10px; top: 12px; height: 21px; padding: 0 26px 0 9px; font-size: 13px; }
+.fish-got .item .cnt { font-size: 24px; }
+.fish-got .words { position: absolute; left: 0; right: 0; top: 438px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.fish-got .nm { padding: 3px 12px; background: rgba(14, 14, 14, 0.94); border: 1px solid rgba(255, 255, 255, 0.3); font-size: 16px; letter-spacing: 0.02em; white-space: nowrap; }
+.fish-got .recrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cfcfcf; }
+.fish-got .rec { display: inline-flex; align-items: center; height: 20px; padding: 0 18px 0 8px; font-size: 12px; font-weight: 700; color: #1f170a; background: linear-gradient(90deg, #f0b43c 0%, #d9951c 70%, rgba(217, 149, 28, 0) 100%); }
+.fish-got .ln { font-size: 12px; color: #8e8e8e; }
+.fish-got .ok {
+  position: absolute; left: 50%; top: 572px; width: 56px; height: 56px; margin-left: -28px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  border: 2px solid #8d8d8d; background: radial-gradient(circle at 50% 40%, #3b3b3b, #232323); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); box-sizing: border-box;
+}
+@keyframes fish-rise { 0% { transform: translateY(0); opacity: 0; } 12% { opacity: 1; } 80% { opacity: 0.85; } 100% { transform: translateY(-150px); opacity: 0; } }
+@keyframes fish-drift { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(70px); opacity: 0; } }
+@keyframes fish-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@keyframes fish-popin { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); } }
+
+/* ---- the dex: the game's 藏品图鉴, in the bank's night blue and pale gold ---- */
+.fish-dex {
+  position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; overflow: hidden; color: #ece8e1; background: #0b1015;
+  background-image: radial-gradient(48% 62% at 24% 36%, rgba(42, 70, 86, 0.62), rgba(11, 16, 21, 0) 70%), radial-gradient(60% 70% at 78% 30%, rgba(28, 40, 50, 0.45), rgba(11, 16, 21, 0) 72%);
+}
+.fish-dex .top { position: relative; flex: none; display: flex; align-items: center; gap: 10px; padding: calc(10px + var(--safe-top)) 12px 6px; }
+.fish-dex .top .back { height: 36px; padding: 0 16px; border: 0; background: #2b2f34; color: #fff; font-size: 24px; line-height: 1; font-weight: 300; }
+.fish-dex .top .ttl { position: absolute; right: 14px; top: calc(2px + var(--safe-top)); font-family: var(--fish-serif); font-size: 34px; font-weight: 700; letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.08); white-space: nowrap; pointer-events: none; }
+.fish-dex .top .newc {
+  margin-left: auto; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; color: #1f170a;
+  background: linear-gradient(180deg, #f0b43c, #d9951c); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); font-size: 13px; font-weight: 700;
+}
+.fish-dex .top .newc b { font-family: var(--fish-num); font-size: 17px; }
+.fish-dex .tabs { flex: none; display: flex; align-items: center; padding: 4px 12px 8px; }
+.fish-dex .tabs .sep { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.45); }
+.fish-dex .tab { position: relative; width: 96px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #d9d4ca; font-size: 15px; }
+.fish-dex .tab .brush {
+  position: absolute; inset: 2px 6px; background: transparent;
+  clip-path: polygon(2% 20%, 8% 6%, 20% 13%, 34% 2%, 50% 10%, 66% 0%, 80% 9%, 94% 3%, 99% 22%, 96% 44%, 100% 64%, 95% 87%, 82% 97%, 66% 90%, 50% 100%, 34% 92%, 18% 99%, 5% 88%, 0% 64%, 3% 42%);
+}
+.fish-dex .tab span:last-child { position: relative; }
+.fish-dex .tab.on { color: #f3eee6; filter: drop-shadow(0 0 6px rgba(255, 150, 60, 0.45)); }
+.fish-dex .tab.on .brush { background: #050607; }
+.fish-dex .ftally { margin-left: auto; color: #7b8389; font-size: 12px; white-space: nowrap; }
+/* on a phone the detail and the grid scroll as one; on a computer each on its own */
+.fish-dex .body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
+/* the detail: the name, the big picture, the number with its long line, the words, where it bites, sizes, variants */
+.fish-dex .detail { position: relative; flex: none; display: flex; flex-direction: column; padding: 4px 18px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.fish-dex .detail .nm { text-align: center; font-size: 20px; font-weight: 500; letter-spacing: 0.04em; color: #f1ede6; }
+.fish-dex .detail .pic { align-self: center; width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; }
+.fish-dex .detail .pic img { width: 150px; height: 150px; }
+.fish-dex .detail .pic .shade { width: 104px; height: 92px; border-radius: 48% 52% 44% 56%; background: #000; box-shadow: 0 0 30px rgba(0, 0, 0, 0.6); }
+.fish-dex .detail .no { display: flex; align-items: flex-end; justify-content: space-between; }
+.fish-dex .detail .no b { font-family: var(--fish-num); font-size: 19px; font-weight: 500; letter-spacing: 0.04em; color: #7b8389; }
+.fish-dex .detail .no span { display: flex; align-items: center; gap: 8px; padding-bottom: 3px; color: #9aa2a8; font-size: 12px; }
+.fish-dex .detail .line { height: 1px; margin: 4px -8px 10px; background: linear-gradient(90deg, rgba(230, 230, 230, 0.12), rgba(230, 230, 230, 0.62) 28%, rgba(230, 230, 230, 0.34) 78%, rgba(230, 230, 230, 0.06)); }
+.fish-dex .detail p { margin: 0; font-size: 14.5px; line-height: 1.6; color: #f2efe9; }
+.fish-dex .detail p.fl { margin-top: 6px; font-size: 13.5px; color: #9ca3a8; font-style: italic; }
+.fish-dex .detail .lab { margin-top: 14px; color: #7b8389; font-size: 12.5px; }
+.fish-dex .detail .fchips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; }
+.fish-dex .detail .fchip { display: flex; height: 26px; font-size: 12.5px; }
+.fish-dex .detail .fchip span { display: flex; align-items: center; padding: 0 10px; background: rgba(205, 210, 214, 0.16); color: #e4e7ea; }
+.fish-dex .detail .fchip b { display: flex; align-items: center; padding: 0 9px; background: rgba(0, 0, 0, 0.38); font-weight: 700; }
+.fish-dex .detail .fchip b.big { color: #e6d06a; }
+.fish-dex .detail .fchip b.mid { color: #e4e7ea; }
+.fish-dex .detail .fchip b.small { color: #9fd0ef; }
+.fish-dex .detail .fchip b.rare { color: #e79a6c; }
+.fish-dex .detail .sizes { display: flex; gap: 10px; margin-top: 14px; }
+.fish-dex .detail .sizes > div { flex: 1; display: flex; align-items: baseline; gap: 8px; padding: 7px 12px; background: rgba(0, 0, 0, 0.3); border-left: 2px solid var(--fish-gold); }
+.fish-dex .detail .sizes > div + div { border-left-color: rgba(255, 255, 255, 0.25); }
+.fish-dex .detail .sizes small { color: #9aa2a8; font-size: 12px; }
+.fish-dex .detail .sizes b { margin-left: auto; font-family: var(--fish-num); font-size: 18px; font-weight: 600; }
+.fish-dex .detail .vars { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; padding-left: 4px; }
+.fish-dex .detail .vars > span { width: 50px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 10.5px; color: #6f777d; white-space: nowrap; }
+.fish-dex .detail .vars > span.have { color: #d8d2c6; }
+.fish-dex .detail .count { margin-top: 12px; color: #7b8389; font-size: 12px; }
+/* the grid, in groups: ◇‹ the group's name, its English small and wide, a line, caught of all */
+.fish-dex .grid { padding: 0 10px 24px; }
+.fish-dex .sec { position: relative; height: 60px; margin-top: 4px; }
+.fish-dex .sec .dia { position: absolute; left: 4px; top: 20px; width: 9px; height: 9px; border: 1px solid #cfc8bc; transform: rotate(45deg); }
+.fish-dex .sec .chev { position: absolute; left: 18px; top: 8px; color: #cfc8bc; font-size: 20px; font-weight: 300; }
+.fish-dex .sec .nm { position: absolute; left: 34px; top: 7px; font-family: var(--fish-serif); font-size: 19px; font-weight: 500; color: #e8e2d8; }
+.fish-dex .sec .en { position: absolute; left: 36px; top: 38px; font-family: var(--fish-latin); font-size: 10.5px; font-weight: 500; letter-spacing: 0.26em; color: #b59d77; }
+.fish-dex .sec .ln { position: absolute; left: 34px; right: 54px; top: 35px; height: 1px; background: linear-gradient(90deg, rgba(220, 214, 204, 0.75), rgba(220, 214, 204, 0.25) 70%, rgba(220, 214, 204, 0)); }
+.fish-dex .sec .ct { position: absolute; right: 6px; top: 28px; font-family: var(--fish-num); font-size: 13px; color: #7b8389; }
+.fish-dex .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; padding: 4px 2px 6px 4px; }
+.fish-dex .tile { position: relative; aspect-ratio: 1; border: 0; padding: 0; background: rgba(13, 19, 25, 0.72); color: inherit; }
+.fish-dex .tile::before { content: ""; position: absolute; inset: 5px; border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: none; }
+.fish-dex .tile::after {
+  content: ""; position: absolute; inset: 2px; pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) left top / 10px 1px no-repeat,
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) left top / 1px 10px no-repeat,
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) right top / 10px 1px no-repeat,
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)) right top / 1px 10px no-repeat;
+}
+.fish-dex .tile.on { background: rgba(34, 44, 54, 0.9); box-shadow: 0 0 0 2px var(--fish-gold), 0 0 16px 2px rgba(201, 168, 116, 0.45); }
+.fish-dex .tile.on::before { border-color: rgba(201, 168, 116, 0.35); }
+.fish-dex .tile .no { position: absolute; z-index: 2; left: 9px; top: 7px; font-family: var(--fish-num); font-size: 12.5px; font-weight: 500; letter-spacing: 0.04em; color: #67717a; }
+.fish-dex .tile .fish-disc { position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); }
+.fish-dex .tile .vd { position: absolute; z-index: 2; right: 8px; bottom: 6px; color: #b59d77; font-size: 9px; letter-spacing: 1px; }
+.fish-dex .empty { margin: 18px 0; color: #7b8389; font-size: 13px; text-align: center; }
+/* a computer: the detail on the left, the grid on the right */
+@media (min-width: 900px) {
+  .fish-dex { position: fixed; inset: 0; z-index: 36; }
+  .fish-dex .top { padding-top: 18px; }
+  .fish-dex .top .ttl { font-size: 58px; top: 4px; right: 40px; }
+  .fish-dex .body { flex-direction: row; overflow: hidden; }
+  .fish-dex .detail { flex: none; width: 540px; padding: 0 40px 16px; border-bottom: 0; overflow-y: auto; }
+  .fish-dex .grid { flex: 1; min-width: 0; overflow-y: auto; padding: 0 28px 24px 36px; }
+  .fish-dex .detail .pic, .fish-dex .detail .pic img { width: 250px; height: 250px; }
+  .fish-dex .detail .pic .shade { width: 170px; height: 150px; }
+  .fish-dex .cells { grid-template-columns: repeat(5, 112px); gap: 12px; }
+  .fish-dex .tile { width: 112px; height: 112px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fish *, .fish-scene * { animation: none !important; }
+}

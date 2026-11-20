@@ -18,6 +18,7 @@ import {
   DeskHint,
   DiscoButton,
   Envelope,
+  FishIcon,
   GuideFace,
   HotFlame,
   ListenIcon,
@@ -131,6 +132,14 @@ function Phone(p: ChromeProps) {
                 <StudyIcon size={22} dot={p.study.dot} />
               </span>
               <span aria-hidden="true">{T.map.bar.study}</span>
+            </button>
+          )}
+          {p.fish && (
+            <button className="dchip glass" aria-label={T.map.bar.fishLabel} onClick={p.fish.onOpen}>
+              <span className="ico">
+                <FishIcon size={22} />
+              </span>
+              <span aria-hidden="true">{T.map.bar.fish}</span>
             </button>
           )}
           {p.guides.map((id) => (
@@ -255,6 +264,7 @@ function Panel(p: ChromeProps) {
             {p.squad && <SquadCard squad={p.squad} />}
             {p.passes && <PassesCard passes={p.passes} />}
             {p.study && <StudyCard study={p.study} />}
+            {p.fish && <FishEntryCard fish={p.fish} />}
             <h4>{T.ui.drawer.guides}</h4>
             <div className="glist">
               {p.guides.map((id) => (
@@ -522,6 +532,22 @@ function PassesCard({ passes }: { passes: NonNullable<ChromeProps["passes"]> }) 
       <span className="tx" aria-hidden="true">
         <b>{T.map.bar.passes}</b>
         <small>{fmt(T.map.bar.passesTickets, { n: passes.tickets })}</small>
+      </span>
+      <span className="go" aria-hidden="true">
+        ›
+      </span>
+    </button>
+  );
+}
+
+/** 钓鳞 in the computer's panel, under 325大学习: the bank */
+function FishEntryCard({ fish }: { fish: NonNullable<ChromeProps["fish"]> }) {
+  return (
+    <button className="dcard" aria-label={T.map.bar.fishLabel} onClick={fish.onOpen}>
+      <FishIcon size={40} />
+      <span className="tx" aria-hidden="true">
+        <b>{T.map.bar.fish}</b>
+        <small>{T.map.bar.fishSub}</small>
       </span>
       <span className="go" aria-hidden="true">
         ›

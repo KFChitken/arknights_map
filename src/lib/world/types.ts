@@ -589,6 +589,8 @@ export type Me = {
   passes?: PassesMe;
   /** 325大学习 (src/lib/study): only for a player who may study (STUDY); never in what others get */
   study?: StudyMe;
+  /** 钓鳞's way in (src/lib/server/fish.ts): only for a player who may fish (FISH); never in what others get */
+  fish?: true;
   /** 听歌 (src/lib/listen.ts): only for a player who may listen (LISTEN); never in what others get */
   listen?: ListenMe;
   /** 一起卫戍 (src/lib/squad.ts): only where its way in shows to the player (SQUAD, squadShown); never in what others get */

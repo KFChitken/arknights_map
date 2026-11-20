@@ -168,6 +168,7 @@ import { friendsListening, listenCalls, listenInbox, seeListenInvites } from "./
 import { seeSquadInvites, squadCalls, squadInbox, squadMe } from "./squad";
 import { squadOpen, squadShown } from "./squadOpen";
 import { studyMe } from "./study";
+import { fishOpen } from "./fish";
 import { passwordNudge } from "./passwords";
 import { seeStaff, staffItems } from "./staffNotes";
 import { allow } from "./rateLimit";
@@ -507,6 +508,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
     passwordNudge: await passwordNudge(u),
     passes: await passesMe(u),
     study: studyMe(u),
+    fish: fishOpen(u) || undefined,
     listen: await listenMe(u),
     squad: await squadMe(u),
     sponsor: await sponsorMe(u),

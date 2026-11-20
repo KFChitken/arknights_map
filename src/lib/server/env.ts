@@ -161,6 +161,13 @@ export const passFramingOn = () => process.env.PASS_FRAMING !== "off";
 export const studyMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.STUDY) ?? "off";
 
 /**
+ * 钓鳞 (src/lib/server/fish.ts), the bank in the menu and its dex: FISH=on lets every signed-in player fish; admins,
+ * only the 站长 and the admins (to try it on the live site first); off (the default) shows nobody the way in and
+ * answers its requests 404. What was caught stays, whichever it is. Read on every use, so the tests can switch it.
+ */
+export const fishMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.FISH) ?? "off";
+
+/**
  * 听歌 (src/lib/server/listen.ts): LISTEN=on lets every signed-in player play the site's songs, alone and together;
  * admins, only the 站长 and the admins (to try it on the live site first); off (the default) shows nobody the way
  * in, answers its requests 404 and lets no song out (/api/listen/ok). What was kept stays, whichever it is. Read on

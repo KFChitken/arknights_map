@@ -17,6 +17,7 @@ import {
   DeskHint,
   DiscoButton,
   Envelope,
+  FishIcon,
   FoldArrow,
   GuideFace,
   HotFlame,
@@ -65,7 +66,7 @@ export default function HudChrome(p: ChromeProps) {
   const mini = p.listen?.mini ?? null;
   const bm = p.basemap;
   const col = useRef<HTMLDivElement>(null);
-  const n = 2 + [p.squad, p.passes, p.study, bm, ui, listen, sponsor].filter(Boolean).length;
+  const n = 2 + [p.squad, p.passes, p.study, p.fish, bm, ui, listen, sponsor].filter(Boolean).length;
   const fit = useColumnFit(col, [sides, n, Boolean(me), Boolean(me?.main), bm?.now]);
   return (
     <div className="chrome chrome-hud">
@@ -166,6 +167,16 @@ export default function HudChrome(p: ChromeProps) {
               </button>
               <span className="lbl" aria-hidden="true">
                 {T.map.bar.study}
+              </span>
+            </span>
+          )}
+          {p.fish && (
+            <span className="rb">
+              <button className="ob glass" aria-label={T.map.bar.fishLabel} onClick={p.fish.onOpen}>
+                <FishIcon size={24} />
+              </button>
+              <span className="lbl" aria-hidden="true">
+                {T.map.bar.fish}
               </span>
             </span>
           )}
