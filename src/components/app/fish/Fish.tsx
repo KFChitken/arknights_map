@@ -26,7 +26,7 @@ import { roachDataUrl } from "@/lib/roachSvg";
 import type { RoachAvatar, RoachColor, RoachStyle } from "@/lib/types";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded } from "@/lib/world/types";
 import CatchPage from "./CatchPage";
-import FishCard, { cmText, nameOf, picOf } from "./FishCard";
+import FishCard, { nameOf, picOf, weightAfterName, weightText } from "./FishCard";
 import NetPage from "./NetPage";
 import { CAST_MS, LEAP_MS, REEL_MS, type FishPhase } from "./pose";
 import WinScene, { type PondFlag, type PondSeat } from "./WinScene";
@@ -464,6 +464,7 @@ export default function Fish({
         ? fmt(T.fish.status.full, { n: CASTS_A_DAY })
         : T.fish.status[phase === "idle" ? "idle" : phase]);
   const catchItem = caught ? itemOf(caught.no) : null;
+  const caughtWeight = caught ? weightText(caught.no, caught.cm) : null;
   const label = st?.admiral ? `${T.fish.you} · ${T.fish.admiral}` : T.fish.you;
   // 自动钓, the bank's: what it holds now, by the server's clock
   const held = st && st.net !== null ? netHeld(st.net, serverNow(), st.casts) : 0;
@@ -566,7 +567,7 @@ export default function Fish({
           {pond?.schoolBadge && <span className="fw-school">{pond.schoolBadge}</span>}
           {shout && (
             <p className="fw-shout" role="status">
-              {fmt(T.fish.shout, { name: nameOf(shout.no, shout.variant), size: shout.cm === null ? "" : fmt(T.fish.sized, { cm: cmText(shout.cm) }) })}
+              {fmt(T.fish.shout, { name: nameOf(shout.no, shout.variant), size: weightAfterName(shout.no, shout.cm) })}
             </p>
           )}
           {phase === "caught" && caught && catchItem && !full && (
@@ -575,7 +576,7 @@ export default function Fish({
               <span className="tx">
                 <b>{nameOf(caught.no, caught.variant)}</b>
                 <small>
-                  {caught.cm !== null && `${fmt(T.fish.cm, { cm: cmText(caught.cm) })} · `}
+                  {caughtWeight && `${fmt(T.fish.weight, { w: caughtWeight })} · `}
                   {caught.first ? T.fish.firstTime : fmt(T.fish.nth, { n: caught.n })}
                 </small>
                 {caught.wallet !== undefined ? (

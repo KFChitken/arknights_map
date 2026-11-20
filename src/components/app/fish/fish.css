@@ -306,8 +306,9 @@
 .fish-dex .detail .sizes { display: flex; gap: 10px; margin-top: 14px; }
 .fish-dex .detail .sizes > div { flex: 1; display: flex; align-items: baseline; gap: 8px; padding: 7px 12px; background: rgba(0, 0, 0, 0.3); border-left: 2px solid var(--fish-gold); }
 .fish-dex .detail .sizes > div + div { border-left-color: rgba(255, 255, 255, 0.25); }
-.fish-dex .detail .sizes small { color: #9aa2a8; font-size: 12px; }
-.fish-dex .detail .sizes b { margin-left: auto; font-family: var(--fish-num); font-size: 18px; font-weight: 600; }
+.fish-dex .detail .sizes small { color: #9aa2a8; font-size: 12px; white-space: nowrap; }
+.fish-dex .detail .sizes b { margin-left: auto; font-family: var(--fish-num); font-size: 18px; font-weight: 600; white-space: nowrap; }
+.fish-dex .detail .sizes b small { margin-left: 2px; color: #c9c4bb; }
 .fish-dex .detail .vars { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; padding-left: 4px; }
 .fish-dex .detail .vars > span { width: 50px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 10.5px; color: #6f777d; white-space: nowrap; }
 .fish-dex .detail .vars > span.have { color: #d8d2c6; }

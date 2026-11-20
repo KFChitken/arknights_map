@@ -39,7 +39,7 @@ import {
 } from "@/lib/squadMode";
 import type { TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
-import { cmText, nameOf } from "../fish/words";
+import { nameOf, weightAfterName } from "../fish/words";
 
 /**
  * 一起卫戍 on the map page (src/lib/squad.ts): the room the player is in, kept here so the bars over the map and the
@@ -489,7 +489,7 @@ export function heardSquad(raw: unknown) {
     for (const it of tell.items) {
       const m = r.members.find((x) => x.h === it.h);
       if (!m || it.h === r.you) continue;
-      addFloat(fmt(T.fish.roomShout, { name: m.name, item: nameOf(it.no, it.variant), size: it.cm === null ? "" : fmt(T.fish.sized, { cm: cmText(it.cm) }) }));
+      addFloat(fmt(T.fish.roomShout, { name: m.name, item: nameOf(it.no, it.variant), size: weightAfterName(it.no, it.cm) }));
     }
     return;
   }

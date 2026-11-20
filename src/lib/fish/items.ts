@@ -23,6 +23,8 @@ export type FishItem = {
   at: Partial<Record<FishSpot, FishOdds>>;
   /** Its size range in cm, for those measured */
   cm?: [number, number];
+  /** For those measured: how much a plain one at the top of its size range (cm[1]) weighs, in kg */
+  kg?: number;
   when?: FishWhen;
   /** A 通行证 thing (寻访券, 漂流瓶), only where PASSES lets the player draw */
   kind?: "ticket" | "bottle";
@@ -63,6 +65,18 @@ export const SIZE_PERFECT = TABLE.sizes.perfect;
 
 const BY_NO = new Map(FISH_ITEMS.map((i) => [i.no, i]));
 export const itemOf = (no: number): FishItem | undefined => BY_NO.get(no);
+
+/**
+ * What a catch weighs, in grams, from its size (in hundredths of a cm, as kept): its kind's kg at the top of its range,
+ * by the cube of its length against that, so a longer one of a kind is always heavier and the variants' and an
+ * on-time pull's sizes weigh as they measure (迷你 an eighth, 巨大 about 4.1 times, on time about 1.33 times). Null for
+ * one not weighed.
+ */
+export function gramsOf(no: number, cm: number | null): number | null {
+  const item = itemOf(no);
+  if (cm === null || !item?.cm || !item.kg) return null;
+  return item.kg * 1000 * (cm / 100 / item.cm[1]) ** 3;
+}
 
 /**
  * The variants, by number (0: none): 1 金色的, 2 源石结晶的, 3 月夜的 (only from 20:00 to 06:00, the player's own

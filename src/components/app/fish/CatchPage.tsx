@@ -4,14 +4,14 @@ import { fmt, T } from "@/i18n";
 import { itemOf } from "@/lib/fish/items";
 import type { FishCatch } from "@/lib/fish/rules";
 import { TICKETS_CAP } from "@/lib/passes";
-import FishCard, { cmText, nameOf, wordsOf } from "./FishCard";
+import FishCard, { nameOf, weightText, wordsOf } from "./FishCard";
 
 /**
- * A catch worth a page of its own (the first of one, a record size, purple or better), as the game's 获得物资 when a
+ * A catch worth a page of its own (the first of one, a record weight, purple or better), as the game's 获得物资 when a
  * task's reward comes, over the small window's scene (the design's FishWin): the scene dark under a fine dot grid, a
- * soft light (gold for purple and better), 钓上来了, the disc popping in with the size where the game writes how many
+ * soft light (gold for purple and better), 钓上来了, the disc popping in with the weight where the game writes how many
  * and NEW at its corner the first time, the name in a black box, a grey line of its number, rarity and how many (新纪录
- * before it for a record), and under it the site's biggest for a record, or what a 寻访券 or a 漂流瓶 does; a round ✓ in
+ * before it for a record), and under it the site's heaviest for a record, or what a 寻访券 or a 漂流瓶 does; a round ✓ in
  * the corner, and a tap anywhere closes it.
  */
 export default function CatchPage({ caught, onClose }: { caught: FishCatch; onClose: () => void }) {
@@ -24,13 +24,14 @@ export default function CatchPage({ caught, onClose }: { caught: FishCatch; onCl
       ? fmt(T.fish.banner.lineFirstVariant, { no, tier: item.tier, v: T.fish.variants[caught.variant] })
       : fmt(T.fish.banner.lineFirst, { no, tier: item.tier })
     : fmt(T.fish.banner.lineNth, { no, tier: item.tier, n: caught.n });
+  const top = caught.record ? weightText(caught.no, caught.top) : null;
   const extra =
     caught.wallet !== undefined
       ? fmt(T.fish.ticketIn, { n: caught.wallet, cap: TICKETS_CAP })
       : caught.bottle !== undefined
         ? T.fish.bottle.next
-        : caught.record && caught.top !== null
-          ? fmt(T.fish.banner.recordLine, { name: wordsOf(item.key)?.name ?? name, cm: cmText(caught.top) })
+        : top
+          ? fmt(T.fish.banner.recordLine, { name: wordsOf(item.key)?.name ?? name, w: top })
           : null;
   return (
     <button type="button" className="fish-got" onClick={onClose} aria-label={`${T.fish.banner.title} ${name}`}>

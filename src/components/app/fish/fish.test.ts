@@ -3,9 +3,9 @@ import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { FISH_ITEMS, inDex } from "@/lib/fish/items";
+import { FISH_ITEMS, gramsOf, inDex, SIZE_GIANT, SIZE_MINI, SIZE_PERFECT } from "@/lib/fish/items";
 import CatchPage from "./CatchPage";
-import FishCard, { nameOf, wordsOf } from "./FishCard";
+import FishCard, { nameOf, weightAfterName, weightOf, weightText, wordsOf } from "./FishCard";
 import { CAST_MS, LEAP_MS, poseAt as at, REEL_MS, type FishPhase } from "./pose";
 import { WIN_PIER as SPOTS } from "./WinScene";
 
@@ -31,6 +31,55 @@ describe("钓鳞's items", () => {
     expect(Math.min(...nos)).toBe(1);
   });
 
+  it("weigh, those measured: each with a size range has the weight of a plain one at its top, and the rest none", () => {
+    for (const item of FISH_ITEMS) {
+      if (item.cm) expect(item.kg, item.key).toBeGreaterThan(0);
+      else expect(item.kg, item.key).toBeUndefined();
+    }
+    expect(FISH_ITEMS.filter((i) => i.cm && i.kg && i.no <= 124)).toHaveLength(31);
+  });
+
+  it("show a catch's weight from its size: grams to a tenth under 10 g, whole grams under 1 kg, then kg and t to a hundredth", () => {
+    expect(weightText(1, 5240)).toBe("1.60 kg");
+    expect(weightText(5, 2460)).toBe("186 g");
+    expect(weightText(22, 1000)).toBe("5.8 g");
+    expect(weightText(22, 500)).toBe("0.7 g");
+    expect(weightText(49, 8712)).toBe("7.27 kg");
+    expect(weightText(49, 9840)).toBe("10.48 kg");
+    expect(weightText(50, 30000)).toBe("420.00 kg");
+    // 巨大 and on time: 300 cm × 1.6 × 1.1
+    expect(weightText(50, 52800)).toBe("2.29 t");
+    expect(weightOf(21, 6320)).toEqual(["4.16", "kg"]);
+    // each unit from where the one before would round up to it: 9.93 g, 9.95 g; 999.06 g, 999.73 g; 999.97 kg, 1000.04 kg
+    expect(weightText(22, 1197)).toBe("9.9 g");
+    expect(weightText(22, 1198)).toBe("10 g");
+    expect(weightText(1, 4480)).toBe("999 g");
+    expect(weightText(1, 4481)).toBe("1.00 kg");
+    expect(weightText(50, 40059)).toBe("999.97 kg");
+    expect(weightText(50, 40060)).toBe("1.00 t");
+    // not weighed: no size, or none kept
+    expect(weightText(2, 3000)).toBeNull();
+    expect(weightText(1, null)).toBeNull();
+    expect(weightAfterName(1, 5240)).toBe(" · 1.60 kg");
+    expect(weightAfterName(2, null)).toBe("");
+  });
+
+  it("weigh a longer one of a kind always heavier, so the records and 新纪录 stay as they were; 迷你 an eighth, 巨大 4.1 times, on time 1.33 times", () => {
+    for (const item of FISH_ITEMS.filter((i) => i.cm)) {
+      const [lo, hi] = item.cm!;
+      let was = 0;
+      for (let cm = Math.round(lo * 100 * SIZE_MINI); cm <= Math.round(hi * 100 * SIZE_GIANT * SIZE_PERFECT); cm += 37) {
+        const g = gramsOf(item.no, cm)!;
+        expect(g, `${item.key} ${cm}`).toBeGreaterThan(was);
+        was = g;
+      }
+      expect(gramsOf(item.no, hi * 100)).toBeCloseTo(item.kg! * 1000, 6);
+    }
+    expect(gramsOf(1, 3000 * SIZE_MINI)! / gramsOf(1, 3000)!).toBeCloseTo(1 / 8, 9);
+    expect(gramsOf(1, 3000 * SIZE_GIANT)! / gramsOf(1, 3000)!).toBeCloseTo(4.096, 9);
+    expect(gramsOf(1, 3000 * SIZE_PERFECT)! / gramsOf(1, 3000)!).toBeCloseTo(1.331, 9);
+  });
+
   it("name a variant before the item, and none with no words yet", () => {
     expect(nameOf(21)).toBe("炎国锦鲤");
     expect(nameOf(21, 2)).toBe("源石结晶的炎国锦鲤");
@@ -39,18 +88,18 @@ describe("钓鳞's items", () => {
     expect(nameOf(999)).toBe("???");
   });
 
-  it("sit on a disc of their rarity, the size where the game writes how many, dark and pale before they are caught", () => {
+  it("sit on a disc of their rarity, the weight where the game writes how many, dark and pale before they are caught", () => {
     const disc = renderToStaticMarkup(createElement(FishCard, { no: 21, variant: 2, size: 150, cm: 6320 }));
     expect(disc).toContain('class="fish-disc r4 "');
     expect(disc).toContain("--d:150px");
     expect(disc).toContain('src="/fish/koi.webp"');
     expect(disc).toContain('class="v-crystal"');
-    expect(disc).toContain("63.20<small>cm</small>");
+    expect(disc).toContain("4.16<small>kg</small>");
     expect(renderToStaticMarkup(createElement(FishCard, { no: 5, size: 66, locked: true }))).toContain('class="fish-disc r3 locked "');
     expect(renderToStaticMarkup(createElement(FishCard, { no: 5, size: 14, bare: true }))).not.toContain("<img");
   });
 
-  it("get a page of their own in the window with NEW the first time, 新纪录 with the site's biggest, and a gold light from purple up", () => {
+  it("get a page of their own in the window with NEW the first time, 新纪录 with the site's heaviest, and a gold light from purple up", () => {
     const page = (c: Partial<Parameters<typeof CatchPage>[0]["caught"]>) =>
       renderToStaticMarkup(
         createElement(CatchPage, {
@@ -65,7 +114,7 @@ describe("钓鳞's items", () => {
     const purple = page({ no: 21, tier: 4, cm: 7106, first: false, record: true, n: 3, top: 7106 });
     expect(purple).not.toContain(">NEW</em>");
     expect(purple).toContain("新纪录");
-    expect(purple).toContain("你钓过最大的炎国锦鲤，全站最大 71.06 cm");
+    expect(purple).toContain("你钓过最重的炎国锦鲤，全站最重 5.91 kg");
     expect(purple).toContain('<b class="rec">新纪录</b>No.021 · 稀有度 4 · 第 3 次钓到');
     expect(purple).toContain('class="halo gold"');
     expect(page({ no: 21, variant: 2, tier: 4, cm: 6320 })).toContain("变异「源石结晶的」第一次钓到");

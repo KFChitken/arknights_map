@@ -2,18 +2,18 @@
 
 import type { CSSProperties } from "react";
 import { itemOf, VARIANT_KEYS } from "@/lib/fish/items";
-import { cmText, picOf } from "./words";
+import { picOf, weightOf } from "./words";
 
 /**
  * 钓鳞's items on the game's warehouse discs: round, cement grey inside (dark with its colour rising from below for
  * purple, gold and red), a thin black line and the rarity's colour round the edge (fish.css, where every colour is kept
- * in one place); the picture a little bigger, up to the left, over the edge; the size where the game writes how many.
+ * in one place); the picture a little bigger, up to the left, over the edge; the weight where the game writes how many.
  * A variant is the same picture through its filter or scale; one not caught yet, its dark shape on a paler disc. A
  * 方舟原物's picture is the game's own disc already (its grey and its ring in it): shown as it is, darkened whole while
  * not caught, and only the bare rarity mark is ours.
  */
 
-export { cmText, nameOf, picOf, wordsOf } from "./words";
+export { nameOf, picOf, weightAfterName, weightOf, weightText, wordsOf } from "./words";
 
 export default function FishCard({
   no,
@@ -29,7 +29,7 @@ export default function FishCard({
   variant?: number;
   size: number;
   locked?: boolean;
-  /** Written where the game writes how many, in hundredths of a cm */
+  /** Its size in hundredths of a cm (as kept): its weight is written where the game writes how many */
   cm?: number | null;
   /** How many, written there instead (自动钓's 收网) */
   count?: number;
@@ -39,6 +39,7 @@ export default function FishCard({
 }) {
   const item = itemOf(no);
   if (!item) return null;
+  const weight = weightOf(no, cm);
   return (
     <span
       className={`fish-disc r${item.tier}${item.cat === "game" && !bare ? " game" : ""}${locked ? " locked" : ""} ${className}`}
@@ -53,10 +54,10 @@ export default function FishCard({
           {count}
         </span>
       ) : (
-        cm !== null && (
+        weight && (
           <span className="cnt" style={{ fontSize: Math.round(size * 0.16) }}>
-            {cmText(cm)}
-            <small>cm</small>
+            {weight[0]}
+            <small>{weight[1]}</small>
           </span>
         )
       )}
