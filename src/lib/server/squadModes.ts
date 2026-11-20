@@ -12,20 +12,23 @@ import {
   DANCE_TAP_EVERY_MS,
   DANCE_TAP_LATE_MS,
   DANCE_WINDOW_MS,
-  danceEnds,
   isModeKind,
   MODE_AGAIN_MS,
+  modeEnds,
+  quizUntil,
   type DanceSong,
+  type QuizData,
 } from "../squadMode";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { listenOpen } from "./listen";
 import { squadListenSongNow } from "./listenRooms";
 import { musicLink } from "./musicLinks";
-import { squadMembers, squadRooms, type UserRow } from "./schema";
+import { squadMembers, squadRooms, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
 import { songList, songOf, type HeldSong } from "./songs";
 import { danceInRoom, roomOf, tellSquadPlay } from "./squad";
+import { endQuiz, makeQuiz } from "./squadQuiz";
 
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥; the rules in src/lib/squadMode.ts), kept on the room's row and its
@@ -61,13 +64,17 @@ async function lockedMine(tx: Tx, userId: string) {
 
 /** When the room's mode ends by itself, or null while none plays */
 const endsOfMode = (room: Pick<RoomRow, "mode" | "modeUntil" | "modeLast">) =>
-  room.mode && room.modeUntil && room.modeLast ? danceEnds(room.modeUntil.getTime(), room.modeLast.getTime()) : null;
+  room.mode && room.modeUntil && room.modeLast ? modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime()) : null;
 
-/** The room's mode gone, its members out of it; its opener may open another MODE_AGAIN_MS after it ended (at) */
-async function endModeIn(tx: Tx, room: Pick<RoomRow, "id" | "modeBy">, at: number) {
+/**
+ * The room's mode gone (a quiz's last wearing 漏勺 first), its members out of it; its opener may open another
+ * MODE_AGAIN_MS after it ended (at)
+ */
+async function endModeIn(tx: Tx, room: Pick<RoomRow, "id" | "modeBy" | "mode">, at: number) {
+  if (room.mode === "quiz") await endQuiz(tx, room.id, at);
   await tx
     .update(squadRooms)
-    .set({ mode: null, modeBy: null, modeAt: null, modeSong: null, modeSongAt: null, modeUntil: null, modeLast: null })
+    .set({ mode: null, modeBy: null, modeAt: null, modeSong: null, modeSongAt: null, modeUntil: null, modeLast: null, modeData: null })
     .where(eq(squadRooms.id, room.id));
   await tx
     .update(squadMembers)
@@ -119,27 +126,40 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
   const mine = await roomOf(db, user.id);
   if (!mine) throw notInRoom();
   const people = await db
-    .select({ userId: squadMembers.userId })
+    .select({ u: users })
     .from(squadMembers)
+    .innerJoin(users, eq(users.id, squadMembers.userId))
     .where(and(eq(squadMembers.roomId, mine.room.id), isNull(squadMembers.leftAt)));
-  const [host] = await db.select({ hostId: squadRooms.hostId }).from(squadRooms).where(eq(squadRooms.id, mine.room.id));
-  const together = host ? await squadListenSongNow({ id: mine.room.id, hostId: host.hostId, people: people.map((p) => p.userId) }, now) : null;
-  let song: HeldSong | undefined;
-  let songAt: number;
-  let until: number;
-  const listenSong = together ? await songOf(together.song) : undefined;
-  if (together && listenSong && beatsOf(listenSong)) {
-    if (together.end - now < LISTEN_LEFT_MS) throw refuse(409, T.server.squad.danceSongEnding);
-    song = listenSong;
-    songAt = together.start;
-    until = together.end;
+  let fields: Pick<RoomRow, "modeSong" | "modeSongAt" | "modeUntil" | "modeLast" | "modeData">;
+  if (body.kind === "quiz") {
+    const quiz: QuizData | null = await makeQuiz(
+      people.map((p) => p.u),
+      now,
+      rand,
+    );
+    if (!quiz) throw refuse(409, T.server.squad.noQuiz);
+    const until = new Date(quizUntil(quiz.qs));
+    fields = { modeSong: null, modeSongAt: null, modeUntil: until, modeLast: until, modeData: quiz };
   } else {
-    song = await anyDanceSong(rand);
-    if (!song) throw refuse(409, T.server.squad.noDanceSong);
-    songAt = now + DANCE_LEAD_MS;
-    until = songAt + song.seconds * 1000;
+    const [host] = await db.select({ hostId: squadRooms.hostId }).from(squadRooms).where(eq(squadRooms.id, mine.room.id));
+    const together = host ? await squadListenSongNow({ id: mine.room.id, hostId: host.hostId, people: people.map((p) => p.u.id) }, now) : null;
+    let song: HeldSong | undefined;
+    let songAt: number;
+    let until: number;
+    const listenSong = together ? await songOf(together.song) : undefined;
+    if (together && listenSong && beatsOf(listenSong)) {
+      if (together.end - now < LISTEN_LEFT_MS) throw refuse(409, T.server.squad.danceSongEnding);
+      song = listenSong;
+      songAt = together.start;
+      until = together.end;
+    } else {
+      song = await anyDanceSong(rand);
+      if (!song) throw refuse(409, T.server.squad.noDanceSong);
+      songAt = now + DANCE_LEAD_MS;
+      until = songAt + song.seconds * 1000;
+    }
+    fields = { modeSong: song.id, modeSongAt: new Date(songAt), modeUntil: new Date(until), modeLast: new Date(now), modeData: null };
   }
-  const picked = song;
   const done = await db.transaction(async (tx) => {
     const { room, me } = await lockedMine(tx, user.id);
     const ends = endsOfMode(room);
@@ -154,15 +174,7 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
     if (again > now) throw refuse(429, fmt(T.server.squad.modeAgain, { s: Math.ceil((again - now) / 1000) }));
     await tx
       .update(squadRooms)
-      .set({
-        mode: body.kind as string,
-        modeBy: me.handle,
-        modeAt: new Date(now),
-        modeSong: picked.id,
-        modeSongAt: new Date(songAt),
-        modeUntil: new Date(until),
-        modeLast: new Date(now),
-      })
+      .set({ mode: body.kind as string, modeBy: me.handle, modeAt: new Date(now), ...fields })
       .where(eq(squadRooms.id, room.id));
     await tx
       .update(squadMembers)
@@ -181,9 +193,10 @@ export async function joinMode(user: Pick<UserRow, "id">, body: Record<string, u
     const { room, me } = await lockedMine(tx, user.id);
     const ends = endsOfMode(room);
     if (ends === null || ends <= now) throw refuse(409, T.server.squad.noMode);
+    // in a quiz, one coming in answers from the next question on (as having answered this one)
     await tx
       .update(squadMembers)
-      .set({ modeIn: into, modeCombo: 0, modeTapAt: null })
+      .set({ modeIn: into, modeCombo: 0, modeTapAt: into && room.mode === "quiz" ? new Date(now) : null })
       .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt)));
     return { roomId: room.id, h: me.handle };
   });

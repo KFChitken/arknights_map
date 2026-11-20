@@ -46,6 +46,7 @@ import {
 } from "@/lib/squad";
 import { squadApi, SquadRefused } from "@/lib/squadClient";
 import { FIRE_DROP_MS, fireLevel, fireWarm } from "@/lib/squadFire";
+import type { SquadModeKind } from "@/lib/squadMode";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import type { OwnRoach } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
@@ -1209,7 +1210,7 @@ function RoomView({
             move={moves.find((x) => x.h === m.h)}
             toMe={moves.find((x) => x.to === m.h)}
             open={menu === m.h}
-            dancing={room.mode?.kind === "dance" && room.mode.in.some((x) => x.h === m.h)}
+            inMode={room.mode?.in.some((x) => x.h === m.h) ? room.mode.kind : undefined}
             onCore={() => setPicking("core")}
             onStrategy={() => (room.state === "go" ? setTalking("round") : setPicking("strategy"))}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
@@ -1611,7 +1612,7 @@ function MemberTile({
   move,
   toMe,
   open,
-  dancing = false,
+  inMode,
   onCore,
   onStrategy,
   onMenu,
@@ -1633,8 +1634,8 @@ function MemberTile({
   move?: SquadMoveDone;
   toMe?: SquadMoveDone;
   open: boolean;
-  /** In 龙门广场舞 (玩点什么): 在跳, its roach dancing */
-  dancing?: boolean;
+  /** In the mode playing (玩点什么): 在跳 or 在答, its roach dancing in 龙门广场舞 */
+  inMode?: SquadModeKind;
   onCore: () => void;
   onStrategy: () => void;
   onMenu: () => void;
@@ -1648,8 +1649,8 @@ function MemberTile({
       {named && <span key={named.key} className="sq-named" aria-hidden="true" />}
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
-      <SquadRoach m={dancing && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
-      {dancing && <span className="dz">{T.squad.dance.tileTag}</span>}
+      <SquadRoach m={inMode === "dance" && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
+      {inMode && <span className={`dz k-${inMode}`}>{T.squad.modes.tileTags[inMode]}</span>}
       <span className="nm">
         {m.name}
         {m.fireTop && <SmallFlame label={T.lib.badges.firewatch.name} />}

@@ -5,7 +5,7 @@ import { fmt, T } from "@/i18n";
 import type { SquadRoom } from "@/lib/squad";
 import { MODE_KINDS, type SquadModeKind } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
-import { closeSquadModes, openSquadDance, squadModeIn, squadOpenMode, squadServerNow, useSquadModesOpen, useSquadRoom } from "./squading";
+import { closeSquadModes, openSquadModeCard, squadModeIn, squadOpenMode, squadServerNow, useSquadModesOpen, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
 /**
@@ -129,7 +129,7 @@ export default function SquadModes() {
     if (busy || !row.does) return;
     if (row.does === "look") {
       closeSquadModes();
-      return openSquadDance();
+      return openSquadModeCard();
     }
     setBusy(true);
     setMsg(null);

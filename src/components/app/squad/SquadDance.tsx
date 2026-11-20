@@ -4,12 +4,12 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { fmt, T } from "@/i18n";
 import { readDance, type DanceBeats } from "@/lib/dance";
 import type { SquadRoom } from "@/lib/squad";
-import { danceMove, type DanceMove, type DanceSong, type SquadMode } from "@/lib/squadMode";
+import { danceMove, type DanceMode, type DanceMove, type DanceSong, type SquadMode } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { beatAt } from "../../disco/clock";
 import { isListening, listenLiteNow, listenTap, useListenPlayer } from "../listening";
 import { SquadRoach } from "./SquadRoach";
-import { closeSquadDance, squadDanceSong, squadDanceTap, squadModeIn, squadServerNow, useSquadDanceJudge, useSquadDanceOpen, useSquadRoom } from "./squading";
+import { closeSquadModeCard, squadDanceSong, squadDanceTap, squadModeIn, squadServerNow, useSquadDanceJudge, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
 /**
@@ -226,7 +226,7 @@ export function DanceView({
   onLeave,
 }: {
   room: SquadRoom;
-  mode: SquadMode;
+  mode: DanceMode;
   now: number;
   /** 准！ or 歪了, while it shows (by: when it was tapped, to start its pop again) */
   judge: { ok: boolean; at: number } | null;
@@ -346,7 +346,7 @@ export function DanceView({
 }
 
 export default function SquadDance() {
-  const openAt = useSquadDanceOpen();
+  const openAt = useSquadModeCard();
   const room = useSquadRoom();
   const judge = useSquadDanceJudge();
   useListenPlayer();
@@ -460,7 +460,7 @@ export default function SquadDance() {
       msg={msg}
       stageRef={stageRef}
       stripRef={stripRef}
-      onClose={closeSquadDance}
+      onClose={closeSquadModeCard}
       onTap={tap}
       onTapClick={(byKey) => {
         // a key (Enter, space) taps here; a finger or the mouse did on its way down, and the music may start here

@@ -10,7 +10,7 @@ import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { danceEnds, type SquadMode } from "../squadMode";
+import { modeEnds, type SquadMode } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -106,6 +106,7 @@ import { kickFromHostListen, squadListensPlaying, squadListenView } from "./list
 import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, squadRooms, statCounts, userBadges, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songOf } from "./songs";
+import { quizView } from "./squadQuiz";
 import { squadOpen, squadShown } from "./squadOpen";
 import { countStat, unsavedStats } from "./stats";
 import { cardsOf, declare, friendIdsOf, friendKey, touch } from "./world";
@@ -496,11 +497,10 @@ async function fireWatchers(ids: string[], now: number) {
  * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order
  */
 async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], now: number): Promise<SquadMode | null> {
-  if (room.mode !== "dance" || !room.modeAt || !room.modeSong || !room.modeSongAt || !room.modeUntil || !room.modeLast) return null;
-  const endsAt = danceEnds(room.modeUntil.getTime(), room.modeLast.getTime());
+  if (!room.mode || !room.modeAt || !room.modeUntil || !room.modeLast) return null;
+  const endsAt = modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime());
   if (endsAt <= now) return null;
-  return {
-    kind: "dance",
+  const base = {
     by: room.modeBy ?? 0,
     at: room.modeAt.getTime(),
     in: rows
@@ -508,11 +508,11 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
       .sort((a, b) => a.m.handle - b.m.handle)
       .map((r) => ({ h: r.m.handle, combo: r.m.modeCombo })),
     endsAt,
-    song: room.modeSong,
-    name: (await songOf(room.modeSong))?.name ?? "",
-    songAt: room.modeSongAt.getTime(),
     until: room.modeUntil.getTime(),
   };
+  if (room.mode === "quiz" && room.modeData) return { kind: "quiz", ...base, questions: await quizView(room.modeData, now) };
+  if (room.mode !== "dance" || !room.modeSong || !room.modeSongAt) return null;
+  return { kind: "dance", ...base, song: room.modeSong, name: (await songOf(room.modeSong))?.name ?? "", songAt: room.modeSongAt.getTime() };
 }
 
 /** The room you are in now, as you see it (null: none), and the server's clock */

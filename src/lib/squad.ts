@@ -468,7 +468,7 @@ export type SquadTell =
        * out of it, invited, 下次吧)
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz";
         h?: number;
         to?: SquadState;
         round?: SquadRound;

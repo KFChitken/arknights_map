@@ -1,8 +1,9 @@
 /*
- * 玩点什么 (SquadModes.tsx), the line asking one to join the mode playing (SquadModeInvite.tsx) and 龙门广场舞's card
- * (SquadDance.tsx). 玩点什么 is over the map as 篝火's card is (35: at the foot on a phone, in the middle on a computer);
- * the dance sits at the map's foot with nothing over the rest (34, under 钓鳞's window and the cards); the line asking
- * is at the top over them all (38), under the toast (40). Each mode's colours are its own (k-dance).
+ * 玩点什么 (SquadModes.tsx), the line asking one to join the mode playing (SquadModeInvite.tsx), 龙门广场舞's card
+ * (SquadDance.tsx) and 凯尔希随堂测's (SquadQuiz.tsx). 玩点什么 is over the map as 篝火's card is (35: at the foot on a
+ * phone, in the middle on a computer); a mode's card sits at the map's foot with nothing over the rest (34, under
+ * 钓鳞's window and the cards); the line asking is at the top over them all (38), under the toast (40). Each mode's
+ * colours are its own (k-dance, k-quiz).
  */
 
 /* ---- 玩点什么 ---- */
@@ -31,6 +32,8 @@
 .sq-modes .now small { flex: none; font-size: 12px; font-weight: 700; }
 .sq-modes .now.k-dance { background: #ffe4ec; color: #8a1d47; }
 .sq-modes .now.k-dance i { background: #d63a7a; }
+.sq-modes .now.k-quiz { background: #e3edf7; color: #1f4366; }
+.sq-modes .now.k-quiz i { background: #3d8fbf; }
 .sq-modes .rows { display: flex; flex-direction: column; margin-top: 6px; }
 .sq-modes .row {
   display: flex; align-items: center; gap: 12px; padding: 9px 6px; border: 0; border-radius: 12px; background: none; color: #1b1d22; font: inherit; text-align: left;
@@ -40,6 +43,7 @@
 .sq-modes .row:disabled { cursor: default; }
 .sq-modes .gl { flex: none; display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 12px; font-size: 20px; font-weight: 900; }
 .sq-modes .k-dance .gl { background: #ffe4ec; color: #b4235a; }
+.sq-modes .k-quiz .gl { background: #e3edf7; color: #1f4366; }
 .sq-modes .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sq-modes .nm { display: flex; align-items: center; gap: 6px; }
 .sq-modes .nm b { font-size: 15px; white-space: nowrap; }
@@ -143,8 +147,115 @@
 .sq-dance .leave:disabled { opacity: 0.6; cursor: default; }
 .sq-dance .dmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
 .sq-dance .note { margin: 12px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+/* ---- 凯尔希随堂测 ---- */
+.sq-quiz {
+  position: fixed; z-index: 34; left: 50%; bottom: 0; width: min(420px, 100%); max-height: calc(100% - 56px - var(--safe-top, 0px)); overflow-y: auto; transform: translateX(-50%);
+  padding: 10px 12px calc(14px + var(--safe-bottom, 0px)); box-sizing: border-box; border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14); -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 720px) {
+  .sq-quiz { bottom: 16px; border-radius: 18px; padding-bottom: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3); }
+}
+.sq-quiz header { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; }
+.sq-quiz header b {
+  min-width: 0; overflow: hidden; padding: 2px 10px; border-radius: 999px; background: #e3edf7; color: #1f4366; font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.sq-quiz header .x {
+  margin-left: auto; flex: none; width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1; cursor: pointer;
+}
+/* everyone in it with their points, you marked */
+.sq-quiz .players { display: flex; gap: 6px; }
+.sq-quiz .pl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid #e3e5e8; border-radius: 10px; background: #fff; }
+.sq-quiz .pl.you { border-color: #ffd23f; background: #fffbea; }
+.sq-quiz .pl .tx { min-width: 0; display: flex; flex-direction: column; }
+.sq-quiz .pl small { overflow: hidden; color: #6b7280; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.sq-quiz .pl b { font-size: 15px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+/* the question: its kind among the four, its picture or intro or words, the seconds and the bar, its three */
+.sq-quiz .qcard { margin-top: 10px; overflow: hidden; border: 1px solid #e3e5e8; border-radius: 16px; }
+.sq-quiz .types { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; background: #f6f7f9; }
+.sq-quiz .types span { padding: 1px 8px; border-radius: 6px; background: #fff; color: #9aa0aa; font-size: 11px; font-weight: 700; }
+.sq-quiz .types span.on { background: #1b1d22; color: #fff; }
+.sq-quiz .stage { position: relative; height: 210px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: linear-gradient(160deg, #f6f7f9, #dfe6ef); }
+.sq-quiz .stage.k-crop { background: #2a2c31; }
+.sq-quiz .stage.k-intro { background: #16181c; color: #c8ccd2; }
+.sq-quiz .stage.k-meme { background: #23352d; box-shadow: inset 0 0 0 6px #6b4a2b; color: #f4f1e6; }
+.sq-quiz .stage.k-lead { background: #e3edf7; color: #1f4366; box-shadow: none; }
+.sq-quiz .stage .mid { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 100%; padding: 0 18px; box-sizing: border-box; text-align: center; }
+.sq-quiz .stage img { display: block; user-select: none; -webkit-user-select: none; }
+.sq-quiz .stage img.sil { width: auto; height: 196px; max-width: 100%; object-fit: contain; }
+.sq-quiz .stage img.crop { width: 176px; height: 176px; border: 2px dashed rgba(255, 255, 255, 0.8); border-radius: 10px; }
+.sq-quiz .stage .lead { font-size: 64px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; animation: sqm-pop 0.25s ease-out both; }
+.sq-quiz .stage .board { font-size: 22px; line-height: 1.45; letter-spacing: 0.02em; }
+.sq-quiz .stage .say { font-size: 13px; font-weight: 700; line-height: 1.5; }
+.sq-quiz .stage .play { height: 44px; padding: 0 18px; border: 0; border-radius: 12px; background: #3d8fbf; color: #fff; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.sq-quiz .stage .secs {
+  position: absolute; right: 10px; top: 8px; color: #fff; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.sq-quiz .eq { display: flex; align-items: flex-end; gap: 6px; height: 64px; }
+.sq-quiz .eq i { width: 9px; height: 14px; border-radius: 3px; background: #3d8fbf; }
+.sq-quiz .eq.on i { animation: sqq-eq 0.9s ease-in-out infinite; }
+.sq-quiz .eq.on i:nth-child(2) { animation-delay: -0.3s; }
+.sq-quiz .eq.on i:nth-child(3) { animation-delay: -0.6s; }
+.sq-quiz .eq.on i:nth-child(4) { animation-delay: -0.15s; }
+.sq-quiz .eq.on i:nth-child(5) { animation-delay: -0.45s; }
+.sq-quiz .drain { height: 6px; background: #eceef1; }
+.sq-quiz .drain i { display: block; width: 100%; height: 6px; background: #3d8fbf; }
+.sq-quiz .drain i.run { animation: sqq-drain linear forwards; }
+.sq-quiz .ask { margin: 0; padding: 10px 10px 4px; font-size: 15px; font-weight: 700; }
+.sq-quiz .opts { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; }
+.sq-quiz .opt {
+  height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1.5px solid #e3e5e8; border-radius: 12px; background: #fff; color: #1b1d22; font: inherit;
+  text-align: left; cursor: pointer; touch-action: manipulation;
+}
+.sq-quiz .opt:hover:not(:disabled) { filter: brightness(0.97); }
+.sq-quiz .opt:disabled { opacity: 1; color: #1b1d22; cursor: default; }
+.sq-quiz .opt b { flex: none; color: #9aa0aa; font-size: 14px; }
+.sq-quiz .opt span { flex: 1; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.sq-quiz .opt small { flex: none; font-size: 12px; font-weight: 700; }
+.sq-quiz .opt.mine { border-color: #1f4366; }
+.sq-quiz .opt.mine small { color: #1f4366; }
+.sq-quiz .opt.ok { border-color: #1f6b41; background: #dcf3e6; }
+.sq-quiz .opt.ok small { color: #1f6b41; }
+.sq-quiz .opt.bad { border-color: #c0392b; background: #fde2e1; }
+.sq-quiz .opt.bad small { color: #c0392b; }
+/* the line under it: your answer, who was first, the next coming */
+.sq-quiz .res { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.sq-quiz .res span {
+  flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; padding: 0 12px; border-radius: 12px; background: #f1f2f4; color: #4b5160; font-size: 13px;
+  font-weight: 700; animation: sqq-in 0.25s ease-out both;
+}
+.sq-quiz .res span:empty { visibility: hidden; }
+.sq-quiz .res span.ok { background: #dcf3e6; color: #1f6b41; }
+.sq-quiz .res span.bad { background: #fde2e1; color: #9b2c22; }
+.sq-quiz .res small { flex: none; color: #6b7280; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* the results: where everyone came, who wears 漏勺 */
+.sq-quiz .results { margin-top: 10px; padding: 12px; border: 1px solid #e3e5e8; border-radius: 16px; }
+.sq-quiz .results h3 { margin: 0 0 8px; font-size: 15px; }
+.sq-quiz .results ol { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.sq-quiz .results li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: #f6f7f9; }
+.sq-quiz .results li.you { background: #fffbea; box-shadow: inset 0 0 0 1px #ffd23f; }
+.sq-quiz .results .pn { flex: none; width: 40px; color: #1f4366; font-size: 13px; font-weight: 800; }
+.sq-quiz .results .nm { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.sq-quiz .results em { flex: none; padding: 0 6px; border-radius: 6px; background: #eceef1; color: #4b5160; font-size: 10.5px; font-style: normal; font-weight: 800; }
+.sq-quiz .results b { flex: none; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sq-quiz .results .end { margin: 10px 2px 0; color: #4b5160; font-size: 12.5px; }
+/* one watching: join from the next question */
+.sq-quiz .watch { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 12px; background: #f6f7f9; }
+.sq-quiz .watch span { flex: 1; min-width: 0; color: #4b5160; font-size: 12.5px; line-height: 1.45; }
+.sq-quiz .watch button { flex: none; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffd23f; color: #1b1d22; font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; }
+.sq-quiz .watch button:disabled { opacity: 0.6; cursor: default; }
+.sq-quiz .leave {
+  width: 100%; height: 34px; margin-top: 8px; border: 0; border-radius: 10px; background: #f1f2f4; color: #1b1d22; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.sq-quiz .leave:disabled { opacity: 0.6; cursor: default; }
+.sq-quiz .qmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
+.sq-quiz .note { margin: 12px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+@keyframes sqq-drain { from { width: 100%; } to { width: 0; } }
+@keyframes sqq-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes sqq-eq { 0%, 100% { height: 14px; } 50% { height: 60px; } }
 @keyframes sqm-light { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.8; } }
 @keyframes sqm-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .sq-minv, .sq-dance .judge, .sq-dance .lt { animation: none; }
+  .sq-minv, .sq-dance .judge, .sq-dance .lt, .sq-quiz .eq.on i, .sq-quiz .stage .lead, .sq-quiz .res span { animation: none; }
 }

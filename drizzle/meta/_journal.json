@@ -624,6 +624,13 @@
       "when": 1795154115394,
       "tag": "0089_fire_board",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1795157034707,
+      "tag": "0090_quiz",
+      "breakpoints": true
     }
   ]
 }

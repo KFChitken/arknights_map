@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
-import type { SquadMode } from "@/lib/squadMode";
+import type { DanceMode, SquadMode } from "@/lib/squadMode";
 import { DanceView, danceRow, musicWords, type DanceMusic } from "./SquadDance";
 import { InviteLine, inviteOf } from "./SquadModeInvite";
 import { ModesCard, modeRow } from "./SquadModes";
@@ -24,7 +24,7 @@ const member = (h: number, more: Partial<SquadMember> = {}): SquadMember => ({
   extras: [],
   ...more,
 });
-const dance = (more: Partial<SquadMode> = {}): SquadMode => ({
+const dance = (more: Partial<DanceMode> = {}): DanceMode => ({
   kind: "dance",
   by: 2,
   at: NOW - 20_000,
@@ -143,7 +143,7 @@ describe("龙门广场舞", () => {
   });
 
   it("dances each as their combo has it, your COMBO and your move in words, 跳 and 不跳了 to you in it, 加入一起跳 to you watching", () => {
-    const html = (m: SquadMode, more: { now?: number; music?: DanceMusic; judge?: { ok: boolean; at: number } | null } = {}) =>
+    const html = (m: DanceMode, more: { now?: number; music?: DanceMusic; judge?: { ok: boolean; at: number } | null } = {}) =>
       renderToStaticMarkup(
         createElement(DanceView, {
           room: room({ mode: m }),

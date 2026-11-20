@@ -4,7 +4,7 @@ import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
 import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound } from "./squad";
 import type { FireBoard, SquadFire } from "./squadFire";
-import type { DanceSong, SquadModeKind } from "./squadMode";
+import type { DanceSong, QuizAnswered, QuizAsk, SquadModeKind } from "./squadMode";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -101,6 +101,10 @@ export const squadApi = {
   tap: (at: number) => call<{ now: number; combo: number; ok: boolean; counted: boolean }>("tap", post({ at })),
   /** 龙门广场舞's song: its beats, and its link to one 听歌 is open to */
   song: () => call<DanceSong>("song", post({})),
+  /** 凯尔希随堂测: question n's three (a 方舟梗 question's words too) and its picture or song, from just before it starts */
+  question: (n: number) => call<QuizAsk>("question", post({ n })),
+  /** 凯尔希随堂测: your answer (pick: 0–2) to question n, at the server's clock as this page has it */
+  answer: (n: number, pick: number, at: number) => call<QuizAnswered>("answer", post({ n, pick, at })),
   /** 火焰周榜: this week's or last week's, and your room on it */
   fireBoard: (week: "this" | "last") => call<FireBoard>("fireboard", post({ week })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */

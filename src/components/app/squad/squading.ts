@@ -138,16 +138,31 @@ export const openSquadModes = () => modesOpen.set(true);
 export const closeSquadModes = () => modesOpen.set(false);
 
 /**
- * 龙门广场舞's card (SquadDance.tsx), over the map's foot: open for the dance playing as it was opened (its start, at),
- * as the player opened or joined it; another dance, or none, and it is shut
+ * The card of the mode playing (SquadDance.tsx, SquadQuiz.tsx), over the map's foot: open for the mode as it was
+ * opened (its start, at), as the player opened or joined it; another mode, or none, and it is shut
  */
-const danceOpen = kept<number | null>(null);
-export const useSquadDanceOpen = () => useSyncExternalStore(danceOpen.on, danceOpen.get, () => null);
-export function openSquadDance() {
+const modeCard = kept<number | null>(null);
+export const useSquadModeCard = () => useSyncExternalStore(modeCard.on, modeCard.get, () => null);
+export function openSquadModeCard() {
   const mode = room.get()?.mode;
-  if (mode?.kind === "dance") danceOpen.set(mode.at);
+  if (mode) modeCard.set(mode.at);
 }
-export const closeSquadDance = () => danceOpen.set(null);
+export const closeSquadModeCard = () => modeCard.set(null);
+
+/**
+ * 凯尔希随堂测: your answers in the quiz that started at `at`, by question number, as picked and then as the server
+ * judged them (right; first: the point; answer: which was right), and when you joined it (on the server's clock;
+ * null: in from its start), as one who joins answers from the next question on
+ */
+export type QuizPick = { pick: number; right?: boolean; first?: boolean; answer?: number };
+export type QuizPicks = { at: number; picks: Readonly<Record<number, QuizPick>>; joinedAt: number | null };
+const quizPicks = kept<QuizPicks | null>(null);
+export const useSquadQuizPicks = () => useSyncExternalStore(quizPicks.on, quizPicks.get, () => null);
+export const squadQuizPicksNow = quizPicks.get;
+const picksOf = (at: number): QuizPicks => {
+  const p = quizPicks.get();
+  return p?.at === at ? p : { at, picks: {}, joinedAt: null };
+};
 
 /** 「XX 开了龙门广场舞，加入？」 answered 不了: by the mode's start, not asked again for it */
 const modeAsked = kept<number | null>(null);
@@ -323,8 +338,9 @@ function setRoom(next: SquadRoom | null) {
     // out of the room: its fire goes too, and what it played
     fireOpen.set(false);
     modesOpen.set(false);
-    danceOpen.set(null);
+    modeCard.set(null);
     danceJudge.set(null);
+    quizPicks.set(null);
     throws.set(NO_THROWS);
   }
   if (next && next.state === "go" && (before?.id !== next.id || before.state !== "go")) {
@@ -458,15 +474,15 @@ export function heardSquad(raw: unknown) {
   }
   // what a page of now does not know of: nothing to do
   if (tell.t !== "room") return;
-  // in the dance, or looking at it, as it was before this
-  const danced = Boolean(r.mode && (danceOpen.get() === r.mode.at || r.mode.in.some((m) => m.h === r.you)));
+  // in the mode playing, or looking at it, as it was before this
+  const was = r.mode && (modeCard.get() === r.mode.at || r.mode.in.some((m) => m.h === r.you)) ? r.mode.kind : null;
   void loadSquadRoom()
     .then((next) => {
       const what = tell.t === "room" ? tell.what : undefined;
       if (!next || !what) return;
       // 玩点什么: a mode over (by itself) is said to those who were in it or looking at it; one opened asks the others itself
       if (what.kind === "mode") {
-        if (!next.mode && what.on === false && what.h === undefined && danced) addFloat(T.squad.dance.ended);
+        if (!next.mode && what.on === false && what.h === undefined && was) addFloat(T.squad.modes.ended[was]);
         return;
       }
       // what you did yourself is not said back to you
@@ -678,7 +694,7 @@ export async function squadOpenMode(kind: SquadModeKind) {
   const r = await loadSquadRoom();
   modesOpen.set(false);
   if (r?.mode) modeAsked.set(r.mode.at);
-  if (r?.mode?.kind === "dance") danceOpen.set(r.mode.at);
+  if (r?.mode) modeCard.set(r.mode.at);
   return r;
 }
 
@@ -687,13 +703,15 @@ export async function squadOpenMode(kind: SquadModeKind) {
  * to join it again
  */
 export async function squadModeIn(into: boolean) {
-  await timed(() => squadApi.modeIn(into));
+  const res = await timed(() => squadApi.modeIn(into));
   danceJudge.set(null);
   const r = await loadSquadRoom();
   if (r?.mode) modeAsked.set(r.mode.at);
+  // in a quiz, one who joins answers from the next question on
+  if (into && r?.mode?.kind === "quiz") quizPicks.set({ ...picksOf(r.mode.at), joinedAt: res.now });
   if (into) {
     modesOpen.set(false);
-    if (r?.mode?.kind === "dance") danceOpen.set(r.mode.at);
+    if (r?.mode) modeCard.set(r.mode.at);
   }
   return r;
 }
@@ -750,6 +768,37 @@ export function modesSub(r: SquadRoom, now = squadServerNow()) {
 
 /** 龙门广场舞's song for this page: its beats, and its link where 听歌 is open to the player */
 export const squadDanceSong = () => timed(() => squadApi.song());
+
+/** 凯尔希随堂测's question n for this page: its three, and its picture or (where 听歌 is open to the player) its song */
+export const squadQuizAsk = (n: number) => timed(() => squadApi.question(n));
+
+/**
+ * Your answer (pick: 0–2) to question n of the quiz playing, now on the server's clock as this page has it: shown at
+ * once as picked, then as the server judged it (taken back if it was refused); once a question. Your point, if it was
+ * the first right, comes with the room (as everyone's does). Null when nothing was sent.
+ */
+export async function squadQuizAnswer(n: number, pick: number) {
+  const mode = room.get()?.mode;
+  if (mode?.kind !== "quiz" || picksOf(mode.at).picks[n]) return null;
+  const at = squadServerNow();
+  const set = (p: QuizPick | null) => {
+    const was = picksOf(mode.at);
+    const picks = { ...was.picks };
+    if (p) picks[n] = p;
+    else delete picks[n];
+    quizPicks.set({ ...was, picks });
+  };
+  set({ pick });
+  let res: Awaited<ReturnType<typeof squadApi.answer>>;
+  try {
+    res = await timed(() => squadApi.answer(n, pick, at));
+  } catch (e) {
+    set(null);
+    throw e;
+  }
+  set({ pick, right: res.right, first: res.first, answer: res.answer });
+  return res;
+}
 
 /** A 人机 touched (碰): on this page alone, it waves; nothing is sent */
 export const squadBotTouched = (h: number) => showMove(h, "wave");

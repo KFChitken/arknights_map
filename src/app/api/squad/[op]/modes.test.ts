@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SquadRoom } from "@/lib/squad";
-import { DANCE_IDLE_MS, DANCE_LEAD_MS, MODE_AGAIN_MS, type DanceSong } from "@/lib/squadMode";
+import { DANCE_IDLE_MS, DANCE_LEAD_MS, MODE_AGAIN_MS, type DanceMode, type DanceSong } from "@/lib/squadMode";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
 import { forgetListeningCount } from "@/lib/server/listen";
@@ -147,7 +147,7 @@ describe("玩点什么", () => {
     expect((await post(a, "mode", { kind: "chess" })).status).toBe(400);
     expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", h: 2, on: true } });
-    const mode = (await viewOf(b)).mode!;
+    const mode = (await viewOf(b)).mode as DanceMode;
     expect(mode).toMatchObject({ kind: "dance", by: 2, at: clock, in: [{ h: 2, combo: 0 }], songAt: clock + DANCE_LEAD_MS, until: clock + DANCE_LEAD_MS + 200_000 });
     expect(["s1", "s2"]).toContain(mode.song);
     expect(mode.name).toMatch(/^Song [12]$/);
@@ -175,7 +175,7 @@ describe("玩点什么", () => {
   it("judges 跳 on the server's clock against the song's beats: on one the combo up, off back to 0, taps too close once; the room told", async () => {
     const { a, b, room } = await cast();
     expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
-    const songAt = (await viewOf(a)).mode!.songAt;
+    const songAt = ((await viewOf(a)).mode as DanceMode).songAt;
     const heard = told(b);
     // the beats are half a second apart from half a second in
     at(songAt + 1000);
@@ -225,7 +225,7 @@ describe("玩点什么", () => {
     // anyone else need not
     expect((await post(host, "mode", { kind: "dance" })).status).toBe(200);
     // with its song: taps keep it, the song's end ends it (cleared by the next request to it too)
-    const { songAt, until } = (await viewOf(host)).mode!;
+    const { songAt, until } = (await viewOf(host)).mode as DanceMode;
     for (let t = songAt + 500; t < until; t += 10_000) {
       at(t);
       await post(host, "tap");

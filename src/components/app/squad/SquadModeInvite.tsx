@@ -7,7 +7,7 @@ import type { SquadRoom } from "@/lib/squad";
 import type { SquadMode } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { SquadRoach } from "./SquadRoach";
-import { dismissSquadMode, squadModeIn, useSquadDanceOpen, useSquadModeAsked, useSquadModesOpen, useSquadRoom } from "./squading";
+import { dismissSquadMode, squadModeIn, useSquadModeCard, useSquadModeAsked, useSquadModesOpen, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
 /**
@@ -74,7 +74,7 @@ export function InviteLine({
 export default function SquadModeInvite() {
   const room = useSquadRoom();
   const asked = useSquadModeAsked();
-  const danceAt = useSquadDanceOpen();
+  const danceAt = useSquadModeCard();
   const modesOpen = useSquadModesOpen();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ at: number; text: string } | null>(null);

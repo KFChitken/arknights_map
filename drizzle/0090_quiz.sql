@@ -1,0 +1,1 @@
+ALTER TABLE "squad_rooms" ADD COLUMN "mode_data" jsonb;
