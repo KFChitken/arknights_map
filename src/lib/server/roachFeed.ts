@@ -907,6 +907,13 @@ export async function roachCounts(now = Date.now()): Promise<{ v: string } & Fee
   return { v: s.v, ...countsOf(s) };
 }
 
+/**
+ * How many players are on the map (their main roaches: no clones, no show roaches), as the snapshot this process
+ * holds says; null while it holds none. Never makes one nor starts a round, and reads no database: for the intro
+ * pages (src/app/about), which cost nothing to show. A process taking visitors has one (feedReady).
+ */
+export const playersOnMapNow = (): number | null => feed.snapshot?.players ?? null;
+
 /** Players' roaches on the map by kind, for the admin's board (never sent to visitors): main roaches, clones, ink roaches, by the fire, riding */
 export async function roachKinds(now = Date.now()) {
   const s = await current(now);

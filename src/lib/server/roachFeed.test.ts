@@ -12,6 +12,7 @@ import { db } from "./db";
 import {
   compressedArea,
   forgetKeptAreas,
+  playersOnMapNow,
   pruneRoachChanges,
   resetRoachFeed,
   roachArea,
@@ -611,6 +612,19 @@ describe("only the area a page shows (f=4)", () => {
     const after = await areaAfterRebuild(SHANGHAI_BOX, box.v, T0 + 2 * MINUTE);
     expect(after.t).toEqual([2, 0, 0, 1]);
     expect(await roachCounts(T0 + 2 * MINUTE)).toMatchObject({ total: 2, players: 1 });
+  });
+
+  it("tells the intro pages how many players there are from the snapshot it holds, and never makes one for them", async () => {
+    const a = await player("a@example.com");
+    await world.placeRoach(a, { kind: "main" }, SHANGHAI);
+    await world.placeRoach(a, { kind: "clone" }, TOKYO);
+    expect(playersOnMapNow()).toBeNull();
+    // nothing was started for it: with nothing to wait for, still none
+    await roachFeedSettled();
+    expect(playersOnMapNow()).toBeNull();
+    // once a page has the roaches read, the same number as the map's
+    expect((await roachCounts(T0)).players).toBe(1);
+    expect(playersOnMapNow()).toBe(1);
   });
 });
 

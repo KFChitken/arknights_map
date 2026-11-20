@@ -1,8 +1,9 @@
 /**
- * The English intro page (src/app/about/route.ts), whole: exported from its design as it is, never edited by hand.
- * Not named template.ts, which Next.js takes for a segment's template.
- * Blanks {{name}} are filled by the route; <!--en:on-->…<!--/en:on--> is kept while the English site is on and
- * <!--en:off-->…<!--/en:off--> while it is off.
+ * The English intro page (src/app/about/route.ts), whole: exported from its design as it is, with the way to the
+ * Chinese page added (about_lang.py), never edited by hand. Not named template.ts, which Next.js takes for a
+ * segment's template. Blanks {{name}} are filled by ./introPage.ts; <!--en:on-->…<!--/en:on--> is kept while the
+ * English site is on and <!--en:off-->…<!--/en:off--> while it is off; <!--live-->…<!--/live--> when there is a
+ * number of players to say ({{players}}) and <!--nolive-->…<!--/nolive--> when there is none.
  */
 export const INTRO_TEMPLATE = `<!doctype html>
 <html lang="en">
@@ -12,6 +13,9 @@ export const INTRO_TEMPLATE = `<!doctype html>
 <title>{{siteName}}: find Arknights and Endfield players near you</title>
 <meta name="description" content="A free, unofficial fan map for Arknights and Endfield players. Put your roach on the map by hand, see who plays near you, and make Feeler Friends. No GPS. For players {{minAge}}+.">
 <link rel="canonical" href="https://zhoupmap.com/about">
+<link rel="alternate" hreflang="en" href="https://zhoupmap.com/about">
+<link rel="alternate" hreflang="zh-CN" href="https://zhoupmap.com/about/zh">
+<link rel="alternate" hreflang="x-default" href="https://zhoupmap.com/about">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="{{siteName}}">
 <meta property="og:url" content="https://zhoupmap.com/about">
@@ -75,6 +79,7 @@ a{color:#1b1d22}a:hover{color:#000000}
 .ak-gal{display:flex;align-items:flex-start;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:2px 16px 12px;scrollbar-width:thin}
 .ak-gal>.ak-tile{position:relative;flex:0 0 84%;min-width:0;padding-top:12px;scroll-snap-align:center}
 @container (min-width: 720px){.ak-gal{display:block;columns:3 240px;column-gap:22px;overflow:visible;margin:0;padding:2px 0 0}.ak-gal>.ak-tile{break-inside:avoid;margin:0 0 30px}.ak-swipe{display:none}}
+@container (max-width: 399px){.ak-lang svg{display:none}}
 @media (prefers-reduced-motion: reduce){[style*="animation"]{animation:none !important}}
 </style>
 {{grayStyle}}
@@ -89,7 +94,7 @@ a{color:#1b1d22}a:hover{color:#000000}
 <span style="font-size: 17px; font-weight: 800; letter-spacing: -0.01em">{{siteName}}</span>
 </a>
 <nav aria-label="Site" style="display: flex; align-items: center; gap: 6px; white-space: nowrap">
-<a href="/" lang="zh-CN" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; font-size: 15px; font-weight: 700; color: #1b1d22; text-decoration: none">中文</a>
+<a href="/about/zh" lang="zh-CN" hreflang="zh-CN" class="ak-lang" style="display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 8px; font-size: 15px; font-weight: 700; color: #1b1d22; text-decoration: none"><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true" style="flex: none"><circle cx="10" cy="10" r="7.8" fill="none" stroke="#1b1d22" stroke-width="1.7"></circle><path d="M2.4 10 H17.6 M10 2.2 C7.2 5.2 7.2 14.8 10 17.8 M10 2.2 C12.8 5.2 12.8 14.8 10 17.8" fill="none" stroke="#1b1d22" stroke-width="1.5"></path></svg>中文</a>
 <a href="{{mapHref}}" style="display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; box-sizing: border-box; background: #ffd23f; color: #1b1d22; border: 2px solid #1b1d22; border-radius: 999px; font-size: 14px; font-weight: 800; text-decoration: none; white-space: nowrap">Open the map</a>
 </nav>
 </header>
@@ -113,7 +118,12 @@ a{color:#1b1d22}a:hover{color:#000000}
 <span style="width: 34px; height: 34px; margin-left: -10px; border-radius: 50%; background: #fbf8f1; border: 2px solid #1b1d22; display: inline-flex; align-items: center; justify-content: center"><img src="/intro-art/roach-green.svg" alt="" style="width: 28px; height: 28px"></span>
 <span style="width: 34px; height: 34px; margin-left: -10px; border-radius: 50%; background: #fbf8f1; border: 2px solid #1b1d22; display: inline-flex; align-items: center; justify-content: center"><img src="/intro-art/roach-gold.svg" alt="" style="width: 28px; height: 28px"></span>
 </div>
+<!--live-->
+<p style="margin: 0; font-size: 15px; line-height: 1.4; font-weight: 700"><strong style="font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums">{{players}}</strong> players are on the map right now</p>
+<!--/live-->
+<!--nolive-->
 <p style="margin: 0; font-size: 15px; line-height: 1.4; font-weight: 700">100,000+ players joined in our first three weeks</p>
+<!--/nolive-->
 </div>
 </div>
 
@@ -510,7 +520,7 @@ a{color:#1b1d22}a:hover{color:#000000}
 <div style="display: flex; flex-wrap: wrap; gap: 4px 18px">
 <a href="{{privacyHref}}" style="display: inline-flex; align-items: center; min-height: 32px; color: #1b1d22; font-weight: 600">Privacy Notice</a>
 <a href="{{privacyHref}}#contact" style="display: inline-flex; align-items: center; min-height: 32px; color: #1b1d22; font-weight: 600">Contact and reports</a>
-<a href="/" lang="zh-CN" style="display: inline-flex; align-items: center; min-height: 32px; color: #1b1d22; font-weight: 600">中文</a>
+<a href="/about/zh" lang="zh-CN" hreflang="zh-CN" style="display: inline-flex; align-items: center; min-height: 32px; color: #1b1d22; font-weight: 600">中文</a>
 </div>
 </footer>
 
