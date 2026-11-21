@@ -7,6 +7,7 @@ import {
   LAST_LINE_MS,
   SAY_SHOW_MS,
   SHOUT,
+  HERE_EVERY_MS,
   SQUAD_MAX,
   strategyOf,
   TO,
@@ -293,6 +294,7 @@ const sceneShows = kept(false);
 export const useSquadSceneShows = () => useSyncExternalStore(sceneShows.on, sceneShows.get, () => false);
 export const setSquadSceneShows = (on: boolean) => sceneShows.set(on);
 export const useSquadNotice = () => useSyncExternalStore(notice.on, notice.get, () => null);
+export const squadNoticeNow = notice.get;
 export const useSquadCard = () => useSyncExternalStore(card.on, card.get, () => undefined);
 export const useSquadShowName = () => useSyncExternalStore(showName.on, showName.get, () => undefined);
 export const useSquadNoThrow = () => useSyncExternalStore(noThrow.on, noThrow.get, () => undefined);
@@ -442,11 +444,15 @@ export async function loadSquadRoom(): Promise<SquadRoom | null> {
       do {
         again = false;
         const sent = Date.now();
-        r = (await squadApi.room()).room;
+        const res = await squadApi.room();
+        r = res.room;
         if (r) clocked(r.now, sent, Date.now());
-        setRoom(r);
+        // out of it for being 暂离 too long while this page was away: said as it comes back
+        if (!r && res.out === "away" && room.get()) over(T.squad.afk.out);
+        else setRoom(r);
       } while (again);
       roomRead();
+      if (r) hereSoon();
       return r;
     } catch (e) {
       if (e instanceof SquadUnreached) roomUnread();
@@ -497,6 +503,50 @@ function roomRead() {
 /** 「房间没刷新出来，点这里再试」: the room read again now (once; still not read, it says so on) */
 export const retrySquadRoom = () => loadSquadRoom().catch(() => {});
 
+// ---- 暂离: this page says it is here, or away ----
+
+/** When this page last said it is here (ms; 0: not yet) */
+let hereAt = 0;
+/** The page in view and in a room: 「在」, unless said within the last minute (a refusal says nothing: the next goes as ever) */
+function hereSoon(now = Date.now()) {
+  if (!room.get() || typeof document === "undefined" || document.visibilityState !== "visible") return;
+  if (now - hereAt < 60_000 && now >= hereAt) return;
+  hereAt = now;
+  void squadApi.here().catch(() => {});
+}
+
+/**
+ * 暂离 (src/lib/squad.ts): while in a room, this page says it is here as it comes into view and each HERE_EVERY_MS
+ * while in view (and as it reads the room: loadSquadRoom), and away as it is hidden or closed (a beacon). From
+ * MapApp while 一起卫戍 shows; returns the undo.
+ */
+export function squadHereLoop() {
+  const onVisible = () => {
+    if (!room.get()) return;
+    if (document.visibilityState === "visible") {
+      hereAt = 0;
+      hereSoon();
+    } else {
+      hereAt = 0;
+      squadApi.away();
+    }
+  };
+  const onHide = () => {
+    if (room.get()) squadApi.away();
+  };
+  const timer = window.setInterval(() => {
+    hereAt = 0;
+    hereSoon();
+  }, HERE_EVERY_MS);
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("pagehide", onHide);
+  return () => {
+    window.clearInterval(timer);
+    document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("pagehide", onHide);
+  };
+}
+
 /** One in the room changed as told (round, pose): taken as it is, or the room read again when they are not known yet */
 function patchMember(r: SquadRoom, h: number | undefined, change: Partial<SquadMember>) {
   if (!r.members.some((m) => m.h === h)) return void loadSquadRoom().catch(() => {});
@@ -536,7 +586,9 @@ export function heardSquad(raw: unknown) {
     return;
   }
   if (tell.t === "end") return over(T.squad.ended[tell.why as SquadEnd] ?? T.squad.ended.host);
-  if (tell.t === "you") return over(tell.why === "kicked" ? T.squad.out.kicked : T.squad.out.left);
+  if (tell.t === "you") return over(tell.why === "kicked" ? T.squad.out.kicked : tell.why === "away" ? T.squad.afk.out : T.squad.out.left);
+  // 暂离: one's page away since then, or here again, taken as it is
+  if (tell.t === "room" && tell.what?.kind === "here") return patchMember(r, tell.what.h, { away: tell.what.away ?? undefined });
   if (tell.t === "room" && tell.what?.kind === "round" && tell.what.round) return patchMember(r, tell.what.h, tell.what.round);
   if (tell.t === "room" && tell.what?.kind === "pose" && tell.what.pose !== undefined) return patchMember(r, tell.what.h, { pose: tell.what.pose });
   if (tell.t === "say") {
@@ -663,7 +715,12 @@ export function heardSquad(raw: unknown) {
       // 结束这局: how high the 篝火 went in it and how long it burnt, to everyone, the host too
       if (what.kind === "state" && what.to === "wait" && next.fire.last) addFloat(fireEndLine(next.fire.last, next.fire.lastTop, next.fire.bestTop));
       if ((what.kind === "key" || what.kind === "state" || what.kind === "stop") && next.host) return;
-      if (what.kind === "host") return addFloat(what.h === next.you ? T.squad.float.youHost : fmt(T.squad.float.host, { name: next.members.find((m) => m.h === what.h)?.name ?? "" }));
+      if (what.kind === "host") {
+        const name = what.h === next.you ? T.squad.room.you : (next.members.find((m) => m.h === what.h)?.name ?? "");
+        // handed on as its host was 暂离
+        if (what.afk) return addFloat(what.h === next.you ? T.squad.afk.youHanded : fmt(T.squad.afk.handed, { name }));
+        return addFloat(what.h === next.you ? T.squad.float.youHost : fmt(T.squad.float.host, { name }));
+      }
       const name = next.members.find((m) => m.h === what.h)?.name ?? null;
       const text =
         what.kind === "in" && name
@@ -1189,6 +1246,7 @@ export function forgetSquadPage() {
   off = 0;
   // and no room to read again
   roomRead();
+  hereAt = 0;
   roundWant = null;
   raceTaps = 0;
   if (raceTimer) window.clearTimeout(raceTimer);

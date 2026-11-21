@@ -4,9 +4,10 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
-import { SQUAD_MAX, TO, type SquadMember, type SquadMove, type SquadRoom } from "@/lib/squad";
+import { afkFor, SQUAD_MAX, TO, type SquadMember, type SquadMove, type SquadRoom } from "@/lib/squad";
 import { shakes } from "@/lib/squadFire";
 import { ShieldIcon } from "../chrome/parts";
+import { useTick } from "../dayTurns";
 import { useOperatorArt } from "../OperatorNames";
 import { useAbove, useWide } from "./SquadBar";
 import SmallFlame from "./SmallFlame";
@@ -237,6 +238,8 @@ export default function SquadFight({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [picking]);
+  // 暂离: worked out here as time goes on, while the room waits with anyone's page away
+  useTick(room && !playing && room.members.some((m) => m.away !== undefined) ? 30_000 : null);
   if (!room || !active) return null;
   const waiting = !playing;
   // the panel's page: 这局 only in a round
@@ -304,8 +307,9 @@ export default function SquadFight({
     const extras = extraNames(m.extras);
     const xs = extras.length ? `${extras.slice(0, 2).join(T.squad.dot)}${extras.length > 2 ? ` ${fmt(T.squad.fight.extrasMore, { n: extras.length - 2 })}` : ""}` : T.squad.fight.extrasNone;
     const said = line ? lineWords(line.p, line.s) : null;
-    // while the room waits, in place of the 附加盟约: ready or not, the host needing none
+    // while the room waits, in place of the 附加盟约: ready or not, the host needing none; 暂离 before either
     const ready = readyOf(m);
+    const afk = afkFor(room.state, m.away, room.waitedAt, Date.now());
     const edge = wide ? "" : i === 0 ? " edge-l" : i === n - 1 ? " edge-r" : "";
     // on a computer while a teammate is picked: the teammates glow, yours fades
     const pick = wide && picking !== null;
@@ -324,7 +328,7 @@ export default function SquadFight({
       <button
         key={m.h}
         type="button"
-        className={`sq-ft${m.you ? " me" : ""}${flashing.has(m.h) ? " flash" : ""}${pick ? (m.you ? " dim" : " pickme") : ""}${edge}`}
+        className={`sq-ft${m.you ? " me" : ""}${flashing.has(m.h) ? " flash" : ""}${pick ? (m.you ? " dim" : " pickme") : ""}${afk !== null ? " afk" : ""}${edge}`}
         aria-label={label}
         onClick={() => {
           squadSoundReady();
@@ -367,7 +371,15 @@ export default function SquadFight({
         <span className="cr">
           <CoreBadge core={m.core} />
         </span>
-        {waiting ? <span className={`xs${ready.ok ? " ok" : " no"}`}>{ready.text}</span> : <span className={`xs${extras.length ? "" : " no"}`}>{xs}</span>}
+        {waiting ? (
+          afk !== null ? (
+            <span className="xs no">{fmt(T.squad.afk.for, { n: Math.floor(afk / 60_000) })}</span>
+          ) : (
+            <span className={`xs${ready.ok ? " ok" : " no"}`}>{ready.text}</span>
+          )
+        ) : (
+          <span className={`xs${extras.length ? "" : " no"}`}>{xs}</span>
+        )}
         <span className="last">{said ? fmt(T.squad.fight.last, { line: said }) : T.squad.fight.poses[m.pose]}</span>
       </button>
     );

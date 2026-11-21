@@ -8,6 +8,7 @@ import type { PassesDot } from "@/lib/passes";
 import { DECLARATION_RADIUS_KM, DECLARATIONS_PER_DAY } from "@/lib/rules";
 import { INK_FROM } from "@/lib/si";
 import {
+  afkFor,
   BUBBLE_MS,
   DEFAULT_SERVER,
   findKey,
@@ -574,6 +575,7 @@ function RoomCard({
           {room.music && <small className="mus">{T.squad.list.music}</small>}
           {room.friendsOnly && <small className="only">{T.squad.list.friendsOnly}</small>}
           {room.test && <small className="tst">{T.squad.list.test}</small>}
+          {room.hostAfk && <small className="afk">{T.squad.afk.host}</small>}
         </span>
         {go ? <span className="gonote">{T.squad.list.playing}</span> : <span className={`need${n === SQUAD_MAX - 1 ? " one" : ""}`}>{needWords(n)}</span>}
       </div>
@@ -614,8 +616,9 @@ function SeatTile({ seat, hostName, hostFriend, art, clash }: { seat: SquadSeat;
   const friend = seat.role === "friend" || (seat.role === "host" && hostFriend);
   const named = seat.role === "host" || seat.role === "you" || Boolean(seat.name);
   return (
-    <span className={`sq-seat${clash ? " clash" : ""}`}>
+    <span className={`sq-seat${clash ? " clash" : ""}${seat.afk ? " afk" : ""}`}>
       {clash && <i className="tag">{T.squad.list.clashTag}</i>}
+      {seat.afk && <i className="afkt">{T.squad.afk.tag}</i>}
       <RoachIcon color={seat.color as RoachColor} avatar={seat.avatar as RoachAvatar} size={34} />
       <span className={`nm${friend ? " fr" : ""}${named ? "" : " anon"}`}>{name}</span>
       <span className="pk">
@@ -1040,6 +1043,9 @@ function RoomView({
   // 篝火: the sheet warmer the bigger it is, drawn again as it goes down
   const warmth = fireLevel(room.fire.level, room.fire.at, Date.now());
   useTick(warmth > 0 ? FIRE_DROP_MS / 4 : null);
+  // 暂离: worked out here as time goes on, while anyone's page is away
+  useTick(room.members.some((m) => m.away !== undefined) ? 30_000 : null);
+  const afkOf = (m: SquadMember) => afkFor(room.state, m.away, room.waitedAt, Date.now());
   // whom the host may hand the room to: anyone else in it but a 人机
   const heirs = room.members.filter((m) => !m.you && !m.bot);
   // what asks first, the pickers and 说话 / 动作: over the sheet, its foot under them (Sheet.tsx over)
@@ -1310,6 +1316,7 @@ function RoomView({
             inMode={room.mode?.in.some((x) => x.h === m.h) ? room.mode.kind : undefined}
             readyMode={Boolean(room.mode?.wait && room.mode.in.some((x) => x.h === m.h))}
             building={room.stack.busy.includes(m.h)}
+            afk={afkOf(m)}
             onCore={() => setPicking("core")}
             onStrategy={() => (room.state === "go" ? setTalking("round") : setPicking("strategy"))}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
@@ -1595,6 +1602,7 @@ function MemberTile({
   inMode,
   readyMode = false,
   building = false,
+  afk = null,
   onCore,
   onStrategy,
   onMenu,
@@ -1622,6 +1630,8 @@ function MemberTile({
   readyMode?: boolean;
   /** Put a block on 基建加盖's tower within the last 30 seconds: 在搭, when not in a mode */
   building?: boolean;
+  /** 暂离 this long (ms; null: here): the tile grey, 暂离 N 分钟 in place of what TA plays */
+  afk?: number | null;
   onCore: () => void;
   onStrategy: () => void;
   onMenu: () => void;
@@ -1630,13 +1640,15 @@ function MemberTile({
 }) {
   const extras = extraNames(m.extras);
   return (
-    <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}${m.bot ? " bot" : ""}`}>
+    <div className={`sq-tile${m.you ? " you" : ""}${open ? " open" : ""}${m.bot ? " bot" : ""}${afk !== null ? " afk" : ""}`}>
       {!m.you && <button type="button" className="hit" aria-label={m.name} aria-expanded={open} onClick={onMenu} />}
       {named && <span key={named.key} className="sq-named" aria-hidden="true" />}
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
       <SquadRoach m={inMode === "dance" && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
-      {inMode ? (
+      {afk !== null ? (
+        <span className="dz afkt">{fmt(T.squad.afk.for, { n: Math.floor(afk / 60_000) })}</span>
+      ) : inMode ? (
         <span className={`dz k-${inMode}`}>{readyMode ? T.squad.modes.readyTag : T.squad.modes.tileTags[inMode]}</span>
       ) : (
         building && <span className="dz k-stack">{T.squad.modes.tileTags.stack}</span>

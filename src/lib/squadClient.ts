@@ -45,7 +45,8 @@ async function call<R>(op: string, init: RequestInit): Promise<R> {
 }
 
 const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-type Room = { room: SquadRoom | null; now: number };
+/** The room you are in (null: none); out: away, you were taken out of your last one for being 暂离 too long */
+type Room = { room: SquadRoom | null; out?: "away"; now: number };
 
 export const squadApi = {
   /** The rooms of a server and 难度 (null: all); asked again each time, the browser's own copy used while it is still the server's (304) */
@@ -58,6 +59,16 @@ export const squadApi = {
   },
   /** The room you are in, as you see it (null: none) */
   room: () => call<Room>("room", post({})),
+  /** 暂离: your page is here, in view */
+  here: () => call<{ now: number }>("here", post({})),
+  /** 暂离: your page is going away (hidden or closed): a beacon, which outlives it, as 一起听's */
+  away: () => {
+    const body = "{}";
+    try {
+      if (navigator.sendBeacon?.("/api/squad/away", body)) return;
+    } catch {}
+    apiFetch("/api/squad/away", { method: "POST", headers: { "content-type": "application/json" }, body, keepalive: true }).catch(() => {});
+  },
   /** Your 卫戍名片 (null clears it), and 列表上显示我的名字, 别人扔我 (off: noThrow) and 火焰周榜写我的名字 (off: fireHide) when given */
   card: (card: SquadCard | null, showName?: boolean, noThrow?: boolean, fireHide?: boolean) =>
     call<{ card: SquadCard | null; showName: boolean; noThrow: boolean; fireHide: boolean; now: number }>(

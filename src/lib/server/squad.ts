@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
 import { SQUAD_TEMPLATE } from "../declarations";
@@ -12,6 +12,7 @@ import { FIREWATCH, FIREWATCH_DAYS, STACKTOP, STACKTOP_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
 import { inRound, isLobbyData, isMatchKind, modeEnds, STACK_SEND_MS, towerNow, type GiftData, type MatchRound, type QuizData, type RaceData, type SquadMode } from "../squadMode";
 import {
+  afkFor,
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
   cardNow,
@@ -21,6 +22,7 @@ import {
   extrasNow,
   findKey,
   GO_MAX_MS,
+  HERE_EVERY_MS,
   isBotDo,
   isBotHandle,
   isLevel,
@@ -289,6 +291,7 @@ const g = globalThis as unknown as {
   squadSnap?: { at: number; rooms: Snap[] | null; loading: Promise<Snap[]> | null };
   squadLists?: Map<string, { at: number; key: string; list: SquadList; etag: string }>;
   squadTold?: boolean;
+  squadHereNoted?: Map<string, number>;
 };
 const hearersHeld = (g.squadHearers ??= new Map());
 const says = (g.squadSays ??= new Map());
@@ -466,6 +469,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         ...roomCard(m),
         extras: extrasNow(m.extras),
         ...(pass ? { pass } : {}),
+        ...(m.awayAt ? { away: m.awayAt.getTime() } : {}),
       };
     });
   // 卫戍池塘: who has a line in it, the 鳞 of this 局, today's 空军司令; and who wears 篝火守夜人 or 基建狂魔 this week
@@ -541,6 +545,7 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     staff: isStaff(viewer),
     members,
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
+    waitedAt: room.waitedAt.getTime(),
     ...(room.schoolUntil && room.schoolUntil.getTime() > now ? { school: room.schoolUntil.getTime() } : {}),
     fire: {
       level: room.fireLevel,
@@ -655,9 +660,10 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
 }
 
 /** The room you are in now, as you see it (null: none), and the server's clock */
-export async function myRoom(user: Pick<UserRow, "id">, now = Date.now()) {
+export async function myRoom(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ room: SquadRoom | null; out?: "away"; now: number }> {
   const mine = await roomOf(db, user.id);
-  return { room: mine ? await roomView(mine.room.id, user.id, now) : null, now };
+  if (mine) return { room: await roomView(mine.room.id, user.id, now), now };
+  return { room: null, ...((await outAway(user.id, now)) ? { out: "away" as const } : {}), now };
 }
 
 /** What me() carries: undefined where its way in does not show to the player */
@@ -1919,8 +1925,10 @@ type Snap = {
   keyAt: number;
   /** 卫戍的一起听 plays a song now (♪) */
   music: boolean;
-  /** showName: 列表上显示我的名字, from their 卫戍名片 */
-  members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadPicks }[];
+  /** When it last started waiting (暂离 counts from it at the soonest) */
+  waitedAt: number;
+  /** showName: 列表上显示我的名字, from their 卫戍名片; away: since when their page is away (暂离, null: here) */
+  members: { userId: string; h: number; name: string; showName: boolean; avatar: string; color: string; card: SquadPicks; away: number | null }[];
   /** The 人机 in it, after them */
   bots: { avatar: string; color: string; card: SquadPicks }[];
 };
@@ -1967,6 +1975,7 @@ async function snapshot(now: number): Promise<Snap[]> {
             stopped: Boolean(r.stoppedAt),
             at: r.createdAt.getTime(),
             keyAt: r.keyAt.getTime(),
+            waitedAt: r.waitedAt.getTime(),
             music: false,
             members: [],
             bots: [],
@@ -1981,6 +1990,7 @@ async function snapshot(now: number): Promise<Snap[]> {
           avatar: drawnLook(u.avatar),
           color: ROACH_COLORS.find((c) => c === u.color) ?? "cyan",
           card: roomCard(m),
+          away: m.awayAt?.getTime() ?? null,
         });
       }
       for (const s of byRoom.values()) s.members.sort((a, b) => a.h - b.h);
@@ -2020,6 +2030,7 @@ function forgetLists() {
 export function forgetSquad() {
   forgetLists();
   hearersHeld.clear();
+  hereNoted.clear();
 }
 
 /**
@@ -2029,18 +2040,25 @@ export function forgetSquad() {
 const isNamed = (m: Snap["members"][number], friends: Set<string>) => m.showName || friends.has(m.userId);
 
 /**
- * Rooms waiting first: those with a 触须之交 of the viewer's first, then those missing fewest (人机 fill seats too),
- * and of those the one whose key was pasted last (the likelier to work still); then those playing, the newest first
+ * Rooms waiting first, those whose host is 暂离 after the others: those with a 触须之交 of the viewer's first, then those
+ * missing fewest (人机 fill seats too), and of those the one whose key was pasted last (the likelier to work still);
+ * then those playing, the newest first
  */
 function byOrder(a: SquadListRoom, b: SquadListRoom) {
   if (a.state !== b.state) return a.state === "wait" ? -1 : 1;
   if (a.state === "go") return b.at - a.at;
+  if (Boolean(a.hostAfk) !== Boolean(b.hostAfk)) return a.hostAfk ? 1 : -1;
   if (a.friend !== b.friend) return a.friend ? -1 : 1;
   if (a.seats.length !== b.seats.length) return b.seats.length - a.seats.length;
   return b.keyAt - a.keyAt;
 }
 
-function listRoom(s: Snap, viewerId: string, friends: Set<string>): SquadListRoom {
+/** Whether one in a room of the list is 暂离 at now */
+const afkIn = (s: Snap, m: Snap["members"][number], now: number) => afkFor(s.state, m.away, s.waitedAt, now) !== null;
+/** A room waiting where everyone in it is 暂离: off the list (but to those in it) */
+const allAfk = (s: Snap, now: number) => s.members.length > 0 && s.members.every((m) => afkIn(s, m, now));
+
+function listRoom(s: Snap, viewerId: string, friends: Set<string>, now: number): SquadListRoom {
   const host = s.members.find((m) => m.userId === s.hostId);
   const seats: SquadSeat[] = s.members.map((m) => {
     const role: SquadSeat["role"] = m.userId === s.hostId ? "host" : m.userId === viewerId ? "you" : friends.has(m.userId) ? "friend" : "mate";
@@ -2050,6 +2068,7 @@ function listRoom(s: Snap, viewerId: string, friends: Set<string>): SquadListRoo
       avatar: m.avatar,
       color: m.color,
       ...m.card,
+      ...(afkIn(s, m, now) ? { afk: true as const } : {}),
     };
   });
   // a 人机 sits as a teammate, never named
@@ -2069,6 +2088,7 @@ function listRoom(s: Snap, viewerId: string, friends: Set<string>): SquadListRoo
     friend: s.members.some((m) => m.userId !== viewerId && friends.has(m.userId)),
     mine: s.members.some((m) => m.userId === viewerId),
     ...(s.bots.length ? { test: true as const } : {}),
+    ...(host && afkIn(s, host, now) ? { hostAfk: true as const } : {}),
   };
 }
 
@@ -2098,7 +2118,9 @@ export async function squadList(user: UserRow, query: { server?: unknown; level?
     // one tried with 人机, to the 站长 and the admins alone (and those in it); one stopped (停止加入) to those in it alone
     .filter((r) => !r.bots.length || staff || r.members.some((m) => m.userId === user.id))
     .filter((r) => !r.stopped || r.members.some((m) => m.userId === user.id))
-    .map((r) => listRoom(r, user.id, friends))
+    // one where everyone is 暂离, to those in it alone
+    .filter((r) => !allAfk(r, now) || r.members.some((m) => m.userId === user.id))
+    .map((r) => listRoom(r, user.id, friends, now))
     .sort(byOrder)
     .slice(0, LIST_MAX);
   const s = squadSettings();
@@ -2150,14 +2172,193 @@ export async function squadDesk(now = Date.now()): Promise<SquadDesk> {
   };
 }
 
+// ---- 暂离 ----
+
+/*
+ * 暂离 (src/lib/squad.ts afkFor): a page in view says it is here (POST here) every HERE_EVERY_MS, as it reads the room
+ * and as it comes into view; hidden or closed, it says it is away (POST away, a beacon). Anything one does in the room
+ * says here too (noteHere from the route, each process at most once a HERE_NOTED_MS); reading the room or the list
+ * does not, as a page in the background reads them by itself. A page silent HERE_LOST_MS after its last 「在」 (no
+ * beacon: no battery, no network) is taken as away from HERE_EVERY_MS after it, on the minute's sweep. Going away and
+ * coming back are told to the room (kind "here"); each page works out by itself, as time goes on, when one is 暂离.
+ * A page from before (here_at never set) is never taken as away. On the minute (sweepAfk), in a room waiting: its host
+ * 暂离 AFK_HAND_MS hands it to the one there longest who is not, and one 暂离 AFK_OUT_MS is taken out as if they left
+ * (a host's room handed on first, else over as when a host leaves, said to be for that: SquadEnd away). Each of the
+ * two goes with its constant set to null.
+ */
+const HERE_LOST_MS = 3 * 60_000;
+/** A host 暂离 this long hands the room on (null: never) — chosen for Breeze 11/21, not looked at by her yet */
+const AFK_HAND_MS: number | null = 10 * 60_000;
+/** One 暂离 this long is taken out of the room (null: never) — chosen for Breeze 11/21, not looked at by her yet */
+const AFK_OUT_MS: number | null = 20 * 60_000;
+/** Each process notes a 「在」 from what one does at most this often (the here op's always) */
+const HERE_NOTED_MS = 60_000;
+const hereNoted = (g.squadHereNoted ??= new Map());
+
+/**
+ * 「在」 for the player: their page in view (always: the here op, which also starts it for a page of now), or something
+ * they did in the room (a page of before, never started, left as it is). Here from now; one away, here again, told
+ * to the room.
+ */
+export async function noteHere(userId: string, now = Date.now(), always = false) {
+  if (!always) {
+    const last = hereNoted.get(userId);
+    if (last !== undefined && now >= last && now - last < HERE_NOTED_MS) return { now };
+  }
+  hold(hereNoted, userId, now);
+  const back = await db.transaction(async (tx) => {
+    const [m] = await tx
+      .select({ roomId: squadMembers.roomId, handle: squadMembers.handle, hereAt: squadMembers.hereAt, awayAt: squadMembers.awayAt })
+      .from(squadMembers)
+      .where(and(eq(squadMembers.userId, userId), isNull(squadMembers.leftAt)))
+      .for("update");
+    if (!m || (!always && m.hereAt === null)) return null;
+    await tx
+      .update(squadMembers)
+      .set({ hereAt: new Date(now), awayAt: null })
+      .where(and(eq(squadMembers.roomId, m.roomId), eq(squadMembers.userId, userId)));
+    return m.awayAt ? m : null;
+  });
+  if (back) await tellRoom(back.roomId, { kind: "here", h: back.handle, away: null });
+  return { now };
+}
+
+/** The player's page went away (hidden or closed: a beacon): away from now, unless already; told to the room */
+export async function noteAway(userId: string, now = Date.now()) {
+  hereNoted.delete(userId);
+  const [m] = await db
+    .update(squadMembers)
+    .set({ awayAt: new Date(now) })
+    .where(and(eq(squadMembers.userId, userId), isNull(squadMembers.leftAt), isNull(squadMembers.awayAt)))
+    .returning({ roomId: squadMembers.roomId, handle: squadMembers.handle });
+  if (m) await tellRoom(m.roomId, { kind: "here", h: m.handle, away: now });
+  return { now };
+}
+
+/**
+ * Whether the player was taken out of their last room, within the last hour, for being 暂离 AFK_OUT_MS (not asked out,
+ * not leaving by themselves: that says they are here first); for their page coming back, to say so
+ */
+async function outAway(userId: string, now: number) {
+  if (AFK_OUT_MS === null) return false;
+  const [last] = await db
+    .select({ leftAt: squadMembers.leftAt, awayAt: squadMembers.awayAt, kicked: squadMembers.kicked, waitedAt: squadRooms.waitedAt })
+    .from(squadMembers)
+    .innerJoin(squadRooms, eq(squadRooms.id, squadMembers.roomId))
+    .where(and(eq(squadMembers.userId, userId), gt(squadMembers.leftAt, new Date(now - HOUR))))
+    .orderBy(desc(squadMembers.leftAt))
+    .limit(1);
+  if (!last?.leftAt || !last.awayAt || last.kicked) return false;
+  return last.leftAt.getTime() - Math.max(last.awayAt.getTime(), last.waitedAt.getTime()) >= AFK_OUT_MS;
+}
+
+/** The player's page in the room still away, as the sweep found it (not back meanwhile) */
+async function stillAway(tx: Exec, roomId: string, userId: string) {
+  const [m] = await tx
+    .select({ awayAt: squadMembers.awayAt })
+    .from(squadMembers)
+    .where(and(eq(squadMembers.roomId, roomId), eq(squadMembers.userId, userId), isNull(squadMembers.leftAt)));
+  return Boolean(m?.awayAt);
+}
+
+/** A host 暂离 hands their room to heir (who stays as they are, the old host too): told to the room as 暂离's */
+async function handAfk(roomId: string, hostId: string, heirId: string, now: number) {
+  const handed = await db.transaction(async (tx) => {
+    await lockPlayer(tx, hostId);
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
+    if (!room || room.endedAt || room.hostId !== hostId || room.state !== "wait") return null;
+    if (!(await stillAway(tx, roomId, hostId))) return null;
+    const [them] = await tx
+      .select({ handle: squadMembers.handle })
+      .from(squadMembers)
+      .where(and(eq(squadMembers.roomId, roomId), eq(squadMembers.userId, heirId), isNull(squadMembers.leftAt)));
+    if (!them) return null;
+    await tx.update(squadRooms).set({ hostId: heirId, movedAt: new Date(now) }).where(eq(squadRooms.id, roomId));
+    return them;
+  });
+  if (!handed) return false;
+  forgetList();
+  await tellRoom(roomId, { kind: "host", h: handed.handle, afk: true });
+  return true;
+}
+
+/**
+ * One 暂离 too long out of the room, as if they left: a host's room over with them (the others told it was for that,
+ * away), anyone else's going on without them; their own page told why
+ */
+async function outAfk(roomId: string, userId: string, now: number) {
+  const left = await db.transaction(async (tx): Promise<Left> => {
+    await lockPlayer(tx, userId);
+    const mine = await roomOf(tx, userId);
+    if (!mine || mine.room.id !== roomId || mine.room.state !== "wait" || !(await stillAway(tx, roomId, userId))) return null;
+    if (mine.room.hostId === userId) return { roomId, ended: await endIn(tx, roomId, "away", now) };
+    return leaveIn(tx, userId, now);
+  });
+  if (!left) return;
+  if (left.ended) {
+    forgetList();
+    tellEnd(roomId, left.ended.filter((id) => id !== userId), "away");
+  } else await told(left);
+  tellSquad([userId], { t: "you", room: roomId, why: "away" } satisfies SquadTell);
+}
+
+/**
+ * 暂离 on the minute (sweepSquad): pages gone silent taken as away from HERE_EVERY_MS after their last 「在」; then, in
+ * each room waiting, a host 暂离 AFK_HAND_MS hands it to the one there longest whose page is here (else who is not 暂离
+ * yet), and one 暂离 AFK_OUT_MS is taken out (a host's room handed on first where one is not 暂离, else over as when a
+ * host leaves)
+ */
+async function sweepAfk(now: number) {
+  const silent = await db
+    .update(squadMembers)
+    .set({ awayAt: sql`${squadMembers.hereAt} + make_interval(secs => ${HERE_EVERY_MS / 1000})` })
+    .where(and(isNull(squadMembers.leftAt), isNull(squadMembers.awayAt), lt(squadMembers.hereAt, new Date(now - HERE_LOST_MS))))
+    .returning({ roomId: squadMembers.roomId, handle: squadMembers.handle, awayAt: squadMembers.awayAt });
+  for (const m of silent) await tellRoom(m.roomId, { kind: "here", h: m.handle, away: m.awayAt?.getTime() ?? now });
+  if (AFK_HAND_MS === null && AFK_OUT_MS === null) return;
+  const rows = await db
+    .select({ m: squadMembers, r: squadRooms })
+    .from(squadMembers)
+    .innerJoin(squadRooms, eq(squadRooms.id, squadMembers.roomId))
+    .where(and(isNull(squadMembers.leftAt), isNull(squadRooms.endedAt), eq(squadRooms.state, "wait"), isNotNull(squadMembers.awayAt)));
+  for (const roomId of new Set(rows.map((x) => x.r.id))) {
+    const r = rows.find((x) => x.r.id === roomId)!.r;
+    const people = await db
+      .select()
+      .from(squadMembers)
+      .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)))
+      .orderBy(asc(squadMembers.joinedAt));
+    const afk = (m: (typeof people)[number]) => afkFor("wait", m.awayAt?.getTime() ?? null, r.waitedAt.getTime(), now) ?? -1;
+    // the one there longest whose page is here, else one away but not 暂离 yet
+    const heir = (hostId: string) =>
+      people.find((m) => m.userId !== hostId && !m.awayAt) ?? people.find((m) => m.userId !== hostId && afk(m) < 0);
+    let hostId = r.hostId;
+    const host = people.find((m) => m.userId === hostId);
+    if (AFK_HAND_MS !== null && host && afk(host) >= AFK_HAND_MS) {
+      const to = heir(hostId);
+      if (to && (await handAfk(roomId, hostId, to.userId, now))) hostId = to.userId;
+    }
+    if (AFK_OUT_MS === null) continue;
+    for (const m of people.filter((x) => afk(x) >= AFK_OUT_MS)) {
+      // a host's room handed on first, where one is not 暂离
+      if (m.userId === hostId) {
+        const to = heir(hostId);
+        if (to && (await handAfk(roomId, hostId, to.userId, now))) hostId = to.userId;
+      }
+      await outAfk(roomId, m.userId, now);
+    }
+  }
+}
+
 // ---- the sweep ----
 
 /**
- * The main process, every minute: rooms end that waited WAIT_IDLE_MS with nobody coming or going, played GO_MAX_MS,
- * or were open LIFE_MS, and all of them while 一起卫戍 is closed for now; rooms over for KEEP_MS go, with who was in
- * them. Says how many ended.
+ * The main process, every minute: 暂离 first (sweepAfk); rooms end that waited WAIT_IDLE_MS with nobody coming or
+ * going, played GO_MAX_MS, or were open LIFE_MS, and all of them while 一起卫戍 is closed for now; rooms over for
+ * KEEP_MS go, with who was in them. Says how many ended.
  */
 export async function sweepSquad(now = Date.now()) {
+  await sweepAfk(now);
   const closed = squadSettings().closed;
   const open = await db.select().from(squadRooms).where(isNull(squadRooms.endedAt));
   let ended = 0;

@@ -186,6 +186,8 @@
 @keyframes sq-flash { 0%, 40% { background: #e3f6f6; box-shadow: inset 0 0 0 2px #18a0a5; } }
 @keyframes sq-nudge { 50% { transform: scale(1.12); } }
 
+/* 暂离 on the bar's tile while the room waits (src/lib/squad.ts afkFor) */
+.sq-ft.afk .rw, .sq-ft.afk .nm, .sq-ft.afk .cr { opacity: 0.45; filter: grayscale(1); }
 /*
  * 说话 / 动作 / 这局: from your own roach; over the room's sheet as its asks are (squad.css), within what is really on
  * screen, its end clear of the phone's bottom bars, its lines scrolling to the last

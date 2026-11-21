@@ -80,6 +80,7 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   staff: false,
   members: [member(1), member(2), member(3, { avatar: "doctor" }), member(4)],
   wentAt: null,
+  waitedAt: NOW,
   fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 },
   stack: tower(),
   mode: null,

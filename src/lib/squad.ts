@@ -163,8 +163,11 @@ export const KEY_CHANGES = 30;
 
 /** wait: on the list, open to come in; go: playing, at the bottom of the list, closed */
 export type SquadState = "wait" | "go";
-/** Why a room ended: its host (销毁房间, or leaving), nothing happened (idle), played on too long (go), open too long (life), the 管理台 (admin) */
-export type SquadEnd = "host" | "idle" | "go" | "life" | "admin";
+/**
+ * Why a room ended: its host (销毁房间, or leaving), nothing happened (idle), played on too long (go), open too long
+ * (life), the 管理台 (admin), its host 暂离 too long with nobody here to hand it to (away)
+ */
+export type SquadEnd = "host" | "idle" | "go" | "life" | "admin" | "away";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -347,13 +350,31 @@ export const SCENE_EGGS: Readonly<Record<number, SceneEgg>> = {
   31: "wave", // 喂鼠协议，启动！
 };
 
+// ---- 暂离 ----
+
+/**
+ * 暂离: one whose page is away (hidden or gone, or silent past its 「在」) is 暂离 while the room waits, once both
+ * they have been away and the room has been waiting AFK_MS (back to waiting after a round, it gives them AFK_MS
+ * more). How long they have been 暂离 counts from the later of the two (afkFor). Never in a round, never a 人机.
+ */
+export const AFK_MS = 10 * 60_000;
+/** A page in view says it is here this often (POST /api/squad/here), and as it comes into view or reads the room */
+export const HERE_EVERY_MS = 2 * 60_000;
+
+/** How long one has been 暂离 at now (ms; null: not 暂离): their page away since `away`, the room waiting since `waitedAt` */
+export function afkFor(state: SquadState, away: number | null | undefined, waitedAt: number, now: number): number | null {
+  if (state !== "wait" || away === null || away === undefined) return null;
+  const d = now - Math.max(away, waitedAt);
+  return d >= AFK_MS ? d : null;
+}
+
 // ---- what the page gets ----
 
 /** How a roach looks, for a seat or a member */
 export type SquadLook = { avatar: string; color: string };
 
 /** A seat on the list: the host; the viewer; one of the viewer's 触须之交, named; or a teammate, never named */
-export type SquadSeat = { role: "host" | "you" | "friend" | "mate"; name?: string } & SquadLook & SquadPicks;
+export type SquadSeat = { role: "host" | "you" | "friend" | "mate"; name?: string; afk?: true } & SquadLook & SquadPicks;
 
 export type SquadListRoom = {
   id: string;
@@ -376,6 +397,8 @@ export type SquadListRoom = {
   music: boolean;
   /** 人机 are in it (shown to the 站长 and the admins alone, and to those in it), marked 测试 */
   test?: true;
+  /** Its host is 暂离 (a room waiting; listed after the others waiting): 房主暂离 */
+  hostAfk?: true;
 };
 
 /** GET /api/squad/list: rooms waiting first (those with 触须之交 first, then those missing fewest, the freshest key first), then those playing */
@@ -421,6 +444,8 @@ export type SquadMember = {
   fireTop?: true;
   /** TA wears 基建狂魔 this week (基建周榜's top 100 towers): a small tower by TA's name (after the flame); never a 人机 */
   stackTop?: true;
+  /** 暂离: since when TA's page is away (ms; absent: here), the page working out from it (afkFor) when TA is 暂离 */
+  away?: number;
 } & SquadLook &
   SquadRound;
 
@@ -447,6 +472,8 @@ export type SquadRoom = {
   members: SquadMember[];
   /** When its round started (开始游戏, ms), while it plays; null while it waits */
   wentAt: number | null;
+  /** When it last started waiting (opened, or a round over; ms): 暂离 counts from it at the soonest (afkFor) */
+  waitedAt: number;
   /** 鱼群 in 卫戍池塘 till then (ms), while one is on */
   school?: number;
   /** 篝火 (src/lib/squadFire.ts): its level as put then, by whom; the room's longest 局 and the last one's (ms) */
@@ -457,7 +484,7 @@ export type SquadRoom = {
   stack: SquadStack;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
-  endsWhy: Exclude<SquadEnd, "host" | "admin">;
+  endsWhy: Exclude<SquadEnd, "host" | "admin" | "away">;
   /** Its 宣言招人 was sent (once a room) */
   declared: boolean;
   /** Your own invitations to it, to those not in it: still good (waiting), or not come (missed: ran out or 下次吧, never told apart) */
@@ -482,8 +509,11 @@ export type SquadTell =
        * (idle); mode: which, said even once it is gone
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race" | "here";
         h?: number;
+        /** here: h's page away since then (ms), or here again (null), taken as it is; host: handed as its host was 暂离 */
+        away?: number | null;
+        afk?: true;
         to?: SquadState;
         round?: SquadRound;
         pose?: SquadPose;
@@ -515,7 +545,8 @@ export type SquadTell =
    */
   | { t: "stack"; room: string; items: { h: number; x: number; at: number; round: number; n: number; falls?: true; swingAt: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
-  | { t: "you"; room: string; why: "kicked" | "left" };
+  /** You are out: asked out, left (from another page), or 暂离 too long (away) */
+  | { t: "you"; room: string; why: "kicked" | "left" | "away" };
 
 /** What me() carries, to a player 一起卫戍 is open to (SQUAD) who plays 明日方舟 or no game yet */
 export type SquadMe = {

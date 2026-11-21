@@ -645,6 +645,13 @@
       "when": 1795221884109,
       "tag": "0092_stack2",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1795243978008,
+      "tag": "0093_afk",
+      "breakpoints": true
     }
   ]
 }

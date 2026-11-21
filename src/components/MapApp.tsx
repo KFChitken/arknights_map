@@ -177,6 +177,7 @@ import {
   markSquadTouched,
   squadBotTouched,
   squadRoomNow,
+  squadHereLoop,
   squadStreamBack,
   startSquad,
   touchInSquad,
@@ -2620,6 +2621,9 @@ export default function MapApp({
     if (squadMe) startSquad(squadMe);
     else if (!squadSignedIn) forgetSquadPage();
   }, [squadMe, squadSignedIn]);
+  // 暂离: while 一起卫戍 is theirs, the page says it is here in view and away when hidden or closed (in a room)
+  const squadOn = Boolean(squadMe);
+  useEffect(() => (squadOn ? squadHereLoop() : undefined), [squadOn]);
   // a round started in sight: the room's sheet makes way for the bar of the round (展开 brings it back)
   const squadRounds = useSquadRounds();
   const squadRoundsSeen = useRef(squadRounds);

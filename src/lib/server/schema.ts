@@ -2026,6 +2026,13 @@ export const squadMembers = pgTable(
     modeTapAt: at("mode_tap_at"),
     /** Not used any more (the wait before opening a mode again was dropped 11/20), neither written nor read */
     modeAgainAt: at("mode_again_at"),
+    /**
+     * 暂离 (src/lib/server/squad.ts): when their page last said it is here (its 「在」 every few minutes in view, or
+     * anything they did in the room; null: a page from before, never taken as away), and since when it is away (its
+     * page hidden or gone, or silent too long; null: here)
+     */
+    hereAt: at("here_at"),
+    awayAt: at("away_at"),
   },
   (t) => [
     primaryKey({ columns: [t.roomId, t.userId] }),

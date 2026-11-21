@@ -2355,6 +2355,21 @@ export const zh = {
       clear: "清空名片",
       cleared: "名片清空了，下次开房间或加入时再填",
     },
+    /** 暂离 (src/lib/squad.ts afkFor): one away 10 minutes while the room waits */
+    afk: {
+      /** On a seat of the list */
+      tag: "暂离",
+      /** On a tile in the room ({n} minutes) */
+      for: "暂离 {n} 分钟",
+      /** On a room of the list whose host is 暂离 */
+      host: "房主暂离",
+      /** Said in the room as its host, 暂离, handed it on ({name}: who has it) */
+      handed: "房主暂离，房间交给了 {name}",
+      /** The same, to the one who has it now */
+      youHanded: "房主暂离，你成了房主",
+      /** To one taken out for being 暂离 too long, as their page comes back */
+      out: "你离开太久，已经退出房间",
+    },
     room: {
       leave: "离开",
       back: "‹ 列表",
@@ -2734,6 +2749,7 @@ export const zh = {
       go: "开打满 3 小时，房间自动销毁了",
       life: "房间开满 6 小时，自动销毁了",
       admin: "一起卫戍暂时关门，房间结束了",
+      away: "房主离开太久，房间自动结束了",
     },
     out: {
       kicked: "房主请你离开了房间",

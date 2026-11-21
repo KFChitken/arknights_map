@@ -17,6 +17,8 @@ import {
   leaveRoom,
   moveInRoom,
   myRoom,
+  noteAway,
+  noteHere,
   openRoom,
   saveCard,
   sayInRoom,
@@ -83,6 +85,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST run {tap?, jump?, at?}   企鹅物流急件赛: 加油 counts (tap) or 跳 (jump)
  *   POST stack {do, round, at?}   基建加盖 (src/lib/server/squadStack.ts): 放 your roach on the room's tower (drop)
  *   POST stackboard {week}        基建周榜 (src/lib/server/stackBoard.ts): this week's or last week's, and your towers on it
+ *   POST here                     暂离 (src/lib/server/squad.ts): your page is here, in view (every few minutes)
+ *   POST away                     your page went away (hidden or closed, a beacon)
  * 拉黑 and 举报 someone in your room go as anywhere else (src/app/api/world/[op], as sq:<room>:<number>).
  * While SQUAD keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
@@ -132,10 +136,14 @@ const OPS = {
   run: { method: "POST", perMinute: 600 },
   stack: { method: "POST", perMinute: 120 },
   stackboard: { method: "POST", perMinute: 30 },
+  here: { method: "POST", perMinute: 6 },
+  away: { method: "POST", perMinute: 20 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 /** What reaches others: not while 互动 is paused (暂停互动) */
+/** What says nothing of whether one is here (暂离, src/lib/server/squad.ts): reading, and the two that say it themselves */
+const NOT_HERE: ReadonlySet<Op> = new Set<Op>(["list", "room", "fireboard", "stackboard", "song", "question", "friends", "here", "away"]);
 const TALKING: ReadonlySet<Op> = new Set<Op>([
   "open",
   "join",
@@ -202,9 +210,15 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
   if (TALKING.has(op) && user.suspendedUntil && user.suspendedUntil.getTime() > Date.now()) {
     throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user.suspendedUntil.getTime()), means: suspendedMeans() }));
   }
+  // anything done in the room: here (暂离)
+  if (!NOT_HERE.has(op)) await noteHere(user.id);
   switch (op) {
     case "room":
       return answer(await myRoom(user));
+    case "here":
+      return answer(await noteHere(user.id, Date.now(), true));
+    case "away":
+      return answer(await noteAway(user.id));
     case "card":
       return answer(await saveCard(user, body));
     case "open":
