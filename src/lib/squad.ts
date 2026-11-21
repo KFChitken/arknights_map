@@ -441,8 +441,6 @@ export type SquadRoom = {
   fire: SquadFire;
   /** 玩点什么 (src/lib/squadMode.ts): the mode playing, while one does */
   mode: SquadMode | null;
-  /** You opened a mode and may open another from then (ms), while that is still to come */
-  modeAgain?: number;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;

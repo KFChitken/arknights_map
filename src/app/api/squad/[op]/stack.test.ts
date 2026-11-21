@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SquadRoom } from "@/lib/squad";
-import { MODE_AGAIN_MS, STACK_HAND_EVERY_MS, STACK_IDLE_MS, STACK_MOST_MS, stackSwing, type StackData, type StackMode } from "@/lib/squadMode";
+import { STACK_HAND_EVERY_MS, STACK_IDLE_MS, STACK_MOST_MS, stackSwing, type StackData, type StackMode } from "@/lib/squadMode";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
 import { listen } from "@/lib/server/live";
@@ -250,8 +250,8 @@ describe("基建加盖", () => {
     expect(await sweepModes(clock)).toBe(1);
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", on: false } });
     expect(await bestOf(room.id)).toBe(1);
-    expect((await viewOf(a)).modeAgain).toBe(last + STACK_IDLE_MS + MODE_AGAIN_MS);
-    // b opens the next: the room's highest shown, every hand full again
+    expect(await viewOf(a)).not.toHaveProperty("modeAgain");
+    // its opener could open the next at once; b does: the room's highest shown, every hand full again
     await openMode(b, { kind: "stack" }, clock);
     const next = await stackOf(a);
     expect(next).toMatchObject({ round: 1, blocks: [], best: 1 });

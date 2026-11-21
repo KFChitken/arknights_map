@@ -66,11 +66,8 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
 const nothing = () => {};
 
 describe("「玩」's tiles", () => {
-  it("offers 开 while nothing plays, and says how long one who opened the last waits", () => {
+  it("offers 开 while nothing plays, to its last opener too (no wait), and once the mode playing is over", () => {
     expect(modeRow(room(), "dance", NOW)).toEqual({ kind: "dance", label: "开", does: "open" });
-    expect(modeRow(room({ modeAgain: NOW + 44_200 }), "dance", NOW)).toEqual({ kind: "dance", label: "45 秒后能再开", does: null });
-    // its minute over, or the mode playing over (its end passed): 开 again
-    expect(modeRow(room({ modeAgain: NOW - 1 }), "dance", NOW).does).toBe("open");
     expect(modeRow(room({ mode: dance({ endsAt: NOW }) }), "dance", NOW).does).toBe("open");
     expect(modeRow(room({ mode: dance() }), "dance", NOW)).toEqual({ kind: "dance", label: "正在玩 · 加入", does: "join" });
     const mine = room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 3 }] }) });
@@ -126,16 +123,16 @@ describe("「玩」's tiles", () => {
     expect(fire(60)).toContain('<em class="wood"><i aria-hidden="true"></i>3</em>');
   });
 
-  it("marks the mode playing (in it, or to join), the others off till it ends, and your wait after opening one", () => {
+  it("marks the mode playing (in it, or to join), the others off till it ends, and no wait after one", () => {
     const playing = grid(room({ mode: dance() }));
     expect(playing).toContain('<em class="tag join">加入</em>');
     expect(playing).toContain('class="tile k-quiz off"');
     expect(playing).toContain('<p class="now">正在玩：龙门广场舞（1 人）· 一次只能玩一个</p>');
     const mine = grid(room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 3 }] }) }));
     expect(mine).toContain('<em class="tag in">在玩</em>');
-    const waiting = grid(room({ modeAgain: NOW + 44_200 }));
-    expect(waiting.match(/<em class="tag">45s<\/em>/g)).toHaveLength(5);
-    expect(waiting).toContain('aria-label="龙门广场舞 · 45 秒后能再开"');
+    const free = grid(room());
+    expect(free).not.toContain('<em class="tag">');
+    expect(free).toContain('aria-label="龙门广场舞 · 开"');
     expect(grid(room(), "rest", "等这局完")).toContain('<p class="pmsg" role="status">等这局完</p>');
   });
 });

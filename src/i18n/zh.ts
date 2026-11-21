@@ -730,7 +730,6 @@ export const zh = {
       /** 玩点什么 and 龙门广场舞 (src/lib/server/squadModes.ts) */
       badMode: "没有这个玩法。",
       modeOn: "正在玩一个，玩完才能开下一个。",
-      modeAgain: "刚开过一个，{s} 秒后才能再开。",
       noMode: "现在没有在玩的。",
       notDancing: "先加入才能跳。",
       noDanceSong: "现在没有能跳的歌。",
@@ -2880,7 +2879,6 @@ export const zh = {
       join: "正在玩 · 加入",
       in: "在玩 · 打开",
       wait: "等这局完",
-      again: "{s} 秒后能再开",
       names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛", stack: "基建加盖" },
       /** On a tile of the room, for one in it */
       tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑", stack: "在搭" },
@@ -2912,10 +2910,9 @@ export const zh = {
       fishStates: { rest: "没在钓", line: "浮漂在水里", bite: "咬钩了" },
       /** 添柴's fire level on its tile */
       level: "Lv.{n}",
-      /** On a mode's tile: you in it, it playing (join), or your wait after opening one ({s} seconds) */
+      /** On a mode's tile: you in it, or it playing (join) */
       in: "在玩",
       join: "加入",
-      again: "{s}s",
       /** Under the tiles while a mode plays */
       playing: "正在玩：{mode}（{n} 人）· 一次只能玩一个",
     },

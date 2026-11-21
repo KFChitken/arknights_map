@@ -514,7 +514,6 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
       bestTop: room.fireBestTop,
     },
     mode: await modeView(room, rows, me.handle, now),
-    ...(me.modeAgainAt && me.modeAgainAt.getTime() > now ? { modeAgain: me.modeAgainAt.getTime() } : {}),
     endsAt: ends.at,
     endsWhy: ends.why,
     now,

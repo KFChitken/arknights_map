@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SquadRoom } from "@/lib/squad";
-import { DANCE_IDLE_MS, DANCE_LEAD_MS, MODE_AGAIN_MS, type DanceMode, type DanceSong } from "@/lib/squadMode";
+import { DANCE_IDLE_MS, DANCE_LEAD_MS, type DanceMode, type DanceSong } from "@/lib/squadMode";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
 import { forgetListeningCount } from "@/lib/server/listen";
@@ -204,7 +204,7 @@ describe("玩点什么", () => {
     expect((await viewOf(b)).mode!.in).toEqual([{ h: 2, combo: 1 }]);
   });
 
-  it("ends with its song, or 15 s after the last tap: cleared and told; then its opener waits a minute, the others do not", async () => {
+  it("ends with its song, or 15 s after the last tap: cleared and told; then anyone opens the next at once, its opener too", async () => {
     const { host, a, b, room } = await cast();
     expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
     const opened = clock;
@@ -217,12 +217,12 @@ describe("玩点什么", () => {
     expect((await viewOf(b)).mode).toBeNull();
     expect(await sweepModes(clock)).toBe(1);
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", on: false } });
-    // its opener waits a minute from its end
-    const r = await post(a, "mode", { kind: "dance" });
-    expect(r.status).toBe(429);
-    expect(r.body!.error).toBe("刚开过一个，60 秒后才能再开。");
-    expect((await viewOf(a)).modeAgain).toBe(opened + DANCE_IDLE_MS + MODE_AGAIN_MS);
-    // anyone else need not
+    // its opener opens the next at once, no wait (dropped 11/20), and the room tells none
+    expect(await viewOf(a)).not.toHaveProperty("modeAgain");
+    expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
+    expect((await viewOf(b)).mode!.by).toBe(2);
+    at(clock + DANCE_IDLE_MS);
+    expect((await viewOf(b)).mode).toBeNull();
     expect((await post(host, "mode", { kind: "dance" })).status).toBe(200);
     // with its song: taps keep it, the song's end ends it (cleared by the next request to it too)
     const { songAt, until } = (await viewOf(host)).mode as DanceMode;
@@ -235,7 +235,10 @@ describe("玩点什么", () => {
     at(until + 1000);
     expect((await post(b, "mode", { kind: "dance" })).status).toBe(200);
     expect((await viewOf(b)).mode!.by).toBe(3);
-    expect((await viewOf(host)).modeAgain).toBe(until + MODE_AGAIN_MS);
+    expect(await viewOf(host)).not.toHaveProperty("modeAgain");
+    // and its opener the next at once
+    at(clock + DANCE_IDLE_MS);
+    expect((await post(b, "mode", { kind: "dance" })).status).toBe(200);
   });
 
   it("dances to 卫戍的一起听's song from where it is, and gives each the song: its beats to all, its link to one 听歌 is open to", async () => {

@@ -1,7 +1,7 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, notInArray, or } from "drizzle-orm";
-import { fmt, T } from "@/i18n";
+import { T } from "@/i18n";
 import { readDance, type DanceBeats } from "../dance";
 import { NOT_IN_ROOM } from "../squad";
 import {
@@ -15,7 +15,6 @@ import {
   GIFT_LEAD_MS,
   giftUntil,
   isModeKind,
-  MODE_AGAIN_MS,
   modeEnds,
   quizUntil,
   STACK_IDLE_MS,
@@ -42,8 +41,7 @@ import { againIn, dropIn, makeStack, type StackPut } from "./squadStack";
 
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥; the rules in src/lib/squadMode.ts), kept on the room's row and its
- * members': the one mode playing, its opener, those in it. 开 (none playing, and not within MODE_AGAIN_MS of the end of
- * one's own last), 加入 and 不跳了 tell the room. 龙门广场舞: its song is 卫戍的一起听's while one plays (from where it
+ * members': the one mode playing, its opener, those in it. 开 (none playing), 加入 and 不跳了 tell the room. 龙门广场舞: its song is 卫戍的一起听's while one plays (from where it
  * is), else one of 听歌's at random with a table of beats, DANCE_LEAD_MS on; each tap of 跳 is judged on the server's
  * clock against the song's beats, the combo kept on the member's row and told to the room with the next batch. A mode
  * over (its song ended, or DANCE_IDLE_MS since the last tap) is cleared by the next request to it, or by sweepModes
@@ -76,10 +74,7 @@ async function lockedMine(tx: Tx, userId: string) {
 const endsOfMode = (room: Pick<RoomRow, "mode" | "modeUntil" | "modeLast">) =>
   room.mode && room.modeUntil && room.modeLast ? modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime()) : null;
 
-/**
- * The room's mode gone (a quiz's last wearing 漏勺 first), its members out of it; its opener may open another
- * MODE_AGAIN_MS after it ended (at)
- */
+/** The room's mode gone (a quiz's last wearing 漏勺 first, as it ended at `at`), its members out of it */
 async function endModeIn(tx: Tx, room: Pick<RoomRow, "id" | "modeBy" | "mode" | "modeData">, at: number) {
   if (room.mode === "quiz") await endQuiz(tx, room.id, at);
   if (room.mode === "gift") forgetGift(room.id);
@@ -100,12 +95,6 @@ async function endModeIn(tx: Tx, room: Pick<RoomRow, "id" | "modeBy" | "mode" | 
         lanes ? or(eq(squadMembers.modeIn, false), inArray(squadMembers.handle, lanes.length ? lanes : [0])) : undefined,
       ),
     );
-  if (room.modeBy !== null) {
-    await tx
-      .update(squadMembers)
-      .set({ modeAgainAt: new Date(at + MODE_AGAIN_MS) })
-      .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, room.modeBy), isNull(squadMembers.leftAt)));
-  }
 }
 
 // ---- the songs danced to ----
@@ -138,10 +127,9 @@ export function forgetDanceBeats() {
 // ---- 开, 加入, 不跳了 ----
 
 /**
- * 开 a mode (玩点什么, kind): none playing in the room (one over is cleared first), and the player not within
- * MODE_AGAIN_MS of the end of the last they opened. 龙门广场舞 dances to 卫戍的一起听's song while one plays with
- * LISTEN_LEFT_MS or more left of it (from where it is), else to one of 听歌's at random with beats, from its start
- * DANCE_LEAD_MS on. Its opener is in it; the room is told.
+ * 开 a mode (玩点什么, kind): none playing in the room (one over is cleared first). 龙门广场舞 dances to 卫戍的一起听's
+ * song while one plays with LISTEN_LEFT_MS or more left of it (from where it is), else to one of 听歌's at random with
+ * beats, from its start DANCE_LEAD_MS on. Its opener is in it; the room is told.
  */
 export async function openMode(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now(), rand: (n: number) => number = randomInt) {
   if (!isModeKind(body.kind)) throw refuse(400, T.server.squad.badMode);
@@ -220,13 +208,6 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
     const settled = room.mode === "race" && Boolean((room.modeData as RaceData | null)?.end);
     if (ends !== null && (ends <= now || settled)) await endModeIn(tx, room, Math.min(ends, now));
     else if (ends !== null) throw refuse(409, T.server.squad.modeOn);
-    // the opener's own wait, as it is now (the mode just cleared may have been theirs)
-    const [fresh] = await tx
-      .select({ again: squadMembers.modeAgainAt })
-      .from(squadMembers)
-      .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt)));
-    const again = fresh?.again?.getTime() ?? 0;
-    if (again > now) throw refuse(429, fmt(T.server.squad.modeAgain, { s: Math.ceil((again - now) / 1000) }));
     await tx
       .update(squadRooms)
       .set({ mode: body.kind as string, modeBy: me.handle, modeAt: new Date(now), ...fields })

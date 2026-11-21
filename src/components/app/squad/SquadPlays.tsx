@@ -26,8 +26,7 @@ export function modeRow(room: SquadRoom, kind: SquadModeKind, now: number): Mode
   const mode = room.mode && room.mode.endsAt > now ? room.mode : null;
   if (mode?.kind === kind) return mode.in.some((m) => m.h === room.you) ? { kind, label: t.in, does: "look" } : { kind, label: t.join, does: "join" };
   if (mode) return { kind, label: t.wait, does: null };
-  const again = room.modeAgain && room.modeAgain > now ? Math.ceil((room.modeAgain - now) / 1000) : 0;
-  return again ? { kind, label: fmt(t.again, { s: again }), does: null } : { kind, label: t.open, does: "open" };
+  return { kind, label: t.open, does: "open" };
 }
 
 /** How 钓鳞's line stands: none in the water, in it, or bitten */
@@ -170,8 +169,6 @@ export function PlayGrid({
   const level = fireLevel(room.fire.level, room.fire.at, now);
   const wood = woodNow(me?.wood ?? WOOD_MAX, me?.woodAt ?? null, now);
   const playing = room.mode && room.mode.endsAt > now ? room.mode : null;
-  // one who opened the last mode, while their minute is not up
-  const again = !playing && room.modeAgain && room.modeAgain > now ? Math.ceil((room.modeAgain - now) / 1000) : 0;
   return (
     <div className="sq-pg">
       <div className="tiles">
@@ -194,7 +191,7 @@ export function PlayGrid({
         </button>
         {MODE_KINDS.map((kind) => {
           const row = modeRow(room, kind, now);
-          const tag = row.does === "look" ? t.in : row.does === "join" ? t.join : again ? fmt(t.again, { s: again }) : null;
+          const tag = row.does === "look" ? t.in : row.does === "join" ? t.join : null;
           return (
             <button
               key={kind}

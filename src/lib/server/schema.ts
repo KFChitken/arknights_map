@@ -2018,13 +2018,11 @@ export const squadMembers = pgTable(
     ballFrom: smallint("ball_from"),
     ballN: smallint("ball_n").notNull().default(0),
     ballUntil: at("ball_until"),
-    /**
-     * 玩点什么: in the mode playing (not only watching it); 龙门广场舞's combo and the last tap that counted; when one may
-     * open a mode again (MODE_AGAIN_MS after the one they opened ended)
-     */
+    /** 玩点什么: in the mode playing (not only watching it); 龙门广场舞's combo and the last tap that counted */
     modeIn: boolean("mode_in").notNull().default(false),
     modeCombo: smallint("mode_combo").notNull().default(0),
     modeTapAt: at("mode_tap_at"),
+    /** Not used any more (the wait before opening a mode again was dropped 11/20), neither written nor read */
     modeAgainAt: at("mode_again_at"),
   },
   (t) => [

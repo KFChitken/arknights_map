@@ -4,7 +4,6 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SquadRoom } from "@/lib/squad";
 import {
-  MODE_AGAIN_MS,
   RACE_CROWN_MS,
   RACE_JUMP_MS,
   RACE_LEAD_MS,
@@ -252,7 +251,9 @@ describe("企鹅物流急件赛", () => {
     at(ended.until + 1);
     expect(await sweepModes(clock)).toBe(1);
     expect((await viewOf(a)).mode).toBeNull();
-    expect((await viewOf(a)).modeAgain).toBe(ended.until + MODE_AGAIN_MS);
+    expect(await viewOf(a)).not.toHaveProperty("modeAgain");
+    // its opener opens the next at once
+    expect((await post(a, "mode", { kind: "race" })).status).toBe(200);
     void bH;
   });
 

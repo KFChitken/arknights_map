@@ -10,7 +10,6 @@ import {
   GIFT_LEAD_MS,
   GIFT_ROUND_MIN_MS,
   GIFT_ROUNDS,
-  MODE_AGAIN_MS,
   giftAt,
   giftLatest,
   giftUntil,
@@ -324,9 +323,8 @@ describe("W 的礼物", () => {
     expect(await sweepModes(clock)).toBe(1);
     expect((await viewOf(a)).mode).toBeNull();
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", on: false } });
-    expect((await viewOf(a)).modeAgain).toBe(until + MODE_AGAIN_MS);
-    // again, and a goes to watch: at the first stop no one plays it, and it ends
-    at(until + MODE_AGAIN_MS + 1);
+    expect(await viewOf(a)).not.toHaveProperty("modeAgain");
+    // again at once, and a goes to watch: at the first stop no one plays it, and it ends
     await openMode(a, { kind: "gift" }, clock, first);
     expect((await post(a, "modein", { in: false })).status).toBe(200);
     const d2 = await dataOf(room.id);

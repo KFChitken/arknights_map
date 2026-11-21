@@ -3,9 +3,8 @@ import { woodIn, woodNow } from "./squadFire";
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥): one mode at a time, opened by anyone in the room, the others told
  * and free to join or only watch (fishing, throwing, the fire and talking all go on beside it); each ends on its own,
- * after which anyone may open the next, though one who opened a mode waits MODE_AGAIN_MS after it ended before opening
- * another. The fight goes on above it, and a round starting never stops it. The server keeps it
- * (src/lib/server/squadModes.ts) and judges everything; the page draws it.
+ * after which anyone may open the next at once. The fight goes on above it, and a round starting never stops it. The
+ * server keeps it (src/lib/server/squadModes.ts) and judges everything; the page draws it.
  *
  * 龙门广场舞 (dance): its opener leads, those who join dance in a row to one of 听歌's songs, to its table of beats
  * (src/lib/dance.ts): the song 卫戍的一起听 is playing, else one at random that has beats. A tap of 跳 on a beat (within
@@ -17,9 +16,6 @@ import { woodIn, woodNow } from "./squadFire";
 export const MODE_KINDS = ["dance", "quiz", "gift", "race", "stack"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
-
-/** One who opened a mode opens another this long after it ended at the soonest */
-export const MODE_AGAIN_MS = 60_000;
 
 /** 龙门广场舞: its song starts this long after it opens (time for the pages to fetch it), unless 一起听's is playing */
 export const DANCE_LEAD_MS = 3_000;
