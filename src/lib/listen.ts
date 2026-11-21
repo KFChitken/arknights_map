@@ -279,6 +279,13 @@ export const INVITE_MS = 30 * 60_000;
 export const QUIET_AFTER_LATER_MS = 30 * 60_000;
 /** A page gone (closed, reloaded) keeps its player's place in the room this long; a host's, the room */
 export const AWAY_MS = 2 * 60_000;
+/**
+ * One in a room as it plays who neither plays its songs nor does anything in it this long (paused, or gone without
+ * their page saying so: a phone locked, a page the system shut) is out of it, and told so; not its host, whose room
+ * goes on. Counted from the end of the song they last played there, or from their last request but the page's own
+ * (src/lib/server/listenRooms.ts sweepIdle), whichever is later; not before the host starts it.
+ */
+export const IDLE_MS = 10 * 60_000;
 /** A room whose songs are over ends this long after, unless the host adds more */
 export const ROOM_IDLE_MS = 10 * 60_000;
 /**
@@ -513,8 +520,11 @@ export type ListenTell =
   | { t: "members"; room: string }
   | { t: "rx"; room: string; items: { h: number; r: number }[] }
   | { t: "end"; room: string; why: RoomEnd }
-  /** To one alone: the host asked you to leave (kicked), or you are out of it by blocking its host (left) */
-  | { t: "you"; room: string; why: "kicked" | "left" }
+  /**
+   * To one alone: the host asked you to leave (kicked), you are out of it by blocking its host (left), or you did
+   * nothing in it IDLE_MS as it played (idle)
+   */
+  | { t: "you"; room: string; why: "kicked" | "left" | "idle" }
   /** To the host: the songs asked for changed (one asked for, or taken back); the room is asked for again */
   | { t: "asks"; room: string }
   /** To the one who asked alone: the host let the song into 待播 (yes), or left it out */

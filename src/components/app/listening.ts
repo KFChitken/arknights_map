@@ -2070,15 +2070,16 @@ export function heardListen(raw: unknown) {
     return;
   }
   if (d.t === "end") return roomOver(d.why);
-  // to you alone: the host asked you to leave, or you blocked the host
-  if (d.t === "you") return roomOver(d.why === "kicked" ? "kicked" : "parted");
+  // to you alone: the host asked you to leave, you blocked the host, or you did nothing in it too long as it played
+  if (d.t === "you") return roomOver(d.why === "kicked" ? "kicked" : d.why === "idle" ? "lapsed" : "parted");
 }
 
 /**
  * How one is out of a room: it ended (RoomEnd: why), you left it (leave), its host asked you to (kicked), you are out by
- * blocking its host (parted), or it was found over (gone: it ended while the page was not told)
+ * blocking its host (parted), you did nothing in it IDLE_MS as it played (lapsed), or it was found over (gone: it ended
+ * while the page was not told)
  */
-type Out = RoomEnd | "leave" | "kicked" | "parted" | "gone";
+type Out = RoomEnd | "leave" | "kicked" | "parted" | "lapsed" | "gone";
 
 /** What being out of the room says, to someone in it: its song going on alone (on), or not */
 function outNote(out: Out, r: ListenRoom, on: boolean): string | null {
@@ -2087,6 +2088,7 @@ function outNote(out: Out, r: ListenRoom, on: boolean): string | null {
   if (out === "gray") return null;
   if (out === "alone") return T.listen.endedAlone;
   if (out === "kicked") return fmt(T.listen.kickedYou, { name });
+  if (out === "lapsed") return T.listen.leftIdle;
   // the host's own 结束 (or leaving it, or going off)
   if (out === "host" && r.host) return on ? T.listen.endedMine : null;
   if (out === "host") return fmt(on ? T.listen.endedHostOn : T.listen.endedHost, { name });
@@ -2291,12 +2293,12 @@ function failed(e: unknown) {
 export function loadRoom(): Promise<void> {
   const mine = ++roomAsked;
   const sent = Date.now();
-  return listenApi.room().then(
+  return listenApi.room(room.get()?.id).then(
     (res) => {
       if (mine !== roomAsked) return;
       if (res.room) return void enter(res.room, sent, Date.now(), res.now);
-      // it ended while this page was not told (asleep, offline)
-      roomOver("gone");
+      // it ended, or you are out of it, while this page was not told (asleep, offline)
+      roomOver(res.out === "idle" ? "lapsed" : "gone");
     },
     (e: unknown) => {
       if (mine === roomAsked && (e instanceof SignInNeeded || e instanceof AgeCheckNeeded || e instanceof ConsentNeeded)) refusedTo?.(e);

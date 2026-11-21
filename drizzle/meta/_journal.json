@@ -652,6 +652,13 @@
       "when": 1795243978008,
       "tag": "0093_afk",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1795247432391,
+      "tag": "0094_listen_idle",
+      "breakpoints": true
     }
   ]
 }

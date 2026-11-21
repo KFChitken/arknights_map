@@ -2031,6 +2031,8 @@ export const zh = {
     endedHostOn: "{name} 结束了这次一起听，你接着自己听这首",
     endedIdleOn: "这次一起听结束了，你接着自己听这首",
     endedAlone: "没人来，一起听先关了，你接着自己听",
+    /** out of a room for doing nothing in it 10 minutes as it played (paused, or the page asleep); its song goes on alone */
+    leftIdle: "你暂停太久，已经离开这场一起听",
     // the host alone in the room: it ends ALONE_MS after (its last minute counted down)
     aloneNow: "现在只有你。5 分钟内没人来，就变回自己听，歌不停。",
     aloneSoon: "没人来的话，{at} 后变回自己听，歌不停。",

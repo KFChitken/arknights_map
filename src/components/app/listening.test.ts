@@ -965,6 +965,39 @@ describe("一起听 on the page", () => {
     expect(listenPlayerNow()).toMatchObject({ status: "playing", track: { id: "s1" } });
   });
 
+  it("says you paused too long as you are out of the room for it, the song kept paused where you left it; so too found out later", async () => {
+    const PAUSED_TOO_LONG = "你暂停太久，已经离开这场一起听";
+    await joinPlaying(30_000);
+    const el = audio();
+    el.to(31);
+    toggle();
+    await tick(5_000);
+    heardListen({ t: "you", room: "r1", why: "idle" });
+    expect(listenRoomNow()).toBeNull();
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s1" } });
+    expect(el.paused).toBe(true);
+    expect(said.at(-1)).toBe(PAUSED_TOO_LONG);
+    toggle();
+    expect(el).toMatchObject({ src: link("s1"), paused: false, currentTime: 31 });
+
+    // the page asleep as it was told: back, it asks again, naming the room it was in, and is told why it is out
+    forgetListening();
+    await joinPlaying(30_000);
+    toggle();
+    answers.room = () => ({ status: 200, json: { room: null, out: "idle", now: serverClock() } });
+    await loadRoom();
+    expect(ops("room").at(-1)).toEqual({ was: "r1" });
+    expect(listenRoomNow()).toBeNull();
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", track: { id: "s1" } });
+    expect(said.at(-1)).toBe(PAUSED_TOO_LONG);
+    // out for anything else meanwhile: as before
+    forgetListening();
+    await joinPlaying(30_000);
+    answerRoom("room", () => null);
+    await loadRoom();
+    expect(said.at(-1)).toBe("这次一起听结束了，你接着自己听这首");
+  });
+
   it("fades out when the 站长 pauses 听歌 or the site goes gray, and leaves the server counting nobody", async () => {
     await joinPlaying(30_000);
     heardListen({ t: "end", room: "r1", why: "admin" });

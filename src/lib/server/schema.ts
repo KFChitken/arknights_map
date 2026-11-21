@@ -1812,7 +1812,10 @@ export const listenRooms = pgTable(
  * Who is, or was, in a room: handle is their number in it, from 1 (the host's) and never given to another; via how
  * they came (host, invite, declaration). left_at once they left (or the room ended), away_at while their page is gone
  * (closed, reloaded: AWAY_MS to come back in). kicked: asked to leave by the host, and never let in again; hidden_from:
- * the handles of those in it who do not see them (blocking). In one room at a time (listen_members_one_room).
+ * the handles of those in it who do not see them (blocking). did_at: when they last did anything in it, or when the
+ * song they last played there ends, whichever is later (src/lib/server/listenRooms.ts thereTill); as it plays, IDLE_MS
+ * past that and joined_at, they are out of it, but for its host (lapsed: so, as their page is told again when it
+ * asks). In one room at a time (listen_members_one_room).
  */
 export const listenMembers = pgTable(
   "listen_members",
@@ -1830,6 +1833,8 @@ export const listenMembers = pgTable(
     awayAt: at("away_at"),
     kicked: boolean("kicked").notNull().default(false),
     hiddenFrom: smallint("hidden_from").array().notNull().default(sql`'{}'::smallint[]`),
+    didAt: at("did_at"),
+    lapsed: boolean("lapsed").notNull().default(false),
   },
   (t) => [
     primaryKey({ columns: [t.roomId, t.userId] }),

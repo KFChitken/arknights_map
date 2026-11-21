@@ -7,6 +7,7 @@ import {
   ALONE_EARLY_MS,
   ALONE_MS,
   AWAY_MS,
+  IDLE_MS,
   INVITE_MS,
   QUEUE_MAX,
   REQUESTS_EACH,
@@ -14,6 +15,7 @@ import {
   ROOM_IDLE_MS,
   ROOM_KEEP_MS,
   ROOM_LIFE_MS,
+  roomAt,
   RX_EVERY_MS,
   type ListenFriend,
   type ListenRoom,
@@ -1211,5 +1213,132 @@ describe("一起听's rooms", () => {
     } finally {
       await sub.unlisten();
     }
+  });
+});
+
+describe("一起听's 人走了", () => {
+  /** How long each song lasts: s1, s2, and the r ones of moreSongs */
+  const lengthOf = (id: string) => (id === "s1" ? 200 : id === "s2" ? 201 : 100);
+  const scheduleOfRow = (r: NonNullable<Awaited<ReturnType<typeof roomRow>>>) => ({ queue: r.queue, idx: r.idx, startedAt: r.startedAt?.getTime() ?? null });
+
+  /** Pages playing along in the room: each plays each of its songs once, as it starts or as they first see it */
+  function playing(roomId: string, ...us: User[]) {
+    const last = new Map<string, string>();
+    return async () => {
+      const r = (await roomRow(roomId))!;
+      const at = roomAt(scheduleOfRow(r), lengthOf, Date.now());
+      if (at.phase !== "playing") return;
+      const key = `${r.queue[at.i]}@${at.start}`;
+      for (const u of us) {
+        if (last.get(u.id) === key) continue;
+        last.set(u.id, key);
+        const res = await post(u, "play", { song: r.queue[at.i], at: Math.max(0, Math.floor(at.offset)), next: r.queue[at.i + 1] });
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+      }
+    };
+  }
+
+  /** The main process's sweep each minute from `from` on, and at `to` last, the pages given doing their part first; how many rooms it ended */
+  async function minutes(from: number, to: number, pages?: () => Promise<void>) {
+    let ended = 0;
+    for (let t = from; ; t = Math.min(t + 60_000, to)) {
+      vi.setSystemTime(t);
+      await pages?.();
+      ended += await sweepRooms(t);
+      if (t >= to) return ended;
+    }
+  }
+
+  /** The host and B and C in a room the host just started, with songs to go on to; when it started */
+  async function playingRoom() {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b, c } = await cast();
+    await moreSongs(12);
+    const room = await opened(host, b, c);
+    await goIn(b);
+    await goIn(c);
+    expect((await post(host, "queue", { start: true })).status).toBe(200);
+    return { host, b, c, room, t0: Date.now() };
+  }
+
+  it("take out one who neither plays its songs nor does anything in it 10 minutes as it plays, told so alone; never one playing along", async () => {
+    const { host, b, c, room, t0 } = await playingRoom();
+    const bHeard = hear(b);
+    const cHeard = hear(c);
+    // the host and B play along, song after song; C paused at once (a pause asks nothing of the server)
+    const along = playing(room.id, host, b);
+    expect(await minutes(t0, t0 + IDLE_MS - 1_000, along)).toBe(0);
+    expect(await inNow(room.id)).toHaveLength(3);
+    expect(toldOf(cHeard, "you")).toEqual([]);
+    // 10 minutes on: C is out, told so alone; the others told who is in it changed, and see TA 走了
+    expect(await minutes(t0 + IDLE_MS + 1_000, t0 + IDLE_MS + 1_000, along)).toBe(0);
+    expect(new Set(await inNow(room.id))).toEqual(new Set([host.id, b.id]));
+    expect(toldOf(cHeard, "you")).toEqual([{ t: "you", room: room.id, why: "idle" }]);
+    expect(toldOf(bHeard, "members")).toHaveLength(1);
+    expect(toldOf(bHeard, "you")).toEqual([]);
+    expect((await roomOf(host))!.members.map((m) => m.state)).toEqual(["in", "in", "left"]);
+    // C's page, asleep as it was told, asks again naming the room it was in: out for doing nothing there
+    expect((await post(c, "room", { was: room.id })).body).toEqual({ room: null, out: "idle", now: Date.now() });
+    expect((await post(c, "room")).body).toEqual({ room: null, now: Date.now() });
+    // in again at the invitation, still good: as anyone coming in, the room going on
+    await goIn(c);
+    expect((await post(c, "room", { was: room.id })).body!.room).toMatchObject({ id: room.id });
+    // the two playing along all the while: in, long after
+    expect(await minutes(t0 + IDLE_MS + 60_000, t0 + 3 * IDLE_MS, playing(room.id, host, b, c))).toBe(0);
+    expect(await inNow(room.id)).toHaveLength(3);
+    expect(await roomRow(room.id)).toMatchObject({ endedAt: null });
+  });
+
+  it("keep one paused who does anything in it; count a pause from the end of the song paused; reading the room again is nothing", async () => {
+    const { host, b, c, room, t0 } = await playingRoom();
+    const along = playing(room.id, host);
+    // B and C play s1 (200 s) from its start, and pause it at once
+    await playing(room.id, b, c)();
+    const s1End = (await roomRow(room.id))!.startedAt!.getTime() + 200_000;
+    // C's page reads the room again now and then, by itself; B says a 短评 8 minutes on
+    expect(await minutes(t0, t0 + 8 * 60_000, async () => void (await post(c, "room")))).toBe(0);
+    expect((await post(b, "react", { r: 0 })).status).toBe(200);
+    const said = Date.now();
+    // 10 minutes after s1 ended, not after the pause: C out, B in
+    expect(await minutes(t0 + 9 * 60_000, s1End + IDLE_MS - 61_000, along)).toBe(0);
+    expect(await inNow(room.id)).toContain(c.id);
+    await minutes(s1End + IDLE_MS + 1_000, s1End + IDLE_MS + 1_000, along);
+    expect(await inNow(room.id)).not.toContain(c.id);
+    expect(await inNow(room.id)).toContain(b.id);
+    // B, 10 minutes after TA said anything
+    await minutes(s1End + IDLE_MS + 60_000, said + IDLE_MS - 1_000, along);
+    expect(await inNow(room.id)).toContain(b.id);
+    await minutes(said + IDLE_MS + 1_000, said + IDLE_MS + 1_000, along);
+    expect(await inNow(room.id)).toEqual([host.id]);
+  });
+
+  it("keep a host who does nothing in it 10 minutes as it plays: TA's room goes on, TA in it", async () => {
+    const { host, b, c, room, t0 } = await playingRoom();
+    const hostHeard = hear(host);
+    // B and C play along; the host paused at once
+    const along = playing(room.id, b, c);
+    expect(await minutes(t0, t0 + 2 * IDLE_MS, along)).toBe(0);
+    expect(new Set(await inNow(room.id))).toEqual(new Set([host.id, b.id, c.id]));
+    expect(await roomRow(room.id)).toMatchObject({ endedAt: null });
+    expect(toldOf(hostHeard, "you")).toEqual([]);
+  });
+
+  it("take nobody out before the host starts it; starting it gives everyone in it 10 minutes from then", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { host, b } = await cast();
+    await moreSongs(12);
+    const room = await opened(host, b);
+    await goIn(b);
+    const t0 = Date.now();
+    // waiting for 开始 20 minutes, nobody doing anything: nobody out
+    expect(await minutes(t0, t0 + 2 * IDLE_MS)).toBe(0);
+    expect(await inNow(room.id)).toHaveLength(2);
+    // started: B, in for 20 minutes and yet to play, has 10 minutes from now
+    expect((await post(host, "queue", { start: true })).status).toBe(200);
+    const along = playing(room.id, host);
+    expect(await minutes(t0 + 2 * IDLE_MS, t0 + 3 * IDLE_MS - 1_000, along)).toBe(0);
+    expect(await inNow(room.id)).toContain(b.id);
+    await minutes(t0 + 3 * IDLE_MS + 1_000, t0 + 3 * IDLE_MS + 1_000, along);
+    expect(await inNow(room.id)).toEqual([host.id]);
   });
 });

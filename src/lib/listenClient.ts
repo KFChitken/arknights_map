@@ -47,8 +47,11 @@ export const listenApi = {
   play: (song: string, at: number, next: string | null) => call<ListenPlay>("play", post(next ? { song, at, next } : { song, at })),
   /** Not listening any more */
   stop: () => call<{ now: number }>("stop", post({})),
-  /** The room you are in, as you see it (null: none) */
-  room: () => call<{ room: ListenRoom | null; now: number }>("room", post({})),
+  /**
+   * The room you are in, as you see it (null: none); out of the one this page was in (was) for doing nothing in it as
+   * it played (src/lib/listen.ts IDLE_MS), out says so
+   */
+  room: (was?: string) => call<{ room: ListenRoom | null; out?: "idle"; now: number }>("room", post(was ? { was } : {})),
   /** Your 触须之交 you may invite */
   friends: () => call<{ friends: ListenFriend[]; now: number }>("friends", post({})),
   /** A room of your own, with this song first (null: 新歌's first), and invitations to these 触须之交 (their Friend ids) */

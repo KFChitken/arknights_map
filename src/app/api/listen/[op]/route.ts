@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { fmt, T } from "@/i18n";
+import { LISTEN_GRACE_MS } from "@/lib/listen";
 import { currentUser } from "@/lib/server/auth";
 import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib/server/consent";
 import { listenMode } from "@/lib/server/env";
@@ -25,6 +26,7 @@ import {
   openRoom,
   reactInRoom,
   requestSong,
+  thereTill,
   touchMember,
   withdrawRequest,
 } from "@/lib/server/listenRooms";
@@ -39,7 +41,8 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *                                 it already gets 304
  *   POST play {song, next?, at?}  the song's link, and the next one's to fetch early; at: seconds in, to go on from
  *   POST stop {away?}             not listening any more; away: the page is going, so only soon
- *   POST room                     the room you are in, as you see it (null: none)
+ *   POST room {was?}              the room you are in, as you see it (null: none); out of the one your page was in
+ *                                 (was) for doing nothing in it, out: idle
  *   POST friends                  your 触须之交 you may invite
  *   POST open {song, invite?, at?}   a new room of yours, with invitations to the 触须之交 given (their Friend ids);
  *                                 at: seconds into the song, which plays from there at once (else it waits for start)
@@ -75,7 +78,9 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  * here. All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an
  * updated privacy policy is not agreed yet; one whose 互动 is paused (暂停互动) may listen alone, not with others. Any
  * request but the page's going and 325 节拍's says the player is back (a room keeps the place of one whose page went a
- * while). The songs' files, and the clips', go out at the links, checked by /api/listen/ok.
+ * while); any but what a page asks by itself (BY_ITSELF) says they are there in their room, a song played till it ends
+ * (one who is not, as it plays, is out of it after a while: src/lib/server/listenRooms.ts sweepIdle). The songs' files,
+ * and the clips', go out at the links, checked by /api/listen/ok.
  */
 
 const OPS = {
@@ -107,6 +112,12 @@ const OPS = {
   favs: { method: "POST", perMinute: 20 },
   fav: { method: "POST", perMinute: 60 },
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
+/**
+ * What a page asks by itself, which says nothing of whether its player is there in their room: the room read again,
+ * the counting stopped (or the page going), the room ended (or the host's page ending one it was alone in), 325 节拍's
+ * clips; and leaving it, which takes them out anyway
+ */
+const BY_ITSELF: ReadonlySet<Op> = new Set<Op>(["room", "stop", "end", "leave", "beat"]);
 /** What reaches others: not while 互动 is paused (暂停互动) */
 const TALKING: ReadonlySet<Op> = new Set<Op>(["open", "invite", "squad", "join", "react", "queue", "request", "answer", "declare", "touch", "ask", "askOk"]);
 type Op = keyof typeof OPS;
@@ -151,13 +162,18 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
     throw new HttpError(403, fmt(T.server.routes.world.suspended, { until: dayWords(user.suspendedUntil.getTime()), means: suspendedMeans() }));
   }
   if (op !== "beat" && !(op === "stop" && body.away === true)) await cameBack(user.id);
+  if (!BY_ITSELF.has(op) && op !== "play") await thereTill(user.id);
   switch (op) {
-    case "play":
-      return answer(await playSong(user, body));
+    case "play": {
+      const played = await playSong(user, body);
+      // there till the song ends, though nothing more is asked meanwhile
+      await thereTill(user.id, played.until - LISTEN_GRACE_MS);
+      return answer(played);
+    }
     case "stop":
       return answer(await stopSong(user, body));
     case "room":
-      return answer(await myRoom(user));
+      return answer(await myRoom(user, body));
     case "friends":
       return answer(await listenFriends(user));
     case "open":

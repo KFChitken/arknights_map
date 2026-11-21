@@ -9,6 +9,7 @@ import {
   ALONE_MS,
   AWAY_MS,
   changeQueue,
+  IDLE_MS,
   INVITE_MS,
   isQueueRemove,
   isRx,
@@ -79,14 +80,15 @@ import { cardsOf, declare, friendIdsOf, friendKey, profileOf, touch } from "./wo
  * room does goes to the phones in it at once, with what happened in it (live.ts tellListen): its songs (never anything
  * of who), that who is in it changed (each phone asks again, as each sees the others its own way), the 短评 of the last
  * second, and that it ended. 短评 are never written down. Its songs never run out: one playing the last of them is given
- * another at the end, at random (toppedUp, as the host changes them and every minute). A room ends when its host ends
- * or leaves it, goes off for more than AWAY_MS, opens another or goes in at another; when its host has been alone in it
- * ALONE_MS (alone_since: nobody came, or all who did left), its songs have been over ROOM_IDLE_MS (none could be added
- * in time), nobody is left, or it has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the
- * site goes gray. Whoever was in a room that ended (but by the 管理台 or 全站变灰) goes on with its song alone, on their
- * own page (src/components/app/listening.ts). ROOM_KEEP_MS
- * after, the room, who was in it and the invitations to it are deleted. Your 触须之交 see what you listen to while you
- * let them (show_listening: friendsListening), and may ask you to invite them (想一起听: askToListen, answerAsk).
+ * another at the end, at random (toppedUp, as the host changes them and every minute). Whoever in it but its host does
+ * nothing in it IDLE_MS as it plays is out of it, alone (sweepIdle). A room ends when its host ends or leaves it, goes
+ * off for more than AWAY_MS, opens another or goes in at another; when its host has been alone in it ALONE_MS
+ * (alone_since: nobody came, or all who did left), its songs have been over ROOM_IDLE_MS (none could be added in time),
+ * nobody is left, or it has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the site goes
+ * gray. Whoever was in a room that ended (but by the 管理台 or 全站变灰) goes on with its song alone, on their own page
+ * (src/components/app/listening.ts). ROOM_KEEP_MS after, the room, who was in it and the invitations to it are deleted.
+ * Your 触须之交 see what you listen to while you let them (show_listening: friendsListening), and may ask you to invite
+ * them (想一起听: askToListen, answerAsk).
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -427,10 +429,21 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
   };
 }
 
-/** The room you are in now, as you see it (null: none), and the server's clock */
-export async function myRoom(user: Pick<UserRow, "id">, now = Date.now()) {
+/**
+ * The room you are in now, as you see it (null: none), and the server's clock. Out of the one your page was in (was):
+ * out, when that was for doing nothing in it IDLE_MS (idle: sweepIdle), which the page may not have been told
+ */
+export async function myRoom(user: Pick<UserRow, "id">, body: Record<string, unknown> = {}, now = Date.now()) {
   const mine = await roomOfPlayer(db, user.id);
-  return { room: mine ? await roomView(mine.room.id, user.id, now) : null, now };
+  if (mine) return { room: await roomView(mine.room.id, user.id, now), now };
+  const was = typeof body.was === "string" && UUID.test(body.was) ? body.was.toLowerCase() : null;
+  const [lapsed] = was
+    ? await db
+        .select({ roomId: listenMembers.roomId })
+        .from(listenMembers)
+        .where(and(eq(listenMembers.roomId, was), eq(listenMembers.userId, user.id), eq(listenMembers.lapsed, true)))
+    : [];
+  return { room: null, ...(lapsed ? { out: "idle" as const } : {}), now };
 }
 
 // ---- in and out ----
@@ -800,7 +813,7 @@ export async function joinRoom(user: UserRow, body: Record<string, unknown>, now
     if (mine) {
       await tx
         .update(listenMembers)
-        .set({ leftAt: null, awayAt: null, joinedAt: new Date(now) })
+        .set({ leftAt: null, awayAt: null, joinedAt: new Date(now), lapsed: false })
         .where(and(eq(listenMembers.roomId, room.id), eq(listenMembers.userId, user.id)));
     } else {
       const handle = rows.reduce((h, m) => Math.max(h, m.handle), 0) + 1;
@@ -1057,6 +1070,8 @@ export async function changeSongs(user: Pick<UserRow, "id">, body: Record<string
     if (changed === "same") return { room, next: null };
     const next = toppedUp(changed, room.id, all, seconds, now) ?? changed;
     await tx.update(listenRooms).set(written(next)).where(eq(listenRooms.id, room.id));
+    // there was nothing to play before: everyone in it is there from now (sweepIdle)
+    if (change === "start") await thereAll(tx, room.id, now);
     return { room, next };
   });
   if (result.next) {
@@ -1426,13 +1441,95 @@ export async function cameBack(userId: string) {
     .where(and(eq(listenMembers.userId, userId), isNull(listenMembers.leftAt), isNotNull(listenMembers.awayAt)));
 }
 
+// ---- 人走了: those who do nothing in a room as it plays ----
+
+/** did_at is written once a minute at most: a minute makes nothing of IDLE_MS */
+const THERE_EVERY_MS = 60_000;
+
 /**
- * The main process, every minute: those gone off longer than AWAY_MS leave (a host's room ends); rooms end that are
- * over (ROOM_IDLE_MS after their last song), empty, older than ROOM_LIFE_MS, their host alone in them ALONE_MS
- * (endAlone), or all of them while 听歌 is paused or the site is gray; a room going on that plays its last song (or
- * whose songs are over) is given one more (topUp); and rooms over for ROOM_KEEP_MS go, with who was in them and the
- * invitations to them. A host alone in a room not counted so (two going at once: each saw the other still in) is from
- * now. Says how many ended.
+ * The player is there in the room they are in, if any, till `till` (did_at, never put back): now, for a request of
+ * theirs but what their page asks by itself; the end of the song they play, for its play (src/app/api/listen/[op])
+ */
+export async function thereTill(userId: string, till = Date.now()) {
+  await db
+    .update(listenMembers)
+    .set({ didAt: new Date(till) })
+    .where(
+      and(
+        eq(listenMembers.userId, userId),
+        isNull(listenMembers.leftAt),
+        or(isNull(listenMembers.didAt), lt(listenMembers.didAt, new Date(till - THERE_EVERY_MS))),
+      ),
+    );
+}
+
+/** Everyone in the room there from now: its host started it */
+async function thereAll(tx: Exec, roomId: string, now: number) {
+  await tx
+    .update(listenMembers)
+    .set({ didAt: sql`greatest(${listenMembers.didAt}, ${new Date(now).toISOString()}::timestamptz)` })
+    .where(and(eq(listenMembers.roomId, roomId), isNull(listenMembers.leftAt)));
+}
+
+/** In a room, its page not gone, and not there IDLE_MS (did_at and joined_at both before since) */
+const idleSince = (since: Date) =>
+  and(
+    isNull(listenMembers.leftAt),
+    isNull(listenMembers.awayAt),
+    lt(listenMembers.joinedAt, since),
+    or(isNull(listenMembers.didAt), lt(listenMembers.didAt, since)),
+  );
+
+/**
+ * Those in a room as it plays (started, and not over) who did nothing in it IDLE_MS, nor played its songs (did_at), but
+ * its host: out of it, told so alone (you, idle) and kept so (lapsed), for their page to be told again as it asks
+ * (myRoom), and the room told who is in it changed. Those whose page went are AWAY_MS's. Says how many rooms ended so.
+ */
+async function sweepIdle(now: number): Promise<number> {
+  const since = new Date(now - IDLE_MS);
+  const idle = await db
+    .select({ room: listenRooms, userId: listenMembers.userId })
+    .from(listenMembers)
+    .innerJoin(listenRooms, eq(listenRooms.id, listenMembers.roomId))
+    .where(and(idleSince(since), isNull(listenRooms.endedAt), isNotNull(listenRooms.startedAt), ne(listenMembers.userId, listenRooms.hostId)));
+  if (!idle.length) return 0;
+  const seconds = await secondsOf();
+  let ended = 0;
+  for (const { room, userId } of idle) {
+    if (roomAt(scheduleOf(room), seconds, now).phase !== "playing") continue;
+    const left = await db.transaction(async (tx) => {
+      await lockPlayer(tx, userId);
+      // read again under the lock: anything they did meanwhile keeps them in
+      const [still] = await tx
+        .select({ h: listenMembers.handle })
+        .from(listenMembers)
+        .where(and(eq(listenMembers.roomId, room.id), eq(listenMembers.userId, userId), idleSince(since)))
+        .for("update");
+      if (!still) return null;
+      const out = await leaveIn(tx, userId, now);
+      await tx
+        .update(listenMembers)
+        .set({ lapsed: true })
+        .where(and(eq(listenMembers.roomId, room.id), eq(listenMembers.userId, userId)));
+      return out;
+    });
+    if (!left) continue;
+    if (left.ended) {
+      ended += 1;
+      tellEnd(left.roomId, left.ended.filter((id) => id !== userId), "host");
+    } else await tellMembers(left.roomId);
+    tellListen([userId], { t: "you", room: left.roomId, why: "idle" });
+  }
+  return ended;
+}
+
+/**
+ * The main process, every minute: those gone off longer than AWAY_MS leave (a host's room ends), as do those but a host
+ * who did nothing in a room as it played IDLE_MS (sweepIdle); rooms end that are over (ROOM_IDLE_MS after their last
+ * song), empty, older than ROOM_LIFE_MS, their host alone in them ALONE_MS (endAlone), or all of them while 听歌 is
+ * paused or the site is gray; a room going on that plays its last song (or whose songs are over) is given one more
+ * (topUp); and rooms over for ROOM_KEEP_MS go, with who was in them and the invitations to them. A host alone in a room
+ * not counted so (two going at once: each saw the other still in) is from now. Says how many ended.
  */
 export async function sweepRooms(now = Date.now()) {
   const away = await db
@@ -1446,6 +1543,7 @@ export async function sweepRooms(now = Date.now()) {
     if (left?.ended) ended += 1;
     await told(left);
   }
+  ended += await sweepIdle(now);
   const why: RoomEnd | null = grayUntil(now) ? "gray" : listenSettings().paused ? "admin" : null;
   const open = await db.select().from(listenRooms).where(isNull(listenRooms.endedAt));
   const counts = new Map(
